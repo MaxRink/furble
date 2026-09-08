@@ -308,7 +308,6 @@ void GPS::resetAcquisition(uint32_t now) {
   m_PushedSequence = 0;
 #if defined(FURBLE_SIM)
   m_SimFreshFixesParsed = 0;
-  m_SimFreshFixesPushed = 0;
 #endif
   m_CycleRequest = false;
   (void)now;
@@ -2303,11 +2302,6 @@ void GPS::update(void) {
     const uint32_t fixSequence = m_FixSequence.load();
     if ((fixSequence != 0) && (fixSequence != m_PushedSequence.load())) {
       m_PushedSequence = fixSequence;
-      if ((source == SOURCE_UART) && (fix == Fix::LIVE)) {
-#if defined(FURBLE_SIM)
-        m_SimFreshFixesPushed.fetch_add(1);
-#endif
-      }
       if (dutyCycleEnabled()) {
         m_CycleRequest = true;
       }

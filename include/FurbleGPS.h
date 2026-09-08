@@ -182,8 +182,6 @@ class GPS {
 #if defined(FURBLE_SIM)
   /** Number of fresh UART fixes accepted by the parser in this session. */
   uint32_t simFreshFixesParsed(void) const { return m_SimFreshFixesParsed.load(); }
-  /** Number of fresh UART fixes pushed to the application in this session. */
-  uint32_t simFreshFixesPushed(void) const { return m_SimFreshFixesPushed.load(); }
 #endif
   /** Get the quality of the fix currently sent to the camera. */
   Fix getFix(void) const;
@@ -629,7 +627,6 @@ class GPS {
   std::atomic<uint32_t> m_PushedSequence = 0;
 #if defined(FURBLE_SIM)
   std::atomic<uint32_t> m_SimFreshFixesParsed = 0;
-  std::atomic<uint32_t> m_SimFreshFixesPushed = 0;
 #endif
   std::atomic<bool> m_CycleRequest = false;
 
