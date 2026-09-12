@@ -23,7 +23,7 @@ What this fork adds over upstream right now:
 - Diagnostics pages: device info, power state, reset reason, heap
 - BLE scan duty cycle and scan timeout settings
 - A USB serial console for developers and test automation
-- A host SDL simulator for the UI, plus Android and Apple companion apps
+- A host SDL simulator for the UI, plus an Android companion app
 - Companion camera management: list saved cameras, select Multi-Connect targets,
   and connect or disconnect them from the phone
 - A simulator-tested IMU spirit level and live IMU diagnostics page. Enable it
@@ -128,6 +128,11 @@ The following devices have been tested and confirmed to work:
 [^4]: Focus-only controls are unsupported and do not send a camera command.
 The supported shutter command performs an immediate capture with autofocus.
 
+For contributor research across all implemented camera families, see the
+[camera protocol research library](docs/camera-research/README.md). It records
+source pins, protocol conflicts, and future capture targets, not additional
+supported-camera claims.
+
 ## Supported Controllers
 
 Initially targeted at the M5StickC, the following controllers from [M5Stack](https://m5stack.com/) are supported:
@@ -139,7 +144,7 @@ Initially targeted at the M5StickC, the following controllers from [M5Stack](htt
 * M5Core2
 * M5Tough (untested)
 
-furble builds five release firmware images, one per board environment. M5Unified
+furble builds six release firmware images, one per board environment. M5Unified
 detects the exact board at runtime, so one image covers a board family. The
 M5Tough is not a build environment. It shares the M5Core2 image through
 M5Unified board detection, but it has not been verified on hardware. See
@@ -189,6 +194,11 @@ In most cases it should be:
 
 More details are on the wiki: [PlatformIO](https://github.com/gkoh/furble/wiki/Linux-Command-Line-(For-Developers))
 
+MQTT is compiled only for the documented 8 MB and 16 MB profiles: M5StickS3,
+M5Stack Core2, and Waveshare ESP32-S3-ETH (plus the 8 MB headless S3 profile).
+The 4 MB M5StickC, M5StickC Plus, and M5Stack Core images omit MQTT and its
+component dependencies so their two OTA slots retain their fixed size.
+
 ### Debug builds (developers)
 
 Every board has an optional `<board>-debug` environment, for example
@@ -197,7 +207,8 @@ Every board has an optional `<board>-debug` environment, for example
 sources are compiled in. They share the release `sdkconfig` of the board they
 extend, except for the Core USB fallback's single-factory partition fragment.
 Normal CI builds the six release environments and their mandatory debug
-profiles. Releases retain their existing release/debug matrix.
+profiles. Releases publish the six release images and the five OTA-compatible
+debug images; the Core USB single-factory debug profile remains developer-only.
 
 Build, flash and watch the log:
 - `platformio run -e m5stick-s3-debug -t upload`
@@ -268,12 +279,15 @@ wifi connect|disconnect|forget      control the saved station credentials
 ntp status                          NTP state, server, sync time and offset
 ntp set server <host>               save the NTP server
 ntp enable|disable|sync             control or request an NTP synchronization
+imu status | scale [value]          IMU diagnostic, gesture calibration
+time status | flush                 wall-clock status or persist before shutdown
 settings list | get | set           read and write non-secret settings
 companion password set | clear | status manage the companion password without revealing it
 ui audit                            dump the current page layout
 cameras list | status               saved cameras, or the active targets
 connect [index]                     no index uses the multi-connect selection
 disconnect
+mqtt status | connect | disconnect | discovery clear
 shutter press | release | hold <ms>
 focus press | release
 ir fire [protocol]                  fire the IR emitter
@@ -287,6 +301,13 @@ reboot
 
 The full command reference, with every subcommand, is in
 [docs/console-commands.md](docs/console-commands.md).
+
+MQTT actuator commands must be published with retain off. Retained commands
+under `BASE/ID/cmd/` are rejected so reconnects cannot replay a shutter or
+other actuator. A clean MQTT disconnect enqueues retained `offline` and waits
+briefly for its broker acknowledgement before teardown; it tears down on
+acknowledgement or timeout. A timeout does not prove broker delivery; the last
+will covers an unclean loss.
 
 On the display-less Waveshare ESP32-S3-ETH, `status` reports battery level and
 voltage as unknown and current as unavailable. It does not infer USB or
@@ -358,6 +379,12 @@ On first use, put the target camera into pairing mode, then hit `Scan`. If the
 camera advertises a known, matching signature, it should appear in the list.
 You can then connect to the target camera, which, if successful, will save the
 entry and show the remote menu.
+
+On boards without a touchscreen, the three on-screen button hints are hidden
+only while the initial connection progress overlay owns the screen. Canceling
+the attempt or dismissing a terminal connection failure returns to Main and
+restores those hints. They are display hints only; the physical buttons remain
+the input path throughout.
 
 `furble` will identify as `furble-xxxx` where `xxxx` is a consistent identifier enabling one to differentiate multiple controllers.
 

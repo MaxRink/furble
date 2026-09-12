@@ -53,6 +53,10 @@ endif()
 # them out and the release binaries are unchanged.
 set(furble_private_requires
     console esp_driver_rmt esp_driver_sdspi esp_driver_usb_serial_jtag esp_pm fatfs sdmmc esp_wifi esp_netif esp_event nvs_flash lwip)
+if(DEFINED FURBLE_MQTT AND FURBLE_MQTT)
+  list(APPEND furble_sources FurbleMQTT.cpp)
+  list(APPEND furble_private_requires mqtt json)
+endif()
 if(FURBLE_ETHERNET)
   list(APPEND furble_private_requires
        esp_driver_gpio esp_driver_spi esp_eth esp_event esp_netif)

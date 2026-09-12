@@ -5,15 +5,25 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <string>
 #include <thread>
 
 #include <freertos/FreeRTOS.h>
+#include <unistd.h>
+
+#if defined(FURBLE_SIM_MQTT) && FURBLE_SIM_MQTT
+#include <esp_event.h>
+#include <esp_netif.h>
+#endif
 
 #include "CameraList.h"
 #include "Device.h"
 #include "FurbleBootScreen.h"
 #include "FurbleControl.h"
+#if defined(FURBLE_SIM_MQTT) && FURBLE_SIM_MQTT
+#include "FurbleMQTT.h"
+#endif
 #include "FurblePlatform.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
@@ -21,6 +31,7 @@
 #include "Scan.h"
 #include "ble_sim.h"
 #include "capture.h"
+#include "clock.h"
 #include "driver.h"
 #include "watchdog.h"
 
@@ -30,10 +41,26 @@ namespace {
 
 std::atomic<bool> panelReady {false};
 
+[[noreturn]] void failFastSchedulerStopped(const char *message) {
+  if (message == nullptr) {
+    message = "SIM FAIL: SchedulerStopped escaped simulator; exiting without cleanup\n";
+  }
+  const ssize_t written = ::write(STDERR_FILENO, message, std::strlen(message));
+  static_cast<void>(written);
+  std::_Exit(1);
+}
+
 int runSimulator() {
   using namespace Furble;
 
   Sim::watchdogRegisterThread("simulator");
+  // Firmware Platform consumes these settings while constructing the M5 config.
+  // Load NVS and apply the scenario first so the simulator observes the same
+  // boot-input boundary, even though its SDL M5 config remains host-specific.
+  Sim::watchdogPhase("settings");
+  Settings::init();
+  Sim::watchdogPhase("scenario settings");
+  Sim::applyScenarioSettings();
   Sim::watchdogPhase("panel bring-up");
   Platform::init();
   // Panel_sdl::main starts its render loop concurrently with this callback.
@@ -45,11 +72,27 @@ int runSimulator() {
   // time, so the phase is the only progress the stall watchdog can see across
   // it. Record each step: a slow but progressing boot on a loaded host keeps
   // resetting the watchdog, and a wedged one names the step it stopped at.
+  // Keep the profiler after platform bring-up. Its call placement is unchanged,
+  // but the settings move changes the work outside the measured window.
+  // FurblePlatformSim records the boot inputs separately from this profile.
   Sim::startProfiler();
-  Sim::watchdogPhase("settings");
-  Settings::init();
-  Sim::watchdogPhase("scenario settings");
-  Sim::applyScenarioSettings();
+#if defined(FURBLE_SIM_MQTT) && FURBLE_SIM_MQTT
+  Settings::save<bool>(Settings::MQTT, true);
+  if (const char *uri = std::getenv("FURBLE_SIM_MQTT_URI"); uri != nullptr && uri[0] != '\0') {
+    Settings::save<std::string>(Settings::MQTT_URI, uri);
+  } else {
+    Settings::save<std::string>(Settings::MQTT_URI, "mqtt://127.0.0.1:1883");
+  }
+  if (const char *base = std::getenv("FURBLE_SIM_MQTT_BASE"); base != nullptr && base[0] != '\0') {
+    Settings::save<std::string>(Settings::MQTT_BASE, base);
+  }
+  if (const char *user = std::getenv("FURBLE_SIM_MQTT_USER"); user != nullptr) {
+    Settings::save<std::string>(Settings::MQTT_USER, user);
+  }
+  if (const char *password = std::getenv("FURBLE_SIM_MQTT_PASS"); password != nullptr) {
+    Settings::save<std::string>(Settings::MQTT_PASS, password);
+  }
+#endif
   Platform::getInstance().setCPUMaxFreq(Settings::load<Settings::CPU_FREQ>());
 #if defined(FURBLE_M5STICKS3)
   Platform::getInstance().watchdogEnable(Settings::load<Settings::WATCHDOG>());
@@ -157,6 +200,12 @@ int runSimulator() {
   BootScreen::step("Bluetooth");
   BootScreen::step("Companion");
 
+#if defined(FURBLE_SIM_MQTT) && FURBLE_SIM_MQTT
+  ESP_ERROR_CHECK(esp_netif_init());
+  ESP_ERROR_CHECK(esp_event_loop_create_default());
+  MQTT::init();
+#endif
+
   Sim::watchdogPhase("control task");
   auto &control = Control::getInstance();
   xTaskCreate(control_task, "control", 8192, &control, 4, nullptr);
@@ -170,7 +219,11 @@ int runSimulator() {
   Sim::setBackTarget(&ui);
   Sim::registerUI(&ui);
   Sim::watchdogPhase("running");
-  ui.task();
+  try {
+    ui.task();
+  } catch (const Sim::SchedulerStopped &) {
+    failFastSchedulerStopped("SIM FAIL: SchedulerStopped in UI task; exiting without cleanup\n");
+  }
   Sim::watchdogPhase("teardown");
 
   // Tear the control session down before anything else unwinds. The firmware
@@ -196,6 +249,12 @@ int runSimulator() {
   // esp_timer API deletes callbacks asynchronously on hardware, so keep the
   // callback argument alive until the simulator dispatcher has joined.
   Sim::quiesceRig();
+#if defined(FURBLE_SIM_MQTT) && FURBLE_SIM_MQTT
+  if (!MQTT::getInstance().shutdownForSimulator(1000)) {
+    std::fprintf(stderr, "MQTT simulator shutdown did not acknowledge before its timeout.\n");
+    Sim::requestFailureExit();
+  }
+#endif
   furble_sim_stop_all_tasks();
   // The virtual peers are released only after every task has joined. The
   // control task, its per-target tasks and the virtual radio all hold pointers
@@ -210,8 +269,11 @@ int runSimulator() {
 }  // namespace
 
 int main(int argc, char **argv) {
-  Furble::Sim::configure(argc, argv);
+  // Install fatal diagnostics before configure() parses a scenario. A parser
+  // fault must name at least the phase, even though no scenario step exists.
+  Furble::Sim::watchdogInstallCrashHandler();
   Furble::Sim::watchdogRegisterThread("main");
+  Furble::Sim::configure(argc, argv);
   Furble::Sim::watchdogPhase("preferences");
   // Set the per-run preferences path before SDL setup and the simulator
   // thread start. SDL and the watchdog read process environment state while
@@ -227,7 +289,13 @@ int main(int argc, char **argv) {
   furble_sim_check_step_detect_suppressed();
 
   int simulatorResult = 0;
-  std::thread simulator([&simulatorResult]() { simulatorResult = runSimulator(); });
+  std::thread simulator([&simulatorResult]() {
+    try {
+      simulatorResult = runSimulator();
+    } catch (const Furble::Sim::SchedulerStopped &) {
+      failFastSchedulerStopped(nullptr);
+    }
+  });
   // Sleep rather than spin. This wait is unbounded on purpose: a panel that
   // never comes up is a defect, not a slow host, and the stall watchdog turns
   // it into a thread dump and a non zero exit within its host bound. A yield

@@ -16,6 +16,15 @@ numbers come from that build's `firmware.bin`, `firmware.elf` sections
 `.pio/build/m5stick-s3/furble.map` (per archive attribution). App layer object
 sizes come from `xtensa-esp32s3-elf-size` on each `src/*.o`.
 
+## PR66 profile gate
+
+PR66's MQTT implementation and ESP-IDF `mqtt`/`json` component dependencies are
+enabled only for profiles with documented flash of at least 8 MB: the 8 MB
+M5StickS3 and headless S3 profiles, and the 16 MB Core2 and Waveshare S3-ETH
+profiles. The 4 MB M5StickC, M5StickC Plus, and M5Stack Core profiles retain
+the fixed 1700K OTA slots and omit MQTT, its settings, and its console
+capability. TLS and the dual-OTA layouts are unchanged.
+
 ## Method
 
 - Built the release S3 image and read `firmware.bin` size against the OTA app

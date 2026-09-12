@@ -229,6 +229,28 @@ bool scenarioFreshConnect() {
   check(waitForState(Control::STATE_ACTIVE, 5000), "reaches active within 5 s");
   check(control.getConnectedTargetCount() == 1, "one connected target");
   check(control.allConnected(), "all connected");
+  const auto status = control.getTargetStatus();
+  check(status.size() == 1, "target status has one camera");
+  if (status.size() == 1) {
+    check(status.front().id == Control::getCameraID(*camera), "target status has stable camera id");
+    check(status.front().name == camera->getName(), "target status has camera name");
+    check(status.front().type == camera->getType(), "target status has camera type");
+    check(status.front().connected, "target status reports the live link");
+  }
+  peer.clearEvents();
+  const std::string cameraId = Control::getCameraID(*camera);
+  Furble::TestSync::reset();
+  Furble::TestSync::armBarrier("target_command_complete", 2000);
+  check(control.sendTargetCommand(cameraId, Control::CMD_SHUTTER_PRESS) == pdTRUE,
+        "target command reaches the selected camera");
+  check(control.sendTargetCommand("cam-missing", Control::CMD_SHUTTER_PRESS) == pdFALSE,
+        "target command rejects an unknown camera");
+  const bool commandComplete = Furble::TestSync::awaitArrival("target_command_complete", 2000);
+  check(commandComplete, "target command completes its camera call");
+  if (commandComplete) {
+    check(shutterWriteCount(peer) >= 2, "target command writes the shutter");
+  }
+  Furble::TestSync::release("target_command_complete");
   check(power.getCount(Furble::Power::LockType::NO_LIGHT_SLEEP) >= 1,
         "sleep lock held while active");
 

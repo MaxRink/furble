@@ -47,11 +47,18 @@ There are six release board environments: `m5stick-c`, `m5stick-c-plus`,
 `m5stick-s3`, `m5stack-core`, `m5stack-core2`, and `waveshare-s3-eth`. Each has
 a matching `-debug` environment that adds verbose logging and the USB serial
 console. CI builds the six release environments and their mandatory debug
-profiles. Releases keep their existing release/debug matrix.
+profiles. Releases publish the six release images and five OTA-compatible debug
+images. The Core single-factory USB debug profile remains developer-only.
 
 Normal CI uses the USB-only Core debug profile. The legacy dual-OTA
 `m5stack-core-debug` profile is available only through **Run workflow** with
 the `core_ota_debug` boolean enabled. If selected, its failure is strict.
+
+Firmware prereleases use a `v*` tag followed by a published GitHub prerelease.
+The tag starts the Pages installer build; publishing the release starts the
+firmware artifact workflow. The artifact publishing job alone requires scoped
+`contents: write` permission. Verify its manifest, `sha256sum.txt`, and source
+provenance before flashing hardware.
 
 Every build needs the `FURBLE_VERSION` and `FURBLE_TEST` variables:
 
@@ -107,11 +114,18 @@ workflow, choose **Run workflow**, and select the branch. Android dispatches
 run unit tests and an APK build by default; enable `run_emulator` when the
 slower emulator smoke test is needed. CI checks this trigger policy with
 `python3 tools/check_ci_workflows.py`.
+Node.js is also required for the installer event-flow regression in
+`tests/test_check_ci_workflows.py`; the standard GitHub-hosted Ubuntu runner
+provides it.
 All simulator scenarios are catalogued in
 `sim/scenarios/manifest.json`. Check ownership and certification metadata with
 `python3 tools/check_sim_scenarios.py` after changing those scenarios.
 CI obtains each suite's certified paths from that manifest; do not introduce a
 directory glob or hand-maintained suite list as an alternate source of truth.
+The power-gate comparator applies its `--threshold` on both increases and
+decreases. The default 10% value is compatibility policy, not calibrated
+hardware noise. Run `python3 -m unittest tests/test_power_compare.py` for its
+focused regression coverage.
 Manual PlatformIO dispatches run the complete firmware matrix. They do not
 attempt to infer changed paths without a pull request or push comparison base.
 
@@ -124,14 +138,24 @@ attempt to infer changed paths without a pull request or push comparison base.
   ctest --test-dir /tmp/furble-host-build --output-on-failure
   ```
 
+- The `tests/host/run_tsan_race.sh` gate fails on any ThreadSanitizer warning
+  or non-zero child status and requires the exact completion line
+  `control-connect-camera-race: PASS`. Check this shell contract without a
+  compiler with `sh tests/host/run_tsan_race_contract.sh`.
+
 - The protocol and camera vector tests live under `tests/protocol` and
   `tests/camera`. CI runs them through `protocol-tests.yml` and
   `camera-tests.yml`.
 - The host SDL simulator under `sim/` runs the real UI on a desktop. Build it
   with `sim/build.sh`. It drives scripted UI runs, the seeded UI fuzzer, and the
   documentation screenshot capture. Incremental builds use compiler depfiles;
-  verify the cache with `sh sim/scripts/test-build-deps.sh` after changing the
-  build script. It never changes firmware behavior.
+  the cache stamp also identifies the absolute firmware, dependency, and LVGL
+  roots so shared build directories cannot mix checkout objects. Verify the
+  cache with `sh sim/scripts/test-build-deps.sh` after changing the build
+  script. It never changes firmware behavior.
+- After building the simulator, run `FURBLE_SIM_BIN=sim/build/furble-sim sh
+  sim/scripts/check-preferences-lifecycle.sh` to check explicit and generated
+  preference ownership; `sim-e2e.yml` runs the same gate in CI.
 - The USB serial console in debug builds is the automation surface for settings,
   GPS, shutter, and status. See `docs/console-commands.md`.
 - Hardware verification happens before a PR. Only Fujifilm cameras are available

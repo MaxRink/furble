@@ -45,12 +45,22 @@ CLAUDE.md whose directory it touches.
 - CI validation workflows use path filters rather than pull request base-branch
   filters, so stacked PRs run without retargeting. Safe validation workflows
   also expose `workflow_dispatch`; use the Actions tab to select a branch.
+- The simulator power gate compares each report against its baseline with the
+  two-sided `tools/power-model/compare.py --threshold` policy. The default 10%
+  value is compatibility policy, not calibrated hardware noise. Focused
+  comparator coverage is `python3 -m unittest tests/test_power_compare.py`.
+  `tools/power-model/README.md` distinguishes the legacy-default report from
+  the opt-in synthetic microsecond accounting mode; neither is a hardware
+  current measurement.
 - The Apple workflow packages the unsigned macOS Debug app only after its tests
   pass. The uploaded artifact includes a checksum and source/Xcode provenance;
   it is for companion testing, not signing or release distribution.
 - Release tags beginning with `companion-test-` are reserved for companion
   testing and skip the firmware release workflow; other release tags are
-  unchanged.
+  unchanged. Release and Pages matrices omit the Core single-factory debug
+  profile because it has no OTA data partition. The release artifact job has
+  scoped `contents: write` permission;
+  keep that permission on the publishing job, not on firmware build jobs.
   All simulator scenarios are listed in
   `sim/scenarios/manifest.json`, including their owner, board matrix,
   capabilities, and expected exit status.
@@ -63,7 +73,9 @@ CLAUDE.md whose directory it touches.
   `-Werror=switch`. See `plans/95-engineering-lessons.md`.
 - The direct SDL simulator build writes compiler depfiles beside each object.
   Its incremental cache follows project and dependency headers with `make -q`;
-  run `sh sim/scripts/test-build-deps.sh` when changing this cache logic.
+  its stamp also keys the absolute firmware, dependency, and LVGL roots so a
+  shared build directory cannot reuse objects from another checkout. Run
+  `sh sim/scripts/test-build-deps.sh` when changing this cache logic.
 - All OTA application images start at `0x20000`. The shared
   `board_upload.offset_address` setting is intentional: it keeps
   `pio run -t nobuild -t upload` from falling back to PlatformIO's historical
@@ -99,6 +111,11 @@ CLAUDE.md whose directory it touches.
   FauxNY test camera and are declared untested in the PR.
 - `tools/coverage.py` measures host and simulator line coverage and enforces
   `tests/coverage_floor.json` in CI. See `docs/coverage.md`.
+- The built simulator preference ownership gate is
+  `sim/scripts/check-preferences-lifecycle.sh`; the existing `sim-e2e` job runs
+  it against the fresh M5StickS3 binary with a bounded step.
+- The host TSAN wrapper fails on any warning or non-zero child status; see
+  `CONTRIBUTING.md` for its exact completion marker and compiler-free contract.
 
 ## Documentation (keep docs in sync, every PR)
 

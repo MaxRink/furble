@@ -121,6 +121,9 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   calls so the watchdog and callback handoff remain responsive.
   Aggregate UI context assignments must initialize every field explicitly. Keep
   the connect timer paused until its context and widgets are ready.
+  `doDisconnect()` returns to the Main page from every teardown path, including
+  Cancel and terminal connect failure, so it must restore the physical-button
+  indicators hidden by the connect modal before returning.
   Under `FURBLE_SIM`, a driver exit request is observed inside the locked UI
   phase. Unlock and return from the task so simulator workers can be joined;
   never terminate the process from this production source.
@@ -183,3 +186,19 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   without terminating the host process.
 - New source files must be added to `src/CMakeLists.txt` (alphabetical, before
   main.cpp). Component deps go in `idf_component_register` there.
+
+Control cross-thread state contracts: `Control::m_State` is an acquire/release
+atomic because the control task publishes it under `m_StateMutex` while UI and
+other readers may sample it without that mutex. Keep compound transitions and
+power-lock ordering under `m_StateMutex`; the atomic only removes the plain
+read/write race. `Control::Target::m_Stopped` is also acquire/release atomic:
+the target task publishes its terminal state before deleting itself, while
+drain/reap predicates may observe it concurrently. The same explicit
+acquire/release contract applies to `m_ConnectAbort`, `m_ConnectInProgress`,
+and debug-only `m_SleepLockHeld`, whose readers cross task or snapshot
+boundaries. The reconnect mode, backoff, attempt, and hint fields are also
+independent acquire/release atomics for their cross-task reads and writes. They
+do not provide group coherence, reset-wins, or a new request policy;
+`m_ConnectFailCount` remains control-task-owned. These are narrow
+synchronization changes, not a claim that the Control state surface is
+race-free; raw TSAN and firmware/hardware evidence remain required.

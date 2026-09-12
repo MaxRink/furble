@@ -41,6 +41,9 @@
 #include "FurbleControl.h"
 #include "FurbleFeedback.h"
 #include "FurbleGPS.h"
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+#include "FurbleMQTT.h"
+#endif
 #include "FurbleIMU.h"
 #include "FurbleIR.h"
 #include "FurblePlatform.h"
@@ -234,6 +237,12 @@ const char *settingType(Settings::type_t type) {
     case Settings::COMPANION_PASSWORD:
     case Settings::WIFI_SSID:
     case Settings::NTP_SERVER:
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+    case Settings::MQTT_URI:
+    case Settings::MQTT_USER:
+    case Settings::MQTT_PASS:
+    case Settings::MQTT_BASE:
+#endif
     case Settings::WIFI_PSK:
       return "string";
     case Settings::TX_ADAPTIVE:
@@ -254,14 +263,18 @@ const char *settingType(Settings::type_t type) {
     case Settings::GPS_EXTRAP:
     case Settings::PRESET_PICKER:
     case Settings::SD_GPX:
-    case Settings::BOOT_SPLASH:
     case Settings::GPS_MOTION:
+    case Settings::BOOT_SPLASH:
     case Settings::BATTERY_SAVER:
     case Settings::AUTO_OFF_CHARGING:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
     case Settings::WIFI:
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+    case Settings::MQTT:
+    case Settings::MQTT_HA:
+#endif
     case Settings::NTP:
       return "bool";
     case Settings::INTERVAL:
@@ -313,12 +326,20 @@ const char *appliesWhen(Settings::type_t type) {
     case Settings::AUTO_OFF_CHARGING:
     case Settings::SD_GPX:
     case Settings::GPX_PERIOD:
-    case Settings::GPS_MOTION:
 #if !defined(FURBLE_NO_DISPLAY)
     case Settings::DISPLAY_MODE:
 #endif
     case Settings::IMU_WAKE:
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+    case Settings::MQTT:
+    case Settings::MQTT_URI:
+    case Settings::MQTT_USER:
+    case Settings::MQTT_PASS:
+    case Settings::MQTT_BASE:
+    case Settings::MQTT_HA:
+#endif
     case Settings::IMU_TRIG:
+    case Settings::GPS_MOTION:
       return "immediately";
     case Settings::CONN_SAVER:
       // Only the UI toggle applies this live. A console or companion write is
@@ -383,6 +404,16 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::NTP_SERVER:
       printf("%s%s\n", prefix, Settings::load<std::string>(type).c_str());
       break;
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+    case Settings::MQTT_URI:
+    case Settings::MQTT_USER:
+    case Settings::MQTT_BASE:
+      printf("%s%s\n", prefix, Settings::load<std::string>(type).c_str());
+      break;
+    case Settings::MQTT_PASS:
+      printf("%s%s\n", prefix, Settings::load<std::string>(type).empty() ? "unset" : "set");
+      break;
+#endif
     case Settings::WIFI_PSK:
       printf("%s%s\n", prefix, Settings::load<std::string>(type).empty() ? "unset" : "set");
       break;
@@ -410,14 +441,20 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::GPS_EXTRAP:
     case Settings::PRESET_PICKER:
     case Settings::SD_GPX:
-    case Settings::BOOT_SPLASH:
     case Settings::GPS_MOTION:
+    case Settings::BOOT_SPLASH:
     case Settings::BATTERY_SAVER:
     case Settings::AUTO_OFF_CHARGING:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
     case Settings::WIFI:
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+    case Settings::MQTT:
+    case Settings::MQTT_HA:
+      printf("%s%s\n", prefix, boolStr(Settings::load<bool>(type)));
+      break;
+#endif
     case Settings::NTP:
       printf("%s%s\n", prefix, boolStr(Settings::load<bool>(type)));
       break;
@@ -619,6 +656,17 @@ int setValue(const Settings::setting_t &setting, const char *text) {
       }
       break;
 
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+    case Settings::MQTT_URI:
+    case Settings::MQTT_USER:
+    case Settings::MQTT_PASS:
+    case Settings::MQTT_BASE:
+      if (!Settings::validMQTTString(setting.type, std::string(text))) {
+        return fail("invalid MQTT value");
+      }
+      Settings::save<std::string>(setting.type, std::string(text));
+      break;
+#endif
     case Settings::GPS:
     case Settings::CONN_SAVER:
     case Settings::IR:
@@ -637,8 +685,8 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::GPS_EXTRAP:
     case Settings::PRESET_PICKER:
     case Settings::SD_GPX:
-    case Settings::BOOT_SPLASH:
     case Settings::GPS_MOTION:
+    case Settings::BOOT_SPLASH:
     case Settings::BATTERY_SAVER:
     case Settings::AUTO_OFF_CHARGING:
 #if defined(FURBLE_M5STICKS3)
@@ -688,6 +736,17 @@ int setValue(const Settings::setting_t &setting, const char *text) {
       }
     } break;
 
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+    case Settings::MQTT:
+    case Settings::MQTT_HA:
+    {
+      bool value = false;
+      if (!parseBool(text, value)) {
+        return fail("expected on or off");
+      }
+      Settings::save<bool>(setting.type, value);
+    } break;
+#endif
     default:
       return fail("unsupported type");
   }
@@ -700,12 +759,6 @@ int setValue(const Settings::setting_t &setting, const char *text) {
       || (setting.type == Settings::GPS_HOLD) || (setting.type == Settings::GPS_EXTRAP)
       || (setting.type == Settings::GPS_PLATFORM)) {
     UI::sendRequest(UI::Request::GPS_RELOAD, 0);
-  }
-  if (setting.type == Settings::GPS_MOTION) {
-    // Not GPS_RELOAD: that restarts the receiver, and the motion detector owns
-    // no receiver state. Direct call like the companion path below, since the
-    // gate is only atomics and NVS reads.
-    GPS::getInstance().reloadMotionSetting();
   }
   if ((setting.type == Settings::SD_GPX) || (setting.type == Settings::GPX_PERIOD)) {
 #if defined(FURBLE_NO_DISPLAY)
@@ -740,6 +793,16 @@ int setValue(const Settings::setting_t &setting, const char *text) {
       || (setting.type == Settings::IMU_TRIG)) {
     UI::notifyGestureSettingsChanged();
   }
+  if (setting.type == Settings::GPS_MOTION) {
+    GPS::getInstance().reloadMotionSetting();
+  }
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+  if ((setting.type == Settings::MQTT) || (setting.type == Settings::MQTT_URI)
+      || (setting.type == Settings::MQTT_USER) || (setting.type == Settings::MQTT_PASS)
+      || (setting.type == Settings::MQTT_BASE) || (setting.type == Settings::MQTT_HA)) {
+    MQTT::getInstance().reloadSetting();
+  }
+#endif
 
   printf("saved: %s\n", setting.key);
   printf("applies: %s\n", appliesWhen(setting.type));
@@ -844,7 +907,9 @@ int cmdCompanion(int argc, char **argv) {
 }
 
 void printProvisionDeferred(const char *name) {
-  // MQTT fields remain deferred. Never print their values.
+  // These fields are intentionally accepted by the shared parser before their
+  // companion or MQTT backends land. Never print their values: this includes
+  // PSKs and passwords.
   printf("provision: %s parsed (not applied; backend pending #53)\n", name);
 }
 
@@ -2023,6 +2088,39 @@ int cmdDisconnect(int argc, char **argv) {
   return sendRequest(UI::Request::DISCONNECT, 0, "disconnect");
 }
 
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+int cmdMQTT(int argc, char **argv) {
+  if (argc < 2) {
+    return fail("usage: mqtt status | connect | disconnect | discovery clear");
+  }
+  auto &mqtt = MQTT::getInstance();
+  if (!strcmp(argv[1], "status")) {
+    printf("configured: %s\n", boolStr(mqtt.isConfigured()));
+    printf("connected: %s\n", boolStr(mqtt.isConnected()));
+    return 0;
+  }
+  if (!strcmp(argv[1], "connect")) {
+    if (!mqtt.isConfigured()) {
+      return fail("set mqtt on first");
+    }
+    mqtt.reloadSetting();
+    printf("queued: mqtt connect\n");
+    return 0;
+  }
+  if (!strcmp(argv[1], "disconnect")) {
+    mqtt.disconnect();
+    printf("queued: mqtt disconnect\n");
+    return 0;
+  }
+  if (!strcmp(argv[1], "discovery") && (argc >= 3) && !strcmp(argv[2], "clear")) {
+    mqtt.clearDiscovery();
+    printf("queued: mqtt discovery clear\n");
+    return 0;
+  }
+  return fail("expected status, connect, disconnect or discovery clear");
+}
+#endif
+
 int cmdShutter(int argc, char **argv) {
   if (argc < 2) {
     return fail("usage: shutter press | release | hold <ms>");
@@ -2677,6 +2775,9 @@ const esp_console_cmd_t COMMANDS[] = {
     command("companion", "companion password set | clear | status", cmdCompanion),
     command("connect", "connect [index], no index uses the multi-connect selection", cmdConnect),
     command("disconnect", "Disconnect all cameras", cmdDisconnect),
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+    command("mqtt", "mqtt status | connect | disconnect | discovery clear", cmdMQTT),
+#endif
     command("motion", "motion status | scale [0.25-4.0] (IMU motion source)", cmdMotion),
     command("shutter", "shutter press | release | hold <ms>", cmdShutter),
     command("ir", "ir fire [protocol], 0 Nikon, 1 Sony, 2 Canon, 3 Canon 2s", cmdIR),

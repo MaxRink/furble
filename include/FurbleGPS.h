@@ -95,6 +95,8 @@ class GPS {
     bool position_valid;
     bool time_valid;
     bool altitude_valid;
+    float accuracy_m;
+    bool accuracy_valid;
   } external_fix_t;
 
   /**
@@ -175,6 +177,7 @@ class GPS {
 
   bool setExternalFix(const external_fix_t &fix);
   void clearExternalFix(void);
+  bool getCurrentFix(external_fix_t &fix) const;
 
   status_t getStatusSnapshot(void) const;
   source_t getSource(void) const;
@@ -581,6 +584,8 @@ class GPS {
   uint64_t m_ExternalFixReceivedMs = 0;
   bool m_HasExternalFix = false;
   mutable std::mutex m_ExternalMutex;
+  external_fix_t m_CurrentFix = {};
+  mutable std::mutex m_FixMutex;
 
   // cached GPX logging settings, no NVS reads on the periodic update path
   std::atomic<bool> m_LogEnabled = false;
