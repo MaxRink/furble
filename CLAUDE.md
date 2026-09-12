@@ -45,6 +45,10 @@ CLAUDE.md whose directory it touches.
 - CI validation workflows use path filters rather than pull request base-branch
   filters, so stacked PRs run without retargeting. Safe validation workflows
   also expose `workflow_dispatch`; use the Actions tab to select a branch.
+- The simulator power gate compares each report against its baseline with the
+  two-sided `tools/power-model/compare.py --threshold` policy. The default 10%
+  value is compatibility policy, not calibrated hardware noise. Focused
+  comparator coverage is `python3 -m unittest tests/test_power_compare.py`.
 - The Apple workflow packages the unsigned macOS Debug app only after its tests
   pass. The uploaded artifact includes a checksum and source/Xcode provenance;
   it is for companion testing, not signing or release distribution.
