@@ -1811,7 +1811,14 @@ void UI::scrollLabelsThatDoNotFit(lv_obj_t *page) {
         && !lv_obj_has_flag(obj, LV_OBJ_FLAG_USER_1)
         && (lv_label_get_long_mode(obj) == LV_LABEL_LONG_WRAP)) {
       const int32_t width = lv_obj_get_content_width(obj);
-      if ((width > 0) && (lv_obj_get_self_width(obj) > width)) {
+      lv_point_t natural = {0, 0};
+      const char *text = lv_label_get_text(obj);
+      const lv_font_t *font = lv_obj_get_style_text_font(obj, LV_PART_MAIN);
+      lv_text_get_size(
+          &natural, text == nullptr ? "" : text, font == nullptr ? LV_FONT_DEFAULT : font,
+          lv_obj_get_style_text_letter_space(obj, LV_PART_MAIN),
+          lv_obj_get_style_text_line_space(obj, LV_PART_MAIN), LV_COORD_MAX, LV_TEXT_FLAG_EXPAND);
+      if ((width > 0) && (natural.x > width)) {
         lv_label_set_long_mode(obj, LV_LABEL_LONG_SCROLL_CIRCULAR);
       }
     }
@@ -2064,6 +2071,9 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
       }
       lv_obj_set_width(label, LV_PCT(100));
       lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
+      // Camera names deliberately wrap instead of animating. Keep the page-load
+      // fit pass from converting this explicit choice to a circular scroller.
+      lv_obj_add_flag(label, LV_OBJ_FLAG_USER_1);
     } else if (floatingIndicatorReserve() > 0) {
       // An iconless submenu row has only this label. Keep its box inside the
       // row after the right legend column is reserved; at natural width
