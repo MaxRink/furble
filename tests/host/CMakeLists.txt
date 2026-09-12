@@ -37,6 +37,7 @@ set(FURBLE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..)
 set(HOST_NIMBLE_DIR ${FURBLE_ROOT}/lib/testing/nimble)
 set(HOST_PEER_DIR ${FURBLE_ROOT}/lib/testing/peer)
 set(HOST_CORPUS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/corpus)
+set(HOST_MQTT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/mqtt)
 
 # TestSyncController.cpp implements the FURBLE_TEST_SYNC named sync points for
 # every camera test that links this library, and FURBLE_TEST_SYNC below compiles
@@ -70,6 +71,25 @@ target_compile_options(furble_host_camera PRIVATE -Wall -Wextra -Werror -Wno-for
 target_compile_definitions(furble_host_camera
                            PRIVATE FURBLE_HOST_REGISTRATION_TIMEOUT_MS=100 FURBLE_TEST_SYNC)
 target_link_libraries(furble_host_camera PUBLIC Threads::Threads)
+
+# Compile the production MQTT task against deterministic host dependency
+# shims. The test drives one owner-task step at a time, so callback copies and
+# timer notifications are observable without creating an ESP task.
+add_executable(mqtt_owner_test
+               mqtt_test.cpp
+               ${HOST_MQTT_DIR}/cJSON.cpp
+               ${HOST_MQTT_DIR}/mqtt_client_mock.cpp
+               ${HOST_MQTT_DIR}/mqtt_host_doubles.cpp
+               ${FURBLE_ROOT}/src/FurbleMQTT.cpp)
+target_include_directories(mqtt_owner_test BEFORE PRIVATE
+                           ${HOST_MQTT_DIR}
+                           ${FURBLE_ROOT}/include
+                           ${FURBLE_ROOT}/lib/furble)
+target_compile_definitions(mqtt_owner_test PRIVATE FURBLE_MQTT=1 FURBLE_MQTT_HOST_TEST=1
+                                                   FURBLE_VERSION="host-test")
+target_compile_options(mqtt_owner_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                               -Wno-unused-parameter)
+target_link_libraries(mqtt_owner_test PRIVATE Threads::Threads)
 
 add_executable(fujifilm_camera_test fujifilm_camera_test.cpp)
 target_link_libraries(fujifilm_camera_test PRIVATE furble_host_camera)
@@ -609,6 +629,7 @@ add_executable(settings_nvs_roundtrip_test
                settings_nvs_stub.cpp
                settings_platform_stub.cpp
                ${FURBLE_ROOT}/src/FurbleSettings.cpp
+               ${FURBLE_ROOT}/src/FurbleNetworkSettings.cpp
                ${FURBLE_ROOT}/lib/preferences/Preferences.cpp)
 target_include_directories(settings_nvs_roundtrip_test BEFORE PRIVATE
                            ${SETTINGS_TEST_STUB_DIR}
@@ -632,6 +653,7 @@ add_executable(provision_apply_test
                settings_nvs_stub.cpp
                ${FURBLE_ROOT}/src/FurbleProvision.cpp
                ${FURBLE_ROOT}/src/FurbleSettings.cpp
+               ${FURBLE_ROOT}/src/FurbleNetworkSettings.cpp
                ${FURBLE_ROOT}/lib/furble/protocol/ProvisionTLV.cpp
                ${FURBLE_ROOT}/lib/preferences/Preferences.cpp)
 target_include_directories(provision_apply_test BEFORE PRIVATE
@@ -643,6 +665,27 @@ target_compile_definitions(provision_apply_test PRIVATE FURBLE_M5STICKS3)
 target_compile_options(provision_apply_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                     -Wno-unused-parameter
                                                     -Wno-vla-extension)
+
+# Exercise the positive MQTT provisioning branch as well as the default build.
+# FurbleProvision only needs the settings/network validator here; keep this
+# target independent from the MQTT client implementation.
+add_executable(provision_apply_mqtt_test
+               provision_apply_test.cpp
+               settings_nvs_stub.cpp
+               ${FURBLE_ROOT}/src/FurbleProvision.cpp
+               ${FURBLE_ROOT}/src/FurbleSettings.cpp
+               ${FURBLE_ROOT}/src/FurbleNetworkSettings.cpp
+               ${FURBLE_ROOT}/lib/furble/protocol/ProvisionTLV.cpp
+               ${FURBLE_ROOT}/lib/preferences/Preferences.cpp)
+target_include_directories(provision_apply_mqtt_test BEFORE PRIVATE
+                           ${SETTINGS_TEST_STUB_DIR}
+                           ${FURBLE_ROOT}/include
+                           ${FURBLE_ROOT}/lib/preferences
+                           ${FURBLE_ROOT}/lib/furble)
+target_compile_definitions(provision_apply_mqtt_test PRIVATE FURBLE_M5STICKS3 FURBLE_MQTT=1)
+target_compile_options(provision_apply_mqtt_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                           -Wno-unused-parameter
+                                                           -Wno-vla-extension)
 
 # Board-conditional text size policy from include/FurbleTextSize.h. The header is
 # dependency free, so each variant compiles standalone. The suite is built twice:
@@ -762,6 +805,17 @@ target_include_directories(sim_scheduler_test PRIVATE ${FURBLE_ROOT}/include
 target_compile_options(sim_scheduler_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                   -Wno-unused-parameter)
 target_link_libraries(sim_scheduler_test PRIVATE Threads::Threads)
+
+add_executable(sim_watchdog_test
+               sim_watchdog_test.cpp
+               ${FURBLE_ROOT}/sim/clock.cpp
+               ${FURBLE_ROOT}/sim/watchdog.cpp)
+target_include_directories(sim_watchdog_test PRIVATE ${FURBLE_ROOT}/include
+                                                       ${FURBLE_ROOT}/sim
+                                                       ${FURBLE_ROOT}/sim/shim)
+target_compile_options(sim_watchdog_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                  -Wno-unused-parameter)
+target_link_libraries(sim_watchdog_test PRIVATE Threads::Threads)
 
 add_executable(sim_fuzz_machine_test
                sim_fuzz_machine_test.cpp
@@ -1097,6 +1151,7 @@ add_executable(control_connect_camera_race_test
                ${CONTROL_E2E_DIR}/freertos_shim.cpp
                ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
                ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/lib/furble/BtDebugJournal.cpp
                ${FURBLE_ROOT}/lib/furble/Camera.cpp
                ${FURBLE_ROOT}/lib/furble/Device.cpp
                ${FURBLE_ROOT}/lib/furble/FauxNY.cpp)
@@ -1115,6 +1170,7 @@ target_compile_options(control_connect_camera_race_test PRIVATE
                        -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
 target_link_options(control_connect_camera_race_test PRIVATE -fsanitize=thread)
 target_link_libraries(control_connect_camera_race_test PRIVATE Threads::Threads)
+target_compile_definitions(control_connect_camera_race_test PRIVATE FURBLE_CONSOLE)
 endif()
 
 # Deterministic interleaving proof for the STATE_DISCONNECTING republish
@@ -1206,6 +1262,7 @@ set(COMPANION_HOST_DIR ${CMAKE_CURRENT_SOURCE_DIR}/companion)
 add_executable(companion_gatt_test
                companion_gatt_test.cpp
                ${COMPANION_HOST_DIR}/companion_doubles.cpp
+               ${FURBLE_ROOT}/src/FurbleNetworkSettings.cpp
                advertisement_preferences_stub.cpp
                ${COMPANION_HOST_DIR}/companion_hmac.cpp
                ${FURBLE_ROOT}/src/FurbleCompanionAuth.cpp
@@ -1590,6 +1647,7 @@ add_executable(console_commands_test
                ${FURBLE_ROOT}/src/FurblePower.cpp
                ${FURBLE_ROOT}/src/FurbleProvision.cpp
                ${FURBLE_ROOT}/src/FurbleSettings.cpp
+               ${FURBLE_ROOT}/src/FurbleNetworkSettings.cpp
                ${FURBLE_ROOT}/lib/preferences/Preferences.cpp
                ${FURBLE_ROOT}/lib/furble/BtDebugJournal.cpp
                ${FURBLE_ROOT}/lib/furble/Camera.cpp
@@ -1648,7 +1706,7 @@ if(BUILD_TESTING)
   add_test(NAME time-keeper-policy COMMAND time_keeper_policy_test)
   add_test(NAME time-keeper-persistence COMMAND time_keeper_persistence_test)
   add_test(NAME real-wifi-lifecycle COMMAND real_wifi_lifecycle_test)
-  foreach(preferences_case missing empty empty-string typeerror embedded-nul corruption failed-save)
+  foreach(preferences_case missing empty zero-count empty-string typeerror embedded-nul corruption failed-save)
     add_test(NAME preferences-sim-${preferences_case}
              COMMAND actualPreferencesSim ${preferences_case})
   endforeach()
@@ -1686,6 +1744,7 @@ if(BUILD_TESTING)
   add_test(NAME auto-off-policy COMMAND auto_off_policy_test)
   add_test(NAME provision-tlv COMMAND provision_tlv_test)
   add_test(NAME provision-apply COMMAND provision_apply_test)
+  add_test(NAME provision-apply-mqtt COMMAND provision_apply_mqtt_test)
   add_test(NAME text-size-policy COMMAND text_size_policy_test)
   add_test(NAME imu-motion-encoding COMMAND imu_motion_encoding_test)
   add_test(NAME text-size-policy-stickc COMMAND text_size_policy_stickc_test)
@@ -1695,11 +1754,14 @@ if(BUILD_TESTING)
   add_test(NAME gpx-writer COMMAND gpx_writer_test)
   add_test(NAME reconnect-backoff COMMAND reconnect_backoff_test)
   add_test(NAME battery-saver COMMAND battery_saver_test)
+  add_test(NAME mqtt-owner COMMAND mqtt_owner_test)
   add_test(NAME pmic-recovery COMMAND pmic_recovery_test)
   add_test(NAME sim-clock COMMAND sim_clock_test)
   add_test(NAME sim-action-parser COMMAND sim_action_parser_test)
   add_test(NAME sim-scheduler COMMAND sim_scheduler_test)
   set_tests_properties(sim-scheduler PROPERTIES TIMEOUT 10)
+  add_test(NAME sim-watchdog COMMAND sim_watchdog_test)
+  set_tests_properties(sim-watchdog PROPERTIES TIMEOUT 10)
   add_test(NAME sim-fuzz-machine COMMAND sim_fuzz_machine_test)
   add_test(NAME sim-power-profiler COMMAND sim_power_profiler_test)
   # Run several independent profiler processes so ctest -j covers report-path
@@ -1741,6 +1803,11 @@ if(BUILD_TESTING)
              COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/run_tsan_race.sh
                      $<TARGET_FILE:control_connect_camera_race_test>)
     set_tests_properties(control-connect-camera-race PROPERTIES TIMEOUT 180)
+    # The shell contract emits no profraw, so keep it out of coverage's CTest
+    # profile inventory while retaining the normal host and standalone checks.
+    add_test(NAME control-tsan-wrapper-contract
+             COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/run_tsan_race_contract.sh)
+    set_tests_properties(control-tsan-wrapper-contract PROPERTIES TIMEOUT 10)
   endif()
 
   # Interleaving proof for the DISCONNECTING republish guard (plan 157). The

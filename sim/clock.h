@@ -38,45 +38,36 @@ std::mutex &schedulerMutex(void);
 std::condition_variable &schedulerCondition(void);
 
 /**
- * Report a wait on a host mutex to the simulator scheduler.
- *
- * A task that blocks on a plain host mutex leaves the scheduler still holding
- * its turn and still marked runnable, so no other task can observe the wait.
- * The turn then has to be taken away by the host-time deadlock breaker, and
- * the UI handoff burns its whole host ceiling, both of which leak host
- * scheduling into the virtual clock (issue 279). Bracketing the acquisition
- * with these makes the wait an ordinary scheduler block: the waiter stops
- * being runnable, the holder is dispatched at once, and the breaker never
- * fires on that path. This is the scheduler-visible mutex plan 158 Phase 3
- * named. Both are no-ops on a thread that is not a simulator task.
- */
-void schedulerHostBlockBegin(void);
-void schedulerHostBlockEnd(void);
-
-/**
  * A mutex whose contended waits are visible to the simulator scheduler.
  *
- * An uncontended acquisition is a plain try_lock and reports nothing, so the
- * common case costs one atomic. Only a wait that would actually block reaches
- * the scheduler.
+ * Ownership and waiter selection are serialized with the scheduler. Unlock
+ * reserves ownership for one waiter before publishing it as runnable, so a
+ * newly arriving thread cannot barge in and the UI cannot mistake the native
+ * wake gap for quiescence. Firmware uses std::mutex instead of this type.
  */
+struct SchedulerMutexWaiter;
+
+/** Cooperative unwind for a non-scheduler thread cancelled while locking. */
+struct SchedulerStopped {};
+
 class SchedulerMutex {
  public:
-  void lock(void) {
-    if (m_Mutex.try_lock()) {
-      return;
-    }
-    schedulerHostBlockBegin();
-    m_Mutex.lock();
-    schedulerHostBlockEnd();
-  }
+  SchedulerMutex() = default;
+  SchedulerMutex(const SchedulerMutex &) = delete;
+  SchedulerMutex(SchedulerMutex &&) = delete;
+  SchedulerMutex &operator=(const SchedulerMutex &) = delete;
+  SchedulerMutex &operator=(SchedulerMutex &&) = delete;
 
-  bool try_lock(void) { return m_Mutex.try_lock(); }
-
-  void unlock(void) { m_Mutex.unlock(); }
+  void lock(void);
+  bool try_lock(void);
+  void unlock(void);
 
  private:
-  std::mutex m_Mutex;
+  void unlinkWaiterLocked(SchedulerMutexWaiter *waiter);
+  void releaseLocked(void);
+
+  bool m_Locked = false;
+  SchedulerMutexWaiter *m_Waiters = nullptr;
 };
 
 /** Return true after simulator teardown has begun. */

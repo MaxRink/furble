@@ -254,7 +254,8 @@ The `clock.ms` query reports the current virtual millisecond clock.
 
 ### Effective `seed` names
 
-These byte settings are applied before the UI is constructed:
+All listed seeds are applied before simulated `Platform::init()` and before the
+UI is constructed. These byte settings are:
 `brightness`, `inactivity`, `display_off`, `gps_rate`, `gps_constel`,
 `gps_power`, `gps_duty`, `gps_hold`, `cpu_freq`, `tx_power`, `scan_mode`,
 `text_size`, `auto_off`, `low_batt`, `fb_output`, `hw_motion`, `gps_assist`
@@ -271,9 +272,9 @@ Battery seeds select the initial deterministic platform sample:
 
 These boolean settings are applied before the UI is constructed:
 `gps`, `gps_nmea`, `gps_motion`, `fauxny`, `autoconnect`, `reconnect`,
-`recon_backoff`, `sleep_conn`, `boot_splash`, `gps_extrap`, `sd_gpx`, `imu`,
-and `imu_trigger`. `auto_off_charging` opts into auto-off while charging, and
-`imu_sensor` controls modeled IMU presence. `gps_motion` needs `gps` and `imu`
+`recon_backoff`, `sleep_conn`, `boot_splash`, `gps_extrap`, `gps_uart_noise`,
+`sd_gpx`, `imu`, and `imu_trigger`. `auto_off_charging` opts into auto-off while
+charging, and `imu_sensor` controls modeled IMU presence. `gps_motion` needs `gps` and `imu`
 as well: the detector only runs when the receiver and the sensor are both on.
 `gps_motion_prearm` is a regression-only seed that loads GPS before the UI arms
 the shared motion source.
@@ -293,6 +294,8 @@ picks the GSV/GSA fixture and `gps_fix_date` picks the fix burst; both are
 detailed under the receiver model below. `gps_uart_chunk` serves the burst that
 many bytes at a time, paced, so a sentence spans several reads as it does off a
 real UART.
+All boolean seeds, including `gps_uart_noise`, reject malformed values during
+scenario loading.
 
 `ble_peers` selects the virtual BLE radio topology from a strict allowlist:
 
@@ -609,6 +612,13 @@ The other namespaces are:
   terminating the process, so the scenario can assert shutdown ordering.
 - `platform.download_lock` reports the StickS3 PMIC long-press download lock as
   `unlocked` or `locked`. Firmware boot is required to leave this `unlocked`.
+- `boot_settings_imu` reports `1` or `0` for the `IMU` setting loaded at the
+  simulated platform construction boundary.
+- `boot_settings_fb_output` reports the numeric `FB_OUTPUT` value loaded at
+  that same boundary. These two queries are boot-input observations used to
+  verify settings ordering. They do not report physical M5 configuration: the
+  SDL platform still passes `internal_imu=false` and `internal_spk=false` to
+  its host `M5.begin()` config.
 
 - `control.state`: `idle`, `connect`, `connecting`, `connect_failed`,
   `active`, `disconnecting`, or `unknown`.

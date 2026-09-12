@@ -206,30 +206,44 @@ YAML model. The `energy.accounting_inputs` object exposes the exact raw
 durations and event count consumed by each component calculation, while the
 rounded state fields remain presentation data.
 
-Two of these matter whenever a scenario's subject is a periodic timer. Both are
-tracked in issue #285.
+Issue #285's simulator accounting implementation is opt-in. Ordinary reports
+without the accounting block retain the `legacy-unaccounted` model and the
+historical UI-quantum/light-sleep interpretation. A selected model containing
+the `accounting:` block instead enables synthetic virtual-work accounting:
+`ui_poll_active_us_per_cycle` charges each UI cycle, and
+`timer_active_us_per_fire` charges each observed timer by its configured
+microsecond seed. An observed timer without a cost, malformed input, or
+unresolved pending work fails closed. The report records the accounting mode,
+raw microsecond inputs, provenance, and model fingerprint.
 
-- **Timer fires are billed at the UI loop quantum, not at their own cost.**
-  `sim/power_profiler.cpp` marks a UI cycle awake if any registered timer fired
-  in it, and then bills the whole interval at the board's `mcu_80` figure. A
-  timer whose callback is one I2C read and a few dozen float operations is
-  therefore charged the same as one that runs for the full 5 ms tick. The
-  baseline is artificial in the other direction: `UI::task()` runs
-  `lv_task_handler()` every 5 ms regardless, and the model still reports that
-  as full light-sleep residency. Treat a delta produced this way as a ceiling
-  with roughly an order of magnitude of headroom, not as an estimate of the
-  work, and settle the real number on hardware.
-- **Peripheral current is a single hardcoded constant.** `model.peripheral` in
-  `sim/power_profiler.cpp` is initialised to `0.0035` and is never read from
-  this directory: the `peripherals` subsection of `board-currents.yaml` reaches
-  the model nowhere. So enabling the IMU in a scenario changes nothing, and the
-  0.685 mA `bmi270_normal` figure a 50 Hz accelerometer read actually needs is
-  documented here and charged nowhere.
+The canonical selector is the existing `FURBLE_POWER_MODEL` environment
+variable, for example `FURBLE_POWER_MODEL=/path/to/model.yaml` when launching
+the already-built simulator. The executable coverage is in
+`tests/host/sim_power_profiler_test.cpp`; it exercises the positive accounting
+path, precision and pending-work boundaries, missing-cost rejection, and the
+legacy path. `tests/test_power_compare.py` covers the two-sided comparator.
 
-Until they are fixed, `compare.py` is a
-regression guard against a scenario getting worse, not a source of absolute
-numbers. Note also that it only fails on increases, so a baseline cannot catch
-a change that lowers the estimate, such as a timer period going up.
+The synthetic costs are still not callback-duration measurements and do not
+make the model hardware-accurate. The legacy path may continue to charge a
+timer-fired UI quantum by design; do not mix its results with opt-in accounting
+reports or describe either as a physical current measurement.
+
+Peripheral current remains a separate limitation: `model.peripheral` in
+`sim/power_profiler.cpp` is initialised to `0.0035` and is never read from this
+directory. The `peripherals` subsection of `board-currents.yaml` therefore
+does not reach the model. Enabling the IMU in a scenario changes nothing, and
+the 0.685 mA `bmi270_normal` figure a 50 Hz accelerometer read actually needs
+is documented here and charged nowhere.
+
+`compare.py` remains a regression guard against a scenario changing beyond its
+comparison band, not a source of absolute numbers. It applies the threshold in
+both directions, so a large decrease such as a timer period going up is
+reported as drift instead of passing silently. The default 10% threshold is a
+compatibility policy, not a hardware-calibrated noise measurement. Repeated
+baseline runs must establish a real band before a deliberate re-baseline.
+Reports must contain finite,
+non-negative numeric current values; booleans, negative values, and missing or
+non-finite values are schema errors.
 
 ### Remaining realism gates
 

@@ -20,11 +20,18 @@ behavior and the CMake simulator entry point are unchanged.
 - The incremental decision uses BSD/GNU `make -q` against the depfile. Missing
   objects or depfiles, newer prerequisites, deleted prerequisites, and a newer
   generated `sim/lv_conf.h` all force recompilation.
+- The `build-flags` stamp includes the absolute firmware, dependency, and LVGL
+  roots in addition to board and sanitizer settings; configured dependency
+  paths are canonicalized after validation. A shared build directory therefore
+  cannot reuse objects produced by a different checkout whose relative source
+  names and mtimes happen to match.
 - `sim/scripts/test-build-deps.sh` performs a clean build, touches
   `include/FurbleGPS.h`, and verifies that `FurbleGPS.cpp` and `FurbleUI.cpp`
   rebuild while `FurbleBootScreen.cpp` remains cached. It restores the header
   timestamp on exit, and verifies that a depfile whose target uses a different
-  relative/absolute build-directory spelling is treated as a cache miss.
+  relative/absolute build-directory spelling is treated as a cache miss. It
+  also seeds a legacy stamp without source-root identity, then changes only the
+  recorded source root and verifies stale objects are discarded.
 - The wrapper used by that self-test logs only compile sources and delegates to
   the selected compiler; it does not alter normal builds.
 
@@ -39,3 +46,10 @@ The CMake entry point keeps using CMake's native dependency scanner.
 Run the self-test with the same `FURBLE_DEP_ROOT` and `FURBLE_LVGL_DIR` values as
 the simulator build. Follow it with the normal clean/incremental simulator
 build and the applicable E2E scenarios. No hardware gate applies.
+
+The focused runtime self-test passed on composite `af2a36d1`, using
+byte-identical build and test scripts. This standalone branch was not
+runtime-tested. Root evidence is recorded in
+`~/b/ui-composite-cache-regression-0913.log`; it covers the shared-build-directory
+stale-object case and existing depfile/header invalidation checks. This is
+build-cache behavior evidence only, not firmware or hardware validation.

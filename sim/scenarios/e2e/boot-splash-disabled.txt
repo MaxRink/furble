@@ -5,7 +5,11 @@
 # the main menu. "boot_splash off" proves the splash was suppressed; "page main"
 # proves the disabled path boots normally.
 seed boot_splash false
+seed imu true
+seed fb_output 1
 wait 300
 assert ui.boot_splash off
+assert boot_settings_imu 1
+assert boot_settings_fb_output 1
 assert ui.page main
 exit

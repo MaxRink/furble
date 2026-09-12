@@ -251,6 +251,33 @@ supported SD card slot.
 | Import Settings | n/a | action | n/a | Read settings from the SD card. |
 | Card Info | n/a | page | n/a | Mount state, capacity, free space. |
 
+### MQTT (8 MB+ debug/console builds)
+
+MQTT is available only in the documented 8 MB and 16 MB board profiles and is
+off by default at runtime. It is configured with `settings set` in a debug
+build:
+`mqtt` is the master switch, `mqtt_uri` accepts `mqtt://host:1883` or
+`mqtts://host:8883`, `mqtt_user` and `mqtt_pass` are optional broker
+credentials, `mqtt_base` is the topic root (default `furble`), and `mqtt_ha`
+enables Home Assistant discovery. The console also provides `mqtt status`,
+`mqtt connect`, `mqtt disconnect`, and `mqtt discovery clear`.
+
+`mqtt://` is intentionally supported for local-broker compatibility, but it is
+unencrypted and sends credentials and commands in plaintext. Use it only on a
+trusted LAN; use `mqtts://` when transport confidentiality is required.
+
+Commands below `BASE/ID/cmd/` must be published with retain off. Retained
+commands are rejected to prevent a broker replay from firing an actuator after
+reconnect. A clean `mqtt disconnect` publishes retained `offline` and waits
+briefly for the broker acknowledgement before teardown; it tears down on
+acknowledgement or timeout. A timeout does not prove broker delivery; the last
+will covers an unclean loss.
+
+The 4 MB M5StickC, M5StickC Plus, and M5Stack Core profiles do not compile the
+MQTT implementation or its settings/console capability. The headless S3
+profile is eligible because it uses the documented 8 MB ESP32-S3-DevKitC-1
+board.
+
 ### Settings that live outside the Settings menu
 
 - **Bulb duration** default 30 seconds. Set it under the connected `Bulb` page,

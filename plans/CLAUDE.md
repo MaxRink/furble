@@ -19,6 +19,11 @@ lands on fork master. This file applies once it does.
   behavior, everything new is configurable.
 - Camera compatibility plans record shared protocol bytes, model-specific
   additions, and hardware validation status explicitly.
+- Plan 159 links `docs/camera-research/` for pinned public sources, license
+  limits, source conflicts, and future capture targets. Research does not
+  expand supported-camera claims or satisfy hardware certification gates.
+  Its per-model manual indexes distinguish documented accessory support from
+  app-feature tables and exact protocol-capture evidence.
 - Simulator camera certification is fail closed. Common implementations and
   official documentation may enrich a peer, but only an exact model and
   firmware hardware corpus may produce a certified feature result. Missing,
@@ -49,6 +54,9 @@ lands on fork master. This file applies once it does.
   NVS writes from policy ticks.
 - Restart and BLE recovery plans must cover both clean shutdown and unclean
   reset paths, and must include an immediate reconnect acceptance test.
+- Crash-diagnostic plans distinguish tested reporting and signal termination
+  from an unproven crash cause. Record alternate-stack ownership and keep
+  essential metadata ahead of best-effort unwinding.
 - Settings concurrency plans must distinguish ESP-IDF NVS thread safety from
   the mutable lifetime of each `Preferences` wrapper handle.
 - OTA plans separate the initial USB-flashed bootloader and partition contract

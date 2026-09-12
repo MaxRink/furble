@@ -1,0 +1,30 @@
+# A terminal connect failure also returns to Main with physical indicators.
+# The secure virtual peer stalls in its real handshake long enough for the
+# connect timer to show its progress modal before the two failed attempts
+# reach the terminal failure state. Keep the error modal through dismissal so
+# both teardown and its follow-up button path are covered.
+seed ble_peers fuji-secure
+seed ble_saved true
+seed secure_stall_ms 1000
+seed no_touch true
+wait 300
+
+assert ui.nav_layout buttons
+assert ui.page main
+assert ui.indicators_visible 3
+
+action connect
+assert-eventually-virtual 1000 ui.connect_box visible
+assert ui.indicators_visible 0
+assert-eventually-virtual 10000 control.state idle
+assert-eventually-virtual 5000 ui.connect_error connect_failed
+assert ui.page main
+assert ui.connect_box hidden
+assert ui.indicators_visible 3
+
+action select
+wait 300
+assert ui.connect_error none
+assert ui.page main
+assert ui.indicators_visible 3
+exit

@@ -18,12 +18,20 @@ claim against the code, not against a plan doc.
 CI trigger changes must keep validation workflows usable for stacked pull
 requests. Keep pull request jobs path-filtered and read-only for fork safety,
 and run `python3 tools/check_ci_workflows.py` after changing workflow triggers.
+The simulator power gate uses the two-sided `tools/power-model/compare.py`
+threshold; its default 10% value is compatibility policy, not calibrated
+hardware noise. Focused coverage is `python3 -m unittest tests/test_power_compare.py`.
 The Apple workflow's macOS app artifact is unsigned and test-only; it is
 uploaded only after the macOS tests pass and includes checksum/provenance files.
 Release tags beginning with `companion-test-` skip firmware publication and
 are reserved for companion testing; other release tags retain normal behavior.
 All simulator scenarios are owned in `sim/scenarios/manifest.json`; run
 `python3 tools/check_sim_scenarios.py` after adding, removing, or renaming one.
+The built simulator preference ownership gate is
+`sim/scripts/check-preferences-lifecycle.sh`; `sim-e2e.yml` runs it against the
+fresh M5StickS3 binary.
+The host TSAN wrapper is fail-closed; see `CONTRIBUTING.md` for its exact
+completion marker and compiler-free contract command.
 Firmware line coverage is measured by `tools/coverage.py` and gated against
 `tests/coverage_floor.json`. Coverage instrumentation is opt-in in both build
 entry points (`-DFURBLE_COVERAGE=ON` for the host harness,

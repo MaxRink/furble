@@ -28,3 +28,7 @@ if "$BIN" --script "$script" >/tmp/furble-assert-contract.log 2>&1; then
 fi
 
 echo "Simulator assertion failure correctly returned non-zero status."
+
+# Keep the scheduler-stop exception path bounded and explicit too. This uses
+# the same freshly built simulator selected by FURBLE_SIM_BIN.
+sh "$ROOT/sim/scripts/assert-scheduler-stop-failfast.sh"
