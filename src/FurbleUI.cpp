@@ -62,6 +62,7 @@
 #include <functional>
 #include <vector>
 
+#include "clock.h"
 #include "driver.h"
 #include "power_profiler.h"
 #define FURBLE_SIM_TIMER_FIRE(name) Furble::Sim::profilerTimerFire(name)
@@ -1065,6 +1066,10 @@ void UI::buttonPWRRead(lv_indev_t *drv, lv_indev_data_t *data) {
   auto *ui = static_cast<UI *>(lv_indev_get_user_data(drv));
   data->key = ui->inputKey(drv);
   bool pressed = M5.BtnPWR.isPressed();
+  bool released = M5.BtnPWR.isReleased();
+#if defined(FURBLE_SIM)
+  ui->simReadButton(drv, pressed, released);
+#endif
   if (ui->handleLeftLongPress(drv, pressed)) {
     data->state = LV_INDEV_STATE_RELEASED;
     return;
@@ -1073,7 +1078,7 @@ void UI::buttonPWRRead(lv_indev_t *drv, lv_indev_data_t *data) {
     return;
   }
 
-  if (M5.BtnPWR.isReleased()) {
+  if (released) {
     data->state = LV_INDEV_STATE_RELEASED;
   } else if (pressed) {
     data->state = LV_INDEV_STATE_PRESSED;
@@ -1085,19 +1090,38 @@ void UI::buttonPEKRead(lv_indev_t *drv, lv_indev_data_t *data) {
   auto *ui = static_cast<UI *>(lv_indev_get_user_data(drv));
   data->key = ui->inputKey(drv);
   bool held = M5.BtnPWR.isPressed();
+#if defined(FURBLE_SIM)
+  bool simulatedPressed = false;
+  bool simulatedReleased = false;
+  const bool simulated = ui->simReadButton(drv, simulatedPressed, simulatedReleased);
+  if (simulated) {
+    held = simulatedPressed;
+  }
+#endif
   if (ui->handleLeftLongPress(drv, held)) {
     data->state = LV_INDEV_STATE_RELEASED;
     return;
   }
-  bool pressed = Platform::getInstance().getPWRClickCount() > 0;
+  bool pressed;
+  bool released;
+#if defined(FURBLE_SIM)
+  if (simulated) {
+    pressed = simulatedPressed;
+    released = simulatedReleased;
+  } else
+#endif
+  {
+    pressed = Platform::getInstance().getPWRClickCount() > 0;
+    released = !pressed;
+  }
   if (ui->handleDisplayInput(drv, data, pressed, false)) {
     return;
   }
 
-  if (pressed) {
-    data->state = LV_INDEV_STATE_PRESSED;
-  } else {
+  if (released) {
     data->state = LV_INDEV_STATE_RELEASED;
+  } else if (pressed) {
+    data->state = LV_INDEV_STATE_PRESSED;
   }
 }
 
@@ -1105,6 +1129,10 @@ void UI::buttonARead(lv_indev_t *drv, lv_indev_data_t *data) {
   auto *ui = static_cast<UI *>(lv_indev_get_user_data(drv));
   data->key = ui->inputKey(drv);
   bool pressed = M5.BtnA.isPressed();
+  bool released = M5.BtnA.isReleased();
+#if defined(FURBLE_SIM)
+  ui->simReadButton(drv, pressed, released);
+#endif
   if (ui->handleLeftLongPress(drv, pressed)) {
     data->state = LV_INDEV_STATE_RELEASED;
     return;
@@ -1113,7 +1141,7 @@ void UI::buttonARead(lv_indev_t *drv, lv_indev_data_t *data) {
     return;
   }
 
-  if (M5.BtnA.isReleased()) {
+  if (released) {
     data->state = LV_INDEV_STATE_RELEASED;
   } else if (pressed) {
     data->state = LV_INDEV_STATE_PRESSED;
@@ -1124,6 +1152,10 @@ void UI::buttonBRead(lv_indev_t *drv, lv_indev_data_t *data) {
   auto *ui = static_cast<UI *>(lv_indev_get_user_data(drv));
   data->key = ui->inputKey(drv);
   bool pressed = M5.BtnB.isPressed();
+  bool released = M5.BtnB.isReleased();
+#if defined(FURBLE_SIM)
+  ui->simReadButton(drv, pressed, released);
+#endif
   if (ui->handleLeftLongPress(drv, pressed)) {
     data->state = LV_INDEV_STATE_RELEASED;
     return;
@@ -1132,7 +1164,7 @@ void UI::buttonBRead(lv_indev_t *drv, lv_indev_data_t *data) {
     return;
   }
 
-  if (M5.BtnB.isReleased()) {
+  if (released) {
     data->state = LV_INDEV_STATE_RELEASED;
   } else if (pressed) {
     data->state = LV_INDEV_STATE_PRESSED;
@@ -1143,6 +1175,10 @@ void UI::buttonCRead(lv_indev_t *drv, lv_indev_data_t *data) {
   auto *ui = static_cast<UI *>(lv_indev_get_user_data(drv));
   data->key = ui->inputKey(drv);
   bool pressed = M5.BtnC.isPressed();
+  bool released = M5.BtnC.isReleased();
+#if defined(FURBLE_SIM)
+  ui->simReadButton(drv, pressed, released);
+#endif
   if (ui->handleLeftLongPress(drv, pressed)) {
     data->state = LV_INDEV_STATE_RELEASED;
     return;
@@ -1151,7 +1187,7 @@ void UI::buttonCRead(lv_indev_t *drv, lv_indev_data_t *data) {
     return;
   }
 
-  if (M5.BtnC.isReleased()) {
+  if (released) {
     data->state = LV_INDEV_STATE_RELEASED;
   } else if (pressed) {
     data->state = LV_INDEV_STATE_PRESSED;
@@ -10847,6 +10883,15 @@ bool UI::simPressButton(const char *name, bool hold) {
   return result->load();
 }
 
+bool UI::simReadButton(lv_indev_t *indev, bool &pressed, bool &released) const {
+  if (indev != m_SimButtonIndev) {
+    return false;
+  }
+  pressed = m_SimButtonPressed;
+  released = !pressed;
+  return true;
+}
+
 bool UI::simPressButtonOnUi(const char *name, bool hold) {
   const std::string button = name == nullptr ? "" : name;
 
@@ -10890,18 +10935,21 @@ bool UI::simPressButtonOnUi(const char *name, bool hold) {
     return false;
   }
 
-  // A long press of the left button is furble's universal back escape. This is
-  // the exact path buttonPWRRead/buttonARead take through handleLeftLongPress,
-  // and it works even on the Remote and blind pages that hide the header back
-  // arrow, the F6 case the touch-only sim could not see.
-  if (indev == m_ButtonL && hold) {
-    navigateBack();
-    return true;
+  // Feed a press and release through the production read callback and LVGL's
+  // input-device processor. Direct group keys bypass encoder navigation and
+  // button-mode press/release events. A held input gets a second pressed sample
+  // beyond both the Furble and LVGL long-press thresholds while advancing the
+  // same virtual clock used by input activity and inactivity handling.
+  m_SimButtonIndev = indev;
+  m_SimButtonPressed = true;
+  lv_indev_read(indev);
+  if (hold) {
+    Sim::advanceClock(LEFT_LONG_PRESS_MS + 1);
+    lv_indev_read(indev);
   }
-
-  // A short tap feeds the encoder key the read callback reports: the left and
-  // right buttons scroll the focus group, the OK button activates the focus.
-  lv_group_send_data(m_Group, inputKey(indev));
+  m_SimButtonPressed = false;
+  lv_indev_read(indev);
+  m_SimButtonIndev = nullptr;
   return true;
 }
 #endif

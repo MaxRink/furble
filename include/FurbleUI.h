@@ -894,6 +894,8 @@ class UI {
   std::thread::id m_SimUiThread;
   std::atomic<bool> m_SimLastActionOnUi {false};
   sim_action_result_t m_SimActionResult = sim_action_result_t::INVALID;
+  lv_indev_t *m_SimButtonIndev = nullptr;
+  bool m_SimButtonPressed = false;
 
   bool simRunOnUi(std::function<void()> operation);
   void serviceSimRequests(void);
@@ -901,6 +903,7 @@ class UI {
   bool simulatorHomeOnUi(void);
   bool simulatorBackOnUi(void);
   bool simPressButtonOnUi(const char *name, bool hold);
+  bool simReadButton(lv_indev_t *indev, bool &pressed, bool &released) const;
 
   /**
    * Count the visible labels and icons on the current page that intersect a
