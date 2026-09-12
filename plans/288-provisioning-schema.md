@@ -7,7 +7,8 @@ the BOOL, one-byte `ProvisionTLV` schema it was missing. The existing all-keyed
 settings schema walk now has no exemptions, and the provisioning apply test
 covers both valid boolean values and rejection of value 2.
 
-The reservation documentation now reflects the current master and five open
+The reservation documentation now reflects the current master, including its
+conditional display, MQTT, and S3 watchdog settings, and five open
 PR heads: #59 uses 75/76, #90 uses 62, and #273 uses 65. IDs 42 and 45 retain
 historical claims and are not allocated or reused without a compatibility
 audit.

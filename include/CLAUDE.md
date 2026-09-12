@@ -53,7 +53,8 @@ renumbering fails the build rather than passing quietly.
 
 | PR | Setting keys | Wire ids |
 | --- | --- | --- |
-| Master | shipped settings | 1-22, 24-41, 43-44, 46-47, 51-61, 66-69, 72-74 |
+| Master | shipped settings | 1-22, 24-35, 37-41, 43-44, 46-47, 51-55, 66-69, 72-74 |
+| Master (conditional) | display, MQTT, S3 watchdog | 23 (`WATCHDOG` on `FURBLE_M5STICKS3`), 36 (`DISPLAY_MODE` without `FURBLE_NO_DISPLAY`), 56-61 (`FURBLE_MQTT`) |
 | #59 | `ivl_sleep`, `ivl_sleep_thr` | 75, 76 |
 | #63 | no setting claim | none |
 | #90 | Web UI settings | 62 |
