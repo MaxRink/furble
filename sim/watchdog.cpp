@@ -2,9 +2,9 @@
 #include <atomic>
 #include <cerrno>
 #include <chrono>
-#include <cstddef>
 #include <condition_variable>
 #include <csignal>
+#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -66,11 +66,7 @@ void writeRaw(const char *text) {
   if (text == nullptr) {
     return;
   }
-  size_t length = 0;
-  while (text[length] != '\0') {
-    ++length;
-  }
-  const ssize_t written = ::write(STDERR_FILENO, text, length);
+  const ssize_t written = ::write(STDERR_FILENO, text, std::strlen(text));
   static_cast<void>(written);
 }
 
@@ -98,6 +94,11 @@ thread_local bool crashStackInstalled = false;
 
 void installCrashStack(void) {
   if (crashStackInstalled) {
+    return;
+  }
+  stack_t existing {};
+  if (sigaltstack(nullptr, &existing) == 0 && (existing.ss_flags & SS_DISABLE) == 0) {
+    crashStackInstalled = true;
     return;
   }
   stack_t stack {};
@@ -129,8 +130,6 @@ void crashHandler(int signal) {
   // `backtrace` and `backtrace_symbols_fd` are not formally async-signal-safe.
   // They are warmed during normal startup and this handler remains best effort
   // diagnostics, not a signal-safe crash recovery path.
-  void *frames[MAX_FRAMES];
-  const int depth = backtrace(frames, MAX_FRAMES);
   writeRaw("\nSIM CRASH: ");
   writeRaw(signalName(signal));
   writeRaw("\nSIM CRASH: scenario step: ");
@@ -141,6 +140,8 @@ void crashHandler(int signal) {
   writeRaw("\nSIM CRASH: thread: ");
   writeRaw(handlerThreadName != nullptr ? handlerThreadName : "unregistered");
   writeRaw("\n");
+  void *frames[MAX_FRAMES];
+  const int depth = backtrace(frames, MAX_FRAMES);
   backtrace_symbols_fd(frames, depth, STDERR_FILENO);
   // SA_RESETHAND already restored the default disposition, so re-raising ends
   // the process with the real fatal status a runner reports rather than a

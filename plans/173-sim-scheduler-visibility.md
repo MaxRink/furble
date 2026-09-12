@@ -304,3 +304,23 @@ target negative legs, recorded in
 available production-UI simulator `249650a5`, not an exact `8a94` build, so the
 negative result is evidence for the old mutation locations in that binary only.
 Neither the build nor the guard run establishes SIGSEGV causality.
+
+## Follow-up state: bounded crash diagnostics (#283/#289)
+
+The simulator now installs fatal diagnostics before `configure()` parses
+arguments or a scenario. Every simulator thread that enters the watchdog
+registry receives a thread-local alternate signal stack, and fatal handlers
+use `SA_ONSTACK`. Handler installation and normal-context unwinder warm-up are
+idempotent. An already-enabled host or sanitizer alternate stack is preserved.
+The handler prints the phase and scenario line when available before invoking
+the best-effort unwinder, then re-raises the fatal signal so callers retain the
+real signal status.
+
+This is an observability improvement only. `backtrace` and symbol formatting
+are not formally async-signal-safe, so the handler remains best effort and
+does not establish the root cause of issue #283. The host regression
+`sim_watchdog_test` covers caller and registered-worker alt-stack queries,
+preservation of a preinstalled worker stack, and a forked SIGSEGV child that
+must emit the signal, phase, and step banners. Actual stack-overflow coverage
+remains future work. Preference sidecars, fairness changes, cancellation-bound
+changes, and restart semantics are not part of this slice.

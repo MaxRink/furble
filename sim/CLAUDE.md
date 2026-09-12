@@ -19,6 +19,13 @@ scenario-authoring reference is [docs/sim.md](../docs/sim.md). Keep this file
 as the directory-local contract and keep the reference synchronized with the
 tokens in `sim/driver.cpp`, `src/FurbleUI.cpp`, and the host fault harness.
 
+Fatal diagnostics are observability only. The watchdog installs its fatal
+handlers before simulator argument and scenario parsing, and registered
+simulator threads receive a thread-local alternate signal stack. The handler
+prints the current phase and scenario line when available, then re-raises the
+signal. `backtrace` and symbol formatting are not formally async-signal-safe,
+so the output is best effort and does not claim crash recovery or a root cause.
+
 ## Parity inventory and seam rules
 
 The simulator shares substantial production UI, GPS, settings, and power
