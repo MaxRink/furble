@@ -50,11 +50,11 @@ SEED_TIMEOUT=${FURBLE_FUZZ_SEED_TIMEOUT:-600}
 # Within the summary line the two observation counters are masked for the same
 # reason: they record whether a visible change had landed by the end of a
 # settle window, and that boundary moves by one step for the same cause.
-# Seed 31337 is the default because three measured runs produced identical
-# event and coverage reports and it visited the fewest restart-button pages of
-# the stable candidates. Seed 2 is reserved for run-fuzz-restart.sh: whether it
-# reaches Restart is host-timing dependent, so comparing its restart-sensitive
-# report lines here would make this determinism gate flaky.
+# Seed 31337 is a guarded, non-restart replay. Seed 2 is reserved for
+# run-fuzz-restart.sh: whether it reaches Restart is host-timing dependent, so
+# comparing its restart-sensitive report lines here would make this
+# determinism gate flaky. The replay below, rather than a one-time sample,
+# remains the evidence that the selected seed is stable on the current binary.
 REPEAT_SEED=${FURBLE_FUZZ_REPEAT_SEED-31337}
 
 : "${SDL_VIDEODRIVER:=dummy}"

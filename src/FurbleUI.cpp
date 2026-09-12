@@ -2556,6 +2556,20 @@ void UI::addMainMenu(void) {
           if (M5.Touch.isEnabled()) {
             // if touch screen, enable back
             lv_obj_remove_state(back, LV_STATE_DISABLED);
+            // The physical buttons remain encoder inputs on touch boards. Keep
+            // their focus on the visible Remote control instead of the menu
+            // row from the previous page. Queue this after lv_menu applies its
+            // own page-load focus, as for the read-only pages below.
+            lv_async_call(
+                [](void *arg) {
+                  auto *ui = static_cast<UI *>(arg);
+                  if (ui->m_OK != nullptr && lv_obj_is_valid(ui->m_OK)
+                      && lv_menu_get_cur_main_page(ui->m_MainMenu.main)
+                             == ui->m_Menu.at(m_RemoteShutter).page) {
+                    lv_group_focus_obj(ui->m_OK);
+                  }
+                },
+                ui);
           } else {
             // hide the back button
             lv_obj_add_flag(back, LV_OBJ_FLAG_HIDDEN);
