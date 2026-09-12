@@ -812,6 +812,37 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/bughunt/touch-sensors-default-fit.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/touch-sensors-small-fit.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c"
+      ],
+      "capabilities": [
+        "fauxny",
+        "gps",
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/bughunt/timer-page-large-text.txt",
       "suite": "bughunt",
       "owner": "sim-bughunt",

@@ -90,9 +90,22 @@ action page settings
 action nav sensors
 wait 100
 # Core uses a grid for Settings; Sensors must occupy its own tile rather than
-# colliding with Feedback/IR. The page itself must remain reachable and fit.
+# colliding with Feedback/IR. On physical 80px the full rows scroll by 7px;
+# every label stays whole and both ends remain reachable.
 assert ui.page sensors
-assert ui.overflow no
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+assert ui.scroll_top 0
+action scroll bottom
+wait 100
+assert ui.scroll_bottom 0
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+action scroll top
+wait 100
+assert ui.scroll_top 0
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
 action nav gestures
 wait 100
 assert ui.page gestures
