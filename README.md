@@ -134,7 +134,7 @@ Initially targeted at the M5StickC, the following controllers from [M5Stack](htt
 * M5Core2
 * M5Tough (untested)
 
-furble builds five release firmware images, one per board environment. M5Unified
+furble builds six release firmware images, one per board environment. M5Unified
 detects the exact board at runtime, so one image covers a board family. The
 M5Tough is not a build environment. It shares the M5Core2 image through
 M5Unified board detection, but it has not been verified on hardware. See
@@ -196,7 +196,7 @@ Every board has an optional `<board>-debug` environment, for example
 `LOG_LOCAL_LEVEL=ESP_LOG_VERBOSE`, so `ESP_LOGD` and `ESP_LOGV` in furble
 sources are compiled in. They share the release `sdkconfig` of the board they
 extend, except for the Core USB fallback's single-factory partition fragment.
-Normal CI builds the five release environments and their mandatory debug
+Normal CI builds the six release environments and their mandatory debug
 profiles. Releases retain their existing release/debug matrix.
 
 Build, flash and watch the log:
