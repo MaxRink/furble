@@ -22,6 +22,8 @@ lands on fork master. This file applies once it does.
 - Plan 159 links `docs/camera-research/` for pinned public sources, license
   limits, source conflicts, and future capture targets. Research does not
   expand supported-camera claims or satisfy hardware certification gates.
+  Its per-model manual indexes distinguish documented accessory support from
+  app-feature tables and exact protocol-capture evidence.
 - Simulator camera certification is fail closed. Common implementations and
   official documentation may enrich a peer, but only an exact model and
   firmware hardware corpus may produce a certified feature result. Missing,

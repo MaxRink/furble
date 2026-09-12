@@ -66,7 +66,7 @@ Bluetooth connection to the smartphone app, which is an app-specific behavior,
 not evidence that Furble can wake a camera.
 
 Firmware is a material constraint. Fujifilm's [X-E5 firmware page](https://www.fujifilm-x.com/en-us/support/download/firmware/cameras/x-e5/)
-shows version 1.12 as of 2026-04-06 and says version 1.10 changed wireless
+shows version 1.12 when retrieved on 2026-09-12 and says version 1.10 changed wireless
 security and pairing procedure. It also warns that old Camera Remote versions
 cannot connect after the update. Do not collapse firmware generations into one
 Fujifilm profile.
@@ -281,14 +281,14 @@ marks SnapBridge pairing, Wi-Fi AP switching, still remote photography, clocks,
 and location as supported, but marks the SnapBridge-app feature labelled
 “Bluetooth remote control” as unsupported. This is an app-feature matrix, not
 an accessory manual, so it cannot establish or contradict ML-L7-style physical
-accessory support for B600; a dedicated B600 accessory source or capture is
-still needed.
+accessory support for B600. The follow-up [official manual index](model-manuals-other.md#nikon-coolpix-b600-accessory-clarification)
+resolves accessory support: Nikon's B600 Reference Manual and ML-L7 product
+page explicitly list it. Neither source establishes Furble's private BLE bytes.
 The [B600 download page](https://downloadcenter.nikonimglib.com/en/products/510/COOLPIX_B600.html)
 identifies firmware 1.1 (2019-12-19). Thus Furble's B600 ML-L7-style BLE path
 is reverse-engineered evidence distinct from Nikon's documented SnapBridge
-remote-photography feature, not an official B600 ML-L7 claim. Keep that
-distinction as an evidence gap rather than making a capability claim about an
-ML-L7-style accessory.
+remote-photography feature. Official ML-L7 accessory compatibility is now
+documented separately; exact Furble protocol and outcome captures remain absent.
 
 ### Current Furble implementation evidence
 
@@ -362,10 +362,9 @@ B600 or Z6 III paths.
 ### Gaps and capture targets
 
 - Capture B600 firmware 1.1 and Z6 III exact firmware separately. The official
-  B600 table is app-only and does not resolve ML-L7 accessory support, so retain
-  the current model-level Furble report but label the protocol
-  `common-implementation` until a raw HCI plus physical result is archived and
-  a dedicated B600 accessory source is checked.
+  B600 accessory sources establish ML-L7 support, unlike the app-only feature
+  table. Keep Furble's private protocol `common-implementation` until raw HCI
+  and a physical result are archived for the exact profile.
 - For Remote, capture advertisement rotation, device ID/nonce persistence,
   four-stage bytes and indications, SMP/bond behavior, ML-L7-compatible still,
   video, two-second/bulb behavior, standby and RF loss. Nikon's manual says
