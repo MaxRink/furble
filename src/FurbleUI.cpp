@@ -1864,7 +1864,18 @@ void UI::reserveLegendColumns(lv_obj_t *page) {
       // entire reservation stays beside the right-hand legend.
       lv_obj_set_style_translate_x(row, -(reserve / 2), LV_PART_MAIN);
     }
-    lv_obj_update_layout(row);
+  }
+
+  // Resolve every row from its final page width before capping deliberately
+  // wrapped labels. Reading the child width in the same pass that narrows its
+  // row can capture the row's old content width; the label then keeps that
+  // stale cap after the row expands and wraps text that would fit on one line.
+  lv_obj_update_layout(page);
+  for (uint32_t i = 0; i < lv_obj_get_child_count(page); i++) {
+    lv_obj_t *row = lv_obj_get_child(page, i);
+    if ((row == nullptr) || !lv_obj_is_valid(row) || lv_obj_has_flag(row, LV_OBJ_FLAG_FLOATING)) {
+      continue;
+    }
     for (uint32_t j = 0; j < lv_obj_get_child_count(row); j++) {
       lv_obj_t *child = lv_obj_get_child(row, j);
       if ((child != nullptr) && lv_obj_check_type(child, &lv_label_class)
@@ -1919,13 +1930,14 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
   [[maybe_unused]] const bool connectedPage = menu.page == m_Menu.at(m_ConnectedStr).page;
 #if defined(FURBLE_M5COREX)
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
-  // Only where the grid rows are content sized, which is at the largest text
-  // size. A content sized row is as tall as the container in it asks to be, and
-  // left at the default that container fills the page and the rows below fall
-  // off. At the smaller sizes the rows are equal slices of the page, as master
-  // has them, and the container must fill its slice or the page gains a scroll
-  // master does not have.
-  if (TextSizePolicy::clamp(Settings::load<Settings::TEXT_SIZE>()) >= Settings::TEXT_SIZE_LARGE) {
+  // Home rows follow their wrapped icon labels at every text size. Other Core
+  // grids use content rows only at Large. A content-sized row is as tall as the
+  // container in it asks to be; leaving that container at the default full-page
+  // height makes it swallow the rows below.
+  const bool mainPage = menu.page == m_MainMenu.page;
+  if (mainPage
+      || (TextSizePolicy::clamp(Settings::load<Settings::TEXT_SIZE>())
+          >= Settings::TEXT_SIZE_LARGE)) {
     lv_obj_set_height(cont, LV_SIZE_CONTENT);
   }
 #else
@@ -1966,11 +1978,11 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
     lv_image_set_inner_align(img, LV_IMAGE_ALIGN_STRETCH);
     lv_image_set_src(img, icon);
     // Start where the rows are content sized, stretch where they are equal
-    // slices: a stretched container reports the whole page as its height, which
-    // a content row would then swallow, and a started container leaves an equal
-    // row half empty.
-    const bool contentRows =
-        TextSizePolicy::clamp(Settings::load<Settings::TEXT_SIZE>()) >= Settings::TEXT_SIZE_LARGE;
+    // slices. A stretched container reports the whole page as its height, which
+    // a content row would then swallow.
+    const bool contentRows = mainPage
+                             || (TextSizePolicy::clamp(Settings::load<Settings::TEXT_SIZE>())
+                                 >= Settings::TEXT_SIZE_LARGE);
     lv_obj_set_grid_cell(cont, LV_GRID_ALIGN_STRETCH, col_pos, 1,
                          contentRows ? LV_GRID_ALIGN_START : LV_GRID_ALIGN_STRETCH, row_pos, 1);
   }
@@ -8105,8 +8117,7 @@ lv_obj_t *UI::addSpinItem(lv_obj_t *page, const char *item, Intervalometer::Spin
   // does not animate: a scrolling value hides most of itself at any instant
   // and repaints the row every frame for as long as the page is open.
   lv_label_set_long_mode(spinner.m_Value, LV_LABEL_LONG_WRAP);
-  // reserveLegendColumns() normally turns a wrapped row label into a circular
-  // scroller. This value deliberately wraps to preserve every digit and unit.
+  // This value deliberately wraps to preserve every digit and unit.
   lv_obj_add_flag(spinner.m_Value, LV_OBJ_FLAG_USER_1);
   lv_obj_set_style_text_align(spinner.m_Value, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
 
@@ -8899,7 +8910,14 @@ void UI::addLegendMenu(const menu_t &parent) {
 void UI::addTextSizeMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_TextSizeStr, &icon_clear_all_24, true, parent);
   lv_obj_t *cont = lv_menu_cont_create(menu.page);
+#if defined(FURBLE_M5STICKC)
+  // The floating legend leaves the explanatory note only 27 px wide. It wraps
+  // below the roller, so a fixed-height SPACE_EVENLY container overlaps them.
+  // Let the complete controls establish the height and let the page scroll.
+  lv_obj_set_size(cont, LV_PCT(100), LV_SIZE_CONTENT);
+#else
   lv_obj_set_size(cont, LV_PCT(100), LV_PCT(100));
+#endif
   lv_obj_set_layout(cont, LV_LAYOUT_FLEX);
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,

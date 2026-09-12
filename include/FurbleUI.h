@@ -787,7 +787,9 @@ class UI {
 
   const std::vector<int32_t> m_GridLayoutColDsc = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1),
                                                    LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
-  const std::vector<int32_t> m_GridLayoutRowDsc = {LV_GRID_FR(1), LV_GRID_FR(1),
+  // A wrapped name plus its icon defines each Home row's height. The physical
+  // layout scrolls rather than clipping that name into an equal-height slice.
+  const std::vector<int32_t> m_GridLayoutRowDsc = {LV_GRID_CONTENT, LV_GRID_CONTENT,
                                                    LV_GRID_TEMPLATE_LAST};
 
   // the settings page holds more entries than the main menu, give it its own
