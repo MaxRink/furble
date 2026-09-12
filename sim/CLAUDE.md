@@ -22,8 +22,8 @@ tokens in `sim/driver.cpp`, `src/FurbleUI.cpp`, and the host fault harness.
 ## Parity inventory and seam rules
 
 The simulator shares substantial production UI, GPS, settings, and power
-policy, but the connection path is currently a fake and the host scheduler is
-not yet equivalent to FreeRTOS. The following is the current seam inventory
+policy, but the host BLE transport is virtual and the scheduler is not yet
+equivalent to FreeRTOS. The following is the current seam inventory
 and target boundary (a new seam needs a contract test and an entry here):
 
 | Area | Shared production path | Narrow simulator seam and reason |
@@ -31,7 +31,7 @@ and target boundary (a new seam needs a contract test and an entry here):
 | BLE discovery | Production `Scan` and `CameraList`, including advertisement matching and preferences-backed list persistence | `sim/BleSim.cpp` owns a virtual radio task that advertises the seeded virtual peers into the mock `NimBLEScan` and models the controller-owned discovery timer. Saved peers use the production catalog and shared-pointer identity; scans only populate transient results. Scan start responsiveness probing and the scan-end callback counter are `FURBLE_SIM` observability inside production `Scan`. |
 | Display | `UI::setDisplayMode`, `wakeDisplay`, `sleepDisplay`, `displayFlush`, LVGL timers and task loop | M5GFX SDL is the panel/pixel sink. Display mode and flush accounting remain production methods; there is no simulator-only rotation or display-state implementation. |
 | Input/navigation | LVGL event callbacks and menu handlers | `simulatorHome`, `simulatorBack`, and `simScenarioAction` are script entry points. `driverTick` runs in the UI task's locked phase, so actions and physical-input shims share LVGL ownership; direct page/focus selection is limited to deterministic setup or input timing SDL cannot reproduce. |
-| Host mutex visibility | Production lock discipline is unchanged: `Camera::m_Mutex` is acquired and released at exactly the same points | `Furble::connect_mutex_t` is `std::mutex` everywhere except a `FURBLE_SIM` build, where it is `Sim::SchedulerMutex`: the same mutex with a contended wait reported to the scheduler, so a task waiting for a connect to finish stops being runnable instead of being timed out by the host-clock deadlock breaker (issue #279). |
+| Host mutex visibility | Production lock discipline is unchanged: `Camera::m_Mutex` is acquired and released at exactly the same points | `Furble::connect_mutex_t` is `std::mutex` everywhere except a `FURBLE_SIM` build, where `Sim::SchedulerMutex` reserves ownership for one waiter and publishes that waiter before wake. Selection follows task priority then wait order, so host wake timing cannot create an extra virtual disconnect slice (issue #279). This models wake order, not FreeRTOS mutex priority inheritance, which remains unsupported. |
 | Camera links | Production `Control`, `Camera`, `CameraList` and every vendor class, over MockNimBLE | `sim/BleSim.cpp` registers the virtual peers a scenario seeds and injects faults at the transport only (`mockDropLink`, `setConnectShouldFail`, peer standby drop, withheld registration). `Control::simDropActiveLink()` is defined there and severs the real link; it no longer overrides any control state. A FauxNY camera has no radio, so `Camera::resetConnectionState()` stands in for its link loss. |
 | GPS/UART | Production parser, configuration, retry and power-lock logic | Fake UART/receiver is the lowest host-device boundary; replies and faults are injected as bytes/events on a worker thread. |
 | Power/display hardware | Production policy and lock ownership | M5PM1, ESP-IDF power, timer, random, NVS, sleep, flash and system calls are host implementations. Observable state is exposed through `platform_state` rather than replacing policy code. |
@@ -65,18 +65,16 @@ The esp_timer dispatcher is modeled as a serialized ESP-IDF 5.5.3
 `ESP_TASK_TIMER_PRIO` timer service task (`configMAX_PRIORITIES - 3`, normally
 22) and enters the same scheduler gate before invoking a callback. Due timer
 and FreeRTOS wait sources are batched before the first dispatch. Zero-tick
-delays yield through the priority gate. Instruction-level
-preemption, core affinity, and CPU-time accounting remain unsupported and must
+delays yield through the priority gate. Instruction-level preemption, core
+affinity, mutex priority inheritance, and CPU-time accounting remain unsupported and must
 not be described as parity-complete.
 Plan 161 completed that slice: the connection fakes are gone and the production
-sources run against MockNimBLE peers. Two parity gaps remain on this boundary
-and must not be described as closed. A link severed without its GAP disconnect
-event (`action ble-kill`) leaves `Camera::isConnected()` true, so the liveness
-invariant cannot see that class of false-connected. And the host scheduler can
-still starve a task that only wakes on a virtual-clock deadline while the UI
-thread drives time forward, which is why the long Fujifilm registration wait is
-not used inside a certified scenario. Peripheral models and current tables
-require board calibration and differential traces against hardware. Physical radio timing,
+sources run against MockNimBLE peers. One modeled-link gap remains on this
+boundary and must not be described as closed. A link severed without its GAP
+disconnect event (`action ble-kill`) leaves `Camera::isConnected()` true, so the
+liveness invariant cannot see that class of false-connected. Peripheral models
+and current tables require board calibration and differential traces against
+hardware. Physical radio timing,
 analog current, sensor noise, and unavailable peripherals are irreducible
 boundaries; each must be measured, bounded, and an explicit release gate, not
 silently treated as identical.
@@ -188,16 +186,16 @@ including empty strings and failed-save rollback.
 
 - The virtual clock makes scripted runs reproducible: two smoke runs produce
   byte-identical PNGs.
-- Fuzzer reproducibility is not total. Two runs of the same seed on the same
-  binary produce byte-identical `FUZZ EVENTS` and `FUZZ COVERAGE` lines, so the
-  event stream and the pages it reaches are deterministic, and `run-fuzz.sh`
-  now enforces that with a replay of one guarded seed. `Camera::m_Mutex`, the
-  one host mutex a connect holds for its whole attempt, is scheduler visible
-  since plans/173, so that source of drift is gone. The remaining host mutexes
-  in production code are held for microseconds and have not been measured to
-  move a fuzz run, but they are still invisible, so `observed_delta` and
-  `no_observed_delta` stay masked in the replay. Compare the fuzz report lines,
-  not the log.
+- Fuzzer reproducibility is not total. `run-fuzz.sh` requires byte-identical
+  `FUZZ EVENTS` and `FUZZ COVERAGE` lines when it replays one guarded seed, so
+  the event stream and the pages it reaches are deterministic. The connect-long
+  `Camera::m_Mutex` is scheduler visible, and ownership is reserved before its
+  selected waiter is published. Other production mutexes are still invisible,
+  so new cross-task contention needs the same measured review. Mutex priority
+  inheritance is not modeled.
+  `observed_delta` and `no_observed_delta` remain masked because asynchronous
+  completion can move between adjacent checks without changing the reached
+  state. Compare the fuzz report lines, not the log.
 - Fix age is virtual too, so `gps.png` is byte-reproducible like every other
   capture. It used to be the one exception. TinyGPSPlus ages every reading
   against a global `millis()`, and its non-Arduino fallback read the host wall

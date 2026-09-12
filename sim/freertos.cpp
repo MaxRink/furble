@@ -67,13 +67,11 @@ struct SimTask {
   SimTaskLifecycle lifecycle = SimTaskLifecycle::running;
   bool blocked = false;
   bool runnable = false;
-  // Parked outside the scheduler. Production code blocks on plain host mutexes
-  // that the simulator scheduler cannot see (Camera::m_Mutex is held across a
-  // whole connect), so a task can leave the scheduler while holding the turn
-  // and never come back until another task releases the mutex. FreeRTOS would
-  // have yielded there. A task that stalls the turn past the stall bound is
-  // parked so the rest of the system keeps running; it un-parks at its next
-  // scheduler boundary.
+  // Parked outside the scheduler. Production code can still block on a plain
+  // host mutex that has no simulator-visible alias, leaving the scheduler turn
+  // behind until another thread releases it. FreeRTOS would have yielded there.
+  // A task that stalls the turn past the stall bound is parked so the rest of
+  // the system keeps running; it un-parks at its next scheduler boundary.
   bool parked = false;
   SimWaitKind wait_kind = SimWaitKind::none;
   SimWaitResult wait_result = SimWaitResult::none;
@@ -208,8 +206,8 @@ void dispatchNextLocked(void) {
 //
 // Most handoffs end in microseconds: the tasks released by the clock advance
 // take their turns and block again, which clears `runnable` and satisfies the
-// wait. The case that matters is the other one. A task blocked on a plain host
-// mutex the scheduler cannot see is still `runnable`, because `runnable` is
+// wait. The case that matters is the other one. A task blocked on an unmodelled
+// host mutex is still `runnable`, because `runnable` is
 // only cleared by an explicit scheduler boundary, so the wait cannot observe it
 // finishing and runs the full ceiling. That elapsed host time is exactly what
 // lets the mutex holder run and release, and it is why the fix for issue 267
@@ -601,18 +599,116 @@ void runSchedulerTimerCallback(SchedulerCallback callback, void *argument) {
   simTaskName = previousName;
 }
 
-void schedulerHostBlockBegin(void) {
-  const std::lock_guard<std::mutex> lock(schedulerMutex());
-  // No wait kind and no deadline: nothing in the scheduler releases this
-  // waiter. The task releases itself in schedulerHostBlockEnd() once the host
-  // mutex is in hand, which is the real event the wait ends on.
-  setTaskBlockedLocked(true);
+struct SchedulerMutexWaiter {
+  SimTask *task = nullptr;
+  uint64_t order = 0;
+  bool granted = false;
+  SchedulerMutexWaiter *next = nullptr;
+};
+
+void SchedulerMutex::unlinkWaiterLocked(SchedulerMutexWaiter *waiter) {
+  SchedulerMutexWaiter **link = &m_Waiters;
+  while (*link != nullptr) {
+    if (*link == waiter) {
+      *link = waiter->next;
+      waiter->next = nullptr;
+      return;
+    }
+    link = &(*link)->next;
+  }
 }
 
-void schedulerHostBlockEnd(void) {
-  std::unique_lock<std::mutex> lock(schedulerMutex());
-  setTaskBlockedLocked(false);
-  waitForTurnLocked(lock);
+void SchedulerMutex::releaseLocked(void) {
+  SchedulerMutexWaiter *selected = nullptr;
+  for (SchedulerMutexWaiter *waiter = m_Waiters; waiter != nullptr; waiter = waiter->next) {
+    if (waiter->task != nullptr && waiter->task->stopping.load()) {
+      continue;
+    }
+    const UBaseType_t priority = waiter->task == nullptr ? 0 : waiter->task->priority;
+    const UBaseType_t selectedPriority =
+        selected == nullptr || selected->task == nullptr ? 0 : selected->task->priority;
+    if (selected == nullptr || priority > selectedPriority
+        || (priority == selectedPriority && waiter->order < selected->order)) {
+      selected = waiter;
+    }
+  }
+
+  if (selected == nullptr) {
+    m_Locked = false;
+    Furble::Sim::schedulerCondition().notify_all();
+    return;
+  }
+
+  // Reserve ownership before publishing the wake. A new try_lock therefore
+  // cannot barge into the native-wake gap that used to let the UI conclude the
+  // scheduler was quiescent while this waiter had not made itself runnable yet.
+  unlinkWaiterLocked(selected);
+  selected->granted = true;
+  if (selected->task != nullptr) {
+    releaseTaskLocked(*selected->task, SimWaitResult::ready);
+    dispatchNextLocked();
+  }
+  Furble::Sim::schedulerCondition().notify_all();
+}
+
+void SchedulerMutex::lock(void) {
+  std::unique_lock<std::mutex> lock(Furble::Sim::schedulerMutex());
+  if (!m_Locked) {
+    m_Locked = true;
+    return;
+  }
+
+  SchedulerMutexWaiter waiter;
+  waiter.task = currentTask;
+  waiter.next = m_Waiters;
+  m_Waiters = &waiter;
+  if (currentTask != nullptr) {
+    setTaskBlockedLocked(true);
+    waiter.order = currentTask->wait_order;
+  } else {
+    waiter.order = nextReadyOrder++;
+  }
+
+  Furble::Sim::schedulerCondition().wait(lock, [&waiter]() {
+    return waiter.granted || Furble::Sim::schedulerStopping()
+           || (waiter.task != nullptr && waiter.task->stopping.load());
+  });
+
+  if (Furble::Sim::schedulerStopping()
+      || (waiter.task != nullptr && waiter.task->stopping.load())) {
+    if (waiter.granted) {
+      releaseLocked();
+    } else {
+      unlinkWaiterLocked(&waiter);
+    }
+    if (waiter.task != nullptr) {
+      throw SimTaskExit {};
+    }
+    throw SchedulerStopped {};
+  }
+
+  if (currentTask != nullptr) {
+    waitForTurnLocked(lock);
+    if (currentTask->stopping.load() || Furble::Sim::schedulerStopping()) {
+      releaseLocked();
+      throw SimTaskExit {};
+    }
+  }
+}
+
+bool SchedulerMutex::try_lock(void) {
+  const std::lock_guard<std::mutex> lock(Furble::Sim::schedulerMutex());
+  if (m_Locked) {
+    return false;
+  }
+  m_Locked = true;
+  return true;
+}
+
+void SchedulerMutex::unlock(void) {
+  std::unique_lock<std::mutex> lock(Furble::Sim::schedulerMutex());
+  releaseLocked();
+  preemptForHigherPriorityLocked(lock);
 }
 
 }  // namespace Furble::Sim

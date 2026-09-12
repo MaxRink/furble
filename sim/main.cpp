@@ -21,6 +21,7 @@
 #include "Scan.h"
 #include "ble_sim.h"
 #include "capture.h"
+#include "clock.h"
 #include "driver.h"
 #include "fuzz.h"
 #include "watchdog.h"
@@ -234,7 +235,18 @@ int main(int argc, char **argv) {
   furble_sim_check_step_detect_suppressed();
 
   int simulatorResult = 0;
-  std::thread simulator([&simulatorResult]() { simulatorResult = runSimulator(); });
+  std::thread simulator([&simulatorResult]() {
+    try {
+      simulatorResult = runSimulator();
+    } catch (const Furble::Sim::SchedulerStopped &) {
+      // A scheduler task failed while this unregistered UI thread was waiting
+      // for a scheduler-visible mutex. Leave lock() by exception rather than
+      // returning without ownership, then join the cooperative task unwind.
+      Furble::Sim::requestFailureExit();
+      furble_sim_stop_all_tasks();
+      simulatorResult = 1;
+    }
+  });
   // Sleep rather than spin. This wait is unbounded on purpose: a panel that
   // never comes up is a defect, not a slow host, and the stall watchdog turns
   // it into a thread dump and a non zero exit within its host bound. A yield

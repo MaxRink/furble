@@ -62,35 +62,36 @@ mutex, plan 158 Phase 3.
 `Camera::m_Mutex` is a `Furble::connect_mutex_t`. In every build except a
 `FURBLE_SIM` one that is `std::mutex`, so firmware and the host test suite
 compile the shipping type and the shipping lock discipline. Under `FURBLE_SIM`
-it is `Sim::SchedulerMutex`, the same `std::mutex` with the contended wait
-reported:
+it is `Sim::SchedulerMutex`, whose ownership and waiter list are serialized by
+the virtual scheduler.
 
-```
-void lock(void) {
-  if (m_Mutex.try_lock()) {
-    return;
-  }
-  schedulerHostBlockBegin();
-  m_Mutex.lock();
-  schedulerHostBlockEnd();
-}
-```
+The first implementation wrapped a native `std::mutex`: a contended task marked
+itself blocked before the native lock and runnable after acquiring it. That
+closed the long invisible wait, but left a smaller wake gap. On seed 31337 the
+control task released the camera mutex at virtual tick 470; the target host
+thread sometimes had not republished itself when the UI checked for runnable
+work, so the UI entered one extra 20 ms disconnect slice. Identical events then
+reached different timer phases and page-coverage counts.
 
-`schedulerHostBlockBegin()` is the existing `setTaskBlockedLocked(true)`: the
-waiter stops being runnable, gives up the turn, and the scheduler dispatches
-the holder immediately. `schedulerHostBlockEnd()` marks it runnable again and
-waits for its turn, exactly like the return from a queue wait. The wait carries
-no deadline and no queue, so nothing else releases it; the task releases itself
-when the real mutex is in hand, which is the real event the wait ends on.
-
-An uncontended acquisition costs one `try_lock` and reports nothing, so the
-common case never enters the scheduler.
+Unlock now selects exactly one registered waiter by task priority then wait
+order, reserves mutex ownership for it, and publishes it as runnable while the
+scheduler mutex is still held. Only then is the scheduler condition signalled.
+A newcomer therefore cannot barge into the wake gap, and UI quiescence cannot
+complete while the selected waiter is unpublished. Cancellation unlinks an
+unselected waiter or transfers a selected reservation before unwinding. A
+global stop unwinds a registered task with the scheduler's task-exit exception
+and an unregistered UI waiter with the matching simulator-thread exception.
 
 This is the smallest seam that closes the measured defect. Only
 `Camera::m_Mutex` changes type. It is the one host mutex production holds for
 seconds; `m_ConnParamsMutex`, `Scan::m_StateMutex` and the rest are held for
 microseconds and have never been measured to move a run. Widening the alias is
 mechanical if one of them ever does.
+
+The simulator selects mutex waiters by priority but does not implement FreeRTOS
+mutex priority inheritance. Instruction-level preemption, SMP/core affinity,
+and CPU-time accounting remain explicit limits; this seam is not complete
+hardware mutex parity.
 
 **This is a change in `lib/furble`, and it is a type alias behind
 `FURBLE_SIM`.** `lib/furble/Camera.h` gains the alias and the include that
