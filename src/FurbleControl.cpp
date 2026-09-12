@@ -170,6 +170,11 @@ void Control::Target::task(void) {
       default:
         ESP_LOGE(LOG_TAG, "Invalid control command %d.", cmd);
     }
+#if defined(FURBLE_TEST_SYNC)
+    if (cmd != CMD_ERROR && cmd != CMD_DISCONNECT) {
+      FURBLE_TEST_SYNC_POINT("target_command_complete");
+    }
+#endif
   }
 task_exit:
   m_Stopped = true;
