@@ -174,6 +174,18 @@ void addToInputGroup(lv_group_t *group, lv_obj_t *obj) {
   }
 }
 
+bool inputObjectVisible(lv_obj_t *obj) {
+  if (obj == nullptr || !lv_obj_is_valid(obj)) {
+    return false;
+  }
+  for (lv_obj_t *parent = obj; parent != nullptr; parent = lv_obj_get_parent(parent)) {
+    if (lv_obj_has_flag(parent, LV_OBJ_FLAG_HIDDEN)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 void setLabelIfChanged(lv_obj_t *label, const char *text) {
   if ((label != nullptr) && std::strcmp(lv_label_get_text(label), text)) {
     lv_label_set_text(label, text);
@@ -778,35 +790,94 @@ void UI::startCompanionPairingTimer(void) {
   }
 }
 
+lv_group_t *UI::activeInputGroup(void) const {
+  return m_ModalInputs.empty() ? m_Group : m_ModalInputs.back().group;
+}
+
+void UI::acquireModalInput(lv_obj_t *dialog, std::initializer_list<lv_obj_t *> controls,
+                           lv_obj_t *focus) {
+  lv_group_t *current = activeInputGroup();
+  modal_input_t input = {dialog, lv_group_create(), lv_group_get_focused(current)};
+  for (lv_obj_t *control : controls) {
+    addToInputGroup(input.group, control);
+  }
+  m_ModalInputs.push_back(input);
+
+  // Modal footer controls are encoder-driven even when the page below was in
+  // shutter, slider or preset mode. Keep the remembered page mode unchanged;
+  // releaseModalInput restores it after the final dialog closes.
+  configureControl(ControlMode::MENU, false);
+  lv_indev_set_group(m_ButtonL, input.group);
+  lv_indev_set_group(m_ButtonO, input.group);
+  lv_indev_set_group(m_ButtonR, input.group);
+  if (focus != nullptr) {
+    lv_group_focus_obj(focus);
+  }
+}
+
+void UI::releaseModalInput(lv_obj_t *dialog) {
+  auto found = std::find_if(m_ModalInputs.begin(), m_ModalInputs.end(),
+                            [dialog](const modal_input_t &input) { return input.dialog == dialog; });
+  if (found == m_ModalInputs.end()) {
+    return;
+  }
+
+  const bool wasActive = found == m_ModalInputs.end() - 1;
+  lv_obj_t *previousFocus = found->previousFocus;
+  lv_group_delete(found->group);
+  m_ModalInputs.erase(found);
+  if (!wasActive) {
+    return;
+  }
+
+  lv_group_t *group = activeInputGroup();
+  lv_indev_set_group(m_ButtonL, group);
+  lv_indev_set_group(m_ButtonO, group);
+  lv_indev_set_group(m_ButtonR, group);
+
+  const bool connectVisible = group == m_Group && m_ConnectContext.cancel != nullptr
+                              && lv_obj_is_valid(m_ConnectContext.cancel)
+                              && m_ConnectContext.messageBox != nullptr
+                              && lv_obj_is_valid(m_ConnectContext.messageBox)
+                              && !lv_obj_has_flag(m_ConnectContext.messageBox,
+                                                  LV_OBJ_FLAG_HIDDEN);
+  configureControl(connectVisible ? ControlMode::MENU : ControlMode::REVERT, false);
+
+  if (connectVisible) {
+    lv_group_focus_obj(m_ConnectContext.cancel);
+  } else if (inputObjectVisible(previousFocus) && lv_obj_get_group(previousFocus) == group) {
+    lv_group_focus_obj(previousFocus);
+  } else if (inputObjectVisible(lv_group_get_focused(group))) {
+    // The underlying modal may already have selected another footer control.
+  } else if (group == m_Group) {
+    lv_obj_t *back = lv_menu_get_main_header_back_button(m_MainMenu.main);
+    const auto scan = m_Menu.find(m_ScanStr);
+    lv_obj_t *fallback = inputObjectVisible(back)
+                             ? back
+                             : (scan != m_Menu.end() ? scan->second.button : nullptr);
+    if (inputObjectVisible(fallback)) {
+      lv_group_focus_obj(fallback);
+    }
+  }
+}
+
 void UI::closeCompanionPairingDialog(void) {
   if (m_CompanionPairingDialog != nullptr) {
+    releaseModalInput(m_CompanionPairingDialog);
     if (lv_obj_is_valid(m_CompanionPairingDialog)) {
       lv_msgbox_close_async(m_CompanionPairingDialog);
     }
     m_CompanionPairingDialog = nullptr;
   }
-
-  if (m_CompanionPairingPrevFocus != nullptr) {
-    if (lv_obj_is_valid(m_CompanionPairingPrevFocus)) {
-      lv_group_focus_obj(m_CompanionPairingPrevFocus);
-    }
-    m_CompanionPairingPrevFocus = nullptr;
-  }
 }
 
 void UI::closeConnectErrorDialog(void) {
   if (m_ConnectErrorDialog != nullptr) {
+    releaseModalInput(m_ConnectErrorDialog);
     if (lv_obj_is_valid(m_ConnectErrorDialog)) {
       lv_msgbox_close_async(m_ConnectErrorDialog);
     }
     m_ConnectErrorDialog = nullptr;
-  }
-
-  if (m_ConnectErrorPrevFocus != nullptr) {
-    if (lv_obj_is_valid(m_ConnectErrorPrevFocus)) {
-      lv_group_focus_obj(m_ConnectErrorPrevFocus);
-    }
-    m_ConnectErrorPrevFocus = nullptr;
   }
 }
 
@@ -817,11 +888,10 @@ void UI::showConnectError(const char *title, const char *text) {
     }
     // The box went away with its screen. Drop the dangling handle rather than
     // letting it block the prompt for the rest of the session.
+    releaseModalInput(m_ConnectErrorDialog);
     m_ConnectErrorDialog = nullptr;
-    m_ConnectErrorPrevFocus = nullptr;
   }
 
-  m_ConnectErrorPrevFocus = lv_group_get_focused(m_Group);
   m_ConnectErrorDialog = lv_msgbox_create(nullptr);
   // A message box is LV_SIZE_CONTENT by default, so a prose string makes it
   // wider than the panel and the text is clipped on both edges: on the 135x240
@@ -871,9 +941,7 @@ void UI::showConnectError(const char *title, const char *text) {
   lv_obj_set_width(body, LV_PCT(100));
 
   lv_obj_t *ok = lv_msgbox_add_footer_button(m_ConnectErrorDialog, "OK");
-  // Add the button to the encoder group so it is focusable and operable on
-  // non-touch devices, exactly as the companion pairing prompt does.
-  addToInputGroup(m_Group, ok);
+  // Modal input ownership makes the button encoder-operable on no-touch boards.
   lv_obj_add_event_cb(
       ok,
       [](lv_event_t *event) {
@@ -989,7 +1057,7 @@ void UI::showConnectError(const char *title, const char *text) {
     lv_obj_update_layout(m_ConnectErrorDialog);
   }
 
-  lv_group_focus_obj(ok);
+  acquireModalInput(m_ConnectErrorDialog, {ok}, ok);
 }
 
 void UI::stopCompanionPairingTimer(void) {
@@ -1015,15 +1083,13 @@ void UI::companionPairingTimer(lv_timer_t *timer) {
 
   char text[96];
   std::snprintf(text, sizeof(text), "Confirm number:\n%06lu", companion.getPendingPairingPin());
-  ui->m_CompanionPairingPrevFocus = lv_group_get_focused(ui->m_Group);
   ui->m_CompanionPairingDialog = lv_msgbox_create(nullptr);
   lv_msgbox_add_title(ui->m_CompanionPairingDialog, "Pair companion");
   lv_msgbox_add_text(ui->m_CompanionPairingDialog, text);
 
   lv_obj_t *accept = lv_msgbox_add_footer_button(ui->m_CompanionPairingDialog, "Accept");
-  // Add the button to the encoder group so it is focusable and operable on
-  // non-touch devices. Without this, lv_group_focus_obj below is a no-op.
-  addToInputGroup(ui->m_Group, accept);
+  // The dedicated modal group below keeps both buttons encoder-operable without
+  // exposing background page controls.
   lv_obj_add_event_cb(
       accept,
       [](lv_event_t *event) {
@@ -1034,7 +1100,6 @@ void UI::companionPairingTimer(lv_timer_t *timer) {
       LV_EVENT_CLICKED, ui);
 
   lv_obj_t *reject = lv_msgbox_add_footer_button(ui->m_CompanionPairingDialog, "Reject");
-  addToInputGroup(ui->m_Group, reject);
   lv_obj_add_event_cb(
       reject,
       [](lv_event_t *event) {
@@ -1044,7 +1109,7 @@ void UI::companionPairingTimer(lv_timer_t *timer) {
       },
       LV_EVENT_CLICKED, ui);
 
-  lv_group_focus_obj(accept);
+  ui->acquireModalInput(ui->m_CompanionPairingDialog, {accept, reject}, accept);
 }
 
 void UI::buttonPWRRead(lv_indev_t *drv, lv_indev_data_t *data) {
@@ -2648,33 +2713,29 @@ void UI::displayNavigationBar(bool show) {
 }
 
 void UI::configureControl(ControlMode mode, bool set) {
-  switch (mode) {
+  if (set && mode != ControlMode::REVERT) {
+    m_ControlMode = mode;
+  }
+
+  ControlMode applied = mode == ControlMode::REVERT ? m_ControlMode : mode;
+  if (!m_ModalInputs.empty()) {
+    applied = ControlMode::MENU;
+  }
+
+  switch (applied) {
     case ControlMode::MENU:
-      if (set) {
-        m_ControlMode = ControlMode::MENU;
-      }
       configMenuControl();
       break;
     case ControlMode::SHUTTER:
-      if (set) {
-        m_ControlMode = ControlMode::SHUTTER;
-      }
       configShutterControl();
       break;
     case ControlMode::SLIDER:
-      if (set) {
-        m_ControlMode = ControlMode::SLIDER;
-      }
       configSliderControl();
       break;
     case ControlMode::PRESET:
-      if (set) {
-        m_ControlMode = ControlMode::PRESET;
-      }
       configPresetControl();
       break;
     case ControlMode::REVERT:
-      configureControl(m_ControlMode);
       break;
   }
 }
@@ -3058,7 +3119,7 @@ void UI::simScenarioActionOnUi(const Sim::scenario_action_t &action) {
   // reachable and focused there.
   if (simpleAction && command == "select") {
     m_SimActionResult = sim_action_result_t::VALID_NO_EFFECT;
-    lv_obj_t *focused = lv_group_get_focused(m_Group);
+    lv_obj_t *focused = lv_group_get_focused(activeInputGroup());
     if (focused != nullptr && lv_obj_is_valid(focused)) {
       lv_obj_send_event(focused, LV_EVENT_CLICKED, this);
       m_SimActionResult = sim_action_result_t::APPLIED;
@@ -4163,9 +4224,25 @@ std::string UI::simQueryState(const char *key) {
     if (accept == nullptr) {
       return "no";
     }
-    const bool inGroup = lv_obj_get_group(accept) == m_Group;
-    const bool focused = lv_group_get_focused(m_Group) == accept;
+    lv_group_t *group = activeInputGroup();
+    const bool inGroup = lv_obj_get_group(accept) == group;
+    const bool focused = lv_group_get_focused(group) == accept;
     return (inGroup && focused) ? "yes" : "no";
+  }
+
+  if (query == "modal_focus_control") {
+    if (m_CompanionPairingDialog == nullptr || !lv_obj_is_valid(m_CompanionPairingDialog)) {
+      return "closed";
+    }
+    lv_obj_t *footer = lv_msgbox_get_footer(m_CompanionPairingDialog);
+    lv_obj_t *focused = lv_group_get_focused(activeInputGroup());
+    if (footer != nullptr && focused == lv_obj_get_child(footer, 0)) {
+      return "accept";
+    }
+    if (footer != nullptr && focused == lv_obj_get_child(footer, 1)) {
+      return "reject";
+    }
+    return "other";
   }
 
   // The connect error box: "none" when nothing is up, otherwise its rendered
@@ -4221,7 +4298,7 @@ std::string UI::simQueryState(const char *key) {
   // modal closes, a null or stale focus means the input group is trapped and no
   // button can be reached (task #32 class).
   if (query == "focus") {
-    lv_obj_t *focused = lv_group_get_focused(m_Group);
+    lv_obj_t *focused = lv_group_get_focused(activeInputGroup());
     if (focused == nullptr) {
       return "none";
     }
@@ -9777,7 +9854,7 @@ void UI::showStorageConfirm(bool import) {
   }
 
   m_StorageImport = import;
-  m_StorageMessageBox = lv_msgbox_create(m_Screen);
+  m_StorageMessageBox = lv_msgbox_create(nullptr);
   lv_msgbox_add_title(m_StorageMessageBox, import ? "Import Settings" : "Export Settings");
   lv_msgbox_add_text(m_StorageMessageBox,
                      import ? "Overwrite all settings and restart?" : "Write all settings to SD?");
@@ -9786,8 +9863,6 @@ void UI::showStorageConfirm(bool import) {
 
   lv_obj_t *cancel = lv_msgbox_add_footer_button(m_StorageMessageBox, "Cancel");
   lv_obj_t *confirm = lv_msgbox_add_footer_button(m_StorageMessageBox, "Confirm");
-  lv_group_add_obj(m_Group, cancel);
-  lv_group_add_obj(m_Group, confirm);
   lv_obj_add_event_cb(
       cancel,
       [](lv_event_t *e) { static_cast<UI *>(lv_event_get_user_data(e))->cancelStorageAction(); },
@@ -9796,7 +9871,7 @@ void UI::showStorageConfirm(bool import) {
       confirm,
       [](lv_event_t *e) { static_cast<UI *>(lv_event_get_user_data(e))->confirmStorageAction(); },
       LV_EVENT_CLICKED, this);
-  lv_group_focus_obj(confirm);
+  acquireModalInput(m_StorageMessageBox, {cancel, confirm}, confirm);
 }
 
 void UI::cancelStorageAction(void) {
@@ -9804,6 +9879,7 @@ void UI::cancelStorageAction(void) {
     return;
   }
 
+  releaseModalInput(m_StorageMessageBox);
   lv_msgbox_close_async(m_StorageMessageBox);
   m_StorageMessageBox = nullptr;
 }
@@ -9816,6 +9892,7 @@ void UI::confirmStorageAction(void) {
   const bool import = m_StorageImport;
   lv_obj_t *messageBox = m_StorageMessageBox;
   m_StorageMessageBox = nullptr;
+  releaseModalInput(messageBox);
   lv_msgbox_close_async(messageBox);
 
   // the SD writer task closes a running track, runs the transfer, and
@@ -10154,7 +10231,7 @@ void UI::showLowBatteryWarning(bool powerOff) {
   }
 
   if (m_LowBatteryMessageBox == nullptr) {
-    m_LowBatteryMessageBox = lv_msgbox_create(m_Screen);
+    m_LowBatteryMessageBox = lv_msgbox_create(nullptr);
     lv_msgbox_add_title(m_LowBatteryMessageBox, "Low battery");
     lv_obj_set_width(m_LowBatteryMessageBox, LV_PCT(100));
 
@@ -10180,9 +10257,7 @@ void UI::showLowBatteryWarning(bool powerOff) {
         },
         LV_EVENT_CLICKED, this);
 
-    // remember where the user was so dismissing puts them back there
-    m_LowBatteryPrevFocus = lv_group_get_focused(m_Group);
-    lv_group_focus_obj(dismiss);
+    acquireModalInput(m_LowBatteryMessageBox, {dismiss}, dismiss);
   }
 
   lv_label_set_text(m_LowBatteryMessage, powerOff ? m_LowBattCriticalText : m_LowBattWarnText);
@@ -10190,17 +10265,10 @@ void UI::showLowBatteryWarning(bool powerOff) {
 
 void UI::closeLowBatteryWarning(void) {
   if (m_LowBatteryMessageBox != nullptr) {
+    releaseModalInput(m_LowBatteryMessageBox);
     lv_msgbox_close_async(m_LowBatteryMessageBox);
     m_LowBatteryMessageBox = nullptr;
     m_LowBatteryMessage = nullptr;
-
-    // Put the focus back where it was before the box stole it. The object
-    // may have been deleted while the box was open, lv_obj_is_valid walks
-    // the tree comparing pointers and never dereferences a stale one.
-    if ((m_LowBatteryPrevFocus != nullptr) && lv_obj_is_valid(m_LowBatteryPrevFocus)) {
-      lv_group_focus_obj(m_LowBatteryPrevFocus);
-    }
-    m_LowBatteryPrevFocus = nullptr;
   }
 }
 

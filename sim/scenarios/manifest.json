@@ -2123,6 +2123,30 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/e2e/modal-input-overlap.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/modal-input-ownership.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/e2e/multi-connect-false-connected.txt",
       "suite": "e2e",
       "owner": "sim-e2e",

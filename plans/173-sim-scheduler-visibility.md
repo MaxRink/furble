@@ -222,6 +222,16 @@ Debian bookworm arm64, 11 cores. Load is generated with spin loops.
 | Firmware, `FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3-debug` | SUCCESS |
 | `sdkconfig.*` | unchanged |
 
+The guarded replay later exposed a separate UI ordering defect after the mutex
+wake gap was fixed. Companion pairing and connect progress could both be
+visible, while their footer buttons shared the page's encoder group. PREV moved
+from pairing Accept to the background connect Cancel; SELECT therefore either
+closed pairing or cancelled the camera according to timer order, changing the
+visited-page report with the same event stream. Real dialogs now own stacked
+encoder groups containing only their footer controls. The focused regression
+covers both connect/pairing creation orders, no-touch PRESET and SHUTTER mode
+restoration, and out-of-order closure of an underlying low-battery warning.
+
 ### Issue #279
 
 `cancel-sweep-fauxny-ui` is the leg the issue measured. Its 24000 ms bound is

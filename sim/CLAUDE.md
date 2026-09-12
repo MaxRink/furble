@@ -215,7 +215,11 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   `FUZZ EVENTS` and `FUZZ COVERAGE` lines when it replays one guarded seed, so
   the event stream and the pages it reaches are deterministic. The connect-long
   `Camera::m_Mutex` is scheduler visible, and ownership is reserved before its
-  selected waiter is published. Other production mutexes are still invisible,
+  selected waiter is published. Async dialogs use a dedicated, stacked input
+  group per modal: PREV/NEXT cannot escape into background controls, and an
+  underlying dialog may close without detaching input from the one above it.
+  Keep new modal controls on that shared ownership path rather than adding them
+  directly to the page group. Other production mutexes are still invisible,
   so new cross-task contention needs the same measured review. Mutex priority
   inheritance is not modeled.
   `observed_delta` and `no_observed_delta` remain masked because asynchronous

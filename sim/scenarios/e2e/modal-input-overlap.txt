@@ -1,0 +1,31 @@
+# Closing a background modal must not detach input from the dialog above it.
+# Low-battery recovery retires its warning asynchronously while the companion
+# prompt remains active, exercising the modal-owner stack's out-of-order path.
+seed no_touch true
+seed low_batt 1
+seed battery_level 9
+seed battery_voltage 3500
+seed battery_current 0
+seed battery_charging false
+wait 35000
+assert ui.low_battery warn
+
+action companion-pair-request
+wait 300
+assert ui.modal open
+assert ui.modal_focus_control accept
+
+action battery 80 4000 0 false
+wait 6000
+assert ui.low_battery none
+assert ui.modal open
+assert ui.modal_focus_control accept
+
+btn pwr
+assert ui.modal_focus_control reject
+btn a
+wait 100
+assert ui.modal closed
+assert ui.focus ok
+assert ui.focus_on_page yes
+exit

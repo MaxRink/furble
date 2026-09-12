@@ -809,9 +809,7 @@ class UI {
   lv_timer_t *m_DiagnosticsTimer;
   lv_timer_t *m_CompanionPairingTimer = nullptr;
   lv_obj_t *m_CompanionPairingDialog = nullptr;
-  lv_obj_t *m_CompanionPairingPrevFocus = nullptr;
   lv_obj_t *m_ConnectErrorDialog = nullptr;
-  lv_obj_t *m_ConnectErrorPrevFocus = nullptr;
   lv_obj_t *m_StorageMessageBox = nullptr;
   bool m_StorageImport = false;
   lv_obj_t *m_StorageMenuMain = nullptr;
@@ -843,6 +841,13 @@ class UI {
   lv_indev_t *m_ButtonR;
   lv_indev_t *m_Touch = nullptr;
   lv_group_t *m_Group;
+
+  struct modal_input_t {
+    lv_obj_t *dialog;
+    lv_group_t *group;
+    lv_obj_t *previousFocus;
+  };
+  std::vector<modal_input_t> m_ModalInputs;
 
   lv_display_t *m_Display = nullptr;
   lv_obj_t *m_Screen = nullptr;
@@ -967,8 +972,6 @@ class UI {
   uint32_t m_LowBatteryPowerOffSince = 0;
   lv_obj_t *m_LowBatteryMessageBox = nullptr;
   lv_obj_t *m_LowBatteryMessage = nullptr;
-  /** Focused object before the warning stole the focus, restored on close. */
-  lv_obj_t *m_LowBatteryPrevFocus = nullptr;
   bool m_PoweringOff = false;
   uint8_t m_WakeGesture = 0;
   bool m_DoubleTapShutter = false;
@@ -1426,6 +1429,16 @@ class UI {
 
   /** Close the pairing prompt and restore the focus captured before it opened. */
   void closeCompanionPairingDialog(void);
+
+  /** Give a modal exclusive ownership of the physical encoder controls. */
+  void acquireModalInput(lv_obj_t *dialog, std::initializer_list<lv_obj_t *> controls,
+                         lv_obj_t *focus);
+
+  /** Release a modal's encoder ownership and restore the dialog below it. */
+  void releaseModalInput(lv_obj_t *dialog);
+
+  /** The group currently driven by the physical encoder controls. */
+  lv_group_t *activeInputGroup(void) const;
 
   /**
    * Show a connect failure the user has to dismiss.
