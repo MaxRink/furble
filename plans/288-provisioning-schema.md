@@ -15,9 +15,10 @@ audit.
 
 ## Deviations and remaining gates
 
-Golden fixtures were intentionally not regenerated in this change. The root
-agent must run the protocol fixture generator and review the resulting corpus
-delta. Builds and tests are also pending. The duplicate check covers the
+The generated golden corpus is unchanged after regeneration, and protocol
+conformance passed. Both `provision_apply_test` and
+`provision_apply_mqtt_test` passed through CTest. Full host, firmware, and
+broader CI validation remain separate gates. The duplicate check covers the
 checked-in master settings table; cross-PR collision review remains a rebase-time
-operation because open-head state is external to the repository. Issue #280
-remains open until the ledger and its cross-PR review guard are completed.
+operation because open-head state is external to the repository. Issues #288 and
+#280 remain open until their complete review gates are satisfied.

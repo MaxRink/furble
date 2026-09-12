@@ -45,10 +45,10 @@ lands on fork master. This file applies once it does.
   50+ design documents, 90+ deferred ideas. Do not renumber existing docs.
 - `00-hardware-experiments.md` records measured hardware facts (crystal, GPS
   backup rail, $PCAS support). Cite it instead of re-measuring.
-- Charging auto-off policy work updates `13-auto-off-low-batt.md` and reserves
-  wire id 42 for timezone. The charging opt-in uses wire id 43 only after an
-  audit of current master and open relevant branches. Wire id 45 remains
-  reserved for the companion-password contract, while IMU uses wire id 46.
+- Charging auto-off policy work updates `13-auto-off-low-batt.md`. Current
+  master uses wire id 43 for the charging opt-in, 46 for IMU, and 47 for the
+  companion-password contract. Wire ids 42 and 45 have historical claims and
+  require a compatibility audit before any allocation or reuse.
   Keep the default auto-off behavior unchanged on boards without
   charging telemetry, suppress auto-off while charging by default, and avoid
   NVS writes from policy ticks.
