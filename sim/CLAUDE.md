@@ -260,6 +260,13 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   idempotent because `CameraList::add_index()` overwrites by name (see
   plans/156-restart-restore-seam.md for the seam limits).
   See `docs/sim.md` for every action value and query key.
+- `btn` / `button` is a native input-device seam, not a focus shortcut. It
+  supplies coherent pressed and released samples through the production board
+  read callback and asks LVGL to read the device in its current encoder or
+  button mode. This retains the firmware wake interception, long-press helper
+  and shutter press/release path. A scripted hold advances virtual time past
+  the long-press thresholds and supplies one additional held sample; it is a
+  deterministic two-sample model, not a model of the hardware's repeat cadence.
 - Scenario parsing is a pre-runtime gate: every verb has strict arity and
   numeric validation, unknown verbs/options and trailing values are rejected
   with status 2, and duplicate `seed` names are invalid. `action` lines are

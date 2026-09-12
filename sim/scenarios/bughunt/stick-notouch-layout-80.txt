@@ -171,7 +171,7 @@ assert ui.connected yes
 assert ui.label_overlaps 0
 assert ui.indicator_clearance clear
 # All eight rows stay in the encoder route. Reach Disconnect without activating
-# it, then reopen the page and activate Cameras through the real select button.
+# it, then walk the real previous button back to Cameras and select it.
 assert ui.row_text Remote
 button b
 button b
@@ -186,11 +186,12 @@ assert ui.focus_on_page yes
 assert ui.row_scrolling no
 assert ui.cut_labels 0
 assert ui.indicator_clearance clear
-action page connected
-wait 150
-assert ui.row_text Remote
-button b
-button b
+button pwr
+button pwr
+button pwr
+button pwr
+button pwr
+wait 200
 assert ui.row_text Cameras
 button a
 wait 200

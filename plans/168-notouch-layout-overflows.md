@@ -725,6 +725,28 @@ the three exact formerly failing scenarios passed, as did
 certification: the full no-touch suites, regenerated gallery, firmware matrix
 and physical-device checks remain separate gates.
 
+### Physical-button input correction
+
+The new focus walks exposed a simulator-input shortcut rather than a layout
+defect. `button b` sent `LV_KEY_RIGHT` directly to the focus group. LVGL's
+encoder processor normally turns that key into an encoder difference before it
+moves focus, so the shortcut left Scan focused however many times the scenario
+pressed the physical next button.
+
+The simulator now supplies pressed and released state through the same board
+read callbacks as firmware and calls LVGL's public input-device read path. That
+keeps the current encoder/button mode, wake interception, left-button long press
+and shutter press/release behavior in the exercised path. A hold advances the
+shared virtual clock and supplies a second pressed sample beyond the long-press
+thresholds. This is deliberately a coarse two-sample hold, not a hardware
+repeat-cadence model.
+
+At `7f0f289f5dac7dc60adaac635cdb354dba549b31`, the S3 simulator build passed
+and the native walk reached Home Off and Settings, then Connected Disconnect.
+The first scenario draft incorrectly assumed that reopening the already-current
+Connected page reset LVGL's retained focus. The final walk instead uses the
+physical previous button from Disconnect back to Cameras before selecting it.
+
 ## Deviations
 
 The plan as first drafted proposed dropping the Infrared entry from the 135x240

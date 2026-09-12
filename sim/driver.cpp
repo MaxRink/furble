@@ -563,10 +563,10 @@ void readScript(const std::string &path) {
       steps.push_back(step);
     } else if (command == "btn" || command == "button") {
       // Press a physical button by name: a, b, c or pwr. An optional second
-      // token "hold"/"long" selects the left-button long-press escape. Absent
-      // it, the button taps. The name is validated against the board's button
-      // set here so pressing an absent button (BtnC on a Stick, BtnPWR on a
-      // Core) fails at parse time.
+      // token "hold"/"long" holds it beyond the production and LVGL long-press
+      // thresholds. Absent it, the button taps. The name is validated against
+      // the board's button set here so pressing an absent button (BtnC on a
+      // Stick, BtnPWR on a Core) fails at parse time.
       if (args.size() < 2 || args.size() > 3) {
         rejectArity(command, "a button and optional hold modifier");
       }

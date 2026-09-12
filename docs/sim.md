@@ -243,7 +243,7 @@ text after a comment are ignored. Each line starts with one verb.
 | `wait` / `advance` | `wait MS` or `advance MS` advances virtual time. |
 | `stall` | `stall MS` advances virtual time without running the platform update loop. On the StickS3 model this can expire the PM1 watchdog; `MS` must be non-zero. |
 | `key` / `press` | `key KEY` or `press KEY`, where `KEY` is `up`, `down`, `left`, `right`, `return`, or `enter`. |
-| `btn` / `button` | `btn NAME [hold\|long]` or `button NAME [hold\|long]`. Stick boards expose `a`, `b`, and `pwr`; Core exposes `a`, `b`, and `c`. |
+| `btn` / `button` | `btn NAME [hold\|long]` or `button NAME [hold\|long]`. Stick boards expose `a`, `b`, and `pwr`; Core exposes `a`, `b`, and `c`. Pressed/released samples traverse the production read callback and LVGL input processing in the device's current mode. A hold advances virtual time and supplies one additional held sample; it does not reproduce the hardware repeat cadence. |
 | `capture` | `capture NAME` writes a PNG under the capture directory. |
 | `uart-dump` | Prints captured fake-UART writes as `uart-tx` lines, then clears them. |
 | `home` | Goes to the root menu and focuses Scan. |
