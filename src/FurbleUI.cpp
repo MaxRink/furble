@@ -4404,9 +4404,8 @@ std::string UI::simQueryState(const char *key) {
     // matrix scenario, so adding a page cannot silently turn into "other" in
     // host coverage. Optional capability pages are looked up with find below
     // because their menu entries are not built when the capability is absent.
-    const std::array<std::pair<const char *, const char *>, 56> pages = {
-        {
-         {m_ConnectStr, "connect"},
+    const std::pair<const char *, const char *> pages[] = {
+        {m_ConnectStr, "connect"},
          {m_ConnectedStr, "connected"},
          {m_ScanStr, "scan"},
          {m_DeleteStr, "delete"},
@@ -4462,7 +4461,6 @@ std::string UI::simQueryState(const char *key) {
          {m_IntervalWaitStr, "interval_wait"},
          {m_LevelStr, "level"},
          {m_IMUDataStr, "imu"},
-         }
     };
     for (const auto &entry : pages) {
       const auto found = m_Menu.find(entry.first);
