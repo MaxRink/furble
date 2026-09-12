@@ -702,8 +702,8 @@ clearance, cut labels and both scroll extents.
 
 The simulator's cut-label query still exempts a scrolling label from intrinsic
 width truncation, because its text is revealed over time. It no longer exempts
-that label from ancestor clipping: a scrolling animation outside its parent is
-still unreadable and is counted.
+that label from immediate-parent clipping: a scrolling animation outside its
+row is still unreadable and is counted.
 
 ## Deviations
 

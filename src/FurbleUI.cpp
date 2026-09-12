@@ -3877,7 +3877,7 @@ uint32_t UI::countCutLabels(void) {
     }
     // A scrolling label is not intrinsically too narrow because it shows the
     // whole text over time. It is still cut if its drawn box escapes an
-    // ancestor's content box.
+    // immediate parent's content box.
     if (lv_obj_check_type(obj, &lv_label_class) && !lv_obj_has_flag(obj, LV_OBJ_FLAG_FLOATING)) {
       lv_area_t coords;
       lv_obj_get_coords(obj, &coords);
@@ -8633,20 +8633,24 @@ void UI::addBulbMenu(const menu_t &parent) {
 void UI::addDisplayMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_DisplayStr, &icon_settings_brightness, true, parent);
   lv_obj_t *cont = lv_menu_cont_create(menu.page);
-  lv_obj_set_height(cont, LV_PCT(100));
 #if defined(FURBLE_M5STICKC) || defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
-  // This page carries seven widgets in a container pinned to the page height,
-  // and SPACE_EVENLY has nothing to distribute once they no longer fit: it
-  // packs them on top of each other, which is the ten overlapping pairs this
-  // page drew at Normal. The container's own padding is the cheapest height to
-  // give back, and it is doing no work here.
+  // Let the page scroll when these seven widgets exceed a Stick viewport.
+  // Pinning the container to the viewport made SPACE_EVENLY use negative space
+  // and draw adjacent controls over one another.
+  lv_obj_set_height(cont, LV_SIZE_CONTENT);
   lv_obj_set_style_pad_top(cont, 0, LV_STATE_DEFAULT);
   lv_obj_set_style_pad_bottom(cont, 0, LV_STATE_DEFAULT);
   lv_obj_set_style_pad_row(cont, 0, LV_STATE_DEFAULT);
+#else
+  lv_obj_set_height(cont, LV_PCT(100));
 #endif
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+#if defined(FURBLE_M5STICKC) || defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
+  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+#else
   lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
                         LV_FLEX_ALIGN_CENTER);
+#endif
 
   // Add brightness control
   lv_obj_t *label = lv_label_create(cont);
