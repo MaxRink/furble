@@ -1864,18 +1864,7 @@ void UI::reserveLegendColumns(lv_obj_t *page) {
       // entire reservation stays beside the right-hand legend.
       lv_obj_set_style_translate_x(row, -(reserve / 2), LV_PART_MAIN);
     }
-  }
-
-  // Resolve every row from its final page width before capping deliberately
-  // wrapped labels. Reading the child width in the same pass that narrows its
-  // row can capture the row's old content width; the label then keeps that
-  // stale cap after the row expands and wraps text that would fit on one line.
-  lv_obj_update_layout(page);
-  for (uint32_t i = 0; i < lv_obj_get_child_count(page); i++) {
-    lv_obj_t *row = lv_obj_get_child(page, i);
-    if ((row == nullptr) || !lv_obj_is_valid(row) || lv_obj_has_flag(row, LV_OBJ_FLAG_FLOATING)) {
-      continue;
-    }
+    lv_obj_update_layout(row);
     for (uint32_t j = 0; j < lv_obj_get_child_count(row); j++) {
       lv_obj_t *child = lv_obj_get_child(row, j);
       if ((child != nullptr) && lv_obj_check_type(child, &lv_label_class)
@@ -8095,12 +8084,14 @@ lv_obj_t *UI::addSpinItem(lv_obj_t *page, const char *item, Intervalometer::Spin
   lv_obj_set_style_pad_top(spinner.m_Button, 1, LV_STATE_DEFAULT);
   lv_obj_set_style_pad_bottom(spinner.m_Button, 1, LV_STATE_DEFAULT);
 #elif defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
-  // A wrapped name/value row otherwise pushes the Bulb page below the 189 px
-  // physical-button viewport. Keep the documented narrow-panel padding.
+  // Keep the vertical breathing room, but not horizontal padding: at the Large
+  // font "999 mins" is 103 px, exactly the narrowed row's outer width.
+  // Spending four of those pixels on padding wraps the value to a second line
+  // and pushes the Bulb page below the physical-button viewport.
   lv_obj_set_style_pad_top(spinner.m_Button, 2, LV_STATE_DEFAULT);
   lv_obj_set_style_pad_bottom(spinner.m_Button, 2, LV_STATE_DEFAULT);
-  lv_obj_set_style_pad_left(spinner.m_Button, 2, LV_STATE_DEFAULT);
-  lv_obj_set_style_pad_right(spinner.m_Button, 2, LV_STATE_DEFAULT);
+  lv_obj_set_style_pad_left(spinner.m_Button, 0, LV_STATE_DEFAULT);
+  lv_obj_set_style_pad_right(spinner.m_Button, 0, LV_STATE_DEFAULT);
 #endif
 
   spinner.m_Label = lv_label_create(spinner.m_Button);
