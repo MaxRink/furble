@@ -876,8 +876,7 @@ int main() {
   if (xTaskCreate(mutexWaitTask, "mutex-low", 0, &mutexLow, kCompanionPriority, &mutexLowTask)
           != pdPASS
       || !waitForBlocked(mutexLowTask)
-      || xTaskCreate(mutexWaitTask, "mutex-high", 0, &mutexHigh, kControlPriority,
-                     &mutexHighTask)
+      || xTaskCreate(mutexWaitTask, "mutex-high", 0, &mutexHigh, kControlPriority, &mutexHighTask)
              != pdPASS
       || !waitForBlocked(mutexHighTask)) {
     return fail(__LINE__);

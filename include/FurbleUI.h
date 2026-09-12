@@ -1431,7 +1431,8 @@ class UI {
   void closeCompanionPairingDialog(void);
 
   /** Give a modal exclusive ownership of the physical encoder controls. */
-  void acquireModalInput(lv_obj_t *dialog, std::initializer_list<lv_obj_t *> controls,
+  void acquireModalInput(lv_obj_t *dialog,
+                         std::initializer_list<lv_obj_t *> controls,
                          lv_obj_t *focus);
 
   /** Release a modal's encoder ownership and restore the dialog below it. */

@@ -293,8 +293,7 @@ int main(int argc, char **argv) {
     std::this_thread::sleep_for(std::chrono::microseconds(200));
   }
   int panelLoopResult = 0;
-  while (!Furble::Sim::exitRequested()
-         && (panelLoopResult = lgfx::Panel_sdl::loop()) == 0) {
+  while (!Furble::Sim::exitRequested() && (panelLoopResult = lgfx::Panel_sdl::loop()) == 0) {
   }
 
   if (std::getenv("FURBLE_SIM_FUZZ_DIAGNOSTICS") != nullptr) {

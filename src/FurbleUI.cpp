@@ -794,7 +794,8 @@ lv_group_t *UI::activeInputGroup(void) const {
   return m_ModalInputs.empty() ? m_Group : m_ModalInputs.back().group;
 }
 
-void UI::acquireModalInput(lv_obj_t *dialog, std::initializer_list<lv_obj_t *> controls,
+void UI::acquireModalInput(lv_obj_t *dialog,
+                           std::initializer_list<lv_obj_t *> controls,
                            lv_obj_t *focus) {
   lv_group_t *current = activeInputGroup();
   modal_input_t input = {dialog, lv_group_create(), lv_group_get_focused(current)};
@@ -816,8 +817,9 @@ void UI::acquireModalInput(lv_obj_t *dialog, std::initializer_list<lv_obj_t *> c
 }
 
 void UI::releaseModalInput(lv_obj_t *dialog) {
-  auto found = std::find_if(m_ModalInputs.begin(), m_ModalInputs.end(),
-                            [dialog](const modal_input_t &input) { return input.dialog == dialog; });
+  auto found =
+      std::find_if(m_ModalInputs.begin(), m_ModalInputs.end(),
+                   [dialog](const modal_input_t &input) { return input.dialog == dialog; });
   if (found == m_ModalInputs.end()) {
     return;
   }
@@ -839,8 +841,7 @@ void UI::releaseModalInput(lv_obj_t *dialog) {
                               && lv_obj_is_valid(m_ConnectContext.cancel)
                               && m_ConnectContext.messageBox != nullptr
                               && lv_obj_is_valid(m_ConnectContext.messageBox)
-                              && !lv_obj_has_flag(m_ConnectContext.messageBox,
-                                                  LV_OBJ_FLAG_HIDDEN);
+                              && !lv_obj_has_flag(m_ConnectContext.messageBox, LV_OBJ_FLAG_HIDDEN);
   configureControl(connectVisible ? ControlMode::MENU : ControlMode::REVERT, false);
 
   if (connectVisible) {
@@ -852,9 +853,8 @@ void UI::releaseModalInput(lv_obj_t *dialog) {
   } else if (group == m_Group) {
     lv_obj_t *back = lv_menu_get_main_header_back_button(m_MainMenu.main);
     const auto scan = m_Menu.find(m_ScanStr);
-    lv_obj_t *fallback = inputObjectVisible(back)
-                             ? back
-                             : (scan != m_Menu.end() ? scan->second.button : nullptr);
+    lv_obj_t *fallback =
+        inputObjectVisible(back) ? back : (scan != m_Menu.end() ? scan->second.button : nullptr);
     if (inputObjectVisible(fallback)) {
       lv_group_focus_obj(fallback);
     }

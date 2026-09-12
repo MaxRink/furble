@@ -161,8 +161,9 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   Intervalometer timed wake must retain its resume record when
   `Platform::powerOffUntil()` accepts the power-cycle request; clear it only
   after an explicit setup failure or normal completion.
-  Modal boxes that steal focus must capture and restore the previous focus,
-  the group is flat.
+  Modal boxes that steal focus must own a dedicated stacked input group, capture
+  and restore the previous focus, and return physical navigation and shutter
+  input to the page underneath when closed.
 - `FurbleBtDebug`: console-only active BLE onboarding. Keep the raw explorer
   independent of `Camera`, NVS, and `CameraList`; pairing input is console
   passthrough and passive third-party sniffing is not supported by NimBLE.
