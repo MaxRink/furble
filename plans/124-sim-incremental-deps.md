@@ -23,7 +23,8 @@ behavior and the CMake simulator entry point are unchanged.
 - `sim/scripts/test-build-deps.sh` performs a clean build, touches
   `include/FurbleGPS.h`, and verifies that `FurbleGPS.cpp` and `FurbleUI.cpp`
   rebuild while `FurbleBootScreen.cpp` remains cached. It restores the header
-  timestamp on exit.
+  timestamp on exit, and verifies that a depfile whose target uses a different
+  relative/absolute build-directory spelling is treated as a cache miss.
 - The wrapper used by that self-test logs only compile sources and delegates to
   the selected compiler; it does not alter normal builds.
 

@@ -18,6 +18,10 @@ claim against the code, not against a plan doc.
 CI trigger changes must keep validation workflows usable for stacked pull
 requests. Keep pull request jobs path-filtered and read-only for fork safety,
 and run `python3 tools/check_ci_workflows.py` after changing workflow triggers.
+The Apple workflow's macOS app artifact is unsigned and test-only; it is
+uploaded only after the macOS tests pass and includes checksum/provenance files.
+Release tags beginning with `companion-test-` skip firmware publication and
+are reserved for companion testing; other release tags retain normal behavior.
 All simulator scenarios are owned in `sim/scenarios/manifest.json`; run
 `python3 tools/check_sim_scenarios.py` after adding, removing, or renaming one.
 Firmware line coverage is measured by `tools/coverage.py` and gated against
@@ -35,6 +39,12 @@ Development builds using `FURBLE_VERSION=dev` identify the checkout as
 `dev+g<unambiguous-hash>` and append `.dirty` for tracked, staged, or
 non-ignored untracked changes. Ignored-only changes stay clean. Explicit release
 versions remain unchanged. See `CLAUDE.md` for build details.
+
+The developer-only `m5stack-core-usb-debug` profile is USB-UART only and uses a
+single factory app partition. Normal CI builds it as the mandatory Core debug
+profile. Keep it out of release and web-installer matrices; the legacy
+`m5stack-core-debug` OTA profile is an explicit workflow-dispatch opt-in, and
+returning to dual OTA requires a USB partition-table reflash.
 
 The StickS3 flash helper is fail-closed. Use `--preflight-only` to validate the
 PMIC handshake without uploading. After a successful prepare, it must issue

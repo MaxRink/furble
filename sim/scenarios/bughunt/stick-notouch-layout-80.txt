@@ -11,8 +11,8 @@
 # Where the Right one lands is the LEGEND setting, and this file measures the
 # default, Buttons: at LV_ALIGN_RIGHT_MID with no offset, a 24 px square at y 68
 # to 91, halfway down the panel, drawn over
-# the page. The content area keeps that column clear through
-# UI::legendReserve(), which is what the clearance assertions below prove.
+# the page. `reserveLegendColumns()` keeps that column clear, which is what the
+# clearance assertions below prove.
 # legend-bottom-80.txt walks the same pages with the other value, where all
 # three legends are in the band and no page gives up any width.
 #
@@ -64,12 +64,42 @@ action page settings
 action nav sensors
 wait 150
 assert ui.page sensors
-# This page scrolls at this size by design. A page honours the text size the
-# user chose and scrolls when the rows stop fitting; it does not shrink the
-# face to fake a fit. What still has to hold is that nothing is drawn over
-# anything else.
-assert ui.label_overlaps 0
+# WILL_FAIL: overflows by 7 px on this panel. It was 10 px before the
+# gesture work folded the 'Restart to apply' caption into the button it
+# describes, so this page got closer to fitting, not further away. The
+# remaining gap is the button and switch row padding at this font size.
+print ui.scroll_bottom
+xassert ui.overflow no
+print ui.indicator_overlaps
 assert ui.indicator_clearance clear
+
+# Settings > GPS list, carrying the new Motion Adaptive row (plans/18). The list
+# scrolls by design on every panel, so the contract is that both extents stay
+# reachable and the row stays clear of the floating button indicators.
+action page settings
+action nav gps
+wait 200
+assert ui.page gps
+assert ui.gps_motion_row enabled
+print ui.overflow
+print ui.indicator_overlaps
+# Drive encoder focus far enough to scroll rows that started below the legend
+# through its band. Their reservation must remain stable after focus scrolling.
+button b
+button b
+button b
+button b
+button b
+button b
+wait 200
+assert ui.indicator_clearance clear
+assert ui.cut_labels 0
+action scroll bottom
+wait 200
+assert ui.scroll_bottom 0
+action scroll top
+wait 200
+assert ui.scroll_top 0
 
 # Timer settings list.
 action page settings

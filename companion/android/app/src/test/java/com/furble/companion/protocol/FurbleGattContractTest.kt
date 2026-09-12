@@ -20,6 +20,7 @@ class FurbleGattContractTest {
         "status" to FirmwareDeclaration(0x12, encrypted = true, authenticated = false),
         "settings" to FirmwareDeclaration(0x28, encrypted = false, authenticated = true),
         "trigger" to FirmwareDeclaration(0x08, encrypted = false, authenticated = true),
+        "cameras" to FirmwareDeclaration(0x38, encrypted = false, authenticated = true),
         "capability" to FirmwareDeclaration(0x02, encrypted = true, authenticated = false),
     )
 
@@ -30,6 +31,7 @@ class FurbleGattContractTest {
             "status" to FurbleGattContract.STATUS_PROPERTIES,
             "settings" to FurbleGattContract.SETTINGS_PROPERTIES,
             "trigger" to FurbleGattContract.TRIGGER_PROPERTIES,
+            "cameras" to FurbleGattContract.CAMERAS_PROPERTIES,
             "capability" to FurbleGattContract.CAPABILITY_PROPERTIES,
         )
         app.forEach { (name, required) ->
@@ -40,6 +42,7 @@ class FurbleGattContractTest {
         assertEquals(firmware.getValue("status").encrypted, FurbleGattContract.STATUS_REQUIRES_ENCRYPTION)
         assertEquals(firmware.getValue("settings").authenticated, FurbleGattContract.SETTINGS_REQUIRES_AUTHENTICATION)
         assertEquals(firmware.getValue("trigger").authenticated, FurbleGattContract.TRIGGER_REQUIRES_AUTHENTICATION)
+        assertEquals(firmware.getValue("cameras").authenticated, FurbleGattContract.CAMERAS_REQUIRES_AUTHENTICATION)
         assertEquals(firmware.getValue("capability").encrypted, FurbleGattContract.CAPABILITY_REQUIRES_ENCRYPTION)
     }
 

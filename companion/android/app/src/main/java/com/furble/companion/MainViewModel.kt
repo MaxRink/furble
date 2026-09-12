@@ -21,6 +21,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setLocationEnabled(enabled: Boolean) = repository.setLocationEnabled(enabled)
     fun setLocationInterval(seconds: Int) = repository.setLocationInterval(seconds)
     fun requestSettings() = repository.requestSettings()
+    fun requestCameras() = repository.requestCameras()
+    fun setCameraSelected(cameraId: Int, selected: Boolean) =
+        repository.setCameraSelected(cameraId, selected)
+    fun connectCamera(cameraId: Int) = repository.connectCamera(cameraId)
+    fun disconnectCameras() = repository.disconnectCameras()
     fun setBooleanSetting(record: FurbleProtocol.SettingRecord, value: Boolean) =
         repository.setBooleanSetting(record, value)
     fun setUint8Setting(record: FurbleProtocol.SettingRecord, value: Int) =
@@ -36,6 +41,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun timedShutter(holdMs: Int) = repository.timedShutter(holdMs)
     fun releaseAllTriggers() = repository.releaseAllTriggers()
     fun clearError() = repository.clearError()
+    fun authenticate(password: String) = repository.authenticate(password)
+    fun forgetPassword() = repository.forgetPassword()
 
     override fun onCleared() {
         repository.releaseAllTriggers()

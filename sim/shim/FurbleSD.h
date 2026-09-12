@@ -37,7 +37,26 @@ class SD {
 
   bool isSupported() const { return Furble::Sim::capEnabled("FURBLE_SIM_SD"); }
   bool request(request_t) { return isSupported(); }
-  bool logPoint(const GPX::point_t &) { return false; }
+
+  /**
+   * Accept and count a track point.
+   *
+   * A held GPS fix keeps reaching the camera but must never reach the track
+   * log, because a track is a record of measured positions and an hour of
+   * frozen or projected ones would be indistinguishable from real data. That
+   * rule needs somewhere to be observed, so the host SD stands in for the
+   * writer task and counts what the caller queued. Accepting the point also
+   * matches the device, where a queued point updates the caller's bookkeeping.
+   */
+  bool logPoint(const GPX::point_t &) {
+    if (!isSupported()) {
+      return false;
+    }
+    m_Points++;
+    return true;
+  }
+
+  uint32_t loggedPoints() const { return m_Points; }
   void powerOff() {}
 
   card_state_t cardState() const {
@@ -49,6 +68,8 @@ class SD {
 
  private:
   SD() = default;
+
+  uint32_t m_Points = 0;
 };
 }  // namespace Furble
 

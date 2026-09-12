@@ -7,17 +7,27 @@ it matches the shipped behaviour. For a friendly overview see the top level
 
 ## Controllers and build environments
 
-furble builds five release firmware images. M5Unified detects the exact board at
+furble builds six release firmware images. M5Unified detects the exact board at
 runtime, so one image covers a board family. Every environment also has a
 matching `-debug` variant that adds verbose logging and the USB serial console.
 
-| Build env | Chip | Boards it runs on | Touch | Notes |
-| :--- | :--- | :--- | :--- | :--- |
-| `m5stick-c` | ESP32 | M5StickC | No | End of life. |
-| `m5stick-c-plus` | ESP32 | M5StickC Plus, M5StickC Plus2 | No | Plus and Plus2 share the image. |
-| `m5stick-s3` | ESP32-S3 | M5StickS3 | No | Native USB Serial/JTAG. PSRAM enabled. Only board with Sleep while connected and Watchdog. |
-| `m5stack-core` | ESP32 | M5Stack Core (Basic/Gray) | No | No Auto off or Low battery. |
-| `m5stack-core2` | ESP32 | M5Stack Core2, M5Tough (untested) | Yes | On-screen shutter buttons, touch calibration, power-button screen lock. The firmware detects the M5Tough and branches for it, but it has not been verified on hardware. |
+| Build env | Chip | Flash | MQTT | Boards it runs on | Touch | Notes |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| `m5stick-c` | ESP32 | 4 MB | No | M5StickC | No | End of life. |
+| `m5stick-c-plus` | ESP32 | 4 MB | No | M5StickC Plus, M5StickC Plus2 | No | Plus and Plus2 share the image. |
+| `m5stick-s3` | ESP32-S3 | 8 MB | Yes | M5StickS3 | No | Native USB Serial/JTAG. PSRAM enabled. Only board with Sleep while connected and Watchdog. |
+| `m5stack-core` | ESP32 | 4 MB | No | M5Stack Core (Basic/Gray) | No | No Auto off or Low battery. |
+| `m5stack-core2` | ESP32 | 16 MB | Yes | M5Stack Core2, M5Tough (untested) | Yes | On-screen shutter buttons, touch calibration, power-button screen lock. The firmware detects the M5Tough and branches for it, but it has not been verified on hardware. |
+| `waveshare-s3-eth` | ESP32-S3 | 16 MB | Yes | Waveshare ESP32-S3-ETH | No | Display-less wired-Ethernet profile; hardware verification remains outstanding. |
+
+The developer-only `esp32-s3-headless` profile uses the documented 8 MB
+ESP32-S3-DevKitC-1 board and also includes MQTT. The 4 MB profiles omit the
+MQTT implementation, component dependencies, settings, and console capability.
+For an oversized Core debug image, `m5stack-core-usb-debug` is a separate
+USB-UART-only fallback with one factory app partition. It is not a supported
+release environment, is the mandatory Core debug profile in normal CI, does not
+provide wireless updates or rollback, and is not included in the web installer.
+The legacy dual-OTA Core debug profile is an explicit workflow-dispatch opt-in.
 
 Build a board with its environment name:
 
@@ -47,8 +57,9 @@ and the feature matrix.
 
 Location tagging uses an M5Stack GPS unit on Grove Port A. Every M5Stack GPS
 receiver furble targets is the AT6668/CASIC family, so the existing $PCAS and
-NMEA support covers them with no per-unit protocol code. Set
-`Settings` > `GPS` > `GPS baud 115200` for the AT6668 units.
+NMEA support covers them with no per-unit protocol code. The stored default
+baud is 9600; select `Auto` or a fixed 115200 under `Settings` > `GPS` >
+`GPS Baud` for the AT6668 units.
 
 | Unit | Chipset | Antenna | furble boards | Wiring | Status |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -57,7 +68,10 @@ NMEA support covers them with no per-unit protocol code. Set
 | Module GPS v2.1 | AT6668 | SMA | Core, Core2 only | M5-Bus module | Planned, not yet in firmware. Needs a Core/Core2 gated port setting before it works. |
 | Atomic GPS Base v2.0 | AT6668 | SMA | None | Atom base | Out of scope. furble targets no Atom board. |
 
-The older Mini GPS/BDS Unit is end of life and runs at 9600 baud.
+The older Mini GPS/BDS Unit is end of life and runs at 9600 baud. `Auto` probes
+115200, 9600, 38400, 57600, 19200, and 4800, and requires two checksummed NMEA
+sentences before declaring the receiver present. If probing fails, furble marks
+the receiver absent, cuts the external rail, and retries once after 60 seconds.
 
 Source: the M5Stack product pages for each unit (docs.m5stack.com), cross
 checked against the firmware GPS support in `src/FurbleGPS.cpp`.

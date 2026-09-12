@@ -60,6 +60,9 @@ link being up.
   (`lib/furble/FujifilmBasic.cpp:116-125`). The Secure path never reads it. A
   registration gate was proposed in PR #93 (plan 75) but was not merged and
   carries a Basic-model regression risk, so it must not be depended on here.
+  Update: this described master at diagnosis time. The gate has since merged
+  as PR #232, the saved-reconnect geotag acceptance followed in PR #239, and
+  the stale-bond recovery salvaged from #93 landed with plan 151.
 - Extra corroboration that master does not and cannot gate on that
   notification: `Fujifilm::notify` treats `CHR_NOT1_UUID` as configuration only
   when the payload is `0x02 0x00` (`lib/furble/Fujifilm.cpp:25`), but the

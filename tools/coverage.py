@@ -93,9 +93,27 @@ LOW_COVERAGE_PERCENT = 30.0
 # catches any real regression.
 RATCHET_MARGIN = 1.0
 
+# Keep a useful tail of a failed simulator run without flooding the CI log.
+SCENARIO_OUTPUT_TAIL_BYTES = 64 * 1024
+
 
 class CoverageError(RuntimeError):
   """A coverage run could not be completed."""
+
+
+def scenario_output_tail(output: str | bytes | None) -> str:
+  """Return at most the last 64 KiB of simulator output.
+
+  A process killed by a signal often leaves the useful crash diagnostic at the
+  end of its output. Decode after trimming so a noisy run cannot grow the
+  coverage log without bound, and tolerate a partial UTF-8 sequence at the
+  boundary.
+  """
+
+  if output is None:
+    return ""
+  raw = output if isinstance(output, bytes) else output.encode("utf-8")
+  return raw[-SCENARIO_OUTPUT_TAIL_BYTES:].decode("utf-8", errors="replace")
 
 
 # ---------------------------------------------------------------------------
@@ -614,12 +632,20 @@ def crashed_host_tests(ctest_output: str) -> list[str]:
   93.
   """
 
+  # ctest runs with --output-on-failure, so a failing test's own stdout is
+  # echoed into this text and can hold anything, the header line included. Match
+  # the header as a whole line, and take the last one: ctest prints the real
+  # block after every test has run, so nothing follows it but that block.
+  lines = ctest_output.splitlines()
+  header = None
+  for index, line in enumerate(lines):
+    if line.strip() == CTEST_FAILURE_HEADER:
+      header = index
+  if header is None:
+    return []
+
   crashed: list[str] = []
-  seen_header = False
-  for line in ctest_output.splitlines():
-    if not seen_header:
-      seen_header = CTEST_FAILURE_HEADER in line
-      continue
+  for line in lines[header + 1:]:
     match = CTEST_FAILURE_LINE.match(line)
     if match is None:
       continue
@@ -630,6 +656,52 @@ def crashed_host_tests(ctest_output: str) -> list[str]:
         f"{match.group('name')}: {reason}, so it wrote no usable profile"
     )
   return crashed
+
+
+def lost_test_profiles(profile_dir: Path, tests: list[str]) -> list[str]:
+  """Return the tests whose raw profile is missing or empty, named.
+
+  tests/host/CMakeLists.txt names every test's raw profile <test>.<pid>.profraw,
+  so this is a direct per-test check. It catches the failure llvm-profdata will
+  not: a 0 byte .profraw merges with exit 0 and simply contributes nothing. The
+  dot matters: bt-debug-journal is a hyphenated prefix of
+  bt-debug-journal-s3-psram, so a hyphen would let the longer name's profile
+  stand in for a shorter name that wrote nothing.
+
+  Issue #277: control_disconnect_test and control_reclaim_uaf_test ended in
+  std::_Exit(), which skips atexit and so skips __llvm_profile_write_file. Both
+  wrote an empty profile on every run, both measured nothing, and the report
+  looked perfectly healthy. A test that forks writes one profile per process,
+  so a test counts as lost only when every profile it wrote is empty.
+  """
+
+  lost: list[str] = []
+  for name in sorted(tests):
+    raws = list(profile_dir.glob(f"{name}.*.profraw"))
+    if not raws:
+      lost.append(f"{name}: wrote no raw profile")
+    elif all(raw.stat().st_size == 0 for raw in raws):
+      lost.append(f"{name}: wrote an empty raw profile")
+  return lost
+
+
+def ctest_manifest(build_dir: Path) -> dict:
+  """Return the test manifest ctest would run, as ctest itself reports it."""
+
+  result = run(
+      ["ctest", "--test-dir", str(build_dir), "--show-only=json-v1"],
+      capture=True,
+  )
+  return json.loads(result.stdout)
+
+
+def ctest_test_names(build_dir: Path) -> list[str]:
+  """Return the names of the tests ctest would run."""
+
+  return [
+      test["name"] for test in ctest_manifest(build_dir).get("tests", [])
+      if "name" in test
+  ]
 
 
 def export_lcov(llvm_cov: str, profdata: Path, binaries, root: Path) -> dict:
@@ -687,11 +759,7 @@ def merge_profiles(llvm_profdata: str, profile_dir: Path, output: Path) -> None:
 def ctest_binaries(build_dir: Path) -> list[Path]:
   """Return the distinct test executables ctest would run."""
 
-  result = run(
-      ["ctest", "--test-dir", str(build_dir), "--show-only=json-v1"],
-      capture=True,
-  )
-  document = json.loads(result.stdout)
+  document = ctest_manifest(build_dir)
   binaries: list[Path] = []
   seen: set[str] = set()
   for test in document.get("tests", []):
@@ -714,16 +782,21 @@ def measure_host(args, root: Path, llvm_cov: str, llvm_profdata: str) -> dict:
   profile_dir = args.build_dir / "profiles" / "host"
   if not args.skip_build:
     shutil.rmtree(profile_dir, ignore_errors=True)
-    run([
-        "cmake",
-        "-S",
-        str(root / "tests/host"),
-        "-B",
-        str(build_dir),
-        "-DFURBLE_COVERAGE=ON",
-        f"-DCMAKE_C_COMPILER={args.cc}",
-        f"-DCMAKE_CXX_COMPILER={args.cxx}",
-    ])
+  # Configure even when the build is skipped. FURBLE_PROFILE_DIR is what makes
+  # each test write a profile named after itself, and lost_test_profiles() below
+  # reads nothing else. Configuring builds nothing, it only refreshes the cache.
+  run([
+      "cmake",
+      "-S",
+      str(root / "tests/host"),
+      "-B",
+      str(build_dir),
+      "-DFURBLE_COVERAGE=ON",
+      f"-DFURBLE_PROFILE_DIR={profile_dir}",
+      f"-DCMAKE_C_COMPILER={args.cc}",
+      f"-DCMAKE_CXX_COMPILER={args.cxx}",
+  ])
+  if not args.skip_build:
     run([
         "cmake", "--build", str(build_dir), "--parallel", str(args.jobs)
     ])
@@ -748,6 +821,12 @@ def measure_host(args, root: Path, llvm_cov: str, llvm_profdata: str) -> dict:
           + "\n- ".join(crashed)
       )
     raise CoverageError(f"the host suite failed: ctest exited {code}{detail}")
+  lost = lost_test_profiles(profile_dir, ctest_test_names(build_dir))
+  if lost:
+    raise CoverageError(
+        f"{len(lost)} host test(s) measured nothing, so the report would be "
+        "silently short:\n- " + "\n- ".join(lost)
+    )
   profdata = args.build_dir / "host.profdata"
   merge_profiles(llvm_profdata, profile_dir, profdata)
   return export_lcov(llvm_cov, profdata, ctest_binaries(build_dir), root)
@@ -789,9 +868,9 @@ def incomplete_scenarios(results, timeout_s: float) -> list[str]:
   either hide a real regression behind an accidental gain or fail the floor for
   a reason no diff explains. Both outcomes fail the run instead.
 
-  `results` is an iterable of (label, code) pairs, where code is None for a
-  timeout kill and a negative number for a signal death, matching what
-  subprocess reports.
+  `results` is an iterable of (label, code[, output]) tuples, where code is
+  None for a timeout kill and a negative number for a signal death, matching
+  what subprocess reports.
 
   A scenario that exits with an ordinary non-zero status is deliberately not
   listed. It ran to completion and wrote a complete profile, so its measurement
@@ -799,7 +878,8 @@ def incomplete_scenarios(results, timeout_s: float) -> list[str]:
   """
 
   failures: list[str] = []
-  for label, code in results:
+  for result in results:
+    label, code = result[:2]
     if code is None:
       failures.append(
           f"{label}: timed out after {timeout_s:g} s, so it wrote no profile"
@@ -858,7 +938,7 @@ def measure_sim_board(
   if not jobs:
     raise CoverageError(f"the manifest selected no scenarios for {board_id}")
 
-  def run_scenario(indexed) -> tuple[str, int]:
+  def run_scenario(indexed) -> tuple[str, int | None, str]:
     index, (label, command) = indexed
     # Each run gets its own profile and its own simulated NVS file, so the
     # scenarios stay independent of each other and of run order.
@@ -870,16 +950,18 @@ def measure_sim_board(
     env["FURBLE_SIM_PREFS"] = str(state_dir / f"prefs-{index:04d}.bin")
     try:
       result = subprocess.run(
-          command, cwd=str(root), env=env, check=False, text=True,
+          command, cwd=str(root), env=env, check=False,
           stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
           timeout=args.scenario_timeout,
       )
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as error:
       # A wedged scenario must not hold the whole job until the runner's own
       # timeout kills it with no report at all. The killed process writes no
       # profile, so incomplete_scenarios() below fails the run by name.
-      return label, None
-    return label, result.returncode
+      return label, None, scenario_output_tail(error.output)
+    expected = 2 if "/invalid/" in label else 0
+    output = result.stdout if result.returncode != expected else None
+    return label, result.returncode, scenario_output_tail(output)
 
   print(
       f"Running {len(jobs)} {board_id} scenarios with "
@@ -900,16 +982,27 @@ def measure_sim_board(
       max_workers=args.scenario_jobs
   ) as pool:
     results = list(pool.map(run_scenario, enumerate(jobs)))
-  for label, code in results:
+  for label, code, output in results:
     if code is None:
-      continue
-    expected = 2 if "/invalid/" in label else 0
-    if code != expected:
+      failed = True
+    else:
+      expected = 2 if "/invalid/" in label else 0
+      failed = code != expected
+      if failed:
+        print(
+            f"note: {board_id} scenario {label} exited {code}, expected "
+            f"{expected}",
+            file=sys.stderr,
+        )
+    if failed and output:
       print(
-          f"note: {board_id} scenario {label} exited {code}, expected "
-          f"{expected}",
+          f"{board_id} scenario {label} output "
+          f"(last {SCENARIO_OUTPUT_TAIL_BYTES} bytes):",
           file=sys.stderr,
       )
+      sys.stderr.write(output)
+      if not output.endswith("\n"):
+        sys.stderr.write("\n")
   incomplete = incomplete_scenarios(results, args.scenario_timeout)
   if incomplete:
     raise CoverageError(

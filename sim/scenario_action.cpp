@@ -116,6 +116,8 @@ bool validateScenarioAction(const scenario_action_t &action, std::string *error)
                                   "ble-withhold-registration",
                                   "ble-allow-registration",
                                   "cancel",
+                                  "motion.arm",
+                                  "motion.disarm",
                                   "imu.enable",
                                   "imu.disable",
                                   "imu.accel.fail",
@@ -153,6 +155,16 @@ bool validateScenarioAction(const scenario_action_t &action, std::string *error)
         return fail(error, "noncanonical battery action");
       }
       return true;
+    case scenario_action_kind_t::SCAN_ROW:
+      if (!action.name.empty() || !action.mode.empty() || action.integer != 0
+          || action.batteryLevel != 0 || action.batteryVoltage != 0 || action.batteryCurrent != 0
+          || action.batteryCharging || action.values[0] != 0.0F || action.values[1] != 0.0F
+          || action.values[2] != 0.0F
+          || action.index > static_cast<uint32_t>(std::numeric_limits<int32_t>::max())) {
+        return fail(error, "noncanonical scan-row action");
+      }
+      return true;
+
     case scenario_action_kind_t::DROP:
       if (!action.name.empty() || !action.mode.empty() || action.integer != 0
           || action.batteryLevel != 0 || action.batteryVoltage != 0 || action.batteryCurrent != 0
@@ -188,9 +200,9 @@ bool validateScenarioAction(const scenario_action_t &action, std::string *error)
       return true;
     case scenario_action_kind_t::TOGGLE:
       if (!action.mode.empty() || !allZero(action)
-          || !known(action.name, {"gps", "gps_nmea", "autoconnect", "reconnect", "multiconnect",
-                                  "companion", "watchdog", "ir", "show_title", "tx_adaptive",
-                                  "conn_saver", "preset_picker", "recon_backoff"})) {
+          || !known(action.name, {"gps", "gps_nmea", "gps_motion", "autoconnect", "reconnect",
+                                  "multiconnect", "companion", "watchdog", "ir", "show_title",
+                                  "tx_adaptive", "conn_saver", "preset_picker", "recon_backoff"})) {
         return fail(error, "noncanonical toggle action");
       }
       return true;
@@ -206,15 +218,20 @@ bool validateScenarioAction(const scenario_action_t &action, std::string *error)
                                   "display",
                                   "features",
                                   "sensors",
+                                  "gestures",
                                   "infrared",
                                   "gps_rate",
                                   "gps_sentences",
                                   "gps_constellation",
                                   "gps_power",
                                   "gps_assist",
+                                  "gps_hold",
+                                  "gps_baud",
+                                  "gps_platform",
                                   "gps",
                                   "gps_data",
                                   "nmea",
+                                  "gps_sats",
                                   "timer",
                                   "theme",
                                   "text_size",
@@ -291,9 +308,13 @@ bool validateScenarioAction(const scenario_action_t &action, std::string *error)
                                   "gps_constellation",
                                   "gps_power",
                                   "gps_assist",
+                                  "gps_hold",
+                                  "gps_baud",
+                                  "gps_platform",
                                   "gps",
                                   "gps_data",
                                   "nmea",
+                                  "gps_sats",
                                   "theme",
                                   "text_size",
                                   "legend",
@@ -380,6 +401,8 @@ bool parseScenarioAction(const std::string &text, scenario_action_t *action, std
       "ble-withhold-registration",
       "ble-allow-registration",
       "cancel",
+      "motion.arm",
+      "motion.disarm",
       "imu.enable",
       "imu.disable",
       "imu.accel.fail",
@@ -453,6 +476,27 @@ bool parseScenarioAction(const std::string &text, scenario_action_t *action, std
     return accept();
   }
 
+  if (args[0] == "scan-row") {
+    // Activate a scan result row by index, dispatching the row's own click
+    // handler. A scan row is materialized by the UI task when an advertisement
+    // drains, after the page has already focused its back button, and no key or
+    // button verb moves the focus onto it reliably: measured at about half the
+    // presses on a page busy draining results. This is the deterministic entry
+    // the pairing refusal needs, and it runs the production handler rather than
+    // a simulator shortcut.
+    if (args.size() != 2) {
+      return fail(error, "scan-row requires exactly one row index");
+    }
+    uint64_t index = 0;
+    if (!parseUnsigned(args[1], static_cast<uint64_t>(std::numeric_limits<int32_t>::max()),
+                       &index)) {
+      return fail(error, "scan-row index is out of range");
+    }
+    action->kind = scenario_action_kind_t::SCAN_ROW;
+    action->index = static_cast<uint32_t>(index);
+    return accept();
+  }
+
   if (args[0] == "drop") {
     if (args.size() > 2) {
       return fail(error, "drop accepts an optional target index");
@@ -494,9 +538,9 @@ bool parseScenarioAction(const std::string &text, scenario_action_t *action, std
 
   if (args[0] == "toggle") {
     if (args.size() != 2
-        || !oneOf(args[1], {"gps", "gps_nmea", "autoconnect", "reconnect", "multiconnect",
-                            "companion", "watchdog", "ir", "show_title", "tx_adaptive",
-                            "conn_saver", "preset_picker", "recon_backoff"})) {
+        || !oneOf(args[1], {"gps", "gps_nmea", "gps_motion", "autoconnect", "reconnect",
+                            "multiconnect", "companion", "watchdog", "ir", "show_title",
+                            "tx_adaptive", "conn_saver", "preset_picker", "recon_backoff"})) {
       return fail(error, "toggle requires a known setting name");
     }
     action->kind = scenario_action_kind_t::TOGGLE;
@@ -515,15 +559,20 @@ bool parseScenarioAction(const std::string &text, scenario_action_t *action, std
       "display",
       "features",
       "sensors",
+      "gestures",
       "infrared",
       "gps_rate",
       "gps_sentences",
       "gps_constellation",
       "gps_power",
       "gps_assist",
+      "gps_hold",
+      "gps_baud",
+      "gps_platform",
       "gps",
       "gps_data",
       "nmea",
+      "gps_sats",
       "timer",
       "theme",
       "text_size",
@@ -612,9 +661,13 @@ bool parseScenarioAction(const std::string &text, scenario_action_t *action, std
         "gps_constellation",
         "gps_power",
         "gps_assist",
+        "gps_hold",
+        "gps_baud",
+        "gps_platform",
         "gps",
         "gps_data",
         "nmea",
+        "gps_sats",
         "theme",
         "text_size",
         "legend",

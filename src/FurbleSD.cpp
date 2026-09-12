@@ -19,10 +19,14 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "FurbleGPSHold.h"
 #include "FurblePlatform.h"
 #include "FurbleSD.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
+#if defined(ESP_PLATFORM)
+#include "FurbleWiFi.h"
+#endif
 
 namespace Furble {
 namespace {
@@ -202,6 +206,8 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
     case Settings::GPS_POWER:
     case Settings::GPS_DUTY:
     case Settings::GPS_ASSIST:
+    case Settings::GPS_HOLD:
+    case Settings::GPS_PLATFORM:
     case Settings::CPU_FREQ:
     case Settings::BATT_STYLE:
     case Settings::TEXT_SIZE:
@@ -213,6 +219,8 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
     case Settings::FB_VOLUME:
     case Settings::AUTO_OFF:
     case Settings::LOW_BATT:
+    case Settings::IMU_WAKE:
+    case Settings::HW_MOTION:
 #if !defined(FURBLE_NO_DISPLAY)
     case Settings::DISPLAY_MODE:
 #endif
@@ -230,12 +238,27 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
 
     case Settings::THEME:
     case Settings::BUTTON_MODE:
+    case Settings::WIFI_SSID:
+    case Settings::WIFI_PSK:
+    case Settings::NTP_SERVER:
       value = Settings::load<std::string>(setting.type);
       return true;
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+    case Settings::MQTT_URI:
+    case Settings::MQTT_USER:
+    case Settings::MQTT_PASS:
+    case Settings::MQTT_BASE:
+      value = Settings::load<std::string>(setting.type);
+      return true;
+#endif
+
+    case Settings::COMPANION_PASSWORD:
+      return false;
 
     case Settings::GPS:
     case Settings::IMU:
     case Settings::GPS_NMEA:
+    case Settings::GPS_EXTRAP:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
     case Settings::RECON_BACKOFF:
@@ -249,14 +272,24 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
     case Settings::IR:
     case Settings::CONN_SAVER:
     case Settings::TX_ADAPTIVE:
+    case Settings::GPS_MOTION:
     case Settings::BOOT_SPLASH:
     case Settings::BATTERY_SAVER:
     case Settings::AUTO_OFF_CHARGING:
+    case Settings::IMU_TRIG:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
+    case Settings::WIFI:
+    case Settings::NTP:
       value = Settings::load<bool>(setting.type) ? "true" : "false";
       return true;
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+    case Settings::MQTT:
+    case Settings::MQTT_HA:
+      value = Settings::load<bool>(setting.type) ? "true" : "false";
+      return true;
+#endif
 
     case Settings::INTERVAL:
     {
@@ -354,9 +387,37 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
       Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
       return true;
 
+    case Settings::GPS_HOLD:
+      if (!parseUnsigned(text, GPS_HOLD_MAX, value)) {
+        return false;
+      }
+      Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
+      return true;
+
+    case Settings::GPS_PLATFORM:
+      if (!parseUnsigned(text, 4, value)) {
+        return false;
+      }
+      Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
+      return true;
+
+    case Settings::HW_MOTION:
+      if (!parseUnsigned(text, Settings::HW_MOTION_HARDWARE, value)) {
+        return false;
+      }
+      Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
+      return true;
+
     case Settings::AUTO_OFF:
     case Settings::LOW_BATT:
       if (!parseUnsigned(text, UINT8_MAX, value)) {
+        return false;
+      }
+      Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
+      return true;
+
+    case Settings::IMU_WAKE:
+      if (!parseUnsigned(text, 3, value)) {
         return false;
       }
       Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
@@ -453,9 +514,47 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
       Settings::save<std::string>(setting.type, text);
       return true;
 
+    case Settings::WIFI_SSID:
+      if (!Settings::validNetworkString(setting.type, text)) {
+        return false;
+      }
+      Settings::save<std::string>(setting.type, text);
+#if defined(ESP_PLATFORM)
+      WiFi::clearRememberedAccessPoint();
+#endif
+      return true;
+
+    case Settings::WIFI_PSK:
+      if (!Settings::validNetworkString(setting.type, text)) {
+        return false;
+      }
+      Settings::save<std::string>(setting.type, text);
+      return true;
+
+    case Settings::NTP_SERVER:
+      if (!Settings::validNetworkString(setting.type, text)) {
+        return false;
+      }
+      Settings::save<std::string>(setting.type, text);
+      return true;
+
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+    case Settings::MQTT_URI:
+    case Settings::MQTT_USER:
+    case Settings::MQTT_PASS:
+    case Settings::MQTT_BASE:
+      if (!Settings::validMQTTString(setting.type, text)) {
+        return false;
+      }
+      Settings::save<std::string>(setting.type, text);
+      return true;
+#endif
+    case Settings::COMPANION_PASSWORD:
+      return false;
     case Settings::GPS:
     case Settings::IMU:
     case Settings::GPS_NMEA:
+    case Settings::GPS_EXTRAP:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
     case Settings::RECON_BACKOFF:
@@ -469,12 +568,16 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
     case Settings::IR:
     case Settings::CONN_SAVER:
     case Settings::TX_ADAPTIVE:
+    case Settings::GPS_MOTION:
     case Settings::BOOT_SPLASH:
     case Settings::BATTERY_SAVER:
     case Settings::AUTO_OFF_CHARGING:
+    case Settings::IMU_TRIG:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
+    case Settings::WIFI:
+    case Settings::NTP:
     {
       bool enabled = false;
       if (!parseBool(text, enabled)) {
@@ -483,6 +586,18 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
       Settings::save<bool>(setting.type, enabled);
       return true;
     }
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+    case Settings::MQTT:
+    case Settings::MQTT_HA:
+    {
+      bool enabled = false;
+      if (!parseBool(text, enabled)) {
+        return false;
+      }
+      Settings::save<bool>(setting.type, enabled);
+      return true;
+    }
+#endif
 
     case Settings::INTERVAL:
     {

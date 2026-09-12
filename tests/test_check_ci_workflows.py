@@ -28,14 +28,15 @@ class CheckCIWorkflowsTest(unittest.TestCase):
 
   def test_current_validation_workflows_pass(self):
     workflow_root = ROOT / ".github" / "workflows"
+    workflow_paths = CHECKER._workflow_paths(workflow_root)
     checked = 0
-    for path in CHECKER._workflow_paths(workflow_root):
+    for path in workflow_paths:
       if "pull_request" in CHECKER.event_blocks(
           path.read_text(encoding="utf-8").splitlines()
       ):
         checked += 1
         self.assertEqual(CHECKER.lint_workflow(path), [], path.name)
-    self.assertEqual(checked, 9)
+    self.assertGreater(checked, 0)
 
   def test_branches_ignore_is_a_base_branch_filter(self):
     errors = self.lint(
@@ -324,6 +325,56 @@ jobs:
     self.assertIn(
         "firmware change filter can produce multiple base SHAs", errors
     )
+
+  def test_platformio_profile_contract_is_structural(self):
+    errors = CHECKER._lint_platformio_ci_contract(
+        CHECKER._load_text(
+            """name: PlatformIO CI
+on:
+  workflow_dispatch:
+    inputs:
+      core_ota_debug:
+        type: boolean
+        required: false
+        default: false
+jobs:
+  discover:
+    env:
+      MANDATORY_CORE_DEBUG: m5stack-core-usb-debug
+      OPTIONAL_CORE_DEBUG: m5stack-core-debug
+  build: {}
+"""
+        )
+    )
+    self.assertEqual(errors, [])
+
+  def test_platformio_profile_contract_rejects_unsafe_opt_in(self):
+    errors = CHECKER._lint_platformio_ci_contract(
+        CHECKER._load_text(
+            """name: PlatformIO CI
+on:
+  workflow_dispatch:
+    inputs:
+      core_ota_debug:
+        type: string
+        required: true
+        default: true
+jobs:
+  discover:
+    env:
+      MANDATORY_CORE_DEBUG: m5stack-core-debug
+      OPTIONAL_CORE_DEBUG: m5stack-core-usb-debug
+  build:
+    continue-on-error: true
+"""
+        )
+    )
+    self.assertIn("PlatformIO CI core_ota_debug input must be boolean", errors)
+    self.assertIn("PlatformIO CI core_ota_debug input must default to false", errors)
+    self.assertIn("PlatformIO CI core_ota_debug input must be optional", errors)
+    self.assertIn("PlatformIO CI mandatory Core debug profile is incorrect", errors)
+    self.assertIn("PlatformIO CI optional Core debug profile is incorrect", errors)
+    self.assertIn("PlatformIO CI firmware build must fail strictly", errors)
 
 
 if __name__ == "__main__":

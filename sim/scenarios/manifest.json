@@ -44,12 +44,13 @@
       "suite": "bughunt",
       "owner": "sim-bughunt",
       "boards": [
-        "m5stick-s3"
+        "m5stick-c",
+        "m5stick-s3",
+        "m5stack-core"
       ],
       "capabilities": [],
       "expected_exit": 0,
-      "certified": false,
-      "reason": "fails on master until #245 lands: reproduces the 2026-09-04 hardware wedge from issue #271. The cancel cannot unwind an attempt parked in secureConnection(), so the interactive teardown burns its 30 s cap and drains a live connect. Fails at `assert_max clock.ms 8000` with 32330. Promote it, and widen it to all three panels, in the PR that fixes the blocking call. See plans/172-sim-cancel-sweep.md."
+      "certified": true
     },
     {
       "path": "sim/scenarios/bughunt/cancel-sweep-autoconnect-entry.txt",
@@ -151,7 +152,9 @@
       "suite": "bughunt",
       "owner": "sim-bughunt",
       "boards": [
-        "m5stick-s3"
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
       ],
       "capabilities": [
         "fauxny"
@@ -281,6 +284,175 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/bughunt/gps-hold-rows-large-buttons.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "gps"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/gps-hold-rows-large-touch.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "gps"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/gps-hold-rows-normal-buttons.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "gps"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/gps-hold-rows-normal-touch.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "gps"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/gps-hold-rows-small-buttons.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "gps"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/gps-hold-rows-small-touch.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "gps"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/gps-motion-row-gates.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "gps"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/gps-motion-row-large.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "gps",
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/gps-motion-row-small.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "gps",
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/gps-motion-row.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "gps",
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/hw-motion-text-size.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "fauxny",
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/bughunt/interval-back-trap.txt",
       "suite": "bughunt",
       "owner": "sim-bughunt",
@@ -339,12 +511,13 @@
       "suite": "bughunt",
       "owner": "sim-bughunt",
       "boards": [
-        "m5stick-s3"
+        "m5stick-c",
+        "m5stick-s3",
+        "m5stack-core"
       ],
       "capabilities": [],
       "expected_exit": 0,
-      "certified": false,
-      "reason": "fails on master: reproduces the 2026-09-04 bench hang where Off froze the device and the next boot reported brownout. UI::doPowerOff() calls doDisconnect() before Platform::powerOff(), so the power-off path inherits Control::disconnect()'s 30 s interactive cap and adds no bound of its own. Fails at `assert_max clock.ms 6000` with 32330, and passes on PR #245, whose abortBlockingConnect() releases the parked handshake. Promote it, and widen it to all three panels, when #245 lands. See plans/172-sim-cancel-sweep.md."
+      "certified": true
     },
     {
       "path": "sim/scenarios/bughunt/power-off-state-matrix.txt",
@@ -963,6 +1136,21 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/e2e/gps-autobaud-ladder.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "gps"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/e2e/gps-concurrent-pages.txt",
       "suite": "e2e",
       "owner": "sim-e2e",
@@ -989,6 +1177,202 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/e2e/gps-ephemeris-invalid.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "gps"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/gps-ephemeris-replay.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "gps"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/gps-ephemeris-stale.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "gps"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/gps-hold-bound.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny",
+        "gps",
+        "sd"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/gps-hold-default-off.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny",
+        "gps"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/gps-hold-extrapolate.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny",
+        "gps",
+        "sd"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/gps-hold-stationary.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny",
+        "gps",
+        "sd"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/gps-malformed-satellites.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "gps"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/gps-monhw-poll.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "gps"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/gps-motion-detector.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "gps",
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/gps-motion-setting.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "gps",
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/gps-motion-prearm.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "gps",
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/gps-no-receiver.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "gps"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/e2e/gps-receiver-degraded.txt",
       "suite": "e2e",
       "owner": "sim-e2e",
@@ -1007,6 +1391,36 @@
       "owner": "sim-e2e",
       "boards": [
         "m5stick-s3"
+      ],
+      "capabilities": [
+        "gps"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/gps-satellite-fixtures.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "gps"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/gps-satellite-page.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
       ],
       "capabilities": [
         "gps"
@@ -1166,6 +1580,145 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/e2e/hw-motion-default-software.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny",
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/hw-motion-display-wake.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny",
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/hw-motion-fallback.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny",
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/hw-motion-light-sleep.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny",
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/hw-motion-no-wake-when-off.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/hw-motion-parity-software.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny",
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/hw-motion-parity.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny",
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/hw-motion-select-auto.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny",
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/hw-motion-select-hardware.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny",
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/hw-motion-select-software.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny",
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/e2e/imu-back-nav.txt",
       "suite": "e2e",
       "owner": "sim-e2e",
@@ -1218,6 +1771,155 @@
       ],
       "capabilities": [
         "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/imu-gesture-defaults.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny",
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/imu-gesture-detect.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/imu-gesture-disabled.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/imu-gesture-doubletap.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/imu-gesture-gating.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/imu-gesture-interval.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny",
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/imu-gesture-shutter-blocked.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny",
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/imu-gesture-shutter.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny",
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/imu-gesture-wake-off.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/imu-gesture-wake-shake.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/imu-gesture-wake-tap.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "imu"
       ],
       "expected_exit": 0,
       "certified": true
@@ -1508,6 +2210,45 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/e2e/stale-bond-pairing-lost.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/connect-error-notouch-dismiss.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/scan-already-saved.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/e2e/scan-distinct-rows-heartbeat.txt",
       "suite": "e2e",
       "owner": "sim-e2e",
@@ -1661,6 +2402,19 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/gesture-idle-30s.txt",
+      "suite": "power-gate",
+      "owner": "sim-power",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/gps-duty-standby-cycle.txt",
       "suite": "power-gate",
       "owner": "sim-power",
@@ -1721,6 +2475,50 @@
     },
     {
       "path": "sim/scenarios/invalid/action-imu-trailing.txt",
+      "suite": "invalid",
+      "owner": "sim-parser",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 2,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/invalid/action-scan-row-missing.txt",
+      "suite": "invalid",
+      "owner": "sim-parser",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 2,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/invalid/action-scan-row-negative.txt",
+      "suite": "invalid",
+      "owner": "sim-parser",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 2,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/invalid/action-scan-row-overflow.txt",
+      "suite": "invalid",
+      "owner": "sim-parser",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 2,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/invalid/action-scan-row-trailing.txt",
       "suite": "invalid",
       "owner": "sim-parser",
       "boards": [

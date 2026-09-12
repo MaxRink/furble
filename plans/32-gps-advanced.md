@@ -40,11 +40,470 @@ Phase 1 is implemented on `feat/32-gps-advanced`.
   ESP32 clock at the 1970 epoch, and asserting a valid time of unknown age would
   feed the receiver an over-confident wrong time and hurt time to first fix. The
   cached position still narrows the search safely.
-- PR32a autobaud, PR32c dynamic platform, tier 2 ephemeris, companion-fed
-  assistance and the satellite detail page remain out of scope.
-- Hardware verification is pending. The sandboxed worktree could not run
-  PlatformIO; the `FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3`
-  build was run on the harvest machine at commit time and succeeded.
+Phase 2 is implemented on `feat/32-gps-advanced-phase2`, branched from
+`fork/master`. The parseable logic moved into a host-tested module,
+`lib/furble/protocol/GpsCasic.{h,cpp}`, covered by the `gps-casic` host test.
+
+- PR32a autobaud and no-receiver state, DONE. `GPS_BAUD` gains the sentinel
+  value 0 for Auto. A new `Casic::Autobaud` ladder probes 115200, 9600, 38400,
+  57600, 19200 then 4800, one NMEA sentence pair per rate, and locks on the
+  first rate that yields two passing checksums. When the ladder finds nothing it
+  enters a named `absent` state, drops the 5 V rail, and retries once after 60 s.
+  The detection state and detected baud show in `gps status` and on the Raw NMEA
+  page. **Deviation from the plan, deliberate:** the default stays `9600`, not
+  `Auto`. The task brief requires the default to preserve current behaviour, so
+  Auto is opt-in. Existing installs are unchanged; only a user who selects Auto
+  gets detection. The `$PCAS06` identity query and `$GPTXT` parse are not
+  implemented; detection relies on the checksum criterion alone.
+- PR32d tier 2 ephemeris replay, DONE in framing, hardware-tuning-pending in
+  effect. `GPS_ASSIST` mode 2 is now selectable in the roller. On a stable fix
+  furble polls `MSG-GPSEPH` 0x08 0x07, `MSG-GPSION` 0x08 0x06 and `MSG-GPSUTC`
+  0x08 0x05 with a `CFG-MSG` rate 0xFFFF poll, stores the frames verbatim in the
+  `gps_eph` NVS blob at most once an hour, and replays them paced one frame at a
+  time on the next enable, refusing a cache older than four hours. The store,
+  age-bounding and paced-replay framing are host-tested. Whether the replay
+  actually shortens time to first fix on this firmware needs the bench, per the
+  plan's own measurement caveat.
+- PR32e satellite detail page, DONE. A direct GSV and GSA parser
+  (`Casic::NmeaSatellites`) fills a per satellite table with id, constellation,
+  elevation, azimuth, C/N0 and the used flag, plus PDOP, HDOP, VDOP and fix
+  type. It runs only while the Satellites page or `gps sats on` is active, which
+  un-prunes GSV and GSA and restores the user's set on close. Multi-sentence GSV
+  reassembly and the DOP parse are host-tested.
+- PR32c dynamic platform, scaffolded, hardware-tuning-pending. `GPS_PLATFORM`
+  (wire id 69, key `gps_plat`, default 0 do-not-send) selects Portable,
+  Stationary, Pedestrian or Vehicle. It is applied through the same `CFG-NAVX`
+  query-modify-write as the constellation mask, editing `dyModel` at offset 4
+  under mask bit B0, with a `$PCAS11` NMEA fallback. The `$PCAS11` numbering is
+  third-party attested only, so it is provisional; the on-device effect of
+  `dyModel` is unmeasured. Reachable from the console with `gps platform <0-4>`.
+- MON-HW interference poll, scaffolded, hardware-tuning-pending. `gps monhw`
+  sends the poll and prints the decoded and raw response. The 56-byte layout
+  could not be confirmed against a live unit, so `Casic::parseMonHw` reads a
+  conservative subset and the console prints the raw bytes and marks it pending.
+- Companion-fed assistance (tier 3) remains out of scope; it belongs to
+  `plans/50-companion-app-design.md`.
+- Data sources: the CASIC binary framing, the id-first checksum, `AID-INI`,
+  `CFG-NAVX` `dyModel`, the `MSG-GPSEPH/ION/UTC` ids and `MON-HW` come from the
+  CASIC v3.6 specification; the GSV and GSA field layouts, the GNSS numbering and
+  the corrected checksum formula come from the Quectel L76K specification; the
+  `$PCAS11` stationary value is from the millerjs ATGM336H wiki. All are listed
+  under References below and cited inline in `GpsCasic.h`.
+- Hardware verification is pending for every Phase 2 item that touches the
+  receiver: autobaud lock and no-receiver drop, ephemeris replay effect on TTFF,
+  the `dyModel`/`$PCAS11` platform change, and the MON-HW decode. Host tests and
+  the five release plus `m5stick-s3-debug` firmware builds pass.
+
+  **This phase merges with that gate recorded as owed post-merge.** Its
+  verification needs a GPS unit rather than an active camera, and the standing
+  rule is that such work merges with the hardware run recorded as owed rather
+  than blocking on it. The owed run is, in order: the receiver-rejection of an
+  expired ephemeris injection first, because it can delete the whole freshness
+  apparatus; then autobaud from the unit's own default rate; the rail drop and
+  the single retry; time to first fix with and against replay, measured against
+  the 108 s cold start recorded in `00-hardware-experiments.md`; and the
+  satellite page against the sky.
+
+  What is being merged unverified is bounded, and the boundary is worth stating
+  plainly.
+
+  - **New capability, off by default.** Ephemeris replay is `GPS_ASSIST` mode 2
+    and the satellite page is a new route; neither runs unless a user selects
+    it. `GPS_PLATFORM` defaults to do-not-send. Nothing here can misbehave on a
+    device whose owner does not turn it on.
+  - **The receiver path for an unmodified unit is unchanged.** `GPS_BAUD` still
+    stores 9600, and a stored fixed baud takes the same branch it always did:
+    the ladder never arms, `PRESENT` is published immediately, and the
+    configuration pass runs exactly as before. `serviceProbe()` is a no-op in
+    that state and the absent-state sleep in `cycleWait()` is unreachable. So
+    the wire behaviour degrades to the previous behaviour, not merely to
+    something similar.
+  - **Two UI changes do reach an unmodified unit**, and they are not
+    behaviour-neutral even though the setting is preserved. The GPS baud switch
+    became a three way roller on its own page, so the control moved and gained
+    an Auto option; a stored 9600 or 115200 maps onto the same value. And the
+    Raw NMEA page gained a receiver-state and baud line, which on that path
+    reads `present 9600`. The GPS settings list also gains Platform and
+    Satellites rows.
+
+## Phase 2 behaviour, as implemented after the rebase onto master
+
+This is the behaviour list read out of the diff end to end, not from the plan
+text above. Each item names where it is exercised. Wire id 42 was double-owned
+(issue #280); the setting renumbered to 69 at rebase and the golden corpus was
+regenerated, and the reservation table now lives in `include/CLAUDE.md`.
+
+### Autobaud and the no-receiver state
+
+- `GPS_BAUD` gains the sentinel 0 for Auto. The UI switch became a three way
+  roller, `Auto / 9600 / 115200`, and the console accepts `auto`, `0`, `9600`
+  and `115200`. The stored default is still 9600, so an existing install is
+  unchanged.
+- On enable with Auto, the driver programs `LADDER[0]` (115200), publishes
+  `DETECTING`, and arms the ladder for the GPS task. With a fixed baud it
+  publishes `PRESENT` immediately and configures as before.
+- The ladder runs on the GPS task ahead of the power cycle. While detecting or
+  absent, `serviceCycle`, `serviceConfig` and `servicePoll` are all held off, so
+  no configuration command can be sent at a rate no receiver is listening on.
+  Serial is still fed while detecting so the sentence counter can climb.
+- A step is `Casic::Autobaud::STEP_MS` (1200 ms) and locks on two sentences
+  passing checksum in one step. Two rather than one guards against a garbled
+  stream passing by chance at the wrong rate.
+- On lock: publish the baud, reset acquisition, arm configuration, publish
+  `PRESENT` last, then take the power lock.
+- On failure after all six steps: publish baud 0, cancel configuration, force
+  the cycle to `DISABLED`, drop the 5 V rail, release the power lock, arm one
+  retry 60 s out, publish `ABSENT`.
+- The retry starts the ladder inline on the GPS task. It used to defer through
+  `m_ProbePending`, which cost a whole idle interval before the first step ran.
+- `cycleWait` sleeps until the retry is due, then 60 s at a time once the single
+  retry has been spent. Without that the task woke ten times a second forever on
+  a board with no receiver, which is the same drain plan 98b removed for the
+  degraded state.
+- Surfaces: `gps` status prints `receiver` and `detected_baud`; the GPS Data
+  page cycle row reports `detecting` or `absent` in place of the power cycle
+  state, because an absent receiver otherwise reads as `disabled`, which is what
+  a switched off GPS reads as; the Raw NMEA page counters row gained a
+  `<state> <baud>` line.
+
+### CASIC platform and MON-HW
+
+- `GPS_PLATFORM` 1 to 4 maps to `dyModel` 0 to 3 and is applied through the same
+  `CFG-NAVX` query-modify-write as the constellation mask, so the 44 byte struct
+  is read, edited and written once rather than built from zeros. The mask now
+  carries both bits when both settings are set.
+- The NMEA fallback can now carry two sentences (`$PCAS04` and `$PCAS11`),
+  newline separated, and `finishConfigCommand` sends each line separately.
+- `gps monhw` polls MON-HW (class 0x0A id 0x09) with a `CFG-MSG` rate 0xFFFF
+  poll. The response is decoded best effort and the raw bytes are printed. The
+  56 byte layout is unconfirmed against a live unit, so both the console and the
+  docs mark it hardware-tuning-pending.
+- `Casic::Autobaud::baud()` returns `LADDER[0]` after `NO_RECEIVER` rather than
+  a failure value. Only `onProbeLocked` reads it, so the firmware is correct
+  today, but a future caller that reads it without checking `state()` would
+  silently configure 115200. Left as is and recorded here.
+
+### Ephemeris store and replay
+
+- Tier 2 polls `MSG-GPSEPH`, `MSG-GPSION` and `MSG-GPSUTC` once a fix is stable
+  and no configuration command is outstanding. The capture window is
+  `EPH_POLL_MS` (1500 ms).
+- **NVS budget and wear.** The store is one `gps_eph` blob, capped by
+  `EphemerisCollector::MAX_BYTES` at 4096 bytes; the modelled receiver produces
+  182 bytes for three frames and a real one is expected near 2.6 kB. The write
+  happens once per session on the first stable fix and then at most once an
+  hour (`EPH_CACHE_WRITE_MS`), and only when `GPS_ASSIST` is 2, which is not the
+  default. A device left on with assist 2 therefore writes about 24 blobs a day.
+  That is well inside the NVS wear budget, but it is the only periodic NVS write
+  this PR adds and it is worth naming: nothing else in the GPS path writes NVS
+  on a timer. The write runs on the GPS task and holds no mutex.
+- Replay is armed at enable, before `configure()`, so a sentence prune cannot
+  remove messages the assistance path relies on. Frames go out one per
+  `servicePoll` pass, `EPH_REPLAY_GAP_MS` (30 ms) apart, so a full cache does
+  not choke the receiver's navigation loop.
+- **Freshness, and which clock can answer it.** The cache is refused when it is
+  older than four hours. Three attempts at bounding that age were wrong before
+  this one, and the first two failed for the same underlying reason: neither
+  clock furble has of its own knows how long the board was off.
+  - `time(nullptr)`, which the branch shipped, is the Unix epoch on a board with
+    no RTC and no network, so `wall >= capture_utc` is false and every cache is
+    refused. Tier 2 was dead on exactly the device it exists for.
+  - `TimeKeeper` is no better. It restores as the last persisted epoch plus the
+    monotonic time since boot, with a fixed one hour uncertainty and no
+    knowledge of the off time, so a week unplugged reads as about two minutes
+    old. It reports fresh for a cache that expired six days ago.
+  - Deciding against "the receiver reported a different UTC than at arm time"
+    was wrong in a subtler way, and the review caught it. That folds the date
+    and the time into one number. A receiver with RMC pruned reports a ticking
+    time against a date the parser kept from the last session, so the folded
+    value changes every second, the commit fires, and the age is decided against
+    a stale date. It passed its own scenario only because that fixture's clock
+    was frozen; ticking it turned the leg into a replay of three frames.
+
+  The receiver is the only clock that knows, and only RMC carries a date, so the
+  signal is an RMC arriving after the arm. `processNmea` counts date-bearing
+  sentences off the raw bytes, and the commit waits for that count to move.
+  Neither the date value nor the time can stand in for it: the date does not
+  change from one second to the next inside a day, and the time ticks whether or
+  not a date ever arrives. The decision itself is the pure
+  `Casic::Eph::freshness`, host tested over eight cases.
+
+  The signal is the committed date **value**, snapshotted at arm and required to
+  differ before anything commits. Two earlier attempts at that signal were both
+  wrong, and both were caught in review.
+
+  Counting the token "RMC" in the raw read buffer was wrong twice over.
+  `BUFFER_SIZE` is 256 and a burst carrying GSA and GSV is bigger, so an RMC
+  routinely spans two reads with its name in the first and its date field in the
+  second, and a sentence whose checksum failed counted exactly like one that
+  passed.
+
+  Counting the parser's own date update flag looked airtight and is not.
+  TinyGPS++ only dispatches a term when it is non-empty, so the empty date field
+  in the `$GNRMC,,V,,,,,,,,,,N` that every receiver sends before its first fix
+  never reaches `setDate`; `date.commit()` then re-commits the stale `newDate`
+  and raises the flag anyway. That sentence is precisely what is on the wire
+  during the arm window, `m_GPS` is never reset while `loadEphemerisCache()`
+  reloads the cache on every enable, and `beginWindow()` re-arms on every rail-
+  off to rail-on, so the duty-cycle path meets it every cycle. The committed
+  value does not move across that sentence, which is why comparing values has no
+  such hole. `gps_fix_date emptyrmc` is the certified leg for it.
+
+  The cost of a value comparison is that a receiver repeating the same date
+  inside one day never re-triggers, so a same-boot re-enable does not replay.
+  That is deliberate and is why the positive path in `gps-ephemeris-replay` goes
+  through a `restart`, where the parser starts with no date at all.
+
+  A receiver clock behind the capture is not a verdict either. A cold-start
+  AT6668 reports a coarse time before it decodes TOW, which is exactly the tier
+  2 case, so `IMPLAUSIBLE` keeps the arm standing and waits for the next date
+  instead of throwing the cache away on the first reading. Only `TOO_OLD` and
+  `REPLAY` settle it outright.
+
+  Re-entry after an implausible reading keys on the reported **UTC**, not the
+  date. The first commit after the arm has to be a changed date, because only
+  that proves an RMC carrying a real date field arrived; once one has, the
+  receiver is known to be sending dates and its time becomes trustworthy
+  evidence. Keying re-entry on the date as well was a bug: a cold clock behind
+  the capture by minutes on the same UTC day never re-triggered, so the arm
+  stood forever and the cache was neither replayed nor dropped. That is the
+  dominant case, since the cache is four hours old at most and a waking receiver
+  corrects itself in a couple of sentences, which cannot change the date. The
+  `coldstart` fixture had hidden it by putting the cold clock a whole day
+  behind; it now sits a quarter of an hour behind on the same day.
+
+  That retry is bounded at `EPH_IMPLAUSIBLE_MAX`, sixteen successive readings
+  behind the capture, after which the cache is dropped. A receiver still waking
+  corrects itself in a second or two; one that keeps reporting behind the cache
+  is wrong rather than waking, and without a bound it would be handed a fresh
+  reason to retry indefinitely. Sixteen is deliberately generous: a tighter
+  bound fired before the modelled cold clock had finished waking, which is the
+  failure a real unit would hit too. `gps_fix_date walkback` is the certified
+  leg, a clock stuck days behind but still ticking, so every burst is a new and
+  still useless reading. It can never catch up, so the leg does not depend on
+  the value of the bound.
+
+  The trade-off is explicit: a receiver that never sends RMC never gets a
+  replay. That is the true cold start with the rail cut, where the cache age
+  cannot be established at all and replaying blind is what this prevents. Warm
+  and hot starts, which is a device that has been in a bag for an hour, are
+  unaffected.
+
+  Note for anyone touching this: TinyGPSPlus ages come from `millis()`, which is
+  the same clock as `Platform::tick()` on the device but **not** in the
+  simulator. Comparing an age against a `Platform::tick()` value silently makes
+  every stale timestamp look fresh, which is how an even earlier version of this
+  check passed its own scenario. Compare values and counts, never ages.
+
+- A cache whose frame count, byte count, magic, version or per frame checksums
+  do not agree is dropped whole rather than partially replayed.
+
+### Satellite page (GSV/GSA)
+
+- A direct parser, not `TinyGPSCustom`. Multi-sentence GSV sets are reassembled
+  and only published when every sentence of the set has arrived, so a partial
+  set never renders.
+- Capture runs only while the page is open or `gps sats on` is set. Opening
+  sends `$PCAS03,1,0,1,1,1,0,0,0` to un-prune GSV and GSA; closing restores the
+  user's set. The extra traffic never outlives the page.
+- Range checks: PRN above 65535, elevation above 90, azimuth above 359 and C/N0
+  above 99 mark the set malformed, and a malformed set is refused whole rather
+  than published half parsed.
+- A PRN repeated inside one GSV set is now published once. It used to be
+  published twice, which made the in-view count disagree with the count the GSV
+  header itself declared.
+- A GSA replaces the solution for its system, and a GSA whose DOP fields do not
+  parse now clears the DOP rather than leaving the previous figures published as
+  valid indefinitely.
+- The page is an intentional-scroll page, like Raw NMEA and GPS Data.
+
+### Malformed input hardening
+
+- Every NMEA sentence is checksum validated before the satellite parser sees
+  it, including a trailing-data check after the checksum.
+- Every CASIC frame is validated for sync bytes, a payload length that is a
+  multiple of four and inside the 2048 cap, a length that agrees with the
+  buffer, and the id-first checksum, before it is stored or replayed.
+- Null pointers and zero lengths are refused by `EphemerisCollector::feed`,
+  `splitFrames` and `parseMonHw`.
+
+### Parser ownership
+
+`include/FurbleGPS.h` says it: TinyGPSPlus accessors clear update flags, so they
+write, and every read goes through the locked `getStatusSnapshot()`. Two places
+in this branch broke that rule and both raced the UI task's own snapshot.
+`servicePoll()` called `m_GPS.location.FixQuality()` directly, and
+`storeEphemeris()` read `m_GPS.date` and `m_GPS.time`. Both now read the
+snapshot, which needs no new lock because the snapshot already takes the one
+that exists. The new freshness decision reads the same snapshot.
+
+The rule is absolute, so the five remaining unlocked reads went with them:
+three `passedChecksum()` reads in the autobaud probe and two `charsProcessed()`
+reads in the settle gate now take the snapshot as well. Nothing outside
+`processNmea`'s locked `encode` touches `m_GPS` directly any more.
+
+Both ephemeris scenarios hold the GPS Data page open for their whole run, so
+the UI task reads the snapshot while the GPS task polls, stores and decides, and
+both were added to the sim-e2e ThreadSanitizer leg alongside
+`gps-concurrent-pages`.
+
+Measured, five runs per cell, on this head:
+
+| Cell | `gps-ephemeris-stale` | `gps-ephemeris-replay` | `gps-concurrent-pages` |
+| :--- | :--- | :--- | :--- |
+| as committed | 0/5 fail | 0/5 fail | 0/5 fail |
+| `servicePoll` read unlocked | **4/5 fail** | 1/5 fail | 0/5 fail |
+| `storeEphemeris` read unlocked | 0/5 fail | 0/5 fail | 0/5 fail |
+
+So the TSAN leg **is** a gate for the `servicePoll` half, through
+`gps-ephemeris-stale`, and a weak one through `gps-ephemeris-replay`. An earlier
+revision of this plan claimed no leg caught it and used that to argue the leg was
+not a gate. That was wrong, it was measured with one run rather than five, and it
+would have licensed deleting a real gate. The reviewer measured 5/5 and 3/5 on
+the same cells; either way the signal is strong and `halt_on_error` means one
+detection fails the job.
+
+The `storeEphemeris` half is caught by nothing, here or in the reviewer's run.
+It is guarded by the rule the header states and by review, and that is the whole
+of its assurance. Do not read the green leg as covering it.
+
+### Degraded-state concurrency
+
+- The detection state and detected baud are `std::atomic`, written only on the
+  GPS task and read from the UI and the console.
+- `onProbeLocked` takes `m_CycleMutex` only around the acquisition reset and
+  publishes `PRESENT` after releasing it, so a reader never sees `PRESENT` with
+  a stale cycle.
+- `resetAcquisition` now reads the cached `m_RateMs` instead of calling
+  `gpsRateInterval()`, which reads NVS. It is called under `m_CycleMutex` from
+  both `enable()` and `onProbeLocked`, and master's whole reason for caching the
+  rate was to keep NVS off the status paths.
+- No mutex is held across a delay anywhere in the new code. `setSatelliteCapture`
+  is called from the LVGL event callback and writes a `$PCAS03` sentence, which
+  blocks the UI task for `TX_MS` under `m_TxMutex`; that is the same cost the
+  existing `Raw NMEA` and restart buttons already pay.
+
+### Also fixed during the rebase
+
+- The branch had deleted `timeSourceName`, `cmdTime` and the `time` console
+  command registration. Restored, with a regression guard in the host console
+  suite.
+- `settings set gps_baud abc` stored 0, that is Auto, because `BAUD_AUTO` is
+  zero and the parse never checked `strtoul`'s end pointer. It now fails.
+- `src/CLAUDE.md` had lost the `CompanionService::m_Mutex` ownership bullet.
+  Restored.
+- The `ui.page` identity array size and a dropped `<cstdio>` include were rebase
+  casualties and would not have compiled.
+- The unit status rows in `README.md` and the supported-hardware docs had been
+  downgraded from "Supported" to "verification pending" for the whole AT6668
+  family. Reverted: what is pending is this phase's autobaud, ephemeris and
+  platform work, not the shipped receiver support.
+
+## Simulator coverage and killing mutations
+
+The simulator's fake UART is now a modelled receiver, not just a byte source. It
+records the rate the driver programmed and answers only when its own modelled
+rate matches, which is what makes the ladder and the absent state testable. The
+default is a receiver that answers at any rate, so every scenario written before
+this is byte-for-byte unchanged. It also answers a `CFG-MSG` rate 0xFFFF poll for
+MON-HW and for the three assistance messages, counts the assistance frames
+replayed back at it, and serves a selectable GSV/GSA fixture. The fixtures are
+stored as sentence bodies and checksummed at runtime, so none of them can carry
+a stale hand computed checksum.
+
+Every assertion below was mutation checked: the named production change was
+applied to the tree, the simulator was rebuilt, the scenario was run, and it
+failed. All fifteen were killed. Three needed the coverage widening before they
+were. A corrupted cache is now corrupted in its last frame rather than its
+first, so a reload that stopped at the bad frame instead of refusing the whole
+blob is distinguishable from one that refused it. A `partial` GSV fixture that
+never sends its second sentence was added. And the fake receiver can now answer
+a MON-HW poll with a truncated payload.
+
+| Scenario | Asserts | Killing mutation |
+| :--- | :--- | :--- |
+| `e2e/gps-autobaud-ladder` | the ladder locks at each of the six rates and hands over to the fix path | drop one entry from `Casic::Autobaud::LADDER` |
+| `e2e/gps-autobaud-ladder` | `uart.baud` matches the locked rate | do not call `uart_set_baudrate` on a ladder step |
+| `e2e/gps-no-receiver` | six failed steps reach `absent` with baud 0 | make `Autobaud::service` stay `PROBING` past the last step |
+| `e2e/gps-no-receiver` | the GPS Data cycle row reports `detecting` then `absent` | render `receiver.cycle_state` unconditionally |
+| `e2e/gps-no-receiver` | `power.no_light_sleep` is 0 while absent | remove `releasePowerLock()` from `onProbeFailed` |
+| `e2e/gps-no-receiver` | the single retry finds a receiver plugged in later | set `m_NoReceiverRetried` before the deadline check |
+| `e2e/gps-ephemeris-replay` | a cache is written after a stable fix | return early from `storeEphemeris` |
+| `e2e/gps-ephemeris-replay` | three frames are replayed after `restart` | skip `armEphemerisReplay()` in `serviceConfig` |
+| `e2e/gps-ephemeris-invalid` | a corrupted cache is refused whole, not replayed up to the bad frame | ignore the `splitFrames` result in `loadEphemerisCache` |
+| `e2e/gps-ephemeris-stale` | the four hour window against the receiver's own clock | make `Casic::Eph::freshness` always return `REPLAY` |
+| `e2e/gps-ephemeris-stale` | a receiver clock behind the capture cannot bound an age | drop the backwards-clock guard from `freshness` |
+| `e2e/gps-ephemeris-stale` | replay never commits without a date received this session | replace the date-count check with `if (false)` |
+| `e2e/gps-ephemeris-stale` | a checksum-failed RMC commits nothing | count the token "RMC" in the raw read buffer instead |
+| `e2e/gps-ephemeris-stale` | the empty pre-fix RMC commits nothing | commit on any committed date rather than a changed one |
+| `e2e/gps-ephemeris-stale` | the implausible retry is bounded | raise `EPH_IMPLAUSIBLE_MAX` to 250, so the walking receiver arrives and replays |
+| `e2e/gps-ephemeris-replay` | a cold clock behind by minutes on the same day still recovers | key implausible re-entry on the date instead of the UTC |
+| `e2e/gps-ephemeris-replay` | a receiver clock behind the capture is retried, not settled | let `IMPLAUSIBLE` fall through and clear the cache |
+| `e2e/gps-ephemeris-stale` (TSAN) | `servicePoll` reads the fix through the locked snapshot | read `m_GPS.location.FixQuality()` directly, 4/5 runs fail |
+| `e2e/gps-satellite-fixtures` | 0, 1, 12, duplicate, partial, out of range and multi constellation populations | publish `set.building` without the complete-set check |
+| `e2e/gps-satellite-fixtures` | a repeated PRN counts once | remove the in-set duplicate check |
+| `e2e/gps-satellite-fixtures` | capture stops when the page closes | drop `setSatelliteCapture(false)` from `gpsSatStop` |
+| `e2e/gps-malformed-satellites` | malformed NMEA, corrupt ACKs and every UART error event leave the table empty and the page alive | accept a sentence without validating its checksum |
+| `e2e/gps-monhw-poll` | the MON-HW decode, and that a corrupt or truncated frame does not publish | drop the `length < 56` guard in `parseMonHw` |
+| `bughunt/page-matrix` | `gps_baud`, `gps_platform` and `gps_sats` have page identity and reach both scroll ends | remove one from the `ui.page` identity array |
+
+Host coverage is `tests/host/gps_casic_test.cpp` (381 checks, including a
+deterministic mutation-checked fuzz loop over `NmeaSatellites`,
+`EphemerisCollector`, `splitFrames` and `parseMonHw`) and
+`tests/host/console_commands_test.cpp` (763 checks, including every new `gps`
+subcommand, the four receiver states, and the `gps_baud` and `gps_plat`
+settings).
+
+### The documentation capture gate
+
+The branch shipped a CI step that re-rendered the two GPS documentation
+captures under xvfb and byte-compared them against the committed PNGs, twice,
+for determinism. It was dropped for two reasons. It ran the docs script without
+the optional capability environment variables the script's own header says the
+harness sets, so `nav infrared` returned UNAVAILABLE and the step could never
+pass. And the shape is wrong even when it runs: capture byte-equality only
+holds for two runs of the same binary (sim/CLAUDE.md), so a
+render-and-compare against a committed PNG is a tripwire that fires on any
+unrelated LVGL, font or layout change and lands on whoever made it. No other
+documentation image in the repository is gated that way. What is left is the
+part that cannot rot and is easy to forget: the `docs/img` and `docs/wiki/img`
+copies must match each other.
+
+### Known coverage gaps
+
+- The `storeEphemeris` parser read is not covered by any ThreadSanitizer leg,
+  measured 0/5 with the lock removed. It rests on the header's ownership rule
+  and on review. An earlier revision of this bullet claimed the whole replay
+  commit condition was untestable; that was measured with one run instead of
+  five and was wrong in this branch's favour. All four commit conditions are in
+  the mutation table above.
+- The satellite page, like the GPS Data page, carries no focusable control, so
+  LVGL group navigation cannot scroll it with the physical buttons. Its content
+  is unbounded where GPS Data's is not, so rows past the fold are unreachable on
+  a Stick. `action scroll` reaches them, which is why the page-matrix assertions
+  pass. This is a pre-existing pattern rather than something this PR introduces,
+  and it needs a UI decision rather than a test.
+- Everything that touches the physical receiver is unverified: the ladder
+  against a real AT6668, the rail drop, the CFG-NAVX acknowledgement, the
+  `$PCAS11` numbering, the MON-HW field offsets, and whether the ephemeris
+  replay actually shortens time to first fix against the measured 108 s cold
+  start.
+- **Whether the receiver itself rejects an expired ephemeris injection. Take
+  this one first.** Every
+  GNSS receiver carries `toe` and IODE and is supposed to validate before use.
+  If the AT6668 does, then the four hour rule belongs to the receiver and not to
+  furble, and the arm-and-commit two-step, `Casic::Eph::freshness`, the
+  `gps-ephemeris-stale` scenario and the fixtures behind it can all be deleted
+  in favour of replaying the cache unconditionally at arm. Measure it by
+  capturing a cache, holding the unit unpowered past four hours, replaying, and
+  watching whether time to first fix improves, degrades, or is unchanged against
+  a no-replay control. It is the single measurement that would remove the most
+  code in this plan, which is why it is first.
+- **How long after enable the AT6668 first sends a dated RMC, relative to its
+  first fix.** The whole arm-and-commit two-step is built on that gap being
+  small. If the unit only dates its RMC once it already has a fix, the replay
+  lands after the fix it was meant to accelerate, and tier 2 is worthless in its
+  current shape whatever the simulator says.
 
 ## Motivation
 

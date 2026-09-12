@@ -1,0 +1,37 @@
+# An intervalometer run must not gain a frame from a gesture. The scenario sits
+# on the Remote shutter page while the run continues, so the page check cannot
+# mask the intervalometer guard.
+seed fauxny true
+seed imu true
+seed imu_trigger true
+wait 400
+action connect
+wait 3000
+assert-eventually-virtual 3000 control.state active
+assert-eventually-virtual 2000 ui.connected yes
+
+action page remote_timer
+wait 200
+action intervalometer
+wait 500
+assert-eventually-virtual 2000 ui.interval_state shutter
+
+action page shutter
+wait 200
+assert ui.page shutter
+assert ui.interval_state shutter
+assert camera.shutter_presses 1
+
+action imu.accel 0 0 2.6
+wait 20
+action imu.accel 0 0 1
+wait 80
+action imu.accel 0 0 2.6
+wait 20
+action imu.accel 0 0 1
+wait 200
+assert ui.gesture_last double_tap
+assert ui.gesture_shutter_sends 0
+assert ui.interval_state shutter
+assert camera.shutter_presses 1
+exit

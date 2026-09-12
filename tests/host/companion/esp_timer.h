@@ -24,6 +24,10 @@ struct FurbleHostTimer;
 using esp_timer_handle_t = FurbleHostTimer *;
 
 extern "C" int64_t esp_timer_get_time(void);
+
+// Jump the mock clock forward, for suites that must cross a rate limit
+// without sleeping through it. Defined by the mock NimBLE layer.
+extern "C" void furble_host_advance_time(int64_t us);
 esp_err_t esp_timer_create(const esp_timer_create_args_t *args, esp_timer_handle_t *out_handle);
 esp_err_t esp_timer_delete(esp_timer_handle_t handle);
 bool esp_timer_is_active(esp_timer_handle_t handle);

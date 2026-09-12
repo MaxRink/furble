@@ -1,0 +1,118 @@
+# The four hour ephemeris validity window, bounded by the receiver own clock.
+#
+# furble kept clock cannot answer this. After a power cut it restores as the
+# last persisted epoch plus the monotonic time since boot, with no knowledge of
+# how long the board was off, so a week unplugged reads as a couple of minutes
+# old. The receiver is the only clock that knows.
+#
+# Replay therefore arms at enable and commits only once the receiver has
+# reported a calendar DATE that is valid and different from the one the parser
+# held at arm time. Only RMC carries a date, so a changed date is proof RMC has
+# arrived this session. The time is deliberately not part of that test: a
+# receiver with RMC pruned reports a ticking time against a stale date, and
+# keying off the time would wave that stale date straight through.
+#
+# This file is the refusals. The positive path, where a fresh boot has no date
+# at all until RMC arrives and the replay then commits, is gps-ephemeris-replay.
+seed gps true
+seed gps_baud 9600
+seed gps_assist 2
+seed gps_fix_date modern
+seed gps_uart_mode ack
+# Serve the burst in 40 byte reads, so every RMC spans several of them with its
+# name in one read and its date field in the next. These legs switch the
+# receiver's date between sessions, so a count taken on the raw bytes commits
+# against the previous session's date, which is the defect this guards.
+seed gps_uart_chunk 40
+wait 300
+
+# The GPS Data page stays open throughout, so the UI task is reading the status
+# snapshot while the GPS task polls, stores and decides on its own thread. This
+# scenario is also the ThreadSanitizer gate for that boundary.
+action nav gps_data
+wait 500
+assert ui.page gps_data
+
+# Capture a cache while the receiver reports 2026-09-06.
+wait 8000
+assert-eventually 8000 gps.satellites 8
+wait 6000
+assert_min gps.eph_cached 200
+assert uart.eph_replay 0
+
+# Move the receiver clock a week forward and re-enable. The date changes, so the
+# commit happens and the age rule is what decides: a week is well past four
+# hours, so the cache is refused.
+gps-fix-date stale
+action toggle gps
+wait 1000
+action toggle gps
+wait 16000
+assert_min gps.eph_cached 200
+assert uart.eph_replay 0
+
+# That leg re-cached at 2026-09-13, so the cache and the receiver now agree.
+# Switch to a receiver with RMC pruned: it reports a position and a ticking
+# time, but never a date, so the parser keeps the 2026-09-13 date it already
+# has. Nothing may commit against a date this session did not receive, even
+# though that stale date would compare as perfectly fresh.
+gps-fix-date nodate
+action toggle gps
+wait 1000
+action toggle gps
+wait 40000
+assert_min gps.eph_cached 200
+assert uart.eph_replay 0
+
+# The empty RMC every receiver sends before its first fix, which is exactly what
+# is on the wire during the arm window. TinyGPS++ never dispatches an empty term
+# so the date field never reaches setDate, but date.commit() still runs and
+# raises the update flag against the date the previous session left behind. The
+# committed value does not move, so nothing may commit here.
+gps-fix-date emptyrmc
+action toggle gps
+wait 1000
+action toggle gps
+wait 40000
+assert uart.eph_replay 0
+
+# The implausible retry is bounded. This receiver hands over a new date every
+# burst, walking forward a day at a time from 1 August, more than a month behind
+# the cache this scenario captured. The bound has to stop it before the walk
+# arrives: the wait below is long enough for the walk to reach the capture date
+# and replay if nothing stopped it, which is what makes the bound load-bearing
+# here rather than incidental. A clock merely stuck behind would leave an
+# unbounded retry armed and silently passing this assertion.
+#
+# The walking receiver reports no fix, so no poll runs and the capture cannot
+# move under the walk.
+gps-fix-date walkback
+action toggle gps
+wait 1000
+action toggle gps
+wait 70000
+assert uart.eph_replay 0
+
+# A receiver on a noisy line whose RMC always arrives with a broken checksum.
+# The sentence name is in the stream, so anything counting it in the raw bytes
+# counts it, but the parser rejects it and commits no date. Nothing may commit
+# against a date this session never received, even though the stale one it is
+# holding would compare as perfectly fresh.
+gps-fix-date badrmc
+action toggle gps
+wait 1000
+action toggle gps
+wait 40000
+assert_min gps.eph_cached 200
+assert uart.eph_replay 0
+
+# A receiver clock behind the capture cannot bound an age either. Move it back
+# a week: the date changes, so the commit happens, and the backwards clock is
+# refused rather than treated as a zero age.
+gps-fix-date modern
+action toggle gps
+wait 1000
+action toggle gps
+wait 16000
+assert uart.eph_replay 0
+exit

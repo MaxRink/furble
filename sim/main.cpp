@@ -10,10 +10,18 @@
 
 #include <freertos/FreeRTOS.h>
 
+#if defined(FURBLE_SIM_MQTT) && FURBLE_SIM_MQTT
+#include <esp_event.h>
+#include <esp_netif.h>
+#endif
+
 #include "CameraList.h"
 #include "Device.h"
 #include "FurbleBootScreen.h"
 #include "FurbleControl.h"
+#if defined(FURBLE_SIM_MQTT) && FURBLE_SIM_MQTT
+#include "FurbleMQTT.h"
+#endif
 #include "FurblePlatform.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
@@ -45,13 +53,28 @@ int runSimulator() {
   // time, so the phase is the only progress the stall watchdog can see across
   // it. Record each step: a slow but progressing boot on a loaded host keeps
   // resetting the watchdog, and a wedged one names the step it stopped at.
-  Sim::watchdogPhase("preferences");
   Sim::startProfiler();
-  Sim::preparePreferences();
   Sim::watchdogPhase("settings");
   Settings::init();
   Sim::watchdogPhase("scenario settings");
   Sim::applyScenarioSettings();
+#if defined(FURBLE_SIM_MQTT) && FURBLE_SIM_MQTT
+  Settings::save<bool>(Settings::MQTT, true);
+  if (const char *uri = std::getenv("FURBLE_SIM_MQTT_URI"); uri != nullptr && uri[0] != '\0') {
+    Settings::save<std::string>(Settings::MQTT_URI, uri);
+  } else {
+    Settings::save<std::string>(Settings::MQTT_URI, "mqtt://127.0.0.1:1883");
+  }
+  if (const char *base = std::getenv("FURBLE_SIM_MQTT_BASE"); base != nullptr && base[0] != '\0') {
+    Settings::save<std::string>(Settings::MQTT_BASE, base);
+  }
+  if (const char *user = std::getenv("FURBLE_SIM_MQTT_USER"); user != nullptr) {
+    Settings::save<std::string>(Settings::MQTT_USER, user);
+  }
+  if (const char *password = std::getenv("FURBLE_SIM_MQTT_PASS"); password != nullptr) {
+    Settings::save<std::string>(Settings::MQTT_PASS, password);
+  }
+#endif
   Platform::getInstance().setCPUMaxFreq(Settings::load<Settings::CPU_FREQ>());
 #if defined(FURBLE_M5STICKS3)
   Platform::getInstance().watchdogEnable(Settings::load<Settings::WATCHDOG>());
@@ -80,7 +103,7 @@ int runSimulator() {
   if (Sim::scenarioSettingIsTrue("autoconnect")) {
     CameraList::addFauxNY();
     auto camera = CameraList::last();
-    CameraList::save(camera.get());
+    CameraList::save(camera);
     camera->setActive(true);
   } else if (Sim::scenarioSettingIsTrue("saved_camera")) {
     // Seed a saved but inactive camera so the Connect and Delete list pages
@@ -89,7 +112,7 @@ int runSimulator() {
     // attempted at boot.
     CameraList::addFauxNY();
     auto camera = CameraList::last();
-    CameraList::save(camera.get());
+    CameraList::save(camera);
   }
 
   // Let capture scripts pick a theme without navigating the roller. The theme
@@ -159,6 +182,12 @@ int runSimulator() {
   BootScreen::step("Bluetooth");
   BootScreen::step("Companion");
 
+#if defined(FURBLE_SIM_MQTT) && FURBLE_SIM_MQTT
+  ESP_ERROR_CHECK(esp_netif_init());
+  ESP_ERROR_CHECK(esp_event_loop_create_default());
+  MQTT::init();
+#endif
+
   Sim::watchdogPhase("control task");
   auto &control = Control::getInstance();
   xTaskCreate(control_task, "control", 8192, &control, 4, nullptr);
@@ -198,6 +227,12 @@ int runSimulator() {
   // esp_timer API deletes callbacks asynchronously on hardware, so keep the
   // callback argument alive until the simulator dispatcher has joined.
   Sim::quiesceRig();
+#if defined(FURBLE_SIM_MQTT) && FURBLE_SIM_MQTT
+  if (!MQTT::getInstance().shutdownForSimulator(1000)) {
+    std::fprintf(stderr, "MQTT simulator shutdown did not acknowledge before its timeout.\n");
+    Sim::requestFailureExit();
+  }
+#endif
   furble_sim_stop_all_tasks();
   // The virtual peers are released only after every task has joined. The
   // control task, its per-target tasks and the virtual radio all hold pointers
@@ -214,6 +249,11 @@ int runSimulator() {
 int main(int argc, char **argv) {
   Furble::Sim::configure(argc, argv);
   Furble::Sim::watchdogRegisterThread("main");
+  Furble::Sim::watchdogPhase("preferences");
+  // Set the per-run preferences path before SDL setup and the simulator
+  // thread start. SDL and the watchdog read process environment state while
+  // they initialize and run, so this write must happen before either starts.
+  Furble::Sim::preparePreferences();
   Furble::Sim::watchdogStart();
   if (lgfx::Panel_sdl::setup() != 0) {
     return 1;
@@ -254,6 +294,7 @@ int main(int argc, char **argv) {
     Furble::Sim::restartProcess();
   }
 
+  Furble::Sim::removePreferences();
   Furble::Sim::watchdogStop();
   return simulatorResult == 0 ? closeResult : simulatorResult;
 }

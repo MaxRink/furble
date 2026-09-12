@@ -1,0 +1,51 @@
+# A parked user must never be dead reckoned. Below 2 m/s the reported course is
+# receiver noise, so projecting along it would walk a standing photographer
+# around the map while the fix is held.
+#
+# Same scenario as gps-hold-extrapolate.txt with the stationary canned track
+# selected, which reports 0.412 knots (0.21 m/s) at the same position.
+#
+# Killing mutation, confirmed to fail this file:
+#   - drop the GPS_EXTRAPOLATE_MIN_SPEED_MPS floor: camera.geo_lat_e5 leaves
+#     4811730.
+seed fauxny true
+seed autoconnect true
+seed gps true
+seed sd_gpx true
+seed gps_hold 4
+seed gps_extrap true
+seed gps_stationary true
+seed gps_uart_mode ack
+wait 4000
+action nav gps_data
+wait 2000
+assert ui.page gps_data
+assert ui.gps_fix_state live
+assert camera.geo_lat_e5 4811730
+
+uart-mode pause
+wait 5000
+wait 5000
+wait 5000
+wait 5000
+wait 5000
+wait 5000
+wait 5000
+assert ui.gps_fix_state held
+assert camera.geo_lat_e5 4811730
+# The held fix is still being sent, only its position is not projected. The
+# advance carries the freshness window, so it is well past the fix's 45319.
+assert_min camera.geo_utc_s 45345
+assert_max camera.geo_utc_s 45360
+
+wait 5000
+wait 5000
+wait 5000
+wait 5000
+wait 5000
+wait 5000
+assert ui.gps_fix_state held
+assert camera.geo_lat_e5 4811730
+assert gpx.points 1
+assert ui.overflow no
+exit

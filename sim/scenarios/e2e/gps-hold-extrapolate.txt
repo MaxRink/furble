@@ -1,0 +1,93 @@
+# With extrapolation on, a held fix is projected along the last measured course
+# and speed, and that projection stops at its horizon.
+#
+# The canned receiver track runs at 22.678 knots (11.667 m/s) due north from
+# 48.11730 N. Two clocks matter and they are not the same. The distance is
+# measured from when the receiver produced the fix, because that is when the
+# user was last actually there, so the 30 s freshness window counts as travel.
+# The horizon is measured from when the fix was declared stale, because that is
+# what "stop trusting the projection after 30 s" means. Past it the projection
+# freezes where it reached rather than snapping back to the measured point,
+# which would walk the geotag stream forward and then hundreds of metres back.
+#
+# Nothing is written to the track log throughout. A projected position is not a
+# measured one.
+#
+# Killing mutations, all confirmed to fail this file:
+#   - never extrapolate: camera.geo_lat_e5 stays 4811730, under the first floor.
+#   - project from the hold start instead of the fix time: the first sample is
+#     4811782, under the first floor.
+#   - extrapolate past the horizon (drop the clamp in gpsExtrapolateElapsedMs):
+#     the final camera.geo_lat_e5 runs past the 4812375 ceiling.
+#
+# The frozen value is a band, not a literal. Staleness is detected on an update
+# tick, so the measured freshness window is 30 to 31 s and the frozen distance
+# moves by one service period of travel with it: 4812359 to 4812370 over eight
+# runs, which is 11 units of 1e-5 degrees, which is 11.7 m at 11.667 m/s. The
+# band is that spread plus a small margin. The exact freeze is pinned without
+# any sampling jitter by gps_hold_test testHorizonFreezes; this file's job is
+# that the whole path produces a position that stops moving.
+#   - drop the speed floor: see gps-hold-stationary.txt.
+#   - log held fixes to GPX: gpx.points climbs.
+seed fauxny true
+seed autoconnect true
+seed gps true
+seed sd_gpx true
+seed gps_hold 4
+seed gps_extrap true
+seed gps_uart_mode ack
+wait 4000
+action nav gps_data
+wait 2000
+assert ui.page gps_data
+assert ui.gps_fix_state live
+assert camera.geo_lat_e5 4811730
+assert gpx.points 1
+
+uart-mode pause
+wait 5000
+wait 5000
+wait 5000
+wait 5000
+wait 5000
+wait 5000
+wait 5000
+assert ui.gps_fix_state held
+# Under way, so the projection has already moved the reported position north,
+# by the freshness window plus the hold so far.
+assert_min camera.geo_lat_e5 4812050
+assert_max camera.geo_lat_e5 4812140
+assert_min camera.geo_utc_s 45345
+assert_max camera.geo_utc_s 45360
+
+wait 5000
+wait 5000
+assert_min camera.geo_lat_e5 4812160
+assert_max camera.geo_lat_e5 4812250
+
+# Past the 30 s horizon the projection freezes. The clamp pins it to a fixed
+# distance, so the same tight band holds at both samples below no matter which
+# tick the hold began on. Letting the projection run past the horizon breaks the
+# second one.
+wait 5000
+wait 5000
+wait 5000
+wait 5000
+wait 5000
+wait 5000
+assert_min camera.geo_lat_e5 4812355
+assert_max camera.geo_lat_e5 4812375
+
+wait 5000
+wait 5000
+wait 5000
+wait 5000
+assert ui.gps_fix_state held
+assert_min camera.geo_lat_e5 4812355
+assert_max camera.geo_lat_e5 4812375
+# The UTC keeps advancing even after the position stops.
+assert_min camera.geo_utc_s 45405
+assert_max camera.geo_utc_s 45420
+assert gpx.points 1
+assert ui.overflow no
+exit

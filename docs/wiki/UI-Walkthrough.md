@@ -149,14 +149,24 @@ The GPS Data page shows the live fix: age, satellite count, speed, latitude and
 longitude, altitude, and UTC date and time. It is reachable both here and under
 `Settings` > `GPS` > `GPS Data`.
 
+### GPS Satellites
+
+![GPS satellite detail page](img/gps-satellites.png)
+
+The Satellites page enables GSV/GSA capture only while it is open. It reports
+the fix type, in-view and used counts, PDOP/HDOP/VDOP, and each satellite's
+constellation, PRN, C/N0, and used-in-fix marker. The screenshot uses the
+simulator's fixed eight-satellite fixture; it is a deterministic UI capture,
+not evidence that the attached AT6668 receiver has been hardware-verified.
+
 ## Settings
 
 ![Settings root](img/settings.png)
 
 The Settings menu groups every option. Its entries in order are Display,
-Features, Infrared, GPS, Timer, Theme, Text size, Bluetooth, About, Power,
-Feedback, Diagnostics, Storage. Infrared, Feedback, and Storage appear only on
-boards with the matching hardware.
+Features, Infrared, Sensors, GPS, Timer, Theme, Text size, Bluetooth, About,
+Power, Feedback, Diagnostics, Storage. Infrared, Feedback, and Storage appear
+only on boards with the matching hardware.
 
 ### Display
 
@@ -180,6 +190,20 @@ Companion (the companion BLE service), Watchdog (M5StickS3 only), Preset Picker
 (the exposure preset stepper on the shutter page), and Boot screen (the startup
 splash).
 
+### Sensors
+
+The Sensors page contains the **IMU** switch and the **Gestures** entry.
+Gestures holds the **Wake Gesture** roller (Off, Tap, Shake, Both), the
+**Double-Tap Shutter** switch, and the false-trigger warning. A gesture wakes
+the display or fires one debounced shutter command on an active remote page.
+Every gesture control is disabled when the IMU is unavailable. The
+`sim/scenarios/e2e/imu-gesture-*.txt` scenarios cover detection, the wake
+masks, the shutter guards, and the disabled state; the gating scenario runs on
+all three simulator panel sizes.
+
+![Sensors settings](../img/settings-sensors.png)
+![Gestures settings](../img/settings-gestures.png)
+
 ### Infrared
 
 The Infrared submenu holds the Infrared on/off switch and the IR Protocol roller
@@ -193,14 +217,17 @@ has no captured screenshot; see the
 ![GPS settings](img/settings-gps.png)
 
 The GPS switch is the master control. When it is on, the receiver configuration
-rows appear: baud (9600 or 115200), Update rate, Sentences, Constellation, a
-Power saving submenu, Assisted start, and the two live pages GPS Data and Raw
-NMEA. When GPS is off, only the switch is shown.
+rows appear: GPS Baud (Auto, 9600, or 115200), Update rate, Sentences,
+Constellation, Power saving, Assisted start, Platform, and the three live pages
+GPS Data, Raw NMEA, and Satellites. When GPS is off, only the switch is shown.
 
 ![Raw NMEA page](img/gps-nmea.png)
 
 Raw NMEA shows the sentences arriving from the receiver, the fix state, and error
-counters, with a Hot restart button.
+counters, binary configuration status, and a Hot restart button. Auto baud
+probing requires two checksummed NMEA sentences; an unsuccessful probe marks the
+receiver absent and cuts the external rail before one delayed retry. Auto
+detection has simulator coverage and is pending live AT6668 verification.
 
 ### Timer
 
@@ -306,6 +333,7 @@ green outline. Set it under `Settings` > `Theme` > `Dark` and press Restart.
 ![Dark settings](img/dark-settings.png)
 ![Dark features](img/dark-features.png)
 ![Dark GPS settings](img/dark-settings-gps.png)
+![Dark GPS satellites](img/dark-gps-satellites.png)
 ![Dark Bluetooth](img/dark-bluetooth.png)
 ![Dark connected menu](img/dark-connected.png)
 ![Dark remote page](img/dark-remote.png)

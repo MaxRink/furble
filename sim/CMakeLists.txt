@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.20)
 
 project(furble_sim LANGUAGES C CXX)
 
+option(FURBLE_SIM_MQTT "Build the simulator's native libmosquitto transport" OFF)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -14,6 +16,27 @@ set(FURBLE_LVGL_DIR "" CACHE PATH "LVGL 9 source directory")
 
 set(M5GFX_DIR "${FURBLE_DEP_ROOT}/M5GFX")
 set(M5UNIFIED_DIR "${FURBLE_DEP_ROOT}/M5Unified")
+
+if(FURBLE_SIM_MQTT)
+  find_path(FURBLE_MOSQUITTO_INCLUDE_DIR mosquitto.h)
+  find_library(FURBLE_MOSQUITTO_LIBRARY NAMES mosquitto)
+  set(FURBLE_IDF_JSON_DIR "$ENV{IDF_PATH}/components/json" CACHE PATH
+      "ESP-IDF json component directory used by the optional simulator MQTT path")
+  if(EXISTS "${FURBLE_IDF_JSON_DIR}/cJSON/cJSON.c"
+     AND EXISTS "${FURBLE_IDF_JSON_DIR}/cJSON/cJSON.h")
+    set(FURBLE_CJSON_INCLUDE_DIR "${FURBLE_IDF_JSON_DIR}/cJSON")
+    set(FURBLE_CJSON_SOURCE "${FURBLE_IDF_JSON_DIR}/cJSON/cJSON.c")
+  else()
+    find_path(FURBLE_CJSON_INCLUDE_DIR cJSON.h)
+    find_library(FURBLE_CJSON_LIBRARY NAMES cjson)
+  endif()
+  if(NOT FURBLE_MOSQUITTO_INCLUDE_DIR OR NOT FURBLE_MOSQUITTO_LIBRARY
+     OR NOT FURBLE_CJSON_INCLUDE_DIR
+     OR (NOT FURBLE_CJSON_SOURCE AND NOT FURBLE_CJSON_LIBRARY))
+    message(FATAL_ERROR
+            "FURBLE_SIM_MQTT requires libmosquitto and cJSON from IDF or installed packages; no dependency is bundled")
+  endif()
+endif()
 
 if(NOT EXISTS "${M5GFX_DIR}/src/M5GFX.cpp")
   message(FATAL_ERROR "M5GFX was not found at ${M5GFX_DIR}")
@@ -68,25 +91,31 @@ target_include_directories(lvgl PUBLIC "${CMAKE_CURRENT_LIST_DIR}")
 file(GLOB SIM_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/*.cpp")
 file(GLOB ICON_SOURCES CONFIGURE_DEPENDS "${FURBLE_ROOT}/components/icons/*.c")
 
-# Keep this firmware source list in sync with sim/build.sh.
+# Keep this firmware source list in sync with sim/build.sh. FurbleMQTT.cpp is
+# an empty translation unit unless FURBLE_MQTT is enabled.
 set(FURBLE_SOURCES
     ${SIM_SOURCES}
     "${FURBLE_ROOT}/src/FurbleBootScreen.cpp"
     "${FURBLE_ROOT}/src/FurbleCalibrate.cpp"
+    "${FURBLE_ROOT}/src/FurbleCompanionAuth.cpp"
+    "${FURBLE_ROOT}/tests/host/companion/companion_hmac.cpp"
     "${FURBLE_ROOT}/src/FurbleCompanionService.cpp"
     "${FURBLE_ROOT}/src/FurbleControl.cpp"
     "${FURBLE_ROOT}/src/FurbleGPS.cpp"
     "${FURBLE_ROOT}/src/FurbleOTAMQTT.cpp"
     "${FURBLE_ROOT}/src/FurbleOTAPartitionSink.cpp"
     "${FURBLE_ROOT}/src/FurbleOTAReplayStore.cpp"
+    "${FURBLE_ROOT}/src/FurbleIMU.cpp"
     "${FURBLE_ROOT}/src/FurblePower.cpp"
     "${FURBLE_ROOT}/src/FurbleProvision.cpp"
     "${FURBLE_ROOT}/src/FurbleSettings.cpp"
+    "${FURBLE_ROOT}/src/FurbleNetworkSettings.cpp"
     "${FURBLE_ROOT}/src/FurbleSpinValue.cpp"
     "${FURBLE_ROOT}/src/FurbleTimeKeeper.cpp"
     "${FURBLE_ROOT}/src/FurbleTimeKeeperPolicy.cpp"
     "${FURBLE_ROOT}/src/FurbleUI.cpp"
     "${FURBLE_ROOT}/src/FurbleUIBulb.cpp"
+    "${FURBLE_ROOT}/src/FurbleUIGesture.cpp"
     "${FURBLE_ROOT}/src/FurbleUIIntervalometer.cpp"
     "${FURBLE_ROOT}/lib/blowfish/Blowfish.cpp"
     "${FURBLE_ROOT}/lib/furble/BtDebugJournal.cpp"
@@ -112,12 +141,20 @@ set(FURBLE_SOURCES
     "${FURBLE_ROOT}/lib/furble/protocol/AdvertisementProtocol.cpp"
     "${FURBLE_ROOT}/lib/furble/protocol/CameraListProtocol.cpp"
     "${FURBLE_ROOT}/lib/furble/protocol/FujifilmProtocol.cpp"
+    "${FURBLE_ROOT}/lib/furble/protocol/GpsCasic.cpp"
     "${FURBLE_ROOT}/lib/furble/protocol/ProvisionTLV.cpp"
     "${FURBLE_ROOT}/lib/testing/nimble/MockNimBLE.cpp"
     "${FURBLE_ROOT}/lib/testing/peer/FujifilmVirtualCamera.cpp"
     "${FURBLE_ROOT}/lib/testing/peer/RicohVirtualCamera.cpp"
     "${FURBLE_DEP_ROOT}/TinyGPSPlus/src/TinyGPS++.cpp"
-    ${ICON_SOURCES})
+    ${ICON_SOURCES}
+    "${FURBLE_ROOT}/src/FurbleMQTT.cpp")
+
+if(FURBLE_SIM_MQTT)
+  if(FURBLE_CJSON_SOURCE)
+    list(APPEND FURBLE_SOURCES "${FURBLE_CJSON_SOURCE}")
+  endif()
+endif()
 
 file(GLOB M5GFX_SOURCES CONFIGURE_DEPENDS
      "${M5GFX_DIR}/src/*.cpp"
@@ -169,16 +206,26 @@ target_compile_definitions(
     LV_KCONFIG_IGNORE
     _THREAD_SAFE)
 
+if(FURBLE_SIM_MQTT)
+  target_compile_definitions(furble-sim PRIVATE FURBLE_MQTT=1 FURBLE_SIM_MQTT=1)
+  target_include_directories(
+    furble-sim PRIVATE "${FURBLE_MOSQUITTO_INCLUDE_DIR}" "${FURBLE_CJSON_INCLUDE_DIR}")
+  target_link_libraries(furble-sim PRIVATE "${FURBLE_MOSQUITTO_LIBRARY}")
+  if(FURBLE_CJSON_LIBRARY)
+    target_link_libraries(furble-sim PRIVATE "${FURBLE_CJSON_LIBRARY}")
+  endif()
+endif()
+
 target_compile_options(
   furble-sim
   PRIVATE
     -Wall
     -Wextra
     -Wno-unused-parameter
-    "-include${CMAKE_CURRENT_LIST_DIR}/shim/esp_log.h"
-    "-include${CMAKE_CURRENT_LIST_DIR}/shim/esp_system.h"
-    "-include${CMAKE_CURRENT_LIST_DIR}/shim/esp_heap_caps.h"
-    "-include${CMAKE_CURRENT_LIST_DIR}/shim/freertos/FreeRTOS.h")
+    "$<$<COMPILE_LANGUAGE:CXX>:-include${CMAKE_CURRENT_LIST_DIR}/shim/esp_log.h>"
+    "$<$<COMPILE_LANGUAGE:CXX>:-include${CMAKE_CURRENT_LIST_DIR}/shim/esp_system.h>"
+    "$<$<COMPILE_LANGUAGE:CXX>:-include${CMAKE_CURRENT_LIST_DIR}/shim/esp_heap_caps.h>"
+    "$<$<COMPILE_LANGUAGE:CXX>:-include${CMAKE_CURRENT_LIST_DIR}/shim/freertos/FreeRTOS.h>")
 target_link_libraries(furble-sim PRIVATE lvgl SDL2::SDL2)
 # Export the executable's symbols so the stall watchdog's backtraces name
 # functions instead of raw addresses. Matches -rdynamic in sim/build.sh.
@@ -187,3 +234,10 @@ set_target_properties(furble-sim PROPERTIES ENABLE_EXPORTS ON)
 if(APPLE)
   target_link_libraries(furble-sim PRIVATE "-framework Cocoa")
 endif()
+
+# TinyGPSPlus ages readings against a global millis(). Suppress its host
+# wall-clock fallback so sim/clock.cpp can supply the virtual one. __AVR__
+# guards nothing else in that file. Keep this in step with sim/build.sh.
+set_source_files_properties(
+    "${FURBLE_DEP_ROOT}/TinyGPSPlus/src/TinyGPS++.cpp"
+    PROPERTIES COMPILE_DEFINITIONS "__AVR__")

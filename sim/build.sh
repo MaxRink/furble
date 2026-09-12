@@ -21,6 +21,40 @@ CC=${CC:-clang}
 FURBLE_BOARD=${FURBLE_SIM_FURBLE_BOARD:-FURBLE_M5STICKS3}
 M5GFX_BOARD=${FURBLE_SIM_M5GFX_BOARD:-board_M5StickS3}
 
+MQTT_ENABLED=${FURBLE_SIM_MQTT:-0}
+MQTT_CXXFLAGS=
+MQTT_CFLAGS=
+MQTT_LINK_FLAGS=
+MQTT_DEFINE=
+MQTT_CJSON_SOURCE=
+
+if [ "$MQTT_ENABLED" = "1" ]; then
+  if ! command -v pkg-config >/dev/null 2>&1 || ! pkg-config --exists libmosquitto; then
+    echo "FURBLE_SIM_MQTT=1 requires an installed libmosquitto pkg-config module" >&2
+    exit 1
+  fi
+  IDF_JSON_DIR=${FURBLE_IDF_JSON_DIR:-${IDF_PATH:-}/components/json}
+  if [ -f "$IDF_JSON_DIR/cJSON/cJSON.c" ] && [ -f "$IDF_JSON_DIR/cJSON/cJSON.h" ]; then
+    MQTT_CXXFLAGS="-I$IDF_JSON_DIR/cJSON"
+    MQTT_CFLAGS="$MQTT_CXXFLAGS"
+    MQTT_CJSON_SOURCE="$IDF_JSON_DIR/cJSON/cJSON.c"
+    MQTT_LINK_FLAGS=$(pkg-config --libs libmosquitto)
+  else
+    CJSON_MODULE=
+    if pkg-config --exists libcjson; then
+      CJSON_MODULE=libcjson
+    elif pkg-config --exists cjson; then
+      CJSON_MODULE=cjson
+    else
+      echo "FURBLE_SIM_MQTT=1 requires cJSON from IDF components/json or an installed pkg-config module" >&2
+      exit 1
+    fi
+    MQTT_CXXFLAGS=$(pkg-config --cflags libmosquitto "$CJSON_MODULE")
+    MQTT_LINK_FLAGS=$(pkg-config --libs libmosquitto "$CJSON_MODULE")
+  fi
+  MQTT_DEFINE="-DFURBLE_MQTT=1 -DFURBLE_SIM_MQTT=1"
+fi
+
 if [ ! -f "$DEP_ROOT/M5GFX/src/M5GFX.cpp" ]; then
   echo "M5GFX was not found at $DEP_ROOT" >&2
   exit 1
@@ -144,7 +178,7 @@ coverage_flags_for() {
 # the shaping flags and drop the cache when they change. A build dir holding
 # objects but no stamp predates this check, so it is treated as a mismatch once.
 FLAG_STAMP="$BUILD_DIR/build-flags"
-FLAG_VALUE="board=$FURBLE_BOARD m5gfx=$M5GFX_BOARD rig=${FURBLE_SIM_RIG:-1} sanitize=$SANITIZE coverage=$COVERAGE"
+FLAG_VALUE="board=$FURBLE_BOARD m5gfx=$M5GFX_BOARD rig=${FURBLE_SIM_RIG:-1} mqtt=$MQTT_ENABLED sanitize=$SANITIZE coverage=$COVERAGE"
 if [ ! -f "$FLAG_STAMP" ] || [ "$(cat "$FLAG_STAMP")" != "$FLAG_VALUE" ]; then
   if [ -f "$FLAG_STAMP" ] || [ -n "$(ls -A "$BUILD_DIR/obj" 2>/dev/null)" ]; then
     echo "[CLEAN] build flags changed, dropping $BUILD_DIR/obj"
@@ -154,7 +188,7 @@ if [ ! -f "$FLAG_STAMP" ] || [ "$(cat "$FLAG_STAMP")" != "$FLAG_VALUE" ]; then
   printf '%s' "$FLAG_VALUE" >"$FLAG_STAMP"
 fi
 
-CXXFLAGS="-std=c++17 -O0 -g -Wall -Wextra -Wno-unused-parameter $SANITIZE_FLAGS $INCLUDES $DEFINES"
+CXXFLAGS="-std=c++17 -O0 -g -Wall -Wextra -Wno-unused-parameter $SANITIZE_FLAGS $INCLUDES $DEFINES $MQTT_DEFINE $MQTT_CXXFLAGS"
 CXXFLAGS="$CXXFLAGS -include $ROOT/sim/shim/esp_log.h -include $ROOT/sim/shim/esp_system.h"
 CXXFLAGS="$CXXFLAGS -include $ROOT/sim/shim/esp_heap_caps.h"
 # The production connection stack declares FreeRTOS queue, task and tick types
@@ -164,7 +198,7 @@ CXXFLAGS="$CXXFLAGS -include $ROOT/sim/shim/freertos/FreeRTOS.h"
 # glibc hides strnlen and other POSIX names under strict -std=c11, which
 # breaks the LVGL clib build on Linux. _DEFAULT_SOURCE restores them and is
 # inert on macOS.
-CFLAGS="-std=c11 -D_DEFAULT_SOURCE -O0 -g -Wall -Wextra $SANITIZE_FLAGS $INCLUDES $DEFINES"
+CFLAGS="-std=c11 -D_DEFAULT_SOURCE -O0 -g -Wall -Wextra $SANITIZE_FLAGS $INCLUDES $DEFINES $MQTT_CFLAGS"
 
 OBJECTS=
 
@@ -175,6 +209,13 @@ dependency_is_current() {
   # Depfiles created before recipe-backed checks were introduced are treated
   # as a one-time cache miss so they are upgraded safely.
   grep -q '^[[:space:]]*@:$' "$depfile" || return 1
+
+  # A depfile from a different build-dir spelling can name the same source
+  # object relatively.  Asking make about the current absolute target would
+  # then find no matching rule and incorrectly report it current.  Treat any
+  # target mismatch (including make-escaped paths) as a conservative miss.
+  declared_target=$(sed -n '1s/:.*$//p' "$depfile")
+  [ "$declared_target" = "$object" ] || return 1
 
   # The compiler-generated file is a make rule containing the complete
   # project-header closure. BSD make and GNU make both implement -q, so this
@@ -216,7 +257,14 @@ compile_cpp() {
     return
   fi
   echo "[CXX] ${source#$ROOT/}"
-  "$CXX" $CXXFLAGS $(coverage_flags_for "$source") \
+  # TinyGPSPlus ages readings against a global millis(). Suppress its host
+  # wall-clock fallback so sim/clock.cpp can supply the virtual one, which is
+  # what makes fix age deterministic. __AVR__ guards nothing else in that file.
+  extra=""
+  case "$source" in
+    "$DEP_ROOT/TinyGPSPlus/"*) extra="-D__AVR__" ;;
+  esac
+  "$CXX" $CXXFLAGS $extra $(coverage_flags_for "$source") \
     -MMD -MP -MF "$depfile" -MT "$object" -c "$source" -o "$object"
   write_depfile_recipe "$depfile"
   OBJECTS="$OBJECTS $object"
@@ -250,20 +298,25 @@ done
 for source in \
   "$ROOT/src/FurbleBootScreen.cpp" \
   "$ROOT/src/FurbleCalibrate.cpp" \
+  "$ROOT/src/FurbleCompanionAuth.cpp" \
+  "$ROOT/tests/host/companion/companion_hmac.cpp" \
   "$ROOT/src/FurbleCompanionService.cpp" \
   "$ROOT/src/FurbleControl.cpp" \
   "$ROOT/src/FurbleGPS.cpp" \
   "$ROOT/src/FurbleOTAMQTT.cpp" \
   "$ROOT/src/FurbleOTAPartitionSink.cpp" \
   "$ROOT/src/FurbleOTAReplayStore.cpp" \
+  "$ROOT/src/FurbleIMU.cpp" \
   "$ROOT/src/FurblePower.cpp" \
   "$ROOT/src/FurbleProvision.cpp" \
   "$ROOT/src/FurbleSettings.cpp" \
+  "$ROOT/src/FurbleNetworkSettings.cpp" \
   "$ROOT/src/FurbleSpinValue.cpp" \
   "$ROOT/src/FurbleTimeKeeper.cpp" \
   "$ROOT/src/FurbleTimeKeeperPolicy.cpp" \
   "$ROOT/src/FurbleUI.cpp" \
   "$ROOT/src/FurbleUIBulb.cpp" \
+  "$ROOT/src/FurbleUIGesture.cpp" \
   "$ROOT/src/FurbleUIIntervalometer.cpp" \
   "$ROOT/lib/blowfish/Blowfish.cpp" \
   "$ROOT/lib/furble/BtDebugJournal.cpp" \
@@ -289,6 +342,7 @@ for source in \
   "$ROOT/lib/furble/protocol/AdvertisementProtocol.cpp" \
   "$ROOT/lib/furble/protocol/CameraListProtocol.cpp" \
   "$ROOT/lib/furble/protocol/FujifilmProtocol.cpp" \
+  "$ROOT/lib/furble/protocol/GpsCasic.cpp" \
   "$ROOT/lib/furble/protocol/ProvisionTLV.cpp" \
   "$ROOT/lib/testing/nimble/MockNimBLE.cpp" \
   "$ROOT/lib/testing/peer/FujifilmVirtualCamera.cpp" \
@@ -296,6 +350,13 @@ for source in \
   "$DEP_ROOT/TinyGPSPlus/src/TinyGPS++.cpp"; do
   compile_cpp "$source"
 done
+
+if [ "$MQTT_ENABLED" = "1" ]; then
+  if [ -n "$MQTT_CJSON_SOURCE" ]; then
+    compile_c "$MQTT_CJSON_SOURCE"
+  fi
+  compile_cpp "$ROOT/src/FurbleMQTT.cpp"
+fi
 
 while IFS= read -r source; do
   compile_c "$source"
@@ -331,7 +392,7 @@ echo "[LD]  sim/build/furble-sim"
 # -rdynamic exports the executable's symbols into the dynamic table so the
 # stall watchdog's backtraces name functions instead of raw addresses. A dump
 # of a wedged run is the whole point of that watchdog.
-LINK_FLAGS="-rdynamic -L/opt/homebrew/lib -L/usr/local/lib -lSDL2 -lpthread"
+LINK_FLAGS="-rdynamic -L/opt/homebrew/lib -L/usr/local/lib -lSDL2 -lpthread $MQTT_LINK_FLAGS"
 if [ "$(uname -s)" = "Darwin" ]; then
   LINK_FLAGS="$LINK_FLAGS -framework Cocoa"
 fi

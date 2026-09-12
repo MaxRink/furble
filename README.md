@@ -23,8 +23,14 @@ What this fork adds over upstream right now:
 - BLE scan duty cycle and scan timeout settings
 - A USB serial console for developers and test automation
 - A host SDL simulator for the UI, plus an Android companion app
+- Companion camera management: list saved cameras, select Multi-Connect targets,
+  and connect or disconnect them from the phone
 - A simulator-tested IMU spirit level and live IMU diagnostics page. Enable it
   under Settings > Sensors; the Level page appears while connected.
+- Software IMU gestures: configurable tap or shake display wake and an optional
+  debounced double-tap shutter trigger, under Settings > Sensors > Gestures.
+  Both are off by default and are simulator-tested through the same
+  accelerometer seam the firmware reads.
 - Plan documents for every change under `plans/`, and CI on every pull request
 
 Use this fork if you want battery life on a StickS3, the newest features, or
@@ -42,6 +48,17 @@ cameras. furble now supports:
 
 The remote uses the camera's native Bluetooth Low Energy interface thus additional
 adapters are not required.
+
+### Companion camera management
+
+The companion BLE service exposes the Cameras characteristic at
+`b57f4f63-087b-4740-b71d-8262cf26ebbc`. A companion can list the saved camera
+catalog, select or deselect stable camera IDs for Multi-Connect, and request a
+connect or disconnect. Camera state records include saved, selected,
+active-target, and connected flags, progress, RSSI while connected, state, and
+the camera name. A scan remains separate from the saved catalog, and a connect
+request is reported busy while scanning or another connect is in flight. See
+[the companion reference](docs/companion.md) for the packet layout.
 
 furble is developed on ESP32 devices as a PlatformIO project.
 
@@ -117,7 +134,7 @@ Initially targeted at the M5StickC, the following controllers from [M5Stack](htt
 * M5Core2
 * M5Tough (untested)
 
-furble builds five release firmware images, one per board environment. M5Unified
+furble builds six release firmware images, one per board environment. M5Unified
 detects the exact board at runtime, so one image covers a board family. The
 M5Tough is not a build environment. It shares the M5Core2 image through
 M5Unified board detection, but it has not been verified on hardware. See
@@ -167,14 +184,20 @@ In most cases it should be:
 
 More details are on the wiki: [PlatformIO](https://github.com/gkoh/furble/wiki/Linux-Command-Line-(For-Developers))
 
+MQTT is compiled only for the documented 8 MB and 16 MB profiles: M5StickS3,
+M5Stack Core2, and Waveshare ESP32-S3-ETH (plus the 8 MB headless S3 profile).
+The 4 MB M5StickC, M5StickC Plus, and M5Stack Core images omit MQTT and its
+component dependencies so their two OTA slots retain their fixed size.
+
 ### Debug builds (developers)
 
 Every board has an optional `<board>-debug` environment, for example
 `m5stick-s3-debug`. These are built with `build_type = debug` and with
 `LOG_LOCAL_LEVEL=ESP_LOG_VERBOSE`, so `ESP_LOGD` and `ESP_LOGV` in furble
 sources are compiled in. They share the release `sdkconfig` of the board they
-extend, so nothing but the compiler flags changes. CI and releases build the
-five release environments only, never the debug ones.
+extend, except for the Core USB fallback's single-factory partition fragment.
+Normal CI builds the six release environments and their mandatory debug
+profiles. Releases retain their existing release/debug matrix.
 
 Build, flash and watch the log:
 - `platformio run -e m5stick-s3-debug -t upload`
@@ -202,6 +225,15 @@ The other boards are plain ESP32 and reach the host through a USB to UART
 bridge. They have no JTAG peripheral, so their debug environments give verbose
 logging and unoptimised code only. There are no breakpoints on a StickC.
 
+The 4 MB M5Stack Core also has a developer-only `m5stack-core-usb-debug`
+environment. It uses one large factory app partition when the normal Core debug
+image no longer fits its dual-OTA slot. Flash it over the Core USB-UART bridge;
+it has no wireless update or rollback path and is not published by the release
+or web installer. Normal CI uses it for the Core debug lane. The legacy
+dual-OTA Core debug profile remains available only as an explicit
+workflow-dispatch opt-in. The partition keeps NVS at its existing address, so
+do not erase the chip when preserving settings and camera bonds matters.
+
 ### Serial console (developers)
 
 The debug environments also set `-DFURBLE_CONSOLE=1`, which builds a text
@@ -227,13 +259,24 @@ status                              state, targets, uptime, heap, battery, reset
 power                               power stats, or a CSV power log
 perf                                task, heap, and LVGL performance
 gps                                 GPS status and control, eg. gps send PCAS12,10
-imu status                         read-only IMU type/read diagnostic
+imu status | scale [value]          IMU diagnostic, gesture calibration
 time status | flush                 wall-clock status or persist before shutdown
-settings list | get | set           read and write every setting
+wifi status                         WiFi state, access point and IP information
+wifi set ssid|psk <value>           save WiFi credentials (passphrases stay masked)
+wifi enable|disable                 enable or disable station reconnects
+wifi connect|disconnect|forget      control the saved station credentials
+ntp status                          NTP state, server, sync time and offset
+ntp set server <host>               save the NTP server
+ntp enable|disable|sync             control or request an NTP synchronization
+imu status | scale [value]          IMU diagnostic, gesture calibration
+time status | flush                 wall-clock status or persist before shutdown
+settings list | get | set           read and write non-secret settings
+companion password set | clear | status manage the companion password without revealing it
 ui audit                            dump the current page layout
 cameras list | status               saved cameras, or the active targets
 connect [index]                     no index uses the multi-connect selection
 disconnect
+mqtt status | connect | disconnect | discovery clear
 shutter press | release | hold <ms>
 focus press | release
 ir fire [protocol]                  fire the IR emitter
@@ -247,6 +290,13 @@ reboot
 
 The full command reference, with every subcommand, is in
 [docs/console-commands.md](docs/console-commands.md).
+
+MQTT actuator commands must be published with retain off. Retained commands
+under `BASE/ID/cmd/` are rejected so reconnects cannot replay a shutter or
+other actuator. A clean MQTT disconnect enqueues retained `offline` and waits
+briefly for its broker acknowledgement before teardown; it tears down on
+acknowledgement or timeout. A timeout does not prove broker delivery; the last
+will covers an unclean loss.
 
 On the display-less Waveshare ESP32-S3-ETH, `status` reports battery level and
 voltage as unknown and current as unavailable. It does not infer USB or
@@ -345,23 +395,39 @@ See [docs/supported-hardware.md](docs/supported-hardware.md) for the full unit
 matrix. GPS support can be enabled in `furble` in `Settings->GPS`, the camera
 must also be configured to request location data.
 
-The default baud rate for the GPS unit is 9600.
-The new v1.1 unit runs at a higher baud rate and must be configured under
-`Settings->GPS->GPS baud 115200` for correct operation.
+The default GPS baud is 9600, preserving existing installations. The v1.1
+AT6668 unit is expected to use 115200. Select `Auto` to probe 115200, 9600,
+38400, 57600, 19200, and 4800, or select a fixed rate under
+`Settings->GPS->GPS Baud`. Auto declares a receiver only after two checksummed
+NMEA sentences; if none arrive it reports `absent`, drops the external rail,
+and retries once after 60 seconds. A live AT6668 lock has not yet been recorded
+on hardware.
 
 The GPS receiver itself can also be configured under `Settings->GPS`:
 - `Update rate` (how often the receiver reports a position, from 1000ms down to 100ms)
 - `Sentences` (cut the receiver down to the sentences `furble` actually reads)
 - `Constellation` (which satellite systems the receiver listens to)
+- `Fix Hold` (keep sending the last fix for up to an hour after the receiver
+  loses it, so a tunnel or a doorway does not cost a run of geotags)
+- `Extrapolate` (while a fix is held, project it along the last course and
+  speed, experimental)
+- `Power saving` (always on, PCAS12 standby, or experimental rail cycling)
+- `Assisted start` (position/time, with optional cached ephemeris replay)
+- `Platform` (portable, stationary, pedestrian, or vehicle dynamic model)
 
-Each of these defaults to `Default`, which leaves the receiver on its own
-settings and behaves exactly as before.
-A change is sent to the receiver when GPS is enabled, and the receiver goes
-back to its own defaults the next time it is powered off.
+Update rate, Sentences, and Constellation default to `Default`, which leaves
+those receiver settings alone. Power saving defaults to Always on, Assisted
+start is Off, and Platform defaults to Do not send. A change is sent to the
+receiver when GPS is enabled, and the receiver goes back to its own defaults
+the next time it is powered off.
 
-`Settings->GPS->Raw NMEA` shows the sentences arriving from the receiver along
-with the fix state and error counts.
-It is the place to look to confirm the receiver accepted a change.
+`Settings->GPS->GPS Data` shows fix age, satellites, speed, coordinates,
+altitude, and UTC time. `Raw NMEA` shows received sentences, fix/error
+counters, binary configuration status, and a Hot restart button. `Satellites`
+enables the extra GSV/GSA parser and shows per-satellite C/N0, used flags, and
+PDOP/HDOP/VDOP. `gps platform` and MON-HW diagnostics are intentionally marked
+hardware-tuning-pending; the receiver's response and the effect of its dynamic
+model have not been verified on an AT6668 unit.
 
 ### Intervalometer/Timer
 

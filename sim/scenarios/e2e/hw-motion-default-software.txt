@@ -1,0 +1,25 @@
+# The shipped default runs the software detector, not a hardware engine.
+#
+# Nothing is seeded for hw_motion, so this pins what a user actually gets when
+# they turn the IMU on. The board carries a BMI270, so an Auto default would
+# arm the hardware engine here; the assert below is what stops that path from
+# shipping before the six-step hardware gate has run on the S3.
+#
+# When the gate passes, the follow-up commit that flips the default to Auto
+# also updates this scenario. Until then a change of default fails here first.
+#
+# Teeth: change the HW_MOTION default in Settings::init() back to
+# HW_MOTION_AUTO. The setting assert fails, then the backend assert.
+seed fauxny true
+seed imu true
+seed imu_chip bmi270
+wait 300
+assert setting.hw_motion 1
+assert ui.motion_backend software
+assert ui.motion_state moving
+
+# The default is a real detector, not an inert one.
+action imu.accel 0 0 1
+advance 61000
+assert ui.motion_state stationary
+exit

@@ -2,6 +2,8 @@ set(furble_sources
     FurbleBootScreen.cpp
     FurbleBtDebug.cpp
     FurbleCompanion.cpp
+    FurbleCompanionAuth.cpp
+    FurbleCompanionCrypto.cpp
     FurbleCompanionService.cpp
     FurbleConsole.cpp
     FurbleControl.cpp
@@ -9,6 +11,9 @@ set(furble_sources
     FurbleFeedback.cpp
     FurbleGPS.cpp
     FurbleGPX.cpp
+    FurbleIMU.cpp
+    FurbleIMUMotionBMI270.cpp
+    FurbleIMUMotionMPU6886.cpp
     FurbleIR.cpp
     FurbleOTA.cpp
     FurbleOTAMQTT.cpp
@@ -22,9 +27,11 @@ set(furble_sources
     FurbleProvision.cpp
     FurbleSD.cpp
     FurbleSettings.cpp
+    FurbleNetworkSettings.cpp
     FurbleTimeKeeper.cpp
     FurbleTimeKeeperPolicy.cpp
     ../lib/furble/protocol/ProvisionTLV.cpp
+    FurbleWiFi.cpp
     main.cpp)
 
 # PlatformIO passes this profile through both a compiler define and a CMake
@@ -37,6 +44,7 @@ if(NOT FURBLE_NO_DISPLAY)
        FurbleUI.cpp
        FurbleUIAudit.cpp
        FurbleUIBulb.cpp
+       FurbleUIGesture.cpp
        FurbleUIIntervalometer.cpp)
 endif()
 
@@ -44,7 +52,11 @@ endif()
 # console. Nothing references them without FURBLE_CONSOLE, so the linker leaves
 # them out and the release binaries are unchanged.
 set(furble_private_requires
-    console esp_driver_rmt esp_driver_sdspi esp_driver_usb_serial_jtag esp_pm fatfs sdmmc)
+    console esp_driver_rmt esp_driver_sdspi esp_driver_usb_serial_jtag esp_pm fatfs sdmmc esp_wifi esp_netif esp_event nvs_flash lwip)
+if(DEFINED FURBLE_MQTT AND FURBLE_MQTT)
+  list(APPEND furble_sources FurbleMQTT.cpp)
+  list(APPEND furble_private_requires mqtt json)
+endif()
 if(FURBLE_ETHERNET)
   list(APPEND furble_private_requires
        esp_driver_gpio esp_driver_spi esp_eth esp_event esp_netif)
@@ -52,9 +64,9 @@ endif()
 
 if(FURBLE_NO_DISPLAY)
   idf_component_register(SRCS ${furble_sources}
-                         PRIV_REQUIRES ${furble_private_requires})
+                         PRIV_REQUIRES ${furble_private_requires} esp_hw_support)
 else()
   idf_component_register(SRCS ${furble_sources}
-                         PRIV_REQUIRES ${furble_private_requires}
+                         PRIV_REQUIRES ${furble_private_requires} esp_hw_support
                          REQUIRES icons)
 endif()

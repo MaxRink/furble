@@ -17,6 +17,10 @@ name: UI screenshots
       - 'include/FurbleSpinValue.h'
       - 'include/FurbleCalibrate.h'
       - 'components/icons/**'
+      - 'sim/scripts/docs-*.txt'
+      - 'sim/scripts/docs-capture.sh'
+      - 'docs/ui-walkthrough.md'
+      - 'docs/wiki/UI-Walkthrough.md'
       - 'sim/**'
       - 'sdkconfig.*'
       - 'tools/gen_lv_conf.py'
@@ -98,6 +102,21 @@ jobs:
               ./sim/build/furble-sim \
               --script sim/scripts/ui-screenshots.txt \
               --out "$RUNNER_TEMP/ui-screenshots"
+
+      # The GPS documentation captures are committed in two places, docs/img
+      # and docs/wiki/img, and the wiki copy is easy to forget. Check that they
+      # match each other.
+      #
+      # This deliberately does not re-render them and compare against the
+      # committed bytes. Capture byte-equality only holds for two runs of the
+      # same binary (sim/CLAUDE.md), so a render-and-compare gate fires on any
+      # unrelated LVGL, font or layout change and lands on whoever made it.
+      # sim/scripts/docs-capture.sh regenerates the gallery when it needs
+      # regenerating.
+      - name: Check the GPS documentation captures mirror the wiki copies
+        run: |
+          cmp docs/img/gps-satellites.png docs/wiki/img/gps-satellites.png
+          cmp docs/img/dark-gps-satellites.png docs/wiki/img/dark-gps-satellites.png
 
       - name: Write screenshot list and job summary
         shell: bash

@@ -16,7 +16,7 @@
 
     <application
         android:name=".FurbleApplication"
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.FurbleCompanion">

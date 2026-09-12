@@ -1,5 +1,9 @@
 #include <esp_random.h>
 
+#if defined(FURBLE_SIM)
+#include <mutex>
+#endif
+
 #include "FauxNY.h"
 
 namespace Furble {
@@ -65,8 +69,29 @@ void FauxNY::focusRelease(void) {
   ESP_LOGI(m_FauxNYStr, "focusRelease()");
 }
 
+#if defined(FURBLE_SIM)
+namespace {
+std::mutex geoMutex;
+FauxNY::geo_record_t geoRecord = {};
+}  // namespace
+
+FauxNY::geo_record_t FauxNY::getGeoRecord(void) {
+  const std::lock_guard<std::mutex> lock(geoMutex);
+  return geoRecord;
+}
+#endif
+
 void FauxNY::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
   ESP_LOGI(m_FauxNYStr, "updateGeoData()");
+#if defined(FURBLE_SIM)
+  const std::lock_guard<std::mutex> lock(geoMutex);
+  geoRecord.count++;
+  geoRecord.latitude = gps.latitude;
+  geoRecord.longitude = gps.longitude;
+  geoRecord.hour = timesync.hour;
+  geoRecord.minute = timesync.minute;
+  geoRecord.second = timesync.second;
+#endif
 };
 
 void FauxNY::_disconnect(void) {

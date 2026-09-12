@@ -7,6 +7,17 @@
 
 #include "Camera.h"
 
+// Bounded wait for the camera-side registration confirmation, in milliseconds.
+// The golden X100VI capture (plans/95-engineering-lessons.md) shows the
+// confirmation about 12 s into a healthy connect, so the default is generous
+// to avoid rejecting a slow but genuine camera. Public and overridable via a
+// build flag (-DFURBLE_HOST_REGISTRATION_TIMEOUT_MS=NNN) so host test builds
+// keep their short deterministic timeouts and impatient users can tune the
+// firmware wait without editing the class.
+#ifndef FURBLE_HOST_REGISTRATION_TIMEOUT_MS
+#define FURBLE_HOST_REGISTRATION_TIMEOUT_MS 25000
+#endif
+
 namespace Furble {
 /**
  * Fujifilm X.
@@ -80,11 +91,7 @@ class Fujifilm: public Camera {
    */
   bool waitForRegistration(uint8_t progress, bool cancelOnInactive);
 
-#ifndef FURBLE_HOST_REGISTRATION_TIMEOUT_MS
-  static constexpr uint32_t REGISTRATION_TIMEOUT_MS = 25000;
-#else
   static constexpr uint32_t REGISTRATION_TIMEOUT_MS = FURBLE_HOST_REGISTRATION_TIMEOUT_MS;
-#endif
   static constexpr uint32_t REGISTRATION_POLL_MS = 20;
 
   // Incremented for every connection attempt. Subscription callbacks capture

@@ -56,6 +56,12 @@ struct SettingInfo {
   bool dangerous;
 };
 
+// The companion password is accepted only on writes and must never be
+// exposed in a read response or settings list record.
+inline bool settingIsWriteOnly(const SettingInfo &setting) {
+  return setting.symbol == "COMPANION_PASSWORD";
+}
+
 template <typename T>
 Bytes bytesOf(const T &value) {
   Bytes bytes(sizeof(value));

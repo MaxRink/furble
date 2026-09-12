@@ -28,12 +28,15 @@ and target boundary (a new seam needs a contract test and an entry here):
 
 | Area | Shared production path | Narrow simulator seam and reason |
 | --- | --- | --- |
-| BLE discovery | Production `Scan` and `CameraList`, including advertisement matching and preferences-backed list persistence | `sim/BleSim.cpp` owns a virtual radio task that advertises the seeded virtual peers into the mock `NimBLEScan` and models the controller-owned discovery timer. Scan start responsiveness probing and the scan-end callback counter are `FURBLE_SIM` observability inside production `Scan`. |
+| BLE discovery | Production `Scan` and `CameraList`, including advertisement matching and preferences-backed list persistence | `sim/BleSim.cpp` owns a virtual radio task that advertises the seeded virtual peers into the mock `NimBLEScan` and models the controller-owned discovery timer. Saved peers use the production catalog and shared-pointer identity; scans only populate transient results. Scan start responsiveness probing and the scan-end callback counter are `FURBLE_SIM` observability inside production `Scan`. |
 | Display | `UI::setDisplayMode`, `wakeDisplay`, `sleepDisplay`, `displayFlush`, LVGL timers and task loop | M5GFX SDL is the panel/pixel sink. Display mode and flush accounting remain production methods; there is no simulator-only rotation or display-state implementation. |
 | Input/navigation | LVGL event callbacks and menu handlers | `simulatorHome`, `simulatorBack`, and `simScenarioAction` are script entry points. `driverTick` runs in the UI task's locked phase, so actions and physical-input shims share LVGL ownership; direct page/focus selection is limited to deterministic setup or input timing SDL cannot reproduce. |
+| Host mutex visibility | Production lock discipline is unchanged: `Camera::m_Mutex` is acquired and released at exactly the same points | `Furble::connect_mutex_t` is `std::mutex` everywhere except a `FURBLE_SIM` build, where it is `Sim::SchedulerMutex`: the same mutex with a contended wait reported to the scheduler, so a task waiting for a connect to finish stops being runnable instead of being timed out by the host-clock deadlock breaker (issue #279). |
 | Camera links | Production `Control`, `Camera`, `CameraList` and every vendor class, over MockNimBLE | `sim/BleSim.cpp` registers the virtual peers a scenario seeds and injects faults at the transport only (`mockDropLink`, `setConnectShouldFail`, peer standby drop, withheld registration). `Control::simDropActiveLink()` is defined there and severs the real link; it no longer overrides any control state. A FauxNY camera has no radio, so `Camera::resetConnectionState()` stands in for its link loss. |
 | GPS/UART | Production parser, configuration, retry and power-lock logic | Fake UART/receiver is the lowest host-device boundary; replies and faults are injected as bytes/events on a worker thread. |
 | Power/display hardware | Production policy and lock ownership | M5PM1, ESP-IDF power, timer, random, NVS, sleep, flash and system calls are host implementations. Observable state is exposed through `platform_state` rather than replacing policy code. |
+| IMU motion engines | Production `IMU::MotionSource`, backend selection, the software fallback and every consumer | The BMI270 and MPU6886 engines are register programming against a bus the host does not have. `sim/FurbleIMUSim.cpp` supplies a virtual backend per chip that models fixed per-axis slope thresholds and event semantics only, driven by the same `Sim::imuGetAccel` surface the software backend reads. `seed imu_chip` decides which chip the modelled board carries. The register encoding is covered by `tests/host/imu_motion_encoding_test.cpp`, not here. This does not certify the physical MPU6886 interrupt path or its clear-on-read race. |
+| IMU bus visibility | Production lock discipline is unchanged: the engines, the spirit level, the IMU live page and the console probe all take the same lock at the same points | `Furble::imu_mutex_t` is `std::mutex` everywhere except a `FURBLE_SIM` build, where it is `Sim::SchedulerMutex`, the same reason and pattern as `connect_mutex_t`: a task waiting on the IMU bus stops being runnable instead of being timed out by the host-clock deadlock breaker (issue #279). |
 | Optional hardware | Production capability checks and menu paths | IR, feedback and SD shims report an env-selected capability because no host GPIO/SD/audio device exists. They do not bypass UI or persistence handlers. |
 | Build-time observations | Production behavior is unchanged | `FURBLE_SIM` adds profiler counters, query-only state, the UI-task switch registry, click-streak input injection, the scan-start probe, and the post-`lv_task_handler` `fuzzCycleComplete` seam. The dependency-free `fuzz_machine` owns fuzzer phase/cadence state and counters; these are observability/input seams, not alternate policy. Plan 158 now covers retained task lifecycle records and delete-other quiescence. The cooperative simulator unwind is safer than abrupt cleanup but is not FreeRTOS cleanup parity; production Companion remains blocked pending worker-owned shutdown. Scheduler priority, boundary preemption, same-tick dispatch, and queue ownership are modeled at simulator scheduler boundaries; instruction-level preemption, core affinity, and CPU-time accounting remain unsupported. |
 
@@ -64,7 +67,10 @@ The esp_timer dispatcher is modeled as a serialized ESP-IDF 5.5.3
 and FreeRTOS wait sources are batched before the first dispatch. Zero-tick
 delays yield through the priority gate. Instruction-level
 preemption, core affinity, and CPU-time accounting remain unsupported and must
-not be described as parity-complete.
+not be described as parity-complete. Task notifications use one counter per
+task: `xTaskNotifyGive` increments and wakes a blocked owner, while
+`ulTaskNotifyTake` clears or decrements that counter and observes virtual-clock
+timeouts and cooperative shutdown.
 Plan 161 completed that slice: the connection fakes are gone and the production
 sources run against MockNimBLE peers. Two parity gaps remain on this boundary
 and must not be described as closed. A link severed without its GAP disconnect
@@ -78,6 +84,17 @@ analog current, sensor noise, and unavailable peripherals are irreducible
 boundaries; each must be measured, bounded, and an explicit release gate, not
 silently treated as identical.
 
+The simulator power profiler is likewise only relative evidence. It integrates
+raw virtual-clock durations, exposes the durations used by each energy
+component in `energy.accounting_inputs`, and records the selected model source and digest;
+missing or malformed selected input fails closed. That provenance fix does not
+close the outstanding power gates: scheduler/timer callback and queue-wake
+costs, peripheral and effective-brightness rails, negotiated BLE airtime, and
+GPS rail/cold-start/UART/standby behavior all require differential traces on
+the corresponding hardware. Do not describe the power model as 100% physical
+parity or attach a quantitative accuracy claim until those measurements,
+electrical boundaries, and tolerances are recorded.
+
 Plan 159 defines camera peer certification. Virtual peers may import pinned
 behavior from common GitHub implementations and official documentation, but
 only exact capture-backed model and firmware fields can produce a certified
@@ -85,7 +102,11 @@ result. Inferred, synthetic, missing, or conflicting behavior must return
 `UNCERTIFIED` rather than a plausible compatibility pass.
 
 `FURBLE_SIM` conditionals in shared sources are audited at each release:
-`FurbleBootScreen.cpp` (wall-clock boot padding), `FurbleControl.h` and
+`FauxNY.h` and `FauxNY.cpp` (the geotag the simulated camera last received,
+recorded so a scenario can assert the far end of the production GPS to camera
+path rather than inferring it from the GPS page; the send path itself is
+unchanged), `FurbleBootScreen.cpp` (wall-clock boot padding), `FurbleControl.h`
+and
 `FurbleControl.cpp` (link-drop declaration, the debug state snapshot the console
 also uses, and the camera-command counter), `lib/furble/Scan.h` and `Scan.cpp`
 (scan-start probe and scan-end callback counter), `FurbleGPS.cpp` (state/timer
@@ -108,19 +129,40 @@ a regression.
 
 ## Build entry points
 
+The CMake simulator force-includes ESP and FreeRTOS shims only for C++
+translation units. Generated C icon sources must compile without C++-only
+shim declarations.
+
+The simulator Preferences adapter is a checked file-backed NVS substitute:
+missing storage is an unset store, while empty, truncated, malformed, or
+unreadable storage is an error. Mutations commit through a temporary file and
+roll back the in-memory value when directory, write, close, or rename fails.
+The `actualPreferencesSim` host target and its CTest cases cover these states,
+including empty strings and failed-save rollback.
+
 - `sim/build.sh`: the verified direct-clang path on macOS. Its incremental
-  check is `make -q` over the compiler depfile, which compares whole-second
-  timestamps, so an edit landing in the same second as the object it should
-  invalidate is missed. Touch the file again or remove the object if a rebuild
-  looks like it skipped a change you just made. Run
+  check is `make -q` over the compiler depfile and first verifies that the
+  depfile target exactly matches the current object path. A depfile from a
+  different relative/absolute build-directory spelling is therefore a cache
+  miss. The prerequisite check compares whole-second timestamps, so an edit
+  landing in the same second as the object it should invalidate is missed.
+  Touch the file again or remove the object if a rebuild looks like it skipped
+  a change you just made. Run
   `python3 tools/gen_lv_conf.py sdkconfig.m5stick-s3 sim/lv_conf.h` first if
   the sdkconfig changed. Each object has a compiler-generated `.d` depfile, so
   project-header edits rebuild only their dependents; `make -q` evaluates the
   depfile and the old source-only timestamp shortcut is not used.
 - `sim/scripts/test-build-deps.sh`: builds a complete simulator, touches
-  `include/FurbleGPS.h`, and proves GPS dependents rebuild while an unrelated
-  source stays cached. It requires the same dependency overrides as
+  `include/FurbleGPS.h`, proves a relative/absolute depfile target mismatch
+  rebuilds, and proves GPS dependents rebuild while an unrelated source stays
+  cached. It requires the same dependency overrides as
   `sim/build.sh`.
+- `sim/scripts/run-env-order.sh`: on Linux, compiles a small `LD_PRELOAD`
+  interposer that resolves libc functions before simulator threads start and
+  rejects a selected Furble `setenv` or `unsetenv` after SDL initialization,
+  then runs the fresh and restart scenarios against the current binary and
+  expects the pre-fix binary to trip each exact target. This checks ordering
+  only; it is not crash-causality evidence.
 - `sim/CMakeLists.txt`: the CMake path for machines with CMake installed.
 - `sim/platformio.ini`: planned `platform = native` environment for networked
   developer machines.
@@ -128,7 +170,9 @@ a regression.
   `board_M5StickC`, the 135x240 `FURBLE_M5STICKS3` /
   `board_M5StickS3`, and the 320x240 `FURBLE_M5COREX` / `board_M5Stack`.
 - Keep the firmware source list in `sim/build.sh` and `sim/CMakeLists.txt` in
-  sync. Both carry a note.
+  sync. `src/FurbleMQTT.cpp` is named directly in the CMake list so the static
+  inventory checker sees the guarded shell-build entry; its translation unit
+  is empty unless `FURBLE_MQTT` is enabled.
 - Console-only firmware modules that have no simulator behavior still get a
   no-capability shadow in `sim/shim`, such as `FurbleBtDebug.h`.
 
@@ -141,6 +185,26 @@ a regression.
   pinned by `src/idf_component.yml` (override with `FURBLE_LVGL_DIR`).
 - SDL2 comes from Homebrew or /usr/local.
 
+### Optional native MQTT transport
+
+The simulator's native MQTT path is opt-in with `FURBLE_SIM_MQTT=1` (or
+`-DFURBLE_SIM_MQTT=ON` for CMake). It requires libmosquitto and cJSON. The
+existing ESP-IDF `components/json/cJSON/cJSON.c` source is preferred when
+`IDF_PATH` or `FURBLE_IDF_JSON_DIR` points to it, otherwise installed packages
+are discovered by pkg-config or CMake. The default simulator does not enable
+the production MQTT transport. The adapter accepts plaintext `mqtt://`
+local-broker URIs
+only; `mqtts://` remains fail-closed until a trust-store-backed TLS shim exists.
+A local broker is managed outside the simulator and its socket/PUBACK evidence
+is not hardware or TLS evidence. `sim/scripts/test-mqtt-broker.sh` uses an
+externally managed broker and reports active-camera resubscription after broker
+restart as not exercised. Set `FURBLE_SIM_MQTT_ID` from the measured status
+topic of the exact binary under test; the script does not assume a portable ID.
+Fresh saved-camera fixtures use ID `1`; override with
+`FURBLE_SIM_MQTT_CAMERA_ID` for an existing preference store.
+The finite virtual scenario window can race external broker I/O; report such
+failures as coordination-window evidence, not as a UI-service ordering defect.
+
 ## Determinism caveats
 
 - The virtual clock makes scripted runs reproducible: two smoke runs produce
@@ -148,17 +212,24 @@ a regression.
 - Fuzzer reproducibility is not total. Two runs of the same seed on the same
   binary produce byte-identical `FUZZ EVENTS` and `FUZZ COVERAGE` lines, so the
   event stream and the pages it reaches are deterministic, and `run-fuzz.sh`
-  now enforces that with a replay of one guarded seed. Firmware behaviour under
-  the fuzzer is not reproducible line for line: two runs can still differ by one
-  connect attempt, because production code blocks on plain host mutexes the
-  simulator scheduler cannot see, so how far a connect gets before a disconnect
-  lands is host timed. Closing that needs the scheduler-visible mutex plan 158
-  Phase 3 owns. `observed_delta` and `no_observed_delta` move for the same
-  reason and are masked in the replay. Compare the fuzz report lines, not the
-  log, and do not tighten the replay to the whole log until that gap closes.
-- Exception: `gps.txt` renders the TinyGPSPlus fix age from the real host
-  clock, so `gps.png` is not byte-reproducible and must not be a golden
-  baseline as-is.
+  now enforces that with a replay of one guarded seed. `Camera::m_Mutex`, the
+  one host mutex a connect holds for its whole attempt, is scheduler visible
+  since plans/173, so that source of drift is gone. The remaining host mutexes
+  in production code are held for microseconds and have not been measured to
+  move a fuzz run, but they are still invisible, so `observed_delta` and
+  `no_observed_delta` stay masked in the replay. Compare the fuzz report lines,
+  not the log.
+- Fix age is virtual too, so `gps.png` is byte-reproducible like every other
+  capture. It used to be the one exception. TinyGPSPlus ages every reading
+  against a global `millis()`, and its non-Arduino fallback read the host wall
+  clock, so fix age depended on how long the run happened to take.
+  `TinyGPS++.cpp` is now built with `__AVR__`, which suppresses only that
+  fallback, and `sim/clock.cpp` supplies the virtual clock instead. Keep the two
+  in step: without the build flag the simulator gets two definitions of
+  `millis()`, and without the definition it gets none.
+- Anything that depends on GPS fix age is therefore scriptable in virtual time,
+  including the freshness window expiring and fix hold engaging. `wait` ages the
+  fix exactly as it advances everything else.
 - The fake scan publishes two advertisement events and a scan end from a
   background host worker. `processPendingCallbacks()` drains them on the UI
   task, so the fake never mutates `CameraList` or touches LVGL from its worker.
@@ -261,13 +332,17 @@ a regression.
   teardown. `cancel-sweep-fuji-ui`, `cancel-sweep-fuji-pair-ui`,
   `cancel-sweep-fuji-secure-ui` and `reconnect-after-disconnect-sweep` carry
   it; every leg that does not says why in its own header (plans/172).
-- Do not assert cancel or teardown latency in virtual time. `Control::disconnect()`
-  polls on the UI thread and every 20 ms slice advances the virtual clock, so the
-  number of slices is set by how long the host takes to let the connect task run,
-  which is issue #279. Measured: a bound with 4 percent slack failed 2 of 65 idle
-  runs and 4 to 6 of 8 at loadavg 80. Assert provenance instead;
-  `ble.secure_stall_aborted` says whether a modelled handshake ended on a link
-  terminate or on its own deadline, and no amount of host load changes it.
+- Cancel and teardown latency can be asserted in virtual time again (issue
+  #279, plans/173). `Control::disconnect()` polls on the UI thread and every
+  20 ms slice advances the virtual clock, so the number of slices used to be
+  set by how long the host took to let the connect task run: the target task
+  waiting on `Camera::m_Mutex` was invisible to the scheduler, so the turn had
+  to be taken from it by a host-time deadlock breaker. `Camera::m_Mutex` is a
+  `Furble::connect_mutex_t` now, which under `FURBLE_SIM` reports the wait, so
+  the holder is dispatched at once and no host time reaches the clock. Assert
+  provenance as well, not instead: `ble.secure_stall_aborted` says whether a
+  modelled handshake ended on a link terminate or on its own deadline, which a
+  bound cannot say.
 - A virtual peer that answers instantly cannot model a wait. `seed
   secure_stall_ms` holds every Fujifilm peer inside
   `NimBLEClient::secureConnection()`, which is the one call in the Fujifilm
@@ -292,7 +367,7 @@ a regression.
   virtual peer and fails its connects. The rig options
   are `--rig`, `--rig-port`, `--ignore-uuid-mismatch`, `--drop-notify`, and
   `--delay-ms`.
-- The SDL harness models the IMU through `sim/ImuSim.cpp`, which is the host
+- The SDL harness models the IMU through `sim/FurbleIMUSim.cpp`, which is the host
   implementation of the same `M5.Imu` read boundary used by production code.
   Keep IMU actions and queries general enough for diagnostics, spirit-level
   orientation, and future gesture features; do not add widget-only shortcuts.
@@ -303,17 +378,55 @@ a regression.
   to assert that a repeated fake advertisement does not add a second row.
   `scan.end_callbacks` reports scan completion callback delivery, allowing
   scenarios to catch duplicate simulated completion events.
+- `e2e/gps-motion-prearm.txt` deliberately loads GPS motion before the UI arms
+  the shared source, then disarms and re-arms it through real MotionSource calls;
+  it asserts the gate changes without a GPS reset or setting toggle.
 - The `scan_start_probe` boolean seed enables a concurrent callback-shaped
   probe during scan startup. `scan.start_probe_blocked` reports whether that
   callback waited for the UI mutex, guarding the watchdog-sensitive scan-start
   boundary.
 - `seed ble_peers <topology>` selects the virtual radio topology (`none`,
-  `fuji`, `fuji-secure`, `fuji-pair`, `fuji-ricoh-flappy`) and `seed ble_saved
-  true` persists
-  its cameras through the production `CameraList::match` and `save`. The
-  `scan-distinct-rows-heartbeat.txt` scenario asserts both matched rows and the
-  live watchdog after the UI task drains them. `seed scan_timeout N` bounds the
-  discovery scan so the production scan-end callback runs.
+  `fuji`, `fuji-secure`, `fuji-pair`, `fuji-ricoh-flappy`, `fuji-secure-stale`)
+  and `seed ble_saved true` persists its cameras through the production
+  `CameraList::match` and `save`. The `scan-distinct-rows-heartbeat.txt`
+  scenario asserts both matched rows and the live watchdog after the UI task
+  drains them. `fuji-secure-stale` is the 2026-09-02 X100VI bench signature: the
+  central keeps a bond the camera has deleted, so every security handshake times
+  out and takes the link with it, and `stale-bond-pairing-lost.txt` drives the
+  recovery through to the dismissable "Pairing lost" box. `seed scan_timeout N`
+  bounds the discovery scan so the production scan-end callback runs.
+- `ui.connect_error` reports the connect error box as one token: `none`,
+  `already_saved`, `pairing_lost`, or `connect_failed`. It reads the rendered
+  title, so it proves the text reached the widget tree rather than that a flag
+  was set. Dismissal is asserted in the same scenarios, on touch and under
+  `FURBLE_SIM_NO_TOUCH=1`, because the OK button has to be reachable from the
+  physical buttons.
+- `ui.modal_overflow` is the other half, and it exists because the first version
+  of that box passed every assertion above while rendering wider and taller than
+  the panel with its instruction clipped at both edges. `ui.overflow` measures
+  the current menu page, and a message box lives on the top layer outside any
+  page, so nothing could see it. The query walks the top layer and reports `yes`
+  when a descendant leaves the display or when a label overruns the content box
+  that clips it, or when a top-layer scrollable has a non-zero scroll extent.
+  That last shape is the one a size-only comparison missed: the 80x160
+  "Connect failed" box ended at the last row of the display with six pixels of
+  its instruction below the clip box. It answers `none` when the top layer has
+  no visible children, so a scenario that forgets to raise its modal cannot read
+  a pass. Assert it `no` in any scenario that raises a modal.
+- **A clock selector keys on the clock's presence, never on a platform macro.**
+  Use `#if __has_include(<freertos/FreeRTOS.h>)`, not `#if defined(ESP_PLATFORM)`
+  or any other platform test. The simulator defines no platform macro, so a
+  platform test silently drops it onto `std::chrono::steady_clock` and
+  `std::this_thread::sleep_for` while its scenarios advance a virtual clock: a
+  wait then neither observes what the scenario did nor times out, and the
+  session hangs inside one attempt. Firmware and the simulator both have the
+  header and both want the tick, and the simulator's tick is the virtual clock.
+  Host targets that link no FreeRTOS shim fall through to the wall clock, which
+  is correct there. This cost `reconnect-registration-delay` a hang, and the
+  selector that caused it looked entirely reasonable.
+- `action scan-row N` activates scan result row N through its production click
+  handler, `UI::beginPairing()`. Focus-driven activation of that row is not
+  reproducible, so this is how a scenario reaches the already-saved refusal.
 - Battery policy scenarios seed `battery_level`, `battery_voltage`,
   `battery_current`, and `battery_charging`, plus the real `auto_off` and
   `low_batt` settings. The `action battery LEVEL VOLTAGE_MV CURRENT_MA
@@ -567,7 +680,7 @@ a regression.
 ## IMU injection and redraw probe
 
 - The IMU (BMI270/MPU6886) is a physical sensor with no host counterpart, so a
-  scenario injects orientation through `sim/ImuSim.cpp`, which mirrors the same
+  scenario injects orientation through `sim/FurbleIMUSim.cpp`, which mirrors the same
   `M5.Imu` surface (enabled, update, getAccel, getGyro) the firmware reads under
   `#if defined(FURBLE_SIM)`. Actions: `imu.accel <x> <y> <z>` (G), `imu.roll
   <deg>`, `imu.pitch <deg>`, `imu.gyro <x> <y> <z>`, `imu.enable`, `imu.disable`,
@@ -582,6 +695,19 @@ a regression.
   than only the page contents.
   `imu_accel_updates` and `imu_gyro_updates` count actual label redraws; validity
   is tracked independently so one failed sensor does not redraw the other.
+- Motion detection has three backends and the host build can only run one of
+  them as a virtual event model. `seed imu_chip bmi270|mpu6886|none` picks the engine the
+  modelled board carries, and `seed hw_motion 0|1|2` is the user's Auto,
+  Software or Hardware choice. `motion_backend`, `motion_state`,
+  `motion_wake` and `motion_interrupts` report what actually armed, read from `IMU::MotionSource`
+  rather than from the diagnostics labels, so a scenario asserts the selection
+  even when the IMU live page was never opened. `display` reports panel sleep
+  state, which is what makes motion wake observable. The virtual hardware
+  engines use fixed per-axis slope thresholds and ignore the software calibration
+  scale. Drive motion with the existing `imu.accel` action and virtual time:
+  there is no motion-specific action, because an engine that needs one would not
+  be modelling the sensor. The simulator cannot cover the MPU6886
+  `INT_STATUS` clear-on-read race with M5Unified.
   Script actions are queued onto the UI task before touching LVGL; the
   `sim_action_on_ui` query is a thread-ownership regression guard.
   `level_root_width/height` expose the pixel-sized top-level window after panel
@@ -599,3 +725,60 @@ a regression.
   <key> <n>` and `assert_min <key> <n>` (integer parse, inclusive). They express
   a redraw ceiling and a width-agnostic direction or render floor (for example
   `assert_min ui.visible_objects 1`) without pinning a per-panel pixel value.
+- GPS docs use `nav gps_sats` and the `gps-satellite-page` scenario. The fake
+  UART includes a fixed GSV/GSA fixture, so the capture proves the satellite
+  page route and parsed counts without implying live AT6668 hardware coverage.
+- The fake UART models a receiver, not just a byte source. It records the rate
+  the driver programmed and answers only when the modelled receiver rate
+  matches, which is what makes the autobaud ladder and the no-receiver state
+  testable. The default is a receiver that answers at any rate, so every
+  scenario written before that model is unchanged. It also answers a CFG-MSG
+  poll at rate 0xFFFF for MON-HW and for the three assistance messages, and it
+  counts the assistance frames replayed back at it, so ephemeris replay is
+  observed at the wire rather than inferred from a log line. See
+  `gps_receiver`, `gps_sats`, `gps_fix_date`, `gps-receiver`, `gps-sats`,
+  `gps-monhw` and `gps-eph-corrupt` in docs/sim.md.
+- The GSV/GSA fixtures are stored as sentence bodies and checksummed at
+  runtime, so a fixture cannot carry a stale hand computed checksum. The
+  `default` set is the one docs/img/gps-satellites.png is pinned to; changing
+  its values means regenerating that capture.
+- The `modern`, `stale`, `coldstart`, `badrmc`, `emptyrmc`, `walkback` and
+  `nodate` fix bursts advance their clock one second
+  per burst, the way a receiver with a clock of its own does. The historic
+  default burst stays frozen so every scenario and capture written against it is
+  unchanged. A frozen clock is not a neutral simplification: an earlier
+  ephemeris freshness rule keyed off the receiver's reported time changing, and
+  the `nodate` burst passed its leg only because its clock stood still. Ticking
+  it turned the leg into a replay of three frames and exposed the rule as wrong.
+  If a fixture models a receiver, give it a clock that moves.
+- `seed gps_uart_chunk N` serves the fix burst N bytes at a time, paced 20 ms
+  apart, so a sentence spans several reads and arrives over time instead of
+  being drained inside one `serviceSerial()` call. A real burst carrying GSA and
+  GSV exceeds the driver's 256 byte read the same way. `gps_fix_date coldstart`
+  reports a date a day behind for its first few bursts, as a unit does before it
+  decodes TOW, `badrmc` sends an RMC whose checksum is broken, `emptyrmc` is the
+  all-empty pre-fix RMC a receiver sends before it has a solution, and
+  `walkback` walks its date forward a day per burst from far behind the cache.
+  Each models a receiver state a fixture serving one perfect burst can never
+  reach, and each one catches a defect that shipped in this branch.
+- `emptyrmc` is worth understanding before writing anything that keys off
+  TinyGPS++ update flags. The parser only dispatches a term when it is
+  non-empty, so an empty date field never reaches `setDate`, yet `date.commit()`
+  still runs against the previous value. The GPS replay seam therefore requires
+  a complete CR/LF-terminated, checksum-valid RMC with a nonempty six-digit date
+  field and consumes `isUpdated()` per encoded byte at the CR/LF completion; the
+  empty sentence adds no date evidence. `gps_uart_chunk 1` plus
+  `gps_uart_noise true` covers CR/LF split and bounded recovery from unterminated
+  noise.
+- The sim-e2e ThreadSanitizer leg runs `gps-concurrent-pages`,
+  `gps-ephemeris-replay` and `gps-ephemeris-stale`. It is a real gate for the
+  GPS task's own reads of the parser: measured five runs per cell, unlocking
+  `servicePoll`'s fix read fails `gps-ephemeris-stale` 4/5 and
+  `gps-ephemeris-replay` 1/5. It is **not** a gate for `storeEphemeris`, which
+  measured 0/5 with its lock removed. Measure before claiming a leg does or does
+  not catch something, and measure more than once: a single green run is not
+  evidence of absence, and treating it as such nearly deleted this gate.
+- TinyGPSPlus ages come from `millis()`. That is the same clock as
+  `Platform::tick()` on the device and a different one here, so a check that
+  compares a parser age against a `Platform::tick()` value passes in the
+  simulator for the wrong reason. Compare reported values, not ages.

@@ -3,12 +3,27 @@
 #include <NimBLEDevice.h>
 #include <NimBLERemoteCharacteristic.h>
 #include <NimBLERemoteService.h>
-#if defined(FURBLE_HOST_REGISTRATION_TIMEOUT_MS)
-#include <chrono>
-#include <thread>
-#else
+// The registration wait below needs a clock, and which clock is correct depends
+// on whether a FreeRTOS tick exists, not on which platform this is. So ask for
+// exactly that.
+//
+// Keying it on a platform macro is what broke it: the simulator defines neither
+// ESP_PLATFORM nor the host timeout override, so a `defined(ESP_PLATFORM)` test
+// dropped it onto the wall clock while the simulator runs on a virtual clock
+// its scenarios advance, and a scenario could pass a hundred virtual seconds in
+// no real time with the wait neither seeing the confirmation nor timing out.
+// __has_include cannot be wrong that way: firmware and the simulator both have
+// the header, and the simulator's tick is the virtual clock, which is the one
+// its scenarios move.
+#if __has_include(<freertos/FreeRTOS.h>)
+#define FURBLE_REGISTRATION_WAIT_USES_TICKS 1
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#else
+// Host unit targets that link no FreeRTOS shim. Wall clock is the right answer
+// there: nothing advances a virtual clock for them.
+#include <chrono>
+#include <thread>
 #endif
 
 #include "Device.h"
@@ -94,12 +109,12 @@ bool Fujifilm::waitForRegistration(uint8_t progress, bool cancelOnInactive) {
   // yet. Fires before the deadline below is taken, so a parked test thread does
   // not burn the registration timeout it is about to observe.
   FURBLE_TEST_SYNC_POINT("fujifilm_registration_wait");
-#if defined(FURBLE_HOST_REGISTRATION_TIMEOUT_MS)
-  const auto started = std::chrono::steady_clock::now();
-#else
+#if defined(FURBLE_REGISTRATION_WAIT_USES_TICKS)
   const TickType_t started = xTaskGetTickCount();
   const TickType_t timeout = pdMS_TO_TICKS(REGISTRATION_TIMEOUT_MS);
   const TickType_t poll = pdMS_TO_TICKS(REGISTRATION_POLL_MS);
+#else
+  const auto started = std::chrono::steady_clock::now();
 #endif
 
   while (!m_Configured.load()) {
@@ -112,21 +127,21 @@ bool Fujifilm::waitForRegistration(uint8_t progress, bool cancelOnInactive) {
       ESP_LOGW(LOG_TAG, "Fujifilm registration aborted before confirmation");
       return false;
     }
-#if defined(FURBLE_HOST_REGISTRATION_TIMEOUT_MS)
+#if defined(FURBLE_REGISTRATION_WAIT_USES_TICKS)
+    if (static_cast<TickType_t>(xTaskGetTickCount() - started) >= timeout) {
+#else
     const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - started);
     if (elapsed.count() >= REGISTRATION_TIMEOUT_MS) {
-#else
-    if (static_cast<TickType_t>(xTaskGetTickCount() - started) >= timeout) {
 #endif
       ESP_LOGW(LOG_TAG, "Registration not confirmed after %lu ms; put the camera in pairing mode",
                static_cast<unsigned long>(REGISTRATION_TIMEOUT_MS));
       return false;
     }
-#if defined(FURBLE_HOST_REGISTRATION_TIMEOUT_MS)
-    std::this_thread::sleep_for(std::chrono::milliseconds(REGISTRATION_POLL_MS));
-#else
+#if defined(FURBLE_REGISTRATION_WAIT_USES_TICKS)
     vTaskDelay(poll);
+#else
+    std::this_thread::sleep_for(std::chrono::milliseconds(REGISTRATION_POLL_MS));
 #endif
   }
 

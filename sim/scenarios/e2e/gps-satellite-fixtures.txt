@@ -1,0 +1,132 @@
+# The satellite detail page against every satellite population that matters:
+# nothing in view, one satellite, a full twelve satellite solution, a receiver
+# that repeats PRNs inside one GSV set, a set with out of range fields, and a
+# multi constellation set. The same file runs on all three panel widths.
+#
+# The page is an intentional-scroll page like Raw NMEA and GPS Data, so it is
+# driven to both scroll ends rather than asserted to fit. The parsed counts are
+# read from the production parser, so a rendering that silently lost rows still
+# fails on the count.
+seed gps true
+seed gps_baud 9600
+seed gps_uart_mode ack
+wait 300
+
+# The default documentation fixture: eight in view, four in the solution.
+action nav gps_sats
+wait 2500
+assert ui.page gps_sats
+assert gps.sats_capture 1
+assert gps.sats_in_view 8
+assert gps.sats_used 4
+assert gps.sats_fix 3
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
+back
+wait 300
+# Leaving the page must stop the extra GSV and GSA traffic again.
+assert gps.sats_capture 0
+
+# Nothing in view. The page has to render its empty state, not a stale table.
+gps-sats none
+action nav gps_sats
+wait 2500
+assert ui.page gps_sats
+assert gps.sats_in_view 0
+assert gps.sats_used 0
+assert gps.sats_fix 1
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+back
+wait 300
+
+# One satellite, 2D fix.
+gps-sats one
+action nav gps_sats
+wait 2500
+assert gps.sats_in_view 1
+assert gps.sats_used 1
+assert gps.sats_fix 2
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+back
+wait 300
+
+# Twelve satellites, all used. This is the widest table the page can be asked
+# to draw from one constellation.
+gps-sats twelve
+action nav gps_sats
+wait 2500
+assert gps.sats_in_view 12
+assert gps.sats_used 12
+assert gps.sats_fix 3
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
+back
+wait 300
+
+# A GSV set that declares two sentences and only ever sends the first. An
+# incomplete set must never publish, so the page stays empty rather than
+# rendering half a sky.
+gps-sats partial
+action nav gps_sats
+wait 2500
+assert gps.sats_in_view 0
+assert gps.sats_used 0
+back
+wait 300
+
+# A receiver that repeats each PRN inside one GSV set reports four satellites,
+# not eight. Its GSA names 01, 01, 02 and 02, which is two satellites in the
+# solution, so a repeat must not inflate the used count either.
+gps-sats duplicate
+action nav gps_sats
+wait 2500
+assert gps.sats_in_view 4
+assert gps.sats_used 2
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+back
+wait 300
+
+# Elevation, azimuth, C/N0 and PRN past their documented maxima. A damaged set
+# is refused whole rather than published half parsed, so the page holds its
+# empty state until a clean burst arrives.
+gps-sats range
+action nav gps_sats
+wait 2500
+assert gps.sats_in_view 0
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+back
+wait 300
+
+# GPS, GLONASS and BeiDou together, with per system GSA solutions.
+gps-sats multi
+action nav gps_sats
+wait 2500
+assert gps.sats_in_view 6
+assert gps.sats_used 4
+assert gps.sats_fix 3
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
+
+# The page must recover to a clean fixture without a restart.
+back
+wait 300
+gps-sats default
+action nav gps_sats
+wait 2500
+assert gps.sats_in_view 8
+assert gps.sats_used 4
+exit

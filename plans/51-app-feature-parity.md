@@ -1,7 +1,70 @@
 # 51 - Companion app feature parity
 
-Status: firmware settings parity v2 and the Android settings editors are
-implemented. The camera phase remains design only.
+Status: firmware settings parity v2, Android settings editors, and firmware
+camera management are implemented. The Apple Cameras tab is implemented;
+Android camera integration and the rig scenarios of phase 5 remain outstanding.
+
+Host validation note: companion_gatt_test compiles the Nikon Remote protocol
+source with warnings treated as errors. Its subscription callback does not use
+camera state, so it has no lambda capture.
+
+## Implementation state, firmware camera management
+
+Delivered by the plan 51 firmware camera PR.
+
+- Cameras characteristic `b57f4f63-087b-4740-b71d-8262cf26ebbc`, write plus
+  indicate plus notify, on the existing companion service. Requests are the
+  two byte `{op, camera_id}` form from section 2.2. Records are the eight byte
+  head plus the name, indicated for command responses and list records,
+  notified for unsolicited state events.
+- The capability characteristic now advertises feature bit 1 alongside bit 0.
+  `CompanionService::getCapability()` owns the record so the host suite asserts
+  the same bytes the transport publishes.
+- The saved camera index carries a stable `camera_id`. The blob gained an
+  explicit four byte v2 schema header, so a v1 blob still decodes and its
+  entries are assigned ids and rewritten on the first lazy catalog load. The
+  allocator walks forward from a persisted counter, so deleting the highest id
+  does not hand it straight back. Zero means unassigned and `0xff` means all
+  cameras. The saved catalog is separate from transient scan results, so a
+  scan cannot hide saved rows from the companion.
+- Connect and disconnect go through `UI::sendRequest`, the same request queue
+  the console uses, so the on-device screen follows the remote action and
+  `Control::disconnect()` never runs on the companion link. Companion connect
+  requests carry the stable saved id, including `0xff` for the current
+  selection, and resolve it again on the UI task after rechecking scan and
+  control state. That queue is no longer gated on `FURBLE_CONSOLE`; `PERF` and
+  `AUDIT` stay gated because they need console-only headers.
+- Notifications reuse the status policy: the service task batches at 1 Hz,
+  unchanged records are skipped, and a forced batch bypasses the window.
+
+### Deviations from the design
+
+- **Selection is not persisted.** Section 2.3 assumed a stored multi-connect
+  set. Master keeps the selection in `Camera::setActive()` alone, so select and
+  deselect drive exactly that, the same state the on-device Cameras page
+  edits. No new setting, no new wire id. `CameraList::load()` now copies the
+  already-loaded saved shared pointers into the transient connect list, so it
+  preserves selection and connection ownership without rebuilding objects.
+- **RSSI comes from Control's filtered sample.** `Camera::getRssi()` takes the
+  camera connect mutex, which a cold connect holds for the whole connect
+  timeout, so the companion task must never call it. `Control::getTargetState()`
+  reads the cached average under the control mutex with no radio call. That
+  sample is only taken while adaptive transmit power is enabled, so `rssi` is
+  `-128` (unknown) otherwise.
+- **Disconnect is all targets.** `Control` still has no per-target addressing.
+  The wire carries the id, so adding it later is not a wire change.
+- **No sim scenario.** The companion service is only instantiated in the sim
+  under `FURBLE_RIG`, and the connect and disconnect paths are the existing
+  console request path, which the sim already covers. The host mock-central
+  suite covers list, select, deselect, connect, disconnect, the rate limit and
+  the capability record.
+
+### Owed after merge
+
+- On-device bench with the companion app on the M5StickS3: pair, list, select
+  two cameras, connect, watch the live states and rssi, disconnect. Only
+  Fujifilm cameras are available, so other vendors stay code review plus
+  FauxNY.
 
 ## Implementation state, firmware settings parity v2
 
@@ -11,8 +74,8 @@ implemented. The camera phase remains design only.
   bit 0 as the inverse of `appliesImmediately`. Bit 1 marks `COMPANION`,
   `TX_POWER`, `TX_ADAPTIVE` (wire ID 28), `SLEEP_CONN` and `CPU_FREQ`.
 - The capability characteristic is `b57f4f64-087b-4740-b71d-8262cf26ebbc`.
-  Its capability version is 1, its wire version is 2, and it advertises only
-  feature bit 0 for settings v2. The Cameras characteristic is not included.
+  Its capability version is 1, its wire version is 2, and it advertises feature
+  bit 0 for settings v2 and feature bit 1 for cameras.
 - GPS, GPS baud, GPS rate, GPS sentence filtering and GPS constellation writes
   reload the receiver through the existing GPS path.
 - A companion disable written over the companion link waits one second before
@@ -45,8 +108,9 @@ The Android settings portion is implemented. The app now:
 
 This Android change consumes the firmware capability and settings parity
 contract described in sections 1 and 4, which the stacked settings parity v2
-firmware change below implements. The camera phase in section 5 is still
-pending.
+firmware change below implements. The Apple client now consumes the camera
+capability and camera record contract. Android camera integration and the rig
+scenarios in section 5 are still pending.
 
 The companion app from [50-companion-app-design.md](50-companion-app-design.md)
 shipped with status, trigger, location push and a first settings editor. The
@@ -66,12 +130,13 @@ transport, it is protocol surface:
 - The settings characteristic already carries every exposed setting, but the
   app renders `"Setting $id"` placeholders and can only edit bools and bytes
   (`companion/android/.../protocol/FurbleProtocol.kt:117-121`).
-- There is no way to see saved cameras, pick multi-connect targets, or connect
-  and disconnect from the phone at all. The status packet carries only two
-  aggregate counters, `camera_total` and `camera_connected`
+- The Android app still cannot see saved cameras, pick multi-connect targets, or
+  connect and disconnect from the phone. The Apple app now exposes those
+  operations through its Cameras section. The status packet still carries
+  only two aggregate counters, `camera_total` and `camera_connected`
   (`include/FurbleCompanion.h:69-70`).
-- There is no capability signal. The app cannot tell a firmware that speaks the
-  new protocol from one that does not, except by poking it.
+- The capability signal now lets both companion clients gate newer settings
+  and camera operations. Android still needs to consume the camera bit.
 
 Parity for managing connections and settings makes the phone a full second
 interface, which is what section 1.3 of plan 50 promised.
@@ -328,9 +393,9 @@ deliberately does not have:
 - With MULTICONNECT on, a checkbox per row bound to select and deselect. With
   it off, tapping a row connects that camera, matching the on-device
   single-connect flow.
-- One Connect all / Disconnect action pair, disabled in states where the
-  firmware would answer busy, so the button state mirrors the reject rule
-  instead of discovering it.
+- One Connect selected / Disconnect action pair, with Connect selected
+  disabled in states where the firmware would answer busy. Disconnect remains
+  available to cancel an in-flight connection operation.
 - The Settings tab replaces placeholder rows with the metadata table editors
   from section 1, grouped and searchable, with restart-required and dangerous
   badges driven by the flags bits.
@@ -382,18 +447,24 @@ the app PR that consumes it.
 1. **Firmware: settings parity v2.** `Settings::appliesImmediately` shared
    with the console, flags bits 0 and 1, GPS reload hooks for the $PCAS
    settings, capability characteristic with feature bit 0. No new UI.
-2. **Firmware: camera management.** `camera_id` in the CameraList index with
-   migration, the cameras characteristic, wire state mapping, feature bit 1.
+2. **Firmware: camera management.** Done. `camera_id` in the CameraList index
+   with migration, the cameras characteristic, wire state mapping, feature
+   bit 1.
 3. **App: settings editors.** Metadata table, typed editors, INTERVAL editor,
    restart and danger badges, confirm flow. Works against firmware 1; against
    older firmware it degrades to the current behavior.
-4. **App: cameras tab.** List, select, connect, disconnect, live state.
-   Hidden entirely when feature bit 1 or the characteristic is absent.
+4. **App: cameras tabs.** Both companion clients now consume the stable camera
+   catalog. The Apple client lists the catalog, supports selection,
+   connect-selected and disconnect, and renders live state. The Android
+   implementation is recorded in
+   [176-android-camera-catalog.md](176-android-camera-catalog.md).
+   Both tabs are hidden entirely when feature bit 1 or the characteristic is
+   absent.
 5. **Rig: scenarios and corpus.** Plans/29 phase 1 golden payloads gain the
    cameras records, the capability read and the v2 settings flags. Phase 5
    gains three scenarios: full settings sweep (list, edit one of each type,
    verify persistence across simulated reboot), camera lifecycle with FauxNY
-   (list, select two, connect all, drop one, watch reconnect states, disconnect),
+   (list, select two, connect selected, drop one, watch reconnect states, disconnect),
    and version skew (rig peer pinned to wire version 1, assert the app hides
    the Cameras tab and downgrades flags handling).
 
@@ -430,3 +501,8 @@ Verified on fork master at `916e831`:
   and 5
 - [50-companion-app-design.md](50-companion-app-design.md) sections 3.5, 3.6,
   7, 8 and 9
+The production GATT transport routes camera command indications and unsolicited
+camera notifications to the Cameras characteristic. Companion startup and
+subscription no longer need to force a list reload:
+`CameraList::savedSnapshot()` lazily loads and migrates the saved catalog, while
+scans only replace the transient connect list.

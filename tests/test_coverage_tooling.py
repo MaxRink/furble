@@ -6,13 +6,17 @@ synthetic lcov text and synthetic summaries, so no clang, llvm or built
 binaries are required.
 """
 from pathlib import Path
+from contextlib import redirect_stderr
 import importlib.util
 import inspect
+from io import StringIO
 import json
 import os
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location("furble_coverage", ROOT / "tools/coverage.py")
@@ -467,6 +471,66 @@ class ScenarioOutcomeTest(unittest.TestCase):
     self.assertIn("42.5 s", failures[0])
     self.assertIn("three.txt", failures[1])
 
+  def test_failed_scenario_output_keeps_only_the_bounded_tail(self):
+    output = "discarded prefix\n" + (
+        "x" * COVERAGE.SCENARIO_OUTPUT_TAIL_BYTES
+    ) + "\ncrash detail\n"
+    tail = COVERAGE.scenario_output_tail(output)
+    self.assertEqual(
+        len(tail.encode("utf-8")), COVERAGE.SCENARIO_OUTPUT_TAIL_BYTES
+    )
+    self.assertNotIn("discarded prefix", tail)
+    self.assertTrue(tail.endswith("crash detail\n"))
+
+  def test_measurement_reports_real_child_signal_timeout_and_invalid_bytes(self):
+    child_source = f"""#!{sys.executable}
+import os
+import signal
+import sys
+import time
+
+label = sys.argv[sys.argv.index("--script") + 1]
+if label.endswith("signal.txt"):
+  os.write(2, b"signal marker \\xff\\n")
+  os.kill(os.getpid(), signal.SIGTERM)
+elif label.endswith("timeout.txt"):
+  os.write(2, b"timeout marker \\xff\\n")
+  time.sleep(5)
+else:
+  os.write(2, b"invalid marker \\xff\\n")
+  sys.exit(2)
+"""
+    with tempfile.TemporaryDirectory() as directory:
+      child = Path(directory) / "sim-child.py"
+      child.write_text(child_source, encoding="utf-8")
+      child.chmod(0o755)
+      args = SimpleNamespace(
+          build_dir=Path(directory) / "build",
+          scenario_jobs=2,
+          scenario_timeout=1,
+      )
+      labels = [
+          "sim/scenarios/e2e/signal.txt",
+          "sim/scenarios/e2e/timeout.txt",
+          "sim/scenarios/invalid/expected.txt",
+      ]
+      stderr = StringIO()
+      with mock.patch.object(COVERAGE, "build_simulator", return_value=child), \
+          mock.patch.object(
+              COVERAGE,
+              "certified_scenarios",
+              side_effect=[labels, [], [], []],
+          ), redirect_stderr(stderr):
+        with self.assertRaises(COVERAGE.CoverageError):
+          COVERAGE.measure_sim_board(
+              args, Path(directory), COVERAGE.SIM_BOARDS[1], "llvm-cov", "llvm-profdata"
+          )
+      report = stderr.getvalue()
+      self.assertIn("signal marker", report)
+      self.assertIn("timeout marker", report)
+      self.assertIn("\ufffd", report)
+      self.assertNotIn("invalid marker", report)
+
   def test_the_board_measurement_raises_rather_than_noting_the_loss(self):
     """The classification above only helps if the caller acts on it.
 
@@ -563,6 +627,114 @@ class CrashedHostTestTest(unittest.TestCase):
     # run() discards the output it would need, so the ctest call must not go
     # back through it.
     self.assertIn("run_streamed(", source)
+
+
+class HeaderAnchorTest(unittest.TestCase):
+  """The summary block is a whole line, not a substring of captured stdout.
+
+  Issue #277: ctest runs with --output-on-failure, so a failing test's own
+  stdout is echoed above the summary block. The old scan latched on the first
+  line merely containing the header and then read every following row as a
+  failure, so a test that printed the header fabricated a crash report for
+  tests that never crashed.
+  """
+
+  ECHOED = (
+      "1/2 Test #1: liar .............................***Failed    0.10 sec\n"
+      "The following tests FAILED:\n"
+      "\t  7 - invented (SEGFAULT)\n"
+      "liar: FAIL\n"
+      "\n"
+      "The following tests FAILED:\n"
+      "\t  1 - liar (Failed)\n"
+  )
+
+  def test_a_failing_test_that_prints_the_header_fabricates_nothing(self):
+    self.assertEqual(COVERAGE.crashed_host_tests(self.ECHOED), [])
+
+  def test_the_real_block_is_still_read_after_an_echoed_one(self):
+    output = self.ECHOED.replace("1 - liar (Failed)", "1 - liar (SEGFAULT)")
+    crashed = COVERAGE.crashed_host_tests(output)
+    self.assertEqual(len(crashed), 1)
+    self.assertIn("liar", crashed[0])
+    self.assertNotIn("invented", "".join(crashed))
+
+  def test_an_indented_header_line_is_still_the_header(self):
+    output = "  The following tests FAILED:\n\t  1 - a (Timeout)\n"
+    self.assertEqual(len(COVERAGE.crashed_host_tests(output)), 1)
+
+
+class LostProfileTest(unittest.TestCase):
+  """An empty .profraw is a lost measurement that merges with exit 0.
+
+  Issue #277: control_disconnect_test and control_reclaim_uaf_test ended in
+  std::_Exit(), so __llvm_profile_write_file never ran and both wrote a 0 byte
+  profile on every run. llvm-profdata merge accepted it, so two suites measured
+  nothing and the report looked healthy.
+  """
+
+  def profiles(self, directory, *entries):
+    for name, size in entries:
+      (Path(directory) / name).write_bytes(b"x" * size)
+
+  def test_an_empty_profile_names_the_test_that_lost_it(self):
+    with tempfile.TemporaryDirectory() as directory:
+      self.profiles(directory,
+                    ("control-disconnect.1234.profraw", 0),
+                    ("console-commands.1235.profraw", 4096))
+      lost = COVERAGE.lost_test_profiles(
+          Path(directory), ["console-commands", "control-disconnect"]
+      )
+      self.assertEqual(len(lost), 1)
+      self.assertIn("control-disconnect", lost[0])
+      self.assertIn("empty", lost[0])
+
+  def test_a_test_that_wrote_no_profile_at_all_is_named(self):
+    with tempfile.TemporaryDirectory() as directory:
+      lost = COVERAGE.lost_test_profiles(Path(directory), ["control-reclaim-uaf"])
+      self.assertEqual(len(lost), 1)
+      self.assertIn("control-reclaim-uaf", lost[0])
+      self.assertIn("no raw profile", lost[0])
+
+  def test_a_forked_test_counts_when_one_of_its_profiles_has_data(self):
+    """A test that forks writes one profile per process, and a child that
+    _exit()s writes nothing. The parent's data is the measurement."""
+    with tempfile.TemporaryDirectory() as directory:
+      self.profiles(directory,
+                    ("control-fuzz-seed-1.100.profraw", 8192),
+                    ("control-fuzz-seed-1.101.profraw", 0))
+      self.assertEqual(
+          COVERAGE.lost_test_profiles(Path(directory), ["control-fuzz-seed-1"]),
+          [],
+      )
+
+  def test_a_longer_name_cannot_stand_in_for_a_shorter_one(self):
+    """bt-debug-journal is a hyphenated prefix of bt-debug-journal-s3-psram, so
+    the profile of the longer test must not answer for the shorter one."""
+    with tempfile.TemporaryDirectory() as directory:
+      self.profiles(directory, ("bt-debug-journal-s3-psram.42.profraw", 2048))
+      lost = COVERAGE.lost_test_profiles(
+          Path(directory), ["bt-debug-journal", "bt-debug-journal-s3-psram"]
+      )
+      self.assertEqual(len(lost), 1)
+      self.assertIn("bt-debug-journal:", lost[0])
+
+  def test_a_healthy_run_reports_nothing(self):
+    with tempfile.TemporaryDirectory() as directory:
+      self.profiles(directory, ("gps-format.9.profraw", 512))
+      self.assertEqual(
+          COVERAGE.lost_test_profiles(Path(directory), ["gps-format"]), []
+      )
+
+  def test_the_host_measurement_acts_on_the_lost_profiles(self):
+    """The check only helps if measure_host() raises on it, and it can only
+    name the test if each test writes a profile named after itself."""
+    source = inspect.getsource(COVERAGE.measure_host)
+    self.assertIn("lost_test_profiles(", source)
+    self.assertIn("raise CoverageError", source)
+    self.assertIn("FURBLE_PROFILE_DIR", source)
+    cmake = (ROOT / "tests/host/CMakeLists.txt").read_text(encoding="utf-8")
+    self.assertIn("LLVM_PROFILE_FILE=${FURBLE_PROFILE_DIR}/${furble_test_name}.%p.profraw", cmake)
 
 
 class ToolDiscoveryTest(unittest.TestCase):

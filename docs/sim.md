@@ -172,9 +172,11 @@ same event stream and reach the same pages.
 
 The comparison stops there on purpose. Firmware behaviour under the fuzzer is
 not yet reproducible line for line: two runs of the same seed can differ by one
-connect attempt, because production code blocks on plain host mutexes the
-simulator scheduler cannot see. Asserting the whole log would be a flaky gate
-until the scheduler-visible mutex in plan 158 Phase 3 lands.
+connect attempt. `Camera::m_Mutex`, the one host mutex a connect holds for its
+whole attempt, is scheduler visible since plans/173; the host mutexes that are
+left are held for microseconds each and have not been measured to move a run,
+but they are still invisible, so asserting the whole log stays out of the
+gate.
 
 ## Wall-clock bounds and the stall watchdog
 
@@ -187,6 +189,14 @@ for `FURBLE_SIM_WATCHDOG_SECONDS` host seconds (default 120, `0` disables it
 for an interactive debugging session) it prints the phase, the virtual clock,
 the scheduler task table and a native backtrace of every registered thread,
 then exits non-zero.
+
+A fatal fault is the other thing no virtual-time bound can see. `SIGSEGV`,
+`SIGBUS`, `SIGILL` and `SIGFPE` are caught, print `SIM CRASH:` with the
+scenario line being executed, the boot phase, the faulting thread and a native
+backtrace (`-rdynamic` is on), and are then re-raised so the process still ends
+with the real fatal status. Set `FURBLE_SIM_CRASH_STEP=<index>` to fault
+deliberately at a script step; that is the self test for the reporter and has
+no other use.
 
 `FURBLE_SIM_SDL_STEP_DETECT=1` restores the M5GFX debugger-detector thread,
 which is off by default. The detector infers that a debugger has stopped the
@@ -237,7 +247,7 @@ text after a comment are ignored. Each line starts with one verb.
 | `home` | Goes to the root menu and focuses Scan. |
 | `back` | Clicks the LVGL header back button. It fails at the root page. |
 | `report` | `report NAME` writes a profiler JSON report. |
-| `restart` | Reboots the simulated device: the simulator shuts down in order, re-executes itself, and resumes the script at the next step. RAM state is wiped like an esp_restart(); the NVS preferences file persists like flash. Seeds are reapplied on the resumed boot. Takes no arguments and must not be the final step. |
+| `restart` | Reboots the simulated device: the simulator shuts down in order, re-executes itself, and resumes the script at the next step. RAM state is wiped like an esp_restart(); the per-run NVS preferences file is inherited through `FURBLE_SIM_PREFS` and persists like flash. Seeds are reapplied on the resumed boot. Takes no arguments and must not be the final step. |
 | `action` | `action COMMAND` invokes one of the simulator actions below. The complete action line is parsed once, with whitespace-tolerant tokenization, strict arity, finite numeric validation, and no silently ignored trailing values. Invalid actions fail during script loading with status 2. |
 | `print` | `print KEY` prints the resolved scenario query. |
 | `assert` | `assert KEY VALUE` aborts with exit status 1 when the resolved value differs. |
@@ -263,9 +273,10 @@ The `clock.ms` query reports the current virtual millisecond clock.
 
 These byte settings are applied before the UI is constructed:
 `brightness`, `inactivity`, `display_off`, `gps_rate`, `gps_constel`,
-`gps_power`, `gps_duty`, `cpu_freq`, `tx_power`, `scan_mode`, `text_size`,
-`legend`,
-`auto_off`, `low_batt`, and `fb_output`.
+`gps_power`, `gps_duty`, `gps_hold`, `cpu_freq`, `tx_power`, `scan_mode`,
+`text_size`, `legend`, `auto_off`, `low_batt`, `fb_output`, `hw_motion`, `gps_assist`
+(0 off, 1 position and time, 2 with ephemeris), `gps_platform` (0 do not send,
+1 to 4 the dynamic models), and `imu_wake` (0 off, 1 tap, 2 shake, 3 both).
 
 `clock_ms` seeds the simulator's uint32 millisecond clock before platform
 initialization. It is intended for deterministic wrap-boundary scenarios.
@@ -276,14 +287,29 @@ Battery seeds select the initial deterministic platform sample:
 `false`).
 
 These boolean settings are applied before the UI is constructed:
-`gps`, `gps_nmea`, `fauxny`, `autoconnect`, `reconnect`, `recon_backoff`,
-`sleep_conn`, and
-`boot_splash`, and `imu`. `auto_off_charging` opts into auto-off while charging, and
-`imu_sensor` controls modeled IMU presence. The M5StickS3 model also accepts
+`gps`, `gps_nmea`, `gps_motion`, `fauxny`, `autoconnect`, `reconnect`,
+`recon_backoff`, `sleep_conn`, `boot_splash`, `gps_extrap`, `sd_gpx`, `imu`,
+and `imu_trigger`. `auto_off_charging` opts into auto-off while charging, and
+`imu_sensor` controls modeled IMU presence. `gps_motion` needs `gps` and `imu`
+as well: the detector only runs when the receiver and the sensor are both on.
+`gps_motion_prearm` is a regression-only seed that loads GPS before the UI arms
+the shared motion source.
+The M5StickS3 model also accepts
 `watchdog`; other board models reject that seed because they cannot apply it.
 `scan_timeout` seeds the discovery scan timeout in seconds; the default 0 scans
 until the page is left, so a scenario that asserts a scan-end callback must
 seed a bounded value.
+
+The modelled GPS receiver is seeded before boot. `gps_baud` sets the `GPS_BAUD`
+setting (`auto`, `0`, `9600` or `115200`). `gps_receiver` says what is on the
+Grove port: `any` (the default, answering whatever rate the driver programmed,
+which leaves every scenario written before the receiver model unchanged),
+`none` for an empty port, or one of `4800`, `9600`, `19200`, `38400`, `57600`,
+`115200`, which stays mute until the autobaud ladder reaches it. `gps_sats`
+picks the GSV/GSA fixture and `gps_fix_date` picks the fix burst; both are
+detailed under the receiver model below. `gps_uart_chunk` serves the burst that
+many bytes at a time, paced, so a sentence spans several reads as it does off a
+real UART.
 
 `ble_peers` selects the virtual BLE radio topology from a strict allowlist:
 
@@ -294,6 +320,7 @@ seed a bounded value.
 | `fuji-secure` | one healthy Fujifilm Secure camera, which advertises a serial |
 | `fuji-pair` | two healthy Fujifilm Basic cameras |
 | `fuji-ricoh-flappy` | one healthy Fujifilm plus a Ricoh GR IV in BLE standby that fails one security handshake the way a supervision timeout does (rc=520) before letting a connect through |
+| `fuji-secure-stale` | one Fujifilm Secure body that the central is still bonded to and that no longer holds the pairing, so every security handshake times out and takes the link with it (the 2026-09-02 X100VI bench signature) |
 
 `ble_saved true` persists the topology's cameras through the production
 `CameraList::match` and `CameraList::save`, so the scenario boots with saved
@@ -347,8 +374,20 @@ Each takes a count and an optional unit written with no space, `250ms`, `30s` or
 `60min`; without one the field keeps its own unit. The unit is how a scenario
 reaches a spin value the field's default unit cannot express, which the timer
 row width assertions need. An unrecognised suffix is rejected at load.
+
+`gps_stationary` selects the stationary canned NMEA track instead of the
+moving one. Both report the same position, but the stationary track reports
+0.412 knots rather than 22.678, which is below the speed floor fix hold
+extrapolation needs. It is the seed a scenario uses to prove that a parked user
+is never dead reckoned.
+
 `gps_uart_mode` selects `ack`, `nack`, `timeout`, `malformed`, `partial`,
 `write-error`, or `pause` before the GPS task starts.
+
+`imu_chip` selects `bmi270`, `mpu6886`, or `none` as the internal IMU the
+modelled board carries. The motion engines are chip specific, so this is what
+decides whether a hardware engine or the software fallback arms. The default is
+`none`.
 
 ### `action` commands
 
@@ -387,6 +426,8 @@ action companion-accept
 action companion-reject
 action imu.enable
 action imu.disable
+action motion.arm
+action motion.disarm
 action imu.accel.fail
 action imu.accel.recover
 action imu.gyro.fail
@@ -401,6 +442,7 @@ The parameterized action forms are:
 ```text
 action toggle NAME
 action nav PAGE
+action scan-row N
 action scroll top|bottom|next|PIXELS
 action page PAGE
 action imu.accel X Y Z
@@ -409,14 +451,24 @@ action imu.roll DEGREES
 action imu.pitch DEGREES
 ```
 
-`toggle NAME` accepts `gps`, `gps_nmea`, `autoconnect`, `reconnect`,
-`multiconnect`, `companion`, `watchdog`, `ir`, `show_title`, `tx_adaptive`,
-`conn_saver`, `preset_picker`, and `recon_backoff`.
+`toggle NAME` accepts `gps`, `gps_nmea`, `gps_motion`, `autoconnect`,
+`reconnect`, `multiconnect`, `companion`, `watchdog`, `ir`, `show_title`,
+`tx_adaptive`, `conn_saver`, `preset_picker`, and `recon_backoff`.
+
+`scan-row N` activates scan result row N by dispatching that row's own click
+handler, which is `UI::beginPairing()`. It exists because focus-driven
+activation of a scan row is not reproducible: the row is materialized on the UI
+task after the page has already focused its back button, and a key press lands
+on it about half the time on a page busy draining advertisements. It reports
+`unavailable` when N is past the end of the scan list; both a started connect
+and a refused duplicate are `applied`, because both are real outcomes of the
+production handler.
 
 `nav PAGE` accepts `connect`, `scan`, `delete`, `power_off`, `bulb_duration`,
-`bulb`, `settings`, `display`, `features`, `sensors`, `infrared`, `gps_rate`,
-`gps_sentences`, `gps_constellation`, `gps_power`, `gps_assist`, `gps`,
-`gps_data`, `nmea`, `timer`, `theme`, `text_size`, `legend`, `bluetooth`, `tx_power`,
+`bulb`, `settings`, `display`, `features`, `sensors`, `gestures`, `infrared`,
+`gps_rate`, `gps_sentences`, `gps_constellation`, `gps_power`, `gps_assist`,
+`gps_hold`, `gps_baud`, `gps_platform`, `gps`, `gps_data`, `nmea`, `gps_sats`,
+`timer`, `theme`, `text_size`, `legend`, `bluetooth`, `tx_power`,
 `about`, `power`, `feedback`, `feedback_events`, `feedback_volume`,
 `diagnostics`, `device_info`, `power_state`, `ble`, `interval_count`,
 `interval_delay`, `interval_shutter`, `interval_wait`, `battery`, `storage`,
@@ -426,8 +478,9 @@ action imu.pitch DEGREES
 `connected`, `ir`, `shutter`, `bulb`, `bulb_duration`, `bulb_run`, `cameras`,
 `remote_timer`, `remote_gps`, `remote_disconnect`, `timer`, `timer_run`,
 `settings`, `display`, `features`, `sensors`, `infrared`, `gps_rate`,
-`gps_sentences`, `gps_constellation`, `gps_power`, `gps_assist`, `gps`,
-`gps_data`, `nmea`, `theme`, `text_size`, `legend`, `bluetooth`, `tx_power`, `about`,
+`gps_sentences`, `gps_constellation`, `gps_power`, `gps_assist`, `gps_hold`,
+`gps_baud`, `gps_platform`, `gps`, `gps_data`, `nmea`, `gps_sats`, `theme`,
+`text_size`, `legend`, `bluetooth`, `tx_power`, `about`,
 `power`, `feedback`, `feedback_events`, `feedback_volume`, `storage`,
 `diagnostics`, `device_info`, `battery`, `power_state`, `ble`, `interval_count`,
 `interval_delay`, `interval_shutter`, and `interval_wait`.
@@ -478,6 +531,8 @@ The complete `ui.*` query set is:
 | Query | Returned value |
 | --- | --- |
 | `ui.connect_box` | `hidden` or `visible`. |
+| `ui.connect_error` | `none`, or the dismissable connect error box's title as one lowercased token: `already_saved`, `pairing_lost`, or `connect_failed`. |
+| `ui.modal_overflow` | `yes` when anything on the top layer is drawn outside the display, outside the content box of its own parent, or scrolled out of view (a non-zero scroll extent on any top-layer scrollable). `no` when the top layer was measured and is clean, `none` when the top layer has no visible children, `unknown` with no top layer. Position is compared, never size: two stacked labels can each be smaller than the room their parent has and still not fit together. Pair it with `ui.connect_error`: that one proves the box exists with the right text, this one proves the text was drawn where the user can read it. Limit: a `LV_LABEL_LONG_DOT` label always fits its own box, so an ellipsized label is reported clean by design. The camera name in the connect error box is deliberately dotted, and LVGL rewrites the label's text to insert the ellipsis, so an ellipsized string is also invisible to `ui.connect_error`, which reads that text back. Any label whose truncation must be caught has to be wrapped, not dotted. |
 | `ui.indicators_focused` | `yes` or `no`. |
 | `ui.bulb_ms` | Persisted bulb duration in milliseconds. |
 | `ui.disconnect_calls` | Numeric disconnect count. |
@@ -515,6 +570,11 @@ The complete `ui.*` query set is:
 | `ui.cut_names` | Numeric count of spin-row names on the current page that lose characters. |
 | `ui.scroll_bottom` | Numeric pixels, or `unknown`. |
 | `ui.scroll_top` | Numeric pixels, or `unknown`. |
+| `ui.display` | Panel sleep state, `on` or `off`. |
+| `ui.motion_backend` | Armed motion backend name: `none`, `software`, `bmi270-motion` or `mpu6886-wom`. |
+| `ui.motion_state` | Motion source state: `inactive`, `moving` or `stationary`. |
+| `ui.motion_wake` | `yes` when the armed backend holds a light-sleep wake source, `no` when it polls. |
+| `ui.motion_interrupts` | Motion state transitions the armed backend has reported. |
 | `ui.text_size` | Numeric roller selection, or `unknown`. |
 | `ui.text_size_options` | Numeric roller option count, or `unknown`. |
 | `ui.interval_state` | `idle`, `wait`, `shutter`, `delay`, `finished`, or `unknown`. |
@@ -527,6 +587,9 @@ The complete `ui.*` query set is:
 | `ui.gps_lon` | Rendered longitude value. |
 | `ui.gps_satellites` | Rendered satellite count. |
 | `ui.gps_fix` | `yes` when the GPS source is active, otherwise `no`. |
+| `ui.gps_fix_state` | Rendered fix hold row: `hidden` while fix hold is off, otherwise `live`, `held`, or `searching`. |
+| `ui.gps_hold_remaining` | Rendered seconds left on a held fix, `none` in any other state. |
+| `ui.gps_extrap_enabled` | `yes` or `no` for the Extrapolate switch, which is greyed out until fix hold is set. `none` off the GPS settings page. |
 | `ui.gps_source` | Rendered fix source, `uart`, `comp`, `none`, or `none` when the row is absent. |
 | `ui.gps_link_age` | Rendered sentence age exactly as drawn, such as `3s`, `17m`, `99m+`, or `n/a`. |
 | `ui.gps_cycle` | Rendered power cycle state, such as `waiting` or `degraded`. |
@@ -539,6 +602,7 @@ The complete `ui.*` query set is:
 | `ui.battery_x` | Numeric header x position, or `none`. |
 | `ui.battery_drift` | Numeric x delta from the first read, or `none`. |
 | `ui.low_battery` | `none`, `warn`, or `power_off_pending`. |
+| `ui.gps_motion_row` | `absent`, `hidden`, `disabled`, or `enabled` for the Settings > GPS motion-adaptive row. |
 | `ui.liveness_violations` | Numeric count of continuous liveness invariant firings. Restarts at zero on a boot resumed by `restart`, with the rest of RAM. |
 
 `ui.gps_source` and `gps.source` deliberately report different vocabularies.
@@ -556,6 +620,13 @@ its configuration and any received byte refreshes the tick; they are unit tested
 in `tests/host/gps_format_test.cpp`.
 
 The other namespaces are:
+
+- `gps.motion_state` reports the phase 1 motion detector as `off`, `moving`, or
+  `stationary`. `off` means the detector is not running, which is the default
+  and what every scenario that does not seed `gps_motion` must observe. The
+  detector is advisory in this phase: `GPS::isStationary()` has no consumer, so
+  a scenario that flips the state must also assert that the receiver did not
+  move, with `gps.state`, `power.no_light_sleep` and `uart.count`.
 
 - `platform.battery.level`, `platform.battery.voltage`,
   `platform.battery.current`, and `platform.battery.charging` report the
@@ -579,10 +650,8 @@ The other namespaces are:
 - `control.reconnect_backoff` and `control.infinite_reconnect`: `yes` or `no`.
 - `ble.secure_stall_aborted`: `yes` once a Fujifilm peer's modelled security
   handshake has ended on a link terminate rather than on its own deadline. This
-  is the provenance a cancel bound cannot give: virtual-time bounds on cancel
-  latency are not sound while issue #279 is open, because the interactive
-  teardown polls on the UI thread and the ticks it burns are set by host
-  scheduling.
+  is provenance a cancel bound cannot give: a bound says the cancel was quick,
+  not that it was the cancel that ended the handshake.
 - `ble.live_clients`: number of NimBLE clients the mock currently holds. With
   `ble_max_clients` and `ble_client_selfdelete` seeded this is the client-leak
   guard: a session holds one, and anything left over after a settled teardown is
@@ -590,6 +659,17 @@ The other namespaces are:
 - `control.connecting_camera`: name of the camera currently being connected.
 - `camera.count`: numeric camera-list row count, useful for scan de-duplication
   assertions.
+- `gpx.points`: track points the firmware has queued for the SD writer. A held
+  GPS fix reaches the camera but must never reach the track log, so a scenario
+  proves that split by holding this still while `camera.geo_count` climbs.
+  Needs `sd_gpx` seeded and the `sd` capability.
+- `camera.geo_count`, `camera.geo_lat_e5`, `camera.geo_lon_e5`, and
+  `camera.geo_utc_s`: the geotag that last reached the simulated camera through
+  the production GPS to camera path. Coordinates are in units of 1e-5 degrees
+  and the timestamp is seconds since midnight UTC, both integers, so
+  `assert_min` and `assert_max` can bound them. Fix hold exists so these keep
+  arriving after the receiver loses its fix, so this is where a hold scenario
+  asserts the far end rather than inferring it from the GPS Data page.
 - `scan.end_callbacks`: numeric count of scan-end callbacks delivered by the
   current scan. A bounded discovery scan should deliver exactly one callback.
 - `scan.advertisements`: number of advertisements the virtual radio has
@@ -603,6 +683,8 @@ The other namespaces are:
   Buttons and `1` for Bottom. `seed legend 0|1` selects it before the UI is
   built, which is when the legends are anchored and the room they need is
   reserved.
+- `setting.hw_motion`: the persisted motion engine choice, 0 auto, 1 software,
+  2 hardware.
 `ui.nav_layout` reports which navigation layout the running build rendered:
 `touch` for the touch grid, `buttons` for the physical-button layout. A scenario
 that means to measure a board's shipped layout asserts this first, so a lost
@@ -671,10 +753,53 @@ apart. A page with no spin row reports 0 and `n/a`.
 
 - `setting.fauxny`, `setting.autoconnect`, `setting.reconnect`,
   `setting.multiconnect`, `setting.companion`, `setting.watchdog`,
-  `setting.gps`, `setting.gps_nmea`, `setting.ir`, `setting.conn_saver`,
+  `setting.gps`, `setting.gps_nmea`, `setting.gps_motion`, `setting.ir`,
+  `setting.conn_saver`,
   `setting.preset_picker`, `setting.show_title`, `setting.tx_adaptive`, and
   `setting.recon_backoff`: `1` or `0`. `setting.watchdog` is in the
   M5StickS3 build.
+
+GPS simulator queries also include `gps.sats_in_view`, `gps.sats_used`,
+`gps.sats_fix` and `gps.sats_capture`; the `gps-satellite-page` end-to-end
+scenario uses the fixed GSV/GSA fixture and proves the rendered route before
+docs capture runs.
+
+Phase 2 adds the receiver model and its queries. `gps.receiver` reports
+`unknown`, `detecting`, `present` or `absent`, `gps.baud` reports the rate the
+autobaud ladder locked (0 while none is known), `gps.eph_cached` reports the
+bytes the tier 2 ephemeris cache occupies in NVS, and `gps.monhw` reports the
+decoded MON-HW snapshot as `noise/agc/antenna/jam` or `none`. On the UART side
+`uart.baud` is the rate the driver has the port set to, `uart.eph_replay`
+counts the assistance frames replayed back at the receiver, and
+`uart.monhw_polls` counts MON-HW polls.
+
+Four seeds configure the modelled receiver before boot. `gps_baud` selects the
+`GPS_BAUD` setting (`auto`, `0`, `9600` or `115200`). `gps_receiver` selects
+what is on the Grove port: `any` (the default, which answers whatever rate the
+driver programmed and keeps every pre-existing scenario unchanged), `none` for
+an empty port, or one of the six ladder rates, which makes the receiver mute
+until the ladder reaches it. `gps_sats` selects the GSV/GSA fixture
+(`default`, `none`, `one`, `twelve`, `duplicate`, `range`, `multi`,
+`malformed`). `gps_fix_date` selects the fix burst: `fixture` is the historic frozen RMC/GGA
+pair, `modern` and `stale` advance their clock one second per burst a week
+apart, `coldstart` is `modern` but reports a date a day behind for its first few
+bursts as a unit does before it decodes TOW, `badrmc` sends an RMC whose
+checksum is broken, `emptyrmc` sends the all-empty pre-fix RMC a receiver emits
+before it has a solution, `walkback` walks its date forward a day per burst from
+far behind the cache, and `nodate` is GGA only, a receiver that reports a
+position but never a date. The ephemeris rule commits on a date the parser has actually
+committed this session, so those are what exercise it. `gps_uart_chunk N` serves
+the burst N bytes at a time, paced 20 ms apart, so a sentence spans several
+reads and arrives over time the way it does off a real UART. `gps_assist` and
+`gps_platform` are ordinary byte seeds for their settings.
+
+Five script verbs drive the same model at runtime: `gps-receiver
+<any|none|BAUD>`, `gps-sats <fixture>`, `gps-fix-date
+<fixture|modern|stale|nodate>`, `gps-monhw <full|short>` (issue the production
+MON-HW poll, optionally answered with a truncated payload) and
+`gps-eph-corrupt` (flip one byte of the last frame in the stored ephemeris
+cache, so the reload path has to refuse the whole blob rather than replay up to
+the damage).
 
 ## Fault injection and fuzzing
 
@@ -731,12 +856,22 @@ whatever the production stack does after a fault is what the scenario observes.
   capability presence. `FURBLE_SIM_THEME` and `FURBLE_SIM_TEXTSIZE` select
   launch-time rendering variants. `FURBLE_SIM_CAPTURE_SPLASH` captures the
   boot splash. `FURBLE_SIM_PREFS` selects the preferences file used by the
-  simulator.
-- `FURBLE_SIM_RESTART_STEP` is set by the `restart` step for the process it
-  re-executes, and nothing else should set it. The resumed boot consumes it,
-  unsets it, and skips the fresh-scenario preferences wipe, so it lives exactly
-  one boot; a value outside the script's step range fails the run with status
-  2.
+  simulator; a scripted run overrides it with a per-run path
+  `.pio/furble-sim-preferences-<scenario>-<pid>.bin` and removes it again on an
+  orderly exit. The path is prepared on the main thread before SDL setup and
+  simulator threads start, so the process-wide environment is not mutated while
+  SDL is reading it. One flash image per simulated device: keying it on the
+  scenario alone let two simulators running the same script from one working
+  directory erase each other's flash at boot (issue #284).
+- `FURBLE_SIM_RESTART_STEP` is recorded by the `restart` step and set by the
+  main thread only after the simulator has joined every task and closed SDL,
+  immediately before re-exec. The resumed boot consumes it, unsets it, and
+  keeps the `FURBLE_SIM_PREFS` store it inherited rather than wiping a fresh
+  one, so the reboot reads the flash the previous boot wrote. It lives exactly
+  one boot; a value outside the script's step range fails the run with status 2.
+  `sim/scripts/run-env-order.sh` can guard each mutation with a Linux
+  `LD_PRELOAD` interposer. That check establishes environment ordering only; it
+  does not establish that an environment race caused a SIGSEGV.
 - Battery policy tests should seed `low_batt` and the four battery fields, then
   use `action battery ...` to change the sample. Six consecutive low samples
   qualify the production 30-second hysteresis; charging suppresses both the
@@ -765,6 +900,41 @@ Checked-in scenarios cover the setting gate, live diagnostics, portrait and
 rotated level layouts, redraw stability, and overflow on all three panel sizes:
 `e2e/imu-gating.txt`, `e2e/imu-diagnostics.txt`, `e2e/level-spirit.txt`,
 `e2e/level-overflow.txt`, and `e2e/redraw-steady.txt`.
+
+### IMU gestures
+
+The gesture detector is the same `Furble::GestureDetector` the firmware runs;
+the simulator feeds it through the shared `M5.Imu` seam with `imu.accel`, so a
+scenario measures the production state machine rather than a stand-in. Seed the
+two settings with `imu_wake` (0 off, 1 tap, 2 shake, 3 both) and `imu_trigger`
+(boolean). Both default off, which is master behaviour: no detector is
+constructed and no accelerometer is read.
+
+Query keys, all `FURBLE_SIM` only: `ui.gesture_timer` (`yes`/`no`, whether the
+50 Hz poll timer exists), `ui.gesture_period_ms`, `ui.gesture_events` (gestures
+accepted by the UI, which is not the same as shutter frames, so a swallowed or
+wake-only gesture is still observable), `ui.gesture_last` (`none`, `tap`,
+`double_tap`, `shake`) and `ui.display_state` (`on`/`dim`/`off`, the value
+production already feeds the power profiler).
+
+At 50 Hz a tap is one sample: hold the high value for 20 ms, then release to
+baseline. Two consecutive high samples is a shove and three is a shake, so an
+impulse longer than 40 ms is classified as a shake by design.
+
+Checked-in scenarios: `e2e/imu-gesture-detect.txt` (tap, refractory, shake,
+walking, table bump), `e2e/imu-gesture-doubletap.txt` (the 80 to 400 ms
+window's boundaries), `e2e/imu-gesture-wake-tap.txt`, `-wake-shake.txt` and
+`-wake-off.txt` (the wake masks, driven through the real display-off path with
+`inactivity` and `display_off` seeds), `e2e/imu-gesture-shutter.txt` and
+`-shutter-blocked.txt` (one gesture is one frame; disconnected, wrong page and
+a running intervalometer each block it), `e2e/imu-gesture-defaults.txt`
+(defaults change nothing, including the invalidation count),
+`e2e/imu-gesture-disabled.txt` and `e2e/imu-gesture-gating.txt` (the IMU gate
+and live sensor loss, run on all three panels).
+
+`sim/scenarios/gesture-idle-30s.txt` is the power baseline with the detector
+on. The 50 Hz timer costs real light-sleep residency in the model, so this
+scenario is what stops a future rate change from going unnoticed.
 
 ### Real-code host BLE faults
 

@@ -255,6 +255,9 @@ class NimBLEClient {
   bool connect(const NimBLEAddress &address);
   void disconnect();
   bool isConnected() const;
+  // The peer this client is connected to, so an unpair can terminate only the
+  // links to that peer the way ble_gap_unpair() does.
+  const NimBLEAddress &getPeerAddress() const;
   NimBLERemoteService *getService(const NimBLEUUID &service);
   bool secureConnection();
   NimBLEAttValue getValue(const NimBLEUUID &service, const NimBLEUUID &characteristic);
@@ -345,6 +348,8 @@ class NimBLEClient {
   // then frees a client that was marked for deferred deletion. Used to drive the
   // late-callback window a reclaim must not leave pointing at a freed owner.
   void mockStallTerminate();
+  // Number of terminate calls accepted while this client was connected.
+  size_t mockDisconnectCount() const;
   bool mockRequestDelete();
   void mockCompleteStalledTerminate(int reason);
 
@@ -385,6 +390,7 @@ class NimBLEClient {
   uint32_t m_ConnectTimeout = 0;
   bool m_Connected = false;
   bool m_StuckTerminate = false;
+  size_t m_DisconnectCount = 0;
   bool m_DeferredDelete = false;
   // Self-delete flags recorded from setSelfDelete(). The fuzzer deferred-delete
   // model uses m_DeleteOnDisconnect to free a client after onDisconnect,
@@ -472,6 +478,15 @@ class NimBLEDevice {
   static bool deleteBond(const NimBLEAddress &address);
   static bool isBonded(const NimBLEAddress &address);
   static void setBonded(bool bonded);
+  // Bond one specific identity address. isBonded() then answers only for that
+  // address, which is what the real store does: it compares against the
+  // identity addresses in ble_store_util_bonded_peers(), not against whatever
+  // resolvable private address the body happened to advertise.
+  static void setBondedAddress(const NimBLEAddress &address);
+  // The identity address a live link resolves to. Distinct from the advertised
+  // address for a body using an RPA, which is the case the Fujifilm Secure
+  // recovery has to handle.
+  static void setMockIdAddress(const NimBLEAddress &address);
   static size_t deleteBondCount();
   static bool setMTU(uint16_t mtu);
   static void injectPassKey(NimBLEConnInfo &connInfo, uint32_t passKey);

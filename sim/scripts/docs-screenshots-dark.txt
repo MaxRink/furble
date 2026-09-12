@@ -5,6 +5,9 @@
 seed fauxny true
 seed gps true
 seed saved_camera true
+seed imu true
+seed imu_wake 1
+seed imu_trigger true
 wait 500
 
 home
@@ -36,6 +39,16 @@ wait 350
 capture dark-features
 print ui.page
 
+action nav sensors
+wait 350
+capture dark-settings-sensors
+print ui.page
+
+action nav gestures
+wait 350
+capture dark-settings-gestures
+print ui.page
+
 action nav infrared
 wait 350
 capture dark-infrared
@@ -44,6 +57,11 @@ print ui.page
 action nav gps
 wait 350
 capture dark-settings-gps
+print ui.page
+
+action nav gps_sats
+wait 2800
+capture dark-gps-satellites
 print ui.page
 
 action nav bluetooth

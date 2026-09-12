@@ -3,6 +3,7 @@
 #include <cctype>
 #include <cerrno>
 #include <chrono>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -24,11 +25,16 @@
 
 #include <driver/uart.h>
 
+#include <FauxNY.h>
 #include "CameraList.h"
 #include "FurbleControl.h"
 #include "FurbleGPS.h"
+#include "FurbleSD.h"
 #include "FurbleSettings.h"
+
+#include "FurbleTypes.h"
 #include "FurbleUI.h"
+#include "Preferences.h"
 #include "Scan.h"
 #include "ble_sim.h"
 #include "capture.h"
@@ -37,6 +43,7 @@
 #include "fuzz.h"
 #include "platform_state.h"
 #include "power_profiler.h"
+#include "watchdog.h"
 
 namespace Furble::Sim {
 namespace {
@@ -51,6 +58,11 @@ enum class StepType {
   UART_MODE,
   UART_EVENT,
   GPS_RESTART,
+  GPS_EPH_CORRUPT,
+  GPS_RECEIVER,
+  GPS_SATS,
+  GPS_MONHW,
+  GPS_FIX_DATE,
   HOME,
   BACK,
   REPORT,
@@ -68,6 +80,9 @@ enum class StepType {
 
 struct Step {
   StepType type;
+  // The scenario line this step was parsed from. The crash handler prints it,
+  // which is the whole diagnosis for a fault inside a scripted run.
+  std::string source;
   uint32_t milliseconds = 0;
   SDL_Keycode key = SDLK_UNKNOWN;
   bool hold = false;
@@ -117,6 +132,8 @@ bool simulatedPowerOff = false;
 std::vector<std::string> savedArguments;
 bool resumedBoot = false;
 std::atomic<bool> restartPending {false};
+// Written by driverTick and read only after main() joins the simulator thread.
+size_t restartStepIndex = 0;
 const char *RESTART_STEP_ENV = "FURBLE_SIM_RESTART_STEP";
 
 // Continuous UI liveness invariant (plan 155). Every driver tick, if the UI
@@ -311,9 +328,11 @@ void validateSeed(const std::string &name, const std::string &value) {
   }
 
   constexpr const char *byteSeeds[] = {
-      "brightness", "inactivity", "display_off", "gps_rate",  "gps_constel",
-      "gps_power",  "gps_duty",   "cpu_freq",    "tx_power",  "scan_mode",
-      "text_size",  "auto_off",   "low_batt",    "fb_output", "legend",
+      "brightness", "inactivity", "display_off",  "gps_rate",  "gps_constel",
+      "gps_power",  "gps_duty",   "cpu_freq",     "tx_power",  "scan_mode",
+      "text_size",  "auto_off",   "low_batt",     "fb_output", "gps_hold",
+      "imu_wake",   "gps_assist", "gps_platform", "hw_motion",
+      "legend",
   };
   if (std::find(std::begin(byteSeeds), std::end(byteSeeds), name) != std::end(byteSeeds)) {
     if (parseUnsigned(value) > std::numeric_limits<uint8_t>::max()) {
@@ -324,12 +343,30 @@ void validateSeed(const std::string &name, const std::string &value) {
   }
 
   constexpr const char *booleanSeeds[] = {
-      "gps",           "gps_nmea",          "fauxny",
-      "autoconnect",   "reconnect",         "sleep_conn",
-      "boot_splash",   "connect_fail",      "no_touch",
-      "saved_camera",  "scan_start_probe",  "ble_saved",
-      "recon_backoff", "auto_off_charging", "imu",
-      "imu_sensor",    "liveness_check",    "ble_client_selfdelete",
+      "gps",
+      "gps_nmea",
+      "gps_motion",
+      "gps_motion_prearm",
+      "fauxny",
+      "autoconnect",
+      "reconnect",
+      "sleep_conn",
+      "boot_splash",
+      "connect_fail",
+      "no_touch",
+      "saved_camera",
+      "scan_start_probe",
+      "ble_saved",
+      "recon_backoff",
+      "auto_off_charging",
+      "imu",
+      "imu_sensor",
+      "liveness_check",
+      "ble_client_selfdelete",
+      "gps_extrap",
+      "gps_stationary",
+      "sd_gpx",
+      "imu_trigger",
   };
   if (std::find(std::begin(booleanSeeds), std::end(booleanSeeds), name) != std::end(booleanSeeds)) {
     if (!booleanSeedValue(value)) {
@@ -397,10 +434,53 @@ void validateSeed(const std::string &name, const std::string &value) {
   } else if (name == "ble_max_clients") {
     parseUnsigned(value);
     return;
+  } else if (name == "gps_baud") {
+    if (value != "auto" && value != "0" && value != "9600" && value != "115200") {
+      std::cerr << "Invalid gps_baud: " << value << '\n';
+      std::exit(2);
+    }
+    return;
+  } else if (name == "gps_receiver") {
+    // "any" answers whatever the driver programmed, "none" is an empty port,
+    // otherwise the receiver only answers at that one rate.
+    if (value != "any" && value != "none" && value != "4800" && value != "9600" && value != "19200"
+        && value != "38400" && value != "57600" && value != "115200") {
+      std::cerr << "Invalid gps_receiver: " << value << '\n';
+      std::exit(2);
+    }
+    return;
+  } else if (name == "gps_sats") {
+    if (value != "default" && value != "none" && value != "one" && value != "twelve"
+        && value != "duplicate" && value != "range" && value != "multi" && value != "partial"
+        && value != "malformed") {
+      std::cerr << "Invalid gps_sats: " << value << '\n';
+      std::exit(2);
+    }
+    return;
+  } else if (name == "gps_uart_chunk") {
+    parseUnsigned(value);
+    return;
+  } else if (name == "gps_uart_noise") {
+    parseBool(value);
+    return;
+  } else if (name == "gps_fix_date") {
+    if (value != "fixture" && value != "modern" && value != "nodate" && value != "stale"
+        && value != "coldstart" && value != "badrmc" && value != "emptyrmc"
+        && value != "walkback") {
+      std::cerr << "Invalid gps_fix_date: " << value << '\n';
+      std::exit(2);
+    }
+    return;
   } else if (name == "gps_uart_mode") {
     if (value != "ack" && value != "nack" && value != "timeout" && value != "malformed"
         && value != "partial" && value != "write-error" && value != "pause") {
       std::cerr << "Invalid gps_uart_mode: " << value << '\n';
+      std::exit(2);
+    }
+    return;
+  } else if (name == "imu_chip") {
+    if (value != "bmi270" && value != "mpu6886" && value != "none") {
+      std::cerr << "Invalid imu_chip: " << value << '\n';
       std::exit(2);
     }
     return;
@@ -431,6 +511,7 @@ void readScript(const std::string &path) {
     }
 
     const std::vector<std::string> args = scriptWords(trim(line));
+    const size_t stepsBefore = steps.size();
     const auto rejectArity = [](const std::string &name, const std::string &usage) {
       std::cerr << name << " requires " << usage << '\n';
       std::exit(2);
@@ -563,6 +644,69 @@ void readScript(const std::string &path) {
         std::cerr << "gps-restart requires hot, warm or cold\n";
         std::exit(2);
       }
+      steps.push_back(step);
+    } else if (command == "gps-receiver") {
+      if (!exactArgs(2)) {
+        rejectArity("gps-receiver", "exactly one receiver rate");
+      }
+      Step step;
+      step.type = StepType::GPS_RECEIVER;
+      step.name = args[1];
+      if (step.name != "any" && step.name != "none" && step.name != "4800" && step.name != "9600"
+          && step.name != "19200" && step.name != "38400" && step.name != "57600"
+          && step.name != "115200") {
+        std::cerr << "gps-receiver requires any, none, or one of the six ladder rates\n";
+        std::exit(2);
+      }
+      steps.push_back(step);
+    } else if (command == "gps-sats") {
+      if (!exactArgs(2)) {
+        rejectArity("gps-sats", "exactly one fixture name");
+      }
+      Step step;
+      step.type = StepType::GPS_SATS;
+      step.name = args[1];
+      if (step.name != "default" && step.name != "none" && step.name != "one"
+          && step.name != "twelve" && step.name != "duplicate" && step.name != "range"
+          && step.name != "multi" && step.name != "partial" && step.name != "malformed") {
+        std::cerr << "gps-sats requires default, none, one, twelve, duplicate, range, multi, "
+                     "partial or malformed\n";
+        std::exit(2);
+      }
+      steps.push_back(step);
+    } else if (command == "gps-monhw") {
+      if (!exactArgs(2)) {
+        rejectArity("gps-monhw", "exactly one response length");
+      }
+      Step step;
+      step.type = StepType::GPS_MONHW;
+      step.name = args[1];
+      if (step.name != "full" && step.name != "short") {
+        std::cerr << "gps-monhw requires full or short\n";
+        std::exit(2);
+      }
+      steps.push_back(step);
+    } else if (command == "gps-fix-date") {
+      if (!exactArgs(2)) {
+        rejectArity("gps-fix-date", "exactly one date fixture");
+      }
+      Step step;
+      step.type = StepType::GPS_FIX_DATE;
+      step.name = args[1];
+      if (step.name != "fixture" && step.name != "modern" && step.name != "nodate"
+          && step.name != "stale" && step.name != "coldstart" && step.name != "badrmc"
+          && step.name != "emptyrmc" && step.name != "walkback") {
+        std::cerr << "gps-fix-date requires fixture, modern, stale, coldstart, badrmc, emptyrmc, "
+                     "walkback or nodate\n";
+        std::exit(2);
+      }
+      steps.push_back(step);
+    } else if (command == "gps-eph-corrupt") {
+      if (!exactArgs(1)) {
+        rejectArity("gps-eph-corrupt", "no arguments");
+      }
+      Step step;
+      step.type = StepType::GPS_EPH_CORRUPT;
       steps.push_back(step);
     } else if (command == "home") {
       if (!exactArgs(1)) {
@@ -710,6 +854,11 @@ void readScript(const std::string &path) {
       std::cerr << "Unknown simulator script command: " << command << '\n';
       std::exit(2);
     }
+
+    // Exactly one step per line, or none for a line that only carries a seed.
+    if (steps.size() > stepsBefore) {
+      steps.back().source = trim(line);
+    }
   }
 
   for (const Step &step : steps) {
@@ -845,6 +994,9 @@ std::string settingBoolValue(const std::string &name) {
 #endif
       {"gps",               Settings::GPS              },
       {"gps_nmea",          Settings::GPS_NMEA         },
+      {"gps_motion",        Settings::GPS_MOTION       },
+      {"gps_extrap",        Settings::GPS_EXTRAP       },
+      {"sd_gpx",            Settings::SD_GPX           },
       {"ir",                Settings::IR               },
       {"conn_saver",        Settings::CONN_SAVER       },
       {"preset_picker",     Settings::PRESET_PICKER    },
@@ -853,6 +1005,7 @@ std::string settingBoolValue(const std::string &name) {
       {"recon_backoff",     Settings::RECON_BACKOFF    },
       {"auto_off_charging", Settings::AUTO_OFF_CHARGING},
       {"imu",               Settings::IMU              },
+      {"imu_trigger",       Settings::IMU_TRIG         },
   };
   const auto found = booleans.find(name);
   if (found == booleans.end()) {
@@ -867,6 +1020,8 @@ std::string settingByteValue(const std::string &name) {
   static const std::map<std::string, Settings::type_t> bytes = {
       {"text_size", Settings::TEXT_SIZE},
       {"legend",    Settings::LEGEND   },
+      {"imu_wake",  Settings::IMU_WAKE },
+      {"hw_motion", Settings::HW_MOTION},
   };
   const auto found = bytes.find(name);
   if (found == bytes.end()) {
@@ -1083,10 +1238,33 @@ std::string queryValue(const std::string &key) {
       return debug.connectingCamera;
     }
   }
+  // Track points the firmware queued for the SD writer. Fix hold deliberately
+  // keeps the camera geotagged without recording anything, so a scenario proves
+  // the split by holding this count still while camera.geo_count climbs.
+  if (key == "gpx.points") {
+    return std::to_string(SD::getInstance().loggedPoints());
+  }
+
   if (prefixed("camera.")) {
     const std::string sub = key.substr(std::char_traits<char>::length("camera."));
     if (sub == "count") {
       return std::to_string(CameraList::size());
+    }
+    // The geotag that actually reached the camera. Fix hold exists so this
+    // keeps arriving after the receiver loses its fix, so a scenario asserts
+    // the far end of the production GPS to camera path here rather than
+    // inferring it from the GPS page. Coordinates are reported in units of
+    // 1e-5 degrees so assert_min and assert_max can bound them.
+    if (sub == "geo_count" || sub == "geo_lat_e5" || sub == "geo_lon_e5" || sub == "geo_utc_s") {
+      const auto geo = FauxNY::getGeoRecord();
+      if (sub == "geo_count") {
+        return std::to_string(geo.count);
+      }
+      if (sub == "geo_utc_s") {
+        return std::to_string((geo.hour * 3600) + (geo.minute * 60) + geo.second);
+      }
+      const double degrees = (sub == "geo_lat_e5") ? geo.latitude : geo.longitude;
+      return std::to_string(static_cast<long long>(std::llround(degrees * 100000.0)));
     }
     if (sub == "shutter_presses") {
       return std::to_string(cameraShutterPresses());
@@ -1125,8 +1303,57 @@ std::string queryValue(const std::string &key) {
     if (sub == "satellites") {
       return std::to_string(gps.getSatellites());
     }
+    if (sub == "sats_in_view") {
+      return std::to_string(gps.getSatelliteReport().in_view);
+    }
+    if (sub == "sats_used") {
+      return std::to_string(gps.getSatelliteReport().used);
+    }
+    if (sub == "sats_fix") {
+      return std::to_string(gps.getSatelliteReport().dop.fix_type);
+    }
+    if (sub == "sats_capture") {
+      return gps.satelliteCaptureEnabled() ? "1" : "0";
+    }
+    if (sub == "monhw") {
+      // "none" until a MON-HW frame has been decoded, then the four fields the
+      // console prints, so a scenario can assert the decode and not just the
+      // poll leaving the port.
+      const auto report = gps.getMonHw();
+      if (!report.have || !report.hw.valid) {
+        return "none";
+      }
+      return std::to_string(report.hw.noise) + "/" + std::to_string(report.hw.agc) + "/"
+             + std::to_string(report.hw.antenna_status) + "/"
+             + std::to_string(report.hw.jam_indicator);
+    }
+    if (sub == "receiver") {
+      return Furble::GPS::receiverStateName(gps.getReceiverState());
+    }
+    if (sub == "baud") {
+      return std::to_string(gps.getDetectedBaud());
+    }
+    if (sub == "eph_cached") {
+      // Bytes the ephemeris cache occupies in NVS. Read through Preferences so
+      // the query needs no knowledge of the record layout.
+      Preferences prefs;
+      if (!prefs.begin(FURBLE_STR, true)) {
+        return "0";
+      }
+      const size_t length = prefs.isKey("gps_eph") ? prefs.getBytesLength("gps_eph") : 0;
+      prefs.end();
+      return std::to_string(length);
+    }
     if (sub == "state") {
       return Furble::Sim::profilerGpsState();
+    }
+    // The phase 1 detector state. "off" means the detector is not running at
+    // all, which is the default and the state a receiver policy must never see.
+    if (sub == "motion_state") {
+      if (!gps.isMotionEnabled()) {
+        return "off";
+      }
+      return gps.isStationary() ? "stationary" : "moving";
     }
     if (sub == "degraded") {
       return gps.getCycleStatusSnapshot().degraded ? "1" : "0";
@@ -1195,6 +1422,17 @@ std::string queryValue(const std::string &key) {
       }
       return last;
     }
+    // Binary traffic the write count cannot see: replayed assistance frames and
+    // MON-HW polls, plus the rate the driver has the port set to.
+    if (sub == "baud") {
+      return std::to_string(furble_sim_uart_baud());
+    }
+    if (sub == "eph_replay") {
+      return std::to_string(furble_sim_uart_eph_replay_frames());
+    }
+    if (sub == "monhw_polls") {
+      return std::to_string(furble_sim_uart_monhw_polls());
+    }
   }
   if (prefixed("setting.")) {
     const std::string name = key.substr(std::char_traits<char>::length("setting."));
@@ -1261,14 +1499,42 @@ void preparePreferences(void) {
   if (scenarioName == "interactive") {
     return;
   }
+  // A resumed boot after a `restart` step keeps the store it was handed: that
+  // file is the flash NVS the reboot carries over, and the re-exec gave the
+  // rebooted device a new process id.
+  if (resumedBoot) {
+    const char *inherited = std::getenv("FURBLE_SIM_PREFS");
+    if (inherited != nullptr && inherited[0] != 0) {
+      return;
+    }
+  }
+  // One flash image per simulated device. The path used to be keyed on the
+  // scenario name alone, so two simulators running the same scenario from one
+  // working directory shared a store and each fresh boot erased the other
+  // one's flash. That is issue 284: two panel builds walking the same script
+  // side by side, with the loser reading back a setting the winner had just
+  // wiped. Hardware gives every device its own flash, so the store is keyed
+  // per process and dropped again on an orderly exit.
   const std::filesystem::path path =
-      std::filesystem::path(".pio") / ("furble-sim-preferences-" + scenarioName + ".bin");
-  setenv("FURBLE_SIM_PREFS", path.string().c_str(), 1);
-  // A resumed boot after a `restart` step keeps the preferences file: it is
-  // the flash NVS the reboot must carry over. Only a fresh scenario run starts
-  // from an empty store.
-  if (!resumedBoot) {
-    std::remove(path.c_str());
+      std::filesystem::path(".pio")
+      / ("furble-sim-preferences-" + scenarioName + "-" + std::to_string(getpid()) + ".bin");
+  const std::string pathValue = path.string();
+  if (setenv("FURBLE_SIM_PREFS", pathValue.c_str(), 1) != 0) {
+    std::cerr << "simulator failed to set FURBLE_SIM_PREFS: " << std::strerror(errno) << '\n';
+    std::exit(1);
+  }
+  std::remove(path.c_str());
+}
+
+void removePreferences(void) {
+  // Scratch state, not an artifact worth keeping. A reboot still needs it, so
+  // this only runs once the process is really finished with the device.
+  if (scenarioName == "interactive" || restartPending.load()) {
+    return;
+  }
+  const char *path = std::getenv("FURBLE_SIM_PREFS");
+  if (path != nullptr && path[0] != 0) {
+    std::remove(path);
   }
 }
 
@@ -1280,6 +1546,9 @@ void applyScenarioSettings(void) {
   saveByte("gps_constel", Settings::GPS_CONSTEL);
   saveByte("gps_power", Settings::GPS_POWER);
   saveByte("gps_duty", Settings::GPS_DUTY);
+  saveByte("gps_hold", Settings::GPS_HOLD);
+  saveByte("gps_assist", Settings::GPS_ASSIST);
+  saveByte("gps_platform", Settings::GPS_PLATFORM);
   saveByte("cpu_freq", Settings::CPU_FREQ);
   saveByte("tx_power", Settings::TX_POWER);
   saveByte("scan_mode", Settings::SCAN_MODE);
@@ -1288,6 +1557,7 @@ void applyScenarioSettings(void) {
   saveByte("auto_off", Settings::AUTO_OFF);
   saveByte("low_batt", Settings::LOW_BATT);
   saveByte("fb_output", Settings::FB_OUTPUT);
+  saveByte("hw_motion", Settings::HW_MOTION);
   const auto scanTimeout = scenarioSettings.find("scan_timeout");
   if (scanTimeout != scenarioSettings.end()) {
     Settings::save<uint32_t>(Settings::SCAN_TIMEOUT, parseUnsigned(scanTimeout->second));
@@ -1295,6 +1565,8 @@ void applyScenarioSettings(void) {
   saveBoolean("auto_off_charging", Settings::AUTO_OFF_CHARGING);
   saveBoolean("gps", Settings::GPS);
   saveBoolean("gps_nmea", Settings::GPS_NMEA);
+  saveBoolean("gps_extrap", Settings::GPS_EXTRAP);
+  saveBoolean("sd_gpx", Settings::SD_GPX);
   saveBoolean("fauxny", Settings::FAUXNY);
   saveBoolean("autoconnect", Settings::AUTOCONNECT);
   saveBoolean("reconnect", Settings::RECONNECT);
@@ -1344,7 +1616,42 @@ void applyScenarioSettings(void) {
   if (uartMode != scenarioSettings.end()) {
     furble_sim_uart_set_mode(uartMode->second.c_str());
   }
+  furble_sim_uart_set_stationary(scenarioSettingIsTrue("gps_stationary"));
+
+  const auto gpsBaud = scenarioSettings.find("gps_baud");
+  if (gpsBaud != scenarioSettings.end()) {
+    const std::string &value = gpsBaud->second;
+    const uint32_t baud = (value == "auto") ? 0 : parseUnsigned(value);
+    Settings::save<Settings::GPS_BAUD>(baud);
+  }
+  const auto receiver = scenarioSettings.find("gps_receiver");
+  if (receiver != scenarioSettings.end()) {
+    const std::string &value = receiver->second;
+    if (value == "none") {
+      furble_sim_uart_set_receiver(0, false);
+    } else if (value == "any") {
+      furble_sim_uart_set_receiver(0, true);
+    } else {
+      furble_sim_uart_set_receiver(parseUnsigned(value), true);
+    }
+  }
+  const auto satFixture = scenarioSettings.find("gps_sats");
+  if (satFixture != scenarioSettings.end()) {
+    furble_sim_uart_set_satellite_fixture(satFixture->second.c_str());
+  }
+  const auto fixDate = scenarioSettings.find("gps_fix_date");
+  if (fixDate != scenarioSettings.end()) {
+    furble_sim_uart_set_fix_date(fixDate->second.c_str());
+  }
+  const auto fixChunk = scenarioSettings.find("gps_uart_chunk");
+  if (fixChunk != scenarioSettings.end()) {
+    furble_sim_uart_set_fix_chunk(parseUnsigned(fixChunk->second));
+  }
+  furble_sim_uart_set_noise(scenarioSettingIsTrue("gps_uart_noise"));
+  saveBoolean("gps_motion", Settings::GPS_MOTION);
   saveBoolean("imu", Settings::IMU);
+  saveBoolean("imu_trigger", Settings::IMU_TRIG);
+  saveByte("imu_wake", Settings::IMU_WAKE);
   // Keep the host sensor surface in step with the setting used to construct
   // the UI. The SDL platform cannot initialize a physical IMU, so the shared
   // seam owns the enabled state for both page visibility and sensor reads.
@@ -1354,6 +1661,16 @@ void applyScenarioSettings(void) {
     imu_sensor = parseBool(imu_sensor_setting->second);
   }
   imuSetEnabled(imu_sensor);
+  // Which motion engine the modelled board carries. Default none, so a scenario
+  // that does not ask for a chip exercises the software fallback.
+  imu_chip_t chip = imu_chip_t::NONE;
+  const auto chip_setting = scenarioSettings.find("imu_chip");
+  if (chip_setting != scenarioSettings.end()) {
+    chip = (chip_setting->second == "bmi270")    ? imu_chip_t::BMI270
+           : (chip_setting->second == "mpu6886") ? imu_chip_t::MPU6886
+                                                 : imu_chip_t::NONE;
+  }
+  imuSetChip(chip);
 
   interval_t interval = Settings::load<Settings::INTERVAL>();
   bool interval_changed = false;
@@ -1604,7 +1921,11 @@ void configure(int argc, char **argv) {
       // Consume it. A leftover export in the caller's environment would make
       // every later scenario resume mid-script against a preserved store, so
       // the variable lives exactly one boot and a `restart` step sets it again.
-      unsetenv(RESTART_STEP_ENV);
+      if (unsetenv(RESTART_STEP_ENV) != 0) {
+        std::cerr << "simulator failed to clear " << RESTART_STEP_ENV << ": "
+                  << std::strerror(errno) << '\n';
+        std::exit(2);
+      }
     }
   }
 }
@@ -1643,6 +1964,21 @@ void driverTick(void) {
     return;
   }
   Step &step = steps[stepIndex];
+  // Name this line in the crash report if the step faults (issue 283). The
+  // steps vector is fixed after parsing, so the pointer stays valid.
+  watchdogScenarioStep(step.source.c_str());
+  // Self test for that reporter. Faulting deliberately at a chosen step is the
+  // only way to prove the handler names the right line, and there is no other
+  // way to produce a SIGSEGV on demand. Read once: this runs every tick.
+  static const int64_t crashAtStep = []() {
+    const char *step = std::getenv("FURBLE_SIM_CRASH_STEP");
+    return step == nullptr || step[0] == '\0' ? int64_t {-1}
+                                              : static_cast<int64_t>(parseUnsigned(step));
+  }();
+  if (crashAtStep >= 0 && static_cast<size_t>(crashAtStep) == stepIndex) {
+    volatile int *fault = nullptr;
+    *fault = 1;
+  }
   switch (step.type) {
     case StepType::WAIT:
       if (!waiting) {
@@ -1730,6 +2066,53 @@ void driverTick(void) {
       ++stepIndex;
       break;
 
+    case StepType::GPS_RECEIVER:
+      if (step.name == "none") {
+        furble_sim_uart_set_receiver(0, false);
+      } else if (step.name == "any") {
+        furble_sim_uart_set_receiver(0, true);
+      } else {
+        furble_sim_uart_set_receiver(parseUnsigned(step.name), true);
+      }
+      ++stepIndex;
+      break;
+
+    case StepType::GPS_MONHW:
+      furble_sim_uart_set_monhw_short(step.name == "short");
+      Furble::GPS::getInstance().pollMonHw();
+      ++stepIndex;
+      break;
+
+    case StepType::GPS_SATS:
+      furble_sim_uart_set_satellite_fixture(step.name.c_str());
+      ++stepIndex;
+      break;
+
+    case StepType::GPS_FIX_DATE:
+      furble_sim_uart_set_fix_date(step.name.c_str());
+      ++stepIndex;
+      break;
+
+    case StepType::GPS_EPH_CORRUPT:
+    {
+      // Flip one payload byte of the last stored frame. The record layout stays
+      // private to the GPS driver. Corrupting the last frame rather than the
+      // first is deliberate: a reload that stopped at the first bad frame
+      // instead of refusing the whole blob would still replay the good ones,
+      // and that is the difference this has to be able to see.
+      Preferences prefs;
+      if (prefs.begin(FURBLE_STR, false) && prefs.isKey("gps_eph")) {
+        std::vector<uint8_t> blob(prefs.getBytesLength("gps_eph"));
+        if (!blob.empty() && (prefs.get("gps_eph", blob.data(), blob.size()) == blob.size())) {
+          blob[blob.size() - 8] ^= 0xff;
+          prefs.put("gps_eph", blob.data(), blob.size());
+        }
+        prefs.end();
+      }
+      ++stepIndex;
+      break;
+    }
+
     case StepType::HOME:
       if (backTarget == nullptr || !backTarget->simulatorHome()) {
         std::cerr << "Could not navigate home in simulator\n";
@@ -1772,8 +2155,8 @@ void driverTick(void) {
       // stopped and joined every simulator task and closed the panel. Execing
       // from here would tear the process image out from under running tasks,
       // which is a crash, not a reboot.
-      const std::string next = std::to_string(stepIndex + 1);
-      setenv(RESTART_STEP_ENV, next.c_str(), 1);
+      const size_t next = stepIndex + 1;
+      restartStepIndex = next;
       std::cout << "restart: rebooting simulator, resuming at step " << next << '\n';
       std::cout.flush();
       // Advance past this step so a tick racing the shutdown cannot run it
@@ -2007,12 +2390,33 @@ bool restartRequested(void) {
 void restartProcess(void) {
   std::cout.flush();
   std::cerr.flush();
+  const size_t next = restartStepIndex;
+  if (next == 0) {
+    std::cerr << "restart requested without a continuation step\n";
+    std::_Exit(1);
+  }
+  // This runs on the main thread after the simulator thread has joined and the
+  // SDL panel has closed. Keep the process-wide environment mutation out of
+  // the driver thread, where SDL can read it concurrently during its loop.
+  const std::string nextValue = std::to_string(next);
+  if (setenv(RESTART_STEP_ENV, nextValue.c_str(), 1) != 0) {
+    std::cerr << "restart failed: setenv: " << std::strerror(errno) << '\n';
+    std::_Exit(1);
+  }
   std::vector<char *> arguments;
   arguments.reserve(savedArguments.size() + 1);
   for (auto &argument : savedArguments) {
     arguments.push_back(argument.data());
   }
   arguments.push_back(nullptr);
+  // Carry the fixture clock across the re-exec. A receiver's clock does not
+  // rewind because the ESP32 rebooted, and letting it reset made the positive
+  // ephemeris leg pass on a one second margin.
+  const std::string fixSecond = std::to_string(furble_sim_uart_fix_second());
+  if (setenv("FURBLE_SIM_FIX_SECOND", fixSecond.c_str(), 1) != 0) {
+    std::cerr << "restart failed: setenv: " << std::strerror(errno) << '\n';
+    std::_Exit(1);
+  }
   execvp(arguments[0], arguments.data());
   std::cerr << "restart failed: execvp: " << std::strerror(errno) << '\n';
   std::_Exit(1);

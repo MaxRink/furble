@@ -1,0 +1,12 @@
+# The satellite page enables GSV/GSA capture and renders the parsed fixture from
+# the fake UART. This keeps the documentation screenshot tied to a real route,
+# rather than merely proving that a page button exists.
+seed gps true
+wait 300
+action nav gps_sats
+wait 2500
+assert ui.page gps_sats
+assert gps.sats_in_view 8
+assert gps.sats_used 4
+assert gps.sats_fix 3
+exit

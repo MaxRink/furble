@@ -508,13 +508,15 @@ an unknown id still has none, and deleting the row fails that test.
 
 `UI::legendPlacement()` reads it and both `UI::begin` and `applyLevelRotation`
 anchor from it. It is a restart setting, like the theme and the text size,
-because the legends are anchored once and the room they need is reserved once.
+because the legends are anchored once and page-row reservations are applied
+when a page loads.
 
 Buttons placement means the Right legend is drawn over the page again, so the
-content has to keep that column clear. `UI::legendReserve()` returns the legend
-width in that placement and zero in the other, and `m_Content` reserves it once
-for every page rather than each page discovering it separately. That is the
-whole fix for the nine page-and-board combinations that used to overlap:
+content has to keep that column clear. `UI::floatingIndicatorReserve()` returns
+the legend width in that placement and zero in the other, and
+`reserveLegendColumns()` gives every row that can scroll through the legend a
+stable boundary when the page loads. That fixes the nine page-and-board
+combinations that used to overlap:
 `ui.indicator_overlaps` is 0 on every page in both placements.
 `bughunt/legend-bottom-135.txt` and `-80.txt` walk the same pages as the
 per-board layout files with the other setting, so both placements are pinned,
@@ -647,20 +649,13 @@ failing: before this change several of them reported a fit only because the
 container absorbed the excess by stacking widgets on top of each other, which no
 fit query can see.
 
-## What PR #266 no longer needs
+## How this composes with PR #266
 
-#266 merged first and this branch is rebased onto it. Its
-`UI::floatingIndicatorReserve()` reserved the right indicator's width on any
-full width menu row, because a wrapped camera row is tall enough to reach an
-indicator that floats over the page. The reservation is still needed in the
-default Buttons placement, where the Right legend is drawn over the page, but it
-does not belong on the row: `m_Content` reserves `UI::legendReserve()` once for
-every page instead, which is zero in the Bottom placement and on a touch panel.
-The function, its declaration, both call sites in `addMenuItem` and
-`rebuildCamerasPage`, its `include/CLAUDE.md` bullet and the paragraph in plan
-167 that introduced it are deleted here, and the `src/CLAUDE.md` rule that told
-a full width row to keep the column clear now points at the page level
-reservation.
+#266's `UI::floatingIndicatorReserve()` remains the board- and placement-aware
+source of the right-side width. Camera rows retain their own wrapping rules,
+while `reserveLegendColumns()` applies that width to every page row that can
+scroll through the floating Right legend. Bottom placement and touch panels
+still return zero and keep the full content width.
 
 The camera rows still wrap on `LV_LABEL_LONG_WRAP` rather than scrolling, for
 the redraw reason #266 gives, and `e2e/camera-name-rows.txt` still asserts
@@ -690,6 +685,21 @@ This is the leg doing its job: the defect reached master 40 minutes before this
 rebase, in the touch layout it is 26 px of slack away from mattering, and
 nothing but a no-touch run would have seen it.
 
+
+### Post-merge focus-scroll correction
+
+The original reservation measured only rows intersecting the floating Right
+legend when a page loaded. Encoder focus can later scroll any row through that
+band without another layout pass, so rows that began above or below it could
+still render underneath the legend. Physical-button pages now reserve the
+column consistently for every row that can scroll through it. The 80x160 and
+135x240 scenarios drive real Button B focus movement before checking indicator
+clearance, cut labels and both scroll extents.
+
+The simulator's cut-label query still exempts a scrolling label from intrinsic
+width truncation, because its text is revealed over time. It no longer exempts
+that label from ancestor clipping: a scrolling animation outside its parent is
+still unreadable and is counted.
 
 ## Deviations
 

@@ -1,6 +1,10 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 
+#include <esp_event.h>
+#include <esp_netif.h>
+#include <algorithm>
+
 #if defined(FURBLE_NO_DISPLAY)
 #include <M5Unified.h>
 #include <esp_timer.h>
@@ -22,16 +26,21 @@
 #include "FurbleGPS.h"
 #endif
 #include "FurbleIR.h"
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+#include "FurbleMQTT.h"
+#endif
 #include "FurblePlatform.h"
 #include "FurbleSD.h"
 #include "FurbleSettings.h"
 #include "FurbleTimeKeeper.h"
 #include "FurbleUI.h"
+#include "FurbleWiFi.h"
+#include "protocol/CameraListProtocol.h"
 
 #if defined(FURBLE_NO_DISPLAY)
 namespace Furble {
 
-std::mutex g_IMUMutex;
+imu_mutex_t g_IMUMutex;
 
 // Device status for the companion service. The display build serves these from
 // the UI task, the headless build has no UI so it reads M5.Power directly and
@@ -76,7 +85,7 @@ uint16_t UI::getIntervalometerRemaining(void) {
 }  // namespace Furble
 #endif
 
-#if defined(FURBLE_NO_DISPLAY) && defined(FURBLE_CONSOLE)
+#if defined(FURBLE_NO_DISPLAY)
 namespace Furble {
 namespace {
 
@@ -119,6 +128,42 @@ void connectCamera(int32_t index) {
   }
 
   auto &control = Control::getInstance();
+  for (size_t n = 0; n < CameraList::size(); n++) {
+    auto camera = CameraList::get(n);
+    if (camera->isActive()) {
+      control.addActive(camera);
+    }
+  }
+  control.connectAll(Settings::load<Settings::RECONNECT>());
+}
+
+void connectSavedCamera(uint8_t cameraId) {
+  auto &control = Control::getInstance();
+  if (Scan::getInstance().isActive() || (control.getState() != Control::STATE_IDLE)
+      || (control.getTargetCount() != 0)) {
+    ESP_LOGW(LOG_TAG, "companion: connect request is busy");
+    return;
+  }
+
+  const auto saved = CameraList::savedSnapshot();
+  if (cameraId != CameraListProtocol::INDEX_ID_ALL) {
+    const auto found = std::find_if(saved.begin(), saved.end(), [cameraId](const auto &camera) {
+      return CameraList::getCameraId(camera.get()) == cameraId;
+    });
+    if (found == saved.end()) {
+      ESP_LOGW(LOG_TAG, "companion: no saved camera id %u", static_cast<unsigned>(cameraId));
+      return;
+    }
+  }
+
+  CameraList::load();
+  if (cameraId != CameraListProtocol::INDEX_ID_ALL) {
+    for (size_t n = 0; n < CameraList::size(); n++) {
+      const auto camera = CameraList::get(n);
+      camera->setActive(CameraList::getCameraId(camera.get()) == cameraId);
+    }
+  }
+
   for (size_t n = 0; n < CameraList::size(); n++) {
     auto camera = CameraList::get(n);
     if (camera->isActive()) {
@@ -172,6 +217,10 @@ void UI::serviceRequests(void) {
         connectCamera(item.arg);
         break;
 
+      case Request::CONNECT_SAVED:
+        connectSavedCamera(static_cast<uint8_t>(item.arg));
+        break;
+
       case Request::DISCONNECT:
         Scan::getInstance().stop();
         Control::getInstance().disconnect();
@@ -209,6 +258,11 @@ void UI::serviceRequests(void) {
       case Request::FEEDBACK_TEST:
         Feedback::getInstance().signal(static_cast<Feedback::event_t>(item.arg), true);
         break;
+
+      case Request::PERF:
+      case Request::AUDIT:
+        printf("error: not supported in headless build\n");
+        break;
     }
   }
 }
@@ -226,12 +280,13 @@ static void vUITask(void *param) {
   // geotag fixes still push to the camera.
   constexpr int64_t GPS_SERVICE_US = 1000 * 1000;
   int64_t nextGPSService = esp_timer_get_time();
+#if defined(FURBLE_CONSOLE)
+  uint32_t count = 0;
+#endif
   while (true) {
     Platform::getInstance().update();
-#if defined(FURBLE_CONSOLE)
     // Keep this loop in step with UI::task(), which owns the GUI request queue.
     UI::serviceRequests();
-#endif
     Scan::getInstance().processPendingCallbacks();
     const int64_t now = esp_timer_get_time();
     if (now >= nextGPSService) {
@@ -276,6 +331,9 @@ void app_main() {
   Furble::SD::init();
   Furble::BootScreen::step("Storage");
 
+  ESP_ERROR_CHECK(esp_netif_init());
+  ESP_ERROR_CHECK(esp_event_loop_create_default());
+
   // Platform::init() boots at the default frequency, apply the stored one now
   Furble::Platform::getInstance().setCPUMaxFreq(
       Furble::Settings::load<Furble::Settings::CPU_FREQ>());
@@ -291,6 +349,9 @@ void app_main() {
   Furble::BootScreen::step("Bluetooth");
   Furble::Companion::getInstance().init();
   Furble::BootScreen::step("Companion");
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+  Furble::MQTT::init();
+#endif
 
 #if defined(FURBLE_ETHERNET)
   if (!Furble::Ethernet::init()) {
@@ -312,8 +373,9 @@ void app_main() {
   // state, then vUITask() ticks GPS::update() to push geotag fixes.
   Furble::GPS::init();
 #endif
+  Furble::WiFi::init();
 
-#if defined(FURBLE_NO_DISPLAY) && defined(FURBLE_CONSOLE)
+#if defined(FURBLE_NO_DISPLAY)
   Furble::UI::init();
 #endif
 

@@ -1,0 +1,64 @@
+# Both fix hold settings are off by default, and a default build must behave
+# exactly as it did before they existed.
+#
+# The fix row is the only page change, and it is hidden while hold is off, so
+# the GPS Data page renders the same object set as master. ui.visible_objects
+# is the guard for that: it counts every object on the page that is not hidden,
+# so a row that leaked into a default build changes the count. The number is
+# master's, measured with the same script against a sim built from
+# fork/master 6245a301 (see plans/21-imu-dead-reckoning.md).
+#
+# When the receiver goes quiet the geotag stream simply stops, as it always did.
+#
+# Killing mutations, all confirmed to fail this file:
+#   - render the fix row unconditionally: ui.gps_fix_state is live, not hidden,
+#     and ui.visible_objects is one higher than master's.
+#   - default GPS_HOLD to anything but 0: camera.geo_utc_s advances past 45319
+#     after the receiver goes quiet.
+#   - leave Extrapolate enabled when fix hold is off: ui.gps_extrap_enabled is
+#     yes, not no.
+seed fauxny true
+seed autoconnect true
+seed gps true
+seed gps_uart_mode ack
+wait 4000
+action nav gps_data
+wait 2000
+assert ui.page gps_data
+assert ui.gps_fix_state hidden
+assert ui.gps_hold_remaining none
+assert ui.visible_objects 10
+assert ui.gps_speed 42.0
+assert ui.gps_lat 48.11730
+assert ui.gps_lon 11.51667
+assert ui.gps_satellites 8
+assert ui.gps_fix yes
+assert ui.gps_source uart
+assert ui.overflow no
+
+uart-mode pause
+wait 5000
+wait 5000
+wait 5000
+wait 5000
+wait 5000
+wait 5000
+wait 5000
+wait 5000
+wait 5000
+wait 5000
+assert gps.source none
+assert ui.gps_fix no
+assert ui.gps_fix_state hidden
+assert ui.visible_objects 10
+# Nothing was held, so the camera still has the last live timestamp.
+assert camera.geo_utc_s 45319
+assert ui.overflow no
+
+# Extrapolate has nothing to project without a held fix, so with hold at its
+# default it must be greyed out rather than enabled and inert.
+action nav gps
+wait 400
+assert ui.page gps
+assert ui.gps_extrap_enabled no
+exit

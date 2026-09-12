@@ -31,6 +31,7 @@ constexpr size_t MAX_WIFI_SSID_BYTES = 32;
 constexpr size_t MAX_WIFI_PSK_BYTES = 63;
 constexpr size_t MAX_COMPANION_PASSWORD_BYTES = 63;
 constexpr size_t MAX_MQTT_FIELD_BYTES = 255;
+constexpr uint8_t COMPANION_PASSWORD_WIRE_ID = 47;
 
 enum class FieldTag : uint8_t {
   WIFI_SSID = 0x01,

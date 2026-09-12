@@ -2,7 +2,15 @@
 // needs: a std::thread / std::condition_variable model of the FreeRTOS queues
 // and tasks, the Platform and Power singletons, and the ble_gap_conn_cancel
 // stub. Standalone, with no profiler, clock or SDL dependency.
+//
+// Task lifetime follows the plan 123 contract, the same one the console and the
+// control end-to-end shims use: tasks stay joinable and furbleHostStopTasks()
+// stops and joins every one of them before main() returns. Detached tasks used
+// to force these suites to end in std::_Exit(), which skips atexit and so skips
+// __llvm_profile_write_file, so under coverage neither suite ever wrote its
+// counters and both measured nothing (issue #277).
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -27,14 +35,54 @@ struct FurbleHostQueue {
   size_t max_len = 0;
 };
 
+// --- Host task shutdown -----------------------------------------------------
+//
+// See furbleHostStopTasks() in freertos/FreeRTOS.h for what this is for.
+
+namespace {
+
+std::atomic<bool> g_StopTasks {false};
+
+// Thrown to unwind a task thread out of the blocking primitive it is parked in.
+// xTaskCreate() catches it at the top of the task function.
+struct StopTask {};
+
+// Set on the threads this shim creates, and only on those. The main thread also
+// calls into the blocking primitives (Control::disconnect() runs there and
+// sleeps in vTaskDelay), and it must never be unwound: it owns the shutdown.
+thread_local bool g_OnShimTask = false;
+
+std::mutex g_QueuesMutex;
+std::vector<QueueHandle_t> g_Queues;
+
+// Unwind the calling task if shutdown has begun. Every call site is a
+// suspension point in the production code, so the stack unwinds through
+// ordinary RAII: the shim's own unique_lock releases the queue on the way out,
+// and no production lock is held across a blocking primitive.
+void stopPoint(void) {
+  if (g_OnShimTask && g_StopTasks.load()) {
+    throw StopTask {};
+  }
+}
+
+}  // namespace
+
 QueueHandle_t xQueueCreate(UBaseType_t length, UBaseType_t item_size) {
   auto *queue = new FurbleHostQueue();
   queue->item_size = static_cast<size_t>(item_size);
   queue->max_len = static_cast<size_t>(length);
+  {
+    std::lock_guard<std::mutex> lock(g_QueuesMutex);
+    g_Queues.push_back(queue);
+  }
   return queue;
 }
 
 void vQueueDelete(QueueHandle_t queue) {
+  {
+    std::lock_guard<std::mutex> lock(g_QueuesMutex);
+    g_Queues.erase(std::remove(g_Queues.begin(), g_Queues.end(), queue), g_Queues.end());
+  }
   delete queue;
 }
 
@@ -72,13 +120,16 @@ BaseType_t xQueueReceive(QueueHandle_t queue, void *buffer, TickType_t ticks_to_
   if (queue == nullptr) {
     return pdFALSE;
   }
+  stopPoint();
   std::unique_lock<std::mutex> lock(queue->mutex);
   if (queue->items.empty()) {
     if (ticks_to_wait == 0) {
       return pdFALSE;
     }
     const auto wait = std::chrono::milliseconds(static_cast<uint32_t>(ticks_to_wait));
-    queue->cond.wait_for(lock, wait, [queue] { return !queue->items.empty(); });
+    queue->cond.wait_for(lock, wait,
+                         [queue] { return !queue->items.empty() || g_StopTasks.load(); });
+    stopPoint();
     if (queue->items.empty()) {
       return pdFALSE;
     }
@@ -118,16 +169,25 @@ BaseType_t xTaskCreate(TaskFunction_t task_code,
   (void)stack_depth;
   (void)priority;
 
-  auto *task = new FurbleHostTask();
-  task->thread = std::thread([task_code, parameters] { task_code(parameters); });
-  {
-    std::lock_guard<std::mutex> lock(g_TasksMutex);
-    g_Tasks.push_back(task);
+  // A task created after furbleHostStopTasks() has copied the task list is
+  // never joined, so it would outlive main() exactly as a detached task did.
+  std::lock_guard<std::mutex> lock(g_TasksMutex);
+  if (g_StopTasks.load()) {
+    return pdFAIL;
   }
-  // A per-target task self-deletes and a control task runs for the whole
-  // process, so neither is ever joined. Detach so the std::thread destructor is
-  // never reached with a joinable thread.
-  task->thread.detach();
+
+  auto *task = new FurbleHostTask();
+  // Created under g_TasksMutex, so a concurrent shutdown either sees the task
+  // and joins it or is rejected above. Left joinable for that join.
+  task->thread = std::thread([task_code, parameters] {
+    g_OnShimTask = true;
+    try {
+      task_code(parameters);
+    } catch (const StopTask &) {
+      // Host shutdown unwinding a task that is immortal on device.
+    }
+  });
+  g_Tasks.push_back(task);
   if (created_task != nullptr) {
     *created_task = task;
   }
@@ -142,6 +202,7 @@ void vTaskDelete(TaskHandle_t task) {
 
 void vTaskDelay(TickType_t ticks_to_delay) {
   std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<uint32_t>(ticks_to_delay)));
+  stopPoint();
 }
 
 TickType_t xTaskGetTickCount(void) {
@@ -170,3 +231,35 @@ Power &Power::getInstance() {
 }
 
 }  // namespace Furble
+
+// --- Host task shutdown -----------------------------------------------------
+
+void furbleHostStopTasks(void) {
+  g_StopTasks.store(true);
+
+  // Wake every primitive a task can be parked in. Each wait predicate also
+  // reads the stop flag, so a task cannot miss shutdown between the store above
+  // and its own wakeup.
+  {
+    const std::lock_guard<std::mutex> lock(g_QueuesMutex);
+    for (auto *queue : g_Queues) {
+      queue->cond.notify_all();
+    }
+  }
+
+  // Take the task list rather than copying it, so nothing holds g_TasksMutex
+  // while a thread that may still take it is being joined, and a second call
+  // has nothing left to join. Freeing each task here rather than leaving it to
+  // the process exit keeps the sanitized suites clean.
+  std::vector<FurbleHostTask *> tasks;
+  {
+    const std::lock_guard<std::mutex> lock(g_TasksMutex);
+    tasks.swap(g_Tasks);
+  }
+  for (auto *task : tasks) {
+    if (task->thread.joinable()) {
+      task->thread.join();
+    }
+    delete task;
+  }
+}

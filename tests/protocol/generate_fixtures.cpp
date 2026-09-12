@@ -260,13 +260,21 @@ void generateSettings(const std::string &root,
     addFixture(golden, manifest, settingFile("request-set", setting.wire_id), "settings-request",
                makeSettingsRequest(2, setting.wire_id, value), true,
                "set setting " + setting.symbol + " by stable wire id");
-    addFixture(golden, manifest, settingFile("response-get", setting.wire_id), "settings-response",
-               makeSettingsResponse(0, setting.wire_id, setting.type, value, false), true,
-               "get response for " + setting.symbol);
-    addFixture(golden, manifest, settingFile("response-list", setting.wire_id),
-               "settings-list-record",
-               makeSettingsResponse(0, setting.wire_id, setting.type, value, true, flags), true,
-               "list response for " + setting.symbol);
+    if (FurbleProtocolTest::settingIsWriteOnly(setting)) {
+      addFixture(golden, manifest, settingFile("response-get", setting.wire_id),
+                 "settings-response",
+                 makeSettingsResponse(4, setting.wire_id, setting.type, {}, false), true,
+                 "write-only setting refuses readback for " + setting.symbol);
+    } else {
+      addFixture(golden, manifest, settingFile("response-get", setting.wire_id),
+                 "settings-response",
+                 makeSettingsResponse(0, setting.wire_id, setting.type, value, false), true,
+                 "get response for " + setting.symbol);
+      addFixture(golden, manifest, settingFile("response-list", setting.wire_id),
+                 "settings-list-record",
+                 makeSettingsResponse(0, setting.wire_id, setting.type, value, true, flags), true,
+                 "list response for " + setting.symbol);
+    }
     addFixture(golden, manifest, settingFile("response-set", setting.wire_id), "settings-response",
                makeSettingsResponse(0, setting.wire_id, setting.type, {}, false), true,
                "set acknowledgement for " + setting.symbol);

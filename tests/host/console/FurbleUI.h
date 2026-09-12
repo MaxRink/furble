@@ -10,15 +10,17 @@
 #include <cstdint>
 #include <mutex>
 
-namespace Furble {
+// g_IMUMutex and its type alias are declared by FurbleIMU.h, the shared motion
+// API, exactly as the real FurbleUI.h takes them.
+#include "FurbleIMU.h"
 
-/** Serializes M5.Imu transactions between UI timers and debug console probes. */
-extern std::mutex g_IMUMutex;
+namespace Furble {
 
 class UI {
  public:
   enum class Request {
     CONNECT,
+    CONNECT_SAVED,
     DISCONNECT,
     SCAN,
     CAMERAS,
@@ -35,6 +37,9 @@ class UI {
   };
 
   static bool sendRequest(Request request, int32_t arg);
+
+  /** Console and companion writes reconcile the gesture timer on the UI task. */
+  static void notifyGestureSettingsChanged(void);
 };
 
 }  // namespace Furble

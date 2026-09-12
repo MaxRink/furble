@@ -1,0 +1,14 @@
+# Power baseline with the detector on. Both gesture features are enabled and the
+# display is allowed to reach off, so the reported estimate is the standing cost
+# of the 50 Hz accelerometer poll against screen-off-30s.json.
+seed brightness 255
+seed inactivity 1
+seed display_off 1
+seed imu true
+seed imu_wake 3
+seed imu_trigger true
+wait 31000
+report setup.json
+wait 30000
+report gesture-idle-30s.json
+exit

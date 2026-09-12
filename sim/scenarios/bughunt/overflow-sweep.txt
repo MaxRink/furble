@@ -83,12 +83,16 @@ wait 100
 # Core uses a grid for Settings; Sensors must occupy its own tile rather than
 # colliding with Feedback/IR. The page itself must remain reachable and fit.
 assert ui.page sensors
-# This page scrolls at this size by design: a page honours the text size the
-# user chose and scrolls when the rows stop fitting rather than shrinking the
-# face. Before plan 168 it reported a fit only because its container was
-# pinned to the page height and stacked the rows on top of each other, which
-# no fit query can see. What has to hold is that nothing overlaps.
-assert ui.label_overlaps 0
+assert ui.overflow no
+action nav gestures
+wait 100
+assert ui.page gestures
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
+back
+wait 100
 action page settings
 action nav infrared
 wait 100
@@ -123,11 +127,26 @@ wait 100
 print ui.page
 print ui.overflow
 assert ui.overflow no
+action nav gps_hold
+action nav gps_baud
+wait 100
+print ui.page
+print ui.overflow
+assert ui.overflow no
+action nav gps_platform
+wait 100
+print ui.page
+print ui.overflow
+assert ui.overflow no
 action nav gps_data
 wait 300
 print ui.page
 print ui.overflow
 action nav nmea
+wait 300
+print ui.page
+print ui.overflow
+action nav gps_sats
 wait 300
 print ui.page
 print ui.overflow

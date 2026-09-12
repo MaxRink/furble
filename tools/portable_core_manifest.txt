@@ -6,5 +6,7 @@ lib/furble/protocol/CameraListProtocol.cpp
 lib/furble/protocol/CameraListProtocol.h
 lib/furble/protocol/FujifilmProtocol.cpp
 lib/furble/protocol/FujifilmProtocol.h
+lib/furble/protocol/GpsCasic.cpp
+lib/furble/protocol/GpsCasic.h
 lib/furble/protocol/ProvisionTLV.cpp
 lib/furble/protocol/ProvisionTLV.h

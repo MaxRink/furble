@@ -82,7 +82,7 @@ bool Nikon::_connect(void) {
   // vendor teardown cannot leave it pointing into a freed client.
   m_Nikon.reset();
 
-  if (m_PairType == PairType::SAVED || m_Paired) {
+  if (getPairType() == PairType::SAVED || m_Paired) {
     ESP_LOGI(LOG_TAG, "Scanning");
     // need to scan for advertising camera
     auto &scan = Scan::getInstance();
@@ -98,7 +98,7 @@ bool Nikon::_connect(void) {
     BaseType_t timeout = pdFALSE;
     do {
       timeout = xQueueReceive(m_Queue, &success, pdMS_TO_TICKS(1000));
-    } while (scan.isActive() && !success);
+    } while (scan.isActive() && !success && !connectCancelled());
     scan.stop();
 
     if ((timeout == pdFALSE) || !success) {

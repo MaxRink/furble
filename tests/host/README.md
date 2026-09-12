@@ -9,6 +9,11 @@ The current master branch does not contain the Tier B mock from the plan. This
 directory carries the small compatible seam needed to build Tier C standalone.
 When Tier B lands, the virtual peer API is the boundary to preserve.
 
+The provisioning apply test covers dedicated MQTT fields through the real
+checked settings path: valid URI, credentials, and base topic persist, while
+NUL and wildcard-invalid values reject before any write. Builds without MQTT
+support retain those fields as explicitly deferred.
+
 Build and run:
 
 ```sh
@@ -38,6 +43,13 @@ UndefinedBehaviorSanitizer. Run a seed directly:
 The CI job runs five fixed seeds plus two seed-pinned regression guards for the
 FujifilmBasic missing-shutter findings, both now fixed and passing.
 
+`control-interleave` parks the real registration wait and the real
+`connectall_returned` boundary, then verifies teardown reaches IDLE, no late
+DISCONNECTING republish occurs after release, and a follow-up connect remains
+commandable. It intentionally does not assert the transient state returned by
+`connectAll()`, because that value can be stale by the time another thread
+observes it.
+
 ## Wired Ethernet lifecycle
 
 `ethernet-transport` links the production `src/FurbleEthernet.cpp` against the
@@ -46,6 +58,14 @@ order without ESP-IDF or hardware: link-up must precede a usable DHCP address,
 empty and stale addresses are ignored, duplicate addresses do not refire the
 network-up callback, and init/start failures recover cleanly. The main host CI
 job runs this test with the rest of the CTest suite.
+
+## WiFi and NTP console boundary
+
+`console_commands_test` drives the production `wifi` and `ntp` command handlers
+through the host console task. Its boundary double records provisioning,
+connectivity, NTP, and status calls, so the suite checks command parsing and
+routing for SSID/PSK, enable, connect, disconnect, forget, server, enable, and
+sync. It does not model ESP WiFi events, radio association, DHCP, or SNTP.
 
 This does not prove SPI pin wiring, W5500 PHY behavior, DHCP on a physical LAN,
 TLS, or MQTT broker behavior. Those remain the hardware boundary in

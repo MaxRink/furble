@@ -165,7 +165,20 @@ bool NikonSmart::connectFinalise(void) {
   bool success = false;
   // Wait for the final OK. Nikon Z series bodies do not send one, so the
   // timeout here is expected rather than an error.
-  BaseType_t received = xQueueReceive(m_Queue, &success, pdMS_TO_TICKS(FINAL_OK_WAIT_MS));
+  // Sliced so the plan 148 cancel token can stop the wait. The total timeout and
+  // the protocol are unchanged; only the receive is sliced.
+  constexpr uint32_t FINAL_OK_POLL_MS = 250;
+  BaseType_t received = pdFALSE;
+  for (uint32_t waited = 0; waited < FINAL_OK_WAIT_MS; waited += FINAL_OK_POLL_MS) {
+    if (connectCancelled()) {
+      ESP_LOGW(LOG_TAG, "Final OK wait cancelled");
+      return false;
+    }
+    received = xQueueReceive(m_Queue, &success, pdMS_TO_TICKS(FINAL_OK_POLL_MS));
+    if (received == pdTRUE) {
+      break;
+    }
+  }
   if (received == pdFALSE) {
     success = false;
     ESP_LOGI(LOG_TAG, "No final OK after stage 4.");

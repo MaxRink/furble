@@ -15,6 +15,7 @@ enum class ApplyError : uint8_t {
   UNKNOWN_SETTING_ID,
   BAD_SETTING,
   UNSUPPORTED_SETTING,
+  STORAGE_FAILURE,
 };
 
 struct ApplyReport {
@@ -22,6 +23,7 @@ struct ApplyReport {
   ApplyError error = ApplyError::NONE;
   uint8_t failedSettingId = 0;
   size_t settingsApplied = 0;
+  size_t fieldsApplied = 0;
   size_t deferredFields = 0;
   std::string message;
 };
@@ -33,7 +35,7 @@ struct ApplyOptions {
   SettingAppliedCallback onSettingApplied = nullptr;
 };
 
-/** Validate every setting, then persist the whole settings portion. */
+/** Validate before writing; a storage failure does not roll back earlier writes. */
 bool apply(const ProvisionTLV::ProvisionBundle &bundle,
            ApplyReport &report,
            const ApplyOptions &options = {});

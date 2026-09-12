@@ -1,6 +1,7 @@
 #include "FurbleCompanion.h"
 #include "protocol_common.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
@@ -8,6 +9,7 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <map>
 #include <regex>
 #include <set>
 #include <sstream>
@@ -260,25 +262,52 @@ void checkSettings(const std::string &root, const fs::path &golden) {
 
     const auto get = fixture(golden, settingFile("response-get", setting.wire_id));
     require(isValidStandardResponse(get), setting.symbol + " get response is not a TLV");
-    require(get[0] == 0 && get[1] == setting.wire_id && get[2] == type && get[3] == value.size(),
-            setting.symbol + " get response header changed");
-    expectBytes(Bytes(get.begin() + 4, get.end()), value, setting.symbol + " get response value");
+    if (FurbleProtocolTest::settingIsWriteOnly(setting)) {
+      require(get == Bytes({4, setting.wire_id, type, 0}),
+              setting.symbol + " write-only get response changed");
+    } else {
+      require(get[0] == 0 && get[1] == setting.wire_id && get[2] == type && get[3] == value.size(),
+              setting.symbol + " get response header changed");
+      expectBytes(Bytes(get.begin() + 4, get.end()), value, setting.symbol + " get response value");
 
-    const auto list = fixture(golden, settingFile("response-list", setting.wire_id));
-    require(isValidListResponse(list), setting.symbol + " list response is not a list TLV");
-    require(
-        list[0] == 0 && list[1] == setting.wire_id && list[2] == type && list[3] == value.size(),
-        setting.symbol + " list response header changed");
-    expectBytes(Bytes(list.begin() + 4, list.begin() + 4 + value.size()), value,
-                setting.symbol + " list response value");
-    require(
-        list.size() == static_cast<size_t>(4 + value.size() + 1) && list[4 + value.size()] == flags,
-        setting.symbol + " list response trailing flags changed");
+      const auto list = fixture(golden, settingFile("response-list", setting.wire_id));
+      require(isValidListResponse(list), setting.symbol + " list response is not a list TLV");
+      require(
+          list[0] == 0 && list[1] == setting.wire_id && list[2] == type && list[3] == value.size(),
+          setting.symbol + " list response header changed");
+      expectBytes(Bytes(list.begin() + 4, list.begin() + 4 + value.size()), value,
+                  setting.symbol + " list response value");
+      require(list.size() == static_cast<size_t>(4 + value.size() + 1)
+                  && list[4 + value.size()] == flags,
+              setting.symbol + " list response trailing flags changed");
+    }
 
     expectBytes(fixture(golden, settingFile("response-set", setting.wire_id)),
                 {0, setting.wire_id, type, 0}, setting.symbol + " set response");
   }
   require(exposedIds.size() >= 20, "too few exposed settings in source table");
+
+  // A shipped wire id is a companion client contract and never moves. Renumbering
+  // one and regenerating its fixtures produces a self-consistent corpus that
+  // silently breaks every deployed client, so the ids are pinned here rather than
+  // derived. The types come from CompanionService::settingType, so dropping a
+  // setting's case there fails this too.
+  const std::map<std::string, std::pair<uint8_t, FurbleProtocolTest::WireType>> frozen = {
+      {"IMU",      {46, FurbleProtocolTest::WireType::BOOL}},
+      {"IMU_WAKE", {72, FurbleProtocolTest::WireType::U8}  },
+      {"IMU_TRIG", {73, FurbleProtocolTest::WireType::BOOL}},
+  };
+  for (const auto &[symbol, expected] : frozen) {
+    // Bound before the lambda on purpose: capturing a structured binding is
+    // valid C++20 but clang 14 rejects it, and CI still builds with it.
+    const std::string &name = symbol;
+    const auto found = std::find_if(
+        settings.begin(), settings.end(),
+        [&name](const FurbleProtocolTest::SettingInfo &setting) { return setting.symbol == name; });
+    require(found != settings.end(), symbol + " is missing from the settings table");
+    require(found->wire_id == expected.first, symbol + " wire id moved");
+    require(found->type == expected.second, symbol + " wire type changed");
+  }
 
   const auto listRequest = fixture(golden, "settings/request-list.bin");
   require(isValidSettingsRequest(listRequest) && listRequest == Bytes({0, 0, 0}),

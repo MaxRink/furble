@@ -2,7 +2,10 @@ package com.furble.companion.protocol
 
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.nio.charset.CodingErrorAction
 import java.util.UUID
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 
 /** Wire contract copied from plans/50-companion-app-design.md. */
 object FurbleProtocol {
@@ -16,6 +19,23 @@ object FurbleProtocol {
     const val STATUS_PACKET_SIZE = 20
     const val TRIGGER_PACKET_SIZE = 4
     const val CAPABILITY_PACKET_SIZE = 6
+    const val AUTH_NONCE_SIZE = 16
+    const val AUTH_RESPONSE_SIZE = 16
+    const val AUTH_VERSION = 0x01
+    const val AUTH_OP_BEGIN = 0x00
+    const val AUTH_OP_PROOF = 0x01
+    const val AUTH_OP_RESULT = 0x02
+    const val AUTH_RESULT_AUTHENTICATED = 0x01
+    const val AUTH_RESULT_REJECTED = 0x02
+    const val AUTH_RESULT_DROPPED = 0x03
+    const val AUTH_RESULT_NOT_REQUIRED = 0x04
+    const val AUTH_ATT_ERROR = 0x80
+    const val AUTH_CHALLENGE_PACKET_SIZE = 2 + AUTH_NONCE_SIZE
+    const val AUTH_PROOF_PACKET_SIZE = 2 + AUTH_RESPONSE_SIZE
+    const val AUTH_RESULT_PACKET_SIZE = 3
+    const val COMPANION_PASSWORD_MAX = 63
+    // The firmware password setting is write-only and is never listed by the app.
+    const val COMPANION_PASSWORD_WIRE_ID = 47
 
     // The frozen firmware UUID base from include/FurbleCompanion.h. Only the
     // first 32-bit field changes per characteristic.
@@ -24,6 +44,8 @@ object FurbleProtocol {
     val STATUS_UUID: UUID = UUID.fromString("b57f4f60-087b-4740-b71d-8262cf26ebbc")
     val SETTINGS_UUID: UUID = UUID.fromString("b57f4f61-087b-4740-b71d-8262cf26ebbc")
     val TRIGGER_UUID: UUID = UUID.fromString("b57f4f62-087b-4740-b71d-8262cf26ebbc")
+    val CAMERAS_UUID: UUID = UUID.fromString("b57f4f63-087b-4740-b71d-8262cf26ebbc")
+    val AUTH_UUID: UUID = UUID.fromString("b57f4f6f-087b-4740-b71d-8262cf26ebbc")
     val CAPABILITY_UUID: UUID = UUID.fromString("b57f4f64-087b-4740-b71d-8262cf26ebbc")
 
     const val LOCATION_VALID: Int = 1 shl 0
@@ -54,7 +76,43 @@ object FurbleProtocol {
 
     object CapabilityFeature {
         const val SETTINGS_V2 = 1 shl 0
+        const val CAMERAS = 1 shl 1
     }
+
+    object CameraOperation {
+        const val LIST = 0
+        const val CONNECT = 1
+        const val DISCONNECT = 2
+        const val SELECT = 3
+        const val DESELECT = 4
+    }
+
+    object CameraStatus {
+        const val OK = 0
+        const val UNKNOWN_ID = 1
+        const val REJECTED = 2
+        const val BUSY = 3
+    }
+
+    object CameraState {
+        const val IDLE = 0
+        const val CONNECTING = 1
+        const val CONNECTED = 2
+        const val RECONNECTING = 3
+        const val LOST = 4
+        const val DISCONNECTING = 5
+    }
+
+    object CameraFlag {
+        const val SAVED = 1 shl 0
+        const val SELECTED = 1 shl 1
+        const val TARGET = 1 shl 2
+        const val CONNECTED = 1 shl 3
+    }
+
+    const val CAMERA_RECORD_HEADER_SIZE = 8
+    const val CAMERA_NAME_MAX = 64
+    const val CAMERA_RSSI_UNKNOWN = -128
 
     object SettingFlag {
         const val NEEDS_RESTART = 1 shl 0
@@ -119,6 +177,36 @@ object FurbleProtocol {
             get() = version >= CAPABILITY_VERSION &&
                 wireVersion >= SETTINGS_CAPABILITY_WIRE_VERSION &&
                 features and CapabilityFeature.SETTINGS_V2.toLong() != 0L
+
+        val supportsCameras: Boolean
+            get() = version >= CAPABILITY_VERSION &&
+                features and CapabilityFeature.CAMERAS.toLong() != 0L
+    }
+
+    data class CameraRecord(
+        val status: Int,
+        val cameraId: Int,
+        val cameraType: Int,
+        val flags: Int,
+        val progress: Int,
+        val rssi: Int,
+        val state: Int,
+        val name: String,
+    ) {
+        val isTerminator: Boolean
+            get() = cameraId == 0xFF
+
+        val isSaved: Boolean
+            get() = flags and CameraFlag.SAVED != 0
+
+        val isSelected: Boolean
+            get() = flags and CameraFlag.SELECTED != 0
+
+        val isTarget: Boolean
+            get() = flags and CameraFlag.TARGET != 0
+
+        val isConnected: Boolean
+            get() = flags and CameraFlag.CONNECTED != 0
     }
 
     data class SettingsResponse(
@@ -313,6 +401,40 @@ object FurbleProtocol {
         )
     }
 
+    fun encodeCameraListRequest(): ByteArray = encodeCameraRequest(CameraOperation.LIST, 0xFF)
+
+    fun encodeCameraRequest(operation: Int, cameraId: Int): ByteArray {
+        require(operation in CameraOperation.LIST..CameraOperation.DESELECT) {
+            "Unknown camera operation: $operation"
+        }
+        require(cameraId in 0..0xFF) { "camera id must fit in uint8" }
+        return byteArrayOf(operation.toByte(), cameraId.toByte())
+    }
+
+    fun parseCameraRecord(bytes: ByteArray): CameraRecord? {
+        if (bytes.size < CAMERA_RECORD_HEADER_SIZE) return null
+        val nameLength = bytes[7].u8()
+        val nameEnd = CAMERA_RECORD_HEADER_SIZE + nameLength
+        if (nameLength > CAMERA_NAME_MAX || nameEnd != bytes.size) return null
+        val name = runCatching {
+            Charsets.UTF_8.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                .decode(ByteBuffer.wrap(bytes, CAMERA_RECORD_HEADER_SIZE, nameLength))
+                .toString()
+        }.getOrNull() ?: return null
+        return CameraRecord(
+            status = bytes[0].u8(),
+            cameraId = bytes[1].u8(),
+            cameraType = bytes[2].u8(),
+            flags = bytes[3].u8(),
+            progress = bytes[4].u8(),
+            rssi = bytes[5].toInt(),
+            state = bytes[6].u8(),
+            name = name,
+        )
+    }
+
     fun encodeTrigger(operation: Int, holdMs: Int = 0): ByteArray {
         require(operation in TriggerOperation.SHUTTER_RELEASE..TriggerOperation.TIMED_SHUTTER) {
             "Unknown trigger operation: $operation"
@@ -324,6 +446,76 @@ object FurbleProtocol {
             .put(operation.toByte())
         if (operation == TriggerOperation.TIMED_SHUTTER) buffer.putShort(holdMs.toShort())
         return buffer.array()
+    }
+
+    /** Firmware sends version, operation, and the nonce in an indication. */
+    fun encodeAuthBegin(): ByteArray = byteArrayOf(AUTH_VERSION.toByte(), AUTH_OP_BEGIN.toByte())
+
+    fun encodeAuthResponse(passwordUtf8: ByteArray, nonce: ByteArray): ByteArray {
+        require(nonce.size == AUTH_NONCE_SIZE) { "AUTH nonce must be 16 bytes" }
+        require(passwordUtf8.size in 1..COMPANION_PASSWORD_MAX) {
+            "Companion password must be 1..$COMPANION_PASSWORD_MAX UTF-8 bytes"
+        }
+        val digest = hmacSha256(passwordUtf8, nonce)
+        return ByteBuffer.allocate(AUTH_PROOF_PACKET_SIZE)
+            .put(AUTH_VERSION.toByte())
+            .put(AUTH_OP_PROOF.toByte())
+            .put(digest, 0, AUTH_RESPONSE_SIZE)
+            .array().also {
+                digest.fill(0)
+            }
+    }
+
+    fun decodeAuthChallenge(packet: ByteArray): ByteArray {
+        require(packet.size == AUTH_CHALLENGE_PACKET_SIZE) { "Invalid AUTH challenge length" }
+        require(packet[0].toInt() and 0xff == AUTH_VERSION) { "Unsupported AUTH version" }
+        require(packet[1].toInt() and 0xff == AUTH_OP_BEGIN) { "Invalid AUTH challenge operation" }
+        return packet.copyOfRange(2, AUTH_CHALLENGE_PACKET_SIZE)
+    }
+
+    fun decodeAuthResult(packet: ByteArray): Int {
+        require(packet.size == AUTH_RESULT_PACKET_SIZE) { "Invalid AUTH result length" }
+        require(packet[0].toInt() and 0xff == AUTH_VERSION) { "Unsupported AUTH version" }
+        require(packet[1].toInt() and 0xff == AUTH_OP_RESULT) { "Invalid AUTH result operation" }
+        return packet[2].toInt() and 0xff
+    }
+
+    /** Public for host golden-vector tests. The returned digest is always 32 bytes. */
+    fun hmacSha256(key: ByteArray, message: ByteArray): ByteArray {
+        val mac = Mac.getInstance("HmacSHA256")
+        mac.init(SecretKeySpec(key, "HmacSHA256"))
+        return mac.doFinal(message)
+    }
+
+    fun authResultLabel(result: Int): String = when (result) {
+        AUTH_RESULT_AUTHENTICATED -> "Authenticated"
+        AUTH_RESULT_REJECTED -> "Password rejected"
+        AUTH_RESULT_DROPPED -> "Too many attempts; furble disconnected"
+        AUTH_RESULT_NOT_REQUIRED -> "Password not required"
+        else -> "Unknown authentication result ($result)"
+    }
+
+    fun truncateUtf8(value: String, maxBytes: Int = COMPANION_PASSWORD_MAX): String {
+        require(maxBytes >= 0)
+        var remaining = maxBytes
+        var offset = 0
+        while (offset < value.length) {
+            if (Character.isSurrogate(value[offset]) &&
+                (!Character.isHighSurrogate(value[offset]) || offset + 1 >= value.length ||
+                    !Character.isLowSurrogate(value[offset + 1]))
+            ) break
+            val codePoint = value.codePointAt(offset)
+            val encodedLength = when {
+                codePoint <= 0x7f -> 1
+                codePoint <= 0x7ff -> 2
+                codePoint <= 0xffff -> 3
+                else -> 4
+            }
+            if (encodedLength > remaining) break
+            remaining -= encodedLength
+            offset += Character.charCount(codePoint)
+        }
+        return value.substring(0, offset)
     }
 
     fun encodeSettingsListRequest(): ByteArray = encodeSettingsRequest(SettingsOperation.LIST, 0, byteArrayOf())

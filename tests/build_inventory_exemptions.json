@@ -1,6 +1,7 @@
 {
   "src/FurbleBtDebug.cpp": "hardware-bound: NimBLE HCI scan and explore dumping",
   "src/FurbleCompanion.cpp": "planned: plans/16x simulator coverage",
+  "src/FurbleCompanionCrypto.cpp": "hardware-bound: mbedTLS HMAC adapter, the host and simulator link tests/host/companion/companion_hmac.cpp instead",
   "src/FurbleFeedback.cpp": "planned: plans/16x simulator coverage",
   "src/FurbleIR.cpp": "planned: plans/16x simulator coverage",
   "src/FurbleOTAPartitionSinkArduino.cpp": "hardware-bound: Arduino OTA partition backend",

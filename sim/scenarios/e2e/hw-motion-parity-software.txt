@@ -1,0 +1,34 @@
+# The software leg of the backend parity pair. Identical script to
+# hw-motion-parity.txt with a different seed, so the two files together prove a
+# consumer cannot tell the backends apart from their state transitions.
+#
+# Interrupt counts are deliberately not asserted here. The software backend has
+# no interrupt to count and reports zero by design; that difference is reported
+# on the IMU live page and is not part of the state contract.
+#
+# Teeth: change MOTION_MAGNITUDE_DELTA or STATIONARY_HOLD_MS in the software
+# backend. The transitions stop lining up with the hardware leg.
+seed fauxny true
+seed imu true
+seed imu_chip none
+seed hw_motion 1
+wait 300
+assert ui.motion_backend software
+assert ui.motion_state moving
+
+# At rest, but not yet for long enough. 45 s is chosen so a window that was
+# quietly shortened, rather than merely shifted, reports stationary here.
+action imu.accel 0 0 1
+advance 45000
+assert ui.motion_state moving
+
+# Past the 60 s quiet window.
+advance 20000
+assert ui.motion_state stationary
+assert ui.motion_interrupts 0
+
+# One sample over the slope threshold leaves stationary immediately.
+action imu.accel 0 0 2
+advance 2000
+assert ui.motion_state moving
+exit

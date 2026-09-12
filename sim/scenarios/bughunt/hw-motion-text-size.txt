@@ -1,0 +1,54 @@
+# The Sensors page and the Motion Engine roller page at Large text.
+#
+# The roller does not live on the Sensors page. Inline it overflowed the
+# 135x240 panel by 45 px; even as its own nav row it overflowed the 135x240
+# non-touch layout by 1 px and put content under the floating indicators. It
+# lives on the IMU behaviour page instead, and these assertions keep it there.
+#
+# Large is the worst case, so it is the only size asserted here. The shared
+# text-size sweeps cover Small and Normal, and page-matrix covers Normal on all
+# three panel classes.
+#
+# This scenario is deliberately narrow. Seeding the IMU on adds a Level row to
+# the Connected page, which at Large text pushes that page off the 80x160
+# panel; that is not this feature's business, so nothing here visits it.
+#
+# Teeth: move the roller back onto the Sensors page with addRollerItem. The
+# Sensors scroll assertions still pass because the page is allowed to scroll,
+# but the fit assertion on the roller page has nothing to render and the page
+# assert fails first.
+seed text_size 2
+seed fauxny true
+seed imu true
+seed imu_chip bmi270
+wait 400
+
+# The Sensors page is allowed to scroll at Large on the smallest panel: four
+# rows do not fit 80x160. Both ends must stay reachable.
+action page settings
+action nav sensors
+wait 150
+assert ui.page sensors
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
+
+# The page that actually holds the Motion Engine roller. It is an intentional
+# scroll page: master already runs it 67 px past the 135x240 panel at Large
+# text, so a fit assertion here would be wrong. Assert both scroll ends stay
+# reachable, which is how this repo treats its scrolling pages, and which is
+# what a roller that pushed content out of reach would break.
+action nav gestures
+wait 150
+assert ui.page gestures
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
+
+# The setting still round-trips from the page that owns it.
+# The shipped default, asserted here so a default change cannot slip through a
+# layout scenario unnoticed.
+assert setting.hw_motion 1
+exit

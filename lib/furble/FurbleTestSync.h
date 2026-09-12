@@ -57,6 +57,11 @@
  *   either goes nowhere or lands after the deadline. Parking here makes the
  *   window exact. The point fires before the registration deadline is taken, so
  *   a parked thread does not spend the timeout it is about to observe.
+ *
+ * "target_command_complete"
+ *   Target task after a queued shutter, focus or GPS command has completed its
+ *   camera call. A test can release this point before reading peer events,
+ *   avoiding a concurrent read of the peer's event vector.
  */
 
 #if defined(FURBLE_TEST_SYNC)

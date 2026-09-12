@@ -67,8 +67,8 @@ bool NikonRemote::preSubscribe(NimBLERemoteService *pSvc) {
   auto *pChr = pSvc->getCharacteristic(REMOTE_IND1_CHR_UUID);
   if (!gattSubscribe(
           pChr,
-          [this](NimBLERemoteCharacteristic *pBLERemoteCharacteristic, uint8_t *pData,
-                 size_t length, bool isNotify) {
+          [](NimBLERemoteCharacteristic *pBLERemoteCharacteristic, uint8_t *pData, size_t length,
+             bool isNotify) {
 #if NIKON_DEBUG
             ESP_LOGI(LOG_TAG, "data(ind1) = %s",
                      NimBLEUtils::dataToHexString(pData, length).c_str());

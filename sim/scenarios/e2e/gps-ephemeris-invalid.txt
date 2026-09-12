@@ -1,0 +1,30 @@
+# A corrupted ephemeris cache must be refused, not replayed. Every stored frame
+# is checksummed, and the reload walks the whole blob before arming anything, so
+# one flipped byte has to drop the entire cache rather than desynchronise the
+# paced send.
+seed gps true
+seed gps_baud 9600
+seed gps_assist 2
+seed gps_fix_date modern
+seed gps_uart_mode ack
+wait 300
+
+wait 8000
+assert-eventually 8000 gps.satellites 8
+wait 6000
+assert_min gps.eph_cached 200
+
+# Flip one byte in the middle of the stored blob. The record layout stays
+# private to the GPS driver; this only has to break a frame checksum.
+gps-eph-corrupt
+restart
+
+wait 12000
+# The cache is still on flash, and it is still refused.
+assert_min gps.eph_cached 200
+assert uart.eph_replay 0
+
+# A refused cache must not stop the receiver working normally.
+assert-eventually 8000 gps.satellites 8
+assert gps.receiver present
+exit

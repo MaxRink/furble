@@ -1,0 +1,13 @@
+# Keep the normal Core debug sdkconfig and replace only its partition choice.
+# The debug sdkconfig patch merges this fragment with sdkconfig.m5stack-core.
+# CONFIG_PARTITION_TABLE_SINGLE_APP is not set
+# CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE is not set
+# CONFIG_PARTITION_TABLE_TWO_OTA is not set
+# CONFIG_PARTITION_TABLE_TWO_OTA_LARGE is not set
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions_single_factory_4m.csv"
+CONFIG_PARTITION_TABLE_FILENAME="partitions_single_factory_4m.csv"
+CONFIG_PM_PROFILING=y
+CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y
+CONFIG_LV_USE_SYSMON=y
+CONFIG_LV_USE_PERF_MONITOR=y

@@ -95,6 +95,17 @@ class NikonBase {
             std::atomic<uint8_t> *progress,
             Camera *camera);
 
+  /**
+   * Plan 148 cancel token of the owning camera.
+   *
+   * The handshake waits poll this so a user disconnect can abort them:
+   * Camera::connect() holds Camera::m_Mutex for the whole attempt, so a wait
+   * that cannot be cancelled blocks the teardown behind it. NikonBase is a
+   * friend of Camera, but friendship is not inherited, so the query is exposed
+   * here for the subclasses that carry their own waits.
+   */
+  bool connectCancelled(void) const;
+
   NimBLEClient *m_Client;
   Camera *m_Camera;
   QueueHandle_t m_Queue;

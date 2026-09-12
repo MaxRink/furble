@@ -1,0 +1,52 @@
+# Layout of the Settings > GPS Motion Adaptive row at the Small text size
+# (plans/18-gps-motion.md).
+#
+# Companion to gps-motion-row.txt, which covers the default Normal font. The
+# Text size setting scales the LVGL theme font, so a row that fits at Normal can
+# stop fitting at Small. A board that clamps this size renders its clamped font
+# instead, which is why the size itself is not asserted here.
+#
+# The row is the newest entry on the longest settings list in the app, so it is
+# the one most likely to push that list past a panel. The list scrolls by
+# design, so the fit assertion is not "no overflow" but "both scroll extents are
+# still reachable and land on zero", the same contract page-matrix.txt uses for
+# the intentional-scroll pages. Run on all three panel classes: a row that only
+# fails on 80x160 must not hide behind a 320x240 reference run.
+#
+# The row also inherits the GPS visibility gate, so turning the receiver off
+# through its real switch has to take the row with it.
+#
+# Mutations that kill these assertions are recorded in plans/18-gps-motion.md.
+seed text_size 0
+seed gps true
+seed imu true
+seed gps_uart_mode ack
+wait 400
+action nav settings
+wait 150
+action nav gps
+wait 250
+assert ui.page gps
+
+# GPS and the IMU are both on, so the row renders and its switch is live.
+assert ui.gps_motion_row enabled
+print ui.overflow
+assert ui.indicator_overlaps 0
+
+# The list still scrolls all the way to both ends with the extra row on it.
+action scroll bottom
+wait 200
+assert ui.scroll_bottom 0
+assert ui.indicator_overlaps 0
+action scroll top
+wait 200
+assert ui.scroll_top 0
+
+# The row follows the GPS visibility gate: no receiver, no motion policy row.
+action toggle gps
+wait 300
+assert ui.gps_motion_row hidden
+action toggle gps
+wait 300
+assert ui.gps_motion_row enabled
+exit

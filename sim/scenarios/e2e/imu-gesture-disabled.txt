@@ -1,0 +1,20 @@
+# The IMU setting is off, so the gesture settings are inert even when both are
+# stored as enabled. This is the upgrade path for a user who turns the IMU off.
+seed imu false
+# The sensor is present and healthy: only the setting is off, so this measures
+# the setting gate rather than sensor availability.
+seed imu_sensor true
+seed imu_wake 3
+seed imu_trigger true
+wait 400
+assert ui.gesture_timer no
+assert ui.imu_gesture_controls_enabled no
+
+action imu.accel 0 0 2.6
+wait 20
+action imu.accel 0 0 1
+wait 200
+action imu.accel 0 0 1.8
+wait 300
+assert ui.gesture_events 0
+exit

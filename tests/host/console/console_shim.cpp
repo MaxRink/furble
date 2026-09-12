@@ -47,6 +47,7 @@
 
 #include "FurbleCompanion.h"
 #include "FurbleFeedback.h"
+#include "FurbleIMU.h"
 #include "FurblePlatform.h"
 #include "FurbleSD.h"
 #include "M5Unified.h"
@@ -206,14 +207,20 @@ BaseType_t xTaskCreate(TaskFunction_t task_code,
                        TaskHandle_t *created_task) {
   (void)stack_depth;
 
+  // A task created after furbleHostStopTasks() has copied the task list is
+  // never joined, so it would outlive main() exactly as a detached task did.
+  std::lock_guard<std::mutex> lock(g_TasksMutex);
+  if (g_StopTasks.load()) {
+    return pdFAIL;
+  }
+
   auto *task = new FurbleHostTask();
   task->name = (name != nullptr) ? name : "unnamed";
   task->priority = priority;
-  {
-    std::lock_guard<std::mutex> lock(g_TasksMutex);
-    task->number = g_NextTaskNumber++;
-    g_Tasks.push_back(task);
-  }
+  task->number = g_NextTaskNumber++;
+  g_Tasks.push_back(task);
+  // Created under g_TasksMutex, so a concurrent shutdown either sees the task
+  // and joins it or is rejected above. Left joinable for that join.
   task->thread = std::thread([task_code, parameters] {
     g_OnShimTask = true;
     try {
@@ -222,7 +229,6 @@ BaseType_t xTaskCreate(TaskFunction_t task_code,
       // Host shutdown unwinding a task that is immortal on device.
     }
   });
-  // Left joinable: furbleHostStopTasks() joins every task before main() returns.
   if (created_task != nullptr) {
     *created_task = task;
   }
@@ -600,6 +606,7 @@ BtDebugState g_BtDebug;
 IRState g_IR;
 MiscState g_Misc;
 TimeState g_Time;
+WiFiState g_WiFi;
 
 }  // namespace
 
@@ -642,6 +649,9 @@ MiscState &misc(void) {
 TimeState &time(void) {
   return g_Time;
 }
+WiFiState &wifi(void) {
+  return g_WiFi;
+}
 
 void resetDoubles(void) {
   const size_t installs = g_Misc.usbDriverInstalls;
@@ -654,6 +664,7 @@ void resetDoubles(void) {
   g_IR = IRState();
   g_Misc = MiscState();
   g_Time = TimeState();
+  g_WiFi = WiFiState();
 
   // Transport setup happens once at Console::init(), so keep its counters.
   g_Misc.usbDriverInstalls = installs;
@@ -664,7 +675,66 @@ void resetDoubles(void) {
 
 namespace Furble {
 
-std::mutex g_IMUMutex;
+imu_mutex_t g_IMUMutex;
+
+void WiFi::init(void) {}
+
+bool WiFi::connect(void) {
+  auto &state = ConsoleHost::wifi();
+  state.connectCalls++;
+  return state.connectResult;
+}
+
+void WiFi::disconnect(void) {
+  ConsoleHost::wifi().disconnectCalls++;
+}
+
+bool WiFi::setEnabled(bool enabled) {
+  auto &state = ConsoleHost::wifi();
+  state.setEnabledCalls++;
+  state.status.enabled = enabled;
+  return state.setEnabledResult;
+}
+
+void WiFi::forget(void) {
+  ConsoleHost::wifi().forgetCalls++;
+}
+
+void WiFi::clearRememberedAccessPoint(void) {
+  ConsoleHost::wifi().clearRememberedAccessPointCalls++;
+}
+
+bool WiFi::setNtpEnabled(bool enabled) {
+  auto &state = ConsoleHost::wifi();
+  state.setNtpEnabledCalls++;
+  state.status.ntp_enabled = enabled;
+  return state.setNtpEnabledResult;
+}
+
+bool WiFi::reloadNtp(void) {
+  auto &state = ConsoleHost::wifi();
+  state.reloadNtpCalls++;
+  return state.reloadNtpResult;
+}
+
+bool WiFi::syncNtp(void) {
+  auto &state = ConsoleHost::wifi();
+  state.syncNtpCalls++;
+  return state.syncNtpResult;
+}
+
+WiFi::status_t WiFi::getStatus(void) {
+  return ConsoleHost::wifi().status;
+}
+
+bool WiFi::getNtpTimesync(Camera::timesync_t &timesync) {
+  timesync = {};
+  return false;
+}
+
+void UI::notifyGestureSettingsChanged(void) {
+  ConsoleHost::ui().gestureNotifications++;
+}
 
 bool UI::sendRequest(Request request, int32_t arg) {
   auto &state = ConsoleHost::ui();
@@ -701,6 +771,10 @@ void GPS::reloadSetting(void) {
   ConsoleHost::gps().reloadSettingCalls++;
 }
 
+void GPS::reloadMotionSetting(void) {
+  ConsoleHost::gps().reloadMotionSettingCalls++;
+}
+
 void GPS::reloadLogSettings(void) {
   ConsoleHost::gps().reloadLogSettingsCalls++;
 }
@@ -719,6 +793,60 @@ GPS::receiver_status_t GPS::getReceiverStatus(void) const {
 
 GPS::source_t GPS::getSource(void) const {
   return ConsoleHost::gps().source;
+}
+
+Furble::GPS::Fix Furble::GPS::getFix(void) const {
+  return ConsoleHost::gps().fix;
+}
+
+uint32_t Furble::GPS::getHoldLimitMs(void) const {
+  return ConsoleHost::gps().holdLimitMs;
+}
+
+uint32_t Furble::GPS::getHoldRemainingMs(void) const {
+  return ConsoleHost::gps().holdRemainingMs;
+}
+
+GPS::receiver_state_t GPS::getReceiverState(void) const {
+  return ConsoleHost::gps().receiverState;
+}
+
+uint32_t GPS::getDetectedBaud(void) const {
+  return ConsoleHost::gps().detectedBaud;
+}
+
+const char *GPS::receiverStateName(receiver_state_t state) {
+  switch (state) {
+    case receiver_state_t::UNKNOWN:
+      return "unknown";
+    case receiver_state_t::DETECTING:
+      return "detecting";
+    case receiver_state_t::PRESENT:
+      return "present";
+    case receiver_state_t::ABSENT:
+      return "absent";
+  }
+  return "unknown";
+}
+
+void GPS::setSatelliteCapture(bool capture) {
+  ConsoleHost::gps().satCapture = capture;
+}
+
+bool GPS::satelliteCaptureEnabled(void) const {
+  return ConsoleHost::gps().satCapture;
+}
+
+GPS::satellite_report_t GPS::getSatelliteReport(void) {
+  return ConsoleHost::gps().satellites;
+}
+
+void GPS::pollMonHw(void) {
+  ConsoleHost::gps().monHwPolls++;
+}
+
+GPS::monhw_report_t GPS::getMonHw(void) {
+  return ConsoleHost::gps().monhw;
 }
 
 const char *GPS::sourceName(source_t source) {
@@ -861,6 +989,10 @@ CompanionGatt &CompanionGatt::getInstance(void) {
 
 void CompanionGatt::reloadSetting(void) {
   ConsoleHost::misc().companionReloads++;
+}
+
+void CompanionGatt::reloadPassword(void) {
+  ConsoleHost::misc().companionPasswordReloads++;
 }
 
 SD &SD::getInstance(void) {
@@ -1041,3 +1173,23 @@ void furbleHostStopTasks(void) {
     }
   }
 }
+
+// The console reports the motion source, so FurbleIMU.cpp is linked in. Its two
+// hardware engines are register programming against an I2C bus this harness
+// does not have, and they have their own coverage in
+// tests/host/imu_motion_encoding_test.cpp, so here they are simply absent. That
+// is the same answer a board with no supported IMU gives, and it exercises the
+// software fallback the console then reports.
+namespace Furble {
+namespace IMU {
+
+std::unique_ptr<MotionBackend> createBMI270Backend(void) {
+  return nullptr;
+}
+
+std::unique_ptr<MotionBackend> createMPU6886Backend(void) {
+  return nullptr;
+}
+
+}  // namespace IMU
+}  // namespace Furble

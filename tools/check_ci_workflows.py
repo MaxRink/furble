@@ -238,6 +238,47 @@ def _lint_firmware_change_filter(document: Mapping[str, Any]) -> list[str]:
   return errors
 
 
+def _lint_platformio_ci_contract(document: Mapping[str, Any]) -> list[str]:
+  """Check the mandatory and opt-in firmware debug profile contract."""
+
+  if document.get("name") != "PlatformIO CI":
+    return []
+
+  trigger = document.get("on")
+  dispatch = trigger.get("workflow_dispatch") if isinstance(trigger, Mapping) else None
+  errors: list[str] = []
+  if not isinstance(dispatch, Mapping):
+    errors.append("PlatformIO CI workflow_dispatch must configure profile inputs")
+  else:
+    inputs = dispatch.get("inputs")
+    core_ota = inputs.get("core_ota_debug") if isinstance(inputs, Mapping) else None
+    if not isinstance(core_ota, Mapping):
+      errors.append("PlatformIO CI core_ota_debug input is missing")
+    else:
+      if core_ota.get("type") != "boolean":
+        errors.append("PlatformIO CI core_ota_debug input must be boolean")
+      if str(core_ota.get("default", "")).lower() != "false":
+        errors.append("PlatformIO CI core_ota_debug input must default to false")
+      if str(core_ota.get("required", "")).lower() != "false":
+        errors.append("PlatformIO CI core_ota_debug input must be optional")
+
+  jobs = document.get("jobs")
+  discover = jobs.get("discover") if isinstance(jobs, Mapping) else None
+  discover_env = discover.get("env") if isinstance(discover, Mapping) else None
+  if not isinstance(discover_env, Mapping):
+    errors.append("PlatformIO CI discover job must declare profile contract env")
+  else:
+    if discover_env.get("MANDATORY_CORE_DEBUG") != "m5stack-core-usb-debug":
+      errors.append("PlatformIO CI mandatory Core debug profile is incorrect")
+    if discover_env.get("OPTIONAL_CORE_DEBUG") != "m5stack-core-debug":
+      errors.append("PlatformIO CI optional Core debug profile is incorrect")
+
+  build = jobs.get("build") if isinstance(jobs, Mapping) else None
+  if isinstance(build, Mapping) and "continue-on-error" in build:
+    errors.append("PlatformIO CI firmware build must fail strictly")
+  return errors
+
+
 def _workflow_paths(workflow_root: Path) -> list[Path]:
   return sorted(
       [*workflow_root.glob("*.yml"), *workflow_root.glob("*.yaml")]
@@ -247,7 +288,8 @@ def _workflow_paths(workflow_root: Path) -> list[Path]:
 def lint_workflow(path: Path) -> list[str]:
   """Lint one workflow, raising WorkflowParseError on invalid YAML."""
 
-  return _lint_document(_load_workflow(path))
+  document = _load_workflow(path)
+  return _lint_document(document) + _lint_platformio_ci_contract(document)
 
 
 def main() -> int:
@@ -271,9 +313,9 @@ def main() -> int:
     blocks = _event_blocks(document)
     if "pull_request" in blocks:
       checked += 1
-    failures.extend(
-        f"{path.name}: {error}" for error in _lint_document(document)
-    )
+    errors = _lint_document(document)
+    errors.extend(_lint_platformio_ci_contract(document))
+    failures.extend(f"{path.name}: {error}" for error in errors)
   if failures:
     print("CI workflow trigger check failed:", file=sys.stderr)
     for failure in failures:

@@ -147,8 +147,10 @@ on the GATT plumbing alone.
    the camera-side confirmation notification with a bounded 25 s firmware
    timeout. Host builds use a short steady-clock seam for deterministic tests.
    `m_Configured` is set only by CHR_NOT1 with the captured `0x01 0x00` payload
-   or the legacy `0x02 0x00` payload. The same bytes on GEOTAG_UPDATE are not
-   registration confirmation.
+   or the legacy `0x02 0x00` payload. This design originally treated the same
+   bytes on GEOTAG_UPDATE as not being registration confirmation; hardware
+   later proved saved reconnects confirm only through GEOTAG_UPDATE, see the
+   deviation section below (PR #239, plan 151).
 2. On timeout, return false from `_connect()` so `Camera::connect()` tears the
    link down (`lib/furble/Camera.cpp:53-54`) and Control does not promote to
    ACTIVE.
@@ -207,3 +209,19 @@ Secure-service-only advertisement, so the reconnect never even reached the
 gate. That fix and its regression test are recorded in
 plans/76-reconnect-stuck.md under "Deviation: saved-scan match never fires
 when the camera advertises only the Secure service (2026-08-28)".
+
+## Deviation: empty saved-camera selection reports ACTIVE (2026-09-07)
+
+The `INDEX_ID_ALL` saved-camera request intentionally remains valid when no
+saved cameras are selected. That path can therefore queue a Control connect
+with zero targets. Before the fix, `Control::connectAll()` reached the
+vacuous `allConnected()` check and published `STATE_ACTIVE` without a camera.
+The shared Control path now returns `STATE_IDLE` for an empty target snapshot;
+an already armed disconnect still takes precedence. The `0xff` selection
+semantics and the non-empty pairing and reconnect paths are unchanged.
+
+The real-Control host regression is `empty-target-connect-stays-idle`. Root ran
+all 17 Control E2E scenarios in 38.14 seconds, including both ASAN variants,
+from the integrated checkpoint. The run is recorded in
+`/tmp/c66-empty-all-control2.log`. This is host evidence only; no new hardware
+claim is made.

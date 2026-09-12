@@ -1,6 +1,7 @@
 #ifndef SETTINGS_H
 #define SETTINGS_H
 
+#include <string>
 #include <unordered_map>
 
 #include "Preferences.h"
@@ -25,6 +26,9 @@ class Settings {
     TX_ADAPTIVE,
     GPS,
     IMU,
+    IMU_WAKE,
+    IMU_TRIG,
+    HW_MOTION,
     GPS_BAUD,
     GPS_RATE,
     GPS_NMEA,
@@ -32,6 +36,10 @@ class Settings {
     GPS_POWER,
     GPS_DUTY,
     GPS_ASSIST,
+    GPS_HOLD,
+    GPS_EXTRAP,
+    GPS_PLATFORM,
+    GPS_MOTION,
     INTERVAL,
     MULTICONNECT,
     MULTISELECT,
@@ -48,6 +56,7 @@ class Settings {
     SCAN_MODE,
     SCAN_TIMEOUT,
     COMPANION,
+    COMPANION_PASSWORD,
     CONN_SAVER,
     IR,
     IR_PROTO,
@@ -62,6 +71,14 @@ class Settings {
     SD_GPX,
     GPX_PERIOD,
     BOOT_SPLASH,
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+    MQTT,
+    MQTT_URI,
+    MQTT_USER,
+    MQTT_PASS,
+    MQTT_BASE,
+    MQTT_HA,
+#endif
 #if !defined(FURBLE_NO_DISPLAY)
     DISPLAY_MODE,
 #endif
@@ -69,6 +86,11 @@ class Settings {
 #if defined(FURBLE_M5STICKS3)
     WATCHDOG,
 #endif
+    WIFI,
+    WIFI_SSID,
+    WIFI_PSK,
+    NTP,
+    NTP_SERVER,
   } type_t;
 
 #if !defined(FURBLE_NO_DISPLAY)
@@ -168,7 +190,18 @@ class Settings {
     BUTTON_MODE_TWO_BUTTON = 0,
     BUTTON_MODE_ONE_BUTTON = 1,
   } button_mode_t;
+  /** Motion engine selection. */
+  typedef enum {
+    HW_MOTION_AUTO = 0,
+    HW_MOTION_SOFTWARE = 1,
+    HW_MOTION_HARDWARE = 2,
+  } hw_motion_t;
 
+  static constexpr size_t WIFI_SSID_MAX_LENGTH = 32;
+  static constexpr size_t WIFI_PSK_MAX_LENGTH = 63;
+  static constexpr size_t NTP_SERVER_MAX_LENGTH = 63;
+
+  static constexpr uint32_t BAUD_AUTO = 0;
   static constexpr uint32_t BAUD_9600 = 9600;
   static constexpr uint32_t BAUD_115200 = 115200;
 
@@ -196,11 +229,23 @@ class Settings {
   static const setting_t *getByWireId(uint8_t wire_id);
   static const std::unordered_map<type_t, setting_t> &all(void);
 
+  /** Validate an ingress network string before it reaches NVS. */
+  static bool validNetworkString(type_t type, const std::string &value);
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+  /** Validate MQTT URI, credentials, and topic-root input before persistence. */
+  static bool validMQTTString(type_t type, const std::string &value);
+#endif
+
   /** Return true when a saved value takes effect without a reboot. */
   static bool appliesImmediately(type_t type);
 
   /** Return true when an over-the-air write can affect the companion link. */
   static bool isDangerous(type_t type);
+
+  /** Load the companion password, distinguishing an unset key from NVS failure. */
+  static bool loadPassword(std::string &value);
+  /** Persist the companion password and report storage/commit failures. */
+  static bool savePassword(const std::string &value);
 
   /** Return true when the Battery Saver power profile is enabled. */
   static bool batterySaver(void);
@@ -247,13 +292,13 @@ class Settings {
   template <type_t S>
   struct storage_type;
 
-  /** Load a setting, with type deduced from the setting. */
+  /** Load a setting, with the type deduced from the setting. */
   template <type_t S>
   static typename storage_type<S>::type load() {
     return load<typename storage_type<S>::type>(S);
   }
 
-  /** Save a setting, with type deduced from the setting. */
+  /** Save a setting, with the type deduced from the setting. */
   template <type_t S>
   static void save(const typename storage_type<S>::type &value) {
     save<typename storage_type<S>::type>(S, value);
@@ -315,6 +360,18 @@ struct Settings::storage_type<Settings::IMU> {
   using type = bool;
 };
 template <>
+struct Settings::storage_type<Settings::IMU_WAKE> {
+  using type = uint8_t;
+};
+template <>
+struct Settings::storage_type<Settings::IMU_TRIG> {
+  using type = bool;
+};
+template <>
+struct Settings::storage_type<Settings::HW_MOTION> {
+  using type = uint8_t;
+};
+template <>
 struct Settings::storage_type<Settings::GPS_BAUD> {
   using type = uint32_t;
 };
@@ -341,6 +398,22 @@ struct Settings::storage_type<Settings::GPS_DUTY> {
 template <>
 struct Settings::storage_type<Settings::GPS_ASSIST> {
   using type = uint8_t;
+};
+template <>
+struct Settings::storage_type<Settings::GPS_HOLD> {
+  using type = uint8_t;
+};
+template <>
+struct Settings::storage_type<Settings::GPS_EXTRAP> {
+  using type = bool;
+};
+template <>
+struct Settings::storage_type<Settings::GPS_PLATFORM> {
+  using type = uint8_t;
+};
+template <>
+struct Settings::storage_type<Settings::GPS_MOTION> {
+  using type = bool;
 };
 template <>
 struct Settings::storage_type<Settings::INTERVAL> {
@@ -407,6 +480,10 @@ struct Settings::storage_type<Settings::COMPANION> {
   using type = bool;
 };
 template <>
+struct Settings::storage_type<Settings::COMPANION_PASSWORD> {
+  using type = std::string;
+};
+template <>
 struct Settings::storage_type<Settings::CONN_SAVER> {
   using type = bool;
 };
@@ -462,6 +539,32 @@ template <>
 struct Settings::storage_type<Settings::BOOT_SPLASH> {
   using type = bool;
 };
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+template <>
+struct Settings::storage_type<Settings::MQTT> {
+  using type = bool;
+};
+template <>
+struct Settings::storage_type<Settings::MQTT_URI> {
+  using type = std::string;
+};
+template <>
+struct Settings::storage_type<Settings::MQTT_USER> {
+  using type = std::string;
+};
+template <>
+struct Settings::storage_type<Settings::MQTT_PASS> {
+  using type = std::string;
+};
+template <>
+struct Settings::storage_type<Settings::MQTT_BASE> {
+  using type = std::string;
+};
+template <>
+struct Settings::storage_type<Settings::MQTT_HA> {
+  using type = bool;
+};
+#endif
 #if !defined(FURBLE_NO_DISPLAY)
 template <>
 struct Settings::storage_type<Settings::DISPLAY_MODE> {
@@ -478,6 +581,26 @@ struct Settings::storage_type<Settings::WATCHDOG> {
   using type = bool;
 };
 #endif
+template <>
+struct Settings::storage_type<Settings::WIFI> {
+  using type = bool;
+};
+template <>
+struct Settings::storage_type<Settings::WIFI_SSID> {
+  using type = std::string;
+};
+template <>
+struct Settings::storage_type<Settings::WIFI_PSK> {
+  using type = std::string;
+};
+template <>
+struct Settings::storage_type<Settings::NTP> {
+  using type = bool;
+};
+template <>
+struct Settings::storage_type<Settings::NTP_SERVER> {
+  using type = std::string;
+};
 
 }  // namespace Furble
 

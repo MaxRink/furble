@@ -35,10 +35,16 @@ class Preferences {
   size_t put(const char *key, const T value);
 
   size_t put(const char *key, const char *value);
+  /** Report set and commit failures, including when writing an empty string. */
+  bool putString(const char *key, const char *value);
   size_t put(const char *key, const void *value, size_t len);
 
   template <typename T>
   T get(const char *key, T defaultValue = 0);
+  enum class string_result_t : uint8_t { OK, NOT_FOUND, ERROR };
+
+  /** Read a string and distinguish an unset key from NVS failures. */
+  string_result_t getString(const char *key, std::string &value);
   size_t get(const char *key, void *buf, size_t maxLen);
 
   bool isKey(const char *key);

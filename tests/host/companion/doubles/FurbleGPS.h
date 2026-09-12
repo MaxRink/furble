@@ -35,11 +35,15 @@ class GPS {
   bool setExternalFix(const external_fix_t &fix);
   void clearExternalFix(void);
   void reloadSetting(void) {}
+  void reloadMotionSetting(void) {}
 
   // The production GPS task performs the arbitration and then calls
   // Control::updateGPS. This host hook runs that same downstream handoff after
   // a companion write, allowing the test to observe real camera geodata.
   void update(void);
+
+  /** Highest valid fix hold setting, mirroring the production constant. */
+  static constexpr const uint8_t HOLD_MAX = 4;
 
   source_t getSource(void) const;
   uint8_t getSatellites(void) const;

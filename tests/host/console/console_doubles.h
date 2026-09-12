@@ -16,6 +16,7 @@
 #include "FurbleIR.h"
 #include "FurbleTimeKeeper.h"
 #include "FurbleUI.h"
+#include "FurbleWiFi.h"
 
 namespace ConsoleHost {
 
@@ -38,6 +39,8 @@ struct UIRequest {
 struct UIState {
   std::vector<UIRequest> requests;
   bool queueAvailable = true;
+  // Gesture settings notify the UI task through a counter, not a request.
+  unsigned gestureNotifications = 0;
 };
 
 UIState &ui(void);
@@ -48,10 +51,20 @@ struct GPSState {
   Furble::GPS::cycle_status_t cycle = {};
   Furble::GPS::receiver_status_t receiver = {};
   Furble::GPS::source_t source = Furble::GPS::SOURCE_NONE;
+  Furble::GPS::Fix fix = Furble::GPS::Fix::NONE;
+  uint32_t holdLimitMs = 0;
+  uint32_t holdRemainingMs = 0;
+  Furble::GPS::receiver_state_t receiverState = Furble::GPS::receiver_state_t::UNKNOWN;
+  uint32_t detectedBaud = 0;
+  bool satCapture = false;
+  Furble::GPS::satellite_report_t satellites = {};
+  Furble::GPS::monhw_report_t monhw = {};
+  size_t monHwPolls = 0;
   std::vector<Furble::GPS::config_status_t> config;
   bool binaryResult = true;
   bool aidResult = true;
   size_t reloadSettingCalls = 0;
+  size_t reloadMotionSettingCalls = 0;
   size_t reloadLogSettingsCalls = 0;
   size_t aidCalls = 0;
   std::vector<std::vector<uint8_t>> binaryFrames;
@@ -108,6 +121,7 @@ IRState &ir(void);
 struct MiscState {
   size_t feedbackReloads = 0;
   size_t companionReloads = 0;
+  size_t companionPasswordReloads = 0;
   bool sdSupported = true;
   size_t usbDriverInstalls = 0;
   size_t vfsUseDriverCalls = 0;
@@ -134,6 +148,25 @@ struct TimeState {
 };
 
 TimeState &time(void);
+
+struct WiFiState {
+  Furble::WiFi::status_t status = {};
+  bool connectResult = true;
+  bool setEnabledResult = true;
+  bool setNtpEnabledResult = true;
+  bool reloadNtpResult = true;
+  bool syncNtpResult = true;
+  size_t connectCalls = 0;
+  size_t disconnectCalls = 0;
+  size_t setEnabledCalls = 0;
+  size_t forgetCalls = 0;
+  size_t clearRememberedAccessPointCalls = 0;
+  size_t setNtpEnabledCalls = 0;
+  size_t reloadNtpCalls = 0;
+  size_t syncNtpCalls = 0;
+};
+
+WiFiState &wifi(void);
 
 /** Redirect stdout into a captured file. Call once, before Console::init(). */
 void startCapture(const std::string &path);

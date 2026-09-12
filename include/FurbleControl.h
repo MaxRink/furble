@@ -6,6 +6,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <vector>
 
 #include <Camera.h>
 
@@ -50,7 +51,7 @@ class Control {
 
     std::shared_ptr<Camera> getCamera(void) const;
     cmd_t getCommand(void);
-    void sendCommand(cmd_t cmd);
+    BaseType_t sendCommand(cmd_t cmd);
     void updateGPS(const Camera::gps_t &gps, const Camera::timesync_t &timesync);
 
     void task(void);
@@ -121,6 +122,11 @@ class Control {
 
   /**
    * Are all active cameras still connected?
+   *
+   * False when there are no active cameras. An empty session is not vacuously
+   * connected: returning true for one published STATE_ACTIVE for a session
+   * containing nothing, so the UI signalled CONNECTED while sendCommand()
+   * iterated an empty target list and the shutter did nothing.
    */
   bool allConnected(void);
 
@@ -132,8 +138,32 @@ class Control {
    */
   std::vector<Control::Target *> getTargets(void);
 
+  /** Snapshot connected target state for non-UI services. */
+  typedef struct {
+    std::string id;
+    std::string name;
+    Camera::Type type;
+    bool connected;
+    uint8_t progress;
+    int16_t rssi;
+  } target_status_t;
+
+  std::vector<target_status_t> getTargetStatus(void);
+
+  /** Send a command to one connected target. */
+  BaseType_t sendTargetCommand(const std::string &id, cmd_t cmd);
+
+  /** Return the stable MQTT identifier for a saved camera. */
+  static std::string getCameraID(const Camera &camera);
+
   /**
    * Connect to all active cameras.
+   *
+   * Requests, rather than performs, the re-arm of every target camera's connect
+   * cancel token. The request is consumed at the top of the next connect cycle
+   * on the control task, which is the only place no attempt can be in flight.
+   * Clearing the token here would clear it out from under an attempt that a
+   * capped teardown drained but did not stop.
    */
   void connectAll(bool infiniteReconnect);
 
@@ -147,7 +177,10 @@ class Control {
    * timeout: esp_restart() runs immediately after and kills the in-flight
    * teardown, so the force-complete race cannot happen there.
    *
-   * @param[in] timeout_ms Maximum time to wait for target tasks and cameras.
+   * @param[in] timeout_ms Cap on the wait, honoured by both paths. The
+   *                        interactive path used to ignore this and always
+   *                        waited DISCONNECT_WAIT_MAX_MS, which is this
+   *                        parameter's default, so every caller is unchanged.
    * @param[in] forRestart Caller will esp_restart() immediately, so a timeout
    *                       may force-complete the teardown.
    * @return true if all disconnect work completed before the timeout.
@@ -198,11 +231,31 @@ class Control {
     uint8_t rssiStrongSamples;
     uint8_t rssiWeakSamples;
     std::string connectingCamera;
+    // Empty for every ordinary failure. Non-empty only when the cycle stopped
+    // for a reason retrying cannot fix, so the bench can assert the re-pair
+    // outcome over the console instead of reading logs.
+    std::string connectFailReason;
   };
 
   /** Capture the control state snapshot under m_Mutex. */
   debug_state_t getDebugState(void) const;
 #endif  // FURBLE_CONSOLE || FURBLE_SIM
+
+  /**
+   * Why the last connect cycle ended in STATE_CONNECT_FAILED.
+   *
+   * Empty unless the failure has an explanation worth putting in front of the
+   * user. Today the only such failure is a camera that no longer holds our
+   * pairing: retrying is futile, so the cycle stops and the UI shows this text
+   * instead of the reconnect spinner. Cleared when a new connect cycle starts.
+   *
+   * Returns a copy taken under m_Mutex so the caller never reads a string the
+   * control task is rewriting.
+   */
+  std::string getConnectFailReason(void) const;
+
+  /** Cached target state and filtered RSSI for one camera. */
+  bool getTargetState(const Camera *camera, int8_t &rssi) const;
 
   /** Retrieve the number of active camera targets. */
   size_t getTargetCount(void) const;
@@ -268,6 +321,9 @@ class Control {
 
   /** Check whether all disconnect work has completed. */
   bool disconnectComplete(void);
+
+  /** Publish the camera whose connect attempt is in flight, under m_Mutex. */
+  void setConnectCamera(std::shared_ptr<Camera> camera);
 
   /**
    * Have all per-target teardown tasks stopped and any in-flight connect
@@ -368,8 +424,19 @@ class Control {
   // budget in connectAll(). A member rather than a function-local static so a
   // reboot clears it with the rest of the session state.
   uint32_t m_ConnectFailCount = 0;
+  // User-facing explanation for a STATE_CONNECT_FAILED that retrying cannot
+  // fix. Empty for every ordinary failure. Guarded by m_Mutex.
+  std::string m_ConnectFailReason;
   volatile bool m_ConnectAbort = false;
   volatile bool m_ConnectInProgress = false;
+  // A user connect cycle has asked for the cancel tokens to be re-armed. Set by
+  // connectAll(bool) off the control task, consumed and cleared by connectAll()
+  // on the control task at the top of the cycle, which is the only point where
+  // no attempt can be in flight, and cleared by disconnect() so a request whose
+  // CMD_CONNECT was dropped cannot go stale across a teardown. The automatic
+  // reconnect never sets it, so a cancel landing mid-reconnect survives.
+  // Guarded by m_Mutex at every access, unlike the volatile session flags above.
+  bool m_ClearConnectCancel = false;
   state_t m_State = STATE_IDLE;
 
   // setState() runs from the control task and from the UI task
@@ -379,6 +446,10 @@ class Control {
   // Camera connects are serialised, the following tracks the last attempt.
   // Holds a strong reference so an in-flight connect keeps its Camera alive even
   // if CameraList::load() drops the list's reference.
+  //
+  // Guarded by m_Mutex. It is written by the control task and read by the UI
+  // task, so every access takes the mutex and publication goes through
+  // setConnectCamera().
   std::shared_ptr<Camera> m_ConnectCamera;
 
   // User transmit power cap, loaded from TX_POWER at first getInstance()

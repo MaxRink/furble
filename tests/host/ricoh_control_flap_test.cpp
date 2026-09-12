@@ -22,6 +22,7 @@
 #include <iostream>
 #include <memory>
 #include <thread>
+#include <vector>
 
 #include "Camera.h"
 #include "Device.h"
@@ -130,6 +131,12 @@ bool runScenario() {
   NimBLEDevice::setMockPeerForAddress(good.advertisement().getAddress(), &good);
   NimBLEDevice::setMockPeerForAddress(flap.advertisement().getAddress(), &flap);
 
+  // Both cameras are bonded. Ricoh clears a stale local bond on a failed
+  // live-scan pairing by design (an explicit request for a new pairing), so
+  // this scenario only asserts that the Fujifilm Secure re-pair verdict never
+  // reaches a Ricoh. The saved-reconnect bond invariant is asserted below.
+  NimBLEDevice::setBonded(true);
+
   const NimBLEAdvertisedDevice goodAdvertisement = good.advertisement();
   const NimBLEAdvertisedDevice flapAdvertisement = flap.advertisement();
   auto goodCamera = std::make_shared<Furble::FujifilmBasic>(&goodAdvertisement);
@@ -163,6 +170,8 @@ bool runScenario() {
   check(waitForState(Control::STATE_IDLE, 3000),
         "state machine returns to idle, not wedged in disconnecting");
   check(control.getTargetCount() == 0, "targets cleared");
+  check(!flapCamera->needsRepair(), "a standby camera is never flagged for a re-pair");
+  check(!goodCamera->needsRepair(), "the healthy camera is never flagged for a re-pair");
 
   // A late republish of CONNECT or DISCONNECTING here is the wedge class.
   std::this_thread::sleep_for(std::chrono::milliseconds(1500));
@@ -187,6 +196,61 @@ bool runScenario() {
   return g_Failures == 0;
 }
 
+/**
+ * A SAVED GR IV must keep its pairing across the standby flap.
+ *
+ * The flap fails secureConnection() with the rc=520 shape (the failure reaches
+ * the connect task with the disconnect event still queued), which is exactly
+ * the shape the Fujifilm Secure stale-bond recovery acts on after a run of
+ * two. That recovery is vendor local and must stay that way: a GR IV in
+ * standby comes back on its own, so losing its bond would cost the user a
+ * re-pair for an entirely normal power state. Ricoh's own bond clear is scoped
+ * to PairType::NEW, a live-scan pairing, and must not reach a saved reconnect.
+ */
+bool runSavedBondScenario() {
+  auto &control = Control::getInstance();
+
+  NimBLEDevice::resetMock();
+  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Settings::setBool(Furble::Settings::RECON_BACKOFF, false);
+
+  RicohVirtualCamera::Config flapConfig;
+  flapConfig.name = "RICOH GR IV";
+  flapConfig.address = NimBLEAddress(0x3490EABB7D74ULL, 0);
+  RicohVirtualCamera flap(flapConfig);
+  // Fail two consecutive handshakes, the run length that would trip the
+  // Fujifilm Secure recovery, then complete one and drop the link again.
+  flap.setFlappy(/*fail_attempts=*/2, /*drop_after_ms=*/1000);
+
+  const NimBLEAdvertisedDevice flapAdvertisement = flap.advertisement();
+  NimBLEDevice::setMockPeerForAddress(flapAdvertisement.getAddress(), &flap);
+  NimBLEDevice::setBonded(true);
+
+  // Rebuild through the NVS record so the camera is PairType::SAVED, the
+  // reconnect path a bonded camera actually takes.
+  Furble::Ricoh scanned(&flapAdvertisement);
+  std::vector<uint8_t> nvs(scanned.getSerialisedBytes());
+  check(scanned.serialise(nvs.data(), nvs.size()), "the Ricoh NVS record round-trips");
+  auto savedCamera = std::make_shared<Furble::Ricoh>(nvs.data(), nvs.size());
+
+  control.addActive(savedCamera);
+  control.connectAll(true);
+
+  // Let the reconnect cycle churn through several failed handshakes.
+  std::this_thread::sleep_for(std::chrono::milliseconds(2500));
+  check(NimBLEDevice::deleteBondCount() == 0,
+        "a saved Ricoh keeps its bond across repeated standby handshake failures");
+  check(NimBLEDevice::isBonded(savedCamera->getAddress()), "the GR IV pairing survives");
+  check(!savedCamera->needsRepair(), "a standby Ricoh is never flagged for a re-pair");
+  check(control.getState() != Control::STATE_CONNECT_FAILED,
+        "the Ricoh reconnect keeps retrying instead of stopping with a re-pair prompt");
+
+  flap.setFlappy(0, 0);
+  control.disconnect();
+  waitForState(Control::STATE_IDLE, 3000);
+  return g_Failures == 0;
+}
+
 }  // namespace
 
 int main() {
@@ -201,7 +265,12 @@ int main() {
   auto &control = Control::getInstance();
   xTaskCreate(control_task, "control", 8192, &control, 4, nullptr);
 
-  const bool ok = runScenario();
+  // Run both, then report. A short-circuit here would silently skip the second
+  // scenario whenever the first failed, which is exactly when the extra signal
+  // is worth most.
+  const bool flapOk = runScenario();
+  const bool savedBondOk = runSavedBondScenario();
+  const bool ok = flapOk && savedBondOk;
   if (!ok || g_Failures != 0) {
     std::cout << "ricoh control flap: FAIL (" << g_Failures << " checks)\n";
     return EXIT_FAILURE;

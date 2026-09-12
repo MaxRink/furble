@@ -11,6 +11,7 @@
 namespace {
 
 using Furble::ProvisionTLV::ByteString;
+using Furble::ProvisionTLV::COMPANION_PASSWORD_WIRE_ID;
 using Furble::ProvisionTLV::Error;
 using Furble::ProvisionTLV::ErrorCode;
 using Furble::ProvisionTLV::FieldTag;
@@ -68,10 +69,11 @@ void testRoundTrip() {
   original.mqttPassword = text("mqtt-secret");
   original.mqttBaseTopic = text("studio/camera");
   original.settings = {
-      {1, ValueType::U8,     {0x09}                  },
-      {3, ValueType::STRING, text("Dark")            },
-      {5, ValueType::BOOL,   {0x01}                  },
-      {6, ValueType::U32,    {0x78, 0x56, 0x34, 0x12}},
+      {1,  ValueType::U8,     {0x09}                  },
+      {3,  ValueType::STRING, text("Dark")            },
+      {5,  ValueType::BOOL,   {0x01}                  },
+      {6,  ValueType::U32,    {0x78, 0x56, 0x34, 0x12}},
+      {69, ValueType::U8,     {0x04}                  },
   };
 
   Bytes encoded;
@@ -112,6 +114,15 @@ void testMalformedAndTruncated() {
                  ErrorCode::UNKNOWN_SETTING_ID, "unknown settings wire id is rejected");
   expectRejected(record(FieldTag::SETTING, ValueType::STRING, {0x01, 'x'}), ErrorCode::BAD_TYPE,
                  "setting with a mismatched type is rejected");
+  Bytes overPassword {COMPANION_PASSWORD_WIRE_ID};
+  overPassword.insert(overPassword.end(), 64, 'p');
+  expectRejected(record(FieldTag::SETTING, ValueType::STRING, overPassword), ErrorCode::OVER_LENGTH,
+                 "companion password setting over 63 bytes is rejected");
+  Bytes duplicatePassword = record(FieldTag::COMPANION_PASSWORD, ValueType::STRING, {'a'});
+  append(duplicatePassword,
+         record(FieldTag::SETTING, ValueType::STRING, {COMPANION_PASSWORD_WIRE_ID, 'b'}));
+  expectRejected(duplicatePassword, ErrorCode::DUPLICATE_FIELD,
+                 "dedicated and wire-id 46 passwords cannot be combined");
   expectRejected(record(FieldTag::WIFI_SSID, ValueType::STRING, {'a', 0}), ErrorCode::MALFORMED,
                  "string containing NUL is rejected");
 
@@ -162,6 +173,20 @@ void testEncoderValidation() {
   check(!Furble::ProvisionTLV::encode(duplicateSettings, encoded, &error),
         "encoder rejects duplicate settings");
   check(error.code == ErrorCode::DUPLICATE_FIELD, "encoder reports duplicate setting");
+
+  ProvisionBundle duplicatePassword;
+  duplicatePassword.companionPassword = text("dedicated");
+  duplicatePassword.settings.push_back(
+      {COMPANION_PASSWORD_WIRE_ID, ValueType::STRING, text("wire-id")});
+  check(!Furble::ProvisionTLV::encode(duplicatePassword, encoded, &error),
+        "encoder rejects duplicate companion password sources");
+  check(error.code == ErrorCode::DUPLICATE_FIELD,
+        "encoder reports duplicate companion password sources");
+
+  ProvisionBundle wirePassword;
+  wirePassword.settings.push_back({COMPANION_PASSWORD_WIRE_ID, ValueType::STRING, text("wire-id")});
+  check(Furble::ProvisionTLV::encode(wirePassword, encoded, &error),
+        "encoder accepts the wire-id 46 password setting");
 }
 
 void testTextDecoding() {

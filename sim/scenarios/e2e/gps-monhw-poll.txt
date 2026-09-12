@@ -1,0 +1,51 @@
+# The CASIC MON-HW interference snapshot. The console is the only surface for
+# it on hardware, so the simulator drives the same production poll and asserts
+# the decode rather than only that a frame left the port.
+#
+# The field offsets in the CASIC section 2.14.2 layout could not be confirmed
+# against a live unit, so this pins the decode furble implements today. It is a
+# regression guard for the parser, not evidence about a real receiver. The
+# hardware gate has to re-read these four fields against an AT6668.
+seed gps true
+seed gps_baud 9600
+seed gps_uart_mode ack
+wait 300
+
+assert gps.monhw none
+assert uart.monhw_polls 0
+
+gps-monhw full
+wait 2000
+assert uart.monhw_polls 1
+# noise 0x0311, agc 42, antenna ok, jamming indicator 7
+assert gps.monhw 785/42/2/7
+
+# A second poll must clear the previous snapshot before it is answered again,
+# so a stale frame can never be read as a fresh one.
+gps-monhw full
+wait 2000
+assert uart.monhw_polls 2
+assert gps.monhw 785/42/2/7
+
+# A receiver that answers with a corrupt frame leaves the previous snapshot in
+# place rather than publishing garbage, and does not wedge the poll path.
+uart-mode malformed
+gps-monhw full
+wait 2000
+assert gps.monhw none
+uart-mode ack
+gps-monhw full
+wait 2000
+assert gps.monhw 785/42/2/7
+
+# A receiver that answers with a truncated MON-HW payload. The decode has to
+# refuse it rather than read past the end of the frame, so no snapshot is
+# published and the poll path still works afterwards.
+gps-monhw short
+wait 2000
+assert uart.monhw_polls 4
+assert gps.monhw none
+gps-monhw full
+wait 2000
+assert gps.monhw 785/42/2/7
+exit
