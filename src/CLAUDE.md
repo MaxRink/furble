@@ -109,7 +109,7 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
 - `FurbleWiFi`: station lifecycle, remembered access point state and NTP.
   Never fall back to a WiFi scan while a camera is active.
 - `FurbleUI*`: LVGL UI. Respect the changed-check rule for periodic setters.
-  Menu rows keep their icons and the selected font. Their labels wrap inside
+ Menu rows keep their icons and the selected font. Their labels wrap inside
   the row and the page scrolls vertically when the rows no longer fit. Do not
   use circular scrolling for an eager-built menu row: LVGL keeps its animation
   running while the page is hidden and invalidates it every frame. Camera names
@@ -128,9 +128,12 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   at Large text `999 mins` needs the full 103 px narrowed row width. Four pixels
   of horizontal padding make that complete value wrap and push the Bulb page
   past its viewport.
-  Standalone buttons on pages with a reserved legend column must wrap their
-  labels inside the narrowed button and keep the text centered; natural-width
-  labels are clipped by the button's parent even when the label itself fits.
+ Standalone buttons on pages with a reserved legend column must wrap their
+ labels inside the narrowed button and keep the text centered; natural-width
+ labels are clipped by the button's parent even when the label itself fits.
+  Simulator page identity maps use inferred-size arrays, never a hand-counted
+  element bound. Navigation action names may be aliases, so parity checks must
+  allow the documented action-to-page mapping rather than compare table sizes.
   Scan advertisements are copied by `Scan` and drained on this task before
   `CameraList` or LVGL is touched; keep scan start unlocked around controller
   calls so the watchdog and callback handoff remain responsive.
