@@ -304,6 +304,13 @@ questions before deriving peer fixtures. Nikon SnapBridge app-feature tables
 do not establish ML-L7 accessory compatibility. Canon `mktime` behavior needs
 runtime-timezone verification, not an unconditional defect label.
 
+The same-day follow-up adds official manual/support indexes for all 26
+README-listed camera models, plus explicitly separate research/experimental
+models. Nikon's dedicated B600 manual and ML-L7 accessory page resolve B600
+accessory support, but do not certify private BLE behavior. Direct PDF gaps
+remain explicit. Firmware versions/dates are retrieval snapshots; the X-E5
+Android minimum refers to device Bluetooth 4.2, not an app version.
+
 Deviation: this source survey is delivered independently of peer code so the
 references remain available without relaxing any raw-capture or hardware gate.
 The implementation and acceptance steps below remain pending where their

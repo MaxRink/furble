@@ -16,6 +16,12 @@ FauxNY is documented in the third note as a software-only lifecycle peer. It
 cannot establish any physical camera outcome. The deprecated MOBILE_DEVICE
 enum is not another supported family.
 
+The exact-model official reference index covers all 26 README-listed models:
+[18 Fujifilm models](model-manuals-fujifilm.md) and
+[eight other models](model-manuals-other.md). The latter also lists separate
+research and experimental targets. Direct-PDF gaps are recorded explicitly;
+verified manufacturer landing pages are used instead of guessed URLs.
+
 ## How to use this research
 
 [Plan 159](../../plans/159-camera-peer-certification.md) governs implementation
