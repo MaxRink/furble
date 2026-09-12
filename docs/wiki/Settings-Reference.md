@@ -39,6 +39,10 @@ Which physical button is which:
 | M5StickC Plus2, StickS3 | Side power button | BtnA (front) | BtnB (top) |
 | M5Stack Core, Core2, Tough | BtnA (left) | BtnB (middle) | BtnC (right) |
 
+When a dialog is open, it temporarily owns the physical navigation and shutter
+inputs. Closing it returns control to the page underneath; with stacked dialogs,
+input remains with the topmost dialog.
+
 Settings menu at a glance (in on-screen order): Display, Features, Infrared,
 Sensors, GPS, Timer, Theme, Text size, Bluetooth, About, Power, Feedback,
 Diagnostics, Storage.
