@@ -114,8 +114,19 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   invalidates the row on every frame, which `ui.row_scrolling` and
   `ui.invalidate_count` measure. A wrapped row is taller and fills its width, so
   it reaches the indicators the Stick boards float over the page: any full width
-  row must keep `UI::floatingIndicatorReserve()` clear on the right, and
+  row and the timed-wake switch and threshold rows must keep
+  `UI::floatingIndicatorReserve()` clear on the right, and
   `ui.indicator_clearance` is the check.
+  The timed-wake threshold label uses the same width-constrained wrapping
+  pattern as other rows when its value wraps below the name.
+  Spinner menu rows must also set `LV_OBJ_FLAG_SCROLL_ON_FOCUS` so a revealed
+  timed-wake threshold remains visible to encoder navigation. StickC spinner
+  rows use compact 1 px vertical padding; Core rows reduce only their theme
+  top padding by one pixel so all font sizes retain the theme spacing below.
+  The Core Large-text timer overflow regression is covered by the exact timer,
+  page-matrix, and non-touch layout scenarios; screenshot coverage remains a
+  separate visual check. The dedicated Core Large timer capture is
+  `docs/img/core/timer-large.png`; it does not prove physical button layout.
   Scan advertisements are copied by `Scan` and drained on this task before
   `CameraList` or LVGL is touched; keep scan start unlocked around controller
   calls so the watchdog and callback handoff remain responsive.
@@ -147,8 +158,12 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   through that state machine, the plain warning rides the normal dim/sleep
   path, and the LVGL idle clock is never touched. `wakeDisplay` does not count
   as activity, only a real input press triggers `lv_display_trigger_activity`.
-  Modal boxes that steal focus must capture and restore the previous focus,
-  the group is flat.
+  Intervalometer timed wake must retain its resume record when
+  `Platform::powerOffUntil()` accepts the power-cycle request; clear it only
+  after an explicit setup failure or normal completion.
+  Modal boxes that steal focus must own a dedicated stacked input group, capture
+  and restore the previous focus, and return physical navigation and shutter
+  input to the page underneath when closed.
 - `FurbleBtDebug`: console-only active BLE onboarding. Keep the raw explorer
   independent of `Camera`, NVS, and `CameraList`; pairing input is console
   passthrough and passive third-party sniffing is not supported by NimBLE.

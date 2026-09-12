@@ -148,9 +148,21 @@ their matching environment variables, even when a wrapper inherits both. The
 release fuzzer wrapper is `sim/scripts/run-fuzz.sh`; it uses
 `FURBLE_FUZZ_SEEDS`, `FURBLE_FUZZ_XFAIL_SEEDS`, `FURBLE_FUZZ_STEPS`,
 `FURBLE_FUZZ_SEED_TIMEOUT`, `FURBLE_FUZZ_REPEAT_SEED`, and `FURBLE_SIM_BIN`.
+`sim/scripts/run-fuzz-restart.sh` repeats the measured 135x240 seed 2 walk up
+to five times and requires one run to resume after a production UI restart.
+
+A fuzzer event that activates a firmware restart follows the real simulator
+reboot path. The process first joins the simulator tasks, keeps the NVS file,
+then re-executes the same binary with a private unlinked checkpoint containing
+only the fuzzer RNG, phase counters, finding counts, coverage, and the last 20
+event names. Firmware RAM and UI objects are not checkpointed, and the event
+that requested the restart is not replayed. The final summary reports
+`attempted = settled + interrupted_by_restart`; `resumed_boots` records the
+number of successful resumed boots. A missing, malformed, oversized, linked,
+or wrong-owner checkpoint fails the run rather than starting a new random walk.
 
 After the guarded seeds, `run-fuzz.sh` replays `FURBLE_FUZZ_REPEAT_SEED`
-(default: the first guarded seed, empty to skip) and requires the two runs to
+(default: seed 31337, empty to skip) and requires the two runs to
 produce identical `FUZZ EVENTS`, `FUZZ COVERAGE` and `FUZZ SUMMARY` lines, with
 `observed_delta` and `no_observed_delta` masked. The same seed must drive the
 same event stream and reach the same pages.
@@ -240,9 +252,12 @@ text after a comment are ignored. Each line starts with one verb.
 | `xassert` | `xassert KEY VALUE` records `XFAIL (WILL_FAIL)` on a mismatch and continues. A match prints `XPASS` and FAILS the run, so a closed gap is promoted back to `assert` deliberately. `xassert board-varies KEY VALUE` is the exception for a gap already closed on some panels: a match there prints and continues. |
 | `exit` | Ends the simulator with status 0. |
 
-`assert`, `assert-eventually`, `assert-eventually-virtual`, `xassert`, and
-`print` use the same query namespaces:
-`ui.*`, `control.*`, `camera.*`, `gps.*`, `uart.*`, and `setting.*`.
+`FURBLE_SIM_THEME` and `FURBLE_SIM_TEXTSIZE` seed only a fresh simulated
+device boot. A production UI restart keeps the setting written by its Restart
+button instead of applying the launch environment again.
+
+`assert`, `assert-eventually`, `xassert`, and `print` use the same query namespaces:
+`ui.*`, `control.*`, `camera.*`, `gps.*`, `uart.*`, `setting.*`, and `platform.*`.
 
 The `ble_peers` seed selects the virtual radio topology. Its peers advertise to
 the production `Scan` and answer the production `Camera` connect paths, so the
@@ -678,6 +693,9 @@ reports nothing about the bottom two rather than proving them clear.
   `setting.preset_picker`, `setting.show_title`, `setting.tx_adaptive`, and
   `setting.recon_backoff`: `1` or `0`. `setting.watchdog` is in the
   M5StickS3 build.
+- `platform.watchdog`: `armed`, `expired`, or `unsupported`.
+- `platform.timed_wake`: `yes` when the simulated board can schedule a timed
+  power-on, otherwise `no`.
 
 GPS simulator queries also include `gps.sats_in_view`, `gps.sats_used`,
 `gps.sats_fix` and `gps.sats_capture`; the `gps-satellite-page` end-to-end

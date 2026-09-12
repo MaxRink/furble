@@ -1,0 +1,14 @@
+# Timed-wake boards show Deep Sleep and Sleep Threshold in addition to the four
+# existing interval fields. At Large text size the complete list must scroll on
+# the 135x240 StickS3 panel, proving the new rows are present in the layout.
+seed text_size 2
+wait 300
+assert platform.timed_wake yes
+action page settings
+action nav timer
+wait 100
+assert ui.page timer
+assert ui.overflow yes
+assert ui.focus ok
+assert ui.focus_on_page yes
+exit

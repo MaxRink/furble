@@ -29,7 +29,9 @@
 #include "Scan.h"
 #include "ble_sim.h"
 #include "capture.h"
+#include "clock.h"
 #include "driver.h"
+#include "fuzz.h"
 #include "watchdog.h"
 
 extern "C" void furble_sim_check_step_detect_suppressed(void);
@@ -57,7 +59,9 @@ int runSimulator() {
   Sim::watchdogPhase("settings");
   Settings::init();
   Sim::watchdogPhase("scenario settings");
-  Sim::applyScenarioSettings();
+  if (!Sim::fuzzResumedBoot()) {
+    Sim::applyScenarioSettings();
+  }
 #if defined(FURBLE_SIM_MQTT) && FURBLE_SIM_MQTT
   Settings::save<bool>(Settings::MQTT, true);
   if (const char *uri = std::getenv("FURBLE_SIM_MQTT_URI"); uri != nullptr && uri[0] != '\0') {
@@ -98,7 +102,9 @@ int runSimulator() {
 
   // The companion service mirrors the rig request so the rig transport can
   // attach. Scenarios drive every other setting through their seed lines.
-  Settings::save<bool>(Settings::COMPANION, Sim::rigRequested());
+  if (!Sim::fuzzResumedBoot()) {
+    Settings::save<bool>(Settings::COMPANION, Sim::rigRequested());
+  }
 
   if (Sim::scenarioSettingIsTrue("autoconnect")) {
     CameraList::addFauxNY();
@@ -117,7 +123,8 @@ int runSimulator() {
 
   // Let capture scripts pick a theme without navigating the roller. The theme
   // is applied once at UI construction, so seed it before the UI exists.
-  if (const char *theme = std::getenv("FURBLE_SIM_THEME"); theme != nullptr && theme[0] != '\0') {
+  if (const char *theme = std::getenv("FURBLE_SIM_THEME");
+      !Sim::resumedDeviceBoot() && theme != nullptr && theme[0] != '\0') {
     Settings::save<Settings::THEME>(std::string(theme));
   }
 
@@ -126,7 +133,8 @@ int runSimulator() {
   // once at UI construction from the TEXT_SIZE setting, so seed it here before
   // the UI exists. Accepts a name (small/normal/large, case insensitive) or the
   // numeric setting value (0/1/2).
-  if (const char *size = std::getenv("FURBLE_SIM_TEXTSIZE"); size != nullptr && size[0] != '\0') {
+  if (const char *size = std::getenv("FURBLE_SIM_TEXTSIZE");
+      !Sim::resumedDeviceBoot() && size != nullptr && size[0] != '\0') {
     std::string value(size);
     for (char &c : value) {
       c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
@@ -264,7 +272,18 @@ int main(int argc, char **argv) {
   furble_sim_check_step_detect_suppressed();
 
   int simulatorResult = 0;
-  std::thread simulator([&simulatorResult]() { simulatorResult = runSimulator(); });
+  std::thread simulator([&simulatorResult]() {
+    try {
+      simulatorResult = runSimulator();
+    } catch (const Furble::Sim::SchedulerStopped &) {
+      // A scheduler task failed while this unregistered UI thread was waiting
+      // for a scheduler-visible mutex. Leave lock() by exception rather than
+      // returning without ownership, then join the cooperative task unwind.
+      Furble::Sim::requestFailureExit();
+      furble_sim_stop_all_tasks();
+      simulatorResult = 1;
+    }
+  });
   // Sleep rather than spin. This wait is unbounded on purpose: a panel that
   // never comes up is a defect, not a slow host, and the stall watchdog turns
   // it into a thread dump and a non zero exit within its host bound. A yield
@@ -273,7 +292,13 @@ int main(int argc, char **argv) {
   while (!panelReady.load(std::memory_order_acquire)) {
     std::this_thread::sleep_for(std::chrono::microseconds(200));
   }
-  while (!Furble::Sim::exitRequested() && lgfx::Panel_sdl::loop() == 0) {
+  int panelLoopResult = 0;
+  while (!Furble::Sim::exitRequested() && (panelLoopResult = lgfx::Panel_sdl::loop()) == 0) {
+  }
+
+  if (std::getenv("FURBLE_SIM_FUZZ_DIAGNOSTICS") != nullptr) {
+    std::fprintf(stderr, "SIM SDL loop returned %d exit_requested=%d\n", panelLoopResult,
+                 Furble::Sim::exitRequested() ? 1 : 0);
   }
 
   if (!Furble::Sim::exitRequested()) {

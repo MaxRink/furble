@@ -37,9 +37,10 @@ Public headers for the app layer in src/, one header per module
 ### Companion wire id reservations
 
 The settings table in `src/FurbleSettings.cpp` is the source of truth for ids
-already on master, which run from 0 through 46 plus 67, 68, 72 and 73. Ids that
-master does not use are handed out here so open PRs cannot collide, because two
-branches claiming one id produce an add/add conflict in
+already on master, which currently cover 1 through 41, 43 through 47, 66
+through 69, and 72 through 76. Ids that master does not use are handed out here
+so open PRs cannot collide, because two branches claiming one id produce an
+add/add conflict in
 `tests/protocol/golden/settings/*-<id>.bin` and a silent protocol break for the
 companion app. A PR claims its reserved ids at rebase time, regenerates its
 golden corpus, and updates its row. See issue #280.
@@ -58,9 +59,12 @@ renumbering fails the build rather than passing quietly.
 | #139 | plan 32 phase 2 | 69, 70, 71 |
 | #45 | `imu_wake`, `imu_trigger` | 72, 73 |
 | #48 | `hw_motion` | 74 |
+| #19 | `ivl_sleep`, `ivl_sleep_thr` | 75, 76 |
 
-Ids 48 through 64 are claimed by other open PRs. Take the next free id below
-the reservations only after checking every open PR head.
+Ids 48 through 64 are claimed by other open PRs. The intervalometer deep-sleep
+settings use 75 and 76, after the current table and the open WiFi/MQTT/schema
+reservations through 74. Take the next free id only after checking every open
+PR head.
 - `FurbleSettings.h` widened `MULTISELECT_NAME_MAX` from 16 to 32, which changed
   the stored record size. `Settings::load<multiselect_t>()` and the SD settings
   importer both read the old layout through `multiselect_legacy_t` and widen it.

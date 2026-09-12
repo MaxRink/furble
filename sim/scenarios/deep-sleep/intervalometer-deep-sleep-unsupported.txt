@@ -1,0 +1,17 @@
+# Unsupported board builds keep the opt-in setting harmless. This is run on
+# the 80x160 StickC and 320x240 Core simulator builds.
+seed fauxny true
+seed autoconnect true
+seed ivl_sleep true
+seed ivl_sleep_thr 1
+seed interval_count 2
+seed interval_delay 2
+seed interval_shutter 30
+seed interval_wait 0
+wait 5000
+assert platform.timed_wake no
+action intervalometer
+wait 10000
+assert camera.shutter_presses 2
+assert ui.interval_state finished
+exit

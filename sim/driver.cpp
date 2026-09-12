@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -26,15 +27,16 @@
 #include <driver/uart.h>
 
 #include <FauxNY.h>
+#include <Preferences.h>
 #include "CameraList.h"
 #include "FurbleControl.h"
 #include "FurbleGPS.h"
+#include "FurblePlatform.h"
 #include "FurbleSD.h"
 #include "FurbleSettings.h"
 
 #include "FurbleTypes.h"
 #include "FurbleUI.h"
-#include "Preferences.h"
 #include "Scan.h"
 #include "ble_sim.h"
 #include "capture.h"
@@ -120,9 +122,12 @@ bool simulatedPowerOff = false;
 // while the NVS-backed preferences file persists exactly as flash does. The
 // resumed process skips the steps already executed via FURBLE_SIM_RESTART_STEP
 // and skips the fresh-scenario preferences wipe, so scripted state written
-// before the restart is what the rebooted app boots from. The step itself only
-// requests the orderly shutdown that plan 158 built for `exit`; main() runs the
-// re-exec after every task has joined and the panel has closed.
+// before the restart is what the rebooted app boots from. A production UI
+// restart records the active script continuation in the same way as the DSL
+// step; interactive runs have no script continuation and simply re-exec.
+// The request only asks for the orderly shutdown that plan 158 built for
+// `exit`; main() runs the re-exec after every task has joined and the panel has
+// closed.
 //
 // restartPending is its own shutdown request rather than a requestExit(0) call:
 // requestExit() is first-wins, so pinning zero here would swallow every failure
@@ -135,6 +140,7 @@ std::atomic<bool> restartPending {false};
 // Written by driverTick and read only after main() joins the simulator thread.
 size_t restartStepIndex = 0;
 const char *RESTART_STEP_ENV = "FURBLE_SIM_RESTART_STEP";
+const char *RESTART_BOOT_ENV = "FURBLE_SIM_RESTARTED";
 
 // Continuous UI liveness invariant (plan 155). Every driver tick, if the UI
 // presents the Connected screen (the same three-way check the ui.connected
@@ -150,6 +156,21 @@ bool livenessArmed = false;
 bool livenessLatched = false;
 uint32_t livenessDeadline = 0;
 uint32_t livenessViolations = 0;
+
+struct SimResumeState {
+  uint32_t magic;
+  uint16_t version;
+  uint16_t length;
+  uint32_t count;
+  uint32_t target;
+  uint8_t camera_id;
+  uint8_t reserved[3];
+  int64_t wake_time;
+  interval_t interval;
+} __attribute__((packed));
+
+constexpr uint32_t kResumeMagic = 0x49564c31;
+constexpr uint16_t kResumeVersion = 2;
 
 SDL_Keycode keyCode(const std::string &name) {
   if (name == "up") {
@@ -332,6 +353,10 @@ void validateSeed(const std::string &name, const std::string &value) {
       "gps_stationary",
       "sd_gpx",
       "imu_trigger",
+      "ivl_sleep",
+      "timed_wake",
+      "timed_poweroff_fail",
+      "timed_wake_write_fail",
   };
   if (std::find(std::begin(booleanSeeds), std::end(booleanSeeds), name) != std::end(booleanSeeds)) {
     if (!booleanSeedValue(value)) {
@@ -369,6 +394,20 @@ void validateSeed(const std::string &name, const std::string &value) {
   if (name == "battery_level") {
     if (parseUnsigned(value) > 100) {
       std::cerr << "Invalid battery_level: " << value << '\n';
+      std::exit(2);
+    }
+    return;
+  } else if (name == "ivl_sleep_thr") {
+    if (parseUnsigned(value) > 999) {
+      std::cerr << "Invalid ivl_sleep_thr: " << value << '\n';
+      std::exit(2);
+    }
+    return;
+  } else if (name == "resume_fixture") {
+    if (value != "invalid" && value != "stale" && value != "completed" && value != "outofrange"
+        && value != "mismatched" && value != "early" && value != "late" && value != "wrong_camera"
+        && value != "second_camera") {
+      std::cerr << "Invalid resume_fixture: " << value << '\n';
       std::exit(2);
     }
     return;
@@ -954,6 +993,7 @@ std::string settingBoolValue(const std::string &name) {
       {"reconnect",         Settings::RECONNECT        },
       {"multiconnect",      Settings::MULTICONNECT     },
       {"companion",         Settings::COMPANION        },
+      {"ivl_sleep",         Settings::IVL_SLEEP        },
 #if defined(FURBLE_M5STICKS3)
       {"watchdog",          Settings::WATCHDOG         },
 #endif
@@ -1200,6 +1240,23 @@ std::string queryValue(const std::string &key) {
     }
     if (sub == "connecting_camera") {
       return debug.connectingCamera;
+    }
+    if (sub == "target_camera") {
+      const auto targets = control.getTargets();
+      if (targets.empty() || targets.front() == nullptr
+          || targets.front()->getCamera() == nullptr) {
+        return "";
+      }
+      std::string name = targets.front()->getCamera()->getName();
+      // Assertions are whitespace-separated. Keep the existing target-camera
+      // observable assertable for vendor names such as "FUJIFILM X-S20", as
+      // row_text already does for rendered camera rows.
+      for (char &character : name) {
+        if (std::isspace(static_cast<unsigned char>(character))) {
+          character = '_';
+        }
+      }
+      return name;
     }
   }
   // Track points the firmware queued for the SD writer. Fix hold deliberately
@@ -1448,6 +1505,17 @@ std::string queryValue(const std::string &key) {
     return std::to_string(clockMillis());
   }
 
+  if (key == "platform.timed_wake") {
+    return Platform::getInstance().canTimedWake() ? "yes" : "no";
+  }
+
+  if (key == "platform.wake_marker") {
+    Preferences prefs;
+    prefs.begin(FURBLE_STR, true);
+    const bool marker = prefs.get<bool>("sim_timed_wake", false);
+    prefs.end();
+    return marker ? "yes" : "no";
+  }
   std::cerr << "Unknown assert key: " << key << '\n';
   requestExit(2);
   return "";
@@ -1459,8 +1527,31 @@ uint32_t livenessViolationCount(void) {
   return livenessViolations;
 }
 
+bool scenarioSettingIs(const char *name, const char *value) {
+  if (name == nullptr || value == nullptr) {
+    return false;
+  }
+  const auto found = scenarioSettings.find(name);
+  return found != scenarioSettings.end() && found->second == value;
+}
+
 void preparePreferences(void) {
   if (scenarioName == "interactive") {
+    return;
+  }
+  // The deep-sleep runner deliberately supplies one flash image to two fresh
+  // processes. Keep this opt-in seam separate from ordinary scripted runs,
+  // which remain isolated per scenario and pid.
+  const char *fixedPath = std::getenv("FURBLE_SIM_DEEP_SLEEP_PREFS");
+  if (fixedPath != nullptr && fixedPath[0] != '\0') {
+    if (setenv("FURBLE_SIM_PREFS", fixedPath, 1) != 0) {
+      std::cerr << "simulator failed to set FURBLE_SIM_PREFS: " << std::strerror(errno) << '\n';
+      std::exit(1);
+    }
+    const char *preserve = std::getenv("FURBLE_SIM_PRESERVE_PREFS");
+    if (preserve == nullptr || preserve[0] == '\0' || preserve[0] == '0') {
+      std::remove(fixedPath);
+    }
     return;
   }
   // A resumed boot after a `restart` step keeps the store it was handed: that
@@ -1487,7 +1578,10 @@ void preparePreferences(void) {
     std::cerr << "simulator failed to set FURBLE_SIM_PREFS: " << std::strerror(errno) << '\n';
     std::exit(1);
   }
-  std::remove(path.c_str());
+  const char *preserve = std::getenv("FURBLE_SIM_PRESERVE_PREFS");
+  if (preserve == nullptr || preserve[0] == '\0' || preserve[0] == '0') {
+    std::remove(path.c_str());
+  }
 }
 
 void removePreferences(void) {
@@ -1535,6 +1629,7 @@ void applyScenarioSettings(void) {
   saveBoolean("reconnect", Settings::RECONNECT);
   saveBoolean("recon_backoff", Settings::RECON_BACKOFF);
   saveBoolean("sleep_conn", Settings::SLEEP_CONN);
+  saveBoolean("ivl_sleep", Settings::IVL_SLEEP);
   saveBoolean("boot_splash", Settings::BOOT_SPLASH);
 #if defined(FURBLE_M5STICKS3)
   saveBoolean("watchdog", Settings::WATCHDOG);
@@ -1578,6 +1673,10 @@ void applyScenarioSettings(void) {
   const auto uartMode = scenarioSettings.find("gps_uart_mode");
   if (uartMode != scenarioSettings.end()) {
     furble_sim_uart_set_mode(uartMode->second.c_str());
+  }
+  const auto threshold = scenarioSettings.find("ivl_sleep_thr");
+  if (threshold != scenarioSettings.end()) {
+    Settings::save<uint32_t>(Settings::IVL_SLEEP_THR, parseUnsigned(threshold->second));
   }
   furble_sim_uart_set_stationary(scenarioSettingIsTrue("gps_stationary"));
 
@@ -1657,6 +1756,56 @@ void applyScenarioSettings(void) {
     Settings::save<Settings::BULB>(SpinValue::nvs_t {
         static_cast<uint16_t>(parseUnsigned(bulb_duration->second)), SpinValue::UNIT_SEC});
   }
+
+  // These fixtures deliberately use the production NVS key and packed record
+  // layout. They let the real Intervalometer::loadResume validation run on a
+  // fresh UI construction, including invalid metadata and stale wake times.
+  const auto fixture = scenarioSettings.find("resume_fixture");
+  if (fixture != scenarioSettings.end()) {
+    SimResumeState state = {};
+    state.magic = kResumeMagic;
+    state.version = kResumeVersion;
+    state.length = sizeof(state);
+    state.count = 1;
+    state.target = 2;
+    state.camera_id = 1;
+    state.interval = interval;
+    state.wake_time = std::time(nullptr);
+    if (fixture->second == "stale") {
+      state.wake_time -= 7200;
+    } else if (fixture->second == "invalid") {
+      state.magic ^= 1;
+    } else if (fixture->second == "completed") {
+      state.count = state.target;
+    } else if (fixture->second == "outofrange") {
+      state.count = state.target + 1;
+    } else if (fixture->second == "mismatched") {
+      state.target = state.interval.count.value + 1;
+    } else if (fixture->second == "early") {
+      // Leave enough wall-clock headroom for the virtual connection gate. The
+      // resume timer itself runs on virtual time, so a short wall deadline
+      // would make this regression depend on host scheduling latency.
+      state.wake_time += 30;
+    } else if (fixture->second == "late") {
+      state.wake_time -= 5;
+    } else if (fixture->second == "wrong_camera") {
+      state.camera_id = 254;
+    } else if (fixture->second == "second_camera") {
+      state.camera_id = 2;
+    }
+
+    Preferences prefs;
+    prefs.begin(FURBLE_STR, false);
+    prefs.put("ivl_resume", &state, sizeof(state));
+    prefs.end();
+  }
+
+  if (scenarioSettingIsTrue("timed_wake")) {
+    Preferences prefs;
+    prefs.begin(FURBLE_STR, false);
+    prefs.put<bool>("sim_timed_wake", true);
+    prefs.end();
+  }
 }
 
 bool scenarioSettingIsTrue(const char *name) {
@@ -1699,6 +1848,14 @@ void configure(int argc, char **argv) {
 
   // Keep the exact invocation so a `restart` step can re-execute it.
   savedArguments.assign(argv, argv + argc);
+
+  if (const char *restarted = std::getenv(RESTART_BOOT_ENV); restarted != nullptr) {
+    if (std::strcmp(restarted, "1") != 0 || unsetenv(RESTART_BOOT_ENV) != 0) {
+      std::cerr << "Invalid " << RESTART_BOOT_ENV << '\n';
+      std::exit(2);
+    }
+    resumedBoot = true;
+  }
 
   std::string script;
   bool rig = false;
@@ -1853,6 +2010,7 @@ void configure(int argc, char **argv) {
   if (fuzz) {
     scenarioName = "fuzz";
     fuzzConfigure(fuzzSeed, fuzzSteps, fuzzVerbose);
+    resumedBoot = resumedBoot || fuzzResumedBoot();
     return;
   }
 
@@ -1889,6 +2047,10 @@ void configure(int argc, char **argv) {
   }
 }
 
+bool resumedDeviceBoot(void) {
+  return resumedBoot;
+}
+
 void setBackTarget(Furble::UI *ui) {
   backTarget = ui;
 }
@@ -1923,6 +2085,11 @@ void driverTick(void) {
     return;
   }
   Step &step = steps[stepIndex];
+  // UI restart callbacks run while a scripted step is being dispatched. Record
+  // the continuation before the callback can request the reboot. This covers
+  // synchronous `btn` injection and a keyboard press whose release advances
+  // stepIndex on a later driver tick.
+  restartStepIndex = stepIndex + 1;
   // Name this line in the crash report if the step faults (issue 283). The
   // steps vector is fixed after parsing, so the pointer stays valid.
   watchdogScenarioStep(step.source.c_str());
@@ -2121,7 +2288,7 @@ void driverTick(void) {
       // Advance past this step so a tick racing the shutdown cannot run it
       // twice. The resumed process takes its index from the environment.
       ++stepIndex;
-      restartPending.store(true);
+      requestRestart();
       return;
     }
 
@@ -2324,6 +2491,17 @@ void requestExit(int result) {
   requestedExit.compare_exchange_strong(unset, result);
 }
 
+void requestRestart(void) {
+  // The active scripted step normally seeded restartStepIndex before invoking
+  // its UI handler. Keep this fallback for a boot-time callback, but never
+  // invent a script continuation for interactive or fuzz runs.
+  if (!fuzzActive() && scenarioName != "interactive" && restartStepIndex == 0
+      && stepIndex < steps.size()) {
+    restartStepIndex = stepIndex + 1;
+  }
+  restartPending.store(true);
+}
+
 void requestFailureExit(void) {
   int result = requestedExit.load();
   while (result == -1 || result == 0) {
@@ -2350,17 +2528,28 @@ void restartProcess(void) {
   std::cout.flush();
   std::cerr.flush();
   const size_t next = restartStepIndex;
-  if (next == 0) {
-    std::cerr << "restart requested without a continuation step\n";
+  const bool scripted = !fuzzActive() && scenarioName != "interactive";
+  if (scripted && (next == 0 || next >= steps.size())) {
+    std::cerr << "restart requested without a valid continuation step\n";
+    std::_Exit(1);
+  }
+  if (fuzzActive() && !fuzzSaveRestart()) {
+    std::cerr << "restart failed: could not save fuzz checkpoint\n";
     std::_Exit(1);
   }
   // This runs on the main thread after the simulator thread has joined and the
   // SDL panel has closed. Keep the process-wide environment mutation out of
   // the driver thread, where SDL can read it concurrently during its loop.
-  const std::string nextValue = std::to_string(next);
-  if (setenv(RESTART_STEP_ENV, nextValue.c_str(), 1) != 0) {
+  if (setenv(RESTART_BOOT_ENV, "1", 1) != 0) {
     std::cerr << "restart failed: setenv: " << std::strerror(errno) << '\n';
     std::_Exit(1);
+  }
+  if (scripted) {
+    const std::string nextValue = std::to_string(next);
+    if (setenv(RESTART_STEP_ENV, nextValue.c_str(), 1) != 0) {
+      std::cerr << "restart failed: setenv: " << std::strerror(errno) << '\n';
+      std::_Exit(1);
+    }
   }
   std::vector<char *> arguments;
   arguments.reserve(savedArguments.size() + 1);

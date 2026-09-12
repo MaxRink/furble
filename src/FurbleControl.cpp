@@ -202,6 +202,7 @@ Control &Control::getInstance(void) {
 
 Control::state_t Control::connectAll(void) {
   uint32_t timeout = m_InfiniteReconnect ? TIMEOUT_INFINITE_MS : TIMEOUT_DEFAULT_MS;
+  const uint32_t boundedRetryGapMs = m_BoundedRetryGapMs.load(std::memory_order_acquire);
   std::vector<std::shared_ptr<Camera>> cameras;
   std::vector<std::shared_ptr<Camera>> all;
 
@@ -329,8 +330,9 @@ Control::state_t Control::connectAll(void) {
   }
 
   if (m_InfiniteReconnect || (m_ConnectFailCount < 2)) {
+    uint32_t delay;
     if (m_InfiniteReconnect) {
-      const uint32_t delay = ReconnectBackoff::delayMs(m_ReconnectAttempt, m_ReconnectBackoff);
+      delay = ReconnectBackoff::delayMs(m_ReconnectAttempt, m_ReconnectBackoff);
 
       if (m_ReconnectAttempt == 0 && !m_ReconnectHintLogged) {
         ESP_LOGW(LOG_TAG,
@@ -342,15 +344,23 @@ Control::state_t Control::connectAll(void) {
 
       ESP_LOGI(LOG_TAG, "Reconnect retry %lu, waiting %lu ms.", m_ReconnectAttempt + 1, delay);
       m_ReconnectAttempt++;
-
-      // Sleep in short slices so disconnect can interrupt the retry wait.
-      uint32_t remaining = delay;
-      while (remaining > 0 && !m_ConnectAbort && m_State != STATE_DISCONNECTING) {
-        const uint32_t slice = remaining < BACKOFF_SLICE_MS ? remaining : BACKOFF_SLICE_MS;
-        vTaskDelay(pdMS_TO_TICKS(slice));
-        remaining -= slice;
-      }
+    } else {
+      // Bounded connect retry. Resume supplies a settle gap; ordinary bounded
+      // connects supply zero and retain their immediate retry behavior. The
+      // failure budget remains two total attempts: one initial attempt and one
+      // retry while m_ConnectFailCount is below two.
+      delay = boundedRetryGapMs;
+      ESP_LOGI(LOG_TAG, "Connect retry %lu of 1, waiting %lu ms.", m_ConnectFailCount, delay);
     }
+
+    // Sleep in short slices so disconnect can interrupt the retry wait.
+    uint32_t remaining = delay;
+    while (remaining > 0 && !m_ConnectAbort && m_State != STATE_DISCONNECTING) {
+      const uint32_t slice = remaining < BACKOFF_SLICE_MS ? remaining : BACKOFF_SLICE_MS;
+      vTaskDelay(pdMS_TO_TICKS(slice));
+      remaining -= slice;
+    }
+
     // Same rule as the abort path above: an aborted pass reports the abort, not
     // whatever m_State read at the moment the retry wait was interrupted.
     return (m_ConnectAbort || m_State == STATE_DISCONNECTING) ? STATE_DISCONNECTING : STATE_CONNECT;
@@ -576,7 +586,7 @@ std::string Control::getCameraID(const Camera &camera) {
   return std::string(id);
 }
 
-void Control::connectAll(bool infiniteReconnect) {
+void Control::connectAll(bool infiniteReconnect, uint32_t boundedRetryGapMs) {
   {
     // A new user connect cycle re-arms every target camera, but not here.
     //
@@ -610,6 +620,8 @@ void Control::connectAll(bool infiniteReconnect) {
   m_InfiniteReconnect = infiniteReconnect;
   m_ReconnectBackoff = Settings::reconBackoffEffective();
   m_ReconnectAttempt = 0;
+  m_ConnectFailCount = 0;
+  m_BoundedRetryGapMs.store(boundedRetryGapMs, std::memory_order_release);
   m_ReconnectHintLogged = false;
   m_ConnectAbort = false;
 
@@ -1411,6 +1423,7 @@ void Control::resetForTest(void) {
   m_ReconnectAttempt = 0;
   m_ReconnectHintLogged = false;
   m_ConnectFailCount = 0;
+  m_BoundedRetryGapMs.store(0, std::memory_order_release);
   m_ConnectAbort = false;
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);

@@ -16,6 +16,5 @@ class UiRestartPathTest(unittest.TestCase):
         self.assertIn("Platform::getInstance().restart()", sensors)
         self.assertNotIn("esp_restart()", sensors)
 
-
 if __name__ == "__main__":
     unittest.main()

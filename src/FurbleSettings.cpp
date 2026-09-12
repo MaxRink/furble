@@ -99,6 +99,8 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {WIFI_PSK,           {WIFI_PSK, 53, "WiFi Passphrase", "wifi_psk", FURBLE_STR}            },
     {NTP,                {NTP, 54, "NTP", "ntp", FURBLE_STR}                                  },
     {NTP_SERVER,         {NTP_SERVER, 55, "NTP Server", "ntp_server", FURBLE_STR}             },
+    {IVL_SLEEP,          {IVL_SLEEP, 75, "Deep Sleep", "ivl_sleep", FURBLE_STR}               },
+    {IVL_SLEEP_THR,      {IVL_SLEEP_THR, 76, "Sleep Threshold", "ivl_sleep_thr", FURBLE_STR}  },
 };
 
 const Settings::setting_t &Settings::get(type_t type) {
@@ -165,6 +167,10 @@ bool Settings::appliesImmediately(type_t type) {
     case WIFI:
     case NTP:
     case NTP_SERVER:
+    // The intervalometer reads these policies on each delay boundary, so a
+    // setting write affects the next shot without requiring a reboot.
+    case IVL_SLEEP:
+    case IVL_SLEEP_THR:
 #if defined(FURBLE_MQTT) && FURBLE_MQTT
     case MQTT:
     case MQTT_URI:
@@ -273,6 +279,8 @@ bool Settings::isDangerous(type_t type) {
     case IMU_TRIG:
     case HW_MOTION:
     case GPS_MOTION:
+    case IVL_SLEEP:
+    case IVL_SLEEP_THR:
     case BOOT_SPLASH:
 #if defined(FURBLE_MQTT) && FURBLE_MQTT
     case MQTT:
@@ -640,6 +648,9 @@ void Settings::init(void) {
           multiselect_t selection = {};
           save<multiselect_t>(setting.type, selection);
         } break;
+        case IVL_SLEEP_THR:
+          save<uint32_t>(setting.type, IVL_SLEEP_THR_DEFAULT);
+          break;
         case GPS:
         case IMU:
         case IMU_TRIG:
@@ -660,6 +671,7 @@ void Settings::init(void) {
         case SD_GPX:
         // Default off keeps today's behaviour, the profile is strictly opt-in.
         case BATTERY_SAVER:
+        case IVL_SLEEP:
           save<bool>(setting.type, false);
           break;
         case HW_MOTION:

@@ -376,6 +376,10 @@ previously paired device and leading to the remote menu.
 
 From the remote menu you may choose to disconnect, control the shutter or activate the intervalometer.
 
+When a dialog is open, it temporarily owns the physical navigation and shutter
+inputs; closing it returns control to the page underneath. Stacked dialogs keep
+input with the topmost dialog.
+
 More details are on the wiki: [Usage Guide](https://github.com/gkoh/furble/wiki/Usage-Guide)
 
 ### GPS Location Tagging

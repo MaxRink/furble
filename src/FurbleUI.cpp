@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <limits>
 #include <memory>
 #include <numeric>
@@ -173,6 +174,18 @@ void addToInputGroup(lv_group_t *group, lv_obj_t *obj) {
   }
 }
 
+bool inputObjectVisible(lv_obj_t *obj) {
+  if (obj == nullptr || !lv_obj_is_valid(obj)) {
+    return false;
+  }
+  for (lv_obj_t *parent = obj; parent != nullptr; parent = lv_obj_get_parent(parent)) {
+    if (lv_obj_has_flag(parent, LV_OBJ_FLAG_HIDDEN)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 void setLabelIfChanged(lv_obj_t *label, const char *text) {
   if ((label != nullptr) && std::strcmp(lv_label_get_text(label), text)) {
     lv_label_set_text(label, text);
@@ -288,61 +301,62 @@ UI::menu_t UI::m_MainMenu;
 lv_obj_t *UI::m_LevelMainButton = nullptr;
 
 std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
-    {m_ConnectStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_ScanStr,              {nullptr, nullptr, nullptr, nullptr, {1, 0}}},
-    {m_DeleteStr,            {nullptr, nullptr, nullptr, nullptr, {2, 0}}},
-    {m_IRStr,                {nullptr, nullptr, nullptr, nullptr, {0, 1}}},
-    {m_SettingsStr,          {nullptr, nullptr, nullptr, nullptr, {3, 0}}},
-    {m_PowerOffStr,          {nullptr, nullptr, nullptr, nullptr, {3, 1}}},
-    {m_ConnectedStr,         {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_FeaturesStr,          {nullptr, nullptr, nullptr, nullptr, {1, 0}}},
-    {m_SensorsStr,           {nullptr, nullptr, nullptr, nullptr, {3, 0}}},
-    {m_GesturesStr,          {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_GPSStr,               {nullptr, nullptr, nullptr, nullptr, {2, 0}}},
-    {m_GPSDataStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_GPSBaudStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_GPSRateStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_GPSSentencesStr,      {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_GPSConstellationStr,  {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_GPSPowerStr,          {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_GPSAssistStr,         {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_GPSHoldStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_GPSPlatformStr,       {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_GPSNMEAStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_GPSSatStr,            {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_IntervalometerStr,    {nullptr, nullptr, nullptr, nullptr, {3, 0}}},
-    {m_IntervalCountStr,     {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_IntervalDelayStr,     {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_IntervalShutterStr,   {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_IntervalWaitStr,      {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_DisplayStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_IRSettingsStr,        {nullptr, nullptr, nullptr, nullptr, {1, 2}}},
-    {m_TextSizeStr,          {nullptr, nullptr, nullptr, nullptr, {2, 2}}},
-    {m_ThemeStr,             {nullptr, nullptr, nullptr, nullptr, {0, 1}}},
-    {m_BluetoothStr,         {nullptr, nullptr, nullptr, nullptr, {1, 1}}},
-    {m_AboutStr,             {nullptr, nullptr, nullptr, nullptr, {2, 1}}},
-    {m_PowerStr,             {nullptr, nullptr, nullptr, nullptr, {3, 1}}},
-    {m_FeedbackStr,          {nullptr, nullptr, nullptr, nullptr, {1, 2}}},
-    {m_DiagnosticsStr,       {nullptr, nullptr, nullptr, nullptr, {0, 2}}},
-    {m_StorageStr,           {nullptr, nullptr, nullptr, nullptr, {3, 2}}},
-    {m_BatteryStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_FeedbackEventsStr,    {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_FeedbackVolumeStr,    {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_DeviceInfoStr,        {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_PowerStateStr,        {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_BLEStr,               {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_IMUDataStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_TransmitPowerStr,     {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_RemoteShutter,        {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_CamerasStr,           {nullptr, nullptr, nullptr, nullptr, {1, 1}}},
-    {m_RemoteBulb,           {nullptr, nullptr, nullptr, nullptr, {1, 0}}},
-    {m_RemoteInterval,       {nullptr, nullptr, nullptr, nullptr, {2, 0}}},
-    {m_LevelStr,             {nullptr, nullptr, nullptr, nullptr, {1, 1}}},
-    {m_RemoteGPSData,        {nullptr, nullptr, nullptr, nullptr, {0, 1}}},
-    {m_RemoteDisconnect,     {nullptr, nullptr, nullptr, nullptr, {2, 1}}},
-    {m_IntervalometerRunStr, {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_BulbRunStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_BulbDurationStr,      {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_ConnectStr,                {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_ScanStr,                   {nullptr, nullptr, nullptr, nullptr, {1, 0}}},
+    {m_DeleteStr,                 {nullptr, nullptr, nullptr, nullptr, {2, 0}}},
+    {m_IRStr,                     {nullptr, nullptr, nullptr, nullptr, {0, 1}}},
+    {m_SettingsStr,               {nullptr, nullptr, nullptr, nullptr, {3, 0}}},
+    {m_PowerOffStr,               {nullptr, nullptr, nullptr, nullptr, {3, 1}}},
+    {m_ConnectedStr,              {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_FeaturesStr,               {nullptr, nullptr, nullptr, nullptr, {1, 0}}},
+    {m_SensorsStr,                {nullptr, nullptr, nullptr, nullptr, {3, 0}}},
+    {m_GesturesStr,               {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_GPSStr,                    {nullptr, nullptr, nullptr, nullptr, {2, 0}}},
+    {m_GPSDataStr,                {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_GPSBaudStr,                {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_GPSRateStr,                {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_GPSSentencesStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_GPSConstellationStr,       {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_GPSPowerStr,               {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_GPSAssistStr,              {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_GPSHoldStr,                {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_GPSPlatformStr,            {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_GPSNMEAStr,                {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_GPSSatStr,                 {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_IntervalometerStr,         {nullptr, nullptr, nullptr, nullptr, {3, 0}}},
+    {m_IntervalCountStr,          {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_IntervalDelayStr,          {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_IntervalShutterStr,        {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_IntervalWaitStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_DisplayStr,                {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_IRSettingsStr,             {nullptr, nullptr, nullptr, nullptr, {1, 2}}},
+    {m_TextSizeStr,               {nullptr, nullptr, nullptr, nullptr, {2, 2}}},
+    {m_ThemeStr,                  {nullptr, nullptr, nullptr, nullptr, {0, 1}}},
+    {m_BluetoothStr,              {nullptr, nullptr, nullptr, nullptr, {1, 1}}},
+    {m_AboutStr,                  {nullptr, nullptr, nullptr, nullptr, {2, 1}}},
+    {m_PowerStr,                  {nullptr, nullptr, nullptr, nullptr, {3, 1}}},
+    {m_FeedbackStr,               {nullptr, nullptr, nullptr, nullptr, {1, 2}}},
+    {m_DiagnosticsStr,            {nullptr, nullptr, nullptr, nullptr, {0, 2}}},
+    {m_StorageStr,                {nullptr, nullptr, nullptr, nullptr, {3, 2}}},
+    {m_BatteryStr,                {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_FeedbackEventsStr,         {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_FeedbackVolumeStr,         {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_DeviceInfoStr,             {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_PowerStateStr,             {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_BLEStr,                    {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_IMUDataStr,                {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_TransmitPowerStr,          {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_RemoteShutter,             {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_CamerasStr,                {nullptr, nullptr, nullptr, nullptr, {1, 1}}},
+    {m_RemoteBulb,                {nullptr, nullptr, nullptr, nullptr, {1, 0}}},
+    {m_RemoteInterval,            {nullptr, nullptr, nullptr, nullptr, {2, 0}}},
+    {m_LevelStr,                  {nullptr, nullptr, nullptr, nullptr, {1, 1}}},
+    {m_RemoteGPSData,             {nullptr, nullptr, nullptr, nullptr, {0, 1}}},
+    {m_RemoteDisconnect,          {nullptr, nullptr, nullptr, nullptr, {2, 1}}},
+    {m_IntervalometerRunStr,      {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_BulbRunStr,                {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_BulbDurationStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_IntervalSleepThresholdStr, {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
 };
 
 UI::UI(const interval_t &interval)
@@ -776,35 +790,94 @@ void UI::startCompanionPairingTimer(void) {
   }
 }
 
+lv_group_t *UI::activeInputGroup(void) const {
+  return m_ModalInputs.empty() ? m_Group : m_ModalInputs.back().group;
+}
+
+void UI::acquireModalInput(lv_obj_t *dialog,
+                           std::initializer_list<lv_obj_t *> controls,
+                           lv_obj_t *focus) {
+  lv_group_t *current = activeInputGroup();
+  modal_input_t input = {dialog, lv_group_create(), lv_group_get_focused(current)};
+  for (lv_obj_t *control : controls) {
+    addToInputGroup(input.group, control);
+  }
+  m_ModalInputs.push_back(input);
+
+  // Modal footer controls are encoder-driven even when the page below was in
+  // shutter, slider or preset mode. Keep the remembered page mode unchanged;
+  // releaseModalInput restores it after the final dialog closes.
+  configureControl(ControlMode::MENU, false);
+  lv_indev_set_group(m_ButtonL, input.group);
+  lv_indev_set_group(m_ButtonO, input.group);
+  lv_indev_set_group(m_ButtonR, input.group);
+  if (focus != nullptr) {
+    lv_group_focus_obj(focus);
+  }
+}
+
+void UI::releaseModalInput(lv_obj_t *dialog) {
+  auto found =
+      std::find_if(m_ModalInputs.begin(), m_ModalInputs.end(),
+                   [dialog](const modal_input_t &input) { return input.dialog == dialog; });
+  if (found == m_ModalInputs.end()) {
+    return;
+  }
+
+  const bool wasActive = found == m_ModalInputs.end() - 1;
+  lv_obj_t *previousFocus = found->previousFocus;
+  lv_group_delete(found->group);
+  m_ModalInputs.erase(found);
+  if (!wasActive) {
+    return;
+  }
+
+  lv_group_t *group = activeInputGroup();
+  lv_indev_set_group(m_ButtonL, group);
+  lv_indev_set_group(m_ButtonO, group);
+  lv_indev_set_group(m_ButtonR, group);
+
+  const bool connectVisible = group == m_Group && m_ConnectContext.cancel != nullptr
+                              && lv_obj_is_valid(m_ConnectContext.cancel)
+                              && m_ConnectContext.messageBox != nullptr
+                              && lv_obj_is_valid(m_ConnectContext.messageBox)
+                              && !lv_obj_has_flag(m_ConnectContext.messageBox, LV_OBJ_FLAG_HIDDEN);
+  configureControl(connectVisible ? ControlMode::MENU : ControlMode::REVERT, false);
+
+  if (connectVisible) {
+    lv_group_focus_obj(m_ConnectContext.cancel);
+  } else if (inputObjectVisible(previousFocus) && lv_obj_get_group(previousFocus) == group) {
+    lv_group_focus_obj(previousFocus);
+  } else if (inputObjectVisible(lv_group_get_focused(group))) {
+    // The underlying modal may already have selected another footer control.
+  } else if (group == m_Group) {
+    lv_obj_t *back = lv_menu_get_main_header_back_button(m_MainMenu.main);
+    const auto scan = m_Menu.find(m_ScanStr);
+    lv_obj_t *fallback =
+        inputObjectVisible(back) ? back : (scan != m_Menu.end() ? scan->second.button : nullptr);
+    if (inputObjectVisible(fallback)) {
+      lv_group_focus_obj(fallback);
+    }
+  }
+}
+
 void UI::closeCompanionPairingDialog(void) {
   if (m_CompanionPairingDialog != nullptr) {
+    releaseModalInput(m_CompanionPairingDialog);
     if (lv_obj_is_valid(m_CompanionPairingDialog)) {
       lv_msgbox_close_async(m_CompanionPairingDialog);
     }
     m_CompanionPairingDialog = nullptr;
   }
-
-  if (m_CompanionPairingPrevFocus != nullptr) {
-    if (lv_obj_is_valid(m_CompanionPairingPrevFocus)) {
-      lv_group_focus_obj(m_CompanionPairingPrevFocus);
-    }
-    m_CompanionPairingPrevFocus = nullptr;
-  }
 }
 
 void UI::closeConnectErrorDialog(void) {
   if (m_ConnectErrorDialog != nullptr) {
+    releaseModalInput(m_ConnectErrorDialog);
     if (lv_obj_is_valid(m_ConnectErrorDialog)) {
       lv_msgbox_close_async(m_ConnectErrorDialog);
     }
     m_ConnectErrorDialog = nullptr;
-  }
-
-  if (m_ConnectErrorPrevFocus != nullptr) {
-    if (lv_obj_is_valid(m_ConnectErrorPrevFocus)) {
-      lv_group_focus_obj(m_ConnectErrorPrevFocus);
-    }
-    m_ConnectErrorPrevFocus = nullptr;
   }
 }
 
@@ -815,11 +888,10 @@ void UI::showConnectError(const char *title, const char *text) {
     }
     // The box went away with its screen. Drop the dangling handle rather than
     // letting it block the prompt for the rest of the session.
+    releaseModalInput(m_ConnectErrorDialog);
     m_ConnectErrorDialog = nullptr;
-    m_ConnectErrorPrevFocus = nullptr;
   }
 
-  m_ConnectErrorPrevFocus = lv_group_get_focused(m_Group);
   m_ConnectErrorDialog = lv_msgbox_create(nullptr);
   // A message box is LV_SIZE_CONTENT by default, so a prose string makes it
   // wider than the panel and the text is clipped on both edges: on the 135x240
@@ -869,9 +941,7 @@ void UI::showConnectError(const char *title, const char *text) {
   lv_obj_set_width(body, LV_PCT(100));
 
   lv_obj_t *ok = lv_msgbox_add_footer_button(m_ConnectErrorDialog, "OK");
-  // Add the button to the encoder group so it is focusable and operable on
-  // non-touch devices, exactly as the companion pairing prompt does.
-  addToInputGroup(m_Group, ok);
+  // Modal input ownership makes the button encoder-operable on no-touch boards.
   lv_obj_add_event_cb(
       ok,
       [](lv_event_t *event) {
@@ -987,7 +1057,7 @@ void UI::showConnectError(const char *title, const char *text) {
     lv_obj_update_layout(m_ConnectErrorDialog);
   }
 
-  lv_group_focus_obj(ok);
+  acquireModalInput(m_ConnectErrorDialog, {ok}, ok);
 }
 
 void UI::stopCompanionPairingTimer(void) {
@@ -1013,15 +1083,13 @@ void UI::companionPairingTimer(lv_timer_t *timer) {
 
   char text[96];
   std::snprintf(text, sizeof(text), "Confirm number:\n%06lu", companion.getPendingPairingPin());
-  ui->m_CompanionPairingPrevFocus = lv_group_get_focused(ui->m_Group);
   ui->m_CompanionPairingDialog = lv_msgbox_create(nullptr);
   lv_msgbox_add_title(ui->m_CompanionPairingDialog, "Pair companion");
   lv_msgbox_add_text(ui->m_CompanionPairingDialog, text);
 
   lv_obj_t *accept = lv_msgbox_add_footer_button(ui->m_CompanionPairingDialog, "Accept");
-  // Add the button to the encoder group so it is focusable and operable on
-  // non-touch devices. Without this, lv_group_focus_obj below is a no-op.
-  addToInputGroup(ui->m_Group, accept);
+  // The dedicated modal group below keeps both buttons encoder-operable without
+  // exposing background page controls.
   lv_obj_add_event_cb(
       accept,
       [](lv_event_t *event) {
@@ -1032,7 +1100,6 @@ void UI::companionPairingTimer(lv_timer_t *timer) {
       LV_EVENT_CLICKED, ui);
 
   lv_obj_t *reject = lv_msgbox_add_footer_button(ui->m_CompanionPairingDialog, "Reject");
-  addToInputGroup(ui->m_Group, reject);
   lv_obj_add_event_cb(
       reject,
       [](lv_event_t *event) {
@@ -1042,7 +1109,7 @@ void UI::companionPairingTimer(lv_timer_t *timer) {
       },
       LV_EVENT_CLICKED, ui);
 
-  lv_group_focus_obj(accept);
+  ui->acquireModalInput(ui->m_CompanionPairingDialog, {accept, reject}, accept);
 }
 
 void UI::buttonPWRRead(lv_indev_t *drv, lv_indev_data_t *data) {
@@ -1911,6 +1978,15 @@ lv_obj_t *UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_
   lv_obj_t *obj = lv_menu_cont_create(page);
   lv_obj_set_flex_flow(obj, LV_FLEX_FLOW_ROW_WRAP);
 
+  // The timed-wake switch is the fifth row on the Stick timer page and sits
+  // beside the floating right indicator. Keep only this newly added row clear;
+  // reserving every settings row would needlessly shrink unrelated pages.
+  if (setting == Settings::IVL_SLEEP) {
+    if (const int32_t reserve = floatingIndicatorReserve(); reserve > 0) {
+      lv_obj_set_style_pad_right(obj, reserve, LV_PART_MAIN);
+    }
+  }
+
   if (symbol) {
     lv_obj_t *icon = lv_image_create(obj);
     lv_image_set_src(icon, symbol);
@@ -2096,6 +2172,24 @@ lv_obj_t *UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_
           } else {
             Companion::getInstance().reloadSetting(false);
             ui->stopCompanionPairingTimer();
+          }
+        },
+        LV_EVENT_VALUE_CHANGED, this);
+  }
+
+  if (setting == Settings::IVL_SLEEP) {
+    lv_obj_add_event_cb(
+        sw,
+        [](lv_event_t *e) {
+          auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+          auto *sw = static_cast<lv_obj_t *>(lv_event_get_target(e));
+          if (ui->m_Intervalometer.m_SleepThreshold.m_Button == nullptr) {
+            return;
+          }
+          if (lv_obj_has_state(sw, LV_STATE_CHECKED)) {
+            lv_obj_clear_flag(ui->m_Intervalometer.m_SleepThreshold.m_Button, LV_OBJ_FLAG_HIDDEN);
+          } else {
+            lv_obj_add_flag(ui->m_Intervalometer.m_SleepThreshold.m_Button, LV_OBJ_FLAG_HIDDEN);
           }
         },
         LV_EVENT_VALUE_CHANGED, this);
@@ -2457,14 +2551,43 @@ void UI::addMainMenu(void) {
           // Ensure no active scans
           scan.stop();
 
-          // If enabled and connections exist, auto connect to first camera on first display of main
-          // menu
-          if ((saveCount > 0) && (ui->m_MainCount == 1)
-              && Settings::load<Settings::AUTOCONNECT>()) {
+          // Enable Back button
+          if (lv_obj_has_state(back, LV_STATE_DISABLED)) {
+            lv_obj_remove_state(back, LV_STATE_DISABLED);
+          }
+
+          const bool resume = ui->m_Intervalometer.hasResume();
+          const bool autoConnect = Settings::load<Settings::AUTOCONNECT>();
+          if ((ui->m_MainCount == 1) && (resume || autoConnect)) {
             CameraList::load();
-            auto camera = CameraList::get(0);
-            camera->setActive(true);
-            doConnect(e);
+            const auto savedCameras = CameraList::savedSnapshot();
+            std::shared_ptr<Camera> camera;
+
+            if (resume) {
+              const uint8_t cameraId = ui->m_Intervalometer.resumeCameraId();
+              const auto found = std::find_if(
+                  savedCameras.begin(), savedCameras.end(), [cameraId](const auto &candidate) {
+                    return CameraList::getCameraId(candidate.get()) == cameraId;
+                  });
+              if (found != savedCameras.end()) {
+                camera = *found;
+              } else {
+                ESP_LOGE(LOG_TAG, "Intervalometer resume camera is unavailable");
+                ui->m_Intervalometer.clearResume();
+              }
+            }
+
+            if ((camera == nullptr) && autoConnect && (CameraList::size() > 0)) {
+              camera = CameraList::get(0);
+            }
+
+            if (camera != nullptr) {
+              for (size_t n = 0; n < CameraList::size(); n++) {
+                CameraList::get(n)->setActive(false);
+              }
+              camera->setActive(true);
+              doConnect(e);
+            }
           }
         } else if (page == m_Menu.at(m_DeleteStr).page) {
         } else if (page == m_Menu.at(m_ScanStr).page) {
@@ -2498,6 +2621,20 @@ void UI::addMainMenu(void) {
           if (M5.Touch.isEnabled()) {
             // if touch screen, enable back
             lv_obj_remove_state(back, LV_STATE_DISABLED);
+            // The physical buttons remain encoder inputs on touch boards. Keep
+            // their focus on the visible Remote control instead of the menu
+            // row from the previous page. Queue this after lv_menu applies its
+            // own page-load focus, as for the read-only pages below.
+            lv_async_call(
+                [](void *arg) {
+                  auto *ui = static_cast<UI *>(arg);
+                  if (ui->m_OK != nullptr && lv_obj_is_valid(ui->m_OK)
+                      && lv_menu_get_cur_main_page(ui->m_MainMenu.main)
+                             == ui->m_Menu.at(m_RemoteShutter).page) {
+                    lv_group_focus_obj(ui->m_OK);
+                  }
+                },
+                ui);
           } else {
             // hide the back button
             lv_obj_add_flag(back, LV_OBJ_FLAG_HIDDEN);
@@ -2576,33 +2713,29 @@ void UI::displayNavigationBar(bool show) {
 }
 
 void UI::configureControl(ControlMode mode, bool set) {
-  switch (mode) {
+  if (set && mode != ControlMode::REVERT) {
+    m_ControlMode = mode;
+  }
+
+  ControlMode applied = mode == ControlMode::REVERT ? m_ControlMode : mode;
+  if (!m_ModalInputs.empty()) {
+    applied = ControlMode::MENU;
+  }
+
+  switch (applied) {
     case ControlMode::MENU:
-      if (set) {
-        m_ControlMode = ControlMode::MENU;
-      }
       configMenuControl();
       break;
     case ControlMode::SHUTTER:
-      if (set) {
-        m_ControlMode = ControlMode::SHUTTER;
-      }
       configShutterControl();
       break;
     case ControlMode::SLIDER:
-      if (set) {
-        m_ControlMode = ControlMode::SLIDER;
-      }
       configSliderControl();
       break;
     case ControlMode::PRESET:
-      if (set) {
-        m_ControlMode = ControlMode::PRESET;
-      }
       configPresetControl();
       break;
     case ControlMode::REVERT:
-      configureControl(m_ControlMode);
       break;
   }
 }
@@ -2986,7 +3119,7 @@ void UI::simScenarioActionOnUi(const Sim::scenario_action_t &action) {
   // reachable and focused there.
   if (simpleAction && command == "select") {
     m_SimActionResult = sim_action_result_t::VALID_NO_EFFECT;
-    lv_obj_t *focused = lv_group_get_focused(m_Group);
+    lv_obj_t *focused = lv_group_get_focused(activeInputGroup());
     if (focused != nullptr && lv_obj_is_valid(focused)) {
       lv_obj_send_event(focused, LV_EVENT_CLICKED, this);
       m_SimActionResult = sim_action_result_t::APPLIED;
@@ -3492,7 +3625,9 @@ uint32_t UI::countIndicatorOverlaps(void) {
 namespace {
 
 /**
- * The label carrying a menu row's text, or nullptr.
+ * The label carrying a menu row's text, or nullptr. Encoder focus can sit on
+ * a row's switch or roller instead of the row container, so normalize those
+ * widgets to their immediate parent first.
  *
  * addMenuItem() builds a row as a container whose first label child holds the
  * text. A multi-connect row is a checkbox and carries its own text instead.
@@ -3500,6 +3635,15 @@ namespace {
 lv_obj_t *simRowLabel(lv_obj_t *row) {
   if (row == nullptr || !lv_obj_is_valid(row)) {
     return nullptr;
+  }
+  if (lv_obj_check_type(row, &lv_switch_class) || lv_obj_check_type(row, &lv_roller_class)) {
+    row = lv_obj_get_parent(row);
+    if (row == nullptr || !lv_obj_is_valid(row)) {
+      return nullptr;
+    }
+  }
+  if (lv_obj_check_type(row, &lv_label_class)) {
+    return row;
   }
   for (uint32_t i = 0; i < lv_obj_get_child_count(row); i++) {
     lv_obj_t *child = lv_obj_get_child(row, i);
@@ -4080,9 +4224,25 @@ std::string UI::simQueryState(const char *key) {
     if (accept == nullptr) {
       return "no";
     }
-    const bool inGroup = lv_obj_get_group(accept) == m_Group;
-    const bool focused = lv_group_get_focused(m_Group) == accept;
+    lv_group_t *group = activeInputGroup();
+    const bool inGroup = lv_obj_get_group(accept) == group;
+    const bool focused = lv_group_get_focused(group) == accept;
     return (inGroup && focused) ? "yes" : "no";
+  }
+
+  if (query == "modal_focus_control") {
+    if (m_CompanionPairingDialog == nullptr || !lv_obj_is_valid(m_CompanionPairingDialog)) {
+      return "closed";
+    }
+    lv_obj_t *footer = lv_msgbox_get_footer(m_CompanionPairingDialog);
+    lv_obj_t *focused = lv_group_get_focused(activeInputGroup());
+    if (footer != nullptr && focused == lv_obj_get_child(footer, 0)) {
+      return "accept";
+    }
+    if (footer != nullptr && focused == lv_obj_get_child(footer, 1)) {
+      return "reject";
+    }
+    return "other";
   }
 
   // The connect error box: "none" when nothing is up, otherwise its rendered
@@ -4138,7 +4298,7 @@ std::string UI::simQueryState(const char *key) {
   // modal closes, a null or stale focus means the input group is trapped and no
   // button can be reached (task #32 class).
   if (query == "focus") {
-    lv_obj_t *focused = lv_group_get_focused(m_Group);
+    lv_obj_t *focused = lv_group_get_focused(activeInputGroup());
     if (focused == nullptr) {
       return "none";
     }
@@ -4163,6 +4323,55 @@ std::string UI::simQueryState(const char *key) {
       }
     }
     return "no";
+  }
+
+  // Whether the focused widget and its row label are fully visible within the
+  // current page and every clipping ancestor. This keeps button navigation
+  // assertions tied to the rendered focus target, including switch rows whose
+  // label is a sibling of the focused widget.
+  if (query == "focus_visible") {
+    lv_obj_t *page = lv_menu_get_cur_main_page(m_MainMenu.main);
+    lv_obj_t *focused = lv_group_get_focused(m_Group);
+    if (page == nullptr || focused == nullptr || !lv_obj_is_valid(focused)) {
+      return "no";
+    }
+    lv_obj_update_layout(page);
+    lv_obj_t *label = simRowLabel(focused);
+    if (label == nullptr || !lv_obj_is_valid(label)) {
+      return "no";
+    }
+
+    const auto fullyVisibleInPage = [&](lv_obj_t *object) {
+      lv_area_t clip;
+      lv_obj_get_coords(page, &clip);
+      bool reachedPage = false;
+      for (lv_obj_t *ancestor = object; ancestor != nullptr;
+           ancestor = lv_obj_get_parent(ancestor)) {
+        if (!lv_obj_is_valid(ancestor) || lv_obj_has_flag(ancestor, LV_OBJ_FLAG_HIDDEN)) {
+          return false;
+        }
+        if (ancestor != object && ancestor != page
+            && !lv_obj_has_flag(ancestor, LV_OBJ_FLAG_OVERFLOW_VISIBLE)) {
+          lv_area_t area;
+          lv_obj_get_coords(ancestor, &area);
+          clip.x1 = std::max(clip.x1, area.x1);
+          clip.y1 = std::max(clip.y1, area.y1);
+          clip.x2 = std::min(clip.x2, area.x2);
+          clip.y2 = std::min(clip.y2, area.y2);
+        }
+        if (ancestor == page) {
+          reachedPage = true;
+        }
+      }
+      if (!reachedPage) {
+        return false;
+      }
+      lv_area_t objectArea;
+      lv_obj_get_coords(object, &objectArea);
+      return objectArea.x1 >= clip.x1 && objectArea.y1 >= clip.y1 && objectArea.x2 <= clip.x2
+             && objectArea.y2 <= clip.y2;
+    };
+    return fullyVisibleInPage(focused) && fullyVisibleInPage(label) ? "yes" : "no";
   }
 
   // Text carried by the focused menu row. A camera list row renders the name
@@ -4424,6 +4633,9 @@ std::string UI::simQueryState(const char *key) {
         return "finished";
     }
     return "unknown";
+  }
+  if (query == "interval_remaining") {
+    return std::to_string(m_IntervalometerRemaining.load());
   }
 
   // The bulb countdown is read from the label rendered by the real refresh
@@ -5303,11 +5515,14 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
       // which camera lost its pairing is the simpler contract. The reason names
       // only the camera that actually failed; see the multi-connect scenario in
       // tests/host/fujifilm_repair_needed_test.cpp.
+      const bool resume = ctx->ui->m_Intervalometer.hasResume();
       const std::string reason = control.getConnectFailReason();
       const std::string name = control.getDisconnectedName();
       ESP_LOGE("ui", "Connection failed. %s", reason.c_str());
       doDisconnect();
-      if (!reason.empty()) {
+      if (resume) {
+        ctx->ui->showIntervalometerResumeError();
+      } else if (!reason.empty()) {
         ctx->ui->showConnectError("Pairing lost", reason.c_str());
       } else {
         char text[160];
@@ -5348,6 +5563,9 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
         if (lv_menu_get_cur_main_page(m_MainMenu.main) == m_Menu.at(m_CamerasStr).page) {
           rebuildCamerasPage(m_Menu.at(m_CamerasStr));
           lv_timer_resume(m_CamerasTimer);
+        }
+        if (ctx->ui->m_Intervalometer.hasResume()) {
+          ctx->ui->startIntervalometerResume();
         }
       }
       // The link is live: remember the session so a later drop shows the
@@ -5404,6 +5622,27 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
   }
 }
 
+void UI::startIntervalometerResume(void) {
+  if (!m_Intervalometer.startResume()) {
+    return;
+  }
+
+  lv_obj_add_flag(m_IntervalStart, LV_OBJ_FLAG_HIDDEN);
+  lv_menu_set_page(m_MainMenu.main, m_Menu.at(m_IntervalometerRunStr).page);
+  lv_timer_resume(m_IntervalTimer);
+  lv_timer_resume(m_IntervalPageRefresh);
+  lv_timer_ready(m_IntervalPageRefresh);
+  ESP_LOGI(LOG_TAG, "Intervalometer resumed");
+}
+
+void UI::showIntervalometerResumeError(void) {
+  m_Intervalometer.clearResume();
+  m_Intervalometer.m_State = Intervalometer::STATE_FINISHED;
+  lv_label_set_text(m_Intervalometer.m_StateLabel, "RESUME FAILED");
+  lv_menu_set_page(m_MainMenu.main, m_Menu.at(m_IntervalometerRunStr).page);
+  ESP_LOGE(LOG_TAG, "Intervalometer resume stopped after connection failure");
+}
+
 uint8_t UI::getIntervalometerState(void) {
   // Keep the protocol values explicit even if the private enum changes later.
   switch (m_IntervalometerState.load()) {
@@ -5452,20 +5691,18 @@ void UI::intervalometer(lv_timer_t *timer) {
   auto *interval = static_cast<Intervalometer *>(lv_timer_get_user_data(timer));
   uint32_t next = 0;
 
-  static uint32_t count = 0;
-
   m_IntervalometerState.store(static_cast<uint8_t>(interval->m_State));
 
   if (interval->m_Count.m_SpinValue.m_Unit == SpinValue::UNIT_INF) {
-    lv_label_set_text_fmt(interval->m_CountLabel, "%09lu", count);
+    lv_label_set_text_fmt(interval->m_CountLabel, "%09lu", interval->m_CountShots);
   } else {
-    lv_label_set_text_fmt(interval->m_CountLabel, "%03lu/%03u", count,
+    lv_label_set_text_fmt(interval->m_CountLabel, "%03lu/%03u", interval->m_CountShots,
                           interval->m_Count.m_SpinValue.m_Value);
   }
 
   switch (interval->m_State) {
     case Intervalometer::STATE_IDLE:
-      count = 0;
+      interval->m_CountShots = 0;
       m_IntervalCountdownActive = false;
       lv_label_set_text(interval->m_StateLabel, "IDLE");
       lv_timer_ready(timer);
@@ -5475,16 +5712,18 @@ void UI::intervalometer(lv_timer_t *timer) {
 
     case Intervalometer::STATE_WAIT:
       lv_label_set_text(interval->m_StateLabel, "WAIT");
-      next = interval->m_Wait.m_SpinValue.toMilliseconds();
+      next = interval->m_ResumeWaitMs > 0 ? interval->m_ResumeWaitMs
+                                          : interval->m_Wait.m_SpinValue.toMilliseconds();
       m_IntervalCountdownActive = next > 0;
       m_IntervalLastAnnouncedSecond = 0;
+      interval->m_ResumeWaitMs = 0;
       interval->m_State = Intervalometer::STATE_SHUTTER_OPEN;
       break;
 
     case Intervalometer::STATE_SHUTTER_OPEN:
       m_IntervalCountdownActive = false;
       m_IntervalLastAnnouncedSecond = 0;
-      count++;
+      interval->m_CountShots++;
       lv_label_set_text(interval->m_StateLabel, "SHUTTER");
       control.sendCommand(Control::CMD_SHUTTER_PRESS);
       Feedback::getInstance().signal(Feedback::SHUTTER_FIRED);
@@ -5497,7 +5736,7 @@ void UI::intervalometer(lv_timer_t *timer) {
       control.sendCommand(Control::CMD_SHUTTER_RELEASE);
       next = interval->m_Delay.m_SpinValue.toMilliseconds();
       m_IntervalLastAnnouncedSecond = 0;
-      if (count >= interval->m_Count.m_SpinValue.m_Value) {
+      if (interval->m_CountShots >= interval->m_Count.m_SpinValue.m_Value) {
         m_IntervalCountdownActive = false;
         interval->m_State = Intervalometer::STATE_FINISHED;
       } else {
@@ -5505,12 +5744,48 @@ void UI::intervalometer(lv_timer_t *timer) {
         // before every frame, not only the first.
         m_IntervalCountdownActive = next > 0;
         interval->m_State = Intervalometer::STATE_SHUTTER_OPEN;
+
+        const uint64_t threshold_ms =
+            static_cast<uint64_t>(Settings::load<Settings::IVL_SLEEP_THR>()) * 1000ULL;
+        if (Settings::load<Settings::IVL_SLEEP>() && (static_cast<uint64_t>(next) >= threshold_ms)
+            && Platform::getInstance().canTimedWake()
+            && ((next / 1000) > Intervalometer::RESUME_WAKE_MARGIN_S)
+            && (control.getTargetCount() == 1)) {
+          auto camera = control.getTargets().front()->getCamera();
+          const uint8_t camera_id = CameraList::getCameraId(camera.get());
+          const bool camera_found = (camera_id != CameraListProtocol::INDEX_ID_INVALID)
+                                    && (camera_id != CameraListProtocol::INDEX_ID_ALL);
+
+          if (camera_found) {
+            const uint32_t sleep_seconds = (next / 1000) - Intervalometer::RESUME_WAKE_MARGIN_S;
+            if (interval->saveResume(next, camera_id)) {
+              const std::time_t wake_time =
+                  std::time(nullptr) + static_cast<std::time_t>(sleep_seconds);
+              std::tm wake_tm = {};
+              if (localtime_r(&wake_time, &wake_tm) != nullptr) {
+                lv_label_set_text_fmt(interval->m_StateLabel, "SLEEPING UNTIL %02d:%02d:%02d",
+                                      wake_tm.tm_hour, wake_tm.tm_min, wake_tm.tm_sec);
+              } else {
+                lv_label_set_text(interval->m_StateLabel, "SLEEPING");
+              }
+              ESP_LOGI(LOG_TAG, "Intervalometer sleeping for %lu seconds",
+                       static_cast<unsigned long>(sleep_seconds));
+              if (!Platform::getInstance().powerOffUntil(sleep_seconds)) {
+                interval->clearResume();
+                ESP_LOGW(LOG_TAG, "Timed power off failed, continuing awake");
+              }
+            }
+          } else {
+            ESP_LOGW(LOG_TAG, "Intervalometer camera is not in the saved camera list");
+          }
+        }
       }
       break;
 
     case Intervalometer::STATE_FINISHED:
       m_IntervalCountdownActive = false;
       lv_label_set_text(interval->m_StateLabel, "FINISHED");
+      interval->clearResume();
       next = 0;
       lv_timer_pause(timer);
       break;
@@ -5526,7 +5801,8 @@ void UI::intervalometer(lv_timer_t *timer) {
     m_IntervalometerRemaining.store(0xffff);
   } else {
     const uint32_t total = interval->m_Count.m_SpinValue.m_Value;
-    m_IntervalometerRemaining.store(static_cast<uint16_t>(count >= total ? 0 : total - count));
+    m_IntervalometerRemaining.store(static_cast<uint16_t>(
+        interval->m_CountShots >= total ? 0 : total - interval->m_CountShots));
   }
 }
 
@@ -5796,7 +6072,9 @@ void UI::doConnect(lv_event_t *e) {
     }
   }
 
-  control.connectAll(Settings::load<Settings::RECONNECT>());
+  const bool resume = m_ConnectContext.ui->m_Intervalometer.hasResume();
+  control.connectAll(resume ? false : Settings::load<Settings::RECONNECT>(),
+                     resume ? Control::RESUME_RETRY_GAP_MS : 0);
   // Mark the request before the timer can run: the control task publishes
   // STATE_CONNECT asynchronously, so the first tick may still see idle.
   m_ConnectContext.connectRequested = true;
@@ -7570,11 +7848,16 @@ void UI::addIRMenu(void) {
 lv_obj_t *UI::addSpinItem(lv_obj_t *page, const char *item, Intervalometer::Spinner &spinner) {
   spinner.m_Button = lv_menu_cont_create(page);
   lv_obj_set_flex_flow(spinner.m_Button, LV_FLEX_FLOW_ROW_WRAP);
+  lv_obj_add_flag(spinner.m_Button, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
 #if defined(FURBLE_M5STICKC)
   // 80x160 is the shortest panel. Trim the per-row padding so the Count, Delay,
   // Shutter and Wait rows fit without scrolling the timer page.
   lv_obj_set_style_pad_top(spinner.m_Button, 1, LV_STATE_DEFAULT);
   lv_obj_set_style_pad_bottom(spinner.m_Button, 1, LV_STATE_DEFAULT);
+#elif defined(FURBLE_M5COREX)
+  // Core needs only one pixel less theme top padding for its Large-text rows.
+  const int32_t padTop = lv_obj_get_style_pad_top(spinner.m_Button, LV_PART_MAIN);
+  lv_obj_set_style_pad_top(spinner.m_Button, padTop > 0 ? padTop - 1 : 0, LV_STATE_DEFAULT);
 #endif
 
   spinner.m_Label = lv_label_create(spinner.m_Button);
@@ -7674,7 +7957,7 @@ void UI::addSpinnerPage(const menu_t &parent, const char *item, Intervalometer::
   }
 
   if (spinner.supportsPresetPicker()
-      || ((spinner.m_SpinValue.m_Unit != SpinValue::UNIT_NIL)
+      || (!spinner.m_FixedUnit && (spinner.m_SpinValue.m_Unit != SpinValue::UNIT_NIL)
           && (spinner.m_SpinValue.m_Unit != SpinValue::UNIT_INF))) {
     spinner.m_RollerUnit = lv_roller_create(spinner.m_RowSpinners);
     lv_obj_add_flag(spinner.m_RollerUnit, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
@@ -7801,6 +8084,23 @@ void UI::addIntervalometerMenu(const menu_t &parent) {
   addSpinnerPage(menu, m_IntervalDelayStr, m_Intervalometer.m_Delay);
   addSpinnerPage(menu, m_IntervalShutterStr, m_Intervalometer.m_Shutter);
   addSpinnerPage(menu, m_IntervalWaitStr, m_Intervalometer.m_Wait);
+  lv_obj_t *sleepRow = addSettingItem(menu.page, NULL, Settings::IVL_SLEEP);
+  addSpinnerPage(menu, m_IntervalSleepThresholdStr, m_Intervalometer.m_SleepThreshold);
+  // The threshold row is revealed beside the floating right indicator on Stick
+  // layouts. Keep its name and value inside the reserved column; without this,
+  // the wrapped value leaves the long row label under the indicator.
+  if (const int32_t reserve = floatingIndicatorReserve(); reserve > 0) {
+    lv_obj_set_style_pad_right(m_Intervalometer.m_SleepThreshold.m_Button, reserve, LV_PART_MAIN);
+    lv_obj_set_width(m_Intervalometer.m_SleepThreshold.m_Label, LV_PCT(100));
+    lv_label_set_long_mode(m_Intervalometer.m_SleepThreshold.m_Label, LV_LABEL_LONG_WRAP);
+  }
+
+  if (!Platform::getInstance().canTimedWake()) {
+    lv_obj_add_flag(lv_obj_get_parent(sleepRow), LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(m_Intervalometer.m_SleepThreshold.m_Button, LV_OBJ_FLAG_HIDDEN);
+  } else if (!Settings::load<Settings::IVL_SLEEP>()) {
+    lv_obj_add_flag(m_Intervalometer.m_SleepThreshold.m_Button, LV_OBJ_FLAG_HIDDEN);
+  }
 
   // Reflect count infinite or not
   m_Intervalometer.m_Count.update();
@@ -7813,6 +8113,7 @@ void UI::addIntervalometerMenu(const menu_t &parent) {
         auto *timer = static_cast<lv_timer_t *>(lv_event_get_user_data(e));
         auto *interval = static_cast<Intervalometer *>(lv_timer_get_user_data(timer));
 
+        interval->startNewRun();
         interval->m_State = Intervalometer::STATE_IDLE;
         m_IntervalCountdownActive = false;
         m_IntervalLastAnnouncedSecond = 0;
@@ -7855,6 +8156,8 @@ void UI::addIntervalometerMenu(const menu_t &parent) {
         lv_timer_pause(m_IntervalPageRefresh);
         m_IntervalCountdownActive = false;
         m_IntervalLastAnnouncedSecond = 0;
+        interval->clearResume();
+        interval->m_CountShots = 0;
         m_IntervalometerState.store(static_cast<uint8_t>(Intervalometer::STATE_IDLE));
 
         // reset the run state so a subsequent start begins a fresh run, and
@@ -9551,7 +9854,7 @@ void UI::showStorageConfirm(bool import) {
   }
 
   m_StorageImport = import;
-  m_StorageMessageBox = lv_msgbox_create(m_Screen);
+  m_StorageMessageBox = lv_msgbox_create(nullptr);
   lv_msgbox_add_title(m_StorageMessageBox, import ? "Import Settings" : "Export Settings");
   lv_msgbox_add_text(m_StorageMessageBox,
                      import ? "Overwrite all settings and restart?" : "Write all settings to SD?");
@@ -9560,8 +9863,6 @@ void UI::showStorageConfirm(bool import) {
 
   lv_obj_t *cancel = lv_msgbox_add_footer_button(m_StorageMessageBox, "Cancel");
   lv_obj_t *confirm = lv_msgbox_add_footer_button(m_StorageMessageBox, "Confirm");
-  lv_group_add_obj(m_Group, cancel);
-  lv_group_add_obj(m_Group, confirm);
   lv_obj_add_event_cb(
       cancel,
       [](lv_event_t *e) { static_cast<UI *>(lv_event_get_user_data(e))->cancelStorageAction(); },
@@ -9570,7 +9871,7 @@ void UI::showStorageConfirm(bool import) {
       confirm,
       [](lv_event_t *e) { static_cast<UI *>(lv_event_get_user_data(e))->confirmStorageAction(); },
       LV_EVENT_CLICKED, this);
-  lv_group_focus_obj(confirm);
+  acquireModalInput(m_StorageMessageBox, {cancel, confirm}, confirm);
 }
 
 void UI::cancelStorageAction(void) {
@@ -9578,6 +9879,7 @@ void UI::cancelStorageAction(void) {
     return;
   }
 
+  releaseModalInput(m_StorageMessageBox);
   lv_msgbox_close_async(m_StorageMessageBox);
   m_StorageMessageBox = nullptr;
 }
@@ -9590,6 +9892,7 @@ void UI::confirmStorageAction(void) {
   const bool import = m_StorageImport;
   lv_obj_t *messageBox = m_StorageMessageBox;
   m_StorageMessageBox = nullptr;
+  releaseModalInput(messageBox);
   lv_msgbox_close_async(messageBox);
 
   // the SD writer task closes a running track, runs the transfer, and
@@ -9928,7 +10231,7 @@ void UI::showLowBatteryWarning(bool powerOff) {
   }
 
   if (m_LowBatteryMessageBox == nullptr) {
-    m_LowBatteryMessageBox = lv_msgbox_create(m_Screen);
+    m_LowBatteryMessageBox = lv_msgbox_create(nullptr);
     lv_msgbox_add_title(m_LowBatteryMessageBox, "Low battery");
     lv_obj_set_width(m_LowBatteryMessageBox, LV_PCT(100));
 
@@ -9954,9 +10257,7 @@ void UI::showLowBatteryWarning(bool powerOff) {
         },
         LV_EVENT_CLICKED, this);
 
-    // remember where the user was so dismissing puts them back there
-    m_LowBatteryPrevFocus = lv_group_get_focused(m_Group);
-    lv_group_focus_obj(dismiss);
+    acquireModalInput(m_LowBatteryMessageBox, {dismiss}, dismiss);
   }
 
   lv_label_set_text(m_LowBatteryMessage, powerOff ? m_LowBattCriticalText : m_LowBattWarnText);
@@ -9964,17 +10265,10 @@ void UI::showLowBatteryWarning(bool powerOff) {
 
 void UI::closeLowBatteryWarning(void) {
   if (m_LowBatteryMessageBox != nullptr) {
+    releaseModalInput(m_LowBatteryMessageBox);
     lv_msgbox_close_async(m_LowBatteryMessageBox);
     m_LowBatteryMessageBox = nullptr;
     m_LowBatteryMessage = nullptr;
-
-    // Put the focus back where it was before the box stole it. The object
-    // may have been deleted while the box was open, lv_obj_is_valid walks
-    // the tree comparing pointers and never dereferences a stale one.
-    if ((m_LowBatteryPrevFocus != nullptr) && lv_obj_is_valid(m_LowBatteryPrevFocus)) {
-      lv_group_focus_obj(m_LowBatteryPrevFocus);
-    }
-    m_LowBatteryPrevFocus = nullptr;
   }
 }
 
@@ -10298,10 +10592,23 @@ bool UI::simPressButtonOnUi(const char *name, bool hold) {
     return true;
   }
 
-  // A short tap feeds the encoder key the read callback reports: the left and
-  // right buttons scroll the focus group, the OK button activates the focus.
-  lv_group_send_data(m_Group, inputKey(indev));
+  // A short tap must pass through LVGL's registered encoder read callback.
+  // Sending the key directly to the group bypasses focus navigation and the
+  // press/release handling used by editable widgets.
+  const auto read_cb = lv_indev_get_read_cb(indev);
+  lv_indev_set_read_cb(indev, simButtonRead);
+  m_SimButtonPressed = true;
+  lv_indev_read(indev);
+  m_SimButtonPressed = false;
+  lv_indev_read(indev);
+  lv_indev_set_read_cb(indev, read_cb);
   return true;
+}
+
+void UI::simButtonRead(lv_indev_t *drv, lv_indev_data_t *data) {
+  auto *ui = static_cast<UI *>(lv_indev_get_user_data(drv));
+  data->key = ui->inputKey(drv);
+  data->state = ui->m_SimButtonPressed ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
 }
 #endif
 }  // namespace Furble

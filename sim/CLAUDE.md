@@ -22,8 +22,8 @@ tokens in `sim/driver.cpp`, `src/FurbleUI.cpp`, and the host fault harness.
 ## Parity inventory and seam rules
 
 The simulator shares substantial production UI, GPS, settings, and power
-policy, but the connection path is currently a fake and the host scheduler is
-not yet equivalent to FreeRTOS. The following is the current seam inventory
+policy, but the host BLE transport is virtual and the scheduler is not yet
+equivalent to FreeRTOS. The following is the current seam inventory
 and target boundary (a new seam needs a contract test and an entry here):
 
 | Area | Shared production path | Narrow simulator seam and reason |
@@ -31,7 +31,7 @@ and target boundary (a new seam needs a contract test and an entry here):
 | BLE discovery | Production `Scan` and `CameraList`, including advertisement matching and preferences-backed list persistence | `sim/BleSim.cpp` owns a virtual radio task that advertises the seeded virtual peers into the mock `NimBLEScan` and models the controller-owned discovery timer. Saved peers use the production catalog and shared-pointer identity; scans only populate transient results. Scan start responsiveness probing and the scan-end callback counter are `FURBLE_SIM` observability inside production `Scan`. |
 | Display | `UI::setDisplayMode`, `wakeDisplay`, `sleepDisplay`, `displayFlush`, LVGL timers and task loop | M5GFX SDL is the panel/pixel sink. Display mode and flush accounting remain production methods; there is no simulator-only rotation or display-state implementation. |
 | Input/navigation | LVGL event callbacks and menu handlers | `simulatorHome`, `simulatorBack`, and `simScenarioAction` are script entry points. `driverTick` runs in the UI task's locked phase, so actions and physical-input shims share LVGL ownership; direct page/focus selection is limited to deterministic setup or input timing SDL cannot reproduce. |
-| Host mutex visibility | Production lock discipline is unchanged: `Camera::m_Mutex` is acquired and released at exactly the same points | `Furble::connect_mutex_t` is `std::mutex` everywhere except a `FURBLE_SIM` build, where it is `Sim::SchedulerMutex`: the same mutex with a contended wait reported to the scheduler, so a task waiting for a connect to finish stops being runnable instead of being timed out by the host-clock deadlock breaker (issue #279). |
+| Host mutex visibility | Production lock discipline is unchanged: `Camera::m_Mutex` is acquired and released at exactly the same points | `Furble::connect_mutex_t` is `std::mutex` everywhere except a `FURBLE_SIM` build, where `Sim::SchedulerMutex` reserves ownership for one waiter and publishes that waiter before wake. Selection follows task priority then wait order, so host wake timing cannot create an extra virtual disconnect slice (issue #279). This models wake order, not FreeRTOS mutex priority inheritance, which remains unsupported. |
 | Camera links | Production `Control`, `Camera`, `CameraList` and every vendor class, over MockNimBLE | `sim/BleSim.cpp` registers the virtual peers a scenario seeds and injects faults at the transport only (`mockDropLink`, `setConnectShouldFail`, peer standby drop, withheld registration). `Control::simDropActiveLink()` is defined there and severs the real link; it no longer overrides any control state. A FauxNY camera has no radio, so `Camera::resetConnectionState()` stands in for its link loss. |
 | GPS/UART | Production parser, configuration, retry and power-lock logic | Fake UART/receiver is the lowest host-device boundary; replies and faults are injected as bytes/events on a worker thread. |
 | Power/display hardware | Production policy and lock ownership | M5PM1, ESP-IDF power, timer, random, NVS, sleep, flash and system calls are host implementations. Observable state is exposed through `platform_state` rather than replacing policy code. |
@@ -65,21 +65,19 @@ The esp_timer dispatcher is modeled as a serialized ESP-IDF 5.5.3
 `ESP_TASK_TIMER_PRIO` timer service task (`configMAX_PRIORITIES - 3`, normally
 22) and enters the same scheduler gate before invoking a callback. Due timer
 and FreeRTOS wait sources are batched before the first dispatch. Zero-tick
-delays yield through the priority gate. Instruction-level
-preemption, core affinity, and CPU-time accounting remain unsupported and must
+delays yield through the priority gate. Instruction-level preemption, core
+affinity, mutex priority inheritance, and CPU-time accounting remain unsupported and must
 not be described as parity-complete. Task notifications use one counter per
 task: `xTaskNotifyGive` increments and wakes a blocked owner, while
 `ulTaskNotifyTake` clears or decrements that counter and observes virtual-clock
 timeouts and cooperative shutdown.
 Plan 161 completed that slice: the connection fakes are gone and the production
-sources run against MockNimBLE peers. Two parity gaps remain on this boundary
-and must not be described as closed. A link severed without its GAP disconnect
-event (`action ble-kill`) leaves `Camera::isConnected()` true, so the liveness
-invariant cannot see that class of false-connected. And the host scheduler can
-still starve a task that only wakes on a virtual-clock deadline while the UI
-thread drives time forward, which is why the long Fujifilm registration wait is
-not used inside a certified scenario. Peripheral models and current tables
-require board calibration and differential traces against hardware. Physical radio timing,
+sources run against MockNimBLE peers. One modeled-link gap remains on this
+boundary and must not be described as closed. A link severed without its GAP
+disconnect event (`action ble-kill`) leaves `Camera::isConnected()` true, so the
+liveness invariant cannot see that class of false-connected. Peripheral models
+and current tables require board calibration and differential traces against
+hardware. Physical radio timing,
 analog current, sensor noise, and unavailable peripherals are irreducible
 boundaries; each must be measured, bounded, and an explicit release gate, not
 silently treated as identical.
@@ -164,15 +162,19 @@ including empty strings and failed-save rollback.
   expects the pre-fix binary to trip each exact target. This checks ordering
   only; it is not crash-causality evidence.
 - `sim/CMakeLists.txt`: the CMake path for machines with CMake installed.
+  Forced C++ platform shim includes apply only to C++ sources. Generated C
+  icon sources must compile as C without the C++ FreeRTOS header.
 - `sim/platformio.ini`: planned `platform = native` environment for networked
   developer machines.
 - The three modeled panels are the 80x160 `FURBLE_M5STICKC` /
   `board_M5StickC`, the 135x240 `FURBLE_M5STICKS3` /
   `board_M5StickS3`, and the 320x240 `FURBLE_M5COREX` / `board_M5Stack`.
 - Keep the firmware source list in `sim/build.sh` and `sim/CMakeLists.txt` in
-  sync. `src/FurbleMQTT.cpp` is named directly in the CMake list so the static
+  sync. Both carry a note. `src/FurbleMQTT.cpp` is named directly in the CMake list so the static
   inventory checker sees the guarded shell-build entry; its translation unit
   is empty unless `FURBLE_MQTT` is enabled.
+- Platform timed power-off returns a boolean: the simulator and firmware must
+  report setup failure without consuming a persisted intervalometer resume.
 - Console-only firmware modules that have no simulator behavior still get a
   no-capability shadow in `sim/shim`, such as `FurbleBtDebug.h`.
 
@@ -209,16 +211,20 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
 
 - The virtual clock makes scripted runs reproducible: two smoke runs produce
   byte-identical PNGs.
-- Fuzzer reproducibility is not total. Two runs of the same seed on the same
-  binary produce byte-identical `FUZZ EVENTS` and `FUZZ COVERAGE` lines, so the
-  event stream and the pages it reaches are deterministic, and `run-fuzz.sh`
-  now enforces that with a replay of one guarded seed. `Camera::m_Mutex`, the
-  one host mutex a connect holds for its whole attempt, is scheduler visible
-  since plans/173, so that source of drift is gone. The remaining host mutexes
-  in production code are held for microseconds and have not been measured to
-  move a fuzz run, but they are still invisible, so `observed_delta` and
-  `no_observed_delta` stay masked in the replay. Compare the fuzz report lines,
-  not the log.
+- Fuzzer reproducibility is not total. `run-fuzz.sh` requires byte-identical
+  `FUZZ EVENTS` and `FUZZ COVERAGE` lines when it replays one guarded seed, so
+  the event stream and the pages it reaches are deterministic. The connect-long
+  `Camera::m_Mutex` is scheduler visible, and ownership is reserved before its
+  selected waiter is published. Async dialogs use a dedicated, stacked input
+  group per modal: PREV/NEXT cannot escape into background controls, and an
+  underlying dialog may close without detaching input from the one above it.
+  Keep new modal controls on that shared ownership path rather than adding them
+  directly to the page group. Other production mutexes are still invisible,
+  so new cross-task contention needs the same measured review. Mutex priority
+  inheritance is not modeled.
+  `observed_delta` and `no_observed_delta` remain masked because asynchronous
+  completion can move between adjacent checks without changing the reached
+  state. Compare the fuzz report lines, not the log.
 - Fix age is virtual too, so `gps.png` is byte-reproducible like every other
   capture. It used to be the one exception. TinyGPSPlus ages every reading
   against a global `millis()`, and its non-Arduino fallback read the host wall
@@ -258,6 +264,8 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   restart through the preferences file, and a reapplied `saved_camera` seed is
   idempotent because `CameraList::add_index()` overwrites by name (see
   plans/156-restart-restore-seam.md for the seam limits).
+  `FURBLE_SIM_THEME` and `FURBLE_SIM_TEXTSIZE` apply only on the fresh boot;
+  a UI-triggered reboot retains the NVS value selected by the restart action.
   See `docs/sim.md` for every action value and query key.
 - Scenario parsing is a pre-runtime gate: every verb has strict arity and
   numeric validation, unknown verbs/options and trailing values are rejected
@@ -542,6 +550,12 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   phases and raw-output rejection sampling, while the UI task reports each
   completed `lv_task_handler` cycle through `fuzzCycleComplete`. Same seed and
   board reproduce a finding exactly. See plans/105-ui-fuzzing.md.
+- A firmware restart reached by the fuzzer performs the same orderly task join
+  and process re-exec as a scripted restart. Only harness RNG, counters,
+  finding counts, coverage, and the last 20 event names cross the exec in a
+  private unlinked descriptor. Firmware RAM and UI state are fresh, NVS
+  persists, and the restart event is counted as interrupted rather than
+  replayed. Checkpoint creation and restore fail closed.
 - `sim/scripts/run-fuzz.sh` runs the pinned seed set and fails on any finding;
   `FURBLE_FUZZ_XFAIL_SEEDS` pins tracked-but-unfixed bugs as expected-fail. It
   is currently used for seed 3 on the 320x240 board only, which reports a layout

@@ -62,35 +62,36 @@ mutex, plan 158 Phase 3.
 `Camera::m_Mutex` is a `Furble::connect_mutex_t`. In every build except a
 `FURBLE_SIM` one that is `std::mutex`, so firmware and the host test suite
 compile the shipping type and the shipping lock discipline. Under `FURBLE_SIM`
-it is `Sim::SchedulerMutex`, the same `std::mutex` with the contended wait
-reported:
+it is `Sim::SchedulerMutex`, whose ownership and waiter list are serialized by
+the virtual scheduler.
 
-```
-void lock(void) {
-  if (m_Mutex.try_lock()) {
-    return;
-  }
-  schedulerHostBlockBegin();
-  m_Mutex.lock();
-  schedulerHostBlockEnd();
-}
-```
+The first implementation wrapped a native `std::mutex`: a contended task marked
+itself blocked before the native lock and runnable after acquiring it. That
+closed the long invisible wait, but left a smaller wake gap. On seed 31337 the
+control task released the camera mutex at virtual tick 470; the target host
+thread sometimes had not republished itself when the UI checked for runnable
+work, so the UI entered one extra 20 ms disconnect slice. Identical events then
+reached different timer phases and page-coverage counts.
 
-`schedulerHostBlockBegin()` is the existing `setTaskBlockedLocked(true)`: the
-waiter stops being runnable, gives up the turn, and the scheduler dispatches
-the holder immediately. `schedulerHostBlockEnd()` marks it runnable again and
-waits for its turn, exactly like the return from a queue wait. The wait carries
-no deadline and no queue, so nothing else releases it; the task releases itself
-when the real mutex is in hand, which is the real event the wait ends on.
-
-An uncontended acquisition costs one `try_lock` and reports nothing, so the
-common case never enters the scheduler.
+Unlock now selects exactly one registered waiter by task priority then wait
+order, reserves mutex ownership for it, and publishes it as runnable while the
+scheduler mutex is still held. Only then is the scheduler condition signalled.
+A newcomer therefore cannot barge into the wake gap, and UI quiescence cannot
+complete while the selected waiter is unpublished. Cancellation unlinks an
+unselected waiter or transfers a selected reservation before unwinding. A
+global stop unwinds a registered task with the scheduler's task-exit exception
+and an unregistered UI waiter with the matching simulator-thread exception.
 
 This is the smallest seam that closes the measured defect. Only
 `Camera::m_Mutex` changes type. It is the one host mutex production holds for
 seconds; `m_ConnParamsMutex`, `Scan::m_StateMutex` and the rest are held for
 microseconds and have never been measured to move a run. Widening the alias is
 mechanical if one of them ever does.
+
+The simulator selects mutex waiters by priority but does not implement FreeRTOS
+mutex priority inheritance. Instruction-level preemption, SMP/core affinity,
+and CPU-time accounting remain explicit limits; this seam is not complete
+hardware mutex parity.
 
 **This is a change in `lib/furble`, and it is a type alias behind
 `FURBLE_SIM`.** `lib/furble/Camera.h` gains the alias and the include that
@@ -221,6 +222,16 @@ Debian bookworm arm64, 11 cores. Load is generated with spin loops.
 | Firmware, `FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3-debug` | SUCCESS |
 | `sdkconfig.*` | unchanged |
 
+The guarded replay later exposed a separate UI ordering defect after the mutex
+wake gap was fixed. Companion pairing and connect progress could both be
+visible, while their footer buttons shared the page's encoder group. PREV moved
+from pairing Accept to the background connect Cancel; SELECT therefore either
+closed pairing or cancelled the camera according to timer order, changing the
+visited-page report with the same event stream. Real dialogs now own stacked
+encoder groups containing only their footer controls. The focused regression
+covers both connect/pairing creation orders, no-touch PRESET and SHUTTER mode
+restoration, and out-of-order closure of an underlying low-battery warning.
+
 ### Issue #279
 
 `cancel-sweep-fauxny-ui` is the leg the issue measured. Its 24000 ms bound is
@@ -304,3 +315,7 @@ target negative legs, recorded in
 available production-UI simulator `249650a5`, not an exact `8a94` build, so the
 negative result is evidence for the old mutation locations in that binary only.
 Neither the build nor the guard run establishes SIGSEGV causality.
+
+The final integration also passes the repository-wide clang-format check for
+the simulator and host test sources. This is formatting-only and does not
+change simulator behavior.

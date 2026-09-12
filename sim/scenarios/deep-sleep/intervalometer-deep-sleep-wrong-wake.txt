@@ -1,0 +1,12 @@
+# A resume record without the PMIC wake marker is not a valid reboot resume.
+seed fauxny true
+seed autoconnect true
+seed ivl_sleep true
+seed resume_fixture early
+seed interval_count 2
+seed interval_shutter 30
+wait 5000
+assert platform.wake_marker no
+assert camera.shutter_presses 0
+assert ui.interval_state idle
+exit
