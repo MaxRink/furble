@@ -22,9 +22,10 @@ tokens in `sim/driver.cpp`, `src/FurbleUI.cpp`, and the host fault harness.
 ## Parity inventory and seam rules
 
 The simulator shares substantial production UI, GPS, settings, and power
-policy, but the connection path is currently a fake and the host scheduler is
-not yet equivalent to FreeRTOS. The following is the current seam inventory
-and target boundary (a new seam needs a contract test and an entry here):
+policy, but the connection transport and camera hardware remain mocked and the
+host scheduler is not yet equivalent to FreeRTOS. The following is the current
+seam inventory and target boundary (a new seam needs a contract test and an
+entry here):
 
 | Area | Shared production path | Narrow simulator seam and reason |
 | --- | --- | --- |
