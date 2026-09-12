@@ -24,23 +24,27 @@ uint64_t g_Now = 0;
 uint64_t g_StartAdvance = 0;
 std::vector<std::pair<esp_timer_cb_t, void *>> g_QueuedCallbacks;
 std::function<void()> g_StopHook;
-}
+}  // namespace
 
 extern "C" size_t httpd_req_get_hdr_value_len(httpd_req_t *request, const char *name) {
   const auto found = request->headers.find(name);
   return found == request->headers.end() ? 0 : found->second.size();
 }
-extern "C" esp_err_t httpd_req_get_hdr_value_str(httpd_req_t *request, const char *name,
-                                                   char *value, size_t length) {
+extern "C" esp_err_t httpd_req_get_hdr_value_str(httpd_req_t *request,
+                                                 const char *name,
+                                                 char *value,
+                                                 size_t length) {
   const auto found = request->headers.find(name);
-  if ((found == request->headers.end()) || (length <= found->second.size())) return ESP_FAIL;
+  if ((found == request->headers.end()) || (length <= found->second.size()))
+    return ESP_FAIL;
   std::memcpy(value, found->second.c_str(), found->second.size() + 1);
   return ESP_OK;
 }
 extern "C" int httpd_req_recv(httpd_req_t *request, char *buffer, size_t length) {
   const size_t remaining = request->body.size() - request->bodyOffset;
   const size_t count = std::min(length, remaining);
-  if (count == 0) return 0;
+  if (count == 0)
+    return 0;
   std::memcpy(buffer, request->body.data() + request->bodyOffset, count);
   request->bodyOffset += count;
   return static_cast<int>(count);
@@ -58,8 +62,8 @@ extern "C" esp_err_t httpd_resp_set_type(httpd_req_t *request, const char *type)
   return ESP_OK;
 }
 extern "C" esp_err_t httpd_resp_send(httpd_req_t *request, const char *body, ssize_t length) {
-  request->responseBody.assign(body, length == HTTPD_RESP_USE_STRLEN ? std::strlen(body)
-                                                                     : static_cast<size_t>(length));
+  request->responseBody.assign(
+      body, length == HTTPD_RESP_USE_STRLEN ? std::strlen(body) : static_cast<size_t>(length));
   return ESP_OK;
 }
 extern "C" esp_err_t httpd_register_uri_handler(httpd_handle_t server, const httpd_uri_t *route) {
@@ -72,16 +76,22 @@ extern "C" esp_err_t httpd_ssl_start(httpd_handle_t *server, const httpd_ssl_con
   return ESP_OK;
 }
 extern "C" esp_err_t httpd_ssl_stop(httpd_handle_t server) {
-  if (g_StopHook) g_StopHook();
-  if (g_Server == server) g_Server = nullptr;
+  if (g_StopHook)
+    g_StopHook();
+  if (g_Server == server)
+    g_Server = nullptr;
   delete server;
   return ESP_OK;
 }
 
 namespace host_webui_http {
-void reset() { g_StopHook = {}; }
-httpd_req_t invoke(httpd_method_t method, const std::string &uri,
-                   const std::map<std::string, std::string> &headers, const std::string &body) {
+void reset() {
+  g_StopHook = {};
+}
+httpd_req_t invoke(httpd_method_t method,
+                   const std::string &uri,
+                   const std::map<std::string, std::string> &headers,
+                   const std::string &body) {
   httpd_req_t request;
   request.headers = headers;
   request.body = body;
@@ -90,10 +100,9 @@ httpd_req_t invoke(httpd_method_t method, const std::string &uri,
     request.responseStatus = "503 No Server";
     return request;
   }
-  const auto found = std::find_if(g_Server->routes.begin(), g_Server->routes.end(),
-                                  [&](const auto &route) {
-                                    return (route.method == method) && (uri == route.uri);
-                                  });
+  const auto found = std::find_if(
+      g_Server->routes.begin(), g_Server->routes.end(),
+      [&](const auto &route) { return (route.method == method) && (uri == route.uri); });
   if (found == g_Server->routes.end()) {
     request.responseStatus = "404 Not Found";
     return request;
@@ -102,12 +111,16 @@ httpd_req_t invoke(httpd_method_t method, const std::string &uri,
   found->handler(&request);
   return request;
 }
-void setStopHook(std::function<void()> hook) { g_StopHook = std::move(hook); }
+void setStopHook(std::function<void()> hook) {
+  g_StopHook = std::move(hook);
+}
 }  // namespace host_webui_http
 
-extern "C" int64_t esp_timer_get_time() { return static_cast<int64_t>(g_Now); }
+extern "C" int64_t esp_timer_get_time() {
+  return static_cast<int64_t>(g_Now);
+}
 extern "C" esp_err_t esp_timer_create(const esp_timer_create_args_t *args,
-                                       esp_timer_handle_t *handle) {
+                                      esp_timer_handle_t *handle) {
   auto timer = std::make_unique<host_webui_timer_t>();
   timer->callback = args->callback;
   timer->arg = args->arg;
@@ -126,13 +139,16 @@ extern "C" esp_err_t esp_timer_stop(esp_timer_handle_t timer) {
   timer->active = false;
   return ESP_OK;
 }
-extern "C" bool esp_timer_is_active(esp_timer_handle_t timer) { return timer->active; }
+extern "C" bool esp_timer_is_active(esp_timer_handle_t timer) {
+  return timer->active;
+}
 namespace host_webui_timer {
 void reset() {
   g_Now = 0;
   g_StartAdvance = 0;
   g_QueuedCallbacks.clear();
-  for (auto &timer : g_Timers) timer->active = false;
+  for (auto &timer : g_Timers)
+    timer->active = false;
 }
 void elapseAndQueue(uint64_t microseconds) {
   g_Now += microseconds;
@@ -146,19 +162,30 @@ void elapseAndQueue(uint64_t microseconds) {
 void dispatchQueued() {
   const auto callbacks = std::move(g_QueuedCallbacks);
   g_QueuedCallbacks.clear();
-  for (const auto &[callback, arg] : callbacks) callback(arg);
+  for (const auto &[callback, arg] : callbacks)
+    callback(arg);
 }
 void advance(uint64_t microseconds) {
   elapseAndQueue(microseconds);
   dispatchQueued();
 }
-void setStartAdvance(uint64_t microseconds) { g_StartAdvance = microseconds; }
+void setStartAdvance(uint64_t microseconds) {
+  g_StartAdvance = microseconds;
+}
 }  // namespace host_webui_timer
 
-extern "C" BaseType_t xTaskCreate(void (*)(void *), const char *, uint32_t, void *, UBaseType_t,
-                                   TaskHandle_t *handle) {
+extern "C" BaseType_t xTaskCreate(void (*)(void *),
+                                  const char *,
+                                  uint32_t,
+                                  void *,
+                                  UBaseType_t,
+                                  TaskHandle_t *handle) {
   *handle = reinterpret_cast<void *>(1);
   return pdPASS;
 }
-extern "C" BaseType_t xTaskNotifyGive(TaskHandle_t) { return pdTRUE; }
-extern "C" uint32_t ulTaskNotifyTake(BaseType_t, TickType_t) { return 0; }
+extern "C" BaseType_t xTaskNotifyGive(TaskHandle_t) {
+  return pdTRUE;
+}
+extern "C" uint32_t ulTaskNotifyTake(BaseType_t, TickType_t) {
+  return 0;
+}

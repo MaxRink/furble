@@ -88,7 +88,7 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {MQTT_HA,            {MQTT_HA, 61, "MQTT Home Assistant", "mqtt_ha", FURBLE_STR}          },
 #endif
 #if defined(FURBLE_WEBUI) && FURBLE_WEBUI
-    {WEB_UI,            {WEB_UI, 62, "WebUI", "web_ui", FURBLE_STR}                              },
+    {WEB_UI,             {WEB_UI, 62, "WebUI", "web_ui", FURBLE_STR}                          },
 #endif
 #if !defined(FURBLE_NO_DISPLAY)
     {DISPLAY_MODE,       {DISPLAY_MODE, 36, "Display Mode", "display_mode", FURBLE_STR}       },

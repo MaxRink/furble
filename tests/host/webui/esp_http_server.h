@@ -1,11 +1,11 @@
 #ifndef FURBLE_HOST_WEBUI_HTTP_SERVER_H
 #define FURBLE_HOST_WEBUI_HTTP_SERVER_H
 
+#include <sys/types.h>
 #include <cstddef>
 #include <functional>
 #include <map>
 #include <string>
-#include <sys/types.h>
 
 #include "esp_err.h"
 
@@ -37,7 +37,10 @@ constexpr ssize_t HTTPD_RESP_USE_STRLEN = -1;
 
 extern "C" {
 size_t httpd_req_get_hdr_value_len(httpd_req_t *request, const char *name);
-esp_err_t httpd_req_get_hdr_value_str(httpd_req_t *request, const char *name, char *value, size_t length);
+esp_err_t httpd_req_get_hdr_value_str(httpd_req_t *request,
+                                      const char *name,
+                                      char *value,
+                                      size_t length);
 int httpd_req_recv(httpd_req_t *request, char *buffer, size_t length);
 esp_err_t httpd_resp_set_status(httpd_req_t *request, const char *status);
 esp_err_t httpd_resp_set_hdr(httpd_req_t *request, const char *name, const char *value);

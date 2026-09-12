@@ -15,7 +15,9 @@ struct httpd_ssl_config_t {
   const uint8_t *prvtkey_pem = nullptr;
   size_t prvtkey_len = 0;
 };
-inline httpd_ssl_config_t HTTPD_SSL_CONFIG_DEFAULT() { return {}; }
+inline httpd_ssl_config_t HTTPD_SSL_CONFIG_DEFAULT() {
+  return {};
+}
 extern "C" esp_err_t httpd_ssl_start(httpd_handle_t *server, const httpd_ssl_config_t *config);
 extern "C" esp_err_t httpd_ssl_stop(httpd_handle_t server);
 #endif
