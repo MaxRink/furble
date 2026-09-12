@@ -59,18 +59,24 @@ between sources remain explicit capture questions.
 
 ### Initial evidence ledger
 
+Updated 2026-09-12: the [camera research library](../docs/camera-research/README.md)
+records the reviewed source pins, license limits, and protocol details for all
+seven implemented real camera families. This update is research only. It adds
+no camera implementation, imported fixture, or certified hardware result.
+
 The 2026-08-30 Sol reviews are design audits, not capture evidence. This
 ledger records whether a claim has enough source identity to guide a peer. A
 missing commit, license, or capture ID prevents import and certification.
 
 | Area | Evidence currently identified | Pin and license status | Allowed use now |
 | --- | --- | --- | --- |
-| Fujifilm | `tiredboffin/fffw` GATT maps and firmware mapping | Commit and license must be pinned before import | Research and capture targeting |
-| Canon | `3bl3gamer/canon-bluetooth-control`, `RReverser/eos-remote-web`, and `robot9706/CanonBLEIntervalometer` | First and third repositories have no confirmed repository license; all commits remain unpinned | Research-only semantic comparison; no code or fixture import without permission |
-| Sony remote | `coral/freemote` and `Staacks/alpharemote` | Commits and licenses must be recorded before import; their shutter ordering reports conflict | Research-only, source-conflicting |
-| Sony GPS | `whc2001/ILCE7M3ExternalGps` | Repository intentionally has no license | Research-only protocol hypothesis; no code or fixture import without permission |
+| Fujifilm | `tiredboffin/fffw` GATT maps and firmware mapping | `bedc091e0b54a1a34aaf6929dd08e1db36d13b08`, MIT | Research and capture targeting; no firmware wildcard |
+| Canon | `3bl3gamer/canon-bluetooth-control`, `RReverser/eos-remote-web`, and `robot9706/CanonBLEIntervalometer` | Respectively `d029deac13b1ab91c813e667af0d67e3b9ed168a` (no confirmed license), `707c05d5dd19040f27782d039f07e0a46fa6febe` (MIT), `c230a7ad3b9fde569289b63272f46097bb8c2531` (no confirmed license) | Semantic comparison; unlicensed material stays citation-only |
+| Sony remote | `coral/freemote` and `Staacks/alpharemote` | Respectively `9dad4c257af19c9274a70f8affd74b8b3243d8a6` (Apache-2.0), `93972e53d1f8333e431762a7c25322f2f489a8ad` (GPL-3.0); shutter ordering reports conflict | Research-only, source-conflicting; copyleft source is not imported |
+| Sony GPS | `whc2001/ILCE7M3ExternalGps` | `219a05745bdcbbe8ede1442b9ba356d6fd8e1e29`; repository intentionally has no license | Citation-only; length arithmetic and flag description conflict internally |
 | DJI | `dji-sdk/Osmo-GPS-Controller-Demo` at `92fe23e5a749f189593f980a26a105c3bb66aa1c` | Demo code says MIT while protocol documents are under DJI EULA and source headers contain mixed terms | Citation and independent reimplementation only until licensing is clarified |
 | Ricoh older family | `dm-zharov/ricoh-gr-bluetooth-api` at `8c55b79928295f4c0f9a8b0f6f4e1015aeb3d016` | Unlicense; importable with provenance | Cross-model research only; every inherited field forces `UNCERTIFIED` |
+| Ricoh GR III | `Nielk74/ricoh-gr3-android` at `2da1a822e2945da507ead5dfd2d4ed95dee26bda` reports firmware 1.92/2.10 pairing, shutter, and WLAN error `0x80` | No declared license; no raw capture manifest | Citation-only; dynamic passkey and WLAN behavior are exact-capture targets |
 | Ricoh GR IV HDF | [Issue 267 testimony](https://github.com/gkoh/furble/issues/267#issuecomment-4965515611), PR 270, and merge `ea84822e225585f6f257b6100799acd295d01bce` | Furble code is MIT; testimony is citation-only | Hardware smoke evidence only, not a byte-level fixture |
 | Nikon Smart | [birdcam](https://github.com/attilaolah/birdcam/tree/93ffc86a85a474dd884e4ac0168a991c1fdb1822/nikon/coolpix) at `93ffc86a85a474dd884e4ac0168a991c1fdb1822`, [nsg protocol](https://github.com/hurui200320/nsg/blob/5a9117def8fad5b75771a52837562ae02b9c80c8/doc/nikon-z-gps.md) at `5a9117def8fad5b75771a52837562ae02b9c80c8`, and [Z50 II issue 257](https://github.com/gkoh/furble/issues/257) | birdcam is MIT but includes third-party-derived material; nsg is AGPL-3.0; issue output is citation evidence | Clean-room research only; no complete firmware-qualified public capture exists |
 | Panasonic S5 | [lux-lat-long-log protocol](https://github.com/tobiasbrummer/lux-lat-long-log/blob/87e51686c8496ca20fa8b14433ba548383f8da5b/PROTOCOL.md) at `87e51686c8496ca20fa8b14433ba548383f8da5b` | MIT, importable with notice | Hardware report lacks raw HCI and exact firmware; useful only as an uncertified S5 template |
@@ -218,8 +224,11 @@ source-conflicting and `UNCERTIFIED` until the exact model and firmware capture
 resolves it. Model-specific focus, zoom, video, Bulb, and lens limits are not
 interchangeable.
 
-Location peers model DD21 packet capability, 89-byte and 95-byte variants,
-DD30/DD31 locking, DD01 state, UTC and DST fields, and orderly disable. Legacy
+Location peers investigate DD21 packet capability, packet lengths, DD30/DD31
+locking, DD01 state, UTC and DST fields, and orderly disable. The pinned public
+GPS source claims 89/95-byte variants while describing a four-byte difference,
+and its bit-number/mask wording conflicts. Do not implement those variants as
+settled facts until exact captures resolve the discrepancy. Legacy
 cameras that make remote and location modes mutually exclusive must reject the
 combined state.
 
@@ -241,9 +250,16 @@ security behavior rather than accepting production's current assumption that
 the link is bonded, encrypted, and authenticated. A protocol frame accepted by
 ATT is not a physical recording outcome.
 
-### Ricoh GR IV and GR IV HDF
+### Ricoh GR III/IIIx, GR IV and GR IV HDF
 
-Keep separate exact profiles even when both use the same firmware package.
+Use separate GR III and GR IIIx research profiles. Public implementations
+report shared Shooting UUIDs, but pairing, WLAN/power handles, Wi-Fi wake,
+and GPS fields are not transferable across generations. Capture dynamic
+passkey entry and BLE shutter separately from AP/HTTP control. GR II is a
+distinct Wi-Fi-only future research target, not an implemented BLE camera.
+
+Keep GR IV and GR IV HDF as separate exact profiles even when they use the
+same firmware package.
 Model raw advertisement frames, the official six-client registration limit,
 actual SMP association, Operation Mode, capture writes and outcomes, power and
 standby notifications, and GPS-to-EXIF results.
@@ -272,6 +288,26 @@ reproduce them before changing production code:
 | Nikon | Smart needs unsupported BR/EDR continuation | Exact BLE and Classic transition trace |
 
 ## Implementation sequence
+
+### Research update: 2026-09-12
+
+Completed a three-lane GitHub and official-documentation survey, followed by
+independent source/provenance review. The library covers Ricoh, Fujifilm,
+Canon, Nikon, Sony, Panasonic LUMIX, and DJI Osmo, with FauxNY explicitly
+software-only. It records current Furble behavior at `965f299f`, immutable
+external source pins, license constraints, model/firmware limits, and future
+positive/negative capture cases. No new support or certainty claim is made.
+
+Resolve the Ricoh WLAN-versus-location UUID and GPS datum-versus-centisecond
+conflicts, Sony packet-length/flag conflicts, and model-specific registration
+questions before deriving peer fixtures. Nikon SnapBridge app-feature tables
+do not establish ML-L7 accessory compatibility. Canon `mktime` behavior needs
+runtime-timezone verification, not an unconditional defect label.
+
+Deviation: this source survey is delivered independently of peer code so the
+references remain available without relaxing any raw-capture or hardware gate.
+The implementation and acceptance steps below remain pending where their
+evidence is absent.
 
 ### PR 1: oracle and fixture foundation
 

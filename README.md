@@ -123,6 +123,11 @@ The following devices have been tested and confirmed to work:
 [^4]: Focus-only controls are unsupported and do not send a camera command.
 The supported shutter command performs an immediate capture with autofocus.
 
+For contributor research across all implemented camera families, see the
+[camera protocol research library](docs/camera-research/README.md). It records
+source pins, protocol conflicts, and future capture targets, not additional
+supported-camera claims.
+
 ## Supported Controllers
 
 Initially targeted at the M5StickC, the following controllers from [M5Stack](https://m5stack.com/) are supported:
