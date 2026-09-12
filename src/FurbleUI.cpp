@@ -1824,12 +1824,14 @@ void UI::scrollLabelsThatDoNotFit(lv_obj_t *page) {
 }
 
 void UI::reserveLegendColumns(lv_obj_t *page) {
-  if ((page == nullptr) || (floatingIndicatorReserve() <= 0) || (m_Right == nullptr)
-      || !lv_obj_is_valid(m_Right)) {
+  if (page == nullptr) {
     return;
   }
-  lv_obj_update_layout(m_Right);
-  const int32_t reserve = lv_obj_get_width(m_Right) + LEGEND_GAP;
+  int32_t reserve = 0;
+  if ((floatingIndicatorReserve() > 0) && (m_Right != nullptr) && lv_obj_is_valid(m_Right)) {
+    lv_obj_update_layout(m_Right);
+    reserve = lv_obj_get_width(m_Right) + LEGEND_GAP;
+  }
   lv_obj_update_layout(page);
 
   // Most pages are a list of row containers. Any row can move through the
@@ -1848,17 +1850,26 @@ void UI::reserveLegendColumns(lv_obj_t *page) {
     if ((row == nullptr) || !lv_obj_is_valid(row) || lv_obj_has_flag(row, LV_OBJ_FLAG_FLOATING)) {
       continue;
     }
-    // The row's own box, not its padding. A child is clipped to its parent's
-    // box, so padding alone still lets a roller or switch enter the reserved
-    // strip. Recompute from the page so loading twice cannot shrink it twice.
-    lv_obj_set_width(row, lv_obj_get_content_width(page) - reserve);
-    // Menu pages centre their rows on the cross axis. Move the narrowed row
-    // left by the half-width LVGL would otherwise leave on both sides, so the
-    // entire reservation stays beside the right-hand legend.
-    lv_obj_set_style_translate_x(row, -(reserve / 2), LV_PART_MAIN);
+    if (reserve > 0) {
+      // The row's own box, not its padding. A child is clipped to its parent's
+      // box, so padding alone still lets a roller or switch enter the reserved
+      // strip. Recompute from the page so loading twice cannot shrink it twice.
+      lv_obj_set_width(row, lv_obj_get_content_width(page) - reserve);
+      // Menu pages centre their rows on the cross axis. Move the narrowed row
+      // left by the half-width LVGL would otherwise leave on both sides, so the
+      // entire reservation stays beside the right-hand legend.
+      lv_obj_set_style_translate_x(row, -(reserve / 2), LV_PART_MAIN);
+    }
+    lv_obj_update_layout(row);
     for (uint32_t j = 0; j < lv_obj_get_child_count(row); j++) {
       lv_obj_t *child = lv_obj_get_child(row, j);
       if ((child != nullptr) && lv_obj_check_type(child, &lv_label_class)
+          && lv_obj_has_flag(child, LV_OBJ_FLAG_USER_1)) {
+        // Give deliberately wrapped content-sized labels the row's final pixel
+        // width so LVGL computes their real multi-line height before drawing.
+        lv_obj_set_style_max_width(child, lv_obj_get_content_width(row), LV_PART_MAIN);
+      }
+      if ((reserve > 0) && (child != nullptr) && lv_obj_check_type(child, &lv_label_class)
           && ((lv_label_get_long_mode(child) == LV_LABEL_LONG_SCROLL)
               || (lv_label_get_long_mode(child) == LV_LABEL_LONG_SCROLL_CIRCULAR))) {
         lv_label_set_long_mode(child, LV_LABEL_LONG_WRAP);
@@ -1872,6 +1883,9 @@ void UI::reserveLegendColumns(lv_obj_t *page) {
   // label into a scrolling one changes the row's height, so the widths are
   // settled once more afterwards.
   lv_obj_update_layout(page);
+  if (reserve <= 0) {
+    return;
+  }
   scrollLabelsThatDoNotFit(page);
   lv_obj_update_layout(page);
   for (uint32_t i = 0; i < lv_obj_get_child_count(page); i++) {
@@ -8105,15 +8119,7 @@ lv_obj_t *UI::addSpinItem(lv_obj_t *page, const char *item, Intervalometer::Spin
   lv_label_set_text(spinner.m_Label, item);
   // Both labels keep their natural width for the row's line-break decision.
   // When they do not fit together, ROW_WRAP moves the value to the next line.
-#if defined(FURBLE_M5STICKC)
-  // On the 80 px panel even the longest name is wider than the reserved row.
-  // Give it a full line so LVGL computes the wrapped content height instead of
-  // keeping the capped label at its original single-line height.
-  lv_obj_set_width(spinner.m_Label, LV_PCT(100));
-#else
   lv_obj_set_width(spinner.m_Label, LV_SIZE_CONTENT);
-#endif
-  lv_obj_set_style_max_width(spinner.m_Label, LV_PCT(100), 0);
   lv_label_set_long_mode(spinner.m_Label, LV_LABEL_LONG_WRAP);
   lv_obj_add_flag(spinner.m_Label, LV_OBJ_FLAG_USER_1);
 
@@ -8122,7 +8128,6 @@ lv_obj_t *UI::addSpinItem(lv_obj_t *page, const char *item, Intervalometer::Spin
   // value at the row and wrap it so every digit and unit remains visible. It
   // does not animate: a scrolling value hides most of itself at any instant
   // and repaints the row every frame for as long as the page is open.
-  lv_obj_set_style_max_width(spinner.m_Value, LV_PCT(100), 0);
   lv_label_set_long_mode(spinner.m_Value, LV_LABEL_LONG_WRAP);
   // reserveLegendColumns() normally turns a wrapped row label into a circular
   // scroller. This value deliberately wraps to preserve every digit and unit.
