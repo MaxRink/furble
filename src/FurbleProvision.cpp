@@ -6,6 +6,9 @@
 
 #include "FurbleSettings.h"
 #include "interval.h"
+#if defined(ESP_PLATFORM)
+#include "FurbleWiFi.h"
+#endif
 
 namespace Furble {
 namespace Provision {
@@ -64,6 +67,8 @@ ProvisionTLV::ValueType runtimeType(Settings::type_t type) {
     case Settings::SHOW_TITLE:
     case Settings::SLEEP_CONN:
     case Settings::SD_GPX:
+    case Settings::WIFI:
+    case Settings::NTP:
     case Settings::BOOT_SPLASH:
     case Settings::BATTERY_SAVER:
     case Settings::AUTO_OFF_CHARGING:
@@ -109,6 +114,9 @@ ProvisionTLV::ValueType runtimeType(Settings::type_t type) {
 
     case Settings::THEME:
     case Settings::BUTTON_MODE:
+    case Settings::WIFI_SSID:
+    case Settings::WIFI_PSK:
+    case Settings::NTP_SERVER:
     case Settings::COMPANION_PASSWORD:
       return ProvisionTLV::ValueType::STRING;
 
@@ -232,6 +240,14 @@ bool validateSetting(const ProvisionTLV::SettingValue &field,
     case ProvisionTLV::ValueType::STRING:
     {
       const std::string value(field.value.begin(), field.value.end());
+      if (((setting.type == Settings::WIFI_SSID) || (setting.type == Settings::WIFI_PSK)
+           || (setting.type == Settings::NTP_SERVER))
+          && !Settings::validNetworkString(setting.type, value)) {
+        report.error = ApplyError::BAD_SETTING;
+        report.failedSettingId = field.wireId;
+        report.message = "network setting string is invalid";
+        return false;
+      }
       if ((setting.type == Settings::BUTTON_MODE)
           && (value != Settings::BUTTON_MODE_TWO_BUTTON_VALUE)
           && (value != Settings::BUTTON_MODE_ONE_BUTTON_VALUE)) {
@@ -291,14 +307,8 @@ bool saveSetting(const ProvisionTLV::SettingValue &field, Settings::type_t type)
 }
 
 size_t deferredFieldCount(const ProvisionTLV::ProvisionBundle &bundle) {
-  // TODO(#53): persist/apply these network fields when the WiFi/MQTT backend
-  // lands. Keeping them in the validated bundle lets the flasher protocol
-  // land independently of association code.
-  // TODO(#116): connect companionPassword to the companion secret store when
-  // that backend lands; it is deliberately never echoed by the console.
+  // Only MQTT fields await their backend.
   size_t count = 0;
-  count += bundle.wifiSsid.has_value() ? 1 : 0;
-  count += bundle.wifiPsk.has_value() ? 1 : 0;
   count += bundle.mqttUri.has_value() ? 1 : 0;
   count += bundle.mqttUsername.has_value() ? 1 : 0;
   count += bundle.mqttPassword.has_value() ? 1 : 0;
@@ -329,6 +339,22 @@ bool apply(const ProvisionTLV::ProvisionBundle &bundle,
            const ApplyOptions &options) {
   report = {};
   report.deferredFields = deferredFieldCount(bundle);
+  if (bundle.wifiSsid.has_value()) {
+    const std::string ssid(bundle.wifiSsid->begin(), bundle.wifiSsid->end());
+    if (!Settings::validNetworkString(Settings::WIFI_SSID, ssid)) {
+      report.error = ApplyError::BAD_SETTING;
+      report.message = "WiFi SSID is invalid";
+      return false;
+    }
+  }
+  if (bundle.wifiPsk.has_value()) {
+    const std::string psk(bundle.wifiPsk->begin(), bundle.wifiPsk->end());
+    if (!Settings::validNetworkString(Settings::WIFI_PSK, psk)) {
+      report.error = ApplyError::BAD_SETTING;
+      report.message = "WiFi passphrase is invalid";
+      return false;
+    }
+  }
 
   // The dedicated password field and the generic wire-id 46 setting address
   // the same NVS key. Reject an ambiguous bundle instead of allowing the
@@ -386,6 +412,11 @@ bool apply(const ProvisionTLV::ProvisionBundle &bundle,
       report.message = "password persistence failed";
       return false;
     }
+#if defined(ESP_PLATFORM)
+    if (setting->type == Settings::WIFI_SSID) {
+      WiFi::clearRememberedAccessPoint();
+    }
+#endif
     report.settingsApplied++;
     if (options.onSettingApplied != nullptr) {
       options.onSettingApplied(field.wireId);
@@ -406,6 +437,20 @@ bool apply(const ProvisionTLV::ProvisionBundle &bundle,
     }
   }
 
+  report.fieldsApplied = report.settingsApplied;
+  if (bundle.wifiSsid.has_value()) {
+    Settings::save<std::string>(Settings::WIFI_SSID,
+                                std::string(bundle.wifiSsid->begin(), bundle.wifiSsid->end()));
+#if defined(ESP_PLATFORM)
+    WiFi::clearRememberedAccessPoint();
+#endif
+    report.fieldsApplied++;
+  }
+  if (bundle.wifiPsk.has_value()) {
+    Settings::save<std::string>(Settings::WIFI_PSK,
+                                std::string(bundle.wifiPsk->begin(), bundle.wifiPsk->end()));
+    report.fieldsApplied++;
+  }
   report.ok = true;
   return true;
 }

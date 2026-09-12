@@ -7,6 +7,10 @@ change. The CPU then sleeps instead of polling the accelerometer. This replaces
 the software variance poll of PR18 where the hardware supports it, and keeps the
 software detector as a fallback everywhere else.
 
+GPS replay follow-up: the shared replay gate requires a complete,
+checksum-valid RMC with a nonempty date field and parser commit at CR/LF. The
+simulator fixture transition restarts only the canned NMEA burst bookkeeping;
+queued CASIC replies remain untouched.
 ## Implementation state
 
 Rebased onto master 6245a301. Base is `master`, not `feat/16-imu-spirit-level`.

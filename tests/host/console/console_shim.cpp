@@ -606,6 +606,7 @@ BtDebugState g_BtDebug;
 IRState g_IR;
 MiscState g_Misc;
 TimeState g_Time;
+WiFiState g_WiFi;
 
 }  // namespace
 
@@ -648,6 +649,9 @@ MiscState &misc(void) {
 TimeState &time(void) {
   return g_Time;
 }
+WiFiState &wifi(void) {
+  return g_WiFi;
+}
 
 void resetDoubles(void) {
   const size_t installs = g_Misc.usbDriverInstalls;
@@ -660,6 +664,7 @@ void resetDoubles(void) {
   g_IR = IRState();
   g_Misc = MiscState();
   g_Time = TimeState();
+  g_WiFi = WiFiState();
 
   // Transport setup happens once at Console::init(), so keep its counters.
   g_Misc.usbDriverInstalls = installs;
@@ -671,6 +676,61 @@ void resetDoubles(void) {
 namespace Furble {
 
 imu_mutex_t g_IMUMutex;
+
+void WiFi::init(void) {}
+
+bool WiFi::connect(void) {
+  auto &state = ConsoleHost::wifi();
+  state.connectCalls++;
+  return state.connectResult;
+}
+
+void WiFi::disconnect(void) {
+  ConsoleHost::wifi().disconnectCalls++;
+}
+
+bool WiFi::setEnabled(bool enabled) {
+  auto &state = ConsoleHost::wifi();
+  state.setEnabledCalls++;
+  state.status.enabled = enabled;
+  return state.setEnabledResult;
+}
+
+void WiFi::forget(void) {
+  ConsoleHost::wifi().forgetCalls++;
+}
+
+void WiFi::clearRememberedAccessPoint(void) {
+  ConsoleHost::wifi().clearRememberedAccessPointCalls++;
+}
+
+bool WiFi::setNtpEnabled(bool enabled) {
+  auto &state = ConsoleHost::wifi();
+  state.setNtpEnabledCalls++;
+  state.status.ntp_enabled = enabled;
+  return state.setNtpEnabledResult;
+}
+
+bool WiFi::reloadNtp(void) {
+  auto &state = ConsoleHost::wifi();
+  state.reloadNtpCalls++;
+  return state.reloadNtpResult;
+}
+
+bool WiFi::syncNtp(void) {
+  auto &state = ConsoleHost::wifi();
+  state.syncNtpCalls++;
+  return state.syncNtpResult;
+}
+
+WiFi::status_t WiFi::getStatus(void) {
+  return ConsoleHost::wifi().status;
+}
+
+bool WiFi::getNtpTimesync(Camera::timesync_t &timesync) {
+  timesync = {};
+  return false;
+}
 
 void UI::notifyGestureSettingsChanged(void) {
   ConsoleHost::ui().gestureNotifications++;

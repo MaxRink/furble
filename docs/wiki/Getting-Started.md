@@ -35,6 +35,12 @@ Swap `m5stick-s3` for your board environment: `m5stick-c`, `m5stick-c-plus`,
 `m5stick-s3`, `m5stack-core`, or `m5stack-core2`. See the project README for the
 full build notes.
 
+If the 4 MB Core debug image exceeds its OTA slot, use the developer-only
+`m5stack-core-usb-debug` environment. It is USB-UART only, uses one factory app
+partition, and is not a release or wireless-update image. Avoid a full erase
+when preserving NVS settings and camera bonds. Normal CI uses this profile for
+the Core debug lane; the legacy dual-OTA Core debug profile is opt-in only.
+
 ## First pairing
 
 1. Put the camera into its Bluetooth pairing mode. Check the camera manual for

@@ -87,6 +87,8 @@ StorageKind storageKindFor(Settings::type_t type) {
     case Settings::BOOT_SPLASH:
     case Settings::BATTERY_SAVER:
     case Settings::AUTO_OFF_CHARGING:
+    case Settings::WIFI:
+    case Settings::NTP:
     case Settings::IMU:
     case Settings::IMU_TRIG:
     case Settings::GPS_MOTION:
@@ -129,6 +131,9 @@ StorageKind storageKindFor(Settings::type_t type) {
     case Settings::THEME:
     case Settings::BUTTON_MODE:
     case Settings::COMPANION_PASSWORD:
+    case Settings::WIFI_SSID:
+    case Settings::WIFI_PSK:
+    case Settings::NTP_SERVER:
       return StorageKind::STRING;
     case Settings::INTERVAL:
     case Settings::MULTISELECT:
@@ -279,6 +284,14 @@ std::vector<SettingCase> settingCases() {
        StorageKind::U8},
 #endif
       {Settings::BATTERY_SAVER, "BATTERY_SAVER", false, true, StorageKind::BOOL},
+      {Settings::WIFI, "WIFI", false, true, StorageKind::BOOL},
+      {Settings::WIFI_SSID, "WIFI_SSID", std::string {""}, std::string {"Office"},
+       StorageKind::STRING},
+      {Settings::WIFI_PSK, "WIFI_PSK", std::string {""}, std::string {"secret"},
+       StorageKind::STRING},
+      {Settings::NTP, "NTP", false, true, StorageKind::BOOL},
+      {Settings::NTP_SERVER, "NTP_SERVER", std::string {"pool.ntp.org"},
+       std::string {"time.example"}, StorageKind::STRING},
 #if defined(FURBLE_M5STICKS3)
       {Settings::WATCHDOG, "WATCHDOG", true, false, StorageKind::BOOL},
 #endif
@@ -342,6 +355,11 @@ ASSERT_STORAGE_TYPE(BOOT_SPLASH, bool);
 ASSERT_STORAGE_TYPE(DISPLAY_MODE, uint8_t);
 #endif
 ASSERT_STORAGE_TYPE(BATTERY_SAVER, bool);
+ASSERT_STORAGE_TYPE(WIFI, bool);
+ASSERT_STORAGE_TYPE(WIFI_SSID, std::string);
+ASSERT_STORAGE_TYPE(WIFI_PSK, std::string);
+ASSERT_STORAGE_TYPE(NTP, bool);
+ASSERT_STORAGE_TYPE(NTP_SERVER, std::string);
 ASSERT_STORAGE_TYPE(IMU, bool);
 ASSERT_STORAGE_TYPE(IMU_WAKE, uint8_t);
 ASSERT_STORAGE_TYPE(IMU_TRIG, bool);
@@ -392,6 +410,9 @@ SettingValue loadValue(Settings::type_t type) {
     case Settings::THEME:
     case Settings::BUTTON_MODE:
     case Settings::COMPANION_PASSWORD:
+    case Settings::WIFI_SSID:
+    case Settings::WIFI_PSK:
+    case Settings::NTP_SERVER:
       return Settings::load<std::string>(type);
 
     case Settings::TX_ADAPTIVE:
@@ -413,6 +434,8 @@ SettingValue loadValue(Settings::type_t type) {
     case Settings::BOOT_SPLASH:
     case Settings::BATTERY_SAVER:
     case Settings::AUTO_OFF_CHARGING:
+    case Settings::WIFI:
+    case Settings::NTP:
     case Settings::IMU:
     case Settings::IMU_TRIG:
     case Settings::GPS_MOTION:
@@ -560,6 +583,25 @@ void testSdRoundTrips(const std::vector<SettingCase> &cases) {
     checkStoredType(setting, "SD round-trip");
     checkValue(setting, loadValue(setting.type), setting.representative_value, "SD round-trip");
   }
+}
+
+void testNetworkIngressValidation() {
+  nvs_test_reset();
+  Settings::init();
+  const std::string embedded("a\0b", 3);
+  check(Settings::validNetworkString(Settings::WIFI_SSID, "Office"), "a normal SSID is accepted");
+  check(!Settings::validNetworkString(Settings::WIFI_SSID, std::string(33, 'x')),
+        "an oversized SSID is rejected");
+  check(!Settings::validNetworkString(Settings::WIFI_PSK, embedded),
+        "an embedded-NUL passphrase is rejected");
+  check(!Furble::importSetting(Settings::get(Settings::WIFI_SSID), std::string(33, 'x')),
+        "SD import rejects an oversized SSID");
+  check(!Furble::importSetting(Settings::get(Settings::WIFI_PSK), embedded),
+        "SD import rejects an embedded-NUL passphrase");
+  check(!Furble::importSetting(Settings::get(Settings::NTP_SERVER), ""),
+        "SD import rejects an empty NTP server");
+  check(Settings::load<std::string>(Settings::WIFI_SSID).empty(),
+        "rejected network imports do not persist an SSID");
 }
 
 void testUnknownAndAliasedKeysAreIgnored() {
@@ -754,6 +796,7 @@ int main() {
   testDefaults(cases);
   testNvsRoundTrips(cases);
   testSdRoundTrips(cases);
+  testNetworkIngressValidation();
   testPasswordLoadBoundary();
   testUnknownAndAliasedKeysAreIgnored();
   testMultiselectDiscriminatesLongNames();

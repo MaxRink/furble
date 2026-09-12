@@ -27,9 +27,11 @@ set(furble_sources
     FurbleProvision.cpp
     FurbleSD.cpp
     FurbleSettings.cpp
+    FurbleNetworkSettings.cpp
     FurbleTimeKeeper.cpp
     FurbleTimeKeeperPolicy.cpp
     ../lib/furble/protocol/ProvisionTLV.cpp
+    FurbleWiFi.cpp
     main.cpp)
 
 # PlatformIO passes this profile through both a compiler define and a CMake
@@ -50,7 +52,7 @@ endif()
 # console. Nothing references them without FURBLE_CONSOLE, so the linker leaves
 # them out and the release binaries are unchanged.
 set(furble_private_requires
-    console esp_driver_rmt esp_driver_sdspi esp_driver_usb_serial_jtag esp_pm fatfs sdmmc)
+    console esp_driver_rmt esp_driver_sdspi esp_driver_usb_serial_jtag esp_pm fatfs sdmmc esp_wifi esp_netif esp_event nvs_flash lwip)
 if(FURBLE_ETHERNET)
   list(APPEND furble_private_requires
        esp_driver_gpio esp_driver_spi esp_eth esp_event esp_netif)
