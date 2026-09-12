@@ -240,10 +240,15 @@ bool scenarioFreshConnect() {
   }
   peer.clearEvents();
   const std::string cameraId = Control::getCameraID(*camera);
+  Furble::TestSync::reset();
+  Furble::TestSync::armBarrier("target_command_complete", 2000);
   check(control.sendTargetCommand(cameraId, Control::CMD_SHUTTER_PRESS) == pdTRUE,
         "target command reaches the selected camera");
   check(control.sendTargetCommand("cam-missing", Control::CMD_SHUTTER_PRESS) == pdFALSE,
         "target command rejects an unknown camera");
+  check(Furble::TestSync::awaitArrival("target_command_complete", 2000),
+        "target command completes its camera call");
+  Furble::TestSync::release("target_command_complete");
   check(waitForShutterWrites(peer, 2, 2000), "target command writes the shutter");
   check(power.getCount(Furble::Power::LockType::NO_LIGHT_SLEEP) >= 1,
         "sleep lock held while active");
