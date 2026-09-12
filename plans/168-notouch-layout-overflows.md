@@ -701,6 +701,22 @@ width truncation, because its text is revealed over time. It no longer exempts
 that label from immediate-parent clipping: a scrolling animation outside its
 row is still unreadable and is counted.
 
+The final master integration exposed the inverse measurement trap in the
+production fit pass. `scrollLabelsThatDoNotFit()` compared a wrapped label's
+already-constrained `self_width` with its content width, so the comparison read
+equal and left automatic menu names on extra lines. On the physical 135x240
+layout that made Home 13 px too tall at Large, Connected 10 px too tall at
+Small, and Diagnostics 17 px too tall. The helper now measures the original
+text unwrapped at `LV_COORD_MAX` and restores circular scroll only for automatic
+row labels that genuinely exceed their box. Camera names and spinner summaries
+remain explicitly wrapped.
+
+At `0c99a66156d382b5b98b0c1bbcfa22a6df5def97`, the simulator build and
+the three exact formerly failing scenarios passed, as did
+`e2e/camera-name-rows.txt`. Those are focused regression results, not the final
+certification: the full no-touch suites, regenerated gallery, firmware matrix
+and physical-device checks remain separate gates.
+
 ## Deviations
 
 The plan as first drafted proposed dropping the Infrared entry from the 135x240

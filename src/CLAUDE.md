@@ -113,7 +113,11 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   takes `wrapText` and `addCameraItem` is the only caller that sets it. Every
   other row, icon or not, scrolls. A menu entry built with no icon is icon-less
   but is not user data, and wrapping one onto a second line overflowed a page. A
-  circular scroll on a row wider than the panel animates forever and
+  wrapped label's `self_width` is already constrained, so it cannot decide
+  whether the original text fit. Measure the unwrapped text at `LV_COORD_MAX`
+  before switching an automatic row label back to circular scroll; keep
+  explicitly wrapped camera and spinner labels marked out of that conversion.
+  A circular scroll on a row wider than the panel animates forever and
   invalidates the row on every frame, which `ui.row_scrolling` and
   `ui.invalidate_count` measure. A wrapped row is taller and fills its width; it
   used to reach the indicators the Stick boards floated over the page. Where
