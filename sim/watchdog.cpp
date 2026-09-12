@@ -1,5 +1,8 @@
+#include <array>
 #include <atomic>
+#include <cerrno>
 #include <chrono>
+#include <cstddef>
 #include <condition_variable>
 #include <csignal>
 #include <cstdio>
@@ -36,6 +39,7 @@ constexpr unsigned DEFAULT_BOUND_SECONDS = 120;
 // Host budget for one thread to enter the dump handler and write its frames.
 constexpr auto DUMP_ACK_TIMEOUT = std::chrono::milliseconds(500);
 constexpr size_t MAX_FRAMES = 64;
+constexpr size_t CRASH_STACK_SIZE = 64 * 1024;
 
 struct WatchedThread {
   pthread_t handle;
@@ -62,7 +66,11 @@ void writeRaw(const char *text) {
   if (text == nullptr) {
     return;
   }
-  const ssize_t written = ::write(STDERR_FILENO, text, std::strlen(text));
+  size_t length = 0;
+  while (text[length] != '\0') {
+    ++length;
+  }
+  const ssize_t written = ::write(STDERR_FILENO, text, length);
   static_cast<void>(written);
 }
 
@@ -83,6 +91,24 @@ void dumpHandler(int) {
 // written with literals or with a string that lives for the whole run.
 std::atomic<const char *> crashPhase {"start"};
 std::atomic<const char *> crashStep {nullptr};
+std::once_flag crashHandlerOnce;
+
+alignas(std::max_align_t) thread_local std::array<unsigned char, CRASH_STACK_SIZE> crashStack;
+thread_local bool crashStackInstalled = false;
+
+void installCrashStack(void) {
+  if (crashStackInstalled) {
+    return;
+  }
+  stack_t stack {};
+  stack.ss_sp = crashStack.data();
+  stack.ss_size = crashStack.size();
+  if (sigaltstack(&stack, nullptr) == 0) {
+    crashStackInstalled = true;
+  } else {
+    std::fprintf(stderr, "SIM CRASH: sigaltstack failed: %s\n", std::strerror(errno));
+  }
+}
 
 const char *signalName(int signal) {
   switch (signal) {
@@ -100,6 +126,9 @@ const char *signalName(int signal) {
 }
 
 void crashHandler(int signal) {
+  // `backtrace` and `backtrace_symbols_fd` are not formally async-signal-safe.
+  // They are warmed during normal startup and this handler remains best effort
+  // diagnostics, not a signal-safe crash recovery path.
   void *frames[MAX_FRAMES];
   const int depth = backtrace(frames, MAX_FRAMES);
   writeRaw("\nSIM CRASH: ");
@@ -123,11 +152,27 @@ void installCrashHandler(void) {
   struct sigaction action {};
   action.sa_handler = crashHandler;
   sigemptyset(&action.sa_mask);
-  action.sa_flags = SA_RESETHAND | SA_NODEFER;
+  action.sa_flags = SA_RESETHAND | SA_NODEFER | SA_ONSTACK;
   sigaction(SIGSEGV, &action, nullptr);
   sigaction(SIGBUS, &action, nullptr);
   sigaction(SIGILL, &action, nullptr);
   sigaction(SIGFPE, &action, nullptr);
+}
+
+void warmCrashUnwinder(void) {
+  void *frames[MAX_FRAMES];
+  const int depth = backtrace(frames, MAX_FRAMES);
+  if (depth > 0) {
+    char **symbols = backtrace_symbols(frames, depth);
+    std::free(symbols);
+  }
+}
+
+void installCrashHandlerOnce(void) {
+  std::call_once(crashHandlerOnce, []() {
+    installCrashHandler();
+    warmCrashUnwinder();
+  });
 }
 
 void installHandler(void) {
@@ -136,7 +181,7 @@ void installHandler(void) {
   sigemptyset(&action.sa_mask);
   // SA_RESTART keeps an interrupted sleep or semaphore wait from surfacing
   // EINTR in code that never expects it. The dump only observes the stall.
-  action.sa_flags = SA_RESTART;
+  action.sa_flags = SA_RESTART | SA_ONSTACK;
   sigaction(DUMP_SIGNAL, &action, nullptr);
 }
 
@@ -254,9 +299,15 @@ void watchdogLoop(unsigned bound) {
 }  // namespace
 
 void watchdogRegisterThread(const char *name) {
+  installCrashStack();
   handlerThreadName = name;
   const std::lock_guard<std::mutex> lock(registryMutex);
   registry.push_back({pthread_self(), name == nullptr ? "task" : name});
+}
+
+void watchdogInstallCrashHandler(void) {
+  installCrashStack();
+  installCrashHandlerOnce();
 }
 
 void watchdogUnregisterThread(void) {
@@ -272,7 +323,7 @@ void watchdogUnregisterThread(void) {
 void watchdogStart(void) {
   // Ahead of the bound check: a run with the stall watchdog switched off still
   // has to report a fatal fault.
-  installCrashHandler();
+  watchdogInstallCrashHandler();
   const unsigned bound = boundSeconds();
   if (bound == 0) {
     return;

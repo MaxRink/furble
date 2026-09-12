@@ -24,6 +24,9 @@ void watchdogRegisterThread(const char *name);
 /** Drop the calling thread from the watchdog registry before it exits. */
 void watchdogUnregisterThread(void);
 
+/** Install fatal-fault diagnostics before simulator argument parsing begins. */
+void watchdogInstallCrashHandler(void);
+
 /**
  * Start the watchdog. The bound is FURBLE_SIM_WATCHDOG_SECONDS host seconds,
  * default 120, and 0 disables the watchdog for an interactive debugging
@@ -41,11 +44,9 @@ void watchdogPhase(const char *phase);
 /**
  * Record the scenario line the driver is executing.
  *
- * A fatal fault kills the process with nothing but an exit status, which is
- * all issue 283's single sighting left behind. The crash reporter prints this
- * line, the phase and a native backtrace before the fault is re-raised. The
- * pointer must outlive the process; the driver passes the parsed step's own
- * source string, which is stable for the run.
+ * The crash reporter prints this line, the phase and a native backtrace before
+ * the fault is re-raised. The pointer must outlive the process; the driver
+ * passes the parsed step's own source string, which is stable for the run.
  */
 void watchdogScenarioStep(const char *line);
 

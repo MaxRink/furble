@@ -247,8 +247,11 @@ int runSimulator() {
 }  // namespace
 
 int main(int argc, char **argv) {
-  Furble::Sim::configure(argc, argv);
+  // Install fatal diagnostics before configure() parses a scenario. A parser
+  // fault must name at least the phase, even though no scenario step exists.
+  Furble::Sim::watchdogInstallCrashHandler();
   Furble::Sim::watchdogRegisterThread("main");
+  Furble::Sim::configure(argc, argv);
   Furble::Sim::watchdogPhase("preferences");
   // Set the per-run preferences path before SDL setup and the simulator
   // thread start. SDL and the watchdog read process environment state while
