@@ -567,6 +567,8 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   each of the three themes (Default, Dark, Mono Furble) with every optional
   feature enabled. Output lands in `docs/img/<board>/<theme>/` plus the flat
   default and dark sets from `docs-screenshots.txt` / `docs-screenshots-dark.txt`.
+  Every modeled panel is captured in its physical no-touch layout; Core2 touch
+  behavior remains a supplemental scenario lane, not a Core Basic screenshot.
   It also captures a Text size gallery on the StickS3 Default theme, one set per
   size, under `docs/img/textsize/<size>/` via `docs-textsize.txt`.
 - `FURBLE_SIM_TEXTSIZE` picks the UI text size at launch the same way
@@ -623,16 +625,19 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   on the top layer, a message box or any other modal, is not in it and a page
   showing one still reports 0; use a capture for those.
 - `ui.cut_labels` counts the visible labels on the current page that cannot draw
-  all of their own text, so they lose characters at the box edge. Scrolling
-  labels and floating widgets are excluded. It is the teeth for the rule that a
-  page honours the chosen text size: a page may scroll, it may never cut a name.
+  all of their own text. Wrapped labels are checked in both dimensions, and a
+  scrolling label is exempt only from the intrinsic-width test: it still counts
+  when its drawn box escapes its immediate parent. Floating widgets are
+  excluded. It is the teeth for the rule that a page honours the chosen text
+  size: a page may scroll, it may never cut a name.
 - `ui.clipped_values` and `ui.min_name_chars` measure the spin rows, a menu
   container whose only visible children are a name label and a value label. The
   container class is part of that shape: the spirit level's readout row is a
   plain object with two labels and is not a spin row. On the narrow panels the
-  name and value share one line, so `ui.clipped_values` must read 0, a value
-  that loses a digit or its unit reads as a different setting, and
-  `ui.min_name_chars` must stay at or above four so the names stay distinct.
+  name and value prefer one line, then wrap within the concrete row width so
+  both remain complete. `ui.clipped_values` must read 0 because a value that
+  loses a digit or its unit reads as a different setting; `ui.cut_names` must
+  also read 0, while `ui.min_name_chars` reports the narrowest visible name.
   `ui.clipped_values` measures the value's box against the row's content box.
   Measuring a content-sized label against its own width is a tautology and reads
   0 however far it hangs out of the row; that mistake certified a layout that was

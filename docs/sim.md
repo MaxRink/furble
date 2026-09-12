@@ -125,8 +125,10 @@ defaulting to `sim/scenarios/e2e`. It exports `FURBLE_SIM_IR`,
 `FURBLE_SIM_FEEDBACK`, and `FURBLE_SIM_SD` as optional capabilities for that
 run. The capture helpers use `--out` to choose the capture directory.
 `sim/scripts/docs-capture.sh` rebuilds the three panel classes and regenerates
-the documentation screenshot gallery. It uses `FURBLE_SIM_BOARDS` and
-`FURBLE_SIM_BUILD_ROOT` to limit the matrix or relocate its build trees.
+the documentation screenshot gallery in each board's physical no-touch layout.
+Core2 touch remains a supplemental scenario lane rather than a Core Basic
+screenshot. The script uses `FURBLE_SIM_BOARDS` and `FURBLE_SIM_BUILD_ROOT` to
+limit the matrix or relocate its build trees.
 
 `sim/scripts/run-notouch.sh` runs the certified bug-hunt and end-to-end sets for
 one board with `FURBLE_SIM_NO_TOUCH=1`, so the pages are measured in the layout
@@ -564,8 +566,8 @@ The complete `ui.*` query set is:
 | `ui.indicator_clearance` | `clear`, `overlap`, or `n/a`. |
 | `ui.indicator_overlaps` | Numeric count of widgets under an indicator. |
 | `ui.label_overlaps` | Numeric count of visible content-widget pairs on the current page that overlap: labels by their drawn text, plus rollers, sliders, switches, checkboxes and bars. |
-| `ui.cut_labels` | Numeric count of visible labels on the current page that cannot draw all of their own text. |
-| `ui.clipped_values` | Numeric count of spin-row values on the current page too narrow for their own text. |
+| `ui.cut_labels` | Numeric count of visible labels whose wrapped content does not fit or whose drawn box escapes its immediate parent. |
+| `ui.clipped_values` | Numeric count of spin-row values drawn outside their row. |
 | `ui.min_name_chars` | Fewest characters any spin-row name on the current page still shows in full, or `n/a`. |
 | `ui.cut_names` | Numeric count of spin-row names on the current page that lose characters. |
 | `ui.scroll_bottom` | Numeric pixels, or `unknown`. |
@@ -720,15 +722,13 @@ The walk is page-scoped, `lv_menu_get_cur_main_page` and its subtree. A widget
 on the top layer, a message box or any other modal, is not in that subtree, so a
 page showing one still reports 0. Use a capture for those.
 
-`ui.cut_labels` reports how many visible labels on the current page are wider
-than the box they were given, so they lose characters at the edge. A name that
-has lost characters reads as a different entry, which is why the count is
-asserted at 0 rather than measured. Scrolling labels are excluded: a
-`LV_LABEL_LONG_SCROLL` or `LV_LABEL_LONG_SCROLL_CIRCULAR` label shows the whole
-text over time by design. Floating widgets are excluded for the same reason
-`ui.label_overlaps` excludes them. The query is what holds the rule that a page
-honours the text size the user chose: a page may scroll when the rows stop
-fitting, but it may never cut a name to fake a fit.
+`ui.cut_labels` reports how many visible labels cannot draw all of their text. A
+wrapped label is measured in both dimensions. A `LV_LABEL_LONG_SCROLL` or
+`LV_LABEL_LONG_SCROLL_CIRCULAR` label is exempt from the intrinsic-width check
+because it shows the whole text over time, but it still counts when its drawn
+box escapes its immediate parent. Floating widgets are excluded for the same
+reason `ui.label_overlaps` excludes them. The query holds the rule that a page
+may scroll when rows stop fitting, but it may never cut a name to fake a fit.
 
 `ui.clipped_values` and `ui.min_name_chars` measure the spin rows, a menu
 container whose only visible children are a name label and a value label, as
@@ -736,20 +736,17 @@ container whose only visible children are a name label and a value label, as
 container class is part of the shape on purpose: the spirit level's readout row
 is a plain object holding two labels and is not a spin row.
 
-On the narrow panels the name and the value share one line, so one of them has
-to give up room. `ui.clipped_values` counts the values that do not fit and must
-read 0, because a value that loses a digit or its unit reads as a different
-setting. It measures the value's box against the row's content box, not against
-the label's own width: a content-sized label is exactly as wide as its text, so
-comparing those two is a tautology that reads 0 however far the label hangs out
-of its row. A value on `LV_LABEL_LONG_DOT` counts as clipped whatever its
-geometry says, because an ellipsis is a lost character.
+On the narrow panels the name and value prefer one line, then wrap within the
+row's concrete width so neither gives up text. `ui.clipped_values` counts values
+drawn outside the row and must read 0, because a value that loses a digit or its
+unit reads as a different setting. A value on `LV_LABEL_LONG_DOT` counts as
+clipped whatever its geometry says, because an ellipsis is a lost character.
 
-`ui.min_name_chars` reports the fewest characters any name still shows in full,
-measured against the room the row gives it. `ui.cut_names` is the assertion that
-matters: how many names lose characters, which must be 0. A minimum of four can
-mean "Wait shown whole" or "Count cut to Coun", and only the count tells them
-apart. A page with no spin row reports 0 and `n/a`.
+`ui.min_name_chars` reports the fewest characters any name shows, counting the
+full length when a wrapped name fits and conservatively returning 0 when its
+wrapped box does not. `ui.cut_names` is the assertion that matters: how many
+names lose characters, which must be 0. A page with no spin row reports 0 and
+`n/a`.
 
 - `setting.fauxny`, `setting.autoconnect`, `setting.reconnect`,
   `setting.multiconnect`, `setting.companion`, `setting.watchdog`,
