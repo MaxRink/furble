@@ -22,7 +22,7 @@ What this fork adds over upstream right now:
 - Diagnostics pages: device info, power state, reset reason, heap
 - BLE scan duty cycle and scan timeout settings
 - A USB serial console for developers and test automation
-- A host SDL simulator for the UI, plus an Android companion app
+- A host SDL simulator for the UI, plus Android and Apple companion apps
 - Companion camera management: list saved cameras, select Multi-Connect targets,
   and connect or disconnect them from the phone
 - A simulator-tested IMU spirit level and live IMU diagnostics page. Enable it
@@ -134,7 +134,7 @@ Initially targeted at the M5StickC, the following controllers from [M5Stack](htt
 * M5Core2
 * M5Tough (untested)
 
-furble builds six release firmware images, one per board environment. M5Unified
+furble builds five release firmware images, one per board environment. M5Unified
 detects the exact board at runtime, so one image covers a board family. The
 M5Tough is not a build environment. It shares the M5Core2 image through
 M5Unified board detection, but it has not been verified on hardware. See
@@ -196,7 +196,7 @@ Every board has an optional `<board>-debug` environment, for example
 `LOG_LOCAL_LEVEL=ESP_LOG_VERBOSE`, so `ESP_LOGD` and `ESP_LOGV` in furble
 sources are compiled in. They share the release `sdkconfig` of the board they
 extend, except for the Core USB fallback's single-factory partition fragment.
-Normal CI builds the six release environments and their mandatory debug
+Normal CI builds the five release environments and their mandatory debug
 profiles. Releases retain their existing release/debug matrix.
 
 Build, flash and watch the log:
@@ -272,10 +272,16 @@ imu status | scale [value]          IMU diagnostic, gesture calibration
 time status | flush                 wall-clock status or persist before shutdown
 settings list | get | set           read and write non-secret settings
 companion password set | clear | status manage the companion password without revealing it
-ui audit                            dump the current page layout
+ui audit | page | back             inspect or navigate the current page
 cameras list | status               saved cameras, or the active targets
+pair <scan-index>                  pair a live scan result
+delete <index> | all               remove saved cameras
+multiconnect list|select|deselect|clear manage saved selection
 connect [index]                     no index uses the multi-connect selection
 disconnect
+interval start | stop | status       Timer page workflow
+bulb start | stop | status           Bulb page workflow
+display status | mode | brightness   display workflow
 mqtt status | connect | disconnect | discovery clear
 shutter press | release | hold <ms>
 focus press | release
@@ -297,6 +303,10 @@ other actuator. A clean MQTT disconnect enqueues retained `offline` and waits
 briefly for its broker acknowledgement before teardown; it tears down on
 acknowledgement or timeout. A timeout does not prove broker delivery; the last
 will covers an unclean loss.
+
+UI workflow requests are queued. If a bounded wait reports a pending unknown
+outcome, the operation may still execute later; do not blindly retry a
+timed-out destructive command.
 
 On the display-less Waveshare ESP32-S3-ETH, `status` reports battery level and
 voltage as unknown and current as unavailable. It does not infer USB or
