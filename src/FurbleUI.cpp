@@ -1978,20 +1978,12 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
       // project guide names, and it hides most of the name at any instant.
       // rebuildCamerasPage() already made the same choice for the same reason.
       //
-      // A wrapped row is taller and fills its width, so it reaches the floating
-      // navigation legends the Stick boards draw over the page. Keep the right
-      // legend's width clear; a scrolled single line never got that far down
-      // the page. Only where there is something to keep clear: writing a zero
-      // here would replace the theme's menu_cont horizontal padding on every
-      // board that reserves a navbar instead.
-      //
       // Only the rows whose text is a camera name ask for this. The camera row
       // is not the only icon-less menu item, which is what PR #266 assumed:
       // "Feedback Events" is icon-less too, and wrapping it to a second line
       // overflowed the 135x240 Feedback page by 13 px.
-      if (const int32_t reserve = floatingIndicatorReserve(); reserve > 0) {
-        lv_obj_set_style_pad_right(cont, reserve, LV_PART_MAIN);
-      }
+      // reserveLegendColumns() narrows the complete row when the floating
+      // legend is present. Do not reserve that width again as label padding.
       lv_obj_set_width(label, LV_PCT(100));
       lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
       // Camera names deliberately wrap instead of animating. Keep the page-load
