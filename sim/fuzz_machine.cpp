@@ -63,15 +63,13 @@ bool FuzzMachine::restore(const State &state) {
   const auto validPhase = [](uint32_t value) {
     return value <= static_cast<uint32_t>(FuzzPhase::FINISH);
   };
-  if (!validPhase(state.phase) || !validPhase(state.settleNext) ||
-      state.finishing > 1 || state.applyStarted > 1 || state.settleRemaining != 0 ||
-      state.applyStarted != 0 || state.settled != state.stepCount ||
-      state.stepCount > state.maxSteps || state.attempted > state.maxSteps ||
-      state.interruptedByRestart > state.attempted ||
-      state.observedDelta > state.settled || state.noObservedDelta > state.settled ||
-      static_cast<uint64_t>(state.observedDelta) + state.noObservedDelta !=
-          state.settled ||
-      state.timerStopChecks > state.settled) {
+  if (!validPhase(state.phase) || !validPhase(state.settleNext) || state.finishing > 1
+      || state.applyStarted > 1 || state.settleRemaining != 0 || state.applyStarted != 0
+      || state.settled != state.stepCount || state.stepCount > state.maxSteps
+      || state.attempted > state.maxSteps || state.interruptedByRestart > state.attempted
+      || state.observedDelta > state.settled || state.noObservedDelta > state.settled
+      || static_cast<uint64_t>(state.observedDelta) + state.noObservedDelta != state.settled
+      || state.timerStopChecks > state.settled) {
     return false;
   }
 
@@ -79,15 +77,13 @@ bool FuzzMachine::restore(const State &state) {
   if (phase != FuzzPhase::APPLY && phase != FuzzPhase::ESCAPE) {
     return false;
   }
-  if (static_cast<uint64_t>(state.settled) + state.interruptedByRestart !=
-      state.attempted) {
+  if (static_cast<uint64_t>(state.settled) + state.interruptedByRestart != state.attempted) {
     return false;
   }
-  if ((phase == FuzzPhase::APPLY && state.finishing != 0) ||
-      (phase == FuzzPhase::ESCAPE && state.finishing == 0 &&
-       state.attempted >= state.maxSteps) ||
-      (state.finishing != 0 &&
-       (phase != FuzzPhase::ESCAPE || state.attempted != state.maxSteps))) {
+  if ((phase == FuzzPhase::APPLY && state.finishing != 0)
+      || (phase == FuzzPhase::ESCAPE && state.finishing == 0 && state.attempted >= state.maxSteps)
+      || (state.finishing != 0
+          && (phase != FuzzPhase::ESCAPE || state.attempted != state.maxSteps))) {
     return false;
   }
 
@@ -109,9 +105,9 @@ bool FuzzMachine::restore(const State &state) {
 }
 
 bool FuzzMachine::interruptForRestart() {
-  if (!applyStarted_ ||
-      (phase_ != FuzzPhase::APPLY && phase_ != FuzzPhase::SETTLE &&
-       phase_ != FuzzPhase::CHECK)) {
+  if (!applyStarted_
+      || (phase_ != FuzzPhase::APPLY && phase_ != FuzzPhase::SETTLE
+          && phase_ != FuzzPhase::CHECK)) {
     return false;
   }
 

@@ -315,3 +315,7 @@ target negative legs, recorded in
 available production-UI simulator `249650a5`, not an exact `8a94` build, so the
 negative result is evidence for the old mutation locations in that binary only.
 Neither the build nor the guard run establishes SIGSEGV causality.
+
+The final integration also passes the repository-wide clang-format check for
+the simulator and host test sources. This is formatting-only and does not
+change simulator behavior.

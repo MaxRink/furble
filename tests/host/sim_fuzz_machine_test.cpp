@@ -116,19 +116,14 @@ void testRandomVector() {
 void requireStateEqual(const Furble::Sim::FuzzMachine::State &left,
                        const Furble::Sim::FuzzMachine::State &right,
                        const char *message) {
-  require(left.phase == right.phase && left.settleNext == right.settleNext &&
-              left.maxSteps == right.maxSteps &&
-              left.escapeCadence == right.escapeCadence &&
-              left.stepCount == right.stepCount &&
-              left.settleRemaining == right.settleRemaining &&
-              left.attempted == right.attempted &&
-              left.observedDelta == right.observedDelta &&
-              left.noObservedDelta == right.noObservedDelta &&
-              left.settled == right.settled &&
-              left.timerStopChecks == right.timerStopChecks &&
-              left.finishing == right.finishing &&
-              left.interruptedByRestart == right.interruptedByRestart &&
-              left.applyStarted == right.applyStarted,
+  require(left.phase == right.phase && left.settleNext == right.settleNext
+              && left.maxSteps == right.maxSteps && left.escapeCadence == right.escapeCadence
+              && left.stepCount == right.stepCount && left.settleRemaining == right.settleRemaining
+              && left.attempted == right.attempted && left.observedDelta == right.observedDelta
+              && left.noObservedDelta == right.noObservedDelta && left.settled == right.settled
+              && left.timerStopChecks == right.timerStopChecks && left.finishing == right.finishing
+              && left.interruptedByRestart == right.interruptedByRestart
+              && left.applyStarted == right.applyStarted,
           message);
 }
 
@@ -167,8 +162,8 @@ void testInterruptedRestart() {
   require(beforeApply.interruptForRestart(), "restart interrupts dispatched Apply");
   require(beforeApply.attempted() == 1, "interruption consumes one attempt");
   require(beforeApply.interruptedByRestart() == 1, "interruption count is recorded");
-  require(beforeApply.settled() == 0 && beforeApply.observedDelta() == 0 &&
-              beforeApply.noObservedDelta() == 0,
+  require(beforeApply.settled() == 0 && beforeApply.observedDelta() == 0
+              && beforeApply.noObservedDelta() == 0,
           "interruption does not record settled observations");
   require(beforeApply.phase() == Furble::Sim::FuzzPhase::APPLY,
           "non-final interruption resumes fresh Apply");
@@ -186,8 +181,7 @@ void testInterruptedRestart() {
   require(duringSettle.attempted() == 1 && duringSettle.interruptedByRestart() == 1,
           "settle interruption does not double-count the attempt");
   require(duringSettle.settled() == 0, "settle interruption remains unsettled");
-  require(duringSettle.phase() == Furble::Sim::FuzzPhase::ESCAPE &&
-              duringSettle.finishing(),
+  require(duringSettle.phase() == Furble::Sim::FuzzPhase::ESCAPE && duringSettle.finishing(),
           "final interruption enters finishing Escape");
 }
 

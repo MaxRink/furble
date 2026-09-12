@@ -1,7 +1,7 @@
 #include <array>
 #include <charconv>
-#include <cstdio>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <deque>
 #include <iomanip>
@@ -237,8 +237,8 @@ void recordFinding(UI *ui,
   classCounts[bug_class]++;
 
   std::cout << "FUZZ FINDING [" << bug_class << "] step=" << machine->stepCount()
-            << " page=" << ui->simQueryState("page") << " event=" << event
-            << " detail=" << detail << '\n';
+            << " page=" << ui->simQueryState("page") << " event=" << event << " detail=" << detail
+            << '\n';
   std::cout << "  recent:";
   for (const std::string &entry : recentEvents) {
     std::cout << ' ' << entry;
@@ -405,9 +405,19 @@ void finish(void) {
 // Explicit fields and a version make malformed or incompatible state fail
 // closed instead of silently restarting the random walk from a different seed.
 std::array<uint32_t *, 14> checkpointFields(FuzzMachine::State &s) {
-  return {&s.phase, &s.settleNext, &s.maxSteps, &s.escapeCadence, &s.stepCount,
-          &s.settleRemaining, &s.attempted, &s.observedDelta, &s.noObservedDelta,
-          &s.settled, &s.timerStopChecks, &s.finishing, &s.interruptedByRestart,
+  return {&s.phase,
+          &s.settleNext,
+          &s.maxSteps,
+          &s.escapeCadence,
+          &s.stepCount,
+          &s.settleRemaining,
+          &s.attempted,
+          &s.observedDelta,
+          &s.noObservedDelta,
+          &s.settled,
+          &s.timerStopChecks,
+          &s.finishing,
+          &s.interruptedByRestart,
           &s.applyStarted};
 }
 
@@ -459,9 +469,8 @@ bool restoreCheckpoint(const std::string &payload) {
   uint64_t savedSeed = 0;
   uint32_t savedBudget = 0;
   FuzzMachine::State state;
-  if (!(input >> version) || version != "FURBLE_FUZZ_RESTART_1"
-      || !readNumber(input, savedSeed) || savedSeed != seed
-      || !readNumber(input, savedBudget) || savedBudget != maxSteps
+  if (!(input >> version) || version != "FURBLE_FUZZ_RESTART_1" || !readNumber(input, savedSeed)
+      || savedSeed != seed || !readNumber(input, savedBudget) || savedBudget != maxSteps
       || !readNumber(input, resumedBoots) || resumedBoots == 0
       || !readNumber(input, previousLiveness) || !readNumber(input, findingCount)) {
     return false;
@@ -472,10 +481,9 @@ bool restoreCheckpoint(const std::string &payload) {
     }
   }
   if (state.maxSteps != maxSteps || resumedBoots > state.attempted
-      || state.interruptedByRestart != resumedBoots || !machine->restore(state)
-      || !(input >> rng) || !readCounts(input, classCounts)
-      || !readCounts(input, eventCounts) || !readCounts(input, pageCounts)
-      || countTotal(classCounts) != findingCount
+      || state.interruptedByRestart != resumedBoots || !machine->restore(state) || !(input >> rng)
+      || !readCounts(input, classCounts) || !readCounts(input, eventCounts)
+      || !readCounts(input, pageCounts) || countTotal(classCounts) != findingCount
       || countTotal(eventCounts) != machine->attempted()
       || countTotal(pageCounts) > machine->settled()) {
     return false;
@@ -564,9 +572,8 @@ bool fuzzSaveRestart(void) {
     return false;
   }
   std::ostringstream output;
-  output << "FURBLE_FUZZ_RESTART_1 " << seed << ' ' << maxSteps << ' '
-         << resumedBoots + 1 << ' ' << previousLiveness + livenessViolationCount()
-         << ' ' << findingCount << '\n';
+  output << "FURBLE_FUZZ_RESTART_1 " << seed << ' ' << maxSteps << ' ' << resumedBoots + 1 << ' '
+         << previousLiveness + livenessViolationCount() << ' ' << findingCount << '\n';
   auto state = machine->checkpoint();
   for (const auto *field : checkpointFields(state)) {
     output << *field << ' ';
@@ -592,8 +599,8 @@ bool fuzzSaveRestart(void) {
   const int fd = fileno(checkpoint);
   const int flags = fcntl(fd, F_GETFD);
   if (std::fwrite(payload.data(), 1, payload.size(), checkpoint) != payload.size()
-      || std::fflush(checkpoint) != 0 || std::fseek(checkpoint, 0, SEEK_SET) != 0
-      || flags < 0 || fcntl(fd, F_SETFD, flags & ~FD_CLOEXEC) != 0
+      || std::fflush(checkpoint) != 0 || std::fseek(checkpoint, 0, SEEK_SET) != 0 || flags < 0
+      || fcntl(fd, F_SETFD, flags & ~FD_CLOEXEC) != 0
       || setenv(CHECKPOINT_FD_ENV, std::to_string(fd).c_str(), 1) != 0) {
     std::fclose(checkpoint);
     return false;
