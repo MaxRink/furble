@@ -465,25 +465,46 @@ BaseType_t Control::sendCommand(cmd_t cmd) {
     case CMD_SHUTTER_RELEASE:
     case CMD_FOCUS_PRESS:
     case CMD_FOCUS_RELEASE:
-    {
-      const std::lock_guard<std::mutex> lock(m_Mutex);
-      BaseType_t delivered = pdFALSE;
-      for (const auto &target : m_Targets) {
-        if (target->getCamera()->isConnected()) {
-          target->sendCommand(cmd);
-          delivered = pdTRUE;
-        } else {
-          ESP_LOGD(LOG_TAG, "Dropped camera command %d for '%s': link not active.",
-                   static_cast<int>(cmd), target->getCamera()->getName().c_str());
-        }
-      }
-      return delivered;
-    }
+      return sendCameraCommand(cmd).any ? pdTRUE : pdFALSE;
     default:
       break;
   }
 
   return xQueueSend(m_Queue, &cmd, 0);
+}
+
+Control::command_delivery_t Control::sendCameraCommand(cmd_t cmd, uint32_t expectedSession) {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+  command_delivery_t delivery = {false, true, m_SessionGeneration};
+  if ((cmd != CMD_SHUTTER_PRESS) && (cmd != CMD_SHUTTER_RELEASE) && (cmd != CMD_FOCUS_PRESS)
+      && (cmd != CMD_FOCUS_RELEASE)) {
+    delivery.all = false;
+    return delivery;
+  }
+  if ((expectedSession != UINT32_MAX) && (expectedSession != m_SessionGeneration)) {
+    delivery.all = false;
+    return delivery;
+  }
+  for (const auto &target : m_Targets) {
+    if (target->getCamera()->isConnected()) {
+      const bool queued = target->sendCommand(cmd) == pdTRUE;
+      delivery.any = queued || delivery.any;
+      delivery.all = queued && delivery.all;
+    } else {
+      delivery.all = false;
+      ESP_LOGD(LOG_TAG, "Dropped camera command %d for '%s': link not active.",
+               static_cast<int>(cmd), target->getCamera()->getName().c_str());
+    }
+  }
+  if (!delivery.any) {
+    delivery.all = false;
+  }
+  return delivery;
+}
+
+uint32_t Control::getSessionGeneration(void) const {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+  return m_SessionGeneration;
 }
 
 BaseType_t Control::updateGPS(const Camera::gps_t &gps, const Camera::timesync_t &timesync) {
@@ -812,6 +833,9 @@ bool Control::disconnect(uint32_t timeout_ms, bool forRestart) {
       for (auto &target : m_Targets) {
         m_ZombieTargets.push_back(std::move(target));
       }
+      if (!m_Targets.empty()) {
+        m_SessionGeneration++;
+      }
       m_Targets.clear();
       m_ConnectCamera = nullptr;  // caller holds m_Mutex
     }
@@ -856,6 +880,9 @@ bool Control::disconnect(uint32_t timeout_ms, bool forRestart) {
       }
     }
 
+    if (!m_Targets.empty()) {
+      m_SessionGeneration++;
+    }
     m_Targets.clear();
     m_ConnectCamera = nullptr;  // caller holds m_Mutex
   }
@@ -1399,6 +1426,9 @@ void Control::resetForTest(void) {
 
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
+    if (!m_Targets.empty()) {
+      m_SessionGeneration++;
+    }
     m_Targets.clear();
     m_ConnectCamera = nullptr;  // caller holds m_Mutex
     m_Power = bootPower;

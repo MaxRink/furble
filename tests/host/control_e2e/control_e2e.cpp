@@ -344,6 +344,7 @@ bool scenarioDeadCameraDisconnectNoFreeze() {
 bool scenarioConnectAfterDeadDisconnect() {
   freshEnvironment();
   auto &control = Control::getInstance();
+  uint32_t replacedSession = 0;
 
   {
     FujifilmVirtualCamera peer;
@@ -351,12 +352,15 @@ bool scenarioConnectAfterDeadDisconnect() {
     control.addActive(camera);
     control.connectAll(false);
     check(waitForState(Control::STATE_ACTIVE, 5000), "first connect active");
+    replacedSession = control.getSessionGeneration();
     NimBLEClient *client = NimBLEDevice::lastClient();
     if (client != nullptr) {
       client->mockDropLink(0x08, /*fire_callback=*/false);
     }
     boundedDeadDisconnect(client);
     check(waitForState(Control::STATE_IDLE, 3000), "dead disconnect back to idle");
+    check(control.getSessionGeneration() != replacedSession,
+          "complete disconnect advances the target-set session");
   }
 
   // Fresh environment for the live camera (drops the connect-fail state).
@@ -372,6 +376,24 @@ bool scenarioConnectAfterDeadDisconnect() {
   check(active, "reconnect after dead disconnect reaches active");
   check(elapsed < 2500, "connect after dead disconnect completes within ~2 s");
   check(control.getConnectedTargetCount() == 1, "connected after dead disconnect");
+
+  const uint32_t currentSession = control.getSessionGeneration();
+  peer.clearEvents();
+  const auto staleDelivery = control.sendCameraCommand(Control::CMD_SHUTTER_PRESS, replacedSession);
+  check(!staleDelivery.any && !staleDelivery.all && staleDelivery.session == currentSession,
+        "replacement session rejects its predecessor's command");
+  Furble::TestSync::reset();
+  Furble::TestSync::armBarrier("target_command_complete", 2000);
+  const auto currentDelivery =
+      control.sendCameraCommand(Control::CMD_SHUTTER_PRESS, currentSession);
+  check(currentDelivery.any && currentDelivery.all && currentDelivery.session == currentSession,
+        "replacement session accepts its own command");
+  const bool commandComplete = Furble::TestSync::awaitArrival("target_command_complete", 2000);
+  check(commandComplete, "replacement session completes its camera command");
+  if (commandComplete) {
+    check(shutterWriteCount(peer) >= 2, "replacement session writes the shutter");
+  }
+  Furble::TestSync::release("target_command_complete");
 
   control.disconnect();
   waitForState(Control::STATE_IDLE, 2000);
@@ -547,8 +569,10 @@ bool scenarioMultiConnectFujifilm() {
 
   first.clearEvents();
   second.clearEvents();
-  control.sendCommand(Control::CMD_SHUTTER_PRESS);
-  control.sendCommand(Control::CMD_SHUTTER_RELEASE);
+  const auto wholePress = control.sendCameraCommand(Control::CMD_SHUTTER_PRESS);
+  const auto wholeRelease = control.sendCameraCommand(Control::CMD_SHUTTER_RELEASE);
+  check(wholePress.any && wholePress.all, "press reaches every connected target");
+  check(wholeRelease.any && wholeRelease.all, "release reaches every connected target");
   // Fujifilm sends a command and parameter write for each press/release. Four
   // writes on each peer proves the trigger reached both, not only the aggregate.
   check(waitForShutterWrites(first, 4, 2000), "first Fujifilm peer receives the shutter");
@@ -569,8 +593,12 @@ bool scenarioMultiConnectFujifilm() {
 
   first.clearEvents();
   second.clearEvents();
-  control.sendCommand(Control::CMD_SHUTTER_PRESS);
-  control.sendCommand(Control::CMD_SHUTTER_RELEASE);
+  const auto partialPress = control.sendCameraCommand(Control::CMD_SHUTTER_PRESS);
+  const auto partialRelease = control.sendCameraCommand(Control::CMD_SHUTTER_RELEASE);
+  check(partialPress.any && !partialPress.all,
+        "press reports partial delivery while one target reconnects");
+  check(partialRelease.any && !partialRelease.all,
+        "release reports partial delivery while one target reconnects");
   check(waitForShutterWrites(first, 4, 2000), "the live survivor still receives the shutter");
   check(shutterWriteCount(second) == 0, "the dropped peer receives no down-time shutter");
 

@@ -54,5 +54,11 @@ lands on fork master. This file applies once it does.
 - OTA plans separate the initial USB-flashed bootloader and partition contract
   from later application updates. Rollback, validation, range resumption, and
   interrupted-write recovery each need explicit simulator and hardware gates.
+- Network control plans fail closed until both transport security and an
+  application credential are provisioned. Host checks never replace browser,
+  radio, timing or hardware release gates.
+- Network held-command ownership ends with the complete Control target-set
+  session. A replacement session must reject commands carrying the old
+  generation, including disconnect and reconnect between service polls.
 - Build identity plans must preserve explicit release versions. Development
   versions include enough Git identity to tie a hardware result to source.

@@ -189,6 +189,11 @@ M5Stack Core2, and Waveshare ESP32-S3-ETH (plus the 8 MB headless S3 profile).
 The 4 MB M5StickC, M5StickC Plus, and M5Stack Core images omit MQTT and its
 component dependencies so their two OTA slots retain their fixed size.
 
+The same 8 MB and 16 MB profiles include an opt-in authenticated HTTPS WebUI.
+It stays closed until a companion password is configured. See
+[WebUI and REST API](docs/webui.md) for setup, certificate verification and the
+route contract.
+
 ### Debug builds (developers)
 
 Every board has an optional `<board>-debug` environment, for example

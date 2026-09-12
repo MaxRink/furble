@@ -78,6 +78,9 @@ class Settings {
     MQTT_BASE,
     MQTT_HA,
 #endif
+#if defined(FURBLE_WEBUI) && FURBLE_WEBUI
+    WEB_UI,
+#endif
 #if !defined(FURBLE_NO_DISPLAY)
     DISPLAY_MODE,
 #endif
@@ -541,6 +544,12 @@ struct Settings::storage_type<Settings::MQTT_BASE> {
 };
 template <>
 struct Settings::storage_type<Settings::MQTT_HA> {
+  using type = bool;
+};
+#endif
+#if defined(FURBLE_WEBUI) && FURBLE_WEBUI
+template <>
+struct Settings::storage_type<Settings::WEB_UI> {
   using type = bool;
 };
 #endif
