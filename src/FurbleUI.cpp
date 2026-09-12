@@ -1844,7 +1844,7 @@ void UI::reserveLegendColumns(lv_obj_t *page) {
   // left alone.
   for (uint32_t i = 0; i < lv_obj_get_child_count(page); i++) {
     lv_obj_t *row = lv_obj_get_child(page, i);
-    if ((row == nullptr) || !lv_obj_is_valid(row)) {
+    if ((row == nullptr) || !lv_obj_is_valid(row) || lv_obj_has_flag(row, LV_OBJ_FLAG_FLOATING)) {
       continue;
     }
     // The row's own box, not its padding. A child is clipped to its parent's
@@ -1871,7 +1871,7 @@ void UI::reserveLegendColumns(lv_obj_t *page) {
   lv_obj_update_layout(page);
   for (uint32_t i = 0; i < lv_obj_get_child_count(page); i++) {
     lv_obj_t *row = lv_obj_get_child(page, i);
-    if ((row == nullptr) || !lv_obj_is_valid(row)) {
+    if ((row == nullptr) || !lv_obj_is_valid(row) || lv_obj_has_flag(row, LV_OBJ_FLAG_FLOATING)) {
       continue;
     }
     lv_obj_set_width(row, lv_obj_get_content_width(page) - reserve);
@@ -2015,7 +2015,7 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
       // gives them. reserveLegendColumns() sets the boundary when the page
       // loads; the grow is what makes the label respect it. Every row keeps the
       // scrolling label it has always had.
-      if (connectedPage && (floatingIndicatorReserve() > 0)) {
+      if (floatingIndicatorReserve() > 0) {
         lv_obj_set_flex_grow(label, 1);
       }
       lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
@@ -3834,8 +3834,9 @@ UI::spin_rows_t UI::measureSpinRows(void) {
         clippedValues++;
       }
 
-      // The name is allowed to clip, so measure it against the room the row
-      // actually gives it, which is its own box intersected with the row.
+      // Measure the name against the room the row actually gives it, which is
+      // its own box intersected with the row. The scenario requires the whole
+      // name, just as it requires the whole value.
       lv_area_t nameBox;
       lv_obj_get_coords(name, &nameBox);
       const int32_t nameRight = std::min(nameBox.x2, row.x2);
@@ -3876,8 +3877,8 @@ uint32_t UI::countCutLabels(void) {
       return;
     }
     // A scrolling label is not intrinsically too narrow because it shows the
-    // whole text over time. It is still cut if its drawn box escapes an
-    // immediate parent's content box.
+    // whole text over time. It is still cut if its drawn box escapes its
+    // immediate parent's clipping box.
     if (lv_obj_check_type(obj, &lv_label_class) && !lv_obj_has_flag(obj, LV_OBJ_FLAG_FLOATING)) {
       lv_area_t coords;
       lv_obj_get_coords(obj, &coords);
@@ -3887,17 +3888,19 @@ uint32_t UI::countCutLabels(void) {
         const bool scrolls =
             (longMode == LV_LABEL_LONG_SCROLL) || (longMode == LV_LABEL_LONG_SCROLL_CIRCULAR);
         bool tooNarrow = !scrolls && (width > 0) && (lv_obj_get_self_width(obj) > width);
-        // Position against the parent's content box. A label whose text fits
+        // Position against the parent's clipping box. Padding affects layout,
+        // not clipping, so content coordinates are too strict here.
+        // A label whose text fits
         // its own box still loses glyphs when the box hangs over the edge of
         // the cell that holds it.
         bool clippedByParent = false;
         lv_obj_t *parent = lv_obj_get_parent(obj);
         if (parent != nullptr) {
-          lv_area_t inner;
-          lv_obj_get_content_coords(parent, &inner);
+          lv_area_t parentBox;
+          lv_obj_get_coords(parent, &parentBox);
           lv_area_t drawn = simDrawnArea(obj, coords);
-          clippedByParent = (drawn.x1 < inner.x1) || (drawn.x2 > inner.x2) || (drawn.y1 < inner.y1)
-                            || (drawn.y2 > inner.y2);
+          clippedByParent = (drawn.x1 < parentBox.x1) || (drawn.x2 > parentBox.x2)
+                            || (drawn.y1 < parentBox.y1) || (drawn.y2 > parentBox.y2);
         }
         if (tooNarrow || clippedByParent) {
           cut++;
@@ -4790,10 +4793,10 @@ std::string UI::simQueryState(const char *key) {
     return std::to_string(countCutLabels());
   }
 
-  // The spin rows put a setting name and its value on one line, so one of them
-  // has to give up room on a narrow panel. "clipped_values" is how many values
-  // are drawn outside the row that holds them and must always read 0: a value
-  // that loses a digit or its unit reads as a different setting.
+  // The spin rows prefer a setting name and value on one line, then wrap rather
+  // than lose either on a narrow panel. "clipped_values" is how many values are
+  // drawn outside the row that holds them and must always read 0: a value that
+  // loses a digit or its unit reads as a different setting.
   // "min_name_chars" is the fewest characters any name on the page still shows
   // in full, and "cut_names" how many lost any. A page with no spin row reports
   // 0 and "n/a".
@@ -6961,6 +6964,7 @@ UI::menu_t &UI::addConnectedMenu(void) {
     lv_style_set_line_opa(&style, LV_OPA_50);
 
     lv_obj_t *line = lv_line_create(menuShutter.page);
+    lv_obj_add_flag(line, LV_OBJ_FLAG_FLOATING);
     lv_line_set_points(line, points, n);
     lv_obj_add_style(line, &style, 0);
 
@@ -8057,10 +8061,9 @@ void UI::addIRMenu(void) {
 
 lv_obj_t *UI::addSpinItem(lv_obj_t *page, const char *item, Intervalometer::Spinner &spinner) {
   spinner.m_Button = lv_menu_cont_create(page);
-  // One line, never wrapped. The name gives up room to the value, never the
-  // other way round: a value that has lost a digit reads as a different
-  // setting, and a wrapped row reads as two settings.
-  lv_obj_set_flex_flow(spinner.m_Button, LV_FLEX_FLOW_ROW);
+  // Keep both the name and value whole. A narrow row wraps the value below the
+  // name and the page scrolls vertically rather than clipping either string.
+  lv_obj_set_flex_flow(spinner.m_Button, LV_FLEX_FLOW_ROW_WRAP);
 #if defined(FURBLE_M5STICKC)
   // 80x160 is the shortest panel. Trim the per-row padding so the Count, Delay,
   // Shutter and Wait rows fit without scrolling the timer page.
@@ -8070,21 +8073,17 @@ lv_obj_t *UI::addSpinItem(lv_obj_t *page, const char *item, Intervalometer::Spin
 
   spinner.m_Label = lv_label_create(spinner.m_Button);
   lv_label_set_text(spinner.m_Label, item);
-  // The name takes what the value leaves. The value is the one thing that may
-  // never lose a character, so it keeps its natural width and the name grows
-  // into whatever is left. Measured against the maxima, this is the arrangement
-  // that keeps every value whole: a zero base width or a clip on the name both
-  // make the name claim its full text and push the value out of the row
-  // instead. The designed short names keep the 135 px rows to one line at the
-  // maxima; see plans/168-notouch-layout-overflows.md for the 80 px numbers.
-  lv_obj_set_flex_grow(spinner.m_Label, 1);
+  // Both labels keep their natural width for the row's line-break decision.
+  // When they do not fit together, ROW_WRAP moves the value to the next line.
+  lv_obj_set_width(spinner.m_Label, LV_SIZE_CONTENT);
 
   spinner.m_Value = lv_label_create(spinner.m_Button);
-  // At its natural width, right of the name, so it always draws every digit and
-  // its unit. It does not animate: a scrolling value hides most of itself at
-  // any instant and repaints the row every frame for as long as the page is
-  // open.
-  lv_label_set_long_mode(spinner.m_Value, LV_LABEL_LONG_CLIP);
+  // Usually at its natural width, right of the name. Cap an exceptionally wide
+  // value at the row and wrap it so every digit and unit remains visible. It
+  // does not animate: a scrolling value hides most of itself at any instant
+  // and repaints the row every frame for as long as the page is open.
+  lv_obj_set_style_max_width(spinner.m_Value, LV_PCT(100), 0);
+  lv_label_set_long_mode(spinner.m_Value, LV_LABEL_LONG_WRAP);
   lv_obj_set_style_text_align(spinner.m_Value, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
 
   lv_obj_add_event_cb(

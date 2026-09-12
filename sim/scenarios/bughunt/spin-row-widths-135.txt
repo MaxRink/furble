@@ -1,13 +1,10 @@
 # Spin row widths on the 135x240 panel, at the widest value every field can
 # hold, in the physical-button layout that board ships.
 #
-# The Count, Delay, Shutter and Wait rows put a name and its value on one line,
-# so one of the two has to give up room. That choice is not free. The value is
-# the data: a value that loses a digit or its unit reads as a different setting,
-# and a user cannot tell 250 ms from 25. The name is recoverable from its
-# position in a fixed ordered list, so the name is the one that clips, and only
-# down to a floor of four characters, which keeps Coun, Dela, Shut and Wait
-# distinct.
+# The Count, Delay, Shutter and Wait rows prefer a name and value on one line.
+# When their natural widths do not fit, the value wraps below the name so both
+# remain whole. A user cannot tell 250 ms from 25, and a truncated name is a
+# different label, so neither string may clip.
 #
 # This file drives the widest string each unit produces. 999 is the largest
 # value the digit rollers hold, and the seeds carry a unit suffix so all three

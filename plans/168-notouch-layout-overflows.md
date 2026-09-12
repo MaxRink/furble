@@ -255,19 +255,16 @@ measuring what it says it measures.
 by 3 px at 135x240 and 23 px at 80x160.
 
 The row is a `LV_FLEX_FLOW_ROW_WRAP` container holding the setting name and its
-value. On a narrow panel the two do not fit side by side above the smallest
-font, so the value wrapped onto a second line and the row doubled in height. The
-80x160 capture showed exactly that: "Shutter" on one line and ") msec" on the
-next, with the fourth row clipped away. The narrow panels now use
-`LV_FLEX_FLOW_ROW`, so every row is one line at any face. That closed the 80x160
-case outright, 23 px to 0.
+value. On a narrow panel the value takes a second line so both strings remain
+whole; the page owns the resulting vertical scroll. The unit is shortened on
+the narrow panels, so the wrapped value reads `999 ms`, `999 s` or `999 min`
+rather than losing a suffix.
 
 The 135x240 case was 3 px of padding, so the spin rows there take the same trim
 the 80x160 rows already had, 2 px rather than the theme default. 170 px to
 138 px against a 167 px page.
 
-One line means the two labels share the row width, and that has a redraw cost
-worth naming. The value label carried `LV_LABEL_LONG_SCROLL_CIRCULAR`, which is
+The value label formerly carried `LV_LABEL_LONG_SCROLL_CIRCULAR`, which is
 harmless while the label owns a whole row and animates the moment its box is
 narrower than its text. Measured on the 80x160 timer page over a one second
 probe with the page held still: master 170 invalidations, the first version of
@@ -450,7 +447,7 @@ Owed on the M5StickS3 after review. Walkable in under ten minutes.
 | Remote shutter | Connected, Remote | The lock icon sits just above the select legend. No grey line running off the bottom edge. Hold next, then press select: the icon closes and the shutter holds. Press next alone: it opens again. A long press of select does nothing, which is correct here; the long press binding is the touch layout's. In one-button mode there is no lock gesture at all and the icon stays open. |
 | Display | Settings, Display | Every row clear of the next legend. The page scrolls; the rows do not overlap while it does. |
 | Bulb duration | Connected, Bulb, Duration | The spin value is readable and nothing covers it. |
-| Timer, all three sizes | Settings, Intervalometer, at Small, Normal and Large | Count, Delay, Shutter and Wait all present. Every value is complete, digits and unit: the units read ms, s and min here, not msec, secs and mins, and the unit roller inside a value page says the same. Rows stay on one line; a narrow name may clip but retains at least four characters while the value remains whole. At Large the page scrolls rather than shrinking the face. Watch the page for a full minute: no value should slide or flicker. |
+| Timer, all three sizes | Settings, Intervalometer, at Small, Normal and Large | Count, Delay, Shutter and Wait all present. Every name and value is complete. The units read ms, s and min here, not msec, secs and mins, and the unit roller inside a value page says the same. A narrow row wraps the value below its name. At Large the page scrolls rather than shrinking the face. Watch the page for a full minute: no value should slide or flicker. |
 | Settings pages with a roller | Settings, Text size and Settings, Theme | The roller never covers the label that names it, at any text size. |
 | Spirit level | Home, Level | The bullseye is below the header and centred. Tilt the device on its side: the panel rotates and the legends follow the rotated edges. |
 | Legend contrast, all themes | Settings, Theme, each of Default, Dark and Mono Furble | The three glyphs stay legible in every theme, in both legend placements. |
@@ -721,8 +718,8 @@ That is the only font change in this work.
 
 A first version of fix 8 used a scrolling value label to keep the timer rows on
 one line. That is a per-tick repaint, and it raised the 80x160 timer page from
-170 invalidations over a one second probe to 338. The rows clip and cap their
-face instead, and the probe now reads 3. The lesson is that the LVGL redraw trap
+170 invalidations over a one second probe to 338. The final rows wrap without a
+scrolling value, and the probe reads 3. The lesson is that the LVGL redraw trap
 is reachable from a layout change and not only from an unguarded setter, so a
 layout change that alters a label's usable width has to be measured for redraw
 cost as well as for fit.
@@ -744,11 +741,11 @@ pass scoped the spin row shape to `lv_menu_cont_class`, because the spirit
 level's readout row is a plain object with two labels and was reporting into
 these numbers.
 
-The first version of fix 8 clipped the value rather than the name, which cost
-digits at ordinary values and not only at the maxima. Fix 8 now states the rule
-it should have started from: the value never clips, the name clips to a floor of
-four characters, and if neither fits the unit text shortens. That took a query
-to hold, because nothing already in the simulator could see a lost digit.
+The first version of fix 8 clipped the value, which cost digits at ordinary
+values and not only at the maxima. Fix 8 now states the rule it should have
+started from: neither name nor value clips; the value wraps and its unit text
+shortens. That took a query to hold, because nothing already in the simulator
+could see a lost digit.
 
 Fixes 5, 6, 6b and 8 are unverified on hardware: only the M5StickS3 is
 available. The original PR273 head simulator-verified the 80x160 and 320x240
