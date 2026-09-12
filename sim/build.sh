@@ -21,6 +21,40 @@ CC=${CC:-clang}
 FURBLE_BOARD=${FURBLE_SIM_FURBLE_BOARD:-FURBLE_M5STICKS3}
 M5GFX_BOARD=${FURBLE_SIM_M5GFX_BOARD:-board_M5StickS3}
 
+MQTT_ENABLED=${FURBLE_SIM_MQTT:-0}
+MQTT_CXXFLAGS=
+MQTT_CFLAGS=
+MQTT_LINK_FLAGS=
+MQTT_DEFINE=
+MQTT_CJSON_SOURCE=
+
+if [ "$MQTT_ENABLED" = "1" ]; then
+  if ! command -v pkg-config >/dev/null 2>&1 || ! pkg-config --exists libmosquitto; then
+    echo "FURBLE_SIM_MQTT=1 requires an installed libmosquitto pkg-config module" >&2
+    exit 1
+  fi
+  IDF_JSON_DIR=${FURBLE_IDF_JSON_DIR:-${IDF_PATH:-}/components/json}
+  if [ -f "$IDF_JSON_DIR/cJSON/cJSON.c" ] && [ -f "$IDF_JSON_DIR/cJSON/cJSON.h" ]; then
+    MQTT_CXXFLAGS="-I$IDF_JSON_DIR/cJSON"
+    MQTT_CFLAGS="$MQTT_CXXFLAGS"
+    MQTT_CJSON_SOURCE="$IDF_JSON_DIR/cJSON/cJSON.c"
+    MQTT_LINK_FLAGS=$(pkg-config --libs libmosquitto)
+  else
+    CJSON_MODULE=
+    if pkg-config --exists libcjson; then
+      CJSON_MODULE=libcjson
+    elif pkg-config --exists cjson; then
+      CJSON_MODULE=cjson
+    else
+      echo "FURBLE_SIM_MQTT=1 requires cJSON from IDF components/json or an installed pkg-config module" >&2
+      exit 1
+    fi
+    MQTT_CXXFLAGS=$(pkg-config --cflags libmosquitto "$CJSON_MODULE")
+    MQTT_LINK_FLAGS=$(pkg-config --libs libmosquitto "$CJSON_MODULE")
+  fi
+  MQTT_DEFINE="-DFURBLE_MQTT=1 -DFURBLE_SIM_MQTT=1"
+fi
+
 if [ ! -f "$DEP_ROOT/M5GFX/src/M5GFX.cpp" ]; then
   echo "M5GFX was not found at $DEP_ROOT" >&2
   exit 1
@@ -144,7 +178,7 @@ coverage_flags_for() {
 # the shaping flags and drop the cache when they change. A build dir holding
 # objects but no stamp predates this check, so it is treated as a mismatch once.
 FLAG_STAMP="$BUILD_DIR/build-flags"
-FLAG_VALUE="board=$FURBLE_BOARD m5gfx=$M5GFX_BOARD rig=${FURBLE_SIM_RIG:-1} sanitize=$SANITIZE coverage=$COVERAGE"
+FLAG_VALUE="board=$FURBLE_BOARD m5gfx=$M5GFX_BOARD rig=${FURBLE_SIM_RIG:-1} mqtt=$MQTT_ENABLED sanitize=$SANITIZE coverage=$COVERAGE"
 if [ ! -f "$FLAG_STAMP" ] || [ "$(cat "$FLAG_STAMP")" != "$FLAG_VALUE" ]; then
   if [ -f "$FLAG_STAMP" ] || [ -n "$(ls -A "$BUILD_DIR/obj" 2>/dev/null)" ]; then
     echo "[CLEAN] build flags changed, dropping $BUILD_DIR/obj"
@@ -154,7 +188,7 @@ if [ ! -f "$FLAG_STAMP" ] || [ "$(cat "$FLAG_STAMP")" != "$FLAG_VALUE" ]; then
   printf '%s' "$FLAG_VALUE" >"$FLAG_STAMP"
 fi
 
-CXXFLAGS="-std=c++17 -O0 -g -Wall -Wextra -Wno-unused-parameter $SANITIZE_FLAGS $INCLUDES $DEFINES"
+CXXFLAGS="-std=c++17 -O0 -g -Wall -Wextra -Wno-unused-parameter $SANITIZE_FLAGS $INCLUDES $DEFINES $MQTT_DEFINE $MQTT_CXXFLAGS"
 CXXFLAGS="$CXXFLAGS -include $ROOT/sim/shim/esp_log.h -include $ROOT/sim/shim/esp_system.h"
 CXXFLAGS="$CXXFLAGS -include $ROOT/sim/shim/esp_heap_caps.h"
 # The production connection stack declares FreeRTOS queue, task and tick types
@@ -164,7 +198,7 @@ CXXFLAGS="$CXXFLAGS -include $ROOT/sim/shim/freertos/FreeRTOS.h"
 # glibc hides strnlen and other POSIX names under strict -std=c11, which
 # breaks the LVGL clib build on Linux. _DEFAULT_SOURCE restores them and is
 # inert on macOS.
-CFLAGS="-std=c11 -D_DEFAULT_SOURCE -O0 -g -Wall -Wextra $SANITIZE_FLAGS $INCLUDES $DEFINES"
+CFLAGS="-std=c11 -D_DEFAULT_SOURCE -O0 -g -Wall -Wextra $SANITIZE_FLAGS $INCLUDES $DEFINES $MQTT_CFLAGS"
 
 OBJECTS=
 
@@ -317,6 +351,13 @@ for source in \
   compile_cpp "$source"
 done
 
+if [ "$MQTT_ENABLED" = "1" ]; then
+  if [ -n "$MQTT_CJSON_SOURCE" ]; then
+    compile_c "$MQTT_CJSON_SOURCE"
+  fi
+  compile_cpp "$ROOT/src/FurbleMQTT.cpp"
+fi
+
 while IFS= read -r source; do
   compile_c "$source"
 done <<EOF
@@ -351,7 +392,7 @@ echo "[LD]  sim/build/furble-sim"
 # -rdynamic exports the executable's symbols into the dynamic table so the
 # stall watchdog's backtraces name functions instead of raw addresses. A dump
 # of a wedged run is the whole point of that watchdog.
-LINK_FLAGS="-rdynamic -L/opt/homebrew/lib -L/usr/local/lib -lSDL2 -lpthread"
+LINK_FLAGS="-rdynamic -L/opt/homebrew/lib -L/usr/local/lib -lSDL2 -lpthread $MQTT_LINK_FLAGS"
 if [ "$(uname -s)" = "Darwin" ]; then
   LINK_FLAGS="$LINK_FLAGS -framework Cocoa"
 fi

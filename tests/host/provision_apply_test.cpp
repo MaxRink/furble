@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <iostream>
 #include <string>
 #include <utility>
@@ -289,6 +290,77 @@ void testDomainValidation() {
   }
 }
 
+Furble::ProvisionTLV::ByteString text(const char *value) {
+  return Furble::ProvisionTLV::ByteString(value, value + std::strlen(value));
+}
+
+void testDedicatedMQTTFields() {
+  resetSettings();
+
+  ProvisionBundle bundle;
+  bundle.mqttUri = text("mqtts://broker.example");
+  bundle.mqttUsername = text("camera");
+  bundle.mqttPassword = text("secret");
+  bundle.mqttBaseTopic = text("furble/cameras");
+  ApplyReport report;
+
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+  check(apply(bundle, report), "dedicated MQTT fields apply through checked settings");
+  check(report.fieldsApplied == 4 && report.deferredFields == 0,
+        "dedicated MQTT fields report applied rather than deferred");
+  check(Furble::Settings::load<std::string>(Furble::Settings::MQTT_URI) == "mqtts://broker.example",
+        "dedicated MQTT URI is persisted");
+  check(Furble::Settings::load<std::string>(Furble::Settings::MQTT_USER) == "camera",
+        "dedicated MQTT username is persisted");
+  check(Furble::Settings::load<std::string>(Furble::Settings::MQTT_PASS) == "secret",
+        "dedicated MQTT password is persisted");
+  check(Furble::Settings::load<std::string>(Furble::Settings::MQTT_BASE) == "furble/cameras",
+        "dedicated MQTT base topic is persisted");
+
+  ProvisionBundle generic;
+  generic.settings = {
+      {57,
+       ValueType::STRING,
+       {'m', 'q', 't', 't', 's', ':', '/', '/', 'g', 'e', 'n', 'e', 'r', 'i', 'c'}},
+      {58, ValueType::STRING, {'u', 's', 'e', 'r'}                                },
+      {59, ValueType::STRING, {'p', 'a', 's', 's'}                                },
+      {60, ValueType::STRING, {'g', 'e', 'n', 'e', 'r', 'i', 'c'}                 },
+  };
+  report = {};
+  check(apply(generic, report), "generic MQTT setting records apply through the runtime type map");
+  check(report.settingsApplied == generic.settings.size()
+            && report.fieldsApplied == generic.settings.size(),
+        "generic MQTT setting records report each persisted setting");
+  check(Furble::Settings::load<std::string>(Furble::Settings::MQTT_URI) == "mqtts://generic",
+        "generic MQTT URI is persisted");
+  check(Furble::Settings::load<std::string>(Furble::Settings::MQTT_BASE) == "generic",
+        "generic MQTT base topic is persisted");
+
+  const auto originalUri = Furble::Settings::load<std::string>(Furble::Settings::MQTT_URI);
+  const auto originalBase = Furble::Settings::load<std::string>(Furble::Settings::MQTT_BASE);
+  bundle.mqttUri = {'m', 'q', 't', 't', ':', '/', '/', 'b', 'a', 'd', '\0', 'x'};
+  report = {};
+  check(!apply(bundle, report), "NUL in dedicated MQTT URI is rejected");
+  check(report.error == Furble::Provision::ApplyError::BAD_SETTING,
+        "NUL in dedicated MQTT URI reports BAD_SETTING");
+  check(Furble::Settings::load<std::string>(Furble::Settings::MQTT_URI) == originalUri,
+        "invalid dedicated MQTT URI does not partially apply");
+
+  bundle.mqttUri = text("mqtt://broker.example");
+  bundle.mqttBaseTopic = text("furble/#");
+  report = {};
+  check(!apply(bundle, report), "wildcard in dedicated MQTT base is rejected");
+  check(report.error == Furble::Provision::ApplyError::BAD_SETTING,
+        "wildcard in dedicated MQTT base reports BAD_SETTING");
+  check(Furble::Settings::load<std::string>(Furble::Settings::MQTT_BASE) == originalBase,
+        "invalid dedicated MQTT base does not partially apply");
+#else
+  check(apply(bundle, report), "MQTT fields remain accepted as deferred without MQTT");
+  check(report.fieldsApplied == 0 && report.deferredFields == 4,
+        "MQTT fields report deferred without MQTT support");
+#endif
+}
+
 // Every setting the companion can name by wire id needs a row in
 // SETTING_SCHEMAS, or schemaForSetting() returns nullptr and the whole bundle
 // is rejected as UNSUPPORTED_SETTING before any domain rule runs. That failure
@@ -333,6 +405,7 @@ int main() {
   testDedicatedPasswordField();
   testPasswordStorageFailures();
   testDomainValidation();
+  testDedicatedMQTTFields();
   testEverySettingHasASchemaRow();
 
   if (failures != 0) {

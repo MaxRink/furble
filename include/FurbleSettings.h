@@ -70,6 +70,14 @@ class Settings {
     SD_GPX,
     GPX_PERIOD,
     BOOT_SPLASH,
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+    MQTT,
+    MQTT_URI,
+    MQTT_USER,
+    MQTT_PASS,
+    MQTT_BASE,
+    MQTT_HA,
+#endif
 #if !defined(FURBLE_NO_DISPLAY)
     DISPLAY_MODE,
 #endif
@@ -206,6 +214,10 @@ class Settings {
 
   /** Validate an ingress network string before it reaches NVS. */
   static bool validNetworkString(type_t type, const std::string &value);
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+  /** Validate MQTT URI, credentials, and topic-root input before persistence. */
+  static bool validMQTTString(type_t type, const std::string &value);
+#endif
 
   /** Return true when a saved value takes effect without a reboot. */
   static bool appliesImmediately(type_t type);
@@ -506,6 +518,32 @@ template <>
 struct Settings::storage_type<Settings::BOOT_SPLASH> {
   using type = bool;
 };
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+template <>
+struct Settings::storage_type<Settings::MQTT> {
+  using type = bool;
+};
+template <>
+struct Settings::storage_type<Settings::MQTT_URI> {
+  using type = std::string;
+};
+template <>
+struct Settings::storage_type<Settings::MQTT_USER> {
+  using type = std::string;
+};
+template <>
+struct Settings::storage_type<Settings::MQTT_PASS> {
+  using type = std::string;
+};
+template <>
+struct Settings::storage_type<Settings::MQTT_BASE> {
+  using type = std::string;
+};
+template <>
+struct Settings::storage_type<Settings::MQTT_HA> {
+  using type = bool;
+};
+#endif
 #if !defined(FURBLE_NO_DISPLAY)
 template <>
 struct Settings::storage_type<Settings::DISPLAY_MODE> {
