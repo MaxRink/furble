@@ -37,12 +37,13 @@ Public headers for the app layer in src/, one header per module
 ### Companion wire id reservations
 
 The settings table in `src/FurbleSettings.cpp` is the source of truth for ids
-already on master, which run from 0 through 46 plus 67, 68, 72 and 73. Ids that
-master does not use are handed out here so open PRs cannot collide, because two
-branches claiming one id produce an add/add conflict in
-`tests/protocol/golden/settings/*-<id>.bin` and a silent protocol break for the
-companion app. A PR claims its reserved ids at rebase time, regenerates its
-golden corpus, and updates its row. See issue #280.
+already on master. Every nonzero id must also have a row in
+`SETTING_SCHEMAS` in `lib/furble/protocol/ProvisionTLV.cpp`; the host provisioning
+test enforces that invariant. Ids that master does not use are handed out here
+so open PRs cannot collide, because two branches claiming one id produce an
+add/add conflict in `tests/protocol/golden/settings/*-<id>.bin` and a silent
+protocol break for the companion app. A PR claims its reserved ids at rebase
+time, regenerates its golden corpus, and updates its row. See issue #280.
 
 A merged id is frozen and never moves afterwards, because a shipped id is a
 companion client contract: renumbering one and regenerating its fixtures
@@ -52,15 +53,18 @@ renumbering fails the build rather than passing quietly.
 
 | PR | Setting keys | Wire ids |
 | --- | --- | --- |
-| #166 | `companion_pw` | 47 |
+| Master | shipped settings | 1-41, 43-47, 51-61, 66-69, 72-74 |
+| #59 | `ivl_sleep`, `ivl_sleep_thr` | 75, 76 |
+| #63 | no setting claim | none |
+| #90 | WiFi/MQTT camera settings | 62 |
+| #265 | no setting claim | none |
 | #273 | `legend` | 65 |
-| #65 | `gps_motion` | 66 |
-| #139 | plan 32 phase 2 | 69, 70, 71 |
-| #45 | `imu_wake`, `imu_trigger` | 72, 73 |
-| #48 | `hw_motion` | 74 |
 
-Ids 48 through 64 are claimed by other open PRs. Take the next free id below
-the reservations only after checking every open PR head.
+IDs 42 and 45 are reserved historical assignments. Do not reuse either id or
+renumber a shipped id without persistent compatibility evidence. Recheck every
+open PR head immediately before a rebase or merge. The current five open heads
+are listed above; no new id is free merely because a branch does not currently
+touch settings.
 - `FurbleSettings.h` widened `MULTISELECT_NAME_MAX` from 16 to 32, which changed
   the stored record size. `Settings::load<multiselect_t>()` and the SD settings
   importer both read the old layout through `multiselect_legacy_t` and widen it.
