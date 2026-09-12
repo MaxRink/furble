@@ -324,3 +324,10 @@ preservation of a preinstalled worker stack, and a forked SIGSEGV child that
 must emit the signal, phase, and step banners. Actual stack-overflow coverage
 remains future work. Preference sidecars, fairness changes, cancellation-bound
 changes, and restart semantics are not part of this slice.
+
+Root validation at `1311e02694b922242fb6673aeea22c2b1962c010` configured and
+built `sim_watchdog_test` and `sim_scheduler_test` with two compiler jobs.
+Both CTest cases passed (0.11 seconds total). The new regression checks
+`SA_ONSTACK`, a fresh registered worker, preservation of an existing worker
+stack, and native fatal-signal termination with diagnostic metadata.
+Full simulator/CI validation remains pending; no physical device was accessed.
