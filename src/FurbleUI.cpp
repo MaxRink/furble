@@ -1799,11 +1799,8 @@ void UI::reserveLegendColumns(lv_obj_t *page) {
   if (page == nullptr) {
     return;
   }
-  int32_t reserve = 0;
-  if ((floatingIndicatorReserve() > 0) && (m_Right != nullptr) && lv_obj_is_valid(m_Right)) {
-    lv_obj_update_layout(m_Right);
-    reserve = lv_obj_get_width(m_Right) + LEGEND_GAP;
-  }
+  const int32_t indicator = floatingIndicatorReserve();
+  const int32_t reserve = indicator > 0 ? indicator + LEGEND_GAP : 0;
   lv_obj_update_layout(page);
 
   // Most pages are a list of row containers. Any row can move through the
@@ -2347,6 +2344,11 @@ lv_obj_t *UI::addCameraItem(size_t index, const menu_t &menu, const CameraListMo
           LV_EVENT_VALUE_CHANGED, ctx);
       break;
   }
+
+  // Saved, delete and scan rows are rebuilt after their page-load layout pass.
+  // Apply the same whole-row legend reservation as static menu rows, including
+  // results appended asynchronously while a scan page is already visible.
+  reserveLegendColumns(menu.page);
 
   return item;
 }
