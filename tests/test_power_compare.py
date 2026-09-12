@@ -45,6 +45,16 @@ class PowerCompareTest(unittest.TestCase):
     self.assertIn("-5.00%", result.stdout)
     self.assertIn("PASS", result.stdout)
 
+  def test_exact_band_boundaries_pass(self):
+    for current in (0.9, 1.1):
+      result = self.run_compare({"estimated_mA": current}, {"estimated_mA": 1.0})
+      self.assertEqual(result.returncode, 0)
+
+  def test_just_outside_band_fails(self):
+    for current in (0.899999, 1.100001):
+      result = self.run_compare({"estimated_mA": current}, {"estimated_mA": 1.0})
+      self.assertEqual(result.returncode, 1)
+
   def test_zero_baseline_keeps_existing_semantics(self):
     self.assertEqual(
         self.run_compare({"estimated_mA": 0.0}, {"estimated_mA": 0.0}).returncode,
@@ -60,6 +70,10 @@ class PowerCompareTest(unittest.TestCase):
         ({"estimated_mA": 1.0}, {}),
         ({"estimated_mA": float("nan")}, {"estimated_mA": 1.0}),
         ({"estimated_mA": 1.0}, {"estimated_mA": float("inf")}),
+        ({"estimated_mA": True}, {"estimated_mA": 1.0}),
+        ({"estimated_mA": -1.0}, {"estimated_mA": 1.0}),
+        ([], {"estimated_mA": 1.0}),
+        ({"energy": []}, {"estimated_mA": 1.0}),
     ):
       result = self.run_compare(report, baseline)
       self.assertEqual(result.returncode, 2)

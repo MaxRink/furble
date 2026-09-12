@@ -232,7 +232,9 @@ source of absolute numbers. It applies the threshold in both directions, so a
 large decrease such as a timer period going up is reported as drift instead of
 passing silently. The default 10% threshold is a compatibility policy, not a
 hardware-calibrated noise measurement. Repeated baseline runs must establish a
-real band before a deliberate re-baseline.
+real band before a deliberate re-baseline. Reports must contain finite,
+non-negative numeric current values; booleans, negative values, and missing or
+non-finite values are schema errors.
 
 ### Remaining realism gates
 

@@ -244,8 +244,9 @@ artifact.
 
 The gate, precisely:
 
-- For each scenario, fail if `estimated_mA > baseline_mA * (1 + threshold)`.
-  Threshold starts at 10% and is tuned once a few weeks of reports exist.
+- For each scenario, fail if `estimated_mA > baseline_mA * (1 + threshold)` or
+  `estimated_mA < baseline_mA * (1 - threshold)`. Threshold starts at 10% and
+  is tuned once a few weeks of reports exist.
 - Everything else in the report (per-timer fires, invalidated area, lock
   histograms, duty integrals, residency) is an artifact and a review aid,
   not a gate.
@@ -700,14 +701,15 @@ as a quantitative accuracy guarantee.
 ### Issue #285 comparator follow-up (2026-09-13)
 
 `tools/power-model/compare.py` now treats its default 10% compatibility value as
-an absolute relative comparison threshold. Both a significant increase and a
-significant decrease return exit code 1. Missing, malformed, or non-finite
-report values still return exit code 2, and the zero-baseline behavior remains
-unchanged.
+a relative comparison threshold on both sides. Values exactly at either
+boundary pass, while a significant increase or decrease returns exit code 1.
+Missing, malformed, non-finite, boolean, or negative report values still return
+exit code 2, and the zero-baseline behavior remains unchanged.
 
 Regression coverage is in `tests/test_power_compare.py` for the suspicious 41%
-decrease, increases, in-band deltas, zero baselines, missing/non-finite inputs,
-custom thresholds, and invalid thresholds. The default is not a measured
+decrease, increases, exact and just-outside boundaries, zero baselines,
+missing/non-finite/negative inputs, custom thresholds, and invalid
+thresholds. The default is not a measured
 hardware noise floor. Repeated baseline runs must establish a board/model
 specific band before a deliberate re-baseline.
 
