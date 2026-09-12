@@ -30,8 +30,7 @@ void check(bool condition, const char *message) {
 
 class BlockingDisconnectCallbacks final: public NimBLEClientCallbacks {
  public:
-  BlockingDisconnectCallbacks(std::atomic<uint32_t> &order,
-                              std::atomic<uint32_t> &finished)
+  BlockingDisconnectCallbacks(std::atomic<uint32_t> &order, std::atomic<uint32_t> &finished)
       : m_Order(order), m_Finished(finished) {}
   void onDisconnect(NimBLEClient *, int) override {
     std::unique_lock<std::mutex> lock(m_Mutex);
@@ -103,8 +102,7 @@ void testCleanupPrecedesSecureWake() {
   });
 
   const auto entryDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
-  while ((peer.secureStallEntries() == 0)
-         && (std::chrono::steady_clock::now() < entryDeadline)) {
+  while ((peer.secureStallEntries() == 0) && (std::chrono::steady_clock::now() < entryDeadline)) {
     std::this_thread::yield();
   }
   check(peer.secureStallEntries() == 1, "secureConnection reaches the parked waiter");

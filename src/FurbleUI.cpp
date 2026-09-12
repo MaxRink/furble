@@ -858,6 +858,7 @@ void UI::showCameraPairing(Camera *camera) {
   m_PairingIsCamera = true;
   m_PairingPrevFocus = lv_group_get_focused(m_Group);
   m_PairingDialog = lv_msgbox_create(nullptr);
+  lv_obj_set_width(m_PairingDialog, LV_PCT(100));
   lv_obj_set_style_max_width(m_PairingDialog, m_Width - 4, 0);
   lv_msgbox_add_title(m_PairingDialog, "Pair camera");
 
@@ -872,8 +873,9 @@ void UI::showCameraPairing(Camera *camera) {
   lv_obj_set_style_text_align(name, LV_TEXT_ALIGN_CENTER, 0);
 
   const bool confirm = type == Camera::PairingType::NUMERIC_COMPARISON;
+  lv_obj_t *instruction = nullptr;
   if (m_Height >= 170) {
-    lv_obj_t *instruction = lv_label_create(content);
+    instruction = lv_label_create(content);
     lv_label_set_text(instruction,
                       confirm ? "Confirm it matches the camera" : "Enter this code on the camera");
     lv_obj_set_width(instruction, LV_PCT(100));
@@ -931,6 +933,24 @@ void UI::showCameraPairing(Camera *camera) {
   if (narrowFooter && footer != nullptr) {
     lv_obj_set_style_pad_hor(footer, 2, 0);
     lv_obj_set_style_pad_column(footer, 2, 0);
+  }
+
+  lv_obj_update_layout(m_PairingDialog);
+  if (lv_obj_get_height(m_PairingDialog) > lv_display_get_vertical_resolution(m_Display)) {
+    const lv_font_t *small = fontForTextSize(Settings::TEXT_SIZE_SMALL);
+    lv_obj_set_style_pad_all(m_PairingDialog, 2, 0);
+    if (content != nullptr) {
+      lv_obj_set_style_pad_all(content, 2, 0);
+    }
+    lv_obj_set_style_text_font(name, small, 0);
+    if (instruction != nullptr) {
+      lv_obj_set_style_text_font(instruction, small, 0);
+    }
+    lv_obj_set_style_text_font(code, small, 0);
+    if (footer != nullptr) {
+      lv_obj_set_style_pad_all(footer, 2, 0);
+    }
+    lv_obj_update_layout(m_PairingDialog);
   }
   lv_group_focus_obj(accept != nullptr ? accept : cancel);
 }
