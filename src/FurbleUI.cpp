@@ -293,7 +293,7 @@ std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
     {m_ConnectStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_ScanStr,              {nullptr, nullptr, nullptr, nullptr, {1, 0}}},
     {m_DeleteStr,            {nullptr, nullptr, nullptr, nullptr, {2, 0}}},
-    {m_IRStr,                {nullptr, nullptr, nullptr, nullptr, {3, 0}}},
+    {m_IRStr,                {nullptr, nullptr, nullptr, nullptr, {0, 1}}},
     {m_SettingsStr,          {nullptr, nullptr, nullptr, nullptr, {3, 0}}},
     {m_PowerOffStr,          {nullptr, nullptr, nullptr, nullptr, {3, 1}}},
     {m_ConnectedStr,         {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
