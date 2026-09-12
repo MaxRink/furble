@@ -1795,41 +1795,6 @@ void UI::setIcon(lv_obj_t *icon, const lv_image_dsc_t *symbol) {
 // Keep the floating right legend's column clear for every row that can scroll
 // through it. This runs once when the page loads; changing widths during a
 // focus-driven scroll would re-lay-out the page mid-gesture.
-// Turn wrapping into scrolling for the labels that cannot fit their box.
-//
-// LVGL breaks a long word mid-word when it wraps, which reads as two words. A
-// horizontal scroll shows the whole word instead. It costs one animation per
-// label, so it is applied only where the text really does not fit, and only to
-// labels inside a row: a label placed straight on a page is a paragraph and is
-// meant to wrap.
-void UI::scrollLabelsThatDoNotFit(lv_obj_t *page) {
-  std::function<void(lv_obj_t *, bool)> visit = [&](lv_obj_t *obj, bool inRow) {
-    if ((obj == nullptr) || !lv_obj_is_valid(obj)) {
-      return;
-    }
-    if (inRow && lv_obj_check_type(obj, &lv_label_class)
-        && !lv_obj_has_flag(obj, LV_OBJ_FLAG_USER_1)
-        && (lv_label_get_long_mode(obj) == LV_LABEL_LONG_WRAP)) {
-      const int32_t width = lv_obj_get_content_width(obj);
-      lv_point_t natural = {0, 0};
-      const char *text = lv_label_get_text(obj);
-      const lv_font_t *font = lv_obj_get_style_text_font(obj, LV_PART_MAIN);
-      lv_text_get_size(
-          &natural, text == nullptr ? "" : text, font == nullptr ? LV_FONT_DEFAULT : font,
-          lv_obj_get_style_text_letter_space(obj, LV_PART_MAIN),
-          lv_obj_get_style_text_line_space(obj, LV_PART_MAIN), LV_COORD_MAX, LV_TEXT_FLAG_EXPAND);
-      if ((width > 0) && (natural.x > width)) {
-        lv_label_set_long_mode(obj, LV_LABEL_LONG_SCROLL_CIRCULAR);
-      }
-    }
-    const bool childInRow = inRow || lv_obj_check_type(obj, &lv_menu_cont_class);
-    for (uint32_t i = 0; i < lv_obj_get_child_count(obj); i++) {
-      visit(lv_obj_get_child(obj, i), childInRow);
-    }
-  };
-  visit(page, false);
-}
-
 void UI::reserveLegendColumns(lv_obj_t *page) {
   if (page == nullptr) {
     return;
@@ -1845,10 +1810,9 @@ void UI::reserveLegendColumns(lv_obj_t *page) {
   // legend's y band as encoder focus scrolls the page, so the width is stable
   // for the page's lifetime. A page built as one full-height container of
   // centred widgets has a single child and receives the same reservation.
-  // A label that does not fit the width it was given scrolls rather than
-  // breaking a word across two lines: "Brightn/ess" and "Featur/es" are not
-  // words. Only the labels that do not fit, so a page's redraw cost is one
-  // animation per row that overflows and none at all on a page that fits.
+  // A label that does not fit the width it was given wraps and the page scrolls
+  // vertically. Circular label scrolling invalidates even hidden pages on
+  // every frame, so it cannot be used for these eager-built menu rows.
   // Rows are lv_menu_cont children; a label parked directly on the page, like
   // the bulb mode hint, is meant to flow over as many lines as it needs and is
   // left alone.
@@ -1884,25 +1848,7 @@ void UI::reserveLegendColumns(lv_obj_t *page) {
     }
   }
 
-  // After the rows have their final width, not before: a label measured at the
-  // old width and left wrapping then broke a word on the row that had just been
-  // narrowed, and the extra line pushed the page into a scroll. Turning that
-  // label into a scrolling one changes the row's height, so the widths are
-  // settled once more afterwards.
   lv_obj_update_layout(page);
-  if (reserve <= 0) {
-    return;
-  }
-  scrollLabelsThatDoNotFit(page);
-  lv_obj_update_layout(page);
-  for (uint32_t i = 0; i < lv_obj_get_child_count(page); i++) {
-    lv_obj_t *row = lv_obj_get_child(page, i);
-    if ((row == nullptr) || !lv_obj_is_valid(row) || lv_obj_has_flag(row, LV_OBJ_FLAG_FLOATING)) {
-      continue;
-    }
-    lv_obj_set_width(row, lv_obj_get_content_width(page) - reserve);
-    lv_obj_set_style_translate_x(row, -(reserve / 2), LV_PART_MAIN);
-  }
 }
 
 int32_t UI::floatingIndicatorReserve(void) {
@@ -1952,29 +1898,10 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
 #else
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_ROW);
 #if defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
-  // The home menu carries seven rows once the Level entry joins it and the IR
-  // setting is on (Connect, Scan, Delete, IR, Settings, Level, Power off). A
-  // row is the 24 px icon plus the top and bottom padding, and the text size
-  // setting does not change it, so the fit is fixed arithmetic against the
-  // page height: at the default padding of 6 six rows already overflow by one
-  // pixel, at 5 seven rows overflow by 23 px, and at 3 seven rows take 210 px.
-  //
-  // That arithmetic was done against the 215 px page of the touch layout, which
-  // is the only one the simulator rendered when this padding was chosen. These
-  // boards have no touch panel, so they ship the physical-button layout, whose
-  // navigation bar band leaves a 189 px page. Seven rows overflow it by 21 px
-  // at padding 3. home-seven-rows.txt asserts the fit, but on the touch layout,
-  // so it does not guard the shipped one. stick-notouch-layout-135.txt records
-  // the real 21 px as a WILL_FAIL. Fixing it is a hardware-verified change and
-  // is deliberately not made here; see plans/165-sim-no-touch-layout.md.
-  // Every other page keeps the roomier padding.
+  // The device walk kept the home row spacing and accepted vertical scrolling
+  // instead of shrinking the chosen font or removing its icons.
   const bool mainPage = menu.page == m_MainMenu.page;
-  // The home menu carries seven rows in the 189 px page the shipped
-  // physical-button layout leaves, and at the padding of 3 that was chosen
-  // against the touch layout's 215 px page they take 210 and the last row falls
-  // off. At 1 they take 182 and fit in both layouts. Only the home rows change;
-  // every other page keeps the roomier padding.
-  const int32_t pad = connectedPage ? 0 : (mainPage ? 1 : 6);
+  const int32_t pad = connectedPage ? 0 : (mainPage ? 3 : 6);
   lv_obj_set_style_pad_top(cont, pad, LV_STATE_DEFAULT);
   lv_obj_set_style_pad_bottom(cont, pad, LV_STATE_DEFAULT);
 #elif defined(FURBLE_M5STICKC)
@@ -2037,15 +1964,11 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
       lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
       lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
 #else
-      // A label at its natural width overflows whatever padding its row keeps,
-      // so potentially scrolling rows hold their label to the room the row
-      // gives them. reserveLegendColumns() sets the boundary when the page
-      // loads; the grow is what makes the label respect it. Every row keeps the
-      // scrolling label it has always had.
-      if (floatingIndicatorReserve() > 0) {
-        lv_obj_set_flex_grow(label, 1);
-      }
-      lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+      // Keep the full name inside the row and let the page scroll vertically.
+      // Circular scrolling repaints eager-built rows even while their page is
+      // hidden, breaking the steady-state redraw budget.
+      lv_obj_set_flex_grow(label, 1);
+      lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
 #endif
     } else if (wrapText) {
       // A camera name is composed by the vendor client, so it can be wider than
@@ -2079,7 +2002,7 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
       // row after the right legend column is reserved; at natural width
       // "Constellation" extended through the row padding and was clipped.
       lv_obj_set_width(label, LV_PCT(100));
-      lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+      lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
     }
     lv_obj_add_flag(cont, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_flag(cont, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
@@ -2103,7 +2026,7 @@ lv_obj_t *UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_
 
   lv_obj_t *label = lv_label_create(obj);
   lv_label_set_text(label, s.name);
-  lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+  lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
 #if defined(FURBLE_M5STICKC)
   // 80 px is not enough for a name, a 50 px switch and the floating right
   // legend on one line, and the switch was drawn under the legend. Without the

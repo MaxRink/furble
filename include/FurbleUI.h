@@ -1033,7 +1033,6 @@ class UI {
   /** Pixels to keep clear on the right of a full width menu row. */
   static int32_t floatingIndicatorReserve(void);
   void reserveLegendColumns(lv_obj_t *page);
-  static void scrollLabelsThatDoNotFit(lv_obj_t *page);
 
   /** Add a menu item. */
   static lv_obj_t *addMenuItem(const menu_t &menu,
