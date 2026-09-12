@@ -604,3 +604,18 @@ comment so the distinction is visible at the point of edit.
 63 also removes the getter's lock from the 20 Hz connect timer path using a
 generation counter, which is the natural resolution of the contention this
 change introduces there.
+
+### Camera-free successor integration, 2026-09-12
+
+The camera-free PR63 mock state was integrated with the exact live
+`origin/master` commit `790500d8` in successor commit `21449a2a`. The merge had
+no conflicts. The secure-waiter teardown ordering fix and its pairing source,
+virtual-peer, scenario, and host-test coverage are retained unchanged from
+`d8d27d74`. The previously recorded host result was 118/118 passing, with ten
+two-target ASan and UBSan repetitions passing. This successor was not rebuilt
+or retested in this lane.
+
+Physical gates remain open. Fujifilm pairing, stale-bond secure-wait
+cancellation, immediate reconnect, shutter, five-cycle zombie and heap
+checks, and the final ordinary reconnect cycle still require the attached
+camera and M5StickS3. Canon, DJI, and Nikon remain untested on hardware.
