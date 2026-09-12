@@ -8105,7 +8105,14 @@ lv_obj_t *UI::addSpinItem(lv_obj_t *page, const char *item, Intervalometer::Spin
   lv_label_set_text(spinner.m_Label, item);
   // Both labels keep their natural width for the row's line-break decision.
   // When they do not fit together, ROW_WRAP moves the value to the next line.
+#if defined(FURBLE_M5STICKC)
+  // On the 80 px panel even the longest name is wider than the reserved row.
+  // Give it a full line so LVGL computes the wrapped content height instead of
+  // keeping the capped label at its original single-line height.
+  lv_obj_set_width(spinner.m_Label, LV_PCT(100));
+#else
   lv_obj_set_width(spinner.m_Label, LV_SIZE_CONTENT);
+#endif
   lv_obj_set_style_max_width(spinner.m_Label, LV_PCT(100), 0);
   lv_label_set_long_mode(spinner.m_Label, LV_LABEL_LONG_WRAP);
   lv_obj_add_flag(spinner.m_Label, LV_OBJ_FLAG_USER_1);
