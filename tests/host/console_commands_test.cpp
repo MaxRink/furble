@@ -435,6 +435,35 @@ void testSettings(void) {
   checkContains(runDirect("settings set gps off").out, "applies: immediately",
                 "an immediate setting says so");
 
+  // The motion adaptive switch is a boolean that applies immediately and must
+  // refresh the detector without restarting the GPS receiver.
+  const size_t beforeRequests = ConsoleHost::ui().requests.size();
+  const size_t beforeReload = ConsoleHost::gps().reloadSettingCalls;
+  const size_t beforeMotionReload = ConsoleHost::gps().reloadMotionSettingCalls;
+  checkContains(runDirect("settings set gps_motion on").out, "saved: gps_motion",
+                "the motion adaptive setting saves");
+  checkContains(runDirect("settings get gps_motion").out, "value: true",
+                "the motion adaptive setting reads back true");
+  check(Furble::Settings::load<bool>(Furble::Settings::GPS_MOTION),
+        "the motion adaptive value reached the real Settings store");
+  check(ConsoleHost::gps().reloadMotionSettingCalls > beforeMotionReload,
+        "saving gps_motion refreshes the detector gate");
+  check(ConsoleHost::gps().reloadSettingCalls == beforeReload,
+        "saving gps_motion does not restart the GPS receiver");
+  check(ConsoleHost::ui().requests.size() == beforeRequests,
+        "saving gps_motion does not queue the GPS_RELOAD UI request");
+  checkContains(runDirect("settings set gps_motion off").out, "applies: immediately",
+                "the motion adaptive setting applies immediately");
+  checkContains(runDirect("settings get gps_motion").out, "value: false",
+                "the motion adaptive setting reads back false");
+  const Result badMotion = runDirect("settings set gps_motion sometimes");
+  check(badMotion.rc != 0, "a non boolean motion adaptive value fails");
+
+  const size_t beforeBaud = ConsoleHost::ui().requests.size();
+  runDirect("settings set gps_baud 9600");
+  check(ConsoleHost::ui().requests.size() > beforeBaud,
+        "a real receiver setting still queues the GPS reload");
+
   checkContains(runDirect("settings set theme Dark").out, "saved: theme", "a string setting saves");
   checkContains(runDirect("settings get theme").out, "value: Dark", "the string reads back");
 
