@@ -1107,8 +1107,12 @@ USB/provisioning recovery operation.
 
 Held controls are released when the server stops. If the Control queue is full,
 the release remains owned and is retried until accepted or the camera session
-ends. API responses say `accepted` or `saved`; they do not claim a camera has
-completed an asynchronous connect or shutter operation.
+ends. A complete target-session replacement expires that ownership. Automatic
+recovery of a retained target does not; clients must send an explicit release
+before another press. This preserves release responsibility for surviving
+cameras without guessing the vendor's physical state after link loss. API
+responses say `accepted` or `saved`; they do not claim a camera has completed an
+asynchronous connect or shutter operation.
 
 Host coverage checks content type, same-origin and strict numeric ingress.
 The shared Control E2E exercises full and partial per-target command delivery.

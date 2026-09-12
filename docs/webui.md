@@ -40,6 +40,16 @@ require `Content-Type: application/json`.
 Connect and control responses confirm that work was accepted into its owner
 queue. Poll status for completion. Timed holds are limited to 60 seconds.
 
+A repeated press is idempotent within one complete Control target session. A
+user disconnect followed by a new connect creates a new target session, clears
+the old held ownership and allows the next press to reach the new session even
+when both transitions occur between WebUI supervisor polls.
+
+Automatic BLE link recovery keeps the same target session. It intentionally
+keeps held and pending-release ownership so surviving cameras remain protected
+and furble does not guess what a vendor retained across link loss. After an
+automatic reconnect, send an explicit `release` before sending another `press`.
+
 Self-signed TLS protects the password and traffic from passive capture. On the
 first connection, fingerprint comparison is what protects against an active
 local man-in-the-middle. The certificate persists in NVS, so a changed
