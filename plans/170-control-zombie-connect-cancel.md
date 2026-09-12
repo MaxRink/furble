@@ -18,6 +18,43 @@ The X100VI bench ran PR 245 firmware `dev+g37d38967`, not this integration.
 Its 20 cancellations ended idle with zero zombies, but four intermediate
 snapshots were still disconnecting. Pairing, shutter and healthy reconnect
 checks preceded that batch; no post-batch ACTIVE recovery was tested.
+
+### Mock delayed-disconnect ordering, 2026-09-08
+
+The preserved c63 ASan reproduction (`~/b/c63-secure-asan-repeat-2.log`) found
+another interleaving in the host mock: `mockCompleteStalledTerminate()` woke the
+Fujifilm secure wait from `FujifilmVirtualCamera::disconnect()` before the mock
+client cleared `m_Peer`, dispatched `onDisconnect` and completed deferred client
+cleanup. The secure caller could therefore return while the completion thread
+still wrote the client or peer state. The old c63 checkout used for the negative
+binary remains separate; this candidate is based on c63
+`d3e7333965cf331364c825baf11e385c0b3b84a9`.
+
+The ordering is now explicit in the mock peer contract. `disconnect()` performs
+peer teardown only; `NimBLEClient` finishes its callback and any self-delete;
+then `disconnectComplete()` releases a parked peer waiter. Fujifilm implements
+that final hook for its secure condition variable, and the wrapper peer forwards
+it. All mock client disconnect entry points use the same finalization point,
+including normal, asynchronous, spontaneous-drop and stalled-terminate paths.
+No production `Camera` or c90 cancellation-retirement code changed.
+
+The hardware reference is esp-nimble-cpp 2.5.0 at upstream commit
+`e26b502297396401c166083ed66ebf5498c805a8`: the `NimBLEClient` disconnect handler
+dispatches `onDisconnect` and clears its state around `NimBLEClient.cpp:1150-1154`,
+and releases the blocked task only after the remaining disconnect work around
+line 1465. `NimBLEDevice.cpp:355-382` likewise defers `deleteClient()` for
+CONNECTED or DISCONNECTING clients. The mock follows this event ordering rather
+than adding ownership or lifetime guarantees that real NimBLE does not provide.
+
+`tests/host/mock_disconnect_order_test.cpp` uses a condition-variable callback
+barrier, not a sleeps-only race. It holds `onDisconnect` open and proves the
+blocked secure call cannot return until callback completion and peer cleanup. Its
+stall uses the maximum duration as a controlled non-expiring wait, and atomic
+sequence numbers assert callback completion before secure return.
+The executable is wired as `mock_disconnect_order_test` and the CTest name is
+`mock-disconnect-order`. Build and run it with the host CTest configuration
+after root serial validation. This candidate has not been built or tested in
+this lane.
 These results do not certify this PR's re-arm path or other camera vendors.
 
 For the next physical check, use three short cycles plus one security-wait
@@ -221,17 +258,22 @@ The current design has neither problem because it refuses nothing.
 
 ### An empty session is never active
 
-`allConnected()` returns false with no targets, and a connect cycle with no
-cameras logs and returns `STATE_CONNECT_FAILED` instead of going active. This is
-defence in depth rather than a consequence of the withdrawn refusal: both entry
-points call `connectAll()` unconditionally, so a failed `xTaskCreate` inside
-`addActive()` reaches the same vacuous truth.
+`allConnected()` returns false with no targets. The merged master path now
+returns `STATE_IDLE` for a normal empty selection, or `STATE_DISCONNECTING` when
+an abort owns it, before the vacuous check. This is defence in depth rather than
+a consequence of the withdrawn refusal: both entry points call `connectAll()`
+unconditionally, so a failed `xTaskCreate` inside `addActive()` reaches the same
+vacuous truth.
 
 Only one of the two halves is covered, and that is deliberate. The regression
-reaches `STATE_CONNECT_FAILED` through the early return in `connectAll()`,
-before `allConnected()` is ever consulted, so reverting the `allConnected()`
-guard alone leaves the suite green. The guard protects the `STATE_ACTIVE`
-liveness branch, and reaching it with no targets needs `m_Targets` emptied while
+reaches the normal empty-selection return in `connectAll()`, before
+`allConnected()` is ever consulted, so reverting the `allConnected()`
+guard alone leaves the suite green. The host regression now arms the
+`connectall_returned` test barrier around this empty pass and checks that the
+control pass arrives, remains idle, and does not time out. This records the
+interleaving without claiming coverage of the other branch. The guard protects
+the `STATE_ACTIVE` liveness branch, and reaching it with no targets needs
+`m_Targets` emptied while
 the machine is already active. Only `disconnect()` empties it and it publishes
 `STATE_DISCONNECTING` first, leaving a window a few instructions wide. Worse,
 the window is not observable from outside: on the guarded side the branch
@@ -309,6 +351,17 @@ around a factor of two from the behaviour they separate, so a loaded host does
 not flip them.
 
 No mutation is left in the tree.
+
+### Integration checkpoint
+
+The pre-merge c63 head `31fa6ca5` predates the master empty-selection policy.
+Root's serialized host session `~/b/c63-current-host-test.log` therefore had
+one old-head failure in `control-zombie-cancel`, at the empty-connect phase
+where the merged test expects the session to remain idle. This was an
+old-head integration mismatch, not current-head validation. Master `ad9bc513`
+supplies the early `STATE_IDLE` return; this merged checkout has not been
+rerun and retains no new test-pass claim.
+
 
 ## Not covered, and why
 
@@ -486,12 +539,10 @@ on the rebase:
    exactly the one `abortBlockingConnect()` wakes.
 4. Adjacent-line only: `getConnectFailReason()` and `getTargetCount()` sit where
    `setConnectCamera()` and the locked getter now go.
-5. After 245, give the empty-cycle `STATE_CONNECT_FAILED` a reason string. An
-   empty cycle is the natural first user of `m_ConnectFailReason`. This is the
-   named follow-up to the bench wedge above: once `abortBlockingConnect()` ends
-   the stall, refusing a fresh connect while a drain is still pending becomes
-   worth doing, and it needs a reason the UI can show. Without one it would
-   repeat the phantom active session this plan withdrew.
+5. Superseded by the merged master empty-selection guard. A normal empty cycle
+   now returns `STATE_IDLE` before `m_ConnectFailReason` is needed; an aborting
+   cycle returns `STATE_DISCONNECTING`. Do not reintroduce an empty-cycle error
+   solely to preserve the pre-merge `STATE_CONNECT_FAILED` path.
 
 ### PR 274, rebased over
 
@@ -553,3 +604,28 @@ comment so the distinction is visible at the point of edit.
 63 also removes the getter's lock from the 20 Hz connect timer path using a
 generation counter, which is the natural resolution of the contention this
 change introduces there.
+
+### Camera-free successor integration, 2026-09-12
+
+The camera-free PR63 mock state was integrated with the exact live
+`origin/master` commit `790500d8` in successor commit `21449a2a`. The merge had
+no conflicts. The secure-waiter teardown ordering fix and its pairing source,
+virtual-peer, scenario, and host-test coverage are retained unchanged from
+`d8d27d74`. The previously recorded host result was 118/118 passing, with ten
+two-target ASan and UBSan repetitions passing. This successor was not rebuilt
+or retested in this lane.
+
+Physical gates remain open. Fujifilm pairing, stale-bond secure-wait
+cancellation, immediate reconnect, shutter, five-cycle zombie and heap
+checks, and the final ordinary reconnect cycle still require the attached
+camera and M5StickS3. Canon, DJI, and Nikon remain untested on hardware.
+
+### Current-master integration, 2026-09-12
+
+The successor was merged with exact `origin/master`
+`965f299f0f43c38fe45e4680f1bfb735023533af`. Conflicts were limited to
+`lib/furble/Camera.h` and `src/FurbleControl.cpp`: the camera pairing
+declarations and target-camera snapshot were retained alongside master RSSI
+and target-status APIs. MQTT sources, tests, docs, and plans from master were
+retained. No build or test was run after this integration. The three-panel
+simulator gates remain pending.

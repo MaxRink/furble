@@ -39,6 +39,7 @@ class SecureTimeoutPeer final: public NimBLEMockPeer {
     return m_Inner.acceptConnection(client, address);
   }
   void disconnect(NimBLEClient &client, int reason) override { m_Inner.disconnect(client, reason); }
+  void disconnectComplete() override { m_Inner.disconnectComplete(); }
   bool hasService(const NimBLEUUID &service) const override { return m_Inner.hasService(service); }
   bool hasCharacteristic(const NimBLEUUID &service,
                          const NimBLEUUID &characteristic) const override {

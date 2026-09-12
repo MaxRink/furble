@@ -26,6 +26,19 @@ class RicohVirtualCamera final: public NimBLEMockPeer {
     uint8_t camera_power = 0x01;
     uint8_t operation_mode = 0x00;
     bool operation_mode_read_fails = false;
+    // LE Secure Connections MITM pairing. Zero keeps the just-works handshake
+    // the older fixtures rely on. A nonzero code makes secureConnection() run
+    // the real exchange: the peer calls the central's onConfirmPasskey (or
+    // onPassKeyDisplay) with the code and waits for the central's answer
+    // through NimBLEDevice::injectConfirmPasskey, exactly as a GR IV does.
+    uint32_t pairing_code = 0;
+    // Passkey display instead of numeric comparison. The peer then reads the
+    // code the central returns from onPassKeyDisplay and accepts only when it
+    // matches pairing_code, which is what typing the code on the camera does.
+    bool passkey_display = false;
+    // How long the peer waits for the central's answer before it fails the
+    // handshake the way a real pairing timeout does.
+    uint32_t pairing_answer_timeout_ms = 5000;
   };
 
   struct Write {
@@ -107,6 +120,17 @@ class RicohVirtualCamera final: public NimBLEMockPeer {
                  const NimBLENotifyCallback &callback,
                  bool response) override;
   bool secureConnection(NimBLEClient &client) override;
+  void onPasskeyConfirmed(bool accept) override;
+  void onPasskeyEntered(uint32_t passkey) override;
+
+  /**
+   * The passkey the central returned from onPassKeyDisplay.
+   *
+   * This is the value NimBLE would inject and the camera keypad would have to
+   * match, so a test can assert the code on furble's screen is the code the
+   * stack actually used rather than a constant compiled into furble.
+   */
+  uint32_t lastDisplayedPasskey(void) const;
   bool updateConnectionParams(NimBLEClient &client,
                               uint16_t min_interval,
                               uint16_t max_interval,
@@ -129,6 +153,7 @@ class RicohVirtualCamera final: public NimBLEMockPeer {
 
   static bool matches(const NimBLEUUID &left, const NimBLEUUID &right);
   static std::string key(const NimBLEUUID &service, const NimBLEUUID &characteristic);
+  bool runPairingHandshake(NimBLEClient &client);
   void armFlappyDrop(NimBLEClient &client);
   void requestFlappyCancel();
   void cancelFlappyTimer();
@@ -154,6 +179,15 @@ class RicohVirtualCamera final: public NimBLEMockPeer {
   std::recursive_mutex m_FlappyMutex;
   std::condition_variable_any m_FlappyCv;
   std::thread m_FlappyThread;
+
+  // MITM handshake state. secureConnection() waits on m_PairingCv for the
+  // central's injected answer, which arrives on the thread that called
+  // answerPairing(), so the two threads model the real host task and UI task.
+  mutable std::mutex m_PairingMutex;
+  std::condition_variable m_PairingCv;
+  bool m_PairingAnswered = false;
+  bool m_PairingAccepted = false;
+  uint32_t m_LastDisplayedPasskey = 0;
 };
 
 }  // namespace Host

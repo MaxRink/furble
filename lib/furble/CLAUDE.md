@@ -112,6 +112,11 @@ protocol core.
   can perform numeric comparison. Saved reconnect failures preserve the bond;
   do not reconnect inline from the security callback or alter callback/client
   lifetime ownership.
+- Camera security callbacks publish a pairing request only after validating its
+  code and connection. A headless build with no handler keeps NimBLE's default,
+  but a display handler that cannot queue the prompt rejects it. Explicit user
+  rejection and expiry are not stale-bond evidence; they terminally suppress
+  reconnect for only that camera until an explicit fresh connect re-arms it.
 - Ricoh `focusPress()` and `focusRelease()` are intentional no-ops. The
   documented Focus Mode characteristic configures a focus mode, while
   Operation Request starts capture. Do not map focus to a timer or capture

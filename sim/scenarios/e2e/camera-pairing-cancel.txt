@@ -1,0 +1,71 @@
+# Cancel on the pairing modal must reject (plan 66 / #63). This modal exists to
+# protect a numeric comparison, so the one invariant that matters is that the
+# Cancel button reaches NimBLE as a reject and tears the link down, not that it
+# merely closes the modal. Rebinding Cancel to answerPairing(true) has to fail
+# here on every panel.
+seed ble_peers fuji
+seed ble_saved true
+wait 300
+
+action connect
+assert-eventually-virtual 8000 control.state active
+assert control.connected 1
+
+action camera-pair-request confirm 428913
+wait 400
+assert ui.modal open
+assert ui.modal_count 1
+assert ui.pairing_kind confirm
+assert ui.pairing_code 428913
+
+# No radio to come back through, so the drop this rejection causes is final and
+# the link state is unambiguous.
+action ble-connect-fail
+action camera-pair-reject
+wait 500
+assert ui.modal closed
+assert ui.modal_count 0
+assert ui.pairing_pending no
+assert ble.pairing_answers 1
+assert ble.pairing_answer reject
+
+# Advance time even if already idle: no retry or second prompt may appear.
+wait 12000
+assert control.state idle
+assert control.connected 0
+assert control.targets 0
+assert control.zombies 0
+assert-eventually-virtual 5000 ui.connect_box hidden
+assert ui.connected no
+assert ui.connect_error none
+assert ui.modal_count 0
+# Explicit user intent starts a fresh session after cancellation has drained.
+action ble-connect-ok
+action connect
+assert-eventually-virtual 20000 control.state active
+assert control.connected 1
+assert-eventually-virtual 5000 ui.connected yes
+assert ui.modal_count 0
+
+# Reject during an in-flight registration wait as well, not just after ACTIVE.
+action disconnect
+assert-eventually-virtual 5000 control.state idle
+assert-eventually-virtual 5000 control.zombies 0
+action ble-withhold-registration
+action connect
+assert-eventually-virtual 8000 control.state connecting
+wait 400
+action camera-pair-request confirm 123456
+wait 400
+assert ui.modal open
+action camera-pair-reject
+wait 12000
+assert control.state idle
+assert control.targets 0
+assert control.zombies 0
+assert control.connect_in_progress no
+assert ui.connect_error none
+assert ui.modal_count 0
+assert ble.pairing_answers 2
+assert ble.pairing_answer reject
+exit

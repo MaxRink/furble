@@ -71,6 +71,29 @@ class Camera: public NimBLEClientCallbacks {
 
   /** Mark a scan-created camera saved after its record is persisted. */
   void markSaved(void);
+  enum class PairingType : uint8_t {
+    NONE,
+    PASSKEY_DISPLAY,
+    NUMERIC_COMPARISON,
+  };
+
+  /**
+   * App-layer handler for a pairing prompt.
+   *
+   * Returns true when the handler has taken ownership of the request and will
+   * answer it. False means nothing will, so the caller answers it instead.
+   */
+  typedef bool (*pairing_request_callback_t)(Camera *camera);
+
+  // How long a prompt stays answerable. The SMP procedure itself is abandoned
+  // by the peer and by our own host after BLE_SM_TIMEOUT_MS, which NimBLE
+  // defines as 30000 in
+  // components/bt/host/nimble/nimble/nimble/host/src/ble_sm.c and arms in
+  // ble_sm_proc_set_timer(); that in turn is the 30 s Security Manager timeout
+  // of Bluetooth Core v5.4 Vol 3 Part H 3.4. An answer injected after it goes
+  // nowhere, so a longer window would leave a live-looking code on screen that
+  // can no longer authorize anything. Match the stack instead.
+  static constexpr uint32_t PAIRING_WINDOW_MS = 30 * 1000;
 
   enum class SecurityMode : uint8_t {
     SECURE_DISPLAY_YESNO = BLE_HS_IO_DISPLAY_YESNO,
@@ -325,11 +348,75 @@ class Camera: public NimBLEClientCallbacks {
   static void gattJournalClear(void);
 #endif
 
+  /** Register the app-layer handler for a pairing prompt. */
+  static void setPairingRequestCallback(pairing_request_callback_t callback);
+
+  /** Check whether the camera is waiting for a pairing response. */
+  bool hasPendingPairing(void) const;
+
+  /** Return the pending pairing prompt type. */
+  PairingType getPairingType(void) const;
+
+  /** Return the pending pairing code. */
+  uint32_t getPairingCode(void) const;
+
+  /** Check whether the pairing prompt exceeded its response window. */
+  bool pairingTimedOut(void) const;
+
+  /** Accept or reject the pending pairing prompt. */
+  bool answerPairing(bool accept);
+
+  /** Reject the pending pairing prompt and disconnect the camera. */
+  void cancelPairing(void);
+
+  /** Whether a pairing decline has terminally disabled reconnect for this session. */
+  bool pairingCancelled(void) const;
+
+  /** Re-arm reconnect after an explicit user connect request. */
+  void clearPairingCancelled(void);
+
+#if defined(FURBLE_HOST_TEST) || defined(FURBLE_SIM)
+  /**
+   * Raise a pairing request the way the NimBLE security callback does.
+   *
+   * Only the controller event is substituted. The request is published through
+   * the same publishPairingRequest() onConfirmPasskey and onPassKeyDisplay
+   * call, against the live client's connection info, so the answer really does
+   * inject through NimBLE. Pass an explicit handle to model a request recorded
+   * against a link that has since been replaced.
+   * tests/host/camera_pairing_peer_test.cpp covers the callback entry itself.
+   *
+   * @return true when a request was published.
+   */
+  bool hostSetPairingRequest(PairingType type,
+                             uint32_t code,
+                             uint16_t handle = BLE_HS_CONN_HANDLE_NONE);
+
+  /**
+   * Move the response deadline to now so the timeout path runs without a
+   * wall-clock wait.
+   *
+   * @return true when there was a request to expire.
+   */
+  bool hostExpirePairing(void);
+#endif
+
   /** Get the connected peer RSSI in dBm, or -127 when unavailable. */
   int getRSSI(void) const;
 
  protected:
   Camera(Type type, PairType pairType);
+
+  /**
+   * Does this vendor's protocol have no SMP-level user confirmation?
+   *
+   * A vendor whose published protocol carries its own approval step, or whose
+   * reference implementation never configures BLE security at all, has no code
+   * for the user to compare. Those answer the request where it is raised, which
+   * is what NimBLE's own default callback does. Everything else prompts.
+   */
+  virtual bool autoAcceptPairing(void) const { return false; }
+
   std::atomic<uint8_t> m_Progress;
 
   /**
@@ -456,6 +543,14 @@ class Camera: public NimBLEClientCallbacks {
  private:
   friend class NikonBase;
 
+  void publishPairingRequest(PairingType type, uint32_t code, NimBLEConnInfo &connInfo);
+  void clearPairingRequest(void);
+
+  void onPassKeyEntry(NimBLEConnInfo &connInfo) override final;
+  uint32_t onPassKeyDisplay(NimBLEConnInfo &connInfo) override final;
+  void onConfirmPasskey(NimBLEConnInfo &connInfo, uint32_t pin) override final;
+  void onAuthenticationComplete(NimBLEConnInfo &connInfo) override final;
+
   /** Called on connection success. */
   void onConnect(NimBLEClient *pDevice) override final;
 
@@ -513,6 +608,19 @@ class Camera: public NimBLEClientCallbacks {
   static constexpr SecurityMode m_SecurityModeDefault = SecurityMode::SECURE_DISPLAY_YESNO;
 
   mutable connect_mutex_t m_Mutex;
+  // answerPairing may synchronously cause onDisconnect, and that callback
+  // clears the pairing request through this mutex before NimBLE self-deletes
+  // the client. A recursive mutex lets that same-thread callback re-enter
+  // safely while a host-task callback on another thread waits for the answer
+  // to finish before it can free the client.
+  mutable std::recursive_mutex m_PairingMutex;
+
+  PairingType m_PairingType = PairingType::NONE;
+  uint32_t m_PairingCode = 0;
+  uint64_t m_PairingDeadlineMs = 0;
+  uint16_t m_PairingHandle = BLE_HS_CONN_HANDLE_NONE;
+
+  static std::atomic<pairing_request_callback_t> m_PairingRequestCallback;
 
   esp_power_level_t m_Power = ESP_PWR_LVL_P3;
   bool m_FromScan = false;
@@ -527,6 +635,7 @@ class Camera: public NimBLEClientCallbacks {
   // connectAll() abort check and the attempt entering connect() must survive
   // into the attempt, or the wait becomes uncancellable again.
   std::atomic<bool> m_ConnectCancelled = false;
+  std::atomic<bool> m_PairingCancelled = false;
 
   // Set when a vendor connect proved the camera dropped its side of the bond.
   // Read by Control after a failed attempt to end the reconnect cycle with a

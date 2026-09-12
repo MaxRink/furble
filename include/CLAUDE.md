@@ -33,6 +33,10 @@ Public headers for the app layer in src/, one header per module
   Password mutations use `Settings::savePassword()` to check both NVS set and
   commit, including successful empty-string clears. Never acknowledge the
   generic void settings writer as proof that a credential was persisted.
+  Camera pairing prompts use the same queued UI boundary: a missing handler is
+  the headless NimBLE default, while a display queue failure must reject the
+  unseen comparison. Camera pointers in queued requests are resolved against
+  Control-owned shared pointers before use.
 
 ### Companion wire id reservations
 

@@ -157,6 +157,16 @@ class Control {
   static std::string getCameraID(const Camera &camera);
 
   /**
+   * Get strong references to the active target cameras.
+   *
+   * UI callbacks can run while the control task drains a disconnect and
+   * destroys Target objects. Returning the cameras themselves keeps the
+   * pairing prompt owner alive without exposing raw Target pointers across
+   * that task boundary.
+   */
+  std::vector<std::shared_ptr<Camera>> getTargetCameras(void) const;
+
+  /**
    * Connect to all active cameras.
    *
    * Requests, rather than performs, the re-arm of every target camera's connect
@@ -201,6 +211,15 @@ class Control {
    * @return Camera being connected otherwise nullptr.
    */
   std::shared_ptr<Camera> getConnectingCamera(void) const;
+
+  /**
+   * Counter of connecting-camera changes.
+   *
+   * getConnectingCamera() takes m_Mutex, which the 20 Hz connect timer on the
+   * LVGL task must not do on every tick. This is a lock-free change token:
+   * read it, and take the snapshot only when it differs from the one held.
+   */
+  uint32_t getConnectingCameraGeneration(void) const;
 
   /** Retrieve current control state. */
   state_t getState(void) const;
@@ -352,6 +371,9 @@ class Control {
    */
   void reapZombieTargets(void);
 
+  // Caller holds m_Mutex. Reuse the drain set for deliberately declined peers.
+  bool retireCancelledTargetsLocked(void);
+
   /**
    * Is a prior teardown still draining?
    *
@@ -451,6 +473,11 @@ class Control {
   // task, so every access takes the mutex and publication goes through
   // setConnectCamera().
   std::shared_ptr<Camera> m_ConnectCamera;
+  // Bumped under m_Mutex on every m_ConnectCamera write, read without it.
+  std::atomic<uint32_t> m_ConnectCameraGeneration {0};
+
+  /** Publish a new connecting camera. Caller holds m_Mutex. */
+  void setConnectCameraLocked(std::shared_ptr<Camera> camera);
 
   // User transmit power cap, loaded from TX_POWER at first getInstance()
   esp_power_level_t m_Power = ESP_PWR_LVL_P3;

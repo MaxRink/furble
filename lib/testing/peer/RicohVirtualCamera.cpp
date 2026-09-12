@@ -316,6 +316,8 @@ bool RicohVirtualCamera::secureConnection(NimBLEClient &client) {
   }
   if (!m_Config.accept_numeric_comparison)
     return false;
+  if ((m_Config.pairing_code != 0) && !runPairingHandshake(client))
+    return false;
   const bool localBonded = NimBLEDevice::isBonded(m_Config.address);
   if (localBonded != m_Config.camera_bonded)
     return false;
@@ -327,6 +329,74 @@ bool RicohVirtualCamera::secureConnection(NimBLEClient &client) {
     armFlappyDrop(client);
   }
   return true;
+}
+
+// Run the MITM half of the handshake the way the NimBLE host task does: raise
+// the security callback on the central, then block until the central injects
+// its answer. The central's answer arrives on whichever thread called
+// Camera::answerPairing, so a test drives the two threads the device has.
+bool RicohVirtualCamera::runPairingHandshake(NimBLEClient &client) {
+  NimBLEClientCallbacks *callbacks = client.mockCallbacks();
+  if (callbacks == nullptr) {
+    return false;
+  }
+
+  NimBLEConnInfo info = client.getConnInfo();
+  {
+    const std::lock_guard<std::mutex> lock(m_PairingMutex);
+    m_PairingAnswered = false;
+    m_PairingAccepted = false;
+  }
+  NimBLEDevice::setPasskeyPeer(this);
+
+  bool accepted = false;
+  if (m_Config.passkey_display) {
+    // Passkey display: the central shows a code and the user types it on the
+    // camera. The peer is the camera keypad, so it checks what the central
+    // displayed against the code this camera generated.
+    const uint32_t displayed = callbacks->onPassKeyDisplay(info);
+    {
+      const std::lock_guard<std::mutex> lock(m_PairingMutex);
+      m_LastDisplayedPasskey = displayed;
+    }
+    accepted = displayed == m_Config.pairing_code;
+  } else {
+    callbacks->onConfirmPasskey(info, m_Config.pairing_code);
+    std::unique_lock<std::mutex> lock(m_PairingMutex);
+    const bool answered =
+        m_PairingCv.wait_for(lock, std::chrono::milliseconds(m_Config.pairing_answer_timeout_ms),
+                             [this]() { return m_PairingAnswered; });
+    accepted = answered && m_PairingAccepted;
+  }
+
+  NimBLEDevice::setPasskeyPeer(nullptr);
+  if (accepted) {
+    callbacks->onAuthenticationComplete(info);
+  }
+  return accepted;
+}
+
+uint32_t RicohVirtualCamera::lastDisplayedPasskey(void) const {
+  const std::lock_guard<std::mutex> lock(m_PairingMutex);
+  return m_LastDisplayedPasskey;
+}
+
+void RicohVirtualCamera::onPasskeyConfirmed(bool accept) {
+  {
+    const std::lock_guard<std::mutex> lock(m_PairingMutex);
+    m_PairingAnswered = true;
+    m_PairingAccepted = accept;
+  }
+  m_PairingCv.notify_all();
+}
+
+void RicohVirtualCamera::onPasskeyEntered(uint32_t passkey) {
+  {
+    const std::lock_guard<std::mutex> lock(m_PairingMutex);
+    m_PairingAnswered = true;
+    m_PairingAccepted = passkey == m_Config.pairing_code;
+  }
+  m_PairingCv.notify_all();
 }
 
 bool RicohVirtualCamera::updateConnectionParams(NimBLEClient &client,
