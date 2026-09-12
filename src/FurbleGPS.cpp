@@ -1982,6 +1982,10 @@ void GPS::disable(void) {
   releasePowerLock();
 
   m_FixCache = {};
+  {
+    const std::lock_guard<std::mutex> lock(m_FixMutex);
+    m_CurrentFix = {};
+  }
   m_HoldActive = false;
   m_HoldRemainingMs.store(0);
   m_Fix.store(static_cast<uint8_t>(Fix::NONE));
@@ -2101,6 +2105,10 @@ bool GPS::setExternalFix(const external_fix_t &fix) {
     return false;
   }
 
+  if (fix.accuracy_valid && ((!std::isfinite(fix.accuracy_m)) || (fix.accuracy_m < 0.0F))) {
+    return false;
+  }
+
   if (fix.time_valid) {
     // The public snapshot uses unsigned int fields, while the companion wire
     // representation narrows them. Reject values that cannot be represented
@@ -2139,6 +2147,12 @@ bool GPS::setExternalFix(const external_fix_t &fix) {
   return true;
 }
 
+bool GPS::getCurrentFix(external_fix_t &fix) const {
+  const std::lock_guard<std::mutex> lock(m_FixMutex);
+  fix = m_CurrentFix;
+  return fix.position_valid;
+}
+
 void GPS::clearExternalFix(void) {
   const std::lock_guard<std::mutex> lock(m_ExternalMutex);
   m_ExternalFix = {};
@@ -2169,6 +2183,8 @@ void GPS::update(void) {
   source_t source = SOURCE_NONE;
   uint8_t satellites = 0;
   bool altitudeValid = false;
+  float accuracyM = 0.0F;
+  bool accuracyValid = false;
   const status_t status = getStatusSnapshot();
   // When the receiver produced this fix, not when update() got round to looking
   // at it. A fix is only declared stale after the freshness window, so anchoring
@@ -2236,6 +2252,8 @@ void GPS::update(void) {
       timesync = external.timesync;
       satellites = static_cast<uint8_t>(std::min<uint32_t>(external.gps.satellites, 255u));
       altitudeValid = external.altitude_valid;
+      accuracyM = external.accuracy_m;
+      accuracyValid = external.accuracy_valid;
       // The companion reports how old its fix already was when it sent it, on
       // top of how long ago it arrived here.
       fix_tick = now_tick - static_cast<uint32_t>(external.age_ms + elapsed_ms);
@@ -2292,6 +2310,22 @@ void GPS::update(void) {
 
   if (fix != Fix::HELD) {
     m_HoldRemainingMs.store(0);
+  }
+
+  external_fix_t current = {};
+  if (fix != Fix::NONE) {
+    current.gps = dgps;
+    current.timesync = timesync;
+    current.age_ms = now_tick - fix_tick;
+    current.position_valid = true;
+    current.time_valid = true;
+    current.altitude_valid = altitudeValid;
+    current.accuracy_m = accuracyM;
+    current.accuracy_valid = accuracyValid;
+  }
+  {
+    const std::lock_guard<std::mutex> lock(m_FixMutex);
+    m_CurrentFix = current;
   }
 
   m_Source.store(static_cast<uint8_t>(source));

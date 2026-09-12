@@ -1,0 +1,4 @@
+#ifndef FURBLE_HOST_MQTT_ESP_SYSTEM_H
+#define FURBLE_HOST_MQTT_ESP_SYSTEM_H
+
+#endif

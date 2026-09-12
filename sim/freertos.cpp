@@ -48,6 +48,7 @@ enum class SimWaitKind : uint8_t {
   delay,
   queue_send,
   queue_receive,
+  notification,
 };
 
 enum class SimWaitResult : uint8_t {
@@ -85,6 +86,7 @@ struct SimTask {
   // Callers waiting for the worker to finish and the single join claimant.
   size_t join_waiters = 0;
   bool join_claimed = false;
+  uint32_t notification_count = 0;
 };
 
 class QueueUse {
@@ -356,6 +358,13 @@ void releaseQueueWaiterLocked(FurbleSimQueue *queue, SimWaitKind kind) {
   }
   if (selected != nullptr) {
     releaseTaskLocked(*selected, SimWaitResult::ready);
+    Furble::Sim::schedulerCondition().notify_all();
+  }
+}
+
+void releaseNotificationWaiterLocked(SimTask &task) {
+  if (task.blocked && task.wait_kind == SimWaitKind::notification) {
+    releaseTaskLocked(task, SimWaitResult::ready);
     Furble::Sim::schedulerCondition().notify_all();
   }
 }
@@ -769,6 +778,47 @@ void vTaskDelay(TickType_t ticks) {
 
 TickType_t xTaskGetTickCount(void) {
   return Furble::Sim::clockMillis();
+}
+
+BaseType_t xTaskNotifyGive(TaskHandle_t taskHandle) {
+  if (taskHandle == nullptr) {
+    return pdFALSE;
+  }
+  std::unique_lock<std::mutex> lock(Furble::Sim::schedulerMutex());
+  const auto task = findTaskLocked(static_cast<SimTask *>(taskHandle));
+  if (task == nullptr) {
+    return pdFALSE;
+  }
+  ++task->notification_count;
+  releaseNotificationWaiterLocked(*task);
+  dispatchNextLocked();
+  preemptForHigherPriorityLocked(lock);
+  Furble::Sim::schedulerCondition().notify_all();
+  return pdTRUE;
+}
+
+uint32_t ulTaskNotifyTake(BaseType_t clearCountOnExit, TickType_t ticksToWait) {
+  exitStoppedTask();
+  if (currentTask == nullptr) {
+    return 0;
+  }
+
+  std::unique_lock<std::mutex> lock(Furble::Sim::schedulerMutex());
+  waitUntilLocked(
+      lock, ticksToWait, []() { return currentTask->notification_count != 0; }, nullptr,
+      SimWaitKind::notification);
+  exitStoppedTask();
+  if (currentTask->notification_count == 0) {
+    return 0;
+  }
+
+  const uint32_t count = currentTask->notification_count;
+  if (clearCountOnExit != pdFALSE) {
+    currentTask->notification_count = 0;
+  } else {
+    --currentTask->notification_count;
+  }
+  return count;
 }
 
 void furble_sim_stop_all_tasks(void) {

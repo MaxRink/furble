@@ -68,6 +68,11 @@ In scope:
 - Documentation of the browser flow, including how the user retries without
   erasing NVS.
 
+The firmware apply path also accepts the dedicated MQTT URI, credentials, and
+base-topic fields through the same checked settings validator and writer. Their
+stable setting IDs are 57 through 60; the companion password remains owned by
+the checked authentication writer.
+
 Out of scope:
 
 - Improv serial. Rejected above.

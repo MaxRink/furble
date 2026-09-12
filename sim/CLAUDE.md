@@ -71,7 +71,10 @@ The esp_timer dispatcher is modeled as a serialized ESP-IDF 5.5.3
 and FreeRTOS wait sources are batched before the first dispatch. Zero-tick
 delays yield through the priority gate. Instruction-level
 preemption, core affinity, and CPU-time accounting remain unsupported and must
-not be described as parity-complete.
+not be described as parity-complete. Task notifications use one counter per
+task: `xTaskNotifyGive` increments and wakes a blocked owner, while
+`ulTaskNotifyTake` clears or decrements that counter and observes virtual-clock
+timeouts and cooperative shutdown.
 Plan 161 completed that slice: the connection fakes are gone and the production
 sources run against MockNimBLE peers. Two parity gaps remain on this boundary
 and must not be described as closed. A link severed without its GAP disconnect
@@ -171,7 +174,9 @@ including empty strings and failed-save rollback.
   `board_M5StickC`, the 135x240 `FURBLE_M5STICKS3` /
   `board_M5StickS3`, and the 320x240 `FURBLE_M5COREX` / `board_M5Stack`.
 - Keep the firmware source list in `sim/build.sh` and `sim/CMakeLists.txt` in
-  sync. Both carry a note.
+  sync. `src/FurbleMQTT.cpp` is named directly in the CMake list so the static
+  inventory checker sees the guarded shell-build entry; its translation unit
+  is empty unless `FURBLE_MQTT` is enabled.
 - Console-only firmware modules that have no simulator behavior still get a
   no-capability shadow in `sim/shim`, such as `FurbleBtDebug.h`.
 
@@ -183,6 +188,26 @@ including empty strings and failed-save rollback.
 - LVGL comes from `managed_components/lvgl__lvgl`, which tracks the version
   pinned by `src/idf_component.yml` (override with `FURBLE_LVGL_DIR`).
 - SDL2 comes from Homebrew or /usr/local.
+
+### Optional native MQTT transport
+
+The simulator's native MQTT path is opt-in with `FURBLE_SIM_MQTT=1` (or
+`-DFURBLE_SIM_MQTT=ON` for CMake). It requires libmosquitto and cJSON. The
+existing ESP-IDF `components/json/cJSON/cJSON.c` source is preferred when
+`IDF_PATH` or `FURBLE_IDF_JSON_DIR` points to it, otherwise installed packages
+are discovered by pkg-config or CMake. The default simulator does not enable
+the production MQTT transport. The adapter accepts plaintext `mqtt://`
+local-broker URIs
+only; `mqtts://` remains fail-closed until a trust-store-backed TLS shim exists.
+A local broker is managed outside the simulator and its socket/PUBACK evidence
+is not hardware or TLS evidence. `sim/scripts/test-mqtt-broker.sh` uses an
+externally managed broker and reports active-camera resubscription after broker
+restart as not exercised. Set `FURBLE_SIM_MQTT_ID` from the measured status
+topic of the exact binary under test; the script does not assume a portable ID.
+Fresh saved-camera fixtures use ID `1`; override with
+`FURBLE_SIM_MQTT_CAMERA_ID` for an existing preference store.
+The finite virtual scenario window can race external broker I/O; report such
+failures as coordination-window evidence, not as a UI-service ordering defect.
 
 ## Determinism caveats
 

@@ -5,10 +5,10 @@
 #include <cstring>
 
 #include "FurbleSettings.h"
-#include "interval.h"
 #if defined(ESP_PLATFORM)
 #include "FurbleWiFi.h"
 #endif
+#include "interval.h"
 
 namespace Furble {
 namespace Provision {
@@ -78,6 +78,10 @@ ProvisionTLV::ValueType runtimeType(Settings::type_t type) {
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+    case Settings::MQTT:
+    case Settings::MQTT_HA:
+#endif
       return ProvisionTLV::ValueType::BOOL;
 
     case Settings::BRIGHTNESS:
@@ -118,6 +122,12 @@ ProvisionTLV::ValueType runtimeType(Settings::type_t type) {
     case Settings::WIFI_PSK:
     case Settings::NTP_SERVER:
     case Settings::COMPANION_PASSWORD:
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+    case Settings::MQTT_URI:
+    case Settings::MQTT_USER:
+    case Settings::MQTT_PASS:
+    case Settings::MQTT_BASE:
+#endif
       return ProvisionTLV::ValueType::STRING;
 
     case Settings::INTERVAL:
@@ -248,6 +258,16 @@ bool validateSetting(const ProvisionTLV::SettingValue &field,
         report.message = "network setting string is invalid";
         return false;
       }
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+      if (((setting.type == Settings::MQTT_URI) || (setting.type == Settings::MQTT_USER)
+           || (setting.type == Settings::MQTT_PASS) || (setting.type == Settings::MQTT_BASE))
+          && !Settings::validMQTTString(setting.type, value)) {
+        report.error = ApplyError::BAD_SETTING;
+        report.failedSettingId = field.wireId;
+        report.message = "MQTT setting string is invalid";
+        return false;
+      }
+#endif
       if ((setting.type == Settings::BUTTON_MODE)
           && (value != Settings::BUTTON_MODE_TWO_BUTTON_VALUE)
           && (value != Settings::BUTTON_MODE_ONE_BUTTON_VALUE)) {
@@ -307,13 +327,33 @@ bool saveSetting(const ProvisionTLV::SettingValue &field, Settings::type_t type)
 }
 
 size_t deferredFieldCount(const ProvisionTLV::ProvisionBundle &bundle) {
-  // Only MQTT fields await their backend.
   size_t count = 0;
+#if !defined(FURBLE_MQTT) || !FURBLE_MQTT
   count += bundle.mqttUri.has_value() ? 1 : 0;
   count += bundle.mqttUsername.has_value() ? 1 : 0;
   count += bundle.mqttPassword.has_value() ? 1 : 0;
   count += bundle.mqttBaseTopic.has_value() ? 1 : 0;
+#endif
   return count;
+}
+
+void appendDedicatedSettings(const ProvisionTLV::ProvisionBundle &bundle,
+                             std::vector<ProvisionTLV::SettingValue> &settings) {
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+  const auto append = [&settings](const std::optional<ProvisionTLV::ByteString> &value,
+                                  uint8_t wireId) {
+    if (value.has_value()) {
+      settings.push_back({wireId, ProvisionTLV::ValueType::STRING, *value});
+    }
+  };
+  append(bundle.mqttUri, 57);
+  append(bundle.mqttUsername, 58);
+  append(bundle.mqttPassword, 59);
+  append(bundle.mqttBaseTopic, 60);
+#else
+  (void)bundle;
+  (void)settings;
+#endif
 }
 
 }  // namespace
@@ -355,6 +395,8 @@ bool apply(const ProvisionTLV::ProvisionBundle &bundle,
       return false;
     }
   }
+  std::vector<ProvisionTLV::SettingValue> settings = bundle.settings;
+  appendDedicatedSettings(bundle, settings);
 
   // The dedicated password field and the generic wire-id 46 setting address
   // the same NVS key. Reject an ambiguous bundle instead of allowing the
@@ -382,7 +424,7 @@ bool apply(const ProvisionTLV::ProvisionBundle &bundle,
   // Validate the complete batch before the first NVS write. Settings::save()
   // itself is void, so this preflight is what prevents a later bad record from
   // leaving an earlier record half-applied.
-  for (const auto &field : bundle.settings) {
+  for (const auto &field : settings) {
     const Settings::setting_t *setting = Settings::getByWireId(field.wireId);
     if (setting == nullptr) {
       report.error = ApplyError::UNKNOWN_SETTING_ID;
@@ -395,7 +437,7 @@ bool apply(const ProvisionTLV::ProvisionBundle &bundle,
     }
   }
 
-  for (const auto &field : bundle.settings) {
+  for (const auto &field : settings) {
     const Settings::setting_t *setting = Settings::getByWireId(field.wireId);
     // The same lookup was checked above; keeping this guard makes the write
     // loop robust if the settings table ever becomes mutable.

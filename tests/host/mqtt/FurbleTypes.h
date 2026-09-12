@@ -1,0 +1,8 @@
+#ifndef FURBLE_HOST_MQTT_FURBLE_TYPES_H
+#define FURBLE_HOST_MQTT_FURBLE_TYPES_H
+
+#ifndef FURBLE_VERSION
+#define FURBLE_VERSION "host-test"
+#endif
+
+#endif
