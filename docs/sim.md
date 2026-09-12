@@ -730,6 +730,11 @@ box escapes its immediate parent. Floating widgets are excluded for the same
 reason `ui.label_overlaps` excludes them. The query holds the rule that a page
 may scroll when rows stop fitting, but it may never cut a name to fake a fit.
 
+Automatic menu rows keep their icon and wrap statically. Their page scrolls
+vertically when needed, so physical no-touch scenarios assert complete labels
+and both scroll ends. Explicitly touch-guarded companion scenarios retain the
+stricter supplemental fit checks where the larger viewport still fits.
+
 `ui.clipped_values` and `ui.min_name_chars` measure the spin rows, a menu
 container whose only visible children are a name label and a value label, as
 `addSpinItem` builds the intervalometer and bulb duration settings. The menu

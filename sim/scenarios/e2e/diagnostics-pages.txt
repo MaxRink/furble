@@ -1,5 +1,5 @@
 # Existing diagnostics coverage on the modeled M5StickS3 135x240 panel.
-# Pages with intentional scroll print ui.overflow; pages that fit assert no overflow.
+# Pages either assert a fit or prove their complete rows and scroll bounds.
 seed gps true
 seed gps_nmea true
 wait 400
@@ -9,7 +9,19 @@ wait 200
 action nav diagnostics
 wait 300
 assert ui.page diagnostics
-assert ui.overflow no
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+assert ui.scroll_top 0
+action scroll bottom
+wait 100
+assert ui.scroll_bottom 0
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+action scroll top
+wait 100
+assert ui.scroll_top 0
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
 
 action nav about
 wait 300

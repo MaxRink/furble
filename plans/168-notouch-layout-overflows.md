@@ -704,12 +704,20 @@ row is still unreadable and is counted.
 The final master integration exposed the inverse measurement trap in the
 production fit pass. `scrollLabelsThatDoNotFit()` compared a wrapped label's
 already-constrained `self_width` with its content width, so the comparison read
-equal and left automatic menu names on extra lines. On the physical 135x240
-layout that made Home 13 px too tall at Large, Connected 10 px too tall at
-Small, and Diagnostics 17 px too tall. The helper now measures the original
-text unwrapped at `LV_COORD_MAX` and restores circular scroll only for automatic
-row labels that genuinely exceed their box. Camera names and spinner summaries
-remain explicitly wrapped.
+equal and left automatic menu names on extra lines. An intermediate fix
+measured the original text unwrapped and restored circular scrolling, which
+made the three fit scenarios pass but started every eager-built overflowing
+row's animation even while its page was hidden. The full no-touch suite then
+measured 460 invalidations over the gesture-default idle window and 344 over
+the Connected steady-state window. The converter is gone. Automatic menu rows,
+camera names and spinner summaries remain static and wrap; their page scrolls
+vertically when the complete rows exceed its viewport.
+
+At `9bc0f0df42b32f2898ae591bcd723a0b05c124f0`, the S3 simulator build passed.
+`e2e/imu-gesture-defaults.txt` measured 0 invalidations against its limit of 40,
+all four probes in `e2e/redraw-steady.txt` measured 0 against their limit of 3,
+and `e2e/camera-name-rows.txt` passed. These are focused regression results;
+the full suites and hardware checklist remain separate gates.
 
 At `0c99a66156d382b5b98b0c1bbcfa22a6df5def97`, the simulator build and
 the three exact formerly failing scenarios passed, as did
@@ -721,10 +729,10 @@ and physical-device checks remain separate gates.
 
 The plan as first drafted proposed dropping the Infrared entry from the 135x240
 Connected page as the row removal, with the row icons as a fallback only if that
-was not enough. Both halves of that turned out to be wrong and the reasons are
-in fix 3: the row removal was one pixel short of enough, and the Connected page
-is the session root, so the entry would have been unreachable rather than merely
-one press further away. Every entry stays and only the icons go.
+was not enough. The device walk rejected both: the Connected page is the
+session root, so the entry would have been unreachable, and its icons were part
+of the wanted layout. Every entry and icon stays. Complete wrapped rows scroll
+vertically at the selected font.
 
 The Core Connected page needed one more change than the plan predicted. The
 four-column grid fixes the stacking and the overflow, but 80 px cells clip

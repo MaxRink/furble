@@ -2,10 +2,10 @@
 # (80x160), M5StickS3 (135x240) and M5Stack Core (320x240) binaries. The
 # harness enables IR, feedback and SD so capability-gated pages are included.
 #
-# Compact pages assert that their content fits. Intentional-scroll pages are
-# driven to both ends and assert the LVGL scroll extent is exhausted, even on a
-# wider panel where the current content may happen to fit. Page identity is a
-# FURBLE_SIM-only seam, so a new route cannot silently report "other".
+# Compact run pages assert that their content fits. Menu pages keep the selected
+# font, row icons and spacing, and are driven to both scroll ends when their
+# complete rows exceed the viewport. Page identity is a FURBLE_SIM-only seam,
+# so a new route cannot silently report "other".
 seed fauxny true
 seed saved_camera true
 seed gps true
@@ -19,7 +19,19 @@ wait 300
 
 # Root and deterministic camera list routes.
 assert ui.page main
-assert ui.overflow no
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+assert ui.scroll_top 0
+action scroll bottom
+wait 100
+assert ui.scroll_bottom 0
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+action scroll top
+wait 100
+assert ui.scroll_top 0
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
 action nav connect
 wait 150
 assert ui.page connect

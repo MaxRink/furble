@@ -9,8 +9,9 @@
 # Large lifts the theme font 12 -> 14 on the 80x160 StickC and 16 -> 22 on the
 # 135x240 boards.
 #
-# The compact pages carry an "assert ui.overflow no": the home menu, the Display
-# page, the Timer settings list, the Remote shutter page and the Connected page.
+# The compact run pages carry an "assert ui.overflow no". Menu pages keep the
+# selected font and their icons, and scroll vertically when complete wrapped
+# rows exceed the viewport.
 # The long settings lists (features, gps, bluetooth, about, power, diagnostics)
 # hold more rows than a short panel can show, so they scroll by design and only
 # print their overflow state.
@@ -26,9 +27,21 @@ seed gps true
 wait 300
 # The seeded Large size was loaded on boot.
 assert setting.text_size 2
-# Home menu: must fit on the narrow panels.
+# Home menu: every full row stays readable and both scroll ends are reachable.
 assert ui.page main
-assert ui.overflow no
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+assert ui.scroll_top 0
+action scroll bottom
+wait 100
+assert ui.scroll_bottom 0
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+action scroll top
+wait 100
+assert ui.scroll_top 0
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
 action page settings
 wait 100
 print ui.page

@@ -109,17 +109,13 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
 - `FurbleWiFi`: station lifecycle, remembered access point state and NTP.
   Never fall back to a WiFi scan while a camera is active.
 - `FurbleUI*`: LVGL UI. Respect the changed-check rule for periodic setters.
-  Camera list rows wrap (`LV_LABEL_LONG_WRAP`), and only those: `addMenuItem`
-  takes `wrapText` and `addCameraItem` is the only caller that sets it. Every
-  other row, icon or not, scrolls. A menu entry built with no icon is icon-less
-  but is not user data, and wrapping one onto a second line overflowed a page. A
-  wrapped label's `self_width` is already constrained, so it cannot decide
-  whether the original text fit. Measure the unwrapped text at `LV_COORD_MAX`
-  before switching an automatic row label back to circular scroll; keep
-  explicitly wrapped camera and spinner labels marked out of that conversion.
-  A circular scroll on a row wider than the panel animates forever and
-  invalidates the row on every frame, which `ui.row_scrolling` and
-  `ui.invalidate_count` measure. A wrapped row is taller and fills its width; it
+  Menu rows keep their icons and the selected font. Their labels wrap inside
+  the row and the page scrolls vertically when the rows no longer fit. Do not
+  use circular scrolling for an eager-built menu row: LVGL keeps its animation
+  running while the page is hidden and invalidates it every frame. Camera names
+  and spinner summaries also explicitly wrap. `ui.row_scrolling` and
+  `ui.invalidate_count` measure this redraw trap. A wrapped row is taller and
+  fills its width; it
   used to reach the indicators the Stick boards floated over the page. Where
   the legends sit is the `LEGEND` setting now: in the default Buttons placement
   the Right one is drawn over the page and `reserveLegendColumns()` gives every

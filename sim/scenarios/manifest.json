@@ -748,6 +748,35 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/bughunt/touch-connected-small-fit.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c"
+      ],
+      "capabilities": [
+        "fauxny",
+        "gps",
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/touch-diagnostics-fit.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "gps"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/bughunt/timer-page-large-text.txt",
       "suite": "bughunt",
       "owner": "sim-bughunt",

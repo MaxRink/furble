@@ -132,6 +132,30 @@ assert ui.page main
 # anything else.
 assert ui.label_overlaps 0
 assert ui.indicator_clearance clear
+# simulatorHomeOnUi starts on Scan. Walk the real next button to the final row,
+# then reopen Home and activate the harmless Settings row with the select button.
+assert ui.row_text Scan
+button b
+button b
+button b
+button b
+button b
+wait 200
+assert ui.row_text Off
+assert ui.focus_on_page yes
+assert ui.row_scrolling no
+assert ui.cut_labels 0
+assert ui.indicator_clearance clear
+home
+button b
+button b
+button b
+assert ui.row_text Settings
+button a
+wait 200
+assert ui.page settings
+home
+wait 200
 
 # Connected session.
 action connect
@@ -144,6 +168,34 @@ assert ui.connected yes
 # anything else.
 assert ui.label_overlaps 0
 assert ui.indicator_clearance clear
+# All eight rows stay in the encoder route. Reach Disconnect without activating
+# it, then reopen the page and activate Cameras through the real select button.
+assert ui.row_text Remote
+button b
+button b
+button b
+button b
+button b
+button b
+button b
+wait 200
+assert ui.row_text Disconnect
+assert ui.focus_on_page yes
+assert ui.row_scrolling no
+assert ui.cut_labels 0
+assert ui.indicator_clearance clear
+action page connected
+wait 150
+assert ui.row_text Remote
+button b
+button b
+assert ui.row_text Cameras
+button a
+wait 200
+assert ui.page cameras
+action page connected
+wait 150
+assert ui.page connected
 
 # Remote shutter page.
 action page shutter

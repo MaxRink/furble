@@ -631,6 +631,10 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   when its drawn box escapes its immediate parent. Floating widgets are
   excluded. It is the teeth for the rule that a page honours the chosen text
   size: a page may scroll, it may never cut a name.
+  Automatic menu rows keep their icon and wrap statically. Their page scrolls
+  vertically when needed; `ui.row_scrolling` must stay `no` on focused rows.
+  Physical no-touch scenarios assert readability and both scroll ends, while
+  explicitly touch-guarded companions retain the stricter supplemental fit.
 - `ui.clipped_values` and `ui.min_name_chars` measure the spin rows, a menu
   container whose only visible children are a name label and a value label. The
   container class is part of that shape: the spirit level's readout row is a
