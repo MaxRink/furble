@@ -41,11 +41,11 @@ SEED_TIMEOUT=${FURBLE_FUZZ_SEED_TIMEOUT:-600}
 # The comparison is deliberately scoped to those lines rather than to the whole
 # output, and the reason is a measured limit, not convenience. Firmware
 # behaviour under the fuzzer is not yet reproducible line for line: two runs of
-# the same seed can still differ by one connect attempt, because production
-# code blocks on plain host mutexes the simulator scheduler cannot see, so how
-# far a connect gets before a disconnect lands is still host timed. That is the
-# scheduler-visible mutex gap plan 158 Phase 3 owns. Asserting byte equality of
-# the whole log today would be a flaky gate, which is worse than none.
+# the same seed can still differ by one connect attempt, because uninstrumented
+# plain host mutexes remain host timed. Camera::m_Mutex is scheduler-visible in
+# FURBLE_SIM, but not every host lock has that adapter yet. Asserting byte
+# equality of the whole log today would be a flaky gate, which is worse than
+# none.
 #
 # Within the summary line the two observation counters are masked for the same
 # reason: they record whether a visible change had landed by the end of a

@@ -68,13 +68,11 @@ struct SimTask {
   SimTaskLifecycle lifecycle = SimTaskLifecycle::running;
   bool blocked = false;
   bool runnable = false;
-  // Parked outside the scheduler. Production code blocks on plain host mutexes
-  // that the simulator scheduler cannot see (Camera::m_Mutex is held across a
-  // whole connect), so a task can leave the scheduler while holding the turn
-  // and never come back until another task releases the mutex. FreeRTOS would
-  // have yielded there. A task that stalls the turn past the stall bound is
-  // parked so the rest of the system keeps running; it un-parks at its next
-  // scheduler boundary.
+  // Parked outside the scheduler only for uninstrumented host waits.
+  // Camera::m_Mutex uses SchedulerMutex in FURBLE_SIM, so its contended wait
+  // reports a scheduler boundary. A task that still stalls the turn past the
+  // fallback bound is parked so the rest of the system keeps running; it
+  // un-parks at its next scheduler boundary.
   bool parked = false;
   SimWaitKind wait_kind = SimWaitKind::none;
   SimWaitResult wait_result = SimWaitResult::none;
@@ -113,10 +111,10 @@ uint64_t nextReadyOrder = 0;
 SimTask *runningTask = nullptr;
 SimTask timerServiceTask;
 bool timerServiceExecuting = false;
-// Deadlock breaker, not a time slice. Production code blocks on plain host
-// mutexes the scheduler cannot see (Camera::m_Mutex is held for a whole
-// connect), so a task can leave the scheduler holding the turn and only
-// another task can free it. FreeRTOS would have yielded there.
+// Fallback deadlock breaker, not a time slice. Camera::m_Mutex uses
+// SchedulerMutex in FURBLE_SIM, so a contended camera wait is visible to the
+// scheduler. Other plain host mutexes can still leave a task holding the turn
+// until another task frees it. FreeRTOS would have yielded there.
 //
 // Two conditions must both hold before the turn is taken away, so a merely
 // slow host can never trigger it:
@@ -210,21 +208,17 @@ void dispatchNextLocked(void) {
 //
 // Most handoffs end in microseconds: the tasks released by the clock advance
 // take their turns and block again, which clears `runnable` and satisfies the
-// wait. The case that matters is the other one. A task blocked on a plain host
-// mutex the scheduler cannot see is still `runnable`, because `runnable` is
-// only cleared by an explicit scheduler boundary, so the wait cannot observe it
-// finishing and runs the full ceiling. That elapsed host time is exactly what
-// lets the mutex holder run and release, and it is why the fix for issue 267
-// works: on core fuzz seed 2 the ceiling is reached on 87 of 3620 handoffs and
-// accounts for 21.8 s of the 23.9 s run.
+// wait. The remaining case is an uninstrumented plain host mutex. A task
+// blocked on it is still `runnable`, because `runnable` is only cleared by an
+// explicit scheduler boundary, so the wait cannot observe it finishing and
+// runs the full ceiling. SchedulerMutex avoids that path for instrumented
+// locks.
 //
-// So the ceiling trades runtime for the progress of a host-mutex holder.
-// Lowering it re-starves that holder, which is the issue 267 failure. Raising
-// it only costs runtime. The right fix is to stop guessing with a timeout at
-// all: make the scheduler aware of host-mutex waiters so they clear `runnable`
-// like every other blocking boundary, and the wait ends on a real event. That
-// is the scheduler-visible mutex plan 158 Phase 3 owns, tracked with this
-// ceiling as the interim.
+// The ceiling remains a fallback for uninstrumented host-mutex holders.
+// Lowering it can re-starve a holder; raising it only costs runtime. An
+// instrumented SchedulerMutex wait ends on a real scheduler event. Remaining
+// plain host locks should be migrated to that adapter instead of tuning this
+// timeout.
 constexpr std::chrono::milliseconds UI_HANDOFF_BOUND {250};
 
 void waitForTurnLocked(std::unique_lock<std::mutex> &lock) {
@@ -730,9 +724,10 @@ void vTaskDelay(TickType_t ticks) {
     // for and fall back to its 30 s cap on every fuzz seed.
     //
     // The wait ends early only when every task has reached a scheduler
-    // boundary. A task blocked on a plain host mutex has not, and stays
-    // `runnable`, so that case runs the full UI_HANDOFF_BOUND and it is the
-    // elapsed host time, not the condition, that lets the mutex holder finish.
+    // boundary. A task blocked on an uninstrumented plain host mutex has not,
+    // and stays `runnable`, so that case runs the full UI_HANDOFF_BOUND and it
+    // is the elapsed host time, not the condition, that lets the mutex holder
+    // finish. SchedulerMutex waits do not use this fallback.
     // See the comment on UI_HANDOFF_BOUND.
     std::unique_lock<std::mutex> lock(Furble::Sim::schedulerMutex());
     Furble::Sim::schedulerCondition().wait_for(lock, UI_HANDOFF_BOUND, []() {
