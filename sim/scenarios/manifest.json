@@ -14,6 +14,19 @@
   },
   "scenarios": [
     {
+      "path": "sim/scenarios/bughunt/console-ui-workflow.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/blind-remote-shutter.txt",
       "suite": "power-gate",
       "owner": "sim-power",
@@ -956,6 +969,19 @@
     },
     {
       "path": "sim/scenarios/e2e/gps-concurrent-pages.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "gps"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/gps-duty-no-fix.txt",
       "suite": "e2e",
       "owner": "sim-e2e",
       "boards": [

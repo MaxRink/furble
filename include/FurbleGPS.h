@@ -135,6 +135,9 @@ class GPS {
     uint32_t chars_processed;
     uint32_t sentences_passed;
     uint32_t sentences_failed;
+    // Sequence of the latest valid TinyGPS location update, captured under
+    // m_GPSMutex so the UI can pair it with the rest of this snapshot.
+    uint32_t fix_sequence;
   } status_t;
 
   static GPS &getInstance();
@@ -182,6 +185,10 @@ class GPS {
   status_t getStatusSnapshot(void) const;
   source_t getSource(void) const;
   uint8_t getSatellites(void) const;
+#if defined(FURBLE_SIM)
+  /** Number of fresh UART fixes accepted by the parser in this session. */
+  uint32_t simFreshFixesParsed(void) const { return m_SimFreshFixesParsed.load(); }
+#endif
   /** Get the quality of the fix currently sent to the camera. */
   Fix getFix(void) const;
   /** Get the remaining duration of a bounded held fix. */
@@ -622,10 +629,12 @@ class GPS {
   size_t m_PeriodCount = 0;
   uint8_t m_ConsecutiveBadBursts = 0;
   uint8_t m_CleanBursts = 0;
-  uint32_t m_LastLocationAge = std::numeric_limits<uint32_t>::max();
   std::atomic<uint32_t> m_BurstSequence = 0;
   std::atomic<uint32_t> m_FixSequence = 0;
   std::atomic<uint32_t> m_PushedSequence = 0;
+#if defined(FURBLE_SIM)
+  std::atomic<uint32_t> m_SimFreshFixesParsed = 0;
+#endif
   std::atomic<bool> m_CycleRequest = false;
 
   // serialises the cycle state between the GPS task and enable() or disable(),

@@ -459,3 +459,59 @@ found: `appliesWhen` reports `immediately` for CPU_FREQ, but the console
 `Platform::setCPUMaxFreq`. Empirically a console-set 160 took effect at the
 next reboot (`pm: CPU_MAX: 160`). The label should say `on reboot` for the
 console path.
+
+## PR265 integration review, 2026-09-07
+
+Workflow commands remain queued through the production UI. Completion uses
+one shared intrusive state type for display and headless builds, with a
+bounded caller wait and independent queued ownership. A timeout reports an
+unknown pending outcome, not a guarantee that no operation occurred. Queue
+rejection, completion, and shutdown draining release their owned references.
+Delete-all walks a captured catalog snapshot and reports checked persistence
+failures rather than printing successful deletion unconditionally.
+
+Review found a remaining headless `shared_ptr` declaration mixed with this
+intrusive ownership and a regression that nulled the caller pointer without
+releasing it. Both are corrected: the headless envelope uses `RequestState*`,
+and the test destroys a nested caller before completing the retained request.
+The host harness uses the shared production completion type but a UI double;
+it does not certify the real UI queue or headless runtime. Exact-head host,
+simulator, and firmware validation remain pending.
+
+The reset c265 host validation completed 113/113 checks, recorded in
+`/home/a92615428/b/c265h-test.log` with build output in
+`/home/a92615428/b/c265h-build.log`. This is console-command and shared-state
+evidence only: the console target links a UI double, so it does not certify
+the real UI queue or headless runtime. Hardware UI, headless, persistence,
+and `FURBLE_CONSOLE` completion-semaphore gates remain pending.
+
+The final SDL build passed, recorded in
+`/home/a92615428/b/c265-ui-final-build.log`. The production-UI CRUD scenario
+also passed, recorded in `/home/a92615428/b/c265-ui-final-test.log`: invalid
+delete `999` left the catalog unchanged, delete `0` reported `ok` and count 1,
+and reload reported saved count 0. This proves the simulator's file-backed
+catalog path only, not power-loss/reboot durability, headless behavior,
+hardware UI, or `FURBLE_CONSOLE` completion-semaphore behavior.
+
+The release display build also needs the interval and bulb state-name helpers
+used by the shared UI request service, so those helpers are compiled for every
+display build. `FurbleUI.h` now includes `FreeRTOS.h` before the dependent task
+and semaphore headers, fixing the debug-only type cascade. Clang-format 21 was
+applied to the changed UI header and simulator action parser. Coverage remains
+an observation, not a floor adjustment: run 34208310414 measured `FurbleUI.cpp`
+at 79.00% against the 79.53% floor, so no floor was reduced. Real-handler
+scenario coverage for the new workflow paths and firmware, headless, and
+`FURBLE_CONSOLE` validation remain follow-up gates.
+## September 8 expanded workflow evidence
+
+The real SDL UI workflow passes selection persistence across restart, invalid
+selection nonmutation, and interval/bulb status, start, stop, and repeated-stop
+checks. Shutter command counters include the real interval Stop button's safety
+release. Repeated Stop leaves those counters unchanged. The original invalid
+delete, successful delete, and catalog reload checks still pass.
+
+Evidence: `/home/a92615428/b/c265-expanded3-test.log`, using the simulator built
+from `249650a5` plus the reviewed scenario updates. The build log is
+`/home/a92615428/b/c265-guards-build.log`. Deselect/clear coverage, the firmware
+completion-semaphore path, and physical camera behavior are not established by
+this scenario. The coverage floor remains unchanged and needs CI measurement.

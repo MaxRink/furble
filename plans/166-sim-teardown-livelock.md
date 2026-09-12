@@ -218,6 +218,15 @@ tracked separately, with their own plan, host tests and a hardware gate:
 Both are tracked by issue 271 and land on `fix/control-zombie-connect-cancel`
 with their own plan, host tests and a hardware gate.
 
+## PR265 restack evidence
+
+This branch was restacked after PR66 merged into master at
+`965f299f0f43c38fe45e4680f1bfb735023533af`. The merge retained the PR265
+console and GPS changes, including the behavioral console coverage cases, and
+the merged MQTT implementation and host transport tests. This restack lane did
+not run builds or tests; root validation must rerun the full host gate before
+updating the PR head.
+
 Neither is the cause of issue 267, which is host starvation, and neither can be
 verified without hardware. Mixing them into a simulator-only change would put a
 firmware teardown edit behind a gate that cannot exercise it.

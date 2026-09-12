@@ -25,7 +25,7 @@ class CameraList {
   /**
    * Remove camera from connection list.
    */
-  static void remove(Furble::Camera *camera);
+  static bool remove(Furble::Camera *camera);
 
   /**
    * Load previously connected devices.

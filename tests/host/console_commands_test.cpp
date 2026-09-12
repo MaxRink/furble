@@ -49,6 +49,7 @@
 #include "FurbleControl.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
+#include "FurbleRequestState.h"
 #include "FurbleSettings.h"
 
 #include "protocol/ProvisionTLV.h"
@@ -61,6 +62,7 @@
 // The console and NVS shims define separate ESP error enums.
 extern "C" void nvs_test_fail_set_on(size_t nth_future_call);
 extern "C" void nvs_test_fail_commit_on(size_t nth_future_call);
+extern "C" void furbleHostFailNextSemaphore(void);
 
 const char *LOG_TAG = "furble-host-console";
 
@@ -76,6 +78,30 @@ bool check(bool condition, const std::string &message) {
     g_Failures++;
   }
   return condition;
+}
+
+void testWorkflowCompletionState(void) {
+  Furble::RequestState *retained = nullptr;
+  {
+    Furble::RequestResult result;
+    check(result.state != nullptr, "shared workflow state allocates");
+    if (result.state == nullptr) {
+      return;
+    }
+    check(xSemaphoreTake(result.state->done, pdMS_TO_TICKS(1)) == pdFALSE,
+          "workflow timeout does not fabricate completion");
+    retained = result.state;
+    retained->retain();
+  }
+  retained->token = "ok";
+  check(xSemaphoreGive(retained->done) == pdTRUE
+            && xSemaphoreTake(retained->done, pdMS_TO_TICKS(20)) == pdTRUE,
+        "late completion remains owned after caller releases its state");
+  retained->release();
+
+  furbleHostFailNextSemaphore();
+  Furble::RequestResult unavailable;
+  check(unavailable.state == nullptr, "semaphore allocation failure is rejected");
 }
 
 bool contains(const std::string &haystack, const std::string &needle) {
@@ -105,13 +131,16 @@ bool waitFor(const std::function<bool()> &predicate, int timeout_ms) {
 // help command. A new command or a dropped registration has to update this
 // list, which is the point: the automation surface is a contract.
 const std::vector<std::string> EXPECTED_COMMANDS = {
-    "help",       "version",  "status",    "imu",       "power", "perf",    "gps",
-    "time",       "settings", "companion", "provision", "ui",    "cameras", "connect",
-    "disconnect", "shutter",  "ir",        "focus",     "scan",  "bt",      "feedback",
-    "log",        "debug",    "flash",     "reboot",    "wifi",  "ntp",     "motion",
+    "help",    "version", "status",   "imu",          "motion",     "power",   "perf",
+    "gps",     "time",    "settings", "companion",    "provision",  "ui",      "cameras",
+    "connect", "pair",    "delete",   "multiconnect", "disconnect", "shutter", "interval",
+    "bulb",    "display", "ir",       "focus",        "scan",       "bt",      "feedback",
+    "log",     "debug",   "flash",    "reboot",       "wifi",       "ntp",
 };
 
 }  // namespace
+
+namespace {}  // namespace
 
 namespace {
 
@@ -126,24 +155,31 @@ struct SubcommandContract {
 };
 
 const std::vector<SubcommandContract> SUBCOMMANDS = {
-    {"power",     "expected stats or log",                                               "",                     {"stats", "log"}                      },
-    {"perf",      "expected tasks, heap or lvgl",                                        "",                     {"tasks", "heap", "lvgl"}             },
+    {"power",        "expected stats, log or off",                                       "",                     {"stats", "log", "off"}               },
+    {"perf",         "expected tasks, heap or lvgl",                                     "",                     {"tasks", "heap", "lvgl"}             },
     {"gps",
      "expected on, off, raw, send, binary, config, aid, sats, platform, monhw or power", "",
      {"on", "off", "raw", "send", "binary", "config", "aid", "sats", "platform", "monhw", "power"}                                                     },
-    {"time",      "usage: time status | flush",                                          "",                     {"status", "flush"}                   },
-    {"settings",  "expected list, get or set",                                           " theme",               {"list", "get", "set"}                },
-    {"companion", "usage: companion password set <pw> | clear | status",                 " status",              {"password"}                          },
-    {"ui",        "usage: ui audit",                                                     "",                     {"audit"}                             },
-    {"cameras",   "expected list or status",                                             "",                     {"list", "status"}                    },
-    {"imu",       "usage: imu status",                                                   "",                     {"status"}                            },
-    {"shutter",   "expected press, release or hold",                                     "",                     {"press", "release", "hold"}          },
-    {"ir",        "usage: ir fire [protocol]",                                           "",                     {"fire"}                              },
-    {"focus",     "expected press or release",                                           "",                     {"press", "release"}                  },
-    {"scan",      "expected start, stop or list",                                        "",                     {"start", "stop", "list"}             },
-    {"bt",        "expected scan, explore, pair or journal",                             "",                     {"scan", "explore", "pair", "journal"}},
-    {"feedback",  "usage: feedback test",                                                " shutter",             {"test"}                              },
-    {"flash",     "usage: flash prepare | cancel",                                       "",                     {"prepare", "cancel"}                 },
+    {"time",         "usage: time status | flush",                                       "",                     {"status", "flush"}                   },
+    {"settings",     "expected list, get or set",                                        " theme",               {"list", "get", "set"}                },
+    {"companion",    "usage: companion password set <pw> | clear | status",              " status",              {"password"}                          },
+    {"ui",           "expected audit, page or back",                                     "",                     {"audit", "page", "back"}             },
+    {"cameras",      "expected list or status",                                          "",                     {"list", "status"}                    },
+    {"multiconnect",
+     "expected list, select, deselect or clear",                                         " 0",
+     {"list", "select", "deselect", "clear"}                                                                                                           },
+    {"interval",     "expected start, stop or status",                                   "",                     {"start", "stop", "status"}           },
+    {"bulb",         "expected start, stop or status",                                   "",                     {"start", "stop", "status"}           },
+    {"display",      "expected status, mode or brightness",                              " gui",                 {"status", "mode", "brightness"}      },
+    {"motion",       "usage: motion status | scale [0.25-4.0]",                          "",                     {"status", "scale"}                   },
+    {"imu",          "usage: imu status",                                                "",                     {"status"}                            },
+    {"shutter",      "expected press, release or hold",                                  "",                     {"press", "release", "hold"}          },
+    {"ir",           "usage: ir fire [protocol]",                                        "",                     {"fire"}                              },
+    {"focus",        "expected press or release",                                        "",                     {"press", "release"}                  },
+    {"scan",         "expected start, stop or list",                                     "",                     {"start", "stop", "list"}             },
+    {"bt",           "expected scan, explore, pair or journal",                          "",                     {"scan", "explore", "pair", "journal"}},
+    {"feedback",     "usage: feedback test",                                             " shutter",             {"test"}                              },
+    {"flash",        "usage: flash prepare | cancel",                                    "",                     {"prepare", "cancel"}                 },
     {"wifi",
      "expected status, set, enable, disable, connect, disconnect or forget",             " ssid test",
      {"status", "set", "enable", "disable", "connect", "disconnect", "forget"}                                                                         },
@@ -399,6 +435,35 @@ void testSettings(void) {
   checkContains(runDirect("settings set gps off").out, "applies: immediately",
                 "an immediate setting says so");
 
+  // The motion adaptive switch is a boolean that applies immediately and must
+  // refresh the detector without restarting the GPS receiver.
+  const size_t beforeRequests = ConsoleHost::ui().requests.size();
+  const size_t beforeReload = ConsoleHost::gps().reloadSettingCalls;
+  const size_t beforeMotionReload = ConsoleHost::gps().reloadMotionSettingCalls;
+  checkContains(runDirect("settings set gps_motion on").out, "saved: gps_motion",
+                "the motion adaptive setting saves");
+  checkContains(runDirect("settings get gps_motion").out, "value: true",
+                "the motion adaptive setting reads back true");
+  check(Furble::Settings::load<bool>(Furble::Settings::GPS_MOTION),
+        "the motion adaptive value reached the real Settings store");
+  check(ConsoleHost::gps().reloadMotionSettingCalls > beforeMotionReload,
+        "saving gps_motion refreshes the detector gate");
+  check(ConsoleHost::gps().reloadSettingCalls == beforeReload,
+        "saving gps_motion does not restart the GPS receiver");
+  check(ConsoleHost::ui().requests.size() == beforeRequests,
+        "saving gps_motion does not queue the GPS_RELOAD UI request");
+  checkContains(runDirect("settings set gps_motion off").out, "applies: immediately",
+                "the motion adaptive setting applies immediately");
+  checkContains(runDirect("settings get gps_motion").out, "value: false",
+                "the motion adaptive setting reads back false");
+  const Result badMotion = runDirect("settings set gps_motion sometimes");
+  check(badMotion.rc != 0, "a non boolean motion adaptive value fails");
+
+  const size_t beforeBaud = ConsoleHost::ui().requests.size();
+  runDirect("settings set gps_baud 9600");
+  check(ConsoleHost::ui().requests.size() > beforeBaud,
+        "a real receiver setting still queues the GPS reload");
+
   checkContains(runDirect("settings set theme Dark").out, "saved: theme", "a string setting saves");
   checkContains(runDirect("settings get theme").out, "value: Dark", "the string reads back");
 
@@ -651,6 +716,20 @@ void testSettings(void) {
                 "the platform error names the models");
   checkContains(runDirect("settings get gps_plat").out, "value: 3",
                 "a refused platform model leaves the store alone");
+
+  const Result badTextSize = runDirect("settings set text_size 3");
+  check(badTextSize.rc != 0, "an out of range text size fails");
+  checkContains(badTextSize.out, "expected 0 (small), 1 (normal) or 2 (large)",
+                "the text size error names the modes");
+  const Result badAssist = runDirect("settings set gps_assist 3");
+  check(badAssist.rc != 0, "an out of range assistance mode fails");
+  checkContains(badAssist.out, "expected 0, 1 or 2", "the assistance error names the modes");
+  checkContains(runDirect("settings set fb_output 4").out, "saved: fb_output",
+                "the feedback output setting saves its maximum value");
+  checkContains(runDirect("settings get fb_output").out, "value: 4",
+                "the feedback output value reads back");
+  checkContains(runDirect("settings set gps_duty 15").out, "saved: gps_duty",
+                "a supported GPS duty interval saves");
 
   const Result badDuty = runDirect("settings set gps_duty 7");
   check(badDuty.rc != 0, "an unsupported duty interval fails");
@@ -1823,6 +1902,185 @@ void testTaskCreationAfterShutdownIsRejected(void) {
 }
 }  // namespace
 
+/**
+ * The camera onboarding and shooting workflows a bench script drives.
+ *
+ * Every verb here stands in for a page the UI offers and nothing else: the
+ * console side parses, gates, and hands one UI request to the task which owns
+ * the list or the widget. So the assertions are on the request and its
+ * argument reaching the UI queue double, which is the seam, plus the usage and
+ * refusal text a script has to read.
+ */
+void testWorkflowCommands(void) {
+  std::cerr << "test: the pairing, delete, multi-connect and shooting workflows dispatch\n";
+
+  // Pairing. The index names a row of 'scan list'. Whether the connectable
+  // list currently holds scan results is only knowable on the UI task, which
+  // owns it, so the refusal for an index that names nothing is asserted by the
+  // simulator scenario. What belongs here is the argument shape and the
+  // dispatch.
+  ConsoleHost::ui().requests.clear();
+
+  const Result pairUsage = runDirect("pair");
+  checkContains(pairUsage.out, "usage: pair <scan index>", "pair with no index prints its usage");
+  check(pairUsage.rc != 0, "pair with no index returns non-zero");
+  check(ConsoleHost::ui().requests.empty(), "a pair with no index queues nothing");
+
+  const Result pairBad = runDirect("pair abc");
+  checkContains(pairBad.out, "expected a scan result index", "pair rejects a non-numeric index");
+  check(pairBad.rc != 0, "a non-numeric pair index returns non-zero");
+  checkContains(runDirect("pair -1").out, "expected a scan result index",
+                "pair rejects a negative index");
+  check(ConsoleHost::ui().requests.empty(), "a refused pair queues nothing for the UI task");
+
+  const Result paired = runDirect("pair 1");
+  checkContains(paired.out, "completed: pair", "pair reports the double's completion");
+  check(!ConsoleHost::ui().requests.empty()
+            && ConsoleHost::ui().requests.back().request == Furble::UI::Request::PAIR
+            && ConsoleHost::ui().requests.back().arg == 1,
+        "pair queues the scan result index for the UI task");
+
+  // Delete, the Delete page. 'all' is the sweep the page has no button for.
+  ConsoleHost::ui().requests.clear();
+  const Result deleteUsage = runDirect("delete");
+  checkContains(deleteUsage.out, "usage: delete <saved index> | delete all",
+                "delete with no argument prints its usage");
+  check(deleteUsage.rc != 0, "delete with no argument returns non-zero");
+  checkContains(runDirect("delete nope").out, "expected a camera index",
+                "delete rejects a non-numeric index");
+  check(ConsoleHost::ui().requests.empty(), "a refused delete queues nothing");
+
+  checkContains(runDirect("delete 3").out, "completed: delete", "delete reports completion");
+  check(ConsoleHost::ui().requests.back().request == Furble::UI::Request::DELETE
+            && ConsoleHost::ui().requests.back().arg == 3,
+        "delete queues the saved camera index");
+  checkContains(runDirect("delete all").out, "completed: delete all",
+                "delete all reports completion");
+  check(ConsoleHost::ui().requests.back().arg == -1,
+        "delete all queues the negative index the handler reads as a sweep");
+
+  // The multi-connect selection. Listing and clearing are pure Settings, so
+  // they run here; resolving an index onto a camera name is the UI task's.
+  ConsoleHost::ui().requests.clear();
+  check(runDirect("multiconnect clear").rc == 0, "multiconnect clear returns success");
+  check(!ConsoleHost::ui().requests.empty()
+            && ConsoleHost::ui().requests.back().request == Furble::UI::Request::MULTI_CLEAR,
+        "multiconnect clear runs on the UI task, which owns the active flags");
+
+  const Result multiEmpty = runDirect("multiconnect list");
+  checkContains(multiEmpty.out, "count: ", "multiconnect list reports the selection size");
+  checkContains(multiEmpty.out, "enabled: ", "multiconnect list reports the feature setting");
+
+  ConsoleHost::ui().requests.clear();
+  checkContains(runDirect("multiconnect select").out, "usage: multiconnect select | deselect",
+                "multiconnect select with no index prints its usage");
+  checkContains(runDirect("multiconnect select abc").out, "expected a camera index",
+                "multiconnect select rejects a non-numeric index");
+  check(ConsoleHost::ui().requests.empty(), "a refused multiconnect select queues nothing");
+
+  checkContains(runDirect("multiconnect select 2").out, "completed: multiconnect select",
+                "multiconnect select reports completion");
+  check(ConsoleHost::ui().requests.back().request == Furble::UI::Request::MULTI_SELECT
+            && ConsoleHost::ui().requests.back().arg == 2,
+        "multiconnect select queues the saved camera index");
+  checkContains(runDirect("multiconnect deselect 2").out, "completed: multiconnect deselect",
+                "multiconnect deselect reports completion");
+  check(ConsoleHost::ui().requests.back().request == Furble::UI::Request::MULTI_DESELECT,
+        "multiconnect deselect queues the matching request");
+
+  // The intervalometer and bulb pages. Both fire the shutter, so both refuse
+  // to start without a live link, exactly as the shutter command does.
+  ConsoleHost::ui().requests.clear();
+  const Result intervalUsage = runDirect("interval");
+  checkContains(intervalUsage.out, "usage: interval start | stop | status",
+                "interval with no subcommand prints its usage");
+  check(intervalUsage.rc != 0, "interval with no subcommand returns non-zero");
+
+  const Result intervalStart = runDirect("interval start");
+  checkContains(intervalStart.out, "no active connection",
+                "interval start refuses without a connection");
+  check(ConsoleHost::ui().requests.empty(), "a refused interval start queues nothing");
+
+  checkContains(runDirect("interval stop").out, "queued: interval stop", "interval stop is queued");
+  check(ConsoleHost::ui().requests.back().request == Furble::UI::Request::INTERVAL
+            && ConsoleHost::ui().requests.back().arg == 0,
+        "interval stop queues the stop argument");
+
+  ConsoleHost::ui().requests.clear();
+  check(runDirect("interval status").rc == 0, "interval status returns success");
+  check(!ConsoleHost::ui().requests.empty()
+            && ConsoleHost::ui().requests.back().request == Furble::UI::Request::INTERVAL
+            && ConsoleHost::ui().requests.back().arg == -1,
+        "interval status asks the UI task to print, like perf lvgl does");
+
+  ConsoleHost::ui().requests.clear();
+  checkContains(runDirect("bulb start").out, "no active connection",
+                "bulb start refuses without a connection");
+  check(ConsoleHost::ui().requests.empty(), "a refused bulb start queues nothing");
+  checkContains(runDirect("bulb stop").out, "queued: bulb stop", "bulb stop is queued");
+  check(ConsoleHost::ui().requests.back().request == Furble::UI::Request::BULB
+            && ConsoleHost::ui().requests.back().arg == 0,
+        "bulb stop queues the stop argument");
+
+  ConsoleHost::ui().requests.clear();
+  check(runDirect("bulb status").rc == 0, "bulb status returns success");
+  check(!ConsoleHost::ui().requests.empty() && ConsoleHost::ui().requests.back().arg == -1,
+        "bulb status asks the UI task to print");
+
+  // The Display page. Brightness is the one control the slider applies live,
+  // so it is a request rather than a plain settings write.
+  ConsoleHost::ui().requests.clear();
+  const Result brightnessBad = runDirect("display brightness 999");
+  checkContains(brightnessBad.out, "expected 0-255", "display brightness range checks its value");
+  check(ConsoleHost::ui().requests.empty(), "a refused brightness queues nothing");
+
+  runDirect("settings set brightness 32");
+  checkContains(runDirect("display brightness 96").out, "queued: display brightness",
+                "display brightness is queued");
+  check(ConsoleHost::ui().requests.back().request == Furble::UI::Request::DISPLAY_BRIGHTNESS
+            && ConsoleHost::ui().requests.back().arg == 96,
+        "display brightness carries the value to the UI task");
+  check(Furble::Settings::load<Furble::Settings::BRIGHTNESS>() == 32,
+        "display brightness applies and persists on the UI task, not the console task");
+
+  // The usable brightness range is a board fact the UI task holds, so status
+  // prints from there. The simulator scenario asserts the printed range and
+  // the refusal below the board minimum.
+  ConsoleHost::ui().requests.clear();
+  const Result displayStatus = runDirect("display status");
+  check(displayStatus.rc == 0, "display status returns success");
+  check(!ConsoleHost::ui().requests.empty()
+            && ConsoleHost::ui().requests.back().request == Furble::UI::Request::DISPLAY_BRIGHTNESS
+            && ConsoleHost::ui().requests.back().arg == -1,
+        "display status asks the UI task to print, so it can report the board range");
+
+  ConsoleHost::ui().requests.clear();
+  runDirect("display mode console");
+  check(!ConsoleHost::ui().requests.empty()
+            && ConsoleHost::ui().requests.back().request == Furble::UI::Request::DISPLAY_MODE,
+        "display mode takes the same path as 'settings set display_mode'");
+  runDirect("display mode gui");
+
+  // Page identity and the header back button.
+  ConsoleHost::ui().requests.clear();
+  check(runDirect("ui page").rc == 0, "ui page returns success");
+  check(!ConsoleHost::ui().requests.empty()
+            && ConsoleHost::ui().requests.back().request == Furble::UI::Request::PAGE,
+        "ui page asks the UI task for the current page name");
+  checkContains(runDirect("ui back").out, "completed: ui back", "ui back reports completion");
+  check(ConsoleHost::ui().requests.back().request == Furble::UI::Request::BACK,
+        "ui back queues the header back button");
+
+  // Power off. The console says so before the request lands, because the rail
+  // goes with it.
+  ConsoleHost::ui().requests.clear();
+  const Result powerOff = runDirect("power off");
+  checkContains(powerOff.out, "queued: power off", "power off acknowledges before it is queued");
+  check(!ConsoleHost::ui().requests.empty()
+            && ConsoleHost::ui().requests.back().request == Furble::UI::Request::POWER_OFF,
+        "power off queues the UI task shutdown sequence");
+}
+
 int main(void) {
   // Stop and join every shim task before this scope ends, so no firmware task
   // is still running when static destruction frees what it reads. The control
@@ -1846,6 +2104,7 @@ int main(void) {
   waitFor([] { return ConsoleHost::misc().usbDriverInstalls > 0; }, 2000);
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
+  testWorkflowCompletionState();
   testCommandTable();
   testSubcommandSets();
   testStatusAndVersion();
@@ -1861,6 +2120,7 @@ int main(void) {
   testWiFiAndNtpCommands();
   testErrorPaths();
   testConsoleTaskTransport();
+  testWorkflowCommands();
   testDebugWithLiveCamera();
 
   // Last: it stops and joins every shim task.

@@ -63,6 +63,55 @@ struct FurbleHostQueue {
   size_t max_len = 0;
 };
 
+struct FurbleHostBinarySemaphore {
+  std::mutex mutex;
+  std::condition_variable cond;
+  bool available = false;
+};
+
+std::atomic<bool> g_FailNextSemaphore {false};
+extern "C" void furbleHostFailNextSemaphore(void) {
+  g_FailNextSemaphore.store(true);
+}
+
+SemaphoreHandle_t xSemaphoreCreateBinary(void) {
+  if (g_FailNextSemaphore.exchange(false))
+    return nullptr;
+  return new FurbleHostBinarySemaphore();
+}
+
+BaseType_t xSemaphoreTake(SemaphoreHandle_t handle, TickType_t ticks) {
+  auto *semaphore = static_cast<FurbleHostBinarySemaphore *>(handle);
+  if (semaphore == nullptr) {
+    return pdFALSE;
+  }
+  std::unique_lock<std::mutex> lock(semaphore->mutex);
+  const bool ready = semaphore->cond.wait_for(lock, std::chrono::milliseconds(ticks),
+                                              [semaphore] { return semaphore->available; });
+  if (!ready) {
+    return pdFALSE;
+  }
+  semaphore->available = false;
+  return pdTRUE;
+}
+
+BaseType_t xSemaphoreGive(SemaphoreHandle_t handle) {
+  auto *semaphore = static_cast<FurbleHostBinarySemaphore *>(handle);
+  if (semaphore == nullptr) {
+    return pdFALSE;
+  }
+  {
+    std::lock_guard<std::mutex> lock(semaphore->mutex);
+    semaphore->available = true;
+  }
+  semaphore->cond.notify_one();
+  return pdTRUE;
+}
+
+void vSemaphoreDelete(SemaphoreHandle_t handle) {
+  delete static_cast<FurbleHostBinarySemaphore *>(handle);
+}
+
 // --- Host task shutdown -----------------------------------------------------
 //
 // See furbleHostStopTasks() in freertos/FreeRTOS.h for what this is for.
@@ -742,6 +791,17 @@ bool UI::sendRequest(Request request, int32_t arg) {
     return false;
   }
   state.requests.push_back({request, arg});
+  return true;
+}
+
+bool UI::sendRequest(Request request, int32_t arg, RequestResult *result) {
+  if (result == nullptr || result->state == nullptr || !sendRequest(request, arg)) {
+    return false;
+  }
+  // This double records routing and completes synchronously. Real UI queue
+  // ownership and operation outcomes require simulator/firmware validation.
+  result->state->token = "ok";
+  xSemaphoreGive(result->state->done);
   return true;
 }
 

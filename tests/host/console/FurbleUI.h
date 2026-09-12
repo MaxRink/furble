@@ -13,6 +13,7 @@
 // g_IMUMutex and its type alias are declared by FurbleIMU.h, the shared motion
 // API, exactly as the real FurbleUI.h takes them.
 #include "FurbleIMU.h"
+#include "FurbleRequestState.h"
 
 namespace Furble {
 
@@ -24,6 +25,11 @@ class UI {
     DISCONNECT,
     SCAN,
     CAMERAS,
+    DELETE,
+    PAIR,
+    MULTI_SELECT,
+    MULTI_DESELECT,
+    MULTI_CLEAR,
     GPS_RELOAD,
     GPS_POWER,
     IR_RELOAD,
@@ -31,12 +37,20 @@ class UI {
     FEEDBACK_TEST,
     PERF,
     AUDIT,
+    PAGE,
+    BACK,
+    INTERVAL,
+    BULB,
+    DISPLAY_BRIGHTNESS,
+    POWER_OFF,
     POWER_RELOAD,
     SD_RELOAD,
     DISPLAY_MODE,
   };
 
   static bool sendRequest(Request request, int32_t arg);
+  using RequestResult = Furble::RequestResult;
+  static bool sendRequest(Request request, int32_t arg, RequestResult *result);
 
   /** Console and companion writes reconcile the gesture timer on the UI task. */
   static void notifyGestureSettingsChanged(void);

@@ -1267,6 +1267,11 @@ std::string queryValue(const std::string &key) {
     if (sub == "satellites") {
       return std::to_string(gps.getSatellites());
     }
+#if defined(FURBLE_SIM)
+    if (sub == "fresh_fixes_parsed") {
+      return std::to_string(gps.simFreshFixesParsed());
+    }
+#endif
     if (sub == "sats_in_view") {
       return std::to_string(gps.getSatelliteReport().in_view);
     }
@@ -1385,6 +1390,15 @@ std::string queryValue(const std::string &key) {
         last.pop_back();
       }
       return last;
+    }
+    if (sub == "standby_5s_commands") {
+      size_t count = 0;
+      for (const auto &write : writes) {
+        if (write == "$PCAS12,5*1B\r\n") {
+          ++count;
+        }
+      }
+      return std::to_string(count);
     }
     // Binary traffic the write count cannot see: replayed assistance frames and
     // MON-HW polls, plus the rate the driver has the port set to.

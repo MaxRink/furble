@@ -22,6 +22,7 @@ enum class scenario_action_kind_t {
   NAV,
   SCROLL,
   PAGE,
+  CONSOLE,
   SECURE_STALL,
   SCAN_ROW,
   INVALID,

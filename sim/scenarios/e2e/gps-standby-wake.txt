@@ -9,7 +9,20 @@ wait 5000
 assert gps.source uart
 assert gps.state standby
 assert uart.last $PCAS12,5*1B
-wait 5500
+assert-eventually-virtual 1000 gps.fresh_fixes_parsed 1
+assert-eventually-virtual 1000 uart.standby_5s_commands 1
+wait 5000
+# A second parser-accepted fresh UART fix and second command prove progression
+# through the receiver/parser and duty command paths. These observations are
+# deliberately not treated as one coherent delivered-geotag snapshot.
+assert-eventually-virtual 2000 gps.fresh_fixes_parsed 2
+assert-eventually-virtual 2000 uart.standby_5s_commands 2
 assert gps.source uart
-assert gps.state tracking
+assert uart.last $PCAS12,5*1B
+# One wake fix followed by receiver silence must not manufacture another fix or
+# another duty command from the cached UART source.
+uart-mode pause
+wait 6000
+assert gps.fresh_fixes_parsed 2
+assert uart.standby_5s_commands 2
 exit
