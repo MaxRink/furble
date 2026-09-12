@@ -1,10 +1,10 @@
 # furble UI walkthrough
 
 This is a screen by screen tour of the furble interface. Every screenshot is a
-real render from the furble SDL simulator, which runs the shipping UI code over
-a modeled M5StickS3 (135x240) panel. Where a page depends on hardware the
-simulator does not model, the page is described in words and the reason is
-noted.
+real render captured from the original PR273 SDL simulator work over a modeled
+M5StickS3 (135x240) panel. The preserved images were not regenerated after its
+later master integration. Where a page depends on hardware the simulator does
+not model, the page is described in words and the reason is noted.
 
 This document shows what each page looks like and how you reach it. For the
 exhaustive per setting tables (default, values, when a change applies, board

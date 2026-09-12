@@ -26,11 +26,10 @@
 # fall back to the touch layout and pass for the wrong reason, which is the
 # exact failure this scenario exists to remove.
 #
-# Every line below is a hard assert. The gaps this file recorded as WILL_FAIL
-# when plan 165 wrote it are all fixed, so each one was promoted rather than
-# left to record an XPASS and fail the run, which is what splitting the file per
-# board was for. See plans/165-sim-no-touch-layout.md and
-# plans/168-notouch-layout-overflows.md.
+# Indicator and overlap regressions below are hard assertions. The Sensors fit
+# remains an explicit xassert for its documented 7 px vertical overflow; that
+# page scrolls rather than shrinking the selected text size. See
+# plans/165-sim-no-touch-layout.md and plans/168-notouch-layout-overflows.md.
 seed no_touch true
 seed fauxny true
 seed saved_camera true

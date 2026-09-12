@@ -1,7 +1,8 @@
 # 168 - fix the layout the physical-button boards actually ship
 
 PR #264 certified the physical-button layout in the simulator and left the
-product gaps it found recorded as `xassert` lines. This closes them.
+product gaps it found recorded as `xassert` lines. The original PR273 work
+closed the overlap gaps; its 80x160 Sensors fit remains a documented scroll.
 
 Every gap is in the layout all three modeled boards render on hardware. None of
 them is visible in the touch layout the simulator measured before #264, which is
@@ -36,7 +37,7 @@ turns the IR setting on. The rest of the list held.
 | `shutter` | 135x240 | 64 px overflow | 0 |
 | `bulb_duration` | 135x240 | 1 widget under an indicator | 0 |
 | `display` | 80x160 | 1 widget under an indicator | 0 |
-| `sensors` | 80x160 | 10 px overflow | 0 |
+| `sensors` | 80x160 | 10 px overflow | 7 px, scrolls |
 | `sensors` | 80x160 | 1 widget under an indicator | 0 |
 | `timer` | 80x160 | 2 widgets under an indicator | 0 |
 | `bulb` | 80x160 | 1 widget under an indicator | 0 |
@@ -44,10 +45,9 @@ turns the IR setting on. The rest of the list held.
 | `timer_run` | 80x160 | 2 widgets under an indicator | 0 |
 | `connected` | 320x240 | 13 px overflow | 0 |
 
-All fourteen are promoted from `xassert` to hard `assert`. None became
-`xassert board-varies`: each file covers one board, so a gap left as `xassert`
-after being closed would record an XPASS and fail the run, which is the
-mechanism splitting the files per board was for.
+The overlap assertions are promoted from `xassert` to hard `assert`. The
+80x160 Sensors fit stays an `xassert`: the page honours the selected text size
+and scrolls through the remaining 7 px instead of shrinking it.
 
 Two classes of promoted assertion are structurally satisfied by the fix rather
 than by the page happening to fit, and they are kept as regression pins with
@@ -329,10 +329,12 @@ at 1 clipped value on 135x240 and 3 on 80x160.
 
 ## Evidence
 
-Every touched page, on every modeled panel, in both layouts, at all three text
-sizes, before and after, is captured in `plans/168-evidence/`: 720 palette PNGs,
-about 3 MB. The before set is the PR base, commit `8bdc52e4`; the after set is
-this branch. The directory is laid out as
+The original PR273 head captured every touched page, on every modeled panel, in
+both layouts, at all three text sizes, before and after, in
+`plans/168-evidence/`: 720 palette PNGs, about 3 MB. The before set is the PR
+base, commit `8bdc52e4`; the after set records the original feature branch, not
+the later master integration or focus-scroll correction. The preserved
+historical directory is laid out as
 `<panel>/<before|after>/<layout>-ts<size>[-lg<legend>]--<page>.png`, so
 `320x240/before/buttons-ts1--settings.png` and
 `320x240/after/buttons-ts1-lg0--settings.png` are the pair that shows the
@@ -410,9 +412,11 @@ on the same page, and nothing here touches that page. It is recorded rather than
 fixed, because a Display page layout change has no measurement in this work and
 belongs with whoever is changing that page.
 
-`tests/host`'s `console-commands` segfaults intermittently, roughly one run in
-two, but only when built with coverage instrumentation. The uninstrumented
-suite passes 93 of 93. The fault is on a background thread in
+During the original PR273 validation, `tests/host`'s `console-commands`
+segfaulted intermittently, roughly one run in two, but only when built with
+coverage instrumentation. The then-current uninstrumented suite passed 93 of
+93; this is historical evidence, not a result for the later master integration.
+The fault was on a background thread in
 `Furble::Control::reapZombieTargets`, which this change does not touch, and
 neither `src/FurbleControl.cpp` nor `src/FurbleConsole.cpp` nor anything under
 `lib/furble` or `tests/host` differs from master on this branch. It is a
@@ -446,7 +450,7 @@ Owed on the M5StickS3 after review. Walkable in under ten minutes.
 | Remote shutter | Connected, Remote | The lock icon sits just above the select legend. No grey line running off the bottom edge. Hold next, then press select: the icon closes and the shutter holds. Press next alone: it opens again. A long press of select does nothing, which is correct here; the long press binding is the touch layout's. In one-button mode there is no lock gesture at all and the icon stays open. |
 | Display | Settings, Display | Every row clear of the next legend. The page scrolls; the rows do not overlap while it does. |
 | Bulb duration | Connected, Bulb, Duration | The spin value is readable and nothing covers it. |
-| Timer, all three sizes | Settings, Intervalometer, at Small, Normal and Large | Count, Delay, Shutter and Wait all present. Every value complete, digits and unit: the units read ms, s and min here, not msec, secs and mins, and the unit roller inside a value page says the same. Every name whole, wrapped onto a second line where the row is too narrow, never cut. At Large the page scrolls rather than shrinking the face. Watch the page for a full minute: no text should slide or flicker. A scrolling value is the redraw regression this change removed. |
+| Timer, all three sizes | Settings, Intervalometer, at Small, Normal and Large | Count, Delay, Shutter and Wait all present. Every value is complete, digits and unit: the units read ms, s and min here, not msec, secs and mins, and the unit roller inside a value page says the same. Rows stay on one line; a narrow name may clip but retains at least four characters while the value remains whole. At Large the page scrolls rather than shrinking the face. Watch the page for a full minute: no value should slide or flicker. |
 | Settings pages with a roller | Settings, Text size and Settings, Theme | The roller never covers the label that names it, at any text size. |
 | Spirit level | Home, Level | The bullseye is below the header and centred. Tilt the device on its side: the panel rotates and the legends follow the rotated edges. |
 | Legend contrast, all themes | Settings, Theme, each of Default, Dark and Mono Furble | The three glyphs stay legible in every theme, in both legend placements. |
@@ -747,5 +751,6 @@ four characters, and if neither fits the unit text shortens. That took a query
 to hold, because nothing already in the simulator could see a lost digit.
 
 Fixes 5, 6, 6b and 8 are unverified on hardware: only the M5StickS3 is
-available. The 80x160 and 320x240 changes, including the Core2 touch-layout
-reach in 6b, are simulator-verified and code-reviewed.
+available. The original PR273 head simulator-verified the 80x160 and 320x240
+changes, including the Core2 touch-layout reach in 6b. Those historical results
+do not certify the later master integration or focus-scroll correction.

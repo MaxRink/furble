@@ -3884,8 +3884,8 @@ uint32_t UI::countCutLabels(void) {
       if (simAreasIntersect(coords, viewport)) {
         const int32_t width = lv_obj_get_content_width(obj);
         const auto longMode = lv_label_get_long_mode(obj);
-        const bool scrolls = (longMode == LV_LABEL_LONG_SCROLL)
-                             || (longMode == LV_LABEL_LONG_SCROLL_CIRCULAR);
+        const bool scrolls =
+            (longMode == LV_LABEL_LONG_SCROLL) || (longMode == LV_LABEL_LONG_SCROLL_CIRCULAR);
         bool tooNarrow = !scrolls && (width > 0) && (lv_obj_get_self_width(obj) > width);
         // Position against the parent's content box. A label whose text fits
         // its own box still loses glyphs when the box hangs over the edge of
