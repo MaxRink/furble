@@ -1135,6 +1135,12 @@ Firmware builds, browser acceptance, first-use fingerprint comparison, radio
 coexistence, shutter timing and image signing remain release gates. This work
 does not claim hardware parity from host coverage.
 
+The Core2 debug environment keeps the existing debug diagnostics and now uses
+the same `-Os -g2 -ggdb2` flags as the 4 MB debug environments. This is a
+debug-only size safeguard for the HTTPS WebUI image and trades some source-level
+stepping fidelity for retaining the full diagnostic configuration. Release
+optimization and runtime features are unchanged.
+
 ---
 
 # Home Assistant integration design
