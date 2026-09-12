@@ -697,6 +697,24 @@ Until those measurements and tolerances are recorded, simulator power output
 remains relative evidence. It must not be described as 100% physical parity or
 as a quantitative accuracy guarantee.
 
+### Issue #285 comparator follow-up (2026-09-13)
+
+`tools/power-model/compare.py` now treats its default 10% compatibility value as
+an absolute relative comparison threshold. Both a significant increase and a
+significant decrease return exit code 1. Missing, malformed, or non-finite
+report values still return exit code 2, and the zero-baseline behavior remains
+unchanged.
+
+Regression coverage is in `tests/test_power_compare.py` for the suspicious 41%
+decrease, increases, in-band deltas, zero baselines, missing/non-finite inputs,
+custom thresholds, and invalid thresholds. The default is not a measured
+hardware noise floor. Repeated baseline runs must establish a board/model
+specific band before a deliberate re-baseline.
+
+This follow-up changes comparison policy only. Timer callback cost, fixed LVGL
+poll accounting, peripheral attribution, and hardware calibration remain open
+under issue #285. No power-model numbers or accounting were changed.
+
 ### Validation boundary for this follow-up
 
 The bounded implementation was validated on the host only: GCC power targets

@@ -32,12 +32,12 @@ def main() -> int:
         "--threshold",
         type=float,
         default=0.10,
-        help="allowed relative increase, default 0.10",
+        help="allowed absolute relative delta, default 0.10",
     )
     args = parser.parse_args()
 
-    if args.threshold < 0:
-        parser.error("threshold must not be negative")
+    if not math.isfinite(args.threshold) or args.threshold < 0:
+        parser.error("threshold must be finite and non-negative")
 
     try:
         report = json.loads(args.report.read_text())
@@ -66,7 +66,7 @@ def main() -> int:
         failed = current > 0
     else:
         delta = (current - reference) / reference
-        failed = current > reference * (1.0 + args.threshold)
+        failed = abs(delta) > args.threshold
 
     delta_text = "inf" if math.isinf(delta) else f"{delta * 100.0:+.2f}%"
     name = scenario_name(report, args.report)
