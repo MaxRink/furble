@@ -303,9 +303,6 @@ reboot
 The full command reference, with every subcommand, is in
 [docs/console-commands.md](docs/console-commands.md).
 
-UI workflow requests are queued. If a bounded wait reports a pending unknown
-outcome, the operation may still execute later; do not blindly retry a
-timed-out destructive command.
 MQTT actuator commands must be published with retain off. Retained commands
 under `BASE/ID/cmd/` are rejected so reconnects cannot replay a shutter or
 other actuator. A clean MQTT disconnect enqueues retained `offline` and waits
