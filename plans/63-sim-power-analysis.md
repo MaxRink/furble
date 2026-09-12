@@ -703,7 +703,7 @@ as a quantitative accuracy guarantee.
 `tools/power-model/compare.py` now treats its default 10% compatibility value as
 a relative comparison threshold on both sides. Values exactly at either
 boundary pass, while a significant increase or decrease returns exit code 1.
-Missing, malformed, non-finite, boolean, or negative report values still return
+Missing, malformed, non-finite, boolean, or negative report values return
 exit code 2, and the zero-baseline behavior remains unchanged.
 
 Regression coverage is in `tests/test_power_compare.py` for the suspicious 41%
@@ -717,7 +717,15 @@ This follow-up changes comparison policy only. Timer callback cost, fixed LVGL
 poll accounting, peripheral attribution, and hardware calibration remain open
 under issue #285. No power-model numbers or accounting were changed.
 
-### Validation boundary for this follow-up
+Comparator validation at `e9afe4a8fcdcfdfa911dd9400472625c1790aadb`:
+
+- Focused comparator suite: 9 tests passed.
+- Full Python suite: 175 tests passed in 7.692 seconds.
+- Independent review accepted the inclusive boundary and input checks.
+- No simulator, firmware, or hardware power measurement was run for this
+  comparator-only follow-up. Existing baselines are unchanged.
+
+### Historical validation boundary for the earlier accounting follow-up
 
 The bounded implementation was validated on the host only: GCC power targets
 built successfully, and the six simulator/GPS power CTest cases passed after
