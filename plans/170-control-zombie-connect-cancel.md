@@ -619,3 +619,13 @@ Physical gates remain open. Fujifilm pairing, stale-bond secure-wait
 cancellation, immediate reconnect, shutter, five-cycle zombie and heap
 checks, and the final ordinary reconnect cycle still require the attached
 camera and M5StickS3. Canon, DJI, and Nikon remain untested on hardware.
+
+### Current-master integration, 2026-09-12
+
+The successor was merged with exact `origin/master`
+`965f299f0f43c38fe45e4680f1bfb735023533af`. Conflicts were limited to
+`lib/furble/Camera.h` and `src/FurbleControl.cpp`: the camera pairing
+declarations and target-camera snapshot were retained alongside master RSSI
+and target-status APIs. MQTT sources, tests, docs, and plans from master were
+retained. No build or test was run after this integration. The three-panel
+simulator gates remain pending.

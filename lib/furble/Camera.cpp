@@ -1356,6 +1356,16 @@ int8_t Camera::getRssi(void) const {
   return static_cast<int8_t>(m_Client->getRssi());
 }
 
+int Camera::getRSSI(void) const {
+  const std::lock_guard<connect_mutex_t> lock(m_Mutex);
+  if ((m_Type == Type::FAUXNY) || !m_Connected || (m_Client == nullptr)
+      || !m_Client->isConnected()) {
+    return -127;
+  }
+
+  return m_Client->getRssi();
+}
+
 bool Camera::isConnected(void) const {
   // Lock-free status read: return the cached flag with no m_Mutex and no
   // m_Client dereference. The UI task calls this on every status render. Taking

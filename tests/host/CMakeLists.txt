@@ -37,6 +37,7 @@ set(FURBLE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..)
 set(HOST_NIMBLE_DIR ${FURBLE_ROOT}/lib/testing/nimble)
 set(HOST_PEER_DIR ${FURBLE_ROOT}/lib/testing/peer)
 set(HOST_CORPUS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/corpus)
+set(HOST_MQTT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/mqtt)
 
 # TestSyncController.cpp implements the FURBLE_TEST_SYNC named sync points for
 # every camera test that links this library, and FURBLE_TEST_SYNC below compiles
@@ -71,6 +72,25 @@ target_compile_definitions(furble_host_camera
                            PRIVATE FURBLE_HOST_REGISTRATION_TIMEOUT_MS=100 FURBLE_TEST_SYNC)
 target_compile_definitions(furble_host_camera PUBLIC FURBLE_HOST_TEST)
 target_link_libraries(furble_host_camera PUBLIC Threads::Threads)
+
+# Compile the production MQTT task against deterministic host dependency
+# shims. The test drives one owner-task step at a time, so callback copies and
+# timer notifications are observable without creating an ESP task.
+add_executable(mqtt_owner_test
+               mqtt_test.cpp
+               ${HOST_MQTT_DIR}/cJSON.cpp
+               ${HOST_MQTT_DIR}/mqtt_client_mock.cpp
+               ${HOST_MQTT_DIR}/mqtt_host_doubles.cpp
+               ${FURBLE_ROOT}/src/FurbleMQTT.cpp)
+target_include_directories(mqtt_owner_test BEFORE PRIVATE
+                           ${HOST_MQTT_DIR}
+                           ${FURBLE_ROOT}/include
+                           ${FURBLE_ROOT}/lib/furble)
+target_compile_definitions(mqtt_owner_test PRIVATE FURBLE_MQTT=1 FURBLE_MQTT_HOST_TEST=1
+                                                   FURBLE_VERSION="host-test")
+target_compile_options(mqtt_owner_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                               -Wno-unused-parameter)
+target_link_libraries(mqtt_owner_test PRIVATE Threads::Threads)
 
 add_executable(fujifilm_camera_test fujifilm_camera_test.cpp)
 target_link_libraries(fujifilm_camera_test PRIVATE furble_host_camera)
@@ -655,6 +675,7 @@ add_executable(settings_nvs_roundtrip_test
                settings_nvs_stub.cpp
                settings_platform_stub.cpp
                ${FURBLE_ROOT}/src/FurbleSettings.cpp
+               ${FURBLE_ROOT}/src/FurbleNetworkSettings.cpp
                ${FURBLE_ROOT}/lib/preferences/Preferences.cpp)
 target_include_directories(settings_nvs_roundtrip_test BEFORE PRIVATE
                            ${SETTINGS_TEST_STUB_DIR}
@@ -678,6 +699,7 @@ add_executable(provision_apply_test
                settings_nvs_stub.cpp
                ${FURBLE_ROOT}/src/FurbleProvision.cpp
                ${FURBLE_ROOT}/src/FurbleSettings.cpp
+               ${FURBLE_ROOT}/src/FurbleNetworkSettings.cpp
                ${FURBLE_ROOT}/lib/furble/protocol/ProvisionTLV.cpp
                ${FURBLE_ROOT}/lib/preferences/Preferences.cpp)
 target_include_directories(provision_apply_test BEFORE PRIVATE
@@ -689,6 +711,27 @@ target_compile_definitions(provision_apply_test PRIVATE FURBLE_M5STICKS3)
 target_compile_options(provision_apply_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                     -Wno-unused-parameter
                                                     -Wno-vla-extension)
+
+# Exercise the positive MQTT provisioning branch as well as the default build.
+# FurbleProvision only needs the settings/network validator here; keep this
+# target independent from the MQTT client implementation.
+add_executable(provision_apply_mqtt_test
+               provision_apply_test.cpp
+               settings_nvs_stub.cpp
+               ${FURBLE_ROOT}/src/FurbleProvision.cpp
+               ${FURBLE_ROOT}/src/FurbleSettings.cpp
+               ${FURBLE_ROOT}/src/FurbleNetworkSettings.cpp
+               ${FURBLE_ROOT}/lib/furble/protocol/ProvisionTLV.cpp
+               ${FURBLE_ROOT}/lib/preferences/Preferences.cpp)
+target_include_directories(provision_apply_mqtt_test BEFORE PRIVATE
+                           ${SETTINGS_TEST_STUB_DIR}
+                           ${FURBLE_ROOT}/include
+                           ${FURBLE_ROOT}/lib/preferences
+                           ${FURBLE_ROOT}/lib/furble)
+target_compile_definitions(provision_apply_mqtt_test PRIVATE FURBLE_M5STICKS3 FURBLE_MQTT=1)
+target_compile_options(provision_apply_mqtt_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                           -Wno-unused-parameter
+                                                           -Wno-vla-extension)
 
 # Board-conditional text size policy from include/FurbleTextSize.h. The header is
 # dependency free, so each variant compiles standalone. The suite is built twice:
@@ -1252,6 +1295,7 @@ set(COMPANION_HOST_DIR ${CMAKE_CURRENT_SOURCE_DIR}/companion)
 add_executable(companion_gatt_test
                companion_gatt_test.cpp
                ${COMPANION_HOST_DIR}/companion_doubles.cpp
+               ${FURBLE_ROOT}/src/FurbleNetworkSettings.cpp
                advertisement_preferences_stub.cpp
                ${COMPANION_HOST_DIR}/companion_hmac.cpp
                ${FURBLE_ROOT}/src/FurbleCompanionAuth.cpp
@@ -1652,6 +1696,7 @@ add_executable(console_commands_test
                ${FURBLE_ROOT}/src/FurblePower.cpp
                ${FURBLE_ROOT}/src/FurbleProvision.cpp
                ${FURBLE_ROOT}/src/FurbleSettings.cpp
+               ${FURBLE_ROOT}/src/FurbleNetworkSettings.cpp
                ${FURBLE_ROOT}/lib/preferences/Preferences.cpp
                ${FURBLE_ROOT}/lib/furble/BtDebugJournal.cpp
                ${FURBLE_ROOT}/lib/furble/Camera.cpp
@@ -1751,6 +1796,7 @@ if(BUILD_TESTING)
   add_test(NAME auto-off-policy COMMAND auto_off_policy_test)
   add_test(NAME provision-tlv COMMAND provision_tlv_test)
   add_test(NAME provision-apply COMMAND provision_apply_test)
+  add_test(NAME provision-apply-mqtt COMMAND provision_apply_mqtt_test)
   add_test(NAME text-size-policy COMMAND text_size_policy_test)
   add_test(NAME imu-motion-encoding COMMAND imu_motion_encoding_test)
   add_test(NAME text-size-policy-stickc COMMAND text_size_policy_stickc_test)
@@ -1760,6 +1806,7 @@ if(BUILD_TESTING)
   add_test(NAME gpx-writer COMMAND gpx_writer_test)
   add_test(NAME reconnect-backoff COMMAND reconnect_backoff_test)
   add_test(NAME battery-saver COMMAND battery_saver_test)
+  add_test(NAME mqtt-owner COMMAND mqtt_owner_test)
   add_test(NAME pmic-recovery COMMAND pmic_recovery_test)
   add_test(NAME sim-clock COMMAND sim_clock_test)
   add_test(NAME sim-action-parser COMMAND sim_action_parser_test)

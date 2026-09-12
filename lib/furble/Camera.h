@@ -401,6 +401,9 @@ class Camera: public NimBLEClientCallbacks {
   bool hostExpirePairing(void);
 #endif
 
+  /** Get the connected peer RSSI in dBm, or -127 when unavailable. */
+  int getRSSI(void) const;
+
  protected:
   Camera(Type type, PairType pairType);
 

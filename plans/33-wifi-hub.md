@@ -776,6 +776,21 @@ Attached StickS3.
 
 # PR33c: MQTT client
 
+## Owner-task hardening follow-up
+
+The MQTT event and timer callbacks now copy bounded event data into a small
+owner-task queue. Only that task touches the esp-mqtt client, publication
+caches, camera commands, and interval or hold state. Callback events from a
+stopped client are discarded by client identity before the handle is used.
+
+Retained messages under `BASE/ID/cmd/` are rejected, so broker replay cannot
+fire an actuator after reconnect. A clean stop enqueues a retained `offline`
+status and waits a bounded interval for its PUBACK before stopping the client;
+it tears down on acknowledgement or timeout. A timeout does not prove broker
+delivery. The last will still covers an unclean loss. Camera catalog
+synchronization remains a separate follow-up and
+is intentionally not folded into this owner-task change.
+
 ## Goal
 
 Publish furble state and accept furble commands over MQTT, with optional Home
@@ -835,6 +850,12 @@ Out of scope:
 | `MQTT_HA` | bool | `false` | publish Home Assistant discovery |
 
 Off by default. `MQTT` true with `WIFI` false does nothing and says so.
+
+The setting and companion/SD import boundaries reject NULs, control characters,
+oversized values, malformed broker schemes, and wildcard topic roots. Both URI
+schemes remain accepted for compatibility: `mqtt://` is unauthenticated,
+unencrypted transport and must be limited to a trusted LAN; `mqtts://` is the
+TLS form for brokers that require transport confidentiality.
 
 ## Menu placement
 
@@ -899,6 +920,13 @@ Last will: topic `BASE/ID/status`, payload `offline`, QoS 1, retain true, set in
 on `MQTT_EVENT_CONNECTED`. This is the only availability signal that survives a
 battery pull.
 
+Actuator command topics must not be retained. furble rejects retained messages
+under `BASE/ID/cmd/` and publishes a non-retained error instead. A clean
+disconnect enqueues one retained `offline` publish and waits up to the owner
+grace interval for its PUBACK before client teardown. A timeout still tears down
+cleanly but does not prove broker delivery; the LWT remains the failure path for
+a power loss or other unclean stop.
+
 ### Reconnect policy
 
 esp-mqtt reconnects on its own. Do not write a reconnect loop. Set
@@ -917,9 +945,14 @@ On `MQTT_EVENT_CONNECTED`: publish `online`, publish all retained state, then
 subscribe to the command topics. In that order. Subscribing first means the
 first command can arrive before the device has told anyone it is there.
 
-The MQTT event handler runs on the esp-mqtt task. `Control::sendCommand` is safe
-from it. LVGL is not. Route connect and disconnect through the PR27 UI request
-queue.
+The MQTT event handler runs on the esp-mqtt task and only copies a bounded data
+event into the MQTT owner-task queue. Lifecycle events use a short mailbox so a
+full data queue cannot strand connection state. Timer callbacks do not mutate
+state; the owner polls explicit deadlines. The owner compares copied client
+identity and clears queued events before replacement, so stop and destroy never
+wait for a callback lock. LVGL is not safe from the broker task. Camera catalog
+synchronization remains a separate follow-up until the saved-camera snapshot API
+is available.
 
 ### Home Assistant discovery
 
