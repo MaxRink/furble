@@ -723,6 +723,20 @@ void testSettings(void) {
   checkContains(runDirect("settings get gps_plat").out, "value: 3",
                 "a refused platform model leaves the store alone");
 
+  const Result badTextSize = runDirect("settings set text_size 3");
+  check(badTextSize.rc != 0, "an out of range text size fails");
+  checkContains(badTextSize.out, "expected 0 (small), 1 (normal) or 2 (large)",
+                "the text size error names the modes");
+  const Result badAssist = runDirect("settings set gps_assist 3");
+  check(badAssist.rc != 0, "an out of range assistance mode fails");
+  checkContains(badAssist.out, "expected 0, 1 or 2", "the assistance error names the modes");
+  checkContains(runDirect("settings set fb_output 4").out, "saved: fb_output",
+                "the feedback output setting saves its maximum value");
+  checkContains(runDirect("settings get fb_output").out, "value: 4",
+                "the feedback output value reads back");
+  checkContains(runDirect("settings set gps_duty 15").out, "saved: gps_duty",
+                "a supported GPS duty interval saves");
+
   const Result badDuty = runDirect("settings set gps_duty 7");
   check(badDuty.rc != 0, "an unsupported duty interval fails");
   checkContains(badDuty.out, "expected 0, 5, 10 or 15", "the duty error names the values");
