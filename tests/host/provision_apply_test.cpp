@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstring>
 #include <iostream>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -104,41 +105,50 @@ void testMotionEngineProvisioning() {
         "a wrong wire type reports UNSUPPORTED_SETTING");
 }
 
-void testAutoOffChargingProvisioning() {
+void testBooleanSettingProvisioning(uint8_t wireId,
+                                    Furble::Settings::type_t setting,
+                                    const char *name) {
   resetSettings();
 
-  const auto *schema = Furble::ProvisionTLV::schemaForSetting(43);
-  check(schema != nullptr, "wire id 43 has a provisioning schema row");
+  const auto *schema = Furble::ProvisionTLV::schemaForSetting(wireId);
+  check(schema != nullptr,
+        std::string("wire id ") + std::to_string(wireId) + " has a provisioning schema row");
   if (schema != nullptr) {
-    check(schema->type == ValueType::BOOL, "auto-off charging schema is BOOL");
+    check(schema->type == ValueType::BOOL, std::string(name) + " schema is BOOL");
     check((schema->minLength == 1) && (schema->maxLength == 1),
-          "auto-off charging schema is exactly one byte");
+          std::string(name) + " schema is exactly one byte");
   }
 
   for (uint8_t value = 0; value <= 1; value++) {
     resetSettings();
     ProvisionBundle bundle;
     bundle.settings = {
-        {43, ValueType::BOOL, {value}}
+        {wireId, ValueType::BOOL, {value}}
     };
     ApplyReport report;
     check(apply(bundle, report),
-          "auto-off charging value " + std::to_string(value) + " provisions");
-    check(report.settingsApplied == 1, "auto-off charging apply reports one setting");
-    check(Furble::Settings::load<bool>(Furble::Settings::AUTO_OFF_CHARGING) == (value != 0),
-          "auto-off charging value reaches the store");
+          std::string(name) + " value " + std::to_string(value) + " provisions");
+    check(report.settingsApplied == 1, std::string(name) + " apply reports one setting");
+    check(Furble::Settings::load<bool>(setting) == (value != 0),
+          std::string(name) + " value reaches the store");
   }
 
   resetSettings();
   ProvisionBundle invalid;
   invalid.settings = {
-      {43, ValueType::BOOL, {2}}
+      {wireId, ValueType::BOOL, {2}}
   };
   ApplyReport report;
-  check(!apply(invalid, report), "auto-off charging value 2 is rejected");
+  check(!apply(invalid, report), std::string(name) + " value 2 is rejected");
   check(report.error == Furble::Provision::ApplyError::BAD_SETTING,
-        "out-of-domain auto-off charging reports BAD_SETTING");
-  check(report.failedSettingId == 43, "rejection identifies wire id 43");
+        std::string("out-of-domain ") + name + " reports BAD_SETTING");
+  check(report.failedSettingId == wireId,
+        std::string("rejection identifies wire id ") + std::to_string(wireId));
+}
+
+void testBooleanSettingsProvisioning() {
+  testBooleanSettingProvisioning(43, Furble::Settings::AUTO_OFF_CHARGING, "auto-off charging");
+  testBooleanSettingProvisioning(46, Furble::Settings::IMU, "IMU");
 }
 
 void testPreflightIsAtomic() {
@@ -405,14 +415,17 @@ void testDedicatedMQTTFields() {
 // knows the mirror exists. Adding a setting and forgetting the row is therefore
 // the easy mistake, and this is the guard for it.
 //
-// Do not extend this list to cover a new setting: add the schema row instead.
+// Keep this walk exhaustive. A new nonzero setting must add its schema row.
 void testEverySettingHasASchemaRow() {
+  std::set<uint8_t> wireIds;
   for (const auto &entry : Furble::Settings::all()) {
     const uint8_t wireId = entry.second.wire_id;
     if (wireId == 0) {
       // Off-wire settings are deliberately unreachable by id.
       continue;
     }
+    check(wireIds.insert(wireId).second,
+          std::string("wire id ") + std::to_string(wireId) + " is unique in Settings::all()");
     const bool registered = Furble::ProvisionTLV::schemaForSetting(wireId) != nullptr;
     check(registered, std::string("wire id ") + std::to_string(wireId) + " (" + entry.second.key
                           + ") has a SETTING_SCHEMAS row");
@@ -423,7 +436,7 @@ void testEverySettingHasASchemaRow() {
 
 int main() {
   testMotionEngineProvisioning();
-  testAutoOffChargingProvisioning();
+  testBooleanSettingsProvisioning();
   testPreflightIsAtomic();
   testValidatedApplyAndRuntimeHooks();
   testDedicatedPasswordField();

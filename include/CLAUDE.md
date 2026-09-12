@@ -53,18 +53,18 @@ renumbering fails the build rather than passing quietly.
 
 | PR | Setting keys | Wire ids |
 | --- | --- | --- |
-| Master | shipped settings | 1-41, 43-47, 51-61, 66-69, 72-74 |
+| Master | shipped settings | 1-22, 24-41, 43-44, 46-47, 51-61, 66-69, 72-74 |
 | #59 | `ivl_sleep`, `ivl_sleep_thr` | 75, 76 |
 | #63 | no setting claim | none |
-| #90 | WiFi/MQTT camera settings | 62 |
+| #90 | Web UI settings | 62 |
 | #265 | no setting claim | none |
 | #273 | `legend` | 65 |
 
-IDs 42 and 45 are reserved historical assignments. Do not reuse either id or
-renumber a shipped id without persistent compatibility evidence. Recheck every
-open PR head immediately before a rebase or merge. The current five open heads
-are listed above; no new id is free merely because a branch does not currently
-touch settings.
+IDs 42 and 45 have historical claims in older branches. Keep those claims
+reserved and do not allocate or reuse either id without a compatibility audit.
+Recheck every open PR head immediately before a rebase or merge. The current
+five open heads are listed above; no new id is free merely because a branch does
+not currently touch settings.
 - `FurbleSettings.h` widened `MULTISELECT_NAME_MAX` from 16 to 32, which changed
   the stored record size. `Settings::load<multiselect_t>()` and the SD settings
   importer both read the old layout through `multiselect_legacy_t` and widen it.
