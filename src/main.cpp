@@ -26,6 +26,9 @@
 #include "FurbleGPS.h"
 #endif
 #include "FurbleIR.h"
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+#include "FurbleMQTT.h"
+#endif
 #include "FurblePlatform.h"
 #include "FurbleSD.h"
 #include "FurbleSettings.h"
@@ -346,6 +349,9 @@ void app_main() {
   Furble::BootScreen::step("Bluetooth");
   Furble::Companion::getInstance().init();
   Furble::BootScreen::step("Companion");
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+  Furble::MQTT::init();
+#endif
 
 #if defined(FURBLE_ETHERNET)
   if (!Furble::Ethernet::init()) {

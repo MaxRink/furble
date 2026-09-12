@@ -14,6 +14,9 @@
 #include "FurbleControl.h"
 #include "FurbleFeedback.h"
 #include "FurbleGPS.h"
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+#include "FurbleMQTT.h"
+#endif
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
 #include "FurbleUI.h"
@@ -659,6 +662,11 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
     case Settings::NTP:
     case Settings::GPS_EXTRAP:
       return SETTING_BOOL;
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+    case Settings::MQTT:
+    case Settings::MQTT_HA:
+      return SETTING_BOOL;
+#endif
     case Settings::BRIGHTNESS:
     case Settings::INACTIVITY:
     case Settings::DISPLAY_OFF:
@@ -697,6 +705,13 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
     case Settings::WIFI_PSK:
     case Settings::NTP_SERVER:
       return SETTING_STRING;
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+    case Settings::MQTT_URI:
+    case Settings::MQTT_USER:
+    case Settings::MQTT_PASS:
+    case Settings::MQTT_BASE:
+      return SETTING_STRING;
+#endif
     case Settings::INTERVAL:
       return SETTING_BLOB;
     case Settings::BULB:
@@ -744,6 +759,16 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
                    reinterpret_cast<const uint8_t *>(&v) + 1);
       return true;
     }
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+    case Settings::MQTT:
+    case Settings::MQTT_HA:
+    {
+      const bool v = Settings::load<bool>(type);
+      value.assign(reinterpret_cast<const uint8_t *>(&v),
+                   reinterpret_cast<const uint8_t *>(&v) + 1);
+      return true;
+    }
+#endif
     case Settings::BRIGHTNESS:
     case Settings::INACTIVITY:
     case Settings::DISPLAY_OFF:
@@ -794,6 +819,17 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
       value.assign(v.begin(), v.end());
       return value.size() <= 255;
     }
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+    case Settings::MQTT_URI:
+    case Settings::MQTT_USER:
+    case Settings::MQTT_PASS:
+    case Settings::MQTT_BASE:
+    {
+      const std::string v = Settings::load<std::string>(type);
+      value.assign(v.begin(), v.end());
+      return value.size() <= 255;
+    }
+#endif
     case Settings::COMPANION_PASSWORD:
       return false;
     case Settings::INTERVAL:
@@ -870,6 +906,14 @@ bool CompanionService::saveSetting(Settings::type_t type, const uint8_t *value, 
           return false;
         }
       }
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+      if ((type == Settings::MQTT_URI) || (type == Settings::MQTT_USER)
+          || (type == Settings::MQTT_PASS) || (type == Settings::MQTT_BASE)) {
+        if (!Settings::validMQTTString(type, v)) {
+          return false;
+        }
+      }
+#endif
       if ((type == Settings::BUTTON_MODE) && (v != Settings::BUTTON_MODE_TWO_BUTTON_VALUE)
           && (v != Settings::BUTTON_MODE_ONE_BUTTON_VALUE)) {
         return false;
@@ -1026,10 +1070,6 @@ void CompanionService::handleSettings(const uint8_t *data, size_t len) {
     case Settings::GPS_PLATFORM:
       GPS::getInstance().reloadSetting();
       break;
-    case Settings::GPS_MOTION:
-      // The detector gate only, so an advisory toggle never re-acquires.
-      GPS::getInstance().reloadMotionSetting();
-      break;
     case Settings::FB_EVENTS:
     case Settings::FB_VOLUME:
       // Direct call like the GPS case above: the UI request queue exists only
@@ -1048,6 +1088,14 @@ void CompanionService::handleSettings(const uint8_t *data, size_t len) {
       break;
     case Settings::COMPANION_PASSWORD:
       break;
+    case Settings::GPS_MOTION:
+      GPS::getInstance().reloadMotionSetting();
+      break;
+    case Settings::IMU:
+    case Settings::IMU_WAKE:
+    case Settings::IMU_TRIG:
+      UI::notifyGestureSettingsChanged();
+      break;
     case Settings::WIFI_SSID:
       WiFi::clearRememberedAccessPoint();
       break;
@@ -1060,11 +1108,16 @@ void CompanionService::handleSettings(const uint8_t *data, size_t len) {
     case Settings::NTP_SERVER:
       WiFi::reloadNtp();
       break;
-    case Settings::IMU:
-    case Settings::IMU_WAKE:
-    case Settings::IMU_TRIG:
-      UI::notifyGestureSettingsChanged();
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+    case Settings::MQTT:
+    case Settings::MQTT_URI:
+    case Settings::MQTT_USER:
+    case Settings::MQTT_PASS:
+    case Settings::MQTT_BASE:
+    case Settings::MQTT_HA:
+      MQTT::getInstance().reloadSetting();
       break;
+#endif
     default:
       break;
   }

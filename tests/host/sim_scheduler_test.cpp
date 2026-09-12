@@ -172,6 +172,52 @@ struct DelayState {
   std::atomic<uint32_t> completedAt {0};
 };
 
+struct NotificationState {
+  std::atomic<bool> started {false};
+  TestEvent finished;
+  std::atomic<uint32_t> first {0};
+  std::atomic<uint32_t> second {0};
+  std::atomic<uint32_t> third {0};
+  std::atomic<bool> caughtShutdown {false};
+  TaskHandle_t *self = nullptr;
+  BaseType_t clearCountOnExit = pdTRUE;
+  TickType_t ticksToWait = portMAX_DELAY;
+};
+
+void notificationTask(void *argument) {
+  auto &state = *static_cast<NotificationState *>(argument);
+  state.started.store(true);
+  try {
+    state.first.store(ulTaskNotifyTake(state.clearCountOnExit, state.ticksToWait));
+  } catch (...) {
+    state.caughtShutdown.store(true);
+  }
+  state.finished.signal();
+}
+
+void selfNotifyingTask(void *argument) {
+  auto &state = *static_cast<NotificationState *>(argument);
+  state.started.store(true);
+  xTaskNotifyGive(*state.self);
+  xTaskNotifyGive(*state.self);
+  xTaskNotifyGive(*state.self);
+  state.first.store(ulTaskNotifyTake(state.clearCountOnExit, 0));
+  state.second.store(ulTaskNotifyTake(state.clearCountOnExit, 0));
+  state.third.store(ulTaskNotifyTake(state.clearCountOnExit, 0));
+  state.finished.signal();
+}
+
+struct NotificationHoldState {
+  TestEvent entered;
+  TestEvent release;
+};
+
+void notificationHoldTask(void *argument) {
+  auto &state = *static_cast<NotificationHoldState *>(argument);
+  state.entered.signal();
+  state.release.wait();
+}
+
 void delayedTask(void *argument) {
   auto &state = *static_cast<DelayState *>(argument);
   state.started.store(true);
@@ -660,6 +706,133 @@ int main() {
     return fail(__LINE__);
   }
   furble_sim_stop_all_tasks();
+  furble_sim_reset_tasks();
+
+  NotificationState notificationWake;
+  TaskHandle_t notificationWakeTask = nullptr;
+  if (xTaskCreate(notificationTask, "notification-wake", 0, &notificationWake, 0,
+                  &notificationWakeTask)
+      != pdPASS) {
+    return fail(__LINE__);
+  }
+  if (!waitFor(notificationWake.started) || !waitForBlocked(notificationWakeTask)) {
+    return fail(__LINE__);
+  }
+  if (xTaskNotifyGive(notificationWakeTask) != pdTRUE) {
+    return fail(__LINE__);
+  }
+  notificationWake.finished.wait();
+  if (notificationWake.first.load() != 1 || notificationWake.caughtShutdown.load()) {
+    return fail(__LINE__);
+  }
+  furble_sim_stop_all_tasks();
+  furble_sim_reset_tasks();
+
+  setClockMillis(0);
+  NotificationState notificationTimeout;
+  notificationTimeout.ticksToWait = 5;
+  TaskHandle_t notificationTimeoutTask = nullptr;
+  if (xTaskCreate(notificationTask, "notification-timeout", 0, &notificationTimeout, 0,
+                  &notificationTimeoutTask)
+      != pdPASS) {
+    return fail(__LINE__);
+  }
+  if (!waitFor(notificationTimeout.started) || !waitForBlocked(notificationTimeoutTask)) {
+    return fail(__LINE__);
+  }
+  advanceClock(5);
+  notificationTimeout.finished.wait();
+  if (notificationTimeout.first.load() != 0 || notificationTimeout.caughtShutdown.load()) {
+    return fail(__LINE__);
+  }
+  furble_sim_stop_all_tasks();
+  furble_sim_reset_tasks();
+
+  // A notification delivered after a deadline is released but before its
+  // waiter resumes must still be consumed. Keep the scheduler turn in a
+  // higher-priority host-blocked task to make that ordering deterministic.
+  setClockMillis(0);
+  NotificationState notificationRace;
+  notificationRace.ticksToWait = 5;
+  TaskHandle_t notificationRaceTask = nullptr;
+  if (xTaskCreate(notificationTask, "notification-race", 0, &notificationRace, 0,
+                  &notificationRaceTask)
+      != pdPASS) {
+    return fail(__LINE__);
+  }
+  if (!waitFor(notificationRace.started) || !waitForBlocked(notificationRaceTask)) {
+    return fail(__LINE__);
+  }
+  NotificationHoldState notificationHold;
+  TaskHandle_t notificationHoldTaskHandle = nullptr;
+  if (xTaskCreate(notificationHoldTask, "notification-hold", 0, &notificationHold, 1,
+                  &notificationHoldTaskHandle)
+      != pdPASS) {
+    return fail(__LINE__);
+  }
+  notificationHold.entered.wait();
+  advanceClock(5);
+  if (xTaskNotifyGive(notificationRaceTask) != pdTRUE) {
+    notificationHold.release.signal();
+    return fail(__LINE__);
+  }
+  notificationHold.release.signal();
+  notificationRace.finished.wait();
+  if (notificationRace.first.load() != 1 || notificationRace.caughtShutdown.load()) {
+    return fail(__LINE__);
+  }
+  furble_sim_stop_all_tasks();
+  furble_sim_reset_tasks();
+
+  NotificationState notificationClear;
+  TaskHandle_t notificationClearTask = nullptr;
+  notificationClear.self = &notificationClearTask;
+  notificationClear.clearCountOnExit = pdTRUE;
+  if (xTaskCreate(selfNotifyingTask, "notification-clear", 0, &notificationClear, 0,
+                  &notificationClearTask)
+      != pdPASS) {
+    return fail(__LINE__);
+  }
+  notificationClear.finished.wait();
+  if (notificationClear.first.load() != 3 || notificationClear.second.load() != 0
+      || notificationClear.third.load() != 0) {
+    return fail(__LINE__);
+  }
+  furble_sim_stop_all_tasks();
+  furble_sim_reset_tasks();
+
+  NotificationState notificationDecrement;
+  TaskHandle_t notificationDecrementTask = nullptr;
+  notificationDecrement.self = &notificationDecrementTask;
+  notificationDecrement.clearCountOnExit = pdFALSE;
+  if (xTaskCreate(selfNotifyingTask, "notification-decrement", 0, &notificationDecrement, 0,
+                  &notificationDecrementTask)
+      != pdPASS) {
+    return fail(__LINE__);
+  }
+  notificationDecrement.finished.wait();
+  if (notificationDecrement.first.load() != 3 || notificationDecrement.second.load() != 2
+      || notificationDecrement.third.load() != 1) {
+    return fail(__LINE__);
+  }
+  furble_sim_stop_all_tasks();
+  furble_sim_reset_tasks();
+
+  NotificationState notificationShutdown;
+  TaskHandle_t notificationShutdownTask = nullptr;
+  if (xTaskCreate(notificationTask, "notification-shutdown", 0, &notificationShutdown, 0,
+                  &notificationShutdownTask)
+      != pdPASS) {
+    return fail(__LINE__);
+  }
+  if (!waitFor(notificationShutdown.started) || !waitForBlocked(notificationShutdownTask)) {
+    return fail(__LINE__);
+  }
+  furble_sim_stop_all_tasks();
+  if (!notificationShutdown.caughtShutdown.load()
+      || furble_sim_task_lifecycle(notificationShutdownTask) != FURBLE_SIM_TASK_JOINED) {
+    return fail(__LINE__);
+  }
   furble_sim_reset_tasks();
 
   setClockMillis(UINT32_MAX - 2U);

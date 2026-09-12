@@ -243,6 +243,14 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
     case Settings::NTP_SERVER:
       value = Settings::load<std::string>(setting.type);
       return true;
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+    case Settings::MQTT_URI:
+    case Settings::MQTT_USER:
+    case Settings::MQTT_PASS:
+    case Settings::MQTT_BASE:
+      value = Settings::load<std::string>(setting.type);
+      return true;
+#endif
 
     case Settings::COMPANION_PASSWORD:
       return false;
@@ -277,6 +285,12 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
     case Settings::NTP:
       value = Settings::load<bool>(setting.type) ? "true" : "false";
       return true;
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+    case Settings::MQTT:
+    case Settings::MQTT_HA:
+      value = Settings::load<bool>(setting.type) ? "true" : "false";
+      return true;
+#endif
 
     case Settings::INTERVAL:
     {
@@ -501,9 +515,6 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
       Settings::save<std::string>(setting.type, text);
       return true;
 
-    case Settings::COMPANION_PASSWORD:
-      return false;
-
     case Settings::WIFI_SSID:
       if (!Settings::validNetworkString(setting.type, text)) {
         return false;
@@ -515,6 +526,12 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
       return true;
 
     case Settings::WIFI_PSK:
+      if (!Settings::validNetworkString(setting.type, text)) {
+        return false;
+      }
+      Settings::save<std::string>(setting.type, text);
+      return true;
+
     case Settings::NTP_SERVER:
       if (!Settings::validNetworkString(setting.type, text)) {
         return false;
@@ -522,6 +539,19 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
       Settings::save<std::string>(setting.type, text);
       return true;
 
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+    case Settings::MQTT_URI:
+    case Settings::MQTT_USER:
+    case Settings::MQTT_PASS:
+    case Settings::MQTT_BASE:
+      if (!Settings::validMQTTString(setting.type, text)) {
+        return false;
+      }
+      Settings::save<std::string>(setting.type, text);
+      return true;
+#endif
+    case Settings::COMPANION_PASSWORD:
+      return false;
     case Settings::GPS:
     case Settings::IMU:
     case Settings::GPS_NMEA:
@@ -558,6 +588,18 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
       Settings::save<bool>(setting.type, enabled);
       return true;
     }
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+    case Settings::MQTT:
+    case Settings::MQTT_HA:
+    {
+      bool enabled = false;
+      if (!parseBool(text, enabled)) {
+        return false;
+      }
+      Settings::save<bool>(setting.type, enabled);
+      return true;
+    }
+#endif
 
     case Settings::INTERVAL:
     {
