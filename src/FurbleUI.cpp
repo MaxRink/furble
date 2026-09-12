@@ -1808,6 +1808,7 @@ void UI::scrollLabelsThatDoNotFit(lv_obj_t *page) {
       return;
     }
     if (inRow && lv_obj_check_type(obj, &lv_label_class)
+        && !lv_obj_has_flag(obj, LV_OBJ_FLAG_USER_1)
         && (lv_label_get_long_mode(obj) == LV_LABEL_LONG_WRAP)) {
       const int32_t width = lv_obj_get_content_width(obj);
       if ((width > 0) && (lv_obj_get_self_width(obj) > width)) {
@@ -1851,6 +1852,10 @@ void UI::reserveLegendColumns(lv_obj_t *page) {
     // box, so padding alone still lets a roller or switch enter the reserved
     // strip. Recompute from the page so loading twice cannot shrink it twice.
     lv_obj_set_width(row, lv_obj_get_content_width(page) - reserve);
+    // Menu pages centre their rows on the cross axis. Move the narrowed row
+    // left by the half-width LVGL would otherwise leave on both sides, so the
+    // entire reservation stays beside the right-hand legend.
+    lv_obj_set_style_translate_x(row, -(reserve / 2), LV_PART_MAIN);
     for (uint32_t j = 0; j < lv_obj_get_child_count(row); j++) {
       lv_obj_t *child = lv_obj_get_child(row, j);
       if ((child != nullptr) && lv_obj_check_type(child, &lv_label_class)
@@ -1875,6 +1880,7 @@ void UI::reserveLegendColumns(lv_obj_t *page) {
       continue;
     }
     lv_obj_set_width(row, lv_obj_get_content_width(page) - reserve);
+    lv_obj_set_style_translate_x(row, -(reserve / 2), LV_PART_MAIN);
   }
 }
 
@@ -3770,6 +3776,18 @@ UI::spin_rows_t UI::measureSpinRows(void) {
     if (text == nullptr) {
       return static_cast<uint32_t>(0);
     }
+    if ((lv_label_get_long_mode(label) == LV_LABEL_LONG_WRAP) && (width > 0)) {
+      lv_point_t required = {0, 0};
+      const lv_font_t *font = lv_obj_get_style_text_font(label, LV_PART_MAIN);
+      lv_text_get_size(&required, text, font == nullptr ? LV_FONT_DEFAULT : font,
+                       lv_obj_get_style_text_letter_space(label, LV_PART_MAIN),
+                       lv_obj_get_style_text_line_space(label, LV_PART_MAIN), width,
+                       LV_TEXT_FLAG_NONE);
+      if ((required.x <= width) && (required.y <= lv_obj_get_content_height(label))) {
+        return static_cast<uint32_t>(std::char_traits<char>::length(text));
+      }
+      return static_cast<uint32_t>(0);
+    }
     // A label at its natural width shows all of its text, whatever the per
     // glyph rounding of the prefix walk below says. Only a label narrower than
     // its own text loses characters.
@@ -3887,7 +3905,19 @@ uint32_t UI::countCutLabels(void) {
         const auto longMode = lv_label_get_long_mode(obj);
         const bool scrolls =
             (longMode == LV_LABEL_LONG_SCROLL) || (longMode == LV_LABEL_LONG_SCROLL_CIRCULAR);
-        bool tooNarrow = !scrolls && (width > 0) && (lv_obj_get_self_width(obj) > width);
+        bool cutByOwnBox = false;
+        if ((longMode == LV_LABEL_LONG_WRAP) && (width > 0)) {
+          lv_point_t required = {0, 0};
+          const char *text = lv_label_get_text(obj);
+          const lv_font_t *font = lv_obj_get_style_text_font(obj, LV_PART_MAIN);
+          lv_text_get_size(
+              &required, text == nullptr ? "" : text, font == nullptr ? LV_FONT_DEFAULT : font,
+              lv_obj_get_style_text_letter_space(obj, LV_PART_MAIN),
+              lv_obj_get_style_text_line_space(obj, LV_PART_MAIN), width, LV_TEXT_FLAG_NONE);
+          cutByOwnBox = (required.x > width) || (required.y > lv_obj_get_content_height(obj));
+        } else {
+          cutByOwnBox = !scrolls && (width > 0) && (lv_obj_get_self_width(obj) > width);
+        }
         // Position against the parent's clipping box. Padding affects layout,
         // not clipping, so content coordinates are too strict here.
         // A label whose text fits
@@ -3902,7 +3932,7 @@ uint32_t UI::countCutLabels(void) {
           clippedByParent = (drawn.x1 < parentBox.x1) || (drawn.x2 > parentBox.x2)
                             || (drawn.y1 < parentBox.y1) || (drawn.y2 > parentBox.y2);
         }
-        if (tooNarrow || clippedByParent) {
+        if (cutByOwnBox || clippedByParent) {
           cut++;
         }
       }
@@ -8076,6 +8106,9 @@ lv_obj_t *UI::addSpinItem(lv_obj_t *page, const char *item, Intervalometer::Spin
   // Both labels keep their natural width for the row's line-break decision.
   // When they do not fit together, ROW_WRAP moves the value to the next line.
   lv_obj_set_width(spinner.m_Label, LV_SIZE_CONTENT);
+  lv_obj_set_style_max_width(spinner.m_Label, LV_PCT(100), 0);
+  lv_label_set_long_mode(spinner.m_Label, LV_LABEL_LONG_WRAP);
+  lv_obj_add_flag(spinner.m_Label, LV_OBJ_FLAG_USER_1);
 
   spinner.m_Value = lv_label_create(spinner.m_Button);
   // Usually at its natural width, right of the name. Cap an exceptionally wide
@@ -8084,6 +8117,9 @@ lv_obj_t *UI::addSpinItem(lv_obj_t *page, const char *item, Intervalometer::Spin
   // and repaints the row every frame for as long as the page is open.
   lv_obj_set_style_max_width(spinner.m_Value, LV_PCT(100), 0);
   lv_label_set_long_mode(spinner.m_Value, LV_LABEL_LONG_WRAP);
+  // reserveLegendColumns() normally turns a wrapped row label into a circular
+  // scroller. This value deliberately wraps to preserve every digit and unit.
+  lv_obj_add_flag(spinner.m_Value, LV_OBJ_FLAG_USER_1);
   lv_obj_set_style_text_align(spinner.m_Value, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
 
   lv_obj_add_event_cb(
