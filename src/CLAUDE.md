@@ -124,6 +124,10 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   zero. Do not relayout rows from a scroll callback.
   `ui.indicator_clearance` is still the check, and it has to hold in both
   placements.
+  Plus/S3 spin rows keep their vertical padding but spend no horizontal pixels:
+  at Large text `999 mins` needs the full 103 px narrowed row width. Four pixels
+  of horizontal padding make that complete value wrap and push the Bulb page
+  past its viewport.
   Scan advertisements are copied by `Scan` and drained on this task before
   `CameraList` or LVGL is touched; keep scan start unlocked around controller
   calls so the watchdog and callback handoff remain responsive.

@@ -747,6 +747,37 @@ The first scenario draft incorrectly assumed that reopening the already-current
 Connected page reset LVGL's retained focus. The final walk instead uses the
 physical previous button from Disconnect back to Cameras before selecting it.
 
+### Final measured geometry corrections
+
+The integrated layouts exposed three independent fixed-size assumptions. On
+80x160 Text Size, a `SPACE_EVENLY` container fixed to the viewport put the
+roller at y=12..79 over the wrapped warning at y=60..131. The container now
+uses content height so the two widgets participate in normal vertical layout
+and the page provides any needed scroll. At
+`83fd5afe16fec60f836d2eed38a0fcb11f3a1463`, the two focused Text Size
+scenarios and the physical-button walk passed.
+
+The Core Home grid had 95 px fixed tracks while its wrapped Connect and
+Settings labels extended 5 px beyond their cells. Content-sized grid tracks and
+cells retain the icon, padding and selected font while allowing the complete
+two-line labels to determine row height. At the same commit, the Core overflow
+sweep and supplemental touch Home fit scenario passed.
+
+The S3 Bulb trace found a different boundary: the narrowed Duration row had
+99 px of content, while the Large-font value `999 mins` needs 103 px. Its four
+horizontal padding pixels alone forced the value into a 55x48 two-line box and
+left the page 12 px below its viewport. `ec6bf267e2c063492de85cb4216633f434903b3d`
+keeps the vertical padding and gives those four horizontal pixels back. This is
+an exact measured source correction; repeat Bulb runtime validation remains a
+release gate until recorded here.
+
+Finally, the original physical 80x160 Sensors contract is intentional vertical
+scrolling, not strict fit; its documented fixture measured 7 px. Shared physical
+scenarios now check whole labels and reachable top/bottom endpoints, including
+the repeated visit in the Small-text route and the live IMU gate. Two touch-only
+companions retain the original strict-fit evidence at Default and Small text
+sizes. No font, icon or gesture assertion was removed.
+
 ## Deviations
 
 The plan as first drafted proposed dropping the Infrared entry from the 135x240

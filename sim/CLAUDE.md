@@ -676,6 +676,11 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   panel builds. The CI matrix uses the same script for 80x160 M5StickC,
   135x240 M5StickS3, and 320x240 M5Stack Core, so a page that only fails on a
   particular geometry cannot hide behind a single reference panel.
+- Physical 80x160 Sensors is one of those intentional-scroll pages: the measured
+  fixture leaves 7 px to scroll. Its shared scenarios assert complete labels
+  at the top, bottom and restored top. `touch-sensors-default-fit` and
+  `touch-sensors-small-fit` retain the stricter no-overflow contract in
+  explicitly touch-guarded supplemental lanes.
 - `sim/scenarios/bughunt/overflow-sweep.txt` is the complementary layout audit.
   It visits every reachable root, settings, diagnostics, capability, and
   connected-session page, asserts fit for compact pages, and prints the
