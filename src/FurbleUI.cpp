@@ -8691,24 +8691,22 @@ void UI::addBulbMenu(const menu_t &parent) {
 void UI::addDisplayMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_DisplayStr, &icon_settings_brightness, true, parent);
   lv_obj_t *cont = lv_menu_cont_create(menu.page);
-#if defined(FURBLE_M5STICKC) || defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
-  // Let the page scroll when these seven widgets exceed a Stick viewport.
-  // Pinning the container to the viewport made SPACE_EVENLY use negative space
-  // and draw adjacent controls over one another.
-  lv_obj_set_height(cont, LV_SIZE_CONTENT);
-  lv_obj_set_style_pad_top(cont, 0, LV_STATE_DEFAULT);
-  lv_obj_set_style_pad_bottom(cont, 0, LV_STATE_DEFAULT);
-  lv_obj_set_style_pad_row(cont, 0, LV_STATE_DEFAULT);
-#else
-  lv_obj_set_height(cont, LV_PCT(100));
-#endif
+  if (!M5.Touch.isEnabled()) {
+    // Let the page scroll when these seven widgets exceed a button-only
+    // viewport, including the M5Stack Core simulator's physical-key layout.
+    // Pinning the container to the viewport made SPACE_EVENLY use negative space
+    // and draw adjacent controls over one another.
+    lv_obj_set_height(cont, LV_SIZE_CONTENT);
+    lv_obj_set_style_pad_top(cont, 0, LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_bottom(cont, 0, LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_row(cont, 0, LV_STATE_DEFAULT);
+  } else {
+    lv_obj_set_height(cont, LV_PCT(100));
+  }
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
-#if defined(FURBLE_M5STICKC) || defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
-  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-#else
-  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
-                        LV_FLEX_ALIGN_CENTER);
-#endif
+  lv_obj_set_flex_align(cont,
+                        M5.Touch.isEnabled() ? LV_FLEX_ALIGN_SPACE_EVENLY : LV_FLEX_ALIGN_START,
+                        LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
   // Add brightness control
   lv_obj_t *label = lv_label_create(cont);
@@ -8776,17 +8774,13 @@ void UI::addDisplayMenu(const menu_t &parent) {
   addToInputGroup(m_Group, roller);
   lv_roller_set_options(roller, "Never\n30 secs\n60 secs\n2 mins\n5 mins\n10 mins",
                         LV_ROLLER_MODE_INFINITE);
-#if defined(FURBLE_M5STICKC) || defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
   // One visible option, not two. This page carries a slider, two rollers, a
   // checkbox row and on some boards a calibration button in a container pinned
   // to the page height, and the second row of each roller is what tipped it
   // over: with no free space left SPACE_EVENLY stacks the rows on top of each
   // other, which is the ten overlapping pairs this page drew at Normal. One row
   // still shows the selected option and the encoder still scrolls the rest.
-  lv_roller_set_visible_row_count(roller, 1);
-#else
-  lv_roller_set_visible_row_count(roller, 2);
-#endif
+  lv_roller_set_visible_row_count(roller, M5.Touch.isEnabled() ? 2 : 1);
   uint8_t inactivity = Settings::load<Settings::INACTIVITY>();
   lv_roller_set_selected(roller, inactivityIndex(inactivity), LV_ANIM_ON);
 
@@ -8818,17 +8812,13 @@ void UI::addDisplayMenu(const menu_t &parent) {
   lv_roller_set_options(roller,
                         M5.Touch.isEnabled() ? m_DisplayOffTouchOptions : m_DisplayOffOptions,
                         LV_ROLLER_MODE_INFINITE);
-#if defined(FURBLE_M5STICKC) || defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
   // One visible option, not two. This page carries a slider, two rollers, a
   // checkbox row and on some boards a calibration button in a container pinned
   // to the page height, and the second row of each roller is what tipped it
   // over: with no free space left SPACE_EVENLY stacks the rows on top of each
   // other, which is the ten overlapping pairs this page drew at Normal. One row
   // still shows the selected option and the encoder still scrolls the rest.
-  lv_roller_set_visible_row_count(roller, 1);
-#else
-  lv_roller_set_visible_row_count(roller, 2);
-#endif
+  lv_roller_set_visible_row_count(roller, M5.Touch.isEnabled() ? 2 : 1);
   uint8_t displayOff = m_DisplayOffMode;
   if (displayOff > 2) {
     displayOff = 0;
