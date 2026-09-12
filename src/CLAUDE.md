@@ -111,7 +111,9 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
 - `FurbleWebUI`: HTTPS-only browser and REST surface. Keep it fail closed on
   password or TLS identity errors. Camera actions stay on `UI::sendRequest`,
   settings stay on `Provision::apply`, and held releases remain owned until the
-  Control queue accepts them or the camera session ends.
+  Control queue accepts them or the camera session ends. Complete Control
+  session replacement expires held ownership by generation, including when
+  disconnect and reconnect both occur between WebUI supervisor polls.
 - `FurbleUI*`: LVGL UI. Respect the changed-check rule for periodic setters.
   Camera list rows wrap (`LV_LABEL_LONG_WRAP`); only icon menu rows scroll. A
   circular scroll on a row wider than the panel animates forever and

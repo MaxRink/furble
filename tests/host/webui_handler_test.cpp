@@ -13,9 +13,9 @@ namespace {
 int failures = 0;
 const std::map<std::string, std::string> validHeaders = {
     {"Authorization", "Basic ZnVyYmxlOmNvcnJlY3QgaG9yc2U="},
-    {"Content-Type",  "application/json"                        },
-    {"Host",          "furble.test"                             },
-    {"Origin",        "https://furble.test"                     },
+    {"Content-Type",  "application/json"                  },
+    {"Host",          "furble.test"                       },
+    {"Origin",        "https://furble.test"               },
 };
 
 void check(bool condition, const char *message) {
@@ -62,8 +62,7 @@ int main() {
 
   auto wrongType = validHeaders;
   wrongType["Content-Type"] = "text/plain";
-  check(shutter(R"({"action":"press"})", wrongType).responseStatus
-            == "415 Unsupported Media Type",
+  check(shutter(R"({"action":"press"})", wrongType).responseStatus == "415 Unsupported Media Type",
         "non-JSON shutter mutation was accepted");
 
   check(shutter(R"({"action":"hold","ms":1000})").responseStatus == "200 OK",
@@ -87,8 +86,7 @@ int main() {
   const size_t beforeRejectedHold = control.commands.size();
   check(shutter(R"({"action":"hold","ms":100})").responseStatus == "409 Conflict",
         "new hold was accepted while release remained pending");
-  check(control.commands.size() == beforeRejectedHold,
-        "pending-release hold reached Control");
+  check(control.commands.size() == beforeRejectedHold, "pending-release hold reached Control");
   control.deliveries.push_back({true, true});
   host_webui_timer::advance(20 * 1000);
   webui.hostServiceTimerEvents();
@@ -103,17 +101,34 @@ int main() {
   check(control.commands.back() == Control::CMD_SHUTTER_RELEASE,
         "1 ms hold expiry was lost when timer arming consumed time");
 
+  check(shutter(R"({"action":"press"})").responseStatus == "200 OK",
+        "plain press before session replacement was rejected");
+  const size_t beforeReplacementPress = control.commands.size();
+  control.state = Control::STATE_IDLE;
+  control.targets = 0;
+  control.connected = 0;
+  control.session++;
+  control.state = Control::STATE_ACTIVE;
+  control.targets = 1;
+  control.connected = 1;
+  check(shutter(R"({"action":"press"})").responseStatus == "200 OK",
+        "plain press after session replacement was rejected");
+  check(control.commands.size() == beforeReplacementPress + 1
+            && control.commands.back() == Control::CMD_SHUTTER_PRESS,
+        "session replacement reused stale held ownership instead of sending a press");
+
   size_t shutdownCommands = control.commands.size();
   std::string shutdownStatus;
-  host_webui_http::setStopHook([&]() {
-    shutdownStatus = shutter(R"({"action":"press"})").responseStatus;
-  });
+  host_webui_http::setStopHook(
+      [&]() { shutdownStatus = shutter(R"({"action":"press"})").responseStatus; });
   webui.hostStopServer();
   check(shutdownStatus == "409 Conflict", "handler admitted a press during shutdown");
-  check(control.commands.size() == shutdownCommands,
-        "shutdown-racing press reached Control after admission closed");
+  check(control.commands.size() == shutdownCommands + 1
+            && control.commands.back() == Control::CMD_SHUTTER_RELEASE,
+        "shutdown did not release the replacement session without admitting its racing press");
 
-  if (failures != 0) return 1;
+  if (failures != 0)
+    return 1;
   std::cout << "webui_handler_test: PASS\n";
   return 0;
 }

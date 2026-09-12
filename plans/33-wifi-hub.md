@@ -1122,6 +1122,8 @@ exercise an authenticated handler through these sequences:
 5. bad Basic credentials, cross-origin JSON, non-JSON mutation and body timeout;
 6. queue saturation while one target reconnects, proving release ownership is
    retained until every session target accepts it or the session is removed.
+7. plain press, complete camera-session replacement between supervisor polls,
+   then another plain press, proving held ownership does not cross sessions.
 
 The lightweight host policy test does not claim those production handler,
 timer or shutdown paths.

@@ -81,6 +81,7 @@ class WebUI {
   bool queuePress(Control::cmd_t command, uint8_t heldBit);
   bool queueRelease(Control::cmd_t command, uint8_t heldBit);
   bool queueHold(uint32_t durationMs);
+  bool syncCommandSession(uint32_t session);
   void releaseAll(void);
   void retryReleases(void);
   static void holdTimerCallback(void *arg);
@@ -105,6 +106,7 @@ class WebUI {
   bool m_Reload = false;
   uint8_t m_Held = 0;
   uint8_t m_ReleasePending = 0;
+  uint32_t m_CommandSession = 0;
   std::string m_Certificate;
   std::string m_PrivateKey;
 

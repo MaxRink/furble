@@ -34,6 +34,7 @@ class Control {
   struct command_delivery_t {
     bool any;
     bool all;
+    uint32_t session = 0;
   };
 
   static Control &getInstance() {
@@ -43,7 +44,11 @@ class Control {
   state_t getState() const { return state; }
   uint8_t getTargetCount() const { return targets; }
   uint8_t getConnectedTargetCount() const { return connected; }
-  command_delivery_t sendCameraCommand(cmd_t command) {
+  uint32_t getSessionGeneration() const { return session; }
+  command_delivery_t sendCameraCommand(cmd_t command, uint32_t expectedSession = UINT32_MAX) {
+    if ((expectedSession != UINT32_MAX) && (expectedSession != session)) {
+      return {false, false, session};
+    }
     commands.push_back(command);
     if (beforeDelivery) {
       beforeDelivery(command);
@@ -51,15 +56,16 @@ class Control {
     if (!deliveries.empty()) {
       const auto delivery = deliveries.front();
       deliveries.erase(deliveries.begin());
-      return delivery;
+      return {delivery.any, delivery.all, session};
     }
-    return {true, true};
+    return {true, true, session};
   }
   void setPower(esp_power_level_t) {}
   void reset() {
     state = STATE_ACTIVE;
     targets = 1;
     connected = 1;
+    session = 1;
     commands.clear();
     deliveries.clear();
     beforeDelivery = {};
@@ -68,6 +74,7 @@ class Control {
   state_t state = STATE_ACTIVE;
   uint8_t targets = 1;
   uint8_t connected = 1;
+  uint32_t session = 1;
   std::vector<cmd_t> commands;
   std::vector<command_delivery_t> deliveries;
   std::function<void(cmd_t)> beforeDelivery;
@@ -270,7 +277,9 @@ struct ApplyOptions {
 inline bool apply(const ProvisionTLV::ProvisionBundle &, ApplyReport &, const ApplyOptions &) {
   return true;
 }
-inline const char *applyErrorString(ApplyError) { return "apply failed"; }
+inline const char *applyErrorString(ApplyError) {
+  return "apply failed";
+}
 }  // namespace Provision
 
 }  // namespace Furble

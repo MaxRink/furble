@@ -218,6 +218,10 @@ void WebUI::task(void) {
 }
 
 void WebUI::serviceTimerEvents(void) {
+  {
+    const std::lock_guard<std::recursive_mutex> commandLock(m_CommandMutex);
+    syncCommandSession(Control::getInstance().getSessionGeneration());
+  }
   const uint8_t timerEvents = m_TimerEvents.exchange(0);
   if ((timerEvents & TIMER_HOLD) != 0) {
     const std::lock_guard<std::recursive_mutex> commandLock(m_CommandMutex);
@@ -358,8 +362,7 @@ bool WebUI::createIdentity(void) {
     result = mbedtls_x509write_crt_set_serial_raw(&certificate, serial.data(), serial.size());
   }
   if (result == 0) {
-    result = mbedtls_x509write_crt_set_validity(&certificate, "20240101000000",
-                                                "20501231235959");
+    result = mbedtls_x509write_crt_set_validity(&certificate, "20240101000000", "20501231235959");
   }
   if (result == 0) {
     result = mbedtls_x509write_crt_set_basic_constraints(&certificate, false, -1);
@@ -410,8 +413,9 @@ void WebUI::logCertificateFingerprint(void) const {
   char text[digest.size() * 3] = {};
   size_t offset = 0;
   for (size_t index = 0; index < digest.size(); index++) {
-    offset += static_cast<size_t>(std::snprintf(text + offset, sizeof(text) - offset, "%02X%s",
-                                                digest[index], index + 1 == digest.size() ? "" : ":"));
+    offset +=
+        static_cast<size_t>(std::snprintf(text + offset, sizeof(text) - offset, "%02X%s",
+                                          digest[index], index + 1 == digest.size() ? "" : ":"));
   }
   ESP_LOGI(LOG_TAG, "TLS certificate SHA-256 %s", text);
 }
@@ -512,8 +516,7 @@ bool WebUI::verifyBasic(const std::string &header) {
   std::vector<unsigned char> decoded(encoded.size() + 1, 0);
   size_t decodedLength = 0;
   if (mbedtls_base64_decode(decoded.data(), decoded.size(), &decodedLength,
-                            reinterpret_cast<const unsigned char *>(encoded.data()),
-                            encoded.size())
+                            reinterpret_cast<const unsigned char *>(encoded.data()), encoded.size())
       != 0) {
     std::fill(encoded.begin(), encoded.end(), '\0');
     return false;
@@ -547,10 +550,10 @@ bool WebUI::verifyBasic(const std::string &header) {
     auth.onConnected();
     started = auth.begin(nonce);
   }
-  const bool computed = started
-                        && companionHmacSha256(
-                            reinterpret_cast<const uint8_t *>(supplied.data()), supplied.size(),
-                            nonce.data(), nonce.size(), digest.data(), digest.size());
+  const bool computed =
+      started
+      && companionHmacSha256(reinterpret_cast<const uint8_t *>(supplied.data()), supplied.size(),
+                             nonce.data(), nonce.size(), digest.data(), digest.size());
   const bool valid = computed
                      && (auth.respond(digest.data(), CompanionAuth::RESPONSE_SIZE)
                          == CompanionAuth::response_t::AUTHENTICATED);
@@ -612,7 +615,8 @@ bool WebUI::requestAllowed(httpd_req_t *request, bool mutation) {
 void WebUI::setSecurityHeaders(httpd_req_t *request) {
   httpd_resp_set_hdr(request, "Cache-Control", "no-store");
   httpd_resp_set_hdr(request, "Content-Security-Policy",
-                     "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-ancestors 'none'");
+                     "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
+                     "frame-ancestors 'none'");
   httpd_resp_set_hdr(request, "X-Content-Type-Options", "nosniff");
   httpd_resp_set_hdr(request, "Referrer-Policy", "no-referrer");
 }
@@ -673,7 +677,8 @@ esp_err_t WebUI::handleStatus(httpd_req_t *request) {
 
 esp_err_t WebUI::handleCamerasGet(httpd_req_t *request) {
   auto *self = static_cast<WebUI *>(request->user_ctx);
-  return self->requestAllowed(request, false) ? sendJSON(request, self->buildCamerasJSON()) : ESP_OK;
+  return self->requestAllowed(request, false) ? sendJSON(request, self->buildCamerasJSON())
+                                              : ESP_OK;
 }
 
 esp_err_t WebUI::handleCamerasPost(httpd_req_t *request) {
@@ -711,7 +716,7 @@ esp_err_t WebUI::handleShutter(httpd_req_t *request) {
 esp_err_t WebUI::handleSettingsGet(httpd_req_t *request) {
   auto *self = static_cast<WebUI *>(request->user_ctx);
   return self->requestAllowed(request, false) ? sendJSON(request, self->buildSettingsJSON())
-                                               : ESP_OK;
+                                              : ESP_OK;
 }
 
 esp_err_t WebUI::handleSettingsPost(httpd_req_t *request) {
@@ -896,6 +901,7 @@ bool WebUI::queuePress(Control::cmd_t command, uint8_t heldBit) {
   if (control.getState() != Control::STATE_ACTIVE) {
     return false;
   }
+  syncCommandSession(control.getSessionGeneration());
   bool held = false;
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
@@ -917,7 +923,9 @@ bool WebUI::queuePress(Control::cmd_t command, uint8_t heldBit) {
   if (!delivery.any) {
     return false;
   }
+  syncCommandSession(delivery.session);
   const std::lock_guard<std::mutex> lock(m_Mutex);
+  m_CommandSession = delivery.session;
   m_Held |= heldBit;
   m_ReleasePending &= ~heldBit;
   return true;
@@ -931,12 +939,25 @@ bool WebUI::queueRelease(Control::cmd_t command, uint8_t heldBit) {
       esp_timer_stop(m_HoldTimer);
     }
   }
+  const uint32_t currentSession = Control::getInstance().getSessionGeneration();
+  if (syncCommandSession(currentSession)) {
+    return true;
+  }
+  uint32_t commandSession = 0;
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
+    if (((m_Held | m_ReleasePending) & heldBit) == 0) {
+      return true;
+    }
     m_ReleasePending |= heldBit;
+    commandSession = m_CommandSession;
   }
   const Control::command_delivery_t delivery =
-      Control::getInstance().sendCameraCommand(command);
+      Control::getInstance().sendCameraCommand(command, commandSession);
+  if (delivery.session != commandSession) {
+    syncCommandSession(delivery.session);
+    return true;
+  }
   if (delivery.all) {
     const std::lock_guard<std::mutex> lock(m_Mutex);
     m_Held &= ~heldBit;
@@ -967,6 +988,30 @@ bool WebUI::queueHold(uint32_t durationMs) {
     m_HoldDeadlineUs.store(0);
     queueRelease(Control::CMD_SHUTTER_RELEASE, HELD_SHUTTER);
     return false;
+  }
+  return true;
+}
+
+bool WebUI::syncCommandSession(uint32_t session) {
+  bool stale = false;
+  {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    stale = ((m_Held | m_ReleasePending) != 0) && (m_CommandSession != session);
+    if (stale) {
+      m_Held = 0;
+      m_ReleasePending = 0;
+      m_CommandSession = session;
+    }
+  }
+  if (!stale) {
+    return false;
+  }
+  m_HoldDeadlineUs.store(0);
+  if ((m_HoldTimer != nullptr) && esp_timer_is_active(m_HoldTimer)) {
+    esp_timer_stop(m_HoldTimer);
+  }
+  if ((m_ReleaseTimer != nullptr) && esp_timer_is_active(m_ReleaseTimer)) {
+    esp_timer_stop(m_ReleaseTimer);
   }
   return true;
 }
@@ -1066,7 +1111,8 @@ bool WebUI::applySettings(const std::string &body, std::string &error) {
   }
   const cJSON *idJSON = cJSON_GetObjectItemCaseSensitive(root, "id");
   uint32_t id = 0;
-  if (!cJSON_IsNumber(idJSON) || !WebUIProtocol::unsignedInteger(idJSON->valuedouble, UINT8_MAX, id)) {
+  if (!cJSON_IsNumber(idJSON)
+      || !WebUIProtocol::unsignedInteger(idJSON->valuedouble, UINT8_MAX, id)) {
     cJSON_Delete(root);
     error = "setting id must be an integer from 0 through 255";
     return false;

@@ -10,6 +10,9 @@ Public headers for the app layer in src/, one header per module
 - Doxygen-style comments on public members, matching the existing files.
 - `FurbleControl::setPower` is the user-selected maximum for Bluetooth transmit
   power. Adaptive runtime changes must stay at or below that cap.
+- `FurbleControl::sendCameraCommand()` returns the complete target-set session
+  generation captured with delivery. Expected-session releases must fail when
+  the whole session has been replaced.
 - `FurbleGPS` exposes the CASIC binary test path and AID-INI injection as
   documented public methods. Keep their wire format comments next to the API.
 - `FurbleSD.h` and `FurbleGPX.h`: all SD and GPX file I/O runs on the SD
@@ -106,4 +109,5 @@ the reservations only after checking every open PR head.
   firmware builds retain the production header surface.
 - FurbleWiFi.h exposes station provisioning and NTP status for the app layer.
 - `FurbleWebUI.h` owns the HTTPS supervisor and release-retry state. The pure
-  ingress checks in `FurbleWebUIProtocol.h` are shared with host coverage.
+  ingress checks in `FurbleWebUIProtocol.h` are shared with host coverage. Held
+  ownership never crosses a complete Control session replacement.

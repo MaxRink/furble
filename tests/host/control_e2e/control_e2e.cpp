@@ -232,8 +232,7 @@ bool scenarioFreshConnect() {
   const auto status = control.getTargetStatus();
   check(status.size() == 1, "target status has one camera");
   if (status.size() == 1) {
-    check(status.front().id == Control::getCameraID(*camera),
-          "target status has stable camera id");
+    check(status.front().id == Control::getCameraID(*camera), "target status has stable camera id");
     check(status.front().name == camera->getName(), "target status has camera name");
     check(status.front().type == camera->getType(), "target status has camera type");
     check(status.front().connected, "target status reports the live link");
@@ -345,6 +344,7 @@ bool scenarioDeadCameraDisconnectNoFreeze() {
 bool scenarioConnectAfterDeadDisconnect() {
   freshEnvironment();
   auto &control = Control::getInstance();
+  uint32_t replacedSession = 0;
 
   {
     FujifilmVirtualCamera peer;
@@ -352,12 +352,15 @@ bool scenarioConnectAfterDeadDisconnect() {
     control.addActive(camera);
     control.connectAll(false);
     check(waitForState(Control::STATE_ACTIVE, 5000), "first connect active");
+    replacedSession = control.getSessionGeneration();
     NimBLEClient *client = NimBLEDevice::lastClient();
     if (client != nullptr) {
       client->mockDropLink(0x08, /*fire_callback=*/false);
     }
     boundedDeadDisconnect(client);
     check(waitForState(Control::STATE_IDLE, 3000), "dead disconnect back to idle");
+    check(control.getSessionGeneration() != replacedSession,
+          "complete disconnect advances the target-set session");
   }
 
   // Fresh environment for the live camera (drops the connect-fail state).
@@ -373,6 +376,24 @@ bool scenarioConnectAfterDeadDisconnect() {
   check(active, "reconnect after dead disconnect reaches active");
   check(elapsed < 2500, "connect after dead disconnect completes within ~2 s");
   check(control.getConnectedTargetCount() == 1, "connected after dead disconnect");
+
+  const uint32_t currentSession = control.getSessionGeneration();
+  peer.clearEvents();
+  const auto staleDelivery = control.sendCameraCommand(Control::CMD_SHUTTER_PRESS, replacedSession);
+  check(!staleDelivery.any && !staleDelivery.all && staleDelivery.session == currentSession,
+        "replacement session rejects its predecessor's command");
+  Furble::TestSync::reset();
+  Furble::TestSync::armBarrier("target_command_complete", 2000);
+  const auto currentDelivery =
+      control.sendCameraCommand(Control::CMD_SHUTTER_PRESS, currentSession);
+  check(currentDelivery.any && currentDelivery.all && currentDelivery.session == currentSession,
+        "replacement session accepts its own command");
+  const bool commandComplete = Furble::TestSync::awaitArrival("target_command_complete", 2000);
+  check(commandComplete, "replacement session completes its camera command");
+  if (commandComplete) {
+    check(shutterWriteCount(peer) >= 2, "replacement session writes the shutter");
+  }
+  Furble::TestSync::release("target_command_complete");
 
   control.disconnect();
   waitForState(Control::STATE_IDLE, 2000);
