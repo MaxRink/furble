@@ -506,7 +506,9 @@ classes. The simulator renders each at its native resolution. This gallery is a
 representative sample of the boards x themes matrix; the full per page capture for
 every cell lives under `docs/img/<board>/<theme>/`. The narrow Stick panels use
 the non-touch layout (physical L / OK / R button indicators are always on
-screen); the Core is a touch panel and shows the on-screen touch controls.
+screen); the Core gallery models the physical-button M5Stack Core Basic. Core2
+touch behavior remains covered by supplemental simulator scenarios, not these
+hardware-labelled captures.
 
 ### M5StickS3, M5StickC-Plus (135x240)
 
@@ -528,7 +530,7 @@ screen); the Core is a touch panel and shows the on-screen touch controls.
 | ![](img/stickc/default/settings.png) | ![](img/stickc/dark/settings.png) | ![](img/stickc/mono/settings.png) |
 | ![](img/stickc/default/remote.png) | ![](img/stickc/dark/remote.png) | ![](img/stickc/mono/remote.png) |
 
-### M5Stack Core, Core2 (320x240)
+### M5Stack Core Basic (320x240)
 
 ![Boot splash](img/core/boot-splash.png)
 
