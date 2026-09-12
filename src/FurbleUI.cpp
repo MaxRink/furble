@@ -8124,6 +8124,8 @@ lv_obj_t *UI::addSpinItem(lv_obj_t *page, const char *item, Intervalometer::Spin
   // physical-button viewport. Keep the documented narrow-panel padding.
   lv_obj_set_style_pad_top(spinner.m_Button, 2, LV_STATE_DEFAULT);
   lv_obj_set_style_pad_bottom(spinner.m_Button, 2, LV_STATE_DEFAULT);
+  lv_obj_set_style_pad_left(spinner.m_Button, 2, LV_STATE_DEFAULT);
+  lv_obj_set_style_pad_right(spinner.m_Button, 2, LV_STATE_DEFAULT);
 #endif
 
   spinner.m_Label = lv_label_create(spinner.m_Button);
