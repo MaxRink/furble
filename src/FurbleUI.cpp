@@ -2064,6 +2064,12 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
       }
       lv_obj_set_width(label, LV_PCT(100));
       lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
+    } else if (floatingIndicatorReserve() > 0) {
+      // An iconless submenu row has only this label. Keep its box inside the
+      // row after the right legend column is reserved; at natural width
+      // "Constellation" extended through the row padding and was clipped.
+      lv_obj_set_width(label, LV_PCT(100));
+      lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
     }
     lv_obj_add_flag(cont, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_flag(cont, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
@@ -8113,6 +8119,11 @@ lv_obj_t *UI::addSpinItem(lv_obj_t *page, const char *item, Intervalometer::Spin
   // Shutter and Wait rows fit without scrolling the timer page.
   lv_obj_set_style_pad_top(spinner.m_Button, 1, LV_STATE_DEFAULT);
   lv_obj_set_style_pad_bottom(spinner.m_Button, 1, LV_STATE_DEFAULT);
+#elif defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
+  // A wrapped name/value row otherwise pushes the Bulb page below the 189 px
+  // physical-button viewport. Keep the documented narrow-panel padding.
+  lv_obj_set_style_pad_top(spinner.m_Button, 2, LV_STATE_DEFAULT);
+  lv_obj_set_style_pad_bottom(spinner.m_Button, 2, LV_STATE_DEFAULT);
 #endif
 
   spinner.m_Label = lv_label_create(spinner.m_Button);

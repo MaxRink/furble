@@ -256,21 +256,20 @@ by 3 px at 135x240 and 23 px at 80x160.
 
 The row is a `LV_FLEX_FLOW_ROW_WRAP` container holding the setting name and its
 value. On a narrow panel the value takes a second line so both strings remain
-whole; the page owns the resulting vertical scroll. The unit is shortened on
+whole; the row grows to its wrapped content. The unit is shortened on
 the narrow panels, so the wrapped value reads `999 ms`, `999 s` or `999 min`
 rather than losing a suffix.
 
-The 135x240 case was 3 px of padding, so the spin rows there take the same trim
-the 80x160 rows already had, 2 px rather than the theme default. 170 px to
-138 px against a 167 px page.
+The 135x240 case was 3 px of padding, so the spin rows there use 2 px rather
+than the theme default. The shorter 80x160 panel keeps its 1 px padding.
 
 The value label formerly carried `LV_LABEL_LONG_SCROLL_CIRCULAR`, which is
 harmless while the label owns a whole row and animates the moment its box is
 narrower than its text. Measured on the 80x160 timer page over a one second
 probe with the page held still: master 170 invalidations, the first version of
 this change 338. That is the LVGL redraw trap CLAUDE.md warns about, reached by
-a layout change rather than by a setter. Both labels are `LV_LABEL_LONG_CLIP` on
-the narrow panels now and the same probe reads 3.
+a layout change rather than by a setter. Both labels use bounded
+`LV_LABEL_LONG_WRAP` now and the same probe reads 3.
 
 Clipping is only acceptable if nothing important is clipped, and the first
 version of this got that wrong: with the value still the grown label, clipping
