@@ -232,8 +232,7 @@ bool scenarioFreshConnect() {
   const auto status = control.getTargetStatus();
   check(status.size() == 1, "target status has one camera");
   if (status.size() == 1) {
-    check(status.front().id == Control::getCameraID(*camera),
-          "target status has stable camera id");
+    check(status.front().id == Control::getCameraID(*camera), "target status has stable camera id");
     check(status.front().name == camera->getName(), "target status has camera name");
     check(status.front().type == camera->getType(), "target status has camera type");
     check(status.front().connected, "target status reports the live link");
