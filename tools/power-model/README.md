@@ -227,9 +227,14 @@ tracked in issue #285.
   documented here and charged nowhere.
 
 Until they are fixed, `compare.py` is a
-regression guard against a scenario getting worse, not a source of absolute
-numbers. Note also that it only fails on increases, so a baseline cannot catch
-a change that lowers the estimate, such as a timer period going up.
+regression guard against a scenario changing beyond its comparison band, not a
+source of absolute numbers. It applies the threshold in both directions, so a
+large decrease such as a timer period going up is reported as drift instead of
+passing silently. The default 10% threshold is a compatibility policy, not a
+hardware-calibrated noise measurement. Repeated baseline runs must establish a
+real band before a deliberate re-baseline. Reports must contain finite,
+non-negative numeric current values; booleans, negative values, and missing or
+non-finite values are schema errors.
 
 ### Remaining realism gates
 

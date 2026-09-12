@@ -244,8 +244,9 @@ artifact.
 
 The gate, precisely:
 
-- For each scenario, fail if `estimated_mA > baseline_mA * (1 + threshold)`.
-  Threshold starts at 10% and is tuned once a few weeks of reports exist.
+- For each scenario, fail if `estimated_mA > baseline_mA * (1 + threshold)` or
+  `estimated_mA < baseline_mA * (1 - threshold)`. Threshold starts at 10% and
+  is tuned once a few weeks of reports exist.
 - Everything else in the report (per-timer fires, invalidated area, lock
   histograms, duty integrals, residency) is an artifact and a review aid,
   not a gate.
@@ -697,7 +698,34 @@ Until those measurements and tolerances are recorded, simulator power output
 remains relative evidence. It must not be described as 100% physical parity or
 as a quantitative accuracy guarantee.
 
-### Validation boundary for this follow-up
+### Issue #285 comparator follow-up (2026-09-13)
+
+`tools/power-model/compare.py` now treats its default 10% compatibility value as
+a relative comparison threshold on both sides. Values exactly at either
+boundary pass, while a significant increase or decrease returns exit code 1.
+Missing, malformed, non-finite, boolean, or negative report values return
+exit code 2, and the zero-baseline behavior remains unchanged.
+
+Regression coverage is in `tests/test_power_compare.py` for the suspicious 41%
+decrease, increases, exact and just-outside boundaries, zero baselines,
+missing/non-finite/negative inputs, custom thresholds, and invalid
+thresholds. The default is not a measured
+hardware noise floor. Repeated baseline runs must establish a board/model
+specific band before a deliberate re-baseline.
+
+This follow-up changes comparison policy only. Timer callback cost, fixed LVGL
+poll accounting, peripheral attribution, and hardware calibration remain open
+under issue #285. No power-model numbers or accounting were changed.
+
+Comparator validation at `e9afe4a8fcdcfdfa911dd9400472625c1790aadb`:
+
+- Focused comparator suite: 9 tests passed.
+- Full Python suite: 175 tests passed in 7.692 seconds.
+- Independent review accepted the inclusive boundary and input checks.
+- No simulator, firmware, or hardware power measurement was run for this
+  comparator-only follow-up. Existing baselines are unchanged.
+
+### Historical validation boundary for the earlier accounting follow-up
 
 The bounded implementation was validated on the host only: GCC power targets
 built successfully, and the six simulator/GPS power CTest cases passed after
