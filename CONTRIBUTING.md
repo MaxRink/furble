@@ -128,6 +128,11 @@ attempt to infer changed paths without a pull request or push comparison base.
   ctest --test-dir /tmp/furble-host-build --output-on-failure
   ```
 
+- The `tests/host/run_tsan_race.sh` gate fails on any ThreadSanitizer warning
+  or non-zero child status and requires the exact completion line
+  `control-connect-camera-race: PASS`. Check this shell contract without a
+  compiler with `sh tests/host/run_tsan_race_contract.sh`.
+
 - The protocol and camera vector tests live under `tests/protocol` and
   `tests/camera`. CI runs them through `protocol-tests.yml` and
   `camera-tests.yml`.

@@ -568,6 +568,10 @@ integrated tree or of a TSAN binary/runtime.
 The new seven-field source/test/wrapper combination is source-integrated here
 but has not been executed. A future raw TSAN retry/backoff run remains
 explicitly pending; this handoff makes no runtime or hardware claim.
+The compiler-free wrapper contract stays in the normal host CTest set but is
+excluded from `FURBLE_COVERAGE`, because its shell command cannot emit a
+`.profraw` file; the standalone `sh tests/host/run_tsan_race_contract.sh`
+check remains available.
 
 ## Publication update
 

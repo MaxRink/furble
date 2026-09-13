@@ -1802,11 +1802,12 @@ if(BUILD_TESTING)
              COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/run_tsan_race.sh
                      $<TARGET_FILE:control_connect_camera_race_test>)
     set_tests_properties(control-connect-camera-race PROPERTIES TIMEOUT 180)
+    # The shell contract emits no profraw, so keep it out of coverage's CTest
+    # profile inventory while retaining the normal host and standalone checks.
+    add_test(NAME control-tsan-wrapper-contract
+             COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/run_tsan_race_contract.sh)
+    set_tests_properties(control-tsan-wrapper-contract PROPERTIES TIMEOUT 10)
   endif()
-
-  add_test(NAME control-tsan-wrapper-contract
-           COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/run_tsan_race_contract.sh)
-  set_tests_properties(control-tsan-wrapper-contract PROPERTIES TIMEOUT 10)
 
   # Interleaving proof for the DISCONNECTING republish guard (plan 157). The
   # sync-point barriers carry their own timeouts, the ctest timeout is the
