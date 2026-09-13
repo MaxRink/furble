@@ -518,8 +518,10 @@ int main() {
   }
 
   std::string invalid_confidence = accountingModel(700, 1100, 300);
-  if (!replaceFirst(invalid_confidence, "    confidence: estimated\n",
-                    "    confidence: synthetic\n")) {
+  const size_t confidence_section = invalid_confidence.find("  ui_poll_active_us_per_cycle:\n");
+  if (confidence_section == std::string::npos
+      || !replaceFirst(invalid_confidence, "    confidence: estimated\n",
+                       "    confidence: synthetic\n", confidence_section)) {
     return failure(__LINE__);
   }
   const auto invalid_confidence_path = reportDirectory.path() / "invalid-confidence.yaml";
