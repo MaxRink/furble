@@ -667,6 +667,15 @@ extent alone is not a readability test. Large remains clamped on StickC.
 button sample in a StickS3 navigation/select walk. This is not proof of which
 individual setting changed. No sleep/wake behavior is claimed.
 
+The Display scenarios also assert `ui.focus_overlaps` with
+`ui.focus_on_page=yes`. This simulator-only diagnostic expands the focused
+control by its active LVGL main outline width and padding, then compares it
+with unrelated visible content while retaining page visibility/clipping. It
+does not measure slider knob or shadow pixels. The production Display column
+uses an 8 px native row gap to clear the current 3 px outline plus 2 px pad;
+runtime validation of the pre-gap negative and post-gap candidate remains a
+separate gate.
+
 Root's negative control restores only the old Display fixed-height
 `SPACE_EVENLY` layout. The existing physical S3 test fails on Display with
 `ui.label_overlaps expected '0' got '7'`. Root then ran all three dedicated
