@@ -68,7 +68,7 @@ Control::Target::Target(std::shared_ptr<Camera> camera) : m_Camera(std::move(cam
 Control::Target::~Target() {
   vQueueDelete(m_Queue);
   m_Queue = NULL;
-  if (!m_Stopped) {
+  if (!m_Stopped.load(std::memory_order_acquire)) {
     m_Camera->disconnect();
   }
   // Drop this target's strong reference. The Camera is freed here only if no
@@ -177,7 +177,7 @@ void Control::Target::task(void) {
 #endif
   }
 task_exit:
-  m_Stopped = true;
+  m_Stopped.store(true, std::memory_order_release);
   vTaskDelete(NULL);
 }
 
@@ -234,7 +234,9 @@ Control::state_t Control::connectAll(void) {
     // An empty selection must not pass the vacuous allConnected() check below
     // and publish ACTIVE without connecting a camera.
     if (all.empty()) {
-      return (m_ConnectAbort || m_State == STATE_DISCONNECTING) ? STATE_DISCONNECTING : STATE_IDLE;
+      return (m_ConnectAbort || m_State.load(std::memory_order_relaxed) == STATE_DISCONNECTING)
+                 ? STATE_DISCONNECTING
+                 : STATE_IDLE;
     }
     m_ConnectInProgress = true;
   }
@@ -294,7 +296,7 @@ Control::state_t Control::connectAll(void) {
     const std::lock_guard<std::mutex> lock(m_Mutex);
     m_ConnectInProgress = false;
 
-    if (m_ConnectAbort || m_State == STATE_DISCONNECTING) {
+    if (m_ConnectAbort || m_State.load(std::memory_order_relaxed) == STATE_DISCONNECTING) {
       m_ConnectCamera = nullptr;  // caller holds m_Mutex
       // Report the abort, never the state that happened to be published when it
       // was read. disconnect() arms m_ConnectAbort one statement before it
@@ -345,7 +347,8 @@ Control::state_t Control::connectAll(void) {
 
       // Sleep in short slices so disconnect can interrupt the retry wait.
       uint32_t remaining = delay;
-      while (remaining > 0 && !m_ConnectAbort && m_State != STATE_DISCONNECTING) {
+      while (remaining > 0 && !m_ConnectAbort
+             && m_State.load(std::memory_order_relaxed) != STATE_DISCONNECTING) {
         const uint32_t slice = remaining < BACKOFF_SLICE_MS ? remaining : BACKOFF_SLICE_MS;
         vTaskDelay(pdMS_TO_TICKS(slice));
         remaining -= slice;
@@ -353,7 +356,9 @@ Control::state_t Control::connectAll(void) {
     }
     // Same rule as the abort path above: an aborted pass reports the abort, not
     // whatever m_State read at the moment the retry wait was interrupted.
-    return (m_ConnectAbort || m_State == STATE_DISCONNECTING) ? STATE_DISCONNECTING : STATE_CONNECT;
+    return (m_ConnectAbort || m_State.load(std::memory_order_relaxed) == STATE_DISCONNECTING)
+               ? STATE_DISCONNECTING
+               : STATE_CONNECT;
   }
 
   return STATE_CONNECT_FAILED;
@@ -370,7 +375,7 @@ void Control::task(void) {
     cmd_t cmd;
     BaseType_t ret = xQueueReceive(m_Queue, &cmd, pdMS_TO_TICKS(50));
 
-    switch (m_State) {
+    switch (m_State.load(std::memory_order_relaxed)) {
       case STATE_IDLE:
         if (ret == pdTRUE) {
           if (cmd == CMD_CONNECT) {
@@ -622,7 +627,7 @@ bool Control::disconnectComplete(void) {
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
     for (const auto &target : m_Targets) {
-      if (!target->m_Stopped) {
+      if (!target->m_Stopped.load(std::memory_order_acquire)) {
         return false;
       }
       cameras.push_back(target->getCamera());
@@ -646,7 +651,7 @@ bool Control::targetTasksStopped(void) {
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
     for (const auto &target : m_Targets) {
-      if (!target->m_Stopped) {
+      if (!target->m_Stopped.load(std::memory_order_acquire)) {
         return false;
       }
     }
@@ -778,7 +783,7 @@ bool Control::disconnect(uint32_t timeout_ms, bool forRestart) {
         const std::lock_guard<std::mutex> lock(m_Mutex);
         draining = m_Targets.size();
         for (const auto &target : m_Targets) {
-          if (target->m_Stopped) {
+          if (target->m_Stopped.load(std::memory_order_acquire)) {
             continue;
           }
           if (!unstopped.empty()) {
@@ -850,7 +855,7 @@ bool Control::disconnect(uint32_t timeout_ms, bool forRestart) {
     if (!completed) {
       m_ZombieDeadline = xTaskGetTickCount() + pdMS_TO_TICKS(DISCONNECT_DRAIN_RECLAIM_MS);
       for (auto &target : m_Targets) {
-        if (!target->m_Stopped) {
+        if (!target->m_Stopped.load(std::memory_order_acquire)) {
           m_ZombieTargets.push_back(std::move(target));
         }
       }
@@ -888,7 +893,7 @@ void Control::reapZombieTargets(void) {
   const size_t before = m_ZombieTargets.size();
   m_ZombieTargets.erase(std::remove_if(m_ZombieTargets.begin(), m_ZombieTargets.end(),
                                        [pastDeadline](const std::unique_ptr<Target> &target) {
-                                         if (!target->m_Stopped) {
+                                         if (!target->m_Stopped.load(std::memory_order_acquire)) {
                                            return false;
                                          }
                                          auto camera = target->getCamera();
@@ -989,7 +994,7 @@ std::shared_ptr<Camera> Control::getConnectingCamera(void) const {
 }
 
 Control::state_t Control::getState(void) const {
-  return m_State;
+  return m_State.load(std::memory_order_relaxed);
 }
 
 #if defined(FURBLE_CONSOLE) || defined(FURBLE_SIM)
@@ -999,7 +1004,7 @@ Control::debug_state_t Control::getDebugState(void) const {
   // m_State and the volatile abort/progress flags are read without m_StateMutex,
   // mirroring getState(): a debug snapshot tolerates a benign torn read and
   // taking m_StateMutex here would risk a lock ordering hazard against setState().
-  snapshot.state = m_State;
+  snapshot.state = m_State.load(std::memory_order_relaxed);
   snapshot.connectInProgress = m_ConnectInProgress;
   snapshot.connectAbort = m_ConnectAbort;
   snapshot.sleepLockHeld = m_SleepLockHeld;
@@ -1087,13 +1092,14 @@ std::string Control::getDisconnectedName(void) const {
 void Control::setState(state_t state) {
   const std::lock_guard<std::mutex> lock(m_StateMutex);
 
-  if (state == m_State) {
+  const state_t previous = m_State.load(std::memory_order_relaxed);
+  if (state == previous) {
     return;
   }
 
   // State transitions are the backbone of a connect/disconnect trace. Logged at
   // DEBUG so a release build compiles the line out and never spams the monitor.
-  ESP_LOGD(LOG_TAG, "state %s -> %s", stateName(m_State), stateName(state));
+  ESP_LOGD(LOG_TAG, "state %s -> %s", stateName(previous), stateName(state));
 
   // The setting is read once per connect, on the transition into STATE_ACTIVE.
   // Holding the lock keeps the device awake for the whole connection, which is
@@ -1109,7 +1115,7 @@ void Control::setState(state_t state) {
     power.acquire(Power::LockType::NO_LIGHT_SLEEP, POWER_LOCK_OWNER);
   }
 
-  m_State = state;
+  m_State.store(state, std::memory_order_release);
 
   if (!hold && m_SleepLockHeld) {
     power.release(Power::LockType::NO_LIGHT_SLEEP, POWER_LOCK_OWNER);

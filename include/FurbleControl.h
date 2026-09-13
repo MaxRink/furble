@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -57,7 +58,7 @@ class Control {
     void task(void);
 
    protected:
-    volatile bool m_Stopped = false;
+    std::atomic<bool> m_Stopped {false};
 
    private:
     static constexpr UBaseType_t m_QueueLength = 8;
@@ -437,7 +438,7 @@ class Control {
   // reconnect never sets it, so a cancel landing mid-reconnect survives.
   // Guarded by m_Mutex at every access, unlike the volatile session flags above.
   bool m_ClearConnectCancel = false;
-  state_t m_State = STATE_IDLE;
+  std::atomic<state_t> m_State {STATE_IDLE};
 
   // setState() runs from the control task and from the UI task
   std::mutex m_StateMutex;
