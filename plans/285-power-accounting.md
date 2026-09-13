@@ -43,3 +43,14 @@ accounting, exact microsecond fields, and zero pending work; the corrected
 negative diagnostics scenario fails closed after the `about` action and now
 identifies the missing observed-timer cost. Hardware accuracy remains
 unvalidated.
+
+Root subsequently rebuilt the S3 simulator and both profiler host targets at
+`9e35d88d`; all six profiler tests passed in 0.26 seconds and all 188 Python
+tooling tests passed in 2.279 seconds. The live About-page positive control
+recorded two diagnostics timer fires, 202 poll-work microseconds, nine
+timer-work microseconds, exact matching frequency/display residency totals,
+and zero pending work. With only that timer's cost entry removed, the same
+page exited 1, named `diagnostics_timer` in its diagnostic, and wrote no report.
+Earlier `4eb05d68` passed all ten certified legacy baseline comparisons.
+Logs and reports are retained under `~/b/power-9e35-*` and the host log
+`/private/tmp/power-4eb-baseline-gate.log`. CI remains pending for publication.
