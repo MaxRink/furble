@@ -2709,6 +2709,7 @@ void restartProcess(void) {
     case RestartMode::FUZZ: {
       if (!writeFuzzCheckpointForRestart() || unsetenv(RESTART_STEP_ENV) != 0) {
         std::cerr << "fuzz restart failed to prepare checkpoint\n";
+        discardOwnedFuzzCheckpoint();
         std::_Exit(1);
       }
       break;
