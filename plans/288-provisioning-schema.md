@@ -22,6 +22,6 @@ broader CI validation remain separate gates. The duplicate check covers the
 checked-in master settings table; cross-PR collision review remains a rebase-time
 operation because open-head state is external to the repository. Issues #288 and
 #280 remain open until their complete review gates are satisfied. The executable
-reservation mirror rejects duplicate reserved IDs and any reserved ID already
-present in the master settings table, but it does not replace the live open-head
-audit.
+reservation check parses the authoritative ledger instead of duplicating its
+constants, rejects duplicate owners, and requires Master rows to match the
+source table, but it does not replace the live open-head audit.

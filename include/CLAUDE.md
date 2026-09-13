@@ -50,14 +50,15 @@ companion client contract: renumbering one and regenerating its fixtures
 yields a self-consistent corpus that silently breaks every deployed client.
 `tests/protocol/protocol_test.cpp` pins the ids it has been given so that
 renumbering fails the build rather than passing quietly.
-`tests/host/provision_apply_test.cpp` mirrors the reserved open/historical ids
-and rejects a reservation that is already present in the master settings table.
-It cannot inspect GitHub; audit every open head again at rebase time.
+`tests/host/settings_table_test.cpp` parses this table, expands its ranges,
+rejects duplicate owners, and checks Master rows against the actual settings
+table. It cannot inspect GitHub; audit every open head again at rebase time.
 
 | PR | Setting keys | Wire ids |
 | --- | --- | --- |
 | Master | shipped settings | 1-22, 24-35, 37-41, 43-44, 46-47, 51-55, 66-69, 72-74 |
 | Master (conditional) | display, MQTT, S3 watchdog | 23 (`WATCHDOG` on `FURBLE_M5STICKS3`), 36 (`DISPLAY_MODE` without `FURBLE_NO_DISPLAY`), 56-61 (`FURBLE_MQTT`) |
+| Historical claims | compatibility audit required | 42, 45 |
 | #59 | `ivl_sleep`, `ivl_sleep_thr` | 75, 76 |
 | #63 | no setting claim | none |
 | #90 | Web UI settings | 62 |

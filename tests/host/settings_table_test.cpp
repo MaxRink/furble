@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <regex>
 #include <set>
 #include <sstream>
@@ -49,6 +50,33 @@ struct Entry {
   std::string key;
   std::string ns;
 };
+
+struct Reservation {
+  std::string owner;
+  int wire_id;
+};
+
+std::vector<Reservation> parseReservations(const std::string &source) {
+  const std::regex rowPattern(R"(^\|\s*([^|]+)\|[^|]*\|\s*([^|]+)\|\s*$)");
+  const std::regex idPattern(R"(([0-9]+)(-([0-9]+))?)");
+  std::vector<Reservation> reservations;
+  std::istringstream lines(source);
+  std::string line;
+  while (std::getline(lines, line)) {
+    std::smatch row;
+    if (!std::regex_match(line, row, rowPattern) || (row[1] == " PR ") || (row[1] == " --- ")) {
+      continue;
+    }
+    for (std::sregex_iterator it(row[2].first, row[2].second, idPattern), end; it != end; ++it) {
+      const int first = std::stoi((*it)[1].str());
+      const int last = (*it)[3].matched ? std::stoi((*it)[3].str()) : first;
+      for (int wireId = first; wireId <= last; ++wireId) {
+        reservations.push_back({row[1].str(), wireId});
+      }
+    }
+  }
+  return reservations;
+}
 
 // Each table row reads {SYMBOL, wire_id, "Name", "key", NAMESPACE}. The
 // namespace is either the FURBLE_STR macro or a quoted literal. The outer map
@@ -93,6 +121,7 @@ int main(int argc, char **argv) {
   const std::string root = argv[1];
   const std::string source = readText(root + "/src/FurbleSettings.cpp");
   const auto entries = parseTable(source);
+  const auto reservations = parseReservations(readText(root + "/include/CLAUDE.md"));
 
   check(entries.size() >= 20, "the settings table parsed at least twenty rows");
 
@@ -110,6 +139,17 @@ int main(int argc, char **argv) {
       check(exposedIds.insert(entry.wire_id).second,
             entry.symbol + " has a unique exposed wire id");
     }
+  }
+
+  std::map<int, std::string> reservationOwners;
+  for (const auto &reservation : reservations) {
+    check(reservationOwners.emplace(reservation.wire_id, reservation.owner).second,
+          "reservation wire id " + std::to_string(reservation.wire_id) + " has one owner");
+    const bool masterOwner = reservation.owner.find("Master") != std::string::npos;
+    const bool shipped = exposedIds.count(reservation.wire_id) != 0;
+    check(shipped == masterOwner,
+          reservation.owner + " reservation wire id " + std::to_string(reservation.wire_id)
+              + (masterOwner ? " is missing from master" : " is already shipped on master"));
   }
 
   if (g_failures > 0) {
