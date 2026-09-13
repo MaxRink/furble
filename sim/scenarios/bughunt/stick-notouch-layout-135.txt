@@ -74,12 +74,44 @@ action scroll top
 wait 200
 assert ui.scroll_top 0
 
-# Timer settings list.
+# Timer settings list. The timed-wake rows make this physical-button layout
+# scroll on the 135x240 timed-wake board; timer-overflow-timed-wake owns that
+# capability-specific overflow contract.
+assert platform.timed_wake yes
 action page settings
 action nav timer
 wait 150
 assert ui.page timer
-assert ui.overflow no
+assert ui.row_text Count
+button b
+wait 100
+assert ui.row_text Delay
+button b
+wait 100
+assert ui.row_text Shutter
+button b
+wait 100
+assert ui.row_text Wait
+button b
+wait 100
+assert ui.row_text Deep_Sleep
+assert ui.focus_on_page yes
+# LVGL bounds automatic focus scrolling at 200-400 ms. Keep UI ticks running
+# until that animation settles before requiring the whole control and label.
+assert-eventually-virtual 500 ui.focus_visible yes
+assert ui.indicator_clearance clear
+button a
+wait 100
+button b
+wait 100
+assert ui.row_text Sleep_Threshold
+assert ui.focus_on_page yes
+assert-eventually-virtual 500 ui.focus_visible yes
+assert ui.indicator_clearance clear
+assert ui.overflow yes
+button pwr hold
+wait 100
+assert ui.page settings
 assert ui.indicator_clearance clear
 
 # Seven home rows: the Infrared entry appears once the IR switch is on.

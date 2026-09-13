@@ -60,6 +60,8 @@ def expected_suite(path: str) -> str | None:
     return None
   if len(relative.parts) == 1:
     return "power-gate"
+  if relative.parts[0] == "deep-sleep":
+    return "e2e"
   return relative.parts[0] if relative.parts[0] in SUITES else None
 
 def check_manifest(root: Path, manifest_path: Path) -> list[str]:

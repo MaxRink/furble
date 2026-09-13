@@ -1,8 +1,13 @@
+#include <cstdio>
 #include <cstdlib>
+
+#include <fstream>
 
 #include <M5GFX.h>
 #include <M5Unified.h>
 #include <SDL2/SDL.h>
+
+#include <Preferences.h>
 
 #include <driver/uart.h>
 
@@ -114,9 +119,12 @@ void Platform::update(void) {
 }
 
 void Platform::restart(void) {
-  // The host simulator has no reset vector; ending the process is the closest
-  // equivalent for scripted runs.
-  Sim::requestExit(0);
+  // Route every simulated reboot through the same orderly shutdown as the
+  // scripted restart verb. The main thread re-execs after all tasks join.
+  if (std::getenv("FURBLE_SIM_FUZZ_DIAGNOSTICS") != nullptr) {
+    std::fprintf(stderr, "SIM Platform::restart requestRestart()\n");
+  }
+  Sim::requestRestart();
 }
 
 bool Platform::powerOff(void) {
@@ -173,7 +181,6 @@ bool Platform::watchdogEnable(bool enable) {
 #if defined(FURBLE_M5STICKS3)
   m_WatchdogEnabled = false;
   m_WatchdogLastFeed = tick();
-
   const uint8_t timeout = enable ? PM1_TIMEOUT_S : 0;
   if (!m5pm1Access([this, timeout]() { return m_M5PM1.wdtSet(timeout); })) {
     return false;
@@ -242,6 +249,76 @@ uint32_t Platform::motionWakeEdges(void) const {
 
 uint32_t Platform::getM5PM1RetryCount(void) const {
   return 0;
+}
+
+bool Platform::canTimedWake(void) {
+  // The S3 build models the M5PM1 timed power-on rail. Other board builds
+  // retain the production capability gate and cannot self-wake after power
+  // off. The marker is persisted through the same host NVS file as resume
+  // state, so a second simulator process is a deterministic virtual boot.
+#if defined(FURBLE_M5STICKS3)
+  return M5.getBoard() == m5::board_t::board_M5StickS3;
+#else
+  return false;
+#endif
+}
+
+bool Platform::powerOffUntil(uint32_t seconds) {
+  if (seconds == 0) {
+    return powerOff();
+  }
+
+  // Exercise the firmware failure branch without ending the process. This
+  // models a failed timer or wake-marker persistence operation; the UI must
+  // clear the resume record and continue the run while awake.
+  if (Sim::scenarioSettingIsTrue("timed_poweroff_fail")
+      || Sim::scenarioSettingIsTrue("timed_wake_write_fail")) {
+    return false;
+  }
+
+  Preferences prefs;
+  prefs.begin(FURBLE_STR, false);
+  const size_t markerWritten = prefs.put<bool>("sim_timed_wake", true);
+  prefs.end();
+
+  // Verify both persisted records before modelling the process exit. This
+  // sidecar is host-only evidence that the fresh-process test crossed the
+  // same persistence barrier as a physical reboot.
+  const char *evidencePath = std::getenv("FURBLE_SIM_DEEP_SLEEP_EVIDENCE");
+  if (markerWritten == sizeof(bool) && evidencePath != nullptr && evidencePath[0] != '\0') {
+    Preferences verify;
+    verify.begin(FURBLE_STR, true);
+    const bool marker = verify.get<bool>("sim_timed_wake", false);
+    const bool resume = verify.isKey("ivl_resume");
+    verify.end();
+    if (marker && resume) {
+      std::ofstream evidence(evidencePath, std::ios::trunc);
+      evidence << "resume_and_timed_wake_persisted\n";
+    }
+  }
+
+  // A real timed power-off does not return. Exit after the marker and NVS
+  // resume state are durable. The follow-up simulator invocation represents
+  // the PMIC wake and a fresh app_main/UI construction.
+  if (markerWritten != sizeof(bool)) {
+    return false;
+  }
+  std::_Exit(0);
+}
+
+bool Platform::consumeTimedWake(void) {
+  if (!canTimedWake()) {
+    return false;
+  }
+
+  Preferences prefs;
+  prefs.begin(FURBLE_STR, false);
+  const bool timedWake = prefs.get<bool>("sim_timed_wake", false);
+  if (timedWake) {
+    prefs.remove("sim_timed_wake");
+  }
+  prefs.end();
+  return timedWake;
 }
 
 void Platform::setCPUMaxFreq(uint8_t mhz) {

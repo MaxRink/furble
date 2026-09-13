@@ -163,6 +163,13 @@ jobs:
           SDL_AUDIODRIVER: dummy
         run: sh sim/scripts/run-e2e.sh
 
+      - name: Preserve restarted UI settings over launch defaults
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+          FURBLE_SIM_TEXTSIZE: normal
+        run: sim/build/furble-sim --script sim/scenarios/e2e/ui-restart-persist.txt
+
       # Keep the retained M5PM1 watchdog contract explicit. This runs against
       # the freshly built default M5StickS3 binary, rather than relying only on
       # the broad scenario glob (or a stale developer binary).
@@ -219,6 +226,22 @@ jobs:
           FURBLE_SIM_M5GFX_BOARD: board_M5Stack
         run: sh sim/build.sh
 
+      # The intervalometer deep-sleep cycle needs two fresh simulator
+      # processes and persisted state between them. Run the production S3
+      # binary through the dedicated runner, and use the already-built
+      # M5StickC binary for its unsupported-board fixture. Keep all state in
+      # the job's temporary directory so this gate cannot inherit a prior run.
+      - name: Run intervalometer deep-sleep gate (M5StickS3)
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+          FURBLE_SIM_BIN: ${{ github.workspace }}/sim/build/furble-sim
+          FURBLE_SIM_UNSUPPORTED_BIN: ${{ github.workspace }}/sim/build-stickc/furble-sim
+          FURBLE_SIM_DEEP_SLEEP_PREFS: ${{ runner.temp }}/furble-deep-sleep-cycle.bin
+          FURBLE_SIM_DEEP_SLEEP_EVIDENCE: ${{ runner.temp }}/furble-deep-sleep-cycle.ready
+          FURBLE_SIM_DEEP_SLEEP_START_TIMEOUT: 30
+        run: timeout -k 10 300 sh sim/scripts/run-deep-sleep.sh
+
       - name: Run certified bug-hunt scenarios on alternate boards
         env:
           SDL_VIDEODRIVER: dummy
@@ -242,6 +265,7 @@ jobs:
               exit 1
             fi
             for scenario in $scenarios; do
+              echo "=== $board: $scenario ==="
               "$binary" --script "$scenario"
             done
           done
@@ -289,9 +313,16 @@ jobs:
       # default Normal font; text-size-overflow-large.txt and
       # text-size-overflow-small.txt repeat the compact-page fit assertions with
       # the global Text size setting seeded to Large and Small, so the theme font
-      # scaling is layout-verified too. The text-size scenarios stay scoped to
-      # the two narrow non-touch panels because the Core intentionally scrolls
-      # more settings content at its larger font.
+      # scaling is layout-verified too. Run all three on the 135x240 binary from
+      # above and on the 80x160 binary. Both panels must pass, and the 80x160 run
+      # is the one with teeth: it fails if a compact narrow-panel layout
+      # regresses. The
+      # text-size scenarios are scoped to these two narrow non-touch panels on
+      # purpose. On the 320x240 M5Stack Core, which packs a larger font into the
+      # same 240 px height, some settings pages already scroll by design at
+      # Normal, so a compact-fit assertion does not hold there. Timer gets a
+      # separate capability-aware check: timed-wake rows make it scroll on
+      # StickS3, while those rows are hidden and the page fits on StickC.
       - name: Assert narrow-panel layout fits (135x240 and 80x160)
         env:
           SDL_VIDEODRIVER: dummy
@@ -308,6 +339,10 @@ jobs:
             echo "=== 80x160 (M5StickC): $name ==="
             "${{ github.workspace }}/sim/build-stickc/furble-sim" --script "$scenario"
           done
+          "${{ github.workspace }}/sim/build/furble-sim" \
+            --script "${{ github.workspace }}/sim/scenarios/bughunt/timer-overflow-timed-wake.txt"
+          "${{ github.workspace }}/sim/build-stickc/furble-sim" \
+            --script "${{ github.workspace }}/sim/scenarios/bughunt/timer-overflow-no-timed-wake.txt"
 
       # Assert the 80x160 M5StickC text size gate: a fresh device defaults to
       # Small, the roller drops Large and offers only two sizes, and a Large
@@ -406,6 +441,8 @@ jobs:
           echo "=== 135x240 (M5StickS3) ==="
           FURBLE_SIM_BIN="${{ github.workspace }}/sim/build/furble-sim" \
             sh sim/scripts/run-fuzz.sh
+          FURBLE_SIM_BIN="${{ github.workspace }}/sim/build/furble-sim" \
+            sh sim/scripts/run-fuzz-restart.sh
           echo "=== build-stickc ==="
           FURBLE_SIM_BIN="${{ github.workspace }}/sim/build-stickc/furble-sim" \
             sh sim/scripts/run-fuzz.sh

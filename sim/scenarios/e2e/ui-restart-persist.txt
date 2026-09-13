@@ -1,0 +1,21 @@
+# Exercise a production UI restart callback, not the scenario restart verb.
+# Change the Text size roller, activate its Restart button, then prove the new
+# process booted with fresh UI state and the NVS-backed choice intact. Do not
+# seed text_size: seeds are reapplied after reboot and would hide persistence.
+wait 300
+assert setting.text_size 1
+action nav text_size
+wait 200
+assert ui.page text_size
+btn a
+btn b
+btn a
+btn b
+btn a
+wait 400
+assert ui.page main
+assert setting.text_size 2
+action nav text_size
+wait 200
+assert ui.text_size 2
+exit

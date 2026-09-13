@@ -19,6 +19,9 @@ assert ui.focus_outline_count 0
 # confirm its outline width is zero.
 action blind
 wait 300
+# Physical encoder input on a touch board must land on this page, not retain a
+# hidden menu-row focus from Settings.
+assert ui.focus_on_page yes
 action focus-lock
 wait 100
 assert ui.lock_outline 0

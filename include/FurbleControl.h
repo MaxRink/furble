@@ -1,6 +1,7 @@
 #ifndef FURBLE_CONTROL_H
 #define FURBLE_CONTROL_H
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -85,6 +86,9 @@ class Control {
   // disconnect request cancels the wait promptly. The wait length itself comes
   // from ReconnectBackoff::delayMs().
   const uint32_t BACKOFF_SLICE_MS = 100;
+  // Deep-sleep resume gives the camera and radio time to settle before its one
+  // bounded retry. Ordinary bounded connects pass zero and retry immediately.
+  static constexpr uint32_t RESUME_RETRY_GAP_MS = (3 * 1000);
   static constexpr uint32_t DISCONNECT_TIMEOUT_MS = (1 * 1000);
   // Interactive disconnect safety cap. The interactive path waits for the
   // teardown to actually complete instead of force-completing, so this is only
@@ -165,7 +169,13 @@ class Control {
    * Clearing the token here would clear it out from under an attempt that a
    * capped teardown drained but did not stop.
    */
-  void connectAll(bool infiniteReconnect);
+  /**
+   * Connect to all active cameras.
+   *
+   * @param[in] boundedRetryGapMs Optional gap before the one bounded retry.
+   *                              Resume uses this; ordinary connects pass zero.
+   */
+  void connectAll(bool infiniteReconnect, uint32_t boundedRetryGapMs = 0);
 
   /**
    * Disconnect all connected cameras.
@@ -427,6 +437,7 @@ class Control {
   // User-facing explanation for a STATE_CONNECT_FAILED that retrying cannot
   // fix. Empty for every ordinary failure. Guarded by m_Mutex.
   std::string m_ConnectFailReason;
+  std::atomic<uint32_t> m_BoundedRetryGapMs {0};
   volatile bool m_ConnectAbort = false;
   volatile bool m_ConnectInProgress = false;
   // A user connect cycle has asked for the cancel tokens to be re-armed. Set by

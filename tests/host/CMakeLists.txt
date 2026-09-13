@@ -1843,6 +1843,7 @@ if(BUILD_TESTING)
           stale-session-reconnect
           false-connected-guard
           transient-connect-recovers
+          scoped-bounded-retry-gap
           client-pool-exhaustion
           multi-connect-fujifilm
           reconnect-shutter-drop

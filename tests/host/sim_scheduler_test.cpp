@@ -625,6 +625,32 @@ void queueResetPreemptOwnerTask(void *argument) {
   state.finished.signal();
 }
 
+struct MutexWaitState {
+  Furble::Sim::SchedulerMutex *mutex;
+  std::mutex *orderMutex;
+  std::vector<int> *order;
+  int marker;
+  std::atomic<bool> acquired {false};
+  std::atomic<bool> release {true};
+  std::atomic<bool> finished {false};
+};
+
+void mutexWaitTask(void *argument) {
+  auto &state = *static_cast<MutexWaitState *>(argument);
+  {
+    const std::lock_guard<Furble::Sim::SchedulerMutex> lock(*state.mutex);
+    {
+      const std::lock_guard<std::mutex> orderLock(*state.orderMutex);
+      state.order->push_back(state.marker);
+    }
+    state.acquired.store(true);
+    while (!state.release.load() && !furble_sim_shutdown_requested()) {
+      std::this_thread::yield();
+    }
+  }
+  state.finished.store(true);
+}
+
 }  // namespace
 
 int main() {
@@ -834,6 +860,94 @@ int main() {
   }
   furble_sim_stop_all_tasks();
   furble_sim_reset_tasks();
+
+  // A mutex unlock reserves ownership for one scheduler waiter before making
+  // it runnable. The higher-priority waiter wins, a newcomer cannot barge, and
+  // the scheduler never observes the native-wake gap as quiescent.
+  SchedulerMutex schedulerMutex;
+  schedulerMutex.lock();
+  std::mutex mutexOrderMutex;
+  std::vector<int> mutexOrder;
+  MutexWaitState mutexLow {&schedulerMutex, &mutexOrderMutex, &mutexOrder, 10};
+  MutexWaitState mutexHigh {&schedulerMutex, &mutexOrderMutex, &mutexOrder, 20};
+  mutexHigh.release.store(false);
+  TaskHandle_t mutexLowTask = nullptr;
+  TaskHandle_t mutexHighTask = nullptr;
+  if (xTaskCreate(mutexWaitTask, "mutex-low", 0, &mutexLow, kCompanionPriority, &mutexLowTask)
+          != pdPASS
+      || !waitForBlocked(mutexLowTask)
+      || xTaskCreate(mutexWaitTask, "mutex-high", 0, &mutexHigh, kControlPriority, &mutexHighTask)
+             != pdPASS
+      || !waitForBlocked(mutexHighTask)) {
+    return fail(__LINE__);
+  }
+  schedulerMutex.unlock();
+  if (furble_sim_task_blocked(mutexHighTask)) {
+    return fail(__LINE__);
+  }
+  if (!waitFor(mutexHigh.acquired) || schedulerMutex.try_lock()) {
+    return fail(__LINE__);
+  }
+  mutexHigh.release.store(true);
+  if (!waitFor(mutexHigh.finished) || !waitFor(mutexLow.finished)) {
+    return fail(__LINE__);
+  }
+  if (mutexOrder != std::vector<int> {20, 10}) {
+    return fail(__LINE__);
+  }
+  furble_sim_stop_all_tasks();
+  furble_sim_reset_tasks();
+
+  // Cancelling a registered waiter removes its stack record before the task
+  // exits; the remaining waiter receives the next ownership reservation.
+  schedulerMutex.lock();
+  mutexOrder.clear();
+  MutexWaitState mutexCancelled {&schedulerMutex, &mutexOrderMutex, &mutexOrder, 30};
+  MutexWaitState mutexSurvivor {&schedulerMutex, &mutexOrderMutex, &mutexOrder, 40};
+  TaskHandle_t mutexCancelledTask = nullptr;
+  TaskHandle_t mutexSurvivorTask = nullptr;
+  if (xTaskCreate(mutexWaitTask, "mutex-cancel", 0, &mutexCancelled, kControlPriority,
+                  &mutexCancelledTask)
+          != pdPASS
+      || !waitForBlocked(mutexCancelledTask)
+      || xTaskCreate(mutexWaitTask, "mutex-survivor", 0, &mutexSurvivor, kCompanionPriority,
+                     &mutexSurvivorTask)
+             != pdPASS
+      || !waitForBlocked(mutexSurvivorTask)) {
+    return fail(__LINE__);
+  }
+  vTaskDelete(mutexCancelledTask);
+  schedulerMutex.unlock();
+  if (!waitFor(mutexSurvivor.finished) || mutexOrder != std::vector<int> {40}) {
+    return fail(__LINE__);
+  }
+  furble_sim_stop_all_tasks();
+  furble_sim_reset_tasks();
+
+  // A global stop cancels an unregistered host/UI waiter by exception; lock()
+  // never returns successfully without owning the mutex.
+  schedulerMutex.lock();
+  std::atomic<bool> hostWaitStarted {false};
+  std::atomic<bool> hostWaitCancelled {false};
+  std::thread hostWaiter([&]() {
+    hostWaitStarted.store(true);
+    try {
+      schedulerMutex.lock();
+      schedulerMutex.unlock();
+    } catch (const SchedulerStopped &) {
+      hostWaitCancelled.store(true);
+    }
+  });
+  if (!waitFor(hostWaitStarted)) {
+    return fail(__LINE__);
+  }
+  schedulerStop();
+  if (!waitFor(hostWaitCancelled)) {
+    return fail(__LINE__);
+  }
+  schedulerMutex.unlock();
+  hostWaiter.join();
+  schedulerReset();
 
   // Runnable tasks at one virtual deadline are selected by FreeRTOS priority.
   // A higher-priority task may continue to run through zero-tick yields, while

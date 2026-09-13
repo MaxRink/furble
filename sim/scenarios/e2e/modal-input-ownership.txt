@@ -1,0 +1,109 @@
+# A modal owns the encoder even when the asynchronous connect progress box is
+# visible behind it. Cover both creation orders: either timer may run first.
+seed no_touch true
+seed fauxny true
+wait 300
+assert control.state idle
+assert ui.disconnect_calls 0
+
+# A modal temporarily changes PRESET's button devices back to encoders. The
+# previous button navigates inside the modal instead of decrementing the bulb
+# duration; after close, the page's plus button proves PRESET was restored.
+assert ui.bulb_ms 30000
+action toggle preset_picker
+action nav bulb_duration
+wait 100
+assert ui.page bulb_duration
+action companion-pair-request
+wait 300
+assert ui.modal_focus_control accept
+btn a
+assert ui.modal_focus_control reject
+assert ui.bulb_ms 30000
+btn b
+wait 100
+assert ui.modal closed
+btn c
+wait 100
+assert ui.bulb_ms 40000
+action page main
+wait 100
+
+# Connect progress first, companion modal second.
+action connect
+wait 200
+assert control.state connecting
+assert ui.connect_box visible
+action companion-pair-request
+wait 300
+assert ui.modal open
+assert ui.modal_focus_control accept
+
+# Previous stays inside the modal (Accept -> Reject); select rejects only the
+# pairing request and must not activate the background connect Cancel button.
+btn a
+assert ui.modal_focus_control reject
+btn b
+wait 100
+assert ui.modal closed
+assert ui.connect_box visible
+assert ui.connect_timer running
+assert ui.disconnect_calls 0
+
+# Reset the connect flow, then raise the modal before starting a new connect.
+action cancel
+assert-eventually-virtual 2000 control.state idle
+assert ui.connect_box hidden
+assert ui.disconnect_calls 1
+action companion-pair-request
+wait 300
+assert ui.modal open
+assert ui.modal_focus_control accept
+action connect
+wait 200
+assert control.state connecting
+assert ui.connect_box visible
+assert ui.modal open
+assert ui.modal_focus_control accept
+
+btn a
+assert ui.modal_focus_control reject
+btn b
+wait 100
+assert ui.modal closed
+assert ui.connect_box visible
+assert ui.connect_timer running
+assert ui.disconnect_calls 1
+
+action cancel
+assert-eventually-virtual 2000 control.state idle
+
+# SHUTTER also uses button devices on no-touch boards. While the modal is up,
+# those same buttons navigate and dismiss only the modal; after close, the
+# middle button fires a shot again, proving the underlying mode was restored.
+action connect
+assert-eventually-virtual 4000 control.state active
+assert-eventually-virtual 2000 ui.connected yes
+action blind
+wait 100
+assert camera.shutter_presses 0
+btn b
+wait 100
+assert-eventually-virtual 1000 camera.shutter_presses 1
+assert-eventually-virtual 1000 camera.shutter_releases 1
+action companion-pair-request
+wait 300
+assert ui.modal_focus_control accept
+btn a
+assert ui.modal_focus_control reject
+btn b
+wait 100
+assert ui.modal closed
+assert camera.shutter_presses 1
+btn b
+wait 100
+assert-eventually-virtual 1000 camera.shutter_presses 2
+assert-eventually-virtual 1000 camera.shutter_releases 2
+action disconnect
+assert-eventually-virtual 2000 control.state idle
+exit

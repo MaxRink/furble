@@ -75,6 +75,7 @@ ProvisionTLV::ValueType runtimeType(Settings::type_t type) {
     case Settings::IMU:
     case Settings::IMU_TRIG:
     case Settings::GPS_MOTION:
+    case Settings::IVL_SLEEP:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
@@ -114,6 +115,7 @@ ProvisionTLV::ValueType runtimeType(Settings::type_t type) {
 
     case Settings::GPS_BAUD:
     case Settings::SCAN_TIMEOUT:
+    case Settings::IVL_SLEEP_THR:
       return ProvisionTLV::ValueType::U32;
 
     case Settings::THEME:
@@ -244,6 +246,12 @@ bool validateSetting(const ProvisionTLV::SettingValue &field,
         report.error = ApplyError::BAD_SETTING;
         report.failedSettingId = field.wireId;
         report.message = "GPS baud must be auto, 9600 or 115200";
+        return false;
+      }
+      if ((setting.type == Settings::IVL_SLEEP_THR) && (littleEndianU32(field.value) > 999)) {
+        report.error = ApplyError::BAD_SETTING;
+        report.failedSettingId = field.wireId;
+        report.message = "sleep threshold must be at most 999 seconds";
         return false;
       }
       break;

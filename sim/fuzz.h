@@ -22,6 +22,11 @@ void fuzzConfigure(uint64_t seed, uint32_t steps, bool verbose);
 // True once fuzzConfigure has armed the fuzzer.
 bool fuzzActive(void);
 
+// Harness-only continuation. Save only after all simulator tasks have joined;
+// the next process restores it before starting any firmware thread.
+bool fuzzSaveRestart(void);
+bool fuzzResumedBoot(void);
+
 // Advance the fuzzer by one simulator tick. Its Apply, Settle, Check, Escape,
 // and Finish phases keep invariant reads after LVGL has processed the event.
 // Runs on the UI task, so LVGL reads stay single threaded. Requests orderly
