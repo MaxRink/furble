@@ -686,7 +686,9 @@ scrolling to the bottom. Corrected b4 on S3 Normal reported 1, while overlap
 was 0. This remains an unresolved clipping diagnostic, not an accepted pass
 or a claim that the complete Display page is visually validated. The retained
 draft and log are `~/b/display-layout-draft-0913.txt` and its matching `.log`.
-The collision-only tests do not change existing clipping checks.
+That finding is superseded by the shared setting-row correction below. The
+four Display scenarios now assert zero clipped labels at all 21 checkpoints,
+without changing the clipping metric or relaxing another scenario.
 
 ### What that cost the fit assertions
 
@@ -1078,3 +1080,11 @@ are focused simulator results, not full validation: full suites, firmware,
 gallery and physical checks remain pending. The user's StickS3 remains the
 minimal `ca` watchdog-explicitly-off reproduction and is not evidence that this
 shared label correction is physically fixed there.
+
+Root restored the old S3 flex-grow label behavior as a negative control on
+source `118ef0ec9`. The retained `display-layout-normal.txt` failed with
+`ui.cut_labels expected '0' got '1'`, then passed after source and binary
+restoration. Logs: `~/b/setting-label-negative-normal-0913.log` and
+`~/b/setting-label-restored-normal-0913.log`. The integrated Off/hint/layout
+composite still needs its own full validation; these results belong to the
+focused label-fix source, not a later merge merely sharing the fix.

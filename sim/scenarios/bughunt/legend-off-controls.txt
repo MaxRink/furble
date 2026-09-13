@@ -34,8 +34,8 @@ wait 200
 assert-eventually-virtual 1000 camera.shutter_presses 1
 assert-eventually-virtual 1000 camera.shutter_releases 1
 
-# BtnB is the real right/focus input. Keep the physical focus path live too;
-# the existing focus-lock scenario covers the compound lock gesture.
+# BtnB is the real right/focus input. Keep this individual physical focus path
+# live; simultaneous held-button gestures remain a separate hardware gate.
 assert camera.focus_presses 0
 btn b
 wait 200

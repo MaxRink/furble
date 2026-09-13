@@ -469,8 +469,9 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   was set. Dismissal is asserted in the same scenarios, on touch and under
   `FURBLE_SIM_NO_TOUCH=1`, because the OK button has to be reachable from the
   physical buttons.
-- `ui.indicators_visible` counts the three physical navigation indicators that
-  are actually visible through LVGL. A connect modal hides them, and every
+- `ui.indicators_visible` counts the physical navigation objects not hidden by
+  LVGL, regardless of opacity. Use `ui.legend_visible` for rendered surfaces
+  when testing the Off setting. A connect modal hides the objects, and every
   teardown that returns to Main must restore a count of 3 on a `no_touch` run.
   `e2e/physical-indicators-cancel-restore.txt` covers Cancel during a slow
   FauxNY connect; `e2e/physical-indicators-failure-restore.txt` covers terminal
@@ -719,8 +720,9 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   `display-layout-buttons-s3.txt` checks overlaps after each physical button
   sample without claiming individual setting changes. All are hard failures
   selected by the manifest; scroll extent is not a substitute for overlap.
-  The separate b4 S3 bottom-of-page clipped-label finding remains unresolved
-  in plan 168. These collision tests do not certify absence of clipping.
+  Each checkpoint also requires zero clipped labels. The b4 Show Title
+  finding is covered by those assertions after the shared full-width setting
+  label correction in plan 168. Neither metric proves full hardware parity.
 - `bughunt/core-icon-grid.txt` guards its Home fit assertion with
   `assert ui.nav_layout touch`: that is the touch/Core2 fit contract, while
   `core-notouch-layout.txt` covers the physical Core Basic Home grid's
