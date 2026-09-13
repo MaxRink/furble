@@ -74,6 +74,13 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   page content width through native flex row wrapping so the full-size
   content-sized controls stay in one row when they fit and wrap into scrolling
   rows when they do not.
+  On the 320x240 Core touch model at Large, the root 2026-09-13 GDB trace
+  measured a 316 px page, 136/114/136 px content-sized cells, 106/84/106 px
+  labels and 162 px cells; the inherited horizontal wrapper padding made the
+  third cell wrap and produced a 344 px row. Candidate `f76a374e` removes only
+  that wrapper's left/right padding under `FURBLE_M5COREX`, preserving the
+  64 px controls, selected font and vertical spacing. Runtime validation is
+  pending; do not relax the Core fit assertion or shrink the controls/font.
 - `FurbleGPS` demultiplexes NMEA and CASIC binary frames. It sends at most one
   acknowledged configuration command at a time and keeps the fallback path.
   Phase 2 adds `GPS_BAUD` Auto with the `Casic::Autobaud` ladder and a
