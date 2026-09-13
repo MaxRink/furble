@@ -30,9 +30,33 @@ fi
 output=$(mktemp "${TMPDIR:-/tmp}/furble-scheduler-stop.XXXXXX")
 trap 'rm -f "$output"' EXIT
 
-status=0
-FURBLE_SIM_TEST_SCHEDULER_STOP=1 FURBLE_SIM_WATCHDOG_SECONDS=0 \
-  "$TIMEOUT" -k 2 10 "$BIN" --script "$ROOT/sim/scripts/smoke.txt" >"$output" 2>&1 || status=$?
+run_bounded() {
+  output_path=$1
+  shift
+  status=0
+  "$TIMEOUT" -k 2 10 "$@" >"$output_path" 2>&1 || status=$?
+}
+
+valid_failfast_result() {
+  if [ "$status" -eq 124 ] || [ "$status" -eq 137 ] || [ "$status" -ge 128 ]; then
+    return 1
+  fi
+  [ "$status" -eq 1 ] || return 1
+  grep -F "SIM FAIL: SchedulerStopped in UI task; exiting without cleanup" "$output" \
+    >/dev/null 2>&1
+}
+
+run_bounded "$output" env FURBLE_SIM_TEST_SCHEDULER_STOP= \
+  FURBLE_SIM_WATCHDOG_SECONDS=0 "$BIN" --script "$ROOT/sim/scripts/smoke.txt"
+if [ "$status" -ne 0 ] || grep -F "SIM FAIL: SchedulerStopped" "$output" >/dev/null 2>&1; then
+  echo "scheduler-stop positive control did not complete normally" >&2
+  cat "$output" >&2
+  exit 1
+fi
+echo "SchedulerStopped disabled positive control returned status 0."
+
+run_bounded "$output" env FURBLE_SIM_TEST_SCHEDULER_STOP=1 \
+  FURBLE_SIM_WATCHDOG_SECONDS=0 "$BIN" --script "$ROOT/sim/scripts/smoke.txt"
 
 if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
   echo "scheduler-stop fail-fast subprocess timed out" >&2
@@ -49,11 +73,26 @@ if [ "$status" -ne 1 ]; then
   cat "$output" >&2
   exit 1
 fi
-if ! grep -F "SIM FAIL: SchedulerStopped in UI task; exiting without cleanup" "$output" \
-    >/dev/null 2>&1; then
+if ! valid_failfast_result; then
   echo "scheduler-stop fail-fast diagnostic was missing" >&2
   cat "$output" >&2
   exit 1
 fi
 
 echo "SchedulerStopped UI fail-fast returned status 1 with its bounded diagnostic."
+
+# These tiny wrappers exercise the harness rejection cases without pretending
+# that a normal process, a signal, or a timeout is the simulator fail-fast.
+for fixture in \
+  "$ROOT/sim/scripts/fixtures/scheduler-stop-exit-zero.sh" \
+  "$ROOT/sim/scripts/fixtures/scheduler-stop-exit-one-no-banner.sh" \
+  "$ROOT/sim/scripts/fixtures/scheduler-stop-signal.sh" \
+  "$ROOT/sim/scripts/fixtures/scheduler-stop-timeout.sh"; do
+  run_bounded "$output" "$fixture"
+  if valid_failfast_result; then
+    echo "negative fixture unexpectedly matched fail-fast contract: $fixture" >&2
+    cat "$output" >&2
+    exit 1
+  fi
+  echo "Rejected invalid fail-fast fixture: $(basename "$fixture")."
+done

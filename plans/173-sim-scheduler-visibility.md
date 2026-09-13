@@ -340,7 +340,7 @@ runtime from `df40247f`. It serializes waiter selection with the scheduler,
 reserves ownership before publishing a wake, cancels registered waiters during
 task teardown, and cancels an unregistered host waiter with `SchedulerStopped`
 when the scheduler stops. `sim/main.cpp` catches that exception around the
-unregistered simulator thread and requests orderly failure shutdown.
+unregistered simulator thread and fails fast without claiming orderly cleanup.
 
 The host regression in `tests/host/sim_scheduler_test.cpp` covers priority
 selection, registered-waiter cancellation, survivor ownership, and
@@ -372,7 +372,10 @@ first `driverTick()` inside the locked UI phase. The bounded regression is
 `sim/scripts/assert-scheduler-stop-failfast.sh`; it expects diagnostic output,
 explicit status 1, and neither a signal exit nor a timeout. The existing CI
 `assert-exit-regression.sh` invokes this check against the same simulator
-binary.
+binary. It also runs the same small `smoke.txt` scenario with the trigger
+disabled and expects status 0 without the fail-fast banner. Four tiny wrapper
+fixtures are rejected when they return status 0, status 1 without the banner,
+a signal status, or a timeout.
 
 Exception-safe cleanup for other UI or native MQTT exceptions remains a
 separate gap. This fail-fast boundary is not hardware, scheduler-parity, or
