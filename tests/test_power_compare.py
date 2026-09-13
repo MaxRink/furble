@@ -144,6 +144,21 @@ class PowerCompareTest(unittest.TestCase):
     )
     self.assertEqual(result.returncode, 0)
 
+  def test_legacy_reports_with_pre_accounting_inputs_remain_compatible(self):
+    legacy_inputs = {
+        "duration_ms": 1000,
+        "mcu_ms": {},
+        "display_ms": {},
+        "radio_connected_ms": 0,
+        "radio_event_count": 0,
+        "gps_ms": {},
+    }
+    result = self.run_compare(
+        {"estimated_mA": 1.0, "energy": {"accounting_inputs": legacy_inputs}},
+        {"estimated_mA": 1.0},
+    )
+    self.assertEqual(result.returncode, 0)
+
   def test_explicit_malformed_accounting_metadata_is_not_legacy(self):
     for key, value in (
         ("accounting_version", 2),

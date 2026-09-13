@@ -21,6 +21,8 @@ fingerprint includes the model digest, all current coefficients, mode/version,
 calibration status, and canonical work-cost provenance.
 The digest is over the exact model bytes, so formatting or whitespace changes
 intentionally require a new comparator identity.
+The comparator continues to accept the complete pre-accounting input set
+without identity metadata as legacy; partial or unknown input sets are invalid.
 
 ## Validation status
 

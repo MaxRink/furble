@@ -51,6 +51,16 @@ def accounting_identity(report: dict) -> tuple[str, str]:
     fields = {"accounting_mode", "accounting_version", "accounting_fingerprint", "accounting_valid"}
     present = fields.intersection(inputs)
     if not present:
+        legacy_fields = {
+            "duration_ms",
+            "mcu_ms",
+            "display_ms",
+            "radio_connected_ms",
+            "radio_event_count",
+            "gps_ms",
+        }
+        if legacy_fields.issubset(inputs) and set(inputs).issubset(legacy_fields):
+            return "legacy-unaccounted", ""
         raise ValueError("report has no accounting metadata fields")
     if present != fields:
         raise ValueError("report has incomplete accounting metadata")
