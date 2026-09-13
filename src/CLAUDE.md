@@ -131,6 +131,9 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   percentage-sized label; otherwise LVGL can converge on a zero-width
   parent/child cycle. Keep the strict touch fit checks until runtime validation
   confirms the measured fix.
+  The Bulb Start button follows the same rule: set its parent width before a
+  percentage-sized Start label. Keep compact-fit and clipped-value assertions
+  unchanged while validating all panel variants.
   Plus/S3 spin rows keep their vertical padding but spend no horizontal pixels:
   at Large text `999 mins` needs the full 103 px narrowed row width. Four pixels
   of horizontal padding make that complete value wrap and push the Bulb page

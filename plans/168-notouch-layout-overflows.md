@@ -898,3 +898,11 @@ parent/child cycle and false geometry. The fix sets the Restart button to the
 page width before creating the label. Both strict touch `ui.overflow no`
 assertions remain in place, with `ui.cut_labels 0` added as the direct guard.
 Runtime validation is pending; this is not a 100-percent parity claim.
+
+### Bulb Start zero-width follow-up
+
+The 80x160 sweep exposed the same LVGL sizing cycle on Bulb Start: a
+percentage-sized label was created under a shrink-wrapped button before the
+button had an explicit width. The fix establishes the page-width parent first.
+Existing compact-fit and clipped-value assertions remain unchanged; runtime
+validation across all modeled panels is pending.

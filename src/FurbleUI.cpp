@@ -8539,6 +8539,9 @@ void UI::addBulbMenu(const menu_t &parent) {
   updateBulbModeHint();
 
   m_BulbStart = lv_button_create(menu.page);
+  // Establish the parent width before the percentage-sized label is created;
+  // otherwise LVGL can shrink-wrap both to zero width on narrow panels.
+  lv_obj_set_width(m_BulbStart, LV_PCT(100));
   lv_obj_t *startLabel = lv_label_create(m_BulbStart);
   lv_label_set_text(startLabel, "Start");
   lv_obj_set_width(startLabel, LV_PCT(100));
