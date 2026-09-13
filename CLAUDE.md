@@ -54,7 +54,8 @@ CLAUDE.md whose directory it touches.
   it is for companion testing, not signing or release distribution.
 - Release tags beginning with `companion-test-` are reserved for companion
   testing and skip the firmware release workflow; other release tags are
-  unchanged.
+  unchanged. The release artifact job has scoped `contents: write` permission;
+  keep that permission on the publishing job, not on firmware build jobs.
   All simulator scenarios are listed in
   `sim/scenarios/manifest.json`, including their owner, board matrix,
   capabilities, and expected exit status.

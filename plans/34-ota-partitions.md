@@ -970,6 +970,10 @@ fetch over.
 
 ## 34a-1 complete
 
+The release artifact publishing job must retain scoped `contents: write`
+permission; firmware build jobs need only read access. Validate the published
+manifest, checksums, and provenance before flashing a prerelease.
+
 Stage 34a-1 is implemented on `feat/34-ota-partitions`.
 
 - All five release environments select the stock `partitions_two_ota_large.csv`

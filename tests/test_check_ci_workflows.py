@@ -18,6 +18,13 @@ SPEC.loader.exec_module(CHECKER)
 
 
 class CheckCIWorkflowsTest(unittest.TestCase):
+  def test_release_upload_job_has_scoped_write_permission(self):
+    document = CHECKER._load_workflow(ROOT / ".github" / "workflows" / "release.yml")
+    self.assertEqual(document["jobs"]["build"]["permissions"], {"contents": "read"})
+    self.assertEqual(
+        document["jobs"]["release"]["permissions"], {"contents": "write"}
+    )
+
   def lint(self, text: str) -> list[str]:
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".yml", encoding="utf-8"

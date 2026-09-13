@@ -53,6 +53,12 @@ Normal CI uses the USB-only Core debug profile. The legacy dual-OTA
 `m5stack-core-debug` profile is available only through **Run workflow** with
 the `core_ota_debug` boolean enabled. If selected, its failure is strict.
 
+Firmware prereleases use a `v*` tag followed by a published GitHub prerelease.
+The tag starts the Pages installer build; publishing the release starts the
+firmware artifact workflow. The artifact publishing job alone requires scoped
+`contents: write` permission. Verify its manifest, `sha256sum.txt`, and source
+provenance before flashing hardware.
+
 Every build needs the `FURBLE_VERSION` and `FURBLE_TEST` variables:
 
 ```sh
