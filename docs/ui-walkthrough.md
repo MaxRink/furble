@@ -215,6 +215,10 @@ reveals the rest:
 
 ![Display settings](img/settings-display.png)
 
+Scroll down to reach Screen off and Show Title:
+
+![Display settings, bottom](img/settings-display-bottom.png)
+
 - **Brightness**: screen brightness slider with a live preview.
 - **Inactivity timeout**: dim then sleep the screen after an idle period.
 - **Screen off**: what the inactivity timeout does (Dim, Off, or Off with the

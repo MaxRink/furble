@@ -54,8 +54,17 @@ print ui.page
 
 action nav display
 wait 350
+assert ui.page display
+assert ui.focus_overlaps 0
 capture settings-display
 print ui.page
+action scroll bottom
+wait 350
+assert ui.page display
+assert ui.cut_labels 0
+capture settings-display-bottom
+action scroll top
+wait 150
 
 action nav legend
 wait 350
