@@ -295,10 +295,11 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   task, or application RAM. The driver owns PID-scoped file creation, ownership
   markers, bounded reads, atomic publication, consumption, and cleanup.
   Malformed or foreign files fail closed and remain caller-owned.
-  `sim/scripts/run-fuzz-restart.sh` is the pending execution gate; it must
-  prove two real seed-2 boots, one exact 600-event summary, rejection-file
-  preservation, and generated-checkpoint cleanup before this behavior is
-  described as validated.
+  `sim/scripts/run-fuzz-restart.sh` is the focused seed-2 restart gate. Root
+  evidence records the c190 gate pass and all three 65e8 panel binaries passing
+  the pinned eight-seed 600-event sweep plus the strict seed-2 restart check.
+  The corrected f49 binary still needs its own retest before this behavior is
+  called current validation.
 - `btn` / `button` is a native input-device seam, not a focus shortcut. It
   supplies coherent pressed and released samples through the production board
   read callback and asks LVGL to read the device in its current encoder or
@@ -604,17 +605,16 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   cycles. `sim/fuzz_machine.{h,cpp}` owns the Apply/Settle/Check/Escape/Finish
   phases and raw-output rejection sampling, while the UI task reports each
   completed `lv_task_handler` cycle through `fuzzCycleComplete`. Same seed and
-  board reproduce a finding exactly. See plans/105-ui-fuzzing.md.
+  board reproduce a finding when the replay report lines match; unmasked host
+  timing details can still vary. See plans/105-ui-fuzzing.md.
 - `sim/scripts/run-fuzz.sh` runs the pinned seed set and fails on any finding;
   `FURBLE_FUZZ_XFAIL_SEEDS` pins tracked-but-unfixed bugs as expected-fail. It
-  is currently used for seed 3 on the 320x240 board only, which reports a layout
-  overflow on the intervalometer settings page that the large-text sweep does
-  not cover on that board (plan 161). That pin lives in the CI workflow, not in
-  the wrapper defaults, because the finding is host dependent: on some
-  toolchains the seed passes and the pin would XPASS. The bug itself is recorded
-  host independently by `sim/scenarios/bughunt/timer-page-large-text.txt`. Each
-  seed also runs under `timeout -k`, so a scheduler deadlock fails the job
-  instead of hanging it.
+  currently runs the repository's guarded seed list on all three panel
+  binaries. `FURBLE_FUZZ_XFAIL_SEEDS` is empty by default, so seed 3 is guarded
+  again. Its old 320x240 intervalometer layout finding remains uncovered by
+  the large-text sweep and is recorded independently by
+  `sim/scenarios/bughunt/timer-page-large-text.txt`. Each seed also runs under
+  `timeout -k`, so a scheduler deadlock fails the job instead of hanging it.
   The wrapper passes explicit `--seed` and `--fuzz-steps` values on every run;
   those CLI values take precedence over matching `FURBLE_FUZZ_SEED` and
   `FURBLE_FUZZ_STEPS` fallbacks. `--fuzz-verbose` also enables fuzzing when it
@@ -668,14 +668,17 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   entry routes on every modeled panel; this is supplemental Core2 touch
   behavior, not a claim that the physical-button boards have touch hardware.
 - The SDL panel always attaches a mouse-driven touch device, so an unseeded run
-  renders the touch layout on every modeled board. None of the three modeled
-  boards has a touch panel: the Sticks and the Core Basic all ship the non-touch
-  layout, which reserves a 26 px navbar band at the bottom of the window
-  content. That band is where all three button indicators live: on the Core they
-  are flex children of it, and on the Sticks they float against the screen edges
-  and land in it. None of them is drawn over page content. Only the Core2, which
-  `sim/build.sh` does not model, ships the touch layout, so every unseeded
-  scenario measures a layout no modeled board has.
+  renders the touch layout on every modeled board. `FURBLE_SIM_NO_TOUCH=1` or a
+  `no_touch true` seed selects the physical-button layout. None of the three
+  modeled boards has a touch panel: the Sticks and Core Basic ship the
+  non-touch layout with a 26 px navbar and 24x24 px legend buttons. On Sticks,
+  Left and OK are bottom-edge indicators; default Buttons placement keeps Right
+  partway down the right edge and reserves its column in page rows, while Bottom
+  puts Right in the navbar.
+  The reserve protects page content, but Buttons placement intentionally draws
+  Right over the content area. Only the Core2, which `sim/build.sh` does not
+  model, ships the touch layout, so every unseeded scenario measures a layout
+  no modeled board has.
 - `bughunt/stick-notouch-layout-135.txt`, `bughunt/stick-notouch-layout-80.txt`
   and `bughunt/core-notouch-layout.txt` seed `no_touch true` and are each
   certified for exactly one board, so the existing certified bug-hunt steps run
@@ -698,10 +701,11 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   gives the count. Labels, images, rollers, switches, sliders, checkboxes and
   bars are measured; containers are not. Only the drawn text extent of a label
   counts, not its flex-stretched box, and areas are clamped to the page
-  viewport. Since plan 168 put all three indicators in the reserved band, that
-  clamp makes a fitted page structurally clear, so these queries are regression
-  pins: they fail the moment an indicator is anchored over the content area
-  again.
+  viewport and LVGL's native visible-area helper clips measured leaves through
+  their ancestors. Bottom placement puts all three indicators in the reserved
+  band; default Buttons placement keeps Right over the content area and relies
+  on the reserved row column. These queries remain regression pins: they fail
+  the moment an indicator is anchored over content without that reservation.
 - `ui.label_overlaps` counts the pairs of visible labels on the current page
   whose drawn text overlaps, which is the one layout defect no fit or scroll
   query can see: a grid cell holding two entries still fits and is simply

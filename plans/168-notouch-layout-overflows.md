@@ -53,12 +53,12 @@ Two classes of promoted assertion are structurally satisfied by the fix rather
 than by the page happening to fit, and they are kept as regression pins with
 that stated plainly:
 
-- Every `ui.indicator_clearance` line. `countIndicatorOverlaps` clamps each
-  measured area to the page viewport, and the viewport ends above the reserved
-  band, so once all three indicators are in that band no fitted page can report
-  an overlap. The line still fails the moment an indicator is anchored over the
-  content area again, which is exactly the regression it exists to catch, and it
-  is the only assertion that catches it.
+- Every `ui.indicator_clearance` line. `countIndicatorOverlaps` measures only
+  each leaf's LVGL-visible ancestor intersection before clamping to the page
+  viewport. Bottom placement puts all three indicators in the reserved band;
+  default Buttons placement keeps Right over content and reserves its row
+  column. The line still fails when an indicator is anchored over content
+  without that reservation, which is exactly the regression it exists to catch.
 - The `shutter` page `ui.overflow` line. That page now holds one floating
   widget, and a floating child does not join its parent's scroll extent, so the
   page cannot overflow while it stays that way. The line fails if a laid-out
@@ -67,11 +67,15 @@ that stated plainly:
 
 ## The fixes
 
-### 1. The Right indicator joins the band that was reserved for it
+### 1. Historical first draft: the Right indicator joined the reserved band
+
+The following diagnosis and proposed fix are historical. The final behavior is
+controlled by the `LEGEND` setting described later in this plan.
 
 Nine of the fourteen gaps are one defect. The physical-button layout reserves a
 navigation bar band, `ICON_HEADER_SIZE + 2` = 26 px, at the bottom of the window
-content. On the Stick boards the band stays empty: the three indicators are
+content; each indicator itself is a 24x24 px box. On the Stick boards the band
+stays empty: the three indicators are
 floating children of `m_Screen` instead. Left is at `LV_ALIGN_BOTTOM_LEFT` and
 OK at `LV_ALIGN_BOTTOM_MID`, both inside the band. Right alone was at
 `LV_ALIGN_RIGHT_MID` with a 65 px offset on the 135 px panel and no offset on
@@ -85,11 +89,11 @@ cost was that it drew over content on every page tall enough to reach it. On the
 80x160 panel it landed halfway down and covered the seconds value of both timer
 rollers, which plan 165 called the one indefensible case.
 
-Right moves to `LV_ALIGN_BOTTOM_RIGHT`. All three indicators now read as one
-legend row inside the band the layout already reserves, the Stick layout matches
-the Core (where the three live inside the band as flex children), no indicator
-is ever drawn over content on any page, and `m_RightYOffset` and
-`level_t::navRightYOffset` both go.
+The first draft therefore moved Right to `LV_ALIGN_BOTTOM_RIGHT`. That draft
+would have put all three indicators in one legend row, but it was superseded:
+Buttons remains the default placement with Right partway down the right edge and
+`m_RightYOffset` retained, while Bottom uses the reserved band. In Buttons
+placement the page rows reserve the Right column so content remains clear.
 
 ### 2. Home menu row padding on the 135x240 panel
 

@@ -24,13 +24,17 @@ button layout when `FURBLE_SIM_NO_TOUCH` is set or a scenario seeds
 `no_touch true`.
 
 The SDL panel always attaches a mouse-driven touch device, so an unseeded run
-renders the touch layout on every modeled board. None of the three modeled
-boards has a touch panel. The Sticks and the M5Stack Core Basic all ship the
-non-touch layout, which reserves a 26 px navigation bar band at the bottom of
-the window content; on the Sticks the three indicators float against the screen
-edges and land in that band, and on the Core they are flex children of it.
-Either way no indicator is drawn over page content. Only the Core2, which
-`sim/build.sh` does not model, ships the touch layout.
+renders the touch layout on every modeled board. `FURBLE_SIM_NO_TOUCH=1` or a
+scenario's `no_touch true` selects the physical-button layout. None of the
+three modeled boards has a touch panel. The Sticks and the M5Stack Core Basic
+ship the non-touch layout, whose navbar is 26 px high and whose legend buttons
+are 24x24 px. On Stick boards Left and OK are bottom-edge indicators; the
+default Buttons placement keeps Right partway down the right edge and reserves
+its column in page rows. Bottom placement moves Right into the navbar. The
+reserve keeps page content clear,
+but Buttons placement intentionally draws the Right indicator over the content
+area. Only the Core2, which `sim/build.sh` does not model, ships the touch
+layout.
 
 `bughunt/stick-notouch-layout-135.txt`, `bughunt/stick-notouch-layout-80.txt`
 and `bughunt/core-notouch-layout.txt` seed `no_touch` and are each certified for
@@ -167,10 +171,10 @@ release fuzzer wrapper is `sim/scripts/run-fuzz.sh`; it uses
 `FURBLE_FUZZ_SEED_TIMEOUT`, `FURBLE_FUZZ_REPEAT_SEED`, and `FURBLE_SIM_BIN`.
 
 After the guarded seeds, `run-fuzz.sh` replays `FURBLE_FUZZ_REPEAT_SEED`
-(default: the first guarded seed, empty to skip) and requires the two runs to
-produce identical `FUZZ EVENTS`, `FUZZ COVERAGE` and `FUZZ SUMMARY` lines, with
-`observed_delta` and `no_observed_delta` masked. The same seed must drive the
-same event stream and reach the same pages.
+(default: `2`, empty to skip) and requires the two runs to produce identical
+`FUZZ EVENTS`, `FUZZ COVERAGE` and normalized `FUZZ SUMMARY` lines, with only
+`observed_delta` and `no_observed_delta` masked for replay equality. The same
+seed must drive the same event stream and reach the same pages.
 
 The comparison stops there on purpose. Firmware behaviour under the fuzzer is
 not yet reproducible line for line: two runs of the same seed can differ by one
