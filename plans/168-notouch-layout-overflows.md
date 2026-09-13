@@ -2,6 +2,11 @@
 
 ## Current validation checkpoint
 
+The Android companion metadata test covers all three production LEGEND wire-65
+values, including `LEGEND_OFF` value 2. This is a metadata assertion
+correction only; it does not change the firmware wire contract or establish
+Android emulator or hardware validation.
+
 The integrated candidate has not been flashed and PR273 remains hardware-gated.
 The owner confirmed only the separate PR313 hint restoration on the stick;
 its external watchdog remains off by explicit choice.

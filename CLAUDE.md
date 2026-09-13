@@ -64,6 +64,9 @@ CLAUDE.md whose directory it touches.
   All simulator scenarios are listed in
   `sim/scenarios/manifest.json`, including their owner, board matrix,
   capabilities, and expected exit status.
+  The Android companion metadata table mirrors shipped firmware settings by
+  wire ID. LEGEND wire 65 has values 0 (Buttons), 1 (Bottom), and 2 (Off);
+  keep its protocol test aligned when that production enum changes.
   Manual PlatformIO dispatches always run the complete firmware matrix because
   a dispatch has no meaningful comparison base.
   Android's optional `run_emulator` input keeps the default dispatch fast.
