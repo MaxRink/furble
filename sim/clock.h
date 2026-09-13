@@ -40,15 +40,14 @@ std::condition_variable &schedulerCondition(void);
 /**
  * Report a wait on a host mutex to the simulator scheduler.
  *
- * A task that blocks on a plain host mutex leaves the scheduler still holding
- * its turn and still marked runnable, so no other task can observe the wait.
- * The turn then has to be taken away by the host-time deadlock breaker, and
- * the UI handoff burns its whole host ceiling, both of which leak host
- * scheduling into the virtual clock (issue 279). Bracketing the acquisition
- * with these makes the wait an ordinary scheduler block: the waiter stops
- * being runnable, the holder is dispatched at once, and the breaker never
- * fires on that path. This is the scheduler-visible mutex plan 158 Phase 3
- * named. Both are no-ops on a thread that is not a simulator task.
+ * A task that blocks on an uninstrumented plain host mutex leaves the scheduler
+ * still holding its turn and still marked runnable, so no other task can
+ * observe the wait. The turn then has to be taken away by the host-time
+ * fallback breaker, and the UI handoff burns its whole host ceiling. Bracketing
+ * the acquisition with these makes the wait an ordinary scheduler block: the
+ * waiter stops being runnable, the holder is dispatched at once, and the
+ * breaker never fires on that path. Both are no-ops on a thread that is not a
+ * simulator task.
  */
 void schedulerHostBlockBegin(void);
 void schedulerHostBlockEnd(void);
