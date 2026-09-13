@@ -187,15 +187,16 @@ including empty strings and failed-save rollback.
   project-header edits rebuild only their dependents; `make -q` evaluates the
   depfile and the old source-only timestamp shortcut is not used. The
   `build-flags` stamp also records the absolute firmware root, dependency root
-  and LVGL root; sharing a build directory across source/dependency trees
-  therefore drops stale objects even when their depfiles and mtimes appear
-  current.
+  and LVGL root (the latter two are canonicalized after validation); sharing a
+  build directory across source/dependency trees therefore drops stale objects
+  even when their depfiles and mtimes appear current.
 - `sim/scripts/test-build-deps.sh`: builds a complete simulator, touches
   `include/FurbleGPS.h`, proves a source-root cache stamp mismatch discards
   stale objects, proves a relative/absolute depfile target mismatch rebuilds,
   and proves GPS dependents rebuild while an unrelated source stays cached. It
-  requires the same dependency overrides as
-  `sim/build.sh`.
+  changes only the recorded source root in a generated stamp to verify that
+  identity change also discards stale objects. It requires the same dependency
+  overrides as `sim/build.sh`.
 - `sim/scripts/run-env-order.sh`: on Linux, compiles a small `LD_PRELOAD`
   interposer that resolves libc functions before simulator threads start and
   rejects a selected Furble `setenv` or `unsetenv` after SDL initialization,

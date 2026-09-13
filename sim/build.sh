@@ -83,6 +83,13 @@ if [ -z "$LVGL_DIR" ] || [ ! -f "$LVGL_DIR/CMakeLists.txt" ]; then
   exit 1
 fi
 
+# Cache identity and compiler include paths must not depend on how callers
+# spelled an already-validated dependency directory. Resolve these roots once
+# so relative environment values cannot alias a different directory on a later
+# invocation.
+DEP_ROOT=$(CDPATH= cd -- "$DEP_ROOT" && pwd)
+LVGL_DIR=$(CDPATH= cd -- "$LVGL_DIR" && pwd)
+
 if ! command -v make >/dev/null 2>&1; then
   echo "make is required for simulator dependency checks" >&2
   exit 1
