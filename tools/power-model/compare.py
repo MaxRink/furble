@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import sys
 from pathlib import Path
 
@@ -50,7 +51,7 @@ def accounting_identity(report: dict) -> tuple[str, str]:
     fields = {"accounting_mode", "accounting_version", "accounting_fingerprint", "accounting_valid"}
     present = fields.intersection(inputs)
     if not present:
-        return "legacy-unaccounted", ""
+        raise ValueError("report has no accounting metadata fields")
     if present != fields:
         raise ValueError("report has incomplete accounting metadata")
     mode = inputs["accounting_mode"]
@@ -66,7 +67,7 @@ def accounting_identity(report: dict) -> tuple[str, str]:
         or isinstance(version, bool)
         or version != 1
         or not isinstance(fingerprint, str)
-        or not fingerprint
+        or re.fullmatch(r"[0-9a-fA-F]{64}", fingerprint) is None
     ):
       raise ValueError("report has invalid synthetic accounting metadata")
     if mode == "legacy-unaccounted" and (

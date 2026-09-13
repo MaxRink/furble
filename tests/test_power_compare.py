@@ -13,6 +13,13 @@ COMPARE = ROOT / "tools/power-model/compare.py"
 
 
 class PowerCompareTest(unittest.TestCase):
+  SYNTHETIC_INPUTS = {
+      "accounting_mode": "synthetic-virtual-work",
+      "accounting_version": 1,
+      "accounting_fingerprint": "a" * 64,
+      "accounting_valid": True,
+  }
+
   def run_compare(self, current, reference, *arguments):
     with tempfile.TemporaryDirectory() as directory:
       root = Path(directory)
@@ -89,12 +96,14 @@ class PowerCompareTest(unittest.TestCase):
   def test_accounting_identity_uses_nested_report_inputs(self):
     current = {
         "estimated_mA": 1.0,
-        "energy": {"accounting_inputs": {"accounting_mode": "synthetic", "accounting_fingerprint": "a"}},
+        "energy": {"accounting_inputs": {**self.SYNTHETIC_INPUTS}},
     }
+    current["energy"]["accounting_inputs"]["accounting_fingerprint"] = "a" * 64
     baseline = {
         "estimated_mA": 1.0,
-        "energy": {"accounting_inputs": {"accounting_mode": "synthetic", "accounting_fingerprint": "b"}},
+        "energy": {"accounting_inputs": {**self.SYNTHETIC_INPUTS}},
     }
+    baseline["energy"]["accounting_inputs"]["accounting_fingerprint"] = "b" * 64
     result = self.run_compare(current, baseline)
     self.assertEqual(result.returncode, 2)
     self.assertIn("accounting mode/model-cost provenance mismatch", result.stderr)
@@ -107,22 +116,63 @@ class PowerCompareTest(unittest.TestCase):
   def test_accounting_identity_must_match(self):
     current = {
         "estimated_mA": 1.0,
-        "energy": {"accounting_mode": "synthetic-virtual-work", "accounting_fingerprint": "a"},
+        "energy": {"accounting_inputs": {**self.SYNTHETIC_INPUTS}},
     }
+    current["energy"]["accounting_inputs"]["accounting_fingerprint"] = "a" * 64
     baseline = {
         "estimated_mA": 1.0,
-        "energy": {"accounting_mode": "synthetic-virtual-work", "accounting_fingerprint": "b"},
+        "energy": {"accounting_inputs": {**self.SYNTHETIC_INPUTS}},
     }
+    baseline["energy"]["accounting_inputs"]["accounting_fingerprint"] = "b" * 64
     result = self.run_compare(current, baseline)
     self.assertEqual(result.returncode, 2)
     self.assertIn("accounting mode/model-cost provenance mismatch", result.stderr)
 
+  def test_matching_synthetic_accounting_identity_passes(self):
+    report = {"estimated_mA": 1.0, "energy": {"accounting_inputs": self.SYNTHETIC_INPUTS}}
+    self.assertEqual(self.run_compare(report, report).returncode, 0)
+
   def test_legacy_reports_have_compatible_implicit_identity(self):
     result = self.run_compare(
         {"estimated_mA": 1.0},
-        {"estimated_mA": 1.0, "energy": {"accounting_mode": "legacy-unaccounted", "accounting_fingerprint": ""}},
+        {"estimated_mA": 1.0, "energy": {"accounting_inputs": {
+            "accounting_mode": "legacy-unaccounted",
+            "accounting_version": 0,
+            "accounting_fingerprint": "",
+            "accounting_valid": True,
+        }}},
     )
     self.assertEqual(result.returncode, 0)
+
+  def test_explicit_malformed_accounting_metadata_is_not_legacy(self):
+    for key, value in (
+        ("accounting_version", 2),
+        ("accounting_valid", False),
+        ("accounting_fingerprint", ""),
+    ):
+      inputs = {**self.SYNTHETIC_INPUTS, key: value}
+      result = self.run_compare(
+          {"estimated_mA": 1.0, "energy": {"accounting_inputs": inputs}},
+          {"estimated_mA": 1.0},
+      )
+      self.assertEqual(result.returncode, 2)
+      self.assertIn("compare:", result.stderr)
+
+  def test_empty_explicit_accounting_metadata_is_rejected(self):
+    result = self.run_compare(
+        {"estimated_mA": 1.0, "energy": {"accounting_inputs": {}}},
+        {"estimated_mA": 1.0},
+    )
+    self.assertEqual(result.returncode, 2)
+    self.assertIn("empty accounting metadata", result.stderr)
+
+  def test_unknown_explicit_accounting_metadata_is_rejected(self):
+    result = self.run_compare(
+        {"estimated_mA": 1.0, "energy": {"accounting_inputs": {"future": 1}}},
+        {"estimated_mA": 1.0},
+    )
+    self.assertEqual(result.returncode, 2)
+    self.assertIn("no accounting metadata fields", result.stderr)
 
   def test_invalid_threshold_is_rejected(self):
     for value in ("-0.1", "nan", "inf"):

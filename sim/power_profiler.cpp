@@ -659,7 +659,10 @@ bool parseAccountingModel(const std::string &contents, CurrentModel &model) {
         continue;
       }
       const size_t scanFirst = scanLine.find_first_not_of(' ');
-      if (scanFirst == 0 && scanText.rfind("accounting:", 0) == 0) {
+      const size_t scanColon = scanText.find(':');
+      const bool scanAccountingKey =
+          scanColon != std::string::npos && trim(scanText.substr(0, scanColon)) == "accounting";
+      if (scanFirst == 0 && scanAccountingKey) {
         if (accountingBlockSeen || scanText != "accounting:") {
           return false;
         }
@@ -705,7 +708,7 @@ bool parseAccountingModel(const std::string &contents, CurrentModel &model) {
     const std::string value = trim(text.substr(colon + 1));
     if (indent == 0) {
       if (key == "accounting") {
-        if (accountingSeen) {
+        if (accountingSeen || text != "accounting:") {
           return false;
         }
         accountingSeen = true;
@@ -801,6 +804,9 @@ bool parseAccountingModel(const std::string &contents, CurrentModel &model) {
       return false;
     }
     if (inTimers && indent != 6) {
+      return false;
+    }
+    if (inTimers && indent == 6 && timer.empty()) {
       return false;
     }
     if (inTimers && indent == 6 && !timer.empty()) {
@@ -1121,13 +1127,14 @@ void writeReportLocked(const std::filesystem::path &path,
   const uint64_t light_sleep_raw_ms = state.light_sleep_ms;
   const uint64_t light_sleep_ms = reportDuration(light_sleep_raw_ms);
   const uint64_t light_sleep_in_80 = std::min(frequency_80_raw_ms, light_sleep_raw_ms);
-  const uint64_t adjusted_light_sleep_us =
-      state.eligible_light_sleep_us >= state.light_sleep_work_us
-          ? state.eligible_light_sleep_us - state.light_sleep_work_us
-          : 0;
-  const double light_sleep_residency_ms =
-      model.accounting_enabled ? static_cast<double>(adjusted_light_sleep_us) / 1000.0
-                               : static_cast<double>(light_sleep_ms);
+  uint64_t adjusted_light_sleep_us = 0;
+  if (model.accounting_enabled) {
+    if (state.eligible_light_sleep_us < state.light_sleep_work_us) {
+      requestFailureExit();
+      return;
+    }
+    adjusted_light_sleep_us = state.eligible_light_sleep_us - state.light_sleep_work_us;
+  }
 
   const double mcu_ma =
       (static_cast<double>(light_sleep_in_80) * model.light_sleep
@@ -1316,10 +1323,19 @@ void writeReportLocked(const std::filesystem::path &path,
   output << "      \"task_idle_ms\": " << reportDuration(state.task_idle_ms) << ",\n";
   output << "      \"eligible_ms\": " << light_sleep_ms << ",\n";
   output << "      \"residency_ms\": ";
-  writeDouble(output, light_sleep_residency_ms);
+  if (model.accounting_enabled) {
+    writeDouble(output, static_cast<double>(adjusted_light_sleep_us) / 1000.0);
+  } else {
+    output << light_sleep_ms;
+  }
   output << ",\n";
   output << "      \"residency_percent\": ";
-  writeDouble(output, light_sleep_residency_ms * 100.0 / static_cast<double>(safe_duration_ms));
+  if (model.accounting_enabled) {
+    writeDouble(output, static_cast<double>(adjusted_light_sleep_us) * 100.0
+                            / (1000.0 * static_cast<double>(safe_duration_ms)));
+  } else {
+    writeDouble(output, perSecond(light_sleep_ms, safe_duration_ms) / 10.0);
+  }
   output << "\n    },\n";
   output << "    \"frequency_residency_ms\": {\n";
   output << "      \"80\": " << frequency_80_ms << ",\n";

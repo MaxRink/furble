@@ -19,6 +19,8 @@ per-entry cost and provenance. Well-formed unused timer names may remain in
 that map; an observed timer without a cost fails the run. The report
 fingerprint includes the model digest, all current coefficients, mode/version,
 calibration status, and canonical work-cost provenance.
+The digest is over the exact model bytes, so formatting or whitespace changes
+intentionally require a new comparator identity.
 
 ## Validation status
 
