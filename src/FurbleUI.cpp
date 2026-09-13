@@ -8087,10 +8087,10 @@ lv_obj_t *UI::addSpinItem(lv_obj_t *page, const char *item, Intervalometer::Spin
   // shared helper serves Bulb Duration and all Intervalometer value rows.
   lv_obj_set_style_pad_left(spinner.m_Button, 0, LV_STATE_DEFAULT);
   lv_obj_set_style_pad_right(spinner.m_Button, 0, LV_STATE_DEFAULT);
-  // 80x160 is the shortest panel. Trim the per-row padding so the Count, Delay,
-  // Shutter and Wait rows fit without scrolling the timer page.
-  lv_obj_set_style_pad_top(spinner.m_Button, 1, LV_STATE_DEFAULT);
-  lv_obj_set_style_pad_bottom(spinner.m_Button, 1, LV_STATE_DEFAULT);
+  // 80x160 is the shortest panel. Remove the per-row padding so the Count,
+  // Delay, Shutter and Wait rows keep their complete values in the narrow width.
+  lv_obj_set_style_pad_top(spinner.m_Button, 0, LV_STATE_DEFAULT);
+  lv_obj_set_style_pad_bottom(spinner.m_Button, 0, LV_STATE_DEFAULT);
 #elif defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
   // Keep the vertical breathing room, but not horizontal padding: at the Large
   // font "999 mins" is 103 px, exactly the narrowed row's outer width.
