@@ -721,7 +721,9 @@
       "boards": [
         "m5stick-s3"
       ],
-      "capabilities": [],
+      "capabilities": [
+        "imu"
+      ],
       "expected_exit": 0,
       "certified": true
     },

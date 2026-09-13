@@ -37,6 +37,20 @@ class SimulatorStartupOrderTest(unittest.TestCase):
     positions = [self.simulator.index(call) for call in calls]
     self.assertEqual(positions, sorted(positions))
 
+  def test_platform_records_the_consumed_boot_settings(self):
+    calls = [
+        "Settings::load<bool>(Settings::IMU)",
+        "Settings::load<uint8_t>(Settings::FB_OUTPUT)",
+        "captureBootSettings(bootSettingsSnapshot);",
+    ]
+    platform = (ROOT / "sim" / "FurblePlatformSim.cpp").read_text()
+    positions = [platform.index(call) for call in calls]
+    self.assertEqual(positions, sorted(positions))
+
+    driver = (ROOT / "sim" / "driver.cpp").read_text()
+    self.assertIn('key == "boot_settings_imu"', driver)
+    self.assertIn('key == "boot_settings_fb_output"', driver)
+
   def test_preferences_and_sdl_setup_stay_before_thread_start(self):
     calls = [
         "Furble::Sim::preparePreferences();",

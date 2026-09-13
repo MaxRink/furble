@@ -36,10 +36,17 @@ protects. `panelReady` remains after platform construction because SDL must not
 traverse the M5GFX monitor list before the panel is registered.
 
 The startup profiler remains after platform construction and panel publication
-by design. Its current report window is intentionally unchanged; it does not
-claim to include initial platform power configuration. Companion rig selection
-and persisted Companion state are separate concerns and must not be combined
-with this startup ordering contract.
+by design. Its call placement is unchanged, but settings initialization now
+happens before the profiler starts. The profiler therefore does not claim to
+include initial platform power configuration. Companion rig selection and
+persisted Companion state are separate concerns and must not be combined with
+this startup ordering contract.
+
+`sim/FurblePlatformSim.cpp` records the `IMU` and `FB_OUTPUT` values loaded at
+the platform boundary as `boot_settings_imu` and `boot_settings_fb_output`.
+These are query-only observations of boot inputs. The SDL platform still forces
+its host IMU and speaker capabilities off, so the queries do not certify
+physical M5 configuration.
 
 ## Parity inventory and seam rules
 

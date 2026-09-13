@@ -17,9 +17,10 @@ handoff stay in that order. `panelReady` is still published only after platform
 initialization, so the SDL monitor-list race guard is unchanged.
 
 The profiler call remains after platform initialization and panel publication.
-This patch intentionally does not change the existing profiler measurement
-window. The profile therefore still does not include initial platform power
-configuration. That is a separate measurement decision.
+Its call placement is unchanged, but moving settings initialization before it
+does change which earlier work is outside the measured window. The profile
+still does not include initial platform power configuration. That is a separate
+measurement decision.
 
 This patch does not change Companion rig behavior, add production Companion
 GATT startup to the simulator, add `TimeKeeper::init()`, or model physical IMU,
@@ -30,8 +31,10 @@ speaker, PMIC, or RF behavior.
 `tests/test_sim_startup_order.py` is a dependency-free Python source contract.
 It checks that settings and scenario application precede platform construction,
 that the panel readiness and profiler boundaries remain after platform, and
-that preference and SDL setup remain before simulator thread start. It is
-included by the existing Python unittest discovery job.
+that the platform observation captures the actual `IMU` and `FB_OUTPUT` loads.
+The existing boot-splash-disabled scenario seeds both values and asserts the
+recorded snapshot. It is included by the existing Python unittest discovery
+job.
 
 ## Verification
 
