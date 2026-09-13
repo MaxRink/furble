@@ -324,7 +324,7 @@ void testDomainValidation() {
   };
 
   ProvisionBundle offBundle;
-  offBundle.settings = {{65, ValueType::U8, {static_cast<uint8_t>(Settings::LEGEND_OFF)}}};
+  offBundle.settings = {{65, ValueType::U8, {static_cast<uint8_t>(Furble::Settings::LEGEND_OFF)}}};
   ApplyReport offReport;
   check(apply(offBundle, offReport), "Legend Off value provisions");
   check(Furble::Settings::load<uint8_t>(Furble::Settings::LEGEND)
