@@ -234,7 +234,7 @@ class FurbleProtocolTest {
     }
 
     @Test
-    fun metadataCoversEveryCurrentWireIdAndUnknownRowsStayReadOnly() {
+    fun metadataCoversSupportedWireIdsAndUnknownRowsStayReadOnly() {
         assertEquals(47, FurbleSettingMetadata.byWireId.size)
         assertEquals((1..41).toSet() + setOf(43, 44, 46, 65, 72, 73), FurbleSettingMetadata.byWireId.keys)
         assertEquals("Brightness", FurbleSettingMetadata.byWireId[1]?.name)
