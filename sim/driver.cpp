@@ -457,6 +457,7 @@ void validateSeed(const std::string &name, const std::string &value) {
       "ble_client_selfdelete",
       "gps_extrap",
       "gps_stationary",
+      "gps_uart_noise",
       "sd_gpx",
       "imu_trigger",
   };
@@ -551,9 +552,6 @@ void validateSeed(const std::string &name, const std::string &value) {
     return;
   } else if (name == "gps_uart_chunk") {
     parseUnsigned(value);
-    return;
-  } else if (name == "gps_uart_noise") {
-    parseBool(value);
     return;
   } else if (name == "gps_fix_date") {
     if (value != "fixture" && value != "modern" && value != "nodate" && value != "stale"

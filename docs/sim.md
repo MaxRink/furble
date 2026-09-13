@@ -302,8 +302,9 @@ Battery seeds select the initial deterministic platform sample:
 
 These boolean settings are applied before the UI is constructed:
 `gps`, `gps_nmea`, `gps_motion`, `fauxny`, `autoconnect`, `reconnect`,
-`recon_backoff`, `sleep_conn`, `boot_splash`, `gps_extrap`, `sd_gpx`, `imu`,
-and `imu_trigger`. `auto_off_charging` opts into auto-off while charging, and
+`recon_backoff`, `sleep_conn`, `boot_splash`, `gps_extrap`, `gps_uart_noise`,
+`sd_gpx`, `imu`, and `imu_trigger`. `auto_off_charging` opts into auto-off while
+charging, and
 `imu_sensor` controls modeled IMU presence. `gps_motion` needs `gps` and `imu`
 as well: the detector only runs when the receiver and the sensor are both on.
 `gps_motion_prearm` is a regression-only seed that loads GPS before the UI arms
@@ -324,6 +325,8 @@ picks the GSV/GSA fixture and `gps_fix_date` picks the fix burst; both are
 detailed under the receiver model below. `gps_uart_chunk` serves the burst that
 many bytes at a time, paced, so a sentence spans several reads as it does off a
 real UART.
+All boolean seeds, including `gps_uart_noise`, reject malformed values during
+scenario loading.
 
 `ble_peers` selects the virtual BLE radio topology from a strict allowlist:
 
