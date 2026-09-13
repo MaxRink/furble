@@ -109,8 +109,15 @@ bool parseReservations(const std::string &source,
       error = "empty reservation owner or ID column";
       return false;
     }
+    // Retain a marker for every row, including rows declaring no IDs, so
+    // validation can enforce owner-row presence and uniqueness.
+    reservations.push_back({owner, 0});
     if (ids == "none") {
       continue;
+    }
+    if (ids.back() == ',') {
+      error = "empty reservation ID token";
+      return false;
     }
     std::istringstream tokens(ids);
     std::string token;
@@ -149,9 +156,18 @@ bool validateReservations(const std::vector<Reservation> &reservations,
   static const std::set<std::string> expectedOwners = {
       "Master", "Master (conditional)", "Historical claims", "#59", "#63", "#90", "#265", "#273"};
   std::set<std::string> owners;
+  std::set<std::string> ownerRows;
   std::map<int, std::string> reservationOwners;
   std::set<int> masterIds;
   for (const auto &reservation : reservations) {
+    if (reservation.wire_id == 0) {
+      if (!ownerRows.insert(reservation.owner).second) {
+        error = "reservation owner row is duplicated";
+        return false;
+      }
+      owners.insert(reservation.owner);
+      continue;
+    }
     owners.insert(reservation.owner);
     if (!reservationOwners.emplace(reservation.wire_id, reservation.owner).second) {
       error = "reservation wire ID has multiple owners";
@@ -208,6 +224,11 @@ void testReservationParser() {
   std::string emptyToken = valid;
   emptyToken.replace(emptyToken.find("75, 76"), 6, "75,,76");
   check(!parseReservations(emptyToken, parsed, error), "empty reservation token is rejected");
+
+  std::string trailingToken = valid;
+  trailingToken.replace(trailingToken.find("75, 76"), 6, "75, 76,");
+  check(!parseReservations(trailingToken, parsed, error),
+        "trailing empty reservation token is rejected");
 
   std::string reversed = valid;
   reversed.replace(reversed.find("75, 76"), 6, "76-75");
