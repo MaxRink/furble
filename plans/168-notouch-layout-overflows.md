@@ -871,3 +871,9 @@ Fixes 5, 6, 6b and 8 are unverified on hardware: only the M5StickS3 is
 available. The original PR273 head simulator-verified the 80x160 and 320x240
 changes, including the Core2 touch-layout reach in 6b. Those historical results
 do not certify the later master integration or focus-scroll correction.
+
+The current integration also keeps the Display page content-sized on the
+80-pixel touch-panel path. This addresses the observed negative-space flex
+layout and four label overlaps without changing fonts, icons, or seeds. The
+three-panel touch matrix remains pending; no broader panel/layout pass is
+claimed here.

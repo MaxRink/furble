@@ -8677,11 +8677,11 @@ void UI::addBulbMenu(const menu_t &parent) {
 void UI::addDisplayMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_DisplayStr, &icon_settings_brightness, true, parent);
   lv_obj_t *cont = lv_menu_cont_create(menu.page);
-  if (!M5.Touch.isEnabled()) {
-    // Let the page scroll when these seven widgets exceed a button-only
-    // viewport, including the M5Stack Core simulator's physical-key layout.
-    // Pinning the container to the viewport made SPACE_EVENLY use negative space
-    // and draw adjacent controls over one another.
+  if (!M5.Touch.isEnabled() || M5.Display.width() < 110) {
+    // Let the page scroll when these seven widgets exceed a narrow viewport,
+    // including physical-key layouts and the 80 px touch-panel simulator.
+    // Pinning the container to the viewport made SPACE_EVENLY use negative
+    // space and draw adjacent controls over one another.
     lv_obj_set_height(cont, LV_SIZE_CONTENT);
     lv_obj_set_style_pad_top(cont, 0, LV_STATE_DEFAULT);
     lv_obj_set_style_pad_bottom(cont, 0, LV_STATE_DEFAULT);
@@ -8691,7 +8691,9 @@ void UI::addDisplayMenu(const menu_t &parent) {
   }
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(cont,
-                        M5.Touch.isEnabled() ? LV_FLEX_ALIGN_SPACE_EVENLY : LV_FLEX_ALIGN_START,
+                        M5.Touch.isEnabled() && M5.Display.width() >= 110
+                            ? LV_FLEX_ALIGN_SPACE_EVENLY
+                            : LV_FLEX_ALIGN_START,
                         LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
   // Add brightness control
