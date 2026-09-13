@@ -1851,8 +1851,7 @@ void UI::reserveLegendColumns(lv_obj_t *page) {
   // left alone.
   for (uint32_t i = 0; i < lv_obj_get_child_count(page); i++) {
     lv_obj_t *row = lv_obj_get_child(page, i);
-    if ((row == nullptr) || !lv_obj_is_valid(row) || lv_obj_has_flag(row, LV_OBJ_FLAG_FLOATING)
-        || lv_obj_check_type(row, &lv_label_class)) {
+    if ((row == nullptr) || !lv_obj_is_valid(row) || lv_obj_has_flag(row, LV_OBJ_FLAG_FLOATING)) {
       continue;
     }
     if (reserve > 0) {
@@ -8510,7 +8509,7 @@ void UI::bulbStop(void) {
 
 void UI::updateBulbModeHint(void) {
   // Keep this setter as the hook for future BLE detected camera mode status.
-  lv_label_set_text(m_Bulb.m_ModeHintLabel, m_BulbModeHintStr);
+  lv_label_set_text(m_Bulb.m_ModeHintLabel, "Camera: B mode");
 }
 
 void UI::addBulbMenu(const menu_t &parent) {
@@ -8521,9 +8520,9 @@ void UI::addBulbMenu(const menu_t &parent) {
 
   m_Bulb.m_ModeHintLabel = lv_label_create(menu.page);
   lv_obj_set_width(m_Bulb.m_ModeHintLabel, LV_PCT(100));
-  // A sentence, not a row label: it wraps over as many lines as it needs at the
-  // page width, left aligned. Clipped and squeezed to one line with negative
-  // letter spacing it was unreadable on every narrow panel.
+  // A sentence, not a row label: it wraps over as many lines as it needs in the
+  // reserved row width, left aligned. Keep the wording short enough that the
+  // 80 px panel does not turn the compact page into a scroll page.
   lv_label_set_long_mode(m_Bulb.m_ModeHintLabel, LV_LABEL_LONG_WRAP);
   lv_obj_set_style_text_font(m_Bulb.m_ModeHintLabel, &lv_font_montserrat_12, LV_PART_MAIN);
   lv_obj_set_style_text_align(m_Bulb.m_ModeHintLabel, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);

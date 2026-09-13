@@ -799,9 +799,11 @@ The integrated 80x160 sweep found the Bulb page still 40 px too tall. The
 trace showed `reserveLegendColumns()` had narrowed the page-level mode hint to
 48 px, making the 12 px-font sentence 75 px tall. It also showed the narrowed
 Start button's default horizontal padding left only 22 px for its 24 px label.
-The candidate leaves page-level prose at the full page width and removes only
-the 80 px button's horizontal padding, while preserving the hint wording,
-font, controls and legend reservation. Full validation remains pending.
+The candidate keeps the stable legend reservation and shortens the equivalent
+hint to `Camera: B mode`, which fits in two lines at the selected 12 px font.
+It removes only the 80 px button's horizontal padding, while preserving the
+instruction meaning, font, controls and legend reservation. Full validation
+remains pending.
 
 ## Deviations
 
