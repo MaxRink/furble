@@ -323,8 +323,7 @@ void integrateLocked(uint32_t now) {
 
   if (state.model.accounting_enabled) {
     uint64_t elapsed_us = 0;
-    if (elapsed > std::numeric_limits<uint64_t>::max() / 1000
-        || !addChecked(0, static_cast<uint64_t>(elapsed) * 1000, elapsed_us)) {
+    if (!addChecked(0, static_cast<uint64_t>(elapsed) * 1000, elapsed_us)) {
       state.accounting_invalid = true;
       requestFailureExit();
       return;
