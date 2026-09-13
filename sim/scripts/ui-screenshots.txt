@@ -221,6 +221,6 @@ key left
 wait 200
 key left
 wait 1100
-assert-eventually 60000 ui.connected yes
+assert-eventually-virtual 60000 ui.connected yes
 capture m5stick-s3-connected
 exit

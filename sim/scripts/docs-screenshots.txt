@@ -205,7 +205,7 @@ capture connecting
 print ui.page
 print ui.connect_box
 wait 1700
-assert-eventually 60000 ui.connected yes
+assert-eventually-virtual 60000 ui.connected yes
 capture connected
 print ui.page
 print ui.connected
@@ -213,6 +213,7 @@ print ui.connected
 # Remote shutter page while connected, non-touch layout on this narrow board.
 action blind
 wait 500
+assert ui.page shutter
 capture remote
 print ui.page
 

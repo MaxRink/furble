@@ -35,7 +35,7 @@ home
 wait 300
 action connect
 wait 1800
-assert-eventually 60000 ui.connected yes
+assert-eventually-virtual 60000 ui.connected yes
 capture connected
 print ui.page
 

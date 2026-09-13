@@ -6,9 +6,10 @@ wait 200
 capture scan
 key left
 wait 1100
-assert-eventually 60000 ui.connected yes
+assert-eventually-virtual 60000 ui.connected yes
 capture connected
 key left
 wait 200
+assert ui.page shutter
 capture shutter
 exit

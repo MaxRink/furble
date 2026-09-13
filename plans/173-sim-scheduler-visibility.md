@@ -377,11 +377,13 @@ The Connected screenshots previously used a fixed virtual-time sleep followed
 immediately by `capture`. A capture could therefore preserve the Connecting
 modal while the Control task was still in `STATE_CONNECTING`, and the later
 script steps could cancel that incomplete connection. All six capture scripts
-that produce a Connected frame now put `assert-eventually 60000 ui.connected yes`
+that produce a Connected frame now put `assert-eventually-virtual 60000 ui.connected yes`
 immediately before the capture. The query is the existing composite predicate:
 the Connected page is current, the progress box is hidden, and Control reports
-`STATE_ACTIVE`. The 60000 ms ceiling is a finite host-time wait for background
-completion, not an unbounded sleep or a claim that a connection will succeed.
+`STATE_ACTIVE`. The 60000 ms ceiling is a finite virtual-time wait that keeps
+the UI and connection tasks running, not an unbounded sleep or a claim that a
+connection will succeed. Remote captures also assert `ui.page shutter` after
+the blind-entry action.
 
 This gates the screenshot artifact only. It does not alter production
 connection behavior, and this handoff did not rerun the gallery build or any
