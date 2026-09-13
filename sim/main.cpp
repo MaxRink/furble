@@ -5,10 +5,12 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <string>
 #include <thread>
 
 #include <freertos/FreeRTOS.h>
+#include <unistd.h>
 
 #if defined(FURBLE_SIM_MQTT) && FURBLE_SIM_MQTT
 #include <esp_event.h>
@@ -38,6 +40,15 @@ extern "C" void furble_sim_check_step_detect_suppressed(void);
 namespace {
 
 std::atomic<bool> panelReady {false};
+
+[[noreturn]] void failFastSchedulerStopped(const char *message) {
+  if (message == nullptr) {
+    message = "SIM FAIL: SchedulerStopped escaped simulator; exiting without cleanup\n";
+  }
+  const ssize_t written = ::write(STDERR_FILENO, message, std::strlen(message));
+  static_cast<void>(written);
+  std::_Exit(1);
+}
 
 int runSimulator() {
   using namespace Furble;
@@ -202,7 +213,12 @@ int runSimulator() {
   Sim::setBackTarget(&ui);
   Sim::registerUI(&ui);
   Sim::watchdogPhase("running");
-  ui.task();
+  try {
+    ui.task();
+  } catch (const Sim::SchedulerStopped &) {
+    failFastSchedulerStopped(
+        "SIM FAIL: SchedulerStopped in UI task; exiting without cleanup\n");
+  }
   Sim::watchdogPhase("teardown");
 
   // Tear the control session down before anything else unwinds. The firmware
@@ -272,12 +288,7 @@ int main(int argc, char **argv) {
     try {
       simulatorResult = runSimulator();
     } catch (const Furble::Sim::SchedulerStopped &) {
-      // A scheduler task failed while this unregistered UI thread was waiting
-      // for a scheduler-visible mutex. Leave lock() by exception rather than
-      // returning without ownership, then join the cooperative task unwind.
-      Furble::Sim::requestFailureExit();
-      furble_sim_stop_all_tasks();
-      simulatorResult = 1;
+      failFastSchedulerStopped(nullptr);
     }
   });
   // Sleep rather than spin. This wait is unbounded on purpose: a panel that

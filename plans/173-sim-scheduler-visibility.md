@@ -353,3 +353,27 @@ Validation of this runtime and its new test path is pending on this commit.
 No host-suite, CI, hardware, or physical scheduler-parity result is claimed.
 The waiter-state dump and repeated high-load virtual-time-bound proof remain
 separate open work.
+
+## SchedulerStopped fail-fast boundary
+
+An exception from a scheduler-visible mutex can arrive while `UI::task()` owns
+the manual LVGL mutex. The simulator catches `SchedulerStopped` inside
+`runSimulator()` while the `UI` object is still alive, writes a bounded
+low-level failure banner, and calls `std::_Exit(1)`. It deliberately does not
+attempt locks, joins, LVGL work, destructors, peer cleanup, rig cleanup, MQTT
+shutdown, watchdog unregister, or recovery. This avoids claiming that those
+operations are safe after the scheduler has stopped.
+
+The outer simulator-thread boundary has the same fail-fast handling for a
+`SchedulerStopped` escape that occurs before or after the UI phase. Normal
+successful teardown is unchanged. A simulator-only
+`FURBLE_SIM_TEST_SCHEDULER_STOP=1` trigger raises the same exception from the
+first `driverTick()` inside the locked UI phase. The bounded regression is
+`sim/scripts/assert-scheduler-stop-failfast.sh`; it expects diagnostic output,
+explicit status 1, and neither a signal exit nor a timeout. The existing CI
+`assert-exit-regression.sh` invokes this check against the same simulator
+binary.
+
+Exception-safe cleanup for other UI or native MQTT exceptions remains a
+separate gap. This fail-fast boundary is not hardware, scheduler-parity, or
+recovery evidence.
