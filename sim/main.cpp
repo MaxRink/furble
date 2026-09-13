@@ -42,8 +42,9 @@ int runSimulator() {
   using namespace Furble;
 
   Sim::watchdogRegisterThread("simulator");
-  // Platform reads settings while constructing the M5 config. Match firmware
-  // boot by loading NVS and applying the scenario before platform bring-up.
+  // Firmware Platform consumes these settings while constructing the M5 config.
+  // Load NVS and apply the scenario first so the simulator observes the same
+  // boot-input boundary, even though its SDL M5 config remains host-specific.
   Sim::watchdogPhase("settings");
   Settings::init();
   Sim::watchdogPhase("scenario settings");

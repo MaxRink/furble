@@ -5,8 +5,10 @@
 The firmware initializes settings before the platform because
 `FurblePlatform.cpp` reads `IMU` and `FB_OUTPUT` while constructing the
 `M5.begin()` configuration. The host simulator initialized its platform first,
-then wrote scenario settings. That made boot consume defaults or stale
-preferences and left the simulator startup contract different from firmware.
+then wrote scenario settings, so it had no matching boot-input snapshot
+boundary. The SDL platform still deliberately forces its host IMU and speaker
+flags off. This change aligns the observable input boundary without claiming
+physical M5 configuration parity.
 
 ## Change
 
@@ -51,6 +53,13 @@ python3 -m unittest tests.test_sim_startup_order
 
 The simulator scenario suite must continue to prove UI and settings behavior.
 It must not inject BLE advertisements or scan callbacks during idle boot.
+
+## Validation evidence
+
+Root validation at commit `08f5dbfaf43c367db672b99ad368b9163fd6e0ae` passed the
+M5StickS3 simulator build and the `boot-splash-disabled` runtime scenario. The
+scenario observed `boot_settings_imu=1`, `boot_settings_fb_output=1`, and
+`ui.page=main`. The remaining serialized checks are still pending.
 
 ## Implementation state
 
