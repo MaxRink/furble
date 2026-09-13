@@ -35,10 +35,11 @@ without a duplicate registry: it extracts the actual second strings from the
 query-map initializer and compares them with `ui.page` assertions in every
 certified scenario selected by `sim/scenarios/manifest.json`. The root page is
 handled before the map, so `main` is intentionally outside this comparison.
-The certified corpus currently covers all 55 mapped values. `level_main` is
-still checked as an action alias whose canonical query result is `level`; the
-guard compares query results, not action names or table lengths. A future
-mapped page without a certified assertion now fails this host contract test.
+The certified corpus currently covers all 56 mapped values, including the
+Legend 65 page added by the integrated master. `level_main` is still checked
+as an action alias whose canonical query result is `level`; the guard compares
+query results, not action names or table lengths. A future mapped page without
+a certified assertion now fails this host contract test.
 
 ## Validation boundary
 
