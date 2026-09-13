@@ -136,6 +136,9 @@ attempt to infer changed paths without a pull request or push comparison base.
   documentation screenshot capture. Incremental builds use compiler depfiles;
   verify the cache with `sh sim/scripts/test-build-deps.sh` after changing the
   build script. It never changes firmware behavior.
+- After building the simulator, run `FURBLE_SIM_BIN=sim/build/furble-sim sh
+  sim/scripts/check-preferences-lifecycle.sh` to check explicit and generated
+  preference ownership; `sim-e2e.yml` runs the same gate in CI.
 - The USB serial console in debug builds is the automation surface for settings,
   GPS, shutter, and status. See `docs/console-commands.md`.
 - Hardware verification happens before a PR. Only Fujifilm cameras are available

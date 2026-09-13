@@ -27,6 +27,9 @@ Release tags beginning with `companion-test-` skip firmware publication and
 are reserved for companion testing; other release tags retain normal behavior.
 All simulator scenarios are owned in `sim/scenarios/manifest.json`; run
 `python3 tools/check_sim_scenarios.py` after adding, removing, or renaming one.
+The built simulator preference ownership gate is
+`sim/scripts/check-preferences-lifecycle.sh`; `sim-e2e.yml` runs it against the
+fresh M5StickS3 binary.
 Firmware line coverage is measured by `tools/coverage.py` and gated against
 `tests/coverage_floor.json`. Coverage instrumentation is opt-in in both build
 entry points (`-DFURBLE_COVERAGE=ON` for the host harness,
