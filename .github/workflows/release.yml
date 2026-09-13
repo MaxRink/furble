@@ -27,10 +27,13 @@ jobs:
         variant:
           - ""
           - "-debug"
+        exclude:
+          - platform: m5stack-core
+            variant: "-debug"
 
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
 
     env:
       FIRMWARE_NAME: furble-${{ matrix.platform }}${{ matrix.variant }}-${{ github.ref_name }}.bin
@@ -94,6 +97,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     name: Generate release artifacts
+    permissions:
+      contents: write
 
     steps:
       - name: Download artifacts
