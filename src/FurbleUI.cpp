@@ -3720,6 +3720,19 @@ std::string UI::simQueryState(const char *key) {
     return hidden ? "hidden" : "visible";
   }
 
+  // Count the physical navigation indicators that LVGL currently exposes.
+  // This is deliberately a visibility query, not a pointer-existence check:
+  // connect modals hide these objects while they own the screen.
+  if (query == "indicators_visible") {
+    uint8_t visible = 0;
+    for (lv_obj_t *indicator : {m_Left, m_OK, m_Right}) {
+      if (indicator != nullptr && lv_obj_is_valid(indicator) && lv_obj_is_visible(indicator)) {
+        visible++;
+      }
+    }
+    return std::to_string(visible);
+  }
+
   // Whether any shutter button indicator currently latches LV_STATE_FOCUSED, the
   // green focus outline that must not survive a button press or release. The
   // indicators are pure hints, so this must always read "no".
@@ -5842,6 +5855,10 @@ void UI::doDisconnect(void) {
 
   lv_obj_add_flag(m_ConnectContext.messageBox, LV_OBJ_FLAG_HIDDEN);
   lv_obj_clear_flag(m_MainMenu.main, LV_OBJ_FLAG_HIDDEN);
+
+  // Every teardown returns to Main, including Cancel and terminal connect
+  // failure. Restore the physical-button indicators hidden by the modal.
+  m_ConnectContext.ui->displayNavigationBar(true);
 
   lv_menu_clear_history(m_MainMenu.main);
   lv_menu_set_page(m_MainMenu.main, m_MainMenu.page);

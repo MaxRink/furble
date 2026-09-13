@@ -1,0 +1,21 @@
+# Canceling an initial physical-button connect restores all three indicators.
+# The query counts actual LVGL-visible objects, so this catches a teardown
+# that only returns to Main while leaving the modal's hidden flags in place.
+seed fauxny true
+seed no_touch true
+wait 300
+
+assert ui.nav_layout buttons
+assert ui.page main
+assert ui.indicators_visible 3
+
+action connect
+assert-eventually-virtual 1000 ui.connect_box visible
+assert ui.indicators_visible 0
+
+action cancel
+assert-eventually-virtual 2000 control.state idle
+assert ui.page main
+assert ui.connect_box hidden
+assert ui.indicators_visible 3
+exit
