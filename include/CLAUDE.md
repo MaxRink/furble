@@ -51,8 +51,10 @@ yields a self-consistent corpus that silently breaks every deployed client.
 `tests/protocol/protocol_test.cpp` pins the ids it has been given so that
 renumbering fails the build rather than passing quietly.
 `tests/host/settings_table_test.cpp` parses this table, expands its ranges,
-rejects duplicate owners, and checks Master rows against the actual settings
-table. It cannot inspect GitHub; audit every open head again at rebase time.
+requires every documented owner row, rejects duplicate owners, and checks the
+Master rows exactly against all source-exposed settings ids, including
+conditional rows. It cannot inspect GitHub; audit every open head again at
+rebase time.
 
 | PR | Setting keys | Wire ids |
 | --- | --- | --- |

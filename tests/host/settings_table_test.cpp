@@ -56,26 +56,174 @@ struct Reservation {
   int wire_id;
 };
 
-std::vector<Reservation> parseReservations(const std::string &source) {
+std::string trim(std::string value) {
+  const size_t first = value.find_first_not_of(" \t");
+  if (first == std::string::npos) {
+    return {};
+  }
+  const size_t last = value.find_last_not_of(" \t");
+  return value.substr(first, last - first + 1);
+}
+
+bool parseReservations(const std::string &source,
+                       std::vector<Reservation> &reservations,
+                       std::string &error) {
+  reservations.clear();
+  error.clear();
   const std::regex rowPattern(R"(^\|\s*([^|]+)\|[^|]*\|\s*([^|]+)\|\s*$)");
-  const std::regex idPattern(R"(([0-9]+)(-([0-9]+))?)");
-  std::vector<Reservation> reservations;
+  const std::regex idPattern(R"(^([0-9]+)(-([0-9]+))?(\s*\([^)]*\))?$)");
+  bool inLedger = false;
+  bool foundHeader = false;
   std::istringstream lines(source);
   std::string line;
   while (std::getline(lines, line)) {
-    std::smatch row;
-    if (!std::regex_match(line, row, rowPattern) || (row[1] == " PR ") || (row[1] == " --- ")) {
+    if (trim(line) == "### Companion wire id reservations") {
+      inLedger = true;
       continue;
     }
-    for (std::sregex_iterator it(row[2].first, row[2].second, idPattern), end; it != end; ++it) {
-      const int first = std::stoi((*it)[1].str());
-      const int last = (*it)[3].matched ? std::stoi((*it)[3].str()) : first;
+    if (!inLedger) {
+      continue;
+    }
+    if (line.empty() || (line[0] != '|')) {
+      if (foundHeader) {
+        break;
+      }
+      continue;
+    }
+    std::smatch row;
+    if (!std::regex_match(line, row, rowPattern)) {
+      error = "malformed reservation row";
+      return false;
+    }
+    const std::string owner = trim(row[1].str());
+    const std::string ids = trim(row[2].str());
+    if (owner == "PR") {
+      foundHeader = true;
+      continue;
+    }
+    if (owner == "---") {
+      continue;
+    }
+    foundHeader = true;
+    if (owner.empty() || ids.empty()) {
+      error = "empty reservation owner or ID column";
+      return false;
+    }
+    if (ids == "none") {
+      continue;
+    }
+    std::istringstream tokens(ids);
+    std::string token;
+    while (std::getline(tokens, token, ',')) {
+      token = trim(token);
+      if (token.empty()) {
+        error = "empty reservation ID token";
+        return false;
+      }
+      std::smatch id;
+      if (!std::regex_match(token, id, idPattern)) {
+        error = "malformed reservation ID token";
+        return false;
+      }
+      const int first = std::stoi(id[1].str());
+      const int last = id[3].matched ? std::stoi(id[3].str()) : first;
+      if ((first < 1) || (last > 255) || (first > last)) {
+        error = "reservation ID is out of range or reversed";
+        return false;
+      }
       for (int wireId = first; wireId <= last; ++wireId) {
-        reservations.push_back({row[1].str(), wireId});
+        reservations.push_back({owner, wireId});
       }
     }
   }
-  return reservations;
+  if (!foundHeader || reservations.empty()) {
+    error = "reservation table is missing or empty";
+    return false;
+  }
+  return true;
+}
+
+bool validateReservations(const std::vector<Reservation> &reservations,
+                          const std::set<int> &exposedIds,
+                          std::string &error) {
+  static const std::set<std::string> expectedOwners = {
+      "Master", "Master (conditional)", "Historical claims", "#59", "#63", "#90", "#265", "#273"};
+  std::set<std::string> owners;
+  std::map<int, std::string> reservationOwners;
+  std::set<int> masterIds;
+  for (const auto &reservation : reservations) {
+    owners.insert(reservation.owner);
+    if (!reservationOwners.emplace(reservation.wire_id, reservation.owner).second) {
+      error = "reservation wire ID has multiple owners";
+      return false;
+    }
+    if (reservation.owner.find("Master") == 0) {
+      masterIds.insert(reservation.wire_id);
+    }
+  }
+  if (owners != expectedOwners) {
+    error = "reservation owner rows are incomplete";
+    return false;
+  }
+  if (masterIds != exposedIds) {
+    error = "Master reservation IDs do not equal the settings table";
+    return false;
+  }
+  for (const auto &reservation : reservations) {
+    if ((reservation.owner.find("Master") != 0) && (exposedIds.count(reservation.wire_id) != 0)) {
+      error = "non-Master reservation is already shipped";
+      return false;
+    }
+  }
+  return true;
+}
+
+void testReservationParser() {
+  const std::string valid =
+      "### Companion wire id reservations\n"
+      "| PR | Setting keys | Wire ids |\n"
+      "| --- | --- | --- |\n"
+      "| Master | shipped | 1-2 |\n"
+      "| Master (conditional) | conditional | 3 (S3 42) |\n"
+      "| Historical claims | audit | 4, 5 |\n"
+      "| #59 | setting | 75, 76 |\n"
+      "| #63 | none | none |\n"
+      "| #90 | setting | 62 |\n"
+      "| #265 | none | none |\n"
+      "| #273 | setting | 65 |\n";
+  std::vector<Reservation> parsed;
+  std::string error;
+  check(parseReservations(valid, parsed, error), "reservation parser accepts annotated IDs");
+  check(validateReservations(parsed, {1, 2, 3}, error), "complete reservation owner set validates");
+
+  std::string deleted = valid.substr(0, valid.find("| #273"));
+  check(parseReservations(deleted, parsed, error), "deleted-row fixture parses");
+  check(!validateReservations(parsed, {1, 2, 3}, error),
+        "deleted reservation owner row is rejected");
+
+  std::string duplicate = valid + "| #90 | duplicate | 62 |\n";
+  check(parseReservations(duplicate, parsed, error), "duplicate-row fixture parses");
+  check(!validateReservations(parsed, {1, 2, 3}, error), "duplicate reservation row is rejected");
+
+  std::string emptyToken = valid;
+  emptyToken.replace(emptyToken.find("75, 76"), 6, "75,,76");
+  check(!parseReservations(emptyToken, parsed, error), "empty reservation token is rejected");
+
+  std::string reversed = valid;
+  reversed.replace(reversed.find("75, 76"), 6, "76-75");
+  check(!parseReservations(reversed, parsed, error), "reversed reservation range is rejected");
+
+  std::string outOfRange = valid;
+  outOfRange.replace(outOfRange.find("75, 76"), 6, "256");
+  check(!parseReservations(outOfRange, parsed, error), "out-of-range reservation ID is rejected");
+
+  std::string malformedAnnotation = valid;
+  malformedAnnotation.replace(malformedAnnotation.find("3 (S3 42)"), 9, "3 (S3 42");
+  check(!parseReservations(malformedAnnotation, parsed, error),
+        "malformed reservation annotation is rejected");
+
+  check(parseReservations(valid, parsed, error), "omitted-source fixture parses");
+  check(!validateReservations(parsed, {1, 2}, error), "omitted Master source ID is rejected");
 }
 
 // Each table row reads {SYMBOL, wire_id, "Name", "key", NAMESPACE}. The
@@ -121,7 +269,10 @@ int main(int argc, char **argv) {
   const std::string root = argv[1];
   const std::string source = readText(root + "/src/FurbleSettings.cpp");
   const auto entries = parseTable(source);
-  const auto reservations = parseReservations(readText(root + "/include/CLAUDE.md"));
+  std::vector<Reservation> reservations;
+  std::string reservationError;
+  check(parseReservations(readText(root + "/include/CLAUDE.md"), reservations, reservationError),
+        "reservation table parses: " + reservationError);
 
   check(entries.size() >= 20, "the settings table parsed at least twenty rows");
 
@@ -141,16 +292,8 @@ int main(int argc, char **argv) {
     }
   }
 
-  std::map<int, std::string> reservationOwners;
-  for (const auto &reservation : reservations) {
-    check(reservationOwners.emplace(reservation.wire_id, reservation.owner).second,
-          "reservation wire id " + std::to_string(reservation.wire_id) + " has one owner");
-    const bool masterOwner = reservation.owner.find("Master") != std::string::npos;
-    const bool shipped = exposedIds.count(reservation.wire_id) != 0;
-    check(shipped == masterOwner,
-          reservation.owner + " reservation wire id " + std::to_string(reservation.wire_id)
-              + (masterOwner ? " is missing from master" : " is already shipped on master"));
-  }
+  check(validateReservations(reservations, exposedIds, reservationError), reservationError);
+  testReservationParser();
 
   if (g_failures > 0) {
     std::cerr << "settings table tests: " << g_failures << " FAILED\n";
