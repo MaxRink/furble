@@ -584,6 +584,7 @@ bool fuzzReadCheckpoint(std::istream &input) {
   if (!readMap(classCounts) || !readMap(eventCounts) || !readMap(pageCounts)) return false;
   char trailing = 0;
   if (input >> trailing) return false;
+  verbose = savedVerbose;
   pendingWasStop = savedStop;
   escapeActions = savedEscapes;
   pendingDescription = std::move(savedDescription);
