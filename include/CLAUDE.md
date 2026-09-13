@@ -80,9 +80,19 @@ Ids 48 through 64 are claimed by other open PRs. Take the next free id below
 the reservations only after checking every open PR head.
 IDs 42 and 45 have historical claims in older branches. Keep those claims
 reserved and do not allocate or reuse either id without a compatibility audit.
-Recheck every open PR head immediately before a rebase or merge. The current
-five open heads are listed above; no new id is free merely because a branch does
-not currently touch settings.
+Recheck every open feature PR head immediately before a rebase or merge. The
+five open feature PRs listed above are the settings-relevant reservation rows;
+documentation-only PRs do not change this table. No new id is free merely
+because a branch does not currently touch settings.
+
+Audit snapshot (2026-09-13): the exact MaxRink/furble master reviewed was
+`16520a9f97b2db44449b057177965b1d94d33c19`. Remote PR #273 was observed at
+`188a7e9a45d17c552897d020a296dda70f358aee`, an older-base view. The integrated
+PR #273 candidate reviewed here is `b4ae1b299314039e865d6610177dbf4dceaca544`;
+it carries the current settings rows and protocol schema, including
+`AUTO_OFF_CHARGING` (43) and `LEGEND` (65). Use that integrated candidate for
+the reservation audit rather than treating omissions in the remote diff as
+missing source or schema.
 - `FurbleSettings.h` widened `MULTISELECT_NAME_MAX` from 16 to 32, which changed
   the stored record size. `Settings::load<multiselect_t>()` and the SD settings
   importer both read the old layout through `multiselect_legacy_t` and widen it.
