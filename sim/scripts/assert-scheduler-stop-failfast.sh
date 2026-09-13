@@ -132,5 +132,10 @@ for fixture in \
     cat "$output" >&2
     exit 1
   fi
+  if valid_failfast_result; then
+    echo "Invalid fixture was accepted as simulator fail-fast: $name" >&2
+    cat "$output" >&2
+    exit 1
+  fi
   echo "Rejected invalid fail-fast fixture: $name (status $status)."
 done
