@@ -455,8 +455,8 @@ fail-fast call; it does not change the validated behavior.
 
 ## Follow-up: host TSAN flag races
 
-The subsequent GCC/TSAN host run reported two concrete plain-flag races outside
-the scheduler mutex path: `Target::m_Stopped` was written by the target task at
+Five local Clang/aarch64 TSAN probes reported two concrete plain-flag races
+outside the scheduler mutex path: `Target::m_Stopped` was written by the target task at
 `src/FurbleControl.cpp:180` while `targetTasksStopped()` read it at line 649;
 and `Control::m_State` was written by `setState()` at line 1112 while
 `Control::task()` read it at line 373. The atomic follow-up changes only these
@@ -467,7 +467,7 @@ compound transitions and associated power-lock operations.
 This follow-up does not claim that every Control flag is race-free. The
 volatile `m_ConnectAbort` and `m_ConnectInProgress` fields, and the debug
 snapshot's `m_SleepLockHeld`, remain separate audit items. Firmware, CI TSAN,
-host behavior, and hardware validation of this follow-up remain pending.
+and hardware validation of this follow-up remain pending.
 
 The first PR306 CI host run failed `control-connect-camera-race` under GCC
 ThreadSanitizer. Its filtered output named the getter without identifying the
@@ -475,8 +475,9 @@ raced memory; the published c4d31 wrapper now prints the complete report on
 that existing failure path while retaining its predicate and exit status.
 
 Root validation of the atomic follow-up at `7648c251c71a4587f09065e84767b43cc1bdab4c`
-then passed the focused host build and tests, and the raw Clang TSAN probe
-exited 0 with no warnings. Evidence is retained in
-`~/b/scheduler-tsan-7648/{config,build,test,raw}.log`. This is not a claim that
-all Control state is race-free: the remaining flags listed above and GCC/CI
-TSAN coverage remain separate follow-up work.
+then passed the focused host build and tests, the full host suite passed 119/119
+in 187.12 s, and the raw Clang TSAN probe exited 0 with no warnings. Evidence
+is retained in `~/b/scheduler-tsan-7648/{config,build,test,raw}.log` and
+`~/b/scheduler-tsan-7648/full-{build,test}.log`. This is not a claim that all
+Control state is race-free: the remaining flags listed above and GCC/CI TSAN
+coverage remain separate follow-up work.
