@@ -452,3 +452,11 @@ CTest cases in 188.38 s, serialized with at most two compiler jobs. Evidence:
 `~/b/scheduler-8ac/host-full-build.log` and `host-full-test.log`. The publication
 successor changes only this provenance and clang-format wrapping in the
 fail-fast call; it does not change the validated behavior.
+
+The first PR306 CI host run failed `control-connect-camera-race` under GCC
+ThreadSanitizer. Its filtered output named the getter without identifying the
+raced memory. The wrapper now prints the complete report on that existing
+failure path, retaining its predicate and exit status. Five local Clang probes
+each reported two other races, on target `m_Stopped` and Control `m_State`;
+the local passing wrapper therefore is not evidence of a race-free program.
+CI diagnosis and those production races remain unresolved at this checkpoint.
