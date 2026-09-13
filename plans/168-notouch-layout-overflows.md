@@ -1013,4 +1013,13 @@ the intended pages. The candidate now seeds FauxNY and a saved camera, uses
 `action blind`, asserting each page before capture. This keeps the docs-capture
 boot smoke and the scheduler fail-fast positive control on a bounded,
 deterministic path; parser and environment callers continue to use the same
-fixture. Runtime validation of this candidate is pending.
+fixture. `action nav scan` proves navigation to the scan page only; it is not
+discovery, pairing, or radio hardware proof.
+
+Root's current `daf7e870` source passed six smoke cells (three modeled boards
+times touch and non-touch), each bounded at 10 seconds. Both-layout fail-fast
+wrappers passed with all four negative fixtures, and invalid CLI handling
+passed. Evidence is in `~/b/pr273-f105-{smoke-80-0,smoke-80-1,smoke-s3-0,smoke-s3-1,smoke-core-0,smoke-core-1,failfast-0,failfast-1,invalid}.log`.
+Restart/lifecycle validation passed earlier. The integrated master-165
+composite has not been rerun; gallery regeneration, 13 clean firmware
+environments, and physical-hardware gates remain outstanding.

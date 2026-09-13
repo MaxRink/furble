@@ -1,5 +1,7 @@
-# Exercise the initial menu, fake FauxNY scan, connection flow, and shutter page
-# through the same deterministic UI actions used by the gallery scenarios.
+# Exercise initial-menu navigation, the fake FauxNY scan page, the connection
+# flow, and the shutter page through deterministic UI actions. `action nav scan`
+# proves navigation to the scan page; it is not discovery, pairing, or radio
+# hardware proof.
 seed fauxny true
 seed saved_camera true
 wait 500

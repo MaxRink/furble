@@ -911,9 +911,19 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   compares a parser age against a `Platform::tick()` value passes in the
   simulator for the wrong reason. Compare reported values, not ages.
 
-The 3b85 touch geometry trace measured the Sensors Restart row at zero content
+The historical 3b85 touch geometry trace measured the Sensors Restart row at zero content
 width on 80x160, 135x240, and 320x240. Its percentage-sized label participated
 in a parent/child shrink-wrap cycle. The production fix gives the button an
 explicit page width before creating that label. Strict touch fit assertions
-remain required, with `ui.cut_labels` guarding the direct symptom. Runtime
-validation remains pending and is not a 100-percent parity claim.
+remain required, with `ui.cut_labels` guarding the direct symptom. At that
+historical stage runtime validation remained pending; the current validation
+snapshot is recorded in plan 168.
+
+The current `daf7e870` source passed six smoke cells (three boards times
+non-touch and touch), each bounded at 10 seconds, plus both-layout fail-fast
+wrappers including four negative fixtures and the invalid-CLI check. Evidence
+is in `~/b/pr273-f105-{smoke-80-0,smoke-80-1,smoke-s3-0,smoke-s3-1,smoke-core-0,smoke-core-1,failfast-0,failfast-1,invalid}.log`.
+The smoke `scan` action is navigation only, not discovery, pairing, or radio
+proof. Restart/lifecycle validation passed earlier; the integrated
+master-165 composite has not been rerun. Gallery, 13 clean firmware builds,
+and physical hardware remain open.
