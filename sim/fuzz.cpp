@@ -487,7 +487,11 @@ bool fuzzWriteCheckpoint(std::ostream &output) {
          << state.escapeCadence << ' ' << state.stepCount << ' ' << state.settleRemaining << ' '
          << state.attempted << ' ' << state.observedDelta << ' ' << state.noObservedDelta << ' '
          << state.settled << ' ' << state.timerStopChecks << ' ' << state.finishing << '\n';
-  output << std::quoted(pendingDescription) << '\n' << rng << '\n' << recentEvents.size() << '\n';
+  output << std::quoted(pendingDescription) << '\n' << rng << '\n';
+  for (const auto &value : stateBeforeApply.values) {
+    output << std::quoted(value) << '\n';
+  }
+  output << recentEvents.size() << '\n';
   for (const auto &event : recentEvents) {
     output << std::quoted(event) << '\n';
   }
@@ -510,11 +514,19 @@ bool fuzzWriteCheckpoint(std::ostream &output) {
 }
 
 bool fuzzReadCheckpoint(std::istream &input) {
+  constexpr std::streamsize kMaxCheckpointBytes = 4 * 1024 * 1024;
+  if (input.rdbuf()->in_avail() > kMaxCheckpointBytes) return false;
   std::string magic;
   unsigned version = 0;
   uint32_t event = 0;
+  uint64_t savedSeed = 0;
+  uint32_t savedSteps = 0;
+  bool savedVerbose = false;
+  bool savedStop = false;
+  uint32_t savedEscapes = 0;
   if (!(input >> magic >> version) || magic != "FURBLE_FUZZ_CHECKPOINT" || version != 1 ||
-      !(input >> seed >> maxSteps >> verbose >> event >> pendingWasStop >> escapeActions)) {
+      !(input >> savedSeed >> savedSteps >> savedVerbose >> event >> savedStop >> savedEscapes) ||
+      savedSeed != seed || savedSteps != maxSteps) {
     return false;
   }
   FuzzMachine::Checkpoint state {};
@@ -526,8 +538,13 @@ bool fuzzReadCheckpoint(std::istream &input) {
       state.settleNext > 5 || !machine->restore(state)) {
     return false;
   }
-  if (!(input >> std::quoted(pendingDescription) >> rng)) {
+  std::string savedDescription;
+  if (!(input >> std::quoted(savedDescription) >> rng) || savedDescription.size() > 4096) {
     return false;
+  }
+  std::array<std::string, kObservableQueries.size()> savedBefore;
+  for (auto &value : savedBefore) {
+    if (!(input >> std::quoted(value)) || value.size() > 4096) return false;
   }
   pendingEvent = static_cast<Event>(event);
   size_t count = 0;
@@ -537,7 +554,7 @@ bool fuzzReadCheckpoint(std::istream &input) {
   recentEvents.clear();
   for (size_t i = 0; i < count; i++) {
     std::string value;
-    if (!(input >> std::quoted(value))) return false;
+    if (!(input >> std::quoted(value)) || value.size() > 4096) return false;
     recentEvents.push_back(std::move(value));
   }
   if (!(input >> count) || count > 100000) return false;
@@ -545,7 +562,9 @@ bool fuzzReadCheckpoint(std::istream &input) {
   for (size_t i = 0; i < count; i++) {
     Finding finding;
     if (!(input >> finding.step >> std::quoted(finding.bug_class) >> std::quoted(finding.page)
-          >> std::quoted(finding.event) >> std::quoted(finding.detail))) return false;
+          >> std::quoted(finding.event) >> std::quoted(finding.detail)) ||
+        finding.bug_class.size() > 4096 || finding.page.size() > 4096 ||
+        finding.event.size() > 4096 || finding.detail.size() > 4096) return false;
     findings.push_back(std::move(finding));
   }
   auto readMap = [&input](auto &map) {
@@ -554,8 +573,8 @@ bool fuzzReadCheckpoint(std::istream &input) {
     for (size_t i = 0; i < size; i++) {
       std::string key;
       uint32_t value = 0;
-      if (!(input >> std::quoted(key) >> value)) return false;
-      map.emplace(std::move(key), value);
+      if (!(input >> std::quoted(key) >> value) || key.size() > 4096 ||
+          !map.emplace(std::move(key), value).second) return false;
     }
     return true;
   };
@@ -563,18 +582,18 @@ bool fuzzReadCheckpoint(std::istream &input) {
   eventCounts.clear();
   pageCounts.clear();
   if (!readMap(classCounts) || !readMap(eventCounts) || !readMap(pageCounts)) return false;
+  char trailing = 0;
+  if (input >> trailing) return false;
+  pendingWasStop = savedStop;
+  escapeActions = savedEscapes;
+  pendingDescription = std::move(savedDescription);
+  stateBeforeApply.values = std::move(savedBefore);
   checkpointEligible = false;
-  return input.good();
+  return true;
 }
 
 void fuzzResumeAfterRestart(void) {
-  if (machine != nullptr) {
-    machine->resumeAfterRestart();
-  }
   checkpointEligible = false;
-  pendingDescription.clear();
-  pendingWasStop = false;
-  stateBeforeApply = ObservableState {};
 }
 
 void fuzzTick(UI *ui) {
@@ -587,6 +606,7 @@ void fuzzTick(UI *ui) {
       if (!machine->beginApply()) {
         return;
       }
+      checkpointEligible = false;
       pendingEvent = pickEvent();
       pendingDescription = eventName(pendingEvent);
       pendingWasStop = pendingEvent == Event::INTERVAL_STOP;

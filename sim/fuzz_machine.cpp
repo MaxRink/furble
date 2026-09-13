@@ -150,7 +150,10 @@ bool FuzzMachine::restore(const Checkpoint &checkpoint) {
   settled_ = checkpoint.settled;
   timerStopChecks_ = checkpoint.timerStopChecks;
   finishing_ = checkpoint.finishing;
-  return stepCount_ <= maxSteps_ && attempted_ >= stepCount_ && settled_ >= stepCount_;
+  return stepCount_ <= maxSteps_ && settled_ == stepCount_ &&
+         observedDelta_ + noObservedDelta_ == stepCount_ &&
+         attempted_ == stepCount_ + (phase_ == FuzzPhase::SETTLE || phase_ == FuzzPhase::CHECK) &&
+         timerStopChecks_ <= stepCount_ && finishing_ == (stepCount_ >= maxSteps_);
 }
 
 void FuzzMachine::resumeAfterRestart() {
