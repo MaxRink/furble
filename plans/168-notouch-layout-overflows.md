@@ -599,6 +599,15 @@ the home menu as well as the Settings page, and they assert the new
 `ui.cut_labels` query at 0: no label may lose characters at its box edge. Both
 pages scroll at Large and neither cuts a name.
 
+The default icon-grid scenario guards its Home fit assertion with
+`assert ui.nav_layout touch`: that is the touch/Core2 fit contract. The
+physical Core Basic has the shorter 26 px button-navbar layout and its Home
+page intentionally scrolls at the default size; `core-notouch-layout.txt`
+asserts complete labels and reaches both scroll endpoints for its six- and
+seven-row Home states. The Large icon-grid scenario prints rather than asserts
+Home fit and remains shared across layouts. This scenario-contract correction
+is pending the root runtime validation; no pass is recorded here.
+
 ### What now scrolls, in pixels
 
 The trade, stated so it is not buried: these pages render at the size the user

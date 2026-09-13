@@ -30,6 +30,7 @@ seed imu true
 wait 400
 
 # Home menu.
+assert ui.nav_layout touch
 assert ui.page main
 assert ui.label_overlaps 0
 # At the default size the home menu still fits the page.
