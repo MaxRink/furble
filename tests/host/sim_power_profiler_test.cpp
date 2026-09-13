@@ -92,6 +92,18 @@ std::string modelContents(void) {
   return readFile(path);
 }
 
+bool replaceS3ModelValue(std::string &contents,
+                         const std::string &replacement,
+                         const std::string &needle = "value_ma: 40.2") {
+  const size_t anchor = contents.find("esp32s3_mcu: &esp32s3_mcu");
+  const size_t value = contents.find(needle, anchor);
+  if (anchor == std::string::npos || value == std::string::npos) {
+    return false;
+  }
+  contents.replace(value, needle.size(), replacement);
+  return true;
+}
+
 std::string accountingModel(uint64_t poll_us,
                             uint64_t battery_timer_us,
                             uint64_t diagnostics_timer_us) {
@@ -130,6 +142,18 @@ bool replaceFirst(std::string &contents,
 
 bool contains(const std::string &contents, const std::string &needle) {
   return contents.find(needle) != std::string::npos;
+}
+
+std::string jsonStringField(const std::string &contents, const std::string &field) {
+  const std::string prefix = "\"" + field + "\": \"";
+  const size_t start = contents.find(prefix);
+  if (start == std::string::npos) {
+    return {};
+  }
+  const size_t value_start = start + prefix.size();
+  const size_t value_end = contents.find('"', value_start);
+  return value_end == std::string::npos ? std::string() : contents.substr(value_start,
+                                                                            value_end - value_start);
 }
 
 bool nestedAfter(const std::string &contents,
@@ -195,6 +219,90 @@ int main() {
   using namespace Furble::Sim;
   const TemporaryReportDirectory reportDirectory;
 
+  // Preserve the wrap-safe and legacy unaccounted regressions. These windows
+  // use the full current table without the optional accounting section.
+  const auto base_model_path = reportDirectory.path() / "base-model.yaml";
+  writeFile(base_model_path, modelContents());
+  {
+    ScopedEnvironment base_model("FURBLE_POWER_MODEL", base_model_path);
+    resetExit();
+    setClockMillis(std::numeric_limits<uint32_t>::max() - 500);
+    profilerBegin("clock-wrap", false);
+    profilerPowerLockAcquire(0, "cpu_freq_max", "wrap-test");
+    advanceClock(1500);
+    const auto wrap_report = reportDirectory.path() / "clock-wrap.json";
+    profilerWriteReport(wrap_report.c_str(), "clock-wrap");
+    const std::string wrap_json = readFile(wrap_report);
+    if (requestedExit.load() != -1 || !contains(wrap_json, "\"duration_ms\": 1500")
+        || !contains(wrap_json, "\"on\": 2000")
+        || !contains(wrap_json, "\"total_hold_ms\": 2000")) {
+      return 1;
+    }
+
+    profilerResetWindow();
+    advanceClock(500);
+    const auto wrap_reset_report = reportDirectory.path() / "clock-wrap-reset.json";
+    profilerWriteReport(wrap_reset_report.c_str(), "clock-wrap-reset");
+    if (requestedExit.load() != -1
+        || !contains(readFile(wrap_reset_report), "\"duration_ms\": 500")) {
+      return 1;
+    }
+    profilerPowerLockRelease(0, "cpu_freq_max", "wrap-test");
+
+    profilerResetWindow();
+    advanceClock(1);
+    const auto short_report = reportDirectory.path() / "short-duration-energy.json";
+    profilerWriteReport(short_report.c_str(), "short-duration-energy");
+    const std::string short_json = readFile(short_report);
+    if (requestedExit.load() != -1 || !contains(short_json, "\"duration_ms\": 1")
+        || !contains(short_json, "\"estimated_mA\": 41.295970")
+        || !contains(short_json, "\"accounting_inputs\": {\n      \"duration_ms\": 1")
+        || !contains(short_json, "\"light_sleep_in_80\": 1")
+        || !contains(short_json, "\"model_valid\": true")
+        || !contains(short_json, "\"model_digest\": \"sha256:")) {
+      return 1;
+    }
+  }
+
+  // A normal model coefficient change is also an explicit reload boundary.
+  // Mutating the file after begin(true) cannot alter the frozen report.
+  const auto coefficient_model_path = reportDirectory.path() / "coefficient-model.yaml";
+  writeFile(coefficient_model_path, modelContents());
+  {
+    ScopedEnvironment coefficient_model("FURBLE_POWER_MODEL", coefficient_model_path);
+    resetExit();
+    setClockMillis(0);
+    profilerBegin("base-model", true);
+    profilerPowerConfig(80, 40, true);
+    profilerPowerLockAcquire(0, "cpu_freq_max", "model-test");
+    profilerResetWindow();
+    advanceClock(10);
+    const auto base_report = reportDirectory.path() / "base-model-report.json";
+    profilerWriteReport(base_report.c_str(), "base-model");
+    if (requestedExit.load() != -1
+        || !contains(readFile(base_report), "\"estimated_mA\": 81.255970")) {
+      return 1;
+    }
+
+    std::string changed_coefficient_model = modelContents();
+    if (!replaceS3ModelValue(changed_coefficient_model, "value_ma: 80.4")) {
+      return 1;
+    }
+    writeFile(coefficient_model_path, changed_coefficient_model);
+    resetExit();
+    setClockMillis(10);
+    profilerBegin("changed-model", true);
+    profilerPowerConfig(80, 40, true);
+    profilerPowerLockAcquire(0, "cpu_freq_max", "model-test");
+    advanceClock(10);
+    const auto changed_report = reportDirectory.path() / "changed-model-report.json";
+    profilerWriteReport(changed_report.c_str(), "changed-model");
+    if (requestedExit.load() != -1
+        || !contains(readFile(changed_report), "\"estimated_mA\": 121.455970")) {
+      return 1;
+    }
+  }
+
   // Reporting must opt in before the model is loaded. This fixture is the full
   // board model plus the exact accounting schema consumed by the profiler.
   const auto frozen_model_path = reportDirectory.path() / "frozen-model.yaml";
@@ -225,7 +333,7 @@ int main() {
   profilerWriteReport(first_report.c_str(), "microsecond-accounting");
   const std::string first_json = readFile(first_report);
   if (requestedExit.load() != -1 || !reportExists(first_report)
-      || !contains(first_json, "\"duration_ms\": 2000")
+      || !contains(first_json, "\"duration_ms\": 2")
       || !contains(first_json, "\"poll_work_us\": 700")
       || !contains(first_json, "\"timer_work_us\": 1100")
       || !contains(first_json, "\"battery_timer\": 1100")
@@ -238,9 +346,11 @@ int main() {
     return 1;
   }
 
+  const std::string frozen_fingerprint = jsonStringField(first_json, "accounting_fingerprint");
   if (!contains(first_json, "\"accounting_version\": 1")
       || !contains(first_json, "\"calibration_status\": \"uncalibrated\"")
-      || !contains(first_json, "\"accounting_mode\": \"synthetic-virtual-work\"")) {
+      || !contains(first_json, "\"accounting_mode\": \"synthetic-virtual-work\"")
+      || frozen_fingerprint.empty()) {
     return 1;
   }
 
@@ -251,7 +361,7 @@ int main() {
   const auto reset_report = reportDirectory.path() / "reset-report.json";
   profilerWriteReport(reset_report.c_str(), "reset-accounting");
   const std::string reset_json = readFile(reset_report);
-  if (requestedExit.load() != -1 || !contains(reset_json, "\"duration_ms\": 1000")
+  if (requestedExit.load() != -1 || !contains(reset_json, "\"duration_ms\": 1")
       || !contains(reset_json, "\"poll_work_us\": 0")
       || !contains(reset_json, "\"timer_work_us\": 0")
       || !contains(reset_json, "\"pending_work_us\": 0")) {
@@ -269,15 +379,60 @@ int main() {
   profilerBeginUiCycle();
   profilerTimerFire("diagnostics_timer");
   profilerEndUiCycle();
-  advanceClockMicros(1000);
+  advanceClockMicros(2000);
   profilerPowerLockRelease(0, "cpu_freq_max", "reload");
   const auto reload_report = reportDirectory.path() / "reload-report.json";
   profilerWriteReport(reload_report.c_str(), "reload-accounting");
   const std::string reload_json = readFile(reload_report);
+  const std::string reload_fingerprint = jsonStringField(reload_json, "accounting_fingerprint");
   if (requestedExit.load() != -1 || !contains(reload_json, "\"poll_work_us\": 900")
       || !contains(reload_json, "\"timer_work_us\": 300")
       || !contains(reload_json, "\"work_160_us\": 1200")
-      || !contains(reload_json, "\"work_240_us\": 0")) {
+      || !contains(reload_json, "\"work_240_us\": 0")
+      || reload_fingerprint.empty() || reload_fingerprint == frozen_fingerprint) {
+    return 1;
+  }
+
+  // Unlocked work debits the eligible sleep interval instead of charging the
+  // whole slice as active CPU time. A later lock must not retrocharge that
+  // earlier unlocked slice.
+  resetExit();
+  setClockMillis(5000);
+  profilerBegin("unlocked-accounting", true);
+  profilerPowerConfig(160, 40, true);
+  profilerBeginUiCycle();
+  profilerEndUiCycle();
+  advanceClock(2);
+  const auto unlocked_report = reportDirectory.path() / "unlocked-report.json";
+  profilerWriteReport(unlocked_report.c_str(), "unlocked-accounting");
+  const std::string unlocked_json = readFile(unlocked_report);
+  if (requestedExit.load() != -1 || !contains(unlocked_json, "\"work_80_us\": 900")
+      || !contains(unlocked_json, "\"eligible_light_sleep_us\": 2000")
+      || !contains(unlocked_json, "\"light_sleep_work_us\": 900")
+      || !contains(unlocked_json, "\"adjusted_light_sleep_us\": 1100")
+      || !contains(unlocked_json, "\"estimated_mA\": 59.277970")) {
+    return 1;
+  }
+
+  resetExit();
+  setClockMillis(7000);
+  profilerBegin("no-retrocharge", true);
+  profilerPowerConfig(160, 40, true);
+  advanceClock(1);
+  profilerPowerLockAcquire(0, "cpu_freq_max", "retrocharge");
+  profilerBeginUiCycle();
+  profilerTimerFire("diagnostics_timer");
+  profilerEndUiCycle();
+  advanceClock(2);
+  profilerPowerLockRelease(0, "cpu_freq_max", "retrocharge");
+  const auto no_retrocharge_report = reportDirectory.path() / "no-retrocharge-report.json";
+  profilerWriteReport(no_retrocharge_report.c_str(), "no-retrocharge");
+  const std::string no_retrocharge_json = readFile(no_retrocharge_report);
+  if (requestedExit.load() != -1 || !contains(no_retrocharge_json, "\"work_80_us\": 0")
+      || !contains(no_retrocharge_json, "\"work_160_us\": 1200")
+      || !contains(no_retrocharge_json, "\"frequency_80\": 1000")
+      || !contains(no_retrocharge_json, "\"frequency_160\": 2000")
+      || !contains(no_retrocharge_json, "\"eligible_light_sleep_us\": 1000")) {
     return 1;
   }
 
@@ -363,6 +518,67 @@ int main() {
   if (!expectRejected(invalid_confidence_path,
                       reportDirectory.path() / "invalid-confidence.json",
                       "invalid-confidence")) {
+    return 1;
+  }
+
+  // Keep the original fail-closed checks for the required board coefficients.
+  std::string malformed_current = modelContents();
+  if (!replaceS3ModelValue(malformed_current, "value_ma: not-a-number")) {
+    return 1;
+  }
+  const auto malformed_current_path = reportDirectory.path() / "malformed-current.yaml";
+  writeFile(malformed_current_path, malformed_current);
+  if (!expectRejected(malformed_current_path,
+                      reportDirectory.path() / "malformed-current.json",
+                      "malformed-current")) {
+    return 1;
+  }
+
+  std::string negative_current = modelContents();
+  if (!replaceS3ModelValue(negative_current, "value_ma: -1.0")) {
+    return 1;
+  }
+  const auto negative_current_path = reportDirectory.path() / "negative-current.yaml";
+  writeFile(negative_current_path, negative_current);
+  if (!expectRejected(negative_current_path,
+                      reportDirectory.path() / "negative-current.json",
+                      "negative-current")) {
+    return 1;
+  }
+
+  std::string duplicate_current = modelContents();
+  const size_t s3_anchor = duplicate_current.find("esp32s3_mcu: &esp32s3_mcu");
+  const size_t first_entry = duplicate_current.find("    active_cpu_80mhz:", s3_anchor);
+  if (s3_anchor == std::string::npos || first_entry == std::string::npos) {
+    return 1;
+  }
+  duplicate_current.insert(first_entry, "    active_cpu_80mhz:\n      value_ma: 40.2\n");
+  const auto duplicate_current_path = reportDirectory.path() / "duplicate-current.yaml";
+  writeFile(duplicate_current_path, duplicate_current);
+  if (!expectRejected(duplicate_current_path,
+                      reportDirectory.path() / "duplicate-current.json",
+                      "duplicate-current")) {
+    return 1;
+  }
+
+  const auto missing_model_path = reportDirectory.path() / "missing-model.yaml";
+  if (!expectRejected(missing_model_path, reportDirectory.path() / "missing-model.json",
+                      "missing-model")) {
+    return 1;
+  }
+
+  // Resetting with unresolved work is the same fail-closed boundary as a
+  // final report. It must not silently discard the queued microseconds.
+  const auto reset_pending_model_path = reportDirectory.path() / "reset-pending-model.yaml";
+  writeFile(reset_pending_model_path, accountingModel(1, 0, 0));
+  resetExit();
+  {
+    ScopedEnvironment reset_pending_selected("FURBLE_POWER_MODEL", reset_pending_model_path);
+    profilerBegin("reset-pending", true);
+    profilerBeginUiCycle();
+    profilerResetWindow();
+  }
+  if (requestedExit.load() != 1) {
     return 1;
   }
 
