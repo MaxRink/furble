@@ -227,12 +227,13 @@ The synthetic costs are still not callback-duration measurements and do not
 make the model hardware-accurate. The legacy path may continue to charge a
 timer-fired UI quantum by design; do not mix its results with opt-in accounting
 reports or describe either as a physical current measurement.
-- **Peripheral current is a single hardcoded constant.** `model.peripheral` in
-  `sim/power_profiler.cpp` is initialised to `0.0035` and is never read from
-  this directory: the `peripherals` subsection of `board-currents.yaml` reaches
-  the model nowhere. So enabling the IMU in a scenario changes nothing, and the
-  0.685 mA `bmi270_normal` figure a 50 Hz accelerometer read actually needs is
-  documented here and charged nowhere.
+
+Peripheral current remains a separate limitation: `model.peripheral` in
+`sim/power_profiler.cpp` is initialised to `0.0035` and is never read from this
+directory. The `peripherals` subsection of `board-currents.yaml` therefore
+does not reach the model. Enabling the IMU in a scenario changes nothing, and
+the 0.685 mA `bmi270_normal` figure a 50 Hz accelerometer read actually needs
+is documented here and charged nowhere.
 
 `compare.py` remains a regression guard against a scenario changing beyond its
 comparison band, not a source of absolute numbers. It applies the threshold in
