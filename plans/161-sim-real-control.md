@@ -358,6 +358,29 @@ layout PR that can verify on the board.
    unchanged production behaviour and is a budget, not a bug; a measured probe
    shows the indicator flipping between +300 ms and +1300 ms after a drop.
 
+## Disconnect returns the physical controls
+
+The initial-connect branch hides the navigation bar and the three physical
+button indicators while the progress box owns the screen. `doDisconnect()` is
+the shared return path for Cancel, terminal connect failure, companion
+disconnect, and power-off. It now calls `displayNavigationBar(true)` after
+revealing Main, so every path that returns to Main restores the indicators.
+
+The simulator-only `ui.indicators_visible` query counts `lv_obj_is_visible()`
+objects rather than checking pointers. The certified
+`physical-indicators-cancel-restore.txt` and
+`physical-indicators-failure-restore.txt` scenarios run the real no-touch
+layout across the three panel profiles. They assert the modal hides the count
+to zero and that Cancel or failure teardown returns it to three. Runtime
+validation remains pending on the branch carrying this fix.
+
+At commit `ca1efcbed4b748b105ac961306ae1317d5dcdd86`, the StickS3 RIG1 run
+passed both scenarios. Removing only the restoration call failed the Cancel
+assertion with `ui.indicators_visible expected 3 got 0`; restoring the call
+passed. This is simulator evidence for StickS3 only. StickC and Core runs,
+screenshot review, and a physical-button hardware check remain pending. The
+release-optimized S3 build was still in progress at handoff.
+
 5. The simulator's UI task is not priority gated. It is the pseudo-task that
    drives virtual time, so it can run ahead of a higher-priority real task that
    a queue send has just released. `doConnect()` resumes and readies the

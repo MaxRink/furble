@@ -101,7 +101,10 @@ The connecting overlay they lead to is shown next.
 
 When you connect, furble shows a progress overlay naming the camera with a
 Cancel button. Selecting Cancel aborts the attempt and returns to the menu. When
-the link comes up the device moves to the Connected page.
+the link comes up the device moves to the Connected page. On physical-button
+boards, the three on-screen button hints are hidden while this initial overlay
+is active and restored when Cancel returns to Main. A terminal connection
+failure follows the same return path after its error is dismissed.
 
 ## Connected
 

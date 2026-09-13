@@ -23,6 +23,11 @@ next. They map onto real buttons differently per board.
   Shutter Lock buttons. A double-click of the power button toggles a screen
   lock.
 
+On the physical-button layout, the three display hints are hidden only while an
+initial connection progress box is active. Cancel or a terminal connection
+failure returns to Main and restores the hints; this does not disable the
+physical inputs.
+
 ### Navigation model (two-button)
 
 This is the default and the only navigation model. Three inputs drive a standard

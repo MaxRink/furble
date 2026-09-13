@@ -381,6 +381,12 @@ camera advertises a known, matching signature, it should appear in the list.
 You can then connect to the target camera, which, if successful, will save the
 entry and show the remote menu.
 
+On boards without a touchscreen, the three on-screen button hints are hidden
+only while the initial connection progress overlay owns the screen. Canceling
+the attempt or dismissing a terminal connection failure returns to Main and
+restores those hints. They are display hints only; the physical buttons remain
+the input path throughout.
+
 `furble` will identify as `furble-xxxx` where `xxxx` is a consistent identifier enabling one to differentiate multiple controllers.
 
 Upon subsequent use it should be enough to hit `Connect`, selecting the
