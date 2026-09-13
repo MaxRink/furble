@@ -4,7 +4,6 @@
 # input path is never replaced by a hidden/deleted LVGL object.
 seed no_touch true
 seed legend 2
-seed preset_picker true
 seed fauxny true
 seed saved_camera true
 wait 300
@@ -48,6 +47,13 @@ wait 200
 assert ui.page connected
 assert ui.legend_visible no
 
+action nav settings
+wait 150
+action nav features
+wait 150
+action toggle preset_picker
+wait 150
+assert setting.preset_picker 1
 action nav display
 wait 150
 assert ui.page display
