@@ -8083,6 +8083,10 @@ lv_obj_t *UI::addSpinItem(lv_obj_t *page, const char *item, Intervalometer::Spin
   // The Bulb page has one narrow Duration row; its default flex gap adds 8 px
   // without improving the two-line name/value layout.
   lv_obj_set_style_pad_row(spinner.m_Button, 0, LV_STATE_DEFAULT);
+  // Use the full narrow row width, matching the Plus/S3 spinner layout. The
+  // shared helper serves Bulb Duration and all Intervalometer value rows.
+  lv_obj_set_style_pad_left(spinner.m_Button, 0, LV_STATE_DEFAULT);
+  lv_obj_set_style_pad_right(spinner.m_Button, 0, LV_STATE_DEFAULT);
   // 80x160 is the shortest panel. Trim the per-row padding so the Count, Delay,
   // Shutter and Wait rows fit without scrolling the timer page.
   lv_obj_set_style_pad_top(spinner.m_Button, 1, LV_STATE_DEFAULT);
@@ -8539,11 +8543,11 @@ void UI::addBulbMenu(const menu_t &parent) {
 #if defined(FURBLE_M5STICKC)
   // The floating legend narrows this button to 48 px. Remove the theme's
   // horizontal padding so the 24 px Start label remains complete, and trim
-  // one pixel from each vertical edge to keep the compact page fitted.
+  // one more pixel from each vertical edge to keep the compact page fitted.
   lv_obj_set_style_pad_left(m_BulbStart, 0, LV_STATE_DEFAULT);
   lv_obj_set_style_pad_right(m_BulbStart, 0, LV_STATE_DEFAULT);
-  lv_obj_set_style_pad_top(m_BulbStart, 7, LV_STATE_DEFAULT);
-  lv_obj_set_style_pad_bottom(m_BulbStart, 7, LV_STATE_DEFAULT);
+  lv_obj_set_style_pad_top(m_BulbStart, 6, LV_STATE_DEFAULT);
+  lv_obj_set_style_pad_bottom(m_BulbStart, 6, LV_STATE_DEFAULT);
 #endif
   lv_obj_center(startLabel);
   lv_obj_add_flag(m_BulbStart, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
