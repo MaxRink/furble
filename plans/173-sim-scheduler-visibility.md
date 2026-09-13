@@ -465,8 +465,7 @@ and `m_State` is an acquire/release atomic enum. Existing mutexes still protect
 compound transitions and associated power-lock operations.
 
 This follow-up does not claim that every Control flag is race-free. The
-volatile `m_ConnectAbort` and `m_ConnectInProgress` fields, and the debug
-snapshot's `m_SleepLockHeld`, remain separate audit items. Firmware, CI TSAN,
+remaining reconnect/session fields are separate audit items. Firmware, CI TSAN,
 and hardware validation of this follow-up remain pending.
 
 The first PR306 CI host run failed `control-connect-camera-race` under GCC
@@ -481,3 +480,143 @@ is retained in `~/b/scheduler-tsan-7648/{config,build,test,raw}.log` and
 `~/b/scheduler-tsan-7648/full-{build,test}.log`. This is not a claim that all
 Control state is race-free: the remaining flags listed above and GCC/CI TSAN
 coverage remain separate follow-up work.
+
+## Follow-up: remaining Control flag synchronization
+
+The bounded static audit identified three additional plain cross-boundary
+flags: `m_ConnectAbort` is written by UI/control-entry paths and read by the
+control task and debug snapshot; `m_ConnectInProgress` is written by the
+control task but read outside its `m_Mutex` snapshot sections by teardown
+predicates and the debug snapshot; and `m_SleepLockHeld` is updated under
+`m_StateMutex` but sampled unlocked by the debug snapshot. This follow-up
+converts only those three flags to `std::atomic<bool>` with explicit
+acquire/release operations. Existing mutex sections, state publication,
+power-lock calls, queues, cancellation, and timing remain unchanged.
+
+The change is based on the static access audit and existing concurrency
+regressions; it is not raw TSAN proof for these three flags. Raw TSAN, firmware,
+CI, and hardware validation remain pending, and reconnect fields are outside
+this scope.
+
+## TSAN probe coverage extension
+
+The dedicated `control-connect-camera-race` target now defines
+`FURBLE_CONSOLE`, so its existing production `getDebugState()` snapshot is
+polled alongside `getConnectingCamera()`. The probe performs two bounded
+FauxNY connect cycles, waits for `STATE_ACTIVE` and then checks the
+`disconnect()` result and bounded return to `STATE_IDLE`; it no longer relies
+on a fixed sleep that may end before activation. Snapshot fields and the
+connecting camera strings are consumed so this remains a real concurrent
+reader, not a compile-only call.
+
+This is regression coverage for the atomic flag boundary only. It adds no
+test-only accessor, barrier, suppression, scheduler policy, or hardware claim.
+The raw TSAN result remains the deciding evidence; the shell wrapper contract
+is not a whole-program race-free guarantee.
+
+The TSAN wrapper is a fail-closed full-report diagnostic gate: every sanitizer
+warning and every non-zero child status fails, regardless of report names or
+the sanitizer's conventional exit code. It must never classify races by member
+name or suppress unrelated reports. The exact completion marker is required.
+The existing TestSync signal/wait barriers establish happens-before ordering
+for operations performed around those waits; they are not a substitute for
+atomic synchronization on flags read outside the barriers.
+
+## Follow-up: reconnect state field races
+
+The bounded follow-up audit found four additional plain fields crossing the
+control-task boundary: `m_InfiniteReconnect`, `m_ReconnectBackoff`,
+`m_ReconnectAttempt`, and `m_ReconnectHintLogged`. UI or headless request paths
+write the requested mode and reset values, `disconnect()` resets the attempt,
+the control task reads and updates retry state, and the debug snapshot reads
+the exposed values. The follow-up changes only those four fields to independent
+acquire/release atomics. The retry increment uses `fetch_add` at the existing
+increment site. The hint remains a separate atomic load/store in the existing
+log order; it is not an exchange. `m_ConnectFailCount` remains a control-task
+owned plain field.
+
+This removes C++ plain read/write races only. The four atomics do not form a
+coherent multi-field request, do not guarantee that a reset wins over a
+concurrent retry, and do not define a new request or hint policy. Existing
+mutexes, queues, cancellation, reset positions, delays, and camera behavior
+remain unchanged. The combined source for the three remaining flags and four
+reconnect fields, its seven-field regression coverage, and the fail-closed
+wrapper contract are not executed in this integration handoff. Physical
+hardware validation remains separate.
+
+## Integration handoff: seven-field boundary
+
+Published master `0844360be35db547eb68ea6b56ef4560dccc8b59` is the base for this
+follow-up. PR #307 separately merged only `Control::m_State` and
+`Target::m_Stopped`; its 30 green checks, including firmware builds and
+reproducible firmware coverage, do not cover the seven fields below.
+
+Relative to that published master, source
+`90e753347fc47f06dd170823d8243d46eb1819fa` makes the three remaining
+cross-boundary fields (`m_ConnectAbort`, `m_ConnectInProgress`, and
+`m_SleepLockHeld`) acquire/release atomics and adds four independent reconnect
+atomics (`m_InfiniteReconnect`, `m_ReconnectBackoff`, `m_ReconnectAttempt`, and
+`m_ReconnectHintLogged`). Thus the integrated source covers all seven remaining
+fields relative to master; it does not relabel PR #307's two already-merged
+fields as part of this change.
+Test `0f763fd92749fa0cf36340b0e2dc95d62017a0c3` covers the public debug
+snapshot plus successful FauxNY connect/disconnect cycles. It does not cover
+retry/backoff or `hintLogged`, because the FauxNY success path never enters the
+retry path. Existing failure/backoff functional tests remain preserved.
+Wrapper `8d3ea42076ae96686a08da069e61a67ee10347e9` makes the shell gate fail on
+any warning or non-zero status and preserves the complete diagnostic output.
+Root separately ran the wrapper contract on macOS and got `PASS`; a copied old
+wrapper falsely accepted an unrelated warning with status 66 and printed
+`1 race report(s), 0 naming guarded accessor`, while the new contract rejected
+that same fixture. This is shell-contract evidence only, not execution of this
+integrated tree or of a TSAN binary/runtime.
+At this handoff, the seven-field source/test/wrapper combination was
+source-integrated but had not yet been executed; the completed root validation
+is recorded below. A raw TSAN retry/backoff run remains explicitly pending;
+this handoff makes no runtime or hardware claim.
+The compiler-free wrapper contract stays in the normal host CTest set but is
+excluded from `FURBLE_COVERAGE`, because its shell command cannot emit a
+`.profraw` file; the standalone `sh tests/host/run_tsan_race_contract.sh`
+check remains available.
+
+## Publication update
+
+Published master `0844360be35db547eb68ea6b56ef4560dccc8b59` merged PR #308
+after the seven-field integration was prepared. PR #308's reported 24 CI
+checks are green, and its simulator power-accounting source is now part of the
+master base used by this checkout. At that publication handoff, the
+seven-field source, regression, and wrapper integration above had not yet been
+executed; root's completed full-host validation is recorded below. Physical
+camera, radio, and power accuracy remain outside this evidence.
+
+## Host link follow-up
+
+Root's full-host build at `bc5f5240` stopped while linking the TSAN target
+because enabling `FURBLE_CONSOLE` exposed the production `BtDebugJournal`
+symbols without linking `lib/furble/BtDebugJournal.cpp`. The TSAN target now
+uses the same production source already linked by `control_abort_republish_test`.
+The failed build log is `~/b/control-atomics-bc5-build.log`; root's corrected
+rerun is recorded below. The original failure was a host-link issue only.
+
+## Root validation of the integrated source
+
+Root validated clean commit `70844df1485a39a075bb74345f69e6f8615a8844` in the
+fresh frozen VM checkout. The full Clang 14 host build and all 120/120 tests
+passed in 195.05 s. Three raw TSAN runs exited 0 with zero warnings and the
+exact `control-connect-camera-race: PASS` marker. Evidence is in
+`~/b/control-atomics-708-{build,test,raw-1,raw-2,raw-3}.log`.
+
+The coverage configure listed 118 instrumented tests. It excluded both the
+TSAN race target and the shell-only wrapper contract, and the existing floors
+remained intact. The compiler-free wrapper contract passed separately; the old
+wrapper negative control failed as expected.
+
+The nonpublishable mutant `4485df074` reverted only the seven atomic fields and
+their accesses to the published-master form. It built and ran with status 66,
+reported five TSAN races, and still emitted the exact PASS marker. Evidence is
+in `~/b/control-atomics-mutant-708-{config,build,raw}.log`. This is aggregate
+coverage evidence only. It does not exercise retry/backoff or `hintLogged=true`
+and does not prove each of the seven fields separately.
+
+Firmware CI and physical hardware validation remain pending. These host and
+TSAN results make no camera, radio, or hardware-parity claim.

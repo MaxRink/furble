@@ -30,6 +30,8 @@ All simulator scenarios are owned in `sim/scenarios/manifest.json`; run
 The built simulator preference ownership gate is
 `sim/scripts/check-preferences-lifecycle.sh`; `sim-e2e.yml` runs it against the
 fresh M5StickS3 binary.
+The host TSAN wrapper is fail-closed; see `CONTRIBUTING.md` for its exact
+completion marker and compiler-free contract command.
 Firmware line coverage is measured by `tools/coverage.py` and gated against
 `tests/coverage_floor.json`. Coverage instrumentation is opt-in in both build
 entry points (`-DFURBLE_COVERAGE=ON` for the host harness,
