@@ -273,7 +273,8 @@ The `clock.ms` query reports the current virtual millisecond clock.
 
 ### Effective `seed` names
 
-These byte settings are applied before the UI is constructed:
+All listed seeds are applied before simulated `Platform::init()` and before the
+UI is constructed. These byte settings are:
 `brightness`, `inactivity`, `display_off`, `gps_rate`, `gps_constel`,
 `gps_power`, `gps_duty`, `gps_hold`, `cpu_freq`, `tx_power`, `scan_mode`,
 `text_size`, `legend`, `auto_off`, `low_batt`, `fb_output`, `hw_motion`, `gps_assist`
@@ -638,6 +639,13 @@ The other namespaces are:
   terminating the process, so the scenario can assert shutdown ordering.
 - `platform.download_lock` reports the StickS3 PMIC long-press download lock as
   `unlocked` or `locked`. Firmware boot is required to leave this `unlocked`.
+- `boot_settings_imu` reports `1` or `0` for the `IMU` setting loaded at the
+  simulated platform construction boundary.
+- `boot_settings_fb_output` reports the numeric `FB_OUTPUT` value loaded at
+  that same boundary. These two queries are boot-input observations used to
+  verify settings ordering. They do not report physical M5 configuration: the
+  SDL platform still passes `internal_imu=false` and `internal_spk=false` to
+  its host `M5.begin()` config.
 
 - `control.state`: `idle`, `connect`, `connecting`, `connect_failed`,
   `active`, `disconnecting`, or `unknown`.

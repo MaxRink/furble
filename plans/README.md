@@ -197,6 +197,7 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | [176-sim-task-notifications.md](176-sim-task-notifications.md) | FreeRTOS task notification counters in the simulator wake blocked owners, preserve clear/decrement and virtual timeout semantics, and unwind on shutdown |
 | [288-provisioning-schema.md](288-provisioning-schema.md) | Provisioning schema coverage for every keyed setting and current wire-ID reservation ledger |
 | [176-android-camera-catalog.md](176-android-camera-catalog.md) | Android camera characteristic discovery, stable-ID catalog, controls, and bounded protocol decoding |
+| [178-sim-startup-settings-order.md](178-sim-startup-settings-order.md) | Apply simulator settings before platform construction while preserving panel, environment, watchdog, and profiler boundaries |
 
 ## Design documents
 
