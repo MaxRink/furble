@@ -1,3 +1,4 @@
+#include <fcntl.h>
 #include <algorithm>
 #include <atomic>
 #include <cctype>
@@ -135,6 +136,9 @@ std::atomic<bool> restartPending {false};
 // Written by driverTick and read only after main() joins the simulator thread.
 size_t restartStepIndex = 0;
 const char *RESTART_STEP_ENV = "FURBLE_SIM_RESTART_STEP";
+const char *GENERATED_PREFS_ENV = "FURBLE_SIM_PREFS_GENERATED";
+std::string generatedPreferencesPath;
+bool generatedPreferencesOwned = false;
 
 // Continuous UI liveness invariant (plan 155). Every driver tick, if the UI
 // presents the Connected screen (the same three-way check the ui.connected
@@ -1460,46 +1464,82 @@ uint32_t livenessViolationCount(void) {
 }
 
 void preparePreferences(void) {
+  generatedPreferencesPath.clear();
+  generatedPreferencesOwned = false;
+  const char *inherited = std::getenv("FURBLE_SIM_PREFS");
+  const char *generated = std::getenv(GENERATED_PREFS_ENV);
   if (scenarioName == "interactive") {
+    unsetenv(GENERATED_PREFS_ENV);
     return;
   }
-  // A resumed boot after a `restart` step keeps the store it was handed: that
-  // file is the flash NVS the reboot carries over, and the re-exec gave the
-  // rebooted device a new process id.
-  if (resumedBoot) {
-    const char *inherited = std::getenv("FURBLE_SIM_PREFS");
-    if (inherited != nullptr && inherited[0] != 0) {
-      return;
-    }
+  // A resumed boot after a `restart` step keeps the exact generated store it
+  // was handed. execvp() preserves the PID, but ownership still has to be
+  // carried explicitly because process-local state was reinitialized.
+  if (resumedBoot && inherited != nullptr && inherited[0] != 0 && generated != nullptr
+      && std::string(generated) == std::string(inherited) + "|" + std::to_string(getpid())) {
+    generatedPreferencesPath = inherited;
+    generatedPreferencesOwned = true;
+    return;
   }
-  // One flash image per simulated device. The path used to be keyed on the
-  // scenario name alone, so two simulators running the same scenario from one
-  // working directory shared a store and each fresh boot erased the other
-  // one's flash. That is issue 284: two panel builds walking the same script
-  // side by side, with the loser reading back a setting the winner had just
-  // wiped. Hardware gives every device its own flash, so the store is keyed
-  // per process and dropped again on an orderly exit.
-  const std::filesystem::path path =
-      std::filesystem::path(".pio")
-      / ("furble-sim-preferences-" + scenarioName + "-" + std::to_string(getpid()) + ".bin");
-  const std::string pathValue = path.string();
-  if (setenv("FURBLE_SIM_PREFS", pathValue.c_str(), 1) != 0) {
+  // A caller-selected path is persistent, even for a scripted run. A stale
+  // generated marker is not authority to overwrite or remove that path.
+  if (inherited != nullptr && inherited[0] != 0) {
+    unsetenv(GENERATED_PREFS_ENV);
+    return;
+  }
+
+  // One flash image per simulator run. mkstemps() reserves the name and the
+  // four-byte zero count makes the new store valid to PreferencesSim. No
+  // existing path is truncated or removed here.
+  const std::filesystem::path directory = ".pio";
+  std::error_code directoryError;
+  std::filesystem::create_directories(directory, directoryError);
+  if (directoryError) {
+    std::cerr << "simulator failed to create preference directory: " << directoryError.message()
+              << '\n';
+    std::exit(1);
+  }
+  std::string pathTemplate = (directory
+                              / ("furble-sim-preferences-" + scenarioName + "-"
+                                 + std::to_string(getpid()) + "-XXXXXX.bin"))
+                                 .string();
+  std::vector<char> writablePath(pathTemplate.begin(), pathTemplate.end());
+  writablePath.push_back('\0');
+  const int descriptor = mkstemps(writablePath.data(), 4);
+  if (descriptor < 0) {
+    std::cerr << "simulator failed to create preference store: " << std::strerror(errno) << '\n';
+    std::exit(1);
+  }
+  const uint32_t emptyStore = 0;
+  const ssize_t written = ::write(descriptor, &emptyStore, sizeof(emptyStore));
+  const int closeResult = ::close(descriptor);
+  if (written != static_cast<ssize_t>(sizeof(emptyStore)) || closeResult != 0) {
+    std::remove(writablePath.data());
+    std::cerr << "simulator failed to initialize preference store\n";
+    std::exit(1);
+  }
+  generatedPreferencesPath = writablePath.data();
+  generatedPreferencesOwned = true;
+  const std::string generatedMarker = generatedPreferencesPath + "|" + std::to_string(getpid());
+  if (setenv("FURBLE_SIM_PREFS", generatedPreferencesPath.c_str(), 1) != 0
+      || setenv(GENERATED_PREFS_ENV, generatedMarker.c_str(), 1) != 0) {
+    std::remove(generatedPreferencesPath.c_str());
     std::cerr << "simulator failed to set FURBLE_SIM_PREFS: " << std::strerror(errno) << '\n';
     std::exit(1);
   }
-  std::remove(path.c_str());
 }
 
 void removePreferences(void) {
   // Scratch state, not an artifact worth keeping. A reboot still needs it, so
   // this only runs once the process is really finished with the device.
-  if (scenarioName == "interactive" || restartPending.load()) {
+  if (scenarioName == "interactive" || restartPending.load() || !generatedPreferencesOwned
+      || generatedPreferencesPath.empty()) {
     return;
   }
-  const char *path = std::getenv("FURBLE_SIM_PREFS");
-  if (path != nullptr && path[0] != 0) {
-    std::remove(path);
-  }
+  std::remove(generatedPreferencesPath.c_str());
+  const std::string temporaryPath = generatedPreferencesPath + ".tmp." + std::to_string(getpid());
+  std::remove(temporaryPath.c_str());
+  unsetenv(GENERATED_PREFS_ENV);
 }
 
 void applyScenarioSettings(void) {

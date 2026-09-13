@@ -55,6 +55,13 @@ int run(const std::string &scenario) {
     cleanup();
     return result;
   }
+  if (scenario == "zero-count") {
+    std::string bytes(sizeof(uint32_t), '\0');
+    writeBytes(path, bytes);
+    const int result = checkResult(path, Result::NOT_FOUND);
+    cleanup();
+    return result;
+  }
   if (scenario == "corruption") {
     std::string bytes(4, '\0');
     bytes[0] = 1;
