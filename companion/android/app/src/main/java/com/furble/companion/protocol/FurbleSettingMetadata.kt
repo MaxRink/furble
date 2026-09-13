@@ -91,6 +91,11 @@ object FurbleSettingMetadata {
         option(2, "Large"),
     )
 
+    private val legendOptions = listOf(
+        option(0, "Beside buttons"),
+        option(1, "Bottom row"),
+    )
+
     private val metadata = listOf(
         SettingMetadata(1, "brightness", "Brightness", "Display", FurbleProtocol.SettingType.UINT8,
             SettingEditorKind.RANGE, range = SettingRange(16, 240, 16)),
@@ -113,6 +118,8 @@ object FurbleSettingMetadata {
             SettingEditorKind.THEME, stringOptions = listOf("Dark", "Default", "Mono Furble")),
         SettingMetadata(40, "text_size", "Text size", "Display", FurbleProtocol.SettingType.UINT8,
             SettingEditorKind.ENUM, options = textSizeOptions),
+        SettingMetadata(65, "legend", "Legend", "Display", FurbleProtocol.SettingType.UINT8,
+            SettingEditorKind.ENUM, options = legendOptions),
         SettingMetadata(4, "tx_power", "TX Power", "Bluetooth", FurbleProtocol.SettingType.UINT8,
             SettingEditorKind.ENUM,
             options = listOf(option(0, "Low (P3)"), option(1, "Medium (P6)"), option(2, "High (P9)")),
@@ -213,6 +220,8 @@ object FurbleSettingMetadata {
             37, "auto_off", "Auto off", "Power", FurbleProtocol.SettingType.UINT8,
             SettingEditorKind.ENUM, options = autoOffOptions,
         ),
+        SettingMetadata(43, "autooff_charge", "Auto off while charging", "Power",
+            FurbleProtocol.SettingType.BOOL, SettingEditorKind.SWITCH),
         SettingMetadata(
             38, "low_batt", "Low battery", "Power", FurbleProtocol.SettingType.UINT8,
             SettingEditorKind.ENUM,
