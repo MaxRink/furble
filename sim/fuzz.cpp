@@ -2,11 +2,14 @@
 #include <cstdint>
 #include <cstdlib>
 #include <deque>
+#include <iomanip>
 #include <iostream>
+#include <istream>
 #include <map>
 #include <memory>
 #include <random>
 #include <string>
+#include <ostream>
 #include <vector>
 
 #include "FurbleUI.h"
@@ -173,6 +176,7 @@ std::unique_ptr<FuzzMachine> machine;
 Event pendingEvent = Event::SELECT;
 std::string pendingDescription;
 bool pendingWasStop = false;
+bool checkpointEligible = false;
 ObservableState stateBeforeApply;
 uint32_t escapeActions = 0;
 std::mt19937_64 rng;
@@ -459,11 +463,118 @@ void fuzzConfigure(uint64_t s, uint32_t steps, bool v) {
   classCounts.clear();
   eventCounts.clear();
   pageCounts.clear();
+  checkpointEligible = false;
   std::cout << "FUZZ START seed=" << seed << " steps=" << maxSteps << '\n';
 }
 
 bool fuzzActive(void) {
   return active;
+}
+
+bool fuzzCheckpointEligible(void) {
+  return active && checkpointEligible && machine != nullptr;
+}
+
+bool fuzzWriteCheckpoint(std::ostream &output) {
+  if (!fuzzCheckpointEligible()) {
+    return false;
+  }
+  const auto state = machine->checkpoint();
+  output << "FURBLE_FUZZ_CHECKPOINT 1\n" << seed << ' ' << maxSteps << ' ' << verbose << ' '
+         << static_cast<uint32_t>(pendingEvent) << ' ' << pendingWasStop << ' ' << escapeActions
+         << '\n';
+  output << state.phase << ' ' << state.settleNext << ' ' << state.maxSteps << ' '
+         << state.escapeCadence << ' ' << state.stepCount << ' ' << state.settleRemaining << ' '
+         << state.attempted << ' ' << state.observedDelta << ' ' << state.noObservedDelta << ' '
+         << state.settled << ' ' << state.timerStopChecks << ' ' << state.finishing << '\n';
+  output << std::quoted(pendingDescription) << '\n' << rng << '\n' << recentEvents.size() << '\n';
+  for (const auto &event : recentEvents) {
+    output << std::quoted(event) << '\n';
+  }
+  output << findings.size() << '\n';
+  for (const auto &finding : findings) {
+    output << finding.step << ' ' << std::quoted(finding.bug_class) << ' '
+           << std::quoted(finding.page) << ' ' << std::quoted(finding.event) << ' '
+           << std::quoted(finding.detail) << '\n';
+  }
+  auto writeMap = [&output](const auto &map) {
+    output << map.size() << '\n';
+    for (const auto &entry : map) {
+      output << std::quoted(entry.first) << ' ' << entry.second << '\n';
+    }
+  };
+  writeMap(classCounts);
+  writeMap(eventCounts);
+  writeMap(pageCounts);
+  return output.good();
+}
+
+bool fuzzReadCheckpoint(std::istream &input) {
+  std::string magic;
+  unsigned version = 0;
+  uint32_t event = 0;
+  if (!(input >> magic >> version) || magic != "FURBLE_FUZZ_CHECKPOINT" || version != 1 ||
+      !(input >> seed >> maxSteps >> verbose >> event >> pendingWasStop >> escapeActions)) {
+    return false;
+  }
+  FuzzMachine::Checkpoint state {};
+  if (!(input >> state.phase >> state.settleNext >> state.maxSteps >> state.escapeCadence
+        >> state.stepCount >> state.settleRemaining >> state.attempted >> state.observedDelta
+        >> state.noObservedDelta >> state.settled >> state.timerStopChecks >> state.finishing) ||
+      maxSteps == 0 || maxSteps > 10000000 || event >= static_cast<uint32_t>(Event::COUNT) ||
+      state.maxSteps != maxSteps || state.stepCount > maxSteps || state.phase > 5 ||
+      state.settleNext > 5 || !machine->restore(state)) {
+    return false;
+  }
+  if (!(input >> std::quoted(pendingDescription) >> rng)) {
+    return false;
+  }
+  pendingEvent = static_cast<Event>(event);
+  size_t count = 0;
+  if (!(input >> count) || count > 10000) {
+    return false;
+  }
+  recentEvents.clear();
+  for (size_t i = 0; i < count; i++) {
+    std::string value;
+    if (!(input >> std::quoted(value))) return false;
+    recentEvents.push_back(std::move(value));
+  }
+  if (!(input >> count) || count > 100000) return false;
+  findings.clear();
+  for (size_t i = 0; i < count; i++) {
+    Finding finding;
+    if (!(input >> finding.step >> std::quoted(finding.bug_class) >> std::quoted(finding.page)
+          >> std::quoted(finding.event) >> std::quoted(finding.detail))) return false;
+    findings.push_back(std::move(finding));
+  }
+  auto readMap = [&input](auto &map) {
+    size_t size = 0;
+    if (!(input >> size) || size > 100000) return false;
+    for (size_t i = 0; i < size; i++) {
+      std::string key;
+      uint32_t value = 0;
+      if (!(input >> std::quoted(key) >> value)) return false;
+      map.emplace(std::move(key), value);
+    }
+    return true;
+  };
+  classCounts.clear();
+  eventCounts.clear();
+  pageCounts.clear();
+  if (!readMap(classCounts) || !readMap(eventCounts) || !readMap(pageCounts)) return false;
+  checkpointEligible = false;
+  return input.good();
+}
+
+void fuzzResumeAfterRestart(void) {
+  if (machine != nullptr) {
+    machine->resumeAfterRestart();
+  }
+  checkpointEligible = false;
+  pendingDescription.clear();
+  pendingWasStop = false;
+  stateBeforeApply = ObservableState {};
 }
 
 void fuzzTick(UI *ui) {
@@ -483,6 +594,7 @@ void fuzzTick(UI *ui) {
       applyEvent(ui, pendingEvent);
       recordEvent(pendingDescription);
       eventCounts[pendingDescription]++;
+      checkpointEligible = true;
       // The post-handler hook counts the current LVGL cycle and the next
       // settle cycles before Check reads any state.
       machine->eventApplied(2 + pick(5));
