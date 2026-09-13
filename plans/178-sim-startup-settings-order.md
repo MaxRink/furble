@@ -32,9 +32,11 @@ speaker, PMIC, or RF behavior.
 It checks that settings and scenario application precede platform construction,
 that the panel readiness and profiler boundaries remain after platform, and
 that the platform observation captures the actual `IMU` and `FB_OUTPUT` loads.
-The existing boot-splash-disabled scenario seeds both values and asserts the
-recorded snapshot. It is included by the existing Python unittest discovery
-job.
+The Python source contract is included by the existing unittest discovery job
+(`python -m unittest discover -s tests -p 'test_*.py'`). The
+boot-splash-disabled scenario is a separate runtime check selected through the
+scenario manifest and run by `sim/scripts/run-e2e.sh`; it seeds both values and
+asserts the recorded snapshot.
 
 ## Verification
 

@@ -45,8 +45,8 @@ this startup ordering contract.
 `sim/FurblePlatformSim.cpp` records the `IMU` and `FB_OUTPUT` values loaded at
 the platform boundary as `boot_settings_imu` and `boot_settings_fb_output`.
 These are query-only observations of boot inputs. The SDL platform still forces
-its host IMU and speaker capabilities off, so the queries do not certify
-physical M5 configuration.
+`internal_imu` and `internal_spk` false in its M5 config, so the queries do not
+certify physical M5 configuration.
 
 ## Parity inventory and seam rules
 

@@ -59,8 +59,9 @@ int runSimulator() {
   // time, so the phase is the only progress the stall watchdog can see across
   // it. Record each step: a slow but progressing boot on a loaded host keeps
   // resetting the watchdog, and a wedged one names the step it stopped at.
-  // Keep the profiler after platform bring-up. Its existing report window is
-  // intentionally unchanged by the settings-order fix.
+  // Keep the profiler after platform bring-up. Its call placement is unchanged,
+  // but the settings move changes the work outside the measured window.
+  // FurblePlatformSim records the boot inputs separately from this profile.
   Sim::startProfiler();
 #if defined(FURBLE_SIM_MQTT) && FURBLE_SIM_MQTT
   Settings::save<bool>(Settings::MQTT, true);
