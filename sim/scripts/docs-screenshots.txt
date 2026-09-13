@@ -59,6 +59,7 @@ print ui.page
 
 action nav legend
 wait 350
+assert ui.page legend
 capture settings-legend
 print ui.page
 back
