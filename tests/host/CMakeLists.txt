@@ -1803,6 +1803,10 @@ if(BUILD_TESTING)
     set_tests_properties(control-connect-camera-race PROPERTIES TIMEOUT 180)
   endif()
 
+  add_test(NAME control-tsan-wrapper-contract
+           COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/run_tsan_race_contract.sh)
+  set_tests_properties(control-tsan-wrapper-contract PROPERTIES TIMEOUT 10)
+
   # Interleaving proof for the DISCONNECTING republish guard (plan 157). The
   # sync-point barriers carry their own timeouts, the ctest timeout is the
   # backstop for a wedged control task. Both sit above the 30 s
