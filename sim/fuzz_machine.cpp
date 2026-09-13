@@ -157,9 +157,9 @@ bool FuzzMachine::restore(const Checkpoint &checkpoint) {
 }
 
 void FuzzMachine::resumeAfterRestart() {
-  phase_ = finishing_ ? FuzzPhase::ESCAPE : FuzzPhase::APPLY;
-  settleNext_ = FuzzPhase::APPLY;
-  settleRemaining_ = 0;
+  // A restart may occur while the applied event is still settling. Preserve
+  // that phase and remaining budget so the resumed process completes the same
+  // check exactly once instead of issuing an extra event.
 }
 
 void FuzzMachine::settleThen(FuzzPhase next, uint32_t settleCycles) {
