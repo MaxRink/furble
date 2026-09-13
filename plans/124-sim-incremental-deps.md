@@ -20,11 +20,17 @@ behavior and the CMake simulator entry point are unchanged.
 - The incremental decision uses BSD/GNU `make -q` against the depfile. Missing
   objects or depfiles, newer prerequisites, deleted prerequisites, and a newer
   generated `sim/lv_conf.h` all force recompilation.
+- The `build-flags` stamp includes the absolute firmware, dependency, and LVGL
+  roots in addition to board and sanitizer settings. A shared build directory
+  therefore cannot reuse objects produced by a different checkout whose
+  relative source names and mtimes happen to match.
 - `sim/scripts/test-build-deps.sh` performs a clean build, touches
   `include/FurbleGPS.h`, and verifies that `FurbleGPS.cpp` and `FurbleUI.cpp`
   rebuild while `FurbleBootScreen.cpp` remains cached. It restores the header
   timestamp on exit, and verifies that a depfile whose target uses a different
-  relative/absolute build-directory spelling is treated as a cache miss.
+  relative/absolute build-directory spelling is treated as a cache miss. It
+  also seeds a legacy stamp without source-root identity and verifies that the
+  stale object is discarded.
 - The wrapper used by that self-test logs only compile sources and delegates to
   the selected compiler; it does not alter normal builds.
 

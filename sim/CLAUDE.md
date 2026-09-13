@@ -185,11 +185,16 @@ including empty strings and failed-save rollback.
   `python3 tools/gen_lv_conf.py sdkconfig.m5stick-s3 sim/lv_conf.h` first if
   the sdkconfig changed. Each object has a compiler-generated `.d` depfile, so
   project-header edits rebuild only their dependents; `make -q` evaluates the
-  depfile and the old source-only timestamp shortcut is not used.
+  depfile and the old source-only timestamp shortcut is not used. The
+  `build-flags` stamp also records the absolute firmware root, dependency root
+  and LVGL root; sharing a build directory across source/dependency trees
+  therefore drops stale objects even when their depfiles and mtimes appear
+  current.
 - `sim/scripts/test-build-deps.sh`: builds a complete simulator, touches
-  `include/FurbleGPS.h`, proves a relative/absolute depfile target mismatch
-  rebuilds, and proves GPS dependents rebuild while an unrelated source stays
-  cached. It requires the same dependency overrides as
+  `include/FurbleGPS.h`, proves a source-root cache stamp mismatch discards
+  stale objects, proves a relative/absolute depfile target mismatch rebuilds,
+  and proves GPS dependents rebuild while an unrelated source stays cached. It
+  requires the same dependency overrides as
   `sim/build.sh`.
 - `sim/scripts/run-env-order.sh`: on Linux, compiles a small `LD_PRELOAD`
   interposer that resolves libc functions before simulator threads start and
