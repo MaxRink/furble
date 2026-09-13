@@ -790,6 +790,13 @@ the integrated master:
 
 ## Implementation state, Android app
 
+The Android metadata table now includes shipped firmware setting ID 43
+(`autooff_charge`) and the PR273-advertised Legend ID 65 with values 0
+(`LEGEND_BUTTONS`) and 1 (`LEGEND_BOTTOM`); ID 65 remains gated on firmware
+advertising that row. Android metadata/unit execution and a rebuilt testing
+APK remain pending. Apple’s codec is unchanged because its current core has no
+editable static settings metadata layer.
+
 Implemented in PR #18 on the fork, under `companion/android`. Notes:
 
 - Kotlin Compose, CompanionDeviceManager association, no persistent scan and
