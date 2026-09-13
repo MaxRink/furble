@@ -113,6 +113,32 @@ void testRandomVector() {
   }
 }
 
+void testCheckpointValidation() {
+  Furble::Sim::FuzzMachine machine(3);
+  require(machine.beginApply(), "checkpoint event begins");
+  machine.eventApplied(2);
+  auto checkpoint = machine.checkpoint();
+  require(machine.restore(checkpoint), "valid pending checkpoint restores");
+
+  auto exhaustedPending = checkpoint;
+  exhaustedPending.stepCount = exhaustedPending.maxSteps;
+  exhaustedPending.settled = exhaustedPending.maxSteps;
+  exhaustedPending.attempted = exhaustedPending.maxSteps + 1;
+  exhaustedPending.observedDelta = exhaustedPending.maxSteps;
+  exhaustedPending.noObservedDelta = 0;
+  exhaustedPending.finishing = true;
+  require(!machine.restore(exhaustedPending), "pending event cannot exceed its budget");
+
+  auto counterOverflow = checkpoint;
+  counterOverflow.observedDelta = UINT32_MAX;
+  counterOverflow.noObservedDelta = 1;
+  require(!machine.restore(counterOverflow), "checkpoint counters cannot overflow their sum");
+
+  auto runawaySettle = checkpoint;
+  runawaySettle.settleRemaining = 7;
+  require(!machine.restore(runawaySettle), "settle budget is bounded");
+}
+
 }  // namespace
 
 int main() {
@@ -120,6 +146,7 @@ int main() {
   testEscapeTraces();
   testCounters();
   testRandomVector();
+  testCheckpointValidation();
   if (failures != 0) {
     return 1;
   }

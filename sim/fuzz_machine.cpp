@@ -150,18 +150,20 @@ bool FuzzMachine::restore(const Checkpoint &checkpoint) {
   settled_ = checkpoint.settled;
   timerStopChecks_ = checkpoint.timerStopChecks;
   finishing_ = checkpoint.finishing;
-  const bool pendingEvent = attempted_ == stepCount_ + 1;
+  const bool pendingEvent = phase_ == FuzzPhase::CHECK ||
+                            (phase_ == FuzzPhase::SETTLE && settleNext_ == FuzzPhase::CHECK);
   const bool escapeSettle = attempted_ == stepCount_ && phase_ == FuzzPhase::SETTLE &&
                             settleNext_ == FuzzPhase::ESCAPE;
   const uint64_t observedTotal = static_cast<uint64_t>(observedDelta_) + noObservedDelta_;
   const bool phaseValid =
-      (phase_ == FuzzPhase::SETTLE && settleRemaining_ > 0 &&
+      (phase_ == FuzzPhase::SETTLE && settleRemaining_ > 0 && settleRemaining_ <= 6 &&
        ((pendingEvent && settleNext_ == FuzzPhase::CHECK) || escapeSettle)) ||
       (phase_ == FuzzPhase::CHECK && pendingEvent && settleRemaining_ == 0) ||
       (phase_ != FuzzPhase::SETTLE && phase_ != FuzzPhase::CHECK);
-  return stepCount_ <= maxSteps_ && settled_ == stepCount_ && observedDelta_ <= stepCount_ &&
+  return stepCount_ <= maxSteps_ && (!pendingEvent || stepCount_ < maxSteps_) &&
+         settled_ == stepCount_ && observedDelta_ <= stepCount_ &&
          noObservedDelta_ <= stepCount_ && observedTotal == stepCount_ &&
-         (pendingEvent || escapeSettle || attempted_ == stepCount_) &&
+         attempted_ == stepCount_ + static_cast<uint32_t>(pendingEvent) &&
          timerStopChecks_ <= stepCount_ && finishing_ == (stepCount_ >= maxSteps_) && phaseValid;
 }
 
