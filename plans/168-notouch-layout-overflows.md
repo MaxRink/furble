@@ -1016,8 +1016,9 @@ deterministic path; parser and environment callers continue to use the same
 fixture. `action nav scan` proves navigation to the scan page only; it is not
 discovery, pairing, or radio hardware proof.
 
-Root's current `daf7e870` source passed six smoke cells (three modeled boards
-times touch and non-touch), each bounded at 10 seconds. Both-layout fail-fast
+Using binaries built from `daf7e870`, root validated the corrected smoke script
+from `f1057854` in six cells (three modeled boards times touch and non-touch),
+each bounded at 10 seconds. Both-layout fail-fast
 wrappers passed with all four negative fixtures, and invalid CLI handling
 passed. Evidence is in `~/b/pr273-f105-{smoke-80-0,smoke-80-1,smoke-s3-0,smoke-s3-1,smoke-core-0,smoke-core-1,failfast-0,failfast-1,invalid}.log`.
 Restart/lifecycle validation passed earlier. The integrated master-165

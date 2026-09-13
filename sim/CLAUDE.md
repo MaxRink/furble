@@ -919,8 +919,9 @@ remain required, with `ui.cut_labels` guarding the direct symptom. At that
 historical stage runtime validation remained pending; the current validation
 snapshot is recorded in plan 168.
 
-The current `daf7e870` source passed six smoke cells (three boards times
-non-touch and touch), each bounded at 10 seconds, plus both-layout fail-fast
+Binaries built from `daf7e870` with the corrected `f1057854` smoke script passed
+six cells (three boards times non-touch and touch), each bounded at 10 seconds,
+plus both-layout fail-fast
 wrappers including four negative fixtures and the invalid-CLI check. Evidence
 is in `~/b/pr273-f105-{smoke-80-0,smoke-80-1,smoke-s3-0,smoke-s3-1,smoke-core-0,smoke-core-1,failfast-0,failfast-1,invalid}.log`.
 The smoke `scan` action is navigation only, not discovery, pairing, or radio
