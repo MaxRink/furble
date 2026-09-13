@@ -560,6 +560,11 @@ retry/backoff or `hintLogged`, because the FauxNY success path never enters the
 retry path. Existing failure/backoff functional tests remain preserved.
 Wrapper `8d3ea42076ae96686a08da069e61a67ee10347e9` makes the shell gate fail on
 any warning or non-zero status and preserves the complete diagnostic output.
+Root separately ran the wrapper contract on macOS and got `PASS`; a copied old
+wrapper falsely accepted an unrelated warning with status 66 and printed
+`1 race report(s), 0 naming guarded accessor`, while the new contract rejected
+that same fixture. This is shell-contract evidence only, not execution of this
+integrated tree or of a TSAN binary/runtime.
 The new seven-field source/test/wrapper combination is source-integrated here
 but has not been executed. A future raw TSAN retry/backoff run remains
 explicitly pending; this handoff makes no runtime or hardware claim.
