@@ -133,7 +133,9 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
  labels are clipped by the button's parent even when the label itself fits.
   Simulator page identity maps use inferred-size arrays, never a hand-counted
   element bound. Navigation action names may be aliases, so parity checks must
-  allow the documented action-to-page mapping rather than compare table sizes.
+ allow the documented action-to-page mapping rather than compare table sizes.
+  Page-level prose labels are not rows and must keep the page width; only
+  layout children that can pass through the floating legend are narrowed.
   Scan advertisements are copied by `Scan` and drained on this task before
   `CameraList` or LVGL is touched; keep scan start unlocked around controller
   calls so the watchdog and callback handoff remain responsive.

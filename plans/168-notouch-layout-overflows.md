@@ -793,6 +793,16 @@ only 48 px wide, and the parent clipped the text. The candidate makes the label
 selected font, and vertical scrolling contract. The candidate is pending the
 full three-panel validation; no pass is claimed here.
 
+### Follow-up candidate: Bulb80 compact layout
+
+The integrated 80x160 sweep found the Bulb page still 40 px too tall. The
+trace showed `reserveLegendColumns()` had narrowed the page-level mode hint to
+48 px, making the 12 px-font sentence 75 px tall. It also showed the narrowed
+Start button's default horizontal padding left only 22 px for its 24 px label.
+The candidate leaves page-level prose at the full page width and removes only
+the 80 px button's horizontal padding, while preserving the hint wording,
+font, controls and legend reservation. Full validation remains pending.
+
 ## Deviations
 
 The plan as first drafted proposed dropping the Infrared entry from the 135x240

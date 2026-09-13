@@ -1851,7 +1851,8 @@ void UI::reserveLegendColumns(lv_obj_t *page) {
   // left alone.
   for (uint32_t i = 0; i < lv_obj_get_child_count(page); i++) {
     lv_obj_t *row = lv_obj_get_child(page, i);
-    if ((row == nullptr) || !lv_obj_is_valid(row) || lv_obj_has_flag(row, LV_OBJ_FLAG_FLOATING)) {
+    if ((row == nullptr) || !lv_obj_is_valid(row) || lv_obj_has_flag(row, LV_OBJ_FLAG_FLOATING)
+        || lv_obj_check_type(row, &lv_label_class)) {
       continue;
     }
     if (reserve > 0) {
@@ -8531,6 +8532,14 @@ void UI::addBulbMenu(const menu_t &parent) {
   m_BulbStart = lv_button_create(menu.page);
   lv_obj_t *startLabel = lv_label_create(m_BulbStart);
   lv_label_set_text(startLabel, "Start");
+  lv_obj_set_width(startLabel, LV_PCT(100));
+  lv_obj_set_style_text_align(startLabel, LV_TEXT_ALIGN_CENTER, 0);
+#if defined(FURBLE_M5STICKC)
+  // The floating legend narrows this button to 48 px. Remove the theme's
+  // horizontal padding so the 24 px Start label remains complete.
+  lv_obj_set_style_pad_left(m_BulbStart, 0, LV_STATE_DEFAULT);
+  lv_obj_set_style_pad_right(m_BulbStart, 0, LV_STATE_DEFAULT);
+#endif
   lv_obj_center(startLabel);
   lv_obj_add_flag(m_BulbStart, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
   addToInputGroup(m_Group, m_BulbStart);
