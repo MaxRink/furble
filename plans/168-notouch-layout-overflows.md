@@ -947,3 +947,21 @@ and runaway-scroll checks remain active; dedicated scenarios check clipped
 labels. The narrow Stick scenario
 asserts positive overflow plus both scroll endpoints, while the Core-specific
 scenario asserts `ui.overflow no`.
+
+### Diagnostic overlap clipping correction
+
+The overlap walkers are diagnostic metrics, not a second layout engine. Each
+measured leaf is passed through LVGL's native `lv_obj_area_is_visible()` before
+the indicator or sibling-area comparison. That preserves LVGL's ancestor
+clipping, scroll-row bounds, `LV_OBJ_FLAG_OVERFLOW_VISIBLE` extension and
+transforms without changing production geometry. `simDrawnArea()` and the raw
+area used by `ui.cut_labels` stay unchanged because the cut-label check must
+still inspect a label against its immediate parent.
+
+The root 2026-09-13 GDB trace measured the failing Bulb roller at x=50..74,
+its horizontal scroll-row parent at x=2..51, the page at x=2..77, and the
+legend at x=56..79. The renderer therefore clips the roller before it can
+reach the legend; the old metric only clamped to the page and reported a
+false positive. The existing physical 80x160 clearance scenarios remain the
+runtime regression and must pass after integration. No new geometry framework
+or runtime pass is claimed by this diagnostic-only correction.

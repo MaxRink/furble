@@ -138,6 +138,14 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   claim that every Large-font label becomes single-line.
   `ui.indicator_clearance` is still the check, and it has to hold in both
   placements.
+  The simulator overlap metrics apply LVGL's native `lv_obj_area_is_visible`
+  to each measured leaf before comparing it with the viewport or indicators.
+  This is diagnostic clipping only: `simDrawnArea()` and the raw drawn-area
+  path used by `ui.cut_labels` remain unchanged. The 2026-09-13 GDB trace
+  measured a Bulb roller at x=50..74 while its horizontal scroll-row parent
+  ended at x=51 and the legend began at x=56, proving the prior overlap was a
+  clipped-child false positive. Keep the existing physical 80x160 clearance
+  scenario as the runtime regression; do not add a second geometry framework.
   The Display settings page uses content-sized rows on all panel/layout
   variants; keep the three-panel touch matrix as the gate for any geometry
   claim.
