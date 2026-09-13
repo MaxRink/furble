@@ -514,9 +514,10 @@ test-only accessor, barrier, suppression, scheduler policy, or hardware claim.
 The raw TSAN result remains the deciding evidence; the existing wrapper's
 member-filter classification is not a whole-program race-free guarantee.
 
-The TSAN wrapper remains a full-report diagnostic gate: it must continue to
-fail on any raw TSAN non-zero result except the documented sanitizer status,
-and must never classify races by member name or suppress unrelated reports.
+The TSAN wrapper is a fail-closed full-report diagnostic gate: every sanitizer
+warning and every non-zero child status fails, regardless of report names or
+the sanitizer's conventional exit code. It must never classify races by member
+name or suppress unrelated reports. The exact completion marker is required.
 The existing TestSync signal/wait barriers establish happens-before ordering
 for operations performed around those waits; they are not a substitute for
 atomic synchronization on flags read outside the barriers.
@@ -538,5 +539,27 @@ This removes C++ plain read/write races only. The four atomics do not form a
 coherent multi-field request, do not guarantee that a reset wins over a
 concurrent retry, and do not define a new request or hint policy. Existing
 mutexes, queues, cancellation, reset positions, delays, and camera behavior
-remain unchanged. Raw TSAN, firmware, CI, and hardware validation are pending
-for this follow-up.
+remain unchanged. The new four-field source, its seven-field regression
+coverage, and the fail-closed wrapper contract are not executed in this
+integration handoff. Physical hardware validation remains separate.
+
+## Integration handoff: seven-field boundary
+
+Current master `34975a33f010e94105f985abf9aade824cd77468` is the merged PR #307
+publication. Root's owner evidence records 30 green checks, including
+firmware builds and reproducible firmware coverage, for the existing three
+atomic fields (`m_ConnectAbort`, `m_ConnectInProgress`, and
+`m_SleepLockHeld`). This checkout does not rerun that evidence.
+
+Source `90e753347fc47f06dd170823d8243d46eb1819fa` adds the four independent
+reconnect atomics (`m_InfiniteReconnect`, `m_ReconnectBackoff`,
+`m_ReconnectAttempt`, and `m_ReconnectHintLogged`) on top of that publication.
+Test `0f763fd92749fa0cf36340b0e2dc95d62017a0c3` covers the public debug
+snapshot plus successful FauxNY connect/disconnect cycles. It does not cover
+retry/backoff or `hintLogged`, because the FauxNY success path never enters the
+retry path. Existing failure/backoff functional tests remain preserved.
+Wrapper `8d3ea42076ae96686a08da069e61a67ee10347e9` makes the shell gate fail on
+any warning or non-zero status and preserves the complete diagnostic output.
+The new seven-field source/test/wrapper combination is source-integrated here
+but has not been executed. A future raw TSAN retry/backoff run remains
+explicitly pending; this handoff makes no runtime or hardware claim.
