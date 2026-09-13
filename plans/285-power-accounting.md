@@ -31,7 +31,10 @@ task-wake sleep exclusion, disables only the legacy timer-fired sleep
 exclusion in opt-in mode, and fails on unresolved pending work or checked
 arithmetic errors. The comparator rejects accounting mode and canonical
 cost/provenance fingerprint mismatches. Root owns the build and test gates for
-this candidate; this worktree was not built or tested.
+this candidate. Root reports the full host build and 119/119 host tests passed
+at the validated candidate (`2776a266`); the focused six-case suite also
+passed. CI/simulator packaging and hardware calibration remain pending, and
+these synthetic estimates do not establish physical quantitative accuracy.
 The opt-in report also exposes the exact microsecond window and component
 residencies; host profiler harnesses must provide the fail-closed
 `requestFailureExit()` stub when linking this runtime.
