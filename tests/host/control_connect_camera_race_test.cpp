@@ -45,6 +45,18 @@ namespace {
 using Furble::Control;
 
 std::atomic<bool> g_PollRun {true};
+std::atomic<uint64_t> g_DebugObservations {0};
+
+bool waitForState(Control &control, Control::state_t wanted, uint32_t timeout_ms) {
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+  while (std::chrono::steady_clock::now() < deadline) {
+    if (control.getState() == wanted) {
+      return true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  return control.getState() == wanted;
+}
 
 // Polls the accessor the connect progress timer calls, which is the UI-task
 // reader in production.
@@ -52,6 +64,21 @@ void pollConnectingCamera(void) {
   auto &control = Control::getInstance();
   while (g_PollRun.load()) {
     auto camera = control.getConnectingCamera();
+    const auto snapshot = control.getDebugState();
+    g_DebugObservations.fetch_add(
+        snapshot.targetCount + snapshot.connectedCount + snapshot.zombieCount
+            + snapshot.reconnectAttempt + static_cast<size_t>(snapshot.state)
+            + static_cast<size_t>(snapshot.connectInProgress)
+            + static_cast<size_t>(snapshot.connectAbort)
+            + static_cast<size_t>(snapshot.sleepLockHeld)
+            + static_cast<size_t>(snapshot.infiniteReconnect)
+            + static_cast<size_t>(snapshot.reconnectBackoff)
+            + static_cast<size_t>(snapshot.adaptiveActive)
+            + static_cast<size_t>(snapshot.userPowerLevel)
+            + static_cast<size_t>(snapshot.adaptivePowerLevel) + snapshot.rssiStrongSamples
+            + snapshot.rssiWeakSamples + snapshot.connectingCamera.size()
+            + snapshot.connectFailReason.size(),
+        std::memory_order_relaxed);
     if (camera != nullptr) {
       // Touch the pointee so the copy is not optimised away.
       volatile size_t len = camera->getName().size();
@@ -78,19 +105,28 @@ int main(void) {
   std::thread poller(pollConnectingCamera);
 
   auto camera = std::make_shared<Furble::FauxNY>();
-  control.addActive(camera);
-  control.connectAll(false);
+  bool passed = true;
+  for (int cycle = 0; cycle < 2; ++cycle) {
+    control.addActive(camera);
+    control.connectAll(false);
+    if (!waitForState(control, Control::STATE_ACTIVE, 5000)) {
+      std::cerr << "connect cycle did not reach ACTIVE\n";
+      passed = false;
+      break;
+    }
+    if (!control.disconnect() || !waitForState(control, Control::STATE_IDLE, 5000)) {
+      std::cerr << "disconnect cycle did not complete\n";
+      passed = false;
+      break;
+    }
+  }
 
-  // Long enough for several publish and clear cycles on the control task while
-  // the poller is copying the shared_ptr.
-  std::this_thread::sleep_for(std::chrono::milliseconds(1500));
-
-  control.disconnect();
-  std::this_thread::sleep_for(std::chrono::milliseconds(200));
-
-  g_PollRun = false;
+  g_PollRun.store(false);
   poller.join();
 
+  if (!passed || g_DebugObservations.load() == 0) {
+    return 1;
+  }
   std::cout << "control-connect-camera-race: PASS\n";
   return 0;
 }
