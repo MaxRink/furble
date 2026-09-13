@@ -568,3 +568,13 @@ integrated tree or of a TSAN binary/runtime.
 The new seven-field source/test/wrapper combination is source-integrated here
 but has not been executed. A future raw TSAN retry/backoff run remains
 explicitly pending; this handoff makes no runtime or hardware claim.
+
+## Publication update
+
+Published master `0844360be35db547eb68ea6b56ef4560dccc8b59` merged PR #308
+after the seven-field integration was prepared. PR #308's reported 24 CI
+checks are green, and its simulator power-accounting source is now part of the
+master base used by this checkout. The seven-field source, regression, and
+wrapper integration above remains unexecuted here; root owns the subsequent
+full-host validation. Physical camera, radio, and power accuracy remain
+outside this evidence.
