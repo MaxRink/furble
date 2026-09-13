@@ -54,3 +54,12 @@ page exited 1, named `diagnostics_timer` in its diagnostic, and wrote no report.
 Earlier `4eb05d68` passed all ten certified legacy baseline comparisons.
 Logs and reports are retained under `~/b/power-9e35-*` and the host log
 `/private/tmp/power-4eb-baseline-gate.log`. CI remains pending for publication.
+
+## Documentation clarification on master 165
+
+The power-model README now distinguishes the legacy-default profiler from the
+opt-in synthetic accounting mode already described above. It names the
+existing `FURBLE_POWER_MODEL` selector and the executable positive, negative,
+precision, pending-work, legacy, and comparator coverage; it does not add a
+model or claim callback-duration or hardware-current accuracy. The remaining
+peripheral attribution and physical calibration limits remain explicit.

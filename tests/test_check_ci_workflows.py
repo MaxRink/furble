@@ -2,6 +2,8 @@
 
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
+import re
+import shutil
 import sys
 import subprocess
 import tempfile
@@ -18,6 +20,77 @@ SPEC.loader.exec_module(CHECKER)
 
 
 class CheckCIWorkflowsTest(unittest.TestCase):
+  def test_release_upload_job_has_scoped_write_permission(self):
+    document = CHECKER._load_workflow(ROOT / ".github" / "workflows" / "release.yml")
+    self.assertEqual(document["jobs"]["build"]["permissions"], {"contents": "read"})
+    self.assertEqual(
+        document["jobs"]["release"]["permissions"], {"contents": "write"}
+    )
+
+  def test_core_usb_debug_is_not_published_as_ota_manifest(self):
+    for workflow_name in ("release.yml", "pages.yml"):
+      document = CHECKER._load_workflow(ROOT / ".github" / "workflows" / workflow_name)
+      matrix = document["jobs"]["build"]["strategy"]["matrix"]
+      self.assertIn(
+          {"platform": "m5stack-core", "variant": "-debug"},
+          matrix["exclude"],
+          workflow_name,
+      )
+  def test_installer_debug_selector_never_requests_core_manifest(self):
+    self.assertIsNotNone(shutil.which("node"), "Node.js is required by this regression")
+    installer = (ROOT / "web-installer" / "index.html").read_text(encoding="utf-8")
+    scripts = re.findall(r"<script>(.*?)</script>", installer, re.DOTALL)
+    script = next(script for script in scripts if "function updateManifest" in script)
+    harness = r'''
+      const vm = require("vm");
+      const listeners = {};
+      const state = {
+        selected: {value: "m5stick-s3"},
+        debug: {
+          checked: true,
+          disabled: false,
+          addEventListener(event, callback) { listeners.debug = callback; }
+        },
+        button: {manifest: "", classList: {remove() {}}}
+      };
+      const document = {
+        querySelector(selector) {
+          return selector === 'input[name="type"]:checked' ? state.selected : state.button;
+        },
+        querySelectorAll() {
+          return {forEach(callback) {
+            callback({addEventListener(event, handler) { listeners.board = handler; }});
+          }};
+        },
+        getElementById(id) { return id === "debug" ? state.debug : state.button; }
+      };
+      const context = {document};
+      vm.runInNewContext(SCRIPT, context);
+      listeners.board();
+      if (state.button.manifest !== "./manifest_m5stick-s3-debug.json" || state.debug.disabled) process.exit(1);
+      state.selected = {value: "m5stack-core"};
+      listeners.board();
+      if (state.button.manifest !== "./manifest_m5stack-core.json" || !state.debug.disabled || state.debug.checked) process.exit(2);
+      state.selected = {value: "m5stick-s3"};
+      state.debug.checked = true;
+      listeners.board();
+      if (state.button.manifest !== "./manifest_m5stick-s3-debug.json" || state.debug.disabled) process.exit(3);
+      state.debug.checked = false;
+      listeners.debug();
+      if (state.button.manifest !== "./manifest_m5stick-s3.json") process.exit(4);
+      state.selected = null;
+      const previous = state.button.manifest;
+      listeners.board();
+      if (state.button.manifest !== previous) process.exit(5);
+    '''
+    result = subprocess.run(
+        ["node", "-e", "const SCRIPT = process.argv[1];" + harness, script],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    self.assertEqual(result.returncode, 0, result.stderr)
+
   def lint(self, text: str) -> list[str]:
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".yml", encoding="utf-8"

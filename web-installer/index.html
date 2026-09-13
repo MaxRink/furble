@@ -66,10 +66,11 @@
         </li>
       </ul>
       <p>
-        <label><input type="checkbox" id="debug"/>Debug build (serial console + BT diagnostics)</label>
+        <label><input type="checkbox" id="debug" aria-describedby="debug-caption"/>Debug build (serial console + BT diagnostics)</label>
       </p>
-      <p class="caption">The debug build is larger and enables the developer
-      serial console. Use it to capture diagnostics for bug reports.</p>
+      <p class="caption" id="debug-caption">The debug build is larger and enables the developer
+      serial console. Use it to capture diagnostics for bug reports. M5Stack Core
+      has no published debug manifest; use the developer-only USB debug profile.</p>
       <p class="button-row" align="left">
         <esp-web-install-button id="installButton" class="invisible">
           <button slot="activate" id="installActivate">Connect</button>
@@ -136,7 +137,13 @@
           return;
         }
         const button = document.querySelector('esp-web-install-button');
-        const variant = document.getElementById('debug').checked ? '-debug' : '';
+        const debug = document.getElementById('debug');
+        const core = radio.value === 'm5stack-core';
+        debug.disabled = core;
+        if (core) {
+          debug.checked = false;
+        }
+        const variant = debug.checked ? '-debug' : '';
         button.manifest = `./manifest_${radio.value}${variant}.json`;
         button.classList.remove('invisible');
       }

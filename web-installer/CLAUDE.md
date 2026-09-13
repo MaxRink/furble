@@ -37,9 +37,10 @@ committed.
 
 ## Debug variant
 
-- Each board also ships a debug build from the matching PlatformIO `*-debug`
-  env. Debug builds carry `FURBLE_CONSOLE`, which adds the USB serial command
-  console and the Bluetooth diagnostic commands.
+- Each publishable board ships a debug build from the matching PlatformIO
+  `*-debug` env. Debug builds carry `FURBLE_CONSOLE`, which adds the USB serial
+  command console and Bluetooth diagnostic commands. M5Stack Core is excluded:
+  its `m5stack-core-usb-debug` fallback is single-factory and developer-only.
 - The debug variant is a value of `PLATFORM`, not a separate template. The
   release workflow sets `PLATFORM=<board>-debug`, and the `-debug` suffix flows
   straight into every binary path in `manifest.tmpl`. Flash offsets and
