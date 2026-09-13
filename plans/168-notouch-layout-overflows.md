@@ -806,12 +806,12 @@ trace showed `reserveLegendColumns()` had narrowed the page-level mode hint to
 Start button's default horizontal padding left only 22 px for its 24 px label.
 The candidate keeps the stable legend reservation and shortens the equivalent
 hint to `Set camera to B`; at the selected 12 px font its measured height is
-45 px across three lines. The fitted geometry is 46 px for Duration, 45 px for
-the hint, and 25 px for Start, exactly 116 px. The shared StickC spinner helper
-removes its 8 px flex-row gap for Duration and the other interval spinners
-(Count, Delay, Shutter and Wait), and Start trims 1 px from each vertical edge.
-These changes preserve the instruction meaning, font, controls and legend
-reservation. Full validation remains pending.
+45 px across three lines. The active viewport is 90 px: Duration 22 px, hint
+45 px, and Start 23 px. The shared StickC spinner helper removes its 8 px
+flex-row gap and all four pixels of padding for Duration and the other interval
+spinners (Count, Delay, Shutter and Wait). Start trims 2 px from each vertical
+edge. These changes preserve the instruction meaning, font, controls and
+legend reservation. Full validation remains pending.
 
 ## Deviations
 
