@@ -1,0 +1,6 @@
+# An interval seed takes a count and an optional unit written with no space,
+# "250ms", "30s" or "60min". An unrecognised suffix is rejected at load rather
+# than silently falling back to the field's own unit, which would make the
+# scenario measure a different value than it asked for.
+seed interval_shutter 250sec
+exit

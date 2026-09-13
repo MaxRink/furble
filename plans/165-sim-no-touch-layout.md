@@ -27,8 +27,8 @@ in the documentation while no assertion ever measured it.
 
 ## Numbering
 
-161 is `feat/sim-real-control-2` and 164 is the layout work of PR #263, both in
-flight. 165 is the next free number.
+161 is `feat/sim-real-control-2`, merged as PR #261, and 164 is the GPS
+receiver status work, merged as PR #263. 165 is the next free number.
 
 ## The full shipped-layout failure list
 
@@ -70,7 +70,7 @@ the state `core-notouch-layout.txt` drives.
 
 ## Why the board default was not changed
 
-Deriving the simulator default from the compiled board would turn all fourteen
+Deriving the simulator default from the compiled board would turn all twelve
 of those runs red at once. Fixing the layouts is a hardware-verified change to
 `src/FurbleUI.cpp` and is not this change. So this plan closes the measurement
 gap and records the product gaps. The board-derived default is the last
@@ -206,6 +206,9 @@ board the first round of this work wrongly called unaffected.
 
 ![320x240 connected page](../docs/img/notouch/320-connected.png)
 
+Every one of these is fixed in [168](168-notouch-layout-overflows.md), which
+commits the matching `after-` capture beside each of these files.
+
 ## Known gap: the fuzzer still only fuzzes the touch layout
 
 `sim/fuzz.cpp` checks a `layout-overflow` invariant, `mustFit(page)` against
@@ -247,11 +250,17 @@ deliberately unchanged; that is the hardware-verified follow-up.
 ## Follow-ups
 
 1. Fix the five overflow cases, then promote the five `xassert ui.overflow`
-   lines. The failure list above is the worklist.
+   lines. The failure list above is the worklist. Done in
+   [168](168-notouch-layout-overflows.md).
 2. Fix the 80x160 indicator collisions, probably by reserving right padding on
-   the Stick content area, then promote the remaining `xassert` lines.
+   the Stick content area, then promote the remaining `xassert` lines. Done in
+   168, by a different route: the Right indicator moved into the navigation band
+   the layout already reserves, so no content area had to give up width.
 3. Add the `FURBLE_SIM_NO_TOUCH=1` fuzz leg, which becomes green once 1 lands.
+   168 added the scenario leg, `sim/scripts/run-notouch.sh` on all three
+   binaries. The fuzz leg is still open.
 4. Derive the simulator default from the compiled board and delete the
    `no_touch` seed from these three scenarios. Every existing overflow scenario
    then measures the shipped layout automatically, and the three board-scoped
-   files can fold back into the general sweeps.
+   files can fold back into the general sweeps. Still open, and cheaper now that
+   the scenario leg proves the layout is green.

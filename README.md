@@ -363,6 +363,18 @@ see the [UI walkthrough](docs/ui-walkthrough.md). For the exhaustive reference
 of every setting and every button input mode, see
 [settings and controls](docs/settings-and-controls.md).
 
+On physical-button Stick boards, `Settings->Display->Legend` keeps the shipped
+Buttons placement by default, moves all three button legends into the Bottom
+navigation band, or hides the hints with Off without disabling the buttons.
+The choice takes effect after Restart; touch boards omit this
+setting because they have no physical-button legends, while the M5Stack Core
+keeps its physical button legends in the navigation band.
+
+Setting names use the full row width above their switches. Long names wrap,
+and the page scrolls as needed. This retains the selected font and complete
+wording instead of squeezing names into clipped columns.
+Display controls also leave space for their focus outlines between rows.
+
 The top level menu has the following entries:
 - `Connect`
 - `Scan`

@@ -2,9 +2,12 @@
 #include <cstdint>
 #include <cstdlib>
 #include <deque>
+#include <iomanip>
 #include <iostream>
+#include <istream>
 #include <map>
 #include <memory>
+#include <ostream>
 #include <random>
 #include <string>
 #include <vector>
@@ -60,9 +63,40 @@ constexpr std::array<const char *, 12> kToggles = {
 // compact home and interactive pages; a "yes" overflow on any of them is a
 // layout bug. The long settings and diagnostics lists scroll by design and are
 // deliberately excluded (see the overflow-sweep scenario for the same split).
-bool mustFit(const std::string &page) {
-  return page == "main" || page == "connected" || page == "shutter" || page == "bulb"
-         || page == "bulb_run" || page == "timer" || page == "timer_run" || page == "display";
+// Pages that still have to fit whatever the text size. A page is allowed to
+// scroll rather than shrink the face the user chose, so this list is now the
+// short one: the pages whose whole content is a fixed handful of widgets. The
+// home menu, the Connected list, the Display page and the timer settings all
+// grow with the text size and scroll, and asserting a fit on them only ever
+// held because a container absorbed the excess by stacking widgets, which no
+// fit query can see. What replaced the check on those pages is
+// ui.label_overlaps, asserted per page in the scenarios.
+// See plans/168-notouch-layout-overflows.md.
+bool mustFit([[maybe_unused]] UI *ui, const std::string &page) {
+  if (page == "shutter") {
+#if defined(FURBLE_M5STICKC) || defined(FURBLE_M5STICKS3)
+    // The modeled Stick panels are narrow enough for the touch controls to
+    // wrap into the page scroll area. Core touch remains fit-required.
+    if (ui->simQueryState("nav_layout") == "touch") {
+      return false;
+    }
+#endif
+    return true;
+  }
+  return page == "bulb_run" || page == "timer_run";
+}
+
+// A scrolling page is fine, and a long settings list legitimately runs a few
+// panels: the 135x240 Display page is 428 px and About and Device info are
+// longer. This bound only catches a runaway, a layout that grows without
+// settling, so it is ten panels rather than one. Read at the point of use:
+// LV_VER_RES resolves the default display, which does not exist yet at static
+// initialization, and a file scope constant evaluated to zero and tripped on
+// every page.
+// ponytail: a fixed multiple, not a per-page budget. Tighten per page if a
+// real regression ever hides under it.
+int maxScrollBottom(void) {
+  return 10 * LV_VER_RES;
 }
 
 enum class Event {
@@ -142,6 +176,7 @@ std::unique_ptr<FuzzMachine> machine;
 Event pendingEvent = Event::SELECT;
 std::string pendingDescription;
 bool pendingWasStop = false;
+bool checkpointEligible = false;
 ObservableState stateBeforeApply;
 uint32_t escapeActions = 0;
 std::mt19937_64 rng;
@@ -271,8 +306,19 @@ void checkInvariants(UI *ui, const std::string &event) {
   if (!page.empty()) {
     pageCounts[page]++;
   }
-  if (mustFit(page) && ui->simQueryState("overflow") == "yes") {
+  if (mustFit(ui, page) && ui->simQueryState("overflow") == "yes") {
     recordFinding(ui, "layout-overflow", event, "compact page overflows the panel");
+  }
+  // The pages that gave up their fit check are not unchecked. Nothing may be
+  // drawn over anything else on any page, and a page that scrolls has to scroll
+  // a sane amount: a runaway extent is a layout fault even though scrolling is
+  // allowed. ponytail: the bound is a whole extra panel of content, loose on
+  // purpose so only a real runaway trips it.
+  if (ui->simQueryState("label_overlaps") != "0") {
+    recordFinding(ui, "layout-overlap", event, "widgets drawn over each other");
+  }
+  if (std::atoi(ui->simQueryState("scroll_bottom").c_str()) > maxScrollBottom()) {
+    recordFinding(ui, "layout-scroll-runaway", event, "page scroll extent ran away");
   }
 }
 
@@ -417,11 +463,147 @@ void fuzzConfigure(uint64_t s, uint32_t steps, bool v) {
   classCounts.clear();
   eventCounts.clear();
   pageCounts.clear();
+  checkpointEligible = false;
   std::cout << "FUZZ START seed=" << seed << " steps=" << maxSteps << '\n';
 }
 
 bool fuzzActive(void) {
   return active;
+}
+
+bool fuzzCheckpointEligible(void) {
+  return active && checkpointEligible && machine != nullptr;
+}
+
+bool fuzzWriteCheckpoint(std::ostream &output) {
+  if (!fuzzCheckpointEligible()) {
+    return false;
+  }
+  const auto state = machine->checkpoint();
+  output << "FURBLE_FUZZ_CHECKPOINT 1\n"
+         << seed << ' ' << maxSteps << ' ' << verbose << ' ' << static_cast<uint32_t>(pendingEvent)
+         << ' ' << pendingWasStop << ' ' << escapeActions << '\n';
+  output << state.phase << ' ' << state.settleNext << ' ' << state.maxSteps << ' '
+         << state.escapeCadence << ' ' << state.stepCount << ' ' << state.settleRemaining << ' '
+         << state.attempted << ' ' << state.observedDelta << ' ' << state.noObservedDelta << ' '
+         << state.settled << ' ' << state.timerStopChecks << ' ' << state.finishing << '\n';
+  output << std::quoted(pendingDescription) << '\n' << rng << '\n';
+  for (const auto &value : stateBeforeApply.values) {
+    output << std::quoted(value) << '\n';
+  }
+  output << recentEvents.size() << '\n';
+  for (const auto &event : recentEvents) {
+    output << std::quoted(event) << '\n';
+  }
+  output << findings.size() << '\n';
+  for (const auto &finding : findings) {
+    output << finding.step << ' ' << std::quoted(finding.bug_class) << ' '
+           << std::quoted(finding.page) << ' ' << std::quoted(finding.event) << ' '
+           << std::quoted(finding.detail) << '\n';
+  }
+  auto writeMap = [&output](const auto &map) {
+    output << map.size() << '\n';
+    for (const auto &entry : map) {
+      output << std::quoted(entry.first) << ' ' << entry.second << '\n';
+    }
+  };
+  writeMap(classCounts);
+  writeMap(eventCounts);
+  writeMap(pageCounts);
+  return output.good();
+}
+
+bool fuzzReadCheckpoint(std::istream &input) {
+  constexpr std::streamsize kMaxCheckpointBytes = 4 * 1024 * 1024;
+  if (input.rdbuf()->in_avail() > kMaxCheckpointBytes)
+    return false;
+  std::string magic;
+  unsigned version = 0;
+  uint32_t event = 0;
+  uint64_t savedSeed = 0;
+  uint32_t savedSteps = 0;
+  bool savedVerbose = false;
+  bool savedStop = false;
+  uint32_t savedEscapes = 0;
+  if (!(input >> magic >> version) || magic != "FURBLE_FUZZ_CHECKPOINT" || version != 1
+      || !(input >> savedSeed >> savedSteps >> savedVerbose >> event >> savedStop >> savedEscapes)
+      || savedSeed != seed || savedSteps != maxSteps) {
+    return false;
+  }
+  FuzzMachine::Checkpoint state {};
+  if (!(input >> state.phase >> state.settleNext >> state.maxSteps >> state.escapeCadence
+        >> state.stepCount >> state.settleRemaining >> state.attempted >> state.observedDelta
+        >> state.noObservedDelta >> state.settled >> state.timerStopChecks >> state.finishing)
+      || maxSteps == 0 || maxSteps > 10000000 || event >= static_cast<uint32_t>(Event::COUNT)
+      || state.maxSteps != maxSteps || state.stepCount > maxSteps || state.phase > 5
+      || state.settleNext > 5 || !machine->restore(state)) {
+    return false;
+  }
+  std::string savedDescription;
+  if (!(input >> std::quoted(savedDescription) >> rng) || savedDescription.size() > 4096) {
+    return false;
+  }
+  std::array<std::string, kObservableQueries.size()> savedBefore;
+  for (auto &value : savedBefore) {
+    if (!(input >> std::quoted(value)) || value.size() > 4096)
+      return false;
+  }
+  pendingEvent = static_cast<Event>(event);
+  size_t count = 0;
+  if (!(input >> count) || count > 10000) {
+    return false;
+  }
+  recentEvents.clear();
+  for (size_t i = 0; i < count; i++) {
+    std::string value;
+    if (!(input >> std::quoted(value)) || value.size() > 4096)
+      return false;
+    recentEvents.push_back(std::move(value));
+  }
+  if (!(input >> count) || count > 100000)
+    return false;
+  findings.clear();
+  for (size_t i = 0; i < count; i++) {
+    Finding finding;
+    if (!(input >> finding.step >> std::quoted(finding.bug_class) >> std::quoted(finding.page)
+          >> std::quoted(finding.event) >> std::quoted(finding.detail))
+        || finding.bug_class.size() > 4096 || finding.page.size() > 4096
+        || finding.event.size() > 4096 || finding.detail.size() > 4096)
+      return false;
+    findings.push_back(std::move(finding));
+  }
+  auto readMap = [&input](auto &map) {
+    size_t size = 0;
+    if (!(input >> size) || size > 100000)
+      return false;
+    for (size_t i = 0; i < size; i++) {
+      std::string key;
+      uint32_t value = 0;
+      if (!(input >> std::quoted(key) >> value) || key.size() > 4096
+          || !map.emplace(std::move(key), value).second)
+        return false;
+    }
+    return true;
+  };
+  classCounts.clear();
+  eventCounts.clear();
+  pageCounts.clear();
+  if (!readMap(classCounts) || !readMap(eventCounts) || !readMap(pageCounts))
+    return false;
+  char trailing = 0;
+  if (input >> trailing)
+    return false;
+  verbose = savedVerbose;
+  pendingWasStop = savedStop;
+  escapeActions = savedEscapes;
+  pendingDescription = std::move(savedDescription);
+  stateBeforeApply.values = std::move(savedBefore);
+  checkpointEligible = false;
+  return true;
+}
+
+void fuzzResumeAfterRestart(void) {
+  checkpointEligible = false;
 }
 
 void fuzzTick(UI *ui) {
@@ -434,6 +616,7 @@ void fuzzTick(UI *ui) {
       if (!machine->beginApply()) {
         return;
       }
+      checkpointEligible = false;
       pendingEvent = pickEvent();
       pendingDescription = eventName(pendingEvent);
       pendingWasStop = pendingEvent == Event::INTERVAL_STOP;
@@ -441,6 +624,7 @@ void fuzzTick(UI *ui) {
       applyEvent(ui, pendingEvent);
       recordEvent(pendingDescription);
       eventCounts[pendingDescription]++;
+      checkpointEligible = true;
       // The post-handler hook counts the current LVGL cycle and the next
       // settle cycles before Check reads any state.
       machine->eventApplied(2 + pick(5));

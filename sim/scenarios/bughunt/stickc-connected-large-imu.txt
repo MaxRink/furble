@@ -1,0 +1,43 @@
+# Issue 282 regression: M5StickC 80x160 physical-button layout, persisted
+# Large, Connected page with IMU enabled. The explicit no_touch seed is required
+# because the matrix also exercises the touch-enabled simulator loop. Large is
+# no longer offered on this panel, but a stale persisted value must clamp at
+# render time and the resulting Connected page must remain reachable without
+# overlap or clipped labels.
+seed no_touch true
+seed text_size 2
+seed fauxny true
+seed saved_camera true
+seed gps true
+seed imu true
+wait 300
+assert ui.nav_layout buttons
+assert setting.text_size 2
+action nav text_size
+wait 200
+assert ui.text_size 1
+assert ui.text_size_options 2
+home
+wait 250
+action connect
+wait 3200
+assert ui.page connected
+assert ui.connected yes
+assert ui.level_button_visible yes
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+assert ui.indicator_clearance clear
+assert ui.scroll_top 0
+action scroll bottom
+wait 100
+assert ui.scroll_bottom 0
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+assert ui.indicator_clearance clear
+action scroll top
+wait 100
+assert ui.scroll_top 0
+assert ui.indicator_clearance clear
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+exit

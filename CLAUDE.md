@@ -64,6 +64,9 @@ CLAUDE.md whose directory it touches.
   All simulator scenarios are listed in
   `sim/scenarios/manifest.json`, including their owner, board matrix,
   capabilities, and expected exit status.
+  The Android companion metadata table mirrors shipped firmware settings by
+  wire ID. LEGEND wire 65 has values 0 (Buttons), 1 (Bottom), and 2 (Off);
+  keep its protocol test aligned when that production enum changes.
   Manual PlatformIO dispatches always run the complete firmware matrix because
   a dispatch has no meaningful comparison base.
   Android's optional `run_emulator` input keeps the default dispatch fast.
@@ -76,6 +79,11 @@ CLAUDE.md whose directory it touches.
   its stamp also keys the absolute firmware, dependency, and LVGL roots so a
   shared build directory cannot reuse objects from another checkout. Run
   `sh sim/scripts/test-build-deps.sh` when changing this cache logic.
+- UI fuzz coverage must run both touch and `FURBLE_SIM_NO_TOUCH=1` layouts on
+  all three panel binaries. Preserve the runner's default seeds and strict
+  replay check; touch-only runs miss physical input-device lifetime faults.
+- UI screenshot CI selects the StickS3 physical-button layout explicitly and
+  asserts page identity before every capture. Capture routes are not input tests.
 - All OTA application images start at `0x20000`. The shared
   `board_upload.offset_address` setting is intentional: it keeps
   `pio run -t nobuild -t upload` from falling back to PlatformIO's historical

@@ -178,6 +178,7 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | [158-sim-scheduler-parity.md](158-sim-scheduler-parity.md) | Deterministic unified simulator scheduler and orderly teardown, followed by production connection and calibrated hardware parity |
 | [159-camera-peer-certification.md](159-camera-peer-certification.md) | Capture-backed, fail-closed virtual camera peers and exact feature-level compatibility certification |
 | [160-sim-scenario-ownership.md](160-sim-scenario-ownership.md) | Complete simulator scenario ownership manifest and exact CI trigger coverage |
+| [290-sim-page-query-map.md](290-sim-page-query-map.md) | Keep simulator page query maps sized from their initializers; retain alias-aware navigation coverage |
 | [161-sim-real-control.md](161-sim-real-control.md) | Production Control/Camera/CameraList/Scan in the simulator over MockNimBLE and virtual peers, with transport-level faults |
 | [162-console-host-coverage.md](162-console-host-coverage.md) | Developer console command suite in the host harness, plus a CI gate that no firmware source escapes both build lists |
 | [163-coverage-floor.md](163-coverage-floor.md) | Measured host and simulator coverage on all three panels, unioned, published in CI and held by a ratcheting floor |
@@ -185,6 +186,7 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | [165-sim-no-touch-layout.md](165-sim-no-touch-layout.md) | Certified per-board simulator coverage of the physical-button layout all three modeled boards ship, plus an indicator-clearance query and the layout gaps it exposes |
 | [166-sim-teardown-livelock.md](166-sim-teardown-livelock.md) | Simulator boot livelock and teardown disconnect timeout: the M5GFX step-exec false positive, UI-thread scheduler fairness, a host wall-clock stall watchdog with thread dumps, and wall-clock bounds on every scenario |
 | [167-fujifilm-device-name.md](167-fujifilm-device-name.md) | Fujifilm Secure cameras show the advertised model plus the advertised serial, since the longer camera-menu name is never advertised |
+| [168-notouch-layout-overflows.md](168-notouch-layout-overflows.md) | Close every overflow and indicator collision the physical-button layout ships, promote the recorded gaps to hard assertions, and run the certified set in that layout in CI |
 | [169-flaky-host-tests.md](169-flaky-host-tests.md) | Three flaky host tests made deterministic: real scheduler waits instead of spin budgets, a registration sync point instead of sleeps, the aborted-connect republish wedge, and a coverage run that fails on a scenario that never finished |
 | [170-control-zombie-connect-cancel.md](170-control-zombie-connect-cancel.md) | Vendor connect waits honour the plan 148 cancel contract, the interactive teardown cap is logged and honours its bound, and a draining camera is never handed a fresh target that clears its cancel token |
 | [171-console-coverage-crash.md](171-console-coverage-crash.md) | The console suite exits while the control task is still running: stop and join every shim task before static destruction, and a coverage run that names a host test it lost |
@@ -193,6 +195,7 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | [174-coverage-empty-profiles.md](174-coverage-empty-profiles.md) | Two host suites that measured nothing under coverage: the control shim adopts the stop-and-join task contract so both exit through main(), a coverage run fails naming a test whose raw profile is empty or missing, the console shim refuses a task created after shutdown, and the ctest summary header is anchored so a failing test cannot fabricate a crash report |
 | [175-coverage-crash-output.md](175-coverage-crash-output.md) | Failed simulator coverage scenarios retain a bounded output tail so signal diagnostics remain visible in CI |
 | [176-sim-task-notifications.md](176-sim-task-notifications.md) | FreeRTOS task notification counters in the simulator wake blocked owners, preserve clear/decrement and virtual timeout semantics, and unwind on shutdown |
+| [288-provisioning-schema.md](288-provisioning-schema.md) | Provisioning schema coverage for every keyed setting and current wire-ID reservation ledger |
 | [176-android-camera-catalog.md](176-android-camera-catalog.md) | Android camera characteristic discovery, stable-ID catalog, controls, and bounded protocol decoding |
 | [178-sim-startup-settings-order.md](178-sim-startup-settings-order.md) | Apply simulator settings before platform construction while preserving panel, environment, watchdog, and profiler boundaries |
 

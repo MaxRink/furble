@@ -2,10 +2,10 @@
 #
 # Run this on the 80x160 (M5StickC) binary. A device that carried a Large (2)
 # value in from another board, or had it forced through the console, must never
-# select a font that overflows the tiny panel. Seed Large, boot, and confirm the
+# select the Large font on the tiny panel. Seed Large, boot, and confirm the
 # stored value is left untouched but the roller lands on Normal (1), the board
-# maximum, and still offers only two sizes. The page must fit without scrolling,
-# which proves the clamped font, not the Large font, is in effect.
+# maximum, and still offers only two sizes. The complete note and controls must
+# remain reachable.
 seed text_size 2
 wait 300
 assert ui.page main
@@ -17,5 +17,22 @@ assert ui.page text_size
 # The roller clamps the out-of-range Large down to Normal, the board maximum.
 assert ui.text_size 1
 assert ui.text_size_options 2
-assert ui.overflow no
+# This page scrolls at this size by design: a page honours the text size the
+# user chose and scrolls when the rows stop fitting rather than shrinking the
+# face. Before plan 168 it reported a fit only because its container was
+# pinned to the page height and stacked the rows on top of each other, which
+# no fit query can see. What has to hold is that nothing overlaps.
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+assert ui.scroll_top 0
+action scroll bottom
+wait 100
+assert ui.scroll_bottom 0
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+action scroll top
+wait 100
+assert ui.scroll_top 0
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
 exit

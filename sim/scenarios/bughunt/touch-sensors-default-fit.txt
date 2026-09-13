@@ -1,0 +1,14 @@
+# Supplemental touch-layout fit for Sensors at each board's default text size.
+# Physical 80px scrolls the complete rows; this guard makes the no-touch runner
+# skip the stricter touch-only lane without dropping the gesture behavior walk.
+seed imu true
+seed imu_wake 1
+seed imu_trigger true
+wait 400
+assert ui.nav_layout touch
+action nav sensors
+wait 200
+assert ui.page sensors
+assert ui.overflow no
+assert ui.cut_labels 0
+exit

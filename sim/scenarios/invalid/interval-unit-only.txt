@@ -1,0 +1,4 @@
+# The unit suffix is optional, the count is not. A seed with no leading digits
+# is rejected rather than parsed as zero.
+seed interval_delay min
+exit

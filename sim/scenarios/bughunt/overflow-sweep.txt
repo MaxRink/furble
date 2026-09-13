@@ -2,13 +2,12 @@
 # page. Run against each panel class to surface layout overflow, worst on 80x160.
 # This is an overflow audit, not a second route-identity test: the page matrix
 # owns route reachability assertions. Each route prints its page and overflow
-# state, while compact pages carry a hard fit assertion.
+# state. Compact pages carry a hard fit assertion except narrow Stick touch
+# shutter, whose full-size controls intentionally wrap and scroll.
 #
-# Some pages are compact and must always fit the panel: the home menu, the
-# display page and the timer settings list. Those carry an "assert ui.overflow
-# no" so this scenario is a regression test. It fails on the pre-fix firmware,
-# where the home menu and timer page overflow at 80x160 (M5StickC), and passes
-# once the narrow-panel layout fits at 80x160, 135x240 and 320x240.
+# Fit-required run pages must fit. Menu pages keep the selected font, row icons
+# and spacing, and scroll vertically when their complete rows exceed the
+# viewport.
 #
 # The long settings lists (features, gps, bluetooth, about and the diagnostics
 # sub-pages) hold more rows than a short panel can show, so they scroll by
@@ -19,10 +18,22 @@ seed gps true
 seed imu true
 seed fb_output 1
 wait 300
-# Home menu: must fit on every panel.
+# Home menu: every full row stays readable and both scroll ends are reachable.
 print ui.page
 print ui.overflow
-assert ui.overflow no
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+assert ui.scroll_top 0
+action scroll bottom
+wait 100
+assert ui.scroll_bottom 0
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+action scroll top
+wait 100
+assert ui.scroll_top 0
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
 
 # Short camera and capability roots. Optional capability flags are enabled by
 # the CI job, so these routes are present on every matrix build.
@@ -61,7 +72,12 @@ action nav display
 wait 100
 print ui.page
 print ui.overflow
-assert ui.overflow no
+# This page scrolls at this size by design: a page honours the text size the
+# user chose and scrolls when the rows stop fitting rather than shrinking the
+# face. Before plan 168 it reported a fit only because its container was
+# pinned to the page height and stacked the rows on top of each other, which
+# no fit query can see. What has to hold is that nothing overlaps.
+assert ui.label_overlaps 0
 action page settings
 action nav features
 wait 100
@@ -76,9 +92,22 @@ action page settings
 action nav sensors
 wait 100
 # Core uses a grid for Settings; Sensors must occupy its own tile rather than
-# colliding with Feedback/IR. The page itself must remain reachable and fit.
+# colliding with Feedback/IR. On physical 80px the full rows scroll by 7px;
+# every label stays whole and both ends remain reachable.
 assert ui.page sensors
-assert ui.overflow no
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+assert ui.scroll_top 0
+action scroll bottom
+wait 100
+assert ui.scroll_bottom 0
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+action scroll top
+wait 100
+assert ui.scroll_top 0
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
 action nav gestures
 wait 100
 assert ui.page gestures
@@ -151,7 +180,10 @@ wait 100
 # Timer settings list (Count, Delay, Shutter, Wait): must fit on every panel.
 print ui.page
 print ui.overflow
-assert ui.overflow no
+# This page scrolls at this size by design: a page honours the text size the
+# user chose and scrolls when the rows stop fitting rather than shrinking the
+# face. What has to hold is that nothing overlaps.
+assert ui.label_overlaps 0
 action nav interval_count
 wait 100
 print ui.page
@@ -172,12 +204,22 @@ action nav theme
 wait 100
 print ui.page
 print ui.overflow
-assert ui.overflow no
+# This page scrolls at this size by design: a page honours the text size the
+# user chose and scrolls when the rows stop fitting rather than shrinking the
+# face. Before plan 168 it reported a fit only because its container was
+# pinned to the page height and stacked the rows on top of each other, which
+# no fit query can see. What has to hold is that nothing overlaps.
+assert ui.label_overlaps 0
 action nav text_size
 wait 100
 print ui.page
 print ui.overflow
-assert ui.overflow no
+# This page scrolls at this size by design: a page honours the text size the
+# user chose and scrolls when the rows stop fitting rather than shrinking the
+# face. Before plan 168 it reported a fit only because its container was
+# pinned to the page height and stacked the rows on top of each other, which
+# no fit query can see. What has to hold is that nothing overlaps.
+assert ui.label_overlaps 0
 action page settings
 action nav bluetooth
 wait 100
@@ -187,7 +229,12 @@ action nav tx_power
 wait 100
 print ui.page
 print ui.overflow
-assert ui.overflow no
+# This page scrolls at this size by design: a page honours the text size the
+# user chose and scrolls when the rows stop fitting rather than shrinking the
+# face. Before plan 168 it reported a fit only because its container was
+# pinned to the page height and stacked the rows on top of each other, which
+# no fit query can see. What has to hold is that nothing overlaps.
+assert ui.label_overlaps 0
 action page settings
 action nav about
 wait 100
@@ -241,20 +288,38 @@ action nav battery
 wait 100
 print ui.page
 print ui.overflow
-# Connected-session pages. The remote controls and run pages are compact, so
-# assert their fit as well. Cameras and the GPS remote page are printed because
-# their content legitimately varies with camera/GPS state and panel height.
+# Connected-session pages. Physical-button remote controls, Core touch shutter,
+# and run pages are fit-required. Narrow Stick touch shutter keeps its full-size
+# controls and scrolls, so this shared matrix checks geometry and both extents.
 home
 action connect
 wait 1800
 print ui.page
 print ui.overflow
-assert ui.overflow no
+# This page scrolls at this size by design: a page honours the text size the
+# user chose and scrolls when the rows stop fitting rather than shrinking the
+# face. Before plan 168 it reported a fit only because its container was
+# pinned to the page height and stacked the rows on top of each other, which
+# no fit query can see. What has to hold is that nothing overlaps.
+assert ui.label_overlaps 0
 action page shutter
 wait 100
 print ui.page
 print ui.overflow
-assert ui.overflow no
+assert ui.page shutter
+assert ui.scroll_top 0
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+action scroll bottom
+wait 100
+assert ui.scroll_bottom 0
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+action scroll top
+wait 100
+assert ui.scroll_top 0
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
 action page bulb
 wait 100
 print ui.page
@@ -295,7 +360,12 @@ action intervalometer
 wait 100
 print ui.page
 print ui.overflow
-assert ui.overflow no
+# This page scrolls at this size by design: a page honours the text size the
+# user chose and scrolls when the rows stop fitting rather than shrinking the
+# face. Before plan 168 it reported a fit only because its container was
+# pinned to the page height and stacked the rows on top of each other, which
+# no fit query can see. What has to hold is that nothing overlaps.
+assert ui.label_overlaps 0
 action stop
 wait 100
 

@@ -117,6 +117,64 @@ bool FuzzMachine::finishing() const {
   return finishing_;
 }
 
+FuzzMachine::Checkpoint FuzzMachine::checkpoint() const {
+  return {static_cast<uint32_t>(phase_),
+          static_cast<uint32_t>(settleNext_),
+          maxSteps_,
+          escapeCadence_,
+          stepCount_,
+          settleRemaining_,
+          attempted_,
+          observedDelta_,
+          noObservedDelta_,
+          settled_,
+          timerStopChecks_,
+          finishing_};
+}
+
+bool FuzzMachine::restore(const Checkpoint &checkpoint) {
+  if (checkpoint.phase > static_cast<uint32_t>(FuzzPhase::FINISH)
+      || checkpoint.settleNext > static_cast<uint32_t>(FuzzPhase::FINISH)
+      || checkpoint.maxSteps == 0) {
+    return false;
+  }
+  phase_ = static_cast<FuzzPhase>(checkpoint.phase);
+  settleNext_ = static_cast<FuzzPhase>(checkpoint.settleNext);
+  maxSteps_ = checkpoint.maxSteps;
+  escapeCadence_ = checkpoint.escapeCadence;
+  stepCount_ = checkpoint.stepCount;
+  settleRemaining_ = checkpoint.settleRemaining;
+  attempted_ = checkpoint.attempted;
+  observedDelta_ = checkpoint.observedDelta;
+  noObservedDelta_ = checkpoint.noObservedDelta;
+  settled_ = checkpoint.settled;
+  timerStopChecks_ = checkpoint.timerStopChecks;
+  finishing_ = checkpoint.finishing;
+  const bool pendingEvent = phase_ == FuzzPhase::CHECK
+                            || (phase_ == FuzzPhase::SETTLE && settleNext_ == FuzzPhase::CHECK);
+  const bool escapeSettle =
+      attempted_ == stepCount_ && phase_ == FuzzPhase::SETTLE && settleNext_ == FuzzPhase::ESCAPE;
+  const uint64_t observedTotal = static_cast<uint64_t>(observedDelta_) + noObservedDelta_;
+  const bool phaseValid =
+      (phase_ == FuzzPhase::SETTLE && settleRemaining_ > 0 && settleRemaining_ <= 6
+       && ((pendingEvent && settleNext_ == FuzzPhase::CHECK) || escapeSettle))
+      || (phase_ == FuzzPhase::CHECK && pendingEvent && settleRemaining_ == 0)
+      || (phase_ != FuzzPhase::SETTLE && phase_ != FuzzPhase::CHECK);
+  const bool finishValid = phase_ != FuzzPhase::FINISH || (finishing_ && stepCount_ == maxSteps_);
+  return stepCount_ <= maxSteps_ && (!pendingEvent || stepCount_ < maxSteps_)
+         && settled_ == stepCount_ && observedDelta_ <= stepCount_ && noObservedDelta_ <= stepCount_
+         && observedTotal == stepCount_
+         && attempted_ == stepCount_ + static_cast<uint32_t>(pendingEvent)
+         && timerStopChecks_ <= stepCount_ && finishing_ == (stepCount_ >= maxSteps_) && phaseValid
+         && finishValid;
+}
+
+void FuzzMachine::resumeAfterRestart() {
+  // A restart may occur while the applied event is still settling. Preserve
+  // that phase and remaining budget so the resumed process completes the same
+  // check exactly once instead of issuing an extra event.
+}
+
 void FuzzMachine::settleThen(FuzzPhase next, uint32_t settleCycles) {
   settleNext_ = next;
   settleRemaining_ = settleCycles;

@@ -1,10 +1,10 @@
 # furble UI walkthrough
 
 This is a screen by screen tour of the furble interface. Every screenshot is a
-real render from the furble SDL simulator, which runs the shipping UI code over
-a modeled M5StickS3 (135x240) panel. Where a page depends on hardware the
-simulator does not model, the page is described in words and the reason is
-noted.
+real render captured from the original PR273 SDL simulator work over a modeled
+M5StickS3 (135x240) panel. The preserved images were not regenerated after its
+later master integration. Where a page depends on hardware the simulator does
+not model, the page is described in words and the reason is noted.
 
 This document shows what each page looks like and how you reach it. For the
 exhaustive per setting tables (default, values, when a change applies, board
@@ -172,12 +172,24 @@ only on boards with the matching hardware.
 
 ![Display settings](img/settings-display.png)
 
+Scroll down to reach Screen off and Show Title:
+
+![Display settings, bottom](img/settings-display-bottom.png)
+
 - **Brightness**: screen brightness slider with a live preview.
 - **Inactivity timeout**: dim then sleep the screen after an idle period.
 - **Screen off**: what the inactivity timeout does (Dim, Off, or Off with the
   remote still active on button boards).
 - **Calibrate**: touch calibration. Touch boards only.
 - **Show Title**: show or hide the window title in the header.
+- **Legend**: on physical-button Stick boards, keep the shipped Buttons
+  placement, move all three legends into the Bottom navigation band, or use
+  Off to hide the hints without disabling the physical buttons. The
+  choice is applied after Restart. Touch boards omit this setting because
+  they have no physical-button legends; the M5Stack Core keeps its physical
+  button legends in the navigation band.
+
+![Legend setting](img/settings-legend.png)
 
 ### Features
 

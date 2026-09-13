@@ -23,6 +23,7 @@ REQUIRED_SELECTIONS = {
 }
 EXACT_BOARDS = {
   "page-matrix.txt": {"m5stick-s3", "m5stick-c", "m5stack-core"},
+  "feedback-hidden-route.txt": {"m5stick-s3", "m5stick-c", "m5stack-core"},
   "overflow-sweep.txt": {"m5stick-s3", "m5stick-c", "m5stack-core"},
   "level-overflow.txt": {"m5stick-s3", "m5stick-c", "m5stack-core"},
   "imu-diagnostics.txt": {"m5stick-s3", "m5stick-c", "m5stack-core"},
@@ -32,7 +33,16 @@ EXACT_BOARDS = {
   "text-size-overflow-large.txt": {"m5stick-s3", "m5stick-c"},
   "text-size-overflow-small.txt": {"m5stick-s3", "m5stick-c"},
   "core-notouch-layout.txt": {"m5stack-core"},
+  "core-connected-grid.txt": {"m5stack-core"},
+  "core-connected-grid-large.txt": {"m5stack-core"},
   "stick-notouch-layout-135.txt": {"m5stick-s3"},
+  "stick-notouch-connected-large.txt": {"m5stick-s3"},
+  "spin-row-widths-135.txt": {"m5stick-s3"},
+  "legend-bottom-135.txt": {"m5stick-s3"},
+  "legend-setting-135.txt": {"m5stick-s3"},
+  "legend-setting-80.txt": {"m5stick-c"},
+  "legend-bottom-80.txt": {"m5stick-c"},
+  "spin-row-widths-80.txt": {"m5stick-c"},
   "stick-notouch-layout-80.txt": {"m5stick-c"},
   "text-size-gate-stickc.txt": {"m5stick-c"},
   "text-size-clamp-stickc.txt": {"m5stick-c"},
@@ -41,7 +51,10 @@ WORKFLOW_CAPABILITIES = {
   "capability-submenus.txt": {"ir", "feedback", "sd"},
   "core-notouch-layout.txt": {"ir"},
   "stick-notouch-layout-135.txt": {"ir"},
+  "stick-notouch-connected-large.txt": {"ir"},
   "stick-notouch-layout-80.txt": {"ir"},
+  "core-connected-grid.txt": {"ir"},
+  "core-connected-grid-large.txt": {"ir"},
 }
 SUITES = set(OWNERS)
 REQUIRED = {"path", "suite", "owner", "boards", "capabilities", "expected_exit", "certified"}

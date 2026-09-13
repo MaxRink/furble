@@ -1,0 +1,12 @@
+# Supplemental touch-layout fit for the Diagnostics root at Normal text.
+# The shared scenario checks readable scrolling to both ends in the physical layout;
+# this guard makes the no-touch runner skip this stricter touch-only lane.
+seed gps true
+seed gps_nmea true
+wait 300
+assert ui.nav_layout touch
+action nav diagnostics
+wait 300
+assert ui.page diagnostics
+assert ui.overflow no
+exit

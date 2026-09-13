@@ -1,0 +1,15 @@
+# Supplemental touch-layout fit for Sensors at Small text. The shared Small
+# sweep keeps physical labels whole and both scroll ends reachable; this guard
+# retains its original strict touch fit without hiding the rest of that sweep.
+seed text_size 0
+seed fauxny true
+seed imu true
+seed gps true
+wait 300
+assert ui.nav_layout touch
+action nav sensors
+wait 100
+assert ui.page sensors
+assert ui.overflow no
+assert ui.cut_labels 0
+exit

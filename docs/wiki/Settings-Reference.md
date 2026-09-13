@@ -58,6 +58,12 @@ Diagnostics, Storage.
 - Settings marked (dangerous) can affect an active camera link or a running
   connection. Change them with care while connected.
 
+Setting rows place a full-width wrapping name above the switch on every
+panel. This can increase the page's scrollable height, including on wider
+screens. It preserves the complete wording and selected
+font; it is a layout contract, not a claim that every panel has been checked
+on physical hardware.
+
 Some rows are pages rather than settings (for example the Battery page or Raw
 NMEA). Those are read-only status pages and are listed for completeness but have
 no stored value.
@@ -66,6 +72,9 @@ no stored value.
 
 Submenu: `Settings` > `Display`.
 
+Rows leave room for focused control outlines. The page scrolls to reach controls
+that do not fit; focus outlines must not cover adjacent setting names.
+
 | Setting | Default | Values | Applies | Notes |
 | :--- | :--- | :--- | :--- | :--- |
 | Brightness | 128 | slider, roughly 0 to 240 | Now (live preview) | Saved when you release the slider. |
@@ -73,6 +82,7 @@ Submenu: `Settings` > `Display`.
 | Screen off | Dim | Dim, Off, Off remote on (button boards). Dim, Off (touch boards) | Restart | Touch boards do not offer the remote-on option. |
 | Calibrate | n/a | action | n/a | Touch boards only. Launches touch calibration and stores the result. |
 | Show Title | On | On, Off | Restart | Hiding the title frees header space on narrow stick displays. |
+| Legend | Buttons | Buttons, Bottom, Off | Restart | Physical-button Stick boards only. Buttons keeps the shipped Right legend beside its button; Bottom places all three legends in the navigation band; Off hides the rendered indicators but retains physical input anchors and layout reservation. |
 
 ### Features
 
