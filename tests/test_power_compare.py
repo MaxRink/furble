@@ -86,6 +86,24 @@ class PowerCompareTest(unittest.TestCase):
     )
     self.assertEqual(result.returncode, 0)
 
+  def test_accounting_identity_uses_nested_report_inputs(self):
+    current = {
+        "estimated_mA": 1.0,
+        "energy": {"accounting_inputs": {"accounting_mode": "synthetic", "accounting_fingerprint": "a"}},
+    }
+    baseline = {
+        "estimated_mA": 1.0,
+        "energy": {"accounting_inputs": {"accounting_mode": "synthetic", "accounting_fingerprint": "b"}},
+    }
+    result = self.run_compare(current, baseline)
+    self.assertEqual(result.returncode, 2)
+    self.assertIn("accounting mode/model-cost provenance mismatch", result.stderr)
+
+  def test_schema_arrays_are_rejected_before_field_access(self):
+    result = self.run_compare([], {"estimated_mA": 1.0})
+    self.assertEqual(result.returncode, 2)
+    self.assertIn("report is not a JSON object", result.stderr)
+
   def test_accounting_identity_must_match(self):
     current = {
         "estimated_mA": 1.0,

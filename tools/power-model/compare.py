@@ -35,11 +35,16 @@ def scenario_name(report: dict, path: Path) -> str:
 
 
 def accounting_identity(report: dict) -> tuple[str, str]:
+    if not isinstance(report, dict):
+        raise ValueError("report is not a JSON object")
     energy = report.get("energy", {})
     if not isinstance(energy, dict):
         raise ValueError("report energy is not a JSON object")
-    mode = energy.get("accounting_mode", "legacy-unaccounted")
-    fingerprint = energy.get("accounting_fingerprint", "")
+    inputs = energy.get("accounting_inputs", {})
+    if not isinstance(inputs, dict):
+        raise ValueError("report accounting_inputs is not a JSON object")
+    mode = inputs.get("accounting_mode", "legacy-unaccounted")
+    fingerprint = inputs.get("accounting_fingerprint", "")
     if not isinstance(mode, str) or not mode:
         raise ValueError("report has no valid accounting mode")
     if not isinstance(fingerprint, str):

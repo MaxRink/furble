@@ -88,6 +88,8 @@ struct CurrentModel {
   double pmic = 0.05247;
   double peripheral = 0.0035;
   bool accounting_enabled = false;
+  int accounting_version = 0;
+  std::string calibration_status;
   uint64_t ui_poll_active_us = 0;
   struct AccountingCost {
     uint64_t value_us = 0;
@@ -138,6 +140,7 @@ struct ProfilerState {
   uint64_t work_160_us = 0;
   uint64_t work_240_us = 0;
   uint64_t light_sleep_work_us = 0;
+  uint64_t eligible_light_sleep_us = 0;
   uint64_t poll_work_us = 0;
   uint64_t timer_work_us = 0;
   std::map<std::string, uint64_t> timer_work_us_by_name;
@@ -281,6 +284,7 @@ bool accountWorkLocked(uint64_t work_us) {
   uint64_t updated = 0;
   if (!addChecked(state.pending_work_us, work_us, updated)) {
     state.accounting_invalid = true;
+    requestFailureExit();
     return false;
   }
   state.pending_work_us = updated;
@@ -291,6 +295,7 @@ bool addWorkTotalLocked(uint64_t &total, uint64_t work_us) {
   uint64_t updated = 0;
   if (!addChecked(total, work_us, updated)) {
     state.accounting_invalid = true;
+    requestFailureExit();
     return false;
   }
   total = updated;
@@ -321,6 +326,7 @@ void integrateLocked(uint32_t now) {
     if (elapsed > std::numeric_limits<uint64_t>::max() / 1000
         || !addChecked(0, static_cast<uint64_t>(elapsed) * 1000, elapsed_us)) {
       state.accounting_invalid = true;
+      requestFailureExit();
       return;
     }
     const uint64_t work_us = std::min(state.pending_work_us, elapsed_us);
@@ -332,15 +338,23 @@ void integrateLocked(uint32_t now) {
     uint64_t updated = 0;
     if (!addChecked(*bucket, work_us, updated)) {
       state.accounting_invalid = true;
+      requestFailureExit();
       return;
     }
     *bucket = updated;
     const bool sleepEligible = state.light_sleep_enabled && lockCount() == 0 && state.task_idle;
-    if (sleepEligible && !addChecked(state.light_sleep_work_us, work_us, updated)) {
-      state.accounting_invalid = true;
-      return;
-    }
     if (sleepEligible) {
+      if (!addChecked(state.eligible_light_sleep_us, elapsed_us, updated)) {
+        state.accounting_invalid = true;
+        requestFailureExit();
+        return;
+      }
+      state.eligible_light_sleep_us = updated;
+      if (!addChecked(state.light_sleep_work_us, work_us, updated)) {
+        state.accounting_invalid = true;
+        requestFailureExit();
+        return;
+      }
       state.light_sleep_work_us = updated;
     }
   }
@@ -388,6 +402,7 @@ void resetCountersLocked(uint32_t now) {
   state.work_160_us = 0;
   state.work_240_us = 0;
   state.light_sleep_work_us = 0;
+  state.eligible_light_sleep_us = 0;
   state.poll_work_us = 0;
   state.timer_work_us = 0;
   state.timer_work_us_by_name.clear();
@@ -628,15 +643,25 @@ std::string unquote(std::string value) {
   return value;
 }
 
+bool validConfidence(const std::string &value) {
+  return value == "datasheet" || value == "published-measurement" || value == "estimated"
+         || value == "measured-local";
+}
+
 bool parseAccountingModel(const std::string &contents, CurrentModel &model) {
   std::istringstream input(contents);
   std::string line;
   bool inAccounting = false;
+  bool accountingSeen = false;
   bool inTimers = false;
   bool inPoll = false;
   bool pollValue = false;
   bool pollSource = false;
   bool pollConfidence = false;
+  bool versionSeen = false;
+  bool calibrationSeen = false;
+  bool pollSectionSeen = false;
+  bool timerSectionSeen = false;
   std::string timer;
   std::set<std::string> timerValues;
   std::set<std::string> timerSources;
@@ -656,6 +681,10 @@ bool parseAccountingModel(const std::string &contents, CurrentModel &model) {
     const std::string value = trim(text.substr(colon + 1));
     if (indent == 0) {
       if (key == "accounting") {
+        if (accountingSeen) {
+          return false;
+        }
+        accountingSeen = true;
         inAccounting = true;
         model.accounting_enabled = true;
         continue;
@@ -674,56 +703,111 @@ bool parseAccountingModel(const std::string &contents, CurrentModel &model) {
       if (inTimers || inPoll) {
         timer.clear();
       }
-      if (key == "version" && value != "1") {
+      if (key == "version") {
+        if (versionSeen || value != "1") {
+          return false;
+        }
+        versionSeen = true;
+        model.accounting_version = 1;
+      } else if (key == "calibration_status") {
+        const std::string status = unquote(value);
+        if (calibrationSeen || (status != "uncalibrated" && status != "calibrated")) {
+          return false;
+        }
+        calibrationSeen = true;
+        model.calibration_status = status;
+      } else if (inPoll) {
+        if (pollSectionSeen || !value.empty()) {
+          return false;
+        }
+        pollSectionSeen = true;
+      } else if (inTimers) {
+        if (timerSectionSeen || !value.empty()) {
+          return false;
+        }
+        timerSectionSeen = true;
+      } else {
         return false;
       }
       continue;
     }
-    if (inPoll && indent >= 4) {
+    if (inPoll && indent == 4) {
       if (key == "value_us") {
-        pollValue = parseUnsignedMicroseconds(value, model.ui_poll_active_us);
+        if (pollValue || !parseUnsignedMicroseconds(value, model.ui_poll_active_us)) {
+          return false;
+        }
+        pollValue = true;
       } else if (key == "source") {
+        if (pollSource) {
+          return false;
+        }
         model.poll_source = unquote(value);
         pollSource = !model.poll_source.empty();
       } else if (key == "confidence") {
+        if (pollConfidence) {
+          return false;
+        }
         model.poll_confidence = unquote(value);
-        pollConfidence = !model.poll_confidence.empty();
+        pollConfidence = validConfidence(model.poll_confidence);
+      } else {
+        return false;
       }
       continue;
     }
+    if (inPoll) {
+      return false;
+    }
+    if (!inPoll && !inTimers) {
+      return false;
+    }
     if (inTimers && indent == 4 && value.empty()) {
       timer = key;
+      if (timer.empty()) {
+        return false;
+      }
       if (!model.timer_active_us.emplace(timer, CurrentModel::AccountingCost {}).second) {
         return false;
       }
       continue;
     }
-    if (inTimers && indent >= 6 && !timer.empty()) {
+    if (inTimers && indent == 4) {
+      return false;
+    }
+    if (inTimers && indent == 6 && !timer.empty()) {
       auto &cost = model.timer_active_us[timer];
       if (key == "value_us") {
         if (!parseUnsignedMicroseconds(value, cost.value_us)) {
           return false;
         }
-        timerValues.insert(timer);
+        if (!timerValues.insert(timer).second) {
+          return false;
+        }
       } else if (key == "source") {
         cost.source = unquote(value);
         if (cost.source.empty()) {
           return false;
         }
-        timerSources.insert(timer);
-      } else if (key == "confidence") {
-        cost.confidence = unquote(value);
-        if (cost.confidence.empty()) {
+        if (!timerSources.insert(timer).second) {
           return false;
         }
-        timerConfidence.insert(timer);
+      } else if (key == "confidence") {
+        cost.confidence = unquote(value);
+        if (!validConfidence(cost.confidence)) {
+          return false;
+        }
+        if (!timerConfidence.insert(timer).second) {
+          return false;
+        }
+      } else {
+        return false;
       }
     }
   }
   if (!model.accounting_enabled) {
     return true;
   }
-  if (!pollValue || !pollSource || !pollConfidence || model.timer_active_us.empty()) {
+  if (!versionSeen || !calibrationSeen || !pollSectionSeen || !timerSectionSeen || !pollValue
+      || !pollSource || !pollConfidence || model.timer_active_us.empty()) {
     return false;
   }
   for (const auto &entry : model.timer_active_us) {
@@ -732,15 +816,27 @@ bool parseAccountingModel(const std::string &contents, CurrentModel &model) {
       return false;
     }
   }
+  return true;
+}
+
+std::string accountingFingerprint(const CurrentModel &model) {
+  if (!model.accounting_enabled) {
+    return {};
+  }
   std::ostringstream canonical;
-  canonical << "version=1\npoll=" << model.ui_poll_active_us << ":" << model.poll_source << ":"
-            << model.poll_confidence << '\n';
+  canonical << "version=" << model.accounting_version << "\nstatus=" << model.calibration_status
+            << "\ncoeff=" << std::setprecision(17) << model.mcu_80 << ',' << model.mcu_160 << ','
+            << model.mcu_240 << ',' << model.light_sleep << ',' << model.radio_tx << ','
+            << model.connected_idle << ',' << model.display_panel_on << ','
+            << model.display_panel_sleep << ',' << model.display_backlight << ','
+            << model.gps_acquisition << ',' << model.gps_tracking << ',' << model.gps_standby << ','
+            << model.pmic << ',' << model.peripheral << "\npoll=" << model.ui_poll_active_us << ':'
+            << model.poll_source << ':' << model.poll_confidence << '\n';
   for (const auto &entry : model.timer_active_us) {
     canonical << entry.first << '=' << entry.second.value_us << ':' << entry.second.source << ':'
               << entry.second.confidence << '\n';
   }
-  model.accounting_fingerprint = digestBytes(canonical.str());
-  return !model.accounting_fingerprint.empty();
+  return digestBytes(canonical.str());
 }
 
 ModelLoadResult loadCurrentModel(void) {
@@ -895,6 +991,10 @@ ModelLoadResult loadCurrentModel(void) {
       return result;
     }
   }
+  result.model.accounting_fingerprint = accountingFingerprint(result.model);
+  if (result.model.accounting_enabled && result.model.accounting_fingerprint.empty()) {
+    return result;
+  }
   result.digest = digestBytes(contents);
   result.valid = !result.digest.empty();
   return result;
@@ -945,6 +1045,11 @@ void writeReportLocked(const std::filesystem::path &path,
     state.model = loaded_model.model;
     state.model_source = loaded_model.source.string();
     state.model_digest = loaded_model.digest;
+    if (!state.reporting_enabled && state.model.accounting_enabled) {
+      state.accounting_invalid = true;
+      requestFailureExit();
+      return;
+    }
     state.model_loaded = true;
   }
   if (state.accounting_invalid || (state.model.accounting_enabled && state.pending_work_us != 0)) {
@@ -1252,6 +1357,8 @@ void writeReportLocked(const std::filesystem::path &path,
   output << "      },\n";
   output << "      \"accounting_mode\": \""
          << (model.accounting_enabled ? "synthetic-virtual-work" : "legacy-unaccounted") << "\",\n";
+  output << "      \"accounting_version\": " << model.accounting_version << ",\n";
+  output << "      \"calibration_status\": \"" << jsonEscape(model.calibration_status) << "\",\n";
   output << "      \"accounting_fingerprint\": \"" << jsonEscape(model.accounting_fingerprint)
          << "\",\n";
   output << "      \"poll_work_us\": " << (model.accounting_enabled ? state.poll_work_us : 0)
@@ -1273,7 +1380,10 @@ void writeReportLocked(const std::filesystem::path &path,
   output << "      \"work_80_us\": " << state.work_80_us << ",\n";
   output << "      \"work_160_us\": " << state.work_160_us << ",\n";
   output << "      \"work_240_us\": " << state.work_240_us << ",\n";
+  output << "      \"eligible_light_sleep_us\": " << state.eligible_light_sleep_us << ",\n";
   output << "      \"light_sleep_work_us\": " << state.light_sleep_work_us << ",\n";
+  output << "      \"adjusted_light_sleep_us\": "
+         << (state.eligible_light_sleep_us - state.light_sleep_work_us) << ",\n";
   output << "      \"pending_work_us\": " << state.pending_work_us << ",\n";
   output << "      \"accounting_valid\": " << (state.accounting_invalid ? "false" : "true") << "\n";
   output << "    }\n";
@@ -1350,7 +1460,11 @@ void profilerTimerFire(const char *name) {
   std::lock_guard<std::mutex> lock(state.mutex);
   ensureStartedLocked();
   integrateLocked(clockMillis());
-  state.timer_fires[name == nullptr ? "unknown_timer" : name]++;
+  uint64_t &fire_count = state.timer_fires[name == nullptr ? "unknown_timer" : name];
+  if (!addWorkTotalLocked(fire_count, 1)) {
+    requestFailureExit();
+    return;
+  }
   state.cycle_timer_fired = true;
   if (state.reporting_enabled && state.model.accounting_enabled) {
     const std::string timer_name = name == nullptr ? "unknown_timer" : name;
