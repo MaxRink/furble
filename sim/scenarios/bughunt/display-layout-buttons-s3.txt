@@ -9,37 +9,49 @@ wait 200
 assert ui.page display
 assert ui.focus_on_page yes
 assert ui.label_overlaps 0
+assert ui.cut_labels 0
 button a
 assert ui.page display
 assert ui.label_overlaps 0
+assert ui.cut_labels 0
 button b
 assert ui.page display
 assert ui.label_overlaps 0
+assert ui.cut_labels 0
 button a
 assert ui.page display
 assert ui.label_overlaps 0
+assert ui.cut_labels 0
 button b
 assert ui.page display
 assert ui.label_overlaps 0
+assert ui.cut_labels 0
 button a
 assert ui.page display
 assert ui.label_overlaps 0
+assert ui.cut_labels 0
 button b
 assert ui.page display
 assert ui.label_overlaps 0
+assert ui.cut_labels 0
 button a
 assert ui.page display
 assert ui.label_overlaps 0
+assert ui.cut_labels 0
 button b
 assert ui.page display
 assert ui.label_overlaps 0
+assert ui.cut_labels 0
 button a
 assert ui.page display
 assert ui.label_overlaps 0
+assert ui.cut_labels 0
 button b
 assert ui.page display
 assert ui.label_overlaps 0
+assert ui.cut_labels 0
 button a
 assert ui.page display
 assert ui.label_overlaps 0
+assert ui.cut_labels 0
 exit
