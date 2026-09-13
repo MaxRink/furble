@@ -349,9 +349,9 @@ the selected waiter has acquired the mutex, so it checks exclusion at that
 point and does not independently prove the reservation-before-wake race. No
 deterministic reservation seam exists in this test harness.
 
-Validation of this runtime and its new test path is pending on this commit.
-No host-suite, CI, hardware, or physical scheduler-parity result is claimed.
-The waiter-state dump and repeated high-load virtual-time-bound proof remain
+Root validation of this runtime and its new test path is recorded below. CI,
+hardware, and physical scheduler-parity results remain separate gates. The
+waiter-state dump and repeated high-load virtual-time-bound proof remain
 separate open work.
 
 ## SchedulerStopped fail-fast boundary
@@ -422,3 +422,27 @@ checkout in `~/b/prefs-ownership-build.log`,
 `~/b/prefs-ownership-host-test.log`; this checkout did not rerun those gates.
 The lifecycle script is now wired into the existing `sim-e2e` S3 job with a
 two-minute step timeout; the next CI run remains pending.
+
+## Validation update: frozen scheduler merge
+
+On 2026-09-13, root validated the clean frozen commit
+`8ac8b833ca4bf64af277813a9c8184b0f7140f6f` in
+`~/wt/scheduler-merge-0913`, using the shared dependency cache from
+`~/wt/c53-lto/.pio/libdeps/m5stack-core-debug`. The exact per-phase evidence is
+in the unique output directory `~/b/scheduler-8ac/`:
+
+- host configure and the two targeted scheduler/watchdog targets built with
+  `--parallel 2`; `sim-scheduler` and `sim-watchdog` passed 2/2 in 0.13 s
+  (`host-configure.log`, `host-build.log`, `scheduler-tests.log`);
+- the M5StickS3 simulator build passed (`sim-s3-build.log`);
+- assertion status passed for the positive case, injected scheduler-stop
+  case, diagnostic banner, and all four negative fail-fast fixtures
+  (`assert-exit.log`);
+- simulator-owned preference lifecycle passed
+  (`preferences-lifecycle.log`);
+- the pinned eight-seed, 600-step fuzz run and seed-2 determinism replay
+  passed (`fuzz.log`).
+
+These are host/simulator contract results only. They do not certify physical
+boards, radio timing, sensor behavior, power behavior, or full scheduler
+parity; CI and the documented hardware gates remain pending.
