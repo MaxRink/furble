@@ -28,7 +28,10 @@ assert ui.scroll_top 0
 assert ui.label_overlaps 0
 assert ui.cut_labels 0
 
-# The blind entry must use the same real page and layout path.
+# Leave the page, then use the blind entry as a separate real route.
+home
+wait 250
+assert ui.page connected
 action blind
 wait 300
 assert ui.page shutter

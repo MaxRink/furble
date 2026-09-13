@@ -635,8 +635,8 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   `FURBLE_SIM_CAPTURE_SPLASH=<png>` snapshots the boot splash before the LVGL UI
   starts.
 - The touch Remote shutter page retains full-size 64 px controls. On a panel
-  whose measured content width cannot hold three controls, it stacks them in
-  content-sized rows and relies on page scrolling. The
+  whose content width cannot hold three controls, native flex row wrapping
+  stacks them in content-sized rows and relies on page scrolling. The
   `touch-remote-shutter-narrow.txt` scenario checks both direct page and blind
   entry routes on every modeled panel; this is supplemental Core2 touch
   behavior, not a claim that the physical-button boards have touch hardware.

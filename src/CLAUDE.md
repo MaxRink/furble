@@ -67,9 +67,9 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   recomputed per transaction. The output selection is frozen at boot (it
   decides `cfg.internal_spk`), only the event mask and volume reload live.
 - The touch Remote shutter page keeps its 64 px controls intact. Measure the
-  page content width after creating the full-width container; use the three
-  column grid only when all controls fit, otherwise use one content-sized
-  column per control so the page scrolls instead of overlapping labels.
+  page content width through native flex row wrapping so the full-size
+  content-sized controls stay in one row when they fit and wrap into scrolling
+  rows when they do not.
 - `FurbleGPS` demultiplexes NMEA and CASIC binary frames. It sends at most one
   acknowledged configuration command at a time and keeps the fallback path.
   Phase 2 adds `GPS_BAUD` Auto with the `Casic::Autobaud` ladder and a
