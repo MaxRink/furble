@@ -8,10 +8,10 @@ settings schema walk now has no exemptions, and the provisioning apply test
 covers both valid boolean values and rejection of value 2.
 
 The reservation documentation now reflects the current master, including its
-conditional display, MQTT, and S3 watchdog settings, and five open
-PR heads: #59 uses 75/76, #90 uses 62, and #273 uses 65. IDs 42 and 45 retain
-historical claims and are not allocated or reused without a compatibility
-audit.
+conditional display, MQTT, and S3 watchdog settings, and the shipped Legend
+setting at wire ID 65. Open PR heads include #59 using 75/76 and #90 using 62;
+PR273 has no remaining setting claim. IDs 42 and 45 retain historical claims
+and are not allocated or reused without a compatibility audit.
 
 ## Deviations and remaining gates
 

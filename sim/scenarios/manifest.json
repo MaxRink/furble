@@ -650,6 +650,21 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/bughunt/stickc-connected-large-imu.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-c"
+      ],
+      "capabilities": [
+        "fauxny",
+        "gps",
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/bughunt/stick-notouch-layout-80.txt",
       "suite": "bughunt",
       "owner": "sim-bughunt",

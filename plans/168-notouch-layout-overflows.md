@@ -793,6 +793,11 @@ only 48 px wide, and the parent clipped the text. The candidate makes the label
 selected font, and vertical scrolling contract. The candidate is pending the
 full three-panel validation; no pass is claimed here.
 
+The certified `bughunt/stickc-connected-large-imu.txt` regression now covers
+the related persisted-Large Connected-page path on the 80x160 panel. It
+asserts the IMU-gated Level entry, label and overlap safety, and clear legend
+indicators at the restored top and bottom scroll endpoints.
+
 ### Follow-up candidate: Bulb80 compact layout
 
 The integrated 80x160 sweep found the Bulb page still 40 px too tall. The

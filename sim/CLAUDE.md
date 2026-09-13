@@ -688,6 +688,11 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   at the top, bottom and restored top. `touch-sensors-default-fit` and
   `touch-sensors-small-fit` retain the stricter no-overflow contract in
   explicitly touch-guarded supplemental lanes.
+- `bughunt/stickc-connected-large-imu.txt` covers the persisted-Large Connected
+  page on M5StickC with IMU enabled. It asserts the gated Level entry, complete
+  labels, no overlap, and indicator clearance before and after both scroll
+  endpoints. Keep it certified when changing the shared legend reservation or
+  text-size clamp.
 - `sim/scenarios/bughunt/overflow-sweep.txt` is the complementary layout audit.
   It visits every reachable root, settings, diagnostics, capability, and
   connected-session page, asserts fit for compact pages, and prints the

@@ -199,18 +199,18 @@ void testReservationParser() {
       "### Companion wire id reservations\n"
       "| PR | Setting keys | Wire ids |\n"
       "| --- | --- | --- |\n"
-      "| Master | shipped | 1-2 |\n"
+      "| Master | shipped | 1-2, 65 |\n"
       "| Master (conditional) | conditional | 3 (S3 42) |\n"
       "| Historical claims | audit | 4, 5 |\n"
       "| #59 | setting | 75, 76 |\n"
       "| #63 | none | none |\n"
       "| #90 | setting | 62 |\n"
       "| #265 | none | none |\n"
-      "| #273 | setting | 65 |\n";
+      "| #273 | none | none |\n";
   std::vector<Reservation> parsed;
   std::string error;
   check(parseReservations(valid, parsed, error), "reservation parser accepts annotated IDs");
-  check(validateReservations(parsed, {1, 2, 3}, error), "complete reservation owner set validates");
+  check(validateReservations(parsed, {1, 2, 3, 65}, error), "complete reservation owner set validates");
 
   std::string deleted = valid.substr(0, valid.find("| #273"));
   check(parseReservations(deleted, parsed, error), "deleted-row fixture parses");
