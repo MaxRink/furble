@@ -320,6 +320,7 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   It must use canonical `action nav` routes, seed a saved camera before the
   connect flow, and assert `ui.page` immediately before every capture. Key
   injection is not a reliable headless menu activation path.
+  Screenshot CI explicitly selects `FURBLE_SIM_NO_TOUCH=1` for the StickS3.
 - Scripted runs honor a caller-provided `FURBLE_SIM_PREFS` path and never
   remove it. Runs without one receive a unique, valid zero-entry scratch store;
   only that exact generated path and its PID-specific temporary file are

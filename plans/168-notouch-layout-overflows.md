@@ -54,6 +54,12 @@ rather than headless key injection. It seeds a saved camera, drives the real
 connect action, and asserts `ui.page` immediately before every capture,
 including the connected frame. A failed route therefore cannot silently
 produce a plausible but mislabeled documentation image.
+Root ran all 15 captures and their page assertions with the fresh `9d5a8a48`
+RIG0 binary in both touch and physical-button layouts. Both runs pass, including
+connection readiness, and the physical Display capture was inspected. CI now
+explicitly uses `FURBLE_SIM_NO_TOUCH=1`. Logs are
+`~/b/ui-screenshots-{corrected,physical}-0913.log`. The Android assertion fix
+still requires its successor CI run; no local Gradle result is claimed.
 
 ## Numbering
 

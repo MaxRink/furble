@@ -153,6 +153,8 @@ attempt to infer changed paths without a pull request or push comparison base.
   roots so shared build directories cannot mix checkout objects. Verify the
   cache with `sh sim/scripts/test-build-deps.sh` after changing the build
   script. It never changes firmware behavior.
+- UI screenshot CI uses `FURBLE_SIM_NO_TOUCH=1` for the StickS3 and asserts
+  each page before capture. Its setup routes are not physical-input validation.
 - UI fuzz CI runs all three panel binaries in touch and physical-button
   (`FURBLE_SIM_NO_TOUCH=1`) modes. Use the same `run-fuzz.sh` defaults in both;
   a passing touch run does not validate physical input-device lifetimes.
