@@ -36,40 +36,52 @@ class CheckCIWorkflowsTest(unittest.TestCase):
           matrix["exclude"],
           workflow_name,
       )
-  @unittest.skipUnless(shutil.which("node"), "Node.js is required")
   def test_installer_debug_selector_never_requests_core_manifest(self):
+    self.assertIsNotNone(shutil.which("node"), "Node.js is required by this regression")
     installer = (ROOT / "web-installer" / "index.html").read_text(encoding="utf-8")
     scripts = re.findall(r"<script>(.*?)</script>", installer, re.DOTALL)
     script = next(script for script in scripts if "function updateManifest" in script)
     harness = r'''
       const vm = require("vm");
+      const listeners = {};
       const state = {
         selected: {value: "m5stick-s3"},
-        debug: {checked: true, disabled: false},
+        debug: {
+          checked: true,
+          disabled: false,
+          addEventListener(event, callback) { listeners.debug = callback; }
+        },
         button: {manifest: "", classList: {remove() {}}}
       };
       const document = {
         querySelector(selector) {
           return selector === 'input[name="type"]:checked' ? state.selected : state.button;
         },
-        querySelectorAll() { return {forEach() {}}; },
+        querySelectorAll() {
+          return {forEach(callback) {
+            callback({addEventListener(event, handler) { listeners.board = handler; }});
+          }};
+        },
         getElementById(id) { return id === "debug" ? state.debug : state.button; }
       };
       const context = {document};
       vm.runInNewContext(SCRIPT, context);
-      context.updateManifest();
+      listeners.board();
       if (state.button.manifest !== "./manifest_m5stick-s3-debug.json" || state.debug.disabled) process.exit(1);
       state.selected = {value: "m5stack-core"};
-      context.updateManifest();
+      listeners.board();
       if (state.button.manifest !== "./manifest_m5stack-core.json" || !state.debug.disabled || state.debug.checked) process.exit(2);
       state.selected = {value: "m5stick-s3"};
       state.debug.checked = true;
-      context.updateManifest();
+      listeners.board();
       if (state.button.manifest !== "./manifest_m5stick-s3-debug.json" || state.debug.disabled) process.exit(3);
+      state.debug.checked = false;
+      listeners.debug();
+      if (state.button.manifest !== "./manifest_m5stick-s3.json") process.exit(4);
       state.selected = null;
       const previous = state.button.manifest;
-      context.updateManifest();
-      if (state.button.manifest !== previous) process.exit(4);
+      listeners.board();
+      if (state.button.manifest !== previous) process.exit(5);
     '''
     result = subprocess.run(
         ["node", "-e", "const SCRIPT = process.argv[1];" + harness, script],
