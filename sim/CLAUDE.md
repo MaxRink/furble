@@ -288,6 +288,16 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   idempotent because `CameraList::add_index()` overwrites by name (see
   plans/156-restart-restore-seam.md for the seam limits).
   See `docs/sim.md` for every action value and query key.
+- Scripted runs honor a caller-provided `FURBLE_SIM_PREFS` path and never
+  remove it. Runs without one receive a unique, valid zero-entry scratch store;
+  only that exact generated path and its PID-specific temporary file are
+  removed after a final orderly exit. Abnormal-exit reclamation and cross-run
+  sweeping are intentionally not implemented. Restart ownership also validates
+  the originating PID in its internal marker before adopting a generated path.
+  The focused subprocess check is
+  `sim/scripts/check-preferences-lifecycle.sh`; it requires an already-built
+  `FURBLE_SIM_BIN`, runs in the S3 simulator CI after that build with a
+  two-minute step bound, and is not a build or abnormal-exit janitor.
 - Scenario parsing is a pre-runtime gate: every verb has strict arity and
   numeric validation, unknown verbs/options and trailing values are rejected
   with status 2, and duplicate `seed` names are invalid. `action` lines are

@@ -1704,7 +1704,7 @@ if(BUILD_TESTING)
   add_test(NAME time-keeper-policy COMMAND time_keeper_policy_test)
   add_test(NAME time-keeper-persistence COMMAND time_keeper_persistence_test)
   add_test(NAME real-wifi-lifecycle COMMAND real_wifi_lifecycle_test)
-  foreach(preferences_case missing empty empty-string typeerror embedded-nul corruption failed-save)
+  foreach(preferences_case missing empty zero-count empty-string typeerror embedded-nul corruption failed-save)
     add_test(NAME preferences-sim-${preferences_case}
              COMMAND actualPreferencesSim ${preferences_case})
   endforeach()

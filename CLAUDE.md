@@ -103,6 +103,9 @@ CLAUDE.md whose directory it touches.
   FauxNY test camera and are declared untested in the PR.
 - `tools/coverage.py` measures host and simulator line coverage and enforces
   `tests/coverage_floor.json` in CI. See `docs/coverage.md`.
+- The built simulator preference ownership gate is
+  `sim/scripts/check-preferences-lifecycle.sh`; the existing `sim-e2e` job runs
+  it against the fresh M5StickS3 binary with a bounded step.
 
 ## Documentation (keep docs in sync, every PR)
 
