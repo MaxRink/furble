@@ -249,7 +249,7 @@ text after a comment are ignored. Each line starts with one verb.
 | `home` | Goes to the root menu and focuses Scan. |
 | `back` | Clicks the LVGL header back button. It fails at the root page. |
 | `report` | `report NAME` writes a profiler JSON report. |
-| `restart` | Reboots the simulated device: the simulator shuts down in order, re-executes itself, and resumes the script at the next step. RAM state is wiped like an esp_restart(); the per-run NVS preferences file is inherited through `FURBLE_SIM_PREFS` and persists like flash. Seeds are reapplied on the resumed boot. Takes no arguments and must not be the final step. |
+| `restart` | Reboots the simulated device: the simulator shuts down in order, re-executes itself, and resumes the script at the next step. RAM state is wiped like an esp_restart(); the per-run NVS preferences file is inherited through `FURBLE_SIM_PREFS` and persists like flash. Seeds are reapplied on the resumed boot. Takes no arguments and must not be the final step. UI-triggered restarts use the same boundary and arm only after the triggering button/action has advanced the script, so that action is not repeated. |
 | `action` | `action COMMAND` invokes one of the simulator actions below. The complete action line is parsed once, with whitespace-tolerant tokenization, strict arity, finite numeric validation, and no silently ignored trailing values. Invalid actions fail during script loading with status 2. |
 | `print` | `print KEY` prints the resolved scenario query. |
 | `assert` | `assert KEY VALUE` aborts with exit status 1 when the resolved value differs. |
@@ -882,6 +882,13 @@ whatever the production stack does after a fault is what the scenario observes.
   `sim/scripts/run-env-order.sh` can guard each mutation with a Linux
   `LD_PRELOAD` interposer. That check establishes environment ordering only; it
   does not establish that an environment race caused a SIGSEGV.
+- `Platform::restart()` uses the same post-teardown re-exec seam. Interactive
+  restarts have no script continuation; scripted UI restarts defer arming until
+  the driver records the next step. Fuzz owners must call
+  `completeFuzzRestart(next_step)` after the event and checkpoint bookkeeping;
+  the driver carries that cursor in `FURBLE_SIM_FUZZ_STEP`. A teardown or panel
+  failure always wins over re-exec. The fuzzer owner is responsible for
+  consuming that cursor and resuming at a safe post-event boundary.
 - Battery policy tests should seed `low_batt` and the four battery fields, then
   use `action battery ...` to change the sample. Six consecutive low samples
   qualify the production 30-second hysteresis; charging suppresses both the

@@ -115,27 +115,39 @@ std::atomic<int> requestedExit {-1};
 battery_reading_t simulatedBattery = {80, 4000, 0, false};
 bool simulatedPowerOff = false;
 
-// Restart seam (plan 156). The `restart` verb models a device reboot by
-// re-executing the simulator binary with the same arguments: every thread,
-// singleton, and RAM state is wiped exactly as an esp_restart() wipes them,
-// while the NVS-backed preferences file persists exactly as flash does. The
-// resumed process skips the steps already executed via FURBLE_SIM_RESTART_STEP
-// and skips the fresh-scenario preferences wipe, so scripted state written
-// before the restart is what the rebooted app boots from. The step itself only
-// requests the orderly shutdown that plan 158 built for `exit`; main() runs the
-// re-exec after every task has joined and the panel has closed.
+// Restart seam (plan 156). Every simulator reboot request re-executes the
+// binary with the same arguments: threads, singletons and RAM are wiped as an
+// esp_restart() would be, while the NVS-backed preferences file persists. A
+// script continuation uses FURBLE_SIM_RESTART_STEP; a fuzzer continuation uses
+// FURBLE_SIM_FUZZ_STEP; an interactive reboot has no continuation index.
+//
+// A UI callback can request a reboot synchronously while the driver is still
+// applying the button or action that caused it. restartIntent is therefore
+// separate from restartPending: the driver arms the post-teardown reboot only
+// after that action has advanced its continuation. The fuzzer has the same
+// explicit completion seam after its event/checkpoint bookkeeping.
 //
 // restartPending is its own shutdown request rather than a requestExit(0) call:
-// requestExit() is first-wins, so pinning zero here would swallow every failure
-// raised between this step and the re-exec (a liveness violation, an action
-// error) and reboot anyway. Leaving requestedExit unset lets any of them win,
-// and main() only re-execs when exitResult() is still zero.
+// requestExit() is first-wins, so pinning zero here would swallow a failure
+// raised between the request and re-exec. Leaving requestedExit unset lets any
+// failure win, and main() only re-execs when both teardown results are zero.
 std::vector<std::string> savedArguments;
 bool resumedBoot = false;
 std::atomic<bool> restartPending {false};
+bool restartIntent = false;
+
+enum class RestartMode {
+  NONE,
+  SCRIPT,
+  FUZZ,
+  INTERACTIVE,
+};
+
+RestartMode restartMode = RestartMode::NONE;
 // Written by driverTick and read only after main() joins the simulator thread.
 size_t restartStepIndex = 0;
 const char *RESTART_STEP_ENV = "FURBLE_SIM_RESTART_STEP";
+const char *FUZZ_RESTART_STEP_ENV = "FURBLE_SIM_FUZZ_STEP";
 const char *GENERATED_PREFS_ENV = "FURBLE_SIM_PREFS_GENERATED";
 std::string generatedPreferencesPath;
 bool generatedPreferencesOwned = false;
@@ -1938,6 +1950,13 @@ void configure(int argc, char **argv) {
 
   if (fuzz) {
     scenarioName = "fuzz";
+    // Fuzz restart continuation is consumed by fuzzConfigure in the fuzzer
+    // owner. Mark this boot as resumed here so the generated preference store
+    // remains the same path across the exec, just as it does for scripts.
+    if (const char *resume = std::getenv(FUZZ_RESTART_STEP_ENV);
+        resume != nullptr && resume[0] != '\0') {
+      resumedBoot = true;
+    }
     fuzzConfigure(fuzzSeed, fuzzSteps, fuzzVerbose);
     return;
   }
@@ -2072,6 +2091,7 @@ void driverTick(void) {
         return;
       }
       ++stepIndex;
+      completeScriptRestart(stepIndex);
       break;
 
     case StepType::CAPTURE:
@@ -2201,13 +2221,13 @@ void driverTick(void) {
       // from here would tear the process image out from under running tasks,
       // which is a crash, not a reboot.
       const size_t next = stepIndex + 1;
-      restartStepIndex = next;
+      requestRestart();
+      completeScriptRestart(next);
       std::cout << "restart: rebooting simulator, resuming at step " << next << '\n';
       std::cout.flush();
       // Advance past this step so a tick racing the shutdown cannot run it
       // twice. The resumed process takes its index from the environment.
       ++stepIndex;
-      restartPending.store(true);
       return;
     }
 
@@ -2241,6 +2261,7 @@ void driverTick(void) {
         return;
       }
       ++stepIndex;
+      completeScriptRestart(stepIndex);
       break;
     }
 
@@ -2405,6 +2426,47 @@ void driverTick(void) {
   }
 }
 
+void requestRestart(void) {
+  if (restartPending.load()) {
+    return;
+  }
+  restartIntent = true;
+  // Interactive mode has no script action whose bookkeeping can provide a
+  // continuation index. It can arm the common post-teardown path immediately.
+  if (scenarioName == "interactive") {
+    restartMode = RestartMode::INTERACTIVE;
+    restartPending.store(true);
+  }
+}
+
+void completeScriptRestart(size_t nextStep) {
+  if (!restartIntent || restartPending.load() || scenarioName == "interactive") {
+    return;
+  }
+  if (nextStep == 0) {
+    std::cerr << "restart requested without a continuation step\n";
+    requestFailureExit();
+    return;
+  }
+  restartMode = RestartMode::SCRIPT;
+  restartStepIndex = nextStep;
+  restartPending.store(true);
+}
+
+void completeFuzzRestart(uint32_t nextStep) {
+  if (!restartIntent || restartPending.load()) {
+    return;
+  }
+  if (nextStep == 0) {
+    std::cerr << "fuzz restart requested without a continuation step\n";
+    requestFailureExit();
+    return;
+  }
+  restartMode = RestartMode::FUZZ;
+  restartStepIndex = nextStep;
+  restartPending.store(true);
+}
+
 void requestExit(int result) {
   int unset = -1;
   requestedExit.compare_exchange_strong(unset, result);
@@ -2435,18 +2497,45 @@ bool restartRequested(void) {
 void restartProcess(void) {
   std::cout.flush();
   std::cerr.flush();
-  const size_t next = restartStepIndex;
-  if (next == 0) {
-    std::cerr << "restart requested without a continuation step\n";
-    std::_Exit(1);
-  }
   // This runs on the main thread after the simulator thread has joined and the
   // SDL panel has closed. Keep the process-wide environment mutation out of
   // the driver thread, where SDL can read it concurrently during its loop.
-  const std::string nextValue = std::to_string(next);
-  if (setenv(RESTART_STEP_ENV, nextValue.c_str(), 1) != 0) {
-    std::cerr << "restart failed: setenv: " << std::strerror(errno) << '\n';
-    std::_Exit(1);
+  switch (restartMode) {
+    case RestartMode::SCRIPT: {
+      if (restartStepIndex == 0) {
+        std::cerr << "restart requested without a continuation step\n";
+        std::_Exit(1);
+      }
+      const std::string nextValue = std::to_string(restartStepIndex);
+      if (setenv(RESTART_STEP_ENV, nextValue.c_str(), 1) != 0
+          || unsetenv(FUZZ_RESTART_STEP_ENV) != 0) {
+        std::cerr << "restart failed to set continuation: " << std::strerror(errno) << '\n';
+        std::_Exit(1);
+      }
+      break;
+    }
+    case RestartMode::FUZZ: {
+      if (restartStepIndex == 0) {
+        std::cerr << "fuzz restart requested without a continuation step\n";
+        std::_Exit(1);
+      }
+      const std::string nextValue = std::to_string(restartStepIndex);
+      if (setenv(FUZZ_RESTART_STEP_ENV, nextValue.c_str(), 1) != 0
+          || unsetenv(RESTART_STEP_ENV) != 0) {
+        std::cerr << "restart failed to set continuation: " << std::strerror(errno) << '\n';
+        std::_Exit(1);
+      }
+      break;
+    }
+    case RestartMode::INTERACTIVE:
+      if (unsetenv(RESTART_STEP_ENV) != 0 || unsetenv(FUZZ_RESTART_STEP_ENV) != 0) {
+        std::cerr << "restart failed to clear continuation: " << std::strerror(errno) << '\n';
+        std::_Exit(1);
+      }
+      break;
+    case RestartMode::NONE:
+      std::cerr << "restart requested without a restart mode\n";
+      std::_Exit(1);
   }
   std::vector<char *> arguments;
   arguments.reserve(savedArguments.size() + 1);
