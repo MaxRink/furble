@@ -8,6 +8,9 @@ Public headers for the app layer in src/, one header per module
 - These headers may include lib/furble headers; the reverse is forbidden
   (see lib/furble/CLAUDE.md).
 - Doxygen-style comments on public members, matching the existing files.
+- Any change to a public header must update this guidance when it changes a
+  synchronization or ownership contract, and must be reviewed as a public API
+  change.
 - `FurbleControl::setPower` is the user-selected maximum for Bluetooth transmit
   power. Adaptive runtime changes must stay at or below that cap.
 - `FurbleGPS` exposes the CASIC binary test path and AID-INI injection as
