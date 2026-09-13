@@ -1690,7 +1690,9 @@ void profilerBeginUiCycle(void) {
 void profilerEndUiCycle(void) {
   std::lock_guard<std::mutex> lock(state.mutex);
   ensureStartedLocked();
-  integrateLocked(clockMicros());
+  if (state.model.accounting_enabled) {
+    integrateLocked(clockMicros());
+  }
   state.timer_queue_idle = !state.cycle_timer_fired;
   state.task_idle = !state.cycle_task_woke;
 }
