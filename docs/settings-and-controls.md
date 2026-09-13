@@ -58,6 +58,12 @@ Diagnostics, Storage.
 - Settings marked (dangerous) can affect an active camera link or a running
   connection. Change them with care while connected.
 
+Setting rows use a wrapping label with the full available row width. On a
+narrow panel, a long name can occupy a line above its switch and increase the
+page's scrollable height. This preserves the complete wording and selected
+font; it is a layout contract, not a claim that every panel has been checked
+on physical hardware.
+
 Some rows are pages rather than settings (for example the Battery page or Raw
 NMEA). Those are read-only status pages and are listed for completeness but have
 no stored value.

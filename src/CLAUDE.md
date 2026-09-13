@@ -165,6 +165,10 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   The Bulb Start button follows the same rule: set its parent width before a
   percentage-sized Start label. Keep compact-fit and clipped-value assertions
   unchanged while validating all panel variants.
+  `addSettingItem()` uses a full-width wrapping label in its row-wrap
+  container. Do not restore natural/max-only width or flex-grow: a switch can
+  squeeze a long setting name into a clipped line instead of letting the name
+  wrap above the switch.
   Plus/S3 spin rows keep their vertical padding but spend no horizontal pixels:
   at Large text `999 mins` needs the full 103 px narrowed row width. Four pixels
   of horizontal padding make that complete value wrap and push the Bulb page

@@ -1058,3 +1058,23 @@ passed. Evidence is in `~/b/pr273-f105-{smoke-80-0,smoke-80-1,smoke-s3-0,smoke-s
 Restart/lifecycle validation passed earlier. The integrated master-165
 composite has not been rerun; gallery regeneration, 13 clean firmware
 environments, and physical-hardware gates remain outstanding.
+
+### Shared setting-row label width correction
+
+Commit `702da248fd9ec98353260dd69bde2a228619cc32` updates the shared
+`addSettingItem()` helper. Its row-wrap container now gives the setting name an
+explicit 100% label width while retaining `LV_LABEL_LONG_WRAP` and leaving the
+switch as the following item. A complete long name can therefore wrap onto its
+own line above the switch instead of being squeezed by flex sizing. The first
+natural/max-width candidate (`1e` in the review notes) still cut names such as
+`Show Title`, so it is not the accepted shape.
+
+At canonical source `702da248fd9ec98353260dd69bde2a228619cc32`, root's test
+commit `118ef0ec9` passed all 10 strict Display cases (three panels at three
+text sizes plus the StickS3 physical-button walk) and 12 page-matrix and
+overflow-sweep cases (three panels in physical and touch layouts). The S3
+Normal Display-Bottom screenshot showed the complete `Show Title` label. These
+are focused simulator results, not full validation: full suites, firmware,
+gallery and physical checks remain pending. The user's StickC remains the
+minimal `ca` watchdog-explicitly-off reproduction and is not evidence that this
+shared label correction is physically fixed there.
