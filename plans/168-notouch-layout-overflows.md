@@ -11,8 +11,14 @@ page matrix/sweep cases and 298 physical-layout scenarios across the three
 modeled panels. The retained test rejects old focus spacing with two expanded
 focus-bound collisions while content overlap still reads zero. All 196 gallery
 assets were regenerated from the final application code, including Display's
-bottom section. Full touch/fuzz checks and the 13 clean firmware builds are
-separate outstanding gates at this checkpoint. The sections below retain the
+bottom section. All 322 touch scenarios also pass. The expanded fuzz matrix
+is not green: touch replay can diverge in page counts, and physical-button
+fuzzing exposes a stale LVGL input-history pointer. GDB records a BUTTON to
+ENCODER transition retaining `last_pressed`, asynchronous deletion of that
+same object, and a later BUTTON press dereferencing it during defocus. This
+needs a shared-path repair and a permanent no-touch fuzz gate, not a relaxed
+replay comparison. The 13 clean firmware builds remain a separate outstanding
+gate at this checkpoint. The sections below retain the
 implementation history; their older results are not new hardware evidence.
 
 PR #264 certified the physical-button layout in the simulator and left the
