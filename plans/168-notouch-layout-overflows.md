@@ -1,14 +1,28 @@
 # 168 - fix the layout the physical-button boards actually ship
 
+## Current validation checkpoint
+
+The integrated candidate has not been flashed and PR273 remains hardware-gated.
+The owner confirmed only the separate PR313 hint restoration on the stick;
+its external watchdog remains off by explicit choice.
+
+The final UI source at `b25c1f69f` passes all ten Display cases, twelve broader
+page matrix/sweep cases and 298 physical-layout scenarios across the three
+modeled panels. The retained test rejects old focus spacing with two expanded
+focus-bound collisions while content overlap still reads zero. All 196 gallery
+assets were regenerated from the final application code, including Display's
+bottom section. Full touch/fuzz checks and the 13 clean firmware builds are
+separate outstanding gates at this checkpoint. The sections below retain the
+implementation history; their older results are not new hardware evidence.
+
 PR #264 certified the physical-button layout in the simulator and left the
 product gaps it found recorded as `xassert` lines. The original PR273 work
 closed the overlap gaps; its 80x160 Sensors fit remains a documented scroll.
 
-Every gap is in the layout all three modeled boards render on hardware. None of
-them is visible in the touch layout the simulator measured before #264, which is
-the layout only the Core2 ships and `sim/build.sh` does not model. So each one
-below is a defect a user sees on a real M5StickC, M5StickC Plus, M5StickS3 or
-M5Stack Core Basic today.
+These original gaps were observed in the simulator's physical-button layouts,
+which represent the modeled boards' input arrangement. The older touch-only
+checks did not exercise that arrangement. Simulator findings motivate the
+repairs but do not by themselves establish physical results on every board.
 
 ## Numbering
 

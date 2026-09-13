@@ -580,6 +580,7 @@ The complete `ui.*` query set is:
 | `ui.indicator_clearance` | `clear`, `overlap`, or `n/a`. |
 | `ui.indicator_overlaps` | Numeric count of widgets under an indicator. |
 | `ui.label_overlaps` | Numeric count of visible content-widget pairs on the current page that overlap: labels by their drawn text, plus rollers, sliders, switches, checkboxes and bars. |
+| `ui.focus_overlaps` | Numeric count of unrelated visible content leaves intersecting the focused control's body plus main-outline/padding bounds. Excludes its ancestors and descendants; not an exact knob/shadow pixel check. |
 | `ui.cut_labels` | Numeric count of visible labels whose wrapped content does not fit or whose drawn box escapes its immediate parent. |
 | `ui.clipped_values` | Numeric count of spin-row values drawn outside their row. |
 | `ui.min_name_chars` | Fewest characters any spin-row name on the current page still shows in full, or `n/a`. |
@@ -738,6 +739,14 @@ defect as two labels drawn over each other. It is the one layout defect no fit o
 query can see: a grid cell holding two entries still fits, it is simply
 unreadable. It uses the same drawn-text extent and viewport clamp as
 `ui.indicator_clearance`, so a label scrolled out of sight is not counted.
+
+`ui.focus_overlaps` separately checks conservative focused-control bounds,
+including its main outline width and padding. Content-only bounds missed the
+Display slider outline extending into Brightness and Inactivity timeout.
+The focused object's own labels and ancestors are excluded. This query returns
+zero when no visible outlined control is focused on the current page, so pair
+it with `ui.focus_on_page` and a known focused-control regression. It does not
+certify every rounded-corner, knob or shadow pixel.
 
 The walk is page-scoped, `lv_menu_get_cur_main_page` and its subtree. A widget
 on the top layer, a message box or any other modal, is not in that subtree, so a
