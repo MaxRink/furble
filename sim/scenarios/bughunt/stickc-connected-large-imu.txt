@@ -1,7 +1,10 @@
-# Issue 282 regression: M5StickC 80x160, persisted Large, Connected page
-# with IMU enabled. Large is no longer offered on this panel, but a stale
-# persisted value must clamp at render time and the resulting Connected page
-# must remain reachable without overlap or clipped labels.
+# Issue 282 regression: M5StickC 80x160 physical-button layout, persisted
+# Large, Connected page with IMU enabled. The explicit no_touch seed is required
+# because the matrix also exercises the touch-enabled simulator loop. Large is
+# no longer offered on this panel, but a stale persisted value must clamp at
+# render time and the resulting Connected page must remain reachable without
+# overlap or clipped labels.
+seed no_touch true
 seed text_size 2
 seed fauxny true
 seed saved_camera true
