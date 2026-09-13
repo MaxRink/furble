@@ -42,6 +42,12 @@ int runSimulator() {
   using namespace Furble;
 
   Sim::watchdogRegisterThread("simulator");
+  // Platform reads settings while constructing the M5 config. Match firmware
+  // boot by loading NVS and applying the scenario before platform bring-up.
+  Sim::watchdogPhase("settings");
+  Settings::init();
+  Sim::watchdogPhase("scenario settings");
+  Sim::applyScenarioSettings();
   Sim::watchdogPhase("panel bring-up");
   Platform::init();
   // Panel_sdl::main starts its render loop concurrently with this callback.
@@ -53,11 +59,9 @@ int runSimulator() {
   // time, so the phase is the only progress the stall watchdog can see across
   // it. Record each step: a slow but progressing boot on a loaded host keeps
   // resetting the watchdog, and a wedged one names the step it stopped at.
+  // Keep the profiler after platform bring-up. Its existing report window is
+  // intentionally unchanged by the settings-order fix.
   Sim::startProfiler();
-  Sim::watchdogPhase("settings");
-  Settings::init();
-  Sim::watchdogPhase("scenario settings");
-  Sim::applyScenarioSettings();
 #if defined(FURBLE_SIM_MQTT) && FURBLE_SIM_MQTT
   Settings::save<bool>(Settings::MQTT, true);
   if (const char *uri = std::getenv("FURBLE_SIM_MQTT_URI"); uri != nullptr && uri[0] != '\0') {
