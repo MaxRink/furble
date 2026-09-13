@@ -1,0 +1,4 @@
+# gps_uart_noise is a boolean seed; malformed values must fail at load rather
+# than silently selecting the false/noise-free fixture.
+seed gps_uart_noise maybe
+exit

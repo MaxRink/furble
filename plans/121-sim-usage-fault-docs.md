@@ -12,6 +12,8 @@ away from the harness.
 - `docs/sim.md` is the canonical simulator reference.
 - `sim/CLAUDE.md` points contributors to the reference and records the local
   simulator contract, including the PM1 watchdog `stall` verb.
+- Boolean GPS UART noise seeding is validated through the shared strict seed
+  path; malformed `gps_uart_noise` values are rejected during scenario load.
 - `sim/scripts/check-doc-tokens.sh` checks the documented action and query
   vocabulary and seed validation contract and, with `--links`, verifies local
   Markdown links. `--self-test` proves every inventoried seed and GPS value is

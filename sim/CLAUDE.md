@@ -802,7 +802,8 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   field and consumes `isUpdated()` per encoded byte at the CR/LF completion; the
   empty sentence adds no date evidence. `gps_uart_chunk 1` plus
   `gps_uart_noise true` covers CR/LF split and bounded recovery from unterminated
-  noise.
+  noise. `gps_uart_noise` is a strict boolean seed; malformed values fail at
+  scenario load rather than silently selecting the quiet fixture.
 - The sim-e2e ThreadSanitizer leg runs `gps-concurrent-pages`,
   `gps-ephemeris-replay` and `gps-ephemeris-stale`. It is a real gate for the
   GPS task's own reads of the parser: measured five runs per cell, unlocking
