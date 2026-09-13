@@ -62,7 +62,7 @@ scenario observed `boot_settings_imu=1`, `boot_settings_fb_output=1`, and
 `ui.page=main`.
 
 The restored `1b7a47a2904fdc70adcf766859e309da69f7ad55` tip then passed Python
-unittest discovery (179 tests in 2.029 s), the manifest gate, a clean rebuild,
+unittest discovery (179 tests in 2.029 s), the manifest gate, an incremental rebuild,
 all five S3 watchdog scenarios, and the S3 touch end-to-end gate (123
 scenarios). Reverting the startup order failed as expected with
 `boot_settings_imu expected 1 got 0`; restoring the source rebuilt and passed
@@ -70,11 +70,14 @@ the positive boot check.
 
 The full environment-order guard also passed with exit 0. The current binary
 passed both guarded runs, while the pre-fix S3 binary
-`/home/a92615428/wt/p65/sim/build/furble-sim` (SHA-256
+(SHA-256
 `2d82bb0fcd3a7ba57b8d7472a2857335fcc008e9f4735e54bfea501ffd6e64a0`) was
 rejected with status 86 for both `FURBLE_SIM_PREFS` and
 `FURBLE_SIM_RESTART_STEP`. The captured root log is
 `~/b/startup-final-env-order.log`.
+
+Clang-format 21.1.2 dry-run passed for all four changed C++ source/header files.
+CI remains required before merge. No hardware behavior is certified by these checks.
 
 ## Implementation state
 
