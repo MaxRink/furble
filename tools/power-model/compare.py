@@ -11,11 +11,21 @@ from pathlib import Path
 
 
 def estimated_ma(report: dict) -> float:
+    if not isinstance(report, dict):
+        raise ValueError("report is not a JSON object")
     value = report.get("estimated_mA")
     if value is None:
-        value = report.get("energy", {}).get("estimated_mA")
-    if not isinstance(value, (int, float)) or not math.isfinite(value):
-        raise ValueError("report has no finite estimated_mA value")
+        energy = report.get("energy", {})
+        if not isinstance(energy, dict):
+            raise ValueError("report energy is not a JSON object")
+        value = energy.get("estimated_mA")
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(value)
+        or value < 0
+    ):
+        raise ValueError("report has no finite non-negative estimated_mA value")
     return float(value)
 
 
@@ -32,12 +42,12 @@ def main() -> int:
         "--threshold",
         type=float,
         default=0.10,
-        help="allowed relative increase, default 0.10",
+        help="allowed relative increase or decrease, default 0.10",
     )
     args = parser.parse_args()
 
-    if args.threshold < 0:
-        parser.error("threshold must not be negative")
+    if not math.isfinite(args.threshold) or args.threshold < 0:
+        parser.error("threshold must be finite and non-negative")
 
     try:
         report = json.loads(args.report.read_text())
@@ -66,7 +76,10 @@ def main() -> int:
         failed = current > 0
     else:
         delta = (current - reference) / reference
-        failed = current > reference * (1.0 + args.threshold)
+        failed = (
+            current > reference * (1.0 + args.threshold)
+            or current < reference * (1.0 - args.threshold)
+        )
 
     delta_text = "inf" if math.isinf(delta) else f"{delta * 100.0:+.2f}%"
     name = scenario_name(report, args.report)

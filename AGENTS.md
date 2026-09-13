@@ -18,6 +18,9 @@ claim against the code, not against a plan doc.
 CI trigger changes must keep validation workflows usable for stacked pull
 requests. Keep pull request jobs path-filtered and read-only for fork safety,
 and run `python3 tools/check_ci_workflows.py` after changing workflow triggers.
+The simulator power gate uses the two-sided `tools/power-model/compare.py`
+threshold; its default 10% value is compatibility policy, not calibrated
+hardware noise. Focused coverage is `python3 -m unittest tests/test_power_compare.py`.
 The Apple workflow's macOS app artifact is unsigned and test-only; it is
 uploaded only after the macOS tests pass and includes checksum/provenance files.
 Release tags beginning with `companion-test-` skip firmware publication and
