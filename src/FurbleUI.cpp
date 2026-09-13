@@ -8855,7 +8855,10 @@ void UI::addDisplayMenu(const menu_t &parent) {
   lv_obj_set_height(cont, LV_SIZE_CONTENT);
   lv_obj_set_style_pad_top(cont, 0, LV_STATE_DEFAULT);
   lv_obj_set_style_pad_bottom(cont, 0, LV_STATE_DEFAULT);
-  lv_obj_set_style_pad_row(cont, 0, LV_STATE_DEFAULT);
+  // Keep the focused control's outline and padding clear of adjacent labels.
+  // The 8 px gap exceeds the themed 3 px outline plus 2 px outline padding
+  // while preserving the native content-sized column and scroll behavior.
+  lv_obj_set_style_pad_row(cont, 8, LV_STATE_DEFAULT);
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
