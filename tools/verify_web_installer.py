@@ -47,6 +47,7 @@ def expected_manifests():
     f"manifest_{platform}{variant}.json"
     for platform in RELEASE_PLATFORMS
     for variant in ("", "-debug")
+    if not (platform == "m5stack-core" and variant == "-debug")
   }
 
 

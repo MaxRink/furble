@@ -1,9 +1,18 @@
 import unittest
 
-from tools.verify_web_installer import build_family_error, flash_offset_error
+from tools.verify_web_installer import (
+  build_family_error,
+  expected_manifests,
+  flash_offset_error,
+)
 
 
 class WebInstallerOffsetTest(unittest.TestCase):
+  def test_core_debug_manifest_is_not_expected(self):
+    manifests = expected_manifests()
+    self.assertEqual(len(manifests), 11)
+    self.assertNotIn("manifest_m5stack-core-debug.json", manifests)
+
   def test_esp32_offsets_match_bootloader_partition_ota_and_app_layout(self):
     build = {
       "chipFamily": "ESP32",

@@ -319,3 +319,318 @@ Neither the build nor the guard run establishes SIGSEGV causality.
 The final integration also passes the repository-wide clang-format check for
 the simulator and host test sources. This is formatting-only and does not
 change simulator behavior.
+## Follow-up state: bounded crash diagnostics (#283/#289)
+
+The simulator now installs fatal diagnostics before `configure()` parses
+arguments or a scenario. Every simulator thread that enters the watchdog
+registry receives a thread-local alternate signal stack, and fatal handlers
+use `SA_ONSTACK`. Handler installation and normal-context unwinder warm-up are
+idempotent. An already-enabled host or sanitizer alternate stack is preserved.
+The handler prints the phase and scenario line when available before invoking
+the best-effort unwinder, then re-raises the fatal signal so callers retain the
+real signal status.
+
+This is an observability improvement only. `backtrace` and symbol formatting
+are not formally async-signal-safe, so the handler remains best effort and
+does not establish the root cause of issue #283. The host regression
+`sim_watchdog_test` covers caller and registered-worker alt-stack queries,
+preservation of a preinstalled worker stack, and a forked SIGSEGV child that
+must emit the signal, phase, and step banners. Actual stack-overflow coverage
+remains future work. Preference sidecars, fairness changes, cancellation-bound
+changes, and restart semantics are not part of this slice.
+
+Root validation at `1311e02694b922242fb6673aeea22c2b1962c010` configured and
+built `sim_watchdog_test` and `sim_scheduler_test` with two compiler jobs.
+Both CTest cases passed (0.11 seconds total). The new regression checks
+`SA_ONSTACK`, a fresh registered worker, preservation of an existing worker
+stack, and native fatal-signal termination with diagnostic metadata.
+Full simulator/CI validation remains pending; no physical device was accessed.
+
+## Queued-waiter runtime follow-up
+
+Current master still used the earlier `std::mutex` adapter. This follow-up
+replaces that simulator-only adapter with the queued-waiter `SchedulerMutex`
+runtime from `df40247f`. It serializes waiter selection with the scheduler,
+reserves ownership before publishing a wake, cancels registered waiters during
+task teardown, and cancels an unregistered host waiter with `SchedulerStopped`
+when the scheduler stops. `sim/main.cpp` catches that exception around the
+unregistered simulator thread and fails fast without claiming orderly cleanup.
+
+The host regression in `tests/host/sim_scheduler_test.cpp` covers priority
+selection, registered-waiter cancellation, survivor ownership, and
+unregistered-host-waiter cancellation. Its `try_lock()` assertion runs after
+the selected waiter has acquired the mutex, so it checks exclusion at that
+point and does not independently prove the reservation-before-wake race. No
+deterministic reservation seam exists in this test harness.
+
+Root validation of this runtime and its new test path is recorded below. CI,
+hardware, and physical scheduler-parity results remain separate gates. The
+waiter-state dump and repeated high-load virtual-time-bound proof remain
+separate open work.
+
+## SchedulerStopped fail-fast boundary
+
+An exception from a scheduler-visible mutex can arrive while `UI::task()` owns
+the manual LVGL mutex. The simulator catches `SchedulerStopped` inside
+`runSimulator()` while the `UI` object is still alive, writes a bounded
+low-level failure banner, and calls `std::_Exit(1)`. It deliberately does not
+attempt locks, joins, LVGL work, destructors, peer cleanup, rig cleanup, MQTT
+shutdown, watchdog unregister, or recovery. This avoids claiming that those
+operations are safe after the scheduler has stopped.
+
+The outer simulator-thread boundary has the same fail-fast handling for a
+`SchedulerStopped` escape that occurs before or after the UI phase. Normal
+successful teardown is unchanged. A simulator-only
+`FURBLE_SIM_TEST_SCHEDULER_STOP=1` trigger raises the same exception from the
+first `driverTick()` inside the locked UI phase. The bounded regression is
+`sim/scripts/assert-scheduler-stop-failfast.sh`; it expects diagnostic output,
+explicit status 1, and neither a signal exit nor a timeout. The existing CI
+`assert-exit-regression.sh` invokes this check against the same simulator
+binary. It also runs the same small `smoke.txt` scenario with the trigger
+disabled and expects status 0 without the fail-fast banner. Four tiny wrapper
+fixtures are rejected when they return status 0, status 1 without the banner,
+a signal status, or a timeout. The signal fixture must return 143. The timeout
+fixture accepts 124 or the explicitly documented forced-kill status 137. The
+other three emit the exact banner first, so a missing executable or unrelated
+failure cannot masquerade as coverage.
+
+Exception-safe cleanup for other UI or native MQTT exceptions remains a
+separate gap. This fail-fast boundary is not hardware, scheduler-parity, or
+recovery evidence.
+
+## Follow-up state: safe preference ownership slice (#289)
+
+The simulator now distinguishes caller-owned `FURBLE_SIM_PREFS` from its own
+scratch store. An explicit path is retained for scripted and interactive runs,
+so intentional NVS writes are not truncated at boot and `removePreferences()`
+does not delete the caller's store. A fresh generated path is reserved with
+`mkstemps()` and initialized with a four-byte zero entry count; an empty
+`mkstemp` file would be parsed as an error by `PreferencesSim`.
+
+Generated ownership is carried across the validated `FURBLE_SIM_RESTART_STEP`
+re-exec with an internal exact-path-plus-origin-PID marker. `execvp()`
+preserves the PID, and the resumed boot retains the same generated path only
+when both path and origin PID match. A different PID treats the path as
+caller-owned and does not adopt or remove it. Final orderly cleanup removes
+only that owned primary and its existing PID-specific `.tmp.<pid>` file.
+
+Cross-run stale sweeping, PID-liveness reclamation, sidecar locks, failed
+restart cleanup, and abnormal-exit cleanup are deliberately deferred. A dead
+encoded PID cannot prove that another process did not intentionally select the
+same store, so this slice makes no cross-process deletion claim.
+
+The focused subprocess gate is `sim/scripts/check-preferences-lifecycle.sh`.
+It checks explicit-store use and persistence across independent launches,
+stale-marker non-adoption, unique generated names after abnormal exits,
+retention of unrelated crash leftovers, and same-PID restart cleanup. The source
+cleanup also removes an existing owned
+PID-specific temporary file, but this gate does not inject one across a live
+process boundary. It requires an already-built simulator and was not run in
+this handoff.
+
+Root validation recorded at `dd0e39443a24ab30b0bab728e9712ad35f03deb5`
+(2026-09-13) passed the simulator build, the preference lifecycle gate, and
+all eight `actualPreferencesSim` CTest cases. The evidence is outside this
+checkout in `~/b/prefs-ownership-build.log`,
+`~/b/prefs-ownership-lifecycle.log`, and
+`~/b/prefs-ownership-host-test.log`; this checkout did not rerun those gates.
+The lifecycle script is now wired into the existing `sim-e2e` S3 job with a
+two-minute step timeout; the next CI run remains pending.
+
+## Validation update: frozen scheduler merge
+
+On 2026-09-13, root validated the clean frozen commit
+`8ac8b833ca4bf64af277813a9c8184b0f7140f6f` in
+`~/wt/scheduler-merge-0913`, using the shared dependency cache from
+`~/wt/c53-lto/.pio/libdeps/m5stack-core-debug`. The exact per-phase evidence is
+in the unique output directory `~/b/scheduler-8ac/`:
+
+- host configure and the two targeted scheduler/watchdog targets built with
+  `--parallel 2`; `sim-scheduler` and `sim-watchdog` passed 2/2 in 0.13 s
+  (`host-configure.log`, `host-build.log`, `scheduler-tests.log`);
+- the M5StickS3 simulator build passed (`sim-s3-build.log`);
+- assertion status passed for the positive case, injected scheduler-stop
+  case, diagnostic banner, and all four negative fail-fast fixtures
+  (`assert-exit.log`);
+- simulator-owned preference lifecycle passed
+  (`preferences-lifecycle.log`);
+- the pinned eight-seed, 600-step fuzz run and seed-2 determinism replay
+  passed (`fuzz.log`).
+
+These are host/simulator contract results only. They do not certify physical
+boards, radio timing, sensor behavior, power behavior, or full scheduler
+parity; CI and the documented hardware gates remain pending.
+
+The same frozen source subsequently passed the full host build and all 119
+CTest cases in 188.38 s, serialized with at most two compiler jobs. Evidence:
+`~/b/scheduler-8ac/host-full-build.log` and `host-full-test.log`. The publication
+successor changes only this provenance and clang-format wrapping in the
+fail-fast call; it does not change the validated behavior.
+
+## Follow-up: host TSAN flag races
+
+Five local Clang/aarch64 TSAN probes reported two concrete plain-flag races
+outside the scheduler mutex path: `Target::m_Stopped` was written by the target task at
+`src/FurbleControl.cpp:180` while `targetTasksStopped()` read it at line 649;
+and `Control::m_State` was written by `setState()` at line 1112 while
+`Control::task()` read it at line 373. The atomic follow-up changes only these
+cross-thread representations: `m_Stopped` is an acquire/release atomic boolean,
+and `m_State` is an acquire/release atomic enum. Existing mutexes still protect
+compound transitions and associated power-lock operations.
+
+This follow-up does not claim that every Control flag is race-free. The
+remaining reconnect/session fields are separate audit items. Firmware, CI TSAN,
+and hardware validation of this follow-up remain pending.
+
+The first PR306 CI host run failed `control-connect-camera-race` under GCC
+ThreadSanitizer. Its filtered output named the getter without identifying the
+raced memory; the published c4d31 wrapper now prints the complete report on
+that existing failure path while retaining its predicate and exit status.
+
+Root validation of the atomic follow-up at `7648c251c71a4587f09065e84767b43cc1bdab4c`
+then passed the focused host build and tests, the full host suite passed 119/119
+in 187.12 s, and the raw Clang TSAN probe exited 0 with no warnings. Evidence
+is retained in `~/b/scheduler-tsan-7648/{config,build,test,raw}.log` and
+`~/b/scheduler-tsan-7648/full-{build,test}.log`. This is not a claim that all
+Control state is race-free: the remaining flags listed above and GCC/CI TSAN
+coverage remain separate follow-up work.
+
+## Follow-up: remaining Control flag synchronization
+
+The bounded static audit identified three additional plain cross-boundary
+flags: `m_ConnectAbort` is written by UI/control-entry paths and read by the
+control task and debug snapshot; `m_ConnectInProgress` is written by the
+control task but read outside its `m_Mutex` snapshot sections by teardown
+predicates and the debug snapshot; and `m_SleepLockHeld` is updated under
+`m_StateMutex` but sampled unlocked by the debug snapshot. This follow-up
+converts only those three flags to `std::atomic<bool>` with explicit
+acquire/release operations. Existing mutex sections, state publication,
+power-lock calls, queues, cancellation, and timing remain unchanged.
+
+The change is based on the static access audit and existing concurrency
+regressions; it is not raw TSAN proof for these three flags. Raw TSAN, firmware,
+CI, and hardware validation remain pending, and reconnect fields are outside
+this scope.
+
+## TSAN probe coverage extension
+
+The dedicated `control-connect-camera-race` target now defines
+`FURBLE_CONSOLE`, so its existing production `getDebugState()` snapshot is
+polled alongside `getConnectingCamera()`. The probe performs two bounded
+FauxNY connect cycles, waits for `STATE_ACTIVE` and then checks the
+`disconnect()` result and bounded return to `STATE_IDLE`; it no longer relies
+on a fixed sleep that may end before activation. Snapshot fields and the
+connecting camera strings are consumed so this remains a real concurrent
+reader, not a compile-only call.
+
+This is regression coverage for the atomic flag boundary only. It adds no
+test-only accessor, barrier, suppression, scheduler policy, or hardware claim.
+The raw TSAN result remains the deciding evidence; the shell wrapper contract
+is not a whole-program race-free guarantee.
+
+The TSAN wrapper is a fail-closed full-report diagnostic gate: every sanitizer
+warning and every non-zero child status fails, regardless of report names or
+the sanitizer's conventional exit code. It must never classify races by member
+name or suppress unrelated reports. The exact completion marker is required.
+The existing TestSync signal/wait barriers establish happens-before ordering
+for operations performed around those waits; they are not a substitute for
+atomic synchronization on flags read outside the barriers.
+
+## Follow-up: reconnect state field races
+
+The bounded follow-up audit found four additional plain fields crossing the
+control-task boundary: `m_InfiniteReconnect`, `m_ReconnectBackoff`,
+`m_ReconnectAttempt`, and `m_ReconnectHintLogged`. UI or headless request paths
+write the requested mode and reset values, `disconnect()` resets the attempt,
+the control task reads and updates retry state, and the debug snapshot reads
+the exposed values. The follow-up changes only those four fields to independent
+acquire/release atomics. The retry increment uses `fetch_add` at the existing
+increment site. The hint remains a separate atomic load/store in the existing
+log order; it is not an exchange. `m_ConnectFailCount` remains a control-task
+owned plain field.
+
+This removes C++ plain read/write races only. The four atomics do not form a
+coherent multi-field request, do not guarantee that a reset wins over a
+concurrent retry, and do not define a new request or hint policy. Existing
+mutexes, queues, cancellation, reset positions, delays, and camera behavior
+remain unchanged. The combined source for the three remaining flags and four
+reconnect fields, its seven-field regression coverage, and the fail-closed
+wrapper contract are not executed in this integration handoff. Physical
+hardware validation remains separate.
+
+## Integration handoff: seven-field boundary
+
+Published master `0844360be35db547eb68ea6b56ef4560dccc8b59` is the base for this
+follow-up. PR #307 separately merged only `Control::m_State` and
+`Target::m_Stopped`; its 30 green checks, including firmware builds and
+reproducible firmware coverage, do not cover the seven fields below.
+
+Relative to that published master, source
+`90e753347fc47f06dd170823d8243d46eb1819fa` makes the three remaining
+cross-boundary fields (`m_ConnectAbort`, `m_ConnectInProgress`, and
+`m_SleepLockHeld`) acquire/release atomics and adds four independent reconnect
+atomics (`m_InfiniteReconnect`, `m_ReconnectBackoff`, `m_ReconnectAttempt`, and
+`m_ReconnectHintLogged`). Thus the integrated source covers all seven remaining
+fields relative to master; it does not relabel PR #307's two already-merged
+fields as part of this change.
+Test `0f763fd92749fa0cf36340b0e2dc95d62017a0c3` covers the public debug
+snapshot plus successful FauxNY connect/disconnect cycles. It does not cover
+retry/backoff or `hintLogged`, because the FauxNY success path never enters the
+retry path. Existing failure/backoff functional tests remain preserved.
+Wrapper `8d3ea42076ae96686a08da069e61a67ee10347e9` makes the shell gate fail on
+any warning or non-zero status and preserves the complete diagnostic output.
+Root separately ran the wrapper contract on macOS and got `PASS`; a copied old
+wrapper falsely accepted an unrelated warning with status 66 and printed
+`1 race report(s), 0 naming guarded accessor`, while the new contract rejected
+that same fixture. This is shell-contract evidence only, not execution of this
+integrated tree or of a TSAN binary/runtime.
+At this handoff, the seven-field source/test/wrapper combination was
+source-integrated but had not yet been executed; the completed root validation
+is recorded below. A raw TSAN retry/backoff run remains explicitly pending;
+this handoff makes no runtime or hardware claim.
+The compiler-free wrapper contract stays in the normal host CTest set but is
+excluded from `FURBLE_COVERAGE`, because its shell command cannot emit a
+`.profraw` file; the standalone `sh tests/host/run_tsan_race_contract.sh`
+check remains available.
+
+## Publication update
+
+Published master `0844360be35db547eb68ea6b56ef4560dccc8b59` merged PR #308
+after the seven-field integration was prepared. PR #308's reported 24 CI
+checks are green, and its simulator power-accounting source is now part of the
+master base used by this checkout. At that publication handoff, the
+seven-field source, regression, and wrapper integration above had not yet been
+executed; root's completed full-host validation is recorded below. Physical
+camera, radio, and power accuracy remain outside this evidence.
+
+## Host link follow-up
+
+Root's full-host build at `bc5f5240` stopped while linking the TSAN target
+because enabling `FURBLE_CONSOLE` exposed the production `BtDebugJournal`
+symbols without linking `lib/furble/BtDebugJournal.cpp`. The TSAN target now
+uses the same production source already linked by `control_abort_republish_test`.
+The failed build log is `~/b/control-atomics-bc5-build.log`; root's corrected
+rerun is recorded below. The original failure was a host-link issue only.
+
+## Root validation of the integrated source
+
+Root validated clean commit `70844df1485a39a075bb74345f69e6f8615a8844` in the
+fresh frozen VM checkout. The full Clang 14 host build and all 120/120 tests
+passed in 195.05 s. Three raw TSAN runs exited 0 with zero warnings and the
+exact `control-connect-camera-race: PASS` marker. Evidence is in
+`~/b/control-atomics-708-{build,test,raw-1,raw-2,raw-3}.log`.
+
+The coverage configure listed 118 instrumented tests. It excluded both the
+TSAN race target and the shell-only wrapper contract, and the existing floors
+remained intact. The compiler-free wrapper contract passed separately; the old
+wrapper negative control failed as expected.
+
+The nonpublishable mutant `4485df074` reverted only the seven atomic fields and
+their accesses to the published-master form. It built and ran with status 66,
+reported five TSAN races, and still emitted the exact PASS marker. Evidence is
+in `~/b/control-atomics-mutant-708-{config,build,raw}.log`. This is aggregate
+coverage evidence only. It does not exercise retry/backoff or `hintLogged=true`
+and does not prove each of the seven fields separately.
+
+Firmware CI and physical hardware validation remain pending. These host and
+TSAN results make no camera, radio, or hardware-parity claim.

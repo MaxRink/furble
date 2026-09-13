@@ -806,6 +806,17 @@ target_compile_options(sim_scheduler_test PRIVATE -Wall -Wextra -Werror -Wno-for
                                                   -Wno-unused-parameter)
 target_link_libraries(sim_scheduler_test PRIVATE Threads::Threads)
 
+add_executable(sim_watchdog_test
+               sim_watchdog_test.cpp
+               ${FURBLE_ROOT}/sim/clock.cpp
+               ${FURBLE_ROOT}/sim/watchdog.cpp)
+target_include_directories(sim_watchdog_test PRIVATE ${FURBLE_ROOT}/include
+                                                       ${FURBLE_ROOT}/sim
+                                                       ${FURBLE_ROOT}/sim/shim)
+target_compile_options(sim_watchdog_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                  -Wno-unused-parameter)
+target_link_libraries(sim_watchdog_test PRIVATE Threads::Threads)
+
 add_executable(sim_fuzz_machine_test
                sim_fuzz_machine_test.cpp
                ${FURBLE_ROOT}/sim/fuzz_machine.cpp)
@@ -1140,6 +1151,7 @@ add_executable(control_connect_camera_race_test
                ${CONTROL_E2E_DIR}/freertos_shim.cpp
                ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
                ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/lib/furble/BtDebugJournal.cpp
                ${FURBLE_ROOT}/lib/furble/Camera.cpp
                ${FURBLE_ROOT}/lib/furble/Device.cpp
                ${FURBLE_ROOT}/lib/furble/FauxNY.cpp)
@@ -1158,6 +1170,7 @@ target_compile_options(control_connect_camera_race_test PRIVATE
                        -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
 target_link_options(control_connect_camera_race_test PRIVATE -fsanitize=thread)
 target_link_libraries(control_connect_camera_race_test PRIVATE Threads::Threads)
+target_compile_definitions(control_connect_camera_race_test PRIVATE FURBLE_CONSOLE)
 endif()
 
 # Deterministic interleaving proof for the STATE_DISCONNECTING republish
@@ -1693,7 +1706,7 @@ if(BUILD_TESTING)
   add_test(NAME time-keeper-policy COMMAND time_keeper_policy_test)
   add_test(NAME time-keeper-persistence COMMAND time_keeper_persistence_test)
   add_test(NAME real-wifi-lifecycle COMMAND real_wifi_lifecycle_test)
-  foreach(preferences_case missing empty empty-string typeerror embedded-nul corruption failed-save)
+  foreach(preferences_case missing empty zero-count empty-string typeerror embedded-nul corruption failed-save)
     add_test(NAME preferences-sim-${preferences_case}
              COMMAND actualPreferencesSim ${preferences_case})
   endforeach()
@@ -1747,6 +1760,8 @@ if(BUILD_TESTING)
   add_test(NAME sim-action-parser COMMAND sim_action_parser_test)
   add_test(NAME sim-scheduler COMMAND sim_scheduler_test)
   set_tests_properties(sim-scheduler PROPERTIES TIMEOUT 10)
+  add_test(NAME sim-watchdog COMMAND sim_watchdog_test)
+  set_tests_properties(sim-watchdog PROPERTIES TIMEOUT 10)
   add_test(NAME sim-fuzz-machine COMMAND sim_fuzz_machine_test)
   add_test(NAME sim-power-profiler COMMAND sim_power_profiler_test)
   # Run several independent profiler processes so ctest -j covers report-path
@@ -1788,6 +1803,11 @@ if(BUILD_TESTING)
              COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/run_tsan_race.sh
                      $<TARGET_FILE:control_connect_camera_race_test>)
     set_tests_properties(control-connect-camera-race PROPERTIES TIMEOUT 180)
+    # The shell contract emits no profraw, so keep it out of coverage's CTest
+    # profile inventory while retaining the normal host and standalone checks.
+    add_test(NAME control-tsan-wrapper-contract
+             COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/run_tsan_race_contract.sh)
+    set_tests_properties(control-tsan-wrapper-contract PROPERTIES TIMEOUT 10)
   endif()
 
   # Interleaving proof for the DISCONNECTING republish guard (plan 157). The

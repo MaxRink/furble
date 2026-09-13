@@ -100,6 +100,17 @@ jobs:
           FURBLE_LVGL_DIR: ${{ github.workspace }}/sim/.pio/libdeps/sim/lvgl
         run: sh sim/build.sh
 
+      # Keep the caller-owned and simulator-owned preference boundary on the
+      # same freshly built M5StickS3 binary used by this job. The script is
+      # intentionally bounded and does not reclaim abnormal leftovers.
+      - name: Check simulator preference ownership lifecycle (M5StickS3)
+        timeout-minutes: 2
+        env:
+          FURBLE_SIM_BIN: ${{ github.workspace }}/sim/build/furble-sim
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: sh sim/scripts/check-preferences-lifecycle.sh
+
       # The manifest selects the certified scenarios per board, so a scenario
       # scoped to one board needs no step of its own. stick-notouch-layout-135,
       # stick-notouch-layout-80 and core-notouch-layout are each certified for

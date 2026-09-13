@@ -13,6 +13,7 @@
 
 #include "FurblePlatform.h"
 #include "FurblePower.h"
+#include "FurbleSettings.h"
 #include "FurbleWatchdog.h"
 #include "Scan.h"
 #include "clock.h"
@@ -23,6 +24,7 @@ namespace Furble {
 
 namespace {
 bool g_SuppressNextWatchdogFeed = false;
+Sim::boot_settings_t g_BootSettings = {false, 0};
 
 #if defined(FURBLE_M5STICKS3)
 using Watchdog::PM1_FEED_PERIOD_MS;
@@ -35,6 +37,14 @@ Platform &Platform::getInstance(void) {
   static Platform instance;
 
   if (!instance.m_Init) {
+    // Record the same settings consumed at the firmware Platform boundary.
+    // The SDL platform below deliberately does not turn these into physical
+    // M5 IMU or speaker configuration.
+    const Sim::boot_settings_t bootSettingsSnapshot = {
+        Settings::load<bool>(Settings::IMU),
+        Settings::load<uint8_t>(Settings::FB_OUTPUT),
+    };
+    Sim::captureBootSettings(bootSettingsSnapshot);
     Power::init();
     Power::getInstance().configure(Platform::CPU_MAX_FREQ_DEFAULT_MHZ);
     auto config = M5.config();
@@ -379,6 +389,14 @@ uint32_t Platform::getBatteryFailCount(void) {
 }
 
 namespace Sim {
+
+void captureBootSettings(const boot_settings_t &settings) {
+  g_BootSettings = settings;
+}
+
+boot_settings_t bootSettings(void) {
+  return g_BootSettings;
+}
 
 void suppressNextWatchdogFeed(void) {
   g_SuppressNextWatchdogFeed = true;

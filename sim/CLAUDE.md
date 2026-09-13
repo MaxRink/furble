@@ -1,6 +1,10 @@
 # sim/ (host SDL simulator)
 
 Host build of the furble UI over M5GFX/M5Unified SDL. Developer tool only.
+Power reports with an explicit reporting scenario freeze the selected model
+before events; ordinary UI and fuzz runs retain the legacy profiler path.
+Synthetic timer/UI work accounting remains relative simulator evidence, not a
+callback timing measurement or hardware current calibration.
 Simulator-only production policy is forbidden. Narrow `FURBLE_SIM` guards in
 shipping sources are allowed only for observability, deterministic navigation,
 or orderly host exit, and firmware builds must compile the unchanged production
@@ -18,6 +22,35 @@ The complete build, panel, scenario DSL, query, fault-injection, and
 scenario-authoring reference is [docs/sim.md](../docs/sim.md). Keep this file
 as the directory-local contract and keep the reference synchronized with the
 tokens in `sim/driver.cpp`, `src/FurbleUI.cpp`, and the host fault harness.
+
+Fatal diagnostics are observability only. The watchdog installs its fatal
+handlers before simulator argument and scenario parsing, and registered
+simulator threads receive a thread-local alternate signal stack. The handler
+prints the current phase and scenario line when available, then re-raises the
+signal. `backtrace` and symbol formatting are not formally async-signal-safe,
+so the output is best effort and does not claim crash recovery or a root cause.
+
+### Startup ordering
+
+The simulator process sets its per-run preferences path before SDL setup and
+before the simulator thread starts. Inside that thread, `Settings::init()` and
+`Sim::applyScenarioSettings()` must precede `Platform::init()`. The platform
+construction reads settings on firmware and is the consumer that this order
+protects. `panelReady` remains after platform construction because SDL must not
+traverse the M5GFX monitor list before the panel is registered.
+
+The startup profiler remains after platform construction and panel publication
+by design. Its call placement is unchanged, but settings initialization now
+happens before the profiler starts. The profiler therefore does not claim to
+include initial platform power configuration. Companion rig selection and
+persisted Companion state are separate concerns and must not be combined with
+this startup ordering contract.
+
+`sim/FurblePlatformSim.cpp` records the `IMU` and `FB_OUTPUT` values loaded at
+the platform boundary as `boot_settings_imu` and `boot_settings_fb_output`.
+These are query-only observations of boot inputs. The SDL platform still forces
+`internal_imu` and `internal_spk` false in its M5 config, so the queries do not
+certify physical M5 configuration.
 
 ## Parity inventory and seam rules
 
@@ -149,12 +182,18 @@ including empty strings and failed-save rollback.
   `python3 tools/gen_lv_conf.py sdkconfig.m5stick-s3 sim/lv_conf.h` first if
   the sdkconfig changed. Each object has a compiler-generated `.d` depfile, so
   project-header edits rebuild only their dependents; `make -q` evaluates the
-  depfile and the old source-only timestamp shortcut is not used.
+  depfile and the old source-only timestamp shortcut is not used. The
+  `build-flags` stamp also records the absolute firmware root, dependency root
+  and LVGL root (the latter two are canonicalized after validation); sharing a
+  build directory across source/dependency trees therefore drops stale objects
+  even when their depfiles and mtimes appear current.
 - `sim/scripts/test-build-deps.sh`: builds a complete simulator, touches
-  `include/FurbleGPS.h`, proves a relative/absolute depfile target mismatch
-  rebuilds, and proves GPS dependents rebuild while an unrelated source stays
-  cached. It requires the same dependency overrides as
-  `sim/build.sh`.
+  `include/FurbleGPS.h`, proves a source-root cache stamp mismatch discards
+  stale objects, proves a relative/absolute depfile target mismatch rebuilds,
+  and proves GPS dependents rebuild while an unrelated source stays cached. It
+  changes only the recorded source root in a generated stamp to verify that
+  identity change also discards stale objects. It requires the same dependency
+  overrides as `sim/build.sh`.
 - `sim/scripts/run-env-order.sh`: on Linux, compiles a small `LD_PRELOAD`
   interposer that resolves libc functions before simulator threads start and
   rejects a selected Furble `setenv` or `unsetenv` after SDL initialization,
@@ -267,6 +306,16 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   `FURBLE_SIM_THEME` and `FURBLE_SIM_TEXTSIZE` apply only on the fresh boot;
   a UI-triggered reboot retains the NVS value selected by the restart action.
   See `docs/sim.md` for every action value and query key.
+- Scripted runs honor a caller-provided `FURBLE_SIM_PREFS` path and never
+  remove it. Runs without one receive a unique, valid zero-entry scratch store;
+  only that exact generated path and its PID-specific temporary file are
+  removed after a final orderly exit. Abnormal-exit reclamation and cross-run
+  sweeping are intentionally not implemented. Restart ownership also validates
+  the originating PID in its internal marker before adopting a generated path.
+  The focused subprocess check is
+  `sim/scripts/check-preferences-lifecycle.sh`; it requires an already-built
+  `FURBLE_SIM_BIN`, runs in the S3 simulator CI after that build with a
+  two-minute step bound, and is not a build or abnormal-exit janitor.
 - Scenario parsing is a pre-runtime gate: every verb has strict arity and
   numeric validation, unknown verbs/options and trailing values are rejected
   with status 2, and duplicate `seed` names are invalid. `action` lines are
@@ -351,6 +400,12 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   provenance as well, not instead: `ble.secure_stall_aborted` says whether a
   modelled handshake ended on a link terminate or on its own deadline, which a
   bound cannot say.
+  `SchedulerMutex` selects and reserves queued ownership under the scheduler
+  gate before publishing a wake. Host fairness and cancellation assertions are
+  coverage only until their pending validation completes.
+  A `SchedulerStopped` escape from the UI task is a fail-fast boundary: it
+  writes a low-level diagnostic and exits without cleanup or recovery claims.
+  Exception-safe cleanup after a stopped scheduler remains future work.
 - A virtual peer that answers instantly cannot model a wait. `seed
   secure_stall_ms` holds every Fujifilm peer inside
   `NimBLEClient::secureConnection()`, which is the one call in the Fujifilm
@@ -409,6 +464,12 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   was set. Dismissal is asserted in the same scenarios, on touch and under
   `FURBLE_SIM_NO_TOUCH=1`, because the OK button has to be reachable from the
   physical buttons.
+- `ui.indicators_visible` counts the three physical navigation indicators that
+  are actually visible through LVGL. A connect modal hides them, and every
+  teardown that returns to Main must restore a count of 3 on a `no_touch` run.
+  `e2e/physical-indicators-cancel-restore.txt` covers Cancel during a slow
+  FauxNY connect; `e2e/physical-indicators-failure-restore.txt` covers terminal
+  failure and dismissal on all three physical-button panel profiles.
 - `ui.modal_overflow` is the other half, and it exists because the first version
   of that box passed every assertion above while rendering wider and taller than
   the panel with its instruction clipped at both edges. `ui.overflow` measures
@@ -755,7 +816,8 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   field and consumes `isUpdated()` per encoded byte at the CR/LF completion; the
   empty sentence adds no date evidence. `gps_uart_chunk 1` plus
   `gps_uart_noise true` covers CR/LF split and bounded recovery from unterminated
-  noise.
+  noise. `gps_uart_noise` is a strict boolean seed; malformed values fail at
+  scenario load rather than silently selecting the quiet fixture.
 - The sim-e2e ThreadSanitizer leg runs `gps-concurrent-pages`,
   `gps-ephemeris-replay` and `gps-ephemeris-stale`. It is a real gate for the
   GPS task's own reads of the parser: measured five runs per cell, unlocking

@@ -123,6 +123,11 @@ The following devices have been tested and confirmed to work:
 [^4]: Focus-only controls are unsupported and do not send a camera command.
 The supported shutter command performs an immediate capture with autofocus.
 
+For contributor research across all implemented camera families, see the
+[camera protocol research library](docs/camera-research/README.md). It records
+source pins, protocol conflicts, and future capture targets, not additional
+supported-camera claims.
+
 ## Supported Controllers
 
 Initially targeted at the M5StickC, the following controllers from [M5Stack](https://m5stack.com/) are supported:
@@ -197,7 +202,8 @@ Every board has an optional `<board>-debug` environment, for example
 sources are compiled in. They share the release `sdkconfig` of the board they
 extend, except for the Core USB fallback's single-factory partition fragment.
 Normal CI builds the six release environments and their mandatory debug
-profiles. Releases retain their existing release/debug matrix.
+profiles. Releases publish the six release images and the five OTA-compatible
+debug images; the Core USB single-factory debug profile remains developer-only.
 
 Build, flash and watch the log:
 - `platformio run -e m5stick-s3-debug -t upload`
@@ -368,6 +374,12 @@ On first use, put the target camera into pairing mode, then hit `Scan`. If the
 camera advertises a known, matching signature, it should appear in the list.
 You can then connect to the target camera, which, if successful, will save the
 entry and show the remote menu.
+
+On boards without a touchscreen, the three on-screen button hints are hidden
+only while the initial connection progress overlay owns the screen. Canceling
+the attempt or dismissing a terminal connection failure returns to Main and
+restores those hints. They are display hints only; the physical buttons remain
+the input path throughout.
 
 `furble` will identify as `furble-xxxx` where `xxxx` is a consistent identifier enabling one to differentiate multiple controllers.
 

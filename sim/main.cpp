@@ -5,10 +5,12 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <string>
 #include <thread>
 
 #include <freertos/FreeRTOS.h>
+#include <unistd.h>
 
 #if defined(FURBLE_SIM_MQTT) && FURBLE_SIM_MQTT
 #include <esp_event.h>
@@ -40,10 +42,28 @@ namespace {
 
 std::atomic<bool> panelReady {false};
 
+[[noreturn]] void failFastSchedulerStopped(const char *message) {
+  if (message == nullptr) {
+    message = "SIM FAIL: SchedulerStopped escaped simulator; exiting without cleanup\n";
+  }
+  const ssize_t written = ::write(STDERR_FILENO, message, std::strlen(message));
+  static_cast<void>(written);
+  std::_Exit(1);
+}
+
 int runSimulator() {
   using namespace Furble;
 
   Sim::watchdogRegisterThread("simulator");
+  // Firmware Platform consumes these settings while constructing the M5 config.
+  // Load NVS and apply the scenario first so the simulator observes the same
+  // boot-input boundary, even though its SDL M5 config remains host-specific.
+  Sim::watchdogPhase("settings");
+  Settings::init();
+  Sim::watchdogPhase("scenario settings");
+  if (!Sim::fuzzResumedBoot()) {
+    Sim::applyScenarioSettings();
+  }
   Sim::watchdogPhase("panel bring-up");
   Platform::init();
   // Panel_sdl::main starts its render loop concurrently with this callback.
@@ -55,13 +75,10 @@ int runSimulator() {
   // time, so the phase is the only progress the stall watchdog can see across
   // it. Record each step: a slow but progressing boot on a loaded host keeps
   // resetting the watchdog, and a wedged one names the step it stopped at.
+  // Keep the profiler after platform bring-up. Its call placement is unchanged,
+  // but the settings move changes the work outside the measured window.
+  // FurblePlatformSim records the boot inputs separately from this profile.
   Sim::startProfiler();
-  Sim::watchdogPhase("settings");
-  Settings::init();
-  Sim::watchdogPhase("scenario settings");
-  if (!Sim::fuzzResumedBoot()) {
-    Sim::applyScenarioSettings();
-  }
 #if defined(FURBLE_SIM_MQTT) && FURBLE_SIM_MQTT
   Settings::save<bool>(Settings::MQTT, true);
   if (const char *uri = std::getenv("FURBLE_SIM_MQTT_URI"); uri != nullptr && uri[0] != '\0') {
@@ -209,7 +226,11 @@ int runSimulator() {
   Sim::setBackTarget(&ui);
   Sim::registerUI(&ui);
   Sim::watchdogPhase("running");
-  ui.task();
+  try {
+    ui.task();
+  } catch (const Sim::SchedulerStopped &) {
+    failFastSchedulerStopped("SIM FAIL: SchedulerStopped in UI task; exiting without cleanup\n");
+  }
   Sim::watchdogPhase("teardown");
 
   // Tear the control session down before anything else unwinds. The firmware
@@ -255,8 +276,11 @@ int runSimulator() {
 }  // namespace
 
 int main(int argc, char **argv) {
-  Furble::Sim::configure(argc, argv);
+  // Install fatal diagnostics before configure() parses a scenario. A parser
+  // fault must name at least the phase, even though no scenario step exists.
+  Furble::Sim::watchdogInstallCrashHandler();
   Furble::Sim::watchdogRegisterThread("main");
+  Furble::Sim::configure(argc, argv);
   Furble::Sim::watchdogPhase("preferences");
   // Set the per-run preferences path before SDL setup and the simulator
   // thread start. SDL and the watchdog read process environment state while
@@ -276,12 +300,7 @@ int main(int argc, char **argv) {
     try {
       simulatorResult = runSimulator();
     } catch (const Furble::Sim::SchedulerStopped &) {
-      // A scheduler task failed while this unregistered UI thread was waiting
-      // for a scheduler-visible mutex. Leave lock() by exception rather than
-      // returning without ownership, then join the cooperative task unwind.
-      Furble::Sim::requestFailureExit();
-      furble_sim_stop_all_tasks();
-      simulatorResult = 1;
+      failFastSchedulerStopped(nullptr);
     }
   });
   // Sleep rather than spin. This wait is unbounded on purpose: a panel that

@@ -981,7 +981,9 @@
       "boards": [
         "m5stick-s3"
       ],
-      "capabilities": [],
+      "capabilities": [
+        "imu"
+      ],
       "expected_exit": 0,
       "certified": true
     },
@@ -2324,6 +2326,34 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/e2e/physical-indicators-cancel-restore.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/physical-indicators-failure-restore.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/e2e/scan-already-saved.txt",
       "suite": "e2e",
       "owner": "sim-e2e",
@@ -2871,6 +2901,17 @@
     },
     {
       "path": "sim/scenarios/invalid/gps-uart-mode-invalid.txt",
+      "suite": "invalid",
+      "owner": "sim-parser",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 2,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/invalid/gps-uart-noise-invalid.txt",
       "suite": "invalid",
       "owner": "sim-parser",
       "boards": [
