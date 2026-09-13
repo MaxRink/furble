@@ -72,6 +72,18 @@ fi
 
 # The first build above is the clean build used by the remaining dependency
 # checks.
+# Keep every configured flag and dependency identity byte-for-byte identical,
+# changing only the source root. A cache implementation that merely notices a
+# missing legacy field would pass the previous check but fail this one.
+sed "s|^root=[^ ]*|root=$TEST_ROOT/other-source-root|" \
+  "$TEST_ROOT/build/build-flags" >"$TEST_ROOT/build/build-flags.rewritten"
+mv "$TEST_ROOT/build/build-flags.rewritten" "$TEST_ROOT/build/build-flags"
+touch "$TEST_ROOT/build/obj/stale-from-other-source-root-2.o"
+run_build "$TEST_ROOT/source-root-change-compile.log" "$TEST_ROOT/source-root-change-build.log"
+if [ -e "$TEST_ROOT/build/obj/stale-from-other-source-root-2.o" ]; then
+  echo "source-root cache stamp did not discard an object after root changed" >&2
+  exit 1
+fi
 
 # The same invocation must also produce depfiles for the C icon sources; this
 # guards the C path even though the behavioral mtime check below uses C++
