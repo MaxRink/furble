@@ -182,6 +182,9 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   calls so the watchdog and callback handoff remain responsive.
   Aggregate UI context assignments must initialize every field explicitly. Keep
   the connect timer paused until its context and widgets are ready.
+  `doDisconnect()` returns to the Main page from every teardown path, including
+  Cancel and terminal connect failure, so it must restore the physical-button
+  indicators hidden by the connect modal before returning.
   Under `FURBLE_SIM`, a driver exit request is observed inside the locked UI
   phase. Unlock and return from the task so simulator workers can be joined;
   never terminate the process from this production source.

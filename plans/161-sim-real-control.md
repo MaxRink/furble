@@ -374,13 +374,6 @@ layout across the three panel profiles. They assert the modal hides the count
 to zero and that Cancel or failure teardown returns it to three. Runtime
 validation remains pending on the branch carrying this fix.
 
-At commit `ca1efcbed4b748b105ac961306ae1317d5dcdd86`, the StickS3 RIG1 run
-passed both scenarios. Removing only the restoration call failed the Cancel
-assertion with `ui.indicators_visible expected 3 got 0`; restoring the call
-passed. This is simulator evidence for StickS3 only. StickC and Core runs,
-screenshot review, and a physical-button hardware check remain pending. The
-release-optimized S3 build was still in progress at handoff.
-
 5. The simulator's UI task is not priority gated. It is the pseudo-task that
    drives virtual time, so it can run ahead of a higher-priority real task that
    a queue send has just released. `doConnect()` resumes and readies the
