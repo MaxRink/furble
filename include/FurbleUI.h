@@ -921,6 +921,7 @@ class UI {
   spin_rows_t measureSpinRows(void);
   uint32_t countIndicatorOverlaps(void);
   uint32_t countLabelOverlaps(void);
+  uint32_t countFocusOverlaps(void);
   uint32_t countCutLabels(void);
 #endif
   uint32_t m_InactivityTimeout;

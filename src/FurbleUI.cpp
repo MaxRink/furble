@@ -3734,6 +3734,88 @@ uint32_t UI::countLabelOverlaps(void) {
   return overlaps;
 }
 
+// Count visible content that intersects the focused widget's actual main
+// outline. This deliberately excludes the focus object's own descendants
+// (for example a button label) and ancestors, while retaining LVGL visibility
+// and current-page clipping. It is a decoration diagnostic, not a replacement
+// for the content-only label overlap metric.
+uint32_t UI::countFocusOverlaps(void) {
+  lv_obj_t *page = lv_menu_get_cur_main_page(m_MainMenu.main);
+  lv_obj_t *focused = lv_group_get_focused(m_Group);
+  if (page == nullptr || focused == nullptr || !lv_obj_is_valid(focused)
+      || !lv_obj_is_visible(focused)) {
+    return 0;
+  }
+  bool focusedOnPage = false;
+  for (lv_obj_t *ancestor = focused; ancestor != nullptr; ancestor = lv_obj_get_parent(ancestor)) {
+    if (ancestor == page) {
+      focusedOnPage = true;
+      break;
+    }
+  }
+  if (!focusedOnPage) {
+    return 0;
+  }
+  lv_obj_update_layout(page);
+  lv_area_t viewport;
+  lv_obj_get_coords(page, &viewport);
+  lv_area_t focusArea;
+  lv_obj_get_coords(focused, &focusArea);
+  const int32_t outline = lv_obj_get_style_outline_width(focused, LV_PART_MAIN);
+  const int32_t outlinePad = lv_obj_get_style_outline_pad(focused, LV_PART_MAIN);
+  if (outline <= 0 || lv_obj_get_style_outline_opa(focused, LV_PART_MAIN) == LV_OPA_TRANSP) {
+    return 0;
+  }
+  const int32_t expansion = outline + outlinePad;
+  focusArea.x1 -= expansion;
+  focusArea.y1 -= expansion;
+  focusArea.x2 += expansion;
+  focusArea.y2 += expansion;
+  if (!lv_obj_area_is_visible(focused, &focusArea) || !simAreasIntersect(focusArea, viewport)) {
+    return 0;
+  }
+  focusArea.x1 = std::max(focusArea.x1, viewport.x1);
+  focusArea.y1 = std::max(focusArea.y1, viewport.y1);
+  focusArea.x2 = std::min(focusArea.x2, viewport.x2);
+  focusArea.y2 = std::min(focusArea.y2, viewport.y2);
+
+  auto related = [focused](lv_obj_t *candidate) {
+    for (lv_obj_t *ancestor = candidate; ancestor != nullptr;
+         ancestor = lv_obj_get_parent(ancestor)) {
+      if (ancestor == focused) {
+        return true;
+      }
+    }
+    for (lv_obj_t *ancestor = focused; ancestor != nullptr;
+         ancestor = lv_obj_get_parent(ancestor)) {
+      if (ancestor == candidate) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  uint32_t overlaps = 0;
+  std::function<void(lv_obj_t *)> visit = [&](lv_obj_t *obj) {
+    if (obj == nullptr || !lv_obj_is_valid(obj) || !lv_obj_is_visible(obj)) {
+      return;
+    }
+    if (!related(obj) && simIsMeasuredLeaf(obj)) {
+      lv_area_t coords;
+      lv_obj_get_coords(obj, &coords);
+      lv_area_t area = simDrawnArea(obj, coords);
+      if (lv_obj_area_is_visible(obj, &area) && simAreasIntersect(area, focusArea)) {
+        overlaps++;
+      }
+    }
+    for (uint32_t i = 0; i < lv_obj_get_child_count(obj); i++) {
+      visit(lv_obj_get_child(obj, i));
+    }
+  };
+  visit(page);
+  return overlaps;
+}
+
 // How many visible labels on the current page cannot draw all of their text.
 // A name that has lost characters reads as a different entry, so the count is
 // asserted at zero rather than measured.
@@ -4856,6 +4938,10 @@ std::string UI::simQueryState(const char *key) {
   // visible to a fit or a scroll query.
   if (query == "label_overlaps") {
     return std::to_string(countLabelOverlaps());
+  }
+
+  if (query == "focus_overlaps") {
+    return std::to_string(countFocusOverlaps());
   }
 
   if (query == "cut_labels") {
