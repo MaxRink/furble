@@ -613,7 +613,7 @@ class UI {
 
   // connected->bulb
   static constexpr const char *m_BulbDurationStr = "Duration";
-  static constexpr const char *m_BulbModeHintStr = "Camera must be in B (bulb) mode";
+  static constexpr const char *m_BulbModeHintStr = "Set camera to B";
 
   // settings
   static constexpr const char *m_DisplayStr = "Display";

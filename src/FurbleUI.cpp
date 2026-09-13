@@ -8509,7 +8509,7 @@ void UI::bulbStop(void) {
 
 void UI::updateBulbModeHint(void) {
   // Keep this setter as the hook for future BLE detected camera mode status.
-  lv_label_set_text(m_Bulb.m_ModeHintLabel, "Camera: B mode");
+  lv_label_set_text(m_Bulb.m_ModeHintLabel, m_BulbModeHintStr);
 }
 
 void UI::addBulbMenu(const menu_t &parent) {

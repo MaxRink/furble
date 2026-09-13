@@ -800,7 +800,7 @@ trace showed `reserveLegendColumns()` had narrowed the page-level mode hint to
 48 px, making the 12 px-font sentence 75 px tall. It also showed the narrowed
 Start button's default horizontal padding left only 22 px for its 24 px label.
 The candidate keeps the stable legend reservation and shortens the equivalent
-hint to `Camera: B mode`, which fits in two lines at the selected 12 px font.
+hint to `Set camera to B`, which fits in two lines at the selected 12 px font.
 It removes only the 80 px button's horizontal padding, while preserving the
 instruction meaning, font, controls and legend reservation. Full validation
 remains pending.
