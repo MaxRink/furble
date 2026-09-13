@@ -320,15 +320,16 @@ void testDomainValidation() {
       {SettingValue {68, ValueType::BOOL, {2}},                    "boolean setting must be 0 or 1"          },
       {SettingValue {72, ValueType::U8, {4}},                      "IMU wake gesture must be 0, 1, 2 or 3"   },
       {SettingValue {69, ValueType::U8, {5}},                      "GPS platform setting must be 0 through 4"},
-      {SettingValue {65, ValueType::U8, {3}},                      "legend setting must be 0, 1 or 2"          },
+      {SettingValue {65, ValueType::U8, {3}},                      "legend setting must be 0, 1 or 2"        },
   };
 
   ProvisionBundle offBundle;
-  offBundle.settings = {{65, ValueType::U8, {static_cast<uint8_t>(Furble::Settings::LEGEND_OFF)}}};
+  offBundle.settings = {
+      {65, ValueType::U8, {static_cast<uint8_t>(Furble::Settings::LEGEND_OFF)}}
+  };
   ApplyReport offReport;
   check(apply(offBundle, offReport), "Legend Off value provisions");
-  check(Furble::Settings::load<uint8_t>(Furble::Settings::LEGEND)
-            == Furble::Settings::LEGEND_OFF,
+  check(Furble::Settings::load<uint8_t>(Furble::Settings::LEGEND) == Furble::Settings::LEGEND_OFF,
         "Legend Off value reaches the store");
 
   for (const auto &entry : cases) {
