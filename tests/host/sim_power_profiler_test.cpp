@@ -108,8 +108,7 @@ std::string accountingModel(uint64_t poll_us,
                             uint64_t battery_timer_us,
                             uint64_t diagnostics_timer_us) {
   std::ostringstream model;
-  model << modelContents()
-        << "\naccounting:\n"
+  model << modelContents() << "\naccounting:\n"
         << "  version: 1\n"
         << "  calibration_status: uncalibrated\n"
         << "  ui_poll_active_us_per_cycle:\n"
@@ -144,6 +143,11 @@ bool contains(const std::string &contents, const std::string &needle) {
   return contents.find(needle) != std::string::npos;
 }
 
+bool containsJsonNumber(const std::string &contents, const std::string &field, uint64_t value) {
+  const std::string prefix = "\"" + field + "\": " + std::to_string(value);
+  return contains(contents, prefix + ",") || contains(contents, prefix + "\n");
+}
+
 std::string jsonStringField(const std::string &contents, const std::string &field) {
   const std::string prefix = "\"" + field + "\": \"";
   const size_t start = contents.find(prefix);
@@ -152,8 +156,8 @@ std::string jsonStringField(const std::string &contents, const std::string &fiel
   }
   const size_t value_start = start + prefix.size();
   const size_t value_end = contents.find('"', value_start);
-  return value_end == std::string::npos ? std::string() : contents.substr(value_start,
-                                                                            value_end - value_start);
+  return value_end == std::string::npos ? std::string()
+                                        : contents.substr(value_start, value_end - value_start);
 }
 
 bool nestedAfter(const std::string &contents,
@@ -163,8 +167,8 @@ bool nestedAfter(const std::string &contents,
                  size_t &child_position) {
   parent_position = contents.find(parent);
   child_position = parent_position == std::string::npos
-                     ? std::string::npos
-                     : contents.find(child, parent_position + parent.size());
+                       ? std::string::npos
+                       : contents.find(child, parent_position + parent.size());
   return parent_position != std::string::npos && child_position != std::string::npos;
 }
 
@@ -200,9 +204,9 @@ bool reportExists(const std::filesystem::path &path) {
 }
 
 bool expectRejected(const std::filesystem::path &model,
-                   const std::filesystem::path &report,
-                   const std::string &scenario,
-                   bool prior_success = false) {
+                    const std::filesystem::path &report,
+                    const std::string &scenario,
+                    bool prior_success = false) {
   resetExit();
   ScopedEnvironment selected_model("FURBLE_POWER_MODEL", model);
   if (prior_success) {
@@ -334,16 +338,16 @@ int main() {
   profilerWriteReport(first_report.c_str(), "microsecond-accounting");
   const std::string first_json = readFile(first_report);
   if (requestedExit.load() != -1 || !reportExists(first_report)
-      || !contains(first_json, "\"duration_ms\": 2")
-      || !contains(first_json, "\"poll_work_us\": 700")
-      || !contains(first_json, "\"timer_work_us\": 1100")
-      || !contains(first_json, "\"battery_timer\": 1100")
-      || !contains(first_json, "\"work_240_us\": 1800")
-      || !contains(first_json, "\"eligible_light_sleep_us\": 0")
-      || !contains(first_json, "\"adjusted_light_sleep_us\": 0")
-      || !contains(first_json, "\"pending_work_us\": 0")
-      || !contains(first_json, "\"current_count\": 0")
-      || !contains(first_json, "\"total_hold_ms\": 0")) {
+      || !containsJsonNumber(first_json, "duration_ms", 2)
+      || !containsJsonNumber(first_json, "poll_work_us", 700)
+      || !containsJsonNumber(first_json, "timer_work_us", 1100)
+      || !containsJsonNumber(first_json, "battery_timer", 1100)
+      || !containsJsonNumber(first_json, "work_240_us", 1800)
+      || !containsJsonNumber(first_json, "eligible_light_sleep_us", 0)
+      || !containsJsonNumber(first_json, "adjusted_light_sleep_us", 0)
+      || !containsJsonNumber(first_json, "pending_work_us", 0)
+      || !containsJsonNumber(first_json, "current_count", 0)
+      || !containsJsonNumber(first_json, "total_hold_ms", 0)) {
     return 1;
   }
 
@@ -389,8 +393,8 @@ int main() {
   if (requestedExit.load() != -1 || !contains(reload_json, "\"poll_work_us\": 900")
       || !contains(reload_json, "\"timer_work_us\": 300")
       || !contains(reload_json, "\"work_160_us\": 1200")
-      || !contains(reload_json, "\"work_240_us\": 0")
-      || reload_fingerprint.empty() || reload_fingerprint == frozen_fingerprint) {
+      || !contains(reload_json, "\"work_240_us\": 0") || reload_fingerprint.empty()
+      || reload_fingerprint == frozen_fingerprint) {
     return 1;
   }
 
@@ -429,11 +433,11 @@ int main() {
   const auto no_retrocharge_report = reportDirectory.path() / "no-retrocharge-report.json";
   profilerWriteReport(no_retrocharge_report.c_str(), "no-retrocharge");
   const std::string no_retrocharge_json = readFile(no_retrocharge_report);
-  if (requestedExit.load() != -1 || !contains(no_retrocharge_json, "\"work_80_us\": 0")
-      || !contains(no_retrocharge_json, "\"work_160_us\": 1200")
-      || !contains(no_retrocharge_json, "\"frequency_80\": 1000")
-      || !contains(no_retrocharge_json, "\"frequency_160\": 2000")
-      || !contains(no_retrocharge_json, "\"eligible_light_sleep_us\": 1000")) {
+  if (requestedExit.load() != -1 || !containsJsonNumber(no_retrocharge_json, "work_80_us", 0)
+      || !containsJsonNumber(no_retrocharge_json, "work_160_us", 1200)
+      || !containsJsonNumber(no_retrocharge_json, "frequency_80", 1)
+      || !containsJsonNumber(no_retrocharge_json, "frequency_160", 2)
+      || !containsJsonNumber(no_retrocharge_json, "eligible_light_sleep_us", 1000)) {
     return 1;
   }
 
@@ -503,8 +507,7 @@ int main() {
   }
   const auto missing_provenance_path = reportDirectory.path() / "missing-provenance.yaml";
   writeFile(missing_provenance_path, missing_provenance);
-  if (!expectRejected(missing_provenance_path,
-                      reportDirectory.path() / "missing-provenance.json",
+  if (!expectRejected(missing_provenance_path, reportDirectory.path() / "missing-provenance.json",
                       "missing-provenance")) {
     return 1;
   }
@@ -516,8 +519,7 @@ int main() {
   }
   const auto invalid_confidence_path = reportDirectory.path() / "invalid-confidence.yaml";
   writeFile(invalid_confidence_path, invalid_confidence);
-  if (!expectRejected(invalid_confidence_path,
-                      reportDirectory.path() / "invalid-confidence.json",
+  if (!expectRejected(invalid_confidence_path, reportDirectory.path() / "invalid-confidence.json",
                       "invalid-confidence")) {
     return 1;
   }
@@ -529,8 +531,7 @@ int main() {
   }
   const auto malformed_current_path = reportDirectory.path() / "malformed-current.yaml";
   writeFile(malformed_current_path, malformed_current);
-  if (!expectRejected(malformed_current_path,
-                      reportDirectory.path() / "malformed-current.json",
+  if (!expectRejected(malformed_current_path, reportDirectory.path() / "malformed-current.json",
                       "malformed-current")) {
     return 1;
   }
@@ -541,8 +542,7 @@ int main() {
   }
   const auto negative_current_path = reportDirectory.path() / "negative-current.yaml";
   writeFile(negative_current_path, negative_current);
-  if (!expectRejected(negative_current_path,
-                      reportDirectory.path() / "negative-current.json",
+  if (!expectRejected(negative_current_path, reportDirectory.path() / "negative-current.json",
                       "negative-current")) {
     return 1;
   }
@@ -556,8 +556,7 @@ int main() {
   duplicate_current.insert(first_entry, "    active_cpu_80mhz:\n      value_ma: 40.2\n");
   const auto duplicate_current_path = reportDirectory.path() / "duplicate-current.yaml";
   writeFile(duplicate_current_path, duplicate_current);
-  if (!expectRejected(duplicate_current_path,
-                      reportDirectory.path() / "duplicate-current.json",
+  if (!expectRejected(duplicate_current_path, reportDirectory.path() / "duplicate-current.json",
                       "duplicate-current")) {
     return 1;
   }
@@ -644,7 +643,7 @@ int main() {
     size_t accounting_inputs = 0;
     size_t top_estimate = 0;
     if (!nestedAfter(shape_json, "\n  \"energy\": {", "\n    \"accounting_inputs\": {", energy,
-                        accounting_inputs)
+                     accounting_inputs)
         || !contains(shape_json, "\n      \"accounting_mode\": \"synthetic-virtual-work\",")
         || shape_json.find("\n  \"estimated_mA\": ", accounting_inputs) == std::string::npos) {
       return 1;
