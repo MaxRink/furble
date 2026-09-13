@@ -4792,7 +4792,17 @@ std::string UI::simQueryState(const char *key) {
   }
 
   if (query == "legend_visible") {
-    return legendVisible() ? "yes" : "no";
+    if (m_Left == nullptr || m_OK == nullptr || m_Right == nullptr) {
+      return "unknown";
+    }
+    const auto isRendered = [](lv_obj_t *indicator) {
+      return !lv_obj_has_flag(indicator, LV_OBJ_FLAG_HIDDEN)
+             && lv_obj_get_style_opa(indicator, LV_PART_MAIN) != LV_OPA_TRANSP;
+    };
+    const bool rendered = isRendered(m_Left) && isRendered(m_OK) && isRendered(m_Right)
+                          && (m_ShutterLockIcon == nullptr || isRendered(m_ShutterLockIcon))
+                          && (m_ShutterLegendLine == nullptr || isRendered(m_ShutterLegendLine));
+    return rendered ? "yes" : "no";
   }
 
   if (query == "nav_layout") {
@@ -8914,22 +8924,34 @@ uint8_t UI::legendPlacement(void) {
 }
 
 void UI::applyLegendVisibility(void) {
-  const lv_opa_t opacity = legendVisible() ? LV_OPA_COVER : LV_OPA_TRANSP;
+  static lv_style_t hiddenStyle;
+  static bool hiddenStyleInitialized = false;
+  if (!hiddenStyleInitialized) {
+    lv_style_init(&hiddenStyle);
+    // Hide the complete rendered object without replacing any enabled-mode
+    // foreground, background, outline, line or shadow style values.
+    lv_style_set_opa(&hiddenStyle, LV_OPA_TRANSP);
+    hiddenStyleInitialized = true;
+  }
+  const bool visible = legendVisible();
   for (lv_obj_t *indicator : {m_Left, m_OK, m_Right, m_ShutterLockIcon}) {
     if (indicator == nullptr) {
       continue;
     }
     // Keep the objects, sizes and input coordinates intact: these buttons are
-    // also the physical LV_INDEV_TYPE_BUTTON hit targets. Only their rendered
-    // surfaces, focus outline and shadow are suppressed in Off mode.
-    lv_obj_set_style_bg_opa(indicator, opacity, LV_PART_MAIN);
-    lv_obj_set_style_bg_image_opa(indicator, opacity, LV_PART_MAIN);
-    lv_obj_set_style_border_opa(indicator, opacity, LV_PART_MAIN);
-    lv_obj_set_style_outline_opa(indicator, opacity, LV_PART_MAIN);
-    lv_obj_set_style_shadow_opa(indicator, opacity, LV_PART_MAIN);
+    // also the physical LV_INDEV_TYPE_BUTTON hit targets. Add only a
+    // transparent style in Off mode, so every original enabled-mode style is
+    // restored unchanged when the setting is on.
+    lv_obj_remove_style(indicator, &hiddenStyle, LV_PART_MAIN);
+    if (!visible) {
+      lv_obj_add_style(indicator, &hiddenStyle, LV_PART_MAIN);
+    }
   }
   if (m_ShutterLegendLine != nullptr) {
-    lv_obj_set_style_line_opa(m_ShutterLegendLine, opacity, LV_PART_MAIN);
+    lv_obj_remove_style(m_ShutterLegendLine, &hiddenStyle, LV_PART_MAIN);
+    if (!visible) {
+      lv_obj_add_style(m_ShutterLegendLine, &hiddenStyle, LV_PART_MAIN);
+    }
   }
 }
 

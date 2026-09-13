@@ -11,12 +11,30 @@ assert ui.nav_layout buttons
 assert setting.legend 2
 assert ui.legend_visible no
 
-btn a
-wait 100
-btn b
-wait 100
-assert ui.page main
+action connect
+wait 3200
+assert ui.connected yes
+action page shutter
+wait 200
+assert ui.page shutter
+assert ui.control_mode shutter
 assert ui.legend_visible no
+
+# BtnA is the real middle/select input on Stick boards: it must still fire the
+# shutter even though its rendered legend is transparent.
+assert camera.shutter_presses 0
+btn a
+wait 200
+assert-eventually-virtual 1000 camera.shutter_presses 1
+assert-eventually-virtual 1000 camera.shutter_releases 1
+
+# BtnB is the real right/focus input. Keep the physical focus path live too;
+# the existing focus-lock scenario covers the compound lock gesture.
+assert camera.focus_presses 0
+btn b
+wait 200
+assert-eventually-virtual 1000 camera.focus_presses 1
+assert-eventually-virtual 1000 camera.focus_releases 1
 
 action nav display
 wait 150
