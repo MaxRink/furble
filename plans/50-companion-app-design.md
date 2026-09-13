@@ -793,9 +793,12 @@ the integrated master:
 The Android metadata table now includes shipped firmware setting ID 43
 (`autooff_charge`) and the PR273-advertised Legend ID 65 with values 0
 (`LEGEND_BUTTONS`) and 1 (`LEGEND_BOTTOM`); ID 65 remains gated on firmware
-advertising that row. Android metadata/unit execution and a rebuilt testing
-APK remain pending. Apple’s codec is unchanged because its current core has no
-editable static settings metadata layer.
+advertising that row. Root validated the unchanged Android source at
+`d3024381b` with `assembleDebug` and 28 tests (16 protocol, 5 auth, 2 GATT,
+5 catalog), with zero skips, failures, or errors; the APK is
+`companion/android/app/build/outputs/apk/debug/app-debug.apk`. Apple’s codec is
+unchanged because its current core has no editable static settings metadata
+layer. Physical BLE, signing, and release CI gates remain separate.
 
 Implemented in PR #18 on the fork, under `companion/android`. Notes:
 
