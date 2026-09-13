@@ -877,3 +877,14 @@ The current integration also keeps the Display page content-sized on the
 layout and four label overlaps without changing fonts, icons, or seeds. The
 three-panel touch matrix remains pending; no broader panel/layout pass is
 claimed here.
+
+### Current integration validation snapshot
+
+The `dc987a1f4` full touch baseline passed 80 e2e scenarios and reported 7
+bughunt failures. Its S3 run passed 123 e2e scenarios and reported 6 bughunt
+failures; the Core run was still in progress at capture time. The later Display
+fix `f51af67aaa850b8f2010f6714cfc2532610ed864` does not resolve the same S3
+overlap failures. The 80x160 and S3 Sensors touch-default and touch-small
+fixtures still fail on measured geometry and remain open, not waived. A
+follow-up content-height correction is being prepared for the all-panel touch
+path and is not included in this validation snapshot.
