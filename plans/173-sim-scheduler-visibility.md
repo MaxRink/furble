@@ -589,5 +589,28 @@ Root's full-host build at `bc5f5240` stopped while linking the TSAN target
 because enabling `FURBLE_CONSOLE` exposed the production `BtDebugJournal`
 symbols without linking `lib/furble/BtDebugJournal.cpp`. The TSAN target now
 uses the same production source already linked by `control_abort_republish_test`.
-The build log is `~/b/control-atomics-bc5-build.log`; a rerun is pending. This
-is a host-link correction only, not test or hardware evidence.
+The failed build log is `~/b/control-atomics-bc5-build.log`; root's corrected
+rerun is recorded below. The original failure was a host-link issue only.
+
+## Root validation of the integrated source
+
+Root validated clean commit `70844df1485a39a075bb74345f69e6f8615a8844` in the
+fresh frozen VM checkout. The full Clang 14 host build and all 120/120 tests
+passed in 195.05 s. Three raw TSAN runs exited 0 with zero warnings and the
+exact `control-connect-camera-race: PASS` marker. Evidence is in
+`~/b/control-atomics-708-{build,test,raw-1,raw-2,raw-3}.log`.
+
+The coverage configure listed 118 instrumented tests. It excluded both the
+TSAN race target and the shell-only wrapper contract, and the existing floors
+remained intact. The compiler-free wrapper contract passed separately; the old
+wrapper negative control failed as expected.
+
+The nonpublishable mutant `4485df074` reverted only the seven atomic fields and
+their accesses to the published-master form. It built and ran with status 66,
+reported five TSAN races, and still emitted the exact PASS marker. Evidence is
+in `~/b/control-atomics-mutant-708-{config,build,raw}.log`. This is aggregate
+coverage evidence only. It does not exercise retry/backoff or `hintLogged=true`
+and does not prove each of the seven fields separately.
+
+Firmware CI and physical hardware validation remain pending. These host and
+TSAN results make no camera, radio, or hardware-parity claim.
