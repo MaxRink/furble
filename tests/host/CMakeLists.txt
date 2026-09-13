@@ -1169,6 +1169,7 @@ target_compile_options(control_connect_camera_race_test PRIVATE
                        -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
 target_link_options(control_connect_camera_race_test PRIVATE -fsanitize=thread)
 target_link_libraries(control_connect_camera_race_test PRIVATE Threads::Threads)
+target_compile_definitions(control_connect_camera_race_test PRIVATE FURBLE_CONSOLE)
 endif()
 
 # Deterministic interleaving proof for the STATE_DISCONNECTING republish

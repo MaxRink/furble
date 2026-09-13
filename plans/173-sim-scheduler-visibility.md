@@ -498,6 +498,22 @@ regressions; it is not raw TSAN proof for these three flags. Raw TSAN, firmware,
 CI, and hardware validation remain pending, and reconnect fields are outside
 this scope.
 
+## TSAN probe coverage extension
+
+The dedicated `control-connect-camera-race` target now defines
+`FURBLE_CONSOLE`, so its existing production `getDebugState()` snapshot is
+polled alongside `getConnectingCamera()`. The probe performs two bounded
+FauxNY connect cycles, waits for `STATE_ACTIVE` and then checks the
+`disconnect()` result and bounded return to `STATE_IDLE`; it no longer relies
+on a fixed sleep that may end before activation. Snapshot fields and the
+connecting camera strings are consumed so this remains a real concurrent
+reader, not a compile-only call.
+
+This is regression coverage for the atomic flag boundary only. It adds no
+test-only accessor, barrier, suppression, scheduler policy, or hardware claim.
+The raw TSAN result remains the deciding evidence; the existing wrapper's
+member-filter classification is not a whole-program race-free guarantee.
+
 The TSAN wrapper remains a full-report diagnostic gate: it must continue to
 fail on any raw TSAN non-zero result except the documented sanitizer status,
 and must never classify races by member name or suppress unrelated reports.
