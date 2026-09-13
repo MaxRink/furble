@@ -32,3 +32,6 @@ exclusion in opt-in mode, and fails on unresolved pending work or checked
 arithmetic errors. The comparator rejects accounting mode and canonical
 cost/provenance fingerprint mismatches. Root owns the build and test gates for
 this candidate; this worktree was not built or tested.
+The opt-in report also exposes the exact microsecond window and component
+residencies; host profiler harnesses must provide the fail-closed
+`requestFailureExit()` stub when linking this runtime.
