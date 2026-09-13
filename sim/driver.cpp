@@ -19,6 +19,7 @@
 #include <thread>
 #include <vector>
 
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <SDL2/SDL.h>
@@ -152,39 +153,76 @@ uint32_t fuzzBootSettleCycles = 0;
 size_t restartStepIndex = 0;
 const char *RESTART_STEP_ENV = "FURBLE_SIM_RESTART_STEP";
 const char *FUZZ_CHECKPOINT_ENV = "FURBLE_SIM_FUZZ_CHECKPOINT";
+const char *FUZZ_CHECKPOINT_OWNER_ENV = "FURBLE_SIM_FUZZ_CHECKPOINT_OWNER";
 const char *GENERATED_PREFS_ENV = "FURBLE_SIM_PREFS_GENERATED";
 std::string generatedPreferencesPath;
 bool generatedPreferencesOwned = false;
+std::string fuzzCheckpointPath;
+bool fuzzCheckpointOwned = false;
 
 constexpr std::uintmax_t MAX_FUZZ_CHECKPOINT_BYTES = 4U * 1024U * 1024U;
 
 void readFuzzCheckpointFromEnvironment(void) {
   const char *path = std::getenv(FUZZ_CHECKPOINT_ENV);
-  if (path == nullptr) {
+  const char *owner = std::getenv(FUZZ_CHECKPOINT_OWNER_ENV);
+  if (path == nullptr && owner == nullptr) {
     return;
   }
-  if (path[0] == '\0') {
-    std::cerr << FUZZ_CHECKPOINT_ENV << " must not be empty\n";
+  if (path == nullptr || owner == nullptr || path[0] == '\0'
+      || std::string(owner) != std::string(path) + "|" + std::to_string(getpid())) {
+    std::cerr << "Invalid fuzz checkpoint ownership marker\n";
     std::exit(2);
   }
-  std::error_code sizeError;
-  const std::uintmax_t size = std::filesystem::file_size(path, sizeError);
-  if (sizeError || size > MAX_FUZZ_CHECKPOINT_BYTES) {
+  const int descriptor = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+  if (descriptor < 0) {
     std::cerr << "Invalid fuzz checkpoint file: " << path << '\n';
     std::exit(2);
   }
-  // Check the filesystem size before opening the stream. The parser has its
-  // own field bounds, but in_avail() cannot establish a regular-file limit.
-  std::ifstream input(path);
-  if (!input || !fuzzReadCheckpoint(input)) {
+  struct stat before = {};
+  if (fstat(descriptor, &before) != 0 || !S_ISREG(before.st_mode)
+      || before.st_size < 0
+      || static_cast<std::uintmax_t>(before.st_size) > MAX_FUZZ_CHECKPOINT_BYTES) {
+    close(descriptor);
     std::cerr << "Invalid fuzz checkpoint contents: " << path << '\n';
     std::exit(2);
   }
-  input.close();
-  if (std::remove(path) != 0 || unsetenv(FUZZ_CHECKPOINT_ENV) != 0) {
+  const size_t size = static_cast<size_t>(before.st_size);
+  std::string contents(size, '\0');
+  size_t offset = 0;
+  while (offset < size) {
+    const ssize_t result = read(descriptor, contents.data() + offset, size - offset);
+    if (result < 0 && errno == EINTR) {
+      continue;
+    }
+    if (result <= 0) {
+      close(descriptor);
+      std::cerr << "Invalid fuzz checkpoint contents: " << path << '\n';
+      std::exit(2);
+    }
+    offset += static_cast<size_t>(result);
+  }
+  struct stat after = {};
+  const bool stable = fstat(descriptor, &after) == 0 && after.st_dev == before.st_dev
+                      && after.st_ino == before.st_ino && after.st_size == before.st_size;
+  const int closeResult = close(descriptor);
+  if (!stable || closeResult != 0) {
+    std::cerr << "Invalid fuzz checkpoint contents: " << path << '\n';
+    std::exit(2);
+  }
+  std::istringstream input(contents);
+  if (!fuzzReadCheckpoint(input)) {
+    std::cerr << "Invalid fuzz checkpoint contents: " << path << '\n';
+    std::exit(2);
+  }
+  struct stat named = {};
+  if (lstat(path, &named) != 0 || named.st_dev != before.st_dev || named.st_ino != before.st_ino
+      || std::remove(path) != 0 || unsetenv(FUZZ_CHECKPOINT_ENV) != 0
+      || unsetenv(FUZZ_CHECKPOINT_OWNER_ENV) != 0) {
     std::cerr << "Could not consume fuzz checkpoint: " << path << '\n';
     std::exit(2);
   }
+  fuzzCheckpointPath.clear();
+  fuzzCheckpointOwned = false;
   fuzzResumeAfterRestart();
   // Let the fresh UI boot complete one real LVGL cycle before the saved
   // APPLY, SETTLE, CHECK or ESCAPE phase is serviced. This gate is driver
@@ -2576,25 +2614,75 @@ bool writeFuzzCheckpointForRestart(void) {
               << directoryError.message() << '\n';
     return false;
   }
-  const std::string path = (directory / ("furble-sim-fuzz-checkpoint-"
-                                        + std::to_string(getpid()) + ".txt"))
-                               .string();
-  std::ofstream output(path, std::ios::out | std::ios::trunc);
-  if (!output || !fuzzWriteCheckpoint(output)) {
-    std::cerr << "Could not write fuzz checkpoint: " << path << '\n';
-    std::remove(path.c_str());
+  const std::string pathTemplate = (directory / ("furble-sim-fuzz-checkpoint-"
+                                                 + std::to_string(getpid()) + "-XXXXXX"))
+                                      .string();
+  std::vector<char> writablePath(pathTemplate.begin(), pathTemplate.end());
+  writablePath.push_back('\0');
+  const int descriptor = mkstemp(writablePath.data());
+  if (descriptor < 0) {
+    std::cerr << "Could not reserve fuzz checkpoint: " << std::strerror(errno) << '\n';
     return false;
   }
-  output.flush();
-  output.close();
-  std::error_code sizeError;
-  const std::uintmax_t size = std::filesystem::file_size(path, sizeError);
-  if (sizeError || size > MAX_FUZZ_CHECKPOINT_BYTES) {
-    std::cerr << "Fuzz checkpoint exceeds 4 MiB: " << path << '\n';
-    std::remove(path.c_str());
+  std::ostringstream serialized;
+  if (!fuzzWriteCheckpoint(serialized) || !serialized.good()) {
+    close(descriptor);
+    std::remove(writablePath.data());
+    std::cerr << "Could not serialize fuzz checkpoint\n";
     return false;
   }
-  return setenv(FUZZ_CHECKPOINT_ENV, path.c_str(), 1) == 0;
+  const std::string contents = serialized.str();
+  if (contents.size() > MAX_FUZZ_CHECKPOINT_BYTES) {
+    close(descriptor);
+    std::remove(writablePath.data());
+    std::cerr << "Fuzz checkpoint exceeds 4 MiB\n";
+    return false;
+  }
+  size_t offset = 0;
+  while (offset < contents.size()) {
+    const ssize_t result = write(descriptor, contents.data() + offset, contents.size() - offset);
+    if (result < 0 && errno == EINTR) {
+      continue;
+    }
+    if (result <= 0) {
+      close(descriptor);
+      std::remove(writablePath.data());
+      std::cerr << "Could not write fuzz checkpoint: " << std::strerror(errno) << '\n';
+      return false;
+    }
+    offset += static_cast<size_t>(result);
+  }
+  const int syncResult = fsync(descriptor);
+  const int closeResult = close(descriptor);
+  if (syncResult != 0 || closeResult != 0) {
+    std::remove(writablePath.data());
+    std::cerr << "Could not close fuzz checkpoint: " << std::strerror(errno) << '\n';
+    return false;
+  }
+  const std::string path = writablePath.data();
+  const std::string owner = path + "|" + std::to_string(getpid());
+  if (setenv(FUZZ_CHECKPOINT_ENV, path.c_str(), 1) != 0
+      || setenv(FUZZ_CHECKPOINT_OWNER_ENV, owner.c_str(), 1) != 0) {
+    unsetenv(FUZZ_CHECKPOINT_ENV);
+    unsetenv(FUZZ_CHECKPOINT_OWNER_ENV);
+    std::remove(path.c_str());
+    std::cerr << "Could not publish fuzz checkpoint: " << std::strerror(errno) << '\n';
+    return false;
+  }
+  fuzzCheckpointPath = path;
+  fuzzCheckpointOwned = true;
+  return true;
+}
+
+void discardOwnedFuzzCheckpoint(void) {
+  if (!fuzzCheckpointOwned || fuzzCheckpointPath.empty()) {
+    return;
+  }
+  std::remove(fuzzCheckpointPath.c_str());
+  unsetenv(FUZZ_CHECKPOINT_ENV);
+  unsetenv(FUZZ_CHECKPOINT_OWNER_ENV);
+  fuzzCheckpointPath.clear();
+  fuzzCheckpointOwned = false;
 }
 
 void restartProcess(void) {
@@ -2611,7 +2699,8 @@ void restartProcess(void) {
       }
       const std::string nextValue = std::to_string(restartStepIndex);
       if (setenv(RESTART_STEP_ENV, nextValue.c_str(), 1) != 0
-          || unsetenv(FUZZ_CHECKPOINT_ENV) != 0) {
+          || unsetenv(FUZZ_CHECKPOINT_ENV) != 0
+          || unsetenv(FUZZ_CHECKPOINT_OWNER_ENV) != 0) {
         std::cerr << "restart failed to set continuation: " << std::strerror(errno) << '\n';
         std::_Exit(1);
       }
@@ -2625,7 +2714,8 @@ void restartProcess(void) {
       break;
     }
     case RestartMode::INTERACTIVE:
-      if (unsetenv(RESTART_STEP_ENV) != 0 || unsetenv(FUZZ_CHECKPOINT_ENV) != 0) {
+      if (unsetenv(RESTART_STEP_ENV) != 0 || unsetenv(FUZZ_CHECKPOINT_ENV) != 0
+          || unsetenv(FUZZ_CHECKPOINT_OWNER_ENV) != 0) {
         std::cerr << "restart failed to clear continuation: " << std::strerror(errno) << '\n';
         std::_Exit(1);
       }
@@ -2646,10 +2736,12 @@ void restartProcess(void) {
   const std::string fixSecond = std::to_string(furble_sim_uart_fix_second());
   if (setenv("FURBLE_SIM_FIX_SECOND", fixSecond.c_str(), 1) != 0) {
     std::cerr << "restart failed: setenv: " << std::strerror(errno) << '\n';
+    discardOwnedFuzzCheckpoint();
     std::_Exit(1);
   }
   execvp(arguments[0], arguments.data());
   std::cerr << "restart failed: execvp: " << std::strerror(errno) << '\n';
+  discardOwnedFuzzCheckpoint();
   std::_Exit(1);
 }
 
