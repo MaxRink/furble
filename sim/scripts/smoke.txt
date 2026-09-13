@@ -1,15 +1,25 @@
-# Exercise the initial menu, fake FauxNY scan, connection flow, and shutter page.
-wait 200
+# Exercise the initial menu, fake FauxNY scan, connection flow, and shutter page
+# through the same deterministic UI actions used by the gallery scenarios.
+seed fauxny true
+seed saved_camera true
+wait 500
+home
+wait 300
+assert ui.page main
 capture main
-key left
-wait 200
+action nav scan
+wait 700
+assert ui.page scan
 capture scan
-key left
-wait 1100
+home
+wait 300
+action connect
+wait 1800
 assert-eventually-virtual 60000 ui.connected yes
+assert ui.page connected
 capture connected
-key left
-wait 200
+action blind
+wait 500
 assert ui.page shutter
 capture shutter
 exit

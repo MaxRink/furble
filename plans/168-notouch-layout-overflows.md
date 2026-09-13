@@ -981,3 +981,16 @@ reach the legend; the old metric only clamped to the page and reported a
 false positive. The existing physical 80x160 clearance scenarios remain the
 runtime regression and must pass after integration. No new geometry framework
 or runtime pass is claimed by this diagnostic-only correction.
+
+### Smoke-flow navigation correction
+
+The shared `sim/scripts/smoke.txt` formerly used `key left` injections to move
+from the main menu through scan, connection, and shutter. Headless key
+injection does not drive LVGL menu activation, so those steps did not prove
+the intended pages. The candidate now seeds FauxNY and a saved camera, uses
+`action nav scan`, runs the real `action connect` flow behind
+`assert-eventually-virtual 60000 ui.connected yes`, and enters the shutter with
+`action blind`, asserting each page before capture. This keeps the docs-capture
+boot smoke and the scheduler fail-fast positive control on a bounded,
+deterministic path; parser and environment callers continue to use the same
+fixture. Runtime validation of this candidate is pending.
