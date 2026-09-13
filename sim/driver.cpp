@@ -2077,7 +2077,9 @@ void setBackTarget(Furble::UI *ui) {
 }
 
 void startProfiler(void) {
-  profilerBegin(scenarioName.c_str());
+  const bool reporting_enabled = std::any_of(
+      steps.begin(), steps.end(), [](const Step &step) { return step.type == StepType::REPORT; });
+  profilerBegin(scenarioName.c_str(), reporting_enabled);
 }
 
 void driverTick(void) {

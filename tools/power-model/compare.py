@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import sys
 from pathlib import Path
 
@@ -34,6 +35,61 @@ def scenario_name(report: dict, path: Path) -> str:
     return value if isinstance(value, str) and value else path.stem
 
 
+def accounting_identity(report: dict) -> tuple[str, str]:
+    if not isinstance(report, dict):
+        raise ValueError("report is not a JSON object")
+    energy = report.get("energy", {})
+    if not isinstance(energy, dict):
+        raise ValueError("report energy is not a JSON object")
+    if "accounting_inputs" not in energy:
+        return "legacy-unaccounted", ""
+    inputs = energy["accounting_inputs"]
+    if not isinstance(inputs, dict):
+        raise ValueError("report accounting_inputs is not a JSON object")
+    if not inputs:
+        raise ValueError("report has empty accounting metadata")
+    fields = {"accounting_mode", "accounting_version", "accounting_fingerprint", "accounting_valid"}
+    present = fields.intersection(inputs)
+    if not present:
+        legacy_fields = {
+            "duration_ms",
+            "mcu_ms",
+            "display_ms",
+            "radio_connected_ms",
+            "radio_event_count",
+            "gps_ms",
+        }
+        if legacy_fields.issubset(inputs) and set(inputs).issubset(legacy_fields):
+            return "legacy-unaccounted", ""
+        raise ValueError("report has no accounting metadata fields")
+    if present != fields:
+        raise ValueError("report has incomplete accounting metadata")
+    mode = inputs["accounting_mode"]
+    version = inputs["accounting_version"]
+    fingerprint = inputs["accounting_fingerprint"]
+    valid = inputs["accounting_valid"]
+    if mode not in ("legacy-unaccounted", "synthetic-virtual-work"):
+        raise ValueError("report has unknown accounting mode")
+    if not isinstance(valid, bool) or not valid:
+      raise ValueError("report accounting is not valid")
+    if mode == "synthetic-virtual-work" and (
+        not isinstance(version, int)
+        or isinstance(version, bool)
+        or version != 1
+        or not isinstance(fingerprint, str)
+        or re.fullmatch(r"[0-9a-fA-F]{64}", fingerprint) is None
+    ):
+      raise ValueError("report has invalid synthetic accounting metadata")
+    if mode == "legacy-unaccounted" and (
+        not isinstance(version, int)
+        or isinstance(version, bool)
+        or version != 0
+        or fingerprint != ""
+    ):
+        raise ValueError("report has invalid legacy accounting metadata")
+    return mode, fingerprint
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("report", type=Path)
@@ -52,6 +108,14 @@ def main() -> int:
     try:
         report = json.loads(args.report.read_text())
         baseline = json.loads(args.baseline.read_text())
+        report_identity = accounting_identity(report)
+        baseline_identity = accounting_identity(baseline)
+        if report_identity != baseline_identity:
+            raise ValueError(
+                "accounting mode/model-cost provenance mismatch "
+                f"(report {report_identity[0]}/{report_identity[1]} vs "
+                f"baseline {baseline_identity[0]}/{baseline_identity[1]})"
+            )
         current = estimated_ma(report)
         reference = estimated_ma(baseline)
     except (OSError, json.JSONDecodeError, ValueError) as error:
