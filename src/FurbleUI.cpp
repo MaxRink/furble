@@ -2054,15 +2054,10 @@ lv_obj_t *UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_
   lv_obj_t *label = lv_label_create(obj);
   lv_label_set_text(label, s.name);
   lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
-#if defined(FURBLE_M5STICKC)
-  // 80 px is not enough for a name, a 50 px switch and the floating right
-  // legend on one line, and the switch was drawn under the legend. Without the
-  // grow the row wraps instead and the switch takes the line below its name,
-  // clear of the legend. Every wider panel keeps the single line.
-  (void)0;
-#else
-  lv_obj_set_flex_grow(label, 1);
-#endif
+  // Keep the name's natural width, bounded by its row. A grow item has zero
+  // minimum width, so the switch can squeeze it below even one glyph instead
+  // of wrapping onto the next line when the row is narrow.
+  lv_obj_set_style_max_width(label, LV_PCT(100), LV_PART_MAIN);
 
   lv_obj_t *sw = lv_switch_create(obj);
 #if defined(FURBLE_M5STICKC)
