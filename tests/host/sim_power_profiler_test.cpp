@@ -446,6 +446,113 @@ int main() {
     return failure(__LINE__);
   }
 
+  // Sub-millisecond accounting must not charge work to time before it was
+  // queued. At 1,000 us only 100 us is available, so the first report fails
+  // closed with 700 us pending. The same window completes at 1,800 us.
+  const auto precision_model_path = reportDirectory.path() / "precision-model.yaml";
+  writeFile(precision_model_path, accountingModel(800, 0, 0));
+  {
+    ScopedEnvironment precision_selected("FURBLE_POWER_MODEL", precision_model_path);
+    const auto precision_report = reportDirectory.path() / "precision-report.json";
+    resetExit();
+    setClockMicros(0);
+    profilerBegin("sub-ms-pending", true);
+    profilerPowerConfig(160, 40, true);
+    advanceClockMicros(900);
+    profilerBeginUiCycle();
+    profilerEndUiCycle();
+    advanceClockMicros(100);
+    profilerWriteReport(precision_report.c_str(), "sub-ms-pending");
+    if (requestedExit.load() != 1 || reportExists(precision_report)) {
+      return failure(__LINE__);
+    }
+
+    resetExit();
+    advanceClockMicros(800);
+    profilerWriteReport(precision_report.c_str(), "sub-ms-pending");
+    const std::string precision_json = readFile(precision_report);
+    if (requestedExit.load() != -1 || !reportExists(precision_report)
+        || !containsJsonNumber(precision_json, "work_80_us", 800)
+        || !containsJsonNumber(precision_json, "work_160_us", 0)
+        || !containsJsonNumber(precision_json, "eligible_light_sleep_us", 1800)
+        || !containsJsonNumber(precision_json, "light_sleep_work_us", 800)
+        || !containsJsonNumber(precision_json, "adjusted_light_sleep_us", 1000)
+        || !containsJsonNumber(precision_json, "pending_work_us", 0)
+        || !contains(precision_json, "\"duration_ms\": 1")
+        || !contains(precision_json, "\"frequency_80\": 1")
+        || !contains(precision_json, "\"mcu\": 18.000000")) {
+      return failure(__LINE__);
+    }
+  }
+
+  // Releasing a lock at 500 us must keep the first 500 us locked and account
+  // the remaining 1,500 us as unlocked. The 900 us queued pass therefore
+  // splits into 500 us at 160 MHz and 400 us at 80 MHz.
+  const auto release_model_path = reportDirectory.path() / "release-model.yaml";
+  writeFile(release_model_path, accountingModel(900, 0, 0));
+  {
+    ScopedEnvironment release_selected("FURBLE_POWER_MODEL", release_model_path);
+    const auto release_report = reportDirectory.path() / "release-report.json";
+    resetExit();
+    setClockMicros(0);
+    profilerBegin("sub-ms-lock-release", true);
+    profilerPowerConfig(160, 40, true);
+    profilerPowerLockAcquire(0, "cpu_freq_max", "sub-ms-release");
+    profilerBeginUiCycle();
+    profilerEndUiCycle();
+    advanceClockMicros(500);
+    profilerPowerLockRelease(0, "cpu_freq_max", "sub-ms-release");
+    advanceClockMicros(1500);
+    profilerWriteReport(release_report.c_str(), "sub-ms-lock-release");
+    const std::string release_json = readFile(release_report);
+    if (requestedExit.load() != -1 || !reportExists(release_report)
+        || !containsJsonNumber(release_json, "work_80_us", 400)
+        || !containsJsonNumber(release_json, "work_160_us", 500)
+        || !containsJsonNumber(release_json, "eligible_light_sleep_us", 1500)
+        || !containsJsonNumber(release_json, "light_sleep_work_us", 400)
+        || !containsJsonNumber(release_json, "adjusted_light_sleep_us", 1100)
+        || !containsJsonNumber(release_json, "pending_work_us", 0)
+        || !contains(release_json, "\"duration_ms\": 2")
+        || !contains(release_json, "\"mcu\": 22.397000")) {
+      return failure(__LINE__);
+    }
+  }
+
+  // A queued 900 us UI pass must follow the lock transitions that occur after
+  // it is queued. The first 500 us is unlocked, the next 1,000 us is locked,
+  // and the last 500 us is unlocked. No work may be retrocharged to the first
+  // slice, and the exact CPU denominator remains the full 2,000 us window.
+  const auto split_model_path = reportDirectory.path() / "split-model.yaml";
+  writeFile(split_model_path, accountingModel(900, 0, 0));
+  {
+    ScopedEnvironment split_selected("FURBLE_POWER_MODEL", split_model_path);
+    const auto split_report = reportDirectory.path() / "split-report.json";
+    resetExit();
+    setClockMicros(0);
+    profilerBegin("sub-ms-lock-split", true);
+    profilerPowerConfig(160, 40, true);
+    advanceClockMicros(500);
+    profilerPowerLockAcquire(0, "cpu_freq_max", "sub-ms-split");
+    profilerBeginUiCycle();
+    profilerEndUiCycle();
+    advanceClockMicros(1000);
+    profilerPowerLockRelease(0, "cpu_freq_max", "sub-ms-split");
+    advanceClockMicros(500);
+    profilerWriteReport(split_report.c_str(), "sub-ms-lock-split");
+    const std::string split_json = readFile(split_report);
+    if (requestedExit.load() != -1 || !reportExists(split_report)
+        || !containsJsonNumber(split_json, "work_80_us", 0)
+        || !containsJsonNumber(split_json, "work_160_us", 900)
+        || !containsJsonNumber(split_json, "eligible_light_sleep_us", 1000)
+        || !containsJsonNumber(split_json, "light_sleep_work_us", 0)
+        || !containsJsonNumber(split_json, "adjusted_light_sleep_us", 1000)
+        || !containsJsonNumber(split_json, "pending_work_us", 0)
+        || !contains(split_json, "\"duration_ms\": 2")
+        || !contains(split_json, "\"mcu\": 28.570000")) {
+      return failure(__LINE__);
+    }
+  }
+
   // Zero is a valid measured cost. It must not be confused with a missing or
   // malformed value in the same full-model fixture.
   const auto zero_model_path = reportDirectory.path() / "zero-model.yaml";
