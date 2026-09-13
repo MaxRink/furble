@@ -1004,9 +1004,9 @@ Control::state_t Control::getState(void) const {
 Control::debug_state_t Control::getDebugState(void) const {
   debug_state_t snapshot = {};
 
-  // m_State and the volatile abort/progress flags are read without m_StateMutex.
+  // m_State and the atomic abort/progress flags are read without m_StateMutex.
   // Taking m_StateMutex here would risk a lock ordering hazard against setState();
-  // the remaining volatile flags are separate synchronization work.
+  // the snapshot is not a claim of whole-structure coherence.
   snapshot.state = m_State.load(std::memory_order_acquire);
   snapshot.connectInProgress = m_ConnectInProgress.load(std::memory_order_acquire);
   snapshot.connectAbort = m_ConnectAbort.load(std::memory_order_acquire);

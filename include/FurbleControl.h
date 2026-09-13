@@ -436,7 +436,8 @@ class Control {
   // no attempt can be in flight, and cleared by disconnect() so a request whose
   // CMD_CONNECT was dropped cannot go stale across a teardown. The automatic
   // reconnect never sets it, so a cancel landing mid-reconnect survives.
-  // Guarded by m_Mutex at every access, unlike the volatile session flags above.
+  // Guarded by m_Mutex at every access, unlike the separately synchronized
+  // session flags above.
   bool m_ClearConnectCancel = false;
   std::atomic<state_t> m_State {STATE_IDLE};
 
