@@ -11,4 +11,5 @@ action nav sensors
 wait 100
 assert ui.page sensors
 assert ui.overflow no
+assert ui.cut_labels 0
 exit

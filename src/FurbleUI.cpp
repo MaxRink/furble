@@ -7503,6 +7503,9 @@ void UI::addSensorsMenu(const menu_t &parent) {
   // it, and the row this buys keeps the page's content readable now that the
   // Motion Engine entry has joined it; the 80x160 physical layout may scroll.
   lv_obj_t *restart = lv_button_create(menu.page);
+  // Give the parent a real width before the percentage-sized label is laid out.
+  // Without this, the button and label shrink-wrap each other to zero width.
+  lv_obj_set_width(restart, LV_PCT(100));
   lv_obj_t *label = lv_label_create(restart);
   lv_label_set_text(label, "Restart to apply");
   lv_obj_set_width(label, LV_PCT(100));

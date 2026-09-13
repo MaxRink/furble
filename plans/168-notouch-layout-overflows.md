@@ -888,3 +888,13 @@ its bughunt run was still in progress at capture time. The later Display fix
 overlap failures. The 80x160 and S3 Sensors touch-default and touch-small
 fixtures still fail on measured geometry and remain open, not waived. Any
 content-height follow-up is separate and is not included in this snapshot.
+
+### Sensors zero-width follow-up
+
+The 3b85 touch geometry trace measured the Sensors Restart row with zero content
+width on all three modeled panels. The row's percentage-sized label fed back
+into the button's shrink-wrap measurement, producing the zero-width
+parent/child cycle and false geometry. The fix sets the Restart button to the
+page width before creating the label. Both strict touch `ui.overflow no`
+assertions remain in place, with `ui.cut_labels 0` added as the direct guard.
+Runtime validation is pending; this is not a 100-percent parity claim.

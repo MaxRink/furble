@@ -127,6 +127,10 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   The Display settings page uses content-sized rows on all panel/layout
   variants; keep the three-panel touch matrix as the gate for any geometry
   claim.
+  The Sensors Restart button likewise needs an explicit parent width before its
+  percentage-sized label; otherwise LVGL can converge on a zero-width
+  parent/child cycle. Keep the strict touch fit checks until runtime validation
+  confirms the measured fix.
   Plus/S3 spin rows keep their vertical padding but spend no horizontal pixels:
   at Large text `999 mins` needs the full 103 px narrowed row width. Four pixels
   of horizontal padding make that complete value wrap and push the Bulb page
