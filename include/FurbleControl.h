@@ -417,10 +417,10 @@ class Control {
   // connect never wedges behind it. Guarded by m_Mutex.
   TickType_t m_ZombieDeadline = 0;
 
-  bool m_InfiniteReconnect = false;
-  bool m_ReconnectBackoff = false;
-  uint32_t m_ReconnectAttempt = 0;
-  bool m_ReconnectHintLogged = false;
+  std::atomic<bool> m_InfiniteReconnect {false};
+  std::atomic<bool> m_ReconnectBackoff {false};
+  std::atomic<uint32_t> m_ReconnectAttempt {0};
+  std::atomic<bool> m_ReconnectHintLogged {false};
   // Consecutive failed connect cycles, used only by the non-infinite retry
   // budget in connectAll(). A member rather than a function-local static so a
   // reboot clears it with the rest of the session state.
@@ -428,21 +428,22 @@ class Control {
   // User-facing explanation for a STATE_CONNECT_FAILED that retrying cannot
   // fix. Empty for every ordinary failure. Guarded by m_Mutex.
   std::string m_ConnectFailReason;
-  volatile bool m_ConnectAbort = false;
-  volatile bool m_ConnectInProgress = false;
+  std::atomic<bool> m_ConnectAbort {false};
+  std::atomic<bool> m_ConnectInProgress {false};
   // A user connect cycle has asked for the cancel tokens to be re-armed. Set by
   // connectAll(bool) off the control task, consumed and cleared by connectAll()
   // on the control task at the top of the cycle, which is the only point where
   // no attempt can be in flight, and cleared by disconnect() so a request whose
   // CMD_CONNECT was dropped cannot go stale across a teardown. The automatic
   // reconnect never sets it, so a cancel landing mid-reconnect survives.
-  // Guarded by m_Mutex at every access, unlike the volatile session flags above.
+  // Guarded by m_Mutex at every access, unlike the separately synchronized
+  // session flags above.
   bool m_ClearConnectCancel = false;
   std::atomic<state_t> m_State {STATE_IDLE};
 
   // setState() runs from the control task and from the UI task
   std::mutex m_StateMutex;
-  bool m_SleepLockHeld = false;
+  std::atomic<bool> m_SleepLockHeld {false};
 
   // Camera connects are serialised, the following tracks the last attempt.
   // Holds a strong reference so an in-flight connect keeps its Camera alive even

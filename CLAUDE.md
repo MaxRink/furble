@@ -106,6 +106,8 @@ CLAUDE.md whose directory it touches.
 - The built simulator preference ownership gate is
   `sim/scripts/check-preferences-lifecycle.sh`; the existing `sim-e2e` job runs
   it against the fresh M5StickS3 binary with a bounded step.
+- The host TSAN wrapper fails on any warning or non-zero child status; see
+  `CONTRIBUTING.md` for its exact completion marker and compiler-free contract.
 
 ## Documentation (keep docs in sync, every PR)
 

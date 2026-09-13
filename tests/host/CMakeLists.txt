@@ -1151,6 +1151,7 @@ add_executable(control_connect_camera_race_test
                ${CONTROL_E2E_DIR}/freertos_shim.cpp
                ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
                ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/lib/furble/BtDebugJournal.cpp
                ${FURBLE_ROOT}/lib/furble/Camera.cpp
                ${FURBLE_ROOT}/lib/furble/Device.cpp
                ${FURBLE_ROOT}/lib/furble/FauxNY.cpp)
@@ -1169,6 +1170,7 @@ target_compile_options(control_connect_camera_race_test PRIVATE
                        -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
 target_link_options(control_connect_camera_race_test PRIVATE -fsanitize=thread)
 target_link_libraries(control_connect_camera_race_test PRIVATE Threads::Threads)
+target_compile_definitions(control_connect_camera_race_test PRIVATE FURBLE_CONSOLE)
 endif()
 
 # Deterministic interleaving proof for the STATE_DISCONNECTING republish
@@ -1801,6 +1803,11 @@ if(BUILD_TESTING)
              COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/run_tsan_race.sh
                      $<TARGET_FILE:control_connect_camera_race_test>)
     set_tests_properties(control-connect-camera-race PROPERTIES TIMEOUT 180)
+    # The shell contract emits no profraw, so keep it out of coverage's CTest
+    # profile inventory while retaining the normal host and standalone checks.
+    add_test(NAME control-tsan-wrapper-contract
+             COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/run_tsan_race_contract.sh)
+    set_tests_properties(control-tsan-wrapper-contract PROPERTIES TIMEOUT 10)
   endif()
 
   # Interleaving proof for the DISCONNECTING republish guard (plan 157). The
