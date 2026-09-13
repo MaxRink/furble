@@ -47,8 +47,9 @@ Run the self-test with the same `FURBLE_DEP_ROOT` and `FURBLE_LVGL_DIR` values a
 the simulator build. Follow it with the normal clean/incremental simulator
 build and the applicable E2E scenarios. No hardware gate applies.
 
-The focused runtime self-test subsequently passed after the source-root stamp
-change. Root evidence is recorded in `~/b/ui-composite-cache-regression-0913.log`;
-it covers the shared-build-directory stale-object case and the existing
-depfile/header invalidation checks. This is build-cache behavior evidence only,
-not firmware or hardware validation.
+The focused runtime self-test passed on composite `af2a36d1`, using
+byte-identical build and test scripts. This standalone branch was not
+runtime-tested. Root evidence is recorded in
+`~/b/ui-composite-cache-regression-0913.log`; it covers the shared-build-directory
+stale-object case and existing depfile/header invalidation checks. This is
+build-cache behavior evidence only, not firmware or hardware validation.
