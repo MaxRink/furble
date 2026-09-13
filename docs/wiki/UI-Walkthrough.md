@@ -179,7 +179,8 @@ only on boards with the matching hardware.
 - **Calibrate**: touch calibration. Touch boards only.
 - **Show Title**: show or hide the window title in the header.
 - **Legend**: on physical-button Stick boards, keep the shipped Buttons
-  placement or move all three legends into the Bottom navigation band. The
+  placement, move all three legends into the Bottom navigation band, or use
+  Off to hide the hints without disabling the physical buttons. The
   choice is applied after Restart. Touch boards omit this setting because
   they have no physical-button legends; the M5Stack Core keeps its physical
   button legends in the navigation band.

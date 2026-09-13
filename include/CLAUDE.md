@@ -151,3 +151,6 @@ missing source or schema.
   actions fail closed. Keep this overload and result enum simulator-only so
   firmware builds retain the production header surface.
 - FurbleWiFi.h exposes station provisioning and NTP status for the app layer.
+- The simulator-only UI geometry surface keeps content overlap, label clipping,
+  and focused-control expanded bounds as separate diagnostics. Focus clearance
+  excludes the focused object's own descendants and ancestors.

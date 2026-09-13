@@ -155,6 +155,10 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   ended at x=51 and the legend began at x=56, proving the prior overlap was a
   clipped-child false positive. Keep the existing physical 80x160 clearance
   scenario as the runtime regression; do not add a second geometry framework.
+  The Display settings page reserves an 8 px row gap for the themed 3 px
+  focus outline plus 2 px outline padding; raw widget bounds do not include
+  that decoration. The simulator's separate `ui.focus_overlaps` query measures
+  conservative expanded bounds against unrelated content, not knob/shadow pixels.
   The Display settings page uses content-sized rows on all panel/layout
   variants; keep the three-panel touch matrix as the gate for any geometry
   claim.

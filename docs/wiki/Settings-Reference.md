@@ -72,6 +72,9 @@ no stored value.
 
 Submenu: `Settings` > `Display`.
 
+Rows leave room for focused control outlines. The page scrolls to reach controls
+that do not fit; focus outlines must not cover adjacent setting names.
+
 | Setting | Default | Values | Applies | Notes |
 | :--- | :--- | :--- | :--- | :--- |
 | Brightness | 128 | slider, roughly 0 to 240 | Now (live preview) | Saved when you release the slider. |

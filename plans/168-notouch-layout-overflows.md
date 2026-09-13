@@ -1097,3 +1097,28 @@ restoration. Logs: `~/b/setting-label-negative-normal-0913.log` and
 `~/b/setting-label-restored-normal-0913.log`. The integrated Off/hint/layout
 composite still needs its own full validation; these results belong to the
 focused label-fix source, not a later merge merely sharing the fix.
+
+### Focus-outline regression proof
+
+The content-only overlap query missed the reported selection outline. In a
+StickS3 Normal trace, Brightness occupied y=55..72 and the slider body y=73..85.
+The themed 3 px outline and 2 px padding extended into the adjacent labels.
+`ui.label_overlaps` remained zero. The separate `ui.focus_overlaps` check uses
+conservative expanded bounds, excluding the focused control's own descendants
+and ancestors. It does not claim exact knob, rounded-corner or shadow pixels.
+
+All 21 existing Display content-overlap checkpoints now also check focus
+clearance, including each physical-button sample and the scroll endpoints.
+Root ran the retained Normal scenario with only the old zero row gap restored:
+`ui.focus_overlaps expected '0' got '2'`, exit 1, while `ui.label_overlaps` was
+zero. The corrected 8 px gap at `b25c1f69f` passes Small, Normal, Large and the
+complete StickS3 button walk. Logs are `~/b/ui-outline-negative-normal-0913.log`
+and `~/b/ui-outline-positive-s3-*-0913.log`. Source was restored and the positive
+binary rebuilt after the negative control. Other panel builds, final gallery,
+the full successor matrix and physical validation remain separate gates.
+
+Earlier integration checks passed 120 host tests, 193 Python tests, all three
+boards' eight 600-step fuzz seeds and strict seed-2 replay, and 298 physical-layout
+scenarios. Those precede the focused-outline successor and are not a substitute
+for rerunning its UI gates. The Off-mode test setup now uses the existing
+Features switch action instead of an unsupported `preset_picker` seed.
