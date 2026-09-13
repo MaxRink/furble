@@ -834,6 +834,7 @@ class UI {
   lv_obj_t *m_OK;
   lv_obj_t *m_Right;
   lv_obj_t *m_ShutterLockIcon;
+  lv_obj_t *m_ShutterLegendLine = nullptr;
   // Non-blocking reconnect banner overlaid on the Remote shutter page: a red
   // Bluetooth icon plus "Reconnecting" (or "Reconnecting (i/n)") text. The
   // header status row also carries the reconnecting icon, but the full-screen
@@ -1161,7 +1162,9 @@ class UI {
   void addTextSizeMenu(const menu_t &parent);
   void addLegendMenu(const menu_t &parent);
   static bool legendSelectable(void);
+  static bool legendVisible(void);
   static uint8_t legendPlacement(void);
+  void applyLegendVisibility(void);
 
   /** Add the 'Power' menu entry. */
   void addPowerMenu(const menu_t &parent);

@@ -1,0 +1,32 @@
+# Off keeps the physical button targets and Buttons layout reservation while
+# suppressing only the rendered indicator surfaces. The route actions below
+# exercise the same production controls after physical taps; the firmware
+# input path is never replaced by a hidden/deleted LVGL object.
+seed no_touch true
+seed legend 2
+seed fauxny true
+seed saved_camera true
+wait 300
+assert ui.nav_layout buttons
+assert setting.legend 2
+assert ui.legend_visible no
+
+btn a
+wait 100
+btn b
+wait 100
+assert ui.page main
+assert ui.legend_visible no
+
+action nav display
+wait 150
+assert ui.page display
+assert ui.legend_visible no
+action nav bulb_duration
+wait 150
+assert ui.page bulb_duration
+assert ui.legend_visible no
+back
+wait 100
+assert ui.legend_visible no
+exit

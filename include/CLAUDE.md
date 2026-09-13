@@ -132,6 +132,9 @@ not currently touch settings.
   `reserveLegendColumns()` applies it consistently to every row that can scroll
   through the floating legend. `UI::legendSelectable()` is the one board list
   both the setting page and the placement obey.
+  `LEGEND_OFF` retains those anchors and reservations for physical input while
+  suppressing only the rendered indicator surfaces; it must never remove or
+  move an LVGL button hit target.
 - Under `FURBLE_SIM`, `FurbleUI.h` exposes the typed `simScenarioAction` API
   using `Sim::scenario_action_t` from `sim/scenario_action.h`. Calls return
   `APPLIED`, `VALID_NO_EFFECT`, `UNAVAILABLE`, or `INVALID`; malformed direct

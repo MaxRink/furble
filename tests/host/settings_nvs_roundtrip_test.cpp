@@ -221,7 +221,7 @@ std::vector<SettingCase> settingCases() {
       {Settings::TEXT_SIZE, "TEXT_SIZE", uint8_t {TextSizePolicy::DEFAULT},
        uint8_t {TextSizePolicy::LARGE}, StorageKind::U8},
       {Settings::LEGEND, "LEGEND", uint8_t {Settings::LEGEND_BUTTONS},
-       uint8_t {Settings::LEGEND_BOTTOM}, StorageKind::U8},
+       uint8_t {Settings::LEGEND_OFF}, StorageKind::U8},
       {Settings::TX_POWER, "TX_POWER", uint8_t {0}, uint8_t {2}, StorageKind::U8},
       {Settings::TX_ADAPTIVE, "TX_ADAPTIVE", false, true, StorageKind::BOOL},
       {Settings::GPS, "GPS", false, true, StorageKind::BOOL},

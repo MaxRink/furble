@@ -575,6 +575,7 @@ The complete `ui.*` query set is:
 | `ui.row_scrolling` | `yes`, `no`, or `none`. Whether the focused menu row's label is running LVGL's scroll animation. |
 | `ui.overflow` | `unknown`, `yes`, or `no`. |
 | `ui.nav_layout` | `touch` or `buttons`. |
+| `ui.legend_visible` | `yes` or `no`; Off hides indicator surfaces without disabling physical input targets. |
 | `ui.indicator_clearance` | `clear`, `overlap`, or `n/a`. |
 | `ui.indicator_overlaps` | Numeric count of widgets under an indicator. |
 | `ui.label_overlaps` | Numeric count of visible content-widget pairs on the current page that overlap: labels by their drawn text, plus rollers, sliders, switches, checkboxes and bars. |
@@ -700,10 +701,10 @@ The other namespaces are:
   and `camera.focus_releases`: numeric counts of the camera commands that
   reached a per-target camera task.
 - `setting.text_size`: the persisted numeric text-size setting.
-- `setting.legend`: the persisted physical-button legend placement, `0` for
-  Buttons and `1` for Bottom. `seed legend 0|1` selects it before the UI is
-  built, which is when the legends are anchored and the room they need is
-  reserved.
+- `setting.legend`: the persisted physical-button legend mode, `0` for Buttons,
+  `1` for Bottom, and `2` for Off. `seed legend 0|1|2` selects it before the UI
+  is built. Off keeps the Buttons anchors and reservation while hiding only
+  indicator surfaces; physical button input remains active.
 - `setting.hw_motion`: the persisted motion engine choice, 0 auto, 1 software,
   2 hardware.
 `ui.nav_layout` reports which navigation layout the running build rendered:

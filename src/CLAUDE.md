@@ -136,7 +136,9 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   the Right one is drawn over the page and `reserveLegendColumns()` gives every
   potentially scrolling row a stable right boundary when the page loads. In
   Bottom placement all three are in the navigation band and the reserve is
-  zero. Do not relayout rows from a scroll callback.
+  zero. `LEGEND_OFF` uses the Buttons geometry and reservation but makes the
+  indicator surfaces transparent; the LVGL button objects and physical input
+  points remain live. Do not relayout rows from a scroll callback.
   The width sample must follow the final 24x24 indicator sizing and a settled
   layout; the 2026-09-13 host-GDB trace found the pre-fix `m_LegendWidth` was
   26 px while the final Right box was 24 px (`x1=111,y1=173,x2=134,y2=196`).

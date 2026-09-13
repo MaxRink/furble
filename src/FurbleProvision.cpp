@@ -206,6 +206,12 @@ bool validateSetting(const ProvisionTLV::SettingValue &field,
         report.message = "text size setting is out of range";
         return false;
       }
+      if ((setting.type == Settings::LEGEND) && (field.value[0] > Settings::LEGEND_OFF)) {
+        report.error = ApplyError::BAD_SETTING;
+        report.failedSettingId = field.wireId;
+        report.message = "legend setting must be 0, 1 or 2";
+        return false;
+      }
       if ((setting.type == Settings::HW_MOTION)
           && (field.value[0] > Settings::HW_MOTION_HARDWARE)) {
         report.error = ApplyError::BAD_SETTING;

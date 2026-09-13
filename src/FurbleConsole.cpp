@@ -496,8 +496,8 @@ int setValue(const Settings::setting_t &setting, const char *text) {
       if ((setting.type == Settings::TEXT_SIZE) && (value > Settings::TEXT_SIZE_LARGE)) {
         return fail("expected 0 (small), 1 (normal) or 2 (large)");
       }
-      if ((setting.type == Settings::LEGEND) && (value > Settings::LEGEND_BOTTOM)) {
-        return fail("expected 0 (buttons) or 1 (bottom)");
+      if ((setting.type == Settings::LEGEND) && (value > Settings::LEGEND_OFF)) {
+        return fail("expected 0 (buttons), 1 (bottom) or 2 (off)");
       }
       if ((setting.type == Settings::GPS_ASSIST) && (value > 2)) {
         return fail("expected 0, 1 or 2");

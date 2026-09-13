@@ -37,6 +37,7 @@ seed gps true
 seed imu true
 wait 300
 assert ui.nav_layout buttons
+assert ui.legend_visible yes
 
 # Home menu, six rows.
 assert ui.page main

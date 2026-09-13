@@ -649,6 +649,18 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/bughunt/legend-off-controls.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-c",
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/bughunt/legend-setting-80.txt",
       "suite": "bughunt",
       "owner": "sim-bughunt",

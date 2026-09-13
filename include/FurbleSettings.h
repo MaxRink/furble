@@ -179,10 +179,13 @@ class Settings {
    *
    * BOTTOM puts all three in the navigation band the layout already reserves,
    * so they read as one legend row and no page gives up any width.
+   * OFF keeps the same anchors and reservation for physical input, but hides
+   * the rendered legends.
    */
   typedef enum {
     LEGEND_BUTTONS = 0,
     LEGEND_BOTTOM = 1,
+    LEGEND_OFF = 2,
   } legend_t;
 
   /** Main button behavior modes. */

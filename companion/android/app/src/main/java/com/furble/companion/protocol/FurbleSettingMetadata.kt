@@ -94,6 +94,7 @@ object FurbleSettingMetadata {
     private val legendOptions = listOf(
         option(0, "Beside buttons"),
         option(1, "Bottom row"),
+        option(2, "Off"),
     )
 
     private val metadata = listOf(

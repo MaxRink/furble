@@ -438,7 +438,7 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
       return true;
 
     case Settings::LEGEND:
-      if (!parseUnsigned(text, Settings::LEGEND_BOTTOM, value)) {
+      if (!parseUnsigned(text, Settings::LEGEND_OFF, value)) {
         return false;
       }
       Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));

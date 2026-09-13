@@ -4791,6 +4791,10 @@ std::string UI::simQueryState(const char *key) {
     }
   }
 
+  if (query == "legend_visible") {
+    return legendVisible() ? "yes" : "no";
+  }
+
   if (query == "nav_layout") {
     return M5.Touch.isEnabled() ? "touch" : "buttons";
   }
@@ -5544,6 +5548,7 @@ void UI::configShutterControl(void) {
     lv_indev_set_button_points(m_ButtonO, okPoint);
     lv_indev_set_button_points(m_ButtonR, rightPoint);
   }
+  applyLegendVisibility();
 }
 
 void UI::configMenuControl(void) {
@@ -5557,6 +5562,7 @@ void UI::configMenuControl(void) {
     lv_indev_set_type(m_ButtonO, LV_INDEV_TYPE_ENCODER);
     lv_indev_set_type(m_ButtonR, LV_INDEV_TYPE_ENCODER);
   }
+  applyLegendVisibility();
 }
 
 void UI::configSliderControl(void) {
@@ -5565,6 +5571,7 @@ void UI::configSliderControl(void) {
     lv_obj_set_style_bg_image_src(m_OK, &icon_check_24, 0);
     lv_obj_set_style_bg_image_src(m_Right, &icon_arrow_forward_24, 0);
   }
+  applyLegendVisibility();
 }
 
 void UI::configPresetControl(void) {
@@ -5574,6 +5581,7 @@ void UI::configPresetControl(void) {
     lv_obj_set_style_bg_image_src(m_OK, &icon_check_24, 0);
     lv_obj_set_style_bg_image_src(m_Right, LV_SYMBOL_PLUS, 0);
   }
+  applyLegendVisibility();
 }
 
 void UI::presetStep(int direction) {
@@ -6996,9 +7004,11 @@ UI::menu_t &UI::addConnectedMenu(void) {
     lv_style_set_line_opa(&style, LV_OPA_50);
 
     lv_obj_t *line = lv_line_create(menuShutter.page);
+    m_ShutterLegendLine = line;
     lv_obj_add_flag(line, LV_OBJ_FLAG_FLOATING);
     lv_line_set_points(line, points, n);
     lv_obj_add_style(line, &style, 0);
+    applyLegendVisibility();
 
     lv_obj_move_foreground(m_ShutterLockIcon);
   }
@@ -8889,13 +8899,38 @@ bool UI::legendSelectable(void) {
   }
 }
 
+bool UI::legendVisible(void) {
+  return !legendSelectable() || Settings::load<uint8_t>(Settings::LEGEND) != Settings::LEGEND_OFF;
+}
+
 uint8_t UI::legendPlacement(void) {
   if (!legendSelectable()) {
     return Settings::LEGEND_BOTTOM;
   }
 
   const uint8_t stored = Settings::load<Settings::LEGEND>();
-  return (stored > Settings::LEGEND_BOTTOM) ? Settings::LEGEND_BUTTONS : stored;
+  return (stored == Settings::LEGEND_OFF || stored > Settings::LEGEND_BOTTOM) ? Settings::LEGEND_BUTTONS
+                                                                                 : stored;
+}
+
+void UI::applyLegendVisibility(void) {
+  const lv_opa_t opacity = legendVisible() ? LV_OPA_COVER : LV_OPA_TRANSP;
+  for (lv_obj_t *indicator : {m_Left, m_OK, m_Right, m_ShutterLockIcon}) {
+    if (indicator == nullptr) {
+      continue;
+    }
+    // Keep the objects, sizes and input coordinates intact: these buttons are
+    // also the physical LV_INDEV_TYPE_BUTTON hit targets. Only their rendered
+    // surfaces, focus outline and shadow are suppressed in Off mode.
+    lv_obj_set_style_bg_opa(indicator, opacity, LV_PART_MAIN);
+    lv_obj_set_style_bg_image_opa(indicator, opacity, LV_PART_MAIN);
+    lv_obj_set_style_border_opa(indicator, opacity, LV_PART_MAIN);
+    lv_obj_set_style_outline_opa(indicator, opacity, LV_PART_MAIN);
+    lv_obj_set_style_shadow_opa(indicator, opacity, LV_PART_MAIN);
+  }
+  if (m_ShutterLegendLine != nullptr) {
+    lv_obj_set_style_line_opa(m_ShutterLegendLine, opacity, LV_PART_MAIN);
+  }
 }
 
 // Where the Right legend is drawn. BUTTONS, the default, is what these boards
@@ -8915,9 +8950,11 @@ void UI::addLegendMenu(const menu_t &parent) {
 #if !defined(FURBLE_M5COREX)
   lv_obj_set_width(roller, LV_PCT(90));
 #endif
-  lv_roller_set_options(roller, "Buttons\nBottom", LV_ROLLER_MODE_INFINITE);
+  lv_roller_set_options(roller, "Buttons\nBottom\nOff", LV_ROLLER_MODE_INFINITE);
   lv_roller_set_visible_row_count(roller, 2);
-  lv_roller_set_selected(roller, legendPlacement(), LV_ANIM_OFF);
+  const uint8_t stored = Settings::load<uint8_t>(Settings::LEGEND);
+  lv_roller_set_selected(roller, stored <= Settings::LEGEND_OFF ? stored : Settings::LEGEND_BUTTONS,
+                         LV_ANIM_OFF);
 
   lv_obj_t *restart = lv_button_create(cont);
   lv_obj_t *restartLabel = lv_label_create(restart);
