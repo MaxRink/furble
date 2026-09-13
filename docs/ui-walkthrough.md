@@ -218,6 +218,12 @@ reveals the rest:
   remote still active on button boards).
 - **Calibrate**: touch calibration. Touch boards only.
 - **Show Title**: show or hide the window title in the header.
+- **Legend**: on physical-button Stick boards, keep the shipped Buttons
+  placement or move all three legends into the Bottom navigation band. The
+  choice is applied after Restart. Touch boards and the Core do not show this
+  setting because their legends already belong to the navigation band.
+
+![Legend setting](img/settings-legend.png)
 
 ### Features
 

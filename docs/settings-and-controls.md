@@ -73,6 +73,7 @@ Submenu: `Settings` > `Display`.
 | Screen off | Dim | Dim, Off, Off remote on (button boards). Dim, Off (touch boards) | Restart | Touch boards do not offer the remote-on option. |
 | Calibrate | n/a | action | n/a | Touch boards only. Launches touch calibration and stores the result. |
 | Show Title | On | On, Off | Restart | Hiding the title frees header space on narrow stick displays. |
+| Legend | Buttons | Buttons, Bottom | Restart | Physical-button Stick boards only. Buttons keeps the shipped Right legend beside its button; Bottom places all three legends in the navigation band. |
 
 ### Features
 

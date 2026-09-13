@@ -498,8 +498,8 @@ Moving the Right legend into the navigation band was not wanted. It is now the
 
 A wire id needs a second registration that is easy to miss. `SETTING_SCHEMAS`
 in `lib/furble/protocol/ProvisionTLV.cpp` is what batch provisioning checks an
-incoming setting against, and master's table stops at 44, so an id without a row
-there is answered `UNSUPPORTED_SETTING` and a batch carrying it is rejected
+incoming setting against, so an id without a row there is answered
+`UNSUPPORTED_SETTING` and a batch carrying it is rejected
 whole. LEGEND has a row: 65, `U8`, one byte. The schema fixes the length only;
 the two valid values are held by `UI::legendPlacement()`, which clamps anything
 else to the default, so an out of range byte is a stale value rather than a

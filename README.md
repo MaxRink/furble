@@ -362,6 +362,12 @@ see the [UI walkthrough](docs/ui-walkthrough.md). For the exhaustive reference
 of every setting and every button input mode, see
 [settings and controls](docs/settings-and-controls.md).
 
+On physical-button Stick boards, `Settings->Display->Legend` keeps the shipped
+Buttons placement by default or moves all three button legends into the Bottom
+navigation band. The choice takes effect after Restart; touch boards and the
+M5Stack Core keep their legends in the navigation band and do not show this
+setting.
+
 The top level menu has the following entries:
 - `Connect`
 - `Scan`

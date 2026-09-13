@@ -57,6 +57,13 @@ wait 350
 capture settings-display
 print ui.page
 
+action nav legend
+wait 350
+capture settings-legend
+print ui.page
+back
+wait 150
+
 action nav features
 wait 350
 capture settings-features
