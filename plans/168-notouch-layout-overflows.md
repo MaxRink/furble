@@ -710,6 +710,25 @@ width truncation, because its text is revealed over time. It no longer exempts
 that label from immediate-parent clipping: a scrolling animation outside its
 row is still unreadable and is counted.
 
+### Legend measurement-order provenance
+
+On 2026-09-13, a host-GDB trace of the pre-fix constructor path recorded
+`m_LegendWidth=26` while the final physical Right indicator occupied
+`{x1=111,y1=173,x2=134,y2=196}`, a 24 px box. The evidence is preserved in the
+root validation log `~/b/legend-measure-coords.log`. This establishes a two-pixel
+conservative reserve in the old sampling order; it does not establish that all
+Large-font labels fit on one line.
+
+The isolated proposal at
+`8aa65dfd90a108bb92e59977173d718024fc2128` moves the width sample after the
+existing 24x24 sizing and a settled layout, without changing fonts, icons or
+legend placement. No new simulator query is needed. Integration still requires
+the existing legend-clearance scenarios on the 80x160, 135x240 and 320x240
+modeled panels and both placements: `bughunt/legend-bottom-80.txt`,
+`bughunt/legend-bottom-135.txt`, the corresponding `legend-setting` cases, and
+the board-scoped `ui.indicator_clearance`, overlap and label guards. No pass is
+claimed by the GDB trace alone.
+
 The final master integration exposed the inverse measurement trap in the
 production fit pass. `scrollLabelsThatDoNotFit()` compared a wrapped label's
 already-constrained `self_width` with its content width, so the comparison read

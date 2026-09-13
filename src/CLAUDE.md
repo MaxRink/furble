@@ -126,6 +126,12 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   potentially scrolling row a stable right boundary when the page loads. In
   Bottom placement all three are in the navigation band and the reserve is
   zero. Do not relayout rows from a scroll callback.
+  The width sample must follow the final 24x24 indicator sizing and a settled
+  layout; the 2026-09-13 host-GDB trace found the pre-fix `m_LegendWidth` was
+  26 px while the final Right box was 24 px (`x1=111,y1=173,x2=134,y2=196`).
+  Commit `8aa65dfd90a108bb92e59977173d718024fc2128` records that narrow
+  measurement-order correction. It is a two-pixel reserve correction, not a
+  claim that every Large-font label becomes single-line.
   `ui.indicator_clearance` is still the check, and it has to hold in both
   placements.
   The Display settings page uses content-sized rows on all panel/layout
