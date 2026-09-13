@@ -1,0 +1,45 @@
+# Check collisions during a physical StickS3 navigation/select walk.
+# A selects and B advances. These assertions do not identify a changed setting.
+seed no_touch true
+seed text_size 1
+wait 300
+assert ui.nav_layout buttons
+action nav display
+wait 200
+assert ui.page display
+assert ui.focus_on_page yes
+assert ui.label_overlaps 0
+button a
+assert ui.page display
+assert ui.label_overlaps 0
+button b
+assert ui.page display
+assert ui.label_overlaps 0
+button a
+assert ui.page display
+assert ui.label_overlaps 0
+button b
+assert ui.page display
+assert ui.label_overlaps 0
+button a
+assert ui.page display
+assert ui.label_overlaps 0
+button b
+assert ui.page display
+assert ui.label_overlaps 0
+button a
+assert ui.page display
+assert ui.label_overlaps 0
+button b
+assert ui.page display
+assert ui.label_overlaps 0
+button a
+assert ui.page display
+assert ui.label_overlaps 0
+button b
+assert ui.page display
+assert ui.label_overlaps 0
+button a
+assert ui.page display
+assert ui.label_overlaps 0
+exit

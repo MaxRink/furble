@@ -654,6 +654,40 @@ scrolling, since it is the session root, and it does at Small and Normal in both
 layouts; at Large it scrolls. On the 80x160 panel the Large column
 equals the Normal one because that board clamps Large to Normal.
 
+### Dedicated Display regression
+
+The three `bughunt/display-layout-{small,normal,large}.txt` scenarios seed
+each text size explicitly and are registered for all three panel classes.
+They assert the physical-button layout, Display page identity, zero visible
+label/control overlaps, and both scroll endpoints. These are hard assertions,
+not expected failures. A page can fit while its controls collide, so scroll
+extent alone is not a readability test. Large remains clamped on StickC.
+
+`display-layout-buttons-s3.txt` additionally checks overlap after each physical
+button sample in a StickS3 navigation/select walk. This is not proof of which
+individual setting changed. No sleep/wake behavior is claimed.
+
+Root's negative control restores only the old Display fixed-height
+`SPACE_EVENLY` layout. The existing physical S3 test fails on Display with
+`ui.label_overlaps expected '0' got '7'`. Root then ran all three dedicated
+size scenarios against the b4 binaries on StickC, StickS3 and Core, plus the
+StickS3 button walk: all 10 cases passed. The four dedicated StickS3 scenarios
+all rejected the negative control with exit 1 on `ui.label_overlaps`: Small
+reported 5, Normal 7, Large 1, and the button walk 7. Logs are
+`~/b/display-final-{80,s3,core}-{small,normal,large}-0913.log`,
+`~/b/display-final-buttons-s3-0913.log`, and
+`~/b/display-negative-final-{small,normal,large,buttons-s3}-0913.log`.
+The production source and canonical S3 binary were restored to b4 after the
+negative build. Static independent review found no blocking issues. This is
+camera-free collision-regression evidence, not a new hardware layout check.
+
+A separate draft also asserted `ui.cut_labels 0` after the button walk and
+scrolling to the bottom. Corrected b4 on S3 Normal reported 1, while overlap
+was 0. This remains an unresolved clipping diagnostic, not an accepted pass
+or a claim that the complete Display page is visually validated. The retained
+draft and log are `~/b/display-layout-draft-0913.txt` and its matching `.log`.
+The collision-only tests do not change existing clipping checks.
+
 ### What that cost the fit assertions
 
 A page that scrolls cannot assert `ui.overflow no`. The assertions that measured

@@ -707,6 +707,14 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   set for one board in that layout and CI runs it on all three binaries. See
   `plans/165-sim-no-touch-layout.md` and
   `plans/168-notouch-layout-overflows.md`.
+- `bughunt/display-layout-{small,normal,large}.txt` explicitly seed text size
+  and physical-button layout on every panel. They require zero visible
+  label/control overlaps at the top, bottom and restored top. The separate
+  `display-layout-buttons-s3.txt` checks overlaps after each physical button
+  sample without claiming individual setting changes. All are hard failures
+  selected by the manifest; scroll extent is not a substitute for overlap.
+  The separate b4 S3 bottom-of-page clipped-label finding remains unresolved
+  in plan 168. These collision tests do not certify absence of clipping.
 - `bughunt/core-icon-grid.txt` guards its Home fit assertion with
   `assert ui.nav_layout touch`: that is the touch/Core2 fit contract, while
   `core-notouch-layout.txt` covers the physical Core Basic Home grid's

@@ -1,0 +1,20 @@
+# Display settings collision regression at Large text size.
+seed no_touch true
+seed text_size 2
+wait 300
+assert ui.nav_layout buttons
+assert ui.page main
+action nav display
+wait 200
+assert ui.page display
+assert ui.label_overlaps 0
+assert ui.scroll_top 0
+action scroll bottom
+wait 100
+assert ui.scroll_bottom 0
+assert ui.label_overlaps 0
+action scroll top
+wait 100
+assert ui.scroll_top 0
+assert ui.label_overlaps 0
+exit
