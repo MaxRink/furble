@@ -160,11 +160,14 @@ bool FuzzMachine::restore(const Checkpoint &checkpoint) {
        ((pendingEvent && settleNext_ == FuzzPhase::CHECK) || escapeSettle)) ||
       (phase_ == FuzzPhase::CHECK && pendingEvent && settleRemaining_ == 0) ||
       (phase_ != FuzzPhase::SETTLE && phase_ != FuzzPhase::CHECK);
+  const bool finishValid = phase_ != FuzzPhase::FINISH ||
+                           (finishing_ && stepCount_ == maxSteps_);
   return stepCount_ <= maxSteps_ && (!pendingEvent || stepCount_ < maxSteps_) &&
          settled_ == stepCount_ && observedDelta_ <= stepCount_ &&
          noObservedDelta_ <= stepCount_ && observedTotal == stepCount_ &&
          attempted_ == stepCount_ + static_cast<uint32_t>(pendingEvent) &&
-         timerStopChecks_ <= stepCount_ && finishing_ == (stepCount_ >= maxSteps_) && phaseValid;
+         timerStopChecks_ <= stepCount_ && finishing_ == (stepCount_ >= maxSteps_) && phaseValid &&
+         finishValid;
 }
 
 void FuzzMachine::resumeAfterRestart() {

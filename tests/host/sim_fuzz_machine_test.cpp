@@ -137,6 +137,12 @@ void testCheckpointValidation() {
   auto runawaySettle = checkpoint;
   runawaySettle.settleRemaining = 7;
   require(!machine.restore(runawaySettle), "settle budget is bounded");
+
+  auto earlyFinish = checkpoint;
+  earlyFinish.phase = static_cast<uint32_t>(Furble::Sim::FuzzPhase::FINISH);
+  earlyFinish.settleRemaining = 0;
+  earlyFinish.finishing = false;
+  require(!machine.restore(earlyFinish), "finish cannot occur before the budget");
 }
 
 }  // namespace
