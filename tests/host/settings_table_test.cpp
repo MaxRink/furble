@@ -221,6 +221,12 @@ void testReservationParser() {
   check(parseReservations(duplicate, parsed, error), "duplicate-row fixture parses");
   check(!validateReservations(parsed, {1, 2, 3}, error), "duplicate reservation row is rejected");
 
+  std::string duplicateOwner = valid + "| #90 | duplicate owner | 250 |\n";
+  check(parseReservations(duplicateOwner, parsed, error),
+        "distinct-ID duplicate-owner fixture parses");
+  check(!validateReservations(parsed, {1, 2, 3}, error),
+        "duplicate owner is rejected even with a distinct ID");
+
   std::string emptyToken = valid;
   emptyToken.replace(emptyToken.find("75, 76"), 6, "75,,76");
   check(!parseReservations(emptyToken, parsed, error), "empty reservation token is rejected");
