@@ -2,6 +2,7 @@
 from pathlib import Path
 import importlib.util
 import json
+import re
 import sys
 import tempfile
 import unittest
@@ -32,6 +33,28 @@ class SimCIContractTest(unittest.TestCase):
 
   def test_manifest_is_complete(self):
     self.assertEqual(CHECKER.check_manifest(ROOT, ROOT / "sim/scenarios/manifest.json"), [])
+
+  def test_certified_scenarios_cover_every_query_page(self):
+    source = (ROOT / "src/FurbleUI.cpp").read_text(encoding="utf-8")
+    map_match = re.search(
+      r"const std::pair<const char \*, const char \*> pages\[\] = \{(.*?)\n    \};",
+      source,
+      re.S,
+    )
+    self.assertIsNotNone(map_match)
+    query_pages = set(re.findall(r'\{m_[^,]+,\s*"([^"]+)"', map_match.group(1)))
+    self.assertTrue(query_pages)
+
+    document = json.loads((ROOT / "sim/scenarios/manifest.json").read_text(encoding="utf-8"))
+    asserted_pages = set()
+    for entry in document["scenarios"]:
+      if entry.get("certified"):
+        text = (ROOT / entry["path"]).read_text(encoding="utf-8")
+        asserted_pages.update(re.findall(r"^assert ui\.page ([^\s]+)", text, re.M))
+
+    # The root page is returned before the map, and level_main is an action
+    # alias whose canonical query result is already the mapped "level" page.
+    self.assertEqual(query_pages - asserted_pages, set())
 
   def test_new_unlisted_scenario_is_rejected(self):
     with tempfile.TemporaryDirectory() as directory:
