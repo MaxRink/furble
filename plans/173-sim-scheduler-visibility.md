@@ -504,3 +504,23 @@ and must never classify races by member name or suppress unrelated reports.
 The existing TestSync signal/wait barriers establish happens-before ordering
 for operations performed around those waits; they are not a substitute for
 atomic synchronization on flags read outside the barriers.
+
+## Follow-up: reconnect state field races
+
+The bounded follow-up audit found four additional plain fields crossing the
+control-task boundary: `m_InfiniteReconnect`, `m_ReconnectBackoff`,
+`m_ReconnectAttempt`, and `m_ReconnectHintLogged`. UI or headless request paths
+write the requested mode and reset values, `disconnect()` resets the attempt,
+the control task reads and updates retry state, and the debug snapshot reads
+the exposed values. The follow-up changes only those four fields to independent
+acquire/release atomics. The retry increment uses `fetch_add` at the existing
+increment site. The hint remains a separate atomic load/store in the existing
+log order; it is not an exchange. `m_ConnectFailCount` remains a control-task
+owned plain field.
+
+This removes C++ plain read/write races only. The four atomics do not form a
+coherent multi-field request, do not guarantee that a reset wins over a
+concurrent retry, and do not define a new request or hint policy. Existing
+mutexes, queues, cancellation, reset positions, delays, and camera behavior
+remain unchanged. Raw TSAN, firmware, CI, and hardware validation are pending
+for this follow-up.

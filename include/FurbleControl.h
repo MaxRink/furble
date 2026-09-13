@@ -417,10 +417,10 @@ class Control {
   // connect never wedges behind it. Guarded by m_Mutex.
   TickType_t m_ZombieDeadline = 0;
 
-  bool m_InfiniteReconnect = false;
-  bool m_ReconnectBackoff = false;
-  uint32_t m_ReconnectAttempt = 0;
-  bool m_ReconnectHintLogged = false;
+  std::atomic<bool> m_InfiniteReconnect {false};
+  std::atomic<bool> m_ReconnectBackoff {false};
+  std::atomic<uint32_t> m_ReconnectAttempt {0};
+  std::atomic<bool> m_ReconnectHintLogged {false};
   // Consecutive failed connect cycles, used only by the non-infinite retry
   // budget in connectAll(). A member rather than a function-local static so a
   // reboot clears it with the rest of the session state.

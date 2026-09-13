@@ -201,7 +201,8 @@ Control &Control::getInstance(void) {
 }
 
 Control::state_t Control::connectAll(void) {
-  uint32_t timeout = m_InfiniteReconnect ? TIMEOUT_INFINITE_MS : TIMEOUT_DEFAULT_MS;
+  uint32_t timeout = m_InfiniteReconnect.load(std::memory_order_acquire) ? TIMEOUT_INFINITE_MS
+                                                                         : TIMEOUT_DEFAULT_MS;
   std::vector<std::shared_ptr<Camera>> cameras;
   std::vector<std::shared_ptr<Camera>> all;
 
@@ -252,7 +253,8 @@ Control::state_t Control::connectAll(void) {
   ESP_LOGD(LOG_TAG,
            "connectAll: %u target(s), %u to connect, reconnect attempt %lu, timeout %lu ms",
            static_cast<unsigned>(all.size()), static_cast<unsigned>(cameras.size()),
-           static_cast<unsigned long>(m_ReconnectAttempt), static_cast<unsigned long>(timeout));
+           static_cast<unsigned long>(m_ReconnectAttempt.load(std::memory_order_acquire)),
+           static_cast<unsigned long>(timeout));
 
   // Apply the setting outside the mutex. On an already connected camera this
   // enters NimBLE and can block on the HCI transport.
@@ -314,8 +316,8 @@ Control::state_t Control::connectAll(void) {
 
     if (allConnected()) {
       m_ConnectFailCount = 0;
-      m_ReconnectAttempt = 0;
-      m_ReconnectHintLogged = false;
+      m_ReconnectAttempt.store(0, std::memory_order_release);
+      m_ReconnectHintLogged.store(false, std::memory_order_release);
       return STATE_ACTIVE;
     }
   }
@@ -332,20 +334,24 @@ Control::state_t Control::connectAll(void) {
     return STATE_CONNECT_FAILED;
   }
 
-  if (m_InfiniteReconnect || (m_ConnectFailCount < 2)) {
-    if (m_InfiniteReconnect) {
-      const uint32_t delay = ReconnectBackoff::delayMs(m_ReconnectAttempt, m_ReconnectBackoff);
+  if (m_InfiniteReconnect.load(std::memory_order_acquire) || (m_ConnectFailCount < 2)) {
+    if (m_InfiniteReconnect.load(std::memory_order_acquire)) {
+      const uint32_t delay =
+          ReconnectBackoff::delayMs(m_ReconnectAttempt.load(std::memory_order_acquire),
+                                    m_ReconnectBackoff.load(std::memory_order_acquire));
 
-      if (m_ReconnectAttempt == 0 && !m_ReconnectHintLogged) {
+      if ((m_ReconnectAttempt.load(std::memory_order_acquire) == 0)
+          && !m_ReconnectHintLogged.load(std::memory_order_acquire)) {
         ESP_LOGW(LOG_TAG,
                  "Reconnect failed; camera may still hold the previous session. Retrying in "
                  "%lu ms.",
                  delay);
-        m_ReconnectHintLogged = true;
+        m_ReconnectHintLogged.store(true, std::memory_order_release);
       }
 
-      ESP_LOGI(LOG_TAG, "Reconnect retry %lu, waiting %lu ms.", m_ReconnectAttempt + 1, delay);
-      m_ReconnectAttempt++;
+      ESP_LOGI(LOG_TAG, "Reconnect retry %lu, waiting %lu ms.",
+               m_ReconnectAttempt.load(std::memory_order_acquire) + 1, delay);
+      m_ReconnectAttempt.fetch_add(1, std::memory_order_acq_rel);
 
       // Sleep in short slices so disconnect can interrupt the retry wait.
       uint32_t remaining = delay;
@@ -615,10 +621,10 @@ void Control::connectAll(bool infiniteReconnect) {
     m_ConnectFailReason.clear();
   }
 
-  m_InfiniteReconnect = infiniteReconnect;
-  m_ReconnectBackoff = Settings::reconBackoffEffective();
-  m_ReconnectAttempt = 0;
-  m_ReconnectHintLogged = false;
+  m_InfiniteReconnect.store(infiniteReconnect, std::memory_order_release);
+  m_ReconnectBackoff.store(Settings::reconBackoffEffective(), std::memory_order_release);
+  m_ReconnectAttempt.store(0, std::memory_order_release);
+  m_ReconnectHintLogged.store(false, std::memory_order_release);
   m_ConnectAbort.store(false, std::memory_order_release);
 
   this->sendCommand(CMD_CONNECT);
@@ -672,7 +678,7 @@ bool Control::disconnect(uint32_t timeout_ms, bool forRestart) {
   m_ConnectAbort.store(true, std::memory_order_release);
   FURBLE_TEST_SYNC_POINT("disconnect_abort_armed");
   setState(STATE_DISCONNECTING);
-  m_ReconnectAttempt = 0;
+  m_ReconnectAttempt.store(0, std::memory_order_release);
 
   // Force cancel any active connection attempts
   ble_gap_conn_cancel();
@@ -1011,9 +1017,9 @@ Control::debug_state_t Control::getDebugState(void) const {
   snapshot.connectInProgress = m_ConnectInProgress.load(std::memory_order_acquire);
   snapshot.connectAbort = m_ConnectAbort.load(std::memory_order_acquire);
   snapshot.sleepLockHeld = m_SleepLockHeld.load(std::memory_order_acquire);
-  snapshot.infiniteReconnect = m_InfiniteReconnect;
-  snapshot.reconnectBackoff = m_ReconnectBackoff;
-  snapshot.reconnectAttempt = m_ReconnectAttempt;
+  snapshot.infiniteReconnect = m_InfiniteReconnect.load(std::memory_order_acquire);
+  snapshot.reconnectBackoff = m_ReconnectBackoff.load(std::memory_order_acquire);
+  snapshot.reconnectAttempt = m_ReconnectAttempt.load(std::memory_order_acquire);
 
   const std::lock_guard<std::mutex> lock(m_Mutex);
   snapshot.targetCount = m_Targets.size();
@@ -1415,10 +1421,10 @@ void Control::resetForTest(void) {
   }
 
   // Wipe the session flags a reboot clears, then publish the fresh IDLE last.
-  m_InfiniteReconnect = false;
-  m_ReconnectBackoff = false;
-  m_ReconnectAttempt = 0;
-  m_ReconnectHintLogged = false;
+  m_InfiniteReconnect.store(false, std::memory_order_release);
+  m_ReconnectBackoff.store(false, std::memory_order_release);
+  m_ReconnectAttempt.store(0, std::memory_order_release);
+  m_ReconnectHintLogged.store(false, std::memory_order_release);
   m_ConnectFailCount = 0;
   m_ConnectAbort.store(false, std::memory_order_release);
   {

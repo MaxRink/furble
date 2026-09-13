@@ -186,6 +186,9 @@ the target task publishes its terminal state before deleting itself, while
 drain/reap predicates may observe it concurrently. The same explicit
 acquire/release contract applies to `m_ConnectAbort`, `m_ConnectInProgress`,
 and debug-only `m_SleepLockHeld`, whose readers cross task or snapshot
-boundaries. This is a narrow synchronization change, not a claim that the
-Control state surface is race-free; raw TSAN and firmware/hardware evidence
-remain required.
+boundaries. The reconnect mode, backoff, attempt, and hint fields are also
+independent acquire/release atomics for their cross-task reads and writes. They
+do not provide group coherence, reset-wins, or a new request policy;
+`m_ConnectFailCount` remains control-task-owned. These are narrow
+synchronization changes, not a claim that the Control state surface is
+race-free; raw TSAN and firmware/hardware evidence remain required.
