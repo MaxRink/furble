@@ -450,6 +450,12 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   was set. Dismissal is asserted in the same scenarios, on touch and under
   `FURBLE_SIM_NO_TOUCH=1`, because the OK button has to be reachable from the
   physical buttons.
+- `ui.indicators_visible` counts the three physical navigation indicators that
+  are actually visible through LVGL. A connect modal hides them, and every
+  teardown that returns to Main must restore a count of 3 on a `no_touch` run.
+  `e2e/physical-indicators-cancel-restore.txt` covers Cancel during a slow
+  FauxNY connect; `e2e/physical-indicators-failure-restore.txt` covers terminal
+  failure and dismissal on all three physical-button panel profiles.
 - `ui.modal_overflow` is the other half, and it exists because the first version
   of that box passed every assertion above while rendering wider and taller than
   the panel with its instruction clipped at both edges. `ui.overflow` measures
