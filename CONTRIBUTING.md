@@ -112,6 +112,10 @@ All simulator scenarios are catalogued in
 `python3 tools/check_sim_scenarios.py` after changing those scenarios.
 CI obtains each suite's certified paths from that manifest; do not introduce a
 directory glob or hand-maintained suite list as an alternate source of truth.
+The power-gate comparator applies its `--threshold` on both increases and
+decreases. The default 10% value is compatibility policy, not calibrated
+hardware noise. Run `python3 -m unittest tests/test_power_compare.py` for its
+focused regression coverage.
 Manual PlatformIO dispatches run the complete firmware matrix. They do not
 attempt to infer changed paths without a pull request or push comparison base.
 
