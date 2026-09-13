@@ -43,9 +43,9 @@ asserts the recorded snapshot.
 ## Verification
 
 The delegated implementation lane did not run builds, tests, hardware checks,
-or GitHub operations. The root validation lane should run the existing Python
-unittest suite, simulator build, certified end-to-end scenarios, watchdog
-scenarios, and environment-order guard. The focused test command is:
+or GitHub operations. Root ran the existing Python unittest suite, simulator
+build, certified end-to-end scenarios, watchdog scenarios, and environment
+ordering guard. The focused test command remains:
 
 ```text
 python3 -m unittest tests.test_sim_startup_order
@@ -59,7 +59,22 @@ It must not inject BLE advertisements or scan callbacks during idle boot.
 Root validation at commit `08f5dbfaf43c367db672b99ad368b9163fd6e0ae` passed the
 M5StickS3 simulator build and the `boot-splash-disabled` runtime scenario. The
 scenario observed `boot_settings_imu=1`, `boot_settings_fb_output=1`, and
-`ui.page=main`. The remaining serialized checks are still pending.
+`ui.page=main`.
+
+The restored `1b7a47a2904fdc70adcf766859e309da69f7ad55` tip then passed Python
+unittest discovery (179 tests in 2.029 s), the manifest gate, a clean rebuild,
+all five S3 watchdog scenarios, and the S3 touch end-to-end gate (123
+scenarios). Reverting the startup order failed as expected with
+`boot_settings_imu expected 1 got 0`; restoring the source rebuilt and passed
+the positive boot check.
+
+The full environment-order guard also passed with exit 0. The current binary
+passed both guarded runs, while the pre-fix S3 binary
+`/home/a92615428/wt/p65/sim/build/furble-sim` (SHA-256
+`2d82bb0fcd3a7ba57b8d7472a2857335fcc008e9f4735e54bfea501ffd6e64a0`) was
+rejected with status 86 for both `FURBLE_SIM_PREFS` and
+`FURBLE_SIM_RESTART_STEP`. The captured root log is
+`~/b/startup-final-env-order.log`.
 
 ## Implementation state
 
