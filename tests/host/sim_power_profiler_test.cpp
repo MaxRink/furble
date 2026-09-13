@@ -143,6 +143,11 @@ bool contains(const std::string &contents, const std::string &needle) {
   return contents.find(needle) != std::string::npos;
 }
 
+int failure(int line) {
+  std::cerr << "sim power profiler check failed at line " << line << '\n';
+  return EXIT_FAILURE;
+}
+
 bool containsJsonNumber(const std::string &contents, const std::string &field, uint64_t value) {
   const std::string prefix = "\"" + field + "\": " + std::to_string(value);
   return contains(contents, prefix + ",") || contains(contents, prefix + "\n");
@@ -240,7 +245,7 @@ int main() {
     if (requestedExit.load() != -1 || !contains(wrap_json, "\"duration_ms\": 1500")
         || !contains(wrap_json, "\"on\": 2000")
         || !contains(wrap_json, "\"total_hold_ms\": 2000")) {
-      return 1;
+      return failure(__LINE__);
     }
 
     profilerResetWindow();
@@ -249,7 +254,7 @@ int main() {
     profilerWriteReport(wrap_reset_report.c_str(), "clock-wrap-reset");
     if (requestedExit.load() != -1
         || !contains(readFile(wrap_reset_report), "\"duration_ms\": 500")) {
-      return 1;
+      return failure(__LINE__);
     }
     profilerPowerLockRelease(0, "cpu_freq_max", "wrap-test");
 
@@ -264,7 +269,7 @@ int main() {
         || !contains(short_json, "\"light_sleep_in_80\": 1")
         || !contains(short_json, "\"model_valid\": true")
         || !contains(short_json, "\"model_digest\": \"sha256:")) {
-      return 1;
+      return failure(__LINE__);
     }
   }
 
@@ -285,12 +290,12 @@ int main() {
     profilerWriteReport(base_report.c_str(), "base-model");
     if (requestedExit.load() != -1
         || !contains(readFile(base_report), "\"estimated_mA\": 81.255970")) {
-      return 1;
+      return failure(__LINE__);
     }
 
     std::string changed_coefficient_model = modelContents();
     if (!replaceS3ModelValue(changed_coefficient_model, "value_ma: 80.4")) {
-      return 1;
+      return failure(__LINE__);
     }
     writeFile(coefficient_model_path, changed_coefficient_model);
     resetExit();
@@ -303,7 +308,7 @@ int main() {
     profilerWriteReport(changed_report.c_str(), "changed-model");
     if (requestedExit.load() != -1
         || !contains(readFile(changed_report), "\"estimated_mA\": 121.455970")) {
-      return 1;
+      return failure(__LINE__);
     }
   }
 
@@ -348,7 +353,7 @@ int main() {
       || !containsJsonNumber(first_json, "pending_work_us", 0)
       || !containsJsonNumber(first_json, "current_count", 0)
       || !containsJsonNumber(first_json, "total_hold_ms", 0)) {
-    return 1;
+    return failure(__LINE__);
   }
 
   const std::string frozen_fingerprint = jsonStringField(first_json, "accounting_fingerprint");
@@ -356,7 +361,7 @@ int main() {
       || !contains(first_json, "\"calibration_status\": \"uncalibrated\"")
       || !contains(first_json, "\"accounting_mode\": \"synthetic-virtual-work\"")
       || frozen_fingerprint.empty()) {
-    return 1;
+    return failure(__LINE__);
   }
 
   // A balanced window can be reset without carrying old work or lock state
@@ -370,7 +375,7 @@ int main() {
       || !contains(reset_json, "\"poll_work_us\": 0")
       || !contains(reset_json, "\"timer_work_us\": 0")
       || !contains(reset_json, "\"pending_work_us\": 0")) {
-    return 1;
+    return failure(__LINE__);
   }
 
   // A new explicit reporting begin is the reload boundary. The changed poll
@@ -395,7 +400,7 @@ int main() {
       || !contains(reload_json, "\"work_160_us\": 1200")
       || !contains(reload_json, "\"work_240_us\": 0") || reload_fingerprint.empty()
       || reload_fingerprint == frozen_fingerprint) {
-    return 1;
+    return failure(__LINE__);
   }
 
   // Unlocked work debits the eligible sleep interval instead of charging the
@@ -416,7 +421,7 @@ int main() {
       || !contains(unlocked_json, "\"light_sleep_work_us\": 900")
       || !contains(unlocked_json, "\"adjusted_light_sleep_us\": 1100")
       || !contains(unlocked_json, "\"estimated_mA\": 59.277970")) {
-    return 1;
+    return failure(__LINE__);
   }
 
   resetExit();
@@ -438,7 +443,7 @@ int main() {
       || !containsJsonNumber(no_retrocharge_json, "frequency_80", 1)
       || !containsJsonNumber(no_retrocharge_json, "frequency_160", 2)
       || !containsJsonNumber(no_retrocharge_json, "eligible_light_sleep_us", 1000)) {
-    return 1;
+    return failure(__LINE__);
   }
 
   // Zero is a valid measured cost. It must not be confused with a missing or
@@ -454,7 +459,7 @@ int main() {
   }
   if (requestedExit.load() != -1 || !reportExists(zero_report)
       || !contains(readFile(zero_report), "\"accounting_valid\": true")) {
-    return 1;
+    return failure(__LINE__);
   }
 
   // The selected model is authoritative and accounting input errors fail
@@ -462,24 +467,24 @@ int main() {
   // and missing provenance.
   std::string missing_cost = accountingModel(700, 1100, 300);
   if (!replaceFirst(missing_cost, "      value_us: 1100\n", "")) {
-    return 1;
+    return failure(__LINE__);
   }
   const auto missing_cost_path = reportDirectory.path() / "missing-cost.yaml";
   writeFile(missing_cost_path, missing_cost);
   if (!expectRejected(missing_cost_path, reportDirectory.path() / "missing-cost.json",
                       "missing-cost")) {
-    return 1;
+    return failure(__LINE__);
   }
 
   std::string invalid_cost = accountingModel(700, 1100, 300);
   if (!replaceFirst(invalid_cost, "      value_us: 1100\n", "      value_us: -1\n")) {
-    return 1;
+    return failure(__LINE__);
   }
   const auto invalid_cost_path = reportDirectory.path() / "invalid-cost.yaml";
   writeFile(invalid_cost_path, invalid_cost);
   if (!expectRejected(invalid_cost_path, reportDirectory.path() / "invalid-cost.json",
                       "invalid-cost")) {
-    return 1;
+    return failure(__LINE__);
   }
 
   std::string duplicate_timer = accountingModel(700, 1100, 300);
@@ -490,81 +495,81 @@ int main() {
       "      confidence: estimated\n";
   if (!replaceFirst(duplicate_timer, "  timer_active_us_per_fire:\n",
                     "  timer_active_us_per_fire:\n" + duplicate_entry)) {
-    return 1;
+    return failure(__LINE__);
   }
   const auto duplicate_timer_path = reportDirectory.path() / "duplicate-timer.yaml";
   writeFile(duplicate_timer_path, duplicate_timer);
   if (!expectRejected(duplicate_timer_path, reportDirectory.path() / "duplicate-timer.json",
                       "duplicate-timer")) {
-    return 1;
+    return failure(__LINE__);
   }
 
   std::string missing_provenance = accountingModel(700, 1100, 300);
   const size_t poll_section = missing_provenance.find("  ui_poll_active_us_per_cycle:\n");
   if (poll_section == std::string::npos
       || !replaceFirst(missing_provenance, "    source: \"test-model\"\n", "", poll_section)) {
-    return 1;
+    return failure(__LINE__);
   }
   const auto missing_provenance_path = reportDirectory.path() / "missing-provenance.yaml";
   writeFile(missing_provenance_path, missing_provenance);
   if (!expectRejected(missing_provenance_path, reportDirectory.path() / "missing-provenance.json",
                       "missing-provenance")) {
-    return 1;
+    return failure(__LINE__);
   }
 
   std::string invalid_confidence = accountingModel(700, 1100, 300);
   if (!replaceFirst(invalid_confidence, "    confidence: estimated\n",
                     "    confidence: synthetic\n")) {
-    return 1;
+    return failure(__LINE__);
   }
   const auto invalid_confidence_path = reportDirectory.path() / "invalid-confidence.yaml";
   writeFile(invalid_confidence_path, invalid_confidence);
   if (!expectRejected(invalid_confidence_path, reportDirectory.path() / "invalid-confidence.json",
                       "invalid-confidence")) {
-    return 1;
+    return failure(__LINE__);
   }
 
   // Keep the original fail-closed checks for the required board coefficients.
   std::string malformed_current = modelContents();
   if (!replaceS3ModelValue(malformed_current, "value_ma: not-a-number")) {
-    return 1;
+    return failure(__LINE__);
   }
   const auto malformed_current_path = reportDirectory.path() / "malformed-current.yaml";
   writeFile(malformed_current_path, malformed_current);
   if (!expectRejected(malformed_current_path, reportDirectory.path() / "malformed-current.json",
                       "malformed-current")) {
-    return 1;
+    return failure(__LINE__);
   }
 
   std::string negative_current = modelContents();
   if (!replaceS3ModelValue(negative_current, "value_ma: -1.0")) {
-    return 1;
+    return failure(__LINE__);
   }
   const auto negative_current_path = reportDirectory.path() / "negative-current.yaml";
   writeFile(negative_current_path, negative_current);
   if (!expectRejected(negative_current_path, reportDirectory.path() / "negative-current.json",
                       "negative-current")) {
-    return 1;
+    return failure(__LINE__);
   }
 
   std::string duplicate_current = modelContents();
   const size_t s3_anchor = duplicate_current.find("esp32s3_mcu: &esp32s3_mcu");
   const size_t first_entry = duplicate_current.find("    active_cpu_80mhz:", s3_anchor);
   if (s3_anchor == std::string::npos || first_entry == std::string::npos) {
-    return 1;
+    return failure(__LINE__);
   }
   duplicate_current.insert(first_entry, "    active_cpu_80mhz:\n      value_ma: 40.2\n");
   const auto duplicate_current_path = reportDirectory.path() / "duplicate-current.yaml";
   writeFile(duplicate_current_path, duplicate_current);
   if (!expectRejected(duplicate_current_path, reportDirectory.path() / "duplicate-current.json",
                       "duplicate-current")) {
-    return 1;
+    return failure(__LINE__);
   }
 
   const auto missing_model_path = reportDirectory.path() / "missing-model.yaml";
   if (!expectRejected(missing_model_path, reportDirectory.path() / "missing-model.json",
                       "missing-model")) {
-    return 1;
+    return failure(__LINE__);
   }
 
   // Resetting with unresolved work is the same fail-closed boundary as a
@@ -579,7 +584,7 @@ int main() {
     profilerResetWindow();
   }
   if (requestedExit.load() != 1) {
-    return 1;
+    return failure(__LINE__);
   }
 
   // A pending cost at final report is an error. requestFailureExit must also
@@ -596,7 +601,7 @@ int main() {
     profilerWriteReport(pending_report.c_str(), "pending-accounting");
   }
   if (requestedExit.load() != 1 || reportExists(pending_report)) {
-    return 1;
+    return failure(__LINE__);
   }
 
   // Ordinary profiler windows do not depend on an external accounting model.
@@ -614,7 +619,7 @@ int main() {
   }
   if (requestedExit.load() != -1 || !reportExists(ordinary_report)
       || !contains(readFile(ordinary_report), "\"accounting_mode\": \"legacy-unaccounted\"")) {
-    return 1;
+    return failure(__LINE__);
   }
 
   const auto late_report = reportDirectory.path() / "late-accounting-report.json";
@@ -626,7 +631,7 @@ int main() {
     profilerWriteReport(late_report.c_str(), "late-accounting");
   }
   if (requestedExit.load() != 1 || reportExists(late_report)) {
-    return 1;
+    return failure(__LINE__);
   }
 
   // Keep the production JSON identity nested under energy. This catches a
@@ -646,11 +651,11 @@ int main() {
                      accounting_inputs)
         || !contains(shape_json, "\n      \"accounting_mode\": \"synthetic-virtual-work\",")
         || shape_json.find("\n  \"estimated_mA\": ", accounting_inputs) == std::string::npos) {
-      return 1;
+      return failure(__LINE__);
     }
     top_estimate = shape_json.find("\n  \"estimated_mA\": ", accounting_inputs);
     if (!(energy < accounting_inputs && accounting_inputs < top_estimate)) {
-      return 1;
+      return failure(__LINE__);
     }
   }
 
