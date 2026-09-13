@@ -30,7 +30,9 @@ echo "thread sanitizer: $total race report(s), $guarded naming the guarded acces
 if [ "$guarded" -ne 0 ]; then
   echo "FAIL: a data race names Control::m_ConnectCamera or its accessors." >&2
   echo "The guard added in plans/170 is not holding." >&2
-  grep -B 2 -A 25 'getConnectingCamera\|setConnectCamera\|m_ConnectCamera' "$OUT" >&2
+  # Preserve both access stacks, the memory location, and mutex provenance.
+  # An accessor name alone does not identify which field actually raced.
+  cat "$OUT" >&2
   rm -f "$OUT"
   exit 1
 fi

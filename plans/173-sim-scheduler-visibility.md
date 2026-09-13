@@ -468,3 +468,15 @@ This follow-up does not claim that every Control flag is race-free. The
 volatile `m_ConnectAbort` and `m_ConnectInProgress` fields, and the debug
 snapshot's `m_SleepLockHeld`, remain separate audit items. Firmware, CI TSAN,
 host behavior, and hardware validation of this follow-up remain pending.
+
+The first PR306 CI host run failed `control-connect-camera-race` under GCC
+ThreadSanitizer. Its filtered output named the getter without identifying the
+raced memory; the published c4d31 wrapper now prints the complete report on
+that existing failure path while retaining its predicate and exit status.
+
+Root validation of the atomic follow-up at `7648c251c71a4587f09065e84767b43cc1bdab4c`
+then passed the focused host build and tests, and the raw Clang TSAN probe
+exited 0 with no warnings. Evidence is retained in
+`~/b/scheduler-tsan-7648/{config,build,test,raw}.log`. This is not a claim that
+all Control state is race-free: the remaining flags listed above and GCC/CI
+TSAN coverage remain separate follow-up work.
