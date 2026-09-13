@@ -1,9 +1,9 @@
 #ifndef FURBLE_CONTROL_H
 #define FURBLE_CONTROL_H
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
-#include <atomic>
 #include <memory>
 #include <mutex>
 #include <string>

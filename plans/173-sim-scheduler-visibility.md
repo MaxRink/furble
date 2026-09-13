@@ -452,3 +452,19 @@ CTest cases in 188.38 s, serialized with at most two compiler jobs. Evidence:
 `~/b/scheduler-8ac/host-full-build.log` and `host-full-test.log`. The publication
 successor changes only this provenance and clang-format wrapping in the
 fail-fast call; it does not change the validated behavior.
+
+## Follow-up: host TSAN flag races
+
+The subsequent GCC/TSAN host run reported two concrete plain-flag races outside
+the scheduler mutex path: `Target::m_Stopped` was written by the target task at
+`src/FurbleControl.cpp:180` while `targetTasksStopped()` read it at line 649;
+and `Control::m_State` was written by `setState()` at line 1112 while
+`Control::task()` read it at line 373. The atomic follow-up changes only these
+cross-thread representations: `m_Stopped` is an acquire/release atomic boolean,
+and `m_State` is an acquire/release atomic enum. Existing mutexes still protect
+compound transitions and associated power-lock operations.
+
+This follow-up does not claim that every Control flag is race-free. The
+volatile `m_ConnectAbort` and `m_ConnectInProgress` fields, and the debug
+snapshot's `m_SleepLockHeld`, remain separate audit items. Firmware, CI TSAN,
+host behavior, and hardware validation of this follow-up remain pending.
