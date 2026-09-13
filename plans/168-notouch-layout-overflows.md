@@ -880,11 +880,11 @@ claimed here.
 
 ### Current integration validation snapshot
 
-The `dc987a1f4` full touch baseline passed 80 e2e scenarios and reported 7
-bughunt failures. Its S3 run passed 123 e2e scenarios and reported 6 bughunt
-failures; the Core run was still in progress at capture time. The later Display
-fix `f51af67aaa850b8f2010f6714cfc2532610ed864` does not resolve the same S3
+The `dc987a1f4` full touch baseline passed 23 StickC e2e scenarios; its 42
+bughunt scenarios had 7 failures. The S3 run passed 123 e2e scenarios; its 42
+bughunt scenarios had 6 failures. The Core run passed 24 e2e scenarios while
+its bughunt run was still in progress at capture time. The later Display fix
+`f51af67aaa850b8f2010f6714cfc2532610ed864` does not resolve the same S3
 overlap failures. The 80x160 and S3 Sensors touch-default and touch-small
-fixtures still fail on measured geometry and remain open, not waived. A
-follow-up content-height correction is being prepared for the all-panel touch
-path and is not included in this validation snapshot.
+fixtures still fail on measured geometry and remain open, not waived. Any
+content-height follow-up is separate and is not included in this snapshot.
