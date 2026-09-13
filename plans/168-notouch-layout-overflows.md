@@ -6,20 +6,34 @@ The integrated candidate has not been flashed and PR273 remains hardware-gated.
 The owner confirmed only the separate PR313 hint restoration on the stick;
 its external watchdog remains off by explicit choice.
 
-The final UI source at `b25c1f69f` passes all ten Display cases, twelve broader
-page matrix/sweep cases and 298 physical-layout scenarios across the three
-modeled panels. The retained test rejects old focus spacing with two expanded
-focus-bound collisions while content overlap still reads zero. All 196 gallery
-assets were regenerated from the final application code, including Display's
-bottom section. All 322 touch scenarios also pass. The expanded fuzz matrix
-is not green: touch replay can diverge in page counts, and physical-button
-fuzzing exposes a stale LVGL input-history pointer. GDB records a BUTTON to
-ENCODER transition retaining `last_pressed`, asynchronous deletion of that
-same object, and a later BUTTON press dereferencing it during defocus. This
-needs a shared-path repair and a permanent no-touch fuzz gate, not a relaxed
-replay comparison. The 13 clean firmware builds remain a separate outstanding
-gate at this checkpoint. The sections below retain the
-implementation history; their older results are not new hardware evidence.
+Application source `9d5a8a483d508e35a6ed436f482a21a7944df57e` passes all ten
+Display cases, twelve broader page matrix/sweep cases, 298 physical-layout
+scenarios and 322 touch scenarios across the three modeled panels. The retained
+test rejects old focus spacing with two expanded focus-bound collisions while
+content overlap still reads zero. The 196-asset gallery was regenerated on this
+source; Display's top and bottom captures were inspected again. Merge `1744f8d51`
+adds master PR315 without changing application code.
+
+The expanded no-touch fuzz matrix exposed a stale LVGL input-history pointer.
+GDB records a BUTTON to ENCODER transition retaining `last_pressed`, asynchronous
+deletion of that same object, and a later BUTTON press dereferencing it during
+defocus. The native reset described below fixes the reproduced seed-3 crash.
+All six panel/input-mode cells now pass eight 600-step seeds and strict seed-2
+replay; CI now retains the same no-touch matrix. This is not a determinism claim:
+a separate repeated verbose trace still diverges around a connecting overlay
+and SELECT event. Its input-focus/timer boundary remains under investigation;
+the strict comparator is not relaxed.
+
+All 13 clean firmware environments passed on `03c0ea1d2`, before the input-history
+repair. Clean StickS3 and headless builds also passed on `9d5a8a48`; the other
+eleven environments have not yet been rerun with that UI-only successor. The
+120 host tests passed with unchanged relevant host source; 193 Python tests
+passed on `03c0ea1d2`. The complete malformed-input runner passed on `9d5a8a48`.
+Evidence logs are `~/b/ui-input-history-{panels,notouch,touch,fuzz-matrix,firmware,
+invalid,gallery}-0913.log`, `~/b/ui-final-firmware-matrix-0913.log`, and
+`~/b/ui-fuzz-trace-repeat-separated-0913.log`. The sections below retain the
+implementation history; older results are not new hardware evidence. Held-input
+mode transitions and physical Display validation remain required before merge.
 
 PR #264 certified the physical-button layout in the simulator and left the
 product gaps it found recorded as `xassert` lines. The original PR273 work
