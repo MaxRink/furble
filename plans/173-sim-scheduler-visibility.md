@@ -481,3 +481,10 @@ is retained in `~/b/scheduler-tsan-7648/{config,build,test,raw}.log` and
 `~/b/scheduler-tsan-7648/full-{build,test}.log`. This is not a claim that all
 Control state is race-free: the remaining flags listed above and GCC/CI TSAN
 coverage remain separate follow-up work.
+
+The TSAN wrapper contract is now documented under `tests/host/CLAUDE.md` and
+covered by the compiler-free `control-tsan-wrapper-contract` test. Its fixture
+matrix checks exact PASS matching, warning output with status 0 or 66, status 66
+without a warning, unexpected exits, missing PASS output, and preservation of
+the complete negative diagnostic. The contract has not been executed in this
+handoff.

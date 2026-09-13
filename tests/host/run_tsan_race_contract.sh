@@ -17,7 +17,7 @@ make_fixture() {
   body=$2
   status=$3
   path="$WORK/$name"
-  printf '%s\n' '#!/bin/sh' "printf '%s\\n' '$body'" "exit $status" >"$path"
+  printf '%s\n' '#!/bin/sh' "printf '%b\\n' '$body'" "exit $status" >"$path"
   chmod +x "$path"
 }
 
@@ -38,16 +38,20 @@ run_case() {
 }
 
 make_fixture clean 'control-connect-camera-race: PASS' 0
-make_fixture unrelated 'WARNING: ThreadSanitizer: data race (unrelated)' 66
-make_fixture named 'WARNING: ThreadSanitizer: data race in m_ConnectAbort' 66
-make_fixture warning_zero 'WARNING: ThreadSanitizer: data race (status zero)' 0
+make_fixture unrelated 'WARNING: ThreadSanitizer: data race (unrelated)\ncontrol-connect-camera-race: PASS' 66
+make_fixture named 'WARNING: ThreadSanitizer: data race in m_ConnectAbort\ncontrol-connect-camera-race: PASS' 66
+make_fixture warning_zero 'WARNING: ThreadSanitizer: data race (status zero)\ncontrol-connect-camera-race: PASS' 0
+make_fixture status_only 'control-connect-camera-race: PASS' 66
 make_fixture unexpected 'unexpected child marker' 7
 make_fixture missing_pass 'clean child output without completion marker' 0
+make_fixture near_pass 'control-connect-camera-race: PASS extra' 0
 
 run_case clean 0 ''
 run_case unrelated 1 'WARNING: ThreadSanitizer: data race (unrelated)'
 run_case named 1 'WARNING: ThreadSanitizer: data race in m_ConnectAbort'
 run_case warning_zero 1 'WARNING: ThreadSanitizer: data race (status zero)'
+run_case status_only 1 'control-connect-camera-race: PASS'
 run_case unexpected 1 'unexpected child marker'
 run_case missing_pass 1 'clean child output without completion marker'
+run_case near_pass 1 'control-connect-camera-race: PASS extra'
 echo 'run_tsan_race wrapper contract: PASS'

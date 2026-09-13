@@ -31,7 +31,7 @@ if [ "$rc" -ne 0 ]; then
   exit 1
 fi
 
-if ! grep -q 'control-connect-camera-race: PASS' "$OUT"; then
+if ! grep -Fxq 'control-connect-camera-race: PASS' "$OUT"; then
   echo "FAIL: probe did not run to completion" >&2
   cat "$OUT" >&2
   rm -f "$OUT"
