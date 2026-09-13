@@ -280,6 +280,10 @@ board.
 
 ### Settings that live outside the Settings menu
 
+`WebUI` is an 8 MB and 16 MB profile setting with wire id 62. It defaults Off
+and applies immediately. The HTTPS server also requires a loaded non-empty
+companion password. See [WebUI](WebUI).
+
 - **Bulb duration** default 30 seconds. Set it under the connected `Bulb` page,
   `Bulb` > `Duration`. Restart to change is not needed. The value is remembered
   for next time.

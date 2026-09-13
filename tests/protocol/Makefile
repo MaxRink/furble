@@ -12,10 +12,9 @@ COMMON_DEPS := $(CURDIR)/protocol_common.h \
 
 CXX ?= c++
 CXXFLAGS ?= -std=c++20 -Wall -Wextra -Wpedantic
-# The firmware ships with MQTT on by default, so the golden fixtures include the
-# MQTT settings. Compile the settings table the same way so the runtime table
-# matches the committed goldens.
-CXXFLAGS += -DFURBLE_MQTT=1
+# The golden fixtures include the network hub settings. Compile the settings
+# table the same way so the runtime table matches the committed goldens.
+CXXFLAGS += -DFURBLE_MQTT=1 -DFURBLE_WEBUI=1
 
 .PHONY: all generate test clean format-check
 

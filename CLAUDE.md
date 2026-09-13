@@ -21,6 +21,9 @@ CLAUDE.md whose directory it touches.
   is an explicit workflow-dispatch opt-in.
 - Unsupported Enterprise WiFi and SoftAP are compiled out on all boards.
   WPA2/WPA3 Personal station mode and application TLS remain enabled.
+- The HTTPS WebUI is compiled with MQTT only on the 8 MB and 16 MB profiles.
+  It stays closed unless its opt-in setting and a checked non-empty companion
+  password are both present.
 - Before auth integration, Core debug output was 1,732,597 bytes with 54,296 bytes RAM,
   leaving 8,203 bytes in the 1,740,800-byte OTA slot. The `-Os` profile alone
   was 1,781,453 bytes and Enterprise-only removal was 1,780,889 bytes, both

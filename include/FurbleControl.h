@@ -115,6 +115,18 @@ class Control {
    */
   BaseType_t sendCommand(cmd_t cmd);
 
+  struct command_delivery_t {
+    bool any;
+    bool all;
+    uint32_t session;
+  };
+
+  /** Send a camera command and report partial per-target queue delivery. */
+  command_delivery_t sendCameraCommand(cmd_t cmd, uint32_t expectedSession = UINT32_MAX);
+
+  /** Generation of the active target set. Changes when the whole session ends. */
+  uint32_t getSessionGeneration(void) const;
+
   /**
    * Update GPS and timesync values.
    */
@@ -400,6 +412,7 @@ class Control {
   QueueHandle_t m_Queue = NULL;
   mutable std::mutex m_Mutex;
   std::vector<std::unique_ptr<Control::Target>> m_Targets;
+  uint32_t m_SessionGeneration = 0;
 
   // Targets whose teardown is still draining: either force-completed while their
   // task was still tearing down the camera (restart path), or handed off by the
