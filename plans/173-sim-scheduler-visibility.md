@@ -495,3 +495,11 @@ failure path, retaining its predicate and exit status. Five local Clang probes
 each reported two other races, on target `m_Stopped` and Control `m_State`;
 the local passing wrapper therefore is not evidence of a race-free program.
 CI diagnosis and those production races remain unresolved at this checkpoint.
+
+## Restart validation update
+
+Root's exact runtime evidence now covers the restart harness and S3 matrix:
+`~/b/pr273-057-host-test.log` records the host restart regression,
+`~/b/pr273-c190-restart.log` records the real seed-2 re-exec, and
+`~/b/pr273-c190-fuzz-s3.log` records eight S3 seeds at 600 events plus replay.
+These are external validation artifacts; this checkout did not rerun them.
