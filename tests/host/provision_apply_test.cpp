@@ -432,6 +432,34 @@ void testEverySettingHasASchemaRow() {
   }
 }
 
+// This is the executable mirror of the reservation table in include/CLAUDE.md.
+// It deliberately checks only repository state: live PR heads still need a
+// read-only rebase-time audit because CI has no GitHub dependency.
+void testReservationLedger() {
+  struct reservation_t {
+    const char *owner;
+    uint8_t wireId;
+  };
+  static constexpr reservation_t reservations[] = {
+      {"historical-42", 42},
+      {"historical-45", 45},
+      {"PR59",          75},
+      {"PR59",          76},
+      {"PR90",          62},
+      {"PR273",         65},
+  };
+
+  std::set<uint8_t> reservedIds;
+  for (const auto &reservation : reservations) {
+    check(reservedIds.insert(reservation.wireId).second, std::string("reservation wire id ")
+                                                             + std::to_string(reservation.wireId)
+                                                             + " has one owner");
+    check(Furble::Settings::getByWireId(reservation.wireId) == nullptr,
+          std::string(reservation.owner) + " reservation wire id "
+              + std::to_string(reservation.wireId) + " is not shipped on master");
+  }
+}
+
 }  // namespace
 
 int main() {
@@ -444,6 +472,7 @@ int main() {
   testDomainValidation();
   testDedicatedMQTTFields();
   testEverySettingHasASchemaRow();
+  testReservationLedger();
 
   if (failures != 0) {
     std::cerr << "provision apply tests: " << failures << " FAILED\n";

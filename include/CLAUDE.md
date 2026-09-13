@@ -50,6 +50,9 @@ companion client contract: renumbering one and regenerating its fixtures
 yields a self-consistent corpus that silently breaks every deployed client.
 `tests/protocol/protocol_test.cpp` pins the ids it has been given so that
 renumbering fails the build rather than passing quietly.
+`tests/host/provision_apply_test.cpp` mirrors the reserved open/historical ids
+and rejects a reservation that is already present in the master settings table.
+It cannot inspect GitHub; audit every open head again at rebase time.
 
 | PR | Setting keys | Wire ids |
 | --- | --- | --- |
