@@ -446,3 +446,9 @@ in the unique output directory `~/b/scheduler-8ac/`:
 These are host/simulator contract results only. They do not certify physical
 boards, radio timing, sensor behavior, power behavior, or full scheduler
 parity; CI and the documented hardware gates remain pending.
+
+The same frozen source subsequently passed the full host build and all 119
+CTest cases in 188.38 s, serialized with at most two compiler jobs. Evidence:
+`~/b/scheduler-8ac/host-full-build.log` and `host-full-test.log`. The publication
+successor changes only this provenance and clang-format wrapping in the
+fail-fast call; it does not change the validated behavior.

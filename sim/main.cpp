@@ -222,8 +222,7 @@ int runSimulator() {
   try {
     ui.task();
   } catch (const Sim::SchedulerStopped &) {
-    failFastSchedulerStopped(
-        "SIM FAIL: SchedulerStopped in UI task; exiting without cleanup\n");
+    failFastSchedulerStopped("SIM FAIL: SchedulerStopped in UI task; exiting without cleanup\n");
   }
   Sim::watchdogPhase("teardown");
 
