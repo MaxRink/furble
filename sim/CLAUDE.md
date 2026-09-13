@@ -634,6 +634,12 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   without the rig so the shipped one-line header title renders.
   `FURBLE_SIM_CAPTURE_SPLASH=<png>` snapshots the boot splash before the LVGL UI
   starts.
+- The touch Remote shutter page retains full-size 64 px controls. On a panel
+  whose measured content width cannot hold three controls, it stacks them in
+  content-sized rows and relies on page scrolling. The
+  `touch-remote-shutter-narrow.txt` scenario checks both direct page and blind
+  entry routes on every modeled panel; this is supplemental Core2 touch
+  behavior, not a claim that the physical-button boards have touch hardware.
 - The SDL panel always attaches a mouse-driven touch device, so an unseeded run
   renders the touch layout on every modeled board. None of the three modeled
   boards has a touch panel: the Sticks and the Core Basic all ship the non-touch

@@ -6876,9 +6876,23 @@ UI::menu_t &UI::addConnectedMenu(void) {
     static int32_t remote_col_dsc[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1),
                                        LV_GRID_TEMPLATE_LAST};
     static int32_t remote_row_dsc[] = {LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
+    static int32_t remote_col_dsc_narrow[] = {LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
+    static int32_t remote_row_dsc_narrow[] = {LV_GRID_CONTENT, LV_GRID_CONTENT,
+                                              LV_GRID_CONTENT, LV_GRID_TEMPLATE_LAST};
 
-    lv_obj_set_grid_dsc_array(cont, remote_col_dsc, remote_row_dsc);
+    // Keep the 64 px touch controls intact. If the measured content width
+    // cannot hold all three controls, stack them so the page scrolls instead
+    // of allowing their labels to overlap on a narrow host panel.
     lv_obj_set_size(cont, LV_PCT(100), LV_PCT(100));
+    lv_obj_update_layout(cont);
+    const int32_t availableWidth = lv_obj_get_content_width(cont);
+    const int32_t controlsWidth = 3 * 64;
+    const bool stackControls = availableWidth < controlsWidth;
+    lv_obj_set_grid_dsc_array(cont, stackControls ? remote_col_dsc_narrow : remote_col_dsc,
+                              stackControls ? remote_row_dsc_narrow : remote_row_dsc);
+    if (stackControls) {
+      lv_obj_set_height(cont, LV_SIZE_CONTENT);
+    }
     lv_obj_center(cont);
 
     static std::array<std::tuple<lv_obj_t *, lv_obj_t *, const char *, const lv_image_dsc_t *,
@@ -6902,8 +6916,10 @@ UI::menu_t &UI::addConnectedMenu(void) {
                             LV_FLEX_ALIGN_CENTER);
       lv_obj_clear_flag(buttonCont, LV_OBJ_FLAG_SCROLLABLE);
       lv_obj_set_size(buttonCont, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-      lv_obj_set_grid_cell(buttonCont, LV_GRID_ALIGN_STRETCH, std::get<4>(i), 1,
-                           LV_GRID_ALIGN_STRETCH, std::get<5>(i), 1);
+      const int32_t column = stackControls ? 0 : std::get<4>(i);
+      const int32_t row = stackControls ? std::get<4>(i) : std::get<5>(i);
+      lv_obj_set_grid_cell(buttonCont, LV_GRID_ALIGN_STRETCH, column, 1,
+                           LV_GRID_ALIGN_STRETCH, row, 1);
 
       auto &button = std::get<1>(i);
       button = lv_button_create(buttonCont);

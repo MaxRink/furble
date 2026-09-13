@@ -1,0 +1,38 @@
+# The touch Remote page keeps its full-size controls on every modeled panel.
+# On a narrow panel they stack into the page's scroll area instead of sharing
+# three columns that are too small for the controls and labels.
+seed no_touch false
+seed fauxny true
+seed saved_camera true
+wait 400
+
+action connect
+wait 3200
+assert ui.connected yes
+
+action page shutter
+wait 300
+assert ui.nav_layout touch
+assert ui.page shutter
+assert ui.control_mode shutter
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+action scroll bottom
+wait 150
+assert ui.scroll_bottom 0
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+action scroll top
+wait 150
+assert ui.scroll_top 0
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+
+# The blind entry must use the same real page and layout path.
+action blind
+wait 300
+assert ui.page shutter
+assert ui.control_mode shutter
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+exit

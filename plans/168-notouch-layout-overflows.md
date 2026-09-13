@@ -907,3 +907,16 @@ suspected LVGL sizing cause; unlike the Sensors trace, a zero-width result was
 not measured here. The fix establishes the page-width parent first. Existing
 compact-fit and clipped-value assertions remain unchanged; runtime validation
 across all modeled panels is pending.
+
+### Touch Remote controls on narrow host panels
+
+The fuzz matrix found `label_overlaps` on the touch Remote shutter page when
+the 80x160 and 135x240 host panels used three equal-width columns. Each control
+is intentionally 64 px wide, so those cells cannot contain the controls and
+their labels. The page now measures its available content width and keeps the
+three-column layout only when 192 px of control width fits. Otherwise it uses a
+single content-sized column per control; the existing menu scrolling then keeps
+all three full-size controls reachable. The 320x240 touch layout remains a
+three-column grid. `touch-remote-shutter-narrow.txt` checks direct page and
+blind entry routes, label readability, and both scroll ends on all modeled
+panels. Runtime validation is pending.
