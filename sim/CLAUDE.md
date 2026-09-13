@@ -382,6 +382,12 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   provenance as well, not instead: `ble.secure_stall_aborted` says whether a
   modelled handshake ended on a link terminate or on its own deadline, which a
   bound cannot say.
+  `SchedulerMutex` selects and reserves queued ownership under the scheduler
+  gate before publishing a wake. Host fairness and cancellation assertions are
+  coverage only until their pending validation completes.
+  A `SchedulerStopped` escape from the UI task is a fail-fast boundary: it
+  writes a low-level diagnostic and exits without cleanup or recovery claims.
+  Exception-safe cleanup after a stopped scheduler remains future work.
 - A virtual peer that answers instantly cannot model a wait. `seed
   secure_stall_ms` holds every Fujifilm peer inside
   `NimBLEClient::secureConnection()`, which is the one call in the Fujifilm

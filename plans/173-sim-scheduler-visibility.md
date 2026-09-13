@@ -332,6 +332,58 @@ Both CTest cases passed (0.11 seconds total). The new regression checks
 stack, and native fatal-signal termination with diagnostic metadata.
 Full simulator/CI validation remains pending; no physical device was accessed.
 
+## Queued-waiter runtime follow-up
+
+Current master still used the earlier `std::mutex` adapter. This follow-up
+replaces that simulator-only adapter with the queued-waiter `SchedulerMutex`
+runtime from `df40247f`. It serializes waiter selection with the scheduler,
+reserves ownership before publishing a wake, cancels registered waiters during
+task teardown, and cancels an unregistered host waiter with `SchedulerStopped`
+when the scheduler stops. `sim/main.cpp` catches that exception around the
+unregistered simulator thread and fails fast without claiming orderly cleanup.
+
+The host regression in `tests/host/sim_scheduler_test.cpp` covers priority
+selection, registered-waiter cancellation, survivor ownership, and
+unregistered-host-waiter cancellation. Its `try_lock()` assertion runs after
+the selected waiter has acquired the mutex, so it checks exclusion at that
+point and does not independently prove the reservation-before-wake race. No
+deterministic reservation seam exists in this test harness.
+
+Root validation of this runtime and its new test path is recorded below. CI,
+hardware, and physical scheduler-parity results remain separate gates. The
+waiter-state dump and repeated high-load virtual-time-bound proof remain
+separate open work.
+
+## SchedulerStopped fail-fast boundary
+
+An exception from a scheduler-visible mutex can arrive while `UI::task()` owns
+the manual LVGL mutex. The simulator catches `SchedulerStopped` inside
+`runSimulator()` while the `UI` object is still alive, writes a bounded
+low-level failure banner, and calls `std::_Exit(1)`. It deliberately does not
+attempt locks, joins, LVGL work, destructors, peer cleanup, rig cleanup, MQTT
+shutdown, watchdog unregister, or recovery. This avoids claiming that those
+operations are safe after the scheduler has stopped.
+
+The outer simulator-thread boundary has the same fail-fast handling for a
+`SchedulerStopped` escape that occurs before or after the UI phase. Normal
+successful teardown is unchanged. A simulator-only
+`FURBLE_SIM_TEST_SCHEDULER_STOP=1` trigger raises the same exception from the
+first `driverTick()` inside the locked UI phase. The bounded regression is
+`sim/scripts/assert-scheduler-stop-failfast.sh`; it expects diagnostic output,
+explicit status 1, and neither a signal exit nor a timeout. The existing CI
+`assert-exit-regression.sh` invokes this check against the same simulator
+binary. It also runs the same small `smoke.txt` scenario with the trigger
+disabled and expects status 0 without the fail-fast banner. Four tiny wrapper
+fixtures are rejected when they return status 0, status 1 without the banner,
+a signal status, or a timeout. The signal fixture must return 143. The timeout
+fixture accepts 124 or the explicitly documented forced-kill status 137. The
+other three emit the exact banner first, so a missing executable or unrelated
+failure cannot masquerade as coverage.
+
+Exception-safe cleanup for other UI or native MQTT exceptions remains a
+separate gap. This fail-fast boundary is not hardware, scheduler-parity, or
+recovery evidence.
+
 ## Follow-up state: safe preference ownership slice (#289)
 
 The simulator now distinguishes caller-owned `FURBLE_SIM_PREFS` from its own
@@ -370,3 +422,41 @@ checkout in `~/b/prefs-ownership-build.log`,
 `~/b/prefs-ownership-host-test.log`; this checkout did not rerun those gates.
 The lifecycle script is now wired into the existing `sim-e2e` S3 job with a
 two-minute step timeout; the next CI run remains pending.
+
+## Validation update: frozen scheduler merge
+
+On 2026-09-13, root validated the clean frozen commit
+`8ac8b833ca4bf64af277813a9c8184b0f7140f6f` in
+`~/wt/scheduler-merge-0913`, using the shared dependency cache from
+`~/wt/c53-lto/.pio/libdeps/m5stack-core-debug`. The exact per-phase evidence is
+in the unique output directory `~/b/scheduler-8ac/`:
+
+- host configure and the two targeted scheduler/watchdog targets built with
+  `--parallel 2`; `sim-scheduler` and `sim-watchdog` passed 2/2 in 0.13 s
+  (`host-configure.log`, `host-build.log`, `scheduler-tests.log`);
+- the M5StickS3 simulator build passed (`sim-s3-build.log`);
+- assertion status passed for the positive case, injected scheduler-stop
+  case, diagnostic banner, and all four negative fail-fast fixtures
+  (`assert-exit.log`);
+- simulator-owned preference lifecycle passed
+  (`preferences-lifecycle.log`);
+- the pinned eight-seed, 600-step fuzz run and seed-2 determinism replay
+  passed (`fuzz.log`).
+
+These are host/simulator contract results only. They do not certify physical
+boards, radio timing, sensor behavior, power behavior, or full scheduler
+parity; CI and the documented hardware gates remain pending.
+
+The same frozen source subsequently passed the full host build and all 119
+CTest cases in 188.38 s, serialized with at most two compiler jobs. Evidence:
+`~/b/scheduler-8ac/host-full-build.log` and `host-full-test.log`. The publication
+successor changes only this provenance and clang-format wrapping in the
+fail-fast call; it does not change the validated behavior.
+
+The first PR306 CI host run failed `control-connect-camera-race` under GCC
+ThreadSanitizer. Its filtered output named the getter without identifying the
+raced memory. The wrapper now prints the complete report on that existing
+failure path, retaining its predicate and exit status. Five local Clang probes
+each reported two other races, on target `m_Stopped` and Control `m_State`;
+the local passing wrapper therefore is not evidence of a race-free program.
+CI diagnosis and those production races remain unresolved at this checkpoint.
