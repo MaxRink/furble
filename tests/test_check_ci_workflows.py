@@ -2,6 +2,8 @@
 
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
+import re
+import shutil
 import sys
 import subprocess
 import tempfile
@@ -34,9 +36,48 @@ class CheckCIWorkflowsTest(unittest.TestCase):
           matrix["exclude"],
           workflow_name,
       )
+  @unittest.skipUnless(shutil.which("node"), "Node.js is required")
+  def test_installer_debug_selector_never_requests_core_manifest(self):
     installer = (ROOT / "web-installer" / "index.html").read_text(encoding="utf-8")
-    self.assertIn("debug.disabled = core;", installer)
-    self.assertIn("radio.value === 'm5stack-core'", installer)
+    scripts = re.findall(r"<script>(.*?)</script>", installer, re.DOTALL)
+    script = next(script for script in scripts if "function updateManifest" in script)
+    harness = r'''
+      const vm = require("vm");
+      const state = {
+        selected: {value: "m5stick-s3"},
+        debug: {checked: true, disabled: false},
+        button: {manifest: "", classList: {remove() {}}}
+      };
+      const document = {
+        querySelector(selector) {
+          return selector === 'input[name="type"]:checked' ? state.selected : state.button;
+        },
+        querySelectorAll() { return {forEach() {}}; },
+        getElementById(id) { return id === "debug" ? state.debug : state.button; }
+      };
+      const context = {document};
+      vm.runInNewContext(SCRIPT, context);
+      context.updateManifest();
+      if (state.button.manifest !== "./manifest_m5stick-s3-debug.json" || state.debug.disabled) process.exit(1);
+      state.selected = {value: "m5stack-core"};
+      context.updateManifest();
+      if (state.button.manifest !== "./manifest_m5stack-core.json" || !state.debug.disabled || state.debug.checked) process.exit(2);
+      state.selected = {value: "m5stick-s3"};
+      state.debug.checked = true;
+      context.updateManifest();
+      if (state.button.manifest !== "./manifest_m5stick-s3-debug.json" || state.debug.disabled) process.exit(3);
+      state.selected = null;
+      const previous = state.button.manifest;
+      context.updateManifest();
+      if (state.button.manifest !== previous) process.exit(4);
+    '''
+    result = subprocess.run(
+        ["node", "-e", "const SCRIPT = process.argv[1];" + harness, script],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    self.assertEqual(result.returncode, 0, result.stderr)
 
   def lint(self, text: str) -> list[str]:
     with tempfile.NamedTemporaryFile(
