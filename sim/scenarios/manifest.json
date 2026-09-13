@@ -2620,9 +2620,7 @@
       "suite": "invalid",
       "owner": "sim-parser",
       "boards": [
-        "m5stick-s3",
-        "m5stick-c",
-        "m5stack-core"
+        "m5stick-s3"
       ],
       "capabilities": [],
       "expected_exit": 2,

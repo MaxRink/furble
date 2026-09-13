@@ -274,8 +274,7 @@ These boolean settings are applied before the UI is constructed:
 `gps`, `gps_nmea`, `gps_motion`, `fauxny`, `autoconnect`, `reconnect`,
 `recon_backoff`, `sleep_conn`, `boot_splash`, `gps_extrap`, `gps_uart_noise`,
 `sd_gpx`, `imu`, and `imu_trigger`. `auto_off_charging` opts into auto-off while
-charging, and
-`imu_sensor` controls modeled IMU presence. `gps_motion` needs `gps` and `imu`
+charging, and `imu_sensor` controls modeled IMU presence. `gps_motion` needs `gps` and `imu`
 as well: the detector only runs when the receiver and the sensor are both on.
 `gps_motion_prearm` is a regression-only seed that loads GPS before the UI arms
 the shared motion source.
