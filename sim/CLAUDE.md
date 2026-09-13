@@ -289,6 +289,16 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   idempotent because `CameraList::add_index()` overwrites by name (see
   plans/156-restart-restore-seam.md for the seam limits).
   See `docs/sim.md` for every action value and query key.
+- Fuzz checkpoints contain harness state only: versioned seed/budget identity,
+  PRNG state, event counters, pending event metadata, recent history, findings,
+  and the FuzzMachine phase/counters. They never contain UI, Control, LVGL,
+  task, or application RAM. The driver owns PID-scoped file creation, ownership
+  markers, bounded reads, atomic publication, consumption, and cleanup.
+  Malformed or foreign files fail closed and remain caller-owned.
+  `sim/scripts/run-fuzz-restart.sh` is the pending execution gate; it must
+  prove two real seed-2 boots, one exact 600-event summary, rejection-file
+  preservation, and generated-checkpoint cleanup before this behavior is
+  described as validated.
 - `btn` / `button` is a native input-device seam, not a focus shortcut. It
   supplies coherent pressed and released samples through the production board
   read callback and asks LVGL to read the device in its current encoder or

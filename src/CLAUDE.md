@@ -13,6 +13,10 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   wait, and the S3 watchdog shutdown stay together.
   An empty connect target set returns idle, never active. A concurrent cancel
   still takes precedence and returns disconnecting.
+- The simulator UI loop calls its post-`lv_task_handler` hook only after the
+  real production UI handler returns. Keep this hook observational: it may
+  advance simulator settle bookkeeping, but must not move restart ownership or
+  restore UI, Control, LVGL, or task state across a process reboot.
 - Adaptive Bluetooth power sampling stays in the control task and uses the
   weakest connected camera because NimBLE connection power is global. NVS
   reads, RSSI reads and radio calls run with the Control mutex released,

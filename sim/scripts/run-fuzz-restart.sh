@@ -49,9 +49,10 @@ run_valid_restart() {
     "$expected"*) : ;;
     *) cat "$output"; echo "restart summary has wrong leading fields" >&2; return 1;;
   esac
-  for token in 'observed_delta=' 'no_observed_delta=' 'settled=600'; do
+  for token in 'observed_delta=' 'no_observed_delta='; do
     case "$summary" in *" $token"*) : ;; *) cat "$output"; return 1 ;; esac
   done
+  case "$summary" in *' settled=600 '*|*' settled=600') : ;; *) cat "$output"; return 1 ;; esac
   [ -d "$WORK/.pio" ] || { echo "restart run did not create .pio" >&2; return 1; }
   leftovers=$(find "$WORK/.pio" -type f -name 'furble-sim-fuzz-checkpoint-*' -print -quit) || return 1
   if [ -n "$leftovers" ]; then
@@ -71,8 +72,9 @@ run_rejected_checkpoint() {
     cat "$WORK/rejected.log"
     echo "foreign checkpoint unexpectedly accepted" >&2
     return 1
+  else
+    rc=$?
   fi
-  rc=$?
   [ "$rc" -eq 2 ] || { cat "$WORK/rejected.log"; echo "foreign checkpoint status was $rc" >&2; return 1; }
   grep -Fxq "Invalid fuzz checkpoint ownership marker" "$WORK/rejected.log" || return 1
   cmp -s "$path.original" "$path" || { echo "foreign checkpoint changed" >&2; return 1; }
@@ -82,12 +84,13 @@ run_rejected_checkpoint() {
   cp "$malformed" "$malformed.original"
   if (cd "$WORK" && "$TIMEOUT" -k 10 "${FURBLE_SIM_SEED_TIMEOUT:-60}" sh -c \
       'export FURBLE_SIM_FUZZ_CHECKPOINT="$1" FURBLE_SIM_FUZZ_CHECKPOINT_OWNER="$1|$$"; exec "$2" --seed 2 --fuzz-steps 600' \
-      restart-regression "$malformed" "$BIN" >"$WORK/malformed.log" 2>&1; then
+      restart-regression "$malformed" "$BIN" >"$WORK/malformed.log" 2>&1); then
     cat "$WORK/malformed.log"
     echo "malformed checkpoint unexpectedly accepted" >&2
     return 1
+  else
+    rc=$?
   fi
-  rc=$?
   [ "$rc" -eq 2 ] || { cat "$WORK/malformed.log"; echo "malformed checkpoint status was $rc" >&2; return 1; }
   grep -Fxq "Invalid fuzz checkpoint contents: $malformed" "$WORK/malformed.log" || return 1
   cmp -s "$malformed.original" "$malformed" || { echo "malformed checkpoint changed" >&2; return 1; }

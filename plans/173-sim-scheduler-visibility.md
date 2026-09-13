@@ -388,3 +388,20 @@ the blind-entry action.
 This gates the screenshot artifact only. It does not alter production
 connection behavior, and this handoff did not rerun the gallery build or any
 tests.
+
+## Fuzz restart checkpoint follow-up
+
+The simulator now carries only fuzz harness state across a real
+`Platform::restart()` re-exec. The checkpoint preserves the configured seed and
+budget identity, PRNG state, pending event metadata, recent history, findings,
+aggregate counters, and FuzzMachine phase/counters. UI, Control, LVGL, task, and
+application RAM are intentionally not restored. The driver owns PID-scoped
+checkpoint files, ownership markers, bounded reads, atomic publication,
+consumption, and cleanup. The fresh process gives the real UI one boot cycle
+before resuming the saved APPLY, SETTLE, CHECK, or ESCAPE phase.
+
+`sim/scripts/run-fuzz-restart.sh` is the pending execution gate. It must prove
+two exact seed-2/600-event boots, one exact 600-event aggregate summary,
+malformed and foreign checkpoint rejection with status 2 and unchanged bytes,
+and cleanup of the generated checkpoint. No execution result is claimed by
+this plan yet.
