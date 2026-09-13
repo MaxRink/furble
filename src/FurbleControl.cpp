@@ -234,17 +234,18 @@ Control::state_t Control::connectAll(void) {
     // An empty selection must not pass the vacuous allConnected() check below
     // and publish ACTIVE without connecting a camera.
     if (all.empty()) {
-      return (m_ConnectAbort || m_State.load(std::memory_order_acquire) == STATE_DISCONNECTING)
+      return (m_ConnectAbort.load(std::memory_order_acquire)
+              || m_State.load(std::memory_order_acquire) == STATE_DISCONNECTING)
                  ? STATE_DISCONNECTING
                  : STATE_IDLE;
     }
-    m_ConnectInProgress = true;
+    m_ConnectInProgress.store(true, std::memory_order_release);
   }
 
   if (all.empty()) {
     ESP_LOGW(LOG_TAG, "Connect requested with no cameras in the session.");
     const std::lock_guard<std::mutex> lock(m_Mutex);
-    m_ConnectInProgress = false;
+    m_ConnectInProgress.store(false, std::memory_order_release);
     return STATE_CONNECT_FAILED;
   }
 
@@ -264,7 +265,7 @@ Control::state_t Control::connectAll(void) {
   std::string repairReason;
 
   for (const auto &camera : cameras) {
-    if (m_ConnectAbort) {
+    if (m_ConnectAbort.load(std::memory_order_acquire)) {
       break;
     }
 
@@ -294,9 +295,10 @@ Control::state_t Control::connectAll(void) {
 
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
-    m_ConnectInProgress = false;
+    m_ConnectInProgress.store(false, std::memory_order_release);
 
-    if (m_ConnectAbort || m_State.load(std::memory_order_acquire) == STATE_DISCONNECTING) {
+    if (m_ConnectAbort.load(std::memory_order_acquire)
+        || m_State.load(std::memory_order_acquire) == STATE_DISCONNECTING) {
       m_ConnectCamera = nullptr;  // caller holds m_Mutex
       // Report the abort, never the state that happened to be published when it
       // was read. disconnect() arms m_ConnectAbort one statement before it
@@ -347,7 +349,7 @@ Control::state_t Control::connectAll(void) {
 
       // Sleep in short slices so disconnect can interrupt the retry wait.
       uint32_t remaining = delay;
-      while (remaining > 0 && !m_ConnectAbort
+      while (remaining > 0 && !m_ConnectAbort.load(std::memory_order_acquire)
              && m_State.load(std::memory_order_acquire) != STATE_DISCONNECTING) {
         const uint32_t slice = remaining < BACKOFF_SLICE_MS ? remaining : BACKOFF_SLICE_MS;
         vTaskDelay(pdMS_TO_TICKS(slice));
@@ -356,7 +358,8 @@ Control::state_t Control::connectAll(void) {
     }
     // Same rule as the abort path above: an aborted pass reports the abort, not
     // whatever m_State read at the moment the retry wait was interrupted.
-    return (m_ConnectAbort || m_State.load(std::memory_order_acquire) == STATE_DISCONNECTING)
+    return (m_ConnectAbort.load(std::memory_order_acquire)
+            || m_State.load(std::memory_order_acquire) == STATE_DISCONNECTING)
                ? STATE_DISCONNECTING
                : STATE_CONNECT;
   }
@@ -616,7 +619,7 @@ void Control::connectAll(bool infiniteReconnect) {
   m_ReconnectBackoff = Settings::reconBackoffEffective();
   m_ReconnectAttempt = 0;
   m_ReconnectHintLogged = false;
-  m_ConnectAbort = false;
+  m_ConnectAbort.store(false, std::memory_order_release);
 
   this->sendCommand(CMD_CONNECT);
 }
@@ -634,7 +637,7 @@ bool Control::disconnectComplete(void) {
     }
   }
 
-  if (m_ConnectInProgress) {
+  if (m_ConnectInProgress.load(std::memory_order_acquire)) {
     return false;
   }
 
@@ -662,11 +665,11 @@ bool Control::targetTasksStopped(void) {
   // disconnectComplete() minus the isConnected() check, so it settles as soon as
   // the teardown tasks finish, never waiting out a dead peer's supervision
   // timeout.
-  return !m_ConnectInProgress;
+  return !m_ConnectInProgress.load(std::memory_order_acquire);
 }
 
 bool Control::disconnect(uint32_t timeout_ms, bool forRestart) {
-  m_ConnectAbort = true;
+  m_ConnectAbort.store(true, std::memory_order_release);
   FURBLE_TEST_SYNC_POINT("disconnect_abort_armed");
   setState(STATE_DISCONNECTING);
   m_ReconnectAttempt = 0;
@@ -1005,9 +1008,9 @@ Control::debug_state_t Control::getDebugState(void) const {
   // Taking m_StateMutex here would risk a lock ordering hazard against setState();
   // the remaining volatile flags are separate synchronization work.
   snapshot.state = m_State.load(std::memory_order_acquire);
-  snapshot.connectInProgress = m_ConnectInProgress;
-  snapshot.connectAbort = m_ConnectAbort;
-  snapshot.sleepLockHeld = m_SleepLockHeld;
+  snapshot.connectInProgress = m_ConnectInProgress.load(std::memory_order_acquire);
+  snapshot.connectAbort = m_ConnectAbort.load(std::memory_order_acquire);
+  snapshot.sleepLockHeld = m_SleepLockHeld.load(std::memory_order_acquire);
   snapshot.infiniteReconnect = m_InfiniteReconnect;
   snapshot.reconnectBackoff = m_ReconnectBackoff;
   snapshot.reconnectAttempt = m_ReconnectAttempt;
@@ -1111,17 +1114,17 @@ void Control::setState(state_t state) {
   // The release stays after the store: every path to STATE_IDLE passes through
   // STATE_DISCONNECTING first, so idle is never published with the lock held.
   auto &power = Power::getInstance();
-  if (hold && !m_SleepLockHeld) {
+  if (hold && !m_SleepLockHeld.load(std::memory_order_acquire)) {
     power.acquire(Power::LockType::NO_LIGHT_SLEEP, POWER_LOCK_OWNER);
   }
 
   m_State.store(state, std::memory_order_release);
 
-  if (!hold && m_SleepLockHeld) {
+  if (!hold && m_SleepLockHeld.load(std::memory_order_acquire)) {
     power.release(Power::LockType::NO_LIGHT_SLEEP, POWER_LOCK_OWNER);
   }
 
-  m_SleepLockHeld = hold;
+  m_SleepLockHeld.store(hold, std::memory_order_release);
 }
 
 void Control::sampleAdaptivePower(void) {
@@ -1417,7 +1420,7 @@ void Control::resetForTest(void) {
   m_ReconnectAttempt = 0;
   m_ReconnectHintLogged = false;
   m_ConnectFailCount = 0;
-  m_ConnectAbort = false;
+  m_ConnectAbort.store(false, std::memory_order_release);
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
     m_ConnectFailReason.clear();

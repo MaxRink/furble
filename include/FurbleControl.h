@@ -428,8 +428,8 @@ class Control {
   // User-facing explanation for a STATE_CONNECT_FAILED that retrying cannot
   // fix. Empty for every ordinary failure. Guarded by m_Mutex.
   std::string m_ConnectFailReason;
-  volatile bool m_ConnectAbort = false;
-  volatile bool m_ConnectInProgress = false;
+  std::atomic<bool> m_ConnectAbort {false};
+  std::atomic<bool> m_ConnectInProgress {false};
   // A user connect cycle has asked for the cancel tokens to be re-armed. Set by
   // connectAll(bool) off the control task, consumed and cleared by connectAll()
   // on the control task at the top of the cycle, which is the only point where
@@ -442,7 +442,7 @@ class Control {
 
   // setState() runs from the control task and from the UI task
   std::mutex m_StateMutex;
-  bool m_SleepLockHeld = false;
+  std::atomic<bool> m_SleepLockHeld {false};
 
   // Camera connects are serialised, the following tracks the last attempt.
   // Holds a strong reference so an in-flight connect keeps its Camera alive even

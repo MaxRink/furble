@@ -481,3 +481,20 @@ is retained in `~/b/scheduler-tsan-7648/{config,build,test,raw}.log` and
 `~/b/scheduler-tsan-7648/full-{build,test}.log`. This is not a claim that all
 Control state is race-free: the remaining flags listed above and GCC/CI TSAN
 coverage remain separate follow-up work.
+
+## Follow-up: remaining Control flag synchronization
+
+The bounded static audit identified three additional plain cross-boundary
+flags: `m_ConnectAbort` is written by UI/control-entry paths and read by the
+control task and debug snapshot; `m_ConnectInProgress` is written by the
+control task but read outside its `m_Mutex` snapshot sections by teardown
+predicates and the debug snapshot; and `m_SleepLockHeld` is updated under
+`m_StateMutex` but sampled unlocked by the debug snapshot. This follow-up
+converts only those three flags to `std::atomic<bool>` with explicit
+acquire/release operations. Existing mutex sections, state publication,
+power-lock calls, queues, cancellation, and timing remain unchanged.
+
+The change is based on the static access audit and existing concurrency
+regressions; it is not raw TSAN proof for these three flags. Raw TSAN, firmware,
+CI, and hardware validation remain pending, and reconnect fields are outside
+this scope.

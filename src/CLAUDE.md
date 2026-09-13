@@ -183,7 +183,9 @@ other readers may sample it without that mutex. Keep compound transitions and
 power-lock ordering under `m_StateMutex`; the atomic only removes the plain
 read/write race. `Control::Target::m_Stopped` is also acquire/release atomic:
 the target task publishes its terminal state before deleting itself, while
-drain/reap predicates may observe it concurrently. This addresses the two
-observed GCC/TSAN races only. `m_ConnectAbort`, `m_ConnectInProgress`, and
-debug-only `m_SleepLockHeld` remain separate synchronization work; do not call
-the Control state surface race-free without evidence for those fields.
+drain/reap predicates may observe it concurrently. The same explicit
+acquire/release contract applies to `m_ConnectAbort`, `m_ConnectInProgress`,
+and debug-only `m_SleepLockHeld`, whose readers cross task or snapshot
+boundaries. This is a narrow synchronization change, not a claim that the
+Control state surface is race-free; raw TSAN and firmware/hardware evidence
+remain required.
