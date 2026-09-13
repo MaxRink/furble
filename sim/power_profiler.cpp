@@ -1219,17 +1219,16 @@ void writeReportLocked(const std::filesystem::path &path,
                                            : static_cast<double>(gps_standby_raw_ms);
 
   const double mcu_ma =
-      (frequency_80_energy_ms * model.light_sleep
+      ((model.accounting_enabled ? static_cast<double>(adjusted_light_sleep_us) / 1000.0
+                                 : static_cast<double>(light_sleep_in_80))
+           * model.light_sleep
        + (frequency_80_energy_ms
           - (model.accounting_enabled ? static_cast<double>(adjusted_light_sleep_us) / 1000.0
                                       : static_cast<double>(light_sleep_in_80)))
              * model.mcu_80
        + frequency_160_energy_ms * model.mcu_160 + frequency_240_energy_ms * model.mcu_240)
       / energy_duration_ms;
-  const double modeled_work_extra_ma = static_cast<double>(state.light_sleep_work_us)
-                                       * (model.mcu_80 - model.light_sleep)
-                                       / (energy_duration_ms * 1000.0);
-  const double adjusted_mcu_ma = mcu_ma + modeled_work_extra_ma;
+  const double adjusted_mcu_ma = mcu_ma;
   const double display_ma =
       (display_on_energy_ms * (model.display_panel_on + model.display_backlight)
        + display_dim_energy_ms * (model.display_panel_on + model.display_backlight * 32.0 / 255.0)
@@ -1413,7 +1412,7 @@ void writeReportLocked(const std::filesystem::path &path,
   output << "      \"residency_percent\": ";
   if (model.accounting_enabled) {
     writeDouble(output, static_cast<double>(adjusted_light_sleep_us) * 100.0
-                            / (1000.0 * static_cast<double>(safe_duration_ms)));
+                            / (1000.0 * energy_duration_ms));
   } else {
     writeDouble(output, perSecond(light_sleep_ms, safe_duration_ms) / 10.0);
   }
@@ -1479,6 +1478,9 @@ void writeReportLocked(const std::filesystem::path &path,
   output << ",\n";
   output << "    \"accounting_inputs\": {\n";
   output << "      \"duration_ms\": " << duration_ms << ",\n";
+  if (model.accounting_enabled) {
+    output << "      \"duration_us\": " << (state.last_time_us - state.window_start_us) << ",\n";
+  }
   output << "      \"mcu_ms\": {\n";
   output << "        \"light_sleep_in_80\": " << light_sleep_in_80 << ",\n";
   output << "        \"frequency_80\": " << frequency_80_raw_ms << ",\n";
@@ -1498,6 +1500,25 @@ void writeReportLocked(const std::filesystem::path &path,
   output << "        \"tracking\": " << gps_tracking_raw_ms << ",\n";
   output << "        \"standby\": " << gps_standby_raw_ms << "\n";
   output << "      },\n";
+  if (model.accounting_enabled) {
+    output << "      \"frequency_us\": {\n";
+    output << "        \"80\": " << state.frequency_us[80] << ",\n";
+    output << "        \"160\": " << state.frequency_us[160] << ",\n";
+    output << "        \"240\": " << state.frequency_us[240] << "\n";
+    output << "      },\n";
+    output << "      \"display_us\": {\n";
+    output << "        \"on\": " << state.display_us["on"] << ",\n";
+    output << "        \"dim\": " << state.display_us["dim"] << ",\n";
+    output << "        \"off\": " << state.display_us["off"] << "\n";
+    output << "      },\n";
+    output << "      \"radio_connected_us\": " << state.radio_connected_us << ",\n";
+    output << "      \"gps_us\": {\n";
+    output << "        \"acquiring\": " << state.gps_us["acquiring"] << ",\n";
+    output << "        \"degraded\": " << state.gps_us["degraded"] << ",\n";
+    output << "        \"tracking\": " << state.gps_us["tracking"] << ",\n";
+    output << "        \"standby\": " << state.gps_us["standby"] << "\n";
+    output << "      },\n";
+  }
   output << "      \"accounting_mode\": \""
          << (model.accounting_enabled ? "synthetic-virtual-work" : "legacy-unaccounted") << "\",\n";
   output << "      \"accounting_version\": " << model.accounting_version << ",\n";
@@ -1669,6 +1690,7 @@ void profilerBeginUiCycle(void) {
 void profilerEndUiCycle(void) {
   std::lock_guard<std::mutex> lock(state.mutex);
   ensureStartedLocked();
+  integrateLocked(clockMicros());
   state.timer_queue_idle = !state.cycle_timer_fired;
   state.task_idle = !state.cycle_task_woke;
 }
