@@ -40,15 +40,42 @@ def accounting_identity(report: dict) -> tuple[str, str]:
     energy = report.get("energy", {})
     if not isinstance(energy, dict):
         raise ValueError("report energy is not a JSON object")
-    inputs = energy.get("accounting_inputs", {})
+    if "accounting_inputs" not in energy:
+        return "legacy-unaccounted", ""
+    inputs = energy["accounting_inputs"]
     if not isinstance(inputs, dict):
         raise ValueError("report accounting_inputs is not a JSON object")
-    mode = inputs.get("accounting_mode", "legacy-unaccounted")
-    fingerprint = inputs.get("accounting_fingerprint", "")
-    if not isinstance(mode, str) or not mode:
-        raise ValueError("report has no valid accounting mode")
-    if not isinstance(fingerprint, str):
-        raise ValueError("report has no valid accounting fingerprint")
+    if not inputs:
+        raise ValueError("report has empty accounting metadata")
+    fields = {"accounting_mode", "accounting_version", "accounting_fingerprint", "accounting_valid"}
+    present = fields.intersection(inputs)
+    if not present:
+        return "legacy-unaccounted", ""
+    if present != fields:
+        raise ValueError("report has incomplete accounting metadata")
+    mode = inputs["accounting_mode"]
+    version = inputs["accounting_version"]
+    fingerprint = inputs["accounting_fingerprint"]
+    valid = inputs["accounting_valid"]
+    if mode not in ("legacy-unaccounted", "synthetic-virtual-work"):
+        raise ValueError("report has unknown accounting mode")
+    if not isinstance(valid, bool) or not valid:
+      raise ValueError("report accounting is not valid")
+    if mode == "synthetic-virtual-work" and (
+        not isinstance(version, int)
+        or isinstance(version, bool)
+        or version != 1
+        or not isinstance(fingerprint, str)
+        or not fingerprint
+    ):
+      raise ValueError("report has invalid synthetic accounting metadata")
+    if mode == "legacy-unaccounted" and (
+        not isinstance(version, int)
+        or isinstance(version, bool)
+        or version != 0
+        or fingerprint != ""
+    ):
+        raise ValueError("report has invalid legacy accounting metadata")
     return mode, fingerprint
 
 

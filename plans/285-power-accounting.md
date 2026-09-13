@@ -13,6 +13,13 @@ current coefficients. Existing baseline reports remain unchanged unless a
 scenario explicitly opts into the accounting model. Hardware calibration and
 the broader release gates remain separate work.
 
+The opt-in YAML requires exactly one well-formed accounting block with version
+1, calibration status, poll cost and provenance, plus a timer-cost map with
+per-entry cost and provenance. Well-formed unused timer names may remain in
+that map; an observed timer without a cost fails the run. The report
+fingerprint includes the model digest, all current coefficients, mode/version,
+calibration status, and canonical work-cost provenance.
+
 ## Validation status
 
 The runtime integration adds bounded per-frequency work counters, preserves

@@ -649,6 +649,24 @@ bool validConfidence(const std::string &value) {
 }
 
 bool parseAccountingModel(const std::string &contents, CurrentModel &model) {
+  bool accountingBlockSeen = false;
+  {
+    std::istringstream scan(contents);
+    std::string scanLine;
+    while (std::getline(scan, scanLine)) {
+      const std::string scanText = trim(scanLine);
+      if (scanText.empty() || scanText.front() == '#') {
+        continue;
+      }
+      const size_t scanFirst = scanLine.find_first_not_of(' ');
+      if (scanFirst == 0 && scanText.rfind("accounting:", 0) == 0) {
+        if (accountingBlockSeen || scanText != "accounting:") {
+          return false;
+        }
+        accountingBlockSeen = true;
+      }
+    }
+  }
   std::istringstream input(contents);
   std::string line;
   bool inAccounting = false;
@@ -658,6 +676,9 @@ bool parseAccountingModel(const std::string &contents, CurrentModel &model) {
   bool pollValue = false;
   bool pollSource = false;
   bool pollConfidence = false;
+  bool pollValueSeen = false;
+  bool pollSourceSeen = false;
+  bool pollConfidenceSeen = false;
   bool versionSeen = false;
   bool calibrationSeen = false;
   bool pollSectionSeen = false;
@@ -675,6 +696,9 @@ bool parseAccountingModel(const std::string &contents, CurrentModel &model) {
     const int indent = first == std::string::npos ? 0 : static_cast<int>(first);
     const size_t colon = text.find(':');
     if (colon == std::string::npos) {
+      if (inAccounting && indent > 0) {
+        return false;
+      }
       continue;
     }
     const std::string key = trim(text.substr(0, colon));
@@ -733,20 +757,23 @@ bool parseAccountingModel(const std::string &contents, CurrentModel &model) {
     }
     if (inPoll && indent == 4) {
       if (key == "value_us") {
-        if (pollValue || !parseUnsignedMicroseconds(value, model.ui_poll_active_us)) {
+        if (pollValueSeen || !parseUnsignedMicroseconds(value, model.ui_poll_active_us)) {
           return false;
         }
+        pollValueSeen = true;
         pollValue = true;
       } else if (key == "source") {
-        if (pollSource) {
+        if (pollSourceSeen) {
           return false;
         }
+        pollSourceSeen = true;
         model.poll_source = unquote(value);
         pollSource = !model.poll_source.empty();
       } else if (key == "confidence") {
-        if (pollConfidence) {
+        if (pollConfidenceSeen) {
           return false;
         }
+        pollConfidenceSeen = true;
         model.poll_confidence = unquote(value);
         pollConfidence = validConfidence(model.poll_confidence);
       } else {
@@ -773,29 +800,35 @@ bool parseAccountingModel(const std::string &contents, CurrentModel &model) {
     if (inTimers && indent == 4) {
       return false;
     }
+    if (inTimers && indent != 6) {
+      return false;
+    }
     if (inTimers && indent == 6 && !timer.empty()) {
       auto &cost = model.timer_active_us[timer];
       if (key == "value_us") {
+        if (timerValues.count(timer) != 0) {
+          return false;
+        }
+        timerValues.insert(timer);
         if (!parseUnsignedMicroseconds(value, cost.value_us)) {
           return false;
         }
-        if (!timerValues.insert(timer).second) {
+      } else if (key == "source") {
+        if (timerSources.count(timer) != 0) {
           return false;
         }
-      } else if (key == "source") {
+        timerSources.insert(timer);
         cost.source = unquote(value);
         if (cost.source.empty()) {
           return false;
         }
-        if (!timerSources.insert(timer).second) {
+      } else if (key == "confidence") {
+        if (timerConfidence.count(timer) != 0) {
           return false;
         }
-      } else if (key == "confidence") {
+        timerConfidence.insert(timer);
         cost.confidence = unquote(value);
         if (!validConfidence(cost.confidence)) {
-          return false;
-        }
-        if (!timerConfidence.insert(timer).second) {
           return false;
         }
       } else {
@@ -819,19 +852,20 @@ bool parseAccountingModel(const std::string &contents, CurrentModel &model) {
   return true;
 }
 
-std::string accountingFingerprint(const CurrentModel &model) {
+std::string accountingFingerprint(const CurrentModel &model, const std::string &model_digest) {
   if (!model.accounting_enabled) {
     return {};
   }
   std::ostringstream canonical;
-  canonical << "version=" << model.accounting_version << "\nstatus=" << model.calibration_status
-            << "\ncoeff=" << std::setprecision(17) << model.mcu_80 << ',' << model.mcu_160 << ','
-            << model.mcu_240 << ',' << model.light_sleep << ',' << model.radio_tx << ','
-            << model.connected_idle << ',' << model.display_panel_on << ','
-            << model.display_panel_sleep << ',' << model.display_backlight << ','
-            << model.gps_acquisition << ',' << model.gps_tracking << ',' << model.gps_standby << ','
-            << model.pmic << ',' << model.peripheral << "\npoll=" << model.ui_poll_active_us << ':'
-            << model.poll_source << ':' << model.poll_confidence << '\n';
+  canonical << "model_digest=" << model_digest << "\nversion=" << model.accounting_version
+            << "\nstatus=" << model.calibration_status << "\ncoeff=" << std::setprecision(17)
+            << model.mcu_80 << ',' << model.mcu_160 << ',' << model.mcu_240 << ','
+            << model.light_sleep << ',' << model.radio_tx << ',' << model.connected_idle << ','
+            << model.display_panel_on << ',' << model.display_panel_sleep << ','
+            << model.display_backlight << ',' << model.gps_acquisition << ',' << model.gps_tracking
+            << ',' << model.gps_standby << ',' << model.pmic << ',' << model.peripheral
+            << "\npoll=" << model.ui_poll_active_us << ':' << model.poll_source << ':'
+            << model.poll_confidence << '\n';
   for (const auto &entry : model.timer_active_us) {
     canonical << entry.first << '=' << entry.second.value_us << ':' << entry.second.source << ':'
               << entry.second.confidence << '\n';
@@ -991,12 +1025,15 @@ ModelLoadResult loadCurrentModel(void) {
       return result;
     }
   }
-  result.model.accounting_fingerprint = accountingFingerprint(result.model);
+  result.digest = digestBytes(contents);
+  if (result.digest.empty()) {
+    return result;
+  }
+  result.model.accounting_fingerprint = accountingFingerprint(result.model, result.digest);
   if (result.model.accounting_enabled && result.model.accounting_fingerprint.empty()) {
     return result;
   }
-  result.digest = digestBytes(contents);
-  result.valid = !result.digest.empty();
+  result.valid = true;
   return result;
 }
 
@@ -1084,6 +1121,13 @@ void writeReportLocked(const std::filesystem::path &path,
   const uint64_t light_sleep_raw_ms = state.light_sleep_ms;
   const uint64_t light_sleep_ms = reportDuration(light_sleep_raw_ms);
   const uint64_t light_sleep_in_80 = std::min(frequency_80_raw_ms, light_sleep_raw_ms);
+  const uint64_t adjusted_light_sleep_us =
+      state.eligible_light_sleep_us >= state.light_sleep_work_us
+          ? state.eligible_light_sleep_us - state.light_sleep_work_us
+          : 0;
+  const double light_sleep_residency_ms =
+      model.accounting_enabled ? static_cast<double>(adjusted_light_sleep_us) / 1000.0
+                               : static_cast<double>(light_sleep_ms);
 
   const double mcu_ma =
       (static_cast<double>(light_sleep_in_80) * model.light_sleep
@@ -1271,9 +1315,11 @@ void writeReportLocked(const std::filesystem::path &path,
   output << "      \"timer_queue_idle_ms\": " << reportDuration(state.timer_idle_ms) << ",\n";
   output << "      \"task_idle_ms\": " << reportDuration(state.task_idle_ms) << ",\n";
   output << "      \"eligible_ms\": " << light_sleep_ms << ",\n";
-  output << "      \"residency_ms\": " << light_sleep_ms << ",\n";
+  output << "      \"residency_ms\": ";
+  writeDouble(output, light_sleep_residency_ms);
+  output << ",\n";
   output << "      \"residency_percent\": ";
-  writeDouble(output, perSecond(light_sleep_ms, safe_duration_ms) / 10.0);
+  writeDouble(output, light_sleep_residency_ms * 100.0 / static_cast<double>(safe_duration_ms));
   output << "\n    },\n";
   output << "    \"frequency_residency_ms\": {\n";
   output << "      \"80\": " << frequency_80_ms << ",\n";
