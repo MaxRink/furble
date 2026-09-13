@@ -331,3 +331,25 @@ Both CTest cases passed (0.11 seconds total). The new regression checks
 `SA_ONSTACK`, a fresh registered worker, preservation of an existing worker
 stack, and native fatal-signal termination with diagnostic metadata.
 Full simulator/CI validation remains pending; no physical device was accessed.
+
+## Queued-waiter runtime follow-up
+
+Current master still used the earlier `std::mutex` adapter. This follow-up
+replaces that simulator-only adapter with the queued-waiter `SchedulerMutex`
+runtime from `df40247f`. It serializes waiter selection with the scheduler,
+reserves ownership before publishing a wake, cancels registered waiters during
+task teardown, and cancels an unregistered host waiter with `SchedulerStopped`
+when the scheduler stops. `sim/main.cpp` catches that exception around the
+unregistered simulator thread and requests orderly failure shutdown.
+
+The host regression in `tests/host/sim_scheduler_test.cpp` covers priority
+selection, registered-waiter cancellation, survivor ownership, and
+unregistered-host-waiter cancellation. Its `try_lock()` assertion runs after
+the selected waiter has acquired the mutex, so it checks exclusion at that
+point and does not independently prove the reservation-before-wake race. No
+deterministic reservation seam exists in this test harness.
+
+Validation of this runtime and its new test path is pending on this commit.
+No host-suite, CI, hardware, or physical scheduler-parity result is claimed.
+The waiter-state dump and repeated high-load virtual-time-bound proof remain
+separate open work.
