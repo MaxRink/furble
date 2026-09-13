@@ -10859,7 +10859,10 @@ void UI::task(void) {
       lv_task_handler();
 #if defined(FURBLE_SIM)
       Sim::profilerEndUiCycle();
-      Sim::fuzzCycleComplete(this);
+      if (!Sim::fuzzBootSettling()) {
+        Sim::fuzzCycleComplete(this);
+      }
+      Sim::driverUiCycleComplete();
 #endif
     }
     serviceStorage();
