@@ -114,6 +114,9 @@ workflow, choose **Run workflow**, and select the branch. Android dispatches
 run unit tests and an APK build by default; enable `run_emulator` when the
 slower emulator smoke test is needed. CI checks this trigger policy with
 `python3 tools/check_ci_workflows.py`.
+Node.js is also required for the installer event-flow regression in
+`tests/test_check_ci_workflows.py`; the standard GitHub-hosted Ubuntu runner
+provides it.
 All simulator scenarios are catalogued in
 `sim/scenarios/manifest.json`. Check ownership and certification metadata with
 `python3 tools/check_sim_scenarios.py` after changing those scenarios.
