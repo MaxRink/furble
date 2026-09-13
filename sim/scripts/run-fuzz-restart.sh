@@ -63,6 +63,17 @@ run_rejected_checkpoint() {
     return 1
   fi
   [ -f "$path" ] || { echo "foreign checkpoint was removed" >&2; return 1; }
+
+  malformed="$WORK/malformed-checkpoint"
+  printf '%s\n' 'not a checkpoint' >"$malformed"
+  if (cd "$WORK" && sh -c \
+      'export FURBLE_SIM_FUZZ_CHECKPOINT="$1" FURBLE_SIM_FUZZ_CHECKPOINT_OWNER="$1|$$"; exec "$2" --seed 2 --fuzz-steps 600' \
+      restart-regression "$malformed" "$BIN" >"$WORK/malformed.log" 2>&1); then
+    cat "$WORK/malformed.log"
+    echo "malformed checkpoint unexpectedly accepted" >&2
+    return 1
+  fi
+  [ -f "$malformed" ] || { echo "malformed checkpoint was removed" >&2; return 1; }
 }
 
 run_valid_restart
