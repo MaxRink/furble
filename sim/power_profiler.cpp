@@ -1634,6 +1634,7 @@ void profilerTimerFire(const char *name) {
     const std::string timer_name = name == nullptr ? "unknown_timer" : name;
     const auto found = state.model.timer_active_us.find(timer_name);
     if (found == state.model.timer_active_us.end()) {
+      std::cerr << "Power accounting missing cost for observed timer: " << timer_name << '\n';
       state.accounting_invalid = true;
       requestFailureExit();
       return;

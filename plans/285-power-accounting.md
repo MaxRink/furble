@@ -38,3 +38,8 @@ these synthetic estimates do not establish physical quantitative accuracy.
 The opt-in report also exposes the exact microsecond window and component
 residencies; host profiler harnesses must provide the fail-closed
 `requestFailureExit()` stub when linking this runtime.
+S3 runtime smoke validation passed for the positive fixture with valid
+accounting, exact microsecond fields, and zero pending work; the corrected
+negative diagnostics scenario fails closed after the `about` action and now
+identifies the missing observed-timer cost. Hardware accuracy remains
+unvalidated.
