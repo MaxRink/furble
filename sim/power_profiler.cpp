@@ -115,6 +115,8 @@ struct ProfilerState {
   std::string scenario;
   uint32_t window_start_ms = 0;
   uint32_t last_time_ms = 0;
+  uint64_t window_start_us = 0;
+  uint64_t last_time_us = 0;
 
   std::map<std::string, uint64_t> timer_fires;
   uint64_t invalidated_area_pixels = 0;
@@ -158,6 +160,7 @@ struct ProfilerState {
   int configured_min_frequency_mhz = 40;
   bool light_sleep_enabled = true;
   std::map<int, uint64_t> frequency_ms;
+  std::map<int, uint64_t> frequency_us;
 
   std::string display_state = "on";
   std::map<std::string, uint64_t> display_ms {
@@ -165,8 +168,10 @@ struct ProfilerState {
       {"off", 0},
       {"on",  0}
   };
+  std::map<std::string, uint64_t> display_us;
   bool radio_connected = false;
   uint64_t radio_connected_ms = 0;
+  uint64_t radio_connected_us = 0;
   std::map<std::string, uint64_t> radio_events;
   std::string gps_state = "off";
   std::map<std::string, uint64_t> gps_ms {
@@ -176,6 +181,7 @@ struct ProfilerState {
       {"standby",   0},
       {"tracking",  0}
   };
+  std::map<std::string, uint64_t> gps_us;
 };
 
 ProfilerState state;
@@ -312,22 +318,25 @@ void ensureLock(int lock_type, const char *lock_name) {
   }
 }
 
-void integrateLocked(uint32_t now) {
+void integrateLocked(uint64_t now_us) {
   if (!state.started) {
     return;
   }
+  const uint32_t now = static_cast<uint32_t>(now_us / 1000);
   const uint32_t elapsed = clockElapsed(now, state.last_time_ms);
-  if (elapsed == 0) {
-    return;
-  }
-
+  uint64_t elapsed_us = static_cast<uint64_t>(elapsed) * 1000;
   if (state.model.accounting_enabled) {
-    uint64_t elapsed_us = 0;
-    if (!addChecked(0, static_cast<uint64_t>(elapsed) * 1000, elapsed_us)) {
+    if (now_us < state.last_time_us || !addChecked(0, now_us - state.last_time_us, elapsed_us)) {
       state.accounting_invalid = true;
       requestFailureExit();
       return;
     }
+  }
+  if (elapsed == 0 && elapsed_us == 0) {
+    return;
+  }
+
+  if (state.model.accounting_enabled) {
     const uint64_t work_us = std::min(state.pending_work_us, elapsed_us);
     state.pending_work_us -= work_us;
     const int frequency = currentFrequency();
@@ -356,6 +365,34 @@ void integrateLocked(uint32_t now) {
       }
       state.light_sleep_work_us = updated;
     }
+    if (!addChecked(state.frequency_us[currentFrequency()], elapsed_us, updated)) {
+      state.accounting_invalid = true;
+      requestFailureExit();
+      return;
+    }
+    state.frequency_us[currentFrequency()] = updated;
+    auto &display_us = state.display_us[state.display_state];
+    if (!addChecked(display_us, elapsed_us, updated)) {
+      state.accounting_invalid = true;
+      requestFailureExit();
+      return;
+    }
+    display_us = updated;
+    if (state.radio_connected && !addChecked(state.radio_connected_us, elapsed_us, updated)) {
+      state.accounting_invalid = true;
+      requestFailureExit();
+      return;
+    }
+    if (state.radio_connected) {
+      state.radio_connected_us = updated;
+    }
+    auto &gps_us = state.gps_us[state.gps_state];
+    if (!addChecked(gps_us, elapsed_us, updated)) {
+      state.accounting_invalid = true;
+      requestFailureExit();
+      return;
+    }
+    gps_us = updated;
   }
 
   state.display_ms[state.display_state] += elapsed;
@@ -380,11 +417,14 @@ void integrateLocked(uint32_t now) {
   }
 
   state.last_time_ms = now;
+  state.last_time_us = now_us;
 }
 
 void resetCountersLocked(uint32_t now) {
   state.window_start_ms = now;
   state.last_time_ms = now;
+  state.window_start_us = clockMicros();
+  state.last_time_us = state.window_start_us;
   state.timer_fires.clear();
   for (const char *name : TIMER_NAMES) {
     state.timer_fires.emplace(name, 0);
@@ -414,12 +454,15 @@ void resetCountersLocked(uint32_t now) {
   state.task_delay_count.clear();
   state.task_delay_ms.clear();
   state.frequency_ms.clear();
+  state.frequency_us.clear();
   state.display_ms = {
       {"dim", 0},
       {"off", 0},
       {"on",  0}
   };
+  state.display_us.clear();
   state.radio_connected_ms = 0;
+  state.radio_connected_us = 0;
   state.radio_events.clear();
   state.gps_ms = {
       {"acquiring", 0},
@@ -428,6 +471,7 @@ void resetCountersLocked(uint32_t now) {
       {"standby",   0},
       {"tracking",  0}
   };
+  state.gps_us.clear();
 
   for (auto &entry : state.locks) {
     auto &lock = entry.second;
@@ -1073,7 +1117,7 @@ void writeReportLocked(const std::filesystem::path &path,
     requestFailureExit();
     return;
   }
-  integrateLocked(now);
+  integrateLocked(clockMicros());
   const uint64_t duration_ms = clockElapsed(now, state.window_start_ms);
   const uint64_t safe_duration_ms = std::max<uint64_t>(duration_ms, 1);
   if (!state.model_loaded) {
@@ -1134,40 +1178,78 @@ void writeReportLocked(const std::filesystem::path &path,
     }
     adjusted_light_sleep_us = state.eligible_light_sleep_us - state.light_sleep_work_us;
   }
+  const double energy_duration_ms =
+      model.accounting_enabled
+          ? std::max(0.001,
+                     static_cast<double>(state.last_time_us - state.window_start_us) / 1000.0)
+          : static_cast<double>(safe_duration_ms);
+  const uint64_t radio_connected_raw_ms = state.radio_connected_ms;
+  const double display_on_energy_ms = model.accounting_enabled
+                                          ? static_cast<double>(state.display_us["on"]) / 1000.0
+                                          : static_cast<double>(display_on_raw_ms);
+  const double display_dim_energy_ms = model.accounting_enabled
+                                           ? static_cast<double>(state.display_us["dim"]) / 1000.0
+                                           : static_cast<double>(display_dim_raw_ms);
+  const double display_off_energy_ms = model.accounting_enabled
+                                           ? static_cast<double>(state.display_us["off"]) / 1000.0
+                                           : static_cast<double>(display_off_raw_ms);
+  const double frequency_80_energy_ms = model.accounting_enabled
+                                            ? static_cast<double>(state.frequency_us[80]) / 1000.0
+                                            : static_cast<double>(frequency_80_raw_ms);
+  const double frequency_160_energy_ms = model.accounting_enabled
+                                             ? static_cast<double>(state.frequency_us[160]) / 1000.0
+                                             : static_cast<double>(frequency_160_raw_ms);
+  const double frequency_240_energy_ms = model.accounting_enabled
+                                             ? static_cast<double>(state.frequency_us[240]) / 1000.0
+                                             : static_cast<double>(frequency_240_raw_ms);
+  const double radio_connected_energy_ms =
+      model.accounting_enabled ? static_cast<double>(state.radio_connected_us) / 1000.0
+                               : static_cast<double>(radio_connected_raw_ms);
+  const double gps_acquiring_energy_ms =
+      model.accounting_enabled ? static_cast<double>(state.gps_us["acquiring"]) / 1000.0
+                               : static_cast<double>(gps_acquiring_raw_ms);
+  const double gps_degraded_energy_ms = model.accounting_enabled
+                                            ? static_cast<double>(state.gps_us["degraded"]) / 1000.0
+                                            : static_cast<double>(gps_degraded_raw_ms);
+  const double gps_tracking_energy_ms = model.accounting_enabled
+                                            ? static_cast<double>(state.gps_us["tracking"]) / 1000.0
+                                            : static_cast<double>(gps_tracking_raw_ms);
+  const double gps_standby_energy_ms = model.accounting_enabled
+                                           ? static_cast<double>(state.gps_us["standby"]) / 1000.0
+                                           : static_cast<double>(gps_standby_raw_ms);
 
   const double mcu_ma =
-      (static_cast<double>(light_sleep_in_80) * model.light_sleep
-       + static_cast<double>(frequency_80_raw_ms - light_sleep_in_80) * model.mcu_80
-       + static_cast<double>(frequency_160_raw_ms) * model.mcu_160
-       + static_cast<double>(frequency_240_raw_ms) * model.mcu_240)
-      / safe_duration_ms;
+      (frequency_80_energy_ms * model.light_sleep
+       + (frequency_80_energy_ms
+          - (model.accounting_enabled ? static_cast<double>(adjusted_light_sleep_us) / 1000.0
+                                      : static_cast<double>(light_sleep_in_80)))
+             * model.mcu_80
+       + frequency_160_energy_ms * model.mcu_160 + frequency_240_energy_ms * model.mcu_240)
+      / energy_duration_ms;
   const double modeled_work_extra_ma = static_cast<double>(state.light_sleep_work_us)
                                        * (model.mcu_80 - model.light_sleep)
-                                       / (static_cast<double>(safe_duration_ms) * 1000.0);
+                                       / (energy_duration_ms * 1000.0);
   const double adjusted_mcu_ma = mcu_ma + modeled_work_extra_ma;
   const double display_ma =
-      (static_cast<double>(display_on_raw_ms) * (model.display_panel_on + model.display_backlight)
-       + static_cast<double>(display_dim_raw_ms)
-             * (model.display_panel_on + model.display_backlight * 32.0 / 255.0)
-       + static_cast<double>(display_off_raw_ms) * model.display_panel_sleep)
-      / safe_duration_ms;
-  const uint64_t radio_connected_raw_ms = state.radio_connected_ms;
+      (display_on_energy_ms * (model.display_panel_on + model.display_backlight)
+       + display_dim_energy_ms * (model.display_panel_on + model.display_backlight * 32.0 / 255.0)
+       + display_off_energy_ms * model.display_panel_sleep)
+      / energy_duration_ms;
   const uint64_t radio_connected_ms = reportDuration(radio_connected_raw_ms);
   uint64_t radio_event_count = 0;
   for (const auto &event : state.radio_events) {
     radio_event_count += event.second;
   }
-  const double radio_ma = (static_cast<double>(radio_connected_raw_ms) * model.connected_idle
+  const double radio_ma = (radio_connected_energy_ms * model.connected_idle
                            + static_cast<double>(radio_event_count) * model.radio_tx * 2.0)
-                          / safe_duration_ms;
+                          / energy_duration_ms;
   // A degraded retry leaves the receiver rail powered but releases the CPU
   // sleep lock. Model its receiver draw as acquisition current and expose the
   // state separately so power regressions cannot disappear from the report.
   const double gps_ma =
-      (static_cast<double>(gps_acquiring_raw_ms + gps_degraded_raw_ms) * model.gps_acquisition
-       + static_cast<double>(gps_tracking_raw_ms) * model.gps_tracking
-       + static_cast<double>(gps_standby_raw_ms) * model.gps_standby)
-      / safe_duration_ms;
+      ((gps_acquiring_energy_ms + gps_degraded_energy_ms) * model.gps_acquisition
+       + gps_tracking_energy_ms * model.gps_tracking + gps_standby_energy_ms * model.gps_standby)
+      / energy_duration_ms;
   const double pmic_ma = model.pmic;
   const double peripheral_ma = model.peripheral;
   const double estimated_ma =
@@ -1466,7 +1548,7 @@ void writeReportLocked(const std::filesystem::path &path,
 }
 
 void resetWindowLocked(uint32_t now) {
-  integrateLocked(now);
+  integrateLocked(clockMicros());
   if (state.model.accounting_enabled && state.pending_work_us != 0) {
     state.accounting_invalid = true;
     requestFailureExit();
@@ -1520,7 +1602,7 @@ void profilerBegin(const char *scenario, bool reporting_enabled) {
 void profilerTimerFire(const char *name) {
   std::lock_guard<std::mutex> lock(state.mutex);
   ensureStartedLocked();
-  integrateLocked(clockMillis());
+  integrateLocked(clockMicros());
   uint64_t &fire_count = state.timer_fires[name == nullptr ? "unknown_timer" : name];
   if (!addWorkTotalLocked(fire_count, 1)) {
     requestFailureExit();
@@ -1571,7 +1653,7 @@ void profilerFlushedPixels(uint64_t pixels) {
 void profilerBeginUiCycle(void) {
   std::lock_guard<std::mutex> lock(state.mutex);
   ensureStartedLocked();
-  integrateLocked(clockMillis());
+  integrateLocked(clockMicros());
   if (state.reporting_enabled && state.model.accounting_enabled) {
     const uint64_t work_us = state.model.ui_poll_active_us;
     if (!accountWorkLocked(work_us) || !addWorkTotalLocked(state.poll_work_us, work_us)) {
@@ -1616,14 +1698,14 @@ void profilerTaskDelay(const char *task_name, uint32_t milliseconds) {
 void profilerSetDisplayState(const char *display_state) {
   std::lock_guard<std::mutex> lock(state.mutex);
   ensureStartedLocked();
-  integrateLocked(clockMillis());
+  integrateLocked(clockMicros());
   state.display_state = display_state == nullptr ? "on" : display_state;
 }
 
 void profilerSetRadioConnected(bool connected) {
   std::lock_guard<std::mutex> lock(state.mutex);
   ensureStartedLocked();
-  integrateLocked(clockMillis());
+  integrateLocked(clockMicros());
   state.radio_connected = connected;
 }
 
@@ -1636,7 +1718,7 @@ void profilerRadioEvent(const char *name) {
 void profilerSetGpsState(const char *gps_state) {
   std::lock_guard<std::mutex> lock(state.mutex);
   ensureStartedLocked();
-  integrateLocked(clockMillis());
+  integrateLocked(clockMicros());
   state.gps_state = gps_state == nullptr ? "off" : gps_state;
 }
 
@@ -1650,7 +1732,7 @@ const char *profilerGpsState(void) {
 void profilerPowerConfig(int max_frequency_mhz, int min_frequency_mhz, bool light_sleep_enabled) {
   std::lock_guard<std::mutex> lock(state.mutex);
   ensureStartedLocked();
-  integrateLocked(clockMillis());
+  integrateLocked(clockMicros());
   state.configured_max_frequency_mhz = max_frequency_mhz;
   state.configured_min_frequency_mhz = min_frequency_mhz;
   state.light_sleep_enabled = light_sleep_enabled;
@@ -1660,7 +1742,7 @@ void profilerPowerLockAcquire(int lock_type, const char *lock_name, const char *
   std::lock_guard<std::mutex> lock(state.mutex);
   ensureStartedLocked();
   const uint32_t now = clockMillis();
-  integrateLocked(now);
+  integrateLocked(clockMicros());
   ensureLock(lock_type, lock_name);
   auto &data = state.locks[lock_type];
   const std::string owner_name = owner == nullptr ? "unknown" : owner;
@@ -1681,7 +1763,7 @@ void profilerPowerLockRelease(int lock_type, const char *lock_name, const char *
   std::lock_guard<std::mutex> lock(state.mutex);
   ensureStartedLocked();
   const uint32_t now = clockMillis();
-  integrateLocked(now);
+  integrateLocked(clockMicros());
   ensureLock(lock_type, lock_name);
   auto &data = state.locks[lock_type];
   const std::string owner_name = owner == nullptr ? "unknown" : owner;
