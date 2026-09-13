@@ -381,6 +381,10 @@ passed. This is simulator evidence for StickS3 only. StickC and Core runs,
 screenshot review, and a physical-button hardware check remain pending. The
 release-optimized S3 build was still in progress at handoff.
 
+This repair is limited to the transient connect-overlay teardown on
+physical-button hardware. It does not alter `Display > Legend`, and it is not
+evidence that the separate Display-page layout or collision gates are fixed.
+
 5. The simulator's UI task is not priority gated. It is the pseudo-task that
    drives virtual time, so it can run ahead of a higher-priority real task that
    a queue send has just released. `doConnect()` resumes and readies the
