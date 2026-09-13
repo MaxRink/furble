@@ -708,11 +708,6 @@ UI::UI(const interval_t &interval)
           lv_obj_align(m_Right, LV_ALIGN_RIGHT_MID, 0, m_RightYOffset);
         }
 
-        // Width every potentially scrolling row keeps clear in Buttons
-        // placement. reserveLegendColumns() applies it when a page loads.
-        lv_obj_update_layout(m_Right);
-        m_LegendWidth = lv_obj_get_width(m_Right);
-
         // These indicators float against the screen edges, so the level page
         // must re-anchor them whenever it rotates the panel. Hand their handles
         // to the level state for that reflow.
@@ -756,6 +751,12 @@ UI::UI(const interval_t &interval)
     lv_obj_set_size(m_Left, ICON_HEADER_SIZE, ICON_HEADER_SIZE);
     lv_obj_set_size(m_OK, ICON_HEADER_SIZE, ICON_HEADER_SIZE);
     lv_obj_set_size(m_Right, ICON_HEADER_SIZE, ICON_HEADER_SIZE);
+
+    // Width every potentially scrolling row keeps clear in Buttons placement.
+    // Sample after the final size and layout so the reservation matches the
+    // legend box that is actually drawn, not a theme default width.
+    lv_obj_update_layout(m_Right);
+    m_LegendWidth = lv_obj_get_width(m_Right);
   }
 
   configureControl(ControlMode::MENU);
@@ -1898,10 +1899,10 @@ int32_t UI::floatingIndicatorReserve(void) {
   if (!legendSelectable() || (legendPlacement() != Settings::LEGEND_BUTTONS)) {
     return 0;
   }
-  // The legend's own width, not an assumed one. The button is styled from the
-  // theme and is wider than the 24 px icon it carries, so reserving the icon
-  // size left the widest rows still touching it. Recorded in UI::UI() because
-  // the pages that reserve the column are built from static helpers.
+  // The legend's own width, not an assumed one. UI::UI() sizes the button before
+  // sampling it, so the reservation matches the box actually drawn. It is
+  // recorded there because the pages that reserve the column are built from
+  // static helpers.
   return (m_LegendWidth > 0) ? m_LegendWidth : ICON_HEADER_SIZE;
 }
 
