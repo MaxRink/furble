@@ -511,8 +511,8 @@ reader, not a compile-only call.
 
 This is regression coverage for the atomic flag boundary only. It adds no
 test-only accessor, barrier, suppression, scheduler policy, or hardware claim.
-The raw TSAN result remains the deciding evidence; the existing wrapper's
-member-filter classification is not a whole-program race-free guarantee.
+The raw TSAN result remains the deciding evidence; the shell wrapper contract
+is not a whole-program race-free guarantee.
 
 The TSAN wrapper is a fail-closed full-report diagnostic gate: every sanitizer
 warning and every non-zero child status fails, regardless of report names or
