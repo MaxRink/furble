@@ -8677,24 +8677,16 @@ void UI::addBulbMenu(const menu_t &parent) {
 void UI::addDisplayMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_DisplayStr, &icon_settings_brightness, true, parent);
   lv_obj_t *cont = lv_menu_cont_create(menu.page);
-  if (!M5.Touch.isEnabled() || M5.Display.width() < 110) {
-    // Let the page scroll when these seven widgets exceed a narrow viewport,
-    // including physical-key layouts and the 80 px touch-panel simulator.
-    // Pinning the container to the viewport made SPACE_EVENLY use negative
-    // space and draw adjacent controls over one another.
-    lv_obj_set_height(cont, LV_SIZE_CONTENT);
-    lv_obj_set_style_pad_top(cont, 0, LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_bottom(cont, 0, LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_row(cont, 0, LV_STATE_DEFAULT);
-  } else {
-    lv_obj_set_height(cont, LV_PCT(100));
-  }
+  // Let the page scroll when these seven widgets exceed the viewport on every
+  // panel. A fixed-height container plus SPACE_EVENLY has negative free space
+  // on narrow touch and physical layouts, drawing adjacent controls over one
+  // another. Keep one content-sized layout for all display variants.
+  lv_obj_set_height(cont, LV_SIZE_CONTENT);
+  lv_obj_set_style_pad_top(cont, 0, LV_STATE_DEFAULT);
+  lv_obj_set_style_pad_bottom(cont, 0, LV_STATE_DEFAULT);
+  lv_obj_set_style_pad_row(cont, 0, LV_STATE_DEFAULT);
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(cont,
-                        M5.Touch.isEnabled() && M5.Display.width() >= 110
-                            ? LV_FLEX_ALIGN_SPACE_EVENLY
-                            : LV_FLEX_ALIGN_START,
-                        LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
   // Add brightness control
   lv_obj_t *label = lv_label_create(cont);

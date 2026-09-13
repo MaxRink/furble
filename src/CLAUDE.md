@@ -124,10 +124,9 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   zero. Do not relayout rows from a scroll callback.
   `ui.indicator_clearance` is still the check, and it has to hold in both
   placements.
-  The Display settings page uses content-sized rows on narrow touch panels
-  below 110 px as well as on physical-button layouts; wider touch panels keep
-  their evenly spaced controls. Keep the three-panel touch matrix as the gate
-  for any broader geometry claim.
+  The Display settings page uses content-sized rows on all panel/layout
+  variants; keep the three-panel touch matrix as the gate for any geometry
+  claim.
   Plus/S3 spin rows keep their vertical padding but spend no horizontal pixels:
   at Large text `999 mins` needs the full 103 px narrowed row width. Four pixels
   of horizontal padding make that complete value wrap and push the Bulb page
