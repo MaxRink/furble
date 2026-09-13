@@ -210,7 +210,8 @@ void testReservationParser() {
   std::vector<Reservation> parsed;
   std::string error;
   check(parseReservations(valid, parsed, error), "reservation parser accepts annotated IDs");
-  check(validateReservations(parsed, {1, 2, 3, 65}, error), "complete reservation owner set validates");
+  check(validateReservations(parsed, {1, 2, 3, 65}, error),
+        "complete reservation owner set validates");
 
   std::string deleted = valid.substr(0, valid.find("| #273"));
   check(parseReservations(deleted, parsed, error), "deleted-row fixture parses");
