@@ -124,6 +124,12 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
 - `FurbleWiFi`: station lifecycle, remembered access point state and NTP.
   Never fall back to a WiFi scan while a camera is active.
 - `FurbleUI*`: LVGL UI. Respect the changed-check rule for periodic setters.
+  LVGL 9.4 retains an encoder input device's `last_pressed` object when that
+  object is deleted. Before switching a persistent physical-button device back
+  to `LV_INDEV_TYPE_ENCODER`, reset it through the public pointer input path,
+  then restore the encoder type. This clears the retained object without using
+  private LVGL fields. Keep the reset under the UI mutex and do not treat it as
+  a replacement for releasing held inputs.
  Menu rows keep their icons and the selected font. Their labels wrap inside
   the row and the page scrolls vertically when the rows no longer fit. Do not
   use circular scrolling for an eager-built menu row: LVGL keeps its animation

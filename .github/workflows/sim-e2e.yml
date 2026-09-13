@@ -457,3 +457,19 @@ jobs:
           # plans/166-sim-teardown-livelock.md.
           FURBLE_SIM_BIN="${{ github.workspace }}/sim/build-core/furble-sim" \
             sh sim/scripts/run-fuzz.sh
+
+      # Exercise the same seeded stream through the physical-button input
+      # devices. Keep the runner, seed set, 600-step budget and strict seed-2
+      # replay unchanged so stale LVGL input history cannot hide in one panel.
+      - name: Fuzz the no-touch UI (all modeled panels)
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+          FURBLE_SIM_NO_TOUCH: 1
+          FURBLE_FUZZ_STEPS: 600
+        run: |
+          for binary in sim/build/furble-sim sim/build-stickc/furble-sim sim/build-core/furble-sim; do
+            echo "=== no-touch: $binary ==="
+            FURBLE_SIM_BIN="${{ github.workspace }}/$binary" \
+              sh sim/scripts/run-fuzz.sh
+          done

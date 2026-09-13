@@ -825,6 +825,16 @@ and physical-device checks remain separate gates.
 
 ### Physical-button input correction
 
+The persistent physical-button input devices also need a mode-transition
+cleanup. LVGL 9.4 can retain an encoder device's `last_pressed` object after
+that object is deleted. When the device later changes to button mode,
+`indev_click_focus` may send a focus event through the freed pointer. The UI
+now uses the public pointer reset path before changing each device back to
+encoder mode. This is a targeted simulator and firmware safety workaround for
+the pinned LVGL behavior; it does not restore deleted UI objects or replace
+held-input release handling. The no-touch seeded fuzz matrix remains a runtime
+gate for all three modeled binaries.
+
 The new focus walks exposed a simulator-input shortcut rather than a layout
 defect. `button b` sent `LV_KEY_RIGHT` directly to the focus group. LVGL's
 encoder processor normally turns that key into an encoder difference before it

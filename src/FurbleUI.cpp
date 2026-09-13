@@ -5688,9 +5688,14 @@ void UI::configMenuControl(void) {
     lv_obj_set_style_bg_image_src(m_OK, &icon_check_24, 0);
     lv_obj_set_style_bg_image_src(m_Right, &icon_arrow_downward_24, 0);
 
-    lv_indev_set_type(m_ButtonL, LV_INDEV_TYPE_ENCODER);
-    lv_indev_set_type(m_ButtonO, LV_INDEV_TYPE_ENCODER);
-    lv_indev_set_type(m_ButtonR, LV_INDEV_TYPE_ENCODER);
+    // LVGL 9.4 retains an encoder indev's last_pressed object when that object
+    // is deleted. Reset through the public pointer path before changing back
+    // to an encoder so a later button-mode click cannot notify freed memory.
+    for (lv_indev_t *indev : {m_ButtonL, m_ButtonO, m_ButtonR}) {
+      lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
+      lv_indev_reset(indev, nullptr);
+      lv_indev_set_type(indev, LV_INDEV_TYPE_ENCODER);
+    }
   }
   applyLegendVisibility();
 }
