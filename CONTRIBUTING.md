@@ -47,7 +47,8 @@ There are six release board environments: `m5stick-c`, `m5stick-c-plus`,
 `m5stick-s3`, `m5stack-core`, `m5stack-core2`, and `waveshare-s3-eth`. Each has
 a matching `-debug` environment that adds verbose logging and the USB serial
 console. CI builds the six release environments and their mandatory debug
-profiles. Releases keep their existing release/debug matrix.
+profiles. Releases publish the six release images and five OTA-compatible debug
+images. The Core single-factory USB debug profile remains developer-only.
 
 Normal CI uses the USB-only Core debug profile. The legacy dual-OTA
 `m5stack-core-debug` profile is available only through **Run workflow** with

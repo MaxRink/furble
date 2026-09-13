@@ -974,6 +974,9 @@ The release artifact publishing job must retain scoped `contents: write`
 permission; firmware build jobs need only read access. Validate the published
 manifest, checksums, and provenance before flashing a prerelease.
 
+The Core single-factory USB debug profile is intentionally excluded from the
+release and Pages matrices because the shared manifest requires `otadata`.
+
 Stage 34a-1 is implemented on `feat/34-ota-partitions`.
 
 - All five release environments select the stock `partitions_two_ota_large.csv`

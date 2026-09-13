@@ -27,6 +27,9 @@ jobs:
         variant:
           - ""
           - "-debug"
+        exclude:
+          - platform: m5stack-core
+            variant: "-debug"
 
     runs-on: ubuntu-latest
     permissions:

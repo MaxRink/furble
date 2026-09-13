@@ -25,6 +25,19 @@ class CheckCIWorkflowsTest(unittest.TestCase):
         document["jobs"]["release"]["permissions"], {"contents": "write"}
     )
 
+  def test_core_usb_debug_is_not_published_as_ota_manifest(self):
+    for workflow_name in ("release.yml", "pages.yml"):
+      document = CHECKER._load_workflow(ROOT / ".github" / "workflows" / workflow_name)
+      matrix = document["jobs"]["build"]["strategy"]["matrix"]
+      self.assertIn(
+          {"platform": "m5stack-core", "variant": "-debug"},
+          matrix["exclude"],
+          workflow_name,
+      )
+    installer = (ROOT / "web-installer" / "index.html").read_text(encoding="utf-8")
+    self.assertIn("debug.disabled = core;", installer)
+    self.assertIn("radio.value === 'm5stack-core'", installer)
+
   def lint(self, text: str) -> list[str]:
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".yml", encoding="utf-8"
