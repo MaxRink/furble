@@ -6,7 +6,7 @@
 namespace Furble::Sim {
 
 /** Start a deterministic report window at the current simulator time. */
-void profilerBegin(const char *scenario);
+void profilerBegin(const char *scenario, bool reporting_enabled = false);
 
 /** Record one invocation of a named LVGL timer callback. */
 void profilerTimerFire(const char *name);

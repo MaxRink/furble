@@ -1,6 +1,10 @@
 # sim/ (host SDL simulator)
 
 Host build of the furble UI over M5GFX/M5Unified SDL. Developer tool only.
+Power reports with an explicit reporting scenario freeze the selected model
+before events; ordinary UI and fuzz runs retain the legacy profiler path.
+Synthetic timer/UI work accounting remains relative simulator evidence, not a
+callback timing measurement or hardware current calibration.
 Simulator-only production policy is forbidden. Narrow `FURBLE_SIM` guards in
 shipping sources are allowed only for observability, deterministic navigation,
 or orderly host exit, and firmware builds must compile the unchanged production

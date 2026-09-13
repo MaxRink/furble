@@ -87,6 +87,17 @@ struct CurrentModel {
   double gps_standby = 0.5;
   double pmic = 0.05247;
   double peripheral = 0.0035;
+  bool accounting_enabled = false;
+  uint64_t ui_poll_active_us = 0;
+  struct AccountingCost {
+    uint64_t value_us = 0;
+    std::string source;
+    std::string confidence;
+  };
+  std::map<std::string, AccountingCost> timer_active_us;
+  std::string poll_source;
+  std::string poll_confidence;
+  std::string accounting_fingerprint;
 };
 
 struct ModelLoadResult {
@@ -115,6 +126,21 @@ struct ProfilerState {
   bool cycle_task_woke = false;
   bool timer_queue_idle = true;
   bool task_idle = true;
+  bool reporting_enabled = false;
+  bool model_loaded = false;
+  bool accounting_invalid = false;
+  CurrentModel model;
+  std::string model_source;
+  std::string model_digest;
+  std::string accounting_fingerprint;
+  uint64_t pending_work_us = 0;
+  uint64_t work_80_us = 0;
+  uint64_t work_160_us = 0;
+  uint64_t work_240_us = 0;
+  uint64_t light_sleep_work_us = 0;
+  uint64_t poll_work_us = 0;
+  uint64_t timer_work_us = 0;
+  std::map<std::string, uint64_t> timer_work_us_by_name;
   uint64_t timer_idle_ms = 0;
   uint64_t task_idle_ms = 0;
   uint64_t lock_free_ms = 0;
@@ -243,6 +269,34 @@ int currentFrequency(void) {
   return 80;
 }
 
+bool addChecked(uint64_t left, uint64_t right, uint64_t &result) {
+  if (right > std::numeric_limits<uint64_t>::max() - left) {
+    return false;
+  }
+  result = left + right;
+  return true;
+}
+
+bool accountWorkLocked(uint64_t work_us) {
+  uint64_t updated = 0;
+  if (!addChecked(state.pending_work_us, work_us, updated)) {
+    state.accounting_invalid = true;
+    return false;
+  }
+  state.pending_work_us = updated;
+  return true;
+}
+
+bool addWorkTotalLocked(uint64_t &total, uint64_t work_us) {
+  uint64_t updated = 0;
+  if (!addChecked(total, work_us, updated)) {
+    state.accounting_invalid = true;
+    return false;
+  }
+  total = updated;
+  return true;
+}
+
 void ensureLock(int lock_type, const char *lock_name) {
   auto &lock = state.locks[lock_type];
   if (lock.name.empty() && lock_name != nullptr) {
@@ -262,6 +316,35 @@ void integrateLocked(uint32_t now) {
     return;
   }
 
+  if (state.model.accounting_enabled) {
+    uint64_t elapsed_us = 0;
+    if (elapsed > std::numeric_limits<uint64_t>::max() / 1000
+        || !addChecked(0, static_cast<uint64_t>(elapsed) * 1000, elapsed_us)) {
+      state.accounting_invalid = true;
+      return;
+    }
+    const uint64_t work_us = std::min(state.pending_work_us, elapsed_us);
+    state.pending_work_us -= work_us;
+    const int frequency = currentFrequency();
+    uint64_t *bucket = frequency >= 240   ? &state.work_240_us
+                       : frequency >= 160 ? &state.work_160_us
+                                          : &state.work_80_us;
+    uint64_t updated = 0;
+    if (!addChecked(*bucket, work_us, updated)) {
+      state.accounting_invalid = true;
+      return;
+    }
+    *bucket = updated;
+    const bool sleepEligible = state.light_sleep_enabled && lockCount() == 0 && state.task_idle;
+    if (sleepEligible && !addChecked(state.light_sleep_work_us, work_us, updated)) {
+      state.accounting_invalid = true;
+      return;
+    }
+    if (sleepEligible) {
+      state.light_sleep_work_us = updated;
+    }
+  }
+
   state.display_ms[state.display_state] += elapsed;
   if (state.radio_connected) {
     state.radio_connected_ms += elapsed;
@@ -277,7 +360,8 @@ void integrateLocked(uint32_t now) {
   }
   if (lockCount() == 0) {
     state.lock_free_ms += elapsed;
-    if (state.light_sleep_enabled && state.timer_queue_idle && state.task_idle) {
+    if (state.light_sleep_enabled && state.task_idle
+        && (state.model.accounting_enabled || state.timer_queue_idle)) {
       state.light_sleep_ms += elapsed;
     }
   }
@@ -299,6 +383,14 @@ void resetCountersLocked(uint32_t now) {
   state.cycle_task_woke = false;
   state.timer_queue_idle = true;
   state.task_idle = true;
+  state.pending_work_us = 0;
+  state.work_80_us = 0;
+  state.work_160_us = 0;
+  state.work_240_us = 0;
+  state.light_sleep_work_us = 0;
+  state.poll_work_us = 0;
+  state.timer_work_us = 0;
+  state.timer_work_us_by_name.clear();
   state.timer_idle_ms = 0;
   state.task_idle_ms = 0;
   state.lock_free_ms = 0;
@@ -514,6 +606,143 @@ std::string digestBytes(const std::string &contents) {
   return digest;
 }
 
+bool parseUnsignedMicroseconds(const std::string &text, uint64_t &value) {
+  const std::string trimmed = trim(text);
+  if (trimmed.empty() || trimmed.find_first_not_of("0123456789") != std::string::npos) {
+    return false;
+  }
+  try {
+    size_t parsed = 0;
+    value = std::stoull(trimmed, &parsed);
+    return parsed == trimmed.size();
+  } catch (const std::exception &) {
+    return false;
+  }
+}
+
+std::string unquote(std::string value) {
+  value = trim(value);
+  if (value.size() >= 2 && value.front() == '"' && value.back() == '"') {
+    return value.substr(1, value.size() - 2);
+  }
+  return value;
+}
+
+bool parseAccountingModel(const std::string &contents, CurrentModel &model) {
+  std::istringstream input(contents);
+  std::string line;
+  bool inAccounting = false;
+  bool inTimers = false;
+  bool inPoll = false;
+  bool pollValue = false;
+  bool pollSource = false;
+  bool pollConfidence = false;
+  std::string timer;
+  std::set<std::string> timerValues;
+  std::set<std::string> timerSources;
+  std::set<std::string> timerConfidence;
+  while (std::getline(input, line)) {
+    const std::string text = trim(line);
+    if (text.empty() || text.front() == '#') {
+      continue;
+    }
+    const size_t first = line.find_first_not_of(' ');
+    const int indent = first == std::string::npos ? 0 : static_cast<int>(first);
+    const size_t colon = text.find(':');
+    if (colon == std::string::npos) {
+      continue;
+    }
+    const std::string key = trim(text.substr(0, colon));
+    const std::string value = trim(text.substr(colon + 1));
+    if (indent == 0) {
+      if (key == "accounting") {
+        inAccounting = true;
+        model.accounting_enabled = true;
+        continue;
+      }
+      if (inAccounting) {
+        break;
+      }
+      continue;
+    }
+    if (!inAccounting) {
+      continue;
+    }
+    if (indent == 2) {
+      inTimers = key == "timer_active_us_per_fire";
+      inPoll = key == "ui_poll_active_us_per_cycle";
+      if (inTimers || inPoll) {
+        timer.clear();
+      }
+      if (key == "version" && value != "1") {
+        return false;
+      }
+      continue;
+    }
+    if (inPoll && indent >= 4) {
+      if (key == "value_us") {
+        pollValue = parseUnsignedMicroseconds(value, model.ui_poll_active_us);
+      } else if (key == "source") {
+        model.poll_source = unquote(value);
+        pollSource = !model.poll_source.empty();
+      } else if (key == "confidence") {
+        model.poll_confidence = unquote(value);
+        pollConfidence = !model.poll_confidence.empty();
+      }
+      continue;
+    }
+    if (inTimers && indent == 4 && value.empty()) {
+      timer = key;
+      if (!model.timer_active_us.emplace(timer, CurrentModel::AccountingCost {}).second) {
+        return false;
+      }
+      continue;
+    }
+    if (inTimers && indent >= 6 && !timer.empty()) {
+      auto &cost = model.timer_active_us[timer];
+      if (key == "value_us") {
+        if (!parseUnsignedMicroseconds(value, cost.value_us)) {
+          return false;
+        }
+        timerValues.insert(timer);
+      } else if (key == "source") {
+        cost.source = unquote(value);
+        if (cost.source.empty()) {
+          return false;
+        }
+        timerSources.insert(timer);
+      } else if (key == "confidence") {
+        cost.confidence = unquote(value);
+        if (cost.confidence.empty()) {
+          return false;
+        }
+        timerConfidence.insert(timer);
+      }
+    }
+  }
+  if (!model.accounting_enabled) {
+    return true;
+  }
+  if (!pollValue || !pollSource || !pollConfidence || model.timer_active_us.empty()) {
+    return false;
+  }
+  for (const auto &entry : model.timer_active_us) {
+    if (timerValues.count(entry.first) == 0 || timerSources.count(entry.first) == 0
+        || timerConfidence.count(entry.first) == 0) {
+      return false;
+    }
+  }
+  std::ostringstream canonical;
+  canonical << "version=1\npoll=" << model.ui_poll_active_us << ":" << model.poll_source << ":"
+            << model.poll_confidence << '\n';
+  for (const auto &entry : model.timer_active_us) {
+    canonical << entry.first << '=' << entry.second.value_us << ':' << entry.second.source << ':'
+              << entry.second.confidence << '\n';
+  }
+  model.accounting_fingerprint = digestBytes(canonical.str());
+  return !model.accounting_fingerprint.empty();
+}
+
 ModelLoadResult loadCurrentModel(void) {
   ModelLoadResult result;
   std::vector<std::filesystem::path> candidates;
@@ -551,6 +780,9 @@ ModelLoadResult loadCurrentModel(void) {
   std::set<std::string> seen_entries;
   const std::string contents((std::istreambuf_iterator<char>(file)),
                              std::istreambuf_iterator<char>());
+  if (!parseAccountingModel(contents, result.model)) {
+    return result;
+  }
   std::istringstream input(contents);
   std::string anchor;
   std::string pending_entry;
@@ -695,17 +927,32 @@ void writeDouble(std::ostream &output, double value) {
 void writeReportLocked(const std::filesystem::path &path,
                        const std::string &scenario,
                        uint32_t now) {
+  if (state.accounting_invalid) {
+    requestFailureExit();
+    return;
+  }
   integrateLocked(now);
   const uint64_t duration_ms = clockElapsed(now, state.window_start_ms);
   const uint64_t safe_duration_ms = std::max<uint64_t>(duration_ms, 1);
-  const ModelLoadResult loaded_model = loadCurrentModel();
-  if (!loaded_model.valid) {
-    std::cerr << "Could not load a valid power model; report not written: " << loaded_model.source
-              << '\n';
-    requestExit(1);
+  if (!state.model_loaded) {
+    const ModelLoadResult loaded_model = loadCurrentModel();
+    if (!loaded_model.valid) {
+      std::cerr << "Could not load a valid power model; report not written: " << loaded_model.source
+                << '\n';
+      requestFailureExit();
+      return;
+    }
+    state.model = loaded_model.model;
+    state.model_source = loaded_model.source.string();
+    state.model_digest = loaded_model.digest;
+    state.model_loaded = true;
+  }
+  if (state.accounting_invalid || (state.model.accounting_enabled && state.pending_work_us != 0)) {
+    std::cerr << "Power accounting invalid or has unresolved pending work; report not written\n";
+    requestFailureExit();
     return;
   }
-  const CurrentModel &model = loaded_model.model;
+  const CurrentModel &model = state.model;
 
   const uint64_t display_on_raw_ms = state.display_ms["on"];
   const uint64_t display_dim_raw_ms = state.display_ms["dim"];
@@ -739,6 +986,10 @@ void writeReportLocked(const std::filesystem::path &path,
        + static_cast<double>(frequency_160_raw_ms) * model.mcu_160
        + static_cast<double>(frequency_240_raw_ms) * model.mcu_240)
       / safe_duration_ms;
+  const double modeled_work_extra_ma = static_cast<double>(state.light_sleep_work_us)
+                                       * (model.mcu_80 - model.light_sleep)
+                                       / (static_cast<double>(safe_duration_ms) * 1000.0);
+  const double adjusted_mcu_ma = mcu_ma + modeled_work_extra_ma;
   const double display_ma =
       (static_cast<double>(display_on_raw_ms) * (model.display_panel_on + model.display_backlight)
        + static_cast<double>(display_dim_raw_ms)
@@ -764,12 +1015,13 @@ void writeReportLocked(const std::filesystem::path &path,
       / safe_duration_ms;
   const double pmic_ma = model.pmic;
   const double peripheral_ma = model.peripheral;
-  const double estimated_ma = mcu_ma + display_ma + radio_ma + gps_ma + pmic_ma + peripheral_ma;
+  const double estimated_ma =
+      adjusted_mcu_ma + display_ma + radio_ma + gps_ma + pmic_ma + peripheral_ma;
 
   std::ofstream output(path, std::ios::trunc);
   if (!output) {
     std::cerr << "Could not write power report: " << path << '\n';
-    requestExit(1);
+    requestFailureExit();
     return;
   }
 
@@ -777,8 +1029,8 @@ void writeReportLocked(const std::filesystem::path &path,
   output << "  \"schema_version\": 1,\n";
   output << "  \"scenario\": \"" << jsonEscape(scenario) << "\",\n";
   output << "  \"estimate_kind\": \"relative simulator estimate, not a hardware measurement\",\n";
-  output << "  \"model_source\": \"" << jsonEscape(loaded_model.source.string()) << "\",\n";
-  output << "  \"model_digest\": \"sha256:" << loaded_model.digest << "\",\n";
+  output << "  \"model_source\": \"" << jsonEscape(state.model_source) << "\",\n";
+  output << "  \"model_digest\": \"sha256:" << state.model_digest << "\",\n";
   output << "  \"model_valid\": true,\n";
   output << "  \"board\": \"m5stick-s3\",\n";
   output << "  \"duration_ms\": " << duration_ms << ",\n";
@@ -962,7 +1214,7 @@ void writeReportLocked(const std::filesystem::path &path,
   output << "    \"board\": \"m5stick-s3\",\n";
   output << "    \"components_mA\": {\n";
   output << "      \"mcu\": ";
-  writeDouble(output, mcu_ma);
+  writeDouble(output, adjusted_mcu_ma);
   output << ",\n      \"radio\": ";
   writeDouble(output, radio_ma);
   output << ",\n      \"display\": ";
@@ -997,25 +1249,87 @@ void writeReportLocked(const std::filesystem::path &path,
   output << "        \"degraded\": " << gps_degraded_raw_ms << ",\n";
   output << "        \"tracking\": " << gps_tracking_raw_ms << ",\n";
   output << "        \"standby\": " << gps_standby_raw_ms << "\n";
-  output << "      }\n";
+  output << "      },\n";
+  output << "      \"accounting_mode\": \""
+         << (model.accounting_enabled ? "synthetic-virtual-work" : "legacy-unaccounted") << "\",\n";
+  output << "      \"accounting_fingerprint\": \"" << jsonEscape(model.accounting_fingerprint)
+         << "\",\n";
+  output << "      \"poll_work_us\": " << (model.accounting_enabled ? state.poll_work_us : 0)
+         << ",\n";
+  output << "      \"timer_work_us\": " << state.timer_work_us << ",\n";
+  output << "      \"timer_work_by_name_us\": {";
+  bool first_timer_work = true;
+  for (const auto &entry : state.timer_work_us_by_name) {
+    if (!first_timer_work) {
+      output << ",";
+    }
+    first_timer_work = false;
+    output << "\n        \"" << jsonEscape(entry.first) << "\": " << entry.second;
+  }
+  if (!state.timer_work_us_by_name.empty()) {
+    output << "\n      ";
+  }
+  output << "},\n";
+  output << "      \"work_80_us\": " << state.work_80_us << ",\n";
+  output << "      \"work_160_us\": " << state.work_160_us << ",\n";
+  output << "      \"work_240_us\": " << state.work_240_us << ",\n";
+  output << "      \"light_sleep_work_us\": " << state.light_sleep_work_us << ",\n";
+  output << "      \"pending_work_us\": " << state.pending_work_us << ",\n";
+  output << "      \"accounting_valid\": " << (state.accounting_invalid ? "false" : "true") << "\n";
   output << "    }\n";
   output << "  },\n";
   output << "  \"estimated_mA\": ";
   writeDouble(output, estimated_ma);
   output << "\n}\n";
+  output.flush();
+  if (!output) {
+    std::cerr << "Could not flush power report: " << path << '\n';
+    requestFailureExit();
+    return;
+  }
+  output.close();
+  if (output.fail()) {
+    std::cerr << "Could not close power report: " << path << '\n';
+    requestFailureExit();
+  }
 }
 
 void resetWindowLocked(uint32_t now) {
   integrateLocked(now);
+  if (state.model.accounting_enabled && state.pending_work_us != 0) {
+    state.accounting_invalid = true;
+    requestFailureExit();
+    return;
+  }
   resetCountersLocked(now);
 }
 
 }  // namespace
 
-void profilerBegin(const char *scenario) {
+void profilerBegin(const char *scenario, bool reporting_enabled) {
   std::lock_guard<std::mutex> lock(state.mutex);
   state.started = true;
   state.scenario = scenario == nullptr ? "sim" : scenario;
+  state.reporting_enabled = reporting_enabled;
+  state.model_loaded = false;
+  state.model = CurrentModel {};
+  state.model_source.clear();
+  state.model_digest.clear();
+  state.accounting_fingerprint.clear();
+  state.accounting_invalid = false;
+  if (reporting_enabled) {
+    const ModelLoadResult loaded_model = loadCurrentModel();
+    if (!loaded_model.valid) {
+      state.accounting_invalid = true;
+      requestFailureExit();
+    } else {
+      state.model = loaded_model.model;
+      state.model_source = loaded_model.source.string();
+      state.model_digest = loaded_model.digest;
+      state.model_loaded = true;
+      state.accounting_fingerprint = loaded_model.model.accounting_fingerprint;
+    }
+  }
   state.display_state = "on";
   state.radio_connected = false;
   state.gps_state = "off";
@@ -1035,8 +1349,23 @@ void profilerBegin(const char *scenario) {
 void profilerTimerFire(const char *name) {
   std::lock_guard<std::mutex> lock(state.mutex);
   ensureStartedLocked();
+  integrateLocked(clockMillis());
   state.timer_fires[name == nullptr ? "unknown_timer" : name]++;
   state.cycle_timer_fired = true;
+  if (state.reporting_enabled && state.model.accounting_enabled) {
+    const std::string timer_name = name == nullptr ? "unknown_timer" : name;
+    const auto found = state.model.timer_active_us.find(timer_name);
+    if (found == state.model.timer_active_us.end()) {
+      state.accounting_invalid = true;
+      requestFailureExit();
+      return;
+    }
+    const uint64_t work_us = found->second.value_us;
+    if (!accountWorkLocked(work_us) || !addWorkTotalLocked(state.timer_work_us, work_us)
+        || !addWorkTotalLocked(state.timer_work_us_by_name[timer_name], work_us)) {
+      requestFailureExit();
+    }
+  }
 }
 
 void profilerInvalidatedArea(uint64_t pixels) {
@@ -1068,6 +1397,13 @@ void profilerBeginUiCycle(void) {
   std::lock_guard<std::mutex> lock(state.mutex);
   ensureStartedLocked();
   integrateLocked(clockMillis());
+  if (state.reporting_enabled && state.model.accounting_enabled) {
+    const uint64_t work_us = state.model.ui_poll_active_us;
+    if (!accountWorkLocked(work_us) || !addWorkTotalLocked(state.poll_work_us, work_us)) {
+      requestFailureExit();
+      return;
+    }
+  }
   state.cycle_timer_fired = false;
   state.cycle_task_woke = false;
   state.ui_cycles++;
@@ -1208,7 +1544,12 @@ void profilerWriteReport(const char *path, const char *scenario) {
   const std::filesystem::path output_path(path == nullptr ? "power-report.json" : path);
   const std::filesystem::path parent = output_path.parent_path();
   if (!parent.empty()) {
-    std::filesystem::create_directories(parent);
+    std::error_code error;
+    std::filesystem::create_directories(parent, error);
+    if (error) {
+      requestFailureExit();
+      return;
+    }
   }
   writeReportLocked(output_path, scenario == nullptr ? state.scenario : scenario, clockMillis());
 }

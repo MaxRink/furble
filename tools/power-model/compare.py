@@ -34,6 +34,19 @@ def scenario_name(report: dict, path: Path) -> str:
     return value if isinstance(value, str) and value else path.stem
 
 
+def accounting_identity(report: dict) -> tuple[str, str]:
+    energy = report.get("energy", {})
+    if not isinstance(energy, dict):
+        raise ValueError("report energy is not a JSON object")
+    mode = energy.get("accounting_mode", "legacy-unaccounted")
+    fingerprint = energy.get("accounting_fingerprint", "")
+    if not isinstance(mode, str) or not mode:
+        raise ValueError("report has no valid accounting mode")
+    if not isinstance(fingerprint, str):
+        raise ValueError("report has no valid accounting fingerprint")
+    return mode, fingerprint
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("report", type=Path)
@@ -52,6 +65,14 @@ def main() -> int:
     try:
         report = json.loads(args.report.read_text())
         baseline = json.loads(args.baseline.read_text())
+        report_identity = accounting_identity(report)
+        baseline_identity = accounting_identity(baseline)
+        if report_identity != baseline_identity:
+            raise ValueError(
+                "accounting mode/model-cost provenance mismatch "
+                f"(report {report_identity[0]}/{report_identity[1]} vs "
+                f"baseline {baseline_identity[0]}/{baseline_identity[1]})"
+            )
         current = estimated_ma(report)
         reference = estimated_ma(baseline)
     except (OSError, json.JSONDecodeError, ValueError) as error:

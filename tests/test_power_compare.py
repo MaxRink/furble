@@ -72,7 +72,8 @@ class PowerCompareTest(unittest.TestCase):
         ({"estimated_mA": 1.0}, {"estimated_mA": float("inf")}),
         ({"estimated_mA": True}, {"estimated_mA": 1.0}),
         ({"estimated_mA": -1.0}, {"estimated_mA": 1.0}),
-        ([], {"estimated_mA": 1.0}),
+        ([], {
+  "estimated_mA" : 1.0}),
         ({"energy": []}, {"estimated_mA": 1.0}),
     ):
       result = self.run_compare(report, baseline)
@@ -82,6 +83,26 @@ class PowerCompareTest(unittest.TestCase):
   def test_custom_threshold_allows_known_band(self):
     result = self.run_compare(
         {"estimated_mA": 0.5}, {"estimated_mA": 1.0}, "--threshold", "0.5"
+    )
+    self.assertEqual(result.returncode, 0)
+
+  def test_accounting_identity_must_match(self):
+    current = {
+        "estimated_mA": 1.0,
+        "energy": {"accounting_mode": "synthetic-virtual-work", "accounting_fingerprint": "a"},
+    }
+    baseline = {
+        "estimated_mA": 1.0,
+        "energy": {"accounting_mode": "synthetic-virtual-work", "accounting_fingerprint": "b"},
+    }
+    result = self.run_compare(current, baseline)
+    self.assertEqual(result.returncode, 2)
+    self.assertIn("accounting mode/model-cost provenance mismatch", result.stderr)
+
+  def test_legacy_reports_have_compatible_implicit_identity(self):
+    result = self.run_compare(
+        {"estimated_mA": 1.0},
+        {"estimated_mA": 1.0, "energy": {"accounting_mode": "legacy-unaccounted", "accounting_fingerprint": ""}},
     )
     self.assertEqual(result.returncode, 0)
 
