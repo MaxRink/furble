@@ -149,8 +149,10 @@ attempt to infer changed paths without a pull request or push comparison base.
 - The host SDL simulator under `sim/` runs the real UI on a desktop. Build it
   with `sim/build.sh`. It drives scripted UI runs, the seeded UI fuzzer, and the
   documentation screenshot capture. Incremental builds use compiler depfiles;
-  verify the cache with `sh sim/scripts/test-build-deps.sh` after changing the
-  build script. It never changes firmware behavior.
+  the cache stamp also identifies the absolute firmware, dependency, and LVGL
+  roots so shared build directories cannot mix checkout objects. Verify the
+  cache with `sh sim/scripts/test-build-deps.sh` after changing the build
+  script. It never changes firmware behavior.
 - After building the simulator, run `FURBLE_SIM_BIN=sim/build/furble-sim sh
   sim/scripts/check-preferences-lifecycle.sh` to check explicit and generated
   preference ownership; `sim-e2e.yml` runs the same gate in CI.

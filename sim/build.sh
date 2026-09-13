@@ -83,6 +83,13 @@ if [ -z "$LVGL_DIR" ] || [ ! -f "$LVGL_DIR/CMakeLists.txt" ]; then
   exit 1
 fi
 
+# Cache identity and compiler include paths must not depend on how callers
+# spelled an already-validated dependency directory. Resolve these roots once
+# so relative environment values cannot alias a different directory on a later
+# invocation.
+DEP_ROOT=$(CDPATH= cd -- "$DEP_ROOT" && pwd)
+LVGL_DIR=$(CDPATH= cd -- "$LVGL_DIR" && pwd)
+
 if ! command -v make >/dev/null 2>&1; then
   echo "make is required for simulator dependency checks" >&2
   exit 1
@@ -178,7 +185,7 @@ coverage_flags_for() {
 # the shaping flags and drop the cache when they change. A build dir holding
 # objects but no stamp predates this check, so it is treated as a mismatch once.
 FLAG_STAMP="$BUILD_DIR/build-flags"
-FLAG_VALUE="board=$FURBLE_BOARD m5gfx=$M5GFX_BOARD rig=${FURBLE_SIM_RIG:-1} mqtt=$MQTT_ENABLED sanitize=$SANITIZE coverage=$COVERAGE"
+FLAG_VALUE="root=$ROOT dep_root=$DEP_ROOT lvgl=$LVGL_DIR board=$FURBLE_BOARD m5gfx=$M5GFX_BOARD rig=${FURBLE_SIM_RIG:-1} mqtt=$MQTT_ENABLED sanitize=$SANITIZE coverage=$COVERAGE"
 if [ ! -f "$FLAG_STAMP" ] || [ "$(cat "$FLAG_STAMP")" != "$FLAG_VALUE" ]; then
   if [ -f "$FLAG_STAMP" ] || [ -n "$(ls -A "$BUILD_DIR/obj" 2>/dev/null)" ]; then
     echo "[CLEAN] build flags changed, dropping $BUILD_DIR/obj"

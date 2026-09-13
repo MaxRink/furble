@@ -73,7 +73,9 @@ CLAUDE.md whose directory it touches.
   `-Werror=switch`. See `plans/95-engineering-lessons.md`.
 - The direct SDL simulator build writes compiler depfiles beside each object.
   Its incremental cache follows project and dependency headers with `make -q`;
-  run `sh sim/scripts/test-build-deps.sh` when changing this cache logic.
+  its stamp also keys the absolute firmware, dependency, and LVGL roots so a
+  shared build directory cannot reuse objects from another checkout. Run
+  `sh sim/scripts/test-build-deps.sh` when changing this cache logic.
 - All OTA application images start at `0x20000`. The shared
   `board_upload.offset_address` setting is intentional: it keeps
   `pio run -t nobuild -t upload` from falling back to PlatformIO's historical
