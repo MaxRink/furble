@@ -3,9 +3,9 @@ name: Power model gate
 # The plan 63 simulator turns each scenario script into a relative power
 # estimate. tools/power-model/baseline/*.json holds the reference estimate for
 # every scenario, generated from master. This job rebuilds the simulator, runs
-# each scenario through the profiler, and fails when a scenario estimate climbs
-# more than the compare.py threshold above its committed baseline or when a
-# scenario has no baseline. The baselines are in-tree, so the check is branch
+# each scenario through the profiler, and fails when a scenario estimate moves
+# beyond the compare.py threshold on either side of its committed baseline or
+# when a scenario has no baseline. The baselines are in-tree, so the check is branch
 # safe and needs no cross-branch cache.
 'on':
   push:
@@ -129,7 +129,8 @@ jobs:
               continue
             fi
 
-            # compare.py exits 0 on pass, 1 on a regression over threshold, and
+            # compare.py exits 0 on pass, 1 on a delta outside the two-sided
+            # threshold, and
             # 2 on a read or schema error. It prints the scenario, both current
             # and baseline mA, and the percentage delta on every run, so the log
             # already names which scenario diverged and by how much.
