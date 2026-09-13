@@ -5692,8 +5692,10 @@ void UI::configMenuControl(void) {
     // is deleted. Reset through the public pointer path before changing back
     // to an encoder so a later button-mode click cannot notify freed memory.
     for (lv_indev_t *indev : {m_ButtonL, m_ButtonO, m_ButtonR}) {
-      lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
-      lv_indev_reset(indev, nullptr);
+      if (lv_indev_get_type(indev) == LV_INDEV_TYPE_BUTTON) {
+        lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
+        lv_indev_reset(indev, nullptr);
+      }
       lv_indev_set_type(indev, LV_INDEV_TYPE_ENCODER);
     }
   }

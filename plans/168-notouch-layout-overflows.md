@@ -829,8 +829,8 @@ The persistent physical-button input devices also need a mode-transition
 cleanup. LVGL 9.4 can retain an encoder device's `last_pressed` object after
 that object is deleted. When the device later changes to button mode,
 `indev_click_focus` may send a focus event through the freed pointer. The UI
-now uses the public pointer reset path before changing each device back to
-encoder mode. This is a targeted simulator and firmware safety workaround for
+now uses the public pointer reset path only when changing each device from
+button mode back to encoder mode. This is a targeted simulator and firmware safety workaround for
 the pinned LVGL behavior; it does not restore deleted UI objects or replace
 held-input release handling. The no-touch seeded fuzz matrix remains a runtime
 gate for all three modeled binaries.
