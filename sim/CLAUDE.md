@@ -649,6 +649,12 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   `Control::STATE_ACTIVE`; the 60000 ms virtual bound is finite and keeps the
   UI task and connection work running while it waits. Remote captures also
   assert `ui.page shutter` after the real blind-entry action.
+- `sim/scripts/smoke.txt` is shared by the docs boot capture, the scheduler
+  fail-fast positive control, and parser/environment harnesses. It seeds the
+  FauxNY and saved-camera peers, then uses `action nav scan`, `action connect`,
+  and `action blind` with page/readiness assertions. Keep this flow on the
+  deterministic action path: headless key injection does not drive LVGL menu
+  activation. Runtime validation of the current smoke-flow revision is pending.
 - `FURBLE_SIM_TEXTSIZE` picks the UI text size at launch the same way
   `FURBLE_SIM_THEME` picks the theme: the font is chosen once at UI construction
   from the TEXT_SIZE setting, so main.cpp seeds it before the UI exists. It
