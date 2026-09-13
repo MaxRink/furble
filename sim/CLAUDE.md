@@ -623,6 +623,11 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   behavior remains a supplemental scenario lane, not a Core Basic screenshot.
   It also captures a Text size gallery on the StickS3 Default theme, one set per
   size, under `docs/img/textsize/<size>/` via `docs-textsize.txt`.
+- Every script that captures a Connected frame gates the capture with
+  `assert-eventually 60000 ui.connected yes`. The query is a composite readiness
+  check for the Connected page, a hidden progress box, and
+  `Control::STATE_ACTIVE`; the 60000 ms host bound is finite and allows the
+  background connection task to finish after the preceding virtual-time wait.
 - `FURBLE_SIM_TEXTSIZE` picks the UI text size at launch the same way
   `FURBLE_SIM_THEME` picks the theme: the font is chosen once at UI construction
   from the TEXT_SIZE setting, so main.cpp seeds it before the UI exists. It

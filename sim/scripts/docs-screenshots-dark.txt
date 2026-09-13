@@ -83,6 +83,7 @@ home
 wait 250
 action connect
 wait 1800
+assert-eventually 60000 ui.connected yes
 capture dark-connected
 print ui.page
 
