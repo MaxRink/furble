@@ -11,6 +11,8 @@ Public headers for the app layer in src/, one header per module
 - Any change to a public header must update this guidance when it changes a
   synchronization or ownership contract, and must be reviewed as a public API
   change.
+- `FurbleControl.h` atomic state changes must document the acquire/release
+  contract in this file and preserve the existing mutex-protected transitions.
 - `FurbleControl::setPower` is the user-selected maximum for Bluetooth transmit
   power. Adaptive runtime changes must stay at or below that cap.
 - `FurbleGPS` exposes the CASIC binary test path and AID-INI injection as

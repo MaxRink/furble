@@ -465,8 +465,7 @@ and `m_State` is an acquire/release atomic enum. Existing mutexes still protect
 compound transitions and associated power-lock operations.
 
 This follow-up does not claim that every Control flag is race-free. The
-volatile `m_ConnectAbort` and `m_ConnectInProgress` fields, and the debug
-snapshot's `m_SleepLockHeld`, remain separate audit items. Firmware, CI TSAN,
+remaining reconnect/session fields are separate audit items. Firmware, CI TSAN,
 and hardware validation of this follow-up remain pending.
 
 The first PR306 CI host run failed `control-connect-camera-race` under GCC
@@ -498,3 +497,10 @@ The change is based on the static access audit and existing concurrency
 regressions; it is not raw TSAN proof for these three flags. Raw TSAN, firmware,
 CI, and hardware validation remain pending, and reconnect fields are outside
 this scope.
+
+The TSAN wrapper remains a full-report diagnostic gate: it must continue to
+fail on any raw TSAN non-zero result except the documented sanitizer status,
+and must never classify races by member name or suppress unrelated reports.
+The existing TestSync signal/wait barriers establish happens-before ordering
+for operations performed around those waits; they are not a substitute for
+atomic synchronization on flags read outside the barriers.
