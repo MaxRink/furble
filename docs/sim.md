@@ -576,6 +576,7 @@ The complete `ui.*` query set is:
 | `ui.overflow` | `unknown`, `yes`, or `no`. |
 | `ui.nav_layout` | `touch` or `buttons`. |
 | `ui.legend_visible` | `yes` or `no`; Off hides indicator surfaces without disabling physical input targets. |
+| `ui.legend_visible_count` | Number of rendered primary left/OK/right indicator objects, measured after hidden ancestors and effective opacity. |
 | `ui.indicator_clearance` | `clear`, `overlap`, or `n/a`. |
 | `ui.indicator_overlaps` | Numeric count of widgets under an indicator. |
 | `ui.label_overlaps` | Numeric count of visible content-widget pairs on the current page that overlap: labels by their drawn text, plus rollers, sliders, switches, checkboxes and bars. |

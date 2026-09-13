@@ -36,6 +36,12 @@ wait 200
 assert-eventually-virtual 1000 camera.focus_presses 1
 assert-eventually-virtual 1000 camera.focus_releases 1
 
+# The side button remains the production Back input while its legend is off.
+btn pwr hold
+wait 200
+assert ui.page connected
+assert ui.legend_visible no
+
 action nav display
 wait 150
 assert ui.page display

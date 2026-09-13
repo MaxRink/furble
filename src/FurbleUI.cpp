@@ -4796,13 +4796,40 @@ std::string UI::simQueryState(const char *key) {
       return "unknown";
     }
     const auto isRendered = [](lv_obj_t *indicator) {
-      return !lv_obj_has_flag(indicator, LV_OBJ_FLAG_HIDDEN)
-             && lv_obj_get_style_opa(indicator, LV_PART_MAIN) != LV_OPA_TRANSP;
+      for (lv_obj_t *object = indicator; object != nullptr; object = lv_obj_get_parent(object)) {
+        if (lv_obj_has_flag(object, LV_OBJ_FLAG_HIDDEN)
+            || lv_obj_get_style_opa(object, LV_PART_MAIN) == LV_OPA_TRANSP) {
+          return false;
+        }
+      }
+      return true;
     };
-    const bool rendered = isRendered(m_Left) && isRendered(m_OK) && isRendered(m_Right)
-                          && (m_ShutterLockIcon == nullptr || isRendered(m_ShutterLockIcon))
-                          && (m_ShutterLegendLine == nullptr || isRendered(m_ShutterLegendLine));
-    return rendered ? "yes" : "no";
+    const unsigned visible = static_cast<unsigned>(isRendered(m_Left))
+                             + static_cast<unsigned>(isRendered(m_OK))
+                             + static_cast<unsigned>(isRendered(m_Right))
+                             + static_cast<unsigned>(m_ShutterLockIcon != nullptr
+                                                     && isRendered(m_ShutterLockIcon))
+                             + static_cast<unsigned>(m_ShutterLegendLine != nullptr
+                                                     && isRendered(m_ShutterLegendLine));
+    return visible != 0 ? "yes" : "no";
+  }
+
+  if (query == "legend_visible_count") {
+    const auto isRendered = [](lv_obj_t *indicator) {
+      for (lv_obj_t *object = indicator; object != nullptr; object = lv_obj_get_parent(object)) {
+        if (lv_obj_has_flag(object, LV_OBJ_FLAG_HIDDEN)
+            || lv_obj_get_style_opa(object, LV_PART_MAIN) == LV_OPA_TRANSP) {
+          return false;
+        }
+      }
+      return true;
+    };
+    if (m_Left == nullptr || m_OK == nullptr || m_Right == nullptr) {
+      return "unknown";
+    }
+    return std::to_string(static_cast<unsigned>(isRendered(m_Left))
+                          + static_cast<unsigned>(isRendered(m_OK))
+                          + static_cast<unsigned>(isRendered(m_Right)));
   }
 
   if (query == "nav_layout") {
