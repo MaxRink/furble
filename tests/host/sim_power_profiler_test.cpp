@@ -4,7 +4,10 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <limits>
+#include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 
@@ -16,7 +19,17 @@ namespace Furble::Sim {
 std::atomic<int> requestedExit {-1};
 
 void requestExit(int result) {
-  requestedExit.store(result);
+  int unset = -1;
+  requestedExit.compare_exchange_strong(unset, result);
+}
+
+void requestFailureExit(void) {
+  int result = requestedExit.load();
+  while (result == -1 || result == 0) {
+    if (requestedExit.compare_exchange_weak(result, 1)) {
+      return;
+    }
+  }
 }
 
 }  // namespace Furble::Sim
@@ -58,30 +71,122 @@ class TemporaryReportDirectory {
   std::filesystem::path directory_;
 };
 
-bool reportContains(const std::filesystem::path &path, const std::string &text) {
-  std::ifstream report(path);
-  return std::string((std::istreambuf_iterator<char>(report)), std::istreambuf_iterator<char>())
-             .find(text)
-         != std::string::npos;
+std::string readFile(const std::filesystem::path &path) {
+  std::ifstream input(path);
+  std::ostringstream contents;
+  contents << input.rdbuf();
+  return contents.str();
+}
+
+void writeFile(const std::filesystem::path &path, const std::string &contents) {
+  std::ofstream output(path);
+  output << contents;
+  if (!output) {
+    throw std::runtime_error("could not write fixture " + path.string());
+  }
 }
 
 std::string modelContents(void) {
   const auto path = std::filesystem::path(__FILE__).parent_path().parent_path().parent_path()
                     / "tools/power-model/board-currents.yaml";
-  std::ifstream input(path);
-  return std::string((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+  return readFile(path);
 }
 
-bool replaceS3ModelValue(std::string &contents,
-                         const std::string &replacement,
-                         const std::string &needle = "value_ma: 40.2") {
-  const size_t anchor = contents.find("esp32s3_mcu: &esp32s3_mcu");
-  const size_t value = contents.find(needle, anchor);
-  if (anchor == std::string::npos || value == std::string::npos) {
+std::string accountingModel(uint64_t poll_us,
+                            uint64_t battery_timer_us,
+                            uint64_t diagnostics_timer_us) {
+  std::ostringstream model;
+  model << modelContents()
+        << "\naccounting:\n"
+        << "  version: 1\n"
+        << "  calibration_status: uncalibrated\n"
+        << "  ui_poll_active_us_per_cycle:\n"
+        << "    value_us: " << poll_us << "\n"
+        << "    source: \"test-model\"\n"
+        << "    confidence: estimated\n"
+        << "  timer_active_us_per_fire:\n"
+        << "    battery_timer:\n"
+        << "      value_us: " << battery_timer_us << "\n"
+        << "      source: \"test-model\"\n"
+        << "      confidence: estimated\n"
+        << "    diagnostics_timer:\n"
+        << "      value_us: " << diagnostics_timer_us << "\n"
+        << "      source: \"test-model\"\n"
+        << "      confidence: estimated\n";
+  return model.str();
+}
+
+bool replaceFirst(std::string &contents,
+                  const std::string &needle,
+                  const std::string &replacement,
+                  size_t offset = 0) {
+  const size_t found = contents.find(needle, offset);
+  if (found == std::string::npos) {
     return false;
   }
-  contents.replace(value, needle.size(), replacement);
+  contents.replace(found, needle.size(), replacement);
   return true;
+}
+
+bool contains(const std::string &contents, const std::string &needle) {
+  return contents.find(needle) != std::string::npos;
+}
+
+bool nestedAfter(const std::string &contents,
+                 const std::string &parent,
+                 const std::string &child,
+                 size_t &parent_position,
+                 size_t &child_position) {
+  parent_position = contents.find(parent);
+  child_position = parent_position == std::string::npos
+                     ? std::string::npos
+                     : contents.find(child, parent_position + parent.size());
+  return parent_position != std::string::npos && child_position != std::string::npos;
+}
+
+class ScopedEnvironment {
+ public:
+  ScopedEnvironment(const char *name, const std::filesystem::path &value) : name_(name) {
+    const char *old = std::getenv(name_);
+    if (old != nullptr) {
+      old_value_ = old;
+    }
+    setenv(name_, value.c_str(), 1);
+  }
+
+  ~ScopedEnvironment() {
+    if (old_value_.has_value()) {
+      setenv(name_, old_value_->c_str(), 1);
+    } else {
+      unsetenv(name_);
+    }
+  }
+
+ private:
+  const char *name_;
+  std::optional<std::string> old_value_;
+};
+
+void resetExit(void) {
+  Furble::Sim::requestedExit.store(-1);
+}
+
+bool reportExists(const std::filesystem::path &path) {
+  return std::filesystem::exists(path);
+}
+
+bool expectRejected(const std::filesystem::path &model,
+                   const std::filesystem::path &report,
+                   const std::string &scenario,
+                   bool prior_success = false) {
+  resetExit();
+  ScopedEnvironment selected_model("FURBLE_POWER_MODEL", model);
+  if (prior_success) {
+    Furble::Sim::requestExit(0);
+  }
+  Furble::Sim::profilerBegin(scenario.c_str(), true);
+  Furble::Sim::profilerWriteReport(report.c_str(), scenario.c_str());
+  return Furble::Sim::requestedExit.load() == 1 && !reportExists(report);
 }
 
 }  // namespace
@@ -89,124 +194,250 @@ bool replaceS3ModelValue(std::string &contents,
 int main() {
   using namespace Furble::Sim;
   const TemporaryReportDirectory reportDirectory;
-  const auto path = reportDirectory.path() / "report.json";
 
-  setClockMillis(std::numeric_limits<uint32_t>::max() - 500);
-  profilerBegin("clock-wrap");
-  profilerPowerLockAcquire(0, "cpu", "wrap-test");
-  advanceClock(1500);
-  profilerWriteReport(path.c_str(), "clock-wrap");
+  // Reporting must opt in before the model is loaded. This fixture is the full
+  // board model plus the exact accounting schema consumed by the profiler.
+  const auto frozen_model_path = reportDirectory.path() / "frozen-model.yaml";
+  writeFile(frozen_model_path, accountingModel(700, 1100, 300));
+  ScopedEnvironment selected_model("FURBLE_POWER_MODEL", frozen_model_path);
 
-  // The report window crosses the uint32 boundary. Raw uint64 comparisons used
-  // to report a zero window and underflow active durations.
-  if (!reportContains(path, "\"duration_ms\": 1500") || !reportContains(path, "\"on\": 2000")
-      || !reportContains(path, "\"total_hold_ms\": 2000")) {
+  resetExit();
+  setClockMicros(0);
+  profilerBegin("microsecond-accounting", true);
+  profilerPowerConfig(240, 40, true);
+  profilerPowerLockAcquire(0, "cpu_freq_max", "test");
+  profilerBeginUiCycle();
+  profilerTimerFire("battery_timer");
+  profilerEndUiCycle();
+
+  // One millisecond consumes only part of the 1,800 us queued work. The next
+  // millisecond carries the remaining 800 us, all while the 240 MHz lock is held.
+  advanceClockMicros(1500);
+  profilerSetDisplayState("dim");
+  advanceClockMicros(500);
+  profilerPowerLockRelease(0, "cpu_freq_max", "test");
+
+  // The model is frozen for this reporting window. Mutating the selected file
+  // before the report changes neither the queued cost nor the provenance used
+  // by this window.
+  writeFile(frozen_model_path, accountingModel(900, 1100, 300));
+  const auto first_report = reportDirectory.path() / "microsecond-report.json";
+  profilerWriteReport(first_report.c_str(), "microsecond-accounting");
+  const std::string first_json = readFile(first_report);
+  if (requestedExit.load() != -1 || !reportExists(first_report)
+      || !contains(first_json, "\"duration_ms\": 2000")
+      || !contains(first_json, "\"poll_work_us\": 700")
+      || !contains(first_json, "\"timer_work_us\": 1100")
+      || !contains(first_json, "\"battery_timer\": 1100")
+      || !contains(first_json, "\"work_240_us\": 1800")
+      || !contains(first_json, "\"eligible_light_sleep_us\": 0")
+      || !contains(first_json, "\"adjusted_light_sleep_us\": 0")
+      || !contains(first_json, "\"pending_work_us\": 0")
+      || !contains(first_json, "\"current_count\": 0")
+      || !contains(first_json, "\"total_hold_ms\": 2000")) {
     return 1;
   }
 
-  profilerResetWindow();
-  advanceClock(500);
-  profilerWriteReport(path.c_str(), "clock-wrap-reset");
-  const bool resetWindowIsMeasured = reportContains(path, "\"duration_ms\": 500");
-  if (!resetWindowIsMeasured || requestedExit.load() != -1) {
+  if (!contains(first_json, "\"accounting_version\": 1")
+      || !contains(first_json, "\"calibration_status\": \"uncalibrated\"")
+      || !contains(first_json, "\"accounting_mode\": \"synthetic-virtual-work\"")) {
     return 1;
   }
-  profilerPowerLockRelease(0, "cpu", "wrap-test");
 
-  // A sub-second window must retain its raw duration for energy arithmetic;
-  // only the presentation fields stay quantized for stable reports.
+  // A balanced window can be reset without carrying old work or lock state
+  // into the next report.
   profilerResetWindow();
   advanceClock(1);
-  profilerWriteReport(path.c_str(), "short-duration-energy");
-  if (!reportContains(path, "\"duration_ms\": 1")
-      || !reportContains(path, "\"estimated_mA\": 41.295970")
-      || !reportContains(path, "\"accounting_inputs\": {\n      \"duration_ms\": 1")
-      || !reportContains(path, "\"light_sleep_in_80\": 1")
-      || !reportContains(path, "\"model_valid\": true")
-      || !reportContains(path, "\"model_digest\": \"sha256:")) {
+  const auto reset_report = reportDirectory.path() / "reset-report.json";
+  profilerWriteReport(reset_report.c_str(), "reset-accounting");
+  const std::string reset_json = readFile(reset_report);
+  if (requestedExit.load() != -1 || !contains(reset_json, "\"duration_ms\": 1000")
+      || !contains(reset_json, "\"poll_work_us\": 0")
+      || !contains(reset_json, "\"timer_work_us\": 0")
+      || !contains(reset_json, "\"pending_work_us\": 0")) {
     return 1;
   }
 
-  // A consumed current change must affect the duration-weighted estimate.
-  profilerPowerConfig(80, 40, true);
-  profilerPowerLockAcquire(0, "cpu", "model-test");
-  profilerResetWindow();
-  advanceClock(10);
-  const auto base_report = reportDirectory.path() / "base-model-report.json";
-  profilerWriteReport(base_report.c_str(), "base-model");
-  if (!reportContains(base_report, "\"estimated_mA\": 81.255970")) {
+  // A new explicit reporting begin is the reload boundary. The changed poll
+  // cost is observed only after that boundary, and 1,000 us lands in the 160
+  // MHz bucket rather than the previous 240 MHz bucket.
+  resetExit();
+  setClockMicros(3000 * 1000);
+  profilerBegin("reload-accounting", true);
+  profilerPowerConfig(160, 40, true);
+  profilerPowerLockAcquire(0, "cpu_freq_max", "reload");
+  profilerBeginUiCycle();
+  profilerTimerFire("diagnostics_timer");
+  profilerEndUiCycle();
+  advanceClockMicros(1000);
+  profilerPowerLockRelease(0, "cpu_freq_max", "reload");
+  const auto reload_report = reportDirectory.path() / "reload-report.json";
+  profilerWriteReport(reload_report.c_str(), "reload-accounting");
+  const std::string reload_json = readFile(reload_report);
+  if (requestedExit.load() != -1 || !contains(reload_json, "\"poll_work_us\": 900")
+      || !contains(reload_json, "\"timer_work_us\": 300")
+      || !contains(reload_json, "\"work_160_us\": 1200")
+      || !contains(reload_json, "\"work_240_us\": 0")) {
     return 1;
   }
 
-  const std::string complete_model = modelContents();
-  if (complete_model.empty()) {
-    return 1;
+  // Zero is a valid measured cost. It must not be confused with a missing or
+  // malformed value in the same full-model fixture.
+  const auto zero_model_path = reportDirectory.path() / "zero-model.yaml";
+  writeFile(zero_model_path, accountingModel(0, 0, 0));
+  const auto zero_report = reportDirectory.path() / "zero-report.json";
+  resetExit();
+  {
+    ScopedEnvironment zero_model("FURBLE_POWER_MODEL", zero_model_path);
+    profilerBegin("zero-accounting", true);
+    profilerWriteReport(zero_report.c_str(), "zero-accounting");
   }
-  std::string changed_model = complete_model;
-  if (!replaceS3ModelValue(changed_model, "value_ma: 80.4")) {
-    return 1;
-  }
-  const auto changed_model_path = reportDirectory.path() / "changed-model.yaml";
-  std::ofstream(changed_model_path) << changed_model;
-  const auto changed_report = reportDirectory.path() / "changed-model-report.json";
-  setenv("FURBLE_POWER_MODEL", changed_model_path.c_str(), 1);
-  profilerWriteReport(changed_report.c_str(), "changed-model");
-  unsetenv("FURBLE_POWER_MODEL");
-  profilerPowerLockRelease(0, "cpu", "model-test");
-  if (!reportContains(changed_report, "\"estimated_mA\": 121.455970")) {
+  if (requestedExit.load() != -1 || !reportExists(zero_report)
+      || !contains(readFile(zero_report), "\"accounting_valid\": true")) {
     return 1;
   }
 
-  auto expectRejected = [&](const std::filesystem::path &model, const std::filesystem::path &report,
-                            const std::string &scenario) {
-    setenv("FURBLE_POWER_MODEL", model.c_str(), 1);
-    profilerWriteReport(report.c_str(), scenario.c_str());
-    unsetenv("FURBLE_POWER_MODEL");
-    return !std::filesystem::exists(report);
-  };
-
-  // Malformed, negative, and duplicate consumed values must be rejected even
-  // when every other required model entry is present.
-  std::string malformed_model = complete_model;
-  if (!replaceS3ModelValue(malformed_model, "value_ma: not-a-number")) {
+  // The selected model is authoritative and accounting input errors fail
+  // closed, including a missing value, an invalid value, duplicate timer key,
+  // and missing provenance.
+  std::string missing_cost = accountingModel(700, 1100, 300);
+  if (!replaceFirst(missing_cost, "      value_us: 1100\n", "")) {
     return 1;
   }
-  const auto malformed_model_path = reportDirectory.path() / "malformed-model.yaml";
-  std::ofstream(malformed_model_path) << malformed_model;
-  if (!expectRejected(malformed_model_path, reportDirectory.path() / "malformed-report.json",
-                      "malformed-model")) {
+  const auto missing_cost_path = reportDirectory.path() / "missing-cost.yaml";
+  writeFile(missing_cost_path, missing_cost);
+  if (!expectRejected(missing_cost_path, reportDirectory.path() / "missing-cost.json",
+                      "missing-cost")) {
     return 1;
   }
 
-  std::string negative_model = complete_model;
-  if (!replaceS3ModelValue(negative_model, "value_ma: -1.0")) {
+  std::string invalid_cost = accountingModel(700, 1100, 300);
+  if (!replaceFirst(invalid_cost, "      value_us: 1100\n", "      value_us: -1\n")) {
     return 1;
   }
-  const auto negative_model_path = reportDirectory.path() / "negative-model.yaml";
-  std::ofstream(negative_model_path) << negative_model;
-  if (!expectRejected(negative_model_path, reportDirectory.path() / "negative-report.json",
-                      "negative-model")) {
-    return 1;
-  }
-
-  std::string duplicate_model = complete_model;
-  const size_t s3_anchor = duplicate_model.find("esp32s3_mcu: &esp32s3_mcu");
-  const size_t first_entry = duplicate_model.find("    active_cpu_80mhz:", s3_anchor);
-  if (s3_anchor == std::string::npos || first_entry == std::string::npos) {
-    return 1;
-  }
-  duplicate_model.insert(first_entry, "    active_cpu_80mhz:\n      value_ma: 40.2\n");
-  const auto duplicate_model_path = reportDirectory.path() / "duplicate-model.yaml";
-  std::ofstream(duplicate_model_path) << duplicate_model;
-  if (!expectRejected(duplicate_model_path, reportDirectory.path() / "duplicate-report.json",
-                      "duplicate-model")) {
+  const auto invalid_cost_path = reportDirectory.path() / "invalid-cost.yaml";
+  writeFile(invalid_cost_path, invalid_cost);
+  if (!expectRejected(invalid_cost_path, reportDirectory.path() / "invalid-cost.json",
+                      "invalid-cost")) {
     return 1;
   }
 
-  const auto missing_model = reportDirectory.path() / "missing-model.yaml";
-  const auto missing_report = reportDirectory.path() / "missing-report.json";
-  setenv("FURBLE_POWER_MODEL", missing_model.c_str(), 1);
-  profilerWriteReport(missing_report.c_str(), "missing-model");
-  unsetenv("FURBLE_POWER_MODEL");
-  return requestedExit.load() == 1 && !std::filesystem::exists(missing_report) ? 0 : 1;
+  std::string duplicate_timer = accountingModel(700, 1100, 300);
+  const std::string duplicate_entry =
+      "    battery_timer:\n"
+      "      value_us: 1100\n"
+      "      source: \"test-model\"\n"
+      "      confidence: estimated\n";
+  if (!replaceFirst(duplicate_timer, "  timer_active_us_per_fire:\n",
+                    "  timer_active_us_per_fire:\n" + duplicate_entry)) {
+    return 1;
+  }
+  const auto duplicate_timer_path = reportDirectory.path() / "duplicate-timer.yaml";
+  writeFile(duplicate_timer_path, duplicate_timer);
+  if (!expectRejected(duplicate_timer_path, reportDirectory.path() / "duplicate-timer.json",
+                      "duplicate-timer")) {
+    return 1;
+  }
+
+  std::string missing_provenance = accountingModel(700, 1100, 300);
+  const size_t poll_section = missing_provenance.find("  ui_poll_active_us_per_cycle:\n");
+  if (poll_section == std::string::npos
+      || !replaceFirst(missing_provenance, "    source: \"test-model\"\n", "", poll_section)) {
+    return 1;
+  }
+  const auto missing_provenance_path = reportDirectory.path() / "missing-provenance.yaml";
+  writeFile(missing_provenance_path, missing_provenance);
+  if (!expectRejected(missing_provenance_path,
+                      reportDirectory.path() / "missing-provenance.json",
+                      "missing-provenance")) {
+    return 1;
+  }
+
+  std::string invalid_confidence = accountingModel(700, 1100, 300);
+  if (!replaceFirst(invalid_confidence, "    confidence: estimated\n",
+                    "    confidence: synthetic\n")) {
+    return 1;
+  }
+  const auto invalid_confidence_path = reportDirectory.path() / "invalid-confidence.yaml";
+  writeFile(invalid_confidence_path, invalid_confidence);
+  if (!expectRejected(invalid_confidence_path,
+                      reportDirectory.path() / "invalid-confidence.json",
+                      "invalid-confidence")) {
+    return 1;
+  }
+
+  // A pending cost at final report is an error. requestFailureExit must also
+  // upgrade a prior successful exit request, rather than preserving zero.
+  const auto pending_model_path = reportDirectory.path() / "pending-model.yaml";
+  writeFile(pending_model_path, accountingModel(1, 0, 0));
+  const auto pending_report = reportDirectory.path() / "pending-report.json";
+  resetExit();
+  {
+    ScopedEnvironment pending_selected("FURBLE_POWER_MODEL", pending_model_path);
+    requestExit(0);
+    profilerBegin("pending-accounting", true);
+    profilerBeginUiCycle();
+    profilerWriteReport(pending_report.c_str(), "pending-accounting");
+  }
+  if (requestedExit.load() != 1 || reportExists(pending_report)) {
+    return 1;
+  }
+
+  // Ordinary profiler windows do not depend on an external accounting model.
+  // A late accounting model selection after begin(false) is rejected, not
+  // mislabeled as a valid unaccounted report.
+  const auto ordinary_model = reportDirectory.path() / "ordinary-model.yaml";
+  writeFile(ordinary_model, modelContents());
+  const auto ordinary_report = reportDirectory.path() / "ordinary-report.json";
+  resetExit();
+  {
+    ScopedEnvironment ordinary_selected("FURBLE_POWER_MODEL", ordinary_model);
+    profilerBegin("ordinary-window", false);
+    advanceClock(2);
+    profilerWriteReport(ordinary_report.c_str(), "ordinary-window");
+  }
+  if (requestedExit.load() != -1 || !reportExists(ordinary_report)
+      || !contains(readFile(ordinary_report), "\"accounting_mode\": \"legacy-unaccounted\"")) {
+    return 1;
+  }
+
+  const auto late_report = reportDirectory.path() / "late-accounting-report.json";
+  resetExit();
+  {
+    ScopedEnvironment late_selected("FURBLE_POWER_MODEL", frozen_model_path);
+    requestExit(0);
+    profilerBegin("late-accounting", false);
+    profilerWriteReport(late_report.c_str(), "late-accounting");
+  }
+  if (requestedExit.load() != 1 || reportExists(late_report)) {
+    return 1;
+  }
+
+  // Keep the production JSON identity nested under energy. This catches a
+  // flattened accounting_inputs object that happens to retain the same keys.
+  resetExit();
+  {
+    ScopedEnvironment shape_selected("FURBLE_POWER_MODEL", frozen_model_path);
+    profilerBegin("json-shape", true);
+    advanceClock(2);
+    const auto shape_report = reportDirectory.path() / "json-shape.json";
+    profilerWriteReport(shape_report.c_str(), "json-shape");
+    const std::string shape_json = readFile(shape_report);
+    size_t energy = 0;
+    size_t accounting_inputs = 0;
+    size_t top_estimate = 0;
+    if (!nestedAfter(shape_json, "\n  \"energy\": {", "\n    \"accounting_inputs\": {", energy,
+                        accounting_inputs)
+        || !contains(shape_json, "\n      \"accounting_mode\": \"synthetic-virtual-work\",")
+        || shape_json.find("\n  \"estimated_mA\": ", accounting_inputs) == std::string::npos) {
+      return 1;
+    }
+    top_estimate = shape_json.find("\n  \"estimated_mA\": ", accounting_inputs);
+    if (!(energy < accounting_inputs && accounting_inputs < top_estimate)) {
+      return 1;
+    }
+  }
+
+  std::cout << "sim power profiler behavioral checks passed\n";
+  return 0;
 }
