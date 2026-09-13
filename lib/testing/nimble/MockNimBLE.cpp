@@ -117,6 +117,23 @@ NimBLEAddress g_LinkPeerAddress {};
 size_t g_DeleteBondCount = 0;
 // Absent-peer model: addresses whose advertisements the scan never delivers.
 std::vector<NimBLEAddress> g_AbsentAddresses;
+// MITM pairing seam. The peer that a pending passkey answer belongs to, plus
+// the injection tallies a test asserts the production answer reached NimBLE.
+NimBLEMockPeer *g_PasskeyPeer = nullptr;
+size_t g_PasskeyConfirmCount = 0;
+bool g_LastPasskeyAccept = false;
+size_t g_PasskeyEntryCount = 0;
+uint32_t g_LastPasskeyEntered = 0;
+std::atomic<NimBLEDevice::host_hook_t> g_GetConnHandleHook {nullptr};
+std::atomic<NimBLEDevice::host_hook_t> g_DisconnectCallbackHook {nullptr};
+std::atomic<NimBLEDevice::host_hook_t> g_ConfirmPasskeyHook {nullptr};
+std::atomic<bool> g_ClientUseAfterFree = false;
+// NimBLE's default display passkey, see NimBLEClient.cpp BLE_SM_IOACT_DISP.
+constexpr uint32_t DEFAULT_SECURITY_PASSKEY = 123456;
+uint32_t g_SecurityPasskey = DEFAULT_SECURITY_PASSKEY;
+// Handles are handed out in ascending order so no two links of one run share
+// one, which is what makes a stale answer detectable.
+uint16_t g_NextConnHandle = 1;
 
 // Erase a client from the live pool, freeing it. Caller must not touch the
 // pointer afterwards. Safe to call on a pointer no longer in the pool. Also
@@ -134,6 +151,12 @@ bool eraseClient(NimBLEClient *client) {
     }
   }
   return false;
+}
+
+bool isClientLive(const NimBLEClient *client) {
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+  return std::any_of(g_Clients.begin(), g_Clients.end(),
+                     [client](const auto &entry) { return entry.get() == client; });
 }
 
 }  // namespace
@@ -461,6 +484,23 @@ void NimBLEClientCallbacks::onAuthenticationComplete(NimBLEConnInfo &) {}
 
 NimBLEClient::NimBLEClient() = default;
 
+uint16_t NimBLEClient::getConnHandle() const {
+  const NimBLEDevice::host_hook_t hook = g_GetConnHandleHook.load();
+  if (hook != nullptr) {
+    hook();
+  }
+
+  // Record a raw client use after a concurrent self-delete deterministically.
+  // Returning the sentinel keeps the normal host regression runnable without
+  // depending on allocator reuse. ASan builds still instrument any later
+  // client access in the production path.
+  if (!isClientLive(this)) {
+    g_ClientUseAfterFree.store(true);
+    return BLE_HS_CONN_HANDLE_NONE;
+  }
+  return m_Handle;
+}
+
 void NimBLEClient::setClientCallbacks(NimBLEClientCallbacks *callbacks, bool delete_callbacks) {
   (void)delete_callbacks;
   m_Callbacks = callbacks;
@@ -479,15 +519,20 @@ void NimBLEClient::setSelfDelete(bool delete_on_disconnect, bool delete_on_conne
   if (delete_on_disconnect && m_LinkDeadEventPending) {
     m_LinkDeadEventPending = false;
     const int reason = m_LinkDeadReason;
-    if (m_Peer != nullptr) {
-      m_Peer->disconnect(*this, reason);
+    NimBLEMockPeer *peer = m_Peer;
+    if (peer != nullptr) {
+      peer->disconnect(*this, reason);
       m_Peer = nullptr;
     }
     m_Connected = false;
+    m_Handle = BLE_HS_CONN_HANDLE_NONE;
     if (m_Callbacks != nullptr) {
       m_Callbacks->onDisconnect(this, reason);
     }
     eraseClient(this);
+    if (peer != nullptr) {
+      peer->disconnectComplete();
+    }
     return;
   }
 }
@@ -552,6 +597,13 @@ bool NimBLEClient::connect(const NimBLEAddress &address) {
   m_Address = address;
   g_LinkPeerAddress = address;
   m_Connected = true;
+  {
+    const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+    m_Handle = g_NextConnHandle++;
+    if (g_NextConnHandle == BLE_HS_CONN_HANDLE_NONE) {
+      g_NextConnHandle = 1;
+    }
+  }
   if (m_Callbacks != nullptr) {
     m_Callbacks->onConnect(this);
   }
@@ -572,17 +624,22 @@ void NimBLEClient::disconnect() {
   if (m_LinkDeadEventPending) {
     m_LinkDeadEventPending = false;
     const int reason = m_LinkDeadReason;
-    if (m_Peer != nullptr) {
-      m_Peer->disconnect(*this, reason);
+    NimBLEMockPeer *peer = m_Peer;
+    if (peer != nullptr) {
+      peer->disconnect(*this, reason);
       m_Peer = nullptr;
     }
     m_Connected = false;
+    m_Handle = BLE_HS_CONN_HANDLE_NONE;
     const bool selfDelete = m_DeleteOnDisconnect;
     if (m_Callbacks != nullptr) {
       m_Callbacks->onDisconnect(this, reason);
     }
     if (selfDelete) {
       eraseClient(this);
+    }
+    if (peer != nullptr) {
+      peer->disconnectComplete();
     }
     return;
   }
@@ -594,8 +651,9 @@ void NimBLEClient::disconnect() {
     return;
   }
 
-  if (m_Peer != nullptr) {
-    m_Peer->disconnect(*this, 0);
+  NimBLEMockPeer *peer = m_Peer;
+  if (peer != nullptr) {
+    peer->disconnect(*this, 0);
   }
 
   // In the real stack ble_gap_terminate can complete the link teardown before
@@ -605,11 +663,14 @@ void NimBLEClient::disconnect() {
   // object while the controller event still refers to its connection handle.
   if (g_AsyncDisconnect) {
     m_Connected = false;
+    m_Handle = BLE_HS_CONN_HANDLE_NONE;
     m_DisconnectEventPending = true;
     return;
   }
 
   m_Connected = false;
+  m_Handle = BLE_HS_CONN_HANDLE_NONE;
+  const bool selfDelete = g_DeferredDelete && m_DeleteOnDisconnect;
   if (m_Callbacks != nullptr) {
     m_Callbacks->onDisconnect(this, 0);
   }
@@ -620,8 +681,11 @@ void NimBLEClient::disconnect() {
   // (m_Connected guards every other reader), so the inline free is safe and arms
   // ASan to catch any later dereference of the freed client. Nothing below may
   // touch a member: the object is gone.
-  if (g_DeferredDelete && m_DeleteOnDisconnect) {
+  if (selfDelete) {
     eraseClient(this);
+  }
+  if (peer != nullptr) {
+    peer->disconnectComplete();
   }
 }
 
@@ -635,11 +699,16 @@ bool NimBLEClient::mockCompleteAsyncDisconnect(void) {
   }
 
   m_DisconnectEventPending = false;
+  NimBLEMockPeer *peer = m_Peer;
+  m_Peer = nullptr;
   if (m_Callbacks != nullptr) {
     m_Callbacks->onDisconnect(this, 0);
   }
   if (g_DeferredDelete && m_DeleteOnDisconnect) {
     eraseClient(this);
+  }
+  if (peer != nullptr) {
+    peer->disconnectComplete();
   }
   return true;
 }
@@ -657,10 +726,13 @@ bool NimBLEClient::isConnected() const {
 }
 
 void NimBLEClient::mockDropLink(int reason, bool fire_callback) {
-  if (m_Peer != nullptr) {
-    m_Peer->disconnect(*this, reason);
+  NimBLEMockPeer *peer = m_Peer;
+  if (peer != nullptr) {
+    peer->disconnect(*this, reason);
+    m_Peer = nullptr;
   }
   m_Connected = false;
+  m_Handle = BLE_HS_CONN_HANDLE_NONE;
   if (fire_callback && (m_Callbacks != nullptr)) {
     m_Callbacks->onDisconnect(this, reason);
   }
@@ -675,15 +747,21 @@ void NimBLEClient::mockDropLink(int reason, bool fire_callback) {
     const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
     g_PendingReap.push_back(this);
   }
+  if (peer != nullptr) {
+    peer->disconnectComplete();
+  }
 }
 
 void NimBLEClient::mockDropLinkSelfDelete(int reason) {
   // Sever the peer link and clear the connected flag, as a supervision-timeout or
   // peer power-cycle does mid-handshake.
-  if (m_Peer != nullptr) {
-    m_Peer->disconnect(*this, reason);
+  NimBLEMockPeer *peer = m_Peer;
+  if (peer != nullptr) {
+    peer->disconnect(*this, reason);
+    m_Peer = nullptr;
   }
   m_Connected = false;
+  m_Handle = BLE_HS_CONN_HANDLE_NONE;
 
   // Deliver onDisconnect through the callbacks the client currently holds, then
   // free a self-deleting client inline, exactly as the NimBLE host task frees a
@@ -691,6 +769,10 @@ void NimBLEClient::mockDropLinkSelfDelete(int reason) {
   // turned self-delete off for the connect window the client is kept alive, so a
   // still-running _connect() can unwind against a valid (disconnected) client.
   const bool selfDelete = m_DeleteOnDisconnect;
+  const NimBLEDevice::host_hook_t hook = g_DisconnectCallbackHook.load();
+  if (hook != nullptr) {
+    hook();
+  }
   if (m_Callbacks != nullptr) {
     m_Callbacks->onDisconnect(this, reason);
   }
@@ -699,6 +781,9 @@ void NimBLEClient::mockDropLinkSelfDelete(int reason) {
     // it owns. Nothing may touch this object, or a characteristic reached through
     // it, after this returns.
     eraseClient(this);
+  }
+  if (peer != nullptr) {
+    peer->disconnectComplete();
   }
 }
 
@@ -726,11 +811,14 @@ void NimBLEClient::mockCompleteStalledTerminate(int reason) {
   // The supervision timeout finally resolves the stalled terminate. NimBLE fires
   // onDisconnect through whatever callbacks the client currently holds (the
   // default no-op set if the owner detached in reclaimClient), then self-deletes
-  // a client that was marked for deferred deletion.
+  // a client that was marked for deferred deletion. Only after all of that does
+  // the peer release a secureConnection() waiter.
   m_StuckTerminate = false;
   m_Connected = false;
-  if (m_Peer != nullptr) {
-    m_Peer->disconnect(*this, reason);
+  m_Handle = BLE_HS_CONN_HANDLE_NONE;
+  NimBLEMockPeer *peer = m_Peer;
+  if (peer != nullptr) {
+    peer->disconnect(*this, reason);
     m_Peer = nullptr;
   }
   if (m_Callbacks != nullptr) {
@@ -740,6 +828,9 @@ void NimBLEClient::mockCompleteStalledTerminate(int reason) {
     // Not connected now, so this frees the client synchronously. Nothing touches
     // this object afterwards.
     NimBLEDevice::deleteClient(this);
+  }
+  if (peer != nullptr) {
+    peer->disconnectComplete();
   }
 }
 
@@ -821,6 +912,7 @@ bool NimBLEClient::updateConnParams(uint16_t min_interval,
 
 NimBLEConnInfo NimBLEClient::getConnInfo() const {
   m_ConnInfoReadCount++;
+  m_ConnInfo.mockSetConnHandle(m_Handle);
   if (m_ConnParamUpdatePending) {
     if (m_PendingConnInfoReads > 0) {
       m_PendingConnInfoReads--;
@@ -1118,8 +1210,70 @@ bool NimBLEDevice::setMTU(uint16_t) {
   return true;
 }
 
-void NimBLEDevice::injectPassKey(NimBLEConnInfo &, uint32_t) {}
-void NimBLEDevice::injectConfirmPasskey(NimBLEConnInfo &, bool) {}
+void NimBLEDevice::injectPassKey(NimBLEConnInfo &, uint32_t passKey) {
+  NimBLEMockPeer *peer = nullptr;
+  {
+    const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+    g_PasskeyEntryCount++;
+    g_LastPasskeyEntered = passKey;
+    peer = g_PasskeyPeer;
+  }
+  if (peer != nullptr) {
+    peer->onPasskeyEntered(passKey);
+  }
+}
+
+void NimBLEDevice::injectConfirmPasskey(NimBLEConnInfo &, bool accept) {
+  NimBLEMockPeer *peer = nullptr;
+  {
+    const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+    g_PasskeyConfirmCount++;
+    g_LastPasskeyAccept = accept;
+    peer = g_PasskeyPeer;
+  }
+  if (peer != nullptr) {
+    peer->onPasskeyConfirmed(accept);
+  }
+  const NimBLEDevice::host_hook_t hook = g_ConfirmPasskeyHook.load();
+  if (hook != nullptr) {
+    hook();
+  }
+}
+
+void NimBLEDevice::setSecurityPasskey(uint32_t passkey) {
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+  g_SecurityPasskey = passkey;
+}
+
+uint32_t NimBLEDevice::getSecurityPasskey() {
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+  return g_SecurityPasskey;
+}
+
+void NimBLEDevice::setPasskeyPeer(NimBLEMockPeer *peer) {
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+  g_PasskeyPeer = peer;
+}
+
+size_t NimBLEDevice::mockPasskeyConfirmCount() {
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+  return g_PasskeyConfirmCount;
+}
+
+bool NimBLEDevice::mockLastPasskeyAccept() {
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+  return g_LastPasskeyAccept;
+}
+
+size_t NimBLEDevice::mockPasskeyEntryCount() {
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+  return g_PasskeyEntryCount;
+}
+
+uint32_t NimBLEDevice::mockLastPasskeyEntered() {
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+  return g_LastPasskeyEntered;
+}
 
 size_t NimBLEDevice::liveClientCount() {
   const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
@@ -1164,6 +1318,22 @@ bool NimBLEDevice::completeAsyncDisconnect(void) {
 
 bool NimBLEDevice::asyncDisconnectEventFound(void) {
   return g_AsyncDisconnectEventFound;
+}
+
+void NimBLEDevice::setGetConnHandleHook(host_hook_t hook) {
+  g_GetConnHandleHook.store(hook);
+}
+
+void NimBLEDevice::setDisconnectCallbackHook(host_hook_t hook) {
+  g_DisconnectCallbackHook.store(hook);
+}
+
+void NimBLEDevice::setConfirmPasskeyHook(host_hook_t hook) {
+  g_ConfirmPasskeyHook.store(hook);
+}
+
+bool NimBLEDevice::clientUseAfterFreeDetected() {
+  return g_ClientUseAfterFree.load();
 }
 
 size_t NimBLEDevice::reapDeferredClients() {
@@ -1226,6 +1396,17 @@ void NimBLEDevice::resetMock() {
   g_LinkPeerAddress = NimBLEAddress {};
   g_DeleteBondCount = 0;
   g_AbsentAddresses.clear();
+  g_PasskeyPeer = nullptr;
+  g_SecurityPasskey = DEFAULT_SECURITY_PASSKEY;
+  g_NextConnHandle = 1;
+  g_PasskeyConfirmCount = 0;
+  g_LastPasskeyAccept = false;
+  g_PasskeyEntryCount = 0;
+  g_LastPasskeyEntered = 0;
+  g_GetConnHandleHook.store(nullptr);
+  g_DisconnectCallbackHook.store(nullptr);
+  g_ConfirmPasskeyHook.store(nullptr);
+  g_ClientUseAfterFree.store(false);
   g_Initialised = false;
   g_Power = 0;
 }

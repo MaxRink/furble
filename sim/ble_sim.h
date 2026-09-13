@@ -136,6 +136,12 @@ bool bleSecureStallAborted(void);
 /** Number of live NimBLE clients the mock currently holds. */
 size_t bleLiveClientCount(void);
 
+/** Number of numeric-comparison answers injected into the mock NimBLE stack. */
+size_t blePairingAnswerCount(void);
+
+/** Whether the most recent injected numeric-comparison answer was accepted. */
+bool bleLastPairingAnswerAccepted(void);
+
 /** Number of advertisements the virtual radio has delivered. */
 size_t bleAdvertisementCount(void);
 

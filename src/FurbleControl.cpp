@@ -206,9 +206,12 @@ Control::state_t Control::connectAll(void) {
   std::vector<std::shared_ptr<Camera>> all;
 
   const bool connSaver = Settings::connSaverEffective();
+  bool cancelledSession = false;
 
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
+
+    cancelledSession = retireCancelledTargetsLocked();
 
     // Re-arm the cancel tokens the user's connect cycle asked for. See
     // connectAll(bool): doing it here means no attempt can be in flight, because
@@ -225,6 +228,9 @@ Control::state_t Control::connectAll(void) {
     // unlocked connect even if disconnect() clears its target meanwhile.
     for (const auto &target : m_Targets) {
       auto camera = target->getCamera();
+      if (camera->pairingCancelled()) {
+        continue;
+      }
       all.push_back(camera);
       if (!camera->isConnected()) {
         cameras.push_back(camera);
@@ -240,9 +246,20 @@ Control::state_t Control::connectAll(void) {
   }
 
   if (all.empty()) {
-    ESP_LOGW(LOG_TAG, "Connect requested with no cameras in the session.");
     const std::lock_guard<std::mutex> lock(m_Mutex);
     m_ConnectInProgress = false;
+    if (m_ConnectAbort || m_State == STATE_DISCONNECTING) {
+      return STATE_DISCONNECTING;
+    }
+    if (cancelledSession || retireCancelledTargetsLocked()) {
+      // Every remaining target declined pairing. This is a deliberate terminal
+      // outcome for this session, not a failed connect that should open an
+      // error box or consume another retry.
+      m_ReconnectAttempt = 0;
+      m_ConnectFailCount = 0;
+      return STATE_IDLE;
+    }
+    ESP_LOGW(LOG_TAG, "Connect requested with no cameras in the session.");
     return STATE_CONNECT_FAILED;
   }
 
@@ -273,6 +290,12 @@ Control::state_t Control::connectAll(void) {
     // getConnectingCamera() were handed a stale pointer.
     setConnectCamera(nullptr);
     if (!connected) {
+      if (camera->pairingCancelled()) {
+        // A user decline/expiry is terminal for this target, not a transport
+        // failure. Do not count it toward retry/backoff or manufacture an
+        // unrelated connect-error dialog.
+        continue;
+      }
       m_ConnectFailCount++;
       if (camera->needsRepair()) {
         // "<camera>: <instruction>" exactly, and kept short on purpose. This
@@ -308,6 +331,9 @@ Control::state_t Control::connectAll(void) {
       return STATE_DISCONNECTING;
     }
 
+    if (retireCancelledTargetsLocked()) {
+      return STATE_IDLE;
+    }
     if (allConnected()) {
       m_ConnectFailCount = 0;
       m_ReconnectAttempt = 0;
@@ -366,6 +392,13 @@ void Control::task(void) {
     // state, so quarantined objects never linger and are never freed while their
     // task can still touch them.
     reapZombieTargets();
+
+    {
+      const std::lock_guard<std::mutex> lock(m_Mutex);
+      if (retireCancelledTargetsLocked() && m_State != STATE_DISCONNECTING) {
+        setState(STATE_IDLE);
+      }
+    }
 
     cmd_t cmd;
     BaseType_t ret = xQueueReceive(m_Queue, &cmd, pdMS_TO_TICKS(50));
@@ -505,7 +538,7 @@ bool Control::allConnected(void) {
   // add a target reaches this, including a failed xTaskCreate.
   if (m_Targets.empty()) {
     // Deliberately uncovered defence in depth, and recorded as such in plan 170.
-    // connectAll() returns STATE_CONNECT_FAILED on an empty cycle before this is
+    // connectAll() returns STATE_IDLE on a normal empty cycle before this is
     // ever consulted, so the only caller that can reach it with no targets is
     // the STATE_ACTIVE liveness branch below, which needs m_Targets emptied
     // while the machine is already active. Only disconnect() empties it and it
@@ -515,12 +548,16 @@ bool Control::allConnected(void) {
   }
 
   for (const auto &target : m_Targets) {
+    if (target->getCamera()->pairingCancelled()) {
+      continue;
+    }
     if (!target->getCamera()->isConnected()) {
       return false;
     }
   }
 
-  return true;
+  return std::any_of(m_Targets.begin(), m_Targets.end(),
+                     [](const auto &target) { return !target->getCamera()->pairingCancelled(); });
 }
 
 std::vector<Control::Target *> Control::getTargets(void) {
@@ -532,6 +569,17 @@ std::vector<Control::Target *> Control::getTargets(void) {
     targets.push_back(target.get());
   }
   return targets;
+}
+
+std::vector<std::shared_ptr<Camera>> Control::getTargetCameras(void) const {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+
+  std::vector<std::shared_ptr<Camera>> cameras;
+  cameras.reserve(m_Targets.size());
+  for (const auto &target : m_Targets) {
+    cameras.push_back(target->getCamera());
+  }
+  return cameras;
 }
 
 std::vector<Control::target_status_t> Control::getTargetStatus(void) {
@@ -868,6 +916,32 @@ bool Control::teardownDraining(void) {
   return !m_ZombieTargets.empty();
 }
 
+bool Control::retireCancelledTargetsLocked(void) {
+  bool removed = false;
+  for (auto it = m_Targets.begin(); it != m_Targets.end();) {
+    if (!(*it)->getCamera()->pairingCancelled()) {
+      ++it;
+      continue;
+    }
+    // The target task owns radio teardown. Moving it keeps that task and any
+    // in-flight camera snapshot alive until the existing drain can reap it.
+    (*it)->sendCommand(CMD_DISCONNECT);
+    m_ZombieTargets.push_back(std::move(*it));
+    it = m_Targets.erase(it);
+    removed = true;
+  }
+  if (removed) {
+    m_ZombieDeadline = xTaskGetTickCount() + pdMS_TO_TICKS(DISCONNECT_DRAIN_RECLAIM_MS);
+  }
+  if (removed && m_Targets.empty()) {
+    m_ReconnectAttempt = 0;
+    m_ConnectFailCount = 0;
+    resetAdaptiveState();
+    return true;
+  }
+  return false;
+}
+
 void Control::reapZombieTargets(void) {
   const std::lock_guard<std::mutex> lock(m_Mutex);
 
@@ -955,6 +1029,7 @@ void Control::addActive(std::shared_ptr<Camera> camera) {
   // straight to active with no BLE work done. The dedup check above guarantees
   // the camera is not an active target here, so clearing the flag cannot race a
   // live session.
+  camera->clearPairingCancelled();
   camera->resetConnectionState();
 
   auto target = std::make_unique<Control::Target>(camera);
