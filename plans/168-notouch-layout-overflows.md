@@ -609,8 +609,9 @@ physical Core Basic has the shorter 26 px button-navbar layout and its Home
 page intentionally scrolls at the default size; `core-notouch-layout.txt`
 asserts complete labels and reaches both scroll endpoints for its six- and
 seven-row Home states. The Large icon-grid scenario prints rather than asserts
-Home fit and remains shared across layouts. This scenario-contract correction
-is pending the root runtime validation; no pass is recorded here.
+Home fit and remains shared across layouts. At this historical snapshot, this
+scenario-contract correction was pending root runtime validation; the current
+integration result is recorded below.
 
 ### What now scrolls, in pixels
 
@@ -814,7 +815,7 @@ the repeated visit in the Small-text route and the live IMU gate. Two touch-only
 companions retain the original strict-fit evidence at Default and Small text
 sizes. No font, icon or gesture assertion was removed.
 
-### Follow-up candidate: Sensors restart label clipping
+### Historical follow-up candidate: Sensors restart label clipping
 
 The physical 80x160 run exposed one remaining label clip on the Sensors page.
 The standalone `Restart to apply` button is a direct page child, so
@@ -822,15 +823,16 @@ The standalone `Restart to apply` button is a direct page child, so
 Its centered label previously kept its natural 81 px width while the button was
 only 48 px wide, and the parent clipped the text. The candidate makes the label
 100% wide, wraps it, and centers the wrapped text. This preserves the wording,
-selected font, and vertical scrolling contract. The candidate is pending the
-full three-panel validation; no pass is claimed here.
+selected font, and vertical scrolling contract. At this historical candidate
+stage, full three-panel validation was pending; the current integration result
+is recorded above.
 
 The certified `bughunt/stickc-connected-large-imu.txt` regression now covers
 the related persisted-Large Connected-page path on the 80x160 panel. It
 asserts the IMU-gated Level entry, label and overlap safety, and clear legend
 indicators at the restored top and bottom scroll endpoints.
 
-### Follow-up candidate: Bulb80 compact layout
+### Historical follow-up candidate: Bulb80 compact layout
 
 The integrated 80x160 sweep found the Bulb page still 40 px too tall. The
 trace showed `reserveLegendColumns()` had narrowed the page-level mode hint to
@@ -843,7 +845,8 @@ hint to `Set camera to B`; at the selected 12 px font its measured height is
 flex-row gap and all four pixels of padding for Duration and the other interval
 spinners (Count, Delay, Shutter and Wait). Start trims 2 px from each vertical
 edge. These changes preserve the instruction meaning, font, controls and
-legend reservation. Full validation remains pending.
+legend reservation. At this historical candidate stage, full validation was
+pending; the current integration result is recorded above.
 
 ## Deviations
 
@@ -895,13 +898,13 @@ available. The original PR273 head simulator-verified the 80x160 and 320x240
 changes, including the Core2 touch-layout reach in 6b. Those historical results
 do not certify the later master integration or focus-scroll correction.
 
-The current integration keeps the Display page content-sized on every
-panel/layout path. This addresses the observed negative-space flex layout and
+The earlier integration kept the Display page content-sized on every
+panel/layout path. This addressed the observed negative-space flex layout and
 the four-overlap StickC and ten-overlap StickS3 touch failures without changing
-fonts, icons, or seeds. The three-panel touch matrix remains pending; no runtime
-pass is claimed here.
+fonts, icons, or seeds. The following snapshot is historical and is superseded
+by the current validation snapshot below.
 
-### Current integration validation snapshot
+### Historical integration validation snapshot (superseded)
 
 The `dc987a1f4` full touch baseline passed 23 StickC e2e scenarios; its 42
 bughunt scenarios had 7 failures. The S3 run passed 123 e2e scenarios; its 42
@@ -912,7 +915,21 @@ overlap failures. The 80x160 and S3 Sensors touch-default and touch-small
 fixtures still fail on measured geometry and remain open, not waived. Any
 content-height follow-up is separate and is not included in this snapshot.
 
-### Sensors zero-width follow-up
+### Current integration validation snapshot (`daf7e870`, 2026-09-13)
+
+Root's exact current source passed all three RIG=1 simulator rebuilds. The
+36/36 Remote contracts passed, and all 280 physical-layout cases passed:
+62 StickC, 161 StickS3, and 57 Core cases. The touch-only skips were preserved
+as board-specific skips (7 StickC, 8 StickS3, and 9 Core), not converted into
+passes. The final touch E2E suite passed 170/170 (23 StickC, 123 StickS3,
+24 Core), certified bughunt passed 134/134 (46 StickC, 46 StickS3, 42 Core),
+and all 24 seeded
+600-step fuzz runs plus three strict seed-2 determinism replays passed with no
+findings. Evidence is in `~/b/pr273-daf-{notouch,touch,fuzz}.log`. The
+regenerated gallery, 13 clean firmware environments, and physical-hardware
+gates are not done; restart/lifecycle/fail-fast checks are still being run.
+
+### Historical Sensors zero-width follow-up
 
 The 3b85 touch geometry trace measured the Sensors Restart row with zero content
 width on all three modeled panels. The row's percentage-sized label fed back
@@ -920,18 +937,21 @@ into the button's shrink-wrap measurement, producing the zero-width
 parent/child cycle and false geometry. The fix sets the Restart button to the
 page width before creating the label. Both strict touch `ui.overflow no`
 assertions remain in place, with `ui.cut_labels 0` added as the direct guard.
-Runtime validation is pending; this is not a 100-percent parity claim.
+At this historical candidate stage, runtime validation was pending; the
+current integration result is recorded above. This remains not a 100-percent
+hardware-parity claim.
 
-### Bulb Start width follow-up
+### Historical Bulb Start width follow-up
 
 The 80x160 touch sweep exposed a Bulb Start fit failure. Source inspection
 identified the percentage-sized label under a shrink-wrapped button as the
 suspected LVGL sizing cause; unlike the Sensors trace, a zero-width result was
 not measured here. The fix establishes the page-width parent first. Existing
-compact-fit and clipped-value assertions remain unchanged; runtime validation
-across all modeled panels is pending.
+compact-fit and clipped-value assertions remain unchanged. At this historical
+candidate stage, validation across all modeled panels was pending; the current
+integration result is recorded above.
 
-### Touch Remote controls on narrow host panels
+### Historical Touch Remote controls on narrow host panels
 
 The fuzz matrix found `label_overlaps` on the touch Remote shutter page when
 the 80x160 and 135x240 host panels used three equal-width columns. Each control
@@ -961,8 +981,8 @@ content-sized cells, 106/84/106 px labels and 162 px cells; inherited horizontal
 card padding made the third cell wrap, producing a 344 px row and a false fit
 failure. Candidate `f76a374e` removes only the Core touch wrappers' left/right
 padding, retaining the 64 px controls, selected font and vertical spacing.
-Runtime validation of that candidate is pending; the strict Core `ui.overflow no`
-guard remains required.
+At this historical candidate stage, runtime validation was pending; the strict
+Core `ui.overflow no` guard remained required and is covered above.
 
 ### Diagnostic overlap clipping correction
 
