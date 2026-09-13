@@ -22,6 +22,15 @@ void requestExit(int result) {
   requestedExit.store(result);
 }
 
+void requestFailureExit(void) {
+  int result = requestedExit.load();
+  while (result == -1 || result == 0) {
+    if (requestedExit.compare_exchange_weak(result, 1)) {
+      return;
+    }
+  }
+}
+
 }  // namespace Furble::Sim
 
 namespace {
