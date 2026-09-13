@@ -2054,10 +2054,10 @@ lv_obj_t *UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_
   lv_obj_t *label = lv_label_create(obj);
   lv_label_set_text(label, s.name);
   lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
-  // Keep the name's natural width, bounded by its row. A grow item has zero
-  // minimum width, so the switch can squeeze it below even one glyph instead
-  // of wrapping onto the next line when the row is narrow.
-  lv_obj_set_style_max_width(label, LV_PCT(100), LV_PART_MAIN);
+  // Size the wrapping label explicitly. Content width plus max-width does not
+  // give LVGL the wrapping height, and flex-grow lets the switch squeeze the
+  // name below one glyph. Each complete name gets a row above its switch.
+  lv_obj_set_width(label, LV_PCT(100));
 
   lv_obj_t *sw = lv_switch_create(obj);
 #if defined(FURBLE_M5STICKC)
