@@ -30,6 +30,18 @@ duplicate the action and page tables and would incorrectly reject documented
 aliases. Broader route coverage remains an existing simulator-test concern,
 not a reason to expand this one-line compile-safety fix.
 
+The existing `sim/scenarios/bughunt/page-matrix.txt` is the exhaustive
+route-level check for this map in the release scenario set. It reaches every
+modeled page that is available under the seeded capabilities and asserts the
+resulting `ui.page` identity, including the connected-session sub-pages and
+run states. The map has 55 pairs; the scenario has 61 page assertions because
+several pages are revisited through different transitions. The extra
+`level_main` route is intentionally checked as the alias-to-`level` case.
+This is the smallest complete check available without inventing a second
+canonical page registry. If a future page is added, add its real route and
+`ui.page` assertion to `page-matrix.txt` in the same change; the inferred array
+then makes omission a scenario failure rather than a compile-time count edit.
+
 ## Validation boundary
 
 Root owns builds and tests for this change. The isolated implementation lane
