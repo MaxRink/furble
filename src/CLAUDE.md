@@ -176,3 +176,14 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   without terminating the host process.
 - New source files must be added to `src/CMakeLists.txt` (alphabetical, before
   main.cpp). Component deps go in `idf_component_register` there.
+
+Control cross-thread state contracts: `Control::m_State` is an acquire/release
+atomic because the control task publishes it under `m_StateMutex` while UI and
+other readers may sample it without that mutex. Keep compound transitions and
+power-lock ordering under `m_StateMutex`; the atomic only removes the plain
+read/write race. `Control::Target::m_Stopped` is also acquire/release atomic:
+the target task publishes its terminal state before deleting itself, while
+drain/reap predicates may observe it concurrently. This addresses the two
+observed GCC/TSAN races only. `m_ConnectAbort`, `m_ConnectInProgress`, and
+debug-only `m_SleepLockHeld` remain separate synchronization work; do not call
+the Control state surface race-free without evidence for those fields.
