@@ -34,6 +34,10 @@ void setBackTarget(Furble::UI *ui);
 void driverTick(void);
 /** Notify the fuzzer after the UI task completes its real LVGL cycle. */
 void fuzzCycleComplete(Furble::UI *ui);
+/** Complete simulator-side work that must follow the real LVGL cycle. */
+void driverUiCycleComplete(void);
+/** Keep a resumed fuzz harness out of its saved phase for one fresh boot cycle. */
+bool fuzzBootSettling(void);
 
 /** Request an orderly simulator shutdown with the supplied process result. */
 void requestExit(int result);
@@ -53,8 +57,8 @@ void requestRestart(void);
 /** Complete a scripted UI action after its bookkeeping has advanced. */
 void completeScriptRestart(size_t nextStep);
 
-/** Complete a fuzz event after its event/checkpoint bookkeeping has advanced. */
-void completeFuzzRestart(uint32_t nextStep);
+/** Arm a fuzz restart after its event/checkpoint bookkeeping has advanced. */
+void completeFuzzRestart(void);
 
 /** Return true once a reboot request has been armed for the post-teardown path. */
 bool restartRequested(void);

@@ -885,10 +885,11 @@ whatever the production stack does after a fault is what the scenario observes.
 - `Platform::restart()` uses the same post-teardown re-exec seam. Interactive
   restarts have no script continuation; scripted UI restarts defer arming until
   the driver records the next step. Fuzz owners must call
-  `completeFuzzRestart(next_step)` after the event and checkpoint bookkeeping;
-  the driver carries that cursor in `FURBLE_SIM_FUZZ_STEP`. A teardown or panel
-  failure always wins over re-exec. The fuzzer owner is responsible for
-  consuming that cursor and resuming at a safe post-event boundary.
+  `completeFuzzRestart()` after the event and checkpoint bookkeeping; the
+  driver serializes the harness state to a PID-scoped checkpoint file and
+  carries its path in `FURBLE_SIM_FUZZ_CHECKPOINT`. A teardown or panel failure
+  always wins over re-exec. The fresh boot gives the UI one cycle before the
+  saved APPLY, SETTLE, CHECK, or ESCAPE phase resumes.
 - Battery policy tests should seed `low_batt` and the four battery fields, then
   use `action battery ...` to change the sample. Six consecutive low samples
   qualify the production 30-second hysteresis; charging suppresses both the

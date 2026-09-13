@@ -119,7 +119,8 @@ bool simulatedPowerOff = false;
 // binary with the same arguments: threads, singletons and RAM are wiped as an
 // esp_restart() would be, while the NVS-backed preferences file persists. A
 // script continuation uses FURBLE_SIM_RESTART_STEP; a fuzzer continuation uses
-// FURBLE_SIM_FUZZ_STEP; an interactive reboot has no continuation index.
+// a serialized harness checkpoint named by FURBLE_SIM_FUZZ_CHECKPOINT; an
+// interactive reboot has no continuation index.
 //
 // A UI callback can request a reboot synchronously while the driver is still
 // applying the button or action that caused it. restartIntent is therefore
@@ -144,13 +145,52 @@ enum class RestartMode {
 };
 
 RestartMode restartMode = RestartMode::NONE;
+bool scriptRestartCandidate = false;
+size_t scriptRestartCandidateStep = 0;
+uint32_t fuzzBootSettleCycles = 0;
 // Written by driverTick and read only after main() joins the simulator thread.
 size_t restartStepIndex = 0;
 const char *RESTART_STEP_ENV = "FURBLE_SIM_RESTART_STEP";
-const char *FUZZ_RESTART_STEP_ENV = "FURBLE_SIM_FUZZ_STEP";
+const char *FUZZ_CHECKPOINT_ENV = "FURBLE_SIM_FUZZ_CHECKPOINT";
 const char *GENERATED_PREFS_ENV = "FURBLE_SIM_PREFS_GENERATED";
 std::string generatedPreferencesPath;
 bool generatedPreferencesOwned = false;
+
+constexpr std::uintmax_t MAX_FUZZ_CHECKPOINT_BYTES = 4U * 1024U * 1024U;
+
+void readFuzzCheckpointFromEnvironment(void) {
+  const char *path = std::getenv(FUZZ_CHECKPOINT_ENV);
+  if (path == nullptr) {
+    return;
+  }
+  if (path[0] == '\0') {
+    std::cerr << FUZZ_CHECKPOINT_ENV << " must not be empty\n";
+    std::exit(2);
+  }
+  std::error_code sizeError;
+  const std::uintmax_t size = std::filesystem::file_size(path, sizeError);
+  if (sizeError || size > MAX_FUZZ_CHECKPOINT_BYTES) {
+    std::cerr << "Invalid fuzz checkpoint file: " << path << '\n';
+    std::exit(2);
+  }
+  // Check the filesystem size before opening the stream. The parser has its
+  // own field bounds, but in_avail() cannot establish a regular-file limit.
+  std::ifstream input(path);
+  if (!input || !fuzzReadCheckpoint(input)) {
+    std::cerr << "Invalid fuzz checkpoint contents: " << path << '\n';
+    std::exit(2);
+  }
+  input.close();
+  if (std::remove(path) != 0 || unsetenv(FUZZ_CHECKPOINT_ENV) != 0) {
+    std::cerr << "Could not consume fuzz checkpoint: " << path << '\n';
+    std::exit(2);
+  }
+  fuzzResumeAfterRestart();
+  // Let the fresh UI boot complete one real LVGL cycle before the saved
+  // APPLY, SETTLE, CHECK or ESCAPE phase is serviced. This gate is driver
+  // state, so restoring a pending event does not consume RNG or settle work.
+  fuzzBootSettleCycles = 1;
+}
 
 // Continuous UI liveness invariant (plan 155). Every driver tick, if the UI
 // presents the Connected screen (the same three-way check the ui.connected
@@ -1953,11 +1993,12 @@ void configure(int argc, char **argv) {
     // Fuzz restart continuation is consumed by fuzzConfigure in the fuzzer
     // owner. Mark this boot as resumed here so the generated preference store
     // remains the same path across the exec, just as it does for scripts.
-    if (const char *resume = std::getenv(FUZZ_RESTART_STEP_ENV);
+    if (const char *resume = std::getenv(FUZZ_CHECKPOINT_ENV);
         resume != nullptr && resume[0] != '\0') {
       resumedBoot = true;
     }
     fuzzConfigure(fuzzSeed, fuzzSteps, fuzzVerbose);
+    readFuzzCheckpointFromEnvironment();
     return;
   }
 
@@ -2009,7 +2050,13 @@ void driverTick(void) {
   checkLivenessInvariant();
 
   if (fuzzActive()) {
+    if (fuzzBootSettleCycles != 0) {
+      return;
+    }
     fuzzTick(scenarioUi);
+    if (restartIntent && !restartPending.load() && fuzzCheckpointEligible()) {
+      completeFuzzRestart();
+    }
     return;
   }
 
@@ -2025,6 +2072,9 @@ void driverTick(void) {
     pushKey(pressedKey, false);
     pressedKey = SDLK_UNKNOWN;
     ++stepIndex;
+    scriptRestartCandidate = true;
+    scriptRestartCandidateStep = stepIndex;
+    completeScriptRestart(stepIndex);
     return;
   }
   Step &step = steps[stepIndex];
@@ -2091,6 +2141,8 @@ void driverTick(void) {
         return;
       }
       ++stepIndex;
+      scriptRestartCandidate = true;
+      scriptRestartCandidateStep = stepIndex;
       completeScriptRestart(stepIndex);
       break;
 
@@ -2261,6 +2313,8 @@ void driverTick(void) {
         return;
       }
       ++stepIndex;
+      scriptRestartCandidate = true;
+      scriptRestartCandidateStep = stepIndex;
       completeScriptRestart(stepIndex);
       break;
     }
@@ -2453,18 +2507,33 @@ void completeScriptRestart(size_t nextStep) {
   restartPending.store(true);
 }
 
-void completeFuzzRestart(uint32_t nextStep) {
-  if (!restartIntent || restartPending.load()) {
-    return;
-  }
-  if (nextStep == 0) {
-    std::cerr << "fuzz restart requested without a continuation step\n";
-    requestFailureExit();
+void completeFuzzRestart(void) {
+  if (!restartIntent || restartPending.load() || !fuzzCheckpointEligible()) {
     return;
   }
   restartMode = RestartMode::FUZZ;
-  restartStepIndex = nextStep;
   restartPending.store(true);
+}
+
+bool fuzzBootSettling(void) {
+  return fuzzBootSettleCycles != 0;
+}
+
+void driverUiCycleComplete(void) {
+  if (fuzzBootSettleCycles != 0) {
+    --fuzzBootSettleCycles;
+    return;
+  }
+  if (fuzzActive()) {
+    if (restartIntent && !restartPending.load() && fuzzCheckpointEligible()) {
+      completeFuzzRestart();
+    }
+    return;
+  }
+  if (restartIntent && !restartPending.load() && scriptRestartCandidate) {
+    completeScriptRestart(scriptRestartCandidateStep);
+  }
+  scriptRestartCandidate = false;
 }
 
 void requestExit(int result) {
@@ -2494,6 +2563,40 @@ bool restartRequested(void) {
   return restartPending.load();
 }
 
+bool writeFuzzCheckpointForRestart(void) {
+  if (!fuzzCheckpointEligible()) {
+    std::cerr << "fuzz restart requested outside a safe checkpoint boundary\n";
+    return false;
+  }
+  const std::filesystem::path directory = ".pio";
+  std::error_code directoryError;
+  std::filesystem::create_directories(directory, directoryError);
+  if (directoryError) {
+    std::cerr << "Could not create fuzz checkpoint directory: "
+              << directoryError.message() << '\n';
+    return false;
+  }
+  const std::string path = (directory / ("furble-sim-fuzz-checkpoint-"
+                                        + std::to_string(getpid()) + ".txt"))
+                               .string();
+  std::ofstream output(path, std::ios::out | std::ios::trunc);
+  if (!output || !fuzzWriteCheckpoint(output)) {
+    std::cerr << "Could not write fuzz checkpoint: " << path << '\n';
+    std::remove(path.c_str());
+    return false;
+  }
+  output.flush();
+  output.close();
+  std::error_code sizeError;
+  const std::uintmax_t size = std::filesystem::file_size(path, sizeError);
+  if (sizeError || size > MAX_FUZZ_CHECKPOINT_BYTES) {
+    std::cerr << "Fuzz checkpoint exceeds 4 MiB: " << path << '\n';
+    std::remove(path.c_str());
+    return false;
+  }
+  return setenv(FUZZ_CHECKPOINT_ENV, path.c_str(), 1) == 0;
+}
+
 void restartProcess(void) {
   std::cout.flush();
   std::cerr.flush();
@@ -2508,27 +2611,21 @@ void restartProcess(void) {
       }
       const std::string nextValue = std::to_string(restartStepIndex);
       if (setenv(RESTART_STEP_ENV, nextValue.c_str(), 1) != 0
-          || unsetenv(FUZZ_RESTART_STEP_ENV) != 0) {
+          || unsetenv(FUZZ_CHECKPOINT_ENV) != 0) {
         std::cerr << "restart failed to set continuation: " << std::strerror(errno) << '\n';
         std::_Exit(1);
       }
       break;
     }
     case RestartMode::FUZZ: {
-      if (restartStepIndex == 0) {
-        std::cerr << "fuzz restart requested without a continuation step\n";
-        std::_Exit(1);
-      }
-      const std::string nextValue = std::to_string(restartStepIndex);
-      if (setenv(FUZZ_RESTART_STEP_ENV, nextValue.c_str(), 1) != 0
-          || unsetenv(RESTART_STEP_ENV) != 0) {
-        std::cerr << "restart failed to set continuation: " << std::strerror(errno) << '\n';
+      if (!writeFuzzCheckpointForRestart() || unsetenv(RESTART_STEP_ENV) != 0) {
+        std::cerr << "fuzz restart failed to prepare checkpoint\n";
         std::_Exit(1);
       }
       break;
     }
     case RestartMode::INTERACTIVE:
-      if (unsetenv(RESTART_STEP_ENV) != 0 || unsetenv(FUZZ_RESTART_STEP_ENV) != 0) {
+      if (unsetenv(RESTART_STEP_ENV) != 0 || unsetenv(FUZZ_CHECKPOINT_ENV) != 0) {
         std::cerr << "restart failed to clear continuation: " << std::strerror(errno) << '\n';
         std::_Exit(1);
       }
