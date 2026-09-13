@@ -375,7 +375,10 @@ explicit status 1, and neither a signal exit nor a timeout. The existing CI
 binary. It also runs the same small `smoke.txt` scenario with the trigger
 disabled and expects status 0 without the fail-fast banner. Four tiny wrapper
 fixtures are rejected when they return status 0, status 1 without the banner,
-a signal status, or a timeout.
+a signal status, or a timeout. The signal fixture must return 143. The timeout
+fixture accepts 124 or the explicitly documented forced-kill status 137. The
+other three emit the exact banner first, so a missing executable or unrelated
+failure cannot masquerade as coverage.
 
 Exception-safe cleanup for other UI or native MQTT exceptions remains a
 separate gap. This fail-fast boundary is not hardware, scheduler-parity, or

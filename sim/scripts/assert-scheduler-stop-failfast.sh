@@ -89,10 +89,48 @@ for fixture in \
   "$ROOT/sim/scripts/fixtures/scheduler-stop-signal.sh" \
   "$ROOT/sim/scripts/fixtures/scheduler-stop-timeout.sh"; do
   run_bounded "$output" "$fixture"
-  if valid_failfast_result; then
-    echo "negative fixture unexpectedly matched fail-fast contract: $fixture" >&2
+  name=$(basename "$fixture")
+  case "$name" in
+    scheduler-stop-exit-zero.sh)
+      expected_status=0
+      ;;
+    scheduler-stop-exit-one-no-banner.sh)
+      expected_status=1
+      ;;
+    scheduler-stop-signal.sh)
+      expected_status=143
+      ;;
+    scheduler-stop-timeout.sh)
+      expected_status=124
+      ;;
+    *)
+      echo "unknown fail-fast fixture: $fixture" >&2
+      exit 1
+      ;;
+  esac
+  if [ "$name" = "scheduler-stop-timeout.sh" ]; then
+    if [ "$status" -ne 124 ] && [ "$status" -ne 137 ]; then
+      echo "timeout fixture returned $status, expected 124 or documented kill status 137" >&2
+      cat "$output" >&2
+      exit 1
+    fi
+  elif [ "$status" -ne "$expected_status" ]; then
+    echo "$name returned $status, expected $expected_status" >&2
     cat "$output" >&2
     exit 1
   fi
-  echo "Rejected invalid fail-fast fixture: $(basename "$fixture")."
+  if [ "$name" = "scheduler-stop-exit-one-no-banner.sh" ]; then
+    if grep -F "SIM FAIL: SchedulerStopped in UI task; exiting without cleanup" "$output" \
+        >/dev/null 2>&1; then
+      echo "$name unexpectedly emitted the fail-fast banner" >&2
+      cat "$output" >&2
+      exit 1
+    fi
+  elif ! grep -F "SIM FAIL: SchedulerStopped in UI task; exiting without cleanup" "$output" \
+      >/dev/null 2>&1; then
+    echo "$name omitted the exact expected fail-fast banner" >&2
+    cat "$output" >&2
+    exit 1
+  fi
+  echo "Rejected invalid fail-fast fixture: $name (status $status)."
 done
