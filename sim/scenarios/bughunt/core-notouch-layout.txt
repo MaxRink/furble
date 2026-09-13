@@ -39,8 +39,16 @@ assert ui.page main
 # user chose and scrolls when the rows stop fitting; it does not shrink the
 # face to fake a fit. What still has to hold is that nothing is drawn over
 # anything else.
+assert ui.cut_labels 0
 assert ui.label_overlaps 0
 assert ui.indicator_clearance clear
+assert ui.scroll_top 0
+action scroll bottom
+wait 150
+assert ui.scroll_bottom 0
+action scroll top
+wait 150
+assert ui.scroll_top 0
 
 # Display page.
 action nav display
@@ -110,8 +118,16 @@ assert ui.page main
 # user chose and scrolls when the rows stop fitting; it does not shrink the
 # face to fake a fit. What still has to hold is that nothing is drawn over
 # anything else.
+assert ui.cut_labels 0
 assert ui.label_overlaps 0
 assert ui.indicator_clearance clear
+assert ui.scroll_top 0
+action scroll bottom
+wait 150
+assert ui.scroll_bottom 0
+action scroll top
+wait 150
+assert ui.scroll_top 0
 
 # Connected session.
 action connect

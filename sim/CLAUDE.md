@@ -645,6 +645,11 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   set for one board in that layout and CI runs it on all three binaries. See
   `plans/165-sim-no-touch-layout.md` and
   `plans/168-notouch-layout-overflows.md`.
+- `bughunt/core-icon-grid.txt` guards its Home fit assertion with
+  `assert ui.nav_layout touch`: that is the touch/Core2 fit contract, while
+  `core-notouch-layout.txt` covers the physical Core Basic Home grid's
+  intentional scrolling with label and endpoint checks. The Large icon-grid
+  scenario prints rather than asserts Home fit and remains shared.
 - `ui.nav_layout` reports `touch` or `buttons`. `ui.indicator_clearance` reports
   `clear`, `overlap` or `n/a` for the current page, and `ui.indicator_overlaps`
   gives the count. Labels, images, rollers, switches, sliders, checkboxes and
