@@ -1151,6 +1151,7 @@ add_executable(control_connect_camera_race_test
                ${CONTROL_E2E_DIR}/freertos_shim.cpp
                ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
                ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/lib/furble/BtDebugJournal.cpp
                ${FURBLE_ROOT}/lib/furble/Camera.cpp
                ${FURBLE_ROOT}/lib/furble/Device.cpp
                ${FURBLE_ROOT}/lib/furble/FauxNY.cpp)

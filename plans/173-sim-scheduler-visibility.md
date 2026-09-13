@@ -582,3 +582,12 @@ master base used by this checkout. The seven-field source, regression, and
 wrapper integration above remains unexecuted here; root owns the subsequent
 full-host validation. Physical camera, radio, and power accuracy remain
 outside this evidence.
+
+## Host link follow-up
+
+Root's full-host build at `bc5f5240` stopped while linking the TSAN target
+because enabling `FURBLE_CONSOLE` exposed the production `BtDebugJournal`
+symbols without linking `lib/furble/BtDebugJournal.cpp`. The TSAN target now
+uses the same production source already linked by `control_abort_republish_test`.
+The build log is `~/b/control-atomics-bc5-build.log`; a rerun is pending. This
+is a host-link correction only, not test or hardware evidence.
