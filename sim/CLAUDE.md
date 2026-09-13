@@ -26,6 +26,28 @@ prints the current phase and scenario line when available, then re-raises the
 signal. `backtrace` and symbol formatting are not formally async-signal-safe,
 so the output is best effort and does not claim crash recovery or a root cause.
 
+### Startup ordering
+
+The simulator process sets its per-run preferences path before SDL setup and
+before the simulator thread starts. Inside that thread, `Settings::init()` and
+`Sim::applyScenarioSettings()` must precede `Platform::init()`. The platform
+construction reads settings on firmware and is the consumer that this order
+protects. `panelReady` remains after platform construction because SDL must not
+traverse the M5GFX monitor list before the panel is registered.
+
+The startup profiler remains after platform construction and panel publication
+by design. Its call placement is unchanged, but settings initialization now
+happens before the profiler starts. The profiler therefore does not claim to
+include initial platform power configuration. Companion rig selection and
+persisted Companion state are separate concerns and must not be combined with
+this startup ordering contract.
+
+`sim/FurblePlatformSim.cpp` records the `IMU` and `FB_OUTPUT` values loaded at
+the platform boundary as `boot_settings_imu` and `boot_settings_fb_output`.
+These are query-only observations of boot inputs. The SDL platform still forces
+`internal_imu` and `internal_spk` false in its M5 config, so the queries do not
+certify physical M5 configuration.
+
 ## Parity inventory and seam rules
 
 The simulator shares substantial production UI, GPS, settings, and power

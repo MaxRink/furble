@@ -1435,6 +1435,12 @@ std::string queryValue(const std::string &key) {
   if (key == "platform.watchdog") {
     return watchdogState();
   }
+  if (key == "boot_settings_imu") {
+    return bootSettings().imu ? "1" : "0";
+  }
+  if (key == "boot_settings_fb_output") {
+    return std::to_string(bootSettings().fb_output);
+  }
   if (key == "platform.download_lock") {
     return downloadLockState();
   }
