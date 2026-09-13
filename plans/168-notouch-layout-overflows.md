@@ -782,6 +782,17 @@ the repeated visit in the Small-text route and the live IMU gate. Two touch-only
 companions retain the original strict-fit evidence at Default and Small text
 sizes. No font, icon or gesture assertion was removed.
 
+### Follow-up candidate: Sensors restart label clipping
+
+The physical 80x160 run exposed one remaining label clip on the Sensors page.
+The standalone `Restart to apply` button is a direct page child, so
+`reserveLegendColumns()` narrows it to keep the floating Right indicator clear.
+Its centered label previously kept its natural 81 px width while the button was
+only 48 px wide, and the parent clipped the text. The candidate makes the label
+100% wide, wraps it, and centers the wrapped text. This preserves the wording,
+selected font, and vertical scrolling contract. The candidate is pending the
+full three-panel validation; no pass is claimed here.
+
 ## Deviations
 
 The plan as first drafted proposed dropping the Infrared entry from the 135x240

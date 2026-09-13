@@ -128,6 +128,9 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   at Large text `999 mins` needs the full 103 px narrowed row width. Four pixels
   of horizontal padding make that complete value wrap and push the Bulb page
   past its viewport.
+  Standalone buttons on pages with a reserved legend column must wrap their
+  labels inside the narrowed button and keep the text centered; natural-width
+  labels are clipped by the button's parent even when the label itself fits.
   Scan advertisements are copied by `Scan` and drained on this task before
   `CameraList` or LVGL is touched; keep scan start unlocked around controller
   calls so the watchdog and callback handoff remain responsive.

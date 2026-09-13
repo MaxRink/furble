@@ -7502,11 +7502,14 @@ void UI::addSensorsMenu(const menu_t &parent) {
   addGesturesMenu(menu);
 
   // The caption and the button said the same thing in two rows. One row does
-  // it, and the row this buys is what keeps the page fitting now that the
-  // Motion Engine entry has joined it.
+  // it, and the row this buys keeps the page's content readable now that the
+  // Motion Engine entry has joined it; the 80x160 physical layout may scroll.
   lv_obj_t *restart = lv_button_create(menu.page);
   lv_obj_t *label = lv_label_create(restart);
   lv_label_set_text(label, "Restart to apply");
+  lv_obj_set_width(label, LV_PCT(100));
+  lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_center(label);
   lv_obj_add_event_cb(
       restart, [](lv_event_t *) { Platform::getInstance().restart(); }, LV_EVENT_CLICKED, NULL);
