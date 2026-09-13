@@ -923,7 +923,8 @@ modeled panels. Runtime validation is pending.
 
 The fuzz compact-page rule mirrors that contract: physical-button shutter pages
 and the 320x240 Core touch model remain fit-required. Only touch builds of the
-existing narrow Stick panel classes allow shutter scrolling. The global overlap,
-cut-label, and runaway-scroll checks remain active. The narrow Stick scenario
+existing narrow Stick panel classes allow shutter scrolling. The global overlap
+and runaway-scroll checks remain active; dedicated scenarios check clipped
+labels. The narrow Stick scenario
 asserts positive overflow plus both scroll endpoints, while the Core-specific
 scenario asserts `ui.overflow no`.

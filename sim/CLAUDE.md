@@ -608,8 +608,9 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   stay fast.
 - The fuzz compact-page fit rule keeps shutter fit-required on physical-button
   builds and on the 320x240 Core touch model. It permits scrolling only for the
-  touch layout compiled for the existing narrow Stick panels. Overlap, clipped
-  labels, and runaway scroll checks remain unconditional.
+  touch layout compiled for the existing narrow Stick panels. Global overlap
+  and runaway-scroll checks remain unconditional; the dedicated scenarios also
+  assert that labels are not clipped.
 
 ## Docs screenshots and sim capabilities
 

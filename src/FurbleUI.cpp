@@ -6879,8 +6879,7 @@ UI::menu_t &UI::addConnectedMenu(void) {
     lv_obj_set_size(cont, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_layout(cont, LV_LAYOUT_FLEX);
     lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_ROW_WRAP);
-    lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
-                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_left(cont, 0, 0);
     lv_obj_set_style_pad_right(cont, 0, 0);
     lv_obj_set_style_pad_column(cont, 0, 0);

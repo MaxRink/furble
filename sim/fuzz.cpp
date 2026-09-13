@@ -69,7 +69,7 @@ constexpr std::array<const char *, 12> kToggles = {
 // fit query can see. What replaced the check on those pages is
 // ui.label_overlaps, asserted per page in the scenarios.
 // See plans/168-notouch-layout-overflows.md.
-bool mustFit(UI *ui, const std::string &page) {
+bool mustFit([[maybe_unused]] UI *ui, const std::string &page) {
   if (page == "shutter") {
 #if defined(FURBLE_M5STICKC) || defined(FURBLE_M5STICKS3)
     // The modeled Stick panels are narrow enough for the touch controls to
