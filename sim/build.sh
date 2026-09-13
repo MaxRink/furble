@@ -178,7 +178,7 @@ coverage_flags_for() {
 # the shaping flags and drop the cache when they change. A build dir holding
 # objects but no stamp predates this check, so it is treated as a mismatch once.
 FLAG_STAMP="$BUILD_DIR/build-flags"
-FLAG_VALUE="board=$FURBLE_BOARD m5gfx=$M5GFX_BOARD rig=${FURBLE_SIM_RIG:-1} mqtt=$MQTT_ENABLED sanitize=$SANITIZE coverage=$COVERAGE"
+FLAG_VALUE="root=$ROOT dep_root=$DEP_ROOT lvgl=$LVGL_DIR board=$FURBLE_BOARD m5gfx=$M5GFX_BOARD rig=${FURBLE_SIM_RIG:-1} mqtt=$MQTT_ENABLED sanitize=$SANITIZE coverage=$COVERAGE"
 if [ ! -f "$FLAG_STAMP" ] || [ "$(cat "$FLAG_STAMP")" != "$FLAG_VALUE" ]; then
   if [ -f "$FLAG_STAMP" ] || [ -n "$(ls -A "$BUILD_DIR/obj" 2>/dev/null)" ]; then
     echo "[CLEAN] build flags changed, dropping $BUILD_DIR/obj"
