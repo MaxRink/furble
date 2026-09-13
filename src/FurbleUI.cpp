@@ -3734,11 +3734,12 @@ uint32_t UI::countLabelOverlaps(void) {
   return overlaps;
 }
 
-// Count visible content that intersects the focused widget's actual main
-// outline. This deliberately excludes the focus object's own descendants
-// (for example a button label) and ancestors, while retaining LVGL visibility
-// and current-page clipping. It is a decoration diagnostic, not a replacement
-// for the content-only label overlap metric.
+// Count visible content that intersects conservative bounds around the focused
+// widget's body, outline, and outline padding. This deliberately excludes the
+// focus object's own descendants (for example a button label) and ancestors,
+// while retaining LVGL visibility and current-page clipping. It is a
+// decoration diagnostic, not a replacement for the content-only label overlap
+// metric.
 uint32_t UI::countFocusOverlaps(void) {
   lv_obj_t *page = lv_menu_get_cur_main_page(m_MainMenu.main);
   lv_obj_t *focused = lv_group_get_focused(m_Group);

@@ -761,9 +761,9 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   vertically when needed; `ui.row_scrolling` must stay `no` on focused rows.
   Physical no-touch scenarios assert readability and both scroll ends, while
   explicitly touch-guarded companions retain the stricter supplemental fit.
-- `ui.focus_overlaps` measures the focused widget's visible main outline
-  (current LVGL outline width/padding/opacity) against unrelated visible
-  content leaves on the current page. The focused widget's own descendants and
+- `ui.focus_overlaps` measures conservative bounds around the focused widget's
+  body, outline, and outline padding (using current LVGL width/padding/opacity)
+  against unrelated visible content leaves on the current page. The focused widget's own descendants and
   ancestors are excluded, so a button's label is not self-collision. This is
   a conservative focus-decoration diagnostic; it does not certify every
   slider knob or shadow pixel.
