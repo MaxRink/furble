@@ -768,8 +768,12 @@ The S3 Bulb trace found a different boundary: the narrowed Duration row had
 horizontal padding pixels alone forced the value into a 55x48 two-line box and
 left the page 12 px below its viewport. `ec6bf267e2c063492de85cb4216633f434903b3d`
 keeps the vertical padding and gives those four horizontal pixels back. This is
-an exact measured source correction; repeat Bulb runtime validation remains a
-release gate until recorded here.
+an exact measured source correction. At
+`b16e43ce919ecf9c940116db77e986914a361cc5`, all three fresh S3 repeats of
+`spin-row-widths-135` passed: Bulb reported no overflow, no clipped values and
+no cut names (`pr273-b16-bulb135-{1,2,3}.log`). This focused proof does not
+replace the running three-panel physical-layout suite, regenerated gallery,
+firmware matrix or physical-device gates.
 
 Finally, the original physical 80x160 Sensors contract is intentional vertical
 scrolling, not strict fit; its documented fixture measured 7 px. Shared physical
