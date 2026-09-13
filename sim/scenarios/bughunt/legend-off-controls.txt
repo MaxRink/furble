@@ -4,6 +4,7 @@
 # input path is never replaced by a hidden/deleted LVGL object.
 seed no_touch true
 seed legend 2
+seed preset_picker true
 seed fauxny true
 seed saved_camera true
 wait 300
@@ -18,6 +19,14 @@ action page shutter
 wait 200
 assert ui.page shutter
 assert ui.control_mode shutter
+assert ui.legend_visible no
+
+# The lock control remains part of the Remote page's production interaction
+# even when its indicator is hidden; focusing it must still leave the rendered
+# lock outline suppressed by Off.
+action focus-lock
+wait 100
+assert ui.lock_outline 0
 assert ui.legend_visible no
 
 # BtnA is the real middle/select input on Stick boards: it must still fire the
@@ -50,6 +59,10 @@ action nav bulb_duration
 wait 150
 assert ui.page bulb_duration
 assert ui.legend_visible no
+assert ui.bulb_ms 30000
+action preset-step-up
+wait 150
+assert ui.bulb_ms 40000
 back
 wait 100
 assert ui.legend_visible no
