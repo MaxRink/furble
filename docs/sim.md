@@ -181,15 +181,18 @@ After the guarded seeds, `run-fuzz.sh` replays `FURBLE_FUZZ_REPEAT_SEED`
 (default: `2`, empty to skip) and requires the two runs to produce identical
 `FUZZ EVENTS`, `FUZZ COVERAGE` and normalized `FUZZ SUMMARY` lines, with only
 `observed_delta` and `no_observed_delta` masked for replay equality. The same
-seed must drive the same event stream and reach the same pages.
+seed must drive the same event stream and reach the same pages. CI applies the
+same runner to touch and physical-button layouts on all three panel binaries.
 
 The comparison stops there on purpose. Firmware behaviour under the fuzzer is
 not yet reproducible line for line: two runs of the same seed can differ by one
 connect attempt. `Camera::m_Mutex`, the one host mutex a connect holds for its
-whole attempt, is scheduler visible since plans/173; the host mutexes that are
-left are held for microseconds each and have not been measured to move a run,
-but they are still invisible, so asserting the whole log stays out of the
-gate.
+whole attempt, is scheduler visible since plans/173. Remaining host mutexes
+and asynchronous settlement are still under investigation: repeated UI
+candidate runs have produced identical event streams but different page counts.
+Those runs fail the unchanged replay gate, even when they report zero findings.
+Neither a matching replay nor this simulator's finite scenarios certify every
+hardware interleaving.
 
 ## Wall-clock bounds and the stall watchdog
 

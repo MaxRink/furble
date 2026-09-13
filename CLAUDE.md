@@ -76,6 +76,9 @@ CLAUDE.md whose directory it touches.
   its stamp also keys the absolute firmware, dependency, and LVGL roots so a
   shared build directory cannot reuse objects from another checkout. Run
   `sh sim/scripts/test-build-deps.sh` when changing this cache logic.
+- UI fuzz coverage must run both touch and `FURBLE_SIM_NO_TOUCH=1` layouts on
+  all three panel binaries. Preserve the runner's default seeds and strict
+  replay check; touch-only runs miss physical input-device lifetime faults.
 - All OTA application images start at `0x20000`. The shared
   `board_upload.offset_address` setting is intentional: it keeps
   `pio run -t nobuild -t upload` from falling back to PlatformIO's historical

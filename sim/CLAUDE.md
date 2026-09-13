@@ -249,16 +249,15 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
 
 - The virtual clock makes scripted runs reproducible: two smoke runs produce
   byte-identical PNGs.
-- Fuzzer reproducibility is not total. Two runs of the same seed on the same
-  binary produce byte-identical `FUZZ EVENTS` and `FUZZ COVERAGE` lines, so the
-  event stream and the pages it reaches are deterministic, and `run-fuzz.sh`
-  now enforces that with a replay of one guarded seed. `Camera::m_Mutex`, the
-  one host mutex a connect holds for its whole attempt, is scheduler visible
-  since plans/173, so that source of drift is gone. The remaining host mutexes
-  in production code are held for microseconds and have not been measured to
-  move a fuzz run, but they are still invisible, so `observed_delta` and
-  `no_observed_delta` stay masked in the replay. Compare the fuzz report lines,
-  not the log.
+- Fuzzer reproducibility is not total. The strict replay gate requires matching
+  event streams and page counts, but repeated runs of the final UI candidate
+  have violated page-count equality with identical event streams. Keep these
+  failures visible; zero findings is not a repeatability pass. Remaining plain
+  host mutexes and asynchronous settlement are investigation targets, not a
+  proven explanation. The two observation counters remain the only existing
+  masks; do not also mask coverage counts to make a replay pass.
+- Fuzz CI exercises touch and physical-button layouts on all three panels.
+  The no-touch lane uses the same runner, seeds and strict replay contract.
 - Fix age is virtual too, so `gps.png` is byte-reproducible like every other
   capture. It used to be the one exception. TinyGPSPlus ages every reading
   against a global `millis()`, and its non-Arduino fallback read the host wall

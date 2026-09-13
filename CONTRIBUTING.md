@@ -153,6 +153,9 @@ attempt to infer changed paths without a pull request or push comparison base.
   roots so shared build directories cannot mix checkout objects. Verify the
   cache with `sh sim/scripts/test-build-deps.sh` after changing the build
   script. It never changes firmware behavior.
+- UI fuzz CI runs all three panel binaries in touch and physical-button
+  (`FURBLE_SIM_NO_TOUCH=1`) modes. Use the same `run-fuzz.sh` defaults in both;
+  a passing touch run does not validate physical input-device lifetimes.
 - After building the simulator, run `FURBLE_SIM_BIN=sim/build/furble-sim sh
   sim/scripts/check-preferences-lifecycle.sh` to check explicit and generated
   preference ownership; `sim-e2e.yml` runs the same gate in CI.
