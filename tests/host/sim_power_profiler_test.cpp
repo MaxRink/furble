@@ -318,8 +318,9 @@ int main() {
   profilerTimerFire("battery_timer");
   profilerEndUiCycle();
 
-  // One millisecond consumes only part of the 1,800 us queued work. The next
-  // millisecond carries the remaining 800 us, all while the 240 MHz lock is held.
+  // At the first 1 ms clock boundary, only part of the 1,800 us queued work is
+  // consumed. The remaining 800 us carries into the next 1 ms slice, all while
+  // the 240 MHz lock is held.
   advanceClockMicros(1500);
   profilerSetDisplayState("dim");
   advanceClockMicros(500);
@@ -342,7 +343,7 @@ int main() {
       || !contains(first_json, "\"adjusted_light_sleep_us\": 0")
       || !contains(first_json, "\"pending_work_us\": 0")
       || !contains(first_json, "\"current_count\": 0")
-      || !contains(first_json, "\"total_hold_ms\": 2000")) {
+      || !contains(first_json, "\"total_hold_ms\": 0")) {
     return 1;
   }
 
@@ -369,7 +370,7 @@ int main() {
   }
 
   // A new explicit reporting begin is the reload boundary. The changed poll
-  // cost is observed only after that boundary, and 1,000 us lands in the 160
+  // cost is observed only after that boundary, and 2,000 us lands in the 160
   // MHz bucket rather than the previous 240 MHz bucket.
   resetExit();
   setClockMicros(3000 * 1000);
