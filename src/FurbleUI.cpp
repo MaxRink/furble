@@ -3653,7 +3653,11 @@ uint32_t UI::countIndicatorOverlaps(void) {
       lv_area_t coords;
       lv_obj_get_coords(obj, &coords);
       lv_area_t area = simDrawnArea(obj, coords);
-      if (simAreasIntersect(area, viewport)) {
+      // LVGL clips children through every ancestor before drawing them. Keep
+      // the simulator metric on that visible intersection, including scroll
+      // rows and LV_OBJ_FLAG_OVERFLOW_VISIBLE, rather than counting an
+      // off-row child whose coordinates still reach the page viewport.
+      if (lv_obj_area_is_visible(obj, &area) && simAreasIntersect(area, viewport)) {
         area.x1 = std::max(area.x1, viewport.x1);
         area.y1 = std::max(area.y1, viewport.y1);
         area.x2 = std::min(area.x2, viewport.x2);
@@ -3707,7 +3711,10 @@ uint32_t UI::countLabelOverlaps(void) {
       lv_area_t coords;
       lv_obj_get_coords(obj, &coords);
       lv_area_t area = simDrawnArea(obj, coords);
-      if (simAreasIntersect(area, viewport)) {
+      // Use LVGL's native ancestor clipping for the same reason as the
+      // indicator metric above. Do not put this in simDrawnArea: cut-labels
+      // intentionally inspect the raw drawn area against its parent.
+      if (lv_obj_area_is_visible(obj, &area) && simAreasIntersect(area, viewport)) {
         area.x1 = std::max(area.x1, viewport.x1);
         area.y1 = std::max(area.y1, viewport.y1);
         area.x2 = std::min(area.x2, viewport.x2);
