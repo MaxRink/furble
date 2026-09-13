@@ -383,3 +383,42 @@ failure cannot masquerade as coverage.
 Exception-safe cleanup for other UI or native MQTT exceptions remains a
 separate gap. This fail-fast boundary is not hardware, scheduler-parity, or
 recovery evidence.
+
+## Follow-up state: safe preference ownership slice (#289)
+
+The simulator now distinguishes caller-owned `FURBLE_SIM_PREFS` from its own
+scratch store. An explicit path is retained for scripted and interactive runs,
+so intentional NVS writes are not truncated at boot and `removePreferences()`
+does not delete the caller's store. A fresh generated path is reserved with
+`mkstemps()` and initialized with a four-byte zero entry count; an empty
+`mkstemp` file would be parsed as an error by `PreferencesSim`.
+
+Generated ownership is carried across the validated `FURBLE_SIM_RESTART_STEP`
+re-exec with an internal exact-path-plus-origin-PID marker. `execvp()`
+preserves the PID, and the resumed boot retains the same generated path only
+when both path and origin PID match. A different PID treats the path as
+caller-owned and does not adopt or remove it. Final orderly cleanup removes
+only that owned primary and its existing PID-specific `.tmp.<pid>` file.
+
+Cross-run stale sweeping, PID-liveness reclamation, sidecar locks, failed
+restart cleanup, and abnormal-exit cleanup are deliberately deferred. A dead
+encoded PID cannot prove that another process did not intentionally select the
+same store, so this slice makes no cross-process deletion claim.
+
+The focused subprocess gate is `sim/scripts/check-preferences-lifecycle.sh`.
+It checks explicit-store use and persistence across independent launches,
+stale-marker non-adoption, unique generated names after abnormal exits,
+retention of unrelated crash leftovers, and same-PID restart cleanup. The source
+cleanup also removes an existing owned
+PID-specific temporary file, but this gate does not inject one across a live
+process boundary. It requires an already-built simulator and was not run in
+this handoff.
+
+Root validation recorded at `dd0e39443a24ab30b0bab728e9712ad35f03deb5`
+(2026-09-13) passed the simulator build, the preference lifecycle gate, and
+all eight `actualPreferencesSim` CTest cases. The evidence is outside this
+checkout in `~/b/prefs-ownership-build.log`,
+`~/b/prefs-ownership-lifecycle.log`, and
+`~/b/prefs-ownership-host-test.log`; this checkout did not rerun those gates.
+The lifecycle script is now wired into the existing `sim-e2e` S3 job with a
+two-minute step timeout; the next CI run remains pending.
