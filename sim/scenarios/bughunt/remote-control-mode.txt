@@ -8,9 +8,11 @@
 # legends. Every measurement of that page taken through it was of a state the
 # device never shows, which is why this file asserts the mode from both.
 seed no_touch true
+seed text_size 1
 seed fauxny true
 seed saved_camera true
 wait 400
+assert setting.text_size 1
 
 action connect
 wait 3200

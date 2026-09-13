@@ -2,10 +2,12 @@
 # page. Run against each panel class to surface layout overflow, worst on 80x160.
 # This is an overflow audit, not a second route-identity test: the page matrix
 # owns route reachability assertions. Each route prints its page and overflow
-# state, while compact pages carry a hard fit assertion.
+# state. Compact pages carry a hard fit assertion except narrow Stick touch
+# shutter, whose full-size controls intentionally wrap and scroll.
 #
-# Compact run pages must fit. Menu pages keep the selected font, row icons and
-# spacing, and scroll vertically when their complete rows exceed the viewport.
+# Fit-required run pages must fit. Menu pages keep the selected font, row icons
+# and spacing, and scroll vertically when their complete rows exceed the
+# viewport.
 #
 # The long settings lists (features, gps, bluetooth, about and the diagnostics
 # sub-pages) hold more rows than a short panel can show, so they scroll by
@@ -286,9 +288,9 @@ action nav battery
 wait 100
 print ui.page
 print ui.overflow
-# Connected-session pages. The remote controls and run pages are compact, so
-# assert their fit as well. Cameras and the GPS remote page are printed because
-# their content legitimately varies with camera/GPS state and panel height.
+# Connected-session pages. Physical-button remote controls, Core touch shutter,
+# and run pages are fit-required. Narrow Stick touch shutter keeps its full-size
+# controls and scrolls, so this shared matrix checks geometry and both extents.
 home
 action connect
 wait 1800
@@ -304,7 +306,20 @@ action page shutter
 wait 100
 print ui.page
 print ui.overflow
-assert ui.overflow no
+assert ui.page shutter
+assert ui.scroll_top 0
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+action scroll bottom
+wait 100
+assert ui.scroll_bottom 0
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+action scroll top
+wait 100
+assert ui.scroll_top 0
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
 action page bulb
 wait 100
 print ui.page

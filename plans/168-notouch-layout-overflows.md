@@ -942,7 +942,10 @@ existing menu scroll area when they do not. The 320x240 touch layout therefore
 keeps its three controls side by side, while narrower panels retain full-size
 controls without overlap. `touch-remote-shutter-narrow.txt` checks direct page
 and separate blind entry routes, label readability, and both scroll ends on all
-modeled panels. Runtime validation is pending.
+modeled panels. The shared page and overflow matrices use the same bounded-scroll
+contract; `remote-control-mode.txt` plus its Small/Large variants pin physical
+fit on all three modeled boards, and `core-touch-remote-shutter-fit.txt` plus its
+Small/Large variants pin Core touch fit.
 
 The fuzz compact-page rule mirrors that contract: physical-button shutter pages
 and the 320x240 Core touch model remain fit-required. Only touch builds of the

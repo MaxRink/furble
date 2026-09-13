@@ -226,6 +226,36 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/bughunt/remote-control-fit-small.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/remote-control-fit-large.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/bughunt/legend-absent-core.txt",
       "suite": "bughunt",
       "owner": "sim-bughunt",
@@ -857,6 +887,32 @@
     },
     {
       "path": "sim/scenarios/bughunt/core-touch-remote-shutter-fit.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/core-touch-remote-shutter-fit-small.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/core-touch-remote-shutter-fit-large.txt",
       "suite": "bughunt",
       "owner": "sim-bughunt",
       "boards": [

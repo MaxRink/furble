@@ -1,18 +1,18 @@
-# The modeled Core touch panel keeps all three full-size Remote controls in a
-# single row, so its shutter page remains fit-required.
+# Core touch Remote shutter fit at the largest text size. Core touch keeps
+# all three full-size controls on one row and therefore remains fit-required.
 seed no_touch false
-seed text_size 1
+seed text_size 2
 seed fauxny true
 seed saved_camera true
 wait 400
+assert ui.nav_layout touch
+assert setting.text_size 2
 
 action connect
 wait 3200
 assert ui.connected yes
-assert setting.text_size 1
 action page shutter
 wait 300
-assert ui.nav_layout touch
 assert ui.page shutter
 assert ui.control_mode shutter
 assert ui.overflow no

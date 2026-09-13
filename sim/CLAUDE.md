@@ -667,6 +667,12 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   `touch-remote-shutter-narrow.txt` scenario checks both direct page and blind
   entry routes on every modeled panel; this is supplemental Core2 touch
   behavior, not a claim that the physical-button boards have touch hardware.
+  The shared `page-matrix.txt` and `overflow-sweep.txt` therefore assert page
+  identity, complete labels and bounded top/bottom/top scrolling for shutter,
+  rather than a universal fit. `remote-control-mode.txt` and its Small/Large
+  variants keep the physical-button shutter fit-required on all three modeled
+  boards; `core-touch-remote-shutter-fit.txt` and its Small/Large variants keep
+  the 320x240 Core touch fit-required.
 - The SDL panel always attaches a mouse-driven touch device, so an unseeded run
   renders the touch layout on every modeled board. `FURBLE_SIM_NO_TOUCH=1` or a
   `no_touch true` seed selects the physical-button layout. None of the three
@@ -750,9 +756,11 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   reachability and layout. It walks the root, Connect/Scan/Delete lists, every
   settings and diagnostics route, optional Infrared/Feedback/Storage pages,
   connected-session pages, and the Bulb and intervalometer run pages. It
-  asserts `ui.page` identity for every route, asserts no overflow on compact
+  asserts `ui.page` identity for every route, asserts no overflow on fit-required
   pages, and drives intentional-scroll pages to `scroll bottom` and back to
-  `scroll top`, asserting both extents are zero. Run it with
+  `scroll top`, asserting both extents are zero. Narrow Stick touch shutter is
+  intentionally in the latter category; the dedicated physical and Core-touch
+  shutter lanes carry its strict fit assertions. Run it with
   `FURBLE_SIM_IR=1 FURBLE_SIM_FEEDBACK=1 FURBLE_SIM_SD=1` against all three
   panel builds. The CI matrix uses the same script for 80x160 M5StickC,
   135x240 M5StickS3, and 320x240 M5Stack Core, so a page that only fails on a
@@ -769,10 +777,12 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   text-size clamp.
 - `sim/scenarios/bughunt/overflow-sweep.txt` is the complementary layout audit.
   It visits every reachable root, settings, diagnostics, capability, and
-  connected-session page, asserts fit for compact pages, and prints the
-  overflow state for intentional-scroll pages. CI runs it on all three panel
-  classes with optional capabilities enabled. Keep route identity and scroll
-  endpoint assertions in `page-matrix.txt` rather than duplicating them here.
+  connected-session page, asserts fit for fit-required pages, and prints the
+  overflow state for intentional-scroll pages. For shutter it also checks
+  labels/cuts and both scroll endpoints, matching the narrow Stick touch
+  contract. CI runs it on all three panel classes with optional capabilities
+  enabled. Keep route identity and scroll endpoint assertions in
+  `page-matrix.txt` rather than duplicating them elsewhere.
 - All simulator scenarios are catalogued in `sim/scenarios/manifest.json`.
   Every entry declares its suite owner, board matrix, capabilities, and
   expected exit status. Obsolete scenarios must be non-certified with a reason.

@@ -2,10 +2,12 @@
 # (80x160), M5StickS3 (135x240) and M5Stack Core (320x240) binaries. The
 # harness enables IR, feedback and SD so capability-gated pages are included.
 #
-# Compact run pages assert that their content fits. Menu pages keep the selected
-# font, row icons and spacing, and are driven to both scroll ends when their
-# complete rows exceed the viewport. Page identity is a FURBLE_SIM-only seam,
-# so a new route cannot silently report "other".
+# Fit-required run pages assert that their content fits. Menu pages keep the
+# selected font, row icons and spacing, and are driven to both scroll ends when
+# their complete rows exceed the viewport. Narrow Stick touch shutter is an
+# intentional scrolling exception and is checked at both extents below. Page
+# identity is a FURBLE_SIM-only seam, so a new route cannot silently report
+# "other".
 seed fauxny true
 seed saved_camera true
 seed gps true
@@ -350,7 +352,17 @@ assert ui.label_overlaps 0
 action page shutter
 wait 100
 assert ui.page shutter
-assert ui.overflow no
+assert ui.scroll_top 0
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+action scroll bottom
+assert ui.scroll_bottom 0
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+action scroll top
+assert ui.scroll_top 0
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
 action page bulb
 wait 100
 assert ui.page bulb

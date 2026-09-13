@@ -3,15 +3,16 @@
 # Companion to overflow-sweep.txt, which only exercises the default Normal font.
 # The Text size setting scales the LVGL theme font, so a larger font can push a
 # once-fitting page past the viewport. This scenario seeds Large, then walks the
-# same pages overflow-sweep walks, so the compact pages that must always fit are
-# layout-verified at the largest font, not just at Normal. Run it on the same
+# same pages overflow-sweep walks, so the fit-required pages are layout-verified
+# at the largest font, not just at Normal. Run it on the same
 # panels overflow-sweep runs on: the 80x160 M5StickC and the 135x240 boards.
 # Large lifts the theme font 12 -> 14 on the 80x160 StickC and 16 -> 22 on the
 # 135x240 boards.
 #
-# The compact run pages carry an "assert ui.overflow no". Menu pages keep the
+# Fit-required run pages carry an "assert ui.overflow no". Menu pages keep the
 # selected font and their icons, and scroll vertically when complete wrapped
-# rows exceed the viewport.
+# rows exceed the viewport. Narrow Stick touch shutter is intentionally checked
+# for readable labels and bounded scrolling instead of a fit.
 # The long settings lists (features, gps, bluetooth, about, power, diagnostics)
 # hold more rows than a short panel can show, so they scroll by design and only
 # print their overflow state.
@@ -109,11 +110,24 @@ action nav diagnostics
 wait 100
 print ui.page
 print ui.overflow
-# Remote shutter page: compact, must fit on the narrow panels.
+# Remote shutter page: narrow Stick touch keeps full-size controls and scrolls;
+# physical-button variants retain a strict fit in dedicated lanes.
 action blind
 wait 200
 assert ui.page shutter
-assert ui.overflow no
+assert ui.scroll_top 0
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+action scroll bottom
+wait 100
+assert ui.scroll_bottom 0
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+action scroll top
+wait 100
+assert ui.scroll_top 0
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
 # Connected page: compact, must fit on the narrow panels.
 action connect
 wait 3200

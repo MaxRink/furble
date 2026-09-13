@@ -43,6 +43,13 @@ exactly one board, so they measure the layout that board really has.
 are the touch-layout half for the 320x240 panel, which is the layout the
 unmodeled Core2 ships, and they open with `assert ui.nav_layout touch` for the
 same reason the three above open with `buttons`.
+The Remote shutter fit matrix follows the same split: the shared page and
+overflow matrices check page identity, complete labels and bounded scrolling,
+because narrow Stick touch intentionally wraps its full-size controls. The
+certified `bughunt/remote-control-mode.txt` plus its Small and Large variants
+keep the physical-button shutter page fit-required on all three modeled boards;
+`bughunt/core-touch-remote-shutter-fit.txt` plus its Small and Large variants
+keep the 320x240 Core touch shutter fit-required.
 `ui.label_overlaps` reports how many pairs of visible labels on the current page
 draw through each other, which is the one defect a fit or scroll query cannot
 see.
