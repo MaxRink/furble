@@ -1064,8 +1064,8 @@ environments, and physical-hardware gates remain outstanding.
 Commit `702da248fd9ec98353260dd69bde2a228619cc32` updates the shared
 `addSettingItem()` helper. Its row-wrap container now gives the setting name an
 explicit 100% label width while retaining `LV_LABEL_LONG_WRAP` and leaving the
-switch as the following item. A complete long name can therefore wrap onto its
-own line above the switch instead of being squeezed by flex sizing. The first
+switch as the following item. Every name occupies its own row above the switch,
+including on wider panels, instead of being squeezed by flex sizing. The first
 natural/max-width candidate (`1e` in the review notes) still cut names such as
 `Show Title`, so it is not the accepted shape.
 
@@ -1075,6 +1075,6 @@ text sizes plus the StickS3 physical-button walk) and 12 page-matrix and
 overflow-sweep cases (three panels in physical and touch layouts). The S3
 Normal Display-Bottom screenshot showed the complete `Show Title` label. These
 are focused simulator results, not full validation: full suites, firmware,
-gallery and physical checks remain pending. The user's StickC remains the
+gallery and physical checks remain pending. The user's StickS3 remains the
 minimal `ca` watchdog-explicitly-off reproduction and is not evidence that this
 shared label correction is physically fixed there.

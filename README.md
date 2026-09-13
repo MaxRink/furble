@@ -369,10 +369,9 @@ navigation band. The choice takes effect after Restart; touch boards omit this
 setting because they have no physical-button legends, while the M5Stack Core
 keeps its physical button legends in the navigation band.
 
-Long setting names use the full row width and wrap above their switch when a
-panel is narrow. The page scrolls as needed, so the selected font and complete
-setting wording are retained instead of squeezing the name into a clipped
-single line.
+Setting names use the full row width above their switches. Long names wrap,
+and the page scrolls as needed. This retains the selected font and complete
+wording instead of squeezing names into clipped columns.
 
 The top level menu has the following entries:
 - `Connect`
