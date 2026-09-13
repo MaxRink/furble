@@ -31,7 +31,7 @@ assert ui.cut_labels 0
 # Leave the page, then use the blind entry as a separate real route.
 home
 wait 250
-assert ui.page connected
+assert ui.page main
 action blind
 wait 300
 assert ui.page shutter

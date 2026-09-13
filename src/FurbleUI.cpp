@@ -6875,7 +6875,7 @@ UI::menu_t &UI::addConnectedMenu(void) {
 
     // Keep the 64 px touch controls intact. Native row wrapping uses each
     // content-sized control and places all three on one row when they fit;
-    // narrower panels get one control per row and use the page scroll area.
+    // narrower panels wrap as needed and use the page scroll area.
     lv_obj_set_size(cont, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_layout(cont, LV_LAYOUT_FLEX);
     lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_ROW_WRAP);
