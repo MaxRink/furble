@@ -2082,6 +2082,20 @@ void startProfiler(void) {
 }
 
 void driverTick(void) {
+  // Test-only fault injection for the runSimulator SchedulerStopped fail-fast
+  // path. This executes from UI::task after its LVGL mutex is held and exits on
+  // the first tick, so it does not alter normal scenarios.
+  static const bool stopSchedulerForTest = []() {
+    const char *value = std::getenv("FURBLE_SIM_TEST_SCHEDULER_STOP");
+    return value != nullptr && std::strcmp(value, "1") == 0;
+  }();
+  static bool stopSchedulerTriggered = false;
+  if (stopSchedulerForTest && !stopSchedulerTriggered) {
+    stopSchedulerTriggered = true;
+    schedulerStop();
+    throw SchedulerStopped {};
+  }
+
   // Keep the continuous liveness check ahead of the fuzzer's phase dispatcher.
   // A fuzz settle or finish phase must not create a blind spot for a sustained
   // false-connected presentation.
