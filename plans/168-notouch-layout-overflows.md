@@ -955,6 +955,15 @@ labels. The narrow Stick scenario
 asserts positive overflow plus both scroll endpoints, while the Core-specific
 scenario asserts `ui.overflow no`.
 
+The later Core Large touch guard exposed a separate wrapper-geometry issue. The
+root 2026-09-13 GDB trace measured a 316 px shutter page with 136/114/136 px
+content-sized cells, 106/84/106 px labels and 162 px cells; inherited horizontal
+card padding made the third cell wrap, producing a 344 px row and a false fit
+failure. Candidate `f76a374e` removes only the Core touch wrappers' left/right
+padding, retaining the 64 px controls, selected font and vertical spacing.
+Runtime validation of that candidate is pending; the strict Core `ui.overflow no`
+guard remains required.
+
 ### Diagnostic overlap clipping correction
 
 The overlap walkers are diagnostic metrics, not a second layout engine. Each

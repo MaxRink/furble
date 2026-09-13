@@ -6909,6 +6909,15 @@ UI::menu_t &UI::addConnectedMenu(void) {
       auto &buttonCont = std::get<0>(i);
 
       buttonCont = lv_obj_create(cont);
+#if defined(FURBLE_M5COREX)
+      // The plain wrapper inherits the card's horizontal PAD_DEF on the
+      // 320x240 theme. That padding is not part of the touch control, and at
+      // Large it makes the content-sized wrappers wrap before all three 64 px
+      // buttons can share one row. Keep the full button, font and vertical
+      // spacing; only the wrapper's horizontal inset is removed on Core touch.
+      lv_obj_set_style_pad_left(buttonCont, 0, LV_PART_MAIN);
+      lv_obj_set_style_pad_right(buttonCont, 0, LV_PART_MAIN);
+#endif
       lv_obj_set_layout(buttonCont, LV_LAYOUT_FLEX);
       lv_obj_set_flex_flow(buttonCont, LV_FLEX_FLOW_COLUMN);
       lv_obj_set_flex_align(buttonCont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
