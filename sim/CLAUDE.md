@@ -316,6 +316,10 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   and shutter press/release path. A scripted hold advances virtual time past
   the long-press thresholds and supplies one additional held sample; it is a
   deterministic two-sample model, not a model of the hardware's repeat cadence.
+- `sim/scripts/ui-screenshots.txt` is a capture fixture, not a navigation test.
+  It must use canonical `action nav` routes, seed a saved camera before the
+  connect flow, and assert `ui.page` immediately before every capture. Key
+  injection is not a reliable headless menu activation path.
 - Scripted runs honor a caller-provided `FURBLE_SIM_PREFS` path and never
   remove it. Runs without one receive a unique, valid zero-entry scratch store;
   only that exact generated path and its PID-specific temporary file are

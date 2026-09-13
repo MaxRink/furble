@@ -49,6 +49,12 @@ which represent the modeled boards' input arrangement. The older touch-only
 checks did not exercise that arrangement. Simulator findings motivate the
 repairs but do not by themselves establish physical results on every board.
 
+The detailed M5StickS3 screenshot fixture uses canonical `action nav` routes
+rather than headless key injection. It seeds a saved camera, drives the real
+connect action, and asserts `ui.page` immediately before every capture,
+including the connected frame. A failed route therefore cannot silently
+produce a plausible but mislabeled documentation image.
+
 ## Numbering
 
 165 is PR #264 and 166 is PR #270, both merged. 167 is unused. This plan is

@@ -1,226 +1,87 @@
-# Capture every modeled UI page for the M5StickS3 135x240 class.
-# 'left' activates the focused item and 'down' advances focus. 'home' clears
-# the LVGL menu history and focuses Scan so each route starts deterministically.
-# Seed the fake camera and GPS so the camera and GPS pages render. The host run
-# no longer forces these settings, so each scenario now declares what it needs.
+# Capture the modeled M5StickS3 UI through the real action navigation paths.
+# Headless key injection does not activate LVGL menu buttons reliably, so every
+# page is opened by its canonical action name. Each capture has a page guard so
+# a mislabeled frame cannot silently enter the documentation gallery.
 seed fauxny true
 seed gps true
+seed saved_camera true
+wait 500
+
+home
 wait 300
+assert ui.page main
 capture m5stick-s3-main
 
-key down
-wait 200
-key left
-wait 250
+action nav settings
+wait 350
+assert ui.page settings
 capture m5stick-s3-settings
 
-home
-wait 200
-key down
-wait 200
-key left
-wait 200
-key left
-wait 200
+action nav display
+wait 350
+assert ui.page display
 capture m5stick-s3-settings-display
 
-home
-wait 200
-key down
-wait 200
-key left
-wait 200
-key down
-wait 200
-key left
-wait 200
+action nav features
+wait 350
+assert ui.page features
 capture m5stick-s3-settings-features
 
-home
-wait 200
-key down
-wait 200
-key left
-wait 200
-key down
-wait 200
-key down
-wait 200
-key left
-wait 200
+action nav gps
+wait 350
+assert ui.page gps
 capture m5stick-s3-settings-gps
-# GPS starts enabled, so the page shows the full receiver configuration list.
-# Seven focus steps skip baud, Update rate, Sentences, Constellation, Power,
-# GPS Assistance and Motion Adaptive to reach GPS Data.
-key down
-wait 100
-key down
-wait 100
-key down
-wait 100
-key down
-wait 100
-key down
-wait 100
-key down
-wait 100
-key down
-wait 100
-key left
+
+action nav gps_data
 wait 1200
+assert ui.page gps_data
 capture m5stick-s3-gps
 
-home
-wait 200
-key down
-wait 200
-key left
-wait 200
-key down
-wait 200
-key down
-wait 200
-key down
-wait 200
-key left
-wait 200
+action nav timer
+wait 350
+assert ui.page timer
 capture m5stick-s3-settings-timer
-key left
-wait 200
+
+action nav interval_count
+wait 350
+assert ui.page interval_count
 capture m5stick-s3-settings-timer-count
 
-home
-wait 200
-key down
-wait 200
-key left
-wait 200
-key down
-wait 200
-key down
-wait 200
-key down
-wait 200
-key left
-wait 200
-key down
-wait 200
-key left
-wait 200
+action nav interval_delay
+wait 350
+assert ui.page interval_delay
 capture m5stick-s3-settings-timer-delay
 
-home
-wait 200
-key down
-wait 200
-key left
-wait 200
-key down
-wait 200
-key down
-wait 200
-key down
-wait 200
-key left
-wait 200
-key down
-wait 200
-key down
-wait 200
-key left
-wait 200
+action nav interval_shutter
+wait 350
+assert ui.page interval_shutter
 capture m5stick-s3-settings-timer-shutter
 
-home
-wait 200
-key down
-wait 200
-key left
-wait 200
-key down
-wait 200
-key down
-wait 200
-key down
-wait 200
-key left
-wait 200
-key down
-wait 200
-key down
-wait 200
-key down
-wait 200
-key left
-wait 200
+action nav interval_wait
+wait 350
+assert ui.page interval_wait
 capture m5stick-s3-settings-timer-wait
 
-home
-wait 200
-key down
-wait 200
-key left
-wait 200
-key down
-wait 200
-key down
-wait 200
-key down
-wait 200
-key down
-wait 200
-key left
-wait 200
+action nav theme
+wait 350
+assert ui.page theme
 capture m5stick-s3-settings-theme
 
-home
-wait 200
-key down
-wait 200
-key left
-wait 200
-key down
-wait 200
-key down
-wait 200
-key down
-wait 200
-key down
-wait 200
-key down
-wait 200
-key left
-wait 200
+action nav tx_power
+wait 350
+assert ui.page tx_power
 capture m5stick-s3-settings-tx-power
 
-home
-wait 200
-key down
-wait 200
-key left
-wait 200
-key down
-wait 200
-key down
-wait 200
-key down
-wait 200
-key down
-wait 200
-key down
-wait 200
-key down
-wait 200
-key left
-wait 200
+action nav about
+wait 350
+assert ui.page about
 capture m5stick-s3-settings-about
 
 home
-wait 200
-key left
-wait 200
-key left
-wait 1100
+wait 300
+action connect
+wait 1800
 assert-eventually-virtual 60000 ui.connected yes
+assert ui.page connected
 capture m5stick-s3-connected
 exit
