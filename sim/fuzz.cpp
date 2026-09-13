@@ -7,9 +7,9 @@
 #include <istream>
 #include <map>
 #include <memory>
+#include <ostream>
 #include <random>
 #include <string>
-#include <ostream>
 #include <vector>
 
 #include "FurbleUI.h"
@@ -480,9 +480,9 @@ bool fuzzWriteCheckpoint(std::ostream &output) {
     return false;
   }
   const auto state = machine->checkpoint();
-  output << "FURBLE_FUZZ_CHECKPOINT 1\n" << seed << ' ' << maxSteps << ' ' << verbose << ' '
-         << static_cast<uint32_t>(pendingEvent) << ' ' << pendingWasStop << ' ' << escapeActions
-         << '\n';
+  output << "FURBLE_FUZZ_CHECKPOINT 1\n"
+         << seed << ' ' << maxSteps << ' ' << verbose << ' ' << static_cast<uint32_t>(pendingEvent)
+         << ' ' << pendingWasStop << ' ' << escapeActions << '\n';
   output << state.phase << ' ' << state.settleNext << ' ' << state.maxSteps << ' '
          << state.escapeCadence << ' ' << state.stepCount << ' ' << state.settleRemaining << ' '
          << state.attempted << ' ' << state.observedDelta << ' ' << state.noObservedDelta << ' '
@@ -515,7 +515,8 @@ bool fuzzWriteCheckpoint(std::ostream &output) {
 
 bool fuzzReadCheckpoint(std::istream &input) {
   constexpr std::streamsize kMaxCheckpointBytes = 4 * 1024 * 1024;
-  if (input.rdbuf()->in_avail() > kMaxCheckpointBytes) return false;
+  if (input.rdbuf()->in_avail() > kMaxCheckpointBytes)
+    return false;
   std::string magic;
   unsigned version = 0;
   uint32_t event = 0;
@@ -524,18 +525,18 @@ bool fuzzReadCheckpoint(std::istream &input) {
   bool savedVerbose = false;
   bool savedStop = false;
   uint32_t savedEscapes = 0;
-  if (!(input >> magic >> version) || magic != "FURBLE_FUZZ_CHECKPOINT" || version != 1 ||
-      !(input >> savedSeed >> savedSteps >> savedVerbose >> event >> savedStop >> savedEscapes) ||
-      savedSeed != seed || savedSteps != maxSteps) {
+  if (!(input >> magic >> version) || magic != "FURBLE_FUZZ_CHECKPOINT" || version != 1
+      || !(input >> savedSeed >> savedSteps >> savedVerbose >> event >> savedStop >> savedEscapes)
+      || savedSeed != seed || savedSteps != maxSteps) {
     return false;
   }
   FuzzMachine::Checkpoint state {};
   if (!(input >> state.phase >> state.settleNext >> state.maxSteps >> state.escapeCadence
         >> state.stepCount >> state.settleRemaining >> state.attempted >> state.observedDelta
-        >> state.noObservedDelta >> state.settled >> state.timerStopChecks >> state.finishing) ||
-      maxSteps == 0 || maxSteps > 10000000 || event >= static_cast<uint32_t>(Event::COUNT) ||
-      state.maxSteps != maxSteps || state.stepCount > maxSteps || state.phase > 5 ||
-      state.settleNext > 5 || !machine->restore(state)) {
+        >> state.noObservedDelta >> state.settled >> state.timerStopChecks >> state.finishing)
+      || maxSteps == 0 || maxSteps > 10000000 || event >= static_cast<uint32_t>(Event::COUNT)
+      || state.maxSteps != maxSteps || state.stepCount > maxSteps || state.phase > 5
+      || state.settleNext > 5 || !machine->restore(state)) {
     return false;
   }
   std::string savedDescription;
@@ -544,7 +545,8 @@ bool fuzzReadCheckpoint(std::istream &input) {
   }
   std::array<std::string, kObservableQueries.size()> savedBefore;
   for (auto &value : savedBefore) {
-    if (!(input >> std::quoted(value)) || value.size() > 4096) return false;
+    if (!(input >> std::quoted(value)) || value.size() > 4096)
+      return false;
   }
   pendingEvent = static_cast<Event>(event);
   size_t count = 0;
@@ -554,36 +556,43 @@ bool fuzzReadCheckpoint(std::istream &input) {
   recentEvents.clear();
   for (size_t i = 0; i < count; i++) {
     std::string value;
-    if (!(input >> std::quoted(value)) || value.size() > 4096) return false;
+    if (!(input >> std::quoted(value)) || value.size() > 4096)
+      return false;
     recentEvents.push_back(std::move(value));
   }
-  if (!(input >> count) || count > 100000) return false;
+  if (!(input >> count) || count > 100000)
+    return false;
   findings.clear();
   for (size_t i = 0; i < count; i++) {
     Finding finding;
     if (!(input >> finding.step >> std::quoted(finding.bug_class) >> std::quoted(finding.page)
-          >> std::quoted(finding.event) >> std::quoted(finding.detail)) ||
-        finding.bug_class.size() > 4096 || finding.page.size() > 4096 ||
-        finding.event.size() > 4096 || finding.detail.size() > 4096) return false;
+          >> std::quoted(finding.event) >> std::quoted(finding.detail))
+        || finding.bug_class.size() > 4096 || finding.page.size() > 4096
+        || finding.event.size() > 4096 || finding.detail.size() > 4096)
+      return false;
     findings.push_back(std::move(finding));
   }
   auto readMap = [&input](auto &map) {
     size_t size = 0;
-    if (!(input >> size) || size > 100000) return false;
+    if (!(input >> size) || size > 100000)
+      return false;
     for (size_t i = 0; i < size; i++) {
       std::string key;
       uint32_t value = 0;
-      if (!(input >> std::quoted(key) >> value) || key.size() > 4096 ||
-          !map.emplace(std::move(key), value).second) return false;
+      if (!(input >> std::quoted(key) >> value) || key.size() > 4096
+          || !map.emplace(std::move(key), value).second)
+        return false;
     }
     return true;
   };
   classCounts.clear();
   eventCounts.clear();
   pageCounts.clear();
-  if (!readMap(classCounts) || !readMap(eventCounts) || !readMap(pageCounts)) return false;
+  if (!readMap(classCounts) || !readMap(eventCounts) || !readMap(pageCounts))
+    return false;
   char trailing = 0;
-  if (input >> trailing) return false;
+  if (input >> trailing)
+    return false;
   verbose = savedVerbose;
   pendingWasStop = savedStop;
   escapeActions = savedEscapes;

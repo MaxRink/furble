@@ -503,3 +503,9 @@ Root's exact runtime evidence now covers the restart harness and S3 matrix:
 `~/b/pr273-c190-restart.log` records the real seed-2 re-exec, and
 `~/b/pr273-c190-fuzz-s3.log` records eight S3 seeds at 600 events plus replay.
 These are external validation artifacts; this checkout did not rerun them.
+
+Root's final formatting check found clang-format 21 violations in the new
+checkpoint and restart code. The publication successor applies formatting
+only to `driver.cpp`, `fuzz.cpp`, and `fuzz_machine.cpp`. The three-panel
+build and runtime matrix for the combined master/restart/legend source remain
+pending; the earlier S3 results above are not substitutes for that matrix.

@@ -179,8 +179,7 @@ void readFuzzCheckpointFromEnvironment(void) {
     std::exit(2);
   }
   struct stat before = {};
-  if (fstat(descriptor, &before) != 0 || !S_ISREG(before.st_mode)
-      || before.st_size < 0
+  if (fstat(descriptor, &before) != 0 || !S_ISREG(before.st_mode) || before.st_size < 0
       || static_cast<std::uintmax_t>(before.st_size) > MAX_FUZZ_CHECKPOINT_BYTES) {
     close(descriptor);
     std::cerr << "Invalid fuzz checkpoint contents: " << path << '\n';
@@ -2624,13 +2623,11 @@ bool writeFuzzCheckpointForRestart(void) {
   std::error_code directoryError;
   std::filesystem::create_directories(directory, directoryError);
   if (directoryError) {
-    std::cerr << "Could not create fuzz checkpoint directory: "
-              << directoryError.message() << '\n';
+    std::cerr << "Could not create fuzz checkpoint directory: " << directoryError.message() << '\n';
     return false;
   }
-  const std::string pathTemplate = (directory / ("furble-sim-fuzz-checkpoint-"
-                                                 + std::to_string(getpid()) + "-XXXXXX"))
-                                      .string();
+  const std::string pathTemplate =
+      (directory / ("furble-sim-fuzz-checkpoint-" + std::to_string(getpid()) + "-XXXXXX")).string();
   std::vector<char> writablePath(pathTemplate.begin(), pathTemplate.end());
   writablePath.push_back('\0');
   const int descriptor = mkstemp(writablePath.data());
@@ -2706,21 +2703,22 @@ void restartProcess(void) {
   // SDL panel has closed. Keep the process-wide environment mutation out of
   // the driver thread, where SDL can read it concurrently during its loop.
   switch (restartMode) {
-    case RestartMode::SCRIPT: {
+    case RestartMode::SCRIPT:
+    {
       if (restartStepIndex == 0) {
         std::cerr << "restart requested without a continuation step\n";
         std::_Exit(1);
       }
       const std::string nextValue = std::to_string(restartStepIndex);
-      if (setenv(RESTART_STEP_ENV, nextValue.c_str(), 1) != 0
-          || unsetenv(FUZZ_CHECKPOINT_ENV) != 0
+      if (setenv(RESTART_STEP_ENV, nextValue.c_str(), 1) != 0 || unsetenv(FUZZ_CHECKPOINT_ENV) != 0
           || unsetenv(FUZZ_CHECKPOINT_OWNER_ENV) != 0) {
         std::cerr << "restart failed to set continuation: " << std::strerror(errno) << '\n';
         std::_Exit(1);
       }
       break;
     }
-    case RestartMode::FUZZ: {
+    case RestartMode::FUZZ:
+    {
       if (!writeFuzzCheckpointForRestart() || unsetenv(RESTART_STEP_ENV) != 0) {
         std::cerr << "fuzz restart failed to prepare checkpoint\n";
         discardOwnedFuzzCheckpoint();
