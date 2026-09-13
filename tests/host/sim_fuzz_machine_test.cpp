@@ -140,6 +140,7 @@ void testCheckpointValidation() {
 
   auto earlyFinish = checkpoint;
   earlyFinish.phase = static_cast<uint32_t>(Furble::Sim::FuzzPhase::FINISH);
+  earlyFinish.attempted = earlyFinish.stepCount;
   earlyFinish.settleRemaining = 0;
   earlyFinish.finishing = false;
   require(!machine.restore(earlyFinish), "finish cannot occur before the budget");
