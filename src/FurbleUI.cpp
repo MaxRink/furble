@@ -4895,13 +4895,11 @@ std::string UI::simQueryState(const char *key) {
       }
       return true;
     };
-    const unsigned visible = static_cast<unsigned>(isRendered(m_Left))
-                             + static_cast<unsigned>(isRendered(m_OK))
-                             + static_cast<unsigned>(isRendered(m_Right))
-                             + static_cast<unsigned>(m_ShutterLockIcon != nullptr
-                                                     && isRendered(m_ShutterLockIcon))
-                             + static_cast<unsigned>(m_ShutterLegendLine != nullptr
-                                                     && isRendered(m_ShutterLegendLine));
+    const unsigned visible =
+        static_cast<unsigned>(isRendered(m_Left)) + static_cast<unsigned>(isRendered(m_OK))
+        + static_cast<unsigned>(isRendered(m_Right))
+        + static_cast<unsigned>(m_ShutterLockIcon != nullptr && isRendered(m_ShutterLockIcon))
+        + static_cast<unsigned>(m_ShutterLegendLine != nullptr && isRendered(m_ShutterLegendLine));
     return visible != 0 ? "yes" : "no";
   }
 
@@ -9048,8 +9046,9 @@ uint8_t UI::legendPlacement(void) {
   }
 
   const uint8_t stored = Settings::load<Settings::LEGEND>();
-  return (stored == Settings::LEGEND_OFF || stored > Settings::LEGEND_BOTTOM) ? Settings::LEGEND_BUTTONS
-                                                                                 : stored;
+  return (stored == Settings::LEGEND_OFF || stored > Settings::LEGEND_BOTTOM)
+             ? Settings::LEGEND_BUTTONS
+             : stored;
 }
 
 void UI::applyLegendVisibility(void) {
