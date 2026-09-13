@@ -606,6 +606,10 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
 - `FURBLE_SIM_SANITIZE=address,undefined sh sim/build.sh` builds an instrumented
   binary for the deeper memory hunt. Off by default so the plain build and CI
   stay fast.
+- The fuzz compact-page fit rule keeps shutter fit-required on physical-button
+  builds and on the 320x240 Core touch model. It permits scrolling only for the
+  touch layout compiled for the existing narrow Stick panels. Overlap, clipped
+  labels, and runaway scroll checks remain unconditional.
 
 ## Docs screenshots and sim capabilities
 

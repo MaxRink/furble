@@ -69,8 +69,18 @@ constexpr std::array<const char *, 12> kToggles = {
 // fit query can see. What replaced the check on those pages is
 // ui.label_overlaps, asserted per page in the scenarios.
 // See plans/168-notouch-layout-overflows.md.
-bool mustFit(const std::string &page) {
-  return page == "shutter" || page == "bulb_run" || page == "timer_run";
+bool mustFit(UI *ui, const std::string &page) {
+  if (page == "shutter") {
+#if defined(FURBLE_M5STICKC) || defined(FURBLE_M5STICKS3)
+    // The modeled Stick panels are narrow enough for the touch controls to
+    // wrap into the page scroll area. Core touch remains fit-required.
+    if (ui->simQueryState("nav_layout") == "touch") {
+      return false;
+    }
+#endif
+    return true;
+  }
+  return page == "bulb_run" || page == "timer_run";
 }
 
 // A scrolling page is fine, and a long settings list legitimately runs a few
@@ -292,7 +302,7 @@ void checkInvariants(UI *ui, const std::string &event) {
   if (!page.empty()) {
     pageCounts[page]++;
   }
-  if (mustFit(page) && ui->simQueryState("overflow") == "yes") {
+  if (mustFit(ui, page) && ui->simQueryState("overflow") == "yes") {
     recordFinding(ui, "layout-overflow", event, "compact page overflows the panel");
   }
   // The pages that gave up their fit check are not unchecked. Nothing may be

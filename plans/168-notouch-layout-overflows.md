@@ -920,3 +920,10 @@ keeps its three controls side by side, while narrower panels retain full-size
 controls without overlap. `touch-remote-shutter-narrow.txt` checks direct page
 and separate blind entry routes, label readability, and both scroll ends on all
 modeled panels. Runtime validation is pending.
+
+The fuzz compact-page rule mirrors that contract: physical-button shutter pages
+and the 320x240 Core touch model remain fit-required. Only touch builds of the
+existing narrow Stick panel classes allow shutter scrolling. The global overlap,
+cut-label, and runaway-scroll checks remain active. The narrow Stick scenario
+asserts positive overflow plus both scroll endpoints, while the Core-specific
+scenario asserts `ui.overflow no`.

@@ -842,6 +842,33 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/bughunt/touch-remote-shutter-scroll.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/core-touch-remote-shutter-fit.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/bughunt/touch-sensors-default-fit.txt",
       "suite": "bughunt",
       "owner": "sim-bughunt",
