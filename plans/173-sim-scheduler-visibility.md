@@ -539,21 +539,26 @@ This removes C++ plain read/write races only. The four atomics do not form a
 coherent multi-field request, do not guarantee that a reset wins over a
 concurrent retry, and do not define a new request or hint policy. Existing
 mutexes, queues, cancellation, reset positions, delays, and camera behavior
-remain unchanged. The new four-field source, its seven-field regression
-coverage, and the fail-closed wrapper contract are not executed in this
-integration handoff. Physical hardware validation remains separate.
+remain unchanged. The combined source for the three remaining flags and four
+reconnect fields, its seven-field regression coverage, and the fail-closed
+wrapper contract are not executed in this integration handoff. Physical
+hardware validation remains separate.
 
 ## Integration handoff: seven-field boundary
 
-Current master `34975a33f010e94105f985abf9aade824cd77468` is the merged PR #307
-publication. Root's owner evidence records 30 green checks, including
-firmware builds and reproducible firmware coverage, for the existing three
-atomic fields (`m_ConnectAbort`, `m_ConnectInProgress`, and
-`m_SleepLockHeld`). This checkout does not rerun that evidence.
+Published master `0844360be35db547eb68ea6b56ef4560dccc8b59` is the base for this
+follow-up. PR #307 separately merged only `Control::m_State` and
+`Target::m_Stopped`; its 30 green checks, including firmware builds and
+reproducible firmware coverage, do not cover the seven fields below.
 
-Source `90e753347fc47f06dd170823d8243d46eb1819fa` adds the four independent
-reconnect atomics (`m_InfiniteReconnect`, `m_ReconnectBackoff`,
-`m_ReconnectAttempt`, and `m_ReconnectHintLogged`) on top of that publication.
+Relative to that published master, source
+`90e753347fc47f06dd170823d8243d46eb1819fa` makes the three remaining
+cross-boundary fields (`m_ConnectAbort`, `m_ConnectInProgress`, and
+`m_SleepLockHeld`) acquire/release atomics and adds four independent reconnect
+atomics (`m_InfiniteReconnect`, `m_ReconnectBackoff`, `m_ReconnectAttempt`, and
+`m_ReconnectHintLogged`). Thus the integrated source covers all seven remaining
+fields relative to master; it does not relabel PR #307's two already-merged
+fields as part of this change.
 Test `0f763fd92749fa0cf36340b0e2dc95d62017a0c3` covers the public debug
 snapshot plus successful FauxNY connect/disconnect cycles. It does not cover
 retry/backoff or `hintLogged`, because the FauxNY success path never enters the
@@ -565,9 +570,10 @@ wrapper falsely accepted an unrelated warning with status 66 and printed
 `1 race report(s), 0 naming guarded accessor`, while the new contract rejected
 that same fixture. This is shell-contract evidence only, not execution of this
 integrated tree or of a TSAN binary/runtime.
-The new seven-field source/test/wrapper combination is source-integrated here
-but has not been executed. A future raw TSAN retry/backoff run remains
-explicitly pending; this handoff makes no runtime or hardware claim.
+At this handoff, the seven-field source/test/wrapper combination was
+source-integrated but had not yet been executed; the completed root validation
+is recorded below. A raw TSAN retry/backoff run remains explicitly pending;
+this handoff makes no runtime or hardware claim.
 The compiler-free wrapper contract stays in the normal host CTest set but is
 excluded from `FURBLE_COVERAGE`, because its shell command cannot emit a
 `.profraw` file; the standalone `sh tests/host/run_tsan_race_contract.sh`
@@ -578,10 +584,10 @@ check remains available.
 Published master `0844360be35db547eb68ea6b56ef4560dccc8b59` merged PR #308
 after the seven-field integration was prepared. PR #308's reported 24 CI
 checks are green, and its simulator power-accounting source is now part of the
-master base used by this checkout. The seven-field source, regression, and
-wrapper integration above remains unexecuted here; root owns the subsequent
-full-host validation. Physical camera, radio, and power accuracy remain
-outside this evidence.
+master base used by this checkout. At that publication handoff, the
+seven-field source, regression, and wrapper integration above had not yet been
+executed; root's completed full-host validation is recorded below. Physical
+camera, radio, and power accuracy remain outside this evidence.
 
 ## Host link follow-up
 
