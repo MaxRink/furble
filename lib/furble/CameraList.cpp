@@ -322,18 +322,18 @@ void CameraList::save(const std::shared_ptr<Furble::Camera> &camera) {
   m_Prefs.end();
 }
 
-void CameraList::remove(Furble::Camera *camera) {
+bool CameraList::remove(Furble::Camera *camera) {
   if (camera == nullptr) {
-    return;
+    return false;
   }
 
   const std::lock_guard<std::mutex> persistenceLock(m_PersistenceMutex);
   if (!ensureSavedLoaded()) {
-    return;
+    return false;
   }
   if (!m_Prefs.begin(FURBLE_STR, false)) {
     ESP_LOGW(LOG_TAG, "Unable to open camera preferences");
-    return;
+    return false;
   }
   std::vector<index_entry_t> index = load_index();
 
@@ -390,6 +390,7 @@ void CameraList::remove(Furble::Camera *camera) {
   if (indexPersisted) {
     NimBLEDevice::deleteBond(camera->getAddress());
   }
+  return found && indexPersisted && recordRemoved;
 }
 
 /**

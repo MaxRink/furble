@@ -1,6 +1,10 @@
 # sim/ (host SDL simulator)
 
 Host build of the furble UI over M5GFX/M5Unified SDL. Developer tool only.
+The `ui.console.<field>` query reads fields emitted by the real UI
+`consolePrint` path for simulator actions. It is query-only observability and
+does not enable `FURBLE_CONSOLE` or certify workflow completion semaphores.
+
 Power reports with an explicit reporting scenario freeze the selected model
 before events; ordinary UI and fuzz runs retain the legacy profiler path.
 Synthetic timer/UI work accounting remains relative simulator evidence, not a
@@ -163,8 +167,8 @@ a regression.
 ## Build entry points
 
 The CMake simulator force-includes ESP and FreeRTOS shims only for C++
-translation units. Generated C icon sources must compile without C++-only
-shim declarations.
+translation units. C sources, including generated C icon sources, must compile
+without C++-only shim declarations.
 
 The simulator Preferences adapter is a checked file-backed NVS substitute:
 missing storage is an unset store, while empty, truncated, malformed, or
@@ -426,11 +430,20 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   implementation of the same `M5.Imu` read boundary used by production code.
   Keep IMU actions and queries general enough for diagnostics, spirit-level
   orientation, and future gesture features; do not add widget-only shortcuts.
-- GPS query keys include `gps.source`, `gps.satellites`, `gps.state`, and
-  `gps.config.<index>.state|attempts`. UART write count and the last command are
-  available as `uart.count` and `uart.last`. `camera.count` reports the current
-  simulated camera-list row count, allowing scan-result de-duplication scenarios
-  to assert that a repeated fake advertisement does not add a second row.
+- GPS query keys include `gps.source`, `gps.satellites`, `gps.state`,
+  `gps.fresh_fixes_parsed`, and `gps.config.<index>.state|attempts`.
+  `gps.fresh_fixes_parsed` is simulator-only observability of parser
+  progression, so scenarios can distinguish a wake fix from a cached UART
+  source. It is not a coherent delivered-geotag claim. Total UART write count,
+  exact `$PCAS12,5*1B` command count, and the last command are available as
+  `uart.count`, `uart.standby_5s_commands`, and `uart.last`. `camera.count` reports
+  the current simulated camera-list row count, allowing scan-result
+  de-duplication scenarios to assert that a repeated fake advertisement does not
+  add a second row.
+- Duty-cycle freshness is accepted only when TinyGPS++ reports a per-byte updated,
+  valid location with non-invalid quality. `e2e/gps-duty-no-fix.txt` covers a
+  quality-0 burst; `e2e/gps-ephemeris-stale.txt` retains the separate bad-RMC
+  checksum and ephemeris boundary.
   `scan.end_callbacks` reports scan completion callback delivery, allowing
   scenarios to catch duplicate simulated completion events.
 - `e2e/gps-motion-prearm.txt` deliberately loads GPS motion before the UI arms
@@ -803,7 +816,10 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   empty sentence adds no date evidence. `gps_uart_chunk 1` plus
   `gps_uart_noise true` covers CR/LF split and bounded recovery from unterminated
   noise. `gps_uart_noise` is a strict boolean seed; malformed values fail at
-  scenario load rather than silently selecting the quiet fixture.
+  scenario load rather than silently selecting the quiet fixture. For duty
+  freshness, an empty or checksum-invalid RMC likewise does not create a fresh
+  location by itself; only a per-byte location update with valid coordinates and
+  non-invalid quality can arm the cycle.
 - The sim-e2e ThreadSanitizer leg runs `gps-concurrent-pages`,
   `gps-ephemeris-replay` and `gps-ephemeris-stale`. It is a real gate for the
   GPS task's own reads of the parser: measured five runs per cell, unlocking
