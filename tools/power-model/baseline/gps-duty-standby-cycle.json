@@ -151,21 +151,21 @@
     "gps_ms": {
       "off": 0,
       "acquiring": 0,
-      "tracking": 14000,
-      "standby": 1000
+      "tracking": 3000,
+      "standby": 12000
     }
   },
   "energy": {
     "board": "m5stick-s3",
     "components_mA": {
-      "mcu": 40.173218,
+      "mcu": 40.200000,
       "radio": 0.000000,
-      "display": 40.972685,
-      "gps": 21.485676,
+      "display": 41.000000,
+      "gps": 4.914557,
       "pmic": 0.052470,
       "peripherals": 0.003500
     },
-    "estimated_mA": 102.687549
+    "estimated_mA": 86.185517
   },
-  "estimated_mA": 102.687549
+  "estimated_mA": 86.185517
 }
