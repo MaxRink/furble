@@ -89,6 +89,7 @@ StorageKind storageKindFor(Settings::type_t type) {
     case Settings::AUTO_OFF_CHARGING:
     case Settings::WIFI:
     case Settings::NTP:
+    case Settings::IVL_SLEEP:
     case Settings::IMU:
     case Settings::IMU_TRIG:
     case Settings::GPS_MOTION:
@@ -125,6 +126,7 @@ StorageKind storageKindFor(Settings::type_t type) {
       return StorageKind::U8;
     case Settings::GPS_BAUD:
     case Settings::SCAN_TIMEOUT:
+    case Settings::IVL_SLEEP_THR:
       return StorageKind::U32;
     case Settings::GPX_PERIOD:
       return StorageKind::U16;
@@ -241,6 +243,8 @@ std::vector<SettingCase> settingCases() {
       {Settings::GPS_MOTION, "GPS_MOTION", false, true, StorageKind::BOOL},
       {Settings::INTERVAL, "INTERVAL", defaultInterval(), representativeInterval(),
        StorageKind::BLOB},
+      {Settings::IVL_SLEEP, "IVL_SLEEP", false, true, StorageKind::BOOL},
+      {Settings::IVL_SLEEP_THR, "IVL_SLEEP_THR", uint32_t {60}, uint32_t {120}, StorageKind::U32},
       {Settings::MULTICONNECT, "MULTICONNECT", false, true, StorageKind::BOOL},
       {Settings::MULTISELECT, "MULTISELECT", defaultMultiselect(), representativeMultiselect(),
        StorageKind::BLOB},
@@ -348,6 +352,8 @@ ASSERT_STORAGE_TYPE(BUTTON_MODE, std::string);
 ASSERT_STORAGE_TYPE(AUTO_OFF, uint8_t);
 ASSERT_STORAGE_TYPE(LOW_BATT, uint8_t);
 ASSERT_STORAGE_TYPE(AUTO_OFF_CHARGING, bool);
+ASSERT_STORAGE_TYPE(IVL_SLEEP, bool);
+ASSERT_STORAGE_TYPE(IVL_SLEEP_THR, uint32_t);
 ASSERT_STORAGE_TYPE(SD_GPX, bool);
 ASSERT_STORAGE_TYPE(GPX_PERIOD, uint16_t);
 ASSERT_STORAGE_TYPE(BOOT_SPLASH, bool);
@@ -402,6 +408,7 @@ SettingValue loadValue(Settings::type_t type) {
 
     case Settings::GPS_BAUD:
     case Settings::SCAN_TIMEOUT:
+    case Settings::IVL_SLEEP_THR:
       return Settings::load<uint32_t>(type);
 
     case Settings::GPX_PERIOD:
@@ -436,6 +443,7 @@ SettingValue loadValue(Settings::type_t type) {
     case Settings::AUTO_OFF_CHARGING:
     case Settings::WIFI:
     case Settings::NTP:
+    case Settings::IVL_SLEEP:
     case Settings::IMU:
     case Settings::IMU_TRIG:
     case Settings::GPS_MOTION:
@@ -531,6 +539,17 @@ void checkTableCoverage(const std::vector<SettingCase> &cases) {
   for (const auto &entry : Settings::all()) {
     check(seen.count(entry.first) == 1,
           std::string("settings table row has no round-trip case: ") + entry.second.key);
+  }
+}
+
+void testCatalogWireIdsAreUnique() {
+  std::set<uint8_t> exposedIds;
+  for (const auto &entry : Settings::all()) {
+    if (entry.second.wire_id == 0) {
+      continue;
+    }
+    check(exposedIds.insert(entry.second.wire_id).second,
+          std::string("duplicate exposed wire id for ") + entry.second.key);
   }
 }
 
@@ -793,6 +812,7 @@ void testMultiselectLegacyRecordUpgrades() {
 int main() {
   const auto cases = settingCases();
   checkTableCoverage(cases);
+  testCatalogWireIdsAreUnique();
   testDefaults(cases);
   testNvsRoundTrips(cases);
   testSdRoundTrips(cases);

@@ -23,26 +23,23 @@ Phase 2 are done. Step 3 (generation and cancellation tests for every handshake
 phase) is partly covered by the existing host suite and step 5 (a differential
 trace against hardware) is not started.
 
-Determinism is now conditional, and that must be stated plainly rather than
-claimed away. The scheduler models a turn a task holds until its next
-scheduler boundary. Production code blocks on plain host mutexes the scheduler
-cannot see (`Camera::m_Mutex` is held for a whole connect), so a task can leave
-the scheduler still holding the turn, and only another task can free it.
-`waitForTurnLocked()` therefore carries a deadlock breaker: when a global
-progress counter has not moved for a two second host bound, the turn is taken
-away from the holder and it is parked until its next boundary. Both conditions
-must hold, so a merely slow host cannot trigger it. While no task blocks
-outside the scheduler the breaker never fires and two runs of the same
-scenario produce the same trace; once one does, the run stays deterministic in
-outcome but its dispatch order past that point is not guaranteed. The
-principled fix is a scheduler-visible mutex, which this phase does not have.
+Determinism is conditional, and that must be stated plainly rather than claimed
+away. The scheduler models a turn a task holds until its next scheduler
+boundary. `Camera::m_Mutex`, which spans a whole connect, uses the
+simulator-only `SchedulerMutex`; firmware and ordinary host tests still compile
+`std::mutex`. A contended waiter stops being runnable, and unlock reserves the
+mutex for exactly one waiter by priority then wait order before publishing that
+waiter. This closes the measured native-wake gap where the UI briefly observed
+no runnable task, advanced one extra 20 ms disconnect slice, and shifted fuzz
+page coverage for the same seed. The same-seed `FUZZ EVENTS` and `FUZZ COVERAGE`
+replay and focused scheduler ownership tests are the regression gates.
 
-Phase 2 also surfaced one Phase 3 item that must not be described as closed: a
-task that only wakes on a virtual-clock deadline can be starved while the UI
-thread drives virtual time forward in large steps. It shows up as a control
-task that stops re-polling `Camera::connectCancelled()` inside a long vendor
-wait, so an interactive disconnect falls back to its 30 s cap. Plan 161 records
-the reproducer.
+This is not complete FreeRTOS mutex parity. The simulator models waiter wake
+order but not priority inheritance, instruction-level preemption, SMP/core
+affinity, or CPU-time accounting. Plain production mutexes other than the
+explicit camera and IMU aliases remain invisible to the scheduler. The
+deadlock breaker remains a backstop for those boundaries and must not be used
+as evidence of deterministic scheduling.
 
 The first PR under this plan implements the first scheduler foundation: a shared 64-bit
 virtual clock, virtual FreeRTOS and esp_timer deadlines, queue-front sends,

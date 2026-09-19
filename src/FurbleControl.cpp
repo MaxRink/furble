@@ -203,6 +203,7 @@ Control &Control::getInstance(void) {
 Control::state_t Control::connectAll(void) {
   uint32_t timeout = m_InfiniteReconnect.load(std::memory_order_acquire) ? TIMEOUT_INFINITE_MS
                                                                          : TIMEOUT_DEFAULT_MS;
+  const uint32_t boundedRetryGapMs = m_BoundedRetryGapMs.load(std::memory_order_acquire);
   std::vector<std::shared_ptr<Camera>> cameras;
   std::vector<std::shared_ptr<Camera>> all;
 
@@ -335,10 +336,10 @@ Control::state_t Control::connectAll(void) {
   }
 
   if (m_InfiniteReconnect.load(std::memory_order_acquire) || (m_ConnectFailCount < 2)) {
+    uint32_t delay;
     if (m_InfiniteReconnect.load(std::memory_order_acquire)) {
-      const uint32_t delay =
-          ReconnectBackoff::delayMs(m_ReconnectAttempt.load(std::memory_order_acquire),
-                                    m_ReconnectBackoff.load(std::memory_order_acquire));
+      delay = ReconnectBackoff::delayMs(m_ReconnectAttempt.load(std::memory_order_acquire),
+                                        m_ReconnectBackoff.load(std::memory_order_acquire));
 
       if ((m_ReconnectAttempt.load(std::memory_order_acquire) == 0)
           && !m_ReconnectHintLogged.load(std::memory_order_acquire)) {
@@ -352,16 +353,24 @@ Control::state_t Control::connectAll(void) {
       ESP_LOGI(LOG_TAG, "Reconnect retry %lu, waiting %lu ms.",
                m_ReconnectAttempt.load(std::memory_order_acquire) + 1, delay);
       m_ReconnectAttempt.fetch_add(1, std::memory_order_acq_rel);
-
-      // Sleep in short slices so disconnect can interrupt the retry wait.
-      uint32_t remaining = delay;
-      while (remaining > 0 && !m_ConnectAbort.load(std::memory_order_acquire)
-             && m_State.load(std::memory_order_acquire) != STATE_DISCONNECTING) {
-        const uint32_t slice = remaining < BACKOFF_SLICE_MS ? remaining : BACKOFF_SLICE_MS;
-        vTaskDelay(pdMS_TO_TICKS(slice));
-        remaining -= slice;
-      }
+    } else {
+      // Bounded connect retry. Resume supplies a settle gap; ordinary bounded
+      // connects supply zero and retain their immediate retry behavior. The
+      // failure budget remains two total attempts: one initial attempt and one
+      // retry while m_ConnectFailCount is below two.
+      delay = boundedRetryGapMs;
+      ESP_LOGI(LOG_TAG, "Connect retry %lu of 1, waiting %lu ms.", m_ConnectFailCount, delay);
     }
+
+    // Sleep in short slices so disconnect can interrupt the retry wait.
+    uint32_t remaining = delay;
+    while (remaining > 0 && !m_ConnectAbort.load(std::memory_order_acquire)
+           && m_State.load(std::memory_order_acquire) != STATE_DISCONNECTING) {
+      const uint32_t slice = remaining < BACKOFF_SLICE_MS ? remaining : BACKOFF_SLICE_MS;
+      vTaskDelay(pdMS_TO_TICKS(slice));
+      remaining -= slice;
+    }
+
     // Same rule as the abort path above: an aborted pass reports the abort, not
     // whatever m_State read at the moment the retry wait was interrupted.
     return (m_ConnectAbort.load(std::memory_order_acquire)
@@ -590,7 +599,7 @@ std::string Control::getCameraID(const Camera &camera) {
   return std::string(id);
 }
 
-void Control::connectAll(bool infiniteReconnect) {
+void Control::connectAll(bool infiniteReconnect, uint32_t boundedRetryGapMs) {
   {
     // A new user connect cycle re-arms every target camera, but not here.
     //
@@ -624,6 +633,8 @@ void Control::connectAll(bool infiniteReconnect) {
   m_InfiniteReconnect.store(infiniteReconnect, std::memory_order_release);
   m_ReconnectBackoff.store(Settings::reconBackoffEffective(), std::memory_order_release);
   m_ReconnectAttempt.store(0, std::memory_order_release);
+  m_ConnectFailCount = 0;
+  m_BoundedRetryGapMs.store(boundedRetryGapMs, std::memory_order_release);
   m_ReconnectHintLogged.store(false, std::memory_order_release);
   m_ConnectAbort.store(false, std::memory_order_release);
 
@@ -1426,6 +1437,7 @@ void Control::resetForTest(void) {
   m_ReconnectAttempt.store(0, std::memory_order_release);
   m_ReconnectHintLogged.store(false, std::memory_order_release);
   m_ConnectFailCount = 0;
+  m_BoundedRetryGapMs.store(0, std::memory_order_release);
   m_ConnectAbort.store(false, std::memory_order_release);
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);

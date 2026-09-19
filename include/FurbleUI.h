@@ -69,6 +69,7 @@ class UI {
 
 #include <array>
 #include <atomic>
+#include <cstdint>
 #if defined(FURBLE_SIM)
 #include <condition_variable>
 #include <deque>
@@ -415,10 +416,12 @@ class UI {
       Spinner(SpinnerOwner *owner,
               SpinValue::nvs_t nvs,
               bool infinite = false,
-              bool presetSupported = false)
+              bool presetSupported = false,
+              bool fixedUnit = false)
           : m_Owner {owner},
             m_SpinValue {nvs},
             m_Infinite {infinite},
+            m_FixedUnit {fixedUnit},
             m_PresetSupported {presetSupported} {};
 
       static constexpr const char *m_SpinDigitRoller = "0\n1\n2\n3\n4\n5\n6\n7\n8\n9";
@@ -438,12 +441,13 @@ class UI {
 
       SpinnerOwner *m_Owner;
       SpinValue m_SpinValue;
-      lv_obj_t *m_Button;
-      lv_obj_t *m_Label;
-      lv_obj_t *m_Value;
+      lv_obj_t *m_Button = nullptr;
+      lv_obj_t *m_Label = nullptr;
+      lv_obj_t *m_Value = nullptr;
       const bool m_Infinite;  // Can support infinite?
-      lv_obj_t *m_RowInfinite;
-      lv_obj_t *m_SwitchInfinite;
+      const bool m_FixedUnit;
+      lv_obj_t *m_RowInfinite = nullptr;
+      lv_obj_t *m_SwitchInfinite = nullptr;
 
       lv_obj_t *m_RowSpinners = nullptr;
       // array of rollers, 0 = hundred, 1 = ten, 2 = one
@@ -466,6 +470,35 @@ class UI {
       size_t m_PresetIndex = 0;
     };
 
+    class SettingSpinnerOwner: public SpinnerOwner {
+     public:
+      explicit SettingSpinnerOwner(Settings::type_t setting) : m_Setting {setting} {}
+
+      void setSpinner(Spinner *spinner) { m_Spinner = spinner; }
+      void save(void) override;
+
+     private:
+      Settings::type_t m_Setting;
+      Spinner *m_Spinner = nullptr;
+    };
+
+    typedef struct __attribute__((packed)) {
+      uint32_t magic;
+      uint16_t version;
+      uint16_t length;
+      uint32_t count;
+      uint32_t target;
+      uint8_t camera_id;
+      uint8_t reserved[3];
+      int64_t wake_time;
+      interval_t interval;
+    } resume_state_t;
+
+    static constexpr uint32_t RESUME_MAGIC = 0x49564c31;
+    static constexpr uint16_t RESUME_VERSION = 2;
+    static constexpr const char *RESUME_NVS_KEY = "ivl_resume";
+    static constexpr uint32_t RESUME_WAKE_MARGIN_S = 15;
+
     typedef enum {
       STATE_IDLE,
       STATE_WAIT,
@@ -477,16 +510,34 @@ class UI {
     Intervalometer(const interval_t &interval);
 
     void save(void) override;
+    void startNewRun(void);
+    void clearResume(void);
+    bool hasResume(void) const;
+    uint8_t resumeCameraId(void) const;
+    bool startResume(void);
+    bool saveResume(uint32_t next_ms, uint8_t camera_id);
 
     state_t m_State;
+    SettingSpinnerOwner m_SleepThresholdOwner;
     Spinner m_Count;
     Spinner m_Delay;
     Spinner m_Shutter;
     Spinner m_Wait;
+    Spinner m_SleepThreshold;
+
+    uint32_t m_CountShots = 0;
+    uint32_t m_ResumeWaitMs = 0;
 
     lv_obj_t *m_StateLabel;
     lv_obj_t *m_CountLabel;
     lv_obj_t *m_RemainingLabel;
+
+   private:
+    resume_state_t m_Resume = {};
+    bool m_ResumePending = false;
+
+    static bool validResume(const resume_state_t &state);
+    void loadResume(void);
   };
 
   /**
@@ -708,6 +759,7 @@ class UI {
   static constexpr const char *m_IntervalDelayStr = "Delay";
   static constexpr const char *m_IntervalShutterStr = "Shutter";
   static constexpr const char *m_IntervalWaitStr = "Wait";
+  static constexpr const char *m_IntervalSleepThresholdStr = "Sleep Threshold";
 
   static constexpr uint8_t BYTES_PER_PIXEL = (LV_COLOR_FORMAT_GET_SIZE(LV_COLOR_FORMAT_RGB565));
   static constexpr int32_t MAX_WIDTH = 320;
@@ -757,9 +809,7 @@ class UI {
   lv_timer_t *m_DiagnosticsTimer;
   lv_timer_t *m_CompanionPairingTimer = nullptr;
   lv_obj_t *m_CompanionPairingDialog = nullptr;
-  lv_obj_t *m_CompanionPairingPrevFocus = nullptr;
   lv_obj_t *m_ConnectErrorDialog = nullptr;
-  lv_obj_t *m_ConnectErrorPrevFocus = nullptr;
   lv_obj_t *m_StorageMessageBox = nullptr;
   bool m_StorageImport = false;
   lv_obj_t *m_StorageMenuMain = nullptr;
@@ -791,6 +841,13 @@ class UI {
   lv_indev_t *m_ButtonR;
   lv_indev_t *m_Touch = nullptr;
   lv_group_t *m_Group;
+
+  struct modal_input_t {
+    lv_obj_t *dialog;
+    lv_group_t *group;
+    lv_obj_t *previousFocus;
+  };
+  std::vector<modal_input_t> m_ModalInputs;
 
   lv_display_t *m_Display = nullptr;
   lv_obj_t *m_Screen = nullptr;
@@ -865,6 +922,7 @@ class UI {
   std::thread::id m_SimUiThread;
   std::atomic<bool> m_SimLastActionOnUi {false};
   sim_action_result_t m_SimActionResult = sim_action_result_t::INVALID;
+  bool m_SimButtonPressed = false;
 
   bool simRunOnUi(std::function<void()> operation);
   void serviceSimRequests(void);
@@ -872,6 +930,7 @@ class UI {
   bool simulatorHomeOnUi(void);
   bool simulatorBackOnUi(void);
   bool simPressButtonOnUi(const char *name, bool hold);
+  static void simButtonRead(lv_indev_t *drv, lv_indev_data_t *data);
 
   /**
    * Count the visible labels and icons on the current page that intersect a
@@ -913,8 +972,6 @@ class UI {
   uint32_t m_LowBatteryPowerOffSince = 0;
   lv_obj_t *m_LowBatteryMessageBox = nullptr;
   lv_obj_t *m_LowBatteryMessage = nullptr;
-  /** Focused object before the warning stole the focus, restored on close. */
-  lv_obj_t *m_LowBatteryPrevFocus = nullptr;
   bool m_PoweringOff = false;
   uint8_t m_WakeGesture = 0;
   bool m_DoubleTapShutter = false;
@@ -1328,6 +1385,11 @@ class UI {
    * is only set when it actually changes.
    */
   void updateReconnectTitle(bool reconnecting);
+  /** Start a restored intervalometer run after reconnect. */
+  void startIntervalometerResume(void);
+
+  /** Show a bounded reconnect failure for a restored intervalometer run. */
+  void showIntervalometerResumeError(void);
 
   /**
    * Update the full-screen page reconnect banners for a mid-session drop.
@@ -1367,6 +1429,17 @@ class UI {
 
   /** Close the pairing prompt and restore the focus captured before it opened. */
   void closeCompanionPairingDialog(void);
+
+  /** Give a modal exclusive ownership of the physical encoder controls. */
+  void acquireModalInput(lv_obj_t *dialog,
+                         std::initializer_list<lv_obj_t *> controls,
+                         lv_obj_t *focus);
+
+  /** Release a modal's encoder ownership and restore the dialog below it. */
+  void releaseModalInput(lv_obj_t *dialog);
+
+  /** The group currently driven by the physical encoder controls. */
+  lv_group_t *activeInputGroup(void) const;
 
   /**
    * Show a connect failure the user has to dismiss.

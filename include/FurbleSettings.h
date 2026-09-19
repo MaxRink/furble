@@ -90,6 +90,8 @@ class Settings {
     WIFI_PSK,
     NTP,
     NTP_SERVER,
+    IVL_SLEEP,
+    IVL_SLEEP_THR,
   } type_t;
 
 #if !defined(FURBLE_NO_DISPLAY)
@@ -187,6 +189,7 @@ class Settings {
   static constexpr uint32_t BAUD_AUTO = 0;
   static constexpr uint32_t BAUD_9600 = 9600;
   static constexpr uint32_t BAUD_115200 = 115200;
+  static constexpr uint32_t IVL_SLEEP_THR_DEFAULT = 60;
 
   /** Default maximum CPU frequency in MHz, matches Platform. */
   static constexpr uint8_t CPU_FREQ_DEFAULT = 160;
@@ -553,6 +556,14 @@ struct Settings::storage_type<Settings::DISPLAY_MODE> {
 template <>
 struct Settings::storage_type<Settings::BATTERY_SAVER> {
   using type = bool;
+};
+template <>
+struct Settings::storage_type<Settings::IVL_SLEEP> {
+  using type = bool;
+};
+template <>
+struct Settings::storage_type<Settings::IVL_SLEEP_THR> {
+  using type = uint32_t;
 };
 #if defined(FURBLE_M5STICKS3)
 template <>

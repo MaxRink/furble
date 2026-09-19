@@ -1,0 +1,12 @@
+# A disabled intervalometer policy still consumes a stale wake marker.
+seed fauxny true
+seed autoconnect true
+seed ivl_sleep false
+seed timed_wake true
+seed interval_count 2
+seed resume_fixture late
+wait 5000
+assert platform.wake_marker no
+assert camera.shutter_presses 0
+assert ui.interval_state idle
+exit
