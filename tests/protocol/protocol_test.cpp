@@ -296,6 +296,7 @@ void checkSettings(const std::string &root, const fs::path &golden) {
       {"IMU",      {46, FurbleProtocolTest::WireType::BOOL}},
       {"IMU_WAKE", {72, FurbleProtocolTest::WireType::U8}  },
       {"IMU_TRIG", {73, FurbleProtocolTest::WireType::BOOL}},
+      {"WEB_UI",   {62, FurbleProtocolTest::WireType::BOOL}},
   };
   for (const auto &[symbol, expected] : frozen) {
     // Bound before the lambda on purpose: capturing a structured binding is

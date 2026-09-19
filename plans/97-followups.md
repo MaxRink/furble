@@ -163,10 +163,10 @@ remediation batches. The batch is named in each GATED-ON tag.
   behavior with capped exponential backoff that retries forever; keep the hard
   block only for identified auth failures. Source: plan 96 C5,
   `src/FurbleMQTT.cpp:490-501`. GATED-ON: wifi restack.
-- WebUI CSRF and auth hardening. High within the LAN threat model. Require
-  Content-Type application/json on POSTs, validate Host against the device
-  address, add an optional static token. Source: plan 96 C4,
-  `src/FurbleWebUI.cpp:421-452`. GATED-ON: wifi restack.
+- WebUI CSRF and auth hardening. Addressed by the PR33d successor: HTTPS and
+  companion-password authentication are mandatory, POSTs require JSON, and
+  browser Origin must match Host. Browser, radio and hardware acceptance remain
+  release gates. Source: plan 33d.
 - Secrets-over-companion redaction. Medium. settingValue returns raw WIFI_PSK
   and MQTT_PASS over the BLE companion service; return a set/unset indicator
   and keep writes write-only, matching console and REST. Source: plan 96 C6,
@@ -229,8 +229,8 @@ a defect. Severity is enhancement unless noted.
   Untested vendor, code review plus FauxNY.
 - 29 rig phases 4, 5, 6. Later multi-device rig phases. Source: plan 29.
   GATED-ON: earlier rig phases.
-- 33d done. WebUI base feature is complete; no further sub-feature. Tracked
-  here only so it is not re-opened. Source: plan 33d. No action.
+- 33d implemented. The authenticated HTTPS successor is pending serialized
+  host, firmware, browser and hardware validation. Source: plan 33d.
 
 ## Group 3: tooling and CI
 
