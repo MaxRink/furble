@@ -89,6 +89,7 @@ export FURBLE_SIM_PRESERVE_PREFS=1
 
 unset FURBLE_SIM_DEEP_SLEEP_PREFS
 unset FURBLE_SIM_PRESERVE_PREFS
+unset FURBLE_SIM_PREFS
 "$SIM" --script "$ROOT/sim/scenarios/deep-sleep/intervalometer-deep-sleep-invalid.txt"
 "$SIM" --script "$ROOT/sim/scenarios/deep-sleep/intervalometer-deep-sleep-stale.txt"
 "$SIM" --script "$ROOT/sim/scenarios/deep-sleep/intervalometer-deep-sleep-missing.txt"
