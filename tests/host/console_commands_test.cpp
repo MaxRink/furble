@@ -566,8 +566,8 @@ void testSettings(void) {
     const Result legendSet = runDirect(std::string("settings set legend ") + value);
     check(legendSet.rc == 0, std::string("legend accepts value ") + value);
     checkContains(legendSet.out, "saved: legend", std::string("legend saves value ") + value);
-    check(Furble::Settings::load<uint8_t>(Furble::Settings::LEGEND) ==
-              static_cast<uint8_t>(strtoul(value, nullptr, 10)),
+    check(Furble::Settings::load<uint8_t>(Furble::Settings::LEGEND)
+              == static_cast<uint8_t>(strtoul(value, nullptr, 10)),
           std::string("legend stores value ") + value);
   }
   const Result legendBad = runDirect("settings set legend 3");

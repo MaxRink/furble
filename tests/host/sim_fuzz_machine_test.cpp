@@ -135,7 +135,7 @@ void testCheckpointValidation() {
   require(!machine.restore(counterOverflow), "checkpoint counters cannot overflow their sum");
 
   auto runawaySettle = checkpoint;
-  runawaySettle.settleRemaining = 7;
+  runawaySettle.settleRemaining = 11;
   require(!machine.restore(runawaySettle), "settle budget is bounded");
 
   auto earlyFinish = checkpoint;
