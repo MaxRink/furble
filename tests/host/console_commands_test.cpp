@@ -555,6 +555,28 @@ void testSettings(void) {
   check(Furble::Settings::load<uint8_t>(Furble::Settings::HW_MOTION) == 2,
         "a rejected motion engine write leaves the stored value alone");
 
+  // LEGEND is a uint8 enum with three valid placements. Exercise the console
+  // type/print path, every valid value, and the guarded invalid branch so a
+  // future enum extension cannot silently lose its validation coverage.
+  const Result legendGet = runDirect("settings get legend");
+  check(legendGet.rc == 0, "settings get legend returns success");
+  checkContains(legendGet.out, "type: uint8", "legend reports its storage type");
+  checkContains(legendGet.out, "value: ", "legend prints its current value");
+  for (const char *value : {"0", "1", "2"}) {
+    const Result legendSet = runDirect(std::string("settings set legend ") + value);
+    check(legendSet.rc == 0, std::string("legend accepts value ") + value);
+    checkContains(legendSet.out, "saved: legend", std::string("legend saves value ") + value);
+    check(Furble::Settings::load<uint8_t>(Furble::Settings::LEGEND)
+              == static_cast<uint8_t>(strtoul(value, nullptr, 10)),
+          std::string("legend stores value ") + value);
+  }
+  const Result legendBad = runDirect("settings set legend 3");
+  check(legendBad.rc != 0, "legend rejects a value above Off");
+  checkContains(legendBad.out, "expected 0 (buttons), 1 (bottom) or 2 (off)",
+                "legend error names all valid values");
+  check(Furble::Settings::load<uint8_t>(Furble::Settings::LEGEND) == 2,
+        "a rejected legend write leaves the stored value alone");
+
   // The motion source: the hardware gate's readout, and the calibration knob
   // for a board whose accelerometer noise floor disagrees with the shipped
   // threshold. PR65's motion-adaptive GPS consumes the same source, so the

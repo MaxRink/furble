@@ -21,6 +21,7 @@ class Settings {
     DISPLAY_OFF,
     THEME,
     TEXT_SIZE,
+    LEGEND,
     TX_POWER,
     TX_ADAPTIVE,
     GPS,
@@ -167,6 +168,25 @@ class Settings {
     TEXT_SIZE_NORMAL = 1,
     TEXT_SIZE_LARGE = 2,
   } text_size_t;
+
+  /**
+   * Where the physical-button legends sit on a board without a touch panel.
+   *
+   * BUTTONS puts each legend next to the button it names: Left and OK along the
+   * bottom edge and Right partway down the right edge, which is where the
+   * Right button physically is. Page content then has to keep that column
+   * clear.
+   *
+   * BOTTOM puts all three in the navigation band the layout already reserves,
+   * so they read as one legend row and no page gives up any width.
+   * OFF keeps the same anchors and reservation for physical input, but hides
+   * the rendered legends.
+   */
+  typedef enum {
+    LEGEND_BUTTONS = 0,
+    LEGEND_BOTTOM = 1,
+    LEGEND_OFF = 2,
+  } legend_t;
 
   /** Main button behavior modes. */
   typedef enum {
@@ -320,6 +340,10 @@ struct Settings::storage_type<Settings::THEME> {
 };
 template <>
 struct Settings::storage_type<Settings::TEXT_SIZE> {
+  using type = uint8_t;
+};
+template <>
+struct Settings::storage_type<Settings::LEGEND> {
   using type = uint8_t;
 };
 template <>

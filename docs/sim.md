@@ -24,18 +24,39 @@ button layout when `FURBLE_SIM_NO_TOUCH` is set or a scenario seeds
 `no_touch true`.
 
 The SDL panel always attaches a mouse-driven touch device, so an unseeded run
-renders the touch layout on every modeled board. None of the three modeled
-boards has a touch panel. The Sticks and the M5Stack Core Basic all ship the
-non-touch layout, which reserves a 26 px navigation bar band at the bottom of
-the window content; on the Sticks the band stays empty and the three indicators
-float over the screen, and on the Core they live inside the band. Only the
-Core2, which `sim/build.sh` does not model, ships the touch layout.
+renders the touch layout on every modeled board. `FURBLE_SIM_NO_TOUCH=1` or a
+scenario's `no_touch true` selects the physical-button layout. None of the
+three modeled boards has a touch panel. The Sticks and the M5Stack Core Basic
+ship the non-touch layout, whose navbar is 26 px high and whose legend buttons
+are 24x24 px. On Stick boards Left and OK are bottom-edge indicators; the
+default Buttons placement keeps Right partway down the right edge and reserves
+its column in page rows. Bottom placement moves Right into the navbar. The
+reserve keeps page content clear,
+but Buttons placement intentionally draws the Right indicator over the content
+area. Only the Core2, which `sim/build.sh` does not model, ships the touch
+layout.
 
 `bughunt/stick-notouch-layout-135.txt`, `bughunt/stick-notouch-layout-80.txt`
 and `bughunt/core-notouch-layout.txt` seed `no_touch` and are each certified for
-exactly one board, so they measure the layout that board really has. Every other
-overflow scenario measures the touch layout. See
-[`plans/165-sim-no-touch-layout.md`](../plans/165-sim-no-touch-layout.md).
+exactly one board, so they measure the layout that board really has.
+`bughunt/core-connected-grid.txt` and `bughunt/core-connected-grid-large.txt`
+are the touch-layout half for the 320x240 panel, which is the layout the
+unmodeled Core2 ships, and they open with `assert ui.nav_layout touch` for the
+same reason the three above open with `buttons`.
+The Remote shutter fit matrix follows the same split: the shared page and
+overflow matrices check page identity, complete labels and bounded scrolling,
+because narrow Stick touch intentionally wraps its full-size controls. The
+certified `bughunt/remote-control-mode.txt` plus its Small and Large variants
+keep the physical-button shutter page fit-required on all three modeled boards;
+`bughunt/core-touch-remote-shutter-fit.txt` plus its Small and Large variants
+keep the 320x240 Core touch shutter fit-required.
+`ui.label_overlaps` reports how many pairs of visible labels on the current page
+draw through each other, which is the one defect a fit or scroll query cannot
+see.
+`sim/scripts/run-notouch.sh` runs the whole certified bug-hunt and end-to-end
+set for one board in that layout, and CI runs it on all three binaries. See
+[`plans/165-sim-no-touch-layout.md`](../plans/165-sim-no-touch-layout.md) and
+[`plans/168-notouch-layout-overflows.md`](../plans/168-notouch-layout-overflows.md).
 
 ## Production-path parity
 
@@ -115,8 +136,15 @@ defaulting to `sim/scenarios/e2e`. It exports `FURBLE_SIM_IR`,
 `FURBLE_SIM_FEEDBACK`, and `FURBLE_SIM_SD` as optional capabilities for that
 run. The capture helpers use `--out` to choose the capture directory.
 `sim/scripts/docs-capture.sh` rebuilds the three panel classes and regenerates
-the documentation screenshot gallery. It uses `FURBLE_SIM_BOARDS` and
-`FURBLE_SIM_BUILD_ROOT` to limit the matrix or relocate its build trees.
+the documentation screenshot gallery in each board's physical no-touch layout.
+Core2 touch remains a supplemental scenario lane rather than a Core Basic
+screenshot. The script uses `FURBLE_SIM_BOARDS` and `FURBLE_SIM_BUILD_ROOT` to
+limit the matrix or relocate its build trees.
+
+`sim/scripts/run-notouch.sh` runs the certified bug-hunt and end-to-end sets for
+one board with `FURBLE_SIM_NO_TOUCH=1`, so the pages are measured in the layout
+that board ships. It takes the same `FURBLE_SIM_BOARD_ID` and `FURBLE_SIM_BIN`
+as `run-e2e.sh`. Its header names the two 80x160 scenarios it skips and why.
 
 The retained M5PM1 watchdog contract has a dedicated gate:
 `sim/scripts/run-watchdog.sh` runs the feed, near-boundary, expiry, and
@@ -150,18 +178,21 @@ release fuzzer wrapper is `sim/scripts/run-fuzz.sh`; it uses
 `FURBLE_FUZZ_SEED_TIMEOUT`, `FURBLE_FUZZ_REPEAT_SEED`, and `FURBLE_SIM_BIN`.
 
 After the guarded seeds, `run-fuzz.sh` replays `FURBLE_FUZZ_REPEAT_SEED`
-(default: the first guarded seed, empty to skip) and requires the two runs to
-produce identical `FUZZ EVENTS`, `FUZZ COVERAGE` and `FUZZ SUMMARY` lines, with
-`observed_delta` and `no_observed_delta` masked. The same seed must drive the
-same event stream and reach the same pages.
+(default: `2`, empty to skip) and requires the two runs to produce identical
+`FUZZ EVENTS`, `FUZZ COVERAGE` and normalized `FUZZ SUMMARY` lines, with only
+`observed_delta` and `no_observed_delta` masked for replay equality. The same
+seed must drive the same event stream and reach the same pages. CI applies the
+same runner to touch and physical-button layouts on all three panel binaries.
 
 The comparison stops there on purpose. Firmware behaviour under the fuzzer is
 not yet reproducible line for line: two runs of the same seed can differ by one
 connect attempt. `Camera::m_Mutex`, the one host mutex a connect holds for its
-whole attempt, is scheduler visible since plans/173; the host mutexes that are
-left are held for microseconds each and have not been measured to move a run,
-but they are still invisible, so asserting the whole log stays out of the
-gate.
+whole attempt, is scheduler visible since plans/173. Remaining host mutexes
+and asynchronous settlement are still under investigation: repeated UI
+candidate runs have produced identical event streams but different page counts.
+Those runs fail the unchanged replay gate, even when they report zero findings.
+Neither a matching replay nor this simulator's finite scenarios certify every
+hardware interleaving.
 
 ## Wall-clock bounds and the stall watchdog
 
@@ -189,11 +220,12 @@ process when a 1 ms `SDL_Delay` overshoots 64 ms, which a loaded host does
 routinely, and the step-exec mode it then latches deadlocks simulator boot
 against the SDL render pump. Turn it on only under an actual debugger.
 
-`sim/scripts/run-e2e.sh` and `sim/scripts/run-watchdog.sh` bound every scenario
+`sim/scripts/run-e2e.sh`, `sim/scripts/run-notouch.sh` and
+`sim/scripts/run-watchdog.sh` bound every scenario
 with `timeout -k 10` at `FURBLE_SIM_SCENARIO_TIMEOUT` seconds, default 300. The
 per-seed bound in `run-fuzz.sh` is separate and larger, `FURBLE_FUZZ_SEED_TIMEOUT`
 seconds, default 600, because one seed is 600 events rather than one scenario. A
-wedged run fails its leg instead of hanging the job. All three scripts require
+wedged run fails its leg instead of hanging the job. All four scripts require
 GNU `timeout`, or the coreutils `gtimeout` Homebrew installs on macOS, and fail
 with that instruction if neither is present.
 
@@ -225,16 +257,17 @@ text after a comment are ignored. Each line starts with one verb.
 | `wait` / `advance` | `wait MS` or `advance MS` advances virtual time. |
 | `stall` | `stall MS` advances virtual time without running the platform update loop. On the StickS3 model this can expire the PM1 watchdog; `MS` must be non-zero. |
 | `key` / `press` | `key KEY` or `press KEY`, where `KEY` is `up`, `down`, `left`, `right`, `return`, or `enter`. |
-| `btn` / `button` | `btn NAME [hold\|long]` or `button NAME [hold\|long]`. Stick boards expose `a`, `b`, and `pwr`; Core exposes `a`, `b`, and `c`. |
+| `btn` / `button` | `btn NAME [hold\|long]` or `button NAME [hold\|long]`. Stick boards expose `a`, `b`, and `pwr`; Core exposes `a`, `b`, and `c`. Pressed/released samples traverse the production read callback and LVGL input processing in the device's current mode. A hold advances virtual time and supplies one additional held sample; it does not reproduce the hardware repeat cadence. |
 | `capture` | `capture NAME` writes a PNG under the capture directory. |
 | `uart-dump` | Prints captured fake-UART writes as `uart-tx` lines, then clears them. |
 | `home` | Goes to the root menu and focuses Scan. |
 | `back` | Clicks the LVGL header back button. It fails at the root page. |
 | `report` | `report NAME` writes a profiler JSON report. |
-| `restart` | Reboots the simulated device: the simulator shuts down in order, re-executes itself, and resumes the script at the next step. RAM state is wiped like an esp_restart(); the per-run NVS preferences file is inherited through `FURBLE_SIM_PREFS` and persists like flash. Seeds are reapplied on the resumed boot. Takes no arguments and must not be the final step. |
+| `restart` | Reboots the simulated device: the simulator shuts down in order, re-executes itself, and resumes the script at the next step. RAM state is wiped like an esp_restart(); the per-run NVS preferences file is inherited through `FURBLE_SIM_PREFS` and persists like flash. Seeds are reapplied on the resumed boot. Takes no arguments and must not be the final step. UI-triggered restarts use the same boundary and arm only after the triggering button/action has advanced the script, so that action is not repeated. |
 | `action` | `action COMMAND` invokes one of the simulator actions below. The complete action line is parsed once, with whitespace-tolerant tokenization, strict arity, finite numeric validation, and no silently ignored trailing values. Invalid actions fail during script loading with status 2. |
 | `print` | `print KEY` prints the resolved scenario query. |
 | `assert` | `assert KEY VALUE` aborts with exit status 1 when the resolved value differs. |
+| `assert_min` / `assert_max` | `assert_min KEY VALUE` and `assert_max KEY VALUE` resolve the query as a signed integer and abort with exit status 1 when it is below, or above, VALUE. Use these where the assertion is a bound rather than an equality, for example a geometry that differs between the touch and physical-button layouts but must clear the header in both. |
 | `assert-eventually` | `assert-eventually TIMEOUT_MS KEY VALUE` polls the resolved value using a monotonic wall-clock timeout while yielding to background simulator tasks. TIMEOUT_MS must be 1 through 60000; a timeout reports the last value and exits 1. |
 | `assert-eventually-virtual` | `assert-eventually-virtual TIMEOUT_MS KEY VALUE` polls once per normal UI tick while virtual time, platform updates, and background tasks continue. TIMEOUT_MS must be 1 through 60000 virtual milliseconds; a timeout reports the last value and exits 1. |
 | `xassert` | `xassert KEY VALUE` records `XFAIL (WILL_FAIL)` on a mismatch and continues. A match prints `XPASS` and FAILS the run, so a closed gap is promoted back to `assert` deliberately. `xassert board-varies KEY VALUE` is the exception for a gap already closed on some panels: a match there prints and continues. |
@@ -258,7 +291,7 @@ All listed seeds are applied before simulated `Platform::init()` and before the
 UI is constructed. These byte settings are:
 `brightness`, `inactivity`, `display_off`, `gps_rate`, `gps_constel`,
 `gps_power`, `gps_duty`, `gps_hold`, `cpu_freq`, `tx_power`, `scan_mode`,
-`text_size`, `auto_off`, `low_batt`, `fb_output`, `hw_motion`, `gps_assist`
+`text_size`, `legend`, `auto_off`, `low_batt`, `fb_output`, `hw_motion`, `gps_assist`
 (0 off, 1 position and time, 2 with ephemeris), `gps_platform` (0 do not send,
 1 to 4 the dynamic models), and `imu_wake` (0 off, 1 tap, 2 shake, 3 both).
 
@@ -356,6 +389,11 @@ false` opts a scenario out of the continuous liveness invariant enforcement
 (detection still counts violations), and `liveness_grace_ms` overrides the
 3000 ms divergence grace period. The interval settings are `interval_count`, `interval_delay`,
 `interval_shutter`, and `interval_wait`; `bulb_duration` seeds the bulb timer.
+Each takes a count and an optional unit written with no space, `250ms`, `30s` or
+`60min`; without one the field keeps its own unit. The unit is how a scenario
+reaches a spin value the field's default unit cannot express, which the timer
+row width assertions need. An unrecognised suffix is rejected at load.
+
 `gps_stationary` selects the stationary canned NMEA track instead of the
 moving one. Both report the same position, but the stationary track reports
 0.412 knots rather than 22.678, which is below the speed floor fix hold
@@ -449,7 +487,7 @@ production handler.
 `bulb`, `settings`, `display`, `features`, `sensors`, `gestures`, `infrared`,
 `gps_rate`, `gps_sentences`, `gps_constellation`, `gps_power`, `gps_assist`,
 `gps_hold`, `gps_baud`, `gps_platform`, `gps`, `gps_data`, `nmea`, `gps_sats`,
-`timer`, `theme`, `text_size`, `bluetooth`, `tx_power`,
+`timer`, `theme`, `text_size`, `legend`, `bluetooth`, `tx_power`,
 `about`, `power`, `feedback`, `feedback_events`, `feedback_volume`,
 `diagnostics`, `device_info`, `power_state`, `ble`, `interval_count`,
 `interval_delay`, `interval_shutter`, `interval_wait`, `battery`, `storage`,
@@ -461,7 +499,7 @@ production handler.
 `settings`, `display`, `features`, `sensors`, `infrared`, `gps_rate`,
 `gps_sentences`, `gps_constellation`, `gps_power`, `gps_assist`, `gps_hold`,
 `gps_baud`, `gps_platform`, `gps`, `gps_data`, `nmea`, `gps_sats`, `theme`,
-`text_size`, `bluetooth`, `tx_power`, `about`,
+`text_size`, `legend`, `bluetooth`, `tx_power`, `about`,
 `power`, `feedback`, `feedback_events`, `feedback_volume`, `storage`,
 `diagnostics`, `device_info`, `battery`, `power_state`, `ble`, `interval_count`,
 `interval_delay`, `interval_shutter`, and `interval_wait`.
@@ -542,8 +580,16 @@ The complete `ui.*` query set is:
 | `ui.row_scrolling` | `yes`, `no`, or `none`. Whether the focused menu row's label is running LVGL's scroll animation. |
 | `ui.overflow` | `unknown`, `yes`, or `no`. |
 | `ui.nav_layout` | `touch` or `buttons`. |
+| `ui.legend_visible` | `yes` or `no`; Off hides indicator surfaces without disabling physical input targets. |
+| `ui.legend_visible_count` | Number of rendered primary left/OK/right indicator objects, measured after hidden ancestors and effective opacity. |
 | `ui.indicator_clearance` | `clear`, `overlap`, or `n/a`. |
 | `ui.indicator_overlaps` | Numeric count of widgets under an indicator. |
+| `ui.label_overlaps` | Numeric count of visible content-widget pairs on the current page that overlap: labels by their drawn text, plus rollers, sliders, switches, checkboxes and bars. |
+| `ui.focus_overlaps` | Numeric count of unrelated visible content leaves intersecting the focused control's body plus main-outline/padding bounds. Excludes its ancestors and descendants; not an exact knob/shadow pixel check. |
+| `ui.cut_labels` | Numeric count of visible labels whose wrapped content does not fit or whose drawn box escapes its immediate parent. |
+| `ui.clipped_values` | Numeric count of spin-row values drawn outside their row. |
+| `ui.min_name_chars` | Fewest characters any spin-row name on the current page still shows in full, or `n/a`. |
+| `ui.cut_names` | Numeric count of spin-row names on the current page that lose characters. |
 | `ui.scroll_bottom` | Numeric pixels, or `unknown`. |
 | `ui.scroll_top` | Numeric pixels, or `unknown`. |
 | `ui.display` | Panel sleep state, `on` or `off`. |
@@ -662,6 +708,10 @@ The other namespaces are:
   and `camera.focus_releases`: numeric counts of the camera commands that
   reached a per-target camera task.
 - `setting.text_size`: the persisted numeric text-size setting.
+- `setting.legend`: the persisted physical-button legend mode, `0` for Buttons,
+  `1` for Bottom, and `2` for Off. `seed legend 0|1|2` selects it before the UI
+  is built. Off keeps the Buttons anchors and reservation while hiding only
+  indicator surfaces; physical button input remains active.
 - `setting.hw_motion`: the persisted motion engine choice, 0 auto, 1 software,
   2 hardware.
 `ui.nav_layout` reports which navigation layout the running build rendered:
@@ -679,7 +729,64 @@ only the drawn text extent counts, with the text alignment honoured. Areas are
 clamped to the page viewport, so rows scrolled out of sight are not counted. The
 viewport ends above the reserved navbar band, so the query cannot reach the
 bottom-edge indicators: it measures the indicators that float over content, and
-reports nothing about the bottom two rather than proving them clear.
+reports nothing about the bottom two rather than proving them clear. Since plan
+168 made the placement a setting, this depends on it: in Bottom placement all
+three are in that band and a fitted page is structurally clear, while in the
+default Buttons placement the Right one is over the content area and the query
+is what proves each page keeps its column clear. `seed legend 0|1` selects it,
+and `bughunt/legend-bottom-*.txt` are the files that assert the other value.
+
+`ui.label_overlaps` reports how many pairs of visible content widgets on the
+current page draw through each other: labels by their drawn text extent, and the
+value widgets a settings page puts beside them, rollers, sliders, switches,
+checkboxes and bars. A roller drawn over the label that names it is the same
+defect as two labels drawn over each other. It is the one layout defect no fit or scroll
+query can see: a grid cell holding two entries still fits, it is simply
+unreadable. It uses the same drawn-text extent and viewport clamp as
+`ui.indicator_clearance`, so a label scrolled out of sight is not counted.
+
+`ui.focus_overlaps` separately checks conservative focused-control bounds,
+including its main outline width and padding. Content-only bounds missed the
+Display slider outline extending into Brightness and Inactivity timeout.
+The focused object's own labels and ancestors are excluded. This query returns
+zero when no visible outlined control is focused on the current page, so pair
+it with `ui.focus_on_page` and a known focused-control regression. It does not
+certify every rounded-corner, knob or shadow pixel.
+
+The walk is page-scoped, `lv_menu_get_cur_main_page` and its subtree. A widget
+on the top layer, a message box or any other modal, is not in that subtree, so a
+page showing one still reports 0. Use a capture for those.
+
+`ui.cut_labels` reports how many visible labels cannot draw all of their text. A
+wrapped label is measured in both dimensions. A `LV_LABEL_LONG_SCROLL` or
+`LV_LABEL_LONG_SCROLL_CIRCULAR` label is exempt from the intrinsic-width check
+because it shows the whole text over time, but it still counts when its drawn
+box escapes its immediate parent. Floating widgets are excluded for the same
+reason `ui.label_overlaps` excludes them. The query holds the rule that a page
+may scroll when rows stop fitting, but it may never cut a name to fake a fit.
+
+Automatic menu rows keep their icon and wrap statically. Their page scrolls
+vertically when needed, so physical no-touch scenarios assert complete labels
+and both scroll ends. Explicitly touch-guarded companion scenarios retain the
+stricter supplemental fit checks where the larger viewport still fits.
+
+`ui.clipped_values` and `ui.min_name_chars` measure the spin rows, a menu
+container whose only visible children are a name label and a value label, as
+`addSpinItem` builds the intervalometer and bulb duration settings. The menu
+container class is part of the shape on purpose: the spirit level's readout row
+is a plain object holding two labels and is not a spin row.
+
+On the narrow panels the name and value prefer one line, then wrap within the
+row's concrete width so neither gives up text. `ui.clipped_values` counts values
+drawn outside the row and must read 0, because a value that loses a digit or its
+unit reads as a different setting. A value on `LV_LABEL_LONG_DOT` counts as
+clipped whatever its geometry says, because an ellipsis is a lost character.
+
+`ui.min_name_chars` reports the fewest characters any name shows, counting the
+full length when a wrapped name fits and conservatively returning 0 when its
+wrapped box does not. `ui.cut_names` is the assertion that matters: how many
+names lose characters, which must be 0. A page with no spin row reports 0 and
+`n/a`.
 
 - `setting.fauxny`, `setting.autoconnect`, `setting.reconnect`,
   `setting.multiconnect`, `setting.companion`, `setting.watchdog`,
@@ -802,6 +909,14 @@ whatever the production stack does after a fault is what the scenario observes.
   `sim/scripts/run-env-order.sh` can guard each mutation with a Linux
   `LD_PRELOAD` interposer. That check establishes environment ordering only; it
   does not establish that an environment race caused a SIGSEGV.
+- `Platform::restart()` uses the same post-teardown re-exec seam. Interactive
+  restarts have no script continuation; scripted UI restarts defer arming until
+  the driver records the next step. Fuzz owners must call
+  `completeFuzzRestart()` after the event and checkpoint bookkeeping; the
+  driver serializes the harness state to a PID-scoped checkpoint file and
+  carries its path in `FURBLE_SIM_FUZZ_CHECKPOINT`. A teardown or panel failure
+  always wins over re-exec. The fresh boot gives the UI one cycle before the
+  saved APPLY, SETTLE, CHECK, or ESCAPE phase resumes.
 - Battery policy tests should seed `low_batt` and the four battery fields, then
   use `action battery ...` to change the sample. Six consecutive low samples
   qualify the production 30-second hysteresis; charging suppresses both the

@@ -124,9 +124,10 @@ void Platform::update(void) {
 }
 
 void Platform::restart(void) {
-  // The host simulator has no reset vector; ending the process is the closest
-  // equivalent for scripted runs.
-  Sim::requestExit(0);
+  // The host simulator has no reset vector. Keep the request on the same
+  // orderly post-teardown re-exec seam as scripted restarts; the driver arms
+  // it after the triggering UI action has recorded its continuation.
+  Sim::requestRestart();
 }
 
 bool Platform::powerOff(void) {

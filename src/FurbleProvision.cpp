@@ -103,6 +103,7 @@ ProvisionTLV::ValueType runtimeType(Settings::type_t type) {
     case Settings::BATT_STYLE:
     case Settings::SCAN_MODE:
     case Settings::TEXT_SIZE:
+    case Settings::LEGEND:
     case Settings::HW_MOTION:
     case Settings::AUTO_OFF:
     case Settings::LOW_BATT:
@@ -203,6 +204,12 @@ bool validateSetting(const ProvisionTLV::SettingValue &field,
         report.error = ApplyError::BAD_SETTING;
         report.failedSettingId = field.wireId;
         report.message = "text size setting is out of range";
+        return false;
+      }
+      if ((setting.type == Settings::LEGEND) && (field.value[0] > Settings::LEGEND_OFF)) {
+        report.error = ApplyError::BAD_SETTING;
+        report.failedSettingId = field.wireId;
+        report.message = "legend setting must be 0, 1 or 2";
         return false;
       }
       if ((setting.type == Settings::HW_MOTION)

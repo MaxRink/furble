@@ -5,11 +5,16 @@
 # The Stick boards have no touch panel,
 # so this is the layout it always renders: a navigation bar band reserved at the
 # bottom of the window content, ICON_HEADER_SIZE + 2 = 26 px tall, plus the
-# three button indicators. On the Stick boards the bar stays empty and the
-# three indicators float over the screen instead, so the bar is purely the
-# reserved clearance for the Left and OK indicators at the bottom edge. The
-# Right indicator floats over the content area, at LV_ALIGN_RIGHT_MID with no
-# offset, so a 24 px square at y 68 to 91, halfway down the panel.
+# three button legends. On the Stick boards the bar stays empty and the
+# legends float against the screen edges instead.
+#
+# Where the Right one lands is the LEGEND setting, and this file measures the
+# default, Buttons: at LV_ALIGN_RIGHT_MID with no offset, a 24 px square at y 68
+# to 91, halfway down the panel, drawn over
+# the page. `reserveLegendColumns()` keeps that column clear, which is what the
+# clearance assertions below prove.
+# legend-bottom-80.txt walks the same pages with the other value, where all
+# three legends are in the band and no page gives up any width.
 #
 # The M5GFX SDL panel always attaches a mouse-driven touch device, so every
 # other scenario measures the touch layout, which is 26 px taller. This one
@@ -21,11 +26,10 @@
 # fall back to the touch layout and pass for the wrong reason, which is the
 # exact failure this scenario exists to remove.
 #
-# Every xassert below is a WILL_FAIL that fails on this board today, with the
-# measured pixel count or widget count in its comment. None of them is
-# board-varies: each file covers one board, so a closed gap turns into an XPASS
-# and fails the run, which is the signal to promote the line to a hard assert.
-# See plans/165-sim-no-touch-layout.md.
+# Indicator and overlap regressions below are hard assertions. The Sensors fit
+# remains an explicit xassert for its documented 7 px vertical overflow; that
+# page scrolls rather than shrinking the selected text size. See
+# plans/165-sim-no-touch-layout.md and plans/168-notouch-layout-overflows.md.
 seed no_touch true
 seed fauxny true
 seed saved_camera true
@@ -33,20 +37,28 @@ seed gps true
 seed imu true
 wait 300
 assert ui.nav_layout buttons
+assert ui.legend_visible yes
+assert ui.legend_visible_count 3
 
 # Home menu, six rows.
 assert ui.page main
-assert ui.overflow no
+# This page scrolls at this size by design. A page honours the text size the
+# user chose and scrolls when the rows stop fitting; it does not shrink the
+# face to fake a fit. What still has to hold is that nothing is drawn over
+# anything else.
+assert ui.label_overlaps 0
 assert ui.indicator_clearance clear
 
 # Display page.
 action nav display
 wait 150
 assert ui.page display
-assert ui.overflow no
-# WILL_FAIL: 1 widget renders under an indicator.
-print ui.indicator_overlaps
-xassert ui.indicator_clearance clear
+# This page scrolls at this size by design. A page honours the text size the
+# user chose and scrolls when the rows stop fitting; it does not shrink the
+# face to fake a fit. What still has to hold is that nothing is drawn over
+# anything else, so the fit assert is replaced by the two that matter.
+assert ui.label_overlaps 0
+assert ui.indicator_clearance clear
 
 # Sensors tile.
 action page settings
@@ -59,9 +71,8 @@ assert ui.page sensors
 # remaining gap is the button and switch row padding at this font size.
 print ui.scroll_bottom
 xassert ui.overflow no
-# WILL_FAIL: 1 widget renders under an indicator.
 print ui.indicator_overlaps
-xassert ui.indicator_clearance clear
+assert ui.indicator_clearance clear
 
 # Settings > GPS list, carrying the new Motion Adaptive row (plans/18). The list
 # scrolls by design on every panel, so the contract is that both extents stay
@@ -73,10 +84,17 @@ assert ui.page gps
 assert ui.gps_motion_row enabled
 print ui.overflow
 print ui.indicator_overlaps
-# WILL_FAIL: 1 widget renders under an indicator at the top of this list, which
-# is a pre-existing gap on this panel. The Motion Adaptive row is the eighth
-# entry and sits well below the fold at scroll top, so it is not what overlaps.
-xassert ui.indicator_clearance clear
+# Drive encoder focus far enough to scroll rows that started below the legend
+# through its band. Their reservation must remain stable after focus scrolling.
+button b
+button b
+button b
+button b
+button b
+button b
+wait 200
+assert ui.indicator_clearance clear
+assert ui.cut_labels 0
 action scroll bottom
 wait 200
 assert ui.scroll_bottom 0
@@ -89,10 +107,17 @@ action page settings
 action nav timer
 wait 150
 assert ui.page timer
-assert ui.overflow no
-# WILL_FAIL: 2 widgets render under an indicator.
-print ui.indicator_overlaps
-xassert ui.indicator_clearance clear
+# This page scrolls at this size by design. A page honours the text size the
+# user chose and scrolls when the rows stop fitting; it does not shrink the
+# face to fake a fit. What still has to hold is that nothing is drawn over
+# anything else.
+assert ui.label_overlaps 0
+# The rows share one line between the name and its value. The value never gives
+# up a digit or its unit; the name clips first and only to a floor of four
+# characters. spin-row-widths-*.txt drives the widest value of every unit.
+assert ui.clipped_values 0
+assert_min ui.min_name_chars 4
+assert ui.indicator_clearance clear
 
 # Seven home rows: the Infrared entry appears once the IR switch is on.
 home
@@ -105,32 +130,99 @@ wait 150
 home
 wait 250
 assert ui.page main
-assert ui.overflow no
+# This page scrolls at this size by design. A page honours the text size the
+# user chose and scrolls when the rows stop fitting; it does not shrink the
+# face to fake a fit. What still has to hold is that nothing is drawn over
+# anything else.
+assert ui.label_overlaps 0
 assert ui.indicator_clearance clear
+# simulatorHomeOnUi starts on Scan. Walk the real next button to the final row,
+# then reopen Home and activate the harmless Settings row with the select button.
+assert ui.row_text Scan
+button b
+button b
+button b
+button b
+button b
+wait 200
+assert ui.row_text Off
+assert ui.focus_on_page yes
+assert ui.row_scrolling no
+assert ui.cut_labels 0
+assert ui.indicator_clearance clear
+home
+button b
+button b
+button b
+assert ui.row_text Settings
+button a
+wait 200
+assert ui.page settings
+home
+wait 200
 
 # Connected session.
 action connect
 wait 3200
 assert ui.page connected
 assert ui.connected yes
-assert ui.overflow no
+# This page scrolls at this size by design. A page honours the text size the
+# user chose and scrolls when the rows stop fitting; it does not shrink the
+# face to fake a fit. What still has to hold is that nothing is drawn over
+# anything else.
+assert ui.label_overlaps 0
 assert ui.indicator_clearance clear
+# All eight rows stay in the encoder route. Reach Disconnect without activating
+# it, then walk the real previous button back to Cameras and select it.
+assert ui.row_text Remote
+button b
+button b
+button b
+button b
+button b
+button b
+button b
+wait 200
+assert ui.row_text Disconnect
+assert ui.focus_on_page yes
+assert ui.row_scrolling no
+assert ui.cut_labels 0
+assert ui.indicator_clearance clear
+button pwr
+button pwr
+button pwr
+button pwr
+button pwr
+wait 200
+assert ui.row_text Cameras
+button a
+wait 200
+assert ui.page cameras
+action page connected
+wait 150
+assert ui.page connected
 
 # Remote shutter page.
 action page shutter
 wait 150
 assert ui.page shutter
-assert ui.overflow no
+# This page scrolls at this size by design. A page honours the text size the
+# user chose and scrolls when the rows stop fitting; it does not shrink the
+# face to fake a fit. What still has to hold is that nothing is drawn over
+# anything else.
+assert ui.label_overlaps 0
 assert ui.indicator_clearance clear
 
 # Bulb page.
 action page bulb
 wait 150
 assert ui.page bulb
-assert ui.overflow no
-# WILL_FAIL: 1 widget renders under an indicator.
-print ui.indicator_overlaps
-xassert ui.indicator_clearance clear
+# This page scrolls at this size by design. A page honours the text size the
+# user chose and scrolls when the rows stop fitting; it does not shrink the
+# face to fake a fit. What still has to hold is that nothing is drawn over
+# anything else.
+assert ui.label_overlaps 0
+assert ui.indicator_clearance clear
 
 # Bulb duration spin value. It scrolls by design on every panel, 3 px at
 # 135x240 and 320x240 and 55 px at 80x160, so page-matrix asserts its scroll
@@ -138,9 +230,7 @@ xassert ui.indicator_clearance clear
 action nav bulb_duration
 wait 150
 assert ui.page bulb_duration
-# WILL_FAIL: 1 widget renders under an indicator.
-print ui.indicator_overlaps
-xassert ui.indicator_clearance clear
+assert ui.indicator_clearance clear
 action page bulb
 wait 150
 
@@ -148,7 +238,11 @@ wait 150
 action page cameras
 wait 150
 assert ui.page cameras
-assert ui.overflow no
+# This page scrolls at this size by design. A page honours the text size the
+# user chose and scrolls when the rows stop fitting; it does not shrink the
+# face to fake a fit. What still has to hold is that nothing is drawn over
+# anything else.
+assert ui.label_overlaps 0
 assert ui.indicator_clearance clear
 
 # Running intervalometer view.
@@ -157,10 +251,12 @@ wait 150
 action intervalometer
 wait 150
 assert ui.page timer_run
-assert ui.overflow no
-# WILL_FAIL: 2 widgets render under an indicator.
-print ui.indicator_overlaps
-xassert ui.indicator_clearance clear
+# This page scrolls at this size by design. A page honours the text size the
+# user chose and scrolls when the rows stop fitting; it does not shrink the
+# face to fake a fit. What still has to hold is that nothing is drawn over
+# anything else.
+assert ui.label_overlaps 0
+assert ui.indicator_clearance clear
 action stop
 wait 150
 assert ui.interval_state idle

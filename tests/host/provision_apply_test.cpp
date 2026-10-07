@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstring>
 #include <iostream>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -102,6 +103,52 @@ void testMotionEngineProvisioning() {
   check(!apply(wrongType, typeReport, options), "a BOOL motion engine field is rejected");
   check(typeReport.error == Furble::Provision::ApplyError::UNSUPPORTED_SETTING,
         "a wrong wire type reports UNSUPPORTED_SETTING");
+}
+
+void testBooleanSettingProvisioning(uint8_t wireId,
+                                    Furble::Settings::type_t setting,
+                                    const char *name) {
+  resetSettings();
+
+  const auto *schema = Furble::ProvisionTLV::schemaForSetting(wireId);
+  check(schema != nullptr,
+        std::string("wire id ") + std::to_string(wireId) + " has a provisioning schema row");
+  if (schema != nullptr) {
+    check(schema->type == ValueType::BOOL, std::string(name) + " schema is BOOL");
+    check((schema->minLength == 1) && (schema->maxLength == 1),
+          std::string(name) + " schema is exactly one byte");
+  }
+
+  for (uint8_t value = 0; value <= 1; value++) {
+    resetSettings();
+    ProvisionBundle bundle;
+    bundle.settings = {
+        {wireId, ValueType::BOOL, {value}}
+    };
+    ApplyReport report;
+    check(apply(bundle, report),
+          std::string(name) + " value " + std::to_string(value) + " provisions");
+    check(report.settingsApplied == 1, std::string(name) + " apply reports one setting");
+    check(Furble::Settings::load<bool>(setting) == (value != 0),
+          std::string(name) + " value reaches the store");
+  }
+
+  resetSettings();
+  ProvisionBundle invalid;
+  invalid.settings = {
+      {wireId, ValueType::BOOL, {2}}
+  };
+  ApplyReport report;
+  check(!apply(invalid, report), std::string(name) + " value 2 is rejected");
+  check(report.error == Furble::Provision::ApplyError::BAD_SETTING,
+        std::string("out-of-domain ") + name + " reports BAD_SETTING");
+  check(report.failedSettingId == wireId,
+        std::string("rejection identifies wire id ") + std::to_string(wireId));
+}
+
+void testBooleanSettingsProvisioning() {
+  testBooleanSettingProvisioning(43, Furble::Settings::AUTO_OFF_CHARGING, "auto-off charging");
+  testBooleanSettingProvisioning(46, Furble::Settings::IMU, "IMU");
 }
 
 void testPreflightIsAtomic() {
@@ -273,7 +320,17 @@ void testDomainValidation() {
       {SettingValue {68, ValueType::BOOL, {2}},                    "boolean setting must be 0 or 1"          },
       {SettingValue {72, ValueType::U8, {4}},                      "IMU wake gesture must be 0, 1, 2 or 3"   },
       {SettingValue {69, ValueType::U8, {5}},                      "GPS platform setting must be 0 through 4"},
+      {SettingValue {65, ValueType::U8, {3}},                      "legend setting must be 0, 1 or 2"        },
   };
+
+  ProvisionBundle offBundle;
+  offBundle.settings = {
+      {65, ValueType::U8, {static_cast<uint8_t>(Furble::Settings::LEGEND_OFF)}}
+  };
+  ApplyReport offReport;
+  check(apply(offBundle, offReport), "Legend Off value provisions");
+  check(Furble::Settings::load<uint8_t>(Furble::Settings::LEGEND) == Furble::Settings::LEGEND_OFF,
+        "Legend Off value reaches the store");
 
   for (const auto &entry : cases) {
     ProvisionBundle bundle;
@@ -368,29 +425,18 @@ void testDedicatedMQTTFields() {
 // knows the mirror exists. Adding a setting and forgetting the row is therefore
 // the easy mistake, and this is the guard for it.
 //
-// The two ids below are already missing on master. Registering them changes the
-// provisioning surface for settings this test's PR did not add, so they are
-// named here as a known gap rather than quietly fixed. Do not extend this list
-// to cover a new setting: add the schema row instead.
+// Keep this walk exhaustive. A new nonzero setting must add its schema row.
 void testEverySettingHasASchemaRow() {
-  static constexpr uint8_t KNOWN_MISSING[] = {
-      43,  // AUTO_OFF_CHARGING
-  };
-
+  std::set<uint8_t> wireIds;
   for (const auto &entry : Furble::Settings::all()) {
     const uint8_t wireId = entry.second.wire_id;
     if (wireId == 0) {
       // Off-wire settings are deliberately unreachable by id.
       continue;
     }
-    const bool known = std::find(std::begin(KNOWN_MISSING), std::end(KNOWN_MISSING), wireId)
-                       != std::end(KNOWN_MISSING);
+    check(wireIds.insert(wireId).second,
+          std::string("wire id ") + std::to_string(wireId) + " is unique in Settings::all()");
     const bool registered = Furble::ProvisionTLV::schemaForSetting(wireId) != nullptr;
-    if (known) {
-      check(!registered, std::string("wire id ") + std::to_string(wireId)
-                             + " is still the known gap, drop it from KNOWN_MISSING if fixed");
-      continue;
-    }
     check(registered, std::string("wire id ") + std::to_string(wireId) + " (" + entry.second.key
                           + ") has a SETTING_SCHEMAS row");
   }
@@ -400,6 +446,7 @@ void testEverySettingHasASchemaRow() {
 
 int main() {
   testMotionEngineProvisioning();
+  testBooleanSettingsProvisioning();
   testPreflightIsAtomic();
   testValidatedApplyAndRuntimeHooks();
   testDedicatedPasswordField();

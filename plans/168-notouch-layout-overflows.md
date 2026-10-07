@@ -1,0 +1,1185 @@
+# 168 - fix the layout the physical-button boards actually ship
+
+## Current validation checkpoint
+
+The Android companion metadata test covers all three production LEGEND wire-65
+values, including `LEGEND_OFF` value 2. This is a metadata assertion
+correction only; it does not change the firmware wire contract or establish
+Android emulator or hardware validation.
+
+The integrated candidate has not been flashed and PR273 remains hardware-gated.
+The owner confirmed only the separate PR313 hint restoration on the stick;
+its external watchdog remains off by explicit choice.
+
+Application source `9d5a8a483d508e35a6ed436f482a21a7944df57e` passes all ten
+Display cases, twelve broader page matrix/sweep cases, 298 physical-layout
+scenarios and 322 touch scenarios across the three modeled panels. The retained
+test rejects old focus spacing with two expanded focus-bound collisions while
+content overlap still reads zero. The 196-asset gallery was regenerated on this
+source; Display's top and bottom captures were inspected again. Merge `1744f8d51`
+adds master PR315 without changing application code.
+
+The expanded no-touch fuzz matrix exposed a stale LVGL input-history pointer.
+GDB records a BUTTON to ENCODER transition retaining `last_pressed`, asynchronous
+deletion of that same object, and a later BUTTON press dereferencing it during
+defocus. The native reset described below fixes the reproduced seed-3 crash.
+All six panel/input-mode cells now pass eight 600-step seeds and strict seed-2
+replay; CI now retains the same no-touch matrix. This is not a determinism claim:
+a separate repeated verbose trace still diverges around a connecting overlay
+and SELECT event. Its input-focus/timer boundary remains under investigation;
+the strict comparator is not relaxed.
+
+All 13 clean firmware environments passed on `03c0ea1d2`, before the input-history
+repair. Clean StickS3 and headless builds also passed on `9d5a8a48`; the other
+eleven environments have not yet been rerun with that UI-only successor. The
+120 host tests passed with unchanged relevant host source; 193 Python tests
+passed on `03c0ea1d2`. The complete malformed-input runner passed on `9d5a8a48`.
+Evidence logs are `~/b/ui-input-history-{panels,notouch,touch,fuzz-matrix,firmware,
+invalid,gallery}-0913.log`, `~/b/ui-final-firmware-matrix-0913.log`, and
+`~/b/ui-fuzz-trace-repeat-separated-0913.log`. The sections below retain the
+implementation history; older results are not new hardware evidence. Held-input
+mode transitions and physical Display validation remain required before merge.
+
+PR #264 certified the physical-button layout in the simulator and left the
+product gaps it found recorded as `xassert` lines. The original PR273 work
+closed the overlap gaps; its 80x160 Sensors fit remains a documented scroll.
+
+These original gaps were observed in the simulator's physical-button layouts,
+which represent the modeled boards' input arrangement. The older touch-only
+checks did not exercise that arrangement. Simulator findings motivate the
+repairs but do not by themselves establish physical results on every board.
+
+The detailed M5StickS3 screenshot fixture uses canonical `action nav` routes
+rather than headless key injection. It seeds a saved camera, drives the real
+connect action, and asserts `ui.page` immediately before every capture,
+including the connected frame. A failed route therefore cannot silently
+produce a plausible but mislabeled documentation image.
+Root ran all 15 captures and their page assertions with the fresh `9d5a8a48`
+RIG0 binary in both touch and physical-button layouts. Both runs pass, including
+connection readiness, and the physical Display capture was inspected. CI now
+explicitly uses `FURBLE_SIM_NO_TOUCH=1`. Logs are
+`~/b/ui-screenshots-{corrected,physical}-0913.log`. The Android assertion fix
+still requires its successor CI run; no local Gradle result is claimed.
+
+## Numbering
+
+165 is PR #264 and 166 is PR #270, both merged. 167 is unused. This plan is
+numbered 168 to match the branch the work started on.
+
+## The worklist
+
+Fourteen `xassert` lines across the three board-scoped scenarios plan 165 added,
+and twelve certified scenario runs that failed when the same certified set ran
+with `FURBLE_SIM_NO_TOUCH=1`. The two lists describe the same defects from two
+directions.
+
+Plan 165 measured its twelve-run list on ab638874, before PR #261 merged. It was
+re-derived on f425fd38 for this work, and one line had moved: on 135x240
+`bughunt/overflow-sweep.txt` fails on `shutter`, not on `connected`. Its
+connected page reads `overflow no` in the state it drives, because it never
+turns the IR setting on. The rest of the list held.
+
+| Page | Board | Gap | After |
+| --- | --- | --- | --- |
+| `display` | 135x240 | 2 widgets under an indicator | 0 |
+| `main`, seven rows | 135x240 | 21 px overflow | 0 |
+| `connected` | 135x240 | 25 px overflow | 0 |
+| `connected` | 135x240 | 1 widget under an indicator | 0 |
+| `shutter` | 135x240 | 64 px overflow | 0 |
+| `bulb_duration` | 135x240 | 1 widget under an indicator | 0 |
+| `display` | 80x160 | 1 widget under an indicator | 0 |
+| `sensors` | 80x160 | 10 px overflow | 7 px, scrolls |
+| `sensors` | 80x160 | 1 widget under an indicator | 0 |
+| `timer` | 80x160 | 2 widgets under an indicator | 0 |
+| `bulb` | 80x160 | 1 widget under an indicator | 0 |
+| `bulb_duration` | 80x160 | 1 widget under an indicator | 0 |
+| `timer_run` | 80x160 | 2 widgets under an indicator | 0 |
+| `connected` | 320x240 | 13 px overflow | 0 |
+
+The overlap assertions are promoted from `xassert` to hard `assert`. The
+80x160 Sensors fit stays an `xassert`: the page honours the selected text size
+and scrolls through the remaining 7 px instead of shrinking it.
+
+Two classes of promoted assertion are structurally satisfied by the fix rather
+than by the page happening to fit, and they are kept as regression pins with
+that stated plainly:
+
+- Every `ui.indicator_clearance` line. `countIndicatorOverlaps` measures only
+  each leaf's LVGL-visible ancestor intersection before clamping to the page
+  viewport. Bottom placement puts all three indicators in the reserved band;
+  default Buttons placement keeps Right over content and reserves its row
+  column. The line still fails when an indicator is anchored over content
+  without that reservation, which is exactly the regression it exists to catch.
+- The `shutter` page `ui.overflow` line. That page now holds one floating
+  widget, and a floating child does not join its parent's scroll extent, so the
+  page cannot overflow while it stays that way. The line fails if a laid-out
+  widget is added to the page, which is how the 64 px arrived in the first
+  place.
+
+## The fixes
+
+### 1. Historical first draft: the Right indicator joined the reserved band
+
+The following diagnosis and proposed fix are historical. The final behavior is
+controlled by the `LEGEND` setting described later in this plan.
+
+Nine of the fourteen gaps are one defect. The physical-button layout reserves a
+navigation bar band, `ICON_HEADER_SIZE + 2` = 26 px, at the bottom of the window
+content; each indicator itself is a 24x24 px box. On the Stick boards the band
+stays empty: the three indicators are
+floating children of `m_Screen` instead. Left is at `LV_ALIGN_BOTTOM_LEFT` and
+OK at `LV_ALIGN_BOTTOM_MID`, both inside the band. Right alone was at
+`LV_ALIGN_RIGHT_MID` with a 65 px offset on the 135 px panel and no offset on
+the 80 px panel, so it floated halfway down the right edge over page content,
+and the band it could have occupied stayed empty.
+
+The three indicators are a legend for the three physical buttons: previous,
+select, next. Left and OK are already a bottom row that does not track where the
+buttons physically sit. Right was the only one that did not join them, and the
+cost was that it drew over content on every page tall enough to reach it. On the
+80x160 panel it landed halfway down and covered the seconds value of both timer
+rollers, which plan 165 called the one indefensible case.
+
+The first draft therefore moved Right to `LV_ALIGN_BOTTOM_RIGHT`. That draft
+would have put all three indicators in one legend row, but it was superseded:
+Buttons remains the default placement with Right partway down the right edge and
+`m_RightYOffset` retained, while Bottom uses the reserved band. In Buttons
+placement the page rows reserve the Right column so content remains clear.
+
+### 2. Home menu row padding on the 135x240 panel
+
+`UI::addMenuItem` picks the per-row padding from the page. The home page used 3.
+The comment above it did the arithmetic against a 215 px page, which is the
+touch layout; the shipped page is 189 px. Seven rows at padding 3 are 210 px, so
+they overflowed by 21.
+
+The home page joins the Connected page at padding 0, which is the shape the
+80x160 branch below it already uses. Seven rows are then 168 px against 189, and
+the Large text size does not change it because the 24 px icon sets the row
+height.
+
+### 3. The Connected page on 135x240
+
+Measured: the page is 167 px, not the 189 px the home page gets, because the
+menu header reserves the back button's width on a sub page. It carried eight
+rows of the 24 px icon plus that 22 px difference, 214 px, and overflowed by 25
+with the IR setting on and by 1 with it off.
+
+The first attempt dropped the Infrared entry, on the reasoning that it is the
+only entry that is not about the connected camera and the home menu carries the
+same shortcut. That was wrong, and the measurement said so twice. Seven rows
+still needed 168 px of a 167 px page, one pixel short. And, more seriously,
+`UI::addMainMenu`'s page dispatch hides and disables the header back button on
+the Connected page: it is the root for the whole session, so anything dropped
+from it is unreachable until the camera is disconnected. Dropping the Infrared
+entry there would have taken IR away mid-session.
+
+So every entry stays and the row icons go instead, which is what the 80x160
+board already does on every page. Eight text rows are 144 px against 167. This
+also removes eight compressed-icon decompresses from every draw of the page.
+
+Dropping the icons made the page height text-size sensitive, where the 24 px
+icon had fixed it. At the Large face, 28 px a line, eight rows are 224 px and
+the page overflowed by 31, unchanged from master's number but now for a
+different reason. That matters more here than on other pages, because this page
+hides and disables the header back button: it is the session root, so a
+Disconnect below the fold is only reachable by scrolling the encoder through
+seven rows. The first design capped the page's own face at Normal to hold the
+fit. The device walk rejected that: a page honours the size the user chose and
+scrolls when the rows stop fitting. The cap is gone, the page scrolls at Large,
+and what is asserted instead is that nothing is drawn over anything else and
+that the scroll is bounded. See "Rework after the device walk" below.
+
+### 4. The Remote shutter page on 135x240
+
+In the physical-button layout the page carried a floating shutter-lock icon and
+a grey leader line drawn from three or four hardcoded points per board, under a
+`@todo Clean up the plethora of hardcoded values here`. The points were derived
+from `lv_obj_get_y(m_Right)`, which fix 1 invalidates outright. The line's
+vertical run ended 103 px below its own origin, past the bottom of the page, and
+that run was the 64 px overflow.
+
+The line goes. The lock icon stays, aligned `LV_ALIGN_BOTTOM_MID`. The page then
+holds one widget and cannot overflow, and the hardcoded point tables for all
+three boards go with the line.
+
+The gesture is worth stating exactly, because the comment this replaced had it
+wrong and so did the first draft of this plan. `handleShutterLock`, the long
+press toggle, is bound only on the touch branch of `addConnectedMenu`. Nothing
+binds it in the physical-button layout, so the icon there is an indicator and
+not a control. The lock is set in `handleShutter` on `LV_EVENT_PRESSED` while
+`m_FocusPressed` is true, which is hold next then press select, and it is
+cleared in `handleFocus` on the next press of next alone.
+
+`LV_ALIGN_BOTTOM_MID` puts the icon above the select indicator, and that is
+still the right place: both buttons take part, but next is held as a modifier
+while select is the one whose press event latches the lock. The next indicator,
+which clears it, is one position along the same legend row.
+
+### 5. The Sensors page on 80x160
+
+The page held the IMU setting row, a "Restart to apply" notice row and a Restart
+button, and overflowed by 10 px. The notice row goes on this panel, following
+the precedent the GPS Data page already sets for the 80x160 board. The Restart
+button below it says what the notice said, and every wider panel keeps both.
+
+### 6. The Connected page on 320x240
+
+The Core lays this page out as a grid. It declared three columns and two
+`LV_GRID_CONTENT` rows, six cells, and put eight entries in them: Infrared,
+Cameras and Level were all assigned cell (1,1). Three widgets stacked in one
+cell is why the plan 165 screenshot shows Cameras drawn over its own icon, and
+the content rows growing around the stack was the 13 px overflow.
+
+The page moves to the four-column, two-`LV_GRID_FR(1)`-row descriptor the Core
+home menu already uses, and the eight entries take eight distinct cells:
+
+| | 0 | 1 | 2 | 3 |
+| --- | --- | --- | --- | --- |
+| row 0 | Remote | Bulb | Interval | Infrared |
+| row 1 | GPS Data | Level | Cameras | Disconnect |
+
+`LV_GRID_FR(1)` rows divide the page exactly, so it cannot overflow.
+
+The first design used four columns, which make a cell 80 px, and stepped this
+page's labels down to `lv_font_montserrat_14` because "Disconnect" is 87 px at
+the icon menu font and lost its last glyphs to the cell edge. The device walk
+rejected the font step. The page runs three columns instead, which leave 106 px
+and fit "Disconnect" as it is, and the names under the icons wrap rather than
+scroll or clip. See "Rework after the device walk" below.
+
+### 6b. The same three changes reach the Core2, and fix it too
+
+None of those three is layout-scoped. They are `FURBLE_M5COREX` changes, so they
+compile into every Core class build, and the M5Stack Core2 is a 320x240 board
+that does ship a touch panel and therefore renders the touch layout. That layout
+had the same page with the same six cells and the same three entries assigned to
+(1,1). On master it drew Infrared, Cameras and Level through each other, and at
+the maximum text size the page overflowed by 23 px. Both read zero here.
+
+`sim/build.sh` does not model the Core2 separately, but its layout is what an
+unseeded run on the Core binary renders, so that is where it is asserted:
+`bughunt/core-connected-grid.txt` and `bughunt/core-connected-grid-large.txt`,
+both certified for `m5stack-core`, walk the page in the touch layout at the
+default and the maximum text size. Each opens with `assert ui.nav_layout touch`,
+the mirror of the `buttons` guard the three no-touch files carry, so a stray
+seed cannot make either file measure the other's subject.
+
+Asserting the collision needed a new query. Entries sharing a cell is invisible
+to every fit and scroll query, because the page still fits; what a user sees is
+the labels drawn through each other. `ui.label_overlaps` counts the pairs of
+visible labels on the current page whose drawn text intersects, using the same
+drawn-text-extent and viewport-clamp rules `ui.indicator_clearance` already
+used, now shared between the two. The walk is page-scoped, so a widget on the
+top layer, a message box or any other modal, is not in the subtree and a page
+showing one still reads 0.
+
+Master's reading depends on how many of the three entries are visible, which is
+worth stating exactly because both numbers are true:
+
+| IR setting | Entries in cell (1,1) | Master `label_overlaps` | This branch |
+| --- | --- | ---: | ---: |
+| on | Infrared, Cameras, Level | 3 | 0 |
+| off | Cameras, Level | 1 | 0 |
+
+The 13 px overflow this plan opened with is the physical-button layout's, in
+both IR states, and it is what `core-notouch-layout.txt` records. The touch
+layout fits at the default text size in both states and overflows by 23 px at
+the maximum, which is what `core-connected-grid-large.txt` records. The two
+numbers belong to two layouts and neither depends on the IR setting; only the
+overlap count does.
+
+Both new files turn the IR setting on, so all eight entries are present and the
+reading they assert against is 3. Run against master's layout code they fail on
+exactly that line at the default size, and on the 23 px overflow at the maximum
+size.
+
+### 7. The spirit level assertion
+
+`e2e/level-spirit.txt` asserted `ui.level_surface_top 50`. That is not an
+overflow and not a layout gap: the reserved band makes the page 26 px shorter,
+so the bullseye settles 19 px lower and the query reads 69. The assertion's
+stated intent, in its own comment, is that the circle sits below the header
+rather than jammed under it, which is a minimum and not an equality. It is now
+`assert_min ui.level_surface_top 50`, which holds in both layouts and keeps
+measuring what it says it measures.
+
+### 8. The timer settings page at the largest text size
+
+`bughunt/text-size-overflow-large.txt` failed on `timer` on both Stick panels,
+by 3 px at 135x240 and 23 px at 80x160.
+
+The row is a `LV_FLEX_FLOW_ROW_WRAP` container holding the setting name and its
+value. On a narrow panel the value takes a second line so both strings remain
+whole; the row grows to its wrapped content. The unit is shortened on
+the narrow panels, so the wrapped value reads `999 ms`, `999 s` or `999 min`
+rather than losing a suffix.
+
+The 135x240 case was 3 px of padding, so the spin rows there use 2 px rather
+than the theme default. The shorter 80x160 panel keeps its 1 px padding.
+
+The value label formerly carried `LV_LABEL_LONG_SCROLL_CIRCULAR`, which is
+harmless while the label owns a whole row and animates the moment its box is
+narrower than its text. Measured on the 80x160 timer page over a one second
+probe with the page held still: master 170 invalidations, the first version of
+this change 338. That is the LVGL redraw trap CLAUDE.md warns about, reached by
+a layout change rather than by a setter. Both labels use bounded
+`LV_LABEL_LONG_WRAP` now and the same probe reads 3.
+
+Clipping is only acceptable if nothing important is clipped, and the first
+version of this got that wrong: with the value still the grown label, clipping
+ate its digits. It drew "Shutter 250 m" at 135x240 and "Shutter 25" for 250 ms
+at 80x160, and "999 m" at the maxima. A value that loses a digit or its unit
+reads as a different setting, and no user can tell 25 from 250.
+
+So the row has a rule, in this order, and the rework settled it at the user's
+own font rather than by shrinking anything:
+
+1. Neither label is cut. The row wraps, so the value takes a line of its own
+   when the two do not fit side by side, and each label wraps within its line.
+   A name cut mid glyph reads as a different setting exactly as a lost digit
+   does: "Duratic" and "999 mi" are the same defect.
+2. A 6 px column gap keeps the name and its value from reading as one word.
+   The gap was set and then overwritten with 2 px by a later board block, which
+   is how 135x240 Large drew "Count10".
+3. Capping the name's width is what cut it, not what saved it: the cap made
+   LVGL wrap the name and the row then clipped the wrapped second line, so
+   80x160 Normal drew "Coun". The name keeps its natural width instead. On the
+   80x160 panel, where the reserved legend column leaves 52 px and "Shutter" is
+   63 px at the default face, the name takes the whole line and wraps inside it
+   with the value on the next line.
+4. If the two still do not fit, the unit text shortens rather than the value.
+   The narrow panels use `SpinValue::getShortUnitString`, "ms", "s" and "min"
+   instead of "msec", "secs" and "mins". The 320x240 grid has the width and
+   keeps the spelled out unit, and the unit roller follows the same split so a
+   board reads the same in both places.
+
+Folding the unit into the row name ("Shutter ms" with a bare "250") was
+rejected: it lengthens the name on exactly the panels where the name is the
+thing being squeezed, and it puts the unit somewhere the value page does not
+repeat.
+
+`ui.cut_names` is the assertion that holds it, not `ui.min_name_chars`. A
+minimum of four can mean "Wait shown whole" or "Count cut to Coun", and only the
+count tells them apart; the earlier claim that the 4 was Wait was wrong.
+Measured on both narrow panels, both legend placements, all three text sizes:
+`ui.cut_names` and `ui.clipped_values` are 0 in all twelve combinations.
+
+`e2e/redraw-steady.txt` gained a timer page step, on all three boards, so the
+animation cannot come back. That step runs before the connect rather than after
+it. Reaching the timer page means leaving the Connected page, and leaving the
+Connected page ends the session, so appending the step at the end of that
+scenario cut its connected tail and cost `lib/furble/Camera.cpp` thirteen
+covered lines, which put that file under its own floor. A scenario that measures
+anything outside the session has to do it before the session starts.
+
+`bughunt/spin-row-widths-135.txt` and `bughunt/spin-row-widths-80.txt` drive the
+widest value of every unit at the maximum text size and assert both queries.
+Restoring the old layout, the value grown with `LV_LABEL_LONG_CLIP`, fails them
+at 1 clipped value on 135x240 and 3 on 80x160.
+
+## Evidence
+
+The original PR273 head captured every touched page, on every modeled panel, in
+both layouts, at all three text sizes, before and after, in
+`plans/168-evidence/`: 720 palette PNGs, about 3 MB. The before set is the PR
+base, commit `8bdc52e4`; the after set records the original feature branch, not
+the later master integration or focus-scroll correction. The preserved
+historical directory is laid out as
+`<panel>/<before|after>/<layout>-ts<size>[-lg<legend>]--<page>.png`, so
+`320x240/before/buttons-ts1--settings.png` and
+`320x240/after/buttons-ts1-lg0--settings.png` are the pair that shows the
+Settings icon grid collision and its fix.
+
+`lg0` is the default Buttons legend placement, which is what master had. `lg1`
+is the new Bottom option, which has no before pair because it did not exist.
+
+The captures are generated by driving the `capture` verb through one scenario
+per layout, text size and legend placement, then quantised with `pngquant` and
+recompressed with `optipng`. The raw simulator capture is an uncompressed RGB
+PNG and the set would otherwise weigh about ten times as much.
+
+The first design's hand-picked before and after pairs under `docs/img/notouch/`
+are gone. The after half of that set showed the layout the device walk rejected,
+so it contradicted the head; plan 165's before captures stay where plan 165
+references them.
+
+## What CI runs now
+
+`sim/scripts/run-notouch.sh` runs the certified bug-hunt and end-to-end sets for
+one board with `FURBLE_SIM_NO_TOUCH=1`, bounded per scenario by the same
+`FURBLE_SIM_SCENARIO_TIMEOUT` plan 166 added to the other runners.
+`.github/workflows/sim-e2e.yml` calls it on all three board binaries. That is
+follow-up 3 of plan 165 for the scenario suites.
+
+The runner takes its list from the manifest and skips only what its own header
+names, so a scenario added by another PR joins this layout without editing the
+script. The twelve cancel-sweep, power-off and reconnect scenarios plan 172
+added on `6245a301` are picked up that way and pass in both layouts.
+
+Rebased onto `6245a301` after PR #278 merged. That PR changed no file under
+`src/`, `include/`, `components/` or `lib/furble/`, so no capture in the
+evidence set moved: a regenerated after set on the rebased binaries is
+byte-identical except for six 320x240 frames whose header shows the GPS icon in
+its searching state rather than its fixed state, which is fix timing, not
+layout. Those six are refreshed anyway.
+
+## Still open
+
+Two scenarios are skipped on the 80x160 board, named in the runner's header.
+Both seed the maximum text size, and that board cannot render its own pages at
+that size in the layout it ships:
+
+- `bughunt/text-size-overflow-large.txt`: the Connected page has six visible
+  rows in the state it drives, 108 px of text rows in an 87 px sub page.
+- `e2e/home-seven-rows-large.txt`: seven home rows, 129 px in a 112 px page.
+
+The first design capped the same board's timer page with `fontForSpinRow`, so
+choosing Normal there did not enlarge the Count, Delay, Shutter and Wait rows.
+The device walk rejected that cap along with the others. The rows are drawn at
+the chosen face and the page scrolls.
+
+The rows are already at zero padding and every one of them is reachable only
+from that page, so there is nothing left to remove and nothing left to trim.
+The lever is the text size policy: `TextSizePolicy::MAX` is `NORMAL` on this
+board, and the measurement says the shipped layout only holds `SMALL`, which is
+also the board's default. Dropping `MAX` to `SMALL` would leave the board a
+single text size and would hollow out three certified scenarios, so it is a
+product decision rather than a layout fix and is left for gkoh. The touch-layout
+runs of both scenarios are unchanged and still green.
+
+The 320x240 intervalometer settings page overflow that plan 161 found through
+fuzz seed 3, and that PR #270 unpinned because the scheduler change moved the
+event stream past it, is still uncovered. This work does not touch that page on
+the Core: fix 8 scopes its row flow change and its font cap to the narrow
+panels, and the Core keeps `LV_FLEX_FLOW_ROW_WRAP` and the full text size.
+`EXACT_BOARDS` still restricts
+`text-size-overflow-large.txt` to the two Stick boards. Closing it means
+certifying that scenario for `m5stack-core` and fixing what it then reports.
+
+The Display page reports `ui.label_overlaps` 1 on the 135x240 and 320x240
+panels, in both layouts. It is pre-existing: master's build reports the same 1
+on the same page, and nothing here touches that page. It is recorded rather than
+fixed, because a Display page layout change has no measurement in this work and
+belongs with whoever is changing that page.
+
+During the original PR273 validation, `tests/host`'s `console-commands`
+segfaulted intermittently, roughly one run in two, but only when built with
+coverage instrumentation. The then-current uninstrumented suite passed 93 of
+93; this is historical evidence, not a result for the later master integration.
+The fault was on a background thread in
+`Furble::Control::reapZombieTargets`, which this change does not touch, and
+neither `src/FurbleControl.cpp` nor `src/FurbleConsole.cpp` nor anything under
+`lib/furble` or `tests/host` differs from master on this branch. It is a
+control-teardown race that the slower instrumented build exposes, in the same
+family as the three plan 169 made deterministic, and it belongs with that work
+rather than with a layout change.
+
+`sim/scripts/check-doc-tokens.sh` is not run by any workflow. It caught a real
+gap here, the new `intervalSeedIsValid` predicate its `validateSeed` reader did
+not recognise, and it caught it only because it was run by hand. Wiring it into
+`.github/workflows/sim-e2e.yml`, or into the python tests beside
+`tests/test_build_inventory.py`, is a small follow-up and belongs to whoever
+owns that script rather than to a layout change.
+
+The `FURBLE_SIM_NO_TOUCH=1` fuzz leg, follow-up 3's other half, is also still
+open. The four `mustFit` pages the fuzzer checks are green in this layout now,
+so it should be addable, but a fuzz leg needs its own seed calibration and does
+not belong in a layout change.
+
+## Hardware checklist
+
+Owed on the M5StickS3 after review. Walkable in under ten minutes.
+
+| Page | How to reach it | What to look for |
+| --- | --- | --- |
+| Any page | Boot | The legends sit where they always did: previous and select along the bottom edge, next partway down the right edge. No page content is drawn underneath the next legend, on any page, at any text size. |
+| Legend setting | Settings, Display, Legend | The page opens and offers Buttons, Bottom, and Off. Buttons is selected on a fresh device. Choose Bottom, restart: all three legends now sit in one row along the bottom edge and the right hand column is given back to the content. Choose Off, restart: indicator surfaces disappear but the same physical hit targets and Buttons reservation remain. Choose Buttons, restart: back to the shipped placement. The choice survives a power cycle either way. |
+| Home menu | Settings, Infrared, turn IR on, then back to the home menu | Seven rows: Connect, Scan, Delete, IR, Settings, Level, Off. The page scrolls to reach the last of them, which is the trade for keeping the row spacing. Nothing is drawn on top of anything else while scrolling. |
+| Connected, Normal | Connect to a camera | Eight rows, each with its icon, all readable. Nothing runs under the next legend. |
+| Connected, Large | Settings, Text size, Large, then connect | Rows are drawn at the Large face and the page scrolls. Every row still readable, nothing stacked. Disconnect is reachable by scrolling. |
+| Remote shutter | Connected, Remote | The lock icon sits just above the select legend. No grey line running off the bottom edge. Hold next, then press select: the icon closes and the shutter holds. Press next alone: it opens again. A long press of select does nothing, which is correct here; the long press binding is the touch layout's. In one-button mode there is no lock gesture at all and the icon stays open. |
+| Display | Settings, Display | Every row clear of the next legend. The page scrolls; the rows do not overlap while it does. |
+| Bulb duration | Connected, Bulb, Duration | The spin value is readable and nothing covers it. |
+| Timer, all three sizes | Settings, Intervalometer, at Small, Normal and Large | Count, Delay, Shutter and Wait all present. Every name and value is complete. The units read ms, s and min here, not msec, secs and mins, and the unit roller inside a value page says the same. A narrow row wraps the value below its name. At Large the page scrolls rather than shrinking the face. Watch the page for a full minute: no value should slide or flicker. |
+| Settings pages with a roller | Settings, Text size and Settings, Theme | The roller never covers the label that names it, at any text size. |
+| Spirit level | Home, Level | The bullseye is below the header and centred. Tilt the device on its side: the panel rotates and the legends follow the rotated edges. |
+| Legend contrast, all themes | Settings, Theme, each of Default, Dark and Mono Furble | The three glyphs stay legible in every theme, in both legend placements. |
+
+## Implementation state
+
+Implemented as described, then reworked after the device walk. Read this
+section together with "Rework after the device walk" below, which supersedes it
+where the two differ. `src/FurbleUI.cpp` carries fixes 1 to 6b and 8. The two
+page-scoped font helpers the first design added, `fontForConnectedMenu` and
+`fontForSpinRow`, are gone again; `fontForTextSize` and `fontForIconMenu` are
+the whole font policy. `include/FurbleUI.h` keeps `m_RightYOffset` and
+`level_t::navRightYOffset`, which the legend placement setting needs back. The three board-scoped scenarios promote all
+fourteen lines, `bughunt/core-connected-grid.txt` and its `-large` companion are
+new for the Core2 touch layout, `e2e/redraw-steady.txt` gains a timer page step,
+`e2e/level-spirit.txt` takes fix 7,
+`bughunt/stick-notouch-connected-large.txt` is the pin for the Connected page
+font cap, `bughunt/spin-row-widths-135.txt` and `-80.txt` are the pins for the
+spin row rule, `invalid/interval-unit-unknown.txt` and
+`invalid/interval-unit-only.txt` pin the seed suffix grammar,
+`sim/scripts/run-notouch.sh` is new and
+`.github/workflows/sim-e2e.yml` calls it three times. That runner skips a
+scenario whose own guard is `assert ui.nav_layout touch`, derived from the guard
+rather than from a name list, so the two Core2 files are not forced into the
+layout they exist to contrast with. `src/CLAUDE.md`, `sim/CLAUDE.md` and
+`docs/sim.md` are updated for the indicator band, the font helpers,
+`ui.label_overlaps`, `ui.clipped_values`, `ui.cut_names`,
+`ui.min_name_chars`, the interval seed
+unit suffix and `assert_min`. `include/CLAUDE.md` records the layout geometry
+contract `FurbleUI.h` now carries. No sdkconfig changed and no firmware
+behaviour outside
+the UI layout changed.
+
+## The device walk sent it back
+
+The M5StickS3 walk rejected three things, and the rework below is what the user
+asked for rather than what the simulator found convenient.
+
+### The legend placement is a setting, not a decision
+
+Moving the Right legend into the navigation band was not wanted. It is now the
+`LEGEND` setting, wire id 65, on its own page under Settings, Display:
+
+- **Buttons**, the default and what these boards shipped, leaves each legend
+  beside the button it names. Left and OK along the bottom edge, Right partway
+  down the right edge.
+- **Bottom** puts all three in the reserved navigation band, which is what this
+  plan originally did to everything.
+
+A wire id needs a second registration that is easy to miss. `SETTING_SCHEMAS`
+in `lib/furble/protocol/ProvisionTLV.cpp` is what batch provisioning checks an
+incoming setting against, so an id without a row there is answered
+`UNSUPPORTED_SETTING` and a batch carrying it is rejected
+whole. LEGEND has a row: 65, `U8`, one byte. The schema fixes the length only;
+the two valid values are held by `UI::legendPlacement()`, which clamps anything
+else to the default, so an out of range byte is a stale value rather than a
+parse error. `tests/host/provision_tlv_test.cpp` asserts the row exists and that
+an unknown id still has none, and deleting the row fails that test.
+
+`UI::legendPlacement()` reads it and both `UI::begin` and `applyLevelRotation`
+anchor from it. It is a restart setting, like the theme and the text size,
+because the legends are anchored once and page-row reservations are applied
+when a page loads.
+
+Buttons placement means the Right legend is drawn over the page again, so the
+content has to keep that column clear. `UI::floatingIndicatorReserve()` returns
+the legend width in that placement and zero in the other, and
+`reserveLegendColumns()` gives every row that can scroll through the legend a
+stable boundary when the page loads. That fixes the nine page-and-board
+combinations that used to overlap:
+`ui.indicator_overlaps` is 0 on every page in both placements.
+`bughunt/legend-bottom-135.txt` and `-80.txt` walk the same pages as the
+per-board layout files with the other setting, so both placements are pinned,
+and `bughunt/legend-setting-135.txt` and `-80.txt` open the Legend page itself,
+assert both values render, and assert the choice survives a restart.
+
+### The icons and the row spacing come back
+
+The Connected page keeps its row icons and the home menu keeps the row padding
+it shipped with. Seven home rows then need 210 px of a 189 px page and the page
+scrolls, which is the trade the walk asked for: the icons were fine and the
+shrink was not.
+
+### No page shrinks the size the user chose
+
+Every per-page font cap is gone: `fontForConnectedMenu`, `fontForSpinRow`, and
+the `montserrat_14` the Core Connected grid used. A page renders at the chosen
+size and scrolls when the rows stop fitting. The Core Connected page went back
+to three columns for the same reason: four columns made a cell 80 px, which only
+worked with a smaller face on that page.
+
+The spin row rule survives at full size by wrapping rather than shrinking. The
+name keeps its natural width and wraps if it is wider than the row; the value
+takes a line of its own when the two do not fit side by side and wraps if it is
+still too wide, so it never gives up a digit or its unit; and a 6 px column gap
+keeps the two from reading as one word. Neither label animates.
+`ui.clipped_values` is 0 on both narrow panels at all three sizes in both legend
+placements.
+
+### The rotary pickers were drawn over their labels
+
+The Display page reported ten overlapping pairs at Normal on 135x240, and the
+Settings pages generally were the "collisions of the rotary pickers and text"
+the walk saw. The cause was one pattern: a flex container pinned to the full
+page height with `LV_FLEX_ALIGN_SPACE_EVENLY`. Once the rows stop fitting there
+is no free space to distribute, so LVGL stacks them. Six containers now size to
+their content with a minimum of the page height, so they keep the even spread
+while the rows fit and grow into a scroll when they do not.
+
+`ui.label_overlaps` grew to cover the pickers, not just labels: rollers,
+sliders, switches, checkboxes and bars. Every Settings page reads 0 on all three
+boards, both layouts, at Normal and Large.
+
+A settings row name also stopped scrolling. A circular scroll animates the row
+for as long as the page is open, and the 135x240 Feedback page measured 117
+invalidations over a one second probe against master's 55. Those names wrap
+instead: the same probe reads 60, and the 80x160 page went from 59 to 3.
+
+### The Settings icon grid on 320x240, a defect that predates this PR
+
+Widening `ui.label_overlaps` to the whole page turned up a collision that is
+not this PR's. On the **M5Stack Core class boards (320x240), the Settings
+page**, the icon grid declares four columns and three rows, twelve cells, and
+the page carries fourteen entries. On the PR base, commit `8bdc52e4`, two pairs
+share a cell: Sensors and Intervalometer are both at `{3, 0}`, and IR settings
+and Feedback are both at `{1, 2}`. Master has it. It is reachable on hardware
+and it is why one of each pair could not be opened.
+
+It hid behind three things at once, none of which a fit or scroll query can
+see. The page still fits, so `ui.overflow` reads `no`. The rows were a fixed
+fraction of the page, so the name under an icon was clipped away below it and
+the collision drew label-on-label with no label visible. And the names scrolled,
+`LV_LABEL_LONG_SCROLL_CIRCULAR`, so at any instant a name showed only part of
+itself: "Features" read "atures" and "Sensors" read "nsors".
+
+Three changes close it, all `FURBLE_M5COREX`:
+
+- A fourth row. Fourteen entries need sixteen cells, so Intervalometer moves to
+  `{0, 3}` and Feedback to `{1, 3}` and every entry has a cell of its own.
+- The rows size to their content, `LV_GRID_CONTENT`, and the cell no longer
+  stretches its container down the row. A stretched container reports the whole
+  page as its height, which made one row as tall as the viewport and pushed the
+  rest off the bottom.
+- The name under an icon wraps instead of scrolling. That also retires a
+  permanent animation on every visible cell, the redraw trap the project guide
+  names.
+
+`bughunt/core-icon-grid.txt` and `core-icon-grid-large.txt` are the teeth, on
+the home menu as well as the Settings page, and they assert the new
+`ui.cut_labels` query at 0: no label may lose characters at its box edge. Both
+pages scroll at Large and neither cuts a name.
+
+The default icon-grid scenario guards its Home fit assertion with
+`assert ui.nav_layout touch`: that is the touch/Core2 fit contract. The
+physical Core Basic has the shorter 26 px button-navbar layout and its Home
+page intentionally scrolls at the default size; `core-notouch-layout.txt`
+asserts complete labels and reaches both scroll endpoints for its six- and
+seven-row Home states. The Large icon-grid scenario prints rather than asserts
+Home fit and remains shared across layouts. At this historical snapshot, this
+scenario-contract correction was pending root runtime validation; the current
+integration result is recorded below.
+
+### What now scrolls, in pixels
+
+The trade, stated so it is not buried: these pages render at the size the user
+chose and scroll instead of shrinking. Numbers are `ui.scroll_bottom`, the
+content below the fold, in the default Buttons legend placement and in the touch
+layout. A blank cell fits.
+
+| Panel | Page | Small | Normal | Large |
+| --- | --- | ---: | ---: | ---: |
+| 135x240 buttons | Display | 224 | 314 | 428 |
+| 135x240 buttons | Timer | | | 19 |
+| 135x240 buttons | Connected | | 1 | 7 |
+| 135x240 touch | Display | 156 | 204 | 318 |
+| 80x160 buttons | Display | 247 | 374 | 374 |
+| 80x160 buttons | Text size | 104 | 217 | 217 |
+| 80x160 buttons | Timer | 38 | 137 | 137 |
+| 80x160 buttons | Theme | 19 | 47 | 47 |
+| 80x160 buttons | Connected | | 39 | 39 |
+| 80x160 buttons | Intervalometer running | 8 | 15 | 15 |
+| 80x160 touch | Display | 221 | 316 | 316 |
+| 80x160 touch | Text size | 45 | 137 | 137 |
+| 80x160 touch | Timer | 12 | 75 | 75 |
+| 320x240 buttons | Display | 164 | 164 | 250 |
+| 320x240 buttons | Connected | 103 | 103 | 151 |
+| 320x240 buttons | Theme, Text size, Timer | | | 11, 11, 29 |
+| 320x240 buttons | Settings | 275 | 275 | 493 |
+| 320x240 buttons | Home menu | | | 73 |
+| 320x240 touch, the Core2 | Display | 180 | 180 | 278 |
+| 320x240 touch, the Core2 | Connected | 77 | 77 | 125 |
+| 320x240 touch, the Core2 | Settings | 249 | 249 | 467 |
+| 320x240 touch, the Core2 | Home menu | | | 47 |
+
+The Display page is the biggest number on every Stick because it is the longest
+settings page and it gained the Legend row. On the 320x240 boards the Settings
+page is the biggest, because it is an icon grid of fourteen entries whose rows
+now size to their content instead of being clipped to a fixed fraction of the
+page. The home menu is the one page there that still has to fit without
+scrolling, since it is the session root, and it does at Small and Normal in both
+layouts; at Large it scrolls. On the 80x160 panel the Large column
+equals the Normal one because that board clamps Large to Normal.
+
+### Dedicated Display regression
+
+The three `bughunt/display-layout-{small,normal,large}.txt` scenarios seed
+each text size explicitly and are registered for all three panel classes.
+They assert the physical-button layout, Display page identity, zero visible
+label/control overlaps, and both scroll endpoints. These are hard assertions,
+not expected failures. A page can fit while its controls collide, so scroll
+extent alone is not a readability test. Large remains clamped on StickC.
+
+`display-layout-buttons-s3.txt` additionally checks overlap after each physical
+button sample in a StickS3 navigation/select walk. This is not proof of which
+individual setting changed. No sleep/wake behavior is claimed.
+
+The Display scenarios also assert `ui.focus_overlaps` with
+`ui.focus_on_page=yes`. This simulator-only diagnostic expands the focused
+control by its active LVGL main outline width and padding, then compares it
+with unrelated visible content while retaining page visibility/clipping. It
+does not measure slider knob or shadow pixels. The production Display column
+uses an 8 px native row gap to clear the current 3 px outline plus 2 px pad;
+runtime validation of the pre-gap negative and post-gap candidate remains a
+separate gate.
+
+Root's negative control restores only the old Display fixed-height
+`SPACE_EVENLY` layout. The existing physical S3 test fails on Display with
+`ui.label_overlaps expected '0' got '7'`. Root then ran all three dedicated
+size scenarios against the b4 binaries on StickC, StickS3 and Core, plus the
+StickS3 button walk: all 10 cases passed. The four dedicated StickS3 scenarios
+all rejected the negative control with exit 1 on `ui.label_overlaps`: Small
+reported 5, Normal 7, Large 1, and the button walk 7. Logs are
+`~/b/display-final-{80,s3,core}-{small,normal,large}-0913.log`,
+`~/b/display-final-buttons-s3-0913.log`, and
+`~/b/display-negative-final-{small,normal,large,buttons-s3}-0913.log`.
+The production source and canonical S3 binary were restored to b4 after the
+negative build. Static independent review found no blocking issues. This is
+camera-free collision-regression evidence, not a new hardware layout check.
+
+A separate draft also asserted `ui.cut_labels 0` after the button walk and
+scrolling to the bottom. Corrected b4 on S3 Normal reported 1, while overlap
+was 0. This remains an unresolved clipping diagnostic, not an accepted pass
+or a claim that the complete Display page is visually validated. The retained
+draft and log are `~/b/display-layout-draft-0913.txt` and its matching `.log`.
+That finding is superseded by the shared setting-row correction below. The
+four Display scenarios now assert zero clipped labels at all 21 checkpoints,
+without changing the clipping metric or relaxing another scenario.
+
+### What that cost the fit assertions
+
+A page that scrolls cannot assert `ui.overflow no`. The assertions that measured
+a fit on a page which now scrolls were replaced by `ui.label_overlaps 0`, which
+is the property that actually matters and the one those pages were quietly
+failing: before this change several of them reported a fit only because the
+container absorbed the excess by stacking widgets on top of each other, which no
+fit query can see.
+
+## How this composes with PR #266
+
+#266's `UI::floatingIndicatorReserve()` remains the board- and placement-aware
+source of the right-side width. Camera rows retain their own wrapping rules,
+while `reserveLegendColumns()` applies that width to every page row that can
+scroll through the floating Right legend. Bottom placement and touch panels
+still return zero and keep the full content width.
+
+The camera rows still wrap on `LV_LABEL_LONG_WRAP` rather than scrolling, for
+the redraw reason #266 gives, and `e2e/camera-name-rows.txt` still asserts
+`ui.indicator_clearance clear` on the saved list, the scan list and the Cameras
+page. That scenario is what makes the deletion provable rather than plausible.
+Restoring the float without the reservation, at the offset master used on each
+board, fails it on 80x160 with `overlap`; with the indicator in the band it
+passes with no reservation anywhere. Both runs are in the tally.
+
+### One thing #266 needed narrowing
+
+The no-touch leg went red on `bughunt/feedback-hidden-route.txt` after the
+rebase, on 135x240, `ui.overflow yes` by 13 px. #266 wrapped every icon-less
+menu row, reasoning in its own comment that "a camera row is the only icon-less
+menu item". That is not so: a menu entry built with a null icon is icon-less
+too. "Feedback Events" is one, it is wide enough to wrap at 135 px, and the
+second line it gained pushed the Feedback page past the shipped layout's 167 px.
+
+`addMenuItem` now takes `wrapText`, and `addCameraItem` is its only caller that
+sets it. A camera name is user data composed by the vendor client and can be
+wider than any row; a fixed menu label is chosen to fit and keeps the scroll it
+always had. That is the rule `src/CLAUDE.md` now states. The overflow is gone
+and `camera-name-rows` is unaffected, because every row it measures is a camera
+row.
+
+This is the leg doing its job: the defect reached master 40 minutes before this
+rebase, in the touch layout it is 26 px of slack away from mattering, and
+nothing but a no-touch run would have seen it.
+
+
+### Post-merge focus-scroll correction
+
+The original reservation measured only rows intersecting the floating Right
+legend when a page loaded. Encoder focus can later scroll any row through that
+band without another layout pass, so rows that began above or below it could
+still render underneath the legend. Physical-button pages now reserve the
+column consistently for every row that can scroll through it. The 80x160 and
+135x240 scenarios drive real Button B focus movement before checking indicator
+clearance, cut labels and both scroll extents.
+
+The simulator's cut-label query still exempts a scrolling label from intrinsic
+width truncation, because its text is revealed over time. It no longer exempts
+that label from immediate-parent clipping: a scrolling animation outside its
+row is still unreadable and is counted.
+
+### Legend measurement-order provenance
+
+On 2026-09-13, a host-GDB trace of the pre-fix constructor path recorded
+`m_LegendWidth=26` while the final physical Right indicator occupied
+`{x1=111,y1=173,x2=134,y2=196}`, a 24 px box. The evidence is preserved in the
+root validation log `~/b/legend-measure-coords.log`. This establishes a two-pixel
+conservative reserve in the old sampling order; it does not establish that all
+Large-font labels fit on one line.
+
+The isolated proposal at
+`8aa65dfd90a108bb92e59977173d718024fc2128` moves the width sample after the
+existing 24x24 sizing and a settled layout, without changing fonts, icons or
+legend placement. No new simulator query is needed. Integration still requires
+the existing legend-clearance scenarios on the 80x160, 135x240 and 320x240
+modeled panels and both placements: `bughunt/legend-bottom-80.txt`,
+`bughunt/legend-bottom-135.txt`, the corresponding `legend-setting` cases, and
+the board-scoped `ui.indicator_clearance`, overlap and label guards. No pass is
+claimed by the GDB trace alone.
+
+The final master integration exposed the inverse measurement trap in the
+production fit pass. `scrollLabelsThatDoNotFit()` compared a wrapped label's
+already-constrained `self_width` with its content width, so the comparison read
+equal and left automatic menu names on extra lines. An intermediate fix
+measured the original text unwrapped and restored circular scrolling, which
+made the three fit scenarios pass but started every eager-built overflowing
+row's animation even while its page was hidden. The full no-touch suite then
+measured 460 invalidations over the gesture-default idle window and 344 over
+the Connected steady-state window. The converter is gone. Automatic menu rows,
+camera names and spinner summaries remain static and wrap; their page scrolls
+vertically when the complete rows exceed its viewport.
+
+At `9bc0f0df42b32f2898ae591bcd723a0b05c124f0`, the S3 simulator build passed.
+`e2e/imu-gesture-defaults.txt` measured 0 invalidations against its limit of 40,
+all four probes in `e2e/redraw-steady.txt` measured 0 against their limit of 3,
+and `e2e/camera-name-rows.txt` passed. These are focused regression results;
+the full suites and hardware checklist remain separate gates.
+
+At `0c99a66156d382b5b98b0c1bbcfa22a6df5def97`, the simulator build and
+the three exact formerly failing scenarios passed, as did
+`e2e/camera-name-rows.txt`. Those are focused regression results, not the final
+certification: the full no-touch suites, regenerated gallery, firmware matrix
+and physical-device checks remain separate gates.
+
+### Physical-button input correction
+
+The persistent physical-button input devices also need a mode-transition
+cleanup. LVGL 9.4 can retain an encoder device's `last_pressed` object after
+that object is deleted. When the device later changes to button mode,
+`indev_click_focus` may send a focus event through the freed pointer. The UI
+now uses the public pointer reset path only when changing each device from
+button mode back to encoder mode. This is a targeted simulator and firmware safety workaround for
+the pinned LVGL behavior; it does not restore deleted UI objects or replace
+held-input release handling. The no-touch seeded fuzz matrix remains a runtime
+gate for all three modeled binaries.
+
+The new focus walks exposed a simulator-input shortcut rather than a layout
+defect. `button b` sent `LV_KEY_RIGHT` directly to the focus group. LVGL's
+encoder processor normally turns that key into an encoder difference before it
+moves focus, so the shortcut left Scan focused however many times the scenario
+pressed the physical next button.
+
+The simulator now supplies pressed and released state through the same board
+read callbacks as firmware and calls LVGL's public input-device read path. That
+keeps the current encoder/button mode, wake interception, left-button long press
+and shutter press/release behavior in the exercised path. A hold advances the
+shared virtual clock and supplies a second pressed sample beyond the long-press
+thresholds. This is deliberately a coarse two-sample hold, not a hardware
+repeat-cadence model.
+
+At `7f0f289f5dac7dc60adaac635cdb354dba549b31`, the S3 simulator build passed
+and the native walk reached Home Off and Settings, then Connected Disconnect.
+The first scenario draft incorrectly assumed that reopening the already-current
+Connected page reset LVGL's retained focus. The final walk instead uses the
+physical previous button from Disconnect back to Cameras before selecting it.
+
+### Final measured geometry corrections
+
+The integrated layouts exposed three independent fixed-size assumptions. On
+80x160 Text Size, a `SPACE_EVENLY` container fixed to the viewport put the
+roller at y=12..79 over the wrapped warning at y=60..131. The container now
+uses content height so the two widgets participate in normal vertical layout
+and the page provides any needed scroll. At
+`83fd5afe16fec60f836d2eed38a0fcb11f3a1463`, the two focused Text Size
+scenarios and the physical-button walk passed.
+
+The Core Home grid had 95 px fixed tracks while its wrapped Connect and
+Settings labels extended 5 px beyond their cells. Content-sized grid tracks and
+cells retain the icon, padding and selected font while allowing the complete
+two-line labels to determine row height. At the same commit, the Core overflow
+sweep and supplemental touch Home fit scenario passed.
+
+The S3 Bulb trace found a different boundary: the narrowed Duration row had
+99 px of content, while the Large-font value `999 mins` needs 103 px. Its four
+horizontal padding pixels alone forced the value into a 55x48 two-line box and
+left the page 12 px below its viewport. `ec6bf267e2c063492de85cb4216633f434903b3d`
+keeps the vertical padding and gives those four horizontal pixels back. This is
+an exact measured source correction. At
+`b16e43ce919ecf9c940116db77e986914a361cc5`, all three fresh S3 repeats of
+`spin-row-widths-135` passed: Bulb reported no overflow, no clipped values and
+no cut names (`pr273-b16-bulb135-{1,2,3}.log`). This focused proof does not
+replace the running three-panel physical-layout suite, regenerated gallery,
+firmware matrix or physical-device gates.
+
+Finally, the original physical 80x160 Sensors contract is intentional vertical
+scrolling, not strict fit; its documented fixture measured 7 px. Shared physical
+scenarios now check whole labels and reachable top/bottom endpoints, including
+the repeated visit in the Small-text route and the live IMU gate. Two touch-only
+companions retain the original strict-fit evidence at Default and Small text
+sizes. No font, icon or gesture assertion was removed.
+
+### Historical follow-up candidate: Sensors restart label clipping
+
+The physical 80x160 run exposed one remaining label clip on the Sensors page.
+The standalone `Restart to apply` button is a direct page child, so
+`reserveLegendColumns()` narrows it to keep the floating Right indicator clear.
+Its centered label previously kept its natural 81 px width while the button was
+only 48 px wide, and the parent clipped the text. The candidate makes the label
+100% wide, wraps it, and centers the wrapped text. This preserves the wording,
+selected font, and vertical scrolling contract. At this historical candidate
+stage, full three-panel validation was pending; the current integration result
+is recorded above.
+
+The certified `bughunt/stickc-connected-large-imu.txt` regression now covers
+the related persisted-Large Connected-page path on the 80x160 panel. It
+asserts the IMU-gated Level entry, label and overlap safety, and clear legend
+indicators at the restored top and bottom scroll endpoints.
+
+### Historical follow-up candidate: Bulb80 compact layout
+
+The integrated 80x160 sweep found the Bulb page still 40 px too tall. The
+trace showed `reserveLegendColumns()` had narrowed the page-level mode hint to
+48 px, making the 12 px-font sentence 75 px tall. It also showed the narrowed
+Start button's default horizontal padding left only 22 px for its 24 px label.
+The candidate keeps the stable legend reservation and shortens the equivalent
+hint to `Set camera to B`; at the selected 12 px font its measured height is
+45 px across three lines. The active viewport is 90 px: Duration 22 px, hint
+45 px, and Start 23 px. The shared StickC spinner helper removes its 8 px
+flex-row gap and all four pixels of padding for Duration and the other interval
+spinners (Count, Delay, Shutter and Wait). Start trims 2 px from each vertical
+edge. These changes preserve the instruction meaning, font, controls and
+legend reservation. At this historical candidate stage, full validation was
+pending; the current integration result is recorded above.
+
+## Deviations
+
+The plan as first drafted proposed dropping the Infrared entry from the 135x240
+Connected page as the row removal, with the row icons as a fallback only if that
+was not enough. The device walk rejected both: the Connected page is the
+session root, so the entry would have been unreachable, and its icons were part
+of the wanted layout. Every entry and icon stays. Complete wrapped rows scroll
+vertically at the selected font.
+
+The Core Connected page needed one more change than the plan predicted. The
+four-column grid fixes the stacking and the overflow, but 80 px cells clip
+"Disconnect" at the icon menu font, so that page steps its labels down one font.
+That is the only font change in this work.
+
+A first version of fix 8 used a scrolling value label to keep the timer rows on
+one line. That is a per-tick repaint, and it raised the 80x160 timer page from
+170 invalidations over a one second probe to 338. The final rows wrap without a
+scrolling value, and the probe reads 3. The lesson is that the LVGL redraw trap
+is reachable from a layout change and not only from an unguarded setter, so a
+layout change that alters a label's usable width has to be measured for redraw
+cost as well as for fit.
+
+The first draft of fix 4 described the shutter lock as a long press of select.
+That is the touch layout's binding. In the physical-button layout nothing binds
+`handleShutterLock` at all; the real gesture is in fix 4 above. The comments,
+the plan and the device checklist all carried the wrong gesture and are
+corrected.
+
+The first version of `ui.clipped_values` compared a label's own width against
+its own content width, which for a content-sized label is a tautology: it read 0
+however far the label hung out of the row that draws it, and it certified an
+80x160 layout that was losing digits. A query that measures a widget against
+itself measures nothing. It now measures the value's box against the row's
+content box, which is where the clipping actually happens, and flags
+`LV_LABEL_LONG_DOT` as a lost character whatever the geometry says. The same
+pass scoped the spin row shape to `lv_menu_cont_class`, because the spirit
+level's readout row is a plain object with two labels and was reporting into
+these numbers.
+
+The first version of fix 8 clipped the value, which cost digits at ordinary
+values and not only at the maxima. Fix 8 now states the rule it should have
+started from: neither name nor value clips; the value wraps and its unit text
+shortens. That took a query to hold, because nothing already in the simulator
+could see a lost digit.
+
+Fixes 5, 6, 6b and 8 are unverified on hardware: only the M5StickS3 is
+available. The original PR273 head simulator-verified the 80x160 and 320x240
+changes, including the Core2 touch-layout reach in 6b. Those historical results
+do not certify the later master integration or focus-scroll correction.
+
+The earlier integration kept the Display page content-sized on every
+panel/layout path. This addressed the observed negative-space flex layout and
+the four-overlap StickC and ten-overlap StickS3 touch failures without changing
+fonts, icons, or seeds. The following snapshot is historical and is superseded
+by the current validation snapshot below.
+
+### Historical integration validation snapshot (superseded)
+
+The `dc987a1f4` full touch baseline passed 23 StickC e2e scenarios; its 42
+bughunt scenarios had 7 failures. The S3 run passed 123 e2e scenarios; its 42
+bughunt scenarios had 6 failures. The Core run passed 24 e2e scenarios while
+its bughunt run was still in progress at capture time. The later Display fix
+`f51af67aaa850b8f2010f6714cfc2532610ed864` does not resolve the same S3
+overlap failures. The 80x160 and S3 Sensors touch-default and touch-small
+fixtures still fail on measured geometry and remain open, not waived. Any
+content-height follow-up is separate and is not included in this snapshot.
+
+### Current integration validation snapshot (`daf7e870`, 2026-09-13)
+
+Root's exact current source passed all three RIG=1 simulator rebuilds. The
+36/36 Remote contracts passed, and all 280 physical-layout cases passed:
+62 StickC, 161 StickS3, and 57 Core cases. The touch-only skips were preserved
+as board-specific skips (7 StickC, 8 StickS3, and 9 Core), not converted into
+passes. The final touch E2E suite passed 170/170 (23 StickC, 123 StickS3,
+24 Core), certified bughunt passed 134/134 (46 StickC, 46 StickS3, 42 Core),
+and all 24 seeded
+600-step fuzz runs plus three strict seed-2 determinism replays passed with no
+findings. Evidence is in `~/b/pr273-daf-{notouch,touch,fuzz}.log`. The
+regenerated gallery, 13 clean firmware environments, and physical-hardware
+gates are not done; restart/lifecycle/fail-fast checks are still being run.
+
+### Historical Sensors zero-width follow-up
+
+The 3b85 touch geometry trace measured the Sensors Restart row with zero content
+width on all three modeled panels. The row's percentage-sized label fed back
+into the button's shrink-wrap measurement, producing the zero-width
+parent/child cycle and false geometry. The fix sets the Restart button to the
+page width before creating the label. Both strict touch `ui.overflow no`
+assertions remain in place, with `ui.cut_labels 0` added as the direct guard.
+At this historical candidate stage, runtime validation was pending; the
+current integration result is recorded above. This remains not a 100-percent
+hardware-parity claim.
+
+### Historical Bulb Start width follow-up
+
+The 80x160 touch sweep exposed a Bulb Start fit failure. Source inspection
+identified the percentage-sized label under a shrink-wrapped button as the
+suspected LVGL sizing cause; unlike the Sensors trace, a zero-width result was
+not measured here. The fix establishes the page-width parent first. Existing
+compact-fit and clipped-value assertions remain unchanged. At this historical
+candidate stage, validation across all modeled panels was pending; the current
+integration result is recorded above.
+
+### Historical Touch Remote controls on narrow host panels
+
+The fuzz matrix found `label_overlaps` on the touch Remote shutter page when
+the 80x160 and 135x240 host panels used three equal-width columns. Each control
+is intentionally 64 px wide, so those cells cannot contain the controls and
+their labels. The page now uses native flex row wrapping with content-sized
+controls, keeping all three on one row when they fit and wrapping into the
+existing menu scroll area when they do not. The 320x240 touch layout therefore
+keeps its three controls side by side, while narrower panels retain full-size
+controls without overlap. `touch-remote-shutter-narrow.txt` checks direct page
+and separate blind entry routes, label readability, and both scroll ends on all
+modeled panels. The shared page and overflow matrices use the same bounded-scroll
+contract; `remote-control-mode.txt` plus its Small/Large variants pin physical
+fit on all three modeled boards, and `core-touch-remote-shutter-fit.txt` plus its
+Small/Large variants pin Core touch fit.
+
+The fuzz compact-page rule mirrors that contract: physical-button shutter pages
+and the 320x240 Core touch model remain fit-required. Only touch builds of the
+existing narrow Stick panel classes allow shutter scrolling. The global overlap
+and runaway-scroll checks remain active; dedicated scenarios check clipped
+labels. The narrow Stick scenario
+asserts positive overflow plus both scroll endpoints, while the Core-specific
+scenario asserts `ui.overflow no`.
+
+The later Core Large touch guard exposed a separate wrapper-geometry issue. The
+root 2026-09-13 GDB trace measured a 316 px shutter page with 136/114/136 px
+content-sized cells, 106/84/106 px labels and 162 px cells; inherited horizontal
+card padding made the third cell wrap, producing a 344 px row and a false fit
+failure. Candidate `f76a374e` removes only the Core touch wrappers' left/right
+padding, retaining the 64 px controls, selected font and vertical spacing.
+At this historical candidate stage, runtime validation was pending; the strict
+Core `ui.overflow no` guard remained required and is covered above.
+
+### Diagnostic overlap clipping correction
+
+The overlap walkers are diagnostic metrics, not a second layout engine. Each
+measured leaf is passed through LVGL's native `lv_obj_area_is_visible()` before
+the indicator or sibling-area comparison. That preserves LVGL's ancestor
+clipping, scroll-row bounds, `LV_OBJ_FLAG_OVERFLOW_VISIBLE` extension and
+transforms without changing production geometry. `simDrawnArea()` and the raw
+area used by `ui.cut_labels` stay unchanged because the cut-label check must
+still inspect a label against its immediate parent.
+
+The root 2026-09-13 GDB trace measured the failing Bulb roller at x=50..74,
+its horizontal scroll-row parent at x=2..51, the page at x=2..77, and the
+legend at x=56..79. The renderer therefore clips the roller before it can
+reach the legend; the old metric only clamped to the page and reported a
+false positive. The existing physical 80x160 clearance scenarios remain the
+runtime regression and must pass after integration. No new geometry framework
+or runtime pass is claimed by this diagnostic-only correction.
+
+### Smoke-flow navigation correction
+
+The shared `sim/scripts/smoke.txt` formerly used `key left` injections to move
+from the main menu through scan, connection, and shutter. Headless key
+injection does not drive LVGL menu activation, so those steps did not prove
+the intended pages. The candidate now seeds FauxNY and a saved camera, uses
+`action nav scan`, runs the real `action connect` flow behind
+`assert-eventually-virtual 60000 ui.connected yes`, and enters the shutter with
+`action blind`, asserting each page before capture. This keeps the docs-capture
+boot smoke and the scheduler fail-fast positive control on a bounded,
+deterministic path; parser and environment callers continue to use the same
+fixture. `action nav scan` proves navigation to the scan page only; it is not
+discovery, pairing, or radio hardware proof.
+
+Using binaries built from `daf7e870`, root validated the corrected smoke script
+from `f1057854` in six cells (three modeled boards times touch and non-touch),
+each bounded at 10 seconds. Both-layout fail-fast
+wrappers passed with all four negative fixtures, and invalid CLI handling
+passed. Evidence is in `~/b/pr273-f105-{smoke-80-0,smoke-80-1,smoke-s3-0,smoke-s3-1,smoke-core-0,smoke-core-1,failfast-0,failfast-1,invalid}.log`.
+Restart/lifecycle validation passed earlier. The integrated master-165
+composite has not been rerun; gallery regeneration, 13 clean firmware
+environments, and physical-hardware gates remain outstanding.
+
+### Shared setting-row label width correction
+
+Commit `702da248fd9ec98353260dd69bde2a228619cc32` updates the shared
+`addSettingItem()` helper. Its row-wrap container now gives the setting name an
+explicit 100% label width while retaining `LV_LABEL_LONG_WRAP` and leaving the
+switch as the following item. Every name occupies its own row above the switch,
+including on wider panels, instead of being squeezed by flex sizing. The first
+natural/max-width candidate (`1e` in the review notes) still cut names such as
+`Show Title`, so it is not the accepted shape.
+
+At canonical source `702da248fd9ec98353260dd69bde2a228619cc32`, root's test
+commit `118ef0ec9` passed all 10 strict Display cases (three panels at three
+text sizes plus the StickS3 physical-button walk) and 12 page-matrix and
+overflow-sweep cases (three panels in physical and touch layouts). The S3
+Normal Display-Bottom screenshot showed the complete `Show Title` label. These
+are focused simulator results, not full validation: full suites, firmware,
+gallery and physical checks remain pending. The user's StickS3 remains the
+minimal `ca` watchdog-explicitly-off reproduction and is not evidence that this
+shared label correction is physically fixed there.
+
+Root restored the old S3 flex-grow label behavior as a negative control on
+source `118ef0ec9`. The retained `display-layout-normal.txt` failed with
+`ui.cut_labels expected '0' got '1'`, then passed after source and binary
+restoration. Logs: `~/b/setting-label-negative-normal-0913.log` and
+`~/b/setting-label-restored-normal-0913.log`. The integrated Off/hint/layout
+composite still needs its own full validation; these results belong to the
+focused label-fix source, not a later merge merely sharing the fix.
+
+### Focus-outline regression proof
+
+The content-only overlap query missed the reported selection outline. In a
+StickS3 Normal trace, Brightness occupied y=55..72 and the slider body y=73..85.
+The themed 3 px outline and 2 px padding extended into the adjacent labels.
+`ui.label_overlaps` remained zero. The separate `ui.focus_overlaps` check uses
+conservative expanded bounds, excluding the focused control's own descendants
+and ancestors. It does not claim exact knob, rounded-corner or shadow pixels.
+
+All 21 existing Display content-overlap checkpoints now also check focus
+clearance, including each physical-button sample and the scroll endpoints.
+Root ran the retained Normal scenario with only the old zero row gap restored:
+`ui.focus_overlaps expected '0' got '2'`, exit 1, while `ui.label_overlaps` was
+zero. The corrected 8 px gap at `b25c1f69f` passes Small, Normal, Large and the
+complete StickS3 button walk. Logs are `~/b/ui-outline-negative-normal-0913.log`
+and `~/b/ui-outline-positive-s3-*-0913.log`. Source was restored and the positive
+binary rebuilt after the negative control. Other panel builds, final gallery,
+the full successor matrix and physical validation remain separate gates.
+
+Earlier integration checks passed 120 host tests, 193 Python tests, all three
+boards' eight 600-step fuzz seeds and strict seed-2 replay, and 298 physical-layout
+scenarios. Those precede the focused-outline successor and are not a substitute
+for rerunning its UI gates. The Off-mode test setup now uses the existing
+Features switch action instead of an unsupported `preset_picker` seed.

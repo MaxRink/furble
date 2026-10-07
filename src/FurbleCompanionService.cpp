@@ -689,6 +689,7 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
     case Settings::BATT_STYLE:
     case Settings::SCAN_MODE:
     case Settings::TEXT_SIZE:
+    case Settings::LEGEND:
     case Settings::GPS_HOLD:
     case Settings::IMU_WAKE:
     case Settings::HW_MOTION:
@@ -789,6 +790,7 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
     case Settings::BATT_STYLE:
     case Settings::SCAN_MODE:
     case Settings::TEXT_SIZE:
+    case Settings::LEGEND:
     case Settings::GPS_HOLD:
     case Settings::IMU_WAKE:
     case Settings::HW_MOTION:

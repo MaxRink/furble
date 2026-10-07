@@ -13,6 +13,10 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   wait, and the S3 watchdog shutdown stay together.
   An empty connect target set returns idle, never active. A concurrent cancel
   still takes precedence and returns disconnecting.
+- The simulator UI loop calls its post-`lv_task_handler` hook only after the
+  real production UI handler returns. Keep this hook observational: it may
+  advance simulator settle bookkeeping, but must not move restart ownership or
+  restore UI, Control, LVGL, or task state across a process reboot.
 - Adaptive Bluetooth power sampling stays in the control task and uses the
   weakest connected camera because NimBLE connection power is global. NVS
   reads, RSSI reads and radio calls run with the Control mutex released,
@@ -66,6 +70,17 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   unset so pads hold through light sleep. Vibration is I2C, whose divider is
   recomputed per transaction. The output selection is frozen at boot (it
   decides `cfg.internal_spk`), only the event mask and volume reload live.
+- The touch Remote shutter page keeps its 64 px controls intact. Measure the
+  page content width through native flex row wrapping so the full-size
+  content-sized controls stay in one row when they fit and wrap into scrolling
+  rows when they do not.
+  On the 320x240 Core touch model at Large, the root 2026-09-13 GDB trace
+  measured a 316 px page, 136/114/136 px content-sized cells, 106/84/106 px
+  labels and 162 px cells; the inherited horizontal wrapper padding made the
+  third cell wrap and produced a 344 px row. Candidate `f76a374e` removes only
+  that wrapper's left/right padding under `FURBLE_M5COREX`, preserving the
+  64 px controls, selected font and vertical spacing. Runtime validation is
+  pending; do not relax the Core fit assertion or shrink the controls/font.
 - `FurbleGPS` demultiplexes NMEA and CASIC binary frames. It sends at most one
   acknowledged configuration command at a time and keeps the fallback path.
   Phase 2 adds `GPS_BAUD` Auto with the `Casic::Autobaud` ladder and a
@@ -109,13 +124,73 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
 - `FurbleWiFi`: station lifecycle, remembered access point state and NTP.
   Never fall back to a WiFi scan while a camera is active.
 - `FurbleUI*`: LVGL UI. Respect the changed-check rule for periodic setters.
-  Camera list rows wrap (`LV_LABEL_LONG_WRAP`); only icon menu rows scroll. A
-  circular scroll on a row wider than the panel animates forever and
-  invalidates the row on every frame, which `ui.row_scrolling` and
-  `ui.invalidate_count` measure. A wrapped row is taller and fills its width, so
-  it reaches the indicators the Stick boards float over the page: any full width
-  row must keep `UI::floatingIndicatorReserve()` clear on the right, and
-  `ui.indicator_clearance` is the check.
+  LVGL 9.4 retains an encoder input device's `last_pressed` object when that
+  object is deleted. Only when switching a persistent physical-button device
+  from `LV_INDEV_TYPE_BUTTON` to `LV_INDEV_TYPE_ENCODER`, reset it through the
+  public pointer input path, then restore the encoder type. This clears the retained object without using
+  private LVGL fields. Keep the reset under the UI mutex and do not treat it as
+  a replacement for releasing held inputs.
+ Menu rows keep their icons and the selected font. Their labels wrap inside
+  the row and the page scrolls vertically when the rows no longer fit. Do not
+  use circular scrolling for an eager-built menu row: LVGL keeps its animation
+  running while the page is hidden and invalidates it every frame. Camera names
+  and spinner summaries also explicitly wrap. `ui.row_scrolling` and
+  `ui.invalidate_count` measure this redraw trap. A wrapped row is taller and
+  fills its width; it
+  used to reach the indicators the Stick boards floated over the page. Where
+  the legends sit is the `LEGEND` setting now: in the default Buttons placement
+  the Right one is drawn over the page and `reserveLegendColumns()` gives every
+  potentially scrolling row a stable right boundary when the page loads. In
+  Bottom placement all three are in the navigation band and the reserve is
+  zero. `LEGEND_OFF` uses the Buttons geometry and reservation but makes the
+  indicator surfaces transparent; the LVGL button objects and physical input
+  points remain live. Do not relayout rows from a scroll callback.
+  The width sample must follow the final 24x24 indicator sizing and a settled
+  layout; the 2026-09-13 host-GDB trace found the pre-fix `m_LegendWidth` was
+  26 px while the final Right box was 24 px (`x1=111,y1=173,x2=134,y2=196`).
+  Commit `8aa65dfd90a108bb92e59977173d718024fc2128` records that narrow
+  measurement-order correction. It is a two-pixel reserve correction, not a
+  claim that every Large-font label becomes single-line.
+  `ui.indicator_clearance` is still the check, and it has to hold in both
+  placements.
+  The simulator overlap metrics apply LVGL's native `lv_obj_area_is_visible`
+  to each measured leaf before comparing it with the viewport or indicators.
+  This is diagnostic clipping only: `simDrawnArea()` and the raw drawn-area
+  path used by `ui.cut_labels` remain unchanged. The 2026-09-13 GDB trace
+  measured a Bulb roller at x=50..74 while its horizontal scroll-row parent
+  ended at x=51 and the legend began at x=56, proving the prior overlap was a
+  clipped-child false positive. Keep the existing physical 80x160 clearance
+  scenario as the runtime regression; do not add a second geometry framework.
+  The Display settings page reserves an 8 px row gap for the themed 3 px
+  focus outline plus 2 px outline padding; raw widget bounds do not include
+  that decoration. The simulator's separate `ui.focus_overlaps` query measures
+  conservative expanded bounds against unrelated content, not knob/shadow pixels.
+  The Display settings page uses content-sized rows on all panel/layout
+  variants; keep the three-panel touch matrix as the gate for any geometry
+  claim.
+  The Sensors Restart button likewise needs an explicit parent width before its
+  percentage-sized label; otherwise LVGL can converge on a zero-width
+  parent/child cycle. Keep the strict touch fit checks until runtime validation
+  confirms the measured fix.
+  The Bulb Start button follows the same rule: set its parent width before a
+  percentage-sized Start label. Keep compact-fit and clipped-value assertions
+  unchanged while validating all panel variants.
+  `addSettingItem()` uses a full-width wrapping label in its row-wrap
+  container. Do not restore natural/max-only width or flex-grow: a switch can
+  squeeze a long setting name into a clipped line instead of letting the name
+  wrap above the switch.
+  Plus/S3 spin rows keep their vertical padding but spend no horizontal pixels:
+  at Large text `999 mins` needs the full 103 px narrowed row width. Four pixels
+  of horizontal padding make that complete value wrap and push the Bulb page
+  past its viewport.
+ Standalone buttons on pages with a reserved legend column must wrap their
+ labels inside the narrowed button and keep the text centered; natural-width
+ labels are clipped by the button's parent even when the label itself fits.
+  Simulator page identity maps use inferred-size arrays, never a hand-counted
+  element bound. Navigation action names may be aliases, so parity checks must
+ allow the documented action-to-page mapping rather than compare table sizes.
+ Page-level prose labels are not rows and must keep the page width; only
+  layout children that can pass through the floating legend are narrowed.
   Scan advertisements are copied by `Scan` and drained on this task before
   `CameraList` or LVGL is touched; keep scan start unlocked around controller
   calls so the watchdog and callback handoff remain responsive.

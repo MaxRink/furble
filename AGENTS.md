@@ -32,6 +32,10 @@ The built simulator preference ownership gate is
 fresh M5StickS3 binary.
 The host TSAN wrapper is fail-closed; see `CONTRIBUTING.md` for its exact
 completion marker and compiler-free contract command.
+UI fuzz validation covers both touch and physical-button layouts on all three
+panel binaries, using the same seeds and strict replay comparison.
+UI screenshot CI selects `FURBLE_SIM_NO_TOUCH=1` and checks page identity before
+every capture; its direct navigation routes do not certify physical input.
 Firmware line coverage is measured by `tools/coverage.py` and gated against
 `tests/coverage_floor.json`. Coverage instrumentation is opt-in in both build
 entry points (`-DFURBLE_COVERAGE=ON` for the host harness,

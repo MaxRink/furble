@@ -423,6 +423,41 @@ checkout in `~/b/prefs-ownership-build.log`,
 The lifecycle script is now wired into the existing `sim-e2e` S3 job with a
 two-minute step timeout; the next CI run remains pending.
 
+## Follow-up state: docs capture readiness, 2026-09-13
+
+The Connected screenshots previously used a fixed virtual-time sleep followed
+immediately by `capture`. A capture could therefore preserve the Connecting
+modal while the Control task was still in `STATE_CONNECTING`, and the later
+script steps could cancel that incomplete connection. All six capture scripts
+that produce a Connected frame now put `assert-eventually-virtual 60000 ui.connected yes`
+immediately before the capture. The query is the existing composite predicate:
+the Connected page is current, the progress box is hidden, and Control reports
+`STATE_ACTIVE`. The 60000 ms ceiling is a finite virtual-time wait that keeps
+the UI and connection tasks running, not an unbounded sleep or a claim that a
+connection will succeed. Remote captures also assert `ui.page shutter` after
+the blind-entry action.
+
+This gates the screenshot artifact only. It does not alter production
+connection behavior, and this handoff did not rerun the gallery build or any
+tests.
+
+## Fuzz restart checkpoint follow-up
+
+The simulator now carries only fuzz harness state across a real
+`Platform::restart()` re-exec. The checkpoint preserves the configured seed and
+budget identity, PRNG state, pending event metadata, recent history, findings,
+aggregate counters, and FuzzMachine phase/counters. UI, Control, LVGL, task, and
+application RAM are intentionally not restored. The driver owns PID-scoped
+checkpoint files, ownership markers, bounded reads, atomic publication,
+consumption, and cleanup. The fresh process gives the real UI one boot cycle
+before resuming the saved APPLY, SETTLE, CHECK, or ESCAPE phase.
+
+`sim/scripts/run-fuzz-restart.sh` is the pending execution gate. It must prove
+two exact seed-2/600-event boots, one exact 600-event aggregate summary,
+malformed and foreign checkpoint rejection with status 2 and unchanged bytes,
+and cleanup of the generated checkpoint. No execution result is claimed by
+this plan yet.
+
 ## Validation update: frozen scheduler merge
 
 On 2026-09-13, root validated the clean frozen commit
@@ -470,9 +505,25 @@ and hardware validation of this follow-up remain pending.
 
 The first PR306 CI host run failed `control-connect-camera-race` under GCC
 ThreadSanitizer. Its filtered output named the getter without identifying the
-raced memory; the published c4d31 wrapper now prints the complete report on
-that existing failure path while retaining its predicate and exit status.
+raced memory. The wrapper now prints the complete report on that existing
+failure path, retaining its predicate and exit status. Five local Clang probes
+each reported two other races, on target `m_Stopped` and Control `m_State`;
+the local passing wrapper therefore is not evidence of a race-free program.
+CI diagnosis and those production races remain unresolved at this checkpoint.
 
+## Restart validation update
+
+Root's exact runtime evidence now covers the restart harness and S3 matrix:
+`~/b/pr273-057-host-test.log` records the host restart regression,
+`~/b/pr273-c190-restart.log` records the real seed-2 re-exec, and
+`~/b/pr273-c190-fuzz-s3.log` records eight S3 seeds at 600 events plus replay.
+These are external validation artifacts; this checkout did not rerun them.
+
+Root's final formatting check found clang-format 21 violations in the new
+checkpoint and restart code. The publication successor applies formatting
+only to `driver.cpp`, `fuzz.cpp`, and `fuzz_machine.cpp`. The three-panel
+build and runtime matrix for the combined master/restart/legend source remain
+pending; the earlier S3 results above are not substitutes for that matrix.
 Root validation of the atomic follow-up at `7648c251c71a4587f09065e84767b43cc1bdab4c`
 then passed the focused host build and tests, the full host suite passed 119/119
 in 187.12 s, and the raw Clang TSAN probe exited 0 with no warnings. Evidence

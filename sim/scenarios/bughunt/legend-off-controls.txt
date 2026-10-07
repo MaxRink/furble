@@ -1,0 +1,72 @@
+# Off keeps the physical button targets and Buttons layout reservation while
+# suppressing only the rendered indicator surfaces. The route actions below
+# exercise the same production controls after physical taps; the firmware
+# input path is never replaced by a hidden/deleted LVGL object.
+seed no_touch true
+seed legend 2
+seed fauxny true
+seed saved_camera true
+wait 300
+assert ui.nav_layout buttons
+assert setting.legend 2
+assert ui.legend_visible no
+
+action connect
+wait 3200
+assert ui.connected yes
+action page shutter
+wait 200
+assert ui.page shutter
+assert ui.control_mode shutter
+assert ui.legend_visible no
+
+# The physical lock gesture is a simultaneous held-focus + shutter press. The
+# deterministic `btn` seam intentionally completes one press/release before
+# the next command, so it cannot prove that compound gesture; that remains a
+# physical-board gate. The individual focus and shutter paths above are real.
+
+# BtnA is the real middle/select input on Stick boards: it must still fire the
+# shutter even though its rendered legend is transparent.
+assert camera.shutter_presses 0
+btn a
+wait 200
+assert-eventually-virtual 1000 camera.shutter_presses 1
+assert-eventually-virtual 1000 camera.shutter_releases 1
+
+# BtnB is the real right/focus input. Keep this individual physical focus path
+# live; simultaneous held-button gestures remain a separate hardware gate.
+assert camera.focus_presses 0
+btn b
+wait 200
+assert-eventually-virtual 1000 camera.focus_presses 1
+assert-eventually-virtual 1000 camera.focus_releases 1
+
+# The side button remains the production Back input while its legend is off.
+btn pwr hold
+wait 200
+assert ui.page connected
+assert ui.legend_visible no
+
+action nav settings
+wait 150
+action nav features
+wait 150
+action toggle preset_picker
+wait 150
+assert setting.preset_picker 1
+action nav display
+wait 150
+assert ui.page display
+assert ui.legend_visible no
+action nav bulb_duration
+wait 150
+assert ui.page bulb_duration
+assert ui.legend_visible no
+assert ui.bulb_ms 30000
+btn b
+wait 150
+assert ui.bulb_ms 40000
+back
+wait 100
+assert ui.legend_visible no
+exit

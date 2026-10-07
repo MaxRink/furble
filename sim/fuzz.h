@@ -2,6 +2,7 @@
 #define FURBLE_SIM_FUZZ_H
 
 #include <cstdint>
+#include <iosfwd>
 
 namespace Furble {
 class UI;
@@ -32,6 +33,14 @@ void fuzzTick(Furble::UI *ui);
 // Notify the fuzzer after the real UI task completes one lv_task_handler()
 // cycle. This is the only clock that advances the machine's settle budget.
 void fuzzCycleComplete(Furble::UI *ui);
+
+// The driver owns checkpoint file lifetime and the process re-exec boundary.
+// These stream hooks carry harness state only, never UI, Control, LVGL, or
+// task memory. They are valid at an event boundary after the event was applied.
+bool fuzzCheckpointEligible(void);
+bool fuzzWriteCheckpoint(std::ostream &output);
+bool fuzzReadCheckpoint(std::istream &input);
+void fuzzResumeAfterRestart(void);
 
 }  // namespace Furble::Sim
 

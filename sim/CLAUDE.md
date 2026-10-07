@@ -55,9 +55,10 @@ certify physical M5 configuration.
 ## Parity inventory and seam rules
 
 The simulator shares substantial production UI, GPS, settings, and power
-policy, but the connection path is currently a fake and the host scheduler is
-not yet equivalent to FreeRTOS. The following is the current seam inventory
-and target boundary (a new seam needs a contract test and an entry here):
+policy, but the connection transport and camera hardware remain mocked and the
+host scheduler is not yet equivalent to FreeRTOS. The following is the current
+seam inventory and target boundary (a new seam needs a contract test and an
+entry here):
 
 | Area | Shared production path | Narrow simulator seam and reason |
 | --- | --- | --- |
@@ -248,16 +249,15 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
 
 - The virtual clock makes scripted runs reproducible: two smoke runs produce
   byte-identical PNGs.
-- Fuzzer reproducibility is not total. Two runs of the same seed on the same
-  binary produce byte-identical `FUZZ EVENTS` and `FUZZ COVERAGE` lines, so the
-  event stream and the pages it reaches are deterministic, and `run-fuzz.sh`
-  now enforces that with a replay of one guarded seed. `Camera::m_Mutex`, the
-  one host mutex a connect holds for its whole attempt, is scheduler visible
-  since plans/173, so that source of drift is gone. The remaining host mutexes
-  in production code are held for microseconds and have not been measured to
-  move a fuzz run, but they are still invisible, so `observed_delta` and
-  `no_observed_delta` stay masked in the replay. Compare the fuzz report lines,
-  not the log.
+- Fuzzer reproducibility is not total. The strict replay gate requires matching
+  event streams and page counts, but repeated runs of the final UI candidate
+  have violated page-count equality with identical event streams. Keep these
+  failures visible; zero findings is not a repeatability pass. Remaining plain
+  host mutexes and asynchronous settlement are investigation targets, not a
+  proven explanation. The two observation counters remain the only existing
+  masks; do not also mask coverage counts to make a replay pass.
+- Fuzz CI exercises touch and physical-button layouts on all three panels.
+  The no-touch lane uses the same runner, seeds and strict replay contract.
 - Fix age is virtual too, so `gps.png` is byte-reproducible like every other
   capture. It used to be the one exception. TinyGPSPlus ages every reading
   against a global `millis()`, and its non-Arduino fallback read the host wall
@@ -298,6 +298,29 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   idempotent because `CameraList::add_index()` overwrites by name (see
   plans/156-restart-restore-seam.md for the seam limits).
   See `docs/sim.md` for every action value and query key.
+- Fuzz checkpoints contain harness state only: versioned seed/budget identity,
+  PRNG state, event counters, pending event metadata, recent history, findings,
+  and the FuzzMachine phase/counters. They never contain UI, Control, LVGL,
+  task, or application RAM. The driver owns PID-scoped file creation, ownership
+  markers, bounded reads, atomic publication, consumption, and cleanup.
+  Malformed or foreign files fail closed and remain caller-owned.
+  `sim/scripts/run-fuzz-restart.sh` is the focused seed-2 restart gate. Root
+  evidence records the c190 gate pass and all three 65e8 panel binaries passing
+  the pinned eight-seed 600-event sweep plus the strict seed-2 restart check.
+  The corrected f49 binary still needs its own retest before this behavior is
+  called current validation.
+- `btn` / `button` is a native input-device seam, not a focus shortcut. It
+  supplies coherent pressed and released samples through the production board
+  read callback and asks LVGL to read the device in its current encoder or
+  button mode. This retains the firmware wake interception, long-press helper
+  and shutter press/release path. A scripted hold advances virtual time past
+  the long-press thresholds and supplies one additional held sample; it is a
+  deterministic two-sample model, not a model of the hardware's repeat cadence.
+- `sim/scripts/ui-screenshots.txt` is a capture fixture, not a navigation test.
+  It must use canonical `action nav` routes, seed a saved camera before the
+  connect flow, and assert `ui.page` immediately before every capture. Key
+  injection is not a reliable headless menu activation path.
+  Screenshot CI explicitly selects `FURBLE_SIM_NO_TOUCH=1` for the StickS3.
 - Scripted runs honor a caller-provided `FURBLE_SIM_PREFS` path and never
   remove it. Runs without one receive a unique, valid zero-entry scratch store;
   only that exact generated path and its PID-specific temporary file are
@@ -456,8 +479,9 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   was set. Dismissal is asserted in the same scenarios, on touch and under
   `FURBLE_SIM_NO_TOUCH=1`, because the OK button has to be reachable from the
   physical buttons.
-- `ui.indicators_visible` counts the three physical navigation indicators that
-  are actually visible through LVGL. A connect modal hides them, and every
+- `ui.indicators_visible` counts the physical navigation objects not hidden by
+  LVGL, regardless of opacity. Use `ui.legend_visible` for rendered surfaces
+  when testing the Off setting. A connect modal hides the objects, and every
   teardown that returns to Main must restore a count of 3 on a `no_touch` run.
   `e2e/physical-indicators-cancel-restore.txt` covers Cancel during a slow
   FauxNY connect; `e2e/physical-indicators-failure-restore.txt` covers terminal
@@ -602,17 +626,16 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   cycles. `sim/fuzz_machine.{h,cpp}` owns the Apply/Settle/Check/Escape/Finish
   phases and raw-output rejection sampling, while the UI task reports each
   completed `lv_task_handler` cycle through `fuzzCycleComplete`. Same seed and
-  board reproduce a finding exactly. See plans/105-ui-fuzzing.md.
+  board reproduce a finding when the replay report lines match; unmasked host
+  timing details can still vary. See plans/105-ui-fuzzing.md.
 - `sim/scripts/run-fuzz.sh` runs the pinned seed set and fails on any finding;
   `FURBLE_FUZZ_XFAIL_SEEDS` pins tracked-but-unfixed bugs as expected-fail. It
-  is currently used for seed 3 on the 320x240 board only, which reports a layout
-  overflow on the intervalometer settings page that the large-text sweep does
-  not cover on that board (plan 161). That pin lives in the CI workflow, not in
-  the wrapper defaults, because the finding is host dependent: on some
-  toolchains the seed passes and the pin would XPASS. The bug itself is recorded
-  host independently by `sim/scenarios/bughunt/timer-page-large-text.txt`. Each
-  seed also runs under `timeout -k`, so a scheduler deadlock fails the job
-  instead of hanging it.
+  currently runs the repository's guarded seed list on all three panel
+  binaries. `FURBLE_FUZZ_XFAIL_SEEDS` is empty by default, so seed 3 is guarded
+  again. Its old 320x240 intervalometer layout finding remains uncovered by
+  the large-text sweep and is recorded independently by
+  `sim/scenarios/bughunt/timer-page-large-text.txt`. Each seed also runs under
+  `timeout -k`, so a scheduler deadlock fails the job instead of hanging it.
   The wrapper passes explicit `--seed` and `--fuzz-steps` values on every run;
   those CLI values take precedence over matching `FURBLE_FUZZ_SEED` and
   `FURBLE_FUZZ_STEPS` fallbacks. `--fuzz-verbose` also enables fuzzing when it
@@ -620,6 +643,11 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
 - `FURBLE_SIM_SANITIZE=address,undefined sh sim/build.sh` builds an instrumented
   binary for the deeper memory hunt. Off by default so the plain build and CI
   stay fast.
+- The fuzz compact-page fit rule keeps shutter fit-required on physical-button
+  builds and on the 320x240 Core touch model. It permits scrolling only for the
+  touch layout compiled for the existing narrow Stick panels. Global overlap
+  and runaway-scroll checks remain unconditional; the dedicated scenarios also
+  assert that labels are not clipped.
 
 ## Docs screenshots and sim capabilities
 
@@ -628,8 +656,22 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   each of the three themes (Default, Dark, Mono Furble) with every optional
   feature enabled. Output lands in `docs/img/<board>/<theme>/` plus the flat
   default and dark sets from `docs-screenshots.txt` / `docs-screenshots-dark.txt`.
+  Every modeled panel is captured in its physical no-touch layout; Core2 touch
+  behavior remains a supplemental scenario lane, not a Core Basic screenshot.
   It also captures a Text size gallery on the StickS3 Default theme, one set per
   size, under `docs/img/textsize/<size>/` via `docs-textsize.txt`.
+- Every script that captures a Connected frame gates the capture with
+  `assert-eventually-virtual 60000 ui.connected yes`. The query is a composite readiness
+  check for the Connected page, a hidden progress box, and
+  `Control::STATE_ACTIVE`; the 60000 ms virtual bound is finite and keeps the
+  UI task and connection work running while it waits. Remote captures also
+  assert `ui.page shutter` after the real blind-entry action.
+- `sim/scripts/smoke.txt` is shared by the docs boot capture, the scheduler
+  fail-fast positive control, and parser/environment harnesses. It seeds the
+  FauxNY and saved-camera peers, then uses `action nav scan`, `action connect`,
+  and `action blind` with page/readiness assertions. Keep this flow on the
+  deterministic action path: headless key injection does not drive LVGL menu
+  activation. Runtime validation of the current smoke-flow revision is pending.
 - `FURBLE_SIM_TEXTSIZE` picks the UI text size at launch the same way
   `FURBLE_SIM_THEME` picks the theme: the font is chosen once at UI construction
   from the TEXT_SIZE setting, so main.cpp seeds it before the UI exists. It
@@ -646,30 +688,101 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   without the rig so the shipped one-line header title renders.
   `FURBLE_SIM_CAPTURE_SPLASH=<png>` snapshots the boot splash before the LVGL UI
   starts.
+- The touch Remote shutter page retains full-size 64 px controls. On a panel
+  whose content width cannot hold three controls, native flex row wrapping
+  stacks them in content-sized rows and relies on page scrolling. The
+  `touch-remote-shutter-narrow.txt` scenario checks both direct page and blind
+  entry routes on every modeled panel; this is supplemental Core2 touch
+  behavior, not a claim that the physical-button boards have touch hardware.
+  The shared `page-matrix.txt` and `overflow-sweep.txt` therefore assert page
+  identity, complete labels and bounded top/bottom/top scrolling for shutter,
+  rather than a universal fit. `remote-control-mode.txt` and its Small/Large
+  variants keep the physical-button shutter fit-required on all three modeled
+  boards; `core-touch-remote-shutter-fit.txt` and its Small/Large variants keep
+  the 320x240 Core touch fit-required.
 - The SDL panel always attaches a mouse-driven touch device, so an unseeded run
-  renders the touch layout on every modeled board. None of the three modeled
-  boards has a touch panel: the Sticks and the Core Basic all ship the non-touch
-  layout, which reserves a 26 px navbar band at the bottom of the window
-  content. On the Sticks the band stays empty and the three indicators float
-  over the screen; on the Core they live inside the band. Only the Core2, which
-  `sim/build.sh` does not model, ships the touch layout. Every scenario except
-  the three below therefore measures a layout no modeled board has.
+  renders the touch layout on every modeled board. `FURBLE_SIM_NO_TOUCH=1` or a
+  `no_touch true` seed selects the physical-button layout. None of the three
+  modeled boards has a touch panel: the Sticks and Core Basic ship the
+  non-touch layout with a 26 px navbar and 24x24 px legend buttons. On Sticks,
+  Left and OK are bottom-edge indicators; default Buttons placement keeps Right
+  partway down the right edge and reserves its column in page rows, while Bottom
+  puts Right in the navbar.
+  The reserve protects page content, but Buttons placement intentionally draws
+  Right over the content area. Only the Core2, which `sim/build.sh` does not
+  model, ships the touch layout, so every unseeded scenario measures a layout
+  no modeled board has.
 - `bughunt/stick-notouch-layout-135.txt`, `bughunt/stick-notouch-layout-80.txt`
   and `bughunt/core-notouch-layout.txt` seed `no_touch true` and are each
   certified for exactly one board, so the existing certified bug-hunt steps run
   them with no new job. One file per board on purpose: the expectations are
   geometry, and a shared file would have to soften every line to the weakest
   board. Each starts with `assert ui.nav_layout buttons`, so a lost seed fails
-  loudly rather than passing against the wrong layout. See
-  `plans/165-sim-no-touch-layout.md`.
+  loudly rather than passing against the wrong layout. Every line in them is a
+  hard assert since plan 168 closed the gaps they recorded.
+  `sim/scripts/run-notouch.sh` runs the whole certified bug-hunt and end-to-end
+  set for one board in that layout and CI runs it on all three binaries. See
+  `plans/165-sim-no-touch-layout.md` and
+  `plans/168-notouch-layout-overflows.md`.
+- `bughunt/display-layout-{small,normal,large}.txt` explicitly seed text size
+  and physical-button layout on every panel. They require zero visible
+  label/control overlaps at the top, bottom and restored top. The separate
+  `display-layout-buttons-s3.txt` checks overlaps after each physical button
+  sample without claiming individual setting changes. All are hard failures
+  selected by the manifest; scroll extent is not a substitute for overlap.
+  Each checkpoint also requires zero clipped labels. The b4 Show Title
+  finding is covered by those assertions after the shared full-width setting
+  label correction in plan 168. Neither metric proves full hardware parity.
+- `bughunt/core-icon-grid.txt` guards its Home fit assertion with
+  `assert ui.nav_layout touch`: that is the touch/Core2 fit contract, while
+  `core-notouch-layout.txt` covers the physical Core Basic Home grid's
+  intentional scrolling with label and endpoint checks. The Large icon-grid
+  scenario prints rather than asserts Home fit and remains shared.
 - `ui.nav_layout` reports `touch` or `buttons`. `ui.indicator_clearance` reports
   `clear`, `overlap` or `n/a` for the current page, and `ui.indicator_overlaps`
   gives the count. Labels, images, rollers, switches, sliders, checkboxes and
   bars are measured; containers are not. Only the drawn text extent of a label
   counts, not its flex-stretched box, and areas are clamped to the page
-  viewport, which also puts the bottom-edge indicators structurally out of
-  reach: the query measures the indicators that float over content and reports
-  nothing about the bottom two.
+  viewport and LVGL's native visible-area helper clips measured leaves through
+  their ancestors. Bottom placement puts all three indicators in the reserved
+  band; default Buttons placement keeps Right over the content area and relies
+  on the reserved row column. These queries remain regression pins: they fail
+  the moment an indicator is anchored over content without that reservation.
+- `ui.label_overlaps` counts the pairs of visible labels on the current page
+  whose drawn text overlaps, which is the one layout defect no fit or scroll
+  query can see: a grid cell holding two entries still fits and is simply
+  unreadable. It shares the drawn-extent and viewport-clamp rules above. The
+  walk is page-scoped, `lv_menu_get_cur_main_page` and its subtree, so a widget
+  on the top layer, a message box or any other modal, is not in it and a page
+  showing one still reports 0; use a capture for those.
+- `ui.cut_labels` counts the visible labels on the current page that cannot draw
+  all of their own text. Wrapped labels are checked in both dimensions, and a
+  scrolling label is exempt only from the intrinsic-width test: it still counts
+  when its drawn box escapes its immediate parent. Floating widgets are
+  excluded. It is the teeth for the rule that a page honours the chosen text
+  size: a page may scroll, it may never cut a name.
+  Automatic menu rows keep their icon and wrap statically. Their page scrolls
+  vertically when needed; `ui.row_scrolling` must stay `no` on focused rows.
+  Physical no-touch scenarios assert readability and both scroll ends, while
+  explicitly touch-guarded companions retain the stricter supplemental fit.
+- `ui.focus_overlaps` measures conservative bounds around the focused widget's
+  body, outline, and outline padding (using current LVGL width/padding/opacity)
+  against unrelated visible content leaves on the current page. The focused widget's own descendants and
+  ancestors are excluded, so a button's label is not self-collision. This is
+  a conservative focus-decoration diagnostic; it does not certify every
+  slider knob or shadow pixel.
+- `ui.clipped_values` and `ui.min_name_chars` measure the spin rows, a menu
+  container whose only visible children are a name label and a value label. The
+  container class is part of that shape: the spirit level's readout row is a
+  plain object with two labels and is not a spin row. On the narrow panels the
+  name and value prefer one line, then wrap within the concrete row width so
+  both remain complete. `ui.clipped_values` must read 0 because a value that
+  loses a digit or its unit reads as a different setting; `ui.cut_names` must
+  also read 0, while `ui.min_name_chars` reports the narrowest visible name.
+  `ui.clipped_values` measures the value's box against the row's content box.
+  Measuring a content-sized label against its own width is a tautology and reads
+  0 however far it hangs out of the row; that mistake certified a layout that was
+  losing digits.
 - Scenario seams for the list pages: the `saved_camera` seed adds a saved but
   inactive camera so the Connect and Delete lists render and their buttons
   enable; `ui.row_text` reports the focused row's text with whitespace as
@@ -685,19 +798,33 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   reachability and layout. It walks the root, Connect/Scan/Delete lists, every
   settings and diagnostics route, optional Infrared/Feedback/Storage pages,
   connected-session pages, and the Bulb and intervalometer run pages. It
-  asserts `ui.page` identity for every route, asserts no overflow on compact
+  asserts `ui.page` identity for every route, asserts no overflow on fit-required
   pages, and drives intentional-scroll pages to `scroll bottom` and back to
-  `scroll top`, asserting both extents are zero. Run it with
+  `scroll top`, asserting both extents are zero. Narrow Stick touch shutter is
+  intentionally in the latter category; the dedicated physical and Core-touch
+  shutter lanes carry its strict fit assertions. Run it with
   `FURBLE_SIM_IR=1 FURBLE_SIM_FEEDBACK=1 FURBLE_SIM_SD=1` against all three
   panel builds. The CI matrix uses the same script for 80x160 M5StickC,
   135x240 M5StickS3, and 320x240 M5Stack Core, so a page that only fails on a
   particular geometry cannot hide behind a single reference panel.
+- Physical 80x160 Sensors is one of those intentional-scroll pages: the measured
+  fixture leaves 7 px to scroll. Its shared scenarios assert complete labels
+  at the top, bottom and restored top. `touch-sensors-default-fit` and
+  `touch-sensors-small-fit` retain the stricter no-overflow contract in
+  explicitly touch-guarded supplemental lanes.
+- `bughunt/stickc-connected-large-imu.txt` covers the persisted-Large Connected
+  page on M5StickC with IMU enabled. It asserts the gated Level entry, complete
+  labels, no overlap, and indicator clearance before and after both scroll
+  endpoints. Keep it certified when changing the shared legend reservation or
+  text-size clamp.
 - `sim/scenarios/bughunt/overflow-sweep.txt` is the complementary layout audit.
   It visits every reachable root, settings, diagnostics, capability, and
-  connected-session page, asserts fit for compact pages, and prints the
-  overflow state for intentional-scroll pages. CI runs it on all three panel
-  classes with optional capabilities enabled. Keep route identity and scroll
-  endpoint assertions in `page-matrix.txt` rather than duplicating them here.
+  connected-session page, asserts fit for fit-required pages, and prints the
+  overflow state for intentional-scroll pages. For shutter it also checks
+  labels/cuts and both scroll endpoints, matching the narrow Stick touch
+  contract. CI runs it on all three panel classes with optional capabilities
+  enabled. Keep route identity and scroll endpoint assertions in
+  `page-matrix.txt` rather than duplicating them elsewhere.
 - All simulator scenarios are catalogued in `sim/scenarios/manifest.json`.
   Every entry declares its suite owner, board matrix, capabilities, and
   expected exit status. Obsolete scenarios must be non-certified with a reason.
@@ -816,3 +943,21 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   `Platform::tick()` on the device and a different one here, so a check that
   compares a parser age against a `Platform::tick()` value passes in the
   simulator for the wrong reason. Compare reported values, not ages.
+
+The historical 3b85 touch geometry trace measured the Sensors Restart row at zero content
+width on 80x160, 135x240, and 320x240. Its percentage-sized label participated
+in a parent/child shrink-wrap cycle. The production fix gives the button an
+explicit page width before creating that label. Strict touch fit assertions
+remain required, with `ui.cut_labels` guarding the direct symptom. At that
+historical stage runtime validation remained pending; the current validation
+snapshot is recorded in plan 168.
+
+Binaries built from `daf7e870` with the corrected `f1057854` smoke script passed
+six cells (three boards times non-touch and touch), each bounded at 10 seconds,
+plus both-layout fail-fast
+wrappers including four negative fixtures and the invalid-CLI check. Evidence
+is in `~/b/pr273-f105-{smoke-80-0,smoke-80-1,smoke-s3-0,smoke-s3-1,smoke-core-0,smoke-core-1,failfast-0,failfast-1,invalid}.log`.
+The smoke `scan` action is navigation only, not discovery, pairing, or radio
+proof. Restart/lifecycle validation passed earlier; the integrated
+master-165 composite has not been rerun. Gallery, 13 clean firmware builds,
+and physical hardware remain open.

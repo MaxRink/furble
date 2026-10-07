@@ -55,8 +55,9 @@ SEED_TIMEOUT=${FURBLE_FUZZ_SEED_TIMEOUT:-600}
 # on all 215 log lines apart from the two masked counters. Seed 1 is the seed
 # that does not, differing by one connect attempt between runs, so defaulting to
 # it would replay the least reproducible seed available. Both seeds satisfy this
-# check today, which compares only the fuzz report lines, but the default should
-# be the seed with headroom, so that tightening the comparison later does not
+# check today, which validates each run's complete summary before comparing the
+# fuzz report lines, but the default should be the seed with headroom, so that
+# tightening the comparison later does not
 # start from the known-bad case.
 REPEAT_SEED=${FURBLE_FUZZ_REPEAT_SEED-2}
 
@@ -194,6 +195,7 @@ if [ -n "$REPEAT_SEED" ]; then
   echo "=== determinism replay seed $REPEAT_SEED ($STEPS steps) ==="
   first=$(mktemp "${TMPDIR:-/tmp}/furble-fuzz-a.XXXXXX") || exit 1
   second=$(mktemp "${TMPDIR:-/tmp}/furble-fuzz-b.XXXXXX") || exit 1
+  replay_status=0
   for output in "$first" "$second"; do
     "$TIMEOUT" -k 10 "$SEED_TIMEOUT" "$BIN" --seed "$REPEAT_SEED" \
       --fuzz-steps "$STEPS" >"$output" 2>&1
@@ -201,13 +203,20 @@ if [ -n "$REPEAT_SEED" ]; then
     if [ "$rc" -ne 0 ]; then
       echo "determinism replay seed $REPEAT_SEED exited $rc" >&2
       status=1
+      replay_status=1
+    fi
+    if ! validate_summary "$output" "$REPEAT_SEED" "$STEPS"; then
+      status=1
+      replay_status=1
     fi
     grep '^FUZZ ' "$output" \
       | sed -e 's/observed_delta=[0-9]*/observed_delta=X/g' \
         -e 's/no_observed_delta=[0-9]*/no_observed_delta=X/g' >"$output.fuzz"
   done
-  if diff -u "$first.fuzz" "$second.fuzz" >/dev/null 2>&1; then
+  if [ "$replay_status" -eq 0 ] && diff -u "$first.fuzz" "$second.fuzz" >/dev/null 2>&1; then
     echo "PASS determinism replay seed $REPEAT_SEED"
+  elif [ "$replay_status" -ne 0 ]; then
+    echo "FAIL determinism replay seed $REPEAT_SEED (invalid or incomplete summary)"
   else
     echo "FAIL determinism replay seed $REPEAT_SEED (fuzz report lines diverged)"
     diff -u "$first.fuzz" "$second.fuzz" | head -40

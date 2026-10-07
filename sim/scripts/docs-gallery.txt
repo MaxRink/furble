@@ -68,11 +68,13 @@ home
 wait 300
 action connect
 wait 1800
+assert-eventually-virtual 60000 ui.connected yes
 capture connected
 print ui.page
 
 action blind
 wait 500
+assert ui.page shutter
 capture remote
 print ui.page
 

@@ -422,7 +422,16 @@ class UI {
             m_PresetSupported {presetSupported} {};
 
       static constexpr const char *m_SpinDigitRoller = "0\n1\n2\n3\n4\n5\n6\n7\n8\n9";
+      // The roller's options only. The value label keeps the full words, so a
+      // bulb row still reads "Duration 30 secs"; this is the picker beside
+      // three digit rollers, where four columns of four characters do not fit
+      // a 135 px or 80 px panel at any text size and the unit is unambiguous
+      // from one or three.
+#if defined(FURBLE_M5STICKC) || defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
+      static constexpr const char *m_SpinUnitsRoller = "ms\ns\nmin";
+#else
       static constexpr const char *m_SpinUnitsRoller = "msec\nsecs\nmins";
+#endif
       static constexpr std::array<uint32_t, 31> m_ExposurePresetMilliseconds = {
           1000,   1300,   1600,   2000,   2500,   3200,   4000,   5000,   6000,    8000,   10000,
           13000,  15000,  20000,  25000,  30000,  40000,  50000,  60000,  80000,   100000, 125000,
@@ -604,13 +613,14 @@ class UI {
 
   // connected->bulb
   static constexpr const char *m_BulbDurationStr = "Duration";
-  static constexpr const char *m_BulbModeHintStr = "Camera must be in B (bulb) mode";
+  static constexpr const char *m_BulbModeHintStr = "Set camera to B";
 
   // settings
   static constexpr const char *m_DisplayStr = "Display";
   static constexpr const char *m_DisplayOffOptions = "Dim\nOff\nOff, remote on";
   static constexpr const char *m_DisplayOffTouchOptions = "Dim\nOff";
   static constexpr const char *m_TextSizeStr = "Text size";
+  static constexpr const char *m_LegendStr = "Legend";
   static constexpr const char *m_FeaturesStr = "Features";
   static constexpr const char *m_SensorsStr = "Sensors";
   static constexpr const char *m_GesturesStr = "Gestures";
@@ -722,6 +732,12 @@ class UI {
 
   static constexpr int32_t ICON_HEADER_SIZE = 24;
 
+  // Measured width of the floating right legend, or 0 where there is none.
+  static int32_t m_LegendWidth;
+
+  // Breathing room between a row and the legend beside it.
+  static constexpr int32_t LEGEND_GAP = 2;
+
   LV_ATTRIBUTE_MEM_ALIGN void *m_Buffer1;
   LV_ATTRIBUTE_MEM_ALIGN void *m_Buffer2;
 
@@ -771,13 +787,28 @@ class UI {
 
   const std::vector<int32_t> m_GridLayoutColDsc = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1),
                                                    LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
-  const std::vector<int32_t> m_GridLayoutRowDsc = {LV_GRID_FR(1), LV_GRID_FR(1),
+  // A wrapped name plus its icon defines each Home row's height. The physical
+  // layout scrolls rather than clipping that name into an equal-height slice.
+  const std::vector<int32_t> m_GridLayoutRowDsc = {LV_GRID_CONTENT, LV_GRID_CONTENT,
                                                    LV_GRID_TEMPLATE_LAST};
 
   // the settings page holds more entries than the main menu, give it its own
   // rows so the main menu keeps its layout
-  const std::vector<int32_t> m_SettingsGridLayoutRowDsc = {LV_GRID_FR(1), LV_GRID_FR(1),
-                                                           LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
+  //
+  // Four rows, not three. The page carries fourteen entries and three rows of
+  // four cells hold twelve, so two pairs shared a cell and drew through each
+  // other: Sensors with Intervalometer and IR settings with Feedback. One of
+  // each pair could not be opened.
+  //
+  // Sized to their content, not to equal slices of the page. Equal slices make
+  // the cell shorter as rows are added and at the larger text sizes the name
+  // under the icon was clipped away below it. A content row is as tall as the
+  // icon plus its name at whatever size is chosen, and the page scrolls when
+  // four of them no longer fit. It never squeezes.
+  const std::vector<int32_t> m_SettingsGridLayoutRowDscEven = {
+      LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
+  const std::vector<int32_t> m_SettingsGridLayoutRowDscContent = {
+      LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_TEMPLATE_LAST};
 
   GPS &m_GPS;
 
@@ -803,6 +834,7 @@ class UI {
   lv_obj_t *m_OK;
   lv_obj_t *m_Right;
   lv_obj_t *m_ShutterLockIcon;
+  lv_obj_t *m_ShutterLegendLine = nullptr;
   // Non-blocking reconnect banner overlaid on the Remote shutter page: a red
   // Bluetooth icon plus "Reconnecting" (or "Reconnecting (i/n)") text. The
   // header status row also carries the reconnecting icon, but the full-screen
@@ -865,6 +897,8 @@ class UI {
   std::thread::id m_SimUiThread;
   std::atomic<bool> m_SimLastActionOnUi {false};
   sim_action_result_t m_SimActionResult = sim_action_result_t::INVALID;
+  lv_indev_t *m_SimButtonIndev = nullptr;
+  bool m_SimButtonPressed = false;
 
   bool simRunOnUi(std::function<void()> operation);
   void serviceSimRequests(void);
@@ -872,13 +906,23 @@ class UI {
   bool simulatorHomeOnUi(void);
   bool simulatorBackOnUi(void);
   bool simPressButtonOnUi(const char *name, bool hold);
+  bool simReadButton(lv_indev_t *indev, bool &pressed, bool &released) const;
 
   /**
    * Count the visible labels and icons on the current page that intersect a
    * floating navigation indicator. Returns zero on a touch build, which has no
    * indicators.
    */
+  typedef struct {
+    uint32_t clippedValues;
+    uint32_t minNameChars;
+    uint32_t cutNames;
+  } spin_rows_t;
+  spin_rows_t measureSpinRows(void);
   uint32_t countIndicatorOverlaps(void);
+  uint32_t countLabelOverlaps(void);
+  uint32_t countFocusOverlaps(void);
+  uint32_t countCutLabels(void);
 #endif
   uint32_t m_InactivityTimeout;
   uint8_t m_DisplayOffMode = 0;
@@ -995,6 +1039,7 @@ class UI {
 
   /** Pixels to keep clear on the right of a full width menu row. */
   static int32_t floatingIndicatorReserve(void);
+  static void reserveLegendColumns(lv_obj_t *page);
 
   /** Add a menu item. */
   static lv_obj_t *addMenuItem(const menu_t &menu,
@@ -1002,7 +1047,8 @@ class UI {
                                const char *text,
                                bool checkbox = false,
                                const int32_t col_pos = 0,
-                               const int32_t row_pos = 0);
+                               const int32_t row_pos = 0,
+                               bool wrapText = false);
 
   /** Add a menu switch item. */
   lv_obj_t *addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_t setting);
@@ -1115,6 +1161,11 @@ class UI {
   void addDisplayMenu(const menu_t &parent);
 
   void addTextSizeMenu(const menu_t &parent);
+  void addLegendMenu(const menu_t &parent);
+  static bool legendSelectable(void);
+  static bool legendVisible(void);
+  static uint8_t legendPlacement(void);
+  void applyLegendVisibility(void);
 
   /** Add the 'Power' menu entry. */
   void addPowerMenu(const menu_t &parent);

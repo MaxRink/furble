@@ -2,6 +2,7 @@
 #define FURBLE_SIM_FUZZ_MACHINE_H
 
 #include <cstdint>
+#include <iosfwd>
 #include <random>
 
 namespace Furble::Sim {
@@ -19,6 +20,21 @@ enum class FuzzPhase {
 // settle budget counts completed LVGL cycles rather than driverTick calls.
 class FuzzMachine {
  public:
+  struct Checkpoint {
+    uint32_t phase;
+    uint32_t settleNext;
+    uint32_t maxSteps;
+    uint32_t escapeCadence;
+    uint32_t stepCount;
+    uint32_t settleRemaining;
+    uint32_t attempted;
+    uint32_t observedDelta;
+    uint32_t noObservedDelta;
+    uint32_t settled;
+    uint32_t timerStopChecks;
+    bool finishing;
+  };
+
   explicit FuzzMachine(uint32_t maxSteps, uint32_t escapeCadence = 40);
 
   FuzzPhase phase() const;
@@ -50,6 +66,10 @@ class FuzzMachine {
   void escapeChecked(bool reachedMain);
 
   bool finishing() const;
+
+  Checkpoint checkpoint() const;
+  bool restore(const Checkpoint &checkpoint);
+  void resumeAfterRestart();
 
  private:
   void settleThen(FuzzPhase next, uint32_t settleCycles);
