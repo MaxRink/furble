@@ -156,7 +156,7 @@ bool FuzzMachine::restore(const Checkpoint &checkpoint) {
       attempted_ == stepCount_ && phase_ == FuzzPhase::SETTLE && settleNext_ == FuzzPhase::ESCAPE;
   const uint64_t observedTotal = static_cast<uint64_t>(observedDelta_) + noObservedDelta_;
   const bool phaseValid =
-      (phase_ == FuzzPhase::SETTLE && settleRemaining_ > 0 && settleRemaining_ <= 6
+      (phase_ == FuzzPhase::SETTLE && settleRemaining_ > 0 && settleRemaining_ <= 10
        && ((pendingEvent && settleNext_ == FuzzPhase::CHECK) || escapeSettle))
       || (phase_ == FuzzPhase::CHECK && pendingEvent && settleRemaining_ == 0)
       || (phase_ != FuzzPhase::SETTLE && phase_ != FuzzPhase::CHECK);

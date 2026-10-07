@@ -625,9 +625,14 @@ void fuzzTick(UI *ui) {
       recordEvent(pendingDescription);
       eventCounts[pendingDescription]++;
       checkpointEligible = true;
-      // The post-handler hook counts the current LVGL cycle and the next
-      // settle cycles before Check reads any state.
-      machine->eventApplied(2 + pick(5));
+      // Let the UI and its scheduler-visible workers finish a complete
+      // handoff before checking the resulting page. Two cycles were enough
+      // for most events but allowed a host-thread wakeup to land one cycle
+      // late, which made page coverage depend on wall-clock scheduling. Keep
+      // the randomized tail so the fuzzer still exercises different settling
+      // windows, but make the minimum deterministic and long enough for the
+      // slowest production path.
+      machine->eventApplied(6 + pick(5));
       return;
 
     case FuzzPhase::SETTLE:
