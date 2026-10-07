@@ -70,7 +70,7 @@ constexpr SettingSchema SETTING_SCHEMAS[] = {
     {59,                         ValueType::STRING, 0,  MAX_MQTT_FIELD_BYTES        },
     {60,                         ValueType::STRING, 0,  MAX_MQTT_FIELD_BYTES        },
     {61,                         ValueType::BOOL,   1,  1                           },
-    // Legend placement: 0 (Buttons) or 1 (Bottom).
+    // Legend placement: 0 (Buttons), 1 (Bottom), or 2 (Off).
     {65,                         ValueType::U8,     1,  1                           },
     {66,                         ValueType::BOOL,   1,  1                           },
     {67,                         ValueType::U8,     1,  1                           },

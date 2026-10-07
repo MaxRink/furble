@@ -2,7 +2,7 @@
 
 This is a screen by screen tour of the furble interface. Every screenshot is a
 real render captured from the original PR273 SDL simulator work over a modeled
-M5StickS3 (135x240) panel. The preserved images were not regenerated after its
+M5StickS3 (135x240) panel. The preserved images were regenerated after its
 later master integration. Where a page depends on hardware the simulator does
 not model, the page is described in words and the reason is noted.
 

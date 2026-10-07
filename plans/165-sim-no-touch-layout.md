@@ -254,8 +254,8 @@ deliberately unchanged; that is the hardware-verified follow-up.
    [168](168-notouch-layout-overflows.md).
 2. Fix the 80x160 indicator collisions, probably by reserving right padding on
    the Stick content area, then promote the remaining `xassert` lines. Done in
-   168, by a different route: the Right indicator moved into the navigation band
-   the layout already reserves, so no content area had to give up width.
+   168, by a placement-aware route: Buttons keeps the Right indicator floating
+   with a reserved column, while Bottom moves it into the navigation band.
 3. Add the `FURBLE_SIM_NO_TOUCH=1` fuzz leg, which becomes green once 1 lands.
    168 added the scenario leg, `sim/scripts/run-notouch.sh` on all three
    binaries. The fuzz leg is still open.

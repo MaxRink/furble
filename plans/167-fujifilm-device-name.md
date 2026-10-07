@@ -194,9 +194,10 @@ Cameras page rows reserved the right indicator's width to keep it clear. The
 Cameras page needed it too: its row is the composed name plus a status word,
 which wraps for the same reason.
 
-That reservation is gone. Plan 168 moved the Right indicator into the navigation
-band the layout already reserves, so no indicator is drawn over page content on
-any board and a full width row has nothing to keep clear. The rows still wrap,
+That reservation is placement-aware. Plan 168 keeps the Right indicator floating
+with a reserved column for Buttons placement and moves it into the navigation
+band for Bottom placement, so no indicator is drawn over page content on any
+board and a full width row has nothing to keep clear. The rows still wrap,
 and all three panels still assert `ui.indicator_clearance clear` on the saved
 list, the scan list and the Cameras page. The assertion now holds because the
 indicator moved, not because the row gave up width.

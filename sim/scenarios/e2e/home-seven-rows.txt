@@ -33,7 +33,10 @@ assert ui.page main
 assert ui.label_overlaps 0
 # The seventh row is reachable by scrolling. The home menu keeps the row
 # spacing and the icons it shipped with rather than shrinking to fake a fit.
-assert ui.label_overlaps 0
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
 
 # The Level route still opens from the fuller home menu and Back returns home.
 action nav level_main
