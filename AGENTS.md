@@ -63,3 +63,7 @@ must also trigger an automatic `flash cancel` attempt and report the restoration
 result. Download recovery remains available after cancel by design, preserving
 manual rescue for wedged devices. Never infer PMIC state from a missing port or
 dependency.
+
+## Dependency updates
+
+Dependabot checks GitHub Actions, Python tooling, Android Gradle dependencies, and the Apple Swift package weekly. Routine minor and patch changes are grouped for review. Firmware pins in PlatformIO and ESP-IDF component manifests remain manual; Dependabot does not support those formats. Updates are proposed through pull requests and do not deploy or flash hardware.
