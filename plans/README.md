@@ -254,3 +254,7 @@ Fork PR #44 (screenshot CI) builds on 28 (simulator) and the 70 audit and
 navigation work. The gps.png capture is not byte-reproducible and must not be
 baselined as-is (see 28-emulator.md).
 ```
+
+## Dependency update automation
+
+[286: Dependabot updates](286-dependabot-updates.md) records the fork-only dependency update configuration and its manual firmware boundaries.

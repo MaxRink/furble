@@ -199,3 +199,7 @@ UI change before approving.
 - `.github/workflows/pages.yml`: tag-triggered GitHub Pages installer builds.
 - `plans/`: numbered improvement plans, one per PR (on the plans branch until
   integration lands).
+
+## Dependency updates
+
+Dependabot checks GitHub Actions, Python tooling, Android Gradle dependencies, and the Apple Swift package weekly. Routine minor and patch changes are grouped for review. Firmware pins in PlatformIO and ESP-IDF component manifests remain manual; Dependabot does not support those formats. Updates are proposed through pull requests and do not deploy or flash hardware.
