@@ -181,8 +181,8 @@ vendor images are not redistributed. The claims below are `firmware-static` or
 - `2A125640` and `DEEF7187` are absent. They stay optional subscriptions for
   other Fujifilm profiles, and their failure must remain non-fatal.
 - `7170FD5A` is the remote boot setting in the camera startup information
-  service, not a generic notification. Furble no longer names or subscribes to
-  it as NOT3.
+  service, not a generic notification. Furble no longer names it as NOT3 and
+  does not subscribe to it.
 - `F9150137` `01 00` is also a date or time request in the official apps, not a
   proven registration flag. Furble's operational promotion may still be
   correct because the camera only sends it to an accepted client, but the
