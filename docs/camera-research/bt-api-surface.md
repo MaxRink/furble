@@ -130,7 +130,10 @@ method, and the ZV-1F BLE stack, whose payload is opaque.
 The MEI0 generation uses the session service, a per-install identity seed, and
 plain writes. The APS generation adds a key-read and XOR-encoded identity. The
 full inventory is 13 services and 75 characteristic entries, including the
-G9II handle-only dialect.
+G9II handle-only dialect. The three UPD images expose container metadata and
+plaintext partition digests, but the code partitions are AES-CTR-class
+ciphertext. No LUMIX BLE byte is firmware-static; the app remains the primary
+evidence.
 
 Furble uses the MEI0 identity, control shutter, GPS, and clock. The unused
 surface includes control Confirm and Start, movie, focus, readiness

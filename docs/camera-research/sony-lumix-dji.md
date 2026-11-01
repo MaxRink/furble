@@ -218,6 +218,13 @@ GATT constants:
 | Location service/characteristic | `1d74afe0-3214-11e6-8ab4-0002a5d5c51b` / `daff1bc0-3216-11e6-91c8-0002a5d5c51b` |
 | Clock service/characteristic | `34738720-3214-11e6-b66b-0002a5d5c51b` / `ead55e60-3216-11e6-a42e-0002a5d5c51b` |
 
+The three Panasonic UPD images expose a header, partition table, plaintext
+partition digests, nonces, and a `loader1` manifest. The code partitions are
+AES-CTR-class ciphertext with a model-dependent key that is not in the image.
+No LUMIX BLE UUID, opcode, or handler is readable from them. The app evidence
+below is the strongest available. The private corpus analysis is
+`analysis/panasonic-firmware.md`.
+
 The current connect flow is open-link `connect`, session service lookup, a
 fixed 16-byte MEI0 write, ASCII controller device-name write, required control
 service and writable control characteristic lookup, then optional location
