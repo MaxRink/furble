@@ -611,7 +611,7 @@ instrument noise floor cannot be resolved at the named boundary and stays
 | P-052, P-053 | If advertising charge is below the noise floor, do not spend effort on the companion rows | B1 |
 | P-070 | Screen-off average lower than the 5 ms baseline; wake below 50 ms; watchdog fed; intervalometer jitter within tolerance | B1 |
 | P-071 | At least 5 percent whole-device reduction on StickC Plus menu idle; no SPI error, touch failure, or visible artifact | B1, I4 |
-| P-072 | At least 10 mA reduction at screen-on idle; light-sleep residency above 50 percent; PWM within 1 percent frequency and 2 percent duty; no flicker; no lost BLE event over 30 min | B1, I4, I8 |
+| P-072 | At least 10 mA reduction at screen-on idle; light-sleep residency above 50 percent; PWM within 1 percent frequency and 2 percent duty; no flicker; no lost BLE event over 30 min. The Display lane proposes this threshold; the Board lane estimates 5 to 15 mA, so 10 mA may be too high (X-22) | B1, I4, I8 |
 | P-073 | After the timeout the current equals the Off state; no unexpected Core power-off beyond the documented IP5306 behavior | B1 |
 | P-075 | At least 1 mA panel current reduction, otherwise reject | B1 or panel rail |
 | P-069 | At least 0.5 mA reduction with tap wake working, otherwise reject | B1 |
@@ -830,7 +830,10 @@ The first three measurements to run, in order:
     saving.
 13. A null result is a valid result. If the delta is not visible, close the row
     as rejected and record the null.
-14. Camera parity, RF certification, safety certification, and production
+14. The display default saving is about 64 mA inferred in the Display lane
+    and about 40 mA in the Board lane (X-23). P01 and P02 settle the
+    absolute current; do not quote the delta without it.
+15. Camera parity, RF certification, safety certification, and production
     calibration are out of scope.
 
 ## 17. Record template

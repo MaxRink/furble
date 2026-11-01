@@ -51,7 +51,7 @@ and P-068 Core IP5306 boost keep-on.
 - Protocol mismatches: short rail cycling, `$PCAS00`, SBAS or QZSS, character
   wake, UBX, a custom parser.
 
-Two items are contested and recorded rather than resolved: the 5 s PM1 watchdog
+Two further items are contested and recorded rather than resolved: the 5 s PM1 watchdog
 feed (P-077) and disabling the USB Serial/JTAG console in release (P-205).
 
 ## Honest limits
@@ -82,5 +82,5 @@ feed (P-077) and disabling the USB Serial/JTAG console in release (P-205).
 ## What this change set does
 
 It consolidates the seven lanes into one ranked matrix, one bench plan, and one
-document register, and records twenty-one lane disagreements instead of resolving
+document register, and records twenty-three lane disagreements instead of resolving
 them silently. It changes no default and proves no saving.
