@@ -63,7 +63,7 @@ class Lumix: public Camera {
     uint32_t gps_time; /** Seconds since 1980-01-06, the GPS epoch. */
     int32_t latitude;  /** Latitude multiplied by 1e7. */
     int32_t longitude; /** Longitude multiplied by 1e7. */
-    uint16_t altitude; /** Altitude in metres. */
+    int16_t altitude;  /** Altitude in metres, signed. */
     uint8_t fix;       /** Fix status, 0x41 means a valid NMEA fix. */
     uint8_t reserved;  /** Constant zero. */
   } geo_t;
@@ -76,8 +76,8 @@ class Lumix: public Camera {
     uint8_t hour;
     uint8_t minute;
     uint8_t second;
-    uint8_t zero;
-    int16_t tz_offset; /** UTC offset in minutes. */
+    int16_t tz_offset; /** Standard time offset in minutes. */
+    uint8_t dst;       /** DST flag. */
   } clock_t;
 
   /** Single-byte remote control commands. */
