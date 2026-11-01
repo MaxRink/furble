@@ -1,5 +1,4 @@
 #include <algorithm>
-#include <cstring>
 
 #include "DjiVirtualCamera.h"
 
