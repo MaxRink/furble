@@ -5866,6 +5866,7 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
   switch (state) {
     case Control::STATE_CONNECT:
     case Control::STATE_CONNECTING:
+    {
       lv_timer_set_period(m_ConnectTimer, CONNECT_POLL_PERIOD_MS);
       // Read the lock-free generation first and snapshot only when it moved.
       // Taking m_Mutex on every 50 ms tick put the LVGL task behind the control
@@ -5931,7 +5932,7 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
           }
         }
       }
-      break;
+    } break;
 
     case Control::STATE_CONNECT_FAILED:
     {
