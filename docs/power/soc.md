@@ -3,8 +3,10 @@
 Status: research note. No firmware, configuration, or test change is made by this
 document.
 
-Tree: `power/research`, commit `4a38238f1a0ce8c730e89b8bf537c16a648b4cc9`
-(2026-11-01). All code references were read in this tree.
+Tree: `power/research`, code read at commit
+`4a38238f1a0ce8c730e89b8bf537c16a648b4cc9` (2026-11-01). The power research
+docs were later committed as `b2734c07` with no source change, so the code
+references remain valid.
 
 ## Scope and evidence rules
 
@@ -148,23 +150,25 @@ is not.
 ### Sleep entry and exit cost, from IDF constants
 
 For the S3, IDF defines `DEFAULT_SLEEP_OUT_OVERHEAD_US = 382` with
-`PM_SLP_IRAM_OPT=y`, and the light sleep path also calibrates the RTC slow and
-fast clocks every sleep when
-`CONFIG_PM_LIGHTSLEEP_RTC_OSC_CAL_INTERVAL=1`. The calibration is 10 slow clock
-cycles at roughly 150 kHz (about 67 us) plus 2048 fast clock cycles (about
-127 us), so about 194 us per sleep before loop overhead
-(IDF `esp_hw_support/sleep_modes.c:152-174`, `835-862`). Entry cost is not
+`PM_SLP_IRAM_OPT=y`, and the light sleep path recalibrates the RTC clock on
+every sleep when `CONFIG_PM_LIGHTSLEEP_RTC_OSC_CAL_INTERVAL=1`. The S3 does not
+define `SOC_PMU_SUPPORTED`, so only the slow clock calibration runs: 10 slow
+clock cycles at roughly 140 to 150 kHz, about 67 to 74 us. Use about 70 us as
+the working figure. That gives about 452 us of overhead per sleep before entry
+cost and loop overhead (IDF `esp_hw_support/sleep_modes.c:152-174`, `835-862`;
+the fast clock block is guarded by `SOC_PMU_SUPPORTED`). Entry cost is not
 included and is not measured here.
 
-Arithmetic for the current screen-off idle case:
+Arithmetic for the current screen-off idle case, using 200 sleeps per second as an
+upper bound because loop work makes the real rate lower:
 
-- 200 sleeps per second times (382 us wake-out + 194 us calibration) is about
-  115 ms per second, or 11.5 percent of wall time.
+- 200 sleeps per second times (382 us wake-out + 70 us calibration) is about
+  90 ms per second, or 9 percent of wall time.
 - At the S3 active 80 MHz figure of 40.2 mA (datasheet Table 5-9), that is about
-  4.6 mA average, before adding the 0.24 mA light sleep floor.
-- At a 25 ms UI loop, 40 sleeps per second gives about 0.93 mA of the same
+  3.6 mA average, before adding the 0.24 mA light sleep floor.
+- At a 25 ms UI loop, 40 sleeps per second gives about 0.73 mA of the same
   overhead.
-- At a 100 ms loop, 10 sleeps per second gives about 0.23 mA.
+- At a 100 ms loop, 10 sleeps per second gives about 0.18 mA.
 
 These numbers are `arithmetic`, not measurements. They assume the whole
 overhead is CPU active time at 80 MHz, which is the conservative reading of the
@@ -207,7 +211,8 @@ cost to 200 wake transitions per second.
 - **Change:** Make the default maximum 80 MHz, or force 80 MHz from the Battery
   Saver profile, instead of the 160 MHz default.
 - **Current behavior:** Default 160 MHz (`include/FurblePlatform.h:24`,
-  `src/FurbleSettings.cpp:681-683`). DFS raises to 160 under UI and BLE load.
+  `src/FurbleSettings.cpp:681-683`). DFS raises to 160 under UI and other CPU
+  load.
 - **Evidence:** inferred (code-read, datasheet). S3 active current is 40.2 mA at
   80 MHz and 56.9 mA at 160 MHz (datasheet Table 5-9). The plan 98 audit says
   the 160 default costs nothing at idle because DFS drops, but it does not
@@ -306,13 +311,15 @@ This is a documentation and build consistency item, not a separate power lever.
 - **Current behavior:** 1 (`sdkconfig.m5stick-s3:2117`), so the RTC slow and fast
   clocks are recalibrated on every automatic light sleep.
 - **Evidence:** inferred (kconfig, IDF source). The Kconfig text says decreasing the
-  interval increases active time, and the S3 calibration path runs both the slow
-  and fast calibrations every sleep when the interval divides the counter (IDF
-  `esp_hw_support/sleep_modes.c:846-862`). The constants are 10 slow cycles and
-  2048 fast cycles (about 67 us and 127 us, IDF `sleep_modes.c:158-160`).
-- **Estimated saving:** `arithmetic`: about 194 us per sleep. At 200 sleeps per
-  second that is about 39 ms per second, or 1.6 mA at 40.2 mA active. At an
-  interval of 8 it falls to about 0.2 mA. This overlaps the wake-out overhead in
+  interval increases active time, and the S3 calibration path runs the slow
+  clock calibration every sleep when the interval divides the counter (IDF
+  `esp_hw_support/sleep_modes.c:846-862`). The slow calibration is 10 slow clock
+  cycles at roughly 140 to 150 kHz, about 67 to 74 us (IDF
+  `sleep_modes.c:158-160`). The fast clock calibration in the same function is
+  guarded by `SOC_PMU_SUPPORTED`, which the S3 does not define.
+- **Estimated saving:** `arithmetic`: about 70 us per sleep. At 200 sleeps per
+  second that is about 14 ms per second, or 0.56 mA at 40.2 mA active. At an
+  interval of 8 it falls to about 0.07 mA. This overlaps the wake-out overhead in
   the summary calculation and must not be added to it twice.
 - **Risk:** Medium-low. The RTC slow clock is the internal RC oscillator because
   no 32 kHz crystal is fitted (`sdkconfig.m5stick-s3:1976-1979`,
@@ -458,7 +465,8 @@ This is a documentation and build consistency item, not a separate power lever.
 - **Effort:** Large.
 - **Required test:** 100 wake cycles, corrupt state, missed frame, USB recovery,
   PM1 watchdog armed and disarmed, and an analyzer run across a full timelapse.
-- **Citation:** `plans/19` (not implemented), `plans/98:290-297`,
+- **Citation:** `plans/19-interval-deep-sleep.md` (not implemented),
+  `plans/98:290-297`,
   `plans/26:284-291`.
 
 ### SOC-13 WiFi sleep IRAM option
@@ -500,10 +508,10 @@ This is a documentation and build consistency item, not a separate power lever.
   (`plans/158:168-173`), so its 0.25 mA screen-off figure is not evidence
   against this change.
 - **Estimated saving:** `arithmetic`: reducing from 200 to 40 sleeps per second
-  removes about 3.7 mA of the 4.6 mA wake overhead estimated above; reducing to
-  10 per second removes about 4.4 mA. The true value is `unknown` and
-  depends on the real entry cost, which IDF does not state as a single constant.
-  This is the largest screen-off opportunity that does not touch radio policy.
+  removes about 2.9 mA of the 3.6 mA wake overhead estimated above; reducing to
+  10 per second removes about 3.4 mA. The true value is `unknown` and depends on
+  the real entry cost, which IDF does not state as a single constant. This is the
+  largest screen-off opportunity that does not touch radio policy.
 - **Risk:** Medium-low. Button and touch polling becomes 20 to 50 ms, blind
   remote shutter latency grows by up to that period, and the UI request queue
   and `Scan::processPendingCallbacks()` are serviced less often. The PM1
@@ -956,21 +964,22 @@ This is a documentation and build consistency item, not a separate power lever.
 
 ### Console and USB cost summary
 
-- The ESP32 console path holds `ESP_PM_APB_FREQ_MAX` for the whole console
-  lifetime (`src/FurbleConsole.cpp:2833-2844`). It defeats light sleep entirely.
-  This is deliberate and developer-only. Do not copy it into release and do not
-  use a console build for a power claim.
-- The S3 console path uses the USB Serial/JTAG driver
-  (`src/FurbleConsole.cpp:2823-2827`). With a host attached, the USJ lock keeps
-  the chip out of light sleep. With no host attached, the console task still
-  polls the driver every 100 ms.
-- `power stats` and `power log` are measurement tools
-  (`src/FurbleConsole.cpp:1399-1421`, `1490-1550`). They add output and CPU work
-  on the console task. Use them to correlate state, not as the current
-  measurement.
-- The release S3 builds are not free of this cost: they keep the secondary USB
-  Serial/JTAG console (CON-01) and therefore the USJ module. The release
-  Waveshare build inherits the full developer console (CON-02).
+- **CON-03, ESP32 console APB lock.** The ESP32 console path holds
+  `ESP_PM_APB_FREQ_MAX` for the whole console lifetime
+  (`src/FurbleConsole.cpp:2833-2844`). It defeats light sleep entirely. This is
+  deliberate and developer-only. Do not copy it into release and do not use a
+  console build for a power claim.
+- **CON-05, measurement tooling.** The S3 console path uses the USB Serial/JTAG
+  driver (`src/FurbleConsole.cpp:2823-2827`). With a host attached, the USJ lock
+  keeps the chip out of light sleep. With no host attached, the console task
+  still polls the driver every 100 ms. `power stats` and `power log` are
+  measurement tools (`src/FurbleConsole.cpp:1399-1421`, `1490-1550`). They add
+  output and CPU work on the console task. Use them to correlate state, not as
+  the current measurement.
+- **CON-06, USB measurement constraint.** The release S3 builds are not free of
+  this cost: they keep the secondary USB Serial/JTAG console (CON-01) and
+  therefore the USJ module. The release Waveshare build inherits the full
+  developer console (CON-02). Any USB-attached run is an active-current run.
 
 ## Checked, no action
 
@@ -1059,7 +1068,8 @@ measurement to decide. Each still needs its test.
     the loop period changes the answer.
 16. **SOC-13** WiFi sleep IRAM option. Only for users who enable WiFi and MQTT.
 17. **SOC-12** Deep sleep between intervalometer frames. Large win, but a
-    feature-sized project with a watchdog conflict.
+    feature-sized project with a watchdog conflict. It is ranked here rather
+    than at the top because it is not a tuning change.
 18. **OS-05** Reduce the GPS wait cadence. Low value on its own, more relevant
     after OS-01.
 
@@ -1227,11 +1237,14 @@ result. A null result is a valid result.
 - `plans/06-power-module.md`: lock design and the no-manual-sleep rule.
 - `plans/07-ble-sleep.md`: modem sleep and per-board floors.
 - `plans/12-display-off.md`: display states, APB lock, PMIC backlight paths.
+- `plans/13-auto-off-low-batt.md`: charging lock and power-off policy.
 - `plans/15-gps-power.md`: GPS burst lock, duty limits, UART clock.
+- `plans/19-interval-deep-sleep.md`: deep sleep between interval frames.
 - `plans/26-pm1-watchdog.md`: PM1 watchdog, feed cadence, `SLP_TO`, deep sleep
   conflict.
 - `plans/27-usb-console.md`: console transport and USJ light sleep behavior.
 - `plans/77-battery-saver-profile.md`: the opt-in power bundle.
+- `plans/96-wifi-bt-ble-hardening.md`: WiFi, BLE, and coexistence audit.
 - `plans/98-power-optimization-audit.md`: the model table and ranked actions.
 - `plans/98b-power-followup.md`: bounded GPS degraded retry.
 - `plans/111-power-recommendations.md`: the external measurement protocol.
@@ -1262,11 +1275,14 @@ result. A null result is a valid result.
   `components/esp_wifi/Kconfig`.
 - ESP-IDF S3 clock configuration, valid CPU frequencies and XTAL dividers:
   `components/esp_hw_support/port/esp32s3/rtc_clk.c`.
-- ESP32-S3 datasheet, active, WAITI, light sleep, and deep sleep current:
+- ESP32-S3 Series Datasheet v2.2, Tables 5-8 to 5-10, active, WAITI, light
+  sleep, and deep sleep current:
   https://documentation.espressif.com/esp32-s3_datasheet_en.pdf
-- ESP32 datasheet, active and light sleep current:
+- ESP32 Series Datasheet v5.3, Tables 4-2 and 5-4, active and light sleep
+  current:
   https://documentation.espressif.com/esp32_datasheet_en.pdf
-- Bosch BMI270 datasheet, normal, low power, and suspend current:
+- Bosch BMI270 datasheet BST-BMI270-DS000-08, normal, low power, and suspend
+  current:
   https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf
 - M5Stack StickS3 product page, PM1 states and battery:
   https://docs.m5stack.com/en/core/StickS3
@@ -1278,11 +1294,12 @@ result. A null result is a valid result.
   https://docs.m5stack.com/en/unit/Unit-GPS%20v1.1
 - Espressif NimBLE power save example, connected idle and light sleep figures:
   https://github.com/espressif/esp-idf/tree/master/examples/bluetooth/nimble/power_save
-- ST7789V datasheet, panel normal and sleep-in current:
+- ST7789V datasheet v1.3, panel normal and sleep-in current:
   https://newhavendisplay.com/content/datasheets/ST7789V.pdf
-- ST7735S datasheet, panel normal and sleep-in current:
+- ST7735S datasheet v1.1, panel normal and sleep-in current:
   https://cdn.sparkfun.com/assets/9/0/2/5/8/ST7735S_v1.1.pdf
-- AXP192 datasheet, off mode and per-block quiescent figures:
+- AXP192 datasheet, English translation, off mode and per-block quiescent
+  figures:
   http://images.shoutwiki.com/mindworks/8/8b/2020_infrasonic_wildfire_detector_APX192_Enhanced_Single_Cell_datasheet_en.pdf
-- IP5306 datasheet, standby and 45 mA auto-off threshold:
+- IP5306 datasheet v1.01, standby and 45 mA auto-off threshold:
   https://www.laskakit.cz/user/related_files/ip5306.pdf

@@ -9,9 +9,9 @@ worktree because `.pio/libdeps` and SDL2 are absent. Every number below is
 copied from a cited source or is arithmetic on cited values. The measured label
 appears only for measurements recorded elsewhere in this repository.
 
-Tree read: `power/research` at `b11fcd55`. The BLE code paths read for this lane
-are unchanged from `7383561a`. Sibling lane reports may be edited in the same
-worktree; this file does not depend on them.
+Tree read: `power/research` at `b2734c07`. The code is unchanged from
+`7383561a`; the commits after it add research docs only. Sibling lane reports
+may be edited in the same worktree; this file does not depend on them.
 
 IDs are lane local (`BLE-nn`). The coordinator maps them to `P-nnn` rows in
 `docs/power/opportunity-matrix.md`.
@@ -71,20 +71,22 @@ not quantified.
    the model cannot attribute it.
 4. Companion advertising is small at any instant and unbounded in time. The
    pairing window advertises at 100 ms for 2 minutes, and the reconnect
-   advertisement runs at 1 s forever while the companion is enabled and bonded.
+   advertisement runs at 1 s forever while the companion is enabled, bonded, and
+   not connected.
 5. The power model cannot see any of this today. The only function that charged
    a connected BLE floor, `profilerSetRadioConnected`, has had no caller since
    the production connection stack replaced the simulator camera
-   (`9081fc94`). The simulator charges only shutter, focus and geotag transmit
+   (`9081fc94`). The simulator charges only shutter, focus and geotag command
    events. The checked-in connected baseline still contains a 3.2989 mA radio
    term, but the current code would not produce it, and the loss is 3.9 percent
    of the total, inside the comparator's 10 percent band.
 6. Safe now, meaning no new hardware evidence is needed to know the change is
    safe: bound the discovery scan by default, stop it when the panel sleeps,
    halve the connection-initiation scan duty, shorten the companion pairing
-   window, and stop a peer parameter override from permanently disabling the
-   connection saver. The reconnect scan is the biggest single case and it needs
-   one measurement first: the camera advertising interval.
+   window, stop a peer parameter override from permanently disabling the
+   connection saver, and default the reconnect backoff on. The reconnect scan is
+   the biggest single case and it needs one measurement first: the camera
+   advertising interval.
 
 ## How furble uses BLE
 
@@ -163,18 +165,18 @@ The summary table is for scanning. Each entry is detailed below.
 | BLE-08 | One targeted scan for all saved cameras | inferred | N times less scan for N cameras | Medium | Large |
 | BLE-09 | Duplicate filtering | inferred | No radio saving | None | None |
 | BLE-10 | Match first, then keep scanning | inferred | No radio saving | None | None |
-| BLE-11 | `CONN_SAVER` default | measured floor, modeled rest | Event rate down 6 to 8x | Medium | Small |
+| BLE-11 | `CONN_SAVER` default | inferred | Event rate down 6 to 8x; measured floor, saving unmeasured | Medium | Small |
 | BLE-12 | Raise the fast interval floor | inferred | 1.3 to 3x fewer events | Medium | Small |
 | BLE-13 | Idle interval above 300 ms | inferred | Another 1.7 to 3.3x | Medium | Medium |
 | BLE-14 | Fast profile latency 1 | inferred | None for the central | None | None |
 | BLE-15 | Supervision timeout | inferred | None as a duty lever | High if shortened | None |
 | BLE-16 | 2M PHY | inferred | Small, unmeasured | Medium | Small |
-| BLE-17 | Data length and MTU | inferred | None for 23 byte payloads | None | None |
+| BLE-17 | Data length and MTU | inferred | Negligible, one 51 byte DJI handshake | None | None |
 | BLE-18 | Peer override blocks the saver | inferred | Unlocks BLE-11 | Low | Small |
 | BLE-19 | Initiation scan at 50 percent duty | inferred | Halves a 100 percent phase | Low | Small |
 | BLE-20 | Companion pairing window 60 s | inferred | Halves that window | Low | Small |
 | BLE-21 | Bound companion reconnect advertising | inferred | Small, continuous | Medium | Medium |
-| BLE-22 | Companion preferred parameters | inferred | Unknown | Medium | Medium |
+| BLE-22 | Companion preferred parameters | unknown | Unknown | Medium | Medium |
 | BLE-23 | Idle disconnect | inferred | Large for long idles | Medium | Large |
 | BLE-24 | Reconnect backoff default | inferred | Fewer attempts per hour | Low | Small |
 | BLE-25 | TX power below 3 dBm | inferred | Very small | Medium | Small |
@@ -389,8 +391,8 @@ timeout, or with Battery Saver, which forces a 60 s screen-off.
 
 **Estimated saving.** Inferred. The full scan receive load for the whole time
 the panel is off, with a ceiling near the 93 mA receive figure. On the S3 the
-panel-off baseline is about 0.25 mA modeled (`screen-off-30s`), so the scan
-dominates that state by two orders of magnitude.
+panel-off baseline is 0.25 to 0.51 mA modeled depending on accounting mode
+(`screen-off-30s`), so the scan dominates that state by two orders of magnitude.
 
 **Risk.** Low. The list persists. Note that `Scan::stop()` deliberately does not
 synthesize `onScanEnd`, because NimBLE's cancel does not either
@@ -429,7 +431,9 @@ change.
 
 **Risk.** Low. The list remains and Rescan is one click. A user who expects a
 continuously updating list must press Rescan. The default change needs a docs
-update.
+update. Note that a changed default only seeds a fresh NVS: an existing device
+keeps its stored 0 (Never) unless a migration sets it, so the reach is new
+installs and updated devices that never stored the key.
 
 **Effort.** Small, one default value. No UI change, because the roller already
 has the 60 s entry.
@@ -549,13 +553,14 @@ With it on, the target task calls `maybeSetIdle()` on its 50 ms tick and the lin
 moves to the idle profile 10 s after the last shutter or focus activity
 (`lib/furble/Camera.cpp:472-482`, `src/FurbleControl.cpp:159-168`).
 
-**Evidence.** Mixed. The connected floor is measured at 3.3 mA on the S3
-(`plans/00-hardware-experiments.md`, `tools/power-model/board-currents.yaml`
-`ble_connected_idle_floor`, light sleep from the main crystal, connection
-interval not stated). The screen-off states are modeled: 43.6 mA with
-`SLEEP_CONN` off and 3.61 mA with it on (plan 98 what-if). The interval change
-itself is not visible to the current model, which has no per-interval term and,
-today, no connected floor charge at all (BLE-32).
+**Evidence.** Inferred overall, built from a measured floor, modeled screen-off
+states, and the code event rate. The connected floor is measured at 3.3 mA on
+the S3 (`plans/00-hardware-experiments.md`,
+`tools/power-model/board-currents.yaml` `ble_connected_idle_floor`, light sleep
+from the main crystal, connection interval not stated). The screen-off states
+are modeled: 43.6 mA with `SLEEP_CONN` off and 3.61 mA with it on (plan 98
+what-if). The interval change itself is not visible to the current model, which
+has no per-interval term and, today, no connected floor charge at all (BLE-32).
 
 **Estimated saving.** Measured floor, modeled screen-off states, inferred event
 share. The event rate falls from about 27 per second at a 37.5 ms average to
@@ -720,10 +725,11 @@ features.
 
 **Estimated saving.** Inferred and small. 2M halves the data PDU airtime, but an
 empty connection event is dominated by the two anchor PDUs, the 150 us
-inter-frame spacing and the event overhead, not by payload. Furble's payloads
-are 2 to 23 bytes. The event energy reduction is therefore a fraction of an
-already small share of the total. The camera must also support 2M, which is
-unknown for every supported model.
+inter-frame spacing and the event overhead, not by payload. Most furble writes
+are a few bytes to 23 bytes, with one 51 byte DJI handshake frame per connect.
+The event energy reduction is therefore a fraction of an already small share of
+the total. The camera must also support 2M, which is unknown for every supported
+model.
 
 **Risk.** Medium. A PHY update procedure at connect, per-vendor support unknown,
 and at long range 2M can retry more and cost more than it saves.
@@ -744,27 +750,33 @@ Shutter latency and range check. The shared K-family rows.
 
 **Current behavior.** The preferred ATT MTU is 256
 (`CONFIG_BT_NIMBLE_ATT_PREFERRED_MTU=256`). No code calls `setDataLen`. The
-largest furble payload is the Fujifilm geotag at 23 bytes
-(`lib/furble/protocol/FujifilmProtocol.h:19`,
+largest single write in the tree is the DJI Osmo connection request frame at 51
+bytes, 12 header + 2 command + 33 payload + 4 tail
+(`lib/furble/DJIOsmo.cpp:244-256`, `DJIOsmo.h:46-50`). The Fujifilm geotag is 23
+bytes (`lib/furble/protocol/FujifilmProtocol.h:19`,
 `FujifilmProtocol.cpp:156-173`).
 
 **Evidence.** Inferred, code reading.
 
-**Estimated saving.** None. An ATT write of 23 bytes plus a 3 byte ATT header is
-26 bytes, which fits the 27 byte default data length. Extended data length would
-not remove a fragmentation round trip for any current furble payload. A larger
-MTU costs RAM per connection and does not change the number of packets for these
-payloads.
+**Estimated saving.** Negligible. Data length extension changes how many
+link-layer PDUs carry a write, not how many connection events occur or how often
+the link wakes. The only writes above the 27 byte default link-layer payload are
+the 23 byte geotag (30 bytes with the L2CAP header), sent at most once per 10 s,
+and the 51 byte DJI handshake frame, sent once per connect. Whether the
+controller negotiates a larger data length automatically for these peers was not
+established here; either way the event rate is unchanged. A larger ATT MTU costs
+RAM and is already 256.
 
-**Risk.** None as written. Changing data length for its own sake adds a
-procedure and a compatibility surface.
+**Risk.** None as written. Adding a data length procedure for its own sake adds a
+compatibility surface for a one-time handshake.
 
 **Effort.** None.
 
 **Required test.** No change. A vendor protocol conformance test already covers
 the payload sizes.
 
-**Citation.** `lib/furble/protocol/FujifilmProtocol.h:19`,
+**Citation.** `lib/furble/DJIOsmo.cpp:244-256`, `lib/furble/DJIOsmo.h:46-50`;
+`lib/furble/protocol/FujifilmProtocol.h:19`,
 `FujifilmProtocol.cpp:156-173`; `sdkconfig.m5stick-s3`
 `BT_NIMBLE_ATT_PREFERRED_MTU`.
 
@@ -927,7 +939,8 @@ uses a slower interval.
 `..._SUPERVISION_TMO=0`). Furble never requests a parameter update as a
 peripheral. The phone is the central and chooses the interval.
 
-**Evidence.** Inferred, code reading.
+**Evidence.** Inferred for the current behavior, from code reading; unknown for
+the saving, because the phone's chosen interval was not read.
 
 **Estimated saving.** Unknown. It depends on the phone's chosen interval, which
 was not read. If the phone uses 30 ms for an idle companion link, a 300 ms
@@ -1142,7 +1155,7 @@ recording the live profile and interval.
 
 **Change.** None recommended for power. These are RAM and scheduling settings.
 
-**Current behavior on the S3:**
+**Current behavior.** On the S3:
 
 | Setting | Value | Power effect |
 | --- | --- | --- |
@@ -1251,7 +1264,8 @@ to the power-gate suite.
 
 **Current behavior.** The model charges radio energy in exactly one place:
 `radio_ma = (radio_connected_ms * connected_idle + radio_event_count * radio_tx * 2.0) / duration`
-(`sim/power_profiler.cpp:1242-1244`). `radio_connected` is set only by
+(`sim/power_profiler.cpp:1242-1244`; the `2.0` charges 2 ms at the transmit
+current per event). `radio_connected` is set only by
 `profilerSetRadioConnected` (`sim/power_profiler.cpp:1730-1736`), and a grep over
 `sim/`, `src/`, `lib/`, `include/` and `tests/` finds no caller. The only radio
 events are shutter, focus and GPS command events from the virtual peer
@@ -1305,7 +1319,7 @@ them without cause.
 | Match-first | `CameraList::match` de-duplicates by address; the scan continues for other cameras. | A stop-on-first-match would break multi-camera selection for no radio benefit beyond BLE-04/06. |
 | Fast latency 1 | Central does not skip events; latency only delays writes. | Not a furble power lever. |
 | Supervision timeout | 5.12 s fast, 7 s idle, peer cap enforced. | Not a duty parameter; changing it risks the false-connected class. |
-| Data length and MTU | 23 byte maximum payload, fits 27 bytes. | No fragmentation to remove. |
+| Data length and MTU | Largest write is a 51 byte DJI handshake frame; the Fujifilm geotag is 23 bytes. | DLE changes PDUs per write, not the connection event rate. |
 | CCCD subscriptions | One ATT write each; 12 on Fujifilm Secure. | Negligible connect energy versus discovery. |
 | Geotag cadence | 10 s camera request, 23 byte write, 0.2 transactions per second. | Negligible; the plan 10 mechanism claim needs a doc correction, not a code change. |
 | Coded PHY | `CONFIG_BT_NIMBLE_LL_CFG_FEAT_LE_CODED_PHY=y` but `CONFIG_BT_NIMBLE_EXT_ADV` is off, so the scanner uses the legacy `ble_gap_disc` path and never scans coded. | No runtime cost, no change. |
@@ -1324,10 +1338,12 @@ them without cause.
 Ranked by expected saving times confidence, divided by risk. Each item is
 implementable without a new measurement campaign. Where a bench smoke test is
 listed it is a functional or latency check, not a power measurement, and the
-required test remains a merge gate.
+required test remains a merge gate. A changed setting default only seeds a
+fresh NVS; existing devices keep the stored value unless a migration or the
+Battery Saver override is used.
 
-1. **BLE-07, default discovery scan timeout 60 s.** Works for every user,
-   including the default Never inactivity, and the UI already has the finished
+1. **BLE-07, default discovery scan timeout 60 s.** Works regardless of the
+   user's display and inactivity settings, and the UI already has the finished
    state and Rescan. One default value, no radio behavior change while the user
    is present. Doc surfaces: `docs/settings-and-controls.md`,
    `docs/wiki/Settings-Reference.md`, the README settings overview.
@@ -1347,6 +1363,15 @@ required test remains a merge gate.
    effective on peers that renegotiate at connect. Host test only; no hardware
    risk when the saver is off. Doc surface: `docs/settings-and-controls.md` for
    the saver description.
+6. **BLE-24, default reconnect backoff on.** Small saving, low technical risk,
+   and the curve is already pinned by a host test. The remaining question is the
+   policy trade (slower recovery) rather than safety. It multiplies with BLE-01
+   and BLE-02 but is not a substitute for them. Doc surface:
+   `docs/settings-and-controls.md` for the reconnect options.
+
+Prerequisite, not a device change: **BLE-32** restores the BLE radio term in the
+model. Land it before ranking any of the rows above in milliamps, otherwise the
+gate cannot see a scan or connected-floor regression.
 
 Deliberately not in this list: BLE-01, BLE-02, BLE-04, BLE-05 and BLE-11. Their
 savings are large but they need the camera advertising interval or a connected
@@ -1393,11 +1418,12 @@ Ordered by expected value per bench hour. Each row names the measurement from
 | BLE-10 match-first stop | Breaks multi-camera selection. Use BLE-04 or BLE-06 for the idle page instead. |
 | BLE-14 latency 1 as a power lever | The central still receives at every event. Latency only delays writes. |
 | BLE-15 supervision timeout as a power lever | Not a duty parameter. Shortening it risks spurious drops and reintroduces the false-connected family. |
-| BLE-17 data length or larger MTU | The largest payload is 26 bytes on the air, inside the 27 byte default. No fragmentation to remove. |
+| BLE-17 data length or larger MTU | The writes above the 27 byte default are the 51 byte DJI handshake and the geotag's 30 byte L2CAP PDU. DLE changes PDUs per write, not the event rate; the ATT MTU is already 256. |
 | BLE-25 negative TX levels for power | Receive dominates, the datasheet has no sub-0 dBm row, and lower TX risks retries and range. |
 | BLE-27 trimming subscriptions | A few milliseconds of connect airtime against a feature risk. |
 | BLE-28 changing the geotag cadence | 0.2 transactions per second. The real issue is the unexplained plan 10 claim, which is a documentation fix. |
 | BLE-29 buffer and task tuning for power | RAM and scheduling only. |
+| BLE-30 connection-count mismatch for power | Capability bug, not an energy lever; fix separately. |
 | BLE-31 controller low power config | Already correct on all boards. The 32 kHz mode is impossible without the crystal. |
 | Active scan backoff disable | Would increase scan request collisions and transmit energy. |
 | Coded PHY removal | Already never scanned, because extended advertising is compiled out. |
@@ -1536,7 +1562,7 @@ the material BLE claims in the plans read for this lane.
 | Claim | Source | Code in this tree | Verdict |
 | --- | --- | --- | --- |
 | The power gate is not wired into CI | plan 98 | `.github/workflows/power-gate.yml` exists and runs the power-gate suite | Outdated |
-| The model charges a constant connected floor | plan 98 | `profilerSetRadioConnected` has no caller since `9081fc94`; the only radio charge is write events | Outdated in the other direction; the floor is now zero |
+| The model charges a constant connected floor | plan 98 | `profilerSetRadioConnected` has no caller since `9081fc94`; the only radio charge is the five command events | Outdated in the other direction; the floor is now zero |
 | The model has no scan, advertising or reconnect state | plan 98 | Confirmed: no scan state, no advertising charge, virtual advertiser at 100 ms | Still true |
 | Idle connection profile is 250 to 300 ms, latency 0 | plan 10 | `m_IdleMinInterval = 200`, `m_IdleMaxInterval = 240`, `m_IdleLatency = 0` | True |
 | Idle supervision timeout is 16000 ms | plan 10 | `m_IdleTimeout = 700`, which is 7 s | Outdated; the cap was retuned |
@@ -1627,8 +1653,9 @@ Plans:
 Datasheets and published measurements, as recorded in
 `tools/power-model/README.md` and `board-currents.yaml`:
 
-- ESP32-S3 Series Datasheet v2.2, Table 5-8: BLE receive 93 mA, BLE transmit
-  176 mA at 0 dBm and 193 mA at 9 dBm, whole chip at 100 percent duty.
+- ESP32-S3 Series Datasheet v2.2, Table 5-8: BLE receive 93 mA (continuous
+  receive, whole chip), BLE transmit 176 mA at 0 dBm and 193 mA at 9 dBm, whole
+  chip at 100 percent transmit duty.
   https://documentation.espressif.com/esp32-s3_datasheet_en.pdf
 - ESP32 Series Datasheet v5.3, Table 5-4: BLE receive 95 to 100 mA, BLE
   transmit 130 mA at 0 dBm at 50 percent duty.
@@ -1659,7 +1686,7 @@ order, and `prereq` marks the modeling prerequisite.
 | BLE-06 | BLE | Panel sleep leaves the scan running | Stop the scan on panel sleep | inferred | Full scan load while the panel is off | Low | Small | Sim panel-off scan assertion | 1 |
 | BLE-07 | BLE | Scan timeout defaults to Never | Default 60 s | inferred | Bounds the page to 60 s | Low | Small | Sim 60 s finished state; console default test | 1 |
 | BLE-08 | BLE | One targeted scan per saved camera | One scan for all, then connect | inferred | N times less scan for N cameras | Medium | Large | Two-peer host test; sim scan count | 5 |
-| BLE-11 | BLE | `CONN_SAVER` off by default | Default on or via Battery Saver | measured floor, modeled states | 6 to 8x fewer events; floor saving unmeasured | Medium | Small | P06 to P09; vendor soaks; shutter latency | 2 |
+| BLE-11 | BLE | `CONN_SAVER` off by default | Default on or via Battery Saver | inferred | 6 to 8x fewer events; 3.3 mA floor is measured, saving unmeasured | Medium | Small | P06 to P09; vendor soaks; shutter latency | 2 |
 | BLE-12 | BLE | Fast 30 to 50 ms | 50 to 100 ms floor | inferred | 1.3 to 3x fewer events | Medium | Small | Soak, latency, `debug camera` | 3 |
 | BLE-13 | BLE | Idle 250 to 300 ms | 500 to 1000 ms screen-off profile | inferred | Another 1.7 to 3.3x fewer events | Medium | Medium | First-press latency; geotag freshness; soak | 4 |
 | BLE-16 | BLE | No PHY update, link stays 1M | 2M on S3 for capable cameras | inferred | Small, unmeasured | Medium | Small | `getPhy` readback; event current A/B | 5 |
@@ -1677,4 +1704,4 @@ order, and `prereq` marks the modeling prerequisite.
 ## Change log
 
 - 2026-11-01: initial BLE lane report. No measurement run. Code read at
-  `b11fcd55`, power/research.
+  `b2734c07`, power/research; code unchanged from `7383561a`.

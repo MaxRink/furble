@@ -3,8 +3,14 @@
 Status: research note. This document changes no firmware. It records what the
 tree does today, what each board can still save, and what must be measured
 before a saving is claimed. No new measurement was made for this document. The
-only local measurements cited are the ones already recorded in
-`plans/00-hardware-experiments.md`, and they are labelled as such.
+only recorded local measurements are in `plans/00-hardware-experiments.md`. The
+widely cited 3.3 mA StickS3 floor is tagged `measured-local` in the model, but
+its drain row is not in that plan; section 3.5 explains the provenance gap.
+
+This is the board and PMIC lane of `docs/power/`. It also carries cross-lane
+rows where a board rail, PMIC mode, or GPIO changes the cost of a BLE, display,
+or SoC decision. The coordinator merges those under their primary lane in
+`opportunity-matrix.md`. Camera parity work is out of scope.
 
 The short version, ranked by the size of the prize and not by readiness:
 
@@ -42,8 +48,9 @@ the text says `measured-local`.
   `tools/power-model/README.md`, `sim/power_profiler.cpp`.
 - Plans read in full or in the cited sections: `00`, `12`, `13`, `15`, `19`,
   `26`, `42`, `71`, `77`, `95`, `98`, `98b`, `111`, `143`. Plans `01`, `02`,
-  `06`, `07`, `20`, `24`, `63`, and `125` are cited only through the audit,
-  the plan index, or a grep; they were not read in full for this note.
+  `06`, `07`, `08`, `10`, `11`, `20`, `24`, `63`, and `125` are cited only
+  through the audit, the plan index, or a grep; they were not read in full for
+  this note.
 - Pinned libraries, at the versions in `platformio.ini`: M5Unified 0.2.20,
   M5GFX 0.2.27, M5PM1 1.0.6.
 - Datasheets opened for this document: AXP192, IP5306, M5PM1, ESP32-S3. The
@@ -100,7 +107,7 @@ as separate boards when a rail is involved.
 | `m5stick-s3` | M5StickS3 | ESP32-S3-PICO-1-N8R8 | M5PM1, charger on by default, profile not documented | Voltage and charge state on PM1 GPIO0, no current | 3.3 V DCDC and LDO, 5 V boost for Grove and EXT_5V and IR, L3B on PM1 GPIO2, ST7789P3 backlight G38, BMI270, ES8311 and AW8737, IR TX G46 and RX G42, no SD, USB Serial/JTAG | Light sleep 240 uA plus 140 uA PSRAM plus PM1, deep sleep 7 uA plus PM1, off 14.02 uA, L1 52.47 uA, L2 102.40 uA, PM1 timer wake |
 | `m5stack-core` | M5Stack Core Basic and Gray | ESP32 | IP5306, 150 mA charge, 4.2 V | Four-level only, 100, 75, 50, 25, 0 percent | 3.3 V rail, backlight G32, ILI9342C, speaker, SD, no current gauge | Light sleep only with boost keep-on, below 45 mA for 32 s cuts the boost, no immediate PMIC off, deep sleep only with keep-on |
 | `m5stack-core2` | Core2 and M5Tough (untested) | ESP32 | AXP192, 390 mA charge on Core2 | Voltage, current, charge state | DCDC3 backlight, LDO2 3.3 V LCD and SD, LDO3 vibration on Core2 and backlight on Tough, LDOIO0 Grove 5 V, ILI9342C, FT6336U touch, MPU6886, NS4168, SD, BM8563 | Light sleep 0.8 mA plus AXP192 plus touch, deep sleep 10 uA plus AXP192, off 27 uA, touch wake on G39 |
-| `waveshare-s3-eth` | Waveshare ESP32-S3-ETH | ESP32-S3R8, 8 MB octal PSRAM | None, no battery | None | USB-C 5 V or PoE HAT, W5500 on SPI, WS2812 on G21, microSD in 1-line mode and unused by furble, no display, IMU, or GPS | Tickless idle off, so no automatic light sleep; DFS is left on; mains powered |
+| `waveshare-s3-eth` | Waveshare ESP32-S3-ETH | ESP32-S3R8, 8 MB octal PSRAM | None, no battery | None | USB-C 5 V or PoE HAT, W5500 on SPI, WS2812 on G21, microSD in 1-line mode and unused by furble, no display or IMU; GPS only through the Pico header | Tickless idle off, so no automatic light sleep; DFS is left on; mains powered |
 | `esp32-s3-headless` | ESP32-S3-DevKitC-1 | ESP32-S3, 8 MB PSRAM in sdkconfig | None, no battery | None | USB or 5 V, USB Serial/JTAG, no display, PMIC, or RTC | Tickless idle on, light sleep 240 uA plus PSRAM, mains or development |
 | `m5stack-core-usb-debug` | Core, developer only | ESP32 | IP5306 | Four-level | USB-UART console, single factory partition, PM profiling, LVGL sysmon and perf monitor | UART console holds `APB_FREQ_MAX`, so no light sleep; not a power target |
 
@@ -112,10 +119,9 @@ is set to 0 by M5Unified. The AXP192 has no whole-chip operating current in its
 datasheet, only per-block quiescent currents. The ESP32 is not wired to a
 32.768 kHz low-power clock, so the connected BLE floor is modem sleep and the
 1.9 mA crystal mode is not available. The panel is an ST7735S at 80x160; its
-sleep-in current is 15 uA typical. The board
-has no SD slot, so SD power is not a term. Opportunities: PM-04, PM-07, PM-10,
-PL-03, PL-05, PL-07, LK-02, and the off-state note in 3.1. No hardware is
-attached in this repo.
+sleep-in current is 15 uA typical. The board has no SD slot, so SD power is not
+a term. Opportunities: PM-04, PM-07, PM-10, PL-03, PL-05, PL-06, PL-07, PL-08,
+LK-02, RL-11. No hardware is attached in this repo.
 
 **M5StickC Plus and Plus2 (`m5stick-c-plus`).** These are two boards in one
 image. The Plus is an AXP192 board with a 1.14 inch ST7789V and a buzzer. The
@@ -125,18 +131,20 @@ ADC divider permanently. On the Plus2, `M5.Power.powerOff()` reaches
 `esp_deep_sleep_start()` and M5Unified 0.2.20 does not arm a wake source on
 that path, so the "off" behavior of the shared image needs a hardware check
 before auto-off is enabled there. Opportunities: PM-04, PM-07, PM-10, PM-11,
-PL-03, PL-07, RL-10. No hardware is attached.
+PL-03, PL-05, PL-06, PL-07, PL-08, LK-02, RL-10, RL-11. No hardware is
+attached.
 
 **M5StickS3 (`m5stick-s3`).** The best instrumented board and the only one with
-a GPS burst lock, PM1 timed wake, and a true PMIC shutdown. The M5PM1 also
+a GPS burst lock and a PM1 timer wake. It is also the only board with a
+vendor-published 14.02 uA off figure and a PM1 shutdown path. The M5PM1 also
 powers the 5 V boost that feeds Grove, EXT_5V, and the IR transmitter and
 receiver. That coupling is the reason the IR feature depends on the GPS rail
 setting today. The BMI270 is read at 1 Hz for gestures and 50 Hz on the level
-page; the gyro is never used by furble. The 8 MB octal PSRAM adds about 140 uA to light
-sleep per the ESP32-S3 datasheet, which the S3 energy model does not charge.
-Opportunities: PM-01, PM-02, PM-03, PM-05, RL-01, RL-02, RL-03, LK-01, PL-01,
-PL-02, PL-04, PL-05, PL-06, PL-07, PL-08, NB-03. This is the only board on the
-bench.
+page; the gyro is never used by furble. The 8 MB octal PSRAM adds about 140 uA
+to light sleep per the ESP32-S3 datasheet, which the S3 energy model does not
+charge. Opportunities: PM-01, PM-02, PM-03, PM-05, PM-07, RL-01, RL-02, RL-03,
+RL-11, LK-01, PL-01, PL-02, PL-04, PL-05, PL-06, PL-07, PL-08, NB-03. This is
+the only board on the bench.
 
 **M5Stack Core (`m5stack-core`).** The IP5306 is the defining constraint. Its
 boost cuts off after 32 s of continuous load below 45 mA. The firmware enables
@@ -146,8 +154,8 @@ in a power cut, not a low-current state. The manual "Off" path clears the
 keep-on bit and enters ESP deep sleep. If the load then falls below 45 mA, the
 IP5306 removes the boost after its 32 s low-load timeout. It is not an immediate
 PMIC off, and the 32 s window is not controlled by furble. The four-level gauge cannot support a percentage
-policy. Opportunities: PM-06, PM-09, PL-03, PL-07, RL-06. No hardware is
-attached.
+policy. Opportunities: PM-06, PM-07, PM-09, PL-03, PL-05, PL-06, PL-07, PL-08,
+RL-06, RL-11. No hardware is attached.
 
 **M5Stack Core2 (`m5stack-core2`).** An AXP192 board with DCDC3 as the
 backlight, LDO2 at 3.3 V for the LCD and SD, LDO3 for the vibration motor, and
@@ -155,16 +163,18 @@ LDOIO0 for Grove 5 V. The touch controller is deliberately left running so a
 tap can wake the screen. The MPU6886 is initialized when the IMU setting is on;
 furble only reads acceleration, so the gyro current is likely wasted. The NS4168 amp
 is shut down until a tone is due. Opportunities: PM-04, PM-07, PM-08, PM-10,
-PL-03, PL-05, PL-07, RL-06. Tough shares the image but is untested and uses
-LDO3 for the backlight, so do not apply the Core2 LDO3 assumption to Tough.
+PL-03, PL-05, PL-06, PL-07, PL-08, RL-06, RL-11. Tough shares the image but is
+untested and uses LDO3 for the backlight, so do not apply the Core2 LDO3
+assumption to Tough.
 
 **Waveshare ESP32-S3-ETH (`waveshare-s3-eth`).** There is no battery and no
 PMIC. Every "saving" on this board is mains input current or heat, not runtime.
 `CONFIG_FREERTOS_USE_TICKLESS_IDLE` is off, so it never enters automatic light
 sleep; DFS is still enabled by the runtime `esp_pm_configure` call, so the
 "hold a fixed frequency" sentence in plan 42 is not what the build does. The
-W5500, the WS2812, and the unused microSD slot are the loads. Opportunities:
-NB-01, NB-02, NB-06. No hardware is attached.
+W5500, the WS2812, and the unused microSD slot are the loads. The slot only
+matters if a card is left in it. Opportunities: NB-01, NB-02, NB-06. No hardware
+is attached.
 
 **ESP32-S3 headless (`esp32-s3-headless`).** A development board with no
 battery, no PMIC, and no display. Tickless idle is on and the 5 ms UI loop is
@@ -199,12 +209,12 @@ plan estimate, not a datasheet line; the block sum with DCDC1, LDO2, LDO3, and
 LDOIO0 enabled is about 316 uA before any load.
 
 **IP5306 (Core).** M5Unified writes `0x00 = 0b00110001`, `0x01 = 0b00011101`,
-`0x02 = 0b01101100` (32 s light-load timeout), `0x20 = 0x00`,
-`0x21 = 0x09`, `0x22 = 0x02` (4.2 V plus 28 mV boost), `0x23 = 0xAE`,
-`0x24 = 0b11000001` (150 mA charge). Bit 1 of `0x00`, the "boost normally open"
-bit, stays clear. The datasheet specifies 50 uA standby, 100 uA input
-quiescent, and a 32 s cutoff below 45 mA. The board has no current gauge, only
-the four-level fuel display.
+`0x02 = 0b01101100` (the light-load time field, encoding per the M5Unified
+comment), `0x20 = 0x00`, `0x21 = 0x09`, `0x22 = 0x02` (4.2 V plus 28 mV boost),
+`0x23 = 0xAE`, `0x24 = 0b11000001` (150 mA charge). Bit 1 of `0x00`, the "boost
+normally open" bit, stays clear. The datasheet specifies 50 uA standby, 100 uA
+input quiescent, and a 32 s cutoff below 45 mA. The board has no current gauge,
+only the four-level fuel display.
 
 **M5PM1 (StickS3).** The PM1 manual gives `PWR_CFG` default `0x17`: LED enable
 on, 5 V boost off, 3.3 V LDO on, 3.3 V DCDC on, charge on. M5Unified writes
@@ -228,12 +238,15 @@ the PMIC.
 
 **Gauges and ADC cost.** The AXP192 has a 12-bit ADC for battery voltage,
 battery current, ACIN, VBUS, APS, and temperature. M5Unified enables every
-channel, and furble reads level, voltage, and current every 5 s. The ESP32-S3
-boards have no ESP32 ADC battery path; the PM1 reports voltage. The Plus2 is
-the only board that uses an ESP32 ADC divider, on GPIO38 with a 2.0 ratio. That
-divider is permanently connected and is a fixed leakage term, not a conversion
-cost. The conversion itself is on demand every 5 s and is negligible. The cost
-is the divider current and the AXP192 ADC block, not the sample rate.
+channel, and furble reads level, voltage, and current every 5 s. The AXP192 ADC
+itself runs continuously at 25 Hz once enabled, which is already the lowest
+sample rate in `REG 84H`. The ESP32-S3 boards have no ESP32 ADC battery path;
+the PM1 reports voltage. The Plus2 is the only board that uses an ESP32 ADC
+divider, on GPIO38 with a 2.0 ratio. That divider is permanently connected and
+is a fixed leakage term, not a conversion cost. On the Plus2 the ESP32 ADC
+conversion is on demand every 5 s and is negligible; the divider current is the
+cost. On the AXP192 boards the cost is the divider-free ADC block, not the
+sample rate.
 
 **Battery capacities known to firmware.** StickC 95 mAh, Plus 120 mAh, Plus2
 200 mAh, StickS3 250 mAh, Core2 390 mAh, Core 0 (unknown). The firmware
@@ -287,6 +300,14 @@ The ESP32-S3 datasheet gives 45 kOhm typical for the internal weak pull-up. At
 no internal pull on GPIO35, so the StickC family depends entirely on the board
 resistor. Do not quote a current for that net without the schematic value.
 
+Pull-down choices are simpler: `armMotionWake()` disables the internal
+pull-down on every wake pin, and no other pin in the power path is configured
+with a pull-down. A pull-down on an active-low wake line would hold the line
+low, burn current through the external pull-up, and can block light sleep. Any
+future wake pin must keep the pull-down off unless the line is active high. The
+ESP32-S3 internal pull-down has the same 45 kOhm order as the pull-up, so a
+contended pull-down is the same few tens of microamps per line.
+
 The firmware sets `CONFIG_ESP_SLEEP_GPIO_ENABLE_INTERNAL_RESISTORS=y` on every
 board and leaves `CONFIG_PM_SLP_DISABLE_GPIO` unset. The first only matters in
 deep sleep, which the firmware never enters. The second means pads hold their
@@ -295,13 +316,13 @@ state through light sleep, which is what the LED and IR paths rely on.
 ### 3.4 USB serial and Ethernet
 
 **ESP32 boards.** The console is UART0 through the USB-UART bridge. The bridge
-is powered from VBUS and draws nothing from the battery when unplugged. The six
-release builds have no console. The ESP32 console builds (the `-debug` envs) hold
-`ESP_PM_APB_FREQ_MAX` for the life of the console
+is powered from VBUS and draws nothing from the battery when unplugged. The five
+battery release builds have no console. The ESP32 console builds (the `-debug`
+envs) hold `ESP_PM_APB_FREQ_MAX` for the life of the console
 (`src/FurbleConsole.cpp:2838-2847`), which blocks light sleep by the IDF mode
 mapping. This is stated in the source comment and is not a measurement. The
-StickS3 and headless console builds use USB Serial/JTAG instead and take the
-lock described below.
+StickS3, headless, and Waveshare console builds use USB Serial/JTAG instead and
+take the lock described below.
 
 **StickS3.** The console is native USB Serial/JTAG. The build sets
 `CONFIG_USJ_NO_AUTO_LS_ON_CONNECTION=y`. The Kconfig help says that while the
@@ -328,7 +349,7 @@ input-current question, not a battery question.
 | Headless | Modem sleep configured | 240 uA plus PSRAM | Not used | None | Mains only |
 
 The StickS3 3.3 mA value is the connected floor cited across the repo as
-`measured-local`. It was measured for the stock connection parameters, not for
+`measured-local`. It is reported for the stock connection parameters, not for
 the `CONN_SAVER` idle parameters, and the conditions are not trace-equivalent to
 the simulator's 3.61 mA what-if. It is a floor for the current parameter set,
 not a universal board floor. There is also a provenance gap: the plan 00
@@ -403,7 +424,7 @@ Estimates are not measurements unless the label says `measured-local`.
   M5Unified's own PMIC button read is throttled by
   `BTNPWR_MIN_UPDATE_MSEC`; furble's extra read is not. The PM1 `SLP_TO` field
   is zero in the current library path, so the PM1 is not idle-sleeping between
-  reads, but the bus traffic and the PM1 wake cost remain.
+  reads, but the bus traffic remains.
 - Evidence: `code` (`src/FurblePlatform.cpp:747-754`,
   `src/FurbleUI.cpp:10174-10205`, M5Unified 0.2.20
   `M5Unified.cpp:3411-3425`), `datasheet` (`I2C_CFG`).
@@ -424,13 +445,13 @@ Estimates are not measurements unless the label says `measured-local`.
 - Change: after `M5.begin()`, write `0x82` to enable only the battery voltage
   and battery current channels, and `0x83` to disable the internal temperature
   channel. Keep `0x84` at 25 Hz.
-- Current behavior: M5Unified writes `0x82 = 0xFF` (every channel), `0x83 =
-  0x80` (temperature on), and `0x84 = 0x32` (25 Hz) on every AXP192 board.
-  Furble only uses battery level, voltage, and current. ACIN, VBUS, APS, TS,
-  and temperature are unused.
+- Current behavior: M5Unified writes `0x82 = 0xFF` (every channel),
+  `0x83 = 0x80` (temperature on), and `0x84 = 0x32` (25 Hz) on every AXP192
+  board. Furble only uses battery level, voltage, and current. ACIN, VBUS, APS,
+  TS, and temperature are unused.
 - Evidence: `code` (M5Unified 0.2.20 `Power_Class.cpp` register block),
   `datasheet`.
-- Estimated saving: tens of microamps at most (`inferred`). The AXP192
+- Estimated saving: under 100 uA, possibly under 10 uA (`inferred`). The AXP192
   datasheet does not give a separate ADC block current, so this must be
   measured before it is claimed. It is a trim, not a headline.
 - Risk: low. The battery gauge must keep working; the charge status is read
@@ -614,11 +635,11 @@ Estimates are not measurements unless the label says `measured-local`.
   an opted-in user gets standby without a separate menu trip.
 - Current behavior: `GPS_POWER` and `GPS_DUTY` both default to 0, so the
   receiver runs continuously at 23 to 31.6 mA whenever GPS is enabled. The
-  existing duty mode is clamped to 15 s and the 5 s minimum wake dwell eats
-  most of the interval. The baseline model is 21.5 mA against 23.0 mA
-  always-on, only about 1.5 mA saved. The audit's 60 s interval with a 5 s
-  burst models at about 4 mA, but it is unimplemented and it challenges the
-  30 s `MAX_AGE_MS` freshness budget.
+  existing duty mode is clamped to 15 s. Plan 98 attributes the small saving to
+  the 5 s minimum wake wait and that clamp. The baseline model is 21.5 mA
+  against 23.0 mA always-on, only about 1.5 mA saved. The audit's 60 s interval
+  with a 5 s burst models at about 4 mA, but it is unimplemented and it
+  challenges the 30 s `MAX_AGE_MS` freshness budget.
 - Evidence: `code` (`DUTY_SECONDS`, `MIN_WAKE_WAIT_MS`, `MAX_AGE_MS`), `model`
   (21.5 and 23.0 mA, 4 mA), `measured-local` (PCAS12 standby works, no backup
   supply, 107.7 s cold start).
@@ -811,6 +832,38 @@ Estimates are not measurements unless the label says `measured-local`.
 - Citation: M5Unified 0.2.20 `Power_Class.cpp` Plus2 ADC setup; StickC Plus2
   documentation.
 
+#### RL-11 All IMU boards: acceleration-only low power
+
+- Change: when the IMU is enabled, configure the BMI270 or MPU6886 for
+  accelerometer-only low-power operation at the rate the UI actually needs
+  (1 Hz for gestures and motion, 50 Hz for the level page), instead of
+  six-axis normal mode.
+- Current behavior: `M5.begin(cfg)` initializes the IMU when the setting is on,
+  and M5Unified configures the part for normal six-axis use. `FurbleIMU.cpp`
+  reads only `getAccel`; the gyro is never read. The IMU setting defaults off
+  and applies on reboot. The hardware any-motion engine in plan 20 is not the
+  default.
+- Evidence: `code` (`src/FurbleIMU.cpp`, `src/FurblePlatform.cpp:40`),
+  `datasheet` (BMI270 685 uA normal versus 4 to 10 uA accel low power; MPU6886
+  2.79 mA versus 40 uA accel low power), `model` (the peripheral term is fixed
+  at 0.0035 mA, not the IMU normal-mode current).
+- Estimated saving: about 0.68 mA on the StickS3 and about 2.75 mA on the
+  StickC, Plus, and Core2 while the IMU is enabled (`datasheet`). On the S3
+  that is about 20 percent of the 3.3 mA connected floor. The default is off,
+  so the saving applies only to users who enabled the IMU.
+- Risk: medium. Gesture thresholds, the spirit level, and the wake gesture
+  depend on the sample rate and range. A lower ODR can miss a double tap. The
+  gyro is unused today, so disabling it should be safe, but the tilt response
+  must be rechecked.
+- Effort: medium. M5Unified does not expose accel-only low power, so this needs
+  direct register writes or a small driver.
+- Required test: IMU on, level page at 50 Hz, double tap and wake gesture 20
+  times, 1 hour current run on the StickS3 and Core2; compare against the stock
+  six-axis configuration. Verify no I2C errors and no lost motion events.
+- Citation: BMI270 datasheet `PWR_CTRL` `0x7D`, `PWR_CONF` `0x7C`, `ACC_CONF`
+  `0x40`; MPU6886 datasheet `PWR_MGMT_1` `0x6B`, `PWR_MGMT_2` `0x6C`;
+  `src/FurbleIMU.cpp`; `plans/20-imu-hw-motion.md`.
+
 ### 4.3 GPIO, pull-ups, and ADC leakage
 
 #### LK-01 StickS3: GPIO13 pull-up on the PM1 IRQ line
@@ -940,34 +993,35 @@ Estimates are not measurements unless the label says `measured-local`.
 - Citation: `plans/10-adaptive-conn-params.md`;
   `plans/98-power-optimization-audit.md`.
 
-#### PL-03 AXP192 boards: scope the display APB lock by backlight type
+#### PL-03 AXP192 boards: scope the display APB lock
 
-- Change: acquire `APB_FREQ_MAX` only on boards whose backlight is an ESP32
-  LEDC: the Core (GPIO32), the Plus2 (GPIO27), and the StickS3 (GPIO38). On the
-  StickC, Plus, and Core2 the backlight is an AXP192 voltage or PMIC PWM output
-  and does not depend on the APB clock, so the lock can be released while the
-  panel is on.
+- Change: stop holding `APB_FREQ_MAX` for the whole screen-on period. Start with
+  a scoped lock around the panel bus and touch transactions, and test whether
+  the lock can be released at idle on the StickC, Plus, and Core2. On those
+  boards the backlight is an AXP192 voltage or PMIC PWM output and does not need
+  the APB clock; the panel SPI bus and the touch I2C bus still might.
 - Current behavior: `UI::UI()` acquires `APB_FREQ_MAX` on every board and holds
   it until the panel sleeps. The ESP-IDF power manager maps that lock to
   `PM_MODE_APB_MAX`, which is above `PM_MODE_APB_MIN`; light sleep requires a
   mode below `APB_MIN`. So the lock blocks light sleep for the whole screen-on
-  period, on every board.
+  period, on every board. The source comment attributes the lock to the
+  backlight PWM, which is an ESP32 LEDC only on the Core, Plus2, and StickS3.
 - Evidence: `code` (`src/FurbleUI.cpp:371-374`, `1305-1318`, `1333-1335`),
   `code` (ESP-IDF `pm_impl.c` mode mapping), `datasheet` (ESP32 active current
   at 80 MHz), `inferred` saving.
-- Estimated saving: up to about 24 mA on the ESP32 AXP192 boards and up to
-  about 39 mA on the S3 if the MCU could sleep between UI frames (`inferred`).
-  A realistic range with redraws is 5 to 15 mA. This is a screen-on saving and
-  it applies to the states where the user actually uses the device.
+- Estimated saving: up to about 24 mA on the ESP32 AXP192 boards if the MCU
+  could sleep between UI frames (`inferred`). A realistic range with redraws is
+  5 to 15 mA. This is a screen-on saving and it applies to the states where the
+  user actually uses the device.
 - Risk: high. The display SPI, the I2C touch controller, and the LVGL timing
-  all assume a stable clock. On the AXP192 boards the backlight itself is safe,
-  but the panel bus and touch may not be. This is the flicker and corruption
-  class of bug.
+  all assume a stable clock. On the AXP192 boards the backlight is safe, but the
+  panel bus and touch may not be. This is the flicker and corruption class of
+  bug.
 - Effort: medium. A board capability predicate, a lock owner change, and a
   soak on each board.
 - Required test: 1 hour screen-on idle and a 100 cycle menu navigation on
-  StickC, Plus, and Core2, lock held versus released. Check panel corruption,
-  touch, I2C errors, and current.
+  StickC, Plus, and Core2, lock held versus scoped versus released. Check panel
+  corruption, touch, I2C errors, and current.
 - Citation: M5GFX 0.2.27 `Light_M5StickC` (LDO2) and
   `Light_M5StackCore2` (DCDC3); `_set_pwm_backlight` for Core, Plus2, and
   StickS3; ESP-IDF `components/esp_pm/pm_impl.c`.
@@ -975,8 +1029,9 @@ Estimates are not measurements unless the label says `measured-local`.
 #### PL-04 StickS3: clock the LEDC backlight from a source that survives DFS
 
 - Change: prototype an LEDC clock source that does not require the APB lock,
-  such as RC_FAST, so the MCU can drop frequency or light sleep while the panel
-  is on. Keep the APB lock as the fallback.
+  such as RC_FAST, and use a scoped lock around panel bus transactions, so the
+  MCU can drop frequency or light sleep at idle while the panel is on. Keep the
+  APB lock as the fallback.
 - Current behavior: the backlight is LEDC PWM on GPIO38. `UI::UI()` holds
   `APB_FREQ_MAX` while the panel is on, which blocks DFS and light sleep. The
   audit calls this the only path to cutting the 40 mA MCU term with the screen
@@ -1130,10 +1185,12 @@ Estimates are not measurements unless the label says `measured-local`.
 - Current behavior: `sdkconfig.waveshare-s3-eth` has
   `# CONFIG_FREERTOS_USE_TICKLESS_IDLE is not set` and
   `# CONFIG_PM_DFS_INIT_AUTO is not set`, while `Power::configure()` still calls
-  `esp_pm_configure` with the stored max frequency and `light_sleep_enable =
-  true`. Tickless off means no automatic light sleep. DFS can still scale the
-  CPU because the runtime call enables it. Plan 42 says "hold a fixed APB and
-  CPU frequency", which is not what the build does.
+  `esp_pm_configure` with the stored max frequency and
+  `light_sleep_enable = true`. Tickless off means no automatic light sleep. DFS
+  can still scale the CPU because the runtime call enables it. Plan 42 says
+  "hold a fixed APB and CPU frequency", which is not what the build does. The
+  same file leaves `CONFIG_ESP_PHY_MAC_BB_PD` unset while the other S3 configs
+  set it; that is a consistency fix, not a battery saving.
 - Evidence: `code` (sdkconfig, `src/FurblePower.cpp:37-43`), `plan` (42).
 - Estimated saving: 0 battery runtime. This is a correctness and latency item
   for a mains node.
@@ -1228,11 +1285,11 @@ Estimates are not measurements unless the label says `measured-local`.
 
 - Change: add the 8 MB octal PSRAM addend to the S3 light-sleep model and add
   per-board report selection. Do not use the S3 report for a non-S3 board.
-- Current behavior: the simulator reads only the `esp32s3` anchors and a fixed
-  0.0035 mA peripheral term. `board-currents.yaml` carries all five boards but
-  the profiler does not consume the per-board keys. The ESP32-S3 datasheet adds
-  140 uA for 8 MB 8-line PSRAM in light sleep, which the 240 uA model does not
-  include.
+- Current behavior: the simulator reads only the `esp32s3` anchors plus fixed
+  PMIC and peripheral terms (52.47 uA and 3.5 uA). `board-currents.yaml` carries
+  five board keys but the profiler does not consume them. The ESP32-S3 datasheet
+  adds 140 uA for 8 MB 8-line PSRAM in light sleep, which the 240 uA MCU term
+  does not include.
 - Evidence: `code` (`sim/power_profiler.cpp`, `tools/power-model/README.md`),
   `datasheet` (ESP32-S3 Table 5-10 footnote).
 - Estimated saving: 0 device current. This is a model correction, and it
@@ -1255,12 +1312,12 @@ the listed test.
 | Rank | ID | Change | Estimated saving | Gate |
 | :--- | :--- | :--- | :--- | :--- |
 | 1 | PM-03 | Rate-limit the StickS3 PM1 button poll to 50 ms | 40 to 150 uA inferred | Button and watchdog test on the attached S3 |
-| 2 | PM-05 | Clear the StickS3 status LED in console mode | 1 to 3 mA inferred | Console mode LED and panel test |
-| 3 | PM-04 | Trim the AXP192 ADC channel mask | tens of uA inferred | Battery page and charge-state test on an AXP192 board |
-| 4 | NB-05 | Raise the headless UI loop to 50 ms | 0.1 to 0.3 mA inferred | Console and MQTT latency on the devkit |
+| 2 | PM-04 | Trim the AXP192 ADC channel mask | under 100 uA inferred | Battery page and charge-state test on an AXP192 board |
+| 3 | NB-05 | Raise the headless UI loop to 50 ms | 0.1 to 0.3 mA inferred | Console and MQTT latency on the devkit |
+| 4 | PM-05 | Clear the StickS3 status LED in console mode | 1 to 3 mA inferred, console only | Console mode LED and panel test |
 
-PM-05 only matters in console mode, which is a development mode, so its
-practical value is small. It is still safe and free.
+PM-05 has the largest number in this table, but it only applies in console
+mode, which is a development mode. It is still safe and free.
 
 ### 5.2 Needs measurement
 
@@ -1273,52 +1330,55 @@ attached in this repo; every other board needs hardware.
 | :--- | :--- | :--- | :--- | :--- |
 | 1 | PL-01 | `SLEEP_CONN` default after soak | about 40 mA connected, screen off | StickS3, attached |
 | 2 | PM-06 | Core IP5306 boost keep-on | 20 to 60 mA screen off, floor unknown | Core |
-| 3 | PL-03 | Release the APB lock on AXP192 backlight boards | 5 to 25 mA screen on | StickC, Plus, Core2 |
-| 4 | PM-01 | StickS3 interval deep sleep | 70 to 87 percent of interval energy | StickS3, attached |
-| 5 | PM-10 | AXP192 timed deep sleep | 25 to 50 mA to about 0.2 to 0.3 mA | StickC, Plus, Core2 |
-| 6 | PM-09 | Core deep sleep with keep-on | 1 to 3 mA floor, unknown | Core |
-| 7 | PL-04 | StickS3 LEDC clock without the APB lock | 5 to 15 mA screen on | StickS3, attached |
-| 8 | PL-07 | Display inactivity and Off defaults | about 40 mA when forgotten | all battery boards |
-| 9 | PM-07 | Auto-off default | 25 to 84 mA when forgotten | all battery boards |
+| 3 | PL-07 | Display inactivity and Off defaults | about 40 mA when forgotten | all battery boards |
+| 4 | PM-07 | Auto-off default | 25 to 84 mA when forgotten | all battery boards |
+| 5 | PM-01 | StickS3 interval deep sleep | 70 to 87 percent of interval energy | StickS3, attached |
+| 6 | PM-10 | AXP192 timed deep sleep | 25 to 50 mA to about 0.2 to 0.3 mA | StickC, Plus, Core2 |
+| 7 | PL-03 | Release the APB lock on AXP192 backlight boards | 5 to 25 mA screen on | StickC, Plus, Core2 |
+| 8 | PL-04 | StickS3 LEDC clock without the APB lock | 5 to 15 mA screen on | StickS3, attached |
+| 9 | PL-06 | Balanced and passive scan | up to 20 to 40 mA while scanning | all boards |
 | 10 | RL-01 | GPS duty rework and Battery Saver bundle | 1.5 mA now, up to 19 mA with rework | any Grove GPS board |
-| 11 | PL-02 | `CONN_SAVER` default | 0.5 to 2 mA connected | Sticks and Core2 |
-| 12 | PL-05 | Screen-off UI loop and timers | 0.5 to 4 mA screen off | StickS3 first |
-| 13 | PL-06 | Balanced and passive scan | up to 20 to 40 mA while scanning | all boards |
-| 14 | PM-08 | Core2 touch low-power mode | 0.5 to 2 mA screen off | Core2 |
-| 15 | LK-01 | StickS3 GPIO13 pull-up | 0 to 73 uA while asserted | StickS3, attached |
+| 11 | PM-09 | Core deep sleep with keep-on | 1 to 3 mA floor, unknown | Core |
+| 12 | RL-11 | Accel-only low power on the IMU | 0.68 to 2.75 mA while IMU on | S3, StickC, Plus, Core2 |
+| 13 | PL-02 | `CONN_SAVER` default | 0.5 to 2 mA connected | Sticks and Core2 |
+| 14 | PL-05 | Screen-off UI loop and timers | 0.5 to 4 mA screen off | StickS3 first |
+| 15 | PM-08 | Core2 touch low-power mode | 0.5 to 2 mA screen off | Core2 |
 | 16 | RL-02 | GPS TX back-power when the rail is off | 0 to 1 mA rail off | any Grove GPS board |
-| 17 | PL-08 | Tickless and RTOS idle tuning | below 0.2 mA | one S3 and one ESP32 board |
-| 18 | PM-02 | PM1 L1 and L2 characterization | no direct saving; resume trade | StickS3, attached |
-| 19 | NB-01 | Waveshare sleep and DFS policy | 0 battery; latency item | Waveshare |
-| 20 | PM-11 | Plus2 off-path gate | 0 direct; prevents a dead-looking device | Plus2 |
+| 17 | RL-03 | StickS3 IR and EXT_5V rail ownership | 0 to 1 mA IR receiver accounting | StickS3, attached |
+| 18 | PL-08 | Tickless and RTOS idle tuning | below 0.2 mA | one S3 and one ESP32 board |
+| 19 | LK-01 | StickS3 GPIO13 pull-up | 0 to 73 uA while asserted | StickS3, attached |
+| 20 | PM-02 | PM1 L1 and L2 characterization | no direct saving; resume trade | StickS3, attached |
+| 21 | NB-01 | Waveshare sleep and DFS policy | 0 battery; latency item | Waveshare |
+| 22 | PM-11 | Plus2 off-path gate | 0 direct; prevents a dead-looking device | Plus2 |
+| 23 | NB-06 | PSRAM addend and per-board model coverage | 0 device; about 0.14 mA model correction | model only |
 
 ### 5.3 Rejected
 
 These are real opportunities that do not survive the evidence. The reason is
 given so the next reader does not reopen them without new facts.
 
-| ID | Change | Why rejected | Evidence |
-| :--- | :--- | :--- | :--- |
-| PM-12 | Add an immediate software power off to the Core | The IP5306 has no documented off command; the existing path deep-sleeps and relies on the 32 s low-load cutoff if the residual load is below 45 mA. An immediate off would need a hardware change or a different PMIC | `code`, IP5306 V1.01 |
-| PM-13 | Feed the PM1 watchdog every 5 s instead of every 1 s | Saves only a few microamps; the 45 s timeout already has a 45x margin and the feed shares the button-poll bus | `code`, M5PM1 `WDT_CNT` |
-| PM-14 | Change the AXP192 or IP5306 charge current for runtime | Charge current does not affect discharge runtime; it only changes charge time and heat | `code`, datasheets |
-| PM-15 | Use the AXP192 coulomb counter for a better gauge | Accuracy only, no energy saving | `code`, AXP192 datasheet |
-| PM-16 | Use the PM1 L1 or L2 state to save energy versus off | Off is 14.02 uA; L1 is 52.47 uA and L2 is 102.40 uA. The only possible win is resume time | `vendor-doc` |
-| RL-04 | Cut Core2 LDO2 when the panel sleeps | LDO2 powers the panel and SD; cutting it removes both | `code`, M5Unified |
-| RL-05 | Cut StickC or Plus LDO3 when the panel sleeps | LDO3 powers the LCD logic; cutting it loses the panel state | `code`, M5Unified |
-| RL-06 | Cut SD power when logging is off | No load switch on either Core SD slot | `code`, board docs |
-| RL-07 | Optimize Waveshare peripherals for runtime | No battery; mains node | `code`, board docs |
-| RL-08 | Change the speaker, vibration, IR, or LED event brackets | Already opened only for the event and closed after | `code` |
-| RL-09 | Change the StickS3 codec or amplifier policy | The speaker is already ended after init and after each pattern; the remaining current is unmeasured but the policy is correct | `code` |
-| RL-10 | Remove the Plus2 battery divider | Board fixture, no firmware control | `code`, schematic needed |
-| LK-02 | Make the StickC MPU6886 interrupt push-pull | The SYS_INT net is shared with the BM8563 RTC and is open-drain; push-pull can short the RTC | `code` |
-| LK-03 | Drive every IR pin low at boot | Plus2 GPIO19 doubles as the LED and the polarity is unverified; the other boards show no measured leakage | `code` |
-| LK-04 | Disable internal pulls during sleep now | Deep sleep is unused; the change can float a wake pin | `code`, sdkconfig |
-| PL-09 | Change TX power or add 2M PHY as a power project | The average saving is below 0.5 mA; the connected floor dominates | `code`, `model` |
-| PL-10 | Remove the charging `NO_LIGHT_SLEEP` lock | External power, no battery runtime; the lock's origin is undocumented | `code` |
-| NB-02 | Power down the W5500 PHY | No battery; the link is the node's job | `code`, W5500 datasheet |
-| NB-03 | Disable USB Serial/JTAG in release | It is the only flashing and console path on the StickS3 | `code`, sdkconfig |
-| NB-04 | Optimize the Core USB debug profile | Developer rescue profile, UART console defeats light sleep by design | `code` |
+| ID | Change | Current behavior and why rejected | Estimated saving | Risk, effort, test | Evidence |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| PM-12 | Add an immediate software power off to the Core | The IP5306 has no documented off command; the existing path deep-sleeps and relies on the 32 s low-load cutoff if the residual load is below 45 mA. An immediate off would need a hardware change or a different PMIC | 0 | n/a (rejected) | `code`, IP5306 V1.01 |
+| PM-13 | Feed the PM1 watchdog every 5 s instead of every 1 s | Saves only a few microamps; the 45 s timeout already has a 45x margin and the feed shares the button-poll bus | 0 | n/a (rejected) | `code`, M5PM1 `WDT_CNT` |
+| PM-14 | Change the AXP192 or IP5306 charge current for runtime | Charge current does not affect discharge runtime; it only changes charge time and heat | 0 | n/a (rejected) | `code`, datasheets |
+| PM-15 | Use the AXP192 coulomb counter for a better gauge | Accuracy only, no energy saving | 0 | n/a (rejected) | `code`, AXP192 datasheet |
+| PM-16 | Use the PM1 L1 or L2 state to save energy versus off | Off is 14.02 uA; L1 is 52.47 uA and L2 is 102.40 uA. The only possible win is resume time | 0 | n/a (rejected) | `vendor-doc` |
+| RL-04 | Cut Core2 LDO2 when the panel sleeps | LDO2 powers the panel and SD; cutting it removes both | 0 | n/a (rejected) | `code`, M5Unified |
+| RL-05 | Cut StickC or Plus LDO3 when the panel sleeps | LDO3 powers the LCD logic; cutting it loses the panel state | 0 | n/a (rejected) | `code`, M5Unified |
+| RL-06 | Cut SD power when logging is off | No load switch on either Core SD slot | 0 | n/a (rejected) | `code`, board docs |
+| RL-07 | Optimize Waveshare peripherals for runtime | No battery; mains node | 0 | n/a (rejected) | `code`, board docs |
+| RL-08 | Change the speaker, vibration, IR, or LED event brackets | Already opened only for the event and closed after | 0 | n/a (rejected) | `code` |
+| RL-09 | Change the StickS3 codec or amplifier policy | The speaker is already ended after init and after each pattern; the remaining current is unmeasured but the policy is correct | 0 | n/a (rejected) | `code` |
+| RL-10 | Remove the Plus2 battery divider | Board fixture, no firmware control | 0 | n/a (rejected) | `code`, schematic needed |
+| LK-02 | Make the StickC MPU6886 interrupt push-pull | The SYS_INT net is shared with the BM8563 RTC and is open-drain; push-pull can short the RTC | 0 | n/a (rejected) | `code` |
+| LK-03 | Drive every IR pin low at boot | Plus2 GPIO19 doubles as the LED and the polarity is unverified; the other boards show no measured leakage | 0 | n/a (rejected) | `code` |
+| LK-04 | Disable internal pulls during sleep now | Deep sleep is unused; the change can float a wake pin | 0 | n/a (rejected) | `code`, sdkconfig |
+| PL-09 | Change TX power or add 2M PHY as a power project | The average saving is below 0.5 mA; the connected floor dominates | 0 | n/a (rejected) | `code`, `model` |
+| PL-10 | Remove the charging `NO_LIGHT_SLEEP` lock | External power, no battery runtime; the lock's origin is undocumented | 0 | n/a (rejected) | `code` |
+| NB-02 | Power down the W5500 PHY | No battery; the link is the node's job | 0 | n/a (rejected) | `code`, W5500 datasheet |
+| NB-03 | Disable USB Serial/JTAG in release | It is the only flashing and console path on the StickS3 | 0 | n/a (rejected) | `code`, sdkconfig |
+| NB-04 | Optimize the Core USB debug profile | Developer rescue profile, UART console defeats light sleep by design | 0 | n/a (rejected) | `code` |
 
 ## 6. Measurement plan
 
@@ -1347,9 +1407,10 @@ current. Retain raw samples, not only a displayed average.
 This is the part the existing plan 111 protocol does not resolve.
 
 - The console is compiled only into console builds (`FURBLE_CONSOLE`): the
-  `-debug` envs and the `esp32-s3-headless` env. On the ESP32 boards, the
-  console holds `ESP_PM_APB_FREQ_MAX` for its lifetime, which blocks light
-  sleep. On the StickS3 and headless, the console uses USB Serial/JTAG, and the
+  `-debug` envs, the `esp32-s3-headless` env, and the `waveshare-s3-eth` env,
+  which extends headless. On the ESP32 boards, the console holds
+  `ESP_PM_APB_FREQ_MAX` for its lifetime, which blocks light sleep. On the
+  StickS3, headless, and Waveshare, the console uses USB Serial/JTAG, and the
   USJ connection holds `NO_LIGHT_SLEEP`. So `power log` cannot measure the
   light-sleep states it is meant to validate, on any board.
 - Debug builds also add `CONFIG_PM_PROFILING`, FreeRTOS run time stats, and the
@@ -1438,10 +1499,12 @@ This is the part the existing plan 111 protocol does not resolve.
 - If the Core boost quiescent current is above about 10 mA, PM-06 and PM-09
   drop out of the top ranks.
 - If the AXP192 operating quiescent is near 2 mA as plan 98 suggests, PM-10
-  and PL-03 lose most of their value and PM-07 (power off) becomes the only
-  large win on those boards.
-- If `$PCAS12` standby current is near 2 mA, RL-01 loses most of its value and
-  the GPS rail policy should stay always-on.
+  loses most of its value. PL-03 still saves its screen-on delta, but the
+  relative runtime gain shrinks and PM-07 (power off) becomes the largest win on
+  those boards.
+- If `$PCAS12` standby current is near 2 mA, the duty-cycle saving shrinks.
+  Measure it before choosing a default; the current 1.5 mA baseline is a
+  different mechanism.
 - If the Core2 touch controller is below 100 uA when idle, PM-08 drops out.
 - If the per-vendor soak shows link instability with `SLEEP_CONN` and
   `CONN_SAVER`, the two headline items become Battery Saver only and the
@@ -1457,10 +1520,10 @@ rows. Do not treat a not-reopened row as a new verification.
 | :--- | :--- | :--- | :--- |
 | AXP192 | X-Powers AXP192 datasheet, enhanced single cell Li-battery PMIC | `REG 82H` ADC enable 1: bit 7 battery voltage, bit 6 battery current, bits 5 to 2 ACIN and VBUS, bit 1 APS, bit 0 TS. Default `0x83`. | Opened for this note. No revision string in the fetched copy. |
 | AXP192 | same | `REG 83H` ADC enable 2: bit 7 internal temperature. Default `0x80`. | Opened. |
-| AXP192 | same | `REG 84H` ADC sample rate, 25 Hz default; `REG 12H` rail enables; `REG 28H` LDO2 and LDO3 voltage; `REG 27H` DCDC3; `REG 33H` charge enable, 4.2 V, current. | Opened. |
+| AXP192 | same | `REG 84H` ADC sample rate, M5Unified sets 25 Hz; `REG 12H` rail enables; `REG 28H` LDO2 and LDO3 voltage; `REG 27H` DCDC3; `REG 33H` charge enable, 4.2 V, current. | Opened. |
 | AXP192 | same | Off mode 27 uA at BAT 3.8 V; suspend 86 uA; DCDC1 26 uA no load; DCDC2 and DCDC3 20 uA each; LDO2 and LDO3 100 uA each; LDOIO0 90 uA. | Opened. |
 | IP5306 | Injoinic IP5306 datasheet V1.01 | Automatic load detection below 45 mA for 32 s; standby 50 uA; input quiescent 100 uA. | Opened. The public datasheet does not tabulate the register map. |
-| IP5306 | M5Unified 0.2.20 `IP5306_Class.cpp` | `REG_SYS_CTL0` `0x00` bit 1 boost normally open; `REG_SYS_CTL2` `0x02` bits 4:3 light-load time; `REG_CHG_DIG_CTL0` `0x24` charge current. Board init `0x00 = 0x31`, `0x02 = 0x6C`. | Opened as vendor code, not a datasheet. |
+| IP5306 | M5Unified 0.2.20 `IP5306_Class.cpp` | `REG_SYS_CTL0` `0x00` bit 1 boost normally open; `REG_SYS_CTL2` `0x02` light-load time field as decoded by the M5Unified comment; `REG_CHG_DIG_CTL0` `0x24` charge current. Board init `0x00 = 0x31`, `0x02 = 0x6C`. | Opened as vendor code, not a datasheet. |
 | M5PM1 | M5Stack M5PM1 Chip User Manual V1.9 | `PWR_CFG` `0x06`: bit 4 LED, bit 3 5 V boost, bit 2 3.3 V LDO, bit 1 3.3 V DCDC, bit 0 charge. Default `0x17`. | Opened. |
 | M5PM1 | same | `I2C_CFG` `0x09`: `SLP_TO` bits 3:0, 0 disables idle sleep. The first transaction after a wake fails. | Opened. |
 | M5PM1 | same | `WDT_CNT` `0x0A` seconds, 0 disables; `WDT_KEY` `0x0B` feed `0xA5`; `SYS_CMD` `0x0C` `0xA1` power off. | Opened. |
@@ -1479,10 +1542,12 @@ rows. Do not treat a not-reopened row as a new verification.
 | W5500 | WIZnet W5500 datasheet v1.0.6 | PHY power-down mode exists; the exact current is not quoted here because the datasheet copy was not opened. | Not reopened. |
 
 Note on revisions. The AXP192 copy fetched for this note carries no revision
-string. Its cover says "X-Powers, 2010". The IP5306 copy is V1.01. The M5PM1
-copy is V1.9. The ESP32-S3 copy is v2.2. If a future review needs a register
-claim from the not-reopened rows, open the exact revision first; do not copy a
-number from this table as if it were re-verified.
+string. Its cover says "X-Powers, 2010"; the PDF metadata dates it 2011-08-08
+and the copy is 53 pages. Use those identifiers, not a revision number. The
+IP5306 copy is V1.01. The M5PM1 copy is V1.9. The ESP32-S3 copy is v2.2. If a
+future review needs a register claim from the not-reopened rows, open the exact
+revision first; do not copy a number from this table as if it were
+re-verified.
 
 ## 8. Model corrections and open questions
 
@@ -1490,11 +1555,13 @@ These are not new opportunities. They are the reasons the opportunities above
 cannot be ranked by the current simulator alone.
 
 1. The simulator is S3 only. `board-currents.yaml` has five board keys, but the
-   profiler reads the `esp32s3` anchors and a fixed 0.0035 mA peripheral term.
-   There is no per-board report and no PMIC, PSRAM, or board rail term.
-2. The S3 light-sleep model uses 240 uA and omits the 140 uA 8 MB PSRAM
-   addend. That is a 58 percent underestimate of the MCU sleep term before the
-   PM1 overhead.
+   profiler reads the `esp32s3` anchors, a fixed 52.47 uA PMIC term, and a fixed
+   3.5 uA peripheral term. There is no per-board report and no per-board PMIC,
+   PSRAM, or board rail term.
+2. The S3 light-sleep MCU term is 240 uA and omits the 140 uA 8 MB PSRAM
+   addend. The datasheet MCU term is 380 uA, so the MCU term is about 37 percent
+   low. With the fixed 52.47 uA PMIC term, the full light-sleep state is about
+   292 uA against a datasheet-based 432 uA, about 32 percent low.
 3. The model charges a constant connected floor, so it cannot see the
    `CONN_SAVER` interval change. The 3.61 mA what-if is therefore a lower
    bound on the parameter-dependent floor, not a prediction of the idle
@@ -1504,19 +1571,22 @@ cannot be ranked by the current simulator alone.
    costs 0.2 to 0.5 ms of active time.
 5. The model does not charge the GPS cold start, the `$PCAS12` standby current,
    or the rail-off leakage. A duty-cycle result can look better than it is.
-6. The model does not charge the AXP192 or IP5306 quiescent current, the PM1
-   overhead, the SD card standby, the touch controller, or the IR receiver.
+6. The model charges a fixed 52.47 uA PMIC term (the S3 L1 figure) on every
+   board and a fixed 3.5 uA peripheral term. It does not use the per-board
+   AXP192, IP5306, or PM1 values, the SD card standby, the touch controller,
+   the IR receiver, or the IMU normal-mode current.
 7. The model has no scan state, no display brightness term, and no per-board
    backlight term.
-8. The model's 3.3 mA connected floor is a `measured-local` observation for
-   the stock parameters. It is not the board floor for the `CONN_SAVER`
-   parameters, and the measurement conditions are not fully recorded.
+8. The model's 3.3 mA connected floor is tagged `measured-local` for the stock
+   parameters. It is not the board floor for the `CONN_SAVER` parameters, and
+   the measurement conditions and the trace are not recorded in plan 00. Treat
+   its provenance as incomplete.
 
 Open questions that block a default change:
 
 - What is the StickS3 light-sleep floor at the `CONN_SAVER` idle parameters,
   measured at the battery boundary with USB detached? The 3.3 mA figure is for
-  the stock parameters.
+  the stock parameters, and its original run is not in the tree.
 - What is the actual PM1 `SLP_TO` value after `M5.begin()` and after furble's
   `m_M5PM1.begin()`? Plan 26 still owes this readback. If it is zero, the
   retry path is defensive and the 200 Hz button poll is the real cost.
@@ -1537,12 +1607,16 @@ Open questions that block a default change:
 
 ### Repo
 
-- `plans/00-hardware-experiments.md`: the only local measurements.
+- `plans/00-hardware-experiments.md`: the only recorded local measurements
+  (crystal and GPS experiments). The 3.3 mA StickS3 floor is cited from this
+  plan by other documents, but its drain row is not present here.
 - `plans/06-power-module.md`, `plans/07-ble-sleep.md`,
-  `plans/12-display-off.md`, `plans/13-auto-off-low-batt.md`,
-  `plans/15-gps-power.md`, `plans/19-interval-deep-sleep.md`,
-  `plans/26-pm1-watchdog.md`, `plans/42-waveshare-eth-node.md`,
-  `plans/63-sim-power-analysis.md`, `plans/77-battery-saver-profile.md`,
+  `plans/08-scan-tuning.md`, `plans/10-adaptive-conn-params.md`,
+  `plans/11-adaptive-tx-power.md`, `plans/12-display-off.md`,
+  `plans/13-auto-off-low-batt.md`, `plans/15-gps-power.md`,
+  `plans/19-interval-deep-sleep.md`, `plans/26-pm1-watchdog.md`,
+  `plans/42-waveshare-eth-node.md`, `plans/63-sim-power-analysis.md`,
+  `plans/77-battery-saver-profile.md`,
   `plans/95-engineering-lessons.md`, `plans/98-power-optimization-audit.md`,
   `plans/111-power-recommendations.md`.
 - `tools/power-model/board-currents.yaml` and `tools/power-model/README.md`.

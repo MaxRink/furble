@@ -2,9 +2,10 @@
 
 Status: plan only. No bench measurement described in this document has been
 executed. Every row in the measurement register carries the evidence label
-`unknown` until a record ID with an accepted raw trace exists. A simulator
-report is not a measurement, and a datasheet number is not a local
-measurement.
+`unknown` until its own acceptance evidence exists: a bench row needs a record
+ID and an accepted raw trace, and a simulator row needs a report with a
+matching digest. A simulator report is not a measurement, and a datasheet
+number is not a local measurement.
 
 This is the measurement lane named in `docs/power/README.md`. It turns the
 opportunities in `plans/98-power-optimization-audit.md`, the follow-up in
@@ -267,11 +268,11 @@ rejection in the session notes instead of silently skipping it.
 
 | ID | State | Entry condition | Verification | Minimum window |
 | --- | --- | --- | --- | --- |
-| S01 | Boot to idle | Cold boot, no USB, splash complete, main page visible | Photo at 0 s and 30 s; no camera connected | 30 s |
+| S01 | Boot to idle | Cold boot, no USB, splash complete, main page visible | Photo at first splash and at 30 s; no camera connected | 30 s |
 | S02 | Menu idle, brightness 128 | Baseline block, main page, no camera, no GPS, no Wi-Fi | Photo; `settings get brightness` on the debug build | 300 s |
 | S03 | Menu idle, brightness 240, CPU 80 | Baseline block, brightness 240, CPU 80 | Photo; `settings get` values | 300 s |
 | S04 | Screen dim | Baseline block, `inactivity 1`, `display_off 0`, 30 s idle | Photo of the dim panel; no touch or button | 300 s |
-| S05 | Screen off, disconnected | Baseline block, `inactivity 1`, `display_off 1`, 30 s idle plus 5 s dwell | Photo of the blank panel; no camera | 300 s |
+| S05 | Screen off, disconnected | Baseline block, `inactivity 1`, `display_off 1`, 30 s idle plus 5 s settle | Photo of the blank panel; no camera | 300 s |
 | S06 | Scan full, balanced, low | Baseline block, `scan_mode 0/1/2`, scan page open | `scan` console state on the debug build; camera in range | 60 s per mode |
 | S07 | Connect handshake | Saved camera, camera on, connect from cold boot | `cameras status` on the debug build; camera indicator | 1 event |
 | S08 | Connected idle, fast, screen on | Camera connected, 60 s quiet, `conn_saver off` | `debug camera` interval in the fast profile | 600 s |
@@ -582,7 +583,7 @@ S3, not an average across boards. WAV is separate.
 | P10 | Power off, 600 s | SC, SP, CO, C2, S3 | `PWR_OFF` column | T-floor | I1 | unknown |
 | P11 | CPU sweep 80, 160, 240 at brightness 128 | battery boards | `CPU80`, `CPU160`, `CPU240` | T-active; each step at least 5 percent above the previous | I1 | unknown |
 | P12 | IMU gesture poll, screen off, 300 s | battery boards | S3 8 to 15; ESP32 10 to 25 | T-mid | I1 | unknown |
-| P13 | Boot to idle, 30 s | battery boards | 30 to 120 mA transient; no PMIC cutoff | T-event; no reset | I1 | unknown |
+| P13 | Boot to idle, 30 s | battery boards | 30 to 200 mA transient; no PMIC cutoff | T-state; no reset | I1 | unknown |
 | P14 | Scan full, balanced, low, 60 s per mode | battery boards | Above the same-board idle; full greater than balanced, balanced greater than low | T-mid; monotonic | I1 | unknown |
 | P15 | Multi-connect, 2 cameras, screen off, 600 s | battery boards | Two connected floors; at most 2x the single-camera radio term | T-mid | I1 | unknown |
 
@@ -1000,7 +1001,7 @@ A runtime calculated from a nameplate capacity and a modeled current is
 
 | Source | Effect | Control |
 | --- | --- | --- |
-| Backlight | 30 to 50 mA at 3.3 V, panel edge heating | 20 minute soak; measure panel edge |
+| Backlight | 30 to 50 mA at the panel rail (3.3 V on the Sticks and Core2, 5 V on the Core), panel edge heating | 20 minute soak; measure panel edge |
 | PMIC | Conversion loss, 50 to 300 uA quiescent plus load | Measure PMIC case, not cell |
 | Radio | Burst heating at 130 to 240 mA peaks | Keep duty cycle fixed during a comparison |
 | Cell | Internal resistance and capacity change with temperature | Rest 60 min; measure cell surface |
@@ -1384,7 +1385,7 @@ and call the result measured. Use the median of the accepted runs.
 
 | Phase | Work | Depends on | Exit criterion |
 | --- | --- | --- | --- |
-| 0 | C01 to C10, bench qualification | Instruments and fixtures | All calibration rows pass or are explicitly waived |
+| 0 | C01 to C10, bench qualification | Instruments and fixtures | All calibration rows pass; a failed row blocks the affected states |
 | 1 | P01 to P15, D01 to D06 | Phase 0 | Board floors, scan, multi-connect, and display slopes recorded; Core cutoff recorded |
 | 2 | P04, P05, P08 to P10, L01 | Phase 1 | Sleep and off states classified; no unresolved state ambiguity |
 | 3 | P06, P07, K-FB to K-DJ | Phase 1 | Camera family bands and per-event charge recorded |
@@ -1405,7 +1406,7 @@ it inherits the measurement IDs and closure criterion from this table.
 
 | Opportunity | Source | Measurement or state IDs | Closure criterion |
 | --- | --- | --- | --- |
-| O1 Battery saver profile | plans/98 action 1 | P04, P05, P07, P08, P09, P14, K-05 | Measured delta for each setting, not a bundle average |
+| O1 Battery saver profile | plans/98 action 1 | P04, P05, P07, P08, P09, P14, K-*-05 | Measured delta for each setting, not a bundle average |
 | O2 Power gate CI | plans/98 action 2 | Section 17 | Local loop passes and the workflow is green |
 | O3 Interval deep sleep | plans/98 action 3 | L02, B06 | Blocked until deep sleep exists; then measure sleep and wake energy |
 | O4 GPS lock on all boards | plans/98 action 4 | G02 to G06 on ESP32 boards | Baseline measured first; after the code change, lock release and current drop measured during standby |
