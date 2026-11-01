@@ -276,7 +276,13 @@ class NimBLEClient {
   void setConnectionParams(uint16_t min_interval,
                            uint16_t max_interval,
                            uint16_t latency,
-                           uint16_t timeout);
+                           uint16_t timeout,
+                           uint16_t scan_interval = 16,
+                           uint16_t scan_window = 16);
+
+  /** Last initiator scan parameters, in 0.625 ms units. */
+  uint16_t scanIntervalUnits() const { return m_ScanInterval; }
+  uint16_t scanWindowUnits() const { return m_ScanWindow; }
   bool connect(const NimBLEAddress &address);
   void disconnect();
   bool isConnected() const;
@@ -424,6 +430,8 @@ class NimBLEClient {
   // when there is none. Every successful connect takes a fresh value, so the
   // production stale-handle guard has a real handle to compare against.
   uint16_t m_Handle = BLE_HS_CONN_HANDLE_NONE;
+  uint16_t m_ScanInterval = 16;
+  uint16_t m_ScanWindow = 16;
   bool m_Connected = false;
   bool m_StuckTerminate = false;
   size_t m_DisconnectCount = 0;

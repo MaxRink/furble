@@ -552,8 +552,15 @@ void NimBLEClient::setConnectTimeout(uint32_t timeout) {
 void NimBLEClient::setConnectionParams(uint16_t min_interval,
                                        uint16_t max_interval,
                                        uint16_t latency,
-                                       uint16_t timeout) {
+                                       uint16_t timeout,
+                                       uint16_t scan_interval,
+                                       uint16_t scan_window) {
   (void)max_interval;
+  // Record the initiator scan parameters so a host test can prove the reduced
+  // duty without a radio. The real library stores these as scan_itvl/scan_window
+  // for the connect attempt. Evidence: NimBLEClient.cpp setConnectionParams.
+  m_ScanInterval = scan_interval;
+  m_ScanWindow = scan_window;
   // NimBLE stores these as the preferred parameters for the next connection
   // and for counter-proposals. It does not change an existing controller link.
   // Only update the live mock snapshot before connect; connected links move via

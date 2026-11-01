@@ -46,6 +46,9 @@ Rank groups:
 
 ## Safe now
 
+Three safe-now rows are implemented in this branch. See section
+"Implemented safe-now changes" for the code and test evidence.
+
 | ID | Lane | Current behavior | Proposed change | Evidence | Est. saving | Risk | Effort | Required test | Priority | Lane source |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | P-001 | BLE | Discovery scan timeout defaults to Never (`SCAN_TIMEOUT` 0 mapped to `BLE_HS_FOREVER`), so a forgotten Scan page scans at Full duty until the page is left | Default `SCAN_TIMEOUT` to 60 s; the roller and the finished panel already exist | inferred (code) | Bounds a forgotten page to 60 s of Full duty instead of hours; no steady-state change | Low | Small | Sim: open Scan, advance 60 s, assert finished panel and Rescan; console default reports 60 on fresh NVS | 1 | BLE-07 (ble.md) |
@@ -87,6 +90,21 @@ Rank groups:
 | P-037 | BLE | `RECON_BACKOFF` defaults off, so each failed attempt waits a flat 5 s and re-enters the scan | Default it on, or force it through Battery Saver | inferred (code) | Fewer scan attempts per hour: about 55 with a flat 5 s wait, about 35 in the first ten minutes, about 20 at the 120 s cap | Low | Small | Existing `reconnect-backoff` host test; on-device recovery time; 60 min drain with the camera off | 37 | BLE-24 (ble.md) |
 | P-038 | Wi-Fi | `FurbleOTAMQTT.cpp` is linked but has no caller and no Control-state or battery guard; the "no OTA while connected" rule is documentation only | Gate the engine on `STATE_IDLE` and a minimum battery, as a hard refusal | inferred (code) | None today; prevents the largest avoidable radio burst from overlapping a camera session | Low to add, high to omit | Small | Host test rejects an OTA manifest while a fake Control reports `ACTIVE`; on-device refusal with a camera connected | 38 | W-34 (wifi-coex.md) |
 | P-039 | BLE | The connected baseline still reports a 3.2989 mA radio term, but `profilerSetRadioConnected` has no caller, so the current code would report zero; the 3.9 percent delta hides inside the 10 percent comparator band | Restore the connected-floor wiring, fail closed when a connected scenario reports a zero floor, and add component-level guards | inferred (code + baseline arithmetic) | Not a device saving; protects every BLE and sleep row from a silent regression | Low | Medium | `tests/test_power_compare.py`; new negative test that a connected scenario with no radio flag fails validation; regenerate the baseline with the reason in the PR | 39 | BLE-32, plan 98 action 2 (ble.md, plans/98) |
+
+## Implemented safe-now changes
+
+These rows are code changes in this PR, not documentation. Each keeps its
+evidence label from the lane and adds the test that now guards it.
+
+| ID | Change | Code | Test | Status |
+| --- | --- | --- | --- | --- |
+| P-001 | First-boot discovery scan timeout is 60 s instead of Never. An explicit Never is stored unchanged. | `src/FurbleSettings.cpp` `Settings::init` | e2e `scan-default-timeout`: `scan.timeout = 60`, the scan ends and the end callback runs | implemented |
+| P-002 | A sleeping panel stops an active discovery scan and reveals the finished panel. | `src/FurbleUI.cpp` `UI::sleepDisplay` | e2e `scan-stops-on-panel-sleep`: `scan.active` goes from yes to no at panel sleep | implemented |
+| P-003 | The connect initiator scan runs at 32/16 units (20 ms interval, 10 ms window, 50 percent duty) instead of the library default 16/16. | `lib/furble/Camera.{h,cpp}` | host `ricoh-focus`: the connected client records `scanIntervalUnits() == 32` and `scanWindowUnits() == 16` | implemented |
+
+The modeled saving for these rows is unchanged and still unmeasured. P-001 and
+P-002 bound a worst case; they do not change steady-state current. P-003 halves
+receive duty for the duration of a connect attempt, which is seconds.
 
 ## Needs measurement
 

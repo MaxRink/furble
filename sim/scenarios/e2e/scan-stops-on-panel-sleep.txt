@@ -1,0 +1,19 @@
+# Power lane P-002: a sleeping panel does not leave the scan receiving.
+#
+# With the display-off timer at its shortest setting the panel sleeps while the
+# Scan page is open. The scan must stop at that point rather than keep the
+# receiver at full duty for the whole panel-off period.
+
+seed inactivity 1
+seed display_off 1
+wait 300
+
+action nav scan
+wait 500
+assert ui.page scan
+assert scan.active yes
+
+# The inactivity timer sleeps the panel at 30 s and that must stop the scan.
+wait 31000
+assert scan.active no
+exit

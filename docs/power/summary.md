@@ -1,8 +1,11 @@
 # Power research: executive summary
 
-Status: consolidation of the seven lane reports. Documentation only. No
-firmware, defaults, model entries, or baselines change. No bench measurement was
-made by any lane.
+Status: consolidation of the seven lane reports, plus three implemented
+safe-now changes. No bench measurement was made by any lane. The implemented
+changes are bounded behavior fixes, not measured savings:
+P-001 (60 s first-boot scan timeout), P-002 (stop the scan on panel sleep), and
+P-003 (50 percent initiator scan duty during connect). Each has a test; see the
+matrix section "Implemented safe-now changes".
 
 The matrix has 201 rows: 39 safe now, 77 needs measurement, and 85 rejected. Per
 lane: BLE 42, SoC 31, Display 25, GPS and IMU 30, Wi-Fi 40, Board 33. Overlapping

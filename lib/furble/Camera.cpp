@@ -575,7 +575,8 @@ bool Camera::connect(esp_power_level_t power, uint32_t timeout) {
   // adjust connection timeout and parameters
   m_Client->setConnectTimeout(timeout);
   // try extending range by adjusting connection parameters
-  m_Client->setConnectionParams(m_MinInterval, m_MaxInterval, m_Latency, m_Timeout);
+  m_Client->setConnectionParams(m_MinInterval, m_MaxInterval, m_Latency, m_Timeout, m_ScanInterval,
+                                m_ScanWindow);
 
   // set per-camera BLE security before connecting
   NimBLEDevice::setSecurityAuth(true, true, true);
@@ -694,7 +695,8 @@ bool Camera::requestFujifilmSecureFastProfile() {
   // The Secure peer may have installed its long registration timeout. NimBLE
   // only queues this update. FujifilmSecure waits separately for the controller
   // to expose the exact live profile.
-  m_Client->setConnectionParams(m_FastMinInterval, m_FastMaxInterval, m_FastLatency, m_FastTimeout);
+  m_Client->setConnectionParams(m_FastMinInterval, m_FastMaxInterval, m_FastLatency, m_FastTimeout,
+                                m_ScanInterval, m_ScanWindow);
   if (!m_Client->updateConnParams(m_FastMinInterval, m_FastMaxInterval, m_FastLatency,
                                   m_FastTimeout)) {
     ESP_LOGW(LOG_TAG, "Fujifilm Secure fast connection profile was rejected");
@@ -859,7 +861,8 @@ bool Camera::setConnProfile(ConnProfile profile) {
 #if defined(FURBLE_CONSOLE)
   const NimBLEConnInfo before = client->getConnInfo();
 #endif
-  client->setConnectionParams(minInterval, maxInterval, latency, timeout);
+  client->setConnectionParams(minInterval, maxInterval, latency, timeout, m_ScanInterval,
+                              m_ScanWindow);
   const bool updated = client->updateConnParams(minInterval, maxInterval, latency, timeout);
 
 #if defined(FURBLE_CONSOLE)

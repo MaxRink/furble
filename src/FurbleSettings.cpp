@@ -702,7 +702,10 @@ void Settings::init(void) {
           save<uint32_t>(setting.type, BAUD_9600);
           break;
         case SCAN_TIMEOUT:
-          save<uint32_t>(setting.type, 0);
+          // A bounded first boot instead of Never. A forgotten Scan page used
+          // to scan at full receive duty until the user left it. An explicit
+          // Never is still stored as zero and is not rewritten.
+          save<uint32_t>(setting.type, SCAN_TIMEOUT_DEFAULT);
           break;
         case GPX_PERIOD:
           save<uint16_t>(setting.type, GPX_PERIOD_DEFAULT);

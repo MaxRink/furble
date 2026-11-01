@@ -1305,6 +1305,12 @@ std::string queryValue(const std::string &key) {
   if (key == "scan.end_callbacks") {
     return std::to_string(Scan::getInstance().endCallbackCount());
   }
+  if (key == "scan.active") {
+    return Scan::getInstance().isActive() ? "yes" : "no";
+  }
+  if (key == "scan.timeout") {
+    return std::to_string(Furble::Settings::load<uint32_t>(Furble::Settings::SCAN_TIMEOUT));
+  }
   if (key == "scan.advertisements") {
     return std::to_string(bleAdvertisementCount());
   }

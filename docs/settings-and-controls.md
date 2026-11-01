@@ -204,7 +204,7 @@ Submenu: `Settings` > `Bluetooth`.
 | TX Power | Low (P3) | slider 0 to 2 (P3, P6, P9) | Now (dangerous) | Radio transmit power. Higher reaches further and costs battery. |
 | Connection power save | Off | On, Off | Next connection | Power save on the active connection. Read when a connection is made, so set it before connecting. |
 | Scan mode | Full | Full, Balanced, Low | Now | How hard the radio listens during Scan. Full finds a camera fastest. |
-| Scan timeout | Never | Never, 30 secs, 60 secs, 120 secs | Now | Ends a scan by itself. Connect always scans at full duty. |
+| Scan timeout | 60 secs | Never, 30 secs, 60 secs, 120 secs | Now | Ends a scan by itself. A fresh device starts at 60 secs so a forgotten Scan page cannot listen at full duty until it is left. An explicit Never is kept. Connect still scans at reduced initiator duty for the whole attempt. |
 
 ### About
 

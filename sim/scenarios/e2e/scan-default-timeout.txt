@@ -1,0 +1,21 @@
+# Power lane P-001: the first-boot discovery scan timeout is bounded.
+#
+# With no stored scan_timeout, the effective value is 60 s. A forgotten Scan
+# page therefore ends by itself instead of scanning at full receive duty until
+# the page is left. An explicit "Never" still stores zero and is unchanged.
+
+# A peer keeps the virtual radio task running, which owns the controller
+# discovery timer that fires the scan-end callback.
+seed ble_peers fuji
+wait 300
+assert scan.timeout 60
+
+action nav scan
+wait 500
+assert scan.active yes
+
+# Past the 60 s bound the scan stops on its own and runs its end callback.
+wait 60500
+assert scan.active no
+assert_min scan.end_callbacks 1
+exit

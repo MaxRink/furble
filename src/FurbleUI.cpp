@@ -1660,6 +1660,18 @@ void UI::sleepDisplay(void) {
     return;
   }
 
+  // A panel-off period must not leave the discovery scan running at full
+  // receive duty. Stop it here; the scan-end callback does not fire on an
+  // explicit stop, so reveal the finished panel instead of leaving an empty
+  // list that looks like a hang when the panel wakes on the Scan page.
+  auto &scan = Scan::getInstance();
+  if (scan.isActive()) {
+    scan.stop();
+    if (m_ScanFinished != nullptr) {
+      lv_obj_remove_flag(m_ScanFinished, LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+
   M5.Display.sleep();
   m_SleepTick = tick();
   m_DisplayOff = true;

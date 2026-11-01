@@ -618,6 +618,14 @@ class Camera: public NimBLEClientCallbacks {
   static constexpr uint16_t m_FastMaxInterval = BLE_GAP_INITIAL_CONN_ITVL_MAX;
   static constexpr uint16_t m_FastLatency = 1;
   static constexpr uint16_t m_FastTimeout = (2 * BLE_GAP_INITIAL_SUPERVISION_TIMEOUT);
+  // Initiator scan duty during a connect. NimBLE's library default is 16/16
+  // units, a 10 ms window every 10 ms, which is a 100 percent receive duty for
+  // the whole connect attempt. A 32-unit (20 ms) interval with a 16-unit
+  // (10 ms) window halves that duty while still discovering a peer whose
+  // advertising interval is a fraction of a second. This is a code-level
+  // inference, not a measured saving; the bench plan owns the number.
+  static constexpr uint16_t m_ScanInterval = 32;
+  static constexpr uint16_t m_ScanWindow = 16;
   // Idle profile: 250 to 300 ms interval. A central-initiated switch to fast
   // applies several connection events after the request, so the first shutter
   // press after a quiet period goes out at the idle interval. Fujifilm shutter
