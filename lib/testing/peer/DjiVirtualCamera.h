@@ -89,11 +89,13 @@ class DjiVirtualCamera final: public NimBLEMockPeer {
     uint16_t advertisement_product_id = 0x0014;
 
     // Camera identity. The 16-bit SDK table value and the 32-bit wire field
-    // disagree, so the encoding is explicit.
+    // disagree, so the encoding is explicit. The camera reports this ID in
+    // N01; the controller validates it, so this peer does not reject an
+    // unsupported model on its own. Set reject_connection for a camera-side
+    // refusal.
     uint32_t camera_device_id = 0xff330000U;
     DeviceIdEncoding device_id_encoding = DeviceIdEncoding::Table;
     uint32_t controller_device_id = 0x12345678U;
-    bool allow_unknown_camera_id = false;
     bool strict_command_device_id = false;
     std::string product_id_string = "DJI-OsmoAction4";
     std::string sdk_version = "01.07.06.10";
@@ -119,7 +121,6 @@ class DjiVirtualCamera final: public NimBLEMockPeer {
     bool show_popup_when_no_record = true;
     bool reject_connection = false;
     bool send_connection_response = true;
-    bool require_supported_camera_id = true;
 
     // Power and wake.
     bool asleep = false;
@@ -170,6 +171,7 @@ class DjiVirtualCamera final: public NimBLEMockPeer {
   };
 
   struct Write {
+    std::string service;
     std::string characteristic;
     std::string command;
     std::vector<uint8_t> frame;
@@ -202,6 +204,8 @@ class DjiVirtualCamera final: public NimBLEMockPeer {
   bool staleBond() const;
   bool smpRisk() const;
   bool secureAccepted() const;
+  bool secured() const;
+  bool configured() const;
 
   /**
    * Camera-side deletion. The camera-side pairing record and the camera bond
@@ -232,6 +236,7 @@ class DjiVirtualCamera final: public NimBLEMockPeer {
   uint8_t pushFrequency() const;
   uint8_t lastReturnCode() const;
   uint8_t lastAttError() const;
+  Fault lastFault() const;
   uint8_t lastKeyCode() const;
   uint16_t lastKeyValue() const;
   uint8_t lastMode() const;
@@ -265,8 +270,13 @@ class DjiVirtualCamera final: public NimBLEMockPeer {
   void appendScriptStep(const ScriptStep &step);
   void clearScript();
   size_t scriptRemaining() const;
+  void setScripted(bool enabled);
+  bool scripted() const;
+  void scriptNextCommand(Fault fault);
+  size_t scriptedRemaining() const;
   void setNextFault(Fault fault);
   Fault pendingFault() const;
+  void clearFault();
   void clearFaults();
 
   bool connected() const;
@@ -397,7 +407,9 @@ class DjiVirtualCamera final: public NimBLEMockPeer {
   size_t m_WakeAdvertisements = 0;
 
   uint8_t m_LastAttError = 0;
+  Fault m_LastFault = Fault::None;
   std::deque<ScriptStep> m_Script;
+  bool m_Scripted = false;
   Fault m_NextFault = Fault::None;
   std::vector<Write> m_Writes;
   std::vector<Notification> m_Notifications;

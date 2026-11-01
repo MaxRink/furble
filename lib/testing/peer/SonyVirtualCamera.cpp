@@ -157,7 +157,8 @@ NimBLEAdvertisedDevice SonyVirtualCamera::advertisement() const {
   // Field layout from the Sony vendor decoder: company 0x012d, type 0x0003,
   // big-endian protocol version, two ASCII model bytes, then 3-byte tag
   // records. Furble reads tag 0x22 at offset 8 and tag 0x21 at offset 11, so
-  // the peer emits those two records in that order and no service UUIDs.
+  // those two records come first. Tag 0x23 follows and a zero tag terminates
+  // the vendor scan. The peer adds no service UUIDs.
   std::vector<uint8_t> manufacturer = {
       0x2d,
       0x01,
@@ -257,6 +258,14 @@ bool SonyVirtualCamera::registered() const {
   return m_Registered;
 }
 
+bool SonyVirtualCamera::configured() const {
+  return m_Registered;
+}
+
+bool SonyVirtualCamera::secured() const {
+  return m_Secured;
+}
+
 bool SonyVirtualCamera::staleBond() const {
   return m_StaleBond;
 }
@@ -281,6 +290,7 @@ void SonyVirtualCamera::removeCameraBond() {
   m_Registered = false;
   m_PairingResult = 0;
   m_StaleBond = false;
+  m_Secured = false;
 }
 
 bool SonyVirtualCamera::cameraPowerOn() const {
@@ -347,6 +357,10 @@ uint16_t SonyVirtualCamera::lastFf01Opcode() const {
   return m_LastFf01Opcode;
 }
 
+SonyVirtualCamera::Fault SonyVirtualCamera::lastFault() const {
+  return m_LastFault;
+}
+
 bool SonyVirtualCamera::savedPairHandleAccepted() const {
   return m_SavedPairHandleAccepted;
 }
@@ -370,17 +384,37 @@ bool SonyVirtualCamera::connected() const {
 
 void SonyVirtualCamera::setScript(const std::vector<ScriptStep> &steps) {
   m_Script.assign(steps.begin(), steps.end());
+  m_Scripted = true;
 }
 
 void SonyVirtualCamera::appendScriptStep(const ScriptStep &step) {
   m_Script.push_back(step);
+  m_Scripted = true;
 }
 
 void SonyVirtualCamera::clearScript() {
   m_Script.clear();
+  m_Scripted = false;
 }
 
 size_t SonyVirtualCamera::scriptRemaining() const {
+  return m_Script.size();
+}
+
+void SonyVirtualCamera::setScripted(bool enabled) {
+  m_Scripted = enabled;
+}
+
+bool SonyVirtualCamera::scripted() const {
+  return m_Scripted;
+}
+
+void SonyVirtualCamera::scriptNextCommand(Fault fault) {
+  m_Script.push_back({Command::Unknown, fault});
+  m_Scripted = true;
+}
+
+size_t SonyVirtualCamera::scriptedRemaining() const {
   return m_Script.size();
 }
 
@@ -392,9 +426,14 @@ SonyVirtualCamera::Fault SonyVirtualCamera::pendingFault() const {
   return m_NextFault;
 }
 
+void SonyVirtualCamera::clearFault() {
+  m_NextFault = Fault::None;
+}
+
 void SonyVirtualCamera::clearFaults() {
   m_NextFault = Fault::None;
   m_Script.clear();
+  m_Scripted = false;
 }
 
 SonyVirtualCamera::Fault SonyVirtualCamera::takeFault(Command command) {
@@ -403,7 +442,9 @@ SonyVirtualCamera::Fault SonyVirtualCamera::takeFault(Command command) {
     m_NextFault = Fault::None;
     return fault;
   }
-  if (!m_Script.empty() && (m_Script.front().command == command)) {
+  if (m_Scripted && !m_Script.empty()
+      && ((m_Script.front().command == Command::Unknown)
+          || (m_Script.front().command == command))) {
     const Fault fault = m_Script.front().fault;
     m_Script.pop_front();
     return fault;
@@ -453,6 +494,9 @@ bool SonyVirtualCamera::emitNotification(const NimBLEUUID &service,
 }
 
 bool SonyVirtualCamera::emitFf02(uint8_t command, uint8_t value) {
+  if (!m_Config.ff02_notifications) {
+    return false;
+  }
   return emitNotification(CONTROL_SERVICE, FF02_CHARACTERISTIC, {0x02, command, value});
 }
 
@@ -521,6 +565,7 @@ bool SonyVirtualCamera::acceptConnection(NimBLEClient &client, const NimBLEAddre
   }
   m_Client = &client;
   m_Connected = true;
+  m_Secured = false;
   m_StaleBond = false;
   m_LastAttError = 0;
   m_SavedPairHandleAccepted = false;
@@ -535,6 +580,7 @@ void SonyVirtualCamera::disconnect(NimBLEClient &client, int reason) {
   }
   m_Client = nullptr;
   m_Connected = false;
+  m_Secured = false;
   m_PairingInProgress = false;
   m_Subscriptions.clear();
   if (m_Config.release_lock_on_disconnect) {
@@ -716,12 +762,11 @@ bool SonyVirtualCamera::handlePairingRegistration(const std::vector<uint8_t> &va
 
   m_PairingInProgress = false;
   m_Registered = (result == 1);
-  if (m_Registered) {
-    // EE01 is the application-level registration. The camera-side record is
-    // now present; the SMP bond is a separate state owned by secureConnection.
+  if (m_Registered && m_Config.registration_creates_bond) {
+    // Some vendor flows bond during the EE01 registration. The peer does not
+    // assume that by default because the SMP exchange itself was not captured.
     m_Config.camera_bonded = true;
-  } else {
-    m_Config.camera_bonded = false;
+    NimBLEDevice::setBondedAddress(m_Config.address);
   }
   return true;
 }
@@ -955,6 +1000,7 @@ bool SonyVirtualCamera::write(NimBLEClient &client,
   }
 
   const Fault fault = takeFault(command);
+  m_LastFault = fault;
   m_LastAttError = 0;
 
   if ((fault == Fault::Reject) || (fault == Fault::Busy) || (fault == Fault::WrongMode)) {
@@ -988,6 +1034,7 @@ bool SonyVirtualCamera::write(NimBLEClient &client,
   } else if (command == Command::WifiOn) {
     if ((value.size() == 1) && (value[0] == 0x01)) {
       m_WifiOn = true;
+      m_Config.wifi_handover_enabled = true;
       accepted = true;
       emitCc09Identifier(1, {0x02, 0x00});
     } else {
@@ -1164,6 +1211,7 @@ bool SonyVirtualCamera::secureConnection(NimBLEClient &client) {
     return false;
   }
   m_SecureAttempted = true;
+  m_Secured = false;
   if (m_Config.reject_secure_connection || !m_Config.accept_numeric_comparison) {
     noteAttError(ATT_INSUFFICIENT_AUTHENTICATION);
     return false;
@@ -1184,11 +1232,12 @@ bool SonyVirtualCamera::secureConnection(NimBLEClient &client) {
   }
 
   if (!localBonded) {
-    NimBLEDevice::setBonded(true);
+    NimBLEDevice::setBondedAddress(m_Config.address);
     m_Config.camera_bonded = true;
   }
   m_StaleBond = false;
   noteAttError(0);
+  m_Secured = true;
   return true;
 }
 

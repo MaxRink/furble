@@ -11,6 +11,13 @@
 
 #include <FujifilmVirtualCamera.h>
 #include <RicohVirtualCamera.h>
+#include <CanonRemoteVirtualCamera.h>
+#include <CanonSmartVirtualCamera.h>
+#include <DjiVirtualCamera.h>
+#include <LumixVirtualCamera.h>
+#include <NikonRemoteVirtualCamera.h>
+#include <NikonSmartVirtualCamera.h>
+#include <SonyVirtualCamera.h>
 
 #include "CameraList.h"
 #include "FurbleControl.h"
@@ -34,13 +41,28 @@ constexpr uint32_t ADVERTISE_INTERVAL_MS = 100;
 constexpr uint64_t FUJIFILM_A_ADDRESS = 0x112233445566ULL;
 constexpr uint64_t FUJIFILM_B_ADDRESS = 0x112233445577ULL;
 constexpr uint64_t RICOH_ADDRESS = 0x223344556677ULL;
+constexpr uint64_t CANON_SMART_ADDRESS = 0x334455667788ULL;
+constexpr uint64_t CANON_REMOTE_ADDRESS = 0x334455667799ULL;
+constexpr uint64_t NIKON_REMOTE_ADDRESS = 0x445566778899ULL;
+constexpr uint64_t NIKON_SMART_ADDRESS = 0x4455667788aaULL;
+constexpr uint64_t SONY_ADDRESS = 0x5566778899aaULL;
+constexpr uint64_t LUMIX_ADDRESS = 0x66778899aabbULL;
+constexpr uint64_t DJI_ADDRESS = 0x778899aabbccULL;
 
 struct VirtualPeer {
   std::string name;
   NimBLEAddress address = NimBLEAddress {};
   NimBLEAdvertisedDevice advertisement;
+  NimBLEMockPeer *mock = nullptr;
   std::unique_ptr<Host::FujifilmVirtualCamera> fujifilm;
   std::unique_ptr<Host::RicohVirtualCamera> ricoh;
+  std::unique_ptr<Host::CanonSmartVirtualCamera> canon_smart;
+  std::unique_ptr<Host::CanonRemoteVirtualCamera> canon_remote;
+  std::unique_ptr<Host::NikonRemoteVirtualCamera> nikon_remote;
+  std::unique_ptr<Host::NikonSmartVirtualCamera> nikon_smart;
+  std::unique_ptr<Host::SonyVirtualCamera> sony;
+  std::unique_ptr<Host::LumixVirtualCamera> lumix;
+  std::unique_ptr<Host::DjiVirtualCamera> dji;
 };
 
 std::mutex peersMutex;
@@ -88,6 +110,7 @@ void addFujifilm(uint64_t address,
   }
   peer->advertisement = peer->fujifilm->advertisement();
   NimBLEDevice::setMockPeerForAddress(peer->address, peer->fujifilm.get());
+  peer->mock = peer->fujifilm.get();
   peers.push_back(std::move(peer));
 }
 
@@ -108,6 +131,7 @@ void addFujifilmSecureStale(uint64_t address, const std::string &name) {
   peer->fujifilm->setSecureTimeouts(Host::FujifilmVirtualCamera::kSecureTimeoutAlways);
   peer->advertisement = peer->fujifilm->advertisement();
   NimBLEDevice::setMockPeerForAddress(peer->address, peer->fujifilm.get());
+  peer->mock = peer->fujifilm.get();
   // The half that makes it a stale bond rather than a first pairing: the
   // central still has keys for a camera that has forgotten them.
   NimBLEDevice::setBonded(true);
@@ -130,6 +154,24 @@ void addRicoh(uint64_t address, const std::string &name, uint32_t flappyFailAtte
   }
   peer->advertisement = peer->ricoh->advertisement();
   NimBLEDevice::setMockPeerForAddress(peer->address, peer->ricoh.get());
+  peer->mock = peer->ricoh.get();
+  peers.push_back(std::move(peer));
+}
+
+template <typename Peer>
+void addGenericPeer(uint64_t address,
+                    const std::string &name,
+                    std::unique_ptr<Peer> VirtualPeer::*member) {
+  typename Peer::Config config;
+  config.name = name;
+  config.address = NimBLEAddress(address, 0);
+  auto peer = std::make_unique<VirtualPeer>();
+  peer->name = name;
+  peer->address = config.address;
+  (*peer).*member = std::make_unique<Peer>(config);
+  peer->mock = ((*peer).*member).get();
+  peer->advertisement = ((*peer).*member)->advertisement();
+  NimBLEDevice::setMockPeerForAddress(peer->address, peer->mock);
   peers.push_back(std::move(peer));
 }
 
@@ -193,7 +235,10 @@ void radioTask(void *) {
 bool bleTopologyIsValid(const std::string &topology) {
   return topology == "none" || topology == "fuji" || topology == "fuji-secure"
          || topology == "fuji-pair" || topology == "fuji-ricoh-flappy"
-         || topology == "fuji-secure-stale";
+         || topology == "fuji-secure-stale" || topology == "canon-smart"
+         || topology == "canon-remote" || topology == "nikon-remote"
+         || topology == "nikon-smart" || topology == "sony"
+         || topology == "lumix" || topology == "dji" || topology == "all";
 }
 
 void bleStartPeers(const std::string &topology) {
@@ -215,6 +260,38 @@ void bleStartPeers(const std::string &topology) {
       // timeout does before it lets a connect through.
       addFujifilm(FUJIFILM_A_ADDRESS, "FUJIFILM X100VI", 0);
       addRicoh(RICOH_ADDRESS, "RICOH GR IV", 1);
+    } else if (topology == "canon-smart") {
+      addGenericPeer(CANON_SMART_ADDRESS, "Canon EOS RP",
+                     &VirtualPeer::canon_smart);
+    } else if (topology == "canon-remote") {
+      addGenericPeer(CANON_REMOTE_ADDRESS, "Canon EOS RP",
+                     &VirtualPeer::canon_remote);
+    } else if (topology == "nikon-remote") {
+      addGenericPeer(NIKON_REMOTE_ADDRESS, "Nikon B600",
+                     &VirtualPeer::nikon_remote);
+    } else if (topology == "nikon-smart") {
+      addGenericPeer(NIKON_SMART_ADDRESS, "Nikon Z6III",
+                     &VirtualPeer::nikon_smart);
+    } else if (topology == "sony") {
+      addGenericPeer(SONY_ADDRESS, "Sony ZV-1F", &VirtualPeer::sony);
+    } else if (topology == "lumix") {
+      addGenericPeer(LUMIX_ADDRESS, "LUMIX S5II", &VirtualPeer::lumix);
+    } else if (topology == "dji") {
+      addGenericPeer(DJI_ADDRESS, "DJI Osmo Action 4", &VirtualPeer::dji);
+    } else if (topology == "all") {
+      addFujifilm(FUJIFILM_A_ADDRESS, "FUJIFILM X100VI", 0, /*secure=*/true);
+      addRicoh(RICOH_ADDRESS, "RICOH GR IV", 0);
+      addGenericPeer(CANON_SMART_ADDRESS, "Canon EOS RP",
+                     &VirtualPeer::canon_smart);
+      addGenericPeer(CANON_REMOTE_ADDRESS, "Canon EOS RP",
+                     &VirtualPeer::canon_remote);
+      addGenericPeer(NIKON_REMOTE_ADDRESS, "Nikon B600",
+                     &VirtualPeer::nikon_remote);
+      addGenericPeer(NIKON_SMART_ADDRESS, "Nikon Z6III",
+                     &VirtualPeer::nikon_smart);
+      addGenericPeer(SONY_ADDRESS, "Sony ZV-1F", &VirtualPeer::sony);
+      addGenericPeer(LUMIX_ADDRESS, "LUMIX S5II", &VirtualPeer::lumix);
+      addGenericPeer(DJI_ADDRESS, "DJI Osmo Action 4", &VirtualPeer::dji);
     }
     // Nothing advertises without peers, so a scenario that seeds no topology
     // pays for no radio task at all.
