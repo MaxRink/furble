@@ -24,6 +24,7 @@ enum class scenario_action_kind_t {
   PAGE,
   SECURE_STALL,
   SCAN_ROW,
+  PAIRING_REQUEST,
   INVALID,
 };
 

@@ -1,0 +1,42 @@
+# Camera pairing-code modal (plan 66 / #63). During pairing the camera shows a
+# Bluetooth code the user must compare; furble must render that code on its own
+# screen so the user can confirm numeric comparison with confidence.
+#
+# The simulator runs the production Camera against MockNimBLE, so a connected
+# virtual peer gives the prompt a real link: the request is published through
+# the same publishPairingRequest the NimBLE security callback calls, and
+# Confirm injects a real answer that ble.pairing_answer reads back off the
+# stack. Only the controller event that raises the callback is substituted.
+# The code is fixed by the scenario so the capture stays deterministic.
+seed ble_peers fuji
+seed ble_saved true
+wait 300
+
+action connect
+assert-eventually-virtual 8000 control.state active
+assert control.connected 1
+
+# Numeric comparison: the modal shows the code with Confirm and Cancel so the
+# user can approve the match.
+action camera-pair-request confirm 428913
+wait 400
+
+# The modal is up, it is the camera prompt, the six-digit code drew, and the box
+# fits the panel with no overflow.
+assert ui.modal open
+assert ui.modal_count 1
+assert ui.pairing_kind confirm
+assert ui.pairing_code 428913
+assert ui.pairing_overflow no
+capture camera-pairing-code
+
+# Confirm must reach the stack as an accept and leave the link up.
+action camera-pair-accept
+wait 500
+assert ui.modal closed
+assert ui.modal_count 0
+assert ui.pairing_pending no
+assert ble.pairing_answers 1
+assert ble.pairing_answer accept
+assert control.connected 1
+exit

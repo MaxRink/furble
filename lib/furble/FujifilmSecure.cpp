@@ -258,7 +258,10 @@ bool FujifilmSecure::_connect(void) {
     // Only attempts that got the link up reach here at all: a connect that
     // never completed proves nothing about the keys. An attempt that started
     // unbonded is a first pairing, so there is nothing stale to delete.
-    if (!bondedBefore || connectCancelled()) {
+    if (!bondedBefore || connectCancelled() || pairingCancelled()) {
+      // A deliberate decline or expiry is not evidence of a stale bond. The
+      // user already ended this attempt; deleting the keys would turn a
+      // correct answer into a re-pairing prompt on the next connect.
       return false;
     }
     const uint8_t failures = noteSecureFailure();

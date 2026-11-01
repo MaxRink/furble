@@ -70,6 +70,7 @@ target_compile_options(furble_host_camera PRIVATE -Wall -Wextra -Werror -Wno-for
                                                  -Wno-unused-parameter)
 target_compile_definitions(furble_host_camera
                            PRIVATE FURBLE_HOST_REGISTRATION_TIMEOUT_MS=100 FURBLE_TEST_SYNC)
+target_compile_definitions(furble_host_camera PUBLIC FURBLE_HOST_TEST)
 target_link_libraries(furble_host_camera PUBLIC Threads::Threads)
 
 # Compile the production MQTT task against deterministic host dependency
@@ -95,6 +96,51 @@ add_executable(fujifilm_camera_test fujifilm_camera_test.cpp)
 target_link_libraries(fujifilm_camera_test PRIVATE furble_host_camera)
 target_compile_options(fujifilm_camera_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                      -Wno-unused-parameter)
+
+add_executable(camera_pairing_test camera_pairing_test.cpp)
+target_link_libraries(camera_pairing_test PRIVATE furble_host_camera)
+target_compile_options(camera_pairing_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                    -Wno-unused-parameter)
+
+# Exercise the production security callbacks and the NimBLE injection boundary
+# against the Ricoh peer's blocking numeric-comparison handshake.
+add_executable(camera_pairing_peer_test
+               camera_pairing_peer_test.cpp
+               ${HOST_PEER_DIR}/RicohVirtualCamera.cpp
+               ${FURBLE_ROOT}/lib/furble/Ricoh.cpp
+               ${FURBLE_ROOT}/lib/furble/protocol/AdvertisementProtocol.cpp
+               ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos_shim.cpp)
+target_link_libraries(camera_pairing_peer_test PRIVATE furble_host_camera Threads::Threads)
+target_include_directories(camera_pairing_peer_test BEFORE PRIVATE
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR}
+                           ${FURBLE_ROOT}/lib/furble
+                           ${FURBLE_ROOT}/include)
+target_compile_options(camera_pairing_peer_test PRIVATE
+                       -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
+                       -Wall -Wextra -Werror -Wno-vla-extension -Wno-format
+                       -Wno-unused-parameter -Wno-unused-lambda-capture -Wno-sign-compare)
+
+add_executable(camera_pairing_race_test
+               camera_pairing_race_test.cpp
+               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
+               ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
+               ${FURBLE_ROOT}/lib/furble/Camera.cpp
+               ${FURBLE_ROOT}/lib/furble/Device.cpp
+               ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
+               ${FURBLE_ROOT}/lib/furble/FujifilmBasic.cpp
+               ${FURBLE_ROOT}/lib/furble/protocol/FujifilmProtocol.cpp)
+target_include_directories(camera_pairing_race_test PRIVATE
+                           ${FURBLE_ROOT}/lib/furble
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR})
+target_compile_definitions(camera_pairing_race_test PRIVATE FURBLE_HOST_TEST
+                                                            FURBLE_HOST_REGISTRATION_TIMEOUT_MS=100)
+target_compile_options(camera_pairing_race_test PRIVATE
+                       -fsanitize=address -g -O1
+                       -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter)
+target_link_options(camera_pairing_race_test PRIVATE -fsanitize=address)
+target_link_libraries(camera_pairing_race_test PRIVATE Threads::Threads)
 
 add_executable(corpus_replay_test
                corpus_replay_test.cpp
@@ -1173,6 +1219,46 @@ target_link_libraries(control_connect_camera_race_test PRIVATE Threads::Threads)
 target_compile_definitions(control_connect_camera_race_test PRIVATE FURBLE_CONSOLE)
 endif()
 
+# Deterministic proof for the connecting-camera snapshot. The UI pairing timer
+# reads Control::getConnectingCamera() while the control task publishes the
+# shared_ptr around an unlocked BLE connect. Four synchronized readers overlap
+# every publication. The production Control and camera sources are compiled
+# here rather than linked from the shared library so a TSAN build instruments
+# both sides of the handoff.
+if(NOT FURBLE_COVERAGE)
+add_executable(control_connecting_snapshot_test
+               control_connecting_snapshot_test.cpp
+               ${CONTROL_E2E_DIR}/doubles.cpp
+               ${CONTROL_E2E_DIR}/freertos_shim.cpp
+               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
+               ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
+               ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/lib/furble/Camera.cpp
+               ${FURBLE_ROOT}/lib/furble/BtDebugJournal.cpp
+               ${FURBLE_ROOT}/lib/furble/Device.cpp
+               ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
+               ${FURBLE_ROOT}/lib/furble/FujifilmBasic.cpp
+               ${FURBLE_ROOT}/lib/furble/FauxNY.cpp
+               ${FURBLE_PROTOCOL_DIR}/FujifilmProtocol.cpp)
+target_include_directories(control_connecting_snapshot_test
+                           BEFORE PRIVATE
+                                  ${CMAKE_CURRENT_SOURCE_DIR}
+                                  ${CONTROL_E2E_DIR}/doubles
+                                  ${CONTROL_E2E_DIR}
+                                  ${FURBLE_ROOT}/include
+                                  ${FURBLE_ROOT}/lib/furble
+                                  ${HOST_NIMBLE_DIR}
+                                  ${HOST_PEER_DIR})
+target_compile_definitions(control_connecting_snapshot_test
+                           PRIVATE FURBLE_HOST_REGISTRATION_TIMEOUT_MS=100)
+target_compile_options(control_connecting_snapshot_test PRIVATE
+                       -Wall -Wextra -Wno-format -Wno-unused-parameter
+                       -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h
+                       -fsanitize=thread -fno-omit-frame-pointer -g)
+target_link_options(control_connecting_snapshot_test PRIVATE -fsanitize=thread)
+target_link_libraries(control_connecting_snapshot_test PRIVATE Threads::Threads)
+endif()
+
 # Deterministic interleaving proof for the STATE_DISCONNECTING republish
 # guard (plan 157). Compiles the production Control with FURBLE_TEST_SYNC so
 # the named sync points in lib/furble/FurbleTestSync.h are live, and links the
@@ -1431,6 +1517,22 @@ target_compile_options(ricoh_secure_timeout_uaf_test PRIVATE
                        -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter)
 target_link_options(ricoh_secure_timeout_uaf_test PRIVATE -fsanitize=address)
 target_link_libraries(ricoh_secure_timeout_uaf_test PRIVATE Threads::Threads)
+
+# Deterministic ordering guard for a stalled secureConnection() waiter. The
+# callback barrier makes the old early-wake ordering fail without a sleeps-only
+# race: the blocked call must remain parked until callback and peer cleanup are
+# complete.
+add_executable(mock_disconnect_order_test
+               mock_disconnect_order_test.cpp
+               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
+               ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp)
+target_include_directories(mock_disconnect_order_test BEFORE PRIVATE
+                           ${FURBLE_ROOT}/include
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR})
+target_compile_options(mock_disconnect_order_test PRIVATE -Wall -Wextra -Werror
+                       -Wno-unused-parameter)
+target_link_libraries(mock_disconnect_order_test PRIVATE Threads::Threads)
 
 # Stale-bond recovery through the REAL Control reconnect loop (plan 151). Uses
 # the production Scan so the SAVED reconnect path (scan, then connect, then
@@ -1698,6 +1800,9 @@ target_sources(console_commands_test PRIVATE ${FURBLE_ROOT}/src/FurbleNetworkSet
 
 if(BUILD_TESTING)
   add_test(NAME fujifilm-camera COMMAND fujifilm_camera_test)
+  add_test(NAME camera-pairing COMMAND camera_pairing_test)
+  add_test(NAME camera-pairing-peer COMMAND camera_pairing_peer_test)
+  add_test(NAME camera-pairing-race COMMAND camera_pairing_race_test)
   add_test(NAME golden-capture-replay
            COMMAND corpus_replay_test
                    ${CMAKE_CURRENT_SOURCE_DIR}/../corpus/x100vi/synthetic.golden)
@@ -1803,6 +1908,11 @@ if(BUILD_TESTING)
              COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/run_tsan_race.sh
                      $<TARGET_FILE:control_connect_camera_race_test>)
     set_tests_properties(control-connect-camera-race PROPERTIES TIMEOUT 180)
+    add_test(NAME control-connecting-snapshot
+             COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/run_tsan_race.sh
+                     $<TARGET_FILE:control_connecting_snapshot_test>
+                     "control connecting-camera snapshot: PASS")
+    set_tests_properties(control-connecting-snapshot PROPERTIES TIMEOUT 120)
     # The shell contract emits no profraw, so keep it out of coverage's CTest
     # profile inventory while retaining the normal host and standalone checks.
     add_test(NAME control-tsan-wrapper-contract
@@ -1828,6 +1938,7 @@ if(BUILD_TESTING)
   add_test(NAME connect-mid-drop COMMAND connect_mid_drop_test)
   add_test(NAME ricoh-secure-timeout-uaf COMMAND ricoh_secure_timeout_uaf_test)
   add_test(NAME gatt-journal-uaf COMMAND gatt_journal_uaf_test)
+  add_test(NAME mock-disconnect-order COMMAND mock_disconnect_order_test)
   add_test(NAME companion-gatt COMMAND companion_gatt_test)
   add_test(NAME companion-auth
            COMMAND companion_auth_test ${FURBLE_ROOT}/tests/protocol/golden/companion_auth.json)

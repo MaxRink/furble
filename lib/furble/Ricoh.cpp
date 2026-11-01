@@ -190,7 +190,7 @@ bool Ricoh::_connect(void) {
     // the camera-side bond was removed, discard the stale local key so the
     // next attempt can perform numeric comparison. Saved reconnects retain
     // their bond across transient security failures.
-    if (bondedBefore && getPairType() == PairType::NEW) {
+    if (bondedBefore && (getPairType() == PairType::NEW) && !pairingCancelled()) {
       if (NimBLEDevice::deleteBond(m_Address)) {
         ESP_LOGI(LOG_TAG, "Ricoh stale local bond cleared for fresh pairing retry");
       }
@@ -516,30 +516,6 @@ bool Ricoh::serialise(void *buffer, size_t bytes) const {
   x->type = m_Address.getType();
 
   return true;
-}
-
-void Ricoh::onPassKeyEntry(NimBLEConnInfo &connInfo) {
-  ESP_LOGW(LOG_TAG, "Ricoh passkey entry for %s; injecting fallback 123456",
-           connInfo.getAddress().toString().c_str());
-  NimBLEDevice::injectPassKey(connInfo, 123456);
-}
-
-uint32_t Ricoh::onPassKeyDisplay(NimBLEConnInfo &connInfo) {
-  ESP_LOGW(LOG_TAG, "Ricoh passkey display for %s; returning fallback 123456",
-           connInfo.getAddress().toString().c_str());
-  return 123456;
-}
-
-void Ricoh::onConfirmPasskey(NimBLEConnInfo &connInfo, uint32_t pin) {
-  ESP_LOGI(LOG_TAG, "Ricoh confirm passkey %06lu for %s", pin,
-           connInfo.getAddress().toString().c_str());
-  NimBLEDevice::injectConfirmPasskey(connInfo, true);
-}
-
-void Ricoh::onAuthenticationComplete(NimBLEConnInfo &connInfo) {
-  ESP_LOGI(LOG_TAG, "Ricoh auth complete: bonded=%d encrypted=%d authenticated=%d keySize=%u",
-           connInfo.isBonded(), connInfo.isEncrypted(), connInfo.isAuthenticated(),
-           connInfo.getSecKeySize());
 }
 
 }  // namespace Furble
