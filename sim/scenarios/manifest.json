@@ -1736,6 +1736,19 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/e2e/control-idle-cadence.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/e2e/diagnostics-pages.txt",
       "suite": "e2e",
       "owner": "sim-e2e",
@@ -1830,6 +1843,21 @@
       "owner": "sim-e2e",
       "boards": [
         "m5stick-s3"
+      ],
+      "capabilities": [
+        "gps"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/gps-cycle-wait.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
       ],
       "capabilities": [
         "gps"

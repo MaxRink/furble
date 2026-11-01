@@ -242,7 +242,14 @@ void GPS::task(void) {
     }
 
     uart_event_t event;
-    if (xQueueReceive(m_Queue, &event, cycleWait(Platform::getInstance().tick()))) {
+    const bool gotEvent =
+        xQueueReceive(m_Queue, &event, cycleWait(Platform::getInstance().tick())) == pdTRUE;
+    if (!gotEvent) {
+#if defined(FURBLE_SIM)
+      m_SimTimeouts++;
+#endif
+    }
+    if (gotEvent) {
       if (!m_Enabled) {
         continue;
       }
@@ -545,7 +552,9 @@ bool GPS::dutyCycleEnabled(void) const {
 }
 
 TickType_t GPS::cycleWait(uint32_t now) const {
-  uint32_t wait = 100;
+  // Fallback housekeeping tick. Every state that has a real deadline shrinks
+  // this below, so a known 10 s window no longer wakes the task at 10 Hz.
+  uint32_t wait = 1000;
 
   // Nothing answered the autobaud ladder. The rail is off and the power lock
   // is released, so the only thing left to wake for is the single retry. Ten
@@ -555,6 +564,15 @@ TickType_t GPS::cycleWait(uint32_t now) const {
     const uint32_t idle =
         m_NoReceiverRetried ? ABSENT_IDLE_WAIT_MS : tickUntil(now, m_NoReceiverRetryAt);
     return pdMS_TO_TICKS(std::max(idle, MIN_CYCLE_WAIT_MS));
+  }
+
+  // Ephemeris replay and poll deadlines are owned by servicePoll(); without
+  // them here a longer idle wait would stretch the 30 ms replay gap.
+  if (!m_EphReplaySpans.empty()) {
+    wait = std::min(wait, tickUntil(now, m_EphReplayNext));
+  }
+  if (m_EphPollActive) {
+    wait = std::min(wait, tickUntil(now, m_EphPollDeadline));
   }
 
   // a burst can be active in any state, wake in time for the idle gap check

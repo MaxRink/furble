@@ -1,0 +1,10 @@
+# The control task idles at 250 ms, not 50 ms.
+#
+# Commands still wake its queue immediately. The timeout only drives zombie
+# reaping and the state machine, so a coarser tick removes wakeups without
+# delaying a command.
+
+wait 10000
+assert_min control.idle_ticks 30
+assert_max control.idle_ticks 50
+exit

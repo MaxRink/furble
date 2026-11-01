@@ -46,7 +46,7 @@ Rank groups:
 
 ## Safe now
 
-Twenty-two safe-now rows are implemented in this branch. See section
+Twenty-five safe-now rows are implemented in this branch. See section
 "Implemented safe-now changes" for the code and test evidence.
 
 | ID | Lane | Current behavior | Proposed change | Evidence | Est. saving | Risk | Effort | Required test | Priority | Lane source |
@@ -120,6 +120,9 @@ evidence label from the lane and adds the test that now guards it.
 | P-032 | A wired address defers the station. The worker rechecks every 5 s, restarts the station when the wire drops, and stops it if the wire returns. | `src/FurbleWiFi.cpp` | host `real-wifi-lifecycle` with the injected Ethernet transport: deferral set while linked, cleared and re-armed after link-down | implemented |
 | P-020 | The M5PM1 button is polled every 20 ms instead of every 5 ms UI pass. | `src/FurblePlatform.cpp`, `include/FurblePlatformPolicy.h` | host `pm1-poll-policy`: 19 ms not due, 20 ms due, wrap-safe; hardware click/soak remains in the row test | implemented |
 | P-018 | Adds "Dim, then off" as a persisted fourth mode on button boards and third mode on touch boards. It dims at the inactivity timeout and sleeps the panel 30 s later; existing Dim and Off are unchanged. | `src/FurbleUI.cpp`, `include/FurbleDisplayPolicy.h` | host `display-policy`: 30 s boundary and wrap; e2e `display-dim-then-off`; settings docs and `settings-display.png` regenerated | implemented |
+| P-010 | The GPS cycle wait uses a 1 s fallback and honors the ephemeris replay and poll deadlines, instead of a 100 ms floor in every state. | `src/FurbleGPS.cpp` | e2e `gps-cycle-wait`: 5 timeouts in 5 s and 6 in 15 s | implemented |
+| P-012 | The control task idles at 250 ms instead of 50 ms; commands still wake its queue immediately. | `src/FurbleControl.cpp` | e2e `control-idle-cadence`: 40 idle ticks in 10 s | implemented |
+| P-037 | `RECON_BACKOFF` defaults on. The first retry stays at 2.5 s; later attempts back off to 120 s. | `src/FurbleSettings.cpp` | `settings-nvs-roundtrip` default; all 27 reconnect simulator scenarios pass | implemented |
 
 The modeled saving for these rows is unchanged and still unmeasured. P-001 and
 P-002 bound a worst case; they do not change steady-state current. P-003 halves
@@ -140,7 +143,8 @@ staged dim-to-off mode without changing the existing modes.
 
 P-018 is now applied. The display settings roller gained the new mode, the
 settings documentation was updated, and `docs/img/settings-display.png` was
-regenerated from the current build.
+regenerated from the current build. P-010 and P-012 cut the GPS and control
+task poll rates, and P-037 makes the reconnect backoff the default.
 
 Three safe-now rows are deliberately not applied yet:
 

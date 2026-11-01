@@ -456,10 +456,14 @@ void Control::task(void) {
 
     cmd_t cmd;
     // Commands arrive through the queue and wake this receive immediately. The
-    // timeout is only the idle tick that drives the saver and RSSI sampler, both
-    // internally rate limited; 250 ms cuts idle wakeups fivefold with no command
-    // latency change.
+    // timeout is the idle housekeeping tick: zombie reaping and the state
+    // machine. 250 ms cuts idle wakeups fivefold with no command latency.
     BaseType_t ret = xQueueReceive(m_Queue, &cmd, pdMS_TO_TICKS(250));
+    if (ret != pdTRUE) {
+#if defined(FURBLE_SIM)
+      m_SimIdleTicks.fetch_add(1, std::memory_order_relaxed);
+#endif
+    }
 
     switch (m_State.load(std::memory_order_acquire)) {
       case STATE_IDLE:

@@ -1303,6 +1303,9 @@ std::string queryValue(const std::string &key) {
       return std::to_string(cameraFocusReleases());
     }
   }
+  if (key == "control.idle_ticks") {
+    return std::to_string(Furble::Control::getInstance().getIdleTicks());
+  }
   if (key == "camera.idle_ticks") {
     return std::to_string(Furble::Sim::targetIdleTicks());
   }
@@ -1393,6 +1396,9 @@ std::string queryValue(const std::string &key) {
     }
     if (sub == "idle_wakes") {
       return std::to_string(gps.simIdleWakes());
+    }
+    if (sub == "timeouts") {
+      return std::to_string(gps.simTimeouts());
     }
     if (sub == "state") {
       return Furble::Sim::profilerGpsState();

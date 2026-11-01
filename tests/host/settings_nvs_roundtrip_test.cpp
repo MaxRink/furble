@@ -252,7 +252,7 @@ std::vector<SettingCase> settingCases() {
       {Settings::MULTISELECT, "MULTISELECT", defaultMultiselect(), representativeMultiselect(),
        StorageKind::BLOB},
       {Settings::RECONNECT, "RECONNECT", false, true, StorageKind::BOOL},
-      {Settings::RECON_BACKOFF, "RECON_BACKOFF", false, true, StorageKind::BOOL},
+      {Settings::RECON_BACKOFF, "RECON_BACKOFF", true, false, StorageKind::BOOL},
       {Settings::FAUXNY, "FAUXNY", false, true, StorageKind::BOOL},
       {Settings::TOUCH_CALIBRATION, "TOUCH_CALIBRATION", defaultCalibration(),
        representativeCalibration(), StorageKind::BLOB},

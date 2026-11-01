@@ -98,7 +98,7 @@ Submenu: `Settings` > `Features`.
 | Auto-Connect | Off | On, Off | Now | Connect to the saved camera at boot without a menu step. |
 | FauxNY | Off | On, Off | Now | Adds a fake test camera to the scan list for development. |
 | Infinite-ReConnect | Off | On, Off | Now | Keep retrying a lost connection forever. |
-| Reconnect Backoff | Off | On, Off | Now | Space out reconnect attempts to save battery. |
+| Reconnect Backoff | On | On, Off | Now | Space out reconnect attempts to save battery. The first retry stays quick at 2.5 s; later attempts back off to 120 s. |
 | Multi-Connect | Off | On, Off | Now | Allow connecting to more than one camera at once. |
 | Companion | Off | On, Off | Restart (dangerous) | Enables the companion BLE service. Connection-affecting. |
 | Watchdog | On | On, Off | Restart | M5StickS3 only. Turn off before attaching a JTAG debugger. |

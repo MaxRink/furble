@@ -1,0 +1,15 @@
+# The GPS task sleeps to its next deadline instead of polling at 10 Hz.
+#
+# With the receiver tracking at 1 Hz, the old 100 ms floor produced about ten
+# queue timeouts per second. The deadline-driven wait should leave a handful
+# over this window.
+
+seed gps true
+seed gps_power 0
+seed gps_uart_mode ack
+wait 5000
+# Sampling starts after the receiver has settled into the burst cycle.
+assert_max gps.timeouts 25
+wait 10000
+assert_max gps.timeouts 120
+exit

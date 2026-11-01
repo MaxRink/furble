@@ -336,6 +336,8 @@ class GPS {
 #if defined(FURBLE_SIM)
   /** Disabled-path loop iterations, used by the power scenarios. */
   uint32_t simIdleWakes(void) const { return m_SimIdleWakes.load(); }
+  /** Queue-timeout iterations while the GPS service is running. */
+  uint32_t simTimeouts(void) const { return m_SimTimeouts.load(); }
 #endif
 
   /** Baud the autobaud ladder locked, or the configured fixed baud, 0 if none. */
@@ -697,6 +699,7 @@ class GPS {
   std::atomic<bool> m_ProbePending = false;
 #if defined(FURBLE_SIM)
   std::atomic<uint32_t> m_SimIdleWakes {0};
+  std::atomic<uint32_t> m_SimTimeouts {0};
 #endif
   uint32_t m_NoReceiverRetryAt = 0;
   bool m_NoReceiverRetried = false;
