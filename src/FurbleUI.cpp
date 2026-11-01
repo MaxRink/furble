@@ -5862,6 +5862,13 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
   if (state != Control::STATE_IDLE) {
     ctx->connectRequested = false;
   }
+  if ((state != Control::STATE_CONNECT) && (state != Control::STATE_CONNECTING)) {
+    // The strong snapshot exists only for the connecting branch. Keeping it
+    // past that point pins the Camera and its vendor queues after Control and
+    // CameraList have released both.
+    ctx->connectingCamera.reset();
+    ctx->connectingGeneration = control.getConnectingCameraGeneration();
+  }
 
   switch (state) {
     case Control::STATE_CONNECT:
@@ -6599,6 +6606,8 @@ void UI::doDisconnect(void) {
 
   Scan::getInstance().stop();
   Control::getInstance().disconnect();
+  m_ConnectContext.connectingCamera.reset();
+  m_ConnectContext.connectingGeneration = Control::getInstance().getConnectingCameraGeneration();
 
   // The shutter page is gone, drop blind remote so buttons wake the screen.
   m_ConnectContext.ui->m_ControlMode = ControlMode::MENU;
