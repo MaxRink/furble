@@ -9,14 +9,14 @@
 
 #include <MockNimBLE.h>
 
-#include <FujifilmVirtualCamera.h>
-#include <RicohVirtualCamera.h>
 #include <CanonRemoteVirtualCamera.h>
 #include <CanonSmartVirtualCamera.h>
 #include <DjiVirtualCamera.h>
+#include <FujifilmVirtualCamera.h>
 #include <LumixVirtualCamera.h>
 #include <NikonRemoteVirtualCamera.h>
 #include <NikonSmartVirtualCamera.h>
+#include <RicohVirtualCamera.h>
 #include <SonyVirtualCamera.h>
 
 #include "CameraList.h"
@@ -236,9 +236,8 @@ bool bleTopologyIsValid(const std::string &topology) {
   return topology == "none" || topology == "fuji" || topology == "fuji-secure"
          || topology == "fuji-pair" || topology == "fuji-ricoh-flappy"
          || topology == "fuji-secure-stale" || topology == "canon-smart"
-         || topology == "canon-remote" || topology == "nikon-remote"
-         || topology == "nikon-smart" || topology == "sony"
-         || topology == "lumix" || topology == "dji" || topology == "all";
+         || topology == "canon-remote" || topology == "nikon-remote" || topology == "nikon-smart"
+         || topology == "sony" || topology == "lumix" || topology == "dji" || topology == "all";
 }
 
 void bleStartPeers(const std::string &topology) {
@@ -261,17 +260,13 @@ void bleStartPeers(const std::string &topology) {
       addFujifilm(FUJIFILM_A_ADDRESS, "FUJIFILM X100VI", 0);
       addRicoh(RICOH_ADDRESS, "RICOH GR IV", 1);
     } else if (topology == "canon-smart") {
-      addGenericPeer(CANON_SMART_ADDRESS, "Canon EOS RP",
-                     &VirtualPeer::canon_smart);
+      addGenericPeer(CANON_SMART_ADDRESS, "Canon EOS RP", &VirtualPeer::canon_smart);
     } else if (topology == "canon-remote") {
-      addGenericPeer(CANON_REMOTE_ADDRESS, "Canon EOS RP",
-                     &VirtualPeer::canon_remote);
+      addGenericPeer(CANON_REMOTE_ADDRESS, "Canon EOS RP", &VirtualPeer::canon_remote);
     } else if (topology == "nikon-remote") {
-      addGenericPeer(NIKON_REMOTE_ADDRESS, "Nikon B600",
-                     &VirtualPeer::nikon_remote);
+      addGenericPeer(NIKON_REMOTE_ADDRESS, "Nikon B600", &VirtualPeer::nikon_remote);
     } else if (topology == "nikon-smart") {
-      addGenericPeer(NIKON_SMART_ADDRESS, "Nikon Z6III",
-                     &VirtualPeer::nikon_smart);
+      addGenericPeer(NIKON_SMART_ADDRESS, "Nikon Z6III", &VirtualPeer::nikon_smart);
     } else if (topology == "sony") {
       addGenericPeer(SONY_ADDRESS, "Sony ZV-1F", &VirtualPeer::sony);
     } else if (topology == "lumix") {
@@ -281,14 +276,10 @@ void bleStartPeers(const std::string &topology) {
     } else if (topology == "all") {
       addFujifilm(FUJIFILM_A_ADDRESS, "FUJIFILM X100VI", 0, /*secure=*/true);
       addRicoh(RICOH_ADDRESS, "RICOH GR IV", 0);
-      addGenericPeer(CANON_SMART_ADDRESS, "Canon EOS RP",
-                     &VirtualPeer::canon_smart);
-      addGenericPeer(CANON_REMOTE_ADDRESS, "Canon EOS RP",
-                     &VirtualPeer::canon_remote);
-      addGenericPeer(NIKON_REMOTE_ADDRESS, "Nikon B600",
-                     &VirtualPeer::nikon_remote);
-      addGenericPeer(NIKON_SMART_ADDRESS, "Nikon Z6III",
-                     &VirtualPeer::nikon_smart);
+      addGenericPeer(CANON_SMART_ADDRESS, "Canon EOS RP", &VirtualPeer::canon_smart);
+      addGenericPeer(CANON_REMOTE_ADDRESS, "Canon EOS RP", &VirtualPeer::canon_remote);
+      addGenericPeer(NIKON_REMOTE_ADDRESS, "Nikon B600", &VirtualPeer::nikon_remote);
+      addGenericPeer(NIKON_SMART_ADDRESS, "Nikon Z6III", &VirtualPeer::nikon_smart);
       addGenericPeer(SONY_ADDRESS, "Sony ZV-1F", &VirtualPeer::sony);
       addGenericPeer(LUMIX_ADDRESS, "LUMIX S5II", &VirtualPeer::lumix);
       addGenericPeer(DJI_ADDRESS, "DJI Osmo Action 4", &VirtualPeer::dji);
