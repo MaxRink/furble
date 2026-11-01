@@ -44,6 +44,12 @@ these separately from the `00 01` and `00 02` AF plus release shutter pair.
 The Canon GPS request, source select, write type, and model gate remain
 documented gaps and are not changed without a capture.
 
+LUMIX GPS altitude is now a signed int16, matching the LUMIX Sync builder.
+The clock packet now uses the app's standard-offset and DST byte order. Furble
+still writes zero for both because it has no timezone source. The control
+Confirm and Start sequence, the APS identity path, the GPS stop packet, and the
+readiness notifications remain documented gaps.
+
 ## Evidence
 
 Firmware evidence is `firmware-static`: the Fujifilm images contain the same

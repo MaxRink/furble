@@ -190,10 +190,11 @@ Advertisement matching requires Panasonic manufacturer data with at least 8
 bytes, SIG company ID `0x003A` (Panasonic Holdings Corporation), and the
 proprietary session service advertised. The earlier `0x0376` value in this note
 was wrong: the Bluetooth SIG registry assigns `0x0376` to Electronic
-Temperature Instruments, not Panasonic. The code already used `0x003A`.
-It parses a flags byte plus a five-byte address fragment but does not use a
-model string. The matcher cannot distinguish S5II, BGH1, G9II, or other LUMIX
-bodies.
+Temperature Instruments, not Panasonic. LUMIX Sync uses a 9-byte manufacturer
+field: company ID, one state byte, and a six-byte address. Furble parses the
+first eight bytes and ignores the last address byte, but it does not use the
+address, so the match is unaffected. The matcher cannot distinguish S5II,
+BGH1, G9II, or other LUMIX bodies.
 
 GATT constants:
 
@@ -218,29 +219,40 @@ comment says a shortened MEI0-to-GPS sequence can cause the camera to drop the
 link, but current Furble does not wait for the two documented readiness
 notifications before enabling GPS.
 
-MEI0 is the fixed source array:
-`4d 45 49 30 01 00 10 00 80 01 02 00 00 01 00 00`.
-The source labels it a trace-derived session-init payload. The S5 protocol
-report says captures used a changing counter/checksum but a fixed value was
-accepted in repeated reconnects; this is not independently firmware-qualified
-for Furble.
+MEI0 is a ten-byte prefix `4d 45 49 30 01 00 10 00 80 01` followed by a
+six-byte per-install identity seed. The source array
+`4d 45 49 30 01 00 10 00 80 01 02 00 00 01 00 00` is one possible seed, not a
+protocol constant. LUMIX Sync reuses the seed from its DLNA registration. A
+camera test with a fresh seed and with a registered seed is still needed. The
+APS path writes a key-obfuscated 20-byte identity when `bb5d2a8c` is present;
+Furble does not implement it.
 
-Control writes are one byte: focus press `01`, focus release `02`, shutter
-press `04`, shutter release `05`. Furble sends no status subscription and has
-no response/error-code interpretation beyond the boolean GATT write result.
-The public G9II implementation sends a full still-photo sequence at handles
-`0x0068`: `01`, `02`, `04`, then `05`; it also uses `06`, `07` for video
-toggle. That handle-level implementation is a different generation and must
-not be copied to the UUID path without an exact capture.
+Control writes are one byte. `01` and `02` are Confirm and Start, not focus;
+`03` is Finish, `04` and `05` are shutter on and off, and `06` and `07` are
+movie on and off. LUMIX Sync sends Confirm, Start, ShutterOn, and ShutterOff.
+Furble's focus press and release currently send the Confirm and Start commands,
+which is a semantic bug but may initialize a session. Furble sends no status
+subscription and has no response or error-code interpretation beyond the boolean
+GATT write result. The public G9II implementation sends the same `01`, `02`,
+`04`, `05` sequence at handles `0x0068`. That handle-level path is a different
+generation and must not be copied to the UUID path without an exact capture.
 
 GPS/time writes in current Furble:
 
 * location packet: 16 bytes, little-endian, GPS epoch seconds since
   1980-01-06, latitude/longitude as signed degrees times 10^7, altitude as
-  uint16 metres, fix `0x41`, trailing zero;
+  signed int16 metres, fix `0x41`, trailing zero;
 * clock packet: 10 bytes, little-endian year, month/day/hour/minute/second,
-  zero byte, and signed timezone offset set to zero;
-* clock is written only after a successful location write.
+  int16 standard offset at bytes 7 and 8, and a DST flag at byte 9. Furble now
+  matches this layout and writes zero for both because it has no timezone
+  source;
+* clock is written only after a successful location write. LUMIX Sync writes it
+  when the clock readiness notification arrives, independent of GPS.
+
+LUMIX Sync also sends a GPS stop packet: fix `0x56`, latitude and longitude
+`0x7fffffff`, and altitude `0x7fff`. Furble does not send it. The app starts GPS
+only after the `37701b80` readiness notification and handles value `3` as a
+stored-GPS request. Furble writes unconditionally after its time sync.
 
 The S5 report documents two readiness notifications (`37701b80` and
 `4cf487c0`, both `01`) before time/GPS and reports a physical EXIF check, but
