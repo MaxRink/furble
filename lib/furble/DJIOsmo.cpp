@@ -113,7 +113,12 @@ bool DJIOsmo::validFrame(const uint8_t *data, size_t length) {
 }
 
 bool DJIOsmo::supportedCameraId(uint32_t deviceId) {
-  return deviceId == ACTION_4_DEVICE_ID || deviceId == ACTION_5_DEVICE_ID;
+  // The vendor artifacts disagree on the 16-bit half order. Compare both
+  // forms so a camera that reports the table encoding is not rejected after
+  // it has already approved the connection.
+  const uint32_t swapped = (deviceId >> 16) | (deviceId << 16);
+  return deviceId == ACTION_4_DEVICE_ID || deviceId == ACTION_5_DEVICE_ID
+         || swapped == ACTION_4_DEVICE_ID || swapped == ACTION_5_DEVICE_ID;
 }
 
 uint16_t DJIOsmo::nextSequence(void) {
