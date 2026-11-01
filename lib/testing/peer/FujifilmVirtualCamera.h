@@ -257,6 +257,7 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
 
   bool acceptConnection(NimBLEClient &client, const NimBLEAddress &address) override;
   void disconnect(NimBLEClient &client, int reason) override;
+  void disconnectComplete() override;
   bool hasService(const NimBLEUUID &service) const override;
   bool hasCharacteristic(const NimBLEUUID &service,
                          const NimBLEUUID &characteristic) const override;

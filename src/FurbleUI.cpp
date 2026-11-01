@@ -382,6 +382,9 @@ UI::UI(const interval_t &interval)
     abort();
   }
 
+  Camera::setPairingRequestCallback(
+      [](Camera *camera) { return UI::sendRequest(Request::CAMERA_PAIRING, 0, camera); });
+
   // The backlight PWM is clocked from the APB bus. DFS scaling the APB
   // frequency modulates the PWM and the whole screen flickers, so pin the
   // APB clock while the display is on. Display off can release this later.
@@ -861,6 +864,218 @@ void UI::releaseModalInput(lv_obj_t *dialog) {
   }
 }
 
+void UI::startPairingTimer(void) {
+  if (m_PairingTimer == nullptr) {
+    m_PairingTimer = lv_timer_create(pairingTimer, 250, this);
+  } else {
+    lv_timer_resume(m_PairingTimer);
+  }
+}
+
+void UI::stopPairingTimer(void) {
+  if (m_PairingTimer != nullptr) {
+    lv_timer_pause(m_PairingTimer);
+  }
+}
+
+void UI::closePairingDialog(void) {
+  if (m_PairingDialog != nullptr) {
+    releaseModalInput(m_PairingDialog);
+    if (lv_obj_is_valid(m_PairingDialog)) {
+      lv_msgbox_close_async(m_PairingDialog);
+    }
+  }
+  m_PairingDialog = nullptr;
+  m_PairingCamera.reset();
+  m_PairingIsCamera = false;
+
+  // A second camera may have raised a request while this modal was visible.
+  // Keep polling until that request gets its own modal instead of orphaning it
+  // behind the first answer.
+  bool pending = false;
+  const auto connecting = Control::getInstance().getConnectingCamera();
+  if (connecting && connecting->hasPendingPairing()) {
+    pending = true;
+  }
+  if (!pending) {
+    for (const auto &camera : Control::getInstance().getTargetCameras()) {
+      if (camera && camera->hasPendingPairing()) {
+        pending = true;
+        break;
+      }
+    }
+  }
+  if (!pending) {
+    stopPairingTimer();
+  }
+}
+
+void UI::showCameraPairing(Camera *camera) {
+  // One security prompt owns the screen at a time. Two live dialogs would each
+  // restore page focus underneath the other one when closed.
+  if ((camera == nullptr) || (m_PairingDialog != nullptr)
+      || (m_CompanionPairingDialog != nullptr)) {
+    return;
+  }
+
+  std::shared_ptr<Camera> owner = Control::getInstance().getConnectingCamera();
+  if (owner.get() != camera) {
+    owner.reset();
+    for (const auto &targetCamera : Control::getInstance().getTargetCameras()) {
+      if (targetCamera.get() == camera) {
+        owner = targetCamera;
+        break;
+      }
+    }
+  }
+  if (!owner || !owner->hasPendingPairing()) {
+    return;
+  }
+  if (owner->pairingTimedOut()) {
+    owner->cancelPairing();
+    return;
+  }
+
+  const Camera::PairingType type = owner->getPairingType();
+  if (type == Camera::PairingType::NONE) {
+    return;
+  }
+
+  m_PairingCamera = owner;
+  m_PairingIsCamera = true;
+  m_PairingToken = owner->getPairingToken();
+  m_PairingDialog = lv_msgbox_create(nullptr);
+  lv_obj_set_width(m_PairingDialog, LV_PCT(100));
+  lv_obj_set_style_max_width(m_PairingDialog, m_Width - 4, 0);
+  lv_msgbox_add_title(m_PairingDialog, "Pair camera");
+
+  lv_obj_t *content = lv_msgbox_get_content(m_PairingDialog);
+  lv_obj_set_flex_align(content, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_clear_flag(content, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t *name = lv_label_create(content);
+  lv_label_set_text(name, owner->getDisplayName().c_str());
+  lv_obj_set_width(name, LV_PCT(100));
+  lv_label_set_long_mode(name, LV_LABEL_LONG_DOT);
+  lv_obj_set_style_text_align(name, LV_TEXT_ALIGN_CENTER, 0);
+
+  const bool confirm = type == Camera::PairingType::NUMERIC_COMPARISON;
+  lv_obj_t *instruction = nullptr;
+  if (m_Height >= 170) {
+    instruction = lv_label_create(content);
+    lv_label_set_text(instruction,
+                      confirm ? "Confirm it matches the camera" : "Enter this code on the camera");
+    lv_obj_set_width(instruction, LV_PCT(100));
+    lv_label_set_long_mode(instruction, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_align(instruction, LV_TEXT_ALIGN_CENTER, 0);
+  }
+
+  lv_obj_t *code = lv_label_create(content);
+  lv_label_set_text_fmt(code, "%06lu", static_cast<unsigned long>(owner->getPairingCode()));
+  lv_obj_set_style_text_font(code, m_Width < 100 ? &lv_font_montserrat_16 : &lv_font_montserrat_22,
+                             0);
+  lv_obj_set_style_text_align(code, LV_TEXT_ALIGN_CENTER, 0);
+
+  const bool narrowFooter = m_Width < 200;
+  const auto fitFooterButton = [narrowFooter](lv_obj_t *button) {
+    if (narrowFooter) {
+      lv_obj_set_style_pad_hor(button, 3, 0);
+      lv_obj_set_style_text_font(button, &lv_font_montserrat_12, 0);
+    }
+  };
+
+  lv_obj_t *accept = nullptr;
+  if (confirm) {
+    accept = lv_msgbox_add_footer_button(m_PairingDialog, m_Width < 100 ? "Yes" : "Confirm");
+    fitFooterButton(accept);
+    lv_obj_add_event_cb(
+        accept,
+        [](lv_event_t *event) {
+          auto *ui = static_cast<UI *>(lv_event_get_user_data(event));
+          auto camera = ui->m_PairingCamera.lock();
+          if (camera) {
+            camera->answerPairing(true, ui->m_PairingToken);
+          }
+          ui->closePairingDialog();
+        },
+        LV_EVENT_CLICKED, this);
+  }
+
+  lv_obj_t *cancel = lv_msgbox_add_footer_button(m_PairingDialog, m_Width < 100 ? "No" : "Cancel");
+  fitFooterButton(cancel);
+  lv_obj_add_event_cb(
+      cancel,
+      [](lv_event_t *event) {
+        auto *ui = static_cast<UI *>(lv_event_get_user_data(event));
+        auto camera = ui->m_PairingCamera.lock();
+        if (camera) {
+          camera->cancelPairing(ui->m_PairingToken);
+        }
+        ui->closePairingDialog();
+      },
+      LV_EVENT_CLICKED, this);
+  lv_obj_t *footer = lv_msgbox_get_footer(m_PairingDialog);
+  if (narrowFooter && footer != nullptr) {
+    lv_obj_set_style_pad_hor(footer, 2, 0);
+    lv_obj_set_style_pad_column(footer, 2, 0);
+  }
+
+  lv_obj_update_layout(m_PairingDialog);
+  if (lv_obj_get_height(m_PairingDialog) > lv_display_get_vertical_resolution(m_Display)) {
+    const lv_font_t *small = fontForTextSize(Settings::TEXT_SIZE_SMALL);
+    lv_obj_set_style_pad_all(m_PairingDialog, 2, 0);
+    if (content != nullptr) {
+      lv_obj_set_style_pad_all(content, 2, 0);
+    }
+    lv_obj_set_style_text_font(name, small, 0);
+    if (instruction != nullptr) {
+      lv_obj_set_style_text_font(instruction, small, 0);
+    }
+    lv_obj_set_style_text_font(code, small, 0);
+    if (footer != nullptr) {
+      lv_obj_set_style_pad_all(footer, 2, 0);
+    }
+    lv_obj_update_layout(m_PairingDialog);
+  }
+  // Encoder input for the footer, including the non-touch boards whose page
+  // routing maps the buttons to fixed coordinates. The modal group also keeps
+  // the page underneath out of reach while the code is on screen.
+  acquireModalInput(m_PairingDialog, {accept, cancel}, accept != nullptr ? accept : cancel);
+}
+
+void UI::pairingTimer(lv_timer_t *timer) {
+  FURBLE_SIM_TIMER_FIRE("pairing_timer");
+  auto *ui = static_cast<UI *>(lv_timer_get_user_data(timer));
+  if (ui->m_PairingDialog != nullptr) {
+    auto camera = ui->m_PairingCamera.lock();
+    if (!camera || !camera->hasPendingPairing()) {
+      ui->closePairingDialog();
+    } else if (camera->getPairingToken() != ui->m_PairingToken) {
+      // A disconnect and retry replaced the request while this modal was up.
+      // Rebuild it against the new code instead of answering a prompt the user
+      // never saw.
+      ui->closePairingDialog();
+      ui->showCameraPairing(camera.get());
+    } else if (camera->pairingTimedOut()) {
+      camera->cancelPairing(ui->m_PairingToken);
+      ui->closePairingDialog();
+    }
+    return;
+  }
+  auto connecting = Control::getInstance().getConnectingCamera();
+  if (connecting && connecting->hasPendingPairing()) {
+    ui->showCameraPairing(connecting.get());
+    return;
+  }
+  for (const auto &camera : Control::getInstance().getTargetCameras()) {
+    if (camera && camera->hasPendingPairing()) {
+      ui->showCameraPairing(camera.get());
+      return;
+    }
+  }
+  ui->stopPairingTimer();
+}
+
 void UI::closeCompanionPairingDialog(void) {
   if (m_CompanionPairingDialog != nullptr) {
     releaseModalInput(m_CompanionPairingDialog);
@@ -1078,6 +1293,13 @@ void UI::companionPairingTimer(lv_timer_t *timer) {
   }
 
   if (ui->m_CompanionPairingDialog != nullptr) {
+    return;
+  }
+
+  // Serialize with the camera pairing modal. The timer keeps running while the
+  // companion request is pending, so it opens on the next tick after the
+  // camera prompt closes.
+  if (ui->m_PairingDialog != nullptr) {
     return;
   }
 
@@ -1360,7 +1582,11 @@ bool UI::isBlindRemoteInput(lv_indev_t *drv) const {
 }
 
 bool UI::isBlindRemoteActive(void) const {
-  return (m_DisplayOffMode == 2) && !M5.Touch.isEnabled()
+  // A security prompt owns the screen. Blind-remote input has no visible
+  // target, so a dark-screen press must wake the panel and be swallowed rather
+  // than confirm a code the user cannot see.
+  const bool promptOpen = (m_PairingDialog != nullptr) || (m_CompanionPairingDialog != nullptr);
+  return (m_DisplayOffMode == 2) && !M5.Touch.isEnabled() && !promptOpen
          && (m_ControlMode == ControlMode::SHUTTER);
 }
 
@@ -2747,6 +2973,36 @@ void UI::configureControl(ControlMode mode, bool set) {
 }
 
 #if defined(FURBLE_SIM)
+namespace {
+
+// Resolve a scenario pairing action to a camera Control owns. The shared_ptr
+// keeps the target alive while the production pairing callback is exercised.
+std::shared_ptr<Camera> simPairingCamera(bool pending) {
+  auto &control = Control::getInstance();
+  std::shared_ptr<Camera> first;
+  auto consider = [&](const std::shared_ptr<Camera> &camera) {
+    if (!camera) {
+      return false;
+    }
+    if (!first) {
+      first = camera;
+    }
+    return camera->hasPendingPairing() == pending;
+  };
+  const auto connecting = control.getConnectingCamera();
+  if (consider(connecting)) {
+    return connecting;
+  }
+  for (const auto &camera : control.getTargetCameras()) {
+    if (consider(camera)) {
+      return camera;
+    }
+  }
+  return first;
+}
+
+}  // namespace
+
 bool UI::simRunOnUi(std::function<void()> operation) {
   bool onUi = false;
   {
@@ -2920,6 +3176,53 @@ void UI::simScenarioActionOnUi(const Sim::scenario_action_t &action) {
   if (simpleAction && command == "disconnect") {
     m_SimActionResult = sim_action_result_t::APPLIED;
     doDisconnect();
+    return;
+  }
+
+  if (action.kind == Sim::scenario_action_kind_t::PAIRING_REQUEST) {
+    m_SimActionResult = sim_action_result_t::UNAVAILABLE;
+    auto camera = simPairingCamera(false);
+    if (!camera) {
+      return;
+    }
+    const Camera::PairingType type = action.mode == "display"
+                                         ? Camera::PairingType::PASSKEY_DISPLAY
+                                         : Camera::PairingType::NUMERIC_COMPARISON;
+    m_SimActionResult = camera->hostSetPairingRequest(type, action.index)
+                            ? sim_action_result_t::APPLIED
+                            : sim_action_result_t::VALID_NO_EFFECT;
+    startPairingTimer();
+    return;
+  }
+
+  if (simpleAction && (command == "camera-pair-accept" || command == "camera-pair-reject")) {
+    m_SimActionResult = sim_action_result_t::VALID_NO_EFFECT;
+    if ((m_PairingDialog == nullptr) || !lv_obj_is_valid(m_PairingDialog) || !m_PairingIsCamera) {
+      return;
+    }
+    lv_obj_t *footer = lv_msgbox_get_footer(m_PairingDialog);
+    const uint32_t buttons = footer == nullptr ? 0 : lv_obj_get_child_count(footer);
+    const bool accept = command == "camera-pair-accept";
+    if ((buttons == 0) || (accept && buttons < 2)) {
+      return;
+    }
+    lv_obj_t *button = lv_obj_get_child(footer, accept ? 0 : (buttons - 1));
+    if (button != nullptr) {
+      lv_obj_send_event(button, LV_EVENT_CLICKED, this);
+      m_SimActionResult = sim_action_result_t::APPLIED;
+    }
+    return;
+  }
+
+  if (simpleAction && command == "camera-pair-expire") {
+    m_SimActionResult = sim_action_result_t::VALID_NO_EFFECT;
+    auto camera = simPairingCamera(true);
+    if (!camera) {
+      return;
+    }
+    m_SimActionResult = camera->hostExpirePairing() ? sim_action_result_t::APPLIED
+                                                    : sim_action_result_t::VALID_NO_EFFECT;
+    startPairingTimer();
     return;
   }
 
@@ -3668,6 +3971,105 @@ std::string UI::simQueryState(const char *key) {
     return m_SimLastActionOnUi.load() ? "yes" : "no";
   }
 
+  if (query == "pairing_code" || query == "pairing_kind" || query == "pairing_overflow") {
+    const bool open = m_PairingDialog != nullptr && lv_obj_is_valid(m_PairingDialog);
+    if (!open || !m_PairingIsCamera) {
+      return query == "pairing_overflow" ? "no" : "none";
+    }
+    if (query == "pairing_kind") {
+      lv_obj_t *footer = lv_msgbox_get_footer(m_PairingDialog);
+      const uint32_t buttons = footer == nullptr ? 0 : lv_obj_get_child_count(footer);
+      return buttons >= 2 ? "confirm" : "display";
+    }
+    if (query == "pairing_overflow") {
+      lv_obj_update_layout(m_PairingDialog);
+      lv_area_t box;
+      lv_obj_get_coords(m_PairingDialog, &box);
+      bool overflow = box.x1 < 0 || box.y1 < 0 || box.x2 >= m_Width || box.y2 >= m_Height;
+      lv_obj_t *content = lv_msgbox_get_content(m_PairingDialog);
+      if (content != nullptr) {
+        overflow = overflow || lv_obj_get_scroll_bottom(content) > 0
+                   || lv_obj_get_scroll_top(content) > 0 || lv_obj_get_scroll_left(content) > 0
+                   || lv_obj_get_scroll_right(content) > 0;
+      }
+      // The footer carries the action labels. A horizontally scrolled footer or
+      // a button outside its parent is just as unreadable as clipped body text.
+      lv_obj_t *footer = lv_msgbox_get_footer(m_PairingDialog);
+      if (footer != nullptr) {
+        overflow = overflow || lv_obj_get_scroll_bottom(footer) > 0
+                   || lv_obj_get_scroll_top(footer) > 0 || lv_obj_get_scroll_left(footer) > 0
+                   || lv_obj_get_scroll_right(footer) > 0;
+        lv_area_t footer_area;
+        lv_obj_get_coords(footer, &footer_area);
+        for (uint32_t i = 0; i < lv_obj_get_child_count(footer); i++) {
+          lv_obj_t *child = lv_obj_get_child(footer, i);
+          if ((child == nullptr) || !lv_obj_is_valid(child)) {
+            continue;
+          }
+          lv_area_t child_area;
+          lv_obj_get_coords(child, &child_area);
+          overflow = overflow || (child_area.x1 < footer_area.x1)
+                     || (child_area.x2 > footer_area.x2) || (child_area.y1 < footer_area.y1)
+                     || (child_area.y2 > footer_area.y2);
+          lv_obj_t *text = lv_obj_get_child(child, 0);
+          if ((text != nullptr) && lv_obj_check_type(text, &lv_label_class)) {
+            const char *label = lv_label_get_text(text);
+            if ((label != nullptr) && (label[0] != '\0')) {
+              lv_point_t size = {0, 0};
+              lv_text_get_size(&size, label, lv_obj_get_style_text_font(text, LV_PART_MAIN),
+                               lv_obj_get_style_text_letter_space(text, LV_PART_MAIN),
+                               lv_obj_get_style_text_line_space(text, LV_PART_MAIN), LV_COORD_MAX,
+                               LV_TEXT_FLAG_EXPAND);
+              overflow = overflow || (size.x > lv_obj_get_content_width(text));
+            }
+          }
+        }
+      }
+      return overflow ? "yes" : "no";
+    }
+    lv_obj_t *content = lv_msgbox_get_content(m_PairingDialog);
+    if (content != nullptr) {
+      for (uint32_t i = 0; i < lv_obj_get_child_count(content); i++) {
+        lv_obj_t *child = lv_obj_get_child(content, i);
+        if (!lv_obj_check_type(child, &lv_label_class)) {
+          continue;
+        }
+        const char *text = lv_label_get_text(child);
+        if (text != nullptr && std::strlen(text) == 6 && std::strspn(text, "0123456789") == 6) {
+          return text;
+        }
+      }
+    }
+    return "none";
+  }
+
+  if (query == "pairing_pending") {
+    auto camera = simPairingCamera(true);
+    return camera && camera->hasPendingPairing() ? "yes" : "no";
+  }
+
+  if (query == "pairing_timer") {
+    if (m_PairingTimer == nullptr) {
+      return "none";
+    }
+    return lv_timer_get_paused(m_PairingTimer) ? "paused" : "running";
+  }
+
+  // Which routing the physical buttons are using. Non-touch boards switch
+  // between encoder navigation for menus and modals and fixed page coordinates
+  // for SHUTTER and PRESET pages; a scenario has to see that switch to prove a
+  // dialog footer is actually reachable with the hardware buttons.
+  if (query == "input_mode") {
+    if (M5.Touch.isEnabled()) {
+      return "touch";
+    }
+    return lv_indev_get_type(m_ButtonO) == LV_INDEV_TYPE_ENCODER ? "encoder" : "button";
+  }
+
+  if (query == "blind_remote") {
+    return isBlindRemoteActive() ? "yes" : "no";
+  }
+
   // Keep diagnostics assertions tied to the actual rendered labels. These
   // queries are simulator-only and intentionally return small, stable tokens
   // so scenarios can check dynamic values without depending on clock/build
@@ -4211,11 +4613,13 @@ std::string UI::simQueryState(const char *key) {
     return "visible";
   }
 
-  // Companion pairing modal presence, for the input-after-approve regression
-  // (task #32).
+  // Pairing modal presence for both camera and companion prompts. Keep this
+  // generic query independent of which pairing path owns the visible dialog.
   if (query == "modal") {
-    const bool open =
+    const bool cameraOpen = m_PairingDialog != nullptr && lv_obj_is_valid(m_PairingDialog);
+    const bool companionOpen =
         m_CompanionPairingDialog != nullptr && lv_obj_is_valid(m_CompanionPairingDialog);
+    const bool open = cameraOpen || companionOpen;
     return open ? "open" : "closed";
   }
 
@@ -5458,12 +5862,28 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
   if (state != Control::STATE_IDLE) {
     ctx->connectRequested = false;
   }
+  if ((state != Control::STATE_CONNECT) && (state != Control::STATE_CONNECTING)) {
+    // The strong snapshot exists only for the connecting branch. Keeping it
+    // past that point pins the Camera and its vendor queues after Control and
+    // CameraList have released both.
+    ctx->connectingCamera.reset();
+    ctx->connectingGeneration = control.getConnectingCameraGeneration();
+  }
 
   switch (state) {
     case Control::STATE_CONNECT:
     case Control::STATE_CONNECTING:
+    {
       lv_timer_set_period(m_ConnectTimer, CONNECT_POLL_PERIOD_MS);
-      camera = control.getConnectingCamera();
+      // Read the lock-free generation first and snapshot only when it moved.
+      // Taking m_Mutex on every 50 ms tick put the LVGL task behind the control
+      // task's radio work.
+      const uint32_t generation = control.getConnectingCameraGeneration();
+      if (generation != ctx->connectingGeneration) {
+        ctx->connectingGeneration = generation;
+        ctx->connectingCamera = control.getConnectingCamera();
+      }
+      camera = ctx->connectingCamera;
 
       if (ctx->sessionEstablished) {
         // Mid-session reconnect. A live session already owns the screen, so do
@@ -5493,7 +5913,14 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
           // so stop the Cameras page polling isConnected() until this box hides
           lv_timer_pause(m_CamerasTimer);
 
-          lv_group_focus_obj(ctx->cancel);
+          // A pairing prompt can be serviced before this first connecting
+          // tick. Its footer owns the input group then, and focusing Cancel
+          // would make BtnA abandon the connection instead of answering the
+          // code on screen.
+          if ((ctx->ui->m_PairingDialog == nullptr)
+              && (ctx->ui->m_CompanionPairingDialog == nullptr)) {
+            lv_group_focus_obj(ctx->cancel);
+          }
         }
 
         if (camera != nullptr) {
@@ -5512,7 +5939,7 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
           }
         }
       }
-      break;
+    } break;
 
     case Control::STATE_CONNECT_FAILED:
     {
@@ -5565,8 +5992,8 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
       if (!lv_obj_has_flag(ctx->messageBox, LV_OBJ_FLAG_HIDDEN)) {
         // if from scan, save the connection
         if (ctx->menuName == m_ScanStr) {
-          for (const auto &target : control.getTargets()) {
-            CameraList::save(target->getCamera());
+          for (const auto &camera : control.getTargetCameras()) {
+            CameraList::save(camera);
           }
           ctx->menuName = NULL;
         }
@@ -5586,8 +6013,8 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
         if (ctx->ui->m_Intervalometer.hasResume()) {
           const uint8_t resumeId = ctx->ui->m_Intervalometer.resumeCameraId();
           bool resumeTarget = false;
-          for (const auto &target : control.getTargets()) {
-            if (CameraList::getCameraId(target->getCamera().get()) == resumeId) {
+          for (const auto &camera : control.getTargetCameras()) {
+            if (CameraList::getCameraId(camera.get()) == resumeId) {
               resumeTarget = true;
               break;
             }
@@ -5619,6 +6046,10 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
 
     case Control::STATE_IDLE:
     case Control::STATE_DISCONNECTING:
+      // Remember whether this idle came from a live session before the flag is
+      // cleared. A terminal pairing cancellation after ACTIVE leaves the
+      // progress box hidden but still needs the navigation reset.
+      const bool wasEstablished = ctx->sessionEstablished;
       // The disconnect feedback fired above on leaving the active state. The
       // session is fully down: forget it and drop the reconnecting indicator.
       ctx->sessionEstablished = false;
@@ -5644,6 +6075,28 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
         ESP_LOGW("ui", "Connect request not picked up after %lu ms.",
                  static_cast<unsigned long>(waited));
         ctx->connectRequested = false;
+      }
+      // Control returned to idle without publishing ACTIVE or CONNECT_FAILED,
+      // and the initial-connect overlay is still up. That is the terminal
+      // pairing-cancel path: every remaining target declined, so there is no
+      // session to keep and nothing to report as an error. Dismiss the overlay
+      // and return to the main page; doDisconnect() is deliberately not called
+      // because Control already retired the cancelled targets and any healthy
+      // link in the session was left alone.
+      if ((wasEstablished) || !lv_obj_has_flag(ctx->messageBox, LV_OBJ_FLAG_HIDDEN)) {
+        ctx->ui->m_ControlMode = ControlMode::MENU;
+        lv_obj_add_flag(ctx->messageBox, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(m_MainMenu.main, LV_OBJ_FLAG_HIDDEN);
+        ctx->ui->displayNavigationBar(true);
+        ctx->ui->configureControl(ControlMode::MENU);
+        lv_menu_clear_history(m_MainMenu.main);
+        lv_menu_set_page(m_MainMenu.main, m_MainMenu.page);
+        lv_group_focus_obj(m_Menu.at(m_ConnectStr).button);
+        if ((m_CamerasTimer != nullptr)
+            && (lv_menu_get_cur_main_page(m_MainMenu.main) == m_Menu.at(m_CamerasStr).page)) {
+          rebuildCamerasPage(m_Menu.at(m_CamerasStr));
+          lv_timer_resume(m_CamerasTimer);
+        }
       }
       // Defensive: doDisconnect() already pauses on the interactive path, and a
       // legitimate reconnect passes through STATE_CONNECT/CONNECTING, not idle.
@@ -5783,7 +6236,7 @@ void UI::intervalometer(lv_timer_t *timer) {
             && Platform::getInstance().canTimedWake()
             && ((next / 1000) > Intervalometer::RESUME_WAKE_MARGIN_S)
             && (control.getTargetCount() == 1)) {
-          auto camera = control.getTargets().front()->getCamera();
+          auto camera = control.getTargetCameras().front();
           const uint8_t camera_id = CameraList::getCameraId(camera.get());
           const bool camera_found = (camera_id != CameraListProtocol::INDEX_ID_INVALID)
                                     && (camera_id != CameraListProtocol::INDEX_ID_ALL);
@@ -5842,12 +6295,12 @@ void UI::intervalometer(lv_timer_t *timer) {
 
 QueueHandle_t UI::m_RequestQueue = NULL;
 
-bool UI::sendRequest(Request request, int32_t arg) {
+bool UI::sendRequest(Request request, int32_t arg, Camera *camera) {
   if (m_RequestQueue == NULL) {
     return false;
   }
 
-  const request_t item = {request, arg};
+  const request_t item = {request, arg, camera};
 
   return xQueueSend(m_RequestQueue, &item, 0) == pdTRUE;
 }
@@ -6005,6 +6458,11 @@ void UI::serviceRequests(void) {
         Feedback::getInstance().signal(static_cast<Feedback::event_t>(item.arg), true);
         break;
 
+      case Request::CAMERA_PAIRING:
+        m_ConnectContext.ui->startPairingTimer();
+        m_ConnectContext.ui->showCameraPairing(item.camera);
+        break;
+
 #if defined(FURBLE_CONSOLE)
       case Request::PERF:
 #if defined(CONFIG_LV_USE_PERF_MONITOR)
@@ -6148,6 +6606,8 @@ void UI::doDisconnect(void) {
 
   Scan::getInstance().stop();
   Control::getInstance().disconnect();
+  m_ConnectContext.connectingCamera.reset();
+  m_ConnectContext.connectingGeneration = Control::getInstance().getConnectingCameraGeneration();
 
   // The shutter page is gone, drop blind remote so buttons wake the screen.
   m_ConnectContext.ui->m_ControlMode = ControlMode::MENU;
@@ -6214,9 +6674,12 @@ void UI::rebuildCamerasPage(menu_t &menu) {
   lv_obj_clean(menu.page);
 
   auto &control = Control::getInstance();
-  const auto &targets = control.getTargets();
+  // Strong camera references, not raw Target pointers: a pairing cancellation
+  // can retire a target on the control task between the snapshot and this
+  // render pass, and the next drain would free it.
+  const auto cameras = control.getTargetCameras();
   const auto state = control.getState();
-  for (const auto &target : targets) {
+  for (const auto &camera : cameras) {
     lv_obj_t *label = lv_label_create(menu.page);
     lv_obj_set_width(label, LV_PCT(100));
     // The composed camera name plus the status word wraps onto a second line,
@@ -6229,7 +6692,7 @@ void UI::rebuildCamerasPage(menu_t &menu) {
     // The text is near static, so clip with dots instead of a circular
     // scroll that would invalidate the row on every tick.
     lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
-    updateCameraRow(label, target->getCamera().get(), state);
+    updateCameraRow(label, camera.get(), state);
   }
 }
 
@@ -6246,18 +6709,18 @@ void UI::camerasUpdate(lv_timer_t *timer) {
     return;
   }
 
-  const auto &targets = control.getTargets();
+  const auto cameras = control.getTargetCameras();
 
-  if (lv_obj_get_child_count(menu->page) != targets.size()) {
+  if (lv_obj_get_child_count(menu->page) != cameras.size()) {
     rebuildCamerasPage(*menu);
     return;
   }
 
   const auto state = control.getState();
   size_t n = 0;
-  for (const auto &target : targets) {
+  for (const auto &camera : cameras) {
     lv_obj_t *label = lv_obj_get_child(menu->page, n);
-    updateCameraRow(label, target->getCamera().get(), state);
+    updateCameraRow(label, camera.get(), state);
     n++;
   }
 }
@@ -9345,8 +9808,7 @@ void UI::diagnosticsUpdate(lv_timer_t *timer) {
 
   if (diagnostics->ble != nullptr) {
     std::string text;
-    for (const auto &target : Control::getInstance().getTargets()) {
-      auto camera = target->getCamera();
+    for (const auto &camera : Control::getInstance().getTargetCameras()) {
       if (!camera->isConnected()) {
         continue;
       }
@@ -10657,6 +11119,11 @@ void UI::simButtonRead(lv_indev_t *drv, lv_indev_data_t *data) {
   auto *ui = static_cast<UI *>(lv_indev_get_user_data(drv));
   data->key = ui->inputKey(drv);
   data->state = ui->m_SimButtonPressed ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
+  // The real read callbacks run every sample through the display wake gate.
+  // Do the same for the synthetic press and its release, so a tap on a dark
+  // screen wakes the panel and is swallowed instead of activating a hidden
+  // control.
+  (void)ui->handleDisplayInput(drv, data, ui->m_SimButtonPressed, true);
 }
 #endif
 }  // namespace Furble

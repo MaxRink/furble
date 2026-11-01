@@ -1,0 +1,90 @@
+# The pairing-code modal on the physical-button layout (plan 66 / #63). The
+# no-touch boards render navigation indicators over the page, and the shipped
+# 135x240 page is 189 px tall, so the modal must still fit the panel and leave
+# the page underneath free of overflow. This runs on the two narrow non-touch
+# panels, 135x240 and 80x160.
+#
+# It also pins the input routing. In SHUTTER mode a non-touch board maps BtnA
+# and BtnB to fixed page coordinates, which can never land on a dialog footer.
+# The modal therefore has to switch the board to encoder navigation while it is
+# open and restore the page routing when it closes. Every answer below goes
+# through the same key path the hardware buttons use, not a direct click.
+seed ble_peers fuji
+seed ble_saved true
+seed no_touch true
+seed display_off 2
+seed inactivity 1
+wait 300
+
+action connect
+assert-eventually-virtual 8000 control.state active
+
+# Enter the full-screen shutter page, which owns the fixed-coordinate routing.
+action blind
+wait 300
+assert ui.page shutter
+assert ui.input_mode button
+
+# Let the panel sleep in blind-remote mode. A security prompt must not be
+# answerable from a dark screen: BtnA has to wake the panel first, and the
+# blind-remote path must stand down while the prompt owns the screen.
+advance 61000
+assert ui.display off
+assert ui.blind_remote yes
+
+action camera-pair-request confirm 428913
+wait 400
+assert ui.modal open
+assert ui.modal_count 1
+assert ui.pairing_kind confirm
+assert ui.pairing_code 428913
+assert ui.pairing_overflow no
+assert ui.input_mode encoder
+assert ui.blind_remote no
+
+# The first BtnA press only wakes the panel. Blind-remote input is stood down
+# while the prompt is open, so the same gate that wakes a sleeping page
+# swallows this press instead of accepting a code nobody can see.
+btn a
+wait 400
+assert ui.display on
+assert ui.modal open
+assert ui.pairing_pending yes
+assert ble.pairing_answers 0
+
+# The second press is a real tap on the focused Confirm footer.
+btn a
+wait 500
+assert ui.modal closed
+assert ui.modal_count 0
+assert ui.pairing_pending no
+assert ble.pairing_answers 1
+assert ble.pairing_answer accept
+assert control.connected 1
+# Closing returns the board to the shutter page's fixed-coordinate routing.
+assert ui.input_mode button
+
+# Passkey display has no Confirm footer, so the focused Cancel rejects. This
+# also proves a display prompt is operable, not just the numeric comparison.
+action camera-pair-request display 654321
+wait 400
+assert ui.modal open
+assert ui.modal_count 1
+assert ui.pairing_kind display
+assert ui.pairing_code 654321
+assert ui.pairing_overflow no
+assert ui.input_mode encoder
+assert ui.blind_remote no
+btn a
+wait 600
+assert ui.modal closed
+assert ui.modal_count 0
+assert ui.pairing_pending no
+# A display prompt has no numeric comparison to answer, so the rejection drops
+# the link instead of injecting a passkey verdict.
+assert ble.pairing_answers 1
+assert-eventually-virtual 12000 control.connected 0
+assert-eventually-virtual 5000 ui.connect_box hidden
+assert ui.connected no
+assert ui.focus ok
+exit

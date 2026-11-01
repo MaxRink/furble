@@ -1,0 +1,40 @@
+# An expired pairing prompt must reject (plan 66 / #63). The response window is
+# aligned to the SMP timeout, so once it passes the stack will not honour a
+# Confirm anyway. The prompt closes itself and rejects without automatically
+# restarting authorization or leaving a live-looking code on screen.
+seed ble_peers fuji
+seed ble_saved true
+wait 300
+
+action connect
+assert-eventually-virtual 8000 control.state active
+assert control.connected 1
+
+action camera-pair-request confirm 314159
+wait 400
+assert ui.modal open
+assert ui.modal_count 1
+assert ui.pairing_kind confirm
+assert ui.pairing_code 314159
+
+# No radio to come back through, so the drop the expiry causes is final.
+action ble-connect-fail
+action camera-pair-expire
+wait 500
+assert ui.modal closed
+assert ui.modal_count 0
+assert ui.pairing_pending no
+assert ble.pairing_answers 1
+assert ble.pairing_answer reject
+
+# An expiry ends the session the same way a Cancel does.
+wait 12000
+assert control.state idle
+assert control.connected 0
+assert control.targets 0
+assert control.zombies 0
+assert-eventually-virtual 5000 ui.connect_box hidden
+assert ui.connected no
+assert ui.connect_error none
+assert ui.modal_count 0
+exit

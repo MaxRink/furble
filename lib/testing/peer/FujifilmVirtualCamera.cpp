@@ -430,16 +430,6 @@ bool FujifilmVirtualCamera::acceptConnection(NimBLEClient &client, const NimBLEA
 
 void FujifilmVirtualCamera::disconnect(NimBLEClient &client, int reason) {
   (void)reason;
-  {
-    // Release a handshake parked in secureConnection(). This runs on whichever
-    // thread issued the terminate, so it is the only place the stall can be
-    // ended from. Unconditional: a terminate may arrive for a client the peer
-    // has already dropped, and a stall left parked would hang the harness.
-    const std::lock_guard<std::mutex> lock(m_StallMutex);
-    m_StallLinkDown = true;
-  }
-  m_StallSignal.notify_all();
-
   if (m_Client == &client) {
     // Cancel the pending flappy drop for this session only: a stale or
     // foreign client's teardown must not disarm the current session's timer.
@@ -458,6 +448,18 @@ void FujifilmVirtualCamera::disconnect(NimBLEClient &client, int reason) {
     }
     m_Subscriptions.clear();
   }
+}
+
+void FujifilmVirtualCamera::disconnectComplete() {
+  // Release a handshake parked in secureConnection() only after the mock has
+  // completed the client-side disconnect callback and any self-delete. This is
+  // the ordering of the NimBLE host disconnect event: its waiter is released
+  // after the event has finished, not at the start of peer teardown.
+  {
+    const std::lock_guard<std::mutex> lock(m_StallMutex);
+    m_StallLinkDown = true;
+  }
+  m_StallSignal.notify_all();
 }
 
 bool FujifilmVirtualCamera::hasService(const NimBLEUUID &service) const {

@@ -1244,12 +1244,11 @@ std::string queryValue(const std::string &key) {
       return debug.connectingCamera;
     }
     if (sub == "target_camera") {
-      const auto targets = control.getTargets();
-      if (targets.empty() || targets.front() == nullptr
-          || targets.front()->getCamera() == nullptr) {
+      const auto cameras = control.getTargetCameras();
+      if (cameras.empty() || cameras.front() == nullptr) {
         return "";
       }
-      std::string name = targets.front()->getCamera()->getName();
+      std::string name = cameras.front()->getName();
       // Assertions are whitespace-separated. Keep the existing target-camera
       // observable assertable for vendor names such as "FUJIFILM X-S20", as
       // row_text already does for rendered camera rows.
@@ -1508,6 +1507,15 @@ std::string queryValue(const std::string &key) {
   }
   if (key == "ble.live_clients") {
     return std::to_string(bleLiveClientCount());
+  }
+  if (key == "ble.pairing_answers") {
+    return std::to_string(blePairingAnswerCount());
+  }
+  if (key == "ble.pairing_answer") {
+    if (blePairingAnswerCount() == 0) {
+      return "none";
+    }
+    return bleLastPairingAnswerAccepted() ? "accept" : "reject";
   }
   if (key == "clock.ms") {
     return std::to_string(clockMillis());

@@ -1951,7 +1951,7 @@ int cmdStatus(int argc, char **argv) {
 
   printf("version: %s\n", FURBLE_VERSION);
   printf("state: %s\n", stateStr(control.getState()));
-  printf("targets: %u\n", static_cast<unsigned>(control.getTargets().size()));
+  printf("targets: %u\n", static_cast<unsigned>(control.getTargetCameras().size()));
   printf("reset: %s\n", resetReasonName(esp_reset_reason()));
   printf("uptime: %llu\n", esp_timer_get_time() / 1000000ULL);
   printf("heap: %lu\n", esp_get_free_heap_size());
@@ -2051,10 +2051,10 @@ int cmdVersion(int argc, char **argv) {
 
 int cmdCameras(int argc, char **argv) {
   if ((argc >= 2) && !strcmp(argv[1], "status")) {
-    const auto &targets = Control::getInstance().getTargets();
-    printf("targets: %u\n", static_cast<unsigned>(targets.size()));
-    for (size_t n = 0; n < targets.size(); n++) {
-      const auto camera = targets[n]->getCamera();
+    const auto cameras = Control::getInstance().getTargetCameras();
+    printf("targets: %u\n", static_cast<unsigned>(cameras.size()));
+    for (size_t n = 0; n < cameras.size(); n++) {
+      const auto camera = cameras[n];
       printf("target%u.name: %s\n", static_cast<unsigned>(n), camera->getName().c_str());
       printf("target%u.connected: %s\n", static_cast<unsigned>(n), boolStr(camera->isConnected()));
       // Connection parameter and supervision timeout telemetry. The supervision
@@ -2599,13 +2599,13 @@ void debugCameraDetail(unsigned index, Camera *camera) {
 }
 
 int debugCamera(int argc, char **argv) {
-  const auto targets = Control::getInstance().getTargets();
-  printf("cameras.targets: %u\n", static_cast<unsigned>(targets.size()));
+  const auto cameras = Control::getInstance().getTargetCameras();
+  printf("cameras.targets: %u\n", static_cast<unsigned>(cameras.size()));
 
   // No index dumps every target.
   if (argc < 3) {
-    for (size_t n = 0; n < targets.size(); n++) {
-      debugCameraDetail(static_cast<unsigned>(n), targets[n]->getCamera().get());
+    for (size_t n = 0; n < cameras.size(); n++) {
+      debugCameraDetail(static_cast<unsigned>(n), cameras[n].get());
     }
     return 0;
   }
@@ -2613,12 +2613,11 @@ int debugCamera(int argc, char **argv) {
   char *end = nullptr;
   long index = strtol(argv[2], &end, 0);
   if ((end == argv[2]) || (*end != '\0') || (index < 0)
-      || (static_cast<size_t>(index) >= targets.size())) {
+      || (static_cast<size_t>(index) >= cameras.size())) {
     return fail("expected a target index from 'debug camera'");
   }
 
-  debugCameraDetail(static_cast<unsigned>(index),
-                    targets[static_cast<size_t>(index)]->getCamera().get());
+  debugCameraDetail(static_cast<unsigned>(index), cameras[static_cast<size_t>(index)].get());
   return 0;
 }
 
@@ -2639,9 +2638,9 @@ int debugBle(void) {
 #endif
 
   // Cross-reference each control target against the live NimBLE client list.
-  const auto targets = Control::getInstance().getTargets();
-  for (size_t n = 0; n < targets.size(); n++) {
-    auto camera = targets[n]->getCamera();
+  const auto cameras = Control::getInstance().getTargetCameras();
+  for (size_t n = 0; n < cameras.size(); n++) {
+    auto camera = cameras[n];
     const bool live = NimBLEDevice::getClientByPeerAddress(camera->getAddress()) != nullptr;
     printf("ble.target%u: %s client=%s\n", static_cast<unsigned>(n),
            camera->getAddress().toString().c_str(), boolStr(live));

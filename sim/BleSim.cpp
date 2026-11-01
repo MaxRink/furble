@@ -257,6 +257,14 @@ size_t bleLiveClientCount(void) {
   return NimBLEDevice::liveClientCount();
 }
 
+size_t blePairingAnswerCount(void) {
+  return NimBLEDevice::mockPasskeyConfirmCount();
+}
+
+bool bleLastPairingAnswerAccepted(void) {
+  return NimBLEDevice::mockLastPasskeyAccept();
+}
+
 void bleSetSecureStallMs(uint32_t ms) {
   // Run the stall on the virtual clock. The host suite keeps the wall clock,
   // where a real second is the point; here a real second would be dead time and
@@ -294,16 +302,15 @@ void bleSetConnectFail(bool fail) {
 
 bool bleDropLink(int index, bool deliverCallback) {
   auto &control = Control::getInstance();
-  const auto targets = control.getTargets();
+  const auto cameras = control.getTargetCameras();
   bool dropped = false;
 
   int position = 0;
-  for (auto *target : targets) {
+  for (const auto &camera : cameras) {
     const int current = position++;
     if (index >= 0 && current != index) {
       continue;
     }
-    auto camera = target->getCamera();
     if (camera == nullptr || !camera->isConnected()) {
       continue;
     }
@@ -333,16 +340,15 @@ bool bleDropLink(int index, bool deliverCallback) {
 
 bool blePeerStandbyDrop(int index) {
   auto &control = Control::getInstance();
-  const auto targets = control.getTargets();
+  const auto cameras = control.getTargetCameras();
   bool dropped = false;
 
   int position = 0;
-  for (auto *target : targets) {
+  for (const auto &camera : cameras) {
     const int current = position++;
     if (index >= 0 && current != index) {
       continue;
     }
-    auto camera = target->getCamera();
     if (camera == nullptr) {
       continue;
     }

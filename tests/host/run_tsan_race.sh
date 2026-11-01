@@ -7,7 +7,8 @@
 
 set -u
 
-BIN=${1:?usage: run_tsan_race.sh <binary>}
+BIN=${1:?usage: run_tsan_race.sh <binary> [completion-marker]}
+MARKER=${2:-control-connect-camera-race: PASS}
 OUT=$(mktemp "${TMPDIR:-/tmp}/furble-tsan.XXXXXX") || exit 1
 
 # halt_on_error=0 so every race is reported rather than the first one only.
@@ -31,7 +32,7 @@ if [ "$rc" -ne 0 ]; then
   exit 1
 fi
 
-if ! grep -Fxq 'control-connect-camera-race: PASS' "$OUT"; then
+if ! grep -Fxq "$MARKER" "$OUT"; then
   echo "FAIL: probe did not run to completion" >&2
   cat "$OUT" >&2
   rm -f "$OUT"
@@ -39,5 +40,5 @@ if ! grep -Fxq 'control-connect-camera-race: PASS' "$OUT"; then
 fi
 
 rm -f "$OUT"
-echo "control-connect-camera-race: PASS"
+echo "$MARKER"
 exit 0
