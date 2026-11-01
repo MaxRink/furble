@@ -25,6 +25,12 @@ X-S20 3.30. Basic support remains for older bodies. The Basic service
 `91F1DE68` is absent from both target images, so no Basic path is present;
 runtime reachability is not proven either way.
 
+DJI Osmo now accepts both 16-bit half orders of the Action 4 and Action 5 Pro
+device IDs. DJI's own command table and a checksum-valid Action 4 frame imply
+`0xFF330000`, while one demo source file writes `0x33FF0000`. Accepting both
+avoids rejecting a camera that reports the table encoding. The real camera
+value still needs a hardware capture.
+
 ## Evidence
 
 Firmware evidence is `firmware-static`: the Fujifilm images contain the same
@@ -57,8 +63,12 @@ interval. Image Sync 2.1.32 and GR WORLD 2.0.0 write GEO Tag `1` and GPS datum
 
 - Full host build completed with Clang.
 - All 120 host tests passed, including `ricoh-focus` with the new geotag
-  regression coverage.
+  regression coverage and the advertisement dispatch test that links the DJI
+  driver.
 - The new test asserts the Camera Service GEO Tag write, the 32-byte GPS
   packet, and that the final byte is `0`.
-- Hardware validation remains pending. The PR must declare Ricoh untested on
-  hardware unless the M5StickS3 bench run covers it.
+- The DJI dual device-ID acceptance compiles in the host dispatch test. It has
+  no dedicated behavior test because the helper is private, and no hardware
+  capture proves the camera-reported value.
+- Hardware validation remains pending. The PR must declare Ricoh and DJI
+  untested on hardware unless a bench run covers them.
