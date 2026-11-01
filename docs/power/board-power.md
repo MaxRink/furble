@@ -64,6 +64,9 @@ the text says `measured-local`.
   The StickS3 schematic and the Waveshare schematic are referenced by URL only.
   Every claim that depends on a resistor value or a board net is labelled
   `unverified` and belongs in the measurement plan.
+- No private hardware corpus or teardown note is present in this worktree. The
+  hardware evidence available is the repo plans, the vendor documentation, and
+  the pinned library source listed in section 9.
 - The only board recorded as attached in this repo is the M5StickS3
   (`CLAUDE.md`). StickC, StickC Plus, Plus2, Core, Core2, Waveshare, and the
   headless devkit need hardware before any number for them can move from
@@ -105,7 +108,7 @@ as separate boards when a rail is involved.
 | `m5stick-c` | M5StickC | ESP32 | AXP192, 100 mA charge, 4.2 V | Voltage, current, charge state | DCDC1 3.35 V MCU, LDO2 backlight, LDO3 3.0 V LCD, EXTEN Grove 5 V, ST7735S, IR on G9, LED on G10, no SD | Light sleep 0.8 mA plus AXP192, deep sleep 10 uA plus AXP192, off 27 uA, no PMIC timed wake |
 | `m5stick-c-plus` | M5StickC Plus and Plus2 | ESP32 | Plus: AXP192, 100 mA. Plus2: no PMIC, external charger | Plus: voltage, current, charge. Plus2: ADC voltage only | Plus: LDO2 backlight, LDO3 LCD, EXTEN. Plus2: PWM backlight G27, HOLD G4, battery divider G38, LED and IR G19, ST7789V, no SD | Plus as above. Plus2 light 0.8 mA plus divider, deep 10 uA plus divider, power off through HOLD |
 | `m5stick-s3` | M5StickS3 | ESP32-S3-PICO-1-N8R8 | M5PM1, charger on by default, profile not documented | Voltage and charge state on PM1 GPIO0, no current | 3.3 V DCDC and LDO, 5 V boost for Grove and EXT_5V and IR, L3B on PM1 GPIO2, ST7789P3 backlight G38, BMI270, ES8311 and AW8737, IR TX G46 and RX G42, no SD, USB Serial/JTAG | Light sleep 240 uA plus 140 uA PSRAM plus PM1, deep sleep 7 uA plus PM1, off 14.02 uA, L1 52.47 uA, L2 102.40 uA, PM1 timer wake |
-| `m5stack-core` | M5Stack Core Basic and Gray | ESP32 | IP5306, 150 mA charge, 4.2 V | Four-level only, 100, 75, 50, 25, 0 percent | 3.3 V rail, backlight G32, ILI9342C, speaker, SD, no current gauge | Light sleep only with boost keep-on, below 45 mA for 32 s cuts the boost, no immediate PMIC off, deep sleep only with keep-on |
+| `m5stack-core` | M5Stack Core Basic and Gray | ESP32 | IP5306, 150 mA charge, 4.2 V | Four-level only, 100, 75, 50, 25, 0 percent | 3.3 V rail, backlight G32, ILI9342C, speaker, SD; IMU on the Gray variant, part not recorded in this tree | Light sleep only with boost keep-on, below 45 mA for 32 s cuts the boost, no immediate PMIC off, deep sleep only with keep-on |
 | `m5stack-core2` | Core2 and M5Tough (untested) | ESP32 | AXP192, 390 mA charge on Core2 | Voltage, current, charge state | DCDC3 backlight, LDO2 3.3 V LCD and SD, LDO3 vibration on Core2 and backlight on Tough, LDOIO0 Grove 5 V, ILI9342C, FT6336U touch, MPU6886, NS4168, SD, BM8563 | Light sleep 0.8 mA plus AXP192 plus touch, deep sleep 10 uA plus AXP192, off 27 uA, touch wake on G39 |
 | `waveshare-s3-eth` | Waveshare ESP32-S3-ETH | ESP32-S3R8, 8 MB octal PSRAM | None, no battery | None | USB-C 5 V or PoE HAT, W5500 on SPI, WS2812 on G21, microSD in 1-line mode and unused by furble, no display or IMU; GPS only through the Pico header | Tickless idle off, so no automatic light sleep; DFS is left on; mains powered |
 | `esp32-s3-headless` | ESP32-S3-DevKitC-1 | ESP32-S3, 8 MB PSRAM in sdkconfig | None, no battery | None | USB or 5 V, USB Serial/JTAG, no display, PMIC, or RTC | Tickless idle on, light sleep 240 uA plus PSRAM, mains or development |
@@ -116,23 +119,25 @@ as separate boards when a rail is involved.
 **M5StickC (`m5stick-c`).** AXP192 with three enabled rails in normal use:
 DCDC1 for the ESP32, LDO2 for the backlight, LDO3 at 3.0 V for the LCD. DCDC3
 is set to 0 by M5Unified. The AXP192 has no whole-chip operating current in its
-datasheet, only per-block quiescent currents. The ESP32 is not wired to a
-32.768 kHz low-power clock, so the connected BLE floor is modem sleep and the
-1.9 mA crystal mode is not available. The panel is an ST7735S at 80x160; its
-sleep-in current is 15 uA typical. The board has no SD slot, so SD power is not
-a term. Opportunities: PM-04, PM-07, PM-10, PL-03, PL-05, PL-06, PL-07, PL-08,
-LK-02, RL-11. No hardware is attached in this repo.
+datasheet, only per-block quiescent currents. The ESP32 build selects the
+internal RC RTC clock (`CONFIG_ESP32_RTC_CLK_SRC_INT_RC=y`), not an external
+32.768 kHz crystal, so the connected BLE floor is modem sleep and the 1.9 mA
+crystal mode is not available. The panel is an ST7735S at 80x160; its sleep-in
+current is 15 uA typical. The board has no SD slot, so SD power is not a term.
+Opportunities: PM-04, PM-07, PM-10, PL-03, PL-05, PL-06, PL-07, PL-08, LK-02,
+RL-11. No hardware is attached in this repo.
 
 **M5StickC Plus and Plus2 (`m5stick-c-plus`).** These are two boards in one
 image. The Plus is an AXP192 board with a 1.14 inch ST7789V and a buzzer. The
 Plus2 has no PMIC: the battery is read from an ADC divider on GPIO38, the
-backlight is PWM on GPIO27, and the power hold is GPIO4. M5Unified enables the
-ADC divider permanently. On the Plus2, `M5.Power.powerOff()` reaches
-`esp_deep_sleep_start()` and M5Unified 0.2.20 does not arm a wake source on
-that path, so the "off" behavior of the shared image needs a hardware check
-before auto-off is enabled there. Opportunities: PM-04, PM-07, PM-10, PM-11,
-PL-03, PL-05, PL-06, PL-07, PL-08, LK-02, RL-10, RL-11. No hardware is
-attached.
+backlight is PWM on GPIO27, and the power hold is GPIO4. The Plus2 charger part
+is not in the tree; charge current and termination are not firmware-controlled.
+The ADC divider is permanently connected. On the Plus2,
+`M5.Power.powerOff()` reaches `esp_deep_sleep_start()` and M5Unified 0.2.20 does
+not arm a wake source on that path, so the "off" behavior of the shared image
+needs a hardware check before auto-off is enabled there. Opportunities: PM-04,
+PM-07, PM-10, PM-11, PL-03, PL-05, PL-06, PL-07, PL-08, LK-02, RL-10, RL-11. No
+hardware is attached.
 
 **M5StickS3 (`m5stick-s3`).** The best instrumented board and the only one with
 a GPS burst lock and a PM1 timer wake. It is also the only board with a
@@ -153,9 +158,12 @@ never sets the "boost normally open" bit. Automatic light sleep therefore ends
 in a power cut, not a low-current state. The manual "Off" path clears the
 keep-on bit and enters ESP deep sleep. If the load then falls below 45 mA, the
 IP5306 removes the boost after its 32 s low-load timeout. It is not an immediate
-PMIC off, and the 32 s window is not controlled by furble. The four-level gauge cannot support a percentage
-policy. Opportunities: PM-06, PM-07, PM-09, PL-03, PL-05, PL-06, PL-07, PL-08,
-RL-06, RL-11. No hardware is attached.
+PMIC off, and the 32 s window is not controlled by furble. The four-level gauge
+cannot support a fine-grained percentage policy. The Gray variant may carry an
+IMU; the part
+is not recorded in this tree, so RL-11 covers the StickS3 BMI270 and the
+StickC, Plus, and Core2 MPU6886 only. Opportunities: PM-06, PM-07, PM-09, PL-03,
+PL-05, PL-06, PL-07, PL-08, RL-06. No hardware is attached.
 
 **M5Stack Core2 (`m5stack-core2`).** An AXP192 board with DCDC3 as the
 backlight, LDO2 at 3.3 V for the LCD and SD, LDO3 for the vibration motor, and
@@ -218,14 +226,14 @@ only the four-level fuel display.
 
 **M5PM1 (StickS3).** The PM1 manual gives `PWR_CFG` default `0x17`: LED enable
 on, 5 V boost off, 3.3 V LDO on, 3.3 V DCDC on, charge on. M5Unified writes
-`I2C_CFG = 0x00` at begin, and the M5PM1 library configures the same field with
-`SLP_TO = 0` plus the speed bit. Either way `SLP_TO` is zero, which disables
-PM1 I2C idle sleep. M5Unified also clears the PM1 watchdog count at begin.
-Furble later arms the watchdog for 45 s and feeds it every 1 s. The `SLP_TO`
-value is still owed a readback in plan 26; the code comment that says
-"the first transaction after idle sleep fails" describes a mode that the
-current library path appears to disable. That is not a measurement, and it does
-not make the retry wrapper wrong.
+`I2C_CFG = 0x00` at begin, and the M5PM1 library requests the same field with
+`SLP_TO = 0` plus the speed bit. If both writes succeed, PM1 I2C idle sleep is
+disabled. A failed write would leave the retained value, which is why plan 26
+owes a readback; the code comment that says "the first transaction after idle
+sleep fails" describes a mode that the current library path appears to disable.
+That is not a measurement, and it does not make the retry wrapper wrong.
+M5Unified also clears the PM1 watchdog count at begin. Furble later arms the
+watchdog for 45 s and feeds it every 1 s.
 
 **Chargers.** There is no runtime charge control in furble. The AXP192 boards
 use the M5Unified charge current, 100 mA on StickC and Plus and 390 mA on
@@ -272,7 +280,7 @@ unknown. Do not invent one in a power document.
 | All Core boards | SD slot | microSD | No load switch; the card stays powered when inserted |
 | Waveshare | microSD, WS2812, W5500 | Unused slot, status LED, Ethernet | SD slot unused; WS2812 off; W5500 started at boot |
 
-Two consequences follow. First, the only true peripheral rail switches in
+Two consequences follow. First, the only true peripheral power controls in
 furble are the Grove 5 V rail and the panel backlight. Everything else is
 either always on or has no load switch. Second, "turn off the SD card" is not
 available in firmware on either Core board; unmounting stops transactions but
@@ -290,7 +298,7 @@ The relevant pull-ups are:
 | Board | Pin | Pull | Why it matters |
 | :--- | :--- | :--- | :--- |
 | StickC, Plus | GPIO35 | External only, input-only pin | Shared SYS_INT net with the MPU6886 and BM8563. Active low. Current depends on the external resistor, which is not in the tree. |
-| StickC, Plus2, Core2, S3 | I2C SDA and SCL | Board pull-ups | Zero steady current when idle. Only the transaction current matters. |
+| StickC, Plus, Plus2, Core, Core2, S3 | I2C SDA and SCL | Board pull-ups | Zero steady current when idle. Only the transaction current matters. |
 | StickS3 | GPIO13 | Internal pull-up, 45 kOhm typical | PM1 aggregated IRQ, active low. About 73 uA while the line is held low. |
 | StickS3 | GPIO46 | IR TX, driven only when the feature is used | Floating when IR is off. No measured leakage. |
 | Core, Core2, Waveshare | SD CS | Driven by the SPI driver | Floating CS can let the card drive MISO. Not measured. |
@@ -340,7 +348,7 @@ input-current question, not a battery question.
 
 | Board | Connected BLE floor | Light sleep | Deep sleep | PMIC off | Wake sources |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| StickC, Plus | 14.1 mA modem sleep, no 32 kHz clock to the ESP32 | 0.8 mA ESP32 plus AXP192 blocks | 10 uA ESP32 plus AXP192 operating | 27 uA | PWR button, ESP timer in deep sleep |
+| StickC, Plus | 14.1 mA modem sleep, internal RC RTC clock | 0.8 mA ESP32 plus AXP192 blocks | 10 uA ESP32 plus AXP192 operating | 27 uA | PWR button, ESP timer in deep sleep |
 | Plus2 | 14.1 mA modem sleep | 0.8 mA plus divider | 10 uA plus divider | HOLD low | PWR button, ESP timer, HOLD |
 | Core | 14.1 mA modem sleep | Only with IP5306 keep-on | Only with keep-on | ESP deep sleep then 32 s boost cutoff | PWR button, ESP timer with keep-on |
 | Core2 | 14.1 mA modem sleep | 0.8 mA plus AXP192 plus touch | 10 uA plus AXP192 | 27 uA | Touch G39, PWR button, ESP timer |
@@ -832,7 +840,7 @@ Estimates are not measurements unless the label says `measured-local`.
 - Citation: M5Unified 0.2.20 `Power_Class.cpp` Plus2 ADC setup; StickC Plus2
   documentation.
 
-#### RL-11 All IMU boards: acceleration-only low power
+#### RL-11 BMI270 and MPU6886 boards: acceleration-only low power
 
 - Change: when the IMU is enabled, configure the BMI270 or MPU6886 for
   accelerometer-only low-power operation at the rate the UI actually needs
@@ -912,10 +920,10 @@ Estimates are not measurements unless the label says `measured-local`.
 - Change: drive the IR pin to its off level at boot when IR is disabled, except
   on the Plus2 where GPIO19 doubles as the status LED and the polarity is not
   verified.
-- Current behavior: `IR::init()` configures the pin only when the protocol is
-  supported and the feature is used. Otherwise the pin is left at its reset
-  state. On the StickC family that is GPIO9, shared with the flash in DIO mode.
-  On the StickS3 it is GPIO46. On the Plus2 it is GPIO19.
+- Current behavior: `IR::createChannel()` configures the pin only when a frame
+  is transmitted. Otherwise the pin is left at its reset state. On the StickC
+  family that is GPIO9, shared with the flash in DIO mode. On the StickS3 it is
+  GPIO46. On the Plus2 it is GPIO19.
 - Evidence: `code` (`src/FurbleIR.cpp:120-136`, `:155-180`), `unverified`
   leakage.
 - Estimated saving: unknown, likely below 10 uA (`inferred`). An IR LED with a
@@ -1321,10 +1329,10 @@ mode, which is a development mode. It is still safe and free.
 
 ### 5.2 Needs measurement
 
-Ordered by expected saving, not by readiness. The first column is the ID, the
-second is the state that must be measured, the third is the current best
-estimate, and the fourth is the hardware dependency. Only the StickS3 is
-attached in this repo; every other board needs hardware.
+Ordered by expected saving, not by readiness. The ID column names the catalog
+row, the estimated saving column is the current best number, and the hardware
+column is the dependency. Only the StickS3 is attached in this repo; every
+other board needs hardware.
 
 | Rank | ID | Change | Estimated saving | Hardware |
 | :--- | :--- | :--- | :--- | :--- |
@@ -1376,11 +1384,16 @@ given so the next reader does not reopen them without new facts.
 | LK-04 | Disable internal pulls during sleep now | Deep sleep is unused; the change can float a wake pin | 0 | n/a (rejected) | `code`, sdkconfig |
 | PL-09 | Change TX power or add 2M PHY as a power project | The average saving is below 0.5 mA; the connected floor dominates | 0 | n/a (rejected) | `code`, `model` |
 | PL-10 | Remove the charging `NO_LIGHT_SLEEP` lock | External power, no battery runtime; the lock's origin is undocumented | 0 | n/a (rejected) | `code` |
-| NB-02 | Power down the W5500 PHY | No battery; the link is the node's job | 0 | n/a (rejected) | `code`, W5500 datasheet |
+| NB-02 | Power down the W5500 PHY | No battery; the link is the node's job | 0 | n/a (rejected) | `code`, `unverified` datasheet detail |
 | NB-03 | Disable USB Serial/JTAG in release | It is the only flashing and console path on the StickS3 | 0 | n/a (rejected) | `code`, sdkconfig |
 | NB-04 | Optimize the Core USB debug profile | Developer rescue profile, UART console defeats light sleep by design | 0 | n/a (rejected) | `code` |
 
 ## 6. Measurement plan
+
+This is the board-lane input to the coordinator `measurement-plan.md`. Where
+the two overlap, the coordinator file owns the shared instrument and scenario
+details; this section keeps the board-specific boundary, logging, and state
+constraints.
 
 ### 6.1 Boundary and instrument
 
@@ -1512,15 +1525,17 @@ This is the part the existing plan 111 protocol does not resolve.
 
 ## 7. Datasheet register
 
-The verification column says whether the document was opened for this note.
-The repo model already carries URLs and `datasheet` tags for the not-reopened
-rows. Do not treat a not-reopened row as a new verification.
+This is the board-lane input to the coordinator `datasheet-register.md`. The
+coordinator may merge duplicate parts from other lanes. The verification column
+says whether the document was opened for this note. The repo model already
+carries URLs and `datasheet` tags for the not-reopened rows. Do not treat a
+not-reopened row as a new verification.
 
 | Part | Document and revision | Register or limit used here | Verification |
 | :--- | :--- | :--- | :--- |
 | AXP192 | X-Powers AXP192 datasheet, enhanced single cell Li-battery PMIC | `REG 82H` ADC enable 1: bit 7 battery voltage, bit 6 battery current, bits 5 to 2 ACIN and VBUS, bit 1 APS, bit 0 TS. Default `0x83`. | Opened for this note. No revision string in the fetched copy. |
 | AXP192 | same | `REG 83H` ADC enable 2: bit 7 internal temperature. Default `0x80`. | Opened. |
-| AXP192 | same | `REG 84H` ADC sample rate, M5Unified sets 25 Hz; `REG 12H` rail enables; `REG 28H` LDO2 and LDO3 voltage; `REG 27H` DCDC3; `REG 33H` charge enable, 4.2 V, current. | Opened. |
+| AXP192 | same | `REG 84H` ADC sample rate, default `0x32` (25 Hz); M5Unified writes the same; `REG 12H` rail enables; `REG 28H` LDO2 and LDO3 voltage; `REG 27H` DCDC3; `REG 33H` charge enable, 4.2 V, current. | Opened. |
 | AXP192 | same | Off mode 27 uA at BAT 3.8 V; suspend 86 uA; DCDC1 26 uA no load; DCDC2 and DCDC3 20 uA each; LDO2 and LDO3 100 uA each; LDOIO0 90 uA. | Opened. |
 | IP5306 | Injoinic IP5306 datasheet V1.01 | Automatic load detection below 45 mA for 32 s; standby 50 uA; input quiescent 100 uA. | Opened. The public datasheet does not tabulate the register map. |
 | IP5306 | M5Unified 0.2.20 `IP5306_Class.cpp` | `REG_SYS_CTL0` `0x00` bit 1 boost normally open; `REG_SYS_CTL2` `0x02` light-load time field as decoded by the M5Unified comment; `REG_CHG_DIG_CTL0` `0x24` charge current. Board init `0x00 = 0x31`, `0x02 = 0x6C`. | Opened as vendor code, not a datasheet. |
@@ -1573,8 +1588,8 @@ cannot be ranked by the current simulator alone.
    or the rail-off leakage. A duty-cycle result can look better than it is.
 6. The model charges a fixed 52.47 uA PMIC term (the S3 L1 figure) on every
    board and a fixed 3.5 uA peripheral term. It does not use the per-board
-   AXP192, IP5306, or PM1 values, the SD card standby, the touch controller,
-   the IR receiver, or the IMU normal-mode current.
+   AXP192 or IP5306 values, the PM1 off or L2 values, the SD card standby, the
+   touch controller, the IR receiver, or the IMU normal-mode current.
 7. The model has no scan state, no display brightness term, and no per-board
    backlight term.
 8. The model's 3.3 mA connected floor is tagged `measured-local` for the stock
@@ -1618,7 +1633,8 @@ Open questions that block a default change:
   `plans/42-waveshare-eth-node.md`, `plans/63-sim-power-analysis.md`,
   `plans/77-battery-saver-profile.md`,
   `plans/95-engineering-lessons.md`, `plans/98-power-optimization-audit.md`,
-  `plans/111-power-recommendations.md`.
+  `plans/98b-power-followup.md`, `plans/111-power-recommendations.md`,
+  `plans/143-pm1-watchdog-window.md`.
 - `tools/power-model/board-currents.yaml` and `tools/power-model/README.md`.
 - `src/FurblePower.cpp`, `src/FurblePlatform.cpp`, `src/FurbleGPS.cpp`,
   `src/FurbleUI.cpp`, `src/FurbleControl.cpp`, `src/FurbleSD.cpp`,

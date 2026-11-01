@@ -47,7 +47,7 @@ Rules:
 
 | Part | Document | Revision | Relevant limit | Lane status | Cited by |
 | --- | --- | --- | --- | --- | --- |
-| Bosch BMI270 | BST-BMI270-DS000-08, https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf | Rev 08 | Normal accel plus gyro 685 uA; accelerometer low power 4 to 10 uA depending on `ACC_CONF`; suspend 3.5 uA; registers `PWR_CTRL` 0x7D, `PWR_CONF` 0x7C, `ACC_CONF` 0x40. All typical at VDD 1.8 V | Quoted through the model; Board lane did not reopen | SoC, GPS/IMU, Board |
+| Bosch BMI270 | BST-BMI270-DS000-08, https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf | Document suffix 08; no separate revision stated | Normal accel plus gyro 685 uA; accelerometer low power 4 to 10 uA depending on `ACC_CONF`; suspend 3.5 uA; registers `PWR_CTRL` 0x7D, `PWR_CONF` 0x7C, `ACC_CONF` 0x40. All typical at VDD 1.8 V | Quoted through the model; Board lane did not reopen | SoC, GPS/IMU, Board |
 | Bosch BMI270 SensorAPI | BMI270 SensorAPI, https://github.com/boschsensortec/BMI270_SensorAPI | Not stated | Any-motion and no-motion feature layout; 20 ms per duration count; 0.48 mg per threshold count; defaults 83 mg any-motion and 70 mg no-motion | Quoted by GPS/IMU lane | GPS/IMU |
 | TDK MPU-6886 | MPU-6886 datasheet v1.1, https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/docs/datasheet/core/MPU-6886-000193%2Bv1.1_GHIC_en.pdf | v1.1 | Six-axis low-noise gyro plus accel 2.79 mA typ, 3.0 mA max; accelerometer low power at 100 Hz 40 uA typ; sleep 6 uA typ; registers `PWR_MGMT_1` 0x6B, `PWR_MGMT_2` 0x6C. Table 3 is marked target spec | Quoted through the model; no reopened copy in Board lane | GPS/IMU, SoC, Board |
 | M5StickC-Plus MPU6886 driver | M5StickC-Plus `MPU6886.h`, https://github.com/m5stack/M5StickC-Plus/blob/master/src/utility/MPU6886.h | Repository copy, not a datasheet | WOM registers `ACCEL_WOM_X/Y/Z_THR` 0x20 to 0x22, `INT_PIN_CFG` 0x37, `INT_ENABLE` 0x38, `ACCEL_INTEL_CTRL` 0x69 | Vendor code read by GPS/IMU lane | GPS/IMU |
@@ -77,9 +77,9 @@ Rules:
 | Waveshare ESP32-S3-ETH | Wiki, https://www.waveshare.com/wiki/ESP32-S3-ETH | Web page, no revision | W5500 on SPI; WS2812 on GPIO21; microSD in 1-line mode and unused by furble; PoE HAT; no battery or PMIC | Vendor document | Board, Wi-Fi |
 | Waveshare ESP32-S3-ETH | Schematic, https://files.waveshare.com/wiki/ESP32-S3-ETH/ESP32-S3-ETH-Schematic.pdf | Not stated | Board nets and resistor values; the PDF is referenced by URL only and is not in the tree | URL only | Board |
 
-## 6. Vendor code at pinned versions
+## 6. Code at pinned versions
 
-These are board files and vendor libraries, not datasheets. They decide pin,
+These are board files and code revisions, not datasheets. They decide pin,
 rail, and register behavior where the repository has no board file of its own.
 
 | Component | Version | File or area | Relevant behavior | Cited by |
@@ -89,6 +89,7 @@ rail, and register behavior where the repository has no board file of its own.
 | M5PM1 | 1.0.6 | Library | `timerSet`, `shutdown`, `btnGetState`, watchdog, GPIO and IRQ registers, `SLP_TO` path | Board, SoC, GPS/IMU |
 | esp-nimble-cpp | 2.5.0 | `NimBLEScan.cpp`, `NimBLEScan.h`, `NimBLEClient.cpp`, `NimBLEClient.h` | `setConnectionParams` defaults initiator scan to 16/16 units; `setActiveScan`; scan interval and window conversion; no GATT cache API exposed in 2.5 | BLE |
 | TinyGPSPlus | fork `gkoh/TinyGPSPlus#92ac8c2` | Parser | One-byte encode under the GPS mutex; about 30 accessors per snapshot | GPS/IMU |
+| Furble WebUI branch | `origin/feat/33d-webui` at `777b4251` | `src/FurbleWebUI.cpp`, `include/FurbleWebUI.h` | Page polls `/api/status` every 3 s; three TLS requests at load; HTTPS server with keep-alive off and four SSL sockets; supervisor every 500 ms | Wi-Fi |
 | LVGL | 9.4.0 | Refresh period, partial rendering, `LV_LABEL_LONG_SCROLL_CIRCULAR` | `CONFIG_LV_DEF_REFR_PERIOD=33` about 30 fps; circular scroll animates while the label text overflows | Display |
 
 ## 7. Framework and RTOS documents
@@ -107,7 +108,7 @@ relied on.
 | USB Serial/JTAG | `components/esp_driver_usb_serial_jtag/Kconfig` | 5.5.3 | Module on by default after power-on; disabling it saves its clock and PHY; it cannot work under light sleep; `USJ_NO_AUTO_LS_ON_CONNECTION` holds `ESP_PM_NO_LIGHT_SLEEP` while a host is attached | SoC, Board |
 | Console | `components/esp_system/Kconfig` | 5.5.3 | Secondary console selection; USB Serial/JTAG secondary enables the module | SoC |
 | Logging | `components/log/Kconfig.level` | 5.5.3 | Default level limits compiled output; maximum level is the highest selectable at runtime | SoC |
-| Wi-Fi | `components/esp_wifi/Kconfig`; `esp_wifi_types_generic.h`; `esp_wifi.h` | 5.5.3 | `WIFI_PS_MIN_MODEM` wakes at every DTIM; `WIFI_PS_MAX_MODEM` uses `listen_interval`, default 3 when 0; `ESP_WIFI_SLP_IRAM_OPT` reduces power-save average current, about 1.3 KB IRAM; `SLP_DEFAULT_MIN_ACTIVE_TIME` 50 ms, `MAX_ACTIVE_TIME` 10 s, `WAIT_BROADCAST_DATA_TIME` 15 ms; `STA_DISCONNECTED_PM_ENABLE`; `esp_wifi_set_max_tx_power` uses 0.25 dBm units, 44 maps to 11 dBm, 52 to 13 dBm; SoftAP beacon 100 TU and DTIM 1 defaults | Wi-Fi, SoC |
+| Wi-Fi | `components/esp_wifi/Kconfig`; `esp_wifi_types_generic.h`; `esp_wifi.h` | 5.5.3 | `WIFI_PS_MIN_MODEM` wakes at every DTIM; `WIFI_PS_MAX_MODEM` uses `listen_interval`, default 3 when 0; `ESP_WIFI_SLP_IRAM_OPT` reduces power-save average current; IRAM cost is reported as 1.3 KB in the Wi-Fi lane and 7.3 KB in the SoC lane, unresolved (X-20); `SLP_DEFAULT_MIN_ACTIVE_TIME` 50 ms, `MAX_ACTIVE_TIME` 10 s, `WAIT_BROADCAST_DATA_TIME` 15 ms; `STA_DISCONNECTED_PM_ENABLE`; `esp_wifi_set_max_tx_power` uses 0.25 dBm units, 44 maps to 11 dBm, 52 to 13 dBm; SoftAP beacon 100 TU and DTIM 1 defaults | Wi-Fi, SoC |
 | PHY | `components/esp_phy/Kconfig` | 5.5.3 | `ESP_PHY_MAX_WIFI_TX_POWER` 20 dBm; `ESP_PHY_MAC_BB_PD` about 5.3 KB RAM when both radios are enabled; `ESP_PHY_REDUCE_TX_POWER` after brownout; `ESP_PHY_ENABLE_USB` can interfere with Wi-Fi | Wi-Fi, SoC |
 | MQTT | `components/mqtt/esp-mqtt/include/mqtt_client.h` | 5.4.2 header in the installed tree | `keepalive` default 120 s, client pings at half; `reconnect_timeout_ms` default 10 s; `timeout_ms` default 10 s | Wi-Fi |
 | HTTP server | `components/esp_http_server/include/esp_http_server.h` | 5.4.2 header | `max_open_sockets` default 7; `lru_purge_enable` false; `keep_alive_enable` false | Wi-Fi |
@@ -183,7 +184,7 @@ are named.
 
 | Document | What it supplies | Lanes |
 | --- | --- | --- |
-| `plans/00-hardware-experiments.md` | Experiment A (no 32 kHz crystal, 3.3 mA floor); Experiment B (`$PCAS12`, pruning 710 to 91 characters/s, 107.7 s cold re-fix, no backup supply, ANTENNA OPEN) | BLE, SoC, GPS/IMU, Board, Wi-Fi |
+| `plans/00-hardware-experiments.md` | Experiment A (no 32 kHz crystal; the 3.3 mA floor is cited by later plans, but its drain row is not in this file); Experiment B (`$PCAS12`, pruning 710 to 91 characters/s, 107.7 s cold re-fix, no backup supply, ANTENNA OPEN) | BLE, SoC, GPS/IMU, Board, Wi-Fi |
 | `plans/01-cpu-freq-setting.md` | CPU frequency setting and its risks | SoC, Board |
 | `plans/06-power-module.md` | Lock design and the no-manual-sleep rule | SoC |
 | `plans/07-ble-sleep.md` | Modem sleep and per-board floors | BLE, SoC |
@@ -195,10 +196,10 @@ are named.
 | `plans/13-auto-off-low-batt.md` | Auto-off and low-battery policy | Board, SoC |
 | `plans/14-gps-pcas.md` | PCAS02/03/04/10 definitions, no PCAS00 | GPS/IMU |
 | `plans/15-gps-power.md` | Burst window, UART wake limitation, standby versus rail cycling, 15 s duty ceiling | GPS/IMU, SoC |
-| `plans/17-*.md`, `plans/20-imu-hw-motion.md` | Gesture and IMU hardware gates | GPS/IMU |
+| `plans/17-imu-gestures.md` | Gesture thresholds, the 25 Hz tap tradeoff, and the hardware tuning gate | GPS/IMU |
 | `plans/18-gps-motion.md` | Motion detector phase 1, no consumer, 60 s hold, blind spots | GPS/IMU |
 | `plans/19-interval-deep-sleep.md` | Interval deep sleep design and exclusions | SoC, Board |
-| `plans/21-*.md` | `MAX_AGE_MS` is fixed | GPS/IMU |
+| `plans/21-imu-dead-reckoning.md` | Position hold when the fix is lost; defines the 30 s `MAX_AGE_MS` freshness budget | GPS/IMU |
 | `plans/26-pm1-watchdog.md` | PM1 watchdog, feed cadence, `SLP_TO` readback, deep-sleep conflict | SoC, Board |
 | `plans/32-gps-advanced.md` | Autobaud, AID-INI, ephemeris replay, MON-HW, unverified receiver items | GPS/IMU |
 | `plans/33-wifi-hub.md` | Wi-Fi hub design; station power figures; no OTA while connected | Wi-Fi |
@@ -207,17 +208,16 @@ are named.
 | `plans/65-bt-coexistence.md` | Coexistence recommendations and field data | BLE, Wi-Fi, Board |
 | `plans/71-ui-bug-batch.md` | StickS3 LED handling | Board |
 | `plans/77-battery-saver-profile.md` | Battery Saver bundle | BLE, SoC, Board |
-| `plans/90-*.md` | WebUI | Wi-Fi |
 | `plans/95-engineering-lessons.md` | Engineering lessons cited by the Board lane | Board |
 | `plans/96-wifi-bt-ble-hardening.md` | BLE and Wi-Fi hardening inventory | BLE, Wi-Fi, Board |
 | `plans/98-power-optimization-audit.md` | Audit table and ranked actions | All |
 | `plans/98b-power-followup.md` | Degraded GPS retry and the +37 mA held-lock figure | GPS/IMU, BLE, Board |
 | `plans/111-power-recommendations.md` | External measurement protocol and state list | SoC, Display, GPS/IMU, Board |
 | `plans/125-esp-optimization-program.md`, `plans/126-esp-optimization-audit.md` | Wider optimization program | SoC |
-| `plans/143-*.md` | Board power reference | Board |
+| `plans/143-pm1-watchdog-window.md` | M5PM1 45 s watchdog window and the 30 s OTA health deadline | Board, SoC |
 | `plans/158-sim-scheduler-parity.md` | Scheduler and hardware parity plan | All |
-| `plans/159-*.md` | Virtual-peer evidence model | BLE, Measurement |
-| `plans/161-*.md` | Production connection stack in the simulator | BLE, Measurement |
+| `plans/159-camera-peer-certification.md` | Fail-closed virtual-peer evidence model | BLE, Measurement |
+| `plans/161-sim-real-control.md` | Production Control, Camera, CameraList, and Scan in the simulator | BLE, Measurement |
 | `plans/285-power-accounting.md` | Opt-in synthetic accounting | Display, Measurement |
 | `docs/supported-hardware.md` | Supported GPS units, patch antenna limits, baud defaults | GPS/IMU |
 | `docs/settings-and-controls.md` | User-facing settings, defaults, apply timing | GPS/IMU, Board |

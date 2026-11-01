@@ -16,6 +16,9 @@ Scope rules:
 - Merged rows list every source ID. A row is counted once, under its primary
   lane. The per-lane totals therefore count consolidated rows, not raw lane IDs.
 
+The measurement lane contributes no device opportunity rows. Its states,
+thresholds, and promotion rules are in `measurement-plan.md`.
+
 ## How to read the columns
 
 | Column | Meaning |
@@ -165,6 +168,10 @@ Rank groups:
 | P-113 | Wi-Fi | MQTT publishes GPS every 10 s when a fix is held | Publish every 30 s when no WebUI client is attached, or make it a setting | inferred (code) | Three times fewer small publishes and forced awake windows; small next to the DTIM rate | Low | Trivial | M3 at 10 s and 30 s; confirm HA history is acceptable | 74 | W-29 (wifi-coex.md) |
 | P-114 | Wi-Fi | WebUI keep-alive is off, so every 3 s poll opens a new TCP connection and runs a full TLS handshake (branch only) | Enable keep-alive with a bounded idle timeout and review `max_open_sockets` | inferred (code + IDF defaults) | 20 reconnects per minute become one; order 2 to 3 mA while a tab is visible, by arithmetic | Medium | Small | Page open 30 min in two browsers; no failed requests or heap exhaustion; M4 energy; idle timeout closes the socket | 75 | W-30 (wifi-coex.md) |
 | P-115 | Wi-Fi | The WebUI supervisor wakes every 500 ms, reloads `WEB_UI`, and walks the netif list; the server runs while the setting is on and the network is up (branch only) | Stop the server after N minutes without a request and restart on the chosen path; make the supervisor adaptive | inferred (code) | Removes two wakes per second plus per-tick settings and netif work; stopping the server does not stop the station | Medium for usability | Medium | M4 idle versus active; confirm the server restarts on the chosen path | 76 | W-32 (wifi-coex.md) |
+| P-205 | SoC | The StickS3 release has UART0 primary and USB Serial/JTAG secondary, so every log line is mirrored to both; the USJ module also holds `NO_LIGHT_SLEEP` while a host is attached | Set `CONFIG_ESP_CONSOLE_SECONDARY_NONE=y` and `CONFIG_USJ_ENABLE_USB_SERIAL_JTAG=n` in a release battery build, keep both in debug | inferred (kconfig) | Unknown; the module clock and PHY current is not in the board table. Also makes USB-attached measurement possible | Medium; the native USB port stops providing logs in release, and the Board lane says disabling USJ removes the only flashing path. Contested, see X-06 | Small | Build release and debug S3; release has no USJ console, still flashes through the ROM downloader, boots, reconnects in download mode; web installer recovery; analyzer with and without; confirm `USJ_NO_AUTO_LS` no longer applies | 77 | CON-01 vs NB-03 (soc.md, board-power.md) |
+
+P-205 is a late split from the rejected table. It is placed here because the
+lanes disagree on whether the change is safe; X-06 records both positions.
 
 ## Rejected
 
@@ -232,7 +239,6 @@ found no defensible energy case, or found a stronger counter-argument.
 | P-170 | GPS/IMU | Internal I2C is 400 kHz at address 0x68, shared with the M5PM1 on the S3 | Raise the bus to 1 MHz or move the IMU to SPI | modeled (protocol) | Under 0.1 mA at 1 Hz; about 0.8 mA upper bound at 50 Hz if bus and CPU draw 40 mA; sensor mode dominates | Risks the PMIC and other internal devices | Medium | Not applicable if rejected | - | I-09 (gps-imu.md) |
 | P-171 | GPS/IMU | The motion source polls at 1 Hz | Poll faster than 1 Hz | inferred (code + 60 s hold) | Negative: more CPU and bus time, and it cannot make the stationary edge earlier than the 60 s hold | None if left alone | None | Not applicable | - | I-10 (gps-imu.md) |
 | P-172 | Board | The IP5306 has no documented off command; the existing path deep-sleeps and relies on the 32 s low-load cutoff | Add an immediate software power off to the Core | code + IP5306 V1.01 | No documented path; would need a hardware change or a different PMIC | High | Large | Not applicable | - | PM-12 (board-power.md) |
-| P-173 | Board | The PM1 watchdog is fed every 1 s with a 45 s timeout | Feed every 5 s | code + M5PM1 `WDT_CNT` | A few microamps; the timeout already has a 45x margin and the feed shares the button-poll bus | Low | Small | Contested; see P-077 and the disagreement register | - | PM-13 (board-power.md) |
 | P-174 | Board | AXP192 charge current is 100 mA on StickC and Plus, 390 mA on Core2; IP5306 150 mA | Change charge current for runtime | code + datasheets | None; charge current changes charge time and heat, not discharge runtime | None | None | No change | - | PM-14 (board-power.md) |
 | P-175 | Board | The AXP192 has a 12-bit battery current ADC; furble reads level, voltage, and current every 5 s | Use the coulomb counter for a better gauge | code + datasheet | None; accuracy only | None | None | No change | - | PM-15 (board-power.md) |
 | P-176 | Board | M5Stack lists off at 14.02 uA, L1 at 52.47 uA, L2 at 102.40 uA | Use L1 or L2 to save energy versus off | vendor-doc | Negative; off is lower. The only possible win is resume time | Medium | Medium | See P-097 for the characterization | - | PM-16 (board-power.md) |
@@ -246,12 +252,9 @@ found no defensible energy case, or found a stronger counter-argument.
 | P-184 | Board | StickC and Plus GPIO35 is input-only with an external pull-up on a net shared by the MPU6886 interrupt and the BM8563 alarm, open-drain active low | Make the IMU interrupt push-pull | code + datasheet | None; a push-pull IMU can short the RTC output | High | None | No change | - | LK-02 (board-power.md) |
 | P-185 | Board | IR pins are left at reset state when the feature is unused: GPIO9 on StickC family, GPIO46 on S3, GPIO19 on Plus2 | Drive every IR pin low at boot | code + unverified leakage | Unknown, likely below 10 uA; no measurement | Medium on Plus2, where GPIO19 doubles as the LED and polarity is unverified | Small | Measure the IR pin current with the feature off, floating versus driven low; no IR emission with a phone camera | - | LK-03 (board-power.md) |
 | P-186 | Board | Every board sets `CONFIG_ESP_SLEEP_GPIO_ENABLE_INTERNAL_RESISTORS=y` and leaves `CONFIG_PM_SLP_DISABLE_GPIO` unset; deep sleep is unused | Disable internal pulls during sleep now | code + sdkconfig | None today; in deep sleep each held pull-up can cost tens of microamps, so a pin audit is required first | Medium; can float a wake pin | Medium | Only after a deep sleep feature exists: per-pin current with pull on and off, and verify the wake source | - | LK-04 (board-power.md) |
-| P-187 | Board | TX power defaults to P9 and adaptive TX defaults off | Change TX power or add 2M PHY as a power project | code + model + datasheet | Below 0.5 mA average; the connected floor dominates | Low for TX power, medium for 2M PHY | Small to medium | 1 h connected idle and 100 presses at P9/P6/P3; range; 2M vendor matrix | - | PL-09 (board-power.md) |
-| P-188 | Board | The charging state holds `NO_LIGHT_SLEEP`; the lock's origin is not explained in plan 13 or the code comment | Remove the charging lock | code + plan 13 | None for battery runtime; only USB input current and heat | Medium; may keep charge-status I2C or a charge/display interaction stable | Small to test | 1 h charging with the lock on and off; charge status, current, panel, USB input | - | PL-10 (board-power.md) |
+| P-187 | Board | TX power defaults to P3 (`Settings::load<esp_power_level_t>` maps stored value 0 to `ESP_PWR_LVL_P3`); the Board lane's PL-09 says P9, see X-21. Adaptive TX defaults off | Change TX power or add 2M PHY as a power project | code + model + datasheet | Below 0.5 mA average; the connected floor dominates | Low for TX power, medium for 2M PHY | Small to medium | 1 h connected idle and 100 presses at P9/P6/P3; range; 2M vendor matrix | - | PL-09 (board-power.md) |
 | P-189 | Board | The W5500 is an SPI MAC plus PHY started at boot; there is no link-down power-down | Power down the W5500 PHY | code + W5500 datasheet | No battery; the link is the node's job | Medium; powering down can drop the link and delay recovery | Medium | 5 V input with link up, link down, PHY powered down; recovery time | - | NB-02 (board-power.md) |
-| P-190 | Board | `CONFIG_USJ_NO_AUTO_LS_ON_CONNECTION=y`; USB Serial/JTAG is the only flashing and console path on the StickS3 | Disable USB Serial/JTAG in release | code + sdkconfig | Below 0.1 mA when detached; attached is not a battery state | High; the StickS3 has no USB-UART bridge | Small for a bench-only build | Release build, battery only, USB detached, analyzer; compare with a bench-only build that disables USJ. Contested with P-191 | - | NB-03 (board-power.md) |
-| P-191 | SoC | The StickS3 release has UART0 primary and USB Serial/JTAG secondary, so every log line is mirrored to both | Set `CONFIG_ESP_CONSOLE_SECONDARY_NONE=y` and `CONFIG_USJ_ENABLE_USB_SERIAL_JTAG=n` in release, keep it in debug | inferred (kconfig) | Unknown; the module clock and PHY current is not in the board table. Also makes USB-attached measurement possible | Medium; the native USB port stops providing logs in release. Contested with P-190 | Small | Build release and debug S3; release has no USJ console, still flashes, boots, reconnects in download mode; analyzer with and without; confirm `USJ_NO_AUTO_LS` no longer applies | - | CON-01 (soc.md) |
-| P-192 | SoC | The Core USB debug profile holds `APB_FREQ_MAX` for the console lifetime and adds PM profiling, run-time stats, and LVGL monitors | Optimize the Core USB debug profile | code + `sdkconfig.debug` | None; it is not a release configuration | None | None | No change; use it only to confirm that a console measurement is invalid | - | NB-04 (board-power.md) |
+| P-192 | Board | The Core USB debug profile holds `APB_FREQ_MAX` for the console lifetime and adds PM profiling, run-time stats, and LVGL monitors | Optimize the Core USB debug profile | code + `sdkconfig.debug` | None; it is not a release configuration | None | None | No change; use it only to confirm that a console measurement is invalid | - | NB-04 (board-power.md) |
 | P-193 | Wi-Fi | `esp_wifi_set_mode(WIFI_MODE_STA)`; SoftAP support is compiled out on the S3; provisioning is console and companion based | Add SoftAP or hotspot mode for provisioning or control | inferred (code + coex guide) | Negative; a beacon every 100 TU at DTIM 1, no AP-role modem sleep, and S3 SoftAP plus BLE is documented unstable | High | Large | No change; add a source-contract test that `WIFI_MODE_AP` and `ESP_WIFI_SOFTAP_SUPPORT` stay out of release configs | - | W-01 (wifi-coex.md) |
 | P-194 | Wi-Fi | DTIM period and beacon interval are AP properties; the station only chooses MIN_MODEM or MAX_MODEM | Set DTIM or beacon interval from firmware | inferred (ESP-IDF types) | None; there is no station-side knob | Attempting it pushes the firmware toward SoftAP | None | No change | - | W-10 (wifi-coex.md) |
 | P-195 | Wi-Fi | MQTT keepalive is 60 s; the client pings at half the interval | Raise keepalive to 300 s | inferred (esp-mqtt header) | Removes one two-packet exchange per 30 s, far below resolution, while pushing LWT detection from about 90 s to about 450 s | Availability regression | None | No change; keep 60 s | - | Wi-Fi rejected (wifi-coex.md) |
@@ -291,6 +294,8 @@ of them carries a pointer here.
 | X-17 | Plan 19, Board versus SoC | Plan 19 excludes the Core and the AXP192 boards from deep sleep. Board proposes ESP RTC timer deep sleep on both (PM-09, PM-10). SoC's SOC-12 describes the S3 and Plus2 only. | Board applicability and risk differ by board; the feature is one name but three implementations. | Treat P-065, P-066, and P-067 as separate rows; do not quote one board's saving for another. |
 | X-18 | BLE versus the committed baseline | BLE says the connected baseline still contains a 3.2989 mA radio term that the current code would not produce. The baseline is checked in and still passes the gate. | A 3.9 percent term is inside the 10 percent band, so the gate cannot see it disappear. | P-039 regenerates the baseline with the floor restored and adds component guards. |
 | X-19 | Plan 98 versus Measurement | Plan 98 says nine power scenarios. The power-gate suite currently selects ten, including `gesture-idle-30s`. | Counts and coverage claims differ. | Use `tools/check_sim_scenarios.py --list-certified --suite power-gate` as the source of truth. |
+| X-20 | Wi-Fi versus SoC | Wi-Fi W-07 reports the `ESP_WIFI_SLP_IRAM_OPT` cost as 1.3 KB of IRAM with `ESP_WIFI_RX_IRAM_OPT` already on. SoC SOC-13 reports about 7.3 KB with `ESP_WIFI_IRAM_OPT` already on. | The IRAM budget for P-102 depends on the cost, especially on non-PSRAM boards. | Recheck both symbols at the pinned IDF 5.5.3 Kconfig; record the exact option combination. |
+| X-21 | Board versus BLE and code | Board PL-09 says TX power defaults to P9. BLE-25 says P3, and `src/FurbleSettings.cpp` `load<esp_power_level_t>` maps stored value 0 to `ESP_PWR_LVL_P3`; the UI offers P3/P6/P9. | The default is a user-facing state and changes the range and energy claim for P-187. | Correct PL-09 or the code comment; use the code reading until then. |
 
 ## Totals
 
@@ -300,19 +305,19 @@ its primary lane. Raw lane IDs are not summed here because many are merged.
 | Rank | Rows |
 | --- | --- |
 | Safe now | 39 |
-| Needs measurement | 76 |
-| Rejected | 89 |
-| Total | 204 |
+| Needs measurement | 77 |
+| Rejected | 85 |
+| Total | 201 |
 
 | Primary lane | Safe now | Needs measurement | Rejected | Total |
 | --- | --- | --- | --- | --- |
 | BLE | 7 | 16 | 19 | 42 |
-| SoC | 8 | 9 | 15 | 32 |
+| SoC | 8 | 10 | 13 | 31 |
 | Display | 6 | 6 | 13 | 25 |
 | GPS and IMU | 3 | 16 | 11 | 30 |
 | Wi-Fi | 11 | 17 | 12 | 40 |
-| Board | 4 | 12 | 19 | 35 |
-| Total | 39 | 76 | 89 | 204 |
+| Board | 4 | 12 | 17 | 33 |
+| Total | 39 | 77 | 85 | 201 |
 
 Merged rows are counted once, under the primary lane named in the table. Rows
 that merge a BLE item with a Wi-Fi item are under BLE if the connection
@@ -320,6 +325,27 @@ parameter is the primary mechanism and under Wi-Fi if the station policy is.
 Rows that merge an SoC item with a Display item are under Display.
 
 ## Notes on scope and evidence
+
+Non-additivity:
+
+- P-084, P-085, and P-086 are alternative receiver policies. They act on the
+  same receiver current and must not be summed. P-084 backs off when there is no
+  fix, P-085 backs off when the device is stationary, and P-086 redesigns the
+  scheduled duty window.
+- P-040, P-041, P-042, and P-043 are nested connection policies. P-042 changes
+  the fast floor, P-041 adds the idle profile, P-043 extends the idle profile,
+  and P-040 allows light sleep while connected. Their savings overlap.
+- P-001, P-002, P-048, and P-050 interact. P-050 changes the base discovery
+  preset, P-048 adds a decay from Full, P-002 stops the scan when the panel
+  sleeps, and P-001 bounds the page in time.
+- P-071 and P-072 are per-board alternatives for the same APB lock. They are not
+  additive across boards.
+- P-073 and P-076 are sequential. P-073 turns the panel off; P-076 turns the
+  device off after a longer idle period.
+- P-065, P-066, and P-067 are three different deep-sleep implementations. Do not
+  average or add them.
+
+Other notes:
 
 - P-040 and P-041 are the two rows that most other battery-life claims depend
   on. They are also the two rows whose anchor measurement is disputed (X-01).

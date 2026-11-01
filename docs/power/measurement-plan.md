@@ -336,6 +336,54 @@ waveshare-s3-eth.
 `C` for Wi-Fi means the build must be checked with `settings list` first. A
 release image that rejects the setting is not a Wi-Fi measurement.
 
+### 7.4 Canonical state definitions
+
+These are the entry conditions for the state IDs used in section 9. A run that
+does not match the entry condition is not that state, even if the current looks
+plausible.
+
+| ID | State | Entry condition | Minimum window |
+| --- | --- | --- | --- |
+| S01 | Boot to idle | Cold boot, no USB, splash complete, main page visible | 30 s |
+| S02 | Menu idle, brightness 128 | Baseline block, main page, no camera, no GPS, no Wi-Fi | 300 s |
+| S03 | Menu idle, brightness 240, CPU 80 | Baseline block plus brightness 240 and CPU 80 | 300 s |
+| S04 | Screen dim | Baseline block, `inactivity 1`, `display_off 0`, 30 s idle | 300 s |
+| S05 | Screen off, disconnected | Baseline block, `inactivity 1`, `display_off 1`, 30 s plus dwell | 300 s |
+| S06 | Scan Full, Balanced, Low | Baseline block, `scan_mode 0/1/2`, Scan page open | 60 s per mode |
+| S07 | Connect handshake | Saved camera, camera on, connect from cold boot | 1 event |
+| S08 | Connected idle, fast, screen on | Camera connected, 60 s quiet, `conn_saver off` | 600 s |
+| S09 | Connected idle, saver, screen on | Camera connected, `conn_saver on`, wait 15 s | 600 s |
+| S10 | Connected, screen off, sleep off | Camera connected, `sleep_conn off`, screen off | 600 s |
+| S11 | Connected, screen off, sleep on | S3 only, `sleep_conn on` before connect, screen off | 600 s |
+| S12 | Shutter single | S10 or S11 plus one shutter press | 10 s per press |
+| S13 | Intervalometer, 5 frames | Connected, interval 2 s, count 5, shutter 30 ms | 15 s |
+| S14 | IMU gesture poll, screen off | Screen off, `imu on`, `imu_wake 3`, `imu_trigger on` | 300 s |
+| S15 | Multi-connect, 2 cameras, screen off | Two saved cameras, both connected | 600 s |
+| S16 | GPS off | Baseline block, `gps off` | 300 s |
+| S17 | GPS acquiring, cold | `gps on`, no backup supply, first fix not yet | 180 s or until fix |
+| S18 | GPS tracking | Fix acquired, 30 min settle, antenna at the window | 1800 s |
+| S19 | GPS standby 5, 10, 15 s | `gps_power 1`, `gps_duty 5/10/15` | 1800 s per duty |
+| S20 | GPS rail cycle | `gps_power 2`, duty 15, warning accepted | 1800 s or 5 cycles |
+| S21 | GPS degraded | Block sky view or remove the antenna | 900 s |
+| S22 | GPS fix hold | `gps_hold 10`, fix acquired, then lose the receiver | 600 s |
+| S23 | Disconnected light sleep | S05, no camera, no GPS, 300 s settle | 1800 s |
+| S24 | Power off | Power menu off or the documented long press | 600 s |
+| S25 | Core IP5306 cutoff | Core, any state below 45 mA, 32 s | 120 s |
+| S26 | Deep sleep | Not implemented; no `esp_deep_sleep` call | Not measurable |
+| S27 | Wi-Fi disabled | `wifi off`, no driver | 300 s |
+| S28 | Wi-Fi connected idle | SSID and PSK set, IP present, NTP off | 600 s |
+| S29 | Wi-Fi NTP sync | S28 plus `ntp on`, `ntp sync` | 30 s per sync |
+| S30 | Wi-Fi reconnect | S28, AP power cycled | 300 s |
+| S31 | Ethernet link down | Waveshare, cable removed | 300 s |
+| S32 | Ethernet link up idle | Waveshare, cable present, IP present, no MQTT | 600 s |
+| S33 | MQTT connected idle | Broker reachable, `mqtt connect` | 600 s |
+| S34 | MQTT publish | S33 plus one discovery or status publish | 30 s per event |
+| S35 | Companion BLE idle | `companion on`, phone connected, no camera | 600 s |
+| S36 | Camera powered off while linked | Connected camera, then camera power off | 60 s |
+| S37 | Charging, reference only | USB attached, charging true where reported | 300 s |
+
+S37 is a reference state only. It is never used for a B1 battery claim.
+
 ## 8. Camera states
 
 The camera family matrix is power evidence, not a support claim. Only Fujifilm
@@ -428,11 +476,13 @@ failed calibration row blocks the states that depend on it.
 | P04, P05, P08 to P10 | See phase 1 | See phase 1 | See phase 1 | I1 | See phase 1 | Sleep and off classification |
 | L01 | Core IP5306 cutoff, load below 45 mA | CO | Screen off or any sub-45 mA state | I1 | 120 s | Boost off 32 to 40 s after the load drops; post-cutoff 0.05 mA |
 | L02 | Deep sleep | All | Not implemented; no `esp_deep_sleep` call | None | Not measurable | Do not invent a number |
+| E18 | Touch monitor versus idle | C2, Tough | Panel off, touch idle versus monitor or hibernate mode | I1, I9 | 10 min each | P-069; current, tap wake, calibration retained |
 | E22 | PMIC off, L1, L2, and light sleep | S3 | `shutdown()`, PM1 L1, PM1 L2, light sleep | I1 | 10 min each | P-097; current, wake latency, retained state, recovery after a failed wake |
 | E23 | Core boost keep-on | CO | IP5306 bit 1 set versus clear | I1, I6 | 30 min each | P-068; no power cut, pack current, board temperature |
 | E24 | AXP192 timed deep sleep | SC, SP, C2 | ESP32 deep sleep, RTC timer, panel asleep | I1 | 5 min plus 1 h interval | P-066; floor, panel state, reconnect |
 | E25 | Plus2 off path | S2 | Manual off and auto-off | I1, I9 | 10 repeats | P-098; PWR click, double click, USB wake, HOLD state |
 | E26 | Core deep sleep with keep-on | CO | ESP32 deep sleep, timer wake, boost held | I1, I6 | 5 min, 10 repeats | P-067; current, temperature, wake, reconnect |
+| E53 | USB attached versus detached | S3 | Release build, battery only, USB host detached versus attached | I1, I9 | 10 min each | P-205 and the USJ lock; the attached state is not a battery state |
 
 ### Phase 3: BLE
 
@@ -717,8 +767,8 @@ default, baseline, or model entry while the row is `unknown`.
 | Phase | Work | Depends on | Exit criterion |
 | --- | --- | --- | --- |
 | 0 | C01 to C10 | Instruments and fixtures | All calibration rows pass; a failed row blocks the affected states |
-| 1 | P01 to P15, D01 to D06, E13 to E21 | Phase 0 | Board floors, scan, multi-connect, display slope, APB lock, UI loop, and sleep/wake transitions recorded; Core cutoff recorded |
-| 2 | P04, P05, P08 to P10, L01, E22 to E26 | Phase 1 | Sleep and off states classified; no unresolved state ambiguity; deep sleep still absent and marked not measurable |
+| 1 | P01 to P15, D01 to D06, E13 to E17 and E19 to E21 | Phase 0 | Board floors, scan, multi-connect, display slope, APB lock, UI loop, and sleep/wake transitions recorded; Core cutoff recorded |
+| 2 | P04, P05, P08 to P10, L01, E18, E22 to E26, E53 | Phase 1 | Sleep and off states classified; no unresolved state ambiguity; deep sleep still absent and marked not measurable |
 | 3 | P06, P07, E01 to E12, E27, K-FB, K-FS | Phase 1 | BLE bands, scan duty, initiator, companion, and the two Fujifilm families recorded |
 | 4 | G01 to G08, E28 to E38 | Phase 1 | GPS B1, B2, B3 separated; cold start, standby, and IMU modes measured |
 | 5 | N01 to N09, E39 to E51 | Phase 1 | Network bands established; no model claim made |
@@ -747,7 +797,7 @@ The first three measurements to run, in order:
 | Display M-01 to M-16 | P01 to P04, D01 to D06, E13 to E21 | M-05 maps to P08/P09; M-10 to E20; M-11 to E14; M-12 to E15; M-13 to E16; M-14 to E17; M-15 to E18; M-16 to E19 |
 | GPS scenario 1 to 15 | G01 to G08, E28 to E38 | Scenario 1 maps to G01; 2 to E33; 3 to G03; 4 to G05; 5 to E32; 6 to E31; 7 to G07; 8 to E28; 9 to E29; 10 to E30; 11 to E34; 12 to E35; 13 to E36; 14 to E37; 15 to E38 |
 | Wi-Fi M0 to M10 | E39 to E49 | M11 is not a run; coexistence has no runtime switch |
-| Board B1 to B16 | P01 to P10, L01, E22 to E26 | B12 maps to E23; B15 maps to E22 |
+| Board B1 to B16 | P01 to P10, L01, E18, E22 to E26, E53 | B12 maps to E23; B15 maps to E53 |
 | SoC candidate A/B rows | P01 to P15, E14 to E16 | The SoC A/B list maps onto the board and display states |
 | Measurement C01 to C10 | C01 to C10 | Unchanged |
 
