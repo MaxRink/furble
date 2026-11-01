@@ -19,6 +19,22 @@ namespace Host {
 
 class RicohVirtualCamera final: public NimBLEMockPeer {
  public:
+  // Shared fault vocabulary. Every peer uses the same enum so a scenario file
+  // can name a fault once. Ricoh has one application-level error, so Reject,
+  // Busy, WrongMode, Timeout and Malformed all surface as a refused write;
+  // Disconnect severs the link; StaleBond refuses the encryption handshake.
+  // All eight classes are listed in ricoh-handlers.md sections 2.1 and 9.4.
+  enum class Fault {
+    None,
+    Reject,
+    Busy,
+    WrongMode,
+    Timeout,
+    Disconnect,
+    Malformed,
+    StaleBond,
+  };
+
   // The two Ricoh generations pair differently. GR III and GR IIIx display a
   // six-digit passkey that the central must enter (BleServer::OnPasskeyNotify);
   // GR IV and GR IV HDF use numeric comparison with a camera-side confirmation
@@ -132,6 +148,18 @@ class RicohVirtualCamera final: public NimBLEMockPeer {
   bool passkeyAccepted() const;
   void clearFaults();
 
+  // Shared fault vocabulary, same shape as every other peer.
+  void setFault(Fault fault);
+  Fault fault() const;
+  void clearFault();
+  // Scripted mode: each command write consumes one queued fault. The sticky
+  // fault is ignored while scripting, and an empty queue means normal handling.
+  void setScripted(bool scripted);
+  bool scripted() const;
+  void scriptNextCommand(Fault fault);
+  size_t scriptedRemaining() const;
+  void clearScript();
+
   /**
    * Deliver a notification through the callback the central subscribed with,
    * mirroring FujifilmVirtualCamera::emitNotification. Returns false when no
@@ -215,6 +243,7 @@ class RicohVirtualCamera final: public NimBLEMockPeer {
   bool isWriteFailed(const NimBLEUUID &service, const NimBLEUUID &characteristic) const;
   bool handleOperationRequest(const std::vector<uint8_t> &value);
   bool parseGpsFix(const std::vector<uint8_t> &value);
+  Fault consumeFault();
   void armFlappyDrop(NimBLEClient &client);
   void requestFlappyCancel();
   void cancelFlappyTimer();
@@ -240,6 +269,9 @@ class RicohVirtualCamera final: public NimBLEMockPeer {
   bool m_RepairRequest = false;
   bool m_PasskeyAccepted = true;
   std::vector<std::pair<NimBLEUUID, NimBLEUUID>> m_FailedWrites;
+  Fault m_Fault = Fault::None;
+  bool m_Scripted = false;
+  std::deque<Fault> m_Script;
 
   // Standby-flap state. See FujifilmVirtualCamera for the locking model: the
   // recursive mutex lets the drop timer re-enter disconnect() through

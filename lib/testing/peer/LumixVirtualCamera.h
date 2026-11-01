@@ -34,7 +34,9 @@ namespace Host {
  * refused unless Config::allow_shutter_without_start is set. The clock packet
  * has two conflicting tail layouts; Config selects which one the peer
  * accepts. No timer or thread is started, and every notification is emitted
- * synchronously.
+ * synchronously. The Reject, Busy, WrongMode, and Timeout faults are synthetic
+ * where the corpus documents no camera-level error value; they exist to drive
+ * the controller's failure paths, not to claim a captured response.
  */
 class LumixVirtualCamera final: public NimBLEMockPeer {
  public:
@@ -124,6 +126,7 @@ class LumixVirtualCamera final: public NimBLEMockPeer {
     // then Start 02. A body may reject a bare ShutterOn 04, so that is the
     // default. Set allow_shutter_without_start to model a permissive body.
     bool require_confirm = true;
+    bool require_registration_for_control = true;
     bool allow_start_without_confirm = false;
     bool allow_shutter_without_start = false;
     bool allow_finish_without_start = true;
