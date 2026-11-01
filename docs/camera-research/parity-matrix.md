@@ -125,7 +125,7 @@ and each needs a host or simulator regression test.
 | S3 | Add the LUMIX GPS stop packet (fix `0x56`, lat and lon `0x7fffffff`, altitude `0x7fff`) and wait for `37701b80` and `4cf487c0` readiness before the clock and GPS writes. | LX | `app-static` panasonic.md C14, F41, F45; `public-source` S5 report | A stale position can persist, and the shortened MEI0 to GPS sequence is reported to drop the link. |
 | S4 | Write the Fujifilm 12-byte UTC and timezone packet on the `F9150137` `01 00` request, and write the client name with a trailing NUL. | FJ-S40, FJ-S41 | `firmware-static` fujifilm.md C28 and C03; `app-static` XApp and Camera Remote | Fixed. Both apps now match the NUL write and the UTC packet. Offset and DST are zero because Furble has no timezone source. |
 | S5 | Send the Fujifilm `AAB609C4` location sync enable, not only the interval, and read it back once. | FJ-S40, FJ-S41 | `firmware-static` fujifilm.md C25; `app-static` XApp | The interval is written but the geotag feature may never be enabled on a body whose menu default is off. |
-| S6 | Make the Canon Smart GPS timestamp an absolute UTC epoch instead of `mktime` on the runtime timezone. | CN-S | `app-static` canon.md CS-34; `furble-source` CanonEOSSmart.cpp | Removes a whole class of non-UTC field failures, and the rest of the 20-byte packet already matches. |
+| S6 | Make the Canon Smart GPS timestamp an absolute UTC epoch instead of `mktime` on the runtime timezone. | CN-S | `app-static` canon.md CS-34; `furble-source` CanonEOSSmart.cpp | Fixed. `CanonProtocol::utcEpoch` has no timezone input, and `canon-time` pins the epoch. |
 | S7 | Add the Sony GPS sequence: subscribe `DD01`, read `DD21` and choose 91 or 95 bytes, read `DD32` and `DD33`, fill UTC offset and DST, and release `DD30` and `DD31` when GPS stops. | SO | `app-static` sony.md C-20 to C-30, F-21, F-23 | The current write is a partial packet with no lock release, which leaves the camera locked to Furble. |
 | S8 | Add the Ricoh Date Time write on connect, gated on a fresh Operation Mode `CAPTURE` read, and read it back. | RC3, RC4 | `firmware-static` ricoh.md C-19 and CM-03; `app-static` Image Sync and GR WORLD | Clocks are the most visible parity gap on a camera Furble already drives well. |
 | S9 | Write the Ricoh Paired Device Name (`FE3A32F8`, UTF-8) after the first connect. | RC3, RC4 | `app-static` ricoh.md C-76 and CM-15 | The camera's paired-device list currently shows an unnamed entry. |
@@ -161,6 +161,7 @@ the closing artifact.
 | --- | --- | --- |
 | LUMIX focus mapping removed; Confirm/Start/Finish handshake added | applied | `lib/furble/Lumix.{h,cpp}`, host `lumix-session` |
 | Fujifilm client name NUL and 12-byte UTC time packet | applied | `lib/furble/Fujifilm.cpp`, `FujifilmBasic.cpp`, `FujifilmSecure.cpp`, protocol test |
+| Canon Smart GPS timestamp uses an absolute UTC epoch | applied | `lib/furble/protocol/CanonTime.h`, `canon-time` |
 
 The LUMIX fix sends Confirm `01`, waits up to two seconds for control readiness
 `00`, sends Start `02`, and sends Finish `03` on disconnect. Focus press and
@@ -306,7 +307,7 @@ behaviour has its own row.
 | P20 GPS enable | DJI | none | dji C07, F21, F23 | `00 17` push, no separate enable | Deliberate no-op | `furble-source`; `public-source` | capture-gated |
 | P21 GPS packet | FJ-S40, FJ-S41 | `updateGeoData`, `encodeGeotag` | fujifilm C22, N03, §5.2 | One 23-byte packet per request | Answers on request, clears flag, truncates lat, lon, altitude | `furble-source`; `firmware-static`; `app-static`; `hardware-capture` | aligned |
 | P22 GPS packet | RC3, RC4 | `Ricoh::updateGeoData` | ricoh CM-31, F-21 | 32 bytes, big-endian doubles, datum `0` | Movement 0.00001 deg or 1 m, or every 10 s. Enables GEO Tag on first write | `furble-source`; `firmware-static`; `app-static`; `hardware-capture` | aligned |
-| P23 GPS packet | CN-S | `CanonEOSSmart::updateGeoData` | canon CS-34, F21 | 20 bytes, float32, Unix seconds | Only after `m_GeoEnabled`. Timestamp from `mktime`, runtime timezone | `furble-source`; `app-static` | safe-fix-needed |
+| P23 GPS packet | CN-S | `CanonEOSSmart::updateGeoData` | canon CS-34, F21 | 20 bytes, float32, Unix seconds | Only after `m_GeoEnabled`. Timestamp from `CanonProtocol::utcEpoch`, no runtime timezone | `furble-source`; `app-static` | aligned |
 | P24 GPS packet | SO | `Sony::updateGeoData` | sony C-22, C-23, F-21 | 91 or 95 bytes from `DD21`, UTC offset and DST | Always 95, zero offset and DST, no `DD21`, no release | `furble-source`; `app-static` | safe-fix-needed |
 | P25 GPS packet | LX | `Lumix::updateGeoData` | panasonic C13, F-21 | 16 bytes, GPS epoch, fix `0x41` | Every GPS tick, then clock after success | `furble-source`; `app-static`; `public-source` | safe-fix-needed |
 | P26 GPS packet | NK-S, NK-R, DJI | per-class | nikon S8; dji F21 | 41 bytes; no Remote surface; deliberate no-op | Unreachable or no-op | `furble-source`; `app-static`; `public-source` | unsupported |

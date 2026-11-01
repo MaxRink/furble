@@ -4,7 +4,10 @@
 #include <NimBLERemoteCharacteristic.h>
 #include <NimBLERemoteService.h>
 
+#include <array>
+
 #include "CanonEOSSmart.h"
+#include "protocol/CanonTime.h"
 
 namespace Furble {
 
@@ -213,19 +216,12 @@ void CanonEOSSmart::focusRelease(void) {
 
 void CanonEOSSmart::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
   if (m_GeoEnabled) {
-    struct tm time_str = {
-        .tm_sec = static_cast<int>(timesync.second),
-        .tm_min = static_cast<int>(timesync.minute),
-        .tm_hour = static_cast<int>(timesync.hour),
-        .tm_mday = static_cast<int>(timesync.day),
-        .tm_mon = static_cast<int>(timesync.month - 1),
-        .tm_year = static_cast<int>(timesync.year - 1900),
-        .tm_wday = 0,
-        .tm_yday = 0,
-        .tm_isdst = -1,
-    };
-
-    time_t timestamp = mktime(&time_str);
+    const uint32_t timestamp =
+        CanonProtocol::utcEpoch(timesync.year, timesync.month, timesync.day, timesync.hour,
+                                timesync.minute, timesync.second);
+    if (timestamp == 0) {
+      return;
+    }
     canon_geo_t geo = {
         .header = 0x04,
         // The direction fields are uint8_t. Cast the character literals so the
@@ -237,7 +233,7 @@ void CanonEOSSmart::updateGeoData(const gps_t &gps, const timesync_t &timesync) 
         .longitude = static_cast<float>(std::abs(gps.longitude)),
         .elevation_sign = static_cast<uint8_t>(gps.altitude < 0.0 ? '-' : '+'),
         .elevation = static_cast<float>(std::abs(gps.altitude)),
-        .timestamp = static_cast<uint32_t>(timestamp),
+        .timestamp = timestamp,
     };
     if ((m_Geo != nullptr) && m_Geo->canWrite()) {
       gattWrite(m_Geo, reinterpret_cast<const uint8_t *>(&geo), sizeof(geo), true);

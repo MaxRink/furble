@@ -304,7 +304,7 @@ and [Remote](https://github.com/MaxRink/furble/blob/965f299f0f43c38fe45e4680f1bf
   starts GPS with 8-byte `01` or `02`, stops with `03`, and selects a source
   with `06`. The one-byte enable form is not app-corroborated. The 20-byte
   location packet otherwise matches the app for finite values. The app uses a
-  UTC epoch; Furble uses `mktime`, which depends on the runtime timezone. The
+  UTC epoch; Furble now uses an absolute UTC conversion, not `mktime`. The
   app's Bluetooth GPS gate passes only EOS RP and R6 Mark II among the four
   Furble models.
 
@@ -348,7 +348,7 @@ their details as citation-only research.
   autofocus result, still, Bulb, two-second release, video, standby, and RF
   loss. Confirm physical outcomes, not just successful ATT writes.
 - Capture Smart GPS request/enable/ack and a UTC timestamp in a non-UTC timezone.
-  The local `mktime` path is a certification gap because its result depends on
+  The former `mktime` path was a certification gap because its result depended on
   runtime timezone configuration; this is not a proven bug. Confirm whether GPS is
   available while any Canon remote role is paired.
 - The simulator should reject Remote GPS and Smart focus, model the 60 s Smart

@@ -394,6 +394,14 @@ target_compile_options(lumix_session_test PRIVATE
                        -Wno-unused-parameter -Wno-unused-lambda-capture -Wno-sign-compare)
 add_test(NAME lumix-session COMMAND lumix_session_test)
 
+# Canon Smart sends an absolute UTC epoch. This pure helper test proves the
+# conversion does not depend on the runtime timezone.
+add_executable(canon_time_test canon_time_test.cpp)
+target_include_directories(canon_time_test PRIVATE
+                           ${FURBLE_ROOT}/lib/furble)
+target_compile_options(canon_time_test PRIVATE -Wall -Wextra -Werror)
+add_test(NAME canon-time COMMAND canon_time_test)
+
 # The sleep gate test drives the production Ricoh shutter path against the
 # virtual peer in BLE standby. It protects the invariant that only a fresh
 # OperationMode read of CAPTURE authorizes the ShootingFlavor and

@@ -22,6 +22,9 @@ Completed in this branch:
 - Fujifilm safe fix: Basic and Secure client names are NUL terminated. The
   `F9150137` `01 00` request now writes the 12-byte UTC time packet, with the
   7-byte local form as a fallback. Offset and DST are zero.
+- Canon Smart safe fix: the GPS timestamp uses `CanonProtocol::utcEpoch`, not
+  `mktime`, so it no longer depends on the runtime timezone. `canon-time` pins
+  the epoch and leap-day rules.
 
 ## Evidence
 
@@ -44,8 +47,8 @@ Completed in this branch:
 ## Validation
 
 - `cmake --build` on the host harness: pass.
-- `ctest`: 122/122 pass, including `peer-contract`, `lumix-session`, and the
-  Fujifilm protocol time vector.
+- `ctest`: 123/123 pass, including `peer-contract`, `lumix-session`,
+  `canon-time`, and the Fujifilm protocol time vector.
 - `python3 -m unittest`: 192 tests pass.
 - `./sim/build/furble-sim --script sim/scenarios/e2e/ble-peer-topology-smoke.txt`:
   pass, asserts 9 peers.
