@@ -96,10 +96,11 @@ unused surface includes Remote pair and status indications, the Smart
 four-stage auth, client name, time, GPS, control point `2021`, feature bitmap,
 and the Classic SPP and PTP continuation.
 
-Remote shutter `0x2083` has a 2-byte gate; the press and release values remain
-public-source. Smart crypto is confirmed, including the key, eight salts,
-Blowfish CBC-MAC, and 17-byte frames. `{01, 00}` on `2008` is a time request,
-not an auth acknowledgement.
+Remote shutter `0x2083` has a 2-byte gate; `{02 02}` is a short press,
+`{02 03}` is a long press, and `{02 00}` is a no-op. `0x2084` is a six-byte
+key/status indication, not a pairing result; pairing is `0x2087`. Smart crypto
+is confirmed, including the key, eight salts, Blowfish CBC-MAC, and 17-byte
+frames. `{01, 00}` on `2008` is a time request, not an auth acknowledgement.
 
 Open questions: the exact Remote shutter bytes, the `2084` status payload, and
 the Z6 III GATT inventory.
