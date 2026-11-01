@@ -84,12 +84,22 @@ GATT constants in the implementation:
 | --- | --- |
 | Remote/control service | `8000ff00-ff00-ffff-ffff-ffffffffffff` |
 | Control characteristic | `0000ff01-0000-1000-8000-00805f9b34fb` (`0xff01`) |
+| Status characteristic | `0000ff02-0000-1000-8000-00805f9b34fb` (`0xff02`) |
 | Location service | `8000dd00-dd00-ffff-ffff-ffffffffffff` |
 | Location/status characteristic | `0xdd01` |
 | Location update characteristic | `0xdd11` |
 | Location info/read characteristic | `0xdd21` |
 | Location allow/lock characteristic | `0xdd30` |
 | Location enable characteristic | `0xdd31` |
+
+ILCE-7RM5 4.00 firmware was decrypted with the public CXD90057_k8 key. It
+confirms CC00, DD00, EE00, BB00, and FF00. FF00 has `FF01` write-only and
+`FF02` notify. EE01 pairing is `06 08 01 00 00 00 00` on command `0x0801`.
+DD30 lock and DD31 enable are firmware-confirmed, and the 95-byte DD11 header
+is confirmed. The firmware does not confirm Furble's four FF01 opcodes. The
+ZV-1F payload remains opaque because its AES-256-CBC model key is not among
+the tested public keys. The full evidence is in the private corpus
+`analysis/sony-firmware.md`.
 
 Connect flow is: create NimBLE client through `Camera::connect`, set the
 requested connection timeout and connection parameters, enable authenticated

@@ -108,19 +108,22 @@ the Z6 III GATT inventory.
 ## Sony
 
 Both official apps implement CC00, DD00, and EE00; Creators' App adds BB00.
-Furble uses DD01, DD11, DD21, DD30, and DD31. The unused surface includes the
-CC00 status and settings services, EE01 pairing and EE03 state, EE04 camera
-info, BB00 DiRxTx, the inferred FF00 remote commander service, PTP/IP still
-capture, movie, zoom, power, image transfer, and the full location lock and
-unlock sequence.
+Furble uses DD01, DD11, DD21, DD30, and DD31. The ILCE-7RM5 4.00 firmware
+confirms CC00, DD00, EE00, BB00, and FF00, with FF01 write and FF02 notify.
+The unused surface includes the CC00 status and settings services, EE01 pairing
+and EE03 state, EE04 camera info, BB00 DiRxTx, the FF00 remote commander
+service, PTP/IP still capture, movie, zoom, power, image transfer, and the full
+location lock and unlock sequence.
 
 The location payload is 91 or 95 bytes, selected by `DD21` byte 4 bit 1. The
 app writes timezone and DST into bytes 91 to 94, subscribes `DD01`, locks with
 `DD30` and `DD31`, and unlocks on stop. Furble always sends 95 bytes with zero
-offsets and does not lock.
+offsets and does not lock. FF02 emits `02 3f`, `02 2d`, `02 a0`, and `02 d5`;
+Furble does not subscribe. EE01 pairing is confirmed but not sent by Furble.
+The four FF01 opcodes remain unproven by the firmware.
 
-Open questions: whether FF00 is the physical remote commander, the FF01 and
-FF02 byte layout, and the exact SMP method.
+Open questions: the FF01 opcode bytes, the exact FF02 action model, the SMP
+method, and the ZV-1F BLE stack, whose payload is opaque.
 
 ## Panasonic LUMIX
 
