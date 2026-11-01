@@ -48,7 +48,12 @@ The completion gate is:
    stale bond, and malformed response.
 6. The power PR contains ranked, tested opportunities with measured or modeled
    savings and no unverified claims.
-7. All validation commands pass and the two PRs are reviewable independently.
+7. Every family has a usage guide and reference sequence for every implemented
+   transport.
+8. Every camera feature is classified as implemented, camera-menu-only,
+   transport-unavailable, unsafe, or capture-gated in a per-camera parity
+   matrix.
+9. All validation commands pass and the two PRs are reviewable independently.
 
 ## 3. Current baseline
 
@@ -203,6 +208,16 @@ Build a traceability table:
 | Furble action | Vendor and family | Code path | Spec row | Expected camera response | Current behavior | Verdict |
 | --- | --- | --- | --- | --- | --- | --- |
 
+Build a per-camera parity matrix:
+
+| Camera | Feature | Transport | Spec row | Furble state | Simulator | Test | Hardware state |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+
+`Furble state` is one of implemented, missing, capture-gated, unavailable, or
+out of scope. Camera-menu-only features are recorded as menu-only, not as
+missing protocol work. `Hardware state` is verified, capture-gated, or not
+applicable.
+
 Cover at minimum:
 
 - scan, match, connect, secure, register, reconnect, stale bond, disconnect.
@@ -270,6 +285,22 @@ Goal: find and prove the lowest practical power configuration.
 
 This work raises its own PR, separate from camera parity. It may touch code
 only after a finding is measured or modeled and reviewed.
+
+Parallel research lanes, each run by a separate subagent and writing a separate
+file before consolidation:
+
+| Lane | Scope | Output |
+| --- | --- | --- |
+| BLE radio | Scan, advertise, connection parameters, PHY, reconnect, NimBLE | `docs/power/ble.md` |
+| SoC and OS | DFS, light sleep, CPU frequency, tasks, locks, logging, console | `docs/power/soc.md` |
+| Display and UI | Brightness, timeout, refresh, backlight, LVGL cost | `docs/power/display.md` |
+| GPS and IMU | Fix rate, constellations, UBX/NMEA, UART, motion wake | `docs/power/gps-imu.md` |
+| Wi-Fi and coexistence | AP and station power, transfer choice, coexistence | `docs/power/wifi-coex.md` |
+| PMIC and board | Rails, charger, gauge, battery, leakage, datasheets | `docs/power/board-power.md` |
+| Measurement | Bench method, instruments, scenarios, thresholds | `docs/power/measurement.md` |
+
+The coordinator merges the lanes into `docs/power/opportunity-matrix.md` and
+rejects any row without a labeled evidence source and an estimated saving.
 
 Research areas:
 
@@ -340,6 +371,30 @@ Collect and index:
 Every claim in the power PR must cite a document, a measurement, or a labeled
 inference.
 
+### I. Usage guides and reference clients
+
+Goal: every API sheet has a usable integration guide, not only a byte table.
+
+Per family and transport:
+
+1. A quick-start sequence with the minimum steps to connect, register, and take
+   one picture.
+2. A complete sequence for every major feature: focus, bulb, self-timer,
+   interval, movie, zoom, power, wake, geotag, clock, transfer, live view,
+   settings, backup, and firmware update.
+3. Copy-ready request and response examples with byte-level test vectors.
+4. Error handling: every status code, ATT error, timeout, disconnect, busy,
+   and stale-bond path, with the recommended recovery.
+5. Security notes: what must be bonded, what must be registered, what can be
+   cached, and what must never be cached.
+6. A minimal reference client per family, either a host test peer or a
+   documented pseudocode sequence, that exercises the sheet.
+7. Migration notes for generation differences and firmware cutovers.
+8. A troubleshooting table mapping symptoms to the likely protocol cause.
+
+Exit gate: a new contributor can implement a working family client from the
+sheet and guide without reading vendor apps or firmware.
+
 ## 6. Execution phases
 
 ### Phase 0: verify and freeze
@@ -406,6 +461,9 @@ which claims are hardware-verified and which are capture-gated.
 - BT API coverage: 100 percent of known UUIDs and short UUIDs have a row.
 - Wi-Fi API coverage: every documented endpoint, opcode, and stream has a row.
 - Furble action traceability: 100 percent classified.
+- Per-camera parity matrix: every camera feature classified.
+- Usage guides: every family and transport has a quick start, full sequences,
+  test vectors, and an error guide.
 - Simulator coverage: every family has a peer and at least one failure path.
 - Tests: all host, Python, simulator, and formatting gates pass.
 - Power: every opportunity has an evidence label and an estimated saving.
