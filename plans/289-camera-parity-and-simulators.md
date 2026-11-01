@@ -31,6 +31,9 @@ Completed in this branch:
 - Sony safe fixes: subscribe DD01, read DD21, select the 91 or 95 byte form,
   and release DD30 and DD31 on disconnect. Non-zero timezone and DST remain
   capture-gated.
+- Nikon Smart now stops at the BLE authentication result, reports the
+  Bluetooth Classic blocker, and no longer waits for a final OK that is a time
+  request.
 
 ## Evidence
 

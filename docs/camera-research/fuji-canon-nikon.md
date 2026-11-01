@@ -429,8 +429,9 @@ and [Smart](https://github.com/MaxRink/furble/blob/965f299f0f43c38fe45e4680f1bfb
   `00002002`; location `00002007`; time `00002006`, all in the de00 UUID
   family.
 - The local implementation uses Blowfish-derived eight-salt validation and
-  builds stage 3 from the validated camera response. It then waits only 1 s
-  for a final success indication and writes the controller name to `00002002`.
+  builds stage 3 from the validated camera response. It then stops and reports
+  the Bluetooth Classic blocker. It no longer waits for a final `01 00`, which
+  is a time request, and never reaches the `00002002` name write.
 - The source explicitly marks Smart non-functional because Nikon requires a
   Bluetooth Classic (BR/EDR) continuation after the BLE exchange; Furble is
   LE-only. Smart shutter, focus, and GPS methods are no-ops in the final path.

@@ -5,7 +5,6 @@
 #include <NimBLERemoteCharacteristic.h>
 #include <NimBLERemoteService.h>
 
-#include "Device.h"
 #include "NikonSmart.h"
 
 namespace Furble {
@@ -157,44 +156,11 @@ bool NikonSmart::preSubscribe(NimBLERemoteService *pSvc) {
 }
 
 bool NikonSmart::connectFinalise(void) {
-  // Nikon smart device pairing swaps to Bluetooth Classic to establish the
-  // secure bond and our Bluetooth stack is LE only, so this cannot complete.
-  // Report the reason first, the remaining steps only gather diagnostics.
-  ESP_LOGI(LOG_TAG, "Nikon smart device pairing needs Bluetooth Classic, cannot complete");
-
-  bool success = false;
-  // Wait for the final OK. Nikon Z series bodies do not send one, so the
-  // timeout here is expected rather than an error.
-  // Sliced so the plan 148 cancel token can stop the wait. The total timeout and
-  // the protocol are unchanged; only the receive is sliced.
-  constexpr uint32_t FINAL_OK_POLL_MS = 250;
-  BaseType_t received = pdFALSE;
-  for (uint32_t waited = 0; waited < FINAL_OK_WAIT_MS; waited += FINAL_OK_POLL_MS) {
-    if (connectCancelled()) {
-      ESP_LOGW(LOG_TAG, "Final OK wait cancelled");
-      return false;
-    }
-    received = xQueueReceive(m_Queue, &success, pdMS_TO_TICKS(FINAL_OK_POLL_MS));
-    if (received == pdTRUE) {
-      break;
-    }
-  }
-  if (received == pdFALSE) {
-    success = false;
-    ESP_LOGI(LOG_TAG, "No final OK after stage 4.");
-  }
-
-  if (!success) {
-    return false;
-  }
-
-  const auto name = Device::getStringID();
-  ESP_LOGI(LOG_TAG, "Identifying as %s", name.c_str());
-  if (!gattWrite(SERVICE_UUID, ID_CHR_UUID, reinterpret_cast<const uint8_t *>(name.data()),
-                 name.size(), true)) {
-    return false;
-  }
-
+  // Nikon Smart pairing requires a Bluetooth Classic continuation to establish
+  // the secure bond. Furble is LE only, so the BLE half can never complete the
+  // pairing. Report the reason and stop. The former wait for a final OK was
+  // misreading the 2008 01 00 time request as an authentication result.
+  ESP_LOGW(LOG_TAG, "Nikon smart pairing needs Bluetooth Classic, cannot complete");
   return false;
 }
 

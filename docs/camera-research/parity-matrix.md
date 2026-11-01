@@ -130,7 +130,7 @@ and each needs a host or simulator regression test.
 | S8 | Add the Ricoh Date Time write on connect, gated on a fresh Operation Mode `CAPTURE` read, and read it back. | RC3, RC4 | `firmware-static` ricoh.md C-19 and CM-03; `app-static` Image Sync and GR WORLD | Applied on the first valid GPS time and then once per minute. The readback and the CAPTURE gate are still capture-gated. |
 | S9 | Write the Ricoh Paired Device Name (`FE3A32F8`, UTF-8) after the first connect. | RC3, RC4 | `app-static` ricoh.md C-76 and CM-15 | Fixed. Connect writes the controller name when the characteristic exists. |
 | S10 | Decode Ricoh Capture Status and use a `Capturing=1` then `0` transition as the shot-confirmation signal. | RC3, RC4 | `firmware-static` ricoh.md C-56; `public-source` field table | Removes the false shot-taken implication without adding a new command. |
-| S11 | Stop Nikon Smart at the BLE authentication result and report the Bluetooth Classic blocker. Do not wait for a final OK that is a time request. | NK-S | `app-static` nikon.md S20 and S22; `furble-source` NikonSmart.cpp | Turns a 10 s silent failure into a precise reason and removes a misleading success path. |
+| S11 | Stop Nikon Smart at the BLE authentication result and report the Bluetooth Classic blocker. Do not wait for a final OK that is a time request. | NK-S | `app-static` nikon.md S20 and S22; `furble-source` NikonSmart.cpp | Fixed. `connectFinalise` reports the blocker and returns immediately. |
 | S12 | Gate the UI controls by family capability: hide bulb and focus on Ricoh, hide focus on LUMIX, and label Nikon Remote release as a no-op. | All | `firmware-static` and `app-static` rows cited in Table 1 | Stops the product promising an outcome the camera cannot produce. |
 | S13 | Write the disconnect reason `7EDE1988` before an intentional Fujifilm Secure disconnect, and read it after a failed reconnect. | FJ-S40, FJ-S41 | `firmware-static` fujifilm.md C06 and C78; `app-static` both Fujifilm apps | Gives the reconnect path a camera-side reason instead of a generic supervision timeout. |
 
@@ -164,6 +164,7 @@ the closing artifact.
 | Canon Smart GPS timestamp uses an absolute UTC epoch | applied | `lib/furble/protocol/CanonTime.h`, `canon-time` |
 | Ricoh paired-device name and GPS-time clock sync | applied | `lib/furble/Ricoh.{h,cpp}`, `lib/furble/protocol/RicohTime.h`, `ricoh-time`, `ricoh-focus` |
 | Sony DD21 selection, DD01 subscribe, and lock release | applied | `lib/furble/Sony.cpp`, host `sony-location` |
+| Nikon Smart stops at the Classic blocker | applied | `lib/furble/NikonSmart.cpp` |
 
 The LUMIX fix sends Confirm `01`, waits up to two seconds for control readiness
 `00`, sends Start `02`, and sends Finish `03` on disconnect. Focus press and
@@ -224,7 +225,7 @@ behaviour has its own row.
 | L41 register | CN-S | `00010006` name, `02` result, identity, commit, mode | canon §7.3 | Pair result `02`, then stored identity | Identity before result, commit as a pairing step, mode `02` only | `furble-source`; `app-static` order differs | capture-gated |
 | L42 register | CN-R | name `03` plus name | canon §7.6 | Unknown, no result documented | Writes the name and proceeds | `furble-source`; `public-source`; `unknown` | aligned |
 | L43 register | NK-R | four-stage `2087` | nikon §7.1 | Stage 2 and stage 4 | Implemented, serial logged at stage 4 | `furble-source`; `firmware-static` B600 | aligned |
-| L44 register | NK-S | four-stage `2000`, final OK | nikon §7.3 | Stage 2 and 4, then Classic | BLE stages, 1 s final OK, unconditional failure | `furble-source`; `public-source` | unsupported |
+| L44 register | NK-S | four-stage `2000`, then Classic | nikon §7.3 | Stage 2 and 4, then Classic | BLE stages, then immediate Classic blocker. No final-OK wait | `furble-source`; `public-source` | unsupported |
 | L45 register | SO | none | sony §7.2 and §7.3 | `EE01`, `EE03`, `EE04` | None used | `furble-source`; `app-static` | capture-gated |
 | L46 register | LX | MEI0, name, Confirm, Start | panasonic §7.2 and §7.6 | MEI0, name, Confirm, Start | MEI0 and name, then Confirm and Start. Fixed seed still replaces the per-install seed | `furble-source`; `app-static` | aligned |
 | L47 register | DJI | `00 19`, verify 2, ACK | dji §7.1 | Verification result 0, protocol ready | Implemented, including both device-ID encodings | `furble-source`; `public-source` | aligned |
@@ -370,7 +371,7 @@ behaviour has its own row.
 | X05 vendor rejection | RC3, RC4 | secure failure with a NEW pairing deletes | ricoh §7.8 | `0x0E` before bonding, `0x80` for a refused WLAN write | Secure failure returns false. Bond delete only for a NEW bonded pairing | `furble-source`; `public-source` | aligned |
 | X06 vendor rejection | CN-S | pair result other than `02` | canon §7.8 | Indication not `02`, or no indication | Deletes the bond and fails. No retry | `furble-source`; `app-static` | aligned |
 | X07 vendor rejection | DJI | verify result or connection response | dji §7.1 | `verify_data` 1 rejects; ret code nonzero rejects | Fails on nonzero or reject. Not repeated in the same scan | `furble-source`; `public-source` | aligned |
-| X08 vendor rejection | NK-S | final OK timeout | nikon §7.3 | No final OK on Z series | Waits 1 s, fails. Expected, not an error | `furble-source`; `public-source` | unsupported |
+| X08 vendor rejection | NK-S | Classic blocker | nikon §7.3 | No final OK on Z series | Reports the blocker immediately. No final-OK wait | `furble-source`; `public-source` | unsupported |
 | X09 vendor rejection | SO, LX, NK-R, CN-R | none | sony §7.7; panasonic §7.8; nikon §7.5; canon §7.8 | Mostly unknown | Failed write or handshake fails the connect. No vendor status decode | `furble-source`; `unknown` | capture-gated |
 | X10 timeout, connect | all | `TIMEOUT_DEFAULT_MS`, `TIMEOUT_INFINITE_MS` | state-machines §1.7 | GAP and vendor handshake | 30 s normal, 5 s infinite reconnect | `furble-source` | aligned |
 | X11 timeout, vendor waits | FJ, CN, NK, DJI | registration, pair, stage, handshake waits | fujifilm §8; canon §8; nikon §8; dji §8 | Vendor response | Fujifilm 25 s, Canon 60 s, Nikon 10 s per stage, DJI 30 s | `furble-source`; `app-static` | aligned |

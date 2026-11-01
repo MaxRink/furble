@@ -74,7 +74,6 @@ class NikonSmart: public NikonBase {
 
   // Wait for the post handshake final OK. Kept short because no known body
   // sends one and the smart device path fails regardless.
-  static constexpr uint32_t FINAL_OK_WAIT_MS = 1000;
 
   // Notification responses.
   static constexpr std::array<uint8_t, 2> SUCCESS = {0x01, 0x00};
