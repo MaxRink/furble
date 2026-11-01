@@ -52,9 +52,8 @@ Capture rows carry one of these:
 | Marker | Meaning |
 | :--- | :--- |
 | `Y` | Implemented in Furble and reachable from the UI or from a documented control path. |
-| `P` | Partially implemented, or implemented but gated on a state Furble cannot observe. |
+| `P` | Partial, or implemented but unproven on hardware, or gated on a state Furble cannot observe. A capture-gated row is `P` plus an evidence label that does not yet certify the behaviour. |
 | `N` | Not implemented. The camera surface may exist; Furble does not use it. |
-| `C` | Capture-gated. The claim cannot be completed without a hardware trace from the exact model and firmware. |
 
 ### 0.3 Source index
 
@@ -978,7 +977,7 @@ Generation-specific observations that change the state machine:
 | At about an 8 s reconnect cadence, detection works with about 9 s latency; at 2 s the camera stays in BLE_STARTUP and links fail with reason 534 (`0x216`) | GR IIIx | `hardware-capture` |
 | Power `01`, Mode `03` OTHER on the first post-pairing read, then `00` CAPTURE later in the same session | GR IIIx 1.60 | `hardware-capture` |
 | Power `01`, Mode `00` when ready, `03` OTHER during normal shutdown, Power notify `00` works | GR III 2.00 | `hardware-capture` |
-| A GR III body advertises while switched off when BLE Enable Condition is On anytime, and a GATT connect wakes it; reconnecting after power-off reads Power `01` and Mode `02` | GR III and IIIx | `hardware-capture` |
+| A GR IIIx body advertises while switched off when BLE Enable Condition is On anytime, and a GATT connect wakes it; reconnecting after power-off reads Power `01` and Mode `02` | GR IIIx | `hardware-capture` |
 
 ```mermaid
 stateDiagram-v2
@@ -2368,16 +2367,17 @@ stateDiagram-v2
 | Power or wake | no command | n/a | `furble-source` |
 | Model identity | not read | n/a | `furble-source` |
 
-Company ID conflict, recorded rather than resolved:
+Company ID, resolved:
 
 - `lib/furble/protocol/AdvertisementProtocol.h` defines
   `PANASONIC_COMPANY_ID = 0x003A`.
-- `docs/camera-research/sony-lumix-dji.md` states `0x0376`.
-- Both cannot be right for the same wire field. The matcher uses `0x003A`, and
-  no capture in this repository resolves the difference.
+- The Bluetooth SIG assigned-numbers registry assigns `0x003A` to Panasonic
+  Holdings Corporation and `0x0376` to Electronic Temperature Instruments.
+- The earlier `0x0376` value in `docs/camera-research/sony-lumix-dji.md` was a
+  documentation error and has been corrected to `0x003A`.
 
-This is a documentation and code divergence, and it belongs in the unknown list
-until a raw advertisement is captured.
+The numeric value is therefore settled. The manufacturer-data layout beyond
+the company ID still needs a raw advertisement capture.
 
 ### 11.2 Camera mode state machine
 
@@ -2600,7 +2600,7 @@ stateDiagram-v2
 | Write | `FFF5`, write or write-without-response | `furble-source` |
 | Write mode | response if `canWrite()`, otherwise no response | `furble-source` |
 | Passkey fallback | `123456` injection and auto-confirm | `furble-source`, risk |
-| Supported camera IDs | `0x33FF0000` Action 4, `0x44FF0000` Action 5 Pro | `furble-source`, `public-source` |
+| Supported camera IDs | `0x33FF0000` Action 4 and `0x44FF0000` Action 5 Pro; both 16-bit half orders are accepted because the vendor artifacts disagree on byte order | `furble-source`, `public-source` |
 | Handshake timeout | 30000 ms, 100 ms polls | `furble-source` |
 
 Camera-side status values parsed from the status push:
@@ -2672,6 +2672,11 @@ Recording state has two writers: the local toggle after a successful write, and
 the status push. A failed status subscription is non-fatal, so a camera that
 does not push status leaves `m_Recording` purely local, and a recording started
 outside Furble is invisible.
+
+Like LUMIX, DJI uses `m_Notify->subscribe` and `m_Write->writeValue` directly
+rather than `Camera::gattSubscribe` and `Camera::gattWrite`. Its frames therefore
+do not appear in the console GATT journal, which matters when a bench capture is
+the only evidence path.
 
 ### 12.4 GPS and clock state machine
 
@@ -2762,7 +2767,7 @@ stateDiagram-v2
 | DJ-06 | Subscribed | none | send connection request, 33-byte payload, CmdType `0x02` | camera request frame | 30000 ms, 100 ms poll | `furble-source` |
 | DJ-07 | Camera rejected | response payload byte 4 nonzero | set rejected flag, return false | none | n/a | `furble-source` |
 | DJ-08 | Request received | payload at least 33 bytes | store sequence, device ID, verify mode, verify data | none | n/a | `furble-source` |
-| DJ-09 | Request parsed | device ID is Action 4 or Action 5 Pro | continue | none | n/a | `furble-source` |
+| DJ-09 | Request parsed | device ID matches Action 4 or Action 5 Pro in either 16-bit half order | continue | none | n/a | `furble-source` |
 | DJ-10 | ID supported | verify mode is 2 and verify data is 0 | continue | none | n/a | `furble-source` |
 | DJ-11 | Verified | none | ACK frame, CmdType `0x20`, same sequence, 9-byte payload | ATT write or frame sent | n/a | `furble-source` |
 | DJ-12 | Protocol ready | none | send status subscription, CmdSet `0x1D`, CmdID `0x05`, payload `03 14 00 00 00 00` | none, best effort | n/a | `furble-source` |
@@ -2789,9 +2794,12 @@ stateDiagram-v2
 8. The power mode field and the wake procedure from sleep `3`.
 9. Whether the camera accepts a second connection request on a saved reconnect,
    and how it treats the saved-device verify mode `0` and verify data `0`.
-10. Whether Action 6 and Osmo 360 use the same frames with different IDs. Furble
+10. Which 16-bit half order each body actually reports. Furble now accepts both,
+    so the ambiguity no longer rejects a connection, but the wire truth is still
+    unresolved.
+11. Whether Action 6 and Osmo 360 use the same frames with different IDs. Furble
     rejects them by ID.
-11. The physical outcome of a start or stop write, which no ATT success proves.
+12. The physical outcome of a start or stop write, which no ATT success proves.
 
 ---
 
@@ -2834,7 +2842,31 @@ stateDiagram-v2
 Every `P` in this table is a claim that the code path exists, not a claim that a
 camera honours it.
 
-### 13.3 Unknowns that block a complete implementation
+### 13.3 Camera busy and back-pressure
+
+No family has a generic "camera busy" status that Furble reads before a command.
+The closest signals are vendor specific and none of them gate a write.
+
+| Family | Busy or back-pressure signal | Furble reaction | Evidence |
+| :--- | :--- | :--- | :--- |
+| Fujifilm Basic and Secure | IND1 `A68E3F66`, first byte 0 busy, nonzero ready, documented for the WiFi AP path | none; the shutter is not gated on it | `public-source`, `hardware-capture` |
+| Fujifilm Basic and Secure | no capture or card-busy status on the Furble path | none | `furble-source` |
+| Ricoh | Capture Status `B5589C08` capturing and countdown fields | logged only, never used as a gate | `furble-source` |
+| Ricoh | Auto Focus Status `CDFC734E` running and in-focus | not subscribed | `firmware-static` |
+| Canon EOS Smart | none beyond the pair indication | none | `furble-source` |
+| Canon EOS Remote | none | none | `furble-source` |
+| Nikon Remote | indication `00002084` payload not interpreted | none | `furble-source` |
+| Nikon Smart | success notification `00002008` only | none, unreachable | `furble-source` |
+| Sony | FF02 shutter ready and active, focus acquired and lost | not subscribed | `public-source` |
+| LUMIX | readiness notifications `37701B80` and `4CF487C0` documented by a third party | not subscribed | `public-source` |
+| DJI | status push mode and status, including recording | updates local recording state only | `furble-source` |
+
+Consequence: a second press during an in-flight exposure, a card write, or a
+camera-side countdown is sent anyway. The camera decides. This is the largest
+single behavioural gap shared by every family, and it cannot be closed without a
+per-family busy signal that is proven on hardware.
+
+### 13.4 Unknowns that block a complete implementation
 
 Ordered by which family they block.
 

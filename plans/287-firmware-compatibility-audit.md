@@ -31,6 +31,12 @@ device IDs. DJI's own command table and a checksum-valid Action 4 frame imply
 avoids rejecting a camera that reports the table encoding. The real camera
 value still needs a hardware capture.
 
+Canon EOS Smart focus press and release now send `00 03` AF_ON and `00 04`
+AF_OFF to the shutter characteristic. The official Camera Connect app exposes
+these separately from the `00 01` and `00 02` AF plus release shutter pair.
+The Canon GPS request, source select, write type, and model gate remain
+documented gaps and are not changed without a capture.
+
 ## Evidence
 
 Firmware evidence is `firmware-static`: the Fujifilm images contain the same
