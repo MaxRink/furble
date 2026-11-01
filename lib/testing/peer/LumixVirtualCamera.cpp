@@ -1003,6 +1003,20 @@ bool LumixVirtualCamera::write(NimBLEClient &client,
   }
 
   bool accepted = false;
+  if ((m_Config.require_registration_for_control && !m_Registered)
+      && ((command == Command::ControlConfirm) || (command == Command::ControlStart)
+          || (command == Command::ControlFinish) || (command == Command::ControlShutterOn)
+          || (command == Command::ControlShutterOff) || (command == Command::ControlRecOn)
+          || (command == Command::ControlRecOff) || (command == Command::GpsPush)
+          || (command == Command::GpsStop) || (command == Command::ClockWrite))) {
+    // The app writes the MEI0 or APS identity before the control session. A
+    // body that requires that record refuses the later services until it is
+    // present. This is the session order in the vendor flow, not a captured
+    // error code, so the refusal is synthetic.
+    noteAttError(ATT_APPLICATION_ERROR);
+    recordWrite(service, characteristic, command, value, response, false);
+    return false;
+  }
   if (command == Command::Mei0Identity) {
     accepted = handleMei0(value);
   } else if (command == Command::ControllerName) {
