@@ -2045,6 +2045,25 @@ if(BUILD_TESTING)
            COMMAND control_fuzz --repro handshake-phase-drop 1)
 endif()
 
+# Peer contract: every virtual camera constructs, advertises, exposes its
+# primary service, and exposes a writable characteristic. This is a harness
+# smoke test, not a camera behavior claim.
+include(${HOST_PEER_DIR}/CanonNikonPeers.cmake)
+include(${HOST_PEER_DIR}/SonyLumixDjiPeers.cmake)
+
+add_executable(peer_contract_test
+               peer_contract_test.cpp
+               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
+               ${CANON_NIKON_PEER_SOURCES}
+               ${CANON_NIKON_PEER_DEPENDENCY_SOURCES}
+               ${SONY_LUMIX_DJI_PEER_SOURCES})
+target_include_directories(peer_contract_test PRIVATE
+                           ${HOST_NIMBLE_DIR}
+                           ${CANON_NIKON_PEER_INCLUDE_DIRS}
+                           ${SONY_LUMIX_DJI_PEER_INCLUDE_DIRS})
+target_link_libraries(peer_contract_test PRIVATE Threads::Threads)
+add_test(NAME peer-contract COMMAND peer_contract_test)
+
 # One raw profile per test, named after the test. ctest gives every test the
 # same environment, so without this every profile is named after the process id
 # alone and a test that wrote nothing cannot be told from a test that never ran.

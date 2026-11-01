@@ -1,11 +1,15 @@
 #ifndef FURBLE_HOST_RICOH_VIRTUAL_CAMERA_H
 #define FURBLE_HOST_RICOH_VIRTUAL_CAMERA_H
 
+#include <array>
 #include <condition_variable>
+#include <cstdint>
+#include <deque>
 #include <map>
 #include <mutex>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "MockNimBLE.h"
@@ -20,12 +24,6 @@ class RicohVirtualCamera final: public NimBLEMockPeer {
     NimBLEAddress address = NimBLEAddress(0x223344556677ULL, 0);
     bool camera_bonded = false;
     bool accept_numeric_comparison = true;
-    // CameraPower and OperationMode single-byte values. A GR IV in BLE
-    // standby keeps the link up with power ON (0x01) while OperationMode
-    // reads BLE_STARTUP (0x02) instead of CAPTURE (0x00).
-    uint8_t camera_power = 0x01;
-    uint8_t operation_mode = 0x00;
-    bool operation_mode_read_fails = false;
     // LE Secure Connections MITM pairing. Zero keeps the just-works handshake
     // the older fixtures rely on. A nonzero code makes secureConnection() run
     // the real exchange: the peer calls the central's onConfirmPasskey (or
@@ -39,6 +37,47 @@ class RicohVirtualCamera final: public NimBLEMockPeer {
     // How long the peer waits for the central's answer before it fails the
     // handshake the way a real pairing timeout does.
     uint32_t pairing_answer_timeout_ms = 5000;
+    // The camera only completes a pairing while its own pairing menu is open.
+    bool in_pairing_mode = true;
+    // CameraPower and OperationMode single-byte values. A GR IV in BLE
+    // standby keeps the link up with power ON (0x01) while OperationMode
+    // reads BLE_STARTUP (0x02) instead of CAPTURE (0x00).
+    uint8_t camera_power = 0x01;
+    uint8_t operation_mode = 0x00;
+    bool operation_mode_read_fails = false;
+    // GR III/IIIx manufacturer record: model code and four-byte serial. The
+    // serial is emitted little-endian. Evidence: ricoh-handlers.md section 10.
+    uint8_t model_code = 0x01;
+    std::array<uint8_t, 4> serial = {0xec, 0x78, 0x00, 0x00};
+    // Sleep wakes a GR by connecting to the Bluetooth Control advertisement.
+    // Evidence: ricoh-handlers.md sections 10.1 and 11.
+    bool sleep_advertising = false;
+  };
+
+  // Decoded GPS Information write. Three byte-swapped float64 values, a native
+  // little-endian uint16 year, then month to second. Byte 31 is never read by
+  // the camera and carries no datum. Evidence: ricoh-handlers.md section 6.
+  struct GpsFix {
+    double latitude = 0.0;
+    double longitude = 0.0;
+    double altitude = 0.0;
+    uint16_t year = 0;
+    uint8_t month = 0;
+    uint8_t day = 0;
+    uint8_t hour = 0;
+    uint8_t minute = 0;
+    uint8_t second = 0;
+    uint8_t trailing = 0;
+    bool valid = false;
+  };
+
+  // One row of the 16-entry drive mode table. The table encodes
+  // index = driveIndex * 3 + timerIndex, with timerIndex 0 none, 1 ten
+  // seconds, 2 two seconds. Evidence: ricoh-handlers.md section 5.9.1.
+  struct DriveMode {
+    uint8_t index = 0;
+    uint8_t drive = 0;
+    uint8_t self_timer_seconds = 0;
   };
 
   struct Write {
@@ -66,6 +105,31 @@ class RicohVirtualCamera final: public NimBLEMockPeer {
   const std::vector<Write> &writes() const;
   const std::vector<Notification> &notifications() const;
   void clearEvents();
+
+  // Handler-derived state, so a test can prove the peer refused a value rather
+  // than silently accepting it.
+  uint8_t cameraPower() const;
+  bool powerWriteAccepted() const;
+  bool geotagEnabled() const;
+  const GpsFix &lastGps() const;
+  uint8_t driveModeIndex() const;
+  const DriveMode &driveMode() const;
+  static const std::array<DriveMode, 16> &driveModeTable();
+  size_t captureCount() const;
+  bool lastOperationRequest(uint8_t &code, uint8_t &arg) const;
+  bool selfTimerTriggered() const;
+
+  // Fault injection. failWrite models an ATT write the camera refuses, which
+  // on Ricoh is the only application-level error signal (the handler returns
+  // false and the stack answers with application error 0x80). setBusy models
+  // a capture command that fails while the link stays up. setRepairRequest
+  // models a fresh pairing request from a device the camera still has in its
+  // paired-device table: the camera deletes the entry, denies, and disconnects.
+  // Evidence: ricoh-handlers.md sections 2.1 and 9.4.
+  void failWrite(const NimBLEUUID &service, const NimBLEUUID &characteristic);
+  void setBusy(bool busy);
+  void setRepairRequest(bool repair);
+  void clearFaults();
 
   /**
    * Deliver a notification through the callback the central subscribed with,
@@ -145,6 +209,9 @@ class RicohVirtualCamera final: public NimBLEMockPeer {
   static const NimBLEUUID &powerCharacteristicUUID();
   static const NimBLEUUID &geotagEnableCharacteristicUUID();
   static const NimBLEUUID &gpsInformationCharacteristicUUID();
+  static const NimBLEUUID &selfTimerCharacteristicUUID();
+  static const NimBLEUUID &captureStatusCharacteristicUUID();
+  static const NimBLEUUID &pairedDeviceNameCharacteristicUUID();
 
  private:
   struct Subscription {
@@ -157,6 +224,9 @@ class RicohVirtualCamera final: public NimBLEMockPeer {
   static bool matches(const NimBLEUUID &left, const NimBLEUUID &right);
   static std::string key(const NimBLEUUID &service, const NimBLEUUID &characteristic);
   bool runPairingHandshake(NimBLEClient &client);
+  bool isWriteFailed(const NimBLEUUID &service, const NimBLEUUID &characteristic) const;
+  bool handleOperationRequest(const std::vector<uint8_t> &value);
+  bool parseGpsFix(const std::vector<uint8_t> &value);
   void armFlappyDrop(NimBLEClient &client);
   void requestFlappyCancel();
   void cancelFlappyTimer();
@@ -167,6 +237,20 @@ class RicohVirtualCamera final: public NimBLEMockPeer {
   std::vector<Write> m_Writes;
   std::vector<Notification> m_Notifications;
   std::map<std::string, Subscription> m_Subscriptions;
+  // Handler-derived state (ricoh-handlers.md sections 5 and 8).
+  bool m_PowerWriteAccepted = false;
+  bool m_GeotagEnabled = false;
+  GpsFix m_LastGps;
+  uint8_t m_DriveModeIndex = 0;
+  size_t m_CaptureCount = 0;
+  bool m_HaveOperationRequest = false;
+  uint8_t m_LastOperationCode = 0;
+  uint8_t m_LastOperationArg = 0;
+  bool m_SelfTimerTriggered = false;
+  // Fault state.
+  bool m_Busy = false;
+  bool m_RepairRequest = false;
+  std::vector<std::pair<NimBLEUUID, NimBLEUUID>> m_FailedWrites;
 
   // Standby-flap state. See FujifilmVirtualCamera for the locking model: the
   // recursive mutex lets the drop timer re-enter disconnect() through

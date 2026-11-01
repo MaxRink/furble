@@ -131,7 +131,7 @@ int main() {
   characteristic = shutterCharacteristic(client);
   check(characteristic != nullptr, "shutter characteristic rediscovers after the cache drop");
   peer.faultNextOperation([](NimBLEClient &faulted) { faulted.dropServiceCache(); });
-  const uint8_t payload[] = {0x01, 0x02};
+  const uint8_t payload[] = {0x01, 0x00};
   check(camera.write(characteristic, payload, sizeof(payload)),
         "gattWrite survives a mid-operation attribute free");
 
