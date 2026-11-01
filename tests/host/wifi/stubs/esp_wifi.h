@@ -26,6 +26,23 @@ struct wifi_ap_record_t {
   int8_t rssi;
   uint8_t ssid[33];
 };
+// Disconnect reasons used by the station classification. Values match the
+// ESP-IDF wifi_err_reason_t enum.
+struct wifi_event_sta_disconnected_t {
+  uint8_t reason;
+};
+enum {
+  WIFI_REASON_AUTH_EXPIRE = 2,
+  WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT = 15,
+  WIFI_REASON_BEACON_TIMEOUT = 200,
+  WIFI_REASON_NO_AP_FOUND = 201,
+  WIFI_REASON_AUTH_FAIL = 202,
+  WIFI_REASON_ASSOC_FAIL = 203,
+  WIFI_REASON_HANDSHAKE_TIMEOUT = 204,
+  WIFI_REASON_NO_AP_FOUND_W_COMPATIBLE_SECURITY = 210,
+  WIFI_REASON_NO_AP_FOUND_IN_AUTHMODE_THRESHOLD = 211,
+  WIFI_REASON_NO_AP_FOUND_IN_RSSI_THRESHOLD = 212,
+};
 #define WIFI_INIT_CONFIG_DEFAULT() \
   wifi_init_config_t {}
 int esp_wifi_init(const wifi_init_config_t *);

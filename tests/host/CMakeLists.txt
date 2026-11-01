@@ -192,6 +192,7 @@ add_executable(real_wifi_lifecycle_test
 target_include_directories(real_wifi_lifecycle_test BEFORE PRIVATE
                            ${CMAKE_CURRENT_SOURCE_DIR}/wifi/stubs
                            ${FURBLE_ROOT}/include)
+target_compile_definitions(real_wifi_lifecycle_test PRIVATE FURBLE_WIFI_HOST_TEST)
 target_compile_options(real_wifi_lifecycle_test PRIVATE -Wall -Wextra -Werror
                                                          -Wno-unused-parameter)
 

@@ -46,7 +46,7 @@ Rank groups:
 
 ## Safe now
 
-Thirteen safe-now rows are implemented in this branch. See section
+Sixteen safe-now rows are implemented in this branch. See section
 "Implemented safe-now changes" for the code and test evidence.
 
 | ID | Lane | Current behavior | Proposed change | Evidence | Est. saving | Risk | Effort | Required test | Priority | Lane source |
@@ -111,6 +111,9 @@ evidence label from the lane and adds the test that now guards it.
 | P-016 | The status-icon timer period is 500 ms instead of 250 ms. | `src/FurbleUI.cpp` | e2e `icon-timer-cadence`: 20 fires in 10 s | implemented |
 | P-030 | The MQTT owner reads its five settings on reload only and idles on a 1 s deadline instead of 250 ms. | `include/FurbleMQTT.h`, `src/FurbleMQTT.cpp` | host `mqtt-owner`: cache contract and `hostTaskWaitMs == 1000` | implemented |
 | P-024 | The Waveshare release env no longer inherits the console and USB console flags; the debug env adds them back explicitly. | `platformio.ini` | resolved flags: release `no-console`, debug `CONSOLE USB_CONSOLE`; `pio run -e waveshare-s3-eth` SUCCESS | implemented |
+| P-028 | Disconnect reasons are classified. Auth and handshake failures stop immediately; no-AP stops after six attempts; other reasons stop after ten. `connect()` clears the stop, and `wifi status` prints attempts, retry delay, reason, and stopped. | `src/FurbleWiFi.cpp`, `src/FurbleConsole.cpp` | host `real-wifi-lifecycle`: auth stops with no retry, no-AP stops at six, connect clears it | implemented |
+| P-029 | The join scan sets `show_hidden = false` because the SSID is already known. | `src/FurbleWiFi.cpp` | host `real-wifi-lifecycle`: the scan config records `show_hidden == false` | implemented |
+| P-033 | The transient Wi-Fi retry cap is 300 s instead of 60 s. | `src/FurbleWiFi.cpp` | host `real-wifi-lifecycle`: the backoff reaches exactly 300000 ms | implemented |
 
 The modeled saving for these rows is unchanged and still unmeasured. P-001 and
 P-002 bound a worst case; they do not change steady-state current. P-003 halves
@@ -121,7 +124,9 @@ model as a 7.2 percent drop in the blind-remote scenario; that is a modeled
 delta, not a current measurement. P-007 is a Kconfig change guarded by a
 checker, not a measured saving. P-015 and P-021 remove hidden or lit-hardware
 work. P-016 and P-030 cut timer and task wakeups. P-024 removes a debug surface
-from a release artifact and has no battery claim.
+from a release artifact and has no battery claim. P-028 ends a permanent
+retry loop in the failure case. P-029 and P-033 reduce join-scan probe traffic
+and steady-state retry frequency.
 
 Three safe-now rows are deliberately not applied yet:
 

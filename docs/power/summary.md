@@ -1,6 +1,6 @@
 # Power research: executive summary
 
-Status: consolidation of the seven lane reports, plus thirteen implemented
+Status: consolidation of the seven lane reports, plus sixteen implemented
 safe-now changes. No bench measurement was made by any lane. The implemented
 changes are bounded behavior fixes, not measured savings:
 P-001 (60 s first-boot scan timeout), P-002 (stop the scan on panel sleep),
@@ -9,9 +9,11 @@ not disable the saver unless faster than idle), P-009 (disabled GPS task
 blocks), P-011 (fixed-baud silent receiver drops to absent), P-014 (no
 flushes while the panel sleeps), P-007 (RTOS idle IRAM option), P-015 (battery
 rows only on the visible page), P-021 (console mode turns the PM1 LED off),
-P-016 (icon timer at 500 ms), P-030 (MQTT owner reloads on demand), and P-024
-(the Waveshare release drops the console). Each has a test; see the matrix
-section "Implemented safe-now changes".
+P-016 (icon timer at 500 ms), P-030 (MQTT owner reloads on demand), P-024
+(the Waveshare release drops the console), P-028 (wrong-passphrase and
+no-AP stop), P-029 (no hidden-SSID join scan), and P-033 (300 s transient
+retry cap). Each has a test; see the matrix section "Implemented safe-now
+changes".
 
 The matrix has 201 rows: 39 safe now, 77 needs measurement, and 85 rejected. Per
 lane: BLE 42, SoC 31, Display 25, GPS and IMU 30, Wi-Fi 40, Board 33. Overlapping
@@ -31,7 +33,7 @@ default off. Almost every number is modeled or inferred.
 
 Closed without bench hardware: the opportunity matrix, the datasheet register
 including per-board coverage in section 13, the lowest-power GPS profile in
-`gps-profile.md`, the measurement plan, and thirteen safe-now changes with
+`gps-profile.md`, the measurement plan, and sixteen safe-now changes with
 tests.
 
 Still open: every current and energy number. That includes the board floor,

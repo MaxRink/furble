@@ -285,7 +285,7 @@ perf                                task, heap, and LVGL performance
 gps                                 GPS status and control, eg. gps send PCAS12,10
 imu status | scale [value]          IMU diagnostic, gesture calibration
 time status | flush                 wall-clock status or persist before shutdown
-wifi status                         WiFi state, access point and IP information
+wifi status                         WiFi state, access point, IP, attempts, retry delay and stop reason
 wifi set ssid|psk <value>           save WiFi credentials (passphrases stay masked)
 wifi enable|disable                 enable or disable station reconnects
 wifi connect|disconnect|forget      control the saved station credentials

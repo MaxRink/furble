@@ -30,6 +30,10 @@ class WiFi {
     bool ntp_synced;
     time_t ntp_last_sync;
     int64_t ntp_offset_us;
+    uint32_t retry_ms;
+    uint32_t attempts;
+    uint8_t disconnect_reason;
+    bool stopped;
   };
 
   static void init(void);

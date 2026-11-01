@@ -77,7 +77,9 @@ int esp_wifi_connect() {
 int esp_wifi_set_config(wifi_interface_t, const wifi_config_t *) {
   return 0;
 }
-int esp_wifi_scan_start(const wifi_scan_config_t *, bool) {
+int last_show_hidden = -1;
+int esp_wifi_scan_start(const wifi_scan_config_t *config, bool) {
+  last_show_hidden = config != nullptr ? (config->show_hidden ? 1 : 0) : -1;
   return 0;
 }
 int esp_wifi_scan_get_ap_num(uint16_t *n) {
@@ -108,6 +110,27 @@ BaseType_t xTaskNotifyWait(uint32_t, uint32_t, uint32_t *, TickType_t) {
   return 0;
 }
 
+namespace {
+
+int require(bool condition, const char *message) {
+  if (!condition) {
+    std::cerr << "FAIL: " << message << '\n';
+    return 1;
+  }
+  return 0;
+}
+
+int disconnect(uint8_t reason) {
+  wifi_event_sta_disconnected_t event = {reason};
+  if (furble_wifi_handler == nullptr) {
+    return 1;
+  }
+  furble_wifi_handler(nullptr, WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, &event);
+  return 0;
+}
+
+}  // namespace
+
 int main() {
   // This first seam deliberately exercises the event callback directly; the
   // worker-task owner loop is deferred until the boundary fake models notify.
@@ -117,6 +140,60 @@ int main() {
   furble_wifi_handler(nullptr, IP_EVENT, IP_EVENT_STA_GOT_IP, nullptr);
   if (Furble::WiFi::getStatus().connected)
     return 2;
+
+  // P-028: an authentication failure is permanent. The station must stop and
+  // report the reason instead of retrying forever.
+  if (!Furble::WiFi::connect())
+    return 3;
+  if (disconnect(WIFI_REASON_AUTH_FAIL) != 0)
+    return 4;
+  auto status = Furble::WiFi::getStatus();
+  if (require(status.stopped, "auth failure did not stop the station")
+      || require(status.disconnect_reason == WIFI_REASON_AUTH_FAIL,
+                 "auth failure reason was not reported")
+      || require(status.retry_ms == 0, "auth failure still scheduled a retry")) {
+    return 5;
+  }
+
+  // A later connect clears the stopped state.
+  if (!Furble::WiFi::connect() || Furble::WiFi::getStatus().stopped)
+    return 6;
+
+  // P-028: a missing AP is bounded, not permanent. Six attempts stop it.
+  for (int i = 0; i < 5; i++) {
+    if (disconnect(WIFI_REASON_NO_AP_FOUND) != 0)
+      return 7;
+  }
+  if (require(!Furble::WiFi::getStatus().stopped,
+              "no-AP stopped before the bounded attempt count")) {
+    return 8;
+  }
+  if (disconnect(WIFI_REASON_NO_AP_FOUND) != 0)
+    return 9;
+  if (require(Furble::WiFi::getStatus().stopped,
+              "no-AP did not stop at the bounded attempt count")) {
+    return 10;
+  }
+
+  // P-033: transient failures back off to the raised five-minute cap.
+  if (!Furble::WiFi::connect())
+    return 11;
+  for (int i = 0; i < 10; i++) {
+    if (disconnect(WIFI_REASON_BEACON_TIMEOUT) != 0)
+      return 12;
+  }
+  status = Furble::WiFi::getStatus();
+  if (require(status.retry_ms == 300000, "transient retry did not reach the 300 s cap")
+      || require(status.stopped, "transient failures did not stop after the attempt bound")) {
+    return 13;
+  }
+
+  // P-029: the join scan never asks for hidden results when the SSID is known.
+  if (require(Furble::WiFi::hostScanForNetwork() == false, "empty scan results should return false")
+      || require(last_show_hidden == 0, "join scan requested hidden results")) {
+    return 14;
+  }
+
   std::cout << "real wifi lifecycle: PASS\n";
   return 0;
 }

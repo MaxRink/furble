@@ -1860,6 +1860,10 @@ void printWifiStatus(void) {
     printf("rssi: unavailable\n");
   }
   printf("ip: %s\n", status.ip.empty() ? "none" : status.ip.c_str());
+  printf("attempts: %lu\n", static_cast<unsigned long>(status.attempts));
+  printf("retry_ms: %lu\n", static_cast<unsigned long>(status.retry_ms));
+  printf("disconnect_reason: %u\n", static_cast<unsigned>(status.disconnect_reason));
+  printf("stopped: %s\n", boolStr(status.stopped));
 
   auto &platform = Platform::getInstance();
   const auto &caps = platform.getBatteryCaps();

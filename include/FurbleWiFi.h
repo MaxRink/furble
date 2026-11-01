@@ -34,6 +34,13 @@ class WiFi {
     bool ntp_synced;
     time_t ntp_last_sync;
     int64_t ntp_offset_us;
+    // Connection attempt accounting. retry_ms is the base backoff without the
+    // random jitter the worker adds; attempts and disconnect_reason explain a
+    // stopped station.
+    uint32_t retry_ms;
+    uint32_t attempts;
+    uint8_t disconnect_reason;
+    bool stopped;
   } status_t;
 
   WiFi() = delete;
@@ -71,6 +78,11 @@ class WiFi {
 
   /** Return the current NTP time when a sync has completed. */
   static bool getNtpTimesync(Camera::timesync_t &timesync);
+
+#if defined(FURBLE_WIFI_HOST_TEST)
+  /** Run the join scan once so a host test can inspect its configuration. */
+  static bool hostScanForNetwork(void);
+#endif
 };
 }  // namespace Furble
 

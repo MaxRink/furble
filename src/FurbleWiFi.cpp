@@ -40,7 +40,14 @@ constexpr uint32_t NOTIFY_EVENT = 1U << 1;
 constexpr uint32_t NOTIFY_STOP = 1U << 2;
 
 constexpr uint32_t RETRY_INITIAL_MS = 1000;
-constexpr uint32_t RETRY_MAX_MS = 60 * 1000;
+// A transient outage retries long and slow; the old 60 s cap kept an idle
+// station waking every minute forever during a shoot. Permanent failures stop
+// instead of retrying at all.
+constexpr uint32_t RETRY_MAX_MS = 300 * 1000;
+// Bounded attempts for reasons that may clear on their own. A router reboot
+// reconnects; a wrong passphrase does not and is stopped immediately.
+constexpr uint32_t NO_AP_MAX_ATTEMPTS = 6;
+constexpr uint32_t TRANSIENT_MAX_ATTEMPTS = 10;
 constexpr size_t TASK_STACK = 4096;
 
 esp_netif_t *g_StaNetif = nullptr;
@@ -62,7 +69,40 @@ std::string g_Ip;
 std::atomic<bool> g_ConnectRequested = false;
 uint32_t g_RetryDelayMs = 0;
 uint32_t g_DirectFailures = 0;
+uint32_t g_ConnectAttempts = 0;
+bool g_StoppedForReason = false;
+uint8_t g_LastDisconnectReason = 0;
 bool g_ScanAttempted = false;
+bool g_ScanShowHidden = false;
+
+enum class DisconnectClass : uint8_t {
+  NONE,
+  AUTH,
+  NO_AP,
+  TRANSIENT,
+};
+
+DisconnectClass classifyDisconnect(uint8_t reason) {
+  switch (reason) {
+    case WIFI_REASON_AUTH_EXPIRE:
+    case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT:
+    case WIFI_REASON_AUTH_FAIL:
+    case WIFI_REASON_ASSOC_FAIL:
+    case WIFI_REASON_HANDSHAKE_TIMEOUT:
+      // A wrong passphrase, an unsupported security mode, or a WPA3 mismatch.
+      // Retrying cannot fix any of them; the operator must change the setting
+      // and run `wifi connect`.
+      return DisconnectClass::AUTH;
+    case WIFI_REASON_NO_AP_FOUND:
+    case WIFI_REASON_NO_AP_FOUND_W_COMPATIBLE_SECURITY:
+    case WIFI_REASON_NO_AP_FOUND_IN_AUTHMODE_THRESHOLD:
+    case WIFI_REASON_NO_AP_FOUND_IN_RSSI_THRESHOLD:
+      // Likely a router reboot or out of range. Bounded retries cover it.
+      return DisconnectClass::NO_AP;
+    default:
+      return DisconnectClass::TRANSIENT;
+  }
+}
 
 bool g_NtpInitialized = false;
 std::atomic<bool> g_NtpRunning = false;
@@ -304,14 +344,26 @@ void stopDriver(void) {
   stopDriverLocked();
 }
 
-void recordFailure(void) {
+void recordFailure(bool scheduleRetry = true) {
   std::lock_guard<std::mutex> lock(g_StateMutex);
   g_DirectFailures++;
+  g_ConnectAttempts++;
+  if (!scheduleRetry) {
+    // A permanent failure is counted but never given a retry deadline.
+    g_RetryDelayMs = 0;
+    return;
+  }
   if (g_RetryDelayMs == 0) {
     g_RetryDelayMs = RETRY_INITIAL_MS;
   } else {
     g_RetryDelayMs = std::min(g_RetryDelayMs * 2, RETRY_MAX_MS);
   }
+}
+
+void stopForReasonLocked(uint8_t reason) {
+  g_ConnectRequested = false;
+  g_StoppedForReason = true;
+  g_LastDisconnectReason = reason;
 }
 
 uint32_t takeRetryDelay(void) {
@@ -333,7 +385,11 @@ bool scanForNetwork(void) {
 
   const std::string ssid = Settings::load<Settings::WIFI_SSID>();
   wifi_scan_config_t config = {};
-  config.show_hidden = true;
+  // The SSID is known. Asking the driver for hidden results makes it include
+  // hidden APs in every join scan, which does not help a saved non-hidden
+  // network and adds probe traffic on each cycle.
+  config.show_hidden = false;
+  g_ScanShowHidden = config.show_hidden;
   esp_err_t err = esp_wifi_scan_start(&config, true);
   if (err != ESP_OK) {
     ESP_LOGW(LOG_TAG, "WiFi scan failed: %s", esp_err_to_name(err));
@@ -434,21 +490,46 @@ void wifiTask(void *) {
   }
 }
 
-void eventHandler(void *, esp_event_base_t eventBase, int32_t eventId, void *) {
+void eventHandler(void *, esp_event_base_t eventBase, int32_t eventId, void *eventData) {
   if ((eventBase == WIFI_EVENT) && (eventId == WIFI_EVENT_STA_DISCONNECTED)) {
+    uint8_t reason = 0;
+    if (eventData != nullptr) {
+      reason = static_cast<const wifi_event_sta_disconnected_t *>(eventData)->reason;
+    }
+
+    const DisconnectClass cls = classifyDisconnect(reason);
     bool retry = false;
+    bool stopped = false;
     {
       std::lock_guard<std::mutex> lock(g_StateMutex);
       g_Connected = false;
       g_GotIp = false;
       g_Ip.clear();
       g_Rssi = 0;
+      g_LastDisconnectReason = reason;
+
+      const uint32_t nextAttempt = g_ConnectAttempts + 1;
+      const bool authFailure = cls == DisconnectClass::AUTH;
+      const bool noApExhausted =
+          (cls == DisconnectClass::NO_AP) && (nextAttempt >= NO_AP_MAX_ATTEMPTS);
+      const bool transientExhausted =
+          (cls == DisconnectClass::TRANSIENT) && (nextAttempt >= TRANSIENT_MAX_ATTEMPTS);
+      if (authFailure || noApExhausted || transientExhausted) {
+        stopForReasonLocked(reason);
+        stopped = true;
+      }
       retry = g_ConnectRequested;
     }
     stopNtp();
+    // Count every disconnect. Only a retryable class schedules a backoff, and
+    // the last attempt still updates the reported delay before it stops.
+    recordFailure(cls != DisconnectClass::AUTH);
     if (retry) {
-      recordFailure();
-      ESP_LOGW(LOG_TAG, "WiFi disconnected, retrying with backoff");
+      ESP_LOGW(LOG_TAG, "WiFi disconnected (reason %u), retrying with backoff", reason);
+    } else if (stopped) {
+      ESP_LOGW(LOG_TAG,
+               "WiFi stopped after disconnect reason %u; fix the setting and run 'wifi connect'",
+               reason);
     }
     notify(NOTIFY_EVENT);
     return;
@@ -463,7 +544,10 @@ void eventHandler(void *, esp_event_base_t eventBase, int32_t eventId, void *) {
       g_Connected = true;
       g_GotIp = true;
       g_DirectFailures = 0;
+      g_ConnectAttempts = 0;
       g_RetryDelayMs = 0;
+      g_StoppedForReason = false;
+      g_LastDisconnectReason = 0;
       g_ScanAttempted = false;
     }
 
@@ -540,6 +624,9 @@ bool WiFi::connect(void) {
     g_ConnectRequested = true;
     g_RetryDelayMs = 0;
     g_DirectFailures = 0;
+    g_ConnectAttempts = 0;
+    g_StoppedForReason = false;
+    g_LastDisconnectReason = 0;
     g_ScanAttempted = false;
   }
   notify(NOTIFY_REQUEST);
@@ -628,6 +715,10 @@ WiFi::status_t WiFi::getStatus(void) {
     status.ntp_synced = g_NtpSynced;
     status.ntp_last_sync = g_NtpLastSync;
     status.ntp_offset_us = g_NtpOffsetUs;
+    status.retry_ms = g_RetryDelayMs;
+    status.attempts = g_ConnectAttempts;
+    status.disconnect_reason = g_LastDisconnectReason;
+    status.stopped = g_StoppedForReason;
   }
   status.ntp_enabled = Settings::load<Settings::NTP>();
 
@@ -643,6 +734,12 @@ WiFi::status_t WiFi::getStatus(void) {
 
   return status;
 }
+
+#if defined(FURBLE_WIFI_HOST_TEST)
+bool WiFi::hostScanForNetwork(void) {
+  return scanForNetwork();
+}
+#endif
 
 bool WiFi::getNtpTimesync(Camera::timesync_t &timesync) {
   bool synced = false;
