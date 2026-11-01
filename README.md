@@ -84,21 +84,21 @@ The following devices have been tested and confirmed to work:
    - Fujifilm X-H1
    - Fujifilm X-H2S ([@val123456](https://github.com/val123456))
    - Fujifilm X-S10 ([@dimitrij2k](https://github.com/dimitrij2k))
-   - Fujifilm X-S20 ([@kelvincabaldo07](https://github.com/kelvincabaldo07))
+   - Fujifilm X-S20 (Secure profile from 3.30) ([@kelvincabaldo07](https://github.com/kelvincabaldo07))
    - Fujifilm X-T200 ([@Cronkan](https://github.com/Cronkan))
    - Fujifilm X-T3 ([@ubuntuproductions](https://github.com/ubuntuproductions))
    - Fujifilm X-T30
    - Fujifilm X-T4 ([@TomaszLojewski](https://github.com/TomaszLojewski))
    - Fujifilm X-T5 ([@stulevine](https://github.com/stulevine))
    - Fujifilm X100V
-   - Fujifilm X100VI (secure connection and shutter command verified; physical capture pending)
+   - Fujifilm X100VI (Secure profile; secure connection and shutter command verified, physical capture pending)
 - Canon
    - Canon EOS M6 ([@tardisx](https://github.com/tardisx))
    - Canon EOS R6 Mark II ([@hijae](https://github.com/hijae))
    - Canon EOS RP ([@wolcano](https://github.com/wolcano))
    - Canon PowerShot G9 X Mark II ([@Mich2e](https://github.com/Mich2e))
 - Ricoh
-   - Ricoh GR IV HDF ([@sky18Dragon](https://github.com/sky18Dragon))
+   - Ricoh GR IV HDF ([@sky18Dragon](https://github.com/sky18Dragon)); firmware 1.20 is the verified build. GR IV uses the same image and protocol but is not separately hardware-tested.
 - Nikon
    - Nikon COOLPIX B600
    - Nikon Z6 III ([@herrfrei](https://github.com/herrfrei))
@@ -392,7 +392,7 @@ More details are on the wiki: [Usage Guide](https://github.com/gkoh/furble/wiki/
 
 ### GPS Location Tagging
 
-For Fujifilm & Sony cameras, location tagging is supported with an M5Stack GPS
+For Fujifilm, Sony, and Ricoh cameras, location tagging is supported with an M5Stack GPS
 unit on Grove Port A. Every unit furble targets is the AT6668/CASIC family, so
 one set of $PCAS and NMEA support covers them all.
 
@@ -549,9 +549,14 @@ but for my camera.
 
 #### Fujifilm
 
-Given reports from the community and access to additional cameras, it
-seems many (all?) Fujifilm cameras use the same Bluetooth protocol.
-Reports of further confirmed working Fujifilm cameras are welcome.
+Fujifilm has two BLE remote generations. Older bodies use the Basic token
+protocol, which is still implemented by `FujifilmBasic`. The July 2025 security
+change moved affected bodies to the Secure registration protocol. X100VI 1.30
+and later and X-S20 3.30 are Secure-only: the Basic pairing service `91F1DE68`
+is absent from their firmware. A Secure body advertises the bare model plus a
+five byte serial and uses service `A9D2B304` before registration and
+`123D8F06` afterwards. Reports of further confirmed Fujifilm cameras are
+welcome. See the [camera protocol research](docs/camera-research/fuji-canon-nikon.md).
 
 #### Canon
 
@@ -563,14 +568,18 @@ different.
 
 #### Ricoh
 
-All Ricoh GR IV series cameras are theoretically supported. This support was
-graciously implemented by @sky18Dragon.
-The current implementation will _not_ work with GR III or GR II.
+Ricoh GR IV and GR IV HDF firmware 1.20 are supported. This support was
+graciously implemented by @sky18Dragon. GR III and GR IIIx carry the same BLE
+service UUIDs but are not certified because their power and WLAN behaviour
+differs from GR IV. GR II is Wi-Fi only and is not a BLE remote camera.
 Focus-only controls are intentionally unsupported. The documented Ricoh Focus
 Mode setting does not trigger autofocus, and no separate half-press command has
 been verified. The BLE `OperationRequest` `{0x01, 0x01}` sequence is a capture
-request with autofocus, not a focus-only command. See the [Ricoh BLE protocol
-reference](https://github.com/dm-zharov/ricoh-gr-bluetooth-api).
+request with autofocus, not a focus-only command. Location tagging enables the
+Camera Service GEO Tag characteristic and sends the shared 32-byte GPS
+Information packet with the WGS84 datum selector. See the [Ricoh BLE protocol
+reference](https://github.com/dm-zharov/ricoh-gr-bluetooth-api) and the
+[camera protocol research](docs/camera-research/ricoh.md).
 
 #### Nikon
 

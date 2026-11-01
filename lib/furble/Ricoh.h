@@ -21,9 +21,9 @@ namespace Furble {
  * that state cold boots the camera and can wedge its firmware. Focus is
  * unsupported: the documented Focus Mode characteristic configures a mode but
  * does not trigger autofocus, and no separate half-press command has been
- * verified. GPS geotagging uses the shared Ricoh Imaging GPS and
- * location-control characteristics. Pairing uses MITM LE Secure Connections
- * with numeric comparison.
+ * verified. GPS geotagging enables the Camera Service GEO Tag characteristic
+ * and writes the GPS Information packet. Pairing uses MITM LE Secure
+ * Connections.
  *
  * Protocol reference: dm-zharov/ricoh-gr-bluetooth-api, Android HCI snoop analysis.
  */
@@ -64,6 +64,9 @@ class Ricoh: public Camera {
     GREEN_BUTTON = 2,
   };
 
+  // Official name: Drive Mode. Values 0, 1, and 2 are single frame, single
+  // frame with a 10 second self-timer, and single frame with a 2 second
+  // self-timer. Furble only uses the immediate and 2 second values.
   enum class ShootingFlavor : uint8_t {
     IMMEDIATE = 0,
     TIMER_2S = 2,
@@ -91,7 +94,9 @@ class Ricoh: public Camera {
     uint8_t hour;
     uint8_t minute;
     uint8_t second;
-    uint8_t centisecond;
+    // WGS84 datum selector. The official apps write 0. This is not a
+    // centisecond field; sub-second time is not carried in this packet.
+    uint8_t datum;
   } ricoh_geo_t;
 
   // Camera Information Service
@@ -102,6 +107,8 @@ class Ricoh: public Camera {
   static const NimBLEUUID CAMERA_SVC_UUID;
   static const NimBLEUUID POWER_CHR_UUID;
   static const NimBLEUUID OPERATION_MODE_CHR_UUID;
+  // Camera Service GEO Tag enable. This is the location enable write.
+  static const NimBLEUUID GEOTAG_ENABLE_CHR_UUID;
 
   // Shooting Service
   static const NimBLEUUID SHOOTING_SVC_UUID;
@@ -118,10 +125,6 @@ class Ricoh: public Camera {
   static const NimBLEUUID GPS_SVC_UUID;
   static const NimBLEUUID GPS_INFO_CHR_UUID;
 
-  // Location Control Service
-  static const NimBLEUUID LOCATION_CONTROL_SVC_UUID;
-  static const NimBLEUUID LOCATION_CONTROL_CHR_UUID;
-
   NimBLERemoteCharacteristic *m_Power = nullptr;
   NimBLERemoteCharacteristic *m_OperationMode = nullptr;
   NimBLERemoteCharacteristic *m_ShootingFlavor = nullptr;
@@ -130,7 +133,7 @@ class Ricoh: public Camera {
   NimBLERemoteCharacteristic *m_SelfTimer = nullptr;
   NimBLERemoteCharacteristic *m_PairedDeviceName = nullptr;
   NimBLERemoteCharacteristic *m_GpsInfo = nullptr;
-  NimBLERemoteCharacteristic *m_LocationControl = nullptr;
+  NimBLERemoteCharacteristic *m_GeotagEnable = nullptr;
 
   // Camera state cache seeded by the _connect() state probe and refreshed by
   // notifications. Diagnostic only: the capture gate never trusts this cache
@@ -163,7 +166,7 @@ class Ricoh: public Camera {
   bool writeOperation(OperationCode code, OperationParameter parameter);
   bool subscribeCharacteristic(NimBLERemoteCharacteristic *pChr, const char *label);
   bool setShootingFlavor(ShootingFlavor flavor);
-  bool setLocationControl(bool enabled);
+  bool setGeotagEnable(bool enabled);
 };
 
 }  // namespace Furble

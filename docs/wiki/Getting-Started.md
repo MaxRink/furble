@@ -56,7 +56,7 @@ page and the [Controls](Controls) page for the button map.
 
 ## GPS location tagging
 
-For cameras that support it (Fujifilm and Sony), furble can tag photos with the
+For cameras that support it (Fujifilm, Sony, and Ricoh), furble can tag photos with the
 device location using an M5Stack GPS unit on Grove Port A. Enable it under
 `Settings` > `GPS`, and configure the camera to request location data from the
 remote. The GPS/BDS Unit v1.1 (AT6668) needs the baud rate set to 115200 under

@@ -1,23 +1,26 @@
 # Ricoh GR wireless research
 
-Retrieval date: 2026-09-12
+Initial retrieval date: 2026-09-12. Firmware and official-app verification
+added 2026-11-01 for GR III 2.20 and GR IV / GR IV HDF 1.20.
 
-This is research for a future furble camera peer and host/simulator tests. It
-does not certify hardware compatibility. Private GATT bytes, ATT status codes,
-ordering, timing, and physical shutter/GPS outcomes require a capture from the
-exact camera model and firmware. Community implementations are useful leads,
-not wildcard compatibility claims.
+This note supports the shipped Ricoh peer and host/simulator tests. It does not
+certify hardware compatibility. Private ATT status codes, ordering, timing, and
+physical shutter/GPS outcomes still require a capture from the exact camera
+model and firmware. Community implementations are useful leads, not wildcard
+compatibility claims.
 
-Related furble design: `plans/159-camera-peer-certification.md`. The inspected
-Ricoh implementation matches furble commit
-`965f299f0f43c38fe45e4680f1bfb735023533af`. That plan's 2026-08-30 reviews are
-design audits, not captures. In particular, it already records the Ricoh
-older-family source pin, the GR IV/HDF issue/PR evidence, and the unresolved
-GPS UUID/final-byte conflict.
+Related furble design: `plans/159-camera-peer-certification.md`. The initial
+research matched furble commit
+`965f299f0f43c38fe45e4680f1bfb735023533af`; the 2026-11-01 audit used
+`7383561a`. That plan's 2026-08-30 reviews are design audits, not captures. The
+location-enable UUID and final GPS byte conflict are now resolved from firmware
+and the official apps, but runtime acceptance still needs a capture.
 
 Evidence labels used below: `official-semantic` means Ricoh documents the
-user-visible feature but not private bytes; `common-implementation` means a
-public implementation or reverse-engineered document reports the behavior;
+user-visible feature but not private bytes; `firmware-static` means the bytes or
+field layout were read from a vendor image; `app-static` means the official
+Android app code was read; `common-implementation` means a public implementation
+or reverse-engineered document reports the behavior;
 `current-source` means the inspected furble implementation does it;
 `inference/unknown` means it is a test-design conclusion or remains unresolved.
 Only exact `hardware-capture` evidence can certify private bytes, ATT status,
@@ -38,6 +41,47 @@ supports WLAN and image import but not Bluetooth, remote shooting, or location
 transmission. See [Ricoh's GR World page](https://www.ricoh-imaging.co.jp/english/products/app/gr-world/)
 and [GR World FAQ](https://www.ricoh-imaging.co.jp/english/support/qa/gr-world/).
 That user-visible table does not specify private GATT UUIDs or packet bytes.
+
+## Firmware and official-app verification (2026-11-01)
+
+This audit inspected RICOH GR III 2.20 and GR IV / GR IV HDF 1.20, plus the
+official Image Sync 2.1.32 and GR WORLD 2.0.0 Android apps. The vendor images
+are not redistributed. The claims below are `firmware-static` or `app-static`
+unless marked otherwise. Static evidence does not prove runtime reachability.
+
+- All 17 Ricoh UUIDs used by Furble are present verbatim in `bled` in both
+  images. The shared service set is real, not a community guess.
+- `A36AFDCF-6B67-4046-9BE7-28FB67DBC071` is the Camera Service GEO Tag enable.
+  `F37F568F-9071-445D-A938-5441F2E82399` and
+  `9111CDD0-9F01-45C4-A2D4-E09E8FB0424D` are the WLAN Control service and its
+  Network Type characteristic. Furble previously wrote the WLAN value when it
+  meant to enable location. The corrected target is the Camera Service GEO Tag.
+- `GPSInformation::Write` parses three byte-swapped float64 values, a
+  little-endian uint16 year, then month, day, hour, minute, and second. The
+  final byte is the WGS84 datum selector. The official apps write `0`. It is
+  not a centisecond field.
+- The Drive Mode characteristic is `B29E6DE3-1AEC-48C1-9D05-02CEA57CE664`.
+  Official values are `0` single frame, `1` single frame with a 10 second
+  self-timer, and `2` single frame with a 2 second self-timer. Furble's
+  `ShootingFlavor::IMMEDIATE` and `TIMER_2S` values happen to match, but the
+  enum name is misleading.
+- The still capture operation is `{01, 01}`: start with autofocus. No separate
+  stop write is used for stills. Furble matches this.
+- GR IV firmware exposes numeric-comparison confirmation APIs
+  (`OnNCConfirmNotify`, `SetNumericComparisonConfirmResult`). The official apps
+  rely on the Android bond and the camera-side prompt, not a fixed `123456`
+  passkey. Furble's fixed fallback remains a compatibility and security risk.
+- GR III 2.20 uses a Broadcom BCM4345C0 class controller. GR IV 1.20 uses an
+  NXP `nw61x` / `n61x` combo. That hardware change does not change the shared
+  UUID set, but it can change timing, wake, and pairing behaviour.
+
+The practical result is three profiles, not one:
+
+| Profile | Official app | Transport and control |
+| --- | --- | --- |
+| GR III / GR IIIx | Image Sync | BLE remote, GEO Tag enable, 32-byte GPS, WLAN AP control, power-on by reconnect. |
+| GR IV / GR IV HDF | GR WORLD | BLE remote, GEO Tag enable, explicit power and operation-mode control, GR IV WLAN fields. |
+| GR II | GR WORLD import only | Wi-Fi AP and HTTP. No BLE remote-control service. |
 
 ## Official Ricoh evidence
 
@@ -257,39 +301,41 @@ at that exact commit; no implementation files were modified.
    says GR III/GR II do not work. The matcher nevertheless accepts any device
    advertising the Info, Camera, Shooting, or Bluetooth Control service, or a
    Ricoh-like name. It then requires the Shooting service and uses the shared
-   UUID set. That broad matcher is not an older-model compatibility proof. A
-   future peer should select an exact model/firmware profile after identity and
-   GATT discovery, rather than treat a service-name match as GR IV.
+   UUID set. Firmware confirms that GR III and GR IV share all 17 service and
+   characteristic UUIDs, but their power, WLAN, and pairing behaviour differs.
+   The broad matcher is not a GR III compatibility proof. A future peer should
+   select an exact model/firmware profile after identity and GATT discovery.
 2. Pairing callbacks return/inject fixed passkey `123456` and automatically
    confirm the displayed value. Official GR III/IIIx UX displays a camera-side
    authentication code; the GR III hardware report says the code is dynamic.
-   Keep this as a known compatibility risk until an exact furble/NimBLE SMP
-   capture proves the method.
+   GR IV firmware exposes numeric-comparison confirmation and the official app
+   relies on the Android bond. Keep the fixed fallback as a known compatibility
+   and security risk until an exact furble/NimBLE SMP capture proves the method.
 3. The current shutter path writes Shooting Flavor `0` and then
-   Operation Request `{1,1}`. That matches the community operation-request
-   hypothesis and the independent GR III implementation. The implementation
-   targets GR IV; this research establishes no capture-backed certification.
-   `captureAllowed()` gates on a fresh Operation Mode read and
-   refuses BLE Startup/other modes. This is a sensible safety policy, not an
-   official byte-level rule for every GR generation.
-4. The current GPS packet is 32 bytes: three byte-swapped float64 values, a
-   little-endian year, month/day/hour/minute/second, and centiseconds. The
-   pinned older-family document describes the same 32-byte footprint but calls
-   the final byte WGS84 datum `0`, with no centisecond. The field meaning and
-   location-enable characteristic are unresolved. Specifically, furble uses
-   `F37F568F-9071-445D-A938-5441F2E82399` / `9111CDD0-9F01-45C4-A2D4-E09E8FB0424D`
-   for location enable, while the community document names that pair WLAN
-   Network Type; its separate GEO-tag enable characteristic is
-   `A36AFDCF-6B67-4046-9BE7-28FB67DBC071`. The GPS Information UUID itself
-   matches the pinned document. Do not call current GPS parity certified.
+   Operation Request `{1,1}`. Official apps use the same two-value start with
+   autofocus and do not send a separate stop write for stills. The drive-mode
+   values `0`, `1`, and `2` mean single frame, single frame with a 10 second
+   self-timer, and single frame with a 2 second self-timer. `captureAllowed()`
+   gates on a fresh Operation Mode read and refuses BLE Startup/other modes.
+   This is a safety policy, not an official byte-level rule for every GR
+   generation.
+4. The GPS packet is 32 bytes: three byte-swapped float64 values, a
+   little-endian year, month/day/hour/minute/second, and a final datum byte.
+   Firmware parses exactly those fields. The official apps write WGS84 datum
+   `0` in the final byte; it is not a centisecond. Furble now writes `0`.
+   Location enable is the Camera Service GEO Tag characteristic
+   `A36AFDCF-6B67-4046-9BE7-28FB67DBC071`. The WLAN Control pair
+   `F37F568F-9071-445D-A938-5441F2E82399` /
+   `9111CDD0-9F01-45C4-A2D4-E09E8FB0424D` is Network Type, not location.
 5. Current source enables location control before its first GPS write and
    throttles subsequent writes to 10 seconds plus movement thresholds. Those
-   are furble policy choices. The official documents only establish that
-   location transmission exists, not this cadence or payload.
+   are furble policy choices. Official apps send a fix per request or on their
+   own cadence, not this exact policy.
 6. Current source treats power `0/1/2` and operation mode `0..4` as state
-   values and subscribes to power/mode/capture notifications. The values align
-   with the community document, but notification ordering, CCCD requirements,
-   and errors remain model/firmware-specific.
+   values and subscribes to power/mode/capture notifications. Official apps
+   subscribe to the multiplexed Camera Service Notification on GR III/IIIx.
+   Direct subscriptions may work, but notification ordering, CCCD
+   requirements, and errors remain model/firmware-specific.
 
 ## Future simulator and host-test targets
 
@@ -351,18 +397,22 @@ scoping. The minimum useful peers are separate, exact profiles:
 
 ## Open questions to resolve with captures
 
-- Exact GR III and GR IIIx GATT databases per firmware, including whether all
-  service UUIDs/properties are shared and which WLAN/power handles differ.
-- Exact SMP association: passkey entry/display direction, numeric comparison,
-  bond persistence, key size, and reconnect behavior on camera-side bond reset.
+- Exact GR III and GR IIIx GATT properties, CCCD requirements, and handles per
+  firmware. The service and characteristic UUIDs are shared with GR IV, but
+  properties and generation-specific state are not proven by UUID presence.
+- Exact SMP association per generation: passkey entry/display direction,
+  numeric comparison, bond persistence, key size, and reconnect behavior on
+  camera-side bond reset. GR IV firmware exposes numeric comparison; the
+  camera-side prompt and Just Works fallback still need a capture.
 - Whether GR III's Network Type rejection is universal, state-dependent, or an
   official-app session handshake requirement.
 - Operation Mode write permissions and shutter behavior in Capture, Playback,
   BLE Startup, Other, and PowerOffTransfer for each model.
 - Capture Status notification bytes, CCCD requirements, and physical image
   outcome timing.
-- GPS characteristic identity and the final payload byte: centisecond versus
-  WGS84 datum, plus coordinate byte order and timestamp semantics.
+- GR IV GPS final-byte handling. GR III/IIIx firmware parses the 32-byte layout
+  and the official apps write WGS84 datum `0`; a GR IV capture should confirm
+  that it does not expect a different datum or speed variant.
 - BLE-to-Wi-Fi coexistence, AP activation ownership, and exact HTTP behavior
   for GR III, GR IIIx, GR II, GR IV, and HDF variants.
 - Firmware/region differences and official-app behavior after future firmware
@@ -374,6 +424,10 @@ scoping. The minimum useful peers are separate, exact profiles:
 - [GR IIIx Operating Manual](https://www.ricoh-imaging.co.jp/english/support/man-pdf/gr-3x.pdf)
 - [GR II Operating Manual](https://www.ricoh-imaging.co.jp/english/support/man-pdf/gr-2.pdf)
 - [GR IV Operating Manual](https://www.ricoh-imaging.co.jp/resources/english/support/man-pdf/gr-4_en.pdf)
+- [GR III firmware 2.20](https://www.ricoh-imaging.co.jp/english/support/digital/gr3_s.html)
+- [GR IV firmware 1.20](https://www.ricoh-imaging.co.jp/english/support/digital/gr4_s.html)
+- [Ricoh Image Sync, Google Play](https://play.google.com/store/apps/details?id=com.ricohimaging.imagesync)
+- [Ricoh GR WORLD, Google Play](https://play.google.com/store/apps/details?id=com.ricohimaging.grworld)
 - [Ricoh GR World](https://www.ricoh-imaging.co.jp/english/products/app/gr-world/)
 - [Ricoh GR World FAQ](https://www.ricoh-imaging.co.jp/english/support/qa/gr-world/)
 - [dm-zharov/ricoh-gr-bluetooth-api, Unlicense, pinned commit](https://github.com/dm-zharov/ricoh-gr-bluetooth-api/tree/8c55b79928295f4c0f9a8b0f6f4e1015aeb3d016)
