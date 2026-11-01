@@ -487,6 +487,20 @@ void testSettings(void) {
                 "a uint32 setting saves");
   checkContains(runDirect("settings get scan_timeout").out, "value: 45", "the uint32 reads back");
 
+  checkContains(runDirect("settings set ivl_sleep_thr 60").out, "saved: ivl_sleep_thr",
+                "the sleep threshold saves");
+  checkContains(runDirect("settings get ivl_sleep_thr").out, "value: 60",
+                "the sleep threshold reads back");
+  const Result badThreshold = runDirect("settings set ivl_sleep_thr 60junk");
+  check(badThreshold.rc != 0, "the sleep threshold rejects trailing junk");
+  checkContains(badThreshold.out, "expected 0-999 seconds", "the range is named");
+  check(runDirect("settings set ivl_sleep_thr 1000").rc != 0,
+        "the sleep threshold rejects values above 999");
+  check(runDirect("settings set ivl_sleep_thr -1").rc != 0,
+        "the sleep threshold rejects negative values");
+  checkContains(runDirect("settings get ivl_sleep_thr").out, "value: 60",
+                "a rejected sleep threshold leaves the stored value alone");
+
   // Fix hold and extrapolation. The hold is the only uint8 with its own range
   // parser, and both of them have to reach the GPS reload, because a hold the
   // user set from the console that only took effect after a reboot would look

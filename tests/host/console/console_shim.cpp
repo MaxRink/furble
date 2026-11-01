@@ -176,6 +176,14 @@ BaseType_t xQueueReset(QueueHandle_t queue) {
   return pdTRUE;
 }
 
+UBaseType_t uxQueueMessagesWaiting(QueueHandle_t queue) {
+  if (queue == nullptr) {
+    return 0;
+  }
+  std::lock_guard<std::mutex> lock(queue->mutex);
+  return static_cast<UBaseType_t>(queue->items.size());
+}
+
 // --- FreeRTOS task model ----------------------------------------------------
 
 struct FurbleHostTask {

@@ -57,6 +57,9 @@ class Control {
 
     void task(void);
 
+    /** True when no queued camera command is pending or executing. */
+    bool idle(void) const;
+
    protected:
     std::atomic<bool> m_Stopped {false};
 
@@ -64,6 +67,7 @@ class Control {
     static constexpr UBaseType_t m_QueueLength = 8;
 
     QueueHandle_t m_Queue = NULL;
+    std::atomic<uint32_t> m_InFlight {0};
     // Owns a strong reference so the Camera outlives a CameraList::load() that
     // drops the list's reference while this target is still connecting or active.
     std::shared_ptr<Furble::Camera> m_Camera;
@@ -89,6 +93,9 @@ class Control {
   // Deep-sleep resume gives the camera and radio time to settle before its one
   // bounded retry. Ordinary bounded connects pass zero and retry immediately.
   static constexpr uint32_t RESUME_RETRY_GAP_MS = (3 * 1000);
+  // Bound the wait for the queued shutter release to reach the camera before
+  // a timed power off. A camera that does not acknowledge stays awake.
+  static constexpr uint32_t RESUME_RELEASE_WAIT_MS = (2 * 1000);
   static constexpr uint32_t DISCONNECT_TIMEOUT_MS = (1 * 1000);
   // Interactive disconnect safety cap. The interactive path waits for the
   // teardown to actually complete instead of force-completing, so this is only
@@ -118,6 +125,15 @@ class Control {
    * Send control command to active connections.
    */
   BaseType_t sendCommand(cmd_t cmd);
+
+  /**
+   * Wait until every target queue is empty and no camera command is executing.
+   *
+   * Bounded and lock-free across the wait: the mutex is only held while the
+   * target vector is inspected. Used before a timed power off so a queued
+   * shutter release reaches the camera first.
+   */
+  bool waitForCameraCommands(uint32_t timeout_ms);
 
   /**
    * Update GPS and timesync values.

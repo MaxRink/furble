@@ -594,12 +594,21 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     } break;
 
     case Settings::SCAN_TIMEOUT:
-    case Settings::IVL_SLEEP_THR:
     {
       char *end = nullptr;
       unsigned long value = strtoul(text, &end, 0);
       if (end == text) {
         return fail("expected seconds");
+      }
+      Settings::save<uint32_t>(setting.type, static_cast<uint32_t>(value));
+    } break;
+
+    case Settings::IVL_SLEEP_THR:
+    {
+      char *end = nullptr;
+      unsigned long value = strtoul(text, &end, 0);
+      if ((end == text) || (*end != '\0') || (value > 999)) {
+        return fail("expected 0-999 seconds");
       }
       Settings::save<uint32_t>(setting.type, static_cast<uint32_t>(value));
     } break;

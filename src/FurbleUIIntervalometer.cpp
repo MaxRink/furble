@@ -3,6 +3,7 @@
 #include <Preferences.h>
 #include <lvgl.h>
 
+#include "FurbleTimeKeeper.h"
 #include "FurbleTypes.h"
 #include "FurbleUI.h"
 #include "protocol/CameraListProtocol.h"
@@ -12,6 +13,18 @@ namespace Furble {
 namespace {
 constexpr int64_t MIN_VALID_EPOCH = 1577836800;
 constexpr int64_t MAX_VALID_EPOCH = 4102444800;
+
+/**
+ * True when the wall clock is authoritative enough to compare against a saved
+ * wake time. An NVS-restored sample is deliberately excluded: it does not
+ * advance across the power-off interval. The M5PM1 timer is the authority on
+ * that board, so its resume starts immediately instead of trusting a stale
+ * clock. The BM8563 path reports an RTC sample and is trusted.
+ */
+bool trustedWallClock(void) {
+  const auto status = TimeKeeper::getInstance().status();
+  return status.valid && (status.source != TimeSource::NVS);
+}
 
 SpinValue::nvs_t sleepThresholdNvs(void) {
   uint32_t seconds = Settings::load<uint32_t>(Settings::IVL_SLEEP_THR);
@@ -25,8 +38,10 @@ SpinValue::nvs_t sleepThresholdNvs(void) {
 
 bool UI::Intervalometer::validResume(const resume_state_t &state) {
   const auto validSpin = [](const SpinValue::nvs_t &value, bool allowInfinite) {
-    const uint8_t unit = static_cast<uint8_t>(value.unit);
-    return (value.value <= 999) && (unit <= SpinValue::UNIT_MIN)
+    // Do not narrow the packed enum to a byte. A persisted 258 would become
+    // UNIT_MS and later index the five-entry unit-name table out of bounds.
+    const int unit = static_cast<int>(value.unit);
+    return (value.value <= 999) && (unit >= SpinValue::UNIT_NIL) && (unit <= SpinValue::UNIT_MIN)
            && (allowInfinite || (unit != SpinValue::UNIT_INF));
   };
   if (!validSpin(state.interval.count, true) || !validSpin(state.interval.delay, false)
@@ -97,9 +112,19 @@ void UI::Intervalometer::loadResume(void) {
   }
 
   const int64_t now = static_cast<int64_t>(std::time(nullptr));
-  const bool clockValid = (now >= MIN_VALID_EPOCH) && (now <= MAX_VALID_EPOCH);
+  const bool clockValid =
+      trustedWallClock() && (now >= MIN_VALID_EPOCH) && (now <= MAX_VALID_EPOCH);
   const bool wakeTimeValid =
       (state.wake_time >= MIN_VALID_EPOCH) && (state.wake_time <= MAX_VALID_EPOCH);
+
+  // A zero wake time means the clock was unavailable at save time. Any other
+  // value must be in the supported epoch range, otherwise the resumed
+  // subtraction or an immediate-start decision would be nonsense.
+  if ((state.wake_time != 0) && !wakeTimeValid) {
+    ESP_LOGW(LOG_TAG, "Ignoring intervalometer resume with an out-of-range wake time");
+    clearResume();
+    return;
+  }
 
   if (!timedWake) {
     ESP_LOGW(LOG_TAG, "Ignoring intervalometer resume without a timed wake");
@@ -107,7 +132,7 @@ void UI::Intervalometer::loadResume(void) {
     return;
   }
 
-  if (clockValid && wakeTimeValid) {
+  if (clockValid && wakeTimeValid && (state.wake_time != 0)) {
     const int64_t delta = now - state.wake_time;
     if ((delta < -30) || (delta > 3600)) {
       ESP_LOGW(LOG_TAG, "Ignoring stale intervalometer resume state");
@@ -158,15 +183,19 @@ bool UI::Intervalometer::startResume(void) {
   m_Shutter.m_SpinValue = SpinValue(state.interval.shutter);
   m_Wait.m_SpinValue = SpinValue(state.interval.wait);
   m_CountShots = state.count;
-  const int64_t now = static_cast<int64_t>(std::time(nullptr));
-  const int64_t remaining = state.wake_time - now;
-  m_ResumeWaitMs = (remaining > 0 && remaining <= (UINT32_MAX / 1000))
-                       ? static_cast<uint32_t>(remaining * 1000)
-                       : 0;
+  int64_t remaining = 0;
+  if (trustedWallClock() && (state.wake_time >= MIN_VALID_EPOCH)
+      && (state.wake_time <= MAX_VALID_EPOCH)) {
+    const int64_t now = static_cast<int64_t>(std::time(nullptr));
+    if ((now >= MIN_VALID_EPOCH) && (now <= MAX_VALID_EPOCH)) {
+      remaining = state.wake_time - now;
+    }
+  }
+  const uint32_t wait_ms = (remaining > 0 && remaining <= (UINT32_MAX / 1000))
+                               ? static_cast<uint32_t>(remaining * 1000)
+                               : 0;
   clearResume();
-  m_ResumeWaitMs = (remaining > 0 && remaining <= (UINT32_MAX / 1000))
-                       ? static_cast<uint32_t>(remaining * 1000)
-                       : 0;
+  m_ResumeWaitMs = wait_ms;
 
   m_Count.updateLabels();
   m_Delay.updateLabels();
@@ -187,9 +216,22 @@ bool UI::Intervalometer::saveResume(uint32_t next_ms, uint8_t camera_id) {
   state.interval = {m_Count.m_SpinValue.toNVS(), m_Delay.m_SpinValue.toNVS(),
                     m_Shutter.m_SpinValue.toNVS(), m_Wait.m_SpinValue.toNVS()};
 
-  const int64_t now = static_cast<int64_t>(std::time(nullptr));
-  if ((now >= MIN_VALID_EPOCH) && (now <= MAX_VALID_EPOCH)) {
-    state.wake_time = now + (next_ms / 1000);
+  // Use the wall clock only to describe the deadline. When the clock is
+  // untrusted, a zero wake time means the M5PM1 timer is the authority and the
+  // resume starts immediately after a verified timed wake.
+  uint64_t now_s = 0;
+  const auto timeStatus = TimeKeeper::getInstance().status();
+  if (timeStatus.valid) {
+    now_s = timeStatus.epoch_us / 1000000ULL;
+  } else {
+    const int64_t now = static_cast<int64_t>(std::time(nullptr));
+    if ((now >= MIN_VALID_EPOCH) && (now <= MAX_VALID_EPOCH)) {
+      now_s = static_cast<uint64_t>(now);
+    }
+  }
+  if ((now_s >= static_cast<uint64_t>(MIN_VALID_EPOCH))
+      && (now_s <= static_cast<uint64_t>(MAX_VALID_EPOCH))) {
+    state.wake_time = static_cast<int64_t>(now_s) + (next_ms / 1000);
   }
 
   Preferences prefs;

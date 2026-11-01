@@ -1313,6 +1313,12 @@ bool UI::handleLeftLongPress(lv_indev_t *drv, bool pressed) {
 }
 
 void UI::navigateBack(void) {
+  // A modal owns input while it is open. A physical long press must not
+  // navigate the page behind it and run that page's exit handlers.
+  if (!m_ModalInputs.empty()) {
+    return;
+  }
+
   if ((m_MainMenu.main == nullptr) || !lv_obj_is_valid(m_MainMenu.main)) {
     return;
   }
@@ -5578,7 +5584,20 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
           lv_timer_resume(m_CamerasTimer);
         }
         if (ctx->ui->m_Intervalometer.hasResume()) {
-          ctx->ui->startIntervalometerResume();
+          const uint8_t resumeId = ctx->ui->m_Intervalometer.resumeCameraId();
+          bool resumeTarget = false;
+          for (const auto &target : control.getTargets()) {
+            if (CameraList::getCameraId(target->getCamera().get()) == resumeId) {
+              resumeTarget = true;
+              break;
+            }
+          }
+          if (resumeTarget) {
+            ctx->ui->startIntervalometerResume();
+          } else {
+            ESP_LOGW(LOG_TAG, "Intervalometer resume target is no longer connected");
+            ctx->ui->m_Intervalometer.clearResume();
+          }
         }
       }
       // The link is live: remember the session so a later drop shows the
@@ -5771,7 +5790,9 @@ void UI::intervalometer(lv_timer_t *timer) {
 
           if (camera_found) {
             const uint32_t sleep_seconds = (next / 1000) - Intervalometer::RESUME_WAKE_MARGIN_S;
-            if (interval->saveResume(next, camera_id)) {
+            if (!control.waitForCameraCommands(Control::RESUME_RELEASE_WAIT_MS)) {
+              ESP_LOGW(LOG_TAG, "Shutter release did not complete before sleep, staying awake");
+            } else if (interval->saveResume(next, camera_id)) {
               const std::time_t wake_time =
                   std::time(nullptr) + static_cast<std::time_t>(sleep_seconds);
               std::tm wake_tm = {};
@@ -6966,7 +6987,17 @@ void UI::addConnectMenu(void) {
   // doConnect stacked one callback per attempt, so after N attempts a single
   // Cancel click fired N disconnects.
   lv_obj_add_event_cb(
-      m_ConnectContext.cancel, [](lv_event_t *e) { doDisconnect(); }, LV_EVENT_CLICKED, NULL);
+      m_ConnectContext.cancel,
+      [](lv_event_t *e) {
+        auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+        if (ui != nullptr) {
+          // An explicit cancel ends the resumed run. Without this the next
+          // connect could start the old interval on a different camera.
+          ui->m_Intervalometer.clearResume();
+        }
+        doDisconnect();
+      },
+      LV_EVENT_CLICKED, this);
   lv_obj_t *footer = lv_msgbox_get_footer(m_ConnectContext.messageBox);
   lv_obj_update_layout(footer);
   // @todo cancel button bottom is clipped, weird
