@@ -418,6 +418,55 @@ bool testRicohBondPolicy() {
   };
   return check(runSavedFailure(), "saved Ricoh reconnect preserves its bond");
 }
+
+// A peer connection-parameter request must only block the idle transition when
+// it asks for a rate faster than the idle profile. A camera that renegotiates
+// at 250 to 300 ms is already where the saver wants to be, and treating that
+// as an override disables the saver for the whole session. Evidence:
+// opportunity matrix P-005 / ble lane BLE-18.
+bool testPeerOverrideOnlyForFasterRequests() {
+  const auto applied = [](NimBLEClient *client) {
+    while (client->mockConnParamUpdatePending()) {
+      client->getConnInfo();
+    }
+    return client->getConnInfo();
+  };
+
+  const auto run = [&](uint16_t interval, bool idleExpected, const char *message) {
+    NimBLEDevice::resetMock();
+    Furble::Device::init(ESP_PWR_LVL_P3);
+    Furble::Host::FujifilmVirtualCamera peer;
+    NimBLEDevice::setMockPeer(&peer);
+    const auto advertisement = peer.advertisement();
+    Furble::FujifilmBasic camera(&advertisement);
+    if (!check(camera.connect(ESP_PWR_LVL_P3, 1000), "the camera connects"))
+      return false;
+    NimBLEClient *client = NimBLEDevice::lastClient();
+    if (!check(client != nullptr, "the connect leaves a client"))
+      return false;
+    camera.setConnSaverEnabled(true);
+
+    ble_gap_upd_params params = {};
+    params.itvl_min = interval;
+    params.itvl_max = static_cast<uint16_t>(interval + 20);
+    params.latency = (interval < 100) ? 1 : 0;
+    params.supervision_timeout = 700;
+    if (!check(client->mockPeerRequestConnParams(params), "the peer request is accepted"))
+      return false;
+    if (!check(applied(client).getConnInterval() == interval,
+               "the peer parameters are live before the idle tick"))
+      return false;
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(CONN_SAVER_IDLE_WAIT_MS));
+    camera.maybeSetIdle();
+    const uint16_t live = applied(client).getConnInterval();
+    const bool idle = live >= 200 && live <= 240;
+    return check(idle == idleExpected, message);
+  };
+
+  return run(250, true, "a 250 ms peer request does not block the idle transition")
+         && run(30, false, "a 30 ms peer request keeps the peer override and leaves the link fast");
+}
 }  // namespace
 
 int main() {
@@ -429,6 +478,7 @@ int main() {
                  && testNullAndMissingIdentifierBoundaries() && testNullNikonCallbacks()
                  && testSecureRegistrationDropStopsGATT() && testRicohBondPolicy()
                  && testUnnamedCameraDisplayName() && testConnSaverIdleTransition()
+                 && testPeerOverrideOnlyForFasterRequests()
              ? 0
              : 1;
 }

@@ -333,6 +333,11 @@ class GPS {
   /** Current receiver detection state. */
   receiver_state_t getReceiverState(void) const;
 
+#if defined(FURBLE_SIM)
+  /** Disabled-path loop iterations, used by the power scenarios. */
+  uint32_t simIdleWakes(void) const { return m_SimIdleWakes.load(); }
+#endif
+
   /** Baud the autobaud ladder locked, or the configured fixed baud, 0 if none. */
   uint32_t getDetectedBaud(void) const;
 
@@ -623,6 +628,9 @@ class GPS {
   uint32_t m_ResyncDeadline = 0;
   // bounds a degraded retry probe, a stale prediction must not latch ACQUIRING
   uint32_t m_ProbeDeadline = 0;
+  // A stored fixed baud entered ACQUIRING without an autobaud proof. Cleared
+  // by the first burst; a probe timeout while set means the unit is absent.
+  bool m_FixedBaudProbe = false;
   GpsDegradedRetry m_Degraded;
   uint32_t m_LastBurstStart = 0;
   std::array<uint32_t, 5> m_PeriodSamples = {};
@@ -687,6 +695,9 @@ class GPS {
   std::atomic<uint32_t> m_DetectedBaud {0};
   Casic::Autobaud m_Autobaud;
   std::atomic<bool> m_ProbePending = false;
+#if defined(FURBLE_SIM)
+  std::atomic<uint32_t> m_SimIdleWakes {0};
+#endif
   uint32_t m_NoReceiverRetryAt = 0;
   bool m_NoReceiverRetried = false;
 

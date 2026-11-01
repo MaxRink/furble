@@ -46,7 +46,7 @@ Rank groups:
 
 ## Safe now
 
-Three safe-now rows are implemented in this branch. See section
+Seven safe-now rows are implemented in this branch. See section
 "Implemented safe-now changes" for the code and test evidence.
 
 | ID | Lane | Current behavior | Proposed change | Evidence | Est. saving | Risk | Effort | Required test | Priority | Lane source |
@@ -101,10 +101,18 @@ evidence label from the lane and adds the test that now guards it.
 | P-001 | First-boot discovery scan timeout is 60 s instead of Never. An explicit Never is stored unchanged. | `src/FurbleSettings.cpp` `Settings::init` | e2e `scan-default-timeout`: `scan.timeout = 60`, the scan ends and the end callback runs | implemented |
 | P-002 | A sleeping panel stops an active discovery scan and reveals the finished panel. | `src/FurbleUI.cpp` `UI::sleepDisplay` | e2e `scan-stops-on-panel-sleep`: `scan.active` goes from yes to no at panel sleep | implemented |
 | P-003 | The connect initiator scan runs at 32/16 units (20 ms interval, 10 ms window, 50 percent duty) instead of the library default 16/16. | `lib/furble/Camera.{h,cpp}` | host `ricoh-focus`: the connected client records `scanIntervalUnits() == 32` and `scanWindowUnits() == 16` | implemented |
+| P-005 | A peer connection-parameter request only blocks the idle transition when it asks for a rate faster than the idle profile. A 250 to 300 ms request no longer disables the saver. | `lib/furble/Camera.cpp` | host `camera-regression`: 250 ms request still reaches idle; 30 ms request keeps the fast link | implemented |
+| P-009 | The disabled GPS task blocks on its queue instead of waking ten times per second. | `src/FurbleGPS.cpp` | e2e `gps-disabled-idle`: three disabled-branch entries over 5 s instead of about 50 | implemented |
+| P-011 | A stored fixed GPS baud arms an acquisition deadline. A silent receiver drops the rail and the wake lock instead of holding `NO_LIGHT_SLEEP` forever. | `src/FurbleGPS.cpp`, `include/FurbleGPS.h` | e2e `gps-fixed-baud-absent`: present to absent, `power.no_light_sleep` 0 | implemented |
+| P-014 | A sleeping panel skips the RGB swap and DMA push, reports the flush complete, waitDMA before SLPIN, and full-invalidates on wake. | `src/FurbleUI.cpp` | e2e `screen-off-flush-gate`: suppressed flushes with no push; `blind-remote-shutter` model 40.50 mA vs 43.65 mA baseline (-7.2 percent) | implemented |
 
 The modeled saving for these rows is unchanged and still unmeasured. P-001 and
 P-002 bound a worst case; they do not change steady-state current. P-003 halves
-receive duty for the duration of a connect attempt, which is seconds.
+receive duty for the duration of a connect attempt, which is seconds. P-005 has
+no direct saving but re-enables the idle profile on peers that renegotiate.
+P-009 and P-011 are task and fault-path fixes. P-014 shows up in the power-gate
+model as a 7.2 percent drop in the blind-remote scenario; that is a modeled
+delta, not a current measurement.
 
 ## Needs measurement
 

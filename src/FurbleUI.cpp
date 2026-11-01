@@ -491,6 +491,9 @@ UI::UI(const interval_t &interval)
   // configure display
   m_Display = lv_display_create(m_Width, m_Height);
   lv_display_set_default(m_Display);
+  // The flush callback is static because LVGL calls it through a function
+  // pointer. Carry the instance so it can read the panel state.
+  lv_display_set_user_data(m_Display, this);
   lv_display_set_flush_cb(m_Display, displayFlush);
 
   // configure display buffers
@@ -1672,6 +1675,9 @@ void UI::sleepDisplay(void) {
     }
   }
 
+  // Do not enter SLPIN with a frame still in flight; the panel would be
+  // commanded to sleep mid-transfer.
+  M5.Display.waitDMA();
   M5.Display.sleep();
   m_SleepTick = tick();
   m_DisplayOff = true;
@@ -1705,6 +1711,9 @@ void UI::wakeDisplay(void) {
   M5.Display.wakeup();
   m_WakeTick = tick();
   m_DisplayOff = false;
+  // Flushes were skipped while the panel slept, so LVGL believes the old
+  // frame is still on the glass. Redraw the active screen once.
+  lv_obj_invalidate(lv_screen_active());
   m_DisplayState = DisplayState::ACTIVE;
   Platform::getInstance().setDisplayOff(false);
   Feedback::getInstance().setDisplayOff(false);
@@ -1736,6 +1745,19 @@ size_t UI::inactivityIndex(uint8_t value) {
 void UI::displayFlush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map) {
   uint32_t w = (area->x2 - area->x1 + 1);
   uint32_t h = (area->y2 - area->y1 + 1);
+  auto *ui = static_cast<UI *>(lv_display_get_user_data(disp));
+
+  if ((ui != nullptr) && ui->m_DisplayOff) {
+    // The panel is in SLPIN. Swapping and pushing pixels nobody can see costs
+    // CPU, bus time, and a DMA completion for no output. Report the flush as
+    // done so LVGL can keep its bookkeeping moving; wakeDisplay() invalidates
+    // the screen so the next visible frame is complete.
+#if defined(FURBLE_SIM)
+    ui->m_FlushedWhileOff++;
+#endif
+    lv_disp_flush_ready(disp);
+    return;
+  }
 
 #if defined(FURBLE_SIM)
   Sim::profilerFlushedPixels(static_cast<uint64_t>(w) * h);
@@ -5240,6 +5262,15 @@ std::string UI::simQueryState(const char *key) {
     }
     return "warn";
   }
+
+#if defined(FURBLE_SIM)
+  // Flush callbacks LVGL issued while the panel was in SLPIN. displayFlush()
+  // returns before any swap or push in that state, so a non-zero count proves
+  // the scenario exercised a redraw while off without paying for it.
+  if (query == "flushes_suppressed_off") {
+    return std::to_string(m_FlushedWhileOff);
+  }
+#endif
 
   if (query == "page") {
     lv_obj_t *page = lv_menu_get_cur_main_page(m_MainMenu.main);

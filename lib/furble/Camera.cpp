@@ -1234,7 +1234,14 @@ bool Camera::onConnParamsUpdateRequest(NimBLEClient *pClient, const ble_gap_upd_
 
   // Accept the peer values and do not immediately fight them with our own
   // request. A later shutter or focus press starts a new fast-profile cycle.
-  m_PeerOverride = true;
+  //
+  // Only a request that is faster than our idle profile owns the link. A peer
+  // that asks for the idle range (or slower) is already at the rate the saver
+  // wants, and setting the override would disable the saver for the whole
+  // session with no benefit. This is what lets the inactivity transition still
+  // reach IDLE after a camera renegotiates at connect.
+  const bool fasterThanIdle = (params != nullptr) && (params->itvl_max < m_IdleMinInterval);
+  m_PeerOverride = (params == nullptr) || fasterThanIdle;
   m_LastRequestValid = false;
   m_LastRequestSucceeded = false;
   return true;

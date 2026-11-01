@@ -1141,6 +1141,8 @@ class UI {
   uint32_t m_GestureEvents = 0;
   uint32_t m_GestureShutterSends = 0;
   const char *m_GestureLast = "none";
+  // Flush callbacks that arrived while the panel was in SLPIN. Must stay zero.
+  uint64_t m_FlushedWhileOff = 0;
 #endif
   std::vector<lv_obj_t *> m_IMUGestureWidgets;
 

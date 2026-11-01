@@ -216,7 +216,13 @@ void GPS::task(void) {
     if (!m_Enabled) {
       serviceLock.unlock();
       releasePowerLock();
-      vTaskDelay(pdMS_TO_TICKS(100));
+      // Sleep until enable() or disable() wakes the service. The old 100 ms
+      // delay woke the task ten times a second for no work while GPS is off.
+#if defined(FURBLE_SIM)
+      m_SimIdleWakes++;
+#endif
+      uart_event_t idleEvent;
+      xQueueReceive(m_Queue, &idleEvent, portMAX_DELAY);
       continue;
     }
 
@@ -310,6 +316,7 @@ void GPS::resetAcquisition(uint32_t now) {
   m_SimFreshFixesParsed = 0;
 #endif
   m_CycleRequest = false;
+  m_FixedBaudProbe = false;
   (void)now;
 }
 
@@ -384,6 +391,14 @@ void GPS::enable(void) {
       m_ConfigChars = getStatusSnapshot().chars_processed;
       m_ConfigStart = Platform::getInstance().tick();
       m_ConfigPending = true;
+
+      // A stored fixed baud is only a claim that a receiver is attached. Arm
+      // the same acquisition deadline the degraded retry uses, so a silent
+      // unit falls back instead of holding the wake lock forever. The first
+      // burst clears the flag; a timeout while it is set means the unit is
+      // absent at that rate.
+      m_FixedBaudProbe = true;
+      m_ProbeDeadline = m_ConfigStart + DEGRADED_PROBE_MS;
     }
   }
 
@@ -656,7 +671,18 @@ void GPS::serviceCycle(void) {
       // a degraded retry probe must not latch here when no burst arrives, give
       // up again on the bounded backoff instead of holding the lock forever
       if (!m_BurstActive && (m_ProbeDeadline != 0) && tickReached(now, m_ProbeDeadline)) {
-        enterDegraded();
+        if (m_FixedBaudProbe) {
+          // No sentence ever arrived at the stored rate. Treat it like a
+          // failed autobaud: drop the rail and the wake lock, then retry once
+          // after the absent backoff instead of pinning NO_LIGHT_SLEEP.
+          // onProbeFailed() takes m_CycleMutex, so release it first.
+          m_FixedBaudProbe = false;
+          lock.unlock();
+          onProbeFailed(now);
+          return;
+        } else {
+          enterDegraded();
+        }
       }
       break;
 
@@ -744,6 +770,7 @@ void GPS::beginBurst(uint32_t now) {
 
   if (m_CycleState == cycle_state_t::ACQUIRING) {
     // a burst arrived, the acquisition or degraded retry probe succeeded
+    m_FixedBaudProbe = false;
     m_ProbeDeadline = 0;
     if (m_ExpectedInterval == 0) {
       m_CycleState = cycle_state_t::MEASURING;

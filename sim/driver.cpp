@@ -1384,6 +1384,9 @@ std::string queryValue(const std::string &key) {
       prefs.end();
       return std::to_string(length);
     }
+    if (sub == "idle_wakes") {
+      return std::to_string(gps.simIdleWakes());
+    }
     if (sub == "state") {
       return Furble::Sim::profilerGpsState();
     }
