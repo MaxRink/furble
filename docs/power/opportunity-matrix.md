@@ -46,7 +46,7 @@ Rank groups:
 
 ## Safe now
 
-Nineteen safe-now rows are implemented in this branch. See section
+Twenty-one safe-now rows are implemented in this branch. See section
 "Implemented safe-now changes" for the code and test evidence.
 
 | ID | Lane | Current behavior | Proposed change | Evidence | Est. saving | Risk | Effort | Required test | Priority | Lane source |
@@ -117,6 +117,8 @@ evidence label from the lane and adds the test that now guards it.
 | P-034 | `WiFi::init()` creates nothing unless the setting is on and an SSID is saved; the first `connect()` creates the netif, handlers, and worker. | `src/FurbleWiFi.cpp` | host `real-wifi-lifecycle`: zero netif, handler, and task calls on a disabled init; one each after enable | implemented |
 | P-013 | Each camera task idles at 250 ms instead of 50 ms; commands still wake the queue immediately. | `src/FurbleControl.cpp` | e2e `target-idle-cadence`: 80 idle ticks over 20 s | implemented |
 | P-008 | Power-lock acquire/release and the Lumix GPS per-fix path log at DEBUG, and the GPS command/poll lines are demoted. | `src/FurblePower.cpp`, `lib/furble/Lumix.cpp`, `lib/furble/FauxNY.cpp`, `lib/furble/NikonSmart.cpp`, `src/FurbleGPS.cpp` | `tools/check_hot_path_logs.py` plus `tests/test_hot_path_logs.py` | implemented |
+| P-032 | A wired address defers the station. The worker rechecks every 5 s, restarts the station when the wire drops, and stops it if the wire returns. | `src/FurbleWiFi.cpp` | host `real-wifi-lifecycle` with the injected Ethernet transport: deferral set while linked, cleared and re-armed after link-down | implemented |
+| P-020 | The M5PM1 button is polled every 20 ms instead of every 5 ms UI pass. | `src/FurblePlatform.cpp`, `include/FurblePlatformPolicy.h` | host `pm1-poll-policy`: 19 ms not due, 20 ms due, wrap-safe; hardware click/soak remains in the row test | implemented |
 
 The modeled saving for these rows is unchanged and still unmeasured. P-001 and
 P-002 bound a worst case; they do not change steady-state current. P-003 halves
@@ -131,7 +133,15 @@ from a release artifact and has no battery claim. P-028 ends a permanent
 retry loop in the failure case. P-029 and P-033 reduce join-scan probe traffic
 and steady-state retry frequency. P-034 removes the idle Wi-Fi task and netif.
 P-013 cuts camera-task idle wakeups fivefold. P-008 removes hot-path INFO
-logging and adds a guard against its return.
+logging and adds a guard against its return. P-032 removes the station on a
+wired node. P-020 cuts the PM1 button bus traffic tenfold.
+
+One safe-now row is deliberately not applied in this batch:
+
+- P-018 (staged dim-to-off) adds a persisted display mode, a settings roller
+  entry, documentation, and regenerated walkthrough screenshots. It is a UI
+  feature rather than a mechanical power change and belongs in its own batch so
+  the screenshots can be reviewed with it.
 
 Three safe-now rows are deliberately not applied yet:
 

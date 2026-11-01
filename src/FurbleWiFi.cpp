@@ -1,4 +1,5 @@
 #include "FurbleWiFi.h"
+#include "FurbleEthernet.h"
 
 #include <algorithm>
 #include <array>
@@ -48,6 +49,9 @@ constexpr uint32_t RETRY_MAX_MS = 300 * 1000;
 // reconnects; a wrong passphrase does not and is stopped immediately.
 constexpr uint32_t NO_AP_MAX_ATTEMPTS = 6;
 constexpr uint32_t TRANSIENT_MAX_ATTEMPTS = 10;
+// Recheck cadence while a wired address owns the network, and while connected
+// so the station can stop when the wire comes back.
+constexpr uint32_t WIRED_RECHECK_MS = 5000;
 constexpr size_t TASK_STACK = 4096;
 
 esp_netif_t *g_StaNetif = nullptr;
@@ -71,6 +75,7 @@ uint32_t g_RetryDelayMs = 0;
 uint32_t g_DirectFailures = 0;
 uint32_t g_ConnectAttempts = 0;
 bool g_StoppedForReason = false;
+bool g_DeferredForWired = false;
 uint8_t g_LastDisconnectReason = 0;
 bool g_ScanAttempted = false;
 bool g_ScanShowHidden = false;
@@ -81,6 +86,10 @@ enum class DisconnectClass : uint8_t {
   NO_AP,
   TRANSIENT,
 };
+
+bool wiredNetworkActive(void) {
+  return Ethernet::isConnected();
+}
 
 DisconnectClass classifyDisconnect(uint8_t reason) {
   switch (reason) {
@@ -377,6 +386,22 @@ uint32_t takeRetryDelay(void) {
   return delay + jitter;
 }
 
+// Restart the station when the wired address that deferred it disappears.
+bool serviceWiredDeferral(void) {
+  if (!g_DeferredForWired) {
+    return false;
+  }
+  if (wiredNetworkActive()) {
+    return false;
+  }
+
+  {
+    const std::lock_guard<std::mutex> lock(g_StateMutex);
+    g_DeferredForWired = false;
+  }
+  return WiFi::connect();
+}
+
 bool scanForNetwork(void) {
   if (Control::getInstance().getState() == Control::STATE_ACTIVE) {
     ESP_LOGW(LOG_TAG, "refusing to scan while a camera is connected");
@@ -453,6 +478,13 @@ bool connectAttempt(void) {
 void wifiTask(void *) {
   while (true) {
     uint32_t notification = 0;
+
+    if (g_DeferredForWired) {
+      xTaskNotifyWait(0, UINT32_MAX, &notification, pdMS_TO_TICKS(WIRED_RECHECK_MS));
+      (void)serviceWiredDeferral();
+      continue;
+    }
+
     xTaskNotifyWait(0, UINT32_MAX, &notification, portMAX_DELAY);
 
     while (g_ConnectRequested && !g_Connected) {
@@ -482,8 +514,16 @@ void wifiTask(void *) {
         continue;
       }
 
-      xTaskNotifyWait(0, UINT32_MAX, &notification, portMAX_DELAY);
+      // Wake periodically so the station can stop when the wire comes back.
+      xTaskNotifyWait(0, UINT32_MAX, &notification, pdMS_TO_TICKS(WIRED_RECHECK_MS));
       if (!g_ConnectRequested || g_Connected) {
+        if (g_Connected && wiredNetworkActive()) {
+          WiFi::disconnect();
+          {
+            const std::lock_guard<std::mutex> lock(g_StateMutex);
+            g_DeferredForWired = true;
+          }
+        }
         break;
       }
     }
@@ -629,8 +669,20 @@ bool WiFi::connect(void) {
     return false;
   }
 
+  if (wiredNetworkActive()) {
+    // A wired node already has an address. Starting the station would add a
+    // second radio and a second DHCP client for nothing. Keep the request
+    // pending and let the worker restart it when the wire drops.
+    const std::lock_guard<std::mutex> lock(g_StateMutex);
+    g_DeferredForWired = true;
+    g_ConnectRequested = false;
+    notify(NOTIFY_EVENT);
+    return true;
+  }
+
   {
     std::lock_guard<std::mutex> lock(g_StateMutex);
+    g_DeferredForWired = false;
     g_ConnectRequested = true;
     g_RetryDelayMs = 0;
     g_DirectFailures = 0;
@@ -647,6 +699,7 @@ void WiFi::disconnect(void) {
   {
     std::lock_guard<std::mutex> lock(g_StateMutex);
     g_ConnectRequested = false;
+    g_DeferredForWired = false;
     g_Connected = false;
     g_GotIp = false;
     g_Ip.clear();
@@ -746,6 +799,14 @@ WiFi::status_t WiFi::getStatus(void) {
 }
 
 #if defined(FURBLE_WIFI_HOST_TEST)
+bool WiFi::hostServiceWired(void) {
+  return serviceWiredDeferral();
+}
+
+bool WiFi::hostDeferredForWired(void) {
+  return g_DeferredForWired;
+}
+
 bool WiFi::hostScanForNetwork(void) {
   return scanForNetwork();
 }

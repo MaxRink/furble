@@ -2,12 +2,14 @@
 #include <cstring>
 #include <iostream>
 #include "FurbleControl.h"
+#include "FurbleEthernet.h"
 #include "FurbleSettings.h"
 #include "FurbleWiFi.h"
 #include "esp_event.h"
 #include "esp_netif.h"
 #include "esp_netif_sntp.h"
 #include "esp_wifi.h"
+#include "eth/MockEthNetif.h"
 #include "freertos/task.h"
 
 namespace Furble {
@@ -212,6 +214,27 @@ int main() {
       || require(last_show_hidden == 0, "join scan requested hidden results")) {
     return 14;
   }
+
+  // P-032: a wired address defers the station. When the wire drops, the
+  // service check re-arms the connection request.
+  FurbleHost::MockEthNetif wired;
+  if (!Furble::Ethernet::init(wired))
+    return 15;
+  wired.emitLinkUp();
+  wired.emitGotIp("192.0.2.10");
+  if (!Furble::Ethernet::isConnected())
+    return 16;
+  if (!Furble::WiFi::connect())
+    return 17;
+  if (require(Furble::WiFi::hostDeferredForWired(), "a wired address did not defer the station")) {
+    return 18;
+  }
+  wired.emitLinkDown();
+  if (require(Furble::WiFi::hostServiceWired(), "wire drop did not re-arm the station")
+      || require(!Furble::WiFi::hostDeferredForWired(), "deferral survived the wire drop")) {
+    return 19;
+  }
+  Furble::Ethernet::stop();
 
   std::cout << "real wifi lifecycle: PASS\n";
   return 0;

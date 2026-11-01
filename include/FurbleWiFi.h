@@ -80,6 +80,10 @@ class WiFi {
   static bool getNtpTimesync(Camera::timesync_t &timesync);
 
 #if defined(FURBLE_WIFI_HOST_TEST)
+  /** Run one wired-deferral check, as the worker does every 5 s. */
+  static bool hostServiceWired(void);
+  /** True while a wired address holds the station off. */
+  static bool hostDeferredForWired(void);
   /** Run the join scan once so a host test can inspect its configuration. */
   static bool hostScanForNetwork(void);
 #endif

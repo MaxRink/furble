@@ -188,10 +188,14 @@ target_compile_options(time_keeper_persistence_test PRIVATE -Wall -Wextra -Werro
 # case is a fresh process so load status and the process-local store are reset.
 add_executable(real_wifi_lifecycle_test
                wifi/real_wifi_test.cpp
-               ${FURBLE_ROOT}/src/FurbleWiFi.cpp)
+               eth/MockEthNetif.cpp
+               ${FURBLE_ROOT}/src/FurbleWiFi.cpp
+               ${FURBLE_ROOT}/src/FurbleEthernet.cpp)
 target_include_directories(real_wifi_lifecycle_test BEFORE PRIVATE
+                           ${CMAKE_CURRENT_SOURCE_DIR}
                            ${CMAKE_CURRENT_SOURCE_DIR}/wifi/stubs
                            ${FURBLE_ROOT}/include)
+target_link_libraries(real_wifi_lifecycle_test PRIVATE Threads::Threads)
 target_compile_definitions(real_wifi_lifecycle_test PRIVATE FURBLE_WIFI_HOST_TEST)
 target_compile_options(real_wifi_lifecycle_test PRIVATE -Wall -Wextra -Werror
                                                          -Wno-unused-parameter)
@@ -203,6 +207,13 @@ target_include_directories(actualPreferencesSim PRIVATE
                            ${FURBLE_ROOT}/lib/preferences)
 target_compile_options(actualPreferencesSim PRIVATE -Wall -Wextra -Werror
                                                      -Wno-unused-parameter)
+
+# The PMIC button is polled from the 5 ms UI loop. This policy test proves the
+# 20 ms throttle and the wrap-safe tick arithmetic.
+add_executable(pm1_poll_policy_test pm1_poll_policy_test.cpp)
+target_include_directories(pm1_poll_policy_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(pm1_poll_policy_test PRIVATE -Wall -Wextra -Werror)
+add_test(NAME pm1-poll-policy COMMAND pm1_poll_policy_test)
 
 # The PMIC is a separate chip from the ESP32. Its watchdog and download lock
 # therefore survive an ESP32 reset and must be modeled as retained state.
