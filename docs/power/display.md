@@ -4,7 +4,7 @@ Status: research lane, display and UI. This file is an evidence base, not a
 release gate.
 
 Measurement status: no hardware current measurement was made for this lane.
-Every millamp figure below is a simulator model estimate, a datasheet figure, a
+Every milliamp figure below is a simulator model estimate, a datasheet figure, a
 published measurement made by someone else, or an explicit inference. The
 committed simulator baselines are relative model evidence, not hardware
 measurements. Plan 158 still gates any absolute claim.
@@ -92,10 +92,11 @@ The model overstates the active default because `sim/power_profiler.cpp:1232-123
 charges `display_panel_on + display_backlight` for every millisecond in the `on`
 state. It never reads `Settings::BRIGHTNESS`. The firmware default is 128 and
 the slider maximum is 240, so the committed 81.2 mA figure is an upper bound at
-an unreachable full-brightness setting, not the out-of-box default. Plan 98 and
-plan 63 both describe the baseline as full brightness; the scenario does not
-seed 255 (`sim/scenarios/menu-idle-30s.txt`). Correct the label or the model
-before quoting 81.2 mA as the default case.
+a full-brightness setting the UI slider cannot select, not the out-of-box
+default. Plan 63 describes the baseline as full brightness; plan 98 calls the
+same number default brightness. The scenario does not seed 255
+(`sim/scenarios/menu-idle-30s.txt`). Correct the label or the model before
+quoting 81.2 mA as the default case.
 
 ## What is already good, and should not regress
 
@@ -212,8 +213,8 @@ absolute model.
 
 - Change: in `displayFlush`, if the panel is off, call `lv_disp_flush_ready`
   without `lv_draw_sw_rgb565_swap` and `pushImageDMA`. On wake, invalidate the
-  full screen once before the next render. Optionally set the display refresh
-  period to zero while off.
+  full screen once before the next render. Optionally suspend the LVGL refresh
+  timer while off.
 - Current behavior: the icon timer is paused, but the inactivity, battery, GPS,
   and connect timers still run, and any invalidation is rendered and pushed to a
   panel in SLPIN. The committed blind-remote baseline records 31,301 flushed
@@ -238,9 +239,10 @@ absolute model.
 ### D-004 Make battery labels changed-only and page-visible only
 
 - Change: use the existing `setLabelIfChangedFmt` and `setLabelTextIfChanged`
-  helpers for the battery page rows and the header battery label. Skip the page
-  row writes unless the Battery page is the active menu page, and call
-  `lv_timer_ready` when the page opens so the first view is current.
+  helpers for the battery page rows. The header label is already changed-only in
+  the icon timer. Skip the page row writes unless the Battery page is the active
+  menu page, and call `lv_timer_ready` when the page opens so the first view is
+  current.
 - Current behavior: `batteryUpdate` runs every 5 s and unconditionally writes up
   to five labels. The labels are created at UI construction, so they exist even
   when the page is hidden. The timer also has to run for the low-battery policy,
@@ -251,6 +253,7 @@ absolute model.
 - Estimated saving: below 0.5 mA inferred. The value is fewer invalidations and
   less hidden-page rendering, not a large current term.
 - Risk: low.
+- Effort: small.
 - Required test: extend `redraw-steady` to menu idle and the Battery page;
   assert the invalidation count stays low and values still update within one
   sample period; check the header battery label and icon.
@@ -366,7 +369,7 @@ absolute model.
   Saver the default. Keep an opt-out. This is a policy change, not a mechanism.
 - Current behavior: fresh NVS gets brightness 128, inactivity 0 (Never), and
   screen off 0 (Dim). Battery Saver is opt-in and off by default. A user who
-  never opens Settings leaves the panel on at full model brightness forever.
+  never opens Settings leaves the panel on at the stored brightness forever.
 - Evidence: modeled plus the plan 98, 77, and 111 analyses. The committed
   menu-idle baseline is 81.2 mA on the model's full-brightness basis, about
   63.8 mA inferred at the actual default brightness. Screen off is 0.25 mA
@@ -375,8 +378,9 @@ absolute model.
   brightness, after the timeout. This is the largest user-visible saving in the
   lane, but it is a product decision and it is not measured.
 - Risk: medium to high. Users may think the device died. On M5Stack Core the
-  IP5306 hard-powers-off after 32 s below 45 mA, so "screen off" there is
-  effectively "device off". Accessibility and outdoor use also matter.
+  IP5306 hard-powers-off after 32 s below 45 mA, so a disconnected screen-off
+  state there is effectively device off. Accessibility and outdoor use also
+  matter.
 - Effort: small code change, large verification and documentation effort.
 - Required test: fresh NVS boot on all five release boards; confirm the timeout
   and mode; confirm Core behavior is documented; 30 minute soak per board;
@@ -397,8 +401,8 @@ absolute model.
 - Evidence: code-cited plus modeled backlight. The S3 full backlight is
   estimated at 35 mA. A 32 count change is about 4.4 mA inferred.
 - Estimated saving: 128 to 96 about 4.4 mA inferred; 128 to 64 about 8.8 mA
-  inferred. S3 only. AXP192 boards are voltage dimmed and nonlinear; measure
-  them separately.
+  inferred. That is per 32 brightness counts, two slider steps. S3 only. AXP192
+  boards are voltage dimmed and nonlinear; measure them separately.
 - Risk: medium. Outdoor readability and user preference. A darker default can
   make the device look dim.
 - Effort: small.
@@ -412,8 +416,9 @@ absolute model.
 
 - Change: add the effective brightness to the simulated display state, charge
   the backlight proportionally for the S3 PWM path, use the real dim floor per
-  board, and add a 40 MHz MCU row. Keep the current full-brightness field as a
-  separate calibration anchor.
+  board, and add a 40 MHz operating point from a measurement or a suitable
+  datasheet row. Keep the current full-brightness field as a separate
+  calibration anchor.
 - Current behavior: the model charges 35 mA for any `on` state and 32/255 of 35
   for any `dim` state, regardless of `Settings::BRIGHTNESS`, the 48 dim floor on
   StickC and StickC Plus, or the AXP192 voltage curve.
@@ -434,7 +439,7 @@ absolute model.
 ### D-012 Lower the panel frame rate while idle
 
 - Change: use the ST7789 `FRCTRL2` command to run a lower panel refresh rate
-  when the UI is idle, and restore 60 Hz for animation or video-like pages.
+  when the UI is idle, and restore 60 Hz for animated pages.
 - Current behavior: the panel runs at its configured rate, about 60 Hz, and
   self-refreshes from GRAM. LVGL only writes when invalidated. The datasheet
   Table 3 current is specified at 60 Hz only.
@@ -442,12 +447,16 @@ absolute model.
   the saving is unknown.
 - Estimated saving: likely below 1 mA. Drop the idea if the bench does not show
   at least a 1 mA panel current reduction.
-- Risk: medium. Flicker, tearing, and interaction with LVGL's own refresh.
+- Risk: medium. Flicker, tearing, and interaction with LVGL's own refresh. M5GFX
+  deliberately leaves `FRCTRL2` out of its ST7789 init sequence because panel
+  variants in this class have different specifications, so this must be board
+  scoped and verified.
 - Effort: medium, because M5GFX has no high-level frame rate API for this.
 - Required test: panel current at 60, 40, and 30 Hz with a fixed image; visual
   flicker check; LVGL navigation and level page; reject below 1 mA.
 - Citation: ST7789V v1.3 Table 3 page 40 and `FRCTRL2 (C6h)`; M5GFX
-  `Panel_ST7789`.
+  `Panel_ST7789.hpp`, where `CMD_FRCTR2` is commented out for the M5StickCPlus
+  panel variants.
 
 ### D-013 Use the touch controller low-power monitor on Core2 and Tough
 
@@ -490,8 +499,9 @@ These are low-risk code or configuration changes whose mechanism is already
 proven. They still need the stated test before merge, but they do not require a
 new bench measurement to decide whether to implement them.
 
-1. D-001 Scope the APB lock to StickS3. Best expected saving in the safe list:
-   up to 25.5 mA modeled MCU on the ESP32 boards, about 5 to 10 mA inferred.
+1. D-001 Scope the APB lock to StickS3. Applies to every screen-on minute on
+   four boards, so it has the widest coverage in the safe list: up to 25.5 mA
+   modeled MCU, about 5 to 10 mA inferred.
 2. D-002 Add staged dim then off. Up to 50.3 mA modeled after the second
    timeout, with no new hardware mechanism.
 3. D-003 Skip flush while the panel is off. Removes 1.04k flushed pixels per
@@ -500,6 +510,10 @@ new bench measurement to decide whether to implement them.
 5. D-005 Icon timer 4 Hz to 1 Hz. Below 0.1 mA inferred.
 6. D-006 Remove permanent scroll animations from settings and menu rows.
    Unknown saving, but it removes a known idle redraw trap on open pages.
+
+These savings are not additive. D-001 and D-002 overlap in the screen-on
+window, D-002 and D-009 both change how long the panel stays on, and D-010
+changes the active brightness that D-001 and D-009 are measured against.
 
 ### Needs measurement
 
@@ -512,7 +526,7 @@ enabled by default.
    between the modeled 0.25 mA screen-off floor and the real 5 ms loop.
 3. D-009 Default screen policy. About 64 mA inferred at the actual default
    brightness, up to 81.2 mA modeled at full brightness, after the timeout.
-4. D-010 Default brightness. About 4.4 mA per 32 slider counts on the S3,
+4. D-010 Default brightness. About 4.4 mA per 32 brightness counts on the S3,
    inferred.
 5. D-011 Model brightness and per-board dim floors. No direct saving; required
    before the next ranking is trustworthy.
@@ -529,7 +543,7 @@ enabled by default.
 | R-02 | Enlarge the LVGL draw buffers | The buffer is already 1/15 of the largest panel, with two buffers and DMA. A larger buffer reduces the number of window transactions for a full frame but not the pixels transferred. RAM cost is not justified by the small expected saving. |
 | R-03 | Drop LVGL to 8-bit color or dither | The panel idle mode is RGB111 only. A real 8-bit path needs dithering and still changes the UI. The backlight, not the panel data format, dominates display power. |
 | R-04 | Use a dark theme as a display power lever | The backlight current is independent of content. The datasheet does not give a content-dependent panel current table, and the UI already has a dark theme for preference. No measurable basis for a power claim. |
-| R-05 | Avoid the full repaint on level rotation | The level page rotates the panel and changes the logical resolution. A full invalidate plus `lv_refr_now` is the correctness fix for the half-written screen bug. The cost is a rare 32,400 pixel pass, not a steady load. |
+| R-05 | Avoid the full repaint on level rotation | The level page rotates the panel and changes the logical resolution. A full invalidate plus `lv_refr_now` is the correctness fix for the half-written screen bug. The cost is a rare 32,400 pixel pass on the 135x240 sticks, not a steady load. |
 | R-06 | Remove short bar, slider, and roller animations | These are bounded to an interaction and do not run while idle. The saving is negligible and the UX loss is visible. |
 | R-07 | Change the backlight PWM frequency | 256 Hz on the S3 is already low, and switching loss is negligible compared with LED current. A frequency change does not reduce the LED current at a fixed duty. |
 | R-08 | Shorten or skip the boot splash | It runs for a few seconds per boot, not in steady state. The saving is too small to matter and the splash is a deliberate feature. |
@@ -537,6 +551,7 @@ enabled by default.
 | R-10 | Pause the inactivity timer while the panel is off | The timer is what wakes the panel after activity from the IMU or another non-input source, and it enforces the display policy. Slow it under D-008, do not pause it. |
 | R-11 | Disable the touch controller outright while the panel is off | It removes tap to wake on Core2 and Tough. D-013 is the low-power monitor version of this idea. |
 | R-12 | Reset or power-cycle the panel controller on every sleep | SLPIN is already 15 uA typical, 30 uA maximum on ST7789. A reset adds no measurable benefit and risks panel state loss. |
+| R-13 | Enable the ST7789 content adaptive brightness control (CABC) | It reduces panel current by changing image brightness and contrast, not by reducing the LED backlight. The UI would visibly shift. The datasheet target is a panel-side reduction, and the panel is only about 6 mA against a 35 mA full backlight on the S3. Not a clean power lever. |
 
 ## Measurement plan
 
@@ -568,7 +583,7 @@ gaps. Use one electrical boundary and keep it identical across every run.
 | --- | --- | --- | --- | --- |
 | M-01 | Menu idle, brightness 128 | Disconnected, main menu | 10 min, 3 repeats | Baseline active current at the real default, not the model's full-brightness basis |
 | M-02 | Brightness sweep | Fixed menu page, 32, 64, 96, 128, 160, 192, 240 | 5 min each, 2 repeats | Backlight linearity and D-010 saving |
-| M-03 | Dim at minimum | Lifetime or console timeout, mode Dim | 10 min, 3 repeats | Dim floor and the model's 32/255 assumption |
+| M-03 | Dim at minimum | Inactivity or console timeout, mode Dim | 10 min, 3 repeats | Dim floor and the model's 32/255 assumption |
 | M-04 | Off, disconnected | Screen off mode Off | 30 min, 3 repeats | Real screen-off floor and D-008 gap |
 | M-05 | Connected, screen off | Fujifilm connected, Battery Saver off then on | 10 min each, 3 repeats | Display-off plus `SLEEP_CONN` interaction, the plan 111 headline pair |
 | M-06 | Blind remote | Connected, screen off, Off remote on, 10 shutter presses | 5 min | D-003 flush waste and per-press cost |
