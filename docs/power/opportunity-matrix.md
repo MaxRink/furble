@@ -46,7 +46,7 @@ Rank groups:
 
 ## Safe now
 
-Thirty-one safe-now rows are implemented in this branch. See section
+Thirty-two safe-now rows are implemented in this branch. See section
 "Implemented safe-now changes" for the code and test evidence.
 
 | ID | Lane | Current behavior | Proposed change | Evidence | Est. saving | Risk | Effort | Required test | Priority | Lane source |
@@ -129,6 +129,7 @@ evidence label from the lane and adds the test that now guards it.
 | P-039 | `Control` reports the radio link to the power model on every state change, restoring the connected-radio floor. Four connected baselines assert the flag, and the committed baselines now match the corrected model within 0.4 percent. | `src/FurbleControl.cpp`, `sim/power_profiler.*` | `connected-idle-30s`, `blind-remote-shutter`, `connected-gps-active-30s`, `intervalometer-5-frames` assert `sim.radio_connected`; power gate 10/10 | implemented |
 | P-022 | AXP192 ADC channels are trimmed to battery voltage, battery current, and VBUS voltage. Temperature, ACIN voltage/current, VBUS current, APS, TS, and GPIO channels are off. | `src/FurblePlatform.cpp`, `include/FurblePlatformPolicy.h` | host `pm1-poll-policy`: mask keeps the used channels and drops the rest; `m5stick-c` build. The A/B current and battery/VBUS readback remain in the row test | implemented |
 | P-036 | `CONFIG_ESP_PHY_REDUCE_TX_POWER=y` on every brownout-equipped config. | seven `sdkconfig.*` files | `tools/check_power_config.py` plus two new tests; `m5stick-c` build. The induced-brownout test remains in the row test | implemented |
+| P-017 | Static settings and icon-menu captions use `LV_LABEL_LONG_DOT` instead of a circular marquee; dynamic values (camera names, spinner values, battery rows) keep scrolling. | `src/FurbleUI.cpp` | e2e `static-labels-no-scroll`: zero scroll labels on the main, settings, and display pages; walkthrough screenshots regenerated | implemented |
 
 The modeled saving for these rows is unchanged and still unmeasured. P-001 and
 P-002 bound a worst case; they do not change steady-state current. P-003 halves
@@ -155,7 +156,8 @@ shortens the companion pairing window, and P-027 limits the join scan to an
 idle Control state. P-025 halves the console idle wake rate. P-039 restores the
 connected-radio floor in the power model; the committed baselines now match it
 instead of silently missing it. P-022 trims the AXP192 ADC channels. P-036
-enables the brownout TX-power reduction.
+enables the brownout TX-power reduction. P-017 stops static captions from
+animating.
 
 Three safe-now rows are deliberately not applied yet:
 

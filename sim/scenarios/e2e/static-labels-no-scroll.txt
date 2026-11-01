@@ -1,0 +1,22 @@
+# Static settings and icon-menu labels do not animate.
+#
+# A fixed caption should fit its row. If a large font makes it wider, the label
+# ellipsizes instead of running a circular marquee while the user reads it.
+# Dynamic values keep their own overflow mode.
+
+home
+wait 300
+assert ui.page main
+# The main icon menu is static text only.
+assert ui.scroll_labels 0
+
+action nav settings
+wait 200
+assert ui.page settings
+assert ui.scroll_labels 0
+
+action nav display
+wait 200
+assert ui.page display
+assert ui.scroll_labels 0
+exit

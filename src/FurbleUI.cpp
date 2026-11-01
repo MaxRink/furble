@@ -2294,6 +2294,37 @@ int32_t UI::floatingIndicatorReserve(void) {
   return (m_LegendWidth > 0) ? m_LegendWidth : ICON_HEADER_SIZE;
 }
 
+/**
+ * Static labels never animate.
+ *
+ * A menu or setting caption is fixed text that should fit its row. If a large
+ * font makes it wider, ellipsize with LV_LABEL_LONG_DOT instead of running a
+ * circular marquee while the user is reading. Dynamic values that can be long
+ * (camera names, spinner values, battery rows) keep their own mode.
+ */
+static void setStaticLabelMode(lv_obj_t *label) {
+  lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
+}
+
+#if defined(FURBLE_SIM)
+/** Count labels still running a circular marquee under one page. */
+static size_t countScrollLabels(lv_obj_t *root) {
+  if (root == nullptr) {
+    return 0;
+  }
+  size_t count = 0;
+  if (lv_obj_check_type(root, &lv_label_class)
+      && (lv_label_get_long_mode(root) == LV_LABEL_LONG_SCROLL_CIRCULAR)) {
+    count++;
+  }
+  const uint32_t children = lv_obj_get_child_count(root);
+  for (uint32_t index = 0; index < children; index++) {
+    count += countScrollLabels(lv_obj_get_child(root, index));
+  }
+  return count;
+}
+#endif
+
 lv_obj_t *UI::addMenuItem(const menu_t &menu,
                           const lv_image_dsc_t *icon,
                           const char *text,
@@ -5277,6 +5308,9 @@ std::string UI::simQueryState(const char *key) {
   // the scenario exercised a redraw while off without paying for it.
   if (query == "flushes_suppressed_off") {
     return std::to_string(m_FlushedWhileOff);
+  }
+  if (query == "scroll_labels") {
+    return std::to_string(countScrollLabels(lv_menu_get_cur_main_page(m_MainMenu.main)));
   }
   if (query == "battery_label_writes") {
     return std::to_string(m_BatteryLabelWrites);
@@ -8969,7 +9003,7 @@ void UI::startScan(void) {
 
   lv_obj_t *label = lv_label_create(m_ScanFinished);
   lv_label_set_text(label, "Scan finished");
-  lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+  setStaticLabelMode(label);
   lv_obj_set_width(label, LV_PCT(100));
 
   lv_obj_t *rescan = lv_button_create(m_ScanFinished);
@@ -9208,7 +9242,7 @@ void UI::addGPSPowerMenu(const menu_t &parent) {
 
     lv_obj_t *label = lv_label_create(row);
     lv_label_set_text(label, name);
-    lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    setStaticLabelMode(label);
 
     lv_obj_t *roller = lv_roller_create(row);
 #if !defined(FURBLE_M5COREX)
@@ -9910,7 +9944,7 @@ void UI::addSpinnerPage(const menu_t &parent, const char *item, Intervalometer::
   lv_obj_set_flex_flow(spinner.m_RowInfinite, LV_FLEX_FLOW_ROW);
   lv_obj_t *label = lv_label_create(spinner.m_RowInfinite);
   lv_label_set_text(label, "Infinite");
-  lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+  setStaticLabelMode(label);
   lv_obj_set_flex_grow(label, 1);
   spinner.m_SwitchInfinite = lv_switch_create(spinner.m_RowInfinite);
   lv_obj_add_flag(spinner.m_SwitchInfinite, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
@@ -10489,7 +10523,7 @@ void UI::addDisplayMenu(const menu_t &parent) {
   // Add brightness control
   lv_obj_t *label = lv_label_create(cont);
   lv_label_set_text(label, "Brightness");
-  lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+  setStaticLabelMode(label);
   lv_obj_set_width(label, LV_PCT(100));
 
   lv_obj_t *slider = lv_slider_create(cont);
@@ -10543,7 +10577,7 @@ void UI::addDisplayMenu(const menu_t &parent) {
   // Add inactivity timeout control
   label = lv_label_create(cont);
   lv_label_set_text(label, "Inactivity timeout");
-  lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+  setStaticLabelMode(label);
   lv_obj_set_width(label, LV_PCT(100));
 
   lv_obj_t *roller = lv_roller_create(cont);
@@ -10580,7 +10614,7 @@ void UI::addDisplayMenu(const menu_t &parent) {
   // Add screen off control
   label = lv_label_create(cont);
   lv_label_set_text(label, "Screen off");
-  lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+  setStaticLabelMode(label);
   lv_obj_set_width(label, LV_PCT(100));
 
   roller = lv_roller_create(cont);
@@ -11021,7 +11055,7 @@ void UI::addPowerMenu(const menu_t &parent) {
   auto addPowerRoller = [cont](const char *text, const char *options) {
     lv_obj_t *label = lv_label_create(cont);
     lv_label_set_text(label, text);
-    lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    setStaticLabelMode(label);
     lv_obj_set_width(label, LV_PCT(100));
 
     lv_obj_t *roller = lv_roller_create(cont);
@@ -11035,7 +11069,7 @@ void UI::addPowerMenu(const menu_t &parent) {
   // Add CPU maximum frequency control
   lv_obj_t *label = lv_label_create(cont);
   lv_label_set_text(label, "CPU speed");
-  lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+  setStaticLabelMode(label);
   lv_obj_set_width(label, LV_PCT(100));
 
   const auto &frequencies = Platform::CPU_MAX_FREQ_MHZ;
@@ -11082,7 +11116,7 @@ void UI::addPowerMenu(const menu_t &parent) {
   // Add battery style control
   label = lv_label_create(cont);
   lv_label_set_text(label, Settings::get(Settings::BATT_STYLE).name);
-  lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+  setStaticLabelMode(label);
   lv_obj_set_width(label, LV_PCT(100));
 
   roller = lv_roller_create(cont);
@@ -11197,7 +11231,7 @@ void UI::addFeedbackMenu(const menu_t &parent) {
   lv_obj_set_flex_flow(outputCont, LV_FLEX_FLOW_ROW_WRAP);
   lv_obj_t *outputLabel = lv_label_create(outputCont);
   lv_label_set_text(outputLabel, "Output");
-  lv_label_set_long_mode(outputLabel, LV_LABEL_LONG_SCROLL_CIRCULAR);
+  setStaticLabelMode(outputLabel);
   lv_obj_set_flex_grow(outputLabel, 1);
 
   static constexpr const char *outputNames[] = {
@@ -11261,7 +11295,7 @@ void UI::addFeedbackMenu(const menu_t &parent) {
     lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW_WRAP);
     lv_obj_t *label = lv_label_create(row);
     lv_label_set_text(label, name);
-    lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    setStaticLabelMode(label);
     lv_obj_set_flex_grow(label, 1);
     lv_obj_t *sw = lv_switch_create(row);
     lv_obj_add_flag(sw, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
@@ -11663,7 +11697,7 @@ static lv_obj_t *addRollerItem(lv_obj_t *page, const char *text, const char *opt
 
   lv_obj_t *label = lv_label_create(cont);
   lv_label_set_text(label, text);
-  lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+  setStaticLabelMode(label);
   lv_obj_set_width(label, LV_PCT(100));
 
   lv_obj_t *roller = lv_roller_create(cont);
