@@ -70,8 +70,10 @@ not evidence that Furble can wake a camera.
 Firmware is a material constraint. Fujifilm's [X-E5 firmware page](https://www.fujifilm-x.com/en-us/support/download/firmware/cameras/x-e5/)
 shows version 1.12 when retrieved on 2026-09-12 and says version 1.10 changed wireless
 security and pairing procedure. It also warns that old Camera Remote versions
-cannot connect after the update. Do not collapse firmware generations into one
-Fujifilm profile.
+cannot connect after the update. The X100VI cutover is 1.30 and the X-S20
+cutover is 3.30; the X-S20 3.00 entry is an earlier feature update, not the
+security change. Do not collapse firmware generations into one Fujifilm
+profile.
 
 ### Current Furble implementation evidence
 
