@@ -196,7 +196,8 @@ wait 300
 capture connecting
 print ui.page
 print ui.connect_box
-wait 1700
+assert-eventually-virtual 8000 control.state active
+assert-eventually-virtual 2000 ui.connected yes
 capture connected
 print ui.page
 print ui.connected

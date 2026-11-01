@@ -887,6 +887,9 @@ bool CompanionService::saveSetting(Settings::type_t type, const uint8_t *value, 
           && (v != Settings::BAUD_115200)) {
         return false;
       }
+      if ((type == Settings::IVL_SLEEP_THR) && (v > 999)) {
+        return false;
+      }
       Settings::save<uint32_t>(type, v);
       return true;
     }

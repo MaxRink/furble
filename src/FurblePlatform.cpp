@@ -637,6 +637,11 @@ bool Platform::powerOffUntil(uint32_t seconds) {
     return powerOff();
   }
 
+  // A recent GPS or NTP correction may still be inside the RTC write interval.
+  // Checkpoint it before a timed shutdown so the resumed deadline is not based
+  // on an older RTC value.
+  TimeKeeper::getInstance().flush();
+
 #if defined(FURBLE_M5STICKS3)
   if (M5.getBoard() == m5::board_t::board_M5StickS3) {
     const bool watchdogWasEnabled = m_WatchdogEnabled;

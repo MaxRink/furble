@@ -96,18 +96,22 @@ BaseType_t Control::Target::sendCommand(cmd_t cmd) {
       // Keep an executing command counted; only remove the queued ones.
       m_InFlight.fetch_sub(remove, std::memory_order_acq_rel);
     }
+    m_InFlight.fetch_add(1, std::memory_order_acq_rel);
     const BaseType_t sent = xQueueSendToFront(m_Queue, &cmd, 0);
-    if (sent == pdTRUE) {
-      m_InFlight.fetch_add(1, std::memory_order_acq_rel);
+    if (sent != pdTRUE) {
+      m_InFlight.fetch_sub(1, std::memory_order_acq_rel);
     }
     return sent;
   }
 
+  // Reserve the count before the command can be received. Incrementing after
+  // xQueueSend lets a fast target finish and decrement first, which can make
+  // the counter zero while the command is still executing.
+  m_InFlight.fetch_add(1, std::memory_order_acq_rel);
   BaseType_t ret = xQueueSend(m_Queue, &cmd, 0);
   if (ret != pdTRUE) {
+    m_InFlight.fetch_sub(1, std::memory_order_acq_rel);
     ESP_LOGE(LOG_TAG, "Failed to send command to target.");
-  } else {
-    m_InFlight.fetch_add(1, std::memory_order_acq_rel);
   }
   return ret;
 }

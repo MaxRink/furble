@@ -3,6 +3,7 @@
 seed fauxny true
 seed autoconnect true
 seed ivl_sleep true
+seed interval_count 2
 seed timed_wake true
 seed resume_fixture stale
 wait 5000

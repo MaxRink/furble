@@ -479,7 +479,7 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
       return true;
 
     case Settings::IVL_SLEEP_THR:
-      if (!parseUnsigned(text, UINT32_MAX, value)) {
+      if (!parseUnsigned(text, 999, value)) {
         return false;
       }
       Settings::save<uint32_t>(setting.type, static_cast<uint32_t>(value));

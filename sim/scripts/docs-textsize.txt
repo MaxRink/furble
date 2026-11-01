@@ -34,7 +34,8 @@ print ui.page
 home
 wait 300
 action connect
-wait 1800
+assert-eventually-virtual 8000 control.state active
+assert-eventually-virtual 2000 ui.connected yes
 capture connected
 print ui.page
 

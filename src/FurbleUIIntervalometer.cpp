@@ -3,6 +3,7 @@
 #include <Preferences.h>
 #include <lvgl.h>
 
+#include "FurblePlatform.h"
 #include "FurbleTimeKeeper.h"
 #include "FurbleTypes.h"
 #include "FurbleUI.h"
@@ -183,17 +184,24 @@ bool UI::Intervalometer::startResume(void) {
   m_Shutter.m_SpinValue = SpinValue(state.interval.shutter);
   m_Wait.m_SpinValue = SpinValue(state.interval.wait);
   m_CountShots = state.count;
-  int64_t remaining = 0;
+  uint32_t wait_ms = 0;
   if (trustedWallClock() && (state.wake_time >= MIN_VALID_EPOCH)
       && (state.wake_time <= MAX_VALID_EPOCH)) {
     const int64_t now = static_cast<int64_t>(std::time(nullptr));
     if ((now >= MIN_VALID_EPOCH) && (now <= MAX_VALID_EPOCH)) {
-      remaining = state.wake_time - now;
+      const int64_t remaining = state.wake_time - now;
+      if ((remaining > 0) && (remaining <= (UINT32_MAX / 1000))) {
+        wait_ms = static_cast<uint32_t>(remaining * 1000);
+      }
     }
+  } else {
+    // The timer wakes RESUME_WAKE_MARGIN_S before the next shot. Without an
+    // authoritative wall clock, keep that margin relative to boot. Boot and
+    // reconnect time is already consumed by Platform::tick().
+    constexpr uint32_t MARGIN_MS = RESUME_WAKE_MARGIN_S * 1000U;
+    const uint32_t boot_ms = Platform::getInstance().tick();
+    wait_ms = (boot_ms < MARGIN_MS) ? (MARGIN_MS - boot_ms) : 0;
   }
-  const uint32_t wait_ms = (remaining > 0 && remaining <= (UINT32_MAX / 1000))
-                               ? static_cast<uint32_t>(remaining * 1000)
-                               : 0;
   clearResume();
   m_ResumeWaitMs = wait_ms;
 
