@@ -256,6 +256,31 @@ void Fujifilm::sendGeoData(const gps_t &gps, const timesync_t &timesync) {
     return;
   }
 
+  if (!m_HasLocationSync) {
+    // Enable the location sync setting before the first packet. The interval
+    // alone does not turn the feature on for a body whose menu default is off.
+    // Firmware accepts exactly 0 or 1 on AAB609C4.
+    NimBLERemoteService *syncSvc = m_Client->getService(SVC_READ_UUID);
+    if (syncSvc != nullptr) {
+      NimBLERemoteCharacteristic *syncChr = syncSvc->getCharacteristic(CHR_LOCATION_SYNC_UUID);
+      if (syncChr != nullptr && syncChr->canWrite()) {
+        const std::array<uint8_t, 2> enable = {0x01, 0x00};
+        if (gattWrite(syncChr, enable.data(), enable.size(), true)) {
+          m_HasLocationSync = true;
+          if (syncChr->canRead()) {
+            const NimBLEAttValue value = syncChr->readValue();
+            if (value.size() >= 2) {
+              ESP_LOGI(LOG_TAG, "Location sync setting readback 0x%02x%02x", value.data()[1],
+                       value.data()[0]);
+            }
+          }
+        } else {
+          ESP_LOGW(LOG_TAG, "Location sync enable failed");
+        }
+      }
+    }
+  }
+
   NimBLERemoteCharacteristic *pChr = pSvc->getCharacteristic(CHR_GEOTAG_UUID);
   if (pChr == nullptr) {
     return;
@@ -292,6 +317,9 @@ void Fujifilm::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
 }
 
 void Fujifilm::_disconnect(void) {
+  m_HasLocationSync = false;
+  m_HasTimesync = false;
+  m_GeoRequested = false;
   m_Client->disconnect();
 }
 

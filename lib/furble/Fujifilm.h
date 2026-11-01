@@ -71,8 +71,9 @@ class Fujifilm: public Camera {
   // Geo location characteristic
   const NimBLEUUID GEOTAG_UPDATE {0xad06c7b7, 0xf41a, 0x46f4, 0xa29a712055319122};
 
-  // Geolocation sync interval
+  // Geolocation sync interval and enable
   const uint16_t GEOTAG_SYNC_INTERVAL = 10;
+  const NimBLEUUID CHR_LOCATION_SYNC_UUID {0xaab609c4, 0x94dd, 0x4d89, 0xbc60665d5090b828};
 
   // Time service and UTC/timezone packet
   const NimBLEUUID SVC_TIME_UUID {0xe872b11f, 0xd526, 0x4ae1, 0x9bb489a99d48fa59};
@@ -107,10 +108,11 @@ class Fujifilm: public Camera {
   NimBLERemoteCharacteristic *m_Shutter = nullptr;
   timesync_t m_LastTimesync = {};
   bool m_HasTimesync = false;
+  bool m_HasLocationSync = false;
 
  private:
   // Currently unused
-  // const NimBLEUUID SVC_READ_UUID {0x4e941240, 0xd01d, 0x46b9, 0xa5ea67636806830b};
+  const NimBLEUUID SVC_READ_UUID {0x4e941240, 0xd01d, 0x46b9, 0xa5ea67636806830b};
   // const NimBLEUUID CHR_READ_UUID{0xbf6dc9cf, 0x3606, 0x4ec9, 0xa4c8d77576e93ea4};
 
   const NimBLEUUID SVC_GEOTAG_UUID {0x3b46ec2b, 0x48ba, 0x41fd, 0xb1b8ed860b60d22b};

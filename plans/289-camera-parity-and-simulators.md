@@ -34,6 +34,8 @@ Completed in this branch:
 - Nikon Smart now stops at the BLE authentication result, reports the
   Bluetooth Classic blocker, and no longer waits for a final OK that is a time
   request.
+- Fujifilm location sync is enabled with `AAB609C4` before the first geotag
+  packet and read back once.
 
 ## Evidence
 
