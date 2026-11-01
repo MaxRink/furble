@@ -144,7 +144,10 @@ detects the exact board at runtime, so one image covers a board family. The
 M5Tough is not a build environment. It shares the M5Core2 image through
 M5Unified board detection, but it has not been verified on hardware. See
 [docs/supported-hardware.md](docs/supported-hardware.md) for the board to
-environment matrix.
+environment matrix. Hardware that is not supported but is a candidate for a
+port or a purchase is catalogued in
+[docs/hardware-catalog.md](docs/hardware-catalog.md), with GNSS classes, input
+schemes, and runtime estimates. The catalog is not a support claim.
 
 ## Installation
 
@@ -406,6 +409,13 @@ one set of $PCAS and NMEA support covers them all.
 See [docs/supported-hardware.md](docs/supported-hardware.md) for the full unit
 matrix. GPS support can be enabled in `furble` in `Settings->GPS`, the camera
 must also be configured to request location data.
+
+Phone GPS fallback. When the wired receiver has no fresh fix and the companion
+app is connected with phone GPS enabled, furble uses the phone fix. On iOS,
+fixes continue while the app is in the background. On Android, continuous
+background delivery still needs a foreground location service. See
+[docs/companion.md](docs/companion.md) for the source priority and platform
+details.
 
 The default GPS baud is 9600, preserving existing installations. The v1.1
 AT6668 unit is expected to use 115200. Select `Auto` to probe 115200, 9600,

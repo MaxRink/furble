@@ -81,3 +81,8 @@ checked against the firmware GPS support in `src/FurbleGPS.cpp`.
 - [Settings and controls reference](settings-and-controls.md)
 - [Console commands reference](console-commands.md)
 - [UI walkthrough](ui-walkthrough.md)
+- [Candidate hardware catalog](hardware-catalog.md). Board and receiver options
+  for a port or a purchase, with GNSS classes, input schemes, and runtime
+  estimates. Nothing in the catalog is a support claim.
+- [Plan 287](../plans/287-mcu-portability-and-bundle-hardware.md). The porting
+  cost, battery model, and GPS fix ladder behind the catalog.

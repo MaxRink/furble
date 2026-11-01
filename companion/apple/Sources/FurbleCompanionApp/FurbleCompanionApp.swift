@@ -51,7 +51,7 @@ private struct ContentView: View {
             LabeledContent("Battery", value: status.batteryPercent == 255 ? "Unknown" : "\(status.batteryPercent)%")
             LabeledContent("Voltage", value: "\(status.batteryMillivolts) mV")
             LabeledContent("Cameras", value: "\(status.cameraConnected)/\(status.cameraTotal)")
-            LabeledContent("GPS", value: status.gpsSource == 0 ? "No fix" : "Available")
+            LabeledContent("GPS", value: gpsStatusLabel(status))
           } else {
             Text("Waiting for an authenticated furble link")
           }
@@ -65,7 +65,7 @@ private struct ContentView: View {
             set: { enabled in
               if enabled { location.start { client.writeLocation($0) } } else { location.stop() }
             }))
-          Text("Location is sent only while enabled and the BLE link is authenticated.")
+          Text("Location is sent only while enabled and the BLE link is authenticated. While enabled, updates continue in the background and iOS shows the location indicator.")
             .font(.footnote)
         }
         Section("Trigger") {
@@ -203,6 +203,17 @@ private struct CameraRow: View {
       }
     }
     .padding(.vertical, 4)
+  }
+}
+
+private func gpsStatusLabel(_ status: FurbleProtocol.Status) -> String {
+  switch status.gpsSource {
+  case 1:
+    return "Receiver, \(status.gpsSatellites) sats"
+  case 2:
+    return "Phone"
+  default:
+    return "No fix"
   }
 }
 

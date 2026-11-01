@@ -6,6 +6,11 @@ import Combine
 
 /// Location is off until the user explicitly enables it. The provider emits
 /// the same UTC fields and age semantics as the Android client.
+///
+/// While the toggle is on, updates continue in the background. On iOS this
+/// requires the `location` background mode in the app Info.plist and shows the
+/// system location indicator. When In Use authorization is enough for a
+/// user-started session; Always is not required.
 @MainActor
 public final class FurbleLocationProvider: NSObject, ObservableObject, @preconcurrency CLLocationManagerDelegate {
   @Published public private(set) var enabled = false
@@ -35,6 +40,7 @@ public final class FurbleLocationProvider: NSObject, ObservableObject, @preconcu
       #endif
     }
     guard isAuthorized(manager.authorizationStatus) else { return }
+    enableTrackingLocation()
     enabled = true
     manager.startUpdatingLocation()
   }
@@ -42,14 +48,35 @@ public final class FurbleLocationProvider: NSObject, ObservableObject, @preconcu
   public func stop() {
     wantsUpdates = false
     enabled = false
+    disableTrackingLocation()
     manager.stopUpdatingLocation()
     sink = nil
+  }
+
+  /// Keep fixes flowing while the camera session is active. iOS pauses
+  /// stationary updates by default, which leaves the device without a fresh
+  /// fix and makes it fall back to no fix.
+  private func enableTrackingLocation() {
+    manager.pausesLocationUpdatesAutomatically = false
+    #if os(iOS)
+    manager.allowsBackgroundLocationUpdates = true
+    manager.showsBackgroundLocationIndicator = true
+    #endif
+  }
+
+  private func disableTrackingLocation() {
+    manager.pausesLocationUpdatesAutomatically = true
+    #if os(iOS)
+    manager.allowsBackgroundLocationUpdates = false
+    manager.showsBackgroundLocationIndicator = false
+    #endif
   }
 
   public func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
     authorization = manager.authorizationStatus
     guard wantsUpdates, CLLocationManager.locationServicesEnabled(),
       isAuthorized(manager.authorizationStatus) else { return }
+    enableTrackingLocation()
     enabled = true
     manager.startUpdatingLocation()
   }
