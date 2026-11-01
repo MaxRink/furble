@@ -38,6 +38,8 @@ def check_file(path: pathlib.Path) -> tuple[list[str], bool]:
     pm = values.get("CONFIG_PM_ENABLE") == "y"
     idle_opt = values.get("CONFIG_PM_RTOS_IDLE_OPT") == "y"
     mac_bb_pd = values.get("CONFIG_ESP_PHY_MAC_BB_PD") == "y"
+    brownout = values.get("CONFIG_ESP_BROWNOUT_DET") == "y"
+    reduce_tx = values.get("CONFIG_ESP_PHY_REDUCE_TX_POWER") == "y"
 
     if tickless and not pm:
         errors.append("tickless idle enabled without CONFIG_PM_ENABLE")
@@ -49,6 +51,10 @@ def check_file(path: pathlib.Path) -> tuple[list[str], bool]:
         errors.append("tickless idle enabled without CONFIG_PM_RTOS_IDLE_OPT")
     if mac_bb_pd and not tickless:
         errors.append("CONFIG_ESP_PHY_MAC_BB_PD enabled without FREERTOS_USE_TICKLESS_IDLE")
+    if brownout and not reduce_tx:
+        # A brownout reset otherwise restarts into the same TX load that caused
+        # it. The PHY option drops TX power for the session and breaks the loop.
+        errors.append("brownout detector enabled without CONFIG_ESP_PHY_REDUCE_TX_POWER")
     return errors, (pm and not tickless)
 
 

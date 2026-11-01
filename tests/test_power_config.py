@@ -53,6 +53,23 @@ class PowerConfigTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("MAC_BB_PD", result.stderr)
 
+    def test_brownout_without_reduce_tx_power_fails(self):
+        root = self.make_root(
+            "CONFIG_ESP_BROWNOUT_DET=y\n"
+            "# CONFIG_ESP_PHY_REDUCE_TX_POWER is not set\n"
+        )
+        result = self.run_checker(root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("REDUCE_TX_POWER", result.stderr)
+
+    def test_brownout_with_reduce_tx_power_passes(self):
+        root = self.make_root(
+            "CONFIG_ESP_BROWNOUT_DET=y\n"
+            "CONFIG_ESP_PHY_REDUCE_TX_POWER=y\n"
+        )
+        result = self.run_checker(root)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_pm_without_tickless_is_a_recorded_exception(self):
         root = self.make_root("CONFIG_PM_ENABLE=y\n")
         result = self.run_checker(root)

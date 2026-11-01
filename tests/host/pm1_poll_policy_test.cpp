@@ -29,6 +29,20 @@ int main() {
   check(pm1PollDue(10, 0xFFFFFFF0U), "a wrapped tick is due after the interval");
   check(!pm1PollDue(0, 0xFFFFFFF0U), "a wrapped tick before the interval is not due");
 
+  using Furble::PlatformPolicy::AXP192_ADC_ENABLE_1;
+  using Furble::PlatformPolicy::AXP192_ADC_ENABLE_2;
+  using Furble::PlatformPolicy::axp192AdcMaskKeepsRequired;
+
+  check(axp192AdcMaskKeepsRequired(AXP192_ADC_ENABLE_1),
+        "the AXP192 mask keeps battery voltage/current and VBUS voltage");
+  check((AXP192_ADC_ENABLE_1 & 0x20) == 0, "the ACIN voltage channel is off");
+  check((AXP192_ADC_ENABLE_1 & 0x10) == 0, "the ACIN current channel is off");
+  check((AXP192_ADC_ENABLE_1 & 0x04) == 0, "the VBUS current channel is off");
+  check((AXP192_ADC_ENABLE_1 & 0x02) == 0, "the APS voltage channel is off");
+  check((AXP192_ADC_ENABLE_1 & 0x01) == 0, "the TS pin channel is off");
+  check(AXP192_ADC_ENABLE_2 == 0x00, "the temperature and GPIO channels are off");
+  check(!axp192AdcMaskKeepsRequired(0x08), "a mask without the battery channels fails");
+
   if (failures != 0) {
     return 1;
   }

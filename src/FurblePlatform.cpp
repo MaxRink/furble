@@ -100,38 +100,53 @@ Platform &Platform::getInstance(void) {
       M5.Rtc.disableIRQ();
     }
 
-    // The IMU keeps the M5Unified default axis order. The spirit level derives
-    // roll from atan2(ay, az) to drive screen X and pitch to drive screen Y.
-    // That orientation is UNVERIFIED on all boards pending a hardware check.
-
-    switch (M5.getBoard()) {
+    // M5Unified enables every AXP192 ADC channel at 25 Hz. Furble reads only
+    // battery voltage/current and VBUS voltage, so trim the unused channels.
+    switch (board) {
       case m5::board_t::board_M5StickC:
       case m5::board_t::board_M5StickCPlus:
       case m5::board_t::board_M5Tough:
-        instance.m_PMICHack = true;
+      case m5::board_t::board_M5StackCore2:
+        M5.In_I2C.writeRegister8(0x34, 0x82, PlatformPolicy::AXP192_ADC_ENABLE_1, 400000);
+        M5.In_I2C.writeRegister8(0x34, 0x83, PlatformPolicy::AXP192_ADC_ENABLE_2, 400000);
         break;
       default:
-        instance.m_PMICHack = false;
+        break;
     }
-
-#if defined(FURBLE_M5STICKS3)
-    instance.m_M5PM1.begin(&M5.In_I2C);
-    instance.m_M5PM1.setSingleResetDisable(true);  // disable BtnPWR single-click reset
-    instance.m_M5PM1.setDoubleOffDisable(true);    // disable BtnPWR double-click power off
-    // Never lock the only recovery path which works when the ESP32 is wedged.
-    // The PMIC setting is retained independently of an ESP32 reset, so this
-    // must be an explicit write followed by a readback on every boot.
-    if (!instance.unlockDownloadRecovery()) {
-      ESP_LOGE(LOG_TAG, "M5PM1 download recovery remains unavailable");
-    }
-#endif
-
-    instance.initBattery();
-
-    instance.m_Init = true;
   }
 
-  return instance;
+  // The IMU keeps the M5Unified default axis order. The spirit level derives
+  // roll from atan2(ay, az) to drive screen X and pitch to drive screen Y.
+  // That orientation is UNVERIFIED on all boards pending a hardware check.
+
+  switch (M5.getBoard()) {
+    case m5::board_t::board_M5StickC:
+    case m5::board_t::board_M5StickCPlus:
+    case m5::board_t::board_M5Tough:
+      instance.m_PMICHack = true;
+      break;
+    default:
+      instance.m_PMICHack = false;
+  }
+
+#if defined(FURBLE_M5STICKS3)
+  instance.m_M5PM1.begin(&M5.In_I2C);
+  instance.m_M5PM1.setSingleResetDisable(true);  // disable BtnPWR single-click reset
+  instance.m_M5PM1.setDoubleOffDisable(true);    // disable BtnPWR double-click power off
+  // Never lock the only recovery path which works when the ESP32 is wedged.
+  // The PMIC setting is retained independently of an ESP32 reset, so this
+  // must be an explicit write followed by a readback on every boot.
+  if (!instance.unlockDownloadRecovery()) {
+    ESP_LOGE(LOG_TAG, "M5PM1 download recovery remains unavailable");
+  }
+#endif
+
+  instance.initBattery();
+
+  instance.m_Init = true;
+}
+
+return instance;
 }
 
 void Platform::init(void) {
