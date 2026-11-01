@@ -325,6 +325,9 @@ uint8_t UI::m_IntervalLastAnnouncedSecond;
 uint8_t UI::m_LegendActive = Settings::LEGEND_BUTTONS;
 std::atomic<uint32_t> UI::m_GestureSettingsGeneration {0};
 
+#if defined(FURBLE_SIM)
+uint64_t UI::m_BatteryLabelWrites = 0;
+#endif
 lv_timer_t *UI::m_BulbTimer;
 lv_timer_t *UI::m_BulbPageRefresh;
 uint32_t UI::m_BulbEnd;
@@ -1715,7 +1718,9 @@ void UI::wakeDisplay(void) {
   // frame is still on the glass. Redraw the active screen once.
   lv_obj_invalidate(lv_screen_active());
   m_DisplayState = DisplayState::ACTIVE;
-  Platform::getInstance().setDisplayOff(false);
+  // Console mode keeps the panel logically off even after a wake event from
+  // the inactivity sleep, so the status LED follows the combined state.
+  Platform::getInstance().setDisplayOff(m_DisplayConsole);
   Feedback::getInstance().setDisplayOff(false);
 #if defined(FURBLE_SIM)
   Sim::profilerSetDisplayState("on");
@@ -5269,6 +5274,9 @@ std::string UI::simQueryState(const char *key) {
   // the scenario exercised a redraw while off without paying for it.
   if (query == "flushes_suppressed_off") {
     return std::to_string(m_FlushedWhileOff);
+  }
+  if (query == "battery_label_writes") {
+    return std::to_string(m_BatteryLabelWrites);
   }
 #endif
 
@@ -10853,35 +10861,59 @@ void UI::batteryUpdate(lv_timer_t *timer) {
                                           caps.charging && status->battery.charging);
   }
 
-  if (status->batteryLevel != nullptr) {
-    lv_label_set_text_fmt(status->batteryLevel, "Level: %u%%", status->displayLevel);
-  }
+  // The five battery rows only exist on the Battery page. Writing them while
+  // another page is visible invalidates hidden widgets and redraws nothing the
+  // user can see. The page-entry handler calls lv_timer_ready() so entering the
+  // page still shows a fresh sample immediately.
+  const bool batteryPage =
+      (m_MainMenu.main != nullptr)
+      && (lv_menu_get_cur_main_page(m_MainMenu.main) == m_Menu.at(m_BatteryStr).page);
+  if (batteryPage) {
+    if (status->batteryLevel != nullptr) {
+      lv_label_set_text_fmt(status->batteryLevel, "Level: %u%%", status->displayLevel);
+#if defined(FURBLE_SIM)
+      m_BatteryLabelWrites++;
+#endif
+    }
 
-  if (status->batteryVoltage != nullptr) {
-    uint32_t mv = lroundf(status->meanVoltage);
-    lv_label_set_text_fmt(status->batteryVoltage, "Volts: %lu.%03lu", mv / 1000, mv % 1000);
-  }
+    if (status->batteryVoltage != nullptr) {
+      uint32_t mv = lroundf(status->meanVoltage);
+      lv_label_set_text_fmt(status->batteryVoltage, "Volts: %lu.%03lu", mv / 1000, mv % 1000);
+#if defined(FURBLE_SIM)
+      m_BatteryLabelWrites++;
+#endif
+    }
 
-  if (status->batteryCurrent != nullptr) {
-    lv_label_set_text_fmt(status->batteryCurrent, "Current: %ld mA", status->battery.current);
-  }
+    if (status->batteryCurrent != nullptr) {
+      lv_label_set_text_fmt(status->batteryCurrent, "Current: %ld mA", status->battery.current);
+#if defined(FURBLE_SIM)
+      m_BatteryLabelWrites++;
+#endif
+    }
 
-  if (status->batteryCharging != nullptr) {
-    lv_label_set_text(status->batteryCharging,
-                      status->battery.charging ? "Charging: yes" : "Charging: no");
-  }
+    if (status->batteryCharging != nullptr) {
+      lv_label_set_text(status->batteryCharging,
+                        status->battery.charging ? "Charging: yes" : "Charging: no");
+#if defined(FURBLE_SIM)
+      m_BatteryLabelWrites++;
+#endif
+    }
 
-  if (status->batteryRuntime != nullptr) {
-    if (status->battery.charging) {
-      lv_label_set_text(status->batteryRuntime, "Runtime: charging");
-    } else if (status->meanCurrent < -1.0f) {
-      // remaining capacity in mAh divided by the average discharge current
-      float remaining = platform.getBatteryCapacity() * (status->meanLevel / 100.0f);
-      uint32_t minutes = (remaining / -status->meanCurrent) * 60.0f;
-      lv_label_set_text_fmt(status->batteryRuntime, "Runtime: ~%luh%02lum (est)", minutes / 60,
-                            minutes % 60);
-    } else {
-      lv_label_set_text(status->batteryRuntime, "Runtime: unknown");
+    if (status->batteryRuntime != nullptr) {
+      if (status->battery.charging) {
+        lv_label_set_text(status->batteryRuntime, "Runtime: charging");
+      } else if (status->meanCurrent < -1.0f) {
+        // remaining capacity in mAh divided by the average discharge current
+        float remaining = platform.getBatteryCapacity() * (status->meanLevel / 100.0f);
+        uint32_t minutes = (remaining / -status->meanCurrent) * 60.0f;
+        lv_label_set_text_fmt(status->batteryRuntime, "Runtime: ~%luh%02lum (est)", minutes / 60,
+                              minutes % 60);
+      } else {
+        lv_label_set_text(status->batteryRuntime, "Runtime: unknown");
+      }
+#if defined(FURBLE_SIM)
+      m_BatteryLabelWrites++;
+#endif
     }
   }
 
@@ -12614,13 +12646,18 @@ void UI::setDisplayMode(uint8_t mode) {
   }
 
   if (console) {
+    M5.Display.waitDMA();
     M5.Display.sleep();
     Power::getInstance().release(Power::LockType::APB_FREQ_MAX, "display");
+    // Console mode is a panel-off state too. The PM1 status LED follows the
+    // same input as the inactivity sleep, so it must not stay lit.
+    Platform::getInstance().setDisplayOff(true);
   } else {
     Power::getInstance().acquire(Power::LockType::APB_FREQ_MAX, "display");
     M5.Display.wakeup();
     M5.Display.setBrightness(Settings::load<uint8_t>(Settings::BRIGHTNESS));
     lv_display_trigger_activity(m_Display);
+    Platform::getInstance().setDisplayOff(m_DisplayOff);
   }
 
   m_DisplayConsole = console;

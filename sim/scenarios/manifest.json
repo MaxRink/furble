@@ -1384,6 +1384,19 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/e2e/battery-labels-hidden.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/e2e/battery-policy-charging.txt",
       "suite": "e2e",
       "owner": "sim-e2e",
@@ -1706,6 +1719,19 @@
         "fauxny",
         "gps"
       ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/console-mode-led-off.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [],
       "expected_exit": 0,
       "certified": true
     },

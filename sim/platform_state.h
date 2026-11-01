@@ -29,6 +29,9 @@ bool consumeWatchdogFeedSuppression(void);
 /** Return the virtual M5PM1 long-press download-lock state. */
 const char *downloadLockState(void);
 
+/** Return the last Platform::setDisplayOff input. */
+const char *displayOffState(void);
+
 }  // namespace Furble::Sim
 
 #endif

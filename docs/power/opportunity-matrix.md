@@ -46,7 +46,7 @@ Rank groups:
 
 ## Safe now
 
-Seven safe-now rows are implemented in this branch. See section
+Ten safe-now rows are implemented in this branch. See section
 "Implemented safe-now changes" for the code and test evidence.
 
 | ID | Lane | Current behavior | Proposed change | Evidence | Est. saving | Risk | Effort | Required test | Priority | Lane source |
@@ -105,6 +105,9 @@ evidence label from the lane and adds the test that now guards it.
 | P-009 | The disabled GPS task blocks on its queue instead of waking ten times per second. | `src/FurbleGPS.cpp` | e2e `gps-disabled-idle`: three disabled-branch entries over 5 s instead of about 50 | implemented |
 | P-011 | A stored fixed GPS baud arms an acquisition deadline. A silent receiver drops the rail and the wake lock instead of holding `NO_LIGHT_SLEEP` forever. | `src/FurbleGPS.cpp`, `include/FurbleGPS.h` | e2e `gps-fixed-baud-absent`: present to absent, `power.no_light_sleep` 0 | implemented |
 | P-014 | A sleeping panel skips the RGB swap and DMA push, reports the flush complete, waitDMA before SLPIN, and full-invalidates on wake. | `src/FurbleUI.cpp` | e2e `screen-off-flush-gate`: suppressed flushes with no push; `blind-remote-shutter` model 40.50 mA vs 43.65 mA baseline (-7.2 percent) | implemented |
+| P-007 | Tickless boards enable `CONFIG_PM_RTOS_IDLE_OPT`, keeping the RTOS idle path in IRAM for the shorter sleep entry. | six `sdkconfig.*` files | `tools/check_power_config.py` plus `tests/test_power_config.py`; firmware matrices build the configs | implemented |
+| P-015 | The battery rows are written only while the Battery page is visible; entering the page still refreshes immediately. | `src/FurbleUI.cpp` | e2e `battery-labels-hidden`: zero writes on another page, rows refresh on entry | implemented |
+| P-021 | Console display mode calls `Platform::setDisplayOff(true)`, and a wake keeps it off while console mode is active. | `src/FurbleUI.cpp` | e2e `console-mode-led-off`: `platform.display_off` is yes | implemented |
 
 The modeled saving for these rows is unchanged and still unmeasured. P-001 and
 P-002 bound a worst case; they do not change steady-state current. P-003 halves
@@ -112,7 +115,20 @@ receive duty for the duration of a connect attempt, which is seconds. P-005 has
 no direct saving but re-enables the idle profile on peers that renegotiate.
 P-009 and P-011 are task and fault-path fixes. P-014 shows up in the power-gate
 model as a 7.2 percent drop in the blind-remote scenario; that is a modeled
-delta, not a current measurement.
+delta, not a current measurement. P-007 is a Kconfig change guarded by a
+checker, not a measured saving. P-015 and P-021 remove hidden or lit-hardware
+work.
+
+Three safe-now rows are deliberately not applied yet:
+
+- P-006 (boot CPU frequency) needs the first `CPU maximum frequency` log from a
+  real boot. The simulator overrides the production `Platform` constructor, so
+  no repository test can prove the ordering.
+- P-026 (Waveshare tickless idle) needs the Ethernet, DHCP, MQTT, and OTA soak in
+  its own test column before the mains node changes sleep policy.
+- P-035 (`MAC_BB_PD` on Waveshare) depends on `FREERTOS_USE_TICKLESS_IDLE`, so it
+  cannot be set until P-026 passes. `check_power_config.py` enforces that
+  dependency.
 
 ## Needs measurement
 

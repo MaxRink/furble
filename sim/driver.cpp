@@ -319,10 +319,11 @@ void validateSeed(const std::string &name, const std::string &value) {
   }
 
   constexpr const char *byteSeeds[] = {
-      "brightness", "inactivity", "display_off",  "gps_rate",  "gps_constel",
-      "gps_power",  "gps_duty",   "cpu_freq",     "tx_power",  "scan_mode",
-      "text_size",  "auto_off",   "low_batt",     "fb_output", "gps_hold",
-      "imu_wake",   "gps_assist", "gps_platform", "hw_motion", "legend",
+      "brightness",  "inactivity", "display_off", "display_mode", "gps_rate",
+      "gps_constel", "gps_power",  "gps_duty",    "cpu_freq",     "tx_power",
+      "scan_mode",   "text_size",  "auto_off",    "low_batt",     "fb_output",
+      "gps_hold",    "imu_wake",   "gps_assist",  "gps_platform", "hw_motion",
+      "legend",
   };
   if (std::find(std::begin(byteSeeds), std::end(byteSeeds), name) != std::end(byteSeeds)) {
     if (parseUnsigned(value) > std::numeric_limits<uint8_t>::max()) {
@@ -1499,6 +1500,9 @@ std::string queryValue(const std::string &key) {
     }
     return value;
   }
+  if (key == "platform.display_off") {
+    return Furble::Sim::displayOffState();
+  }
   if (key == "platform.power_off") {
     return simulatedPowerOff ? "yes" : "no";
   }
@@ -1687,6 +1691,7 @@ void applyScenarioSettings(void) {
   saveByte("brightness", Settings::BRIGHTNESS);
   saveByte("inactivity", Settings::INACTIVITY);
   saveByte("display_off", Settings::DISPLAY_OFF);
+  saveByte("display_mode", Settings::DISPLAY_MODE);
   saveByte("gps_rate", Settings::GPS_RATE);
   saveByte("gps_constel", Settings::GPS_CONSTEL);
   saveByte("gps_power", Settings::GPS_POWER);
