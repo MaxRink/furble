@@ -75,6 +75,28 @@ unless marked otherwise. Static evidence does not prove runtime reachability.
   NXP `nw61x` / `n61x` combo. That hardware change does not change the shared
   UUID set, but it can change timing, wake, and pairing behaviour.
 
+The UUIDs Furble uses, with the corrected roles:
+
+| UUID | Role |
+| --- | --- |
+| `9A5ED1C5-74CC-4C50-B5B6-66A48E7CCFF1` | Camera Information service |
+| `35FE6272-6AA5-44D9-88E1-F09427F51A71` | Model Number |
+| `4B445988-CAA0-4DD3-941D-37B4F52ACA86` | Camera service |
+| `B58CE84C-0666-4DE9-BEC8-2D27B27B3211` | Camera Power |
+| `1452335A-EC7F-4877-B8AB-0F72E18BB295` | Operation Mode |
+| `A36AFDCF-6B67-4046-9BE7-28FB67DBC071` | GEO Tag enable |
+| `9F00F387-8345-4BBC-8B92-B87B52E3091A` | Shooting service |
+| `B29E6DE3-1AEC-48C1-9D05-02CEA57CE664` | Drive Mode |
+| `559644B8-E0BC-4011-929B-5CF9199851E7` | Operation Request |
+| `B5589C08-B5FD-46F5-BE7D-AB1B8C074CAA` | Capture Status |
+| `009A8E70-B306-4451-B943-7F54392EB971` | Self Timer |
+| `0F291746-0C80-4726-87A7-3C501FD3B4B6` | Bluetooth Control service |
+| `FE3A32F8-A189-42DE-A391-BC81AE4DAA76` | Paired Device Name |
+| `84A0DD62-E8AA-4D0F-91DB-819B6724C69E` | GPS Control service |
+| `28F59D60-8B8E-4FCD-A81F-61BDB46595A9` | GPS Information |
+| `F37F568F-9071-445D-A938-5441F2E82399` | WLAN Control service |
+| `9111CDD0-9F01-45C4-A2D4-E09E8FB0424D` | Network Type |
+
 The practical result is three profiles, not one:
 
 | Profile | Official app | Transport and control |
