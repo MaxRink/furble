@@ -400,17 +400,21 @@ and [Smart](https://github.com/MaxRink/furble/blob/965f299f0f43c38fe45e4680f1bfb
 
 #### Remote (ML-L7-style)
 
-- Pair characteristic `00002087-3dd4-4255-8d62-6dc7b9bd5561`; indication
-  `00002084-3dd4-4255-8d62-6dc7b9bd5561`; shutter
-  `00002083-3dd4-4255-8d62-6dc7b9bd5561`.
+- Pair characteristic `00002087-3dd4-4255-8d62-6dc7b9bd5561`; key/status
+  indication `00002084-3dd4-4255-8d62-6dc7b9bd5561`; shutter
+  `00002083-3dd4-4255-8d62-6dc7b9bd5561`. The `00002084` payload is six
+  bytes, not a pairing result.
 - Remote pairing stages send stage 1, validate stage-2 response, send stage 3,
-  and validate the stage-4 timestamp. The stage-5 template is not emitted by
-  the current base loop. The first indication is
-  subscribed before the shared handshake. Saved device and nonce are reused;
-  new sessions randomize them, forcing the device ID's first wire byte to 01.
-- Shutter writes require response: `{02 02}` press and `{02 00}` release to
-  the remote shutter characteristic. Focus and GPS are no-ops. Furble reports
-  this mode as shutter-only, with no manual exposure control.
+  and validate the stage-4 timestamp. Stage 4 is `[04]` followed by 16 zero
+  bytes. The stage-5 template is not emitted by the current base loop. The
+  first indication is subscribed before the shared handshake. Saved device and
+  nonce are reused; new sessions randomize them, forcing the device ID's first
+  wire byte to 01.
+- Shutter writes require response: `{02 02}` is a short press and `{02 03}` is
+  a long press. `{02 00}` is a no-op; it is not a release. Furble's short press
+  completes the capture, and its release write is ignored by the B600 parser.
+  Focus and GPS are no-ops. Long press, bulb, and movie are not implemented.
+  Furble reports this mode as shutter-only, with no manual exposure control.
 - Shared stage timeout is about 10 s per response. There is no separate camera
   acceptance or physical-capture confirmation.
 
