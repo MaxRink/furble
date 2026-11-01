@@ -125,8 +125,11 @@ bool isConfigurationNotification(const uint8_t *data, size_t bytes) {
 
 bool isRegistrationNotification(const uint8_t *data, size_t bytes) {
   // X100VI's CHR_NOT1 capture is 01 00. Older Basic bodies used 02 00 for
-  // the same registration-accepted event. The caller must still require the
-  // dedicated CHR_NOT1 characteristic, since 01 00 is also the geotag request.
+  // the same event. The caller must still require the dedicated CHR_NOT1
+  // characteristic, since 01 00 is also the geotag request. The official apps
+  // additionally treat 01 00 on CHR_NOT1 as a date or time request, so this
+  // value is not a proven registration flag; it only means the camera accepted
+  // the client enough to talk to it.
   return data != nullptr && bytes >= 2 && data[1] == 0x00 && (data[0] == 0x01 || data[0] == 0x02);
 }
 

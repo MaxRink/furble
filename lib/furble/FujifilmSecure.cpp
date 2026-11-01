@@ -19,7 +19,6 @@
 namespace Furble {
 
 const NimBLEUUID FujifilmSecure::SERVICE_UUID {0xa9d2b304, 0xe8d6, 0x4902, 0x8336352b772d7597};
-const NimBLEUUID FujifilmSecure::PRI_SVC_UUID {0x731893f9, 0x744e, 0x4899, 0xb7e3174106ff2b82};
 
 std::string FujifilmSecure::composeName(const std::string &advertisedName, const serial_t &serial) {
   static_assert(SERIAL_LEN == FujifilmProtocol::SERIAL_BYTES,

@@ -62,6 +62,33 @@ int main() {
                         && writes[1].payload == std::vector<uint8_t> {1, 1},
                     "Ricoh shutter OperationRequest starts capture with AF");
   }
+  // Geotagging uses the Camera Service GEO Tag enable characteristic, not the
+  // WLAN Control Network Type characteristic. The GPS packet ends with the
+  // WGS84 datum selector 0, not a centisecond value. Both facts come from the
+  // official Ricoh Image Sync app and the camera GATT table. See
+  // docs/camera-research/ricoh.md.
+  const std::string geotagEnableUuid =
+      Furble::Host::RicohVirtualCamera::geotagEnableCharacteristicUUID().toString();
+  const std::string gpsInfoUuid =
+      Furble::Host::RicohVirtualCamera::gpsInformationCharacteristicUUID().toString();
+  const Furble::Camera::gps_t gps = {52.5163, 13.3777, 34.5, 9};
+  const Furble::Camera::timesync_t timesync = {2026, 11, 1, 12, 34, 56, 78};
+  peer.clearEvents();
+  camera.updateGeoData(gps, timesync);
+  const auto &geoWrites = peer.writes();
+  passed &= check(geoWrites.size() == 2, "Ricoh geotag emits enable and GPS writes");
+  if (geoWrites.size() == 2) {
+    passed &= check(geoWrites[0].characteristic == geotagEnableUuid
+                        && geoWrites[0].payload == std::vector<uint8_t> {1},
+                    "Ricoh geotag enables the Camera Service GEO Tag characteristic");
+    passed &= check(geoWrites[1].characteristic == gpsInfoUuid && geoWrites[1].payload.size() == 32,
+                    "Ricoh geotag writes one 32-byte GPS Information packet");
+    if (geoWrites[1].payload.size() == 32) {
+      passed &= check(geoWrites[1].payload.back() == 0,
+                      "Ricoh GPS packet ends with the WGS84 datum selector");
+    }
+  }
+
   camera.disconnect();
   return passed ? 0 : 1;
 }

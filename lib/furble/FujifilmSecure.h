@@ -67,9 +67,6 @@ class FujifilmSecure: public Fujifilm, public NimBLEScanCallbacks {
   // Advertised service UUID
   static const NimBLEUUID SERVICE_UUID;
 
-  // Primary service UUID
-  static const NimBLEUUID PRI_SVC_UUID;
-
   // Pairing service UUID
   const NimBLEUUID PAIR_SVC_UUID {0x123d8f06, 0x62a1, 0x4935, 0x9322833c531ee225};
 
@@ -79,9 +76,8 @@ class FujifilmSecure: public Fujifilm, public NimBLEScanCallbacks {
   // Identifier UUID
   const NimBLEUUID IDENT_CHR_UUID {0x85b9163e, 0x62d1, 0x49ff, 0xa6f5054b4630d4a1};
 
-  // Unknown SVC UUID - notification 3
-  const NimBLEUUID NOT3_SVC_UUID {0x804daa8e, 0xffeb, 0x4ab3, 0x8e756edd7303208d};
-  const NimBLEUUID NOT3_CHR_UUID {0x7170fd5a, 0x56d9, 0x4c19, 0xb0437a7047d8e1a0};
+  // 804DAA8E / 7170FD5A is the camera startup information service and its
+  // remote boot setting, not a generic notification. Furble does not use it.
 
   // Unknown UUID - SVC_READ_UUID
   const NimBLEUUID UNK0_CHR_UUID {0x98934b2c, 0x756c, 0x4632, 0xaa2fdcba1bfec824};
@@ -94,6 +90,9 @@ class FujifilmSecure: public Fujifilm, public NimBLEScanCallbacks {
   const NimBLEUUID NOT4_CHR_UUID {0xbf6dc9cf, 0x3606, 0x4ec9, 0xa4c8d77576e93ea4};
   const NimBLEUUID NOT5_CHR_UUID {0x75823784, 0xfbb7, 0x4b71, 0xabaecd9a34072e3c};
   const NimBLEUUID NOT7_CHR_UUID {0xaab609c4, 0x94dd, 0x4d89, 0xbc60665d5090b828};
+  // Optional notifications used by some Fujifilm profiles. Both are absent
+  // from the X100VI 1.31 and X-S20 3.30 ad14d4 table, so a failed subscription
+  // is expected there and must stay non-fatal.
   const NimBLEUUID NOT8_CHR_UUID {0x2a125640, 0x706d, 0x4dd1, 0xb420c0f4ab93c361};
   const NimBLEUUID NOT9_CHR_UUID {0x82a9f452, 0xc5ce, 0x4ef5, 0x82033fc9a47f8171};
   const NimBLEUUID NOT10_CHR_UUID {0xdeef7187, 0x3f43, 0x4364, 0x9e2211a8c8a15951};

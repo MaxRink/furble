@@ -305,9 +305,10 @@ code.
 
 - dm-zharov/ricoh-gr-bluetooth-api. Vendors: RICOH GR II/III/IIIx, G900SE,
   WG-M2, PENTAX K-1, K-3 III, K-3 III Mono, K-70, KF, KP. Transport: BLE
-  GATT. Documents: the Camera, Shooting, GPS and Location Control service
-  characteristics furble uses, plus a Date/Time (clock set) characteristic
-  furble does not yet write, plus Battery Level, Storage Info, Grad ND.
+  GATT. Documents: the Camera, Shooting, GPS and WLAN Control service
+  characteristics furble uses, including the Camera Service GEO Tag enable,
+  plus a Date/Time (clock set) characteristic furble does not yet write, plus
+  Battery Level, Storage Info, Grad ND.
   Maturity: RE-mature. License: not verified.
   https://github.com/dm-zharov/ricoh-gr-bluetooth-api
 - sotashimozono/gr3sync. Corroborating GR III geotag client.

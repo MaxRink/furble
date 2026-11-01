@@ -11,6 +11,7 @@ const NimBLEUUID MODEL_CHARACTERISTIC {0x35FE6272, 0x6AA5, 0x44D9, 0x88E1F09427F
 const NimBLEUUID CAMERA_SERVICE {0x4B445988, 0xCAA0, 0x4DD3, 0x941D37B4F52ACA86};
 const NimBLEUUID POWER_CHARACTERISTIC {0xB58CE84C, 0x0666, 0x4DE9, 0xBEC82D27B27B3211};
 const NimBLEUUID OPERATION_MODE_CHARACTERISTIC {0x1452335A, 0xEC7F, 0x4877, 0xB8AB0F72E18BB295};
+const NimBLEUUID GEOTAG_ENABLE_CHARACTERISTIC {0xA36AFDCF, 0x6B67, 0x4046, 0x9BE728FB67DBC071};
 const NimBLEUUID SHOOTING_SERVICE {0x9F00F387, 0x8345, 0x4BBC, 0x8B92B87B52E3091A};
 const NimBLEUUID SHOOTING_FLAVOR_CHARACTERISTIC {0xB29E6DE3, 0x1AEC, 0x48C1, 0x9D0502CEA57CE664};
 const NimBLEUUID OPERATION_REQUEST_CHARACTERISTIC {0x559644B8, 0xE0BC, 0x4011, 0x929B5CF9199851E7};
@@ -20,8 +21,6 @@ const NimBLEUUID BT_CONTROL_SERVICE {0x0F291746, 0x0C80, 0x4726, 0x87A73C501FD3B
 const NimBLEUUID PAIRED_NAME_CHARACTERISTIC {0xFE3A32F8, 0xA189, 0x42DE, 0xA391BC81AE4DAA76};
 const NimBLEUUID GPS_SERVICE {0x84A0DD62, 0xE8AA, 0x4D0F, 0x91DB819B6724C69E};
 const NimBLEUUID GPS_CHARACTERISTIC {0x28F59D60, 0x8B8E, 0x4FCD, 0xA81F61BDB46595A9};
-const NimBLEUUID LOCATION_SERVICE {0xF37F568F, 0x9071, 0x445D, 0xA9385441F2E82399};
-const NimBLEUUID LOCATION_CHARACTERISTIC {0x9111CDD0, 0x9F01, 0x45C4, 0xA2D4E09E8FB0424D};
 
 }  // namespace
 
@@ -198,7 +197,7 @@ void RicohVirtualCamera::disconnect(NimBLEClient &client, int reason) {
 bool RicohVirtualCamera::hasService(const NimBLEUUID &service) const {
   return matches(service, INFO_SERVICE) || matches(service, CAMERA_SERVICE)
          || matches(service, SHOOTING_SERVICE) || matches(service, BT_CONTROL_SERVICE)
-         || matches(service, GPS_SERVICE) || matches(service, LOCATION_SERVICE);
+         || matches(service, GPS_SERVICE);
 }
 
 bool RicohVirtualCamera::hasCharacteristic(const NimBLEUUID &service,
@@ -207,7 +206,8 @@ bool RicohVirtualCamera::hasCharacteristic(const NimBLEUUID &service,
     return matches(characteristic, MODEL_CHARACTERISTIC);
   if (matches(service, CAMERA_SERVICE)) {
     return matches(characteristic, POWER_CHARACTERISTIC)
-           || matches(characteristic, OPERATION_MODE_CHARACTERISTIC);
+           || matches(characteristic, OPERATION_MODE_CHARACTERISTIC)
+           || matches(characteristic, GEOTAG_ENABLE_CHARACTERISTIC);
   }
   if (matches(service, SHOOTING_SERVICE)) {
     return matches(characteristic, SHOOTING_FLAVOR_CHARACTERISTIC)
@@ -217,9 +217,7 @@ bool RicohVirtualCamera::hasCharacteristic(const NimBLEUUID &service,
   }
   if (matches(service, BT_CONTROL_SERVICE))
     return matches(characteristic, PAIRED_NAME_CHARACTERISTIC);
-  if (matches(service, GPS_SERVICE))
-    return matches(characteristic, GPS_CHARACTERISTIC);
-  return matches(service, LOCATION_SERVICE) && matches(characteristic, LOCATION_CHARACTERISTIC);
+  return matches(service, GPS_SERVICE) && matches(characteristic, GPS_CHARACTERISTIC);
 }
 
 bool RicohVirtualCamera::discoverCharacteristic(NimBLEClient &client,
@@ -234,9 +232,9 @@ bool RicohVirtualCamera::canWrite(const NimBLEUUID &service,
   return (matches(service, SHOOTING_SERVICE)
           && (matches(characteristic, SHOOTING_FLAVOR_CHARACTERISTIC)
               || matches(characteristic, OPERATION_REQUEST_CHARACTERISTIC)))
-         || (matches(service, GPS_SERVICE) && matches(characteristic, GPS_CHARACTERISTIC))
-         || (matches(service, LOCATION_SERVICE)
-             && matches(characteristic, LOCATION_CHARACTERISTIC));
+         || (matches(service, CAMERA_SERVICE)
+             && matches(characteristic, GEOTAG_ENABLE_CHARACTERISTIC))
+         || (matches(service, GPS_SERVICE) && matches(characteristic, GPS_CHARACTERISTIC));
 }
 
 bool RicohVirtualCamera::write(NimBLEClient &client,
@@ -449,6 +447,14 @@ const NimBLEUUID &RicohVirtualCamera::cameraServiceUUID() {
 
 const NimBLEUUID &RicohVirtualCamera::powerCharacteristicUUID() {
   return POWER_CHARACTERISTIC;
+}
+
+const NimBLEUUID &RicohVirtualCamera::geotagEnableCharacteristicUUID() {
+  return GEOTAG_ENABLE_CHARACTERISTIC;
+}
+
+const NimBLEUUID &RicohVirtualCamera::gpsInformationCharacteristicUUID() {
+  return GPS_CHARACTERISTIC;
 }
 
 }  // namespace Host
