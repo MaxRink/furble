@@ -51,9 +51,11 @@ Completed in this branch:
 ## Deviations and limits
 
 - No hardware capture was made. Runtime claims remain capture-gated.
-- The remaining safe fixes are tracked in the parity matrix: Fujifilm clock and
-  NUL name, Canon GPS UTC epoch, Sony location sequence, Ricoh clock and
-  paired-device name, capability gating, and the rest of the S3 to S13 list.
+- The remaining safe fixes are tracked in the parity matrix. S13 is
+  reclassified as not representable because the Fujifilm disconnect-reason
+  handle is inert on the audited images. The remaining code work is UI
+  capability gating, Ricoh capture-status confirmation, and the LUMIX
+  location and clock readiness gates.
 - The peers model the documented protocol; they do not certify a physical
   camera outcome.
 

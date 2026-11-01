@@ -103,8 +103,10 @@ Table 2 has `340` rows across 13 camera entries:
 `28` out of scope; hardware `8` verified,
 `236` capture-gated, `96` not applicable.
 
-The action list required by the goal is fully classified. The largest single
-class of gaps is not a missing byte sequence. It is that Furble either hides a
+The counts above are the initial classification at the audit pin. Applied
+fixes and reclassifications are listed in section 1.4 and in the individual
+rows. The action list required by the goal is fully classified. The largest
+single class of gaps is not a missing byte sequence. It is that Furble either hides a
 feature the camera exposes (movie, interval, self-timer, clock, power) or shows a
 control the camera cannot honour (bulb and focus on Ricoh, focus on LUMIX,
 release on Nikon Remote, focus on Nikon Smart). The second largest class is
@@ -132,7 +134,7 @@ and each needs a host or simulator regression test.
 | S10 | Decode Ricoh Capture Status and use a `Capturing=1` then `0` transition as the shot-confirmation signal. | RC3, RC4 | `firmware-static` ricoh.md C-56; `public-source` field table | Removes the false shot-taken implication without adding a new command. |
 | S11 | Stop Nikon Smart at the BLE authentication result and report the Bluetooth Classic blocker. Do not wait for a final OK that is a time request. | NK-S | `app-static` nikon.md S20 and S22; `furble-source` NikonSmart.cpp | Fixed. `connectFinalise` reports the blocker and returns immediately. |
 | S12 | Gate the UI controls by family capability: hide bulb and focus on Ricoh, hide focus on LUMIX, and label Nikon Remote release as a no-op. | All | `firmware-static` and `app-static` rows cited in Table 1 | Stops the product promising an outcome the camera cannot produce. |
-| S13 | Write the disconnect reason `7EDE1988` before an intentional Fujifilm Secure disconnect, and read it after a failed reconnect. | FJ-S40, FJ-S41 | `firmware-static` fujifilm.md C06 and C78; `app-static` both Fujifilm apps | Gives the reconnect path a camera-side reason instead of a generic supervision timeout. |
+| S13 | Write the disconnect reason `7EDE1988` before an intentional Fujifilm Secure disconnect, and read it after a failed reconnect. | FJ-S40, FJ-S41 | `firmware-static` fujifilm.md C06 and C78; `app-static` both Fujifilm apps | Not representable on the audited images. The runtime ATT database has no value entry for handle `0x4007`, so a write has no effect and a read returns the static default. Do not add a dead write. |
 
 ### 1.3 Highest-value capture gates
 
@@ -241,7 +243,7 @@ behaviour has its own row.
 | L55 stale bond, camera deleted | CN-R, SO, LX, DJI | none | canon §7.7; sony §7.5; panasonic §7.6; dji §7.3 | Vendor-specific, mostly unknown | No detection or recovery. SO, LX, and DJI rely on a saved address that may rotate | `furble-source`; `public-source`; `unknown` | capture-gated |
 | L56 stale bond, camera deleted | NK-R, NK-S | device ID mismatch | nikon §7.6 | New device ID after re-pairing | Scan times out when the saved ID is gone. No local bond | `furble-source`; `public-source`; `unknown` | capture-gated |
 | L57 disconnect, user | all | `Control::disconnect`, `Camera::disconnect`, drain, reclaim | state-machines §1.6 | Link termination, vendor teardown if any | Cancel, DISCONNECTING, terminate, 30 s wait, drain, 2 s reclaim | `furble-source` | aligned |
-| L58 disconnect, vendor teardown | FJ-S40, FJ-S41 | `Fujifilm::_disconnect` | fujifilm C06 | Optional disconnect reason before link loss | Only `m_Client->disconnect()`. Reason never written | `furble-source`; `app-static` | safe-fix-needed |
+| L58 disconnect, vendor teardown | FJ-S40, FJ-S41 | `Fujifilm::_disconnect` | fujifilm C06 | Optional disconnect reason before link loss | Only `m_Client->disconnect()`. Reason is inert on firmware | `furble-source`; `firmware-static` | aligned |
 | L59 disconnect, vendor teardown | LX | `Lumix::_disconnect` | panasonic C08 | `03` Finish, then close | Clears pointers and disconnects. No Finish | `furble-source`; `app-static` | safe-fix-needed |
 | L60 disconnect, vendor teardown | RC, CN, NK, SO, DJI | per-class `_disconnect` | ricoh §7.6; canon §7.6; nikon §7.2; sony §7.9; dji §7.2 | Vendor teardown, mostly none documented | Link terminate only | `furble-source`; `public-source` | aligned |
 
@@ -923,7 +925,7 @@ Claims deliberately not adopted from the corpus, because the evidence label is
 | Batch | Scope | Files | Tests |
 | --- | --- | --- | --- |
 | B1 LUMIX session | Remove the focus mapping; add Confirm, Start, Finish, readiness, GPS stop, clock gating | `lib/furble/Lumix.{h,cpp}` | New LUMIX host test with the new peer |
-| B2 Fujifilm clock and identity | 12-byte clock, NUL name, `AAB609C4` enable, disconnect reason | `Fujifilm.cpp`, `FujifilmSecure.cpp`, `FujifilmProtocol.*` | `fujifilm_camera_test`, `fujifilm_protocol_test` |
+| B2 Fujifilm clock and identity | 12-byte clock, NUL name, `AAB609C4` enable | `Fujifilm.cpp`, `FujifilmSecure.cpp`, `FujifilmProtocol.*` | `fujifilm_camera_test`, `fujifilm_protocol_test` |
 | B3 Canon GPS | UTC epoch, `00040001`, `05`, `03`, `06` | `CanonEOSSmart.cpp` | New `canon_gps_test` |
 | B4 Sony GPS | `DD01`, `DD21`, `DD32`, `DD33`, timezone, release | `Sony.cpp` | New `sony_gps_test` |
 | B5 Ricoh clock and identity | Date Time gated on CAPTURE, Paired Device Name, capture status | `Ricoh.{h,cpp}` | Extend `ricoh_focus_test` |
