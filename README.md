@@ -144,7 +144,10 @@ detects the exact board at runtime, so one image covers a board family. The
 M5Tough is not a build environment. It shares the M5Core2 image through
 M5Unified board detection, but it has not been verified on hardware. See
 [docs/supported-hardware.md](docs/supported-hardware.md) for the board to
-environment matrix.
+environment matrix. Hardware that is not supported but is a candidate for a
+port or a purchase is catalogued in
+[docs/hardware-catalog.md](docs/hardware-catalog.md), with GNSS classes, input
+schemes, and runtime estimates. The catalog is not a support claim.
 
 ## Installation
 
