@@ -80,6 +80,8 @@ class Settings {
     WIFI_PSK,
     NTP,
     NTP_SERVER,
+    IVL_SLEEP,
+    IVL_SLEEP_THR,
   } type_t;
 
   typedef struct {
@@ -228,6 +230,16 @@ struct Furble::Settings::storage_type<Furble::Settings::NTP_SERVER> {
 template <>
 struct Furble::Settings::storage_type<Furble::Settings::HW_MOTION> {
   using type = uint8_t;
+};
+
+template <>
+struct Furble::Settings::storage_type<Furble::Settings::IVL_SLEEP> {
+  using type = bool;
+};
+
+template <>
+struct Furble::Settings::storage_type<Furble::Settings::IVL_SLEEP_THR> {
+  using type = uint32_t;
 };
 
 template <>

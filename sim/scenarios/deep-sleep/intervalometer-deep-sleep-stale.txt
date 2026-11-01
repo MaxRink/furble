@@ -1,0 +1,13 @@
+# A valid record with a wake time two hours in the past is stale and must not
+# resume a run, even when the PMIC reports a timed wake.
+seed fauxny true
+seed autoconnect true
+seed ivl_sleep true
+seed timed_wake true
+seed resume_fixture stale
+wait 5000
+assert platform.timed_wake yes
+assert platform.wake_marker no
+assert camera.shutter_presses 0
+assert ui.interval_state idle
+exit

@@ -19,6 +19,26 @@ enum class FuzzPhase {
 // settle budget counts completed LVGL cycles rather than driverTick calls.
 class FuzzMachine {
  public:
+  // A restart checkpoint contains only machine-owned state. LVGL settle and
+  // check phases are intentionally not restartable because their UI work is
+  // not replayed after a process restart.
+  struct State {
+    uint32_t phase = 0;
+    uint32_t settleNext = 0;
+    uint32_t maxSteps = 0;
+    uint32_t escapeCadence = 0;
+    uint32_t stepCount = 0;
+    uint32_t settleRemaining = 0;
+    uint32_t attempted = 0;
+    uint32_t observedDelta = 0;
+    uint32_t noObservedDelta = 0;
+    uint32_t settled = 0;
+    uint32_t timerStopChecks = 0;
+    uint32_t finishing = 0;
+    uint32_t interruptedByRestart = 0;
+    uint32_t applyStarted = 0;
+  };
+
   explicit FuzzMachine(uint32_t maxSteps, uint32_t escapeCadence = 40);
 
   FuzzPhase phase() const;
@@ -28,6 +48,17 @@ class FuzzMachine {
   uint32_t noObservedDelta() const;
   uint32_t settled() const;
   uint32_t timerStopChecks() const;
+  uint32_t interruptedByRestart() const;
+
+  State checkpoint() const;
+
+  // Restore only a canonical post-restart state. In-flight LVGL settle and
+  // check phases must be discarded rather than replayed.
+  bool restore(const State &state);
+
+  // Interrupt the current event at the simulator restart boundary. The
+  // attempt is counted once, but no settled or observed counter is advanced.
+  bool interruptForRestart();
 
   // Start an event from Apply. Returns false when the event budget is spent
   // and transitions to the final Escape phase.
@@ -65,7 +96,9 @@ class FuzzMachine {
   uint32_t noObservedDelta_ = 0;
   uint32_t settled_ = 0;
   uint32_t timerStopChecks_ = 0;
+  uint32_t interruptedByRestart_ = 0;
   bool finishing_ = false;
+  bool applyStarted_ = false;
 };
 
 // Stable bounded sampling independent of the standard library distribution

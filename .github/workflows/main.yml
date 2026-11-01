@@ -93,6 +93,9 @@ jobs:
       - name: Check UI restart path
         run: python3 tests/test_ui_restart_path.py
 
+      - name: Check simulator fuzz wrapper classification
+        run: sh sim/scripts/test-run-fuzz.sh
+
       - name: Configure host harness
         run: cmake -S tests/host -B "$RUNNER_TEMP/furble-host-build"
 

@@ -20,6 +20,8 @@ struct battery_reading_t {
 };
 
 void configure(int argc, char **argv);
+/** True after this process was re-executed for a simulated device reboot. */
+bool resumedDeviceBoot(void);
 void startProfiler(void);
 void preparePreferences(void);
 /** Drop the per-run preferences store once the device is finished with it. */
@@ -33,9 +35,13 @@ void setBackTarget(Furble::UI *ui);
 void driverTick(void);
 /** Notify the fuzzer after the UI task completes its real LVGL cycle. */
 void fuzzCycleComplete(Furble::UI *ui);
+bool scenarioSettingIs(const char *name, const char *value);
 
 /** Request an orderly simulator shutdown with the supplied process result. */
 void requestExit(int result);
+
+/** Request a simulator reboot through the platform restart seam. */
+void requestRestart(void);
 
 /** Request failure shutdown, upgrading an earlier success result if needed. */
 void requestFailureExit(void);

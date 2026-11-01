@@ -1,0 +1,13 @@
+# The second saved camera is selected by stable id, not transient index zero.
+seed ble_peers fuji-pair
+seed ble_saved true
+seed ivl_sleep true
+seed timed_wake true
+seed interval_count 2
+seed interval_shutter 30
+seed resume_fixture second_camera
+assert-eventually-virtual 5000 control.state active
+assert control.target_camera FUJIFILM_X-S20
+assert-eventually-virtual 5000 ui.interval_state finished
+assert camera.shutter_presses 1
+exit

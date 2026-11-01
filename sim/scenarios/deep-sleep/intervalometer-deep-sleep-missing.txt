@@ -1,0 +1,10 @@
+# A timed wake without a resume record is consumed and cannot start a run.
+seed fauxny true
+seed autoconnect true
+seed ivl_sleep true
+seed timed_wake true
+wait 5000
+assert platform.wake_marker no
+assert camera.shutter_presses 0
+assert ui.interval_state idle
+exit

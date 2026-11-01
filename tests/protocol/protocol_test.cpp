@@ -293,9 +293,12 @@ void checkSettings(const std::string &root, const fs::path &golden) {
   // derived. The types come from CompanionService::settingType, so dropping a
   // setting's case there fails this too.
   const std::map<std::string, std::pair<uint8_t, FurbleProtocolTest::WireType>> frozen = {
-      {"IMU",      {46, FurbleProtocolTest::WireType::BOOL}},
-      {"IMU_WAKE", {72, FurbleProtocolTest::WireType::U8}  },
-      {"IMU_TRIG", {73, FurbleProtocolTest::WireType::BOOL}},
+      {"AUTO_OFF_CHARGING", {43, FurbleProtocolTest::WireType::BOOL}},
+      {"IMU",               {46, FurbleProtocolTest::WireType::BOOL}},
+      {"IMU_WAKE",          {72, FurbleProtocolTest::WireType::U8}  },
+      {"IMU_TRIG",          {73, FurbleProtocolTest::WireType::BOOL}},
+      {"IVL_SLEEP",         {75, FurbleProtocolTest::WireType::BOOL}},
+      {"IVL_SLEEP_THR",     {76, FurbleProtocolTest::WireType::U32} },
   };
   for (const auto &[symbol, expected] : frozen) {
     // Bound before the lambda on purpose: capturing a structured binding is
