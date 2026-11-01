@@ -586,6 +586,7 @@ void SonyVirtualCamera::disconnect(NimBLEClient &client, int reason) {
   if (m_Config.release_lock_on_disconnect) {
     m_LockOwner = 0;
     m_LocationTransferEnabled = false;
+    m_Config.location_enabled = false;
   }
 }
 
@@ -797,6 +798,7 @@ bool SonyVirtualCamera::handleLocationLock(const std::vector<uint8_t> &value) {
     }
     m_LockOwner = 0;
     m_LocationTransferEnabled = false;
+    m_Config.location_enabled = false;
   }
   return true;
 }
@@ -820,6 +822,7 @@ bool SonyVirtualCamera::handleLocationEnable(const std::vector<uint8_t> &value) 
     return false;
   }
   m_LocationTransferEnabled = (value[0] == 0x01);
+  m_Config.location_enabled = m_LocationTransferEnabled;
   emitLocationAvailability(m_LocationTransferEnabled);
   return true;
 }
