@@ -53,7 +53,9 @@ The completion gate is:
 8. Every camera feature is classified as implemented, camera-menu-only,
    transport-unavailable, unsafe, or capture-gated in a per-camera parity
    matrix.
-9. All validation commands pass and the two PRs are reviewable independently.
+9. Every family has a current official-app analysis and a versioned app
+   register, with no unverified app claim promoted to camera behavior.
+10. All validation commands pass and the two PRs are reviewable independently.
 
 ## 3. Current baseline
 
@@ -395,6 +397,160 @@ Per family and transport:
 Exit gate: a new contributor can implement a working family client from the
 sheet and guide without reading vendor apps or firmware.
 
+### J. Blocked-artifact research and external evidence
+
+Goal: before any item is declared blocked, prove that the public record has
+been searched, that public tools were tested, and that the exact missing
+artifact is known.
+
+This workstream runs in parallel with A through I. It is mandatory for every
+encrypted image, every missing firmware version, every unproven runtime claim,
+and every camera feature that has no capture.
+
+#### J.1 Search protocol
+
+For each blocker, search and record at least these source classes:
+
+1. Code hosts: GitHub, GitLab, Codeberg, Bitbucket, SourceHut.
+2. Firmware and reverse-engineering communities: CHDK, Magic Lantern, XDA,
+   DPReview, PentaxForums, EOSHD, NikonGear, Sony Alpha forums, LUMIX forums,
+   RCGroups, OpenRC, Hackaday, and public Discord or IRC archives.
+3. Archives: Wayback Machine, archive.org, vendor support archives, and
+   regional vendor sites.
+4. Regulatory filings: FCC, CE, VCCI, MIC, and equivalent databases.
+5. Patents and standards: Bluetooth SIG, Wi-Fi Alliance, PTP/IP, DLNA, USB,
+   and vendor patent filings.
+6. Service manuals, board photos, teardown reports, and repair guides.
+7. Academic papers, security conference talks, and vulnerability write-ups.
+8. Vendor SDKs, sample repositories, GPL or open-source releases, and
+   published protocol guides.
+
+Record the exact query, date, and result. "No result" is only valid with the
+queries listed. Test public tools against the retained images before declaring
+an image opaque.
+
+#### J.2 Blocker research tasks
+
+| ID | Family or blocker | Research task | Required output |
+| --- | --- | --- | --- |
+| B1 | Panasonic S5II, BGH1, G9II UPD and BLE | Search for public UPD parsing, AES-CTR keys, rootfs extraction, BLE UUIDs, MEI0 and APS documentation. Check OpenGH5, lumix-fullframe-reverse, LUMIX-G9II-Remote-Control, gpxcam, LUMIX Sync, and any newer project. Test every public key and tool. | `analysis/panasonic-external-evidence.md` with tools tried, results, and remaining key or dump. |
+| B2 | Panasonic Wi-Fi and HTTP | Search for S5II, BGH1, and G9II Wi-Fi API documentation, DLNA endpoints, live view, transfer, and settings. | `analysis/panasonic-wifi-external.md` and a Wi-Fi sheet update. |
+| B3 | Canon FIR v5 and v6 | Search for Digic 8 and Digic 10 extraction, EOS RP and R6 Mark II ROM dumps, `d8_oracle`, FIR decryption, and Canon service tools. Test public decryptors. | `analysis/canon-external-evidence.md` with the exact key or dump still needed. |
+| B4 | Canon FI2 | Search for per-model FI2 keys, CHDK ports, M6 and G9 X Mark II dumps, and FI2 container documentation. | `analysis/canon-fi2-external.md`. |
+| B5 | Nikon Z6 III 0x260 | Search for Nikon firmware decryption, Z6 III dumps, 0x260 container notes, SnapBridge protocol analysis, nsg, birdcam, and Nikon service tools. | `analysis/nikon-z6iii-external.md`. |
+| B6 | Sony ZV-1F FDAT | Search for the ZV-1F model key, CXD90045 and CXD90057 keys, UFU and FDAT tools, Sony firmware extraction, and ILCE-7RM5 reproduction. | `analysis/sony-zv1f-external.md`. |
+| B7 | DJI Action 4 and Action 5 Pro | Search for OTA packages, camera images, Mimo protocol analysis, DJI SDK extensions, FCC filings, teardowns, and public reverse projects. | `analysis/dji-external-evidence.md` with a feasible capture or OTA method. |
+| B8 | Hardware captures, all families | Build a capture plan and a source list for HCI snoop, nRF Sniffer, Wi-Fi monitor mode, USB, and camera logs. Identify owners and hardware. | `docs/captures/capture-plan.md` with per-family traces and acceptance criteria. |
+| B9 | Missing firmware versions | Search vendor archives, Wayback, regional sites, and mirrors for missing versions, especially Fujifilm pre-cutover, Ricoh GR IIIx, Canon older releases, Sony older releases, and Panasonic older releases. | `docs/research/firmware-acquisition-backlog.md`. |
+| B10 | Camera-menu-only features | Search manuals, service manuals, patents, and teardown reports for features that have no transport API but matter for parity. | Feature rows marked menu-only with evidence. |
+| B11 | Unproven runtime claims | For every `unknown` in the specs, search for a public capture or a reproducible test before scheduling a hardware capture. | Updated unknown row with the search result. |
+| B12 | Power and GPS datasheets | Search for every fitted MCU, PMIC, GPS, IMU, display, radio module, and battery datasheet, plus errata and application notes. | `docs/power/datasheet-register.md`. |
+
+#### J.3 Blocked-artifact register
+
+Maintain one register at `docs/research/blocked-artifact-register.md`:
+
+| ID | Family | Blocker | What it blocks | Sources searched | Findings | Closing artifact | Owner | Status | Date |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+
+Status values: open, public-artifact-found, tool-tested-negative,
+needs-hardware, needs-vendor-key, closed.
+
+Rules:
+
+1. A blocker is not final until the row lists the queries, the tools tried, and
+   the exact artifact that would close it.
+2. If a public project exists, import its evidence with hash, license, and
+   provenance. Do not copy unlicensed code.
+3. If a public tool fails, record the version, input hash, and error.
+4. If the only path is a hardware dump or vendor key, say so explicitly and
+   mark the feature capture-gated in Furble.
+5. Re-run the search when a new firmware, app, SDK, or public project appears.
+
+#### J.4 Priority order
+
+1. Panasonic UPD and BLE, then Panasonic Wi-Fi.
+2. Canon FIR and FI2, then Canon Wi-Fi.
+3. Sony ZV-1F FDAT, then Sony Wi-Fi.
+4. Nikon Z6 III, then Nikon Wi-Fi.
+5. DJI OTA and Mimo.
+6. Hardware captures for all families.
+7. Missing firmware versions.
+8. Menu-only and power datasheet research.
+
+### K. Official Android app analysis and version tracking
+
+Goal: every camera family has a current, versioned analysis of its official
+Android apps, used as context and reference for the protocol, Wi-Fi, model
+gates, UI semantics, and error handling.
+
+Apps are client code. They prove what the vendor client expects and sends; they
+do not prove what the camera accepts. Every app finding is labeled `app-static`
+and cross-checked against firmware or a capture before it becomes a camera
+claim.
+
+#### K.1 Required app inventory
+
+| Family | Apps | Required analysis |
+| --- | --- | --- |
+| Fujifilm | XApp, Camera Remote | BLE Secure and Basic, Wi-Fi EXWIFI, pairing, geotag, clock, image transfer, firmware update, model table, cutover versions |
+| Ricoh | Image Sync, GR WORLD | BLE GATT definitions, GPS, GEO Tag, WLAN, image transfer, live view, settings, GR IV-only surfaces |
+| Canon | Camera Connect | Smart and Remote BLE, Wi-Fi handover, PTP/IP or HTTP, GPS, livestream, model gates, firmware update |
+| Nikon | SnapBridge | Smart BLE and Classic handoff, Wi-Fi, PTP/IP, pairing crypto, clock, GPS, image transfer, firmware update |
+| Sony | Creators' App, Imaging Edge Mobile | CC00, DD00, EE00, BB00, FF00, PTP/IP, location, pairing, transfer, settings, firmware update |
+| Panasonic | LUMIX Sync | MEI0 and APS, BLE control, Wi-Fi start, HTTP or DLNA, GPS, clock, transfer, live view, settings, firmware update |
+| DJI | Mimo | BLE provisioning, R SDK context, Wi-Fi live view, media, settings, OTA, model table |
+
+#### K.2 Required evidence per app
+
+1. Package name, version, versionCode, APK or XAPK hash, signer certificate
+   hash, split structure, and acquisition source.
+2. Static and semi-dynamic decompilation: DEX, native libraries, Flutter
+   assets, resources, manifests, and any packed or encrypted payload.
+3. Every BLE UUID, advertisement parser, model gate, command table, payload
+   builder, notification handler, pairing state, and error string.
+4. Every Wi-Fi endpoint, header, token, request body, response parser, stream,
+   transfer path, and firmware update flow.
+5. Every settings schema, range, enum, default, and persistence rule.
+6. Every model table and feature gate, with the exact constants.
+7. Every UI flow that reveals a protocol sequence or a camera precondition.
+8. A version comparison against the previous retained release, with changed
+   constants and cutovers.
+9. A list of assumptions that the app cannot prove and the firmware or capture
+   needed.
+
+#### K.3 Version tracking
+
+Maintain `docs/research/android-app-register.md`:
+
+| Family | App | Version | Version code | SHA-256 | Signer | Retained | Analysis file | Last reviewed |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+
+Rules:
+
+1. Retain at least the current release and one older release per app.
+2. Re-run the analysis when a new version appears, and diff the BLE, Wi-Fi,
+   model, and settings constants.
+3. Keep app artifacts in the private corpus or an ignored workspace. Never
+   commit proprietary APKs or decompiled code to Furble.
+4. Cite class names, method names, string literals, offsets, and hashes.
+5. Do not copy code from an app into Furble. Use it as evidence only.
+6. If an app is packed, AppGuard-protected, split, or Flutter-based, record the
+   exact recovery method and the payload hash.
+7. If an app has no BLE or Wi-Fi surface for a family, record the absence and
+   the search method.
+
+#### K.4 Cross-checks
+
+Every app-derived claim must be checked against at least one of:
+
+- a firmware handler or table,
+- a hardware capture,
+- a public implementation with a compatible license,
+- a vendor document.
+
+If none exists, the claim stays `app-static` and the feature is capture-gated.
+
 ## 6. Execution phases
 
 ### Phase 0: verify and freeze
@@ -407,9 +563,12 @@ sheet and guide without reading vendor apps or firmware.
 
 - Finish handler maps where code is readable.
 - Record exact obstructions where it is not.
+- Refresh the official Android app analysis and version register for every
+  family, and diff the current release against the retained older release.
 - Acquire missing firmware or app versions where legally and technically
   possible.
-- Output: complete handler and container notes, no stale offsets.
+- Run the blocked-artifact research protocol and update the register.
+- Output: complete handler, container, and app notes with no stale offsets.
 
 ### Phase 2: complete BT and Wi-Fi specs
 
@@ -462,6 +621,8 @@ which claims are hardware-verified and which are capture-gated.
 - Wi-Fi API coverage: every documented endpoint, opcode, and stream has a row.
 - Furble action traceability: 100 percent classified.
 - Per-camera parity matrix: every camera feature classified.
+- Official app register: every family has a current version, hash, signer,
+  analysis file, and one-version diff.
 - Usage guides: every family and transport has a quick start, full sequences,
   test vectors, and an error guide.
 - Simulator coverage: every family has a peer and at least one failure path.
