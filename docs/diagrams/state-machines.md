@@ -1485,14 +1485,15 @@ stateDiagram-v2
   [*] --> Idle
   Idle --> Pressed: bytes 00 01, unacknowledged
   Pressed --> Idle: bytes 00 02, unacknowledged
-  Idle --> Idle: focus press or release, no-op
+  Idle --> Focused: bytes 00 03, unacknowledged
+  Focused --> Idle: bytes 00 04, unacknowledged
 ```
 
 | Transition | Bytes | Status | Evidence |
 | :--- | :--- | :--- | :--- |
 | Press | `00 01` to `00030030` | `Y` | `furble-source`, `public-source` |
 | Release | `00 02` | `Y` | `furble-source`, `public-source` |
-| Half-press or focus | none | `N` by design | `furble-source` |
+| Half-press or focus | `00 03` AF_ON and `00 04` AF_OFF | `Y`, app-static | `furble-source`, `app-static` |
 | Bulb hold | press, wait, release | `P` | `public-source` documents BR-E1 bulb; Furble has no dedicated path |
 | Self-timer | no command | `N` | `furble-source` |
 | Interval | press and release per shot | `P` | `furble-source` |
@@ -1597,6 +1598,12 @@ The cancel poll is what keeps an interactive disconnect bounded.
 | CS-17 | Camera confirms location | indication `02` | set `m_GeoEnabled` | GPS updates begin | n/a | `furble-source` |
 | CS-18 | GPS update tick | `m_GeoEnabled`, characteristic writable | write 20-byte packet | ATT write response | n/a | `furble-source` |
 | CS-19 | User disconnect | link up | `m_Client->disconnect()` | link down | supervision or immediate | `furble-source` |
+
+The GPS rows CS-16 and CS-17 describe the current Furble code, not confirmed
+camera behavior. Camera Connect 3.6.11.7 uses `00040001` read and notify for
+the data request, answers with the 8-byte `05 00 ...` command, starts GPS with
+8-byte `01` or `02`, and selects a source with `06`. The one-byte `{01}` write
+and the `03` request interpretation are not app-corroborated. `app-static`.
 
 ### 6.8 Unknowns
 

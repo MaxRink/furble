@@ -1656,11 +1656,12 @@ S5II and BGH1 traces. It does not implement the newer APS identity path, the
 Confirm and Start handshake, or the readiness notifications. No LUMIX model is
 in the Furble tested list.
 
-There is a documentation defect in the existing research note. The note says
+There was a documentation defect in the existing research note. The note said
 company ID `0x0376`. The current Furble matcher uses `0x003A`, and the
 Bluetooth SIG assignment for `0x003A` is Panasonic Holdings Corporation.
-`0x0376` is Electronic Temperature Instruments Ltd. The code value is the one
-this reference treats as current. The note should be corrected separately.
+`0x0376` is Electronic Temperature Instruments Ltd. The note has been corrected
+to `0x003A`. The numeric value is settled; the manufacturer-data layout beyond
+the company ID still needs a raw advertisement capture.
 
 ### 11.2 Advertisement identity
 
@@ -2102,9 +2103,9 @@ SMP packets, ATT operations, disconnect reason, and physical outcome.
 
 ### 14.6 Panasonic LUMIX
 
-31. LUMIX: resolve the company ID conflict. The current code uses `0x003A`;
-    the research note says `0x0376`. Capture the advertisement on an S5II,
-    BGH1, and G9II.
+31. LUMIX: company ID is resolved to `0x003A` by the Bluetooth SIG registry.
+    Capture the advertisement on an S5II, BGH1, and G9II to confirm the rest of
+    the manufacturer-data layout.
 32. LUMIX: whether the camera ever requests SMP security, and whether Furble's
     global security flags cause an unnecessary exchange.
 33. LUMIX: whether the MEI0 seed must match a prior Wi-Fi registration on every
