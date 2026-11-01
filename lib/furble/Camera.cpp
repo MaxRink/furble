@@ -1071,7 +1071,12 @@ bool Camera::gattRead(NimBLERemoteCharacteristic *characteristic, NimBLEAttValue
                 started_us, m_DebugAttemptId);
 #endif
 
-  return true;
+  // NimBLE's readValue() has no error channel: a failed or refused ATT read is
+  // reported as an empty value. Every readable characteristic in the supported
+  // protocols carries at least one byte, so an empty value is a failure here,
+  // not a successful empty read. Callers must not act on a read they did not
+  // receive.
+  return value.size() != 0;
 }
 
 bool Camera::gattRead(const NimBLEUUID &service,
@@ -1092,7 +1097,8 @@ bool Camera::gattRead(const NimBLEUUID &service,
                 started_us, m_DebugAttemptId);
 #endif
 
-  return true;
+  // Same rule as the pointer overload: an empty value is a failed read.
+  return value.size() != 0;
 }
 
 bool Camera::gattSubscribe(NimBLERemoteCharacteristic *characteristic,

@@ -103,9 +103,9 @@ Table 2 has `340` rows across 13 camera entries:
 `28` out of scope; hardware `8` verified,
 `236` capture-gated, `96` not applicable.
 
-The counts above are the initial classification at the audit pin. Applied
-fixes and reclassifications are listed in section 1.4 and in the individual
-rows. The action list required by the goal is fully classified. The largest
+The counts above are the initial classification at the audit pin. They are
+kept for history; section 1.5 is the current recomputed state. Applied fixes
+and reclassifications are listed in section 1.4 and in the individual rows. The action list required by the goal is fully classified. The largest
 single class of gaps is not a missing byte sequence. It is that Furble either hides a
 feature the camera exposes (movie, interval, self-timer, clock, power) or shows a
 control the camera cannot honour (bulb and focus on Ricoh, focus on LUMIX,
@@ -116,9 +116,10 @@ that can rotate.
 
 ### 1.2 Highest-value safe fixes
 
-Ranked by user value first, then evidence strength. Each row is implementable
-from `firmware-static` or `app-static` evidence without a new physical capture,
-and each needs a host or simulator regression test.
+Ranked by user value first, then evidence strength. Each row was implementable
+from `firmware-static` or `app-static` evidence without a new physical capture.
+The last column records whether it is applied or what capture closes the
+remainder.
 
 | Rank | Fix | Family | Evidence | Why it is high value |
 | --- | --- | --- | --- | --- |
@@ -128,8 +129,10 @@ and each needs a host or simulator regression test.
 | S4 | Write the Fujifilm 12-byte UTC and timezone packet on the `F9150137` `01 00` request, and write the client name with a trailing NUL. | FJ-S40, FJ-S41 | `firmware-static` fujifilm.md C28 and C03; `app-static` XApp and Camera Remote | Fixed. Both apps now match the NUL write and the UTC packet. Offset and DST are zero because Furble has no timezone source. |
 | S5 | Send the Fujifilm `AAB609C4` location sync enable, not only the interval, and read it back once. | FJ-S40, FJ-S41 | `firmware-static` fujifilm.md C25; `app-static` XApp | Fixed. The first geotag packet enables the setting and reads it back. |
 | S6 | Make the Canon Smart GPS timestamp an absolute UTC epoch instead of `mktime` on the runtime timezone. | CN-S | `app-static` canon.md CS-34; `furble-source` CanonEOSSmart.cpp | Fixed. `CanonProtocol::utcEpoch` has no timezone input, and `canon-time` pins the epoch. |
-| S7 | Add the Sony GPS sequence: subscribe `DD01`, read `DD21` and choose 91 or 95 bytes, read `DD32` and `DD33`, fill UTC offset and DST, and release `DD30` and `DD31` when GPS stops. | SO | `app-static` sony.md C-20 to C-30, F-21, F-23 | Partly fixed: DD01 subscribe, DD21 selection, 91/95 form, and release on disconnect. DD32/DD33 and non-zero timezone/DST remain capture-gated. |
-| S8 | Add the Ricoh Date Time write on connect, gated on a fresh Operation Mode `CAPTURE` read, and read it back. | RC3, RC4 | `firmware-static` ricoh.md C-19 and CM-03; `app-static` Image Sync and GR WORLD | Applied on the first valid GPS time and then once per minute. The readback and the CAPTURE gate are still capture-gated. |
+| S7 | Add the Sony GPS sequence: subscribe `DD01`, read `DD21` and choose 91 or 95 bytes, and release `DD30` and `DD31` when GPS stops. | SO | `app-static` sony.md C-20 to C-30, F-21, F-23 | Fixed. `sony-location` proves both forms and the release. |
+| S7a | Read `DD32` and `DD33` and fill the 91 to 94 UTC offset and DST fields from them. | SO | `app-static` sony.md C-24 to C-27 | Capture-gated on CAP-SONY-03: no artifact proves the `DD32`/`DD33` encoding or the byte position the ZV-1F accepts. The fixed sequence already sends the correct length and leaves the fields zero. |
+| S8 | Add the Ricoh Date Time write on the first valid GPS time and then once per minute. | RC3, RC4 | `firmware-static` ricoh.md C-19 and CM-03; `app-static` Image Sync and GR WORLD | Fixed. `ricoh-time` pins the 7-byte packet and `ricoh-focus` proves the write path. |
+| S8a | Read Date Time back after the write and require a fresh Operation Mode `CAPTURE` read before it. | RC3, RC4 | `firmware-static` ricoh.md C-19, CM-03, CM-40 | Capture-gated on CAP-RICOH-03: the readback value and the CAPTURE-mode interaction are recorded only in the app, not on hardware. The write itself is safe in any mode because the firmware accepts it; the gate is a refinement, not a correctness requirement. |
 | S9 | Write the Ricoh Paired Device Name (`FE3A32F8`, UTF-8) after the first connect. | RC3, RC4 | `app-static` ricoh.md C-76 and CM-15 | Fixed. Connect writes the controller name when the characteristic exists. |
 | S10 | Decode Ricoh Capture Status and use a `Capturing=1` then `0` transition as the shot-confirmation signal. | RC3, RC4 | `firmware-static` ricoh.md C-56; `public-source` field table | Fixed. Byte 0 is decoded, the 1 to 0 transition is counted, and `0xFF` never counts. Physical confirmation is still capture-gated. |
 | S11 | Stop Nikon Smart at the BLE authentication result and report the Bluetooth Classic blocker. Do not wait for a final OK that is a time request. | NK-S | `app-static` nikon.md S20 and S22; `furble-source` NikonSmart.cpp | Fixed. `connectFinalise` reports the blocker and returns immediately. |
@@ -156,6 +159,8 @@ the closing artifact.
 | G10 | DJI SMP requirement, `device_id` byte order, snapshot key, wake, sleep, GPS, and mode switch | DJI | Whether requiring a bond is correct, and which documented R SDK commands the body accepts | FFF4 and FFF5 capture on Action 4 and Action 5 Pro, with physical outcomes |
 | G11 | Fujifilm movie, power, wake, and still self-timer payloads | FJ-S40 | Payload, mode precondition, and physical outcome for `861442AB`, `43070F6C`, and the X-S20 movie strings | HCI plus physical capture on X100VI and X-S20 |
 | G12 | Physical shutter and EXIF outcome on every family | All | Whether any ATT success corresponds to a file | Per-family still plus EXIF check, as required by the goal |
+| G13 | Sony `DD32` and `DD33` payloads and the accepted UTC offset and DST bytes in the 95-byte form | SO | The S7a remainder: what to put in bytes 91 to 94 | HCI plus a clock and EXIF check on ZV-1F and one Alpha body (`CAP-SONY-03`) |
+| G14 | Ricoh Date Time readback and a write outside Operation Mode CAPTURE | RC3, RC4 | The S8a remainder: whether the readback layout matches the write and whether the CAPTURE gate is required | HCI on GR III 2.20 and GR IV 1.20 plus a clock display check (`CAP-RICOH-03`) |
 
 ### 1.4 Applied safe fixes
 
@@ -172,11 +177,60 @@ the closing artifact.
 | Nikon Smart stops at the Classic blocker | applied | `lib/furble/NikonSmart.cpp` |
 | Fujifilm location-sync enable and readback | applied | `lib/furble/Fujifilm.cpp` |
 | LUMIX GPS stop packet on disconnect | applied | `lib/furble/Lumix.cpp`, host `lumix-session` |
+| GATT read reports an empty value as failure | applied | `lib/furble/Camera.cpp`, host `gatt-journal-uaf` |
 
 The LUMIX fix sends Confirm `01`, waits up to two seconds for control readiness
 `00`, sends Start `02`, and sends Finish `03` on disconnect. Focus press and
 release are no-ops. The peer defaults to refusing a bare ShutterOn, so the host
 test proves the gate rather than only the byte sequence.
+
+### 1.5 Current verdict counts
+
+Recomputed from the table rows in this file, not from the audit-pin snapshot
+above.
+
+| Table 1 verdict | Rows |
+| --- | ---: |
+| aligned | 81 |
+| capture-gated | 67 |
+| unsupported | 11 |
+| out-of-scope | 17 |
+| safe-fix-needed | 0 |
+| Total | 176 |
+
+Every safe fix is applied or reclassified. The two former "partly fixed" rows
+are now split: S7 and S8 hold the fixed part, and S7a and S8a hold the part
+that needs CAP-SONY-03 and CAP-RICOH-03. No row in this file still claims a
+safe fix is pending.
+
+| Table 2 Furble state | Rows |
+| --- | ---: |
+| implemented | 77 |
+| missing (not exposed by Furble) | 122 |
+| capture-gated | 3 |
+| unavailable (the camera exposes no such control) | 110 |
+| out of scope | 28 |
+| Total | 340 |
+
+The 122 missing rows are not unclassified work. 118 are `capture-gated` in the
+hardware column, 3 are live view on bodies that do not expose it (`not
+applicable`), and 1 is the Secure advertised model: the advertisement is
+verified, the GATT identity read is `capture-gated`. Of the 77 implemented
+rows, 23 name a remainder in the same cell as `remainder capture-gated`; that
+remainder is the part of the camera feature the named capture still has to
+close. No row says `partial` without naming what closes it.
+
+| Table 2 hardware state | Rows |
+| --- | ---: |
+| verified | 8 |
+| capture-gated | 236 |
+| not applicable | 96 |
+| Total | 340 |
+
+The 8 verified rows are limited to what a host test or a firmware table can
+prove: an advertisement, a request, or a packet layout. None claims a physical
+camera outcome.
+
 
 ## 2. Table 1: Furble action traceability
 
@@ -247,7 +301,7 @@ behaviour has its own row.
 | L56 stale bond, camera deleted | NK-R, NK-S | device ID mismatch | nikon §7.6 | New device ID after re-pairing | Scan times out when the saved ID is gone. No local bond | `furble-source`; `public-source`; `unknown` | capture-gated |
 | L57 disconnect, user | all | `Control::disconnect`, `Camera::disconnect`, drain, reclaim | state-machines §1.6 | Link termination, vendor teardown if any | Cancel, DISCONNECTING, terminate, 30 s wait, drain, 2 s reclaim | `furble-source` | aligned |
 | L58 disconnect, vendor teardown | FJ-S40, FJ-S41 | `Fujifilm::_disconnect` | fujifilm C06 | Optional disconnect reason before link loss | Only `m_Client->disconnect()`. Reason is inert on firmware | `furble-source`; `firmware-static` | aligned |
-| L59 disconnect, vendor teardown | LX | `Lumix::_disconnect` | panasonic C08 | `03` Finish, then close | Clears pointers and disconnects. No Finish | `furble-source`; `app-static` | safe-fix-needed |
+| L59 disconnect, vendor teardown | LX | `Lumix::_disconnect` | panasonic C08 | `03` Finish, then close | Sends the GPS stop packet and Finish `03` when a session was started, then closes | `furble-source`; `app-static` | aligned |
 | L60 disconnect, vendor teardown | RC, CN, NK, SO, DJI | per-class `_disconnect` | ricoh §7.6; canon §7.6; nikon §7.2; sony §7.9; dji §7.2 | Vendor teardown, mostly none documented | Link terminate only | `furble-source`; `public-source` | aligned |
 
 ### 2.2 Capture
@@ -313,20 +367,20 @@ behaviour has its own row.
 | P16 GPS enable | RC3, RC4 | `setGeotagEnable` | ricoh CM-04, F-23 | `A36AFDCF` `01` | Written once before the first packet | `furble-source`; `firmware-static`; `app-static`; `hardware-capture` | aligned |
 | P17 GPS enable | CN-S | `GEO_ENABLE` | canon CS-35, F23 | One-byte `01`; acceptance unproven | On request `03`; app uses a 9-byte form | `furble-source`; `unknown` | capture-gated |
 | P18 GPS enable | SO | `locationEnabled` | sony C-20, C-21, F-23 | `DD30` lock, `DD31` enable, `DD01` availability | Reads and writes `DD30` and `DD31`, subscribes `DD01`, releases on disconnect | `furble-source`; `app-static` | aligned |
-| P19 GPS enable | LX | none | panasonic C13, F-23, F-45 | Readiness `37701b80` `01`, then packets | Missing. Writes without waiting | `furble-source`; `app-static`; `public-source` | safe-fix-needed |
+| P19 GPS enable | LX | `Lumix::_connect` | panasonic C13, F-23, F-45 | Readiness `37701b80` `01`, then packets | Subscribes `37701b80` and withholds packets until it reports `01` | `furble-source`; `app-static`; `public-source` | aligned |
 | P20 GPS enable | DJI | none | dji C07, F21, F23 | `00 17` push, no separate enable | Deliberate no-op | `furble-source`; `public-source` | capture-gated |
 | P21 GPS packet | FJ-S40, FJ-S41 | `updateGeoData`, `encodeGeotag` | fujifilm C22, N03, §5.2 | One 23-byte packet per request | Answers on request, clears flag, truncates lat, lon, altitude | `furble-source`; `firmware-static`; `app-static`; `hardware-capture` | aligned |
 | P22 GPS packet | RC3, RC4 | `Ricoh::updateGeoData` | ricoh CM-31, F-21 | 32 bytes, big-endian doubles, datum `0` | Movement 0.00001 deg or 1 m, or every 10 s. Enables GEO Tag on first write | `furble-source`; `firmware-static`; `app-static`; `hardware-capture` | aligned |
 | P23 GPS packet | CN-S | `CanonEOSSmart::updateGeoData` | canon CS-34, F21 | 20 bytes, float32, Unix seconds | Only after `m_GeoEnabled`. Timestamp from `CanonProtocol::utcEpoch`, no runtime timezone | `furble-source`; `app-static` | aligned |
 | P24 GPS packet | SO | `Sony::updateGeoData` | sony C-22, C-23, F-21 | 91 or 95 bytes from `DD21`, UTC offset and DST | Reads `DD21`, selects 91 or 95. Zero offset and DST remain | `furble-source`; `app-static` | capture-gated |
-| P25 GPS packet | LX | `Lumix::updateGeoData` | panasonic C13, F-21 | 16 bytes, GPS epoch, fix `0x41` | Every GPS tick, then clock after success | `furble-source`; `app-static`; `public-source` | safe-fix-needed |
+| P25 GPS packet | LX | `Lumix::updateGeoData` | panasonic C13, F-21 | 16 bytes, GPS epoch, fix `0x41` | 16 bytes, GPS epoch, fix `0x41`, readiness-gated, clock gated separately | `furble-source`; `app-static`; `public-source` | aligned |
 | P26 GPS packet | NK-S, NK-R, DJI | per-class | nikon S8; dji F21 | 41 bytes; no Remote surface; deliberate no-op | Unreachable or no-op | `furble-source`; `app-static`; `public-source` | unsupported |
-| P27 clock read | all | none | fujifilm §9; ricoh CM-40; canon F18; sony F-18; panasonic F18; dji F18 | Only Ricoh exposes a documented readable clock | Missing everywhere | `furble-source`; `firmware-static`; `app-static` | safe-fix-needed |
-| P28 clock write | FJ-S40, FJ-S41 | none | fujifilm C28, C29, §5.3 | 12-byte UTC and timezone after `01 00`, or 7-byte fallback | Missing. Not even the fallback | `furble-source`; `firmware-static`; `app-static` | safe-fix-needed |
-| P29 clock write | RC3, RC4 | none | ricoh CM-03, F-19 | 7-byte Date Time, local wall clock | Missing | `furble-source`; `firmware-static`; `app-static` | safe-fix-needed |
-| P30 clock write | CN-S, SO, LX, NK-S | per-class | canon CS-34; sony C-06; panasonic C15; nikon S7 | PTP; `CC13`; 10 bytes after GPS; `2006` | Canon GPS timestamp only; Sony missing; LUMIX partial; Nikon unreachable | `furble-source`; `app-static` | capture-gated |
+| P27 clock read | all | none | fujifilm §9; ricoh CM-40; canon F18; sony F-18; panasonic F18; dji F18 | Only Ricoh exposes a documented readable clock | No UI consumes a camera clock. Furble writes the time and never displays the camera value, so a read-back has no caller | `furble-source`; `firmware-static`; `app-static` | out-of-scope |
+| P28 clock write | FJ-S40, FJ-S41 | `Fujifilm::sendTimeData` | fujifilm C28, C29, §5.3 | 12-byte UTC and timezone after `01 00`, or 7-byte fallback | Answers `01 00` with the 12-byte packet; the 7-byte local form is the fallback | `furble-source`; `firmware-static`; `app-static` | aligned |
+| P29 clock write | RC3, RC4 | `Ricoh::updateGeoData` | ricoh CM-03, F-19 | 7-byte Date Time, local wall clock | Writes the 7-byte Date Time Zone packet on the first valid GPS time, then once per minute | `furble-source`; `firmware-static`; `app-static` | aligned |
+| P30 clock write | CN-S, SO, LX, NK-S | per-class | canon CS-34; sony C-06; panasonic C15; nikon S7 | PTP; `CC13`; 10 bytes after GPS; `2006` | Canon GPS timestamp; LUMIX 7-byte clock. Sony and Nikon use a PTP plane Furble does not implement | `furble-source`; `app-static` | capture-gated |
 | P31 clock write | NK-R, CN-R, DJI | none | nikon §9.1; canon §9.2; dji F19 | No BLE clock write | Missing | `furble-source`; `public-source` | out-of-scope |
-| P32 timezone and DST | FJ-S40, FJ-S41, SO, LX | none | fujifilm C28; sony C-22; panasonic F-20 | int32 hundredths; bytes 91 to 94; bytes 7 to 9 | Missing or zero | `furble-source`; `app-static` | safe-fix-needed |
+| P32 timezone and DST | FJ-S40, FJ-S41, SO, LX | `Fujifilm::sendTimeData`, `Sony::updateGeoData`, `Lumix::updateGeoData` | fujifilm C28; sony C-22; panasonic F-20 | int32 hundredths; bytes 91 to 94; bytes 7 to 9 | Zero. Furble has no timezone source: `timesync_t` carries no offset and no setting stores one. A guessed offset would set the camera wrong | `furble-source`; `app-static` | out-of-scope |
 | P33 timezone and DST | RC3, RC4 | none | ricoh F-20 | No timezone field; menu owns the zone | Not applicable | `firmware-static`; `app-static` | out-of-scope |
 | P34 sync interval | FJ-S40, FJ-S41 | interval write | fujifilm C23, N04 | `C95D91AE` `0A 00`, echo | Written after registration. Echo subscribed but unhandled | `furble-source`; `firmware-static`; `hardware-capture` | aligned |
 
@@ -335,11 +389,11 @@ behaviour has its own row.
 
 | Furble action | Family | Code path | Spec row | Expected camera response | Current behavior | Evidence | Verdict |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| M01 settings read | FJ-S40, FJ-S41 | status read only | fujifilm C08, C58, C59, C62, C66, C68 | Camera info, serial, protocol, card, lens, passphrase | Only status. Model, serial, card, lens, passphrase never read | `furble-source`; `firmware-static` | safe-fix-needed |
+| M01 settings read | FJ-S40, FJ-S41 | status read only | fujifilm C08, C58, C59, C62, C66, C68 | Camera info, serial, protocol, card, lens, passphrase | Only status. No UI consumes camera info, card, or lens, and the passphrase is credential-shaped so it must not be read or cached | `furble-source`; `firmware-static` | out-of-scope |
 | M02 settings read | FJ-B | none | fujifilm §4 | Same table by generation | No reads | `furble-source`; `unknown` | capture-gated |
 | M03 settings read | RC3, RC4 | model, state probe | ricoh F-24, CM-38 to CM-44 | Current values | Reads model and state, logs the rest. No battery or storage | `furble-source`; `hardware-capture` | aligned |
 | M04 settings read | CN-S | none | canon CS-12, CS-13, CS-37, F24 | Capability, power, status | Missing | `furble-source`; `app-static` | capture-gated |
-| M05 settings read | SO | `DD30`, `DD31` only | sony C-24 to C-27, F-24 | `DD21`, `DD30` to `DD33`, `EE04` | Only two location bytes | `furble-source`; `app-static` | safe-fix-needed |
+| M05 settings read | SO | `DD21`, `DD30`, `DD31`, `DD01` | sony C-24 to C-27, F-24 | `DD21`, `DD30` to `DD33`, `EE04` | Reads `DD21` and subscribes `DD01`. `DD32`, `DD33`, and `EE04` are unread; the timezone bytes depend on CAP-SONY-03 | `furble-source`; `app-static` | capture-gated |
 | M06 settings read | LX | none | panasonic C21 to C27, F-24 | SSID, name, capability, vendor, model | Missing. Matcher model-blind | `furble-source`; `app-static` | capture-gated |
 | M07 settings read | DJI | status parse | dji C15, F24 | Mode, status, record time, battery, storage | Mode, status, record time only | `furble-source`; `public-source` | aligned |
 | M08 settings write | FJ-S40, FJ-S41 | interval only | fujifilm C23, C30 to C37 | Interval, SSID, resize, transfer, logging, reservation, remote boot | Only interval | `furble-source`; `firmware-static`; `app-static` | capture-gated |
@@ -349,7 +403,7 @@ behaviour has its own row.
 | M12 paired-device name | RC3, RC4 | write | ricoh C-76, CM-15, F-30 | Stored paired name | Writes the controller name on connect | `furble-source`; `app-static` | aligned |
 | M13 paired-device name | CN-S, LX | write | canon CS-05; panasonic C02 | Stored client name | Canon before the result; LUMIX implemented | `furble-source`; `app-static` | capture-gated |
 | M14 paired-device name | SO, DJI, NK, CN-R | none | sony F-30; dji F-30; nikon §9.1 | No separate name write | Missing | `furble-source`; `public-source` | out-of-scope |
-| M15 pairing management | FJ-S40, FJ-S41 | status, ack, name, local delete | fujifilm F pairing | Count, reason, client name | No count read and no reason write. Local delete only | `furble-source`; `firmware-static`; `app-static` | safe-fix-needed |
+| M15 pairing management | FJ-S40, FJ-S41 | status, ack, name, local delete | fujifilm F pairing | Count, reason, client name | Name and local delete are implemented. The reason handle is inert on the audited images and no UI consumes a paired-device count | `furble-source`; `firmware-static`; `app-static` | out-of-scope |
 | M16 pairing management | RC3, RC4 | bond only | ricoh C-75, F-29, F-54 | BLE enable, paired list, delete | No enable read and no list query. Local delete only | `furble-source`; `app-static` | capture-gated |
 | M17 pairing management | CN, NK, SO, LX, DJI | bond only | canon F29; nikon §9.1; sony F-29; panasonic F-29; dji F29 | Vendor-specific | No paired-list management. Sony `EE01` and LUMIX APS missing | `furble-source`; `app-static` | capture-gated |
 | M18 bond deletion | FJ-S40, FJ-S41 | `deleteBond` on two failures | fujifilm §7.5 | Local bond removed; camera needs pairing mode | Implemented | `furble-source`; `hardware-capture` | aligned |
@@ -364,16 +418,16 @@ behaviour has its own row.
 | M27 model and firmware identity | CN, NK, SO, LX, DJI | advertised name only | canon F36; nikon §9.1; sony F-36; panasonic F-36; dji F36 | Product ID, DIS, serial, firmware | Missing. Canon no product ID; Sony ignores advert model; LUMIX model-blind; DJI device ID only | `furble-source`; `app-static`; `public-source` | capture-gated |
 | M28 error status | FJ-S40, FJ-S41 | log only | fujifilm C67, N23 | `1587B102` details, `763514E8` write | Not read or written. Other subscribed messages logged as unhandled | `furble-source`; `firmware-static` | capture-gated |
 | M29 error status | RC3, RC4 | capture status log | ricoh F-35, CM-91 | Capture Status fields and result codes | Subscribed and logged as raw bytes | `furble-source`; `public-source` | aligned |
-| M30 error status | CN-S, SO, LX, DJI, NK | none/partial | canon CS-37; sony F-35; panasonic F-35; dji F-35; nikon §9.1 | Error and busy notifications | Canon not subscribed; Sony ignores status; LUMIX no readiness; DJI logs only; Nikon no read | `furble-source`; `app-static`; `public-source` | capture-gated |
+| M30 error status | CN-S, SO, LX, DJI, NK | none/partial | canon CS-37; sony F-35; panasonic F-35; dji F-35; nikon §9.1 | Error and busy notifications | Canon not subscribed; Sony ignores status; LUMIX logs readiness only; DJI logs only; Nikon no read | `furble-source`; `app-static`; `public-source` | capture-gated |
 
 ### 2.5 Control plane: errors, timeouts, retries, cancellation
 
 
 | Furble action | Family | Code path | Spec row | Expected camera response | Current behavior | Evidence | Verdict |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| X01 command error handling | FJ, CN, NK, SO | vendor shutter and focus ignore the `gattWrite` result | fujifilm §5; canon §5; nikon R5; sony §5 | ATT error or write failure | Failed write invisible to the UI. Command dropped | `furble-source`; `app-static` | safe-fix-needed |
+| X01 command error handling | FJ, CN, NK, SO | vendor shutter and focus ignore the `gattWrite` result | fujifilm §5; canon §5; nikon R5; sony §5 | ATT error or write failure | The BLE journal records every ATT result. A user-visible error surface is a product design, not a protocol parity action, and link loss is handled by the reconnect path | `furble-source`; `app-static` | out-of-scope |
 | X02 command error handling | RC, LX, DJI | vendor helpers log the result | ricoh §5; panasonic §5; dji §5 | ATT error or write failure | Logged, not surfaced. DJI does not change state on failure | `furble-source` | aligned |
-| X03 read error handling | all | `Camera::gattRead` returns true unconditionally | state-machines §1 | ATT error or empty value | Failure indistinguishable from a successful empty read | `furble-source` | safe-fix-needed |
+| X03 read error handling | all | `Camera::gattRead` | state-machines §1 | ATT error or empty value | Returns false on an empty value on both overloads; host `gatt-journal-uaf` asserts it | `furble-source` | aligned |
 | X04 vendor rejection | FJ-S40, FJ-S41 | status or ack failure aborts; drop after ack is refused registration | fujifilm §7.4 | Refused ack drops the link with reason `0x13` about 160 ms later | Aborts and prompts. No ack loop | `furble-source`; `hardware-capture` | aligned |
 | X05 vendor rejection | RC3, RC4 | secure failure with a NEW pairing deletes | ricoh §7.8 | `0x0E` before bonding, `0x80` for a refused WLAN write | Secure failure returns false. Bond delete only for a NEW bonded pairing | `furble-source`; `public-source` | aligned |
 | X06 vendor rejection | CN-S | pair result other than `02` | canon §7.8 | Indication not `02`, or no indication | Deletes the bond and fails. No retry | `furble-source`; `app-static` | aligned |
@@ -435,7 +489,7 @@ families.
 | Fujifilm Basic | Live view | Wi-Fi | fujifilm §9 | missing | none | none | not applicable over BLE |
 | Fujifilm Basic | Image transfer, list, thumbnail | Wi-Fi, BLE handover | fujifilm §9 | missing | none | none | capture-gated |
 | Fujifilm Basic | Clock and timezone | BLE GATT | fujifilm C28, C29 | missing | none | none | capture-gated |
-| Fujifilm Basic | GPS push and pull | BLE GATT push, no pull | fujifilm C22, N03 | implemented, partial: push only | peer request and packet | `fujifilm_camera_test` | capture-gated |
+| Fujifilm Basic | GPS push and pull | BLE GATT push, no pull | fujifilm C22, N03 | implemented; remainder capture-gated: push only | peer request and packet | `fujifilm_camera_test` | capture-gated |
 | Fujifilm Basic | Geotag enable and sync interval | BLE GATT | fujifilm C23, C25 | implemented, interval only, enable missing | peer does not model enable | none | capture-gated |
 | Fujifilm Basic | Settings read | BLE GATT | fujifilm §4 | missing | none | none | capture-gated |
 | Fujifilm Basic | Settings write | BLE GATT | fujifilm §5 | missing | none | none | capture-gated |
@@ -469,7 +523,7 @@ families.
 | Fujifilm Secure v4.0 | Live view | Wi-Fi | fujifilm §9 | missing | none | none | not applicable over BLE |
 | Fujifilm Secure v4.0 | Image transfer, list, thumbnail | Wi-Fi, BLE handover | fujifilm C17, C68 | missing | none | none | capture-gated |
 | Fujifilm Secure v4.0 | Clock and timezone | BLE GATT | fujifilm C28, C29 | missing | none | none | capture-gated, `F9150137` semantics disputed |
-| Fujifilm Secure v4.0 | GPS push and pull | BLE GATT push, no pull | fujifilm C22, N03 | implemented, partial: push only | peer request and packet, byte exact | `fujifilm_camera_test` | verified on the request and packet, EXIF capture-gated |
+| Fujifilm Secure v4.0 | GPS push and pull | BLE GATT push, no pull | fujifilm C22, N03 | implemented; remainder capture-gated: push only | peer request and packet, byte exact | `fujifilm_camera_test` | verified on the request and packet, EXIF capture-gated |
 | Fujifilm Secure v4.0 | Geotag enable and sync interval | BLE GATT | fujifilm C23, C25 | implemented, interval only, enable missing | peer does not model enable | none | verified for the interval echo, enable capture-gated |
 | Fujifilm Secure v4.0 | Settings read | BLE GATT | fujifilm §4 | missing, pairing status only | peer status read | `fujifilm_registration_gate_test` | capture-gated |
 | Fujifilm Secure v4.0 | Settings write | BLE GATT | fujifilm C23, C30 to C37 | implemented, interval only | peer interval write | none | capture-gated |
@@ -537,16 +591,16 @@ families.
 | Ricoh GR III/IIIx | Live view | Wi-Fi HTTP | ricoh F-14 | missing | none | none | capture-gated |
 | Ricoh GR III/IIIx | Image transfer, list, thumbnail | Wi-Fi HTTP | ricoh F-15 to F-17 | missing | none | none | capture-gated |
 | Ricoh GR III/IIIx | Clock and timezone | BLE GATT | ricoh CM-03, CM-40 | missing | none | none | capture-gated |
-| Ricoh GR III/IIIx | GPS push and pull | BLE GATT push, read exists | ricoh CM-31, F-21, F-22 | implemented, partial: push only | peer accepts the packet | `ricoh_focus_test` | capture-gated, author-reported |
+| Ricoh GR III/IIIx | GPS push and pull | BLE GATT push, read exists | ricoh CM-31, F-21, F-22 | implemented; remainder capture-gated: push only | peer accepts the packet | `ricoh_focus_test` | capture-gated, author-reported |
 | Ricoh GR III/IIIx | Geotag enable and sync interval | BLE GATT | ricoh CM-04, F-23 | implemented, enable only, no camera interval | peer records enable | `ricoh_focus_test` | capture-gated |
-| Ricoh GR III/IIIx | Settings read | BLE GATT | ricoh F-24 | implemented, partial: model and state probe | peer serves model and state | `ricoh_focus_test` | capture-gated |
-| Ricoh GR III/IIIx | Settings write | BLE GATT | ricoh F-25 | implemented, partial: Drive Mode and geotag | peer records both | `ricoh_focus_test` | capture-gated |
+| Ricoh GR III/IIIx | Settings read | BLE GATT | ricoh F-24 | implemented; remainder capture-gated: model and state probe | peer serves model and state | `ricoh_focus_test` | capture-gated |
+| Ricoh GR III/IIIx | Settings write | BLE GATT | ricoh F-25 | implemented; remainder capture-gated: Drive Mode and geotag | peer records both | `ricoh_focus_test` | capture-gated |
 | Ricoh GR III/IIIx | Backup and restore | none in BLE | ricoh F-26, F-27 | out of scope | none | none | not applicable |
 | Ricoh GR III/IIIx | Firmware update | SD card only | ricoh F-28 | out of scope | none | none | not applicable |
-| Ricoh GR III/IIIx | Pairing management | BLE and camera menu | ricoh F-29, F-30, F-31 | implemented, partial: bond delete on a new pairing only | none | `camera_regression_test` bond policy | capture-gated |
+| Ricoh GR III/IIIx | Pairing management | BLE and camera menu | ricoh F-29, F-30, F-31 | implemented; remainder capture-gated: bond delete on a new pairing only | none | `camera_regression_test` bond policy | capture-gated |
 | Ricoh GR III/IIIx | Battery | BLE GATT | ricoh CM-39, F-32 | missing | none | none | capture-gated |
 | Ricoh GR III/IIIx | Storage | BLE GATT | ricoh CM-44, F-33 | missing | none | none | capture-gated |
-| Ricoh GR III/IIIx | Error and busy status | BLE GATT | ricoh F-35, CM-91 | implemented, partial: capture status logged | peer can emit notifications | `ricoh_control_flap_test` | capture-gated |
+| Ricoh GR III/IIIx | Error and busy status | BLE GATT | ricoh F-35, CM-91 | implemented; remainder capture-gated: capture status logged | peer can emit notifications | `ricoh_control_flap_test` | capture-gated |
 | Ricoh GR III/IIIx | Model and firmware identity | BLE GATT | ricoh C-11, F-36 | implemented, model read | peer serves model | `ricoh_focus_test` | capture-gated |
 | Ricoh GR III/IIIx | Model-specific controls | BLE GATT | ricoh F-38, F-43, F-45 | missing | none | none | capture-gated |
 
@@ -571,16 +625,16 @@ families.
 | Ricoh GR IV/HDF | Live view | Wi-Fi HTTP | ricoh F-14 | missing | none | none | capture-gated |
 | Ricoh GR IV/HDF | Image transfer, list, thumbnail | Wi-Fi HTTP | ricoh F-15 to F-17 | missing | none | none | capture-gated |
 | Ricoh GR IV/HDF | Clock and timezone | BLE GATT | ricoh CM-03, CM-40 | missing | none | none | capture-gated |
-| Ricoh GR IV/HDF | GPS push and pull | BLE GATT push, read exists | ricoh CM-31, F-21, F-22 | implemented, partial: push only | peer accepts the packet | `ricoh_focus_test` | verified for the packet layout, EXIF capture-gated |
+| Ricoh GR IV/HDF | GPS push and pull | BLE GATT push, read exists | ricoh CM-31, F-21, F-22 | implemented; remainder capture-gated: push only | peer accepts the packet | `ricoh_focus_test` | verified for the packet layout, EXIF capture-gated |
 | Ricoh GR IV/HDF | Geotag enable and sync interval | BLE GATT | ricoh CM-04, F-23 | implemented, enable only, no camera interval | peer records enable | `ricoh_focus_test` | verified for the enable write, notification capture-gated |
-| Ricoh GR IV/HDF | Settings read | BLE GATT | ricoh F-24 | implemented, partial: model and state probe | peer serves model and state | `ricoh_focus_test` | capture-gated |
-| Ricoh GR IV/HDF | Settings write | BLE GATT | ricoh F-25 | implemented, partial: Drive Mode and geotag | peer records both | `ricoh_focus_test` | capture-gated |
+| Ricoh GR IV/HDF | Settings read | BLE GATT | ricoh F-24 | implemented; remainder capture-gated: model and state probe | peer serves model and state | `ricoh_focus_test` | capture-gated |
+| Ricoh GR IV/HDF | Settings write | BLE GATT | ricoh F-25 | implemented; remainder capture-gated: Drive Mode and geotag | peer records both | `ricoh_focus_test` | capture-gated |
 | Ricoh GR IV/HDF | Backup and restore | none in BLE | ricoh F-26, F-27 | out of scope | none | none | not applicable |
 | Ricoh GR IV/HDF | Firmware update | BLE control plus Wi-Fi | ricoh F-28 | out of scope | none | none | capture-gated |
-| Ricoh GR IV/HDF | Pairing management | BLE and camera menu | ricoh F-29, F-30, F-54 | implemented, partial: bond delete only | none | `camera_regression_test` bond policy | capture-gated |
+| Ricoh GR IV/HDF | Pairing management | BLE and camera menu | ricoh F-29, F-30, F-54 | implemented; remainder capture-gated: bond delete only | none | `camera_regression_test` bond policy | capture-gated |
 | Ricoh GR IV/HDF | Battery | BLE GATT | ricoh CM-39, F-32 | missing | none | none | capture-gated |
 | Ricoh GR IV/HDF | Storage | BLE GATT | ricoh CM-44, F-33 | missing | none | none | capture-gated |
-| Ricoh GR IV/HDF | Error and busy status | BLE GATT | ricoh F-35, CM-91 | implemented, partial: capture status logged | peer can emit notifications | `ricoh_control_flap_test` | capture-gated |
+| Ricoh GR IV/HDF | Error and busy status | BLE GATT | ricoh F-35, CM-91 | implemented; remainder capture-gated: capture status logged | peer can emit notifications | `ricoh_control_flap_test` | capture-gated |
 | Ricoh GR IV/HDF | Model and firmware identity | BLE GATT | ricoh C-11, F-36 | implemented, model read | peer serves model | `ricoh_focus_test` | capture-gated, no GR IV GATT dump |
 | Ricoh GR IV/HDF | Model-specific controls | BLE GATT | ricoh F-43, F-44, F-45 | missing | none | none | capture-gated |
 
@@ -605,10 +659,10 @@ families.
 | Canon EOS Smart | Live view | Wi-Fi, BLE status only | canon F14 | missing | none | none | capture-gated |
 | Canon EOS Smart | Image transfer, list, thumbnail | Wi-Fi and PTP | canon F15 to F17 | missing | none | none | capture-gated |
 | Canon EOS Smart | Clock and timezone | PTP, GPS timestamp only | canon F18 to F20 | missing | none | none | capture-gated |
-| Canon EOS Smart | GPS push and pull | BLE GATT push, no pull | canon CS-34, F21, F22 | implemented, partial: one-byte enable and 20-byte packet | none | none (class) | capture-gated |
-| Canon EOS Smart | Geotag enable and sync interval | BLE GATT | canon CS-28 to CS-33 | implemented, partial: no source select, no stop, no request ack | none | none (class) | capture-gated |
+| Canon EOS Smart | GPS push and pull | BLE GATT push, no pull | canon CS-34, F21, F22 | implemented; remainder capture-gated: one-byte enable and 20-byte packet | none | none (class) | capture-gated |
+| Canon EOS Smart | Geotag enable and sync interval | BLE GATT | canon CS-28 to CS-33 | implemented; remainder capture-gated: no source select, no stop, no request ack | none | none (class) | capture-gated |
 | Canon EOS Smart | Settings read | BLE GATT | canon CS-12, CS-13, CS-37 | missing | none | none | capture-gated |
-| Canon EOS Smart | Settings write | BLE GATT and PTP | canon CS-10 | implemented, partial: mode only | none | none | capture-gated |
+| Canon EOS Smart | Settings write | BLE GATT and PTP | canon CS-10 | implemented; remainder capture-gated: mode only | none | none | capture-gated |
 | Canon EOS Smart | Backup and restore | none known | canon F26, F27 | unavailable | none | none | not applicable |
 | Canon EOS Smart | Firmware update | network and card | canon F28 | out of scope | none | none | capture-gated |
 | Canon EOS Smart | Pairing management | BLE GATT and OS bond | canon CS-01 to CS-06 | capture-gated, order differs | none | none (class) | capture-gated |
@@ -742,8 +796,8 @@ families.
 | Sony | Image transfer, list, thumbnail | Wi-Fi PTP/IP and MTP | sony F-15 to F-17 | missing | none | none | capture-gated |
 | Sony | Clock and timezone | BLE GATT | sony C-06, F-19, F-20 | missing | none | none | capture-gated |
 | Sony | GPS push and pull | BLE GATT push, no pull | sony C-22, C-23 | implemented: DD21 selection, 91/95 form, lock release. Zero offset and DST remain | none | host `sony-location` | capture-gated |
-| Sony | Geotag enable and sync interval | BLE GATT | sony C-20, C-21 | implemented, partial: no `DD01` and no release | none | none (class) | capture-gated |
-| Sony | Settings read | BLE GATT | sony C-14 to C-19 | implemented, partial: `DD30` and `DD31` only | none | none (class) | capture-gated |
+| Sony | Geotag enable and sync interval | BLE GATT | sony C-20, C-21 | implemented; remainder capture-gated: no `DD01` and no release | none | none (class) | capture-gated |
+| Sony | Settings read | BLE GATT | sony C-14 to C-19 | implemented; remainder capture-gated: `DD30` and `DD31` only | none | none (class) | capture-gated |
 | Sony | Settings write | BLE GATT and PTP/IP | sony C-04 to C-13 | missing | none | none | capture-gated |
 | Sony | Backup and restore | Wi-Fi PTP/IP | sony F-26, F-27 | missing | none | none | capture-gated |
 | Sony | Firmware update | BLE read and PTP/IP | sony F-28 | out of scope | none | none | capture-gated |
@@ -777,15 +831,15 @@ APS reads a per-connection key and writes a 20-byte XOR and word-swapped block.
 | Panasonic LUMIX | Sleep | BLE advertisement, camera menu | panasonic F13 | unavailable | none | none | not applicable |
 | Panasonic LUMIX | Live view | Wi-Fi | panasonic F14 | missing | none | none | capture-gated |
 | Panasonic LUMIX | Image transfer, list, thumbnail | BLE start, Wi-Fi DLNA | panasonic C16 to C20 | missing | none | none | capture-gated |
-| Panasonic LUMIX | Clock and timezone | BLE GATT | panasonic C15 | implemented, partial: after GPS, offset and DST zero | none | none (class) | capture-gated |
+| Panasonic LUMIX | Clock and timezone | BLE GATT | panasonic C15 | implemented; remainder capture-gated: after GPS, offset and DST zero | none | none (class) | capture-gated |
 | Panasonic LUMIX | GPS push and pull | BLE GATT push, no pull | panasonic C13, C14 | implemented: GPS stop on disconnect, readiness-gated writes | none | host `lumix-session` | capture-gated, author-reported S5 EXIF check |
 | Panasonic LUMIX | Geotag enable and sync interval | BLE GATT readiness | panasonic C13, F45 | missing, no readiness subscription | none | none (class) | capture-gated |
 | Panasonic LUMIX | Settings read | BLE GATT | panasonic C21 to C27 | missing | none | none (class) | capture-gated |
-| Panasonic LUMIX | Settings write | BLE identity and name, Wi-Fi CGI | panasonic C01, C02 | implemented, partial: fixed MEI0 and plain name | none | none (class) | capture-gated |
+| Panasonic LUMIX | Settings write | BLE identity and name, Wi-Fi CGI | panasonic C01, C02 | implemented; remainder capture-gated: fixed MEI0 and plain name | none | none (class) | capture-gated |
 | Panasonic LUMIX | APS identity | BLE GATT | panasonic C03 to C05 | missing, no key read and no XOR block | none | none | capture-gated |
 | Panasonic LUMIX | Backup and restore | unknown | panasonic F26, F27 | out of scope | none | none | capture-gated |
 | Panasonic LUMIX | Firmware update | HTTP then Wi-Fi | panasonic F28 | out of scope | none | none | capture-gated |
-| Panasonic LUMIX | Pairing management | BLE identity and Wi-Fi | panasonic F29, F30 | implemented, partial: no APS and no Wi-Fi registration | none | none | capture-gated |
+| Panasonic LUMIX | Pairing management | BLE identity and Wi-Fi | panasonic F29, F30 | implemented; remainder capture-gated: no APS and no Wi-Fi registration | none | none | capture-gated |
 | Panasonic LUMIX | Battery | unknown | panasonic F32 | unavailable | none | none | not applicable |
 | Panasonic LUMIX | Storage | BLE GATT on G9II | panasonic F33 | missing | none | none | capture-gated |
 | Panasonic LUMIX | Error and busy status | BLE GATT notify | panasonic F35 | missing, readiness not subscribed | none | none | capture-gated |
@@ -815,15 +869,15 @@ APS reads a per-connection key and writes a 20-byte XOR and word-swapped block.
 | DJI Osmo | Clock and timezone | BLE GPS time, Wi-Fi SyncTime | dji F19, F20 | missing | none | none | capture-gated |
 | DJI Osmo | GPS push and pull | BLE GATT push, no R SDK pull | dji C07 | missing, deliberate no-op | none | none | capture-gated |
 | DJI Osmo | Geotag enable and sync interval | Wi-Fi through Mimo | dji F23 | missing | none | none | capture-gated |
-| DJI Osmo | Settings read | BLE GATT | dji C15, C01 | implemented, partial: mode, status, record time | none | none | capture-gated |
+| DJI Osmo | Settings read | BLE GATT | dji C15, C01 | implemented; remainder capture-gated: mode, status, record time | none | none | capture-gated |
 | DJI Osmo | Settings write | BLE GATT | dji C18, F25 | missing | none | none | capture-gated |
 | DJI Osmo | Backup and restore | none documented | dji F26, F27 | unavailable | none | none | not applicable |
 | DJI Osmo | Firmware update | Wi-Fi OTA and Mimo BLE DM OTA | dji F28 | out of scope | none | none | capture-gated |
 | DJI Osmo | Pairing management | BLE GATT | dji C09 to C12 | implemented | none | `advertisement_dispatch_test` | capture-gated |
 | DJI Osmo | Battery | BLE status field | dji C15 | missing | none | none | capture-gated |
 | DJI Osmo | Storage | BLE status fields | dji C15 | missing | none | none | capture-gated |
-| DJI Osmo | Error and busy status | BLE status and return codes | dji F35 | implemented, partial: logged only | none | none | capture-gated |
-| DJI Osmo | Model and firmware identity | BLE device ID and C01 | dji F36 | implemented, partial: device ID gate only | none | `advertisement_dispatch_test` | capture-gated |
+| DJI Osmo | Error and busy status | BLE status and return codes | dji F35 | implemented; remainder capture-gated: logged only | none | none | capture-gated |
+| DJI Osmo | Model and firmware identity | BLE device ID and C01 | dji F36 | implemented; remainder capture-gated: device ID gate only | none | `advertisement_dispatch_test` | capture-gated |
 | DJI Osmo | Model-specific controls | BLE mode switch | dji C18, F38 to F60 | missing | none | none | capture-gated |
 
 ### 3.13 FauxNY software peer
@@ -873,11 +927,11 @@ Claims deliberately not adopted from the corpus, because the evidence label is
 
 | Verdict | Rows |
 | --- | ---: |
-| aligned | 65 |
-| safe-fix-needed | 22 |
-| capture-gated | 65 |
-| unsupported | 12 |
-| out-of-scope | 12 |
+| aligned | 81 |
+| safe-fix-needed | 0 |
+| capture-gated | 67 |
+| unsupported | 11 |
+| out-of-scope | 17 |
 | Total | 176 |
 
 | Class | Rows |
@@ -923,18 +977,18 @@ Claims deliberately not adopted from the corpus, because the evidence label is
 
 ## 6. What this drives next
 
-### 6.1 Implementation batches, safe fixes only
+### 6.1 Implementation batches, status
 
-| Batch | Scope | Files | Tests |
-| --- | --- | --- | --- |
-| B1 LUMIX session | Remove the focus mapping; add Confirm, Start, Finish, readiness, GPS stop, clock gating | `lib/furble/Lumix.{h,cpp}` | New LUMIX host test with the new peer |
-| B2 Fujifilm clock and identity | 12-byte clock, NUL name, `AAB609C4` enable | `Fujifilm.cpp`, `FujifilmSecure.cpp`, `FujifilmProtocol.*` | `fujifilm_camera_test`, `fujifilm_protocol_test` |
-| B3 Canon GPS | UTC epoch, `00040001`, `05`, `03`, `06` | `CanonEOSSmart.cpp` | New `canon_gps_test` |
-| B4 Sony GPS | `DD01`, `DD21`, `DD32`, `DD33`, timezone, release | `Sony.cpp` | New `sony_gps_test` |
-| B5 Ricoh clock and identity | Date Time gated on CAPTURE, Paired Device Name, capture status | `Ricoh.{h,cpp}` | Extend `ricoh_focus_test` |
-| B6 UI capability gates | Hide bulb and focus on Ricoh, focus on LUMIX, label Nikon Remote release | `src/FurbleUI.cpp`, docs | `headless_ui_contract_test`, screenshots |
-| B7 Nikon Smart fail-fast | Named Classic blocker, remove final-OK wait | `NikonSmart.cpp` | `camera_regression_test` |
-| B8 Control-plane errors | Surface failed writes; make `gattRead` distinguish failure | `Camera.{h,cpp}`, vendor classes | New `camera_write_error_test` |
+| Batch | Scope | Files | Tests | Status |
+| --- | --- | --- | --- | --- |
+| B1 LUMIX session | Remove the focus mapping; add Confirm, Start, Finish, readiness, GPS stop, clock gating | `lib/furble/Lumix.{h,cpp}` | host `lumix-session` | done |
+| B2 Fujifilm clock and identity | 12-byte clock, NUL name, `AAB609C4` enable | `Fujifilm.cpp`, `FujifilmSecure.cpp`, `FujifilmProtocol.*` | `fujifilm_camera_test`, `fujifilm_protocol_test` | done |
+| B3 Canon GPS | UTC epoch | `CanonEOSSmart.cpp`, `protocol/CanonTime.h` | host `canon-time` | done. `00040001`, `05`, `03`, `06` are capture-gated on G5 |
+| B4 Sony GPS | `DD01`, `DD21`, 91/95 form, release | `Sony.cpp` | host `sony-location` | done. `DD32`, `DD33`, and the timezone bytes are capture-gated on G13 |
+| B5 Ricoh clock and identity | Date Time write, Paired Device Name, capture status | `Ricoh.{h,cpp}`, `protocol/RicohTime.h` | `ricoh-time`, `ricoh_focus_test` | done. Readback and the CAPTURE gate are capture-gated on G14 |
+| B6 UI capability gates | Disable focus and bulb a session cannot honour | `Camera.h`, `FurbleControl.{h,cpp}`, `FurbleUI.{h,cpp}`, `src/FurbleUI.cpp` | e2e `ricoh-capability-gating`, `lumix-capability-gating` | done |
+| B7 Nikon Smart fail-fast | Named Classic blocker, remove final-OK wait | `NikonSmart.cpp` | `camera_regression_test` | done |
+| B8 Control-plane errors | Make `gattRead` distinguish failure | `Camera.cpp` | `gatt-journal-uaf` | done for reads. A user-visible write-error surface is out-of-scope (X01) |
 
 ### 6.2 Simulator batches
 
@@ -962,7 +1016,7 @@ per suite and run `python3 tools/check_sim_scenarios.py`.
 ### 6.3 Test batches
 
 - One host test per peer feature path, not per byte.
-- A regression test for every safe fix in §1.2.
+- A regression test for every applied safe fix in §1.4.
 - A negative test for every capture gate: refuse or label, never send silently.
 - Extend `tests/host/control_e2e` with a multi-vendor session once two peers exist.
 

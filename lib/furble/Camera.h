@@ -260,9 +260,7 @@ class Camera: public NimBLEClientCallbacks {
   };
 
   /** Report the controls this camera class can perform. */
-  virtual Capability capabilities(void) const {
-    return Capability {};
-  }
+  virtual Capability capabilities(void) const { return Capability {}; }
 
   virtual size_t getSerialisedBytes(void) const = 0;
   virtual bool serialise(void *buffer, size_t bytes) const = 0;

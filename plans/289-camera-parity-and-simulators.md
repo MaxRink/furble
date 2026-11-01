@@ -36,6 +36,9 @@ Completed in this branch:
   request.
 - Ricoh Capture Status byte 0 is decoded; the `1` to `0` transition counts a
   completed capture, and `0xFF` never does.
+- `Camera::gattRead` reports an empty value as a failed read on both overloads.
+  The Fujifilm shutter characteristic is write-only, so the UAF regression now
+  asserts that an empty read is reported as failure rather than success.
 - Camera capability gating disables the focus control and the Bulb row for a
   session that cannot honour them.
 - LUMIX subscribes to `37701b80` and `4cf487c0` and withholds the GPS and clock

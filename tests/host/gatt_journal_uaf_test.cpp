@@ -63,6 +63,11 @@ class GattCamera final: public Furble::Camera {
   bool read(NimBLERemoteCharacteristic *characteristic, NimBLEAttValue &value) {
     return gattRead(characteristic, value);
   }
+  bool readByUuid(const NimBLEUUID &service,
+                  const NimBLEUUID &characteristic,
+                  NimBLEAttValue &value) {
+    return gattRead(service, characteristic, value);
+  }
   bool write(NimBLERemoteCharacteristic *characteristic, const uint8_t *data, size_t length) {
     return gattWrite(characteristic, data, length, false);
   }
@@ -120,11 +125,19 @@ int main() {
   // gattRead: the mid-operation free lands between readValue() and the journal
   // call. The fixed code journals pre-operation UUID snapshots; the unfixed
   // code dereferences the freed characteristic and ASan aborts here.
+  //
+  // The Fujifilm shutter characteristic is write-only, so the peer answers the
+  // read with an empty value. gattRead must report that as failure: NimBLE's
+  // API has no other error channel, and no readable characteristic in scope is
+  // zero-length. The assertion below proves both properties at once: the call
+  // returns without touching freed memory, and it does not claim a value it
+  // never received.
   NimBLERemoteCharacteristic *characteristic = shutterCharacteristic(client);
   check(characteristic != nullptr, "shutter characteristic resolves through the service cache");
   peer.faultNextOperation([](NimBLEClient &faulted) { faulted.dropServiceCache(); });
   NimBLEAttValue value;
-  check(camera.read(characteristic, value), "gattRead survives a mid-operation attribute free");
+  check(!camera.read(characteristic, value),
+        "gattRead survives a mid-operation free and reports the empty read as failure");
 
   // gattWrite: same window, same free, through the write wrapper. The cache
   // was dropped above, so rediscover a fresh characteristic first.
@@ -151,6 +164,12 @@ int main() {
     }
   }
   check(sawRead, "journal records the read with the snapshotted characteristic UUID");
+
+  // A missing characteristic has no value. The UUID overload must report that
+  // as failure rather than a successful empty read.
+  check(!camera.readByUuid(FujifilmVirtualCamera::shutterServiceUUID(),
+                           FujifilmVirtualCamera::geotagCharacteristicUUID(), value),
+        "gattRead reports an absent characteristic as failure");
   check(sawWrite, "journal records the write with the snapshotted characteristic UUID");
 
   client->disconnect();
