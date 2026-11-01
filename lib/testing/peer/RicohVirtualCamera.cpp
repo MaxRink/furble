@@ -141,6 +141,10 @@ bool RicohVirtualCamera::selfTimerTriggered() const {
   return m_SelfTimerTriggered;
 }
 
+const std::string &RicohVirtualCamera::pairedDeviceName() const {
+  return m_PairedDeviceName;
+}
+
 void RicohVirtualCamera::failWrite(const NimBLEUUID &service, const NimBLEUUID &characteristic) {
   m_FailedWrites.emplace_back(service, characteristic);
 }
@@ -472,6 +476,8 @@ bool RicohVirtualCamera::canWrite(const NimBLEUUID &service,
          || (matches(service, CAMERA_SERVICE)
              && (matches(characteristic, GEOTAG_ENABLE_CHARACTERISTIC)
                  || matches(characteristic, POWER_CHARACTERISTIC)))
+         || (matches(service, BT_CONTROL_SERVICE)
+             && matches(characteristic, PAIRED_NAME_CHARACTERISTIC))
          || (matches(service, GPS_SERVICE) && matches(characteristic, GPS_CHARACTERISTIC));
 }
 
@@ -558,6 +564,27 @@ bool RicohVirtualCamera::write(NimBLEClient &client,
     }
   } else if (matches(service, GPS_SERVICE) && matches(characteristic, GPS_CHARACTERISTIC)) {
     result = parseGpsFix(value);
+  } else if (matches(service, BT_CONTROL_SERVICE)
+             && matches(characteristic, PAIRED_NAME_CHARACTERISTIC)) {
+    // At most 32 printable ASCII characters, terminated at the first NUL.
+    // Evidence: ricoh-handlers.md section 5.15.
+    if (value.size() <= 33) {
+      std::string name;
+      for (const uint8_t byte : value) {
+        if (byte == 0x00) {
+          break;
+        }
+        if ((byte < 0x20) || (byte > 0x7e)) {
+          return false;
+        }
+        name.push_back(static_cast<char>(byte));
+      }
+      if (name.size() > 32) {
+        return false;
+      }
+      m_PairedDeviceName = name;
+      result = true;
+    }
   }
 
   if (result) {
@@ -575,7 +602,9 @@ NimBLEAttValue RicohVirtualCamera::read(NimBLEClient &client,
     return NimBLEAttValue(m_Config.name);
   }
   if (matches(service, BT_CONTROL_SERVICE) && matches(characteristic, PAIRED_NAME_CHARACTERISTIC)) {
-    return NimBLEAttValue("furble");
+    // Paired Device Name is write-only in both images. A read returns nothing.
+    // Evidence: ricoh-handlers.md section 5.15.
+    return NimBLEAttValue();
   }
   if (matches(service, CAMERA_SERVICE) && matches(characteristic, POWER_CHARACTERISTIC)) {
     return NimBLEAttValue({m_Config.camera_power});
@@ -696,6 +725,10 @@ const NimBLEUUID &RicohVirtualCamera::shootingFlavorCharacteristicUUID() {
   return SHOOTING_FLAVOR_CHARACTERISTIC;
 }
 
+const NimBLEUUID &RicohVirtualCamera::shootingServiceUUID() {
+  return SHOOTING_SERVICE;
+}
+
 const NimBLEUUID &RicohVirtualCamera::operationRequestCharacteristicUUID() {
   return OPERATION_REQUEST_CHARACTERISTIC;
 }
@@ -714,6 +747,10 @@ const NimBLEUUID &RicohVirtualCamera::geotagEnableCharacteristicUUID() {
 
 const NimBLEUUID &RicohVirtualCamera::gpsInformationCharacteristicUUID() {
   return GPS_CHARACTERISTIC;
+}
+
+const NimBLEUUID &RicohVirtualCamera::gpsServiceUUID() {
+  return GPS_SERVICE;
 }
 
 const NimBLEUUID &RicohVirtualCamera::selfTimerCharacteristicUUID() {

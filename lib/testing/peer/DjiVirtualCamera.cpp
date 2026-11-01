@@ -310,6 +310,14 @@ bool DjiVirtualCamera::secureAccepted() const {
   return m_SecureAccepted;
 }
 
+bool DjiVirtualCamera::secured() const {
+  return m_SecureAccepted;
+}
+
+bool DjiVirtualCamera::configured() const {
+  return m_ProtocolReady;
+}
+
 void DjiVirtualCamera::removeCameraBond() {
   m_Config.camera_bonded = false;
   m_Config.camera_pairing_record = false;
@@ -405,6 +413,10 @@ uint8_t DjiVirtualCamera::lastAttError() const {
   return m_LastAttError;
 }
 
+DjiVirtualCamera::Fault DjiVirtualCamera::lastFault() const {
+  return m_LastFault;
+}
+
 uint8_t DjiVirtualCamera::lastKeyCode() const {
   return m_LastKeyCode;
 }
@@ -456,17 +468,37 @@ bool DjiVirtualCamera::connected() const {
 
 void DjiVirtualCamera::setScript(const std::vector<ScriptStep> &steps) {
   m_Script.assign(steps.begin(), steps.end());
+  m_Scripted = true;
 }
 
 void DjiVirtualCamera::appendScriptStep(const ScriptStep &step) {
   m_Script.push_back(step);
+  m_Scripted = true;
 }
 
 void DjiVirtualCamera::clearScript() {
   m_Script.clear();
+  m_Scripted = false;
 }
 
 size_t DjiVirtualCamera::scriptRemaining() const {
+  return m_Script.size();
+}
+
+void DjiVirtualCamera::setScripted(bool enabled) {
+  m_Scripted = enabled;
+}
+
+bool DjiVirtualCamera::scripted() const {
+  return m_Scripted;
+}
+
+void DjiVirtualCamera::scriptNextCommand(Fault fault) {
+  m_Script.push_back({Command::Unknown, fault});
+  m_Scripted = true;
+}
+
+size_t DjiVirtualCamera::scriptedRemaining() const {
   return m_Script.size();
 }
 
@@ -478,9 +510,14 @@ DjiVirtualCamera::Fault DjiVirtualCamera::pendingFault() const {
   return m_NextFault;
 }
 
+void DjiVirtualCamera::clearFault() {
+  m_NextFault = Fault::None;
+}
+
 void DjiVirtualCamera::clearFaults() {
   m_NextFault = Fault::None;
   m_Script.clear();
+  m_Scripted = false;
 }
 
 DjiVirtualCamera::Fault DjiVirtualCamera::takeFault(Command command) {
@@ -489,7 +526,9 @@ DjiVirtualCamera::Fault DjiVirtualCamera::takeFault(Command command) {
     m_NextFault = Fault::None;
     return fault;
   }
-  if (!m_Script.empty() && (m_Script.front().command == command)) {
+  if (m_Scripted && !m_Script.empty()
+      && ((m_Script.front().command == Command::Unknown)
+          || (m_Script.front().command == command))) {
     const Fault fault = m_Script.front().fault;
     m_Script.pop_front();
     return fault;
@@ -506,6 +545,7 @@ void DjiVirtualCamera::recordWrite(const NimBLEUUID &characteristic,
                                    const std::vector<uint8_t> &frame,
                                    bool accepted) {
   Write write;
+  write.service = TARGET_SERVICE.toString();
   write.characteristic = characteristic.toString();
   write.command = commandName(command);
   write.frame = frame;
@@ -629,7 +669,7 @@ bool DjiVirtualCamera::handleConnectionRequest(const Frame &frame) {
     m_InvalidCommands++;
     if (m_Config.send_connection_response) {
       std::vector<uint8_t> payload(9, 0x00);
-      writeLE32(payload.data(), m_Config.controller_device_id);
+      writeLE32(payload.data(), m_PendingControllerId);
       payload[4] = RETURN_PARSE_ERROR;
       sendResponse(CMD_SET_COMMON, CMD_CONNECTION, 0x20, frame.sequence, payload);
     }
@@ -642,7 +682,7 @@ bool DjiVirtualCamera::handleConnectionRequest(const Frame &frame) {
     m_InvalidCommands++;
     if (m_Config.send_connection_response) {
       std::vector<uint8_t> payload(9, 0x00);
-      writeLE32(payload.data(), m_Config.controller_device_id);
+      writeLE32(payload.data(), m_PendingControllerId);
       payload[4] = RETURN_PARSE_ERROR;
       sendResponse(CMD_SET_COMMON, CMD_CONNECTION, 0x20, frame.sequence, payload);
     }
@@ -654,20 +694,7 @@ bool DjiVirtualCamera::handleConnectionRequest(const Frame &frame) {
   if (m_Config.reject_connection) {
     if (m_Config.send_connection_response) {
       std::vector<uint8_t> payload(9, 0x00);
-      writeLE32(payload.data(), m_Config.controller_device_id);
-      payload[4] = RETURN_EXECUTION_FAILED;
-      sendResponse(CMD_SET_COMMON, CMD_CONNECTION, 0x20, frame.sequence, payload);
-    }
-    noteReturnCode(RETURN_EXECUTION_FAILED);
-    m_ConnectionRejected = true;
-    return false;
-  }
-
-  if (m_Config.require_supported_camera_id && !m_Config.allow_unknown_camera_id
-      && !supportedDeviceId(wireDeviceId())) {
-    if (m_Config.send_connection_response) {
-      std::vector<uint8_t> payload(9, 0x00);
-      writeLE32(payload.data(), m_Config.controller_device_id);
+      writeLE32(payload.data(), m_PendingControllerId);
       payload[4] = RETURN_EXECUTION_FAILED;
       sendResponse(CMD_SET_COMMON, CMD_CONNECTION, 0x20, frame.sequence, payload);
     }
@@ -678,7 +705,7 @@ bool DjiVirtualCamera::handleConnectionRequest(const Frame &frame) {
 
   if (m_Config.send_connection_response) {
     std::vector<uint8_t> payload(9, 0x00);
-    writeLE32(payload.data(), m_Config.controller_device_id);
+    writeLE32(payload.data(), m_PendingControllerId);
     payload[4] = RETURN_SUCCESS;
     sendResponse(CMD_SET_COMMON, CMD_CONNECTION, 0x20, frame.sequence, payload);
   }
@@ -787,7 +814,9 @@ bool DjiVirtualCamera::handleCommand(const Frame &frame) {
       writeLE32(payload.data(), readLE32(frame.payload.data()));
       payload[4] = RETURN_SUCCESS;
       noteReturnCode(RETURN_SUCCESS);
-      sendResponse(CMD_SET_COMMON, CMD_RESTART, 0x21, frame.sequence, payload);
+      sendResponse(CMD_SET_COMMON, CMD_RESTART,
+                   static_cast<uint8_t>(0x20 | (frame.command_type & 0x1f)), frame.sequence,
+                   payload);
       if (m_Config.restart_drops_link && (m_Client != nullptr)) {
         m_Client->mockDropLink(0x13, /*fire_callback=*/true);
       }
@@ -991,6 +1020,7 @@ bool DjiVirtualCamera::write(NimBLEClient &client,
 
   const Command command = classify(frame);
   const Fault fault = takeFault(command);
+  m_LastFault = fault;
   m_LastAttError = 0;
 
   if ((fault == Fault::Reject) || (fault == Fault::Busy) || (fault == Fault::WrongMode)) {
@@ -1118,7 +1148,7 @@ bool DjiVirtualCamera::secureConnection(NimBLEClient &client) {
     return false;
   }
   if (!localBonded) {
-    NimBLEDevice::setBonded(true);
+    NimBLEDevice::setBondedAddress(m_Config.address);
     m_Config.camera_bonded = true;
   }
   m_StaleBond = false;
@@ -1161,6 +1191,7 @@ void DjiVirtualCamera::disconnect(NimBLEClient &client, int reason) {
   }
   m_Client = nullptr;
   m_Connected = false;
+  m_SecureAccepted = false;
   m_ProtocolReady = false;
   m_PendingApproval = false;
   m_StatusSubscribed = false;
@@ -1168,6 +1199,7 @@ void DjiVirtualCamera::disconnect(NimBLEClient &client, int reason) {
 }
 
 void DjiVirtualCamera::resetLink() {
+  m_SecureAccepted = false;
   m_ProtocolReady = false;
   m_ConnectionApproved = false;
   m_ConnectionRejected = false;

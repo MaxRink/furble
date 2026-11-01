@@ -97,6 +97,7 @@ class LumixVirtualCamera final: public NimBLEMockPeer {
     NimBLEAddress address = NimBLEAddress(0x3a003a003a00ULL, 0);
     uint8_t advertisement_flags = 0x00;
     std::array<uint8_t, 5> address_fragment = {0x00, 0x00, 0x00, 0x00, 0x00};
+    bool advertise_session_service = true;
 
     // Generation gate. Presence of the APS identity characteristic is the
     // app's isUUIDApsSupported flag. The plain MEI0 path is still advertised
@@ -130,6 +131,8 @@ class LumixVirtualCamera final: public NimBLEMockPeer {
     bool allow_start_without_confirm = false;
     bool allow_shutter_without_start = false;
     bool allow_finish_without_start = true;
+    // The app sends Finish on exit. true clears the session on link loss;
+    // false keeps the started state so the next session must Confirm.
     bool release_on_disconnect = false;
 
     // Readiness notifications from the public S5 report. The clock request
@@ -192,11 +195,14 @@ class LumixVirtualCamera final: public NimBLEMockPeer {
   bool staleBond() const;
   bool bondSupported() const;
   bool registered() const;
+  bool configured() const;
+  bool secured() const;
   IdentityPath identityPath() const;
   const std::vector<uint8_t> &mei0Identity() const;
   const std::vector<uint8_t> &apsIdentity() const;
   const std::string &controllerName() const;
   const std::string &writtenSsid() const;
+  uint8_t connectType() const;
   bool wrongIdentityPath() const;
 
   /**
@@ -227,6 +233,7 @@ class LumixVirtualCamera final: public NimBLEMockPeer {
 
   uint8_t lastAttError() const;
   bool secureRequested() const;
+  Fault lastFault() const;
 
   const std::vector<Write> &writes() const;
   const std::vector<Notification> &notifications() const;
@@ -250,8 +257,13 @@ class LumixVirtualCamera final: public NimBLEMockPeer {
   void appendScriptStep(const ScriptStep &step);
   void clearScript();
   size_t scriptRemaining() const;
+  void setScripted(bool enabled);
+  bool scripted() const;
+  void scriptNextCommand(Fault fault);
+  size_t scriptedRemaining() const;
   void setNextFault(Fault fault);
   Fault pendingFault() const;
+  void clearFault();
   void clearFaults();
 
   /** Mark the session as left in the started state by an abrupt disconnect. */
@@ -334,7 +346,6 @@ class LumixVirtualCamera final: public NimBLEMockPeer {
   static uint16_t readLE16(const uint8_t *value);
   static uint32_t readLE32(const uint8_t *value);
   static int16_t readLEI16(const uint8_t *value);
-  static uint32_t readBE32(const uint8_t *value);
   static bool validClockFields(uint8_t month,
                                uint8_t day,
                                uint8_t hour,
@@ -376,6 +387,7 @@ class LumixVirtualCamera final: public NimBLEMockPeer {
   std::vector<uint8_t> m_ApsIdentity;
   std::string m_ControllerName;
   std::string m_WrittenSsid;
+  uint8_t m_ConnectType = 0;
   std::array<uint8_t, 4> m_EffectiveApsKey = {0x90, 0x32, 0x78, 0x2c};
 
   bool m_Confirmed = false;
@@ -396,7 +408,9 @@ class LumixVirtualCamera final: public NimBLEMockPeer {
   ClockLayout m_LastClockLayout = ClockLayout::G9ii;
 
   uint8_t m_LastAttError = 0;
+  Fault m_LastFault = Fault::None;
   std::deque<ScriptStep> m_Script;
+  bool m_Scripted = false;
   Fault m_NextFault = Fault::None;
   std::vector<Write> m_Writes;
   std::vector<Notification> m_Notifications;

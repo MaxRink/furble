@@ -1,8 +1,8 @@
 # Simulator parity: common peer contract, family state models, and fault matrix
 
 Status: design plus first implementation. Applies to GOAL Workstream E.
-Scope: every camera family Furble registers, the two existing virtual peers, and
-the seven peers Workstream E still requires.
+Scope: every camera family Furble registers and the nine virtual peers under
+`lib/testing/peer/`.
 
 This document defines what a virtual camera peer must model, how each family's
 broader state machine maps onto the peer surface, which faults every peer must
@@ -53,6 +53,24 @@ architecture"). A peer implements `NimBLEMockPeer` from
 `acceptConnection`, `disconnect`, `hasService`, `hasCharacteristic`,
 `discoverCharacteristic`, `canWrite`, `write`, `read`, `subscribe`,
 `secureConnection`, `updateConnectionParams`, `getRssi`.
+
+Peer inventory at this tree:
+
+| Peer | Family | Contract status |
+| --- | --- | --- |
+| `FujifilmVirtualCamera` | Basic and Secure v4.0 | Section 5 applied; fault enum and scripted mode present |
+| `RicohVirtualCamera` | GR III/IIIx and GR IV/HDF | Section 6 applied; fault enum and scripted mode present |
+| `NikonRemoteVirtualCamera` | Nikon Remote (ML-L7 style) | Present; contract checked by `peer_contract_test` |
+| `NikonSmartVirtualCamera` | Nikon Smart (SnapBridge LSS style) | Present; contract checked by `peer_contract_test` |
+| `CanonSmartVirtualCamera` | Canon EOS Smart | Present; contract checked by `peer_contract_test` |
+| `CanonRemoteVirtualCamera` | Canon EOS Remote | Present; contract checked by `peer_contract_test` |
+| `SonyVirtualCamera` | Sony | Present; contract checked by `peer_contract_test` |
+| `LumixVirtualCamera` | Panasonic LUMIX | Present; contract checked by `peer_contract_test` |
+| `DjiVirtualCamera` | DJI Osmo Action 4 and 5 Pro | Present; contract checked by `peer_contract_test` |
+
+At this tree the simulator links all nine peers and constructs the Canon, Nikon,
+Sony, LUMIX, and DJI peers through `addGenericPeer` in `sim/BleSim.cpp`.
+Per-family simulator scenarios are still being added.
 
 ### 1.1 Advertisement
 
@@ -222,26 +240,35 @@ maps a fault name to the family enum. Fujifilm and Ricoh have no per-command
 response, so Reject, Busy, WrongMode, Timeout, and Malformed all surface as a
 refused write; Disconnect severs the link; StaleBond refuses the encryption
 handshake. The Canon, Nikon, Sony, LUMIX, and DJI peers can attach a fault to a
-notification and therefore distinguish Malformed from Reject.
+notification and therefore distinguish Malformed from Reject. `removeCameraBond()`
+is present on every peer; on Fujifilm it sets the refuse-while-bonded shape
+because there is no separate camera-side SMP store.
 
 `clearFaults()` restores a healthy baseline so the fuzz harness can reuse one
-peer across operations (present on every peer).
+peer across operations. Fujifilm, Ricoh, Sony, LUMIX, and DJI expose it; Canon
+and Nikon expose `clearFault()` plus `clearScript()` and need the alias added
+during the harness consolidation.
 
 ### 1.10 Scripted mode
 
-Every peer implements the same deterministic scripted mode:
+Every peer implements deterministic scripted mode, but the method names are not
+yet identical:
 
-| Method | Meaning |
-| --- | --- |
-| `setScripted(bool)` | Selects scripted handling |
-| `scriptNextCommand(Fault)` | Queues one fault for the next command write |
-| `scriptedRemaining()` | Number of queued faults |
-| `clearScript()` | Empties the queue |
-| `clearFault()` | Clears the sticky fault |
+| Method | Peers that use it | Meaning |
+| --- | --- | --- |
+| `setScripted(bool)` | All | Selects scripted handling |
+| `scriptNextCommand(Fault)` | Fujifilm, Ricoh, Canon Smart/Remote, Nikon Remote/Smart | Queue one fault for the next command write |
+| `setNextFault(Fault)` | Sony, LUMIX, DJI | Queue one fault for the next scripted step |
+| `scriptedRemaining()` / `scriptRemaining()` | Split by the two groups above | Number of queued steps |
+| `clearScript()` | All except Sony, LUMIX, DJI | Empties the queue |
+| `clearFault()` | All | Clears the sticky fault |
+
+The consolidation target is one spelling: `setScripted`, `scriptNextCommand`,
+`scriptedRemaining`, `clearScript`, `clearFault`, `clearFaults`. No behaviour
+changes, only names.
 
 Scripted mode consumes one queued `Fault` per command write. The sticky fault
-is ignored while scripting, and an empty queue means normal handling. This is
-the same contract in every peer, so a scenario file names a fault once.
+is ignored while scripting, and an empty queue means normal handling.
 
 A scenario may also drive the modelled camera directly: `advertise`, `accept`,
 `expect_write`, `emit`, `drop`, `expire`, and `assert`. The peer exposes state
@@ -249,7 +276,6 @@ for assertions (`connected()`, `secured()`, `cameraBonded()`, `configured()`,
 `registered()`, and family accessors). No scenario may assert a physical
 outcome; certification of a still image still needs a capture or EXIF check
 (`plan159`; `fuji-spec` §0.4).
-
 
 ## 2. Per-family state model
 
@@ -331,7 +357,7 @@ unknown is modelled as a refused command, not as an invented success.
 
 | State | Peer-visible model | Evidence |
 | --- | --- | --- |
-| Boot | Advertisement with the client ID in manufacturer data. | `nikon-spec` §2.1 |
+| Boot | Reconnect form carries `99 03` plus the client ID and a capability byte; the pairing form carries no manufacturer data. | `nikon-spec` §2.1; `nikon-handlers` §6.3 and §6.4 |
 | Idle | Not reachable in Furble: the flow needs a Bluetooth Classic continuation. | `sm` §9.1 |
 | Capture | `2021` opcode `0x12` key events exist in SnapBridge, not in the Remote profile. | `nikon-spec` §5.2 |
 | Playback | `2020` main status `PLAY` exists. | `nikon-spec` §5.2 S22 |
@@ -447,6 +473,9 @@ under `tests/host/CMakeLists.txt`; simulator scenarios are files owned by
 
 | ID | Scenario | Peer setup | Assertion | Evidence |
 | --- | --- | --- | --- | --- |
+| H-C-01 | Shared fault vocabulary | `setFault(Fault::Reject)` then a command write | Write refused, link up, `fault()` reports Reject | `plan159`; family error rows |
+| H-C-02 | Scripted mode | `setScripted(true)`, queue None then Reject | First command accepted, second refused, `scriptedRemaining() == 0` | `plan159` |
+| H-C-03 | Camera-side deletion | `removeCameraBond()` with a central bond | Protected op or handshake fails, no GATT message sent | `fuji-spec` §7.5; `ricoh-handlers` §9.4 |
 | H-FJ-01 | Basic token accept | Basic peer, default token | `tokenAccepted()`, identity written, registration confirmed | `fuji-spec` §7.6 |
 | H-FJ-02 | Basic token mismatch | `Config::token` changed | `connect()` false, link reclaimed, no identifier write accepted | `fuji-spec` §7.6 |
 | H-FJ-03 | Secure status ack gate | Secure peer, production connect | `statusAcknowledged()`, `clientClass() == 2` | `fuji-handlers` §3.3 |
@@ -558,15 +587,16 @@ parser does.
 | --- | --- | --- | --- |
 | Camera Power write | Not writable at all | `00` powers off and `01` is accepted; `02` and above refused | `ricoh-handlers` §5.1 |
 | GEO Tag write | Any payload accepted | Exactly one byte, value 0 or 1, otherwise refused | `ricoh-handlers` §5.5 |
-| GPS Information write | Any payload accepted | Exactly 32 bytes; three byte-swapped `float64`, native `uint16` year, month to second, byte 31 recorded and unused | `ricoh-handlers` §6 |
+| GPS Information write | Any payload accepted | Exactly 32 bytes at the ATT layer; the parser reads bytes 0 to 30 only, so the payload is effectively 31 bytes. Three byte-swapped `float64`, native `uint16` year, month to second, byte 31 recorded and unused | `ricoh-handlers` §6 |
 | Passkey versus numeric comparison | One boolean for both generations | `Config::pairing` selects `kPasskeyDisplay` or `kNumericComparison`; `setPasskeyAccepted()` gates the passkey path | `ricoh-handlers` §9.1 and §9.2 |
 | Drive mode table | Any single byte accepted | Indices 0 to 15 accepted, 16 and above refused; `driveMode()` returns the decoded `(drive, self-timer)` row | `ricoh-handlers` §5.9.1 |
 | Operation Request | Any payload accepted | `{0,1}`, `{1,0}`, `{1,1}`, `{2,*}` accepted; `{0,0}` and `{1,2}` refused | `ricoh-handlers` §8.1 |
 | Self timer | Any payload accepted | Any 1-byte write succeeds; only `01` sets `selfTimerTriggered()` | `ricoh-handlers` §5.12 |
+| Paired Device Name | Not writable and read returned a placeholder | Write-only; at most 32 printable ASCII, terminated at the first NUL, recorded by `pairedDeviceName()` | `ricoh-handlers` §5.15 |
 | Advertisement record | No manufacturer data and four services | `5F 06 DA` typed record; Camera Information normally and Bluetooth Control in sleep | `ricoh-handlers` §10.1 and §10.2 |
 | Pairing menu gate | Not modelled | A pairing attempt with the menu closed is denied and disconnected | `ricoh-handlers` §9.4 |
 | Re-pair while bonded | Not modelled | `setRepairRequest(true)` models deny, camera-side deletion, and disconnect | `ricoh-handlers` §9.4 |
-| Fault surface | Timeout and disconnect only | Added `failWrite()`, `setBusy()`, `setRepairRequest()`, `clearFaults()` | `ricoh-handlers` §2.1; `plan159` |
+| Fault surface | Timeout and disconnect only | Added `failWrite()`, `setBusy()`, `setRepairRequest()`, `setFault()` with the shared enum, scripted mode, and `clearFaults()` | `ricoh-handlers` §2.1; `plan159` |
 
 ### 6.2 Deliberately not applied
 
@@ -580,7 +610,7 @@ parser does.
 
 ## 7. Shared test harness plan
 
-### 7.1 One peer fixture, two families
+### 7.1 One peer fixture, all families
 
 Add `lib/testing/peer/PeerFixture.h` and `PeerFixture.cpp` (follow-up; not part
 of this change) with:
@@ -616,11 +646,11 @@ follow-up widens it into the full checklist:
 
 The checklist is the same for all peers; only the profile rows differ.
 
-
 ### 7.3 Family suites
 
 | File | Covers |
 | --- | --- |
+| `tests/host/peer_contract_test.cpp` | Shared construction and identity checks, already present |
 | `tests/host/peer_fujifilm_test.cpp` | Section 5.1 rows, status window, time packets, power, sync interval, advertisement form |
 | `tests/host/peer_ricoh_test.cpp` | Section 6.1 rows, drive table, GPS decode, pairing method, repair request, sleep advertisement |
 | `tests/host/peer_nikon_test.cpp` | `2083` key values, `2084` six-byte indication, `2087` stages, Smart `2008` refusal |
@@ -652,38 +682,45 @@ A run that uses only synthetic faults or cross-model inference is always
 
 ### 8.1 Host harness
 
-`tests/host/CMakeLists.txt` already compiles both peers per test target. The
-follow-up adds:
+`tests/host/CMakeLists.txt` compiles the Fujifilm and Ricoh peers directly per
+test target. The Canon/Nikon and Sony/LUMIX/DJI peers are exposed through two
+source-list fragments, `lib/testing/peer/CanonNikonPeers.cmake` and
+`lib/testing/peer/SonyLumixDjiPeers.cmake`, which `peer_contract_test` includes.
+The follow-up adds:
 
 | Target | Sources | Notes |
 | --- | --- | --- |
-| `peer_contract_test` | `peer_contract_test.cpp`, both peers, `MockNimBLE.cpp` | One binary, all peers |
+| `peer_contract_test` | `peer_contract_test.cpp`, all peers, `MockNimBLE.cpp` | One binary, all peers, already present |
 | `peer_fujifilm_test` | `peer_fujifilm_test.cpp`, `FujifilmVirtualCamera.cpp`, production Fujifilm sources | New |
 | `peer_ricoh_test` | `peer_ricoh_test.cpp`, `RicohVirtualCamera.cpp`, production Ricoh sources | New |
-| `peer_nikon_test` | `peer_nikon_test.cpp`, new Nikon peers | New |
-| `peer_canon_test`, `peer_sony_test`, `peer_lumix_test`, `peer_dji_test` | One per family | New |
+| `peer_nikon_test` | `peer_nikon_test.cpp`, `CANON_NIKON_PEER_SOURCES` | New |
+| `peer_canon_test` | `peer_canon_test.cpp`, `CANON_NIKON_PEER_SOURCES` | New |
+| `peer_sony_test`, `peer_lumix_test`, `peer_dji_test` | One per family, `SONY_LUMIX_DJI_PEER_SOURCES` | New |
 
 Rules:
 
-1. Add each target to `furble_host_camera`'s source list only if it is a shared
-   library. The current pattern compiles the peer source directly per target,
-   which keeps the sanitizer builds isolated.
-2. Register every target with `add_test()` and a timeout, as the existing
+1. Do not add peers to `furble_host_camera` if the test target compiles its own
+   peer sources. The current pattern keeps each peer translation unit in the
+   target that tests it, which keeps sanitizer builds isolated.
+2. Add a `FujifilmRicohPeers.cmake` fragment with the same shape as the two
+   existing fragments, so every family is opted in the same way.
+3. Register every target with `add_test()` and a timeout, as the existing
    camera tests do.
-3. Keep a sanitizer variant for the fault tests, mirroring
+4. Keep a sanitizer variant for the fault tests, mirroring
    `control_reclaim_uaf_test` and `ricoh_secure_timeout_uaf_test`.
-4. Add the new targets to the coverage profile mapping at the end of
+5. Add the new targets to the coverage profile mapping at the end of
    `tests/host/CMakeLists.txt` so `tools/coverage.py` can name a lost profile.
 
 ### 8.2 Simulator
 
-`sim/CMakeLists.txt` and `sim/build.sh` list
-`lib/testing/peer/RicohVirtualCamera.cpp`. The follow-up adds every new peer to
-both lists and to `sim/BleSim.cpp` peer construction.
+`sim/CMakeLists.txt` and `sim/build.sh` link all nine peer translation units.
+`sim/BleSim.cpp` constructs Fujifilm, Ricoh, and the five generic family peers
+through `addGenericPeer`. The remaining work is scenario coverage, not source
+wiring.
 
 | Step | Change |
 | --- | --- |
-| 1 | Add a peer factory in `sim/BleSim.cpp` keyed by family, so a scenario can name a camera type |
+| 1 | Give `addGenericPeer` a scenario-visible camera type so a scenario file can name a family |
 | 2 | Map scenario fault names to peer setters in `sim/scenario_action.cpp` |
 | 3 | Add the scenario files from section 4.2 |
 | 4 | Register each file in `sim/scenarios/manifest.json` with a suite and owner |
@@ -707,12 +744,12 @@ The exact coverage command and floor live in `tools/coverage.py` and
 
 | Gap | Impact | Closing artifact |
 | --- | --- | --- |
-| Notifications emit synchronously from `subscribe()` and `write()` in the current peers | Violates `plan159` scheduling rule; a stacked CCCD operation can observe ordering that hardware never produces | Scheduled-notify migration on the peer clock |
+| Notifications emit synchronously from `subscribe()` in the current peers, and some peers also emit from `write()` | Violates `plan159` scheduling rule; a stacked CCCD operation can observe ordering that hardware never produces | Scheduled-notify migration on the peer clock |
 | Advertising windows are not scheduled | A test can see an advertisement after the camera should have stopped (Fujifilm about 30 s, Ricoh sleep form indefinite) | Advertising window scenario plus a capture |
 | Ricoh peer answers only the Furble-used characteristic subset | A GR IV full-table test would see missing characteristics | Full GR IV 1.20 GATT table import |
 | Fujifilm peer does not emit IND1 and IND2 on registration | The real accepted-registration surface is untested | Capture of an accepted ack |
-| Nikon peers do not exist yet | Workstream E item for both roles is open | New `NikonRemoteVirtualCamera` and `NikonSmartVirtualCamera` |
-| Canon, Sony, LUMIX, DJI peers do not exist yet | Workstream E items are open | One peer per family |
+| Family behaviour suites do not exist yet | The peer contract test proves construction and identity only, not the command matrix | `peer_<family>_test` targets from section 7.3 |
+| The generic family peers are constructed but have no scenario files | The simulator can boot them, but no scripted scenario exercises their command matrix | Scenario files from section 4.2 plus manifest rows |
 | Ricoh power-off notify and link drop are not schedule-driven | The power-off scenario needs the standby drop path | Capture of power-off timing |
 | Fujifilm movie stop value and 92-byte blob semantics | The movie and firmware-update states cannot be certified | Handler decode or capture |
 
@@ -720,9 +757,9 @@ The exact coverage command and floor live in `tools/coverage.py` and
 
 | File | Change |
 | --- | --- |
-| `lib/testing/peer/FujifilmVirtualCamera.h` | Added shutter constants and counters, status window and class accessors, time, power, and sync-interval state, and new UUID accessors |
-| `lib/testing/peer/FujifilmVirtualCamera.cpp` | Enforced the shutter accept set, the status ack gate with a 20 s window, the time packet predicates, the power values, and the sync-interval set; corrected the Secure advertisement type byte |
-| `lib/testing/peer/RicohVirtualCamera.h` | Added the pairing method, GPS and drive-mode structs, handler-derived accessors, and the fault surface |
-| `lib/testing/peer/RicohVirtualCamera.cpp` | Enforced power, GEO Tag, GPS, drive mode, operation request, and self-timer rules; added the GR III/GR IV pairing split, the repair request, and the typed advertisement record |
+| `lib/testing/peer/FujifilmVirtualCamera.h` | Added the shared fault vocabulary and scripted mode, shutter constants and counters, status window and class accessors, time, power, and sync-interval state, and new UUID accessors |
+| `lib/testing/peer/FujifilmVirtualCamera.cpp` | Enforced the shutter accept set, the status ack gate with a 20 s window, the time packet predicates, the power values, and the sync-interval set; corrected the Secure advertisement type byte; wired the fault classes and scripted mode |
+| `lib/testing/peer/RicohVirtualCamera.h` | Added the shared fault vocabulary and scripted mode, the pairing method, GPS and drive-mode structs, handler-derived accessors, and the fault surface |
+| `lib/testing/peer/RicohVirtualCamera.cpp` | Enforced power, GEO Tag, GPS, drive mode, operation request, and self-timer rules; added the GR III/GR IV pairing split, the repair request, the typed advertisement record, and the fault classes |
 
 No production source, test, scenario manifest, or other document was changed.

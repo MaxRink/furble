@@ -111,9 +111,10 @@ class SonyVirtualCamera final: public NimBLEMockPeer {
     bool background_transfer_supported = false;
     bool background_transfer_enabled = false;
 
-    // Link security. camera_bonded is the camera-side pairing record; the
-    // phone-side bond lives in NimBLEDevice. A mismatch is the stale bond that
-    // Sony documents as deleted by camera initialization.
+    // Link security. camera_bonded is the camera-side SMP bond; the phone-side
+    // bond lives in NimBLEDevice. A mismatch is the stale bond that Sony
+    // documents as deleted by camera initialization. It is separate from the
+    // EE01 application registration.
     bool camera_bonded = false;
     bool accept_numeric_comparison = true;
     bool reject_secure_connection = false;
@@ -121,10 +122,14 @@ class SonyVirtualCamera final: public NimBLEMockPeer {
 
     // EE01 registration. The default result is 1 (success). Any other value
     // is emitted through EE03 and leaves the camera unregistered.
+    // registration_creates_bond models the inference that Android bonds during
+    // the vendor EE01 flow; false keeps the SMP bond independent so a test can
+    // pair and register in either order.
     bool reject_pairing = false;
     uint32_t pairing_result = 1;
     bool pairing_state_notifications = true;
     bool accept_repeat_registration = true;
+    bool registration_creates_bond = false;
     std::vector<uint32_t> pairing_state_sequence = {1, 2};
 
     // Optional services. Each vendor service has a presence switch so a test
@@ -141,6 +146,8 @@ class SonyVirtualCamera final: public NimBLEMockPeer {
     // accepts the base form (capture-gated, spec U-14).
     bool timezone_supported = true;
     bool require_91_byte_location = false;
+    // No automatic lock release is documented. true keeps a basic test clean;
+    // false models the lock leak that a missing DD30 = 00 write can leave.
     bool release_lock_on_disconnect = true;
     uint8_t lock_owner = 0;  // 0 free, 1 this peer, 2 another device
     uint8_t time_correction = 0;
@@ -211,6 +218,8 @@ class SonyVirtualCamera final: public NimBLEMockPeer {
 
   bool cameraBonded() const;
   bool registered() const;
+  bool configured() const;
+  bool secured() const;
   bool staleBond() const;
   bool secureAttempted() const;
   bool pairingInProgress() const;
@@ -241,6 +250,7 @@ class SonyVirtualCamera final: public NimBLEMockPeer {
 
   uint8_t lastAttError() const;
   uint16_t lastFf01Opcode() const;
+  Fault lastFault() const;
 
   const std::vector<Write> &writes() const;
   const std::vector<Notification> &notifications() const;
@@ -254,7 +264,11 @@ class SonyVirtualCamera final: public NimBLEMockPeer {
                         const NimBLEUUID &characteristic,
                         const std::vector<uint8_t> &payload);
 
-  /** FF02 remote-commander status. Returns false without a subscription. */
+  /**
+   * FF02 remote-commander status. Returns false without a subscription, and
+   * false while Config::ff02_notifications is off because every FF02 value is
+   * public-source inference.
+   */
   bool emitFf02(uint8_t command, uint8_t value);
 
   /** DD01 location availability notification, N-01 or N-02. */
@@ -279,8 +293,13 @@ class SonyVirtualCamera final: public NimBLEMockPeer {
   void appendScriptStep(const ScriptStep &step);
   void clearScript();
   size_t scriptRemaining() const;
+  void setScripted(bool enabled);
+  bool scripted() const;
+  void scriptNextCommand(Fault fault);
+  size_t scriptedRemaining() const;
   void setNextFault(Fault fault);
   Fault pendingFault() const;
+  void clearFault();
   void clearFaults();
 
   bool connected() const;
@@ -385,6 +404,7 @@ class SonyVirtualCamera final: public NimBLEMockPeer {
   Config m_Config;
   NimBLEClient *m_Client = nullptr;
   bool m_Connected = false;
+  bool m_Secured = false;
   bool m_Registered = false;
   bool m_StaleBond = false;
   bool m_SecureAttempted = false;
@@ -409,7 +429,9 @@ class SonyVirtualCamera final: public NimBLEMockPeer {
   std::vector<uint8_t> m_LastClock;
 
   uint8_t m_LastAttError = 0;
+  Fault m_LastFault = Fault::None;
   std::deque<ScriptStep> m_Script;
+  bool m_Scripted = false;
   Fault m_NextFault = Fault::None;
   std::vector<Write> m_Writes;
   std::vector<Notification> m_Notifications;

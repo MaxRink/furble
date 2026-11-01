@@ -248,6 +248,9 @@ bool FujifilmVirtualCamera::registrationWindowOpen() const {
   if (!m_StatusRead || m_RegistrationWindowExpired) {
     return false;
   }
+  if (m_RegistrationWindowMs == 0) {
+    return false;
+  }
   if (m_RegistrationWindowMs == kRegistrationWindowUnlimited) {
     return true;
   }
@@ -1125,6 +1128,12 @@ void FujifilmVirtualCamera::setRefuseWhileBonded(bool refuse) {
   m_RefuseWhileBonded = refuse;
 }
 
+void FujifilmVirtualCamera::removeCameraBond() {
+  // The camera forgot the registration but the central still holds its bond.
+  // This is the refuse-while-bonded shape, not an SMP unpair.
+  m_RefuseWhileBonded = true;
+}
+
 void FujifilmVirtualCamera::setRequireLongConnParamsAfterIdentifier(bool require) {
   m_RequireLongConnParamsAfterIdentifier = require;
 }
@@ -1245,6 +1254,18 @@ const NimBLEUUID &FujifilmVirtualCamera::geotagCharacteristicUUID() {
 
 const NimBLEUUID &FujifilmVirtualCamera::advertisedServiceUUID() {
   return ADVERTISED_SERVICE_UUID;
+}
+
+const NimBLEUUID &FujifilmVirtualCamera::secureStatusCharacteristicUUID() {
+  return SECURE_STATUS_CHARACTERISTIC_UUID;
+}
+
+const NimBLEUUID &FujifilmVirtualCamera::securePairServiceUUID() {
+  return SECURE_PAIR_SERVICE_UUID;
+}
+
+const NimBLEUUID &FujifilmVirtualCamera::secureNotificationServiceUUID() {
+  return SECURE_NOTIFICATION_SERVICE_UUID;
 }
 
 const NimBLEUUID &FujifilmVirtualCamera::timeServiceUUID() {

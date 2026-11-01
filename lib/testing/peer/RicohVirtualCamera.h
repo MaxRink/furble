@@ -133,6 +133,7 @@ class RicohVirtualCamera final: public NimBLEMockPeer {
   size_t captureCount() const;
   bool lastOperationRequest(uint8_t &code, uint8_t &arg) const;
   bool selfTimerTriggered() const;
+  const std::string &pairedDeviceName() const;
 
   // Fault injection. failWrite models an ATT write the camera refuses, which
   // on Ricoh is the only application-level error signal (the handler returns
@@ -221,10 +222,12 @@ class RicohVirtualCamera final: public NimBLEMockPeer {
   int getRssi() const override;
 
   static const NimBLEUUID &shootingFlavorCharacteristicUUID();
+  static const NimBLEUUID &shootingServiceUUID();
   static const NimBLEUUID &operationRequestCharacteristicUUID();
   static const NimBLEUUID &cameraServiceUUID();
   static const NimBLEUUID &powerCharacteristicUUID();
   static const NimBLEUUID &geotagEnableCharacteristicUUID();
+  static const NimBLEUUID &gpsServiceUUID();
   static const NimBLEUUID &gpsInformationCharacteristicUUID();
   static const NimBLEUUID &selfTimerCharacteristicUUID();
   static const NimBLEUUID &captureStatusCharacteristicUUID();
@@ -264,6 +267,7 @@ class RicohVirtualCamera final: public NimBLEMockPeer {
   uint8_t m_LastOperationCode = 0;
   uint8_t m_LastOperationArg = 0;
   bool m_SelfTimerTriggered = false;
+  std::string m_PairedDeviceName;
   // Fault state.
   bool m_Busy = false;
   bool m_RepairRequest = false;

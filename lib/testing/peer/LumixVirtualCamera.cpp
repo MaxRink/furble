@@ -71,8 +71,11 @@ LumixVirtualCamera::LumixVirtualCamera() : LumixVirtualCamera(Config {}) {}
 
 LumixVirtualCamera::LumixVirtualCamera(const Config &config) : m_Config(config) {
   const std::array<uint8_t, 4> zero = {0x00, 0x00, 0x00, 0x00};
-  m_EffectiveApsKey = (m_Config.aps_key == zero) ? std::array<uint8_t, 4> {0x90, 0x32, 0x78, 0x2c}
-                                                 : m_Config.aps_key;
+  if (m_Config.aps_key_reads_zero || (m_Config.aps_key == zero)) {
+    m_EffectiveApsKey = {0x90, 0x32, 0x78, 0x2c};
+  } else {
+    m_EffectiveApsKey = m_Config.aps_key;
+  }
 }
 
 LumixVirtualCamera::~LumixVirtualCamera() = default;
@@ -98,11 +101,6 @@ int16_t LumixVirtualCamera::readLEI16(const uint8_t *value) {
   return static_cast<int16_t>(readLE16(value));
 }
 
-uint32_t LumixVirtualCamera::readBE32(const uint8_t *value) {
-  return (static_cast<uint32_t>(value[0]) << 24) | (static_cast<uint32_t>(value[1]) << 16)
-         | (static_cast<uint32_t>(value[2]) << 8) | static_cast<uint32_t>(value[3]);
-}
-
 bool LumixVirtualCamera::validClockFields(uint8_t month,
                                           uint8_t day,
                                           uint8_t hour,
@@ -121,7 +119,11 @@ bool LumixVirtualCamera::decodeApsBlock(const std::vector<uint8_t> &encoded,
   decoded.assign(20, 0x00);
   for (size_t word = 0; word < 5; word++) {
     // Wire form is XOR then a four-byte word swap. Decode is the word swap
-    // back, then the same key XOR.
+    // back, then the same key XOR. The app stores the key as a long; applying
+    // its four bytes in the order the camera returned them is the documented
+    // reading, but a nonzero-key capture is still needed to pin the byte order
+    // (spec U-30). A zero key reduces this to the word swap, which the G9II
+    // public constant confirms.
     const size_t base = word * 4;
     decoded[base + 0] = encoded[base + 3] ^ key[0];
     decoded[base + 1] = encoded[base + 2] ^ key[1];
@@ -179,9 +181,11 @@ const char *LumixVirtualCamera::commandName(Command command) {
 }
 
 NimBLEAdvertisedDevice LumixVirtualCamera::advertisement() const {
-  // The matcher requires company 0x003a and the session service. The flags
-  // byte and five-byte address fragment are parsed but not used by Furble;
-  // their semantics remain unknown (spec U-02 and U-03).
+  // The production matcher requires company 0x003a and the session service.
+  // advertise_session_service can omit the service to model a body whose
+  // advertisement does not carry it. The flags byte and five-byte address
+  // fragment are parsed but not used by Furble; their semantics remain
+  // unknown (spec U-02 and U-03).
   std::vector<uint8_t> manufacturer = {0x3a, 0x00, m_Config.advertisement_flags};
   manufacturer.insert(manufacturer.end(), m_Config.address_fragment.begin(),
                       m_Config.address_fragment.end());
@@ -191,7 +195,9 @@ NimBLEAdvertisedDevice LumixVirtualCamera::advertisement() const {
   device.setName(m_Config.name);
   device.setManufacturerData(manufacturer.data(), manufacturer.size());
   device.setRSSI(-58);
-  device.addServiceUUID(SESSION_SERVICE);
+  if (m_Config.advertise_session_service) {
+    device.addServiceUUID(SESSION_SERVICE);
+  }
   return device;
 }
 
@@ -200,7 +206,7 @@ const LumixVirtualCamera::Config &LumixVirtualCamera::config() const {
 }
 
 bool LumixVirtualCamera::advertisesSessionService() const {
-  return true;
+  return m_Config.advertise_session_service;
 }
 
 bool LumixVirtualCamera::apsPresent() const {
@@ -226,6 +232,14 @@ bool LumixVirtualCamera::registered() const {
   return m_Registered;
 }
 
+bool LumixVirtualCamera::configured() const {
+  return m_Registered;
+}
+
+bool LumixVirtualCamera::secured() const {
+  return m_SecureAccepted;
+}
+
 LumixVirtualCamera::IdentityPath LumixVirtualCamera::identityPath() const {
   return m_IdentityPath;
 }
@@ -244,6 +258,10 @@ const std::string &LumixVirtualCamera::controllerName() const {
 
 const std::string &LumixVirtualCamera::writtenSsid() const {
   return m_WrittenSsid;
+}
+
+uint8_t LumixVirtualCamera::connectType() const {
+  return m_ConnectType;
 }
 
 bool LumixVirtualCamera::wrongIdentityPath() const {
@@ -339,6 +357,10 @@ bool LumixVirtualCamera::secureRequested() const {
   return m_SecureRequested;
 }
 
+LumixVirtualCamera::Fault LumixVirtualCamera::lastFault() const {
+  return m_LastFault;
+}
+
 bool LumixVirtualCamera::secureAccepted() const {
   return m_SecureAccepted;
 }
@@ -366,17 +388,37 @@ bool LumixVirtualCamera::connected() const {
 
 void LumixVirtualCamera::setScript(const std::vector<ScriptStep> &steps) {
   m_Script.assign(steps.begin(), steps.end());
+  m_Scripted = true;
 }
 
 void LumixVirtualCamera::appendScriptStep(const ScriptStep &step) {
   m_Script.push_back(step);
+  m_Scripted = true;
 }
 
 void LumixVirtualCamera::clearScript() {
   m_Script.clear();
+  m_Scripted = false;
 }
 
 size_t LumixVirtualCamera::scriptRemaining() const {
+  return m_Script.size();
+}
+
+void LumixVirtualCamera::setScripted(bool enabled) {
+  m_Scripted = enabled;
+}
+
+bool LumixVirtualCamera::scripted() const {
+  return m_Scripted;
+}
+
+void LumixVirtualCamera::scriptNextCommand(Fault fault) {
+  m_Script.push_back({Command::Unknown, fault});
+  m_Scripted = true;
+}
+
+size_t LumixVirtualCamera::scriptedRemaining() const {
   return m_Script.size();
 }
 
@@ -388,9 +430,14 @@ LumixVirtualCamera::Fault LumixVirtualCamera::pendingFault() const {
   return m_NextFault;
 }
 
+void LumixVirtualCamera::clearFault() {
+  m_NextFault = Fault::None;
+}
+
 void LumixVirtualCamera::clearFaults() {
   m_NextFault = Fault::None;
   m_Script.clear();
+  m_Scripted = false;
 }
 
 void LumixVirtualCamera::setStaleSession(bool stale) {
@@ -407,7 +454,9 @@ LumixVirtualCamera::Fault LumixVirtualCamera::takeFault(Command command) {
     m_NextFault = Fault::None;
     return fault;
   }
-  if (!m_Script.empty() && (m_Script.front().command == command)) {
+  if (m_Scripted && !m_Script.empty()
+      && ((m_Script.front().command == Command::Unknown)
+          || (m_Script.front().command == command))) {
     const Fault fault = m_Script.front().fault;
     m_Script.pop_front();
     return fault;
@@ -492,6 +541,7 @@ bool LumixVirtualCamera::acceptConnection(NimBLEClient &client, const NimBLEAddr
   }
   m_Client = &client;
   m_Connected = true;
+  m_SecureAccepted = false;
   m_LastAttError = 0;
   resetSession();
   return true;
@@ -510,11 +560,13 @@ void LumixVirtualCamera::disconnect(NimBLEClient &client, int reason) {
   }
   m_Client = nullptr;
   m_Connected = false;
+  m_SecureAccepted = false;
   m_Subscriptions.clear();
   if (m_Config.release_on_disconnect) {
     m_Confirmed = false;
     m_SessionStarted = false;
     m_SessionFinished = false;
+    m_StaleSession = false;
     m_ShutterHeld = false;
     m_Recording = false;
   }
@@ -900,6 +952,7 @@ bool LumixVirtualCamera::handleWifi(const NimBLEUUID &characteristic,
       noteAttError(ATT_VALUE_NOT_ALLOWED);
       return false;
     }
+    m_ConnectType = value[0];
     if (value[0] == 0x03) {
       emitSsidAcknowledgement(0x00);
     }
@@ -982,6 +1035,7 @@ bool LumixVirtualCamera::write(NimBLEClient &client,
   }
 
   const Fault fault = takeFault(command);
+  m_LastFault = fault;
   m_LastAttError = 0;
 
   if ((fault == Fault::Reject) || (fault == Fault::Busy) || (fault == Fault::WrongMode)) {
@@ -1162,9 +1216,8 @@ bool LumixVirtualCamera::secureConnection(NimBLEClient &client) {
     m_SecureAccepted = false;
     return false;
   }
-  // No SMP, no bond, no encryption change. The camera accepts the link and
-  // the call is a no-op. open_link_only records the camera-side observation
-  // without changing the result.
+  // No SMP, no bond, and no encryption change. The documented camera path
+  // accepts the link, so the call is a no-op that reports success.
   m_SecureAccepted = true;
   return true;
 }

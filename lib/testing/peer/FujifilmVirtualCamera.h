@@ -250,6 +250,12 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   const std::string &identifier() const;
   bool connected() const;
   void setSecureConnectionResult(bool result);
+  // Camera-side registration deletion. There is no GATT message for it: the
+  // user deletes the pairing on the camera menu while the central keeps its
+  // key, so the next encryption attempt fails. Evidence: fuji-spec section 7.5
+  // and sm section 3.6.
+  void removeCameraBond();
+
   // Model the stale-bond secureConnection() block observed on hardware.
   //
   // NimBLE's secureConnection() is a blocking call with its own internal
@@ -380,6 +386,9 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   static const NimBLEUUID &geotagServiceUUID();
   static const NimBLEUUID &geotagCharacteristicUUID();
   static const NimBLEUUID &advertisedServiceUUID();
+  static const NimBLEUUID &securePairServiceUUID();
+  static const NimBLEUUID &secureNotificationServiceUUID();
+  static const NimBLEUUID &secureStatusCharacteristicUUID();
   static const NimBLEUUID &timeServiceUUID();
   static const NimBLEUUID &localTimeCharacteristicUUID();
   static const NimBLEUUID &utcTimeCharacteristicUUID();
