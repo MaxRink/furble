@@ -144,6 +144,10 @@ const std::string &FujifilmVirtualCamera::identifier() const {
   return m_Identifier;
 }
 
+bool FujifilmVirtualCamera::identifierTerminated() const {
+  return m_IdentifierTerminated;
+}
+
 bool FujifilmVirtualCamera::connected() const {
   return m_Connected;
 }
@@ -562,6 +566,7 @@ bool FujifilmVirtualCamera::acceptConnection(NimBLEClient &client, const NimBLEA
   m_Configured = false;
   m_GeotagRequested = false;
   m_Identifier.clear();
+  m_IdentifierTerminated = false;
   m_LastGeotag.clear();
   m_ConnParamsNegotiated = false;
   m_DroppedLink = false;
@@ -801,7 +806,8 @@ bool FujifilmVirtualCamera::write(NimBLEClient &client,
     }
   } else if (matches(service, m_Config.secure ? SECURE_PAIR_SERVICE_UUID : pairServiceUUID())
              && matches(characteristic, identifierCharacteristicUUID())) {
-    m_Identifier.assign(value.begin(), value.end());
+    m_IdentifierTerminated = !value.empty() && (value.back() == 0x00);
+    m_Identifier.assign(value.begin(), m_IdentifierTerminated ? value.end() - 1 : value.end());
     result = m_Config.secure || m_TokenAccepted;
     if (result && m_RequireLongConnParamsAfterIdentifier
         && !m_DelayRegistrationConnParamsUntilFastRequest && !m_ConnParamsNegotiated) {

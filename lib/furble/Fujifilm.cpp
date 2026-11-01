@@ -3,6 +3,8 @@
 #include <NimBLEDevice.h>
 #include <NimBLERemoteCharacteristic.h>
 #include <NimBLERemoteService.h>
+
+#include <array>
 // The registration wait below needs a clock, and which clock is correct depends
 // on whether a FreeRTOS tick exists, not on which platform this is. So ask for
 // exactly that.
@@ -62,6 +64,11 @@ void Fujifilm::notify(BLERemoteCharacteristic *pChr,
     // characteristic.
     if (FujifilmProtocol::isRegistrationNotification(pData, length)) {
       m_Configured = true;
+      // 01 00 is also the camera's date and time request. Answer it with the
+      // 12-byte UTC packet when the time service exists.
+      if (length >= 2 && pData[0] == 0x01 && pData[1] == 0x00) {
+        sendTimeData();
+      }
     }
   } else if (pChr->getUUID() == GEOTAG_UPDATE) {
     if (FujifilmProtocol::isGeotagRequest(pData, length)) {
@@ -198,6 +205,51 @@ void Fujifilm::focusRelease(void) {
   }
 }
 
+void Fujifilm::sendTimeData(void) {
+  if (!m_HasTimesync || m_Client == nullptr) {
+    return;
+  }
+  NimBLERemoteService *pSvc = m_Client->getService(SVC_TIME_UUID);
+  if (pSvc == nullptr) {
+    return;
+  }
+
+  NimBLERemoteCharacteristic *pChr = pSvc->getCharacteristic(CHR_UTC_TIME_UUID);
+  if (pChr != nullptr && pChr->canWrite()) {
+    const FujifilmProtocol::TimeInput input = {
+        m_LastTimesync.year,
+        m_LastTimesync.month,
+        m_LastTimesync.day,
+        m_LastTimesync.hour,
+        m_LastTimesync.minute,
+        m_LastTimesync.second,
+        0,
+        0,
+    };
+    const auto packet = FujifilmProtocol::encodeTime(input);
+    if (gattWrite(pChr, packet.data(), packet.size(), true)) {
+      ESP_LOGI(LOG_TAG, "Sent UTC time packet");
+    }
+    return;
+  }
+
+  pChr = pSvc->getCharacteristic(CHR_LOCAL_TIME_UUID);
+  if (pChr != nullptr && pChr->canWrite()) {
+    const std::array<uint8_t, 7> packet = {
+        static_cast<uint8_t>(m_LastTimesync.year & 0xff),
+        static_cast<uint8_t>((m_LastTimesync.year >> 8) & 0xff),
+        static_cast<uint8_t>(m_LastTimesync.month),
+        static_cast<uint8_t>(m_LastTimesync.day),
+        static_cast<uint8_t>(m_LastTimesync.hour),
+        static_cast<uint8_t>(m_LastTimesync.minute),
+        static_cast<uint8_t>(m_LastTimesync.second),
+    };
+    if (gattWrite(pChr, packet.data(), packet.size(), true)) {
+      ESP_LOGI(LOG_TAG, "Sent local time packet");
+    }
+  }
+}
+
 void Fujifilm::sendGeoData(const gps_t &gps, const timesync_t &timesync) {
   NimBLERemoteService *pSvc = m_Client->getService(SVC_GEOTAG_UUID);
   if (pSvc == nullptr) {
@@ -231,6 +283,8 @@ void Fujifilm::sendGeoData(const gps_t &gps, const timesync_t &timesync) {
 }
 
 void Fujifilm::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
+  m_LastTimesync = timesync;
+  m_HasTimesync = true;
   if (m_GeoRequested) {
     sendGeoData(gps, timesync);
     m_GeoRequested = false;

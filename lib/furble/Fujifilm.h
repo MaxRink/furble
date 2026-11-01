@@ -74,6 +74,11 @@ class Fujifilm: public Camera {
   // Geolocation sync interval
   const uint16_t GEOTAG_SYNC_INTERVAL = 10;
 
+  // Time service and UTC/timezone packet
+  const NimBLEUUID SVC_TIME_UUID {0xe872b11f, 0xd526, 0x4ae1, 0x9bb489a99d48fa59};
+  const NimBLEUUID CHR_UTC_TIME_UUID {0xc52edbce, 0x1fe2, 0x4ecc, 0x9483907e6592be9e};
+  const NimBLEUUID CHR_LOCAL_TIME_UUID {0xb9bfd37f, 0xccad, 0x4d36, 0xa1ee018e792b3edf};
+
   void _disconnect(void) override final;
   bool subscribe(const NimBLEUUID &svc,
                  const NimBLEUUID &chr,
@@ -100,6 +105,8 @@ class Fujifilm: public Camera {
   std::atomic<uint32_t> m_RegistrationGeneration {0};
   std::atomic<bool> m_Configured {false};
   NimBLERemoteCharacteristic *m_Shutter = nullptr;
+  timesync_t m_LastTimesync = {};
+  bool m_HasTimesync = false;
 
  private:
   // Currently unused
@@ -111,6 +118,7 @@ class Fujifilm: public Camera {
 
   void notify(NimBLERemoteCharacteristic *, uint8_t *, size_t, bool, uint32_t generation);
   void sendGeoData(const gps_t &gps, const timesync_t &timesync);
+  void sendTimeData(void);
 
   template <std::size_t N>
   void sendShutterCommand(const std::array<uint8_t, N> &cmd, const std::array<uint8_t, N> &param);

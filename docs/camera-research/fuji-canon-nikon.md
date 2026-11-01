@@ -131,8 +131,8 @@ The following details are from that clean, pinned source.
   `f557d96b-8284-4667-8793-b971c1deca2a` and acknowledge by retaining the first
   three bytes and replacing the last with `20`. Write the Furble identity to
   `85b9163e-62d1-49ff-a6f5-054b4630d4a1`. Official apps write the name as
-  UTF-8 plus a NUL terminator; Furble writes UTF-8 without one. The target
-  requirement is not proven.
+  UTF-8 plus a NUL terminator; Furble now does the same. The camera-side
+  requirement is still not proven.
 - Registration subscriptions: the local Secure table includes required
   indications `a68e3f66-0fcc-4395-8d4c-aa980b5877fa` and
   `bd17ba04-b76b-4892-a545-b73ba1f74dae`, then optional notifications on
@@ -194,8 +194,9 @@ vendor images are not redistributed. The claims below are `firmware-static` or
   correct because the camera only sends it to an accepted client, but the
   semantic claim is not proven.
 - The camera has a 12-byte UTC/timezone packet on `C52EDBCE` and a 7-byte local
-  time packet on `B9BFD37F`. Furble sends neither, so it does not synchronise
-  the camera clock. This is a missing control surface, not a shutter blocker.
+  time packet on `B9BFD37F`. Furble answers the `F9150137` `01 00` request with
+  the 12-byte UTC form, offset zero and DST off, because it has no timezone
+  source. The camera-clock physical effect is still capture-gated.
 - The official apps write a geotag speed field in bytes 12 to 15. Furble writes
   zero. The layout matches; the camera-side unit is unknown.
 - The sync interval characteristic accepts 10, 15, 20, 30, 60, 120, 240, and
@@ -241,11 +242,11 @@ not evidence for another body or firmware.
 - Resolve `F9150137` `01 00`: registration acceptance, time request, or both.
   Record whether the camera clock changes and whether `02 00` ever appears on
   these targets.
-- Capture the 12-byte time packet on `C52EDBCE` and the 7-byte local packet on
-  `B9BFD37F`, including timezone and DST effects.
+- Capture the physical effect of the 12-byte time packet on `C52EDBCE` and the
+  7-byte local packet on `B9BFD37F`, including timezone and DST effects.
 - Confirm whether the Secure advertisement type byte is always `0x01` before
   Furble tightens its parser.
-- Confirm whether the client name requires a NUL terminator and whether the
+- Confirm whether the client name NUL terminator is required and whether the
   geotag speed field is metres per second, km/h, or ignored.
 - Test Basic reachability on X100VI 1.31 and X-S20 3.30 and record the failure
   mode when the token service is absent.

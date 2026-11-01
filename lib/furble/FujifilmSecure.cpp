@@ -10,6 +10,7 @@
 #include <array>
 #include <cstring>
 #include <memory>
+#include <vector>
 
 #include "Device.h"
 #include "FujifilmSecure.h"
@@ -329,12 +330,16 @@ bool FujifilmSecure::_connect(void) {
   }
   m_Progress += 5;
 
-  auto name = NimBLEAttValue(Device::getStringID());
-  ESP_LOGI(LOG_TAG, "Identifying as %s", name.c_str());
+  const std::string clientName = Device::getStringID();
+  std::vector<uint8_t> name(clientName.begin(), clientName.end());
+  // Both official apps write UTF-8 plus a NUL terminator to the connected
+  // device name characteristic.
+  name.push_back(0x00);
+  ESP_LOGI(LOG_TAG, "Identifying as %s", clientName.c_str());
   setFujifilmSecureRegistration(true);
   const auto clearRegistration = [this](Camera *) { setFujifilmSecureRegistration(false); };
   std::unique_ptr<Camera, decltype(clearRegistration)> registrationGuard(this, clearRegistration);
-  const bool identified = gattWrite(PAIR_SVC_UUID, IDENT_CHR_UUID, name, true);
+  const bool identified = gattWrite(PAIR_SVC_UUID, IDENT_CHR_UUID, name.data(), name.size(), true);
   if (!registrationAlive())
     return false;
   if (!identified) {

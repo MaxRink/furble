@@ -123,7 +123,7 @@ and each needs a host or simulator regression test.
 | S1 | Remove the LUMIX focus mapping. `focusPress` previously wrote `01` (Confirm) and `focusRelease` wrote `02` (Start). There is no focus opcode. | LX | `app-static` panasonic.md C06, C07, F02 | Fixed. Focus press and release are now no-ops. |
 | S2 | Add the LUMIX session handshake: `01` Confirm, wait for `7be5fe6e` `00`, `02` Start, and `03` Finish on disconnect. | LX | `app-static` panasonic.md C06 to C08, F01, F40 | Fixed. Connect sends Confirm, waits for readiness, then Start. Disconnect sends Finish. |
 | S3 | Add the LUMIX GPS stop packet (fix `0x56`, lat and lon `0x7fffffff`, altitude `0x7fff`) and wait for `37701b80` and `4cf487c0` readiness before the clock and GPS writes. | LX | `app-static` panasonic.md C14, F41, F45; `public-source` S5 report | A stale position can persist, and the shortened MEI0 to GPS sequence is reported to drop the link. |
-| S4 | Write the Fujifilm 12-byte UTC and timezone packet on the `F9150137` `01 00` request, and write the client name with a trailing NUL. | FJ-S40, FJ-S41 | `firmware-static` fujifilm.md C28 and C03; `app-static` XApp and Camera Remote | Clock and timezone are a user-visible parity gap; the NUL matches both official clients. |
+| S4 | Write the Fujifilm 12-byte UTC and timezone packet on the `F9150137` `01 00` request, and write the client name with a trailing NUL. | FJ-S40, FJ-S41 | `firmware-static` fujifilm.md C28 and C03; `app-static` XApp and Camera Remote | Fixed. Both apps now match the NUL write and the UTC packet. Offset and DST are zero because Furble has no timezone source. |
 | S5 | Send the Fujifilm `AAB609C4` location sync enable, not only the interval, and read it back once. | FJ-S40, FJ-S41 | `firmware-static` fujifilm.md C25; `app-static` XApp | The interval is written but the geotag feature may never be enabled on a body whose menu default is off. |
 | S6 | Make the Canon Smart GPS timestamp an absolute UTC epoch instead of `mktime` on the runtime timezone. | CN-S | `app-static` canon.md CS-34; `furble-source` CanonEOSSmart.cpp | Removes a whole class of non-UTC field failures, and the rest of the 20-byte packet already matches. |
 | S7 | Add the Sony GPS sequence: subscribe `DD01`, read `DD21` and choose 91 or 95 bytes, read `DD32` and `DD33`, fill UTC offset and DST, and release `DD30` and `DD31` when GPS stops. | SO | `app-static` sony.md C-20 to C-30, F-21, F-23 | The current write is a partial packet with no lock release, which leaves the camera locked to Furble. |
@@ -160,6 +160,7 @@ the closing artifact.
 | Fix | Status | Evidence |
 | --- | --- | --- |
 | LUMIX focus mapping removed; Confirm/Start/Finish handshake added | applied | `lib/furble/Lumix.{h,cpp}`, host `lumix-session` |
+| Fujifilm client name NUL and 12-byte UTC time packet | applied | `lib/furble/Fujifilm.cpp`, `FujifilmBasic.cpp`, `FujifilmSecure.cpp`, protocol test |
 
 The LUMIX fix sends Confirm `01`, waits up to two seconds for control readiness
 `00`, sends Start `02`, and sends Finish `03` on disconnect. Focus press and
@@ -333,7 +334,7 @@ behaviour has its own row.
 | M08 settings write | FJ-S40, FJ-S41 | interval only | fujifilm C23, C30 to C37 | Interval, SSID, resize, transfer, logging, reservation, remote boot | Only interval | `furble-source`; `firmware-static`; `app-static` | capture-gated |
 | M09 settings write | RC3, RC4 | Drive Mode, GEO Tag | ricoh CM-04, CM-18, F-25 | Drive Mode, geotag, focus, exposure | Drive Mode `0` and GEO Tag `1` only | `furble-source`; `firmware-static`; `app-static` | aligned |
 | M10 settings write | CN-S, SO, LX, DJI | per-class | canon CS-14; sony C-04 to C-13; panasonic C01, C02; dji C18 | Mode, Wi-Fi, identity, name, mode switch | Canon mode only; Sony missing; LUMIX identity and name; DJI missing | `furble-source`; `app-static` | capture-gated |
-| M11 paired-device name | FJ-S40, FJ-S41 | `85B9163E` | fujifilm C03 | Stored client name, optional NUL | `furble-` plus five hex, no NUL | `furble-source`; `app-static` | safe-fix-needed |
+| M11 paired-device name | FJ-S40, FJ-S41 | `85B9163E` | fujifilm C03 | Stored client name, optional NUL | `furble-` plus five hex, NUL terminated | `furble-source`; `app-static` | aligned |
 | M12 paired-device name | RC3, RC4 | read only | ricoh C-76, CM-15, F-30 | Stored paired name | Reads and logs. Never writes | `furble-source`; `app-static` | safe-fix-needed |
 | M13 paired-device name | CN-S, LX | write | canon CS-05; panasonic C02 | Stored client name | Canon before the result; LUMIX implemented | `furble-source`; `app-static` | capture-gated |
 | M14 paired-device name | SO, DJI, NK, CN-R | none | sony F-30; dji F-30; nikon §9.1 | No separate name write | Missing | `furble-source`; `public-source` | out-of-scope |

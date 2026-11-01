@@ -6,12 +6,14 @@ namespace Furble {
 namespace FujifilmProtocol {
 namespace {
 
-void writeLittleEndian16(std::array<uint8_t, GEOTAG_BYTES> &data, size_t offset, uint16_t value) {
+template <size_t N>
+void writeLittleEndian16(std::array<uint8_t, N> &data, size_t offset, uint16_t value) {
   data[offset] = static_cast<uint8_t>(value);
   data[offset + 1] = static_cast<uint8_t>(value >> 8);
 }
 
-void writeLittleEndian32(std::array<uint8_t, GEOTAG_BYTES> &data, size_t offset, uint32_t value) {
+template <size_t N>
+void writeLittleEndian32(std::array<uint8_t, N> &data, size_t offset, uint32_t value) {
   data[offset] = static_cast<uint8_t>(value);
   data[offset + 1] = static_cast<uint8_t>(value >> 8);
   data[offset + 2] = static_cast<uint8_t>(value >> 16);
@@ -169,6 +171,19 @@ std::array<uint8_t, GEOTAG_BYTES> encodeGeotag(const GeotagInput &input) {
   data[21] = static_cast<uint8_t>(input.minute);
   data[22] = static_cast<uint8_t>(input.second);
 
+  return data;
+}
+
+std::array<uint8_t, TIME_BYTES> encodeTime(const TimeInput &input) {
+  std::array<uint8_t, TIME_BYTES> data = {0x00};
+  writeLittleEndian16(data, 0, static_cast<uint16_t>(input.year));
+  data[2] = static_cast<uint8_t>(input.month);
+  data[3] = static_cast<uint8_t>(input.day);
+  data[4] = static_cast<uint8_t>(input.hour);
+  data[5] = static_cast<uint8_t>(input.minute);
+  data[6] = static_cast<uint8_t>(input.second);
+  writeLittleEndian32(data, 7, static_cast<uint32_t>(input.utc_offset_minutes));
+  data[11] = input.dst;
   return data;
 }
 

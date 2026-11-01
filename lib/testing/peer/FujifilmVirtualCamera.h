@@ -248,6 +248,7 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   const std::vector<Notification> &notifications() const;
   const std::vector<uint8_t> &lastGeotag() const;
   const std::string &identifier() const;
+  bool identifierTerminated() const;
   bool connected() const;
   void setSecureConnectionResult(bool result);
   // Camera-side registration deletion. There is no GATT message for it: the
@@ -494,6 +495,7 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   bool m_Configured = false;
   bool m_GeotagRequested = false;
   std::string m_Identifier;
+  bool m_IdentifierTerminated = false;
   std::vector<Write> m_Writes;
   std::vector<Notification> m_Notifications;
   std::vector<uint8_t> m_LastGeotag;
