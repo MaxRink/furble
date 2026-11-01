@@ -46,7 +46,7 @@ Rank groups:
 
 ## Safe now
 
-Thirty-four of the thirty-eight safe-now rows are implemented in this branch. See section
+Thirty-four of the thirty-nine safe-now rows are implemented in this branch. See section
 "Implemented safe-now changes" for the code and test evidence.
 
 | ID | Lane | Current behavior | Proposed change | Evidence | Est. saving | Risk | Effort | Required test | Priority | Lane source |
@@ -392,23 +392,25 @@ of them carries a pointer here.
 
 Counts are of consolidated rows in this file. A merged row is counted once under
 its primary lane. Raw lane IDs are not summed here because many are merged.
+P-026a is a split of P-026: the code half stays in the safe-now count, and the
+tickless enablement that needs the W5500 soak is its own measurement row.
 
 | Rank | Rows |
 | --- | --- |
-| Safe now | 38 |
+| Safe now | 39 |
 | Needs measurement | 78 |
 | Rejected | 85 |
-| Total | 201 |
+| Total | 202 |
 
 | Primary lane | Safe now | Needs measurement | Rejected | Total |
 | --- | --- | --- | --- | --- |
 | BLE | 7 | 16 | 19 | 42 |
-| SoC | 7 | 11 | 13 | 31 |
+| SoC | 8 | 11 | 13 | 32 |
 | Display | 6 | 6 | 13 | 25 |
 | GPS and IMU | 3 | 16 | 11 | 30 |
 | Wi-Fi | 11 | 17 | 12 | 40 |
 | Board | 4 | 12 | 17 | 33 |
-| Total | 38 | 78 | 85 | 201 |
+| Total | 39 | 78 | 85 | 202 |
 
 Merged rows are counted once, under the primary lane named in the table. Rows
 that merge a BLE item with a Wi-Fi item are under BLE if the connection

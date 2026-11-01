@@ -1,7 +1,7 @@
 # Power research: executive summary
 
 Status: consolidation of the seven lane reports, plus thirty-four implemented
-safe-now changes. No bench measurement was made by any lane. The implemented
+safe-now changes of the thirty-nine classified safe now. No bench measurement was made by any lane. The implemented
 changes are bounded behavior fixes, not measured savings:
 P-001 (60 s first-boot scan timeout), P-002 (stop the scan on panel sleep),
 P-003 (50 percent initiator scan duty during connect), P-005 (peer requests do
@@ -18,7 +18,7 @@ dim-to-off), P-010 (GPS deadline wait), P-012 (250 ms control tick), P-037 (reco
 backoff default), P-004 (60 s companion window), and P-027 (idle-only join
 scan). Each has a test; see the matrix section "Implemented safe-now changes".
 
-The matrix has 201 rows: 38 safe now, 78 needs measurement, and 85 rejected. Per
+The matrix has 202 rows: 39 safe now, 78 needs measurement, and 85 rejected. Per
 lane: BLE 42, SoC 31, Display 25, GPS and IMU 30, Wi-Fi 40, Board 33. Overlapping
 items were merged; no-change topics were kept as rejected rows.
 
