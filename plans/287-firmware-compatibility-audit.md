@@ -10,18 +10,20 @@ The summarized evidence is in `docs/camera-research/fuji-canon-nikon.md`,
 `docs/camera-research/ricoh.md`, and
 `docs/camera-research/fujifilm-secure-gatt.md`.
 
-Two verified Ricoh behavior fixes are included:
+One firmware-confirmed and one app-static Ricoh behavior fix are included:
 
 1. Location enable now writes the Camera Service GEO Tag characteristic
    `A36AFDCF-6B67-4046-9BE7-28FB67DBC071`, not WLAN Network Type
-   `9111CDD0-9F01-45C4-A2D4-E09E8FB0424D`.
+   `9111CDD0-9F01-45C4-A2D4-E09E8FB0424D`. Firmware confirms the role and the
+   0/1 value check.
 2. The 32-byte GPS Information packet ends with WGS84 datum `0`, not a
-   centisecond.
+   centisecond. Firmware never reads that byte; the official apps write `0`.
 
 Fujifilm changes are limited to removing unused or misnamed constants and
 correcting comments. The Secure UUID set already matches X100VI 1.31 and
-X-S20 3.30. Basic support remains for older bodies but cannot pair with these
-two Secure firmware versions because `91F1DE68` is absent.
+X-S20 3.30. Basic support remains for older bodies. The Basic service
+`91F1DE68` is absent from both target images, so no Basic path is present;
+runtime reachability is not proven either way.
 
 ## Evidence
 
@@ -29,7 +31,8 @@ Firmware evidence is `firmware-static`: the Fujifilm images contain the same
 70-entry UUID table, mapped to 13 services, 69 characteristics, and 21 CCCDs.
 The Ricoh images contain all 17 Ricoh UUIDs used by Furble, and
 `GPSInformation::Write` parses three byte-swapped float64 values, a
-little-endian year, a six-field timestamp, and a final datum byte.
+little-endian year, and a six-field timestamp. It never reads the final byte.
+The official apps write WGS84 datum `0` there.
 
 App evidence is `app-static`: XApp 2.7.6 and Camera Remote 4.10.2 use the
 Fujifilm Secure flow, the 23-byte geotag packet, and the 10-second sync
@@ -47,8 +50,8 @@ interval. Image Sync 2.1.32 and GR WORLD 2.0.0 write GEO Tag `1` and GPS datum
 - The fixed Ricoh passkey fallback is retained to avoid changing the currently
   tested GR IV HDF path without hardware. It is documented as a compatibility
   and security risk.
-- Fujifilm Basic is not removed. X100VI 1.30+ and X-S20 3.30 are Secure-only,
-  and the docs now say so.
+- Fujifilm Basic is not removed. X100VI 1.30+ and X-S20 3.30 have no static
+  Basic path, and the docs now say so without claiming runtime impossibility.
 
 ## Validation
 
@@ -56,6 +59,6 @@ interval. Image Sync 2.1.32 and GR WORLD 2.0.0 write GEO Tag `1` and GPS datum
 - All 120 host tests passed, including `ricoh-focus` with the new geotag
   regression coverage.
 - The new test asserts the Camera Service GEO Tag write, the 32-byte GPS
-  packet, and the final datum byte.
+  packet, and that the final byte is `0`.
 - Hardware validation remains pending. The PR must declare Ricoh untested on
   hardware unless the M5StickS3 bench run covers it.

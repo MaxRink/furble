@@ -30,7 +30,7 @@ by code review and the FauxNY test camera.
 
 | Vendor mode | Notes |
 | :--- | :--- |
-| Fujifilm (Basic) | Older firmware with the token pairing service `91F1DE68`. That service is absent from X100VI 1.31 and X-S20 3.30, so those bodies use Secure only. |
+| Fujifilm (Basic) | Older firmware with the token pairing service `91F1DE68`. That service is absent from X100VI 1.31 and X-S20 3.30, so no Basic path is present; use Secure. |
 | Fujifilm (Secure) | Firmware that requires the status and registration handshake. X100VI 1.30 and later, and X-S20 3.30, are this generation. |
 | Canon EOS (Smart) | Smart device pairing. Supports GPS, no manual focus. |
 | Canon EOS (Remote) | Remote controller pairing. Focus, no GPS. |
