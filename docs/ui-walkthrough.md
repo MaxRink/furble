@@ -242,8 +242,9 @@ Scroll down to reach Screen off and Show Title:
 
 - **Brightness**: screen brightness slider with a live preview.
 - **Inactivity timeout**: dim then sleep the screen after an idle period.
-- **Screen off**: what the inactivity timeout does (Dim, Off, or Off with the
-  remote still active on button boards).
+- **Screen off**: what the inactivity timeout does (Dim, Off, Off with the
+  remote still active on button boards, or Dim then off: dim at the timeout,
+  sleep 30 seconds later). Touch boards offer Dim, Off, and Dim then off.
 - **Calibrate**: touch calibration. Touch boards only.
 - **Show Title**: show or hide the window title in the header.
 - **Legend**: on physical-button Stick boards, keep the shipped Buttons

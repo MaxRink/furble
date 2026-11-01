@@ -754,8 +754,8 @@ class UI {
 
   // settings
   static constexpr const char *m_DisplayStr = "Display";
-  static constexpr const char *m_DisplayOffOptions = "Dim\nOff\nOff, remote on";
-  static constexpr const char *m_DisplayOffTouchOptions = "Dim\nOff";
+  static constexpr const char *m_DisplayOffOptions = "Dim\nOff\nOff, remote on\nDim, then off";
+  static constexpr const char *m_DisplayOffTouchOptions = "Dim\nOff\nDim, then off";
   static constexpr const char *m_TextSizeStr = "Text size";
   static constexpr const char *m_LegendStr = "Legend";
   static constexpr const char *m_FeaturesStr = "Features";
@@ -1102,6 +1102,8 @@ class UI {
   uint32_t m_InactivityTimeout;
   uint8_t m_DisplayOffMode = 0;
   DisplayState m_DisplayState = DisplayState::ACTIVE;
+  // Tick when the panel entered DIM, for the staged "Dim, then off" mode.
+  uint32_t m_DimSinceMs = 0;
   bool m_DisplayOff = false;
   bool m_SwallowInput = false;
   uint8_t m_SwallowPending = 0;

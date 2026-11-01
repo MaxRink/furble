@@ -215,6 +215,13 @@ target_include_directories(pm1_poll_policy_test PRIVATE ${FURBLE_ROOT}/include)
 target_compile_options(pm1_poll_policy_test PRIVATE -Wall -Wextra -Werror)
 add_test(NAME pm1-poll-policy COMMAND pm1_poll_policy_test)
 
+# The staged display mode dims at the inactivity timeout and sleeps after a
+# fixed dwell. This policy test pins the dwell and its wrap arithmetic.
+add_executable(display_policy_test display_policy_test.cpp)
+target_include_directories(display_policy_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(display_policy_test PRIVATE -Wall -Wextra -Werror)
+add_test(NAME display-policy COMMAND display_policy_test)
+
 # The PMIC is a separate chip from the ESP32. Its watchdog and download lock
 # therefore survive an ESP32 reset and must be modeled as retained state.
 add_executable(pmic_recovery_test

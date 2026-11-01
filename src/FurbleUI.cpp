@@ -37,6 +37,7 @@
 #include "FurbleCalibrate.h"
 #include "FurbleCompanion.h"
 #include "FurbleControl.h"
+#include "FurbleDisplayPolicy.h"
 #include "FurbleFeedback.h"
 #include "FurbleGPS.h"
 #include "FurbleGPSFormat.h"
@@ -443,7 +444,7 @@ UI::UI(const interval_t &interval)
   auto brightness = Settings::load<Settings::BRIGHTNESS>();
   M5.Display.setBrightness(brightness);
   m_DisplayOffMode = Settings::displayOffEffective();
-  if (m_DisplayOffMode > 2) {
+  if (m_DisplayOffMode > 3) {
     m_DisplayOffMode = 0;
   }
   setInactivityTimeout(Settings::inactivityEffective());
@@ -10597,11 +10598,17 @@ void UI::addDisplayMenu(const menu_t &parent) {
   // still shows the selected option and the encoder still scrolls the rest.
   lv_roller_set_visible_row_count(roller, M5.Touch.isEnabled() ? 2 : 1);
   uint8_t displayOff = m_DisplayOffMode;
-  if (displayOff > 2) {
+  if (displayOff > 3) {
     displayOff = 0;
   }
-  if (M5.Touch.isEnabled() && displayOff == 2) {
-    displayOff = 1;
+  if (M5.Touch.isEnabled()) {
+    // Touch boards have three rows: Dim (0), Off (1), Dim then off (3).
+    // Remote-on (2) is not offered and maps to Off.
+    if (displayOff == 2) {
+      displayOff = 1;
+    } else if (displayOff == 3) {
+      displayOff = 2;
+    }
   }
   lv_roller_set_selected(roller, displayOff, LV_ANIM_ON);
 
@@ -10611,8 +10618,8 @@ void UI::addDisplayMenu(const menu_t &parent) {
         auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
         auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
         uint8_t displayOff = lv_roller_get_selected(roller);
-        if (M5.Touch.isEnabled() && displayOff > 1) {
-          displayOff = 1;
+        if (M5.Touch.isEnabled() && displayOff == 2) {
+          displayOff = 3;
         }
         Settings::save<Settings::DISPLAY_OFF>(displayOff);
         ui->m_DisplayOffMode = displayOff;
@@ -12352,6 +12359,7 @@ void UI::processInactivity(void) {
       auto brightness = Settings::load<Settings::BRIGHTNESS>();
       M5.Display.setBrightness(brightness);
       m_DisplayState = DisplayState::ACTIVE;
+      m_DimSinceMs = 0;
 #if defined(FURBLE_SIM)
       Sim::profilerSetDisplayState("on");
 #endif
@@ -12363,15 +12371,26 @@ void UI::processInactivity(void) {
 
   switch (m_DisplayOffMode) {
     case 0:
+    case 3:
       if (m_DisplayState == DisplayState::OFF) {
-        wakeDisplay();
+        // Mode 0 wakes a panel left asleep by a previous mode. Mode 3 is the
+        // one that puts it to sleep, so it must stay asleep until activity.
+        if (m_DisplayOffMode == 0) {
+          wakeDisplay();
+        }
+        break;
       }
       if (m_DisplayState == DisplayState::ACTIVE) {
         M5.Display.setBrightness(m_MinimumBrightness);
         m_DisplayState = DisplayState::DIM;
+        m_DimSinceMs = tick();
 #if defined(FURBLE_SIM)
         Sim::profilerSetDisplayState("dim");
 #endif
+      } else if ((m_DisplayOffMode == 3) && (m_DisplayState == DisplayState::DIM)
+                 && DisplayPolicy::dimToOffDue(true, tick(), m_DimSinceMs)) {
+        // Additive staged mode: dim first, then sleep after a fixed dwell.
+        sleepDisplay();
       }
       break;
     case 1:

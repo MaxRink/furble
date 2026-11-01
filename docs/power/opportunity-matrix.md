@@ -46,7 +46,7 @@ Rank groups:
 
 ## Safe now
 
-Twenty-one safe-now rows are implemented in this branch. See section
+Twenty-two safe-now rows are implemented in this branch. See section
 "Implemented safe-now changes" for the code and test evidence.
 
 | ID | Lane | Current behavior | Proposed change | Evidence | Est. saving | Risk | Effort | Required test | Priority | Lane source |
@@ -119,6 +119,7 @@ evidence label from the lane and adds the test that now guards it.
 | P-008 | Power-lock acquire/release and the Lumix GPS per-fix path log at DEBUG, and the GPS command/poll lines are demoted. | `src/FurblePower.cpp`, `lib/furble/Lumix.cpp`, `lib/furble/FauxNY.cpp`, `lib/furble/NikonSmart.cpp`, `src/FurbleGPS.cpp` | `tools/check_hot_path_logs.py` plus `tests/test_hot_path_logs.py` | implemented |
 | P-032 | A wired address defers the station. The worker rechecks every 5 s, restarts the station when the wire drops, and stops it if the wire returns. | `src/FurbleWiFi.cpp` | host `real-wifi-lifecycle` with the injected Ethernet transport: deferral set while linked, cleared and re-armed after link-down | implemented |
 | P-020 | The M5PM1 button is polled every 20 ms instead of every 5 ms UI pass. | `src/FurblePlatform.cpp`, `include/FurblePlatformPolicy.h` | host `pm1-poll-policy`: 19 ms not due, 20 ms due, wrap-safe; hardware click/soak remains in the row test | implemented |
+| P-018 | Adds "Dim, then off" as a persisted fourth mode on button boards and third mode on touch boards. It dims at the inactivity timeout and sleeps the panel 30 s later; existing Dim and Off are unchanged. | `src/FurbleUI.cpp`, `include/FurbleDisplayPolicy.h` | host `display-policy`: 30 s boundary and wrap; e2e `display-dim-then-off`; settings docs and `settings-display.png` regenerated | implemented |
 
 The modeled saving for these rows is unchanged and still unmeasured. P-001 and
 P-002 bound a worst case; they do not change steady-state current. P-003 halves
@@ -134,14 +135,12 @@ retry loop in the failure case. P-029 and P-033 reduce join-scan probe traffic
 and steady-state retry frequency. P-034 removes the idle Wi-Fi task and netif.
 P-013 cuts camera-task idle wakeups fivefold. P-008 removes hot-path INFO
 logging and adds a guard against its return. P-032 removes the station on a
-wired node. P-020 cuts the PM1 button bus traffic tenfold.
+wired node. P-020 cuts the PM1 button bus traffic tenfold. P-018 adds the
+staged dim-to-off mode without changing the existing modes.
 
-One safe-now row is deliberately not applied in this batch:
-
-- P-018 (staged dim-to-off) adds a persisted display mode, a settings roller
-  entry, documentation, and regenerated walkthrough screenshots. It is a UI
-  feature rather than a mechanical power change and belongs in its own batch so
-  the screenshots can be reviewed with it.
+P-018 is now applied. The display settings roller gained the new mode, the
+settings documentation was updated, and `docs/img/settings-display.png` was
+regenerated from the current build.
 
 Three safe-now rows are deliberately not applied yet:
 

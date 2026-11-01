@@ -83,7 +83,7 @@ that do not fit; focus outlines must not cover adjacent setting names.
 | :--- | :--- | :--- | :--- | :--- |
 | Brightness | 128 | slider, roughly 0 to 240 | Now (live preview) | Saved when you release the slider. |
 | Inactivity timeout | Never | Never, 30 secs, 60 secs, 2 mins, 5 mins, 10 mins | Now | Dims and then sleeps the screen after this idle time. |
-| Screen off | Dim | Dim, Off, Off remote on (button boards). Dim, Off (touch boards) | Restart | Touch boards do not offer the remote-on option. |
+| Screen off | Dim | Dim, Off, Off remote on, Dim then off (button boards). Dim, Off, Dim then off (touch boards) | Restart | Touch boards do not offer the remote-on option. Dim then off dims at the inactivity timeout and sleeps the panel 30 s later. |
 | Calibrate | n/a | action | n/a | Touch boards only. Launches touch calibration and stores the result. |
 | Show Title | On | On, Off | Restart | Hiding the title frees header space on narrow stick displays. |
 | Legend | Buttons | Buttons, Bottom, Off | Restart | Physical-button Stick boards only. Buttons keeps the shipped Right legend beside its button; Bottom places all three legends in the navigation band; Off hides the rendered indicators but retains physical input anchors and layout reservation. |

@@ -1,0 +1,16 @@
+# "Dim, then off" dims at the inactivity timeout, then sleeps after the dwell.
+#
+# This is the additive mode: existing Dim and Off are unchanged. The inactivity
+# seed maps to 30 s, so the panel dims at 30 s and sleeps 30 s later.
+
+seed inactivity 1
+seed display_off 3
+wait 300
+assert ui.display_state on
+
+wait 31000
+assert-eventually 5000 ui.display_state dim
+
+wait 31000
+assert-eventually 5000 ui.display_state off
+exit
