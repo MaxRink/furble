@@ -410,6 +410,13 @@ See [docs/supported-hardware.md](docs/supported-hardware.md) for the full unit
 matrix. GPS support can be enabled in `furble` in `Settings->GPS`, the camera
 must also be configured to request location data.
 
+Phone GPS fallback. When the wired receiver has no fresh fix and the companion
+app is connected with phone GPS enabled, furble uses the phone fix. On iOS,
+fixes continue while the app is in the background. On Android, continuous
+background delivery still needs a foreground location service. See
+[docs/companion.md](docs/companion.md) for the source priority and platform
+details.
+
 The default GPS baud is 9600, preserving existing installations. The v1.1
 AT6668 unit is expected to use 115200. Select `Auto` to probe 115200, 9600,
 38400, 57600, 19200, and 4800, or select a fixed rate under

@@ -1,9 +1,10 @@
 # furble candidate hardware catalog
 
 This is a buying guide for hardware that could run furble, feed it position
-data, or serve as a porting target. It is not a support claim. The only
-supported boards are the M5Stack controllers listed in
-[supported-hardware.md](supported-hardware.md).
+data, or serve as a porting target. It is not a support claim. The supported
+boards are the environments listed in
+[supported-hardware.md](supported-hardware.md), including the Waveshare
+ESP32-S3-ETH wired node.
 
 The catalog was checked on 2026-11-01. Prices are vendor list prices in the
 currency the vendor shows, excluding tax and shipping unless the vendor says
@@ -18,8 +19,9 @@ furble is a BLE central. It scans, connects, discovers GATT services, writes
 characteristics, subscribes to notifications, bonds, and holds several camera
 links at once. A device that only advertises, or only acts as a BLE peripheral,
 cannot run the camera side of furble. Every device in the main tables supports
-BLE 5 central mode. The porting question is how much of furble survives above
-that radio.
+BLE central mode. Most have BLE 5. The original ESP32 Core2 is BLE 4.2 and
+still works for the camera protocols. The porting question is how much of
+furble survives above that radio.
 
 GNSS compatibility is the second filter. Only two things matter:
 
@@ -33,7 +35,9 @@ Everything else is a new GNSS driver, which is a contained but real cost.
 ## The short answer
 
 All four requirements, BLE plus GNSS plus touch display plus WiFi, are met by
-only a handful of devices. All of them are ESP32-S3 or ESP32-P4 boards.
+only a handful of devices. All of them are ESP32 boards. The forward-looking
+targets are the ESP32-S3 and ESP32-P4 boards. The original ESP32 Core2 plus GPS
+is the zero-port exception: it already meets all four requirements.
 
 | Goal | Device | Why |
 | :--- | :--- | :--- |
@@ -223,10 +227,10 @@ A and D do not change because GNSS is off. The T-Beam M10S trim is L1-only.
 | Device | Cell | B | C | E |
 | :--- | ---: | ---: | ---: | ---: |
 | LilyGO T-Deck Plus | 2000 mAh | 109 | 258 | 18.2 |
-| LilyGO T-Deck Pro | 1450 mAh | 79.0 | 187 | 13.2 |
-| LilyGO T-Watch Ultra | 1100 mAh | 59.9 | 142 | 10.0 |
-| LilyGO T-Watch S3 Plus | 940 mAh | 51.2 | 121 | 8.6 |
-| LilyGO T-Beam Supreme M10S | 3400 mAh | 185 | 438 | 31.0 |
+| LilyGO T-Deck Pro | 1450 mAh | 79.0 | 187 | 23.2 |
+| LilyGO T-Watch Ultra | 1100 mAh | 59.9 | 142 | 11.4 |
+| LilyGO T-Watch S3 Plus | 940 mAh | 51.2 | 121 | 11.1 |
+| LilyGO T-Beam Supreme M10S | 3400 mAh | 185 | 438 | 46.5 |
 
 How to read the table.
 
