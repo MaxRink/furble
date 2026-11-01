@@ -46,6 +46,15 @@ The Ricoh images contain all 17 Ricoh UUIDs used by Furble, and
 little-endian year, and a six-field timestamp. It never reads the final byte.
 The official apps write WGS84 datum `0` there.
 
+Supporting references added by this PR:
+
+- `docs/diagrams/pairing-security-flows.md` covers every family's
+  advertisement, SMP, registration, GATT prerequisites, errors, and recovery.
+- `docs/diagrams/state-machines.md` covers connection, mode, capture, GPS,
+  transfer, and recovery states.
+- `docs/camera-research/bt-api-surface.md` summarises every service,
+  characteristic, command, notification, and unused feature by family.
+
 App evidence is `app-static`: XApp 2.7.6 and Camera Remote 4.10.2 use the
 Fujifilm Secure flow, the 23-byte geotag packet, and the 10-second sync
 interval. Image Sync 2.1.32 and GR WORLD 2.0.0 write GEO Tag `1` and GPS datum
