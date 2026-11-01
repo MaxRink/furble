@@ -295,7 +295,7 @@ was opened. Every `unknown` names the artifact that closes it.
 
 | Board | MCU and radio | PMIC, charger, gauge | Display and touch | IMU | Audio or other | Battery | FCC | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `m5stick-c` | ESP32 v5.3 | AXP192, no revision string | ST7735S v1.1 | MPU6886 v1.1 | IR LED, buzzer | 95 mAh, vendor page | unknown | documented, battery and FCC gaps |
+| `m5stick-c` | ESP32 v5.3 | AXP192, no revision string | ST7735S v1.1 | MPU6886 v1.1 | IR LED | 95 mAh, vendor page | unknown | documented, battery and FCC gaps |
 | `m5stick-c-plus` | ESP32 v5.3 | Plus: AXP192. Plus2: no PMIC, external charger | ST7789V v1.3 | MPU6886 v1.1 | BM8563 RTC cited, not opened (Plus2) | Plus 120 mAh, Plus2 200 mAh, vendor page | unknown | documented, RTC, battery, FCC gaps |
 | `m5stick-s3` | ESP32-S3 v2.2 | M5PM1 V1.9 | ST7789P3, panel document unknown | BMI270 suffix 08 | ES8311 and AW8737, vendor page only | 250 mAh, vendor page | unknown | documented, panel, audio, battery, FCC gaps |
 | `m5stack-core` | ESP32 v5.3 | IP5306 V1.01 | ILI9342C, no revision string | Gray variant part not recorded | SD, speaker | Core reports 0, capacity unknown | unknown | documented, IMU, SD, battery, FCC gaps |
