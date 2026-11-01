@@ -128,11 +128,10 @@ zoom, power, image transfer, and the location release sequence.
 
 The location payload is 91 or 95 bytes, selected by `DD21` byte 4 bit 1. The
 app writes timezone and DST into bytes 91 to 94, subscribes `DD01`, locks with
-`DD30` and `DD31`, and unlocks on stop. Furble always sends 95 bytes with zero
-offsets. It raises the DD30 allow flag and the DD31 enable flag when location
-first turns on, but it has no release path: neither stop nor disconnect clears
-them, and the app's unlock sequence is not implemented. FF02 emits `02 3f`,
-`02 2d`, `02 a0`, and `02 d5`; Furble does not subscribe. EE01 pairing is confirmed but not sent by Furble.
+`DD30` and `DD31`, and unlocks on stop. Furble reads `DD21`, subscribes `DD01`,
+selects 91 or 95, and releases the lock on disconnect. It still writes zero
+timezone and DST. FF02 emits `02 3f`, `02 2d`, `02 a0`, and `02 d5`;
+Furble does not subscribe. EE01 pairing is confirmed but not sent by Furble.
 The four FF01 opcodes remain unproven by the firmware.
 
 Open questions: the FF01 opcode bytes, the exact FF02 action model, the SMP

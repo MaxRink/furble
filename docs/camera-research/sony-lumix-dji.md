@@ -138,13 +138,13 @@ status 144 as “remote disabled,” and waits up to 3000 ms for expected focus 
 shutter status. Those are useful peer behaviors, not Furble-certified timing.
 
 Location behavior in current Furble: read DD30 and DD31; write `01` to either
-when not already enabled; then write a 95-byte fixed-format packet to DD11.
-The packet starts `00 5d 08 02 fc 03 00 00 10 10 10`, encodes latitude and
-longitude as big-endian signed degrees times 10^7, year as big-endian, then
-UTC date/time, 65 zero bytes, a zero UTC offset, and two zero bytes. The source
-does not read DD21 configuration or subscribe to DD01. It sends a 95-byte
-packet with timezone/DST-related fields zero-valued, not an actual local
-timezone or DST setting. The public ILCE7M3ExternalGps protocol says firmware
+when not already enabled; read DD21 and select 91 or 95 bytes from byte 4 bit
+1; subscribe DD01; then write the fixed-format packet to DD11. The 95-byte form
+starts `00 5d 08 02 fc 03 00 00 10 10 10`; the 91-byte form uses `00 59 08 02
+fc 00 00 00 10 10 10`. Latitude and longitude are big-endian signed degrees
+times 10^7, year is big-endian, then UTC date/time. Furble releases DD30 and
+DD31 on disconnect. It still writes zero timezone and DST, and it does not read
+DD32 or DD33. The public ILCE7M3ExternalGps protocol says firmware
 protocol >=65 (camera firmware 3.02+) requires DD30 then DD31, in that order,
 and describes DD21 bit 2 (mask `0x02`) as controlling timezone/DST fields and a
 95-byte packet. Its prose/length arithmetic is internally inconsistent,

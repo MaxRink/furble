@@ -409,6 +409,27 @@ target_include_directories(ricoh_time_test PRIVATE
 target_compile_options(ricoh_time_test PRIVATE -Wall -Wextra -Werror)
 add_test(NAME ricoh-time COMMAND ricoh_time_test)
 
+# Drive the production Sony location path through the Sony peer and prove the
+# DD21-selected 91/95-byte form.
+add_executable(sony_location_test
+               sony_location_test.cpp
+               ${HOST_PEER_DIR}/SonyVirtualCamera.cpp
+               ${FURBLE_ROOT}/lib/furble/Sony.cpp
+               ${FURBLE_PROTOCOL_DIR}/AdvertisementProtocol.cpp
+               ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos_shim.cpp)
+target_link_libraries(sony_location_test PRIVATE furble_host_camera)
+target_include_directories(sony_location_test BEFORE PRIVATE
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR}
+                           ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e
+                           ${FURBLE_ROOT}/lib/furble
+                           ${FURBLE_ROOT}/include)
+target_compile_options(sony_location_test PRIVATE
+                       -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
+                       -Wall -Wextra -Werror -Wno-vla-extension -Wno-format
+                       -Wno-unused-parameter -Wno-unused-lambda-capture -Wno-sign-compare)
+add_test(NAME sony-location COMMAND sony_location_test)
+
 # The sleep gate test drives the production Ricoh shutter path against the
 # virtual peer in BLE standby. It protects the invariant that only a fresh
 # OperationMode read of CAPTURE authorizes the ShootingFlavor and

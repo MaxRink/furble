@@ -126,7 +126,7 @@ and each needs a host or simulator regression test.
 | S4 | Write the Fujifilm 12-byte UTC and timezone packet on the `F9150137` `01 00` request, and write the client name with a trailing NUL. | FJ-S40, FJ-S41 | `firmware-static` fujifilm.md C28 and C03; `app-static` XApp and Camera Remote | Fixed. Both apps now match the NUL write and the UTC packet. Offset and DST are zero because Furble has no timezone source. |
 | S5 | Send the Fujifilm `AAB609C4` location sync enable, not only the interval, and read it back once. | FJ-S40, FJ-S41 | `firmware-static` fujifilm.md C25; `app-static` XApp | The interval is written but the geotag feature may never be enabled on a body whose menu default is off. |
 | S6 | Make the Canon Smart GPS timestamp an absolute UTC epoch instead of `mktime` on the runtime timezone. | CN-S | `app-static` canon.md CS-34; `furble-source` CanonEOSSmart.cpp | Fixed. `CanonProtocol::utcEpoch` has no timezone input, and `canon-time` pins the epoch. |
-| S7 | Add the Sony GPS sequence: subscribe `DD01`, read `DD21` and choose 91 or 95 bytes, read `DD32` and `DD33`, fill UTC offset and DST, and release `DD30` and `DD31` when GPS stops. | SO | `app-static` sony.md C-20 to C-30, F-21, F-23 | The current write is a partial packet with no lock release, which leaves the camera locked to Furble. |
+| S7 | Add the Sony GPS sequence: subscribe `DD01`, read `DD21` and choose 91 or 95 bytes, read `DD32` and `DD33`, fill UTC offset and DST, and release `DD30` and `DD31` when GPS stops. | SO | `app-static` sony.md C-20 to C-30, F-21, F-23 | Partly fixed: DD01 subscribe, DD21 selection, 91/95 form, and release on disconnect. DD32/DD33 and non-zero timezone/DST remain capture-gated. |
 | S8 | Add the Ricoh Date Time write on connect, gated on a fresh Operation Mode `CAPTURE` read, and read it back. | RC3, RC4 | `firmware-static` ricoh.md C-19 and CM-03; `app-static` Image Sync and GR WORLD | Applied on the first valid GPS time and then once per minute. The readback and the CAPTURE gate are still capture-gated. |
 | S9 | Write the Ricoh Paired Device Name (`FE3A32F8`, UTF-8) after the first connect. | RC3, RC4 | `app-static` ricoh.md C-76 and CM-15 | Fixed. Connect writes the controller name when the characteristic exists. |
 | S10 | Decode Ricoh Capture Status and use a `Capturing=1` then `0` transition as the shot-confirmation signal. | RC3, RC4 | `firmware-static` ricoh.md C-56; `public-source` field table | Removes the false shot-taken implication without adding a new command. |
@@ -163,6 +163,7 @@ the closing artifact.
 | Fujifilm client name NUL and 12-byte UTC time packet | applied | `lib/furble/Fujifilm.cpp`, `FujifilmBasic.cpp`, `FujifilmSecure.cpp`, protocol test |
 | Canon Smart GPS timestamp uses an absolute UTC epoch | applied | `lib/furble/protocol/CanonTime.h`, `canon-time` |
 | Ricoh paired-device name and GPS-time clock sync | applied | `lib/furble/Ricoh.{h,cpp}`, `lib/furble/protocol/RicohTime.h`, `ricoh-time`, `ricoh-focus` |
+| Sony DD21 selection, DD01 subscribe, and lock release | applied | `lib/furble/Sony.cpp`, host `sony-location` |
 
 The LUMIX fix sends Confirm `01`, waits up to two seconds for control readiness
 `00`, sends Start `02`, and sends Finish `03` on disconnect. Focus press and
@@ -303,13 +304,13 @@ behaviour has its own row.
 | P15 GPS enable | FJ-S40, FJ-S41 | none | fujifilm C25, C26, N15 | `AAB609C4` On or Off | Missing. Only the interval is written | `furble-source`; `firmware-static`; `app-static` | safe-fix-needed |
 | P16 GPS enable | RC3, RC4 | `setGeotagEnable` | ricoh CM-04, F-23 | `A36AFDCF` `01` | Written once before the first packet | `furble-source`; `firmware-static`; `app-static`; `hardware-capture` | aligned |
 | P17 GPS enable | CN-S | `GEO_ENABLE` | canon CS-35, F23 | One-byte `01`; acceptance unproven | On request `03`; app uses a 9-byte form | `furble-source`; `unknown` | capture-gated |
-| P18 GPS enable | SO | `locationEnabled` | sony C-20, C-21, F-23 | `DD30` lock, `DD31` enable, `DD01` availability | Reads and writes `DD30` and `DD31`, never subscribes `DD01`, never releases | `furble-source`; `app-static` | safe-fix-needed |
+| P18 GPS enable | SO | `locationEnabled` | sony C-20, C-21, F-23 | `DD30` lock, `DD31` enable, `DD01` availability | Reads and writes `DD30` and `DD31`, subscribes `DD01`, releases on disconnect | `furble-source`; `app-static` | aligned |
 | P19 GPS enable | LX | none | panasonic C13, F-23, F-45 | Readiness `37701b80` `01`, then packets | Missing. Writes without waiting | `furble-source`; `app-static`; `public-source` | safe-fix-needed |
 | P20 GPS enable | DJI | none | dji C07, F21, F23 | `00 17` push, no separate enable | Deliberate no-op | `furble-source`; `public-source` | capture-gated |
 | P21 GPS packet | FJ-S40, FJ-S41 | `updateGeoData`, `encodeGeotag` | fujifilm C22, N03, §5.2 | One 23-byte packet per request | Answers on request, clears flag, truncates lat, lon, altitude | `furble-source`; `firmware-static`; `app-static`; `hardware-capture` | aligned |
 | P22 GPS packet | RC3, RC4 | `Ricoh::updateGeoData` | ricoh CM-31, F-21 | 32 bytes, big-endian doubles, datum `0` | Movement 0.00001 deg or 1 m, or every 10 s. Enables GEO Tag on first write | `furble-source`; `firmware-static`; `app-static`; `hardware-capture` | aligned |
 | P23 GPS packet | CN-S | `CanonEOSSmart::updateGeoData` | canon CS-34, F21 | 20 bytes, float32, Unix seconds | Only after `m_GeoEnabled`. Timestamp from `CanonProtocol::utcEpoch`, no runtime timezone | `furble-source`; `app-static` | aligned |
-| P24 GPS packet | SO | `Sony::updateGeoData` | sony C-22, C-23, F-21 | 91 or 95 bytes from `DD21`, UTC offset and DST | Always 95, zero offset and DST, no `DD21`, no release | `furble-source`; `app-static` | safe-fix-needed |
+| P24 GPS packet | SO | `Sony::updateGeoData` | sony C-22, C-23, F-21 | 91 or 95 bytes from `DD21`, UTC offset and DST | Reads `DD21`, selects 91 or 95. Zero offset and DST remain | `furble-source`; `app-static` | capture-gated |
 | P25 GPS packet | LX | `Lumix::updateGeoData` | panasonic C13, F-21 | 16 bytes, GPS epoch, fix `0x41` | Every GPS tick, then clock after success | `furble-source`; `app-static`; `public-source` | safe-fix-needed |
 | P26 GPS packet | NK-S, NK-R, DJI | per-class | nikon S8; dji F21 | 41 bytes; no Remote surface; deliberate no-op | Unreachable or no-op | `furble-source`; `app-static`; `public-source` | unsupported |
 | P27 clock read | all | none | fujifilm §9; ricoh CM-40; canon F18; sony F-18; panasonic F18; dji F18 | Only Ricoh exposes a documented readable clock | Missing everywhere | `furble-source`; `firmware-static`; `app-static` | safe-fix-needed |
@@ -732,7 +733,7 @@ families.
 | Sony | Live view | Wi-Fi PTP/IP | sony F-14 | missing | none | none | capture-gated |
 | Sony | Image transfer, list, thumbnail | Wi-Fi PTP/IP and MTP | sony F-15 to F-17 | missing | none | none | capture-gated |
 | Sony | Clock and timezone | BLE GATT | sony C-06, F-19, F-20 | missing | none | none | capture-gated |
-| Sony | GPS push and pull | BLE GATT push, no pull | sony C-22, C-23 | implemented, partial: 95 bytes only, zero offset, no lock release | none | none (class) | capture-gated |
+| Sony | GPS push and pull | BLE GATT push, no pull | sony C-22, C-23 | implemented: DD21 selection, 91/95 form, lock release. Zero offset and DST remain | none | host `sony-location` | capture-gated |
 | Sony | Geotag enable and sync interval | BLE GATT | sony C-20, C-21 | implemented, partial: no `DD01` and no release | none | none (class) | capture-gated |
 | Sony | Settings read | BLE GATT | sony C-14 to C-19 | implemented, partial: `DD30` and `DD31` only | none | none (class) | capture-gated |
 | Sony | Settings write | BLE GATT and PTP/IP | sony C-04 to C-13 | missing | none | none | capture-gated |

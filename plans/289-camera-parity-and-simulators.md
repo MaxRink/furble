@@ -28,6 +28,9 @@ Completed in this branch:
 - Ricoh safe fixes: connect writes the Paired Device Name. The Date Time Zone
   packet is written on the first valid GPS time and once per minute. The
   readback and the CAPTURE gate remain capture-gated.
+- Sony safe fixes: subscribe DD01, read DD21, select the 91 or 95 byte form,
+  and release DD30 and DD31 on disconnect. Non-zero timezone and DST remain
+  capture-gated.
 
 ## Evidence
 
@@ -50,8 +53,9 @@ Completed in this branch:
 ## Validation
 
 - `cmake --build` on the host harness: pass.
-- `ctest`: 124/124 pass, including `peer-contract`, `lumix-session`,
-  `canon-time`, `ricoh-time`, and the Fujifilm protocol time vector.
+- `ctest`: 125/125 pass, including `peer-contract`, `lumix-session`,
+  `canon-time`, `ricoh-time`, `sony-location`, and the Fujifilm protocol time
+  vector.
 - `python3 -m unittest`: 192 tests pass.
 - `./sim/build/furble-sim --script sim/scenarios/e2e/ble-peer-topology-smoke.txt`:
   pass, asserts 9 peers.

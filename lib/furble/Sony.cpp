@@ -76,6 +76,11 @@ bool Sony::_connect(void) {
   m_GeoSvc = m_Client->getService(GEO_SVC_UUID);
   if (m_GeoSvc != nullptr) {
     ESP_LOGI(LOG_TAG, "Retrieved location service!");
+    auto *pStatus = m_GeoSvc->getCharacteristic(GEO_CHR_UUID);
+    if (pStatus != nullptr) {
+      gattSubscribe(
+          pStatus, [](NimBLERemoteCharacteristic *, uint8_t *, size_t, bool) {}, false, true);
+    }
   }
 
   m_Progress = 100;
@@ -85,6 +90,11 @@ bool Sony::_connect(void) {
 }
 
 void Sony::_disconnect(void) {
+  if ((m_GeoSvc != nullptr) && (m_Client != nullptr) && m_Client->isConnected()) {
+    const uint8_t release = 0x00;
+    gattWrite(GEO_SVC_UUID, GEO_ENABLE_CHR_UUID, &release, sizeof(release), false);
+    gattWrite(GEO_SVC_UUID, GEO_ALLOW_CHR_UUID, &release, sizeof(release), false);
+  }
   m_Client->disconnect();
 }
 
@@ -157,6 +167,19 @@ bool Sony::locationEnabled(void) {
 
 void Sony::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
   if (locationEnabled()) {
+    // DD21 byte 4 bit 1 selects the 91-byte form. The ZV-1F 2.01 firmware
+    // exposes the 91-byte 0x59 entry, not the 95-byte 0x5d entry.
+    bool use95 = true;
+    if (m_GeoSvc != nullptr) {
+      auto *pInfo = m_GeoSvc->getCharacteristic(GEO_INFO_CHR_UUID);
+      if (pInfo != nullptr && pInfo->canRead()) {
+        const NimBLEAttValue info = pInfo->readValue();
+        if (info.size() >= 5) {
+          use95 = (info.data()[4] & 0x02) != 0;
+        }
+      }
+    }
+
     sony_geo_t geo = {
         .prefix = {0x00, 0x5d, 0x08, 0x02, 0xfc, 0x03, 0x00, 0x00, 0x10, 0x10, 0x10},
         .latitude = (int32_t)__builtin_bswap32((uint32_t)(gps.latitude * 10000000)),
@@ -173,8 +196,13 @@ void Sony::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
     };
     // ESP_LOGI(LOG_TAG, "geo: %s", NimBLEUtils::dataToHexString((const uint8_t *)&geo,
     // sizeof(geo)).c_str());
+    if (!use95) {
+      geo.prefix[1] = 0x59;
+      geo.prefix[5] = 0x00;
+    }
     auto *pChr = m_GeoSvc->getCharacteristic(GEO_UPDATE_UUID);
-    gattWrite(pChr, reinterpret_cast<const uint8_t *>(&geo), sizeof(geo), true);
+    const size_t length = use95 ? sizeof(geo) : sizeof(geo) - 4;
+    gattWrite(pChr, reinterpret_cast<const uint8_t *>(&geo), length, true);
   }
 }
 
