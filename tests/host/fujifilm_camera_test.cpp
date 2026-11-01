@@ -79,16 +79,26 @@ int main() {
     client.shutterRelease();
     client.focusPress();
     client.focusRelease();
-    if (!check(peer.writes().size() == 8, "shutter and focus use two writes each")) {
+    if (!check(peer.writes().size() == 6, "shutter uses two writes each and focus one")) {
       return 1;
     }
-    if (!check(peer.writes()[0].payload == bytes({0x01, 0x00}), "shutter writes its command")) {
+    if (!check(peer.writes()[0].payload == bytes({0x01, 0x00}), "shutter writes its half press")) {
       return 1;
     }
     if (!check(peer.writes()[1].payload == bytes({0x02, 0x00}), "shutter writes press")) {
       return 1;
     }
-    if (!check(peer.writes()[5].payload == bytes({0x03, 0x00}), "focus writes focus")) {
+    if (!check(peer.writes()[2].payload == bytes({0x01, 0x00}),
+               "shutter writes its half press before release")) {
+      return 1;
+    }
+    if (!check(peer.writes()[3].payload == bytes({0x00, 0x00}), "shutter writes release")) {
+      return 1;
+    }
+    if (!check(peer.writes()[4].payload == bytes({0x01, 0x00}), "focus writes half press")) {
+      return 1;
+    }
+    if (!check(peer.writes()[5].payload == bytes({0x00, 0x00}), "focus release writes release")) {
       return 1;
     }
 

@@ -19,13 +19,20 @@ One firmware-confirmed and one app-static Ricoh behavior fix are included:
 2. The 32-byte GPS Information packet ends with WGS84 datum `0`, not a
    centisecond. Firmware never reads that byte; the official apps write `0`.
 
-Fujifilm changes are limited to removing unused or misnamed constants and
-correcting comments. The Secure UUID set already matches X100VI 1.31 and
-X-S20 3.30. Basic support remains for older bodies. The Basic service
-`91F1DE68` is absent from both target images, so no Basic path is present;
-runtime reachability is not proven either way.
+Fujifilm code changes include a firmware-confirmed focus fix. The shutter
+characteristic parser accepts only the little-endian values `0` release, `1`
+half press, and `2` full press. The old focus action sent `03 00`, which the
+parser rejects with `-30`. Focus press now writes `01 00` and focus release
+writes `00 00`. The still capture path remains `01 00` then `02 00`, and
+release remains `01 00` then `00 00`.
 
-DJI Osmo now accepts both 16-bit half orders of the Action 4 and Action 5 Pro
+Other Fujifilm changes are naming, dead-constant, and comment corrections. The
+Secure UUID set already matches X100VI 1.31 and X-S20 3.30. Basic support
+remains for older bodies. The Basic service `91F1DE68` is absent from both
+target images, so no Basic path is present; runtime reachability is not proven
+either way.
+
+DJI Osmo now accepts both documented device-ID encodings of the Action 4 and Action 5 Pro
 device IDs. DJI's own command table and a checksum-valid Action 4 frame imply
 `0xFF330000`, while one demo source file writes `0x33FF0000`. Accepting both
 avoids rejecting a camera that reports the table encoding. The real camera
@@ -90,6 +97,9 @@ interval. Image Sync 2.1.32 and GR WORLD 2.0.0 write GEO Tag `1` and GPS datum
 - Canon Smart focus compiles into the host dispatch test. No Canon camera peer
   exists, so the AF_ON and AF_OFF writes are app-static and untested on
   hardware.
+- Fujifilm focus uses the firmware-accepted `01 00` half press and `00 00`
+  release. The host camera and protocol tests assert the new write sequence and
+  no longer accept `03 00`.
 - The pairing and state-machine references are documentation only. They cite
   firmware, app, and capture evidence and do not change the camera stack.
 - Hardware validation remains pending. The PR must declare Ricoh and DJI

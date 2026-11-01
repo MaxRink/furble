@@ -105,11 +105,13 @@ The following details are from that clean, pinned source.
   A valid `01 00` geotag request also promotes a saved X100VI reconnect.
 - Shutter: discover service
   `6514eb81-4e8f-458d-aa2a-e691336cdfac`, characteristic
-  `7fcf49c6-4ff0-4777-a03d-1a79166af7a8`. Write command `{01 00}` followed by
-  parameter `{02 00}` for press, `{00 00}` for release, or `{03 00}` for
-  focus. Focus release maps to release. The current official apps send only
-  `01 00`, `02 00`, and `00 00`; the `03 00` focus value is not
-  app-corroborated and remains uncertified.
+  `7fcf49c6-4ff0-4777-a03d-1a79166af7a8`. The firmware parser accepts a
+  single little-endian 2-byte value: `0` release, `1` half press, `2` full
+  press. Furble sends `{01 00}` followed by `{02 00}` for a still capture and
+  `{01 00}` followed by `{00 00}` for release. Focus press writes `{01 00}`
+  and focus release writes `{00 00}`. There is no `03 00` value; the camera
+  parser rejects it with `-30`. The firmware handler is `FUN_030d150c` in the
+  X100VI 1.31 and X-S20 3.30 communication module.
 - Geotag: write 23 bytes to
   `3b46ec2b-48ba-41fd-b1b8-ed860b60d22b/0f36ec14-29e5-411a-a1b6-64ee8383f090`:
   signed little-endian latitude and longitude in 1e-7 degrees, signed

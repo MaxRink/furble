@@ -145,9 +145,6 @@ ShutterFrame makeShutterFrame(ShutterAction action) {
       break;
     case ShutterAction::RELEASE:
       break;
-    case ShutterAction::FOCUS:
-      parameter = {0x03, 0x00};
-      break;
   }
 
   return ShutterFrame {

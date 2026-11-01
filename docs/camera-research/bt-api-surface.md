@@ -36,12 +36,13 @@ characteristics, and 21 CCCDs. X-E5 1.12 adds one write-only characteristic,
 `8B5ECF55-FC6B-40D0-B4C1-76F64E5453C7`. X100T 1.11 is Wi-Fi only.
 
 Furble uses 14 vendor characteristics for registration, shutter, geotag, and
-optional state subscriptions. The unused surface includes camera and lens
-identity, power control and remote boot, the 7-byte and 12-byte time packets,
-timezone, backup, firmware update, file transfer, image resize and IPTC
-settings, and most of the 60-entry characteristic table. The Basic token
-service `91F1DE68` is present through the v3.1 generation and absent from v4.0
-and v4.1.
+optional state subscriptions. The shutter characteristic accepts only `0`
+release, `1` half press, and `2` full press; Furble now uses `1` for focus and
+`0` for release. The unused surface includes camera and lens identity, power
+control and remote boot, the 7-byte and 12-byte time packets, timezone, backup,
+firmware update, file transfer, image resize and IPTC settings, and most of the
+60-entry characteristic table. The Basic token service `91F1DE68` is present
+through the v3.1 generation and absent from v4.0 and v4.1.
 
 Open questions: the exact NOT1 `01 00` meaning, the camera-side registration
 gate for each unused characteristic, and the per-characteristic ATT security.
@@ -147,7 +148,7 @@ the WKP wake advertisement.
 
 The device ID has two official encodings: the table and a checksum-valid frame
 imply `0xFF330000`, while one demo source file uses `0x33FF0000`. Furble
-accepts both half orders.
+accepts both the demo and table device-ID encodings.
 
 Open questions: the real camera-reported device ID, whether the camera requires
 SMP bonding, and the exact wake behavior.
