@@ -182,8 +182,10 @@ Current strict-peer findings:
   RPA because production does not update the saved address.
 - Numeric comparison is silently accepted instead of being confirmed by the
   user.
-- Secure profiles differ materially. Some omit NOT8 and NOT10, while NOT3 can
-  disconnect tested X-H2 family cameras.
+- Secure profiles differ materially. Some omit NOT8 and NOT10. `7170FD5A` is
+  the remote boot setting, not a notification. Older experiments that treated
+  it as NOT3 could disconnect tested X-H2 family cameras. Furble does not
+  subscribe to it.
 - The synthetic X100VI golden file is not hardware evidence.
 
 ### Canon Smart and Remote
