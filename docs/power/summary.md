@@ -21,6 +21,18 @@ The large wins are not radio micro-tuning. They are sleep policy, display duty,
 and receiver duty. The mechanism for the biggest one is already merged and
 default off. Almost every number is modeled or inferred.
 
+## What is closed and what still needs hardware
+
+Closed without bench hardware: the opportunity matrix, the datasheet register
+including per-board coverage in section 13, the lowest-power GPS profile in
+`gps-profile.md`, the measurement plan, and three behavioral safe-now changes
+with tests.
+
+Still open: every current and energy number. That includes the board floor,
+display sweep, radio current, GPS receiver current, PMIC rails, battery runtime,
+and real camera states. It is a hardware requirement, not a documentation gap.
+`measurement-plan.md` section 1.1 lists each group and the instrument it needs.
+
 ## Top five opportunities
 
 | ID | Change | Evidence | Estimated saving | Why it is top five |

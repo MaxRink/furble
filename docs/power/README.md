@@ -15,6 +15,14 @@ mixed with camera parity work.
 | PMIC and board | `board-power.md` | Rails, charger, gauge, battery, leakage, datasheets |
 | Measurement | `measurement.md` | Bench method, instruments, scenarios, thresholds |
 
+## Profiles and registers
+
+| File | Scope |
+| --- | --- |
+| `gps-profile.md` | Lowest-power GPS configuration, library audit, and the bench-gated remainder |
+| `datasheet-register.md` | Every cited document plus the per-board component and document coverage in section 13 |
+| `measurement-plan.md` | Bench plan and the blocked-versus-actionable register in section 1.1 |
+
 ## Rules
 
 1. Every row is labeled measured, modeled, inferred, or unknown.
@@ -30,7 +38,10 @@ The coordinator merges the lanes into:
 
 - `opportunity-matrix.md`: ranked opportunities with evidence and savings.
 - `measurement-plan.md`: bench scenarios and acceptance thresholds.
-- `datasheet-register.md`: every part and document used.
+- `datasheet-register.md`: every part and document used, and the per-board
+  coverage matrix.
+- `gps-profile.md`: the lowest-power GPS recommendation.
+- `summary.md`: the executive summary.
 
 A row is accepted only when it names its current behavior, proposed change,
 evidence, estimated saving, risk, effort, and required test.

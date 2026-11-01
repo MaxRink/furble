@@ -3,7 +3,8 @@
 Status: compiled from the seven lane reports. This file records every datasheet,
 application note, errata, board file, vendor document, library, and project
 document that a lane cited, with the part, the document, the revision, and the
-limit that mattered to the lane.
+limit that mattered to the lane. Section 13 maps every board and part to its
+document status and names the artifact that closes each gap.
 
 Rules:
 
@@ -280,3 +281,64 @@ not verified for this register.
 8. **The 40.1 mA Wi-Fi station figure is a published vendor measurement, not a
    datasheet line.** It is a whole-chip average, not a delta, and the clock is
    not stated.
+
+## 13. Per-board component and document coverage
+
+Workstream H asks for every MCU, PMIC, charger, gauge, battery, GPS, IMU,
+display, radio, board, FCC entry, manual, and Bluetooth Core document. This
+matrix maps each board to its parts and states the document status. A row is
+`documented` when a primary document with a revision is in sections 1 to 7,
+`vendor page` when only a product page exists, and `unknown` when no document
+was opened. Every `unknown` names the artifact that closes it.
+
+### 13.1 Boards
+
+| Board | MCU and radio | PMIC, charger, gauge | Display and touch | IMU | Audio or other | Battery | FCC | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `m5stick-c` | ESP32 v5.3 | AXP192, no revision string | ST7735S v1.1 | MPU6886 v1.1 | IR LED, buzzer | 95 mAh, vendor page | unknown | documented, battery and FCC gaps |
+| `m5stick-c-plus` | ESP32 v5.3 | Plus: AXP192. Plus2: no PMIC, external charger | ST7789V v1.3 | MPU6886 v1.1 | BM8563 RTC cited, not opened (Plus2) | Plus 120 mAh, Plus2 200 mAh, vendor page | unknown | documented, RTC, battery, FCC gaps |
+| `m5stick-s3` | ESP32-S3 v2.2 | M5PM1 V1.9 | ST7789P3, panel document unknown | BMI270 suffix 08 | ES8311 and AW8737, vendor page only | 250 mAh, vendor page | unknown | documented, panel, audio, battery, FCC gaps |
+| `m5stack-core` | ESP32 v5.3 | IP5306 V1.01 | ILI9342C, no revision string | Gray variant part not recorded | SD, speaker | Core reports 0, capacity unknown | unknown | documented, IMU, SD, battery, FCC gaps |
+| `m5stack-core2` | ESP32 v5.3 | AXP192, no revision string | ILI9342C plus FT6336U, not opened | MPU6886 v1.1 | NS4168, BM8563, SD | 390 mAh, vendor page | unknown | documented, touch, RTC, battery, FCC gaps |
+| `waveshare-s3-eth` | ESP32-S3 v2.2, W5500 v1.0.6 not opened | none | none | none | microSD, WS2812 | none | unknown | documented, W5500, FCC gaps |
+| `esp32-s3-headless` | ESP32-S3 v2.2 | board-specific, no PMIC document | none | none | none | board-specific | unknown | documented for the SoC, board document missing |
+| `m5stack-core-usb-debug` | ESP32 v5.3 | IP5306 V1.01 | ILI9342C | as Core | as Core | as Core | unknown | same gaps as Core |
+
+### 13.2 Batteries
+
+| Board | Capacity | Document | Closing artifact |
+| --- | ---: | --- | --- |
+| StickC | 95 mAh | Vendor page | Cell datasheet or a measured discharge |
+| Plus | 120 mAh | Vendor page | Cell datasheet or a measured discharge |
+| Plus2 | 200 mAh | Vendor page | Cell datasheet or a measured discharge |
+| StickS3 | 250 mAh | Vendor page | Cell datasheet or a measured discharge |
+| Core2 | 390 mAh | Vendor page | Cell datasheet or a measured discharge |
+| Core | 0 reported | Firmware reports 0 | Board label or teardown; capacity unknown |
+
+No cell datasheet is in the tree, so the discharge plan uses the vendor
+capacity only. Every runtime row in `measurement-plan.md` is therefore an
+arithmetic estimate on a nominal capacity, not a measured runtime.
+
+### 13.3 FCC, manuals, errata, and Bluetooth Core
+
+| Item | Status | Evidence or closing artifact |
+| --- | --- | --- |
+| FCC IDs for the ESP32 and ESP32-S3 modules | unknown | No FCC ID is recorded in the tree. Close from the module label or the FCC equipment database. No power row depends on an FCC number |
+| FCC IDs for the assembled M5Stack and Waveshare boards | unknown | Same. A board photo or the vendor page footer would close it |
+| Vendor board manuals | vendor page | Product pages and wikis in sections 5 and 7. No PDF manual for the M5Stack boards is in the tree |
+| Vendor camera manuals | out of this register | They live in the private corpus `docs/research/model-manuals-*.md` |
+| Bluetooth Core Specification, ESP32 | cited, not opened | ESP32 v5.3 datasheet states Bluetooth 4.2. Cite Core v4.2 for any LE limit. No lane quotes a numeric limit from the Core spec |
+| Bluetooth Core Specification, ESP32-S3 | cited, not opened | ESP32-S3 v2.2 datasheet states Bluetooth LE 5.0. Cite Core v5.0, Vol 6 for the LE Controller. The power rows use only 1M PHY and the default initiator scan, so no Core-only number is needed |
+| Errata | none cited | No lane opened an errata document. If one is needed, add it here with part, revision, and affected limit before using it |
+| Application notes | none cited | ESP-IDF API guides and Kconfig help are listed in section 7 as vendor documentation, not application notes |
+
+### 13.4 Coverage verdict
+
+- Every board has a documented SoC, PMIC where fitted, display where fitted,
+  and IMU where the part is recorded.
+- The open document gaps are the Core Basic IMU part, the StickS3 panel, the
+  touch controller current, the RTC, the audio parts, the SD slot, the FCC IDs,
+  and the cell datasheets. Each is listed with its closing artifact.
+- No gap blocks a safe-now change. Every gap blocks only a number that the
+  bench plan already marks as measurement-gated.
+- No errata or application note is invented to fill a row.
