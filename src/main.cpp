@@ -24,6 +24,7 @@
 #endif
 #if defined(FURBLE_NO_DISPLAY)
 #include "FurbleGPS.h"
+#include "FurbleHeadlessPolicy.h"
 #endif
 #include "FurbleIR.h"
 #if defined(FURBLE_MQTT) && FURBLE_MQTT
@@ -419,7 +420,10 @@ static void vUITask(void *param) {
       GPS::getInstance().update();
       nextGPSService = now + GPS_SERVICE_US;
     }
-    vTaskDelay(pdMS_TO_TICKS(5));
+    // Idle at 50 ms instead of the display task's 5 ms. The request queue is
+    // still drained every pass; the sleep only shortens when the 1 Hz GPS
+    // service deadline is nearer, so the geotag cadence is unchanged.
+    vTaskDelay(pdMS_TO_TICKS(HeadlessPolicy::loopSleepMs(esp_timer_get_time(), nextGPSService)));
   }
 #else
   auto interval = Settings::load<Settings::INTERVAL>();

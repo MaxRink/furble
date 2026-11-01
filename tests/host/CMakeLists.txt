@@ -222,6 +222,13 @@ target_include_directories(display_policy_test PRIVATE ${FURBLE_ROOT}/include)
 target_compile_options(display_policy_test PRIVATE -Wall -Wextra -Werror)
 add_test(NAME display-policy COMMAND display_policy_test)
 
+# The headless build has no display task; its loop idles at 50 ms and only
+# shortens the sleep to keep the 1 Hz GPS service on time.
+add_executable(headless_loop_policy_test headless_loop_policy_test.cpp)
+target_include_directories(headless_loop_policy_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(headless_loop_policy_test PRIVATE -Wall -Wextra -Werror)
+add_test(NAME headless-loop-policy COMMAND headless_loop_policy_test)
+
 # The PMIC is a separate chip from the ESP32. Its watchdog and download lock
 # therefore survive an ESP32 reset and must be modeled as retained state.
 add_executable(pmic_recovery_test
