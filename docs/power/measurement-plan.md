@@ -32,6 +32,46 @@ For each opportunity in the matrix:
 Out of scope: camera protocol parity, RF certification, safety certification,
 production calibration, and any claim about a board that is not on the bench.
 
+## 1.1 Blocked versus actionable without bench hardware
+
+No current or energy measurement in this plan has been made. Every row below is
+either blocked on physical bench hardware or actionable from the simulator and
+code alone. Nothing is silently counted as measured.
+
+### Blocked on bench hardware
+
+These need a current probe or shunt, the board, and often a camera. They cannot
+be produced from the repository.
+
+| Group | What it closes | Blocked on | Rows |
+| --- | --- | --- | --- |
+| Board floor and sleep | Active, light-sleep, and deep-sleep current per board | Instrumented board, stable supply, shunt or current probe | Every expected-current row in section 7 |
+| Display sweep | Backlight current versus brightness, dim, and panel off | Instrumented board plus the panel at each brightness step | Display rows D-001 to D-014 |
+| Radio current | Connected and advertising current versus interval, PHY, and TX power | Instrumented board, peer radio, and a controlled RF path | BLE rows B-001 to B-042, Wi-Fi rows W-001 to W-040 |
+| GPS receiver | Fix, tracking, standby, and backup current | Instrumented board with the GPS receiver fitted | GPS rows G-001 to G-031 |
+| PMIC and rails | Per-rail current and leakage, charger and gauge behavior | Board with accessible rails, schematic or board photo | Board rows PM-, RL-, LK-, PL-, NB- |
+| Battery runtime | Discharge curve and thermal rise | Battery, load, and a logged discharge | Section 7 discharge runs |
+| Camera states | Current while a real camera is connected, capturing, or transferring | Camera hardware per family plus the instrumented board | Section 8 states S20 to S37 |
+
+### Actionable without bench hardware
+
+These are already done or can be done from the simulator, host tests, and code.
+They produce behavior evidence, not milliamps.
+
+| Group | What it proves | Where it lives | Status |
+| --- | --- | --- | --- |
+| Scan policy behavior | The 60 s first-boot bound, the panel-sleep stop, and the 50 percent initiator duty | e2e `scan-default-timeout`, e2e `scan-stops-on-panel-sleep`, host `ricoh-focus` | done |
+| Wake and timer counts | How many timer wakeups and scan starts a state produces | Simulator trace and `sim.power` counters | actionable |
+| Redraw and flush counts | How many display flushes a page and a transition cost | Simulator profiler | actionable |
+| Model A/B | Relative difference between two configurations with the same accounting mode | `tools/power-model` and the CI power gate | actionable |
+| Code-path reachability | Whether a sleep or lock path is actually reached in a scenario | Scenario assertions and console journal | actionable |
+
+A behavioral row closes when its test passes. A current row closes only with a
+bench record that passes section 12. The three implemented safe-now changes
+(P-001, P-002, P-003) are behavioral: their savings stay `inferred` until the
+matching current rows are measured.
+
+
 ## 2. Evidence vocabulary
 
 | Label | Definition | May support | May not support |

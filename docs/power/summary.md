@@ -11,6 +11,12 @@ The matrix has 201 rows: 39 safe now, 77 needs measurement, and 85 rejected. Per
 lane: BLE 42, SoC 31, Display 25, GPS and IMU 30, Wi-Fi 40, Board 33. Overlapping
 items were merged; no-change topics were kept as rejected rows.
 
+No measurement in this branch is bench-measured. Section 1.1 of
+`measurement-plan.md` separates the rows that need a current probe, a board, or
+a camera from the rows that are actionable from the simulator and code alone.
+Every milliamp figure in this directory is measured elsewhere, datasheet,
+modeled, or inferred; none is local.
+
 The large wins are not radio micro-tuning. They are sleep policy, display duty,
 and receiver duty. The mechanism for the biggest one is already merged and
 default off. Almost every number is modeled or inferred.
