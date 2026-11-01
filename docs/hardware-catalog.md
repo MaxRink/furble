@@ -57,7 +57,8 @@ only a handful of devices. All of them are ESP32-S3 or ESP32-P4 boards.
 | T-Deck Plus, T-Deck Pro, T-Watch Ultra, T-Watch S3 Plus, T-Display P4 | yes | yes | yes | yes | yes |
 | Waveshare AMOLED 1.75-G, CoreS3 plus GPS, Core2 plus GPS, Tab5 plus GPS, Dial plus GPS | yes | yes | yes | yes | yes |
 | ThinkNode M5, ThinkNode M9, Heltec Wireless Tracker V2, T-Beam Supreme, T114, T-Echo Plus, Wio L1 Pro, WisMesh Pocket, ThinkNode M1, T-LoRa Pager | yes | yes | yes | no | mixed, see tables |
-| ThinkNode M3, M4, M6, SenseCAP T1000-E, Wio Tracker 1110 | yes | yes | no | no | no |
+| ThinkNode M3, M4, M6, SenseCAP T1000-E | yes | yes | no | no | no |
+| Wio Tracker 1110 | yes | scan plus solver | no | no | no |
 | Cardputer Adv, Tab5 without GPS, CrowPanel, Waveshare P4 without GPS | yes | no | yes | mixed | yes |
 
 ## GNSS reuse classes
@@ -69,7 +70,7 @@ The class decides whether furble's existing GPS code and power work apply.
 | `$PCAS` | Quectel L76K, AT6668, ATGM336H | Existing code. Probe with `$PCAS06`. Plans 14, 15, 19 and 32 apply. |
 | UBX | u-blox MIA-M10Q, MAX-M10S, NEO-M10S, ZOE-M8Q | New driver. NMEA parsing still works, but the configuration and standby commands do not. |
 | `$CFG` | Unicore UC6580 | New driver. Different sentence set and 115200 baud. |
-| Other | Quectel LC76G, MediaTek AG3335, LR1110, unnamed modules | Treat as a new driver until proven otherwise. Probe on hardware before promising reuse. |
+| Other | Quectel LC76G, MediaTek AG3335, LR1110 scan, unnamed modules | Treat as a new driver until proven otherwise. The LR1110 needs a position solver, not just a driver. Probe on hardware before promising reuse. |
 
 A Meshtastic variant file that names an L76K is strong evidence, not proof.
 Elecrow's own documentation does not always name the receiver. The device in
@@ -91,7 +92,7 @@ Assistance and backup power decide how long it takes.
 | Unicore UC6580 | L1 and L5 | vendor figures, verify | vendor figures, verify | vendor figures, verify | vendor figures, verify | vendor dependent | `$CFG` | Dual band on the Heltec Wireless Tracker V2. Needs a new driver and more power. |
 | Quectel LC76G | L1 | vendor figures, verify | vendor figures, verify | vendor figures, verify | vendor dependent | vendor dependent | other | Used on the Waveshare AMOLED 1.75-G. Verify the command set before assuming reuse. |
 | MediaTek AG3335 | L1 | vendor figures, verify | vendor figures, verify | vendor figures, verify | vendor dependent | vendor dependent | other | Used on the SenseCAP T1000-E. A new driver. |
-| Semtech LR1110 GNSS | L1 | vendor figures, verify | vendor figures, verify | vendor figures, verify | vendor dependent | WiFi scan positioning | other | Used on the Wio Tracker 1110. The ThinkNode M3 uses an ATGM336H. The ThinkNode M4 receiver is unnamed. The WiFi scan is more interesting than the GNSS. |
+| Semtech LR1110 GNSS | L1 scan engine | vendor figures, verify | needs a solver, no standalone NMEA fix | vendor figures, verify | not applicable | cloud or local solver; WiFi scan too | other | Used on the Wio Tracker 1110. It scans GNSS and WiFi and needs a position solver, so it is not a drop-in NMEA receiver. The ThinkNode M3 uses an ATGM336H. The ThinkNode M4 receiver is unnamed. |
 
 Three conclusions from this table.
 
@@ -145,7 +146,7 @@ right buy for a bench prototype.
 | Elecrow ThinkNode M4 | nRF52840, 1 MB, 256 KB RAM | Multi-constellation, chip unnamed | none | no | 7000 mAh 18650 pack | about 69.90 EUR [18] | T2 | Power bank shape. The battery argument, not the software argument. |
 | Elecrow ThinkNode M6 | nRF52840, 1 MB, 256 KB RAM | L76K, `$PCAS` | none | no | 6 W solar plus two 18650 cells | see vendor [6] | T2 | Outdoor node. Not a remote. |
 | Seeed SenseCAP T1000-E | nRF52840, 1 MB, 256 KB RAM | MediaTek AG3335, other | none | no | 700 mAh | 39.90 USD [19] | T2 | Credit-card tracker, IP65, pogo charging. |
-| Seeed Wio Tracker 1110 | nRF52840 plus LR1110 | LR1110 GNSS, other | none | no | LiPo connector | see vendor [20] | T2 | Development board. The LR1110 also does WiFi scanning. |
+| Seeed Wio Tracker 1110 | nRF52840 plus LR1110 | LR1110 scan, other | none | no | LiPo connector | see vendor [20] | T2 | Development board. GNSS and WiFi are scans that need a position solver, not a standalone NMEA fix. |
 | M5Stack Dial v1.1 plus Unit GPS | ESP32-S3FN8, 8 MB | AT6668, `$PCAS` | 1.28 inch 240x240 round, touch, encoder | yes | LiPo connector, cell extra | 34.90 plus 9.95 USD [21] | T0 to T1 | M5Unified knows the Dial. Verify the exact board branch before claiming zero port. |
 | M5Stack Cardputer Adv plus Unit GPS | ESP32-S3FN8, 8 MB | AT6668, `$PCAS` | 1.14 inch 240x135, no touch, 56 keys | yes | 1500 mAh | 29.90 plus 9.95 USD [22] | T0 to T1 | Cheap keyboard terminal. No touch. |
 | Adafruit ESP32-S3 TFT Feather plus Ultimate GPS FeatherWing | ESP32-S3, 4 MB, 2 MB PSRAM | PA1616D, other | 1.14 inch TFT, no touch | yes | LiPo connector | 24.95 plus 24.95 USD [23] | T1 | Easy stacking. 4 MB flash is tight for dual OTA. |
@@ -163,7 +164,7 @@ vendor sells off the shelf.
 | Waveshare ESP32-P4-WIFI6-Touch-LCD plus GPS module | ESP32-P4 plus C6 | L76K or AT6668 over UART | 3.4 to 10.1 inch, touch | WiFi 6 through C6 | see vendor [26] | T1P | Big HMI. Same P4 transport work as the Tab5. |
 | Elecrow CrowPanel Advance plus GPS module | ESP32-S3 | module over UART | 2.4 to 7 inch, touch | yes | see vendor [27] | T1 | HMI panel, not a handheld. Needs a battery and a case. |
 
-## Estimated battery life
+## Hypothetical battery life at a common GNSS load
 
 These are first-order estimates, not measurements. The model is deliberately
 simple:
@@ -214,6 +215,19 @@ Hours, after the 0.85 derating. The ESP32-S3 rows assume `SLEEP_CONN` on. It def
 | Raspberry Pi Pico 2 W, assumed cell | 2000 mAh | 113 | 30.9 | 68.0 | 67.3 | 17.7 |
 | Generic nRF54L15 or LM20A, assumed cell | 2000 mAh | 850 | 39.5 | 139 | 243 | 27.0 |
 
+### M10 receiver-specific runtime
+
+These rows use the MIA-M10Q's 12 mA tracking load instead of the common 40 mA.
+A and D do not change because GNSS is off. The T-Beam M10S trim is L1-only.
+
+| Device | Cell | B | C | E |
+| :--- | ---: | ---: | ---: | ---: |
+| LilyGO T-Deck Plus | 2000 mAh | 109 | 258 | 18.2 |
+| LilyGO T-Deck Pro | 1450 mAh | 79.0 | 187 | 13.2 |
+| LilyGO T-Watch Ultra | 1100 mAh | 59.9 | 142 | 10.0 |
+| LilyGO T-Watch S3 Plus | 940 mAh | 51.2 | 121 | 8.6 |
+| LilyGO T-Beam Supreme M10S | 3400 mAh | 185 | 438 | 31.0 |
+
 How to read the table.
 
 - The battery dominates everything. The jump from the 250 mAh StickS3 to the
@@ -224,13 +238,16 @@ How to read the table.
   1450 mAh. At equal capacity, the e-paper Pro would model at about 131 hours
   in scenario D against 74 hours for the LCD Plus, and about 21 hours in
   scenario E against 14 hours. That is the display saving.
-- GNSS is the third lever. Continuous GNSS adds about 40 mA. Cutting it to 25
-  percent duty roughly triples sidecar runtime. The L76K standby and the M10
-  backup are what make this usable without a 30 second cold start each time.
+- GNSS is the third lever. The main table adds a common 40 mA. The M10 table
+  above shows the same devices at 12 mA, which is the receiver-specific figure.
+  Cutting GNSS to 25 percent duty roughly triples sidecar runtime. The L76K
+  standby and the M10 backup are what make this usable without a 30 second
+  cold start each time.
 - The MCU is the smallest lever. An ESP32-S3 at 3.6 mA versus an nRF54 at
   2 mA is a 1.6 mA difference. With GNSS on, that is under 4 percent runtime.
-  With the screen off and GNSS off, it is about 45 percent, which matters only
-  for a device that does nothing most of the day.
+  With the screen off and GNSS off, the current is 44 percent lower, which is a
+  1.8x runtime improvement at equal capacity. That matters only for a device
+  that does nothing most of the day.
 - The port therefore buys very little for the battery complaint unless it also
   changes the display, the receiver, the duty cycle, and the cell.
 

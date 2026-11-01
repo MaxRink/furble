@@ -76,9 +76,10 @@ delivery is still open there. Both are app lifecycle work, not a port.
 
 #### Why it still fails indoors
 
-A GNSS receiver needs roughly -130 dBm or better at the antenna for a fix.
-Building attenuation is 20 to 40 dB, and the patch inside a small plastic case
-has a poor ground plane. No receiver class solves that. The options are:
+Open-sky satellite signals arrive at about -130 dBm. A modern receiver
+acquires cold at around -148 dBm and tracks at -160 to -167 dBm. Building
+attenuation is 20 to 40 dB, and the patch inside a small plastic case has a
+poor ground plane. No receiver class solves that. The options are:
 
 1. More antenna gain and a better ground plane. This is the only passive fix
    that changes the link budget in a meaningful way.
@@ -142,13 +143,12 @@ The battery in the reference StickS3 is 250 mAh. That is the real problem. The
 device is not a low-power design with a small cell. It is an 81 mA screen and a
 43 mA connected idle with a 250 mAh cell.
 
-One board detail matters more than the MCU: the 32.768 kHz crystal. The current
-sdkconfigs do not select an external 32 kHz crystal, and Experiment A in
-`plans/00-hardware-experiments.md` is still open. If the board lacks it, the
-230 uA BLE light sleep mode is unreachable and 3.3 mA is the floor. A board with
-the crystal can reach 230 uA, a 14x improvement in the screen-off connected
-state. Add "has a 32 kHz crystal" to the board checklist and verify it on the
-bench. It is a board feature, not an MCU feature.
+One board detail matters more than the MCU: the 32.768 kHz crystal. Experiment
+A is resolved: the 2026-08-16 boot test found no external 32.768 kHz crystal on
+the StickS3. The 230 uA BLE light sleep mode is therefore unreachable on the
+reference board, and 3.3 mA is the floor. A new candidate board with the crystal
+can reach 230 uA, a 14x improvement in the screen-off connected state. Verify
+the crystal on every new board. It is a board feature, not an MCU feature.
 
 #### The levers, ranked
 
@@ -172,7 +172,10 @@ different product from the current remote.
 
 The catalog has the full table. Representative results, with a 0.85 derating.
 The ESP32-S3 rows assume `SLEEP_CONN` on; the default is 43.6 mA screen-off
-connected. The catalog also shows the default StickS3 row.
+connected. The catalog also shows the default StickS3 row and a separate M10
+table. The T-Deck Plus, T-Deck Pro and T-Watch rows below use the common 40 mA
+load; the catalog's M10 table shows the receiver-specific figures, for example
+about 109 h for the T-Deck Plus in B.
 
 | Device | Cell | Screen off BLE | Sidecar GNSS on | Sidecar GNSS 25 percent | Screen on 25 percent | Screen and GNSS on |
 | :--- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -736,7 +739,7 @@ The full catalog is in `docs/hardware-catalog.md`. This is the short version.
 | Best GPS with `$PCAS` reuse | Elecrow ThinkNode M5 or T-Beam Supreme L76K | L76K plus standby and a rail switch. No new GNSS driver. |
 | Best battery, `$PCAS` reuse | T-Beam Supreme L76K with a 3400 mAh 18650 | 13.6 times the current cell, 66 hours of continuous GNSS. |
 | Best battery, e-paper | Elecrow ThinkNode M5 | 23 hours of continuous GNSS, 75 hours at 25 percent duty. |
-| Best battery, all features | T-Deck Plus with a 2000 mAh cell | 39 hours of continuous GNSS, 125 hours at 25 percent duty. |
+| Best battery, all features | T-Deck Plus with a 2000 mAh cell | 39 h continuous at the common 40 mA load, about 109 h with the M10's 12 mA; 125 h at 25 percent duty at 40 mA. |
 | Best zero port | Core2 plus Unit GPS plus battery module | Works today. Touch, 1890 mAh with the module, no new code. |
 | Best urban accuracy | NEO-F10N or another L1/L5 board | L1/L5 multipath rejection. The MAX-M10S trim is L1-only and does not qualify. Costs power and a new driver. |
 | Best headless sidecar if a port is required | nRF54LM20A with an L76K or M10 | 2 mA idle, 2 MB NVM, 512 KB RAM, Zephyr. Still a 4 to 6 month port. |
