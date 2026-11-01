@@ -35,7 +35,9 @@ namespace Host {
  *
  * No timer or thread is started. Status pushes are emitted synchronously from
  * the command that changes state, from a subscription, or from an explicit
- * emit call.
+ * emit call. The Reject, Busy, WrongMode, and Timeout faults are synthetic
+ * where the corpus documents no camera-level error value; the common return
+ * codes 1 and 2 are the closest documented values.
  */
 class DjiVirtualCamera final: public NimBLEMockPeer {
  public:
