@@ -284,16 +284,22 @@ and [Remote](https://github.com/MaxRink/furble/blob/965f299f0f43c38fe45e4680f1bf
   pairing, then mode `00030010-0000-1000-0000-d8492fffa821` gets `{02}` for
   shooting.
 - Shutter writes to `00030030-0000-1000-0000-d8492fffa821`: `{00 01}` press,
-  `{00 02}` release. Focus press/release are intentional no-ops. There is no
-  Bulb, video, or manual-focus implementation in this Furble path.
-- GPS service `00040000-0000-1000-0000-d8492fffa821`: subscribe indication
-  `00040003`; request byte `03` causes `{01}` on write characteristic
-  `00040002`; success byte `02` enables updates. Furble sends a packed 20-byte
-  message with header `04`, N/S and E/W direction bytes, absolute float32
-  coordinates/elevation, sign bytes, and a Unix timestamp. The source uses
-  `mktime`, whose result depends on the host/runtime timezone, so timezone
-  independence needs a focused capture/review before certification; this is a
-  conditional verification item, not a proven bug.
+  `{00 02}` release. These are the official app's AF plus release pair, not a
+  plain release. Focus press and release use `{00 03}` AF_ON and `{00 04}`
+  AF_OFF, which the app exposes separately. There is no Bulb, video, or
+  manual-focus implementation in this Furble path; the app's movie and zoom
+  byte tables are in `docs/camera-research/sony-lumix-dji.md` and the private
+  corpus.
+- GPS service `00040000-0000-1000-0000-d8492fffa821`: Furble subscribes
+  indication `00040003` and treats byte `03` as a request, then writes one
+  byte `{01}` to `00040002`. Camera Connect instead reads and notifies
+  `00040001`, answers a data request with the 8-byte `05 00 ...` command,
+  starts GPS with 8-byte `01` or `02`, stops with `03`, and selects a source
+  with `06`. The one-byte enable form is not app-corroborated. The 20-byte
+  location packet otherwise matches the app for finite values. The app uses a
+  UTC epoch; Furble uses `mktime`, which depends on the runtime timezone. The
+  app's Bluetooth GPS gate passes only EOS RP and R6 Mark II among the four
+  Furble models.
 
 #### Remote mode
 

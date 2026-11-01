@@ -187,7 +187,10 @@ The defensible status is therefore an untested S5II/BGH1-derived experimental
 path, not model-certified support.
 
 Advertisement matching requires Panasonic manufacturer data with at least 8
-bytes, company ID `0x0376`, and the proprietary session service advertised.
+bytes, SIG company ID `0x003A` (Panasonic Holdings Corporation), and the
+proprietary session service advertised. The earlier `0x0376` value in this note
+was wrong: the Bluetooth SIG registry assigns `0x0376` to Electronic
+Temperature Instruments, not Panasonic. The code already used `0x003A`.
 It parses a flags byte plus a five-byte address fragment but does not use a
 model string. The matcher cannot distinguish S5II, BGH1, G9II, or other LUMIX
 bodies.
