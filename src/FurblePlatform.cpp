@@ -14,6 +14,7 @@
 #include "FurblePlatform.h"
 #include "FurblePlatformPolicy.h"
 #include "FurblePower.h"
+#include "FurblePowerPolicy.h"
 #include "FurbleSD.h"
 #include "FurbleSettings.h"
 #include "FurbleTimeKeeper.h"
@@ -362,10 +363,24 @@ void Platform::setCPUMaxFreq(uint8_t mhz) {
   auto &power = Power::getInstance();
   esp_err_t err = power.configure(freq);
   if (err != ESP_OK) {
+    // ESP_ERR_NOT_SUPPORTED means this build has no esp_pm at all. That is a
+    // configuration fact, not a fault: the board runs at its boot frequency.
+    // Every other error is a bad argument or a driver failure and stays fatal
+    // after the documented fallback.
+    const bool notSupported = (err == ESP_ERR_NOT_SUPPORTED);
     ESP_LOGW(LOG_TAG, "CPU maximum frequency %dMHz rejected (%s), using %dMHz.", freq,
              esp_err_to_name(err), CPU_MAX_FREQ_DEFAULT_MHZ);
     freq = CPU_MAX_FREQ_DEFAULT_MHZ;
-    ESP_ERROR_CHECK(power.configure(freq));
+    err = power.configure(freq);
+    if (err != ESP_OK) {
+      if (notSupported && (err == ESP_ERR_NOT_SUPPORTED)) {
+        ESP_LOGW(LOG_TAG,
+                 "Power management is not available in this build; running at a fixed "
+                 "frequency.");
+      } else {
+        ESP_ERROR_CHECK(err);
+      }
+    }
   }
 
   m_CPUMaxFreqMHz = freq;

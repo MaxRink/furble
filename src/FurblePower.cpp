@@ -2,6 +2,7 @@
 #include <esp_timer.h>
 
 #include "FurblePower.h"
+#include "FurblePowerPolicy.h"
 #include "FurbleTypes.h"
 
 namespace Furble {
@@ -35,10 +36,22 @@ void Power::init(void) {
 }
 
 esp_err_t Power::configure(uint8_t max_freq_mhz) {
+  // Light sleep is only available when tickless idle is compiled in. Asking
+  // for it without that support makes esp_pm_configure() return
+  // ESP_ERR_NOT_SUPPORTED and no DFS configuration is applied at all.
+  constexpr bool ticklessIdle =
+#if defined(CONFIG_FREERTOS_USE_TICKLESS_IDLE)
+      true;
+#else
+      false;
+#endif
+
+  const PowerPolicy::PmRequest request =
+      PowerPolicy::makeRequest(max_freq_mhz, CPU_MIN_FREQ_MHZ, ticklessIdle);
   esp_pm_config_t pm_config = {
-      .max_freq_mhz = max_freq_mhz,
-      .min_freq_mhz = CPU_MIN_FREQ_MHZ,
-      .light_sleep_enable = true,
+      .max_freq_mhz = request.max_freq_mhz,
+      .min_freq_mhz = request.min_freq_mhz,
+      .light_sleep_enable = request.light_sleep_enable,
   };
   return esp_pm_configure(&pm_config);
 }

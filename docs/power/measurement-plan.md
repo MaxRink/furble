@@ -52,6 +52,7 @@ be produced from the repository.
 | PMIC and rails | Per-rail current and leakage, charger and gauge behavior | Board with accessible rails, schematic or board photo | Board rows PM-, RL-, LK-, PL-, NB- |
 | Battery runtime | Discharge curve and thermal rise | Battery, load, and a logged discharge | Section 7 discharge runs |
 | Camera states | Current while a real camera is connected, capturing, or transferring | Camera hardware per family plus the instrumented board | Section 8 states S20 to S37 |
+| Wired-node sleep | Whether the W5500 Ethernet path survives tickless light sleep (link, DHCP renew, MQTT reconnect, interrupted OTA) | The Waveshare node on a real switch, a broker, and `pm` residency readback | P-026a, then P-035 |
 
 ### Actionable without bench hardware
 
@@ -67,7 +68,9 @@ They produce behavior evidence, not milliamps.
 | Code-path reachability | Whether a sleep or lock path is actually reached in a scenario | Scenario assertions and console journal | actionable |
 
 A behavioral row closes when its test passes. A current row closes only with a
-bench record that passes section 12. The three implemented safe-now changes
+bench record that passes section 12. The Waveshare soak is a behavior row, not a
+current row, but it still needs the board and a network, so it sits in the
+blocked table above. The three implemented safe-now changes
 (P-001, P-002, P-003) are behavioral: their savings stay `inferred` until the
 matching current rows are measured.
 

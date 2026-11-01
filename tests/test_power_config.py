@@ -70,6 +70,41 @@ class PowerConfigTest(unittest.TestCase):
         result = self.run_checker(root)
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_tickless_without_mac_bb_pd_on_capable_target_fails(self):
+        root = self.make_root(
+            "CONFIG_PM_ENABLE=y\n"
+            "CONFIG_FREERTOS_USE_TICKLESS_IDLE=y\n"
+            "CONFIG_PM_RTOS_IDLE_OPT=y\n"
+            "CONFIG_SOC_PM_SUPPORT_MAC_BB_PD=y\n"
+            "# CONFIG_ESP_PHY_MAC_BB_PD is not set\n"
+        )
+        result = self.run_checker(root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("MAC_BB_PD", result.stderr)
+
+    def test_tickless_with_mac_bb_pd_on_capable_target_passes(self):
+        root = self.make_root(
+            "CONFIG_PM_ENABLE=y\n"
+            "CONFIG_FREERTOS_USE_TICKLESS_IDLE=y\n"
+            "CONFIG_PM_RTOS_IDLE_OPT=y\n"
+            "CONFIG_SOC_PM_SUPPORT_MAC_BB_PD=y\n"
+            "CONFIG_ESP_PHY_MAC_BB_PD=y\n"
+        )
+        result = self.run_checker(root)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_tickless_without_mac_bb_pd_on_esp32_passes(self):
+        # ESP32 classic has no SOC MAC_BB_PD capability, so the dependency does
+        # not apply and the option cannot be set at all.
+        root = self.make_root(
+            "CONFIG_PM_ENABLE=y\n"
+            "CONFIG_FREERTOS_USE_TICKLESS_IDLE=y\n"
+            "CONFIG_PM_RTOS_IDLE_OPT=y\n"
+            "# CONFIG_ESP_PHY_MAC_BB_PD is not set\n"
+        )
+        result = self.run_checker(root)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_pm_without_tickless_is_a_recorded_exception(self):
         root = self.make_root("CONFIG_PM_ENABLE=y\n")
         result = self.run_checker(root)

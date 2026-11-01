@@ -39,18 +39,27 @@ def check_file(path: pathlib.Path) -> tuple[list[str], bool]:
     idle_opt = values.get("CONFIG_PM_RTOS_IDLE_OPT") == "y"
     mac_bb_pd = values.get("CONFIG_ESP_PHY_MAC_BB_PD") == "y"
     brownout = values.get("CONFIG_ESP_BROWNOUT_DET") == "y"
+    soc_mac_bb_pd = values.get("CONFIG_SOC_PM_SUPPORT_MAC_BB_PD") == "y"
     reduce_tx = values.get("CONFIG_ESP_PHY_REDUCE_TX_POWER") == "y"
 
     if tickless and not pm:
         errors.append("tickless idle enabled without CONFIG_PM_ENABLE")
     # CONFIG_PM_ENABLE without tickless idle is a recorded exception, not a
-    # violation: the Waveshare Ethernet node keeps PM enabled for DFS and has
-    # tickless off until the Ethernet/MQTT soak in plan P-026 passes. It is
-    # reported for visibility but does not fail the check.
+    # violation: the Waveshare Ethernet node keeps PM enabled for DFS only, and
+    # its runtime request no longer asks for light sleep (P-026). Enabling
+    # tickless needs the Ethernet/MQTT soak in P-026a, and the MAC_BB_PD rule
+    # above forces P-035 to land in the same change.
     if tickless and not idle_opt:
         errors.append("tickless idle enabled without CONFIG_PM_RTOS_IDLE_OPT")
     if mac_bb_pd and not tickless:
         errors.append("CONFIG_ESP_PHY_MAC_BB_PD enabled without FREERTOS_USE_TICKLESS_IDLE")
+    if tickless and soc_mac_bb_pd and not mac_bb_pd:
+        # On a target whose PM block can power down MAC and baseband, tickless
+        # light sleep without MAC_BB_PD leaves the radio powered through every
+        # sleep window. P-035 must land with P-026's tickless enablement.
+        errors.append(
+            "tickless idle on a MAC_BB_PD-capable target without CONFIG_ESP_PHY_MAC_BB_PD"
+        )
     if brownout and not reduce_tx:
         # A brownout reset otherwise restarts into the same TX load that caused
         # it. The PHY option drops TX power for the session and breaks the loop.
@@ -75,7 +84,7 @@ def main() -> int:
             for error in errors:
                 print(f"{path.name}: {error}", file=sys.stderr)
         elif pm_without_tickless:
-            print(f"{path.name}: PM enabled without tickless idle (recorded exception, P-026)")
+            print(f"{path.name}: PM enabled for DFS only (recorded exception, P-026a soak)")
         else:
             print(f"{path.name}: consistent")
     return 1 if failed else 0

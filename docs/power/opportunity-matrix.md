@@ -46,7 +46,7 @@ Rank groups:
 
 ## Safe now
 
-Thirty-three safe-now rows are implemented in this branch. See section
+Thirty-four of the thirty-eight safe-now rows are implemented in this branch. See section
 "Implemented safe-now changes" for the code and test evidence.
 
 | ID | Lane | Current behavior | Proposed change | Evidence | Est. saving | Risk | Effort | Required test | Priority | Lane source |
@@ -131,6 +131,7 @@ evidence label from the lane and adds the test that now guards it.
 | P-036 | `CONFIG_ESP_PHY_REDUCE_TX_POWER=y` on every brownout-equipped config. | seven `sdkconfig.*` files | `tools/check_power_config.py` plus two new tests; `m5stick-c` build. The induced-brownout test remains in the row test | implemented |
 | P-017 | Static settings and icon-menu captions use `LV_LABEL_LONG_DOT` instead of a circular marquee; dynamic values (camera names, spinner values, battery rows) keep scrolling. | `src/FurbleUI.cpp` | e2e `static-labels-no-scroll`: zero scroll labels on the main, settings, and display pages; walkthrough screenshots regenerated | implemented |
 | P-023 | The headless UI loop idles at 50 ms instead of 5 ms. It still drains the request queue every pass and shortens the sleep to the 1 Hz GPS service deadline, so the geotag cadence is unchanged. | `src/main.cpp`, `include/FurbleHeadlessPolicy.h` | host `headless-loop-policy`: loop period, deadline shortening, due and overdue cases; `pio run -e waveshare-s3-eth` SUCCESS | implemented |
+| P-026 | The runtime PM request now asks for light sleep only when `CONFIG_FREERTOS_USE_TICKLESS_IDLE` is compiled in. Before this, the Waveshare config (PM for DFS, no tickless) made `esp_pm_configure` return `ESP_ERR_NOT_SUPPORTED`, so no DFS was applied and the boot fallback aborted. `ESP_ERR_NOT_SUPPORTED` is now reported and the board runs at a fixed frequency instead of aborting. | `src/FurblePower.cpp`, `src/FurblePlatform.cpp`, `include/FurblePowerPolicy.h` | host `power-request-policy`: tickless asks for light sleep, DFS-only does not, frequencies preserved; `pio run -e waveshare-s3-eth` and `-e m5stick-s3` SUCCESS | implemented for the runtime request. Enabling tickless itself is P-026a |
 
 The modeled saving for these rows is unchanged and still unmeasured. P-001 and
 P-002 bound a worst case; they do not change steady-state current. P-003 halves
@@ -254,8 +255,12 @@ Three safe-now rows are deliberately not applied yet:
 | P-115 | Wi-Fi | The WebUI supervisor wakes every 500 ms, reloads `WEB_UI`, and walks the netif list; the server runs while the setting is on and the network is up (branch only) | Stop the server after N minutes without a request and restart on the chosen path; make the supervisor adaptive | inferred (code) | Removes two wakes per second plus per-tick settings and netif work; stopping the server does not stop the station | Medium for usability | Medium | M4 idle versus active; confirm the server restarts on the chosen path | 76 | W-32 (wifi-coex.md) |
 | P-205 | SoC | The StickS3 release has UART0 primary and USB Serial/JTAG secondary, so every log line is mirrored to both; the USJ module also holds `NO_LIGHT_SLEEP` while a host is attached | Set `CONFIG_ESP_CONSOLE_SECONDARY_NONE=y` and `CONFIG_USJ_ENABLE_USB_SERIAL_JTAG=n` in a release battery build, keep both in debug | inferred (kconfig) | Unknown; the module clock and PHY current is not in the board table. Also makes USB-attached measurement possible | Medium; the native USB port stops providing logs in release, and the Board lane says disabling USJ removes the only flashing path. Contested, see X-06 | Small | Build release and debug S3; release has no USJ console, still flashes through the ROM downloader, boots, reconnects in download mode; web installer recovery; analyzer with and without; confirm `USJ_NO_AUTO_LS` no longer applies | 77 | CON-01 vs NB-03 (soc.md, board-power.md) |
 
+| P-026a | SoC | `waveshare-s3-eth` runs DFS only; enabling `FREERTOS_USE_TICKLESS_IDLE` would add light sleep, but the W5500 SPI Ethernet path has not been soaked under it | Enable tickless and prove link, DHCP, MQTT, and OTA survive; then land P-035 in the same change (the checker enforces the pairing) | inferred (kconfig + P-026 code fix) | No battery saving (mains); correctness and a working sleep path if the supply changes | Medium | Small | 24 h soak with the W5500 link, DHCP renew, MQTT reconnect, an interrupted OTA, and `pm` residency showing non-zero light-sleep time; no missed frames on the SPI path | 26 | SOC-09, NB-01, W-14 (soc.md, board-power.md, wifi-coex.md) |
+
 P-205 is a late split from the rejected table. It is placed here because the
 lanes disagree on whether the change is safe; X-06 records both positions.
+P-026a is the hardware half of P-026: the runtime request is fixed in code, but
+enabling tickless on the W5500 node needs the soak before it can land.
 
 ## Rejected
 
@@ -390,20 +395,20 @@ its primary lane. Raw lane IDs are not summed here because many are merged.
 
 | Rank | Rows |
 | --- | --- |
-| Safe now | 39 |
-| Needs measurement | 77 |
+| Safe now | 38 |
+| Needs measurement | 78 |
 | Rejected | 85 |
 | Total | 201 |
 
 | Primary lane | Safe now | Needs measurement | Rejected | Total |
 | --- | --- | --- | --- | --- |
 | BLE | 7 | 16 | 19 | 42 |
-| SoC | 8 | 10 | 13 | 31 |
+| SoC | 7 | 11 | 13 | 31 |
 | Display | 6 | 6 | 13 | 25 |
 | GPS and IMU | 3 | 16 | 11 | 30 |
 | Wi-Fi | 11 | 17 | 12 | 40 |
 | Board | 4 | 12 | 17 | 33 |
-| Total | 39 | 77 | 85 | 201 |
+| Total | 38 | 78 | 85 | 201 |
 
 Merged rows are counted once, under the primary lane named in the table. Rows
 that merge a BLE item with a Wi-Fi item are under BLE if the connection

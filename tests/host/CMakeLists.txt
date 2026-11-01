@@ -229,6 +229,14 @@ target_include_directories(headless_loop_policy_test PRIVATE ${FURBLE_ROOT}/incl
 target_compile_options(headless_loop_policy_test PRIVATE -Wall -Wextra -Werror)
 add_test(NAME headless-loop-policy COMMAND headless_loop_policy_test)
 
+# esp_pm_configure() rejects light_sleep_enable when tickless idle is off, so the
+# runtime request must follow the compiled support. This test pins the exact
+# request production builds from.
+add_executable(power_request_policy_test power_request_policy_test.cpp)
+target_include_directories(power_request_policy_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(power_request_policy_test PRIVATE -Wall -Wextra -Werror)
+add_test(NAME power-request-policy COMMAND power_request_policy_test)
+
 # The PMIC is a separate chip from the ESP32. Its watchdog and download lock
 # therefore survive an ESP32 reset and must be modeled as retained state.
 add_executable(pmic_recovery_test
