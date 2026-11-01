@@ -135,7 +135,12 @@ void UI::Intervalometer::loadResume(void) {
 
   if (clockValid && wakeTimeValid && (state.wake_time != 0)) {
     const int64_t delta = now - state.wake_time;
-    if ((delta < -30) || (delta > 3600)) {
+    // The alarm wakes RESUME_WAKE_MARGIN_S before the shot, and the Plus2 RTC
+    // can round that down by another minute. Anything earlier than that is a
+    // stale record.
+    constexpr int64_t EARLY_LIMIT =
+        -(static_cast<int64_t>(RESUME_WAKE_MARGIN_S) + Platform::TIMED_WAKE_MAX_EARLY_S);
+    if ((delta < EARLY_LIMIT) || (delta > 3600)) {
       ESP_LOGW(LOG_TAG, "Ignoring stale intervalometer resume state");
       clearResume();
       return;

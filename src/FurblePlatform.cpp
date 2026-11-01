@@ -31,6 +31,45 @@ constexpr uint32_t TIMED_WAKE_MARKER = 0x49564c31;
 
 namespace {
 constexpr gpio_num_t STICKC_PLUS2_HOLD_PIN = GPIO_NUM_4;
+
+// BM8563 registers used to prove the timer was actually armed. M5Unified's
+// setTimerIRQ() returns the duration its own arithmetic selected even when the
+// underlying register writes fail, so the value alone is not evidence.
+constexpr uint8_t PCF8563_ADDRESS = 0x51;
+constexpr uint8_t PCF8563_CONTROL2 = 0x01;
+constexpr uint8_t PCF8563_TIMER_CONTROL = 0x0E;
+constexpr uint8_t PCF8563_TIMER_COUNT = 0x0F;
+constexpr uint32_t PCF8563_I2C_FREQ = 400000;
+
+void clearPlus2Timer(void) {
+  // Timer control 0x03 disables the countdown. Clearing it prevents a failed
+  // setup from waking the device after a later manual power off.
+  (void)M5.In_I2C.writeRegister8(PCF8563_ADDRESS, PCF8563_TIMER_CONTROL, 0x03, PCF8563_I2C_FREQ);
+}
+
+bool verifyPlus2Timer(int requested_seconds, int programmed_seconds) {
+  // Mirror setTimerIRQ()'s selection: second resolution below 270 s, minute
+  // resolution above it, both clamped to the 8-bit countdown register.
+  const bool minute_mode = requested_seconds >= 270;
+  const uint32_t divisor = minute_mode ? 60U : 1U;
+  const uint32_t raw_count = minute_mode ? (static_cast<uint32_t>(requested_seconds) + 30U) / 60U
+                                         : static_cast<uint32_t>(requested_seconds);
+  const uint8_t expected_count = static_cast<uint8_t>(std::min<uint32_t>(raw_count, 255U));
+  const uint8_t expected_control = minute_mode ? 0x83 : 0x82;
+  const int expected_programmed = static_cast<int>(expected_count) * static_cast<int>(divisor);
+
+  const uint8_t control =
+      M5.In_I2C.readRegister8(PCF8563_ADDRESS, PCF8563_TIMER_CONTROL, PCF8563_I2C_FREQ);
+  const uint8_t count =
+      M5.In_I2C.readRegister8(PCF8563_ADDRESS, PCF8563_TIMER_COUNT, PCF8563_I2C_FREQ);
+  const uint8_t control2 =
+      M5.In_I2C.readRegister8(PCF8563_ADDRESS, PCF8563_CONTROL2, PCF8563_I2C_FREQ);
+  // The countdown can lose its first tick between the write and this read.
+  const bool count_ok =
+      (count == expected_count) || ((expected_count > 0) && (count + 1 == expected_count));
+  return (control == expected_control) && count_ok && ((control2 & 0x01) != 0)
+         && (programmed_seconds == expected_programmed);
+}
 }  // namespace
 
 Platform &Platform::getInstance(void) {
@@ -661,6 +700,12 @@ bool Platform::powerOffUntil(uint32_t seconds) {
     if (!m5pm1Access(
             [this, seconds]() { return m_M5PM1.timerSet(seconds, M5PM1_TIM_ACTION_POWERON); })) {
       ESP_LOGE(LOG_TAG, "Failed to set M5PM1 wake timer");
+      // timerSet() arms before its final reload write, so a reported failure
+      // can still leave a timer running. Clear it before returning or a later
+      // manual shutdown could wake unexpectedly.
+      if (!m5pm1Access([this]() { return m_M5PM1.timerClear(); })) {
+        ESP_LOGE(LOG_TAG, "Failed to clear M5PM1 wake timer after setup failure");
+      }
       restoreWatchdog();
       return false;
     }
@@ -700,13 +745,18 @@ bool Platform::powerOffUntil(uint32_t seconds) {
     const int requested_seconds = static_cast<int>(seconds);
     const int programmed_seconds = M5.Rtc.setAlarmIRQ(requested_seconds);
     // The BM8563 has one-second resolution up to 255 seconds and minute
-    // resolution above that. An early wake is safe: the resume path waits for
-    // the saved shot deadline. A late wake is not, because it would miss that
-    // deadline, so reject a programmed time above the request and stay awake.
-    if ((programmed_seconds <= 0) || (programmed_seconds > requested_seconds)) {
+    // resolution above that. A late wake would miss the saved shot deadline,
+    // so reject anything above the request. An early wake is safe only within
+    // the resume window: the 255-minute clamp can otherwise wake hours before
+    // the deadline and the resume validation clears the run.
+    const int early_seconds = requested_seconds - programmed_seconds;
+    if ((programmed_seconds <= 0) || (early_seconds < 0)
+        || (early_seconds > static_cast<int>(TIMED_WAKE_MAX_EARLY_S))
+        || !verifyPlus2Timer(requested_seconds, programmed_seconds)) {
       ESP_LOGW(LOG_TAG,
-               "StickC Plus2 RTC could not program %d seconds without waking late (got %d)",
+               "StickC Plus2 RTC could not program %d seconds within the resume window (got %d)",
                requested_seconds, programmed_seconds);
+      clearPlus2Timer();
       M5.Rtc.disableIRQ();
       return false;
     }

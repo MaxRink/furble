@@ -88,13 +88,14 @@ BaseType_t Control::Target::sendCommand(cmd_t cmd) {
     // clear the queue and place the disconnect at the front for immediate
     // delivery. Reset guarantees space, so this never blocks the caller and
     // never fails on a full queue.
-    const UBaseType_t dropped = uxQueueMessagesWaiting(m_Queue);
-    xQueueReset(m_Queue);
-    const uint32_t remove = std::min<uint32_t>(static_cast<uint32_t>(dropped),
-                                               m_InFlight.load(std::memory_order_acquire));
-    if (remove > 0) {
-      // Keep an executing command counted; only remove the queued ones.
-      m_InFlight.fetch_sub(remove, std::memory_order_acq_rel);
+    // Drain with non-blocking receives. A queue-length snapshot followed by
+    // xQueueReset can include a command the target dequeued in between, which
+    // would subtract that still-executing command's reservation and break the
+    // idle() contract. A successful receive proves this side removed the item,
+    // so exactly one reservation is retired per removed command.
+    cmd_t dropped = CMD_ERROR;
+    while (xQueueReceive(m_Queue, &dropped, 0) == pdTRUE) {
+      m_InFlight.fetch_sub(1, std::memory_order_acq_rel);
     }
     m_InFlight.fetch_add(1, std::memory_order_acq_rel);
     const BaseType_t sent = xQueueSendToFront(m_Queue, &cmd, 0);
