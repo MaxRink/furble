@@ -68,10 +68,11 @@ records these facts:
 So the software is not the missing piece. The missing pieces are physical and
 operational. The apps already expose the phone location toggle: Android has an
 enable switch, an interval that defaults to 10 seconds, and a count of fixes
-sent. Apple uses CoreLocation with a when-in-use prompt. The iOS target does
-not declare the location background mode, so a fix stops when the app is
-backgrounded. That is a real gap for a shooting session and it is a small app
-change, not a port.
+sent. Apple uses CoreLocation with a when-in-use prompt. The iOS target did not
+declare the location background mode, so a fix stopped when the app was
+backgrounded. This PR adds the mode and the background update flag as a quick
+win. Android has no foreground location service yet, so continuous background
+delivery is still open there. Both are app lifecycle work, not a port.
 
 #### Why it still fails indoors
 
@@ -169,11 +170,14 @@ different product from the current remote.
 
 #### Runtime estimates
 
-The catalog has the full table. Representative results, with a 0.85 derating:
+The catalog has the full table. Representative results, with a 0.85 derating.
+The ESP32-S3 rows assume `SLEEP_CONN` on; the default is 43.6 mA screen-off
+connected. The catalog also shows the default StickS3 row.
 
 | Device | Cell | Screen off BLE | Sidecar GNSS on | Sidecar GNSS 25 percent | Screen on 25 percent | Screen and GNSS on |
 | :--- | ---: | ---: | ---: | ---: | ---: | ---: |
-| M5StickS3, current | 250 mAh | 59 h | 4.9 h | 15.6 h | 9.2 h | 1.8 h |
+| M5StickS3, `SLEEP_CONN` on | 250 mAh | 59 h | 4.9 h | 15.6 h | 9.2 h | 1.8 h |
+| M5StickS3, default `SLEEP_CONN` off | 250 mAh | 4.9 h | 2.5 h | 4.0 h | 4.0 h | 1.8 h |
 | CoreS3 | 500 mAh | 118 h | 9.7 h | 31.2 h | 18.5 h | 3.5 h |
 | T-Deck Plus | 2000 mAh | 472 h | 39.0 h | 125 h | 73.9 h | 14.0 h |
 | T-Watch Ultra | 1100 mAh | 260 h | 21.4 h | 68.8 h | 46.2 h | 8.5 h |
@@ -181,12 +185,14 @@ The catalog has the full table. Representative results, with a 0.85 derating:
 | T-Beam Supreme | 3400 mAh | 803 h | 66.3 h | 213 h | 190 h | 32.0 h |
 | T-Echo Plus, e-paper, nRF52 | 2400 mAh | 816 h | 46.9 h | 160 h | 777 h | 46.4 h |
 
-The e-paper rows show the display effect. The nRF52 rows show how little the
-MCU matters once GNSS is on: the T-Echo Plus lasts twice as long as the
-ThinkNode M5, but it also has twice the cell. At equal capacity the two are
-within a few percent, because the 40 mA GNSS receiver dominates. The MCU
-matters in the screen-off, GNSS-off column, where the nRF52 is about 1.4 times
-the ESP32-S3. It never matches the factor that a larger cell gives.
+Scenario B has the screen off, so it does not show a display saving. The
+T-Echo Plus lasts twice as long as the ThinkNode M5 because it has twice the
+cell. At equal capacity the two are within a few percent, because the 40 mA
+GNSS receiver dominates. The display effect shows in D and E: at equal 2000
+mAh, the e-paper ThinkNode M5 would model at about 133 hours in D against 74
+hours for the LCD T-Deck Plus, and about 21 hours in E against 14 hours. The
+MCU effect shows in A, where the nRF52 is about 1.4 times the ESP32-S3. Neither
+matches the factor that a larger cell gives.
 
 ## 2. What the stack costs to port
 
@@ -276,8 +282,9 @@ library uses these features in production today:
 | LE Secure Connections, legacy pairing, passkey and numeric comparison | Fujifilm Secure, Canon, and companion pairing. | ESP32, Nordic, ST, Silabs, TI, NXP, Infineon, Ambiq, Alif. |
 | Bonding and bond persistence | Saved cameras reconnect without re-pairing. | Same. The store differs per stack. |
 | Nine concurrent links | Multi-connect across cameras. | ESP32 NimBLE is configured for 9. Nordic and ST controller limits must be measured. Pico BTstack is lower. |
-| 2M PHY | DJI Osmo sets a 517 byte MTU. Throughput and latency for the other vendors benefit. | ESP32-S3 and newer, Nordic, ST, Silabs, TI, NXP, Infineon, Ambiq, Alif. The original ESP32 does not have 2M PHY. |
-| Extended advertising and scanning | NimBLE is configured for it, and some cameras use extended advertisements. | BLE 5 parts. Pico BTstack does not support it. |
+| 2M PHY | Optional. DJI Osmo sets a 517 byte MTU, which works over 1M. 2M improves throughput and latency. | ESP32-S3 and newer, Nordic, ST, Silabs, TI, NXP, Infineon, Ambiq, Alif. The original ESP32 has no 2M PHY. |
+| Extended scanning | NimBLE is configured with `CONFIG_BT_NIMBLE_EXT_SCAN`. The scan path must handle extended reports. | BLE 5 parts. Controllers without extended scanning can still work if the cameras advertise legacy, but that must be tested. |
+| Extended advertising | Not used. `CONFIG_BT_NIMBLE_EXT_ADV` is disabled. A target without it is acceptable. | Any BLE 5 part. The Pico 2 W CYW43439 controller firmware lacks it and that is not a blocker. |
 | Connection parameter control | Fast connect, then a slow idle interval for power. | Most stacks. The API is not uniform. |
 | Notification and indication | Camera state and companion responses. | All. |
 | Privacy and resolvable addresses | Some cameras rotate addresses. | Most BLE 5 parts. The host must persist the identity key. |
@@ -389,7 +396,7 @@ fails.
 | Alif Balletto B1 | M55 160 MHz | BLE 5.x | 2 MB | 1.8 MB | yes | Alif stack | Alif SDK, Zephyr | S2 | Big memory and NPU. Complex boot and security tooling. |
 | Alif Ensemble E1C | M55 160 MHz | no radio | 2 MB | 1.86 MB | yes | none | Alif SDK, Zephyr | S3 | Not a BLE part. Needs a companion. |
 | RP2040 plus CYW43439 | 2x M0+ 133 MHz | BLE 5.2, WiFi 4 | 264 KB | 2 MB | yes | BTstack | Pico SDK | S3 | Too little RAM and a BTstack rewrite. |
-| RP2350 plus CYW43439 | 2x M33 150 MHz | BLE 5.2, WiFi 4 | 520 KB | 4 MB | yes | BTstack | Pico SDK | S3 | Cheap and capable. BTstack lacks extended advertising. |
+| RP2350 plus CYW43439 | 2x M33 150 MHz | BLE 5.2, WiFi 4 | 520 KB | 4 MB | yes | BTstack | Pico SDK | S3 | Cheap and capable. The CYW43439 controller firmware lacks extended advertising, which furble does not use. The cost is the BTstack rewrite. |
 
 ### 3.6 Long tail
 
@@ -421,26 +428,26 @@ These are real parts, but one hard limit each makes them a poor furble target.
 - Nordic's advantage is the idle floor, not the feature set. The nRF54LM20A
   can hold a headless furble. It cannot hold the current UI, WiFi, MQTT, and
   dual OTA.
-- Everything else needs a binary radio stack, a vendor IDE, and a new test
-  harness. That is a second project.
+- Everything else needs a vendor SDK, a binary radio stack like the ESP32 has,
+  and a new test harness. That is a second project.
 
 ## 4. Toolchains and existing software
 
 ### 4.1 Toolchain comparison
 
-| Family | SDK | RTOS | BLE host | Central and GATT client | OTA | Display | Power | Flashing | Open build | CI fit |
+| Family | SDK | RTOS | BLE host | Central and GATT client | OTA | Display | Power | Flashing | Pinned build | CI fit |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| ESP32 | ESP-IDF 5.x | FreeRTOS | NimBLE or Bluedroid | yes | `esp_ota` | LVGL, M5GFX | `esp_pm` | esptool, web installer | yes | Best. PlatformIO plus host tests. |
-| Nordic | nRF Connect SDK | Zephyr | Zephyr host plus SoftDevice Controller | yes | MCUboot | LVGL module | Zephyr PM | nrfutil, UF2 on some boards | mostly, controller binary | Good. West plus twister. |
-| ST | STM32CubeWB or WBA | FreeRTOS | ST binary stack | yes | MCUboot or SBSFU | TouchGFX, LVGL | STM32 low power | CubeProgrammer | no, radio binary | Fair. |
-| Silicon Labs | Gecko SDK | FreeRTOS | Silabs binary stack | yes | Gecko Bootloader | LVGL | EM2 and EM4 | Simplicity Commander | no | Fair. |
-| TI | SimpleLink SDK | FreeRTOS | TI binary stack | yes | OAD | LVGL | power driver | UniFlash | no | Fair. |
-| NXP | MCUXpresso | FreeRTOS or Zephyr | NXP NBU | yes | MCUboot | LVGL | power driver | ISP, J-Link | partly | Fair. |
-| Infineon | ModusToolbox | FreeRTOS | Infineon binary stack | yes | DFU | LVGL | power modes | KitProg | no | Fair. |
-| Renesas | FSP | FreeRTOS or ThreadX | Renesas binary stack | yes | bootloader | LVGL | low power | e2 studio | no | Weak. |
-| Ambiq | AmbiqSuite | FreeRTOS | Ambiq binary stack | yes | secure OTA | LVGL, MIPI DSI | SPOT | J-Link | no | Weak. |
+| ESP32 | ESP-IDF 5.x | FreeRTOS | NimBLE or Bluedroid | yes | `esp_ota` | LVGL, M5GFX | `esp_pm` | esptool, web installer | yes, controller binary | Best. PlatformIO plus host tests. |
+| Nordic | nRF Connect SDK | Zephyr | Zephyr host plus SoftDevice Controller | yes | MCUboot | LVGL module | Zephyr PM | nrfutil, UF2 on some boards | yes, controller binary | Good. West plus twister. |
+| ST | STM32CubeWB or WBA | FreeRTOS | ST binary stack | yes | MCUboot or SBSFU | TouchGFX, LVGL | STM32 low power | CubeProgrammer | yes, stack binary | Fair. |
+| Silicon Labs | Gecko SDK | FreeRTOS | Silabs binary stack | yes | Gecko Bootloader | LVGL | EM2 and EM4 | Simplicity Commander | yes, stack binary | Fair. |
+| TI | SimpleLink SDK | FreeRTOS | TI binary stack | yes | OAD | LVGL | power driver | UniFlash | yes, stack binary | Fair. |
+| NXP | MCUXpresso | FreeRTOS or Zephyr | NXP NBU | yes | MCUboot | LVGL | power driver | ISP, J-Link | partly, NBU binary | Fair. |
+| Infineon | ModusToolbox | FreeRTOS | Infineon binary stack | yes | DFU | LVGL | power modes | KitProg | yes, stack binary | Fair. |
+| Renesas | FSP | FreeRTOS or ThreadX | Renesas binary stack | yes | bootloader | LVGL | low power | e2 studio | yes, stack binary | Weak. |
+| Ambiq | AmbiqSuite | FreeRTOS | Ambiq binary stack | yes | secure OTA | LVGL, MIPI DSI | SPOT | J-Link | yes, stack binary | Weak. |
 | Alif | Alif SDK | Zephyr | Alif stack | yes | MCUboot | LVGL, MIPI DSI | PM | SETOOLS | partly | Weak. |
-| Raspberry Pi | Pico SDK | FreeRTOS optional | BTstack | yes | UF2, no A/B | LVGL | sleep modes | BOOTSEL | yes | Good, but BTstack limits. |
+| Raspberry Pi | Pico SDK | FreeRTOS optional | BTstack | yes | UF2, no A/B | LVGL | sleep modes | BOOTSEL | yes | Good, but the BTstack rewrite is the limit. |
 | Linux | BlueZ | Linux | BlueZ | yes | A/B | LVGL DRM | kernel PM | dd or image | yes | Good, but power is wrong. |
 
 ### 4.2 What furble would reuse
@@ -465,18 +472,18 @@ the simulator can still test the state machine.
 
 ### 4.3 Licensing and reproducibility
 
-- ESP-IDF and NimBLE are open source and reproducible with a pinned toolchain.
-  The repo already pins PlatformIO and the framework and records build
-  provenance.
-- Nordic's Zephyr and nRF Connect SDK are open, but the SoftDevice Controller
-  is a binary blob. The build can be reproduced, the radio firmware cannot be
-  rebuilt.
-- ST, Silabs, TI, NXP, Infineon, Renesas, Ambiq and Alif all ship a binary radio
-  image. That does not block a hobby project. It does block the current
-  reproducibility claim for the radio.
-- A port that cannot produce an open, pinned, reproducible image should not be
-  presented as a drop-in replacement for the current release process. Plan 127
-  already requires a pinned west manifest and toolchain digest.
+- ESP-IDF ships an open NimBLE host and a binary Bluetooth controller and PHY.
+  The application image is reproducible with pinned binary inputs. The radio
+  firmware cannot be rebuilt from source either. NimBLE is the host, not the
+  whole radio implementation.
+- Nordic's Zephyr and nRF Connect SDK follow the same model: the application
+  image is reproducible, the SoftDevice Controller is a pinned binary.
+- ST, Silabs, TI, NXP, Infineon, Renesas, Ambiq and Alif also ship a binary
+  radio image. That is not a new disadvantage relative to ESP-IDF. The
+  differences are licensing, tooling, and CI integration.
+- A port should still pin every binary input and record its digest. Plan 127
+  already requires a pinned west manifest and toolchain digest. The claim is a
+  reproducible application image, not a rebuildable radio.
 
 ## 5. Battery model in detail
 
@@ -494,8 +501,11 @@ Assumptions:
 - The display is 41 mA for a 2.8 inch IPS at default brightness, 10 to 30 mA
   for the smaller panels, 0 for e-paper, and 80 to 200 mA for the 4 to 5 inch
   panels.
-- GNSS is 40 mA continuous for the AT6668 and L76K class, 30 mA for an M10,
-  and 60 to 80 mA for an L1/L5 part. The model uses 40 mA unless stated.
+- GNSS is a generic 40 mA continuous load in every runtime row, including M10
+  devices. The AT6668 and L76K are about 32 to 41 mA at the module, so this is
+  representative. The M10 is 25 to 37 mW, about 8 to 12 mA at 3 V, so its rows
+  are conservative. An L1/L5 part at 60 to 80 mA would reduce its rows. The
+  receiver table in the catalog uses datasheet figures, not this generic load.
 - WiFi is 100 mA when active and 0 when off. MQTT is a duty-cycled burst, not a
   continuous load.
 - The 0.85 factor is a planning derating, not a measurement.
@@ -605,7 +615,8 @@ The UI is not a thin layer. It is the largest single file in the project.
 
 | Device | Display | Input | UI tier | Work |
 | :--- | :--- | :--- | :--- | :--- |
-| M5StickC, Plus, S3, Core2, CoreS3 | 320x240 or 240x135 | buttons, touch | U0 | None. Current UI. |
+| M5StickC, Plus, S3, Core2 | 320x240 or 240x135 | buttons, touch | U0 | None. Current UI. |
+| M5Stack CoreS3 | 320x240 | touch, buttons | U1 | M5Unified knows the panel, but furble has no CoreS3 input callbacks or battery backend. Add the board profile plus input and power integration. |
 | M5Stack Dial v1.1 | 240x240 round | touch, encoder | U2 | Round safe area, encoder mapping, new panel driver. |
 | Waveshare AMOLED 1.75-G | 466x466 round | touch, one button | U2 | Round safe area, QSPI panel, CST9217 touch. |
 | LilyGO T-Watch Ultra | 410x502 | touch, one button | U2 | Small-screen layout, watch gestures, AMOLED driver. |
@@ -694,21 +705,26 @@ so the HAL extraction is a real refactor, not a compile switch.
 The device firmware and the GATT protocol already accept a companion fix. The
 gap is in the app experience.
 
-- Put the phone GPS toggle on the session screen, not only in settings. Show
-  the last fix age and accuracy next to it.
-- Keep sending while the camera session is active. On Android the foreground
-  service already exists. On iOS the current provider asks for when-in-use
-  permission and stops when the app is backgrounded. A shooting session needs
-  always permission and the location background mode.
+- Both apps already put the phone GPS toggle on the session screen. Showing
+  the last fix age and accuracy next to it is still open.
+- Keep sending while the camera session is active. Android has no foreground
+  location service today: `CompanionPresenceService` is a system-bound
+  presence callback and explicitly never becomes a foreground service.
+  Continuous background delivery needs a service with
+  `foregroundServiceType="location"`, the matching permissions, a notification,
+  and validation. iOS now declares the `location` background mode and sets
+  `allowsBackgroundLocationUpdates` while the toggle is on. When In Use
+  authorization is enough for a user-started session; Always is not required.
 - Request precise location on Android 12 and newer. Approximate location is not
   good enough for geotagging.
-- Show whether the device is using the receiver or the phone. The firmware
-  already reports `gps_source`; the app can display it.
+- Both apps show whether the device is using the receiver or the phone. Android
+  already did. iOS was updated in this PR to show `Receiver`, `Phone`, or
+  `No fix` from `gps_source`.
 - Add a "send one fix now" action for a user who is indoors and wants a single
   geotag without waiting for the receiver.
 
-None of this needs a new characteristic. It is UI work in the two companion
-apps and one iOS permission change.
+None of this needs a new characteristic. It is UI and lifecycle work in the
+two companion apps, not a firmware change.
 
 ## 8. Hardware shortlist by pain point
 
@@ -722,7 +738,7 @@ The full catalog is in `docs/hardware-catalog.md`. This is the short version.
 | Best battery, e-paper | Elecrow ThinkNode M5 | 23 hours of continuous GNSS, 75 hours at 25 percent duty. |
 | Best battery, all features | T-Deck Plus with a 2000 mAh cell | 39 hours of continuous GNSS, 125 hours at 25 percent duty. |
 | Best zero port | Core2 plus Unit GPS plus battery module | Works today. Touch, 1890 mAh with the module, no new code. |
-| Best urban accuracy | T-Beam Supreme M10S or a NEO-F10N board | L1/L5 multipath rejection. Costs power and a new driver. |
+| Best urban accuracy | NEO-F10N or another L1/L5 board | L1/L5 multipath rejection. The MAX-M10S trim is L1-only and does not qualify. Costs power and a new driver. |
 | Best headless sidecar if a port is required | nRF54LM20A with an L76K or M10 | 2 mA idle, 2 MB NVM, 512 KB RAM, Zephyr. Still a 4 to 6 month port. |
 | Best large screen | T-Display P4 or Tab5 plus GPS | ESP32-P4 plus C6, 4 to 5 inch touch, L76K or Grove GPS. |
 
@@ -734,9 +750,10 @@ The full catalog is in `docs/hardware-catalog.md`. This is the short version.
    antenna. Measure the fix rate indoors and in the camera bag.
 2. Enable `GPS_ASSIST` with position and time, then with ephemeris. Measure the
    TTFF on the current board.
-3. Use the companion location path while shooting. Confirm both apps send
-   location and that the device reports `gps_source` as companion when the UART
-   has no fix.
+3. Use the companion location path while shooting. The iOS background mode is
+   part of this PR. Confirm both apps send location and that the device reports
+   `gps_source` as companion when the UART has no fix. Android background
+   delivery still needs its foreground location service.
 4. Measure the current draw of the current board in the four states that
    matter: screen on, screen off connected, GNSS on, and GNSS standby. The repo
    numbers are a model, not a bench measurement.
@@ -796,7 +813,7 @@ Before any port PR, measure on the target board:
 
 ### BLE
 
-- Nine concurrent links, 2M PHY, 247 and 517 byte MTU.
+- Nine concurrent links, 247 and 517 byte MTU, and 2M PHY where available.
 - Passkey and numeric comparison on every vendor that needs it.
 - Bonding, rebonding, stale bond recovery, and reconnect backoff.
 - Scan while connected, connect while scanning, and cancel during a connect.
@@ -826,8 +843,8 @@ Before any port PR, measure on the target board:
 - Which GNSS chip is in the ThinkNode M9, and does it answer `$PCAS`?
 - Does the Waveshare LC76G answer any `$PCAS` command, or is it pure NMEA?
 - Does the T-Beam Supreme L76K trim stay available in the EU?
-- How reliable is the companion location path in the field, and does it keep
-  sending in the background on both platforms?
+- How reliable is the companion location path in the field, and can Android
+  deliver it in the background without a dedicated foreground location service?
 - What is the real cold-start current profile of the AT6668 and L76K on a
   3.7 V rail, including the 5 V boost loss?
 
@@ -889,7 +906,7 @@ GNSS:
 
 ## Implementation state
 
-Documentation only.
+Research plus a small companion app quick win. No firmware source changed.
 
 - Added `docs/hardware-catalog.md` with the buyable hardware, the receiver
   classes, and the first-order runtime estimates.
@@ -900,3 +917,42 @@ Documentation only.
   runtime number is a model estimate, not a bench result.
 - Prices were checked on 2026-11-01 and are vendor list prices, not offers.
 - The next step is measurement on the current board, not a port.
+
+### Quick win implemented in this PR
+
+- iOS companion: the app now declares the `location` background mode, sets
+  `allowsBackgroundLocationUpdates` and the system indicator while phone GPS is
+  enabled, and keeps stationary updates flowing with
+  `pausesLocationUpdatesAutomatically = false`.
+- iOS companion: the status row now distinguishes a wired receiver fix from a
+  phone fix instead of showing a generic "Available".
+- `docs/companion.md` and the wiki Getting Started page document the phone
+  location source, the `gps_source` values, and the remaining Android
+  background gap.
+- `tests/test_companion_location_contract.py` guards the plist, the provider
+  flags, the status labels, the Android precise location permission, and the
+  reference docs.
+- Android already has the phone GPS toggle and the GPS source display. It still
+  has no foreground location service, so continuous background delivery
+  remains open.
+
+### Review corrections
+
+- AT6668: the missing piece is the backup rail, not standby or assistance. The
+  firmware can send `$PCAS12` standby and CASIC aiding with the ephemeris cache.
+- ThinkNode M3: the receiver is an ATGM336H, not an LR1110. The M4 receiver
+  remains unnamed.
+- CoreS3: M5Unified recognition is not a furble port. The board needs input
+  callbacks and a battery backend before it can claim zero-port.
+- Runtime estimates: the ESP32-S3 rows assume `SLEEP_CONN` on, and the default
+  StickS3 row is now shown separately. The display comparison is made at equal
+  capacity in screen-on scenarios, not in the screen-off sidecar scenario.
+- Bangle.js 2 was added as a real `$PCAS` watch with an AT6558 and a touchscreen.
+- 2M PHY is optional, extended scanning is used, and extended advertising is
+  not. The Pico 2 W limitation is the CYW43439 controller firmware, not BTstack
+  in general.
+- ESP-IDF also ships a binary Bluetooth controller and PHY. The reproducible
+  claim is about the application image with pinned binary inputs, not a
+  rebuildable radio.
+- The runtime model uses a generic 40 mA GNSS load. M10 rows are conservative.
+- The MAX-M10S is L1-only and cannot satisfy the L1/L5 urban accuracy row.

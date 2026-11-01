@@ -102,9 +102,12 @@ reads the expanded group from its platform Info.plist and passes it to the
 Keychain store. No signing identity, certificate, or provisioning profile is
 checked in.
 
-The iOS target must declare `bluetooth-central` background mode. Location
-background tracking is opt-in and must not be enabled merely by pairing. The
-privacy manifest and usage strings explain the purpose of every protected API.
+The iOS target must declare `bluetooth-central` and `location` background
+modes. Location background tracking is opt-in and must not be enabled merely
+by pairing. When the phone GPS toggle is on, the provider sets
+`allowsBackgroundLocationUpdates` and iOS shows the system location indicator.
+When In Use authorization is enough for a user-started session. The privacy
+manifest and usage strings explain the purpose of every protected API.
 
 ## Physical gates
 

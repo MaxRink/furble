@@ -83,7 +83,7 @@ Assistance and backup power decide how long it takes.
 
 | Receiver | Bands | Sensitivity | TTFF | Current | Backup or standby | Assistance | furble class | Verdict |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| AT6668, M5 Unit GPS v1.1 | L1 | -162 dBm tracking, -148 dBm cold | cold about 108 s without backup in the field reports | 31.64 mA at 5 V | none | none | `$PCAS` | The current baseline. Fine outdoors, weak indoors, slow after a rail cut. |
+| AT6668, M5 Unit GPS v1.1 | L1 | -162 dBm tracking, -148 dBm cold | cold about 108 s without backup in the field reports | 31.64 mA at 5 V | no backup rail; firmware can send `$PCAS12` timed standby | CASIC aiding and ephemeris cache when `GPS_ASSIST` is on | `$PCAS` | The current baseline. Fine outdoors, weak indoors, slow after a rail cut. The lack of a backup rail is the hardware gap, not a lack of standby or assistance support. |
 | Quectel L76K | L1 | -162 dBm tracking, -148 dBm cold | 30 s cold, 5.5 s hot | 41 mA tracking, 360 uA standby | standby rail | vendor AGPS | `$PCAS` | Same sensitivity as the AT6668, but real standby and a rail switch. The ThinkNode M5 and T-Beam L76K trim use it. |
 | u-blox MIA-M10Q | L1, four GNSS | -167 dBm tracking, -148 dBm cold | 27 s cold, 1 s hot, 1 s AssistNow | 25 mW, about 8 to 12 mA at 3 V | 28 to 32 uA backup, 46 uA software standby | AssistNow Online, Offline, Autonomous | UBX | The best all-round upgrade. Lower power, better sensitivity, one second hot or aided fix, real backup. |
 | u-blox MAX-M10S | L1, four GNSS | -167 dBm tracking, -148 dBm cold | 27 s cold, 1 s hot, 1 s AssistNow | 25 mW | same as M10 | AssistNow | UBX | Same silicon as the MIA-M10Q in a larger module. The T-Beam M10S trim uses it. |
@@ -91,7 +91,7 @@ Assistance and backup power decide how long it takes.
 | Unicore UC6580 | L1 and L5 | vendor figures, verify | vendor figures, verify | vendor figures, verify | vendor figures, verify | vendor dependent | `$CFG` | Dual band on the Heltec Wireless Tracker V2. Needs a new driver and more power. |
 | Quectel LC76G | L1 | vendor figures, verify | vendor figures, verify | vendor figures, verify | vendor dependent | vendor dependent | other | Used on the Waveshare AMOLED 1.75-G. Verify the command set before assuming reuse. |
 | MediaTek AG3335 | L1 | vendor figures, verify | vendor figures, verify | vendor figures, verify | vendor dependent | vendor dependent | other | Used on the SenseCAP T1000-E. A new driver. |
-| Semtech LR1110 GNSS | L1 | vendor figures, verify | vendor figures, verify | vendor figures, verify | vendor dependent | WiFi scan positioning | other | Used on the Wio Tracker 1110 and ThinkNode M3 and M4. The WiFi scan is more interesting than the GNSS. |
+| Semtech LR1110 GNSS | L1 | vendor figures, verify | vendor figures, verify | vendor figures, verify | vendor dependent | WiFi scan positioning | other | Used on the Wio Tracker 1110. The ThinkNode M3 uses an ATGM336H. The ThinkNode M4 receiver is unnamed. The WiFi scan is more interesting than the GNSS. |
 
 Three conclusions from this table.
 
@@ -105,7 +105,8 @@ Three conclusions from this table.
 
 ## Ready-to-use devices
 
-These have a case, a battery, a display and an onboard GNSS receiver.
+These have a case, a battery and a display. The GNSS receiver is onboard or on
+a short Grove cable.
 
 | Device | MCU | GNSS | Display and touch | WiFi | Battery | Price | Tier | Notes |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -118,16 +119,18 @@ These have a case, a battery, a display and an onboard GNSS receiver.
 | Elecrow ThinkNode M9 | ESP32-S3R8, 16 MB, 8 MB PSRAM | Multi-constellation, chip unnamed | 2.4 inch 240x320 TFT, no touch, 37 keys | yes | 2300 mAh | 74.90 USD [6] | T1 | Keyboard terminal. Touch is absent by specification. |
 | Elecrow ThinkNode M1 | nRF52840, 1 MB, 256 KB RAM | L76K, `$PCAS` | 1.54 inch e-paper, no touch, rotary knob | no | 1200 mAh | 53.90 USD [6] | T2 | Low power, but a Nordic rewrite. |
 | LilyGO T-Echo Plus | nRF52840, 1 MB internal, 256 KB RAM. Vendor lists 2 MB. | L76K, `$PCAS` | 1.54 inch e-paper, no touch | no | 2400 mAh | 64.22 USD [7] | T2 | Clip and tripod mount. Good camera-bag shape. |
+| Bangle.js 2 | nRF52840, 1 MB internal plus 8 MB external, 256 KB RAM | AT6558 or AT6558R, `$PCAS` | 1.3 inch 176x176 always-on LCD, touch | no | 175 mAh | 99.60 GBP [44] | T2 | IP67 watch with a full touchscreen and a `$PCAS` receiver. The 175 mAh cell limits continuous GNSS to about 6 hours. |
 | Seeed Wio Tracker L1 Pro | nRF52840, 1 MB, 256 KB RAM | L76K, `$PCAS` | 1.3 inch 128x64 OLED, no touch, joystick | no | 2000 mAh | 47.90 USD [8] | T2 | The cheapest complete BLE plus GPS plus display device. |
 | RAK WisMesh Pocket V2 and V3 | nRF52840, 1 MB, 256 KB RAM | Onboard GNSS, module not published | 1.3 inch OLED, no touch | no | 3200 mAh | 77.97 USD V2, 84.97 USD V3 [9] | T2 | V3 adds an IP67 case and a buzzer. |
-| M5Stack CoreS3 plus Unit GPS v1.1 | ESP32-S3, 16 MB, 8 MB PSRAM | AT6668, `$PCAS` | 2.0 inch 320x240 IPS, touch | yes | 500 mAh internal | 59.90 USD plus 9.95 USD [10] | T0 | M5Unified already knows the board. GPS arrives on Grove Port A. |
+| M5Stack CoreS3 plus Unit GPS v1.1 | ESP32-S3, 16 MB, 8 MB PSRAM | AT6668, `$PCAS` | 2.0 inch 320x240 IPS, touch | yes | 500 mAh internal | 59.90 USD plus 9.95 USD [10] | T1 | M5Unified knows the panel, but furble has no CoreS3 input callbacks and no CoreS3 battery backend. Needs a board profile plus input and power integration. |
 | M5Stack Core2 plus Unit GPS plus Battery Module 13.2 | ESP32, 16 MB | AT6668, `$PCAS` | 2.0 inch 320x240 IPS, touch | yes | internal plus 1500 mAh module | 49.90 plus 9.95 plus 11.90 USD [10] | T0 | This stack works today. It is the zero-port reference. |
 | M5Stack Tab5 plus Unit GPS | ESP32-P4 plus ESP32-C6, 16 MB, 32 MB PSRAM | AT6668, `$PCAS` | 5 inch 1280x720 IPS, touch | WiFi 6 through C6 | NP-F550, 2000 mAh | 55 to 60 USD plus 9.95 USD [11] | T1P | Big and heavy. The P4 path needs ESP-Hosted and two images to update. |
 
 ## Bare boards with onboard GNSS
 
-These need a case, a battery, or both. Several are still the right buy for a
-bench prototype.
+These need a case, a battery, or both. Some have the GNSS receiver onboard;
+some use a short Grove, FeatherWing, or UART connection. Several are still the
+right buy for a bench prototype.
 
 | Device | MCU | GNSS | Display and touch | WiFi | Battery | Price | Tier | Notes |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -156,7 +159,7 @@ vendor sells off the shelf.
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | Seeed XIAO ESP32S3 plus L76K module | ESP32-S3 | L76K, `$PCAS` | none, add the 1.28 inch round display | yes | board plus 10.90 USD module, about 18 to 21 USD [24] | T1 | Cheapest `$PCAS` path. No case. |
 | Seeed XIAO nRF52840 plus L76K module | nRF52840 | L76K, `$PCAS` | none | no | about 21 USD [24] | T2 | Same shape, Nordic rewrite. |
-| Raspberry Pi Pico 2 W plus GNSS plus SPI display | RP2350 | NMEA module | add | yes | 7 USD plus parts [25] | T3 | BTstack, not NimBLE. BLE central works, extended advertising does not. |
+| Raspberry Pi Pico 2 W plus GNSS plus SPI display | RP2350 | NMEA module | add | yes | 7 USD plus parts [25] | T3 | BTstack, not NimBLE. The CYW43439 controller firmware lacks extended advertising, which furble does not use. The cost is the BTstack rewrite. |
 | Waveshare ESP32-P4-WIFI6-Touch-LCD plus GPS module | ESP32-P4 plus C6 | L76K or AT6668 over UART | 3.4 to 10.1 inch, touch | WiFi 6 through C6 | see vendor [26] | T1P | Big HMI. Same P4 transport work as the Tab5. |
 | Elecrow CrowPanel Advance plus GPS module | ESP32-S3 | module over UART | 2.4 to 7 inch, touch | yes | see vendor [27] | T1 | HMI panel, not a handheld. Needs a battery and a case. |
 
@@ -179,17 +182,18 @@ a 2000 mAh cell.
 
 | Scenario | What is on |
 | :--- | :--- |
-| A | Screen off, BLE connected, GNSS off |
+| A | Screen off, BLE connected, GNSS off, `SLEEP_CONN` on |
 | B | Screen off, BLE connected, GNSS continuous |
 | C | Screen off, BLE connected, GNSS 25 percent duty |
 | D | Screen on 25 percent of the time, BLE connected, GNSS off |
 | E | Screen on, BLE connected, GNSS continuous |
 
-Hours, after the 0.85 derating.
+Hours, after the 0.85 derating. The ESP32-S3 rows assume `SLEEP_CONN` on. It defaults off. The default StickS3 row shows the difference. All rows use a generic 40 mA GNSS load, including M10 devices, so the M10 rows are conservative.
 
 | Device | Battery | A | B | C | D | E |
 | :--- | :--- | ---: | ---: | ---: | ---: | ---: |
-| M5StickS3, current reference | 250 mAh | 59 | 4.9 | 15.6 | 9.2 | 1.8 |
+| M5StickS3, `SLEEP_CONN` on | 250 mAh | 59 | 4.9 | 15.6 | 9.2 | 1.8 |
+| M5StickS3, default `SLEEP_CONN` off | 250 mAh | 4.9 | 2.5 | 4.0 | 4.0 | 1.8 |
 | M5Stack CoreS3 | 500 mAh | 118 | 9.7 | 31.2 | 18.5 | 3.5 |
 | M5Stack Core2 plus 1500 mAh module | 1890 mAh | 114 | 28.1 | 64.6 | 52.0 | 12.9 |
 | LilyGO T-Deck Plus | 2000 mAh | 472 | 39.0 | 125 | 73.9 | 14.0 |
@@ -214,10 +218,12 @@ How to read the table.
 
 - The battery dominates everything. The jump from the 250 mAh StickS3 to the
   2000 mAh T-Deck Plus is eight times the runtime before any software change.
-- The display is the second lever. A screen-on ESP32-S3 burns about 81 mA. An
-  e-paper board burns the MCU alone. That is the difference between a 39 hour
-  sidecar and a 28 hour sidecar with the same cell, and between 14 hours and
-  15 hours of continuous navigation.
+- The display is the second lever in the screen-on scenarios. Scenario B has
+  the screen off, so it cannot show a display saving. The T-Deck Plus at 39
+  hours and the T-Deck Pro at 28 hours differ by the cell ratio, 2000 versus
+  1450 mAh. At equal capacity, the e-paper Pro would model at about 131 hours
+  in scenario D against 74 hours for the LCD Plus, and about 21 hours in
+  scenario E against 14 hours. That is the display saving.
 - GNSS is the third lever. Continuous GNSS adds about 40 mA. Cutting it to 25
   percent duty roughly triples sidecar runtime. The L76K standby and the M10
   backup are what make this usable without a 30 second cold start each time.
@@ -247,7 +253,7 @@ before a board exists.
 | FRDM-MCXW71 | MCX W71 | 128 KB RAM, 1 MB flash | see NXP [33] | 128 KB RAM rules out anything close to the current stack. |
 | Apollo4 Blue Plus EVB | Apollo4 Blue Plus | 2.75 MB RAM, 2 MB NVM | 249.99 USD [34] | MIPI DSI and a 2.5D GPU. The most interesting display SoC outside ESP32. |
 | Alif Balletto B1 DK or SK-B1 | B1 | 1.8 MB MRAM, 2 MB SRAM | 151 USD DK, 51 USD StartKit [35] | Zephyr board and BLE 5.x. The Ensemble E1C has no radio, so it is not a furble target without a companion. |
-| Raspberry Pi Pico 2 W | RP2350 plus CYW43439 | 520 KB SRAM, 4 MB flash | 7 USD [25] | BTstack rewrite. Cheap experiment, not a product path. |
+| Raspberry Pi Pico 2 W | RP2350 plus CYW43439 | 520 KB SRAM, 4 MB flash | 7 USD [25] | BTstack rewrite. The CYW43439 controller firmware lacks extended advertising, which furble does not use. Cheap experiment, not a product path. |
 | Seeed XIAO nRF54L15 | nRF54L15 | 256 KB RAM, 1.5 MB NVM | 9.90 USD [36] | Tiny nRF54 experiment board. |
 | Raspberry Pi Zero 2 W | BCM2710 plus CYW43438 | 512 MB RAM, microSD | see Raspberry Pi | Linux and BlueZ. It meets every hardware requirement and none of the power ones. |
 
@@ -263,7 +269,7 @@ These are common suggestions that fail a requirement.
 | Waveshare ESP32-P4-WIFI6 boards without a GPS module | No onboard GNSS. Add one over UART. |
 | Elecrow CrowPanel | No onboard GNSS. Add one over UART. |
 | LilyGO T-Watch S3, non-Plus | No GNSS. The Plus adds it. |
-| PineTime, Bangle.js 2, Watchy | No GNSS, and in some cases no BLE central role. |
+| PineTime, Watchy | No GNSS, and in some cases no BLE central role. |
 | Particle Tracker One | nRF52840, GNSS and LTE, no display, about 240 USD. Poor value for this use case. |
 | nRF52840 Dongle | USB stick. No display, no battery, no GPS. |
 
@@ -421,3 +427,6 @@ Fetched on 2026-11-01. Prices are from the vendor page unless marked.
     https://docs.m5stack.com/en/unit/Unit_GPS_v1.1
 43. furble power audit, S3 current model and display split:
     plans/98-power-optimization-audit.md and plans/07-ble-sleep.md
+44. Bangle.js 2 specifications, GPS and current figures:
+    https://www.espruino.com/Bangle.js2 and
+    https://shop.espruino.com/banglejs2
