@@ -13,8 +13,10 @@
 #include <NimBLEUtils.h>
 #include <esp_timer.h>
 
+#include "Device.h"
 #include "Ricoh.h"
 #include "protocol/AdvertisementProtocol.h"
+#include "protocol/RicohTime.h"
 
 namespace Furble {
 
@@ -24,6 +26,7 @@ const NimBLEUUID Ricoh::MODEL_CHR_UUID {0x35FE6272, 0x6AA5, 0x44D9, 0x88E1F09427
 const NimBLEUUID Ricoh::CAMERA_SVC_UUID {0x4B445988, 0xCAA0, 0x4DD3, 0x941D37B4F52ACA86};
 const NimBLEUUID Ricoh::POWER_CHR_UUID {0xB58CE84C, 0x0666, 0x4DE9, 0xBEC82D27B27B3211};
 const NimBLEUUID Ricoh::OPERATION_MODE_CHR_UUID {0x1452335A, 0xEC7F, 0x4877, 0xB8AB0F72E18BB295};
+const NimBLEUUID Ricoh::DATE_TIME_CHR_UUID {0xFA46BBDD, 0x8A8F, 0x4796, 0x8CF3AA58949B130A};
 const NimBLEUUID Ricoh::GEOTAG_ENABLE_CHR_UUID {0xA36AFDCF, 0x6B67, 0x4046, 0x9BE728FB67DBC071};
 
 const NimBLEUUID Ricoh::SHOOTING_SVC_UUID {0x9F00F387, 0x8345, 0x4BBC, 0x8B92B87B52E3091A};
@@ -233,6 +236,7 @@ bool Ricoh::_connect(void) {
   if (pSvc != nullptr) {
     m_Power = pSvc->getCharacteristic(POWER_CHR_UUID);
     m_OperationMode = pSvc->getCharacteristic(OPERATION_MODE_CHR_UUID);
+    m_DateTime = pSvc->getCharacteristic(DATE_TIME_CHR_UUID);
     m_GeotagEnable = pSvc->getCharacteristic(GEOTAG_ENABLE_CHR_UUID);
   } else {
     ESP_LOGW(LOG_TAG, "Ricoh Camera service unavailable");
@@ -270,6 +274,13 @@ bool Ricoh::_connect(void) {
   pSvc = m_Client->getService(BT_CONTROL_SVC_UUID);
   if (pSvc != nullptr) {
     m_PairedDeviceName = pSvc->getCharacteristic(PAIRED_DEVICE_NAME_CHR_UUID);
+    if (m_PairedDeviceName != nullptr && m_PairedDeviceName->canWrite()) {
+      const std::string name = Device::getStringID();
+      if (!gattWrite(m_PairedDeviceName, reinterpret_cast<const uint8_t *>(name.data()),
+                     name.size(), true)) {
+        ESP_LOGW(LOG_TAG, "Ricoh PairedDeviceName write failed");
+      }
+    }
   } else {
     ESP_LOGW(LOG_TAG, "Ricoh Bluetooth Control service unavailable");
   }
@@ -458,6 +469,24 @@ void Ricoh::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
   }
 
   const uint32_t nowMs = static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
+
+  // Clock sync. Furble has no RTC time at connect, so it writes when the first
+  // valid GPS time arrives and then once per minute. Layout is uint16 LE year,
+  // month, day, hour, minute, second.
+  if (m_DateTime != nullptr && m_DateTime->canWrite()
+      && (!m_HasClockWrite || static_cast<uint32_t>(nowMs - m_LastClockWriteMs) >= 60000)) {
+    const auto clock = RicohProtocol::encodeDateTime(
+        timesync.year, std::min(timesync.month, 255u), std::min(timesync.day, 255u),
+        std::min(timesync.hour, 255u), std::min(timesync.minute, 255u),
+        std::min(timesync.second, 255u));
+    if (gattWrite(m_DateTime, clock.data(), clock.size(), true)) {
+      m_LastClockWriteMs = nowMs;
+      m_HasClockWrite = true;
+    } else {
+      ESP_LOGW(LOG_TAG, "Ricoh clock write failed");
+    }
+  }
+
   const bool moved = !m_HasGpsWrite
                      || std::fabs(gps.latitude - m_LastGps.latitude) >= GPS_MIN_DELTA_DEG
                      || std::fabs(gps.longitude - m_LastGps.longitude) >= GPS_MIN_DELTA_DEG

@@ -402,6 +402,13 @@ target_include_directories(canon_time_test PRIVATE
 target_compile_options(canon_time_test PRIVATE -Wall -Wextra -Werror)
 add_test(NAME canon-time COMMAND canon_time_test)
 
+# Ricoh Date Time Zone is a fixed 7-byte packet with a little-endian year.
+add_executable(ricoh_time_test ricoh_time_test.cpp)
+target_include_directories(ricoh_time_test PRIVATE
+                           ${FURBLE_ROOT}/lib/furble)
+target_compile_options(ricoh_time_test PRIVATE -Wall -Wextra -Werror)
+add_test(NAME ricoh-time COMMAND ricoh_time_test)
+
 # The sleep gate test drives the production Ricoh shutter path against the
 # virtual peer in BLE standby. It protects the invariant that only a fresh
 # OperationMode read of CAPTURE authorizes the ShootingFlavor and

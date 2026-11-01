@@ -108,6 +108,7 @@ class Ricoh: public Camera {
   static const NimBLEUUID CAMERA_SVC_UUID;
   static const NimBLEUUID POWER_CHR_UUID;
   static const NimBLEUUID OPERATION_MODE_CHR_UUID;
+  static const NimBLEUUID DATE_TIME_CHR_UUID;
   // Camera Service GEO Tag enable. This is the location enable write.
   static const NimBLEUUID GEOTAG_ENABLE_CHR_UUID;
 
@@ -128,6 +129,7 @@ class Ricoh: public Camera {
 
   NimBLERemoteCharacteristic *m_Power = nullptr;
   NimBLERemoteCharacteristic *m_OperationMode = nullptr;
+  NimBLERemoteCharacteristic *m_DateTime = nullptr;
   NimBLERemoteCharacteristic *m_ShootingFlavor = nullptr;
   NimBLERemoteCharacteristic *m_OperationRequest = nullptr;
   NimBLERemoteCharacteristic *m_CaptureStatus = nullptr;
@@ -145,6 +147,8 @@ class Ricoh: public Camera {
 
   uint32_t m_LastGpsWriteMs = 0;
   bool m_HasGpsWrite = false;
+  uint32_t m_LastClockWriteMs = 0;
+  bool m_HasClockWrite = false;
   gps_t m_LastGps = {};
   timesync_t m_LastTimesync = {};
 

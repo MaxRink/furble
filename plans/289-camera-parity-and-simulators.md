@@ -25,6 +25,9 @@ Completed in this branch:
 - Canon Smart safe fix: the GPS timestamp uses `CanonProtocol::utcEpoch`, not
   `mktime`, so it no longer depends on the runtime timezone. `canon-time` pins
   the epoch and leap-day rules.
+- Ricoh safe fixes: connect writes the Paired Device Name. The Date Time Zone
+  packet is written on the first valid GPS time and once per minute. The
+  readback and the CAPTURE gate remain capture-gated.
 
 ## Evidence
 
@@ -47,8 +50,8 @@ Completed in this branch:
 ## Validation
 
 - `cmake --build` on the host harness: pass.
-- `ctest`: 123/123 pass, including `peer-contract`, `lumix-session`,
-  `canon-time`, and the Fujifilm protocol time vector.
+- `ctest`: 124/124 pass, including `peer-contract`, `lumix-session`,
+  `canon-time`, `ricoh-time`, and the Fujifilm protocol time vector.
 - `python3 -m unittest`: 192 tests pass.
 - `./sim/build/furble-sim --script sim/scenarios/e2e/ble-peer-topology-smoke.txt`:
   pass, asserts 9 peers.

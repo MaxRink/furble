@@ -127,8 +127,8 @@ and each needs a host or simulator regression test.
 | S5 | Send the Fujifilm `AAB609C4` location sync enable, not only the interval, and read it back once. | FJ-S40, FJ-S41 | `firmware-static` fujifilm.md C25; `app-static` XApp | The interval is written but the geotag feature may never be enabled on a body whose menu default is off. |
 | S6 | Make the Canon Smart GPS timestamp an absolute UTC epoch instead of `mktime` on the runtime timezone. | CN-S | `app-static` canon.md CS-34; `furble-source` CanonEOSSmart.cpp | Fixed. `CanonProtocol::utcEpoch` has no timezone input, and `canon-time` pins the epoch. |
 | S7 | Add the Sony GPS sequence: subscribe `DD01`, read `DD21` and choose 91 or 95 bytes, read `DD32` and `DD33`, fill UTC offset and DST, and release `DD30` and `DD31` when GPS stops. | SO | `app-static` sony.md C-20 to C-30, F-21, F-23 | The current write is a partial packet with no lock release, which leaves the camera locked to Furble. |
-| S8 | Add the Ricoh Date Time write on connect, gated on a fresh Operation Mode `CAPTURE` read, and read it back. | RC3, RC4 | `firmware-static` ricoh.md C-19 and CM-03; `app-static` Image Sync and GR WORLD | Clocks are the most visible parity gap on a camera Furble already drives well. |
-| S9 | Write the Ricoh Paired Device Name (`FE3A32F8`, UTF-8) after the first connect. | RC3, RC4 | `app-static` ricoh.md C-76 and CM-15 | The camera's paired-device list currently shows an unnamed entry. |
+| S8 | Add the Ricoh Date Time write on connect, gated on a fresh Operation Mode `CAPTURE` read, and read it back. | RC3, RC4 | `firmware-static` ricoh.md C-19 and CM-03; `app-static` Image Sync and GR WORLD | Applied on the first valid GPS time and then once per minute. The readback and the CAPTURE gate are still capture-gated. |
+| S9 | Write the Ricoh Paired Device Name (`FE3A32F8`, UTF-8) after the first connect. | RC3, RC4 | `app-static` ricoh.md C-76 and CM-15 | Fixed. Connect writes the controller name when the characteristic exists. |
 | S10 | Decode Ricoh Capture Status and use a `Capturing=1` then `0` transition as the shot-confirmation signal. | RC3, RC4 | `firmware-static` ricoh.md C-56; `public-source` field table | Removes the false shot-taken implication without adding a new command. |
 | S11 | Stop Nikon Smart at the BLE authentication result and report the Bluetooth Classic blocker. Do not wait for a final OK that is a time request. | NK-S | `app-static` nikon.md S20 and S22; `furble-source` NikonSmart.cpp | Turns a 10 s silent failure into a precise reason and removes a misleading success path. |
 | S12 | Gate the UI controls by family capability: hide bulb and focus on Ricoh, hide focus on LUMIX, and label Nikon Remote release as a no-op. | All | `firmware-static` and `app-static` rows cited in Table 1 | Stops the product promising an outcome the camera cannot produce. |
@@ -162,6 +162,7 @@ the closing artifact.
 | LUMIX focus mapping removed; Confirm/Start/Finish handshake added | applied | `lib/furble/Lumix.{h,cpp}`, host `lumix-session` |
 | Fujifilm client name NUL and 12-byte UTC time packet | applied | `lib/furble/Fujifilm.cpp`, `FujifilmBasic.cpp`, `FujifilmSecure.cpp`, protocol test |
 | Canon Smart GPS timestamp uses an absolute UTC epoch | applied | `lib/furble/protocol/CanonTime.h`, `canon-time` |
+| Ricoh paired-device name and GPS-time clock sync | applied | `lib/furble/Ricoh.{h,cpp}`, `lib/furble/protocol/RicohTime.h`, `ricoh-time`, `ricoh-focus` |
 
 The LUMIX fix sends Confirm `01`, waits up to two seconds for control readiness
 `00`, sends Start `02`, and sends Finish `03` on disconnect. Focus press and
@@ -336,7 +337,7 @@ behaviour has its own row.
 | M09 settings write | RC3, RC4 | Drive Mode, GEO Tag | ricoh CM-04, CM-18, F-25 | Drive Mode, geotag, focus, exposure | Drive Mode `0` and GEO Tag `1` only | `furble-source`; `firmware-static`; `app-static` | aligned |
 | M10 settings write | CN-S, SO, LX, DJI | per-class | canon CS-14; sony C-04 to C-13; panasonic C01, C02; dji C18 | Mode, Wi-Fi, identity, name, mode switch | Canon mode only; Sony missing; LUMIX identity and name; DJI missing | `furble-source`; `app-static` | capture-gated |
 | M11 paired-device name | FJ-S40, FJ-S41 | `85B9163E` | fujifilm C03 | Stored client name, optional NUL | `furble-` plus five hex, NUL terminated | `furble-source`; `app-static` | aligned |
-| M12 paired-device name | RC3, RC4 | read only | ricoh C-76, CM-15, F-30 | Stored paired name | Reads and logs. Never writes | `furble-source`; `app-static` | safe-fix-needed |
+| M12 paired-device name | RC3, RC4 | write | ricoh C-76, CM-15, F-30 | Stored paired name | Writes the controller name on connect | `furble-source`; `app-static` | aligned |
 | M13 paired-device name | CN-S, LX | write | canon CS-05; panasonic C02 | Stored client name | Canon before the result; LUMIX implemented | `furble-source`; `app-static` | capture-gated |
 | M14 paired-device name | SO, DJI, NK, CN-R | none | sony F-30; dji F-30; nikon §9.1 | No separate name write | Missing | `furble-source`; `public-source` | out-of-scope |
 | M15 pairing management | FJ-S40, FJ-S41 | status, ack, name, local delete | fujifilm F pairing | Count, reason, client name | No count read and no reason write. Local delete only | `furble-source`; `firmware-static`; `app-static` | safe-fix-needed |

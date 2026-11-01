@@ -27,6 +27,10 @@ int main() {
              "Ricoh focus regression reaches the connected production path")) {
     return 1;
   }
+  if (!check(peer.pairedDeviceName() == Furble::Device::getStringID(),
+             "Ricoh writes the paired-device name on connect")) {
+    return 1;
+  }
 
   peer.clearEvents();
   camera.focusPress();
