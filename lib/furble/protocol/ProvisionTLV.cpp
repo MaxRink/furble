@@ -69,6 +69,7 @@ constexpr SettingSchema SETTING_SCHEMAS[] = {
     {59,                         ValueType::STRING, 0,  MAX_MQTT_FIELD_BYTES        },
     {60,                         ValueType::STRING, 0,  MAX_MQTT_FIELD_BYTES        },
     {61,                         ValueType::BOOL,   1,  1                           },
+    {62,                         ValueType::BOOL,   1,  1                           },
     {66,                         ValueType::BOOL,   1,  1                           },
     {67,                         ValueType::U8,     1,  1                           },
     {68,                         ValueType::BOOL,   1,  1                           },

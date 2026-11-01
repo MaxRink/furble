@@ -297,6 +297,7 @@ void checkSettings(const std::string &root, const fs::path &golden) {
       {"IMU",               {46, FurbleProtocolTest::WireType::BOOL}},
       {"IMU_WAKE",          {72, FurbleProtocolTest::WireType::U8}  },
       {"IMU_TRIG",          {73, FurbleProtocolTest::WireType::BOOL}},
+      {"WEB_UI",            {62, FurbleProtocolTest::WireType::BOOL}},
       {"IVL_SLEEP",         {75, FurbleProtocolTest::WireType::BOOL}},
       {"IVL_SLEEP_THR",     {76, FurbleProtocolTest::WireType::U32} },
   };

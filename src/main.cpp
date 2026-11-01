@@ -35,6 +35,9 @@
 #include "FurbleTimeKeeper.h"
 #include "FurbleUI.h"
 #include "FurbleWiFi.h"
+#if defined(FURBLE_WEBUI) && FURBLE_WEBUI
+#include "FurbleWebUI.h"
+#endif
 #include "protocol/CameraListProtocol.h"
 
 #if defined(FURBLE_NO_DISPLAY)
@@ -377,6 +380,9 @@ void app_main() {
 
 #if defined(FURBLE_NO_DISPLAY)
   Furble::UI::init();
+#endif
+#if defined(FURBLE_WEBUI) && FURBLE_WEBUI
+  Furble::WebUI::init();
 #endif
 
   // Developer only, compiled out unless FURBLE_CONSOLE is defined

@@ -291,6 +291,11 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
       value = Settings::load<bool>(setting.type) ? "true" : "false";
       return true;
 #endif
+#if defined(FURBLE_WEBUI) && FURBLE_WEBUI
+    case Settings::WEB_UI:
+      value = Settings::load<bool>(setting.type) ? "true" : "false";
+      return true;
+#endif
 
     case Settings::INTERVAL:
     {
@@ -549,6 +554,17 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
       }
       Settings::save<std::string>(setting.type, text);
       return true;
+#endif
+#if defined(FURBLE_WEBUI) && FURBLE_WEBUI
+    case Settings::WEB_UI:
+    {
+      bool enabled = false;
+      if (!parseBool(text, enabled)) {
+        return false;
+      }
+      Settings::save<bool>(setting.type, enabled);
+      return true;
+    }
 #endif
     case Settings::COMPANION_PASSWORD:
       return false;
