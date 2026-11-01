@@ -1303,6 +1303,9 @@ std::string queryValue(const std::string &key) {
       return std::to_string(cameraFocusReleases());
     }
   }
+  if (key == "camera.idle_ticks") {
+    return std::to_string(Furble::Sim::targetIdleTicks());
+  }
   if (key == "sim.icon_timer") {
     return std::to_string(Furble::Sim::profilerTimerFireCount("icon_timer"));
   }

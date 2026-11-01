@@ -119,7 +119,11 @@ BaseType_t Control::Target::sendCommand(cmd_t cmd) {
 
 Control::cmd_t Control::Target::getCommand(void) {
   cmd_t cmd = CMD_ERROR;
-  BaseType_t ret = xQueueReceive(m_Queue, &cmd, pdMS_TO_TICKS(50));
+  // Commands arrive through the queue and wake this receive immediately. The
+  // timeout is only the idle tick that drives the saver and RSSI sampler, both
+  // internally rate limited; 250 ms cuts idle wakeups fivefold with no command
+  // latency change.
+  BaseType_t ret = xQueueReceive(m_Queue, &cmd, pdMS_TO_TICKS(250));
   if (ret != pdTRUE) {
     return CMD_ERROR;
   }
@@ -180,7 +184,7 @@ void Control::Target::task(void) {
         m_InFlight.fetch_sub(1, std::memory_order_acq_rel);
         goto task_exit;
       case CMD_ERROR:
-        // Not an error: getCommand() returns CMD_ERROR when the 50 ms queue
+        // Not an error: getCommand() returns CMD_ERROR when the 250 ms queue
         // wait times out. Reuse that tick as the idle profile timer and the
         // connection statistics sampler (both are internally rate limited).
         m_Camera->maybeSetIdle();
@@ -451,7 +455,11 @@ void Control::task(void) {
     }
 
     cmd_t cmd;
-    BaseType_t ret = xQueueReceive(m_Queue, &cmd, pdMS_TO_TICKS(50));
+    // Commands arrive through the queue and wake this receive immediately. The
+    // timeout is only the idle tick that drives the saver and RSSI sampler, both
+    // internally rate limited; 250 ms cuts idle wakeups fivefold with no command
+    // latency change.
+    BaseType_t ret = xQueueReceive(m_Queue, &cmd, pdMS_TO_TICKS(250));
 
     switch (m_State.load(std::memory_order_acquire)) {
       case STATE_IDLE:

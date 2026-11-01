@@ -83,6 +83,10 @@ class WiFi {
   /** Run the join scan once so a host test can inspect its configuration. */
   static bool hostScanForNetwork(void);
 #endif
+
+ private:
+  /** Create the netif, handlers, and worker on first enable. */
+  static void ensureStarted(void);
 };
 }  // namespace Furble
 

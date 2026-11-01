@@ -3159,6 +3159,21 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/e2e/target-idle-cadence.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/e2e/text-size-gate.txt",
       "suite": "e2e",
       "owner": "sim-e2e",

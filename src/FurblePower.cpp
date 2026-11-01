@@ -78,7 +78,9 @@ void Power::acquire(LockType type, const char *owner) {
   if (count == 1) {
     lock.heldSinceUs.store(esp_timer_get_time());
   }
-  ESP_LOGI(LOG_TAG, "'%s' acquired '%s' power lock, held %u times.", owner, lock.name,
+  // Per-transition INFO logs are hot and can block under the stats mutex.
+  // Console `power stats` reports the same counts without a log line.
+  ESP_LOGD(LOG_TAG, "'%s' acquired '%s' power lock, held %u times.", owner, lock.name,
            (unsigned int)count);
 }
 
@@ -119,7 +121,7 @@ void Power::release(LockType type, const char *owner) {
     }
     lock.heldSinceUs.store(0);
   }
-  ESP_LOGI(LOG_TAG, "'%s' released '%s' power lock, held %u times.", owner, lock.name,
+  ESP_LOGD(LOG_TAG, "'%s' released '%s' power lock, held %u times.", owner, lock.name,
            (unsigned int)count);
 }
 

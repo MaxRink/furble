@@ -1021,7 +1021,7 @@ void GPS::sendCommand(const std::string &payload) {
   snprintf(suffix.data(), suffix.size(), "*%02X", checksum(payload));
   const std::string command = "$" + payload + suffix.data() + "\r\n";
 
-  ESP_LOGI(LOG_TAG, "GPS command: %s", payload.c_str());
+  ESP_LOGD(LOG_TAG, "GPS command: %s", payload.c_str());
 
   const std::lock_guard<std::mutex> lock(m_TxMutex);
   uart_write_bytes(m_UART, command.data(), command.size());
@@ -1088,7 +1088,7 @@ bool GPS::sendBinaryFrame(uint8_t class_id,
     return false;
   }
 
-  ESP_LOGI(LOG_TAG, "GPS binary: %02X %02X payload %u", class_id, message_id, length);
+  ESP_LOGD(LOG_TAG, "GPS binary: %02X %02X payload %u", class_id, message_id, length);
   return true;
 }
 

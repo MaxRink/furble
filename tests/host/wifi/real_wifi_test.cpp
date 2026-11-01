@@ -23,14 +23,19 @@ bool Settings::validNetworkString(type_t, const std::string &v) {
 }
 }  // namespace Furble
 esp_event_handler_t furble_wifi_handler = nullptr;
+int event_handler_registrations = 0;
+int netif_creations = 0;
+int task_creations = 0;
 esp_event_base_t WIFI_EVENT = "wifi";
 esp_event_base_t IP_EVENT = "ip";
 int esp_event_handler_register(esp_event_base_t, int32_t, esp_event_handler_t h, void *) {
   furble_wifi_handler = h;
+  event_handler_registrations++;
   return 0;
 }
 esp_netif_t *esp_netif_create_default_wifi_sta() {
   static esp_netif_t n;
+  netif_creations++;
   return &n;
 }
 int esp_netif_get_ip_info(esp_netif_t *, esp_netif_ip_info_t *i) {
@@ -98,6 +103,7 @@ BaseType_t xTaskCreate(void (*fn)(void *),
                        void *arg,
                        UBaseType_t,
                        TaskHandle_t *out) {
+  task_creations++;
   *out = nullptr;
   (void)fn;
   (void)arg;
@@ -132,14 +138,27 @@ int disconnect(uint8_t reason) {
 }  // namespace
 
 int main() {
-  // This first seam deliberately exercises the event callback directly; the
-  // worker-task owner loop is deferred until the boundary fake models notify.
+  // P-034: a disabled Wi-Fi setting must not create the netif, the event
+  // handlers, or the worker at boot. The module starts on the first enable.
+  Furble::wifiEnabledSetting = false;
   Furble::WiFi::init();
+  if (require(netif_creations == 0, "disabled init created a station netif")
+      || require(event_handler_registrations == 0, "disabled init registered event handlers")
+      || require(task_creations == 0, "disabled init created the Wi-Fi worker")) {
+    return 2;
+  }
+  Furble::wifiEnabledSetting = true;
+  if (require(Furble::WiFi::connect(), "enable after a disabled init did not start")
+      || require(netif_creations == 1, "lazy start did not create exactly one netif")
+      || require(event_handler_registrations == 2, "lazy start did not register two handlers")
+      || require(task_creations == 1, "lazy start did not create one worker")) {
+    return 3;
+  }
   if (!furble_wifi_handler || !Furble::WiFi::setEnabled(false))
-    return 1;
+    return 4;
   furble_wifi_handler(nullptr, IP_EVENT, IP_EVENT_STA_GOT_IP, nullptr);
   if (Furble::WiFi::getStatus().connected)
-    return 2;
+    return 5;
 
   // P-028: an authentication failure is permanent. The station must stop and
   // report the reason instead of retrying forever.

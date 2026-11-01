@@ -114,6 +114,7 @@ bool radioRunning = false;
 // fired, including which one the single-button dispatch chose.
 std::mutex commandMutex;
 uint32_t shutterPresses = 0;
+size_t idleTicks = 0;
 uint32_t shutterReleases = 0;
 uint32_t focusPresses = 0;
 uint32_t focusReleases = 0;
@@ -511,6 +512,11 @@ size_t bleAdvertisementCount(void) {
   return advertisementCount;
 }
 
+size_t targetIdleTicks(void) {
+  const std::lock_guard<std::mutex> lock(commandMutex);
+  return idleTicks;
+}
+
 size_t blePeerCount(void) {
   const std::lock_guard<std::mutex> lock(peersMutex);
   return peers.size();
@@ -528,6 +534,10 @@ size_t bleSavedCameraCount(void) {
 void noteCameraCommand(int cmd) {
   const std::lock_guard<std::mutex> lock(commandMutex);
   switch (static_cast<Control::cmd_t>(cmd)) {
+    case Control::CMD_ERROR:
+      // The queue-timeout idle tick. Used to prove the 250 ms target cadence.
+      idleTicks++;
+      break;
     case Control::CMD_SHUTTER_PRESS:
       shutterPresses++;
       profilerRadioEvent("shutter_press");

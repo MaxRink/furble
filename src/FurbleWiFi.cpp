@@ -586,6 +586,16 @@ void eventHandler(void *, esp_event_base_t eventBase, int32_t eventId, void *eve
 }  // namespace
 
 void WiFi::init(void) {
+  // Do not create the netif, handlers, or worker when the station is off. A
+  // disabled Wi-Fi setting costs a 4 KB task, a netif, and an NVS read at boot
+  // for a radio the user does not use. connect() starts the module lazily.
+  if (!Settings::load<Settings::WIFI>() || Settings::load<Settings::WIFI_SSID>().empty()) {
+    return;
+  }
+  (void)WiFi::connect();
+}
+
+void WiFi::ensureStarted(void) {
   if (g_Initialized) {
     return;
   }
@@ -608,14 +618,14 @@ void WiFi::init(void) {
   }
 
   g_Initialized = true;
-  if (Settings::load<Settings::WIFI>()) {
-    WiFi::connect();
-  }
 }
 
 bool WiFi::connect(void) {
-  if (!g_Initialized || !Settings::load<Settings::WIFI>()
-      || Settings::load<Settings::WIFI_SSID>().empty()) {
+  if (!Settings::load<Settings::WIFI>() || Settings::load<Settings::WIFI_SSID>().empty()) {
+    return false;
+  }
+  ensureStarted();
+  if (!g_Initialized) {
     return false;
   }
 

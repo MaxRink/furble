@@ -46,7 +46,7 @@ Rank groups:
 
 ## Safe now
 
-Sixteen safe-now rows are implemented in this branch. See section
+Nineteen safe-now rows are implemented in this branch. See section
 "Implemented safe-now changes" for the code and test evidence.
 
 | ID | Lane | Current behavior | Proposed change | Evidence | Est. saving | Risk | Effort | Required test | Priority | Lane source |
@@ -114,6 +114,9 @@ evidence label from the lane and adds the test that now guards it.
 | P-028 | Disconnect reasons are classified. Auth and handshake failures stop immediately; no-AP stops after six attempts; other reasons stop after ten. `connect()` clears the stop, and `wifi status` prints attempts, retry delay, reason, and stopped. | `src/FurbleWiFi.cpp`, `src/FurbleConsole.cpp` | host `real-wifi-lifecycle`: auth stops with no retry, no-AP stops at six, connect clears it | implemented |
 | P-029 | The join scan sets `show_hidden = false` because the SSID is already known. | `src/FurbleWiFi.cpp` | host `real-wifi-lifecycle`: the scan config records `show_hidden == false` | implemented |
 | P-033 | The transient Wi-Fi retry cap is 300 s instead of 60 s. | `src/FurbleWiFi.cpp` | host `real-wifi-lifecycle`: the backoff reaches exactly 300000 ms | implemented |
+| P-034 | `WiFi::init()` creates nothing unless the setting is on and an SSID is saved; the first `connect()` creates the netif, handlers, and worker. | `src/FurbleWiFi.cpp` | host `real-wifi-lifecycle`: zero netif, handler, and task calls on a disabled init; one each after enable | implemented |
+| P-013 | Each camera task idles at 250 ms instead of 50 ms; commands still wake the queue immediately. | `src/FurbleControl.cpp` | e2e `target-idle-cadence`: 80 idle ticks over 20 s | implemented |
+| P-008 | Power-lock acquire/release and the Lumix GPS per-fix path log at DEBUG, and the GPS command/poll lines are demoted. | `src/FurblePower.cpp`, `lib/furble/Lumix.cpp`, `lib/furble/FauxNY.cpp`, `lib/furble/NikonSmart.cpp`, `src/FurbleGPS.cpp` | `tools/check_hot_path_logs.py` plus `tests/test_hot_path_logs.py` | implemented |
 
 The modeled saving for these rows is unchanged and still unmeasured. P-001 and
 P-002 bound a worst case; they do not change steady-state current. P-003 halves
@@ -126,7 +129,9 @@ checker, not a measured saving. P-015 and P-021 remove hidden or lit-hardware
 work. P-016 and P-030 cut timer and task wakeups. P-024 removes a debug surface
 from a release artifact and has no battery claim. P-028 ends a permanent
 retry loop in the failure case. P-029 and P-033 reduce join-scan probe traffic
-and steady-state retry frequency.
+and steady-state retry frequency. P-034 removes the idle Wi-Fi task and netif.
+P-013 cuts camera-task idle wakeups fivefold. P-008 removes hot-path INFO
+logging and adds a guard against its return.
 
 Three safe-now rows are deliberately not applied yet:
 
