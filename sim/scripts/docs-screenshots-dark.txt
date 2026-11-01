@@ -82,7 +82,8 @@ print ui.page
 home
 wait 250
 action connect
-wait 1800
+assert-eventually-virtual 8000 control.state active
+assert-eventually-virtual 2000 ui.connected yes
 capture dark-connected
 print ui.page
 

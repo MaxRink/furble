@@ -1,0 +1,16 @@
+# The first half of the virtual power-cycle test. The S3 simulator persists
+# the same interval resume record and timed-wake marker that the firmware would
+# leave in NVS and then exits at the simulated PMIC shutdown.
+seed fauxny true
+seed autoconnect true
+seed ivl_sleep true
+seed ivl_sleep_thr 10
+seed interval_count 2
+seed interval_delay 16
+seed interval_shutter 30
+seed interval_wait 0
+wait 5000
+action intervalometer
+# The first shot's 30 ms exposure is followed by this full delay. Keep the
+# wait beyond that boundary so the production sleep decision is reached.
+wait 20000

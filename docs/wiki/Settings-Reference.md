@@ -39,6 +39,10 @@ Which physical button is which:
 | M5StickC Plus2, StickS3 | Side power button | BtnA (front) | BtnB (top) |
 | M5Stack Core, Core2, Tough | BtnA (left) | BtnB (middle) | BtnC (right) |
 
+When a dialog is open, it temporarily owns the physical navigation and shutter
+inputs. Closing it returns control to the page underneath; with stacked dialogs,
+input remains with the topmost dialog.
+
 Settings menu at a glance (in on-screen order): Display, Features, Infrared,
 Sensors, GPS, Timer, Theme, Text size, Bluetooth, About, Power, Feedback,
 Diagnostics, Storage.
@@ -148,11 +152,20 @@ interval configuration.
 | Delay | 15 s | 0 to 999 in ms, s, or mins | Restart* | Time between frames. |
 | Shutter | 30 ms | 0 to 999 in ms, s, or mins | Restart* | How long the shutter is held per frame. |
 | Wait | 0 s | 0 to 999 in ms, s, or mins | Restart* | Initial wait before the first frame. |
+| Deep Sleep | Off | On, Off | Now | On supported boards, power off between frames when the next delay is at or above the threshold. |
+| Sleep Threshold | 60 s | 0 to 999 seconds | Now | Minimum delay before Deep Sleep is used. The row is hidden while Deep Sleep is off. |
 
 *The interval blob is read when the timer page is built. In practice you set
 these on the device and press Start, so the value you see is the value that
 runs. Cameras that trigger with a single operation (for example Ricoh GR) ignore
 the Shutter duration but still honour Count, Delay, and Wait.
+
+Deep Sleep and Sleep Threshold appear only on boards with a timed wake source:
+the M5StickS3 (M5PM1 timer) and the M5StickC Plus2 (BM8563 alarm). On other
+boards the controls are hidden and the intervalometer runs awake. After a timed
+wake, furble reconnects once with a 3 second settle gap and continues the
+remaining frames. A failed reconnect clears the saved run and shows
+`RESUME FAILED`.
 
 ### Theme
 

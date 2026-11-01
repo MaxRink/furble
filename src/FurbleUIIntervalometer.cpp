@@ -1,15 +1,75 @@
+#include <ctime>
+
+#include <Preferences.h>
 #include <lvgl.h>
 
+#include "FurblePlatform.h"
+#include "FurbleTimeKeeper.h"
+#include "FurbleTypes.h"
 #include "FurbleUI.h"
+#include "protocol/CameraListProtocol.h"
 
 namespace Furble {
 
+namespace {
+constexpr int64_t MIN_VALID_EPOCH = 1577836800;
+constexpr int64_t MAX_VALID_EPOCH = 4102444800;
+
+/**
+ * True when the wall clock is authoritative enough to compare against a saved
+ * wake time. An NVS-restored sample is deliberately excluded: it does not
+ * advance across the power-off interval. The M5PM1 timer is the authority on
+ * that board, so its resume starts immediately instead of trusting a stale
+ * clock. The BM8563 path reports an RTC sample and is trusted.
+ */
+bool trustedWallClock(void) {
+  const auto status = TimeKeeper::getInstance().status();
+  return status.valid && (status.source != TimeSource::NVS);
+}
+
+SpinValue::nvs_t sleepThresholdNvs(void) {
+  uint32_t seconds = Settings::load<uint32_t>(Settings::IVL_SLEEP_THR);
+  if (seconds > 999) {
+    seconds = 999;
+  }
+  return {static_cast<uint16_t>(seconds), SpinValue::UNIT_SEC};
+}
+
+}  // namespace
+
+bool UI::Intervalometer::validResume(const resume_state_t &state) {
+  const auto validSpin = [](const SpinValue::nvs_t &value, bool allowInfinite) {
+    // Do not narrow the packed enum to a byte. A persisted 258 would become
+    // UNIT_MS and later index the five-entry unit-name table out of bounds.
+    const int unit = static_cast<int>(value.unit);
+    return (value.value <= 999) && (unit >= SpinValue::UNIT_NIL) && (unit <= SpinValue::UNIT_MIN)
+           && (allowInfinite || (unit != SpinValue::UNIT_INF));
+  };
+  if (!validSpin(state.interval.count, true) || !validSpin(state.interval.delay, false)
+      || !validSpin(state.interval.shutter, false) || !validSpin(state.interval.wait, false)
+      || (state.camera_id == CameraListProtocol::INDEX_ID_INVALID)
+      || (state.camera_id == CameraListProtocol::INDEX_ID_ALL) || (state.target > 999)) {
+    return false;
+  }
+  if (state.interval.count.unit == SpinValue::UNIT_INF) {
+    return true;
+  }
+  return (state.interval.count.unit == SpinValue::UNIT_NIL)
+         && (state.target == state.interval.count.value) && (state.target > 0)
+         && (state.count < state.target);
+}
+
 UI::Intervalometer::Intervalometer(const interval_t &interval)
     : m_State {STATE_IDLE},
+      m_SleepThresholdOwner {Settings::IVL_SLEEP_THR},
       m_Count(this, interval.count, true),
       m_Delay(this, interval.delay),
       m_Shutter(this, interval.shutter),
-      m_Wait(this, interval.wait) {}
+      m_Wait(this, interval.wait),
+      m_SleepThreshold(&m_SleepThresholdOwner, sleepThresholdNvs(), false, false, true) {
+  m_SleepThresholdOwner.setSpinner(&m_SleepThreshold);
+  loadResume();
+}
 
 void UI::Intervalometer::save(void) {
   interval_t interval = {m_Count.m_SpinValue.toNVS(), m_Delay.m_SpinValue.toNVS(),
@@ -17,12 +77,199 @@ void UI::Intervalometer::save(void) {
   Settings::save<Settings::INTERVAL>(interval);
 }
 
+void UI::Intervalometer::SettingSpinnerOwner::save(void) {
+  if (m_Spinner == nullptr) {
+    return;
+  }
+
+  uint32_t seconds = m_Spinner->m_SpinValue.toMilliseconds() / 1000;
+  if (seconds > 999) {
+    seconds = 999;
+  }
+  Settings::save<uint32_t>(m_Setting, seconds);
+}
+
+void UI::Intervalometer::loadResume(void) {
+  Preferences prefs;
+  resume_state_t state = {};
+  prefs.begin(FURBLE_STR, true);
+  const size_t length = prefs.get(RESUME_NVS_KEY, &state, sizeof(state));
+  prefs.end();
+
+  // Consume the wake cause once, before any record or policy validation. A
+  // rejected record must not leave a stale marker for a later boot.
+  const bool timedWake = Platform::getInstance().consumeTimedWake();
+
+  if ((length != sizeof(state)) || (state.magic != RESUME_MAGIC)
+      || (state.version != RESUME_VERSION) || (state.length != sizeof(state))
+      || !validResume(state)) {
+    clearResume();
+    return;
+  }
+
+  if (!Settings::load<Settings::IVL_SLEEP>() || !Platform::getInstance().canTimedWake()) {
+    clearResume();
+    return;
+  }
+
+  const int64_t now = static_cast<int64_t>(std::time(nullptr));
+  const bool clockValid =
+      trustedWallClock() && (now >= MIN_VALID_EPOCH) && (now <= MAX_VALID_EPOCH);
+  const bool wakeTimeValid =
+      (state.wake_time >= MIN_VALID_EPOCH) && (state.wake_time <= MAX_VALID_EPOCH);
+
+  // A zero wake time means the clock was unavailable at save time. Any other
+  // value must be in the supported epoch range, otherwise the resumed
+  // subtraction or an immediate-start decision would be nonsense.
+  if ((state.wake_time != 0) && !wakeTimeValid) {
+    ESP_LOGW(LOG_TAG, "Ignoring intervalometer resume with an out-of-range wake time");
+    clearResume();
+    return;
+  }
+
+  if (!timedWake) {
+    ESP_LOGW(LOG_TAG, "Ignoring intervalometer resume without a timed wake");
+    clearResume();
+    return;
+  }
+
+  if (clockValid && wakeTimeValid && (state.wake_time != 0)) {
+    const int64_t delta = now - state.wake_time;
+    // The alarm wakes RESUME_WAKE_MARGIN_S before the shot, and the Plus2 RTC
+    // can round that down by another minute. Anything earlier than that is a
+    // stale record.
+    constexpr int64_t EARLY_LIMIT =
+        -(static_cast<int64_t>(RESUME_WAKE_MARGIN_S) + Platform::TIMED_WAKE_MAX_EARLY_S);
+    if ((delta < EARLY_LIMIT) || (delta > 3600)) {
+      ESP_LOGW(LOG_TAG, "Ignoring stale intervalometer resume state");
+      clearResume();
+      return;
+    }
+  }
+
+  m_Resume = state;
+  m_ResumePending = true;
+  ESP_LOGI(LOG_TAG, "Intervalometer resume is pending at shot %lu",
+           static_cast<unsigned long>(m_Resume.count + 1));
+}
+
+void UI::Intervalometer::clearResume(void) {
+  Preferences prefs;
+  prefs.begin(FURBLE_STR, false);
+  if (prefs.isKey(RESUME_NVS_KEY)) {
+    prefs.remove(RESUME_NVS_KEY);
+  }
+  prefs.end();
+  m_Resume = {};
+  m_ResumePending = false;
+  m_ResumeWaitMs = 0;
+}
+
+bool UI::Intervalometer::hasResume(void) const {
+  return m_ResumePending;
+}
+
+uint8_t UI::Intervalometer::resumeCameraId(void) const {
+  return m_Resume.camera_id;
+}
+
+void UI::Intervalometer::startNewRun(void) {
+  clearResume();
+  m_CountShots = 0;
+}
+
+bool UI::Intervalometer::startResume(void) {
+  if (!m_ResumePending) {
+    return false;
+  }
+
+  resume_state_t state = m_Resume;
+  m_Count.m_SpinValue = SpinValue(state.interval.count);
+  m_Delay.m_SpinValue = SpinValue(state.interval.delay);
+  m_Shutter.m_SpinValue = SpinValue(state.interval.shutter);
+  m_Wait.m_SpinValue = SpinValue(state.interval.wait);
+  m_CountShots = state.count;
+  uint32_t wait_ms = 0;
+  if (trustedWallClock() && (state.wake_time >= MIN_VALID_EPOCH)
+      && (state.wake_time <= MAX_VALID_EPOCH)) {
+    const int64_t now = static_cast<int64_t>(std::time(nullptr));
+    if ((now >= MIN_VALID_EPOCH) && (now <= MAX_VALID_EPOCH)) {
+      const int64_t remaining = state.wake_time - now;
+      if ((remaining > 0) && (remaining <= (UINT32_MAX / 1000))) {
+        wait_ms = static_cast<uint32_t>(remaining * 1000);
+      }
+    }
+  } else {
+    // The timer wakes RESUME_WAKE_MARGIN_S before the next shot. Without an
+    // authoritative wall clock, keep that margin relative to boot. Boot and
+    // reconnect time is already consumed by Platform::tick().
+    constexpr uint32_t MARGIN_MS = RESUME_WAKE_MARGIN_S * 1000U;
+    const uint32_t boot_ms = Platform::getInstance().tick();
+    wait_ms = (boot_ms < MARGIN_MS) ? (MARGIN_MS - boot_ms) : 0;
+  }
+  clearResume();
+  m_ResumeWaitMs = wait_ms;
+
+  m_Count.updateLabels();
+  m_Delay.updateLabels();
+  m_Shutter.updateLabels();
+  m_Wait.updateLabels();
+  m_State = (m_ResumeWaitMs > 0) ? STATE_WAIT : STATE_SHUTTER_OPEN;
+  return true;
+}
+
+bool UI::Intervalometer::saveResume(uint32_t next_ms, uint8_t camera_id) {
+  resume_state_t state = {};
+  state.magic = RESUME_MAGIC;
+  state.version = RESUME_VERSION;
+  state.length = sizeof(state);
+  state.count = m_CountShots;
+  state.target = m_Count.m_SpinValue.m_Value;
+  state.camera_id = camera_id;
+  state.interval = {m_Count.m_SpinValue.toNVS(), m_Delay.m_SpinValue.toNVS(),
+                    m_Shutter.m_SpinValue.toNVS(), m_Wait.m_SpinValue.toNVS()};
+
+  // Use the wall clock only to describe the deadline. When the clock is
+  // untrusted, a zero wake time means the M5PM1 timer is the authority and the
+  // resume starts immediately after a verified timed wake.
+  uint64_t now_s = 0;
+  const auto timeStatus = TimeKeeper::getInstance().status();
+  if (timeStatus.valid) {
+    now_s = timeStatus.epoch_us / 1000000ULL;
+  } else {
+    const int64_t now = static_cast<int64_t>(std::time(nullptr));
+    if ((now >= MIN_VALID_EPOCH) && (now <= MAX_VALID_EPOCH)) {
+      now_s = static_cast<uint64_t>(now);
+    }
+  }
+  if ((now_s >= static_cast<uint64_t>(MIN_VALID_EPOCH))
+      && (now_s <= static_cast<uint64_t>(MAX_VALID_EPOCH))) {
+    state.wake_time = static_cast<int64_t>(now_s) + (next_ms / 1000);
+  }
+
+  Preferences prefs;
+  prefs.begin(FURBLE_STR, false);
+  const size_t written = prefs.put(RESUME_NVS_KEY, &state, sizeof(state));
+  prefs.end();
+  if (written != sizeof(state)) {
+    ESP_LOGE(LOG_TAG, "Failed to save intervalometer resume state");
+    m_Resume = {};
+    m_ResumePending = false;
+    m_ResumeWaitMs = 0;
+    return false;
+  }
+
+  m_Resume = state;
+  m_ResumePending = true;
+  return true;
+}
+
 void UI::Intervalometer::Spinner::update(void) {
-  if (lv_obj_has_state(m_SwitchInfinite, LV_STATE_CHECKED)) {
+  if (m_Infinite && lv_obj_has_state(m_SwitchInfinite, LV_STATE_CHECKED)) {
     m_SpinValue.m_Unit = SpinValue::UNIT_INF;
     lv_obj_add_flag(m_RowSpinners, LV_OBJ_FLAG_HIDDEN);
   } else {
-    m_SpinValue.m_Unit = SpinValue::UNIT_NIL;
+    m_SpinValue.m_Unit = m_FixedUnit ? SpinValue::UNIT_SEC : SpinValue::UNIT_NIL;
     lv_obj_clear_flag(m_RowSpinners, LV_OBJ_FLAG_HIDDEN);
 
     uint32_t h = lv_roller_get_selected(m_Roller[0]);
@@ -231,7 +478,9 @@ void UI::Intervalometer::Spinner::updateLabels(void) {
           break;
       }
 
-      lv_roller_set_selected(m_RollerUnit, i, LV_ANIM_ON);
+      if (m_RollerUnit != nullptr) {
+        lv_roller_set_selected(m_RollerUnit, i, LV_ANIM_ON);
+      }
     }
   }
 }

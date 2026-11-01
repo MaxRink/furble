@@ -75,6 +75,7 @@ expect_invalid "$BIN" --seed not-a-number
 expect_invalid "$BIN" --script "$ROOT/sim/scripts/smoke.txt" --fuzz
 expect_invalid env FURBLE_FUZZ_STEPS=not-a-number "$BIN" --fuzz
 expect_invalid env FURBLE_FUZZ_STEPS=0 "$BIN" --fuzz
+python3 "$ROOT/sim/scripts/check-fuzz-checkpoint.py" "$BIN"
 
 # The restart seam (plan 156). A continuation step outside the script's range
 # is a pre-runtime rejection like any other bad input, and a failure raised

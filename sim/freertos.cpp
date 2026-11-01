@@ -1128,6 +1128,14 @@ BaseType_t xQueueReceive(QueueHandle_t queue, void *item, TickType_t ticksToWait
   return pdTRUE;
 }
 
+UBaseType_t uxQueueMessagesWaiting(QueueHandle_t queue) {
+  if (queue == nullptr) {
+    return 0;
+  }
+  const std::lock_guard<std::mutex> lock(Furble::Sim::schedulerMutex());
+  return static_cast<UBaseType_t>(queue->items.size());
+}
+
 BaseType_t xQueueReset(QueueHandle_t queue) {
   exitStoppedTask();
   if (queue == nullptr) {

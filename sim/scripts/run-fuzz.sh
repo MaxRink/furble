@@ -20,7 +20,7 @@
 #   FURBLE_FUZZ_STEPS      events per seed (default 600)
 #   FURBLE_FUZZ_SEED_TIMEOUT  wall-clock seconds per seed (default 600)
 #   FURBLE_FUZZ_REPEAT_SEED   seed replayed for the determinism check
-#                             (default 2, empty to skip)
+#                             (default 31337, empty to skip)
 
 set -u
 
@@ -50,15 +50,12 @@ SEED_TIMEOUT=${FURBLE_FUZZ_SEED_TIMEOUT:-600}
 # Within the summary line the two observation counters are masked for the same
 # reason: they record whether a visible change had landed by the end of a
 # settle window, and that boundary moves by one step for the same cause.
-# Seed 2 by default, and the choice is measured rather than arbitrary. Seed 2 is
-# the seed whose whole output reproduces: two runs on the 320x240 binary match
-# on all 215 log lines apart from the two masked counters. Seed 1 is the seed
-# that does not, differing by one connect attempt between runs, so defaulting to
-# it would replay the least reproducible seed available. Both seeds satisfy this
-# check today, which compares only the fuzz report lines, but the default should
-# be the seed with headroom, so that tightening the comparison later does not
-# start from the known-bad case.
-REPEAT_SEED=${FURBLE_FUZZ_REPEAT_SEED-2}
+# Seed 31337 is a guarded, non-restart replay. Seed 2 is reserved for
+# run-fuzz-restart.sh: whether it reaches Restart is host-timing dependent, so
+# comparing its restart-sensitive report lines here would make this
+# determinism gate flaky. The replay below, rather than a one-time sample,
+# remains the evidence that the selected seed is stable on the current binary.
+REPEAT_SEED=${FURBLE_FUZZ_REPEAT_SEED-31337}
 
 : "${SDL_VIDEODRIVER:=dummy}"
 : "${SDL_AUDIODRIVER:=dummy}"
@@ -107,15 +104,15 @@ validate_summary() {
   observed=$(printf '%s\n' "$summary" | sed -n 's/.* observed_delta=\([^ ]*\).*/\1/p')
   no_observed=$(printf '%s\n' "$summary" | sed -n 's/.* no_observed_delta=\([^ ]*\).*/\1/p')
   settled=$(printf '%s\n' "$summary" | sed -n 's/.* settled=\([^ ]*\).*/\1/p')
+  interrupted=$(printf '%s\n' "$summary" \
+    | sed -n 's/.* interrupted_by_restart=\([^ ]*\).*/\1/p')
+  resumed=$(printf '%s\n' "$summary" \
+    | sed -n 's/.* resumed_boots=\([^ ]*\).*/\1/p')
   if [ "$summary_seed" != "$requested_seed" ] || [ "$summary_steps" != "$requested_steps" ]; then
     echo "fuzz summary request mismatch for seed $requested_seed: $summary" >&2
     return 1
   fi
-  if [ "$attempted" != "$requested_steps" ] || [ "$settled" != "$requested_steps" ]; then
-    echo "fuzz summary count mismatch for seed $requested_seed: $summary" >&2
-    return 1
-  fi
-  for counter in "$attempted" "$observed" "$no_observed" "$settled"; do
+  for counter in "$attempted" "$observed" "$no_observed" "$settled" "$interrupted" "$resumed"; do
     case "$counter" in
       ''|*[!0-9]*)
         echo "fuzz summary counters are not unsigned integers for seed" \
@@ -124,9 +121,15 @@ validate_summary() {
         ;;
     esac
   done
-  delta_sum=$((observed + no_observed))
-  if [ "$delta_sum" -ne "$attempted" ]; then
-    echo "fuzz summary delta mismatch for seed $requested_seed: $summary" >&2
+  if [ "$attempted" -ne "$requested_steps" ]; then
+    echo "fuzz summary count mismatch for seed $requested_seed: $summary" >&2
+    return 1
+  fi
+  if [ "$settled" -gt "$attempted" ] || [ "$interrupted" -gt "$attempted" ] \
+      || [ "$resumed" -gt "$attempted" ] || [ "$interrupted" -ne "$resumed" ] \
+      || [ "$settled" -ne $((attempted - interrupted)) ] \
+      || [ $((observed + no_observed)) -ne "$settled" ]; then
+    echo "fuzz summary restart/count mismatch for seed $requested_seed: $summary" >&2
     return 1
   fi
   return 0
@@ -162,11 +165,17 @@ for seed in $SEEDS $XFAIL; do
     status=1
     continue
   fi
+  summary_valid=1
   if ! validate_summary "$output_file" "$seed" "$STEPS"; then
+    summary_valid=0
     status=1
   fi
   rm -f "$output_file"
-  if is_xfail "$seed"; then
+  if [ "$summary_valid" -eq 0 ]; then
+    # A missing or malformed report is a protocol failure, never an expected
+    # finding. Do not let it look like PASS or XFAIL.
+    echo "FAIL fuzz seed $seed (missing or invalid summary)"
+  elif is_xfail "$seed"; then
     if [ "$rc" -ne 0 ]; then
       echo "XFAIL fuzz seed $seed (expected finding, exit $rc)"
     else
@@ -194,23 +203,40 @@ if [ -n "$REPEAT_SEED" ]; then
   echo "=== determinism replay seed $REPEAT_SEED ($STEPS steps) ==="
   first=$(mktemp "${TMPDIR:-/tmp}/furble-fuzz-a.XXXXXX") || exit 1
   second=$(mktemp "${TMPDIR:-/tmp}/furble-fuzz-b.XXXXXX") || exit 1
+  replay_valid=1
+  replay_failed=0
   for output in "$first" "$second"; do
-    "$TIMEOUT" -k 10 "$SEED_TIMEOUT" "$BIN" --seed "$REPEAT_SEED" \
-      --fuzz-steps "$STEPS" >"$output" 2>&1
-    rc=$?
-    if [ "$rc" -ne 0 ]; then
-      echo "determinism replay seed $REPEAT_SEED exited $rc" >&2
+    if "$TIMEOUT" -k 10 "$SEED_TIMEOUT" "$BIN" --seed "$REPEAT_SEED" \
+        --fuzz-steps "$STEPS" >"$output" 2>&1; then
+      replay_rc=0
+    else
+      replay_rc=$?
+    fi
+    if [ "$replay_rc" -ne 0 ]; then
+      echo "determinism replay seed $REPEAT_SEED exited $replay_rc" >&2
+      replay_failed=1
+      status=1
+    fi
+    if ! validate_summary "$output" "$REPEAT_SEED" "$STEPS"; then
+      replay_valid=0
       status=1
     fi
     grep '^FUZZ ' "$output" \
       | sed -e 's/observed_delta=[0-9]*/observed_delta=X/g' \
         -e 's/no_observed_delta=[0-9]*/no_observed_delta=X/g' >"$output.fuzz"
   done
-  if diff -u "$first.fuzz" "$second.fuzz" >/dev/null 2>&1; then
+  if [ "$replay_failed" -eq 0 ] && [ "$replay_valid" -eq 1 ] \
+      && diff -u "$first.fuzz" "$second.fuzz" >/dev/null 2>&1; then
     echo "PASS determinism replay seed $REPEAT_SEED"
   else
-    echo "FAIL determinism replay seed $REPEAT_SEED (fuzz report lines diverged)"
-    diff -u "$first.fuzz" "$second.fuzz" | head -40
+    if [ "$replay_valid" -eq 0 ]; then
+      echo "FAIL determinism replay seed $REPEAT_SEED (missing or invalid summary)"
+    elif [ "$replay_failed" -ne 0 ]; then
+      echo "FAIL determinism replay seed $REPEAT_SEED (simulator exited non-zero)"
+    else
+      echo "FAIL determinism replay seed $REPEAT_SEED (fuzz report lines diverged)"
+      diff -u "$first.fuzz" "$second.fuzz" | head -40
+    fi
     status=1
   fi
   rm -f "$first" "$second" "$first.fuzz" "$second.fuzz"

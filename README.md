@@ -391,6 +391,10 @@ previously paired device and leading to the remote menu.
 
 From the remote menu you may choose to disconnect, control the shutter or activate the intervalometer.
 
+When a dialog is open, it temporarily owns the physical navigation and shutter
+inputs; closing it returns control to the page underneath. Stacked dialogs keep
+input with the topmost dialog.
+
 More details are on the wiki: [Usage Guide](https://github.com/gkoh/furble/wiki/Usage-Guide)
 
 ### GPS Location Tagging
@@ -457,8 +461,12 @@ The intervalometer can be configured via three settings in `Settings->Timer`:
 - Count (number of images to take)
 - Delay (time between images)
 - Shutter (time to keep shutter open)
+- Deep Sleep and Sleep Threshold (optional, M5StickS3 and M5StickC Plus2 only)
 
-Count can be configured up to 999 or infinite.
+Count can be configured up to 999 or infinite. Deep Sleep powers the remote off
+between frames when the next delay is at or above the threshold. The threshold
+defaults to 60 seconds and accepts 0 to 999 seconds. After a timed wake, furble
+reconnects once and continues the remaining frames.
 Delay and shutter time can be figured with custom or preset values from 0 to 999 in milliseconds, seconds or minutes.
 
 Some camera protocols such as Ricoh GR trigger capture with a single operation request and do not expose separate exposure start/stop control. For those cameras the intervalometer still controls the wait, count, and delay between captures, but the camera ignores the configured shutter-open duration.

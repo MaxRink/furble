@@ -861,8 +861,9 @@ int main() {
   furble_sim_stop_all_tasks();
   furble_sim_reset_tasks();
 
-  // Unlock selects the higher-priority waiter. Once that waiter acquires the
-  // mutex, try_lock remains excluded until it releases ownership.
+  // A mutex unlock reserves ownership for one scheduler waiter before making
+  // it runnable. The higher-priority waiter wins, a newcomer cannot barge, and
+  // the scheduler never observes the native-wake gap as quiescent.
   SchedulerMutex schedulerMutex;
   schedulerMutex.lock();
   std::mutex mutexOrderMutex;

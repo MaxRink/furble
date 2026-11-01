@@ -477,6 +477,41 @@ bool scenarioTransientConnectRecovers() {
   return g_Failures == 0;
 }
 
+// The resume reconnect gets a radio/camera settle gap, while a normal bounded
+// connect keeps its immediate retry. One injected failure makes the successful
+// recovery depend on its single bounded retry.
+bool scenarioScopedBoundedRetryGap() {
+  freshEnvironment();
+  auto &control = Control::getInstance();
+
+  FujifilmVirtualCamera ordinaryPeer;
+  auto ordinaryCamera = makeCamera(ordinaryPeer);
+  NimBLEDevice::setConnectFailCount(1);
+  control.addActive(ordinaryCamera);
+  const uint32_t ordinaryStart = nowMs();
+  control.connectAll(false);
+  check(waitForState(Control::STATE_ACTIVE, 5000), "ordinary bounded connect retries once");
+  const uint32_t ordinaryElapsed = nowMs() - ordinaryStart;
+  check(ordinaryElapsed < 2500, "ordinary bounded retry has no resume settle gap");
+  control.disconnect();
+  check(waitForState(Control::STATE_IDLE, 2000), "ordinary scoped-gap phase returns to idle");
+
+  NimBLEDevice::resetMock();
+  FujifilmVirtualCamera resumePeer;
+  auto resumeCamera = makeCamera(resumePeer);
+  NimBLEDevice::setConnectFailCount(1);
+  control.addActive(resumeCamera);
+  const uint32_t resumeStart = nowMs();
+  control.connectAll(false, Control::RESUME_RETRY_GAP_MS);
+  check(waitForState(Control::STATE_ACTIVE, 6000), "resume bounded connect retries once");
+  const uint32_t resumeElapsed = nowMs() - resumeStart;
+  check(resumeElapsed >= 2500, "resume bounded retry waits for its settle gap");
+  check(resumeElapsed < 5000, "resume bounded retry remains within one gap");
+  control.disconnect();
+  check(waitForState(Control::STATE_IDLE, 2000), "resume scoped-gap phase returns to idle");
+  return g_Failures == 0;
+}
+
 // Client-pool exhaustion: with the pool capped and every connect failing, the
 // repeated interactive retries must never leak beyond one live client and the
 // control machine must not wedge. Recovery is possible once connects succeed.
@@ -1115,6 +1150,7 @@ const std::map<std::string, std::function<bool()>> &scenarios() {
       {"stale-session-reconnect",          scenarioStaleSessionReconnect       },
       {"false-connected-guard",            scenarioFalseConnectedGuard         },
       {"transient-connect-recovers",       scenarioTransientConnectRecovers    },
+      {"scoped-bounded-retry-gap",         scenarioScopedBoundedRetryGap       },
       {"client-pool-exhaustion",           scenarioClientPoolExhaustion        },
       {"multi-connect-fujifilm",           scenarioMultiConnectFujifilm        },
       {"reconnect-shutter-drop",           scenarioReconnectShutterDrop        },

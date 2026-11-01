@@ -46,7 +46,7 @@ Verified anchors against the current tree.
 | `src/FurbleUI.cpp` | 1815-1830 | Stop button. Must clear persisted resume state. |
 | `src/FurbleUIIntervalometer.cpp` | 14-18 | `Intervalometer::save()` writes the `INTERVAL` blob. Model the resume blob on it. |
 | `src/FurblePlatform.cpp` | 74-80 | `Platform::powerOff()`. S3 uses `m_M5PM1.shutdown()`, others `M5.Power.powerOff()`. Add a timed variant next to it. |
-| `include/FurblePlatform.h` | 33-41 | Public API. Add `bool canTimedWake()` and `void powerOffUntil(uint32_t seconds)`. |
+| `include/FurblePlatform.h` | 33-41 | Public API. Add `bool canTimedWake()` and `bool powerOffUntil(uint32_t seconds)`. |
 | `src/FurblePlatform.cpp` | 24-32 | Existing `M5.getBoard()` switch. Extend for the capability check. |
 
 ## New settings
@@ -57,6 +57,11 @@ Verified anchors against the current tree.
 | `IVL_SLEEP_THR` | `ivl_sleep_thr` (13) | `FURBLE_STR` | `uint32_t` | `60` | Minimum gap in seconds before sleeping. Only read when `IVL_SLEEP` is true, so the default changes nothing. |
 
 Name strings: `"Deep Sleep"` and `"Sleep Threshold"`.
+
+Wire ids: `IVL_SLEEP` uses 75 and `IVL_SLEEP_THR` uses 76. The earlier 42 and 43
+allocation was invalid: 42 remains reserved for timezone and 43 is the shipped
+`AUTO_OFF_CHARGING` setting. The new ids are after the current settings and the
+open WiFi/MQTT/schema reservations through 74.
 
 A `uint32_t` is used rather than a `uint16_t` because `Settings` already has
 `load<uint32_t>` and `save<uint32_t>` specialisations
@@ -294,6 +299,92 @@ is available. Log battery percent and voltage to the console every 30 s while
 awake, and dump the log after the run. Readings while USB powered reflect
 charging, so all drain runs happen unplugged.
 
+## Implementation state
+
+Implemented on branch `feat/19-interval-deep-sleep`.
+
+- Added `IVL_SLEEP` and `IVL_SLEEP_THR` with persistent NVS settings.
+- Added the intervalometer menu controls and runtime hiding on unsupported boards.
+- Added NVS resume state with a wake marker, camera index, interval values, shot count,
+  target count, magic, version and intended wake time.
+- Added the StickS3 M5PM1 timer and shutdown path. All explicit M5PM1 accesses use
+  the retry helper. The PM1 watchdog is disarmed before the timed shutdown.
+- Added the StickC Plus2 BM8563 timer and GPIO4 HOLD path. The RTC IRQ remains
+  available long enough to identify a timed wake during boot. Its one-minute
+  RTC resolution above 255 seconds is accepted only when it rounds upward;
+  failed or shorter programming leaves the device awake.
+- `powerOffUntil()` now reports whether timer setup and the power-off request
+  were accepted. The UI keeps the resume record when the request succeeds and
+  only clears it on a setup failure, so a returning boot can restore the run.
+- Resume reconnects through the existing connection path with bounded retries. The
+  resume drives `connectAll(false)` with a 3 s interruptible settle gap, so
+  `Control::connectAll(void)` runs its non-infinite branch with two total attempts:
+  one initial attempt and one retry while the session-local failure count is below
+  two. Ordinary bounded connects pass no gap and retain their immediate retry
+  behavior. After the bounded retries a still-failed reconnect clears the resume
+  state and leaves an error on screen.
+- PENDING HARDWARE RETEST: the bounded retry gap needs on-device verification. A
+  genuine deep-sleep wake that fails the first reconnect must show one spaced
+  retry in the serial log and then either recover or land on the resume error.
+  Deep sleep only exercises on hardware, so this cannot be confirmed on host.
+- Timer layout coverage is capability-aware in both deterministic scenarios and
+  the fuzz invariant. At Large text size the StickS3 must scroll after the Deep
+  Sleep and Sleep Threshold rows are added. The unsupported StickC hides those
+  rows and must still fit, while compact interactive pages always require no
+  overflow. The simulator exposes `platform.timed_wake` so each scenario first
+  proves it is exercising the intended capability class.
+- On Stick layouts the Deep Sleep switch and threshold rows reserve the
+  existing floating indicator column. The reservation is scoped to these
+  timed-wake rows, not a page-wide PR273 layout import.
+- The threshold name is width-constrained and wraps within that reservation
+  when its value occupies a second line.
+- Spinner menu rows request scroll-on-focus, so the threshold row revealed by
+  Deep Sleep is brought fully into the encoder viewport.
+- The base tree has no GPS motion-policy hook, so no separate GPS policy change was
+  made.
+- The sandboxed worktree could not run PlatformIO. The
+  `FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3` build was run on the
+  harvest machine at commit time and succeeded.
+- Hardware testing is pending.
+- Validation evidence on integrated head `d6f918f4`: the pre-existing full host
+  suite passed 107/107 in 183.4 s. The newly registered
+  `control-e2e-scoped-bounded-retry-gap` scenario passed separately, 1/1 in
+  3.34 s. No current-master SDL simulator build or scenario result is claimed
+  here.
+- Protocol corpus validation also passed at integrated head `6a877`: `make
+  -C tests/protocol CXX=clang++ BUILD=/tmp/c59-protocol -j2 test` completed
+  successfully; evidence is recorded in `/tmp/c59-protocol-test.log`.
+
+The current-master CMake simulator build exposed forced C++ shim headers on
+generated C icon sources (`cstddef` unavailable to the C compiler). Restricting
+the four forced includes to C++ sources fixes that build boundary. Static
+review approved the change. The current-master simulator at `6a87759e` then
+built successfully and `sim/scripts/run-deep-sleep.sh` passed with its fresh
+binary, including stable-camera-ID resume and the one-shot completion check.
+This is host simulator evidence, not physical timed-wake verification.
+
+The PR59 rerun initially reported an ambiguous timer overflow, but the fresh
+diagnostic run identified the failing board: `m5stack-core` in the certified
+`timer-overflow-no-timed-wake.txt` fixture. Large text produced
+`ui.scroll_bottom=3` after `ui.page timer`; the matching StickC run passed with
+the existing clamp and compact row padding. CI and local LVGL generation are
+byte-identical (`LV_DPI_DEF=130`, default Montserrat 16), so this is a Core
+large-text spacing defect. The candidate fix reduces each Core spinner row's
+existing theme top padding by one pixel, clamped at zero, and leaves bottom
+padding unchanged. The fixture keeps its unchanged overflow assertion, and the
+workflow echoes the exact board and scenario path.
+Root validation of the candidate passed the exact Core timer fixture with
+`ui.scroll_bottom=0`, plus the Core page-matrix and Core non-touch layout
+scenarios. Logs: `/home/a92615428/b/c59-core-fixed-timer-overflow-no-timed-wake.log`,
+`/home/a92615428/b/c59-core-fixed-page-matrix.log`, and
+`/home/a92615428/b/c59-core-fixed-core-notouch-layout.log`. Screenshot coverage
+for the Core touch geometry also passed with all four interval fields readable
+in `docs/img/core/timer-large.png` (the `rig0` capture uses the normal `sim`
+header). This is visual Core coverage only, not physical Core button-layout
+proof. The generated walkthrough capture also retains a pre-existing
+StickS3 `settings-timer` Shutter-value clipping issue, which is outside this
+Core fix.
+
 ## References
 
 All links checked.
@@ -315,3 +406,17 @@ All links checked.
 - StickS3 product page: https://docs.m5stack.com/en/core/StickS3
 - ESP-IDF sleep modes, wake sources and RTC memory retention:
   https://docs.espressif.com/projects/esp-idf/en/v5.4/esp32/api-reference/system/sleep_modes.html
+## September 8 physical-button validation
+
+The simulator now sends short board-button taps through the registered LVGL
+encoder. The 135x240 no-touch scenario checks each timer row, then waits up to
+500 virtual milliseconds for LVGL's bounded focus-scroll animation. It requires
+the complete focused control and label to be visible and clear of indicators.
+The existing unrelated expected failures remain unchanged.
+
+The full scenario passed on code `268e7b89`; build and runtime logs are
+`/home/a92615428/b/c59-label-wrap-build.log` and
+`/home/a92615428/b/c59-label-wrap-test.log`. The fresh-process deep-sleep runner
+passed on `69c89f7e`, before the final label-only wrapping change, with evidence
+in `/home/a92615428/b/c59-final-deep-cycle.log`. These are SDL results, not
+physical button debounce, PMIC wake, current, or camera validation.

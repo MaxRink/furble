@@ -88,12 +88,30 @@ BaseType_t Control::Target::sendCommand(cmd_t cmd) {
     // clear the queue and place the disconnect at the front for immediate
     // delivery. Reset guarantees space, so this never blocks the caller and
     // never fails on a full queue.
-    xQueueReset(m_Queue);
-    return xQueueSendToFront(m_Queue, &cmd, 0);
+    // Drain with non-blocking receives. A queue-length snapshot followed by
+    // xQueueReset can include a command the target dequeued in between, which
+    // would subtract that still-executing command's reservation and break the
+    // idle() contract. A successful receive proves this side removed the item,
+    // so exactly one reservation is retired per removed command.
+    cmd_t dropped = CMD_ERROR;
+    while (xQueueReceive(m_Queue, &dropped, 0) == pdTRUE) {
+      m_InFlight.fetch_sub(1, std::memory_order_acq_rel);
+    }
+    m_InFlight.fetch_add(1, std::memory_order_acq_rel);
+    const BaseType_t sent = xQueueSendToFront(m_Queue, &cmd, 0);
+    if (sent != pdTRUE) {
+      m_InFlight.fetch_sub(1, std::memory_order_acq_rel);
+    }
+    return sent;
   }
 
+  // Reserve the count before the command can be received. Incrementing after
+  // xQueueSend lets a fast target finish and decrement first, which can make
+  // the counter zero while the command is still executing.
+  m_InFlight.fetch_add(1, std::memory_order_acq_rel);
   BaseType_t ret = xQueueSend(m_Queue, &cmd, 0);
   if (ret != pdTRUE) {
+    m_InFlight.fetch_sub(1, std::memory_order_acq_rel);
     ESP_LOGE(LOG_TAG, "Failed to send command to target.");
   }
   return ret;
@@ -159,6 +177,7 @@ void Control::Target::task(void) {
       case CMD_DISCONNECT:
         m_Camera->setActive(false);
         m_Camera->disconnect();
+        m_InFlight.fetch_sub(1, std::memory_order_acq_rel);
         goto task_exit;
       case CMD_ERROR:
         // Not an error: getCommand() returns CMD_ERROR when the 50 ms queue
@@ -169,6 +188,9 @@ void Control::Target::task(void) {
         break;
       default:
         ESP_LOGE(LOG_TAG, "Invalid control command %d.", cmd);
+    }
+    if (cmd != CMD_ERROR) {
+      m_InFlight.fetch_sub(1, std::memory_order_acq_rel);
     }
 #if defined(FURBLE_TEST_SYNC)
     if (cmd != CMD_ERROR && cmd != CMD_DISCONNECT) {
@@ -203,6 +225,7 @@ Control &Control::getInstance(void) {
 Control::state_t Control::connectAll(void) {
   uint32_t timeout = m_InfiniteReconnect.load(std::memory_order_acquire) ? TIMEOUT_INFINITE_MS
                                                                          : TIMEOUT_DEFAULT_MS;
+  const uint32_t boundedRetryGapMs = m_BoundedRetryGapMs.load(std::memory_order_acquire);
   std::vector<std::shared_ptr<Camera>> cameras;
   std::vector<std::shared_ptr<Camera>> all;
 
@@ -216,6 +239,10 @@ Control::state_t Control::connectAll(void) {
     // an in-flight attempt runs inside this function on this task.
     if (m_ClearConnectCancel) {
       m_ClearConnectCancel = false;
+      // A user connect cycle starts a fresh retry budget. Reset it here, on
+      // the control task, rather than in connectAll(bool) where it races a
+      // failed attempt that is still in flight on this task.
+      m_ConnectFailCount = 0;
       for (const auto &target : m_Targets) {
         target->getCamera()->clearConnectCancel();
       }
@@ -335,10 +362,10 @@ Control::state_t Control::connectAll(void) {
   }
 
   if (m_InfiniteReconnect.load(std::memory_order_acquire) || (m_ConnectFailCount < 2)) {
+    uint32_t delay;
     if (m_InfiniteReconnect.load(std::memory_order_acquire)) {
-      const uint32_t delay =
-          ReconnectBackoff::delayMs(m_ReconnectAttempt.load(std::memory_order_acquire),
-                                    m_ReconnectBackoff.load(std::memory_order_acquire));
+      delay = ReconnectBackoff::delayMs(m_ReconnectAttempt.load(std::memory_order_acquire),
+                                        m_ReconnectBackoff.load(std::memory_order_acquire));
 
       if ((m_ReconnectAttempt.load(std::memory_order_acquire) == 0)
           && !m_ReconnectHintLogged.load(std::memory_order_acquire)) {
@@ -352,16 +379,24 @@ Control::state_t Control::connectAll(void) {
       ESP_LOGI(LOG_TAG, "Reconnect retry %lu, waiting %lu ms.",
                m_ReconnectAttempt.load(std::memory_order_acquire) + 1, delay);
       m_ReconnectAttempt.fetch_add(1, std::memory_order_acq_rel);
-
-      // Sleep in short slices so disconnect can interrupt the retry wait.
-      uint32_t remaining = delay;
-      while (remaining > 0 && !m_ConnectAbort.load(std::memory_order_acquire)
-             && m_State.load(std::memory_order_acquire) != STATE_DISCONNECTING) {
-        const uint32_t slice = remaining < BACKOFF_SLICE_MS ? remaining : BACKOFF_SLICE_MS;
-        vTaskDelay(pdMS_TO_TICKS(slice));
-        remaining -= slice;
-      }
+    } else {
+      // Bounded connect retry. Resume supplies a settle gap; ordinary bounded
+      // connects supply zero and retain their immediate retry behavior. The
+      // failure budget remains two total attempts: one initial attempt and one
+      // retry while m_ConnectFailCount is below two.
+      delay = boundedRetryGapMs;
+      ESP_LOGI(LOG_TAG, "Connect retry %lu of 1, waiting %lu ms.", m_ConnectFailCount, delay);
     }
+
+    // Sleep in short slices so disconnect can interrupt the retry wait.
+    uint32_t remaining = delay;
+    while (remaining > 0 && !m_ConnectAbort.load(std::memory_order_acquire)
+           && m_State.load(std::memory_order_acquire) != STATE_DISCONNECTING) {
+      const uint32_t slice = remaining < BACKOFF_SLICE_MS ? remaining : BACKOFF_SLICE_MS;
+      vTaskDelay(pdMS_TO_TICKS(slice));
+      remaining -= slice;
+    }
+
     // Same rule as the abort path above: an aborted pass reports the abort, not
     // whatever m_State read at the moment the retry wait was interrupted.
     return (m_ConnectAbort.load(std::memory_order_acquire)
@@ -590,7 +625,7 @@ std::string Control::getCameraID(const Camera &camera) {
   return std::string(id);
 }
 
-void Control::connectAll(bool infiniteReconnect) {
+void Control::connectAll(bool infiniteReconnect, uint32_t boundedRetryGapMs) {
   {
     // A new user connect cycle re-arms every target camera, but not here.
     //
@@ -624,6 +659,7 @@ void Control::connectAll(bool infiniteReconnect) {
   m_InfiniteReconnect.store(infiniteReconnect, std::memory_order_release);
   m_ReconnectBackoff.store(Settings::reconBackoffEffective(), std::memory_order_release);
   m_ReconnectAttempt.store(0, std::memory_order_release);
+  m_BoundedRetryGapMs.store(boundedRetryGapMs, std::memory_order_release);
   m_ReconnectHintLogged.store(false, std::memory_order_release);
   m_ConnectAbort.store(false, std::memory_order_release);
 
@@ -654,6 +690,33 @@ bool Control::disconnectComplete(void) {
   }
 
   return true;
+}
+
+bool Control::Target::idle(void) const {
+  return (m_InFlight.load(std::memory_order_acquire) == 0)
+         && ((m_Queue == NULL) || (uxQueueMessagesWaiting(m_Queue) == 0));
+}
+
+bool Control::waitForCameraCommands(uint32_t timeout_ms) {
+  const TickType_t start = xTaskGetTickCount();
+  const TickType_t timeout = pdMS_TO_TICKS(timeout_ms);
+  while ((xTaskGetTickCount() - start) < timeout) {
+    bool idle = true;
+    {
+      const std::lock_guard<std::mutex> lock(m_Mutex);
+      for (const auto &target : m_Targets) {
+        if (!target->idle()) {
+          idle = false;
+          break;
+        }
+      }
+    }
+    if (idle) {
+      return true;
+    }
+    vTaskDelay(pdMS_TO_TICKS(10));
+  }
+  return false;
 }
 
 bool Control::targetTasksStopped(void) {
@@ -1426,6 +1489,7 @@ void Control::resetForTest(void) {
   m_ReconnectAttempt.store(0, std::memory_order_release);
   m_ReconnectHintLogged.store(false, std::memory_order_release);
   m_ConnectFailCount = 0;
+  m_BoundedRetryGapMs.store(0, std::memory_order_release);
   m_ConnectAbort.store(false, std::memory_order_release);
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);

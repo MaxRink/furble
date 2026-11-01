@@ -196,6 +196,34 @@ class Platform {
   void clearMotionWake(void);
 
   /**
+   * Largest early wake the Plus2 RTC can produce for a valid request.
+   *
+   * The BM8563 has one-second resolution up to 255 seconds and minute
+   * resolution above that, so a correct timer can fire up to 60 seconds before
+   * the requested delay. The resume record is the shot deadline, which already
+   * sits one wake margin later, so its early bound is the margin plus this.
+   */
+  static constexpr uint32_t TIMED_WAKE_MAX_EARLY_S = 60;
+
+  /**
+   * Is a timed power-on supported by this board?
+   */
+  bool canTimedWake(void);
+
+  /**
+   * Power off and arrange for a timed power-on.
+   *
+   * @return true after the wake timer and power-off request were accepted;
+   * false if setup failed and the device remains awake.
+   */
+  bool powerOffUntil(uint32_t seconds);
+
+  /**
+   * Consume the wake marker left by a timed power-on.
+   */
+  bool consumeTimedWake(void);
+
+  /**
    * Set the maximum CPU frequency in MHz.
    *
    * Unsupported values fall back to the default. Use getCPUMaxFreq() to read

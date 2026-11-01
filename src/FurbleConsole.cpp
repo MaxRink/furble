@@ -231,6 +231,7 @@ const char *settingType(Settings::type_t type) {
 #endif
     case Settings::GPS_BAUD:
     case Settings::SCAN_TIMEOUT:
+    case Settings::IVL_SLEEP_THR:
       return "uint32";
     case Settings::THEME:
     case Settings::BUTTON_MODE:
@@ -267,6 +268,7 @@ const char *settingType(Settings::type_t type) {
     case Settings::BOOT_SPLASH:
     case Settings::BATTERY_SAVER:
     case Settings::AUTO_OFF_CHARGING:
+    case Settings::IVL_SLEEP:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
@@ -339,6 +341,8 @@ const char *appliesWhen(Settings::type_t type) {
     case Settings::MQTT_HA:
 #endif
     case Settings::IMU_TRIG:
+    case Settings::IVL_SLEEP:
+    case Settings::IVL_SLEEP_THR:
     case Settings::GPS_MOTION:
       return "immediately";
     case Settings::CONN_SAVER:
@@ -396,6 +400,7 @@ void printValue(const char *prefix, Settings::type_t type) {
 #endif
     case Settings::GPS_BAUD:
     case Settings::SCAN_TIMEOUT:
+    case Settings::IVL_SLEEP_THR:
       printf("%s%lu\n", prefix, Settings::load<uint32_t>(type));
       break;
     case Settings::THEME:
@@ -445,6 +450,7 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::BOOT_SPLASH:
     case Settings::BATTERY_SAVER:
     case Settings::AUTO_OFF_CHARGING:
+    case Settings::IVL_SLEEP:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
@@ -597,6 +603,16 @@ int setValue(const Settings::setting_t &setting, const char *text) {
       Settings::save<uint32_t>(setting.type, static_cast<uint32_t>(value));
     } break;
 
+    case Settings::IVL_SLEEP_THR:
+    {
+      char *end = nullptr;
+      unsigned long value = strtoul(text, &end, 0);
+      if ((end == text) || (*end != '\0') || (value > 999)) {
+        return fail("expected 0-999 seconds");
+      }
+      Settings::save<uint32_t>(setting.type, static_cast<uint32_t>(value));
+    } break;
+
     case Settings::GPS_BAUD:
     {
       unsigned long value = 0;
@@ -689,6 +705,7 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::BOOT_SPLASH:
     case Settings::BATTERY_SAVER:
     case Settings::AUTO_OFF_CHARGING:
+    case Settings::IVL_SLEEP:
 #if defined(FURBLE_M5STICKS3)
     case Settings::WATCHDOG:
 #endif
