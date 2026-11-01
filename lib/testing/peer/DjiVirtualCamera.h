@@ -109,7 +109,10 @@ class DjiVirtualCamera final: public NimBLEMockPeer {
     bool smp_open_link_only = false;
     bool smp_rejects = false;
 
-    // Application-level connection approval.
+    // Application-level connection approval. auto_approve keeps a basic host
+    // session short by answering the popup immediately. Set it false to model
+    // the documented first-pairing popup: the camera then stays pending until
+    // approveConnection() is called.
     bool require_approval = true;
     bool auto_approve = true;
     bool camera_pairing_record = false;
