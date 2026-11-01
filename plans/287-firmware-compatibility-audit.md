@@ -71,10 +71,17 @@ interval. Image Sync 2.1.32 and GR WORLD 2.0.0 write GEO Tag `1` and GPS datum
 - All 120 host tests passed, including `ricoh-focus` with the new geotag
   regression coverage and the advertisement dispatch test that links the DJI
   driver.
+- The Python tooling suite passed: 192 tests, `OK`.
+- `clang-format --dry-run --Werror` is clean for the changed C++ files.
 - The new test asserts the Camera Service GEO Tag write, the 32-byte GPS
   packet, and that the final byte is `0`.
 - The DJI dual device-ID acceptance compiles in the host dispatch test. It has
   no dedicated behavior test because the helper is private, and no hardware
   capture proves the camera-reported value.
+- Canon Smart focus compiles into the host dispatch test. No Canon camera peer
+  exists, so the AF_ON and AF_OFF writes are app-static and untested on
+  hardware.
+- The pairing and state-machine references are documentation only. They cite
+  firmware, app, and capture evidence and do not change the camera stack.
 - Hardware validation remains pending. The PR must declare Ricoh and DJI
   untested on hardware unless a bench run covers them.
