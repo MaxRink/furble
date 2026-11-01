@@ -50,6 +50,12 @@ still writes zero for both because it has no timezone source. The control
 Confirm and Start sequence, the APS identity path, the GPS stop packet, and the
 readiness notifications remain documented gaps.
 
+The Sony ILCE-7RM5 4.00 firmware was decrypted and confirms the CC00, DD00,
+EE00, BB00, and FF00 services, FF01 write, FF02 notify, EE01 pairing, and
+DD30/DD31 lock and enable. It does not confirm Furble's four FF01 opcodes.
+The ZV-1F payload remains opaque. No Sony code change is made without a
+capture of FF01 or FF02.
+
 ## Evidence
 
 Firmware evidence is `firmware-static`: the Fujifilm images contain the same
