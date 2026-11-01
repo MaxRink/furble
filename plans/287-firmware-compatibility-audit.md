@@ -61,6 +61,9 @@ Supporting references added by this PR:
   transfer, and recovery states.
 - `docs/camera-research/bt-api-surface.md` summarises every service,
   characteristic, command, notification, and unused feature by family.
+- `docs/camera-research/fuji-canon-nikon.md` records the Nikon Remote short
+  press `02 02`, long press `02 03`, no-op `02 00`, and the six-byte `2084`
+  key/status indication.
 
 App evidence is `app-static`: XApp 2.7.6 and Camera Remote 4.10.2 use the
 Fujifilm Secure flow, the 23-byte geotag packet, and the 10-second sync
