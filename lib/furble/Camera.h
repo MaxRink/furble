@@ -243,6 +243,27 @@ class Camera: public NimBLEClientCallbacks {
    */
   virtual void updateGeoData(const gps_t &gps, const timesync_t &timesync) = 0;
 
+  /**
+   * Controls a camera class can actually honour.
+   *
+   * This is a protocol capability, not a physical-outcome claim. `focus` is
+   * true only where a dedicated focus (half-press) command exists. `bulb` is
+   * true only where the class can end a held exposure with a release command;
+   * every class that only has a local UI hold still reports true because the
+   * press/release pair is what a bulb exposure needs. `movie` is true only
+   * where a movie start and stop command is implemented.
+   */
+  struct Capability {
+    bool focus = true;
+    bool bulb = true;
+    bool movie = true;
+  };
+
+  /** Report the controls this camera class can perform. */
+  virtual Capability capabilities(void) const {
+    return Capability {};
+  }
+
   virtual size_t getSerialisedBytes(void) const = 0;
   virtual bool serialise(void *buffer, size_t bytes) const = 0;
 

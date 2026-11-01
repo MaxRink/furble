@@ -124,16 +124,16 @@ and each needs a host or simulator regression test.
 | --- | --- | --- | --- | --- |
 | S1 | Remove the LUMIX focus mapping. `focusPress` previously wrote `01` (Confirm) and `focusRelease` wrote `02` (Start). There is no focus opcode. | LX | `app-static` panasonic.md C06, C07, F02 | Fixed. Focus press and release are now no-ops. |
 | S2 | Add the LUMIX session handshake: `01` Confirm, wait for `7be5fe6e` `00`, `02` Start, and `03` Finish on disconnect. | LX | `app-static` panasonic.md C06 to C08, F01, F40 | Fixed. Connect sends Confirm, waits for readiness, then Start. Disconnect sends Finish. |
-| S3 | Add the LUMIX GPS stop packet (fix `0x56`, lat and lon `0x7fffffff`, altitude `0x7fff`) and wait for `37701b80` and `4cf487c0` readiness before the clock and GPS writes. | LX | `app-static` panasonic.md C14, F41, F45; `public-source` S5 report | Stop packet fixed on disconnect. Location and clock readiness gates remain capture-gated. |
+| S3 | Add the LUMIX GPS stop packet (fix `0x56`, lat and lon `0x7fffffff`, altitude `0x7fff`) and wait for `37701b80` and `4cf487c0` readiness before the clock and GPS writes. | LX | `app-static` panasonic.md C14, F41, F45; `public-source` S5 report | Fixed. Stop packet on disconnect, and GPS and clock writes wait for their readiness notifications when the body exposes them. The physical effect remains capture-gated. |
 | S4 | Write the Fujifilm 12-byte UTC and timezone packet on the `F9150137` `01 00` request, and write the client name with a trailing NUL. | FJ-S40, FJ-S41 | `firmware-static` fujifilm.md C28 and C03; `app-static` XApp and Camera Remote | Fixed. Both apps now match the NUL write and the UTC packet. Offset and DST are zero because Furble has no timezone source. |
 | S5 | Send the Fujifilm `AAB609C4` location sync enable, not only the interval, and read it back once. | FJ-S40, FJ-S41 | `firmware-static` fujifilm.md C25; `app-static` XApp | Fixed. The first geotag packet enables the setting and reads it back. |
 | S6 | Make the Canon Smart GPS timestamp an absolute UTC epoch instead of `mktime` on the runtime timezone. | CN-S | `app-static` canon.md CS-34; `furble-source` CanonEOSSmart.cpp | Fixed. `CanonProtocol::utcEpoch` has no timezone input, and `canon-time` pins the epoch. |
 | S7 | Add the Sony GPS sequence: subscribe `DD01`, read `DD21` and choose 91 or 95 bytes, read `DD32` and `DD33`, fill UTC offset and DST, and release `DD30` and `DD31` when GPS stops. | SO | `app-static` sony.md C-20 to C-30, F-21, F-23 | Partly fixed: DD01 subscribe, DD21 selection, 91/95 form, and release on disconnect. DD32/DD33 and non-zero timezone/DST remain capture-gated. |
 | S8 | Add the Ricoh Date Time write on connect, gated on a fresh Operation Mode `CAPTURE` read, and read it back. | RC3, RC4 | `firmware-static` ricoh.md C-19 and CM-03; `app-static` Image Sync and GR WORLD | Applied on the first valid GPS time and then once per minute. The readback and the CAPTURE gate are still capture-gated. |
 | S9 | Write the Ricoh Paired Device Name (`FE3A32F8`, UTF-8) after the first connect. | RC3, RC4 | `app-static` ricoh.md C-76 and CM-15 | Fixed. Connect writes the controller name when the characteristic exists. |
-| S10 | Decode Ricoh Capture Status and use a `Capturing=1` then `0` transition as the shot-confirmation signal. | RC3, RC4 | `firmware-static` ricoh.md C-56; `public-source` field table | Removes the false shot-taken implication without adding a new command. |
+| S10 | Decode Ricoh Capture Status and use a `Capturing=1` then `0` transition as the shot-confirmation signal. | RC3, RC4 | `firmware-static` ricoh.md C-56; `public-source` field table | Fixed. Byte 0 is decoded, the 1 to 0 transition is counted, and `0xFF` never counts. Physical confirmation is still capture-gated. |
 | S11 | Stop Nikon Smart at the BLE authentication result and report the Bluetooth Classic blocker. Do not wait for a final OK that is a time request. | NK-S | `app-static` nikon.md S20 and S22; `furble-source` NikonSmart.cpp | Fixed. `connectFinalise` reports the blocker and returns immediately. |
-| S12 | Gate the UI controls by family capability: hide bulb and focus on Ricoh, hide focus on LUMIX, and label Nikon Remote release as a no-op. | All | `firmware-static` and `app-static` rows cited in Table 1 | Stops the product promising an outcome the camera cannot produce. |
+| S12 | Gate the UI controls by family capability: hide bulb and focus on Ricoh, hide focus on LUMIX, and label Nikon Remote release as a no-op. | All | `firmware-static` and `app-static` rows cited in Table 1 | Fixed. `Camera::Capability` and `Control::getActiveCapability` disable controls the session cannot honour, proven by the Ricoh and LUMIX gating scenarios. |
 | S13 | Write the disconnect reason `7EDE1988` before an intentional Fujifilm Secure disconnect, and read it after a failed reconnect. | FJ-S40, FJ-S41 | `firmware-static` fujifilm.md C06 and C78; `app-static` both Fujifilm apps | Not representable on the audited images. The runtime ATT database has no value entry for handle `0x4007`, so a write has no effect and a read returns the static default. Do not add a dead write. |
 
 ### 1.3 Highest-value capture gates
@@ -165,7 +165,10 @@ the closing artifact.
 | Fujifilm client name NUL and 12-byte UTC time packet | applied | `lib/furble/Fujifilm.cpp`, `FujifilmBasic.cpp`, `FujifilmSecure.cpp`, protocol test |
 | Canon Smart GPS timestamp uses an absolute UTC epoch | applied | `lib/furble/protocol/CanonTime.h`, `canon-time` |
 | Ricoh paired-device name and GPS-time clock sync | applied | `lib/furble/Ricoh.{h,cpp}`, `lib/furble/protocol/RicohTime.h`, `ricoh-time`, `ricoh-focus` |
+| Ricoh Capture Status decoding and shot confirmation | applied | `lib/furble/Ricoh.{h,cpp}`, peer, `ricoh-focus` |
 | Sony DD21 selection, DD01 subscribe, and lock release | applied | `lib/furble/Sony.cpp`, host `sony-location` |
+| LUMIX location and clock readiness gates | applied | `lib/furble/Lumix.cpp`, host `lumix-session` |
+| Camera capability gating for focus and bulb | applied | `Camera.h`, `FurbleControl.{h,cpp}`, `FurbleUI.{h,cpp}`, e2e `ricoh-capability-gating` and `lumix-capability-gating` |
 | Nikon Smart stops at the Classic blocker | applied | `lib/furble/NikonSmart.cpp` |
 | Fujifilm location-sync enable and readback | applied | `lib/furble/Fujifilm.cpp` |
 | LUMIX GPS stop packet on disconnect | applied | `lib/furble/Lumix.cpp`, host `lumix-session` |
@@ -775,7 +778,7 @@ APS reads a per-connection key and writes a 20-byte XOR and word-swapped block.
 | Panasonic LUMIX | Live view | Wi-Fi | panasonic F14 | missing | none | none | capture-gated |
 | Panasonic LUMIX | Image transfer, list, thumbnail | BLE start, Wi-Fi DLNA | panasonic C16 to C20 | missing | none | none | capture-gated |
 | Panasonic LUMIX | Clock and timezone | BLE GATT | panasonic C15 | implemented, partial: after GPS, offset and DST zero | none | none (class) | capture-gated |
-| Panasonic LUMIX | GPS push and pull | BLE GATT push, no pull | panasonic C13, C14 | implemented: GPS stop on disconnect. Readiness gates remain | none | host `lumix-session` | capture-gated, author-reported S5 EXIF check |
+| Panasonic LUMIX | GPS push and pull | BLE GATT push, no pull | panasonic C13, C14 | implemented: GPS stop on disconnect, readiness-gated writes | none | host `lumix-session` | capture-gated, author-reported S5 EXIF check |
 | Panasonic LUMIX | Geotag enable and sync interval | BLE GATT readiness | panasonic C13, F45 | missing, no readiness subscription | none | none (class) | capture-gated |
 | Panasonic LUMIX | Settings read | BLE GATT | panasonic C21 to C27 | missing | none | none (class) | capture-gated |
 | Panasonic LUMIX | Settings write | BLE identity and name, Wi-Fi CGI | panasonic C01, C02 | implemented, partial: fixed MEI0 and plain name | none | none (class) | capture-gated |

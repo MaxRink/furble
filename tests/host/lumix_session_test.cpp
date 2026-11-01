@@ -85,6 +85,36 @@ int main() {
   passed &= check(peer.sessionFinished(), "LUMIX Finish 03 closes the session");
 
   NimBLEDevice::resetMock();
+
+  // Readiness gate. A body that requires location readiness must not receive a
+  // GPS packet before 37701b80 reports 01, and must not receive a clock packet
+  // before 4cf487c0 reports 01.
+  Furble::Host::LumixVirtualCamera::Config gated;
+  gated.readiness_on_subscribe = false;
+  gated.gps_requires_readiness = true;
+  gated.clock_requires_readiness = true;
+  Furble::Host::LumixVirtualCamera gatedPeer(gated);
+  NimBLEDevice::setMockPeer(&gatedPeer);
+  const auto gatedAdvertisement = gatedPeer.advertisement();
+  Furble::Lumix gatedCamera(&gatedAdvertisement);
+  passed &= check(gatedCamera.connect(ESP_PWR_LVL_P3, 2000),
+                  "LUMIX gated body connects without readiness");
+  gatedPeer.clearEvents();
+  gatedCamera.updateGeoData(gps, time);
+  passed &= check(gatedPeer.lastGps().empty(), "LUMIX GPS is withheld before location readiness");
+  passed &= check(gatedPeer.lastClock().empty(), "LUMIX clock is withheld before clock readiness");
+  passed &= check(gatedPeer.emitLocationReadiness(0x01),
+                  "the peer delivers the location readiness notification");
+  passed &=
+      check(gatedPeer.emitClockRequest(0x01), "the peer delivers the clock request notification");
+  gatedCamera.updateGeoData(gps, time);
+  passed &= check(gatedPeer.lastGps().size() == 16,
+                  "LUMIX GPS is written once location readiness arrives");
+  passed &= check(gatedPeer.lastClock().size() == 10,
+                  "LUMIX clock is written once clock readiness arrives");
+  gatedCamera.disconnect();
+
+  NimBLEDevice::resetMock();
   if (!passed) {
     return 1;
   }

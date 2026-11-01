@@ -36,6 +36,11 @@ class Fujifilm: public Camera {
   void focusRelease(void) override final;
   void updateGeoData(const gps_t &gps, const timesync_t &timesync) override final;
 
+  /** Focus and bulb exist. No movie command is implemented. */
+  Capability capabilities(void) const override final {
+    return Camera::Capability {true, true, false};
+  }
+
  protected:
   /**
    * Advertisement manufacturer data.

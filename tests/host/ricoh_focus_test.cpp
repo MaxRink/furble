@@ -66,6 +66,19 @@ int main() {
                         && writes[1].payload == std::vector<uint8_t> {1, 1},
                     "Ricoh shutter OperationRequest starts capture with AF");
   }
+  // Capture Status confirms the shot. The peer reports 01 00 00 00 on the
+  // capture start and 00 00 00 00 on completion. The driver counts only the
+  // 1 to 0 transition, so a capture start alone does not imply a photograph.
+  passed &= check(peer.capturing(), "Ricoh peer entered the capturing state");
+  passed &= check(camera.captureInProgress(), "Ricoh driver decodes the capturing state");
+  passed &= check(camera.capturesCompleted() == 0,
+                  "Ricoh does not report a completed capture before the transition");
+  peer.completeCapture();
+  passed &= check(!camera.captureInProgress(), "Ricoh driver clears the capturing state");
+  passed &= check(camera.capturesCompleted() == 1,
+                  "Ricoh counts exactly one capture on the 1 to 0 transition");
+  passed &= check(camera.captureStatus() == 0x00, "Ricoh decodes the raw status byte");
+
   // Geotagging uses the Camera Service GEO Tag enable characteristic, not the
   // WLAN Control Network Type characteristic. The GPS packet ends with the
   // WGS84 datum selector 0, not a centisecond value. The GEO Tag role is

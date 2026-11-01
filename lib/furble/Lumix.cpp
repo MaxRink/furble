@@ -24,8 +24,10 @@ const NimBLEUUID Lumix::CONTROL_UUID {0x7be5fd56, 0x475b, 0x11e7, 0xa91992ebcb67
 const NimBLEUUID Lumix::CONTROL_READINESS_UUID {0x7be5fe6e, 0x475b, 0x11e7, 0xa91992ebcb67fe33};
 const NimBLEUUID Lumix::LOCATION_SVC_UUID {0x1d74afe0, 0x3214, 0x11e6, 0x8ab40002a5d5c51b};
 const NimBLEUUID Lumix::LOCATION_CHR_UUID {0xdaff1bc0, 0x3216, 0x11e6, 0x91c80002a5d5c51b};
+const NimBLEUUID Lumix::LOCATION_READINESS_UUID {0x37701b80, 0x32a7, 0x11e6, 0xbb830002a5d5c51b};
 const NimBLEUUID Lumix::CLOCK_SVC_UUID {0x34738720, 0x3214, 0x11e6, 0xb66b0002a5d5c51b};
 const NimBLEUUID Lumix::CLOCK_CHR_UUID {0xead55e60, 0x3216, 0x11e6, 0xa42e0002a5d5c51b};
+const NimBLEUUID Lumix::CLOCK_REQUEST_UUID {0x4cf487c0, 0x32a7, 0x11e6, 0xa50d0002a5d5c51b};
 constexpr std::array<uint8_t, 16> Lumix::MEI0;
 
 namespace {
@@ -84,8 +86,12 @@ bool Lumix::_connect(void) {
   m_Control = nullptr;
   m_ControlReadiness = nullptr;
   m_Location = nullptr;
+  m_LocationReadiness = nullptr;
   m_Clock = nullptr;
+  m_ClockRequest = nullptr;
   m_ControlReady = false;
+  m_LocationReady = false;
+  m_ClockReady = false;
   m_SessionStarted = false;
   m_Progress = 10;
   ESP_LOGI(LOG_TAG, "Lumix connecting");
@@ -165,6 +171,21 @@ bool Lumix::_connect(void) {
   pSvc = m_Client->getService(LOCATION_SVC_UUID);
   if (pSvc != nullptr) {
     m_Location = pSvc->getCharacteristic(LOCATION_CHR_UUID);
+    // 37701b80: 01 starts location updates, 02 stops them, 03 resends the
+    // stored packet. The official app only writes GPS after 01.
+    m_LocationReadiness = pSvc->getCharacteristic(LOCATION_READINESS_UUID);
+    if (m_LocationReadiness != nullptr) {
+      if (!gattSubscribe(
+              m_LocationReadiness,
+              [this](NimBLERemoteCharacteristic *, uint8_t *data, size_t length, bool) {
+                if (length > 0) {
+                  m_LocationReady = (data[0] == 0x01);
+                }
+              },
+              false, true)) {
+        ESP_LOGW(LOG_TAG, "Lumix location readiness subscribe failed");
+      }
+    }
   } else {
     ESP_LOGI(LOG_TAG, "Lumix location service unavailable");
   }
@@ -172,6 +193,21 @@ bool Lumix::_connect(void) {
   pSvc = m_Client->getService(CLOCK_SVC_UUID);
   if (pSvc != nullptr) {
     m_Clock = pSvc->getCharacteristic(CLOCK_CHR_UUID);
+    // 4cf487c0 is the clock request. The official app writes the clock packet
+    // on this notification.
+    m_ClockRequest = pSvc->getCharacteristic(CLOCK_REQUEST_UUID);
+    if (m_ClockRequest != nullptr) {
+      if (!gattSubscribe(
+              m_ClockRequest,
+              [this](NimBLERemoteCharacteristic *, uint8_t *data, size_t length, bool) {
+                if (length > 0) {
+                  m_ClockReady = (data[0] == 0x01);
+                }
+              },
+              false, true)) {
+        ESP_LOGW(LOG_TAG, "Lumix clock request subscribe failed");
+      }
+    }
   } else {
     ESP_LOGI(LOG_TAG, "Lumix clock service unavailable");
   }
@@ -203,7 +239,12 @@ void Lumix::_disconnect(void) {
   m_Control = nullptr;
   m_ControlReadiness = nullptr;
   m_Location = nullptr;
+  m_LocationReadiness = nullptr;
   m_Clock = nullptr;
+  m_ClockRequest = nullptr;
+  m_ControlReady = false;
+  m_LocationReady = false;
+  m_ClockReady = false;
   if (m_Client != nullptr && m_Client->isConnected())
     m_Client->disconnect();
 }
@@ -277,6 +318,13 @@ void Lumix::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
     ESP_LOGW(LOG_TAG, "Lumix GPS characteristic unavailable");
     return;
   }
+  // A body that exposes 37701b80 must report ready before the first write.
+  // The readiness notification can arrive after connect, so a skipped update
+  // is not an error: the next GPS tick writes once the gate opens.
+  if ((m_LocationReadiness != nullptr) && !m_LocationReady.load()) {
+    ESP_LOGD(LOG_TAG, "Lumix GPS waiting for location readiness");
+    return;
+  }
 
   const time_t unixTime = toUnixTime(timesync);
   if (unixTime < GPS_EPOCH_OFFSET) {
@@ -294,7 +342,8 @@ void Lumix::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
   };
   bool rc = m_Location->writeValue(reinterpret_cast<const uint8_t *>(&geo), sizeof(geo), true);
 
-  if (rc && m_Clock != nullptr && m_Clock->canWrite()) {
+  const bool clockReady = (m_ClockRequest == nullptr) || m_ClockReady.load();
+  if (rc && clockReady && m_Clock != nullptr && m_Clock->canWrite()) {
     clock_t clock = {
         .year = static_cast<uint16_t>(timesync.year),
         .month = static_cast<uint8_t>(timesync.month),

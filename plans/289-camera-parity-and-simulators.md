@@ -34,6 +34,12 @@ Completed in this branch:
 - Nikon Smart now stops at the BLE authentication result, reports the
   Bluetooth Classic blocker, and no longer waits for a final OK that is a time
   request.
+- Ricoh Capture Status byte 0 is decoded; the `1` to `0` transition counts a
+  completed capture, and `0xFF` never does.
+- Camera capability gating disables the focus control and the Bulb row for a
+  session that cannot honour them.
+- LUMIX subscribes to `37701b80` and `4cf487c0` and withholds the GPS and clock
+  writes until the matching readiness arrives.
 - Fujifilm location sync is enabled with `AAB609C4` before the first geotag
   packet and read back once.
 - LUMIX sends the GPS stop packet (fix `0x56`, sentinel coordinates) on
@@ -51,11 +57,10 @@ Completed in this branch:
 ## Deviations and limits
 
 - No hardware capture was made. Runtime claims remain capture-gated.
-- The remaining safe fixes are tracked in the parity matrix. S13 is
-  reclassified as not representable because the Fujifilm disconnect-reason
-  handle is inert on the audited images. The remaining code work is UI
-  capability gating, Ricoh capture-status confirmation, and the LUMIX
-  location and clock readiness gates.
+- Every S1 to S12 safe fix is applied or reclassified. S13 is not
+  representable because the Fujifilm disconnect-reason handle is inert on the
+  audited images. No safe fix remains open; the remaining rows are capture
+  gates.
 - The peers model the documented protocol; they do not certify a physical
   camera outcome.
 
@@ -65,6 +70,8 @@ Completed in this branch:
 - `ctest`: 125/125 pass, including `peer-contract`, `lumix-session`,
   `canon-time`, `ricoh-time`, `sony-location`, and the Fujifilm protocol time
   vector.
+- `sim/scenarios/e2e/ricoh-capability-gating.txt` and
+  `lumix-capability-gating.txt` pass and assert the disabled controls.
 - `python3 -m unittest`: 192 tests pass.
 - `./sim/build/furble-sim --script sim/scenarios/e2e/ble-peer-topology-smoke.txt`:
   pass, asserts 9 peers.

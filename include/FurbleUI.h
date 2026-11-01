@@ -1043,6 +1043,11 @@ class UI {
   lv_timer_t *m_SatTimer = nullptr;
   bool m_FocusPressed = false;
   bool m_ShutterLock = false;
+  // Capability intersection of the connected cameras. A control the session
+  // cannot honour is disabled rather than silently doing nothing.
+  bool m_CapabilityFocus = true;
+  bool m_CapabilityBulb = true;
+  bool m_CapabilityMovie = true;
   bool m_ButtonModeFocusPressed = false;
   bool m_ButtonModeShutterPressed = false;
   bool m_ButtonModeLongPressed = false;
@@ -1693,6 +1698,17 @@ class UI {
 
   /** Configure shutter control. */
   void configShutterControl(void);
+  /**
+   * Apply the connected cameras' capability intersection to the UI.
+   *
+   * Called when the connected page is shown and when a session ends. A control
+   * the session cannot honour is disabled, never left looking usable.
+   */
+  void updateCapabilityGating(void);
+  /** Re-enable every control for the idle UI. */
+  void resetCapabilityGating(void);
+  /** Push the current capability members onto the widgets. */
+  void applyCapabilityGating(void);
 
   /** Configure menu control. */
   void configMenuControl(void);

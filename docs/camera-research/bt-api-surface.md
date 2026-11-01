@@ -55,15 +55,15 @@ Ricoh characteristic classes, GR IV exposes 65, and the GR IIIx 1.41 recording
 contains 51. The full inventory is 76 rows after standard services.
 
 Furble uses model identity, operation mode, GEO Tag, GPS Information, shutter,
-Furble uses model identity, operation mode, GEO Tag, GPS Information, shutter,
 drive mode, capture status, the paired-device name, and a GPS-time clock sync.
 At connect it reads camera power, self-timer, and paired-device name through the
 state probe and subscribes to the power, self-timer, capture-status, and
 operation-mode notifications, so those read and notification paths are
-implemented. The unused surface is the write side of power and self-timer, plus
-battery, storage and transfer lists, power-off during transfer, exposure
-settings, WLAN control, firmware update, and the multiplexed Camera and Shooting
-notifications.
+implemented. The capture status byte is decoded, so a `1` to `0` transition is
+the shot-confirmation signal; `0xFF` (failed property read) never counts. The
+unused surface is the write side of power and self-timer, plus battery, storage
+and transfer lists, power-off during transfer, exposure settings, WLAN control,
+firmware update, and the multiplexed Camera and Shooting notifications.
 
 The handler map confirms that Camera Power writes accept only `0` or `1`;
 `2` is a read-only Sleep state and is refused on write. GEO Tag accepts only

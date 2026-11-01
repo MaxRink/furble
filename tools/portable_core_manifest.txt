@@ -2,6 +2,7 @@
 # builds once the platform extraction begins.
 lib/furble/protocol/AdvertisementProtocol.cpp
 lib/furble/protocol/AdvertisementProtocol.h
+lib/furble/protocol/CanonTime.h
 lib/furble/protocol/CameraListProtocol.cpp
 lib/furble/protocol/CameraListProtocol.h
 lib/furble/protocol/FujifilmProtocol.cpp
@@ -10,3 +11,4 @@ lib/furble/protocol/GpsCasic.cpp
 lib/furble/protocol/GpsCasic.h
 lib/furble/protocol/ProvisionTLV.cpp
 lib/furble/protocol/ProvisionTLV.h
+lib/furble/protocol/RicohTime.h

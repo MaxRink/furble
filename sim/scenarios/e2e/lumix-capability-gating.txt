@@ -1,0 +1,17 @@
+# Capability gating: LUMIX has no focus opcode but supports a held exposure.
+#
+# `01` and `02` are Confirm and Start, never focus, so the focus control must be
+# disabled. The shutter press/release pair can still hold a bulb exposure, so the
+# Bulb row stays enabled.
+
+seed ble_peers lumix
+seed ble_saved true
+wait 300
+action connect
+wait 3200
+assert ui.connected yes
+assert ui.capability_focus no
+assert ui.capability_bulb yes
+assert ui.focus_disabled yes
+assert ui.bulb_disabled no
+exit

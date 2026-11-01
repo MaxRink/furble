@@ -136,6 +136,15 @@ class RicohVirtualCamera final: public NimBLEMockPeer {
   bool selfTimerTriggered() const;
   const std::string &pairedDeviceName() const;
 
+  /**
+   * Emit a Capture Status notification. Starts with the documented four-byte
+   * value and ends with an explicit completion call so a test can observe the
+   * 1 to 0 transition.
+   */
+  bool emitCaptureStatus(uint8_t capturing);
+  void completeCapture();
+  bool capturing() const;
+
   // Fault injection. failWrite models an ATT write the camera refuses, which
   // on Ricoh is the only application-level error signal (the handler returns
   // false and the stack answers with application error 0x80). setBusy models
@@ -275,6 +284,7 @@ class RicohVirtualCamera final: public NimBLEMockPeer {
   GpsFix m_LastGps;
   uint8_t m_DriveModeIndex = 0;
   size_t m_CaptureCount = 0;
+  bool m_Capturing = false;
   bool m_HaveOperationRequest = false;
   uint8_t m_LastOperationCode = 0;
   uint8_t m_LastOperationArg = 0;

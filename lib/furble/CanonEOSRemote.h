@@ -26,6 +26,11 @@ class CanonEOSRemote: public CanonEOS {
   void focusRelease(void) override final;
   void updateGeoData(const gps_t &gps, const timesync_t &timesync) override final;
 
+  /** Focus and bulb exist. The movie byte is an inference and not used. */
+  Capability capabilities(void) const override final {
+    return Camera::Capability {true, true, false};
+  }
+
  private:
   // Primary service
   static const NimBLEUUID PRI_SVC_UUID;

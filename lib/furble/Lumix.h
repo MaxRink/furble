@@ -34,6 +34,11 @@ class Lumix: public Camera {
   void focusRelease(void) override final;
   void updateGeoData(const gps_t &gps, const timesync_t &timesync) override final;
 
+  /** There is no focus opcode. `01` and `02` are Confirm and Start. */
+  Capability capabilities(void) const override final {
+    return Camera::Capability {false, true, false};
+  }
+
   size_t getSerialisedBytes(void) const override final;
   bool serialise(void *buffer, size_t bytes) const override final;
 
@@ -57,8 +62,10 @@ class Lumix: public Camera {
   // Location service and clock service.
   static const NimBLEUUID LOCATION_SVC_UUID;
   static const NimBLEUUID LOCATION_CHR_UUID;
+  static const NimBLEUUID LOCATION_READINESS_UUID;
   static const NimBLEUUID CLOCK_SVC_UUID;
   static const NimBLEUUID CLOCK_CHR_UUID;
+  static const NimBLEUUID CLOCK_REQUEST_UUID;
 
   /** GPS push payload, 16 bytes, little-endian. */
   typedef struct __attribute__((packed)) _geo_t {
@@ -98,8 +105,15 @@ class Lumix: public Camera {
   NimBLERemoteCharacteristic *m_Control = nullptr;
   NimBLERemoteCharacteristic *m_ControlReadiness = nullptr;
   NimBLERemoteCharacteristic *m_Location = nullptr;
+  NimBLERemoteCharacteristic *m_LocationReadiness = nullptr;
   NimBLERemoteCharacteristic *m_Clock = nullptr;
+  NimBLERemoteCharacteristic *m_ClockRequest = nullptr;
   std::atomic<bool> m_ControlReady {false};
+  // Readiness gates. A body that exposes the readiness characteristic is only
+  // written after it reports ready, matching the official app. A body without
+  // it keeps the previous unconditional behavior.
+  std::atomic<bool> m_LocationReady {false};
+  std::atomic<bool> m_ClockReady {false};
   bool m_SessionStarted = false;
 
   bool _connect(void) override final;

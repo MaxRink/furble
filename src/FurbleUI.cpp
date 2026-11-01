@@ -2047,6 +2047,13 @@ void UI::handleFocus(lv_event_t *e) {
     return;
   }
 
+  // A camera class with no half-press primitive must not emit a focus command.
+  // Ricoh has no focus opcode, LUMIX `01`/`02` are Confirm and Start, and the
+  // Nikon Remote profile has no focus command at all.
+  if (!ui->m_CapabilityFocus) {
+    return;
+  }
+
   switch (code) {
     case LV_EVENT_PRESSED:
       ui->m_FocusPressed = true;
@@ -3096,6 +3103,10 @@ void UI::addMainMenu(void) {
         } else if (page == m_Menu.at(m_ConnectedStr).page) {
           // Ensure no active scans
           scan.stop();
+
+          // Disable any control the connected session cannot honour before the
+          // user can reach it.
+          ui->updateCapabilityGating();
 
           // only offer GPS data when GPS is enabled
           if (ui->m_GPS.isEnabled()) {
@@ -5164,6 +5175,26 @@ std::string UI::simQueryState(const char *key) {
     return (onConnectedPage && boxHidden && active) ? "yes" : "no";
   }
 
+  // Capability gating. These expose the intersection the UI applied to the
+  // session, so a scenario can assert that a camera without a control sees it
+  // disabled rather than silently ignored.
+  if (query == "capability_focus") {
+    return m_CapabilityFocus ? "yes" : "no";
+  }
+  if (query == "capability_bulb") {
+    return m_CapabilityBulb ? "yes" : "no";
+  }
+  if (query == "capability_movie") {
+    return m_CapabilityMovie ? "yes" : "no";
+  }
+  if (query == "focus_disabled") {
+    return (m_Right != nullptr && lv_obj_has_state(m_Right, LV_STATE_DISABLED)) ? "yes" : "no";
+  }
+  if (query == "bulb_disabled") {
+    lv_obj_t *bulbRow = m_Menu.at(m_RemoteBulb).button;
+    return (bulbRow != nullptr && lv_obj_has_state(bulbRow, LV_STATE_DISABLED)) ? "yes" : "no";
+  }
+
   // Low-battery policy state is simulator-only. It is derived from the real
   // message-box text so the scenario proves the policy reached the rendered
   // warning surface, not merely an internal counter.
@@ -6380,6 +6411,43 @@ void UI::setPresetPicker(bool enabled) {
   m_Bulb.m_Duration.setPresetPicker(enabled);
 }
 
+void UI::updateCapabilityGating(void) {
+  const Camera::Capability capability = Control::getInstance().getActiveCapability();
+  m_CapabilityFocus = capability.focus;
+  m_CapabilityBulb = capability.bulb;
+  m_CapabilityMovie = capability.movie;
+  applyCapabilityGating();
+}
+
+void UI::resetCapabilityGating(void) {
+  m_CapabilityFocus = true;
+  m_CapabilityBulb = true;
+  m_CapabilityMovie = true;
+  applyCapabilityGating();
+}
+
+void UI::applyCapabilityGating(void) {
+  // The focus control and the Bulb menu row are the two controls Furble shows
+  // that some camera classes cannot honour: Ricoh has no half-press primitive
+  // and no way to end a bulb hold, and LUMIX has no focus opcode. Disable them
+  // instead of letting the user press something that does nothing.
+  if (m_Right != nullptr) {
+    if (!m_CapabilityFocus && !m_ShutterLock) {
+      lv_obj_add_state(m_Right, LV_STATE_DISABLED);
+    } else if (!m_ShutterLock) {
+      lv_obj_remove_state(m_Right, LV_STATE_DISABLED);
+    }
+  }
+  lv_obj_t *bulbRow = m_Menu.at(m_RemoteBulb).button;
+  if (bulbRow != nullptr) {
+    if (m_CapabilityBulb) {
+      lv_obj_remove_state(bulbRow, LV_STATE_DISABLED);
+    } else {
+      lv_obj_add_state(bulbRow, LV_STATE_DISABLED);
+    }
+  }
+}
+
 void UI::configShutterControl(void) {
   if (!M5.Touch.isEnabled()) {
     lv_obj_set_style_bg_image_src(m_Left, &icon_arrow_back_24, 0);
@@ -6414,6 +6482,17 @@ void UI::configShutterControl(void) {
     lv_indev_set_button_points(m_ButtonR, rightPoint);
   }
   applyLegendVisibility();
+
+  // The focus control must never look usable on a camera class with no
+  // half-press primitive. Preset mode reuses this button for the plus step, so
+  // it is gated only in the shutter mode proper.
+  if (m_Right != nullptr && m_ControlMode != ControlMode::PRESET) {
+    if (!m_CapabilityFocus) {
+      lv_obj_add_state(m_Right, LV_STATE_DISABLED);
+    } else if (!m_ShutterLock) {
+      lv_obj_remove_state(m_Right, LV_STATE_DISABLED);
+    }
+  }
 }
 
 void UI::configMenuControl(void) {
@@ -6435,6 +6514,11 @@ void UI::configMenuControl(void) {
     }
   }
   applyLegendVisibility();
+  // The right indicator is a menu navigation control here, not the focus
+  // control, so a focus capability gate must not leave it disabled.
+  if (m_Right != nullptr && m_CapabilityFocus && !m_ShutterLock) {
+    lv_obj_remove_state(m_Right, LV_STATE_DISABLED);
+  }
 }
 
 void UI::configSliderControl(void) {
@@ -6444,6 +6528,10 @@ void UI::configSliderControl(void) {
     lv_obj_set_style_bg_image_src(m_Right, &icon_arrow_forward_24, 0);
   }
   applyLegendVisibility();
+  // Right is a navigation control on a slider page, never the focus control.
+  if (m_Right != nullptr && m_CapabilityFocus && !m_ShutterLock) {
+    lv_obj_remove_state(m_Right, LV_STATE_DISABLED);
+  }
 }
 
 void UI::configPresetControl(void) {
@@ -6725,6 +6813,9 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
       if (!ctx->feedbackConnected) {
         Feedback::getInstance().signal(Feedback::CONNECTED);
         ctx->feedbackConnected = true;
+        // A fresh or restored session may be a different camera mix, so the
+        // capability gate is recomputed on every transition into active.
+        ctx->ui->updateCapabilityGating();
       }
 
       if (!lv_obj_has_flag(ctx->messageBox, LV_OBJ_FLAG_HIDDEN)) {
@@ -6791,6 +6882,9 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
       // The disconnect feedback fired above on leaving the active state. The
       // session is fully down: forget it and drop the reconnecting indicator.
       ctx->sessionEstablished = false;
+      // Session fully down: no control stays disabled once the camera that
+      // could not honour it is gone.
+      ctx->ui->resetCapabilityGating();
       showStatusIcon(ctx->ui->m_Status.reconnectingIcon, false);
       // Session fully down: clear any lingering "Reconnecting" title back to the
       // default so a later connect starts from the normal "Connected" label.
@@ -10050,6 +10144,13 @@ void UI::bulbRefresh(void) {
 
 void UI::bulbStart(void) {
   if (m_Bulb.m_State == Bulb::STATE_RUNNING) {
+    return;
+  }
+  // Bulb needs a release command that ends a held exposure. Ricoh has no stop
+  // primitive, so the countdown could never end the exposure. Refuse instead of
+  // starting a timer that cannot finish the shot.
+  if (!m_CapabilityBulb) {
+    ESP_LOGW("ui", "Bulb refused: the connected camera cannot end a held exposure");
     return;
   }
 

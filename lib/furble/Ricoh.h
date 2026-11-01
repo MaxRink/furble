@@ -40,6 +40,25 @@ class Ricoh: public Camera {
   void focusRelease(void) override final;
   void updateGeoData(const gps_t &gps, const timesync_t &timesync) override final;
 
+  /**
+   * No focus primitive: Focus Mode configures a mode but does not trigger a
+   * half press. No bulb: OperationRequest has no stop primitive, so a release
+   * cannot end a held exposure. No movie: the Capture Mode flow is not
+   * implemented and no payload is proven.
+   */
+  Capability capabilities(void) const override final {
+    return Camera::Capability {false, false, false};
+  }
+
+  /** Raw byte 0 of the last Capture Status notification, 0xFF before any. */
+  uint8_t captureStatus(void) const;
+
+  /** True while the camera reports a capture in progress. */
+  bool captureInProgress(void) const;
+
+  /** Completed 1 to 0 capture transitions observed on Capture Status. */
+  uint32_t capturesCompleted(void) const;
+
   size_t getSerialisedBytes(void) const override final;
   bool serialise(void *buffer, size_t bytes) const override final;
 
@@ -144,6 +163,11 @@ class Ricoh: public Camera {
   // forever. Capture authorization always uses a fresh OperationMode read.
   std::atomic<uint8_t> m_LastPower {STATE_UNKNOWN};
   std::atomic<uint8_t> m_LastOperationMode {STATE_UNKNOWN};
+  // Capture Status byte 0. 1 means a capture is in progress; the 1 to 0
+  // transition is the shot-confirmation signal. Each failed property read
+  // substitutes 0xFF, which is never treated as a capture or a completion.
+  std::atomic<uint8_t> m_CaptureStatusValue {STATE_UNKNOWN};
+  std::atomic<uint32_t> m_CapturesCompleted {0};
 
   uint32_t m_LastGpsWriteMs = 0;
   bool m_HasGpsWrite = false;

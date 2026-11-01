@@ -278,8 +278,28 @@ bool RicohVirtualCamera::handleOperationRequest(const std::vector<uint8_t> &valu
   m_LastOperationArg = arg;
   if (code == 0x01) {
     m_CaptureCount++;
+    // The camera enters the capturing state on a capture start. The value is
+    // the four-byte Capture Status form: capturing, timer state, still status,
+    // movie status.
+    emitCaptureStatus(0x01);
+  } else if (code == 0x00) {
+    m_Capturing = false;
   }
   return true;
+}
+
+bool RicohVirtualCamera::emitCaptureStatus(uint8_t capturing) {
+  m_Capturing = capturing == 0x01;
+  return emitNotification(SHOOTING_SERVICE, CAPTURE_STATUS_CHARACTERISTIC,
+                          {capturing, 0x00, 0x00, 0x00});
+}
+
+void RicohVirtualCamera::completeCapture() {
+  emitCaptureStatus(0x00);
+}
+
+bool RicohVirtualCamera::capturing() const {
+  return m_Capturing;
 }
 
 bool RicohVirtualCamera::parseGpsFix(const std::vector<uint8_t> &value) {

@@ -1,0 +1,18 @@
+# Capability gating: a camera the session cannot honour disables the control.
+#
+# A RICOH GR IV has no half-press primitive and no stop primitive that could
+# end a bulb hold. Connecting one must therefore disable the focus control and
+# the Bulb menu row instead of leaving them looking usable. This is a UI
+# contract check, not a camera behavior claim.
+
+seed ble_peers ricoh
+seed ble_saved true
+wait 300
+action connect
+wait 3200
+assert ui.connected yes
+assert ui.capability_focus no
+assert ui.capability_bulb no
+assert ui.focus_disabled yes
+assert ui.bulb_disabled yes
+exit

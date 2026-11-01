@@ -32,6 +32,11 @@ class DJIOsmo: public Camera {
   void focusRelease(void) override final;
   void updateGeoData(const gps_t &gps, const timesync_t &timesync) override final;
 
+  /** Record toggle exists. No focus and no bulb primitive. */
+  Capability capabilities(void) const override final {
+    return Camera::Capability {false, false, true};
+  }
+
   size_t getSerialisedBytes(void) const override final;
   bool serialise(void *buffer, size_t bytes) const override final;
 

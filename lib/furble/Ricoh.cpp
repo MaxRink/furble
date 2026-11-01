@@ -326,6 +326,8 @@ void Ricoh::clearRemoteState(void) {
   m_GeotagEnable = nullptr;
   m_LastPower = STATE_UNKNOWN;
   m_LastOperationMode = STATE_UNKNOWN;
+  m_CaptureStatusValue = STATE_UNKNOWN;
+  m_CapturesCompleted = 0;
   m_LastGpsWriteMs = 0;
   m_HasGpsWrite = false;
 }
@@ -376,6 +378,18 @@ bool Ricoh::subscribeCharacteristic(NimBLERemoteCharacteristic *pChr, const char
             m_LastPower = data[0];
           } else if (chr->getUUID() == OPERATION_MODE_CHR_UUID) {
             m_LastOperationMode = data[0];
+          } else if (chr->getUUID() == CAPTURE_STATUS_CHR_UUID) {
+            // Byte 0 is the capture-in-progress property. GR IIIx 1.60 shows
+            // 01 00 00 00 while capturing and 00 00 00 00 afterwards. A
+            // property read failure substitutes 0xFF, which is neither.
+            const uint8_t previous = m_CaptureStatusValue.exchange(data[0]);
+            if (previous == 0x01 && data[0] == 0x00) {
+              m_CapturesCompleted++;
+              ESP_LOGI(LOG_TAG, "Ricoh capture complete (%u observed)",
+                       static_cast<unsigned>(m_CapturesCompleted.load()));
+            } else if (previous != data[0] && data[0] == 0x01) {
+              ESP_LOGI(LOG_TAG, "Ricoh capture started");
+            }
           }
         }
       },
@@ -447,6 +461,18 @@ void Ricoh::focusPress(void) {
 
 void Ricoh::focusRelease(void) {
   ESP_LOGI(LOG_TAG, "Ricoh focusRelease ignored (focus unsupported; no capture write)");
+}
+
+uint8_t Ricoh::captureStatus(void) const {
+  return m_CaptureStatusValue.load();
+}
+
+bool Ricoh::captureInProgress(void) const {
+  return m_CaptureStatusValue.load() == 0x01;
+}
+
+uint32_t Ricoh::capturesCompleted(void) const {
+  return m_CapturesCompleted.load();
 }
 
 void Ricoh::updateGeoData(const gps_t &gps, const timesync_t &timesync) {

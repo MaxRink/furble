@@ -237,7 +237,8 @@ bool bleTopologyIsValid(const std::string &topology) {
          || topology == "fuji-pair" || topology == "fuji-ricoh-flappy"
          || topology == "fuji-secure-stale" || topology == "canon-smart"
          || topology == "canon-remote" || topology == "nikon-remote" || topology == "nikon-smart"
-         || topology == "sony" || topology == "lumix" || topology == "dji" || topology == "all";
+         || topology == "sony" || topology == "lumix" || topology == "dji" || topology == "ricoh"
+         || topology == "all";
 }
 
 void bleStartPeers(const std::string &topology) {
@@ -259,6 +260,8 @@ void bleStartPeers(const std::string &topology) {
       // timeout does before it lets a connect through.
       addFujifilm(FUJIFILM_A_ADDRESS, "FUJIFILM X100VI", 0);
       addRicoh(RICOH_ADDRESS, "RICOH GR IV", 1);
+    } else if (topology == "ricoh") {
+      addRicoh(RICOH_ADDRESS, "RICOH GR IV", 0);
     } else if (topology == "canon-smart") {
       addGenericPeer(CANON_SMART_ADDRESS, "Canon EOS RP", &VirtualPeer::canon_smart);
     } else if (topology == "canon-remote") {

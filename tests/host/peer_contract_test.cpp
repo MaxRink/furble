@@ -49,27 +49,20 @@ void checkPeer(const char *name,
 int main() {
   using namespace Furble::Host;
 
-  checkPeer<CanonSmartVirtualCamera>(
-      "CanonSmart", CanonSmartVirtualCamera::primaryServiceUUID(),
-      CanonSmartVirtualCamera::pairingCharacteristicUUID(), true);
-  checkPeer<CanonRemoteVirtualCamera>(
-      "CanonRemote", CanonRemoteVirtualCamera::remoteServiceUUID(),
-      CanonRemoteVirtualCamera::controlCharacteristicUUID(), true);
-  checkPeer<NikonRemoteVirtualCamera>(
-      "NikonRemote", NikonRemoteVirtualCamera::serviceUUID(),
-      NikonRemoteVirtualCamera::shutterCharacteristicUUID(), true);
-  checkPeer<NikonSmartVirtualCamera>(
-      "NikonSmart", NikonSmartVirtualCamera::serviceUUID(),
-      NikonSmartVirtualCamera::authCharacteristicUUID(), true);
-  checkPeer<SonyVirtualCamera>(
-      "Sony", SonyVirtualCamera::cameraServiceUUID(),
-      SonyVirtualCamera::cc02CharacteristicUUID(), true);
-  checkPeer<LumixVirtualCamera>(
-      "Lumix", LumixVirtualCamera::sessionServiceUUID(),
-      LumixVirtualCamera::mei0CharacteristicUUID(), true);
-  checkPeer<DjiVirtualCamera>(
-      "Dji", DjiVirtualCamera::serviceUUID(),
-      DjiVirtualCamera::writeCharacteristicUUID(), true);
+  checkPeer<CanonSmartVirtualCamera>("CanonSmart", CanonSmartVirtualCamera::primaryServiceUUID(),
+                                     CanonSmartVirtualCamera::pairingCharacteristicUUID(), true);
+  checkPeer<CanonRemoteVirtualCamera>("CanonRemote", CanonRemoteVirtualCamera::remoteServiceUUID(),
+                                      CanonRemoteVirtualCamera::controlCharacteristicUUID(), true);
+  checkPeer<NikonRemoteVirtualCamera>("NikonRemote", NikonRemoteVirtualCamera::serviceUUID(),
+                                      NikonRemoteVirtualCamera::shutterCharacteristicUUID(), true);
+  checkPeer<NikonSmartVirtualCamera>("NikonSmart", NikonSmartVirtualCamera::serviceUUID(),
+                                     NikonSmartVirtualCamera::authCharacteristicUUID(), true);
+  checkPeer<SonyVirtualCamera>("Sony", SonyVirtualCamera::cameraServiceUUID(),
+                               SonyVirtualCamera::cc02CharacteristicUUID(), true);
+  checkPeer<LumixVirtualCamera>("Lumix", LumixVirtualCamera::sessionServiceUUID(),
+                                LumixVirtualCamera::mei0CharacteristicUUID(), true);
+  checkPeer<DjiVirtualCamera>("Dji", DjiVirtualCamera::serviceUUID(),
+                              DjiVirtualCamera::writeCharacteristicUUID(), true);
 
   if (g_Failures != 0) {
     std::fprintf(stderr, "%d peer contract checks failed\n", g_Failures);

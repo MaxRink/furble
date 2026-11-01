@@ -229,11 +229,12 @@ The current connect flow is open-link `connect`, session service lookup, a
 16-byte MEI0 write, ASCII controller device-name write, required control
 service and writable control characteristic lookup, control-readiness
 subscription, Confirm `01`, a wait for readiness `00`, Start `02`, then optional
-location and clock characteristic lookup. It does not call `secureConnection`
-and does not bond. On any missing service/characteristic or failed write it
-returns false. Furble sends Finish `03` on disconnect. It still does not wait
-for the location or clock readiness notifications before the GPS and clock
-writes.
+location, location-readiness, clock, and clock-request characteristic lookup.
+It does not call `secureConnection` and does not bond. On any missing
+service/characteristic or failed write it returns false. Furble sends Finish
+`03` on disconnect. When a body exposes `37701b80` or `4cf487c0`, the GPS and
+clock writes wait for the matching `01` readiness notification; a body without
+those characteristics keeps the previous unconditional behavior.
 
 MEI0 is a ten-byte prefix `4d 45 49 30 01 00 10 00 80 01` followed by a
 six-byte per-install identity seed. The source array
@@ -269,7 +270,8 @@ LUMIX Sync also sends a GPS stop packet: fix `0x56`, latitude and longitude
 `0x7fffffff`, and altitude `0x7fff`. Furble sends that packet on disconnect
 when a session was started. The app starts GPS only after the `37701b80`
 readiness notification and handles value `3` as a stored-GPS request. Furble
-still writes unconditionally after its time sync.
+now subscribes to `37701b80` and `4cf487c0` and withholds each write until its
+own readiness arrives. The peer models the same gate.
 
 The S5 report documents two readiness notifications (`37701b80` and
 `4cf487c0`, both `01`) before time/GPS and reports a physical EXIF check, but
