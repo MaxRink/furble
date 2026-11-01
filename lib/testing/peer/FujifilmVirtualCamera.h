@@ -3,8 +3,10 @@
 
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <deque>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -26,6 +28,22 @@ namespace Host {
  */
 class FujifilmVirtualCamera final: public NimBLEMockPeer {
  public:
+  // Shared fault vocabulary. Every peer uses the same enum so a scenario file
+  // can name a fault once. Fujifilm has no per-command response, so Reject,
+  // Busy, WrongMode, Timeout and Malformed all surface as a refused write;
+  // Disconnect severs the link; StaleBond refuses the encryption handshake.
+  // Camera-side deletion is removeCameraBond() on the peers that have one.
+  enum class Fault {
+    None,
+    Reject,
+    Busy,
+    WrongMode,
+    Timeout,
+    Disconnect,
+    Malformed,
+    StaleBond,
+  };
+
   struct Config {
     std::string name = "FUJIFILM X100VI";
     NimBLEAddress address = NimBLEAddress(0x112233445566ULL, 0);
@@ -85,6 +103,67 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
 
   /** Use a custom CHR_NOT1 payload for a registration callback test. */
   void setRegistrationPayload(const std::vector<uint8_t> &payload);
+
+  // Fault surface shared with every other peer.
+  void setFault(Fault fault);
+  Fault fault() const;
+  void clearFault();
+  // Scripted mode: each command write consumes one queued fault. The sticky
+  // fault is ignored while scripting, and an empty queue means normal handling.
+  void setScripted(bool scripted);
+  bool scripted() const;
+  void scriptNextCommand(Fault fault);
+  size_t scriptedRemaining() const;
+  void clearScript();
+
+  // Shutter value model. The camera parser accepts exactly one two-byte
+  // little-endian value on 7FCF49C6: 00 00 release, 01 00 half press, 02 00
+  // full press. Any other value, and any other length, returns -30 and is
+  // discarded. There is no 03 00 focus value in the recovered handler, and
+  // the current firmware profile sends the half press for focus instead.
+  // Evidence: rea-camera-firmware/analysis/fujifilm-handlers.md section 4.
+  static constexpr uint8_t kShutterRelease = 0x00;
+  static constexpr uint8_t kShutterHalfPress = 0x01;
+  static constexpr uint8_t kShutterFullPress = 0x02;
+
+  size_t shutterAccepted() const;
+  size_t shutterRejected() const;
+  uint8_t lastShutterValue() const;
+
+  // Secure registration model. Reading F557D96B publishes a per-registration
+  // 28-bit identifier and arms the camera's 20 000 ms acknowledgement window.
+  // The ack must repeat the low 28 bits; the top nibble selects the client
+  // class (bit 28 clear is class 2). An ack before the read, after the window
+  // closes, or with a mismatched identifier is refused.
+  // Evidence: rea-camera-firmware/analysis/fujifilm-handlers.md sections 3.2,
+  // 3.3 and 3.7.
+  static constexpr uint32_t kRegistrationWindowUnlimited = UINT32_MAX;
+
+  bool statusRead() const;
+  bool statusAcknowledged() const;
+  uint32_t statusIdentifier() const;
+  uint8_t clientClass() const;
+  // 0 closes the window immediately, kRegistrationWindowUnlimited never
+  // expires it. The default is the 20 000 ms firmware window.
+  void setRegistrationWindowMs(uint32_t windowMs);
+  void expireRegistrationWindow();
+  bool registrationWindowExpired() const;
+
+  // Time channel. NOT1 F9150137 is the camera's date and time request, not a
+  // registration flag. The reply is one of two writes: B9BFD37F (7 bytes, no
+  // zone) or C52EDBCE (12 bytes, offset and DST flag). Evidence:
+  // rea-camera-firmware/analysis/fujifilm-handlers.md sections 5.1 to 5.3.
+  bool localTimeWritten() const;
+  bool utcTimeWritten() const;
+
+  // Power request 43070F6C accepts exactly 01 00 (off) and 00 01 (boot) as a
+  // little-endian uint16. Evidence: fujifilm-handlers.md section 9.1.
+  bool powerRequestWritten() const;
+  uint16_t lastPowerRequest() const;
+
+  // Geotag sync interval C95D91AE accepts only 10, 15, 20, 30, 60, 120, 240
+  // and 480 seconds. Evidence: fujifilm-handlers.md section 6.2.
+  uint16_t syncInterval() const;
 
   // Invoke the notification callback retained from the previous BLE session.
   // The production callback carries a session generation and must reject it.
@@ -301,6 +380,11 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   static const NimBLEUUID &geotagServiceUUID();
   static const NimBLEUUID &geotagCharacteristicUUID();
   static const NimBLEUUID &advertisedServiceUUID();
+  static const NimBLEUUID &timeServiceUUID();
+  static const NimBLEUUID &localTimeCharacteristicUUID();
+  static const NimBLEUUID &utcTimeCharacteristicUUID();
+  static const NimBLEUUID &powerCharacteristicUUID();
+  static const NimBLEUUID &syncIntervalCharacteristicUUID();
 
  private:
   struct Subscription {
@@ -328,6 +412,9 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   bool isDropDuringConnect(const NimBLEUUID &service, const NimBLEUUID &characteristic) const;
   bool isDropOnSubscribe(const NimBLEUUID &service, const NimBLEUUID &characteristic) const;
   void runOperationFault(NimBLEClient &client);
+  bool registrationWindowOpen() const;
+  static bool isValidTimestamp(const std::vector<uint8_t> &value, size_t offset);
+  Fault consumeFault();
 
   Config m_Config;
   NimBLEClient *m_Client = nullptr;
@@ -362,6 +449,28 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   std::vector<uint8_t> m_RegistrationPayload = {0x01, 0x00};
   bool m_HaveStaleRegistration = false;
   Subscription m_StaleRegistration;
+  // Shutter parser state (fujifilm-handlers.md section 4).
+  size_t m_ShutterAccepted = 0;
+  size_t m_ShutterRejected = 0;
+  uint8_t m_LastShutterValue = 0;
+  // Shared fault surface.
+  Fault m_Fault = Fault::None;
+  bool m_Scripted = false;
+  std::deque<Fault> m_Script;
+  // Secure status registration state (fujifilm-handlers.md sections 3.2, 3.3).
+  bool m_StatusRead = false;
+  bool m_StatusAcknowledged = false;
+  uint32_t m_StatusIdentifier = 0;
+  uint8_t m_ClientClass = 0;
+  uint32_t m_RegistrationWindowMs = 20000;
+  bool m_RegistrationWindowExpired = false;
+  std::chrono::steady_clock::time_point m_StatusReadAt {std::chrono::steady_clock::now()};
+  // Time, power and sync-interval parser state.
+  bool m_LocalTimeWritten = false;
+  bool m_UtcTimeWritten = false;
+  bool m_PowerRequestWritten = false;
+  uint16_t m_PowerRequest = 0;
+  uint16_t m_SyncInterval = 0;
   std::vector<NimBLEUUID> m_SuppressedServices;
   std::vector<std::pair<NimBLEUUID, NimBLEUUID>> m_SuppressedCharacteristics;
   std::vector<std::pair<NimBLEUUID, NimBLEUUID>> m_FailedWrites;
