@@ -2607,7 +2607,7 @@ stateDiagram-v2
 | Write | `FFF5`, write or write-without-response | `furble-source` |
 | Write mode | response if `canWrite()`, otherwise no response | `furble-source` |
 | Passkey fallback | `123456` injection and auto-confirm | `furble-source`, risk |
-| Supported camera IDs | `0x33FF0000` Action 4 and `0x44FF0000` Action 5 Pro; both 16-bit half orders are accepted because the vendor artifacts disagree on byte order | `furble-source`, `public-source` |
+| Supported camera IDs | `0x33FF0000` Action 4 and `0x44FF0000` Action 5 Pro; both the demo encoding and the table encoding are accepted because the vendor artifacts disagree | `furble-source`, `public-source` |
 | Handshake timeout | 30000 ms, 100 ms polls | `furble-source` |
 
 Camera-side status values parsed from the status push:
@@ -2774,7 +2774,7 @@ stateDiagram-v2
 | DJ-06 | Subscribed | none | send connection request, 33-byte payload, CmdType `0x02` | camera request frame | 30000 ms, 100 ms poll | `furble-source` |
 | DJ-07 | Camera rejected | response payload byte 4 nonzero | set rejected flag, return false | none | n/a | `furble-source` |
 | DJ-08 | Request received | payload at least 33 bytes | store sequence, device ID, verify mode, verify data | none | n/a | `furble-source` |
-| DJ-09 | Request parsed | device ID matches Action 4 or Action 5 Pro in either 16-bit half order | continue | none | n/a | `furble-source` |
+| DJ-09 | Request parsed | device ID matches Action 4 or Action 5 Pro in either the demo or the table encoding | continue | none | n/a | `furble-source` |
 | DJ-10 | ID supported | verify mode is 2 and verify data is 0 | continue | none | n/a | `furble-source` |
 | DJ-11 | Verified | none | ACK frame, CmdType `0x20`, same sequence, 9-byte payload | ATT write or frame sent | n/a | `furble-source` |
 | DJ-12 | Protocol ready | none | send status subscription, CmdSet `0x1D`, CmdID `0x05`, payload `03 14 00 00 00 00` | none, best effort | n/a | `furble-source` |
@@ -2801,7 +2801,7 @@ stateDiagram-v2
 8. The power mode field and the wake procedure from sleep `3`.
 9. Whether the camera accepts a second connection request on a saved reconnect,
    and how it treats the saved-device verify mode `0` and verify data `0`.
-10. Which 16-bit half order each body actually reports. Furble now accepts both,
+10. Which device-ID encoding each body actually reports. Furble now accepts both,
     so the ambiguity no longer rejects a connection, but the wire truth is still
     unresolved.
 11. Whether Action 6 and Osmo 360 use the same frames with different IDs. Furble

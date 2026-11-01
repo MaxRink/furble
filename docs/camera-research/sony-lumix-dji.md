@@ -336,7 +336,7 @@ The DJI device ID has two conflicting official encodings. The command table
 names Action 4 as `0xFF33`, and a checksum-valid Action 4 mode-switch frame
 carries `00 00 33 FF`, which is `0xFF330000` as a little-endian u32. One demo
 source file instead writes `0x33FF0000`, emitting `00 00 FF 33`. Furble
-accepts either 16-bit half order for Action 4 and Action 5 Pro so a camera that
+accepts either the demo or the table device-ID encoding for Action 4 and Action 5 Pro so a camera that
 reports the table encoding is not rejected after it has approved the link. A
 hardware capture is still needed to record which value the camera actually
 sends.
