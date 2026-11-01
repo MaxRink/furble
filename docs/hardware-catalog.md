@@ -185,6 +185,12 @@ vendor data sheets for the receivers and radios, and from the table below for
 the display classes. Where a board does not ship a battery, the table assumes
 a 2000 mAh cell.
 
+The currents are mixed at their native rails. The AT6668 figure is at 5 V and
+the cells are at 3.7 V, so the battery-side GNSS draw is higher than the number
+shown because of the boost. The model also omits the UART wake and NMEA parse
+cost, cold-start inrush, display refresh peaks, and user behavior. Use it to
+rank options, not to promise a runtime.
+
 | Scenario | What is on |
 | :--- | :--- |
 | A | Screen off, BLE connected, GNSS off, `SLEEP_CONN` on |

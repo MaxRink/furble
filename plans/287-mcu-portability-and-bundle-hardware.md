@@ -512,8 +512,11 @@ Assumptions:
 - WiFi is 100 mA when active and 0 when off. MQTT is a duty-cycled burst, not a
   continuous load.
 - The 0.85 factor is a planning derating, not a measurement.
-- The figures exclude cold-start inrush, display refresh peaks, and user
-  behavior.
+- The currents are mixed at their native rails. The AT6668 figure is at 5 V, the
+  cells are at 3.7 V, and the model does not apply a boost conversion. The GNSS
+  contribution is therefore a lower bound at the battery. The model also omits
+  the UART wake and NMEA parse cost, cold-start inrush, display refresh peaks,
+  and user behavior. It ranks options; it does not promise a runtime.
 
 ### 5.2 What the estimates mean
 
