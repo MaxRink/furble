@@ -229,6 +229,23 @@ class RecoveryCoordinator final {
   bool m_Ready = false;
 };
 
+/**
+ * Runtime admission gate for a new update.
+ *
+ * The engine is transport-neutral and may be driven from MQTT, the companion
+ * service, or the console. A BEGIN must not start an image transfer while a
+ * camera session owns the radio or the battery cannot finish the write and
+ * reboot window, so every caller supplies the same gate instead of each one
+ * re-implementing the rule.
+ */
+class Gate {
+ public:
+  virtual ~Gate() = default;
+
+  /** True when a new update may start on this device right now. */
+  virtual bool allowUpdate() = 0;
+};
+
 struct Outcome {
   bool accepted = false;
   bool duplicate = false;
@@ -253,7 +270,10 @@ class Session {
    * implementation rejects reentrant dispatch from sink callbacks; platform
    * adapters must serialize concurrent MQTT callbacks before entering this API.
    */
-  Session(Sink &sink, ReplayStore &replayStore, RecoveryCoordinator &recovery);
+  Session(Sink &sink,
+          ReplayStore &replayStore,
+          RecoveryCoordinator &recovery,
+          Gate *gate = nullptr);
 
   Outcome onMessage(const MessageMeta &meta, const uint8_t *payload, size_t length);
   Outcome onMessage(const MessageMeta &meta, const Message &message);
@@ -284,6 +304,7 @@ class Session {
   Sink &m_Sink;
   ReplayStore &m_ReplayStore;
   RecoveryCoordinator &m_Recovery;
+  Gate *const m_Gate;
   State m_State = State::Idle;
   Error m_LastError = Error::None;
   Manifest m_Manifest {};

@@ -1055,6 +1055,14 @@ target_compile_options(lumix_teardown_drop_test PRIVATE
                        -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
                        -Wall -Wextra -Werror -Wno-vla-extension -Wno-format
                        -Wno-unused-parameter -Wno-unused-lambda-capture -Wno-sign-compare)
+# Admission gate: a new OTA session is refused unless the runtime gate admits it
+# (Control idle and enough battery), and a duplicate BEGIN is never refused.
+add_executable(ota_mqtt_admission_test
+               ota_mqtt_admission_test.cpp
+               ${FURBLE_ROOT}/src/FurbleOTAMQTT.cpp)
+target_include_directories(ota_mqtt_admission_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(ota_mqtt_admission_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                          -Wno-unused-parameter)
 
 # Durable anti-rollback journal. The test supplies a fault-injecting backend,
 # while the production JournalReplayStore and its fixed record format are
@@ -2015,6 +2023,7 @@ if(BUILD_TESTING)
   add_test(NAME ota-state-machine COMMAND ota_state_machine_test)
   add_test(NAME lumix-teardown-drop COMMAND lumix_teardown_drop_test)
   add_test(NAME ota-mqtt-protocol COMMAND ota_mqtt_protocol_test)
+  add_test(NAME ota-mqtt-admission COMMAND ota_mqtt_admission_test)
   add_test(NAME ota-replay-store COMMAND ota_replay_store_test)
   add_test(NAME ota-partition-sink COMMAND ota_partition_sink_test)
   add_test(NAME gps-format COMMAND gps_format_test)

@@ -1,6 +1,6 @@
 # Power research: executive summary
 
-Status: consolidation of the seven lane reports, plus thirty-four implemented
+Status: consolidation of the seven lane reports, plus thirty-five implemented
 safe-now changes of the thirty-nine classified safe now. No bench measurement was made by any lane. The implemented
 changes are bounded behavior fixes, not measured savings:
 P-001 (60 s first-boot scan timeout), P-002 (stop the scan on panel sleep),
@@ -36,7 +36,7 @@ default off. Almost every number is modeled or inferred.
 
 Closed without bench hardware: the opportunity matrix, the datasheet register
 including per-board coverage in section 13, the lowest-power GPS profile in
-`gps-profile.md`, the measurement plan, and thirty-four safe-now changes with
+`gps-profile.md`, the measurement plan, and thirty-five safe-now changes with
 tests.
 
 Still open: every current and energy number. That includes the board floor,

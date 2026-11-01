@@ -46,7 +46,7 @@ Rank groups:
 
 ## Safe now
 
-Thirty-four of the thirty-nine safe-now rows are implemented in this branch. See section
+Thirty-five of the thirty-nine safe-now rows are implemented in this branch. See section
 "Implemented safe-now changes" for the code and test evidence.
 
 | ID | Lane | Current behavior | Proposed change | Evidence | Est. saving | Risk | Effort | Required test | Priority | Lane source |
@@ -261,6 +261,15 @@ P-205 is a late split from the rejected table. It is placed here because the
 lanes disagree on whether the change is safe; X-06 records both positions.
 P-026a is the hardware half of P-026: the runtime request is fixed in code, but
 enabling tickless on the W5500 node needs the soak before it can land.
+
+### Vendor-gated rows in this tree
+
+These cannot be completed against the pinned dependencies. Each names the
+upstream artifact that closes it and the search that established the gap.
+
+| Row | What the tree needs | Why the pinned dependency cannot provide it | Named closing artifact |
+| --- | --- | --- | --- |
+| P-019 | Pause the backlight LEDC timer while the panel is in SLPIN, then resume and re-apply the duty on wake | M5GFX 0.2.27 (pinned in `platformio.ini`) exposes `lgfx::ILight` with only `init()` and `setBrightness()`. `Light_PWM::config()` is public but **not virtual**, and `Panel_Device::getLight()` returns `ILight*`, so the `pwm_channel` needed to derive `timer_sel` (M5GFX computes `(pwm_channel >> 1) & 3`) cannot be read without RTTI, which the ESP-IDF build disables. Reading it through a `static_cast` to `Light_PWM` would be undefined behaviour on any panel whose light is not PWM. Inspected: `Light_PWM.hpp`, `Light_PWM.cpp`, `Panel_Device.hpp` in the 0.2.27 package | An M5GFX release with a virtual `stop()`/`resume()` on `ILight` (or a virtual channel accessor), pinned in `platformio.ini`; then the D-014 bench delta, 100 wake cycles, brightness restore, and a flicker check. Tracked in the private `docs/research/blocked-artifact-register.md` |
 
 ## Rejected
 

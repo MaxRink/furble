@@ -438,8 +438,8 @@ ReplayStore &RecoveryCoordinator::replayStore() const {
   return m_ReplayStore;
 }
 
-Session::Session(Sink &sink, ReplayStore &replayStore, RecoveryCoordinator &recovery)
-    : m_Sink(sink), m_ReplayStore(replayStore), m_Recovery(recovery) {}
+Session::Session(Sink &sink, ReplayStore &replayStore, RecoveryCoordinator &recovery, Gate *gate)
+    : m_Sink(sink), m_ReplayStore(replayStore), m_Recovery(recovery), m_Gate(gate) {}
 
 Outcome Session::onMessage(const MessageMeta &meta, const uint8_t *payload, size_t length) {
   if ((meta.qos < MIN_QOS) || (meta.qos > MAX_QOS)) {
@@ -489,6 +489,13 @@ Outcome Session::dispatchMessage(const MessageMeta &meta, const Message &message
           && (message.sequence == m_BeginSequence)) {
         return {true, true, m_State, Error::None};
       }
+      return reject(Error::Busy);
+    }
+    // Runtime admission. A retransmitted BEGIN of an accepted session is
+    // answered above as a duplicate, so a camera connecting mid-transfer cannot
+    // turn a retry into a failure. A new session is refused while the device is
+    // busy or the battery cannot finish the write and reboot window.
+    if ((m_Gate != nullptr) && !m_Gate->allowUpdate()) {
       return reject(Error::Busy);
     }
     if (!m_Recovery.ready() || (&m_Recovery.replayStore() != &m_ReplayStore)) {
