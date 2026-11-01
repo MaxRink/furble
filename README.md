@@ -552,11 +552,12 @@ but for my camera.
 Fujifilm has two BLE remote generations. Older bodies use the Basic token
 protocol, which is still implemented by `FujifilmBasic`. The July 2025 security
 change moved affected bodies to the Secure registration protocol. X100VI 1.30
-and later and X-S20 3.30 are Secure-only: the Basic pairing service `91F1DE68`
-is absent from their firmware. A Secure body advertises the bare model plus a
+and later and X-S20 3.30 use Secure: the Basic pairing service `91F1DE68` is
+absent from their firmware, so no Basic path is present. A Secure body advertises the bare model plus a
 five byte serial and uses service `A9D2B304` before registration and
 `123D8F06` afterwards. Reports of further confirmed Fujifilm cameras are
-welcome. See the [camera protocol research](docs/camera-research/fuji-canon-nikon.md).
+welcome. X100T and earlier fixed-lens bodies are Wi-Fi only, not BLE remote
+targets. See the [camera protocol research](docs/camera-research/fuji-canon-nikon.md).
 
 #### Canon
 

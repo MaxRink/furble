@@ -64,9 +64,9 @@ int main() {
   }
   // Geotagging uses the Camera Service GEO Tag enable characteristic, not the
   // WLAN Control Network Type characteristic. The GPS packet ends with the
-  // WGS84 datum selector 0, not a centisecond value. Both facts come from the
-  // official Ricoh Image Sync app and the camera GATT table. See
-  // docs/camera-research/ricoh.md.
+  // WGS84 datum selector 0, not a centisecond value. The GEO Tag role is
+  // confirmed by firmware and the official app. The datum value is app-static;
+  // firmware never reads that byte. See docs/camera-research/ricoh.md.
   const std::string geotagEnableUuid =
       Furble::Host::RicohVirtualCamera::geotagEnableCharacteristicUUID().toString();
   const std::string gpsInfoUuid =

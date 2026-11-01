@@ -94,8 +94,9 @@ class Ricoh: public Camera {
     uint8_t hour;
     uint8_t minute;
     uint8_t second;
-    // WGS84 datum selector. The official apps write 0. This is not a
-    // centisecond field; sub-second time is not carried in this packet.
+    // WGS84 datum selector. The official apps write 0. Firmware does not read
+    // this byte. This is not a centisecond field; sub-second time is not
+    // carried in this packet.
     uint8_t datum;
   } ricoh_geo_t;
 

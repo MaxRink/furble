@@ -57,9 +57,9 @@ unless marked otherwise. Static evidence does not prove runtime reachability.
   Network Type characteristic. Furble previously wrote the WLAN value when it
   meant to enable location. The corrected target is the Camera Service GEO Tag.
 - `GPSInformation::Write` parses three byte-swapped float64 values, a
-  little-endian uint16 year, then month, day, hour, minute, and second. The
-  final byte is the WGS84 datum selector. The official apps write `0`. It is
-  not a centisecond field.
+  little-endian uint16 year, then month, day, hour, minute, and second. It
+  never reads the final byte. The official apps write WGS84 datum `0` there.
+  It is not a centisecond field, and firmware does not validate it.
 - The Drive Mode characteristic is `B29E6DE3-1AEC-48C1-9D05-02CEA57CE664`.
   Official values are `0` single frame, `1` single frame with a 10 second
   self-timer, and `2` single frame with a 2 second self-timer. Furble's
@@ -342,9 +342,10 @@ at that exact commit; no implementation files were modified.
    This is a safety policy, not an official byte-level rule for every GR
    generation.
 4. The GPS packet is 32 bytes: three byte-swapped float64 values, a
-   little-endian year, month/day/hour/minute/second, and a final datum byte.
-   Firmware parses exactly those fields. The official apps write WGS84 datum
-   `0` in the final byte; it is not a centisecond. Furble now writes `0`.
+   little-endian year, month/day/hour/minute/second, and a final byte.
+   Firmware parses the first 31 bytes and never reads the final byte. The
+   official apps write WGS84 datum `0` there; it is app-static evidence, not a
+   firmware check. Furble now writes `0`.
    Location enable is the Camera Service GEO Tag characteristic
    `A36AFDCF-6B67-4046-9BE7-28FB67DBC071`. The WLAN Control pair
    `F37F568F-9071-445D-A938-5441F2E82399` /
@@ -432,9 +433,10 @@ scoping. The minimum useful peers are separate, exact profiles:
   BLE Startup, Other, and PowerOffTransfer for each model.
 - Capture Status notification bytes, CCCD requirements, and physical image
   outcome timing.
-- GR IV GPS final-byte handling. GR III/IIIx firmware parses the 32-byte layout
-  and the official apps write WGS84 datum `0`; a GR IV capture should confirm
-  that it does not expect a different datum or speed variant.
+- GR IV GPS final-byte handling. GR III/IIIx firmware parses the first 31 bytes
+  and ignores the last; the official apps write WGS84 datum `0`. A GR IV
+  capture should confirm that it does not read the byte or expect a different
+  datum or speed variant.
 - BLE-to-Wi-Fi coexistence, AP activation ownership, and exact HTTP behavior
   for GR III, GR IIIx, GR II, GR IV, and HDF variants.
 - Firmware/region differences and official-app behavior after future firmware

@@ -174,8 +174,8 @@ vendor images are not redistributed. The claims below are `firmware-static` or
   match.
 - The Basic pairing service `91F1DE68` is absent from both images. `AF854C2E`
   is present only as the equipment-status/backup service. `117C4142` appears as
-  a binary UUID occurrence, not in the 70 entry table. Furble Basic cannot
-  pair with either target firmware.
+  a binary UUID occurrence, not in the 70 entry table. No Basic pairing path is
+  present in either target firmware; runtime reachability remains unproven.
 - `PRI_SVC_UUID` `731893F9` is absent and unused. It has been removed from
   Furble rather than treated as a primary service.
 - `2A125640` and `DEEF7187` are absent. They stay optional subscriptions for
@@ -197,6 +197,18 @@ vendor images are not redistributed. The claims below are `firmware-static` or
 
 The complete 70-entry table and the 13-service layout are in
 [fujifilm-secure-gatt.md](fujifilm-secure-gatt.md).
+
+Generation-boundary checks added on 2026-11-01:
+
+- X100T 1.11 (`FPUPDATE.DAT`, SHA-256 `8c84b29e...`) decodes to two FFLZ
+  sections with Wi-Fi and EXWIFI strings only. No Bluetooth, BLE, GATT,
+  pairing, bonding, or advertisement string appears, and no Furble UUID is
+  present. X100T is a Wi-Fi-only body for this purpose.
+- X-E5 1.12 (`FWUP0036.DAT`, SHA-256 `0982ffa5...`) has a 71-entry UUID table.
+  It contains the same 70 entries as X100VI 1.31 and X-S20 3.30 plus
+  `8B5ECF55-FC6B-40D0-B4C1-76F64E5453C7`, the v4.1 connected-app information
+  characteristic. The common records keep the same type, flags, and marker
+  values. X-E5 is Secure v4.1, not the v4.0 layout used by X100VI/X-S20.
 
 ### Fujifilm peer implementation evidence
 
