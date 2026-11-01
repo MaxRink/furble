@@ -203,42 +203,53 @@ Rules:
 
 ### 1.9 Fault injection
 
-Every peer exposes the same eight fault classes with family-specific triggers
-(section 3):
+Every peer exposes the same fault vocabulary through a family `Fault` enum with
+the same seven error values plus `None`:
 
 | Class | API shape | Semantics |
 | --- | --- | --- |
-| Reject | `failWrite(service, characteristic)` | ATT write returns an error; link stays up |
-| Busy | `setBusy(bool)` | The command is refused or held while the link stays up |
-| Wrong mode | `setOperationMode()` or `setCameraMode()` | The camera state that gates capture |
-| Timeout | `setSecureTimeouts(n)` / scheduled stall | No answer inside the host bound |
-| Disconnect | `dropLinkOnWrite`, `dropLinkDuringConnect`, `mockDropLink` | Link loss, inline or deferred |
-| Malformed | `setMalformedResponse(...)` / truncated read or notification | Wrong length or out-of-range payload |
-| Stale bond | `setBondMismatch()` / camera bond cleared, central bond kept | Protected op or handshake fails |
+| Reject | `Fault::Reject` | ATT write returns an error; link stays up |
+| Busy | `Fault::Busy` | The command is refused while the link stays up |
+| Wrong mode | `Fault::WrongMode` | The command is refused because of the camera state |
+| Timeout | `Fault::Timeout` | The command is accepted or refused with no answer inside the host bound |
+| Disconnect | `Fault::Disconnect` | Link loss, inline or deferred |
+| Malformed | `Fault::Malformed` | Wrong length or out-of-range payload |
+| Stale bond | `Fault::StaleBond` | One-sided bond, so the encryption handshake or a protected op fails |
 | Camera-side deletion | `removeCameraBond()` | Camera forgot the bond with no GATT message |
 
+The enum is defined by each peer and is not shared in a header, so a scenario
+maps a fault name to the family enum. Fujifilm and Ricoh have no per-command
+response, so Reject, Busy, WrongMode, Timeout, and Malformed all surface as a
+refused write; Disconnect severs the link; StaleBond refuses the encryption
+handshake. The Canon, Nikon, Sony, LUMIX, and DJI peers can attach a fault to a
+notification and therefore distinguish Malformed from Reject.
+
 `clearFaults()` restores a healthy baseline so the fuzz harness can reuse one
-peer across operations (already present on `FujifilmVirtualCamera`; added to
-`RicohVirtualCamera`).
+peer across operations (present on every peer).
 
 ### 1.10 Scripted mode
 
-The deterministic scripted mode is a sequence of peer events with no host
-threads:
+Every peer implements the same deterministic scripted mode:
 
-| Step kind | Fields | Rule |
-| --- | --- | --- |
-| `advertise` | form, address, service set | Emitted through `Scan` at the scenario's scan tick |
-| `accept` | address | Only one link per peer |
-| `expect_write` | service, characteristic, payload, max wait | The scenario fails if the write does not arrive |
-| `emit` | service, characteristic, payload, indication | Runs on the peer clock |
-| `drop` | reason, callback mode | `inline`, `self_delete`, or `deferred` |
-| `expire` | timer name | Advances the peer clock to the camera deadline |
-| `assert` | peer state, host state | Checked at the scenario end |
+| Method | Meaning |
+| --- | --- |
+| `setScripted(bool)` | Selects scripted handling |
+| `scriptNextCommand(Fault)` | Queues one fault for the next command write |
+| `scriptedRemaining()` | Number of queued faults |
+| `clearScript()` | Empties the queue |
+| `clearFault()` | Clears the sticky fault |
 
-A scenario file names the family profile, the fault set, and the expected host
-verdict. No scenario may assert a physical outcome; certification of a still
-image still needs a capture or EXIF check (`plan159`; `fuji-spec` §0.4).
+Scripted mode consumes one queued `Fault` per command write. The sticky fault
+is ignored while scripting, and an empty queue means normal handling. This is
+the same contract in every peer, so a scenario file names a fault once.
+
+A scenario may also drive the modelled camera directly: `advertise`, `accept`,
+`expect_write`, `emit`, `drop`, `expire`, and `assert`. The peer exposes state
+for assertions (`connected()`, `secured()`, `cameraBonded()`, `configured()`,
+`registered()`, and family accessors). No scenario may assert a physical
+outcome; certification of a still image still needs a capture or EXIF check
+(`plan159`; `fuji-spec` §0.4).
+
 
 ## 2. Per-family state model
 
@@ -587,7 +598,10 @@ and `MockNimBLE`.
 
 ### 7.2 Common conformance test
 
-`tests/host/peer_contract_test.cpp` runs the same checklist against every peer:
+`tests/host/peer_contract_test.cpp` already constructs every peer and checks
+that it advertises, exposes its primary service, exposes a known characteristic,
+and marks that characteristic writable where the family sheet says it is. The
+follow-up widens it into the full checklist:
 
 1. `advertisement()` round-trips through the family matcher.
 2. Every declared service answers `hasService()`.
@@ -598,8 +612,10 @@ and `MockNimBLE`.
 6. `subscribe()` fails without a link and succeeds with one.
 7. `emitNotification()` reaches the callback with the same bytes.
 8. `clearFaults()` restores the healthy path.
+9. Every `Fault` value produces a distinct, observable result.
 
 The checklist is the same for all peers; only the profile rows differ.
+
 
 ### 7.3 Family suites
 
