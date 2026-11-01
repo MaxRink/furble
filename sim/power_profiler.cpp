@@ -1740,6 +1740,11 @@ void profilerSetRadioConnected(bool connected) {
   state.radio_connected = connected;
 }
 
+bool profilerRadioConnected(void) {
+  const std::lock_guard<std::mutex> lock(state.mutex);
+  return state.radio_connected;
+}
+
 void profilerRadioEvent(const char *name) {
   std::lock_guard<std::mutex> lock(state.mutex);
   ensureStartedLocked();

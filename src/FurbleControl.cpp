@@ -9,6 +9,7 @@
 #include "FurbleControl.h"
 #if defined(FURBLE_SIM)
 #include "ble_sim.h"
+#include "power_profiler.h"
 #endif
 #include "FurblePlatform.h"
 #include "FurblePower.h"
@@ -1366,6 +1367,12 @@ void Control::setState(state_t state) {
   }
 
   m_State.store(state, std::memory_order_release);
+
+#if defined(FURBLE_SIM)
+  // The power model charges a connected-radio floor only while Control reports
+  // ACTIVE. Without this caller the baseline silently lost that term.
+  Sim::profilerSetRadioConnected(state == STATE_ACTIVE);
+#endif
 
   if (!hold && m_SleepLockHeld.load(std::memory_order_acquire)) {
     power.release(Power::LockType::NO_LIGHT_SLEEP, POWER_LOCK_OWNER);

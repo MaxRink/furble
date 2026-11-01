@@ -1309,6 +1309,9 @@ std::string queryValue(const std::string &key) {
   if (key == "camera.idle_ticks") {
     return std::to_string(Furble::Sim::targetIdleTicks());
   }
+  if (key == "sim.radio_connected") {
+    return Furble::Sim::profilerRadioConnected() ? "yes" : "no";
+  }
   if (key == "sim.icon_timer") {
     return std::to_string(Furble::Sim::profilerTimerFireCount("icon_timer"));
   }

@@ -17,6 +17,15 @@ class Console {
   Console() = delete;
   ~Console() = delete;
 
+  /**
+   * Idle read timeout for the console task.
+   *
+   * A typed command wakes the UART read immediately; this is the idle service
+   * tick for the power log and the GATT journal drain. 500 ms halves the wake
+   * rate of the old 100 ms loop without delaying a command.
+   */
+  static constexpr uint32_t READ_TIMEOUT_MS = 500;
+
 #if defined(FURBLE_CONSOLE)
   /** Start the console transport and command task. */
   static void init(void);

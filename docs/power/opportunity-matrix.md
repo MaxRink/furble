@@ -46,7 +46,7 @@ Rank groups:
 
 ## Safe now
 
-Twenty-seven safe-now rows are implemented in this branch. See section
+Twenty-nine safe-now rows are implemented in this branch. See section
 "Implemented safe-now changes" for the code and test evidence.
 
 | ID | Lane | Current behavior | Proposed change | Evidence | Est. saving | Risk | Effort | Required test | Priority | Lane source |
@@ -125,6 +125,8 @@ evidence label from the lane and adds the test that now guards it.
 | P-037 | `RECON_BACKOFF` defaults on. The first retry stays at 2.5 s; later attempts back off to 120 s. | `src/FurbleSettings.cpp` | `settings-nvs-roundtrip` default; all 27 reconnect simulator scenarios pass | implemented |
 | P-004 | The companion pairing window is 60 s instead of 120 s. | `include/FurbleCompanionService.h` | host `companion-gatt`: window constant; `docs/companion.md` | implemented |
 | P-027 | The join scan runs only in `STATE_IDLE`; every other Control state refuses it, and a refusal clamps the retry to 10 s so the station rejoins soon after the camera session ends. | `src/FurbleWiFi.cpp` | host `real-wifi-lifecycle`: predicate allows only idle across all six states | implemented |
+| P-025 | The console task reads with a 500 ms timeout instead of 100 ms, halving its idle wake rate. | `src/FurbleConsole.cpp`, `include/FurbleConsole.h` | host `console-commands`: the read timeout constant | implemented |
+| P-039 | `Control` reports the radio link to the power model on every state change, restoring the connected-radio floor. Four connected baselines assert the flag, and the committed baselines now match the corrected model within 0.4 percent. | `src/FurbleControl.cpp`, `sim/power_profiler.*` | `connected-idle-30s`, `blind-remote-shutter`, `connected-gps-active-30s`, `intervalometer-5-frames` assert `sim.radio_connected`; power gate 10/10 | implemented |
 
 The modeled saving for these rows is unchanged and still unmeasured. P-001 and
 P-002 bound a worst case; they do not change steady-state current. P-003 halves
@@ -148,7 +150,9 @@ settings documentation was updated, and `docs/img/settings-display.png` was
 regenerated from the current build. P-010 and P-012 cut the GPS and control
 task poll rates, and P-037 makes the reconnect backoff the default. P-004
 shortens the companion pairing window, and P-027 limits the join scan to an
-idle Control state.
+idle Control state. P-025 halves the console idle wake rate. P-039 restores the
+connected-radio floor in the power model; the committed baselines now match it
+instead of silently missing it.
 
 Three safe-now rows are deliberately not applied yet:
 
@@ -365,7 +369,7 @@ of them carries a pointer here.
 | X-15 | Measurement versus plan 98 | Plan 98 says no code initializes Wi-Fi and that `CONFIG_ESP_WIFI_ENABLED=y` is config residue. Measurement and the Wi-Fi lane show `src/FurbleWiFi.cpp` calls `esp_wifi_init` and `esp_wifi_start`, off by default. | Plan 98's "Wi-Fi is moot" conclusion is stale, and P-099 to P-115 are live. | The Wi-Fi lane's code anchors are the current evidence. |
 | X-16 | SoC versus Board | SoC proposes enabling `CONFIG_PM_SLP_DISABLE_GPIO` as a needs-measurement item (SOC-05). Board rejects disabling internal pulls now (LK-04) because deep sleep is unused and the change can float a wake pin. | These are not the same Kconfig symbol, but they are the same pin-hold class. The lane texts are easy to conflate. | Keep them separate: SOC-05 is light-sleep pad disable; LK-04 is deep-sleep pull audit. Do not merge the tests. |
 | X-17 | Plan 19, Board versus SoC | Plan 19 excludes the Core and the AXP192 boards from deep sleep. Board proposes ESP RTC timer deep sleep on both (PM-09, PM-10). SoC's SOC-12 describes the S3 and Plus2 only. | Board applicability and risk differ by board; the feature is one name but three implementations. | Treat P-065, P-066, and P-067 as separate rows; do not quote one board's saving for another. |
-| X-18 | BLE versus the committed baseline | BLE says the connected baseline still contains a 3.2989 mA radio term that the current code would not produce. The baseline is checked in and still passes the gate. | A 3.9 percent term is inside the 10 percent band, so the gate cannot see it disappear. | P-039 regenerates the baseline with the floor restored and adds component guards. |
+| X-18 | BLE versus the committed baseline | BLE says the connected baseline still contains a 3.2989 mA radio term that the current code would not produce. The baseline is checked in and still passes the gate. | A 3.9 percent term is inside the 10 percent band, so the gate cannot see it disappear. | P-039 restores the floor; the committed baselines match the corrected model within 0.4 percent, and four connected scenarios assert the flag. |
 | X-19 | Plan 98 versus Measurement | Plan 98 says nine power scenarios. The power-gate suite currently selects ten, including `gesture-idle-30s`. | Counts and coverage claims differ. | Use `tools/check_sim_scenarios.py --list-certified --suite power-gate` as the source of truth. |
 | X-20 | Wi-Fi versus SoC | Wi-Fi W-07 reports the `ESP_WIFI_SLP_IRAM_OPT` cost as 1.3 KB of IRAM with `ESP_WIFI_RX_IRAM_OPT` already on. SoC SOC-13 reports about 7.3 KB with `ESP_WIFI_IRAM_OPT` already on. | The IRAM budget for P-102 depends on the cost, especially on non-PSRAM boards. | Recheck both symbols at the pinned IDF 5.5.3 Kconfig; record the exact option combination. |
 | X-21 | Board versus BLE and code | Board PL-09 says TX power defaults to P9. BLE-25 says P3, and `src/FurbleSettings.cpp` `load<esp_power_level_t>` maps stored value 0 to `ESP_PWR_LVL_P3`; the UI offers P3/P6/P9. | The default is a user-facing state and changes the range and energy claim for P-187. | Correct PL-09 or the code comment; use the code reading until then. |

@@ -2129,6 +2129,7 @@ void testWorkflowCommands(void) {
 }
 
 int main(void) {
+  check(Furble::Console::READ_TIMEOUT_MS == 500, "the console idle read timeout is 500 ms");
   // Stop and join every shim task before this scope ends, so no firmware task
   // is still running when static destruction frees what it reads. The control
   // task reaps the zombie drain on every 50 ms tick, and the drain still holds

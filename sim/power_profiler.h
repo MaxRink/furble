@@ -31,6 +31,7 @@ void profilerTaskDelay(const char *task_name, uint32_t milliseconds);
 /** Record modeled display, radio and GPS state transitions. */
 void profilerSetDisplayState(const char *state);
 void profilerSetRadioConnected(bool connected);
+bool profilerRadioConnected(void);
 void profilerRadioEvent(const char *name);
 void profilerSetGpsState(const char *state);
 const char *profilerGpsState(void);
