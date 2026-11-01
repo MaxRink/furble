@@ -182,6 +182,19 @@ bool Lumix::_connect(void) {
 }
 
 void Lumix::_disconnect(void) {
+  if (m_SessionStarted && m_Location != nullptr && m_Location->canWrite()) {
+    // Clear the last position so the camera does not retain a stale fix.
+    // LUMIX Sync sends fix 0x56 with sentinel coordinates on GPS stop.
+    const geo_t stop = {
+        .gps_time = 0,
+        .latitude = 0x7fffffff,
+        .longitude = 0x7fffffff,
+        .altitude = 0x7fff,
+        .fix = 0x56,
+        .reserved = 0x00,
+    };
+    m_Location->writeValue(reinterpret_cast<const uint8_t *>(&stop), sizeof(stop), true);
+  }
   if (m_SessionStarted) {
     writeCommand(CMD_SESSION_FINISH);
   }

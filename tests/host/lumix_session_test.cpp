@@ -73,8 +73,14 @@ int main() {
       check(peer.writes().size() == 2 && peer.writes()[1].payload == std::vector<uint8_t> {0x05},
             "LUMIX shutter release writes ShutterOff 05");
 
+  const Furble::Camera::gps_t gps = {52.5, 13.4, 34.0, 8};
+  const Furble::Camera::timesync_t time = {2026, 11, 1, 12, 34, 56, 0};
+  camera.updateGeoData(gps, time);
+  passed &= check(peer.lastGps().size() == 16, "LUMIX GPS packet is written");
+
   peer.clearEvents();
   camera.disconnect();
+  passed &= check(peer.gpsStopped(), "LUMIX disconnect sends the GPS stop packet");
   passed &= check(hasCommand(peer.writes(), 0x03), "LUMIX disconnect writes Finish 03");
   passed &= check(peer.sessionFinished(), "LUMIX Finish 03 closes the session");
 

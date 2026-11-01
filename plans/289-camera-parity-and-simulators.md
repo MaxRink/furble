@@ -36,6 +36,8 @@ Completed in this branch:
   request.
 - Fujifilm location sync is enabled with `AAB609C4` before the first geotag
   packet and read back once.
+- LUMIX sends the GPS stop packet (fix `0x56`, sentinel coordinates) on
+  disconnect before Finish.
 
 ## Evidence
 

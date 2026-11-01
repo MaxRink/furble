@@ -122,7 +122,7 @@ and each needs a host or simulator regression test.
 | --- | --- | --- | --- | --- |
 | S1 | Remove the LUMIX focus mapping. `focusPress` previously wrote `01` (Confirm) and `focusRelease` wrote `02` (Start). There is no focus opcode. | LX | `app-static` panasonic.md C06, C07, F02 | Fixed. Focus press and release are now no-ops. |
 | S2 | Add the LUMIX session handshake: `01` Confirm, wait for `7be5fe6e` `00`, `02` Start, and `03` Finish on disconnect. | LX | `app-static` panasonic.md C06 to C08, F01, F40 | Fixed. Connect sends Confirm, waits for readiness, then Start. Disconnect sends Finish. |
-| S3 | Add the LUMIX GPS stop packet (fix `0x56`, lat and lon `0x7fffffff`, altitude `0x7fff`) and wait for `37701b80` and `4cf487c0` readiness before the clock and GPS writes. | LX | `app-static` panasonic.md C14, F41, F45; `public-source` S5 report | A stale position can persist, and the shortened MEI0 to GPS sequence is reported to drop the link. |
+| S3 | Add the LUMIX GPS stop packet (fix `0x56`, lat and lon `0x7fffffff`, altitude `0x7fff`) and wait for `37701b80` and `4cf487c0` readiness before the clock and GPS writes. | LX | `app-static` panasonic.md C14, F41, F45; `public-source` S5 report | Stop packet fixed on disconnect. Location and clock readiness gates remain capture-gated. |
 | S4 | Write the Fujifilm 12-byte UTC and timezone packet on the `F9150137` `01 00` request, and write the client name with a trailing NUL. | FJ-S40, FJ-S41 | `firmware-static` fujifilm.md C28 and C03; `app-static` XApp and Camera Remote | Fixed. Both apps now match the NUL write and the UTC packet. Offset and DST are zero because Furble has no timezone source. |
 | S5 | Send the Fujifilm `AAB609C4` location sync enable, not only the interval, and read it back once. | FJ-S40, FJ-S41 | `firmware-static` fujifilm.md C25; `app-static` XApp | Fixed. The first geotag packet enables the setting and reads it back. |
 | S6 | Make the Canon Smart GPS timestamp an absolute UTC epoch instead of `mktime` on the runtime timezone. | CN-S | `app-static` canon.md CS-34; `furble-source` CanonEOSSmart.cpp | Fixed. `CanonProtocol::utcEpoch` has no timezone input, and `canon-time` pins the epoch. |
@@ -166,6 +166,7 @@ the closing artifact.
 | Sony DD21 selection, DD01 subscribe, and lock release | applied | `lib/furble/Sony.cpp`, host `sony-location` |
 | Nikon Smart stops at the Classic blocker | applied | `lib/furble/NikonSmart.cpp` |
 | Fujifilm location-sync enable and readback | applied | `lib/furble/Fujifilm.cpp` |
+| LUMIX GPS stop packet on disconnect | applied | `lib/furble/Lumix.cpp`, host `lumix-session` |
 
 The LUMIX fix sends Confirm `01`, waits up to two seconds for control readiness
 `00`, sends Start `02`, and sends Finish `03` on disconnect. Focus press and
@@ -772,7 +773,7 @@ APS reads a per-connection key and writes a 20-byte XOR and word-swapped block.
 | Panasonic LUMIX | Live view | Wi-Fi | panasonic F14 | missing | none | none | capture-gated |
 | Panasonic LUMIX | Image transfer, list, thumbnail | BLE start, Wi-Fi DLNA | panasonic C16 to C20 | missing | none | none | capture-gated |
 | Panasonic LUMIX | Clock and timezone | BLE GATT | panasonic C15 | implemented, partial: after GPS, offset and DST zero | none | none (class) | capture-gated |
-| Panasonic LUMIX | GPS push and pull | BLE GATT push, no pull | panasonic C13, C14 | implemented, partial: no stop, no readiness | none | none (class) | capture-gated, author-reported S5 EXIF check |
+| Panasonic LUMIX | GPS push and pull | BLE GATT push, no pull | panasonic C13, C14 | implemented: GPS stop on disconnect. Readiness gates remain | none | host `lumix-session` | capture-gated, author-reported S5 EXIF check |
 | Panasonic LUMIX | Geotag enable and sync interval | BLE GATT readiness | panasonic C13, F45 | missing, no readiness subscription | none | none (class) | capture-gated |
 | Panasonic LUMIX | Settings read | BLE GATT | panasonic C21 to C27 | missing | none | none (class) | capture-gated |
 | Panasonic LUMIX | Settings write | BLE identity and name, Wi-Fi CGI | panasonic C01, C02 | implemented, partial: fixed MEI0 and plain name | none | none (class) | capture-gated |

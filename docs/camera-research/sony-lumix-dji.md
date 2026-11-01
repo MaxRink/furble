@@ -266,9 +266,10 @@ GPS/time writes in current Furble:
   when the clock readiness notification arrives, independent of GPS.
 
 LUMIX Sync also sends a GPS stop packet: fix `0x56`, latitude and longitude
-`0x7fffffff`, and altitude `0x7fff`. Furble does not send it. The app starts GPS
-only after the `37701b80` readiness notification and handles value `3` as a
-stored-GPS request. Furble writes unconditionally after its time sync.
+`0x7fffffff`, and altitude `0x7fff`. Furble sends that packet on disconnect
+when a session was started. The app starts GPS only after the `37701b80`
+readiness notification and handles value `3` as a stored-GPS request. Furble
+still writes unconditionally after its time sync.
 
 The S5 report documents two readiness notifications (`37701b80` and
 `4cf487c0`, both `01`) before time/GPS and reports a physical EXIF check, but
