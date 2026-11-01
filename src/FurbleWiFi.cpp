@@ -52,6 +52,9 @@ constexpr uint32_t TRANSIENT_MAX_ATTEMPTS = 10;
 // Recheck cadence while a wired address owns the network, and while connected
 // so the station can stop when the wire comes back.
 constexpr uint32_t WIRED_RECHECK_MS = 5000;
+// While a camera session blocks the join scan, retry soon after it ends
+// instead of waiting out the full reconnect backoff.
+constexpr uint32_t COEX_RETRY_MS = 10 * 1000;
 constexpr size_t TASK_STACK = 4096;
 
 esp_netif_t *g_StaNetif = nullptr;
@@ -79,6 +82,14 @@ bool g_DeferredForWired = false;
 uint8_t g_LastDisconnectReason = 0;
 bool g_ScanAttempted = false;
 bool g_ScanShowHidden = false;
+bool g_ScanRefusedForCoex = false;
+
+// A join scan shares the radio with the camera link. Only run it while Control
+// is idle: during connect, active, and disconnecting the camera session owns
+// the arbitration window.
+bool joinScanAllowed(Control::state_t state) {
+  return state == Control::STATE_IDLE;
+}
 
 enum class DisconnectClass : uint8_t {
   NONE,
@@ -403,10 +414,12 @@ bool serviceWiredDeferral(void) {
 }
 
 bool scanForNetwork(void) {
-  if (Control::getInstance().getState() == Control::STATE_ACTIVE) {
-    ESP_LOGW(LOG_TAG, "refusing to scan while a camera is connected");
+  if (!joinScanAllowed(Control::getInstance().getState())) {
+    g_ScanRefusedForCoex = true;
+    ESP_LOGW(LOG_TAG, "refusing to scan while a camera session owns the radio");
     return false;
   }
+  g_ScanRefusedForCoex = false;
 
   const std::string ssid = Settings::load<Settings::WIFI_SSID>();
   wifi_scan_config_t config = {};
@@ -511,6 +524,12 @@ void wifiTask(void *) {
 
       if (!connectAttempt()) {
         recordFailure();
+        if (g_ScanRefusedForCoex) {
+          // The camera session may be short; do not let the scan refusal drive
+          // the retry out to the full backoff cap.
+          const std::lock_guard<std::mutex> lock(g_StateMutex);
+          g_RetryDelayMs = std::min<uint32_t>(g_RetryDelayMs, COEX_RETRY_MS);
+        }
         continue;
       }
 
@@ -805,6 +824,10 @@ bool WiFi::hostServiceWired(void) {
 
 bool WiFi::hostDeferredForWired(void) {
   return g_DeferredForWired;
+}
+
+bool WiFi::hostJoinScanAllowed(uint8_t state) {
+  return joinScanAllowed(static_cast<Control::state_t>(state));
 }
 
 bool WiFi::hostScanForNetwork(void) {

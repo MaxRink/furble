@@ -46,7 +46,7 @@ Rank groups:
 
 ## Safe now
 
-Twenty-five safe-now rows are implemented in this branch. See section
+Twenty-seven safe-now rows are implemented in this branch. See section
 "Implemented safe-now changes" for the code and test evidence.
 
 | ID | Lane | Current behavior | Proposed change | Evidence | Est. saving | Risk | Effort | Required test | Priority | Lane source |
@@ -123,6 +123,8 @@ evidence label from the lane and adds the test that now guards it.
 | P-010 | The GPS cycle wait uses a 1 s fallback and honors the ephemeris replay and poll deadlines, instead of a 100 ms floor in every state. | `src/FurbleGPS.cpp` | e2e `gps-cycle-wait`: 5 timeouts in 5 s and 6 in 15 s | implemented |
 | P-012 | The control task idles at 250 ms instead of 50 ms; commands still wake its queue immediately. | `src/FurbleControl.cpp` | e2e `control-idle-cadence`: 40 idle ticks in 10 s | implemented |
 | P-037 | `RECON_BACKOFF` defaults on. The first retry stays at 2.5 s; later attempts back off to 120 s. | `src/FurbleSettings.cpp` | `settings-nvs-roundtrip` default; all 27 reconnect simulator scenarios pass | implemented |
+| P-004 | The companion pairing window is 60 s instead of 120 s. | `include/FurbleCompanionService.h` | host `companion-gatt`: window constant; `docs/companion.md` | implemented |
+| P-027 | The join scan runs only in `STATE_IDLE`; every other Control state refuses it, and a refusal clamps the retry to 10 s so the station rejoins soon after the camera session ends. | `src/FurbleWiFi.cpp` | host `real-wifi-lifecycle`: predicate allows only idle across all six states | implemented |
 
 The modeled saving for these rows is unchanged and still unmeasured. P-001 and
 P-002 bound a worst case; they do not change steady-state current. P-003 halves
@@ -144,7 +146,9 @@ staged dim-to-off mode without changing the existing modes.
 P-018 is now applied. The display settings roller gained the new mode, the
 settings documentation was updated, and `docs/img/settings-display.png` was
 regenerated from the current build. P-010 and P-012 cut the GPS and control
-task poll rates, and P-037 makes the reconnect backoff the default.
+task poll rates, and P-037 makes the reconnect backoff the default. P-004
+shortens the companion pairing window, and P-027 limits the join scan to an
+idle Control state.
 
 Three safe-now rows are deliberately not applied yet:
 

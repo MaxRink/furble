@@ -236,6 +236,15 @@ int main() {
   }
   Furble::Ethernet::stop();
 
+  // P-027: only an idle Control state allows a join scan. Connect, active, and
+  // disconnecting all mean the camera session owns the radio.
+  for (uint8_t state = 0; state <= 5; state++) {
+    const bool allowed = Furble::WiFi::hostJoinScanAllowed(state);
+    if (require(allowed == (state == 0), "join scan predicate must allow only the idle state")) {
+      return 20;
+    }
+  }
+
   std::cout << "real wifi lifecycle: PASS\n";
   return 0;
 }

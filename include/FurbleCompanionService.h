@@ -55,7 +55,10 @@ class CompanionService {
   static constexpr uint8_t CAPABILITY_VERSION = 1;
   static constexpr uint32_t FEATURE_SETTINGS_V2 = 1U << 0;
   static constexpr uint32_t FEATURE_CAMERAS = 1U << 1;
-  static constexpr uint32_t PAIRING_WINDOW_MS = 2 * 60 * 1000;
+  // Advertising only runs inside this window after companion mode is opened.
+  // Sixty seconds is enough for a phone to find the device, and halves the
+  // advertising charge against the old two-minute window.
+  static constexpr uint32_t PAIRING_WINDOW_MS = 60 * 1000;
   static constexpr uint8_t AUTH_VERSION = 0x01;
   static constexpr uint8_t AUTH_OP_BEGIN = 0x00;
   static constexpr uint8_t AUTH_OP_PROOF = 0x01;

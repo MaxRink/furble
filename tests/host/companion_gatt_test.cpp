@@ -318,6 +318,9 @@ void testPasswordLoadFailureDeniesPrivilegedWrites(void) {
   std::cout << "test: companion password load failure denies privileged writes\n";
   Furble::Settings::save<std::string>(Furble::Settings::COMPANION_PASSWORD, "");
   Furble::Settings::setPasswordLoadResult(false);
+  check(Furble::CompanionService::PAIRING_WINDOW_MS == 60 * 1000,
+        "the companion pairing window is 60 s");
+
   MockCentral central;
   CompanionService service(central);
   central.attach(service);
@@ -396,6 +399,9 @@ void testCompanionGattFlow(void) {
         "both cameras reach the active Control state");
   check(waitFor([&] { return control.getConnectedTargetCount() == 2; }, 1000),
         "both virtual cameras are connected");
+
+  check(Furble::CompanionService::PAIRING_WINDOW_MS == 60 * 1000,
+        "the companion pairing window is 60 s");
 
   MockCentral central;
   CompanionService service(central);
@@ -786,6 +792,9 @@ void testCompanionCameras(void) {
         "load preserves the second saved camera pointer identity");
   check(firstId != 0 && secondId != 0, "every saved camera gets a nonzero id");
   check(firstId != secondId, "saved camera ids are distinct");
+
+  check(Furble::CompanionService::PAIRING_WINDOW_MS == 60 * 1000,
+        "the companion pairing window is 60 s");
 
   MockCentral central;
   CompanionService service(central);

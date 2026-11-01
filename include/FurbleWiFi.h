@@ -84,6 +84,8 @@ class WiFi {
   static bool hostServiceWired(void);
   /** True while a wired address holds the station off. */
   static bool hostDeferredForWired(void);
+  /** Run the join-scan state predicate for one Control state value. */
+  static bool hostJoinScanAllowed(uint8_t state);
   /** Run the join scan once so a host test can inspect its configuration. */
   static bool hostScanForNetwork(void);
 #endif
