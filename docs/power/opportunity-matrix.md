@@ -132,6 +132,7 @@ evidence label from the lane and adds the test that now guards it.
 | P-017 | Static settings and icon-menu captions use `LV_LABEL_LONG_DOT` instead of a circular marquee; dynamic values (camera names, spinner values, battery rows) keep scrolling. | `src/FurbleUI.cpp` | e2e `static-labels-no-scroll`: zero scroll labels on the main, settings, and display pages; walkthrough screenshots regenerated | implemented |
 | P-023 | The headless UI loop idles at 50 ms instead of 5 ms. It still drains the request queue every pass and shortens the sleep to the 1 Hz GPS service deadline, so the geotag cadence is unchanged. | `src/main.cpp`, `include/FurbleHeadlessPolicy.h` | host `headless-loop-policy`: loop period, deadline shortening, due and overdue cases; `pio run -e waveshare-s3-eth` SUCCESS | implemented |
 | P-026 | The runtime PM request now asks for light sleep only when `CONFIG_FREERTOS_USE_TICKLESS_IDLE` is compiled in. Before this, the Waveshare config (PM for DFS, no tickless) made `esp_pm_configure` return `ESP_ERR_NOT_SUPPORTED`, so no DFS was applied and the boot fallback aborted. `ESP_ERR_NOT_SUPPORTED` is now reported and the board runs at a fixed frequency instead of aborting. | `src/FurblePower.cpp`, `src/FurblePlatform.cpp`, `include/FurblePowerPolicy.h` | host `power-request-policy`: tickless asks for light sleep, DFS-only does not, frequencies preserved; `pio run -e waveshare-s3-eth` and `-e m5stick-s3` SUCCESS | implemented for the runtime request. Enabling tickless itself is P-026a |
+| P-038 | A new OTA session now requires a runtime `Gate` to admit it. The pure policy refuses unless Control is idle and, when a gauge exists, the battery is at least 30 percent. A BEGIN the gate refuses returns `Busy` before the sink or replay store is touched; a duplicate BEGIN of an accepted session is still answered as a duplicate, so a camera connecting mid-transfer cannot fail a retry. | `include/FurbleOTAMQTT.h`, `src/FurbleOTAMQTT.cpp`, `include/FurbleOTAAdmission.h` | host `ota-mqtt-admission`: policy boundaries, refusal leaves no sink/store state, duplicate survives a closed gate, no-gate compatibility | implemented in the engine. The MQTT topic handler that constructs the `Session` is the named activation artifact |
 
 The modeled saving for these rows is unchanged and still unmeasured. P-001 and
 P-002 bound a worst case; they do not change steady-state current. P-003 halves
@@ -155,7 +156,7 @@ settings documentation was updated, and `docs/img/settings-display.png` was
 regenerated from the current build. P-010 and P-012 cut the GPS and control
 task poll rates, and P-037 makes the reconnect backoff the default. P-004
 shortens the companion pairing window, and P-027 limits the join scan to an
-idle Control state. P-025 halves the console idle wake rate. P-039 restores the
+idle Control state. P-038 makes a new OTA session require an admission gate. P-025 halves the console idle wake rate. P-039 restores the
 connected-radio floor in the power model; the committed baselines now match it
 instead of silently missing it. P-022 trims the AXP192 ADC channels. P-036
 enables the brownout TX-power reduction. P-017 stops static captions from
