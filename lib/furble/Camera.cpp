@@ -281,6 +281,14 @@ bool Camera::answerPairing(bool accept, uint32_t token) {
   if (type == PairingType::NUMERIC_COMPARISON) {
     if ((client != nullptr) && (client->getConnHandle() == handle)) {
       NimBLEConnInfo connInfo = client->getConnInfo();
+      // A failed NimBLE lookup or a descriptor from another link has a zero or
+      // different handle and an all-zero interval. Injecting into that could
+      // authorize a different pending camera, so consume the request without
+      // answering it.
+      if ((connInfo.getConnHandle() != handle) || (connInfo.getConnInterval() == 0)) {
+        ESP_LOGW(LOG_TAG, "Discarding a pairing answer for a stale connection descriptor");
+        return true;
+      }
       if (!accepted) {
         // A rejected answer closes the link as part of cancellation. Do that
         // before injecting the verdict: either operation may run onDisconnect

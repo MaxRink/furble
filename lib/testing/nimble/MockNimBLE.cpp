@@ -919,6 +919,9 @@ NimBLEConnInfo NimBLEClient::getConnInfo() const {
       m_PendingConnInfoReads--;
     } else {
       m_ConnInfo = m_PendingConnInfo;
+      // Applying the pending parameters replaces the descriptor, so put the
+      // live link handle back before anyone uses it as a pairing identity.
+      m_ConnInfo.mockSetConnHandle(m_Handle);
       m_ConnParamUpdatePending = false;
     }
   }

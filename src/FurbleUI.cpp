@@ -4011,6 +4011,18 @@ std::string UI::simQueryState(const char *key) {
           overflow = overflow || (child_area.x1 < footer_area.x1)
                      || (child_area.x2 > footer_area.x2) || (child_area.y1 < footer_area.y1)
                      || (child_area.y2 > footer_area.y2);
+          lv_obj_t *text = lv_obj_get_child(child, 0);
+          if ((text != nullptr) && lv_obj_check_type(text, &lv_label_class)) {
+            const char *label = lv_label_get_text(text);
+            if ((label != nullptr) && (label[0] != '\0')) {
+              lv_point_t size = {0, 0};
+              lv_text_get_size(&size, label, lv_obj_get_style_text_font(text, LV_PART_MAIN),
+                               lv_obj_get_style_text_letter_space(text, LV_PART_MAIN),
+                               lv_obj_get_style_text_line_space(text, LV_PART_MAIN), LV_COORD_MAX,
+                               LV_TEXT_FLAG_EXPAND);
+              overflow = overflow || (size.x > lv_obj_get_content_width(text));
+            }
+          }
         }
       }
       return overflow ? "yes" : "no";
@@ -5855,7 +5867,15 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
     case Control::STATE_CONNECT:
     case Control::STATE_CONNECTING:
       lv_timer_set_period(m_ConnectTimer, CONNECT_POLL_PERIOD_MS);
-      camera = control.getConnectingCamera();
+      // Read the lock-free generation first and snapshot only when it moved.
+      // Taking m_Mutex on every 50 ms tick put the LVGL task behind the control
+      // task's radio work.
+      const uint32_t generation = control.getConnectingCameraGeneration();
+      if (generation != ctx->connectingGeneration) {
+        ctx->connectingGeneration = generation;
+        ctx->connectingCamera = control.getConnectingCamera();
+      }
+      camera = ctx->connectingCamera;
 
       if (ctx->sessionEstablished) {
         // Mid-session reconnect. A live session already owns the screen, so do
@@ -5985,8 +6005,8 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
         if (ctx->ui->m_Intervalometer.hasResume()) {
           const uint8_t resumeId = ctx->ui->m_Intervalometer.resumeCameraId();
           bool resumeTarget = false;
-          for (const auto &target : control.getTargets()) {
-            if (CameraList::getCameraId(target->getCamera().get()) == resumeId) {
+          for (const auto &camera : control.getTargetCameras()) {
+            if (CameraList::getCameraId(camera.get()) == resumeId) {
               resumeTarget = true;
               break;
             }
@@ -6208,7 +6228,7 @@ void UI::intervalometer(lv_timer_t *timer) {
             && Platform::getInstance().canTimedWake()
             && ((next / 1000) > Intervalometer::RESUME_WAKE_MARGIN_S)
             && (control.getTargetCount() == 1)) {
-          auto camera = control.getTargets().front()->getCamera();
+          auto camera = control.getTargetCameras().front();
           const uint8_t camera_id = CameraList::getCameraId(camera.get());
           const bool camera_found = (camera_id != CameraListProtocol::INDEX_ID_INVALID)
                                     && (camera_id != CameraListProtocol::INDEX_ID_ALL);

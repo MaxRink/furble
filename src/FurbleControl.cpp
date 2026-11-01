@@ -1128,7 +1128,17 @@ void Control::addActive(std::shared_ptr<Camera> camera) {
 
 void Control::setConnectCamera(std::shared_ptr<Camera> camera) {
   const std::lock_guard<std::mutex> lock(m_Mutex);
+  setConnectCameraLocked(std::move(camera));
+}
+
+void Control::setConnectCameraLocked(std::shared_ptr<Camera> camera) {
+  // Caller holds m_Mutex.
   m_ConnectCamera = std::move(camera);
+  m_ConnectCameraGeneration.fetch_add(1, std::memory_order_release);
+}
+
+uint32_t Control::getConnectingCameraGeneration(void) const {
+  return m_ConnectCameraGeneration.load(std::memory_order_acquire);
 }
 
 std::shared_ptr<Camera> Control::getConnectingCamera(void) const {
