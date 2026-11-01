@@ -418,7 +418,7 @@ behaviour has its own row.
 | M27 model and firmware identity | CN, NK, SO, LX, DJI | advertised name only | canon F36; nikon §9.1; sony F-36; panasonic F-36; dji F36 | Product ID, DIS, serial, firmware | Missing. Canon no product ID; Sony ignores advert model; LUMIX model-blind; DJI device ID only | `furble-source`; `app-static`; `public-source` | capture-gated |
 | M28 error status | FJ-S40, FJ-S41 | log only | fujifilm C67, N23 | `1587B102` details, `763514E8` write | Not read or written. Other subscribed messages logged as unhandled | `furble-source`; `firmware-static` | capture-gated |
 | M29 error status | RC3, RC4 | capture status log | ricoh F-35, CM-91 | Capture Status fields and result codes | Subscribed and logged as raw bytes | `furble-source`; `public-source` | aligned |
-| M30 error status | CN-S, SO, LX, DJI, NK | none/partial | canon CS-37; sony F-35; panasonic F-35; dji F-35; nikon §9.1 | Error and busy notifications | Canon not subscribed; Sony ignores status; LUMIX logs readiness only; DJI logs only; Nikon no read | `furble-source`; `app-static`; `public-source` | capture-gated |
+| M30 error status | CN-S, SO, LX, DJI, NK | none or log only | canon CS-37; sony F-35; panasonic F-35; dji F-35; nikon §9.1 | Error and busy notifications | Canon not subscribed; Sony ignores status; LUMIX logs readiness only; DJI logs only; Nikon no read | `furble-source`; `app-static`; `public-source` | capture-gated |
 
 ### 2.5 Control plane: errors, timeouts, retries, cancellation
 
