@@ -167,6 +167,53 @@ void RicohVirtualCamera::clearFaults() {
   m_RepairRequest = false;
   m_PasskeyAccepted = true;
   m_Config.in_pairing_mode = true;
+  m_Fault = Fault::None;
+  m_Scripted = false;
+  m_Script.clear();
+}
+
+void RicohVirtualCamera::setFault(Fault fault) {
+  m_Fault = fault;
+}
+
+RicohVirtualCamera::Fault RicohVirtualCamera::fault() const {
+  return m_Fault;
+}
+
+void RicohVirtualCamera::clearFault() {
+  m_Fault = Fault::None;
+}
+
+void RicohVirtualCamera::setScripted(bool scripted) {
+  m_Scripted = scripted;
+}
+
+bool RicohVirtualCamera::scripted() const {
+  return m_Scripted;
+}
+
+void RicohVirtualCamera::scriptNextCommand(Fault fault) {
+  m_Script.push_back(fault);
+}
+
+size_t RicohVirtualCamera::scriptedRemaining() const {
+  return m_Script.size();
+}
+
+void RicohVirtualCamera::clearScript() {
+  m_Script.clear();
+}
+
+RicohVirtualCamera::Fault RicohVirtualCamera::consumeFault() {
+  if (m_Scripted) {
+    if (m_Script.empty()) {
+      return Fault::None;
+    }
+    const Fault fault = m_Script.front();
+    m_Script.pop_front();
+    return fault;
+  }
+  return m_Fault;
 }
 
 bool RicohVirtualCamera::isWriteFailed(const NimBLEUUID &service,
@@ -442,6 +489,24 @@ bool RicohVirtualCamera::write(NimBLEClient &client,
   if (isWriteFailed(service, characteristic))
     return false;
 
+  // Shared fault vocabulary. Ricoh has one application-level refusal, so every
+  // class except Disconnect and StaleBond collapses to a failed write.
+  const Fault fault = consumeFault();
+  switch (fault) {
+    case Fault::None:
+      break;
+    case Fault::Disconnect:
+      client.mockDropLink(0x08, /*fire_callback=*/true);
+      return false;
+    case Fault::Reject:
+    case Fault::Busy:
+    case Fault::WrongMode:
+    case Fault::Timeout:
+    case Fault::Malformed:
+    case Fault::StaleBond:
+      return false;
+  }
+
   bool result = false;
   if (matches(service, CAMERA_SERVICE) && matches(characteristic, POWER_CHARACTERISTIC)) {
     // CameraPower::Write accepts exactly 0 (power off) and 1 (accepted, no
@@ -552,6 +617,11 @@ bool RicohVirtualCamera::subscribe(NimBLEClient &client,
 bool RicohVirtualCamera::secureConnection(NimBLEClient &client) {
   if (!m_Connected || m_Client != &client)
     return false;
+  // One-sided bond: the camera deleted its pairing while the central kept its
+  // key. Evidence: ricoh-spec section 7.5 and ricoh-handlers.md section 9.4.
+  if ((m_Fault == Fault::StaleBond) && NimBLEDevice::isBonded(m_Config.address)) {
+    return false;
+  }
   if (m_FlappyEnabled) {
     const std::lock_guard<std::recursive_mutex> lock(m_FlappyMutex);
     if (m_FlappyFailRemaining > 0) {
