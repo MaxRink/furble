@@ -2,6 +2,7 @@
 #define LUMIX_H
 
 #include <array>
+#include <atomic>
 
 #include <NimBLERemoteCharacteristic.h>
 
@@ -51,6 +52,7 @@ class Lumix: public Camera {
   // Remote control service and command characteristic.
   static const NimBLEUUID CONTROL_SVC_UUID;
   static const NimBLEUUID CONTROL_UUID;
+  static const NimBLEUUID CONTROL_READINESS_UUID;
 
   // Location service and clock service.
   static const NimBLEUUID LOCATION_SVC_UUID;
@@ -81,8 +83,9 @@ class Lumix: public Camera {
   } clock_t;
 
   /** Single-byte remote control commands. */
-  static constexpr uint8_t CMD_FOCUS_PRESS = 0x01;
-  static constexpr uint8_t CMD_FOCUS_RELEASE = 0x02;
+  static constexpr uint8_t CMD_SESSION_CONFIRM = 0x01;
+  static constexpr uint8_t CMD_SESSION_START = 0x02;
+  static constexpr uint8_t CMD_SESSION_FINISH = 0x03;
   static constexpr uint8_t CMD_SHUTTER_PRESS = 0x04;
   static constexpr uint8_t CMD_SHUTTER_RELEASE = 0x05;
 
@@ -93,13 +96,17 @@ class Lumix: public Camera {
   };
 
   NimBLERemoteCharacteristic *m_Control = nullptr;
+  NimBLERemoteCharacteristic *m_ControlReadiness = nullptr;
   NimBLERemoteCharacteristic *m_Location = nullptr;
   NimBLERemoteCharacteristic *m_Clock = nullptr;
+  std::atomic<bool> m_ControlReady {false};
+  bool m_SessionStarted = false;
 
   bool _connect(void) override final;
   void _disconnect(void) override final;
 
   bool writeCommand(uint8_t command);
+  bool startSession(void);
 };
 }  // namespace Furble
 

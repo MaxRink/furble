@@ -372,6 +372,28 @@ target_compile_options(ricoh_focus_test PRIVATE
                        -Wall -Wextra -Werror -Wno-vla-extension -Wno-format
                        -Wno-unused-parameter -Wno-unused-lambda-capture -Wno-sign-compare)
 
+# Drive the production LUMIX session and shutter paths. The test proves the
+# Confirm 01, Start 02, and Finish 03 handshake and that focus never maps to a
+# session command.
+add_executable(lumix_session_test
+               lumix_session_test.cpp
+               ${HOST_PEER_DIR}/LumixVirtualCamera.cpp
+               ${FURBLE_ROOT}/lib/furble/Lumix.cpp
+               ${FURBLE_PROTOCOL_DIR}/AdvertisementProtocol.cpp
+               ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos_shim.cpp)
+target_link_libraries(lumix_session_test PRIVATE furble_host_camera)
+target_include_directories(lumix_session_test BEFORE PRIVATE
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR}
+                           ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e
+                           ${FURBLE_ROOT}/lib/furble
+                           ${FURBLE_ROOT}/include)
+target_compile_options(lumix_session_test PRIVATE
+                       -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
+                       -Wall -Wextra -Werror -Wno-vla-extension -Wno-format
+                       -Wno-unused-parameter -Wno-unused-lambda-capture -Wno-sign-compare)
+add_test(NAME lumix-session COMMAND lumix_session_test)
+
 # The sleep gate test drives the production Ricoh shutter path against the
 # virtual peer in BLE standby. It protects the invariant that only a fresh
 # OperationMode read of CAPTURE authorizes the ShootingFlavor and

@@ -1,6 +1,9 @@
 #include <cstring>
 #include <ctime>
 
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+
 #include <NimBLEAddress.h>
 #include <NimBLEAdvertisedDevice.h>
 #include <NimBLEDevice.h>
@@ -18,6 +21,7 @@ const NimBLEUUID Lumix::SESSION_INIT_UUID {0x8d08a420, 0x3213, 0x11e6, 0x8aca000
 const NimBLEUUID Lumix::DEVICE_NAME_UUID {0xcd7a71a0, 0x3213, 0x11e6, 0x8f560002a5d5c51b};
 const NimBLEUUID Lumix::CONTROL_SVC_UUID {0x7be5faae, 0x475b, 0x11e7, 0xa91992ebcb67fe33};
 const NimBLEUUID Lumix::CONTROL_UUID {0x7be5fd56, 0x475b, 0x11e7, 0xa91992ebcb67fe33};
+const NimBLEUUID Lumix::CONTROL_READINESS_UUID {0x7be5fe6e, 0x475b, 0x11e7, 0xa91992ebcb67fe33};
 const NimBLEUUID Lumix::LOCATION_SVC_UUID {0x1d74afe0, 0x3214, 0x11e6, 0x8ab40002a5d5c51b};
 const NimBLEUUID Lumix::LOCATION_CHR_UUID {0xdaff1bc0, 0x3216, 0x11e6, 0x91c80002a5d5c51b};
 const NimBLEUUID Lumix::CLOCK_SVC_UUID {0x34738720, 0x3214, 0x11e6, 0xb66b0002a5d5c51b};
@@ -78,8 +82,11 @@ bool Lumix::matches(const NimBLEAdvertisedDevice *pDevice) {
 bool Lumix::_connect(void) {
   // Drop any stale characteristic pointers from a previous session.
   m_Control = nullptr;
+  m_ControlReadiness = nullptr;
   m_Location = nullptr;
   m_Clock = nullptr;
+  m_ControlReady = false;
+  m_SessionStarted = false;
   m_Progress = 10;
   ESP_LOGI(LOG_TAG, "Lumix connecting");
   if (!m_Client->connect(m_Address)) {
@@ -130,6 +137,31 @@ bool Lumix::_connect(void) {
     return false;
   }
 
+  // The official app sends Confirm 01, waits for a 00 readiness notification
+  // on 7be5fe6e, then sends Start 02. A bare ShutterOn 04 is refused by a body
+  // that requires the session gate.
+  m_ControlReadiness = pSvc->getCharacteristic(CONTROL_READINESS_UUID);
+  if (m_ControlReadiness != nullptr) {
+    if (!gattSubscribe(
+            m_ControlReadiness,
+            [this](NimBLERemoteCharacteristic *, uint8_t *data, size_t length, bool) {
+              if (length > 0 && data[0] == 0x00) {
+                m_ControlReady = true;
+              }
+            },
+            false, true)) {
+      ESP_LOGW(LOG_TAG, "Lumix control readiness subscribe failed");
+    }
+  } else {
+    ESP_LOGW(LOG_TAG, "Lumix control readiness characteristic unavailable");
+  }
+
+  if (!startSession()) {
+    ESP_LOGI(LOG_TAG, "Lumix session start failed");
+    return false;
+  }
+  m_Progress = 80;
+
   pSvc = m_Client->getService(LOCATION_SVC_UUID);
   if (pSvc != nullptr) {
     m_Location = pSvc->getCharacteristic(LOCATION_CHR_UUID);
@@ -150,7 +182,13 @@ bool Lumix::_connect(void) {
 }
 
 void Lumix::_disconnect(void) {
+  if (m_SessionStarted) {
+    writeCommand(CMD_SESSION_FINISH);
+  }
+  m_SessionStarted = false;
+  m_ControlReady = false;
   m_Control = nullptr;
+  m_ControlReadiness = nullptr;
   m_Location = nullptr;
   m_Clock = nullptr;
   if (m_Client != nullptr && m_Client->isConnected())
@@ -170,6 +208,35 @@ bool Lumix::writeCommand(uint8_t command) {
   return true;
 }
 
+bool Lumix::startSession(void) {
+  m_ControlReady = false;
+  if (!writeCommand(CMD_SESSION_CONFIRM)) {
+    return false;
+  }
+
+  // The readiness notification is the documented Start gate. Give it two
+  // seconds, but do not hang a connect if a body does not send it.
+  constexpr uint32_t READINESS_TIMEOUT_MS = 2000;
+  constexpr uint32_t READINESS_POLL_MS = 20;
+  uint32_t waited = 0;
+  while (!m_ControlReady.load() && (waited < READINESS_TIMEOUT_MS)) {
+    if (connectCancelled()) {
+      return false;
+    }
+    vTaskDelay(pdMS_TO_TICKS(READINESS_POLL_MS));
+    waited += READINESS_POLL_MS;
+  }
+  if (!m_ControlReady.load()) {
+    ESP_LOGW(LOG_TAG, "Lumix control readiness timeout; starting anyway");
+  }
+
+  if (!writeCommand(CMD_SESSION_START)) {
+    return false;
+  }
+  m_SessionStarted = true;
+  return true;
+}
+
 void Lumix::shutterPress(void) {
   writeCommand(CMD_SHUTTER_PRESS);
 }
@@ -179,11 +246,13 @@ void Lumix::shutterRelease(void) {
 }
 
 void Lumix::focusPress(void) {
-  writeCommand(CMD_FOCUS_PRESS);
+  // LUMIX has no focus opcode. 01 and 02 are Confirm and Start session
+  // commands, never focus. See spec/panasonic.md C06 and C07.
+  ESP_LOGI(LOG_TAG, "Lumix focusPress ignored (no focus protocol)");
 }
 
 void Lumix::focusRelease(void) {
-  writeCommand(CMD_FOCUS_RELEASE);
+  ESP_LOGI(LOG_TAG, "Lumix focusRelease ignored (no focus protocol)");
 }
 
 void Lumix::updateGeoData(const gps_t &gps, const timesync_t &timesync) {

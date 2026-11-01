@@ -120,8 +120,8 @@ and each needs a host or simulator regression test.
 
 | Rank | Fix | Family | Evidence | Why it is high value |
 | --- | --- | --- | --- | --- |
-| S1 | Remove the LUMIX focus mapping. `focusPress` currently writes `01` (Confirm) and `focusRelease` writes `02` (Start). There is no focus opcode. | LX | `app-static` panasonic.md C06, C07, F02 | A focus gesture currently changes the camera session state instead of focusing. |
-| S2 | Add the LUMIX session handshake: `01` Confirm, wait for `7be5fe6e` `00`, `02` Start, and `03` Finish on disconnect. | LX | `app-static` panasonic.md C06 to C08, F01, F40 | Without it every Furble session starts without the app's documented gate, and the shutter is a bare `04`. |
+| S1 | Remove the LUMIX focus mapping. `focusPress` previously wrote `01` (Confirm) and `focusRelease` wrote `02` (Start). There is no focus opcode. | LX | `app-static` panasonic.md C06, C07, F02 | Fixed. Focus press and release are now no-ops. |
+| S2 | Add the LUMIX session handshake: `01` Confirm, wait for `7be5fe6e` `00`, `02` Start, and `03` Finish on disconnect. | LX | `app-static` panasonic.md C06 to C08, F01, F40 | Fixed. Connect sends Confirm, waits for readiness, then Start. Disconnect sends Finish. |
 | S3 | Add the LUMIX GPS stop packet (fix `0x56`, lat and lon `0x7fffffff`, altitude `0x7fff`) and wait for `37701b80` and `4cf487c0` readiness before the clock and GPS writes. | LX | `app-static` panasonic.md C14, F41, F45; `public-source` S5 report | A stale position can persist, and the shortened MEI0 to GPS sequence is reported to drop the link. |
 | S4 | Write the Fujifilm 12-byte UTC and timezone packet on the `F9150137` `01 00` request, and write the client name with a trailing NUL. | FJ-S40, FJ-S41 | `firmware-static` fujifilm.md C28 and C03; `app-static` XApp and Camera Remote | Clock and timezone are a user-visible parity gap; the NUL matches both official clients. |
 | S5 | Send the Fujifilm `AAB609C4` location sync enable, not only the interval, and read it back once. | FJ-S40, FJ-S41 | `firmware-static` fujifilm.md C25; `app-static` XApp | The interval is written but the geotag feature may never be enabled on a body whose menu default is off. |
@@ -154,6 +154,17 @@ the closing artifact.
 | G10 | DJI SMP requirement, `device_id` byte order, snapshot key, wake, sleep, GPS, and mode switch | DJI | Whether requiring a bond is correct, and which documented R SDK commands the body accepts | FFF4 and FFF5 capture on Action 4 and Action 5 Pro, with physical outcomes |
 | G11 | Fujifilm movie, power, wake, and still self-timer payloads | FJ-S40 | Payload, mode precondition, and physical outcome for `861442AB`, `43070F6C`, and the X-S20 movie strings | HCI plus physical capture on X100VI and X-S20 |
 | G12 | Physical shutter and EXIF outcome on every family | All | Whether any ATT success corresponds to a file | Per-family still plus EXIF check, as required by the goal |
+
+### 1.4 Applied safe fixes
+
+| Fix | Status | Evidence |
+| --- | --- | --- |
+| LUMIX focus mapping removed; Confirm/Start/Finish handshake added | applied | `lib/furble/Lumix.{h,cpp}`, host `lumix-session` |
+
+The LUMIX fix sends Confirm `01`, waits up to two seconds for control readiness
+`00`, sends Start `02`, and sends Finish `03` on disconnect. Focus press and
+release are no-ops. The peer defaults to refusing a bare ShutterOn, so the host
+test proves the gate rather than only the byte sequence.
 
 ## 2. Table 1: Furble action traceability
 
@@ -190,7 +201,7 @@ behaviour has its own row.
 | L22 connect, vendor | NK-R | `Nikon::_connect`, `NikonRemote` | nikon §7.1 | `DE00`, `2087` four-stage, then `2083` ready | Four stages, 10 s each, remote selected by `2087` | `furble-source`; `firmware-static` B600 | aligned |
 | L23 connect, vendor | NK-S | `Nikon::_connect`, `NikonSmart` | nikon §7.3 and §7.7 | `2000` Blowfish exchange, then Classic bond | BLE runs, `connectFinalise` always false. Never active | `furble-source`; `app-static`; `public-source` | unsupported |
 | L24 connect, vendor | SO | `Sony::_connect` | sony §7.4 and §7.9 | Bond, `FF00` and `FF01`, optional `DD00` | Secure, requires `FF00` and `FF01`; no `EE01` and no `EE03` | `furble-source`; `public-source` | capture-gated |
-| L25 connect, vendor | LX | `Lumix::_connect` | panasonic §7.2 and §7.5 | Session service, MEI0, name, control, optional location and clock | MEI0 and name by `writeValue`, no Confirm or Start, no readiness | `furble-source`; `app-static` | safe-fix-needed |
+| L25 connect, vendor | LX | `Lumix::_connect` | panasonic §7.2 and §7.5 | Session service, MEI0, name, control, Confirm, readiness, Start, optional location and clock | MEI0 and name by `writeValue`, control readiness subscription, Confirm, Start | `furble-source`; `app-static` | aligned |
 | L26 connect, vendor | DJI | `DJIOsmo::_connect` | dji §7.1 and §7.2 | FFF0, FFF4, `00 19`, verify, ACK, status | MTU 517, secure and bonded required, 33-byte request, verify 2 and 0, 30 s, ACK | `furble-source`; `public-source` | aligned |
 | L27 secure, setup | all | `setSecurityAuth(true, true, true)` and per-class `securityMode()` | state-machines §1.2 | Bond, MITM, LE Secure Connections | Set before every connect. Default DisplayYesNo; Ricoh keyboard, DJI and Ricoh fallback passkey | `furble-source` | aligned |
 | L28 secure, handshake | FJ-S40, FJ-S41 | `secureConnection()` plus stale-bond branch | fujifilm §7.5 and §7.8 | Encrypt with stored keys, or numeric comparison on a fresh bond | One handshake per attempt, two-failure rule, identity delete, repair prompt | `furble-source`; `hardware-capture` 2026-09-02 and 2026-09-05 | aligned |
@@ -211,7 +222,7 @@ behaviour has its own row.
 | L43 register | NK-R | four-stage `2087` | nikon §7.1 | Stage 2 and stage 4 | Implemented, serial logged at stage 4 | `furble-source`; `firmware-static` B600 | aligned |
 | L44 register | NK-S | four-stage `2000`, final OK | nikon §7.3 | Stage 2 and 4, then Classic | BLE stages, 1 s final OK, unconditional failure | `furble-source`; `public-source` | unsupported |
 | L45 register | SO | none | sony §7.2 and §7.3 | `EE01`, `EE03`, `EE04` | None used | `furble-source`; `app-static` | capture-gated |
-| L46 register | LX | MEI0 and name only | panasonic §7.2 and §7.6 | MEI0, name, Confirm, Start | MEI0 and name; Confirm and Start absent. Fixed seed replaces the per-install seed | `furble-source`; `app-static` | safe-fix-needed |
+| L46 register | LX | MEI0, name, Confirm, Start | panasonic §7.2 and §7.6 | MEI0, name, Confirm, Start | MEI0 and name, then Confirm and Start. Fixed seed still replaces the per-install seed | `furble-source`; `app-static` | aligned |
 | L47 register | DJI | `00 19`, verify 2, ACK | dji §7.1 | Verification result 0, protocol ready | Implemented, including both device-ID encodings | `furble-source`; `public-source` | aligned |
 | L48 reconnect | FJ-S40, FJ-S41 | saved scan, identity address, secure, full registration | fujifilm §7.3 | New window, same bond, geotag request as confirmation | Implemented. Geotag request promotes on a saved reconnect | `furble-source`; `hardware-capture` 2026-08-28 | aligned |
 | L49 reconnect | FJ-B, RC3, RC4, CN, SO, LX, DJI, NK-R | per-class saved path | ricoh §7.4; canon §7.5; sony §7.4; panasonic §7.5; dji §7.2; nikon §7.2 | Saved address or identity valid, vendor re-registration as needed | Direct connect by stored address; Nikon scans; Basic reuses the token | `furble-source`; `public-source` | capture-gated |
@@ -243,7 +254,7 @@ behaviour has its own row.
 | C09 shutter release | NK-R | `NikonRemote::shutterRelease` | nikon R6b | `02 00` is a no-op, not a release | Writes `02 00`, which the firmware ignores | `furble-source`; `firmware-static` | aligned |
 | C10 shutter press and release | NK-S | `NikonSmart` | nikon §9.2 | `2021` key 3 press and release | No-ops; camera cannot become active | `furble-source`; `app-static` | unsupported |
 | C11 shutter press and release | SO | `Sony::shutterPress` and `shutterRelease` | sony F-03, C-32 | `01 09`, then `01 08` | Exactly that | `furble-source`; `public-source` | aligned |
-| C12 shutter press and release | LX | `Lumix::writeCommand` | panasonic C09, C10 | `04`, then `05` | Exactly that, with response, no Confirm or Start | `furble-source`; `app-static` | safe-fix-needed |
+| C12 shutter press and release | LX | `Lumix::writeCommand` | panasonic C09, C10 | `04`, then `05` inside the started session | Exactly that, with response, after Confirm and Start | `furble-source`; `app-static` | aligned |
 | C13 shutter | DJI | `DJIOsmo::shutterPress`, `writeRecordCommand` | dji C16, F03, F08 | `1D 03` start or stop; photo outcome unknown | Toggles record from tracked state. No still photo | `furble-source`; `public-source`; `unknown` | capture-gated |
 | C14 focus press and release | FJ-B, FJ-S40, FJ-S41 | `Fujifilm::focusPress` and `focusRelease` | fujifilm §5.1, C14 | Half press `01 00`, release `00 00` | Half press then release. Old `03 00` removed, parser returns -30 | `furble-source`; `firmware-static`; `public-source` | aligned |
 | C15 focus | RC3, RC4 | `Ricoh::focusPress` and `focusRelease` | ricoh F-02, CM-30 | No BLE focus trigger; Focus Mode only configures | Both no-ops | `furble-source`; `firmware-static`; `app-static` | unsupported |
@@ -251,7 +262,7 @@ behaviour has its own row.
 | C17 focus press and release | CN-R | `CanonEOSRemote` | canon CR-06, CR-05 | `0x4c`, then `0x0c` | Exactly that | `furble-source`; `public-source` | aligned |
 | C18 focus | NK-R, NK-S, DJI | vendor classes | nikon §9.1 and §9.2; dji F02 | Remote has no focus; Smart uses key 2; DJI none | No-ops or unreachable | `furble-source`; `firmware-static`; `app-static` | unsupported |
 | C19 focus press and release | SO | `Sony::focusPress` and `focusRelease` | sony F-02, C-33 | `01 07`, then `01 06` | Exactly that | `furble-source`; `public-source` | aligned |
-| C20 focus press and release | LX | `Lumix::focusPress` and `focusRelease` | panasonic F02, C06, C07 | No focus command. `01` Confirm, `02` Start | Sends `01` then `02`. Changes session state and never focuses | `furble-source`; `app-static` | unsupported |
+| C20 focus press and release | LX | `Lumix::focusPress` and `focusRelease` | panasonic F02, C06, C07 | No focus command. `01` Confirm, `02` Start | No-op. Does not change session state | `furble-source`; `app-static` | aligned |
 | C21 bulb | FJ, CN-S, CN-R, SO, LX | UI holds press, then release | fujifilm §5.1; canon F04; sony F-04; panasonic F04 | Held press; camera mode decides | UI bulb page holds for the configured duration | `furble-source`; `firmware-static` absence; `inference` | capture-gated |
 | C22 bulb | RC3, RC4 | none | ricoh F-04 | Shooting Mode B or BT, then a stop write | Release is ignored, so a bulb countdown cannot end the exposure | `furble-source`; `app-static` | unsupported |
 | C23 bulb | NK-R, NK-S, DJI | none | nikon §9.1; dji F04 | No bulb command | No-op or local hold only | `furble-source`; `public-source` | out-of-scope |
@@ -739,8 +750,8 @@ APS reads a per-connection key and writes a 20-byte XOR and word-swapped block.
 
 | Camera | Feature | Transport | Spec row | Furble state | Simulator | Test | Hardware state |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Panasonic LUMIX | Still capture | BLE GATT | panasonic C09, C10, F01 | implemented, bare `04` and `05` with no session handshake | none | none (class) | capture-gated |
-| Panasonic LUMIX | Half press and focus | none | panasonic F02 | unavailable, code sends Confirm and Start instead | none | none (class) | not applicable |
+| Panasonic LUMIX | Still capture | BLE GATT | panasonic C09, C10, F01 | implemented, Confirm and Start then `04` and `05` | none | host `lumix-session` | capture-gated |
+| Panasonic LUMIX | Half press and focus | none | panasonic F02 | unavailable, focus is a no-op | none | host `lumix-session` | not applicable |
 | Panasonic LUMIX | Bulb | BLE GATT, local hold | panasonic F04 | implemented, local hold only | none | none | capture-gated |
 | Panasonic LUMIX | Self-timer (still) | BLE GATT | panasonic §9 | missing | none | none (class) | capture-gated |
 | Panasonic LUMIX | Self-timer (movie) | camera menu or none | panasonic F05 | unavailable | none | none | not applicable |

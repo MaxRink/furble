@@ -226,15 +226,14 @@ below is the strongest available. The private corpus analysis is
 `analysis/panasonic-firmware.md`.
 
 The current connect flow is open-link `connect`, session service lookup, a
-fixed 16-byte MEI0 write, ASCII controller device-name write, required control
-service and writable control characteristic lookup, then optional location
-and clock characteristic lookup. It does not call `secureConnection`, does
-not bond, and does not subscribe to readiness notifications. On any missing
-service/characteristic or failed write it returns false. No vendor timeout is
-defined; the base caller supplies the connect timeout. The snapshot's source
-comment says a shortened MEI0-to-GPS sequence can cause the camera to drop the
-link, but current Furble does not wait for the two documented readiness
-notifications before enabling GPS.
+16-byte MEI0 write, ASCII controller device-name write, required control
+service and writable control characteristic lookup, control-readiness
+subscription, Confirm `01`, a wait for readiness `00`, Start `02`, then optional
+location and clock characteristic lookup. It does not call `secureConnection`
+and does not bond. On any missing service/characteristic or failed write it
+returns false. Furble sends Finish `03` on disconnect. It still does not wait
+for the location or clock readiness notifications before the GPS and clock
+writes.
 
 MEI0 is a ten-byte prefix `4d 45 49 30 01 00 10 00 80 01` followed by a
 six-byte per-install identity seed. The source array
@@ -247,12 +246,12 @@ Furble does not implement it.
 Control writes are one byte. `01` and `02` are Confirm and Start, not focus;
 `03` is Finish, `04` and `05` are shutter on and off, and `06` and `07` are
 movie on and off. LUMIX Sync sends Confirm, Start, ShutterOn, and ShutterOff.
-Furble's focus press and release currently send the Confirm and Start commands,
-which is a semantic bug but may initialize a session. Furble sends no status
-subscription and has no response or error-code interpretation beyond the boolean
-GATT write result. The public G9II implementation sends the same `01`, `02`,
-`04`, `05` sequence at handles `0x0068`. That handle-level path is a different
-generation and must not be copied to the UUID path without an exact capture.
+Furble sends Confirm and Start on connect, waits up to two seconds for the
+readiness notification, and sends Finish on disconnect. Focus press and release
+are no-ops because the protocol has no focus command. The public G9II
+implementation sends the same `01`, `02`, `04`, `05` sequence at handles
+`0x0068`. That handle-level path is a different generation and must not be
+copied to the UUID path without an exact capture.
 
 GPS/time writes in current Furble:
 
