@@ -1,0 +1,13 @@
+# The status-icon timer runs twice a second, not four times.
+#
+# Battery level moves at the 5 s sample rate, the GPS icon changes on a setting,
+# and the lock message is not time-critical. The timer fire count over a fixed
+# virtual window proves the cadence; it must stay well under the old 250 ms rate.
+
+home
+wait 300
+assert sim.icon_timer 0
+wait 10000
+assert_min sim.icon_timer 15
+assert_max sim.icon_timer 22
+exit

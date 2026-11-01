@@ -646,7 +646,9 @@ UI::UI(const interval_t &interval)
   m_DiagnosticsTimer = lv_timer_create(diagnosticsUpdate, 1000, &m_Diagnostics);
   lv_timer_pause(m_DiagnosticsTimer);
 
-  // refresh icons every 250ms
+  // Refresh icons twice a second. The battery level moves at the 5 s sample
+  // rate, the GPS icon changes on a setting, and the lock message is not
+  // time-critical, so 500 ms halves the timer wakeups with no visible change.
   m_IconTimer = lv_timer_create(
       [](lv_timer_t *timer) {
         FURBLE_SIM_TIMER_FIRE("icon_timer");
@@ -696,7 +698,7 @@ UI::UI(const interval_t &interval)
           lockMsgBox = NULL;
         }
       },
-      250, &m_Status);
+      500, &m_Status);
 
   lv_obj_update_layout(m_Header);
   lv_obj_set_height(m_Header, 1.2f * lv_font_get_line_height(LV_FONT_DEFAULT));

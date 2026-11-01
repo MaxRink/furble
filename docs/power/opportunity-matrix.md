@@ -46,7 +46,7 @@ Rank groups:
 
 ## Safe now
 
-Ten safe-now rows are implemented in this branch. See section
+Thirteen safe-now rows are implemented in this branch. See section
 "Implemented safe-now changes" for the code and test evidence.
 
 | ID | Lane | Current behavior | Proposed change | Evidence | Est. saving | Risk | Effort | Required test | Priority | Lane source |
@@ -108,6 +108,9 @@ evidence label from the lane and adds the test that now guards it.
 | P-007 | Tickless boards enable `CONFIG_PM_RTOS_IDLE_OPT`, keeping the RTOS idle path in IRAM for the shorter sleep entry. | six `sdkconfig.*` files | `tools/check_power_config.py` plus `tests/test_power_config.py`; firmware matrices build the configs | implemented |
 | P-015 | The battery rows are written only while the Battery page is visible; entering the page still refreshes immediately. | `src/FurbleUI.cpp` | e2e `battery-labels-hidden`: zero writes on another page, rows refresh on entry | implemented |
 | P-021 | Console display mode calls `Platform::setDisplayOff(true)`, and a wake keeps it off while console mode is active. | `src/FurbleUI.cpp` | e2e `console-mode-led-off`: `platform.display_off` is yes | implemented |
+| P-016 | The status-icon timer period is 500 ms instead of 250 ms. | `src/FurbleUI.cpp` | e2e `icon-timer-cadence`: 20 fires in 10 s | implemented |
+| P-030 | The MQTT owner reads its five settings on reload only and idles on a 1 s deadline instead of 250 ms. | `include/FurbleMQTT.h`, `src/FurbleMQTT.cpp` | host `mqtt-owner`: cache contract and `hostTaskWaitMs == 1000` | implemented |
+| P-024 | The Waveshare release env no longer inherits the console and USB console flags; the debug env adds them back explicitly. | `platformio.ini` | resolved flags: release `no-console`, debug `CONSOLE USB_CONSOLE`; `pio run -e waveshare-s3-eth` SUCCESS | implemented |
 
 The modeled saving for these rows is unchanged and still unmeasured. P-001 and
 P-002 bound a worst case; they do not change steady-state current. P-003 halves
@@ -117,7 +120,8 @@ P-009 and P-011 are task and fault-path fixes. P-014 shows up in the power-gate
 model as a 7.2 percent drop in the blind-remote scenario; that is a modeled
 delta, not a current measurement. P-007 is a Kconfig change guarded by a
 checker, not a measured saving. P-015 and P-021 remove hidden or lit-hardware
-work.
+work. P-016 and P-030 cut timer and task wakeups. P-024 removes a debug surface
+from a release artifact and has no battery claim.
 
 Three safe-now rows are deliberately not applied yet:
 

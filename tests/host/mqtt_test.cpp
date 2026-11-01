@@ -155,6 +155,20 @@ int main(void) {
   auto &mqtt = MQTT::getInstance();
   MQTT::init();
 
+  // P-030: the owner reads its five settings on reloadSetting(), not on every
+  // iteration, and idles on a one-second deadline instead of four times a
+  // second. A changed setting without a reload must not alter the cached
+  // answer; an explicit reload must.
+  require(mqtt.isConfigured(), "valid cached settings are configured");
+  Settings::mqttURI.clear();
+  require(mqtt.isConfigured(), "the owner does not re-read NVS between reloads");
+  mqtt.reloadSetting();
+  require(!mqtt.isConfigured(), "reloadSetting picks up an invalid URI");
+  Settings::mqttURI = "mqtt://loopback";
+  mqtt.reloadSetting();
+  require(mqtt.isConfigured(), "reloadSetting restores a valid URI");
+  require(mqtt.hostTaskWaitMs() == 1000, "the idle owner wait is one second");
+
   mqtt.hostTaskStep();
   require(host_mqtt::startCount() == 0,
           "MQTT client started before a generic GOT_IP netif became ready");

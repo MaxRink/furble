@@ -1303,6 +1303,9 @@ std::string queryValue(const std::string &key) {
       return std::to_string(cameraFocusReleases());
     }
   }
+  if (key == "sim.icon_timer") {
+    return std::to_string(Furble::Sim::profilerTimerFireCount("icon_timer"));
+  }
   if (key == "scan.end_callbacks") {
     return std::to_string(Scan::getInstance().endCallbackCount());
   }
