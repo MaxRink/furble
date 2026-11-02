@@ -7,6 +7,8 @@
 seed ble_peers lumix
 seed ble_saved true
 wait 300
+action toggle preset_picker
+wait 100
 action connect
 wait 3200
 assert ui.connected yes
@@ -20,4 +22,19 @@ action blind
 wait 100
 assert ui.page shutter
 assert ui.focus_disabled yes
+
+# The same right indicator is the plus step on the Bulb Duration preset page.
+# A capability refresh, which runs on every ACTIVE transition, must leave it
+# enabled there: a reconnect while the page is open used to disable it again
+# after configPresetControl() had restored it.
+action nav bulb_duration
+wait 200
+assert ui.page bulb_duration
+assert ui.focus_disabled no
+# Fail the first reconnect so the UI observes a non-active state and resets
+# its capability-refresh latch; then let the retry reach ACTIVE.
+action capability-refresh
+wait 100
+assert ui.page bulb_duration
+assert ui.focus_disabled no
 exit

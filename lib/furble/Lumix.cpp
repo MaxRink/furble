@@ -187,8 +187,11 @@ bool Lumix::_connect(void) {
                     m_LocationReady = true;
                     break;
                   case 0x02:
-                    // Location updates stopped.
+                    // Location updates stopped. The camera may have asked for
+                    // a resend (03) just before this; the stop is the newer
+                    // instruction, so it also cancels that pending write.
                     m_LocationReady = false;
+                    m_LocationResend = false;
                     break;
                   case 0x03:
                     // The camera asks for the stored packet again. Keep the

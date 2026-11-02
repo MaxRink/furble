@@ -264,14 +264,22 @@ void Fujifilm::sendGeoData(const gps_t &gps, const timesync_t &timesync) {
       if (syncChr != nullptr && syncChr->canWrite()) {
         const std::array<uint8_t, 2> enable = {0x01, 0x00};
         if (gattWrite(syncChr, enable.data(), enable.size(), true)) {
+          // A drop right after the ATT response frees the self-deleting client
+          // inline, along with every cached service and characteristic. Stop
+          // before touching the readback or pSvc again.
+          if (!isConnected()) {
+            return;
+          }
           m_HasLocationSync = true;
-          // Read back through the UUID seam, not the cached characteristic: a
-          // drop right after the ATT response can free the self-deleting
-          // client's attributes before this line.
+          // Read back through the UUID seam, not the cached characteristic,
+          // and re-check the link before the geotag service pointer is reused.
           NimBLEAttValue value;
           if (gattRead(SVC_READ_UUID, CHR_LOCATION_SYNC_UUID, value) && (value.size() >= 2)) {
             ESP_LOGI(LOG_TAG, "Location sync setting readback 0x%02x%02x", value.data()[1],
                      value.data()[0]);
+          }
+          if (!isConnected()) {
+            return;
           }
         } else {
           ESP_LOGW(LOG_TAG, "Location sync enable failed");
@@ -316,11 +324,12 @@ void Fujifilm::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
   if (!isConnected()) {
     return;
   }
-  if (m_TimeRequested.load()) {
+  if (m_TimeRequested.exchange(false)) {
     // A refused write on a live link must not lose the request; the next GPS
-    // tick retries it. A body without the time service clears it above.
-    if (sendTimeData()) {
-      m_TimeRequested = false;
+    // tick retries it. Taking the flag before the write means a newer 01 00
+    // that arrives while it is in flight stays set.
+    if (!sendTimeData() && isConnected()) {
+      m_TimeRequested = true;
     }
   }
   if (m_GeoRequested && isConnected()) {

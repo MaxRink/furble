@@ -150,6 +150,18 @@ int main() {
   gatedCamera.updateGeoData(gps, time);
   passed &= check(hasGpsWrite(gatedPeer.writes()),
                   "LUMIX 03 reopens the location gate and resends the fix");
+
+  // A stop that arrives after 03 but before the next GPS tick is the newer
+  // instruction: it must cancel the pending resend instead of letting it
+  // bypass the closed gate.
+  passed &= check(gatedPeer.emitLocationReadiness(0x03),
+                  "the peer requests the stored location packet again");
+  passed &= check(gatedPeer.emitLocationReadiness(0x02),
+                  "the peer stops location updates before the next tick");
+  gatedPeer.clearEvents();
+  gatedCamera.updateGeoData(gps, time);
+  passed &=
+      check(!hasGpsWrite(gatedPeer.writes()), "a 02 after 03 clears the pending location resend");
   gatedCamera.disconnect();
 
   NimBLEDevice::resetMock();

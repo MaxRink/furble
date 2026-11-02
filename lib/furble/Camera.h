@@ -543,8 +543,10 @@ class Camera: public NimBLEClientCallbacks {
    * onDisconnect takes the same recursive mutex before it clears m_Connected,
    * and NimBLE frees a self-deleting client only after that callback returns.
    * Holding this across the teardown writes keeps the client alive when the
-   * link drops mid-sequence. Re-check isConnected() after acquiring it: a drop
-   * that completed before the lock was taken has already freed the client.
+   * link drops mid-sequence on another task. Re-check isConnected() after
+   * acquiring it, and again after every GATT operation before touching a
+   * cached pointer: an inline disconnect on this thread re-enters onDisconnect
+   * despite the recursive lock, so the lock alone cannot stop that free.
    */
   std::unique_lock<std::recursive_mutex> lockClientLifetime(void);
 

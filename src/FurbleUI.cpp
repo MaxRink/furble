@@ -3454,6 +3454,15 @@ void UI::simScenarioActionOnUi(const Sim::scenario_action_t &action) {
     return;
   }
 
+  // Re-run the capability gate on demand. A reconnect runs it while whatever
+  // page is open keeps the screen, so a scenario can prove the refresh does
+  // not disable a widget that page repurposed (Preset's plus button).
+  if (simpleAction && command == "capability-refresh") {
+    m_SimActionResult = sim_action_result_t::APPLIED;
+    updateCapabilityGating();
+    return;
+  }
+
   // Drive the real connect flow the Scan and Connect buttons trigger. The
   // connect timer then advances the state machine and reveals the connected
   // page, exactly as it does for an on-device button press.
@@ -6443,7 +6452,10 @@ void UI::applyCapabilityGating(void) {
   // and no way to end a bulb hold, and LUMIX has no focus opcode. Disable them
   // instead of letting the user press something that does nothing.
   if (m_Right != nullptr) {
-    if (!m_CapabilityFocus && !m_ShutterLock) {
+    // Only Shutter mode uses this widget as focus. Menu, Slider, and Preset
+    // reuse it for navigation or the plus step, and a capability refresh on
+    // reconnect must not disable those.
+    if ((m_ControlMode == ControlMode::SHUTTER) && !m_CapabilityFocus && !m_ShutterLock) {
       lv_obj_add_state(m_Right, LV_STATE_DISABLED);
     } else if (!m_ShutterLock) {
       lv_obj_remove_state(m_Right, LV_STATE_DISABLED);
