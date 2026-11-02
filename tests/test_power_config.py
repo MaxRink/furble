@@ -44,6 +44,16 @@ class PowerConfigTest(unittest.TestCase):
         result = self.run_checker(root)
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_idle_opt_without_tickless_fails(self):
+        root = self.make_root(
+            "CONFIG_PM_ENABLE=y\n"
+            "# CONFIG_FREERTOS_USE_TICKLESS_IDLE is not set\n"
+            "CONFIG_PM_RTOS_IDLE_OPT=y\n"
+        )
+        result = self.run_checker(root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("PM_RTOS_IDLE_OPT", result.stderr)
+
     def test_mac_bb_pd_without_tickless_fails(self):
         root = self.make_root(
             "CONFIG_ESP_PHY_MAC_BB_PD=y\n"

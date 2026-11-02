@@ -379,6 +379,7 @@ int main(void) {
           "failed hold release did not preserve the release intent");
   require(Control::commands()[retained_command_count] == Control::CMD_SHUTTER_PRESS,
           "hold command did not press the shutter");
+  require(mqtt.hostTaskWaitMs() == 250, "a pending release did not shorten the owner wait");
 
   // Keep the release queue unavailable for this whole owner iteration. A new
   // press must remain gated until the pending release succeeds.

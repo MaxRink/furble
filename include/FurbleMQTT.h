@@ -72,6 +72,9 @@ class MQTT {
   MQTT() = default;
 
   static constexpr uint32_t TASK_PERIOD_MS = 1000;
+  // A rejected shutter or focus release leaves the camera held, so retry it on
+  // this shorter deadline instead of the one-second idle period.
+  static constexpr uint32_t RELEASE_RETRY_MS = 250;
   static constexpr uint32_t CAMERAS_PERIOD_MS = 1000;
   static constexpr uint32_t BATTERY_PERIOD_MS = 60 * 1000;
   static constexpr uint32_t GPS_PERIOD_MS = 10 * 1000;

@@ -321,6 +321,9 @@ void MQTT::task(void) {
 TickType_t MQTT::taskWaitTicks(void) const {
   const uint64_t now = nowMs();
   uint64_t wait_ms = TASK_PERIOD_MS;
+  if (m_ShutterReleasePending || m_FocusReleasePending) {
+    wait_ms = std::min<uint64_t>(wait_ms, RELEASE_RETRY_MS);
+  }
   if (m_HoldActive && (m_HoldDeadlineMs != 0)) {
     if (m_HoldDeadlineMs <= now) {
       return 0;

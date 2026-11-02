@@ -51,6 +51,10 @@ def check_file(path: pathlib.Path) -> tuple[list[str], bool]:
     # above forces P-035 to land in the same change.
     if tickless and not idle_opt:
         errors.append("tickless idle enabled without CONFIG_PM_RTOS_IDLE_OPT")
+    if idle_opt and not tickless:
+        errors.append(
+            "CONFIG_PM_RTOS_IDLE_OPT enabled without FREERTOS_USE_TICKLESS_IDLE"
+        )
     if mac_bb_pd and not tickless:
         errors.append("CONFIG_ESP_PHY_MAC_BB_PD enabled without FREERTOS_USE_TICKLESS_IDLE")
     if tickless and soc_mac_bb_pd and not mac_bb_pd:
