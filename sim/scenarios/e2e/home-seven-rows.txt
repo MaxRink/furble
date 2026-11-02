@@ -1,16 +1,22 @@
-# Seven home rows must fit the 135x240 panel without scrolling. The Level entry
+# Seven home rows must stay reachable on the 135x240 panel. The Level entry
 # (plan 153) is the sixth home row and the Infrared entry is the seventh once
 # the IR setting is on. IR is not a seed: it only flips through the switch on
 # the Infrared page, so no other scenario ever renders the full home menu. This
-# one toggles it the way a user does and then asserts the home page reports no
-# scrollable extent. It runs with FURBLE_SIM_IR=1 so the Infrared page exists.
+# one toggles it the way a user does, asserts that no labels overlap, and
+# scrolls to the bottom and back to prove the seventh row is reachable. It runs
+# with FURBLE_SIM_IR=1 so the Infrared page exists.
 # home-seven-rows-large.txt repeats it at the Large text size.
 seed fauxny true
 seed imu true
 wait 300
 assert ui.page main
 assert ui.level_main_button_visible yes
-assert ui.overflow no
+# This page scrolls at this size by design: a page honours the text size the
+# user chose and scrolls when the rows stop fitting rather than shrinking the
+# face. Before plan 168 it reported a fit only because its container was
+# pinned to the page height and stacked the rows on top of each other, which
+# no fit query can see. What has to hold is that nothing overlaps.
+assert ui.label_overlaps 0
 
 action nav infrared
 wait 150
@@ -20,8 +26,13 @@ wait 150
 home
 wait 200
 assert ui.page main
-assert ui.overflow no
+assert ui.label_overlaps 0
+# The seventh row is reachable by scrolling. The home menu keeps the row
+# spacing and the icons it shipped with rather than shrinking to fake a fit.
+action scroll bottom
 assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
 
 # The Level route still opens from the fuller home menu and Back returns home.
 action nav level_main
@@ -30,5 +41,5 @@ assert ui.page level
 back
 wait 150
 assert ui.page main
-assert ui.overflow no
+assert ui.label_overlaps 0
 exit

@@ -220,6 +220,11 @@ if [ -n "$REPEAT_SEED" ]; then
     if ! validate_summary "$output" "$REPEAT_SEED" "$STEPS"; then
       replay_valid=0
       status=1
+      replay_status=1
+    fi
+    if ! validate_summary "$output" "$REPEAT_SEED" "$STEPS"; then
+      status=1
+      replay_status=1
     fi
     grep '^FUZZ ' "$output" \
       | sed -e 's/observed_delta=[0-9]*/observed_delta=X/g' \
@@ -228,6 +233,8 @@ if [ -n "$REPEAT_SEED" ]; then
   if [ "$replay_failed" -eq 0 ] && [ "$replay_valid" -eq 1 ] \
       && diff -u "$first.fuzz" "$second.fuzz" >/dev/null 2>&1; then
     echo "PASS determinism replay seed $REPEAT_SEED"
+  elif [ "$replay_status" -ne 0 ]; then
+    echo "FAIL determinism replay seed $REPEAT_SEED (invalid or incomplete summary)"
   else
     if [ "$replay_valid" -eq 0 ]; then
       echo "FAIL determinism replay seed $REPEAT_SEED (missing or invalid summary)"

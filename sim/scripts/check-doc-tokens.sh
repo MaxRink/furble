@@ -153,7 +153,14 @@ def validate_seed_predicates(seed_text):
             "parseUnsigned(value) > 100",
         }:
             continue
-        if predicate in {"!booleanSeedValue(value)", "!bleTopologyIsValid(value)"}:
+        # Negated validator calls on the seed value. Each one is listed by name
+        # rather than matched by shape, so a new validator is a deliberate edit
+        # here and gets read once.
+        if predicate in {
+            "!booleanSeedValue(value)",
+            "!bleTopologyIsValid(value)",
+            "!intervalSeedIsValid(value)",
+        }:
             continue
         if re.fullmatch(
             r'value\s*!=\s*"[^"]+"(?:\s*&&\s*value\s*!=\s*"[^"]+")+', predicate):

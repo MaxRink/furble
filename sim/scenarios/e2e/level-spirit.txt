@@ -40,9 +40,12 @@ assert ui.level_target_visible yes
 assert ui.level_side_visible no
 
 # Layout: a usable bullseye that sits below the header, not jammed under it. A
-# top of 50 px is well clear of the menu header bar.
+# top of 50 px is well clear of the menu header bar. This is a minimum, not an
+# equality: the physical-button layout these boards ship reserves a 26 px
+# navigation band, which makes the page shorter and settles the bullseye 19 px
+# lower, and both layouts must clear the header.
 assert ui.level_diameter 89
-assert ui.level_surface_top 50
+assert_min ui.level_surface_top 50
 
 # Flat: the circle bubble is centred on the target.
 action imu.accel 0 0 1

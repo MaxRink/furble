@@ -55,6 +55,7 @@ constexpr SettingSchema SETTING_SCHEMAS[] = {
     {39,                         ValueType::BOOL,   1,  1                           },
     {40,                         ValueType::U8,     1,  1                           },
     {41,                         ValueType::U8,     1,  1                           },
+    {43,                         ValueType::BOOL,   1,  1                           },
     {44,                         ValueType::BOOL,   1,  1                           },
     {46,                         ValueType::BOOL,   1,  1                           },
     {COMPANION_PASSWORD_WIRE_ID, ValueType::STRING, 1,  MAX_COMPANION_PASSWORD_BYTES},
@@ -70,6 +71,8 @@ constexpr SettingSchema SETTING_SCHEMAS[] = {
     {60,                         ValueType::STRING, 0,  MAX_MQTT_FIELD_BYTES        },
     {61,                         ValueType::BOOL,   1,  1                           },
     {62,                         ValueType::BOOL,   1,  1                           },
+    // Legend placement: 0 (Buttons), 1 (Bottom), or 2 (Off).
+    {65,                         ValueType::U8,     1,  1                           },
     {66,                         ValueType::BOOL,   1,  1                           },
     {67,                         ValueType::U8,     1,  1                           },
     {68,                         ValueType::BOOL,   1,  1                           },

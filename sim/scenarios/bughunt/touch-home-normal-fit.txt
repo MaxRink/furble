@@ -1,0 +1,13 @@
+# Supplemental touch-layout fit for the six-row Home state at Normal text.
+# These are overflow-sweep's original Home seeds; the touch guard keeps this
+# viewport-specific assertion out of the physical no-touch runner.
+seed fauxny true
+seed saved_camera true
+seed gps true
+seed imu true
+seed fb_output 1
+wait 300
+assert ui.nav_layout touch
+assert ui.page main
+assert ui.overflow no
+exit
