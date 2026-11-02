@@ -538,6 +538,17 @@ class Camera: public NimBLEClientCallbacks {
   bool gattRead(const NimBLEUUID &service, const NimBLEUUID &characteristic, NimBLEAttValue &value);
 
   /**
+   * Hold from the start of a vendor teardown until its final disconnect.
+   *
+   * onDisconnect takes the same recursive mutex before it clears m_Connected,
+   * and NimBLE frees a self-deleting client only after that callback returns.
+   * Holding this across the teardown writes keeps the client alive when the
+   * link drops mid-sequence. Re-check isConnected() after acquiring it: a drop
+   * that completed before the lock was taken has already freed the client.
+   */
+  std::unique_lock<std::recursive_mutex> lockClientLifetime(void);
+
+  /**
    * Subscribe through the single vendor notification journal seam.
    *
    * The CCCD descriptor write defaults to acknowledged (response = true), the

@@ -2006,8 +2006,11 @@ void UI::handleButtonMode(lv_event_t *e) {
       }
       ui->m_ButtonModeLongPressed = true;
       // A held first press with no shutter already in flight is the single
-      // press-and-hold focus gesture.
-      if (!ui->m_ButtonModeShutterPressed && !ui->m_ButtonModeFocusPressed) {
+      // press-and-hold focus gesture. A session without a focus primitive must
+      // not send it, the same rule handleFocus() applies to the two-indicator
+      // control.
+      if (ui->m_CapabilityFocus && !ui->m_ButtonModeShutterPressed
+          && !ui->m_ButtonModeFocusPressed) {
         control.sendCommand(Control::CMD_FOCUS_PRESS);
         ui->m_ButtonModeFocusPressed = true;
       }

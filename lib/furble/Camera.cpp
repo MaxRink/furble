@@ -1289,6 +1289,10 @@ void Camera::setNeedsRepair(void) {
   m_NeedsRepair = true;
 }
 
+std::unique_lock<std::recursive_mutex> Camera::lockClientLifetime(void) {
+  return std::unique_lock<std::recursive_mutex>(m_PairingMutex);
+}
+
 void Camera::disconnect(void) {
   const std::lock_guard<connect_mutex_t> lock(m_Mutex);
   m_Active = false;

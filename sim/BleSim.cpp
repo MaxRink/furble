@@ -220,12 +220,26 @@ void saveRegisteredPeers(void) {
   const std::lock_guard<std::mutex> lock(peersMutex);
   CameraList::clear();
   unmatchedPeerCount = 0;
+  size_t nikonDiscoveryOnly = 0;
   for (const auto &peer : peers) {
+    if ((peer->nikon_remote != nullptr) || (peer->nikon_smart != nullptr)) {
+      // A saved Nikon record carries the random pairing identity the client
+      // generated during stage 1. A discovery-only seed never paired, so
+      // persisting it would create a record the reconnect scan cannot match
+      // (the advertisement has no client ID). Only a real pairing produces one.
+      nikonDiscoveryOnly++;
+      continue;
+    }
     if (!CameraList::match(&peer->advertisement)) {
       unmatchedPeerCount++;
       ESP_LOGW(LOG_TAG, "Simulated peer '%s' did not match any camera protocol",
                peer->name.c_str());
     }
+  }
+  if (nikonDiscoveryOnly > 0) {
+    ESP_LOGI(LOG_TAG,
+             "Not persisting %u Nikon discovery-only peer(s): saved reconnect needs a paired ID",
+             static_cast<unsigned>(nikonDiscoveryOnly));
   }
   for (size_t n = 0; n < CameraList::size(); n++) {
     CameraList::save(CameraList::get(n));

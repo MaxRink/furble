@@ -1148,6 +1148,14 @@ bool LumixVirtualCamera::write(NimBLEClient &client,
     client.mockDropLink(0x13, /*fire_callback=*/true);
     return false;
   }
+  if ((command == Command::GpsStop) && m_Config.drop_on_gps_stop) {
+    // A link drop during the stop write frees the self-deleting client inline.
+    // Record the write first and return without touching the characteristic or
+    // any client-owned member: the mock write path is delete-this.
+    recordWrite(service, characteristic, command, value, response, true);
+    client.mockDropLinkSelfDelete(0x13);
+    return true;
+  }
   return accepted;
 }
 

@@ -90,12 +90,21 @@ bool Sony::_connect(void) {
 }
 
 void Sony::_disconnect(void) {
-  if ((m_GeoSvc != nullptr) && (m_Client != nullptr) && m_Client->isConnected()) {
+  // The release writes must not race a self-deleting client: hold the teardown
+  // lock so a link drop waits for this sequence, and re-check the link before
+  // each write. gattWrite also checks isConnected().
+  auto lifetime = lockClientLifetime();
+  if (!m_Connected) {
+    return;
+  }
+  if ((m_GeoSvc != nullptr) && isConnected()) {
     const uint8_t release = 0x00;
     gattWrite(GEO_SVC_UUID, GEO_ENABLE_CHR_UUID, &release, sizeof(release), false);
     gattWrite(GEO_SVC_UUID, GEO_ALLOW_CHR_UUID, &release, sizeof(release), false);
   }
-  m_Client->disconnect();
+  if (isConnected()) {
+    m_Client->disconnect();
+  }
 }
 
 void Sony::shutterPress(void) {

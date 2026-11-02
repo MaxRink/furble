@@ -144,6 +144,10 @@ class LumixVirtualCamera final: public NimBLEMockPeer {
     bool control_readiness = true;
     bool gps_requires_readiness = false;
     bool clock_requires_readiness = false;
+    // Drop the link inline, with the self-deleting client freed immediately,
+    // while the GPS stop packet is written. Used by the teardown use-after-free
+    // regression.
+    bool drop_on_gps_stop = false;
 
     ClockLayout clock_layout = ClockLayout::G9ii;
     bool accept_app_clock_layout = true;

@@ -320,6 +320,9 @@ class CanonSmartVirtualCamera final: public NimBLEMockPeer {
   bool m_Connected = false;
   bool m_Secured = false;
   bool m_Registered = false;
+  // advertisement() runs on the radio task while camera writes and pairing
+  // mutate m_Registered, m_ClientUuid, and m_Power on the camera task.
+  mutable std::recursive_mutex m_AdvertisementMutex;
   bool m_Committed = false;
   std::array<uint8_t, 16> m_ClientUuid {};
   std::string m_ClientName;

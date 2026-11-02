@@ -236,21 +236,11 @@ void Fujifilm::sendTimeData(void) {
     return;
   }
 
-  pChr = pSvc->getCharacteristic(CHR_LOCAL_TIME_UUID);
-  if (pChr != nullptr && pChr->canWrite()) {
-    const std::array<uint8_t, 7> packet = {
-        static_cast<uint8_t>(m_LastTimesync.year & 0xff),
-        static_cast<uint8_t>((m_LastTimesync.year >> 8) & 0xff),
-        static_cast<uint8_t>(m_LastTimesync.month),
-        static_cast<uint8_t>(m_LastTimesync.day),
-        static_cast<uint8_t>(m_LastTimesync.hour),
-        static_cast<uint8_t>(m_LastTimesync.minute),
-        static_cast<uint8_t>(m_LastTimesync.second),
-    };
-    if (gattWrite(pChr, packet.data(), packet.size(), true)) {
-      ESP_LOGI(LOG_TAG, "Sent local time packet");
-    }
-  }
+  // The local-time characteristic (B9BFD37F) has no offset field and expects
+  // wall-clock time. Furble only has UTC, so writing the cached fields there
+  // would set a camera in any non-UTC timezone wrong. If the body exposes no
+  // writable UTC characteristic, leave its clock alone until a local-time
+  // source exists.
 }
 
 void Fujifilm::sendGeoData(const gps_t &gps, const timesync_t &timesync) {

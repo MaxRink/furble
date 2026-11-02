@@ -236,6 +236,13 @@ bool Lumix::_connect(void) {
 }
 
 void Lumix::_disconnect(void) {
+  // Keep the client alive for the whole stop sequence; a link drop now blocks
+  // its callback until the sequence ends instead of freeing the client under
+  // the GPS stop and Finish writes.
+  auto lifetime = lockClientLifetime();
+  if (!m_Connected) {
+    return;
+  }
   if (m_SessionStarted && m_Location != nullptr && m_Location->canWrite()) {
     // Clear the last position so the camera does not retain a stale fix.
     // LUMIX Sync sends fix 0x56 with sentinel coordinates on GPS stop.
@@ -249,7 +256,7 @@ void Lumix::_disconnect(void) {
     };
     m_Location->writeValue(reinterpret_cast<const uint8_t *>(&stop), sizeof(stop), true);
   }
-  if (m_SessionStarted) {
+  if (m_SessionStarted && isConnected()) {
     writeCommand(CMD_SESSION_FINISH);
   }
   m_SessionStarted = false;
@@ -264,7 +271,7 @@ void Lumix::_disconnect(void) {
   m_LocationReady = false;
   m_LocationResend = false;
   m_ClockReady = false;
-  if (m_Client != nullptr && m_Client->isConnected())
+  if (m_Client != nullptr && isConnected())
     m_Client->disconnect();
 }
 

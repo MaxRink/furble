@@ -1002,6 +1002,26 @@ target_include_directories(ota_mqtt_protocol_test PRIVATE ${FURBLE_ROOT}/include
 target_compile_options(ota_mqtt_protocol_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                         -Wno-unused-parameter)
 
+# Teardown must not dereference a self-deleting client: the peer drops the link
+# inline while the GPS stop packet is written.
+add_executable(lumix_teardown_drop_test
+               lumix_teardown_drop_test.cpp
+               ${HOST_PEER_DIR}/LumixVirtualCamera.cpp
+               ${FURBLE_ROOT}/lib/furble/Lumix.cpp
+               ${FURBLE_PROTOCOL_DIR}/AdvertisementProtocol.cpp
+               ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos_shim.cpp)
+target_link_libraries(lumix_teardown_drop_test PRIVATE furble_host_camera)
+target_include_directories(lumix_teardown_drop_test BEFORE PRIVATE
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR}
+                           ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e
+                           ${FURBLE_ROOT}/lib/furble
+                           ${FURBLE_ROOT}/include)
+target_compile_options(lumix_teardown_drop_test PRIVATE
+                       -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
+                       -Wall -Wextra -Werror -Wno-vla-extension -Wno-format
+                       -Wno-unused-parameter -Wno-unused-lambda-capture -Wno-sign-compare)
+
 # Durable anti-rollback journal. The test supplies a fault-injecting backend,
 # while the production JournalReplayStore and its fixed record format are
 # compiled unchanged for host and simulator.
@@ -1959,6 +1979,7 @@ if(BUILD_TESTING)
   add_test(NAME ethernet-transport COMMAND ethernet_test)
   add_test(NAME poe-power-model COMMAND poe_power_model_test)
   add_test(NAME ota-state-machine COMMAND ota_state_machine_test)
+  add_test(NAME lumix-teardown-drop COMMAND lumix_teardown_drop_test)
   add_test(NAME ota-mqtt-protocol COMMAND ota_mqtt_protocol_test)
   add_test(NAME ota-replay-store COMMAND ota_replay_store_test)
   add_test(NAME ota-partition-sink COMMAND ota_partition_sink_test)

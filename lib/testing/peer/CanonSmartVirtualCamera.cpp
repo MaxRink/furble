@@ -71,6 +71,7 @@ bool isPrintableAscii(const std::vector<uint8_t> &value, size_t offset) {
 CanonSmartVirtualCamera::CanonSmartVirtualCamera() : CanonSmartVirtualCamera(Config {}) {}
 
 CanonSmartVirtualCamera::CanonSmartVirtualCamera(const Config &config) : m_Config(config) {
+  const std::lock_guard<std::recursive_mutex> lock(m_AdvertisementMutex);
   m_Power = m_Config.power_state;
   m_Registered = false;
   for (const uint8_t byte : m_Config.client_uuid) {
@@ -91,6 +92,7 @@ std::string CanonSmartVirtualCamera::key(const NimBLEUUID &service,
 }
 
 NimBLEAdvertisedDevice CanonSmartVirtualCamera::advertisement() const {
+  const std::lock_guard<std::recursive_mutex> lock(m_AdvertisementMutex);
   NimBLEAdvertisedDevice device;
   device.setAddress(m_Config.address);
   device.setName(m_Config.name);
@@ -175,6 +177,7 @@ void CanonSmartVirtualCamera::setCameraBonded(bool bonded) {
 }
 
 void CanonSmartVirtualCamera::setRegistered(const std::array<uint8_t, 16> &client) {
+  const std::lock_guard<std::recursive_mutex> lock(m_AdvertisementMutex);
   m_ClientUuid = client;
   m_Config.client_uuid = client;
   m_Registered = true;
@@ -187,6 +190,7 @@ void CanonSmartVirtualCamera::setRegistered(const std::array<uint8_t, 16> &clien
 }
 
 void CanonSmartVirtualCamera::removeCameraBond() {
+  const std::lock_guard<std::recursive_mutex> lock(m_AdvertisementMutex);
   m_Config.camera_bonded = false;
   m_Config.client_uuid = {};
   m_ClientUuid = {};
@@ -200,6 +204,7 @@ uint8_t CanonSmartVirtualCamera::powerState() const {
 }
 
 void CanonSmartVirtualCamera::setPowerState(uint8_t power) {
+  const std::lock_guard<std::recursive_mutex> lock(m_AdvertisementMutex);
   m_Power = static_cast<uint8_t>(power & 0x03);
 }
 
@@ -507,6 +512,9 @@ bool CanonSmartVirtualCamera::write(NimBLEClient &client,
                                     const NimBLEUUID &characteristic,
                                     const std::vector<uint8_t> &value,
                                     bool response) {
+  // Pairing and identity writes change the advertised identity; the radio
+  // task may be building the advertisement at the same time.
+  const std::lock_guard<std::recursive_mutex> lock(m_AdvertisementMutex);
   if (!m_Connected || (m_Client != &client) || !canWrite(service, characteristic)) {
     return false;
   }
