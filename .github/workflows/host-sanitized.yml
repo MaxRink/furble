@@ -1,0 +1,26 @@
+name: Host sanitizers
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'include/**'
+      - 'lib/**'
+      - 'tests/host/**'
+      - 'tools/run_sanitized_host_tests.sh'
+      - '.github/workflows/host-sanitized.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  asan-ubsan:
+    name: ASan and UBSan host subset
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Run the sanitized host subset
+        run: sh tools/run_sanitized_host_tests.sh --clean
