@@ -70,7 +70,7 @@ assert ui.page sensors
 # describes, so this page got closer to fitting, not further away. The
 # remaining gap is the button and switch row padding at this font size.
 print ui.scroll_bottom
-xassert ui.overflow no
+assert ui.overflow no
 print ui.indicator_overlaps
 assert ui.indicator_clearance clear
 

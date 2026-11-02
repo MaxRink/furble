@@ -2157,13 +2157,23 @@ void UI::reserveLegendColumns(lv_obj_t *page) {
   // left alone.
   for (uint32_t i = 0; i < lv_obj_get_child_count(page); i++) {
     lv_obj_t *row = lv_obj_get_child(page, i);
-    if ((row == nullptr) || !lv_obj_is_valid(row) || lv_obj_has_flag(row, LV_OBJ_FLAG_FLOATING)
-        || !lv_obj_check_type(row, &lv_menu_cont_class)
-        || !lv_obj_has_flag(row, LV_OBJ_FLAG_SCROLL_ON_FOCUS)) {
-      // Composite containers and buttons own their internal layout. Narrowing
-      // them turned the Feedback output roller into a vertical column and cut
-      // "Restart to apply" to "Restart to a".
+    if ((row == nullptr) || !lv_obj_is_valid(row) || lv_obj_has_flag(row, LV_OBJ_FLAG_FLOATING)) {
       continue;
+    }
+    // A row that owns a horizontal control (the Feedback output roller, a
+    // slider or a roller row) keeps its own internal layout. Narrowing the row
+    // is still required for the legend column; only the label rewrap below is
+    // skipped, because wrapping the label beside a roller stacks the row.
+    bool rowHasControl = false;
+    for (uint32_t j = 0; j < lv_obj_get_child_count(row); j++) {
+      lv_obj_t *child = lv_obj_get_child(row, j);
+      if ((child != nullptr)
+          && (lv_obj_check_type(child, &lv_roller_class)
+              || lv_obj_check_type(child, &lv_slider_class)
+              || lv_obj_check_type(child, &lv_switch_class))) {
+        rowHasControl = true;
+        break;
+      }
     }
     if (reserve > 0) {
       // The row's own box, not its padding. A child is clipped to its parent's
@@ -2184,9 +2194,17 @@ void UI::reserveLegendColumns(lv_obj_t *page) {
         // width so LVGL computes their real multi-line height before drawing.
         lv_obj_set_style_max_width(child, lv_obj_get_content_width(row), LV_PART_MAIN);
       }
-      if ((reserve > 0) && (child != nullptr) && lv_obj_check_type(child, &lv_label_class)
+      if ((reserve > 0) && !rowHasControl && (child != nullptr)
+          && lv_obj_check_type(child, &lv_label_class)
           && ((lv_label_get_long_mode(child) == LV_LABEL_LONG_SCROLL)
               || (lv_label_get_long_mode(child) == LV_LABEL_LONG_SCROLL_CIRCULAR))) {
+        lv_label_set_long_mode(child, LV_LABEL_LONG_WRAP);
+      }
+      if ((reserve > 0) && (child != nullptr) && lv_obj_check_type(child, &lv_label_class)
+          && lv_obj_check_type(row, &lv_button_class)) {
+        // A narrowed button label must wrap inside the smaller button instead
+        // of clipping "Restart to apply" to "Restart to a".
+        lv_obj_set_width(child, LV_PCT(100));
         lv_label_set_long_mode(child, LV_LABEL_LONG_WRAP);
       }
     }
@@ -8525,7 +8543,7 @@ UI::menu_t &UI::addConnectedMenu(void) {
     lv_style_set_line_color(&style, lv_palette_main(LV_PALETTE_GREY));
     lv_style_set_line_opa(&style, LV_OPA_50);
 
-    if (!legendBottom) {
+    if (!legendSelectable() || !legendBottom) {
       lv_obj_t *line = lv_line_create(menuShutter.page);
       m_ShutterLegendLine = line;
       lv_obj_add_flag(line, LV_OBJ_FLAG_FLOATING);

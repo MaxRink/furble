@@ -1,0 +1,8 @@
+seed no_touch true
+seed text_size 0
+wait 300
+action page sensors
+wait 250
+print ui.indicator_clearance
+print ui.indicator_overlaps
+exit

@@ -991,10 +991,10 @@ class UI {
   lv_obj_t *m_Content = nullptr;
   lv_obj_t *m_NavBar = nullptr;
 
-  lv_obj_t *m_Left;
-  lv_obj_t *m_OK;
-  lv_obj_t *m_Right;
-  lv_obj_t *m_ShutterLockIcon;
+  lv_obj_t *m_Left = nullptr;
+  lv_obj_t *m_OK = nullptr;
+  lv_obj_t *m_Right = nullptr;
+  lv_obj_t *m_ShutterLockIcon = nullptr;
   lv_obj_t *m_ShutterLegendLine = nullptr;
   // Non-blocking reconnect banner overlaid on the Remote shutter page: a red
   // Bluetooth icon plus "Reconnecting" (or "Reconnecting (i/n)") text. The

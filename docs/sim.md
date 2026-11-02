@@ -320,7 +320,13 @@ Battery seeds select the initial deterministic platform sample:
 These boolean settings are applied before the UI is constructed:
 `gps`, `gps_nmea`, `gps_motion`, `fauxny`, `autoconnect`, `reconnect`,
 `recon_backoff`, `sleep_conn`, `boot_splash`, `gps_extrap`, `gps_uart_noise`,
-`sd_gpx`, `imu`, and `imu_trigger`. `auto_off_charging` opts into auto-off while
+`sd_gpx`, `imu`, and `imu_trigger`. `ivl_sleep`, `timed_wake`,
+`timed_poweroff_fail`, and `timed_wake_write_fail` drive the intervalometer
+deep-sleep scenarios. `ivl_sleep_thr` seeds the Deep Sleep threshold in
+seconds (0 to 999). `resume_fixture` selects the saved resume record the
+intervalometer scenarios boot with: `invalid`, `stale`, `completed`,
+`outofrange`, `mismatched`, `early`, `late`, `wrong_camera`, or
+`second_camera`. `auto_off_charging` opts into auto-off while
 charging, and `imu_sensor` controls modeled IMU presence. `gps_motion` needs `gps` and `imu`
 as well: the detector only runs when the receiver and the sensor are both on.
 `gps_motion_prearm` is a regression-only seed that loads GPS before the UI arms

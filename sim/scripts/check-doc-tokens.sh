@@ -151,6 +151,7 @@ def validate_seed_predicates(seed_text):
             "parseUnsigned(value) > std::numeric_limits<uint8_t>::max()",
             "parseUnsigned(value) > std::numeric_limits<uint16_t>::max()",
             "parseUnsigned(value) > 100",
+            "parseUnsigned(value) > 999",
         }:
             continue
         # Negated validator calls on the seed value. Each one is listed by name
