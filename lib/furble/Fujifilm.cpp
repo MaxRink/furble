@@ -288,6 +288,13 @@ void Fujifilm::sendGeoData(const gps_t &gps, const timesync_t &timesync) {
     }
   }
 
+  // The enable attempt can fail because the link dropped inline and freed the
+  // cached geotag service together with the self-deleting client. Re-check the
+  // connection before pSvc is dereferenced again.
+  if (!isConnected()) {
+    return;
+  }
+
   NimBLERemoteCharacteristic *pChr = pSvc->getCharacteristic(CHR_GEOTAG_UUID);
   if (pChr == nullptr) {
     return;
