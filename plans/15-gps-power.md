@@ -146,6 +146,28 @@ Rebase notes:
 - Reused the existing `GPS::sendCommand()` PCAS framing and checksum path for
   `$PCAS12,<GPS_DUTY>`. The command is queued only after a fresh valid fix has
   been pushed to the application.
+- The simulator exposes a parser-accepted fresh UART fix count so
+  `gps-standby-wake.txt` can distinguish parser progression from the cached UART
+  source. The scenario waits for the second parser fix and second exact
+  `$PCAS12,5*1B` command (counted separately from binary UART writes), then
+  pauses the receiver to verify that one fix followed by silence does not create
+  another duty command. These are separate parser/command observations, not a
+  coherent delivered-geotag snapshot; `tracking` and `standby` are also
+  timing-sensitive snapshots around a burst.
+- A duty-cycle request is tied to TinyGPS++'s per-byte `location.isUpdated()`
+  event under `m_GPSMutex`, with valid coordinates and non-invalid fix quality;
+  it does not infer freshness from `location.age()`. `gps-duty-no-fix.txt` keeps
+  a quality-0 burst from arming standby, while the existing ephemeris-stale
+  scenario retains the bad-RMC checksum coverage.
+- Root validation of `7945d925` passed the build and six GPS scenarios:
+  `gps-standby-wake`, `gps-duty-no-fix`, `gps-concurrent-pages`,
+  `gps-ephemeris-replay`, `gps-ephemeris-stale`, and `gps-ephemeris-invalid`.
+  The retained baseline binary failed the second-fresh-fix assertion, while the
+  fixed-run logs are recorded as `~/b/c265-fixed-*.log` and the negative proof as
+  `~/b/c265-gps-wire-negative.log`.
+- Those six results cover the pre-merge GPS fix at `7945d925`. The candidate
+  was later merged with exact master `ad9bc513423b62150ef74dcd6781cebfa4eb1198`
+  as `363a198b`; that post-merge head has not yet been rebuilt or rerun.
 - The GPS task now uses these states: `ACQUIRING` holds the lock while the first
   burst is found, `MEASURING` learns an unknown interval for five seconds,
   `BURST` holds the lock while NMEA data is received, `WAITING` releases the

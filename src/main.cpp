@@ -94,6 +94,9 @@ constexpr UBaseType_t HEADLESS_REQUEST_QUEUE_LENGTH = 8;
 typedef struct {
   UI::Request request;
   int32_t arg;
+#if defined(FURBLE_CONSOLE)
+  RequestState *state;
+#endif
 } headless_request_t;
 
 QueueHandle_t g_HeadlessRequestQueue = NULL;
@@ -110,10 +113,42 @@ void printCameras(bool reload) {
     printf("camera%u.name: %s\n", static_cast<unsigned>(n), camera->getName().c_str());
     printf("camera%u.type: %lu\n", static_cast<unsigned>(n),
            static_cast<unsigned long>(camera->getType()));
+    // The same list carries saved cameras and scan results, and a scan can
+    // rediscover a saved camera. Say which each row is.
+    printf("camera%u.saved: %s\n", static_cast<unsigned>(n),
+           CameraList::isSaved(camera.get()) ? "true" : "false");
+    printf("camera%u.selected: %s\n", static_cast<unsigned>(n),
+           camera->isActive() ? "true" : "false");
   }
 }
 
-void connectCamera(int32_t index) {
+bool deleteCameras(int32_t index) {
+  CameraList::load();
+  if ((index >= 0) && (static_cast<size_t>(index) >= CameraList::size())) {
+    ESP_LOGE(LOG_TAG, "console: no saved camera at index %ld", index);
+    return false;
+  }
+
+  unsigned deleted = 0;
+  bool persisted = true;
+  const auto snapshot = CameraList::savedSnapshot();
+  for (size_t n = 0; n < snapshot.size(); n++) {
+    if ((index >= 0) && (n != static_cast<size_t>(index))) {
+      continue;
+    }
+    if (CameraList::remove(snapshot[n].get())) {
+      printf("deleted: %s\n", snapshot[n]->getName().c_str());
+      deleted++;
+    } else {
+      persisted = false;
+    }
+  }
+  printf("count: %u\n", deleted);
+  CameraList::load();
+  return persisted;
+}
+
+bool connectCamera(int32_t index) {
   CameraList::load();
   if (index >= 0) {
     // An index replaces whatever the multi-connect selection holds.
@@ -122,7 +157,7 @@ void connectCamera(int32_t index) {
     }
     if (static_cast<size_t>(index) >= CameraList::size()) {
       ESP_LOGE(LOG_TAG, "console: no camera at index %ld", index);
-      return;
+      return false;
     }
     CameraList::get(index)->setActive(true);
   }
@@ -135,14 +170,15 @@ void connectCamera(int32_t index) {
     }
   }
   control.connectAll(Settings::load<Settings::RECONNECT>());
+  return true;
 }
 
-void connectSavedCamera(uint8_t cameraId) {
+bool connectSavedCamera(uint8_t cameraId) {
   auto &control = Control::getInstance();
   if (Scan::getInstance().isActive() || (control.getState() != Control::STATE_IDLE)
       || (control.getTargetCount() != 0)) {
     ESP_LOGW(LOG_TAG, "companion: connect request is busy");
-    return;
+    return false;
   }
 
   const auto saved = CameraList::savedSnapshot();
@@ -152,7 +188,7 @@ void connectSavedCamera(uint8_t cameraId) {
     });
     if (found == saved.end()) {
       ESP_LOGW(LOG_TAG, "companion: no saved camera id %u", static_cast<unsigned>(cameraId));
-      return;
+      return false;
     }
   }
 
@@ -171,6 +207,7 @@ void connectSavedCamera(uint8_t cameraId) {
     }
   }
   control.connectAll(Settings::load<Settings::RECONNECT>());
+  return true;
 }
 
 void scanCameras(void) {
@@ -192,11 +229,46 @@ void scanCameras(void) {
 }  // namespace
 
 void UI::init(void) {
-  g_HeadlessRequestQueue = xQueueCreate(HEADLESS_REQUEST_QUEUE_LENGTH, sizeof(headless_request_t));
+  if (g_HeadlessRequestQueue != nullptr) {
+    headless_request_t *queued = nullptr;
+    while (xQueueReceive(g_HeadlessRequestQueue, &queued, 0) == pdTRUE) {
+#if defined(FURBLE_CONSOLE)
+      if (queued->state != nullptr) {
+        queued->state->token = "cancelled";
+        xSemaphoreGive(queued->state->done);
+        queued->state->release();
+      }
+#endif
+      delete queued;
+    }
+    vQueueDelete(g_HeadlessRequestQueue);
+    g_HeadlessRequestQueue = nullptr;
+  }
+  g_HeadlessRequestQueue =
+      xQueueCreate(HEADLESS_REQUEST_QUEUE_LENGTH, sizeof(headless_request_t *));
   if (g_HeadlessRequestQueue == NULL) {
     ESP_LOGE(LOG_TAG, "Failed to create headless console request queue.");
     abort();
   }
+}
+
+void UI::shutdown(void) {
+  if (g_HeadlessRequestQueue == nullptr) {
+    return;
+  }
+  headless_request_t *queued = nullptr;
+  while (xQueueReceive(g_HeadlessRequestQueue, &queued, 0) == pdTRUE) {
+#if defined(FURBLE_CONSOLE)
+    if (queued->state != nullptr) {
+      queued->state->token = "cancelled";
+      xSemaphoreGive(queued->state->done);
+      queued->state->release();
+    }
+#endif
+    delete queued;
+  }
+  vQueueDelete(g_HeadlessRequestQueue);
+  g_HeadlessRequestQueue = nullptr;
 }
 
 bool UI::sendRequest(Request request, int32_t arg) {
@@ -204,21 +276,55 @@ bool UI::sendRequest(Request request, int32_t arg) {
     return false;
   }
 
-  const headless_request_t item = {request, arg};
-  return xQueueSend(g_HeadlessRequestQueue, &item, 0) == pdTRUE;
+  auto *item = new (std::nothrow) headless_request_t {request, arg,
+#if defined(FURBLE_CONSOLE)
+                                                      nullptr
+#endif
+  };
+  if (item == nullptr) {
+    return false;
+  }
+  if (xQueueSend(g_HeadlessRequestQueue, &item, 0) != pdTRUE) {
+    delete item;
+    return false;
+  }
+  return true;
 }
 
-void UI::serviceRequests(void) {
-  headless_request_t item;
+#if defined(FURBLE_CONSOLE)
+bool UI::sendRequest(Request request, int32_t arg, RequestResult *result) {
+  if (g_HeadlessRequestQueue == NULL || result == nullptr || result->state == nullptr) {
+    return false;
+  }
+  result->state->retain();
+  auto *item = new (std::nothrow) headless_request_t {request, arg, result->state};
+  if (item == nullptr) {
+    result->state->release();
+    return false;
+  }
+  if (xQueueSend(g_HeadlessRequestQueue, &item, 0) != pdTRUE) {
+    delete item;
+    result->state->release();
+    return false;
+  }
+  return true;
+}
+#endif
 
-  while (xQueueReceive(g_HeadlessRequestQueue, &item, 0) == pdTRUE) {
+void UI::serviceRequests(void) {
+  headless_request_t *queued = nullptr;
+
+  while (xQueueReceive(g_HeadlessRequestQueue, &queued, 0) == pdTRUE) {
+    std::unique_ptr<headless_request_t> owned(queued);
+    headless_request_t &item = *owned;
+    const char *token = "ok";
     switch (item.request) {
       case Request::CONNECT:
-        connectCamera(item.arg);
+        token = connectCamera(item.arg) ? "ok" : "invalid_target";
         break;
 
       case Request::CONNECT_SAVED:
-        connectSavedCamera(static_cast<uint8_t>(item.arg));
+        token = connectSavedCamera(static_cast<uint8_t>(item.arg)) ? "ok" : "invalid_target";
         break;
 
       case Request::DISCONNECT:
@@ -236,6 +342,10 @@ void UI::serviceRequests(void) {
 
       case Request::CAMERAS:
         printCameras(item.arg != 0);
+        break;
+
+      case Request::DELETE:
+        token = deleteCameras(item.arg) ? "ok" : "invalid_target";
         break;
 
       case Request::GPS_RELOAD:
@@ -264,6 +374,14 @@ void UI::serviceRequests(void) {
         printf("error: not supported in headless build\n");
         break;
     }
+#if defined(FURBLE_CONSOLE)
+    if (item.state != nullptr) {
+      item.state->token = token;
+      xSemaphoreGive(item.state->done);
+      item.state->release();
+    }
+#endif
+    queued = nullptr;
   }
 }
 }  // namespace Furble

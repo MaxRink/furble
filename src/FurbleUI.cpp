@@ -2,6 +2,7 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <cstdarg>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -267,6 +268,34 @@ constexpr int32_t RECONNECT_NAME_MIN_WIDTH = 135;
 
 }  // namespace
 
+const char *UI::intervalStateName(Intervalometer::state_t state) {
+  switch (state) {
+    case Intervalometer::STATE_IDLE:
+      return "idle";
+    case Intervalometer::STATE_WAIT:
+      return "wait";
+    case Intervalometer::STATE_SHUTTER_OPEN:
+      return "shutter";
+    case Intervalometer::STATE_DELAY:
+      return "delay";
+    case Intervalometer::STATE_FINISHED:
+      return "finished";
+  }
+  return "unknown";
+}
+
+const char *UI::bulbStateName(Bulb::state_t state) {
+  switch (state) {
+    case Bulb::STATE_IDLE:
+      return "idle";
+    case Bulb::STATE_RUNNING:
+      return "running";
+    case Bulb::STATE_DONE:
+      return "done";
+  }
+  return "unknown";
+}
+
 static lv_obj_t *addRollerItem(lv_obj_t *page, const char *text, const char *options);
 
 std::mutex UI::m_Mutex;
@@ -376,7 +405,12 @@ UI::UI(const interval_t &interval)
     m_GPS.init();
   }
 
-  m_RequestQueue = xQueueCreate(m_RequestQueueLength, sizeof(request_t));
+  if (m_RequestQueue != nullptr) {
+    drainRequests();
+    vQueueDelete(m_RequestQueue);
+    m_RequestQueue = nullptr;
+  }
+  m_RequestQueue = xQueueCreate(m_RequestQueueLength, sizeof(request_t *));
   if (m_RequestQueue == NULL) {
     ESP_LOGE(LOG_TAG, "Failed to create the UI request queue.");
     abort();
@@ -2458,7 +2492,66 @@ void UI::updateMultiConnectButton(lv_obj_t *button) {
   }
 }
 
-void UI::saveMultiConnectSelection(void) {
+void UI::reloadCameraList(void) {
+  CameraList::load();
+  // The list now holds saved cameras, so a console 'pair' index no longer
+  // names anything. Every CameraList::load() in the UI goes through here so
+  // that stays true without each caller having to remember it.
+  m_ScanListLive = false;
+}
+
+bool UI::multiConnectSelectionHas(const Settings::multiselect_t &selection, size_t index) {
+  const auto camera = CameraList::get(index);
+  // The stored format is fixed width, but the comparison still has to be over
+  // the complete stored name: a prefix match marks a different body whose name
+  // only agrees for the first MULTISELECT_NAME_MAX - 1 characters.
+  return Settings::multiselectContains(selection, camera->getName().c_str());
+}
+
+void UI::refreshMultiConnectPage(void) {
+  if (!Settings::load<Settings::MULTICONNECT>()) {
+    return;
+  }
+  menu_t &menu = m_Menu.at(m_ConnectStr);
+  if (lv_menu_get_cur_main_page(m_MainMenu.main) != menu.page) {
+    // The page rebuilds from the persisted selection on the next entry, so
+    // there is nothing stale to repair while it is not visible.
+    return;
+  }
+  lv_obj_t *button = lv_obj_get_child(menu.page, 0);
+  if ((button == nullptr) || !lv_obj_check_type(button, &lv_button_class)) {
+    // The setting was enabled while a single-connect page was already visible;
+    // its child 0 is a camera row, not the Connect button. Rebuild on entry.
+    return;
+  }
+  for (size_t n = 0; n < CameraList::size(); n++) {
+    lv_obj_t *item = lv_obj_get_child(menu.page, n + 1);
+    if (item == nullptr) {
+      break;
+    }
+    // The checkbox is child 0 of the row container built by addMenuItem().
+    lv_obj_t *checkbox = lv_obj_get_child(item, 0);
+    lv_obj_t *stateObject = (checkbox != nullptr) ? checkbox : item;
+    if (CameraList::get(n)->isActive()) {
+      lv_obj_add_state(stateObject, LV_STATE_CHECKED);
+    } else {
+      lv_obj_remove_state(stateObject, LV_STATE_CHECKED);
+    }
+  }
+  updateMultiConnectButton(button);
+}
+
+void UI::seedMultiConnectSelection(void) {
+  // One NVS read for the whole list. The per-camera load this replaced cost a
+  // store round trip per row of the Connect page.
+  const Settings::multiselect_t selection = Settings::load<Settings::MULTISELECT>();
+
+  for (size_t n = 0; n < CameraList::size(); n++) {
+    CameraList::get(n)->setActive(multiConnectSelectionHas(selection, n));
+  }
+}
+
+bool UI::saveMultiConnectSelection(void) {
   Settings::multiselect_t selection = {};
 
   for (size_t n = 0; n < CameraList::size(); n++) {
@@ -2467,14 +2560,24 @@ void UI::saveMultiConnectSelection(void) {
       continue;
     }
 
-    Settings::multiselectAdd(selection, camera->getName().c_str());
+    if (!Settings::multiselectAdd(selection, camera->getName().c_str())) {
+      return false;
+    }
   }
 
   // skip the NVS write when the remembered set is unchanged
   const Settings::multiselect_t stored = Settings::load<Settings::MULTISELECT>();
   if (memcmp(&stored, &selection, sizeof(selection)) != 0) {
-    Settings::save<Settings::MULTISELECT>(selection);
+    const auto &setting = Settings::get(Settings::MULTISELECT);
+    Preferences prefs;
+    if (!prefs.begin(setting.nvs_namespace, false)
+        || prefs.put(setting.key, &selection, sizeof(selection)) != sizeof(selection)) {
+      prefs.end();
+      return false;
+    }
+    prefs.end();
   }
+  return true;
 }
 
 lv_obj_t *UI::addCameraItem(size_t index, const menu_t &menu, const CameraListMode_t mode) {
@@ -2790,8 +2893,8 @@ void UI::addMainMenu(void) {
 
           const bool resume = ui->m_Intervalometer.hasResume();
           const bool autoConnect = Settings::load<Settings::AUTOCONNECT>();
-          if ((ui->m_MainCount == 1) && (resume || autoConnect)) {
-            CameraList::load();
+          if ((saveCount > 0) && (ui->m_MainCount == 1) && (resume || autoConnect)) {
+            reloadCameraList();
             const auto savedCameras = CameraList::savedSnapshot();
             std::shared_ptr<Camera> camera;
 
@@ -3093,6 +3196,38 @@ void UI::simScenarioActionOnUi(const Sim::scenario_action_t &action) {
       return;
     }
   }
+  if (action.kind == Sim::scenario_action_kind_t::CONSOLE) {
+    // Post the request the console posts, then let the normal UI loop drain
+    // it. serviceRequests() runs after Sim::driverTick() in the same loop
+    // iteration, so a scenario has to wait a tick before asserting the answer,
+    // exactly as a host script waits for the next prompt.
+    static const std::unordered_map<std::string, Request> requests = {
+        {"cameras",        Request::CAMERAS           },
+        {"connect",        Request::CONNECT           },
+        {"scan",           Request::SCAN              },
+        {"pair",           Request::PAIR              },
+        {"delete",         Request::DELETE            },
+        {"multi-select",   Request::MULTI_SELECT      },
+        {"multi-deselect", Request::MULTI_DESELECT    },
+        {"multi-clear",    Request::MULTI_CLEAR       },
+        {"interval",       Request::INTERVAL          },
+        {"bulb",           Request::BULB              },
+        {"display",        Request::DISPLAY_BRIGHTNESS},
+        {"page",           Request::PAGE              },
+        {"back",           Request::BACK              },
+    };
+
+    const auto request = requests.find(command);
+    if (request == requests.end()) {
+      m_SimActionResult = sim_action_result_t::INVALID;
+      return;
+    }
+    m_SimActionResult = sendRequest(request->second, action.integer)
+                            ? sim_action_result_t::APPLIED
+                            : sim_action_result_t::UNAVAILABLE;
+    return;
+  }
+
   if (simpleAction && command == "blind-shutter") {
     m_SimActionResult = sim_action_result_t::APPLIED;
     auto &control = Control::getInstance();
@@ -3140,7 +3275,7 @@ void UI::simScenarioActionOnUi(const Sim::scenario_action_t &action) {
       // Saved cameras first: a scenario that seeded virtual BLE peers connects
       // those, exactly as the Connect page would. Only a scenario with nothing
       // saved falls back to the FauxNY test camera.
-      CameraList::load();
+      reloadCameraList();
     }
     if (CameraList::size() == 0) {
       CameraList::addFauxNY();
@@ -3160,7 +3295,7 @@ void UI::simScenarioActionOnUi(const Sim::scenario_action_t &action) {
   if (simpleAction && command == "connect-two") {
     m_SimActionResult = sim_action_result_t::APPLIED;
     if (CameraList::size() < 2) {
-      CameraList::load();
+      reloadCameraList();
     }
     while (CameraList::size() < 2) {
       CameraList::addFauxNY();
@@ -3967,6 +4102,9 @@ lv_obj_t *simRowLabel(lv_obj_t *row) {
 
 std::string UI::simQueryState(const char *key) {
   const std::string query = key == nullptr ? "" : key;
+  if (query.compare(0, 8, "console.") == 0) {
+    return simConsoleField(query.c_str() + 8);
+  }
   if (query == "sim_action_on_ui") {
     return m_SimLastActionOnUi.load() ? "yes" : "no";
   }
@@ -5043,19 +5181,7 @@ std::string UI::simQueryState(const char *key) {
   // Report the intervalometer run state so scenarios can assert a clean reset
   // after Stop.
   if (query == "interval_state") {
-    switch (m_Intervalometer.m_State) {
-      case Intervalometer::STATE_IDLE:
-        return "idle";
-      case Intervalometer::STATE_WAIT:
-        return "wait";
-      case Intervalometer::STATE_SHUTTER_OPEN:
-        return "shutter";
-      case Intervalometer::STATE_DELAY:
-        return "delay";
-      case Intervalometer::STATE_FINISHED:
-        return "finished";
-    }
-    return "unknown";
+    return intervalStateName(m_Intervalometer.m_State);
   }
   if (query == "interval_remaining") {
     return std::to_string(m_IntervalometerRemaining.load());
@@ -5073,15 +5199,7 @@ std::string UI::simQueryState(const char *key) {
   }
 
   if (query == "bulb_state") {
-    switch (m_Bulb.m_State) {
-      case Bulb::STATE_IDLE:
-        return "idle";
-      case Bulb::STATE_RUNNING:
-        return "running";
-      case Bulb::STATE_DONE:
-        return "done";
-    }
-    return "unknown";
+    return bulbStateName(m_Bulb.m_State);
   }
 
   // This is the same shutter lock used by the Remote page. The camera press
@@ -6294,1447 +6412,2133 @@ void UI::intervalometer(lv_timer_t *timer) {
 }
 
 QueueHandle_t UI::m_RequestQueue = NULL;
+bool UI::m_ScanListLive = false;
+const char *UI::m_ConsoleResult = nullptr;
+
+#if defined(FURBLE_SIM)
+namespace {
+// Last 'key: value' line of each kind the console request handlers printed.
+// The simulator has no console transport, so this is how a scenario reads the
+// answer a request produced.
+std::unordered_map<std::string, std::string> g_ConsoleFields;
+}  // namespace
+#endif
+
+void UI::consolePrint(const char *format, ...) {
+  char line[192];
+  va_list args;
+
+  va_start(args, format);
+  vsnprintf(line, sizeof(line), format, args);
+  va_end(args);
+
+  fputs(line, stdout);
+
+#if defined(FURBLE_SIM)
+  // Split on the first colon, which is exactly the contract a host script
+  // parses these lines with.
+  std::string text(line);
+  while (!text.empty() && ((text.back() == '\n') || (text.back() == '\r'))) {
+    text.pop_back();
+  }
+  const size_t colon = text.find(": ");
+  if (colon != std::string::npos) {
+    g_ConsoleFields[text.substr(0, colon)] = text.substr(colon + 2);
+  }
+#endif
+}
+
+#if defined(FURBLE_SIM)
+std::string UI::simConsoleField(const char *name) {
+  const auto entry = g_ConsoleFields.find(name);
+  return entry == g_ConsoleFields.end() ? std::string() : entry->second;
+}
+#endif
 
 bool UI::sendRequest(Request request, int32_t arg, Camera *camera) {
   if (m_RequestQueue == NULL) {
     return false;
   }
 
-  const request_t item = {request, arg, camera};
+  auto *item = new (std::nothrow) request_t {request, arg, camera,
+#if defined(FURBLE_CONSOLE)
+                                             nullptr
+#endif
+  };
+  if (item == nullptr) {
+    return false;
+  }
+  if (xQueueSend(m_RequestQueue, &item, 0) != pdTRUE) {
+    delete item;
+    return false;
+  }
+  return true;
 
-  return xQueueSend(m_RequestQueue, &item, 0) == pdTRUE;
-}
+#if defined(FURBLE_CONSOLE)
+  bool UI::sendRequest(Request request, int32_t arg, RequestResult *result) {
+    if (m_RequestQueue == NULL || result == nullptr || result->state == nullptr) {
+      return false;
+    }
+    result->state->retain();
+    auto *item = new (std::nothrow) request_t {request, arg, nullptr, result->state};
+    if (item == nullptr) {
+      result->state->release();
+      return false;
+    }
+    if (xQueueSend(m_RequestQueue, &item, 0) != pdTRUE) {
+      delete item;
+      result->state->release();
+      return false;
+    }
+    return true;
+  }
+#endif
 
-void UI::serviceRequests(void) {
-  request_t item;
+  void UI::serviceRequests(void) {
+    request_t *queued = nullptr;
 
-  while (xQueueReceive(m_RequestQueue, &item, 0) == pdTRUE) {
-    switch (item.request) {
-      case Request::CONNECT:
-        CameraList::load();
-        if (item.arg >= 0) {
-          // An index replaces whatever the multi-connect selection holds.
+    while (xQueueReceive(m_RequestQueue, &queued, 0) == pdTRUE) {
+      std::unique_ptr<request_t> owned(queued);
+      request_t &item = *owned;
+#if defined(FURBLE_SIM)
+      g_ConsoleFields.clear();
+#endif
+      // The workflow verbs end with one machine readable outcome line, so a host
+      // script never has to match on prose. The requests which predate it leave
+      // this null and print nothing extra.
+      m_ConsoleResult = nullptr;
+
+      switch (item.request) {
+        case Request::CONNECT:
+          reloadCameraList();
+          if ((item.arg < 0) && Settings::load<Settings::MULTICONNECT>()
+              && (lv_menu_get_cur_main_page(m_MainMenu.main) != m_Menu.at(m_ConnectStr).page)) {
+            // A bare connect uses the remembered selection. CameraList::load()
+            // clears the active flags, so seed them unless the visible Connect
+            // page holds live edits of its own.
+            seedMultiConnectSelection();
+          }
+          if (item.arg >= 0) {
+            // An index replaces whatever the multi-connect selection holds.
+            for (size_t n = 0; n < CameraList::size(); n++) {
+              CameraList::get(n)->setActive(false);
+            }
+            if (static_cast<size_t>(item.arg) >= CameraList::size()) {
+              ESP_LOGE(LOG_TAG, "console: no camera at index %ld", item.arg);
+              break;
+            }
+            CameraList::get(item.arg)->setActive(true);
+          }
+          doConnect(NULL);
+          break;
+
+        case Request::CONNECT_SAVED:
+        {
+          auto &control = Control::getInstance();
+          if (Scan::getInstance().isActive() || (control.getState() != Control::STATE_IDLE)
+              || (control.getTargetCount() != 0)) {
+            ESP_LOGW(LOG_TAG, "companion: connect request is busy");
+            break;
+          }
+
+          const uint8_t cameraId = static_cast<uint8_t>(item.arg);
+          const auto saved = CameraList::savedSnapshot();
+          if (cameraId != CameraListProtocol::INDEX_ID_ALL) {
+            const auto found =
+                std::find_if(saved.begin(), saved.end(), [cameraId](const auto &camera) {
+                  return CameraList::getCameraId(camera.get()) == cameraId;
+                });
+            if (found == saved.end()) {
+              ESP_LOGW(LOG_TAG, "companion: no saved camera id %u",
+                       static_cast<unsigned>(cameraId));
+              break;
+            }
+          }
+
+          reloadCameraList();
+          if (cameraId != CameraListProtocol::INDEX_ID_ALL) {
+            for (size_t n = 0; n < CameraList::size(); n++) {
+              const auto camera = CameraList::get(n);
+              camera->setActive(CameraList::getCameraId(camera.get()) == cameraId);
+            }
+          }
+          doConnect(NULL);
+          break;
+        }
+
+        case Request::DISCONNECT:
+          doDisconnect();
+          break;
+
+        case Request::SCAN:
+          if (item.arg) {
+            menu_t &menu = m_Menu.at(m_ScanStr);
+            auto &scan = Scan::getInstance();
+
+            lv_obj_clean(menu.page);
+            CameraList::clear();
+
+            if (Settings::load<Settings::FAUXNY>()) {
+              CameraList::addFauxNY();
+              updateItems(menu);
+            }
+
+            // Apply the same duty and timeout settings startScan() applies.
+            // Without them a console scan inherited whatever the last UI scan
+            // left behind, so its results could outlive it by an arbitrary
+            // amount and 'pair' had no way to know.
+            scan.setMode(static_cast<Scan::Mode>(Settings::scanModeEffective()));
+            scan.setTimeout(Settings::load<Settings::SCAN_TIMEOUT>());
+            m_ScanListLive = true;
+
+            scan.clear();
+#if defined(FURBLE_SIM)
+            // Strictly seed gated. The probe is the one simulator hook that is
+            // not purely observational: it runs a callback-shaped thread and
+            // waits up to 100 ms of wall clock inside Scan::start(). Only a
+            // scenario that asks for it pays that cost.
+            if (Sim::scenarioSettingIsTrue("scan_start_probe")) {
+              scan.setStartProbe([]() {
+                m_Mutex.lock();
+                m_Mutex.unlock();
+              });
+            }
+#endif
+
+            // NimBLEScan::start() is asynchronous on the usual NimBLE build,
+            // but some controller/library combinations wait while bringing the
+            // scan up. Scan callbacks enqueue immutable events. The UI task
+            // drains and applies them below, so no LVGL access occurs on the
+            // NimBLE task.
+            m_Mutex.unlock();
+            scan.start(
+                [](void *param) {
+                  auto *menu = static_cast<menu_t *>(param);
+                  updateItems(*menu);
+                },
+                &menu);
+            m_Mutex.lock();
+          } else {
+            Scan::getInstance().stop();
+          }
+          break;
+
+        case Request::CAMERAS:
+        {
+          // CameraList is only ever touched from this task, so the console reads
+          // it from here rather than racing the menus that rebuild it.
+          if (item.arg) {
+            // load() rebuilds every Camera, which resets the active flags. If the
+            // Connect page is visible, keep its live checkbox edits instead of
+            // overwriting them with the last persisted selection.
+            const bool connectVisible =
+                lv_menu_get_cur_main_page(m_MainMenu.main) == m_Menu.at(m_ConnectStr).page;
+            std::vector<size_t> active;
+            if (connectVisible) {
+              for (size_t n = 0; n < CameraList::size(); n++) {
+                if (CameraList::get(n)->isActive()) {
+                  active.push_back(n);
+                }
+              }
+            }
+            reloadCameraList();
+            if (Settings::load<Settings::MULTICONNECT>()) {
+              if (connectVisible) {
+                for (size_t n : active) {
+                  if (n < CameraList::size()) {
+                    CameraList::get(n)->setActive(true);
+                  }
+                }
+              } else {
+                seedMultiConnectSelection();
+              }
+            }
+          }
+          consolePrint("saved: %u\n", static_cast<unsigned>(CameraList::getSaveCount()));
+          consolePrint("count: %u\n", static_cast<unsigned>(CameraList::size()));
+          for (size_t n = 0; n < CameraList::size(); n++) {
+            const auto camera = CameraList::get(n);
+            consolePrint("camera%u.name: %s\n", static_cast<unsigned>(n),
+                         camera->getName().c_str());
+            consolePrint("camera%u.type: %lu\n", static_cast<unsigned>(n),
+                         static_cast<unsigned long>(camera->getType()));
+            // The same list carries saved cameras and scan results, and a scan
+            // can rediscover a saved camera. Say which each row is, so a script
+            // knows whether 'connect' or 'pair' is the verb for it.
+            const bool saved = CameraList::isSaved(camera.get());
+            consolePrint("camera%u.saved: %s\n", static_cast<unsigned>(n),
+                         saved ? "true" : "false");
+            // 'connect' resolves a saved-catalog index, which is not the scan
+            // list index. Report the mapping so a script does not pair or
+            // connect a different body than the one it just listed.
+            int32_t savedIndex = -1;
+            if (saved) {
+              const auto catalog = CameraList::savedSnapshot();
+              for (size_t i = 0; i < catalog.size(); i++) {
+                if (catalog[i] == camera) {
+                  savedIndex = static_cast<int32_t>(i);
+                  break;
+                }
+              }
+            }
+            consolePrint("camera%u.saved_index: %ld\n", static_cast<unsigned>(n),
+                         static_cast<long>(savedIndex));
+            consolePrint("camera%u.selected: %s\n", static_cast<unsigned>(n),
+                         camera->isActive() ? "true" : "false");
+          }
+        } break;
+
+        case Request::PAIR:
+          // The Scan page row click, reached from the console. The row handler
+          // activates the scan result and calls doConnect(); the save on a
+          // successful registration is gated on the Scan menu name, which the
+          // console scan never set because it never entered the page.
+          //
+          // The refusal prints rather than logs. It is the answer to a command a
+          // script just typed, so it has to reach the console stream whatever the
+          // log level is.
+          if (!m_ScanListLive || (item.arg < 0)
+              || (static_cast<size_t>(item.arg) >= CameraList::size())) {
+            m_ConsoleResult = "no_scan_result";
+            consolePrint("error: no scan result at index %ld\n", static_cast<long>(item.arg));
+            break;
+          }
           for (size_t n = 0; n < CameraList::size(); n++) {
             CameraList::get(n)->setActive(false);
           }
-          if (static_cast<size_t>(item.arg) >= CameraList::size()) {
-            ESP_LOGE(LOG_TAG, "console: no camera at index %ld", item.arg);
+          m_ConnectContext.menuName = m_ScanStr;
+          if (!beginPairing(static_cast<size_t>(item.arg), nullptr)) {
+            // beginPairing refuses a camera that is already saved and opens the
+            // same "Already saved" box the Scan row shows.
+            m_ConsoleResult = "already_saved";
+            consolePrint("error: camera is already saved\n");
             break;
           }
-          CameraList::get(item.arg)->setActive(true);
-        }
-        doConnect(NULL);
-        break;
-
-      case Request::CONNECT_SAVED:
-      {
-        auto &control = Control::getInstance();
-        if (Scan::getInstance().isActive() || (control.getState() != Control::STATE_IDLE)
-            || (control.getTargetCount() != 0)) {
-          ESP_LOGW(LOG_TAG, "companion: connect request is busy");
+          m_ConsoleResult = "ok";
+          consolePrint("pairing: %s\n", CameraList::get(item.arg)->getName().c_str());
           break;
-        }
 
-        const uint8_t cameraId = static_cast<uint8_t>(item.arg);
-        const auto saved = CameraList::savedSnapshot();
-        if (cameraId != CameraListProtocol::INDEX_ID_ALL) {
-          const auto found =
-              std::find_if(saved.begin(), saved.end(), [cameraId](const auto &camera) {
-                return CameraList::getCameraId(camera.get()) == cameraId;
-              });
-          if (found == saved.end()) {
-            ESP_LOGW(LOG_TAG, "companion: no saved camera id %u", static_cast<unsigned>(cameraId));
+        case Request::DELETE:
+        {
+          // The Delete page row click. CameraList::remove() also drops the BLE
+          // bond, so this is the only correct way to forget a camera. remove()
+          // rewrites the store but leaves the loaded list alone, so a whole
+          // sweep needs one load and one refresh.
+          reloadCameraList();
+          if ((item.arg >= 0) && (static_cast<size_t>(item.arg) >= CameraList::size())) {
+            m_ConsoleResult = "no_saved_camera";
+            consolePrint("error: no saved camera at index %ld\n", static_cast<long>(item.arg));
             break;
           }
-        }
 
-        CameraList::load();
-        if (cameraId != CameraListProtocol::INDEX_ID_ALL) {
+          unsigned deleted = 0;
+          bool persisted = true;
+          const auto snapshot = CameraList::savedSnapshot();
+          for (size_t n = 0; n < snapshot.size(); n++) {
+            if ((item.arg >= 0) && (n != static_cast<size_t>(item.arg))) {
+              continue;
+            }
+            if (CameraList::remove(snapshot[n].get())) {
+              consolePrint("deleted: %s\n", snapshot[n]->getName().c_str());
+              deleted++;
+            } else {
+              persisted = false;
+            }
+          }
+          m_ConsoleResult = persisted ? "ok" : "persistence_failed";
+          consolePrint("count: %u\n", deleted);
+          refreshDelete();
+        } break;
+
+        case Request::MULTI_SELECT:
+        case Request::MULTI_DESELECT:
+        {
+          // The multi-connect checkbox followed by the Connect button, reached
+          // from the console. saveMultiConnectSelection() serialises every active
+          // flag and CameraList::load() clears them all, so the remembered set
+          // has to be seeded back onto the list first or this drops the rest.
+          reloadCameraList();
+          if ((item.arg < 0) || (static_cast<size_t>(item.arg) >= CameraList::size())) {
+            m_ConsoleResult = "no_saved_camera";
+            consolePrint("error: no saved camera at index %ld\n", static_cast<long>(item.arg));
+            break;
+          }
+
+          const bool select = item.request == Request::MULTI_SELECT;
+          seedMultiConnectSelection();
+          auto camera = CameraList::get(item.arg);
+          if (select && (strlen(camera->getName().c_str()) >= Settings::MULTISELECT_NAME_MAX)) {
+            m_ConsoleResult = "name_too_long";
+            consolePrint("error: camera name is too long to store in a multi-connect selection\n");
+            break;
+          }
+          if (select && !camera->isActive()) {
+            // Reject before changing any flag. Noting it was full only after the
+            // save lets the serializer keep the first MULTISELECT_MAX rows and
+            // silently drop a different, already-selected camera.
+            size_t selected = 0;
+            for (size_t n = 0; n < CameraList::size(); n++) {
+              if (CameraList::get(n)->isActive()) {
+                selected++;
+              }
+            }
+            if (selected >= Settings::MULTISELECT_MAX) {
+              m_ConsoleResult = "selection_full";
+              consolePrint("error: multi-connect selection is full, max %u\n",
+                           static_cast<unsigned>(Settings::MULTISELECT_MAX));
+              break;
+            }
+          }
+          camera->setActive(select);
+          const bool saved = saveMultiConnectSelection();
+          if (!saved) {
+            // The store did not take the edit. Put the live flags back on the
+            // persisted set so the page and a later Connect agree with NVS.
+            seedMultiConnectSelection();
+          }
+          const Settings::multiselect_t stored = Settings::load<Settings::MULTISELECT>();
+          const bool persisted = multiConnectSelectionHas(stored, item.arg);
+          m_ConsoleResult = saved ? "ok" : "persistence_failed";
+          consolePrint("camera: %s\n", camera->getName().c_str());
+          consolePrint("selected: %s\n", persisted ? "true" : "false");
+          refreshMultiConnectPage();
+        } break;
+
+        case Request::MULTI_CLEAR:
+        {
+          // Clearing on the console task would leave the loaded active flags and
+          // the drawn checkboxes set, and the next Connect press would write the
+          // whole set straight back. Clear the flags here, then let the same
+          // serialiser persist the empty result.
+          reloadCameraList();
           for (size_t n = 0; n < CameraList::size(); n++) {
-            const auto camera = CameraList::get(n);
-            camera->setActive(CameraList::getCameraId(camera.get()) == cameraId);
+            CameraList::get(n)->setActive(false);
           }
-        }
-        doConnect(NULL);
-        break;
-      }
-
-      case Request::DISCONNECT:
-        doDisconnect();
-        break;
-
-      case Request::SCAN:
-        if (item.arg) {
-          menu_t &menu = m_Menu.at(m_ScanStr);
-          auto &scan = Scan::getInstance();
-
-          lv_obj_clean(menu.page);
-          CameraList::clear();
-
-          if (Settings::load<Settings::FAUXNY>()) {
-            CameraList::addFauxNY();
-            updateItems(menu);
+          const bool saved = saveMultiConnectSelection();
+          if (!saved) {
+            seedMultiConnectSelection();
           }
-
-          scan.clear();
-#if defined(FURBLE_SIM)
-          // Strictly seed gated. The probe is the one simulator hook that is
-          // not purely observational: it runs a callback-shaped thread and
-          // waits up to 100 ms of wall clock inside Scan::start(). Only a
-          // scenario that asks for it pays that cost.
-          if (Sim::scenarioSettingIsTrue("scan_start_probe")) {
-            scan.setStartProbe([]() {
-              m_Mutex.lock();
-              m_Mutex.unlock();
-            });
+          m_ConsoleResult = saved ? "ok" : "persistence_failed";
+          refreshMultiConnectPage();
+          size_t active = 0;
+          for (size_t n = 0; n < CameraList::size(); n++) {
+            if (CameraList::get(n)->isActive()) {
+              active++;
+            }
           }
-#endif
+          consolePrint("count: %u\n", static_cast<unsigned>(active));
+        } break;
 
-          // NimBLEScan::start() is asynchronous on the usual NimBLE build,
-          // but some controller/library combinations wait while bringing the
-          // scan up. Scan callbacks enqueue immutable events. The UI task
-          // drains and applies them below, so no LVGL access occurs on the
-          // NimBLE task.
-          m_Mutex.unlock();
-          scan.start(
-              [](void *param) {
-                auto *menu = static_cast<menu_t *>(param);
-                updateItems(*menu);
-              },
-              &menu);
-          m_Mutex.lock();
-        } else {
-          Scan::getInstance().stop();
-        }
-        break;
-
-      case Request::CAMERAS:
-        // CameraList is only ever touched from this task, so the console reads
-        // it from here rather than racing the menus that rebuild it.
-        if (item.arg) {
-          CameraList::load();
-        }
-        printf("saved: %u\n", static_cast<unsigned>(CameraList::getSaveCount()));
-        printf("count: %u\n", static_cast<unsigned>(CameraList::size()));
-        for (size_t n = 0; n < CameraList::size(); n++) {
-          const auto camera = CameraList::get(n);
-          printf("camera%u.name: %s\n", static_cast<unsigned>(n), camera->getName().c_str());
-          printf("camera%u.type: %lu\n", static_cast<unsigned>(n),
-                 static_cast<unsigned long>(camera->getType()));
-        }
-        break;
-
-      case Request::GPS_RELOAD:
-        GPS::getInstance().reloadSetting();
-        if (m_Status.gpsExtrapolate != nullptr) {
-          const uint8_t hold = Settings::load<Settings::GPS_HOLD>();
-          if ((hold == 0) || (hold > GPS::HOLD_MAX)) {
-            lv_obj_add_state(m_Status.gpsExtrapolate, LV_STATE_DISABLED);
-          } else {
-            lv_obj_remove_state(m_Status.gpsExtrapolate, LV_STATE_DISABLED);
+        case Request::PAGE:
+        {
+          // Read only. Page navigation by name exists only in the simulator
+          // build, and this deliberately adds no second navigation mechanism.
+          const lv_obj_t *current = lv_menu_get_cur_main_page(m_MainMenu.main);
+          const char *name = (current == m_MainMenu.page) ? "Main" : "unknown";
+          for (const auto &entry : m_Menu) {
+            if (entry.second.page == current) {
+              name = entry.first;
+              break;
+            }
           }
-        }
-        break;
+          m_ConsoleResult = "ok";
+          consolePrint("page: %s\n", name);
+        } break;
 
-      case Request::SD_RELOAD:
-        GPS::getInstance().reloadLogSettings();
-        SD::getInstance().request(SD::request_t::RELOAD);
-        break;
+        case Request::INTERVAL:
+          if (item.arg < 0) {
+            const uint32_t now = tick();
+            m_ConsoleResult = "ok";
+            consolePrint("state: %s\n", intervalStateName(m_Intervalometer.m_State));
+            consolePrint("remaining: %u\n",
+                         static_cast<unsigned>(m_IntervalometerRemaining.load()));
+            // The deadline is a wrapping tick, so a frame that is already due
+            // must read zero rather than the wrapped difference.
+            consolePrint("next_ms: %lu\n",
+                         static_cast<unsigned long>((m_IntervalCountdownActive
+                                                     && !Time::deadlineReached(now, m_IntervalNext))
+                                                        ? m_IntervalNext - now
+                                                        : 0));
+            // The live spinner values, not the stored ones. The UI reads the
+            // Settings::INTERVAL struct once at construction, so a console read
+            // of the store could disagree with what a Start would actually run.
+            consolePrint("count: %u\n",
+                         static_cast<unsigned>(m_Intervalometer.m_Count.m_SpinValue.m_Value));
+            consolePrint("count_unit: %s\n", m_Intervalometer.m_Count.m_SpinValue.getUnitString());
+            consolePrint(
+                "delay_ms: %lu\n",
+                static_cast<unsigned long>(m_Intervalometer.m_Delay.m_SpinValue.toMilliseconds()));
+            consolePrint("shutter_ms: %lu\n",
+                         static_cast<unsigned long>(
+                             m_Intervalometer.m_Shutter.m_SpinValue.toMilliseconds()));
+            consolePrint(
+                "wait_ms: %lu\n",
+                static_cast<unsigned long>(m_Intervalometer.m_Wait.m_SpinValue.toMilliseconds()));
+            break;
+          }
+          // Stop synthesizes a click, and that click sends CMD_SHUTTER_RELEASE
+          // and navigates off the run page. Neither is harmless when no run is
+          // in progress: it would release a shutter a script is deliberately
+          // holding and move the UI out from under it.
+          if (!item.arg && (m_IntervalometerState.load() == Intervalometer::STATE_IDLE)) {
+            m_ConsoleResult = "not_running";
+            consolePrint("error: not running\n");
+            break;
+          }
+          if (item.arg) {
+            if (m_DisplayConsole) {
+              m_ConsoleResult = "console_mode";
+              consolePrint("error: intervalometer needs the GUI display mode\n");
+              break;
+            }
+            // The published state is set to WAIT by the Start click before the
+            // first timer tick, so this also covers a second Start queued behind
+            // the first one.
+            const uint8_t state = m_IntervalometerState.load();
+            if ((state == Intervalometer::STATE_WAIT)
+                || (state == Intervalometer::STATE_SHUTTER_OPEN)
+                || (state == Intervalometer::STATE_DELAY)) {
+              m_ConsoleResult = "already_running";
+              consolePrint("error: intervalometer is already running\n");
+              break;
+            }
+          }
+          // Send the real button event rather than reproducing its body. The
+          // load-page callback is registered after the click callback, so one
+          // synthetic click starts the run and then navigates to the run page,
+          // in that order.
+          if ((item.arg ? m_IntervalStart : m_IntervalStop) == nullptr) {
+            m_ConsoleResult = "no_button";
+            consolePrint("error: no intervalometer button\n");
+            break;
+          }
+          lv_obj_send_event(item.arg ? m_IntervalStart : m_IntervalStop, LV_EVENT_CLICKED, nullptr);
+          m_ConsoleResult = "ok";
+          consolePrint("interval: %s\n", item.arg ? "started" : "stopped");
+          break;
 
-      case Request::GPS_POWER:
-        M5.Power.setExtOutput(item.arg != 0, m5::ext_PA);
-        break;
+        case Request::BULB:
+          if (item.arg > 0) {
+            if (m_DisplayConsole) {
+              m_ConsoleResult = "console_mode";
+              consolePrint("error: bulb exposure needs the GUI display mode\n");
+              break;
+            }
+            const uint8_t state = m_IntervalometerState.load();
+            if ((state == Intervalometer::STATE_WAIT)
+                || (state == Intervalometer::STATE_SHUTTER_OPEN)
+                || (state == Intervalometer::STATE_DELAY)) {
+              m_ConsoleResult = "interval_running";
+              consolePrint("error: stop the intervalometer before starting a bulb exposure\n");
+              break;
+            }
+          }
+          if (item.arg < 0) {
+            const uint32_t now = tick();
+            const bool running = m_Bulb.m_State == Bulb::STATE_RUNNING;
+            m_ConsoleResult = "ok";
+            consolePrint("state: %s\n", bulbStateName(m_Bulb.m_State));
+            // bulbRefresh() clamps the same wrapping deadline the same way.
+            consolePrint(
+                "remaining_ms: %lu\n",
+                static_cast<unsigned long>(
+                    (running && !Time::deadlineReached(now, m_BulbEnd)) ? m_BulbEnd - now : 0));
+            consolePrint("duration_ms: %lu\n", static_cast<unsigned long>(
+                                                   m_Bulb.m_Duration.m_SpinValue.toMilliseconds()));
+            break;
+          }
+          // Both buttons carry behaviour beyond the start and stop helpers: Start
+          // is followed by the load-page callback that navigates to the run page,
+          // and Stop restarts a finished exposure, releases the shutter and
+          // clicks the header back button. Send the real events so neither is a
+          // second implementation.
+          //
+          // The Stop button restarting on STATE_DONE is exactly why stop needs a
+          // state gate: a synthetic click on a finished exposure would start a
+          // new one.
+          if (!item.arg && (m_Bulb.m_State != Bulb::STATE_RUNNING)) {
+            m_ConsoleResult = "not_running";
+            consolePrint("error: not running\n");
+            break;
+          }
+          if ((item.arg ? m_BulbStart : m_BulbStop) == nullptr) {
+            m_ConsoleResult = "no_button";
+            consolePrint("error: no bulb button\n");
+            break;
+          }
+          lv_obj_send_event(item.arg ? m_BulbStart : m_BulbStop, LV_EVENT_CLICKED, nullptr);
+          m_ConsoleResult = "ok";
+          consolePrint("bulb: %s\n", item.arg ? "started" : "stopped");
+          break;
 
-      case Request::IR_RELOAD:
-        updateIRMenuVisibility();
-        break;
+        case Request::DISPLAY_BRIGHTNESS:
+        {
+          // The Display page slider spans m_MinimumBrightness to 240 in steps of
+          // m_BrightnessSteps, and those bounds are a board fact the console task
+          // cannot see. Below the minimum the panel is black and a persisted
+          // black panel needs a reflash to undo, so refuse rather than clamp
+          // silently, and report the range so a script can read it.
+          const uint8_t maximum = m_BrightnessSteps * (m_BrightnessSteps - 1);
+          if (item.arg < 0) {
+            m_ConsoleResult = "ok";
+            consolePrint("mode: %s\n", m_DisplayConsole ? "console" : "gui");
+            consolePrint("brightness: %u\n", Settings::load<Settings::BRIGHTNESS>());
+            consolePrint("brightness_min: %u\n", m_MinimumBrightness);
+            consolePrint("brightness_max: %u\n", maximum);
+            consolePrint("inactivity: %u\n", Settings::load<Settings::INACTIVITY>());
+            consolePrint("display_off: %u\n", Settings::load<Settings::DISPLAY_OFF>());
+            break;
+          }
+          if ((item.arg < m_MinimumBrightness) || (item.arg > maximum)) {
+            m_ConsoleResult = "range";
+            consolePrint("error: expected %u-%u\n", m_MinimumBrightness, maximum);
+            break;
+          }
+          // Same pair of calls the slider makes: apply live, then persist. A
+          // plain 'settings set brightness' only persists.
+          M5.Display.setBrightness(static_cast<uint8_t>(item.arg));
+          Settings::save<Settings::BRIGHTNESS>(static_cast<uint8_t>(item.arg));
+          const bool persisted =
+              Settings::load<Settings::BRIGHTNESS>() == static_cast<uint8_t>(item.arg);
+          m_ConsoleResult = persisted ? "ok" : "persistence_failed";
+          consolePrint("brightness: %ld\n", static_cast<long>(item.arg));
+        } break;
 
-      case Request::FEEDBACK_RELOAD:
-        Feedback::getInstance().reload();
-        break;
+        case Request::BACK:
+        {
+          // The Timer Run page deliberately disables its back button: leaving it
+          // does not pause the intervalometer. navigateBack() force-enables the
+          // button, so a scripted Back would hide a running run and its Stop
+          // control. Refuse instead and make the script stop the run first.
+          const uint8_t state = m_IntervalometerState.load();
+          const bool running = (state == Intervalometer::STATE_WAIT)
+                               || (state == Intervalometer::STATE_SHUTTER_OPEN)
+                               || (state == Intervalometer::STATE_DELAY);
+          if (running
+              && (lv_menu_get_cur_main_page(m_MainMenu.main)
+                  == m_Menu.at(m_IntervalometerRunStr).page)) {
+            m_ConsoleResult = "interval_running";
+            consolePrint("error: stop the intervalometer before leaving\n");
+            break;
+          }
+          // navigateBack() is the header back button plus the two things the
+          // button press implies on a real device: it force-enables the button
+          // and returns the input to MENU mode.
+          navigateBack();
+          m_ConsoleResult = "ok";
+          consolePrint("page: back\n");
+        } break;
 
-      case Request::FEEDBACK_TEST:
-        // Runs here because signal() touches the LVGL feedback timer.
-        Feedback::getInstance().signal(static_cast<Feedback::event_t>(item.arg), true);
-        break;
+        case Request::POWER_OFF:
+          m_ConsoleResult = "ok";
+          doPowerOff();
+          break;
 
-      case Request::CAMERA_PAIRING:
-        m_ConnectContext.ui->startPairingTimer();
-        m_ConnectContext.ui->showCameraPairing(item.camera);
-        break;
+        case Request::GPS_RELOAD:
+          GPS::getInstance().reloadSetting();
+          if (m_Status.gpsExtrapolate != nullptr) {
+            const uint8_t hold = Settings::load<Settings::GPS_HOLD>();
+            if ((hold == 0) || (hold > GPS::HOLD_MAX)) {
+              lv_obj_add_state(m_Status.gpsExtrapolate, LV_STATE_DISABLED);
+            } else {
+              lv_obj_remove_state(m_Status.gpsExtrapolate, LV_STATE_DISABLED);
+            }
+          }
+          break;
+
+        case Request::SD_RELOAD:
+          GPS::getInstance().reloadLogSettings();
+          SD::getInstance().request(SD::request_t::RELOAD);
+          break;
+
+        case Request::GPS_POWER:
+          M5.Power.setExtOutput(item.arg != 0, m5::ext_PA);
+          break;
+
+        case Request::IR_RELOAD:
+          updateIRMenuVisibility();
+          break;
+
+        case Request::FEEDBACK_RELOAD:
+          Feedback::getInstance().reload();
+          break;
+
+        case Request::FEEDBACK_TEST:
+          // Runs here because signal() touches the LVGL feedback timer.
+          Feedback::getInstance().signal(static_cast<Feedback::event_t>(item.arg), true);
+          break;
+
+        case Request::CAMERA_PAIRING:
+          m_ConnectContext.ui->startPairingTimer();
+          m_ConnectContext.ui->showCameraPairing(item.camera);
+          break;
 
 #if defined(FURBLE_CONSOLE)
-      case Request::PERF:
+        case Request::PERF:
 #if defined(CONFIG_LV_USE_PERF_MONITOR)
-      {
-        lv_display_t *display = lv_display_get_default();
-        if (display == nullptr) {
-          printf("error: no LVGL display\n");
+        {
+          lv_display_t *display = lv_display_get_default();
+          if (display == nullptr) {
+            printf("error: no LVGL display\n");
+            break;
+          }
+
+          if (item.arg < 0) {
+            lv_sysmon_performance_dump(display);
+            const auto &perf = display->perf_sysmon_info.calculated;
+            printf("lvgl.fps: %lu\n", static_cast<unsigned long>(perf.fps));
+            printf("lvgl.cpu_pct: %lu\n", static_cast<unsigned long>(perf.cpu));
+            printf("lvgl.render_avg_ms: %lu\n", static_cast<unsigned long>(perf.render_avg_time));
+            printf("lvgl.flush_avg_ms: %lu\n", static_cast<unsigned long>(perf.flush_avg_time));
+          } else if (item.arg != 0) {
+            lv_sysmon_show_performance(display);
+            printf("lvgl.overlay: on\n");
+          } else {
+            lv_sysmon_hide_performance(display);
+            printf("lvgl.overlay: off\n");
+          }
           break;
         }
-
-        if (item.arg < 0) {
-          lv_sysmon_performance_dump(display);
-          const auto &perf = display->perf_sysmon_info.calculated;
-          printf("lvgl.fps: %lu\n", static_cast<unsigned long>(perf.fps));
-          printf("lvgl.cpu_pct: %lu\n", static_cast<unsigned long>(perf.cpu));
-          printf("lvgl.render_avg_ms: %lu\n", static_cast<unsigned long>(perf.render_avg_time));
-          printf("lvgl.flush_avg_ms: %lu\n", static_cast<unsigned long>(perf.flush_avg_time));
-        } else if (item.arg != 0) {
-          lv_sysmon_show_performance(display);
-          printf("lvgl.overlay: on\n");
-        } else {
-          lv_sysmon_hide_performance(display);
-          printf("lvgl.overlay: off\n");
-        }
-        break;
-      }
 #else
-        printf("error: LVGL performance monitor is not enabled\n");
-        break;
+          printf("error: LVGL performance monitor is not enabled\n");
+          break;
 #endif
-      case Request::AUDIT:
-        UIAudit::dump(lv_screen_active());
-        break;
+        case Request::AUDIT:
+          UIAudit::dump(lv_screen_active());
+          break;
 #endif
 
-      case Request::POWER_RELOAD:
-        m_ConnectContext.ui->reloadPowerPolicies();
-        break;
+        case Request::POWER_RELOAD:
+          m_ConnectContext.ui->reloadPowerPolicies();
+          break;
 #if !defined(FURBLE_NO_DISPLAY)
-      case Request::DISPLAY_MODE:
-        setDisplayMode(static_cast<uint8_t>(item.arg));
-        break;
+        case Request::DISPLAY_MODE:
+          setDisplayMode(static_cast<uint8_t>(item.arg));
+          break;
 #endif
-    }
-  }
-}
-
-bool UI::beginPairing(size_t index, lv_event_t *e) {
-  if (index >= CameraList::size()) {
-    return false;
-  }
-
-  auto camera = CameraList::get(index);
-  if (camera == nullptr) {
-    return false;
-  }
-
-  if (CameraList::isSaved(camera.get())) {
-    // Pairing a camera that is already saved cannot replace its entry when the
-    // body advertises a resolvable private address: the address moved, so a
-    // second record appears for one camera and the saved reconnect picks
-    // whichever the index happens to hold. Refuse and say why, rather than
-    // starting a connect that quietly makes the list worse.
-    ESP_LOGW(LOG_TAG, "'%s' is already saved, refusing to pair it again",
-             camera->getName().c_str());
-    char text[160];
-    // Same "<camera>: <instruction>" shape as the other two boxes, and the same
-    // stand-in for a camera that advertised no name: the split gives the name a
-    // line of its own, so a raw empty name opens the box with a blank line.
-    std::snprintf(text, sizeof(text), "%s: already saved. Connect it, or delete it to pair again.",
-                  camera->getDisplayName().c_str());
-    m_ConnectContext.ui->showConnectError("Already saved", text);
-    return false;
-  }
-
-  camera->setActive(true);
-  doConnect(e);
-  return true;
-}
-
-void UI::doConnect(lv_event_t *e) {
-  auto &control = Control::getInstance();
-
-  m_ConnectContext.feedbackConnected = false;
-  // A fresh connect starts without a session, so the initial progress box owns
-  // the screen until the first link goes active.
-  m_ConnectContext.sessionEstablished = false;
-
-  // Force the progress box to relabel on the first tick of this connect: the
-  // widgets are reused across connects, so clear the guard cache.
-  m_ConnectContext.connectingName.clear();
-  m_ConnectContext.connectProgress = -1;
-
-  // activate selected cameras
-  for (auto n = 0; n < CameraList::size(); n++) {
-    auto camera = CameraList::get(n);
-    if (camera->isActive()) {
-      control.addActive(camera);
-    }
-  }
-
-  const bool resume = m_ConnectContext.ui->m_Intervalometer.hasResume();
-  control.connectAll(resume ? false : Settings::load<Settings::RECONNECT>(),
-                     resume ? Control::RESUME_RETRY_GAP_MS : 0);
-  // Mark the request before the timer can run: the control task publishes
-  // STATE_CONNECT asynchronously, so the first tick may still see idle.
-  m_ConnectContext.connectRequested = true;
-  m_ConnectContext.connectRequestedAt = lv_tick_get();
-  lv_timer_ready(m_ConnectTimer);
-  lv_timer_resume(m_ConnectTimer);
-
-  menu_t &menu = m_Menu.at(m_ConnectedStr);
-  lv_menu_set_page(m_MainMenu.main, menu.page);
-}
-
-void UI::doDisconnect(void) {
-#if defined(FURBLE_SIM)
-  g_simDisconnectCalls++;
-#endif
-  // The user is tearing the session down, so any queued connect request is moot
-  // and must not hold the timer open.
-  m_ConnectContext.connectRequested = false;
-  lv_timer_pause(m_ConnectTimer);
-  if (m_CamerasTimer != nullptr) {
-    lv_timer_pause(m_CamerasTimer);
-  }
-
-  // The session is being torn down: forget it and drop the reconnecting
-  // indicator so it never lingers on the next connect.
-  m_ConnectContext.sessionEstablished = false;
-  showStatusIcon(m_ConnectContext.ui->m_Status.reconnectingIcon, false);
-  m_ConnectContext.ui->updateRemoteReconnect(false);
-
-  if (m_ConnectContext.feedbackConnected) {
-    Feedback::getInstance().signal(Feedback::DISCONNECTED);
-    m_ConnectContext.feedbackConnected = false;
-  }
-
-  // release a held bulb exposure before the connection goes away
-  m_ConnectContext.ui->bulbStop();
-
-  Scan::getInstance().stop();
-  Control::getInstance().disconnect();
-  m_ConnectContext.connectingCamera.reset();
-  m_ConnectContext.connectingGeneration = Control::getInstance().getConnectingCameraGeneration();
-
-  // The shutter page is gone, drop blind remote so buttons wake the screen.
-  m_ConnectContext.ui->m_ControlMode = ControlMode::MENU;
-
-  lv_obj_add_flag(m_ConnectContext.messageBox, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_clear_flag(m_MainMenu.main, LV_OBJ_FLAG_HIDDEN);
-
-  // Every teardown returns to Main, including Cancel and terminal connect
-  // failure. Restore the physical-button indicators hidden by the modal.
-  m_ConnectContext.ui->displayNavigationBar(true);
-
-  lv_menu_clear_history(m_MainMenu.main);
-  lv_menu_set_page(m_MainMenu.main, m_MainMenu.page);
-  menu_t &connect = m_Menu.at(m_ConnectStr);
-  lv_group_focus_obj(connect.button);
-}
-
-void UI::updateCameraRow(lv_obj_t *label, Camera *camera, Control::state_t state) {
-  const bool connected = camera->isConnected();
-  char status[32];
-
-  switch (state) {
-    case Control::STATE_CONNECTING:
-      if (connected) {
-        snprintf(status, sizeof(status), "connected");
-      } else {
-        snprintf(status, sizeof(status), "reconnecting %u%%",
-                 static_cast<unsigned>(camera->getConnectProgress()));
       }
-      break;
-    case Control::STATE_CONNECT:
-      snprintf(status, sizeof(status), connected ? "connected" : "reconnecting");
-      break;
-    case Control::STATE_CONNECT_FAILED:
-      snprintf(status, sizeof(status), connected ? "connected" : "lost");
-      break;
-    case Control::STATE_ACTIVE:
-      snprintf(status, sizeof(status), connected ? "connected" : "reconnecting");
-      break;
-    case Control::STATE_DISCONNECTING:
-      snprintf(status, sizeof(status), "disconnecting");
-      break;
-    case Control::STATE_IDLE:
-      snprintf(status, sizeof(status), "idle");
-      break;
-  }
 
-  // No live RSSI here. NimBLEClient::getRssi() is a blocking HCI round trip
-  // and must not run on the render task. RSSI returns via the cached
-  // connection statistics snapshot from PR #24 once that merges.
-  char text[128];
-  snprintf(text, sizeof(text), "%s   %s", camera->getName().c_str(), status);
-
-  if (strcmp(lv_label_get_text(label), text) != 0) {
-    lv_label_set_text(label, text);
-  }
-}
-
-void UI::rebuildCamerasPage(menu_t &menu) {
-  // Deliberately unlocked. Every caller (the page-change dispatch and the
-  // camerasUpdate timer) already runs inside lv_task_handler() with m_Mutex
-  // held by UI::task, and std::mutex is not recursive. Scan events are drained
-  // on this task before they reach updateItems.
-  lv_obj_clean(menu.page);
-
-  auto &control = Control::getInstance();
-  // Strong camera references, not raw Target pointers: a pairing cancellation
-  // can retire a target on the control task between the snapshot and this
-  // render pass, and the next drain would free it.
-  const auto cameras = control.getTargetCameras();
-  const auto state = control.getState();
-  for (const auto &camera : cameras) {
-    lv_obj_t *label = lv_label_create(menu.page);
-    lv_obj_set_width(label, LV_PCT(100));
-    // The composed camera name plus the status word wraps onto a second line,
-    // which reaches the navigation indicators the Stick boards float over the
-    // page. Keep the right indicator's width clear, as the camera list rows do,
-    // and leave the theme's padding alone where there is nothing to clear.
-    if (const int32_t reserve = floatingIndicatorReserve(); reserve > 0) {
-      lv_obj_set_style_pad_right(label, reserve, LV_PART_MAIN);
+      if (m_ConsoleResult != nullptr) {
+        consolePrint("result: %s\n", m_ConsoleResult);
+      }
+#if defined(FURBLE_CONSOLE)
+      if (item.state != nullptr) {
+        item.state->token = m_ConsoleResult;
+        xSemaphoreGive(item.state->done);
+        item.state->release();
+      }
+#endif
+      queued = nullptr;
     }
-    // The text is near static, so clip with dots instead of a circular
-    // scroll that would invalidate the row on every tick.
-    lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
-    updateCameraRow(label, camera.get(), state);
-  }
-}
-
-void UI::camerasUpdate(lv_timer_t *timer) {
-  auto *menu = static_cast<menu_t *>(lv_timer_get_user_data(timer));
-  auto &control = Control::getInstance();
-
-  // Self-pause outside STATE_ACTIVE. Camera::connect() holds the Camera
-  // mutex for the whole attempt, so isConnected() below would block the
-  // render task if a tick lands between a drop and connectTimerHandler
-  // noticing. getState() only takes the state mutex and never blocks.
-  if (control.getState() != Control::STATE_ACTIVE) {
-    lv_timer_pause(timer);
-    return;
   }
 
-  const auto cameras = control.getTargetCameras();
-
-  if (lv_obj_get_child_count(menu->page) != cameras.size()) {
-    rebuildCamerasPage(*menu);
-    return;
+  void UI::drainRequests(void) {
+    request_t *queued = nullptr;
+    while (xQueueReceive(m_RequestQueue, &queued, 0) == pdTRUE) {
+#if defined(FURBLE_CONSOLE)
+      if (queued->state != nullptr) {
+        queued->state->token = "cancelled";
+        xSemaphoreGive(queued->state->done);
+        queued->state->release();
+      }
+#endif
+      delete queued;
+    }
   }
 
-  const auto state = control.getState();
-  size_t n = 0;
-  for (const auto &camera : cameras) {
-    lv_obj_t *label = lv_obj_get_child(menu->page, n);
-    updateCameraRow(label, camera.get(), state);
-    n++;
+  void UI::shutdown(void) {
+    if (m_RequestQueue == nullptr) {
+      return;
+    }
+    drainRequests();
+    vQueueDelete(m_RequestQueue);
+    m_RequestQueue = nullptr;
   }
-}
 
-void UI::addCamerasMenu(const menu_t &parent) {
-  menu_t &menu = addMenu(m_CamerasStr, &icon_linked_camera, true, parent);
+  bool UI::beginPairing(size_t index, lv_event_t *e) {
+    if (index >= CameraList::size()) {
+      return false;
+    }
 
-  // The timer only runs while the page is visible. The page-change dispatch
-  // in addMainMenu resumes and pauses it, following m_DiagnosticsTimer.
-  m_CamerasTimer = lv_timer_create(camerasUpdate, 1000, &menu);
-  lv_timer_pause(m_CamerasTimer);
+    auto camera = CameraList::get(index);
+    if (camera == nullptr) {
+      return false;
+    }
 
-  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
-}
+    if (CameraList::isSaved(camera.get())) {
+      // Pairing a camera that is already saved cannot replace its entry when the
+      // body advertises a resolvable private address: the address moved, so a
+      // second record appears for one camera and the saved reconnect picks
+      // whichever the index happens to hold. Refuse and say why, rather than
+      // starting a connect that quietly makes the list worse.
+      ESP_LOGW(LOG_TAG, "'%s' is already saved, refusing to pair it again",
+               camera->getName().c_str());
+      char text[160];
+      // Same "<camera>: <instruction>" shape as the other two boxes, and the same
+      // stand-in for a camera that advertised no name: the split gives the name a
+      // line of its own, so a raw empty name opens the box with a blank line.
+      std::snprintf(text, sizeof(text),
+                    "%s: already saved. Connect it, or delete it to pair again.",
+                    camera->getDisplayName().c_str());
+      m_ConnectContext.ui->showConnectError("Already saved", text);
+      return false;
+    }
 
-void UI::addLevelMenu(const menu_t &parent) {
-  // The bullseye icon matches the spirit level's centre target, so the Level
-  // entry reads at a glance and is no longer the only iconless Connected item.
-  menu_t &menu = addMenu(m_LevelStr, &icon_adjust, true, parent);
-
-  m_Level.root = m_Root;
-
-  lv_obj_t *cont = lv_menu_cont_create(menu.page);
-  lv_obj_set_size(cont, LV_PCT(100), LV_PCT(100));
-  lv_obj_set_layout(cont, LV_LAYOUT_FLEX);
-  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_row(cont, 4, LV_PART_MAIN);
-  lv_obj_clear_flag(cont, LV_OBJ_FLAG_SCROLLABLE);
-
-  // Base panel size, portrait. applyLevelRotation reflows the widgets from these.
-  m_Level.baseWidth = m_Width;
-  m_Level.baseHeight = m_Height;
-  m_Level.rotation = 0;
-
-  // One row of numeric readouts at the very top, split left and right: roll in
-  // the left half, pitch in the right half, both in the compact 12 px font with
-  // a degree glyph. A single row keeps the text to one line height so the circle
-  // below gets the rest of the panel. The older stacked rows pushed the circle
-  // up under the header where it was clipped.
-  lv_obj_t *values = lv_obj_create(cont);
-  lv_obj_set_width(values, LV_PCT(100));
-  lv_obj_set_height(values, LV_SIZE_CONTENT);
-  lv_obj_set_layout(values, LV_LAYOUT_FLEX);
-  lv_obj_set_flex_flow(values, LV_FLEX_FLOW_ROW);
-  lv_obj_set_flex_align(values, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_all(values, 0, LV_PART_MAIN);
-  lv_obj_set_style_pad_column(values, 2, LV_PART_MAIN);
-  lv_obj_clear_flag(values, LV_OBJ_FLAG_SCROLLABLE);
-
-  m_Level.roll = lv_label_create(values);
-  lv_obj_set_width(m_Level.roll, LV_PCT(50));
-  lv_obj_set_style_text_font(m_Level.roll, &lv_font_montserrat_12, LV_PART_MAIN);
-  lv_obj_set_style_text_align(m_Level.roll, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-  lv_label_set_long_mode(m_Level.roll, LV_LABEL_LONG_WRAP);
-  lv_label_set_text(m_Level.roll, "R: --");
-  m_Level.pitch = lv_label_create(values);
-  lv_obj_set_width(m_Level.pitch, LV_PCT(50));
-  lv_obj_set_style_text_font(m_Level.pitch, &lv_font_montserrat_12, LV_PART_MAIN);
-  lv_obj_set_style_text_align(m_Level.pitch, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-  lv_label_set_long_mode(m_Level.pitch, LV_LABEL_LONG_WRAP);
-  lv_label_set_text(m_Level.pitch, "P: --");
-
-  // The circle and the side tube live in a container that grows to fill the
-  // space under the readout row. Centring the visible readout in this container
-  // leaves a symmetric margin, so the bullseye is never jammed under the header.
-  lv_obj_t *middle = lv_obj_create(cont);
-  lv_obj_set_width(middle, LV_PCT(100));
-  lv_obj_set_flex_grow(middle, 1);
-  lv_obj_set_layout(middle, LV_LAYOUT_FLEX);
-  lv_obj_set_flex_flow(middle, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(middle, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_all(middle, 0, LV_PART_MAIN);
-  lv_obj_set_style_border_width(middle, 0, LV_PART_MAIN);
-  lv_obj_set_style_bg_opa(middle, LV_OPA_TRANSP, LV_PART_MAIN);
-  lv_obj_clear_flag(middle, LV_OBJ_FLAG_SCROLLABLE);
-
-  // The circle bubble is the primary flat readout. Its diameter is settled by
-  // applyLevelRotation, which fits it inside the middle container.
-  m_Level.surface = lv_obj_create(middle);
-  lv_obj_clear_flag(m_Level.surface, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_style_radius(m_Level.surface, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-  lv_obj_set_style_bg_opa(m_Level.surface, LV_OPA_10, LV_PART_MAIN);
-  lv_obj_set_style_border_width(m_Level.surface, 2, LV_PART_MAIN);
-  lv_obj_set_style_border_color(m_Level.surface, lv_palette_main(LV_PALETTE_GREY), LV_PART_MAIN);
-
-  // Fixed centre target ring, the "level" mark. It is hollow and never moves, so
-  // the moving bubble is read against it and the two are always distinct. The
-  // filled bubble nests inside the ring when the device is level.
-  m_Level.target = lv_obj_create(m_Level.surface);
-  lv_obj_set_size(m_Level.target, 22, 22);
-  lv_obj_set_style_radius(m_Level.target, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-  lv_obj_set_style_bg_opa(m_Level.target, LV_OPA_TRANSP, LV_PART_MAIN);
-  lv_obj_set_style_border_width(m_Level.target, 2, LV_PART_MAIN);
-  lv_obj_set_style_border_color(m_Level.target, lv_palette_main(LV_PALETTE_GREEN), LV_PART_MAIN);
-  lv_obj_clear_flag(m_Level.target, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_center(m_Level.target);
-
-  m_Level.bubble = lv_obj_create(m_Level.surface);
-  lv_obj_set_size(m_Level.bubble, 16, 16);
-  lv_obj_set_style_radius(m_Level.bubble, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-  lv_obj_set_style_bg_color(m_Level.bubble, lv_palette_main(LV_PALETTE_BLUE), LV_PART_MAIN);
-  lv_obj_set_style_border_width(m_Level.bubble, 0, LV_PART_MAIN);
-  lv_obj_center(m_Level.bubble);
-
-  // Side view bubble tube: a classic linear spirit level held against a wall.
-  // The bubble slides left and right with roll only. It is only shown when the
-  // page is flipped onto its side, so it stays hidden in the flat portrait view.
-  m_Level.sideTube = lv_obj_create(middle);
-  lv_obj_set_size(m_Level.sideTube, 48, 20);
-  lv_obj_clear_flag(m_Level.sideTube, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_style_radius(m_Level.sideTube, 10, LV_PART_MAIN);
-  lv_obj_set_style_bg_opa(m_Level.sideTube, LV_OPA_10, LV_PART_MAIN);
-  lv_obj_set_style_border_width(m_Level.sideTube, 2, LV_PART_MAIN);
-  lv_obj_set_style_border_color(m_Level.sideTube, lv_palette_main(LV_PALETTE_GREY), LV_PART_MAIN);
-  lv_obj_set_style_pad_all(m_Level.sideTube, 0, LV_PART_MAIN);
-
-  m_Level.sideBubble = lv_obj_create(m_Level.sideTube);
-  lv_obj_set_size(m_Level.sideBubble, 14, 14);
-  lv_obj_set_style_radius(m_Level.sideBubble, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-  lv_obj_set_style_bg_color(m_Level.sideBubble, lv_palette_main(LV_PALETTE_BLUE), LV_PART_MAIN);
-  lv_obj_set_style_border_width(m_Level.sideBubble, 0, LV_PART_MAIN);
-  lv_obj_center(m_Level.sideBubble);
-
-  // Gesture hint for the auto-rotate behaviour, pinned at the bottom. It is not
-  // focusable, so the encoder never lands on it. It is only shown in the flat
-  // portrait view.
-  m_Level.hint = lv_label_create(cont);
-  lv_obj_set_width(m_Level.hint, LV_PCT(100));
-  lv_obj_set_style_text_font(m_Level.hint, &lv_font_montserrat_12, LV_PART_MAIN);
-  lv_obj_set_style_text_align(m_Level.hint, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-  lv_label_set_long_mode(m_Level.hint, LV_LABEL_LONG_WRAP);
-  lv_label_set_text(m_Level.hint, "Tilt on side to rotate");
-
-  // Settle the portrait layout: size the circle, hide the side tube, show hint.
-  applyLevelRotation(&m_Level, 0);
-
-  // the main menu page dispatch resumes and pauses this timer
-  m_LevelTimer = lv_timer_create(levelUpdate, 50, &m_Level);
-  lv_timer_pause(m_LevelTimer);
-
-  if (!imuEnabledForUI()) {
-    lv_obj_add_flag(menu.button, LV_OBJ_FLAG_HIDDEN);
+    camera->setActive(true);
+    doConnect(e);
+    return true;
   }
-}
 
-void UI::levelUpdate(lv_timer_t *timer) {
-  auto *level = static_cast<level_t *>(lv_timer_get_user_data(timer));
+  void UI::doConnect(lv_event_t * e) {
+    auto &control = Control::getInstance();
 
-  // Keep the display awake while the level page is open. The inactivity dim is
-  // gated on LVGL activity, so resetting it every tick holds the screen on. The
-  // level timer only runs while the page is shown, so leaving the page stops the
-  // resets and normal dim resumes with no extra bookkeeping.
-  lv_display_trigger_activity(NULL);
+    m_ConnectContext.feedbackConnected = false;
+    // A fresh connect starts without a session, so the initial progress box owns
+    // the screen until the first link goes active.
+    m_ConnectContext.sessionEstablished = false;
 
-  float accel[3];
-  std::lock_guard<imu_mutex_t> imuLock(g_IMUMutex);
+    // Force the progress box to relabel on the first tick of this connect: the
+    // widgets are reused across connects, so clear the guard cache.
+    m_ConnectContext.connectingName.clear();
+    m_ConnectContext.connectProgress = -1;
+
+    // activate selected cameras
+    for (auto n = 0; n < CameraList::size(); n++) {
+      auto camera = CameraList::get(n);
+      if (camera->isActive()) {
+        control.addActive(camera);
+      }
+    }
+
+    const bool resume = m_ConnectContext.ui->m_Intervalometer.hasResume();
+    control.connectAll(resume ? false : Settings::load<Settings::RECONNECT>(),
+                       resume ? Control::RESUME_RETRY_GAP_MS : 0);
+    // Mark the request before the timer can run: the control task publishes
+    // STATE_CONNECT asynchronously, so the first tick may still see idle.
+    m_ConnectContext.connectRequested = true;
+    m_ConnectContext.connectRequestedAt = lv_tick_get();
+    lv_timer_ready(m_ConnectTimer);
+    lv_timer_resume(m_ConnectTimer);
+
+    menu_t &menu = m_Menu.at(m_ConnectedStr);
+    lv_menu_set_page(m_MainMenu.main, menu.page);
+  }
+
+  void UI::doDisconnect(void) {
 #if defined(FURBLE_SIM)
-  // The simulator has no sensor, so read the injected IMU state through the same
-  // enabled, update and getAccel surface the firmware uses. A scenario drives
-  // the orientation and the real filter, sensitivity and rotation logic below
-  // runs unchanged.
-  if (!Furble::Sim::imuEnabled()) {
-    return;
-  }
-  Furble::Sim::imuUpdate();
-  if (!Furble::Sim::imuGetAccel(&accel[0], &accel[1], &accel[2])) {
-    return;
-  }
-#else
-  if (!imuSensorEnabledForUI()) {
-    return;
-  }
-
-  M5.Imu.update();
-  if (!M5.Imu.getAccel(&accel[0], &accel[1], &accel[2])) {
-    return;
-  }
+    g_simDisconnectCalls++;
 #endif
+    // The user is tearing the session down, so any queued connect request is moot
+    // and must not hold the timer open.
+    m_ConnectContext.connectRequested = false;
+    lv_timer_pause(m_ConnectTimer);
+    if (m_CamerasTimer != nullptr) {
+      lv_timer_pause(m_CamerasTimer);
+    }
 
-  applyLevelSample(level, accel);
-}
+    // The session is being torn down: forget it and drop the reconnecting
+    // indicator so it never lingers on the next connect.
+    m_ConnectContext.sessionEstablished = false;
+    showStatusIcon(m_ConnectContext.ui->m_Status.reconnectingIcon, false);
+    m_ConnectContext.ui->updateRemoteReconnect(false);
 
-int32_t UI::levelDiameter(int32_t width, int32_t height) {
-  // Reserve vertical room for the two stacked value labels and the gesture hint
-  // so the circle never pushes them off a narrow panel. The circle stays square.
-  constexpr int32_t verticalReserve = 96;
-  int32_t diameter = std::min(width - 16, height - verticalReserve);
-  return std::max<int32_t>(40, diameter);
-}
+    if (m_ConnectContext.feedbackConnected) {
+      Feedback::getInstance().signal(Feedback::DISCONNECTED);
+      m_ConnectContext.feedbackConnected = false;
+    }
 
-void UI::applyLevelRotation(level_t *level, int32_t rotation) {
-  lv_display_t *display = lv_display_get_default();
-  // Capture this before the widget reflow below overwrites level->rotation. The
-  // panel rotation and the forced full repaint only run when the orientation
-  // actually changes.
-  const bool orientationChanged = (rotation != level->rotation);
-  // On the real StickS3 the LVGL software rotation path corrupts the screen: it
-  // rotates pixels in the draw buffer but does not coordinate with the panel DMA
-  // flush, so a rotated frame tears against the old stride and only recovers when
-  // the device is held flat again. Rotate the panel controller instead and swap
-  // the LVGL logical resolution, which keeps the DMA engine writing a
-  // consistently oriented framebuffer. Drain any in-flight flush first.
-  //
-  // The full invalidate and synchronous repaint do NOT happen here. They run at
-  // the end of this function, after the widgets and the button overlay have been
-  // reflowed to the new geometry. Repainting here (the earlier bug) forced the
-  // one guaranteed full-screen pass while the level container and the screen
-  // children were still laid out at the portrait width, so only the left ~135 px
-  // of the 240 px landscape panel was ever written and the far side kept its
-  // pre-rotation pixels. The periodic bubble updates that follow only invalidate
-  // small regions, so the right half never recovered.
-  //
-  // The SDL M5GFX framebuffer implements the same panel-rotation API. Keep the
-  // simulator on this path too: LVGL software rotation previously let its
-  // logical width grow to 240 while the simulated panel remained 135 pixels
-  // wide. Captures silently cropped the far half, including the moving bubble.
-  // Matching the firmware path makes panel geometry and complete rotated-frame
-  // capture testable on the host. Physical DMA still needs an on-device check.
-  if (display != nullptr && orientationChanged) {
-    // Captured once at build time while the panel is in its portrait default.
-    static const uint8_t baseRotation = M5.Display.getRotation();
-    M5.Display.waitDMA();
-    if (rotation == 0) {
-      M5.Display.setRotation(baseRotation);
-      lv_display_set_resolution(display, level->baseWidth, level->baseHeight);
-    } else {
-      const uint8_t step = (rotation == 90) ? 1 : 3;
-      M5.Display.setRotation((baseRotation + step) & 0x03);
-      lv_display_set_resolution(display, level->baseHeight, level->baseWidth);
+    // release a held bulb exposure before the connection goes away
+    m_ConnectContext.ui->bulbStop();
+
+    Scan::getInstance().stop();
+    Control::getInstance().disconnect();
+    m_ConnectContext.connectingCamera.reset();
+    m_ConnectContext.connectingGeneration = Control::getInstance().getConnectingCameraGeneration();
+
+    // The shutter page is gone, drop blind remote so buttons wake the screen.
+    m_ConnectContext.ui->m_ControlMode = ControlMode::MENU;
+
+    lv_obj_add_flag(m_ConnectContext.messageBox, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(m_MainMenu.main, LV_OBJ_FLAG_HIDDEN);
+
+    // Every teardown returns to Main, including Cancel and terminal connect
+    // failure. Restore the physical-button indicators hidden by the modal.
+    m_ConnectContext.ui->displayNavigationBar(true);
+
+    lv_menu_clear_history(m_MainMenu.main);
+    lv_menu_set_page(m_MainMenu.main, m_MainMenu.page);
+    menu_t &connect = m_Menu.at(m_ConnectStr);
+    lv_group_focus_obj(connect.button);
+  }
+
+  void UI::updateCameraRow(lv_obj_t * label, Camera * camera, Control::state_t state) {
+    const bool connected = camera->isConnected();
+    char status[32];
+
+    switch (state) {
+      case Control::STATE_CONNECTING:
+        if (connected) {
+          snprintf(status, sizeof(status), "connected");
+        } else {
+          snprintf(status, sizeof(status), "reconnecting %u%%",
+                   static_cast<unsigned>(camera->getConnectProgress()));
+        }
+        break;
+      case Control::STATE_CONNECT:
+        snprintf(status, sizeof(status), connected ? "connected" : "reconnecting");
+        break;
+      case Control::STATE_CONNECT_FAILED:
+        snprintf(status, sizeof(status), connected ? "connected" : "lost");
+        break;
+      case Control::STATE_ACTIVE:
+        snprintf(status, sizeof(status), connected ? "connected" : "reconnecting");
+        break;
+      case Control::STATE_DISCONNECTING:
+        snprintf(status, sizeof(status), "disconnecting");
+        break;
+      case Control::STATE_IDLE:
+        snprintf(status, sizeof(status), "idle");
+        break;
+    }
+
+    // No live RSSI here. NimBLEClient::getRssi() is a blocking HCI round trip
+    // and must not run on the render task. RSSI returns via the cached
+    // connection statistics snapshot from PR #24 once that merges.
+    char text[128];
+    snprintf(text, sizeof(text), "%s   %s", camera->getName().c_str(), status);
+
+    if (strcmp(lv_label_get_text(label), text) != 0) {
+      lv_label_set_text(label, text);
     }
   }
 
-  // Landscape swaps the panel width and height. The value labels stay on both
-  // orientations, the circle is the flat readout, the tube is the side readout.
-  const bool landscape = (rotation != 0);
-  const int32_t effWidth = landscape ? level->baseHeight : level->baseWidth;
-  const int32_t effHeight = landscape ? level->baseWidth : level->baseHeight;
+  void UI::rebuildCamerasPage(menu_t & menu) {
+    // Deliberately unlocked. Every caller (the page-change dispatch and the
+    // camerasUpdate timer) already runs inside lv_task_handler() with m_Mutex
+    // held by UI::task, and std::mutex is not recursive. Scan events are drained
+    // on this task before they reach updateItems.
+    lv_obj_clean(menu.page);
 
-  // lv_win_create snapshots its parent's pixel dimensions instead of using
-  // percentages. Resize the root window whenever the level changes the display
-  // resolution. Without this, the panel becomes 240x135 but every page remains
-  // 135 pixels wide, clipping the landscape tube and its moving bubble.
-  if (level->root != nullptr) {
-    lv_obj_set_size(level->root, effWidth, effHeight);
-  }
-
-  if (landscape) {
-    lv_obj_add_flag(level->surface, LV_OBJ_FLAG_HIDDEN);
-    if (level->hint != nullptr) {
-      lv_obj_add_flag(level->hint, LV_OBJ_FLAG_HIDDEN);
-    }
-    lv_obj_remove_flag(level->sideTube, LV_OBJ_FLAG_HIDDEN);
-    int32_t tubeWidth = std::clamp<int32_t>(effWidth - 24, 48, effWidth);
-    lv_obj_set_size(level->sideTube, tubeWidth, 20);
-  } else {
-    lv_obj_remove_flag(level->surface, LV_OBJ_FLAG_HIDDEN);
-    if (level->hint != nullptr) {
-      lv_obj_remove_flag(level->hint, LV_OBJ_FLAG_HIDDEN);
-    }
-    lv_obj_add_flag(level->sideTube, LV_OBJ_FLAG_HIDDEN);
-    int32_t diameter = levelDiameter(effWidth, effHeight);
-    lv_obj_set_size(level->surface, diameter, diameter);
-  }
-
-  level->rotation = rotation;
-
-  // Settle the whole screen to the new geometry before any repaint. The panel
-  // rotation swapped the LVGL resolution, which resized the active screen, but
-  // the descendant layout is only recomputed on demand. Force it now so every
-  // widget, the menu header and the level container describe the rotated width
-  // when the forced repaint below runs.
-  lv_obj_t *screen = lv_screen_active();
-  if (screen != nullptr) {
-    lv_obj_update_layout(screen);
-  }
-
-  // Re-anchor the floating physical-button indicators to the rotated screen
-  // edges. They align against the screen, whose size just changed, so without a
-  // fresh align they stay pinned to the old portrait corners and sit in the
-  // wrong place in landscape. Re-applying the alignment reads the live rotated
-  // resolution and lands them on the correct edges.
-  if (level->navLeft != nullptr) {
-    lv_obj_align(level->navLeft, LV_ALIGN_BOTTOM_LEFT, 0, 0);
-    lv_obj_align(level->navOK, LV_ALIGN_BOTTOM_MID, 0, 0);
-    lv_obj_align(level->navRight, LV_ALIGN_RIGHT_MID, 0, level->navRightYOffset);
-  }
-
-  // Settle the level page container so the next sample reads real bubble
-  // geometry. The circle sits inside the growing middle container, so reflow
-  // from the outer menu container (the middle's parent) to size every widget.
-  lv_obj_t *middle = lv_obj_get_parent(level->surface);
-  lv_obj_t *cont = (middle != nullptr) ? lv_obj_get_parent(middle) : nullptr;
-  if (cont != nullptr) {
-    lv_obj_update_layout(cont);
-  }
-
-  // The panel, the LVGL resolution, every widget and the button overlay now all
-  // describe the new orientation. Force one synchronous full repaint so the
-  // entire rotated width is written in a single pass, then drain the DMA so the
-  // resynchronised framebuffer is fully out before the page continues.
-  if (display != nullptr && orientationChanged) {
-    lv_obj_invalidate(screen);
-    lv_refr_now(display);
-    M5.Display.waitDMA();
-  }
-}
-
-void UI::applyLevelSample(level_t *level, const float accel[3]) {
-  constexpr float alpha = 0.2f;
-  if (!level->filterReady) {
-    std::copy(accel, accel + 3, std::begin(level->accel));
-    level->filterReady = true;
-  } else {
-    for (size_t index = 0; index < 3; index++) {
-      level->accel[index] = (alpha * accel[index]) + ((1.0f - alpha) * level->accel[index]);
+    auto &control = Control::getInstance();
+    // Strong camera references, not raw Target pointers: a pairing cancellation
+    // can retire a target on the control task between the snapshot and this
+    // render pass, and the next drain would free it.
+    const auto cameras = control.getTargetCameras();
+    const auto state = control.getState();
+    for (const auto &camera : cameras) {
+      lv_obj_t *label = lv_label_create(menu.page);
+      lv_obj_set_width(label, LV_PCT(100));
+      // The composed camera name plus the status word wraps onto a second line,
+      // which reaches the navigation indicators the Stick boards float over the
+      // page. Keep the right indicator's width clear, as the camera list rows do,
+      // and leave the theme's padding alone where there is nothing to clear.
+      if (const int32_t reserve = floatingIndicatorReserve(); reserve > 0) {
+        lv_obj_set_style_pad_right(label, reserve, LV_PART_MAIN);
+      }
+      // The text is near static, so clip with dots instead of a circular
+      // scroll that would invalidate the row on every tick.
+      lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
+      updateCameraRow(label, camera.get(), state);
     }
   }
 
-  constexpr float radiansToDegrees = 57.2957795f;
-  float roll = std::atan2(level->accel[1], level->accel[2]) * radiansToDegrees;
-  float pitch = std::atan2(-level->accel[0], std::sqrt((level->accel[1] * level->accel[1])
-                                                       + (level->accel[2] * level->accel[2])))
-                * radiansToDegrees;
+  void UI::camerasUpdate(lv_timer_t * timer) {
+    auto *menu = static_cast<menu_t *>(lv_timer_get_user_data(timer));
+    auto &control = Control::getInstance();
 
-  // Sensitivity. The circle is for finding exact level, so a small tilt must
-  // move the bubble a lot. A tilt of +/-fullScaleTilt reaches the rim, far
-  // tighter than the old +/-45 deg, and a sub-unity exponent adds extra gain
-  // close to centre so tiny deviations from level stay clearly visible.
-  constexpr float fullScaleTilt = 15.0f;
-  constexpr float responseExponent = 0.6f;
-  auto shape = [](float degrees) -> float {
-    float normalized = std::clamp(degrees / fullScaleTilt, -1.0f, 1.0f);
-    float magnitude = std::pow(std::fabs(normalized), responseExponent);
-    return std::copysign(magnitude, normalized);
-  };
-  float rollShaped = shape(roll);
-  float pitchShaped = shape(pitch);
+    // Self-pause outside STATE_ACTIVE. Camera::connect() holds the Camera
+    // mutex for the whole attempt, so isConnected() below would block the
+    // render task if a tick lands between a drop and connectTimerHandler
+    // noticing. getState() only takes the state mutex and never blocks.
+    if (control.getState() != Control::STATE_ACTIVE) {
+      lv_timer_pause(timer);
+      return;
+    }
 
-  // Auto-rotate. When the device is laid on its side the page flips to landscape
-  // and shows the linear tube instead of the circle. Hysteresis stops it flapping
-  // at the boundary: enter a side past 60 deg, return to flat below 45 deg, hold
-  // the current orientation in the band between. The sign of the roll picks the
-  // side. The rotation is scoped to this page and reset to 0 on page exit.
-  constexpr float rotateEnter = 60.0f;
-  constexpr float rotateExit = 45.0f;
-  float rollMagnitude = std::fabs(roll);
-  int32_t desiredRotation = level->rotation;
-  if (rollMagnitude >= rotateEnter) {
-    desiredRotation = (roll > 0.0f) ? 90 : 270;
-  } else if (rollMagnitude < rotateExit) {
-    desiredRotation = 0;
-  }
-  if (desiredRotation != level->rotation) {
-    applyLevelRotation(level, desiredRotation);
-  }
+    const auto cameras = control.getTargetCameras();
 
-  // content width excludes the surface border and padding
-  int32_t contentDiameter = lv_obj_get_content_width(level->surface);
-  int32_t bubbleDiameter = lv_obj_get_width(level->bubble);
-  int32_t maxOffset = std::max<int32_t>(0, ((contentDiameter - bubbleDiameter) / 2) - 4);
-  // the bubble keeps its centre alignment, the position is a delta from centre
-  int32_t bubbleX = static_cast<int32_t>(std::round(rollShaped * maxOffset));
-  int32_t bubbleY = static_cast<int32_t>(std::round(pitchShaped * maxOffset));
+    if (lv_obj_get_child_count(menu->page) != cameras.size()) {
+      rebuildCamerasPage(*menu);
+      return;
+    }
 
-  if ((level->bubbleX != bubbleX) || (level->bubbleY != bubbleY)) {
-    level->bubbleX = bubbleX;
-    level->bubbleY = bubbleY;
-    // Preserve the center anchor and use the computed values as offsets.
-    lv_obj_align(level->bubble, LV_ALIGN_CENTER, bubbleX, bubbleY);
-  }
-
-  // Side view tube tracks roll only, with the same sensitivity curve.
-  if (level->sideTube != nullptr) {
-    int32_t tubeWidth = lv_obj_get_content_width(level->sideTube);
-    int32_t sideBubbleWidth = lv_obj_get_width(level->sideBubble);
-    int32_t sideMax = std::max<int32_t>(0, ((tubeWidth - sideBubbleWidth) / 2) - 2);
-    // In side mode the useful reference is the selected wall orientation,
-    // not flat (0 degrees). This keeps a perfectly vertical device centered
-    // and makes small deviations readable on either side of the tube.
-    const float sideReference = level->rotation == 90 ? 90.0f : -90.0f;
-    const float sideShaped = shape(roll - sideReference);
-    int32_t sideX = static_cast<int32_t>(std::round(sideShaped * sideMax));
-    if (level->sideBubbleX != sideX) {
-      level->sideBubbleX = sideX;
-      lv_obj_align(level->sideBubble, LV_ALIGN_CENTER, sideX, 0);
+    const auto state = control.getState();
+    size_t n = 0;
+    for (const auto &camera : cameras) {
+      lv_obj_t *label = lv_obj_get_child(menu->page, n);
+      updateCameraRow(label, camera.get(), state);
+      n++;
     }
   }
 
-  if (!level->displayReady || std::fabs(level->displayRoll - roll) >= 0.1f) {
-    level->displayRoll = roll;
-    lv_label_set_text_fmt(level->roll, "R: %.1f\xC2\xB0", roll);
+  void UI::addCamerasMenu(const menu_t &parent) {
+    menu_t &menu = addMenu(m_CamerasStr, &icon_linked_camera, true, parent);
+
+    // The timer only runs while the page is visible. The page-change dispatch
+    // in addMainMenu resumes and pauses it, following m_DiagnosticsTimer.
+    m_CamerasTimer = lv_timer_create(camerasUpdate, 1000, &menu);
+    lv_timer_pause(m_CamerasTimer);
+
+    lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
   }
-  if (!level->displayReady || std::fabs(level->displayPitch - pitch) >= 0.1f) {
-    level->displayPitch = pitch;
-    lv_label_set_text_fmt(level->pitch, "P: %.1f\xC2\xB0", pitch);
-  }
-  level->displayReady = true;
-}
 
-UI::menu_t &UI::addConnectedMenu(void) {
-  menu_t &menuConnected = addMenu(m_ConnectedStr, NULL, false);
+  void UI::addLevelMenu(const menu_t &parent) {
+    // The bullseye icon matches the spirit level's centre target, so the Level
+    // entry reads at a glance and is no longer the only iconless Connected item.
+    menu_t &menu = addMenu(m_LevelStr, &icon_adjust, true, parent);
 
-#if defined(FURBLE_M5COREX)
-  // three by two suits the landscape screens, Cameras fills the last open cell
-  static int32_t column_dsc[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1),
-                                 LV_GRID_TEMPLATE_LAST};
-  static int32_t row_dsc[] = {LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_TEMPLATE_LAST};
-  lv_obj_set_grid_dsc_array(menuConnected.page, column_dsc, row_dsc);
-  lv_obj_center(menuConnected.page);
-  lv_obj_set_layout(menuConnected.page, LV_LAYOUT_GRID);
-#endif
+    m_Level.root = m_Root;
 
-  menu_t &menuShutter = addMenu(m_RemoteShutter, &icon_remote_gen, true, menuConnected);
-  menu_t &menuIR = m_Menu.at(m_IRStr);
-  m_IRConnectedButton = addMenuItem(menuConnected, &icon_remote_gen, m_IRStr, false, 1, 1);
-  lv_menu_set_load_page_event(menuIR.main, m_IRConnectedButton, menuIR.page);
-  addCamerasMenu(menuConnected);
-  addBulbMenu(menuConnected);
-  menu_t &menuInterval = addMenu(m_RemoteInterval, &icon_timer, true, menuConnected);
-  addLevelMenu(menuConnected);
-  menu_t &menuGPSData = addMenu(m_RemoteGPSData, &icon_location_searching, true, menuConnected);
-  menu_t &disconnect = addMenu(m_RemoteDisconnect, &icon_no_photography, true, menuConnected);
-
-  if (M5.Touch.isEnabled()) {
-    // add remote shutter control for touch screens
-    lv_obj_t *cont = lv_menu_cont_create(menuShutter.page);
-
-    static int32_t remote_col_dsc[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1),
-                                       LV_GRID_TEMPLATE_LAST};
-    static int32_t remote_row_dsc[] = {LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
-
-    lv_obj_set_grid_dsc_array(cont, remote_col_dsc, remote_row_dsc);
+    lv_obj_t *cont = lv_menu_cont_create(menu.page);
     lv_obj_set_size(cont, LV_PCT(100), LV_PCT(100));
-    lv_obj_center(cont);
+    lv_obj_set_layout(cont, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_row(cont, 4, LV_PART_MAIN);
+    lv_obj_clear_flag(cont, LV_OBJ_FLAG_SCROLLABLE);
 
-    static std::array<std::tuple<lv_obj_t *, lv_obj_t *, const char *, const lv_image_dsc_t *,
-                                 const int32_t, const int32_t>,
-                      3>
-        buttons = {
-            {
-             {nullptr, nullptr, "Shutter\n", &icon_camera, 0, 0},
-             {nullptr, nullptr, "Focus\n", &icon_center_focus_strong, 1, 0},
-             {nullptr, nullptr, "Shutter\nLock", &icon_lock_open_right, 2, 0},
-             }
-    };
+    // Base panel size, portrait. applyLevelRotation reflows the widgets from these.
+    m_Level.baseWidth = m_Width;
+    m_Level.baseHeight = m_Height;
+    m_Level.rotation = 0;
 
-    for (auto &i : buttons) {
-      auto &buttonCont = std::get<0>(i);
+    // One row of numeric readouts at the very top, split left and right: roll in
+    // the left half, pitch in the right half, both in the compact 12 px font with
+    // a degree glyph. A single row keeps the text to one line height so the circle
+    // below gets the rest of the panel. The older stacked rows pushed the circle
+    // up under the header where it was clipped.
+    lv_obj_t *values = lv_obj_create(cont);
+    lv_obj_set_width(values, LV_PCT(100));
+    lv_obj_set_height(values, LV_SIZE_CONTENT);
+    lv_obj_set_layout(values, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(values, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(values, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_all(values, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_column(values, 2, LV_PART_MAIN);
+    lv_obj_clear_flag(values, LV_OBJ_FLAG_SCROLLABLE);
 
-      buttonCont = lv_obj_create(cont);
-      lv_obj_set_layout(buttonCont, LV_LAYOUT_FLEX);
-      lv_obj_set_flex_flow(buttonCont, LV_FLEX_FLOW_COLUMN);
-      lv_obj_set_flex_align(buttonCont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
-                            LV_FLEX_ALIGN_CENTER);
-      lv_obj_clear_flag(buttonCont, LV_OBJ_FLAG_SCROLLABLE);
-      lv_obj_set_size(buttonCont, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-      lv_obj_set_grid_cell(buttonCont, LV_GRID_ALIGN_STRETCH, std::get<4>(i), 1,
-                           LV_GRID_ALIGN_STRETCH, std::get<5>(i), 1);
+    m_Level.roll = lv_label_create(values);
+    lv_obj_set_width(m_Level.roll, LV_PCT(50));
+    lv_obj_set_style_text_font(m_Level.roll, &lv_font_montserrat_12, LV_PART_MAIN);
+    lv_obj_set_style_text_align(m_Level.roll, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_label_set_long_mode(m_Level.roll, LV_LABEL_LONG_WRAP);
+    lv_label_set_text(m_Level.roll, "R: --");
+    m_Level.pitch = lv_label_create(values);
+    lv_obj_set_width(m_Level.pitch, LV_PCT(50));
+    lv_obj_set_style_text_font(m_Level.pitch, &lv_font_montserrat_12, LV_PART_MAIN);
+    lv_obj_set_style_text_align(m_Level.pitch, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_label_set_long_mode(m_Level.pitch, LV_LABEL_LONG_WRAP);
+    lv_label_set_text(m_Level.pitch, "P: --");
 
-      auto &button = std::get<1>(i);
-      button = lv_button_create(buttonCont);
-      lv_obj_set_style_bg_image_src(button, std::get<3>(i), 0);
-      lv_obj_set_size(button, 64, 64);
+    // The circle and the side tube live in a container that grows to fill the
+    // space under the readout row. Centring the visible readout in this container
+    // leaves a symmetric margin, so the bullseye is never jammed under the header.
+    lv_obj_t *middle = lv_obj_create(cont);
+    lv_obj_set_width(middle, LV_PCT(100));
+    lv_obj_set_flex_grow(middle, 1);
+    lv_obj_set_layout(middle, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(middle, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(middle, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_all(middle, 0, LV_PART_MAIN);
+    lv_obj_set_style_border_width(middle, 0, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(middle, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_clear_flag(middle, LV_OBJ_FLAG_SCROLLABLE);
 
-      lv_obj_t *label = lv_label_create(buttonCont);
-      lv_label_set_text(label, std::get<2>(i));
-      lv_obj_set_style_text_font(label, fontForIconMenu(Settings::load<Settings::TEXT_SIZE>()), 0);
-      lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
-    }
+    // The circle bubble is the primary flat readout. Its diameter is settled by
+    // applyLevelRotation, which fits it inside the middle container.
+    m_Level.surface = lv_obj_create(middle);
+    lv_obj_clear_flag(m_Level.surface, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_radius(m_Level.surface, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(m_Level.surface, LV_OPA_10, LV_PART_MAIN);
+    lv_obj_set_style_border_width(m_Level.surface, 2, LV_PART_MAIN);
+    lv_obj_set_style_border_color(m_Level.surface, lv_palette_main(LV_PALETTE_GREY), LV_PART_MAIN);
 
-    m_OK = std::get<1>(buttons[0]);
-    m_Right = std::get<1>(buttons[1]);
-    m_ShutterLockIcon = std::get<1>(buttons[2]);
+    // Fixed centre target ring, the "level" mark. It is hollow and never moves, so
+    // the moving bubble is read against it and the two are always distinct. The
+    // filled bubble nests inside the ring when the device is level.
+    m_Level.target = lv_obj_create(m_Level.surface);
+    lv_obj_set_size(m_Level.target, 22, 22);
+    lv_obj_set_style_radius(m_Level.target, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(m_Level.target, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(m_Level.target, 2, LV_PART_MAIN);
+    lv_obj_set_style_border_color(m_Level.target, lv_palette_main(LV_PALETTE_GREEN), LV_PART_MAIN);
+    lv_obj_clear_flag(m_Level.target, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_center(m_Level.target);
 
-    lv_obj_add_event_cb(m_OK, handleButtonMode, LV_EVENT_ALL, this);
-    lv_obj_add_event_cb(m_Right, handleFocus, LV_EVENT_ALL, this);
-    lv_obj_add_event_cb(m_ShutterLockIcon, handleShutterLock, LV_EVENT_ALL, this);
-  } else {
-    // add remote shutter text for buttons
-    lv_area_t a;
-    lv_obj_update_layout(menuShutter.page);
-    lv_obj_get_coords(menuShutter.page, &a);
-    lv_obj_clear_flag(menuShutter.page, LV_OBJ_FLAG_SCROLLABLE);
+    m_Level.bubble = lv_obj_create(m_Level.surface);
+    lv_obj_set_size(m_Level.bubble, 16, 16);
+    lv_obj_set_style_radius(m_Level.bubble, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(m_Level.bubble, lv_palette_main(LV_PALETTE_BLUE), LV_PART_MAIN);
+    lv_obj_set_style_border_width(m_Level.bubble, 0, LV_PART_MAIN);
+    lv_obj_center(m_Level.bubble);
 
-    m_ShutterLockIcon = lv_button_create(menuShutter.page);
-    lv_obj_set_style_bg_image_src(m_ShutterLockIcon, &icon_lock_open_right_24, 0);
-    lv_obj_set_style_radius(m_ShutterLockIcon, 0, LV_PART_MAIN);
-    lv_obj_add_flag(m_ShutterLockIcon, LV_OBJ_FLAG_FLOATING);
-    lv_obj_set_size(m_ShutterLockIcon, ICON_HEADER_SIZE, ICON_HEADER_SIZE);
+    // Side view bubble tube: a classic linear spirit level held against a wall.
+    // The bubble slides left and right with roll only. It is only shown when the
+    // page is flipped onto its side, so it stays hidden in the flat portrait view.
+    m_Level.sideTube = lv_obj_create(middle);
+    lv_obj_set_size(m_Level.sideTube, 48, 20);
+    lv_obj_clear_flag(m_Level.sideTube, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_radius(m_Level.sideTube, 10, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(m_Level.sideTube, LV_OPA_10, LV_PART_MAIN);
+    lv_obj_set_style_border_width(m_Level.sideTube, 2, LV_PART_MAIN);
+    lv_obj_set_style_border_color(m_Level.sideTube, lv_palette_main(LV_PALETTE_GREY), LV_PART_MAIN);
+    lv_obj_set_style_pad_all(m_Level.sideTube, 0, LV_PART_MAIN);
 
-    // @todo Clean up the plethora of hardcoded values here
-#if defined(FURBLE_M5STICKC)
-    const size_t n = 3;
-    int32_t x1 = lv_obj_get_x(m_OK) - 2;
-    int32_t y1 = lv_obj_get_y(m_Right) - a.y1 - 10;
-    static lv_point_precise_t points[] = {
-        {x1 + 40, y1 + 12},
-        {x1 + 6,  y1 + 12},
-        {x1 + 6,  y1 + 64}
-    };
-#elif defined(FURBLE_M5STACK_CORE)
-    const size_t n = 4;
-    const int32_t x1 = 188;
-    const int32_t y1 = 80;
-    static lv_point_precise_t points[] = {
-        {164, 153},
-        {164, 92 },
-        {82,  92 },
-        {82,  153}
-    };
-#else
-    const size_t n = 3;
-    int32_t x1 = lv_obj_get_x(m_OK) - 2;
-    int32_t y1 = lv_obj_get_y(m_Right) - a.y1 - 7;
-    static lv_point_precise_t points[] = {
-        {x1 + 50, y1 + 12 },
-        {x1 - 1,  y1 + 12 },
-        {x1 - 1,  y1 + 103}
-    };
-#endif
+    m_Level.sideBubble = lv_obj_create(m_Level.sideTube);
+    lv_obj_set_size(m_Level.sideBubble, 14, 14);
+    lv_obj_set_style_radius(m_Level.sideBubble, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(m_Level.sideBubble, lv_palette_main(LV_PALETTE_BLUE), LV_PART_MAIN);
+    lv_obj_set_style_border_width(m_Level.sideBubble, 0, LV_PART_MAIN);
+    lv_obj_center(m_Level.sideBubble);
 
-    lv_obj_set_pos(m_ShutterLockIcon, x1, y1);
+    // Gesture hint for the auto-rotate behaviour, pinned at the bottom. It is not
+    // focusable, so the encoder never lands on it. It is only shown in the flat
+    // portrait view.
+    m_Level.hint = lv_label_create(cont);
+    lv_obj_set_width(m_Level.hint, LV_PCT(100));
+    lv_obj_set_style_text_font(m_Level.hint, &lv_font_montserrat_12, LV_PART_MAIN);
+    lv_obj_set_style_text_align(m_Level.hint, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_label_set_long_mode(m_Level.hint, LV_LABEL_LONG_WRAP);
+    lv_label_set_text(m_Level.hint, "Tilt on side to rotate");
 
-    static lv_style_t style;
-    lv_style_init(&style);
-    lv_style_set_line_width(&style, 2);
-    lv_style_set_line_color(&style, lv_palette_main(LV_PALETTE_GREY));
-    lv_style_set_line_opa(&style, LV_OPA_50);
+    // Settle the portrait layout: size the circle, hide the side tube, show hint.
+    applyLevelRotation(&m_Level, 0);
 
-    lv_obj_t *line = lv_line_create(menuShutter.page);
-    lv_line_set_points(line, points, n);
-    lv_obj_add_style(line, &style, 0);
+    // the main menu page dispatch resumes and pauses this timer
+    m_LevelTimer = lv_timer_create(levelUpdate, 50, &m_Level);
+    lv_timer_pause(m_LevelTimer);
 
-    lv_obj_move_foreground(m_ShutterLockIcon);
-  }
-
-  // Non-blocking reconnect banner overlaid on the Remote shutter page. The
-  // header status row also carries the plain reconnecting icon, but the
-  // full-screen shutter view is where shots are taken, so a mid-session drop is
-  // surfaced here too with a clearer red Bluetooth icon plus "Reconnecting"
-  // (or "Reconnecting (i/n)") text. Floating so it never joins the page layout
-  // or its scroll extent, and hidden until updateRemoteReconnect shows it.
-  m_RemoteReconnect = lv_obj_create(menuShutter.page);
-  lv_obj_remove_style_all(m_RemoteReconnect);
-  lv_obj_set_size(m_RemoteReconnect, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-  lv_obj_set_layout(m_RemoteReconnect, LV_LAYOUT_FLEX);
-  // Stack the icon over the text: the badge width is then the wider of the two
-  // (the text), which keeps "Reconnecting (i/n)" inside the narrow 135 px panel
-  // instead of clipping off the right edge as a single icon+text row would.
-  lv_obj_set_flex_flow(m_RemoteReconnect, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(m_RemoteReconnect, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
-                        LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_all(m_RemoteReconnect, 2, 0);
-  lv_obj_set_style_pad_row(m_RemoteReconnect, 0, 0);
-  lv_obj_set_style_radius(m_RemoteReconnect, 4, 0);
-  lv_obj_set_style_bg_opa(m_RemoteReconnect, LV_OPA_70, 0);
-  lv_obj_set_style_bg_color(m_RemoteReconnect, lv_color_black(), 0);
-  lv_obj_clear_flag(m_RemoteReconnect, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_add_flag(m_RemoteReconnect, LV_OBJ_FLAG_FLOATING);
-  lv_obj_align(m_RemoteReconnect, LV_ALIGN_TOP_LEFT, 1, 1);
-  lv_obj_add_flag(m_RemoteReconnect, LV_OBJ_FLAG_HIDDEN);
-
-  lv_obj_t *reconnectIcon = lv_image_create(m_RemoteReconnect);
-  lv_image_set_src(reconnectIcon, &icon_bluetooth);
-  // Recolor the shared Bluetooth glyph red rather than shipping a new
-  // compressed asset, so there is no extra decompress cost.
-  lv_obj_set_style_image_recolor(reconnectIcon, lv_palette_main(LV_PALETTE_RED), 0);
-  lv_obj_set_style_image_recolor_opa(reconnectIcon, LV_OPA_COVER, 0);
-
-  m_RemoteReconnectLabel = lv_label_create(m_RemoteReconnect);
-  lv_obj_set_style_text_color(m_RemoteReconnectLabel, lv_palette_main(LV_PALETTE_RED), 0);
-  // The board's Small font keeps "Reconnecting (i/n)" within even the 135 px
-  // panel width.
-  lv_obj_set_style_text_font(m_RemoteReconnectLabel, fontForTextSize(Settings::TEXT_SIZE_SMALL), 0);
-  // Wrap within a width capped to the panel so a long dropped-camera name (the
-  // banner appends it when one of several cameras is down) wraps onto more lines
-  // instead of overflowing the right edge. The chip still hugs the short
-  // "Reconnecting" text until a name widens it, and it stays floating top-left
-  // clear of the shutter, focus and lock controls.
-  lv_label_set_long_mode(m_RemoteReconnectLabel, LV_LABEL_LONG_WRAP);
-  lv_obj_set_style_max_width(m_RemoteReconnectLabel, M5.Display.width() - 8, 0);
-  lv_obj_set_style_text_align(m_RemoteReconnectLabel, LV_TEXT_ALIGN_CENTER, 0);
-  lv_label_set_text(m_RemoteReconnectLabel, "Reconnecting");
-
-  // The 80 px StickC panel is too narrow to fit the text even at the Small font,
-  // so drop the label there and keep just the red Bluetooth icon (the connected
-  // page title still carries the wording).
-  if (M5.Display.width() < 110) {
-    lv_obj_add_flag(m_RemoteReconnectLabel, LV_OBJ_FLAG_HIDDEN);
-  }
-
-  // The shutter lock is the only focusable control on the Remote page, so its
-  // focus is never ambiguous. Suppress the shared focus outline on it: the ring
-  // drew a box around the lock icon that read as noise, the same over-outlining
-  // the menu rows carried. A local style overrides the theme's added style for
-  // these states.
-  lv_obj_set_style_outline_width(m_ShutterLockIcon, 0, LV_STATE_FOCUSED);
-  lv_obj_set_style_outline_width(m_ShutterLockIcon, 0, LV_STATE_FOCUS_KEY);
-
-  lv_obj_add_event_cb(
-      menuShutter.button,
-      [](lv_event_t *e) {
-        auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
-        ui->configureControl(ControlMode::SHUTTER);
-      },
-      LV_EVENT_CLICKED, this);
-
-  // add intervalometer control
-  menu_t &menuIntervalometer = m_Menu.at(m_IntervalometerStr);
-  lv_menu_set_load_page_event(menuIntervalometer.main, menuInterval.button,
-                              menuIntervalometer.page);
-
-  lv_obj_add_event_cb(
-      menuInterval.button,
-      [](lv_event_t *e) {
-        auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
-        ui->showShutterIntervalometer(true);
-      },
-      LV_EVENT_CLICKED, this);
-
-  // add GPS data control, the page is shared with the settings menu
-  menu_t &menuGPSDataPage = m_Menu.at(m_GPSDataStr);
-  lv_menu_set_load_page_event(menuGPSDataPage.main, menuGPSData.button, menuGPSDataPage.page);
-  lv_obj_add_event_cb(menuGPSData.button, gpsDataStart, LV_EVENT_CLICKED, m_GPSDataTimer);
-
-  // add spirit level control
-  menu_t &menuLevel = m_Menu.at(m_LevelStr);
-  lv_menu_set_load_page_event(menuLevel.main, menuLevel.button, menuLevel.page);
-
-  // add disconnect control
-  lv_obj_add_event_cb(
-      disconnect.button,
-      [](lv_event_t *e) {
-        auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
-        doDisconnect();
-        ui->showShutterIntervalometer(false);
-      },
-      LV_EVENT_CLICKED, this);
-
-  lv_menu_set_load_page_event(menuShutter.main, menuShutter.button, menuShutter.page);
-
-  updateIRMenuVisibility();
-
-  return menuConnected;
-}
-
-void UI::addConnectMenu(void) {
-  menu_t &menu = addMenu(m_ConnectStr, &icon_linked_camera);
-
-  // refresh connection list every time
-  lv_obj_add_event_cb(
-      menu.button,
-      [](lv_event_t *e) {
-        auto &menu = m_Menu.at(m_ConnectStr);
-        bool multiconnect = Settings::load<Settings::MULTICONNECT>();
-
-        lv_obj_clean(menu.page);
-
-        CameraList::load();
-        lv_obj_t *multibutton = nullptr;
-        Settings::multiselect_t selection = {};
-
-        if (multiconnect) {
-          multibutton = lv_button_create(menu.page);
-          lv_obj_t *label = lv_label_create(multibutton);
-          lv_label_set_text(label, "Connect 0");
-          lv_obj_center(label);
-          lv_obj_set_width(multibutton, LV_PCT(100));
-          lv_obj_add_flag(multibutton, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
-          lv_group_add_obj(menu.group, multibutton);
-          selection = Settings::load<Settings::MULTISELECT>();
-        }
-
-        for (size_t n = 0; n < CameraList::size(); n++) {
-          auto camera = CameraList::get(n);
-          if (multiconnect) {
-            const bool selected =
-                Settings::multiselectContains(selection, camera->getName().c_str());
-
-            camera->setActive(selected);
-            lv_obj_t *item = addCameraItem(n, menu, MODE_MULTICONNECT);
-            if (selected && item != nullptr) {
-              lv_obj_add_state(item, LV_STATE_CHECKED);
-            }
-
-          } else {
-            addCameraItem(n, menu, MODE_CONNECT);
-          }
-        }
-
-        if (multiconnect) {
-          updateMultiConnectButton(multibutton);
-          // only the multi-select flow persists the remembered set: single
-          // connect, boot autoconnect and console connect must not clobber it
-          lv_obj_add_event_cb(
-              multibutton,
-              [](lv_event_t *e) {
-                saveMultiConnectSelection();
-                doConnect(e);
-              },
-              LV_EVENT_CLICKED, nullptr);
-        }
-
-        m_ConnectContext.menuName = NULL;
-      },
-      LV_EVENT_CLICKED, NULL);
-
-  // create, but immediately hide the connect message box
-  m_ConnectContext.messageBox = lv_msgbox_create(m_Screen);
-  lv_msgbox_add_title(m_ConnectContext.messageBox, "Connecting");
-  lv_obj_set_width(m_ConnectContext.messageBox, LV_PCT(100));
-  lv_obj_update_layout(m_ConnectContext.messageBox);
-  lv_obj_t *c = lv_msgbox_get_content(m_ConnectContext.messageBox);
-  lv_obj_set_flex_align(c, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_clear_flag(c, LV_OBJ_FLAG_SCROLLABLE);
-  m_ConnectContext.label = lv_label_create(c);
-  lv_label_set_long_mode(m_ConnectContext.label, LV_LABEL_LONG_DOT);
-  lv_obj_set_width(m_ConnectContext.label, LV_PCT(80));
-
-  m_ConnectContext.bar = lv_bar_create(c);
-  lv_obj_set_width(m_ConnectContext.bar, LV_PCT(80));
-  lv_bar_set_value(m_ConnectContext.bar, 0, LV_ANIM_ON);
-
-  m_ConnectContext.cancel = lv_msgbox_add_footer_button(m_ConnectContext.messageBox, "Cancel");
-  // Register the Cancel handler once here, not per connect attempt. Adding it in
-  // doConnect stacked one callback per attempt, so after N attempts a single
-  // Cancel click fired N disconnects.
-  lv_obj_add_event_cb(
-      m_ConnectContext.cancel,
-      [](lv_event_t *e) {
-        auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
-        if (ui != nullptr) {
-          // An explicit cancel ends the resumed run. Without this the next
-          // connect could start the old interval on a different camera.
-          ui->m_Intervalometer.clearResume();
-        }
-        doDisconnect();
-      },
-      LV_EVENT_CLICKED, this);
-  lv_obj_t *footer = lv_msgbox_get_footer(m_ConnectContext.messageBox);
-  lv_obj_update_layout(footer);
-  // @todo cancel button bottom is clipped, weird
-  // lv_obj_set_height(m_ConnectContext.cancel, LV_SIZE_CONTENT);
-  // lv_obj_set_height(footer, lv_obj_get_height(m_ConnectContext.cancel) * 1.2f);
-
-  lv_obj_add_flag(m_ConnectContext.messageBox, LV_OBJ_FLAG_HIDDEN);
-
-  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
-}
-
-void UI::addScanMenu(void) {
-  menu_t &menu = addMenu(m_ScanStr, &icon_add_a_photo);
-
-  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
-}
-
-void UI::startScan(void) {
-  menu_t &menu = m_Menu.at(m_ScanStr);
-  auto &scan = Scan::getInstance();
-
-  lv_obj_clean(menu.page);
-  CameraList::clear();
-
-  // hidden until the scan ends by itself, a finite scan that ends silently
-  // looks like a hang
-  m_ScanFinished = lv_menu_cont_create(menu.page);
-  lv_obj_set_flex_flow(m_ScanFinished, LV_FLEX_FLOW_COLUMN);
-  lv_obj_add_flag(m_ScanFinished, LV_OBJ_FLAG_HIDDEN);
-
-  lv_obj_t *label = lv_label_create(m_ScanFinished);
-  lv_label_set_text(label, "Scan finished");
-  lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
-  lv_obj_set_width(label, LV_PCT(100));
-
-  lv_obj_t *rescan = lv_button_create(m_ScanFinished);
-  lv_obj_t *rescanLabel = lv_label_create(rescan);
-  lv_label_set_text(rescanLabel, "Rescan");
-  addToInputGroup(menu.group, rescan);
-
-  lv_obj_add_event_cb(
-      rescan,
-      [](lv_event_t *) {
-        // deferred, the restart deletes the button we are called from
-        lv_async_call([](void *) { startScan(); }, NULL);
-      },
-      LV_EVENT_CLICKED, NULL);
-
-  if (Settings::load<Settings::FAUXNY>()) {
-    CameraList::addFauxNY();
-    updateItems(menu);
-  }
-
-  scan.setMode(static_cast<Scan::Mode>(Settings::scanModeEffective()));
-  scan.setTimeout(Settings::load<Settings::SCAN_TIMEOUT>());
-
-  scan.clear();
-#if defined(FURBLE_SIM)
-  // Keep the same unlock/relock hand-off as firmware. The simulator's scan
-  // start probe acquires this mutex, proving the start path cannot deadlock.
-  // Strictly seed gated: it is the one simulator hook that is not purely
-  // observational, because it runs a callback-shaped thread and waits up to
-  // 100 ms of wall clock inside Scan::start().
-  if (Sim::scenarioSettingIsTrue("scan_start_probe")) {
-    scan.setStartProbe([]() {
-      m_Mutex.lock();
-      m_Mutex.unlock();
-    });
-  }
-#endif
-
-  // Keep the UI mutex out of the scan-start call. NimBLE normally returns
-  // immediately, but controller startup can block on some IDF/library
-  // combinations. Scan callbacks only enqueue immutable events; the UI task
-  // drains and applies them below.
-  m_Mutex.unlock();
-  scan.start(
-      [](void *param) {
-        auto *menu = static_cast<menu_t *>(param);
-        updateItems(*menu);
-      },
-      &menu, [](void *) { lv_obj_remove_flag(m_ScanFinished, LV_OBJ_FLAG_HIDDEN); });
-  m_Mutex.lock();
-
-  m_ConnectContext.menuName = m_ScanStr;
-}
-
-void UI::refreshDelete(void) {
-  auto &menu = m_Menu.at(m_DeleteStr);
-  lv_obj_clean(menu.page);
-
-  CameraList::load();
-  for (size_t n = 0; n < CameraList::size(); n++) {
-    addCameraItem(n, menu, MODE_DELETE);
-  }
-}
-
-void UI::addDeleteMenu(void) {
-  menu_t &menu = addMenu(m_DeleteStr, &icon_delete);
-
-  // refresh connection list every time
-  lv_obj_add_event_cb(menu.button, [](lv_event_t *e) { refreshDelete(); }, LV_EVENT_CLICKED, NULL);
-
-  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
-}
-
-void UI::showGPSWidgets(status_t *status, bool show) {
-  for (auto *widget : status->gpsWidgets) {
-    if (show) {
-      lv_obj_clear_flag(widget, LV_OBJ_FLAG_HIDDEN);
-    } else {
-      lv_obj_add_flag(widget, LV_OBJ_FLAG_HIDDEN);
-    }
-  }
-}
-
-void UI::showIMUWidgets(bool show) {
-  for (const auto *name : {m_LevelStr, m_IMUDataStr}) {
-    auto &menu = m_Menu.at(name);
-    if (show) {
-      lv_obj_clear_flag(menu.button, LV_OBJ_FLAG_HIDDEN);
-    } else {
+    if (!imuEnabledForUI()) {
       lv_obj_add_flag(menu.button, LV_OBJ_FLAG_HIDDEN);
     }
   }
-  if (m_LevelMainButton != nullptr) {
-    if (show) {
-      lv_obj_clear_flag(m_LevelMainButton, LV_OBJ_FLAG_HIDDEN);
+
+  void UI::levelUpdate(lv_timer_t * timer) {
+    auto *level = static_cast<level_t *>(lv_timer_get_user_data(timer));
+
+    // Keep the display awake while the level page is open. The inactivity dim is
+    // gated on LVGL activity, so resetting it every tick holds the screen on. The
+    // level timer only runs while the page is shown, so leaving the page stops the
+    // resets and normal dim resumes with no extra bookkeeping.
+    lv_display_trigger_activity(NULL);
+
+    float accel[3];
+    std::lock_guard<imu_mutex_t> imuLock(g_IMUMutex);
+#if defined(FURBLE_SIM)
+    // The simulator has no sensor, so read the injected IMU state through the same
+    // enabled, update and getAccel surface the firmware uses. A scenario drives
+    // the orientation and the real filter, sensitivity and rotation logic below
+    // runs unchanged.
+    if (!Furble::Sim::imuEnabled()) {
+      return;
+    }
+    Furble::Sim::imuUpdate();
+    if (!Furble::Sim::imuGetAccel(&accel[0], &accel[1], &accel[2])) {
+      return;
+    }
+#else
+    if (!imuSensorEnabledForUI()) {
+      return;
+    }
+
+    M5.Imu.update();
+    if (!M5.Imu.getAccel(&accel[0], &accel[1], &accel[2])) {
+      return;
+    }
+#endif
+
+    applyLevelSample(level, accel);
+  }
+
+  int32_t UI::levelDiameter(int32_t width, int32_t height) {
+    // Reserve vertical room for the two stacked value labels and the gesture hint
+    // so the circle never pushes them off a narrow panel. The circle stays square.
+    constexpr int32_t verticalReserve = 96;
+    int32_t diameter = std::min(width - 16, height - verticalReserve);
+    return std::max<int32_t>(40, diameter);
+  }
+
+  void UI::applyLevelRotation(level_t * level, int32_t rotation) {
+    lv_display_t *display = lv_display_get_default();
+    // Capture this before the widget reflow below overwrites level->rotation. The
+    // panel rotation and the forced full repaint only run when the orientation
+    // actually changes.
+    const bool orientationChanged = (rotation != level->rotation);
+    // On the real StickS3 the LVGL software rotation path corrupts the screen: it
+    // rotates pixels in the draw buffer but does not coordinate with the panel DMA
+    // flush, so a rotated frame tears against the old stride and only recovers when
+    // the device is held flat again. Rotate the panel controller instead and swap
+    // the LVGL logical resolution, which keeps the DMA engine writing a
+    // consistently oriented framebuffer. Drain any in-flight flush first.
+    //
+    // The full invalidate and synchronous repaint do NOT happen here. They run at
+    // the end of this function, after the widgets and the button overlay have been
+    // reflowed to the new geometry. Repainting here (the earlier bug) forced the
+    // one guaranteed full-screen pass while the level container and the screen
+    // children were still laid out at the portrait width, so only the left ~135 px
+    // of the 240 px landscape panel was ever written and the far side kept its
+    // pre-rotation pixels. The periodic bubble updates that follow only invalidate
+    // small regions, so the right half never recovered.
+    //
+    // The SDL M5GFX framebuffer implements the same panel-rotation API. Keep the
+    // simulator on this path too: LVGL software rotation previously let its
+    // logical width grow to 240 while the simulated panel remained 135 pixels
+    // wide. Captures silently cropped the far half, including the moving bubble.
+    // Matching the firmware path makes panel geometry and complete rotated-frame
+    // capture testable on the host. Physical DMA still needs an on-device check.
+    if (display != nullptr && orientationChanged) {
+      // Captured once at build time while the panel is in its portrait default.
+      static const uint8_t baseRotation = M5.Display.getRotation();
+      M5.Display.waitDMA();
+      if (rotation == 0) {
+        M5.Display.setRotation(baseRotation);
+        lv_display_set_resolution(display, level->baseWidth, level->baseHeight);
+      } else {
+        const uint8_t step = (rotation == 90) ? 1 : 3;
+        M5.Display.setRotation((baseRotation + step) & 0x03);
+        lv_display_set_resolution(display, level->baseHeight, level->baseWidth);
+      }
+    }
+
+    // Landscape swaps the panel width and height. The value labels stay on both
+    // orientations, the circle is the flat readout, the tube is the side readout.
+    const bool landscape = (rotation != 0);
+    const int32_t effWidth = landscape ? level->baseHeight : level->baseWidth;
+    const int32_t effHeight = landscape ? level->baseWidth : level->baseHeight;
+
+    // lv_win_create snapshots its parent's pixel dimensions instead of using
+    // percentages. Resize the root window whenever the level changes the display
+    // resolution. Without this, the panel becomes 240x135 but every page remains
+    // 135 pixels wide, clipping the landscape tube and its moving bubble.
+    if (level->root != nullptr) {
+      lv_obj_set_size(level->root, effWidth, effHeight);
+    }
+
+    if (landscape) {
+      lv_obj_add_flag(level->surface, LV_OBJ_FLAG_HIDDEN);
+      if (level->hint != nullptr) {
+        lv_obj_add_flag(level->hint, LV_OBJ_FLAG_HIDDEN);
+      }
+      lv_obj_remove_flag(level->sideTube, LV_OBJ_FLAG_HIDDEN);
+      int32_t tubeWidth = std::clamp<int32_t>(effWidth - 24, 48, effWidth);
+      lv_obj_set_size(level->sideTube, tubeWidth, 20);
     } else {
-      lv_obj_add_flag(m_LevelMainButton, LV_OBJ_FLAG_HIDDEN);
+      lv_obj_remove_flag(level->surface, LV_OBJ_FLAG_HIDDEN);
+      if (level->hint != nullptr) {
+        lv_obj_remove_flag(level->hint, LV_OBJ_FLAG_HIDDEN);
+      }
+      lv_obj_add_flag(level->sideTube, LV_OBJ_FLAG_HIDDEN);
+      int32_t diameter = levelDiameter(effWidth, effHeight);
+      lv_obj_set_size(level->surface, diameter, diameter);
+    }
+
+    level->rotation = rotation;
+
+    // Settle the whole screen to the new geometry before any repaint. The panel
+    // rotation swapped the LVGL resolution, which resized the active screen, but
+    // the descendant layout is only recomputed on demand. Force it now so every
+    // widget, the menu header and the level container describe the rotated width
+    // when the forced repaint below runs.
+    lv_obj_t *screen = lv_screen_active();
+    if (screen != nullptr) {
+      lv_obj_update_layout(screen);
+    }
+
+    // Re-anchor the floating physical-button indicators to the rotated screen
+    // edges. They align against the screen, whose size just changed, so without a
+    // fresh align they stay pinned to the old portrait corners and sit in the
+    // wrong place in landscape. Re-applying the alignment reads the live rotated
+    // resolution and lands them on the correct edges.
+    if (level->navLeft != nullptr) {
+      lv_obj_align(level->navLeft, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+      lv_obj_align(level->navOK, LV_ALIGN_BOTTOM_MID, 0, 0);
+      lv_obj_align(level->navRight, LV_ALIGN_RIGHT_MID, 0, level->navRightYOffset);
+    }
+
+    // Settle the level page container so the next sample reads real bubble
+    // geometry. The circle sits inside the growing middle container, so reflow
+    // from the outer menu container (the middle's parent) to size every widget.
+    lv_obj_t *middle = lv_obj_get_parent(level->surface);
+    lv_obj_t *cont = (middle != nullptr) ? lv_obj_get_parent(middle) : nullptr;
+    if (cont != nullptr) {
+      lv_obj_update_layout(cont);
+    }
+
+    // The panel, the LVGL resolution, every widget and the button overlay now all
+    // describe the new orientation. Force one synchronous full repaint so the
+    // entire rotated width is written in a single pass, then drain the DMA so the
+    // resynchronised framebuffer is fully out before the page continues.
+    if (display != nullptr && orientationChanged) {
+      lv_obj_invalidate(screen);
+      lv_refr_now(display);
+      M5.Display.waitDMA();
     }
   }
-}
 
-void UI::showIMUGestureWidgets(bool show) {
-  for (auto *widget : m_IMUGestureWidgets) {
-    if (show) {
-      lv_obj_remove_state(widget, LV_STATE_DISABLED);
+  void UI::applyLevelSample(level_t * level, const float accel[3]) {
+    constexpr float alpha = 0.2f;
+    if (!level->filterReady) {
+      std::copy(accel, accel + 3, std::begin(level->accel));
+      level->filterReady = true;
     } else {
-      lv_obj_add_state(widget, LV_STATE_DISABLED);
+      for (size_t index = 0; index < 3; index++) {
+        level->accel[index] = (alpha * accel[index]) + ((1.0f - alpha) * level->accel[index]);
+      }
     }
-  }
-}
 
-void UI::addGPSMenu(const menu_t &parent) {
-  menu_t &menu = addMenu(m_GPSStr, &icon_location_searching, true, parent);
+    constexpr float radiansToDegrees = 57.2957795f;
+    float roll = std::atan2(level->accel[1], level->accel[2]) * radiansToDegrees;
+    float pitch = std::atan2(-level->accel[0], std::sqrt((level->accel[1] * level->accel[1])
+                                                         + (level->accel[2] * level->accel[2])))
+                  * radiansToDegrees;
 
-  addSettingItem(menu.page, NULL, Settings::GPS);
-  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+    // Sensitivity. The circle is for finding exact level, so a small tilt must
+    // move the bubble a lot. A tilt of +/-fullScaleTilt reaches the rim, far
+    // tighter than the old +/-45 deg, and a sub-unity exponent adds extra gain
+    // close to centre so tiny deviations from level stay clearly visible.
+    constexpr float fullScaleTilt = 15.0f;
+    constexpr float responseExponent = 0.6f;
+    auto shape = [](float degrees) -> float {
+      float normalized = std::clamp(degrees / fullScaleTilt, -1.0f, 1.0f);
+      float magnitude = std::pow(std::fabs(normalized), responseExponent);
+      return std::copysign(magnitude, normalized);
+    };
+    float rollShaped = shape(roll);
+    float pitchShaped = shape(pitch);
 
-  // add GPS baud control as a roller: Auto detects the receiver, or pin a rate
-  const uint32_t storedBaud = Settings::load<Settings::GPS_BAUD>();
-  uint32_t baudIndex = 0;
-  if (storedBaud == Settings::BAUD_9600) {
-    baudIndex = 1;
-  } else if (storedBaud == Settings::BAUD_115200) {
-    baudIndex = 2;
-  }
-  addGPSOptionMenu(menu, m_GPSBaudStr, m_GPSBaudOptions, baudIndex, [](lv_event_t *e) {
-    auto *status = static_cast<status_t *>(lv_event_get_user_data(e));
-    auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
-    uint32_t baud = Settings::BAUD_AUTO;
-    switch (lv_roller_get_selected(roller)) {
-      case 1:
-        baud = Settings::BAUD_9600;
-        break;
-      case 2:
-        baud = Settings::BAUD_115200;
-        break;
-      default:
-        baud = Settings::BAUD_AUTO;
-        break;
+    // Auto-rotate. When the device is laid on its side the page flips to landscape
+    // and shows the linear tube instead of the circle. Hysteresis stops it flapping
+    // at the boundary: enter a side past 60 deg, return to flat below 45 deg, hold
+    // the current orientation in the band between. The sign of the roll picks the
+    // side. The rotation is scoped to this page and reset to 0 on page exit.
+    constexpr float rotateEnter = 60.0f;
+    constexpr float rotateExit = 45.0f;
+    float rollMagnitude = std::fabs(roll);
+    int32_t desiredRotation = level->rotation;
+    if (rollMagnitude >= rotateEnter) {
+      desiredRotation = (roll > 0.0f) ? 90 : 270;
+    } else if (rollMagnitude < rotateExit) {
+      desiredRotation = 0;
     }
-    Settings::save<Settings::GPS_BAUD>(baud);
-    status->gps->reloadSetting();
-  });
+    if (desiredRotation != level->rotation) {
+      applyLevelRotation(level, desiredRotation);
+    }
 
-  // add the receiver configuration pages
-  addGPSOptionMenu(
-      menu, m_GPSRateStr, m_GPSRateOptions, Settings::load<Settings::GPS_RATE>(),
-      [](lv_event_t *e) {
-        auto *status = static_cast<status_t *>(lv_event_get_user_data(e));
-        auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+    // content width excludes the surface border and padding
+    int32_t contentDiameter = lv_obj_get_content_width(level->surface);
+    int32_t bubbleDiameter = lv_obj_get_width(level->bubble);
+    int32_t maxOffset = std::max<int32_t>(0, ((contentDiameter - bubbleDiameter) / 2) - 4);
+    // the bubble keeps its centre alignment, the position is a delta from centre
+    int32_t bubbleX = static_cast<int32_t>(std::round(rollShaped * maxOffset));
+    int32_t bubbleY = static_cast<int32_t>(std::round(pitchShaped * maxOffset));
 
-        Settings::save<Settings::GPS_RATE>(static_cast<uint8_t>(lv_roller_get_selected(roller)));
-        status->gps->reloadSetting();
-      });
+    if ((level->bubbleX != bubbleX) || (level->bubbleY != bubbleY)) {
+      level->bubbleX = bubbleX;
+      level->bubbleY = bubbleY;
+      // Preserve the center anchor and use the computed values as offsets.
+      lv_obj_align(level->bubble, LV_ALIGN_CENTER, bubbleX, bubbleY);
+    }
 
-  addGPSOptionMenu(menu, m_GPSSentencesStr, m_GPSSentencesOptions,
-                   Settings::load<Settings::GPS_NMEA>() ? 1 : 0, [](lv_event_t *e) {
-                     auto *status = static_cast<status_t *>(lv_event_get_user_data(e));
-                     auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+    // Side view tube tracks roll only, with the same sensitivity curve.
+    if (level->sideTube != nullptr) {
+      int32_t tubeWidth = lv_obj_get_content_width(level->sideTube);
+      int32_t sideBubbleWidth = lv_obj_get_width(level->sideBubble);
+      int32_t sideMax = std::max<int32_t>(0, ((tubeWidth - sideBubbleWidth) / 2) - 2);
+      // In side mode the useful reference is the selected wall orientation,
+      // not flat (0 degrees). This keeps a perfectly vertical device centered
+      // and makes small deviations readable on either side of the tube.
+      const float sideReference = level->rotation == 90 ? 90.0f : -90.0f;
+      const float sideShaped = shape(roll - sideReference);
+      int32_t sideX = static_cast<int32_t>(std::round(sideShaped * sideMax));
+      if (level->sideBubbleX != sideX) {
+        level->sideBubbleX = sideX;
+        lv_obj_align(level->sideBubble, LV_ALIGN_CENTER, sideX, 0);
+      }
+    }
 
-                     Settings::save<Settings::GPS_NMEA>(lv_roller_get_selected(roller) > 0);
-                     status->gps->reloadSetting();
-                   });
-
-  addGPSOptionMenu(
-      menu, m_GPSConstellationStr, m_GPSConstellationOptions,
-      Settings::load<Settings::GPS_CONSTEL>(), [](lv_event_t *e) {
-        auto *status = static_cast<status_t *>(lv_event_get_user_data(e));
-        auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
-
-        Settings::save<Settings::GPS_CONSTEL>(static_cast<uint8_t>(lv_roller_get_selected(roller)));
-        status->gps->reloadSetting();
-      });
-
-  addGPSPowerMenu(menu);
-  addGPSOptionMenu(
-      menu, m_GPSAssistStr, m_GPSAssistOptions, Settings::load<Settings::GPS_ASSIST>(),
-      [](lv_event_t *e) {
-        auto *status = static_cast<status_t *>(lv_event_get_user_data(e));
-        auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
-
-        Settings::save<Settings::GPS_ASSIST>(static_cast<uint8_t>(lv_roller_get_selected(roller)));
-        status->gps->reloadSetting();
-      });
-  addSettingItem(menu.page, NULL, Settings::GPS_MOTION);
-
-  const uint8_t savedHold = Settings::load<Settings::GPS_HOLD>();
-  addGPSOptionMenu(menu, m_GPSHoldStr, m_GPSHoldOptions, savedHold <= GPS::HOLD_MAX ? savedHold : 0,
-                   [](lv_event_t *e) {
-                     auto *status = static_cast<status_t *>(lv_event_get_user_data(e));
-                     auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
-                     const uint8_t hold = static_cast<uint8_t>(lv_roller_get_selected(roller));
-
-                     Settings::save<Settings::GPS_HOLD>(hold);
-                     status->gps->reloadSetting();
-                     if (status->gpsExtrapolate != nullptr) {
-                       if (hold == 0) {
-                         lv_obj_add_state(status->gpsExtrapolate, LV_STATE_DISABLED);
-                       } else {
-                         lv_obj_remove_state(status->gpsExtrapolate, LV_STATE_DISABLED);
-                       }
-                     }
-                   });
-
-  m_Status.gpsExtrapolate = addSettingItem(menu.page, NULL, Settings::GPS_EXTRAP);
-  if ((savedHold == 0) || (savedHold > GPS::HOLD_MAX)) {
-    lv_obj_add_state(m_Status.gpsExtrapolate, LV_STATE_DISABLED);
+    if (!level->displayReady || std::fabs(level->displayRoll - roll) >= 0.1f) {
+      level->displayRoll = roll;
+      lv_label_set_text_fmt(level->roll, "R: %.1f\xC2\xB0", roll);
+    }
+    if (!level->displayReady || std::fabs(level->displayPitch - pitch) >= 0.1f) {
+      level->displayPitch = pitch;
+      lv_label_set_text_fmt(level->pitch, "P: %.1f\xC2\xB0", pitch);
+    }
+    level->displayReady = true;
   }
 
-  addGPSOptionMenu(menu, m_GPSPlatformStr, m_GPSPlatformOptions,
-                   Settings::load<Settings::GPS_PLATFORM>(), [](lv_event_t *e) {
-                     auto *status = static_cast<status_t *>(lv_event_get_user_data(e));
-                     auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+  UI::menu_t &UI::addConnectedMenu(void) {
+    menu_t &menuConnected = addMenu(m_ConnectedStr, NULL, false);
 
-                     Settings::save<Settings::GPS_PLATFORM>(
-                         static_cast<uint8_t>(lv_roller_get_selected(roller)));
-                     status->gps->reloadSetting();
-                   });
+#if defined(FURBLE_M5COREX)
+    // three by two suits the landscape screens, Cameras fills the last open cell
+    static int32_t column_dsc[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1),
+                                   LV_GRID_TEMPLATE_LAST};
+    static int32_t row_dsc[] = {LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_TEMPLATE_LAST};
+    lv_obj_set_grid_dsc_array(menuConnected.page, column_dsc, row_dsc);
+    lv_obj_center(menuConnected.page);
+    lv_obj_set_layout(menuConnected.page, LV_LAYOUT_GRID);
+#endif
 
-  addGPSDataMenu(menu);
-  addGPSNMEAMenu(menu);
-  addGPSSatMenu(menu);
+    menu_t &menuShutter = addMenu(m_RemoteShutter, &icon_remote_gen, true, menuConnected);
+    menu_t &menuIR = m_Menu.at(m_IRStr);
+    m_IRConnectedButton = addMenuItem(menuConnected, &icon_remote_gen, m_IRStr, false, 1, 1);
+    lv_menu_set_load_page_event(menuIR.main, m_IRConnectedButton, menuIR.page);
+    addCamerasMenu(menuConnected);
+    addBulbMenu(menuConnected);
+    menu_t &menuInterval = addMenu(m_RemoteInterval, &icon_timer, true, menuConnected);
+    addLevelMenu(menuConnected);
+    menu_t &menuGPSData = addMenu(m_RemoteGPSData, &icon_location_searching, true, menuConnected);
+    menu_t &disconnect = addMenu(m_RemoteDisconnect, &icon_no_photography, true, menuConnected);
 
-  showGPSWidgets(&m_Status, m_Status.gps->isEnabled());
-}
+    if (M5.Touch.isEnabled()) {
+      // add remote shutter control for touch screens
+      lv_obj_t *cont = lv_menu_cont_create(menuShutter.page);
 
-void UI::addGPSPowerMenu(const menu_t &parent) {
-  menu_t &menu = addMenu(m_GPSPowerStr, NULL, true, parent);
-  m_Status.gpsWidgets.push_back(menu.button);
+      static int32_t remote_col_dsc[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1),
+                                         LV_GRID_TEMPLATE_LAST};
+      static int32_t remote_row_dsc[] = {LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
 
-  auto addRoller = [&](const char *name, const char *options, uint32_t selected,
-                       lv_event_cb_t handler) {
-    lv_obj_t *row = lv_menu_cont_create(menu.page);
-    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_width(row, LV_PCT(100));
+      lv_obj_set_grid_dsc_array(cont, remote_col_dsc, remote_row_dsc);
+      lv_obj_set_size(cont, LV_PCT(100), LV_PCT(100));
+      lv_obj_center(cont);
 
-    lv_obj_t *label = lv_label_create(row);
-    lv_label_set_text(label, name);
+      static std::array<std::tuple<lv_obj_t *, lv_obj_t *, const char *, const lv_image_dsc_t *,
+                                   const int32_t, const int32_t>,
+                        3>
+          buttons = {
+              {
+               {nullptr, nullptr, "Shutter\n", &icon_camera, 0, 0},
+               {nullptr, nullptr, "Focus\n", &icon_center_focus_strong, 1, 0},
+               {nullptr, nullptr, "Shutter\nLock", &icon_lock_open_right, 2, 0},
+               }
+      };
+
+      for (auto &i : buttons) {
+        auto &buttonCont = std::get<0>(i);
+
+        buttonCont = lv_obj_create(cont);
+        lv_obj_set_layout(buttonCont, LV_LAYOUT_FLEX);
+        lv_obj_set_flex_flow(buttonCont, LV_FLEX_FLOW_COLUMN);
+        lv_obj_set_flex_align(buttonCont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                              LV_FLEX_ALIGN_CENTER);
+        lv_obj_clear_flag(buttonCont, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_size(buttonCont, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+        lv_obj_set_grid_cell(buttonCont, LV_GRID_ALIGN_STRETCH, std::get<4>(i), 1,
+                             LV_GRID_ALIGN_STRETCH, std::get<5>(i), 1);
+
+        auto &button = std::get<1>(i);
+        button = lv_button_create(buttonCont);
+        lv_obj_set_style_bg_image_src(button, std::get<3>(i), 0);
+        lv_obj_set_size(button, 64, 64);
+
+        lv_obj_t *label = lv_label_create(buttonCont);
+        lv_label_set_text(label, std::get<2>(i));
+        lv_obj_set_style_text_font(label, fontForIconMenu(Settings::load<Settings::TEXT_SIZE>()),
+                                   0);
+        lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+      }
+
+      m_OK = std::get<1>(buttons[0]);
+      m_Right = std::get<1>(buttons[1]);
+      m_ShutterLockIcon = std::get<1>(buttons[2]);
+
+      lv_obj_add_event_cb(m_OK, handleButtonMode, LV_EVENT_ALL, this);
+      lv_obj_add_event_cb(m_Right, handleFocus, LV_EVENT_ALL, this);
+      lv_obj_add_event_cb(m_ShutterLockIcon, handleShutterLock, LV_EVENT_ALL, this);
+    } else {
+      // add remote shutter text for buttons
+      lv_area_t a;
+      lv_obj_update_layout(menuShutter.page);
+      lv_obj_get_coords(menuShutter.page, &a);
+      lv_obj_clear_flag(menuShutter.page, LV_OBJ_FLAG_SCROLLABLE);
+
+      m_ShutterLockIcon = lv_button_create(menuShutter.page);
+      lv_obj_set_style_bg_image_src(m_ShutterLockIcon, &icon_lock_open_right_24, 0);
+      lv_obj_set_style_radius(m_ShutterLockIcon, 0, LV_PART_MAIN);
+      lv_obj_add_flag(m_ShutterLockIcon, LV_OBJ_FLAG_FLOATING);
+      lv_obj_set_size(m_ShutterLockIcon, ICON_HEADER_SIZE, ICON_HEADER_SIZE);
+
+      // @todo Clean up the plethora of hardcoded values here
+#if defined(FURBLE_M5STICKC)
+      const size_t n = 3;
+      int32_t x1 = lv_obj_get_x(m_OK) - 2;
+      int32_t y1 = lv_obj_get_y(m_Right) - a.y1 - 10;
+      static lv_point_precise_t points[] = {
+          {x1 + 40, y1 + 12},
+          {x1 + 6,  y1 + 12},
+          {x1 + 6,  y1 + 64}
+      };
+#elif defined(FURBLE_M5STACK_CORE)
+      const size_t n = 4;
+      const int32_t x1 = 188;
+      const int32_t y1 = 80;
+      static lv_point_precise_t points[] = {
+          {164, 153},
+          {164, 92 },
+          {82,  92 },
+          {82,  153}
+      };
+#else
+      const size_t n = 3;
+      int32_t x1 = lv_obj_get_x(m_OK) - 2;
+      int32_t y1 = lv_obj_get_y(m_Right) - a.y1 - 7;
+      static lv_point_precise_t points[] = {
+          {x1 + 50, y1 + 12 },
+          {x1 - 1,  y1 + 12 },
+          {x1 - 1,  y1 + 103}
+      };
+#endif
+
+      lv_obj_set_pos(m_ShutterLockIcon, x1, y1);
+
+      static lv_style_t style;
+      lv_style_init(&style);
+      lv_style_set_line_width(&style, 2);
+      lv_style_set_line_color(&style, lv_palette_main(LV_PALETTE_GREY));
+      lv_style_set_line_opa(&style, LV_OPA_50);
+
+      lv_obj_t *line = lv_line_create(menuShutter.page);
+      lv_line_set_points(line, points, n);
+      lv_obj_add_style(line, &style, 0);
+
+      lv_obj_move_foreground(m_ShutterLockIcon);
+    }
+
+    // Non-blocking reconnect banner overlaid on the Remote shutter page. The
+    // header status row also carries the plain reconnecting icon, but the
+    // full-screen shutter view is where shots are taken, so a mid-session drop is
+    // surfaced here too with a clearer red Bluetooth icon plus "Reconnecting"
+    // (or "Reconnecting (i/n)") text. Floating so it never joins the page layout
+    // or its scroll extent, and hidden until updateRemoteReconnect shows it.
+    m_RemoteReconnect = lv_obj_create(menuShutter.page);
+    lv_obj_remove_style_all(m_RemoteReconnect);
+    lv_obj_set_size(m_RemoteReconnect, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_layout(m_RemoteReconnect, LV_LAYOUT_FLEX);
+    // Stack the icon over the text: the badge width is then the wider of the two
+    // (the text), which keeps "Reconnecting (i/n)" inside the narrow 135 px panel
+    // instead of clipping off the right edge as a single icon+text row would.
+    lv_obj_set_flex_flow(m_RemoteReconnect, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(m_RemoteReconnect, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_all(m_RemoteReconnect, 2, 0);
+    lv_obj_set_style_pad_row(m_RemoteReconnect, 0, 0);
+    lv_obj_set_style_radius(m_RemoteReconnect, 4, 0);
+    lv_obj_set_style_bg_opa(m_RemoteReconnect, LV_OPA_70, 0);
+    lv_obj_set_style_bg_color(m_RemoteReconnect, lv_color_black(), 0);
+    lv_obj_clear_flag(m_RemoteReconnect, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(m_RemoteReconnect, LV_OBJ_FLAG_FLOATING);
+    lv_obj_align(m_RemoteReconnect, LV_ALIGN_TOP_LEFT, 1, 1);
+    lv_obj_add_flag(m_RemoteReconnect, LV_OBJ_FLAG_HIDDEN);
+
+    lv_obj_t *reconnectIcon = lv_image_create(m_RemoteReconnect);
+    lv_image_set_src(reconnectIcon, &icon_bluetooth);
+    // Recolor the shared Bluetooth glyph red rather than shipping a new
+    // compressed asset, so there is no extra decompress cost.
+    lv_obj_set_style_image_recolor(reconnectIcon, lv_palette_main(LV_PALETTE_RED), 0);
+    lv_obj_set_style_image_recolor_opa(reconnectIcon, LV_OPA_COVER, 0);
+
+    m_RemoteReconnectLabel = lv_label_create(m_RemoteReconnect);
+    lv_obj_set_style_text_color(m_RemoteReconnectLabel, lv_palette_main(LV_PALETTE_RED), 0);
+    // The board's Small font keeps "Reconnecting (i/n)" within even the 135 px
+    // panel width.
+    lv_obj_set_style_text_font(m_RemoteReconnectLabel, fontForTextSize(Settings::TEXT_SIZE_SMALL),
+                               0);
+    // Wrap within a width capped to the panel so a long dropped-camera name (the
+    // banner appends it when one of several cameras is down) wraps onto more lines
+    // instead of overflowing the right edge. The chip still hugs the short
+    // "Reconnecting" text until a name widens it, and it stays floating top-left
+    // clear of the shutter, focus and lock controls.
+    lv_label_set_long_mode(m_RemoteReconnectLabel, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_max_width(m_RemoteReconnectLabel, M5.Display.width() - 8, 0);
+    lv_obj_set_style_text_align(m_RemoteReconnectLabel, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_text(m_RemoteReconnectLabel, "Reconnecting");
+
+    // The 80 px StickC panel is too narrow to fit the text even at the Small font,
+    // so drop the label there and keep just the red Bluetooth icon (the connected
+    // page title still carries the wording).
+    if (M5.Display.width() < 110) {
+      lv_obj_add_flag(m_RemoteReconnectLabel, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    // The shutter lock is the only focusable control on the Remote page, so its
+    // focus is never ambiguous. Suppress the shared focus outline on it: the ring
+    // drew a box around the lock icon that read as noise, the same over-outlining
+    // the menu rows carried. A local style overrides the theme's added style for
+    // these states.
+    lv_obj_set_style_outline_width(m_ShutterLockIcon, 0, LV_STATE_FOCUSED);
+    lv_obj_set_style_outline_width(m_ShutterLockIcon, 0, LV_STATE_FOCUS_KEY);
+
+    lv_obj_add_event_cb(
+        menuShutter.button,
+        [](lv_event_t *e) {
+          auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+          ui->configureControl(ControlMode::SHUTTER);
+        },
+        LV_EVENT_CLICKED, this);
+
+    // add intervalometer control
+    menu_t &menuIntervalometer = m_Menu.at(m_IntervalometerStr);
+    lv_menu_set_load_page_event(menuIntervalometer.main, menuInterval.button,
+                                menuIntervalometer.page);
+
+    lv_obj_add_event_cb(
+        menuInterval.button,
+        [](lv_event_t *e) {
+          auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+          ui->showShutterIntervalometer(true);
+        },
+        LV_EVENT_CLICKED, this);
+
+    // add GPS data control, the page is shared with the settings menu
+    menu_t &menuGPSDataPage = m_Menu.at(m_GPSDataStr);
+    lv_menu_set_load_page_event(menuGPSDataPage.main, menuGPSData.button, menuGPSDataPage.page);
+    lv_obj_add_event_cb(menuGPSData.button, gpsDataStart, LV_EVENT_CLICKED, m_GPSDataTimer);
+
+    // add spirit level control
+    menu_t &menuLevel = m_Menu.at(m_LevelStr);
+    lv_menu_set_load_page_event(menuLevel.main, menuLevel.button, menuLevel.page);
+
+    // add disconnect control
+    lv_obj_add_event_cb(
+        disconnect.button,
+        [](lv_event_t *e) {
+          auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+          doDisconnect();
+          ui->showShutterIntervalometer(false);
+        },
+        LV_EVENT_CLICKED, this);
+
+    lv_menu_set_load_page_event(menuShutter.main, menuShutter.button, menuShutter.page);
+
+    updateIRMenuVisibility();
+
+    return menuConnected;
+  }
+
+  void UI::addConnectMenu(void) {
+    menu_t &menu = addMenu(m_ConnectStr, &icon_linked_camera);
+
+    // refresh connection list every time
+    lv_obj_add_event_cb(
+        menu.button,
+        [](lv_event_t *e) {
+          auto &menu = m_Menu.at(m_ConnectStr);
+          bool multiconnect = Settings::load<Settings::MULTICONNECT>();
+
+          lv_obj_clean(menu.page);
+
+          reloadCameraList();
+          lv_obj_t *multibutton = nullptr;
+          Settings::multiselect_t selection = {};
+
+          if (multiconnect) {
+            multibutton = lv_button_create(menu.page);
+            lv_obj_t *label = lv_label_create(multibutton);
+            lv_label_set_text(label, "Connect 0");
+            lv_obj_center(label);
+            lv_obj_set_width(multibutton, LV_PCT(100));
+            lv_obj_add_flag(multibutton, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+            lv_group_add_obj(menu.group, multibutton);
+            selection = Settings::load<Settings::MULTISELECT>();
+          }
+
+          for (size_t n = 0; n < CameraList::size(); n++) {
+            auto camera = CameraList::get(n);
+            if (multiconnect) {
+              const bool selected = multiConnectSelectionHas(selection, n);
+
+              camera->setActive(selected);
+              lv_obj_t *item = addCameraItem(n, menu, MODE_MULTICONNECT);
+              if (selected && item != nullptr) {
+                lv_obj_add_state(item, LV_STATE_CHECKED);
+              }
+
+            } else {
+              addCameraItem(n, menu, MODE_CONNECT);
+            }
+          }
+
+          if (multiconnect) {
+            updateMultiConnectButton(multibutton);
+            // only the multi-select flow persists the remembered set: single
+            // connect, boot autoconnect and console connect must not clobber it
+            lv_obj_add_event_cb(
+                multibutton,
+                [](lv_event_t *e) {
+                  saveMultiConnectSelection();
+                  doConnect(e);
+                },
+                LV_EVENT_CLICKED, nullptr);
+          }
+
+          m_ConnectContext.menuName = NULL;
+        },
+        LV_EVENT_CLICKED, NULL);
+
+    // create, but immediately hide the connect message box
+    m_ConnectContext.messageBox = lv_msgbox_create(m_Screen);
+    lv_msgbox_add_title(m_ConnectContext.messageBox, "Connecting");
+    lv_obj_set_width(m_ConnectContext.messageBox, LV_PCT(100));
+    lv_obj_update_layout(m_ConnectContext.messageBox);
+    lv_obj_t *c = lv_msgbox_get_content(m_ConnectContext.messageBox);
+    lv_obj_set_flex_align(c, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(c, LV_OBJ_FLAG_SCROLLABLE);
+    m_ConnectContext.label = lv_label_create(c);
+    lv_label_set_long_mode(m_ConnectContext.label, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(m_ConnectContext.label, LV_PCT(80));
+
+    m_ConnectContext.bar = lv_bar_create(c);
+    lv_obj_set_width(m_ConnectContext.bar, LV_PCT(80));
+    lv_bar_set_value(m_ConnectContext.bar, 0, LV_ANIM_ON);
+
+    m_ConnectContext.cancel = lv_msgbox_add_footer_button(m_ConnectContext.messageBox, "Cancel");
+    // Register the Cancel handler once here, not per connect attempt. Adding it in
+    // doConnect stacked one callback per attempt, so after N attempts a single
+    // Cancel click fired N disconnects.
+    lv_obj_add_event_cb(
+        m_ConnectContext.cancel,
+        [](lv_event_t *e) {
+          auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+          if (ui != nullptr) {
+            // An explicit cancel ends the resumed run. Without this the next
+            // connect could start the old interval on a different camera.
+            ui->m_Intervalometer.clearResume();
+          }
+          doDisconnect();
+        },
+        LV_EVENT_CLICKED, this);
+    lv_obj_t *footer = lv_msgbox_get_footer(m_ConnectContext.messageBox);
+    lv_obj_update_layout(footer);
+    // @todo cancel button bottom is clipped, weird
+    // lv_obj_set_height(m_ConnectContext.cancel, LV_SIZE_CONTENT);
+    // lv_obj_set_height(footer, lv_obj_get_height(m_ConnectContext.cancel) * 1.2f);
+
+    lv_obj_add_flag(m_ConnectContext.messageBox, LV_OBJ_FLAG_HIDDEN);
+
+    lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+  }
+
+  void UI::addScanMenu(void) {
+    menu_t &menu = addMenu(m_ScanStr, &icon_add_a_photo);
+
+    lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+  }
+
+  void UI::startScan(void) {
+    menu_t &menu = m_Menu.at(m_ScanStr);
+    auto &scan = Scan::getInstance();
+
+    lv_obj_clean(menu.page);
+    CameraList::clear();
+    // The list is about to hold scan results, so a console 'pair' index names
+    // one of them whether the scan was started from here or from the console.
+    m_ScanListLive = true;
+
+    // hidden until the scan ends by itself, a finite scan that ends silently
+    // looks like a hang
+    m_ScanFinished = lv_menu_cont_create(menu.page);
+    lv_obj_set_flex_flow(m_ScanFinished, LV_FLEX_FLOW_COLUMN);
+    lv_obj_add_flag(m_ScanFinished, LV_OBJ_FLAG_HIDDEN);
+
+    lv_obj_t *label = lv_label_create(m_ScanFinished);
+    lv_label_set_text(label, "Scan finished");
     lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_obj_set_width(label, LV_PCT(100));
 
-    lv_obj_t *roller = lv_roller_create(row);
+    lv_obj_t *rescan = lv_button_create(m_ScanFinished);
+    lv_obj_t *rescanLabel = lv_label_create(rescan);
+    lv_label_set_text(rescanLabel, "Rescan");
+    addToInputGroup(menu.group, rescan);
+
+    lv_obj_add_event_cb(
+        rescan,
+        [](lv_event_t *) {
+          // deferred, the restart deletes the button we are called from
+          lv_async_call([](void *) { startScan(); }, NULL);
+        },
+        LV_EVENT_CLICKED, NULL);
+
+    if (Settings::load<Settings::FAUXNY>()) {
+      CameraList::addFauxNY();
+      updateItems(menu);
+    }
+
+    scan.setMode(static_cast<Scan::Mode>(Settings::scanModeEffective()));
+    scan.setTimeout(Settings::load<Settings::SCAN_TIMEOUT>());
+
+    scan.clear();
+#if defined(FURBLE_SIM)
+    // Keep the same unlock/relock hand-off as firmware. The simulator's scan
+    // start probe acquires this mutex, proving the start path cannot deadlock.
+    // Strictly seed gated: it is the one simulator hook that is not purely
+    // observational, because it runs a callback-shaped thread and waits up to
+    // 100 ms of wall clock inside Scan::start().
+    if (Sim::scenarioSettingIsTrue("scan_start_probe")) {
+      scan.setStartProbe([]() {
+        m_Mutex.lock();
+        m_Mutex.unlock();
+      });
+    }
+#endif
+
+    // Keep the UI mutex out of the scan-start call. NimBLE normally returns
+    // immediately, but controller startup can block on some IDF/library
+    // combinations. Scan callbacks only enqueue immutable events; the UI task
+    // drains and applies them below.
+    m_Mutex.unlock();
+    scan.start(
+        [](void *param) {
+          auto *menu = static_cast<menu_t *>(param);
+          updateItems(*menu);
+        },
+        &menu, [](void *) { lv_obj_remove_flag(m_ScanFinished, LV_OBJ_FLAG_HIDDEN); });
+    m_Mutex.lock();
+
+    m_ConnectContext.menuName = m_ScanStr;
+  }
+
+  void UI::refreshDelete(void) {
+    auto &menu = m_Menu.at(m_DeleteStr);
+    lv_obj_clean(menu.page);
+
+    reloadCameraList();
+    for (size_t n = 0; n < CameraList::size(); n++) {
+      addCameraItem(n, menu, MODE_DELETE);
+    }
+  }
+
+  void UI::addDeleteMenu(void) {
+    menu_t &menu = addMenu(m_DeleteStr, &icon_delete);
+
+    // refresh connection list every time
+    lv_obj_add_event_cb(
+        menu.button, [](lv_event_t *e) { refreshDelete(); }, LV_EVENT_CLICKED, NULL);
+
+    lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+  }
+
+  void UI::showGPSWidgets(status_t * status, bool show) {
+    for (auto *widget : status->gpsWidgets) {
+      if (show) {
+        lv_obj_clear_flag(widget, LV_OBJ_FLAG_HIDDEN);
+      } else {
+        lv_obj_add_flag(widget, LV_OBJ_FLAG_HIDDEN);
+      }
+    }
+  }
+
+  void UI::showIMUWidgets(bool show) {
+    for (const auto *name : {m_LevelStr, m_IMUDataStr}) {
+      auto &menu = m_Menu.at(name);
+      if (show) {
+        lv_obj_clear_flag(menu.button, LV_OBJ_FLAG_HIDDEN);
+      } else {
+        lv_obj_add_flag(menu.button, LV_OBJ_FLAG_HIDDEN);
+      }
+    }
+    if (m_LevelMainButton != nullptr) {
+      if (show) {
+        lv_obj_clear_flag(m_LevelMainButton, LV_OBJ_FLAG_HIDDEN);
+      } else {
+        lv_obj_add_flag(m_LevelMainButton, LV_OBJ_FLAG_HIDDEN);
+      }
+    }
+  }
+
+  void UI::showIMUGestureWidgets(bool show) {
+    for (auto *widget : m_IMUGestureWidgets) {
+      if (show) {
+        lv_obj_remove_state(widget, LV_STATE_DISABLED);
+      } else {
+        lv_obj_add_state(widget, LV_STATE_DISABLED);
+      }
+    }
+  }
+
+  void UI::addGPSMenu(const menu_t &parent) {
+    menu_t &menu = addMenu(m_GPSStr, &icon_location_searching, true, parent);
+
+    addSettingItem(menu.page, NULL, Settings::GPS);
+    lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+
+    // add GPS baud control as a roller: Auto detects the receiver, or pin a rate
+    const uint32_t storedBaud = Settings::load<Settings::GPS_BAUD>();
+    uint32_t baudIndex = 0;
+    if (storedBaud == Settings::BAUD_9600) {
+      baudIndex = 1;
+    } else if (storedBaud == Settings::BAUD_115200) {
+      baudIndex = 2;
+    }
+    addGPSOptionMenu(menu, m_GPSBaudStr, m_GPSBaudOptions, baudIndex, [](lv_event_t *e) {
+      auto *status = static_cast<status_t *>(lv_event_get_user_data(e));
+      auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+      uint32_t baud = Settings::BAUD_AUTO;
+      switch (lv_roller_get_selected(roller)) {
+        case 1:
+          baud = Settings::BAUD_9600;
+          break;
+        case 2:
+          baud = Settings::BAUD_115200;
+          break;
+        default:
+          baud = Settings::BAUD_AUTO;
+          break;
+      }
+      Settings::save<Settings::GPS_BAUD>(baud);
+      status->gps->reloadSetting();
+    });
+
+    // add the receiver configuration pages
+    addGPSOptionMenu(
+        menu, m_GPSRateStr, m_GPSRateOptions, Settings::load<Settings::GPS_RATE>(),
+        [](lv_event_t *e) {
+          auto *status = static_cast<status_t *>(lv_event_get_user_data(e));
+          auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+
+          Settings::save<Settings::GPS_RATE>(static_cast<uint8_t>(lv_roller_get_selected(roller)));
+          status->gps->reloadSetting();
+        });
+
+    addGPSOptionMenu(menu, m_GPSSentencesStr, m_GPSSentencesOptions,
+                     Settings::load<Settings::GPS_NMEA>() ? 1 : 0, [](lv_event_t *e) {
+                       auto *status = static_cast<status_t *>(lv_event_get_user_data(e));
+                       auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+
+                       Settings::save<Settings::GPS_NMEA>(lv_roller_get_selected(roller) > 0);
+                       status->gps->reloadSetting();
+                     });
+
+    addGPSOptionMenu(menu, m_GPSConstellationStr, m_GPSConstellationOptions,
+                     Settings::load<Settings::GPS_CONSTEL>(), [](lv_event_t *e) {
+                       auto *status = static_cast<status_t *>(lv_event_get_user_data(e));
+                       auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+
+                       Settings::save<Settings::GPS_CONSTEL>(
+                           static_cast<uint8_t>(lv_roller_get_selected(roller)));
+                       status->gps->reloadSetting();
+                     });
+
+    addGPSPowerMenu(menu);
+    addGPSOptionMenu(menu, m_GPSAssistStr, m_GPSAssistOptions,
+                     Settings::load<Settings::GPS_ASSIST>(), [](lv_event_t *e) {
+                       auto *status = static_cast<status_t *>(lv_event_get_user_data(e));
+                       auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+
+                       Settings::save<Settings::GPS_ASSIST>(
+                           static_cast<uint8_t>(lv_roller_get_selected(roller)));
+                       status->gps->reloadSetting();
+                     });
+    addSettingItem(menu.page, NULL, Settings::GPS_MOTION);
+
+    const uint8_t savedHold = Settings::load<Settings::GPS_HOLD>();
+    addGPSOptionMenu(menu, m_GPSHoldStr, m_GPSHoldOptions,
+                     savedHold <= GPS::HOLD_MAX ? savedHold : 0, [](lv_event_t *e) {
+                       auto *status = static_cast<status_t *>(lv_event_get_user_data(e));
+                       auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+                       const uint8_t hold = static_cast<uint8_t>(lv_roller_get_selected(roller));
+
+                       Settings::save<Settings::GPS_HOLD>(hold);
+                       status->gps->reloadSetting();
+                       if (status->gpsExtrapolate != nullptr) {
+                         if (hold == 0) {
+                           lv_obj_add_state(status->gpsExtrapolate, LV_STATE_DISABLED);
+                         } else {
+                           lv_obj_remove_state(status->gpsExtrapolate, LV_STATE_DISABLED);
+                         }
+                       }
+                     });
+
+    m_Status.gpsExtrapolate = addSettingItem(menu.page, NULL, Settings::GPS_EXTRAP);
+    if ((savedHold == 0) || (savedHold > GPS::HOLD_MAX)) {
+      lv_obj_add_state(m_Status.gpsExtrapolate, LV_STATE_DISABLED);
+    }
+
+    addGPSOptionMenu(menu, m_GPSPlatformStr, m_GPSPlatformOptions,
+                     Settings::load<Settings::GPS_PLATFORM>(), [](lv_event_t *e) {
+                       auto *status = static_cast<status_t *>(lv_event_get_user_data(e));
+                       auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+
+                       Settings::save<Settings::GPS_PLATFORM>(
+                           static_cast<uint8_t>(lv_roller_get_selected(roller)));
+                       status->gps->reloadSetting();
+                     });
+
+    addGPSDataMenu(menu);
+    addGPSNMEAMenu(menu);
+    addGPSSatMenu(menu);
+
+    showGPSWidgets(&m_Status, m_Status.gps->isEnabled());
+  }
+
+  void UI::addGPSPowerMenu(const menu_t &parent) {
+    menu_t &menu = addMenu(m_GPSPowerStr, NULL, true, parent);
+    m_Status.gpsWidgets.push_back(menu.button);
+
+    auto addRoller = [&](const char *name, const char *options, uint32_t selected,
+                         lv_event_cb_t handler) {
+      lv_obj_t *row = lv_menu_cont_create(menu.page);
+      lv_obj_set_flex_flow(row, LV_FLEX_FLOW_COLUMN);
+      lv_obj_set_width(row, LV_PCT(100));
+
+      lv_obj_t *label = lv_label_create(row);
+      lv_label_set_text(label, name);
+      lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+
+      lv_obj_t *roller = lv_roller_create(row);
+#if !defined(FURBLE_M5COREX)
+      lv_obj_set_width(roller, LV_PCT(90));
+#endif
+      lv_obj_add_flag(roller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+      addToInputGroup(m_Group, roller);
+      lv_roller_set_options(roller, options, LV_ROLLER_MODE_NORMAL);
+      lv_roller_set_visible_row_count(roller, 2);
+      lv_roller_set_selected(roller, selected, LV_ANIM_OFF);
+      lv_obj_add_event_cb(roller, handler, LV_EVENT_VALUE_CHANGED, &m_Status);
+    };
+
+    const uint8_t policy = Settings::load<Settings::GPS_POWER>();
+    const uint8_t selectedPolicy = policy <= GPS::POWER_RAIL_CYCLE ? policy : GPS::POWER_ALWAYS_ON;
+    addRoller("Receiver", m_GPSPowerOptions, selectedPolicy, [](lv_event_t *e) {
+      auto *status = static_cast<status_t *>(lv_event_get_user_data(e));
+      auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+
+      Settings::save<Settings::GPS_POWER>(static_cast<uint8_t>(lv_roller_get_selected(roller)));
+      status->gps->reloadSetting();
+    });
+
+    const uint8_t duty = Settings::load<Settings::GPS_DUTY>();
+    addRoller("Sleep between fixes", m_GPSDutyOptions, gpsDutyIndex(duty), [](lv_event_t *e) {
+      auto *status = static_cast<status_t *>(lv_event_get_user_data(e));
+      auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+      const uint32_t selected = lv_roller_get_selected(roller);
+
+      Settings::save<Settings::GPS_DUTY>(
+          GPS::DUTY_SECONDS[std::min<size_t>(selected, GPS::DUTY_SECONDS.size() - 1)]);
+      status->gps->reloadSetting();
+    });
+
+    lv_obj_t *help = lv_label_create(menu.page);
+    lv_obj_set_width(help, LV_PCT(100));
+    lv_label_set_long_mode(help, LV_LABEL_LONG_WRAP);
+    lv_label_set_text(help,
+                      "Use 5 to 15 s to keep fixes fresh. Rail cycling is experimental. GPS unit "
+                      "v1.1 has no backup supply, a rail cut costs a ~108 s cold refix, so the "
+                      "cycle never completes and the receiver stays always on.");
+
+    lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+  }
+
+  void UI::addSensorsMenu(const menu_t &parent) {
+    menu_t &menu = addMenu(m_SensorsStr, &icon_settings_remote, true, parent);
+
+    addSettingItem(menu.page, NULL, Settings::IMU);
+    addGesturesMenu(menu);
+
+    // The caption and the button said the same thing in two rows. One row does
+    // it, and the row this buys is what keeps the page fitting now that the
+    // Motion Engine entry has joined it.
+    lv_obj_t *restart = lv_button_create(menu.page);
+    lv_obj_t *label = lv_label_create(restart);
+    lv_label_set_text(label, "Restart to apply");
+    lv_obj_center(label);
+    lv_obj_add_event_cb(
+        restart, [](lv_event_t *) { Platform::getInstance().restart(); }, LV_EVENT_CLICKED, NULL);
+
+    showIMUGestureWidgets(imuEnabledForUI());
+    lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+  }
+
+  void UI::addGesturesMenu(const menu_t &parent) {
+    menu_t &menu = addMenu(m_GesturesStr, NULL, true, parent);
+    m_IMUGestureWidgets.push_back(menu.button);
+
+    lv_obj_t *roller = addRollerItem(menu.page, m_WakeGestureStr, m_WakeGestureOptions);
+    m_IMUGestureWidgets.push_back(roller);
+    uint8_t wake = Settings::load<Settings::IMU_WAKE>();
+    if (wake > 3) {
+      wake = 0;
+    }
+    lv_roller_set_selected(roller, wake, LV_ANIM_OFF);
+    lv_obj_add_event_cb(
+        roller,
+        [](lv_event_t *e) {
+          auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+          auto *target = static_cast<lv_obj_t *>(lv_event_get_target(e));
+          Settings::save<Settings::IMU_WAKE>(static_cast<uint8_t>(lv_roller_get_selected(target)));
+          notifyGestureSettingsChanged();
+          ui->updateGestureTimer();
+        },
+        LV_EVENT_VALUE_CHANGED, this);
+
+    addSettingItem(menu.page, NULL, Settings::IMU_TRIG);
+
+    lv_obj_t *warning = lv_label_create(menu.page);
+    lv_obj_set_width(warning, LV_PCT(100));
+    lv_label_set_long_mode(warning, LV_LABEL_LONG_WRAP);
+    lv_label_set_text(warning, "A knock can trigger a frame.");
+
+    // Motion Engine lives on this page rather than as its own row on Sensors.
+    // Sensors had no slack left after the IMU switch, this entry and the Restart
+    // button: one more row there overflows the 135x240 non-touch layout and puts
+    // content under the floating indicators. This page is the IMU behaviour page
+    // and has room.
+    //
+    // ponytail: the page is titled "Gestures" and a detection backend is not a
+    // gesture. Renaming it touches PR45's page identity, its sim vocabularies and
+    // its scenarios, so it is a follow-up, not a silent edit here.
+    lv_obj_t *motionEngine = addRollerItem(menu.page, m_MotionEngineStr, m_MotionEngineOptions);
+    m_IMUGestureWidgets.push_back(motionEngine);
+    uint8_t motionMode = Settings::load<Settings::HW_MOTION>();
+    if (motionMode > Settings::HW_MOTION_HARDWARE) {
+      motionMode = Settings::HW_MOTION_SOFTWARE;
+    }
+    lv_roller_set_selected(motionEngine, motionMode, LV_ANIM_OFF);
+    lv_obj_add_event_cb(
+        motionEngine,
+        [](lv_event_t *e) {
+          auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+          const uint32_t selected = lv_roller_get_selected(roller);
+          if (selected > Settings::HW_MOTION_HARDWARE) {
+            return;
+          }
+          Settings::save<Settings::HW_MOTION>(static_cast<uint8_t>(selected));
+        },
+        LV_EVENT_VALUE_CHANGED, NULL);
+
+    // The roller applies at boot, and the Restart button that does it lives on
+    // the parent Sensors page, so say so here rather than leaving the user to
+    // find it.
+    lv_obj_t *motionHint = lv_label_create(menu.page);
+    lv_obj_set_width(motionHint, LV_PCT(100));
+    lv_label_set_long_mode(motionHint, LV_LABEL_LONG_WRAP);
+    lv_label_set_text(motionHint, "Applies after restart.");
+
+    lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+  }
+
+  void UI::addGPSOptionMenu(const menu_t &parent, const char *name, const char *options,
+                            uint32_t selected, lv_event_cb_t handler) {
+    menu_t &menu = addOptionMenu(parent, name, options, selected, handler, &m_Status);
+    m_Status.gpsWidgets.push_back(menu.button);
+  }
+
+  /**
+   * A submenu holding one roller. Used where a multi-choice setting would
+   * overflow the page that owns it, which on the 80x160 and 135x240 panels is
+   * any page that already carries a control and a button.
+   */
+  UI::menu_t &UI::addOptionMenu(const menu_t &parent, const char *name, const char *options,
+                                uint32_t selected, lv_event_cb_t handler, void *userData) {
+    menu_t &menu = addMenu(name, NULL, true, parent);
+
+    lv_obj_t *cont = lv_menu_cont_create(menu.page);
+    lv_obj_set_size(cont, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_layout(cont, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    lv_obj_t *roller = lv_roller_create(cont);
 #if !defined(FURBLE_M5COREX)
     lv_obj_set_width(roller, LV_PCT(90));
 #endif
@@ -7743,1576 +8547,2064 @@ void UI::addGPSPowerMenu(const menu_t &parent) {
     lv_roller_set_options(roller, options, LV_ROLLER_MODE_NORMAL);
     lv_roller_set_visible_row_count(roller, 2);
     lv_roller_set_selected(roller, selected, LV_ANIM_OFF);
-    lv_obj_add_event_cb(roller, handler, LV_EVENT_VALUE_CHANGED, &m_Status);
-  };
 
-  const uint8_t policy = Settings::load<Settings::GPS_POWER>();
-  const uint8_t selectedPolicy = policy <= GPS::POWER_RAIL_CYCLE ? policy : GPS::POWER_ALWAYS_ON;
-  addRoller("Receiver", m_GPSPowerOptions, selectedPolicy, [](lv_event_t *e) {
-    auto *status = static_cast<status_t *>(lv_event_get_user_data(e));
-    auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+    lv_obj_add_event_cb(roller, handler, LV_EVENT_VALUE_CHANGED, userData);
 
-    Settings::save<Settings::GPS_POWER>(static_cast<uint8_t>(lv_roller_get_selected(roller)));
-    status->gps->reloadSetting();
-  });
-
-  const uint8_t duty = Settings::load<Settings::GPS_DUTY>();
-  addRoller("Sleep between fixes", m_GPSDutyOptions, gpsDutyIndex(duty), [](lv_event_t *e) {
-    auto *status = static_cast<status_t *>(lv_event_get_user_data(e));
-    auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
-    const uint32_t selected = lv_roller_get_selected(roller);
-
-    Settings::save<Settings::GPS_DUTY>(
-        GPS::DUTY_SECONDS[std::min<size_t>(selected, GPS::DUTY_SECONDS.size() - 1)]);
-    status->gps->reloadSetting();
-  });
-
-  lv_obj_t *help = lv_label_create(menu.page);
-  lv_obj_set_width(help, LV_PCT(100));
-  lv_label_set_long_mode(help, LV_LABEL_LONG_WRAP);
-  lv_label_set_text(help,
-                    "Use 5 to 15 s to keep fixes fresh. Rail cycling is experimental. GPS unit "
-                    "v1.1 has no backup supply, a rail cut costs a ~108 s cold refix, so the "
-                    "cycle never completes and the receiver stays always on.");
-
-  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
-}
-
-void UI::addSensorsMenu(const menu_t &parent) {
-  menu_t &menu = addMenu(m_SensorsStr, &icon_settings_remote, true, parent);
-
-  addSettingItem(menu.page, NULL, Settings::IMU);
-  addGesturesMenu(menu);
-
-  // The caption and the button said the same thing in two rows. One row does
-  // it, and the row this buys is what keeps the page fitting now that the
-  // Motion Engine entry has joined it.
-  lv_obj_t *restart = lv_button_create(menu.page);
-  lv_obj_t *label = lv_label_create(restart);
-  lv_label_set_text(label, "Restart to apply");
-  lv_obj_center(label);
-  lv_obj_add_event_cb(
-      restart, [](lv_event_t *) { Platform::getInstance().restart(); }, LV_EVENT_CLICKED, NULL);
-
-  showIMUGestureWidgets(imuEnabledForUI());
-  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
-}
-
-void UI::addGesturesMenu(const menu_t &parent) {
-  menu_t &menu = addMenu(m_GesturesStr, NULL, true, parent);
-  m_IMUGestureWidgets.push_back(menu.button);
-
-  lv_obj_t *roller = addRollerItem(menu.page, m_WakeGestureStr, m_WakeGestureOptions);
-  m_IMUGestureWidgets.push_back(roller);
-  uint8_t wake = Settings::load<Settings::IMU_WAKE>();
-  if (wake > 3) {
-    wake = 0;
+    lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+    return menu;
   }
-  lv_roller_set_selected(roller, wake, LV_ANIM_OFF);
-  lv_obj_add_event_cb(
-      roller,
-      [](lv_event_t *e) {
-        auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
-        auto *target = static_cast<lv_obj_t *>(lv_event_get_target(e));
-        Settings::save<Settings::IMU_WAKE>(static_cast<uint8_t>(lv_roller_get_selected(target)));
-        notifyGestureSettingsChanged();
-        ui->updateGestureTimer();
-      },
-      LV_EVENT_VALUE_CHANGED, this);
 
-  addSettingItem(menu.page, NULL, Settings::IMU_TRIG);
+  void UI::addGPSDataMenu(const menu_t &parent) {
+    menu_t &gpsData = addMenu(m_GPSDataStr, NULL, true, parent);
+    m_Status.gpsWidgets.push_back(gpsData.button);
 
-  lv_obj_t *warning = lv_label_create(menu.page);
-  lv_obj_set_width(warning, LV_PCT(100));
-  lv_label_set_long_mode(warning, LV_LABEL_LONG_WRAP);
-  lv_label_set_text(warning, "A knock can trigger a frame.");
+    m_GPSDataTimer = lv_timer_create(
+        [](lv_timer_t *t) {
+          FURBLE_SIM_TIMER_FIRE("gps_data_timer");
+          auto *gpsData = static_cast<menu_t *>(lv_timer_get_user_data(t));
+          const auto status = GPS::getInstance().getStatusSnapshot();
 
-  // Motion Engine lives on this page rather than as its own row on Sensors.
-  // Sensors had no slack left after the IMU switch, this entry and the Restart
-  // button: one more row there overflows the 135x240 non-touch layout and puts
-  // content under the floating indicators. This page is the IMU behaviour page
-  // and has room.
-  //
-  // ponytail: the page is titled "Gestures" and a detection backend is not a
-  // gesture. Renaming it touches PR45's page identity, its sim vocabularies and
-  // its scenarios, so it is a follow-up, not a silent edit here.
-  lv_obj_t *motionEngine = addRollerItem(menu.page, m_MotionEngineStr, m_MotionEngineOptions);
-  m_IMUGestureWidgets.push_back(motionEngine);
-  uint8_t motionMode = Settings::load<Settings::HW_MOTION>();
-  if (motionMode > Settings::HW_MOTION_HARDWARE) {
-    motionMode = Settings::HW_MOTION_SOFTWARE;
-  }
-  lv_roller_set_selected(motionEngine, motionMode, LV_ANIM_OFF);
-  lv_obj_add_event_cb(
-      motionEngine,
-      [](lv_event_t *e) {
-        auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
-        const uint32_t selected = lv_roller_get_selected(roller);
-        if (selected > Settings::HW_MOTION_HARDWARE) {
-          return;
-        }
-        Settings::save<Settings::HW_MOTION>(static_cast<uint8_t>(selected));
-      },
-      LV_EVENT_VALUE_CHANGED, NULL);
-
-  // The roller applies at boot, and the Restart button that does it lives on
-  // the parent Sensors page, so say so here rather than leaving the user to
-  // find it.
-  lv_obj_t *motionHint = lv_label_create(menu.page);
-  lv_obj_set_width(motionHint, LV_PCT(100));
-  lv_label_set_long_mode(motionHint, LV_LABEL_LONG_WRAP);
-  lv_label_set_text(motionHint, "Applies after restart.");
-
-  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
-}
-
-void UI::addGPSOptionMenu(const menu_t &parent,
-                          const char *name,
-                          const char *options,
-                          uint32_t selected,
-                          lv_event_cb_t handler) {
-  menu_t &menu = addOptionMenu(parent, name, options, selected, handler, &m_Status);
-  m_Status.gpsWidgets.push_back(menu.button);
-}
-
-/**
- * A submenu holding one roller. Used where a multi-choice setting would
- * overflow the page that owns it, which on the 80x160 and 135x240 panels is
- * any page that already carries a control and a button.
- */
-UI::menu_t &UI::addOptionMenu(const menu_t &parent,
-                              const char *name,
-                              const char *options,
-                              uint32_t selected,
-                              lv_event_cb_t handler,
-                              void *userData) {
-  menu_t &menu = addMenu(name, NULL, true, parent);
-
-  lv_obj_t *cont = lv_menu_cont_create(menu.page);
-  lv_obj_set_size(cont, LV_PCT(100), LV_PCT(100));
-  lv_obj_set_layout(cont, LV_LAYOUT_FLEX);
-  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-
-  lv_obj_t *roller = lv_roller_create(cont);
-#if !defined(FURBLE_M5COREX)
-  lv_obj_set_width(roller, LV_PCT(90));
-#endif
-  lv_obj_add_flag(roller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
-  addToInputGroup(m_Group, roller);
-  lv_roller_set_options(roller, options, LV_ROLLER_MODE_NORMAL);
-  lv_roller_set_visible_row_count(roller, 2);
-  lv_roller_set_selected(roller, selected, LV_ANIM_OFF);
-
-  lv_obj_add_event_cb(roller, handler, LV_EVENT_VALUE_CHANGED, userData);
-
-  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
-  return menu;
-}
-
-void UI::addGPSDataMenu(const menu_t &parent) {
-  menu_t &gpsData = addMenu(m_GPSDataStr, NULL, true, parent);
-  m_Status.gpsWidgets.push_back(gpsData.button);
-
-  m_GPSDataTimer = lv_timer_create(
-      [](lv_timer_t *t) {
-        FURBLE_SIM_TIMER_FIRE("gps_data_timer");
-        auto *gpsData = static_cast<menu_t *>(lv_timer_get_user_data(t));
-        const auto status = GPS::getInstance().getStatusSnapshot();
-
-        // The fix row only means something while fix hold is armed, so it stays
-        // hidden otherwise and the page renders exactly as it did before the
-        // hold feature existed.
-        if (m_GPSData.fix == nullptr) {
-          m_GPSData.fix = lv_label_create(gpsData->page);
-        }
-        lv_obj_t *fixState = m_GPSData.fix;
-        const bool holdArmed = GPS::getInstance().getHoldLimitMs() != 0;
-        showStatusIcon(fixState, holdArmed);
-        if (holdArmed) {
-          const uint32_t remainingMs = GPS::getInstance().getHoldRemainingMs();
-          switch (GPS::getInstance().getFix()) {
-            case GPS::Fix::LIVE:
-              setLabelTextIfChanged(fixState, "fix: live");
-              break;
-            case GPS::Fix::HELD:
-              setLabelTextFmtIfChanged(fixState, "fix: held, %lus left",
-                                       static_cast<unsigned long>((remainingMs + 999) / 1000));
-              break;
-            case GPS::Fix::NONE:
-              setLabelTextIfChanged(fixState, "fix: searching");
-              break;
+          // The fix row only means something while fix hold is armed, so it stays
+          // hidden otherwise and the page renders exactly as it did before the
+          // hold feature existed.
+          if (m_GPSData.fix == nullptr) {
+            m_GPSData.fix = lv_label_create(gpsData->page);
           }
-        }
+          lv_obj_t *fixState = m_GPSData.fix;
+          const bool holdArmed = GPS::getInstance().getHoldLimitMs() != 0;
+          showStatusIcon(fixState, holdArmed);
+          if (holdArmed) {
+            const uint32_t remainingMs = GPS::getInstance().getHoldRemainingMs();
+            switch (GPS::getInstance().getFix()) {
+              case GPS::Fix::LIVE:
+                setLabelTextIfChanged(fixState, "fix: live");
+                break;
+              case GPS::Fix::HELD:
+                setLabelTextFmtIfChanged(fixState, "fix: held, %lus left",
+                                         static_cast<unsigned long>((remainingMs + 999) / 1000));
+                break;
+              case GPS::Fix::NONE:
+                setLabelTextIfChanged(fixState, "fix: searching");
+                break;
+            }
+          }
 
-        static lv_obj_t *age = lv_label_create(gpsData->page);
-        setLabelTextFmtIfChanged(age, "%lus ago", status.location_age / 1000);
+          static lv_obj_t *age = lv_label_create(gpsData->page);
+          setLabelTextFmtIfChanged(age, "%lus ago", status.location_age / 1000);
 
-        static lv_obj_t *satellites = lv_label_create(gpsData->page);
-        setLabelTextFmtIfChanged(satellites, "%lu satellites", status.satellites);
+          static lv_obj_t *satellites = lv_label_create(gpsData->page);
+          setLabelTextFmtIfChanged(satellites, "%lu satellites", status.satellites);
 
-        static lv_obj_t *speed = lv_label_create(gpsData->page);
-        setLabelTextFmtIfChanged(speed, "%.1f km/h", status.speed_kmph);
+          static lv_obj_t *speed = lv_label_create(gpsData->page);
+          setLabelTextFmtIfChanged(speed, "%.1f km/h", status.speed_kmph);
 
-        static lv_obj_t *lat = nullptr;
-        if (lat == nullptr) {
-          lat = lv_label_create(gpsData->page);
-          lv_obj_set_style_text_font(lat, &lv_font_montserrat_12, 0);
-        }
-        setLabelTextFmtIfChanged(lat, "%.5f°", status.latitude);
+          static lv_obj_t *lat = nullptr;
+          if (lat == nullptr) {
+            lat = lv_label_create(gpsData->page);
+            lv_obj_set_style_text_font(lat, &lv_font_montserrat_12, 0);
+          }
+          setLabelTextFmtIfChanged(lat, "%.5f°", status.latitude);
 
-        static lv_obj_t *lon = nullptr;
-        if (lon == nullptr) {
-          lon = lv_label_create(gpsData->page);
-          lv_obj_set_style_text_font(lon, &lv_font_montserrat_12, 0);
-        }
-        setLabelTextFmtIfChanged(lon, "%.5f°", status.longitude);
+          static lv_obj_t *lon = nullptr;
+          if (lon == nullptr) {
+            lon = lv_label_create(gpsData->page);
+            lv_obj_set_style_text_font(lon, &lv_font_montserrat_12, 0);
+          }
+          setLabelTextFmtIfChanged(lon, "%.5f°", status.longitude);
 
-        static lv_obj_t *alt = lv_label_create(gpsData->page);
-        setLabelTextFmtIfChanged(alt, "%.2f m", status.altitude);
+          static lv_obj_t *alt = lv_label_create(gpsData->page);
+          setLabelTextFmtIfChanged(alt, "%.2f m", status.altitude);
 
 #if !defined(FURBLE_M5STICKC)
-        static lv_obj_t *datetime = nullptr;
-        if (datetime == nullptr) {
-          datetime = lv_label_create(gpsData->page);
+          static lv_obj_t *datetime = nullptr;
+          if (datetime == nullptr) {
+            datetime = lv_label_create(gpsData->page);
 #if !defined(FURBLE_M5COREX)
-          // 135x240 fits the combined stamp only in the small font, and merging
-          // the two rows is what buys the receiver detail rows below their space
-          lv_obj_set_style_text_font(datetime, &lv_font_montserrat_12, 0);
+            // 135x240 fits the combined stamp only in the small font, and merging
+            // the two rows is what buys the receiver detail rows below their space
+            lv_obj_set_style_text_font(datetime, &lv_font_montserrat_12, 0);
 #endif
-        }
-        setLabelTextFmtIfChanged(datetime, "%4u-%02u-%02u %02u:%02u:%02u", status.year,
-                                 status.month, status.day, status.hour, status.minute,
-                                 status.second);
-#else
-        static lv_obj_t *date = lv_label_create(gpsData->page);
-        setLabelTextFmtIfChanged(date, "%4u-%02u-%02u", status.year, status.month, status.day);
-        static lv_obj_t *time = lv_label_create(gpsData->page);
-        setLabelTextFmtIfChanged(time, "%02u:%02u:%02u", status.hour, status.minute, status.second);
-#endif
-
-#if defined(FURBLE_M5STICKC)
-    // The 80x160 panel has no vertical headroom left on this page, and the
-    // page carries no focusable control, so LVGL group navigation cannot
-    // scroll it. Detail rows would render below the fold with no way to
-    // reach them. The raw NMEA page has a focusable button, so it scrolls,
-    // and it keeps carrying hdop and the receiver counters on this board.
-#else
-        // Receiver detail. The rows above report the navigation solution, these
-        // report the receiver producing it, so a receiver that is alive but not
-        // fixing reads differently from one that has gone quiet.
-        //
-        // Two rows of at most fourteen characters. That is the whole budget on
-        // 135x240: the right hand floating navigation indicator is 24 px wide
-        // and sits over the bottom of the page on the non-touch Stick layout,
-        // so a wider centred row runs underneath it. The configured rate is in
-        // Settings, and HDOP, the sentence counters and the degraded retry
-        // count are on the raw NMEA page, so the space here goes to what is
-        // only available here.
-        auto &gps = GPS::getInstance();
-        // one snapshot, so the state and its retry count cannot be torn across
-        // two acquisitions of the cycle mutex
-        const auto receiver = gps.getReceiverStatus();
-
-        // Where the fix comes from, and how long ago the receiver last said
-        // anything. A quiet receiver shows here even while the last fix still
-        // reads plausibly. The source is abbreviated to fit the row.
-        if (m_GPSData.source == nullptr) {
-          m_GPSData.source = addGPSDetailLabel(gpsData->page);
-        }
-        const char *const source = GPS::sourceShortName(gps.getSource());
-        if (receiver.have_sentence) {
-          char age[8];
-          Furble::gpsSentenceAge(age, sizeof(age), receiver.last_sentence_age_ms);
-          setLabelTextFmtIfChanged(m_GPSData.source, "%s nmea %s", source, age);
-        } else {
-          setLabelTextFmtIfChanged(m_GPSData.source, "%s nmea n/a", source);
-        }
-
-        // Power cycle state, with the retry count while it is degraded. The
-        // degraded retry state was otherwise only on the raw NMEA page and the
-        // console.
-        if (m_GPSData.cycle == nullptr) {
-          m_GPSData.cycle = addGPSDetailLabel(gpsData->page);
-        }
-        const auto detection = gps.getReceiverState();
-        if (detection == GPS::receiver_state_t::DETECTING
-            || detection == GPS::receiver_state_t::ABSENT) {
-          // Autobaud has not found a receiver. The cycle state reads "disabled"
-          // here, which is what a switched off GPS reads as, so report the
-          // detection state instead until a receiver answers.
-          setLabelTextIfChanged(m_GPSData.cycle, GPS::receiverStateName(detection));
-        } else if (receiver.degraded) {
-          setLabelTextFmtIfChanged(m_GPSData.cycle, "%s x%lu", receiver.cycle_state,
-                                   (unsigned long)receiver.retries);
-        } else {
-          setLabelTextIfChanged(m_GPSData.cycle, receiver.cycle_state);
-        }
-#endif
-      },
-      1000, &gpsData);
-  lv_timer_pause(m_GPSDataTimer);
-
-  // start the update timer on 'GPS Data' button press
-  lv_obj_add_event_cb(gpsData.button, gpsDataStart, LV_EVENT_CLICKED, m_GPSDataTimer);
-
-  lv_menu_set_load_page_event(gpsData.main, gpsData.button, gpsData.page);
-}
-
-void UI::gpsDataStart(lv_event_t *e) {
-  auto *timer = static_cast<lv_timer_t *>(lv_event_get_user_data(e));
-  lv_timer_resume(timer);
-  menu_t *menu = static_cast<menu_t *>(lv_timer_get_user_data(timer));
-  lv_obj_add_event_cb(menu->main, gpsDataStop, LV_EVENT_CLICKED, timer);
-}
-
-void UI::gpsDataStop(lv_event_t *e) {
-  auto *timer = static_cast<lv_timer_t *>(lv_event_get_user_data(e));
-  auto *target = static_cast<lv_obj_t *>(lv_event_get_target(e));
-  lv_timer_pause(timer);
-  lv_obj_remove_event_cb(target, gpsDataStop);
-}
-
-/**
- * Raw NMEA and satellite debug page.
- *
- * Sentence capture only runs while the page is open. Binary configuration
- * status is shown alongside the captured sentences.
- */
-void UI::addGPSNMEAMenu(const menu_t &parent) {
-  menu_t &menu = addMenu(m_GPSNMEAStr, NULL, true, parent);
-  m_Status.gpsWidgets.push_back(menu.button);
-
-  lv_obj_t *cont = lv_menu_cont_create(menu.page);
-  lv_obj_set_size(cont, LV_PCT(100), LV_SIZE_CONTENT);
-  lv_obj_set_layout(cont, LV_LAYOUT_FLEX);
-  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
-
-  m_NMEA.fix = lv_label_create(cont);
-  lv_obj_set_width(m_NMEA.fix, LV_PCT(100));
-  lv_label_set_long_mode(m_NMEA.fix, LV_LABEL_LONG_WRAP);
-
-  m_NMEA.counters = lv_label_create(cont);
-  lv_obj_set_width(m_NMEA.counters, LV_PCT(100));
-  lv_label_set_long_mode(m_NMEA.counters, LV_LABEL_LONG_WRAP);
-
-  m_NMEA.config = lv_label_create(cont);
-  lv_obj_set_width(m_NMEA.config, LV_PCT(100));
-  lv_label_set_long_mode(m_NMEA.config, LV_LABEL_LONG_WRAP);
-
-  m_NMEA.sentences = lv_label_create(cont);
-  lv_obj_set_width(m_NMEA.sentences, LV_PCT(100));
-  lv_label_set_long_mode(m_NMEA.sentences, LV_LABEL_LONG_WRAP);
-  lv_obj_set_style_text_font(m_NMEA.sentences, &lv_font_montserrat_12, 0);
-
-  lv_obj_t *restart = lv_button_create(cont);
-  lv_obj_t *label = lv_label_create(restart);
-  lv_label_set_text(label, "Hot restart");
-  lv_obj_add_flag(restart, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
-  addToInputGroup(m_Group, restart);
-  lv_obj_add_event_cb(
-      restart, [](lv_event_t *e) { GPS::getInstance().restart(0); }, LV_EVENT_CLICKED, NULL);
-
-  m_NMEATimer = lv_timer_create(
-      [](lv_timer_t *t) {
-        FURBLE_SIM_TIMER_FIRE("nmea_timer");
-        auto *ui = static_cast<UI *>(lv_timer_get_user_data(t));
-        auto &gps = GPS::getInstance();
-        const auto status = gps.getStatusSnapshot();
-        const auto cycle = gps.getCycleStatusSnapshot();
-
-        // a degraded, self recovering cycle is otherwise console only, surface
-        // the retry count here too. The IfChanged setter keeps this guarded.
-        if (cycle.degraded) {
-          setLabelTextFmtIfChanged(ui->m_NMEA.fix,
-                                   "%lu sats, hdop %.1f\n%lus ago, %.1f km/h\ndegraded, retry %lu",
-                                   (unsigned long)status.satellites, status.hdop,
-                                   (unsigned long)(status.location_age / 1000), status.speed_kmph,
-                                   (unsigned long)cycle.retries);
-        } else {
-          setLabelTextFmtIfChanged(ui->m_NMEA.fix, "%lu sats, hdop %.1f\n%lus ago, %.1f km/h",
-                                   (unsigned long)status.satellites, status.hdop,
-                                   (unsigned long)(status.location_age / 1000), status.speed_kmph);
-        }
-        setLabelTextFmtIfChanged(
-            ui->m_NMEA.counters, "rx %lu\nok %lu, bad %lu\n%s %lu",
-            (unsigned long)status.chars_processed, (unsigned long)status.sentences_passed,
-            (unsigned long)status.sentences_failed, GPS::receiverStateName(gps.getReceiverState()),
-            (unsigned long)gps.getDetectedBaud());
-
-        std::string config;
-        for (const auto &entry : gps.getConfigStatus()) {
-          char line[48];
-          snprintf(line, sizeof(line), "cfg %02X/%02X %s x%u", entry.class_id, entry.message_id,
-                   GPS::configStateName(entry.state), static_cast<unsigned>(entry.attempts));
-          if (!config.empty()) {
-            config += "\n";
           }
-          config += line;
-        }
-        if (config.empty()) {
-          config = "cfg empty";
-        }
-        if (config != ui->m_NMEA.configText) {
-          ui->m_NMEA.configText = config;
-          lv_label_set_text(ui->m_NMEA.config, config.c_str());
-        }
-
-        std::string text;
-        for (const auto &sentence : gps.getSentences()) {
-          text += sentence + "\n";
-        }
-        setLabelTextIfChanged(ui->m_NMEA.sentences, text.c_str());
-      },
-      1000, this);
-  lv_timer_pause(m_NMEATimer);
-
-  // only capture sentences while the page is open
-  lv_obj_add_event_cb(
-      menu.button,
-      [](lv_event_t *e) {
-        auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
-        GPS::getInstance().setCapture(true);
-        lv_timer_resume(ui->m_NMEATimer);
-        lv_obj_add_event_cb(m_MainMenu.main, gpsNMEAStop, LV_EVENT_CLICKED, ui);
-      },
-      LV_EVENT_CLICKED, this);
-
-  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
-}
-
-void UI::gpsNMEAStop(lv_event_t *e) {
-  auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
-  auto *target = static_cast<lv_obj_t *>(lv_event_get_target(e));
-  lv_timer_pause(ui->m_NMEATimer);
-  GPS::getInstance().setCapture(false);
-  lv_obj_remove_event_cb(target, gpsNMEAStop);
-}
-
-/**
- * Per satellite signal detail page.
- *
- * GSV and GSA parsing only runs while the page is open. Opening the page adds
- * GSA and GSV to the sentence stream and closing it restores the user's set,
- * so the extra traffic never outlives the page.
- */
-void UI::addGPSSatMenu(const menu_t &parent) {
-  menu_t &menu = addMenu(m_GPSSatStr, NULL, true, parent);
-  m_Status.gpsWidgets.push_back(menu.button);
-
-  lv_obj_t *cont = lv_menu_cont_create(menu.page);
-  lv_obj_set_size(cont, LV_PCT(100), LV_SIZE_CONTENT);
-  lv_obj_set_layout(cont, LV_LAYOUT_FLEX);
-  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
-
-  m_Satellites.summary = lv_label_create(cont);
-  lv_obj_set_width(m_Satellites.summary, LV_PCT(100));
-  lv_label_set_long_mode(m_Satellites.summary, LV_LABEL_LONG_WRAP);
-
-  m_Satellites.table = lv_label_create(cont);
-  lv_obj_set_width(m_Satellites.table, LV_PCT(100));
-  lv_label_set_long_mode(m_Satellites.table, LV_LABEL_LONG_WRAP);
-  lv_obj_set_style_text_font(m_Satellites.table, &lv_font_montserrat_12, 0);
-
-  lv_obj_t *hint = lv_label_create(menu.page);
-  lv_obj_set_width(hint, LV_PCT(100));
-  lv_label_set_long_mode(hint, LV_LABEL_LONG_WRAP);
-  lv_label_set_text(hint,
-                    "* used in fix. Under 30 dB on most satellites means blocked, over 40 on four "
-                    "or more means a fix is close.");
-
-  m_SatTimer = lv_timer_create(
-      [](lv_timer_t *t) {
-        FURBLE_SIM_TIMER_FIRE("gps_sat_timer");
-        auto *ui = static_cast<UI *>(lv_timer_get_user_data(t));
-        const auto report = GPS::getInstance().getSatelliteReport();
-
-        const char *fixName = "no fix";
-        if (report.dop.fix_type == 2) {
-          fixName = "2D";
-        } else if (report.dop.fix_type == 3) {
-          fixName = "3D";
-        }
-        setLabelTextFmtIfChanged(
-            ui->m_Satellites.summary, "%s  %u/%u used\npdop %.1f hdop %.1f vdop %.1f", fixName,
-            static_cast<unsigned>(report.used), static_cast<unsigned>(report.in_view),
-            report.dop.pdop, report.dop.hdop, report.dop.vdop);
-
-        static const char *const sysName[] = {"?", "GP", "GL", "GA", "BD", "QZ"};
-        std::string text;
-        for (const auto &sat : report.satellites) {
-          const char *sys = (sat.constellation <= 5) ? sysName[sat.constellation] : "?";
-          char line[40];
-          snprintf(line, sizeof(line), "%s%-3u %2u dB %s\n", sys, sat.prn, sat.snr,
-                   sat.used ? "*" : " ");
-          text += line;
-        }
-        if (text.empty()) {
-          text = "no satellites yet";
-        }
-        if (text != ui->m_Satellites.tableText) {
-          ui->m_Satellites.tableText = text;
-          lv_label_set_text(ui->m_Satellites.table, text.c_str());
-        }
-      },
-      1000, this);
-  lv_timer_pause(m_SatTimer);
-
-  // parse GSV and GSA only while the page is open
-  lv_obj_add_event_cb(
-      menu.button,
-      [](lv_event_t *e) {
-        auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
-        GPS::getInstance().setSatelliteCapture(true);
-        lv_timer_resume(ui->m_SatTimer);
-        lv_obj_add_event_cb(m_MainMenu.main, gpsSatStop, LV_EVENT_CLICKED, ui);
-      },
-      LV_EVENT_CLICKED, this);
-
-  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
-}
-
-void UI::gpsSatStop(lv_event_t *e) {
-  auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
-  auto *target = static_cast<lv_obj_t *>(lv_event_get_target(e));
-  lv_timer_pause(ui->m_SatTimer);
-  GPS::getInstance().setSatelliteCapture(false);
-  lv_obj_remove_event_cb(target, gpsSatStop);
-}
-
-void UI::addFeaturesMenu(const menu_t &parent) {
-  menu_t &menu = addMenu(m_FeaturesStr, &icon_wand_stars, true, parent);
-
-  lv_obj_t *buttonMode =
-      addRollerItem(menu.page, Settings::get(Settings::BUTTON_MODE).name, "Two-button\nOne-button");
-  const std::string mode = Settings::load<Settings::BUTTON_MODE>();
-  const uint32_t selected = mode == Settings::BUTTON_MODE_ONE_BUTTON_VALUE
-                                ? Settings::BUTTON_MODE_ONE_BUTTON
-                                : Settings::BUTTON_MODE_TWO_BUTTON;
-  lv_roller_set_selected(buttonMode, selected, LV_ANIM_OFF);
-  lv_obj_add_event_cb(
-      buttonMode,
-      [](lv_event_t *e) {
-        auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
-        const uint32_t selected = lv_roller_get_selected(roller);
-        if (selected > Settings::BUTTON_MODE_ONE_BUTTON) {
-          return;
-        }
-        const char *mode = selected == Settings::BUTTON_MODE_ONE_BUTTON
-                               ? Settings::BUTTON_MODE_ONE_BUTTON_VALUE
-                               : Settings::BUTTON_MODE_TWO_BUTTON_VALUE;
-        Settings::save<std::string>(Settings::BUTTON_MODE, mode);
-      },
-      LV_EVENT_VALUE_CHANGED, NULL);
-
-  // Static, non-focusable hint under the roller. The one-button gestures are
-  // not obvious, so describe them where the user picks the mode. It is a plain
-  // label, never added to an input group and never clickable, so it does not
-  // take encoder focus or draw a focus ring. Always shown so the gestures are
-  // discoverable before one-button mode is enabled.
-  lv_obj_t *buttonModeHint = lv_label_create(menu.page);
-  lv_obj_set_width(buttonModeHint, LV_PCT(100));
-  lv_label_set_long_mode(buttonModeHint, LV_LABEL_LONG_WRAP);
-  lv_label_set_text(buttonModeHint,
-                    "One-button: hold=focus, double-click=shoot, click+hold=hold shutter");
-
-  addSettingItem(menu.page, NULL, Settings::AUTOCONNECT);
-  addSettingItem(menu.page, NULL, Settings::FAUXNY);
-  addSettingItem(menu.page, NULL, Settings::RECONNECT);
-  addSettingItem(menu.page, NULL, Settings::RECON_BACKOFF);
-  addSettingItem(menu.page, NULL, Settings::MULTICONNECT);
-  addSettingItem(menu.page, NULL, Settings::COMPANION);
-#if defined(FURBLE_M5STICKS3)
-  addSettingItem(menu.page, NULL, Settings::WATCHDOG);
+          setLabelTextFmtIfChanged(datetime, "%4u-%02u-%02u %02u:%02u:%02u", status.year,
+                                   status.month, status.day, status.hour, status.minute,
+                                   status.second);
+#else
+          static lv_obj_t *date = lv_label_create(gpsData->page);
+          setLabelTextFmtIfChanged(date, "%4u-%02u-%02u", status.year, status.month, status.day);
+          static lv_obj_t *time = lv_label_create(gpsData->page);
+          setLabelTextFmtIfChanged(time, "%02u:%02u:%02u", status.hour, status.minute,
+                                   status.second);
 #endif
-  addSettingItem(menu.page, NULL, Settings::PRESET_PICKER);
-  addSettingItem(menu.page, NULL, Settings::BOOT_SPLASH);
 
-  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
-}
-
-void UI::addIRMenu(void) {
-  menu_t &menu = addMenu(m_IRStr, &icon_remote_gen);
-  lv_obj_set_flex_flow(menu.page, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(menu.page, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
-                        LV_FLEX_ALIGN_CENTER);
-
-  lv_obj_t *fire = lv_button_create(menu.page);
-  lv_obj_set_width(fire, LV_PCT(80));
-  lv_obj_t *label = lv_label_create(fire);
-  lv_label_set_text(label, "Fire");
-  lv_obj_center(label);
-  addToInputGroup(menu.group, fire);
-
-  lv_obj_add_event_cb(
-      fire,
-      [](lv_event_t *e) {
-        (void)e;
-        IR::getInstance().fire();
-      },
-      LV_EVENT_CLICKED, NULL);
-
-  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
-  updateIRMenuVisibility();
-}
-
-lv_obj_t *UI::addSpinItem(lv_obj_t *page, const char *item, Intervalometer::Spinner &spinner) {
-  spinner.m_Button = lv_menu_cont_create(page);
-  lv_obj_set_flex_flow(spinner.m_Button, LV_FLEX_FLOW_ROW_WRAP);
-  lv_obj_add_flag(spinner.m_Button, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
 #if defined(FURBLE_M5STICKC)
-  // 80x160 is the shortest panel. Trim the per-row padding so the Count, Delay,
-  // Shutter and Wait rows fit without scrolling the timer page.
-  lv_obj_set_style_pad_top(spinner.m_Button, 1, LV_STATE_DEFAULT);
-  lv_obj_set_style_pad_bottom(spinner.m_Button, 1, LV_STATE_DEFAULT);
-#elif defined(FURBLE_M5COREX)
-  // Core needs only one pixel less theme top padding for its Large-text rows.
-  const int32_t padTop = lv_obj_get_style_pad_top(spinner.m_Button, LV_PART_MAIN);
-  lv_obj_set_style_pad_top(spinner.m_Button, padTop > 0 ? padTop - 1 : 0, LV_STATE_DEFAULT);
+      // The 80x160 panel has no vertical headroom left on this page, and the
+      // page carries no focusable control, so LVGL group navigation cannot
+      // scroll it. Detail rows would render below the fold with no way to
+      // reach them. The raw NMEA page has a focusable button, so it scrolls,
+      // and it keeps carrying hdop and the receiver counters on this board.
+#else
+          // Receiver detail. The rows above report the navigation solution, these
+          // report the receiver producing it, so a receiver that is alive but not
+          // fixing reads differently from one that has gone quiet.
+          //
+          // Two rows of at most fourteen characters. That is the whole budget on
+          // 135x240: the right hand floating navigation indicator is 24 px wide
+          // and sits over the bottom of the page on the non-touch Stick layout,
+          // so a wider centred row runs underneath it. The configured rate is in
+          // Settings, and HDOP, the sentence counters and the degraded retry
+          // count are on the raw NMEA page, so the space here goes to what is
+          // only available here.
+          auto &gps = GPS::getInstance();
+          // one snapshot, so the state and its retry count cannot be torn across
+          // two acquisitions of the cycle mutex
+          const auto receiver = gps.getReceiverStatus();
+
+          // Where the fix comes from, and how long ago the receiver last said
+          // anything. A quiet receiver shows here even while the last fix still
+          // reads plausibly. The source is abbreviated to fit the row.
+          if (m_GPSData.source == nullptr) {
+            m_GPSData.source = addGPSDetailLabel(gpsData->page);
+          }
+          const char *const source = GPS::sourceShortName(gps.getSource());
+          if (receiver.have_sentence) {
+            char age[8];
+            Furble::gpsSentenceAge(age, sizeof(age), receiver.last_sentence_age_ms);
+            setLabelTextFmtIfChanged(m_GPSData.source, "%s nmea %s", source, age);
+          } else {
+            setLabelTextFmtIfChanged(m_GPSData.source, "%s nmea n/a", source);
+          }
+
+          // Power cycle state, with the retry count while it is degraded. The
+          // degraded retry state was otherwise only on the raw NMEA page and the
+          // console.
+          if (m_GPSData.cycle == nullptr) {
+            m_GPSData.cycle = addGPSDetailLabel(gpsData->page);
+          }
+          const auto detection = gps.getReceiverState();
+          if (detection == GPS::receiver_state_t::DETECTING
+              || detection == GPS::receiver_state_t::ABSENT) {
+            // Autobaud has not found a receiver. The cycle state reads "disabled"
+            // here, which is what a switched off GPS reads as, so report the
+            // detection state instead until a receiver answers.
+            setLabelTextIfChanged(m_GPSData.cycle, GPS::receiverStateName(detection));
+          } else if (receiver.degraded) {
+            setLabelTextFmtIfChanged(m_GPSData.cycle, "%s x%lu", receiver.cycle_state,
+                                     (unsigned long)receiver.retries);
+          } else {
+            setLabelTextIfChanged(m_GPSData.cycle, receiver.cycle_state);
+          }
 #endif
-
-  spinner.m_Label = lv_label_create(spinner.m_Button);
-  lv_label_set_text(spinner.m_Label, item);
-#if defined(FURBLE_M5COREX)
-  lv_obj_set_flex_grow(spinner.m_Label, 1);
-#endif
-
-  spinner.m_Value = lv_label_create(spinner.m_Button);
-  lv_label_set_long_mode(spinner.m_Value, LV_LABEL_LONG_SCROLL_CIRCULAR);
-#if !defined(FURBLE_M5COREX)
-  lv_obj_set_flex_grow(spinner.m_Value, 1);
-#endif
-
-  lv_obj_add_event_cb(
-      spinner.m_Value,
-      [](lv_event_t *e) {
-        auto *spinner = static_cast<Intervalometer::Spinner *>(lv_event_get_user_data(e));
-        spinner->update();
-      },
-      LV_EVENT_REFRESH, &spinner);
-
-  return spinner.m_Button;
-}
-
-void UI::addSpinnerPage(const menu_t &parent, const char *item, Intervalometer::Spinner &spinner) {
-  menu_t &menu = addMenu(item, NULL, false, parent);
-  menu.button = addSpinItem(parent.page, item, spinner);
-
-  addToInputGroup(m_Group, menu.button);
-
-  lv_obj_set_flex_flow(menu.page, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_scrollbar_mode(menu.page, LV_SCROLLBAR_MODE_OFF);
-  spinner.m_RowInfinite = lv_obj_create(menu.page);
-  lv_obj_set_size(spinner.m_RowInfinite, LV_PCT(100), LV_SIZE_CONTENT);
-  lv_obj_set_layout(spinner.m_RowInfinite, LV_LAYOUT_FLEX);
-  lv_obj_set_flex_flow(spinner.m_RowInfinite, LV_FLEX_FLOW_ROW);
-  lv_obj_t *label = lv_label_create(spinner.m_RowInfinite);
-  lv_label_set_text(label, "Infinite");
-  lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
-  lv_obj_set_flex_grow(label, 1);
-  spinner.m_SwitchInfinite = lv_switch_create(spinner.m_RowInfinite);
-  lv_obj_add_flag(spinner.m_SwitchInfinite, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
-  addToInputGroup(m_Group, spinner.m_SwitchInfinite);
-  if (spinner.m_SpinValue.m_Unit == SpinValue::UNIT_INF) {
-    lv_obj_add_state(spinner.m_SwitchInfinite, LV_STATE_CHECKED);
-  } else {
-    lv_obj_remove_state(spinner.m_SwitchInfinite, LV_STATE_CHECKED);
-  }
-
-  if (!spinner.m_Infinite) {
-    lv_obj_add_flag(spinner.m_RowInfinite, LV_OBJ_FLAG_HIDDEN);
-  }
-
-  lv_obj_add_event_cb(
-      spinner.m_SwitchInfinite,
-      [](lv_event_t *e) {
-        auto *spinner = static_cast<Intervalometer::Spinner *>(lv_event_get_user_data(e));
-        spinner->update();
-      },
-      LV_EVENT_VALUE_CHANGED, &spinner);
-
-  spinner.m_RowSpinners = lv_obj_create(menu.page);
-  lv_obj_set_size(spinner.m_RowSpinners, LV_PCT(100), LV_SIZE_CONTENT);
-  lv_obj_set_layout(spinner.m_RowSpinners, LV_LAYOUT_FLEX);
-  lv_obj_set_flex_flow(spinner.m_RowSpinners, LV_FLEX_FLOW_ROW);
-
-  switch (M5.getBoard()) {
-    case m5::board_t::board_M5StickC:
-    case m5::board_t::board_M5StickCPlus2:
-    case m5::board_t::board_M5StickCPlus:
-    case m5::board_t::board_M5StickS3:
-      lv_obj_set_flex_align(spinner.m_RowSpinners, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
-                            LV_FLEX_ALIGN_CENTER);
-      break;
-
-    default:
-      lv_obj_set_flex_align(spinner.m_RowSpinners, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
-                            LV_FLEX_ALIGN_CENTER);
-      break;
-  }
-
-  for (auto &r : spinner.m_Roller) {
-    r = lv_roller_create(spinner.m_RowSpinners);
-    lv_obj_add_flag(r, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
-    lv_roller_set_options(r, Intervalometer::Spinner::m_SpinDigitRoller, LV_ROLLER_MODE_INFINITE);
-
-    lv_roller_set_visible_row_count(r, 2);
-    addToInputGroup(m_Group, r);
-    lv_obj_add_event_cb(
-        r,
-        [](lv_event_t *e) {
-          auto *spinner = static_cast<Intervalometer::Spinner *>(lv_event_get_user_data(e));
-          lv_obj_send_event(spinner->m_Value, LV_EVENT_REFRESH, spinner);
         },
-        LV_EVENT_VALUE_CHANGED, &spinner);
+        1000, &gpsData);
+    lv_timer_pause(m_GPSDataTimer);
+
+    // start the update timer on 'GPS Data' button press
+    lv_obj_add_event_cb(gpsData.button, gpsDataStart, LV_EVENT_CLICKED, m_GPSDataTimer);
+
+    lv_menu_set_load_page_event(gpsData.main, gpsData.button, gpsData.page);
   }
 
-  if (spinner.supportsPresetPicker()
-      || (!spinner.m_FixedUnit && (spinner.m_SpinValue.m_Unit != SpinValue::UNIT_NIL)
-          && (spinner.m_SpinValue.m_Unit != SpinValue::UNIT_INF))) {
-    spinner.m_RollerUnit = lv_roller_create(spinner.m_RowSpinners);
-    lv_obj_add_flag(spinner.m_RollerUnit, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
-    lv_roller_set_options(spinner.m_RollerUnit, Intervalometer::Spinner::m_SpinUnitsRoller,
-                          LV_ROLLER_MODE_INFINITE);
+  void UI::gpsDataStart(lv_event_t * e) {
+    auto *timer = static_cast<lv_timer_t *>(lv_event_get_user_data(e));
+    lv_timer_resume(timer);
+    menu_t *menu = static_cast<menu_t *>(lv_timer_get_user_data(timer));
+    lv_obj_add_event_cb(menu->main, gpsDataStop, LV_EVENT_CLICKED, timer);
+  }
 
+  void UI::gpsDataStop(lv_event_t * e) {
+    auto *timer = static_cast<lv_timer_t *>(lv_event_get_user_data(e));
+    auto *target = static_cast<lv_obj_t *>(lv_event_get_target(e));
+    lv_timer_pause(timer);
+    lv_obj_remove_event_cb(target, gpsDataStop);
+  }
+
+  /**
+   * Raw NMEA and satellite debug page.
+   *
+   * Sentence capture only runs while the page is open. Binary configuration
+   * status is shown alongside the captured sentences.
+   */
+  void UI::addGPSNMEAMenu(const menu_t &parent) {
+    menu_t &menu = addMenu(m_GPSNMEAStr, NULL, true, parent);
+    m_Status.gpsWidgets.push_back(menu.button);
+
+    lv_obj_t *cont = lv_menu_cont_create(menu.page);
+    lv_obj_set_size(cont, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_layout(cont, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+
+    m_NMEA.fix = lv_label_create(cont);
+    lv_obj_set_width(m_NMEA.fix, LV_PCT(100));
+    lv_label_set_long_mode(m_NMEA.fix, LV_LABEL_LONG_WRAP);
+
+    m_NMEA.counters = lv_label_create(cont);
+    lv_obj_set_width(m_NMEA.counters, LV_PCT(100));
+    lv_label_set_long_mode(m_NMEA.counters, LV_LABEL_LONG_WRAP);
+
+    m_NMEA.config = lv_label_create(cont);
+    lv_obj_set_width(m_NMEA.config, LV_PCT(100));
+    lv_label_set_long_mode(m_NMEA.config, LV_LABEL_LONG_WRAP);
+
+    m_NMEA.sentences = lv_label_create(cont);
+    lv_obj_set_width(m_NMEA.sentences, LV_PCT(100));
+    lv_label_set_long_mode(m_NMEA.sentences, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_font(m_NMEA.sentences, &lv_font_montserrat_12, 0);
+
+    lv_obj_t *restart = lv_button_create(cont);
+    lv_obj_t *label = lv_label_create(restart);
+    lv_label_set_text(label, "Hot restart");
+    lv_obj_add_flag(restart, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+    addToInputGroup(m_Group, restart);
     lv_obj_add_event_cb(
-        spinner.m_RollerUnit,
-        [](lv_event_t *e) {
-          auto *spinner = static_cast<Intervalometer::Spinner *>(lv_event_get_user_data(e));
-          lv_obj_send_event(spinner->m_Value, LV_EVENT_REFRESH, spinner);
-        },
-        LV_EVENT_VALUE_CHANGED, &spinner);
+        restart, [](lv_event_t *e) { GPS::getInstance().restart(0); }, LV_EVENT_CLICKED, NULL);
 
-    addToInputGroup(m_Group, spinner.m_RollerUnit);
+    m_NMEATimer = lv_timer_create(
+        [](lv_timer_t *t) {
+          FURBLE_SIM_TIMER_FIRE("nmea_timer");
+          auto *ui = static_cast<UI *>(lv_timer_get_user_data(t));
+          auto &gps = GPS::getInstance();
+          const auto status = gps.getStatusSnapshot();
+          const auto cycle = gps.getCycleStatusSnapshot();
+
+          // a degraded, self recovering cycle is otherwise console only, surface
+          // the retry count here too. The IfChanged setter keeps this guarded.
+          if (cycle.degraded) {
+            setLabelTextFmtIfChanged(
+                ui->m_NMEA.fix, "%lu sats, hdop %.1f\n%lus ago, %.1f km/h\ndegraded, retry %lu",
+                (unsigned long)status.satellites, status.hdop,
+                (unsigned long)(status.location_age / 1000), status.speed_kmph,
+                (unsigned long)cycle.retries);
+          } else {
+            setLabelTextFmtIfChanged(ui->m_NMEA.fix, "%lu sats, hdop %.1f\n%lus ago, %.1f km/h",
+                                     (unsigned long)status.satellites, status.hdop,
+                                     (unsigned long)(status.location_age / 1000),
+                                     status.speed_kmph);
+          }
+          setLabelTextFmtIfChanged(
+              ui->m_NMEA.counters, "rx %lu\nok %lu, bad %lu\n%s %lu",
+              (unsigned long)status.chars_processed, (unsigned long)status.sentences_passed,
+              (unsigned long)status.sentences_failed,
+              GPS::receiverStateName(gps.getReceiverState()), (unsigned long)gps.getDetectedBaud());
+
+          std::string config;
+          for (const auto &entry : gps.getConfigStatus()) {
+            char line[48];
+            snprintf(line, sizeof(line), "cfg %02X/%02X %s x%u", entry.class_id, entry.message_id,
+                     GPS::configStateName(entry.state), static_cast<unsigned>(entry.attempts));
+            if (!config.empty()) {
+              config += "\n";
+            }
+            config += line;
+          }
+          if (config.empty()) {
+            config = "cfg empty";
+          }
+          if (config != ui->m_NMEA.configText) {
+            ui->m_NMEA.configText = config;
+            lv_label_set_text(ui->m_NMEA.config, config.c_str());
+          }
+
+          std::string text;
+          for (const auto &sentence : gps.getSentences()) {
+            text += sentence + "\n";
+          }
+          setLabelTextIfChanged(ui->m_NMEA.sentences, text.c_str());
+        },
+        1000, this);
+    lv_timer_pause(m_NMEATimer);
+
+    // only capture sentences while the page is open
+    lv_obj_add_event_cb(
+        menu.button,
+        [](lv_event_t *e) {
+          auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+          GPS::getInstance().setCapture(true);
+          lv_timer_resume(ui->m_NMEATimer);
+          lv_obj_add_event_cb(m_MainMenu.main, gpsNMEAStop, LV_EVENT_CLICKED, ui);
+        },
+        LV_EVENT_CLICKED, this);
+
+    lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
   }
 
-  if (spinner.supportsPresetPicker()) {
-    spinner.m_PresetRow = lv_obj_create(menu.page);
-    lv_obj_set_size(spinner.m_PresetRow, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_layout(spinner.m_PresetRow, LV_LAYOUT_FLEX);
-    lv_obj_set_flex_flow(spinner.m_PresetRow, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(spinner.m_PresetRow, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER,
+  void UI::gpsNMEAStop(lv_event_t * e) {
+    auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+    auto *target = static_cast<lv_obj_t *>(lv_event_get_target(e));
+    lv_timer_pause(ui->m_NMEATimer);
+    GPS::getInstance().setCapture(false);
+    lv_obj_remove_event_cb(target, gpsNMEAStop);
+  }
+
+  /**
+   * Per satellite signal detail page.
+   *
+   * GSV and GSA parsing only runs while the page is open. Opening the page adds
+   * GSA and GSV to the sentence stream and closing it restores the user's set,
+   * so the extra traffic never outlives the page.
+   */
+  void UI::addGPSSatMenu(const menu_t &parent) {
+    menu_t &menu = addMenu(m_GPSSatStr, NULL, true, parent);
+    m_Status.gpsWidgets.push_back(menu.button);
+
+    lv_obj_t *cont = lv_menu_cont_create(menu.page);
+    lv_obj_set_size(cont, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_layout(cont, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+
+    m_Satellites.summary = lv_label_create(cont);
+    lv_obj_set_width(m_Satellites.summary, LV_PCT(100));
+    lv_label_set_long_mode(m_Satellites.summary, LV_LABEL_LONG_WRAP);
+
+    m_Satellites.table = lv_label_create(cont);
+    lv_obj_set_width(m_Satellites.table, LV_PCT(100));
+    lv_label_set_long_mode(m_Satellites.table, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_font(m_Satellites.table, &lv_font_montserrat_12, 0);
+
+    lv_obj_t *hint = lv_label_create(menu.page);
+    lv_obj_set_width(hint, LV_PCT(100));
+    lv_label_set_long_mode(hint, LV_LABEL_LONG_WRAP);
+    lv_label_set_text(
+        hint,
+        "* used in fix. Under 30 dB on most satellites means blocked, over 40 on four "
+        "or more means a fix is close.");
+
+    m_SatTimer = lv_timer_create(
+        [](lv_timer_t *t) {
+          FURBLE_SIM_TIMER_FIRE("gps_sat_timer");
+          auto *ui = static_cast<UI *>(lv_timer_get_user_data(t));
+          const auto report = GPS::getInstance().getSatelliteReport();
+
+          const char *fixName = "no fix";
+          if (report.dop.fix_type == 2) {
+            fixName = "2D";
+          } else if (report.dop.fix_type == 3) {
+            fixName = "3D";
+          }
+          setLabelTextFmtIfChanged(
+              ui->m_Satellites.summary, "%s  %u/%u used\npdop %.1f hdop %.1f vdop %.1f", fixName,
+              static_cast<unsigned>(report.used), static_cast<unsigned>(report.in_view),
+              report.dop.pdop, report.dop.hdop, report.dop.vdop);
+
+          static const char *const sysName[] = {"?", "GP", "GL", "GA", "BD", "QZ"};
+          std::string text;
+          for (const auto &sat : report.satellites) {
+            const char *sys = (sat.constellation <= 5) ? sysName[sat.constellation] : "?";
+            char line[40];
+            snprintf(line, sizeof(line), "%s%-3u %2u dB %s\n", sys, sat.prn, sat.snr,
+                     sat.used ? "*" : " ");
+            text += line;
+          }
+          if (text.empty()) {
+            text = "no satellites yet";
+          }
+          if (text != ui->m_Satellites.tableText) {
+            ui->m_Satellites.tableText = text;
+            lv_label_set_text(ui->m_Satellites.table, text.c_str());
+          }
+        },
+        1000, this);
+    lv_timer_pause(m_SatTimer);
+
+    // parse GSV and GSA only while the page is open
+    lv_obj_add_event_cb(
+        menu.button,
+        [](lv_event_t *e) {
+          auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+          GPS::getInstance().setSatelliteCapture(true);
+          lv_timer_resume(ui->m_SatTimer);
+          lv_obj_add_event_cb(m_MainMenu.main, gpsSatStop, LV_EVENT_CLICKED, ui);
+        },
+        LV_EVENT_CLICKED, this);
+
+    lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+  }
+
+  void UI::gpsSatStop(lv_event_t * e) {
+    auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+    auto *target = static_cast<lv_obj_t *>(lv_event_get_target(e));
+    lv_timer_pause(ui->m_SatTimer);
+    GPS::getInstance().setSatelliteCapture(false);
+    lv_obj_remove_event_cb(target, gpsSatStop);
+  }
+
+  void UI::addFeaturesMenu(const menu_t &parent) {
+    menu_t &menu = addMenu(m_FeaturesStr, &icon_wand_stars, true, parent);
+
+    lv_obj_t *buttonMode = addRollerItem(menu.page, Settings::get(Settings::BUTTON_MODE).name,
+                                         "Two-button\nOne-button");
+    const std::string mode = Settings::load<Settings::BUTTON_MODE>();
+    const uint32_t selected = mode == Settings::BUTTON_MODE_ONE_BUTTON_VALUE
+                                  ? Settings::BUTTON_MODE_ONE_BUTTON
+                                  : Settings::BUTTON_MODE_TWO_BUTTON;
+    lv_roller_set_selected(buttonMode, selected, LV_ANIM_OFF);
+    lv_obj_add_event_cb(
+        buttonMode,
+        [](lv_event_t *e) {
+          auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+          const uint32_t selected = lv_roller_get_selected(roller);
+          if (selected > Settings::BUTTON_MODE_ONE_BUTTON) {
+            return;
+          }
+          const char *mode = selected == Settings::BUTTON_MODE_ONE_BUTTON
+                                 ? Settings::BUTTON_MODE_ONE_BUTTON_VALUE
+                                 : Settings::BUTTON_MODE_TWO_BUTTON_VALUE;
+          Settings::save<std::string>(Settings::BUTTON_MODE, mode);
+        },
+        LV_EVENT_VALUE_CHANGED, NULL);
+
+    // Static, non-focusable hint under the roller. The one-button gestures are
+    // not obvious, so describe them where the user picks the mode. It is a plain
+    // label, never added to an input group and never clickable, so it does not
+    // take encoder focus or draw a focus ring. Always shown so the gestures are
+    // discoverable before one-button mode is enabled.
+    lv_obj_t *buttonModeHint = lv_label_create(menu.page);
+    lv_obj_set_width(buttonModeHint, LV_PCT(100));
+    lv_label_set_long_mode(buttonModeHint, LV_LABEL_LONG_WRAP);
+    lv_label_set_text(buttonModeHint,
+                      "One-button: hold=focus, double-click=shoot, click+hold=hold shutter");
+
+    addSettingItem(menu.page, NULL, Settings::AUTOCONNECT);
+    addSettingItem(menu.page, NULL, Settings::FAUXNY);
+    addSettingItem(menu.page, NULL, Settings::RECONNECT);
+    addSettingItem(menu.page, NULL, Settings::RECON_BACKOFF);
+    addSettingItem(menu.page, NULL, Settings::MULTICONNECT);
+    addSettingItem(menu.page, NULL, Settings::COMPANION);
+#if defined(FURBLE_M5STICKS3)
+    addSettingItem(menu.page, NULL, Settings::WATCHDOG);
+#endif
+    addSettingItem(menu.page, NULL, Settings::PRESET_PICKER);
+    addSettingItem(menu.page, NULL, Settings::BOOT_SPLASH);
+
+    lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+  }
+
+  void UI::addIRMenu(void) {
+    menu_t &menu = addMenu(m_IRStr, &icon_remote_gen);
+    lv_obj_set_flex_flow(menu.page, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(menu.page, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
                           LV_FLEX_ALIGN_CENTER);
 
-    spinner.m_PresetMinus = lv_button_create(spinner.m_PresetRow);
-    lv_obj_set_style_bg_image_src(spinner.m_PresetMinus, LV_SYMBOL_MINUS, 0);
-    lv_obj_set_size(spinner.m_PresetMinus, 40, 40);
-
-    spinner.m_PresetValue = lv_label_create(spinner.m_PresetRow);
-    lv_obj_set_flex_grow(spinner.m_PresetValue, 1);
-    lv_obj_set_style_text_align(spinner.m_PresetValue, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_font(spinner.m_PresetValue, &lv_font_montserrat_16, 0);
-
-    spinner.m_PresetPlus = lv_button_create(spinner.m_PresetRow);
-    lv_obj_set_style_bg_image_src(spinner.m_PresetPlus, LV_SYMBOL_PLUS, 0);
-    lv_obj_set_size(spinner.m_PresetPlus, 40, 40);
+    lv_obj_t *fire = lv_button_create(menu.page);
+    lv_obj_set_width(fire, LV_PCT(80));
+    lv_obj_t *label = lv_label_create(fire);
+    lv_label_set_text(label, "Fire");
+    lv_obj_center(label);
+    addToInputGroup(menu.group, fire);
 
     lv_obj_add_event_cb(
-        spinner.m_PresetMinus,
+        fire,
         [](lv_event_t *e) {
-          auto *spinner = static_cast<Intervalometer::Spinner *>(lv_event_get_user_data(e));
-          lv_event_code_t code = lv_event_get_code(e);
-          if ((code == LV_EVENT_PRESSED) || (code == LV_EVENT_LONG_PRESSED_REPEAT)) {
-            spinner->stepPreset(-1);
-          }
+          (void)e;
+          IR::getInstance().fire();
         },
-        LV_EVENT_ALL, &spinner);
-    lv_obj_add_event_cb(
-        spinner.m_PresetPlus,
-        [](lv_event_t *e) {
-          auto *spinner = static_cast<Intervalometer::Spinner *>(lv_event_get_user_data(e));
-          lv_event_code_t code = lv_event_get_code(e);
-          if ((code == LV_EVENT_PRESSED) || (code == LV_EVENT_LONG_PRESSED_REPEAT)) {
-            spinner->stepPreset(1);
-          }
-        },
-        LV_EVENT_ALL, &spinner);
+        LV_EVENT_CLICKED, NULL);
 
-    if (M5.Touch.isEnabled()) {
-      // The synthesized A/B/C buttons navigate the group, so the plus and
-      // minus buttons have to be group members to be reachable.
-      lv_group_add_obj(m_Group, spinner.m_PresetMinus);
-      lv_group_add_obj(m_Group, spinner.m_PresetPlus);
-    } else {
-      // The physical keys step directly, the on-screen buttons only waste
-      // width on the small displays.
-      lv_obj_add_flag(spinner.m_PresetMinus, LV_OBJ_FLAG_HIDDEN);
-      lv_obj_add_flag(spinner.m_PresetPlus, LV_OBJ_FLAG_HIDDEN);
-    }
-
-    lv_obj_add_flag(spinner.m_PresetRow, LV_OBJ_FLAG_HIDDEN);
+    lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+    updateIRMenuVisibility();
   }
 
-  // squeeze width for smaller displays
-  switch (M5.getBoard()) {
-    case m5::board_t::board_M5StickC:
-      lv_obj_set_flex_align(spinner.m_RowSpinners, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
-                            LV_FLEX_ALIGN_CENTER);
-      lv_obj_add_flag(spinner.m_RowSpinners, LV_OBJ_FLAG_SCROLLABLE);
-      lv_obj_set_scrollbar_mode(spinner.m_RowSpinners, LV_SCROLLBAR_MODE_OFF);
-      lv_obj_set_scroll_dir(spinner.m_RowSpinners, LV_DIR_HOR);
-      __attribute__((fallthrough));
-    case m5::board_t::board_M5StickCPlus2:
-    case m5::board_t::board_M5StickCPlus:
-    case m5::board_t::board_M5StickS3:
-      for (auto &r : spinner.m_Roller) {
-        lv_obj_set_style_pad_left(r, 2, LV_STATE_DEFAULT);
-        lv_obj_set_style_pad_right(r, 2, LV_STATE_DEFAULT);
-      }
-
-      if (spinner.m_RollerUnit != nullptr) {
-        lv_obj_set_style_pad_left(spinner.m_RollerUnit, 2, LV_STATE_DEFAULT);
-        lv_obj_set_style_pad_right(spinner.m_RollerUnit, 2, LV_STATE_DEFAULT);
-      }
-
-      if (spinner.m_PresetRow != nullptr) {
-        // squeeze the preset row too so the value label gets the width
-        lv_obj_set_style_pad_left(spinner.m_PresetRow, 2, LV_STATE_DEFAULT);
-        lv_obj_set_style_pad_right(spinner.m_PresetRow, 2, LV_STATE_DEFAULT);
-      }
-      break;
-    default:
-      break;
-  }
-
-  spinner.updateLabels();
-
-  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
-}
-
-void UI::addIntervalometerMenu(const menu_t &parent) {
-  menu_t &menu = addMenu(m_IntervalometerStr, &icon_timer, true, parent);
-  menu_t &menuIntervalRun = addMenu(m_IntervalometerRunStr, NULL, false, menu);
-
-  m_IntervalStart = lv_button_create(menu.page);
-  lv_obj_t *label = lv_label_create(m_IntervalStart);
-  lv_label_set_text(label, "Start");
-  lv_obj_center(label);
-  lv_obj_add_flag(m_IntervalStart, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
-  addToInputGroup(m_Group, m_IntervalStart);
-
-  addSpinnerPage(menu, m_IntervalCountStr, m_Intervalometer.m_Count);
-  addSpinnerPage(menu, m_IntervalDelayStr, m_Intervalometer.m_Delay);
-  addSpinnerPage(menu, m_IntervalShutterStr, m_Intervalometer.m_Shutter);
-  addSpinnerPage(menu, m_IntervalWaitStr, m_Intervalometer.m_Wait);
-  lv_obj_t *sleepRow = addSettingItem(menu.page, NULL, Settings::IVL_SLEEP);
-  addSpinnerPage(menu, m_IntervalSleepThresholdStr, m_Intervalometer.m_SleepThreshold);
-  // The threshold row is revealed beside the floating right indicator on Stick
-  // layouts. Keep its name and value inside the reserved column; without this,
-  // the wrapped value leaves the long row label under the indicator.
-  if (const int32_t reserve = floatingIndicatorReserve(); reserve > 0) {
-    lv_obj_set_style_pad_right(m_Intervalometer.m_SleepThreshold.m_Button, reserve, LV_PART_MAIN);
-    lv_obj_set_width(m_Intervalometer.m_SleepThreshold.m_Label, LV_PCT(100));
-    lv_label_set_long_mode(m_Intervalometer.m_SleepThreshold.m_Label, LV_LABEL_LONG_WRAP);
-  }
-
-  if (!Platform::getInstance().canTimedWake()) {
-    lv_obj_add_flag(lv_obj_get_parent(sleepRow), LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(m_Intervalometer.m_SleepThreshold.m_Button, LV_OBJ_FLAG_HIDDEN);
-  } else if (!Settings::load<Settings::IVL_SLEEP>()) {
-    lv_obj_add_flag(m_Intervalometer.m_SleepThreshold.m_Button, LV_OBJ_FLAG_HIDDEN);
-  }
-
-  // Reflect count infinite or not
-  m_Intervalometer.m_Count.update();
-
-  lv_obj_add_flag(m_IntervalStart, LV_OBJ_FLAG_HIDDEN);
-
-  lv_obj_add_event_cb(
-      m_IntervalStart,
-      [](lv_event_t *e) {
-        auto *timer = static_cast<lv_timer_t *>(lv_event_get_user_data(e));
-        auto *interval = static_cast<Intervalometer *>(lv_timer_get_user_data(timer));
-
-        interval->startNewRun();
-        interval->m_State = Intervalometer::STATE_IDLE;
-        m_IntervalCountdownActive = false;
-        m_IntervalLastAnnouncedSecond = 0;
-        // Announce WAIT before the timer's first tick sets it. The gesture guard
-        // needs the run to be visible immediately; the cost is that the console
-        // status and the companion report WAIT for one 5 ms tick before the
-        // state machine gets there.
-        m_IntervalometerState.store(static_cast<uint8_t>(Intervalometer::STATE_WAIT));
-        lv_timer_resume(timer);
-
-        lv_timer_resume(m_IntervalPageRefresh);
-        lv_timer_ready(m_IntervalPageRefresh);
-      },
-      LV_EVENT_CLICKED, m_IntervalTimer);
-
-  lv_obj_t *cont = lv_menu_cont_create(menuIntervalRun.page);
-  lv_obj_set_height(cont, LV_PCT(100));
-  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
-                        LV_FLEX_ALIGN_CENTER);
-
-  m_Intervalometer.m_StateLabel = lv_label_create(cont);
-  m_Intervalometer.m_CountLabel = lv_label_create(cont);
-  m_Intervalometer.m_RemainingLabel = lv_label_create(cont);
-
-  m_IntervalStop = lv_button_create(cont);
-  lv_obj_t *stopLabel = lv_label_create(m_IntervalStop);
-  lv_label_set_text(stopLabel, "Stop");
-  lv_obj_add_flag(m_IntervalStop, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
-  addToInputGroup(m_Group, m_IntervalStop);
-  lv_obj_add_event_cb(
-      m_IntervalStop,
-      [](lv_event_t *e) {
-        auto *timer = static_cast<lv_timer_t *>(lv_event_get_user_data(e));
-        auto *interval = static_cast<Intervalometer *>(lv_timer_get_user_data(timer));
-        auto &control = Control::getInstance();
-
-        // pause all interval timers
-        lv_timer_pause(timer);
-        lv_timer_pause(m_IntervalPageRefresh);
-        m_IntervalCountdownActive = false;
-        m_IntervalLastAnnouncedSecond = 0;
-        interval->clearResume();
-        interval->m_CountShots = 0;
-        m_IntervalometerState.store(static_cast<uint8_t>(Intervalometer::STATE_IDLE));
-
-        // reset the run state so a subsequent start begins a fresh run, and
-        // mirror it to the atomic the console status query reads
-        interval->m_State = Intervalometer::STATE_IDLE;
-        m_IntervalometerState.store(static_cast<uint8_t>(Intervalometer::STATE_IDLE));
-        lv_timer_set_period(timer, 100);
-
-        // release shutter and exit
-        control.sendCommand(Control::CMD_SHUTTER_RELEASE);
-        lv_obj_t *back = lv_menu_get_main_header_back_button(m_MainMenu.main);
-        lv_obj_send_event(back, LV_EVENT_CLICKED, m_MainMenu.main);
-      },
-      LV_EVENT_CLICKED, m_IntervalTimer);
-
-  m_IntervalPageRefresh = lv_timer_create(
-      [](lv_timer_t *timer) {
-        FURBLE_SIM_TIMER_FIRE("interval_page_refresh");
-        auto *label = static_cast<lv_obj_t *>(lv_timer_get_user_data(timer));
-        uint32_t now = tick();
-        uint32_t remaining = Time::deadlineReached(now, m_IntervalNext) ? 0 : m_IntervalNext - now;
-        SpinValue::hms_t hms = SpinValue::toHMS(remaining);
-        lv_label_set_text_fmt(label, "%02lu:%02lu:%02lu", hms.hours, hms.minutes, hms.seconds);
-
-        if (!m_IntervalCountdownActive || (remaining == 0)) {
-          m_IntervalLastAnnouncedSecond = 0;
-        } else if (remaining > 3000) {
-          m_IntervalLastAnnouncedSecond = 0;
-        } else {
-          uint8_t second = static_cast<uint8_t>((remaining + 999) / 1000);
-          if ((second >= 1) && (second <= 3) && (second != m_IntervalLastAnnouncedSecond)) {
-            Feedback::getInstance().signal(Feedback::COUNTDOWN);
-            m_IntervalLastAnnouncedSecond = second;
-          }
-        }
-      },
-      333, m_Intervalometer.m_RemainingLabel);
-  lv_timer_pause(m_IntervalPageRefresh);
-
-  lv_menu_set_load_page_event(menuIntervalRun.main, m_IntervalStart, menuIntervalRun.page);
-
-  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
-}
-
-void UI::bulbRefresh(void) {
-  uint32_t now = tick();
-  uint32_t remaining = Time::deadlineReached(now, m_BulbEnd) ? 0 : m_BulbEnd - now;
-  SpinValue::hms_t hms = SpinValue::toHMS(remaining);
-  lv_label_set_text_fmt(m_Bulb.m_RemainingLabel, "%02lu:%02lu:%02lu", hms.hours, hms.minutes,
-                        hms.seconds);
-}
-
-void UI::bulbStart(void) {
-  if (m_Bulb.m_State == Bulb::STATE_RUNNING) {
-    return;
-  }
-
-  uint32_t duration = m_Bulb.m_Duration.m_SpinValue.toMilliseconds();
-  m_Bulb.m_State = Bulb::STATE_RUNNING;
-  m_Bulb.m_StartedAt = tick();
-
-  lv_label_set_text(m_Bulb.m_StateLabel, "Exposing");
-  lv_label_set_text(m_Bulb.m_ActionLabel, "Stop");
-
-  // Hold the shutter with the same lock the remote page uses.
-  shutterLock(Control::getInstance());
-
-  m_BulbEnd = m_Bulb.m_StartedAt + duration;
-  lv_timer_set_period(m_BulbTimer, duration);
-  lv_timer_reset(m_BulbTimer);
-  lv_timer_resume(m_BulbTimer);
-
-  bulbRefresh();
-  lv_timer_resume(m_BulbPageRefresh);
-}
-
-void UI::bulbComplete(void) {
-  if (m_Bulb.m_State != Bulb::STATE_RUNNING) {
-    return;
-  }
-
-  uint32_t now = tick();
-  uint32_t elapsed = now - m_Bulb.m_StartedAt;
-  SpinValue::hms_t hms = SpinValue::toHMS(elapsed);
-
-  m_Bulb.m_State = Bulb::STATE_DONE;
-  lv_timer_pause(m_BulbTimer);
-  lv_timer_pause(m_BulbPageRefresh);
-
-  // The state guard makes a late timer callback unable to release twice.
-  shutterUnlock(Control::getInstance());
-
-  // Show the next exposure length while the completed exposure remains visible.
-  m_BulbEnd = now + m_Bulb.m_Duration.m_SpinValue.toMilliseconds();
-  bulbRefresh();
-  lv_label_set_text_fmt(m_Bulb.m_StateLabel, "Done (%02lu:%02lu:%02lu)", hms.hours, hms.minutes,
-                        hms.seconds);
-  lv_label_set_text(m_Bulb.m_ActionLabel, "Restart");
-}
-
-void UI::bulbStop(void) {
-  lv_timer_pause(m_BulbTimer);
-  lv_timer_pause(m_BulbPageRefresh);
-
-  if (m_Bulb.m_State == Bulb::STATE_RUNNING) {
-    m_Bulb.m_State = Bulb::STATE_IDLE;
-
-    // no-op if the shutter is not held
-    shutterUnlock(Control::getInstance());
-  } else if (m_Bulb.m_State == Bulb::STATE_DONE) {
-    m_Bulb.m_State = Bulb::STATE_IDLE;
-  }
-
-  m_BulbEnd = tick();
-  bulbRefresh();
-}
-
-void UI::updateBulbModeHint(void) {
-  // Keep this setter as the hook for future BLE detected camera mode status.
-  lv_label_set_text(m_Bulb.m_ModeHintLabel, m_BulbModeHintStr);
-}
-
-void UI::addBulbMenu(const menu_t &parent) {
-  menu_t &menu = addMenu(m_RemoteBulb, &icon_camera, true, parent);
-  menu_t &menuBulbRun = addMenu(m_BulbRunStr, NULL, false, menu);
-
-  addSpinnerPage(menu, m_BulbDurationStr, m_Bulb.m_Duration);
-
-  m_Bulb.m_ModeHintLabel = lv_label_create(menu.page);
-  lv_obj_set_width(m_Bulb.m_ModeHintLabel, LV_PCT(100));
-  lv_label_set_long_mode(m_Bulb.m_ModeHintLabel, LV_LABEL_LONG_CLIP);
-  lv_obj_set_style_text_font(m_Bulb.m_ModeHintLabel, &lv_font_montserrat_12, LV_PART_MAIN);
-  lv_obj_set_style_text_align(m_Bulb.m_ModeHintLabel, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-  lv_obj_set_style_text_letter_space(m_Bulb.m_ModeHintLabel, -2, LV_PART_MAIN);
-  updateBulbModeHint();
-
-  m_BulbStart = lv_button_create(menu.page);
-  lv_obj_t *startLabel = lv_label_create(m_BulbStart);
-  lv_label_set_text(startLabel, "Start");
-  lv_obj_center(startLabel);
-  lv_obj_add_flag(m_BulbStart, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
-  addToInputGroup(m_Group, m_BulbStart);
-
-  lv_obj_add_event_cb(
-      m_BulbStart,
-      [](lv_event_t *e) {
-        auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
-        ui->bulbStart();
-      },
-      LV_EVENT_CLICKED, this);
-
-  // Non-blocking reconnect banner overlaid on the full-screen Bulb page, the
-  // sibling of the Remote shutter banner (see addConnectedMenu). The Bulb page is
-  // equally full screen and equally a place shots are taken, so a mid-session
-  // drop must surface here too rather than only on the small shared status icon.
-  // Same look and rules as the shutter banner: floating so it never joins the
-  // page layout or covers the duration picker and Start button, hidden until
-  // updateRemoteReconnect shows it, red Bluetooth icon over "Reconnecting" (or
-  // "Reconnecting (i/n)") text, icon-only on the narrow StickC panel.
-  m_BulbReconnect = lv_obj_create(menu.page);
-  lv_obj_remove_style_all(m_BulbReconnect);
-  lv_obj_set_size(m_BulbReconnect, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-  lv_obj_set_layout(m_BulbReconnect, LV_LAYOUT_FLEX);
-  // Stack the icon over the text so the badge width is the wider of the two (the
-  // text), keeping "Reconnecting (i/n)" inside the narrow 135 px panel.
-  lv_obj_set_flex_flow(m_BulbReconnect, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(m_BulbReconnect, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
-                        LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_all(m_BulbReconnect, 2, 0);
-  lv_obj_set_style_pad_row(m_BulbReconnect, 0, 0);
-  lv_obj_set_style_radius(m_BulbReconnect, 4, 0);
-  lv_obj_set_style_bg_opa(m_BulbReconnect, LV_OPA_70, 0);
-  lv_obj_set_style_bg_color(m_BulbReconnect, lv_color_black(), 0);
-  lv_obj_clear_flag(m_BulbReconnect, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_add_flag(m_BulbReconnect, LV_OBJ_FLAG_FLOATING);
-  lv_obj_align(m_BulbReconnect, LV_ALIGN_TOP_LEFT, 1, 1);
-  lv_obj_add_flag(m_BulbReconnect, LV_OBJ_FLAG_HIDDEN);
-
-  lv_obj_t *bulbReconnectIcon = lv_image_create(m_BulbReconnect);
-  lv_image_set_src(bulbReconnectIcon, &icon_bluetooth);
-  // Recolor the shared Bluetooth glyph red rather than shipping a new compressed
-  // asset, so there is no extra decompress cost.
-  lv_obj_set_style_image_recolor(bulbReconnectIcon, lv_palette_main(LV_PALETTE_RED), 0);
-  lv_obj_set_style_image_recolor_opa(bulbReconnectIcon, LV_OPA_COVER, 0);
-
-  m_BulbReconnectLabel = lv_label_create(m_BulbReconnect);
-  lv_obj_set_style_text_color(m_BulbReconnectLabel, lv_palette_main(LV_PALETTE_RED), 0);
-  // The board's Small font keeps "Reconnecting (i/n)" within even the 135 px
-  // panel width.
-  lv_obj_set_style_text_font(m_BulbReconnectLabel, fontForTextSize(Settings::TEXT_SIZE_SMALL), 0);
-  // Wrap within a width capped to the panel so a long dropped-camera name (the
-  // shared banner helper appends it when one of several cameras is down) wraps
-  // onto more lines instead of overflowing the right edge, exactly as the
-  // shutter banner does. The chip still hugs the short "Reconnecting" text until
-  // a name widens it, and it stays floating top-left clear of the bulb controls.
-  lv_label_set_long_mode(m_BulbReconnectLabel, LV_LABEL_LONG_WRAP);
-  lv_obj_set_style_max_width(m_BulbReconnectLabel, M5.Display.width() - 8, 0);
-  lv_obj_set_style_text_align(m_BulbReconnectLabel, LV_TEXT_ALIGN_CENTER, 0);
-  lv_label_set_text(m_BulbReconnectLabel, "Reconnecting");
-
-  // The 80 px StickC panel is too narrow to fit the text even at the Small font,
-  // so drop the label there and keep just the red Bluetooth icon (the connected
-  // page title still carries the wording).
-  if (M5.Display.width() < 110) {
-    lv_obj_add_flag(m_BulbReconnectLabel, LV_OBJ_FLAG_HIDDEN);
-  }
-
-  lv_obj_t *cont = lv_menu_cont_create(menuBulbRun.page);
-  lv_obj_set_height(cont, LV_PCT(100));
-  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
-                        LV_FLEX_ALIGN_CENTER);
-
-  m_Bulb.m_StateLabel = lv_label_create(cont);
-  m_Bulb.m_RemainingLabel = lv_label_create(cont);
-
-  lv_obj_t *stop = lv_button_create(cont);
-  m_Bulb.m_ActionLabel = lv_label_create(stop);
-  lv_label_set_text(m_Bulb.m_ActionLabel, "Stop");
-  lv_obj_add_flag(stop, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
-  addToInputGroup(m_Group, stop);
-  lv_obj_add_event_cb(
-      stop,
-      [](lv_event_t *e) {
-        auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
-
-        if (ui->m_Bulb.m_State == Bulb::STATE_DONE) {
-          ui->bulbStart();
-          return;
-        }
-
-        // Cancel the exposure, release the shutter, and exit.
-        ui->bulbStop();
-        lv_obj_t *back = lv_menu_get_main_header_back_button(m_MainMenu.main);
-        lv_obj_send_event(back, LV_EVENT_CLICKED, m_MainMenu.main);
-      },
-      LV_EVENT_CLICKED, this);
-
-  // one shot exposure timer, the period is the exposure duration
-  m_BulbTimer = lv_timer_create(
-      [](lv_timer_t *timer) {
-        FURBLE_SIM_TIMER_FIRE("bulb_timer");
-        auto *ui = static_cast<UI *>(lv_timer_get_user_data(timer));
-        ui->bulbComplete();
-      },
-      1000, this);
-  lv_timer_pause(m_BulbTimer);
-
-  m_BulbPageRefresh = lv_timer_create(
-      [](lv_timer_t *timer) {
-        FURBLE_SIM_TIMER_FIRE("bulb_page_refresh");
-        auto *ui = static_cast<UI *>(lv_timer_get_user_data(timer));
-        ui->bulbRefresh();
-      },
-      333, this);
-  lv_timer_pause(m_BulbPageRefresh);
-
-  bulbRefresh();
-
-  lv_menu_set_load_page_event(menuBulbRun.main, m_BulbStart, menuBulbRun.page);
-
-  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
-}
-
-void UI::addDisplayMenu(const menu_t &parent) {
-  menu_t &menu = addMenu(m_DisplayStr, &icon_settings_brightness, true, parent);
-  lv_obj_t *cont = lv_menu_cont_create(menu.page);
-  lv_obj_set_height(cont, LV_PCT(100));
-  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
-                        LV_FLEX_ALIGN_CENTER);
-
-  // Add brightness control
-  lv_obj_t *label = lv_label_create(cont);
-  lv_label_set_text(label, "Brightness");
-  lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
-  lv_obj_set_width(label, LV_PCT(100));
-
-  lv_obj_t *slider = lv_slider_create(cont);
-  lv_obj_set_width(slider, LV_PCT(90));
-  lv_obj_add_flag(slider, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
-  addToInputGroup(m_Group, slider);
-
-  // m_BrightnessSteps * 16 == 256 == black screen :(
-  // limit maximum to m_BrightnessSteps * (16 - 1)
-  lv_slider_set_range(slider, m_MinimumBrightness / m_BrightnessSteps, m_BrightnessSteps - 1);
-
-  uint8_t brightness = Settings::load<Settings::BRIGHTNESS>();
-  lv_slider_set_value(slider, brightness / m_BrightnessSteps, LV_ANIM_ON);
-
-  lv_obj_add_event_cb(
-      slider,
-      [](lv_event_t *e) {
-        auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
-        auto *slider = static_cast<lv_obj_t *>(lv_event_get_target(e));
-        lv_event_code_t code = lv_event_get_code(e);
-
-        switch (code) {
-          case LV_EVENT_VALUE_CHANGED:
-          {
-            auto brightness = lv_slider_get_value(slider) * m_BrightnessSteps;
-            M5.Display.setBrightness(brightness);
-            break;
-          }
-          case LV_EVENT_FOCUSED:
-            if (lv_obj_has_state(slider, LV_STATE_EDITED)) {
-              ui->configureControl(ControlMode::SLIDER);
-            } else {
-              ui->configureControl(ControlMode::MENU);
-            }
-            break;
-          default:
-            break;
-        }
-      },
-      LV_EVENT_ALL, this);
-
-  lv_obj_add_event_cb(
-      slider,
-      [](lv_event_t *e) {
-        auto *slider = static_cast<lv_obj_t *>(lv_event_get_target(e));
-        auto brightness = lv_slider_get_value(slider) * m_BrightnessSteps;
-        Settings::save<Settings::BRIGHTNESS>(brightness);
-      },
-      LV_EVENT_RELEASED, NULL);
-
-  // Add inactivity timeout control
-  label = lv_label_create(cont);
-  lv_label_set_text(label, "Inactivity timeout");
-  lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
-  lv_obj_set_width(label, LV_PCT(100));
-
-  lv_obj_t *roller = lv_roller_create(cont);
-  lv_obj_set_width(roller, LV_PCT(90));
-  lv_obj_add_flag(roller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
-  addToInputGroup(m_Group, roller);
-  lv_roller_set_options(roller, "Never\n30 secs\n60 secs\n2 mins\n5 mins\n10 mins",
-                        LV_ROLLER_MODE_INFINITE);
-  lv_roller_set_visible_row_count(roller, 2);
-  uint8_t inactivity = Settings::load<Settings::INACTIVITY>();
-  lv_roller_set_selected(roller, inactivityIndex(inactivity), LV_ANIM_ON);
-
-  lv_obj_add_event_cb(
-      roller,
-      [](lv_event_t *e) {
-        auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
-        auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
-        size_t index = lv_roller_get_selected(roller);
-        if (index >= m_InactivityValues.size()) {
-          index = m_InactivityValues.size() - 1;
-        }
-        uint8_t inactivity = m_InactivityValues[index];
-        Settings::save<Settings::INACTIVITY>(inactivity);
-        ui->setInactivityTimeout(inactivity);
-      },
-      LV_EVENT_VALUE_CHANGED, this);
-
-  // Add screen off control
-  label = lv_label_create(cont);
-  lv_label_set_text(label, "Screen off");
-  lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
-  lv_obj_set_width(label, LV_PCT(100));
-
-  roller = lv_roller_create(cont);
-  lv_obj_set_width(roller, LV_PCT(90));
-  lv_obj_add_flag(roller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
-  addToInputGroup(m_Group, roller);
-  lv_roller_set_options(roller,
-                        M5.Touch.isEnabled() ? m_DisplayOffTouchOptions : m_DisplayOffOptions,
-                        LV_ROLLER_MODE_INFINITE);
-  lv_roller_set_visible_row_count(roller, 2);
-  uint8_t displayOff = m_DisplayOffMode;
-  if (displayOff > 2) {
-    displayOff = 0;
-  }
-  if (M5.Touch.isEnabled() && displayOff == 2) {
-    displayOff = 1;
-  }
-  lv_roller_set_selected(roller, displayOff, LV_ANIM_ON);
-
-  lv_obj_add_event_cb(
-      roller,
-      [](lv_event_t *e) {
-        auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
-        auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
-        uint8_t displayOff = lv_roller_get_selected(roller);
-        if (M5.Touch.isEnabled() && displayOff > 1) {
-          displayOff = 1;
-        }
-        Settings::save<Settings::DISPLAY_OFF>(displayOff);
-        ui->m_DisplayOffMode = displayOff;
-      },
-      LV_EVENT_VALUE_CHANGED, this);
-
-  if (M5.Touch.isEnabled()) {
-    lv_obj_t *calibrate_button = lv_button_create(cont);
-    lv_obj_t *calibrate_label = lv_label_create(calibrate_button);
-    lv_label_set_text(calibrate_label, "Calibrate");
-    lv_obj_add_flag(calibrate_button, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
-    addToInputGroup(m_Group, calibrate_button);
-
-    lv_obj_add_event_cb(
-        calibrate_button,
-        [](lv_event_t *e) {
-          auto *calibrationUI = static_cast<CalibrationUI *>(lv_event_get_user_data(e));
-          calibrationUI->calibrate();
-        },
-        LV_EVENT_CLICKED, &m_CalibrationUI);
-  }
-
-  // Add title visibility control
-  addSettingItem(cont, NULL, Settings::SHOW_TITLE);
-
-  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
-}
-
-void UI::addTextSizeMenu(const menu_t &parent) {
-  menu_t &menu = addMenu(m_TextSizeStr, &icon_clear_all_24, true, parent);
-  lv_obj_t *cont = lv_menu_cont_create(menu.page);
-  lv_obj_set_size(cont, LV_PCT(100), LV_PCT(100));
-  lv_obj_set_layout(cont, LV_LAYOUT_FLEX);
-  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
-                        LV_FLEX_ALIGN_CENTER);
-
-  lv_obj_t *roller = lv_roller_create(cont);
+  lv_obj_t *UI::addSpinItem(lv_obj_t * page, const char *item, Intervalometer::Spinner &spinner) {
+    spinner.m_Button = lv_menu_cont_create(page);
+    lv_obj_set_flex_flow(spinner.m_Button, LV_FLEX_FLOW_ROW_WRAP);
+    lv_obj_add_flag(spinner.m_Button, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+#if defined(FURBLE_M5STICKC)
+    // 80x160 is the shortest panel. Trim the per-row padding so the Count, Delay,
+    // Shutter and Wait rows fit without scrolling the timer page.
+    lv_obj_set_style_pad_top(spinner.m_Button, 1, LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_bottom(spinner.m_Button, 1, LV_STATE_DEFAULT);
+#elif defined(FURBLE_M5COREX)
+    // Core needs only one pixel less theme top padding for its Large-text rows.
+    const int32_t padTop = lv_obj_get_style_pad_top(spinner.m_Button, LV_PART_MAIN);
+    lv_obj_set_style_pad_top(spinner.m_Button, padTop > 0 ? padTop - 1 : 0, LV_STATE_DEFAULT);
+#endif
+
+    spinner.m_Label = lv_label_create(spinner.m_Button);
+    lv_label_set_text(spinner.m_Label, item);
+#if defined(FURBLE_M5COREX)
+    lv_obj_set_flex_grow(spinner.m_Label, 1);
+#endif
+
+    spinner.m_Value = lv_label_create(spinner.m_Button);
+    lv_label_set_long_mode(spinner.m_Value, LV_LABEL_LONG_SCROLL_CIRCULAR);
 #if !defined(FURBLE_M5COREX)
-  lv_obj_set_width(roller, LV_PCT(90));
+    lv_obj_set_flex_grow(spinner.m_Value, 1);
 #endif
-  // The 80x160 M5StickC cannot fit the Large font, so it drops Large and offers
-  // only Small and Normal. Every other board offers all three.
-  const char *options =
-      (TextSizePolicy::MAX >= Settings::TEXT_SIZE_LARGE) ? "Small\nNormal\nLarge" : "Small\nNormal";
-  lv_roller_set_options(roller, options, LV_ROLLER_MODE_INFINITE);
-  lv_roller_set_visible_row_count(roller, 2);
-  // Clamp the stored size to this board's maximum so a value carried in from a
-  // larger board lands on a valid roller row instead of running off the end.
-  uint8_t textSize = TextSizePolicy::clamp(Settings::load<Settings::TEXT_SIZE>());
-  lv_roller_set_selected(roller, textSize, LV_ANIM_OFF);
 
-  // Explain the missing option on the boards that drop Large, so the shorter
-  // list does not look like a bug.
-  if (TextSizePolicy::MAX < Settings::TEXT_SIZE_LARGE) {
-    lv_obj_t *note = lv_label_create(cont);
-    lv_obj_set_width(note, LV_PCT(90));
-    lv_label_set_long_mode(note, LV_LABEL_LONG_WRAP);
-    lv_obj_set_style_text_align(note, LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_text(note, "Large needs a bigger screen");
+    lv_obj_add_event_cb(
+        spinner.m_Value,
+        [](lv_event_t *e) {
+          auto *spinner = static_cast<Intervalometer::Spinner *>(lv_event_get_user_data(e));
+          spinner->update();
+        },
+        LV_EVENT_REFRESH, &spinner);
+
+    return spinner.m_Button;
   }
 
-  lv_obj_t *restart = lv_button_create(cont);
-  lv_obj_t *restartLabel = lv_label_create(restart);
-  lv_label_set_text(restartLabel, "Restart");
-  lv_obj_add_event_cb(
-      restart,
-      [](lv_event_t *e) {
-        auto *roller = static_cast<lv_obj_t *>(lv_event_get_user_data(e));
-        Settings::save<Settings::TEXT_SIZE>(lv_roller_get_selected(roller));
-#if defined(FURBLE_M5STICKS3)
-        Platform::getInstance().watchdogEnable(false);
-#endif
-        Platform::getInstance().restart();
-      },
-      LV_EVENT_CLICKED, roller);
+  void UI::addSpinnerPage(const menu_t &parent, const char *item,
+                          Intervalometer::Spinner &spinner) {
+    menu_t &menu = addMenu(item, NULL, false, parent);
+    menu.button = addSpinItem(parent.page, item, spinner);
 
-  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
-}
+    addToInputGroup(m_Group, menu.button);
 
-void UI::setBatteryStyle(uint8_t style) {
-  if (style == Settings::BATT_STYLE_PERCENT) {
-    lv_obj_add_flag(m_Status.batteryIcon, LV_OBJ_FLAG_HIDDEN);
-  } else {
-    lv_obj_clear_flag(m_Status.batteryIcon, LV_OBJ_FLAG_HIDDEN);
-  }
-
-  if (style == Settings::BATT_STYLE_ICON) {
-    lv_obj_add_flag(m_Status.batteryLabel, LV_OBJ_FLAG_HIDDEN);
-  } else {
-    lv_obj_clear_flag(m_Status.batteryLabel, LV_OBJ_FLAG_HIDDEN);
-  }
-}
-
-void UI::setShowTitle(bool show) {
-#if defined(FURBLE_RIG)
-  (void)show;
-  lv_obj_clear_flag(m_Status.title, LV_OBJ_FLAG_HIDDEN);
-#else
-  if (show) {
-    lv_obj_clear_flag(m_Status.title, LV_OBJ_FLAG_HIDDEN);
-  } else {
-    // the sticks have little header width, the icons take the space instead
-    lv_obj_add_flag(m_Status.title, LV_OBJ_FLAG_HIDDEN);
-  }
-#endif
-}
-
-void UI::batteryUpdate(lv_timer_t *timer) {
-  FURBLE_SIM_TIMER_FIRE("battery_timer");
-  auto *status = static_cast<status_t *>(lv_timer_get_user_data(timer));
-  auto &platform = Platform::getInstance();
-
-  const auto &caps = platform.getBatteryCaps();
-
-  // sampleBattery() smooths level/voltage/current with an EWMA internally and
-  // honours the battery caps, so the mean values are pulled straight from it.
-  const auto sample = platform.sampleBattery();
-  status->battery = sample.battery;
-  status->meanLevel = sample.meanLevel;
-  status->meanVoltage = sample.meanVoltage;
-  status->meanCurrent = sample.meanCurrent;
-  status->displayLevel = sample.displayLevel;
-  status->sampleCount++;
-
-  if (caps.level) {
-    // feed the smoothed level, the raw reading jitters across the threshold
-    Feedback::getInstance().updateBattery(status->displayLevel,
-                                          caps.charging && status->battery.charging);
-  }
-
-  if (status->batteryLevel != nullptr) {
-    lv_label_set_text_fmt(status->batteryLevel, "Level: %u%%", status->displayLevel);
-  }
-
-  if (status->batteryVoltage != nullptr) {
-    uint32_t mv = lroundf(status->meanVoltage);
-    lv_label_set_text_fmt(status->batteryVoltage, "Volts: %lu.%03lu", mv / 1000, mv % 1000);
-  }
-
-  if (status->batteryCurrent != nullptr) {
-    lv_label_set_text_fmt(status->batteryCurrent, "Current: %ld mA", status->battery.current);
-  }
-
-  if (status->batteryCharging != nullptr) {
-    lv_label_set_text(status->batteryCharging,
-                      status->battery.charging ? "Charging: yes" : "Charging: no");
-  }
-
-  if (status->batteryRuntime != nullptr) {
-    if (status->battery.charging) {
-      lv_label_set_text(status->batteryRuntime, "Runtime: charging");
-    } else if (status->meanCurrent < -1.0f) {
-      // remaining capacity in mAh divided by the average discharge current
-      float remaining = platform.getBatteryCapacity() * (status->meanLevel / 100.0f);
-      uint32_t minutes = (remaining / -status->meanCurrent) * 60.0f;
-      lv_label_set_text_fmt(status->batteryRuntime, "Runtime: ~%luh%02lum (est)", minutes / 60,
-                            minutes % 60);
+    lv_obj_set_flex_flow(menu.page, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_scrollbar_mode(menu.page, LV_SCROLLBAR_MODE_OFF);
+    spinner.m_RowInfinite = lv_obj_create(menu.page);
+    lv_obj_set_size(spinner.m_RowInfinite, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_layout(spinner.m_RowInfinite, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(spinner.m_RowInfinite, LV_FLEX_FLOW_ROW);
+    lv_obj_t *label = lv_label_create(spinner.m_RowInfinite);
+    lv_label_set_text(label, "Infinite");
+    lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_obj_set_flex_grow(label, 1);
+    spinner.m_SwitchInfinite = lv_switch_create(spinner.m_RowInfinite);
+    lv_obj_add_flag(spinner.m_SwitchInfinite, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+    addToInputGroup(m_Group, spinner.m_SwitchInfinite);
+    if (spinner.m_SpinValue.m_Unit == SpinValue::UNIT_INF) {
+      lv_obj_add_state(spinner.m_SwitchInfinite, LV_STATE_CHECKED);
     } else {
-      lv_label_set_text(status->batteryRuntime, "Runtime: unknown");
+      lv_obj_remove_state(spinner.m_SwitchInfinite, LV_STATE_CHECKED);
     }
+
+    if (!spinner.m_Infinite) {
+      lv_obj_add_flag(spinner.m_RowInfinite, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    lv_obj_add_event_cb(
+        spinner.m_SwitchInfinite,
+        [](lv_event_t *e) {
+          auto *spinner = static_cast<Intervalometer::Spinner *>(lv_event_get_user_data(e));
+          spinner->update();
+        },
+        LV_EVENT_VALUE_CHANGED, &spinner);
+
+    spinner.m_RowSpinners = lv_obj_create(menu.page);
+    lv_obj_set_size(spinner.m_RowSpinners, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_layout(spinner.m_RowSpinners, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(spinner.m_RowSpinners, LV_FLEX_FLOW_ROW);
+
+    switch (M5.getBoard()) {
+      case m5::board_t::board_M5StickC:
+      case m5::board_t::board_M5StickCPlus2:
+      case m5::board_t::board_M5StickCPlus:
+      case m5::board_t::board_M5StickS3:
+        lv_obj_set_flex_align(spinner.m_RowSpinners, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
+                              LV_FLEX_ALIGN_CENTER);
+        break;
+
+      default:
+        lv_obj_set_flex_align(spinner.m_RowSpinners, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                              LV_FLEX_ALIGN_CENTER);
+        break;
+    }
+
+    for (auto &r : spinner.m_Roller) {
+      r = lv_roller_create(spinner.m_RowSpinners);
+      lv_obj_add_flag(r, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+      lv_roller_set_options(r, Intervalometer::Spinner::m_SpinDigitRoller, LV_ROLLER_MODE_INFINITE);
+
+      lv_roller_set_visible_row_count(r, 2);
+      addToInputGroup(m_Group, r);
+      lv_obj_add_event_cb(
+          r,
+          [](lv_event_t *e) {
+            auto *spinner = static_cast<Intervalometer::Spinner *>(lv_event_get_user_data(e));
+            lv_obj_send_event(spinner->m_Value, LV_EVENT_REFRESH, spinner);
+          },
+          LV_EVENT_VALUE_CHANGED, &spinner);
+    }
+
+    if (spinner.supportsPresetPicker()
+        || (!spinner.m_FixedUnit && (spinner.m_SpinValue.m_Unit != SpinValue::UNIT_NIL)
+            && (spinner.m_SpinValue.m_Unit != SpinValue::UNIT_INF))) {
+      spinner.m_RollerUnit = lv_roller_create(spinner.m_RowSpinners);
+      lv_obj_add_flag(spinner.m_RollerUnit, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+      lv_roller_set_options(spinner.m_RollerUnit, Intervalometer::Spinner::m_SpinUnitsRoller,
+                            LV_ROLLER_MODE_INFINITE);
+
+      lv_obj_add_event_cb(
+          spinner.m_RollerUnit,
+          [](lv_event_t *e) {
+            auto *spinner = static_cast<Intervalometer::Spinner *>(lv_event_get_user_data(e));
+            lv_obj_send_event(spinner->m_Value, LV_EVENT_REFRESH, spinner);
+          },
+          LV_EVENT_VALUE_CHANGED, &spinner);
+
+      addToInputGroup(m_Group, spinner.m_RollerUnit);
+    }
+
+    if (spinner.supportsPresetPicker()) {
+      spinner.m_PresetRow = lv_obj_create(menu.page);
+      lv_obj_set_size(spinner.m_PresetRow, LV_PCT(100), LV_SIZE_CONTENT);
+      lv_obj_set_layout(spinner.m_PresetRow, LV_LAYOUT_FLEX);
+      lv_obj_set_flex_flow(spinner.m_PresetRow, LV_FLEX_FLOW_ROW);
+      lv_obj_set_flex_align(spinner.m_PresetRow, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER,
+                            LV_FLEX_ALIGN_CENTER);
+
+      spinner.m_PresetMinus = lv_button_create(spinner.m_PresetRow);
+      lv_obj_set_style_bg_image_src(spinner.m_PresetMinus, LV_SYMBOL_MINUS, 0);
+      lv_obj_set_size(spinner.m_PresetMinus, 40, 40);
+
+      spinner.m_PresetValue = lv_label_create(spinner.m_PresetRow);
+      lv_obj_set_flex_grow(spinner.m_PresetValue, 1);
+      lv_obj_set_style_text_align(spinner.m_PresetValue, LV_TEXT_ALIGN_CENTER, 0);
+      lv_obj_set_style_text_font(spinner.m_PresetValue, &lv_font_montserrat_16, 0);
+
+      spinner.m_PresetPlus = lv_button_create(spinner.m_PresetRow);
+      lv_obj_set_style_bg_image_src(spinner.m_PresetPlus, LV_SYMBOL_PLUS, 0);
+      lv_obj_set_size(spinner.m_PresetPlus, 40, 40);
+
+      lv_obj_add_event_cb(
+          spinner.m_PresetMinus,
+          [](lv_event_t *e) {
+            auto *spinner = static_cast<Intervalometer::Spinner *>(lv_event_get_user_data(e));
+            lv_event_code_t code = lv_event_get_code(e);
+            if ((code == LV_EVENT_PRESSED) || (code == LV_EVENT_LONG_PRESSED_REPEAT)) {
+              spinner->stepPreset(-1);
+            }
+          },
+          LV_EVENT_ALL, &spinner);
+      lv_obj_add_event_cb(
+          spinner.m_PresetPlus,
+          [](lv_event_t *e) {
+            auto *spinner = static_cast<Intervalometer::Spinner *>(lv_event_get_user_data(e));
+            lv_event_code_t code = lv_event_get_code(e);
+            if ((code == LV_EVENT_PRESSED) || (code == LV_EVENT_LONG_PRESSED_REPEAT)) {
+              spinner->stepPreset(1);
+            }
+          },
+          LV_EVENT_ALL, &spinner);
+
+      if (M5.Touch.isEnabled()) {
+        // The synthesized A/B/C buttons navigate the group, so the plus and
+        // minus buttons have to be group members to be reachable.
+        lv_group_add_obj(m_Group, spinner.m_PresetMinus);
+        lv_group_add_obj(m_Group, spinner.m_PresetPlus);
+      } else {
+        // The physical keys step directly, the on-screen buttons only waste
+        // width on the small displays.
+        lv_obj_add_flag(spinner.m_PresetMinus, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(spinner.m_PresetPlus, LV_OBJ_FLAG_HIDDEN);
+      }
+
+      lv_obj_add_flag(spinner.m_PresetRow, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    // squeeze width for smaller displays
+    switch (M5.getBoard()) {
+      case m5::board_t::board_M5StickC:
+        lv_obj_set_flex_align(spinner.m_RowSpinners, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
+                              LV_FLEX_ALIGN_CENTER);
+        lv_obj_add_flag(spinner.m_RowSpinners, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_scrollbar_mode(spinner.m_RowSpinners, LV_SCROLLBAR_MODE_OFF);
+        lv_obj_set_scroll_dir(spinner.m_RowSpinners, LV_DIR_HOR);
+        __attribute__((fallthrough));
+      case m5::board_t::board_M5StickCPlus2:
+      case m5::board_t::board_M5StickCPlus:
+      case m5::board_t::board_M5StickS3:
+        for (auto &r : spinner.m_Roller) {
+          lv_obj_set_style_pad_left(r, 2, LV_STATE_DEFAULT);
+          lv_obj_set_style_pad_right(r, 2, LV_STATE_DEFAULT);
+        }
+
+        if (spinner.m_RollerUnit != nullptr) {
+          lv_obj_set_style_pad_left(spinner.m_RollerUnit, 2, LV_STATE_DEFAULT);
+          lv_obj_set_style_pad_right(spinner.m_RollerUnit, 2, LV_STATE_DEFAULT);
+        }
+
+        if (spinner.m_PresetRow != nullptr) {
+          // squeeze the preset row too so the value label gets the width
+          lv_obj_set_style_pad_left(spinner.m_PresetRow, 2, LV_STATE_DEFAULT);
+          lv_obj_set_style_pad_right(spinner.m_PresetRow, 2, LV_STATE_DEFAULT);
+        }
+        break;
+      default:
+        break;
+    }
+
+    spinner.updateLabels();
+
+    lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
   }
 
-#if FURBLE_BATTERY_DEBUG == 1
-  ESP_LOGI("battery", "uptime=%lu level=%u voltage=%u current=%ld mean=%.1f charging=%u fail=%lu",
-           platform.tick() / 1000, status->battery.level, status->battery.voltage,
-           status->battery.current, status->meanCurrent, status->battery.charging,
-           platform.getBatteryFailCount());
-#endif
-}
+  void UI::addIntervalometerMenu(const menu_t &parent) {
+    menu_t &menu = addMenu(m_IntervalometerStr, &icon_timer, true, parent);
+    menu_t &menuIntervalRun = addMenu(m_IntervalometerRunStr, NULL, false, menu);
 
-void UI::addBatteryMenu(const menu_t &parent) {
-  menu_t &menu = addMenu(m_BatteryStr, &icon_battery_android_frame_full, true, parent);
-  auto &platform = Platform::getInstance();
-  const auto &caps = platform.getBatteryCaps();
+    m_IntervalStart = lv_button_create(menu.page);
+    lv_obj_t *label = lv_label_create(m_IntervalStart);
+    lv_label_set_text(label, "Start");
+    lv_obj_center(label);
+    lv_obj_add_flag(m_IntervalStart, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+    addToInputGroup(m_Group, m_IntervalStart);
 
-  lv_obj_t *cont = lv_menu_cont_create(menu.page);
-  lv_obj_set_width(cont, LV_PCT(100));
-  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
-                        LV_FLEX_ALIGN_CENTER);
+    addSpinnerPage(menu, m_IntervalCountStr, m_Intervalometer.m_Count);
+    addSpinnerPage(menu, m_IntervalDelayStr, m_Intervalometer.m_Delay);
+    addSpinnerPage(menu, m_IntervalShutterStr, m_Intervalometer.m_Shutter);
+    addSpinnerPage(menu, m_IntervalWaitStr, m_Intervalometer.m_Wait);
+    lv_obj_t *sleepRow = addSettingItem(menu.page, NULL, Settings::IVL_SLEEP);
+    addSpinnerPage(menu, m_IntervalSleepThresholdStr, m_Intervalometer.m_SleepThreshold);
+    // The threshold row is revealed beside the floating right indicator on Stick
+    // layouts. Keep its name and value inside the reserved column; without this,
+    // the wrapped value leaves the long row label under the indicator.
+    if (const int32_t reserve = floatingIndicatorReserve(); reserve > 0) {
+      lv_obj_set_style_pad_right(m_Intervalometer.m_SleepThreshold.m_Button, reserve, LV_PART_MAIN);
+      lv_obj_set_width(m_Intervalometer.m_SleepThreshold.m_Label, LV_PCT(100));
+      lv_label_set_long_mode(m_Intervalometer.m_SleepThreshold.m_Label, LV_LABEL_LONG_WRAP);
+    }
 
-  auto addRow = [cont]() {
+    if (!Platform::getInstance().canTimedWake()) {
+      lv_obj_add_flag(lv_obj_get_parent(sleepRow), LV_OBJ_FLAG_HIDDEN);
+      lv_obj_add_flag(m_Intervalometer.m_SleepThreshold.m_Button, LV_OBJ_FLAG_HIDDEN);
+    } else if (!Settings::load<Settings::IVL_SLEEP>()) {
+      lv_obj_add_flag(m_Intervalometer.m_SleepThreshold.m_Button, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    // Reflect count infinite or not
+    m_Intervalometer.m_Count.update();
+
+    lv_obj_add_flag(m_IntervalStart, LV_OBJ_FLAG_HIDDEN);
+
+    lv_obj_add_event_cb(
+        m_IntervalStart,
+        [](lv_event_t *e) {
+          auto *timer = static_cast<lv_timer_t *>(lv_event_get_user_data(e));
+          auto *interval = static_cast<Intervalometer *>(lv_timer_get_user_data(timer));
+
+          interval->startNewRun();
+          interval->m_State = Intervalometer::STATE_IDLE;
+          m_IntervalCountdownActive = false;
+          m_IntervalLastAnnouncedSecond = 0;
+          // Announce WAIT before the timer's first tick sets it. The gesture guard
+          // needs the run to be visible immediately; the cost is that the console
+          // status and the companion report WAIT for one 5 ms tick before the
+          // state machine gets there.
+          m_IntervalometerState.store(static_cast<uint8_t>(Intervalometer::STATE_WAIT));
+          lv_timer_resume(timer);
+
+          lv_timer_resume(m_IntervalPageRefresh);
+          lv_timer_ready(m_IntervalPageRefresh);
+        },
+        LV_EVENT_CLICKED, m_IntervalTimer);
+
+    lv_obj_t *cont = lv_menu_cont_create(menuIntervalRun.page);
+    lv_obj_set_height(cont, LV_PCT(100));
+    lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+
+    m_Intervalometer.m_StateLabel = lv_label_create(cont);
+    m_Intervalometer.m_CountLabel = lv_label_create(cont);
+    m_Intervalometer.m_RemainingLabel = lv_label_create(cont);
+
+    m_IntervalStop = lv_button_create(cont);
+    lv_obj_t *stopLabel = lv_label_create(m_IntervalStop);
+    lv_label_set_text(stopLabel, "Stop");
+    lv_obj_add_flag(m_IntervalStop, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+    addToInputGroup(m_Group, m_IntervalStop);
+    lv_obj_add_event_cb(
+        m_IntervalStop,
+        [](lv_event_t *e) {
+          auto *timer = static_cast<lv_timer_t *>(lv_event_get_user_data(e));
+          auto *interval = static_cast<Intervalometer *>(lv_timer_get_user_data(timer));
+          auto &control = Control::getInstance();
+
+          // pause all interval timers
+          lv_timer_pause(timer);
+          lv_timer_pause(m_IntervalPageRefresh);
+          m_IntervalCountdownActive = false;
+          m_IntervalLastAnnouncedSecond = 0;
+          interval->clearResume();
+          interval->m_CountShots = 0;
+          m_IntervalometerState.store(static_cast<uint8_t>(Intervalometer::STATE_IDLE));
+
+          // reset the run state so a subsequent start begins a fresh run, and
+          // mirror it to the atomic the console status query reads
+          interval->m_State = Intervalometer::STATE_IDLE;
+          m_IntervalometerState.store(static_cast<uint8_t>(Intervalometer::STATE_IDLE));
+          lv_timer_set_period(timer, 100);
+
+          // release shutter and exit
+          control.sendCommand(Control::CMD_SHUTTER_RELEASE);
+          lv_obj_t *back = lv_menu_get_main_header_back_button(m_MainMenu.main);
+          lv_obj_send_event(back, LV_EVENT_CLICKED, m_MainMenu.main);
+        },
+        LV_EVENT_CLICKED, m_IntervalTimer);
+
+    m_IntervalPageRefresh = lv_timer_create(
+        [](lv_timer_t *timer) {
+          FURBLE_SIM_TIMER_FIRE("interval_page_refresh");
+          auto *label = static_cast<lv_obj_t *>(lv_timer_get_user_data(timer));
+          uint32_t now = tick();
+          uint32_t remaining =
+              Time::deadlineReached(now, m_IntervalNext) ? 0 : m_IntervalNext - now;
+          SpinValue::hms_t hms = SpinValue::toHMS(remaining);
+          lv_label_set_text_fmt(label, "%02lu:%02lu:%02lu", hms.hours, hms.minutes, hms.seconds);
+
+          if (!m_IntervalCountdownActive || (remaining == 0)) {
+            m_IntervalLastAnnouncedSecond = 0;
+          } else if (remaining > 3000) {
+            m_IntervalLastAnnouncedSecond = 0;
+          } else {
+            uint8_t second = static_cast<uint8_t>((remaining + 999) / 1000);
+            if ((second >= 1) && (second <= 3) && (second != m_IntervalLastAnnouncedSecond)) {
+              Feedback::getInstance().signal(Feedback::COUNTDOWN);
+              m_IntervalLastAnnouncedSecond = second;
+            }
+          }
+        },
+        333, m_Intervalometer.m_RemainingLabel);
+    lv_timer_pause(m_IntervalPageRefresh);
+
+    lv_menu_set_load_page_event(menuIntervalRun.main, m_IntervalStart, menuIntervalRun.page);
+
+    lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+  }
+
+  void UI::bulbRefresh(void) {
+    uint32_t now = tick();
+    uint32_t remaining = Time::deadlineReached(now, m_BulbEnd) ? 0 : m_BulbEnd - now;
+    SpinValue::hms_t hms = SpinValue::toHMS(remaining);
+    lv_label_set_text_fmt(m_Bulb.m_RemainingLabel, "%02lu:%02lu:%02lu", hms.hours, hms.minutes,
+                          hms.seconds);
+  }
+
+  void UI::bulbStart(void) {
+    if (m_Bulb.m_State == Bulb::STATE_RUNNING) {
+      return;
+    }
+
+    uint32_t duration = m_Bulb.m_Duration.m_SpinValue.toMilliseconds();
+    m_Bulb.m_State = Bulb::STATE_RUNNING;
+    m_Bulb.m_StartedAt = tick();
+
+    lv_label_set_text(m_Bulb.m_StateLabel, "Exposing");
+    lv_label_set_text(m_Bulb.m_ActionLabel, "Stop");
+
+    // Hold the shutter with the same lock the remote page uses.
+    shutterLock(Control::getInstance());
+
+    m_BulbEnd = m_Bulb.m_StartedAt + duration;
+    lv_timer_set_period(m_BulbTimer, duration);
+    lv_timer_reset(m_BulbTimer);
+    lv_timer_resume(m_BulbTimer);
+
+    bulbRefresh();
+    lv_timer_resume(m_BulbPageRefresh);
+  }
+
+  void UI::bulbComplete(void) {
+    if (m_Bulb.m_State != Bulb::STATE_RUNNING) {
+      return;
+    }
+
+    uint32_t now = tick();
+    uint32_t elapsed = now - m_Bulb.m_StartedAt;
+    SpinValue::hms_t hms = SpinValue::toHMS(elapsed);
+
+    m_Bulb.m_State = Bulb::STATE_DONE;
+    lv_timer_pause(m_BulbTimer);
+    lv_timer_pause(m_BulbPageRefresh);
+
+    // The state guard makes a late timer callback unable to release twice.
+    shutterUnlock(Control::getInstance());
+
+    // Show the next exposure length while the completed exposure remains visible.
+    m_BulbEnd = now + m_Bulb.m_Duration.m_SpinValue.toMilliseconds();
+    bulbRefresh();
+    lv_label_set_text_fmt(m_Bulb.m_StateLabel, "Done (%02lu:%02lu:%02lu)", hms.hours, hms.minutes,
+                          hms.seconds);
+    lv_label_set_text(m_Bulb.m_ActionLabel, "Restart");
+  }
+
+  void UI::bulbStop(void) {
+    lv_timer_pause(m_BulbTimer);
+    lv_timer_pause(m_BulbPageRefresh);
+
+    if (m_Bulb.m_State == Bulb::STATE_RUNNING) {
+      m_Bulb.m_State = Bulb::STATE_IDLE;
+
+      // no-op if the shutter is not held
+      shutterUnlock(Control::getInstance());
+    } else if (m_Bulb.m_State == Bulb::STATE_DONE) {
+      m_Bulb.m_State = Bulb::STATE_IDLE;
+    }
+
+    m_BulbEnd = tick();
+    bulbRefresh();
+  }
+
+  void UI::updateBulbModeHint(void) {
+    // Keep this setter as the hook for future BLE detected camera mode status.
+    lv_label_set_text(m_Bulb.m_ModeHintLabel, m_BulbModeHintStr);
+  }
+
+  void UI::addBulbMenu(const menu_t &parent) {
+    menu_t &menu = addMenu(m_RemoteBulb, &icon_camera, true, parent);
+    menu_t &menuBulbRun = addMenu(m_BulbRunStr, NULL, false, menu);
+
+    addSpinnerPage(menu, m_BulbDurationStr, m_Bulb.m_Duration);
+
+    m_Bulb.m_ModeHintLabel = lv_label_create(menu.page);
+    lv_obj_set_width(m_Bulb.m_ModeHintLabel, LV_PCT(100));
+    lv_label_set_long_mode(m_Bulb.m_ModeHintLabel, LV_LABEL_LONG_CLIP);
+    lv_obj_set_style_text_font(m_Bulb.m_ModeHintLabel, &lv_font_montserrat_12, LV_PART_MAIN);
+    lv_obj_set_style_text_align(m_Bulb.m_ModeHintLabel, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_obj_set_style_text_letter_space(m_Bulb.m_ModeHintLabel, -2, LV_PART_MAIN);
+    updateBulbModeHint();
+
+    m_BulbStart = lv_button_create(menu.page);
+    lv_obj_t *startLabel = lv_label_create(m_BulbStart);
+    lv_label_set_text(startLabel, "Start");
+    lv_obj_center(startLabel);
+    lv_obj_add_flag(m_BulbStart, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+    addToInputGroup(m_Group, m_BulbStart);
+
+    lv_obj_add_event_cb(
+        m_BulbStart,
+        [](lv_event_t *e) {
+          auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+          ui->bulbStart();
+        },
+        LV_EVENT_CLICKED, this);
+
+    // Non-blocking reconnect banner overlaid on the full-screen Bulb page, the
+    // sibling of the Remote shutter banner (see addConnectedMenu). The Bulb page is
+    // equally full screen and equally a place shots are taken, so a mid-session
+    // drop must surface here too rather than only on the small shared status icon.
+    // Same look and rules as the shutter banner: floating so it never joins the
+    // page layout or covers the duration picker and Start button, hidden until
+    // updateRemoteReconnect shows it, red Bluetooth icon over "Reconnecting" (or
+    // "Reconnecting (i/n)") text, icon-only on the narrow StickC panel.
+    m_BulbReconnect = lv_obj_create(menu.page);
+    lv_obj_remove_style_all(m_BulbReconnect);
+    lv_obj_set_size(m_BulbReconnect, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_layout(m_BulbReconnect, LV_LAYOUT_FLEX);
+    // Stack the icon over the text so the badge width is the wider of the two (the
+    // text), keeping "Reconnecting (i/n)" inside the narrow 135 px panel.
+    lv_obj_set_flex_flow(m_BulbReconnect, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(m_BulbReconnect, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_all(m_BulbReconnect, 2, 0);
+    lv_obj_set_style_pad_row(m_BulbReconnect, 0, 0);
+    lv_obj_set_style_radius(m_BulbReconnect, 4, 0);
+    lv_obj_set_style_bg_opa(m_BulbReconnect, LV_OPA_70, 0);
+    lv_obj_set_style_bg_color(m_BulbReconnect, lv_color_black(), 0);
+    lv_obj_clear_flag(m_BulbReconnect, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(m_BulbReconnect, LV_OBJ_FLAG_FLOATING);
+    lv_obj_align(m_BulbReconnect, LV_ALIGN_TOP_LEFT, 1, 1);
+    lv_obj_add_flag(m_BulbReconnect, LV_OBJ_FLAG_HIDDEN);
+
+    lv_obj_t *bulbReconnectIcon = lv_image_create(m_BulbReconnect);
+    lv_image_set_src(bulbReconnectIcon, &icon_bluetooth);
+    // Recolor the shared Bluetooth glyph red rather than shipping a new compressed
+    // asset, so there is no extra decompress cost.
+    lv_obj_set_style_image_recolor(bulbReconnectIcon, lv_palette_main(LV_PALETTE_RED), 0);
+    lv_obj_set_style_image_recolor_opa(bulbReconnectIcon, LV_OPA_COVER, 0);
+
+    m_BulbReconnectLabel = lv_label_create(m_BulbReconnect);
+    lv_obj_set_style_text_color(m_BulbReconnectLabel, lv_palette_main(LV_PALETTE_RED), 0);
+    // The board's Small font keeps "Reconnecting (i/n)" within even the 135 px
+    // panel width.
+    lv_obj_set_style_text_font(m_BulbReconnectLabel, fontForTextSize(Settings::TEXT_SIZE_SMALL), 0);
+    // Wrap within a width capped to the panel so a long dropped-camera name (the
+    // shared banner helper appends it when one of several cameras is down) wraps
+    // onto more lines instead of overflowing the right edge, exactly as the
+    // shutter banner does. The chip still hugs the short "Reconnecting" text until
+    // a name widens it, and it stays floating top-left clear of the bulb controls.
+    lv_label_set_long_mode(m_BulbReconnectLabel, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_max_width(m_BulbReconnectLabel, M5.Display.width() - 8, 0);
+    lv_obj_set_style_text_align(m_BulbReconnectLabel, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_text(m_BulbReconnectLabel, "Reconnecting");
+
+    // The 80 px StickC panel is too narrow to fit the text even at the Small font,
+    // so drop the label there and keep just the red Bluetooth icon (the connected
+    // page title still carries the wording).
+    if (M5.Display.width() < 110) {
+      lv_obj_add_flag(m_BulbReconnectLabel, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    lv_obj_t *cont = lv_menu_cont_create(menuBulbRun.page);
+    lv_obj_set_height(cont, LV_PCT(100));
+    lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+
+    m_Bulb.m_StateLabel = lv_label_create(cont);
+    m_Bulb.m_RemainingLabel = lv_label_create(cont);
+
+    m_BulbStop = lv_button_create(cont);
+    m_Bulb.m_ActionLabel = lv_label_create(m_BulbStop);
+    lv_label_set_text(m_Bulb.m_ActionLabel, "Stop");
+    lv_obj_add_flag(m_BulbStop, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+    addToInputGroup(m_Group, m_BulbStop);
+    lv_obj_add_event_cb(
+        m_BulbStop,
+        [](lv_event_t *e) {
+          auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+
+          if (ui->m_Bulb.m_State == Bulb::STATE_DONE) {
+            ui->bulbStart();
+            return;
+          }
+
+          // Cancel the exposure, release the shutter, and exit.
+          ui->bulbStop();
+          lv_obj_t *back = lv_menu_get_main_header_back_button(m_MainMenu.main);
+          lv_obj_send_event(back, LV_EVENT_CLICKED, m_MainMenu.main);
+        },
+        LV_EVENT_CLICKED, this);
+
+    // one shot exposure timer, the period is the exposure duration
+    m_BulbTimer = lv_timer_create(
+        [](lv_timer_t *timer) {
+          FURBLE_SIM_TIMER_FIRE("bulb_timer");
+          auto *ui = static_cast<UI *>(lv_timer_get_user_data(timer));
+          ui->bulbComplete();
+        },
+        1000, this);
+    lv_timer_pause(m_BulbTimer);
+
+    m_BulbPageRefresh = lv_timer_create(
+        [](lv_timer_t *timer) {
+          FURBLE_SIM_TIMER_FIRE("bulb_page_refresh");
+          auto *ui = static_cast<UI *>(lv_timer_get_user_data(timer));
+          ui->bulbRefresh();
+        },
+        333, this);
+    lv_timer_pause(m_BulbPageRefresh);
+
+    bulbRefresh();
+
+    lv_menu_set_load_page_event(menuBulbRun.main, m_BulbStart, menuBulbRun.page);
+
+    lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+  }
+
+  void UI::addDisplayMenu(const menu_t &parent) {
+    menu_t &menu = addMenu(m_DisplayStr, &icon_settings_brightness, true, parent);
+    lv_obj_t *cont = lv_menu_cont_create(menu.page);
+    lv_obj_set_height(cont, LV_PCT(100));
+    lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+
+    // Add brightness control
     lv_obj_t *label = lv_label_create(cont);
-    lv_label_set_text(label, "");
+    lv_label_set_text(label, "Brightness");
     lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
     lv_obj_set_width(label, LV_PCT(100));
 
+    lv_obj_t *slider = lv_slider_create(cont);
+    lv_obj_set_width(slider, LV_PCT(90));
+    lv_obj_add_flag(slider, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+    addToInputGroup(m_Group, slider);
+
+    // m_BrightnessSteps * 16 == 256 == black screen :(
+    // limit maximum to m_BrightnessSteps * (16 - 1)
+    lv_slider_set_range(slider, m_MinimumBrightness / m_BrightnessSteps, m_BrightnessSteps - 1);
+
+    uint8_t brightness = Settings::load<Settings::BRIGHTNESS>();
+    lv_slider_set_value(slider, brightness / m_BrightnessSteps, LV_ANIM_ON);
+
+    lv_obj_add_event_cb(
+        slider,
+        [](lv_event_t *e) {
+          auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+          auto *slider = static_cast<lv_obj_t *>(lv_event_get_target(e));
+          lv_event_code_t code = lv_event_get_code(e);
+
+          switch (code) {
+            case LV_EVENT_VALUE_CHANGED:
+            {
+              auto brightness = lv_slider_get_value(slider) * m_BrightnessSteps;
+              M5.Display.setBrightness(brightness);
+              break;
+            }
+            case LV_EVENT_FOCUSED:
+              if (lv_obj_has_state(slider, LV_STATE_EDITED)) {
+                ui->configureControl(ControlMode::SLIDER);
+              } else {
+                ui->configureControl(ControlMode::MENU);
+              }
+              break;
+            default:
+              break;
+          }
+        },
+        LV_EVENT_ALL, this);
+
+    lv_obj_add_event_cb(
+        slider,
+        [](lv_event_t *e) {
+          auto *slider = static_cast<lv_obj_t *>(lv_event_get_target(e));
+          auto brightness = lv_slider_get_value(slider) * m_BrightnessSteps;
+          Settings::save<Settings::BRIGHTNESS>(brightness);
+        },
+        LV_EVENT_RELEASED, NULL);
+
+    // Add inactivity timeout control
+    label = lv_label_create(cont);
+    lv_label_set_text(label, "Inactivity timeout");
+    lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_obj_set_width(label, LV_PCT(100));
+
+    lv_obj_t *roller = lv_roller_create(cont);
+    lv_obj_set_width(roller, LV_PCT(90));
+    lv_obj_add_flag(roller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+    addToInputGroup(m_Group, roller);
+    lv_roller_set_options(roller, "Never\n30 secs\n60 secs\n2 mins\n5 mins\n10 mins",
+                          LV_ROLLER_MODE_INFINITE);
+    lv_roller_set_visible_row_count(roller, 2);
+    uint8_t inactivity = Settings::load<Settings::INACTIVITY>();
+    lv_roller_set_selected(roller, inactivityIndex(inactivity), LV_ANIM_ON);
+
+    lv_obj_add_event_cb(
+        roller,
+        [](lv_event_t *e) {
+          auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+          auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+          size_t index = lv_roller_get_selected(roller);
+          if (index >= m_InactivityValues.size()) {
+            index = m_InactivityValues.size() - 1;
+          }
+          uint8_t inactivity = m_InactivityValues[index];
+          Settings::save<Settings::INACTIVITY>(inactivity);
+          ui->setInactivityTimeout(inactivity);
+        },
+        LV_EVENT_VALUE_CHANGED, this);
+
+    // Add screen off control
+    label = lv_label_create(cont);
+    lv_label_set_text(label, "Screen off");
+    lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_obj_set_width(label, LV_PCT(100));
+
+    roller = lv_roller_create(cont);
+    lv_obj_set_width(roller, LV_PCT(90));
+    lv_obj_add_flag(roller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+    addToInputGroup(m_Group, roller);
+    lv_roller_set_options(roller,
+                          M5.Touch.isEnabled() ? m_DisplayOffTouchOptions : m_DisplayOffOptions,
+                          LV_ROLLER_MODE_INFINITE);
+    lv_roller_set_visible_row_count(roller, 2);
+    uint8_t displayOff = m_DisplayOffMode;
+    if (displayOff > 2) {
+      displayOff = 0;
+    }
+    if (M5.Touch.isEnabled() && displayOff == 2) {
+      displayOff = 1;
+    }
+    lv_roller_set_selected(roller, displayOff, LV_ANIM_ON);
+
+    lv_obj_add_event_cb(
+        roller,
+        [](lv_event_t *e) {
+          auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+          auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+          uint8_t displayOff = lv_roller_get_selected(roller);
+          if (M5.Touch.isEnabled() && displayOff > 1) {
+            displayOff = 1;
+          }
+          Settings::save<Settings::DISPLAY_OFF>(displayOff);
+          ui->m_DisplayOffMode = displayOff;
+        },
+        LV_EVENT_VALUE_CHANGED, this);
+
+    if (M5.Touch.isEnabled()) {
+      lv_obj_t *calibrate_button = lv_button_create(cont);
+      lv_obj_t *calibrate_label = lv_label_create(calibrate_button);
+      lv_label_set_text(calibrate_label, "Calibrate");
+      lv_obj_add_flag(calibrate_button, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+      addToInputGroup(m_Group, calibrate_button);
+
+      lv_obj_add_event_cb(
+          calibrate_button,
+          [](lv_event_t *e) {
+            auto *calibrationUI = static_cast<CalibrationUI *>(lv_event_get_user_data(e));
+            calibrationUI->calibrate();
+          },
+          LV_EVENT_CLICKED, &m_CalibrationUI);
+    }
+
+    // Add title visibility control
+    addSettingItem(cont, NULL, Settings::SHOW_TITLE);
+
+    lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+  }
+
+  void UI::addTextSizeMenu(const menu_t &parent) {
+    menu_t &menu = addMenu(m_TextSizeStr, &icon_clear_all_24, true, parent);
+    lv_obj_t *cont = lv_menu_cont_create(menu.page);
+    lv_obj_set_size(cont, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_layout(cont, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+
+    lv_obj_t *roller = lv_roller_create(cont);
+#if !defined(FURBLE_M5COREX)
+    lv_obj_set_width(roller, LV_PCT(90));
+#endif
+    // The 80x160 M5StickC cannot fit the Large font, so it drops Large and offers
+    // only Small and Normal. Every other board offers all three.
+    const char *options = (TextSizePolicy::MAX >= Settings::TEXT_SIZE_LARGE)
+                              ? "Small\nNormal\nLarge"
+                              : "Small\nNormal";
+    lv_roller_set_options(roller, options, LV_ROLLER_MODE_INFINITE);
+    lv_roller_set_visible_row_count(roller, 2);
+    // Clamp the stored size to this board's maximum so a value carried in from a
+    // larger board lands on a valid roller row instead of running off the end.
+    uint8_t textSize = TextSizePolicy::clamp(Settings::load<Settings::TEXT_SIZE>());
+    lv_roller_set_selected(roller, textSize, LV_ANIM_OFF);
+
+    // Explain the missing option on the boards that drop Large, so the shorter
+    // list does not look like a bug.
+    if (TextSizePolicy::MAX < Settings::TEXT_SIZE_LARGE) {
+      lv_obj_t *note = lv_label_create(cont);
+      lv_obj_set_width(note, LV_PCT(90));
+      lv_label_set_long_mode(note, LV_LABEL_LONG_WRAP);
+      lv_obj_set_style_text_align(note, LV_TEXT_ALIGN_CENTER, 0);
+      lv_label_set_text(note, "Large needs a bigger screen");
+    }
+
+    lv_obj_t *restart = lv_button_create(cont);
+    lv_obj_t *restartLabel = lv_label_create(restart);
+    lv_label_set_text(restartLabel, "Restart");
+    lv_obj_add_event_cb(
+        restart,
+        [](lv_event_t *e) {
+          auto *roller = static_cast<lv_obj_t *>(lv_event_get_user_data(e));
+          Settings::save<Settings::TEXT_SIZE>(lv_roller_get_selected(roller));
+#if defined(FURBLE_M5STICKS3)
+          Platform::getInstance().watchdogEnable(false);
+#endif
+          Platform::getInstance().restart();
+        },
+        LV_EVENT_CLICKED, roller);
+
+    lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+  }
+
+  void UI::setBatteryStyle(uint8_t style) {
+    if (style == Settings::BATT_STYLE_PERCENT) {
+      lv_obj_add_flag(m_Status.batteryIcon, LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_clear_flag(m_Status.batteryIcon, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    if (style == Settings::BATT_STYLE_ICON) {
+      lv_obj_add_flag(m_Status.batteryLabel, LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_clear_flag(m_Status.batteryLabel, LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+
+  void UI::setShowTitle(bool show) {
+#if defined(FURBLE_RIG)
+    (void)show;
+    lv_obj_clear_flag(m_Status.title, LV_OBJ_FLAG_HIDDEN);
+#else
+    if (show) {
+      lv_obj_clear_flag(m_Status.title, LV_OBJ_FLAG_HIDDEN);
+    } else {
+      // the sticks have little header width, the icons take the space instead
+      lv_obj_add_flag(m_Status.title, LV_OBJ_FLAG_HIDDEN);
+    }
+#endif
+  }
+
+  void UI::batteryUpdate(lv_timer_t * timer) {
+    FURBLE_SIM_TIMER_FIRE("battery_timer");
+    auto *status = static_cast<status_t *>(lv_timer_get_user_data(timer));
+    auto &platform = Platform::getInstance();
+
+    const auto &caps = platform.getBatteryCaps();
+
+    // sampleBattery() smooths level/voltage/current with an EWMA internally and
+    // honours the battery caps, so the mean values are pulled straight from it.
+    const auto sample = platform.sampleBattery();
+    status->battery = sample.battery;
+    status->meanLevel = sample.meanLevel;
+    status->meanVoltage = sample.meanVoltage;
+    status->meanCurrent = sample.meanCurrent;
+    status->displayLevel = sample.displayLevel;
+    status->sampleCount++;
+
+    if (caps.level) {
+      // feed the smoothed level, the raw reading jitters across the threshold
+      Feedback::getInstance().updateBattery(status->displayLevel,
+                                            caps.charging && status->battery.charging);
+    }
+
+    if (status->batteryLevel != nullptr) {
+      lv_label_set_text_fmt(status->batteryLevel, "Level: %u%%", status->displayLevel);
+    }
+
+    if (status->batteryVoltage != nullptr) {
+      uint32_t mv = lroundf(status->meanVoltage);
+      lv_label_set_text_fmt(status->batteryVoltage, "Volts: %lu.%03lu", mv / 1000, mv % 1000);
+    }
+
+    if (status->batteryCurrent != nullptr) {
+      lv_label_set_text_fmt(status->batteryCurrent, "Current: %ld mA", status->battery.current);
+    }
+
+    if (status->batteryCharging != nullptr) {
+      lv_label_set_text(status->batteryCharging,
+                        status->battery.charging ? "Charging: yes" : "Charging: no");
+    }
+
+    if (status->batteryRuntime != nullptr) {
+      if (status->battery.charging) {
+        lv_label_set_text(status->batteryRuntime, "Runtime: charging");
+      } else if (status->meanCurrent < -1.0f) {
+        // remaining capacity in mAh divided by the average discharge current
+        float remaining = platform.getBatteryCapacity() * (status->meanLevel / 100.0f);
+        uint32_t minutes = (remaining / -status->meanCurrent) * 60.0f;
+        lv_label_set_text_fmt(status->batteryRuntime, "Runtime: ~%luh%02lum (est)", minutes / 60,
+                              minutes % 60);
+      } else {
+        lv_label_set_text(status->batteryRuntime, "Runtime: unknown");
+      }
+    }
+
+#if FURBLE_BATTERY_DEBUG == 1
+    ESP_LOGI("battery", "uptime=%lu level=%u voltage=%u current=%ld mean=%.1f charging=%u fail=%lu",
+             platform.tick() / 1000, status->battery.level, status->battery.voltage,
+             status->battery.current, status->meanCurrent, status->battery.charging,
+             platform.getBatteryFailCount());
+#endif
+  }
+
+  void UI::addBatteryMenu(const menu_t &parent) {
+    menu_t &menu = addMenu(m_BatteryStr, &icon_battery_android_frame_full, true, parent);
+    auto &platform = Platform::getInstance();
+    const auto &caps = platform.getBatteryCaps();
+
+    lv_obj_t *cont = lv_menu_cont_create(menu.page);
+    lv_obj_set_width(cont, LV_PCT(100));
+    lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+
+    auto addRow = [cont]() {
+      lv_obj_t *label = lv_label_create(cont);
+      lv_label_set_text(label, "");
+      lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+      lv_obj_set_width(label, LV_PCT(100));
+
+      return label;
+    };
+
+    // only add the rows this board can actually measure
+    if (caps.level) {
+      m_Status.batteryLevel = addRow();
+    }
+
+    if (caps.voltage) {
+      m_Status.batteryVoltage = addRow();
+    }
+
+    if (caps.current) {
+      m_Status.batteryCurrent = addRow();
+    }
+
+    if (caps.charging) {
+      m_Status.batteryCharging = addRow();
+    }
+
+    if (caps.current && (platform.getBatteryCapacity() > 0)) {
+      m_Status.batteryRuntime = addRow();
+    }
+
+    // fill the page with the current values
+    lv_timer_ready(m_BatteryTimer);
+
+    lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+  }
+
+  void UI::addPowerMenu(const menu_t &parent) {
+    menu_t &menu = addMenu(m_PowerStr, &icon_power_settings_new, true, parent);
+
+    // Battery Saver is the one-switch low-power profile. It overrides a bundle of
+    // power settings when on and leaves the stored individual settings untouched,
+    // so turning it off restores the user's own choices. Opt-in, default off.
+    addSettingItem(menu.page, NULL, Settings::BATTERY_SAVER);
+
+    // Static, non-focusable hint under the switch, matching the one-button hint
+    // precedent. It is never added to an input group so it takes no encoder focus.
+    lv_obj_t *batterySaverHint = lv_label_create(menu.page);
+    lv_obj_set_width(batterySaverHint, LV_PCT(100));
+    lv_label_set_long_mode(batterySaverHint, LV_LABEL_LONG_WRAP);
+    lv_label_set_text(batterySaverHint,
+                      "Battery Saver: one switch for connection saver, 60s screen off, reconnect "
+                      "backoff, balanced scan, and light sleep while connected on StickS3. Applies "
+                      "after a reboot and keeps your own settings.");
+
+    // Only the StickS3 has a Bluetooth controller configured for modem sleep, so
+    // the switch does nothing on the other boards. Leave it out there.
+    bool sleepConn = (M5.getBoard() == m5::board_t::board_M5StickS3);
+    if (sleepConn) {
+      addSettingItem(menu.page, NULL, Settings::SLEEP_CONN);
+    }
+
+    // IP5306 boards do not have a reliable software power-off path.
+    const bool policies = (M5.getBoard() != m5::board_t::board_M5Stack);
+
+    lv_obj_t *cont = lv_menu_cont_create(menu.page);
+    lv_obj_set_width(cont, LV_PCT(100));
+    // The Battery Saver switch and hint are always present above this container,
+    // so the rollers always share the page rather than centring on their own.
+    lv_obj_set_height(cont, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+
+    auto addPowerRoller = [cont](const char *text, const char *options) {
+      lv_obj_t *label = lv_label_create(cont);
+      lv_label_set_text(label, text);
+      lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+      lv_obj_set_width(label, LV_PCT(100));
+
+      lv_obj_t *roller = lv_roller_create(cont);
+      lv_obj_set_width(roller, LV_PCT(90));
+      lv_roller_set_options(roller, options, LV_ROLLER_MODE_INFINITE);
+      lv_roller_set_visible_row_count(roller, 2);
+      lv_obj_add_flag(roller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+      return roller;
+    };
+
+    // Add CPU maximum frequency control
+    lv_obj_t *label = lv_label_create(cont);
+    lv_label_set_text(label, "CPU speed");
+    lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_obj_set_width(label, LV_PCT(100));
+
+    const auto &frequencies = Platform::CPU_MAX_FREQ_MHZ;
+    std::string options;
+    for (const auto mhz : frequencies) {
+      if (!options.empty()) {
+        options += "\n";
+      }
+      options += std::to_string(mhz) + " MHz";
+    }
+
+    lv_obj_t *roller = lv_roller_create(cont);
+    lv_obj_set_width(roller, LV_PCT(90));
+    lv_obj_add_flag(roller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+    addToInputGroup(m_Group, roller);
+    lv_roller_set_options(roller, options.c_str(), LV_ROLLER_MODE_INFINITE);
+    lv_roller_set_visible_row_count(roller, 2);
+    lv_obj_add_flag(roller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+
+    // The roller index is not the frequency, map it explicitly
+    // getCPUMaxFreq() only ever returns a listed frequency, so the find succeeds
+    auto &platform = Platform::getInstance();
+    uint32_t index =
+        std::distance(frequencies.begin(),
+                      std::find(frequencies.begin(), frequencies.end(), platform.getCPUMaxFreq()));
+    lv_roller_set_selected(roller, index, LV_ANIM_OFF);
+
+    lv_obj_add_event_cb(
+        roller,
+        [](lv_event_t *e) {
+          auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+          auto index = lv_roller_get_selected(roller);
+          if (index >= Platform::CPU_MAX_FREQ_MHZ.size()) {
+            return;
+          }
+
+          // Takes effect immediately, save what was actually applied
+          auto &platform = Platform::getInstance();
+          platform.setCPUMaxFreq(Platform::CPU_MAX_FREQ_MHZ[index]);
+          Settings::save<Settings::CPU_FREQ>(platform.getCPUMaxFreq());
+        },
+        LV_EVENT_VALUE_CHANGED, NULL);
+
+    // Add battery style control
+    label = lv_label_create(cont);
+    lv_label_set_text(label, Settings::get(Settings::BATT_STYLE).name);
+    lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_obj_set_width(label, LV_PCT(100));
+
+    roller = lv_roller_create(cont);
+    lv_obj_set_width(roller, LV_PCT(90));
+    lv_obj_add_flag(roller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+    addToInputGroup(m_Group, roller);
+    lv_roller_set_options(roller, "Icon\nPercent\nBoth", LV_ROLLER_MODE_INFINITE);
+    lv_roller_set_visible_row_count(roller, 2);
+    lv_obj_add_flag(roller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+    lv_roller_set_selected(roller, Settings::load<Settings::BATT_STYLE>(), LV_ANIM_OFF);
+
+    lv_obj_add_event_cb(
+        roller,
+        [](lv_event_t *e) {
+          auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+          auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+          uint8_t style = lv_roller_get_selected(roller);
+
+          Settings::save<Settings::BATT_STYLE>(style);
+          ui->setBatteryStyle(style);
+        },
+        LV_EVENT_VALUE_CHANGED, this);
+
+    if (policies) {
+      addSettingItem(menu.page, NULL, Settings::AUTO_OFF_CHARGING);
+
+      lv_obj_t *autoOff = addPowerRoller("Auto off", "Never\n5 mins\n10 mins\n30 mins\n60 mins");
+      uint8_t minutes = Settings::load<Settings::AUTO_OFF>();
+      auto autoOffIt = std::find(m_AutoOffMinutes.begin(), m_AutoOffMinutes.end(), minutes);
+      uint32_t autoOffIndex =
+          (autoOffIt == m_AutoOffMinutes.end())
+              ? 0
+              : static_cast<uint32_t>(std::distance(m_AutoOffMinutes.begin(), autoOffIt));
+      lv_roller_set_selected(autoOff, autoOffIndex, LV_ANIM_OFF);
+
+      lv_obj_add_event_cb(
+          autoOff,
+          [](lv_event_t *e) {
+            auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+            auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+            uint32_t index = lv_roller_get_selected(roller);
+            if (index < UI::m_AutoOffMinutes.size()) {
+              Settings::save<Settings::AUTO_OFF>(UI::m_AutoOffMinutes[index]);
+              ui->reloadPowerPolicies();
+            }
+          },
+          LV_EVENT_VALUE_CHANGED, this);
+
+      lv_obj_t *lowBattery = addPowerRoller("Low battery", "None\nWarn\nWarn then off");
+      uint8_t policy = Settings::load<Settings::LOW_BATT>();
+      lv_roller_set_selected(lowBattery, (policy <= 2) ? policy : 0, LV_ANIM_OFF);
+
+      lv_obj_add_event_cb(
+          lowBattery,
+          [](lv_event_t *e) {
+            auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+            auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+            uint32_t index = lv_roller_get_selected(roller);
+            if (index <= 2) {
+              Settings::save<Settings::LOW_BATT>(static_cast<uint8_t>(index));
+              ui->reloadPowerPolicies();
+            }
+          },
+          LV_EVENT_VALUE_CHANGED, this);
+
+      lv_obj_t *help = lv_label_create(cont);
+      lv_label_set_text(
+          help,
+          "Auto off needs no camera connection. Infinite Re-Connect keeps reconnecting.\n"
+          "Power off is final. Press the power button to wake.");
+      lv_label_set_long_mode(help, LV_LABEL_LONG_WRAP);
+      lv_obj_set_width(help, LV_PCT(100));
+    }
+
+    // Add the battery page entry below the controls
+    addBatteryMenu(menu);
+
+    lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+  }
+
+  void UI::updateFeedbackVolumeVisibility(Feedback::output_t output) {
+    auto &feedback = Feedback::getInstance();
+    auto &volume = m_Menu.at(m_FeedbackVolumeStr);
+    bool show = feedback.supports(output) && Feedback::outputIncludesSound(output);
+
+    if (show) {
+      lv_obj_clear_flag(volume.button, LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_add_flag(volume.button, LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+
+  void UI::addFeedbackMenu(const menu_t &parent) {
+    auto &feedback = Feedback::getInstance();
+
+    std::array<Feedback::output_t, Feedback::OUTPUT_OPTION_COUNT> outputOptions = {};
+    size_t outputCount = feedback.getOutputOptions(outputOptions);
+    if (outputCount <= 1) {
+      // Only Off is available on this board, a menu with one no-op choice is
+      // clutter.
+      return;
+    }
+
+    menu_t &menu = addMenu(m_FeedbackStr, &icon_notifications_active, true, parent);
+
+    lv_obj_set_flex_flow(menu.page, LV_FLEX_FLOW_COLUMN);
+
+    // Output is filtered from the board capability table. The stored enum is
+    // kept intact when it is unavailable, so moving the setting to another
+    // supported board restores it.
+    lv_obj_t *outputCont = lv_menu_cont_create(menu.page);
+    lv_obj_set_flex_flow(outputCont, LV_FLEX_FLOW_ROW_WRAP);
+    lv_obj_t *outputLabel = lv_label_create(outputCont);
+    lv_label_set_text(outputLabel, "Output");
+    lv_label_set_long_mode(outputLabel, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_obj_set_flex_grow(outputLabel, 1);
+
+    static constexpr const char *outputNames[] = {
+        "Off", "Sound", "Light", "Vibrate", "Sound and Light",
+    };
+    std::string outputText;
+    uint8_t selectedOutput = 0;
+    uint8_t storedOutput = Settings::load<uint8_t>(Settings::FB_OUTPUT);
+    for (size_t n = 0; n < outputCount; n++) {
+      if (!outputText.empty()) {
+        outputText += "\n";
+      }
+      outputText += outputNames[outputOptions[n]];
+      if (outputOptions[n] == static_cast<Feedback::output_t>(storedOutput)) {
+        selectedOutput = n;
+      }
+    }
+
+    lv_obj_t *outputRoller = lv_roller_create(outputCont);
+    lv_obj_set_width(outputRoller, LV_PCT(60));
+    lv_obj_add_flag(outputRoller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+    addToInputGroup(m_Group, outputRoller);
+    lv_roller_set_options(outputRoller, outputText.c_str(), LV_ROLLER_MODE_INFINITE);
+    lv_roller_set_visible_row_count(outputRoller, 2);
+    lv_roller_set_selected(outputRoller, selectedOutput, LV_ANIM_OFF);
+    lv_obj_add_event_cb(
+        outputRoller,
+        [](lv_event_t *e) {
+          auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+          auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+          auto output = Feedback::getInstance().outputForOption(lv_roller_get_selected(roller));
+          Settings::save<Settings::FB_OUTPUT>(static_cast<uint8_t>(output));
+          ui->updateFeedbackVolumeVisibility(output);
+        },
+        LV_EVENT_VALUE_CHANGED, this);
+
+    lv_obj_t *restart = lv_button_create(menu.page);
+    lv_obj_t *restartLabel = lv_label_create(restart);
+    lv_label_set_text(restartLabel, "Restart to apply");
+    lv_obj_add_flag(restart, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+    addToInputGroup(m_Group, restart);
+    lv_obj_add_event_cb(
+        restart,
+        [](lv_event_t *) {
+#if defined(FURBLE_M5STICKS3)
+          Platform::getInstance().watchdogEnable(false);
+#endif
+          Platform::getInstance().restart();
+        },
+        LV_EVENT_CLICKED, NULL);
+
+    menu_t &events = addMenu(m_FeedbackEventsStr, NULL, true, menu);
+    lv_obj_set_flex_flow(events.page, LV_FLEX_FLOW_COLUMN);
+    static const uint8_t shutterMask = Feedback::EVENT_SHUTTER_MASK;
+    static const uint8_t countdownMask = Feedback::EVENT_COUNTDOWN_MASK;
+    static const uint8_t connectionMask = Feedback::EVENT_CONNECTION_MASK;
+    static const uint8_t lowBatteryMask = Feedback::EVENT_LOW_BATTERY_MASK;
+
+    auto addEventSwitch = [this, &events](const char *name, const uint8_t *mask) {
+      lv_obj_t *row = lv_menu_cont_create(events.page);
+      lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW_WRAP);
+      lv_obj_t *label = lv_label_create(row);
+      lv_label_set_text(label, name);
+      lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+      lv_obj_set_flex_grow(label, 1);
+      lv_obj_t *sw = lv_switch_create(row);
+      lv_obj_add_flag(sw, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+      addToInputGroup(m_Group, sw);
+      if ((Settings::load<uint8_t>(Settings::FB_EVENTS) & *mask) != 0) {
+        lv_obj_add_state(sw, LV_STATE_CHECKED);
+      }
+      lv_obj_add_event_cb(
+          sw,
+          [](lv_event_t *e) {
+            auto *mask = static_cast<const uint8_t *>(lv_event_get_user_data(e));
+            auto *sw = static_cast<lv_obj_t *>(lv_event_get_target(e));
+            uint8_t events = Settings::load<uint8_t>(Settings::FB_EVENTS);
+            if (lv_obj_has_state(sw, LV_STATE_CHECKED)) {
+              events |= *mask;
+            } else {
+              events &= static_cast<uint8_t>(~*mask);
+            }
+            Settings::save<Settings::FB_EVENTS>(events);
+            Feedback::getInstance().reload();
+          },
+          LV_EVENT_VALUE_CHANGED, const_cast<uint8_t *>(mask));
+    };
+
+    addEventSwitch("Shutter fired", &shutterMask);
+    addEventSwitch("Countdown", &countdownMask);
+    addEventSwitch("Connect and disconnect", &connectionMask);
+    addEventSwitch("Low battery", &lowBatteryMask);
+    lv_menu_set_load_page_event(events.main, events.button, events.page);
+
+    menu_t &volume = addMenu(m_FeedbackVolumeStr, NULL, true, menu);
+    lv_obj_set_flex_flow(volume.page, LV_FLEX_FLOW_COLUMN);
+    lv_obj_t *volumeLabel = lv_label_create(volume.page);
+    lv_label_set_text(volumeLabel, "Volume");
+    lv_obj_set_width(volumeLabel, LV_PCT(100));
+    lv_obj_t *volumeSlider = lv_slider_create(volume.page);
+    lv_obj_set_width(volumeSlider, LV_PCT(90));
+    lv_obj_add_flag(volumeSlider, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+    addToInputGroup(m_Group, volumeSlider);
+    lv_slider_set_range(volumeSlider, 0, UINT8_MAX);
+    lv_slider_set_value(volumeSlider, Settings::load<uint8_t>(Settings::FB_VOLUME), LV_ANIM_OFF);
+    lv_obj_add_event_cb(
+        volumeSlider,
+        [](lv_event_t *e) {
+          auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+          auto *slider = static_cast<lv_obj_t *>(lv_event_get_target(e));
+          switch (lv_event_get_code(e)) {
+            case LV_EVENT_VALUE_CHANGED:
+              // Live preview only, the brightness slider precedent: persist on
+              // release, not on every step, to spare NVS.
+              Feedback::getInstance().setVolume(static_cast<uint8_t>(lv_slider_get_value(slider)));
+              break;
+            case LV_EVENT_FOCUSED:
+              ui->configureControl(lv_obj_has_state(slider, LV_STATE_EDITED) ? ControlMode::SLIDER
+                                                                             : ControlMode::MENU);
+              break;
+            default:
+              break;
+          }
+        },
+        LV_EVENT_ALL, this);
+
+    lv_obj_add_event_cb(
+        volumeSlider,
+        [](lv_event_t *e) {
+          auto *slider = static_cast<lv_obj_t *>(lv_event_get_target(e));
+          Settings::save<Settings::FB_VOLUME>(static_cast<uint8_t>(lv_slider_get_value(slider)));
+        },
+        LV_EVENT_RELEASED, NULL);
+    lv_menu_set_load_page_event(volume.main, volume.button, volume.page);
+    updateFeedbackVolumeVisibility(static_cast<Feedback::output_t>(storedOutput));
+
+    lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+  }
+
+  void UI::addThemeMenu(const menu_t &parent) {
+    menu_t &menu = addMenu(m_ThemeStr, &icon_palette, true, parent);
+
+    static std::array<std::string, 3> themes = {"Dark", "Default", "Mono Furble"};
+
+    lv_obj_t *cont = lv_menu_cont_create(menu.page);
+    lv_obj_set_size(cont, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_layout(cont, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_t *roller = lv_roller_create(cont);
+#if !defined(FURBLE_M5COREX)
+    lv_obj_set_width(roller, LV_PCT(90));
+#endif
+
+    std::string options =
+        std::accumulate(std::next(themes.begin()), themes.end(), themes[0],
+                        [](const std::string &a, const std::string &b) { return a + "\n" + b; });
+
+    lv_roller_set_options(roller, options.c_str(), LV_ROLLER_MODE_INFINITE);
+    lv_roller_set_visible_row_count(roller, 2);
+
+    std::string current = Settings::load<Settings::THEME>();
+    uint32_t index =
+        std::distance(themes.data(), std::find(std::begin(themes), std::end(themes), current));
+    lv_roller_set_selected(roller, index, LV_ANIM_OFF);
+
+    lv_obj_t *restart = lv_button_create(cont);
+    lv_obj_t *label = lv_label_create(restart);
+    lv_label_set_text(label, "Restart");
+    lv_obj_add_flag(restart, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+    addToInputGroup(m_Group, restart);
+
+    lv_obj_add_event_cb(
+        restart,
+        [](lv_event_t *e) {
+          auto *roller = static_cast<lv_obj_t *>(lv_event_get_user_data(e));
+          auto index = lv_roller_get_selected(roller);
+          Settings::save<Settings::THEME>(themes[index]);
+          Platform::getInstance().restart();
+        },
+        LV_EVENT_CLICKED, roller);
+
+    lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+  }
+
+  void UI::addTransmitPowerMenu(const menu_t &parent) {
+    menu_t &menu = addMenu(m_TransmitPowerStr, &icon_cell_tower, true, parent);
+    addSettingItem(menu.page, NULL, Settings::TX_ADAPTIVE);
+
+    lv_obj_t *cont = lv_menu_cont_create(menu.page);
+    lv_obj_set_size(cont, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_t *slider = lv_slider_create(cont);
+    lv_obj_set_width(slider, LV_PCT(80));
+    lv_obj_add_flag(slider, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+    addToInputGroup(m_Group, slider);
+    lv_slider_set_range(slider, 0, 2);
+
+    uint8_t power = Settings::load<Settings::TX_POWER>();
+    lv_slider_set_value(slider, power, LV_ANIM_ON);
+
+    lv_obj_add_event_cb(
+        slider,
+        [](lv_event_t *e) {
+          auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+          auto *slider = static_cast<lv_obj_t *>(lv_event_get_target(e));
+          lv_event_code_t code = lv_event_get_code(e);
+
+          switch (code) {
+            case LV_EVENT_RELEASED:
+            {
+              auto power = lv_slider_get_value(slider);
+              auto &control = Control::getInstance();
+              Settings::save<Settings::TX_POWER>(power);
+              control.setPower(Settings::load<esp_power_level_t>(Settings::TX_POWER));
+              break;
+            }
+            case LV_EVENT_FOCUSED:
+              if (lv_obj_has_state(slider, LV_STATE_EDITED)) {
+                ui->configureControl(ControlMode::SLIDER);
+              } else {
+                ui->configureControl(ControlMode::MENU);
+              }
+              break;
+            default:
+              break;
+          }
+        },
+        LV_EVENT_ALL, this);
+
+    lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+  }
+
+  lv_obj_t *UI::addInfoRow(lv_obj_t * cont) {
+    lv_obj_t *label = lv_label_create(cont);
+    lv_obj_set_width(label, LV_PCT(100));
+    lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
+    lv_label_set_text(label, "");
+
+    // rows are read only, but must be focusable so the button boards can scroll
+    lv_obj_add_flag(label, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(label, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+    addToInputGroup(lv_group_get_default(), label);
+
     return label;
-  };
-
-  // only add the rows this board can actually measure
-  if (caps.level) {
-    m_Status.batteryLevel = addRow();
   }
 
-  if (caps.voltage) {
-    m_Status.batteryVoltage = addRow();
+  const char *UI::getResetReason(void) {
+    switch (esp_reset_reason()) {
+      case ESP_RST_POWERON:
+        return "Power on";
+      case ESP_RST_EXT:
+        return "External";
+      case ESP_RST_SW:
+        return "Software";
+      case ESP_RST_PANIC:
+        return "Panic";
+      case ESP_RST_INT_WDT:
+        return "Interrupt watchdog";
+      case ESP_RST_TASK_WDT:
+        return "Task watchdog";
+      case ESP_RST_WDT:
+        return "Watchdog";
+      case ESP_RST_DEEPSLEEP:
+        return "Deep sleep";
+      case ESP_RST_BROWNOUT:
+        return "Brownout";
+      default:
+        return "Unknown";
+    }
   }
 
-  if (caps.current) {
-    m_Status.batteryCurrent = addRow();
+  void UI::diagnosticsUpdate(lv_timer_t * timer) {
+    FURBLE_SIM_TIMER_FIRE("diagnostics_timer");
+    auto *diagnostics = static_cast<diagnostics_t *>(lv_timer_get_user_data(timer));
+    auto &platform = Platform::getInstance();
+    auto &motion = IMU::MotionSource::getInstance();
+
+    SpinValue::hms_t hms = SpinValue::toHMS(platform.tick());
+    uint32_t heap = esp_get_free_heap_size();
+    uint32_t minimum = esp_get_minimum_free_heap_size();
+
+    setLabelIfChangedFmt(diagnostics->aboutUptime, "Uptime:\n%02lu:%02lu:%02lu", hms.hours,
+                         hms.minutes, hms.seconds);
+    setLabelIfChangedFmt(diagnostics->aboutHeap, "Heap:\n%lu B, min %lu B", heap, minimum);
+    setLabelIfChangedFmt(diagnostics->deviceUptime, "Uptime:\n%02lu:%02lu:%02lu", hms.hours,
+                         hms.minutes, hms.seconds);
+    setLabelIfChangedFmt(diagnostics->deviceHeap, "Heap:\n%lu B, min %lu B", heap, minimum);
+
+    if ((diagnostics->powerFrequency != nullptr) || (diagnostics->powerSleep != nullptr)) {
+      auto pm = platform.getPMConfig();
+
+      setLabelIfChangedFmt(diagnostics->powerFrequency, "CPU:\n%u to %u MHz", pm.min_freq_mhz,
+                           pm.max_freq_mhz);
+      setLabelIfChangedFmt(diagnostics->powerSleep, "Light sleep:\n%s",
+                           pm.light_sleep_enable ? "on" : "off");
+    }
+
+    auto &power = Power::getInstance();
+    for (size_t n = 0; n < Power::LOCK_COUNT; n++) {
+      if (diagnostics->powerLocks[n] == nullptr) {
+        continue;
+      }
+
+      const auto type = static_cast<Power::LockType>(n);
+      const auto stats = power.getStats(type);
+      setLabelIfChangedFmt(diagnostics->powerLocks[n], "%s:\ncount %lu, acquires %lu\nheld %llu ms",
+                           power.getName(type), static_cast<unsigned long>(stats.count),
+                           static_cast<unsigned long>(stats.totalAcquires),
+                           static_cast<unsigned long long>(stats.totalHeldUs / 1000));
+    }
+
+    if (diagnostics->ble != nullptr) {
+      std::string text;
+      for (const auto &camera : Control::getInstance().getTargetCameras()) {
+        if (!camera->isConnected()) {
+          continue;
+        }
+
+        uint16_t interval;
+        uint16_t latency;
+        uint16_t timeout;
+        int rssi;
+        if (!camera->getConnParams(interval, latency, timeout, rssi)) {
+          continue;
+        }
+
+        if (!text.empty()) {
+          text += "\n\n";
+        }
+        text += camera->getName();
+        text += "\nProfile: ";
+        text += Camera::connProfileName(camera->getConnProfile());
+        text += "\nInterval: ";
+        text += std::to_string(interval);
+        text += " x 1.25 ms\nLatency: ";
+        text += std::to_string(latency);
+        text += " events\nSupervision: ";
+        text += std::to_string(timeout);
+        text += " x 10 ms\nRSSI: ";
+        text += std::to_string(rssi);
+        text += " dBm";
+      }
+
+      if (text.empty()) {
+        text = "No connected cameras";
+      }
+      if (diagnostics->bleText != text) {
+        lv_label_set_text(diagnostics->ble, text.c_str());
+        diagnostics->bleText = text;
+      }
+    }
+
+    // only poll the IMU over I2C while its live page is open
+    if (diagnostics->imuPageActive) {
+      std::lock_guard<imu_mutex_t> imuLock(g_IMUMutex);
+#if defined(FURBLE_SIM)
+      // Read the injected IMU state through the same surface as the firmware, so a
+      // scenario can drive the live diagnostics readout too.
+      if (Furble::Sim::imuEnabled()) {
+        Furble::Sim::imuUpdate();
+        float accel[3];
+        float gyro[3];
+        bool accelRead = Furble::Sim::imuGetAccel(&accel[0], &accel[1], &accel[2]);
+        bool gyroRead = Furble::Sim::imuGetGyro(&gyro[0], &gyro[1], &gyro[2]);
+#else
+      if (M5.Imu.isEnabled()) {
+        M5.Imu.update();
+        float accel[3];
+        float gyro[3];
+        bool accelRead = M5.Imu.getAccel(&accel[0], &accel[1], &accel[2]);
+        bool gyroRead = M5.Imu.getGyro(&gyro[0], &gyro[1], &gyro[2]);
+#endif
+
+        if (accelRead && diagnostics->imuAccel != nullptr) {
+          bool changed = !diagnostics->imuAccelValid;
+          for (size_t index = 0; index < 3; index++) {
+            changed =
+                changed || (std::fabs(diagnostics->imuAccelValues[index] - accel[index]) >= 0.001f);
+            diagnostics->imuAccelValues[index] = accel[index];
+          }
+          if (changed) {
+            lv_label_set_text_fmt(diagnostics->imuAccel, "Accel (G):\nX %.3f  Y %.3f  Z %.3f",
+                                  accel[0], accel[1], accel[2]);
+            diagnostics->imuAccelUpdates++;
+          }
+          diagnostics->imuAccelValid = true;
+        }
+
+        if (gyroRead && diagnostics->imuGyro != nullptr) {
+          bool changed = !diagnostics->imuGyroValid;
+          for (size_t index = 0; index < 3; index++) {
+            changed =
+                changed || (std::fabs(diagnostics->imuGyroValues[index] - gyro[index]) >= 0.001f);
+            diagnostics->imuGyroValues[index] = gyro[index];
+          }
+          if (changed) {
+            lv_label_set_text_fmt(diagnostics->imuGyro, "Gyro (deg/s):\nX %.2f  Y %.2f  Z %.2f",
+                                  gyro[0], gyro[1], gyro[2]);
+            diagnostics->imuGyroUpdates++;
+          }
+          diagnostics->imuGyroValid = true;
+        }
+        if (!accelRead) {
+          diagnostics->imuAccelValid = false;
+        }
+        if (!gyroRead) {
+          diagnostics->imuGyroValid = false;
+        }
+      }
+    }
+
+    if ((diagnostics->imuBackend != nullptr) || (diagnostics->imuMotion != nullptr)
+        || (diagnostics->imuInterrupts != nullptr)) {
+      const auto backend = motion.backend();
+      const auto state = motion.state();
+      const uint32_t interrupts = motion.interruptCount();
+
+      if (!diagnostics->imuMotionValuesValid || (diagnostics->imuBackendValue != backend)) {
+        if (diagnostics->imuBackend != nullptr) {
+          lv_label_set_text_fmt(diagnostics->imuBackend, "Backend:\n%s%s", motion.backendName(),
+                                motion.usesInterrupt() ? " (interrupt)" : " (polling)");
+        }
+        diagnostics->imuBackendValue = backend;
+      }
+
+      if (!diagnostics->imuMotionValuesValid || (diagnostics->imuMotionValue != state)) {
+        if (diagnostics->imuMotion != nullptr) {
+          const char *stateName =
+              !motion.isArmed() ? "inactive"
+                                : (state == IMU::MotionState::STATIONARY ? "stationary" : "moving");
+          lv_label_set_text_fmt(diagnostics->imuMotion, "Motion:\n%s", stateName);
+        }
+        diagnostics->imuMotionValue = state;
+      }
+
+      if (!diagnostics->imuMotionValuesValid || (diagnostics->imuInterruptCount != interrupts)) {
+        if (diagnostics->imuInterrupts != nullptr) {
+          lv_label_set_text_fmt(diagnostics->imuInterrupts, "Interrupts:\n%lu",
+                                static_cast<unsigned long>(interrupts));
+        }
+        diagnostics->imuInterruptCount = interrupts;
+      }
+
+      diagnostics->imuMotionValuesValid = true;
+    }
   }
 
-  if (caps.charging) {
-    m_Status.batteryCharging = addRow();
-  }
+  /**
+   * Add a labelled roller row to a menu page.
+   *
+   * The row is sized to its content so the page keeps flowing, a full height row
+   * pushes later rows off screen and stops the page scrolling. The roller is
+   * flagged to scroll itself into view, which is the only way the page scrolls
+   * under encoder navigation.
+   */
+  static lv_obj_t *addRollerItem(lv_obj_t * page, const char *text, const char *options) {
+    lv_obj_t *cont = lv_menu_cont_create(page);
+    lv_obj_set_size(cont, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
 
-  if (caps.current && (platform.getBatteryCapacity() > 0)) {
-    m_Status.batteryRuntime = addRow();
-  }
-
-  // fill the page with the current values
-  lv_timer_ready(m_BatteryTimer);
-
-  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
-}
-
-void UI::addPowerMenu(const menu_t &parent) {
-  menu_t &menu = addMenu(m_PowerStr, &icon_power_settings_new, true, parent);
-
-  // Battery Saver is the one-switch low-power profile. It overrides a bundle of
-  // power settings when on and leaves the stored individual settings untouched,
-  // so turning it off restores the user's own choices. Opt-in, default off.
-  addSettingItem(menu.page, NULL, Settings::BATTERY_SAVER);
-
-  // Static, non-focusable hint under the switch, matching the one-button hint
-  // precedent. It is never added to an input group so it takes no encoder focus.
-  lv_obj_t *batterySaverHint = lv_label_create(menu.page);
-  lv_obj_set_width(batterySaverHint, LV_PCT(100));
-  lv_label_set_long_mode(batterySaverHint, LV_LABEL_LONG_WRAP);
-  lv_label_set_text(batterySaverHint,
-                    "Battery Saver: one switch for connection saver, 60s screen off, reconnect "
-                    "backoff, balanced scan, and light sleep while connected on StickS3. Applies "
-                    "after a reboot and keeps your own settings.");
-
-  // Only the StickS3 has a Bluetooth controller configured for modem sleep, so
-  // the switch does nothing on the other boards. Leave it out there.
-  bool sleepConn = (M5.getBoard() == m5::board_t::board_M5StickS3);
-  if (sleepConn) {
-    addSettingItem(menu.page, NULL, Settings::SLEEP_CONN);
-  }
-
-  // IP5306 boards do not have a reliable software power-off path.
-  const bool policies = (M5.getBoard() != m5::board_t::board_M5Stack);
-
-  lv_obj_t *cont = lv_menu_cont_create(menu.page);
-  lv_obj_set_width(cont, LV_PCT(100));
-  // The Battery Saver switch and hint are always present above this container,
-  // so the rollers always share the page rather than centring on their own.
-  lv_obj_set_height(cont, LV_SIZE_CONTENT);
-  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
-                        LV_FLEX_ALIGN_CENTER);
-
-  auto addPowerRoller = [cont](const char *text, const char *options) {
     lv_obj_t *label = lv_label_create(cont);
     lv_label_set_text(label, text);
     lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
@@ -9323,1351 +10615,682 @@ void UI::addPowerMenu(const menu_t &parent) {
     lv_roller_set_options(roller, options, LV_ROLLER_MODE_INFINITE);
     lv_roller_set_visible_row_count(roller, 2);
     lv_obj_add_flag(roller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+    addToInputGroup(lv_group_get_default(), roller);
+
     return roller;
-  };
-
-  // Add CPU maximum frequency control
-  lv_obj_t *label = lv_label_create(cont);
-  lv_label_set_text(label, "CPU speed");
-  lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
-  lv_obj_set_width(label, LV_PCT(100));
-
-  const auto &frequencies = Platform::CPU_MAX_FREQ_MHZ;
-  std::string options;
-  for (const auto mhz : frequencies) {
-    if (!options.empty()) {
-      options += "\n";
-    }
-    options += std::to_string(mhz) + " MHz";
   }
 
-  lv_obj_t *roller = lv_roller_create(cont);
-  lv_obj_set_width(roller, LV_PCT(90));
-  lv_obj_add_flag(roller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
-  addToInputGroup(m_Group, roller);
-  lv_roller_set_options(roller, options.c_str(), LV_ROLLER_MODE_INFINITE);
-  lv_roller_set_visible_row_count(roller, 2);
-  lv_obj_add_flag(roller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+  void UI::addIRSettingsMenu(const menu_t &parent) {
+    menu_t &menu = addMenu(m_IRSettingsStr, &icon_settings_remote, true, parent);
 
-  // The roller index is not the frequency, map it explicitly
-  // getCPUMaxFreq() only ever returns a listed frequency, so the find succeeds
-  auto &platform = Platform::getInstance();
-  uint32_t index =
-      std::distance(frequencies.begin(),
-                    std::find(frequencies.begin(), frequencies.end(), platform.getCPUMaxFreq()));
-  lv_roller_set_selected(roller, index, LV_ANIM_OFF);
+    addSettingItem(menu.page, NULL, Settings::IR);
 
-  lv_obj_add_event_cb(
-      roller,
-      [](lv_event_t *e) {
-        auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
-        auto index = lv_roller_get_selected(roller);
-        if (index >= Platform::CPU_MAX_FREQ_MHZ.size()) {
-          return;
-        }
-
-        // Takes effect immediately, save what was actually applied
-        auto &platform = Platform::getInstance();
-        platform.setCPUMaxFreq(Platform::CPU_MAX_FREQ_MHZ[index]);
-        Settings::save<Settings::CPU_FREQ>(platform.getCPUMaxFreq());
-      },
-      LV_EVENT_VALUE_CHANGED, NULL);
-
-  // Add battery style control
-  label = lv_label_create(cont);
-  lv_label_set_text(label, Settings::get(Settings::BATT_STYLE).name);
-  lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
-  lv_obj_set_width(label, LV_PCT(100));
-
-  roller = lv_roller_create(cont);
-  lv_obj_set_width(roller, LV_PCT(90));
-  lv_obj_add_flag(roller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
-  addToInputGroup(m_Group, roller);
-  lv_roller_set_options(roller, "Icon\nPercent\nBoth", LV_ROLLER_MODE_INFINITE);
-  lv_roller_set_visible_row_count(roller, 2);
-  lv_obj_add_flag(roller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
-  lv_roller_set_selected(roller, Settings::load<Settings::BATT_STYLE>(), LV_ANIM_OFF);
-
-  lv_obj_add_event_cb(
-      roller,
-      [](lv_event_t *e) {
-        auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
-        auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
-        uint8_t style = lv_roller_get_selected(roller);
-
-        Settings::save<Settings::BATT_STYLE>(style);
-        ui->setBatteryStyle(style);
-      },
-      LV_EVENT_VALUE_CHANGED, this);
-
-  if (policies) {
-    addSettingItem(menu.page, NULL, Settings::AUTO_OFF_CHARGING);
-
-    lv_obj_t *autoOff = addPowerRoller("Auto off", "Never\n5 mins\n10 mins\n30 mins\n60 mins");
-    uint8_t minutes = Settings::load<Settings::AUTO_OFF>();
-    auto autoOffIt = std::find(m_AutoOffMinutes.begin(), m_AutoOffMinutes.end(), minutes);
-    uint32_t autoOffIndex =
-        (autoOffIt == m_AutoOffMinutes.end())
-            ? 0
-            : static_cast<uint32_t>(std::distance(m_AutoOffMinutes.begin(), autoOffIt));
-    lv_roller_set_selected(autoOff, autoOffIndex, LV_ANIM_OFF);
+    lv_obj_t *protocol = addRollerItem(menu.page, m_IRProtoStr, m_IRProtoOptions);
+    const uint8_t selected =
+        static_cast<uint8_t>(IR::clampProtocol(Settings::load<Settings::IR_PROTO>()));
+    lv_roller_set_selected(protocol, selected, LV_ANIM_OFF);
 
     lv_obj_add_event_cb(
-        autoOff,
+        protocol,
         [](lv_event_t *e) {
-          auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
           auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
-          uint32_t index = lv_roller_get_selected(roller);
-          if (index < UI::m_AutoOffMinutes.size()) {
-            Settings::save<Settings::AUTO_OFF>(UI::m_AutoOffMinutes[index]);
-            ui->reloadPowerPolicies();
-          }
+          Settings::save<Settings::IR_PROTO>(lv_roller_get_selected(roller));
         },
-        LV_EVENT_VALUE_CHANGED, this);
+        LV_EVENT_VALUE_CHANGED, NULL);
 
-    lv_obj_t *lowBattery = addPowerRoller("Low battery", "None\nWarn\nWarn then off");
-    uint8_t policy = Settings::load<Settings::LOW_BATT>();
-    lv_roller_set_selected(lowBattery, (policy <= 2) ? policy : 0, LV_ANIM_OFF);
-
-    lv_obj_add_event_cb(
-        lowBattery,
-        [](lv_event_t *e) {
-          auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
-          auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
-          uint32_t index = lv_roller_get_selected(roller);
-          if (index <= 2) {
-            Settings::save<Settings::LOW_BATT>(static_cast<uint8_t>(index));
-            ui->reloadPowerPolicies();
-          }
-        },
-        LV_EVENT_VALUE_CHANGED, this);
-
-    lv_obj_t *help = lv_label_create(cont);
-    lv_label_set_text(
-        help,
-        "Auto off needs no camera connection. Infinite Re-Connect keeps reconnecting.\n"
-        "Power off is final. Press the power button to wake.");
-    lv_label_set_long_mode(help, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(help, LV_PCT(100));
+    lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+    updateIRMenuVisibility();
   }
 
-  // Add the battery page entry below the controls
-  addBatteryMenu(menu);
-
-  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
-}
-
-void UI::updateFeedbackVolumeVisibility(Feedback::output_t output) {
-  auto &feedback = Feedback::getInstance();
-  auto &volume = m_Menu.at(m_FeedbackVolumeStr);
-  bool show = feedback.supports(output) && Feedback::outputIncludesSound(output);
-
-  if (show) {
-    lv_obj_clear_flag(volume.button, LV_OBJ_FLAG_HIDDEN);
-  } else {
-    lv_obj_add_flag(volume.button, LV_OBJ_FLAG_HIDDEN);
-  }
-}
-
-void UI::addFeedbackMenu(const menu_t &parent) {
-  auto &feedback = Feedback::getInstance();
-
-  std::array<Feedback::output_t, Feedback::OUTPUT_OPTION_COUNT> outputOptions = {};
-  size_t outputCount = feedback.getOutputOptions(outputOptions);
-  if (outputCount <= 1) {
-    // Only Off is available on this board, a menu with one no-op choice is
-    // clutter.
-    return;
-  }
-
-  menu_t &menu = addMenu(m_FeedbackStr, &icon_notifications_active, true, parent);
-
-  lv_obj_set_flex_flow(menu.page, LV_FLEX_FLOW_COLUMN);
-
-  // Output is filtered from the board capability table. The stored enum is
-  // kept intact when it is unavailable, so moving the setting to another
-  // supported board restores it.
-  lv_obj_t *outputCont = lv_menu_cont_create(menu.page);
-  lv_obj_set_flex_flow(outputCont, LV_FLEX_FLOW_ROW_WRAP);
-  lv_obj_t *outputLabel = lv_label_create(outputCont);
-  lv_label_set_text(outputLabel, "Output");
-  lv_label_set_long_mode(outputLabel, LV_LABEL_LONG_SCROLL_CIRCULAR);
-  lv_obj_set_flex_grow(outputLabel, 1);
-
-  static constexpr const char *outputNames[] = {
-      "Off", "Sound", "Light", "Vibrate", "Sound and Light",
-  };
-  std::string outputText;
-  uint8_t selectedOutput = 0;
-  uint8_t storedOutput = Settings::load<uint8_t>(Settings::FB_OUTPUT);
-  for (size_t n = 0; n < outputCount; n++) {
-    if (!outputText.empty()) {
-      outputText += "\n";
-    }
-    outputText += outputNames[outputOptions[n]];
-    if (outputOptions[n] == static_cast<Feedback::output_t>(storedOutput)) {
-      selectedOutput = n;
-    }
-  }
-
-  lv_obj_t *outputRoller = lv_roller_create(outputCont);
-  lv_obj_set_width(outputRoller, LV_PCT(60));
-  lv_obj_add_flag(outputRoller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
-  addToInputGroup(m_Group, outputRoller);
-  lv_roller_set_options(outputRoller, outputText.c_str(), LV_ROLLER_MODE_INFINITE);
-  lv_roller_set_visible_row_count(outputRoller, 2);
-  lv_roller_set_selected(outputRoller, selectedOutput, LV_ANIM_OFF);
-  lv_obj_add_event_cb(
-      outputRoller,
-      [](lv_event_t *e) {
-        auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
-        auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
-        auto output = Feedback::getInstance().outputForOption(lv_roller_get_selected(roller));
-        Settings::save<Settings::FB_OUTPUT>(static_cast<uint8_t>(output));
-        ui->updateFeedbackVolumeVisibility(output);
-      },
-      LV_EVENT_VALUE_CHANGED, this);
-
-  lv_obj_t *restart = lv_button_create(menu.page);
-  lv_obj_t *restartLabel = lv_label_create(restart);
-  lv_label_set_text(restartLabel, "Restart to apply");
-  lv_obj_add_flag(restart, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
-  addToInputGroup(m_Group, restart);
-  lv_obj_add_event_cb(
-      restart,
-      [](lv_event_t *) {
-#if defined(FURBLE_M5STICKS3)
-        Platform::getInstance().watchdogEnable(false);
-#endif
-        Platform::getInstance().restart();
-      },
-      LV_EVENT_CLICKED, NULL);
-
-  menu_t &events = addMenu(m_FeedbackEventsStr, NULL, true, menu);
-  lv_obj_set_flex_flow(events.page, LV_FLEX_FLOW_COLUMN);
-  static const uint8_t shutterMask = Feedback::EVENT_SHUTTER_MASK;
-  static const uint8_t countdownMask = Feedback::EVENT_COUNTDOWN_MASK;
-  static const uint8_t connectionMask = Feedback::EVENT_CONNECTION_MASK;
-  static const uint8_t lowBatteryMask = Feedback::EVENT_LOW_BATTERY_MASK;
-
-  auto addEventSwitch = [this, &events](const char *name, const uint8_t *mask) {
-    lv_obj_t *row = lv_menu_cont_create(events.page);
-    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW_WRAP);
-    lv_obj_t *label = lv_label_create(row);
-    lv_label_set_text(label, name);
-    lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
-    lv_obj_set_flex_grow(label, 1);
-    lv_obj_t *sw = lv_switch_create(row);
-    lv_obj_add_flag(sw, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
-    addToInputGroup(m_Group, sw);
-    if ((Settings::load<uint8_t>(Settings::FB_EVENTS) & *mask) != 0) {
-      lv_obj_add_state(sw, LV_STATE_CHECKED);
-    }
-    lv_obj_add_event_cb(
-        sw,
-        [](lv_event_t *e) {
-          auto *mask = static_cast<const uint8_t *>(lv_event_get_user_data(e));
-          auto *sw = static_cast<lv_obj_t *>(lv_event_get_target(e));
-          uint8_t events = Settings::load<uint8_t>(Settings::FB_EVENTS);
-          if (lv_obj_has_state(sw, LV_STATE_CHECKED)) {
-            events |= *mask;
-          } else {
-            events &= static_cast<uint8_t>(~*mask);
-          }
-          Settings::save<Settings::FB_EVENTS>(events);
-          Feedback::getInstance().reload();
-        },
-        LV_EVENT_VALUE_CHANGED, const_cast<uint8_t *>(mask));
-  };
-
-  addEventSwitch("Shutter fired", &shutterMask);
-  addEventSwitch("Countdown", &countdownMask);
-  addEventSwitch("Connect and disconnect", &connectionMask);
-  addEventSwitch("Low battery", &lowBatteryMask);
-  lv_menu_set_load_page_event(events.main, events.button, events.page);
-
-  menu_t &volume = addMenu(m_FeedbackVolumeStr, NULL, true, menu);
-  lv_obj_set_flex_flow(volume.page, LV_FLEX_FLOW_COLUMN);
-  lv_obj_t *volumeLabel = lv_label_create(volume.page);
-  lv_label_set_text(volumeLabel, "Volume");
-  lv_obj_set_width(volumeLabel, LV_PCT(100));
-  lv_obj_t *volumeSlider = lv_slider_create(volume.page);
-  lv_obj_set_width(volumeSlider, LV_PCT(90));
-  lv_obj_add_flag(volumeSlider, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
-  addToInputGroup(m_Group, volumeSlider);
-  lv_slider_set_range(volumeSlider, 0, UINT8_MAX);
-  lv_slider_set_value(volumeSlider, Settings::load<uint8_t>(Settings::FB_VOLUME), LV_ANIM_OFF);
-  lv_obj_add_event_cb(
-      volumeSlider,
-      [](lv_event_t *e) {
-        auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
-        auto *slider = static_cast<lv_obj_t *>(lv_event_get_target(e));
-        switch (lv_event_get_code(e)) {
-          case LV_EVENT_VALUE_CHANGED:
-            // Live preview only, the brightness slider precedent: persist on
-            // release, not on every step, to spare NVS.
-            Feedback::getInstance().setVolume(static_cast<uint8_t>(lv_slider_get_value(slider)));
-            break;
-          case LV_EVENT_FOCUSED:
-            ui->configureControl(lv_obj_has_state(slider, LV_STATE_EDITED) ? ControlMode::SLIDER
-                                                                           : ControlMode::MENU);
-            break;
-          default:
-            break;
-        }
-      },
-      LV_EVENT_ALL, this);
-
-  lv_obj_add_event_cb(
-      volumeSlider,
-      [](lv_event_t *e) {
-        auto *slider = static_cast<lv_obj_t *>(lv_event_get_target(e));
-        Settings::save<Settings::FB_VOLUME>(static_cast<uint8_t>(lv_slider_get_value(slider)));
-      },
-      LV_EVENT_RELEASED, NULL);
-  lv_menu_set_load_page_event(volume.main, volume.button, volume.page);
-  updateFeedbackVolumeVisibility(static_cast<Feedback::output_t>(storedOutput));
-
-  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
-}
-
-void UI::addThemeMenu(const menu_t &parent) {
-  menu_t &menu = addMenu(m_ThemeStr, &icon_palette, true, parent);
-
-  static std::array<std::string, 3> themes = {"Dark", "Default", "Mono Furble"};
-
-  lv_obj_t *cont = lv_menu_cont_create(menu.page);
-  lv_obj_set_size(cont, LV_PCT(100), LV_PCT(100));
-  lv_obj_set_layout(cont, LV_LAYOUT_FLEX);
-  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
-                        LV_FLEX_ALIGN_CENTER);
-  lv_obj_t *roller = lv_roller_create(cont);
-#if !defined(FURBLE_M5COREX)
-  lv_obj_set_width(roller, LV_PCT(90));
-#endif
-
-  std::string options =
-      std::accumulate(std::next(themes.begin()), themes.end(), themes[0],
-                      [](const std::string &a, const std::string &b) { return a + "\n" + b; });
-
-  lv_roller_set_options(roller, options.c_str(), LV_ROLLER_MODE_INFINITE);
-  lv_roller_set_visible_row_count(roller, 2);
-
-  std::string current = Settings::load<Settings::THEME>();
-  uint32_t index =
-      std::distance(themes.data(), std::find(std::begin(themes), std::end(themes), current));
-  lv_roller_set_selected(roller, index, LV_ANIM_OFF);
-
-  lv_obj_t *restart = lv_button_create(cont);
-  lv_obj_t *label = lv_label_create(restart);
-  lv_label_set_text(label, "Restart");
-  lv_obj_add_flag(restart, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
-  addToInputGroup(m_Group, restart);
-
-  lv_obj_add_event_cb(
-      restart,
-      [](lv_event_t *e) {
-        auto *roller = static_cast<lv_obj_t *>(lv_event_get_user_data(e));
-        auto index = lv_roller_get_selected(roller);
-        Settings::save<Settings::THEME>(themes[index]);
-        Platform::getInstance().restart();
-      },
-      LV_EVENT_CLICKED, roller);
-
-  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
-}
-
-void UI::addTransmitPowerMenu(const menu_t &parent) {
-  menu_t &menu = addMenu(m_TransmitPowerStr, &icon_cell_tower, true, parent);
-  addSettingItem(menu.page, NULL, Settings::TX_ADAPTIVE);
-
-  lv_obj_t *cont = lv_menu_cont_create(menu.page);
-  lv_obj_set_size(cont, LV_PCT(100), LV_SIZE_CONTENT);
-  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_t *slider = lv_slider_create(cont);
-  lv_obj_set_width(slider, LV_PCT(80));
-  lv_obj_add_flag(slider, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
-  addToInputGroup(m_Group, slider);
-  lv_slider_set_range(slider, 0, 2);
-
-  uint8_t power = Settings::load<Settings::TX_POWER>();
-  lv_slider_set_value(slider, power, LV_ANIM_ON);
-
-  lv_obj_add_event_cb(
-      slider,
-      [](lv_event_t *e) {
-        auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
-        auto *slider = static_cast<lv_obj_t *>(lv_event_get_target(e));
-        lv_event_code_t code = lv_event_get_code(e);
-
-        switch (code) {
-          case LV_EVENT_RELEASED:
-          {
-            auto power = lv_slider_get_value(slider);
-            auto &control = Control::getInstance();
-            Settings::save<Settings::TX_POWER>(power);
-            control.setPower(Settings::load<esp_power_level_t>(Settings::TX_POWER));
-            break;
-          }
-          case LV_EVENT_FOCUSED:
-            if (lv_obj_has_state(slider, LV_STATE_EDITED)) {
-              ui->configureControl(ControlMode::SLIDER);
-            } else {
-              ui->configureControl(ControlMode::MENU);
-            }
-            break;
-          default:
-            break;
-        }
-      },
-      LV_EVENT_ALL, this);
-
-  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
-}
-
-lv_obj_t *UI::addInfoRow(lv_obj_t *cont) {
-  lv_obj_t *label = lv_label_create(cont);
-  lv_obj_set_width(label, LV_PCT(100));
-  lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
-  lv_label_set_text(label, "");
-
-  // rows are read only, but must be focusable so the button boards can scroll
-  lv_obj_add_flag(label, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_add_flag(label, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
-  addToInputGroup(lv_group_get_default(), label);
-
-  return label;
-}
-
-const char *UI::getResetReason(void) {
-  switch (esp_reset_reason()) {
-    case ESP_RST_POWERON:
-      return "Power on";
-    case ESP_RST_EXT:
-      return "External";
-    case ESP_RST_SW:
-      return "Software";
-    case ESP_RST_PANIC:
-      return "Panic";
-    case ESP_RST_INT_WDT:
-      return "Interrupt watchdog";
-    case ESP_RST_TASK_WDT:
-      return "Task watchdog";
-    case ESP_RST_WDT:
-      return "Watchdog";
-    case ESP_RST_DEEPSLEEP:
-      return "Deep sleep";
-    case ESP_RST_BROWNOUT:
-      return "Brownout";
-    default:
-      return "Unknown";
-  }
-}
-
-void UI::diagnosticsUpdate(lv_timer_t *timer) {
-  FURBLE_SIM_TIMER_FIRE("diagnostics_timer");
-  auto *diagnostics = static_cast<diagnostics_t *>(lv_timer_get_user_data(timer));
-  auto &platform = Platform::getInstance();
-  auto &motion = IMU::MotionSource::getInstance();
-
-  SpinValue::hms_t hms = SpinValue::toHMS(platform.tick());
-  uint32_t heap = esp_get_free_heap_size();
-  uint32_t minimum = esp_get_minimum_free_heap_size();
-
-  setLabelIfChangedFmt(diagnostics->aboutUptime, "Uptime:\n%02lu:%02lu:%02lu", hms.hours,
-                       hms.minutes, hms.seconds);
-  setLabelIfChangedFmt(diagnostics->aboutHeap, "Heap:\n%lu B, min %lu B", heap, minimum);
-  setLabelIfChangedFmt(diagnostics->deviceUptime, "Uptime:\n%02lu:%02lu:%02lu", hms.hours,
-                       hms.minutes, hms.seconds);
-  setLabelIfChangedFmt(diagnostics->deviceHeap, "Heap:\n%lu B, min %lu B", heap, minimum);
-
-  if ((diagnostics->powerFrequency != nullptr) || (diagnostics->powerSleep != nullptr)) {
-    auto pm = platform.getPMConfig();
-
-    setLabelIfChangedFmt(diagnostics->powerFrequency, "CPU:\n%u to %u MHz", pm.min_freq_mhz,
-                         pm.max_freq_mhz);
-    setLabelIfChangedFmt(diagnostics->powerSleep, "Light sleep:\n%s",
-                         pm.light_sleep_enable ? "on" : "off");
-  }
-
-  auto &power = Power::getInstance();
-  for (size_t n = 0; n < Power::LOCK_COUNT; n++) {
-    if (diagnostics->powerLocks[n] == nullptr) {
-      continue;
-    }
-
-    const auto type = static_cast<Power::LockType>(n);
-    const auto stats = power.getStats(type);
-    setLabelIfChangedFmt(diagnostics->powerLocks[n], "%s:\ncount %lu, acquires %lu\nheld %llu ms",
-                         power.getName(type), static_cast<unsigned long>(stats.count),
-                         static_cast<unsigned long>(stats.totalAcquires),
-                         static_cast<unsigned long long>(stats.totalHeldUs / 1000));
-  }
-
-  if (diagnostics->ble != nullptr) {
-    std::string text;
-    for (const auto &camera : Control::getInstance().getTargetCameras()) {
-      if (!camera->isConnected()) {
-        continue;
-      }
-
-      uint16_t interval;
-      uint16_t latency;
-      uint16_t timeout;
-      int rssi;
-      if (!camera->getConnParams(interval, latency, timeout, rssi)) {
-        continue;
-      }
-
-      if (!text.empty()) {
-        text += "\n\n";
-      }
-      text += camera->getName();
-      text += "\nProfile: ";
-      text += Camera::connProfileName(camera->getConnProfile());
-      text += "\nInterval: ";
-      text += std::to_string(interval);
-      text += " x 1.25 ms\nLatency: ";
-      text += std::to_string(latency);
-      text += " events\nSupervision: ";
-      text += std::to_string(timeout);
-      text += " x 10 ms\nRSSI: ";
-      text += std::to_string(rssi);
-      text += " dBm";
-    }
-
-    if (text.empty()) {
-      text = "No connected cameras";
-    }
-    if (diagnostics->bleText != text) {
-      lv_label_set_text(diagnostics->ble, text.c_str());
-      diagnostics->bleText = text;
-    }
-  }
-
-  // only poll the IMU over I2C while its live page is open
-  if (diagnostics->imuPageActive) {
-    std::lock_guard<imu_mutex_t> imuLock(g_IMUMutex);
-#if defined(FURBLE_SIM)
-    // Read the injected IMU state through the same surface as the firmware, so a
-    // scenario can drive the live diagnostics readout too.
-    if (Furble::Sim::imuEnabled()) {
-      Furble::Sim::imuUpdate();
-      float accel[3];
-      float gyro[3];
-      bool accelRead = Furble::Sim::imuGetAccel(&accel[0], &accel[1], &accel[2]);
-      bool gyroRead = Furble::Sim::imuGetGyro(&gyro[0], &gyro[1], &gyro[2]);
-#else
-    if (M5.Imu.isEnabled()) {
-      M5.Imu.update();
-      float accel[3];
-      float gyro[3];
-      bool accelRead = M5.Imu.getAccel(&accel[0], &accel[1], &accel[2]);
-      bool gyroRead = M5.Imu.getGyro(&gyro[0], &gyro[1], &gyro[2]);
-#endif
-
-      if (accelRead && diagnostics->imuAccel != nullptr) {
-        bool changed = !diagnostics->imuAccelValid;
-        for (size_t index = 0; index < 3; index++) {
-          changed =
-              changed || (std::fabs(diagnostics->imuAccelValues[index] - accel[index]) >= 0.001f);
-          diagnostics->imuAccelValues[index] = accel[index];
-        }
-        if (changed) {
-          lv_label_set_text_fmt(diagnostics->imuAccel, "Accel (G):\nX %.3f  Y %.3f  Z %.3f",
-                                accel[0], accel[1], accel[2]);
-          diagnostics->imuAccelUpdates++;
-        }
-        diagnostics->imuAccelValid = true;
-      }
-
-      if (gyroRead && diagnostics->imuGyro != nullptr) {
-        bool changed = !diagnostics->imuGyroValid;
-        for (size_t index = 0; index < 3; index++) {
-          changed =
-              changed || (std::fabs(diagnostics->imuGyroValues[index] - gyro[index]) >= 0.001f);
-          diagnostics->imuGyroValues[index] = gyro[index];
-        }
-        if (changed) {
-          lv_label_set_text_fmt(diagnostics->imuGyro, "Gyro (deg/s):\nX %.2f  Y %.2f  Z %.2f",
-                                gyro[0], gyro[1], gyro[2]);
-          diagnostics->imuGyroUpdates++;
-        }
-        diagnostics->imuGyroValid = true;
-      }
-      if (!accelRead) {
-        diagnostics->imuAccelValid = false;
-      }
-      if (!gyroRead) {
-        diagnostics->imuGyroValid = false;
-      }
-    }
-  }
-
-  if ((diagnostics->imuBackend != nullptr) || (diagnostics->imuMotion != nullptr)
-      || (diagnostics->imuInterrupts != nullptr)) {
-    const auto backend = motion.backend();
-    const auto state = motion.state();
-    const uint32_t interrupts = motion.interruptCount();
-
-    if (!diagnostics->imuMotionValuesValid || (diagnostics->imuBackendValue != backend)) {
-      if (diagnostics->imuBackend != nullptr) {
-        lv_label_set_text_fmt(diagnostics->imuBackend, "Backend:\n%s%s", motion.backendName(),
-                              motion.usesInterrupt() ? " (interrupt)" : " (polling)");
-      }
-      diagnostics->imuBackendValue = backend;
-    }
-
-    if (!diagnostics->imuMotionValuesValid || (diagnostics->imuMotionValue != state)) {
-      if (diagnostics->imuMotion != nullptr) {
-        const char *stateName =
-            !motion.isArmed() ? "inactive"
-                              : (state == IMU::MotionState::STATIONARY ? "stationary" : "moving");
-        lv_label_set_text_fmt(diagnostics->imuMotion, "Motion:\n%s", stateName);
-      }
-      diagnostics->imuMotionValue = state;
-    }
-
-    if (!diagnostics->imuMotionValuesValid || (diagnostics->imuInterruptCount != interrupts)) {
-      if (diagnostics->imuInterrupts != nullptr) {
-        lv_label_set_text_fmt(diagnostics->imuInterrupts, "Interrupts:\n%lu",
-                              static_cast<unsigned long>(interrupts));
-      }
-      diagnostics->imuInterruptCount = interrupts;
-    }
-
-    diagnostics->imuMotionValuesValid = true;
-  }
-}
-
-/**
- * Add a labelled roller row to a menu page.
- *
- * The row is sized to its content so the page keeps flowing, a full height row
- * pushes later rows off screen and stops the page scrolling. The roller is
- * flagged to scroll itself into view, which is the only way the page scrolls
- * under encoder navigation.
- */
-static lv_obj_t *addRollerItem(lv_obj_t *page, const char *text, const char *options) {
-  lv_obj_t *cont = lv_menu_cont_create(page);
-  lv_obj_set_size(cont, LV_PCT(100), LV_SIZE_CONTENT);
-  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
-
-  lv_obj_t *label = lv_label_create(cont);
-  lv_label_set_text(label, text);
-  lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
-  lv_obj_set_width(label, LV_PCT(100));
-
-  lv_obj_t *roller = lv_roller_create(cont);
-  lv_obj_set_width(roller, LV_PCT(90));
-  lv_roller_set_options(roller, options, LV_ROLLER_MODE_INFINITE);
-  lv_roller_set_visible_row_count(roller, 2);
-  lv_obj_add_flag(roller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
-  addToInputGroup(lv_group_get_default(), roller);
-
-  return roller;
-}
-
-void UI::addIRSettingsMenu(const menu_t &parent) {
-  menu_t &menu = addMenu(m_IRSettingsStr, &icon_settings_remote, true, parent);
-
-  addSettingItem(menu.page, NULL, Settings::IR);
-
-  lv_obj_t *protocol = addRollerItem(menu.page, m_IRProtoStr, m_IRProtoOptions);
-  const uint8_t selected =
-      static_cast<uint8_t>(IR::clampProtocol(Settings::load<Settings::IR_PROTO>()));
-  lv_roller_set_selected(protocol, selected, LV_ANIM_OFF);
-
-  lv_obj_add_event_cb(
-      protocol,
-      [](lv_event_t *e) {
-        auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
-        Settings::save<Settings::IR_PROTO>(lv_roller_get_selected(roller));
-      },
-      LV_EVENT_VALUE_CHANGED, NULL);
-
-  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
-  updateIRMenuVisibility();
-}
-
-void UI::updateIRMenuVisibility(void) {
-  const bool supported = IR::getInstance().isSupported();
-  const bool enabled = supported && Settings::load<Settings::IR>();
-
-  auto &ir = m_Menu.at(m_IRStr);
-  if (ir.button != nullptr) {
-    if (enabled) {
-      lv_obj_clear_flag(ir.button, LV_OBJ_FLAG_HIDDEN);
-    } else {
-      lv_obj_add_flag(ir.button, LV_OBJ_FLAG_HIDDEN);
-    }
-  }
-
-  if (m_IRConnectedButton != nullptr) {
-    if (enabled) {
-      lv_obj_clear_flag(m_IRConnectedButton, LV_OBJ_FLAG_HIDDEN);
-    } else {
-      lv_obj_add_flag(m_IRConnectedButton, LV_OBJ_FLAG_HIDDEN);
-    }
-  }
-
-  auto &settings = m_Menu.at(m_IRSettingsStr);
-  if (settings.button != nullptr) {
-    if (supported) {
-      lv_obj_clear_flag(settings.button, LV_OBJ_FLAG_HIDDEN);
-    } else {
-      lv_obj_add_flag(settings.button, LV_OBJ_FLAG_HIDDEN);
-    }
-  }
-}
-
-void UI::addBluetoothMenu(const menu_t &parent) {
-  menu_t &menu = addMenu(m_BluetoothStr, &icon_bluetooth, true, parent);
-
-  lv_obj_set_flex_flow(menu.page, LV_FLEX_FLOW_COLUMN);
-
-  addTransmitPowerMenu(menu);
-  addSettingItem(menu.page, NULL, Settings::CONN_SAVER);
-
-  // scan duty cycle preset
-  lv_obj_t *modeRoller = addRollerItem(menu.page, "Scan mode", "Full\nBalanced\nLow");
-  lv_roller_set_selected(modeRoller, Settings::load<Settings::SCAN_MODE>(), LV_ANIM_OFF);
-
-  lv_obj_add_event_cb(
-      modeRoller,
-      [](lv_event_t *e) {
-        auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
-        uint8_t mode = lv_roller_get_selected(roller);
-        Settings::save<Settings::SCAN_MODE>(mode);
-      },
-      LV_EVENT_VALUE_CHANGED, NULL);
-
-  // scan timeout
-  lv_obj_t *timeoutRoller =
-      addRollerItem(menu.page, "Scan timeout", "Never\n30 secs\n60 secs\n120 secs");
-
-  uint32_t timeout = Settings::load<Settings::SCAN_TIMEOUT>();
-  auto it = std::find(m_ScanTimeout.begin(), m_ScanTimeout.end(), timeout);
-  if (it != m_ScanTimeout.end()) {
-    lv_roller_set_selected(timeoutRoller, std::distance(m_ScanTimeout.begin(), it), LV_ANIM_OFF);
-  }
-
-  lv_obj_add_event_cb(
-      timeoutRoller,
-      [](lv_event_t *e) {
-        auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
-        Settings::save<Settings::SCAN_TIMEOUT>(m_ScanTimeout[lv_roller_get_selected(roller)]);
-      },
-      LV_EVENT_VALUE_CHANGED, NULL);
-
-  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
-}
-
-void UI::addAboutMenu(const menu_t &parent) {
-  menu_t &menu = addMenu(m_AboutStr, &icon_info, true, parent);
-  lv_obj_t *cont = lv_menu_cont_create(menu.page);
-  lv_obj_set_width(cont, LV_PCT(100));
-  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-
-  lv_obj_t *version = addInfoRow(cont);
-  lv_label_set_text_fmt(version, "Version:\n%s", FURBLE_VERSION);
-
-  lv_obj_t *id = addInfoRow(cont);
-  lv_label_set_text_fmt(id, "ID:\n%s", Device::getStringID().c_str());
-
-  lv_obj_t *build = addInfoRow(cont);
-  lv_label_set_text_fmt(build, "Build:\n%s %s", FURBLE_BUILD_DATE, FURBLE_BUILD_TIME);
-
-  lv_obj_t *idf = addInfoRow(cont);
-  lv_label_set_text_fmt(idf, "IDF:\n%s", IDF_VER);
-
-  // filled in by the diagnostics timer whenever the page is open
-  m_Diagnostics.aboutUptime = addInfoRow(cont);
-  m_Diagnostics.aboutHeap = addInfoRow(cont);
-
-  lv_obj_t *reset = addInfoRow(cont);
-  lv_label_set_text_fmt(reset, "Reset:\n%s", getResetReason());
-
-  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
-}
-
-void UI::addDeviceInfoMenu(const menu_t &parent) {
-  menu_t &menu = addMenu(m_DeviceInfoStr, NULL, true, parent);
-  lv_obj_t *cont = lv_menu_cont_create(menu.page);
-  lv_obj_set_width(cont, LV_PCT(100));
-  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-
-  esp_chip_info_t info;
-  esp_chip_info(&info);
-
-  uint32_t flash = 0;
-  esp_err_t err = esp_flash_get_size(NULL, &flash);
-  if (err != ESP_OK) {
-    ESP_LOGW("ui", "Unable to read flash size (%s).", esp_err_to_name(err));
-    flash = 0;
-  }
-
-  lv_obj_t *chip = addInfoRow(cont);
-  lv_label_set_text_fmt(chip, "Chip:\n%s rev %u.%u", CONFIG_IDF_TARGET, info.revision / 100,
-                        info.revision % 100);
-
-  lv_obj_t *cores = addInfoRow(cont);
-  lv_label_set_text_fmt(cores, "Cores: %u", info.cores);
-
-  lv_obj_t *size = addInfoRow(cont);
-  lv_label_set_text_fmt(size, "Flash: %lu MB", flash / (1024 * 1024));
-
-  // filled in by the diagnostics timer whenever the page is open
-  m_Diagnostics.deviceHeap = addInfoRow(cont);
-  m_Diagnostics.deviceUptime = addInfoRow(cont);
-
-  lv_obj_t *reset = addInfoRow(cont);
-  lv_label_set_text_fmt(reset, "Reset:\n%s", getResetReason());
-
-  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
-}
-
-void UI::addPowerStateMenu(const menu_t &parent) {
-  menu_t &menu = addMenu(m_PowerStateStr, NULL, true, parent);
-  lv_obj_t *cont = lv_menu_cont_create(menu.page);
-  lv_obj_set_width(cont, LV_PCT(100));
-  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-
-  // filled in by the diagnostics timer whenever the page is open
-  m_Diagnostics.powerFrequency = addInfoRow(cont);
-  m_Diagnostics.powerSleep = addInfoRow(cont);
-  for (size_t n = 0; n < Power::LOCK_COUNT; n++) {
-    m_Diagnostics.powerLocks[n] = addInfoRow(cont);
-  }
-
-  lv_obj_t *tickless = addInfoRow(cont);
-  lv_label_set_text_fmt(tickless, "Tickless idle:\n%s", Platform::hasTicklessIdle() ? "yes" : "no");
-
-  lv_obj_t *configured = addInfoRow(cont);
-  lv_label_set_text(configured, "Frequencies are configured, not measured.");
-
-  lv_obj_t *dump = lv_button_create(cont);
-  lv_obj_t *label = lv_label_create(dump);
-  lv_label_set_text(label, "Dump locks");
-  lv_obj_add_flag(dump, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
-  addToInputGroup(m_Group, dump);
-  lv_obj_add_event_cb(
-      dump, [](lv_event_t *e) { Platform::getInstance().dumpPMLocks(); }, LV_EVENT_CLICKED, NULL);
-
-  lv_obj_t *console = addInfoRow(cont);
-  lv_label_set_text(console, "Detailed lock stats go to the serial console.");
-
-  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
-}
-
-void UI::addBLEMenu(const menu_t &parent) {
-  menu_t &menu = addMenu(m_BLEStr, NULL, true, parent);
-  lv_obj_t *cont = lv_menu_cont_create(menu.page);
-  lv_obj_set_width(cont, LV_PCT(100));
-  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-
-  // Filled in by the diagnostics timer whenever the page is open.
-  m_Diagnostics.ble = addInfoRow(cont);
-
-  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
-}
-
-void UI::addIMUDataMenu(const menu_t &parent) {
-  menu_t &menu = addMenu(m_IMUDataStr, NULL, true, parent);
-  lv_obj_t *cont = lv_menu_cont_create(menu.page);
-  lv_obj_set_width(cont, LV_PCT(100));
-  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-
-  m_Diagnostics.imuAccel = addInfoRow(cont);
-  lv_label_set_text(m_Diagnostics.imuAccel, "Accel (G):\n--");
-  m_Diagnostics.imuGyro = addInfoRow(cont);
-  lv_label_set_text(m_Diagnostics.imuGyro, "Gyro (deg/s):\n--");
-  m_Diagnostics.imuBackend = addInfoRow(cont);
-  lv_label_set_text(m_Diagnostics.imuBackend, "Backend:\nnone");
-  m_Diagnostics.imuMotion = addInfoRow(cont);
-  lv_label_set_text(m_Diagnostics.imuMotion, "Motion:\ninactive");
-  m_Diagnostics.imuInterrupts = addInfoRow(cont);
-  lv_label_set_text(m_Diagnostics.imuInterrupts, "Interrupts:\n0");
-
-  if (!imuEnabledForUI()) {
-    lv_obj_add_flag(menu.button, LV_OBJ_FLAG_HIDDEN);
-  }
-
-  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
-}
-
-void UI::addDiagnosticsMenu(const menu_t &parent) {
-  menu_t &menu = addMenu(m_DiagnosticsStr, &icon_troubleshoot, true, parent);
-
-  addDeviceInfoMenu(menu);
-
-  // link the battery page rather than building a second one
-  auto &battery = m_Menu.at(m_BatteryStr);
-  lv_obj_t *button = addMenuItem(menu, &icon_battery_android_frame_full, m_BatteryStr);
-  lv_menu_set_load_page_event(menu.main, button, battery.page);
-
-  addPowerStateMenu(menu);
-  addBLEMenu(menu);
-  addIMUDataMenu(menu);
-
-  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
-}
-
-void UI::updateStorageInfo(lv_obj_t *label) {
-  auto &sd = SD::getInstance();
-
-  switch (sd.cardState()) {
-    case SD::card_state_t::MOUNTED:
-      lv_label_set_text_fmt(label, "%s\nMounted\nCapacity: %lu MB\nFree: %lu MB", m_CardInfoStr,
-                            static_cast<unsigned long>(sd.capacityMB()),
-                            static_cast<unsigned long>(sd.freeMB()));
-      break;
-    case SD::card_state_t::FAILED:
-      lv_label_set_text_fmt(label, "%s\nMount failed", m_CardInfoStr);
-      break;
-    case SD::card_state_t::UNMOUNTED:
-      lv_label_set_text_fmt(label, "%s\nNot mounted", m_CardInfoStr);
-      break;
-  }
-}
-
-void UI::serviceStorage(void) {
-  auto &sd = SD::getInstance();
-  if (!sd.isSupported() || (m_StoragePage == nullptr)) {
-    return;
-  }
-
-  // request a mount on page entry, release the mount hold on page leave
-  const bool visible = lv_menu_get_cur_main_page(m_StorageMenuMain) == m_StoragePage;
-  if (visible != m_StorageVisible) {
-    m_StorageVisible = visible;
-    if (visible) {
-      sd.request(SD::request_t::MOUNT);
-      if (sd.cardState() != SD::card_state_t::MOUNTED) {
-        lv_label_set_text_fmt(m_StorageInfoLabel, "%s\nMounting...", m_CardInfoStr);
-      } else {
-        updateStorageInfo(m_StorageInfoLabel);
-      }
-    } else {
-      sd.request(SD::request_t::PAGE_LEAVE);
-    }
-  }
-
-  // refresh the storage widgets when the writer task publishes a new state
-  const uint32_t generation = sd.generation();
-  if (generation != m_StorageGeneration) {
-    m_StorageGeneration = generation;
-    GPS::getInstance().reloadLogSettings();
-
-    if (m_StorageVisible) {
-      updateStorageInfo(m_StorageInfoLabel);
-    }
-
-    // reflect an auto-disable after repeated SD failures in the switch
-    const bool enabled = Settings::load<Settings::SD_GPX>();
-    if ((m_StorageGPXSwitch != nullptr)
-        && (lv_obj_has_state(m_StorageGPXSwitch, LV_STATE_CHECKED) != enabled)) {
+  void UI::updateIRMenuVisibility(void) {
+    const bool supported = IR::getInstance().isSupported();
+    const bool enabled = supported && Settings::load<Settings::IR>();
+
+    auto &ir = m_Menu.at(m_IRStr);
+    if (ir.button != nullptr) {
       if (enabled) {
-        lv_obj_add_state(m_StorageGPXSwitch, LV_STATE_CHECKED);
+        lv_obj_clear_flag(ir.button, LV_OBJ_FLAG_HIDDEN);
       } else {
-        lv_obj_remove_state(m_StorageGPXSwitch, LV_STATE_CHECKED);
+        lv_obj_add_flag(ir.button, LV_OBJ_FLAG_HIDDEN);
+      }
+    }
+
+    if (m_IRConnectedButton != nullptr) {
+      if (enabled) {
+        lv_obj_clear_flag(m_IRConnectedButton, LV_OBJ_FLAG_HIDDEN);
+      } else {
+        lv_obj_add_flag(m_IRConnectedButton, LV_OBJ_FLAG_HIDDEN);
+      }
+    }
+
+    auto &settings = m_Menu.at(m_IRSettingsStr);
+    if (settings.button != nullptr) {
+      if (supported) {
+        lv_obj_clear_flag(settings.button, LV_OBJ_FLAG_HIDDEN);
+      } else {
+        lv_obj_add_flag(settings.button, LV_OBJ_FLAG_HIDDEN);
       }
     }
   }
-}
 
-void UI::addStorageMenu(const menu_t &parent) {
-  menu_t &menu = addMenu(m_StorageStr, &icon_save_24, true, parent);
-  lv_obj_set_flex_flow(menu.page, LV_FLEX_FLOW_COLUMN);
+  void UI::addBluetoothMenu(const menu_t &parent) {
+    menu_t &menu = addMenu(m_BluetoothStr, &icon_bluetooth, true, parent);
 
-  addSettingItem(menu.page, NULL, Settings::SD_GPX);
+    lv_obj_set_flex_flow(menu.page, LV_FLEX_FLOW_COLUMN);
 
-  static constexpr std::array<uint16_t, 6> periods = {1, 2, 5, 10, 30, 60};
-  lv_obj_t *periodRoller =
-      addRollerItem(menu.page, Settings::get(Settings::GPX_PERIOD).name, "1\n2\n5\n10\n30\n60");
-  uint32_t selected = 2;
-  const uint16_t period = Settings::load<Settings::GPX_PERIOD>();
-  for (size_t i = 0; i < periods.size(); i++) {
-    if (period == periods[i]) {
-      selected = i;
-      break;
+    addTransmitPowerMenu(menu);
+    addSettingItem(menu.page, NULL, Settings::CONN_SAVER);
+
+    // scan duty cycle preset
+    lv_obj_t *modeRoller = addRollerItem(menu.page, "Scan mode", "Full\nBalanced\nLow");
+    lv_roller_set_selected(modeRoller, Settings::load<Settings::SCAN_MODE>(), LV_ANIM_OFF);
+
+    lv_obj_add_event_cb(
+        modeRoller,
+        [](lv_event_t *e) {
+          auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+          uint8_t mode = lv_roller_get_selected(roller);
+          Settings::save<Settings::SCAN_MODE>(mode);
+        },
+        LV_EVENT_VALUE_CHANGED, NULL);
+
+    // scan timeout
+    lv_obj_t *timeoutRoller =
+        addRollerItem(menu.page, "Scan timeout", "Never\n30 secs\n60 secs\n120 secs");
+
+    uint32_t timeout = Settings::load<Settings::SCAN_TIMEOUT>();
+    auto it = std::find(m_ScanTimeout.begin(), m_ScanTimeout.end(), timeout);
+    if (it != m_ScanTimeout.end()) {
+      lv_roller_set_selected(timeoutRoller, std::distance(m_ScanTimeout.begin(), it), LV_ANIM_OFF);
+    }
+
+    lv_obj_add_event_cb(
+        timeoutRoller,
+        [](lv_event_t *e) {
+          auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+          Settings::save<Settings::SCAN_TIMEOUT>(m_ScanTimeout[lv_roller_get_selected(roller)]);
+        },
+        LV_EVENT_VALUE_CHANGED, NULL);
+
+    lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+  }
+
+  void UI::addAboutMenu(const menu_t &parent) {
+    menu_t &menu = addMenu(m_AboutStr, &icon_info, true, parent);
+    lv_obj_t *cont = lv_menu_cont_create(menu.page);
+    lv_obj_set_width(cont, LV_PCT(100));
+    lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    lv_obj_t *version = addInfoRow(cont);
+    lv_label_set_text_fmt(version, "Version:\n%s", FURBLE_VERSION);
+
+    lv_obj_t *id = addInfoRow(cont);
+    lv_label_set_text_fmt(id, "ID:\n%s", Device::getStringID().c_str());
+
+    lv_obj_t *build = addInfoRow(cont);
+    lv_label_set_text_fmt(build, "Build:\n%s %s", FURBLE_BUILD_DATE, FURBLE_BUILD_TIME);
+
+    lv_obj_t *idf = addInfoRow(cont);
+    lv_label_set_text_fmt(idf, "IDF:\n%s", IDF_VER);
+
+    // filled in by the diagnostics timer whenever the page is open
+    m_Diagnostics.aboutUptime = addInfoRow(cont);
+    m_Diagnostics.aboutHeap = addInfoRow(cont);
+
+    lv_obj_t *reset = addInfoRow(cont);
+    lv_label_set_text_fmt(reset, "Reset:\n%s", getResetReason());
+
+    lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+  }
+
+  void UI::addDeviceInfoMenu(const menu_t &parent) {
+    menu_t &menu = addMenu(m_DeviceInfoStr, NULL, true, parent);
+    lv_obj_t *cont = lv_menu_cont_create(menu.page);
+    lv_obj_set_width(cont, LV_PCT(100));
+    lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    esp_chip_info_t info;
+    esp_chip_info(&info);
+
+    uint32_t flash = 0;
+    esp_err_t err = esp_flash_get_size(NULL, &flash);
+    if (err != ESP_OK) {
+      ESP_LOGW("ui", "Unable to read flash size (%s).", esp_err_to_name(err));
+      flash = 0;
+    }
+
+    lv_obj_t *chip = addInfoRow(cont);
+    lv_label_set_text_fmt(chip, "Chip:\n%s rev %u.%u", CONFIG_IDF_TARGET, info.revision / 100,
+                          info.revision % 100);
+
+    lv_obj_t *cores = addInfoRow(cont);
+    lv_label_set_text_fmt(cores, "Cores: %u", info.cores);
+
+    lv_obj_t *size = addInfoRow(cont);
+    lv_label_set_text_fmt(size, "Flash: %lu MB", flash / (1024 * 1024));
+
+    // filled in by the diagnostics timer whenever the page is open
+    m_Diagnostics.deviceHeap = addInfoRow(cont);
+    m_Diagnostics.deviceUptime = addInfoRow(cont);
+
+    lv_obj_t *reset = addInfoRow(cont);
+    lv_label_set_text_fmt(reset, "Reset:\n%s", getResetReason());
+
+    lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+  }
+
+  void UI::addPowerStateMenu(const menu_t &parent) {
+    menu_t &menu = addMenu(m_PowerStateStr, NULL, true, parent);
+    lv_obj_t *cont = lv_menu_cont_create(menu.page);
+    lv_obj_set_width(cont, LV_PCT(100));
+    lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    // filled in by the diagnostics timer whenever the page is open
+    m_Diagnostics.powerFrequency = addInfoRow(cont);
+    m_Diagnostics.powerSleep = addInfoRow(cont);
+    for (size_t n = 0; n < Power::LOCK_COUNT; n++) {
+      m_Diagnostics.powerLocks[n] = addInfoRow(cont);
+    }
+
+    lv_obj_t *tickless = addInfoRow(cont);
+    lv_label_set_text_fmt(tickless, "Tickless idle:\n%s",
+                          Platform::hasTicklessIdle() ? "yes" : "no");
+
+    lv_obj_t *configured = addInfoRow(cont);
+    lv_label_set_text(configured, "Frequencies are configured, not measured.");
+
+    lv_obj_t *dump = lv_button_create(cont);
+    lv_obj_t *label = lv_label_create(dump);
+    lv_label_set_text(label, "Dump locks");
+    lv_obj_add_flag(dump, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+    addToInputGroup(m_Group, dump);
+    lv_obj_add_event_cb(
+        dump, [](lv_event_t *e) { Platform::getInstance().dumpPMLocks(); }, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *console = addInfoRow(cont);
+    lv_label_set_text(console, "Detailed lock stats go to the serial console.");
+
+    lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+  }
+
+  void UI::addBLEMenu(const menu_t &parent) {
+    menu_t &menu = addMenu(m_BLEStr, NULL, true, parent);
+    lv_obj_t *cont = lv_menu_cont_create(menu.page);
+    lv_obj_set_width(cont, LV_PCT(100));
+    lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    // Filled in by the diagnostics timer whenever the page is open.
+    m_Diagnostics.ble = addInfoRow(cont);
+
+    lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+  }
+
+  void UI::addIMUDataMenu(const menu_t &parent) {
+    menu_t &menu = addMenu(m_IMUDataStr, NULL, true, parent);
+    lv_obj_t *cont = lv_menu_cont_create(menu.page);
+    lv_obj_set_width(cont, LV_PCT(100));
+    lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    m_Diagnostics.imuAccel = addInfoRow(cont);
+    lv_label_set_text(m_Diagnostics.imuAccel, "Accel (G):\n--");
+    m_Diagnostics.imuGyro = addInfoRow(cont);
+    lv_label_set_text(m_Diagnostics.imuGyro, "Gyro (deg/s):\n--");
+    m_Diagnostics.imuBackend = addInfoRow(cont);
+    lv_label_set_text(m_Diagnostics.imuBackend, "Backend:\nnone");
+    m_Diagnostics.imuMotion = addInfoRow(cont);
+    lv_label_set_text(m_Diagnostics.imuMotion, "Motion:\ninactive");
+    m_Diagnostics.imuInterrupts = addInfoRow(cont);
+    lv_label_set_text(m_Diagnostics.imuInterrupts, "Interrupts:\n0");
+
+    if (!imuEnabledForUI()) {
+      lv_obj_add_flag(menu.button, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+  }
+
+  void UI::addDiagnosticsMenu(const menu_t &parent) {
+    menu_t &menu = addMenu(m_DiagnosticsStr, &icon_troubleshoot, true, parent);
+
+    addDeviceInfoMenu(menu);
+
+    // link the battery page rather than building a second one
+    auto &battery = m_Menu.at(m_BatteryStr);
+    lv_obj_t *button = addMenuItem(menu, &icon_battery_android_frame_full, m_BatteryStr);
+    lv_menu_set_load_page_event(menu.main, button, battery.page);
+
+    addPowerStateMenu(menu);
+    addBLEMenu(menu);
+    addIMUDataMenu(menu);
+
+    lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+  }
+
+  void UI::updateStorageInfo(lv_obj_t * label) {
+    auto &sd = SD::getInstance();
+
+    switch (sd.cardState()) {
+      case SD::card_state_t::MOUNTED:
+        lv_label_set_text_fmt(label, "%s\nMounted\nCapacity: %lu MB\nFree: %lu MB", m_CardInfoStr,
+                              static_cast<unsigned long>(sd.capacityMB()),
+                              static_cast<unsigned long>(sd.freeMB()));
+        break;
+      case SD::card_state_t::FAILED:
+        lv_label_set_text_fmt(label, "%s\nMount failed", m_CardInfoStr);
+        break;
+      case SD::card_state_t::UNMOUNTED:
+        lv_label_set_text_fmt(label, "%s\nNot mounted", m_CardInfoStr);
+        break;
     }
   }
-  lv_roller_set_selected(periodRoller, selected, LV_ANIM_OFF);
-  lv_obj_add_event_cb(
-      periodRoller,
-      [](lv_event_t *e) {
-        const auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
-        static constexpr uint16_t values[] = {1, 2, 5, 10, 30, 60};
-        const uint32_t selected = lv_roller_get_selected(roller);
-        if (selected < (sizeof(values) / sizeof(values[0]))) {
-          Settings::save<Settings::GPX_PERIOD>(values[selected]);
-          GPS::getInstance().reloadLogSettings();
-          SD::getInstance().request(SD::request_t::RELOAD);
-        }
-      },
-      LV_EVENT_VALUE_CHANGED, NULL);
 
-  lv_obj_t *exportButton = lv_button_create(menu.page);
-  lv_obj_t *exportLabel = lv_label_create(exportButton);
-  lv_label_set_text(exportLabel, m_ExportSettingsStr);
-  lv_obj_center(exportLabel);
-  lv_obj_add_flag(exportButton, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
-  lv_group_add_obj(m_Group, exportButton);
-  lv_obj_add_event_cb(
-      exportButton,
-      [](lv_event_t *e) {
-        auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
-        ui->showStorageConfirm(false);
-      },
-      LV_EVENT_CLICKED, this);
-
-  lv_obj_t *importButton = lv_button_create(menu.page);
-  lv_obj_t *importLabel = lv_label_create(importButton);
-  lv_label_set_text(importLabel, m_ImportSettingsStr);
-  lv_obj_center(importLabel);
-  lv_obj_add_flag(importButton, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
-  lv_group_add_obj(m_Group, importButton);
-  lv_obj_add_event_cb(
-      importButton,
-      [](lv_event_t *e) {
-        auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
-        ui->showStorageConfirm(true);
-      },
-      LV_EVENT_CLICKED, this);
-
-  lv_obj_t *cardInfo = lv_menu_cont_create(menu.page);
-  lv_obj_set_width(cardInfo, LV_PCT(100));
-  lv_obj_t *cardInfoLabel = lv_label_create(cardInfo);
-  lv_label_set_text_fmt(cardInfoLabel, "%s\nNot mounted", m_CardInfoStr);
-  lv_label_set_long_mode(cardInfoLabel, LV_LABEL_LONG_WRAP);
-  lv_obj_set_width(cardInfoLabel, LV_PCT(100));
-
-  // serviceStorage() requests the mount on page entry and refreshes the label
-  m_StorageMenuMain = menu.main;
-  m_StoragePage = menu.page;
-  m_StorageInfoLabel = cardInfoLabel;
-
-  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
-}
-
-void UI::showStorageConfirm(bool import) {
-  if (m_StorageMessageBox != nullptr) {
-    return;
-  }
-
-  m_StorageImport = import;
-  m_StorageMessageBox = lv_msgbox_create(nullptr);
-  lv_msgbox_add_title(m_StorageMessageBox, import ? "Import Settings" : "Export Settings");
-  lv_msgbox_add_text(m_StorageMessageBox,
-                     import ? "Overwrite all settings and restart?" : "Write all settings to SD?");
-  lv_obj_set_width(m_StorageMessageBox, LV_PCT(100));
-  lv_obj_center(m_StorageMessageBox);
-
-  lv_obj_t *cancel = lv_msgbox_add_footer_button(m_StorageMessageBox, "Cancel");
-  lv_obj_t *confirm = lv_msgbox_add_footer_button(m_StorageMessageBox, "Confirm");
-  lv_obj_add_event_cb(
-      cancel,
-      [](lv_event_t *e) { static_cast<UI *>(lv_event_get_user_data(e))->cancelStorageAction(); },
-      LV_EVENT_CLICKED, this);
-  lv_obj_add_event_cb(
-      confirm,
-      [](lv_event_t *e) { static_cast<UI *>(lv_event_get_user_data(e))->confirmStorageAction(); },
-      LV_EVENT_CLICKED, this);
-  acquireModalInput(m_StorageMessageBox, {cancel, confirm}, confirm);
-}
-
-void UI::cancelStorageAction(void) {
-  if (m_StorageMessageBox == nullptr) {
-    return;
-  }
-
-  releaseModalInput(m_StorageMessageBox);
-  lv_msgbox_close_async(m_StorageMessageBox);
-  m_StorageMessageBox = nullptr;
-}
-
-void UI::confirmStorageAction(void) {
-  if (m_StorageMessageBox == nullptr) {
-    return;
-  }
-
-  const bool import = m_StorageImport;
-  lv_obj_t *messageBox = m_StorageMessageBox;
-  m_StorageMessageBox = nullptr;
-  releaseModalInput(messageBox);
-  lv_msgbox_close_async(messageBox);
-
-  // the SD writer task closes a running track, runs the transfer, and
-  // restarts the device after a successful import
-  SD::getInstance().request(import ? SD::request_t::IMPORT : SD::request_t::EXPORT);
-}
-
-void UI::addSettingsMenu(void) {
-  menu_t &menu = addMenu(m_SettingsStr, &icon_settings);
-
-#if defined(FURBLE_M5COREX)
-  lv_obj_set_grid_dsc_array(menu.page, m_GridLayoutColDsc.data(),
-                            m_SettingsGridLayoutRowDsc.data());
-  lv_obj_set_layout(menu.page, LV_LAYOUT_GRID);
-#else
-#endif
-  lv_obj_set_size(menu.page, LV_PCT(100), LV_PCT(100));
-  lv_obj_center(menu.page);
-
-  addDisplayMenu(menu);
-  addFeaturesMenu(menu);
-  addIRSettingsMenu(menu);
-  addSensorsMenu(menu);
-  addGPSMenu(menu);
-  addIntervalometerMenu(menu);
-  addThemeMenu(menu);
-  addTextSizeMenu(menu);
-  addBluetoothMenu(menu);
-  addAboutMenu(menu);
-  addPowerMenu(menu);
-  addFeedbackMenu(menu);
-  // after 'Power', the battery page it builds is linked from diagnostics
-  addDiagnosticsMenu(menu);
-  if (SD::getInstance().isSupported()) {
-    addStorageMenu(menu);
-  }
-
-  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
-}
-
-void UI::updateItems(const menu_t &menu) {
-  if (CameraList::size() == 0) {
-    return;
-  }
-
-  addCameraItem(CameraList::size() - 1, menu, MODE_SCAN);
-}
-
-void UI::updateGestureTimer(void) {
-  m_GestureSettingsSeen = m_GestureSettingsGeneration.load(std::memory_order_acquire);
-  m_WakeGesture = Settings::load<Settings::IMU_WAKE>();
-  if (m_WakeGesture > 3) {
-    m_WakeGesture = 0;
-  }
-  m_DoubleTapShutter = Settings::load<Settings::IMU_TRIG>();
-
-  const bool imuEnabled = imuEnabledForUI();
-  const bool gesturesEnabled = imuEnabled && ((m_WakeGesture != 0) || m_DoubleTapShutter);
-  showIMUGestureWidgets(imuEnabled);
-
-  if (!gesturesEnabled) {
-    if (m_GestureTimer != nullptr) {
-      lv_timer_del(m_GestureTimer);
-      m_GestureTimer = nullptr;
-    }
-    m_GestureDetector.reset();
-    return;
-  }
-
-  m_GestureDetector.reset();
-  if (m_GestureTimer == nullptr) {
-    m_GestureTimer = lv_timer_create(gestureUpdate, GESTURE_POLL_MS, this);
-  }
-}
-
-void UI::gestureUpdate(lv_timer_t *timer) {
-  FURBLE_SIM_TIMER_FIRE("gesture_timer");
-  auto *ui = static_cast<UI *>(lv_timer_get_user_data(timer));
-  ui->pollGesture();
-}
-
-void UI::pollGesture(void) {
-  const bool imuEnabled = imuEnabledForUI();
-  if (!imuEnabled) {
-    // Sensor availability can change independently of the IMU setting while
-    // this page is open. Keep every gesture control disabled and stop polling
-    // so an unplugged/failed sensor does not burn the gesture timer forever.
-    showIMUGestureWidgets(false);
-    if (m_GestureTimer != nullptr) {
-      lv_timer_del(m_GestureTimer);
-      m_GestureTimer = nullptr;
-    }
-    m_GestureDetector.reset();
-    return;
-  }
-  showIMUGestureWidgets(true);
-  GestureDetector::gesture_t gesture;
-  if (m_GestureDetector.poll(m_DoubleTapShutter, gesture)) {
-    handleGesture(gesture);
-  }
-}
-
-void UI::handleGesture(GestureDetector::gesture_t gesture) {
-  const char *name = "unknown";
-  bool wakes = false;
-  switch (gesture) {
-    case GestureDetector::gesture_t::TAP:
-      name = "tap";
-      wakes = (m_WakeGesture == 1) || (m_WakeGesture == 3);
-      break;
-    case GestureDetector::gesture_t::SHAKE:
-      name = "shake";
-      wakes = (m_WakeGesture == 2) || (m_WakeGesture == 3);
-      break;
-    case GestureDetector::gesture_t::DOUBLE_TAP:
-      name = "double_tap";
-      wakes = (m_WakeGesture == 1) || (m_WakeGesture == 3);
-      break;
-  }
-
-  ESP_LOGI("ui", "IMU gesture: %s", name);
-#if defined(FURBLE_SIM)
-  m_GestureEvents++;
-  m_GestureLast = name;
-#endif
-  const bool inactive = displayIsInactive();
-  if (wakes) {
-    wakeDisplayFromGesture();
-    if (inactive) {
+  void UI::serviceStorage(void) {
+    auto &sd = SD::getInstance();
+    if (!sd.isSupported() || (m_StoragePage == nullptr)) {
       return;
     }
+
+    // request a mount on page entry, release the mount hold on page leave
+    const bool visible = lv_menu_get_cur_main_page(m_StorageMenuMain) == m_StoragePage;
+    if (visible != m_StorageVisible) {
+      m_StorageVisible = visible;
+      if (visible) {
+        sd.request(SD::request_t::MOUNT);
+        if (sd.cardState() != SD::card_state_t::MOUNTED) {
+          lv_label_set_text_fmt(m_StorageInfoLabel, "%s\nMounting...", m_CardInfoStr);
+        } else {
+          updateStorageInfo(m_StorageInfoLabel);
+        }
+      } else {
+        sd.request(SD::request_t::PAGE_LEAVE);
+      }
+    }
+
+    // refresh the storage widgets when the writer task publishes a new state
+    const uint32_t generation = sd.generation();
+    if (generation != m_StorageGeneration) {
+      m_StorageGeneration = generation;
+      GPS::getInstance().reloadLogSettings();
+
+      if (m_StorageVisible) {
+        updateStorageInfo(m_StorageInfoLabel);
+      }
+
+      // reflect an auto-disable after repeated SD failures in the switch
+      const bool enabled = Settings::load<Settings::SD_GPX>();
+      if ((m_StorageGPXSwitch != nullptr)
+          && (lv_obj_has_state(m_StorageGPXSwitch, LV_STATE_CHECKED) != enabled)) {
+        if (enabled) {
+          lv_obj_add_state(m_StorageGPXSwitch, LV_STATE_CHECKED);
+        } else {
+          lv_obj_remove_state(m_StorageGPXSwitch, LV_STATE_CHECKED);
+        }
+      }
+    }
   }
 
-  if ((gesture == GestureDetector::gesture_t::DOUBLE_TAP) && m_DoubleTapShutter && !inactive) {
-    fireGestureShutter();
-  }
-}
+  void UI::addStorageMenu(const menu_t &parent) {
+    menu_t &menu = addMenu(m_StorageStr, &icon_save_24, true, parent);
+    lv_obj_set_flex_flow(menu.page, LV_FLEX_FLOW_COLUMN);
 
-void UI::wakeDisplayFromGesture(void) {
-  // Use the same panel/APB/PMIC state machine as button wake. Directly calling
-  // M5.Display.wakeup() leaves m_DisplayOff, icon timers and power locks out of
-  // sync on the display-off path.
-  const bool wasOff = m_DisplayOff;
-  const bool wasDim = m_DisplayState == DisplayState::DIM;
-  wakeDisplay();
-  if (wasOff || wasDim) {
-    M5.Display.setBrightness(Settings::load<Settings::BRIGHTNESS>());
-    m_DisplayState = DisplayState::ACTIVE;
-#if defined(FURBLE_SIM)
-    Sim::profilerSetDisplayState("on");
+    addSettingItem(menu.page, NULL, Settings::SD_GPX);
+
+    static constexpr std::array<uint16_t, 6> periods = {1, 2, 5, 10, 30, 60};
+    lv_obj_t *periodRoller =
+        addRollerItem(menu.page, Settings::get(Settings::GPX_PERIOD).name, "1\n2\n5\n10\n30\n60");
+    uint32_t selected = 2;
+    const uint16_t period = Settings::load<Settings::GPX_PERIOD>();
+    for (size_t i = 0; i < periods.size(); i++) {
+      if (period == periods[i]) {
+        selected = i;
+        break;
+      }
+    }
+    lv_roller_set_selected(periodRoller, selected, LV_ANIM_OFF);
+    lv_obj_add_event_cb(
+        periodRoller,
+        [](lv_event_t *e) {
+          const auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+          static constexpr uint16_t values[] = {1, 2, 5, 10, 30, 60};
+          const uint32_t selected = lv_roller_get_selected(roller);
+          if (selected < (sizeof(values) / sizeof(values[0]))) {
+            Settings::save<Settings::GPX_PERIOD>(values[selected]);
+            GPS::getInstance().reloadLogSettings();
+            SD::getInstance().request(SD::request_t::RELOAD);
+          }
+        },
+        LV_EVENT_VALUE_CHANGED, NULL);
+
+    lv_obj_t *exportButton = lv_button_create(menu.page);
+    lv_obj_t *exportLabel = lv_label_create(exportButton);
+    lv_label_set_text(exportLabel, m_ExportSettingsStr);
+    lv_obj_center(exportLabel);
+    lv_obj_add_flag(exportButton, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+    lv_group_add_obj(m_Group, exportButton);
+    lv_obj_add_event_cb(
+        exportButton,
+        [](lv_event_t *e) {
+          auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+          ui->showStorageConfirm(false);
+        },
+        LV_EVENT_CLICKED, this);
+
+    lv_obj_t *importButton = lv_button_create(menu.page);
+    lv_obj_t *importLabel = lv_label_create(importButton);
+    lv_label_set_text(importLabel, m_ImportSettingsStr);
+    lv_obj_center(importLabel);
+    lv_obj_add_flag(importButton, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+    lv_group_add_obj(m_Group, importButton);
+    lv_obj_add_event_cb(
+        importButton,
+        [](lv_event_t *e) {
+          auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+          ui->showStorageConfirm(true);
+        },
+        LV_EVENT_CLICKED, this);
+
+    lv_obj_t *cardInfo = lv_menu_cont_create(menu.page);
+    lv_obj_set_width(cardInfo, LV_PCT(100));
+    lv_obj_t *cardInfoLabel = lv_label_create(cardInfo);
+    lv_label_set_text_fmt(cardInfoLabel, "%s\nNot mounted", m_CardInfoStr);
+    lv_label_set_long_mode(cardInfoLabel, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(cardInfoLabel, LV_PCT(100));
+
+    // serviceStorage() requests the mount on page entry and refreshes the label
+    m_StorageMenuMain = menu.main;
+    m_StoragePage = menu.page;
+    m_StorageInfoLabel = cardInfoLabel;
+
+    lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+  }
+
+  void UI::showStorageConfirm(bool import) {
+    if (m_StorageMessageBox != nullptr) {
+      return;
+    }
+
+    m_StorageImport = import;
+    m_StorageMessageBox = lv_msgbox_create(nullptr);
+    lv_msgbox_add_title(m_StorageMessageBox, import ? "Import Settings" : "Export Settings");
+    lv_msgbox_add_text(m_StorageMessageBox, import ? "Overwrite all settings and restart?"
+                                                   : "Write all settings to SD?");
+    lv_obj_set_width(m_StorageMessageBox, LV_PCT(100));
+    lv_obj_center(m_StorageMessageBox);
+
+    lv_obj_t *cancel = lv_msgbox_add_footer_button(m_StorageMessageBox, "Cancel");
+    lv_obj_t *confirm = lv_msgbox_add_footer_button(m_StorageMessageBox, "Confirm");
+    lv_obj_add_event_cb(
+        cancel,
+        [](lv_event_t *e) { static_cast<UI *>(lv_event_get_user_data(e))->cancelStorageAction(); },
+        LV_EVENT_CLICKED, this);
+    lv_obj_add_event_cb(
+        confirm,
+        [](lv_event_t *e) { static_cast<UI *>(lv_event_get_user_data(e))->confirmStorageAction(); },
+        LV_EVENT_CLICKED, this);
+    acquireModalInput(m_StorageMessageBox, {cancel, confirm}, confirm);
+  }
+
+  void UI::cancelStorageAction(void) {
+    if (m_StorageMessageBox == nullptr) {
+      return;
+    }
+
+    releaseModalInput(m_StorageMessageBox);
+    lv_msgbox_close_async(m_StorageMessageBox);
+    m_StorageMessageBox = nullptr;
+  }
+
+  void UI::confirmStorageAction(void) {
+    if (m_StorageMessageBox == nullptr) {
+      return;
+    }
+
+    const bool import = m_StorageImport;
+    lv_obj_t *messageBox = m_StorageMessageBox;
+    m_StorageMessageBox = nullptr;
+    releaseModalInput(messageBox);
+    lv_msgbox_close_async(messageBox);
+
+    // the SD writer task closes a running track, runs the transfer, and
+    // restarts the device after a successful import
+    SD::getInstance().request(import ? SD::request_t::IMPORT : SD::request_t::EXPORT);
+  }
+
+  void UI::addSettingsMenu(void) {
+    menu_t &menu = addMenu(m_SettingsStr, &icon_settings);
+
+#if defined(FURBLE_M5COREX)
+    lv_obj_set_grid_dsc_array(menu.page, m_GridLayoutColDsc.data(),
+                              m_SettingsGridLayoutRowDsc.data());
+    lv_obj_set_layout(menu.page, LV_LAYOUT_GRID);
+#else
 #endif
-  }
-  if (m_Display != nullptr) {
-    lv_display_trigger_activity(m_Display);
-  }
-}
+    lv_obj_set_size(menu.page, LV_PCT(100), LV_PCT(100));
+    lv_obj_center(menu.page);
 
-bool UI::displayIsInactive(void) const {
-  return (m_Display != nullptr) && (m_InactivityTimeout > 0)
-         && (lv_disp_get_inactive_time(m_Display) > m_InactivityTimeout);
-}
+    addDisplayMenu(menu);
+    addFeaturesMenu(menu);
+    addIRSettingsMenu(menu);
+    addSensorsMenu(menu);
+    addGPSMenu(menu);
+    addIntervalometerMenu(menu);
+    addThemeMenu(menu);
+    addTextSizeMenu(menu);
+    addBluetoothMenu(menu);
+    addAboutMenu(menu);
+    addPowerMenu(menu);
+    addFeedbackMenu(menu);
+    // after 'Power', the battery page it builds is linked from diagnostics
+    addDiagnosticsMenu(menu);
+    if (SD::getInstance().isSupported()) {
+      addStorageMenu(menu);
+    }
 
-bool UI::canTriggerGesture(void) const {
-  if (Control::getInstance().getState() != Control::STATE_ACTIVE) {
-    return false;
-  }
-
-  if (m_ShutterLock || (m_MainMenu.main == nullptr)) {
-    return false;
-  }
-
-  auto *page = lv_menu_get_cur_main_page(m_MainMenu.main);
-  if ((page != m_Menu.at(m_ConnectedStr).page) && (page != m_Menu.at(m_RemoteShutter).page)) {
-    return false;
-  }
-
-  switch (m_IntervalometerState.load()) {
-    case Intervalometer::STATE_WAIT:
-    case Intervalometer::STATE_SHUTTER_OPEN:
-    case Intervalometer::STATE_DELAY:
-      return false;
-    case Intervalometer::STATE_IDLE:
-    case Intervalometer::STATE_FINISHED:
-      break;
+    lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
   }
 
-  return true;
-}
+  void UI::updateItems(const menu_t &menu) {
+    if (CameraList::size() == 0) {
+      return;
+    }
 
-void UI::fireGestureShutter(void) {
-  // The detector's 750 ms refractory period is what guarantees one gesture is
-  // one frame. This timer check is the second line: it keeps a press and its
-  // release paired if a future caller ever reaches here faster than 30 ms.
-  if ((m_GestureShutterTimer != nullptr) || !canTriggerGesture()) {
-    return;
+    addCameraItem(CameraList::size() - 1, menu, MODE_SCAN);
   }
 
+  void UI::updateGestureTimer(void) {
+    m_GestureSettingsSeen = m_GestureSettingsGeneration.load(std::memory_order_acquire);
+    m_WakeGesture = Settings::load<Settings::IMU_WAKE>();
+    if (m_WakeGesture > 3) {
+      m_WakeGesture = 0;
+    }
+    m_DoubleTapShutter = Settings::load<Settings::IMU_TRIG>();
+
+    const bool imuEnabled = imuEnabledForUI();
+    const bool gesturesEnabled = imuEnabled && ((m_WakeGesture != 0) || m_DoubleTapShutter);
+    showIMUGestureWidgets(imuEnabled);
+
+    if (!gesturesEnabled) {
+      if (m_GestureTimer != nullptr) {
+        lv_timer_del(m_GestureTimer);
+        m_GestureTimer = nullptr;
+      }
+      m_GestureDetector.reset();
+      return;
+    }
+
+    m_GestureDetector.reset();
+    if (m_GestureTimer == nullptr) {
+      m_GestureTimer = lv_timer_create(gestureUpdate, GESTURE_POLL_MS, this);
+    }
+  }
+
+  void UI::gestureUpdate(lv_timer_t * timer) {
+    FURBLE_SIM_TIMER_FIRE("gesture_timer");
+    auto *ui = static_cast<UI *>(lv_timer_get_user_data(timer));
+    ui->pollGesture();
+  }
+
+  void UI::pollGesture(void) {
+    const bool imuEnabled = imuEnabledForUI();
+    if (!imuEnabled) {
+      // Sensor availability can change independently of the IMU setting while
+      // this page is open. Keep every gesture control disabled and stop polling
+      // so an unplugged/failed sensor does not burn the gesture timer forever.
+      showIMUGestureWidgets(false);
+      if (m_GestureTimer != nullptr) {
+        lv_timer_del(m_GestureTimer);
+        m_GestureTimer = nullptr;
+      }
+      m_GestureDetector.reset();
+      return;
+    }
+    showIMUGestureWidgets(true);
+    GestureDetector::gesture_t gesture;
+    if (m_GestureDetector.poll(m_DoubleTapShutter, gesture)) {
+      handleGesture(gesture);
+    }
+  }
+
+  void UI::handleGesture(GestureDetector::gesture_t gesture) {
+    const char *name = "unknown";
+    bool wakes = false;
+    switch (gesture) {
+      case GestureDetector::gesture_t::TAP:
+        name = "tap";
+        wakes = (m_WakeGesture == 1) || (m_WakeGesture == 3);
+        break;
+      case GestureDetector::gesture_t::SHAKE:
+        name = "shake";
+        wakes = (m_WakeGesture == 2) || (m_WakeGesture == 3);
+        break;
+      case GestureDetector::gesture_t::DOUBLE_TAP:
+        name = "double_tap";
+        wakes = (m_WakeGesture == 1) || (m_WakeGesture == 3);
+        break;
+    }
+
+    ESP_LOGI("ui", "IMU gesture: %s", name);
 #if defined(FURBLE_SIM)
-  // Count the decision, not the queue result. A send on a dropped link fails on
-  // its own, which would mask a missing guard rather than expose it.
-  m_GestureShutterSends++;
+    m_GestureEvents++;
+    m_GestureLast = name;
 #endif
-  auto &control = Control::getInstance();
-  if (control.sendCommand(Control::CMD_SHUTTER_PRESS) != pdTRUE) {
-    ESP_LOGW("ui", "IMU shutter press was not queued");
-    return;
+    const bool inactive = displayIsInactive();
+    if (wakes) {
+      wakeDisplayFromGesture();
+      if (inactive) {
+        return;
+      }
+    }
+
+    if ((gesture == GestureDetector::gesture_t::DOUBLE_TAP) && m_DoubleTapShutter && !inactive) {
+      fireGestureShutter();
+    }
   }
 
-  constexpr uint32_t SHUTTER_HOLD_MS = 30;
-  m_GestureShutterTimer = lv_timer_create(gestureShutterRelease, SHUTTER_HOLD_MS, this);
-  if (m_GestureShutterTimer == nullptr) {
-    control.sendCommand(Control::CMD_SHUTTER_RELEASE);
-    ESP_LOGW("ui", "IMU shutter release timer was not created");
-  }
-}
-
-void UI::gestureShutterRelease(lv_timer_t *timer) {
-  auto *ui = static_cast<UI *>(lv_timer_get_user_data(timer));
-  Control::getInstance().sendCommand(Control::CMD_SHUTTER_RELEASE);
-  lv_timer_del(timer);
-  ui->m_GestureShutterTimer = nullptr;
-}
-
-void UI::setInactivityTimeout(uint8_t timeout) {
-  m_InactivityTimeout = m_InactivityTimeouts[inactivityIndex(timeout)];
-}
-
-void UI::processInactivity(void) {
-  // Only a pending power-off countdown holds the panel awake through this
-  // state machine. The plain warning rides the normal dim and sleep path, a
-  // battery at 10 percent must not pin the backlight until it is flat. The
-  // idle clock keeps running either way, so auto off is not postponed.
-  const bool holdAwake = m_LowBatteryPowerOffPending;
-  bool timedOut = !holdAwake && (m_InactivityTimeout > 0)
-                  && (lv_disp_get_inactive_time(m_Display) > m_InactivityTimeout);
-
-  if (!timedOut) {
-    if (m_DisplayState == DisplayState::DIM) {
-      auto brightness = Settings::load<Settings::BRIGHTNESS>();
-      M5.Display.setBrightness(brightness);
+  void UI::wakeDisplayFromGesture(void) {
+    // Use the same panel/APB/PMIC state machine as button wake. Directly calling
+    // M5.Display.wakeup() leaves m_DisplayOff, icon timers and power locks out of
+    // sync on the display-off path.
+    const bool wasOff = m_DisplayOff;
+    const bool wasDim = m_DisplayState == DisplayState::DIM;
+    wakeDisplay();
+    if (wasOff || wasDim) {
+      M5.Display.setBrightness(Settings::load<Settings::BRIGHTNESS>());
       m_DisplayState = DisplayState::ACTIVE;
 #if defined(FURBLE_SIM)
       Sim::profilerSetDisplayState("on");
 #endif
-    } else if (m_DisplayState == DisplayState::OFF && !isBlindRemoteActive()) {
-      wakeDisplay();
     }
-    return;
+    if (m_Display != nullptr) {
+      lv_display_trigger_activity(m_Display);
+    }
   }
 
-  switch (m_DisplayOffMode) {
-    case 0:
-      if (m_DisplayState == DisplayState::OFF) {
-        wakeDisplay();
-      }
-      if (m_DisplayState == DisplayState::ACTIVE) {
-        M5.Display.setBrightness(m_MinimumBrightness);
-        m_DisplayState = DisplayState::DIM;
+  bool UI::displayIsInactive(void) const {
+    return (m_Display != nullptr) && (m_InactivityTimeout > 0)
+           && (lv_disp_get_inactive_time(m_Display) > m_InactivityTimeout);
+  }
+
+  bool UI::canTriggerGesture(void) const {
+    if (Control::getInstance().getState() != Control::STATE_ACTIVE) {
+      return false;
+    }
+
+    if (m_ShutterLock || (m_MainMenu.main == nullptr)) {
+      return false;
+    }
+
+    auto *page = lv_menu_get_cur_main_page(m_MainMenu.main);
+    if ((page != m_Menu.at(m_ConnectedStr).page) && (page != m_Menu.at(m_RemoteShutter).page)) {
+      return false;
+    }
+
+    switch (m_IntervalometerState.load()) {
+      case Intervalometer::STATE_WAIT:
+      case Intervalometer::STATE_SHUTTER_OPEN:
+      case Intervalometer::STATE_DELAY:
+        return false;
+      case Intervalometer::STATE_IDLE:
+      case Intervalometer::STATE_FINISHED:
+        break;
+    }
+
+    return true;
+  }
+
+  void UI::fireGestureShutter(void) {
+    // The detector's 750 ms refractory period is what guarantees one gesture is
+    // one frame. This timer check is the second line: it keeps a press and its
+    // release paired if a future caller ever reaches here faster than 30 ms.
+    if ((m_GestureShutterTimer != nullptr) || !canTriggerGesture()) {
+      return;
+    }
+
 #if defined(FURBLE_SIM)
-        Sim::profilerSetDisplayState("dim");
+    // Count the decision, not the queue result. A send on a dropped link fails on
+    // its own, which would mask a missing guard rather than expose it.
+    m_GestureShutterSends++;
 #endif
-      }
-      break;
-    case 1:
-    case 2:
+    auto &control = Control::getInstance();
+    if (control.sendCommand(Control::CMD_SHUTTER_PRESS) != pdTRUE) {
+      ESP_LOGW("ui", "IMU shutter press was not queued");
+      return;
+    }
+
+    constexpr uint32_t SHUTTER_HOLD_MS = 30;
+    m_GestureShutterTimer = lv_timer_create(gestureShutterRelease, SHUTTER_HOLD_MS, this);
+    if (m_GestureShutterTimer == nullptr) {
+      control.sendCommand(Control::CMD_SHUTTER_RELEASE);
+      ESP_LOGW("ui", "IMU shutter release timer was not created");
+    }
+  }
+
+  void UI::gestureShutterRelease(lv_timer_t * timer) {
+    auto *ui = static_cast<UI *>(lv_timer_get_user_data(timer));
+    Control::getInstance().sendCommand(Control::CMD_SHUTTER_RELEASE);
+    lv_timer_del(timer);
+    ui->m_GestureShutterTimer = nullptr;
+  }
+
+  void UI::setInactivityTimeout(uint8_t timeout) {
+    m_InactivityTimeout = m_InactivityTimeouts[inactivityIndex(timeout)];
+  }
+
+  void UI::processInactivity(void) {
+    // Only a pending power-off countdown holds the panel awake through this
+    // state machine. The plain warning rides the normal dim and sleep path, a
+    // battery at 10 percent must not pin the backlight until it is flat. The
+    // idle clock keeps running either way, so auto off is not postponed.
+    const bool holdAwake = m_LowBatteryPowerOffPending;
+    bool timedOut = !holdAwake && (m_InactivityTimeout > 0)
+                    && (lv_disp_get_inactive_time(m_Display) > m_InactivityTimeout);
+
+    if (!timedOut) {
       if (m_DisplayState == DisplayState::DIM) {
         auto brightness = Settings::load<Settings::BRIGHTNESS>();
         M5.Display.setBrightness(brightness);
@@ -10675,455 +11298,484 @@ void UI::processInactivity(void) {
 #if defined(FURBLE_SIM)
         Sim::profilerSetDisplayState("on");
 #endif
+      } else if (m_DisplayState == DisplayState::OFF && !isBlindRemoteActive()) {
+        wakeDisplay();
       }
-      if (m_DisplayState == DisplayState::ACTIVE) {
-        sleepDisplay();
-      }
-      break;
-    default:
-      m_DisplayOffMode = 0;
-      break;
-  }
-}
+      return;
+    }
 
-void UI::reloadPowerPolicies(void) {
-  m_AutoOffSetting = Settings::load<Settings::AUTO_OFF>();
-  m_LowBattSetting = Settings::load<Settings::LOW_BATT>();
-  m_AutoOffChargingSetting = Settings::load<Settings::AUTO_OFF_CHARGING>();
-
-  // a policy change restarts the whole evaluation, including the warn latch
-  m_LowBatteryWarned = false;
-  m_LowBatteryWarnCount = 0;
-  m_LowBatteryOffCount = 0;
-  m_LowBatteryPowerOffPending = false;
-  closeLowBatteryWarning();
-}
-
-void UI::updateChargingPowerPolicy(void) {
-  const auto &caps = Platform::getInstance().getBatteryCaps();
-  const bool charging = caps.charging && m_Status.battery.charging;
-  if (charging && !m_ChargingSleepLock.has_value()) {
-    m_ChargingSleepLock.emplace(Power::LockType::NO_LIGHT_SLEEP, "charging");
-  } else if (!charging && m_ChargingSleepLock.has_value()) {
-    m_ChargingSleepLock.reset();
-  }
-}
-
-void UI::processAutoOff(void) {
-  updateChargingPowerPolicy();
-  if (m_PoweringOff || (M5.getBoard() == m5::board_t::board_M5Stack)) {
-    return;
+    switch (m_DisplayOffMode) {
+      case 0:
+        if (m_DisplayState == DisplayState::OFF) {
+          wakeDisplay();
+        }
+        if (m_DisplayState == DisplayState::ACTIVE) {
+          M5.Display.setBrightness(m_MinimumBrightness);
+          m_DisplayState = DisplayState::DIM;
+#if defined(FURBLE_SIM)
+          Sim::profilerSetDisplayState("dim");
+#endif
+        }
+        break;
+      case 1:
+      case 2:
+        if (m_DisplayState == DisplayState::DIM) {
+          auto brightness = Settings::load<Settings::BRIGHTNESS>();
+          M5.Display.setBrightness(brightness);
+          m_DisplayState = DisplayState::ACTIVE;
+#if defined(FURBLE_SIM)
+          Sim::profilerSetDisplayState("on");
+#endif
+        }
+        if (m_DisplayState == DisplayState::ACTIVE) {
+          sleepDisplay();
+        }
+        break;
+      default:
+        m_DisplayOffMode = 0;
+        break;
+    }
   }
 
-  // STATE_IDLE also covers an active discovery scan, do not cut it short
-  const auto &caps = Platform::getInstance().getBatteryCaps();
-  const bool charging = caps.charging && m_Status.battery.charging;
-  if (!AutoOff::shouldPowerOff(m_AutoOffSetting,
-                               Control::getInstance().getState() == Control::STATE_IDLE,
-                               Scan::getInstance().isActive(), lv_disp_get_inactive_time(m_Display),
-                               charging, m_AutoOffChargingSetting)) {
-    return;
-  }
+  void UI::reloadPowerPolicies(void) {
+    m_AutoOffSetting = Settings::load<Settings::AUTO_OFF>();
+    m_LowBattSetting = Settings::load<Settings::LOW_BATT>();
+    m_AutoOffChargingSetting = Settings::load<Settings::AUTO_OFF_CHARGING>();
 
-  ESP_LOGI("ui", "Auto power off after %u minutes idle.", m_AutoOffSetting);
-  doPowerOff();
-}
-
-void UI::showLowBatteryWarning(bool powerOff) {
-  // Wake through the display state machine so the SLPIN/SLPOUT dwell, the APB
-  // lock and the icon timer stay consistent. processInactivity holds the panel
-  // awake only while a power-off countdown is pending, the plain warning lets
-  // the display dim and sleep again. The idle clock is never touched.
-  wakeDisplay();
-  if (m_DisplayState == DisplayState::DIM) {
-    M5.Display.setBrightness(Settings::load<Settings::BRIGHTNESS>());
-    m_DisplayState = DisplayState::ACTIVE;
-  }
-
-  if (m_LowBatteryMessageBox == nullptr) {
-    m_LowBatteryMessageBox = lv_msgbox_create(nullptr);
-    lv_msgbox_add_title(m_LowBatteryMessageBox, "Low battery");
-    lv_obj_set_width(m_LowBatteryMessageBox, LV_PCT(100));
-
-    lv_obj_t *content = lv_msgbox_get_content(m_LowBatteryMessageBox);
-    lv_obj_set_flex_align(content, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
-                          LV_FLEX_ALIGN_CENTER);
-    lv_obj_clear_flag(content, LV_OBJ_FLAG_SCROLLABLE);
-    m_LowBatteryMessage = lv_label_create(content);
-    lv_label_set_long_mode(m_LowBatteryMessage, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(m_LowBatteryMessage, LV_PCT(80));
-
-    // Dismissing closes the box. It also cancels a pending power off, the
-    // press proves a user is present and the policy re-arms after another
-    // qualifying 30 seconds.
-    lv_obj_t *dismiss = lv_msgbox_add_footer_button(m_LowBatteryMessageBox, "OK");
-    lv_obj_add_event_cb(
-        dismiss,
-        [](lv_event_t *e) {
-          auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
-          ui->m_LowBatteryOffCount = 0;
-          ui->m_LowBatteryPowerOffPending = false;
-          ui->closeLowBatteryWarning();
-        },
-        LV_EVENT_CLICKED, this);
-
-    acquireModalInput(m_LowBatteryMessageBox, {dismiss}, dismiss);
-  }
-
-  lv_label_set_text(m_LowBatteryMessage, powerOff ? m_LowBattCriticalText : m_LowBattWarnText);
-}
-
-void UI::closeLowBatteryWarning(void) {
-  if (m_LowBatteryMessageBox != nullptr) {
-    releaseModalInput(m_LowBatteryMessageBox);
-    lv_msgbox_close_async(m_LowBatteryMessageBox);
-    m_LowBatteryMessageBox = nullptr;
-    m_LowBatteryMessage = nullptr;
-  }
-}
-
-void UI::processLowBattery(void) {
-  if (m_PoweringOff || (M5.getBoard() == m5::board_t::board_M5Stack)) {
-    return;
-  }
-
-  const uint8_t policy = m_LowBattSetting;
-  if ((policy == 0) || (policy > 2)) {
-    m_LowBatteryWarnCount = 0;
-    m_LowBatteryOffCount = 0;
-    m_LowBatteryPowerOffPending = false;
-    closeLowBatteryWarning();
-    return;
-  }
-
-  const auto &caps = Platform::getInstance().getBatteryCaps();
-  if (!caps.level) {
-    return;
-  }
-
-  // The battery sample already includes the PMIC charging read. Do not wake
-  // the PMIC again from this one-second policy check.
-  if (caps.charging && m_Status.battery.charging) {
-    m_LowBatteryWarnCount = 0;
-    m_LowBatteryOffCount = 0;
+    // a policy change restarts the whole evaluation, including the warn latch
     m_LowBatteryWarned = false;
-    m_LowBatteryPowerOffPending = false;
-    closeLowBatteryWarning();
-    return;
-  }
-
-  // Boards without a charging measurement leave the guard above inert, the
-  // device could be sitting on USB power. Warn only, never power off there.
-  const bool canPowerOff = (policy == 2) && caps.charging;
-  if (!canPowerOff) {
+    m_LowBatteryWarnCount = 0;
     m_LowBatteryOffCount = 0;
     m_LowBatteryPowerOffPending = false;
+    closeLowBatteryWarning();
   }
 
-  // Hysteresis counts consecutive qualifying battery samples, not wall clock.
-  // The battery refreshes every 5 s, six samples in a row is 30 s.
-  if (m_Status.sampleCount != m_LowBatterySampleSeen) {
-    m_LowBatterySampleSeen = m_Status.sampleCount;
+  void UI::updateChargingPowerPolicy(void) {
+    const auto &caps = Platform::getInstance().getBatteryCaps();
+    const bool charging = caps.charging && m_Status.battery.charging;
+    if (charging && !m_ChargingSleepLock.has_value()) {
+      m_ChargingSleepLock.emplace(Power::LockType::NO_LIGHT_SLEEP, "charging");
+    } else if (!charging && m_ChargingSleepLock.has_value()) {
+      m_ChargingSleepLock.reset();
+    }
+  }
 
-    // A failed M5PM1 read clamps the level to zero, and a total failure also
-    // reports zero millivolts, which is no reading rather than an empty pack.
-    // Only trust a zero level when a plausible low pack voltage confirms it.
-    const bool badRead = (m_Status.battery.level == 0)
-                         && (!caps.voltage || (m_Status.battery.voltage == 0)
-                             || (m_Status.battery.voltage >= LOW_BATT_VALID_READ_MV));
-    if (badRead) {
+  void UI::processAutoOff(void) {
+    updateChargingPowerPolicy();
+    if (m_PoweringOff || (M5.getBoard() == m5::board_t::board_M5Stack)) {
+      return;
+    }
+
+    // STATE_IDLE also covers an active discovery scan, do not cut it short
+    const auto &caps = Platform::getInstance().getBatteryCaps();
+    const bool charging = caps.charging && m_Status.battery.charging;
+    if (!AutoOff::shouldPowerOff(
+            m_AutoOffSetting, Control::getInstance().getState() == Control::STATE_IDLE,
+            Scan::getInstance().isActive(), lv_disp_get_inactive_time(m_Display), charging,
+            m_AutoOffChargingSetting)) {
+      return;
+    }
+
+    ESP_LOGI("ui", "Auto power off after %u minutes idle.", m_AutoOffSetting);
+    doPowerOff();
+  }
+
+  void UI::showLowBatteryWarning(bool powerOff) {
+    // Wake through the display state machine so the SLPIN/SLPOUT dwell, the APB
+    // lock and the icon timer stay consistent. processInactivity holds the panel
+    // awake only while a power-off countdown is pending, the plain warning lets
+    // the display dim and sleep again. The idle clock is never touched.
+    wakeDisplay();
+    if (m_DisplayState == DisplayState::DIM) {
+      M5.Display.setBrightness(Settings::load<Settings::BRIGHTNESS>());
+      m_DisplayState = DisplayState::ACTIVE;
+    }
+
+    if (m_LowBatteryMessageBox == nullptr) {
+      m_LowBatteryMessageBox = lv_msgbox_create(nullptr);
+      lv_msgbox_add_title(m_LowBatteryMessageBox, "Low battery");
+      lv_obj_set_width(m_LowBatteryMessageBox, LV_PCT(100));
+
+      lv_obj_t *content = lv_msgbox_get_content(m_LowBatteryMessageBox);
+      lv_obj_set_flex_align(content, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                            LV_FLEX_ALIGN_CENTER);
+      lv_obj_clear_flag(content, LV_OBJ_FLAG_SCROLLABLE);
+      m_LowBatteryMessage = lv_label_create(content);
+      lv_label_set_long_mode(m_LowBatteryMessage, LV_LABEL_LONG_WRAP);
+      lv_obj_set_width(m_LowBatteryMessage, LV_PCT(80));
+
+      // Dismissing closes the box. It also cancels a pending power off, the
+      // press proves a user is present and the policy re-arms after another
+      // qualifying 30 seconds.
+      lv_obj_t *dismiss = lv_msgbox_add_footer_button(m_LowBatteryMessageBox, "OK");
+      lv_obj_add_event_cb(
+          dismiss,
+          [](lv_event_t *e) {
+            auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+            ui->m_LowBatteryOffCount = 0;
+            ui->m_LowBatteryPowerOffPending = false;
+            ui->closeLowBatteryWarning();
+          },
+          LV_EVENT_CLICKED, this);
+
+      acquireModalInput(m_LowBatteryMessageBox, {dismiss}, dismiss);
+    }
+
+    lv_label_set_text(m_LowBatteryMessage, powerOff ? m_LowBattCriticalText : m_LowBattWarnText);
+  }
+
+  void UI::closeLowBatteryWarning(void) {
+    if (m_LowBatteryMessageBox != nullptr) {
+      releaseModalInput(m_LowBatteryMessageBox);
+      lv_msgbox_close_async(m_LowBatteryMessageBox);
+      m_LowBatteryMessageBox = nullptr;
+      m_LowBatteryMessage = nullptr;
+    }
+  }
+
+  void UI::processLowBattery(void) {
+    if (m_PoweringOff || (M5.getBoard() == m5::board_t::board_M5Stack)) {
+      return;
+    }
+
+    const uint8_t policy = m_LowBattSetting;
+    if ((policy == 0) || (policy > 2)) {
       m_LowBatteryWarnCount = 0;
       m_LowBatteryOffCount = 0;
-    } else {
-      // compare the smoothed level, the raw samples jitter under BLE TX bursts
-      const uint8_t level = m_Status.displayLevel;
+      m_LowBatteryPowerOffPending = false;
+      closeLowBatteryWarning();
+      return;
+    }
 
-      if (level < LOW_BATT_WARN_LEVEL) {
-        if (m_LowBatteryWarnCount < LOW_BATT_QUALIFY_SAMPLES) {
-          m_LowBatteryWarnCount++;
-        }
-        if (!m_LowBatteryWarned && (m_LowBatteryWarnCount >= LOW_BATT_QUALIFY_SAMPLES)) {
-          m_LowBatteryWarned = true;
-          showLowBatteryWarning(false);
-        }
-      } else {
+    const auto &caps = Platform::getInstance().getBatteryCaps();
+    if (!caps.level) {
+      return;
+    }
+
+    // The battery sample already includes the PMIC charging read. Do not wake
+    // the PMIC again from this one-second policy check.
+    if (caps.charging && m_Status.battery.charging) {
+      m_LowBatteryWarnCount = 0;
+      m_LowBatteryOffCount = 0;
+      m_LowBatteryWarned = false;
+      m_LowBatteryPowerOffPending = false;
+      closeLowBatteryWarning();
+      return;
+    }
+
+    // Boards without a charging measurement leave the guard above inert, the
+    // device could be sitting on USB power. Warn only, never power off there.
+    const bool canPowerOff = (policy == 2) && caps.charging;
+    if (!canPowerOff) {
+      m_LowBatteryOffCount = 0;
+      m_LowBatteryPowerOffPending = false;
+    }
+
+    // Hysteresis counts consecutive qualifying battery samples, not wall clock.
+    // The battery refreshes every 5 s, six samples in a row is 30 s.
+    if (m_Status.sampleCount != m_LowBatterySampleSeen) {
+      m_LowBatterySampleSeen = m_Status.sampleCount;
+
+      // A failed M5PM1 read clamps the level to zero, and a total failure also
+      // reports zero millivolts, which is no reading rather than an empty pack.
+      // Only trust a zero level when a plausible low pack voltage confirms it.
+      const bool badRead = (m_Status.battery.level == 0)
+                           && (!caps.voltage || (m_Status.battery.voltage == 0)
+                               || (m_Status.battery.voltage >= LOW_BATT_VALID_READ_MV));
+      if (badRead) {
         m_LowBatteryWarnCount = 0;
-        // recovered above the warn level, retire a lingering warning
-        if (!m_LowBatteryPowerOffPending) {
-          closeLowBatteryWarning();
-        }
-      }
+        m_LowBatteryOffCount = 0;
+      } else {
+        // compare the smoothed level, the raw samples jitter under BLE TX bursts
+        const uint8_t level = m_Status.displayLevel;
 
-      if (canPowerOff) {
-        if (level < LOW_BATT_OFF_LEVEL) {
-          if (m_LowBatteryOffCount < LOW_BATT_QUALIFY_SAMPLES) {
-            m_LowBatteryOffCount++;
+        if (level < LOW_BATT_WARN_LEVEL) {
+          if (m_LowBatteryWarnCount < LOW_BATT_QUALIFY_SAMPLES) {
+            m_LowBatteryWarnCount++;
           }
-          if (!m_LowBatteryPowerOffPending && (m_LowBatteryOffCount >= LOW_BATT_QUALIFY_SAMPLES)) {
-            m_LowBatteryPowerOffPending = true;
-            m_LowBatteryPowerOffSince = Platform::getInstance().tick();
+          if (!m_LowBatteryWarned && (m_LowBatteryWarnCount >= LOW_BATT_QUALIFY_SAMPLES)) {
             m_LowBatteryWarned = true;
-            showLowBatteryWarning(true);
+            showLowBatteryWarning(false);
           }
         } else {
-          m_LowBatteryOffCount = 0;
-          if (m_LowBatteryPowerOffPending) {
-            // recovered mid countdown, downgrade the box or retire it
-            m_LowBatteryPowerOffPending = false;
-            if ((level < LOW_BATT_WARN_LEVEL) && (m_LowBatteryMessage != nullptr)) {
-              lv_label_set_text(m_LowBatteryMessage, m_LowBattWarnText);
-            } else {
-              closeLowBatteryWarning();
+          m_LowBatteryWarnCount = 0;
+          // recovered above the warn level, retire a lingering warning
+          if (!m_LowBatteryPowerOffPending) {
+            closeLowBatteryWarning();
+          }
+        }
+
+        if (canPowerOff) {
+          if (level < LOW_BATT_OFF_LEVEL) {
+            if (m_LowBatteryOffCount < LOW_BATT_QUALIFY_SAMPLES) {
+              m_LowBatteryOffCount++;
+            }
+            if (!m_LowBatteryPowerOffPending
+                && (m_LowBatteryOffCount >= LOW_BATT_QUALIFY_SAMPLES)) {
+              m_LowBatteryPowerOffPending = true;
+              m_LowBatteryPowerOffSince = Platform::getInstance().tick();
+              m_LowBatteryWarned = true;
+              showLowBatteryWarning(true);
+            }
+          } else {
+            m_LowBatteryOffCount = 0;
+            if (m_LowBatteryPowerOffPending) {
+              // recovered mid countdown, downgrade the box or retire it
+              m_LowBatteryPowerOffPending = false;
+              if ((level < LOW_BATT_WARN_LEVEL) && (m_LowBatteryMessage != nullptr)) {
+                lv_label_set_text(m_LowBatteryMessage, m_LowBattWarnText);
+              } else {
+                closeLowBatteryWarning();
+              }
             }
           }
         }
       }
     }
-  }
 
-  // the countdown runs on the one-second path so the deadline holds
-  if (m_LowBatteryPowerOffPending
-      && ((Platform::getInstance().tick() - m_LowBatteryPowerOffSince)
-          >= LOW_BATT_POWER_OFF_DELAY_MS)) {
-    doPowerOff();
-  }
-}
-
-void UI::doPowerOff(void) {
-  if (m_PoweringOff) {
-    return;
-  }
-
-  m_PoweringOff = true;
-  closeLowBatteryWarning();
-
-  // TODO(plans/68): prepareRestart on feat/68 needs this same quiesce
-  // ordering, a future shared helper should absorb both paths.
-#if defined(FURBLE_M5STICKS3)
-  // Stop the watchdog first, the BLE teardown below can outlast a feed period.
-  Platform::getInstance().watchdogEnable(false);
-#endif
-
-  // Quiesce the intervalometer before the link drops. The shutter is held
-  // open between the SHUTTER_OPEN and DELAY handlers, release it properly.
-  lv_timer_pause(m_IntervalTimer);
-  if (m_Intervalometer.m_State == Intervalometer::STATE_DELAY) {
-    Control::getInstance().sendCommand(Control::CMD_SHUTTER_RELEASE);
-  }
-  m_Intervalometer.m_State = Intervalometer::STATE_IDLE;
-  m_IntervalometerState.store(static_cast<uint8_t>(Intervalometer::STATE_IDLE));
-
-  if (m_ShutterLock) {
-    shutterUnlock(Control::getInstance());
-  }
-
-  doDisconnect();
-
-#if defined(FURBLE_M5STACK_CORE)
-  esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
-#endif
-  if (!Platform::getInstance().powerOff()) {
-    // The PMIC refused. Stay alive rather than latching a half-off state
-    // with a dead UI, and put the watchdog back the way the user set it.
-    ESP_LOGW("ui", "Power off failed, resuming.");
-#if defined(FURBLE_M5STICKS3)
-    Platform::getInstance().watchdogEnable(Settings::load<Settings::WATCHDOG>());
-#endif
-    m_PoweringOff = false;
-  }
-}
-
-void UI::setDisplayMode(uint8_t mode) {
-  const bool console = (mode == static_cast<uint8_t>(Settings::CONSOLE));
-  if (console == m_DisplayConsole) {
-    return;
-  }
-
-  if (console) {
-    M5.Display.sleep();
-    Power::getInstance().release(Power::LockType::APB_FREQ_MAX, "display");
-  } else {
-    Power::getInstance().acquire(Power::LockType::APB_FREQ_MAX, "display");
-    M5.Display.wakeup();
-    M5.Display.setBrightness(Settings::load<uint8_t>(Settings::BRIGHTNESS));
-    lv_display_trigger_activity(m_Display);
-  }
-
-  m_DisplayConsole = console;
-}
-
-void UI::handleLockScreen(void) {
-  // toggle screen lock on power button double click for touch screens
-  if (M5.Touch.isEnabled()) {
-    if (M5.BtnPWR.wasDoubleClicked()) {
-      m_Status.screenLocked = !m_Status.screenLocked;
+    // the countdown runs on the one-second path so the deadline holds
+    if (m_LowBatteryPowerOffPending
+        && ((Platform::getInstance().tick() - m_LowBatteryPowerOffSince)
+            >= LOW_BATT_POWER_OFF_DELAY_MS)) {
+      doPowerOff();
     }
   }
-}
 
-void UI::task(void) {
-  // Keep this loop in step with the headless vUITask() in main.cpp.
-  while (true) {
-    Platform::getInstance().update();
-
-    m_Mutex.lock();
-    if (m_GestureSettingsSeen != m_GestureSettingsGeneration.load(std::memory_order_acquire)) {
-      updateGestureTimer();
-    }
-#if defined(FURBLE_SIM)
-    {
-      std::lock_guard<std::mutex> lock(m_SimRequestMutex);
-      m_SimUiThread = std::this_thread::get_id();
-    }
-    // Script input is part of the UI task's locked phase, just like physical
-    // LVGL input. This preserves the firmware mutex hand-offs in scan startup
-    // and prevents SDL-thread LVGL access.
-    Sim::driverTick();
-    if (Sim::exitRequested()) {
-      m_Mutex.unlock();
+  void UI::doPowerOff(void) {
+    if (m_PoweringOff) {
       return;
     }
-    serviceSimRequests();
+
+    m_PoweringOff = true;
+    closeLowBatteryWarning();
+
+    // TODO(plans/68): prepareRestart on feat/68 needs this same quiesce
+    // ordering, a future shared helper should absorb both paths.
+#if defined(FURBLE_M5STICKS3)
+    // Stop the watchdog first, the BLE teardown below can outlast a feed period.
+    Platform::getInstance().watchdogEnable(false);
 #endif
-    serviceRequests();
-    Scan::getInstance().processPendingCallbacks();
-    if (!m_DisplayConsole) {
-      handleLockScreen();
-#if defined(FURBLE_SIM)
-      Sim::profilerBeginUiCycle();
-#endif
-      lv_task_handler();
-#if defined(FURBLE_SIM)
-      Sim::profilerEndUiCycle();
-      Sim::fuzzCycleComplete(this);
-#endif
+
+    // Quiesce the intervalometer before the link drops. The shutter is held
+    // open between the SHUTTER_OPEN and DELAY handlers, release it properly.
+    lv_timer_pause(m_IntervalTimer);
+    if (m_Intervalometer.m_State == Intervalometer::STATE_DELAY) {
+      Control::getInstance().sendCommand(Control::CMD_SHUTTER_RELEASE);
     }
-    serviceStorage();
-    m_Mutex.unlock();
+    m_Intervalometer.m_State = Intervalometer::STATE_IDLE;
+    m_IntervalometerState.store(static_cast<uint8_t>(Intervalometer::STATE_IDLE));
 
-    vTaskDelay(pdMS_TO_TICKS(5));
+    if (m_ShutterLock) {
+      shutterUnlock(Control::getInstance());
+    }
+
+    doDisconnect();
+
+#if defined(FURBLE_M5STACK_CORE)
+    esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
+#endif
+    if (!Platform::getInstance().powerOff()) {
+      // The PMIC refused. Stay alive rather than latching a half-off state
+      // with a dead UI, and put the watchdog back the way the user set it.
+      ESP_LOGW("ui", "Power off failed, resuming.");
+#if defined(FURBLE_M5STICKS3)
+      Platform::getInstance().watchdogEnable(Settings::load<Settings::WATCHDOG>());
+#endif
+      m_PoweringOff = false;
+    }
   }
-}
+
+  void UI::setDisplayMode(uint8_t mode) {
+    const bool console = (mode == static_cast<uint8_t>(Settings::CONSOLE));
+    if (console == m_DisplayConsole) {
+      return;
+    }
+
+    if (console) {
+      M5.Display.sleep();
+      Power::getInstance().release(Power::LockType::APB_FREQ_MAX, "display");
+    } else {
+      Power::getInstance().acquire(Power::LockType::APB_FREQ_MAX, "display");
+      M5.Display.wakeup();
+      M5.Display.setBrightness(Settings::load<uint8_t>(Settings::BRIGHTNESS));
+      lv_display_trigger_activity(m_Display);
+    }
+
+    m_DisplayConsole = console;
+  }
+
+  void UI::handleLockScreen(void) {
+    // toggle screen lock on power button double click for touch screens
+    if (M5.Touch.isEnabled()) {
+      if (M5.BtnPWR.wasDoubleClicked()) {
+        m_Status.screenLocked = !m_Status.screenLocked;
+      }
+    }
+  }
+
+  void UI::task(void) {
+    // Keep this loop in step with the headless vUITask() in main.cpp.
+    while (true) {
+      Platform::getInstance().update();
+
+      m_Mutex.lock();
+      if (m_GestureSettingsSeen != m_GestureSettingsGeneration.load(std::memory_order_acquire)) {
+        updateGestureTimer();
+      }
+#if defined(FURBLE_SIM)
+      {
+        std::lock_guard<std::mutex> lock(m_SimRequestMutex);
+        m_SimUiThread = std::this_thread::get_id();
+      }
+      // Script input is part of the UI task's locked phase, just like physical
+      // LVGL input. This preserves the firmware mutex hand-offs in scan startup
+      // and prevents SDL-thread LVGL access.
+      Sim::driverTick();
+      if (Sim::exitRequested()) {
+        m_Mutex.unlock();
+        return;
+      }
+      serviceSimRequests();
+#endif
+      serviceRequests();
+      Scan::getInstance().processPendingCallbacks();
+      if (!m_DisplayConsole) {
+        handleLockScreen();
+#if defined(FURBLE_SIM)
+        Sim::profilerBeginUiCycle();
+#endif
+        lv_task_handler();
+#if defined(FURBLE_SIM)
+        Sim::profilerEndUiCycle();
+        Sim::fuzzCycleComplete(this);
+#endif
+      }
+      serviceStorage();
+      m_Mutex.unlock();
+
+      vTaskDelay(pdMS_TO_TICKS(5));
+    }
+  }
 
 #if defined(FURBLE_SIM)
-bool UI::simulatorHome(void) {
-  auto result = std::make_shared<std::atomic<bool>>(false);
-  if (!simRunOnUi([this, result]() { result->store(simulatorHomeOnUi()); })) {
-    return false;
-  }
-  return result->load();
-}
-
-bool UI::simulatorHomeOnUi(void) {
-  lv_menu_clear_history(m_MainMenu.main);
-  lv_menu_set_page(m_MainMenu.main, m_MainMenu.page);
-  lv_group_focus_obj(m_Menu.at(m_ScanStr).button);
-  return true;
-}
-
-bool UI::simulatorBack(void) {
-  auto result = std::make_shared<std::atomic<bool>>(false);
-  if (!simRunOnUi([this, result]() { result->store(simulatorBackOnUi()); })) {
-    return false;
-  }
-  return result->load();
-}
-
-bool UI::simulatorBackOnUi(void) {
-  lv_obj_t *back = lv_menu_get_main_header_back_button(m_MainMenu.main);
-  if (back == nullptr || lv_menu_get_cur_main_page(m_MainMenu.main) == m_MainMenu.page) {
-    return false;
+  bool UI::simulatorHome(void) {
+    auto result = std::make_shared<std::atomic<bool>>(false);
+    if (!simRunOnUi([this, result]() { result->store(simulatorHomeOnUi()); })) {
+      return false;
+    }
+    return result->load();
   }
 
-  lv_obj_send_event(back, LV_EVENT_CLICKED, m_MainMenu.main);
-  return true;
-}
-
-bool UI::simPressButton(const char *name, bool hold) {
-  const std::string button = name == nullptr ? "" : name;
-  auto result = std::make_shared<std::atomic<bool>>(false);
-  if (!simRunOnUi([this, button, hold, result]() {
-        result->store(simPressButtonOnUi(button.c_str(), hold));
-      })) {
-    return false;
-  }
-  return result->load();
-}
-
-bool UI::simPressButtonOnUi(const char *name, bool hold) {
-  const std::string button = name == nullptr ? "" : name;
-
-  // Resolve the silk-screen button to its LVGL input-device role using the same
-  // per-board wiring as initInputDevices(). Each board only exposes the buttons
-  // the physical device has: the Sticks carry BtnA, BtnB and the side BtnPWR,
-  // the Cores carry BtnA/BtnB/BtnC. Pressing a button the board lacks returns
-  // false so the scenario fails loudly rather than silently doing nothing.
-  lv_indev_t *indev = nullptr;
-  switch (M5.getBoard()) {
-    case m5::board_t::board_M5StickC:
-    case m5::board_t::board_M5StickCPlus:
-    case m5::board_t::board_M5StickCPlus2:
-    case m5::board_t::board_M5StickS3:
-      if (button == "pwr") {
-        indev = m_ButtonL;
-      } else if (button == "a") {
-        indev = m_ButtonO;
-      } else if (button == "b") {
-        indev = m_ButtonR;
-      }
-      break;
-
-    case m5::board_t::board_M5Tough:
-    case m5::board_t::board_M5StackCore2:
-    case m5::board_t::board_M5Stack:
-      if (button == "a") {
-        indev = m_ButtonL;
-      } else if (button == "b") {
-        indev = m_ButtonO;
-      } else if (button == "c") {
-        indev = m_ButtonR;
-      }
-      break;
-
-    default:
-      break;
-  }
-
-  if (indev == nullptr) {
-    return false;
-  }
-
-  // A long press of the left button is furble's universal back escape. This is
-  // the exact path buttonPWRRead/buttonARead take through handleLeftLongPress,
-  // and it works even on the Remote and blind pages that hide the header back
-  // arrow, the F6 case the touch-only sim could not see.
-  if (indev == m_ButtonL && hold) {
-    navigateBack();
+  bool UI::simulatorHomeOnUi(void) {
+    lv_menu_clear_history(m_MainMenu.main);
+    lv_menu_set_page(m_MainMenu.main, m_MainMenu.page);
+    lv_group_focus_obj(m_Menu.at(m_ScanStr).button);
     return true;
   }
 
-  // A short tap must pass through LVGL's registered encoder read callback.
-  // Sending the key directly to the group bypasses focus navigation and the
-  // press/release handling used by editable widgets.
-  const auto read_cb = lv_indev_get_read_cb(indev);
-  lv_indev_set_read_cb(indev, simButtonRead);
-  m_SimButtonPressed = true;
-  lv_indev_read(indev);
-  m_SimButtonPressed = false;
-  lv_indev_read(indev);
-  lv_indev_set_read_cb(indev, read_cb);
-  return true;
-}
+  bool UI::simulatorBack(void) {
+    auto result = std::make_shared<std::atomic<bool>>(false);
+    if (!simRunOnUi([this, result]() { result->store(simulatorBackOnUi()); })) {
+      return false;
+    }
+    return result->load();
+  }
 
-void UI::simButtonRead(lv_indev_t *drv, lv_indev_data_t *data) {
-  auto *ui = static_cast<UI *>(lv_indev_get_user_data(drv));
-  data->key = ui->inputKey(drv);
-  data->state = ui->m_SimButtonPressed ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
-  // The real read callbacks run every sample through the display wake gate.
-  // Do the same for the synthetic press and its release, so a tap on a dark
-  // screen wakes the panel and is swallowed instead of activating a hidden
-  // control.
-  (void)ui->handleDisplayInput(drv, data, ui->m_SimButtonPressed, true);
-}
+  bool UI::simulatorBackOnUi(void) {
+    lv_obj_t *back = lv_menu_get_main_header_back_button(m_MainMenu.main);
+    if (back == nullptr || lv_menu_get_cur_main_page(m_MainMenu.main) == m_MainMenu.page) {
+      return false;
+    }
+
+    lv_obj_send_event(back, LV_EVENT_CLICKED, m_MainMenu.main);
+    return true;
+  }
+
+  bool UI::simPressButton(const char *name, bool hold) {
+    const std::string button = name == nullptr ? "" : name;
+    auto result = std::make_shared<std::atomic<bool>>(false);
+    if (!simRunOnUi([this, button, hold, result]() {
+          result->store(simPressButtonOnUi(button.c_str(), hold));
+        })) {
+      return false;
+    }
+    return result->load();
+  }
+
+  bool UI::simPressButtonOnUi(const char *name, bool hold) {
+    const std::string button = name == nullptr ? "" : name;
+
+    // Resolve the silk-screen button to its LVGL input-device role using the same
+    // per-board wiring as initInputDevices(). Each board only exposes the buttons
+    // the physical device has: the Sticks carry BtnA, BtnB and the side BtnPWR,
+    // the Cores carry BtnA/BtnB/BtnC. Pressing a button the board lacks returns
+    // false so the scenario fails loudly rather than silently doing nothing.
+    lv_indev_t *indev = nullptr;
+    switch (M5.getBoard()) {
+      case m5::board_t::board_M5StickC:
+      case m5::board_t::board_M5StickCPlus:
+      case m5::board_t::board_M5StickCPlus2:
+      case m5::board_t::board_M5StickS3:
+        if (button == "pwr") {
+          indev = m_ButtonL;
+        } else if (button == "a") {
+          indev = m_ButtonO;
+        } else if (button == "b") {
+          indev = m_ButtonR;
+        }
+        break;
+
+      case m5::board_t::board_M5Tough:
+      case m5::board_t::board_M5StackCore2:
+      case m5::board_t::board_M5Stack:
+        if (button == "a") {
+          indev = m_ButtonL;
+        } else if (button == "b") {
+          indev = m_ButtonO;
+        } else if (button == "c") {
+          indev = m_ButtonR;
+        }
+        break;
+
+      default:
+        break;
+    }
+
+    if (indev == nullptr) {
+      return false;
+    }
+
+    // A long press of the left button is furble's universal back escape. This is
+    // the exact path buttonPWRRead/buttonARead take through handleLeftLongPress,
+    // and it works even on the Remote and blind pages that hide the header back
+    // arrow, the F6 case the touch-only sim could not see.
+    if (indev == m_ButtonL && hold) {
+      navigateBack();
+      return true;
+    }
+
+    // A short tap must pass through LVGL's registered encoder read callback.
+    // Sending the key directly to the group bypasses focus navigation and the
+    // press/release handling used by editable widgets.
+    const auto read_cb = lv_indev_get_read_cb(indev);
+    lv_indev_set_read_cb(indev, simButtonRead);
+    m_SimButtonPressed = true;
+    lv_indev_read(indev);
+    m_SimButtonPressed = false;
+    lv_indev_read(indev);
+    lv_indev_set_read_cb(indev, read_cb);
+    return true;
+  }
+
+  void UI::simButtonRead(lv_indev_t * drv, lv_indev_data_t * data) {
+    auto *ui = static_cast<UI *>(lv_indev_get_user_data(drv));
+    data->key = ui->inputKey(drv);
+    data->state = ui->m_SimButtonPressed ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
+    // The real read callbacks run every sample through the display wake gate.
+    // Do the same for the synthetic press and its release, so a tap on a dark
+    // screen wakes the panel and is swallowed instead of activating a hidden
+    // control.
+    (void)ui->handleDisplayInput(drv, data, ui->m_SimButtonPressed, true);
+  }
 #endif
 }  // namespace Furble

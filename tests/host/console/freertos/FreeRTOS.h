@@ -17,6 +17,7 @@ typedef long BaseType_t;
 typedef unsigned long UBaseType_t;
 typedef uint32_t TickType_t;
 typedef uint32_t StackType_t;
+typedef void *SemaphoreHandle_t;
 
 #define pdTRUE ((BaseType_t)1)
 #define pdFALSE ((BaseType_t)0)
