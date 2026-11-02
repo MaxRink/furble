@@ -118,8 +118,26 @@ void printCameras(bool reload) {
            static_cast<unsigned long>(camera->getType()));
     // The same list carries saved cameras and scan results, and a scan can
     // rediscover a saved camera. Say which each row is.
-    printf("camera%u.saved: %s\n", static_cast<unsigned>(n),
-           CameraList::isSaved(camera.get()) ? "true" : "false");
+    const bool saved = CameraList::isSaved(camera.get());
+    printf("camera%u.saved: %s\n", static_cast<unsigned>(n), saved ? "true" : "false");
+    // 'connect' resolves the saved-catalog index, not this list index. Report
+    // the mapping so a script does not connect a different body than the one
+    // it just listed.
+    int32_t savedIndex = -1;
+    if (saved) {
+      const auto catalog = CameraList::savedSnapshot();
+      for (size_t i = 0; i < catalog.size(); i++) {
+        if (CameraListProtocol::sameSavedIdentity(
+                static_cast<uint32_t>(camera->getType()),
+                static_cast<uint64_t>(camera->getAddress()), camera->getName(),
+                static_cast<uint32_t>(catalog[i]->getType()),
+                static_cast<uint64_t>(catalog[i]->getAddress()), catalog[i]->getName())) {
+          savedIndex = static_cast<int32_t>(i);
+          break;
+        }
+      }
+    }
+    printf("camera%u.saved_index: %ld\n", static_cast<unsigned>(n), static_cast<long>(savedIndex));
     printf("camera%u.selected: %s\n", static_cast<unsigned>(n),
            camera->isActive() ? "true" : "false");
   }

@@ -183,8 +183,12 @@ int sendWorkflowRequest(UI::Request request, int32_t arg, const char *what) {
   if (completion.state->token == nullptr) {
     return fail("ui request failed");
   }
+  if (strcmp(completion.state->token, "ok") != 0) {
+    printf("failed: %s: %s\n", what, completion.state->token);
+    return 1;
+  }
   printf("completed: %s\n", what);
-  return strcmp(completion.state->token, "ok") == 0 ? 0 : 1;
+  return 0;
 }
 
 /**
@@ -3198,6 +3202,11 @@ void run(const std::string &line) {
     printf("error: unknown command, try 'help'\n");
   } else if ((err != ESP_OK) && (err != ESP_ERR_INVALID_ARG)) {
     printf("error: %s\n", esp_err_to_name(err));
+  } else if (ret != 0) {
+    // Workflow commands already print their own specific failure line. Keep
+    // the handler's non-zero return visible for every other command rather
+    // than discarding the only script-visible outcome.
+    printf("failed: command returned %d\n", ret);
   }
 }
 

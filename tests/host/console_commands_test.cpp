@@ -1992,6 +1992,13 @@ void testWorkflowCommands(void) {
         "delete queues the saved camera index");
   checkContains(runDirect("delete all").out, "completed: delete all",
                 "delete all reports completion");
+
+  ConsoleHost::ui().workflowToken = "invalid_target";
+  const Result failedDelete = runDirect("delete all");
+  check(failedDelete.rc != 0, "a failed workflow returns a non-zero command code");
+  checkContains(failedDelete.out, "failed: delete all: invalid_target",
+                "a failed workflow names the failure token");
+  ConsoleHost::ui().workflowToken = "ok";
   check(ConsoleHost::ui().requests.back().arg == -1,
         "delete all queues the negative index the handler reads as a sweep");
 
