@@ -243,6 +243,11 @@ class FurbleProtocolTest {
         assertFalse(
             FurbleProtocol.SettingRecord(42, FurbleProtocol.SettingType.UINT8, byteArrayOf(4)).editable,
         )
+        // Screen off carries the staged Dim-then-off mode as value 3, and the
+        // enum editor and validator both read this list.
+        assertEquals(listOf(0, 1, 2, 3), FurbleSettingMetadata.byWireId[24]?.options?.map { it.value })
+        assertTrue(FurbleProtocol.isSettingValueValid(24, FurbleProtocol.SettingType.UINT8, byteArrayOf(3)))
+        assertFalse(FurbleProtocol.isSettingValueValid(24, FurbleProtocol.SettingType.UINT8, byteArrayOf(4)))
         assertEquals(FurbleProtocol.SettingType.BOOL, FurbleSettingMetadata.byWireId[30]?.wireType)
         assertEquals(FurbleProtocol.SettingType.STRING, FurbleSettingMetadata.byWireId[27]?.wireType)
         assertEquals(FurbleProtocol.SettingType.UINT8, FurbleSettingMetadata.byWireId[41]?.wireType)

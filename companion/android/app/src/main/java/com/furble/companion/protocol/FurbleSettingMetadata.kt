@@ -50,6 +50,7 @@ object FurbleSettingMetadata {
         option(0, "Dim"),
         option(1, "Off"),
         option(2, "Off, remote on"),
+        option(3, "Dim, then off"),
     )
 
     private val gpsRateOptions = listOf(
