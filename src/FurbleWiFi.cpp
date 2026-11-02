@@ -61,6 +61,9 @@ esp_netif_t *g_StaNetif = nullptr;
 TaskHandle_t g_Task = nullptr;
 std::mutex g_StateMutex;
 std::mutex g_DriverMutex;
+// First-time initialization creates a netif, event handlers, and a task. Two
+// console/companion/WebUI callers at once must not create them twice.
+std::mutex g_InitMutex;
 std::mutex g_NtpMutex;
 
 bool g_Initialized = false;
@@ -78,11 +81,11 @@ uint32_t g_RetryDelayMs = 0;
 uint32_t g_DirectFailures = 0;
 uint32_t g_ConnectAttempts = 0;
 bool g_StoppedForReason = false;
-bool g_DeferredForWired = false;
+std::atomic<bool> g_DeferredForWired {false};
 uint8_t g_LastDisconnectReason = 0;
 bool g_ScanAttempted = false;
 bool g_ScanShowHidden = false;
-bool g_ScanRefusedForCoex = false;
+std::atomic<bool> g_ScanRefusedForCoex {false};
 
 // A join scan shares the radio with the camera link. Only run it while Control
 // is idle: during connect, active, and disconnecting the camera session owns
@@ -381,6 +384,13 @@ void recordFailure(bool scheduleRetry = true) {
   } else {
     g_RetryDelayMs = std::min(g_RetryDelayMs * 2, RETRY_MAX_MS);
   }
+  if (g_ScanRefusedForCoex.load()) {
+    // The join scan was refused because a camera session owns the radio. That
+    // session may end within seconds, so the retry must not run out to the
+    // full backoff cap. This is the single scheduling path, so a disconnect
+    // event that arrives after esp_wifi_connect() returns is covered too.
+    g_RetryDelayMs = std::min<uint32_t>(g_RetryDelayMs, COEX_RETRY_MS);
+  }
 }
 
 void stopForReasonLocked(uint8_t reason) {
@@ -418,11 +428,11 @@ bool serviceWiredDeferral(void) {
 
 bool scanForNetwork(void) {
   if (!joinScanAllowed(Control::getInstance().getState())) {
-    g_ScanRefusedForCoex = true;
+    g_ScanRefusedForCoex.store(true);
     ESP_LOGW(LOG_TAG, "refusing to scan while a camera session owns the radio");
     return false;
   }
-  g_ScanRefusedForCoex = false;
+  g_ScanRefusedForCoex.store(false);
 
   const std::string ssid = Settings::load<Settings::WIFI_SSID>();
   wifi_scan_config_t config = {};
@@ -491,15 +501,37 @@ bool connectAttempt(void) {
   return true;
 }
 
+// A connected station must hand the network back when a wired address appears.
+// Extracted so the host suite can drive the transition without a task.
+bool serviceConnectedWired(void) {
+  if (!g_Connected.load() || !wiredNetworkActive()) {
+    return false;
+  }
+  WiFi::disconnect();
+  g_DeferredForWired.store(true);
+  return true;
+}
+
 void wifiTask(void *) {
   while (true) {
     uint32_t notification = 0;
 
-    if (g_DeferredForWired) {
+    if (g_DeferredForWired.load()) {
       xTaskNotifyWait(0, UINT32_MAX, &notification, pdMS_TO_TICKS(WIRED_RECHECK_MS));
       (void)serviceWiredDeferral();
       continue;
     }
+
+#if defined(FURBLE_ETHERNET)
+    if (g_Connected.load()) {
+      // A connected station used to park here forever, so a cable plugged in
+      // after the join left Wi-Fi running on a wired node. Keep polling the
+      // wire and hand the network back when it appears.
+      xTaskNotifyWait(0, UINT32_MAX, &notification, pdMS_TO_TICKS(WIRED_RECHECK_MS));
+      (void)serviceConnectedWired();
+      continue;
+    }
+#endif
 
     xTaskNotifyWait(0, UINT32_MAX, &notification, portMAX_DELAY);
 
@@ -527,25 +559,14 @@ void wifiTask(void *) {
 
       if (!connectAttempt()) {
         recordFailure();
-        if (g_ScanRefusedForCoex) {
-          // The camera session may be short; do not let the scan refusal drive
-          // the retry out to the full backoff cap.
-          const std::lock_guard<std::mutex> lock(g_StateMutex);
-          g_RetryDelayMs = std::min<uint32_t>(g_RetryDelayMs, COEX_RETRY_MS);
-        }
         continue;
       }
 
-      // Wake periodically so the station can stop when the wire comes back.
+      // Wake periodically so a cancel or a disconnect request is seen while
+      // the stack is still connecting. The connected-state wired check runs in
+      // the outer loop.
       xTaskNotifyWait(0, UINT32_MAX, &notification, pdMS_TO_TICKS(WIRED_RECHECK_MS));
       if (!g_ConnectRequested || g_Connected) {
-        if (g_Connected && wiredNetworkActive()) {
-          WiFi::disconnect();
-          {
-            const std::lock_guard<std::mutex> lock(g_StateMutex);
-            g_DeferredForWired = true;
-          }
-        }
         break;
       }
     }
@@ -658,6 +679,7 @@ void WiFi::init(void) {
 }
 
 void WiFi::ensureStarted(void) {
+  const std::lock_guard<std::mutex> initLock(g_InitMutex);
   if (g_Initialized) {
     return;
   }
@@ -826,7 +848,26 @@ bool WiFi::hostServiceWired(void) {
 }
 
 bool WiFi::hostDeferredForWired(void) {
-  return g_DeferredForWired;
+  return g_DeferredForWired.load();
+}
+
+bool WiFi::hostServiceConnectedWired(void) {
+  return serviceConnectedWired();
+}
+
+uint32_t WiFi::hostCoexRetryCap(void) {
+  // Drive the common scheduling path with the refusal flag set and return the
+  // clamped delay. The caller restores the module state.
+  const bool previousRefusal = g_ScanRefusedForCoex.exchange(true);
+  for (int i = 0; i < 10; i++) {
+    recordFailure();
+  }
+  const uint32_t delay = [&]() {
+    const std::lock_guard<std::mutex> lock(g_StateMutex);
+    return g_RetryDelayMs;
+  }();
+  g_ScanRefusedForCoex.store(previousRefusal);
+  return delay;
 }
 
 bool WiFi::hostJoinScanAllowed(uint8_t state) {

@@ -101,18 +101,13 @@ Platform &Platform::getInstance(void) {
       M5.Rtc.disableIRQ();
     }
 
-    // M5Unified enables every AXP192 ADC channel at 25 Hz. Furble reads only
-    // battery voltage/current and VBUS voltage, so trim the unused channels.
-    switch (board) {
-      case m5::board_t::board_M5StickC:
-      case m5::board_t::board_M5StickCPlus:
-      case m5::board_t::board_M5Tough:
-      case m5::board_t::board_M5StackCore2:
-        M5.In_I2C.writeRegister8(0x34, 0x82, PlatformPolicy::AXP192_ADC_ENABLE_1, 400000);
-        M5.In_I2C.writeRegister8(0x34, 0x83, PlatformPolicy::AXP192_ADC_ENABLE_2, 400000);
-        break;
-      default:
-        break;
+    // M5Unified enables every AXP192 ADC channel at 25 Hz. Trim the unused
+    // channels, but only when the detected PMIC really is an AXP192: Core2 v1.1
+    // keeps the board ID while carrying an AXP2101, where these registers are
+    // regulator controls, not the ADC enable map.
+    if (M5.Power.getType() == m5::Power_Class::pmic_axp192) {
+      M5.In_I2C.writeRegister8(0x34, 0x82, PlatformPolicy::AXP192_ADC_ENABLE_1, 400000);
+      M5.In_I2C.writeRegister8(0x34, 0x83, PlatformPolicy::AXP192_ADC_ENABLE_2, 400000);
     }
 
     // The IMU keeps the M5Unified default axis order. The spirit level derives

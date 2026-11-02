@@ -1715,6 +1715,10 @@ void UI::wakeDisplay(void) {
   // Acquire before wakeup because M5GFX restores the backlight during wakeup.
   Power::getInstance().acquire(Power::LockType::APB_FREQ_MAX, "display");
   M5.Display.wakeup();
+  // A timed wake restores the brightness M5GFX last applied, which is the dim
+  // value in the staged mode. Restore the configured level so the screen does
+  // not come back at minimum brightness.
+  M5.Display.setBrightness(Settings::load<uint8_t>(Settings::BRIGHTNESS));
   m_WakeTick = tick();
   m_DisplayOff = false;
   // Flushes were skipped while the panel slept, so LVGL believes the old

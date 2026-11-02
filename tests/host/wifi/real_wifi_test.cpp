@@ -1,6 +1,9 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <thread>
+#include <vector>
+
 #include "FurbleControl.h"
 #include "FurbleEthernet.h"
 #include "FurbleSettings.h"
@@ -245,7 +248,35 @@ int main() {
       || require(!Furble::WiFi::hostDeferredForWired(), "deferral survived the wire drop")) {
     return 19;
   }
+  // A cable plugged in after the station joined must hand the network back.
+  Furble::Ethernet::init(wired);
+  wired.emitLinkUp();
+  wired.emitGotIp("192.0.2.11");
+  furble_wifi_handler(nullptr, IP_EVENT, IP_EVENT_STA_GOT_IP, nullptr);
+  if (require(Furble::WiFi::getStatus().connected, "the station reports connected")) {
+    return 21;
+  }
+  if (require(Furble::WiFi::hostServiceConnectedWired(),
+              "a wired address did not take over a connected station")
+      || require(!Furble::WiFi::getStatus().connected,
+                 "the station stayed connected after the wire came up")
+      || require(Furble::WiFi::hostDeferredForWired(),
+                 "the connected takeover did not defer the station")) {
+    return 22;
+  }
   Furble::Ethernet::stop();
+  if (require(Furble::WiFi::hostServiceWired(), "the wire drop did not resume the station")) {
+    return 23;
+  }
+
+  // The coexistence retry cap applies to the common scheduling path, so a
+  // disconnect event after esp_wifi_connect() cannot grow it past ten seconds.
+  if (require(Furble::WiFi::hostCoexRetryCap() == 10000,
+              "the coexistence retry cap did not clamp the backoff")) {
+    return 24;
+  }
+  // Restore the normal retry state for any later assertions.
+  Furble::WiFi::connect();
 
   // P-027: only an idle Control state allows a join scan. Connect, active, and
   // disconnecting all mean the camera session owns the radio.

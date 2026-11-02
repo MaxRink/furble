@@ -84,6 +84,10 @@ class WiFi {
   static bool hostServiceWired(void);
   /** True while a wired address holds the station off. */
   static bool hostDeferredForWired(void);
+  /** Run the connected-state wired takeover once. */
+  static bool hostServiceConnectedWired(void);
+  /** Retry delay after ten failures while a camera session blocks the scan. */
+  static uint32_t hostCoexRetryCap(void);
   /** Run the join-scan state predicate for one Control state value. */
   static bool hostJoinScanAllowed(uint8_t state);
   /** Run the join scan once so a host test can inspect its configuration. */

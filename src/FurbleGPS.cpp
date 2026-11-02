@@ -410,6 +410,11 @@ void GPS::enable(void) {
   }
 
   m_Enabled = true;
+  // reset() cleared the queue, so the cancellation wake sent before it is gone.
+  // Publish a fresh wake after m_Enabled becomes true: otherwise a silent
+  // receiver leaves the task blocked in an indefinite receive, the acquisition
+  // deadline never runs, and the wake lock stays held.
+  wakeGPSService(m_Queue);
   FURBLE_SIM_GPS_STATE("acquiring");
   acquirePowerLock();
 }
