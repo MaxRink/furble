@@ -219,6 +219,7 @@ state and the remaining gate; the issue stays open until that gate lands.
 | [285-power-accounting.md](285-power-accounting.md) | Issue #285: opt-in synthetic power accounting and frozen comparator identity |
 | [288-provisioning-schema.md](288-provisioning-schema.md) | Provisioning schema coverage for every keyed setting and current wire-ID reservation ledger |
 | [291-ui-upstream-layout-parity.md](291-ui-upstream-layout-parity.md) | About, GPS, and Connected content parity with upstream, one page PR at a time with per-board captures |
+| [298-pre-review-gate.md](298-pre-review-gate.md) | Pre-review scanners for diff hygiene, settings contracts, C++ safety, and a sanitized host subset, wired into pull-request CI |
 | [176-android-camera-catalog.md](176-android-camera-catalog.md) | Android camera characteristic discovery, stable-ID catalog, controls, and bounded protocol decoding |
 | [178-sim-startup-settings-order.md](178-sim-startup-settings-order.md) | Apply simulator settings before platform construction while preserving panel, environment, watchdog, and profiler boundaries |
 

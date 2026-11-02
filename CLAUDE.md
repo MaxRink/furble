@@ -115,6 +115,14 @@ CLAUDE.md whose directory it touches.
 
 ## Testing
 
+- Run `python3 tools/pre_review.py --base origin/master` before pushing. It
+  runs the diff hygiene, settings contract, and C++ safety scanners, the CI
+  workflow and simulator manifest checks, and the scanner unit tests.
+- Run `sh tools/run_sanitized_host_tests.sh --clean` when touching C++ state,
+  containers, camera drivers, simulator fixtures, or filesystem lifecycle code.
+- `.github/workflows/pre-review.yml` runs the scanners on pull requests;
+  `.github/workflows/host-sanitized.yml` runs the ASan/UBSan subset on C++
+  changes. Both are path-filtered, read-only, and dispatchable for stacked PRs.
 - The USB console (debug builds, `FURBLE_CONSOLE`) is the automation surface:
   settings get/set, gps subcommands, shutter, status.
 - Hardware verification on the attached M5StickS3 happens before PRs.
