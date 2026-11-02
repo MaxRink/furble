@@ -1579,8 +1579,9 @@ void sweepAbandonedPreferences(const std::filesystem::path &directory) {
       return;
     }
     const std::string name = it->path().filename().string();
-    if ((name.size() < prefix.size() + 12) || (name.rfind(prefix, 0) != 0)
-        || (name.compare(name.size() - 4, 4, ".bin") != 0)) {
+    std::error_code typeError;
+    if (!it->is_regular_file(typeError) || typeError || (name.size() < prefix.size() + 12)
+        || (name.rfind(prefix, 0) != 0) || (name.compare(name.size() - 4, 4, ".bin") != 0)) {
       continue;
     }
     // <prefix><scenario>-<pid>-<six random characters>.bin
