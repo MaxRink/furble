@@ -163,17 +163,21 @@ vendor images are not redistributed. The claims below are `firmware-static` or
 `app-static` unless marked otherwise.
 
 - Both images carry the same 70 entry ASCII UUID table. The table maps to 13
-  services, 69 characteristics, and 21 CCCDs. The X100VI and X-S20 GATT layout
-  is identical at these versions, including handles and maximum lengths.
+  services, 69 characteristics, and 21 CCCDs. The X100VI and X-S20 UUID sets
+  are identical at these versions. Handles and maximum lengths are
+  `public-source` from the MIT fffw `ad14d4` profile; binding them to the
+  firmware UUID set is an inference from the exact set match, not a
+  `firmware-static` result.
 - The vendor services are camera information `A9D2B304`, lens information
   `15CA59FE`, connected device information `123D8F06`, camera settings
   `4E941240`, camera state `4C0020FE`, shutter and control `6514EB81`, current
   time `E872B11F`, current location `3B46EC2B`, equipment status and backup
   `AF854C2E`, and camera startup information `804DAA8E`.
-- The Secure UUIDs Furble uses are present with the expected properties and
-  lengths. The 23-byte geotag characteristic, 4-byte status characteristic,
-  2-byte shutter characteristic, and 2-byte sync interval characteristic all
-  match.
+- The Secure UUIDs Furble uses are present. Their expected properties and
+  lengths match the public fffw profile, but that per-characteristic binding is
+  inferred rather than firmware-verified. The 23-byte geotag characteristic,
+  4-byte status characteristic, 2-byte shutter characteristic, and 2-byte sync
+  interval characteristic are all consistent with that profile.
 - The Basic pairing service `91F1DE68` is absent from both images. `AF854C2E`
   is present only as the equipment-status/backup service. `117C4142` appears as
   a binary UUID occurrence, not in the 70 entry table. No Basic pairing path is

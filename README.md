@@ -99,7 +99,9 @@ The following devices have been tested and confirmed to work:
    - Canon EOS RP ([@wolcano](https://github.com/wolcano))
    - Canon PowerShot G9 X Mark II ([@Mich2e](https://github.com/Mich2e))
 - Ricoh
-   - Ricoh GR IV HDF ([@sky18Dragon](https://github.com/sky18Dragon)); firmware 1.20 is the verified build.
+   - Ricoh GR IV HDF ([@sky18Dragon](https://github.com/sky18Dragon)). Firmware 1.20
+     was audited statically; the corrected GPS geotag write still awaits hardware
+     validation.
    - Numeric-comparison pairing displays the camera's six-digit code on the
      furble screen before confirmation. Untested on hardware: the modal, the
      layout and the injected answer are covered by the host peer handshake and

@@ -10,9 +10,14 @@ one handle is therefore an inference from the exact set match.
 The vendor images are not redistributed. This table is a compatibility
 reference, not a promise of runtime reachability or physical capture.
 
+Link security entries below are unverified assumptions from the public profile
+and XApp behaviour, not decoded per-characteristic firmware permission checks.
+Treat them as a hypothesis until a firmware permission check or a hardware
+capture establishes the requirement.
+
 ## Services
 
-| Handle | UUID | Role | Characteristics | Link security |
+| Handle | UUID | Role | Characteristics | Link security (assumed, unverified) |
 | --- | --- | --- | --- | --- |
 | `0x0001` | `00001800-0000-1000-8000-00805f9b34fb` | Generic Access | 2 read | none, standard |
 | `0x1001` | `00001801-0000-1000-8000-00805f9b34fb` | Generic Attribute | 1 read plus CCCD | none, standard |
