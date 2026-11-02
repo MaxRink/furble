@@ -334,62 +334,62 @@ UI::menu_t UI::m_MainMenu;
 lv_obj_t *UI::m_LevelMainButton = nullptr;
 
 std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
-    {m_ConnectStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_ScanStr,              {nullptr, nullptr, nullptr, nullptr, {1, 0}}},
-    {m_DeleteStr,            {nullptr, nullptr, nullptr, nullptr, {2, 0}}},
-    {m_IRStr,                {nullptr, nullptr, nullptr, nullptr, {0, 1}}},
-    {m_SettingsStr,          {nullptr, nullptr, nullptr, nullptr, {3, 0}}},
-    {m_PowerOffStr,          {nullptr, nullptr, nullptr, nullptr, {3, 1}}},
-    {m_ConnectedStr,         {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_FeaturesStr,          {nullptr, nullptr, nullptr, nullptr, {1, 0}}},
-    {m_SensorsStr,           {nullptr, nullptr, nullptr, nullptr, {3, 0}}},
-    {m_GesturesStr,          {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_GPSStr,               {nullptr, nullptr, nullptr, nullptr, {2, 0}}},
-    {m_GPSDataStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_GPSBaudStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_GPSRateStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_GPSSentencesStr,      {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_GPSConstellationStr,  {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_GPSPowerStr,          {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_GPSAssistStr,         {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_GPSHoldStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_GPSPlatformStr,       {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_GPSNMEAStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_GPSSatStr,            {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_IntervalometerStr,    {nullptr, nullptr, nullptr, nullptr, {0, 3}}},
-    {m_IntervalCountStr,     {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_IntervalDelayStr,     {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_IntervalShutterStr,   {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_IntervalWaitStr,      {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_DisplayStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_IRSettingsStr,        {nullptr, nullptr, nullptr, nullptr, {1, 2}}},
-    {m_TextSizeStr,          {nullptr, nullptr, nullptr, nullptr, {2, 2}}},
-    {m_LegendStr,            {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_ThemeStr,             {nullptr, nullptr, nullptr, nullptr, {0, 1}}},
-    {m_BluetoothStr,         {nullptr, nullptr, nullptr, nullptr, {1, 1}}},
-    {m_AboutStr,             {nullptr, nullptr, nullptr, nullptr, {2, 1}}},
-    {m_PowerStr,             {nullptr, nullptr, nullptr, nullptr, {3, 1}}},
-    {m_FeedbackStr,          {nullptr, nullptr, nullptr, nullptr, {1, 3}}},
-    {m_DiagnosticsStr,       {nullptr, nullptr, nullptr, nullptr, {0, 2}}},
-    {m_StorageStr,           {nullptr, nullptr, nullptr, nullptr, {3, 2}}},
-    {m_BatteryStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_FeedbackEventsStr,    {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_FeedbackVolumeStr,    {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_DeviceInfoStr,        {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_PowerStateStr,        {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_BLEStr,               {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_IMUDataStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_TransmitPowerStr,     {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_RemoteShutter,        {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_CamerasStr,           {nullptr, nullptr, nullptr, nullptr, {2, 1}}},
-    {m_RemoteBulb,           {nullptr, nullptr, nullptr, nullptr, {1, 0}}},
-    {m_RemoteInterval,       {nullptr, nullptr, nullptr, nullptr, {2, 0}}},
-    {m_LevelStr,             {nullptr, nullptr, nullptr, nullptr, {0, 1}}},
-    {m_RemoteGPSData,        {nullptr, nullptr, nullptr, nullptr, {1, 1}}},
-    {m_RemoteDisconnect,     {nullptr, nullptr, nullptr, nullptr, {3, 1}}},
-    {m_IntervalometerRunStr, {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_BulbRunStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
-    {m_BulbDurationStr,      {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_ConnectStr,                {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_ScanStr,                   {nullptr, nullptr, nullptr, nullptr, {1, 0}}},
+    {m_DeleteStr,                 {nullptr, nullptr, nullptr, nullptr, {2, 0}}},
+    {m_IRStr,                     {nullptr, nullptr, nullptr, nullptr, {0, 1}}},
+    {m_SettingsStr,               {nullptr, nullptr, nullptr, nullptr, {3, 0}}},
+    {m_PowerOffStr,               {nullptr, nullptr, nullptr, nullptr, {3, 1}}},
+    {m_ConnectedStr,              {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_FeaturesStr,               {nullptr, nullptr, nullptr, nullptr, {1, 0}}},
+    {m_SensorsStr,                {nullptr, nullptr, nullptr, nullptr, {3, 0}}},
+    {m_GesturesStr,               {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_GPSStr,                    {nullptr, nullptr, nullptr, nullptr, {2, 0}}},
+    {m_GPSDataStr,                {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_GPSBaudStr,                {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_GPSRateStr,                {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_GPSSentencesStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_GPSConstellationStr,       {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_GPSPowerStr,               {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_GPSAssistStr,              {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_GPSHoldStr,                {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_GPSPlatformStr,            {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_GPSNMEAStr,                {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_GPSSatStr,                 {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_IntervalometerStr,         {nullptr, nullptr, nullptr, nullptr, {0, 3}}},
+    {m_IntervalCountStr,          {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_IntervalDelayStr,          {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_IntervalShutterStr,        {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_IntervalWaitStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_DisplayStr,                {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_IRSettingsStr,             {nullptr, nullptr, nullptr, nullptr, {1, 2}}},
+    {m_TextSizeStr,               {nullptr, nullptr, nullptr, nullptr, {2, 2}}},
+    {m_LegendStr,                 {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_ThemeStr,                  {nullptr, nullptr, nullptr, nullptr, {0, 1}}},
+    {m_BluetoothStr,              {nullptr, nullptr, nullptr, nullptr, {1, 1}}},
+    {m_AboutStr,                  {nullptr, nullptr, nullptr, nullptr, {2, 1}}},
+    {m_PowerStr,                  {nullptr, nullptr, nullptr, nullptr, {3, 1}}},
+    {m_FeedbackStr,               {nullptr, nullptr, nullptr, nullptr, {1, 3}}},
+    {m_DiagnosticsStr,            {nullptr, nullptr, nullptr, nullptr, {0, 2}}},
+    {m_StorageStr,                {nullptr, nullptr, nullptr, nullptr, {3, 2}}},
+    {m_BatteryStr,                {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_FeedbackEventsStr,         {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_FeedbackVolumeStr,         {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_DeviceInfoStr,             {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_PowerStateStr,             {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_BLEStr,                    {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_IMUDataStr,                {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_TransmitPowerStr,          {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_RemoteShutter,             {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_CamerasStr,                {nullptr, nullptr, nullptr, nullptr, {2, 1}}},
+    {m_RemoteBulb,                {nullptr, nullptr, nullptr, nullptr, {1, 0}}},
+    {m_RemoteInterval,            {nullptr, nullptr, nullptr, nullptr, {2, 0}}},
+    {m_LevelStr,                  {nullptr, nullptr, nullptr, nullptr, {0, 1}}},
+    {m_RemoteGPSData,             {nullptr, nullptr, nullptr, nullptr, {1, 1}}},
+    {m_RemoteDisconnect,          {nullptr, nullptr, nullptr, nullptr, {3, 1}}},
+    {m_IntervalometerRunStr,      {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_BulbRunStr,                {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
+    {m_BulbDurationStr,           {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_IntervalSleepThresholdStr, {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
 };
 
@@ -1397,10 +1397,6 @@ void UI::buttonPWRRead(lv_indev_t *drv, lv_indev_data_t *data) {
   auto *ui = static_cast<UI *>(lv_indev_get_user_data(drv));
   data->key = ui->inputKey(drv);
   bool pressed = M5.BtnPWR.isPressed();
-  bool released = M5.BtnPWR.isReleased();
-#if defined(FURBLE_SIM)
-  ui->simReadButton(drv, pressed, released);
-#endif
   if (ui->handleLeftLongPress(drv, pressed)) {
     data->state = LV_INDEV_STATE_RELEASED;
     return;
@@ -1409,7 +1405,7 @@ void UI::buttonPWRRead(lv_indev_t *drv, lv_indev_data_t *data) {
     return;
   }
 
-  if (released) {
+  if (M5.BtnPWR.isReleased()) {
     data->state = LV_INDEV_STATE_RELEASED;
   } else if (pressed) {
     data->state = LV_INDEV_STATE_PRESSED;
@@ -1421,38 +1417,19 @@ void UI::buttonPEKRead(lv_indev_t *drv, lv_indev_data_t *data) {
   auto *ui = static_cast<UI *>(lv_indev_get_user_data(drv));
   data->key = ui->inputKey(drv);
   bool held = M5.BtnPWR.isPressed();
-#if defined(FURBLE_SIM)
-  bool simulatedPressed = false;
-  bool simulatedReleased = false;
-  const bool simulated = ui->simReadButton(drv, simulatedPressed, simulatedReleased);
-  if (simulated) {
-    held = simulatedPressed;
-  }
-#endif
   if (ui->handleLeftLongPress(drv, held)) {
     data->state = LV_INDEV_STATE_RELEASED;
     return;
   }
-  bool pressed;
-  bool released;
-#if defined(FURBLE_SIM)
-  if (simulated) {
-    pressed = simulatedPressed;
-    released = simulatedReleased;
-  } else
-#endif
-  {
-    pressed = Platform::getInstance().getPWRClickCount() > 0;
-    released = !pressed;
-  }
+  bool pressed = Platform::getInstance().getPWRClickCount() > 0;
   if (ui->handleDisplayInput(drv, data, pressed, false)) {
     return;
   }
 
-  if (released) {
-    data->state = LV_INDEV_STATE_RELEASED;
-  } else if (pressed) {
+  if (pressed) {
     data->state = LV_INDEV_STATE_PRESSED;
+  } else {
+    data->state = LV_INDEV_STATE_RELEASED;
   }
 }
 
@@ -1460,10 +1437,6 @@ void UI::buttonARead(lv_indev_t *drv, lv_indev_data_t *data) {
   auto *ui = static_cast<UI *>(lv_indev_get_user_data(drv));
   data->key = ui->inputKey(drv);
   bool pressed = M5.BtnA.isPressed();
-  bool released = M5.BtnA.isReleased();
-#if defined(FURBLE_SIM)
-  ui->simReadButton(drv, pressed, released);
-#endif
   if (ui->handleLeftLongPress(drv, pressed)) {
     data->state = LV_INDEV_STATE_RELEASED;
     return;
@@ -1472,7 +1445,7 @@ void UI::buttonARead(lv_indev_t *drv, lv_indev_data_t *data) {
     return;
   }
 
-  if (released) {
+  if (M5.BtnA.isReleased()) {
     data->state = LV_INDEV_STATE_RELEASED;
   } else if (pressed) {
     data->state = LV_INDEV_STATE_PRESSED;
@@ -1483,10 +1456,6 @@ void UI::buttonBRead(lv_indev_t *drv, lv_indev_data_t *data) {
   auto *ui = static_cast<UI *>(lv_indev_get_user_data(drv));
   data->key = ui->inputKey(drv);
   bool pressed = M5.BtnB.isPressed();
-  bool released = M5.BtnB.isReleased();
-#if defined(FURBLE_SIM)
-  ui->simReadButton(drv, pressed, released);
-#endif
   if (ui->handleLeftLongPress(drv, pressed)) {
     data->state = LV_INDEV_STATE_RELEASED;
     return;
@@ -1495,7 +1464,7 @@ void UI::buttonBRead(lv_indev_t *drv, lv_indev_data_t *data) {
     return;
   }
 
-  if (released) {
+  if (M5.BtnB.isReleased()) {
     data->state = LV_INDEV_STATE_RELEASED;
   } else if (pressed) {
     data->state = LV_INDEV_STATE_PRESSED;
@@ -1506,10 +1475,6 @@ void UI::buttonCRead(lv_indev_t *drv, lv_indev_data_t *data) {
   auto *ui = static_cast<UI *>(lv_indev_get_user_data(drv));
   data->key = ui->inputKey(drv);
   bool pressed = M5.BtnC.isPressed();
-  bool released = M5.BtnC.isReleased();
-#if defined(FURBLE_SIM)
-  ui->simReadButton(drv, pressed, released);
-#endif
   if (ui->handleLeftLongPress(drv, pressed)) {
     data->state = LV_INDEV_STATE_RELEASED;
     return;
@@ -1518,7 +1483,7 @@ void UI::buttonCRead(lv_indev_t *drv, lv_indev_data_t *data) {
     return;
   }
 
-  if (released) {
+  if (M5.BtnC.isReleased()) {
     data->state = LV_INDEV_STATE_RELEASED;
   } else if (pressed) {
     data->state = LV_INDEV_STATE_PRESSED;
@@ -2192,7 +2157,12 @@ void UI::reserveLegendColumns(lv_obj_t *page) {
   // left alone.
   for (uint32_t i = 0; i < lv_obj_get_child_count(page); i++) {
     lv_obj_t *row = lv_obj_get_child(page, i);
-    if ((row == nullptr) || !lv_obj_is_valid(row) || lv_obj_has_flag(row, LV_OBJ_FLAG_FLOATING)) {
+    if ((row == nullptr) || !lv_obj_is_valid(row) || lv_obj_has_flag(row, LV_OBJ_FLAG_FLOATING)
+        || !lv_obj_check_type(row, &lv_menu_cont_class)
+        || !lv_obj_has_flag(row, LV_OBJ_FLAG_SCROLL_ON_FOCUS)) {
+      // Composite containers and buttons own their internal layout. Narrowing
+      // them turned the Feedback output roller into a vertical column and cut
+      // "Restart to apply" to "Restart to a".
       continue;
     }
     if (reserve > 0) {
@@ -2364,10 +2334,10 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
       // Camera names deliberately wrap instead of animating. Keep the page-load
       // fit pass from converting this explicit choice to a circular scroller.
       lv_obj_add_flag(label, LV_OBJ_FLAG_USER_1);
-    } else if (floatingIndicatorReserve() > 0) {
-      // An iconless submenu row has only this label. Keep its box inside the
-      // row after the right legend column is reserved; at natural width
-      // "Constellation" extended through the row padding and was clipped.
+    } else {
+      // An iconless submenu row has only this label. Use the full row width and
+      // wrap at every placement: with Bottom/Off the reserve is zero, so a
+      // conditional width left long names at natural width and clipped them.
       lv_obj_set_width(label, LV_PCT(100));
       lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
     }
@@ -8513,11 +8483,13 @@ UI::menu_t &UI::addConnectedMenu(void) {
     lv_obj_add_flag(m_ShutterLockIcon, LV_OBJ_FLAG_FLOATING);
     lv_obj_set_size(m_ShutterLockIcon, ICON_HEADER_SIZE, ICON_HEADER_SIZE);
 
+    const bool legendBottom = legendPlacement() == Settings::LEGEND_BOTTOM;
     // @todo Clean up the plethora of hardcoded values here
 #if defined(FURBLE_M5STICKC)
     const size_t n = 3;
     int32_t x1 = lv_obj_get_x(m_OK) - 2;
-    int32_t y1 = lv_obj_get_y(m_Right) - a.y1 - 10;
+    int32_t y1 =
+        legendBottom ? (a.y2 - a.y1 - ICON_HEADER_SIZE - 6) : (lv_obj_get_y(m_Right) - a.y1 - 10);
     static lv_point_precise_t points[] = {
         {x1 + 40, y1 + 12},
         {x1 + 6,  y1 + 12},
@@ -8536,7 +8508,8 @@ UI::menu_t &UI::addConnectedMenu(void) {
 #else
     const size_t n = 3;
     int32_t x1 = lv_obj_get_x(m_OK) - 2;
-    int32_t y1 = lv_obj_get_y(m_Right) - a.y1 - 7;
+    int32_t y1 =
+        legendBottom ? (a.y2 - a.y1 - ICON_HEADER_SIZE - 6) : (lv_obj_get_y(m_Right) - a.y1 - 7);
     static lv_point_precise_t points[] = {
         {x1 + 50, y1 + 12 },
         {x1 - 1,  y1 + 12 },
@@ -8552,11 +8525,13 @@ UI::menu_t &UI::addConnectedMenu(void) {
     lv_style_set_line_color(&style, lv_palette_main(LV_PALETTE_GREY));
     lv_style_set_line_opa(&style, LV_OPA_50);
 
-    lv_obj_t *line = lv_line_create(menuShutter.page);
-    m_ShutterLegendLine = line;
-    lv_obj_add_flag(line, LV_OBJ_FLAG_FLOATING);
-    lv_line_set_points(line, points, n);
-    lv_obj_add_style(line, &style, 0);
+    if (!legendBottom) {
+      lv_obj_t *line = lv_line_create(menuShutter.page);
+      m_ShutterLegendLine = line;
+      lv_obj_add_flag(line, LV_OBJ_FLAG_FLOATING);
+      lv_line_set_points(line, points, n);
+      lv_obj_add_style(line, &style, 0);
+    }
     applyLegendVisibility();
 
     lv_obj_move_foreground(m_ShutterLockIcon);
@@ -10463,6 +10438,12 @@ void UI::addDisplayMenu(const menu_t &parent) {
   addSettingItem(cont, NULL, Settings::SHOW_TITLE);
 
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+  // The Legend placement belongs to Display. Add it after the display
+  // controls so the existing focus walk and page layout above are unchanged;
+  // only the physical-button boards render the row.
+  if (legendSelectable()) {
+    addLegendMenu(menu);
+  }
 }
 
 bool UI::legendSelectable(void) {
@@ -11932,9 +11913,6 @@ void UI::addSettingsMenu(void) {
   // setting. Everywhere else the legends are flex children of the navigation
   // bar and there is nothing to place, so the entry is absent rather than
   // present and inert.
-  if (legendSelectable()) {
-    addLegendMenu(menu);
-  }
   addBluetoothMenu(menu);
   addAboutMenu(menu);
   addPowerMenu(menu);
@@ -12500,10 +12478,7 @@ void UI::task(void) {
       lv_task_handler();
 #if defined(FURBLE_SIM)
       Sim::profilerEndUiCycle();
-      if (!Sim::fuzzBootSettling()) {
-        Sim::fuzzCycleComplete(this);
-      }
-      Sim::driverUiCycleComplete();
+      Sim::fuzzCycleComplete(this);
 #endif
     }
     serviceStorage();
@@ -12556,15 +12531,6 @@ bool UI::simPressButton(const char *name, bool hold) {
     return false;
   }
   return result->load();
-}
-
-bool UI::simReadButton(lv_indev_t *indev, bool &pressed, bool &released) const {
-  if (indev != m_SimButtonIndev) {
-    return false;
-  }
-  pressed = m_SimButtonPressed;
-  released = !pressed;
-  return true;
 }
 
 bool UI::simPressButtonOnUi(const char *name, bool hold) {

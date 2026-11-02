@@ -1,7 +1,6 @@
 #ifndef FURBLE_SIM_DRIVER_H
 #define FURBLE_SIM_DRIVER_H
 
-#include <cstddef>
 #include <cstdint>
 #include <string>
 
@@ -53,22 +52,13 @@ bool exitRequested(void);
 /** Return the first requested simulator process result, or zero if unset. */
 int exitResult(void);
 
-/** Request the same reboot boundary used by scripted and interactive runs. */
-void requestRestart(void);
-
-/** Complete a scripted UI action after its bookkeeping has advanced. */
-void completeScriptRestart(size_t nextStep);
-
-/** Arm a fuzz restart after its event/checkpoint bookkeeping has advanced. */
-void completeFuzzRestart(void);
-
-/** Return true once a reboot request has been armed for the post-teardown path. */
+/** Return true once a scenario `restart` step asked for a simulated reboot. */
 bool restartRequested(void);
 
 /**
- * Re-execute the simulator after the orderly shutdown has joined every task.
- * The selected continuation mode determines whether a script step, fuzz
- * checkpoint, or no index is carried across. Returns only when re-exec fails.
+ * Re-execute the simulator to complete a `restart` step. Call only after the
+ * orderly shutdown has joined every task, because it replaces the process
+ * image. Returns only when the re-exec itself fails.
  */
 void restartProcess(void);
 

@@ -2,7 +2,6 @@
 #define FURBLE_SIM_FUZZ_MACHINE_H
 
 #include <cstdint>
-#include <iosfwd>
 #include <random>
 
 namespace Furble::Sim {
@@ -82,10 +81,6 @@ class FuzzMachine {
   void escapeChecked(bool reachedMain);
 
   bool finishing() const;
-
-  Checkpoint checkpoint() const;
-  bool restore(const Checkpoint &checkpoint);
-  void resumeAfterRestart();
 
  private:
   void settleThen(FuzzPhase next, uint32_t settleCycles);

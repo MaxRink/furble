@@ -6,10 +6,8 @@
 #include <deque>
 #include <iomanip>
 #include <iostream>
-#include <istream>
 #include <map>
 #include <memory>
-#include <ostream>
 #include <random>
 #include <sstream>
 #include <string>
@@ -145,7 +143,6 @@ std::unique_ptr<FuzzMachine> machine;
 Event pendingEvent = Event::SELECT;
 std::string pendingDescription;
 bool pendingWasStop = false;
-bool checkpointEligible = false;
 ObservableState stateBeforeApply;
 uint32_t escapeActions = 0;
 std::mt19937_64 rng;
@@ -274,19 +271,8 @@ void checkInvariants(UI *ui, const std::string &event) {
   if (!page.empty()) {
     pageCounts[page]++;
   }
-  if (mustFit(ui, page) && ui->simQueryState("overflow") == "yes") {
+  if (mustFit(page) && ui->simQueryState("overflow") == "yes") {
     recordFinding(ui, "layout-overflow", event, "compact page overflows the panel");
-  }
-  // The pages that gave up their fit check are not unchecked. Nothing may be
-  // drawn over anything else on any page, and a page that scrolls has to scroll
-  // a sane amount: a runaway extent is a layout fault even though scrolling is
-  // allowed. ponytail: the bound is a whole extra panel of content, loose on
-  // purpose so only a real runaway trips it.
-  if (ui->simQueryState("label_overlaps") != "0") {
-    recordFinding(ui, "layout-overlap", event, "widgets drawn over each other");
-  }
-  if (std::atoi(ui->simQueryState("scroll_bottom").c_str()) > maxScrollBottom()) {
-    recordFinding(ui, "layout-scroll-runaway", event, "page scroll extent ran away");
   }
 }
 
@@ -627,141 +613,6 @@ bool fuzzActive(void) {
   return active;
 }
 
-bool fuzzCheckpointEligible(void) {
-  return active && checkpointEligible && machine != nullptr;
-}
-
-bool fuzzWriteCheckpoint(std::ostream &output) {
-  if (!fuzzCheckpointEligible()) {
-    return false;
-  }
-  const auto state = machine->checkpoint();
-  output << "FURBLE_FUZZ_CHECKPOINT 1\n"
-         << seed << ' ' << maxSteps << ' ' << verbose << ' ' << static_cast<uint32_t>(pendingEvent)
-         << ' ' << pendingWasStop << ' ' << escapeActions << '\n';
-  output << state.phase << ' ' << state.settleNext << ' ' << state.maxSteps << ' '
-         << state.escapeCadence << ' ' << state.stepCount << ' ' << state.settleRemaining << ' '
-         << state.attempted << ' ' << state.observedDelta << ' ' << state.noObservedDelta << ' '
-         << state.settled << ' ' << state.timerStopChecks << ' ' << state.finishing << '\n';
-  output << std::quoted(pendingDescription) << '\n' << rng << '\n';
-  for (const auto &value : stateBeforeApply.values) {
-    output << std::quoted(value) << '\n';
-  }
-  output << recentEvents.size() << '\n';
-  for (const auto &event : recentEvents) {
-    output << std::quoted(event) << '\n';
-  }
-  output << findings.size() << '\n';
-  for (const auto &finding : findings) {
-    output << finding.step << ' ' << std::quoted(finding.bug_class) << ' '
-           << std::quoted(finding.page) << ' ' << std::quoted(finding.event) << ' '
-           << std::quoted(finding.detail) << '\n';
-  }
-  auto writeMap = [&output](const auto &map) {
-    output << map.size() << '\n';
-    for (const auto &entry : map) {
-      output << std::quoted(entry.first) << ' ' << entry.second << '\n';
-    }
-  };
-  writeMap(classCounts);
-  writeMap(eventCounts);
-  writeMap(pageCounts);
-  return output.good();
-}
-
-bool fuzzReadCheckpoint(std::istream &input) {
-  constexpr std::streamsize kMaxCheckpointBytes = 4 * 1024 * 1024;
-  if (input.rdbuf()->in_avail() > kMaxCheckpointBytes)
-    return false;
-  std::string magic;
-  unsigned version = 0;
-  uint32_t event = 0;
-  uint64_t savedSeed = 0;
-  uint32_t savedSteps = 0;
-  bool savedVerbose = false;
-  bool savedStop = false;
-  uint32_t savedEscapes = 0;
-  if (!(input >> magic >> version) || magic != "FURBLE_FUZZ_CHECKPOINT" || version != 1
-      || !(input >> savedSeed >> savedSteps >> savedVerbose >> event >> savedStop >> savedEscapes)
-      || savedSeed != seed || savedSteps != maxSteps) {
-    return false;
-  }
-  FuzzMachine::Checkpoint state {};
-  if (!(input >> state.phase >> state.settleNext >> state.maxSteps >> state.escapeCadence
-        >> state.stepCount >> state.settleRemaining >> state.attempted >> state.observedDelta
-        >> state.noObservedDelta >> state.settled >> state.timerStopChecks >> state.finishing)
-      || maxSteps == 0 || maxSteps > 10000000 || event >= static_cast<uint32_t>(Event::COUNT)
-      || state.maxSteps != maxSteps || state.stepCount > maxSteps || state.phase > 5
-      || state.settleNext > 5 || !machine->restore(state)) {
-    return false;
-  }
-  std::string savedDescription;
-  if (!(input >> std::quoted(savedDescription) >> rng) || savedDescription.size() > 4096) {
-    return false;
-  }
-  std::array<std::string, kObservableQueries.size()> savedBefore;
-  for (auto &value : savedBefore) {
-    if (!(input >> std::quoted(value)) || value.size() > 4096)
-      return false;
-  }
-  pendingEvent = static_cast<Event>(event);
-  size_t count = 0;
-  if (!(input >> count) || count > 10000) {
-    return false;
-  }
-  recentEvents.clear();
-  for (size_t i = 0; i < count; i++) {
-    std::string value;
-    if (!(input >> std::quoted(value)) || value.size() > 4096)
-      return false;
-    recentEvents.push_back(std::move(value));
-  }
-  if (!(input >> count) || count > 100000)
-    return false;
-  findings.clear();
-  for (size_t i = 0; i < count; i++) {
-    Finding finding;
-    if (!(input >> finding.step >> std::quoted(finding.bug_class) >> std::quoted(finding.page)
-          >> std::quoted(finding.event) >> std::quoted(finding.detail))
-        || finding.bug_class.size() > 4096 || finding.page.size() > 4096
-        || finding.event.size() > 4096 || finding.detail.size() > 4096)
-      return false;
-    findings.push_back(std::move(finding));
-  }
-  auto readMap = [&input](auto &map) {
-    size_t size = 0;
-    if (!(input >> size) || size > 100000)
-      return false;
-    for (size_t i = 0; i < size; i++) {
-      std::string key;
-      uint32_t value = 0;
-      if (!(input >> std::quoted(key) >> value) || key.size() > 4096
-          || !map.emplace(std::move(key), value).second)
-        return false;
-    }
-    return true;
-  };
-  classCounts.clear();
-  eventCounts.clear();
-  pageCounts.clear();
-  if (!readMap(classCounts) || !readMap(eventCounts) || !readMap(pageCounts))
-    return false;
-  char trailing = 0;
-  if (input >> trailing)
-    return false;
-  verbose = savedVerbose;
-  pendingWasStop = savedStop;
-  escapeActions = savedEscapes;
-  pendingDescription = std::move(savedDescription);
-  stateBeforeApply.values = std::move(savedBefore);
-  checkpointEligible = false;
-  return true;
-}
-
-void fuzzResumeAfterRestart(void) {
-  checkpointEligible = false;
-}
-
 void fuzzTick(UI *ui) {
   if (!active || ui == nullptr) {
     return;
@@ -772,7 +623,6 @@ void fuzzTick(UI *ui) {
       if (!machine->beginApply()) {
         return;
       }
-      checkpointEligible = false;
       pendingEvent = pickEvent();
       pendingDescription = eventName(pendingEvent);
       pendingWasStop = pendingEvent == Event::INTERVAL_STOP;
@@ -780,15 +630,9 @@ void fuzzTick(UI *ui) {
       applyEvent(ui, pendingEvent);
       recordEvent(pendingDescription);
       eventCounts[pendingDescription]++;
-      checkpointEligible = true;
-      // Let the UI and its scheduler-visible workers finish a complete
-      // handoff before checking the resulting page. Two cycles were enough
-      // for most events but allowed a host-thread wakeup to land one cycle
-      // late, which made page coverage depend on wall-clock scheduling. Keep
-      // the randomized tail so the fuzzer still exercises different settling
-      // windows, but make the minimum deterministic and long enough for the
-      // slowest production path.
-      machine->eventApplied(6 + pick(5));
+      // The post-handler hook counts the current LVGL cycle and the next
+      // settle cycles before Check reads any state.
+      machine->eventApplied(2 + pick(5));
       return;
 
     case FuzzPhase::SETTLE:

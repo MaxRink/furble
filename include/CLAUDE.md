@@ -74,10 +74,10 @@ rebase time.
 
 | PR | Setting keys | Wire ids |
 | --- | --- | --- |
-| Master | shipped settings | 1-22, 24-35, 37-41, 43-44, 46-47, 51-55, 65-69, 72-74 |
+| Master | shipped settings | 1-22, 24-35, 37-41, 43-44, 46-47, 51-55, 65-69, 72-76 |
 | Master (conditional) | display, MQTT, S3 watchdog | 23 (`WATCHDOG` on `FURBLE_M5STICKS3`), 36 (`DISPLAY_MODE` without `FURBLE_NO_DISPLAY`), 56-61 (`FURBLE_MQTT`) |
 | Historical claims | compatibility audit required | 42, 45 |
-| #59 | `ivl_sleep`, `ivl_sleep_thr` | 75, 76 |
+| #59 | no setting claim | none |
 | #63 | no setting claim | none |
 | #90 | Web UI settings | 62 |
 | #265 | no setting claim | none |
