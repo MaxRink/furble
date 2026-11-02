@@ -139,12 +139,14 @@ plaintext partition digests, but the code partitions are AES-CTR-class
 ciphertext. No LUMIX BLE byte is firmware-static; the app remains the primary
 evidence.
 
-Furble uses the MEI0 identity, control shutter, GPS, and clock. The unused
-surface includes control Confirm and Start, movie, focus, readiness
-notifications, APS identity, Wi-Fi start, GPS stop `0x56`, clock offset and
-DST, image transfer, live view, settings, and firmware update. Furble now uses
-a signed GPS altitude and the app's clock offset and DST order. The APS path,
-the GPS stop packet, and the readiness gates remain unimplemented.
+Furble uses the MEI0 identity, control shutter, GPS, and clock. The session
+Confirm `01`, Start `02`, and Finish `03` writes are sent on connect and
+disconnect; they are never focus commands. The GPS stop packet `0x56` is sent on
+disconnect and focus press and release are no-ops. The unused surface includes
+movie, readiness notifications, APS identity, Wi-Fi start, image transfer, live
+view, settings, and firmware update. Furble now uses a signed GPS altitude and
+the app's clock offset and DST order. The APS path and the readiness gates
+remain unimplemented.
 
 Open questions: which bodies use APS, the exact wake state machine, and the
 per-body MTU and write type.
