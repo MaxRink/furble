@@ -7,6 +7,7 @@
 
 #include "FurbleBatterySaver.h"
 #include "FurbleSettings.h"
+#include "FurbleSettingsDefaults.h"
 #include "FurbleTypes.h"
 #include "Preferences.h"
 
@@ -590,13 +591,13 @@ void Settings::init(void) {
           save<uint8_t>(setting.type, 128);
           break;
         case INACTIVITY:
-          // 2 is the 60 second option. A fresh device used to ship with Never,
-          // which left the panel and its backlight on until the user acted.
-          save<uint8_t>(setting.type, 2);
+          // 60 secs. A fresh device used to ship with Never, which left the
+          // panel and its backlight on until the user acted.
+          save<uint8_t>(setting.type, SettingsDefaults::INACTIVITY);
           break;
         case DISPLAY_OFF:
-          // 1 is Off. The old default was 0 (Dim), which still drove the panel.
-          save<uint8_t>(setting.type, 1);
+          // Off. The old default was Dim, which still drove the panel.
+          save<uint8_t>(setting.type, SettingsDefaults::DISPLAY_OFF);
           break;
         case THEME:
           save<std::string>(setting.type, "Default");
@@ -701,14 +702,10 @@ void Settings::init(void) {
           save<bool>(setting.type, true);
           break;
         case SLEEP_CONN:
-#if defined(FURBLE_M5STICKS3)
           // Only the StickS3 has the modem-sleep controller and the GPS burst
           // lock. Fresh devices ship with the low-power connected state on;
           // existing devices keep their stored choice.
-          save<bool>(setting.type, true);
-#else
-          save<bool>(setting.type, false);
-#endif
+          save<bool>(setting.type, SettingsDefaults::sleepConn());
           break;
         case HW_MOTION:
           // Ships as Software, not Auto. Auto prefers the board's hardware

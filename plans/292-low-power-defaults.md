@@ -23,12 +23,15 @@ this is not a migration and does not rewrite user choices.
 
 ## Validation
 
-- `settings_nvs_roundtrip_test`: PASS, including the new defaults.
+- `settings_nvs_roundtrip_test`: PASS, including the StickS3 defaults.
+- New `settings-default-policy` and `settings-default-policy-stickc` targets
+  exercise both branches of the board-conditional sleep default.
 - Full host CTest: 128/128.
 - Certified power-gate scenarios: PASS after refreshing the
   `blind-remote-shutter` baseline. The intended default change moves that
-  scenario from 43.65 mA to 1.15 mA because the connected screen-off state now
-  light sleeps.
+  scenario from 43.65 mA to 4.45 mA because the connected screen-off state now
+  light sleeps. The refresh also wires the existing connected-radio floor into
+  the model, so the new baseline does not hide that term.
 - Representative simulator runs pass: `screen-off-30s`, `menu-idle-30s`,
   `e2e/connect-flow`, `bughunt/power-off-state-matrix`, `e2e/restart-persist`,
   and `e2e/gps-motion-setting`.
