@@ -6,13 +6,15 @@ Two deep reviews ran against master `a3f29dc1`/`8054d183`: one on receiver
 power and one on accuracy, fix quality, and protocol. This plan records what
 they found, what is already fixed, and the sequence for the rest.
 
-Implemented in separate PRs:
+Implemented in open PRs (not on master until they merge):
 
-- **293** corrects the `CFG-NAVX` `navSystem` offset (13, not 6) and the
-  `MON-HW` offsets. Constellation selection may have been a silent no-op.
-- **294** bounds the `ACQUIRING` state so a silent fixed-baud receiver cannot
-  hold `NO_LIGHT_SLEEP` and the 5 V rail forever.
-- **296** carries the companion phone's horizontal accuracy into the GPS fix.
+- **PR #325 / plan 293** corrects the `CFG-NAVX` `navSystem` offset (13, not 6)
+  and the `MON-HW` offsets. Constellation selection may have been a silent
+  no-op.
+- **PR #326 / plan 294** bounds the `ACQUIRING` state so a silent fixed-baud
+  receiver cannot hold `NO_LIGHT_SLEEP` and the 5 V rail forever.
+- **PR #328 / plan 296** carries the companion phone's horizontal accuracy into
+  the GPS fix.
 
 ## Verified findings still open
 
@@ -37,8 +39,9 @@ hardware to implement, although G-05 still decides the real current.
 `wiredFixIsFresh()` accepts a one-satellite, HDOP-20 fix as long as GGA quality
 is non-zero and the age is under 30 s. HDOP is parsed but never used. Companion
 accuracy was dropped until 296; it now reaches `external_fix_t` but no threshold
-uses it. A 2D fix is indistinguishable from 3D during normal geotagging because
-GSA is pruned.
+uses it. The default sentence set still includes GSA, but the fix path ignores
+GSA's fix-type field; with pruning enabled GSA is not requested at all. A 2D fix
+is therefore indistinguishable from 3D during normal geotagging.
 
 The proposed rule is a fixed `satellites >= 4 && hdop_valid && hdop > 0 &&
 hdop <= T` gate, plus the companion accuracy when valid. It must fall through
@@ -87,7 +90,7 @@ v4.2 feature. Do not ship a blind `$PCAS15` mask: a wrong mask can disable GPS.
 | --- | --- | --- | --- | --- |
 | 1 | Duty state machine correctness | Makes the existing standby saving real; prerequisite for 30/60 s | Medium | Host/sim now; G-05 current |
 | 2 | Fix-quality gate + honest age display | Stops bad geotags; uses companion accuracy | Medium | Host/sim now; outdoor threshold |
-| 3 | GPS defaults: Auto baud and RGM+GGA prune | Fixes a fresh install at the v1.1 unit's 115200 and cuts 710 to 91 chars/s | Low | Host/sim; E29/E32 |
+| 3 | GPS defaults: Auto baud and RMC+GGA prune | Fixes a fresh install at the v1.1 unit's 115200 and cuts 710 to 91 chars/s | Low | Host/sim; E29/E32 |
 | 4 | Split settings reload | Avoids re-acquisition on hold/power/duty writes | Low | Host now |
 | 5 | Rate/baud consistency guard | Prevents a configuration the UART cannot carry | Low | Host settings test |
 | 6 | Fix-aware backoff (P-084) | Up to ~28 mA during a no-fix episode | Medium | Opt-in now; G-04/G-07 default |
