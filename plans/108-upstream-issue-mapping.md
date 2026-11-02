@@ -1,5 +1,9 @@
 # 108 - upstream issue mapping
 
+> Historical snapshot: 2026-08-22, fork base `9a2f7be`. The counts and statuses
+> below describe that date, not current master. Re-run the mapping commands
+> before reusing a row.
+
 ## Goal
 
 Cross-reference every upstream gkoh/furble GitHub issue, open and closed,

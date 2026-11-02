@@ -685,3 +685,30 @@ and does not prove each of the seven fields separately.
 
 Firmware CI and physical hardware validation remain pending. These host and
 TSAN results make no camera, radio, or hardware-parity claim.
+
+## Open issue disposition (2026-11-02)
+
+The scheduler-visible `Camera::m_Mutex`, the queued-waiter runtime, fatal
+diagnostics, and the preference-ownership slice are merged on master, including
+PR #286 (`96a05b38`) and its follow-ups. This plan stays the tracker for the
+residual items below; it is not an unmerged implementation plan.
+
+### Issue #283
+
+Fatal diagnostics are merged: argument and scenario parsing are covered, every
+registered simulator thread gets an alternate signal stack, handlers use
+`SA_ONSTACK`, and the handler prints the phase and scenario line before a
+best-effort unwinder. This is observability only. The restarted-re-exec SIGSEGV
+has not been reproduced on demand and its root cause is not established. The
+issue stays open as a sighting tracker; the next occurrence should now leave a
+dump. True stack-overflow coverage remains future work.
+
+### Issue #289 follow-ups
+
+| Item | State |
+| --- | --- |
+| 1. Comment rot naming plan 158 Phase 3 | Done. `sim/freertos.cpp` and `sim/scripts/run-fuzz.sh` now describe the scheduler-visible mutex and the remaining plain host locks. |
+| 2. Per-PID preferences leak on abnormal exit | Partial. Generated stores have an ownership marker, same-PID restart adoption, and orderly cleanup. Cross-run stale sweeping and dead-PID reclamation are deliberately deferred because an encoded PID cannot prove the store is unowned. |
+| 3. Crash handler hardening | Done for alt-stack, early installation, and normal-context unwinder warm-up. Stack-exhaustion coverage and formal async-signal safety remain open. |
+| 4. 50-run load proof on the restored bounds | Partial. The FauxNY 24000 ms leg has the 50-run proof. The Secure 31000 ms and reconnect 20000 ms legs still rest on single measurements; issue #289 records 1-in-24 and 4-in-5 failures under load. They need the same 50-run treatment or a wider measured margin before being called stable. |
+| 5. Fairness and waiter-state dump | Open. The task dump does not yet show waiter state, and the `try_lock()` fast path plus a non-runnable waiter has no dedicated starvation proof. |

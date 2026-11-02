@@ -72,34 +72,27 @@ Master rows exactly against all source-exposed settings ids, including
 conditional rows. It cannot inspect GitHub; audit every open head again at
 rebase time.
 
-| PR | Setting keys | Wire ids |
+| Owner | Setting keys | Wire ids |
 | --- | --- | --- |
 | Master | shipped settings | 1-22, 24-35, 37-41, 43-44, 46-47, 51-55, 62, 65-69, 72-76 |
 | Master (conditional) | display, MQTT, S3 watchdog | 23 (`WATCHDOG` on `FURBLE_M5STICKS3`), 36 (`DISPLAY_MODE` without `FURBLE_NO_DISPLAY`), 56-61 (`FURBLE_MQTT`) |
 | Historical claims | compatibility audit required | 42, 45 |
-| #59 | no setting claim | none |
-| #63 | no setting claim | none |
-| #90 | no setting claim | none |
-| #265 | no setting claim | none |
-| #273 | no setting claim | none |
+| Free | available after rechecking open heads | 48-50, 63-64, 70-71 |
+| Open PRs #317, #318, #319 | no setting claim | none |
 
-Ids 48 through 64 are claimed by other open PRs. Take the next free id below
-the reservations only after checking every open PR head.
-IDs 42 and 45 have historical claims in older branches. Keep those claims
-reserved and do not allocate or reuse either id without a compatibility audit.
-Recheck every open feature PR head immediately before a rebase or merge. The
-five open feature PRs listed above are the settings-relevant reservation rows;
-documentation-only PRs do not change this table. No new id is free merely
-because a branch does not currently touch settings.
+Take the next free id only after checking every open PR head. Ids 42 and 45
+have historical claims in older branches; keep them reserved and do not
+allocate or reuse either without a compatibility audit. Recheck every open
+feature PR head immediately before a rebase or merge. Documentation-only PRs do
+not change this table. No new id is free merely because a branch does not
+currently touch settings.
 
-Audit snapshot (2026-09-13): the exact MaxRink/furble master reviewed was
-`16520a9f97b2db44449b057177965b1d94d33c19`. Remote PR #273 was observed at
-`188a7e9a45d17c552897d020a296dda70f358aee`, an older-base view. The integrated
-PR #273 candidate reviewed here is `b4ae1b299314039e865d6610177dbf4dceaca544`;
-it carries the current settings rows and protocol schema, including
-`AUTO_OFF_CHARGING` (43) and `LEGEND` (65). Use that integrated candidate for
-the reservation audit rather than treating omissions in the remote diff as
-missing source or schema.
+Audit snapshot (2026-11-02): the MaxRink/furble master reviewed was `ea86482a`
+(the PR #321 merge). The shipped settings table and `SETTING_SCHEMAS` were
+checked together. Wire IDs 43 (`AUTO_OFF_CHARGING`), 46 (`IMU`), 75/76
+(`IVL_SLEEP`, `IVL_SLEEP_THR`), and 62 (`WEB_UI`) are merged. The only open
+heads at that date (#317, #318, #319) claim no setting id. Refresh this snapshot
+at every settings-touching rebase.
 - `FurbleSettings.h` widened `MULTISELECT_NAME_MAX` from 16 to 32, which changed
   the stored record size. `Settings::load<multiselect_t>()` and the SD settings
   importer both read the old layout through `multiselect_legacy_t` and widen it.

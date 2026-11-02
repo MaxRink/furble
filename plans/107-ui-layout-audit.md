@@ -16,6 +16,13 @@ and confined to a few narrow-panel pages.
 This plan separates the two so the walkthrough can be corrected to show what the
 device actually renders, and the small real defects can be fixed.
 
+## Current state (2026-11-02)
+
+This document is a historical audit proposal. The walkthrough harness it asked
+for landed in PR #136. The physical-button layout gaps it recorded were tracked
+and closed by plans 165 and 168. Section C remains optional future-proofing for
+a narrow touch board; no product code change is claimed here.
+
 ## Remote page verdict: sim artifact, not a firmware bug
 
 The user flagged the Remote page (`docs/img/remote.png`, `docs/img/dark-remote.png`):

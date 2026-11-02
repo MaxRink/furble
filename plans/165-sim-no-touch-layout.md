@@ -247,6 +247,21 @@ padding arithmetic in `UI::addMenuItem` was written against the 215 px page of
 the touch layout, and the shipped page is 189 px. The padding itself is
 deliberately unchanged; that is the hardware-verified follow-up.
 
+Merged as PR #264. Plan 168 then closed the layout gaps this plan measured and
+promoted the recorded expectations to hard assertions.
+
+## Current follow-up state (2026-11-02)
+
+1. The five overflow cases and the promoted assertions are done in plan 168.
+2. The 80x160 indicator collisions are done in plan 168.
+3. The `FURBLE_SIM_NO_TOUCH=1` fuzz leg is done: `sim-e2e.yml` runs the same
+   seeds and 600-step budget through all three modeled panels with the
+   physical-button input devices.
+4. Deriving the simulator default from the compiled board is still open. The
+   `no_touch` seed remains in the three board-scoped scenarios. Until it lands,
+   the default simulator run still renders the touch layout and the no-touch
+   pass is explicit.
+
 ## Follow-ups
 
 1. Fix the five overflow cases, then promote the five `xassert ui.overflow`
@@ -257,8 +272,9 @@ deliberately unchanged; that is the hardware-verified follow-up.
    168, by a placement-aware route: Buttons keeps the Right indicator floating
    with a reserved column, while Bottom moves it into the navigation band.
 3. Add the `FURBLE_SIM_NO_TOUCH=1` fuzz leg, which becomes green once 1 lands.
-   168 added the scenario leg, `sim/scripts/run-notouch.sh` on all three
-   binaries. The fuzz leg is still open.
+   Done: 168 added the scenario leg, `sim/scripts/run-notouch.sh` on all three
+   binaries, and `sim-e2e.yml` now runs the same seeds and 600-step budget
+   through all three modeled panels with the physical-button input devices.
 4. Derive the simulator default from the compiled board and delete the
    `no_touch` seed from these three scenarios. Every existing overflow scenario
    then measures the shipped layout automatically, and the three board-scoped

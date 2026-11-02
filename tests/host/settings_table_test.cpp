@@ -97,7 +97,7 @@ bool parseReservations(const std::string &source,
     }
     const std::string owner = trim(row[1].str());
     const std::string ids = trim(row[2].str());
-    if (owner == "PR") {
+    if ((owner == "PR") || (owner == "Owner")) {
       foundHeader = true;
       continue;
     }
@@ -154,7 +154,11 @@ bool validateReservations(const std::vector<Reservation> &reservations,
                           const std::set<int> &exposedIds,
                           std::string &error) {
   static const std::set<std::string> expectedOwners = {
-      "Master", "Master (conditional)", "Historical claims", "#59", "#63", "#90", "#265", "#273"};
+      "Master",
+      "Master (conditional)",
+      "Historical claims",
+      "Free",
+      "Open PRs #317, #318, #319"};
   std::set<std::string> owners;
   std::set<std::string> ownerRows;
   std::map<int, std::string> reservationOwners;
@@ -197,52 +201,49 @@ bool validateReservations(const std::vector<Reservation> &reservations,
 void testReservationParser() {
   const std::string valid =
       "### Companion wire id reservations\n"
-      "| PR | Setting keys | Wire ids |\n"
+      "| Owner | Setting keys | Wire ids |\n"
       "| --- | --- | --- |\n"
       "| Master | shipped | 1-2, 65 |\n"
       "| Master (conditional) | conditional | 3 (S3 42) |\n"
       "| Historical claims | audit | 4, 5 |\n"
-      "| #59 | setting | 75, 76 |\n"
-      "| #63 | none | none |\n"
-      "| #90 | setting | 62 |\n"
-      "| #265 | none | none |\n"
-      "| #273 | none | none |\n";
+      "| Free | available | 6, 7 |\n"
+      "| Open PRs #317, #318, #319 | none | none |\n";
   std::vector<Reservation> parsed;
   std::string error;
   check(parseReservations(valid, parsed, error), "reservation parser accepts annotated IDs");
   check(validateReservations(parsed, {1, 2, 3, 65}, error),
         "complete reservation owner set validates");
 
-  std::string deleted = valid.substr(0, valid.find("| #273"));
+  std::string deleted = valid.substr(0, valid.find("| Open PRs"));
   check(parseReservations(deleted, parsed, error), "deleted-row fixture parses");
   check(!validateReservations(parsed, {1, 2, 3, 65}, error),
         "deleted reservation owner row is rejected");
 
-  std::string duplicate = valid + "| #90 | duplicate | 62 |\n";
+  std::string duplicate = valid + "| Free | duplicate | 8 |\n";
   check(parseReservations(duplicate, parsed, error), "duplicate-row fixture parses");
   check(!validateReservations(parsed, {1, 2, 3}, error), "duplicate reservation row is rejected");
 
-  std::string duplicateOwner = valid + "| #90 | duplicate owner | 250 |\n";
+  std::string duplicateOwner = valid + "| Free | duplicate owner | 250 |\n";
   check(parseReservations(duplicateOwner, parsed, error),
         "distinct-ID duplicate-owner fixture parses");
   check(!validateReservations(parsed, {1, 2, 3, 65}, error),
         "duplicate owner is rejected even with a distinct ID");
 
   std::string emptyToken = valid;
-  emptyToken.replace(emptyToken.find("75, 76"), 6, "75,,76");
+  emptyToken.replace(emptyToken.find("6, 7"), 4, "6,,7");
   check(!parseReservations(emptyToken, parsed, error), "empty reservation token is rejected");
 
   std::string trailingToken = valid;
-  trailingToken.replace(trailingToken.find("75, 76"), 6, "75, 76,");
+  trailingToken.replace(trailingToken.find("6, 7"), 4, "6, 7,");
   check(!parseReservations(trailingToken, parsed, error),
         "trailing empty reservation token is rejected");
 
   std::string reversed = valid;
-  reversed.replace(reversed.find("75, 76"), 6, "76-75");
+  reversed.replace(reversed.find("6, 7"), 4, "7-6");
   check(!parseReservations(reversed, parsed, error), "reversed reservation range is rejected");
 
   std::string outOfRange = valid;
-  outOfRange.replace(outOfRange.find("75, 76"), 6, "256");
+  outOfRange.replace(outOfRange.find("6, 7"), 4, "256");
   check(!parseReservations(outOfRange, parsed, error), "out-of-range reservation ID is rejected");
 
   std::string malformedAnnotation = valid;
