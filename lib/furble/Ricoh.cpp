@@ -161,7 +161,10 @@ bool Ricoh::matches(const NimBLEAdvertisedDevice *pDevice) {
 Ricoh::SecurityMode Ricoh::securityMode() const {
   // GR IV firmware exposes numeric-comparison confirmation. The shared Camera
   // pairing callbacks publish the camera's six-digit code and inject the
-  // operator's answer; there is no fixed Ricoh passkey.
+  // operator's answer. They keep the NimBLEDevice::getSecurityPasskey()
+  // fallback, whose default is 123456, for a body that asks for passkey entry
+  // or display instead; numeric comparison is the interactive path, not a
+  // removed fixed passkey.
   return SecurityMode::SECURE_KEYBOARD_DISPLAY;
 }
 
