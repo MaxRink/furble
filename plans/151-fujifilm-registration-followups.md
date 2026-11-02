@@ -1113,3 +1113,13 @@ does not free the client inline, so this test pins the observable
 "stop after link loss" contract; the inline free itself is modeled by
 `mockDropLinkSelfDelete()` in the camera lifetime tests. No hardware run was
 made for this fix.
+
+## Time packet compiler fix (2026-11-02)
+
+The 12-byte UTC time packet added by #318 instantiated the shared
+little-endian helper at both size 12 and size 23. GCC 14's `-Warray-bounds`
+analysis conflates the two arrays after inlining and the `m5stick-s3` build
+failed under `-Werror`. `encodeTime()` now writes the four offset bytes
+directly. The packet is unchanged; the host `fujifilm` tests and
+`FURBLE_VERSION=dev pio run -e m5stick-s3` pass. No camera behavior or
+hardware state changes, so no new bench run applies.
