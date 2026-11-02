@@ -103,12 +103,13 @@ still execute later. Do not blindly retry a timed-out delete or pairing request.
 - `ui audit | page | back` audits or navigates the display UI.
 - `interval start | stop | status` controls the Timer page on display builds.
 - `bulb start | stop | status` controls the Bulb page on display builds.
+- `display status | mode gui | console | brightness <value>` controls display
+  state on display builds.
+
 Workflow commands print `completed: <verb>` when the UI accepts the request, or
 `failed: <verb>: <reason>` and return non-zero when it rejects it. A bounded
 wait prints `pending` when the result is unknown, so do not blindly retry a
 timed-out destructive request.
-- `display status | mode gui | console | brightness <value>` controls display
-  state on display builds.
 
 On the display-less Waveshare ESP32-S3-ETH, `status` reports battery level and
 voltage as unknown (`-1`) and current as unavailable (`0`). It never infers USB

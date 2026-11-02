@@ -7289,16 +7289,7 @@ void UI::serviceRequests(void) {
           // 'connect' resolves a saved-catalog index, which is not the scan
           // list index. Report the mapping so a script does not pair or
           // connect a different body than the one it just listed.
-          int32_t savedIndex = -1;
-          if (saved) {
-            const auto catalog = CameraList::savedSnapshot();
-            for (size_t i = 0; i < catalog.size(); i++) {
-              if (catalog[i] == camera) {
-                savedIndex = static_cast<int32_t>(i);
-                break;
-              }
-            }
-          }
+          const int32_t savedIndex = CameraList::savedIndex(camera.get());
           consolePrint("camera%u.saved_index: %ld\n", static_cast<unsigned>(n),
                        static_cast<long>(savedIndex));
           consolePrint("camera%u.selected: %s\n", static_cast<unsigned>(n),

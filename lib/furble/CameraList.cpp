@@ -505,20 +505,25 @@ void CameraList::addFauxNY(void) {
   m_ConnectList.push_back(std::make_shared<Furble::FauxNY>());
 }
 
-bool CameraList::isSaved(const Furble::Camera *camera) {
+int32_t CameraList::savedIndex(const Furble::Camera *camera) {
   if (camera == nullptr) {
-    return false;
+    return -1;
   }
   const auto saved = savedSnapshot();
-  for (const auto &item : saved) {
+  for (size_t i = 0; i < saved.size(); i++) {
+    const auto &item = saved[i];
     if (CameraListProtocol::sameSavedIdentity(
             static_cast<uint32_t>(item->getType()), static_cast<uint64_t>(item->getAddress()),
             item->getName(), static_cast<uint32_t>(camera->getType()),
             static_cast<uint64_t>(camera->getAddress()), camera->getName())) {
-      return true;
+      return static_cast<int32_t>(i);
     }
   }
-  return false;
+  return -1;
+}
+
+bool CameraList::isSaved(const Furble::Camera *camera) {
+  return savedIndex(camera) >= 0;
 }
 static_assert(static_cast<uint32_t>(Camera::Type::FUJIFILM_SECURE)
               == CameraListProtocol::ROTATING_ADDRESS_TYPE);

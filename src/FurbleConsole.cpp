@@ -92,9 +92,12 @@ struct power_log_t {
 
 power_log_t g_PowerLog;
 
+bool g_CommandReported = false;
+
 /** Report a command result the same way every command does. */
 int fail(const char *message) {
   printf("error: %s\n", message);
+  g_CommandReported = true;
   return 1;
 }
 
@@ -178,6 +181,7 @@ int sendWorkflowRequest(UI::Request request, int32_t arg, const char *what) {
   constexpr TickType_t WORKFLOW_TIMEOUT = pdMS_TO_TICKS(1000);
   if (xSemaphoreTake(completion.state->done, WORKFLOW_TIMEOUT) != pdTRUE) {
     printf("pending: %s\n", what);
+    g_CommandReported = true;
     return 1;
   }
   if (completion.state->token == nullptr) {
@@ -185,9 +189,11 @@ int sendWorkflowRequest(UI::Request request, int32_t arg, const char *what) {
   }
   if (strcmp(completion.state->token, "ok") != 0) {
     printf("failed: %s: %s\n", what, completion.state->token);
+    g_CommandReported = true;
     return 1;
   }
   printf("completed: %s\n", what);
+  g_CommandReported = true;
   return 0;
 }
 
@@ -3196,16 +3202,17 @@ int readByte(uint8_t *byte) {
 
 void run(const std::string &line) {
   int ret = 0;
+  g_CommandReported = false;
   esp_err_t err = esp_console_run(line.c_str(), &ret);
 
   if (err == ESP_ERR_NOT_FOUND) {
     printf("error: unknown command, try 'help'\n");
   } else if ((err != ESP_OK) && (err != ESP_ERR_INVALID_ARG)) {
     printf("error: %s\n", esp_err_to_name(err));
-  } else if (ret != 0) {
-    // Workflow commands already print their own specific failure line. Keep
-    // the handler's non-zero return visible for every other command rather
-    // than discarding the only script-visible outcome.
+  } else if ((ret != 0) && !g_CommandReported) {
+    // The handler printed no specific outcome. Keep the non-zero return
+    // visible rather than discarding the only script-visible result. Do not
+    // add a second line when a workflow already printed pending/failed.
     printf("failed: command returned %d\n", ret);
   }
 }

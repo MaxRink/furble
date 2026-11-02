@@ -53,6 +53,14 @@ class CameraList {
   static bool isSaved(const Furble::Camera *camera);
 
   /**
+   * Saved-catalog index for a camera, or -1 when it is not saved.
+   *
+   * Uses the same identity rule as isSaved(), so a rediscovered Fujifilm
+   * Secure body with a rotated address still maps to its saved record.
+   */
+  static int32_t savedIndex(const Furble::Camera *camera);
+
+  /**
    * Add matching devices to the list.
    *
    * @return true if device matches
