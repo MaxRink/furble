@@ -82,8 +82,8 @@ that do not fit; focus outlines must not cover adjacent setting names.
 | Setting | Default | Values | Applies | Notes |
 | :--- | :--- | :--- | :--- | :--- |
 | Brightness | 128 | slider, roughly 0 to 240 | Now (live preview) | Saved when you release the slider. |
-| Inactivity timeout | Never | Never, 30 secs, 60 secs, 2 mins, 5 mins, 10 mins | Now | Dims and then sleeps the screen after this idle time. |
-| Screen off | Dim | Dim, Off, Off remote on, Dim then off (button boards). Dim, Off, Dim then off (touch boards) | Restart | Touch boards do not offer the remote-on option. Dim then off dims at the inactivity timeout and sleeps the panel 30 s later. |
+| Inactivity timeout | 60 secs | Never, 30 secs, 60 secs, 2 mins, 5 mins, 10 mins | Now | Fresh devices start at 60 secs; an existing stored value is kept. Dims and then sleeps the screen after this idle time. |
+| Screen off | Off (Dim on M5Stack Core Basic) | Dim, Off, Off remote on, Dim then off (button boards). Dim, Off, Dim then off (touch boards) | Restart | Fresh devices start at Off, except the M5Stack Core Basic keeps Dim so its IP5306 boost does not cut the board. Touch boards do not offer the remote-on option. Dim then off dims at the inactivity timeout and sleeps the panel 30 s later. |
 | Calibrate | n/a | action | n/a | Touch boards only. Launches touch calibration and stores the result. |
 | Show Title | On | On, Off | Restart | Hiding the title frees header space on narrow stick displays. |
 | Legend | Buttons | Buttons, Bottom, Off | Restart | Physical-button Stick boards only. Buttons keeps the shipped Right legend beside its button; Bottom places all three legends in the navigation band; Off hides the rendered indicators but retains physical input anchors and layout reservation. |
@@ -220,7 +220,7 @@ Submenu: `Settings` > `Power`.
 
 | Setting | Default | Values | Applies | Notes |
 | :--- | :--- | :--- | :--- | :--- |
-| Sleep while connected | Off | On, Off | Next connection (dangerous) | M5StickS3 only. Doze between BLE events while connected. Read when a connection is made, so set it before connecting. |
+| Sleep while connected | On (M5StickS3), Off elsewhere | On, Off | Next connection (dangerous) | M5StickS3 only. Doze between BLE events while connected. Read when a connection is made, so set it before connecting. Fresh StickS3 devices start at On. |
 | CPU speed | 160 MHz | 80 MHz, 160 MHz, 240 MHz | Now (dangerous) | Higher feels snappier and costs battery. |
 | Battery Style | Icon | Icon, Percent, Both | Now | What the header battery indicator shows. |
 | Auto off | Never | Never, 5 mins, 10 mins, 30 mins, 60 mins | Now | Power off after this idle time. Not offered on M5Stack Core Basic. |

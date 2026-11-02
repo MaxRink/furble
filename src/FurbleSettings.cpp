@@ -590,8 +590,13 @@ void Settings::init(void) {
           save<uint8_t>(setting.type, 128);
           break;
         case INACTIVITY:
+          // 2 is the 60 second option. A fresh device used to ship with Never,
+          // which left the panel and its backlight on until the user acted.
+          save<uint8_t>(setting.type, 2);
+          break;
         case DISPLAY_OFF:
-          save<uint8_t>(setting.type, 0);
+          // 1 is Off. The old default was 0 (Dim), which still drove the panel.
+          save<uint8_t>(setting.type, 1);
           break;
         case THEME:
           save<std::string>(setting.type, "Default");
@@ -682,7 +687,6 @@ void Settings::init(void) {
         case PRESET_PICKER:
         case FAUXNY:
         case AUTOCONNECT:
-        case SLEEP_CONN:
         case COMPANION:
         case SD_GPX:
         // Default off keeps today's behaviour, the profile is strictly opt-in.
@@ -695,6 +699,16 @@ void Settings::init(void) {
           // a scan every 5 s forever; the 2.5 s first retry still recovers a
           // stale session quickly, and later attempts back off to 120 s.
           save<bool>(setting.type, true);
+          break;
+        case SLEEP_CONN:
+#if defined(FURBLE_M5STICKS3)
+          // Only the StickS3 has the modem-sleep controller and the GPS burst
+          // lock. Fresh devices ship with the low-power connected state on;
+          // existing devices keep their stored choice.
+          save<bool>(setting.type, true);
+#else
+          save<bool>(setting.type, false);
+#endif
           break;
         case HW_MOTION:
           // Ships as Software, not Auto. Auto prefers the board's hardware
