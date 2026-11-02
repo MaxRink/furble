@@ -114,40 +114,39 @@ Platform &Platform::getInstance(void) {
       default:
         break;
     }
-  }
 
-  // The IMU keeps the M5Unified default axis order. The spirit level derives
-  // roll from atan2(ay, az) to drive screen X and pitch to drive screen Y.
-  // That orientation is UNVERIFIED on all boards pending a hardware check.
+    // The IMU keeps the M5Unified default axis order. The spirit level derives
+    // roll from atan2(ay, az) to drive screen X and pitch to drive screen Y.
+    // That orientation is UNVERIFIED on all boards pending a hardware check.
 
-  switch (M5.getBoard()) {
-    case m5::board_t::board_M5StickC:
-    case m5::board_t::board_M5StickCPlus:
-    case m5::board_t::board_M5Tough:
-      instance.m_PMICHack = true;
-      break;
-    default:
-      instance.m_PMICHack = false;
-  }
+    switch (M5.getBoard()) {
+      case m5::board_t::board_M5StickC:
+      case m5::board_t::board_M5StickCPlus:
+      case m5::board_t::board_M5Tough:
+        instance.m_PMICHack = true;
+        break;
+      default:
+        instance.m_PMICHack = false;
+    }
 
 #if defined(FURBLE_M5STICKS3)
-  instance.m_M5PM1.begin(&M5.In_I2C);
-  instance.m_M5PM1.setSingleResetDisable(true);  // disable BtnPWR single-click reset
-  instance.m_M5PM1.setDoubleOffDisable(true);    // disable BtnPWR double-click power off
-  // Never lock the only recovery path which works when the ESP32 is wedged.
-  // The PMIC setting is retained independently of an ESP32 reset, so this
-  // must be an explicit write followed by a readback on every boot.
-  if (!instance.unlockDownloadRecovery()) {
-    ESP_LOGE(LOG_TAG, "M5PM1 download recovery remains unavailable");
-  }
+    instance.m_M5PM1.begin(&M5.In_I2C);
+    instance.m_M5PM1.setSingleResetDisable(true);  // disable BtnPWR single-click reset
+    instance.m_M5PM1.setDoubleOffDisable(true);    // disable BtnPWR double-click power off
+    // Never lock the only recovery path which works when the ESP32 is wedged.
+    // The PMIC setting is retained independently of an ESP32 reset, so this
+    // must be an explicit write followed by a readback on every boot.
+    if (!instance.unlockDownloadRecovery()) {
+      ESP_LOGE(LOG_TAG, "M5PM1 download recovery remains unavailable");
+    }
 #endif
 
-  instance.initBattery();
+    instance.initBattery();
 
-  instance.m_Init = true;
-}
+    instance.m_Init = true;
+  }
 
-return instance;
+  return instance;
 }
 
 void Platform::init(void) {
