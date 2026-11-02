@@ -8,6 +8,26 @@ Primary test hardware: M5StickS3 with GPS/BDS Unit v1.1 (AT6668). Only Fujifilm
 cameras are available for hardware tests. Other vendors are covered by code
 review and the FauxNY test camera, and are marked as untested in each PR.
 
+A plan is a historical record once its work lands. The "Implementation state"
+or "State" section inside each document is authoritative over the roadmap
+summary; the index is an entry point, not a status claim. Open issues are owned
+by the plans in the table below.
+
+## Open issue ownership (2026-11-02)
+
+Every open issue maps to one owning plan. The plan records the implementation
+state and the remaining gate; the issue stays open until that gate lands.
+
+| Issue | Plan | Current state |
+| --- | --- | --- |
+| #280 | [288](288-provisioning-schema.md) | Ledger refreshed; no open PR claims a wire id. Only the documented rebase-time re-audit remains. |
+| #281 | [291](291-ui-upstream-layout-parity.md) | Open. About, GPS, and Connected content parity with upstream, one page PR each. |
+| #282 | [168](168-notouch-layout-overflows.md) | Resolved on master by the StickC text-size clamp and `bughunt/stickc-connected-large-imu.txt`. |
+| #283 | [173](173-sim-scheduler-visibility.md) | Diagnostics merged; root cause of the restart SIGSEGV still unknown. Tracker stays open. |
+| #288 | [288](288-provisioning-schema.md) | 43/46 schema rows and the all-keyed walk are merged. Satisfied. |
+| #289 | [173](173-sim-scheduler-visibility.md) | 3 of 5 items done. Per-PID preferences sweep, Secure/reconnect load proof, and fairness/waiter dump remain. |
+| #290 | [290](290-sim-page-query-map.md) | Merged with PR #273; the query-map contract test passes. Satisfied. |
+
 ## Engineering lessons
 
 - [95-engineering-lessons.md](95-engineering-lessons.md): durable hardware,
@@ -196,9 +216,61 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | [174-coverage-empty-profiles.md](174-coverage-empty-profiles.md) | Two host suites that measured nothing under coverage: the control shim adopts the stop-and-join task contract so both exit through main(), a coverage run fails naming a test whose raw profile is empty or missing, the console shim refuses a task created after shutdown, and the ctest summary header is anchored so a failing test cannot fabricate a crash report |
 | [175-coverage-crash-output.md](175-coverage-crash-output.md) | Failed simulator coverage scenarios retain a bounded output tail so signal diagnostics remain visible in CI |
 | [176-sim-task-notifications.md](176-sim-task-notifications.md) | FreeRTOS task notification counters in the simulator wake blocked owners, preserve clear/decrement and virtual timeout semantics, and unwind on shutdown |
+| [285-power-accounting.md](285-power-accounting.md) | Issue #285: opt-in synthetic power accounting and frozen comparator identity |
 | [288-provisioning-schema.md](288-provisioning-schema.md) | Provisioning schema coverage for every keyed setting and current wire-ID reservation ledger |
+| [291-ui-upstream-layout-parity.md](291-ui-upstream-layout-parity.md) | About, GPS, and Connected content parity with upstream, one page PR at a time with per-board captures |
 | [176-android-camera-catalog.md](176-android-camera-catalog.md) | Android camera characteristic discovery, stable-ID catalog, controls, and bounded protocol decoding |
 | [178-sim-startup-settings-order.md](178-sim-startup-settings-order.md) | Apply simulator settings before platform construction while preserving panel, environment, watchdog, and profiler boundaries |
+
+## Additional plan documents
+
+These documents exist on master but were not in the original index. Some share
+a number because existing plans are never renumbered; they are distinct files.
+They are listed here so no plan is orphaned. Implementation state inside each
+document is authoritative over any older summary.
+
+| Doc | Content |
+| --- | --- |
+| [67-fujifilm-dial-detection.md](67-fujifilm-dial-detection.md) | Fujifilm drive dial detection |
+| [73-pentax-k.md](73-pentax-k.md) | Pentax K through the Ricoh Imaging BLE family |
+| [74-dji-osmo.md](74-dji-osmo.md) | DJI Osmo Action BLE remote support |
+| [77-battery-saver-profile.md](77-battery-saver-profile.md) | Battery Saver profile |
+| [82-disconnect-liveness.md](82-disconnect-liveness.md) | Disconnect liveness |
+| [83-lifecycle-tests.md](83-lifecycle-tests.md) | Host regression tests for the connect and disconnect lifecycle |
+| [84-unit-coverage.md](84-unit-coverage.md) | Broader host unit test coverage |
+| [85-sim-e2e.md](85-sim-e2e.md) | Simulator end-to-end scenarios |
+| [86-sim-bug-hunt.md](86-sim-bug-hunt.md) | SDL simulator bug hunt |
+| [87-sim-buttons.md](87-sim-buttons.md) | Per-model physical buttons in the SDL sim |
+| [88-alternate-hardware.md](88-alternate-hardware.md) | Alternate hardware and Meshtastic coexistence |
+| [89-reconnect-ui.md](89-reconnect-ui.md) | Reconnect UI indicator |
+| [92-ui-icons.md](92-ui-icons.md) | Menu icon set |
+| [97-followups.md](97-followups.md) | Consolidated follow-up backlog |
+| [98-power-optimization-audit.md](98-power-optimization-audit.md) | Power optimization audit |
+| [98b-power-followup.md](98b-power-followup.md) | GPS degraded lock recovery follow-up |
+| [99-nimble-client-leak.md](99-nimble-client-leak.md) | NimBLE client leak fix |
+| [100-console-debug.md](100-console-debug.md) | Console debug dump family |
+| [100-sim-fault-injection-bughunt.md](100-sim-fault-injection-bughunt.md) | Host fault injection and BLE connect failure hunting |
+| [101-boot-splash.md](101-boot-splash.md) | Power-on boot splash |
+| [102-disconnect-freeze.md](102-disconnect-freeze.md) | Disconnect off the UI task |
+| [103-real-control-e2e-harness.md](103-real-control-e2e-harness.md) | Real Control connect/disconnect end-to-end harness |
+| [104-ble-fuzzing.md](104-ble-fuzzing.md) | Seeded BLE lifecycle fuzzing |
+| [104-focus-outline-dedup.md](104-focus-outline-dedup.md) | Single focus ring per selected item |
+| [105-ui-fuzzing.md](105-ui-fuzzing.md) | Seeded UI fuzzer |
+| [106-flash-size-optimization.md](106-flash-size-optimization.md) | Flash size optimization |
+| [107-ui-layout-audit.md](107-ui-layout-audit.md) | Walkthrough screenshot layout audit |
+| [108-upstream-issue-mapping.md](108-upstream-issue-mapping.md) | Historical upstream issue mapping snapshot |
+| [109-sim-coverage-expand.md](109-sim-coverage-expand.md) | Simulator coverage expansion |
+| [110-startup-render-watchdog.md](110-startup-render-watchdog.md) | Startup render task-watchdog stall |
+| [111-power-recommendations.md](111-power-recommendations.md) | Power optimization recommendations |
+| [112-connect-crash-mid-drop.md](112-connect-crash-mid-drop.md) | Connect crash on a mid-connect peer drop |
+| [113-connection-state-sim-coverage.md](113-connection-state-sim-coverage.md) | Connection-state simulator coverage |
+| [118-sim-mqtt-transport.md](118-sim-mqtt-transport.md) | Optional simulator MQTT transport |
+| [126-esp-optimization-audit.md](126-esp-optimization-audit.md) | ESP-IDF optimization and reproducibility audit |
+| [127-apple-companion.md](127-apple-companion.md) | Apple companion foundation |
+| [127-reproducible-builds.md](127-reproducible-builds.md) | Reproducible firmware builds |
+| [129-m5-dependencies-idf55.md](129-m5-dependencies-idf55.md) | M5 dependency compatibility slice |
+| [130-espressif32-613-idf553.md](130-espressif32-613-idf553.md) | Espressif32 6.13.0 and ESP-IDF 5.5.3 |
+| [141-ci-manual-dispatch.md](141-ci-manual-dispatch.md) | Reliable manual firmware CI |
 
 ## Design documents
 
@@ -219,27 +291,26 @@ review and the FauxNY test camera, and are marked as untested in each PR.
 | [90-scheduled-shooting.md](90-scheduled-shooting.md) | Deferred: scheduled shooting via RTC alarm |
 | [91-mic-trigger.md](91-mic-trigger.md) | Deferred: sound triggered shutter |
 
- ## Wire ids
+## Wire ids
 
-The frozen setting wire_id ledger lives in
-[50-companion-app-design.md](50-companion-app-design.md), and the reservation
-table for the ids claimed by open PRs lives in `include/CLAUDE.md`. Current
-integrated allocations run through 46 (`IMU`). Fix hold and extrapolation hold
-67 and 68, and plan 32 phase 2 holds 69 to 71. Wire id 42 is reserved for the
-timezone setting planned by the time-policy work. Id 43 is allocated to the
-charging auto-off opt-in (`AUTO_OFF_CHARGING`) after auditing the current
-source and the fetched/open persistent-time and WiFi charging branches; those
-refs do not expose 43. Off-wire
-id 0 remains used by `BULB`, `TOUCH_CALIBRATION`, `MULTISELECT`, `GPX_PERIOD`,
-and `BATTERY_SAVER`. Wire id 47 is reserved for the companion-password
-contract. Wire ids 69 to 71 are reserved for plan 32; phase 2 uses 69 for
-`GPS_PLATFORM`. Stacked branches with provisional ids must renumber at
-rebase; ids only freeze when a PR merges.
+`src/FurbleSettings.cpp` is the source of truth for shipped ids, and every
+nonzero id has a row in `SETTING_SCHEMAS`. `tests/host/settings_table_test.cpp`
+checks the ledger against the source and rejects duplicate owners;
+`tests/host/provision_apply_test.cpp` walks every keyed setting and fails on a
+missing schema row. The executable reservation table lives in
+[include/CLAUDE.md](../include/CLAUDE.md).
 
-The complete reservation table, covering master and every open PR head, lives
-in [include/CLAUDE.md](../include/CLAUDE.md) and was assigned in issue #280.
-This branch claims 72 (`IMU_WAKE`) and 73 (`IMU_TRIG`); a shipped id such as
-46 (`IMU`) never moves, because it is a companion client contract.
+Current master (`ea86482a`, 2026-11-02) uses 1-22, 24-35, 37-41, 43-44, 46-47,
+51-55, 62, 65-69, and 72-76. Conditional ids are 23 (`WATCHDOG` on
+`FURBLE_M5STICKS3`), 36 (`DISPLAY_MODE` without `FURBLE_NO_DISPLAY`), and 56-61
+(`FURBLE_MQTT`). Ids 48-50, 63-64, and 70-71 are free. Ids 42 and 45 retain
+historical claims and need a compatibility audit before reuse. Off-wire id 0
+remains used by `BULB`, `TOUCH_CALIBRATION`, `MULTISELECT`, `GPX_PERIOD`, and
+`BATTERY_SAVER`.
+
+The three open PR heads (#317, #318, #319) claim no setting id. Recheck every
+open feature PR head immediately before a rebase or merge; ids only freeze when
+a PR merges, and a shipped id such as 46 (`IMU`) never moves.
 
 ## Dependencies
 

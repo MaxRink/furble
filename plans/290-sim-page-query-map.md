@@ -43,5 +43,14 @@ a certified assertion now fails this host contract test.
 
 ## Validation boundary
 
-Root owns builds and tests for this change. The isolated implementation lane
-performed no compilation or test run.
+Merged on master with PR #273 (merge commit `2e3491de`). The inferred-size map
+is in `src/FurbleUI.cpp`, and `tests/test_sim_ci_contract.py` passes on the
+merged tree: 10 tests, including the query-map to scenario-assertion
+comparison. `python3 tools/check_sim_scenarios.py` reports the manifest
+complete.
+
+## Issue disposition
+
+Open issue #290 is satisfied on master. It can close after this plan update.
+The guard remains the regression: a mapped page without a certified `ui.page`
+assertion fails the host contract test.

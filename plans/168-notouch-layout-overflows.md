@@ -7,9 +7,11 @@ values, including `LEGEND_OFF` value 2. This is a metadata assertion
 correction only; it does not change the firmware wire contract or establish
 Android emulator or hardware validation.
 
-The integrated candidate has not been flashed and PR273 remains hardware-gated.
-The owner confirmed only the separate PR313 hint restoration on the stick;
-its external watchdog remains off by explicit choice.
+PR #273 merged as `2e3491de`. The layout fixes and the certified
+physical-button scenarios are on master. The merged image has not been flashed
+as a hardware validation pass, so hardware Display validation remains the open
+gate. The owner confirmed only the separate PR313 hint restoration on the
+stick; its external watchdog remains off by explicit choice.
 
 Application source `9d5a8a483d508e35a6ed436f482a21a7944df57e` passes all ten
 Display cases, twelve broader page matrix/sweep cases, 298 physical-layout
@@ -937,6 +939,17 @@ The certified `bughunt/stickc-connected-large-imu.txt` regression now covers
 the related persisted-Large Connected-page path on the 80x160 panel. It
 asserts the IMU-gated Level entry, label and overlap safety, and clear legend
 indicators at the restored top and bottom scroll endpoints.
+
+## Issue disposition (2026-11-02)
+
+- **#282** is resolved on master. `TextSizePolicy` caps the 80x160 M5StickC at
+  Normal, the roller offers only Small and Normal there, and a persisted Large
+  value clamps at render time. `bughunt/stickc-connected-large-imu.txt` covers
+  the IMU-gated Connected page at that clamped size. The issue can close.
+- **#281** is the remaining upstream content-parity work for About, GPS, and
+  Connected; it is tracked in [291](291-ui-upstream-layout-parity.md).
+- **#283** is a crash tracker, not a layout item; plan 173 carries the
+  diagnostic state.
 
 ### Historical follow-up candidate: Bulb80 compact layout
 
