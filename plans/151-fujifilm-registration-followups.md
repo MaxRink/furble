@@ -1093,3 +1093,23 @@ cycles and one cancel during the security wait, with the manual pairing-screen
 exit performed as required. The existing 20-cycle log remains the broader
 stress evidence. The stale-bond, full recovery, and Already Saved gates above
 remain unverified and are not waived by the shorter cancellation procedure.
+
+## Location-sync enable lifetime (2026-11-02)
+
+Copilot's post-merge review of #318 found a lifetime hole in the Secure
+location-sync enable. `Fujifilm::sendGeoData()` writes `01 00` to AAB609C4
+before the first geotag. If the link drops during that write, NimBLE frees the
+self-deleting client and its cached services inline, but the failure branch
+fell through to `pSvc->getCharacteristic(CHR_GEOTAG_UUID)` and dereferenced the
+freed service. The fix re-checks `isConnected()` after the enable attempt,
+before the cached geotag service is reused. The UUID-only read and write seams
+also refuse once the connection flag is down, so a later step cannot touch the
+freed client.
+
+Coverage: `fujifilm-registration-gate` connects a Secure peer, requests a
+geotag, forces a drop on the AAB609C4 write, and asserts the link is down with
+`accessAfterDrop() == 0`. Deviation: the host peer's plain `mockDropLink()`
+does not free the client inline, so this test pins the observable
+"stop after link loss" contract; the inline free itself is modeled by
+`mockDropLinkSelfDelete()` in the camera lifetime tests. No hardware run was
+made for this fix.
