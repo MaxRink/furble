@@ -2775,7 +2775,7 @@ void GPS::serviceSerial(void) {
 
   int bytes = uart_read_bytes(m_UART, buffer.data(), buffer.size(), 1);
   if (bytes > 0) {
-    beginBurst(Platform::getInstance().tick());
+    const uint32_t passedBefore = getStatusSnapshot().sentences_passed;
 
     // processSerial demultiplexes NMEA and CASIC frames. NMEA bytes route
     // through processNmea, which does the console echo, TinyGPSPlus encode and
@@ -2783,7 +2783,14 @@ void GPS::serviceSerial(void) {
     // once per read pass.
     processSerial(buffer.data(), bytes);
 
-    m_LastSentence = Platform::getInstance().tick();
+    const uint32_t now = Platform::getInstance().tick();
+    m_LastSentence = now;
+    // Only a checksum-valid NMEA sentence starts or extends a burst. Line
+    // noise, malformed NMEA, and binary-only frames must not clear the
+    // acquisition deadline or move ACQUIRING into BURST.
+    if (getStatusSnapshot().sentences_passed != passedBefore) {
+      beginBurst(now);
+    }
   }
 }
 

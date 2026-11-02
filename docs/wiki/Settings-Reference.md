@@ -146,10 +146,12 @@ is enabled.
 | Satellites | n/a | page | n/a | GSV/GSA detail: in-view/used counts, DOP, C/N0 and used flags. Capture runs only while this page is open. |
 
 The receiver is set from these when GPS is enabled, and it returns to its own
-defaults the next time it is powered off. With Auto selected, an absent receiver
-is reported and the external rail is dropped; furble retries once after 60
-seconds. Auto detection, ephemeris replay and Platform have simulator coverage
-and are pending live AT6668 verification.
+defaults the next time it is powered off. Auto declares a receiver only after
+two checksummed NMEA sentences; a fixed baud arms a 30-second acquisition
+deadline. In both cases a silent receiver is reported as absent, the external
+rail is dropped, and furble retries once after 60 seconds. Auto detection,
+ephemeris replay and Platform have simulator coverage and are pending live
+AT6668 verification.
 
 ### Timer (intervalometer)
 
