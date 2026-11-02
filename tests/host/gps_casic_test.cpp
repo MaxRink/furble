@@ -375,12 +375,15 @@ bool testMonHw() {
   buf[13] = 0x55;
   buf[20] = 0x07;
   buf[24] = 0x2A;
+  buf[25] = 0x33;
+  buf[26] = 0x22;
+  buf[27] = 0x11;
   const Casic::MonHw hw = Casic::parseMonHw(buf.data(), buf.size());
   check(hw.valid, "a 56-byte MON-HW buffer is valid");
   check(hw.noise == 0x11223344u, "noise reads little-endian from offset 0");
   check(hw.agc == 0x5566u, "agc reads little-endian from offset 12");
   check(hw.antenna_status == 0x07, "antenna_status reads from offset 20");
-  check(hw.jam_indicator == 0x2Au, "jam_indicator reads from offset 24");
+  check(hw.jam_indicator == 0x1122332Au, "jam_indicator reads a 32-bit word from offset 24");
 
   std::vector<uint8_t> shortBuf(10, 0);
   const Casic::MonHw shortHw = Casic::parseMonHw(shortBuf.data(), shortBuf.size());

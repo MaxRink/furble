@@ -1430,7 +1430,8 @@ int gpsMonHw(void) {
     printf(" %02X", report.raw[i]);
   }
   printf("\n");
-  printf("note: MON-HW layout is unverified, hardware-tuning-pending\n");
+  printf(
+      "note: MON-HW offsets follow CASIC 2.14.2; live field values are hardware-tuning-pending\n");
   return 0;
 }
 
