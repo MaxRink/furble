@@ -533,7 +533,17 @@ void wifiTask(void *) {
     }
 #endif
 
-    xTaskNotifyWait(0, UINT32_MAX, &notification, portMAX_DELAY);
+#if defined(FURBLE_ETHERNET)
+    // A retryable disconnect clears g_Connected and notifies while the
+    // connected-state wait is active, consuming that notification. Bound the
+    // idle wait whenever a connection is still requested so the retry loop is
+    // re-entered instead of parking until the next external event.
+    const TickType_t idleWait =
+        g_ConnectRequested ? pdMS_TO_TICKS(WIRED_RECHECK_MS) : portMAX_DELAY;
+#else
+    const TickType_t idleWait = portMAX_DELAY;
+#endif
+    xTaskNotifyWait(0, UINT32_MAX, &notification, idleWait);
 
     while (g_ConnectRequested && !g_Connected) {
       const uint32_t delay = takeRetryDelay();

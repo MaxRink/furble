@@ -95,17 +95,18 @@ feed (P-077) and disabling the USB Serial/JTAG console in release (P-205).
    row and eight camera families stay `unknown`. FauxNY cannot produce a family
    measurement.
 3. **The simulator is a relative S3 model.** It has no scan state, brightness
-   input, wake cost, PSRAM, PMIC, or peripheral term. Its connected baseline
-   still contains a 3.2989 mA radio term that the current code would not produce.
+   input, wake cost, PSRAM, PMIC, or peripheral term. The connected-radio floor
+   is now driven by `Control::setState()` (P-039) and asserted by four connected
+   scenarios, so it is wired rather than dead, but it remains a modeled term.
 4. **The 3.3 mA anchor has incomplete provenance.** It is tagged
    `measured-local`, but the plan 00 results table does not contain the drain run.
 5. **Two numbers are contested.** The screen-off baseline is 0.510703 mA, not the
    0.25 mA cited in plan 98 and three lanes. The AXP192 floor is about 2 mA in
    plan 98 and about 316 uA by the Board lane's block sum.
-6. **Plan 98 is partly stale, and the biggest code win is absent.** The CI gate
-   exists, Wi-Fi is initialized, and the model's connected floor is zero. No
-   `esp_deep_sleep` call exists, the plan 26 watchdog conflict is open, and the
-   Core cannot hold a steady state below 45 mA.
+6. **Plan 98 is partly stale.** The CI gate exists and the model's connected
+   floor is wired. Wi-Fi initialization is lazy since P-034, and no
+   `esp_deep_sleep` call exists on this branch, so the plan 26 watchdog conflict
+   is still open and the Core cannot hold a steady state below 45 mA.
 7. **Camera parity is out of scope.** The camera rows measure link power, not
    protocol parity. No errata or application note is cited, and several vendor
    documents were not opened: W5500 current, FT6336U, ES8311, AW8737, BM8563, and
@@ -114,5 +115,8 @@ feed (P-077) and disabling the USB Serial/JTAG console in release (P-205).
 ## What this change set does
 
 It consolidates the seven lanes into one ranked matrix, one bench plan, and one
-document register, and records twenty-three lane disagreements instead of resolving
-them silently. It changes no default and proves no saving.
+document register, and records twenty-three lane disagreements instead of
+resolving them silently. It also implements the safe-now changes listed in the
+matrix and changes three defaults: the first-boot scan timeout becomes 60 s, the
+reconnect backoff ships on, and the staged Dim-then-off mode is a new persisted
+option. Every implemented row carries a test; none proves a current saving.

@@ -79,6 +79,8 @@ class Autobaud {
   State state(void) const { return m_State; }
   uint32_t baud(void) const { return LADDER[m_Step < LADDER.size() ? m_Step : 0]; }
   size_t step(void) const { return m_Step; }
+  /** Wall-clock deadline of the current ladder step, for the task wait. */
+  uint32_t deadline(void) const { return m_Deadline; }
 
  private:
   State m_State = State::IDLE;

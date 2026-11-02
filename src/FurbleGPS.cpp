@@ -580,6 +580,17 @@ TickType_t GPS::cycleWait(uint32_t now) const {
     wait = std::min(wait, tickUntil(now, m_EphPollDeadline));
   }
 
+  // While the autobaud ladder runs, wake at its step deadline. A silent UART
+  // would otherwise be serviced by the 1 s fallback and stretch every 1200 ms
+  // step, making the six-step probe take about twice as long as designed.
+  if (m_ProbePending.load()
+      || (static_cast<receiver_state_t>(m_ReceiverState.load()) == receiver_state_t::DETECTING)) {
+    const uint32_t deadline = m_Autobaud.deadline();
+    if (deadline != 0) {
+      wait = std::min(wait, tickUntil(now, deadline));
+    }
+  }
+
   // a burst can be active in any state, wake in time for the idle gap check
   if (m_BurstActive) {
     wait = std::min(wait, tickUntil(now, m_LastSentence + BURST_GAP_MS));

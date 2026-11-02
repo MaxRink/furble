@@ -350,6 +350,14 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
       return true;
 
     case Settings::DISPLAY_OFF:
+      // Dim 0, Off 1, Off remote on 2, and the staged Dim then off 3. Touch
+      // boards expose 3 as their third row, so a backup must round-trip it.
+      if (!parseUnsigned(text, 3, value)) {
+        return false;
+      }
+      Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
+      return true;
+
     case Settings::GPS_POWER:
       if (!parseUnsigned(text, 2, value)) {
         return false;

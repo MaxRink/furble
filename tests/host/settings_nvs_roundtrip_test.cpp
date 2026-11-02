@@ -217,7 +217,7 @@ std::vector<SettingCase> settingCases() {
   return {
       {Settings::BRIGHTNESS, "BRIGHTNESS", uint8_t {128}, uint8_t {77}, StorageKind::U8},
       {Settings::INACTIVITY, "INACTIVITY", uint8_t {0}, uint8_t {9}, StorageKind::U8},
-      {Settings::DISPLAY_OFF, "DISPLAY_OFF", uint8_t {0}, uint8_t {2}, StorageKind::U8},
+      {Settings::DISPLAY_OFF, "DISPLAY_OFF", uint8_t {0}, uint8_t {3}, StorageKind::U8},
       {Settings::THEME, "THEME", std::string {"Default"}, std::string {"Dark"},
        StorageKind::STRING},
       {Settings::TEXT_SIZE, "TEXT_SIZE", uint8_t {TextSizePolicy::DEFAULT},
