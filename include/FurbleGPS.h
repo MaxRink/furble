@@ -391,6 +391,10 @@ class GPS {
 
   static constexpr uint32_t GPS_BAUD_AUTO = 0;
   static constexpr uint32_t NO_RECEIVER_RETRY_MS = 60 * 1000;
+  // Bound the initial ACQUIRING state. A silent fixed-baud receiver used to
+  // hold NO_LIGHT_SLEEP and the 5 V rail forever because only a valid sentence
+  // could leave ACQUIRING.
+  static constexpr uint32_t ACQUIRE_TIMEOUT_MS = 30 * 1000;
 
   static constexpr uint8_t MON_CLASS = 0x0A;
   static constexpr uint8_t MON_HW_ID = 0x09;
@@ -635,9 +639,9 @@ class GPS {
   uint32_t m_ResyncDeadline = 0;
   // bounds a degraded retry probe, a stale prediction must not latch ACQUIRING
   uint32_t m_ProbeDeadline = 0;
-  // A stored fixed baud entered ACQUIRING without an autobaud proof. Cleared
-  // by the first burst; a probe timeout while set means the unit is absent.
-  bool m_FixedBaudProbe = false;
+  // bounds the initial acquisition after enable() or an autobaud lock
+  uint32_t m_AcquireDeadline = 0;
+  uint32_t m_AcquireSentences = 0;
   GpsDegradedRetry m_Degraded;
   uint32_t m_LastBurstStart = 0;
   std::array<uint32_t, 5> m_PeriodSamples = {};

@@ -309,6 +309,8 @@ void GPS::resetAcquisition(uint32_t now) {
   m_MeasureDeadline = 0;
   m_ResyncDeadline = 0;
   m_ProbeDeadline = 0;
+  m_AcquireDeadline = 0;
+  m_AcquireSentences = 0;
   m_Degraded.reset();
   m_LastBurstStart = 0;
   m_PeriodSamples.fill(0);
@@ -322,7 +324,6 @@ void GPS::resetAcquisition(uint32_t now) {
   m_SimFreshFixesParsed = 0;
 #endif
   m_CycleRequest = false;
-  m_FixedBaudProbe = false;
   (void)now;
 }
 
@@ -375,7 +376,10 @@ void GPS::enable(void) {
     m_DutySeconds = duty;
     // cached so the status readers never reach NVS on a periodic path
     m_RateMs = static_cast<uint16_t>(rate);
-    resetAcquisition(Platform::getInstance().tick());
+    const uint32_t now = Platform::getInstance().tick();
+    resetAcquisition(now);
+    m_AcquireDeadline = now + ACQUIRE_TIMEOUT_MS;
+    m_AcquireSentences = getStatusSnapshot().sentences_passed;
 
     m_NoReceiverRetried = false;
     m_NoReceiverRetryAt = 0;
@@ -398,13 +402,9 @@ void GPS::enable(void) {
       m_ConfigStart = Platform::getInstance().tick();
       m_ConfigPending = true;
 
-      // A stored fixed baud is only a claim that a receiver is attached. Arm
-      // the same acquisition deadline the degraded retry uses, so a silent
-      // unit falls back instead of holding the wake lock forever. The first
-      // burst clears the flag; a timeout while it is set means the unit is
-      // absent at that rate.
-      m_FixedBaudProbe = true;
-      m_ProbeDeadline = m_ConfigStart + DEGRADED_PROBE_MS;
+      // A stored fixed baud is only a claim that a receiver is attached. The
+      // acquisition deadline armed above bounds the wait for the first valid
+      // sentence on this path too.
     }
   }
 
@@ -481,6 +481,8 @@ void GPS::onProbeLocked(uint32_t now) {
   {
     std::lock_guard<std::mutex> guard(m_CycleMutex);
     resetAcquisition(now);
+    m_AcquireDeadline = now + ACQUIRE_TIMEOUT_MS;
+    m_AcquireSentences = getStatusSnapshot().sentences_passed;
     m_ConfigChars = getStatusSnapshot().chars_processed;
     m_ConfigStart = now;
     m_ConfigPending = true;
@@ -492,7 +494,7 @@ void GPS::onProbeLocked(uint32_t now) {
 }
 
 void GPS::onProbeFailed(uint32_t now) {
-  ESP_LOGW(LOG_TAG, "GPS autobaud found no receiver");
+  ESP_LOGW(LOG_TAG, "GPS receiver not detected");
   m_DetectedBaud.store(0);
   m_ConfigPending = false;
 
@@ -633,6 +635,11 @@ TickType_t GPS::cycleWait(uint32_t now) const {
       if (!m_BurstActive && (m_ProbeDeadline != 0)) {
         wait = std::min(wait, tickUntil(now, m_ProbeDeadline));
       }
+      // the initial acquisition is bounded too, so a silent fixed-baud
+      // receiver cannot pin the lock and the rail forever
+      if (!m_BurstActive && (m_AcquireDeadline != 0)) {
+        wait = std::min(wait, tickUntil(now, m_AcquireDeadline));
+      }
       break;
 
     case cycle_state_t::DEGRADED:
@@ -707,21 +714,22 @@ void GPS::serviceCycle(void) {
       // re-assert the lock, a release raced by enable() must not leave the
       // receiver deaf under light sleep
       acquirePowerLock();
-      // a degraded retry probe must not latch here when no burst arrives, give
-      // up again on the bounded backoff instead of holding the lock forever
-      if (!m_BurstActive && (m_ProbeDeadline != 0) && tickReached(now, m_ProbeDeadline)) {
-        if (m_FixedBaudProbe) {
-          // No sentence ever arrived at the stored rate. Treat it like a
-          // failed autobaud: drop the rail and the wake lock, then retry once
-          // after the absent backoff instead of pinning NO_LIGHT_SLEEP.
-          // onProbeFailed() takes m_CycleMutex, so release it first.
-          m_FixedBaudProbe = false;
+      // A receiver that never emits a valid sentence after enable() or an
+      // autobaud lock used to latch here forever. If no valid sentence arrived
+      // by the deadline, drop the rail and enter the normal absent state with
+      // its one retry.
+      if (!m_BurstActive && (m_AcquireDeadline != 0) && tickReached(now, m_AcquireDeadline)) {
+        if (getStatusSnapshot().sentences_passed == m_AcquireSentences) {
           lock.unlock();
           onProbeFailed(now);
           return;
-        } else {
-          enterDegraded();
         }
+        m_AcquireDeadline = 0;
+      }
+      // a degraded retry probe must not latch here when no burst arrives, give
+      // up again on the bounded backoff instead of holding the lock forever
+      if (!m_BurstActive && (m_ProbeDeadline != 0) && tickReached(now, m_ProbeDeadline)) {
+        enterDegraded();
       }
       break;
 
@@ -809,8 +817,8 @@ void GPS::beginBurst(uint32_t now) {
 
   if (m_CycleState == cycle_state_t::ACQUIRING) {
     // a burst arrived, the acquisition or degraded retry probe succeeded
-    m_FixedBaudProbe = false;
     m_ProbeDeadline = 0;
+    m_AcquireDeadline = 0;
     if (m_ExpectedInterval == 0) {
       m_CycleState = cycle_state_t::MEASURING;
       m_MeasureDeadline = now + UNKNOWN_MEASURE_MS;

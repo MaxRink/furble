@@ -2183,6 +2183,20 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/e2e/gps-fixed-baud-absent.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "gps"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/e2e/gps-receiver-degraded.txt",
       "suite": "e2e",
       "owner": "sim-e2e",
