@@ -17,12 +17,14 @@ furble-sim-preferences-<scenario>-<pid>-<six characters>.bin
 ```
 
 For each match it parses the PID and calls `kill(pid, 0)`. A store is removed
-only when the call fails with `ESRCH`, and the matching
-`.tmp.<pid>` sidecar is removed at the same time. A live PID is never touched,
-so two concurrent simulators cannot delete each other's store.
+only when the call fails with `ESRCH`, the sibling `.owner` marker says
+`furble-sim-generated <same pid>`, and the marker matches the filename. The
+matching `.tmp.<pid>` sidecar and the marker are removed at the same time. A
+live PID is never touched, so two concurrent simulators cannot delete each
+other's store.
 
-Caller-selected `FURBLE_SIM_PREFS` paths do not match this namespace and are
-never swept.
+Caller-selected `FURBLE_SIM_PREFS` paths do not carry the owner marker, even if
+they use the same filename shape, and are never swept.
 
 ## Validation
 
@@ -35,12 +37,11 @@ never swept.
   stores are reclaimed;
 - confirms the caller-owned store still exists afterwards.
 
-`sim-e2e.yml` already runs this script against the fresh S5 binary.
+`sim-e2e.yml` already runs this script against the fresh M5StickS3 binary.
 
 ## Remaining limits
 
-This is not a general temporary-file cleaner. A dead encoded PID cannot prove
-that another process did not intentionally choose the same generated name, so
-the sweep is deliberately restricted to the simulator-owned prefix and name
-shape. It does not reclaim arbitrary leftovers, and it does not attempt to
+This is not a general temporary-file cleaner. The owner marker is what proves
+the store was created by the simulator; a filename shape alone is not enough.
+The sweep does not reclaim unmarked leftovers, and it does not attempt to
 recover interrupted writes inside a store.

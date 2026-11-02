@@ -337,15 +337,17 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   injection is not a reliable headless menu activation path.
   Screenshot CI explicitly selects `FURBLE_SIM_NO_TOUCH=1` for the StickS3.
 - Scripted runs honor a caller-provided `FURBLE_SIM_PREFS` path and never
-  remove it. Runs without one receive a unique, valid zero-entry scratch store;
-  only that exact generated path and its PID-specific temporary file are
-  removed after a final orderly exit. Abnormal-exit reclamation and cross-run
-  sweeping are intentionally not implemented. Restart ownership also validates
-  the originating PID in its internal marker before adopting a generated path.
-  The focused subprocess check is
-  `sim/scripts/check-preferences-lifecycle.sh`; it requires an already-built
-  `FURBLE_SIM_BIN`, runs in the S3 simulator CI after that build with a
-  two-minute step bound, and is not a build or abnormal-exit janitor.
+  remove it. Runs without one receive a unique, valid zero-entry scratch store
+  plus a `furble-sim-generated <pid>` owner marker; only that marked generated
+  path, its owner marker, and its PID-specific temporary file are removed after
+  a final orderly exit. A later run in the same directory reclaims a marked
+  generated store only when its encoded PID is dead and the owner marker
+  matches. Explicit paths and unmarked files with the same name shape are
+  never swept. Restart ownership also validates the originating PID in its
+  internal marker before adopting a generated path. The focused subprocess
+  check is `sim/scripts/check-preferences-lifecycle.sh`; it requires an
+  already-built `FURBLE_SIM_BIN`, runs in the S3 simulator CI after that build
+  with a two-minute step bound, and is not a general temp-file cleaner.
 - Scenario parsing is a pre-runtime gate: every verb has strict arity and
   numeric validation, unknown verbs/options and trailing values are rejected
   with status 2, and duplicate `seed` names are invalid. `action` lines are

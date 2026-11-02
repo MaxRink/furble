@@ -1605,7 +1605,20 @@ void sweepAbandonedPreferences(const std::filesystem::path &directory) {
     if ((kill(pid, 0) == 0) || (errno != ESRCH)) {
       continue;
     }
+    // Only simulator-generated stores carry the owner marker. An explicit
+    // FURBLE_SIM_PREFS path can use the same name shape but has no marker, so
+    // it is never swept.
+    const std::string ownerPath = it->path().string() + ".owner";
+    std::ifstream owner(ownerPath);
+    std::string magic;
+    long ownerPid = 0;
+    if (!(owner >> magic >> ownerPid) || (magic != "furble-sim-generated")
+        || (ownerPid != parsed)) {
+      continue;
+    }
+    owner.close();
     std::filesystem::remove(it->path(), error);
+    std::filesystem::remove(ownerPath, error);
     std::filesystem::remove(it->path().string() + ".tmp." + pidText, error);
   }
 }
@@ -1689,6 +1702,15 @@ void preparePreferences(void) {
   }
   generatedPreferencesPath = writablePath.data();
   generatedPreferencesOwned = true;
+  {
+    std::ofstream owner(generatedPreferencesPath + ".owner", std::ios::trunc);
+    owner << "furble-sim-generated " << getpid() << "\n";
+    if (!owner) {
+      std::remove(generatedPreferencesPath.c_str());
+      std::cerr << "simulator failed to write preference ownership marker\n";
+      std::exit(1);
+    }
+  }
   const std::string generatedMarker = generatedPreferencesPath + "|" + std::to_string(getpid());
   if (setenv("FURBLE_SIM_PREFS", generatedPreferencesPath.c_str(), 1) != 0
       || setenv(GENERATED_PREFS_ENV, generatedMarker.c_str(), 1) != 0) {
@@ -1708,6 +1730,7 @@ void removePreferences(void) {
     return;
   }
   std::remove(generatedPreferencesPath.c_str());
+  std::remove((generatedPreferencesPath + ".owner").c_str());
   const std::string temporaryPath = generatedPreferencesPath + ".tmp." + std::to_string(getpid());
   std::remove(temporaryPath.c_str());
   unsetenv(GENERATED_PREFS_ENV);

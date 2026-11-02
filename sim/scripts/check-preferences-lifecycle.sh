@@ -122,11 +122,21 @@ if find "$RESTART_DIR/.pio" -maxdepth 1 -type f -name 'furble-sim-preferences-*'
   exit 1
 fi
 
-# Put the two dead-PID stores into one run directory. A normal run there must
-# reclaim both while leaving the caller-owned store alone.
+# Put the two dead-PID stores and their owner markers into one run directory.
+# Add the PID-specific temporary sidecars the scanner also has to remove, plus
+# an explicitly named store with the same shape but no owner marker. A normal
+# run must reclaim the generated pair and leave the explicit store alone.
 mkdir -p "$TMP_DIR/.pio"
 mv "$FILE_A" "$TMP_DIR/.pio/"
+mv "$FILE_A.owner" "$TMP_DIR/.pio/"
 mv "$FILE_B" "$TMP_DIR/.pio/"
+mv "$FILE_B.owner" "$TMP_DIR/.pio/"
+PID_A=$(basename "$FILE_A" | sed -E 's/.*-([0-9]+)-[^-]+\.bin/\1/')
+PID_B=$(basename "$FILE_B" | sed -E 's/.*-([0-9]+)-[^-]+\.bin/\1/')
+: >"$TMP_DIR/.pio/$(basename "$FILE_A").tmp.$PID_A"
+: >"$TMP_DIR/.pio/$(basename "$FILE_B").tmp.$PID_B"
+EXPLICIT_SHAPE="$TMP_DIR/.pio/furble-sim-preferences-explicit-999999-ABC123.bin"
+dd if=/dev/zero of="$EXPLICIT_SHAPE" bs=4 count=1 2>/dev/null
 SWEEP_SCRIPT="$TMP_DIR/sweep.txt"
 printf '%s\n' 'wait 1' 'exit' >"$SWEEP_SCRIPT"
 (
@@ -136,8 +146,17 @@ printf '%s\n' 'wait 1' 'exit' >"$SWEEP_SCRIPT"
     --capture-dir "$TMP_DIR/sweep-captures"
 )
 if find "$TMP_DIR/.pio" -maxdepth 1 -type f -name 'furble-sim-preferences-*.bin' \
-    -print -quit 2>/dev/null | grep -q .; then
+    ! -name "$(basename "$EXPLICIT_SHAPE")" -print -quit 2>/dev/null | grep -q .; then
   echo "dead-PID generated preference stores were not reclaimed" >&2
+  exit 1
+fi
+if find "$TMP_DIR/.pio" -maxdepth 1 -type f -name '*.tmp.*' -print -quit 2>/dev/null \
+    | grep -q .; then
+  echo "dead-PID preference temporary sidecars were not reclaimed" >&2
+  exit 1
+fi
+if [ ! -f "$EXPLICIT_SHAPE" ]; then
+  echo "the sweep removed an explicitly named store with no owner marker" >&2
   exit 1
 fi
 if [ ! -f "$EXPLICIT" ]; then

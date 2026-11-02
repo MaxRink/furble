@@ -102,7 +102,9 @@ jobs:
 
       # Keep the caller-owned and simulator-owned preference boundary on the
       # same freshly built M5StickS3 binary used by this job. The script is
-      # intentionally bounded and does not reclaim abnormal leftovers.
+      # intentionally bounded: it verifies explicit-store retention, same-PID
+      # restart adoption, orderly cleanup, and dead-PID reclamation of only
+      # marked generated stores.
       - name: Check simulator preference ownership lifecycle (M5StickS3)
         timeout-minutes: 2
         env:
