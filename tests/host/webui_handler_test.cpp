@@ -77,11 +77,11 @@ int main() {
   check(settingsGet.responseBody.find("\"value\":77") != std::string::npos,
         "a non-secret setting is serialized with its value");
 
-  const auto brightnessPost = host_webui_http::invoke(
-      HTTP_POST, "/api/settings", validHeaders, R"({"id":20,"value":42})");
+  const auto brightnessPost =
+      host_webui_http::invoke(HTTP_POST, "/api/settings", validHeaders, R"({"id":20,"value":42})");
   check(brightnessPost.responseStatus == "200 OK", "a typed setting write succeeds");
-  const auto secretPost = host_webui_http::invoke(
-      HTTP_POST, "/api/settings", validHeaders, R"({"id":40,"value":"nope"})");
+  const auto secretPost = host_webui_http::invoke(HTTP_POST, "/api/settings", validHeaders,
+                                                  R"({"id":40,"value":"nope"})");
   check(secretPost.responseStatus == "400 Bad Request",
         "the companion password is not writable through the WebUI");
   check(secretPost.responseBody.find("not writable here") != std::string::npos,
@@ -132,7 +132,7 @@ int main() {
         "new hold was accepted while release remained pending");
   check(control.commands.size() == beforeRejectedHold, "pending-release hold reached Control");
   control.deliveries.push_back({true, true, true, 0, {1}});
-  host_webui_timer::advance(20 * 1000);
+  host_webui_timer::advance(200 * 1000);
   webui.hostServiceTimerEvents();
   check(control.commands.back() == Control::CMD_SHUTTER_RELEASE,
         "pending release was not retried by the owner task");

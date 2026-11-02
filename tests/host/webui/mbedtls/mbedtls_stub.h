@@ -53,7 +53,7 @@ inline int mbedtls_ecp_gen_key(int, void *, int (*)(void *, unsigned char *, siz
   return 0;
 }
 inline int mbedtls_pk_write_key_pem(mbedtls_pk_context *, unsigned char *output, size_t length) {
-  const char key[] = "host-private-key";
+  const char key[] = "-----BEGIN PRIVATE KEY-----\nhost\n-----END PRIVATE KEY-----\n";
   if (length < sizeof(key)) {
     return -1;
   }
@@ -93,7 +93,7 @@ inline int mbedtls_x509write_crt_pem(mbedtls_x509write_cert *,
                                      size_t length,
                                      int (*)(void *, unsigned char *, size_t),
                                      void *) {
-  const char certificate[] = "host-certificate";
+  const char certificate[] = "-----BEGIN CERTIFICATE-----\nhost\n-----END CERTIFICATE-----\n";
   if (length < sizeof(certificate)) {
     return -1;
   }

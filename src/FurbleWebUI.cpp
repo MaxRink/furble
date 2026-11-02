@@ -68,7 +68,7 @@ bool readHeader(httpd_req_t *request,
   const size_t length = httpd_req_get_hdr_value_len(request, name);
   if (length == 0) {
     value.clear();
-    return true;
+    return false;
   }
   if (length > maximum) {
     return false;
@@ -155,7 +155,7 @@ async function cameras(){const x=q('#cameras');try{const list=await api('/api/ca
 async function camera(action,id){try{await api('/api/cameras',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,id})});message('Camera request queued');const deadline=Date.now()+15000;const tick=async()=>{await cameras();await refresh();let done=false;try{const list=await api('/api/cameras');const c=list.find(x=>x.id===id);done=!!c&&(action==='connect'?c.connected:!c.connected)}catch(e){}if(!done&&Date.now()<deadline)setTimeout(tick,500)};setTimeout(tick,300)}catch(e){message(e.message,true)}}
 async function shutter(action){try{await api('/api/shutter',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,ms:200})});message('Shutter request accepted');refresh()}catch(e){message(e.message,true)}}
 document.querySelectorAll('[data-shutter]').forEach(b=>b.onclick=()=>shutter(b.dataset.shutter));
-async function settings(){const x=q('#settings');try{const list=await api('/api/settings');x.replaceChildren();for(const s of list){const r=el('div');r.className='field';const inputId='setting-'+s.id;const label=el('label',s.name);label.htmlFor=inputId;r.append(label);if(!s.writable){r.append(el('span',s.type==='blob'?'Not editable':(s.set?'set':'unset')),el('span'));}else if(s.type==='bool'){const i=el('input');i.id=inputId;i.type='checkbox';i.checked=!!s.value;i.onchange=()=>save(s.id,i.checked);r.append(i,el('span'));}else if(s.type==='string'||s.type==='u8'||s.type==='u32'){const i=el('input');i.id=inputId;i.type=s.type==='string'?'text':'number';i.value=s.secret?'':(s.value??'');i.placeholder=s.secret&&s.set?'set':'';const b=el('button','Set');b.className='secondary';b.setAttribute('aria-label','Set '+s.name);b.onclick=()=>save(s.id,s.type==='string'?i.value:Number(i.value));r.append(i,b);}else{r.append(el('span','Not editable'),el('span'));}x.append(r)}}catch(e){message(e.message,true)}}
+async function settings(){const x=q('#settings');try{const list=await api('/api/settings');x.replaceChildren();for(const s of list){const r=el('div');r.className='field';const inputId='setting-'+s.id;const label=el('label',s.name);label.htmlFor=inputId;r.append(label);if(!s.writable){r.append(el('span',s.type==='blob'?'Not editable':(s.set?'set':'unset')),el('span'));}else if(s.type==='bool'){const i=el('input');i.id=inputId;i.type='checkbox';i.checked=!!s.value;i.onchange=()=>save(s.id,i.checked);r.append(i,el('span'));}else if(s.type==='string'||s.type==='u8'||s.type==='u32'){const i=el('input');i.id=inputId;i.type=s.secret?'password':(s.type==='string'?'text':'number');i.value=s.secret?'':(s.value??'');i.placeholder=s.secret&&s.set?'set':'';const b=el('button','Set');b.className='secondary';b.setAttribute('aria-label','Set '+s.name);b.onclick=()=>{if(s.secret&&!i.value&&!confirm('Clear '+s.name+'?'))return;save(s.id,s.type==='string'?i.value:Number(i.value))};r.append(i,b);}else{r.append(el('span','Not editable'),el('span'));}x.append(r)}}catch(e){message(e.message,true)}}
 async function save(id,value){try{await api('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,value})});message('Setting saved');settings();refresh()}catch(e){message(e.message,true)}}
 refresh();cameras();settings();setInterval(refresh,3000);setInterval(cameras,5000);
 </script></body></html>)HTML";
@@ -222,6 +222,14 @@ void WebUI::serviceTimerEvents(void) {
     const std::lock_guard<std::recursive_mutex> commandLock(m_CommandMutex);
     syncCommandSession(Control::getInstance().getSessionGeneration());
   }
+  {
+    const std::lock_guard<std::recursive_mutex> commandLock(m_CommandMutex);
+    const int64_t focusDeadline = m_FocusLeaseDeadlineUs;
+    if ((focusDeadline != 0) && (esp_timer_get_time() >= focusDeadline)) {
+      m_FocusLeaseDeadlineUs = 0;
+      queueRelease(Control::CMD_FOCUS_RELEASE, HELD_FOCUS);
+    }
+  }
   const uint8_t timerEvents = m_TimerEvents.exchange(0);
   if ((timerEvents & TIMER_HOLD) != 0) {
     const std::lock_guard<std::recursive_mutex> commandLock(m_CommandMutex);
@@ -276,6 +284,16 @@ bool WebUI::networkReady(void) const {
 #endif
 }
 
+namespace {
+bool pemLooksValid(const std::string &certificate, const std::string &key) {
+  return (certificate.find("-----BEGIN CERTIFICATE-----") != std::string::npos)
+         && (certificate.find("-----END CERTIFICATE-----") != std::string::npos)
+         && (key.find("-----BEGIN") != std::string::npos)
+         && (key.find("PRIVATE KEY-----") != std::string::npos)
+         && (key.find("-----END") != std::string::npos);
+}
+}  // namespace
+
 bool WebUI::credentialsReady(void) {
   std::string password;
   const bool ready = Settings::loadPassword(password) && !password.empty();
@@ -311,7 +329,10 @@ bool WebUI::loadOrCreateIdentity(void) {
   if ((certResult == Preferences::string_result_t::OK)
       && (keyResult == Preferences::string_result_t::OK) && !m_Certificate.empty()
       && !m_PrivateKey.empty()) {
-    return true;
+    if (pemLooksValid(m_Certificate, m_PrivateKey)) {
+      return true;
+    }
+    ESP_LOGW(LOG_TAG, "Stored TLS identity is malformed, creating a replacement");
   }
 
   m_Certificate.clear();
@@ -487,8 +508,16 @@ bool WebUI::startServer(void) {
   if (result != ESP_OK) {
     m_Server = nullptr;
     ESP_LOGW(LOG_TAG, "HTTPS server start failed: %s", esp_err_to_name(result));
+    if (!m_IdentityStartFailed) {
+      // The stack may have rejected a structurally plausible but corrupt or
+      // mismatched pair. Drop it once so the next pass creates a replacement.
+      m_IdentityStartFailed = true;
+      m_Certificate.clear();
+      m_PrivateKey.clear();
+    }
     return false;
   }
+  m_IdentityStartFailed = false;
 
   const httpd_uri_t routes[] = {
       {"/",             HTTP_GET,  handleRoot,         this},
@@ -602,14 +631,15 @@ bool WebUI::authorize(httpd_req_t *request) {
       return false;
     }
   }
-  const bool valid = readHeader(request, "Authorization", header) && verifyBasic(header);
+  const bool hasHeader = readHeader(request, "Authorization", header);
+  const bool valid = hasHeader && verifyBasic(header);
   std::fill(header.begin(), header.end(), '\0');
   {
     const std::lock_guard<std::mutex> lock(m_AuthMutex);
     if (valid) {
       m_AuthFailures = 0;
       m_AuthBlockedUntilMs = 0;
-    } else if (++m_AuthFailures >= CompanionAuth::MAX_FAILURES) {
+    } else if (hasHeader && (++m_AuthFailures >= CompanionAuth::MAX_FAILURES)) {
       m_AuthFailures = 0;
       m_AuthBlockedUntilMs = now + AUTH_BLOCK_MS;
     }
@@ -725,12 +755,16 @@ esp_err_t WebUI::handleCamerasPost(httpd_req_t *request) {
     return ESP_OK;
   }
   std::string body;
+  if (request->content_len > MAX_BODY_BYTES) {
+    return sendError(request, "413 Payload Too Large", "request body is too large");
+  }
   if (recvBody(request, body) != ESP_OK) {
     return sendError(request, "400 Bad Request", "invalid request body");
   }
   std::string error;
   if (!self->applyCamera(body, error)) {
-    return sendError(request, "409 Conflict", error.c_str());
+    const bool busy = error.find("queue is busy") != std::string::npos;
+    return sendError(request, busy ? "409 Conflict" : "400 Bad Request", error.c_str());
   }
   return sendJSON(request, "{\"accepted\":true}");
 }
@@ -741,12 +775,16 @@ esp_err_t WebUI::handleShutter(httpd_req_t *request) {
     return ESP_OK;
   }
   std::string body;
+  if (request->content_len > MAX_BODY_BYTES) {
+    return sendError(request, "413 Payload Too Large", "request body is too large");
+  }
   if (recvBody(request, body) != ESP_OK) {
     return sendError(request, "400 Bad Request", "invalid request body");
   }
   std::string error;
   if (!self->applyShutter(body, error)) {
-    return sendError(request, "409 Conflict", error.c_str());
+    const bool busy = error.find("queue is busy") != std::string::npos;
+    return sendError(request, busy ? "409 Conflict" : "400 Bad Request", error.c_str());
   }
   return sendJSON(request, "{\"accepted\":true}");
 }
@@ -763,6 +801,9 @@ esp_err_t WebUI::handleSettingsPost(httpd_req_t *request) {
     return ESP_OK;
   }
   std::string body;
+  if (request->content_len > MAX_BODY_BYTES) {
+    return sendError(request, "413 Payload Too Large", "request body is too large");
+  }
   if (recvBody(request, body) != ESP_OK) {
     return sendError(request, "400 Bad Request", "invalid request body");
   }
@@ -783,7 +824,11 @@ std::string WebUI::buildStatusJSON(void) const {
   cJSON *cameras = cJSON_AddObjectToObject(root, "cameras");
   cJSON_AddNumberToObject(cameras, "total", control.getTargetCount());
   cJSON_AddNumberToObject(cameras, "connected", control.getConnectedTargetCount());
+#if defined(FURBLE_NO_DISPLAY)
   const Platform::battery_t battery = Platform::getInstance().readBattery();
+#else
+  const Platform::battery_t battery = Platform::getInstance().getBatterySample().battery;
+#endif
   cJSON *batteryJSON = cJSON_AddObjectToObject(root, "battery");
   cJSON_AddNumberToObject(batteryJSON, "level", battery.level);
   cJSON_AddNumberToObject(batteryJSON, "voltage", battery.voltage);
@@ -936,7 +981,18 @@ std::vector<uint64_t> &WebUI::heldTargets(uint8_t heldBit) {
   return (heldBit == HELD_SHUTTER) ? m_HeldShutterTargets : m_HeldFocusTargets;
 }
 
-bool WebUI::queuePress(Control::cmd_t command, uint8_t heldBit) {
+void WebUI::startManualLease(uint8_t heldBit) {
+  if (heldBit == HELD_FOCUS) {
+    m_FocusLeaseDeadlineUs = esp_timer_get_time() + MANUAL_PRESS_LEASE_MS * 1000LL;
+    return;
+  }
+  if ((m_HoldTimer != nullptr) && !esp_timer_is_active(m_HoldTimer)) {
+    m_HoldDeadlineUs.store(esp_timer_get_time() + MANUAL_PRESS_LEASE_MS * 1000LL);
+    (void)esp_timer_start_once(m_HoldTimer, MANUAL_PRESS_LEASE_MS * 1000ULL);
+  }
+}
+
+bool WebUI::queuePress(Control::cmd_t command, uint8_t heldBit, bool startLease) {
   const std::lock_guard<std::recursive_mutex> commandLock(m_CommandMutex);
   if (m_Stopping) {
     return false;
@@ -949,10 +1005,31 @@ bool WebUI::queuePress(Control::cmd_t command, uint8_t heldBit) {
   bool held = false;
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
+    const size_t slot = (heldBit == HELD_SHUTTER) ? 0 : 1;
     if ((m_ReleasePending & heldBit) != 0) {
-      return false;
+      const int64_t deadline = m_ReleaseDeadlineUs[slot];
+      if ((deadline == 0) || (esp_timer_get_time() < deadline)) {
+        return false;
+      }
+      // The release debt outlived its window. Drop it so a healthy camera can
+      // be triggered again instead of blocking every future press.
+      m_ReleasePending &= ~heldBit;
+      m_Held &= ~heldBit;
+      m_ReleaseDeadlineUs[slot] = 0;
+      heldTargets(heldBit).clear();
     }
     held = (m_Held & heldBit) != 0;
+    if (held && (heldBit == HELD_SHUTTER)) {
+      const int64_t deadline = m_HoldDeadlineUs.load();
+      const bool timerActive = (m_HoldTimer != nullptr) && esp_timer_is_active(m_HoldTimer);
+      if ((deadline > 0) && (esp_timer_get_time() >= deadline) && !timerActive) {
+        // The timed hold has expired but its event has not been serviced. Start
+        // a fresh press instead of extending the old deadline by a lease.
+        m_Held &= ~heldBit;
+        heldTargets(heldBit).clear();
+        held = false;
+      }
+    }
   }
   if (held) {
     // A duplicate press of an already-held control is idempotent. Clearing the
@@ -974,12 +1051,19 @@ bool WebUI::queuePress(Control::cmd_t command, uint8_t heldBit) {
   m_CommandSession = delivery.session;
   m_Held |= heldBit;
   m_ReleasePending &= ~heldBit;
+  m_ReleaseDeadlineUs[(heldBit == HELD_SHUTTER) ? 0 : 1] = 0;
   heldTargets(heldBit) = delivery.accepted;
+  if (startLease) {
+    startManualLease(heldBit);
+  }
   return true;
 }
 
 bool WebUI::queueRelease(Control::cmd_t command, uint8_t heldBit) {
   const std::lock_guard<std::recursive_mutex> commandLock(m_CommandMutex);
+  if (heldBit == HELD_FOCUS) {
+    m_FocusLeaseDeadlineUs = 0;
+  }
   if (heldBit == HELD_SHUTTER) {
     m_HoldDeadlineUs.store(0);
     if ((m_HoldTimer != nullptr) && esp_timer_is_active(m_HoldTimer)) {
@@ -992,19 +1076,37 @@ bool WebUI::queueRelease(Control::cmd_t command, uint8_t heldBit) {
   }
   uint32_t commandSession = 0;
   std::vector<uint64_t> targets;
+  bool owned = false;
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
-    if (((m_Held | m_ReleasePending) & heldBit) == 0) {
-      return true;
+    owned = ((m_Held | m_ReleasePending) & heldBit) != 0;
+    if (owned) {
+      m_ReleasePending |= heldBit;
+      commandSession = m_CommandSession;
+      targets = heldTargets(heldBit);
+      if (targets.empty()) {
+        m_Held &= ~heldBit;
+        m_ReleasePending &= ~heldBit;
+        return true;
+      }
+      const size_t slot = (heldBit == HELD_SHUTTER) ? 0 : 1;
+      if (m_ReleaseDeadlineUs[slot] == 0) {
+        m_ReleaseDeadlineUs[slot] = esp_timer_get_time() + RELEASE_DEBT_TIMEOUT_US;
+      }
     }
-    m_ReleasePending |= heldBit;
-    commandSession = m_CommandSession;
-    targets = heldTargets(heldBit);
+  }
+  if (!owned) {
+    // Not our hold. Still send a release so a physical trigger or another
+    // owner's press can be freed from the WebUI.
+    for (const auto &camera : Control::getInstance().getTargetCameras()) {
+      if (camera && camera->isConnected()) {
+        targets.push_back(static_cast<uint64_t>(camera->getAddress()));
+      }
+    }
     if (targets.empty()) {
-      m_Held &= ~heldBit;
-      m_ReleasePending &= ~heldBit;
       return true;
     }
+    commandSession = Control::getInstance().getSessionGeneration();
   }
   // Address only the targets that still owe a release. A target that never
   // accepted the press was never holding the shutter, and a target that
@@ -1022,14 +1124,30 @@ bool WebUI::queueRelease(Control::cmd_t command, uint8_t heldBit) {
     for (uint64_t address : delivery.accepted) {
       held.erase(std::remove(held.begin(), held.end(), address), held.end());
     }
-    if (held.empty()) {
-      m_Held &= ~heldBit;
-      m_ReleasePending &= ~heldBit;
+    if (held.empty() || !owned) {
+      if (owned) {
+        m_Held &= ~heldBit;
+        m_ReleasePending &= ~heldBit;
+        m_ReleaseDeadlineUs[(heldBit == HELD_SHUTTER) ? 0 : 1] = 0;
+      }
       complete = true;
     }
   }
   if (complete) {
     return true;
+  }
+  {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    const size_t slot = (heldBit == HELD_SHUTTER) ? 0 : 1;
+    if (esp_timer_get_time() >= m_ReleaseDeadlineUs[slot]) {
+      // The target did not come back inside the debt window. Drop the debt so
+      // presses are not blocked forever; a later session starts clean.
+      m_Held &= ~heldBit;
+      m_ReleasePending &= ~heldBit;
+      m_ReleaseDeadlineUs[slot] = 0;
+      heldTargets(heldBit).clear();
+      return true;
+    }
   }
   if ((m_ReleaseTimer != nullptr) && !esp_timer_is_active(m_ReleaseTimer)) {
     return esp_timer_start_once(m_ReleaseTimer, RELEASE_RETRY_MS * 1000ULL) == ESP_OK;
@@ -1039,7 +1157,7 @@ bool WebUI::queueRelease(Control::cmd_t command, uint8_t heldBit) {
 
 bool WebUI::queueHold(uint32_t durationMs) {
   const std::lock_guard<std::recursive_mutex> commandLock(m_CommandMutex);
-  if (!queuePress(Control::CMD_SHUTTER_PRESS, HELD_SHUTTER)) {
+  if (!queuePress(Control::CMD_SHUTTER_PRESS, HELD_SHUTTER, false)) {
     return false;
   }
   if (m_HoldTimer == nullptr) {
@@ -1068,6 +1186,8 @@ bool WebUI::syncCommandSession(uint32_t session) {
       m_Held = 0;
       m_ReleasePending = 0;
       m_CommandSession = session;
+      m_ReleaseDeadlineUs[0] = 0;
+      m_ReleaseDeadlineUs[1] = 0;
       m_HeldShutterTargets.clear();
       m_HeldFocusTargets.clear();
     }
@@ -1094,11 +1214,11 @@ bool WebUI::applyShutter(const std::string &body, std::string &error) {
   const cJSON *action = cJSON_GetObjectItemCaseSensitive(root, "action");
   bool accepted = false;
   if (cJSON_IsString(action) && (std::strcmp(action->valuestring, "press") == 0)) {
-    accepted = queuePress(Control::CMD_SHUTTER_PRESS, HELD_SHUTTER);
+    accepted = queuePress(Control::CMD_SHUTTER_PRESS, HELD_SHUTTER, true);
   } else if (cJSON_IsString(action) && (std::strcmp(action->valuestring, "release") == 0)) {
     accepted = queueRelease(Control::CMD_SHUTTER_RELEASE, HELD_SHUTTER);
   } else if (cJSON_IsString(action) && (std::strcmp(action->valuestring, "focus_press") == 0)) {
-    accepted = queuePress(Control::CMD_FOCUS_PRESS, HELD_FOCUS);
+    accepted = queuePress(Control::CMD_FOCUS_PRESS, HELD_FOCUS, true);
   } else if (cJSON_IsString(action) && (std::strcmp(action->valuestring, "focus_release") == 0)) {
     accepted = queueRelease(Control::CMD_FOCUS_RELEASE, HELD_FOCUS);
   } else if (cJSON_IsString(action) && (std::strcmp(action->valuestring, "hold") == 0)) {
@@ -1123,6 +1243,7 @@ bool WebUI::applyShutter(const std::string &body, std::string &error) {
 
 void WebUI::releaseAll(void) {
   const std::lock_guard<std::recursive_mutex> commandLock(m_CommandMutex);
+  m_FocusLeaseDeadlineUs = 0;
   m_HoldDeadlineUs.store(0);
   if ((m_HoldTimer != nullptr) && esp_timer_is_active(m_HoldTimer)) {
     esp_timer_stop(m_HoldTimer);

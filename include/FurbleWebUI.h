@@ -46,7 +46,9 @@ class WebUI {
 
   static constexpr uint32_t TASK_PERIOD_MS = 500;
   static constexpr uint32_t MAX_HOLD_MS = 60 * 1000;
-  static constexpr uint32_t RELEASE_RETRY_MS = 20;
+  static constexpr uint32_t RELEASE_RETRY_MS = 200;
+  static constexpr uint32_t MANUAL_PRESS_LEASE_MS = 30 * 1000;
+  static constexpr int64_t RELEASE_DEBT_TIMEOUT_US = 10LL * 1000LL * 1000LL;
   static constexpr size_t MAX_BODY_BYTES = 1024;
   static constexpr uint8_t HELD_SHUTTER = 1U << 0;
   static constexpr uint8_t HELD_FOCUS = 1U << 1;
@@ -83,7 +85,7 @@ class WebUI {
   std::string buildCamerasJSON(void) const;
   std::string buildSettingsJSON(void) const;
 
-  bool queuePress(Control::cmd_t command, uint8_t heldBit);
+  bool queuePress(Control::cmd_t command, uint8_t heldBit, bool startLease = false);
   bool queueRelease(Control::cmd_t command, uint8_t heldBit);
   bool queueHold(uint32_t durationMs);
   bool syncCommandSession(uint32_t session);
@@ -117,7 +119,11 @@ class WebUI {
   // first release keeps its slot and receives the retry when it is back.
   std::vector<uint64_t> m_HeldShutterTargets;
   std::vector<uint64_t> m_HeldFocusTargets;
+  int64_t m_ReleaseDeadlineUs[2] = {0, 0};
+  int64_t m_FocusLeaseDeadlineUs = 0;
+  bool m_IdentityStartFailed = false;
   std::vector<uint64_t> &heldTargets(uint8_t heldBit);
+  void startManualLease(uint8_t heldBit);
   std::string m_Certificate;
   std::string m_PrivateKey;
 

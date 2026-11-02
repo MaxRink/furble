@@ -16,6 +16,15 @@ using esp_power_level_t = int;
 
 namespace Furble {
 
+class Camera {
+ public:
+  struct address_t {
+    operator uint64_t() const { return 0; }
+  };
+  bool isConnected() const { return true; }
+  address_t getAddress() const { return {}; }
+};
+
 class Control {
  public:
   enum cmd_t {
@@ -46,6 +55,7 @@ class Control {
   }
   state_t getState() const { return state; }
   uint8_t getTargetCount() const { return targets; }
+  std::vector<std::shared_ptr<Camera>> getTargetCameras() const { return {}; }
   uint8_t getConnectedTargetCount() const { return connected; }
   uint32_t getSessionGeneration() const { return session; }
   command_delivery_t sendCameraCommand(cmd_t command,
@@ -294,11 +304,15 @@ class Platform {
     int current = 0;
     bool charging = false;
   };
+  struct battery_sample_t {
+    battery_t battery;
+  };
   static Platform &getInstance() {
     static Platform instance;
     return instance;
   }
-  battery_t readBattery() { return {}; }
+  battery_t readBattery() const { return {}; }
+  battery_sample_t getBatterySample() const { return {readBattery()}; }
 };
 
 class WiFi {
