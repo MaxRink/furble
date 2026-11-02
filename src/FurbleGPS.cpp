@@ -579,6 +579,12 @@ TickType_t GPS::cycleWait(uint32_t now) const {
   if (m_EphPollActive) {
     wait = std::min(wait, tickUntil(now, m_EphPollDeadline));
   }
+  // A binary configuration frame is waiting for its acknowledgement. Without
+  // its deadline the 1 s fallback stretches the 300 ms retry and delays the
+  // PCAS fallback.
+  if (m_ConfigInFlight.has_value()) {
+    wait = std::min(wait, tickUntil(now, m_ConfigSent + BINARY_ACK_TIMEOUT_MS));
+  }
 
   // While the autobaud ladder runs, wake at its step deadline. A silent UART
   // would otherwise be serviced by the 1 s fallback and stretch every 1200 ms

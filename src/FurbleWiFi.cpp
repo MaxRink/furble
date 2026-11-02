@@ -80,7 +80,7 @@ std::atomic<bool> g_ConnectRequested = false;
 uint32_t g_RetryDelayMs = 0;
 uint32_t g_DirectFailures = 0;
 uint32_t g_ConnectAttempts = 0;
-bool g_StoppedForReason = false;
+std::atomic<bool> g_StoppedForReason {false};
 std::atomic<bool> g_DeferredForWired {false};
 uint8_t g_LastDisconnectReason = 0;
 bool g_ScanAttempted = false;
@@ -546,6 +546,16 @@ void wifiTask(void *) {
     xTaskNotifyWait(0, UINT32_MAX, &notification, idleWait);
 
     while (g_ConnectRequested && !g_Connected) {
+#if defined(FURBLE_ETHERNET)
+      // Ethernet can obtain an address while the station is still associating
+      // or backing off. The inner loop never reached the connected-state check,
+      // so it kept scanning and connecting on a node that already had a wire.
+      if (wiredNetworkActive()) {
+        WiFi::disconnect();
+        g_DeferredForWired.store(true);
+        break;
+      }
+#endif
       const uint32_t delay = takeRetryDelay();
       if (delay > 0) {
         xTaskNotifyWait(0, UINT32_MAX, &notification, pdMS_TO_TICKS(delay));
@@ -579,6 +589,14 @@ void wifiTask(void *) {
       if (!g_ConnectRequested || g_Connected) {
         break;
       }
+    }
+
+    // A terminal disconnect (authentication failure, or both attempt bounds
+    // spent) clears the request but leaves the station started and the driver
+    // initialised. Release both so the radio is not left running after the
+    // failure the operator has to fix.
+    if (!g_ConnectRequested && !g_Connected && g_StoppedForReason) {
+      stopDriver();
     }
   }
 }
@@ -726,7 +744,12 @@ bool WiFi::connect(void) {
   if (wiredNetworkActive()) {
     // A wired node already has an address. Starting the station would add a
     // second radio and a second DHCP client for nothing. Keep the request
-    // pending and let the worker restart it when the wire drops.
+    // pending and let the worker restart it when the wire drops. A station that
+    // is already up must be stopped here: setting the deferral flag alone would
+    // park the worker in its deferred branch with Wi-Fi still running.
+    if (g_Connected.load() || g_ConnectRequested) {
+      WiFi::disconnect();
+    }
     const std::lock_guard<std::mutex> lock(g_StateMutex);
     g_DeferredForWired = true;
     g_ConnectRequested = false;

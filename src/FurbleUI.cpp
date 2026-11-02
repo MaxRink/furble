@@ -1669,12 +1669,13 @@ void UI::sleepDisplay(void) {
     return;
   }
 
-  // A panel-off period must not leave the discovery scan running at full
-  // receive duty. Stop it here; the scan-end callback does not fire on an
-  // explicit stop, so reveal the finished panel instead of leaving an empty
-  // list that looks like a hang when the panel wakes on the Scan page.
+  // A panel-off period must not leave the user's discovery scan running at
+  // full receive duty. Only stop it while Control is idle: Fujifilm Secure and
+  // Nikon run their saved-camera reconnect scan through the same singleton, and
+  // stopping that would fail a connect whose camera advertises later in the
+  // window.
   auto &scan = Scan::getInstance();
-  if (scan.isActive()) {
+  if (scan.isActive() && (Control::getInstance().getState() == Control::STATE_IDLE)) {
     scan.stop();
     if (m_ScanFinished != nullptr) {
       lv_obj_remove_flag(m_ScanFinished, LV_OBJ_FLAG_HIDDEN);
