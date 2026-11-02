@@ -154,7 +154,7 @@ power number.
 | File | Role | Relevant content |
 | --- | --- | --- |
 | `boards/waveshare-esp32-s3-eth.json` | Board file | `f_cpu` 240 MHz; 8 MB octal PSRAM. `platformio.ini` overrides `board_build.f_cpu` to 80 MHz for every env; the runtime default is 160 MHz. The three values are unreconciled |
-| `platformio.ini` | Build matrix | Six release envs plus headless and debug; `board_build.f_cpu = 80000000L`; `-DFURBLE_CONSOLE=1 -DFURBLE_USB_CONSOLE=1` inherited by the Waveshare env; MQTT compiled into four envs |
+| `platformio.ini` | Build matrix | Six release envs plus headless and debug; `board_build.f_cpu = 80000000L`; the Waveshare release env no longer inherits `-DFURBLE_CONSOLE=1 -DFURBLE_USB_CONSOLE=1` and its debug env adds them back; MQTT compiled into four envs |
 | `sdkconfig.m5stick-c` | Board config | ESP32, AXP192, BTDM modem sleep ORIG, tickless idle on, log INFO, watchdog, PM settings |
 | `sdkconfig.m5stick-c-plus` | Board config | Plus and Plus2 share the image; AXP192 or no PMIC; tickless idle on |
 | `sdkconfig.m5stick-s3` | Board config | ESP32-S3, M5PM1, modem sleep mode 1 on main XTAL, MAC/BB power down, 6 controller activities and 9 host connections, PSRAM block, USB Serial/JTAG secondary, INFO logging, 1000 Hz tick, tickless idle on |
@@ -299,7 +299,7 @@ was opened. Every `unknown` names the artifact that closes it.
 | `m5stick-c-plus` | ESP32 v5.3 | Plus: AXP192. Plus2: no PMIC, external charger | ST7789V v1.3 | MPU6886 v1.1 | BM8563 RTC cited, not opened (Plus2) | Plus 120 mAh, Plus2 200 mAh, vendor page | unknown | documented, RTC, battery, FCC gaps |
 | `m5stick-s3` | ESP32-S3 v2.2 | M5PM1 V1.9 | ST7789P3, panel document unknown | BMI270 suffix 08 | ES8311 and AW8737, vendor page only | 250 mAh, vendor page | unknown | documented, panel, audio, battery, FCC gaps |
 | `m5stack-core` | ESP32 v5.3 | IP5306 V1.01 | ILI9342C, no revision string | Gray variant part not recorded | SD, speaker | Core reports 0, capacity unknown | unknown | documented, IMU, SD, battery, FCC gaps |
-| `m5stack-core2` | ESP32 v5.3 | AXP192, no revision string | ILI9342C plus FT6336U, not opened | MPU6886 v1.1 | NS4168, BM8563, SD | 390 mAh, vendor page | unknown | documented, touch, RTC, battery, FCC gaps |
+| `m5stack-core2` | ESP32 v5.3 | AXP192, no revision string. Core2 v1.1 fits an AXP2101 under the same board ID, and the boot code gates the AXP192 ADC trim on the detected PMIC; no AXP2101 document is in the tree | ILI9342C plus FT6336U, not opened | MPU6886 v1.1 | NS4168, BM8563, SD | 390 mAh, vendor page | unknown | documented for AXP192; AXP2101 datasheet is an open gap |
 | `waveshare-s3-eth` | ESP32-S3 v2.2, W5500 v1.0.6 not opened | none | none | none | microSD, WS2812 | none | unknown | documented, W5500, FCC gaps |
 | `esp32-s3-headless` | ESP32-S3 v2.2 | board-specific, no PMIC document | none | none | none | board-specific | unknown | documented for the SoC, board document missing |
 | `m5stack-core-usb-debug` | ESP32 v5.3 | IP5306 V1.01 | ILI9342C | as Core | as Core | as Core | unknown | same gaps as Core |

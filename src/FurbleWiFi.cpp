@@ -82,6 +82,10 @@ uint32_t g_DirectFailures = 0;
 uint32_t g_ConnectAttempts = 0;
 std::atomic<bool> g_StoppedForReason {false};
 std::atomic<bool> g_DeferredForWired {false};
+// True when the deferral came from an automatic request or a live connection.
+// A manual `wifi disconnect` clears it, so losing the wire later does not
+// silently reconnect a station the operator stopped.
+std::atomic<bool> g_ResumeAfterWired {false};
 uint8_t g_LastDisconnectReason = 0;
 bool g_ScanAttempted = false;
 bool g_ScanShowHidden = false;
@@ -420,10 +424,24 @@ bool serviceWiredDeferral(void) {
   }
 
   {
+    // Re-arm the request in the same critical section that consumes the resume
+    // flag. A manual disconnect that lands after this point clears it again and
+    // wins; one that landed before cleared the flag, so no request is created.
     const std::lock_guard<std::mutex> lock(g_StateMutex);
     g_DeferredForWired = false;
+    if (!g_ResumeAfterWired.exchange(false)) {
+      return false;
+    }
+    g_ConnectRequested = true;
+    g_RetryDelayMs = 0;
+    g_DirectFailures = 0;
+    g_ConnectAttempts = 0;
+    g_StoppedForReason = false;
+    g_LastDisconnectReason = 0;
+    g_ScanAttempted = false;
   }
-  return WiFi::connect();
+  notify(NOTIFY_REQUEST);
+  return true;
 }
 
 bool scanForNetwork(void) {
@@ -508,6 +526,9 @@ bool serviceConnectedWired(void) {
     return false;
   }
   WiFi::disconnect();
+  // An automatic takeover resumes when the wire drops; a manual disconnect
+  // before that clears the request.
+  g_ResumeAfterWired.store(true);
   g_DeferredForWired.store(true);
   return true;
 }
@@ -552,6 +573,7 @@ void wifiTask(void *) {
       // so it kept scanning and connecting on a node that already had a wire.
       if (wiredNetworkActive()) {
         WiFi::disconnect();
+        g_ResumeAfterWired.store(true);
         g_DeferredForWired.store(true);
         break;
       }
@@ -751,6 +773,7 @@ bool WiFi::connect(void) {
       WiFi::disconnect();
     }
     const std::lock_guard<std::mutex> lock(g_StateMutex);
+    g_ResumeAfterWired.store(true);
     g_DeferredForWired = true;
     g_ConnectRequested = false;
     notify(NOTIFY_EVENT);

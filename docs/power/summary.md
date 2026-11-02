@@ -104,9 +104,11 @@ feed (P-077) and disabling the USB Serial/JTAG console in release (P-205).
    0.25 mA cited in plan 98 and three lanes. The AXP192 floor is about 2 mA in
    plan 98 and about 316 uA by the Board lane's block sum.
 6. **Plan 98 is partly stale.** The CI gate exists and the model's connected
-   floor is wired. Wi-Fi initialization is lazy since P-034, and no
-   `esp_deep_sleep` call exists on this branch, so the plan 26 watchdog conflict
-   is still open and the Core cannot hold a steady state below 45 mA.
+   floor is wired. Wi-Fi initialization is lazy since P-034. The intervalometer
+   timed power-off is implemented through `Platform::powerOffUntil()` (StickS3
+   watchdog disarm, Plus2 RTC wake) rather than a bare `esp_deep_sleep` call, so
+   the integration exists here; the plan 26 watchdog conflict and the Core's
+   inability to hold a steady state below 45 mA remain open.
 7. **Camera parity is out of scope.** The camera rows measure link power, not
    protocol parity. No errata or application note is cited, and several vendor
    documents were not opened: W5500 current, FT6336U, ES8311, AW8737, BM8563, and
