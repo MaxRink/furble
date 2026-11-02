@@ -233,6 +233,13 @@ int main() {
                  "the join wait counted the mid-request disconnect twice")) {
     return 32;
   }
+  // A lifecycle notification is still pending from the mid-request disconnect.
+  // The retry wait must keep its absolute deadline instead of treating the
+  // first wake as the end of the backoff.
+  const uint32_t waitedMs = Furble::WiFi::hostWaitForRetry();
+  if (require(waitedMs >= 900, "the retry wait skipped its scheduled backoff")) {
+    return 34;
+  }
   // The mid-request disconnect counted one attempt; reset before the bounded
   // no-AP sequence so its threshold starts from zero.
   if (!Furble::WiFi::connect()) {

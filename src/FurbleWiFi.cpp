@@ -5,6 +5,9 @@
 #include <array>
 #include <atomic>
 #include <cstdlib>
+#if defined(FURBLE_WIFI_HOST_TEST)
+#include <chrono>
+#endif
 #include <cstring>
 #include <mutex>
 #include <string>
@@ -98,6 +101,18 @@ std::atomic<uint32_t> g_LifecycleEvent {0};
 // Time budget for one asynchronous join. Slow association or DHCP may exceed
 // the cancellation poll; only an explicit deadline starts another attempt.
 constexpr uint32_t JOIN_DEADLINE_MS = 15000;
+
+int64_t wifiNowUs(void) {
+#if defined(FURBLE_WIFI_HOST_TEST)
+  // The host stubs return from the wait immediately and leave esp_timer fixed,
+  // so backoff deadlines must use a clock that advances.
+  return std::chrono::duration_cast<std::chrono::microseconds>(
+             std::chrono::steady_clock::now().time_since_epoch())
+      .count();
+#else
+  return esp_timer_get_time();
+#endif
+}
 
 // A join scan shares the radio with the camera link. Only run it while Control
 // is idle: during connect, active, and disconnecting the camera session owns
@@ -565,11 +580,38 @@ bool connectAttempt(void) {
   return true;
 }
 
+uint32_t currentRetryDelay(void) {
+  const std::lock_guard<std::mutex> lock(g_StateMutex);
+  return g_RetryDelayMs;
+}
+
+// Sleep out the scheduled backoff. A lifecycle notification can already be
+// pending when this starts (a disconnect delivered inside connectAttempt()), so
+// the wait must not treat the first wake as the end of the delay: it enforces an
+// absolute deadline while still honoring cancellation, a new connect request
+// that reset the backoff, and a link that came up.
+bool waitForRetry(uint32_t delay) {
+  const int64_t deadlineUs = wifiNowUs() + (delay * 1000LL);
+  while (g_ConnectRequested && !g_Connected) {
+    if (currentRetryDelay() == 0) {
+      return true;
+    }
+    const int64_t remainingUs = deadlineUs - wifiNowUs();
+    if (remainingUs <= 0) {
+      return true;
+    }
+    uint32_t notification = 0;
+    xTaskNotifyWait(0, UINT32_MAX, &notification,
+                    pdMS_TO_TICKS(static_cast<uint32_t>((remainingUs + 999) / 1000)));
+  }
+  return false;
+}
+
 // Wait for one asynchronous join to produce a lifecycle event. Returns true
 // when the link came up or the request was cancelled, false when the explicit
 // join deadline expired without any event.
 bool waitForJoin(uint32_t lifecycle) {
-  const int64_t joinStartedUs = esp_timer_get_time();
+  const int64_t joinStartedUs = wifiNowUs();
 #if defined(FURBLE_WIFI_HOST_TEST)
   // The host shim clock can stay fixed while the stub wait returns at once.
   // Bound the loop so a regression fails instead of hanging CI; the bound
@@ -577,7 +619,7 @@ bool waitForJoin(uint32_t lifecycle) {
   uint32_t spins = 0;
 #endif
   while (g_ConnectRequested && !g_Connected && (g_LifecycleEvent.load() == lifecycle)
-         && ((esp_timer_get_time() - joinStartedUs) < (JOIN_DEADLINE_MS * 1000LL))) {
+         && ((wifiNowUs() - joinStartedUs) < (JOIN_DEADLINE_MS * 1000LL))) {
 #if defined(FURBLE_WIFI_HOST_TEST)
     if (++spins > 10000) {
       ESP_LOGW(LOG_TAG, "WiFi join deadline expired");
@@ -676,11 +718,8 @@ void wifiTask(void *) {
       }
 #endif
       const uint32_t delay = takeRetryDelay();
-      if (delay > 0) {
-        xTaskNotifyWait(0, UINT32_MAX, &notification, pdMS_TO_TICKS(delay));
-        if (!g_ConnectRequested || g_Connected) {
-          break;
-        }
+      if ((delay > 0) && !waitForRetry(delay)) {
+        break;
       }
 
       bool scan = false;
@@ -1016,6 +1055,16 @@ bool WiFi::hostConnectAndWaitForJoin(void) {
 
 uint32_t WiFi::hostLifecycleEvent(void) {
   return g_LifecycleEvent.load();
+}
+
+uint32_t WiFi::hostWaitForRetry(void) {
+  const uint32_t delay = takeRetryDelay();
+  if (delay == 0) {
+    return 0;
+  }
+  const int64_t startedUs = wifiNowUs();
+  (void)waitForRetry(delay);
+  return static_cast<uint32_t>((wifiNowUs() - startedUs) / 1000);
 }
 
 bool WiFi::hostServiceConnectedWired(void) {

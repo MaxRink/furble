@@ -94,6 +94,8 @@ class WiFi {
   static bool hostConnectAndWaitForJoin(void);
   /** Current lifecycle-event counter. */
   static uint32_t hostLifecycleEvent(void);
+  /** Run one scheduled retry wait and return its elapsed milliseconds. */
+  static uint32_t hostWaitForRetry(void);
   /** Run the connected-state wired takeover once. */
   static bool hostServiceConnectedWired(void);
   /** Retry delay after ten failures while a camera session blocks the scan. */
