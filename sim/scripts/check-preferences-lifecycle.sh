@@ -1,7 +1,8 @@
 #!/bin/sh
 
-# Check only the simulator-owned preference lifecycle. This does not reclaim
-# abnormal leftovers and never supplies a caller-owned path for cleanup.
+# Check the simulator-owned preference lifecycle: explicit stores survive,
+# same-PID restart adoption works, orderly runs clean up their own store, and a
+# later run reclaims only the exact generated names whose encoded PID is dead.
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
@@ -74,25 +75,30 @@ fi
 CRASH_SCRIPT="$TMP_DIR/crash.txt"
 printf '%s\n' 'wait 1' >"$CRASH_SCRIPT"
 run_expected_crash() {
+  crash_dir=$1
+  mkdir -p "$crash_dir"
   status=0
   (
-    cd "$TMP_DIR"
+    cd "$crash_dir"
     env -u FURBLE_SIM_PREFS -u FURBLE_SIM_PREFS_GENERATED -u FURBLE_SIM_RESTART_STEP \
       FURBLE_SIM_CRASH_STEP=0 "$BIN" --script "$CRASH_SCRIPT" \
-      --capture-dir "$TMP_DIR/crash-captures"
+      --capture-dir "$crash_dir/captures"
   ) || status=$?
   if [ "$status" -eq 0 ]; then
     echo "crash fixture unexpectedly succeeded" >&2
     exit 1
   fi
 }
-run_expected_crash
-run_expected_crash
-find "$TMP_DIR/.pio" -maxdepth 1 -type f -name 'furble-sim-preferences-*.bin' -print \
-  | sort >"$TMP_DIR/crash-before.txt"
-crashCount=$(wc -l <"$TMP_DIR/crash-before.txt" | tr -d ' ')
-uniqueCrashCount=$(sort -u "$TMP_DIR/crash-before.txt" | wc -l | tr -d ' ')
-if [ "$crashCount" -ne 2 ] || [ "$uniqueCrashCount" -ne 2 ]; then
+CRASH_A_DIR="$TMP_DIR/crash-a"
+CRASH_B_DIR="$TMP_DIR/crash-b"
+run_expected_crash "$CRASH_A_DIR"
+run_expected_crash "$CRASH_B_DIR"
+FILE_A=$(find "$CRASH_A_DIR/.pio" -maxdepth 1 -type f -name 'furble-sim-preferences-*.bin' \
+  -print -quit)
+FILE_B=$(find "$CRASH_B_DIR/.pio" -maxdepth 1 -type f -name 'furble-sim-preferences-*.bin' \
+  -print -quit)
+if [ -z "$FILE_A" ] || [ -z "$FILE_B" ] || \
+    [ "$(basename "$FILE_A")" = "$(basename "$FILE_B")" ]; then
   echo "generated preference names were not unique" >&2
   exit 1
 fi
@@ -106,15 +112,36 @@ mkdir "$RESTART_DIR"
     --script "$ROOT/sim/scenarios/e2e/restart-persist.txt" \
     --capture-dir "$RESTART_DIR/captures"
 )
-find "$TMP_DIR/.pio" -maxdepth 1 -type f -name 'furble-sim-preferences-*.bin' -print \
-  | sort >"$TMP_DIR/crash-after.txt"
-if ! cmp -s "$TMP_DIR/crash-before.txt" "$TMP_DIR/crash-after.txt"; then
-  echo "orderly run swept unrelated crash leftovers" >&2
+if [ ! -f "$FILE_A" ] || [ ! -f "$FILE_B" ]; then
+  echo "a run in another directory swept unrelated crash leftovers" >&2
   exit 1
 fi
 if find "$RESTART_DIR/.pio" -maxdepth 1 -type f -name 'furble-sim-preferences-*' \
     -print -quit 2>/dev/null | grep -q .; then
   echo "owned generated preference store survived orderly cleanup" >&2
+  exit 1
+fi
+
+# Put the two dead-PID stores into one run directory. A normal run there must
+# reclaim both while leaving the caller-owned store alone.
+mkdir -p "$TMP_DIR/.pio"
+mv "$FILE_A" "$TMP_DIR/.pio/"
+mv "$FILE_B" "$TMP_DIR/.pio/"
+SWEEP_SCRIPT="$TMP_DIR/sweep.txt"
+printf '%s\n' 'wait 1' 'exit' >"$SWEEP_SCRIPT"
+(
+  cd "$TMP_DIR"
+  env -u FURBLE_SIM_PREFS -u FURBLE_SIM_PREFS_GENERATED -u FURBLE_SIM_RESTART_STEP \
+    -u FURBLE_SIM_CRASH_STEP "$BIN" --script "$SWEEP_SCRIPT" \
+    --capture-dir "$TMP_DIR/sweep-captures"
+)
+if find "$TMP_DIR/.pio" -maxdepth 1 -type f -name 'furble-sim-preferences-*.bin' \
+    -print -quit 2>/dev/null | grep -q .; then
+  echo "dead-PID generated preference stores were not reclaimed" >&2
+  exit 1
+fi
+if [ ! -f "$EXPLICIT" ]; then
+  echo "the dead-PID sweep removed a caller-owned store" >&2
   exit 1
 fi
 

@@ -4,6 +4,7 @@
 #include <cctype>
 #include <cerrno>
 #include <chrono>
+#include <csignal>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -1566,6 +1567,49 @@ bool scenarioSettingIs(const char *name, const char *value) {
   return found != scenarioSettings.end() && found->second == value;
 }
 
+// Remove a generated store whose encoded process is gone. Only the exact
+// simulator-owned name is considered: a caller-selected FURBLE_SIM_PREFS path
+// does not match this pattern and is never touched.
+void sweepAbandonedPreferences(const std::filesystem::path &directory) {
+  const std::string prefix = "furble-sim-preferences-";
+  std::error_code error;
+  for (std::filesystem::directory_iterator it(directory, error), end; it != end;
+       it.increment(error)) {
+    if (error) {
+      return;
+    }
+    const std::string name = it->path().filename().string();
+    if ((name.size() < prefix.size() + 12) || (name.rfind(prefix, 0) != 0)
+        || (name.compare(name.size() - 4, 4, ".bin") != 0)) {
+      continue;
+    }
+    // <prefix><scenario>-<pid>-<six random characters>.bin
+    const size_t suffixStart = name.size() - 4 - 6;
+    if ((suffixStart == 0) || (name[suffixStart - 1] != '-')) {
+      continue;
+    }
+    const size_t pidEnd = suffixStart - 1;
+    const size_t pidStart = name.rfind('-', pidEnd - 1);
+    if ((pidStart == std::string::npos) || (pidStart < prefix.size())) {
+      continue;
+    }
+    const std::string pidText = name.substr(pidStart + 1, pidEnd - pidStart - 1);
+    if ((pidText.empty()) || (pidText.find_first_not_of("0123456789") != std::string::npos)) {
+      continue;
+    }
+    const long parsed = std::strtol(pidText.c_str(), nullptr, 10);
+    if ((parsed <= 0) || (static_cast<pid_t>(parsed) != parsed)) {
+      continue;
+    }
+    const pid_t pid = static_cast<pid_t>(parsed);
+    if ((kill(pid, 0) == 0) || (errno != ESRCH)) {
+      continue;
+    }
+    std::filesystem::remove(it->path(), error);
+    std::filesystem::remove(it->path().string() + ".tmp." + pidText, error);
+  }
+}
+
 void preparePreferences(void) {
   generatedPreferencesPath.clear();
   generatedPreferencesOwned = false;
@@ -1623,6 +1667,7 @@ void preparePreferences(void) {
               << '\n';
     std::exit(1);
   }
+  sweepAbandonedPreferences(directory);
   std::string pathTemplate = (directory
                               / ("furble-sim-preferences-" + scenarioName + "-"
                                  + std::to_string(getpid()) + "-XXXXXX.bin"))
