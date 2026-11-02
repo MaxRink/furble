@@ -54,8 +54,25 @@ print ui.page
 
 action nav display
 wait 350
+assert ui.page display
+assert ui.focus_overlaps 0
 capture settings-display
 print ui.page
+action scroll bottom
+wait 350
+assert ui.page display
+assert ui.cut_labels 0
+capture settings-display-bottom
+action scroll top
+wait 150
+
+action nav legend
+wait 350
+assert ui.page legend
+capture settings-legend
+print ui.page
+back
+wait 150
 
 action nav features
 wait 350
@@ -187,20 +204,6 @@ print ui.modal
 action companion-reject
 wait 250
 
-# Camera numeric-comparison prompt. The FauxNY seam injects a deterministic
-# request on the active camera, so this captures the production modal without
-# requiring a Ricoh body or a live BLE security callback.
-home
-wait 250
-action connect
-wait 300
-action camera-pair-request confirm 428913
-wait 500
-capture camera-pairing
-print ui.pairing_kind
-action camera-pair-reject
-wait 250
-
 # Connect flow. action connect drives the real connect the camera button
 # triggers. Capture the connecting overlay first, then the connected page.
 home
@@ -219,7 +222,22 @@ print ui.connected
 # Remote shutter page while connected, non-touch layout on this narrow board.
 action blind
 wait 500
+assert ui.page shutter
 capture remote
 print ui.page
+
+# Camera numeric-comparison prompt. The FauxNY seam injects a deterministic
+# request on the active camera, so this captures the production modal without
+# requiring a Ricoh body or a live BLE security callback.
+home
+wait 250
+action connect
+wait 300
+action camera-pair-request confirm 428913
+wait 500
+capture camera-pairing
+print ui.pairing_kind
+action camera-pair-reject
+wait 250
 
 exit

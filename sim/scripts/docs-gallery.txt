@@ -74,6 +74,7 @@ print ui.page
 
 action blind
 wait 500
+assert ui.page shutter
 capture remote
 print ui.page
 

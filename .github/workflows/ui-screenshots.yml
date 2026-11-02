@@ -90,6 +90,7 @@ jobs:
       - name: Capture UI screenshots
         env:
           FURBLE_SIM_PREFS: ${{ runner.temp }}/furble-sim-prefs.bin
+          FURBLE_SIM_NO_TOUCH: '1'
         run: |
           mkdir -p "$RUNNER_TEMP/ui-screenshots"
           # Panel_sdl needs a display-backed GL surface for pixel readback on
@@ -131,7 +132,7 @@ jobs:
           {
             echo '## UI screenshots'
             echo
-            echo 'The simulator currently models the M5StickS3 135x240 board class.'
+            echo 'The simulator models the M5StickS3 135x240 physical-button layout.'
             echo
             echo '| Screen | Board class | PNG |'
             echo '| --- | --- | --- |'

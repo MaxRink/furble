@@ -4,6 +4,7 @@
 # focus cue. Menu rows set LV_OBJ_FLAG_STATE_TRICKLE, so the focused row
 # propagates LV_STATE_FOCUSED to its child icon and label. A regression that
 # attaches the outline style to the row or its children makes this count climb.
+assert ui.nav_layout touch
 seed fauxny true
 wait 300
 # The home menu boots with Scan focused; it carries an icon and a label. The

@@ -1,0 +1,9 @@
+seed no_touch true
+seed text_size 2
+wait 300
+action page bulb
+wait 250
+print ui.indicator_clearance
+print ui.indicator_overlaps
+print ui.cut_labels
+exit

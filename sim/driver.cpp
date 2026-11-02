@@ -322,7 +322,7 @@ void validateSeed(const std::string &name, const std::string &value) {
       "brightness", "inactivity", "display_off",  "gps_rate",  "gps_constel",
       "gps_power",  "gps_duty",   "cpu_freq",     "tx_power",  "scan_mode",
       "text_size",  "auto_off",   "low_batt",     "fb_output", "gps_hold",
-      "imu_wake",   "gps_assist", "gps_platform", "hw_motion",
+      "imu_wake",   "gps_assist", "gps_platform", "hw_motion", "legend",
   };
   if (std::find(std::begin(byteSeeds), std::end(byteSeeds), name) != std::end(byteSeeds)) {
     if (parseUnsigned(value) > std::numeric_limits<uint8_t>::max()) {
@@ -1026,6 +1026,7 @@ std::string settingBoolValue(const std::string &name) {
 std::string settingByteValue(const std::string &name) {
   static const std::map<std::string, Settings::type_t> bytes = {
       {"text_size", Settings::TEXT_SIZE},
+      {"legend",    Settings::LEGEND   },
       {"imu_wake",  Settings::IMU_WAKE },
       {"hw_motion", Settings::HW_MOTION},
   };
@@ -1686,6 +1687,7 @@ void applyScenarioSettings(void) {
   saveByte("low_batt", Settings::LOW_BATT);
   saveByte("fb_output", Settings::FB_OUTPUT);
   saveByte("hw_motion", Settings::HW_MOTION);
+  saveByte("legend", Settings::LEGEND);
   const auto scanTimeout = scenarioSettings.find("scan_timeout");
   if (scanTimeout != scenarioSettings.end()) {
     Settings::save<uint32_t>(Settings::SCAN_TIMEOUT, parseUnsigned(scanTimeout->second));

@@ -34,9 +34,9 @@ mono	Mono Furble"
 : "${SDL_AUDIODRIVER:=dummy}"
 export SDL_AUDIODRIVER
 
-# Board -> (furble board macro, M5GFX board, non-touch layout). The narrow Stick
-# boards have no touch panel, so the Remote page must render the non-touch
-# floating-indicator layout; the Core is a touch board and keeps the touch grid.
+# Board -> (furble board macro, M5GFX board, non-touch layout). Every modeled
+# board is physical-key hardware: the Sticks and the M5Stack Core Basic all use
+# the non-touch layout. Core2 touch remains a supplemental scenario lane.
 board_furble() {
   case "$1" in
     s3) echo FURBLE_M5STICKS3 ;;
@@ -52,10 +52,7 @@ board_m5gfx() {
   esac
 }
 board_notouch() {
-  case "$1" in
-    core) echo 0 ;;
-    *) echo 1 ;;
-  esac
+  echo 1
 }
 
 build_board() {

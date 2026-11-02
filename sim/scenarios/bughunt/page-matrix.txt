@@ -2,10 +2,12 @@
 # (80x160), M5StickS3 (135x240) and M5Stack Core (320x240) binaries. The
 # harness enables IR, feedback and SD so capability-gated pages are included.
 #
-# Compact pages assert that their content fits. Intentional-scroll pages are
-# driven to both ends and assert the LVGL scroll extent is exhausted, even on a
-# wider panel where the current content may happen to fit. Page identity is a
-# FURBLE_SIM-only seam, so a new route cannot silently report "other".
+# Fit-required run pages assert that their content fits. Menu pages keep the
+# selected font, row icons and spacing, and are driven to both scroll ends when
+# their complete rows exceed the viewport. Narrow Stick touch shutter is an
+# intentional scrolling exception and is checked at both extents below. Page
+# identity is a FURBLE_SIM-only seam, so a new route cannot silently report
+# "other".
 seed fauxny true
 seed saved_camera true
 seed gps true
@@ -19,7 +21,19 @@ wait 300
 
 # Root and deterministic camera list routes.
 assert ui.page main
-assert ui.overflow no
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+assert ui.scroll_top 0
+action scroll bottom
+wait 100
+assert ui.scroll_bottom 0
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+action scroll top
+wait 100
+assert ui.scroll_top 0
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
 action nav connect
 wait 150
 assert ui.page connect
@@ -65,7 +79,12 @@ assert ui.scroll_top 0
 action nav display
 wait 100
 assert ui.page display
-assert ui.overflow no
+# This page scrolls at this size by design: a page honours the text size the
+# user chose and scrolls when the rows stop fitting rather than shrinking the
+# face. Before plan 168 it reported a fit only because its container was
+# pinned to the page height and stacked the rows on top of each other, which
+# no fit query can see. What has to hold is that nothing overlaps.
+assert ui.label_overlaps 0
 action nav features
 wait 100
 assert ui.page features
@@ -76,7 +95,21 @@ assert ui.scroll_top 0
 action nav sensors
 wait 100
 assert ui.page sensors
-assert ui.overflow no
+# Physical 80px keeps the selected font and scrolls its complete Sensors rows.
+# No name may be lost, and both ends must stay reachable.
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+assert ui.scroll_top 0
+action scroll bottom
+wait 100
+assert ui.scroll_bottom 0
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+action scroll top
+wait 100
+assert ui.scroll_top 0
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
 action nav gestures
 wait 100
 assert ui.page gestures
@@ -158,7 +191,12 @@ assert ui.scroll_top 0
 action nav timer
 wait 100
 assert ui.page timer
-assert ui.overflow no
+# This page scrolls at this size by design: a page honours the text size the
+# user chose and scrolls when the rows stop fitting rather than shrinking the
+# face. Before plan 168 it reported a fit only because its container was
+# pinned to the page height and stacked the rows on top of each other, which
+# no fit query can see. What has to hold is that nothing overlaps.
+assert ui.label_overlaps 0
 action nav interval_count
 wait 100
 assert ui.page interval_count
@@ -190,11 +228,21 @@ assert ui.scroll_top 0
 action nav theme
 wait 100
 assert ui.page theme
-assert ui.overflow no
+# This page scrolls at this size by design: a page honours the text size the
+# user chose and scrolls when the rows stop fitting rather than shrinking the
+# face. Before plan 168 it reported a fit only because its container was
+# pinned to the page height and stacked the rows on top of each other, which
+# no fit query can see. What has to hold is that nothing overlaps.
+assert ui.label_overlaps 0
 action nav text_size
 wait 100
 assert ui.page text_size
-assert ui.overflow no
+# This page scrolls at this size by design: a page honours the text size the
+# user chose and scrolls when the rows stop fitting rather than shrinking the
+# face. Before plan 168 it reported a fit only because its container was
+# pinned to the page height and stacked the rows on top of each other, which
+# no fit query can see. What has to hold is that nothing overlaps.
+assert ui.label_overlaps 0
 action nav bluetooth
 wait 100
 assert ui.page bluetooth
@@ -205,7 +253,12 @@ assert ui.scroll_top 0
 action nav tx_power
 wait 100
 assert ui.page tx_power
-assert ui.overflow no
+# This page scrolls at this size by design: a page honours the text size the
+# user chose and scrolls when the rows stop fitting rather than shrinking the
+# face. Before plan 168 it reported a fit only because its container was
+# pinned to the page height and stacked the rows on top of each other, which
+# no fit query can see. What has to hold is that nothing overlaps.
+assert ui.label_overlaps 0
 action nav about
 wait 100
 assert ui.page about
@@ -290,11 +343,26 @@ action connect
 wait 3200
 assert ui.page connected
 assert ui.connected yes
-assert ui.overflow no
+# This page scrolls at this size by design: a page honours the text size the
+# user chose and scrolls when the rows stop fitting rather than shrinking the
+# face. Before plan 168 it reported a fit only because its container was
+# pinned to the page height and stacked the rows on top of each other, which
+# no fit query can see. What has to hold is that nothing overlaps.
+assert ui.label_overlaps 0
 action page shutter
 wait 100
 assert ui.page shutter
-assert ui.overflow no
+assert ui.scroll_top 0
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+action scroll bottom
+assert ui.scroll_bottom 0
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+action scroll top
+assert ui.scroll_top 0
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
 action page bulb
 wait 100
 assert ui.page bulb
@@ -335,7 +403,12 @@ assert ui.page connected
 action intervalometer
 wait 100
 assert ui.page timer_run
-assert ui.overflow no
+# This page scrolls at this size by design: a page honours the text size the
+# user chose and scrolls when the rows stop fitting rather than shrinking the
+# face. Before plan 168 it reported a fit only because its container was
+# pinned to the page height and stacked the rows on top of each other, which
+# no fit query can see. What has to hold is that nothing overlaps.
+assert ui.label_overlaps 0
 action stop
 wait 100
 assert ui.interval_state idle

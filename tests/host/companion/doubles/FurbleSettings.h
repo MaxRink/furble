@@ -25,6 +25,7 @@ class Settings {
     DISPLAY_OFF,
     THEME,
     TEXT_SIZE,
+    LEGEND,
     TX_POWER,
     TX_ADAPTIVE,
     GPS,
@@ -107,6 +108,12 @@ class Settings {
     HW_MOTION_SOFTWARE = 1,
     HW_MOTION_HARDWARE = 2,
   } hw_motion_t;
+
+  typedef enum {
+    LEGEND_BUTTONS = 0,
+    LEGEND_BOTTOM = 1,
+    LEGEND_OFF = 2,
+  } legend_t;
 
   static void init(void) {}
 
