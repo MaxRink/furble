@@ -316,6 +316,10 @@ reboot
 The full command reference, with every subcommand, is in
 [docs/console-commands.md](docs/console-commands.md).
 
+`cameras list` reports both the list position and `saved_index`. A scan can
+rediscover a saved camera at a different list position, so feed `saved_index`
+to `connect` rather than the scan-list index.
+
 MQTT actuator commands must be published with retain off. Retained commands
 under `BASE/ID/cmd/` are rejected so reconnects cannot replay a shutter or
 other actuator. A clean MQTT disconnect enqueues retained `offline` and waits
@@ -323,7 +327,9 @@ briefly for its broker acknowledgement before teardown; it tears down on
 acknowledgement or timeout. A timeout does not prove broker delivery; the last
 will covers an unclean loss.
 
-UI workflow requests are queued. If a bounded wait reports a pending unknown
+UI workflow requests are queued. A request the UI accepts prints
+`completed: <verb>`; one it rejects prints `failed: <verb>: <reason>` and
+returns a non-zero command code. If a bounded wait reports a pending unknown
 outcome, the operation may still execute later; do not blindly retry a
 timed-out destructive command.
 

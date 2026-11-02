@@ -180,7 +180,10 @@ bool testDispatchAndDeduplication() {
   CHECK(recovered.front()->getPairType() == Camera::PairType::SAVED);
   CHECK(Furble::CameraList::getCameraId(recovered.front().get()) != 0);
 
+  CHECK(Furble::CameraList::savedIndex(recovered.front().get()) == 0);
+  CHECK(Furble::CameraList::isSaved(recovered.front().get()));
   Furble::CameraList::clear();
+  CHECK(Furble::CameraList::savedIndex(nullptr) == -1);
   CHECK(!Furble::CameraList::match(nullptr));
   CHECK(Furble::CameraList::size() == 0);
 

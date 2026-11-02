@@ -118,18 +118,23 @@ void printCameras(bool reload) {
            static_cast<unsigned long>(camera->getType()));
     // The same list carries saved cameras and scan results, and a scan can
     // rediscover a saved camera. Say which each row is.
-    printf("camera%u.saved: %s\n", static_cast<unsigned>(n),
-           CameraList::isSaved(camera.get()) ? "true" : "false");
+    const bool saved = CameraList::isSaved(camera.get());
+    printf("camera%u.saved: %s\n", static_cast<unsigned>(n), saved ? "true" : "false");
+    // 'connect' resolves the saved-catalog index, not this list index. Report
+    // the mapping so a script does not connect a different body than the one
+    // it just listed.
+    const int32_t savedIndex = CameraList::savedIndex(camera.get());
+    printf("camera%u.saved_index: %ld\n", static_cast<unsigned>(n), static_cast<long>(savedIndex));
     printf("camera%u.selected: %s\n", static_cast<unsigned>(n),
            camera->isActive() ? "true" : "false");
   }
 }
 
-bool deleteCameras(int32_t index) {
+const char *deleteCameras(int32_t index) {
   CameraList::load();
   if ((index >= 0) && (static_cast<size_t>(index) >= CameraList::size())) {
     ESP_LOGE(LOG_TAG, "console: no saved camera at index %ld", index);
-    return false;
+    return "no_saved_camera";
   }
 
   unsigned deleted = 0;
@@ -148,7 +153,7 @@ bool deleteCameras(int32_t index) {
   }
   printf("count: %u\n", deleted);
   CameraList::load();
-  return persisted;
+  return persisted ? "ok" : "persistence_failed";
 }
 
 bool connectCamera(int32_t index) {
@@ -348,7 +353,7 @@ void UI::serviceRequests(void) {
         break;
 
       case Request::DELETE:
-        token = deleteCameras(item.arg) ? "ok" : "invalid_target";
+        token = deleteCameras(item.arg);
         break;
 
       case Request::GPS_RELOAD:

@@ -515,3 +515,22 @@ from `249650a5` plus the reviewed scenario updates. The build log is
 `/home/a92615428/b/c265-guards-build.log`. Deselect/clear coverage, the firmware
 completion-semaphore path, and physical camera behavior are not established by
 this scenario. The coverage floor remains unchanged and needs CI measurement.
+
+## PR321 follow-up review, 2026-11-02
+
+Two residual findings from the PR265 review are closed. The headless camera
+listing now emits `saved_index`, the saved-catalog position `connect` resolves,
+using the shared `CameraList::savedIndex()` identity rule instead of the
+list-local position. The display printer uses the same helper. A rejected
+workflow request now prints `failed: <verb>: <reason>` and keeps the non-zero
+handler return, while pending timeouts stay distinct. The command runner tracks
+whether the handler already reported, so it does not add a duplicate
+`failed: command returned N` line; it still surfaces the return code when no
+handler output exists.
+
+Host coverage exercises a rejected workflow token, rejects a duplicate
+completion line, and checks the shared saved-index helper. Validation on this
+branch: host CTest 128/128, Python 198/198, protocol conformance, and
+`esp32-s3-headless` and `m5stick-s3` firmware builds. The console host harness
+still links a UI double, so real UI queue and hardware completion behavior
+remain outside this evidence.

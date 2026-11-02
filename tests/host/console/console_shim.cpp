@@ -808,7 +808,7 @@ bool UI::sendRequest(Request request, int32_t arg, RequestResult *result) {
   }
   // This double records routing and completes synchronously. Real UI queue
   // ownership and operation outcomes require simulator/firmware validation.
-  result->state->token = "ok";
+  result->state->token = ConsoleHost::ui().workflowToken;
   xSemaphoreGive(result->state->done);
   return true;
 }

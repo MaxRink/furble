@@ -106,6 +106,11 @@ still execute later. Do not blindly retry a timed-out delete or pairing request.
 - `display status | mode gui | console | brightness <value>` controls display
   state on display builds.
 
+Workflow commands print `completed: <verb>` when the UI accepts the request, or
+`failed: <verb>: <reason>` and return non-zero when it rejects it. A bounded
+wait prints `pending` when the result is unknown, so do not blindly retry a
+timed-out destructive request.
+
 On the display-less Waveshare ESP32-S3-ETH, `status` reports battery level and
 voltage as unknown (`-1`) and current as unavailable (`0`). It never infers USB
 or optional PoE power from Ethernet link state because the optional PoE HAT has

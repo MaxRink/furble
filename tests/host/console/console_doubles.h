@@ -41,6 +41,9 @@ struct UIState {
   bool queueAvailable = true;
   // Gesture settings notify the UI task through a counter, not a request.
   unsigned gestureNotifications = 0;
+  // Token the workflow double returns. Set to a non-ok value to exercise the
+  // console's failure path.
+  const char *workflowToken = "ok";
 };
 
 UIState &ui(void);
