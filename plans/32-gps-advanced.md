@@ -77,10 +77,11 @@ Phase 2 is implemented on `feat/32-gps-advanced-phase2`, branched from
   under mask bit B0, with a `$PCAS11` NMEA fallback. The `$PCAS11` numbering is
   third-party attested only, so it is provisional; the on-device effect of
   `dyModel` is unmeasured. Reachable from the console with `gps platform <0-4>`.
-- MON-HW interference poll, scaffolded, hardware-tuning-pending. `gps monhw`
-  sends the poll and prints the decoded and raw response. The 56-byte layout
-  could not be confirmed against a live unit, so `Casic::parseMonHw` reads a
-  conservative subset and the console prints the raw bytes and marks it pending.
+- MON-HW interference poll, scaffolded, live-value check pending. `gps monhw`
+  sends the poll and prints the decoded and raw response. The offsets are now
+  specification-derived and corrected in plan 293: `noisePerMs0` at 0,
+  `agcData0` at 12, `antStatus` at 20, and the jamming word array at 24. The
+  console still prints the raw bytes; the field values need a live-unit check.
 - Companion-fed assistance (tier 3) remains out of scope; it belongs to
   `plans/50-companion-app-design.md`.
 - Data sources: the CASIC binary framing, the id-first checksum, `AID-INI`,
@@ -829,7 +830,8 @@ must not become a receiver furble cannot configure.
 | `$PCAS00` | `CFG-CFG` | 0x06 0x05 | U2 mask, U1 mode. Never sent |
 
 NMEA message ids for `CFG-MSG`: GGA 0x00, GLL 0x01, GSA 0x02, GSV 0x03,
-RMC 0x04, VTG 0x05, ZDA 0x08, TXT 0x11, all under class 0x4E.
+RMC 0x04, VTG 0x05, ZDA 0x08, and 0x11 (TXT in CASIC v3.6, ANT in v4.2), all
+under class 0x4E. The 0x11 meaning depends on the receiver firmware version.
 
 `CFG-MSG` rate 0xFFFF means "output once immediately", which turns any periodic
 message into a poll. PR32d and PR32e both use this.
@@ -1464,8 +1466,8 @@ unplanned. This is the complete residue.
 | Item | Where documented | Verdict |
 |---|---|---|
 | 1PPS output, `CFG-TP` 0x06 0x03 | CASIC 2.11.4, full pulse interval, width, polarity, reference and source config | Not usable. The Unit GPS v1.1 Grove connector is GND, 5 V, UART_RX, UART_TX only. No PPS pin is brought out. Configuring a pulse that reaches nothing is pointless. Would need a hardware modification. |
-| SBAS | AT6558 datasheet lists WAAS, EGNOS, GAGAN and MSAS reception; the CASIC numbering table assigns SBAS PRN 33 to 51 and 120 to 138 | Nothing to do. There is no `$PCAS` field and no `CFG-NAVX` bit for SBAS. `navSystem` has only B0 GPS, B1 BDS, B2 GLONASS. SBAS is either on or it is not, and furble cannot influence it. |
-| QZSS | L76K note under `$PCAS04`: "The QZSS is enabled by default, but it does not support configuration" | Nothing to do, and this is a good thing. QZSS is free extra coverage over Asia and Oceania. |
+| SBAS | AT6558 datasheet lists WAAS, EGNOS, GAGAN and MSAS reception; the CASIC numbering table assigns SBAS PRN 33 to 51 and 120 to 138 | Version-scoped. CASIC v3.6 has no `$PCAS` field and no `CFG-NAVX` bit for SBAS; `navSystem` has only B0 GPS, B1 BDS, B2 GLONASS. CASIC v4.2 adds `$PCAS15` with an SBAS mask, but the unit's firmware version is not recorded. Probe `$PCAS06` and `$PCAS15` on the bench before treating this as available. |
+| QZSS | L76K note under `$PCAS04`: "The QZSS is enabled by default, but it does not support configuration" | Version-scoped. The L76K note covers `$PCAS04`; CASIC v4.2 adds `$PCAS15`, which also carries a QZSS mask. QZSS remains free extra coverage over Asia and Oceania, so there is no reason to disable it. Probe before adding a control. |
 | NMEA version, `$PCAS05,ver` | CASIC 1.6.6. 2 = NMEA 4.1 and above, 5 = default, China Transport dual mode, NMEA 2.3 and 4.0 compatible, 9 = single GPS NMEA 2.2 | Diagnostics command only, not a setting. Changing the NMEA version can change the talker ids, and the TinyGPS++ fork only recognises GGA and RMC under the talkers in `strchr("PNABL", term[1])` (`TinyGPS++.cpp:238-241`). A version change that produces something else silently kills every fix. Add it to the console for experiments, keep it out of the menu. |
 | Antenna status TXT | CASIC 1.5.8 part 2, `ANTENNA OPEN`, `ANTENNA OK`, `ANTENNA SHORT` | Folded into PR32e. One line, already in the stream. |
 | `MON-HW` 0x0A 0x09 | CASIC 2.14.2. Noise power per IF channel, AGC counts, antenna status, and eight jamming centre frequencies | Deferred, not rejected. Genuinely answers "why is my fix slow" when the answer is interference, which nothing else in this document can detect. 56 bytes, one poll. Worth a follow up once PR32b's binary path is proven. |

@@ -365,21 +365,22 @@ bool testMonHw() {
   const int before = g_Failures;
 
   std::vector<uint8_t> buf(56, 0);
-  // noise 0x11223344 little-endian, agc 0x5566, antenna_status 0x07, jam 0x2A.
+  // CASIC 2.14.2: noisePerMs0 at 0, agcData0 at 12, antStatus at 20,
+  // jamming[0] at 24.
   buf[0] = 0x44;
   buf[1] = 0x33;
   buf[2] = 0x22;
   buf[3] = 0x11;
-  buf[4] = 0x66;
-  buf[5] = 0x55;
-  buf[8] = 0x07;
-  buf[9] = 0x2A;
+  buf[12] = 0x66;
+  buf[13] = 0x55;
+  buf[20] = 0x07;
+  buf[24] = 0x2A;
   const Casic::MonHw hw = Casic::parseMonHw(buf.data(), buf.size());
   check(hw.valid, "a 56-byte MON-HW buffer is valid");
   check(hw.noise == 0x11223344u, "noise reads little-endian from offset 0");
-  check(hw.agc == 0x5566u, "agc reads little-endian from offset 4");
-  check(hw.antenna_status == 0x07, "antenna_status reads from offset 8");
-  check(hw.jam_indicator == 0x2A, "jam_indicator reads from offset 9");
+  check(hw.agc == 0x5566u, "agc reads little-endian from offset 12");
+  check(hw.antenna_status == 0x07, "antenna_status reads from offset 20");
+  check(hw.jam_indicator == 0x2Au, "jam_indicator reads from offset 24");
 
   std::vector<uint8_t> shortBuf(10, 0);
   const Casic::MonHw shortHw = Casic::parseMonHw(shortBuf.data(), shortBuf.size());
@@ -1086,7 +1087,7 @@ bool testMonHwEdges() {
 
   std::vector<uint8_t> longBuf(64, 0);
   longBuf[0] = 0x01;
-  longBuf[8] = 0x02;
+  longBuf[20] = 0x02;
   const Casic::MonHw longHw = Casic::parseMonHw(longBuf.data(), longBuf.size());
   check(longHw.valid, "a payload longer than 56 bytes is still decoded");
   check((longHw.noise == 1) && (longHw.antenna_status == 2),

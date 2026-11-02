@@ -40,7 +40,6 @@ constexpr size_t BINARY_FRAME_OVERHEAD = BINARY_HEADER_SIZE + BINARY_CHECKSUM_SI
 constexpr uint8_t BINARY_SYNC_0 = 0xBA;
 constexpr uint8_t BINARY_SYNC_1 = 0xCE;
 constexpr uint32_t NAVX_MASK_NAV_SYSTEM = 1 << 8;
-constexpr uint8_t NAVX_NAV_SYSTEM_OFFSET = 6;
 
 uint16_t readU16(const uint8_t *data) {
   return static_cast<uint16_t>(data[0]) | (static_cast<uint16_t>(data[1]) << 8);
@@ -2543,12 +2542,12 @@ void GPS::completeNavxQuery(void) {
   std::string fallback;
   if (m_NavxConstelSet) {
     mask |= NAVX_MASK_NAV_SYSTEM;
-    write[NAVX_NAV_SYSTEM_OFFSET] = m_NavxConstelVal;
+    write[GPS::NAVX_NAV_SYSTEM_OFFSET] = m_NavxConstelVal;
     fallback = "PCAS04," + std::to_string(m_NavxConstelVal);
   }
   if (m_NavxDyModelSet) {
     mask |= NAVX_MASK_DY_MODEL;
-    write[NAVX_DY_MODEL_OFFSET] = m_NavxDyModelVal;
+    write[GPS::NAVX_DY_MODEL_OFFSET] = m_NavxDyModelVal;
     if (!fallback.empty()) {
       fallback += "\n";
     }

@@ -1422,8 +1422,9 @@ int gpsMonHw(void) {
     printf("monhw: polled, no response yet, retry 'gps monhw'\n");
     return 0;
   }
-  printf("monhw: noise=%lu agc=%u antenna=%u jam=%u\n", static_cast<unsigned long>(report.hw.noise),
-         report.hw.agc, report.hw.antenna_status, report.hw.jam_indicator);
+  printf("monhw: noise=%lu agc=%u antenna=%u jam=%lu\n",
+         static_cast<unsigned long>(report.hw.noise), report.hw.agc, report.hw.antenna_status,
+         static_cast<unsigned long>(report.hw.jam_indicator));
   printf("monhw raw:");
   for (size_t i = 0; i < report.raw_length; i++) {
     printf(" %02X", report.raw[i]);
