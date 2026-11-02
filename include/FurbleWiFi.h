@@ -88,6 +88,12 @@ class WiFi {
   static bool hostResumeAfterWired(void);
   /** Run the terminal-disconnect driver cleanup once. */
   static void hostServiceTerminalStop(void);
+  /** Issue one connect request without waiting for the join outcome. */
+  static bool hostConnectAttempt(void);
+  /** Run the production connect-and-wait join step once. */
+  static bool hostConnectAndWaitForJoin(void);
+  /** Current lifecycle-event counter. */
+  static uint32_t hostLifecycleEvent(void);
   /** Run the connected-state wired takeover once. */
   static bool hostServiceConnectedWired(void);
   /** Retry delay after ten failures while a camera session blocks the scan. */

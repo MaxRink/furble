@@ -565,6 +565,60 @@ bool connectAttempt(void) {
   return true;
 }
 
+// Wait for one asynchronous join to produce a lifecycle event. Returns true
+// when the link came up or the request was cancelled, false when the explicit
+// join deadline expired without any event.
+bool waitForJoin(uint32_t lifecycle) {
+  const int64_t joinStartedUs = esp_timer_get_time();
+#if defined(FURBLE_WIFI_HOST_TEST)
+  // The host shim clock can stay fixed while the stub wait returns at once.
+  // Bound the loop so a regression fails instead of hanging CI; the bound
+  // counts the attempt exactly like the real deadline.
+  uint32_t spins = 0;
+#endif
+  while (g_ConnectRequested && !g_Connected && (g_LifecycleEvent.load() == lifecycle)
+         && ((esp_timer_get_time() - joinStartedUs) < (JOIN_DEADLINE_MS * 1000LL))) {
+#if defined(FURBLE_WIFI_HOST_TEST)
+    if (++spins > 10000) {
+      ESP_LOGW(LOG_TAG, "WiFi join deadline expired");
+      recordFailure();
+      return false;
+    }
+#endif
+#if defined(FURBLE_ETHERNET)
+    if (wiredNetworkActive()) {
+      (void)deferForWired();
+      break;
+    }
+#endif
+    uint32_t notification = 0;
+    xTaskNotifyWait(0, UINT32_MAX, &notification, pdMS_TO_TICKS(WIRED_RECHECK_MS));
+  }
+  if (!g_ConnectRequested || g_Connected) {
+    return true;
+  }
+  if (g_LifecycleEvent.load() == lifecycle) {
+    // No event within the join budget: count one failed attempt so the retry
+    // backoff advances.
+    ESP_LOGW(LOG_TAG, "WiFi join deadline expired");
+    recordFailure();
+  }
+  return false;
+}
+
+// Issue one connect request and wait for its outcome. The lifecycle snapshot is
+// taken before the request, so a disconnect delivered inside connectAttempt()
+// ends the wait immediately instead of becoming the baseline for a new
+// deadline and a second failure count.
+bool connectAndWaitForJoin(void) {
+  const uint32_t lifecycle = g_LifecycleEvent.load();
+  if (!connectAttempt()) {
+    recordFailure();
+    return false;
+  }
+  return waitForJoin(lifecycle);
+}
+
 // A connected station must hand the network back when a wired address appears.
 // Extracted so the host suite can drive the transition without a task.
 bool serviceConnectedWired(void) {
@@ -642,36 +696,12 @@ void wifiTask(void *) {
         (void)scanForNetwork();
       }
 
-      if (!connectAttempt()) {
-        recordFailure();
-        continue;
-      }
-
       // Wait for a lifecycle event instead of issuing another connect request
       // every five seconds. Slow association or DHCP can outlive the
       // cancellation poll; a repeated esp_wifi_connect() would then inflate the
-      // failure counters. The periodic wake still observes cancels, a wired
-      // takeover, and the explicit join deadline.
-      const uint32_t lifecycle = g_LifecycleEvent.load();
-      const int64_t joinStartedUs = esp_timer_get_time();
-      while (g_ConnectRequested && !g_Connected && (g_LifecycleEvent.load() == lifecycle)
-             && ((esp_timer_get_time() - joinStartedUs) < (JOIN_DEADLINE_MS * 1000LL))) {
-#if defined(FURBLE_ETHERNET)
-        if (wiredNetworkActive()) {
-          (void)deferForWired();
-          break;
-        }
-#endif
-        xTaskNotifyWait(0, UINT32_MAX, &notification, pdMS_TO_TICKS(WIRED_RECHECK_MS));
-      }
-      if (!g_ConnectRequested || g_Connected) {
+      // failure counters.
+      if (connectAndWaitForJoin()) {
         break;
-      }
-      if (g_LifecycleEvent.load() == lifecycle) {
-        // No event within the join budget: count one failed attempt so the
-        // retry backoff advances.
-        ESP_LOGW(LOG_TAG, "WiFi join deadline expired");
-        recordFailure();
       }
       continue;
     }
@@ -974,6 +1004,18 @@ bool WiFi::hostResumeAfterWired(void) {
 
 void WiFi::hostServiceTerminalStop(void) {
   serviceTerminalStop();
+}
+
+bool WiFi::hostConnectAttempt(void) {
+  return connectAttempt();
+}
+
+bool WiFi::hostConnectAndWaitForJoin(void) {
+  return connectAndWaitForJoin();
+}
+
+uint32_t WiFi::hostLifecycleEvent(void) {
+  return g_LifecycleEvent.load();
 }
 
 bool WiFi::hostServiceConnectedWired(void) {

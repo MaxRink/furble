@@ -1,3 +1,4 @@
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
@@ -72,16 +73,28 @@ int esp_wifi_set_ps(wifi_ps_type_t) {
 int esp_wifi_start() {
   return 0;
 }
+int wifi_stop_calls = 0;
+int wifi_deinit_calls = 0;
+bool disconnect_during_connect = false;
 int esp_wifi_stop() {
+  wifi_stop_calls++;
   return 0;
 }
 int esp_wifi_deinit() {
+  wifi_deinit_calls++;
   return 0;
 }
 int esp_wifi_disconnect() {
   return 0;
 }
 int esp_wifi_connect() {
+  if (disconnect_during_connect) {
+    disconnect_during_connect = false;
+    wifi_event_sta_disconnected_t event = {WIFI_REASON_BEACON_TIMEOUT};
+    if (furble_wifi_handler != nullptr) {
+      furble_wifi_handler(nullptr, WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, &event);
+    }
+  }
   return 0;
 }
 int esp_wifi_set_config(wifi_interface_t, const wifi_config_t *) {
@@ -169,26 +182,62 @@ int main() {
   // report the reason instead of retrying forever.
   if (!Furble::WiFi::connect())
     return 3;
+  // Exercise the production connect request so the driver is genuinely
+  // initialized before the terminal-cleanup assertion.
+  if (require(Furble::WiFi::hostConnectAttempt(), "the production connect request failed")
+      || require(Furble::WiFi::getStatus().driver,
+                 "the connect request did not start the driver")) {
+    return 30;
+  }
   if (disconnect(WIFI_REASON_AUTH_FAIL) != 0)
     return 4;
   auto status = Furble::WiFi::getStatus();
   if (require(status.stopped, "auth failure did not stop the station")
       || require(status.disconnect_reason == WIFI_REASON_AUTH_FAIL,
                  "auth failure reason was not reported")
-      || require(status.retry_ms == 0, "auth failure still scheduled a retry")) {
+      || require(status.retry_ms == 0, "auth failure still scheduled a retry")
+      || require(status.driver, "the terminal disconnect stopped the driver before cleanup")) {
     return 5;
   }
   // The worker's terminal cleanup must release the driver after a terminal
   // disconnect; the connected-state wait used to continue past it.
+  const int stopBefore = wifi_stop_calls;
+  const int deinitBefore = wifi_deinit_calls;
   Furble::WiFi::hostServiceTerminalStop();
   if (require(!Furble::WiFi::getStatus().driver,
-              "a terminal disconnect left the Wi-Fi driver initialized")) {
+              "a terminal disconnect left the Wi-Fi driver initialized")
+      || require(wifi_stop_calls > stopBefore, "terminal cleanup did not stop the station")
+      || require(wifi_deinit_calls > deinitBefore, "terminal cleanup did not deinit the driver")) {
     return 29;
   }
 
   // A later connect clears the stopped state.
   if (!Furble::WiFi::connect() || Furble::WiFi::getStatus().stopped)
     return 6;
+
+  // A retryable disconnect delivered inside the connect request must end the
+  // join wait immediately. Snapshotting the lifecycle counter after the call
+  // would wait the full 15 s deadline and count the failure twice.
+  const uint32_t lifecycle = Furble::WiFi::hostLifecycleEvent();
+  disconnect_during_connect = true;
+  const auto joinStart = std::chrono::steady_clock::now();
+  const bool joined = Furble::WiFi::hostConnectAndWaitForJoin();
+  const auto joinMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                          std::chrono::steady_clock::now() - joinStart)
+                          .count();
+  if (require(!joined, "the join wait treated a mid-request disconnect as a successful join")
+      || require(Furble::WiFi::hostLifecycleEvent() != lifecycle,
+                 "the connect request delivered no disconnect")
+      || require(joinMs < 5000, "the join wait ran its full deadline after a lifecycle event")
+      || require(Furble::WiFi::getStatus().retry_ms == 1000,
+                 "the join wait counted the mid-request disconnect twice")) {
+    return 32;
+  }
+  // The mid-request disconnect counted one attempt; reset before the bounded
+  // no-AP sequence so its threshold starts from zero.
+  if (!Furble::WiFi::connect()) {
+    return 33;
+  }
 
   // P-028: a missing AP is bounded, not permanent. Six attempts stop it.
   for (int i = 0; i < 5; i++) {
