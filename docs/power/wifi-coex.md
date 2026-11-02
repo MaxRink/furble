@@ -27,11 +27,12 @@ Three limits shape every estimate below.
    MQTT session, or an HTTP request, so no Wi-Fi change can be CI-gated today.
 2. The simulator cannot exercise the paths at all. `sim/FurbleWiFi.cpp` returns
    `false` from `connect()` and `getStatus()` always reports disabled.
-3. The only in-firmware current instrument needs USB. `power log` samples the
-   PMIC and prints `current_ma`, but on the StickS3 USB is both console and
-   charge input, so a battery-current log taken with the console attached is not
-   a battery-current measurement. Section 8 works around this with two
-   instruments and states the bias of each.
+3. The StickS3 has no battery-current channel at all. `Platform::readBattery()`
+   reads only voltage and charge status from the M5PM1, and `battery_caps.current`
+   is false, so `power log` is state evidence on that board (voltage, charge
+   status, modeled state), not a current trace, with or without USB attached.
+   Section 8 works around this with external instruments and states the bias of
+   each.
 
 Consequence: this report can rank mechanisms and bound their direction. It
 cannot rank their size. Every "estimated saving" that is not a quoted vendor
@@ -62,8 +63,8 @@ Documents cited by the rows, with the limit that matters:
 | D3 | ESP-IDF v5.5, *Power Management* API guide (fetched 2026-11-01) | Wi-Fi holds `ESP_PM_APB_FREQ_MAX` between `esp_wifi_start` and `esp_wifi_stop`, released while the radio is off under modem sleep. Bluetooth holds `ESP_PM_NO_LIGHT_SLEEP` for the whole time the controller is enabled, releasing only APB. |
 | D4 | ESP-IDF v5.5, *RF Coexistence*, ESP32-S3 page (fetched 2026-11-01) | One 2.4 GHz RF module, time-division multiplexed. Wi-Fi CONNECTED plus BLE CONNECTED gets 50/50 slices in a period anchored to TBTT and longer than 100 ms. SCAN and CONNECTING get longer Wi-Fi slices. S3 SoftAP rows against BLE are marked unstable (C1). |
 | D5 | ESP-IDF 5.4.2, `components/mqtt/esp-mqtt/include/mqtt_client.h` | `keepalive` default 120 s, client pings at half the configured interval; `reconnect_timeout_ms` default 10 s; `timeout_ms` default 10 s. |
-| D6 | ESP-IDF 5.4.2, `components/esp_https_server/include/esp_https_server.h` | `HTTPD_SSL_CONFIG_DEFAULT()` sets `keep_alive_enable = false` and `max_open_sockets = 4`; the header states one socket uses about 40 KB of RAM with SSL. |
-| D7 | ESP-IDF 5.4.2, `components/esp_http_server/include/esp_http_server.h` | Plain HTTPD defaults: `max_open_sockets = 7`, `lru_purge_enable = false`, `keep_alive_enable = false`. |
+| D6 | ESP-IDF 5.4.2, `components/esp_https_server/include/esp_https_server.h` | `HTTPD_SSL_CONFIG_DEFAULT()` sets `keep_alive_enable = false` and `max_open_sockets = 4`; `keep_alive_enable` enables TCP liveness probes (`SO_KEEPALIVE`), not HTTP connection reuse, and the header states one socket uses about 40 KB of RAM with SSL. |
+| D7 | ESP-IDF 5.4.2, `components/esp_http_server/include/esp_http_server.h` | Plain HTTPD defaults: `max_open_sockets = 7`, `lru_purge_enable = false`, `keep_alive_enable = false`. The last field enables TCP liveness probes (`SO_KEEPALIVE`), not HTTP connection reuse. |
 | D8 | NimBLE `ble_gap.h` | `BLE_GAP_INITIAL_CONN_ITVL_MIN` 30 ms, `_MAX` 50 ms, `BLE_GAP_INITIAL_SUPERVISION_TIMEOUT` 0x0100 units of 10 ms. |
 | D9 | ESP-IDF 5.4.2, `esp_wifi_types_generic.h` | `WIFI_PS_MIN_MODEM` wakes at every DTIM; `WIFI_PS_MAX_MODEM` uses `listen_interval` (default 3 when 0). SoftAP `beacon_interval` default 100 TU, `dtim_period` default 1. |
 | D10 | ESP-IDF 5.4.2, `esp_wifi.h` | `esp_wifi_set_max_tx_power` takes 0.25 dBm units: {[44,51] maps to 44}, that is 11 dBm; {[52,55] maps to 52}, that is 13 dBm. |
@@ -500,24 +501,27 @@ The coordinator assigns `P-xxx` identifiers when these rows are merged into
   `lib/furble/FujifilmSecure.cpp:165-174`;
   `esp_wifi_types_generic.h:249`; D4.
 
-#### W-16 Notify the Wi-Fi worker on Control transitions
+#### W-16 Preserve a refused join scan until it can run
 
-- **Change:** have `Control` notify the Wi-Fi task when it leaves `ACTIVE` or a
-  connecting state, so a refused scan is retried instead of parked.
-- **Current behavior:** the worker waits on `portMAX_DELAY` at
-  `src/FurbleWiFi.cpp:400` and `:429`. Nothing re-notifies on camera disconnect,
-  so a blocked scan can park the station indefinitely
-  (`plans/96-wifi-bt-ble-hardening.md:286-291`, item C2).
-- **Evidence:** `inferred`.
-- **Estimated saving:** none directly. It removes a radio-on retry loop that can
-  last the whole session.
+- **Change:** set `g_ScanAttempted` only after `scanForNetwork()` actually runs.
+  A refusal from the Control-state gate must leave the fallback scan available
+  so a later idle retry can use it.
+- **Current behavior:** the worker sets `g_ScanAttempted = true` before it calls
+  `scanForNetwork()` (`src/FurbleWiFi.cpp:512-523`). A refused scan therefore
+  consumes the only fallback scan for that failure streak. The worker is not
+  parked: it still calls `connectAttempt()` and receives the same disconnect
+  notifications (`src/FurbleWiFi.cpp:525-533`). The defect is the lost scan, not
+  a missing notification.
+- **Evidence:** `inferred` (code).
+- **Estimated saving:** none directly. It avoids a failure streak with no
+  fallback scan after one coexistence refusal.
 - **Risk:** low.
 - **Effort:** small.
-- **Required test:** host test with the existing Wi-Fi lifecycle harness
-  (`tests/host/wifi/real_wifi_test.cpp`); on-device: block a scan with a camera
-  connected, disconnect the camera, confirm the station joins without a manual
-  command.
-- **Citation:** `src/FurbleWiFi.cpp:397-435`;
+- **Required test:** host test with `tests/host/wifi/real_wifi_test.cpp`; force a
+  refusal, return Control to idle, and confirm one scan runs. On-device: block a
+  scan with a camera connected, disconnect the camera, and confirm the station
+  joins without a manual command.
+- **Citation:** `src/FurbleWiFi.cpp:503-533`;
   `plans/96-wifi-bt-ble-hardening.md:286-291`.
 
 #### W-17 Wi-Fi-aware BLE connection interval floor
@@ -581,21 +585,17 @@ The coordinator assigns `P-xxx` identifiers when these rows are merged into
 
 ### E. Scan cost
 
-#### W-20 Stop scanning for hidden SSIDs
+#### W-20 Stop requesting hidden SSIDs in the fallback scan (implemented)
 
 - **Change:** set `wifi_scan_config_t.show_hidden = false` for the fallback scan.
-- **Current behavior:** `show_hidden = true` (`src/FurbleWiFi.cpp:336`), which
-  makes the station probe every channel for hidden networks even though the
-  configured SSID is known.
+  Implemented as P-029.
+- **Current behavior:** `show_hidden = false` (`src/FurbleWiFi.cpp:336`).
 - **Evidence:** `inferred` from `esp_wifi_types_generic.h:242`.
-- **Estimated saving:** removes the extra probe requests in that one scan. One
-  scan is a few hundred milliseconds of radio time (D1 RX 95 mA plus TX bursts).
-  The explicit scan runs once per `wifi connect` request, because
-  `g_ScanAttempted` is only cleared by a successful connect or a fresh
-  `WiFi::connect()` (`src/FurbleWiFi.cpp:411-418`, `:532-547`), so this is a
-  one-time cost per join cycle, not a steady-state one. The repeated scanning in
-  a long failure streak comes from the driver's own connect when no BSSID is
-  stored, which is W-23's target.
+- **Estimated saving:** none established. `show_hidden` controls whether the
+  scan result list includes hidden SSIDs; it does not select active probing or
+  the per-channel dwell, so setting it false does not establish a probe-traffic
+  saving. The earlier claim is withdrawn. Probe cost needs an airtime capture
+  and belongs to W-21.
 - **Risk:** low. A user with a genuinely hidden SSID would lose the fallback; the
   direct BSSID and channel connect still works after the first join, and the
   first join can be served by the driver's own scan when the BSSID is not stored.
@@ -646,28 +646,35 @@ The coordinator assigns `P-xxx` identifiers when these rows are merged into
 
 ### F. Retry policy
 
-#### W-23 Classify disconnect reasons and stop on authentication failures
+#### W-23 Classify disconnect reasons and bound retries (implemented)
 
 - **Change:** pass the `wifi_event_sta_disconnected_t` reason into the handler.
-  On `WIFI_REASON_AUTH_FAIL`, `WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT`,
-  `WIFI_REASON_NO_AP_FOUND` and the SAE equivalents, stop retrying and require
-  `wifi connect`.
-- **Current behavior:** the handler ignores the event data
-  (`src/FurbleWiFi.cpp:437-455`), so a wrong passphrase is indistinguishable from
-  an AP that is off. The station then retries with backoff forever.
-- **Evidence:** `inferred`, matching `plans/96-wifi-bt-ble-hardening.md:340-343`.
-- **Estimated saving:** ends a permanent retry loop. Estimate with stated
-  assumptions: after the backoff reaches its cap, one direct connect attempt per
-  60 s lasting on the order of a second or two, mostly receive at D1's 95 mA plus
-  a TX burst, is roughly 2 to 5 percent duty, so order 1 to 5 mA average forever.
-  That is an arithmetic bound, not a measurement.
-- **Risk:** low. A transient auth failure caused by an AP restart is possible, so
-  the policy should allow a bounded number of auth retries before stopping.
+  Stop on a confirmed authentication error, allow six attempts for no-AP
+  reasons, and allow ten attempts for other transient failures. `wifi connect`
+  clears the stop. Implemented as P-028.
+- **Current behavior:** `classifyDisconnect()` maps `WIFI_REASON_AUTH_FAIL` to
+  `AUTH`, the no-AP reasons to `NO_AP`, and everything else, including handshake
+  timeouts, to `TRANSIENT` (`src/FurbleWiFi.cpp:105-125`). The handler stops
+  after one `AUTH`, after `NO_AP_MAX_ATTEMPTS` (6), or after
+  `TRANSIENT_MAX_ATTEMPTS` (10), with capped backoff for the retries
+  (`src/FurbleWiFi.cpp:552-600`). `NO_AP_FOUND` is therefore not treated as a
+  permanent authentication failure, so an ordinary AP outage recovers without a
+  manual command.
+- **Evidence:** `measured-local` behavior test; the energy figure remains
+  `inferred`.
+- **Estimated saving:** ends an unbounded retry loop in the failure case.
+  Estimate with stated assumptions: after backoff reaches its cap, one direct
+  connect attempt per 60 s lasting a second or two, mostly receive at D1's
+  95 mA plus a TX burst, is roughly 2 to 5 percent duty, so order 1 to 5 mA
+  average while the failure persists. That is an arithmetic bound, not a
+  measurement.
+- **Risk:** low. Bounded retries cover an AP restart or a transient handshake
+  timeout; only a repeatedly confirmed credential error stops the station.
 - **Effort:** small.
 - **Required test:** host test for the reason mapping; on-device with a wrong
-  passphrase, confirm the station stops and `wifi status` explains why; then fix
-  the passphrase and confirm `wifi connect` succeeds.
-- **Citation:** `src/FurbleWiFi.cpp:437-455`;
+  passphrase, confirm the station stops after the bound and `wifi status`
+  explains why; then fix the passphrase and confirm `wifi connect` succeeds.
+- **Citation:** `src/FurbleWiFi.cpp:105-125`, `:552-600`;
   `plans/96-wifi-bt-ble-hardening.md:340-343`.
 
 #### W-24 Slow retries while a camera is active
@@ -794,27 +801,29 @@ The coordinator assigns `P-xxx` identifiers when these rows are merged into
 Every row here describes `origin/feat/33d-webui` at `777b4251`. None of it
 exists on `master`, so none of it is a present power cost.
 
-#### W-30 Enable HTTP keep-alive
+#### W-30 Establish WebUI connection reuse before changing HTTPD keepalive
 
-- **Change:** set `config.httpd.keep_alive_enable = true` with a bounded idle
-  timeout, and review `max_open_sockets` at the same time.
-- **Current behavior:** `HTTPD_SSL_CONFIG_DEFAULT()` leaves keep-alive off
-  (`src/FurbleWebUI.cpp:452-463`, D6), so every poll opens a new TCP connection
-  and runs a full TLS handshake. The page polls every 3 s
-  (`src/FurbleWebUI.cpp:160`).
-- **Evidence:** `inferred`.
-- **Estimated saving:** estimate with stated assumptions: 20 polls per minute
-  become one connection. If each reconnect costs about 100 ms of radio-awake time
-  (TCP plus TLS round trips plus the 50 ms `MIN_ACTIVE_TIME` tail), 20 per minute
-  is about 3.3 percent duty at D1 RX current, order 2 to 3 mA while a tab is
-  visible. Validate with M4 against M3.
-- **Risk:** medium. The SSL default is four sockets (D6) and a browser opens up
-  to six connections, so keep-alive without a socket-count review can starve
-  requests. `lru_purge_enable` is already true in the SSL default.
-- **Effort:** small.
-- **Required test:** page open for 30 min in two browsers, confirm no failed
-  requests and no heap exhaustion; M4 energy; confirm the idle timeout closes the
-  socket.
+- **Change:** do not use `config.httpd.keep_alive_enable` as an HTTP
+  connection-reuse switch. That field enables TCP liveness probes
+  (`SO_KEEPALIVE`), not HTTP keep-alive. Capture whether the HTTPS server already
+  reuses connections, then review `max_open_sockets` separately.
+- **Current behavior:** `HTTPD_SSL_CONFIG_DEFAULT()` leaves `keep_alive_enable`
+  false and sets `max_open_sockets` to 4 (`src/FurbleWebUI.cpp:452-463`, D6). The
+  page polls every 3 s (`src/FurbleWebUI.cpp:160`). Whether each poll opens a new
+  TCP connection and runs a full TLS handshake is not established.
+- **Evidence:** `inferred` from the header and code; connection reuse is
+  `unknown`.
+- **Estimated saving:** unknown. The earlier 20-reconnects-to-one and 2 to 3 mA
+  figures assumed the flag controls HTTP reuse and are withdrawn. Measure new
+  TCP connections, TLS handshakes, and sockets per poll in M4 before claiming a
+  saving.
+- **Risk:** low for the measurement; changing socket counts without a capture can
+  starve requests. The SSL default is four sockets (D6) and a browser opens up to
+  six connections. `lru_purge_enable` is already true in the SSL default.
+- **Effort:** small for the capture, medium to act on it.
+- **Required test:** capture a visible tab for 30 min: count new TCP connections,
+  TLS handshakes, and concurrent sockets. Then A/B `max_open_sockets` and any
+  reuse change, confirming no failed requests and no heap exhaustion.
 - **Citation:** `origin/feat/33d-webui:src/FurbleWebUI.cpp:160`, `:452-463`;
   D6; D7.
 
@@ -939,8 +948,8 @@ before the named test.
    sleep knob with a published analogue; blocked on a downlink latency test.
 3. **W-07, `ESP_WIFI_SLP_IRAM_OPT`.** Cleanest sdkconfig win, vendor states a
    reduction, cost is 1.3 KB IRAM.
-4. **W-30, HTTP keep-alive (branch).** Likely the largest WebUI item; needs a
-   socket-count and heap check.
+4. **W-30, WebUI connection reuse (branch).** Needs a connection capture before
+   any handshake saving; then a socket-count and heap check.
 5. **W-11, TX power cap with restore.** Real peak-current and brownout value,
    small average value, and a genuine retry risk.
 6. **W-17, Wi-Fi-aware BLE interval.** Cuts BLE event rate under coexistence and

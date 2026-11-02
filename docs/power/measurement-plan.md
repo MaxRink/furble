@@ -121,11 +121,11 @@ Boundary rules:
 
 | Code | Role | Minimum capability | Example | Used for |
 | --- | --- | --- | --- | --- |
-| I1 | Primary source and measure | 1 uA to 1 A, at least 16 bit, at least 100 kSa/s; 1 MSa/s for event work or pair with I4; source mode at 3.7 V and 5 V | Keysight N6705C with N6781A, or Joulescope JS220 | All steady states, event captures, discharge support |
+| I1 | Primary source and measure | 1 uA to 1 A, at least 16 bit, at least 100 kSa/s; 1 MSa/s for event work or pair with I4; a source mode at 3.7 V and 5 V, or an external regulated supply when the analyzer is measure-only | Keysight N6705C with N6781A, or Joulescope JS220 plus an external regulated supply | All steady states, event captures, discharge support |
 | I2 | Secondary logger | 1 uA to 1 A, at least 10 kSa/s, long capture | Nordic PPK2 or Otii Ace | Repeat runs, 30 minute soaks |
 | I3 | DC average reference | 6.5 digits, 1 to 10 Sa/s, 4-wire resistance | Keysight 34465A or Keithley DMM6500 | Gain check, shunt value, DC cross-check |
 | I4 | Transient capture | DC to 20 MHz, differential probe, 1 MSa/s or faster | Oscilloscope with a differential probe across the shunt | BLE events, display flush, wake spikes, noise diagnosis |
-| I5 | Battery discharge | Coulomb counting, at least 1 Sa/s, programmable cutoff | Electronic load with coulomb counter, or I1 in source mode | Capacity and runtime |
+| I5 | Battery discharge | Coulomb counting, at least 1 Sa/s, programmable cutoff; a controlled electronic load or a source-measure unit with sink mode | Electronic load with coulomb counter, or a sink-capable source-measure unit | Capacity and runtime |
 | I6 | Thermal | +/-0.5 degC, one ambient and one board contact channel | Calibrated thermocouple logger or thermal camera | Thermal drift and enclosure checks |
 | I7 | 5 V input analyzer | 1 mA resolution, at least 1 kSa/s, USB or jack inline | Bench SMU or inline USB analyzer with logging | Waveshare, charging reference |
 | I8 | BLE sniffer | Captures connection events, interval, PHY, payload length, retries | Nordic Sniffer, Ellisys, or Teledyne front-line | Link-parameter and airtime evidence. State evidence, not current. |
@@ -135,6 +135,9 @@ Instrument rules:
 
 - I1 carries a calibration certificate no older than 12 months. Record the
   certificate ID and date.
+- A Joulescope JS220 is measure-only. Pair it with an external regulated supply
+  for source work. Discharge needs a controlled electronic load or a
+  sink-capable source-measure unit; the JS220 cannot sink current.
 - I3 is the traceable gain reference. I1 and I2 must agree on the same steady
   load before either is used for a claim.
 - I4 is not an average-current instrument. Use it for event shape and noise, then
@@ -291,7 +294,7 @@ settings set cpu_freq 160
 settings set tx_power 0
 settings set tx_adaptive off
 settings set ir off
-settings set fb_output off
+settings set fb_output 0
 settings set scan_mode 0
 settings set scan_timeout 0
 settings set recon_backoff off
@@ -405,10 +408,10 @@ plausible.
 | S16 | GPS off | Baseline block, `gps off` | 300 s |
 | S17 | GPS acquiring, cold | `gps on`, no backup supply, first fix not yet | 180 s or until fix |
 | S18 | GPS tracking | Fix acquired, 30 min settle, antenna at the window | 1800 s |
-| S19 | GPS standby 5, 10, 15 s | `gps_power 1`, `gps_duty 5/10/15` | 1800 s per duty |
+| S19 | GPS standby 5, 10, 15 s | `gps_power 1`, `gps_duty 5/10/15` (the console accepts 0, 5, 10, and 15) | 1800 s per duty |
 | S20 | GPS rail cycle | `gps_power 2`, duty 15, warning accepted | 1800 s or 5 cycles |
 | S21 | GPS degraded | Block sky view or remove the antenna | 900 s |
-| S22 | GPS fix hold | `gps_hold 10`, fix acquired, then lose the receiver | 600 s |
+| S22 | GPS fix hold, 10 min | `gps_hold 3` (index 3 is ten minutes), fix acquired, then lose the receiver | 600 s |
 | S23 | Disconnected light sleep | S05, no camera, no GPS, 300 s settle | 1800 s |
 | S24 | Power off | Power menu off or the documented long press | 600 s |
 | S25 | Core IP5306 cutoff | Core, any state below 45 mA, 32 s | 120 s |
@@ -430,8 +433,10 @@ S37 is a reference state only. It is never used for a B1 battery claim.
 ## 8. Camera states
 
 The camera family matrix is power evidence, not a support claim. Only Fujifilm
-has hardware test coverage today. The other families are code-reviewed and
-FauxNY-tested. A family without hardware on the bench stays `unknown`; do not
+Secure has hardware test coverage today. Fujifilm Basic is blocked: X100VI 1.31
+has no Basic service, and Basic runtime reachability is unproven, so there is no
+Basic-capable bench camera. The other families are code-reviewed and FauxNY-
+tested. A family without hardware on the bench stays `unknown`; do not
 substitute FauxNY, a code review, or another vendor's camera.
 
 The S3 is the radio reference because it is the only board with the GPS power
@@ -441,7 +446,7 @@ only after an S3 anomaly.
 
 | Code | Family | Class | Hardware on bench | Shutter shape | Geotag | Link-loss signal |
 | --- | --- | --- | --- | --- | --- | --- |
-| FB | Fujifilm Basic | `FujifilmBasic` | Yes, X100VI | Two write-with-response operations | 10 s sync interval | Supervision timeout |
+| FB | Fujifilm Basic | `FujifilmBasic` | Blocked: X100VI 1.31 has no Basic service, and Basic runtime reachability is unproven | Two write-with-response operations | 10 s sync interval | Supervision timeout |
 | FS | Fujifilm Secure | `FujifilmSecure` | Yes, X100VI | Two write-with-response operations | 10 s sync interval written at setup | Supervision timeout |
 | CS | Canon EOS Smart | `CanonEOSSmart` | No | Write sequence | Yes | Supervision timeout |
 | CR | Canon EOS Remote | `CanonEOSRemote` | No | Write sequence | No | Supervision timeout |
@@ -536,7 +541,7 @@ failed calibration row blocks the states that depend on it.
 | E02 | Scan Full, one camera | S3 | Same, camera advertising at 1 m | I1, I8 | 60 s | Full scan with one advertiser and duplicate filtering |
 | E03 | Scan Balanced | S3 | `scan_mode 1` | I1, I8 | 60 s | 25 percent preset plateau |
 | E04 | Scan Low | S3 | `scan_mode 2` | I1, I8 | 60 s | 5 percent preset plateau |
-| E05 | Scan page, panel off | S3 | E02, `inactivity 1`, wait for panel off | I1, I9 | 300 s | P-002; scan still active on current code |
+| E05 | Scan page, panel off | S3 | E02, `inactivity 1`, `display_off 1`, wait for panel off | I1, I9 | 300 s | P-002; scan still active on current code |
 | E06 | Targeted reconnect, camera off | S3 | Saved Fujifilm Secure, camera off, infinite reconnect, backoff off | I1, I8 | 600 s | P-045 and P-046; 60 s scan then 5 s wait, repeating |
 | E07 | Targeted scan, passive versus active | S3 | Debug build with a passive switch, or a temporary build | I1, I8 | 60 s | P-047; sniffer confirms no scan requests in passive |
 | E08 | Connect initiation, camera advertising | S3 | Saved camera, camera on, from idle | I1, I8 | 1 event, 20 repeats | P-003; separate initiator from handshake |
@@ -545,7 +550,7 @@ failed calibration row blocks the states that depend on it.
 | E11 | Companion reconnect advertising | S3 | Bonded companion, phone away, companion on | I1, I8 | 600 s | P-052; advertising at 1000 ms, no timeout |
 | E12 | Companion connected idle | S3 | `companion on`, phone connected, no camera | I1, I8 | 600 s | P-053; live interval from the phone side if possible |
 | E27 | 2M PHY event current | S3 | Shutter quiet, 1M versus 2M | I1, I8 | 10 s or 100 events | P-044; event charge, retries, range |
-| K-FB-01 to K-FB-05 | Fujifilm Basic family states | S3 and SP | Camera on bench | I1, I8 | Per state | Family handshake, idle, shutter, geotag, link loss |
+| K-FB-01 to K-FB-05 | Fujifilm Basic family states | S3 and SP | Blocked: needs a Basic-capable camera or a verified Basic GATT capture | I1, I8 | Per state | Family handshake, idle, shutter, geotag, link loss |
 | K-FS-01 to K-FS-05 | Fujifilm Secure family states | S3 | Camera on bench | I1, I8 | Per state | Family handshake, idle, shutter, geotag, link loss |
 
 Other K families are not measurable in this campaign. Their rows stay `unknown`.
@@ -558,10 +563,10 @@ Other K families are not measurable in this campaign. Their rows stay `unknown`.
 | G02 | GPS acquiring, cold | SC, SP, CO, C2, S3 | `gps on`, no backup supply, first fix not yet | I1, I9 | 180 s or until fix | Cold acquisition term at B1 |
 | G03 | GPS tracking, B1 | SC, SP, CO, C2, S3 | Fix acquired, 30 min settle | I1 | 1800 s | Tracking term at B1 |
 | G04 | GPS tracking, B2 and B3 | S3 and SP | Fix acquired | I1, I4 | 600 s | 31.64 mA at B2; 23 to 25 mA at B3 |
-| G05 | GPS standby 5/10/15/60 s | S3 and SP | `gps_power 1`, `gps_duty` | I1 | 1800 s per duty | In-circuit standby, duty saving, active and standby residency |
+| G05 | GPS standby 5/10/15 s | S3 and SP | `gps_power 1`, `gps_duty 5/10/15` | I1 | 1800 s per duty | In-circuit standby, duty saving, active and standby residency. The 60 s arm needs a firmware change and is not part of this sweep |
 | G06 | GPS rail cycle, 5 cycles | S3 | `gps_power 2`, duty 15 | I1 | 5 cycles | Re-fix 90 to 130 s and charge per cycle within 20 percent of the sum |
 | G07 | GPS degraded backoff | S3 | Block sky view or remove the antenna | I1, I9 | 900 s | Lock released, 0.5 to 5 mA screen off |
-| G08 | GPS fix hold, 10 min | S3 | `gps_hold 10`, fix acquired, receiver lost | I1 | 600 s | Rail state; delta is geotag traffic |
+| G08 | GPS fix hold, 10 min | S3 | `gps_hold 3` (option index 3 is ten minutes), fix acquired, receiver lost | I1 | 600 s | Rail state; delta is geotag traffic |
 | E28 | GPS assist, cold boot | S3 | `gps_assist 0/1/2` | I1, I9 | 5 repeats each | P-087 and P-088; TTFF and cache rejection |
 | E29 | GPS baud | S3 | `gps_baud 9600/115200/0` | I1 | 5 repeats each | P-091; fix with no user action, absent unit reaches absent |
 | E30 | GPS constellation | S3 | `gps_constel 0/1/7` | I1, I9 | 600 s each | P-089; current, TTFF, satellites, C/N0 |
@@ -578,7 +583,7 @@ Other K families are not measurable in this campaign. Their rows stay `unknown`.
 
 | ID | State | Board | Key settings | Instrument | Window | Decides |
 | --- | --- | --- | --- | --- | --- | --- |
-| N01 | Wi-Fi disabled | S3 | Baseline block | I1 | 300 s | Delta under 0.5 mA against P04 |
+| N01 | Wi-Fi disabled | S3 | P04 setup: `inactivity 1`, `display_off 1`, screen off, Wi-Fi off | I1 | 300 s | Delta under 0.5 mA against P04 |
 | N02 | Wi-Fi connected idle, PS min modem | S3, C2 | SSID and PSK set, IP present, NTP off | I1 | 600 s | First band for a station |
 | N03 | NTP sync event | S3 | N02 plus `ntp on`, `ntp sync` | I1, I8 | 30 s per sync | Sync burst charge |
 | N04 | Wi-Fi reconnect after AP loss | S3 | N02, AP power cycled | I1 | 300 s | Backoff and reconnect within 120 s |
@@ -647,7 +652,7 @@ instrument noise floor cannot be resolved at the named boundary and stays
 
 | Opportunity | Threshold from the lane | Boundary |
 | --- | --- | --- |
-| P-001, P-002 | Scan phase is separable from the wait phase; a 25 percent preset draws about a quarter of the Full plateau | B1 |
+| P-001, P-002 | Scan phase is separable from the wait phase. Compare against a matched non-scanning baseline: a 25 percent preset draws roughly idle current plus one quarter of the scan increment, not one quarter of the whole-board Full plateau. Confirm with duty measurement and monotonic current reduction | B1 |
 | P-003 | Connect setup must still succeed; record setup time increase, bounded by the connect timeout | B1, I8 |
 | P-042, P-043, P-041 | If current does not change measurably between 30 ms and 300 ms intervals, the event share is below noise and those rows close | B1 |
 | P-047 | If the match fields are only in the scan response, passive scan is not viable regardless of current | I8 first |
@@ -812,7 +817,7 @@ default, baseline, or model entry while the row is `unknown`.
 | 0 | C01 to C10 | Instruments and fixtures | All calibration rows pass; a failed row blocks the affected states |
 | 1 | P01 to P15, D01 to D06, E13 to E17 and E19 to E21 | Phase 0 | Board floors, scan, multi-connect, display slope, APB lock, UI loop, and sleep/wake transitions recorded; Core cutoff recorded |
 | 2 | P04, P05, P08 to P10, L01, E18, E22 to E26, E53 | Phase 1 | Sleep and off states classified; no unresolved state ambiguity; deep sleep still absent and marked not measurable |
-| 3 | P06, P07, E01 to E12, E27, K-FB, K-FS | Phase 1 | BLE bands, scan duty, initiator, companion, and the two Fujifilm families recorded |
+| 3 | P06, P07, E01 to E12, E27, K-FS | Phase 1 | BLE bands, scan duty, initiator, companion, and Fujifilm Secure recorded; Fujifilm Basic stays blocked, not failed |
 | 4 | G01 to G08, E28 to E38 | Phase 1 | GPS B1, B2, B3 separated; cold start, standby, and IMU modes measured |
 | 5 | N01 to N09, E39 to E51 | Phase 1 | Network bands established; no model claim made |
 | 6 | B01 to B06, T01 to T05, E52 | Phase 2 | Capacity, runtime, and thermal sensitivity recorded |

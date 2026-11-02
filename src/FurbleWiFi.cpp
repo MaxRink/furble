@@ -104,15 +104,18 @@ bool wiredNetworkActive(void) {
 
 DisconnectClass classifyDisconnect(uint8_t reason) {
   switch (reason) {
+    case WIFI_REASON_AUTH_FAIL:
+      // A confirmed credential failure. Retrying cannot fix it; the operator
+      // must change the setting and run `wifi connect`.
+      return DisconnectClass::AUTH;
     case WIFI_REASON_AUTH_EXPIRE:
     case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT:
-    case WIFI_REASON_AUTH_FAIL:
     case WIFI_REASON_ASSOC_FAIL:
     case WIFI_REASON_HANDSHAKE_TIMEOUT:
-      // A wrong passphrase, an unsupported security mode, or a WPA3 mismatch.
-      // Retrying cannot fix any of them; the operator must change the setting
-      // and run `wifi connect`.
-      return DisconnectClass::AUTH;
+      // An AP restart, an overloaded AP, or a transient handshake timeout can
+      // produce these. Bound the retries instead of declaring the credentials
+      // permanently wrong.
+      return DisconnectClass::TRANSIENT;
     case WIFI_REASON_NO_AP_FOUND:
     case WIFI_REASON_NO_AP_FOUND_W_COMPATIBLE_SECURITY:
     case WIFI_REASON_NO_AP_FOUND_IN_AUTHMODE_THRESHOLD:

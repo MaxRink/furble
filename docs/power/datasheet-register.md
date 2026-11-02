@@ -90,7 +90,7 @@ rail, and register behavior where the repository has no board file of its own.
 | M5PM1 | 1.0.6 | Library | `timerSet`, `shutdown`, `btnGetState`, watchdog, GPIO and IRQ registers, `SLP_TO` path | Board, SoC, GPS/IMU |
 | esp-nimble-cpp | 2.5.0 | `NimBLEScan.cpp`, `NimBLEScan.h`, `NimBLEClient.cpp`, `NimBLEClient.h` | `setConnectionParams` defaults initiator scan to 16/16 units; `setActiveScan`; scan interval and window conversion; no GATT cache API exposed in 2.5 | BLE |
 | TinyGPSPlus | fork `gkoh/TinyGPSPlus#92ac8c2` | Parser | One-byte encode under the GPS mutex; about 30 accessors per snapshot | GPS/IMU |
-| Furble WebUI branch | `origin/feat/33d-webui` at `777b4251` | `src/FurbleWebUI.cpp`, `include/FurbleWebUI.h` | Page polls `/api/status` every 3 s; three TLS requests at load; HTTPS server with keep-alive off and four SSL sockets; supervisor every 500 ms | Wi-Fi |
+| Furble WebUI branch | `origin/feat/33d-webui` at `777b4251` | `src/FurbleWebUI.cpp`, `include/FurbleWebUI.h` | Page polls `/api/status` every 3 s; three TLS requests at load; HTTPS server with TCP keepalive off and four SSL sockets; HTTP connection reuse unverified; supervisor every 500 ms | Wi-Fi |
 | LVGL | 9.4.0 | Refresh period, partial rendering, `LV_LABEL_LONG_SCROLL_CIRCULAR` | `CONFIG_LV_DEF_REFR_PERIOD=33` about 30 fps; circular scroll animates while the label text overflows | Display |
 
 ## 7. Framework and RTOS documents
@@ -112,8 +112,8 @@ relied on.
 | Wi-Fi | `components/esp_wifi/Kconfig`; `esp_wifi_types_generic.h`; `esp_wifi.h` | 5.5.3 | `WIFI_PS_MIN_MODEM` wakes at every DTIM; `WIFI_PS_MAX_MODEM` uses `listen_interval`, default 3 when 0; `ESP_WIFI_SLP_IRAM_OPT` reduces power-save average current; IRAM cost is reported as 1.3 KB in the Wi-Fi lane and 7.3 KB in the SoC lane, unresolved (X-20); `SLP_DEFAULT_MIN_ACTIVE_TIME` 50 ms, `MAX_ACTIVE_TIME` 10 s, `WAIT_BROADCAST_DATA_TIME` 15 ms; `STA_DISCONNECTED_PM_ENABLE`; `esp_wifi_set_max_tx_power` uses 0.25 dBm units, 44 maps to 11 dBm, 52 to 13 dBm; SoftAP beacon 100 TU and DTIM 1 defaults | Wi-Fi, SoC |
 | PHY | `components/esp_phy/Kconfig` | 5.5.3 | `ESP_PHY_MAX_WIFI_TX_POWER` 20 dBm; `ESP_PHY_MAC_BB_PD` about 5.3 KB RAM when both radios are enabled; `ESP_PHY_REDUCE_TX_POWER` after brownout; `ESP_PHY_ENABLE_USB` can interfere with Wi-Fi | Wi-Fi, SoC |
 | MQTT | `components/mqtt/esp-mqtt/include/mqtt_client.h` | 5.4.2 header in the installed tree | `keepalive` default 120 s, client pings at half; `reconnect_timeout_ms` default 10 s; `timeout_ms` default 10 s | Wi-Fi |
-| HTTP server | `components/esp_http_server/include/esp_http_server.h` | 5.4.2 header | `max_open_sockets` default 7; `lru_purge_enable` false; `keep_alive_enable` false | Wi-Fi |
-| HTTPS server | `components/esp_https_server/include/esp_https_server.h` | 5.4.2 header | `HTTPD_SSL_CONFIG_DEFAULT()` sets keep-alive false and `max_open_sockets` 4; about 40 KB RAM per SSL socket | Wi-Fi |
+| HTTP server | `components/esp_http_server/include/esp_http_server.h` | 5.4.2 header | `max_open_sockets` default 7; `lru_purge_enable` false; `keep_alive_enable` false (TCP keepalive probes, not HTTP reuse) | Wi-Fi |
+| HTTPS server | `components/esp_https_server/include/esp_https_server.h` | 5.4.2 header | `HTTPD_SSL_CONFIG_DEFAULT()` sets TCP keepalive false and `max_open_sockets` 4; about 40 KB RAM per SSL socket; HTTP connection reuse unverified | Wi-Fi |
 | BLE host | `components/bt/host/nimble/nimble/nimble/host/include/host/ble_gap.h` | 5.5.3 | `BLE_GAP_INITIAL_CONN_ITVL_MIN` 24 units (30 ms), `_MAX` 40 units (50 ms); `BLE_GAP_INITIAL_SUPERVISION_TIMEOUT` 0x0100 units of 10 ms | BLE, Wi-Fi |
 | BLE controller | `components/bt/controller/esp32c3/Kconfig.in` and `esp32/Kconfig.in` | 5.5.3 | `BT_CTRL_MODEM_SLEEP`, `MODE_1`, `LPCLK_SEL_MAIN_XTAL`, `BLE_MAX_ACT` 6, `SCAN_BACKOFF_UPPERLIMITMAX`, duplicate cache 100 and refresh 0, `CE_LENGTH_TYPE`, `LE_PING_EN` | BLE, SoC |
 | NimBLE config | `components/bt/host/nimble/port/include/esp_nimble_cfg.h` | 5.5.3 | `MYNEWT_VAL(BLE_EXT_ADV)` is 0 with `EXT_ADV=n`, so the legacy scan path is used | BLE |
@@ -135,11 +135,11 @@ exact model and capability.
 
 | Code | Instrument | Capability the plan relies on |
 | --- | --- | --- |
-| I1 | Keysight N6705C with N6781A, or Joulescope JS220 | 1 uA to 1 A, at least 16 bit, at least 100 kSa/s; 1 MSa/s for events; source mode at 3.7 V and 5 V |
+| I1 | Keysight N6705C with N6781A, or Joulescope JS220 plus an external regulated supply | 1 uA to 1 A, at least 16 bit, at least 100 kSa/s; 1 MSa/s for events; source mode at 3.7 V and 5 V when the analyzer can source; the JS220 is measure-only |
 | I2 | Nordic Power Profiler Kit II or Otii Ace | 1 uA to 1 A, at least 10 kSa/s, long capture |
 | I3 | Keysight 34465A or Keithley DMM6500 | 6.5 digits, 4-wire resistance, DC average reference |
 | I4 | Oscilloscope with a differential probe | DC to 20 MHz, 1 MSa/s or faster across the shunt |
-| I5 | Electronic load with coulomb counter, or I1 in source mode | At least 1 Sa/s, programmable cutoff |
+| I5 | Electronic load with coulomb counter, or a sink-capable source-measure unit | At least 1 Sa/s, programmable cutoff |
 | I6 | Calibrated thermocouple logger or thermal camera | +/-0.5 degC, ambient and board contact |
 | I7 | Bench SMU or inline USB analyzer with logging | 1 mA resolution, at least 1 kSa/s |
 | I8 | Nordic Sniffer, Ellisys, or Teledyne front-line | Connection events, interval, PHY, payload length, retries |

@@ -196,6 +196,17 @@ int main() {
     return 10;
   }
 
+  // P-028: a handshake timeout is transient, not a confirmed credential error.
+  if (!Furble::WiFi::connect())
+    return 15;
+  if (disconnect(WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT) != 0)
+    return 16;
+  status = Furble::WiFi::getStatus();
+  if (require(!status.stopped, "a single handshake timeout stopped the station")
+      || require(status.retry_ms > 0, "a handshake timeout scheduled no retry")) {
+    return 17;
+  }
+
   // P-033: transient failures back off to the raised five-minute cap.
   if (!Furble::WiFi::connect())
     return 11;
