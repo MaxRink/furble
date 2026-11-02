@@ -29,13 +29,18 @@ struct SecureAdvertisement {
 enum class ShutterAction : uint8_t {
   PRESS,
   RELEASE,
-  FOCUS,
 };
 
 struct ShutterFrame {
   std::array<uint8_t, 2> command;
   std::array<uint8_t, 2> parameter;
 };
+
+// The Fujifilm shutter characteristic accepts a single little-endian value:
+// 0 release, 1 half press, 2 full press. Furble sends the half press before a
+// full press or release. There is no 3 value; the camera parser rejects it.
+constexpr std::array<uint8_t, 2> SHUTTER_HALF_PRESS = {0x01, 0x00};
+constexpr std::array<uint8_t, 2> SHUTTER_RELEASE = {0x00, 0x00};
 
 struct GeotagInput {
   double latitude;

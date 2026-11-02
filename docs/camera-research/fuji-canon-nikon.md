@@ -1,6 +1,7 @@
 # Furble camera protocol research: Fujifilm, Canon, Nikon
 
-Research date: 2026-09-12 (Europe/Berlin)
+Initial research date: 2026-09-12 (Europe/Berlin). Firmware and official-app
+verification added 2026-11-01.
 
 This is a research handoff, not a compatibility guarantee. It follows the
 evidence classes and certification rules in [plan 159](https://github.com/MaxRink/furble/blob/965f299f0f43c38fe45e4680f1bfb735023533af/plans/159-camera-peer-certification.md):
@@ -10,11 +11,12 @@ private GATT bytes, ordering, security, timing, or physical capture.
 
 ## Source identity and provenance
 
-The source was read from a clean snapshot at exact Git revision
+The initial source was read from a clean snapshot at exact Git revision
 `965f299f0f43c38fe45e4680f1bfb735023533af` (`Merge pull request #66 from
-MaxRink/feat/33c-mqtt`, 2026-09-12). The worktree was clean when read. No
-source files were edited; all current Furble and plan links below pin this
-same MaxRink commit.
+MaxRink/feat/33c-mqtt`, 2026-09-12). The 2026-11-01 firmware audit used
+`7383561a` (`chore(deps): configure reviewed Dependabot updates`) as the
+current Furble baseline. The worktree was clean when read. No source files
+were edited for the research note.
 
 Public source pins used here (GitHub files and repository metadata retrieved
 2026-09-12):
@@ -68,8 +70,10 @@ not evidence that Furble can wake a camera.
 Firmware is a material constraint. Fujifilm's [X-E5 firmware page](https://www.fujifilm-x.com/en-us/support/download/firmware/cameras/x-e5/)
 shows version 1.12 when retrieved on 2026-09-12 and says version 1.10 changed wireless
 security and pairing procedure. It also warns that old Camera Remote versions
-cannot connect after the update. Do not collapse firmware generations into one
-Fujifilm profile.
+cannot connect after the update. The X100VI cutover is 1.30 and the X-S20
+cutover is 3.30; the X-S20 3.00 entry is an earlier feature update, not the
+security change. Do not collapse firmware generations into one Fujifilm
+profile.
 
 ### Current Furble implementation evidence
 
@@ -83,9 +87,11 @@ The following details are from that clean, pinned source.
 
 - Advertisement: manufacturer data starts with company ID `0x04d8` on the
   wire, type `0x02`, then a four-byte pairing token. A Basic match requires
-  the exact 7-byte manufacturer field and either the CR service
-  `af854c2e-b214-458e-97e2-912c4ecf2cb8` or XAPP service
-  `117c4142-edd4-4c77-8696-dd18eebb770a`.
+  the exact 7-byte manufacturer field and either the file-transfer/equipment
+  status service `af854c2e-b214-458e-97e2-912c4ecf2cb8` or the non-RED camera
+  information service `117c4142-edd4-4c77-8696-dd18eebb770a`. The Basic pairing
+  service `91f1de68-dff6-466e-8b65-ff13b0f16fb8` is absent from X100VI 1.31
+  and X-S20 3.30, so those bodies cannot complete this path.
 - Pairing: connect, write the saved four-byte token with response to
   `91f1de68-dff6-466e-8b65-ff13b0f16fb8/aba356eb-9633-4e60-b73f-f52516dbd671`,
   then write the Furble identity to characteristic
@@ -99,9 +105,13 @@ The following details are from that clean, pinned source.
   A valid `01 00` geotag request also promotes a saved X100VI reconnect.
 - Shutter: discover service
   `6514eb81-4e8f-458d-aa2a-e691336cdfac`, characteristic
-  `7fcf49c6-4ff0-4777-a03d-1a79166af7a8`. Write command `{01 00}` followed by
-  parameter `{02 00}` for press, `{00 00}` for release, or `{03 00}` for
-  focus. Focus release maps to release.
+  `7fcf49c6-4ff0-4777-a03d-1a79166af7a8`. The firmware parser accepts a
+  single little-endian 2-byte value: `0` release, `1` half press, `2` full
+  press. Furble sends `{01 00}` followed by `{02 00}` for a still capture and
+  `{01 00}` followed by `{00 00}` for release. Focus press writes `{01 00}`
+  and focus release writes `{00 00}`. There is no `03 00` value; the camera
+  parser rejects it with `-30`. The firmware handler is `FUN_030d150c` in the
+  X100VI 1.31 and X-S20 3.30 communication module.
 - Geotag: write 23 bytes to
   `3b46ec2b-48ba-41fd-b1b8-ed860b60d22b/0f36ec14-29e5-411a-a1b6-64ee8383f090`:
   signed little-endian latitude and longitude in 1e-7 degrees, signed
@@ -112,15 +122,17 @@ The following details are from that clean, pinned source.
 
 #### Secure profile
 
-- Advertisement: company ID `0x04d8` followed by five serial bytes, with exact
-  8-byte manufacturer data and advertised service
+- Advertisement: company ID `0x04d8`, type `0x01`, then five serial bytes,
+  with exact 8-byte manufacturer data and advertised service
   `a9d2b304-e8d6-4902-8336-352b772d7597`. The secure pairing service is
-  `123d8f06-62a1-4935-9322-833c531ee225`; the primary service is
-  `731893f9-744e-4899-b7e3-174106ff2b82`.
+  `123d8f06-62a1-4935-9322-833c531ee225`. Furble's parser does not currently
+  require the type byte; the official apps do.
 - Identity and status: after BLE link security, read four bytes from
   `f557d96b-8284-4667-8793-b971c1deca2a` and acknowledge by retaining the first
   three bytes and replacing the last with `20`. Write the Furble identity to
-  `85b9163e-62d1-49ff-a6f5-054b4630d4a1`.
+  `85b9163e-62d1-49ff-a6f5-054b4630d4a1`. Official apps write the name as
+  UTF-8 plus a NUL terminator; Furble writes UTF-8 without one. The target
+  requirement is not proven.
 - Registration subscriptions: the local Secure table includes required
   indications `a68e3f66-0fcc-4395-8d4c-aa980b5877fa` and
   `bd17ba04-b76b-4892-a545-b73ba1f74dae`, then optional notifications on
@@ -142,6 +154,68 @@ The following details are from that clean, pinned source.
   writes a 10-second geotag sync interval as a little-endian `uint16_t` to
   `c95d91ae-b247-4d6d-8661-7dd5d6a0f85b`, then reacts to a camera geotag request.
 
+### Firmware verification (2026-11-01)
+
+This audit decoded X100VI 1.31 (`FPUPDATE.DAT`, SHA-256
+`0d48d2ae...`) and X-S20 3.30 (`FWUP0031.DAT`, SHA-256 `ca1c0245...`) and
+inspected the official XApp 2.7.6 and Camera Remote 4.10.2 Android apps. The
+vendor images are not redistributed. The claims below are `firmware-static` or
+`app-static` unless marked otherwise.
+
+- Both images carry the same 70 entry ASCII UUID table. The table maps to 13
+  services, 69 characteristics, and 21 CCCDs. The X100VI and X-S20 UUID sets
+  are identical at these versions. Handles and maximum lengths are
+  `public-source` from the MIT fffw `ad14d4` profile; binding them to the
+  firmware UUID set is an inference from the exact set match, not a
+  `firmware-static` result.
+- The vendor services are camera information `A9D2B304`, lens information
+  `15CA59FE`, connected device information `123D8F06`, camera settings
+  `4E941240`, camera state `4C0020FE`, shutter and control `6514EB81`, current
+  time `E872B11F`, current location `3B46EC2B`, equipment status and backup
+  `AF854C2E`, and camera startup information `804DAA8E`.
+- The Secure UUIDs Furble uses are present. Their expected properties and
+  lengths match the public fffw profile, but that per-characteristic binding is
+  inferred rather than firmware-verified. The 23-byte geotag characteristic,
+  4-byte status characteristic, 2-byte shutter characteristic, and 2-byte sync
+  interval characteristic are all consistent with that profile.
+- The Basic pairing service `91F1DE68` is absent from both images. `AF854C2E`
+  is present only as the equipment-status/backup service. `117C4142` appears as
+  a binary UUID occurrence, not in the 70 entry table. No Basic pairing path is
+  present in either target firmware; runtime reachability remains unproven.
+- `PRI_SVC_UUID` `731893F9` is absent and unused. It has been removed from
+  Furble rather than treated as a primary service.
+- `2A125640` and `DEEF7187` are absent. They stay optional subscriptions for
+  other Fujifilm profiles, and their failure must remain non-fatal.
+- `7170FD5A` is the remote boot setting in the camera startup information
+  service, not a generic notification. Furble no longer names it as NOT3 and
+  does not subscribe to it.
+- `F9150137` `01 00` is also a date or time request in the official apps, not a
+  proven registration flag. Furble's operational promotion may still be
+  correct because the camera only sends it to an accepted client, but the
+  semantic claim is not proven.
+- The camera has a 12-byte UTC/timezone packet on `C52EDBCE` and a 7-byte local
+  time packet on `B9BFD37F`. Furble sends neither, so it does not synchronise
+  the camera clock. This is a missing control surface, not a shutter blocker.
+- The official apps write a geotag speed field in bytes 12 to 15. Furble writes
+  zero. The layout matches; the camera-side unit is unknown.
+- The sync interval characteristic accepts 10, 15, 20, 30, 60, 120, 240, and
+  480 seconds, plus disable. Furble's 10-second value is one supported setting.
+
+The complete 70-entry table and the 13-service layout are in
+[fujifilm-secure-gatt.md](fujifilm-secure-gatt.md).
+
+Generation-boundary checks added on 2026-11-01:
+
+- X100T 1.11 (`FPUPDATE.DAT`, SHA-256 `8c84b29e...`) decodes to two FFLZ
+  sections with Wi-Fi and EXWIFI strings only. No Bluetooth, BLE, GATT,
+  pairing, bonding, or advertisement string appears, and no Furble UUID is
+  present. X100T is a Wi-Fi-only body for this purpose.
+- X-E5 1.12 (`FWUP0036.DAT`, SHA-256 `0982ffa5...`) has a 71-entry UUID table.
+  It contains the same 70 entries as X100VI 1.31 and X-S20 3.30 plus
+  `8B5ECF55-FC6B-40D0-B4C1-76F64E5453C7`, the v4.1 connected-app information
+  characteristic. The common records keep the same type, flags, and marker
+  values. X-E5 is Secure v4.1, not the v4.0 layout used by X100VI/X-S20.
+
 ### Fujifilm peer implementation evidence
 
 The MIT [fffw profile map](https://github.com/tiredboffin/fffw/blob/bedc091e0b54a1a34aaf6929dd08e1db36d13b08/ffbt/cfg/gatt-profiles-map.csv)
@@ -157,13 +231,24 @@ not evidence for another body or firmware.
 - No official Fujifilm document found here publishes the private Furble/XApp
   UUID semantics or command bytes. Keep those fields `common-implementation`
   or `hardware-capture`, never `official-semantic`.
-- Capture exact Basic and Secure advertising, GATT database/properties, SMP
-  method and bond/RPA behavior, indication confirmation, status read/ack,
-  registration delay, every optional CCCD result, shutter/focus physical
-  outcome, geotag request cadence and EXIF result for each firmware family.
-- Specifically capture X100VI `01.11` versus `01.31`, X-E5 `01.10+`, and at
-  least one Basic X-E4/X100V/X-T body. X-E5 and X100VI appearing in the README
-  proves model-level reports, not a firmware wildcard.
+- Capture exact Basic and Secure advertising, GATT properties, SMP method and
+  bond/RPA behavior, indication confirmation, status read/ack, registration
+  delay, every optional CCCD result, shutter/focus physical outcome, geotag
+  request cadence and EXIF result for each firmware family.
+- Specifically capture X100VI `01.11` versus `01.31`, X-S20 `03.30`, X-E5
+  `01.10+`, and at least one Basic X-E4/X100V/X-T body. X-E5 and X100VI
+  appearing in the README proves model-level reports, not a firmware wildcard.
+- Resolve `F9150137` `01 00`: registration acceptance, time request, or both.
+  Record whether the camera clock changes and whether `02 00` ever appears on
+  these targets.
+- Capture the 12-byte time packet on `C52EDBCE` and the 7-byte local packet on
+  `B9BFD37F`, including timezone and DST effects.
+- Confirm whether the Secure advertisement type byte is always `0x01` before
+  Furble tightens its parser.
+- Confirm whether the client name requires a NUL terminator and whether the
+  geotag speed field is metres per second, km/h, or ignored.
+- Test Basic reachability on X100VI 1.31 and X-S20 3.30 and record the failure
+  mode when the token service is absent.
 - The simulator should use role/profile-exclusive GATT templates from fffw,
   model delayed registration and 10-second geotag requests, and mark all
   cross-model fields uncertified until exact captures exist.
@@ -205,16 +290,22 @@ and [Remote](https://github.com/MaxRink/furble/blob/965f299f0f43c38fe45e4680f1bf
   pairing, then mode `00030010-0000-1000-0000-d8492fffa821` gets `{02}` for
   shooting.
 - Shutter writes to `00030030-0000-1000-0000-d8492fffa821`: `{00 01}` press,
-  `{00 02}` release. Focus press/release are intentional no-ops. There is no
-  Bulb, video, or manual-focus implementation in this Furble path.
-- GPS service `00040000-0000-1000-0000-d8492fffa821`: subscribe indication
-  `00040003`; request byte `03` causes `{01}` on write characteristic
-  `00040002`; success byte `02` enables updates. Furble sends a packed 20-byte
-  message with header `04`, N/S and E/W direction bytes, absolute float32
-  coordinates/elevation, sign bytes, and a Unix timestamp. The source uses
-  `mktime`, whose result depends on the host/runtime timezone, so timezone
-  independence needs a focused capture/review before certification; this is a
-  conditional verification item, not a proven bug.
+  `{00 02}` release. These are the official app's AF plus release pair, not a
+  plain release. Focus press and release use `{00 03}` AF_ON and `{00 04}`
+  AF_OFF, which the app exposes separately. There is no Bulb, video, or
+  manual-focus implementation in this Furble path; the app's movie and zoom
+  byte tables are in `docs/camera-research/sony-lumix-dji.md` and the private
+  corpus.
+- GPS service `00040000-0000-1000-0000-d8492fffa821`: Furble subscribes
+  indication `00040003` and treats byte `03` as a request, then writes one
+  byte `{01}` to `00040002`. Camera Connect instead reads and notifies
+  `00040001`, answers a data request with the 8-byte `05 00 ...` command,
+  starts GPS with 8-byte `01` or `02`, stops with `03`, and selects a source
+  with `06`. The one-byte enable form is not app-corroborated. The 20-byte
+  location packet otherwise matches the app for finite values. The app uses a
+  UTC epoch; Furble uses `mktime`, which depends on the runtime timezone. The
+  app's Bluetooth GPS gate passes only EOS RP and R6 Mark II among the four
+  Furble models.
 
 #### Remote mode
 
@@ -313,17 +404,21 @@ and [Smart](https://github.com/MaxRink/furble/blob/965f299f0f43c38fe45e4680f1bfb
 
 #### Remote (ML-L7-style)
 
-- Pair characteristic `00002087-3dd4-4255-8d62-6dc7b9bd5561`; indication
-  `00002084-3dd4-4255-8d62-6dc7b9bd5561`; shutter
-  `00002083-3dd4-4255-8d62-6dc7b9bd5561`.
+- Pair characteristic `00002087-3dd4-4255-8d62-6dc7b9bd5561`; key/status
+  indication `00002084-3dd4-4255-8d62-6dc7b9bd5561`; shutter
+  `00002083-3dd4-4255-8d62-6dc7b9bd5561`. The `00002084` payload is six
+  bytes, not a pairing result.
 - Remote pairing stages send stage 1, validate stage-2 response, send stage 3,
-  and validate the stage-4 timestamp. The stage-5 template is not emitted by
-  the current base loop. The first indication is
-  subscribed before the shared handshake. Saved device and nonce are reused;
-  new sessions randomize them, forcing the device ID's first wire byte to 01.
-- Shutter writes require response: `{02 02}` press and `{02 00}` release to
-  the remote shutter characteristic. Focus and GPS are no-ops. Furble reports
-  this mode as shutter-only, with no manual exposure control.
+  and validate the stage-4 timestamp. Stage 4 is `[04]` followed by 16 zero
+  bytes. The stage-5 template is not emitted by the current base loop. The
+  first indication is subscribed before the shared handshake. Saved device and
+  nonce are reused; new sessions randomize them, forcing the device ID's first
+  wire byte to 01.
+- Shutter writes require response: `{02 02}` is a short press and `{02 03}` is
+  a long press. `{02 00}` is a no-op; it is not a release. Furble's short press
+  completes the capture, and its release write is ignored by the B600 parser.
+  Focus and GPS are no-ops. Long press, bulb, and movie are not implemented.
+  Furble reports this mode as shutter-only, with no manual exposure control.
 - Shared stage timeout is about 10 s per response. There is no separate camera
   acceptance or physical-capture confirmation.
 

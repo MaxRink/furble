@@ -84,12 +84,22 @@ GATT constants in the implementation:
 | --- | --- |
 | Remote/control service | `8000ff00-ff00-ffff-ffff-ffffffffffff` |
 | Control characteristic | `0000ff01-0000-1000-8000-00805f9b34fb` (`0xff01`) |
+| Status characteristic | `0000ff02-0000-1000-8000-00805f9b34fb` (`0xff02`) |
 | Location service | `8000dd00-dd00-ffff-ffff-ffffffffffff` |
 | Location/status characteristic | `0xdd01` |
 | Location update characteristic | `0xdd11` |
 | Location info/read characteristic | `0xdd21` |
 | Location allow/lock characteristic | `0xdd30` |
 | Location enable characteristic | `0xdd31` |
+
+ILCE-7RM5 4.00 firmware was decrypted with the public CXD90057_k8 key. It
+confirms CC00, DD00, EE00, BB00, and FF00. FF00 has `FF01` write-only and
+`FF02` notify. EE01 pairing is `06 08 01 00 00 00 00` on command `0x0801`.
+DD30 lock and DD31 enable are firmware-confirmed, and the 95-byte DD11 header
+is confirmed. The firmware does not confirm Furble's four FF01 opcodes. The
+ZV-1F payload remains opaque because its AES-256-CBC model key is not among
+the tested public keys. The full evidence is in the private corpus
+`analysis/sony-firmware.md`.
 
 Connect flow is: create NimBLE client through `Camera::connect`, set the
 requested connection timeout and connection parameters, enable authenticated
@@ -187,10 +197,14 @@ The defensible status is therefore an untested S5II/BGH1-derived experimental
 path, not model-certified support.
 
 Advertisement matching requires Panasonic manufacturer data with at least 8
-bytes, company ID `0x0376`, and the proprietary session service advertised.
-It parses a flags byte plus a five-byte address fragment but does not use a
-model string. The matcher cannot distinguish S5II, BGH1, G9II, or other LUMIX
-bodies.
+bytes, SIG company ID `0x003A` (Panasonic Holdings Corporation), and the
+proprietary session service advertised. The earlier `0x0376` value in this note
+was wrong: the Bluetooth SIG registry assigns `0x0376` to Electronic
+Temperature Instruments, not Panasonic. LUMIX Sync uses a 9-byte manufacturer
+field: company ID, one state byte, and a six-byte address. Furble parses the
+first eight bytes and ignores the last address byte, but it does not use the
+address, so the match is unaffected. The matcher cannot distinguish S5II,
+BGH1, G9II, or other LUMIX bodies.
 
 GATT constants:
 
@@ -204,6 +218,13 @@ GATT constants:
 | Location service/characteristic | `1d74afe0-3214-11e6-8ab4-0002a5d5c51b` / `daff1bc0-3216-11e6-91c8-0002a5d5c51b` |
 | Clock service/characteristic | `34738720-3214-11e6-b66b-0002a5d5c51b` / `ead55e60-3216-11e6-a42e-0002a5d5c51b` |
 
+The three Panasonic UPD images expose a header, partition table, plaintext
+partition digests, nonces, and a `loader1` manifest. The code partitions are
+AES-CTR-class ciphertext with a model-dependent key that is not in the image.
+No LUMIX BLE UUID, opcode, or handler is readable from them. The app evidence
+below is the strongest available. The private corpus analysis is
+`analysis/panasonic-firmware.md`.
+
 The current connect flow is open-link `connect`, session service lookup, a
 fixed 16-byte MEI0 write, ASCII controller device-name write, required control
 service and writable control characteristic lookup, then optional location
@@ -215,29 +236,40 @@ comment says a shortened MEI0-to-GPS sequence can cause the camera to drop the
 link, but current Furble does not wait for the two documented readiness
 notifications before enabling GPS.
 
-MEI0 is the fixed source array:
-`4d 45 49 30 01 00 10 00 80 01 02 00 00 01 00 00`.
-The source labels it a trace-derived session-init payload. The S5 protocol
-report says captures used a changing counter/checksum but a fixed value was
-accepted in repeated reconnects; this is not independently firmware-qualified
-for Furble.
+MEI0 is a ten-byte prefix `4d 45 49 30 01 00 10 00 80 01` followed by a
+six-byte per-install identity seed. The source array
+`4d 45 49 30 01 00 10 00 80 01 02 00 00 01 00 00` is one possible seed, not a
+protocol constant. LUMIX Sync reuses the seed from its DLNA registration. A
+camera test with a fresh seed and with a registered seed is still needed. The
+APS path writes a key-obfuscated 20-byte identity when `bb5d2a8c` is present;
+Furble does not implement it.
 
-Control writes are one byte: focus press `01`, focus release `02`, shutter
-press `04`, shutter release `05`. Furble sends no status subscription and has
-no response/error-code interpretation beyond the boolean GATT write result.
-The public G9II implementation sends a full still-photo sequence at handles
-`0x0068`: `01`, `02`, `04`, then `05`; it also uses `06`, `07` for video
-toggle. That handle-level implementation is a different generation and must
-not be copied to the UUID path without an exact capture.
+Control writes are one byte. `01` and `02` are Confirm and Start, not focus;
+`03` is Finish, `04` and `05` are shutter on and off, and `06` and `07` are
+movie on and off. LUMIX Sync sends Confirm, Start, ShutterOn, and ShutterOff.
+Furble's focus press and release currently send the Confirm and Start commands,
+which is a semantic bug but may initialize a session. Furble sends no status
+subscription and has no response or error-code interpretation beyond the boolean
+GATT write result. The public G9II implementation sends the same `01`, `02`,
+`04`, `05` sequence at handles `0x0068`. That handle-level path is a different
+generation and must not be copied to the UUID path without an exact capture.
 
 GPS/time writes in current Furble:
 
 * location packet: 16 bytes, little-endian, GPS epoch seconds since
   1980-01-06, latitude/longitude as signed degrees times 10^7, altitude as
-  uint16 metres, fix `0x41`, trailing zero;
+  signed int16 metres, fix `0x41`, trailing zero;
 * clock packet: 10 bytes, little-endian year, month/day/hour/minute/second,
-  zero byte, and signed timezone offset set to zero;
-* clock is written only after a successful location write.
+  int16 standard offset at bytes 7 and 8, and a DST flag at byte 9. Furble now
+  matches this layout and writes zero for both because it has no timezone
+  source;
+* clock is written only after a successful location write. LUMIX Sync writes it
+  when the clock readiness notification arrives, independent of GPS.
+
+LUMIX Sync also sends a GPS stop packet: fix `0x56`, latitude and longitude
+`0x7fffffff`, and altitude `0x7fff`. Furble does not send it. The app starts GPS
+only after the `37701b80` readiness notification and handles value `3` as a
+stored-GPS request. Furble writes unconditionally after its time sync.
 
 The S5 report documents two readiness notifications (`37701b80` and
 `4cf487c0`, both `01`) before time/GPS and reports a physical EXIF check, but
@@ -328,6 +360,15 @@ camera status `0x05` or status `0x03` outside photo mode to infer recording.
 Malformed frame or CRC logs a rejection; camera reject, unsupported ID,
 verification failure, failed GATT write, missing service/characteristic, and
 30-second timeout return failure. No physical recording result is proven.
+
+The DJI device ID has two conflicting official encodings. The command table
+names Action 4 as `0xFF33`, and a checksum-valid Action 4 mode-switch frame
+carries `00 00 33 FF`, which is `0xFF330000` as a little-endian u32. One demo
+source file instead writes `0x33FF0000`, emitting `00 00 FF 33`. Furble
+accepts either the demo or the table device-ID encoding for Action 4 and Action 5 Pro so a camera that
+reports the table encoding is not rejected after it has approved the link. A
+hardware capture is still needed to record which value the camera actually
+sends.
 
 The official demo's pinned data structures additionally define GPS push as
 CmdSet `0x00`, CmdID `0x17`, with date/time, longitude/latitude times 10^7,

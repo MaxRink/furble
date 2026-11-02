@@ -54,8 +54,12 @@ void Fujifilm::notify(BLERemoteCharacteristic *pChr,
   }
 
   if (pChr->getUUID() == CHR_NOT1_UUID) {
-    // The X100VI capture records 01 00. Keep accepting the legacy 02 00 form
-    // used by older Fujifilm bodies, but only on this dedicated characteristic.
+    // The X100VI capture records 01 00. The official apps also treat 01 00 on
+    // this characteristic as a date or time request, so this is not a proven
+    // registration flag. Keep the operational promotion because the camera
+    // only sends it to an accepted client, and keep accepting the legacy
+    // 02 00 form used by older Fujifilm bodies, but only on this dedicated
+    // characteristic.
     if (FujifilmProtocol::isRegistrationNotification(pData, length)) {
       m_Configured = true;
     }
@@ -181,12 +185,17 @@ void Fujifilm::shutterRelease(void) {
 }
 
 void Fujifilm::focusPress(void) {
-  const auto frame = FujifilmProtocol::makeShutterFrame(FujifilmProtocol::ShutterAction::FOCUS);
-  sendShutterCommand(frame.command, frame.parameter);
+  if (m_Shutter != nullptr && m_Shutter->canWrite()) {
+    gattWrite(m_Shutter, FujifilmProtocol::SHUTTER_HALF_PRESS.data(),
+              FujifilmProtocol::SHUTTER_HALF_PRESS.size(), true);
+  }
 }
 
 void Fujifilm::focusRelease(void) {
-  shutterRelease();
+  if (m_Shutter != nullptr && m_Shutter->canWrite()) {
+    gattWrite(m_Shutter, FujifilmProtocol::SHUTTER_RELEASE.data(),
+              FujifilmProtocol::SHUTTER_RELEASE.size(), true);
+  }
 }
 
 void Fujifilm::sendGeoData(const gps_t &gps, const timesync_t &timesync) {

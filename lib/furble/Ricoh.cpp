@@ -24,6 +24,7 @@ const NimBLEUUID Ricoh::MODEL_CHR_UUID {0x35FE6272, 0x6AA5, 0x44D9, 0x88E1F09427
 const NimBLEUUID Ricoh::CAMERA_SVC_UUID {0x4B445988, 0xCAA0, 0x4DD3, 0x941D37B4F52ACA86};
 const NimBLEUUID Ricoh::POWER_CHR_UUID {0xB58CE84C, 0x0666, 0x4DE9, 0xBEC82D27B27B3211};
 const NimBLEUUID Ricoh::OPERATION_MODE_CHR_UUID {0x1452335A, 0xEC7F, 0x4877, 0xB8AB0F72E18BB295};
+const NimBLEUUID Ricoh::GEOTAG_ENABLE_CHR_UUID {0xA36AFDCF, 0x6B67, 0x4046, 0x9BE728FB67DBC071};
 
 const NimBLEUUID Ricoh::SHOOTING_SVC_UUID {0x9F00F387, 0x8345, 0x4BBC, 0x8B92B87B52E3091A};
 const NimBLEUUID Ricoh::SHOOTING_FLAVOR_CHR_UUID {0xB29E6DE3, 0x1AEC, 0x48C1, 0x9D0502CEA57CE664};
@@ -37,9 +38,6 @@ const NimBLEUUID Ricoh::PAIRED_DEVICE_NAME_CHR_UUID {0xFE3A32F8, 0xA189, 0x42DE,
 
 const NimBLEUUID Ricoh::GPS_SVC_UUID {0x84A0DD62, 0xE8AA, 0x4D0F, 0x91DB819B6724C69E};
 const NimBLEUUID Ricoh::GPS_INFO_CHR_UUID {0x28F59D60, 0x8B8E, 0x4FCD, 0xA81F61BDB46595A9};
-
-const NimBLEUUID Ricoh::LOCATION_CONTROL_SVC_UUID {0xF37F568F, 0x9071, 0x445D, 0xA9385441F2E82399};
-const NimBLEUUID Ricoh::LOCATION_CONTROL_CHR_UUID {0x9111CDD0, 0x9F01, 0x45C4, 0xA2D4E09E8FB0424D};
 
 namespace {
 
@@ -161,6 +159,12 @@ bool Ricoh::matches(const NimBLEAdvertisedDevice *pDevice) {
 }
 
 Ricoh::SecurityMode Ricoh::securityMode() const {
+  // GR IV firmware exposes numeric-comparison confirmation. The shared Camera
+  // pairing callbacks publish the camera's six-digit code and inject the
+  // operator's answer. They keep the NimBLEDevice::getSecurityPasskey()
+  // fallback, whose default is 123456, for a body that asks for passkey entry
+  // or display instead; numeric comparison is the interactive path, not a
+  // removed fixed passkey.
   return SecurityMode::SECURE_KEYBOARD_DISPLAY;
 }
 
@@ -229,6 +233,7 @@ bool Ricoh::_connect(void) {
   if (pSvc != nullptr) {
     m_Power = pSvc->getCharacteristic(POWER_CHR_UUID);
     m_OperationMode = pSvc->getCharacteristic(OPERATION_MODE_CHR_UUID);
+    m_GeotagEnable = pSvc->getCharacteristic(GEOTAG_ENABLE_CHR_UUID);
   } else {
     ESP_LOGW(LOG_TAG, "Ricoh Camera service unavailable");
   }
@@ -262,13 +267,6 @@ bool Ricoh::_connect(void) {
   }
   m_Progress = 82;
 
-  pSvc = m_Client->getService(LOCATION_CONTROL_SVC_UUID);
-  if (pSvc != nullptr) {
-    m_LocationControl = pSvc->getCharacteristic(LOCATION_CONTROL_CHR_UUID);
-  } else {
-    ESP_LOGW(LOG_TAG, "Ricoh Location Control service unavailable");
-  }
-
   pSvc = m_Client->getService(BT_CONTROL_SVC_UUID);
   if (pSvc != nullptr) {
     m_PairedDeviceName = pSvc->getCharacteristic(PAIRED_DEVICE_NAME_CHR_UUID);
@@ -285,7 +283,7 @@ bool Ricoh::_connect(void) {
   logChr(m_CaptureStatus, "CaptureStatus");
   logChr(m_SelfTimer, "SelfTimer");
   logChr(m_GpsInfo, "GpsInfo");
-  logChr(m_LocationControl, "LocationControl");
+  logChr(m_GeotagEnable, "GeotagEnable");
   logChr(m_PairedDeviceName, "PairedDeviceName");
   ESP_LOGI(LOG_TAG, "Ricoh state probe end");
 
@@ -314,7 +312,7 @@ void Ricoh::clearRemoteState(void) {
   m_SelfTimer = nullptr;
   m_PairedDeviceName = nullptr;
   m_GpsInfo = nullptr;
-  m_LocationControl = nullptr;
+  m_GeotagEnable = nullptr;
   m_LastPower = STATE_UNKNOWN;
   m_LastOperationMode = STATE_UNKNOWN;
   m_LastGpsWriteMs = 0;
@@ -379,8 +377,8 @@ bool Ricoh::setShootingFlavor(ShootingFlavor flavor) {
   return writeByte(m_ShootingFlavor, static_cast<uint8_t>(flavor), "ShootingFlavor");
 }
 
-bool Ricoh::setLocationControl(bool enabled) {
-  return writeByte(m_LocationControl, enabled ? 0x01 : 0x00, "LocationControl");
+bool Ricoh::setGeotagEnable(bool enabled) {
+  return writeByte(m_GeotagEnable, enabled ? 0x01 : 0x00, "GeotagEnable");
 }
 
 bool Ricoh::captureAllowed(void) {
@@ -471,7 +469,7 @@ void Ricoh::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
     return;
 
   if (!m_HasGpsWrite)
-    setLocationControl(true);
+    setGeotagEnable(true);
 
   ricoh_geo_t geo = {
       .latitude = bswapd64(gps.latitude),
@@ -484,7 +482,9 @@ void Ricoh::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
       .hour = static_cast<uint8_t>(std::min(timesync.hour, 255u)),
       .minute = static_cast<uint8_t>(std::min(timesync.minute, 255u)),
       .second = static_cast<uint8_t>(std::min(timesync.second, 255u)),
-      .centisecond = static_cast<uint8_t>(std::min(timesync.centisecond, 99u)),
+      // The official apps write the WGS84 datum selector here, not a
+      // centisecond. See docs/camera-research/ricoh.md.
+      .datum = 0,
   };
 
   bool rc = gattWrite(m_GpsInfo, reinterpret_cast<const uint8_t *>(&geo), sizeof(geo), true);

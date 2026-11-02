@@ -206,7 +206,7 @@ void Lumix::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
       .gps_time = static_cast<uint32_t>(unixTime - GPS_EPOCH_OFFSET),
       .latitude = static_cast<int32_t>(gps.latitude * 10000000.0),
       .longitude = static_cast<int32_t>(gps.longitude * 10000000.0),
-      .altitude = static_cast<uint16_t>(gps.altitude),
+      .altitude = static_cast<int16_t>(gps.altitude),
       .fix = 0x41,
       .reserved = 0x00,
   };
@@ -220,8 +220,10 @@ void Lumix::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
         .hour = static_cast<uint8_t>(timesync.hour),
         .minute = static_cast<uint8_t>(timesync.minute),
         .second = static_cast<uint8_t>(timesync.second),
-        .zero = 0x00,
+        // The official app writes the standard offset at bytes 7 to 8 and a
+        // DST flag at byte 9. Furble has no timezone source, so both are zero.
         .tz_offset = 0,
+        .dst = 0,
     };
     m_Clock->writeValue(reinterpret_cast<const uint8_t *>(&clock), sizeof(clock), true);
   }

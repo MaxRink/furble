@@ -61,10 +61,15 @@ class DJIOsmo: public Camera {
   static constexpr uint8_t CMD_WAIT_RESULT = 0x02;
   static constexpr uint8_t ACK_NO_RESPONSE = 0x20;
 
-  // DJI documents these as 0xFF33 and 0xFF44. The official demo stores them
-  // in little-endian uint32_t fields as 0x33FF0000 and 0x44FF0000.
+  // DJI documents the model IDs as 0xFF33 and 0xFF44. Two official artifacts
+  // disagree about how those bytes map into the little-endian device ID
+  // field: the command table and a checksum-valid Action 4 frame carry
+  // 0xFF330000, while one demo source file uses 0x33FF0000. Accept both until
+  // a hardware capture settles which value the camera reports.
   static constexpr uint32_t ACTION_4_DEVICE_ID = 0x33FF0000U;
   static constexpr uint32_t ACTION_5_DEVICE_ID = 0x44FF0000U;
+  static constexpr uint32_t ACTION_4_DEVICE_ID_TABLE = 0xFF330000U;
+  static constexpr uint32_t ACTION_5_DEVICE_ID_TABLE = 0xFF440000U;
 
   static const NimBLEUUID TARGET_SERVICE_UUID;
   static const NimBLEUUID NOTIFY_CHARACTERISTIC_UUID;

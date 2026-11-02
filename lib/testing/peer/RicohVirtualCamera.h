@@ -143,6 +143,8 @@ class RicohVirtualCamera final: public NimBLEMockPeer {
   static const NimBLEUUID &operationRequestCharacteristicUUID();
   static const NimBLEUUID &cameraServiceUUID();
   static const NimBLEUUID &powerCharacteristicUUID();
+  static const NimBLEUUID &geotagEnableCharacteristicUUID();
+  static const NimBLEUUID &gpsInformationCharacteristicUUID();
 
  private:
   struct Subscription {

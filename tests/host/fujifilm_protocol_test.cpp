@@ -152,8 +152,10 @@ void testShutterFrames() {
   check((release.parameter == std::array<uint8_t, 2> {0x00, 0x00}),
         "release clears the parameter bytes");
 
-  const auto focus = makeShutterFrame(ShutterAction::FOCUS);
-  check((focus.parameter == std::array<uint8_t, 2> {0x03, 0x00}), "focus uses the focus parameter");
+  check((SHUTTER_HALF_PRESS == std::array<uint8_t, 2> {0x01, 0x00}),
+        "half press uses the firmware-accepted value");
+  check((SHUTTER_RELEASE == std::array<uint8_t, 2> {0x00, 0x00}),
+        "release uses the firmware-accepted value");
 }
 
 void testGeotag() {

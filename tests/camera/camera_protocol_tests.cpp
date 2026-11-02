@@ -133,15 +133,18 @@ bool testFujifilmMessages() {
       Furble::FujifilmProtocol::makeShutterFrame(Furble::FujifilmProtocol::ShutterAction::PRESS);
   const auto release =
       Furble::FujifilmProtocol::makeShutterFrame(Furble::FujifilmProtocol::ShutterAction::RELEASE);
-  const auto focus =
-      Furble::FujifilmProtocol::makeShutterFrame(Furble::FujifilmProtocol::ShutterAction::FOCUS);
   const std::array<uint8_t, 2> command = {0x01, 0x00};
   CHECK(press.command == command);
   CHECK(release.command == command);
-  CHECK(focus.command == command);
   CHECK((press.parameter == std::array<uint8_t, 2> {0x02, 0x00}));
   CHECK((release.parameter == std::array<uint8_t, 2> {0x00, 0x00}));
-  CHECK((focus.parameter == std::array<uint8_t, 2> {0x03, 0x00}));
+  // A focus half press is the single-write command value 1. The old 03 00
+  // focus action is rejected by the camera parser, so the protocol exposes
+  // only the half-press constant outside the press/release frame builder.
+  CHECK((Furble::FujifilmProtocol::SHUTTER_HALF_PRESS
+         == std::array<uint8_t, 2> {0x01, 0x00}));
+  CHECK((Furble::FujifilmProtocol::SHUTTER_RELEASE
+         == std::array<uint8_t, 2> {0x00, 0x00}));
 
   const std::array<uint8_t, 2> configured = {0x02, 0x00};
   const std::array<uint8_t, 3> configuredWithExtra = {0x02, 0x00, 0x01};

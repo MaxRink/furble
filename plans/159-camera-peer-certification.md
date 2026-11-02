@@ -182,8 +182,10 @@ Current strict-peer findings:
   RPA because production does not update the saved address.
 - Numeric comparison is silently accepted instead of being confirmed by the
   user.
-- Secure profiles differ materially. Some omit NOT8 and NOT10, while NOT3 can
-  disconnect tested X-H2 family cameras.
+- Secure profiles differ materially. Some omit NOT8 and NOT10. `7170FD5A` is
+  the remote boot setting, not a notification. Older experiments that treated
+  it as NOT3 could disconnect tested X-H2 family cameras. Furble does not
+  subscribe to it.
 - The synthetic X100VI golden file is not hardware evidence.
 
 ### Canon Smart and Remote
@@ -298,10 +300,13 @@ software-only. It records current Furble behavior at `965f299f`, immutable
 external source pins, license constraints, model/firmware limits, and future
 positive/negative capture cases. No new support or certainty claim is made.
 
-Resolve the Ricoh WLAN-versus-location UUID and GPS datum-versus-centisecond
-conflicts, Sony packet-length/flag conflicts, and model-specific registration
-questions before deriving peer fixtures. Nikon SnapBridge app-feature tables
-do not establish ML-L7 accessory compatibility. Canon `mktime` behavior needs
+The Ricoh WLAN-versus-location UUID and GPS datum-versus-centisecond conflicts
+were resolved on 2026-11-01 from GR III 2.20 and GR IV 1.20 firmware plus the
+official Image Sync and GR WORLD apps. GEO Tag is `A36AFDCF`, WLAN Network Type
+is `9111CDD0`, and the GPS final byte is WGS84 datum `0`. Runtime acceptance
+still needs a capture. Sony packet-length/flag conflicts and model-specific
+registration questions remain open. Nikon SnapBridge app-feature tables do not
+establish ML-L7 accessory compatibility. Canon `mktime` behavior needs
 runtime-timezone verification, not an unconditional defect label.
 
 The same-day follow-up adds official manual/support indexes for all 26

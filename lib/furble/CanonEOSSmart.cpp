@@ -199,13 +199,16 @@ void CanonEOSSmart::shutterRelease(void) {
 }
 
 void CanonEOSSmart::focusPress(void) {
-  // do nothing
-  return;
+  // AF_ON. The official Camera Connect app exposes this separately from the
+  // combined AF plus release shutter path.
+  const std::array<uint8_t, 2> x = {0x00, 0x03};
+  gattWrite(SVC_SHUTTER_UUID, CHR_SHUTTER_UUID, x.data(), x.size(), false);
 }
 
 void CanonEOSSmart::focusRelease(void) {
-  // do nothing
-  return;
+  // AF_OFF.
+  const std::array<uint8_t, 2> x = {0x00, 0x04};
+  gattWrite(SVC_SHUTTER_UUID, CHR_SHUTTER_UUID, x.data(), x.size(), false);
 }
 
 void CanonEOSSmart::updateGeoData(const gps_t &gps, const timesync_t &timesync) {

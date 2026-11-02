@@ -30,13 +30,13 @@ by code review and the FauxNY test camera.
 
 | Vendor mode | Notes |
 | :--- | :--- |
-| Fujifilm (Basic) | Older Fujifilm firmware, unsecured pairing. |
-| Fujifilm (Secure) | Newer Fujifilm firmware that requires the secure handshake. |
-| Canon EOS (Smart) | Smart device pairing. Supports GPS, no manual focus. |
+| Fujifilm (Basic) | Older firmware with the token pairing service `91F1DE68`. That service is absent from X100VI 1.31 and X-S20 3.30, so no Basic path is present; use Secure. |
+| Fujifilm (Secure) | Firmware that requires the status and registration handshake. X100VI 1.30 and later, and X-S20 3.30, are this generation. |
+| Canon EOS (Smart) | Smart device pairing. Supports GPS and AF-only focus. The AF writes come from Camera Connect evidence and await hardware validation; manual lens focus is not available. |
 | Canon EOS (Remote) | Remote controller pairing. Focus, no GPS. |
 | Nikon | Remote controller mode works (shutter only). Smart mode appears but does not pair. |
 | Sony | Sony ZV and most modern Sony bodies. |
-| Ricoh | Ricoh GR IV series. Shutter capture with autofocus and GPS supported. Focus-only control is unsupported. Does not work with GR III or GR II. Numeric-comparison pairing shows the six-digit code on the furble display, untested on hardware. |
+| Ricoh | GR IV and GR IV HDF, firmware 1.20. Shutter capture with autofocus and GPS supported. Focus-only control is unsupported. GR III and GR IIIx expose the same BLE service UUIDs but remain uncertified because power and WLAN behaviour differ. GR II is Wi-Fi only. Numeric-comparison pairing displays the camera's six-digit code on the furble screen and is untested on hardware. |
 | FauxNY | Software test camera for development. |
 
 ## GPS units
