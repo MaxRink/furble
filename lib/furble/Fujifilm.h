@@ -112,6 +112,10 @@ class Fujifilm: public Camera {
   std::atomic<bool> m_Configured {false};
   NimBLERemoteCharacteristic *m_Shutter = nullptr;
   timesync_t m_LastTimesync = {};
+  // A date/time request can arrive before the first GPS fix cached a timesync.
+  // Remember it and answer on the next update instead of issuing GATT traffic
+  // from the NimBLE notification callback.
+  std::atomic<bool> m_TimeRequested {false};
   bool m_HasTimesync = false;
   bool m_HasLocationSync = false;
 

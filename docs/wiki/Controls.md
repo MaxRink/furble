@@ -56,10 +56,11 @@ Open the connected `Remote` page to reach the shutter control.
 
 - **Select (middle) is the shutter.** Press to fire, release to end.
 - **Next (right) is focus.** Press to half-press focus, release to end.
-- Ricoh cameras do not support the focus action over this BLE path. Their
-  focus control is a no-op; use the camera body to configure autofocus. Ricoh's
-  supported shutter operation sends `OperationRequest {0x01, 0x01}`, which means
-  capture with autofocus, not a separate focus command.
+- The focus control is disabled when the connected session cannot honour it.
+  Ricoh has no focus primitive, LUMIX has no focus opcode, and Nikon Remote,
+  Nikon Smart, and DJI expose no focus command. Use the camera body to configure
+  autofocus; the supported shutter operation on those bodies captures with
+  autofocus, not a separate focus command.
 - **Shutter lock.** Hold focus (right), then press the shutter (select). The
   shutter locks open and stays open until you press a button. This is handy for
   a long exposure without holding a button down. You can also long-press the
@@ -93,7 +94,8 @@ The connected `Remote` group also offers:
 
 - `IR`: fire the camera over IR, shown only when Infrared is on.
 - `Bulb`: timed long exposure. Set `Duration`, press Start, and the shutter
-  releases at zero.
+  releases at zero. The entry is disabled when the connected camera cannot end
+  a held exposure, as with Ricoh GR bodies.
 - `Interval`: the intervalometer, sharing the Timer configuration.
 - `GPS Data`: the live GPS page.
 - `Disconnect`: drop the camera and return.

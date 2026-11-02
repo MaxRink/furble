@@ -113,6 +113,9 @@ class Lumix: public Camera {
   // written after it reports ready, matching the official app. A body without
   // it keeps the previous unconditional behavior.
   std::atomic<bool> m_LocationReady {false};
+  // A 03 readiness value asks for the stored packet to be resent. The next GPS
+  // tick writes the current fix even though no new fix arrived.
+  std::atomic<bool> m_LocationResend {false};
   std::atomic<bool> m_ClockReady {false};
   bool m_SessionStarted = false;
 

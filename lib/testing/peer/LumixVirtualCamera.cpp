@@ -781,7 +781,11 @@ bool LumixVirtualCamera::handleControl(const std::vector<uint8_t> &value) {
       m_SessionStarted = false;
       m_ShutterHeld = false;
       m_Recording = false;
-      emitControlReadiness(0x00);
+      // A body can expose the gate characteristic but never open it; Start is
+      // then refused by the client.
+      if (m_Config.control_readiness) {
+        emitControlReadiness(0x00);
+      }
       return true;
     case CONTROL_START:
       if (m_StaleSession) {

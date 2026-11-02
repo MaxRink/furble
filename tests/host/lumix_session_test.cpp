@@ -25,6 +25,15 @@ bool check(bool condition, const char *message) {
   return condition;
 }
 
+bool hasGpsWrite(const std::vector<Furble::Host::LumixVirtualCamera::Write> &writes) {
+  for (const auto &write : writes) {
+    if (write.payload.size() == 16) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool hasCommand(const std::vector<Furble::Host::LumixVirtualCamera::Write> &writes,
                 uint8_t command) {
   for (const auto &write : writes) {
@@ -98,7 +107,7 @@ int main() {
   const auto gatedAdvertisement = gatedPeer.advertisement();
   Furble::Lumix gatedCamera(&gatedAdvertisement);
   passed &= check(gatedCamera.connect(ESP_PWR_LVL_P3, 2000),
-                  "LUMIX gated body connects without readiness");
+                  "LUMIX gated body connects with control readiness only");
   gatedPeer.clearEvents();
   gatedCamera.updateGeoData(gps, time);
   passed &= check(gatedPeer.lastGps().empty(), "LUMIX GPS is withheld before location readiness");
@@ -112,7 +121,42 @@ int main() {
                   "LUMIX GPS is written once location readiness arrives");
   passed &= check(gatedPeer.lastClock().size() == 10,
                   "LUMIX clock is written once clock readiness arrives");
+
+  // The clock request is independent of the location gate. Stop location
+  // updates, then request the clock again: the clock packet must still go out
+  // while the GPS write stays withheld.
+  gatedPeer.clearEvents();
+  passed &= check(gatedPeer.emitLocationReadiness(0x02), "the peer stops location updates");
+  gatedCamera.updateGeoData(gps, time);
+  passed &= check(!hasGpsWrite(gatedPeer.writes()),
+                  "LUMIX GPS stays withheld while location updates are stopped");
+  passed &=
+      check(gatedPeer.lastClock().size() == 10, "LUMIX clock is written without a location update");
+
+  // 03 asks the camera for the stored packet. It must reopen the gate, not
+  // close it: the next tick writes the fix again.
+  passed &=
+      check(gatedPeer.emitLocationReadiness(0x03), "the peer requests the stored location packet");
+  gatedPeer.clearEvents();
+  gatedCamera.updateGeoData(gps, time);
+  passed &= check(hasGpsWrite(gatedPeer.writes()),
+                  "LUMIX 03 reopens the location gate and resends the fix");
   gatedCamera.disconnect();
+
+  NimBLEDevice::resetMock();
+
+  // A body that exposes the control readiness gate but never opens it must fail
+  // the connection instead of sending Start out of order.
+  Furble::Host::LumixVirtualCamera::Config noControlReadiness;
+  noControlReadiness.control_readiness = false;
+  Furble::Host::LumixVirtualCamera noReadinessPeer(noControlReadiness);
+  NimBLEDevice::setMockPeer(&noReadinessPeer);
+  const auto noReadinessAdvertisement = noReadinessPeer.advertisement();
+  Furble::Lumix noReadinessCamera(&noReadinessAdvertisement);
+  passed &= check(!noReadinessCamera.connect(ESP_PWR_LVL_P3, 5000),
+                  "LUMIX connect fails when control readiness never arrives");
+  passed &= check(!noReadinessPeer.sessionStarted(),
+                  "LUMIX never writes Start without control readiness");
 
   NimBLEDevice::resetMock();
   if (!passed) {

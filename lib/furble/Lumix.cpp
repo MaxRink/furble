@@ -91,6 +91,7 @@ bool Lumix::_connect(void) {
   m_ClockRequest = nullptr;
   m_ControlReady = false;
   m_LocationReady = false;
+  m_LocationResend = false;
   m_ClockReady = false;
   m_SessionStarted = false;
   m_Progress = 10;
@@ -178,8 +179,25 @@ bool Lumix::_connect(void) {
       if (!gattSubscribe(
               m_LocationReadiness,
               [this](NimBLERemoteCharacteristic *, uint8_t *data, size_t length, bool) {
-                if (length > 0) {
-                  m_LocationReady = (data[0] == 0x01);
+                if (length == 0) {
+                  return;
+                }
+                switch (data[0]) {
+                  case 0x01:
+                    m_LocationReady = true;
+                    break;
+                  case 0x02:
+                    // Location updates stopped.
+                    m_LocationReady = false;
+                    break;
+                  case 0x03:
+                    // The camera asks for the stored packet again. Keep the
+                    // gate open and write the current fix on the next tick.
+                    m_LocationReady = true;
+                    m_LocationResend = true;
+                    break;
+                  default:
+                    break;
                 }
               },
               false, true)) {
@@ -244,6 +262,7 @@ void Lumix::_disconnect(void) {
   m_ClockRequest = nullptr;
   m_ControlReady = false;
   m_LocationReady = false;
+  m_LocationResend = false;
   m_ClockReady = false;
   if (m_Client != nullptr && m_Client->isConnected())
     m_Client->disconnect();
@@ -281,7 +300,14 @@ bool Lumix::startSession(void) {
     waited += READINESS_POLL_MS;
   }
   if (!m_ControlReady.load()) {
-    ESP_LOGW(LOG_TAG, "Lumix control readiness timeout; starting anyway");
+    if (m_ControlReadiness != nullptr) {
+      // The body exposes the gate but did not open it. Starting anyway would
+      // bypass the Confirm/readiness/Start prerequisite the sequence exists
+      // for, and the session would answer every command with a refusal.
+      ESP_LOGW(LOG_TAG, "Lumix control readiness timeout; session refused");
+      return false;
+    }
+    ESP_LOGW(LOG_TAG, "Lumix control readiness unavailable; starting without the gate");
   }
 
   if (!writeCommand(CMD_SESSION_START)) {
@@ -314,36 +340,15 @@ void Lumix::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
     ESP_LOGW(LOG_TAG, "Lumix GPS skipped: not connected");
     return;
   }
-  if (m_Location == nullptr || !m_Location->canWrite()) {
-    ESP_LOGW(LOG_TAG, "Lumix GPS characteristic unavailable");
-    return;
-  }
-  // A body that exposes 37701b80 must report ready before the first write.
-  // The readiness notification can arrive after connect, so a skipped update
-  // is not an error: the next GPS tick writes once the gate opens.
-  if ((m_LocationReadiness != nullptr) && !m_LocationReady.load()) {
-    ESP_LOGD(LOG_TAG, "Lumix GPS waiting for location readiness");
-    return;
-  }
 
   const time_t unixTime = toUnixTime(timesync);
-  if (unixTime < GPS_EPOCH_OFFSET) {
-    ESP_LOGW(LOG_TAG, "Lumix GPS skipped: invalid time");
-    return;
-  }
+  const bool timeValid = unixTime >= GPS_EPOCH_OFFSET;
 
-  geo_t geo = {
-      .gps_time = static_cast<uint32_t>(unixTime - GPS_EPOCH_OFFSET),
-      .latitude = static_cast<int32_t>(gps.latitude * 10000000.0),
-      .longitude = static_cast<int32_t>(gps.longitude * 10000000.0),
-      .altitude = static_cast<int16_t>(gps.altitude),
-      .fix = 0x41,
-      .reserved = 0x00,
-  };
-  bool rc = m_Location->writeValue(reinterpret_cast<const uint8_t *>(&geo), sizeof(geo), true);
-
+  // The clock request is independent of the location gate and of the location
+  // write. LUMIX Sync answers 4cf487c0 even while location updates are off, so
+  // a pending clock request must not wait for 37701b80 or for a GPS write.
   const bool clockReady = (m_ClockRequest == nullptr) || m_ClockReady.load();
-  if (rc && clockReady && m_Clock != nullptr && m_Clock->canWrite()) {
+  if (timeValid && clockReady && m_Clock != nullptr && m_Clock->canWrite()) {
     clock_t clock = {
         .year = static_cast<uint16_t>(timesync.year),
         .month = static_cast<uint8_t>(timesync.month),
@@ -358,6 +363,35 @@ void Lumix::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
     };
     m_Clock->writeValue(reinterpret_cast<const uint8_t *>(&clock), sizeof(clock), true);
   }
+
+  if (m_Location == nullptr || !m_Location->canWrite()) {
+    ESP_LOGW(LOG_TAG, "Lumix GPS characteristic unavailable");
+    return;
+  }
+
+  // A body that exposes 37701b80 must report ready before the first write. The
+  // notification can arrive after connect, so a skipped update is not an error:
+  // the next GPS tick writes once the gate opens. A 03 value asks for the
+  // stored packet and is served on the next tick without a new fix.
+  const bool resend = m_LocationResend.exchange(false);
+  if ((m_LocationReadiness != nullptr) && !m_LocationReady.load() && !resend) {
+    ESP_LOGD(LOG_TAG, "Lumix GPS waiting for location readiness");
+    return;
+  }
+  if (!timeValid) {
+    ESP_LOGW(LOG_TAG, "Lumix GPS skipped: invalid time");
+    return;
+  }
+
+  geo_t geo = {
+      .gps_time = static_cast<uint32_t>(unixTime - GPS_EPOCH_OFFSET),
+      .latitude = static_cast<int32_t>(gps.latitude * 10000000.0),
+      .longitude = static_cast<int32_t>(gps.longitude * 10000000.0),
+      .altitude = static_cast<int16_t>(gps.altitude),
+      .fix = 0x41,
+      .reserved = 0x00,
+  };
+  bool rc = m_Location->writeValue(reinterpret_cast<const uint8_t *>(&geo), sizeof(geo), true);
 
   ESP_LOGI(LOG_TAG, "Lumix GPS lat=%.7f lon=%.7f alt=%.1f utc=%04u-%02u-%02u %02u:%02u:%02u => %s",
            gps.latitude, gps.longitude, gps.altitude, timesync.year, timesync.month, timesync.day,

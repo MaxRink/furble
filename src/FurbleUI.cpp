@@ -6541,6 +6541,12 @@ void UI::configPresetControl(void) {
     lv_obj_set_style_bg_image_src(m_OK, &icon_check_24, 0);
     lv_obj_set_style_bg_image_src(m_Right, LV_SYMBOL_PLUS, 0);
   }
+  // configShutterControl() applies the session's focus gate, which disables the
+  // right button for a camera without a half-press. Preset mode reuses that
+  // button as Plus, so a gated session could not increase the duration.
+  if (m_Right != nullptr && !m_ShutterLock) {
+    lv_obj_remove_state(m_Right, LV_STATE_DISABLED);
+  }
   applyLegendVisibility();
 }
 

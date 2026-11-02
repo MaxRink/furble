@@ -64,10 +64,13 @@ void Fujifilm::notify(BLERemoteCharacteristic *pChr,
     // characteristic.
     if (FujifilmProtocol::isRegistrationNotification(pData, length)) {
       m_Configured = true;
-      // 01 00 is also the camera's date and time request. Answer it with the
-      // 12-byte UTC packet when the time service exists.
+      // 01 00 is also the camera's date and time request. A request can arrive
+      // during registration before any fix cached a timestamp, and a GATT write
+      // must not run inside the NimBLE callback. Remember it and let the control
+      // task answer on the next GPS update; the flag survives until served, so a
+      // request that arrives before the first fix is not lost.
       if (length >= 2 && pData[0] == 0x01 && pData[1] == 0x00) {
-        sendTimeData();
+        m_TimeRequested = true;
       }
     }
   } else if (pChr->getUUID() == GEOTAG_UPDATE) {
@@ -310,6 +313,9 @@ void Fujifilm::sendGeoData(const gps_t &gps, const timesync_t &timesync) {
 void Fujifilm::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
   m_LastTimesync = timesync;
   m_HasTimesync = true;
+  if (m_TimeRequested.exchange(false)) {
+    sendTimeData();
+  }
   if (m_GeoRequested) {
     sendGeoData(gps, timesync);
     m_GeoRequested = false;
@@ -320,6 +326,7 @@ void Fujifilm::_disconnect(void) {
   m_HasLocationSync = false;
   m_HasTimesync = false;
   m_GeoRequested = false;
+  m_TimeRequested = false;
   m_Client->disconnect();
 }
 

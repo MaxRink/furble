@@ -137,7 +137,11 @@ class LumixVirtualCamera final: public NimBLEMockPeer {
 
     // Readiness notifications from the public S5 report. The clock request
     // payload itself was not captured, so the peer emits the reported 0x01.
+    // Location and clock readiness on subscribe. The control readiness that
+    // gates Start is separate: a body that hides it cannot complete the
+    // Confirm/readiness/Start handshake, so tests can model both.
     bool readiness_on_subscribe = true;
+    bool control_readiness = true;
     bool gps_requires_readiness = false;
     bool clock_requires_readiness = false;
 

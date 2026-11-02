@@ -118,13 +118,13 @@ the Z6 III GATT inventory.
 
 Both official apps implement CC00, DD00, and EE00; Creators' App adds BB00.
 Furble requires the FF00 remote-commander service and writes FF01 for shutter
-and focus. It writes location with DD11 and conditionally enables it through
-DD30 and DD31 on the first GPS update. DD01 (location status) and DD21
-(payload selector) are unused: the driver always sends the 95-byte form and
-does not read the selected length. The unused surface includes the CC00 status
-and settings services, DD01 and DD21, EE01 pairing and EE03 state, EE04 camera
-info, BB00 DiRxTx, FF02 status notifications, PTP/IP still capture, movie,
-zoom, power, image transfer, and the location release sequence.
+and focus. The location path uses the DD00 service: it reads DD21 to choose the
+91 or 95 byte form, subscribes DD01, writes the position with DD11, and raises
+the DD30 allow flag and DD31 enable flag while location is active. Disconnect
+clears both flags. The unused surface includes the CC00 status and settings
+services, EE01 pairing and EE03 state, EE04 camera info, BB00 DiRxTx, FF02
+status notifications, PTP/IP still capture, movie, zoom, power, and image
+transfer.
 
 The location payload is 91 or 95 bytes, selected by `DD21` byte 4 bit 1. The
 app writes timezone and DST into bytes 91 to 94, subscribes `DD01`, locks with

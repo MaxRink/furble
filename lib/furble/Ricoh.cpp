@@ -317,6 +317,10 @@ void Ricoh::_disconnect(void) {
 void Ricoh::clearRemoteState(void) {
   m_Power = nullptr;
   m_OperationMode = nullptr;
+  // The optional Camera service characteristic is per connection. A failed
+  // rediscovery leaves it null, so a pointer from the previous client must not
+  // survive cleanup.
+  m_DateTime = nullptr;
   m_ShootingFlavor = nullptr;
   m_OperationRequest = nullptr;
   m_CaptureStatus = nullptr;
@@ -330,6 +334,10 @@ void Ricoh::clearRemoteState(void) {
   m_CapturesCompleted = 0;
   m_LastGpsWriteMs = 0;
   m_HasGpsWrite = false;
+  // The clock throttle is per session: a reconnect must write the time even if
+  // the previous link wrote it less than a minute ago.
+  m_LastClockWriteMs = 0;
+  m_HasClockWrite = false;
 }
 
 bool Ricoh::writeByte(NimBLERemoteCharacteristic *pChr, uint8_t value, const char *label) {

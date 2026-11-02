@@ -529,9 +529,20 @@ so an exposure never keeps running out of sight.
 The camera must be in bulb mode, otherwise it will end the exposure on its own
 and the countdown will simply run out.
 
+`Bulb` needs a camera that can end a held exposure with a release command. When
+the connected session cannot, furble disables the `Bulb` entry rather than
+starting a countdown that cannot finish the shot. Ricoh GR bodies are the
+current case: their operation request has no stop primitive.
+
 ### Shutter Lock
 
 When in `Shutter` remote control, holding focus (button B) then release (button A) will engage shutter lock, holding the shutter open until a button is pressed.
+
+The focus control is enabled only when every connected camera has a half-press
+or AF-only command. A session that cannot honour it disables the control:
+Ricoh has no focus primitive, LUMIX has no focus opcode, and the Nikon Remote,
+Nikon Smart, and DJI classes have no focus command. The capability is the
+intersection across a multi-camera session.
 
 ### Bluetooth
 
