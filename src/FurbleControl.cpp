@@ -1060,6 +1060,9 @@ bool Control::retireCancelledTargetsLocked(void) {
   if (removed && m_Targets.empty()) {
     m_ReconnectAttempt = 0;
     m_ConnectFailCount = 0;
+    // The session ended with the last cancelled target. Advance the generation
+    // so a later connect cannot accept commands or releases addressed to it.
+    m_SessionGeneration++;
     resetAdaptiveState();
     return true;
   }

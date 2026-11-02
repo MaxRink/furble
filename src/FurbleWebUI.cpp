@@ -656,8 +656,11 @@ bool WebUI::requestAllowed(httpd_req_t *request, bool mutation) {
   }
   std::string host;
   std::string origin;
-  if (!readHeader(request, "Host", host, 128) || !readHeader(request, "Origin", origin)
-      || !WebUIProtocol::sameOrigin(host, origin)) {
+  const bool hasOrigin = httpd_req_get_hdr_value_len(request, "Origin") > 0;
+  if (!readHeader(request, "Host", host, 128)
+      || (hasOrigin
+          && (!readHeader(request, "Origin", origin)
+              || !WebUIProtocol::sameOrigin(host, origin)))) {
     sendError(request, "403 Forbidden", "cross-origin request rejected");
     return false;
   }
@@ -1005,29 +1008,17 @@ bool WebUI::queuePress(Control::cmd_t command, uint8_t heldBit, bool startLease)
   bool held = false;
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
-    const size_t slot = (heldBit == HELD_SHUTTER) ? 0 : 1;
     if ((m_ReleasePending & heldBit) != 0) {
-      const int64_t deadline = m_ReleaseDeadlineUs[slot];
-      if ((deadline == 0) || (esp_timer_get_time() < deadline)) {
-        return false;
-      }
-      // The release debt outlived its window. Drop it so a healthy camera can
-      // be triggered again instead of blocking every future press.
-      m_ReleasePending &= ~heldBit;
-      m_Held &= ~heldBit;
-      m_ReleaseDeadlineUs[slot] = 0;
-      heldTargets(heldBit).clear();
+      return false;
     }
     held = (m_Held & heldBit) != 0;
     if (held && (heldBit == HELD_SHUTTER)) {
       const int64_t deadline = m_HoldDeadlineUs.load();
       const bool timerActive = (m_HoldTimer != nullptr) && esp_timer_is_active(m_HoldTimer);
       if ((deadline > 0) && (esp_timer_get_time() >= deadline) && !timerActive) {
-        // The timed hold has expired but its event has not been serviced. Start
-        // a fresh press instead of extending the old deadline by a lease.
-        m_Held &= ~heldBit;
-        heldTargets(heldBit).clear();
-        held = false;
+        // The hold has expired but the supervisor has not released it yet.
+        // Preserve the ownership and reject the press until that release runs.
+        return false;
       }
     }
   }
@@ -1051,7 +1042,6 @@ bool WebUI::queuePress(Control::cmd_t command, uint8_t heldBit, bool startLease)
   m_CommandSession = delivery.session;
   m_Held |= heldBit;
   m_ReleasePending &= ~heldBit;
-  m_ReleaseDeadlineUs[(heldBit == HELD_SHUTTER) ? 0 : 1] = 0;
   heldTargets(heldBit) = delivery.accepted;
   if (startLease) {
     startManualLease(heldBit);
@@ -1089,10 +1079,6 @@ bool WebUI::queueRelease(Control::cmd_t command, uint8_t heldBit) {
         m_ReleasePending &= ~heldBit;
         return true;
       }
-      const size_t slot = (heldBit == HELD_SHUTTER) ? 0 : 1;
-      if (m_ReleaseDeadlineUs[slot] == 0) {
-        m_ReleaseDeadlineUs[slot] = esp_timer_get_time() + RELEASE_DEBT_TIMEOUT_US;
-      }
     }
   }
   if (!owned) {
@@ -1128,26 +1114,12 @@ bool WebUI::queueRelease(Control::cmd_t command, uint8_t heldBit) {
       if (owned) {
         m_Held &= ~heldBit;
         m_ReleasePending &= ~heldBit;
-        m_ReleaseDeadlineUs[(heldBit == HELD_SHUTTER) ? 0 : 1] = 0;
       }
       complete = true;
     }
   }
   if (complete) {
     return true;
-  }
-  {
-    const std::lock_guard<std::mutex> lock(m_Mutex);
-    const size_t slot = (heldBit == HELD_SHUTTER) ? 0 : 1;
-    if (esp_timer_get_time() >= m_ReleaseDeadlineUs[slot]) {
-      // The target did not come back inside the debt window. Drop the debt so
-      // presses are not blocked forever; a later session starts clean.
-      m_Held &= ~heldBit;
-      m_ReleasePending &= ~heldBit;
-      m_ReleaseDeadlineUs[slot] = 0;
-      heldTargets(heldBit).clear();
-      return true;
-    }
   }
   if ((m_ReleaseTimer != nullptr) && !esp_timer_is_active(m_ReleaseTimer)) {
     return esp_timer_start_once(m_ReleaseTimer, RELEASE_RETRY_MS * 1000ULL) == ESP_OK;
@@ -1186,8 +1158,7 @@ bool WebUI::syncCommandSession(uint32_t session) {
       m_Held = 0;
       m_ReleasePending = 0;
       m_CommandSession = session;
-      m_ReleaseDeadlineUs[0] = 0;
-      m_ReleaseDeadlineUs[1] = 0;
+      m_FocusLeaseDeadlineUs = 0;
       m_HeldShutterTargets.clear();
       m_HeldFocusTargets.clear();
     }
