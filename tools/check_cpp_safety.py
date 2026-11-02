@@ -704,10 +704,17 @@ def _declared_containers(
     if close_paren is None:
       continue
     arguments = _split_top_level(masked[open_paren + 1 : close_paren], ",")
-    capacity = _capacity(arguments[0], constants)
-    if capacity is None:
-      continue
-    low, high, guard, low_when_guard = capacity
+    if match.group(2) == "reserve":
+      # reserve() allocates capacity but leaves the size at zero. Any indexing
+      # before resize() or insertion is undefined behaviour, regardless of the
+      # reserved count.
+      low = high = 0
+      guard = low_when_guard = None
+    else:
+      capacity = _capacity(arguments[0], constants)
+      if capacity is None:
+        continue
+      low, high, guard, low_when_guard = capacity
     block_start, block_end = block_for(open_paren)
     yield CapacityEvent(
         name=name,
@@ -784,7 +791,11 @@ def check_container_bounds(source: SourceFile) -> list[Finding]:
                 rule=RULE_BOUNDS,
                 message=(
                     f"'{name}[{index}]' is outside the {event.kind} capacity {capacity}; "
-                    "the container is smaller than the index"
+                    + (
+                        "reserve() does not create elements"
+                        if event.kind == ".reserve()"
+                        else "the container is smaller than the index"
+                    )
                 ),
             )
         )

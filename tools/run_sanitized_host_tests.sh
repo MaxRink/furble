@@ -140,11 +140,26 @@ case "$BUILD_DIR" in
   *) BUILD_DIR="$ROOT/$BUILD_DIR" ;;
 esac
 
-case "$BUILD_DIR" in
-  ""|"/"|"$ROOT"|"$ROOT/.pio"|"$ROOT/.pio/build"|"$ROOT/build"|"$ROOT/build/host"|"$ROOT/tests/host")
-    die "refusing to use the normal build tree as the sanitizer build dir: $BUILD_DIR"
+# Resolve symlinks, trailing slashes, "." and ".." before comparing. A purely
+# lexical check misses --build-dir ., --build-dir=, and a parent path.
+ROOT_REAL=$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$ROOT") \
+  || die "could not resolve the repository root"
+SOURCE_REAL=$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$SOURCE_DIR") \
+  || die "could not resolve the host source directory"
+BUILD_REAL=$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$BUILD_DIR") \
+  || die "could not resolve the sanitizer build directory"
+
+case "$BUILD_REAL" in
+  ""|"/"|"$ROOT_REAL"|"$ROOT_REAL/.pio"|"$ROOT_REAL/.pio/build"|"$ROOT_REAL/build"|"$ROOT_REAL/build/host"|"$ROOT_REAL/tests/host"|"$SOURCE_REAL"|"$SOURCE_REAL"/*)
+    die "refusing to use the normal or source tree as the sanitizer build dir: $BUILD_REAL"
     ;;
 esac
+case "$ROOT_REAL" in
+  "$BUILD_REAL"/*)
+    die "refusing a sanitizer build dir that contains the repository: $BUILD_REAL"
+    ;;
+esac
+BUILD_DIR=$BUILD_REAL
 
 if [ -z "$JOBS" ]; then
   JOBS=$(getconf _NPROCESSORS_ONLN 2>/dev/null || true)
@@ -253,10 +268,14 @@ for test_file in Path(os.environ["BUILD_DIR"]).rglob("CTestTestfile.cmake"):
   except OSError:
     continue
   for line in lines:
-    match = re.match(r"\s*add_test\(([^\s]+)\s+(.+)\)\s*$", line)
-    if match is None or match.group(1) not in names:
+    match = re.match(
+        r"\s*add_test\(\s*(?:\[(=*)\[(.*?)\]\1\]|([^\s]+))\s+(.+)\)\s*$", line)
+    if match is None:
       continue
-    arguments = match.group(2).strip()
+    name = match.group(2) or match.group(3)
+    if name not in names:
+      continue
+    arguments = match.group(4).strip()
     if arguments.startswith("\""):
       end = arguments.find("\"", 1)
       command = arguments[1:end] if end > 0 else ""

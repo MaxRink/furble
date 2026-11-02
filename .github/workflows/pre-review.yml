@@ -45,6 +45,9 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         run: git fetch origin master:refs/remotes/origin/master
 
+      - name: Install CI checker requirements
+        run: python3 -m pip install -r .github/workflows/ci-checker-requirements.txt
+
       - name: Scanner unit tests
         run: |
           python3 -m unittest \

@@ -135,6 +135,22 @@ void fill() {
     self.assertEqual([finding.line for finding in matches], [4, 7, 10])
     self.assertEqual(len({finding.message for finding in matches}), 3)
 
+  def test_reserve_without_insertion_is_flagged(self):
+    findings = self.scan(
+        {
+            "src/reserve.cpp": """
+void fill() {
+  std::vector<uint8_t> payload;
+  payload.reserve(8);
+  payload[0] = 1;
+}
+"""
+        }
+    )
+    matches = self.findings_for(findings, SCANNER.RULE_BOUNDS, SCANNER.ERROR)
+    self.assertEqual([finding.line for finding in matches], [5])
+    self.assertIn("reserve() does not create elements", matches[0].message)
+
   def test_symbolic_size_is_skipped(self):
     findings = self.scan(
         {
