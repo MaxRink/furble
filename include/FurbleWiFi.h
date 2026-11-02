@@ -34,6 +34,13 @@ class WiFi {
     bool ntp_synced;
     time_t ntp_last_sync;
     int64_t ntp_offset_us;
+    // Connection attempt accounting. retry_ms is the base backoff without the
+    // random jitter the worker adds; attempts and disconnect_reason explain a
+    // stopped station.
+    uint32_t retry_ms;
+    uint32_t attempts;
+    uint8_t disconnect_reason;
+    bool stopped;
   } status_t;
 
   WiFi() = delete;
@@ -71,6 +78,37 @@ class WiFi {
 
   /** Return the current NTP time when a sync has completed. */
   static bool getNtpTimesync(Camera::timesync_t &timesync);
+
+#if defined(FURBLE_WIFI_HOST_TEST)
+  /** Run one wired-deferral check, as the worker does every 5 s. */
+  static bool hostServiceWired(void);
+  /** True while a wired address holds the station off. */
+  static bool hostDeferredForWired(void);
+  /** True while an automatic takeover will resume when the wire drops. */
+  static bool hostResumeAfterWired(void);
+  /** Run the terminal-disconnect driver cleanup once. */
+  static void hostServiceTerminalStop(void);
+  /** Issue one connect request without waiting for the join outcome. */
+  static bool hostConnectAttempt(void);
+  /** Run the production connect-and-wait join step once. */
+  static bool hostConnectAndWaitForJoin(void);
+  /** Current lifecycle-event counter. */
+  static uint32_t hostLifecycleEvent(void);
+  /** Run one scheduled retry wait and return its elapsed milliseconds. */
+  static uint32_t hostWaitForRetry(void);
+  /** Run the connected-state wired takeover once. */
+  static bool hostServiceConnectedWired(void);
+  /** Retry delay after ten failures while a camera session blocks the scan. */
+  static uint32_t hostCoexRetryCap(void);
+  /** Run the join-scan state predicate for one Control state value. */
+  static bool hostJoinScanAllowed(uint8_t state);
+  /** Run the join scan once so a host test can inspect its configuration. */
+  static bool hostScanForNetwork(void);
+#endif
+
+ private:
+  /** Create the netif, handlers, and worker on first enable. */
+  static void ensureStarted(void);
 };
 }  // namespace Furble
 

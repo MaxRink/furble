@@ -1,0 +1,15 @@
+# The per-camera task idles at 250 ms, not 50 ms.
+#
+# Commands still wake the queue receive immediately; the timeout is only the
+# tick that runs the connection saver and the RSSI sampler, both internally
+# rate limited. Over this window the old cadence produced about four times as
+# many idle ticks.
+
+seed fauxny true
+seed autoconnect true
+wait 5000
+assert ui.connected yes
+wait 15000
+assert_min camera.idle_ticks 40
+assert_max camera.idle_ticks 90
+exit

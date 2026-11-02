@@ -320,6 +320,11 @@ class Control {
 
   /** Capture the control state snapshot under m_Mutex. */
   debug_state_t getDebugState(void) const;
+
+#if defined(FURBLE_SIM)
+  /** Queue-timeout idle ticks, for the power scenarios. */
+  uint32_t getIdleTicks(void) const { return m_SimIdleTicks.load(); }
+#endif
 #endif  // FURBLE_CONSOLE || FURBLE_SIM
 
   /**
@@ -525,6 +530,9 @@ class Control {
   // session flags above.
   bool m_ClearConnectCancel = false;
   std::atomic<state_t> m_State {STATE_IDLE};
+#if defined(FURBLE_SIM)
+  std::atomic<uint32_t> m_SimIdleTicks {0};
+#endif
 
   // setState() runs from the control task and from the UI task
   std::mutex m_StateMutex;

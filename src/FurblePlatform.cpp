@@ -12,7 +12,9 @@
 #include "FurbleControl.h"
 #include "FurbleFeedback.h"
 #include "FurblePlatform.h"
+#include "FurblePlatformPolicy.h"
 #include "FurblePower.h"
+#include "FurblePowerPolicy.h"
 #include "FurbleSD.h"
 #include "FurbleSettings.h"
 #include "FurbleTimeKeeper.h"
@@ -97,6 +99,15 @@ Platform &Platform::getInstance(void) {
       (void)gpio_set_level(STICKC_PLUS2_HOLD_PIN, 1);
     } else {
       M5.Rtc.disableIRQ();
+    }
+
+    // M5Unified enables every AXP192 ADC channel at 25 Hz. Trim the unused
+    // channels, but only when the detected PMIC really is an AXP192: Core2 v1.1
+    // keeps the board ID while carrying an AXP2101, where these registers are
+    // regulator controls, not the ADC enable map.
+    if (M5.Power.getType() == m5::Power_Class::pmic_axp192) {
+      M5.In_I2C.writeRegister8(0x34, 0x82, PlatformPolicy::AXP192_ADC_ENABLE_1, 400000);
+      M5.In_I2C.writeRegister8(0x34, 0x83, PlatformPolicy::AXP192_ADC_ENABLE_2, 400000);
     }
 
     // The IMU keeps the M5Unified default axis order. The spirit level derives
@@ -346,10 +357,24 @@ void Platform::setCPUMaxFreq(uint8_t mhz) {
   auto &power = Power::getInstance();
   esp_err_t err = power.configure(freq);
   if (err != ESP_OK) {
+    // ESP_ERR_NOT_SUPPORTED means this build has no esp_pm at all. That is a
+    // configuration fact, not a fault: the board runs at its boot frequency.
+    // Every other error is a bad argument or a driver failure and stays fatal
+    // after the documented fallback.
+    const bool notSupported = (err == ESP_ERR_NOT_SUPPORTED);
     ESP_LOGW(LOG_TAG, "CPU maximum frequency %dMHz rejected (%s), using %dMHz.", freq,
              esp_err_to_name(err), CPU_MAX_FREQ_DEFAULT_MHZ);
     freq = CPU_MAX_FREQ_DEFAULT_MHZ;
-    ESP_ERROR_CHECK(power.configure(freq));
+    err = power.configure(freq);
+    if (err != ESP_OK) {
+      if (notSupported && (err == ESP_ERR_NOT_SUPPORTED)) {
+        ESP_LOGW(LOG_TAG,
+                 "Power management is not available in this build; running at a fixed "
+                 "frequency.");
+      } else {
+        ESP_ERROR_CHECK(err);
+      }
+    }
   }
 
   m_CPUMaxFreqMHz = freq;
@@ -955,9 +980,16 @@ Platform::battery_sample_t Platform::getBatterySample(void) const {
 void Platform::update(void) {
   M5.update();
 #if defined(FURBLE_M5STICKS3)
-  bool b = false;
-  if (m_M5PM1.btnGetState(&b) == M5PM1_OK) {
-    M5.BtnPWR.setRawState(tick(), b);
+  // The UI calls update() every 5 ms. Reading the PMIC button on every pass is
+  // about 200 I2C transactions per second for a human-speed input; 50 Hz is
+  // plenty and cuts the bus traffic tenfold.
+  const uint32_t now = tick();
+  if (PlatformPolicy::pm1PollDue(now, m_LastPm1PollMs)) {
+    m_LastPm1PollMs = now;
+    bool b = false;
+    if (m_M5PM1.btnGetState(&b) == M5PM1_OK) {
+      M5.BtnPWR.setRawState(tick(), b);
+    }
   }
   watchdogFeed();
 #else

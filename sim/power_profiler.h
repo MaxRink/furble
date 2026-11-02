@@ -11,6 +11,9 @@ void profilerBegin(const char *scenario, bool reporting_enabled = false);
 /** Record one invocation of a named LVGL timer callback. */
 void profilerTimerFire(const char *name);
 
+/** Fire count for one timer name, or zero when it never fired. */
+uint64_t profilerTimerFireCount(const char *name);
+
 /** Record the area invalidated by LVGL. */
 void profilerInvalidatedArea(uint64_t pixels);
 
@@ -28,6 +31,7 @@ void profilerTaskDelay(const char *task_name, uint32_t milliseconds);
 /** Record modeled display, radio and GPS state transitions. */
 void profilerSetDisplayState(const char *state);
 void profilerSetRadioConnected(bool connected);
+bool profilerRadioConnected(void);
 void profilerRadioEvent(const char *name);
 void profilerSetGpsState(const char *state);
 const char *profilerGpsState(void);

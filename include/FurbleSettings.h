@@ -219,6 +219,9 @@ class Settings {
 
   static constexpr SpinValue::nvs_t BULB_DEFAULT = {30, SpinValue::UNIT_SEC};
 
+  /** First-boot discovery scan timeout. Bounds a forgotten Scan page. */
+  static constexpr uint32_t SCAN_TIMEOUT_DEFAULT = 60;
+
   static constexpr const char *BUTTON_MODE_TWO_BUTTON_VALUE = "two-button";
   static constexpr const char *BUTTON_MODE_ONE_BUTTON_VALUE = "one-button";
 

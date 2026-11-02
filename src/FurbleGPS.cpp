@@ -216,7 +216,13 @@ void GPS::task(void) {
     if (!m_Enabled) {
       serviceLock.unlock();
       releasePowerLock();
-      vTaskDelay(pdMS_TO_TICKS(100));
+      // Sleep until enable() or disable() wakes the service. The old 100 ms
+      // delay woke the task ten times a second for no work while GPS is off.
+#if defined(FURBLE_SIM)
+      m_SimIdleWakes++;
+#endif
+      uart_event_t idleEvent;
+      xQueueReceive(m_Queue, &idleEvent, portMAX_DELAY);
       continue;
     }
 
@@ -236,7 +242,14 @@ void GPS::task(void) {
     }
 
     uart_event_t event;
-    if (xQueueReceive(m_Queue, &event, cycleWait(Platform::getInstance().tick()))) {
+    const bool gotEvent =
+        xQueueReceive(m_Queue, &event, cycleWait(Platform::getInstance().tick())) == pdTRUE;
+    if (!gotEvent) {
+#if defined(FURBLE_SIM)
+      m_SimTimeouts++;
+#endif
+    }
+    if (gotEvent) {
       if (!m_Enabled) {
         continue;
       }
@@ -310,6 +323,7 @@ void GPS::resetAcquisition(uint32_t now) {
   m_SimFreshFixesParsed = 0;
 #endif
   m_CycleRequest = false;
+  m_FixedBaudProbe = false;
   (void)now;
 }
 
@@ -384,10 +398,23 @@ void GPS::enable(void) {
       m_ConfigChars = getStatusSnapshot().chars_processed;
       m_ConfigStart = Platform::getInstance().tick();
       m_ConfigPending = true;
+
+      // A stored fixed baud is only a claim that a receiver is attached. Arm
+      // the same acquisition deadline the degraded retry uses, so a silent
+      // unit falls back instead of holding the wake lock forever. The first
+      // burst clears the flag; a timeout while it is set means the unit is
+      // absent at that rate.
+      m_FixedBaudProbe = true;
+      m_ProbeDeadline = m_ConfigStart + DEGRADED_PROBE_MS;
     }
   }
 
   m_Enabled = true;
+  // reset() cleared the queue, so the cancellation wake sent before it is gone.
+  // Publish a fresh wake after m_Enabled becomes true: otherwise a silent
+  // receiver leaves the task blocked in an indefinite receive, the acquisition
+  // deadline never runs, and the wake lock stays held.
+  wakeGPSService(m_Queue);
   FURBLE_SIM_GPS_STATE("acquiring");
   acquirePowerLock();
 }
@@ -530,7 +557,9 @@ bool GPS::dutyCycleEnabled(void) const {
 }
 
 TickType_t GPS::cycleWait(uint32_t now) const {
-  uint32_t wait = 100;
+  // Fallback housekeeping tick. Every state that has a real deadline shrinks
+  // this below, so a known 10 s window no longer wakes the task at 10 Hz.
+  uint32_t wait = 1000;
 
   // Nothing answered the autobaud ladder. The rail is off and the power lock
   // is released, so the only thing left to wake for is the single retry. Ten
@@ -540,6 +569,32 @@ TickType_t GPS::cycleWait(uint32_t now) const {
     const uint32_t idle =
         m_NoReceiverRetried ? ABSENT_IDLE_WAIT_MS : tickUntil(now, m_NoReceiverRetryAt);
     return pdMS_TO_TICKS(std::max(idle, MIN_CYCLE_WAIT_MS));
+  }
+
+  // Ephemeris replay and poll deadlines are owned by servicePoll(); without
+  // them here a longer idle wait would stretch the 30 ms replay gap.
+  if (!m_EphReplaySpans.empty()) {
+    wait = std::min(wait, tickUntil(now, m_EphReplayNext));
+  }
+  if (m_EphPollActive) {
+    wait = std::min(wait, tickUntil(now, m_EphPollDeadline));
+  }
+  // A binary configuration frame is waiting for its acknowledgement. Without
+  // its deadline the 1 s fallback stretches the 300 ms retry and delays the
+  // PCAS fallback.
+  if (m_ConfigInFlight.has_value()) {
+    wait = std::min(wait, tickUntil(now, m_ConfigSent + BINARY_ACK_TIMEOUT_MS));
+  }
+
+  // While the autobaud ladder runs, wake at its step deadline. A silent UART
+  // would otherwise be serviced by the 1 s fallback and stretch every 1200 ms
+  // step, making the six-step probe take about twice as long as designed.
+  if (m_ProbePending.load()
+      || (static_cast<receiver_state_t>(m_ReceiverState.load()) == receiver_state_t::DETECTING)) {
+    const uint32_t deadline = m_Autobaud.deadline();
+    if (deadline != 0) {
+      wait = std::min(wait, tickUntil(now, deadline));
+    }
   }
 
   // a burst can be active in any state, wake in time for the idle gap check
@@ -656,7 +711,18 @@ void GPS::serviceCycle(void) {
       // a degraded retry probe must not latch here when no burst arrives, give
       // up again on the bounded backoff instead of holding the lock forever
       if (!m_BurstActive && (m_ProbeDeadline != 0) && tickReached(now, m_ProbeDeadline)) {
-        enterDegraded();
+        if (m_FixedBaudProbe) {
+          // No sentence ever arrived at the stored rate. Treat it like a
+          // failed autobaud: drop the rail and the wake lock, then retry once
+          // after the absent backoff instead of pinning NO_LIGHT_SLEEP.
+          // onProbeFailed() takes m_CycleMutex, so release it first.
+          m_FixedBaudProbe = false;
+          lock.unlock();
+          onProbeFailed(now);
+          return;
+        } else {
+          enterDegraded();
+        }
       }
       break;
 
@@ -744,6 +810,7 @@ void GPS::beginBurst(uint32_t now) {
 
   if (m_CycleState == cycle_state_t::ACQUIRING) {
     // a burst arrived, the acquisition or degraded retry probe succeeded
+    m_FixedBaudProbe = false;
     m_ProbeDeadline = 0;
     if (m_ExpectedInterval == 0) {
       m_CycleState = cycle_state_t::MEASURING;
@@ -994,7 +1061,7 @@ void GPS::sendCommand(const std::string &payload) {
   snprintf(suffix.data(), suffix.size(), "*%02X", checksum(payload));
   const std::string command = "$" + payload + suffix.data() + "\r\n";
 
-  ESP_LOGI(LOG_TAG, "GPS command: %s", payload.c_str());
+  ESP_LOGD(LOG_TAG, "GPS command: %s", payload.c_str());
 
   const std::lock_guard<std::mutex> lock(m_TxMutex);
   uart_write_bytes(m_UART, command.data(), command.size());
@@ -1061,7 +1128,7 @@ bool GPS::sendBinaryFrame(uint8_t class_id,
     return false;
   }
 
-  ESP_LOGI(LOG_TAG, "GPS binary: %02X %02X payload %u", class_id, message_id, length);
+  ESP_LOGD(LOG_TAG, "GPS binary: %02X %02X payload %u", class_id, message_id, length);
   return true;
 }
 

@@ -1,0 +1,10 @@
+# Console display mode is a panel-off state and must turn the PM1 status LED off.
+#
+# The old path only called M5.Display.sleep(). The PM1 LED stayed at its retained
+# level, which is the 1 to 3 mA drain the board lane measured for a lit LED.
+
+seed display_mode 1
+wait 1000
+assert platform.display_off yes
+assert ui.page main
+exit

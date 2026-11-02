@@ -680,7 +680,6 @@ void Settings::init(void) {
         case CONN_SAVER:
         case IR:
         case PRESET_PICKER:
-        case RECON_BACKOFF:
         case FAUXNY:
         case AUTOCONNECT:
         case SLEEP_CONN:
@@ -690,6 +689,12 @@ void Settings::init(void) {
         case BATTERY_SAVER:
         case IVL_SLEEP:
           save<bool>(setting.type, false);
+          break;
+        case RECON_BACKOFF:
+          // Default on. A camera that is off or out of range otherwise retries
+          // a scan every 5 s forever; the 2.5 s first retry still recovers a
+          // stale session quickly, and later attempts back off to 120 s.
+          save<bool>(setting.type, true);
           break;
         case HW_MOTION:
           // Ships as Software, not Auto. Auto prefers the board's hardware
@@ -702,7 +707,10 @@ void Settings::init(void) {
           save<uint32_t>(setting.type, BAUD_9600);
           break;
         case SCAN_TIMEOUT:
-          save<uint32_t>(setting.type, 0);
+          // A bounded first boot instead of Never. A forgotten Scan page used
+          // to scan at full receive duty until the user left it. An explicit
+          // Never is still stored as zero and is not rewritten.
+          save<uint32_t>(setting.type, SCAN_TIMEOUT_DEFAULT);
           break;
         case GPX_PERIOD:
           save<uint16_t>(setting.type, GPX_PERIOD_DEFAULT);

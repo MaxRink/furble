@@ -1,6 +1,8 @@
 #pragma once
 #include <string>
 namespace Furble {
+// Mutable so the host test can prove the lazy init path with Wi-Fi disabled.
+inline bool wifiEnabledSetting = true;
 class Settings {
  public:
   enum type_t { WIFI, WIFI_SSID, WIFI_PSK, NTP, NTP_SERVER };
@@ -14,7 +16,7 @@ class Settings {
 };
 template <>
 inline auto Settings::load<Settings::WIFI>() {
-  return true;
+  return wifiEnabledSetting;
 }
 template <>
 inline auto Settings::load<Settings::WIFI_SSID>() {

@@ -64,12 +64,17 @@ class MQTT {
 #if defined(FURBLE_MQTT_HOST_TEST)
   /** Run one production MQTT task iteration without creating a host task. */
   void hostTaskStep(void);
+  /** Idle wait in milliseconds, so a test can prove the task period. */
+  uint32_t hostTaskWaitMs(void) const;
 #endif
 
  private:
   MQTT() = default;
 
-  static constexpr uint32_t TASK_PERIOD_MS = 250;
+  static constexpr uint32_t TASK_PERIOD_MS = 1000;
+  // A rejected shutter or focus release leaves the camera held, so retry it on
+  // this shorter deadline instead of the one-second idle period.
+  static constexpr uint32_t RELEASE_RETRY_MS = 250;
   static constexpr uint32_t CAMERAS_PERIOD_MS = 1000;
   static constexpr uint32_t BATTERY_PERIOD_MS = 60 * 1000;
   static constexpr uint32_t GPS_PERIOD_MS = 10 * 1000;
@@ -228,6 +233,13 @@ class MQTT {
   std::string m_LastIntervalPayload;
   std::vector<std::string> m_DiscoveredCameraIDs;
 
+  // Settings are read once in reloadSetting() and reused by the 1 Hz task.
+  // The task used to load five NVS keys on every iteration (P-030).
+  bool m_EnabledCached = false;
+  std::string m_BaseSetting;
+  std::string m_URISetting;
+  std::string m_UserSetting;
+  std::string m_PasswordSetting;
   std::string m_Base;
   std::string m_ID;
   std::string m_URI;

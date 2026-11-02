@@ -1,0 +1,11 @@
+# GPS is off by default, and the disabled task must not poll.
+#
+# The task used to delay 100 ms and loop, ten scheduler wakes per second for no
+# work. It now blocks on its queue until enable() or disable() wakes it. The
+# simulator counts entries to the disabled branch.
+
+wait 300
+assert gps.enabled 0
+wait 5000
+assert_max gps.idle_wakes 5
+exit

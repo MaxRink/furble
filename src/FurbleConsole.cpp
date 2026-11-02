@@ -1860,6 +1860,10 @@ void printWifiStatus(void) {
     printf("rssi: unavailable\n");
   }
   printf("ip: %s\n", status.ip.empty() ? "none" : status.ip.c_str());
+  printf("attempts: %lu\n", static_cast<unsigned long>(status.attempts));
+  printf("retry_ms: %lu\n", static_cast<unsigned long>(status.retry_ms));
+  printf("disconnect_reason: %u\n", static_cast<unsigned>(status.disconnect_reason));
+  printf("stopped: %s\n", boolStr(status.stopped));
 
   auto &platform = Platform::getInstance();
   const auto &caps = platform.getBatteryCaps();
@@ -3194,9 +3198,9 @@ void startTransport(void) {
 
 int readByte(uint8_t *byte) {
 #if defined(FURBLE_M5STICKS3) || defined(FURBLE_USB_CONSOLE)
-  return usb_serial_jtag_read_bytes(byte, 1, pdMS_TO_TICKS(100));
+  return usb_serial_jtag_read_bytes(byte, 1, pdMS_TO_TICKS(Console::READ_TIMEOUT_MS));
 #else
-  return uart_read_bytes(LOG_UART, byte, 1, pdMS_TO_TICKS(100));
+  return uart_read_bytes(LOG_UART, byte, 1, pdMS_TO_TICKS(Console::READ_TIMEOUT_MS));
 #endif
 }
 

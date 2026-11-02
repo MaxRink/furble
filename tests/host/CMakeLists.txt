@@ -188,10 +188,15 @@ target_compile_options(time_keeper_persistence_test PRIVATE -Wall -Wextra -Werro
 # case is a fresh process so load status and the process-local store are reset.
 add_executable(real_wifi_lifecycle_test
                wifi/real_wifi_test.cpp
-               ${FURBLE_ROOT}/src/FurbleWiFi.cpp)
+               eth/MockEthNetif.cpp
+               ${FURBLE_ROOT}/src/FurbleWiFi.cpp
+               ${FURBLE_ROOT}/src/FurbleEthernet.cpp)
 target_include_directories(real_wifi_lifecycle_test BEFORE PRIVATE
+                           ${CMAKE_CURRENT_SOURCE_DIR}
                            ${CMAKE_CURRENT_SOURCE_DIR}/wifi/stubs
                            ${FURBLE_ROOT}/include)
+target_link_libraries(real_wifi_lifecycle_test PRIVATE Threads::Threads)
+target_compile_definitions(real_wifi_lifecycle_test PRIVATE FURBLE_WIFI_HOST_TEST)
 target_compile_options(real_wifi_lifecycle_test PRIVATE -Wall -Wextra -Werror
                                                          -Wno-unused-parameter)
 
@@ -202,6 +207,35 @@ target_include_directories(actualPreferencesSim PRIVATE
                            ${FURBLE_ROOT}/lib/preferences)
 target_compile_options(actualPreferencesSim PRIVATE -Wall -Wextra -Werror
                                                      -Wno-unused-parameter)
+
+# The PMIC button is polled from the 5 ms UI loop. This policy test proves the
+# 20 ms throttle and the wrap-safe tick arithmetic.
+add_executable(pm1_poll_policy_test pm1_poll_policy_test.cpp)
+target_include_directories(pm1_poll_policy_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(pm1_poll_policy_test PRIVATE -Wall -Wextra -Werror)
+add_test(NAME pm1-poll-policy COMMAND pm1_poll_policy_test)
+
+# The staged display mode dims at the inactivity timeout and sleeps after a
+# fixed dwell. This policy test pins the dwell and its wrap arithmetic.
+add_executable(display_policy_test display_policy_test.cpp)
+target_include_directories(display_policy_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(display_policy_test PRIVATE -Wall -Wextra -Werror)
+add_test(NAME display-policy COMMAND display_policy_test)
+
+# The headless build has no display task; its loop idles at 50 ms and only
+# shortens the sleep to keep the 1 Hz GPS service on time.
+add_executable(headless_loop_policy_test headless_loop_policy_test.cpp)
+target_include_directories(headless_loop_policy_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(headless_loop_policy_test PRIVATE -Wall -Wextra -Werror)
+add_test(NAME headless-loop-policy COMMAND headless_loop_policy_test)
+
+# esp_pm_configure() rejects light_sleep_enable when tickless idle is off, so the
+# runtime request must follow the compiled support. This test pins the exact
+# request production builds from.
+add_executable(power_request_policy_test power_request_policy_test.cpp)
+target_include_directories(power_request_policy_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(power_request_policy_test PRIVATE -Wall -Wextra -Werror)
+add_test(NAME power-request-policy COMMAND power_request_policy_test)
 
 # The PMIC is a separate chip from the ESP32. Its watchdog and download lock
 # therefore survive an ESP32 reset and must be modeled as retained state.
@@ -1021,6 +1055,14 @@ target_compile_options(lumix_teardown_drop_test PRIVATE
                        -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
                        -Wall -Wextra -Werror -Wno-vla-extension -Wno-format
                        -Wno-unused-parameter -Wno-unused-lambda-capture -Wno-sign-compare)
+# Admission gate: a new OTA session is refused unless the runtime gate admits it
+# (Control idle and enough battery), and a duplicate BEGIN is never refused.
+add_executable(ota_mqtt_admission_test
+               ota_mqtt_admission_test.cpp
+               ${FURBLE_ROOT}/src/FurbleOTAMQTT.cpp)
+target_include_directories(ota_mqtt_admission_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(ota_mqtt_admission_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                          -Wno-unused-parameter)
 
 # Durable anti-rollback journal. The test supplies a fault-injecting backend,
 # while the production JournalReplayStore and its fixed record format are
@@ -1981,6 +2023,7 @@ if(BUILD_TESTING)
   add_test(NAME ota-state-machine COMMAND ota_state_machine_test)
   add_test(NAME lumix-teardown-drop COMMAND lumix_teardown_drop_test)
   add_test(NAME ota-mqtt-protocol COMMAND ota_mqtt_protocol_test)
+  add_test(NAME ota-mqtt-admission COMMAND ota_mqtt_admission_test)
   add_test(NAME ota-replay-store COMMAND ota_replay_store_test)
   add_test(NAME ota-partition-sink COMMAND ota_partition_sink_test)
   add_test(NAME gps-format COMMAND gps_format_test)

@@ -223,7 +223,13 @@ void Platform::watchdogFeed(void) {
 #endif
 }
 
-void Platform::setDisplayOff(bool) {}
+namespace {
+bool displayOffRequested = false;
+}
+
+void Platform::setDisplayOff(bool off) {
+  displayOffRequested = off;
+}
 
 // The IMU interrupt reaches an ESP32 pin only on the boards whose schematic
 // routes it there: GPIO35 on the StickC family, and M5PM1 GPIO4 chained to
@@ -429,6 +435,9 @@ const char *downloadLockState(void) {
 #endif
 }
 
-}  // namespace Sim
+const char *displayOffState(void) {
+  return displayOffRequested ? "yes" : "no";
+}
 
+}  // namespace Sim
 }  // namespace Furble

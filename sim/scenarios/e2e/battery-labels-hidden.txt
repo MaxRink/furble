@@ -1,0 +1,20 @@
+# The battery rows are written only while the Battery page is visible.
+#
+# The five-minute timer used to relabel hidden widgets on every tick, which
+# invalidated a page nobody could see. Entering the page still refreshes
+# immediately because the page handler calls lv_timer_ready().
+
+wait 300
+assert ui.battery_label_writes 0
+
+# Two timer ticks while another page is visible must not touch the rows.
+wait 12000
+assert ui.battery_label_writes 0
+
+# Opening the page refreshes the five rows within one timer tick.
+action nav battery
+wait 100
+assert ui.page battery
+wait 6000
+assert_min ui.battery_label_writes 1
+exit

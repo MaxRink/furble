@@ -30,6 +30,9 @@ uint8 name[name_len]
 The list ends with a record whose camera ID is `0xff`. Indications carry list
 records and command responses. Notifications carry changed camera state.
 
+The companion radio advertises for 60 seconds after companion mode is opened.
+Reopen companion mode to pair another phone.
+
 Camera IDs are stable across catalog reordering and deletion. Selection is the
 same in-memory Multi-Connect target set used by the on-device Cameras page. A
 scan updates only transient scan results, so it does not hide saved cameras.

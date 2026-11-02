@@ -285,7 +285,7 @@ perf                                task, heap, and LVGL performance
 gps                                 GPS status and control, eg. gps send PCAS12,10
 imu status | scale [value]          IMU diagnostic, gesture calibration
 time status | flush                 wall-clock status or persist before shutdown
-wifi status                         WiFi state, access point and IP information
+wifi status                         WiFi state, access point, IP, attempts, retry delay and stop reason
 wifi set ssid|psk <value>           save WiFi credentials (passphrases stay masked)
 wifi enable|disable                 enable or disable station reconnects
 wifi connect|disconnect|forget      control the saved station credentials
@@ -556,12 +556,14 @@ cameras.
 but can take longer to find a camera.
 
 `Scan timeout` ends a scan by itself after 30, 60 or 120 seconds.
-The default is `Never`, which keeps scanning until you leave the page.
+The default is 60 seconds, so a forgotten `Scan` page stops listening instead of
+running until you leave it. `Never` is still available and is kept once chosen.
+A scan also stops when the screen sleeps.
 When a scan does end on its own, the `Scan` page shows a `Scan finished` notice
 with a `Rescan` button.
 
-Pairing with a saved camera always scans at full duty, so neither setting slows
-down `Connect`.
+Pairing with a saved camera uses a reduced connect-scan duty, so neither setting
+slows down `Connect`.
 
 ### Power
 

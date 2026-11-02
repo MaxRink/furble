@@ -1,0 +1,16 @@
+# A stored fixed baud is a claim, not proof that a receiver is attached.
+#
+# With no receiver answering at 9600, the acquisition probe must time out,
+# drop the Grove rail, release NO_LIGHT_SLEEP, and park the task on the absent
+# backoff. Before the fix the fixed-baud path published PRESENT immediately and
+# held the wake lock forever.
+
+seed gps true
+seed gps_baud 9600
+seed gps_receiver none
+wait 1000
+assert gps.receiver present
+wait 8000
+assert-eventually 5000 gps.receiver absent
+assert power.no_light_sleep 0
+exit

@@ -319,10 +319,10 @@ void validateSeed(const std::string &name, const std::string &value) {
   }
 
   constexpr const char *byteSeeds[] = {
-      "brightness", "inactivity", "display_off",  "gps_rate",  "gps_constel",
-      "gps_power",  "gps_duty",   "cpu_freq",     "tx_power",  "scan_mode",
-      "text_size",  "auto_off",   "low_batt",     "fb_output", "gps_hold",
-      "imu_wake",   "gps_assist", "gps_platform", "hw_motion", "legend",
+      "brightness",   "inactivity", "display_off", "display_mode", "gps_rate",  "gps_constel",
+      "gps_power",    "gps_duty",   "cpu_freq",    "tx_power",     "scan_mode", "text_size",
+      "auto_off",     "low_batt",   "fb_output",   "gps_hold",     "imu_wake",  "gps_assist",
+      "gps_platform", "hw_motion",  "legend",
   };
   if (std::find(std::begin(byteSeeds), std::end(byteSeeds), name) != std::end(byteSeeds)) {
     if (parseUnsigned(value) > std::numeric_limits<uint8_t>::max()) {
@@ -1302,8 +1302,26 @@ std::string queryValue(const std::string &key) {
       return std::to_string(cameraFocusReleases());
     }
   }
+  if (key == "control.idle_ticks") {
+    return std::to_string(Furble::Control::getInstance().getIdleTicks());
+  }
+  if (key == "camera.idle_ticks") {
+    return std::to_string(Furble::Sim::targetIdleTicks());
+  }
+  if (key == "sim.radio_connected") {
+    return Furble::Sim::profilerRadioConnected() ? "yes" : "no";
+  }
+  if (key == "sim.icon_timer") {
+    return std::to_string(Furble::Sim::profilerTimerFireCount("icon_timer"));
+  }
   if (key == "scan.end_callbacks") {
     return std::to_string(Scan::getInstance().endCallbackCount());
+  }
+  if (key == "scan.active") {
+    return Scan::getInstance().isActive() ? "yes" : "no";
+  }
+  if (key == "scan.timeout") {
+    return std::to_string(Furble::Settings::load<uint32_t>(Furble::Settings::SCAN_TIMEOUT));
   }
   if (key == "scan.advertisements") {
     return std::to_string(bleAdvertisementCount());
@@ -1377,6 +1395,12 @@ std::string queryValue(const std::string &key) {
       const size_t length = prefs.isKey("gps_eph") ? prefs.getBytesLength("gps_eph") : 0;
       prefs.end();
       return std::to_string(length);
+    }
+    if (sub == "idle_wakes") {
+      return std::to_string(gps.simIdleWakes());
+    }
+    if (sub == "timeouts") {
+      return std::to_string(gps.simTimeouts());
     }
     if (sub == "state") {
       return Furble::Sim::profilerGpsState();
@@ -1489,6 +1513,9 @@ std::string queryValue(const std::string &key) {
       return "";
     }
     return value;
+  }
+  if (key == "platform.display_off") {
+    return Furble::Sim::displayOffState();
   }
   if (key == "platform.power_off") {
     return simulatedPowerOff ? "yes" : "no";
@@ -1678,6 +1705,7 @@ void applyScenarioSettings(void) {
   saveByte("brightness", Settings::BRIGHTNESS);
   saveByte("inactivity", Settings::INACTIVITY);
   saveByte("display_off", Settings::DISPLAY_OFF);
+  saveByte("display_mode", Settings::DISPLAY_MODE);
   saveByte("gps_rate", Settings::GPS_RATE);
   saveByte("gps_constel", Settings::GPS_CONSTEL);
   saveByte("gps_power", Settings::GPS_POWER);
@@ -2646,12 +2674,17 @@ void restartProcess(void) {
       std::_Exit(1);
     }
   }
+  if (savedArguments.empty()) {
+    std::cerr << "restart requested without a saved command line\n";
+    std::_Exit(1);
+  }
   std::vector<char *> arguments;
   arguments.reserve(savedArguments.size() + 1);
   for (auto &argument : savedArguments) {
     arguments.push_back(argument.data());
   }
   arguments.push_back(nullptr);
+  const char *program = savedArguments.front().c_str();
   // Carry the fixture clock across the re-exec. A receiver's clock does not
   // rewind because the ESP32 rebooted, and letting it reset made the positive
   // ephemeris leg pass on a one second margin.
@@ -2660,7 +2693,7 @@ void restartProcess(void) {
     std::cerr << "restart failed: setenv: " << std::strerror(errno) << '\n';
     std::_Exit(1);
   }
-  execvp(arguments[0], arguments.data());
+  execvp(program, arguments.data());
   std::cerr << "restart failed: execvp: " << std::strerror(errno) << '\n';
   std::_Exit(1);
 }

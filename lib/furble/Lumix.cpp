@@ -348,7 +348,7 @@ void Lumix::focusRelease(void) {
 
 void Lumix::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
   if (!isConnected()) {
-    ESP_LOGW(LOG_TAG, "Lumix GPS skipped: not connected");
+    ESP_LOGD(LOG_TAG, "Lumix GPS skipped: not connected");
     return;
   }
   // The clock write can be the drop point: a self-deleting client frees the
@@ -386,7 +386,7 @@ void Lumix::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
     return;
   }
   if (m_Location == nullptr || !m_Location->canWrite()) {
-    ESP_LOGW(LOG_TAG, "Lumix GPS characteristic unavailable");
+    ESP_LOGD(LOG_TAG, "Lumix GPS characteristic unavailable");
     return;
   }
 
@@ -400,7 +400,7 @@ void Lumix::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
     return;
   }
   if (!timeValid) {
-    ESP_LOGW(LOG_TAG, "Lumix GPS skipped: invalid time");
+    ESP_LOGD(LOG_TAG, "Lumix GPS skipped: invalid time");
     return;
   }
 
@@ -414,7 +414,7 @@ void Lumix::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
   };
   bool rc = m_Location->writeValue(reinterpret_cast<const uint8_t *>(&geo), sizeof(geo), true);
 
-  ESP_LOGI(LOG_TAG, "Lumix GPS lat=%.7f lon=%.7f alt=%.1f utc=%04u-%02u-%02u %02u:%02u:%02u => %s",
+  ESP_LOGD(LOG_TAG, "Lumix GPS lat=%.7f lon=%.7f alt=%.1f utc=%04u-%02u-%02u %02u:%02u:%02u => %s",
            gps.latitude, gps.longitude, gps.altitude, timesync.year, timesync.month, timesync.day,
            timesync.hour, timesync.minute, timesync.second, rc ? "ok" : "failed");
 }

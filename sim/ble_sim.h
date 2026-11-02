@@ -75,6 +75,9 @@ void bleSaveRegisteredPeers(void);
 /** Count a camera command that reached a camera task (observability only). */
 void noteCameraCommand(int cmd);
 
+/** Queue-timeout idle ticks observed by all camera tasks. */
+size_t targetIdleTicks(void);
+
 /**
  * Make every Fujifilm peer withhold its registration confirmation.
  *

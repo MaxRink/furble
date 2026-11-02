@@ -353,6 +353,7 @@ class Platform {
   bool m_Init = false;
   bool m_PMICHack = false;
   uint8_t m_CPUMaxFreqMHz = CPU_MAX_FREQ_DEFAULT_MHZ;
+  uint32_t m_LastPm1PollMs = 0;
   uint8_t m_PMICClickCount = 0;
   uint32_t m_PMICClickTime = 0;
 

@@ -6,6 +6,7 @@ seed gps_rate 1
 seed gps_power 0
 seed gps_duty 0
 wait 5000
+assert sim.radio_connected yes
 report setup.json
 wait 30000
 report connected-gps-active-30s.json

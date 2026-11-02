@@ -23,8 +23,11 @@ assert-eventually-virtual 1000 camera.shutter_releases 2
 # Drop camera 0. Camera 1 stays connected and the trigger stays live.
 action drop 0
 wait 200
-assert control.state connecting
 assert control.connected 1
+# One link survived, so the modeled connected-radio floor must stay charged
+# even though Control left STATE_ACTIVE for the reconnect. The exact
+# CONNECT/CONNECTING tick is not asserted: it can advance between polls.
+assert sim.radio_connected yes
 # A press now fires ONLY on the still-connected camera 1 (+1), and is dropped for
 # the down camera 0. Proves per-target gating, not a global block: the survivor
 # still fires while camera 0 reconnects.
@@ -37,6 +40,7 @@ assert-eventually-virtual 1000 camera.shutter_releases 3
 wait 2800
 assert control.state active
 assert control.connected 2
+assert sim.radio_connected yes
 assert-eventually-virtual 1000 camera.shutter_presses 3
 assert-eventually-virtual 1000 camera.shutter_releases 3
 # Both live again: a press fans out to both once more (+2 -> 5).

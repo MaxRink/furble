@@ -83,7 +83,7 @@ that do not fit; focus outlines must not cover adjacent setting names.
 | :--- | :--- | :--- | :--- | :--- |
 | Brightness | 128 | slider, roughly 0 to 240 | Now (live preview) | Saved when you release the slider. |
 | Inactivity timeout | Never | Never, 30 secs, 60 secs, 2 mins, 5 mins, 10 mins | Now | Dims and then sleeps the screen after this idle time. |
-| Screen off | Dim | Dim, Off, Off remote on (button boards). Dim, Off (touch boards) | Restart | Touch boards do not offer the remote-on option. |
+| Screen off | Dim | Dim, Off, Off remote on, Dim then off (button boards). Dim, Off, Dim then off (touch boards) | Restart | Touch boards do not offer the remote-on option. Dim then off dims at the inactivity timeout and sleeps the panel 30 s later. |
 | Calibrate | n/a | action | n/a | Touch boards only. Launches touch calibration and stores the result. |
 | Show Title | On | On, Off | Restart | Hiding the title frees header space on narrow stick displays. |
 | Legend | Buttons | Buttons, Bottom, Off | Restart | Physical-button Stick boards only. Buttons keeps the shipped Right legend beside its button; Bottom places all three legends in the navigation band; Off hides the rendered indicators but retains physical input anchors and layout reservation. |
@@ -98,7 +98,7 @@ Submenu: `Settings` > `Features`.
 | Auto-Connect | Off | On, Off | Now | Connect to the saved camera at boot without a menu step. |
 | FauxNY | Off | On, Off | Now | Adds a fake test camera to the scan list for development. |
 | Infinite-ReConnect | Off | On, Off | Now | Keep retrying a lost connection forever. |
-| Reconnect Backoff | Off | On, Off | Now | Space out reconnect attempts to save battery. |
+| Reconnect Backoff | On | On, Off | Now | Space out reconnect attempts to save battery. The first retry stays quick at 2.5 s; later attempts back off to 120 s. |
 | Multi-Connect | Off | On, Off | Now | Allow connecting to more than one camera at once. |
 | Companion | Off | On, Off | Restart (dangerous) | Enables the companion BLE service. Connection-affecting. |
 | Watchdog | On | On, Off | Restart | M5StickS3 only. Turn off before attaching a JTAG debugger. |
@@ -203,7 +203,7 @@ Submenu: `Settings` > `Bluetooth`.
 | TX Power | Low (P3) | slider 0 to 2 (P3, P6, P9) | Now (dangerous) | Radio transmit power. Higher reaches further and costs battery. |
 | Connection power save | Off | On, Off | Next connection | Power save on the active connection. Read when a connection is made, so set it before connecting. |
 | Scan mode | Full | Full, Balanced, Low | Now | How hard the radio listens during Scan. Full finds a camera fastest. |
-| Scan timeout | Never | Never, 30 secs, 60 secs, 120 secs | Now | Ends a scan by itself. Connect always scans at full duty. |
+| Scan timeout | 60 secs | Never, 30 secs, 60 secs, 120 secs | Now | Ends a scan by itself. A fresh device starts at 60 secs, and a sleeping panel stops an active scan. Connect uses a 50 percent initiator scan duty. |
 
 ### About
 

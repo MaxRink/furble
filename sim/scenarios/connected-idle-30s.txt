@@ -2,6 +2,7 @@
 seed fauxny true
 seed autoconnect true
 wait 5000
+assert sim.radio_connected yes
 report setup.json
 wait 30000
 report connected-idle-30s.json

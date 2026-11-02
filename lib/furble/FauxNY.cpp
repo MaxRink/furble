@@ -82,7 +82,7 @@ FauxNY::geo_record_t FauxNY::getGeoRecord(void) {
 #endif
 
 void FauxNY::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
-  ESP_LOGI(m_FauxNYStr, "updateGeoData()");
+  ESP_LOGD(m_FauxNYStr, "updateGeoData()");
 #if defined(FURBLE_SIM)
   const std::lock_guard<std::mutex> lock(geoMutex);
   geoRecord.count++;

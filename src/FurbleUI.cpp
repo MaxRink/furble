@@ -37,6 +37,7 @@
 #include "FurbleCalibrate.h"
 #include "FurbleCompanion.h"
 #include "FurbleControl.h"
+#include "FurbleDisplayPolicy.h"
 #include "FurbleFeedback.h"
 #include "FurbleGPS.h"
 #include "FurbleGPSFormat.h"
@@ -325,6 +326,9 @@ uint8_t UI::m_IntervalLastAnnouncedSecond;
 uint8_t UI::m_LegendActive = Settings::LEGEND_BUTTONS;
 std::atomic<uint32_t> UI::m_GestureSettingsGeneration {0};
 
+#if defined(FURBLE_SIM)
+uint64_t UI::m_BatteryLabelWrites = 0;
+#endif
 lv_timer_t *UI::m_BulbTimer;
 lv_timer_t *UI::m_BulbPageRefresh;
 uint32_t UI::m_BulbEnd;
@@ -440,7 +444,7 @@ UI::UI(const interval_t &interval)
   auto brightness = Settings::load<Settings::BRIGHTNESS>();
   M5.Display.setBrightness(brightness);
   m_DisplayOffMode = Settings::displayOffEffective();
-  if (m_DisplayOffMode > 2) {
+  if (m_DisplayOffMode > 3) {
     m_DisplayOffMode = 0;
   }
   setInactivityTimeout(Settings::inactivityEffective());
@@ -491,6 +495,9 @@ UI::UI(const interval_t &interval)
   // configure display
   m_Display = lv_display_create(m_Width, m_Height);
   lv_display_set_default(m_Display);
+  // The flush callback is static because LVGL calls it through a function
+  // pointer. Carry the instance so it can read the panel state.
+  lv_display_set_user_data(m_Display, this);
   lv_display_set_flush_cb(m_Display, displayFlush);
 
   // configure display buffers
@@ -640,7 +647,9 @@ UI::UI(const interval_t &interval)
   m_DiagnosticsTimer = lv_timer_create(diagnosticsUpdate, 1000, &m_Diagnostics);
   lv_timer_pause(m_DiagnosticsTimer);
 
-  // refresh icons every 250ms
+  // Refresh icons twice a second. The battery level moves at the 5 s sample
+  // rate, the GPS icon changes on a setting, and the lock message is not
+  // time-critical, so 500 ms halves the timer wakeups with no visible change.
   m_IconTimer = lv_timer_create(
       [](lv_timer_t *timer) {
         FURBLE_SIM_TIMER_FIRE("icon_timer");
@@ -690,7 +699,7 @@ UI::UI(const interval_t &interval)
           lockMsgBox = NULL;
         }
       },
-      250, &m_Status);
+      500, &m_Status);
 
   lv_obj_update_layout(m_Header);
   lv_obj_set_height(m_Header, 1.2f * lv_font_get_line_height(LV_FONT_DEFAULT));
@@ -1660,6 +1669,22 @@ void UI::sleepDisplay(void) {
     return;
   }
 
+  // A panel-off period must not leave the user's discovery scan running at
+  // full receive duty. Only stop it while Control is idle: Fujifilm Secure and
+  // Nikon run their saved-camera reconnect scan through the same singleton, and
+  // stopping that would fail a connect whose camera advertises later in the
+  // window.
+  auto &scan = Scan::getInstance();
+  if (scan.isActive() && (Control::getInstance().getState() == Control::STATE_IDLE)) {
+    scan.stop();
+    if (m_ScanFinished != nullptr) {
+      lv_obj_remove_flag(m_ScanFinished, LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+
+  // Do not enter SLPIN with a frame still in flight; the panel would be
+  // commanded to sleep mid-transfer.
+  M5.Display.waitDMA();
   M5.Display.sleep();
   m_SleepTick = tick();
   m_DisplayOff = true;
@@ -1691,10 +1716,19 @@ void UI::wakeDisplay(void) {
   // Acquire before wakeup because M5GFX restores the backlight during wakeup.
   Power::getInstance().acquire(Power::LockType::APB_FREQ_MAX, "display");
   M5.Display.wakeup();
+  // A timed wake restores the brightness M5GFX last applied, which is the dim
+  // value in the staged mode. Restore the configured level so the screen does
+  // not come back at minimum brightness.
+  M5.Display.setBrightness(Settings::load<uint8_t>(Settings::BRIGHTNESS));
   m_WakeTick = tick();
   m_DisplayOff = false;
+  // Flushes were skipped while the panel slept, so LVGL believes the old
+  // frame is still on the glass. Redraw the active screen once.
+  lv_obj_invalidate(lv_screen_active());
   m_DisplayState = DisplayState::ACTIVE;
-  Platform::getInstance().setDisplayOff(false);
+  // Console mode keeps the panel logically off even after a wake event from
+  // the inactivity sleep, so the status LED follows the combined state.
+  Platform::getInstance().setDisplayOff(m_DisplayConsole);
   Feedback::getInstance().setDisplayOff(false);
 #if defined(FURBLE_SIM)
   Sim::profilerSetDisplayState("on");
@@ -1724,6 +1758,19 @@ size_t UI::inactivityIndex(uint8_t value) {
 void UI::displayFlush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map) {
   uint32_t w = (area->x2 - area->x1 + 1);
   uint32_t h = (area->y2 - area->y1 + 1);
+  auto *ui = static_cast<UI *>(lv_display_get_user_data(disp));
+
+  if ((ui != nullptr) && ui->m_DisplayOff) {
+    // The panel is in SLPIN. Swapping and pushing pixels nobody can see costs
+    // CPU, bus time, and a DMA completion for no output. Report the flush as
+    // done so LVGL can keep its bookkeeping moving; wakeDisplay() invalidates
+    // the screen so the next visible frame is complete.
+#if defined(FURBLE_SIM)
+    ui->m_FlushedWhileOff++;
+#endif
+    lv_disp_flush_ready(disp);
+    return;
+  }
 
 #if defined(FURBLE_SIM)
   Sim::profilerFlushedPixels(static_cast<uint64_t>(w) * h);
@@ -2251,6 +2298,37 @@ int32_t UI::floatingIndicatorReserve(void) {
   // static helpers.
   return (m_LegendWidth > 0) ? m_LegendWidth : ICON_HEADER_SIZE;
 }
+
+/**
+ * Static labels never animate.
+ *
+ * A menu or setting caption is fixed text that should fit its row. If a large
+ * font makes it wider, ellipsize with LV_LABEL_LONG_DOT instead of running a
+ * circular marquee while the user is reading. Dynamic values that can be long
+ * (camera names, spinner values, battery rows) keep their own mode.
+ */
+static void setStaticLabelMode(lv_obj_t *label) {
+  lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
+}
+
+#if defined(FURBLE_SIM)
+/** Count labels still running a circular marquee under one page. */
+static size_t countScrollLabels(lv_obj_t *root) {
+  if (root == nullptr) {
+    return 0;
+  }
+  size_t count = 0;
+  if (lv_obj_check_type(root, &lv_label_class)
+      && (lv_label_get_long_mode(root) == LV_LABEL_LONG_SCROLL_CIRCULAR)) {
+    count++;
+  }
+  const uint32_t children = lv_obj_get_child_count(root);
+  for (uint32_t index = 0; index < children; index++) {
+    count += countScrollLabels(lv_obj_get_child(root, index));
+  }
+  return count;
+}
+#endif
 
 lv_obj_t *UI::addMenuItem(const menu_t &menu,
                           const lv_image_dsc_t *icon,
@@ -5228,6 +5306,21 @@ std::string UI::simQueryState(const char *key) {
     }
     return "warn";
   }
+
+#if defined(FURBLE_SIM)
+  // Flush callbacks LVGL issued while the panel was in SLPIN. displayFlush()
+  // returns before any swap or push in that state, so a non-zero count proves
+  // the scenario exercised a redraw while off without paying for it.
+  if (query == "flushes_suppressed_off") {
+    return std::to_string(m_FlushedWhileOff);
+  }
+  if (query == "scroll_labels") {
+    return std::to_string(countScrollLabels(lv_menu_get_cur_main_page(m_MainMenu.main)));
+  }
+  if (query == "battery_label_writes") {
+    return std::to_string(m_BatteryLabelWrites);
+  }
+#endif
 
   if (query == "page") {
     lv_obj_t *page = lv_menu_get_cur_main_page(m_MainMenu.main);
@@ -8915,7 +9008,7 @@ void UI::startScan(void) {
 
   lv_obj_t *label = lv_label_create(m_ScanFinished);
   lv_label_set_text(label, "Scan finished");
-  lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+  setStaticLabelMode(label);
   lv_obj_set_width(label, LV_PCT(100));
 
   lv_obj_t *rescan = lv_button_create(m_ScanFinished);
@@ -9154,7 +9247,7 @@ void UI::addGPSPowerMenu(const menu_t &parent) {
 
     lv_obj_t *label = lv_label_create(row);
     lv_label_set_text(label, name);
-    lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    setStaticLabelMode(label);
 
     lv_obj_t *roller = lv_roller_create(row);
 #if !defined(FURBLE_M5COREX)
@@ -9856,7 +9949,7 @@ void UI::addSpinnerPage(const menu_t &parent, const char *item, Intervalometer::
   lv_obj_set_flex_flow(spinner.m_RowInfinite, LV_FLEX_FLOW_ROW);
   lv_obj_t *label = lv_label_create(spinner.m_RowInfinite);
   lv_label_set_text(label, "Infinite");
-  lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+  setStaticLabelMode(label);
   lv_obj_set_flex_grow(label, 1);
   spinner.m_SwitchInfinite = lv_switch_create(spinner.m_RowInfinite);
   lv_obj_add_flag(spinner.m_SwitchInfinite, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
@@ -10435,7 +10528,7 @@ void UI::addDisplayMenu(const menu_t &parent) {
   // Add brightness control
   lv_obj_t *label = lv_label_create(cont);
   lv_label_set_text(label, "Brightness");
-  lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+  setStaticLabelMode(label);
   lv_obj_set_width(label, LV_PCT(100));
 
   lv_obj_t *slider = lv_slider_create(cont);
@@ -10489,7 +10582,7 @@ void UI::addDisplayMenu(const menu_t &parent) {
   // Add inactivity timeout control
   label = lv_label_create(cont);
   lv_label_set_text(label, "Inactivity timeout");
-  lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+  setStaticLabelMode(label);
   lv_obj_set_width(label, LV_PCT(100));
 
   lv_obj_t *roller = lv_roller_create(cont);
@@ -10526,7 +10619,7 @@ void UI::addDisplayMenu(const menu_t &parent) {
   // Add screen off control
   label = lv_label_create(cont);
   lv_label_set_text(label, "Screen off");
-  lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+  setStaticLabelMode(label);
   lv_obj_set_width(label, LV_PCT(100));
 
   roller = lv_roller_create(cont);
@@ -10544,11 +10637,17 @@ void UI::addDisplayMenu(const menu_t &parent) {
   // still shows the selected option and the encoder still scrolls the rest.
   lv_roller_set_visible_row_count(roller, M5.Touch.isEnabled() ? 2 : 1);
   uint8_t displayOff = m_DisplayOffMode;
-  if (displayOff > 2) {
+  if (displayOff > 3) {
     displayOff = 0;
   }
-  if (M5.Touch.isEnabled() && displayOff == 2) {
-    displayOff = 1;
+  if (M5.Touch.isEnabled()) {
+    // Touch boards have three rows: Dim (0), Off (1), Dim then off (3).
+    // Remote-on (2) is not offered and maps to Off.
+    if (displayOff == 2) {
+      displayOff = 1;
+    } else if (displayOff == 3) {
+      displayOff = 2;
+    }
   }
   lv_roller_set_selected(roller, displayOff, LV_ANIM_ON);
 
@@ -10558,8 +10657,8 @@ void UI::addDisplayMenu(const menu_t &parent) {
         auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
         auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
         uint8_t displayOff = lv_roller_get_selected(roller);
-        if (M5.Touch.isEnabled() && displayOff > 1) {
-          displayOff = 1;
+        if (M5.Touch.isEnabled() && displayOff == 2) {
+          displayOff = 3;
         }
         Settings::save<Settings::DISPLAY_OFF>(displayOff);
         ui->m_DisplayOffMode = displayOff;
@@ -10810,35 +10909,59 @@ void UI::batteryUpdate(lv_timer_t *timer) {
                                           caps.charging && status->battery.charging);
   }
 
-  if (status->batteryLevel != nullptr) {
-    lv_label_set_text_fmt(status->batteryLevel, "Level: %u%%", status->displayLevel);
-  }
+  // The five battery rows only exist on the Battery page. Writing them while
+  // another page is visible invalidates hidden widgets and redraws nothing the
+  // user can see. The page-entry handler calls lv_timer_ready() so entering the
+  // page still shows a fresh sample immediately.
+  const bool batteryPage =
+      (m_MainMenu.main != nullptr)
+      && (lv_menu_get_cur_main_page(m_MainMenu.main) == m_Menu.at(m_BatteryStr).page);
+  if (batteryPage) {
+    if (status->batteryLevel != nullptr) {
+      lv_label_set_text_fmt(status->batteryLevel, "Level: %u%%", status->displayLevel);
+#if defined(FURBLE_SIM)
+      m_BatteryLabelWrites++;
+#endif
+    }
 
-  if (status->batteryVoltage != nullptr) {
-    uint32_t mv = lroundf(status->meanVoltage);
-    lv_label_set_text_fmt(status->batteryVoltage, "Volts: %lu.%03lu", mv / 1000, mv % 1000);
-  }
+    if (status->batteryVoltage != nullptr) {
+      uint32_t mv = lroundf(status->meanVoltage);
+      lv_label_set_text_fmt(status->batteryVoltage, "Volts: %lu.%03lu", mv / 1000, mv % 1000);
+#if defined(FURBLE_SIM)
+      m_BatteryLabelWrites++;
+#endif
+    }
 
-  if (status->batteryCurrent != nullptr) {
-    lv_label_set_text_fmt(status->batteryCurrent, "Current: %ld mA", status->battery.current);
-  }
+    if (status->batteryCurrent != nullptr) {
+      lv_label_set_text_fmt(status->batteryCurrent, "Current: %ld mA", status->battery.current);
+#if defined(FURBLE_SIM)
+      m_BatteryLabelWrites++;
+#endif
+    }
 
-  if (status->batteryCharging != nullptr) {
-    lv_label_set_text(status->batteryCharging,
-                      status->battery.charging ? "Charging: yes" : "Charging: no");
-  }
+    if (status->batteryCharging != nullptr) {
+      lv_label_set_text(status->batteryCharging,
+                        status->battery.charging ? "Charging: yes" : "Charging: no");
+#if defined(FURBLE_SIM)
+      m_BatteryLabelWrites++;
+#endif
+    }
 
-  if (status->batteryRuntime != nullptr) {
-    if (status->battery.charging) {
-      lv_label_set_text(status->batteryRuntime, "Runtime: charging");
-    } else if (status->meanCurrent < -1.0f) {
-      // remaining capacity in mAh divided by the average discharge current
-      float remaining = platform.getBatteryCapacity() * (status->meanLevel / 100.0f);
-      uint32_t minutes = (remaining / -status->meanCurrent) * 60.0f;
-      lv_label_set_text_fmt(status->batteryRuntime, "Runtime: ~%luh%02lum (est)", minutes / 60,
-                            minutes % 60);
-    } else {
-      lv_label_set_text(status->batteryRuntime, "Runtime: unknown");
+    if (status->batteryRuntime != nullptr) {
+      if (status->battery.charging) {
+        lv_label_set_text(status->batteryRuntime, "Runtime: charging");
+      } else if (status->meanCurrent < -1.0f) {
+        // remaining capacity in mAh divided by the average discharge current
+        float remaining = platform.getBatteryCapacity() * (status->meanLevel / 100.0f);
+        uint32_t minutes = (remaining / -status->meanCurrent) * 60.0f;
+        lv_label_set_text_fmt(status->batteryRuntime, "Runtime: ~%luh%02lum (est)", minutes / 60,
+                              minutes % 60);
+      } else {
+        lv_label_set_text(status->batteryRuntime, "Runtime: unknown");
+      }
+#if defined(FURBLE_SIM)
+      m_BatteryLabelWrites++;
+#endif
     }
   }
 
@@ -10937,7 +11060,7 @@ void UI::addPowerMenu(const menu_t &parent) {
   auto addPowerRoller = [cont](const char *text, const char *options) {
     lv_obj_t *label = lv_label_create(cont);
     lv_label_set_text(label, text);
-    lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    setStaticLabelMode(label);
     lv_obj_set_width(label, LV_PCT(100));
 
     lv_obj_t *roller = lv_roller_create(cont);
@@ -10951,7 +11074,7 @@ void UI::addPowerMenu(const menu_t &parent) {
   // Add CPU maximum frequency control
   lv_obj_t *label = lv_label_create(cont);
   lv_label_set_text(label, "CPU speed");
-  lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+  setStaticLabelMode(label);
   lv_obj_set_width(label, LV_PCT(100));
 
   const auto &frequencies = Platform::CPU_MAX_FREQ_MHZ;
@@ -10998,7 +11121,7 @@ void UI::addPowerMenu(const menu_t &parent) {
   // Add battery style control
   label = lv_label_create(cont);
   lv_label_set_text(label, Settings::get(Settings::BATT_STYLE).name);
-  lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+  setStaticLabelMode(label);
   lv_obj_set_width(label, LV_PCT(100));
 
   roller = lv_roller_create(cont);
@@ -11113,7 +11236,7 @@ void UI::addFeedbackMenu(const menu_t &parent) {
   lv_obj_set_flex_flow(outputCont, LV_FLEX_FLOW_ROW_WRAP);
   lv_obj_t *outputLabel = lv_label_create(outputCont);
   lv_label_set_text(outputLabel, "Output");
-  lv_label_set_long_mode(outputLabel, LV_LABEL_LONG_SCROLL_CIRCULAR);
+  setStaticLabelMode(outputLabel);
   lv_obj_set_flex_grow(outputLabel, 1);
 
   static constexpr const char *outputNames[] = {
@@ -11177,7 +11300,7 @@ void UI::addFeedbackMenu(const menu_t &parent) {
     lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW_WRAP);
     lv_obj_t *label = lv_label_create(row);
     lv_label_set_text(label, name);
-    lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    setStaticLabelMode(label);
     lv_obj_set_flex_grow(label, 1);
     lv_obj_t *sw = lv_switch_create(row);
     lv_obj_add_flag(sw, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
@@ -11579,7 +11702,7 @@ static lv_obj_t *addRollerItem(lv_obj_t *page, const char *text, const char *opt
 
   lv_obj_t *label = lv_label_create(cont);
   lv_label_set_text(label, text);
-  lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+  setStaticLabelMode(label);
   lv_obj_set_width(label, LV_PCT(100));
 
   lv_obj_t *roller = lv_roller_create(cont);
@@ -12275,6 +12398,7 @@ void UI::processInactivity(void) {
       auto brightness = Settings::load<Settings::BRIGHTNESS>();
       M5.Display.setBrightness(brightness);
       m_DisplayState = DisplayState::ACTIVE;
+      m_DimSinceMs = 0;
 #if defined(FURBLE_SIM)
       Sim::profilerSetDisplayState("on");
 #endif
@@ -12286,15 +12410,26 @@ void UI::processInactivity(void) {
 
   switch (m_DisplayOffMode) {
     case 0:
+    case 3:
       if (m_DisplayState == DisplayState::OFF) {
-        wakeDisplay();
+        // Mode 0 wakes a panel left asleep by a previous mode. Mode 3 is the
+        // one that puts it to sleep, so it must stay asleep until activity.
+        if (m_DisplayOffMode == 0) {
+          wakeDisplay();
+        }
+        break;
       }
       if (m_DisplayState == DisplayState::ACTIVE) {
         M5.Display.setBrightness(m_MinimumBrightness);
         m_DisplayState = DisplayState::DIM;
+        m_DimSinceMs = tick();
 #if defined(FURBLE_SIM)
         Sim::profilerSetDisplayState("dim");
 #endif
+      } else if ((m_DisplayOffMode == 3) && (m_DisplayState == DisplayState::DIM)
+                 && DisplayPolicy::dimToOffDue(true, tick(), m_DimSinceMs)) {
+        // Additive staged mode: dim first, then sleep after a fixed dwell.
+        sleepDisplay();
       }
       break;
     case 1:
@@ -12571,13 +12706,18 @@ void UI::setDisplayMode(uint8_t mode) {
   }
 
   if (console) {
+    M5.Display.waitDMA();
     M5.Display.sleep();
     Power::getInstance().release(Power::LockType::APB_FREQ_MAX, "display");
+    // Console mode is a panel-off state too. The PM1 status LED follows the
+    // same input as the inactivity sleep, so it must not stay lit.
+    Platform::getInstance().setDisplayOff(true);
   } else {
     Power::getInstance().acquire(Power::LockType::APB_FREQ_MAX, "display");
     M5.Display.wakeup();
     M5.Display.setBrightness(Settings::load<uint8_t>(Settings::BRIGHTNESS));
     lv_display_trigger_activity(m_Display);
+    Platform::getInstance().setDisplayOff(m_DisplayOff);
   }
 
   m_DisplayConsole = console;

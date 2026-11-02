@@ -5,6 +5,7 @@ seed autoconnect true
 seed inactivity 1
 seed display_off 2
 wait 31000
+assert sim.radio_connected yes
 report setup.json
 action blind
 action blind-shutter

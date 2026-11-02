@@ -198,6 +198,10 @@ void MQTT::init(void) {
 
 void MQTT::reloadSetting(void) {
   const bool enabled = Settings::load<Settings::MQTT>();
+  const std::string baseSetting = Settings::load<Settings::MQTT_BASE>();
+  const std::string uriSetting = Settings::load<Settings::MQTT_URI>();
+  const std::string userSetting = Settings::load<Settings::MQTT_USER>();
+  const std::string passwordSetting = Settings::load<Settings::MQTT_PASS>();
 
   // app_main owns the single esp_netif_init and esp_event_loop_create_default,
   // and the network module (WiFi now, Ethernet later) creates the interface.
@@ -205,6 +209,11 @@ void MQTT::reloadSetting(void) {
 
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
+    m_EnabledCached = enabled;
+    m_BaseSetting = baseSetting;
+    m_URISetting = uriSetting;
+    m_UserSetting = userSetting;
+    m_PasswordSetting = passwordSetting;
     m_Reload = true;
     m_ManualDisconnect = false;
     m_Blocked = false;
@@ -291,11 +300,11 @@ void MQTT::clearDiscovery(void) {
 }
 
 bool MQTT::isConfigured(void) const {
-  return Settings::load<Settings::MQTT>()
-         && Settings::validMQTTString(Settings::MQTT_URI, Settings::load<Settings::MQTT_URI>())
-         && Settings::validMQTTString(Settings::MQTT_USER, Settings::load<Settings::MQTT_USER>())
-         && Settings::validMQTTString(Settings::MQTT_PASS, Settings::load<Settings::MQTT_PASS>())
-         && Settings::validMQTTString(Settings::MQTT_BASE, Settings::load<Settings::MQTT_BASE>());
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+  return m_EnabledCached && Settings::validMQTTString(Settings::MQTT_URI, m_URISetting)
+         && Settings::validMQTTString(Settings::MQTT_USER, m_UserSetting)
+         && Settings::validMQTTString(Settings::MQTT_PASS, m_PasswordSetting)
+         && Settings::validMQTTString(Settings::MQTT_BASE, m_BaseSetting);
 }
 
 void MQTT::taskEntry(void *param) {
@@ -312,6 +321,9 @@ void MQTT::task(void) {
 TickType_t MQTT::taskWaitTicks(void) const {
   const uint64_t now = nowMs();
   uint64_t wait_ms = TASK_PERIOD_MS;
+  if (m_ShutterReleasePending || m_FocusReleasePending) {
+    wait_ms = std::min<uint64_t>(wait_ms, RELEASE_RETRY_MS);
+  }
   if (m_HoldActive && (m_HoldDeadlineMs != 0)) {
     if (m_HoldDeadlineMs <= now) {
       return 0;
@@ -401,7 +413,10 @@ void MQTT::taskStep(void) {
     m_LastGPSMs = 0;
   }
 
-  const bool enabled = Settings::load<Settings::MQTT>();
+  const bool enabled = [this]() {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    return m_EnabledCached;
+  }();
   if (!enabled || manual_disconnect || blocked || !isConfigured()) {
     if (m_Client != nullptr) {
       stopClient();
@@ -441,6 +456,10 @@ void MQTT::taskStep(void) {
 }
 
 #if defined(FURBLE_MQTT_HOST_TEST)
+uint32_t MQTT::hostTaskWaitMs(void) const {
+  return static_cast<uint32_t>(taskWaitTicks());
+}
+
 void MQTT::hostTaskStep(void) {
   taskStep();
 }
@@ -549,15 +568,28 @@ bool MQTT::networkReady(void) const {
 }
 
 void MQTT::loadTopics(void) {
-  m_Base = trimTopic(Settings::load<Settings::MQTT_BASE>());
+  std::string baseSetting;
+  std::string uriSetting;
+  std::string userSetting;
+  std::string passwordSetting;
+  {
+    // reloadSetting() may run on another task while this one applies a reload.
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    baseSetting = m_BaseSetting;
+    uriSetting = m_URISetting;
+    userSetting = m_UserSetting;
+    passwordSetting = m_PasswordSetting;
+  }
+
+  m_Base = trimTopic(baseSetting);
   if (m_Base.empty()) {
     m_Base = "furble";
   }
 
   m_ID = Device::getStringID();
-  m_URI = trimWhitespace(Settings::load<Settings::MQTT_URI>());
-  m_User = Settings::load<Settings::MQTT_USER>();
-  m_Password = Settings::load<Settings::MQTT_PASS>();
+  m_URI = trimWhitespace(uriSetting);
+  m_User = userSetting;
+  m_Password = passwordSetting;
   m_RootTopic = m_Base + "/" + m_ID;
   m_StatusTopic = m_RootTopic + "/status";
   m_CamerasTopic = m_RootTopic + "/state/cameras";

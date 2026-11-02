@@ -575,7 +575,8 @@ bool Camera::connect(esp_power_level_t power, uint32_t timeout) {
   // adjust connection timeout and parameters
   m_Client->setConnectTimeout(timeout);
   // try extending range by adjusting connection parameters
-  m_Client->setConnectionParams(m_MinInterval, m_MaxInterval, m_Latency, m_Timeout);
+  m_Client->setConnectionParams(m_MinInterval, m_MaxInterval, m_Latency, m_Timeout, m_ScanInterval,
+                                m_ScanWindow);
 
   // set per-camera BLE security before connecting
   NimBLEDevice::setSecurityAuth(true, true, true);
@@ -694,7 +695,8 @@ bool Camera::requestFujifilmSecureFastProfile() {
   // The Secure peer may have installed its long registration timeout. NimBLE
   // only queues this update. FujifilmSecure waits separately for the controller
   // to expose the exact live profile.
-  m_Client->setConnectionParams(m_FastMinInterval, m_FastMaxInterval, m_FastLatency, m_FastTimeout);
+  m_Client->setConnectionParams(m_FastMinInterval, m_FastMaxInterval, m_FastLatency, m_FastTimeout,
+                                m_ScanInterval, m_ScanWindow);
   if (!m_Client->updateConnParams(m_FastMinInterval, m_FastMaxInterval, m_FastLatency,
                                   m_FastTimeout)) {
     ESP_LOGW(LOG_TAG, "Fujifilm Secure fast connection profile was rejected");
@@ -859,7 +861,8 @@ bool Camera::setConnProfile(ConnProfile profile) {
 #if defined(FURBLE_CONSOLE)
   const NimBLEConnInfo before = client->getConnInfo();
 #endif
-  client->setConnectionParams(minInterval, maxInterval, latency, timeout);
+  client->setConnectionParams(minInterval, maxInterval, latency, timeout, m_ScanInterval,
+                              m_ScanWindow);
   const bool updated = client->updateConnParams(minInterval, maxInterval, latency, timeout);
 
 #if defined(FURBLE_CONSOLE)
@@ -1231,7 +1234,14 @@ bool Camera::onConnParamsUpdateRequest(NimBLEClient *pClient, const ble_gap_upd_
 
   // Accept the peer values and do not immediately fight them with our own
   // request. A later shutter or focus press starts a new fast-profile cycle.
-  m_PeerOverride = true;
+  //
+  // Only a request that is faster than our idle profile owns the link. A peer
+  // that asks for the idle range (or slower) is already at the rate the saver
+  // wants, and setting the override would disable the saver for the whole
+  // session with no benefit. This is what lets the inactivity transition still
+  // reach IDLE after a camera renegotiates at connect.
+  const bool fasterThanIdle = (params != nullptr) && (params->itvl_max < m_IdleMinInterval);
+  m_PeerOverride = (params == nullptr) || fasterThanIdle;
   m_LastRequestValid = false;
   m_LastRequestSucceeded = false;
   return true;

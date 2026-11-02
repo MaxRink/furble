@@ -1620,6 +1620,12 @@ void profilerBegin(const char *scenario, bool reporting_enabled) {
   resetCountersLocked(clockMillis());
 }
 
+uint64_t profilerTimerFireCount(const char *name) {
+  const std::lock_guard<std::mutex> lock(state.mutex);
+  const auto found = state.timer_fires.find(name == nullptr ? "unknown_timer" : name);
+  return found == state.timer_fires.end() ? 0 : found->second;
+}
+
 void profilerTimerFire(const char *name) {
   std::lock_guard<std::mutex> lock(state.mutex);
   ensureStartedLocked();
@@ -1732,6 +1738,11 @@ void profilerSetRadioConnected(bool connected) {
   ensureStartedLocked();
   integrateLocked(clockMicros());
   state.radio_connected = connected;
+}
+
+bool profilerRadioConnected(void) {
+  const std::lock_guard<std::mutex> lock(state.mutex);
+  return state.radio_connected;
 }
 
 void profilerRadioEvent(const char *name) {

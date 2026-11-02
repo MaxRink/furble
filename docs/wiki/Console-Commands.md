@@ -58,6 +58,19 @@ voltage as unknown (`-1`) and current as unavailable (`0`). It never infers USB
 or optional PoE power from Ethernet link state because the optional PoE HAT has
 no software-readable presence or negotiation signal.
 
+## wifi
+
+`wifi status` prints `enabled`, `state`, `ssid`, `psk` (only `set` or `unset`),
+`bssid`, `channel`, `rssi`, `ip`, `attempts`, `retry_ms`,
+`disconnect_reason`, `stopped`, and the battery `current` /
+`estimated_runtime` when available. `attempts` is the failed count in the
+current retry cycle, `retry_ms` is the next backoff without jitter, and
+`stopped` is set by a terminal auth failure or an exhausted attempt bound;
+`wifi connect` clears it.
+
+`wifi set ssid|psk`, `wifi enable|disable`, `wifi connect|disconnect`, and
+`wifi forget` manage the saved network.
+
 ## settings
 
 - `settings list` prints every setting as `key: value`.

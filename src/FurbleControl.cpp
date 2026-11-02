@@ -9,6 +9,7 @@
 #include "FurbleControl.h"
 #if defined(FURBLE_SIM)
 #include "ble_sim.h"
+#include "power_profiler.h"
 #endif
 #include "FurblePlatform.h"
 #include "FurblePower.h"
@@ -119,7 +120,11 @@ BaseType_t Control::Target::sendCommand(cmd_t cmd) {
 
 Control::cmd_t Control::Target::getCommand(void) {
   cmd_t cmd = CMD_ERROR;
-  BaseType_t ret = xQueueReceive(m_Queue, &cmd, pdMS_TO_TICKS(50));
+  // Commands arrive through the queue and wake this receive immediately. The
+  // timeout is only the idle tick that drives the saver and RSSI sampler, both
+  // internally rate limited; 250 ms cuts idle wakeups fivefold with no command
+  // latency change.
+  BaseType_t ret = xQueueReceive(m_Queue, &cmd, pdMS_TO_TICKS(250));
   if (ret != pdTRUE) {
     return CMD_ERROR;
   }
@@ -180,7 +185,7 @@ void Control::Target::task(void) {
         m_InFlight.fetch_sub(1, std::memory_order_acq_rel);
         goto task_exit;
       case CMD_ERROR:
-        // Not an error: getCommand() returns CMD_ERROR when the 50 ms queue
+        // Not an error: getCommand() returns CMD_ERROR when the 250 ms queue
         // wait times out. Reuse that tick as the idle profile timer and the
         // connection statistics sampler (both are internally rate limited).
         m_Camera->maybeSetIdle();
@@ -443,15 +448,27 @@ void Control::task(void) {
     // task can still touch them.
     reapZombieTargets();
 
+    bool retired = false;
     {
       const std::lock_guard<std::mutex> lock(m_Mutex);
-      if (retireCancelledTargetsLocked() && m_State != STATE_DISCONNECTING) {
-        setState(STATE_IDLE);
-      }
+      retired = retireCancelledTargetsLocked() && m_State != STATE_DISCONNECTING;
+    }
+    if (retired) {
+      // setState() reads the connected-target count under m_Mutex, so it must
+      // not run with that lock already held.
+      setState(STATE_IDLE);
     }
 
     cmd_t cmd;
-    BaseType_t ret = xQueueReceive(m_Queue, &cmd, pdMS_TO_TICKS(50));
+    // Commands arrive through the queue and wake this receive immediately. The
+    // timeout is the idle housekeeping tick: zombie reaping and the state
+    // machine. 250 ms cuts idle wakeups fivefold with no command latency.
+    BaseType_t ret = xQueueReceive(m_Queue, &cmd, pdMS_TO_TICKS(250));
+    if (ret != pdTRUE) {
+#if defined(FURBLE_SIM)
+      m_SimIdleTicks.fetch_add(1, std::memory_order_relaxed);
+#endif
+    }
 
     switch (m_State.load(std::memory_order_acquire)) {
       case STATE_IDLE:
@@ -1354,6 +1371,14 @@ void Control::setState(state_t state) {
   }
 
   m_State.store(state, std::memory_order_release);
+
+#if defined(FURBLE_SIM)
+  // The power model charges a connected-radio floor while any camera link is
+  // up. Multi-Connect recovery leaves one camera connected while Control is in
+  // CONNECT/CONNECTING, so STATE_ACTIVE alone would drop the floor during the
+  // retry.
+  Sim::profilerSetRadioConnected(getConnectedTargetCount() > 0);
+#endif
 
   if (!hold && m_SleepLockHeld.load(std::memory_order_acquire)) {
     power.release(Power::LockType::NO_LIGHT_SLEEP, POWER_LOCK_OWNER);
