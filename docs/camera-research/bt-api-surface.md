@@ -91,10 +91,13 @@ ack and source select are required, and the full model gate for Bluetooth GPS.
 ## Nikon
 
 The B600 firmware contains the Remote `0x2080` to `0x2087` set and the Smart
-`0x2000` to `0x200b` set. Furble uses the Remote handshake and shutter. The
-unused surface includes Remote pair and status indications, the Smart
-four-stage auth, client name, time, GPS, control point `2021`, feature bitmap,
-and the Classic SPP and PTP continuation.
+`0x2000` to `0x200b` set. Furble uses the Remote handshake and shutter, and it
+requires the `2084` status subscription in `preSubscribe()`; `subscribePair()`
+consumes `2087` indications to advance pairing. The Smart four-stage
+authentication runs before the Bluetooth Classic finalization that Furble does
+not implement. The unused surface includes Remote client name, time, and GPS,
+the control point `2021`, the feature bitmap, and the Classic SPP and PTP
+continuation.
 
 Remote shutter `0x2083` has a 2-byte gate; `{02 02}` is a short press,
 `{02 03}` is a long press, and `{02 00}` is a no-op. `0x2084` is a six-byte
