@@ -55,7 +55,8 @@ Ricoh characteristic classes, GR IV exposes 65, and the GR IIIx 1.41 recording
 contains 51. The full inventory is 76 rows after standard services.
 
 Furble uses model identity, operation mode, GEO Tag, GPS Information, shutter,
-drive mode, capture status, the paired-device name, and a GPS-time clock sync.
+drive mode, capture status, and the paired-device name. Date Time is not written
+because it carries local wall-clock time and Furble has no timezone source.
 At connect it reads camera power, self-timer, and paired-device name through the
 state probe and subscribes to the power, self-timer, capture-status, and
 operation-mode notifications, so those read and notification paths are

@@ -1910,7 +1910,11 @@ void UI::shutterUnlock(Control &control) {
 
     if (M5.Touch.isEnabled()) {
       lv_obj_remove_state(m_OK, LV_STATE_DISABLED);
-      lv_obj_remove_state(m_Right, LV_STATE_DISABLED);
+      // Unlocking ends the held exposure, it does not grant a focus primitive.
+      // A session without one keeps the focus indicator disabled.
+      if (m_CapabilityFocus) {
+        lv_obj_remove_state(m_Right, LV_STATE_DISABLED);
+      }
       lv_obj_set_style_bg_image_src(m_ShutterLockIcon, &icon_lock_open_right, 0);
     } else {
       lv_obj_set_style_bg_image_src(m_ShutterLockIcon, &icon_lock_open_right_24, 0);

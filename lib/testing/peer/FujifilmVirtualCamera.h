@@ -335,6 +335,8 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   bool tokenAccepted() const;
   bool configured() const;
   bool geotagRequested() const;
+  /** AAB609C4 location-sync enable value written by the client, or 0xFFFF. */
+  uint16_t locationSyncValue() const;
   size_t accessAfterDrop() const;
   bool subscriptionRequestedWithResponse(const NimBLEUUID &service,
                                          const NimBLEUUID &characteristic) const;
@@ -482,6 +484,7 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   bool m_PowerRequestWritten = false;
   uint16_t m_PowerRequest = 0;
   uint16_t m_SyncInterval = 0;
+  uint16_t m_LocationSyncValue = 0xFFFF;
   std::vector<NimBLEUUID> m_SuppressedServices;
   std::vector<std::pair<NimBLEUUID, NimBLEUUID>> m_SuppressedCharacteristics;
   std::vector<std::pair<NimBLEUUID, NimBLEUUID>> m_FailedWrites;

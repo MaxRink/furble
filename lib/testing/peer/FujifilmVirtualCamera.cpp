@@ -160,6 +160,10 @@ bool FujifilmVirtualCamera::configured() const {
   return m_Configured;
 }
 
+uint16_t FujifilmVirtualCamera::locationSyncValue() const {
+  return m_LocationSyncValue;
+}
+
 bool FujifilmVirtualCamera::geotagRequested() const {
   return m_GeotagRequested;
 }
@@ -699,7 +703,8 @@ bool FujifilmVirtualCamera::canWrite(const NimBLEUUID &service,
                                                       : pairCharacteristicUUID())
               || matches(characteristic, identifierCharacteristicUUID())))
          || (m_Config.secure && matches(service, SECURE_NOTIFICATION_SERVICE_UUID)
-             && matches(characteristic, SECURE_SYNC_INTERVAL_UUID))
+             && (matches(characteristic, SECURE_SYNC_INTERVAL_UUID)
+                 || matches(characteristic, SECURE_NOTIFICATION7_UUID)))
          || (m_Config.secure && matches(service, timeServiceUUID())
              && (matches(characteristic, localTimeCharacteristicUUID())
                  || matches(characteristic, utcTimeCharacteristicUUID())))
@@ -848,6 +853,15 @@ bool FujifilmVirtualCamera::write(NimBLEClient &client,
           break;
       }
     }
+  } else if (m_Config.secure && matches(service, SECURE_NOTIFICATION_SERVICE_UUID)
+             && matches(characteristic, SECURE_NOTIFICATION7_UUID)) {
+    // AAB609C4 is the location-sync enable. The firmware accepts exactly 0 or 1
+    // in the low byte and reads a two-byte value back.
+    // Evidence: fujifilm-handlers.md C25; fujifilm.md C25.
+    result = (value.size() == 2) && (value[0] <= 1) && (value[1] == 0x00);
+    if (result) {
+      m_LocationSyncValue = static_cast<uint16_t>(value[0] | (value[1] << 8));
+    }
   } else if (m_Config.secure && matches(service, timeServiceUUID())
              && matches(characteristic, localTimeCharacteristicUUID())) {
     // 7-byte local packet, no zone. The camera accepts it and applies it.
@@ -949,6 +963,11 @@ NimBLEAttValue FujifilmVirtualCamera::read(NimBLEClient &client,
     m_StatusReadAt = std::chrono::steady_clock::now();
     m_RegistrationWindowExpired = false;
     result = NimBLEAttValue({0x07, 0x96, 0x00, 0x00});
+  } else if (m_Config.secure && matches(service, SECURE_NOTIFICATION_SERVICE_UUID)
+             && matches(characteristic, SECURE_NOTIFICATION7_UUID)
+             && (m_LocationSyncValue != 0xFFFF)) {
+    result = NimBLEAttValue({static_cast<uint8_t>(m_LocationSyncValue & 0xff),
+                             static_cast<uint8_t>(m_LocationSyncValue >> 8)});
   }
   // In-flight fault window: the read result is final, the operation has not
   // yet returned to the transport, and the service and characteristic

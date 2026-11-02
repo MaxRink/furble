@@ -201,6 +201,11 @@ void testGeotagRequestConfirmsReconnect() {
   }
   secureAttempt.join();
   check(secureConnected, "geotag request confirms registration on a Secure reconnect");
+  const Furble::Camera::gps_t gps = {52.5, 13.4, 34.0, 8};
+  const Furble::Camera::timesync_t time = {2026, 11, 1, 12, 34, 56, 0};
+  secureCamera.updateGeoData(gps, time);
+  check(securePeer.locationSyncValue() == 1,
+        "the Secure geotag path enables AAB609C4 and reads the value back");
   secureCamera.disconnect();
 }
 

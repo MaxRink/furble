@@ -254,7 +254,8 @@ void Lumix::_disconnect(void) {
         .fix = 0x56,
         .reserved = 0x00,
     };
-    m_Location->writeValue(reinterpret_cast<const uint8_t *>(&stop), sizeof(stop), true);
+    gattWrite(LOCATION_SVC_UUID, LOCATION_CHR_UUID,
+              NimBLEAttValue(reinterpret_cast<const uint8_t *>(&stop), sizeof(stop)), true);
   }
   if (m_SessionStarted && isConnected()) {
     writeCommand(CMD_SESSION_FINISH);

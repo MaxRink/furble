@@ -180,12 +180,9 @@ void Sony::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
     // exposes the 91-byte 0x59 entry, not the 95-byte 0x5d entry.
     bool use95 = true;
     if (m_GeoSvc != nullptr) {
-      auto *pInfo = m_GeoSvc->getCharacteristic(GEO_INFO_CHR_UUID);
-      if (pInfo != nullptr && pInfo->canRead()) {
-        const NimBLEAttValue info = pInfo->readValue();
-        if (info.size() >= 5) {
-          use95 = (info.data()[4] & 0x02) != 0;
-        }
+      NimBLEAttValue info;
+      if (gattRead(GEO_SVC_UUID, GEO_INFO_CHR_UUID, info) && (info.size() >= 5)) {
+        use95 = (info.data()[4] & 0x02) != 0;
       }
     }
 

@@ -260,12 +260,13 @@ void Fujifilm::sendGeoData(const gps_t &gps, const timesync_t &timesync) {
         const std::array<uint8_t, 2> enable = {0x01, 0x00};
         if (gattWrite(syncChr, enable.data(), enable.size(), true)) {
           m_HasLocationSync = true;
-          if (syncChr->canRead()) {
-            const NimBLEAttValue value = syncChr->readValue();
-            if (value.size() >= 2) {
-              ESP_LOGI(LOG_TAG, "Location sync setting readback 0x%02x%02x", value.data()[1],
-                       value.data()[0]);
-            }
+          // Read back through the UUID seam, not the cached characteristic: a
+          // drop right after the ATT response can free the self-deleting
+          // client's attributes before this line.
+          NimBLEAttValue value;
+          if (gattRead(SVC_READ_UUID, CHR_LOCATION_SYNC_UUID, value) && (value.size() >= 2)) {
+            ESP_LOGI(LOG_TAG, "Location sync setting readback 0x%02x%02x", value.data()[1],
+                     value.data()[0]);
           }
         } else {
           ESP_LOGW(LOG_TAG, "Location sync enable failed");
@@ -303,10 +304,17 @@ void Fujifilm::sendGeoData(const gps_t &gps, const timesync_t &timesync) {
 void Fujifilm::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
   m_LastTimesync = timesync;
   m_HasTimesync = true;
+  // Both writes can be reached from one GPS tick. A drop during the first one
+  // self-deletes the client, so hold the lifetime lock and re-check the link
+  // before entering the geotag write with a stale characteristic cache.
+  auto lifetime = lockClientLifetime();
+  if (!isConnected()) {
+    return;
+  }
   if (m_TimeRequested.exchange(false)) {
     sendTimeData();
   }
-  if (m_GeoRequested) {
+  if (m_GeoRequested && isConnected()) {
     sendGeoData(gps, timesync);
     m_GeoRequested = false;
   }

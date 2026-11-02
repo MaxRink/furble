@@ -20,14 +20,16 @@ Completed in this branch:
   control readiness `00`, then Start `02`; disconnect sends Finish `03`.
   `lumix-session` proves the gate against the peer.
 - Fujifilm safe fix: Basic and Secure client names are NUL terminated. The
-  `F9150137` `01 00` request now writes the 12-byte UTC time packet, with the
-  7-byte local form as a fallback. Offset and DST are zero.
+  `F9150137` `01 00` request now writes the 12-byte UTC time packet. The 7-byte
+  local form is deliberately not written: it expects wall-clock time and
+  Furble has no timezone source. Offset and DST are zero.
 - Canon Smart safe fix: the GPS timestamp uses `CanonProtocol::utcEpoch`, not
   `mktime`, so it no longer depends on the runtime timezone. `canon-time` pins
   the epoch and leap-day rules.
 - Ricoh safe fixes: connect writes the Paired Device Name. The Date Time Zone
-  packet is written on the first valid GPS time and once per minute. The
-  readback and the CAPTURE gate remain capture-gated.
+  write was withdrawn: the characteristic expects local wall-clock time and
+  GPS gives UTC, so Furble has no correct value without a timezone source. The
+  encoder and its vector remain; the write is capture- and product-gated.
 - Sony safe fixes: subscribe DD01, read DD21, select the 91 or 95 byte form,
   and release DD30 and DD31 on disconnect. Non-zero timezone and DST remain
   capture-gated.
