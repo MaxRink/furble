@@ -788,6 +788,17 @@ void GPS::beginBurst(uint32_t now) {
     return;
   }
 
+  // A queued UART event can be serviced after the acquisition deadline has
+  // already published ABSENT. Do not re-acquire the lock or revive a burst in
+  // that state; serviceCycle() skips an absent receiver, so nothing would
+  // release it again until GPS is toggled.
+  if ((m_CycleState == cycle_state_t::DISABLED)
+      || (static_cast<receiver_state_t>(m_ReceiverState.load()) == receiver_state_t::ABSENT)) {
+    m_BurstActive = false;
+    m_AcquireDeadline = 0;
+    return;
+  }
+
   // A late UART burst can arrive during the degraded backoff. Do not let that
   // event pin NO_LIGHT_SLEEP until the next scheduled retry. The retry path
   // changes to ACQUIRING before acquiring the lock.
