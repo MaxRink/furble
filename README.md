@@ -460,8 +460,10 @@ must also be configured to request location data.
 Phone GPS fallback. When the wired receiver has no fresh fix and the companion
 app is connected with phone GPS enabled, furble uses the phone fix. On iOS,
 fixes continue while the app is in the background. On Android, continuous
-background delivery still needs a foreground location service. See
-[docs/companion.md](docs/companion.md) for the source priority and platform
+background delivery still needs a foreground location service. The phone's
+reported horizontal accuracy is carried into the fix and the MQTT `accuracy`
+field when known; an unknown accuracy is omitted rather than reported as zero.
+See [docs/companion.md](docs/companion.md) for the source priority and platform
 details.
 
 The default GPS baud is 9600, preserving existing installations. The v1.1
