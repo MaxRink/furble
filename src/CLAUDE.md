@@ -51,6 +51,11 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   `NO_LIGHT_SLEEP` during backoff, ignores late UART lock reacquisition, and
   reacquires only after moving to the time-bounded acquisition probe. Keep the
   host policy and simulator power-accounting tests aligned with these states.
+  Under `FURBLE_SIM`, the fresh-fix parser counter is observability only; it lets
+  GPS scenarios distinguish parser progression from a cached source without
+  claiming a coherent delivered-geotag snapshot or timing-sensitive cycle state.
+  Duty-cycle freshness is established at the per-byte TinyGPS++ location update
+  boundary under `m_GPSMutex`, not by comparing `location.age()` values.
   The service mutex covers each task pass and settings reset. Before waiting
   for it, settings transitions must set the enable gate false and send the
   private front-of-queue wake event so an idle UART receive releases the mutex.
@@ -89,6 +94,9 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   connect holds for the whole connect timeout. Companion connect requests carry
   stable saved camera ids and are resolved and busy-checked again on the UI
   task; transient scan indexes must never cross that queue boundary.
+  Console completion envelopes use the same intrusive `RequestState*` ownership
+  in display and headless builds. Caller timeout does not release the queued
+  owner's reference; completion or queue draining does.
 - Companion credentials use the checked
   `Settings::loadPassword()` path: missing is unset, storage errors deny access.
   Never seed an empty password after an unsuccessful NVS existence check.

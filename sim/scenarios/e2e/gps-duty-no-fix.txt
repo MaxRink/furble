@@ -1,0 +1,14 @@
+# A quality-0 receiver burst must not become a live fix or request standby.
+# The separate ephemeris-stale scenario covers a checksum-bad RMC; this fixture
+# exercises the duty-cycle boundary where the location quality is explicitly
+# invalid even though coordinate fields are present in the GGA sentence.
+seed gps true
+seed gps_power 1
+seed gps_duty 5
+seed gps_rate 1
+seed gps_fix_date walkback
+seed gps_uart_mode ack
+wait 8000
+assert gps.source none
+assert uart.standby_5s_commands 0
+exit

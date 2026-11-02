@@ -130,9 +130,9 @@ class Settings {
   // compose that name rather than show the bare advertised one. A Fujifilm
   // Secure body renders "MODEL SERIAL", and the serial falls back to ten hex
   // characters when it is not printable text. Sixteen bytes truncated that, and
-  // a truncated name cannot tell two bodies of one model apart. Thirty-two
-  // holds a twenty-one character model, a space, and the ten character
-  // fallback.
+  // a truncated name cannot tell two bodies of one model apart. The array is 32
+  // bytes including the terminator, so it stores at most 31 visible characters;
+  // names at or above that limit are refused rather than truncated.
   static constexpr size_t MULTISELECT_NAME_MAX = 32;
   /** The field width used before composed vendor names needed the extra room. */
   static constexpr size_t MULTISELECT_NAME_LEGACY_MAX = 16;

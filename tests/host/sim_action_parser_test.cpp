@@ -62,6 +62,10 @@ int main() {
       "camera-pair-reject",
       "camera-pair-expire",
       "expect no-effect camera-pair-request confirm 111111",
+      "console connect 0",
+      "console delete -1",
+      "console display",
+      "console back",
   };
   for (const std::string &text : accepted) {
     if (!parses(text, &action)) {
@@ -106,6 +110,14 @@ int main() {
       "camera-pair-request confirm 123456 trailing",
       "camera-pair-accept yes",
       "camera-pair-expire now",
+      "console",
+      "console connect",
+      "console delete",
+      "console back 0",
+      "console display 0 trailing",
+      "console connect trailing",
+      "console unknown",
+      "console connect 1 trailing",
   };
   for (const std::string &text : rejected) {
     if (!rejects(text)) {

@@ -2,6 +2,7 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <cstdarg>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -267,6 +268,34 @@ constexpr int32_t RECONNECT_NAME_MIN_WIDTH = 135;
 
 }  // namespace
 
+const char *UI::intervalStateName(Intervalometer::state_t state) {
+  switch (state) {
+    case Intervalometer::STATE_IDLE:
+      return "idle";
+    case Intervalometer::STATE_WAIT:
+      return "wait";
+    case Intervalometer::STATE_SHUTTER_OPEN:
+      return "shutter";
+    case Intervalometer::STATE_DELAY:
+      return "delay";
+    case Intervalometer::STATE_FINISHED:
+      return "finished";
+  }
+  return "unknown";
+}
+
+const char *UI::bulbStateName(Bulb::state_t state) {
+  switch (state) {
+    case Bulb::STATE_IDLE:
+      return "idle";
+    case Bulb::STATE_RUNNING:
+      return "running";
+    case Bulb::STATE_DONE:
+      return "done";
+  }
+  return "unknown";
+}
+
 static lv_obj_t *addRollerItem(lv_obj_t *page, const char *text, const char *options);
 
 std::mutex UI::m_Mutex;
@@ -376,7 +405,12 @@ UI::UI(const interval_t &interval)
     m_GPS.init();
   }
 
-  m_RequestQueue = xQueueCreate(m_RequestQueueLength, sizeof(request_t));
+  if (m_RequestQueue != nullptr) {
+    drainRequests();
+    vQueueDelete(m_RequestQueue);
+    m_RequestQueue = nullptr;
+  }
+  m_RequestQueue = xQueueCreate(m_RequestQueueLength, sizeof(request_t *));
   if (m_RequestQueue == NULL) {
     ESP_LOGE(LOG_TAG, "Failed to create the UI request queue.");
     abort();
@@ -2458,7 +2492,66 @@ void UI::updateMultiConnectButton(lv_obj_t *button) {
   }
 }
 
-void UI::saveMultiConnectSelection(void) {
+void UI::reloadCameraList(void) {
+  CameraList::load();
+  // The list now holds saved cameras, so a console 'pair' index no longer
+  // names anything. Every CameraList::load() in the UI goes through here so
+  // that stays true without each caller having to remember it.
+  m_ScanListLive = false;
+}
+
+bool UI::multiConnectSelectionHas(const Settings::multiselect_t &selection, size_t index) {
+  const auto camera = CameraList::get(index);
+  // The stored format is fixed width, but the comparison still has to be over
+  // the complete stored name: a prefix match marks a different body whose name
+  // only agrees for the first MULTISELECT_NAME_MAX - 1 characters.
+  return Settings::multiselectContains(selection, camera->getName().c_str());
+}
+
+void UI::refreshMultiConnectPage(void) {
+  if (!Settings::load<Settings::MULTICONNECT>()) {
+    return;
+  }
+  menu_t &menu = m_Menu.at(m_ConnectStr);
+  if (lv_menu_get_cur_main_page(m_MainMenu.main) != menu.page) {
+    // The page rebuilds from the persisted selection on the next entry, so
+    // there is nothing stale to repair while it is not visible.
+    return;
+  }
+  lv_obj_t *button = lv_obj_get_child(menu.page, 0);
+  if ((button == nullptr) || !lv_obj_check_type(button, &lv_button_class)) {
+    // The setting was enabled while a single-connect page was already visible;
+    // its child 0 is a camera row, not the Connect button. Rebuild on entry.
+    return;
+  }
+  for (size_t n = 0; n < CameraList::size(); n++) {
+    lv_obj_t *item = lv_obj_get_child(menu.page, n + 1);
+    if (item == nullptr) {
+      break;
+    }
+    // The checkbox is child 0 of the row container built by addMenuItem().
+    lv_obj_t *checkbox = lv_obj_get_child(item, 0);
+    lv_obj_t *stateObject = (checkbox != nullptr) ? checkbox : item;
+    if (CameraList::get(n)->isActive()) {
+      lv_obj_add_state(stateObject, LV_STATE_CHECKED);
+    } else {
+      lv_obj_remove_state(stateObject, LV_STATE_CHECKED);
+    }
+  }
+  updateMultiConnectButton(button);
+}
+
+void UI::seedMultiConnectSelection(void) {
+  // One NVS read for the whole list. The per-camera load this replaced cost a
+  // store round trip per row of the Connect page.
+  const Settings::multiselect_t selection = Settings::load<Settings::MULTISELECT>();
+
+  for (size_t n = 0; n < CameraList::size(); n++) {
+    CameraList::get(n)->setActive(multiConnectSelectionHas(selection, n));
+  }
+}
+
+bool UI::saveMultiConnectSelection(void) {
   Settings::multiselect_t selection = {};
 
   for (size_t n = 0; n < CameraList::size(); n++) {
@@ -2467,14 +2560,24 @@ void UI::saveMultiConnectSelection(void) {
       continue;
     }
 
-    Settings::multiselectAdd(selection, camera->getName().c_str());
+    if (!Settings::multiselectAdd(selection, camera->getName().c_str())) {
+      return false;
+    }
   }
 
   // skip the NVS write when the remembered set is unchanged
   const Settings::multiselect_t stored = Settings::load<Settings::MULTISELECT>();
   if (memcmp(&stored, &selection, sizeof(selection)) != 0) {
-    Settings::save<Settings::MULTISELECT>(selection);
+    const auto &setting = Settings::get(Settings::MULTISELECT);
+    Preferences prefs;
+    if (!prefs.begin(setting.nvs_namespace, false)
+        || prefs.put(setting.key, &selection, sizeof(selection)) != sizeof(selection)) {
+      prefs.end();
+      return false;
+    }
+    prefs.end();
   }
+  return true;
 }
 
 lv_obj_t *UI::addCameraItem(size_t index, const menu_t &menu, const CameraListMode_t mode) {
@@ -2790,8 +2893,8 @@ void UI::addMainMenu(void) {
 
           const bool resume = ui->m_Intervalometer.hasResume();
           const bool autoConnect = Settings::load<Settings::AUTOCONNECT>();
-          if ((ui->m_MainCount == 1) && (resume || autoConnect)) {
-            CameraList::load();
+          if ((saveCount > 0) && (ui->m_MainCount == 1) && (resume || autoConnect)) {
+            reloadCameraList();
             const auto savedCameras = CameraList::savedSnapshot();
             std::shared_ptr<Camera> camera;
 
@@ -3093,6 +3196,38 @@ void UI::simScenarioActionOnUi(const Sim::scenario_action_t &action) {
       return;
     }
   }
+  if (action.kind == Sim::scenario_action_kind_t::CONSOLE) {
+    // Post the request the console posts, then let the normal UI loop drain
+    // it. serviceRequests() runs after Sim::driverTick() in the same loop
+    // iteration, so a scenario has to wait a tick before asserting the answer,
+    // exactly as a host script waits for the next prompt.
+    static const std::unordered_map<std::string, Request> requests = {
+        {"cameras",        Request::CAMERAS           },
+        {"connect",        Request::CONNECT           },
+        {"scan",           Request::SCAN              },
+        {"pair",           Request::PAIR              },
+        {"delete",         Request::DELETE            },
+        {"multi-select",   Request::MULTI_SELECT      },
+        {"multi-deselect", Request::MULTI_DESELECT    },
+        {"multi-clear",    Request::MULTI_CLEAR       },
+        {"interval",       Request::INTERVAL          },
+        {"bulb",           Request::BULB              },
+        {"display",        Request::DISPLAY_BRIGHTNESS},
+        {"page",           Request::PAGE              },
+        {"back",           Request::BACK              },
+    };
+
+    const auto request = requests.find(command);
+    if (request == requests.end()) {
+      m_SimActionResult = sim_action_result_t::INVALID;
+      return;
+    }
+    m_SimActionResult = sendRequest(request->second, action.integer)
+                            ? sim_action_result_t::APPLIED
+                            : sim_action_result_t::UNAVAILABLE;
+    return;
+  }
+
   if (simpleAction && command == "blind-shutter") {
     m_SimActionResult = sim_action_result_t::APPLIED;
     auto &control = Control::getInstance();
@@ -3140,7 +3275,7 @@ void UI::simScenarioActionOnUi(const Sim::scenario_action_t &action) {
       // Saved cameras first: a scenario that seeded virtual BLE peers connects
       // those, exactly as the Connect page would. Only a scenario with nothing
       // saved falls back to the FauxNY test camera.
-      CameraList::load();
+      reloadCameraList();
     }
     if (CameraList::size() == 0) {
       CameraList::addFauxNY();
@@ -3160,7 +3295,7 @@ void UI::simScenarioActionOnUi(const Sim::scenario_action_t &action) {
   if (simpleAction && command == "connect-two") {
     m_SimActionResult = sim_action_result_t::APPLIED;
     if (CameraList::size() < 2) {
-      CameraList::load();
+      reloadCameraList();
     }
     while (CameraList::size() < 2) {
       CameraList::addFauxNY();
@@ -3967,6 +4102,9 @@ lv_obj_t *simRowLabel(lv_obj_t *row) {
 
 std::string UI::simQueryState(const char *key) {
   const std::string query = key == nullptr ? "" : key;
+  if (query.compare(0, 8, "console.") == 0) {
+    return simConsoleField(query.c_str() + 8);
+  }
   if (query == "sim_action_on_ui") {
     return m_SimLastActionOnUi.load() ? "yes" : "no";
   }
@@ -5043,19 +5181,7 @@ std::string UI::simQueryState(const char *key) {
   // Report the intervalometer run state so scenarios can assert a clean reset
   // after Stop.
   if (query == "interval_state") {
-    switch (m_Intervalometer.m_State) {
-      case Intervalometer::STATE_IDLE:
-        return "idle";
-      case Intervalometer::STATE_WAIT:
-        return "wait";
-      case Intervalometer::STATE_SHUTTER_OPEN:
-        return "shutter";
-      case Intervalometer::STATE_DELAY:
-        return "delay";
-      case Intervalometer::STATE_FINISHED:
-        return "finished";
-    }
-    return "unknown";
+    return intervalStateName(m_Intervalometer.m_State);
   }
   if (query == "interval_remaining") {
     return std::to_string(m_IntervalometerRemaining.load());
@@ -5073,15 +5199,7 @@ std::string UI::simQueryState(const char *key) {
   }
 
   if (query == "bulb_state") {
-    switch (m_Bulb.m_State) {
-      case Bulb::STATE_IDLE:
-        return "idle";
-      case Bulb::STATE_RUNNING:
-        return "running";
-      case Bulb::STATE_DONE:
-        return "done";
-    }
-    return "unknown";
+    return bulbStateName(m_Bulb.m_State);
   }
 
   // This is the same shutter lock used by the Remote page. The camera press
@@ -6294,24 +6412,113 @@ void UI::intervalometer(lv_timer_t *timer) {
 }
 
 QueueHandle_t UI::m_RequestQueue = NULL;
+bool UI::m_ScanListLive = false;
+const char *UI::m_ConsoleResult = nullptr;
+
+#if defined(FURBLE_SIM)
+namespace {
+// Last 'key: value' line of each kind the console request handlers printed.
+// The simulator has no console transport, so this is how a scenario reads the
+// answer a request produced.
+std::unordered_map<std::string, std::string> g_ConsoleFields;
+}  // namespace
+#endif
+
+void UI::consolePrint(const char *format, ...) {
+  char line[192];
+  va_list args;
+
+  va_start(args, format);
+  vsnprintf(line, sizeof(line), format, args);
+  va_end(args);
+
+  fputs(line, stdout);
+
+#if defined(FURBLE_SIM)
+  // Split on the first colon, which is exactly the contract a host script
+  // parses these lines with.
+  std::string text(line);
+  while (!text.empty() && ((text.back() == '\n') || (text.back() == '\r'))) {
+    text.pop_back();
+  }
+  const size_t colon = text.find(": ");
+  if (colon != std::string::npos) {
+    g_ConsoleFields[text.substr(0, colon)] = text.substr(colon + 2);
+  }
+#endif
+}
+
+#if defined(FURBLE_SIM)
+std::string UI::simConsoleField(const char *name) {
+  const auto entry = g_ConsoleFields.find(name);
+  return entry == g_ConsoleFields.end() ? std::string() : entry->second;
+}
+#endif
 
 bool UI::sendRequest(Request request, int32_t arg, Camera *camera) {
   if (m_RequestQueue == NULL) {
     return false;
   }
 
-  const request_t item = {request, arg, camera};
-
-  return xQueueSend(m_RequestQueue, &item, 0) == pdTRUE;
+  auto *item = new (std::nothrow) request_t {request, arg, camera,
+#if defined(FURBLE_CONSOLE)
+                                             nullptr
+#endif
+  };
+  if (item == nullptr) {
+    return false;
+  }
+  if (xQueueSend(m_RequestQueue, &item, 0) != pdTRUE) {
+    delete item;
+    return false;
+  }
+  return true;
 }
 
-void UI::serviceRequests(void) {
-  request_t item;
+#if defined(FURBLE_CONSOLE)
+bool UI::sendRequest(Request request, int32_t arg, RequestResult *result) {
+  if (m_RequestQueue == NULL || result == nullptr || result->state == nullptr) {
+    return false;
+  }
+  result->state->retain();
+  auto *item = new (std::nothrow) request_t {request, arg, nullptr, result->state};
+  if (item == nullptr) {
+    result->state->release();
+    return false;
+  }
+  if (xQueueSend(m_RequestQueue, &item, 0) != pdTRUE) {
+    delete item;
+    result->state->release();
+    return false;
+  }
+  return true;
+}
+#endif
 
-  while (xQueueReceive(m_RequestQueue, &item, 0) == pdTRUE) {
+void UI::serviceRequests(void) {
+  request_t *queued = nullptr;
+
+  while (xQueueReceive(m_RequestQueue, &queued, 0) == pdTRUE) {
+    std::unique_ptr<request_t> owned(queued);
+    request_t &item = *owned;
+#if defined(FURBLE_SIM)
+    g_ConsoleFields.clear();
+#endif
+    // The workflow verbs end with one machine readable outcome line, so a host
+    // script never has to match on prose. The requests which predate it leave
+    // this null and print nothing extra.
+    m_ConsoleResult = nullptr;
+
     switch (item.request) {
       case Request::CONNECT:
-        CameraList::load();
+        reloadCameraList();
+        if ((item.arg < 0) && Settings::load<Settings::MULTICONNECT>()
+            && (lv_menu_get_cur_main_page(m_MainMenu.main) != m_Menu.at(m_ConnectStr).page)) {
+          // A bare connect uses the remembered selection. CameraList::load()
+          // clears the active flags, so seed them unless the visible Connect
+          // page holds live edits of its own.
+          seedMultiConnectSelection();
+        }
         if (item.arg >= 0) {
           // An index replaces whatever the multi-connect selection holds.
           for (size_t n = 0; n < CameraList::size(); n++) {
@@ -6348,7 +6555,7 @@ void UI::serviceRequests(void) {
           }
         }
 
-        CameraList::load();
+        reloadCameraList();
         if (cameraId != CameraListProtocol::INDEX_ID_ALL) {
           for (size_t n = 0; n < CameraList::size(); n++) {
             const auto camera = CameraList::get(n);
@@ -6375,6 +6582,14 @@ void UI::serviceRequests(void) {
             CameraList::addFauxNY();
             updateItems(menu);
           }
+
+          // Apply the same duty and timeout settings startScan() applies.
+          // Without them a console scan inherited whatever the last UI scan
+          // left behind, so its results could outlive it by an arbitrary
+          // amount and 'pair' had no way to know.
+          scan.setMode(static_cast<Scan::Mode>(Settings::scanModeEffective()));
+          scan.setTimeout(Settings::load<Settings::SCAN_TIMEOUT>());
+          m_ScanListLive = true;
 
           scan.clear();
 #if defined(FURBLE_SIM)
@@ -6409,19 +6624,408 @@ void UI::serviceRequests(void) {
         break;
 
       case Request::CAMERAS:
+      {
         // CameraList is only ever touched from this task, so the console reads
         // it from here rather than racing the menus that rebuild it.
         if (item.arg) {
-          CameraList::load();
+          // load() rebuilds every Camera, which resets the active flags. If the
+          // Connect page is visible, keep its live checkbox edits instead of
+          // overwriting them with the last persisted selection.
+          const bool connectVisible =
+              lv_menu_get_cur_main_page(m_MainMenu.main) == m_Menu.at(m_ConnectStr).page;
+          std::vector<size_t> active;
+          if (connectVisible) {
+            for (size_t n = 0; n < CameraList::size(); n++) {
+              if (CameraList::get(n)->isActive()) {
+                active.push_back(n);
+              }
+            }
+          }
+          reloadCameraList();
+          if (Settings::load<Settings::MULTICONNECT>()) {
+            if (connectVisible) {
+              for (size_t n : active) {
+                if (n < CameraList::size()) {
+                  CameraList::get(n)->setActive(true);
+                }
+              }
+            } else {
+              seedMultiConnectSelection();
+            }
+          }
         }
-        printf("saved: %u\n", static_cast<unsigned>(CameraList::getSaveCount()));
-        printf("count: %u\n", static_cast<unsigned>(CameraList::size()));
+        consolePrint("saved: %u\n", static_cast<unsigned>(CameraList::getSaveCount()));
+        consolePrint("count: %u\n", static_cast<unsigned>(CameraList::size()));
         for (size_t n = 0; n < CameraList::size(); n++) {
           const auto camera = CameraList::get(n);
-          printf("camera%u.name: %s\n", static_cast<unsigned>(n), camera->getName().c_str());
-          printf("camera%u.type: %lu\n", static_cast<unsigned>(n),
-                 static_cast<unsigned long>(camera->getType()));
+          consolePrint("camera%u.name: %s\n", static_cast<unsigned>(n), camera->getName().c_str());
+          consolePrint("camera%u.type: %lu\n", static_cast<unsigned>(n),
+                       static_cast<unsigned long>(camera->getType()));
+          // The same list carries saved cameras and scan results, and a scan
+          // can rediscover a saved camera. Say which each row is, so a script
+          // knows whether 'connect' or 'pair' is the verb for it.
+          const bool saved = CameraList::isSaved(camera.get());
+          consolePrint("camera%u.saved: %s\n", static_cast<unsigned>(n), saved ? "true" : "false");
+          // 'connect' resolves a saved-catalog index, which is not the scan
+          // list index. Report the mapping so a script does not pair or
+          // connect a different body than the one it just listed.
+          int32_t savedIndex = -1;
+          if (saved) {
+            const auto catalog = CameraList::savedSnapshot();
+            for (size_t i = 0; i < catalog.size(); i++) {
+              if (catalog[i] == camera) {
+                savedIndex = static_cast<int32_t>(i);
+                break;
+              }
+            }
+          }
+          consolePrint("camera%u.saved_index: %ld\n", static_cast<unsigned>(n),
+                       static_cast<long>(savedIndex));
+          consolePrint("camera%u.selected: %s\n", static_cast<unsigned>(n),
+                       camera->isActive() ? "true" : "false");
         }
+      } break;
+
+      case Request::PAIR:
+        // The Scan page row click, reached from the console. The row handler
+        // activates the scan result and calls doConnect(); the save on a
+        // successful registration is gated on the Scan menu name, which the
+        // console scan never set because it never entered the page.
+        //
+        // The refusal prints rather than logs. It is the answer to a command a
+        // script just typed, so it has to reach the console stream whatever the
+        // log level is.
+        if (!m_ScanListLive || (item.arg < 0)
+            || (static_cast<size_t>(item.arg) >= CameraList::size())) {
+          m_ConsoleResult = "no_scan_result";
+          consolePrint("error: no scan result at index %ld\n", static_cast<long>(item.arg));
+          break;
+        }
+        for (size_t n = 0; n < CameraList::size(); n++) {
+          CameraList::get(n)->setActive(false);
+        }
+        m_ConnectContext.menuName = m_ScanStr;
+        if (!beginPairing(static_cast<size_t>(item.arg), nullptr)) {
+          // beginPairing refuses a camera that is already saved and opens the
+          // same "Already saved" box the Scan row shows.
+          m_ConsoleResult = "already_saved";
+          consolePrint("error: camera is already saved\n");
+          break;
+        }
+        m_ConsoleResult = "ok";
+        consolePrint("pairing: %s\n", CameraList::get(item.arg)->getName().c_str());
+        break;
+
+      case Request::DELETE:
+      {
+        // The Delete page row click. CameraList::remove() also drops the BLE
+        // bond, so this is the only correct way to forget a camera. remove()
+        // rewrites the store but leaves the loaded list alone, so a whole
+        // sweep needs one load and one refresh.
+        reloadCameraList();
+        if ((item.arg >= 0) && (static_cast<size_t>(item.arg) >= CameraList::size())) {
+          m_ConsoleResult = "no_saved_camera";
+          consolePrint("error: no saved camera at index %ld\n", static_cast<long>(item.arg));
+          break;
+        }
+
+        unsigned deleted = 0;
+        bool persisted = true;
+        const auto snapshot = CameraList::savedSnapshot();
+        for (size_t n = 0; n < snapshot.size(); n++) {
+          if ((item.arg >= 0) && (n != static_cast<size_t>(item.arg))) {
+            continue;
+          }
+          if (CameraList::remove(snapshot[n].get())) {
+            consolePrint("deleted: %s\n", snapshot[n]->getName().c_str());
+            deleted++;
+          } else {
+            persisted = false;
+          }
+        }
+        m_ConsoleResult = persisted ? "ok" : "persistence_failed";
+        consolePrint("count: %u\n", deleted);
+        refreshDelete();
+      } break;
+
+      case Request::MULTI_SELECT:
+      case Request::MULTI_DESELECT:
+      {
+        // The multi-connect checkbox followed by the Connect button, reached
+        // from the console. saveMultiConnectSelection() serialises every active
+        // flag and CameraList::load() clears them all, so the remembered set
+        // has to be seeded back onto the list first or this drops the rest.
+        reloadCameraList();
+        if ((item.arg < 0) || (static_cast<size_t>(item.arg) >= CameraList::size())) {
+          m_ConsoleResult = "no_saved_camera";
+          consolePrint("error: no saved camera at index %ld\n", static_cast<long>(item.arg));
+          break;
+        }
+
+        const bool select = item.request == Request::MULTI_SELECT;
+        seedMultiConnectSelection();
+        auto camera = CameraList::get(item.arg);
+        if (select && (strlen(camera->getName().c_str()) >= Settings::MULTISELECT_NAME_MAX)) {
+          m_ConsoleResult = "name_too_long";
+          consolePrint("error: camera name is too long to store in a multi-connect selection\n");
+          break;
+        }
+        if (select && !camera->isActive()) {
+          // Reject before changing any flag. Noting it was full only after the
+          // save lets the serializer keep the first MULTISELECT_MAX rows and
+          // silently drop a different, already-selected camera.
+          size_t selected = 0;
+          for (size_t n = 0; n < CameraList::size(); n++) {
+            if (CameraList::get(n)->isActive()) {
+              selected++;
+            }
+          }
+          if (selected >= Settings::MULTISELECT_MAX) {
+            m_ConsoleResult = "selection_full";
+            consolePrint("error: multi-connect selection is full, max %u\n",
+                         static_cast<unsigned>(Settings::MULTISELECT_MAX));
+            break;
+          }
+        }
+        camera->setActive(select);
+        const bool saved = saveMultiConnectSelection();
+        if (!saved) {
+          // The store did not take the edit. Put the live flags back on the
+          // persisted set so the page and a later Connect agree with NVS.
+          seedMultiConnectSelection();
+        }
+        const Settings::multiselect_t stored = Settings::load<Settings::MULTISELECT>();
+        const bool persisted = multiConnectSelectionHas(stored, item.arg);
+        m_ConsoleResult = saved ? "ok" : "persistence_failed";
+        consolePrint("camera: %s\n", camera->getName().c_str());
+        consolePrint("selected: %s\n", persisted ? "true" : "false");
+        refreshMultiConnectPage();
+      } break;
+
+      case Request::MULTI_CLEAR:
+      {
+        // Clearing on the console task would leave the loaded active flags and
+        // the drawn checkboxes set, and the next Connect press would write the
+        // whole set straight back. Clear the flags here, then let the same
+        // serialiser persist the empty result.
+        reloadCameraList();
+        for (size_t n = 0; n < CameraList::size(); n++) {
+          CameraList::get(n)->setActive(false);
+        }
+        const bool saved = saveMultiConnectSelection();
+        if (!saved) {
+          seedMultiConnectSelection();
+        }
+        m_ConsoleResult = saved ? "ok" : "persistence_failed";
+        refreshMultiConnectPage();
+        size_t active = 0;
+        for (size_t n = 0; n < CameraList::size(); n++) {
+          if (CameraList::get(n)->isActive()) {
+            active++;
+          }
+        }
+        consolePrint("count: %u\n", static_cast<unsigned>(active));
+      } break;
+
+      case Request::PAGE:
+      {
+        // Read only. Page navigation by name exists only in the simulator
+        // build, and this deliberately adds no second navigation mechanism.
+        const lv_obj_t *current = lv_menu_get_cur_main_page(m_MainMenu.main);
+        const char *name = (current == m_MainMenu.page) ? "Main" : "unknown";
+        for (const auto &entry : m_Menu) {
+          if (entry.second.page == current) {
+            name = entry.first;
+            break;
+          }
+        }
+        m_ConsoleResult = "ok";
+        consolePrint("page: %s\n", name);
+      } break;
+
+      case Request::INTERVAL:
+        if (item.arg < 0) {
+          const uint32_t now = tick();
+          m_ConsoleResult = "ok";
+          consolePrint("state: %s\n", intervalStateName(m_Intervalometer.m_State));
+          consolePrint("remaining: %u\n", static_cast<unsigned>(m_IntervalometerRemaining.load()));
+          // The deadline is a wrapping tick, so a frame that is already due
+          // must read zero rather than the wrapped difference.
+          consolePrint("next_ms: %lu\n",
+                       static_cast<unsigned long>((m_IntervalCountdownActive
+                                                   && !Time::deadlineReached(now, m_IntervalNext))
+                                                      ? m_IntervalNext - now
+                                                      : 0));
+          // The live spinner values, not the stored ones. The UI reads the
+          // Settings::INTERVAL struct once at construction, so a console read
+          // of the store could disagree with what a Start would actually run.
+          consolePrint("count: %u\n",
+                       static_cast<unsigned>(m_Intervalometer.m_Count.m_SpinValue.m_Value));
+          consolePrint("count_unit: %s\n", m_Intervalometer.m_Count.m_SpinValue.getUnitString());
+          consolePrint(
+              "delay_ms: %lu\n",
+              static_cast<unsigned long>(m_Intervalometer.m_Delay.m_SpinValue.toMilliseconds()));
+          consolePrint(
+              "shutter_ms: %lu\n",
+              static_cast<unsigned long>(m_Intervalometer.m_Shutter.m_SpinValue.toMilliseconds()));
+          consolePrint("wait_ms: %lu\n", static_cast<unsigned long>(
+                                             m_Intervalometer.m_Wait.m_SpinValue.toMilliseconds()));
+          break;
+        }
+        // Stop synthesizes a click, and that click sends CMD_SHUTTER_RELEASE
+        // and navigates off the run page. Neither is harmless when no run is
+        // in progress: it would release a shutter a script is deliberately
+        // holding and move the UI out from under it.
+        if (!item.arg && (m_IntervalometerState.load() == Intervalometer::STATE_IDLE)) {
+          m_ConsoleResult = "not_running";
+          consolePrint("error: not running\n");
+          break;
+        }
+        if (item.arg) {
+          if (m_DisplayConsole) {
+            m_ConsoleResult = "console_mode";
+            consolePrint("error: intervalometer needs the GUI display mode\n");
+            break;
+          }
+          // The published state is set to WAIT by the Start click before the
+          // first timer tick, so this also covers a second Start queued behind
+          // the first one.
+          const uint8_t state = m_IntervalometerState.load();
+          if ((state == Intervalometer::STATE_WAIT) || (state == Intervalometer::STATE_SHUTTER_OPEN)
+              || (state == Intervalometer::STATE_DELAY)) {
+            m_ConsoleResult = "already_running";
+            consolePrint("error: intervalometer is already running\n");
+            break;
+          }
+        }
+        // Send the real button event rather than reproducing its body. The
+        // load-page callback is registered after the click callback, so one
+        // synthetic click starts the run and then navigates to the run page,
+        // in that order.
+        if ((item.arg ? m_IntervalStart : m_IntervalStop) == nullptr) {
+          m_ConsoleResult = "no_button";
+          consolePrint("error: no intervalometer button\n");
+          break;
+        }
+        lv_obj_send_event(item.arg ? m_IntervalStart : m_IntervalStop, LV_EVENT_CLICKED, nullptr);
+        m_ConsoleResult = "ok";
+        consolePrint("interval: %s\n", item.arg ? "started" : "stopped");
+        break;
+
+      case Request::BULB:
+        if (item.arg > 0) {
+          if (m_DisplayConsole) {
+            m_ConsoleResult = "console_mode";
+            consolePrint("error: bulb exposure needs the GUI display mode\n");
+            break;
+          }
+          const uint8_t state = m_IntervalometerState.load();
+          if ((state == Intervalometer::STATE_WAIT) || (state == Intervalometer::STATE_SHUTTER_OPEN)
+              || (state == Intervalometer::STATE_DELAY)) {
+            m_ConsoleResult = "interval_running";
+            consolePrint("error: stop the intervalometer before starting a bulb exposure\n");
+            break;
+          }
+        }
+        if (item.arg < 0) {
+          const uint32_t now = tick();
+          const bool running = m_Bulb.m_State == Bulb::STATE_RUNNING;
+          m_ConsoleResult = "ok";
+          consolePrint("state: %s\n", bulbStateName(m_Bulb.m_State));
+          // bulbRefresh() clamps the same wrapping deadline the same way.
+          consolePrint(
+              "remaining_ms: %lu\n",
+              static_cast<unsigned long>(
+                  (running && !Time::deadlineReached(now, m_BulbEnd)) ? m_BulbEnd - now : 0));
+          consolePrint("duration_ms: %lu\n",
+                       static_cast<unsigned long>(m_Bulb.m_Duration.m_SpinValue.toMilliseconds()));
+          break;
+        }
+        // Both buttons carry behaviour beyond the start and stop helpers: Start
+        // is followed by the load-page callback that navigates to the run page,
+        // and Stop restarts a finished exposure, releases the shutter and
+        // clicks the header back button. Send the real events so neither is a
+        // second implementation.
+        //
+        // The Stop button restarting on STATE_DONE is exactly why stop needs a
+        // state gate: a synthetic click on a finished exposure would start a
+        // new one.
+        if (!item.arg && (m_Bulb.m_State != Bulb::STATE_RUNNING)) {
+          m_ConsoleResult = "not_running";
+          consolePrint("error: not running\n");
+          break;
+        }
+        if ((item.arg ? m_BulbStart : m_BulbStop) == nullptr) {
+          m_ConsoleResult = "no_button";
+          consolePrint("error: no bulb button\n");
+          break;
+        }
+        lv_obj_send_event(item.arg ? m_BulbStart : m_BulbStop, LV_EVENT_CLICKED, nullptr);
+        m_ConsoleResult = "ok";
+        consolePrint("bulb: %s\n", item.arg ? "started" : "stopped");
+        break;
+
+      case Request::DISPLAY_BRIGHTNESS:
+      {
+        // The Display page slider spans m_MinimumBrightness to 240 in steps of
+        // m_BrightnessSteps, and those bounds are a board fact the console task
+        // cannot see. Below the minimum the panel is black and a persisted
+        // black panel needs a reflash to undo, so refuse rather than clamp
+        // silently, and report the range so a script can read it.
+        const uint8_t maximum = m_BrightnessSteps * (m_BrightnessSteps - 1);
+        if (item.arg < 0) {
+          m_ConsoleResult = "ok";
+          consolePrint("mode: %s\n", m_DisplayConsole ? "console" : "gui");
+          consolePrint("brightness: %u\n", Settings::load<Settings::BRIGHTNESS>());
+          consolePrint("brightness_min: %u\n", m_MinimumBrightness);
+          consolePrint("brightness_max: %u\n", maximum);
+          consolePrint("inactivity: %u\n", Settings::load<Settings::INACTIVITY>());
+          consolePrint("display_off: %u\n", Settings::load<Settings::DISPLAY_OFF>());
+          break;
+        }
+        if ((item.arg < m_MinimumBrightness) || (item.arg > maximum)) {
+          m_ConsoleResult = "range";
+          consolePrint("error: expected %u-%u\n", m_MinimumBrightness, maximum);
+          break;
+        }
+        // Same pair of calls the slider makes: apply live, then persist. A
+        // plain 'settings set brightness' only persists.
+        M5.Display.setBrightness(static_cast<uint8_t>(item.arg));
+        Settings::save<Settings::BRIGHTNESS>(static_cast<uint8_t>(item.arg));
+        const bool persisted =
+            Settings::load<Settings::BRIGHTNESS>() == static_cast<uint8_t>(item.arg);
+        m_ConsoleResult = persisted ? "ok" : "persistence_failed";
+        consolePrint("brightness: %ld\n", static_cast<long>(item.arg));
+      } break;
+
+      case Request::BACK:
+      {
+        // The Timer Run page deliberately disables its back button: leaving it
+        // does not pause the intervalometer. navigateBack() force-enables the
+        // button, so a scripted Back would hide a running run and its Stop
+        // control. Refuse instead and make the script stop the run first.
+        const uint8_t state = m_IntervalometerState.load();
+        const bool running = (state == Intervalometer::STATE_WAIT)
+                             || (state == Intervalometer::STATE_SHUTTER_OPEN)
+                             || (state == Intervalometer::STATE_DELAY);
+        if (running
+            && (lv_menu_get_cur_main_page(m_MainMenu.main)
+                == m_Menu.at(m_IntervalometerRunStr).page)) {
+          m_ConsoleResult = "interval_running";
+          consolePrint("error: stop the intervalometer before leaving\n");
+          break;
+        }
+        // navigateBack() is the header back button plus the two things the
+        // button press implies on a real device: it force-enables the button
+        // and returns the input to MENU mode.
+        navigateBack();
+        m_ConsoleResult = "ok";
+        consolePrint("page: back\n");
+      } break;
+
+      case Request::POWER_OFF:
+        m_ConsoleResult = "ok";
+        doPowerOff();
         break;
 
       case Request::GPS_RELOAD:
@@ -6507,7 +7111,42 @@ void UI::serviceRequests(void) {
         break;
 #endif
     }
+
+    if (m_ConsoleResult != nullptr) {
+      consolePrint("result: %s\n", m_ConsoleResult);
+    }
+#if defined(FURBLE_CONSOLE)
+    if (item.state != nullptr) {
+      item.state->token = m_ConsoleResult;
+      xSemaphoreGive(item.state->done);
+      item.state->release();
+    }
+#endif
+    queued = nullptr;
   }
+}
+
+void UI::drainRequests(void) {
+  request_t *queued = nullptr;
+  while (xQueueReceive(m_RequestQueue, &queued, 0) == pdTRUE) {
+#if defined(FURBLE_CONSOLE)
+    if (queued->state != nullptr) {
+      queued->state->token = "cancelled";
+      xSemaphoreGive(queued->state->done);
+      queued->state->release();
+    }
+#endif
+    delete queued;
+  }
+}
+
+void UI::shutdown(void) {
+  if (m_RequestQueue == nullptr) {
+    return;
+  }
+  drainRequests();
+  vQueueDelete(m_RequestQueue);
+  m_RequestQueue = nullptr;
 }
 
 bool UI::beginPairing(size_t index, lv_event_t *e) {
@@ -7380,7 +8019,7 @@ void UI::addConnectMenu(void) {
 
         lv_obj_clean(menu.page);
 
-        CameraList::load();
+        reloadCameraList();
         lv_obj_t *multibutton = nullptr;
         Settings::multiselect_t selection = {};
 
@@ -7398,8 +8037,7 @@ void UI::addConnectMenu(void) {
         for (size_t n = 0; n < CameraList::size(); n++) {
           auto camera = CameraList::get(n);
           if (multiconnect) {
-            const bool selected =
-                Settings::multiselectContains(selection, camera->getName().c_str());
+            const bool selected = multiConnectSelectionHas(selection, n);
 
             camera->setActive(selected);
             lv_obj_t *item = addCameraItem(n, menu, MODE_MULTICONNECT);
@@ -7484,6 +8122,9 @@ void UI::startScan(void) {
 
   lv_obj_clean(menu.page);
   CameraList::clear();
+  // The list is about to hold scan results, so a console 'pair' index names
+  // one of them whether the scan was started from here or from the console.
+  m_ScanListLive = true;
 
   // hidden until the scan ends by itself, a finite scan that ends silently
   // looks like a hang
@@ -7552,7 +8193,7 @@ void UI::refreshDelete(void) {
   auto &menu = m_Menu.at(m_DeleteStr);
   lv_obj_clean(menu.page);
 
-  CameraList::load();
+  reloadCameraList();
   for (size_t n = 0; n < CameraList::size(); n++) {
     addCameraItem(n, menu, MODE_DELETE);
   }
@@ -8885,13 +9526,13 @@ void UI::addBulbMenu(const menu_t &parent) {
   m_Bulb.m_StateLabel = lv_label_create(cont);
   m_Bulb.m_RemainingLabel = lv_label_create(cont);
 
-  lv_obj_t *stop = lv_button_create(cont);
-  m_Bulb.m_ActionLabel = lv_label_create(stop);
+  m_BulbStop = lv_button_create(cont);
+  m_Bulb.m_ActionLabel = lv_label_create(m_BulbStop);
   lv_label_set_text(m_Bulb.m_ActionLabel, "Stop");
-  lv_obj_add_flag(stop, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
-  addToInputGroup(m_Group, stop);
+  lv_obj_add_flag(m_BulbStop, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+  addToInputGroup(m_Group, m_BulbStop);
   lv_obj_add_event_cb(
-      stop,
+      m_BulbStop,
       [](lv_event_t *e) {
         auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
 
