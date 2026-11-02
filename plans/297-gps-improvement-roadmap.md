@@ -102,6 +102,9 @@ v4.2 feature. Do not ship a blind `$PCAS15` mask: a wrong mask can disable GPS.
 
 - **G-05** at B1 and B2: in-circuit standby current, wake-to-first-fix, wake
   jitter, active/standby residency at 5/10/15/60 s.
+- **G-06**: five `PCAS12` rail cycles at 15 s duty; re-fix stays within
+  90-130 s and charge per cycle within 20 percent of the sum of tracking and
+  cold-start windows. This decides whether rail cycling is viable at all.
 - **G-07**: receiver backoff leaves the lock released and the rail in the
   expected state.
 - **E29**: a fresh NVS boot fixes with no user action; 9600 still locks; an
