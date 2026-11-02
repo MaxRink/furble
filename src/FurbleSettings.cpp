@@ -597,7 +597,7 @@ void Settings::init(void) {
           break;
         case DISPLAY_OFF:
           // Off. The old default was Dim, which still drove the panel.
-          save<uint8_t>(setting.type, SettingsDefaults::DISPLAY_OFF);
+          save<uint8_t>(setting.type, SettingsDefaults::displayOff());
           break;
         case THEME:
           save<std::string>(setting.type, "Default");

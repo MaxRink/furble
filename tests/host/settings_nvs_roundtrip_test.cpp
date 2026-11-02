@@ -815,11 +815,33 @@ void testMultiselectLegacyRecordUpgrades() {
 
 }  // namespace
 
+void testExistingLowPowerChoicesArePreserved() {
+  nvs_test_reset();
+  Settings::init();
+  Settings::save<uint8_t>(Settings::INACTIVITY, 0);
+  Settings::save<uint8_t>(Settings::DISPLAY_OFF, 0);
+  Settings::save<bool>(Settings::SLEEP_CONN, false);
+
+  // A second init sees the keys present and must not overwrite them with the
+  // fresh-device defaults.
+  Settings::init();
+  checkValue({Settings::INACTIVITY, "INACTIVITY", uint8_t {2}, uint8_t {0}, StorageKind::U8},
+             Settings::load<uint8_t>(Settings::INACTIVITY), uint8_t {0},
+             "existing inactivity choice");
+  checkValue({Settings::DISPLAY_OFF, "DISPLAY_OFF", uint8_t {1}, uint8_t {0}, StorageKind::U8},
+             Settings::load<uint8_t>(Settings::DISPLAY_OFF), uint8_t {0},
+             "existing screen-off choice");
+  checkValue({Settings::SLEEP_CONN, "SLEEP_CONN", true, false, StorageKind::BOOL},
+             Settings::load<bool>(Settings::SLEEP_CONN), false,
+             "existing sleep-while-connected choice");
+}
+
 int main() {
   const auto cases = settingCases();
   checkTableCoverage(cases);
   testCatalogWireIdsAreUnique();
   testDefaults(cases);
+  testExistingLowPowerChoicesArePreserved();
   testNvsRoundTrips(cases);
   testSdRoundTrips(cases);
   testNetworkIngressValidation();

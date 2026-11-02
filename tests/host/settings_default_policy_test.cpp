@@ -15,10 +15,17 @@ int main() {
     std::fprintf(stderr, "INACTIVITY default is not 60 secs\n");
     ok = false;
   }
-  if (Furble::SettingsDefaults::DISPLAY_OFF != 1) {
+#if defined(FURBLE_M5STACK_CORE)
+  if (Furble::SettingsDefaults::displayOff() != 0) {
+    std::fprintf(stderr, "Core Basic DISPLAY_OFF default is not Dim\n");
+    ok = false;
+  }
+#else
+  if (Furble::SettingsDefaults::displayOff() != 1) {
     std::fprintf(stderr, "DISPLAY_OFF default is not Off\n");
     ok = false;
   }
+#endif
 #if defined(FURBLE_M5STICKS3)
   if (!Furble::SettingsDefaults::sleepConn()) {
     std::fprintf(stderr, "StickS3 sleep-while-connected default is not on\n");

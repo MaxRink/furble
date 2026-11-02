@@ -14,7 +14,8 @@ as the top two addressable opportunities.
 Fresh NVS now seeds:
 
 - `INACTIVITY` = 2 (60 secs) instead of 0 (Never).
-- `DISPLAY_OFF` = 1 (Off) instead of 0 (Dim).
+- `DISPLAY_OFF` = 1 (Off) instead of 0 (Dim), except on the M5Stack Core Basic,
+  which keeps Dim because its IP5306 cuts the board below 45 mA after 32 s.
 - `SLEEP_CONN` = true on `FURBLE_M5STICKS3` only. Other boards keep false
   because they have no modem-sleep controller or GPS burst lock.
 
@@ -24,8 +25,11 @@ this is not a migration and does not rewrite user choices.
 ## Validation
 
 - `settings_nvs_roundtrip_test`: PASS, including the StickS3 defaults.
-- New `settings-default-policy` and `settings-default-policy-stickc` targets
-  exercise both branches of the board-conditional sleep default.
+- New `settings-default-policy`, `settings-default-policy-stickc`, and
+  `settings-default-policy-core` targets exercise both sleep-default branches
+  and the Core Basic display exception.
+- `settings_nvs_roundtrip_test` also seeds legacy Never/Dim/Sleep-off values,
+  reruns init, and proves they are preserved.
 - Full host CTest: 128/128.
 - Certified power-gate scenarios: PASS after refreshing the
   `blind-remote-shutter` baseline. The intended default change moves that
