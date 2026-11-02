@@ -175,7 +175,14 @@ bool Sony::locationEnabled(void) {
 }
 
 void Sony::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
-  if (locationEnabled()) {
+  // The DD21 read can be the drop point and frees the service cache with the
+  // self-deleting client. Hold the teardown lock and re-check the link before
+  // the service pointer is used again.
+  auto lifetime = lockClientLifetime();
+  if (!isConnected()) {
+    return;
+  }
+  if (locationEnabled() && isConnected()) {
     // DD21 byte 4 bit 1 selects the 91-byte form. The ZV-1F 2.01 firmware
     // exposes the 91-byte 0x59 entry, not the 95-byte 0x5d entry.
     bool use95 = true;
@@ -184,6 +191,9 @@ void Sony::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
       if (gattRead(GEO_SVC_UUID, GEO_INFO_CHR_UUID, info) && (info.size() >= 5)) {
         use95 = (info.data()[4] & 0x02) != 0;
       }
+    }
+    if (!isConnected()) {
+      return;
     }
 
     sony_geo_t geo = {

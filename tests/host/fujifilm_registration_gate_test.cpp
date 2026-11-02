@@ -206,6 +206,17 @@ void testGeotagRequestConfirmsReconnect() {
   secureCamera.updateGeoData(gps, time);
   check(securePeer.locationSyncValue() == 1,
         "the Secure geotag path enables AAB609C4 and reads the value back");
+
+  // A refused clock write on a live link must leave the request pending so the
+  // next GPS tick retries it instead of losing the camera's 01 00 request.
+  check(securePeer.requestTimeSync(), "the Secure peer can request the clock");
+  securePeer.failWrite(Furble::Host::FujifilmVirtualCamera::timeServiceUUID(),
+                       Furble::Host::FujifilmVirtualCamera::utcTimeCharacteristicUUID());
+  secureCamera.updateGeoData(gps, time);
+  check(!securePeer.utcTimeWritten(), "a refused clock write is not recorded");
+  securePeer.clearFaults();
+  secureCamera.updateGeoData(gps, time);
+  check(securePeer.utcTimeWritten(), "the clock request is retried after a refused write");
   secureCamera.disconnect();
 }
 

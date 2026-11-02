@@ -129,7 +129,7 @@ class Fujifilm: public Camera {
 
   void notify(NimBLERemoteCharacteristic *, uint8_t *, size_t, bool, uint32_t generation);
   void sendGeoData(const gps_t &gps, const timesync_t &timesync);
-  void sendTimeData(void);
+  bool sendTimeData(void);
 
   template <std::size_t N>
   void sendShutterCommand(const std::array<uint8_t, N> &cmd, const std::array<uint8_t, N> &param);

@@ -91,6 +91,13 @@ bool FujifilmVirtualCamera::requestGeotag() {
                           {0x01, 0x00});
 }
 
+bool FujifilmVirtualCamera::requestTimeSync() {
+  // NOT1 is a configuration-service characteristic for both profiles; the
+  // Secure connect subscribes to the same SVC_CONF_UUID.
+  return emitNotification(configurationServiceUUID(), configurationNotificationUUID(),
+                          {0x01, 0x00});
+}
+
 bool FujifilmVirtualCamera::emitNotification(const NimBLEUUID &service,
                                              const NimBLEUUID &characteristic,
                                              const std::vector<uint8_t> &payload,

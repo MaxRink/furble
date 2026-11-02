@@ -348,6 +348,13 @@ void Lumix::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
     ESP_LOGW(LOG_TAG, "Lumix GPS skipped: not connected");
     return;
   }
+  // The clock write can be the drop point: a self-deleting client frees the
+  // characteristic cache before writeValue returns. Hold the teardown lock and
+  // re-check the link before the location branch touches m_Location.
+  auto lifetime = lockClientLifetime();
+  if (!isConnected()) {
+    return;
+  }
 
   const time_t unixTime = toUnixTime(timesync);
   const bool timeValid = unixTime >= GPS_EPOCH_OFFSET;
@@ -372,6 +379,9 @@ void Lumix::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
     m_Clock->writeValue(reinterpret_cast<const uint8_t *>(&clock), sizeof(clock), true);
   }
 
+  if (!isConnected()) {
+    return;
+  }
   if (m_Location == nullptr || !m_Location->canWrite()) {
     ESP_LOGW(LOG_TAG, "Lumix GPS characteristic unavailable");
     return;

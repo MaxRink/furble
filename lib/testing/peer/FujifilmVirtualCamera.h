@@ -81,6 +81,8 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
 
   /** Ask the client for a geotag update using the camera's normal notification. */
   bool requestGeotag();
+  /** Send the CHR_NOT1 01 00 date and time request to a connected client. */
+  bool requestTimeSync();
 
   /** Replay a notification from a normalized capture. */
   bool emitNotification(const NimBLEUUID &service,

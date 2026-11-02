@@ -208,13 +208,15 @@ void Fujifilm::focusRelease(void) {
   }
 }
 
-void Fujifilm::sendTimeData(void) {
+bool Fujifilm::sendTimeData(void) {
   if (!m_HasTimesync || m_Client == nullptr) {
-    return;
+    return false;
   }
   NimBLERemoteService *pSvc = m_Client->getService(SVC_TIME_UUID);
   if (pSvc == nullptr) {
-    return;
+    // No time service: there is nothing to answer on this body, so the pending
+    // request is complete for this session.
+    return true;
   }
 
   NimBLERemoteCharacteristic *pChr = pSvc->getCharacteristic(CHR_UTC_TIME_UUID);
@@ -232,15 +234,18 @@ void Fujifilm::sendTimeData(void) {
     const auto packet = FujifilmProtocol::encodeTime(input);
     if (gattWrite(pChr, packet.data(), packet.size(), true)) {
       ESP_LOGI(LOG_TAG, "Sent UTC time packet");
+      return true;
     }
-    return;
+    return false;
   }
 
   // The local-time characteristic (B9BFD37F) has no offset field and expects
   // wall-clock time. Furble only has UTC, so writing the cached fields there
   // would set a camera in any non-UTC timezone wrong. If the body exposes no
   // writable UTC characteristic, leave its clock alone until a local-time
-  // source exists.
+  // source exists, and treat the request as answered so it is not retried on
+  // every GPS tick.
+  return true;
 }
 
 void Fujifilm::sendGeoData(const gps_t &gps, const timesync_t &timesync) {
@@ -311,8 +316,12 @@ void Fujifilm::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
   if (!isConnected()) {
     return;
   }
-  if (m_TimeRequested.exchange(false)) {
-    sendTimeData();
+  if (m_TimeRequested.load()) {
+    // A refused write on a live link must not lose the request; the next GPS
+    // tick retries it. A body without the time service clears it above.
+    if (sendTimeData()) {
+      m_TimeRequested = false;
+    }
   }
   if (m_GeoRequested && isConnected()) {
     sendGeoData(gps, timesync);

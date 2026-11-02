@@ -25,6 +25,15 @@ bool check(bool condition, const char *message) {
   return condition;
 }
 
+bool hasClockWrite(const std::vector<Furble::Host::LumixVirtualCamera::Write> &writes) {
+  for (const auto &write : writes) {
+    if (write.payload.size() == 10) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool hasGpsWrite(const std::vector<Furble::Host::LumixVirtualCamera::Write> &writes) {
   for (const auto &write : writes) {
     if (write.payload.size() == 16) {
@@ -131,7 +140,7 @@ int main() {
   passed &= check(!hasGpsWrite(gatedPeer.writes()),
                   "LUMIX GPS stays withheld while location updates are stopped");
   passed &=
-      check(gatedPeer.lastClock().size() == 10, "LUMIX clock is written without a location update");
+      check(hasClockWrite(gatedPeer.writes()), "LUMIX clock is written without a location update");
 
   // 03 asks the camera for the stored packet. It must reopen the gate, not
   // close it: the next tick writes the fix again.
