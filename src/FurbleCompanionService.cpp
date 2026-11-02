@@ -21,6 +21,9 @@
 #include "FurbleTypes.h"
 #include "FurbleUI.h"
 #include "FurbleWiFi.h"
+#if defined(FURBLE_WEBUI) && FURBLE_WEBUI
+#include "FurbleWebUI.h"
+#endif
 #include "protocol/CameraListProtocol.h"
 
 namespace Furble {
@@ -667,6 +670,10 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
     case Settings::MQTT_HA:
       return SETTING_BOOL;
 #endif
+#if defined(FURBLE_WEBUI) && FURBLE_WEBUI
+    case Settings::WEB_UI:
+      return SETTING_BOOL;
+#endif
     case Settings::BRIGHTNESS:
     case Settings::INACTIVITY:
     case Settings::DISPLAY_OFF:
@@ -766,6 +773,14 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
       const bool v = Settings::load<bool>(type);
       value.assign(reinterpret_cast<const uint8_t *>(&v),
                    reinterpret_cast<const uint8_t *>(&v) + 1);
+      return true;
+    }
+#endif
+#if defined(FURBLE_WEBUI) && FURBLE_WEBUI
+    case Settings::WEB_UI:
+    {
+      const bool v = Settings::load<bool>(type);
+      value.assign(1, v);
       return true;
     }
 #endif
@@ -1119,6 +1134,11 @@ void CompanionService::handleSettings(const uint8_t *data, size_t len) {
     case Settings::MQTT_BASE:
     case Settings::MQTT_HA:
       MQTT::getInstance().reloadSetting();
+      break;
+#endif
+#if defined(FURBLE_WEBUI) && FURBLE_WEBUI
+    case Settings::WEB_UI:
+      WebUI::getInstance().reloadSetting();
       break;
 #endif
     default:

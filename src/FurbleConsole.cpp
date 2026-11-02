@@ -44,6 +44,9 @@
 #if defined(FURBLE_MQTT) && FURBLE_MQTT
 #include "FurbleMQTT.h"
 #endif
+#if defined(FURBLE_WEBUI) && FURBLE_WEBUI
+#include "FurbleWebUI.h"
+#endif
 #include "FurbleIMU.h"
 #include "FurbleIR.h"
 #include "FurblePlatform.h"
@@ -297,6 +300,9 @@ const char *settingType(Settings::type_t type) {
     case Settings::MQTT:
     case Settings::MQTT_HA:
 #endif
+#if defined(FURBLE_WEBUI) && FURBLE_WEBUI
+    case Settings::WEB_UI:
+#endif
     case Settings::NTP:
       return "bool";
     case Settings::INTERVAL:
@@ -359,6 +365,9 @@ const char *appliesWhen(Settings::type_t type) {
     case Settings::MQTT_PASS:
     case Settings::MQTT_BASE:
     case Settings::MQTT_HA:
+#endif
+#if defined(FURBLE_WEBUI) && FURBLE_WEBUI
+    case Settings::WEB_UI:
 #endif
     case Settings::IMU_TRIG:
     case Settings::IVL_SLEEP:
@@ -478,6 +487,11 @@ void printValue(const char *prefix, Settings::type_t type) {
 #if defined(FURBLE_MQTT) && FURBLE_MQTT
     case Settings::MQTT:
     case Settings::MQTT_HA:
+      printf("%s%s\n", prefix, boolStr(Settings::load<bool>(type)));
+      break;
+#endif
+#if defined(FURBLE_WEBUI) && FURBLE_WEBUI
+    case Settings::WEB_UI:
       printf("%s%s\n", prefix, boolStr(Settings::load<bool>(type)));
       break;
 #endif
@@ -784,6 +798,16 @@ int setValue(const Settings::setting_t &setting, const char *text) {
       Settings::save<bool>(setting.type, value);
     } break;
 #endif
+#if defined(FURBLE_WEBUI) && FURBLE_WEBUI
+    case Settings::WEB_UI:
+    {
+      bool value = false;
+      if (!parseBool(text, value)) {
+        return fail("expected on or off");
+      }
+      Settings::save<bool>(setting.type, value);
+    } break;
+#endif
     default:
       return fail("unsupported type");
   }
@@ -838,6 +862,11 @@ int setValue(const Settings::setting_t &setting, const char *text) {
       || (setting.type == Settings::MQTT_USER) || (setting.type == Settings::MQTT_PASS)
       || (setting.type == Settings::MQTT_BASE) || (setting.type == Settings::MQTT_HA)) {
     MQTT::getInstance().reloadSetting();
+  }
+#endif
+#if defined(FURBLE_WEBUI) && FURBLE_WEBUI
+  if (setting.type == Settings::WEB_UI) {
+    WebUI::getInstance().reloadSetting();
   }
 #endif
 
@@ -997,6 +1026,11 @@ void reloadProvisionSetting(uint8_t wireId) {
     case Settings::NTP_SERVER:
       WiFi::reloadNtp();
       break;
+#if defined(FURBLE_WEBUI) && FURBLE_WEBUI
+    case Settings::WEB_UI:
+      WebUI::getInstance().reloadSetting();
+      break;
+#endif
     default:
       break;
   }

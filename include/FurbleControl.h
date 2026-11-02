@@ -126,6 +126,32 @@ class Control {
    */
   BaseType_t sendCommand(cmd_t cmd);
 
+  struct command_delivery_t {
+    bool any;
+    /** Every target in the session, including a disconnected one. */
+    bool all;
+    /** Every currently connected target; a disconnected target is skipped. */
+    bool connected_all;
+    uint32_t session;
+    /** Addresses of the targets that accepted the command. */
+    std::vector<uint64_t> accepted;
+  };
+
+  /**
+   * Send a camera command and report partial per-target queue delivery.
+   *
+   * When only is non-null, the command is sent only to the targets whose
+   * address is listed. This lets a held-command release retry address the
+   * cameras that still owe a release instead of broadcasting to survivors that
+   * already accepted it.
+   */
+  command_delivery_t sendCameraCommand(cmd_t cmd,
+                                       uint32_t expectedSession = UINT32_MAX,
+                                       const std::vector<uint64_t> *only = nullptr);
+
+  /** Generation of the active target set. Changes when the whole session ends. */
+  uint32_t getSessionGeneration(void) const;
+
   /**
    * Wait until every target queue is empty and no camera command is executing.
    *
@@ -448,6 +474,7 @@ class Control {
   QueueHandle_t m_Queue = NULL;
   mutable std::mutex m_Mutex;
   std::vector<std::unique_ptr<Control::Target>> m_Targets;
+  uint32_t m_SessionGeneration = 0;
 
   // Targets whose teardown is still draining: either force-completed while their
   // task was still tearing down the camera (restart path), or handed off by the

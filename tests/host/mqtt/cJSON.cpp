@@ -427,6 +427,12 @@ extern "C" cJSON *cJSON_AddNumberToObject(cJSON *object, const char *name, doubl
   return item;
 }
 
+extern "C" cJSON *cJSON_AddNullToObject(cJSON *object, const char *name) {
+  cJSON *item = makeNode(cJSON_NULL);
+  cJSON_AddItemToObject(object, name, item);
+  return item;
+}
+
 extern "C" void cJSON_AddItemToObject(cJSON *object, const char *name, cJSON *item) {
   if (item == nullptr) {
     return;
@@ -454,6 +460,18 @@ extern "C" const cJSON *cJSON_GetObjectItemCaseSensitive(const cJSON *object, co
 
 extern "C" int cJSON_IsNumber(const cJSON *item) {
   return item != nullptr && item->type == cJSON_Number;
+}
+
+extern "C" int cJSON_IsString(const cJSON *item) {
+  return item != nullptr && item->type == cJSON_String;
+}
+
+extern "C" int cJSON_IsBool(const cJSON *item) {
+  return item != nullptr && ((item->type == cJSON_True) || (item->type == cJSON_False));
+}
+
+extern "C" int cJSON_IsTrue(const cJSON *item) {
+  return item != nullptr && item->type == cJSON_True;
 }
 
 extern "C" cJSON *cJSON_ParseWithLength(const char *value, size_t length) {
