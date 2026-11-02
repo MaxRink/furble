@@ -448,11 +448,15 @@ void Control::task(void) {
     // task can still touch them.
     reapZombieTargets();
 
+    bool retired = false;
     {
       const std::lock_guard<std::mutex> lock(m_Mutex);
-      if (retireCancelledTargetsLocked() && m_State != STATE_DISCONNECTING) {
-        setState(STATE_IDLE);
-      }
+      retired = retireCancelledTargetsLocked() && m_State != STATE_DISCONNECTING;
+    }
+    if (retired) {
+      // setState() reads the connected-target count under m_Mutex, so it must
+      // not run with that lock already held.
+      setState(STATE_IDLE);
     }
 
     cmd_t cmd;
@@ -1369,9 +1373,11 @@ void Control::setState(state_t state) {
   m_State.store(state, std::memory_order_release);
 
 #if defined(FURBLE_SIM)
-  // The power model charges a connected-radio floor only while Control reports
-  // ACTIVE. Without this caller the baseline silently lost that term.
-  Sim::profilerSetRadioConnected(state == STATE_ACTIVE);
+  // The power model charges a connected-radio floor while any camera link is
+  // up. Multi-Connect recovery leaves one camera connected while Control is in
+  // CONNECT/CONNECTING, so STATE_ACTIVE alone would drop the floor during the
+  // retry.
+  Sim::profilerSetRadioConnected(getConnectedTargetCount() > 0);
 #endif
 
   if (!hold && m_SleepLockHeld.load(std::memory_order_acquire)) {

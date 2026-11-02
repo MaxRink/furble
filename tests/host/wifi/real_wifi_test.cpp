@@ -178,6 +178,13 @@ int main() {
       || require(status.retry_ms == 0, "auth failure still scheduled a retry")) {
     return 5;
   }
+  // The worker's terminal cleanup must release the driver after a terminal
+  // disconnect; the connected-state wait used to continue past it.
+  Furble::WiFi::hostServiceTerminalStop();
+  if (require(!Furble::WiFi::getStatus().driver,
+              "a terminal disconnect left the Wi-Fi driver initialized")) {
+    return 29;
+  }
 
   // A later connect clears the stopped state.
   if (!Furble::WiFi::connect() || Furble::WiFi::getStatus().stopped)

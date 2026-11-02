@@ -86,6 +86,8 @@ class WiFi {
   static bool hostDeferredForWired(void);
   /** True while an automatic takeover will resume when the wire drops. */
   static bool hostResumeAfterWired(void);
+  /** Run the terminal-disconnect driver cleanup once. */
+  static void hostServiceTerminalStop(void);
   /** Run the connected-state wired takeover once. */
   static bool hostServiceConnectedWired(void);
   /** Retry delay after ten failures while a camera session blocks the scan. */

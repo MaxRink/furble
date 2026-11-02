@@ -90,6 +90,14 @@ uint8_t g_LastDisconnectReason = 0;
 bool g_ScanAttempted = false;
 bool g_ScanShowHidden = false;
 std::atomic<bool> g_ScanRefusedForCoex {false};
+// Incremented by every disconnect and GOT_IP event. The join wait uses it to
+// distinguish a real lifecycle event from the periodic cancellation poll, so
+// a slow association is not mistaken for a dead attempt.
+std::atomic<uint32_t> g_LifecycleEvent {0};
+
+// Time budget for one asynchronous join. Slow association or DHCP may exceed
+// the cancellation poll; only an explicit deadline starts another attempt.
+constexpr uint32_t JOIN_DEADLINE_MS = 15000;
 
 // A join scan shares the radio with the camera link. Only run it while Control
 // is idle: during connect, active, and disconnecting the camera session owns
@@ -401,6 +409,17 @@ bool deferForWired(void) {
   return true;
 }
 
+// A terminal disconnect (authentication failure, or both attempt bounds spent)
+// clears the request but leaves the station started and the driver
+// initialised. Release both so the radio is not left running after the failure
+// the operator has to fix. Runs from every path that can observe the terminal
+// state, including the connected-state wait that used to `continue` past it.
+void serviceTerminalStop(void) {
+  if (!g_ConnectRequested && !g_Connected && g_StoppedForReason) {
+    stopDriver();
+  }
+}
+
 void recordFailure(bool scheduleRetry = true) {
   std::lock_guard<std::mutex> lock(g_StateMutex);
   g_DirectFailures++;
@@ -572,6 +591,10 @@ void wifiTask(void *) {
       // wire and hand the network back when it appears.
       xTaskNotifyWait(0, UINT32_MAX, &notification, pdMS_TO_TICKS(WIRED_RECHECK_MS));
       (void)serviceConnectedWired();
+      // A terminal disconnect can land during this wait. Without the cleanup
+      // the next iteration parks forever on a cleared request and leaves the
+      // driver running.
+      serviceTerminalStop();
       continue;
     }
 #endif
@@ -624,22 +647,36 @@ void wifiTask(void *) {
         continue;
       }
 
-      // Wake periodically so a cancel or a disconnect request is seen while
-      // the stack is still connecting. The connected-state wired check runs in
-      // the outer loop.
-      xTaskNotifyWait(0, UINT32_MAX, &notification, pdMS_TO_TICKS(WIRED_RECHECK_MS));
+      // Wait for a lifecycle event instead of issuing another connect request
+      // every five seconds. Slow association or DHCP can outlive the
+      // cancellation poll; a repeated esp_wifi_connect() would then inflate the
+      // failure counters. The periodic wake still observes cancels, a wired
+      // takeover, and the explicit join deadline.
+      const uint32_t lifecycle = g_LifecycleEvent.load();
+      const int64_t joinStartedUs = esp_timer_get_time();
+      while (g_ConnectRequested && !g_Connected && (g_LifecycleEvent.load() == lifecycle)
+             && ((esp_timer_get_time() - joinStartedUs) < (JOIN_DEADLINE_MS * 1000LL))) {
+#if defined(FURBLE_ETHERNET)
+        if (wiredNetworkActive()) {
+          (void)deferForWired();
+          break;
+        }
+#endif
+        xTaskNotifyWait(0, UINT32_MAX, &notification, pdMS_TO_TICKS(WIRED_RECHECK_MS));
+      }
       if (!g_ConnectRequested || g_Connected) {
         break;
       }
+      if (g_LifecycleEvent.load() == lifecycle) {
+        // No event within the join budget: count one failed attempt so the
+        // retry backoff advances.
+        ESP_LOGW(LOG_TAG, "WiFi join deadline expired");
+        recordFailure();
+      }
+      continue;
     }
 
-    // A terminal disconnect (authentication failure, or both attempt bounds
-    // spent) clears the request but leaves the station started and the driver
-    // initialised. Release both so the radio is not left running after the
-    // failure the operator has to fix.
-    if (!g_ConnectRequested && !g_Connected && g_StoppedForReason) {
-      stopDriver();
-    }
+    serviceTerminalStop();
   }
 }
 
@@ -673,6 +710,7 @@ void eventHandler(void *, esp_event_base_t eventBase, int32_t eventId, void *eve
       }
       retry = g_ConnectRequested;
     }
+    g_LifecycleEvent.fetch_add(1, std::memory_order_relaxed);
     stopNtp();
     // Count every disconnect. Only a retryable class schedules a backoff, and
     // the last attempt still updates the reported delay before it stops.
@@ -728,6 +766,7 @@ void eventHandler(void *, esp_event_base_t eventBase, int32_t eventId, void *eve
       }
       g_Ip = ip;
     }
+    g_LifecycleEvent.fetch_add(1, std::memory_order_relaxed);
     ESP_LOGI(LOG_TAG, "WiFi connected, ip=%s", ip);
     if (Settings::load<Settings::NTP>()) {
       startNtp();
@@ -931,6 +970,10 @@ bool WiFi::hostDeferredForWired(void) {
 
 bool WiFi::hostResumeAfterWired(void) {
   return g_ResumeAfterWired.load();
+}
+
+void WiFi::hostServiceTerminalStop(void) {
+  serviceTerminalStop();
 }
 
 bool WiFi::hostServiceConnectedWired(void) {
