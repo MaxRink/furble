@@ -1311,6 +1311,12 @@ std::string queryValue(const std::string &key) {
   if (key == "ble.peers") {
     return std::to_string(blePeerCount());
   }
+  if (key == "ble.unmatched_peers") {
+    return std::to_string(bleUnmatchedPeerCount());
+  }
+  if (key == "ble.saved_cameras") {
+    return std::to_string(bleSavedCameraCount());
+  }
   if (key == "scan.start_probe_blocked") {
     return Scan::getInstance().startProbeBlocked() ? "1" : "0";
   }

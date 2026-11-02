@@ -506,6 +506,9 @@ bool NikonRemoteVirtualCamera::handlePairing(const std::vector<uint8_t> &value,
     case 0x01:
       std::copy(value.begin() + 1, value.begin() + 9, m_PairingTimestamp.begin());
       std::copy(value.begin() + 9, value.begin() + 17, m_PairingDevice.begin());
+      // The reconnect advertisement carries the device half of the ID the
+      // central sent here, not the fixture value it was constructed with.
+      std::copy(m_PairingDevice.begin(), m_PairingDevice.begin() + 4, m_Config.client_id.begin());
       if (!suppress_response) {
         emitPairingStage(0x02);
       }

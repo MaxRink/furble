@@ -425,6 +425,10 @@ bool NikonSmartVirtualCamera::acceptConnection(NimBLEClient &client, const NimBL
   m_Client = &client;
   m_Connected = true;
   m_AuthStage = 0;
+  // Authentication belongs to one link. A reconnect must authenticate again
+  // rather than inherit the previous session's success.
+  m_Authenticated = false;
+  m_HashRejected = false;
   m_Subscriptions.clear();
   return true;
 }
@@ -661,6 +665,9 @@ bool NikonSmartVirtualCamera::handleAuth(const std::vector<uint8_t> &value,
       }
       // A fresh pairing stores the client device ID for later reconnects.
       m_Config.device_id = m_DeviceId;
+      // The reconnect advertisement carries the device half of the ID, which
+      // is the first four bytes of the eight-byte value sent in stage 1.
+      std::copy(m_DeviceId.begin(), m_DeviceId.begin() + 4, m_Config.client_id.begin());
       m_SaltIndex = static_cast<uint8_t>(m_Config.salt_index & 0x07);
       m_HashRejected = false;
       if (!suppress_response) {

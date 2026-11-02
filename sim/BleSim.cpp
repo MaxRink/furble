@@ -50,8 +50,43 @@ constexpr uint64_t LUMIX_ADDRESS = 0x66778899aabbULL;
 constexpr uint64_t DJI_ADDRESS = 0x778899aabbccULL;
 
 struct VirtualPeer {
+  /** Current advertisement for this peer, including post-pairing state. */
+  NimBLEAdvertisedDevice currentAdvertisement() const {
+    if (fujifilm != nullptr) {
+      return fujifilm->advertisement();
+    }
+    if (ricoh != nullptr) {
+      return ricoh->advertisement();
+    }
+    if (canon_smart != nullptr) {
+      return canon_smart->advertisement();
+    }
+    if (canon_remote != nullptr) {
+      return canon_remote->advertisement();
+    }
+    if (nikon_remote != nullptr) {
+      return nikon_remote->advertisement();
+    }
+    if (nikon_smart != nullptr) {
+      return nikon_smart->advertisement();
+    }
+    if (sony != nullptr) {
+      return sony->advertisement();
+    }
+    if (lumix != nullptr) {
+      return lumix->advertisement();
+    }
+    if (dji != nullptr) {
+      return dji->advertisement();
+    }
+    return advertisement;
+  }
+
   std::string name;
   NimBLEAddress address = NimBLEAddress {};
+  // Discovery snapshot used when the scenario seeds saved cameras. The radio
+  // uses currentAdvertisement() so a peer that paired later advertises its
+  // reconnect form.
   NimBLEAdvertisedDevice advertisement;
   NimBLEMockPeer *mock = nullptr;
   std::unique_ptr<Host::FujifilmVirtualCamera> fujifilm;
@@ -68,6 +103,9 @@ struct VirtualPeer {
 std::mutex peersMutex;
 std::vector<std::unique_ptr<VirtualPeer>> peers;
 size_t advertisementCount = 0;
+// Peers whose advertisement did not match any production camera parser when
+// the scenario seeded its saved catalog.
+size_t unmatchedPeerCount = 0;
 // Guarded by peersMutex like the peer list it serves.
 bool radioRunning = false;
 
@@ -181,8 +219,10 @@ void addGenericPeer(uint64_t address,
 void saveRegisteredPeers(void) {
   const std::lock_guard<std::mutex> lock(peersMutex);
   CameraList::clear();
+  unmatchedPeerCount = 0;
   for (const auto &peer : peers) {
     if (!CameraList::match(&peer->advertisement)) {
+      unmatchedPeerCount++;
       ESP_LOGW(LOG_TAG, "Simulated peer '%s' did not match any camera protocol",
                peer->name.c_str());
     }
@@ -214,7 +254,8 @@ void radioTask(void *) {
     {
       const std::lock_guard<std::mutex> lock(peersMutex);
       for (const auto &peer : peers) {
-        scan->emitResult(&peer->advertisement);
+        NimBLEAdvertisedDevice advertisement = peer->currentAdvertisement();
+        scan->emitResult(&advertisement);
         advertisementCount++;
       }
     }
@@ -459,6 +500,15 @@ size_t bleAdvertisementCount(void) {
 size_t blePeerCount(void) {
   const std::lock_guard<std::mutex> lock(peersMutex);
   return peers.size();
+}
+
+size_t bleUnmatchedPeerCount(void) {
+  const std::lock_guard<std::mutex> lock(peersMutex);
+  return unmatchedPeerCount;
+}
+
+size_t bleSavedCameraCount(void) {
+  return CameraList::getSaveCount();
 }
 
 void noteCameraCommand(int cmd) {

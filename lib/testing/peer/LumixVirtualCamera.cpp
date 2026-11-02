@@ -43,6 +43,12 @@ const NimBLEUUID SSID_ACK_CHARACTERISTIC {0x18345be1, 0x3217, 0x11e6, 0xb56c0002
 const NimBLEUUID STATE_CHARACTERISTIC {0x48669da0, 0x3217, 0x11e6, 0xb08d0002a5d5c51b};
 const NimBLEUUID UNKNOWN_STATE_CHARACTERISTIC {0x96c82c33, 0xe3b4, 0x4e80, 0x932715364827d281};
 
+// A timezone offset a real body can report. The App and G9II layouts overlap
+// when byte 7 is zero, so a value no timezone uses cannot decide the layout.
+bool plausibleClockOffset(int16_t offset) {
+  return (offset >= -12 * 60) && (offset <= 14 * 60) && ((offset % 15) == 0);
+}
+
 constexpr std::array<uint8_t, 10> MEI0_PREFIX = {
     0x4d, 0x45, 0x49, 0x30, 0x01, 0x00, 0x10, 0x00, 0x80, 0x01,
 };
@@ -895,27 +901,39 @@ bool LumixVirtualCamera::handleClock(const std::vector<uint8_t> &value) {
   int16_t offset = 0;
   uint8_t dst = 0;
   if (layout == ClockLayout::G9ii) {
-    if ((value[7] == 0x00)) {
-      offset = readLEI16(value.data() + 8);
-      dst = 0;
-      parsed = true;
+    if (value[7] == 0x00) {
+      const int16_t candidate = readLEI16(value.data() + 8);
+      if (plausibleClockOffset(candidate)) {
+        offset = candidate;
+        dst = 0;
+        parsed = true;
+      }
     }
   } else {
-    offset = readLEI16(value.data() + 7);
+    const int16_t candidate = readLEI16(value.data() + 7);
     dst = value[9];
-    parsed = (dst <= 1);
+    if ((dst <= 1) && plausibleClockOffset(candidate)) {
+      offset = candidate;
+      parsed = true;
+    }
   }
   if (!parsed && m_Config.accept_app_clock_layout) {
     if (layout == ClockLayout::G9ii) {
-      offset = readLEI16(value.data() + 7);
+      const int16_t candidate = readLEI16(value.data() + 7);
       dst = value[9];
-      layout = ClockLayout::App;
-      parsed = (dst <= 1);
+      if ((dst <= 1) && plausibleClockOffset(candidate)) {
+        offset = candidate;
+        layout = ClockLayout::App;
+        parsed = true;
+      }
     } else if (value[7] == 0x00) {
-      offset = readLEI16(value.data() + 8);
-      dst = 0;
-      layout = ClockLayout::G9ii;
-      parsed = true;
+      const int16_t candidate = readLEI16(value.data() + 8);
+      if (plausibleClockOffset(candidate)) {
+        offset = candidate;
+        dst = 0;
+        layout = ClockLayout::G9ii;
+        parsed = true;
+      }
     }
   }
   if (!parsed) {
