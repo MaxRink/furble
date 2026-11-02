@@ -173,11 +173,20 @@ void testTime() {
                                                     0x38, 0x00, 0x00, 0x00, 0x00, 0x00};
   check(packet == expected, "the 12-byte UTC time packet matches the app layout");
 
+  // 90 minutes is +01:30, which the packet stores as 150 hundredths of an
+  // hour, not as 90. The old direct write encoded 0.90 hours.
   input.utc_offset_minutes = 90;
   input.dst = 1;
   const auto dst = encodeTime(input);
-  check(dst[7] == 0x5a && dst[8] == 0x00 && dst[9] == 0x00 && dst[10] == 0x00 && dst[11] == 0x01,
-        "the time packet carries offset and DST at bytes 7 to 11");
+  check(dst[7] == 0x96 && dst[8] == 0x00 && dst[9] == 0x00 && dst[10] == 0x00 && dst[11] == 0x01,
+        "the time packet converts minutes to hundredths of an hour and carries DST");
+
+  // +05:30 is 330 minutes and 550 hundredths, which needs both offset bytes.
+  input.utc_offset_minutes = 330;
+  input.dst = 0;
+  const auto halfHour = encodeTime(input);
+  check(halfHour[7] == 0x26 && halfHour[8] == 0x02,
+        "a half-hour offset larger than one byte converts and splits correctly");
 }
 
 void testGeotag() {

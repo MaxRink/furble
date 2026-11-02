@@ -295,6 +295,9 @@ class NikonSmartVirtualCamera final: public NimBLEMockPeer {
   NimBLEClient *m_Client = nullptr;
   bool m_Connected = false;
   bool m_Paired = false;
+  // The radio task calls advertisement() while the camera task runs pairing and
+  // mutates m_Paired and the client ID. Both sides take this lock.
+  mutable std::recursive_mutex m_AdvertisementMutex;
   bool m_Authenticated = false;
 
   uint8_t m_AuthStage = 0;

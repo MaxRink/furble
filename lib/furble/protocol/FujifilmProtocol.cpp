@@ -2,6 +2,8 @@
 
 #include "FujifilmProtocol.h"
 
+#include <algorithm>
+
 namespace Furble {
 namespace FujifilmProtocol {
 namespace {
@@ -182,7 +184,12 @@ std::array<uint8_t, TIME_BYTES> encodeTime(const TimeInput &input) {
   data[4] = static_cast<uint8_t>(input.hour);
   data[5] = static_cast<uint8_t>(input.minute);
   data[6] = static_cast<uint8_t>(input.second);
-  writeLittleEndian32(data, 7, static_cast<uint32_t>(input.utc_offset_minutes));
+  // The packet stores hundredths of an hour, not minutes: UTC+01:30 is 150,
+  // while 90 would encode 0.90 hours. Convert and clamp to the documented
+  // -2400..2400 range.
+  int64_t hundredths = (static_cast<int64_t>(input.utc_offset_minutes) * 100) / 60;
+  hundredths = std::max<int64_t>(-2400, std::min<int64_t>(2400, hundredths));
+  writeLittleEndian32(data, 7, static_cast<uint32_t>(static_cast<int32_t>(hundredths)));
   data[11] = input.dst;
   return data;
 }

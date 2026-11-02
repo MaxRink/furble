@@ -131,8 +131,8 @@ remainder.
 | S6 | Make the Canon Smart GPS timestamp an absolute UTC epoch instead of `mktime` on the runtime timezone. | CN-S | `app-static` canon.md CS-34; `furble-source` CanonEOSSmart.cpp | Fixed. `CanonProtocol::utcEpoch` has no timezone input, and `canon-time` pins the epoch. |
 | S7 | Add the Sony GPS sequence: subscribe `DD01`, read `DD21` and choose 91 or 95 bytes, and release `DD30` and `DD31` when GPS stops. | SO | `app-static` sony.md C-20 to C-30, F-21, F-23 | Fixed. `sony-location` proves both forms and the release. |
 | S7a | Read `DD32` and `DD33` and fill the 91 to 94 UTC offset and DST fields from them. | SO | `app-static` sony.md C-24 to C-27 | Capture-gated on CAP-SONY-03: no artifact proves the `DD32`/`DD33` encoding or the byte position the ZV-1F accepts. The fixed sequence already sends the correct length and leaves the fields zero. |
-| S8 | Add the Ricoh Date Time write on the first valid GPS time and then once per minute. | RC3, RC4 | `firmware-static` ricoh.md C-19 and CM-03; `app-static` Image Sync and GR WORLD | Fixed. `ricoh-time` pins the 7-byte packet and `ricoh-focus` proves the write path. |
-| S8a | Read Date Time back after the write and require a fresh Operation Mode `CAPTURE` read before it. | RC3, RC4 | `firmware-static` ricoh.md C-19, CM-03, CM-40 | Capture-gated on CAP-RICOH-03: the readback value and the CAPTURE-mode interaction are recorded only in the app, not on hardware. The write itself is safe in any mode because the firmware accepts it; the gate is a refinement, not a correctness requirement. |
+| S8 | Ricoh Date Time write. | RC3, RC4 | `firmware-static` ricoh.md C-19 and CM-03; `app-static` Image Sync and GR WORLD | Withdrawn. The characteristic carries local wall-clock time and has no timezone field; Furble has only UTC from GPS and no timezone source, so the write set the camera wrong by the user's offset. `ricoh-time` keeps the packet vector for a future local-time source. |
+| S8a | Add a local-time source and then write Date Time on it, and read it back under Operation Mode `CAPTURE`. | RC3, RC4 | `firmware-static` ricoh.md C-19, CM-03, CM-40 | Capture- and product-gated on CAP-RICOH-03 plus a timezone source. The readback layout and the CAPTURE interaction are recorded only in the app, not on hardware. |
 | S9 | Write the Ricoh Paired Device Name (`FE3A32F8`, UTF-8) after the first connect. | RC3, RC4 | `app-static` ricoh.md C-76 and CM-15 | Fixed. Connect writes the controller name when the characteristic exists. |
 | S10 | Decode Ricoh Capture Status and use a `Capturing=1` then `0` transition as the shot-confirmation signal. | RC3, RC4 | `firmware-static` ricoh.md C-56; `public-source` field table | Fixed. Byte 0 is decoded, the 1 to 0 transition is counted, and `0xFF` never counts. Physical confirmation is still capture-gated. |
 | S11 | Stop Nikon Smart at the BLE authentication result and report the Bluetooth Classic blocker. Do not wait for a final OK that is a time request. | NK-S | `app-static` nikon.md S20 and S22; `furble-source` NikonSmart.cpp | Fixed. `connectFinalise` reports the blocker and returns immediately. |
@@ -169,7 +169,7 @@ the closing artifact.
 | LUMIX focus mapping removed; Confirm/Start/Finish handshake added | applied | `lib/furble/Lumix.{h,cpp}`, host `lumix-session` |
 | Fujifilm client name NUL and 12-byte UTC time packet | applied | `lib/furble/Fujifilm.cpp`, `FujifilmBasic.cpp`, `FujifilmSecure.cpp`, protocol test |
 | Canon Smart GPS timestamp uses an absolute UTC epoch | applied | `lib/furble/protocol/CanonTime.h`, `canon-time` |
-| Ricoh paired-device name and GPS-time clock sync | applied | `lib/furble/Ricoh.{h,cpp}`, `lib/furble/protocol/RicohTime.h`, `ricoh-time`, `ricoh-focus` |
+| Ricoh paired-device name | applied | `lib/furble/Ricoh.{h,cpp}`, `ricoh-focus` |
 | Ricoh Capture Status decoding and shot confirmation | applied | `lib/furble/Ricoh.{h,cpp}`, peer, `ricoh-focus` |
 | Sony DD21 selection, DD01 subscribe, and lock release | applied | `lib/furble/Sony.cpp`, host `sony-location` |
 | LUMIX location and clock readiness gates | applied | `lib/furble/Lumix.cpp`, host `lumix-session` |
@@ -191,17 +191,17 @@ above.
 
 | Table 1 verdict | Rows |
 | --- | ---: |
-| aligned | 81 |
-| capture-gated | 67 |
+| aligned | 80 |
+| capture-gated | 68 |
 | unsupported | 11 |
 | out-of-scope | 17 |
 | safe-fix-needed | 0 |
 | Total | 176 |
 
-Every safe fix is applied or reclassified. The two former "partly fixed" rows
-are now split: S7 and S8 hold the fixed part, and S7a and S8a hold the part
-that needs CAP-SONY-03 and CAP-RICOH-03. No row in this file still claims a
-safe fix is pending.
+Every safe fix is applied or reclassified. S7 holds the fixed Sony part and
+S7a the capture-gated remainder; S8 was withdrawn because a local-time write
+needs a timezone source, and S8a holds that product-gated remainder. No row in
+this file still claims a safe fix is pending.
 
 | Table 2 Furble state | Rows |
 | --- | ---: |
@@ -377,7 +377,7 @@ behaviour has its own row.
 | P26 GPS packet | NK-S, NK-R, DJI | per-class | nikon S8; dji F21 | 41 bytes; no Remote surface; deliberate no-op | Unreachable or no-op | `furble-source`; `app-static`; `public-source` | unsupported |
 | P27 clock read | all | none | fujifilm §9; ricoh CM-40; canon F18; sony F-18; panasonic F18; dji F18 | Only Ricoh exposes a documented readable clock | No UI consumes a camera clock. Furble writes the time and never displays the camera value, so a read-back has no caller | `furble-source`; `firmware-static`; `app-static` | out-of-scope |
 | P28 clock write | FJ-S40, FJ-S41 | `Fujifilm::sendTimeData` | fujifilm C28, C29, §5.3 | 12-byte UTC and timezone after `01 00`, or 7-byte fallback | Answers `01 00` with the 12-byte packet; the 7-byte local form is the fallback | `furble-source`; `firmware-static`; `app-static` | aligned |
-| P29 clock write | RC3, RC4 | `Ricoh::updateGeoData` | ricoh CM-03, F-19 | 7-byte Date Time, local wall clock | Writes the 7-byte Date Time Zone packet on the first valid GPS time, then once per minute | `furble-source`; `firmware-static`; `app-static` | aligned |
+| P29 clock write | RC3, RC4 | none | ricoh CM-03, F-19 | 7-byte Date Time, local wall clock | Not written: the packet is local time and Furble has no timezone source, so a UTC write would be wrong by the user's offset. Encoder and vector retained | `furble-source`; `firmware-static`; `app-static` | capture-gated |
 | P30 clock write | CN-S, SO, LX, NK-S | per-class | canon CS-34; sony C-06; panasonic C15; nikon S7 | PTP; `CC13`; 10 bytes after GPS; `2006` | Canon GPS timestamp; LUMIX 7-byte clock. Sony and Nikon use a PTP plane Furble does not implement | `furble-source`; `app-static` | capture-gated |
 | P31 clock write | NK-R, CN-R, DJI | none | nikon §9.1; canon §9.2; dji F19 | No BLE clock write | Missing | `furble-source`; `public-source` | out-of-scope |
 | P32 timezone and DST | FJ-S40, FJ-S41, SO, LX | `Fujifilm::sendTimeData`, `Sony::updateGeoData`, `Lumix::updateGeoData` | fujifilm C28; sony C-22; panasonic F-20 | int32 hundredths; bytes 91 to 94; bytes 7 to 9 | Zero. Furble has no timezone source: `timesync_t` carries no offset and no setting stores one. A guessed offset would set the camera wrong | `furble-source`; `app-static` | out-of-scope |
@@ -927,9 +927,9 @@ Claims deliberately not adopted from the corpus, because the evidence label is
 
 | Verdict | Rows |
 | --- | ---: |
-| aligned | 81 |
+| aligned | 80 |
 | safe-fix-needed | 0 |
-| capture-gated | 67 |
+| capture-gated | 68 |
 | unsupported | 11 |
 | out-of-scope | 17 |
 | Total | 176 |

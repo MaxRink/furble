@@ -236,7 +236,6 @@ bool Ricoh::_connect(void) {
   if (pSvc != nullptr) {
     m_Power = pSvc->getCharacteristic(POWER_CHR_UUID);
     m_OperationMode = pSvc->getCharacteristic(OPERATION_MODE_CHR_UUID);
-    m_DateTime = pSvc->getCharacteristic(DATE_TIME_CHR_UUID);
     m_GeotagEnable = pSvc->getCharacteristic(GEOTAG_ENABLE_CHR_UUID);
   } else {
     ESP_LOGW(LOG_TAG, "Ricoh Camera service unavailable");
@@ -317,10 +316,6 @@ void Ricoh::_disconnect(void) {
 void Ricoh::clearRemoteState(void) {
   m_Power = nullptr;
   m_OperationMode = nullptr;
-  // The optional Camera service characteristic is per connection. A failed
-  // rediscovery leaves it null, so a pointer from the previous client must not
-  // survive cleanup.
-  m_DateTime = nullptr;
   m_ShootingFlavor = nullptr;
   m_OperationRequest = nullptr;
   m_CaptureStatus = nullptr;
@@ -334,10 +329,6 @@ void Ricoh::clearRemoteState(void) {
   m_CapturesCompleted = 0;
   m_LastGpsWriteMs = 0;
   m_HasGpsWrite = false;
-  // The clock throttle is per session: a reconnect must write the time even if
-  // the previous link wrote it less than a minute ago.
-  m_LastClockWriteMs = 0;
-  m_HasClockWrite = false;
 }
 
 bool Ricoh::writeByte(NimBLERemoteCharacteristic *pChr, uint8_t value, const char *label) {
@@ -502,25 +493,13 @@ void Ricoh::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
     return;
   }
 
+  // The Date Time characteristic carries local wall-clock time and has no
+  // timezone field. Furble only has UTC from GPS and no timezone source, so a
+  // write here would set the camera wrong by the user's offset. The encoder and
+  // its vector are kept in RicohProtocol for the day a local-time source exists;
+  // do not reintroduce the write without one.
+
   const uint32_t nowMs = static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
-
-  // Clock sync. Furble has no RTC time at connect, so it writes when the first
-  // valid GPS time arrives and then once per minute. Layout is uint16 LE year,
-  // month, day, hour, minute, second.
-  if (m_DateTime != nullptr && m_DateTime->canWrite()
-      && (!m_HasClockWrite || static_cast<uint32_t>(nowMs - m_LastClockWriteMs) >= 60000)) {
-    const auto clock = RicohProtocol::encodeDateTime(
-        timesync.year, std::min(timesync.month, 255u), std::min(timesync.day, 255u),
-        std::min(timesync.hour, 255u), std::min(timesync.minute, 255u),
-        std::min(timesync.second, 255u));
-    if (gattWrite(m_DateTime, clock.data(), clock.size(), true)) {
-      m_LastClockWriteMs = nowMs;
-      m_HasClockWrite = true;
-    } else {
-      ESP_LOGW(LOG_TAG, "Ricoh clock write failed");
-    }
-  }
-
   const bool moved = !m_HasGpsWrite
                      || std::fabs(gps.latitude - m_LastGps.latitude) >= GPS_MIN_DELTA_DEG
                      || std::fabs(gps.longitude - m_LastGps.longitude) >= GPS_MIN_DELTA_DEG

@@ -2088,8 +2088,12 @@ void UI::handleShutterLock(lv_event_t *e) {
       if (released) {
         if (ui->m_ShutterLock) {
           ui->shutterUnlock(control);
-        } else {
+        } else if (ui->m_CapabilityBulb) {
           ui->shutterLock(control);
+        } else {
+          // A locked exposure needs a release command. Ricoh has no stop
+          // primitive, so the shutter would stay pressed until the link drops.
+          ESP_LOGW("ui", "Shutter lock refused: the session cannot end a held exposure");
         }
         released = false;
       }
@@ -6446,6 +6450,14 @@ void UI::applyCapabilityGating(void) {
       lv_obj_add_state(bulbRow, LV_STATE_DISABLED);
     }
   }
+  // Shutter lock is a held exposure too: no release primitive, no lock.
+  if (m_ShutterLockIcon != nullptr) {
+    if (m_CapabilityBulb) {
+      lv_obj_remove_state(m_ShutterLockIcon, LV_STATE_DISABLED);
+    } else {
+      lv_obj_add_state(m_ShutterLockIcon, LV_STATE_DISABLED);
+    }
+  }
 }
 
 void UI::configShutterControl(void) {
@@ -6515,8 +6527,9 @@ void UI::configMenuControl(void) {
   }
   applyLegendVisibility();
   // The right indicator is a menu navigation control here, not the focus
-  // control, so a focus capability gate must not leave it disabled.
-  if (m_Right != nullptr && m_CapabilityFocus && !m_ShutterLock) {
+  // control. Clear the focus gate unconditionally: returning from a session
+  // that had no focus would otherwise leave Down disabled forever.
+  if (m_Right != nullptr && !m_ShutterLock) {
     lv_obj_remove_state(m_Right, LV_STATE_DISABLED);
   }
 }
@@ -6529,7 +6542,7 @@ void UI::configSliderControl(void) {
   }
   applyLegendVisibility();
   // Right is a navigation control on a slider page, never the focus control.
-  if (m_Right != nullptr && m_CapabilityFocus && !m_ShutterLock) {
+  if (m_Right != nullptr && !m_ShutterLock) {
     lv_obj_remove_state(m_Right, LV_STATE_DISABLED);
   }
 }

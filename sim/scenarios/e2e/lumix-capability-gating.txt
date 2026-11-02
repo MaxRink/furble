@@ -12,6 +12,12 @@ wait 3200
 assert ui.connected yes
 assert ui.capability_focus no
 assert ui.capability_bulb yes
-assert ui.focus_disabled yes
 assert ui.bulb_disabled no
+
+# The right indicator is navigation on the connected menu, so the disabled
+# state is asserted in shutter mode, where the focus control lives.
+action blind
+wait 100
+assert ui.page shutter
+assert ui.focus_disabled yes
 exit

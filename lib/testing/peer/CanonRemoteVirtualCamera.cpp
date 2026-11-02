@@ -272,18 +272,21 @@ bool CanonRemoteVirtualCamera::write(NimBLEClient &client,
     if (m_Config.require_secure && !m_Secured) {
       return false;
     }
+    std::string parsed;
     if ((value.size() >= 2) && (value[0] == 0x03) && isPrintableAscii(value, 1)
         && (value.size() - 1 <= REMOTE_NAME_MAX)) {
-      m_RegisteredName.assign(value.begin() + 1, value.end());
+      parsed.assign(value.begin() + 1, value.end());
     } else if (m_Config.accept_unprefixed_name && isPrintableAscii(value, 0)
                && (value.size() <= REMOTE_NAME_MAX)) {
-      m_RegisteredName.assign(value.begin(), value.end());
+      parsed.assign(value.begin(), value.end());
     } else {
       return false;
     }
     if (fault == Fault::Timeout) {
-      // Recorded but not stored, which is the silent-ignore shape.
-      m_RegisteredName.clear();
+      // A timed-out write is ignored by the camera: the previously registered
+      // name must survive rather than being replaced by an empty string.
+    } else {
+      m_RegisteredName = std::move(parsed);
     }
     Write event;
     event.service = service.toString();

@@ -62,6 +62,8 @@ struct TimeInput {
   unsigned int hour;
   unsigned int minute;
   unsigned int second;
+  // Signed UTC offset in minutes. encodeTime converts it to the packet's
+  // hundredths of an hour (30 minutes -> 50).
   int32_t utc_offset_minutes;
   uint8_t dst;
 };

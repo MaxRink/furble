@@ -70,6 +70,7 @@ std::string NikonRemoteVirtualCamera::key(const NimBLEUUID &service,
 }
 
 NimBLEAdvertisedDevice NikonRemoteVirtualCamera::advertisement() const {
+  const std::lock_guard<std::recursive_mutex> lock(m_AdvertisementMutex);
   NimBLEAdvertisedDevice device;
   device.setAddress(m_Config.address);
   device.setName(m_Config.name);
@@ -501,6 +502,9 @@ bool NikonRemoteVirtualCamera::write(NimBLEClient &client,
 
 bool NikonRemoteVirtualCamera::handlePairing(const std::vector<uint8_t> &value,
                                              bool suppress_response) {
+  // m_Paired and m_Config.client_id feed advertisement(); the radio task may be
+  // reading them while this runs on the camera task.
+  const std::lock_guard<std::recursive_mutex> lock(m_AdvertisementMutex);
   m_PairingStage = value[0];
   switch (value[0]) {
     case 0x01:
