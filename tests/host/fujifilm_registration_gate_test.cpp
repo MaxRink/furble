@@ -220,6 +220,34 @@ void testGeotagRequestConfirmsReconnect() {
   secureCamera.disconnect();
 }
 
+// A drop during the location-sync enable write frees the self-deleting client
+// and its cached services inline. The geotag service pointer must not be
+// touched after that write fails.
+void testLocationSyncDropOnWrite() {
+  init();
+  Furble::Host::FujifilmVirtualCamera::Config config;
+  config.secure = true;
+  config.name = "FUJIFILM X100VI";
+  Furble::Host::FujifilmVirtualCamera peer(config);
+  NimBLEDevice::setMockPeer(&peer);
+  const auto advertisement = peer.advertisement();
+  Furble::FujifilmSecure camera(&advertisement);
+  check(camera.connect(ESP_PWR_LVL_P3, 1000),
+        "the Secure peer connects for the location-sync drop test");
+
+  check(peer.requestGeotag(), "the Secure peer requests a geotag before the drop");
+  peer.dropLinkOnWrite(Furble::Host::FujifilmVirtualCamera::secureNotificationServiceUUID(),
+                       Furble::Host::FujifilmVirtualCamera::locationSyncCharacteristicUUID());
+  const Furble::Camera::gps_t gps = {52.5, 13.4, 34.0, 8};
+  const Furble::Camera::timesync_t time = {2026, 11, 1, 12, 34, 56, 0};
+  camera.updateGeoData(gps, time);
+
+  check(!camera.isConnected(), "the location-sync write drop severs the link");
+  check(peer.accessAfterDrop() == 0,
+        "no cached service is touched after the location-sync write drops the link");
+  camera.disconnect();
+}
+
 }  // namespace
 
 int main() {
@@ -227,6 +255,7 @@ int main() {
   testBasicConfirmationAndReset();
   testSecureConfirmationAndTimeout();
   testGeotagRequestConfirmsReconnect();
+  testLocationSyncDropOnWrite();
   check(!Furble::TestSync::anyTimedOut(), "no parked thread expired waiting for its release");
   NimBLEDevice::resetMock();
   if (failures != 0) {

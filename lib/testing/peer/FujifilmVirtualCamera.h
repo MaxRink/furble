@@ -400,6 +400,7 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   static const NimBLEUUID &utcTimeCharacteristicUUID();
   static const NimBLEUUID &powerCharacteristicUUID();
   static const NimBLEUUID &syncIntervalCharacteristicUUID();
+  static const NimBLEUUID &locationSyncCharacteristicUUID();
 
  private:
   struct Subscription {

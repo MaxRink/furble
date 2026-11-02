@@ -769,6 +769,9 @@ bool FujifilmVirtualCamera::write(NimBLEClient &client,
   // the link and deliver onDisconnect inline (so the central's connected flag
   // clears mid-handshake), then report the write as failed so _connect unwinds.
   if (isDropOnWrite(service, characteristic)) {
+    // The link is gone from this point: later accesses must be visible to
+    // accessAfterDrop() so a regression test can prove the driver stopped.
+    m_DroppedLink = true;
     client.mockDropLink(0x08, /*fire_callback=*/true);
     return false;
   }
@@ -1316,6 +1319,10 @@ const NimBLEUUID &FujifilmVirtualCamera::utcTimeCharacteristicUUID() {
 
 const NimBLEUUID &FujifilmVirtualCamera::powerCharacteristicUUID() {
   return POWER_CHARACTERISTIC_UUID;
+}
+
+const NimBLEUUID &FujifilmVirtualCamera::locationSyncCharacteristicUUID() {
+  return SECURE_NOTIFICATION7_UUID;
 }
 
 const NimBLEUUID &FujifilmVirtualCamera::syncIntervalCharacteristicUUID() {
