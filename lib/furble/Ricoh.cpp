@@ -13,8 +13,10 @@
 #include <NimBLEUtils.h>
 #include <esp_timer.h>
 
+#include "Device.h"
 #include "Ricoh.h"
 #include "protocol/AdvertisementProtocol.h"
+#include "protocol/RicohTime.h"
 
 namespace Furble {
 
@@ -24,6 +26,7 @@ const NimBLEUUID Ricoh::MODEL_CHR_UUID {0x35FE6272, 0x6AA5, 0x44D9, 0x88E1F09427
 const NimBLEUUID Ricoh::CAMERA_SVC_UUID {0x4B445988, 0xCAA0, 0x4DD3, 0x941D37B4F52ACA86};
 const NimBLEUUID Ricoh::POWER_CHR_UUID {0xB58CE84C, 0x0666, 0x4DE9, 0xBEC82D27B27B3211};
 const NimBLEUUID Ricoh::OPERATION_MODE_CHR_UUID {0x1452335A, 0xEC7F, 0x4877, 0xB8AB0F72E18BB295};
+const NimBLEUUID Ricoh::DATE_TIME_CHR_UUID {0xFA46BBDD, 0x8A8F, 0x4796, 0x8CF3AA58949B130A};
 const NimBLEUUID Ricoh::GEOTAG_ENABLE_CHR_UUID {0xA36AFDCF, 0x6B67, 0x4046, 0x9BE728FB67DBC071};
 
 const NimBLEUUID Ricoh::SHOOTING_SVC_UUID {0x9F00F387, 0x8345, 0x4BBC, 0x8B92B87B52E3091A};
@@ -270,6 +273,13 @@ bool Ricoh::_connect(void) {
   pSvc = m_Client->getService(BT_CONTROL_SVC_UUID);
   if (pSvc != nullptr) {
     m_PairedDeviceName = pSvc->getCharacteristic(PAIRED_DEVICE_NAME_CHR_UUID);
+    if (m_PairedDeviceName != nullptr && m_PairedDeviceName->canWrite()) {
+      const std::string name = Device::getStringID();
+      if (!gattWrite(m_PairedDeviceName, reinterpret_cast<const uint8_t *>(name.data()),
+                     name.size(), true)) {
+        ESP_LOGW(LOG_TAG, "Ricoh PairedDeviceName write failed");
+      }
+    }
   } else {
     ESP_LOGW(LOG_TAG, "Ricoh Bluetooth Control service unavailable");
   }
@@ -315,6 +325,8 @@ void Ricoh::clearRemoteState(void) {
   m_GeotagEnable = nullptr;
   m_LastPower = STATE_UNKNOWN;
   m_LastOperationMode = STATE_UNKNOWN;
+  m_CaptureStatusValue = STATE_UNKNOWN;
+  m_CapturesCompleted = 0;
   m_LastGpsWriteMs = 0;
   m_HasGpsWrite = false;
 }
@@ -365,6 +377,18 @@ bool Ricoh::subscribeCharacteristic(NimBLERemoteCharacteristic *pChr, const char
             m_LastPower = data[0];
           } else if (chr->getUUID() == OPERATION_MODE_CHR_UUID) {
             m_LastOperationMode = data[0];
+          } else if (chr->getUUID() == CAPTURE_STATUS_CHR_UUID) {
+            // Byte 0 is the capture-in-progress property. GR IIIx 1.60 shows
+            // 01 00 00 00 while capturing and 00 00 00 00 afterwards. A
+            // property read failure substitutes 0xFF, which is neither.
+            const uint8_t previous = m_CaptureStatusValue.exchange(data[0]);
+            if (previous == 0x01 && data[0] == 0x00) {
+              m_CapturesCompleted++;
+              ESP_LOGI(LOG_TAG, "Ricoh capture complete (%u observed)",
+                       static_cast<unsigned>(m_CapturesCompleted.load()));
+            } else if (previous != data[0] && data[0] == 0x01) {
+              ESP_LOGI(LOG_TAG, "Ricoh capture started");
+            }
           }
         }
       },
@@ -438,6 +462,18 @@ void Ricoh::focusRelease(void) {
   ESP_LOGI(LOG_TAG, "Ricoh focusRelease ignored (focus unsupported; no capture write)");
 }
 
+uint8_t Ricoh::captureStatus(void) const {
+  return m_CaptureStatusValue.load();
+}
+
+bool Ricoh::captureInProgress(void) const {
+  return m_CaptureStatusValue.load() == 0x01;
+}
+
+uint32_t Ricoh::capturesCompleted(void) const {
+  return m_CapturesCompleted.load();
+}
+
 void Ricoh::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
   if (!isConnected()) {
     ESP_LOGW(LOG_TAG, "Ricoh GPS skipped: not connected");
@@ -456,6 +492,12 @@ void Ricoh::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
              timesync.hour, timesync.minute, timesync.second, timesync.centisecond);
     return;
   }
+
+  // The Date Time characteristic carries local wall-clock time and has no
+  // timezone field. Furble only has UTC from GPS and no timezone source, so a
+  // write here would set the camera wrong by the user's offset. The encoder and
+  // its vector are kept in RicohProtocol for the day a local-time source exists;
+  // do not reintroduce the write without one.
 
   const uint32_t nowMs = static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
   const bool moved = !m_HasGpsWrite

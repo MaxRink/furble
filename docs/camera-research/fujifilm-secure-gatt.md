@@ -123,8 +123,11 @@ capture establishes the requirement.
 - `F9150137` `01 00` is also a date or time request in the official apps.
   Furble uses it as an operational promotion, not a proven registration
   flag.
-- The 12-byte time packet on `C52EDBCE` and the 7-byte local time packet
-  on `B9BFD37F` are not implemented by Furble.
+- Furble answers the `F9150137` `01 00` request with the 12-byte UTC packet on
+  `C52EDBCE`, offset zero and DST off. The 7-byte local form on `B9BFD37F` is
+  not written: it expects wall-clock time and Furble has no timezone source, so
+  a body without a writable UTC characteristic keeps its clock unchanged. The
+  physical clock effect is capture-gated.
 
 ## Sources
 

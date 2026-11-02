@@ -14,19 +14,6 @@
   },
   "scenarios": [
     {
-      "path": "sim/scenarios/bughunt/console-ui-workflow.txt",
-      "suite": "bughunt",
-      "owner": "sim-bughunt",
-      "boards": [
-        "m5stick-s3"
-      ],
-      "capabilities": [
-        "fauxny"
-      ],
-      "expected_exit": 0,
-      "certified": true
-    },
-    {
       "path": "sim/scenarios/blind-remote-shutter.txt",
       "suite": "power-gate",
       "owner": "sim-power",
@@ -176,6 +163,81 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/bughunt/console-ui-workflow.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/core-connected-grid-large.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "fauxny",
+        "gps",
+        "imu",
+        "ir"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/core-connected-grid.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "fauxny",
+        "gps",
+        "imu",
+        "ir"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/core-icon-grid-large.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "fauxny",
+        "gps",
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/core-icon-grid.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "fauxny",
+        "gps",
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/bughunt/core-notouch-layout.txt",
       "suite": "bughunt",
       "owner": "sim-bughunt",
@@ -188,6 +250,95 @@
         "imu",
         "ir"
       ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/core-touch-remote-shutter-fit-large.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/core-touch-remote-shutter-fit-small.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/core-touch-remote-shutter-fit.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/display-layout-buttons-s3.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/display-layout-large.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/display-layout-normal.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/display-layout-small.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [],
       "expected_exit": 0,
       "certified": true
     },
@@ -390,6 +541,93 @@
       "reason": "Duplicate of sim/scenarios/e2e/interval-back-trap.txt; retained only as a historical finding."
     },
     {
+      "path": "sim/scenarios/bughunt/legend-absent-core.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/legend-bottom-135.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny",
+        "gps",
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/legend-bottom-80.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-c"
+      ],
+      "capabilities": [
+        "fauxny",
+        "gps",
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/legend-off-controls.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-c",
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/legend-setting-135.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny",
+        "gps",
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/legend-setting-80.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-c"
+      ],
+      "capabilities": [
+        "fauxny",
+        "gps",
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/bughunt/overflow-sweep.txt",
       "suite": "bughunt",
       "owner": "sim-bughunt",
@@ -482,6 +720,67 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/bughunt/remote-control-fit-large.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/remote-control-fit-small.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/remote-control-mode.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/stick-notouch-connected-large.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny",
+        "gps",
+        "imu",
+        "ir"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/bughunt/stick-notouch-layout-135.txt",
       "suite": "bughunt",
       "owner": "sim-bughunt",
@@ -509,6 +808,21 @@
         "gps",
         "imu",
         "ir"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/stickc-connected-large-imu.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-c"
+      ],
+      "capabilities": [
+        "fauxny",
+        "gps",
+        "imu"
       ],
       "expected_exit": 0,
       "certified": true
@@ -600,6 +914,130 @@
       "expected_exit": 0,
       "certified": false,
       "reason": "open bug: the intervalometer settings page overflows by 3 px on 320x240 at the Large text size, so this scenario fails today. Promote it in the PR that fixes the page. See plan 161."
+    },
+    {
+      "path": "sim/scenarios/bughunt/touch-connected-small-fit.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c"
+      ],
+      "capabilities": [
+        "fauxny",
+        "gps",
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/touch-diagnostics-fit.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "gps"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/touch-home-large-fit.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c"
+      ],
+      "capabilities": [
+        "fauxny",
+        "gps"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/touch-home-normal-fit.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "fauxny",
+        "gps",
+        "imu",
+        "feedback",
+        "ir",
+        "sd"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/touch-remote-shutter-narrow.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/touch-remote-shutter-scroll.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/touch-sensors-default-fit.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/bughunt/touch-sensors-small-fit.txt",
+      "suite": "bughunt",
+      "owner": "sim-bughunt",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c"
+      ],
+      "capabilities": [
+        "fauxny",
+        "gps",
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
     },
     {
       "path": "sim/scenarios/connected-gps-active-30s.txt",
@@ -990,6 +1428,19 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/e2e/ble-peer-topology-smoke.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/e2e/boot-splash-disabled.txt",
       "suite": "e2e",
       "owner": "sim-e2e",
@@ -1217,6 +1668,19 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/e2e/connect-error-notouch-dismiss.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/e2e/connect-flow.txt",
       "suite": "e2e",
       "owner": "sim-e2e",
@@ -1335,7 +1799,7 @@
       "certified": true
     },
     {
-      "path": "sim/scenarios/e2e/gps-duty-no-fix.txt",
+      "path": "sim/scenarios/e2e/gps-degraded-recovery.txt",
       "suite": "e2e",
       "owner": "sim-e2e",
       "boards": [
@@ -1348,7 +1812,7 @@
       "certified": true
     },
     {
-      "path": "sim/scenarios/e2e/gps-degraded-recovery.txt",
+      "path": "sim/scenarios/e2e/gps-duty-no-fix.txt",
       "suite": "e2e",
       "owner": "sim-e2e",
       "boards": [
@@ -1511,7 +1975,7 @@
       "certified": true
     },
     {
-      "path": "sim/scenarios/e2e/gps-motion-setting.txt",
+      "path": "sim/scenarios/e2e/gps-motion-prearm.txt",
       "suite": "e2e",
       "owner": "sim-e2e",
       "boards": [
@@ -1527,7 +1991,7 @@
       "certified": true
     },
     {
-      "path": "sim/scenarios/e2e/gps-motion-prearm.txt",
+      "path": "sim/scenarios/e2e/gps-motion-setting.txt",
       "suite": "e2e",
       "owner": "sim-e2e",
       "boards": [
@@ -2230,6 +2694,19 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/e2e/lumix-capability-gating.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/e2e/menu-focus-outline.txt",
       "suite": "e2e",
       "owner": "sim-e2e",
@@ -2283,6 +2760,34 @@
       "owner": "sim-e2e",
       "boards": [
         "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/physical-indicators-cancel-restore.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/physical-indicators-failure-restore.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
       ],
       "capabilities": [],
       "expected_exit": 0,
@@ -2418,48 +2923,7 @@
       "certified": true
     },
     {
-      "path": "sim/scenarios/e2e/stale-bond-pairing-lost.txt",
-      "suite": "e2e",
-      "owner": "sim-e2e",
-      "boards": [
-        "m5stick-s3",
-        "m5stick-c",
-        "m5stack-core"
-      ],
-      "capabilities": [],
-      "expected_exit": 0,
-      "certified": true
-    },
-    {
-      "path": "sim/scenarios/e2e/connect-error-notouch-dismiss.txt",
-      "suite": "e2e",
-      "owner": "sim-e2e",
-      "boards": [
-        "m5stick-s3",
-        "m5stick-c",
-        "m5stack-core"
-      ],
-      "capabilities": [],
-      "expected_exit": 0,
-      "certified": true
-    },
-    {
-      "path": "sim/scenarios/e2e/physical-indicators-cancel-restore.txt",
-      "suite": "e2e",
-      "owner": "sim-e2e",
-      "boards": [
-        "m5stick-s3",
-        "m5stick-c",
-        "m5stack-core"
-      ],
-      "capabilities": [
-        "fauxny"
-      ],
-      "expected_exit": 0,
-      "certified": true
-    },
-    {
-      "path": "sim/scenarios/e2e/physical-indicators-failure-restore.txt",
+      "path": "sim/scenarios/e2e/ricoh-capability-gating.txt",
       "suite": "e2e",
       "owner": "sim-e2e",
       "boards": [
@@ -2553,6 +3017,19 @@
       "capabilities": [
         "fauxny"
       ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/stale-bond-pairing-lost.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [],
       "expected_exit": 0,
       "certified": true
     },
@@ -3095,6 +3572,28 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/invalid/interval-unit-only.txt",
+      "suite": "invalid",
+      "owner": "sim-parser",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 2,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/invalid/interval-unit-unknown.txt",
+      "suite": "invalid",
+      "owner": "sim-parser",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 2,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/invalid/key-trailing.txt",
       "suite": "invalid",
       "owner": "sim-parser",
@@ -3246,466 +3745,6 @@
       ],
       "capabilities": [],
       "expected_exit": 0,
-      "certified": true
-    },
-    {
-      "path": "sim/scenarios/bughunt/core-connected-grid.txt",
-      "suite": "bughunt",
-      "owner": "sim-bughunt",
-      "boards": [
-        "m5stack-core"
-      ],
-      "capabilities": [
-        "fauxny",
-        "gps",
-        "imu",
-        "ir"
-      ],
-      "expected_exit": 0,
-      "certified": true
-    },
-    {
-      "path": "sim/scenarios/bughunt/core-connected-grid-large.txt",
-      "suite": "bughunt",
-      "owner": "sim-bughunt",
-      "boards": [
-        "m5stack-core"
-      ],
-      "capabilities": [
-        "fauxny",
-        "gps",
-        "imu",
-        "ir"
-      ],
-      "expected_exit": 0,
-      "certified": true
-    },
-    {
-      "path": "sim/scenarios/bughunt/remote-control-mode.txt",
-      "suite": "bughunt",
-      "owner": "sim-bughunt",
-      "boards": [
-        "m5stick-s3",
-        "m5stick-c",
-        "m5stack-core"
-      ],
-      "capabilities": [
-        "fauxny"
-      ],
-      "expected_exit": 0,
-      "certified": true
-    },
-    {
-      "path": "sim/scenarios/bughunt/remote-control-fit-small.txt",
-      "suite": "bughunt",
-      "owner": "sim-bughunt",
-      "boards": [
-        "m5stick-s3",
-        "m5stick-c",
-        "m5stack-core"
-      ],
-      "capabilities": [
-        "fauxny"
-      ],
-      "expected_exit": 0,
-      "certified": true
-    },
-    {
-      "path": "sim/scenarios/bughunt/remote-control-fit-large.txt",
-      "suite": "bughunt",
-      "owner": "sim-bughunt",
-      "boards": [
-        "m5stick-s3",
-        "m5stick-c",
-        "m5stack-core"
-      ],
-      "capabilities": [
-        "fauxny"
-      ],
-      "expected_exit": 0,
-      "certified": true
-    },
-    {
-      "path": "sim/scenarios/bughunt/legend-absent-core.txt",
-      "suite": "bughunt",
-      "owner": "sim-bughunt",
-      "boards": [
-        "m5stack-core"
-      ],
-      "capabilities": [
-        "fauxny"
-      ],
-      "expected_exit": 0,
-      "certified": true
-    },
-    {
-      "path": "sim/scenarios/bughunt/core-icon-grid.txt",
-      "suite": "bughunt",
-      "owner": "sim-bughunt",
-      "boards": [
-        "m5stack-core"
-      ],
-      "capabilities": [
-        "fauxny",
-        "gps",
-        "imu"
-      ],
-      "expected_exit": 0,
-      "certified": true
-    },
-    {
-      "path": "sim/scenarios/bughunt/core-icon-grid-large.txt",
-      "suite": "bughunt",
-      "owner": "sim-bughunt",
-      "boards": [
-        "m5stack-core"
-      ],
-      "capabilities": [
-        "fauxny",
-        "gps",
-        "imu"
-      ],
-      "expected_exit": 0,
-      "certified": true
-    },
-    {
-      "path": "sim/scenarios/bughunt/legend-bottom-135.txt",
-      "suite": "bughunt",
-      "owner": "sim-bughunt",
-      "boards": [
-        "m5stick-s3"
-      ],
-      "capabilities": [
-        "fauxny",
-        "gps",
-        "imu"
-      ],
-      "expected_exit": 0,
-      "certified": true
-    },
-    {
-      "path": "sim/scenarios/bughunt/legend-setting-135.txt",
-      "suite": "bughunt",
-      "owner": "sim-bughunt",
-      "boards": [
-        "m5stick-s3"
-      ],
-      "capabilities": [
-        "fauxny",
-        "gps",
-        "imu"
-      ],
-      "expected_exit": 0,
-      "certified": true
-    },
-    {
-      "path": "sim/scenarios/bughunt/legend-off-controls.txt",
-      "suite": "bughunt",
-      "owner": "sim-bughunt",
-      "boards": [
-        "m5stick-c",
-        "m5stick-s3"
-      ],
-      "capabilities": [
-        "fauxny"
-      ],
-      "expected_exit": 0,
-      "certified": true
-    },
-    {
-      "path": "sim/scenarios/bughunt/legend-setting-80.txt",
-      "suite": "bughunt",
-      "owner": "sim-bughunt",
-      "boards": [
-        "m5stick-c"
-      ],
-      "capabilities": [
-        "fauxny",
-        "gps",
-        "imu"
-      ],
-      "expected_exit": 0,
-      "certified": true
-    },
-    {
-      "path": "sim/scenarios/bughunt/stick-notouch-connected-large.txt",
-      "suite": "bughunt",
-      "owner": "sim-bughunt",
-      "boards": [
-        "m5stick-s3"
-      ],
-      "capabilities": [
-        "fauxny",
-        "gps",
-        "imu",
-        "ir"
-      ],
-      "expected_exit": 0,
-      "certified": true
-    },
-    {
-      "path": "sim/scenarios/bughunt/stickc-connected-large-imu.txt",
-      "suite": "bughunt",
-      "owner": "sim-bughunt",
-      "boards": [
-        "m5stick-c"
-      ],
-      "capabilities": [
-        "fauxny",
-        "gps",
-        "imu"
-      ],
-      "expected_exit": 0,
-      "certified": true
-    },
-    {
-      "path": "sim/scenarios/bughunt/legend-bottom-80.txt",
-      "suite": "bughunt",
-      "owner": "sim-bughunt",
-      "boards": [
-        "m5stick-c"
-      ],
-      "capabilities": [
-        "fauxny",
-        "gps",
-        "imu"
-      ],
-      "expected_exit": 0,
-      "certified": true
-    },
-    {
-      "path": "sim/scenarios/bughunt/touch-connected-small-fit.txt",
-      "suite": "bughunt",
-      "owner": "sim-bughunt",
-      "boards": [
-        "m5stick-s3",
-        "m5stick-c"
-      ],
-      "capabilities": [
-        "fauxny",
-        "gps",
-        "imu"
-      ],
-      "expected_exit": 0,
-      "certified": true
-    },
-    {
-      "path": "sim/scenarios/bughunt/touch-diagnostics-fit.txt",
-      "suite": "bughunt",
-      "owner": "sim-bughunt",
-      "boards": [
-        "m5stick-s3"
-      ],
-      "capabilities": [
-        "gps"
-      ],
-      "expected_exit": 0,
-      "certified": true
-    },
-    {
-      "path": "sim/scenarios/bughunt/touch-home-large-fit.txt",
-      "suite": "bughunt",
-      "owner": "sim-bughunt",
-      "boards": [
-        "m5stick-s3",
-        "m5stick-c"
-      ],
-      "capabilities": [
-        "fauxny",
-        "gps"
-      ],
-      "expected_exit": 0,
-      "certified": true
-    },
-    {
-      "path": "sim/scenarios/bughunt/touch-home-normal-fit.txt",
-      "suite": "bughunt",
-      "owner": "sim-bughunt",
-      "boards": [
-        "m5stick-s3",
-        "m5stick-c",
-        "m5stack-core"
-      ],
-      "capabilities": [
-        "fauxny",
-        "gps",
-        "imu",
-        "feedback",
-        "ir",
-        "sd"
-      ],
-      "expected_exit": 0,
-      "certified": true
-    },
-    {
-      "path": "sim/scenarios/bughunt/touch-remote-shutter-narrow.txt",
-      "suite": "bughunt",
-      "owner": "sim-bughunt",
-      "boards": [
-        "m5stick-s3",
-        "m5stick-c",
-        "m5stack-core"
-      ],
-      "capabilities": [
-        "fauxny"
-      ],
-      "expected_exit": 0,
-      "certified": true
-    },
-    {
-      "path": "sim/scenarios/bughunt/touch-remote-shutter-scroll.txt",
-      "suite": "bughunt",
-      "owner": "sim-bughunt",
-      "boards": [
-        "m5stick-s3",
-        "m5stick-c"
-      ],
-      "capabilities": [
-        "fauxny"
-      ],
-      "expected_exit": 0,
-      "certified": true
-    },
-    {
-      "path": "sim/scenarios/bughunt/core-touch-remote-shutter-fit.txt",
-      "suite": "bughunt",
-      "owner": "sim-bughunt",
-      "boards": [
-        "m5stack-core"
-      ],
-      "capabilities": [
-        "fauxny"
-      ],
-      "expected_exit": 0,
-      "certified": true
-    },
-    {
-      "path": "sim/scenarios/bughunt/core-touch-remote-shutter-fit-small.txt",
-      "suite": "bughunt",
-      "owner": "sim-bughunt",
-      "boards": [
-        "m5stack-core"
-      ],
-      "capabilities": [
-        "fauxny"
-      ],
-      "expected_exit": 0,
-      "certified": true
-    },
-    {
-      "path": "sim/scenarios/bughunt/core-touch-remote-shutter-fit-large.txt",
-      "suite": "bughunt",
-      "owner": "sim-bughunt",
-      "boards": [
-        "m5stack-core"
-      ],
-      "capabilities": [
-        "fauxny"
-      ],
-      "expected_exit": 0,
-      "certified": true
-    },
-    {
-      "path": "sim/scenarios/bughunt/touch-sensors-default-fit.txt",
-      "suite": "bughunt",
-      "owner": "sim-bughunt",
-      "boards": [
-        "m5stick-s3",
-        "m5stick-c",
-        "m5stack-core"
-      ],
-      "capabilities": [
-        "imu"
-      ],
-      "expected_exit": 0,
-      "certified": true
-    },
-    {
-      "path": "sim/scenarios/bughunt/touch-sensors-small-fit.txt",
-      "suite": "bughunt",
-      "owner": "sim-bughunt",
-      "boards": [
-        "m5stick-s3",
-        "m5stick-c"
-      ],
-      "capabilities": [
-        "fauxny",
-        "gps",
-        "imu"
-      ],
-      "expected_exit": 0,
-      "certified": true
-    },
-    {
-      "path": "sim/scenarios/bughunt/display-layout-small.txt",
-      "suite": "bughunt",
-      "owner": "sim-bughunt",
-      "boards": [
-        "m5stick-s3",
-        "m5stick-c",
-        "m5stack-core"
-      ],
-      "capabilities": [],
-      "expected_exit": 0,
-      "certified": true
-    },
-    {
-      "path": "sim/scenarios/bughunt/display-layout-normal.txt",
-      "suite": "bughunt",
-      "owner": "sim-bughunt",
-      "boards": [
-        "m5stick-s3",
-        "m5stick-c",
-        "m5stack-core"
-      ],
-      "capabilities": [],
-      "expected_exit": 0,
-      "certified": true
-    },
-    {
-      "path": "sim/scenarios/bughunt/display-layout-large.txt",
-      "suite": "bughunt",
-      "owner": "sim-bughunt",
-      "boards": [
-        "m5stick-s3",
-        "m5stick-c",
-        "m5stack-core"
-      ],
-      "capabilities": [],
-      "expected_exit": 0,
-      "certified": true
-    },
-    {
-      "path": "sim/scenarios/bughunt/display-layout-buttons-s3.txt",
-      "suite": "bughunt",
-      "owner": "sim-bughunt",
-      "boards": [
-        "m5stick-s3"
-      ],
-      "capabilities": [],
-      "expected_exit": 0,
-      "certified": true
-    },
-    {
-      "path": "sim/scenarios/invalid/interval-unit-only.txt",
-      "suite": "invalid",
-      "owner": "sim-parser",
-      "boards": [
-        "m5stick-s3"
-      ],
-      "capabilities": [],
-      "expected_exit": 2,
-      "certified": true
-    },
-    {
-      "path": "sim/scenarios/invalid/interval-unit-unknown.txt",
-      "suite": "invalid",
-      "owner": "sim-parser",
-      "boards": [
-        "m5stick-s3"
-      ],
-      "capabilities": [],
-      "expected_exit": 2,
       "certified": true
     }
   ]

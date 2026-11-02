@@ -131,8 +131,8 @@ The following details are from that clean, pinned source.
   `f557d96b-8284-4667-8793-b971c1deca2a` and acknowledge by retaining the first
   three bytes and replacing the last with `20`. Write the Furble identity to
   `85b9163e-62d1-49ff-a6f5-054b4630d4a1`. Official apps write the name as
-  UTF-8 plus a NUL terminator; Furble writes UTF-8 without one. The target
-  requirement is not proven.
+  UTF-8 plus a NUL terminator; Furble now does the same. The camera-side
+  requirement is still not proven.
 - Registration subscriptions: the local Secure table includes required
   indications `a68e3f66-0fcc-4395-8d4c-aa980b5877fa` and
   `bd17ba04-b76b-4892-a545-b73ba1f74dae`, then optional notifications on
@@ -194,8 +194,9 @@ vendor images are not redistributed. The claims below are `firmware-static` or
   correct because the camera only sends it to an accepted client, but the
   semantic claim is not proven.
 - The camera has a 12-byte UTC/timezone packet on `C52EDBCE` and a 7-byte local
-  time packet on `B9BFD37F`. Furble sends neither, so it does not synchronise
-  the camera clock. This is a missing control surface, not a shutter blocker.
+  time packet on `B9BFD37F`. Furble answers the `F9150137` `01 00` request with
+  the 12-byte UTC form, offset zero and DST off, because it has no timezone
+  source. The camera-clock physical effect is still capture-gated.
 - The official apps write a geotag speed field in bytes 12 to 15. Furble writes
   zero. The layout matches; the camera-side unit is unknown.
 - The sync interval characteristic accepts 10, 15, 20, 30, 60, 120, 240, and
@@ -241,11 +242,11 @@ not evidence for another body or firmware.
 - Resolve `F9150137` `01 00`: registration acceptance, time request, or both.
   Record whether the camera clock changes and whether `02 00` ever appears on
   these targets.
-- Capture the 12-byte time packet on `C52EDBCE` and the 7-byte local packet on
-  `B9BFD37F`, including timezone and DST effects.
+- Capture the physical effect of the 12-byte time packet on `C52EDBCE` and the
+  7-byte local packet on `B9BFD37F`, including timezone and DST effects.
 - Confirm whether the Secure advertisement type byte is always `0x01` before
   Furble tightens its parser.
-- Confirm whether the client name requires a NUL terminator and whether the
+- Confirm whether the client name NUL terminator is required and whether the
   geotag speed field is metres per second, km/h, or ignored.
 - Test Basic reachability on X100VI 1.31 and X-S20 3.30 and record the failure
   mode when the token service is absent.
@@ -303,7 +304,7 @@ and [Remote](https://github.com/MaxRink/furble/blob/965f299f0f43c38fe45e4680f1bf
   starts GPS with 8-byte `01` or `02`, stops with `03`, and selects a source
   with `06`. The one-byte enable form is not app-corroborated. The 20-byte
   location packet otherwise matches the app for finite values. The app uses a
-  UTC epoch; Furble uses `mktime`, which depends on the runtime timezone. The
+  UTC epoch; Furble now uses an absolute UTC conversion, not `mktime`. The
   app's Bluetooth GPS gate passes only EOS RP and R6 Mark II among the four
   Furble models.
 
@@ -347,7 +348,7 @@ their details as citation-only research.
   autofocus result, still, Bulb, two-second release, video, standby, and RF
   loss. Confirm physical outcomes, not just successful ATT writes.
 - Capture Smart GPS request/enable/ack and a UTC timestamp in a non-UTC timezone.
-  The local `mktime` path is a certification gap because its result depends on
+  The former `mktime` path was a certification gap because its result depended on
   runtime timezone configuration; this is not a proven bug. Confirm whether GPS is
   available while any Canon remote role is paired.
 - The simulator should reject Remote GPS and Smart focus, model the 60 s Smart
@@ -428,8 +429,9 @@ and [Smart](https://github.com/MaxRink/furble/blob/965f299f0f43c38fe45e4680f1bfb
   `00002002`; location `00002007`; time `00002006`, all in the de00 UUID
   family.
 - The local implementation uses Blowfish-derived eight-salt validation and
-  builds stage 3 from the validated camera response. It then waits only 1 s
-  for a final success indication and writes the controller name to `00002002`.
+  builds stage 3 from the validated camera response. It then stops and reports
+  the Bluetooth Classic blocker. It no longer waits for a final `01 00`, which
+  is a time request, and never reaches the `00002002` name write.
 - The source explicitly marks Smart non-functional because Nikon requires a
   Bluetooth Classic (BR/EDR) continuation after the BLE exchange; Furble is
   LE-only. Smart shutter, focus, and GPS methods are no-ops in the final path.

@@ -21,6 +21,11 @@ class FauxNY: public Camera {
   void focusRelease(void) override;
   void updateGeoData(const gps_t &gps, const timesync_t &timesync) override;
 
+  /** Software peer, accepts every command. */
+  Camera::Capability capabilities(void) const override {
+    return Camera::Capability {true, true, true};
+  }
+
 #if defined(FURBLE_SIM)
   /**
    * The geotag the simulated camera last received.

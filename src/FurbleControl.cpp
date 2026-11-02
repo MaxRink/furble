@@ -694,6 +694,37 @@ std::vector<Control::target_status_t> Control::getTargetStatus(void) {
   return status;
 }
 
+Camera::Capability Control::getActiveCapability(void) {
+  std::vector<std::shared_ptr<Camera>> cameras;
+  {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    cameras.reserve(m_Targets.size());
+    for (const auto &target : m_Targets) {
+      cameras.push_back(target->getCamera());
+    }
+  }
+
+  // No session: report every control so the idle UI is unchanged.
+  if (cameras.empty()) {
+    return Camera::Capability {};
+  }
+
+  Camera::Capability merged {};
+  bool first = true;
+  for (const auto &camera : cameras) {
+    const Camera::Capability capability = camera->capabilities();
+    if (first) {
+      merged = capability;
+      first = false;
+      continue;
+    }
+    merged.focus = merged.focus && capability.focus;
+    merged.bulb = merged.bulb && capability.bulb;
+    merged.movie = merged.movie && capability.movie;
+  }
+  return merged;
+}
+
 BaseType_t Control::sendTargetCommand(const std::string &id, cmd_t cmd) {
   const std::lock_guard<std::mutex> lock(m_Mutex);
 

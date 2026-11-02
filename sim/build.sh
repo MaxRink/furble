@@ -354,6 +354,13 @@ for source in \
   "$ROOT/lib/testing/nimble/MockNimBLE.cpp" \
   "$ROOT/lib/testing/peer/FujifilmVirtualCamera.cpp" \
   "$ROOT/lib/testing/peer/RicohVirtualCamera.cpp" \
+  "$ROOT/lib/testing/peer/CanonSmartVirtualCamera.cpp" \
+  "$ROOT/lib/testing/peer/CanonRemoteVirtualCamera.cpp" \
+  "$ROOT/lib/testing/peer/NikonRemoteVirtualCamera.cpp" \
+  "$ROOT/lib/testing/peer/NikonSmartVirtualCamera.cpp" \
+  "$ROOT/lib/testing/peer/SonyVirtualCamera.cpp" \
+  "$ROOT/lib/testing/peer/LumixVirtualCamera.cpp" \
+  "$ROOT/lib/testing/peer/DjiVirtualCamera.cpp" \
   "$DEP_ROOT/TinyGPSPlus/src/TinyGPS++.cpp"; do
   compile_cpp "$source"
 done

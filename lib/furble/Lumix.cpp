@@ -1,6 +1,9 @@
 #include <cstring>
 #include <ctime>
 
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+
 #include <NimBLEAddress.h>
 #include <NimBLEAdvertisedDevice.h>
 #include <NimBLEDevice.h>
@@ -18,10 +21,13 @@ const NimBLEUUID Lumix::SESSION_INIT_UUID {0x8d08a420, 0x3213, 0x11e6, 0x8aca000
 const NimBLEUUID Lumix::DEVICE_NAME_UUID {0xcd7a71a0, 0x3213, 0x11e6, 0x8f560002a5d5c51b};
 const NimBLEUUID Lumix::CONTROL_SVC_UUID {0x7be5faae, 0x475b, 0x11e7, 0xa91992ebcb67fe33};
 const NimBLEUUID Lumix::CONTROL_UUID {0x7be5fd56, 0x475b, 0x11e7, 0xa91992ebcb67fe33};
+const NimBLEUUID Lumix::CONTROL_READINESS_UUID {0x7be5fe6e, 0x475b, 0x11e7, 0xa91992ebcb67fe33};
 const NimBLEUUID Lumix::LOCATION_SVC_UUID {0x1d74afe0, 0x3214, 0x11e6, 0x8ab40002a5d5c51b};
 const NimBLEUUID Lumix::LOCATION_CHR_UUID {0xdaff1bc0, 0x3216, 0x11e6, 0x91c80002a5d5c51b};
+const NimBLEUUID Lumix::LOCATION_READINESS_UUID {0x37701b80, 0x32a7, 0x11e6, 0xbb830002a5d5c51b};
 const NimBLEUUID Lumix::CLOCK_SVC_UUID {0x34738720, 0x3214, 0x11e6, 0xb66b0002a5d5c51b};
 const NimBLEUUID Lumix::CLOCK_CHR_UUID {0xead55e60, 0x3216, 0x11e6, 0xa42e0002a5d5c51b};
+const NimBLEUUID Lumix::CLOCK_REQUEST_UUID {0x4cf487c0, 0x32a7, 0x11e6, 0xa50d0002a5d5c51b};
 constexpr std::array<uint8_t, 16> Lumix::MEI0;
 
 namespace {
@@ -78,8 +84,16 @@ bool Lumix::matches(const NimBLEAdvertisedDevice *pDevice) {
 bool Lumix::_connect(void) {
   // Drop any stale characteristic pointers from a previous session.
   m_Control = nullptr;
+  m_ControlReadiness = nullptr;
   m_Location = nullptr;
+  m_LocationReadiness = nullptr;
   m_Clock = nullptr;
+  m_ClockRequest = nullptr;
+  m_ControlReady = false;
+  m_LocationReady = false;
+  m_LocationResend = false;
+  m_ClockReady = false;
+  m_SessionStarted = false;
   m_Progress = 10;
   ESP_LOGI(LOG_TAG, "Lumix connecting");
   if (!m_Client->connect(m_Address)) {
@@ -130,9 +144,69 @@ bool Lumix::_connect(void) {
     return false;
   }
 
+  // The official app sends Confirm 01, waits for a 00 readiness notification
+  // on 7be5fe6e, then sends Start 02. A bare ShutterOn 04 is refused by a body
+  // that requires the session gate.
+  m_ControlReadiness = pSvc->getCharacteristic(CONTROL_READINESS_UUID);
+  if (m_ControlReadiness != nullptr) {
+    if (!gattSubscribe(
+            m_ControlReadiness,
+            [this](NimBLERemoteCharacteristic *, uint8_t *data, size_t length, bool) {
+              if (length > 0 && data[0] == 0x00) {
+                m_ControlReady = true;
+              }
+            },
+            false, true)) {
+      ESP_LOGW(LOG_TAG, "Lumix control readiness subscribe failed");
+    }
+  } else {
+    ESP_LOGW(LOG_TAG, "Lumix control readiness characteristic unavailable");
+  }
+
+  if (!startSession()) {
+    ESP_LOGI(LOG_TAG, "Lumix session start failed");
+    return false;
+  }
+  m_Progress = 80;
+
   pSvc = m_Client->getService(LOCATION_SVC_UUID);
   if (pSvc != nullptr) {
     m_Location = pSvc->getCharacteristic(LOCATION_CHR_UUID);
+    // 37701b80: 01 starts location updates, 02 stops them, 03 resends the
+    // stored packet. The official app only writes GPS after 01.
+    m_LocationReadiness = pSvc->getCharacteristic(LOCATION_READINESS_UUID);
+    if (m_LocationReadiness != nullptr) {
+      if (!gattSubscribe(
+              m_LocationReadiness,
+              [this](NimBLERemoteCharacteristic *, uint8_t *data, size_t length, bool) {
+                if (length == 0) {
+                  return;
+                }
+                switch (data[0]) {
+                  case 0x01:
+                    m_LocationReady = true;
+                    break;
+                  case 0x02:
+                    // Location updates stopped. The camera may have asked for
+                    // a resend (03) just before this; the stop is the newer
+                    // instruction, so it also cancels that pending write.
+                    m_LocationReady = false;
+                    m_LocationResend = false;
+                    break;
+                  case 0x03:
+                    // The camera asks for the stored packet again. Keep the
+                    // gate open and write the current fix on the next tick.
+                    m_LocationReady = true;
+                    m_LocationResend = true;
+                    break;
+                  default:
+                    break;
+                }
+              },
+              false, true)) {
+        ESP_LOGW(LOG_TAG, "Lumix location readiness subscribe failed");
+      }
+    }
   } else {
     ESP_LOGI(LOG_TAG, "Lumix location service unavailable");
   }
@@ -140,6 +214,21 @@ bool Lumix::_connect(void) {
   pSvc = m_Client->getService(CLOCK_SVC_UUID);
   if (pSvc != nullptr) {
     m_Clock = pSvc->getCharacteristic(CLOCK_CHR_UUID);
+    // 4cf487c0 is the clock request. The official app writes the clock packet
+    // on this notification.
+    m_ClockRequest = pSvc->getCharacteristic(CLOCK_REQUEST_UUID);
+    if (m_ClockRequest != nullptr) {
+      if (!gattSubscribe(
+              m_ClockRequest,
+              [this](NimBLERemoteCharacteristic *, uint8_t *data, size_t length, bool) {
+                if (length > 0) {
+                  m_ClockReady = (data[0] == 0x01);
+                }
+              },
+              false, true)) {
+        ESP_LOGW(LOG_TAG, "Lumix clock request subscribe failed");
+      }
+    }
   } else {
     ESP_LOGI(LOG_TAG, "Lumix clock service unavailable");
   }
@@ -150,10 +239,43 @@ bool Lumix::_connect(void) {
 }
 
 void Lumix::_disconnect(void) {
+  // Keep the client alive for the whole stop sequence; a link drop now blocks
+  // its callback until the sequence ends instead of freeing the client under
+  // the GPS stop and Finish writes.
+  auto lifetime = lockClientLifetime();
+  if (!m_Connected) {
+    return;
+  }
+  if (m_SessionStarted && m_Location != nullptr && m_Location->canWrite()) {
+    // Clear the last position so the camera does not retain a stale fix.
+    // LUMIX Sync sends fix 0x56 with sentinel coordinates on GPS stop.
+    const geo_t stop = {
+        .gps_time = 0,
+        .latitude = 0x7fffffff,
+        .longitude = 0x7fffffff,
+        .altitude = 0x7fff,
+        .fix = 0x56,
+        .reserved = 0x00,
+    };
+    gattWrite(LOCATION_SVC_UUID, LOCATION_CHR_UUID,
+              NimBLEAttValue(reinterpret_cast<const uint8_t *>(&stop), sizeof(stop)), true);
+  }
+  if (m_SessionStarted && isConnected()) {
+    writeCommand(CMD_SESSION_FINISH);
+  }
+  m_SessionStarted = false;
+  m_ControlReady = false;
   m_Control = nullptr;
+  m_ControlReadiness = nullptr;
   m_Location = nullptr;
+  m_LocationReadiness = nullptr;
   m_Clock = nullptr;
-  if (m_Client != nullptr && m_Client->isConnected())
+  m_ClockRequest = nullptr;
+  m_ControlReady = false;
+  m_LocationReady = false;
+  m_LocationResend = false;
+  m_ClockReady = false;
+  if (m_Client != nullptr && isConnected())
     m_Client->disconnect();
 }
 
@@ -170,6 +292,42 @@ bool Lumix::writeCommand(uint8_t command) {
   return true;
 }
 
+bool Lumix::startSession(void) {
+  m_ControlReady = false;
+  if (!writeCommand(CMD_SESSION_CONFIRM)) {
+    return false;
+  }
+
+  // The readiness notification is the documented Start gate. Give it two
+  // seconds, but do not hang a connect if a body does not send it.
+  constexpr uint32_t READINESS_TIMEOUT_MS = 2000;
+  constexpr uint32_t READINESS_POLL_MS = 20;
+  uint32_t waited = 0;
+  while (!m_ControlReady.load() && (waited < READINESS_TIMEOUT_MS)) {
+    if (connectCancelled()) {
+      return false;
+    }
+    vTaskDelay(pdMS_TO_TICKS(READINESS_POLL_MS));
+    waited += READINESS_POLL_MS;
+  }
+  if (!m_ControlReady.load()) {
+    if (m_ControlReadiness != nullptr) {
+      // The body exposes the gate but did not open it. Starting anyway would
+      // bypass the Confirm/readiness/Start prerequisite the sequence exists
+      // for, and the session would answer every command with a refusal.
+      ESP_LOGW(LOG_TAG, "Lumix control readiness timeout; session refused");
+      return false;
+    }
+    ESP_LOGW(LOG_TAG, "Lumix control readiness unavailable; starting without the gate");
+  }
+
+  if (!writeCommand(CMD_SESSION_START)) {
+    return false;
+  }
+  m_SessionStarted = true;
+  return true;
+}
+
 void Lumix::shutterPress(void) {
   writeCommand(CMD_SHUTTER_PRESS);
 }
@@ -179,11 +337,13 @@ void Lumix::shutterRelease(void) {
 }
 
 void Lumix::focusPress(void) {
-  writeCommand(CMD_FOCUS_PRESS);
+  // LUMIX has no focus opcode. 01 and 02 are Confirm and Start session
+  // commands, never focus. See spec/panasonic.md C06 and C07.
+  ESP_LOGI(LOG_TAG, "Lumix focusPress ignored (no focus protocol)");
 }
 
 void Lumix::focusRelease(void) {
-  writeCommand(CMD_FOCUS_RELEASE);
+  ESP_LOGI(LOG_TAG, "Lumix focusRelease ignored (no focus protocol)");
 }
 
 void Lumix::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
@@ -191,28 +351,22 @@ void Lumix::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
     ESP_LOGW(LOG_TAG, "Lumix GPS skipped: not connected");
     return;
   }
-  if (m_Location == nullptr || !m_Location->canWrite()) {
-    ESP_LOGW(LOG_TAG, "Lumix GPS characteristic unavailable");
+  // The clock write can be the drop point: a self-deleting client frees the
+  // characteristic cache before writeValue returns. Hold the teardown lock and
+  // re-check the link before the location branch touches m_Location.
+  auto lifetime = lockClientLifetime();
+  if (!isConnected()) {
     return;
   }
 
   const time_t unixTime = toUnixTime(timesync);
-  if (unixTime < GPS_EPOCH_OFFSET) {
-    ESP_LOGW(LOG_TAG, "Lumix GPS skipped: invalid time");
-    return;
-  }
+  const bool timeValid = unixTime >= GPS_EPOCH_OFFSET;
 
-  geo_t geo = {
-      .gps_time = static_cast<uint32_t>(unixTime - GPS_EPOCH_OFFSET),
-      .latitude = static_cast<int32_t>(gps.latitude * 10000000.0),
-      .longitude = static_cast<int32_t>(gps.longitude * 10000000.0),
-      .altitude = static_cast<int16_t>(gps.altitude),
-      .fix = 0x41,
-      .reserved = 0x00,
-  };
-  bool rc = m_Location->writeValue(reinterpret_cast<const uint8_t *>(&geo), sizeof(geo), true);
-
-  if (rc && m_Clock != nullptr && m_Clock->canWrite()) {
+  // The clock request is independent of the location gate and of the location
+  // write. LUMIX Sync answers 4cf487c0 even while location updates are off, so
+  // a pending clock request must not wait for 37701b80 or for a GPS write.
+  const bool clockReady = (m_ClockRequest == nullptr) || m_ClockReady.load();
+  if (timeValid && clockReady && m_Clock != nullptr && m_Clock->canWrite()) {
     clock_t clock = {
         .year = static_cast<uint16_t>(timesync.year),
         .month = static_cast<uint8_t>(timesync.month),
@@ -227,6 +381,38 @@ void Lumix::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
     };
     m_Clock->writeValue(reinterpret_cast<const uint8_t *>(&clock), sizeof(clock), true);
   }
+
+  if (!isConnected()) {
+    return;
+  }
+  if (m_Location == nullptr || !m_Location->canWrite()) {
+    ESP_LOGW(LOG_TAG, "Lumix GPS characteristic unavailable");
+    return;
+  }
+
+  // A body that exposes 37701b80 must report ready before the first write. The
+  // notification can arrive after connect, so a skipped update is not an error:
+  // the next GPS tick writes once the gate opens. A 03 value asks for the
+  // stored packet and is served on the next tick without a new fix.
+  const bool resend = m_LocationResend.exchange(false);
+  if ((m_LocationReadiness != nullptr) && !m_LocationReady.load() && !resend) {
+    ESP_LOGD(LOG_TAG, "Lumix GPS waiting for location readiness");
+    return;
+  }
+  if (!timeValid) {
+    ESP_LOGW(LOG_TAG, "Lumix GPS skipped: invalid time");
+    return;
+  }
+
+  geo_t geo = {
+      .gps_time = static_cast<uint32_t>(unixTime - GPS_EPOCH_OFFSET),
+      .latitude = static_cast<int32_t>(gps.latitude * 10000000.0),
+      .longitude = static_cast<int32_t>(gps.longitude * 10000000.0),
+      .altitude = static_cast<int16_t>(gps.altitude),
+      .fix = 0x41,
+      .reserved = 0x00,
+  };
+  bool rc = m_Location->writeValue(reinterpret_cast<const uint8_t *>(&geo), sizeof(geo), true);
 
   ESP_LOGI(LOG_TAG, "Lumix GPS lat=%.7f lon=%.7f alt=%.1f utc=%04u-%02u-%02u %02u:%02u:%02u => %s",
            gps.latitude, gps.longitude, gps.altitude, timesync.year, timesync.month, timesync.day,

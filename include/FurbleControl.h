@@ -196,6 +196,16 @@ class Control {
 
   std::vector<target_status_t> getTargetStatus(void);
 
+  /**
+   * Intersection of the capabilities of every active target.
+   *
+   * This is what the UI may offer for the current session: a control is
+   * available only when every connected camera can honour it. Idle with no
+   * targets reports every capability true so the UI is unchanged outside a
+   * session.
+   */
+  Camera::Capability getActiveCapability(void);
+
   /** Send a command to one connected target. */
   BaseType_t sendTargetCommand(const std::string &id, cmd_t cmd);
 

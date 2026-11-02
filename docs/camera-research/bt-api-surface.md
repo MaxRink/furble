@@ -35,11 +35,12 @@ The audited Secure images carry the same 70-entry UUID table, 13 services, 69
 characteristics, and 21 CCCDs. X-E5 1.12 adds one write-only characteristic,
 `8B5ECF55-FC6B-40D0-B4C1-76F64E5453C7`. X100T 1.11 is Wi-Fi only.
 
-Furble uses 14 vendor characteristics for registration, shutter, geotag, and
-optional state subscriptions. The shutter characteristic accepts only `0`
+Furble uses 14 vendor characteristics for registration, shutter, geotag, time,
+and optional state subscriptions. The shutter characteristic accepts only `0`
 release, `1` half press, and `2` full press; Furble now uses `1` for focus and
-`0` for release. The unused surface includes camera and lens identity, power
-control and remote boot, the 7-byte and 12-byte time packets, timezone, backup,
+`0` for release. It answers the `F9150137` `01 00` request with the 12-byte UTC
+time packet. The unused surface includes camera and lens identity, power
+control and remote boot, backup,
 firmware update, file transfer, image resize and IPTC settings, and most of the
 60-entry characteristic table. The Basic token service `91F1DE68` is present
 through the v3.1 generation and absent from v4.0 and v4.1.
@@ -54,11 +55,14 @@ Ricoh characteristic classes, GR IV exposes 65, and the GR IIIx 1.41 recording
 contains 51. The full inventory is 76 rows after standard services.
 
 Furble uses model identity, operation mode, GEO Tag, GPS Information, shutter,
-drive mode, and capture status. At connect it reads camera power, self-timer,
-and paired-device name through the state probe and subscribes to the power,
-self-timer, capture-status, and operation-mode notifications, so those read and
-notification paths are implemented. The unused surface is the write side of
-power, self-timer, and paired-device name, plus battery, date and time, storage
+drive mode, capture status, and the paired-device name. Date Time is not written
+because it carries local wall-clock time and Furble has no timezone source.
+At connect it reads camera power, self-timer, and paired-device name through the
+state probe and subscribes to the power, self-timer, capture-status, and
+operation-mode notifications, so those read and notification paths are
+implemented. The capture status byte is decoded, so a `1` to `0` transition is
+the shot-confirmation signal; `0xFF` (failed property read) never counts. The
+unused surface is the write side of power and self-timer, plus battery, storage
 and transfer lists, power-off during transfer, exposure settings, WLAN control,
 firmware update, and the multiplexed Camera and Shooting notifications.
 
@@ -115,21 +119,20 @@ the Z6 III GATT inventory.
 
 Both official apps implement CC00, DD00, and EE00; Creators' App adds BB00.
 Furble requires the FF00 remote-commander service and writes FF01 for shutter
-and focus. It writes location with DD11 and conditionally enables it through
-DD30 and DD31 on the first GPS update. DD01 (location status) and DD21
-(payload selector) are unused: the driver always sends the 95-byte form and
-does not read the selected length. The unused surface includes the CC00 status
-and settings services, DD01 and DD21, EE01 pairing and EE03 state, EE04 camera
-info, BB00 DiRxTx, FF02 status notifications, PTP/IP still capture, movie,
-zoom, power, image transfer, and the location release sequence.
+and focus. The location path uses the DD00 service: it reads DD21 to choose the
+91 or 95 byte form, subscribes DD01, writes the position with DD11, and raises
+the DD30 allow flag and DD31 enable flag while location is active. Disconnect
+clears both flags. The unused surface includes the CC00 status and settings
+services, EE01 pairing and EE03 state, EE04 camera info, BB00 DiRxTx, FF02
+status notifications, PTP/IP still capture, movie, zoom, power, and image
+transfer.
 
 The location payload is 91 or 95 bytes, selected by `DD21` byte 4 bit 1. The
 app writes timezone and DST into bytes 91 to 94, subscribes `DD01`, locks with
-`DD30` and `DD31`, and unlocks on stop. Furble always sends 95 bytes with zero
-offsets. It raises the DD30 allow flag and the DD31 enable flag when location
-first turns on, but it has no release path: neither stop nor disconnect clears
-them, and the app's unlock sequence is not implemented. FF02 emits `02 3f`,
-`02 2d`, `02 a0`, and `02 d5`; Furble does not subscribe. EE01 pairing is confirmed but not sent by Furble.
+`DD30` and `DD31`, and unlocks on stop. Furble reads `DD21`, subscribes `DD01`,
+selects 91 or 95, and releases the lock on disconnect. It still writes zero
+timezone and DST. FF02 emits `02 3f`, `02 2d`, `02 a0`, and `02 d5`;
+Furble does not subscribe. EE01 pairing is confirmed but not sent by Furble.
 The four FF01 opcodes remain unproven by the firmware.
 
 Open questions: the FF01 opcode bytes, the exact FF02 action model, the SMP
@@ -145,15 +148,14 @@ plaintext partition digests, but the code partitions are AES-CTR-class
 ciphertext. No LUMIX BLE byte is firmware-static; the app remains the primary
 evidence.
 
-Furble uses the MEI0 identity, control shutter, GPS, and clock. The control
-writes `01` and `02` are currently emitted by the focus press and release path,
-not by an automatic session start, so focus sends Confirm and Start instead of a
-focus command. The Finish `03` write and the GPS stop packet `0x56` are not
-sent. The unused surface includes movie, readiness notifications, APS identity,
-Wi-Fi start, image transfer, live view, settings, and firmware update. Furble
-now uses a signed GPS altitude and the app's clock offset and DST order. The
-automatic session start and shutdown sequences, the APS path, and the readiness
-gates remain unimplemented.
+Furble uses the MEI0 identity, control shutter, GPS, and clock. The session
+Confirm `01`, Start `02`, and Finish `03` writes, plus the GPS stop packet
+`0x56`, are sent on connect and disconnect; they are never focus commands.
+Focus press and release are no-ops, and the location and clock readiness
+notifications gate the GPS and clock writes when the body exposes them. The
+unused surface includes movie, APS identity, Wi-Fi start, image transfer, live
+view, settings, and firmware update. Furble now uses a signed GPS altitude and
+the app's clock offset and DST order. Only the APS path remains unimplemented.
 
 Open questions: which bodies use APS, the exact wake state machine, and the
 per-body MTU and write type.

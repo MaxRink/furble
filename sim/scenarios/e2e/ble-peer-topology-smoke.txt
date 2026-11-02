@@ -1,0 +1,16 @@
+# Every virtual camera peer advertises and registers.
+#
+# This is a harness smoke test, not a camera behavior claim. It proves the
+# simulator topology can create one peer for each family and match every
+# advertisement through the production CameraList parser. Seven families are
+# persisted; the two Nikon peers are not, because a saved Nikon record carries
+# the pairing identity that only a real pairing produces and a discovery-only
+# seed has no client ID for the reconnect scan.
+
+seed ble_peers all
+seed ble_saved true
+wait 1000
+assert ble.peers 9
+assert ble.unmatched_peers 0
+assert ble.saved_cameras 7
+exit

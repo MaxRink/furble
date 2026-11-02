@@ -66,6 +66,10 @@ int main() {
                "the client sends its identifier after the token")) {
       return 1;
     }
+    if (!check(peer.identifierTerminated(),
+               "the client name is NUL terminated like both official apps")) {
+      return 1;
+    }
     if (!check(peer.configured(), "the server sends the configuration indication")) {
       return 1;
     }

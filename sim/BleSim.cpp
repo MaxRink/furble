@@ -9,8 +9,15 @@
 
 #include <MockNimBLE.h>
 
+#include <CanonRemoteVirtualCamera.h>
+#include <CanonSmartVirtualCamera.h>
+#include <DjiVirtualCamera.h>
 #include <FujifilmVirtualCamera.h>
+#include <LumixVirtualCamera.h>
+#include <NikonRemoteVirtualCamera.h>
+#include <NikonSmartVirtualCamera.h>
 #include <RicohVirtualCamera.h>
+#include <SonyVirtualCamera.h>
 
 #include "CameraList.h"
 #include "FurbleControl.h"
@@ -34,18 +41,71 @@ constexpr uint32_t ADVERTISE_INTERVAL_MS = 100;
 constexpr uint64_t FUJIFILM_A_ADDRESS = 0x112233445566ULL;
 constexpr uint64_t FUJIFILM_B_ADDRESS = 0x112233445577ULL;
 constexpr uint64_t RICOH_ADDRESS = 0x223344556677ULL;
+constexpr uint64_t CANON_SMART_ADDRESS = 0x334455667788ULL;
+constexpr uint64_t CANON_REMOTE_ADDRESS = 0x334455667799ULL;
+constexpr uint64_t NIKON_REMOTE_ADDRESS = 0x445566778899ULL;
+constexpr uint64_t NIKON_SMART_ADDRESS = 0x4455667788aaULL;
+constexpr uint64_t SONY_ADDRESS = 0x5566778899aaULL;
+constexpr uint64_t LUMIX_ADDRESS = 0x66778899aabbULL;
+constexpr uint64_t DJI_ADDRESS = 0x778899aabbccULL;
 
 struct VirtualPeer {
+  /** Current advertisement for this peer, including post-pairing state. */
+  NimBLEAdvertisedDevice currentAdvertisement() const {
+    if (fujifilm != nullptr) {
+      return fujifilm->advertisement();
+    }
+    if (ricoh != nullptr) {
+      return ricoh->advertisement();
+    }
+    if (canon_smart != nullptr) {
+      return canon_smart->advertisement();
+    }
+    if (canon_remote != nullptr) {
+      return canon_remote->advertisement();
+    }
+    if (nikon_remote != nullptr) {
+      return nikon_remote->advertisement();
+    }
+    if (nikon_smart != nullptr) {
+      return nikon_smart->advertisement();
+    }
+    if (sony != nullptr) {
+      return sony->advertisement();
+    }
+    if (lumix != nullptr) {
+      return lumix->advertisement();
+    }
+    if (dji != nullptr) {
+      return dji->advertisement();
+    }
+    return advertisement;
+  }
+
   std::string name;
   NimBLEAddress address = NimBLEAddress {};
+  // Discovery snapshot used when the scenario seeds saved cameras. The radio
+  // uses currentAdvertisement() so a peer that paired later advertises its
+  // reconnect form.
   NimBLEAdvertisedDevice advertisement;
+  NimBLEMockPeer *mock = nullptr;
   std::unique_ptr<Host::FujifilmVirtualCamera> fujifilm;
   std::unique_ptr<Host::RicohVirtualCamera> ricoh;
+  std::unique_ptr<Host::CanonSmartVirtualCamera> canon_smart;
+  std::unique_ptr<Host::CanonRemoteVirtualCamera> canon_remote;
+  std::unique_ptr<Host::NikonRemoteVirtualCamera> nikon_remote;
+  std::unique_ptr<Host::NikonSmartVirtualCamera> nikon_smart;
+  std::unique_ptr<Host::SonyVirtualCamera> sony;
+  std::unique_ptr<Host::LumixVirtualCamera> lumix;
+  std::unique_ptr<Host::DjiVirtualCamera> dji;
 };
 
 std::mutex peersMutex;
 std::vector<std::unique_ptr<VirtualPeer>> peers;
 size_t advertisementCount = 0;
+// Peers whose advertisement did not match any production camera parser when
+// the scenario seeded its saved catalog.
+size_t unmatchedPeerCount = 0;
 // Guarded by peersMutex like the peer list it serves.
 bool radioRunning = false;
 
@@ -88,6 +148,7 @@ void addFujifilm(uint64_t address,
   }
   peer->advertisement = peer->fujifilm->advertisement();
   NimBLEDevice::setMockPeerForAddress(peer->address, peer->fujifilm.get());
+  peer->mock = peer->fujifilm.get();
   peers.push_back(std::move(peer));
 }
 
@@ -108,6 +169,7 @@ void addFujifilmSecureStale(uint64_t address, const std::string &name) {
   peer->fujifilm->setSecureTimeouts(Host::FujifilmVirtualCamera::kSecureTimeoutAlways);
   peer->advertisement = peer->fujifilm->advertisement();
   NimBLEDevice::setMockPeerForAddress(peer->address, peer->fujifilm.get());
+  peer->mock = peer->fujifilm.get();
   // The half that makes it a stale bond rather than a first pairing: the
   // central still has keys for a camera that has forgotten them.
   NimBLEDevice::setBonded(true);
@@ -130,6 +192,24 @@ void addRicoh(uint64_t address, const std::string &name, uint32_t flappyFailAtte
   }
   peer->advertisement = peer->ricoh->advertisement();
   NimBLEDevice::setMockPeerForAddress(peer->address, peer->ricoh.get());
+  peer->mock = peer->ricoh.get();
+  peers.push_back(std::move(peer));
+}
+
+template <typename Peer>
+void addGenericPeer(uint64_t address,
+                    const std::string &name,
+                    std::unique_ptr<Peer> VirtualPeer::*member) {
+  typename Peer::Config config;
+  config.name = name;
+  config.address = NimBLEAddress(address, 0);
+  auto peer = std::make_unique<VirtualPeer>();
+  peer->name = name;
+  peer->address = config.address;
+  (*peer).*member = std::make_unique<Peer>(config);
+  peer->mock = ((*peer).*member).get();
+  peer->advertisement = ((*peer).*member)->advertisement();
+  NimBLEDevice::setMockPeerForAddress(peer->address, peer->mock);
   peers.push_back(std::move(peer));
 }
 
@@ -139,11 +219,27 @@ void addRicoh(uint64_t address, const std::string &name, uint32_t flappyFailAtte
 void saveRegisteredPeers(void) {
   const std::lock_guard<std::mutex> lock(peersMutex);
   CameraList::clear();
+  unmatchedPeerCount = 0;
+  size_t nikonDiscoveryOnly = 0;
   for (const auto &peer : peers) {
+    if ((peer->nikon_remote != nullptr) || (peer->nikon_smart != nullptr)) {
+      // A saved Nikon record carries the random pairing identity the client
+      // generated during stage 1. A discovery-only seed never paired, so
+      // persisting it would create a record the reconnect scan cannot match
+      // (the advertisement has no client ID). Only a real pairing produces one.
+      nikonDiscoveryOnly++;
+      continue;
+    }
     if (!CameraList::match(&peer->advertisement)) {
+      unmatchedPeerCount++;
       ESP_LOGW(LOG_TAG, "Simulated peer '%s' did not match any camera protocol",
                peer->name.c_str());
     }
+  }
+  if (nikonDiscoveryOnly > 0) {
+    ESP_LOGI(LOG_TAG,
+             "Not persisting %u Nikon discovery-only peer(s): saved reconnect needs a paired ID",
+             static_cast<unsigned>(nikonDiscoveryOnly));
   }
   for (size_t n = 0; n < CameraList::size(); n++) {
     CameraList::save(CameraList::get(n));
@@ -172,7 +268,8 @@ void radioTask(void *) {
     {
       const std::lock_guard<std::mutex> lock(peersMutex);
       for (const auto &peer : peers) {
-        scan->emitResult(&peer->advertisement);
+        NimBLEAdvertisedDevice advertisement = peer->currentAdvertisement();
+        scan->emitResult(&advertisement);
         advertisementCount++;
       }
     }
@@ -193,7 +290,10 @@ void radioTask(void *) {
 bool bleTopologyIsValid(const std::string &topology) {
   return topology == "none" || topology == "fuji" || topology == "fuji-secure"
          || topology == "fuji-pair" || topology == "fuji-ricoh-flappy"
-         || topology == "fuji-secure-stale";
+         || topology == "fuji-secure-stale" || topology == "canon-smart"
+         || topology == "canon-remote" || topology == "nikon-remote" || topology == "nikon-smart"
+         || topology == "sony" || topology == "lumix" || topology == "dji" || topology == "ricoh"
+         || topology == "all";
 }
 
 void bleStartPeers(const std::string &topology) {
@@ -215,6 +315,32 @@ void bleStartPeers(const std::string &topology) {
       // timeout does before it lets a connect through.
       addFujifilm(FUJIFILM_A_ADDRESS, "FUJIFILM X100VI", 0);
       addRicoh(RICOH_ADDRESS, "RICOH GR IV", 1);
+    } else if (topology == "ricoh") {
+      addRicoh(RICOH_ADDRESS, "RICOH GR IV", 0);
+    } else if (topology == "canon-smart") {
+      addGenericPeer(CANON_SMART_ADDRESS, "Canon EOS RP", &VirtualPeer::canon_smart);
+    } else if (topology == "canon-remote") {
+      addGenericPeer(CANON_REMOTE_ADDRESS, "Canon EOS RP", &VirtualPeer::canon_remote);
+    } else if (topology == "nikon-remote") {
+      addGenericPeer(NIKON_REMOTE_ADDRESS, "Nikon B600", &VirtualPeer::nikon_remote);
+    } else if (topology == "nikon-smart") {
+      addGenericPeer(NIKON_SMART_ADDRESS, "Nikon Z6III", &VirtualPeer::nikon_smart);
+    } else if (topology == "sony") {
+      addGenericPeer(SONY_ADDRESS, "Sony ZV-1F", &VirtualPeer::sony);
+    } else if (topology == "lumix") {
+      addGenericPeer(LUMIX_ADDRESS, "LUMIX S5II", &VirtualPeer::lumix);
+    } else if (topology == "dji") {
+      addGenericPeer(DJI_ADDRESS, "DJI Osmo Action 4", &VirtualPeer::dji);
+    } else if (topology == "all") {
+      addFujifilm(FUJIFILM_A_ADDRESS, "FUJIFILM X100VI", 0, /*secure=*/true);
+      addRicoh(RICOH_ADDRESS, "RICOH GR IV", 0);
+      addGenericPeer(CANON_SMART_ADDRESS, "Canon EOS RP", &VirtualPeer::canon_smart);
+      addGenericPeer(CANON_REMOTE_ADDRESS, "Canon EOS RP", &VirtualPeer::canon_remote);
+      addGenericPeer(NIKON_REMOTE_ADDRESS, "Nikon B600", &VirtualPeer::nikon_remote);
+      addGenericPeer(NIKON_SMART_ADDRESS, "Nikon Z6III", &VirtualPeer::nikon_smart);
+      addGenericPeer(SONY_ADDRESS, "Sony ZV-1F", &VirtualPeer::sony);
+      addGenericPeer(LUMIX_ADDRESS, "LUMIX S5II", &VirtualPeer::lumix);
+      addGenericPeer(DJI_ADDRESS, "DJI Osmo Action 4", &VirtualPeer::dji);
     }
     // Nothing advertises without peers, so a scenario that seeds no topology
     // pays for no radio task at all.
@@ -388,6 +514,15 @@ size_t bleAdvertisementCount(void) {
 size_t blePeerCount(void) {
   const std::lock_guard<std::mutex> lock(peersMutex);
   return peers.size();
+}
+
+size_t bleUnmatchedPeerCount(void) {
+  const std::lock_guard<std::mutex> lock(peersMutex);
+  return unmatchedPeerCount;
+}
+
+size_t bleSavedCameraCount(void) {
+  return CameraList::getSaveCount();
 }
 
 void noteCameraCommand(int cmd) {

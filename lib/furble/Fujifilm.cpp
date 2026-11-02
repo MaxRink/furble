@@ -3,6 +3,8 @@
 #include <NimBLEDevice.h>
 #include <NimBLERemoteCharacteristic.h>
 #include <NimBLERemoteService.h>
+
+#include <array>
 // The registration wait below needs a clock, and which clock is correct depends
 // on whether a FreeRTOS tick exists, not on which platform this is. So ask for
 // exactly that.
@@ -62,6 +64,14 @@ void Fujifilm::notify(BLERemoteCharacteristic *pChr,
     // characteristic.
     if (FujifilmProtocol::isRegistrationNotification(pData, length)) {
       m_Configured = true;
+      // 01 00 is also the camera's date and time request. A request can arrive
+      // during registration before any fix cached a timestamp, and a GATT write
+      // must not run inside the NimBLE callback. Remember it and let the control
+      // task answer on the next GPS update; the flag survives until served, so a
+      // request that arrives before the first fix is not lost.
+      if (length >= 2 && pData[0] == 0x01 && pData[1] == 0x00) {
+        m_TimeRequested = true;
+      }
     }
   } else if (pChr->getUUID() == GEOTAG_UPDATE) {
     if (FujifilmProtocol::isGeotagRequest(pData, length)) {
@@ -198,10 +208,84 @@ void Fujifilm::focusRelease(void) {
   }
 }
 
+bool Fujifilm::sendTimeData(void) {
+  if (!m_HasTimesync || m_Client == nullptr) {
+    return false;
+  }
+  NimBLERemoteService *pSvc = m_Client->getService(SVC_TIME_UUID);
+  if (pSvc == nullptr) {
+    // No time service: there is nothing to answer on this body, so the pending
+    // request is complete for this session.
+    return true;
+  }
+
+  NimBLERemoteCharacteristic *pChr = pSvc->getCharacteristic(CHR_UTC_TIME_UUID);
+  if (pChr != nullptr && pChr->canWrite()) {
+    const FujifilmProtocol::TimeInput input = {
+        m_LastTimesync.year,
+        m_LastTimesync.month,
+        m_LastTimesync.day,
+        m_LastTimesync.hour,
+        m_LastTimesync.minute,
+        m_LastTimesync.second,
+        0,
+        0,
+    };
+    const auto packet = FujifilmProtocol::encodeTime(input);
+    if (gattWrite(pChr, packet.data(), packet.size(), true)) {
+      ESP_LOGI(LOG_TAG, "Sent UTC time packet");
+      return true;
+    }
+    return false;
+  }
+
+  // The local-time characteristic (B9BFD37F) has no offset field and expects
+  // wall-clock time. Furble only has UTC, so writing the cached fields there
+  // would set a camera in any non-UTC timezone wrong. If the body exposes no
+  // writable UTC characteristic, leave its clock alone until a local-time
+  // source exists, and treat the request as answered so it is not retried on
+  // every GPS tick.
+  return true;
+}
+
 void Fujifilm::sendGeoData(const gps_t &gps, const timesync_t &timesync) {
   NimBLERemoteService *pSvc = m_Client->getService(SVC_GEOTAG_UUID);
   if (pSvc == nullptr) {
     return;
+  }
+
+  if (!m_HasLocationSync) {
+    // Enable the location sync setting before the first packet. The interval
+    // alone does not turn the feature on for a body whose menu default is off.
+    // Firmware accepts exactly 0 or 1 on AAB609C4.
+    NimBLERemoteService *syncSvc = m_Client->getService(SVC_READ_UUID);
+    if (syncSvc != nullptr) {
+      NimBLERemoteCharacteristic *syncChr = syncSvc->getCharacteristic(CHR_LOCATION_SYNC_UUID);
+      if (syncChr != nullptr && syncChr->canWrite()) {
+        const std::array<uint8_t, 2> enable = {0x01, 0x00};
+        if (gattWrite(syncChr, enable.data(), enable.size(), true)) {
+          // A drop right after the ATT response frees the self-deleting client
+          // inline, along with every cached service and characteristic. Stop
+          // before touching the readback or pSvc again.
+          if (!isConnected()) {
+            return;
+          }
+          m_HasLocationSync = true;
+          // Read back through the UUID seam, not the cached characteristic,
+          // and re-check the link before the geotag service pointer is reused.
+          NimBLEAttValue value;
+          if (gattRead(SVC_READ_UUID, CHR_LOCATION_SYNC_UUID, value) && (value.size() >= 2)) {
+            ESP_LOGI(LOG_TAG, "Location sync setting readback 0x%02x%02x", value.data()[1],
+                     value.data()[0]);
+          }
+          if (!isConnected()) {
+            return;
+          }
+        } else {
+          ESP_LOGW(LOG_TAG, "Location sync enable failed");
+        }
+      }
+    }
   }
 
   NimBLERemoteCharacteristic *pChr = pSvc->getCharacteristic(CHR_GEOTAG_UUID);
@@ -231,13 +315,34 @@ void Fujifilm::sendGeoData(const gps_t &gps, const timesync_t &timesync) {
 }
 
 void Fujifilm::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
-  if (m_GeoRequested) {
+  m_LastTimesync = timesync;
+  m_HasTimesync = true;
+  // Both writes can be reached from one GPS tick. A drop during the first one
+  // self-deletes the client, so hold the lifetime lock and re-check the link
+  // before entering the geotag write with a stale characteristic cache.
+  auto lifetime = lockClientLifetime();
+  if (!isConnected()) {
+    return;
+  }
+  if (m_TimeRequested.exchange(false)) {
+    // A refused write on a live link must not lose the request; the next GPS
+    // tick retries it. Taking the flag before the write means a newer 01 00
+    // that arrives while it is in flight stays set.
+    if (!sendTimeData() && isConnected()) {
+      m_TimeRequested = true;
+    }
+  }
+  if (m_GeoRequested && isConnected()) {
     sendGeoData(gps, timesync);
     m_GeoRequested = false;
   }
 }
 
 void Fujifilm::_disconnect(void) {
+  m_HasLocationSync = false;
+  m_HasTimesync = false;
+  m_GeoRequested = false;
+  m_TimeRequested = false;
   m_Client->disconnect();
 }
 

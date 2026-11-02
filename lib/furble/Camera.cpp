@@ -992,7 +992,9 @@ bool Camera::gattWrite(NimBLERemoteCharacteristic *characteristic,
                        const uint8_t *data,
                        size_t length,
                        bool response) {
-  if (characteristic == nullptr) {
+  // Refuse a cached characteristic once the link is gone: an inline disconnect
+  // frees it with the self-deleting client before the previous call returns.
+  if (characteristic == nullptr || !isConnected()) {
     return false;
   }
 
@@ -1029,7 +1031,12 @@ bool Camera::gattWrite(const NimBLEUUID &service,
                        const NimBLEUUID &characteristic,
                        const NimBLEAttValue &value,
                        bool response) {
-  if (m_Client == nullptr) {
+  // An inline disconnect frees the self-deleting client and its attribute
+  // cache before the failed write returns. m_Client is then dangling, so the
+  // only safe test is the lock-free connection flag. Callers that hold the
+  // client-lifetime lock still need this: a recursive lock does not stop an
+  // inline callback on the same thread.
+  if (m_Client == nullptr || !isConnected()) {
     return false;
   }
 
@@ -1047,7 +1054,7 @@ bool Camera::gattWrite(const NimBLEUUID &service,
 }
 
 bool Camera::gattRead(NimBLERemoteCharacteristic *characteristic, NimBLEAttValue &value) {
-  if (characteristic == nullptr) {
+  if (characteristic == nullptr || !isConnected()) {
     value = NimBLEAttValue();
     return false;
   }
@@ -1071,13 +1078,18 @@ bool Camera::gattRead(NimBLERemoteCharacteristic *characteristic, NimBLEAttValue
                 started_us, m_DebugAttemptId);
 #endif
 
-  return true;
+  // NimBLE's readValue() has no error channel: a failed or refused ATT read is
+  // reported as an empty value. Every readable characteristic in the supported
+  // protocols carries at least one byte, so an empty value is a failure here,
+  // not a successful empty read. Callers must not act on a read they did not
+  // receive.
+  return value.size() != 0;
 }
 
 bool Camera::gattRead(const NimBLEUUID &service,
                       const NimBLEUUID &characteristic,
                       NimBLEAttValue &value) {
-  if (m_Client == nullptr) {
+  if (m_Client == nullptr || !isConnected()) {
     value = NimBLEAttValue();
     return false;
   }
@@ -1092,7 +1104,8 @@ bool Camera::gattRead(const NimBLEUUID &service,
                 started_us, m_DebugAttemptId);
 #endif
 
-  return true;
+  // Same rule as the pointer overload: an empty value is a failed read.
+  return value.size() != 0;
 }
 
 bool Camera::gattSubscribe(NimBLERemoteCharacteristic *characteristic,
@@ -1281,6 +1294,10 @@ void Camera::clearSecureFailures(void) {
 
 void Camera::setNeedsRepair(void) {
   m_NeedsRepair = true;
+}
+
+std::unique_lock<std::recursive_mutex> Camera::lockClientLifetime(void) {
+  return std::unique_lock<std::recursive_mutex>(m_PairingMutex);
 }
 
 void Camera::disconnect(void) {

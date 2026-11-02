@@ -30,6 +30,16 @@ class Nikon: public Camera, public NimBLEScanCallbacks {
   void focusRelease(void) override;
   void updateGeoData(const gps_t &gps, const timesync_t &timesync) override;
   size_t getSerialisedBytes(void) const override;
+
+  /**
+   * The Remote profile has no focus, bulb, or movie command. The Smart profile
+   * cannot complete pairing without a Bluetooth Classic continuation, so no
+   * Smart control is reachable either. Report no capability until a Classic
+   * path exists.
+   */
+  Camera::Capability capabilities(void) const override {
+    return Camera::Capability {false, false, false};
+  }
   bool serialise(void *buffer, size_t bytes) const override;
 
  protected:

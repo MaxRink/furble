@@ -24,6 +24,11 @@ class Sony: public Camera {
   void focusRelease(void) override final;
   void updateGeoData(const gps_t &gps, const timesync_t &timesync) override final;
 
+  /** FOCUS_DOWN and FOCUS_UP exist. Bulb uses the release pair. */
+  Capability capabilities(void) const override final {
+    return Camera::Capability {true, true, false};
+  }
+
   size_t getSerialisedBytes(void) const override;
   bool serialise(void *buffer, size_t bytes) const override;
 

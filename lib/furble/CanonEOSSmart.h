@@ -26,6 +26,11 @@ class CanonEOSSmart: public CanonEOS {
   void focusRelease(void) override final;
   void updateGeoData(const gps_t &gps, const timesync_t &timesync) override final;
 
+  /** AF_ON and AF_OFF exist. Bulb uses the release pair. Movie is missing. */
+  Capability capabilities(void) const override final {
+    return Camera::Capability {true, true, false};
+  }
+
  private:
   // Location and time message
   typedef struct __attribute__((packed)) _canon_geo_t {

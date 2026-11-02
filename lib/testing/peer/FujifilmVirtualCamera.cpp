@@ -32,9 +32,13 @@ const NimBLEUUID SECURE_NOTIFICATION10_UUID {0xdeef7187, 0x3f43, 0x4364, 0x9e221
 const NimBLEUUID SECURE_SYNC_INTERVAL_UUID {0xc95d91ae, 0xb247, 0x4d6d, 0x86617dd5d6a0f85b};
 const NimBLEUUID SHUTTER_SERVICE_UUID {0x6514eb81, 0x4e8f, 0x458d, 0xaa2ae691336cdfac};
 const NimBLEUUID SHUTTER_CHARACTERISTIC_UUID {0x7fcf49c6, 0x4ff0, 0x4777, 0xa03d1a79166af7a8};
+const NimBLEUUID POWER_CHARACTERISTIC_UUID {0x43070f6c, 0x51e0, 0x4887, 0x86a75f762bda5791};
 const NimBLEUUID GEOTAG_SERVICE_UUID {0x3b46ec2b, 0x48ba, 0x41fd, 0xb1b8ed860b60d22b};
 const NimBLEUUID GEOTAG_CHARACTERISTIC_UUID {0x0f36ec14, 0x29e5, 0x411a, 0xa1b664ee8383f090};
 const NimBLEUUID ADVERTISED_SERVICE_UUID {0xaf854c2e, 0xb214, 0x458e, 0x97e2912c4ecf2cb8};
+const NimBLEUUID TIME_SERVICE_UUID {0xe872b11f, 0xd526, 0x4ae1, 0x9bb489a99d48fa59};
+const NimBLEUUID LOCAL_TIME_CHARACTERISTIC_UUID {0xb9bfd37f, 0xccad, 0x4d36, 0xa1ee018e792b3edf};
+const NimBLEUUID UTC_TIME_CHARACTERISTIC_UUID {0xc52edbce, 0x1fe2, 0x4ecc, 0x9483907e6592be9e};
 
 bool matches(const NimBLEUUID &left, const NimBLEUUID &right) {
   return left == right;
@@ -57,9 +61,15 @@ FujifilmVirtualCamera::~FujifilmVirtualCamera() {
 
 NimBLEAdvertisedDevice FujifilmVirtualCamera::advertisement() const {
   NimBLEAdvertisedDevice device;
-  // Both real advertisement forms carry the 0x02 type byte after the company
-  // identifier: d8 04 02 + token (Basic) or d8 04 02 + serial (Secure).
-  std::vector<uint8_t> manufacturer = {0xd8, 0x04, 0x02};
+  // Both real advertisement forms carry the company identifier first. The
+  // type byte after it selects the form: 0x02 is the Basic four-byte pairing
+  // token, 0x01 is the Secure five-byte serial. A Secure body must not be
+  // advertised with the Basic type byte. Evidence:
+  // docs/camera-research/fujifilm-secure-gatt.md and
+  // rea-camera-firmware/analysis/fujifilm-handlers.md section 7.
+  std::vector<uint8_t> manufacturer = {0xd8, 0x04,
+                                       static_cast<uint8_t>(m_Config.secure ? 0x01 : 0x02)};
+
   if (m_Config.secure) {
     manufacturer.insert(manufacturer.end(), m_Config.serial.begin(), m_Config.serial.end());
   } else {
@@ -78,6 +88,13 @@ NimBLEAdvertisedDevice FujifilmVirtualCamera::advertisement() const {
 
 bool FujifilmVirtualCamera::requestGeotag() {
   return emitNotification(configurationServiceUUID(), geotagRequestCharacteristicUUID(),
+                          {0x01, 0x00});
+}
+
+bool FujifilmVirtualCamera::requestTimeSync() {
+  // NOT1 is a configuration-service characteristic for both profiles; the
+  // Secure connect subscribes to the same SVC_CONF_UUID.
+  return emitNotification(configurationServiceUUID(), configurationNotificationUUID(),
                           {0x01, 0x00});
 }
 
@@ -134,6 +151,10 @@ const std::string &FujifilmVirtualCamera::identifier() const {
   return m_Identifier;
 }
 
+bool FujifilmVirtualCamera::identifierTerminated() const {
+  return m_IdentifierTerminated;
+}
+
 bool FujifilmVirtualCamera::connected() const {
   return m_Connected;
 }
@@ -146,8 +167,145 @@ bool FujifilmVirtualCamera::configured() const {
   return m_Configured;
 }
 
+uint16_t FujifilmVirtualCamera::locationSyncValue() const {
+  return m_LocationSyncValue;
+}
+
 bool FujifilmVirtualCamera::geotagRequested() const {
   return m_GeotagRequested;
+}
+
+size_t FujifilmVirtualCamera::shutterAccepted() const {
+  return m_ShutterAccepted;
+}
+
+size_t FujifilmVirtualCamera::shutterRejected() const {
+  return m_ShutterRejected;
+}
+
+uint8_t FujifilmVirtualCamera::lastShutterValue() const {
+  return m_LastShutterValue;
+}
+
+bool FujifilmVirtualCamera::statusRead() const {
+  return m_StatusRead;
+}
+
+bool FujifilmVirtualCamera::statusAcknowledged() const {
+  return m_StatusAcknowledged;
+}
+
+uint32_t FujifilmVirtualCamera::statusIdentifier() const {
+  return m_StatusIdentifier;
+}
+
+uint8_t FujifilmVirtualCamera::clientClass() const {
+  return m_ClientClass;
+}
+
+void FujifilmVirtualCamera::setRegistrationWindowMs(uint32_t windowMs) {
+  m_RegistrationWindowMs = windowMs;
+}
+
+void FujifilmVirtualCamera::setFault(Fault fault) {
+  m_Fault = fault;
+}
+
+FujifilmVirtualCamera::Fault FujifilmVirtualCamera::fault() const {
+  return m_Fault;
+}
+
+void FujifilmVirtualCamera::clearFault() {
+  m_Fault = Fault::None;
+}
+
+void FujifilmVirtualCamera::setScripted(bool scripted) {
+  m_Scripted = scripted;
+}
+
+bool FujifilmVirtualCamera::scripted() const {
+  return m_Scripted;
+}
+
+void FujifilmVirtualCamera::scriptNextCommand(Fault fault) {
+  m_Script.push_back(fault);
+}
+
+size_t FujifilmVirtualCamera::scriptedRemaining() const {
+  return m_Script.size();
+}
+
+void FujifilmVirtualCamera::clearScript() {
+  m_Script.clear();
+}
+
+FujifilmVirtualCamera::Fault FujifilmVirtualCamera::consumeFault() {
+  if (m_Scripted) {
+    if (m_Script.empty()) {
+      return Fault::None;
+    }
+    const Fault fault = m_Script.front();
+    m_Script.pop_front();
+    return fault;
+  }
+  return m_Fault;
+}
+
+void FujifilmVirtualCamera::expireRegistrationWindow() {
+  m_RegistrationWindowExpired = true;
+}
+
+bool FujifilmVirtualCamera::registrationWindowExpired() const {
+  return m_RegistrationWindowExpired;
+}
+
+bool FujifilmVirtualCamera::registrationWindowOpen() const {
+  if (!m_StatusRead || m_RegistrationWindowExpired) {
+    return false;
+  }
+  if (m_RegistrationWindowMs == 0) {
+    return false;
+  }
+  if (m_RegistrationWindowMs == kRegistrationWindowUnlimited) {
+    return true;
+  }
+  const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - m_StatusReadAt);
+  return elapsed.count() <= static_cast<int64_t>(m_RegistrationWindowMs);
+}
+
+bool FujifilmVirtualCamera::isValidTimestamp(const std::vector<uint8_t> &value, size_t offset) {
+  if (value.size() < offset + 6) {
+    return false;
+  }
+  const uint16_t year =
+      static_cast<uint16_t>(value[offset]) | (static_cast<uint16_t>(value[offset + 1]) << 8);
+  // The camera accepts 0 or 1582..9999 (fujifilm-handlers.md section 5.1).
+  if ((year != 0) && ((year < 1582) || (year > 9999))) {
+    return false;
+  }
+  return (value[offset + 2] < 13) && (value[offset + 3] < 32) && (value[offset + 4] < 24)
+         && (value[offset + 5] < 60) && (value[offset + 6] < 60);
+}
+
+bool FujifilmVirtualCamera::localTimeWritten() const {
+  return m_LocalTimeWritten;
+}
+
+bool FujifilmVirtualCamera::utcTimeWritten() const {
+  return m_UtcTimeWritten;
+}
+
+bool FujifilmVirtualCamera::powerRequestWritten() const {
+  return m_PowerRequestWritten;
+}
+
+uint16_t FujifilmVirtualCamera::lastPowerRequest() const {
+  return m_PowerRequest;
+}
+
+uint16_t FujifilmVirtualCamera::syncInterval() const {
+  return m_SyncInterval;
 }
 
 size_t FujifilmVirtualCamera::accessAfterDrop() const {
@@ -385,6 +543,9 @@ void FujifilmVirtualCamera::clearFaults() {
   m_DropOnSubscribe.clear();
   m_OperationFault = nullptr;
   m_StaleSubscribeSession = false;
+  m_Fault = Fault::None;
+  m_Scripted = false;
+  m_Script.clear();
   {
     const std::lock_guard<std::mutex> lock(m_StallMutex);
     m_SecureConnectionStallMs = 0;
@@ -416,11 +577,25 @@ bool FujifilmVirtualCamera::acceptConnection(NimBLEClient &client, const NimBLEA
   m_Configured = false;
   m_GeotagRequested = false;
   m_Identifier.clear();
+  m_IdentifierTerminated = false;
   m_LastGeotag.clear();
   m_ConnParamsNegotiated = false;
   m_DroppedLink = false;
   m_AccessAfterDrop = 0;
   m_ShutterCharacteristicRequested = false;
+  m_ShutterAccepted = 0;
+  m_ShutterRejected = 0;
+  m_LastShutterValue = 0;
+  m_StatusRead = false;
+  m_StatusAcknowledged = false;
+  m_StatusIdentifier = 0;
+  m_ClientClass = 0;
+  m_RegistrationWindowExpired = false;
+  m_LocalTimeWritten = false;
+  m_UtcTimeWritten = false;
+  m_PowerRequestWritten = false;
+  m_PowerRequest = 0;
+  m_SyncInterval = 0;
   m_Subscriptions.clear();
   if (m_RequestConnParamsDuringConnect) {
     m_RegistrationConnParamsAccepted = client.mockPeerRequestConnParams(m_RegistrationConnParams);
@@ -471,6 +646,7 @@ bool FujifilmVirtualCamera::hasService(const NimBLEUUID &service) const {
   return matches(service, m_Config.secure ? SECURE_PAIR_SERVICE_UUID : pairServiceUUID())
          || matches(service, configurationServiceUUID())
          || (m_Config.secure && matches(service, SECURE_NOTIFICATION_SERVICE_UUID))
+         || (m_Config.secure && matches(service, timeServiceUUID()))
          || matches(service, shutterServiceUUID()) || matches(service, geotagServiceUUID());
 }
 
@@ -503,9 +679,14 @@ bool FujifilmVirtualCamera::hasCharacteristic(const NimBLEUUID &service,
            || matches(characteristic, SECURE_NOTIFICATION10_UUID)
            || matches(characteristic, SECURE_SYNC_INTERVAL_UUID);
   }
+  if (m_Config.secure && matches(service, timeServiceUUID())) {
+    return matches(characteristic, localTimeCharacteristicUUID())
+           || matches(characteristic, utcTimeCharacteristicUUID());
+  }
   if (matches(service, shutterServiceUUID())) {
     const_cast<FujifilmVirtualCamera *>(this)->m_ShutterCharacteristicRequested = true;
-    return matches(characteristic, shutterCharacteristicUUID());
+    return matches(characteristic, shutterCharacteristicUUID())
+           || matches(characteristic, powerCharacteristicUUID());
   }
   if (matches(service, geotagServiceUUID())) {
     return matches(characteristic, geotagCharacteristicUUID());
@@ -529,9 +710,14 @@ bool FujifilmVirtualCamera::canWrite(const NimBLEUUID &service,
                                                       : pairCharacteristicUUID())
               || matches(characteristic, identifierCharacteristicUUID())))
          || (m_Config.secure && matches(service, SECURE_NOTIFICATION_SERVICE_UUID)
-             && matches(characteristic, SECURE_SYNC_INTERVAL_UUID))
+             && (matches(characteristic, SECURE_SYNC_INTERVAL_UUID)
+                 || matches(characteristic, SECURE_NOTIFICATION7_UUID)))
+         || (m_Config.secure && matches(service, timeServiceUUID())
+             && (matches(characteristic, localTimeCharacteristicUUID())
+                 || matches(characteristic, utcTimeCharacteristicUUID())))
          || (matches(service, shutterServiceUUID())
-             && matches(characteristic, shutterCharacteristicUUID()))
+             && (matches(characteristic, shutterCharacteristicUUID())
+                 || matches(characteristic, powerCharacteristicUUID())))
          || (matches(service, geotagServiceUUID())
              && matches(characteristic, geotagCharacteristicUUID()));
 }
@@ -552,6 +738,25 @@ bool FujifilmVirtualCamera::write(NimBLEClient &client,
   // write that fails this way must abort the connect and reclaim the client.
   if (isWriteFailed(service, characteristic)) {
     return false;
+  }
+
+  // Shared fault vocabulary. Fujifilm has no per-command response, so every
+  // refusal class collapses to a failed write and Disconnect also severs the
+  // link. StaleBond is handled in secureConnection().
+  const Fault fault = consumeFault();
+  switch (fault) {
+    case Fault::None:
+      break;
+    case Fault::Disconnect:
+      client.mockDropLink(0x08, /*fire_callback=*/true);
+      return false;
+    case Fault::Reject:
+    case Fault::Busy:
+    case Fault::WrongMode:
+    case Fault::Timeout:
+    case Fault::Malformed:
+    case Fault::StaleBond:
+      return false;
   }
 
   // FlappyPeer: a standby camera accepts the link but fails the pairing
@@ -580,7 +785,32 @@ bool FujifilmVirtualCamera::write(NimBLEClient &client,
       && matches(characteristic,
                  m_Config.secure ? SECURE_STATUS_CHARACTERISTIC_UUID : pairCharacteristicUUID())) {
     if (m_Config.secure) {
-      result = value.size() == 4;
+      // Status ack gate (fujifilm-handlers.md section 3.3): a read must have
+      // published the identifier, the write must repeat its low 28 bits, the
+      // top nibble selects the client class, and the camera's 20 000 ms window
+      // must still be open. A refused ack does not retry; the client has to
+      // reconnect.
+      const bool lengthOk = value.size() == 4;
+      uint32_t written = 0;
+      if (lengthOk) {
+        written = static_cast<uint32_t>(value[0]) | (static_cast<uint32_t>(value[1]) << 8)
+                  | (static_cast<uint32_t>(value[2]) << 16)
+                  | (static_cast<uint32_t>(value[3]) << 24);
+      }
+      const uint32_t identifier = written & 0x0fffffffU;
+      const bool identifierOk = lengthOk && (identifier != 0) && (identifier == m_StatusIdentifier);
+      const bool windowOpen = registrationWindowOpen();
+      result = identifierOk && windowOpen;
+      if (result) {
+        if (!m_StatusAcknowledged) {
+          m_StatusAcknowledged = true;
+          // Bit 28 set is class 1, clear is class 2. Furble writes the 0x20
+          // top nibble, so bit 28 is clear and the class is 2.
+          m_ClientClass = ((written & 0x10000000U) != 0) ? 1 : 2;
+        }
+      } else if (m_StatusRead && !windowOpen) {
+        m_RegistrationWindowExpired = true;
+      }
     } else {
       const std::vector<uint8_t> expected(m_Config.token.begin(), m_Config.token.end());
       m_TokenAccepted = (value == expected);
@@ -588,7 +818,8 @@ bool FujifilmVirtualCamera::write(NimBLEClient &client,
     }
   } else if (matches(service, m_Config.secure ? SECURE_PAIR_SERVICE_UUID : pairServiceUUID())
              && matches(characteristic, identifierCharacteristicUUID())) {
-    m_Identifier.assign(value.begin(), value.end());
+    m_IdentifierTerminated = !value.empty() && (value.back() == 0x00);
+    m_Identifier.assign(value.begin(), m_IdentifierTerminated ? value.end() - 1 : value.end());
     result = m_Config.secure || m_TokenAccepted;
     if (result && m_RequireLongConnParamsAfterIdentifier
         && !m_DelayRegistrationConnParamsUntilFastRequest && !m_ConnParamsNegotiated) {
@@ -607,14 +838,96 @@ bool FujifilmVirtualCamera::write(NimBLEClient &client,
     }
   } else if (m_Config.secure && matches(service, SECURE_NOTIFICATION_SERVICE_UUID)
              && matches(characteristic, SECURE_SYNC_INTERVAL_UUID)) {
-    result = value.size() == 2;
+    // Accepted set is exactly 10, 15, 20, 30, 60, 120, 240 and 480 seconds.
+    // Evidence: fujifilm-handlers.md section 6.2.
+    if (value.size() == 2) {
+      const uint16_t interval =
+          static_cast<uint16_t>(value[0] | (static_cast<uint16_t>(value[1]) << 8));
+      switch (interval) {
+        case 10:
+        case 15:
+        case 20:
+        case 30:
+        case 60:
+        case 120:
+        case 240:
+        case 480:
+          m_SyncInterval = interval;
+          result = true;
+          break;
+        default:
+          result = false;
+          break;
+      }
+    }
+  } else if (m_Config.secure && matches(service, SECURE_NOTIFICATION_SERVICE_UUID)
+             && matches(characteristic, SECURE_NOTIFICATION7_UUID)) {
+    // AAB609C4 is the location-sync enable. The firmware accepts exactly 0 or 1
+    // in the low byte and reads a two-byte value back.
+    // Evidence: fujifilm-handlers.md C25; fujifilm.md C25.
+    result = (value.size() == 2) && (value[0] <= 1) && (value[1] == 0x00);
+    if (result) {
+      m_LocationSyncValue = static_cast<uint16_t>(value[0] | (value[1] << 8));
+    }
+  } else if (m_Config.secure && matches(service, timeServiceUUID())
+             && matches(characteristic, localTimeCharacteristicUUID())) {
+    // 7-byte local packet, no zone. The camera accepts it and applies it.
+    // Evidence: fujifilm-handlers.md section 5.1.
+    result = (value.size() == 7) && isValidTimestamp(value, 0);
+    if (result) {
+      m_LocalTimeWritten = true;
+    }
+  } else if (m_Config.secure && matches(service, timeServiceUUID())
+             && matches(characteristic, utcTimeCharacteristicUUID())) {
+    // 12-byte packet: date, time, int32 hundredths of an hour in -2400..2400,
+    // and a DST flag of exactly 0 or 1. Evidence: fujifilm-handlers.md
+    // section 5.2.
+    result = (value.size() == 12) && isValidTimestamp(value, 0);
+    if (result) {
+      const int32_t offset = static_cast<int32_t>(
+          static_cast<uint32_t>(value[7]) | (static_cast<uint32_t>(value[8]) << 8)
+          | (static_cast<uint32_t>(value[9]) << 16) | (static_cast<uint32_t>(value[10]) << 24));
+      result = (offset >= -2400) && (offset <= 2400) && (value[11] < 2);
+      if (result) {
+        m_UtcTimeWritten = true;
+      }
+    }
+  } else if (matches(service, shutterServiceUUID())
+             && matches(characteristic, powerCharacteristicUUID())) {
+    // Power control accepts exactly 01 00 (off) and 00 01 (boot).
+    // Evidence: fujifilm-handlers.md section 9.1.
+    if (value.size() == 2) {
+      const uint16_t request =
+          static_cast<uint16_t>(value[0] | (static_cast<uint16_t>(value[1]) << 8));
+      result = (request == 0x0001) || (request == 0x0100);
+      if (result) {
+        m_PowerRequestWritten = true;
+        m_PowerRequest = request;
+      }
+    }
   } else if (matches(service, geotagServiceUUID())
              && matches(characteristic, geotagCharacteristicUUID())) {
+    // 23 bytes with the same timestamp predicate as the time packets. The
+    // request flag is a client contract, not a camera-side gate: the parser
+    // has no request state. Evidence: fujifilm-handlers.md section 6.1.
     m_LastGeotag = value;
-    result = m_GeotagRequested;
+    result = m_GeotagRequested && (value.size() == 23) && isValidTimestamp(value, 16);
   } else if (matches(service, shutterServiceUUID())
              && matches(characteristic, shutterCharacteristicUUID())) {
-    result = (value.size() == 2);
+    // Exactly two bytes, high byte zero, and the low byte must be 0, 1 or 2.
+    // Everything else, including 03 00, returns -30. Evidence:
+    // fujifilm-handlers.md section 4.
+    const bool lengthOk = value.size() == 2;
+    const uint8_t code = lengthOk ? value[0] : 0xff;
+    const bool valueOk =
+        (code == kShutterRelease) || (code == kShutterHalfPress) || (code == kShutterFullPress);
+    result = lengthOk && (value[1] == 0x00) && valueOk;
+    if (result) {
+      m_ShutterAccepted++;
+      m_LastShutterValue = code;
+    } else {
+      m_ShutterRejected++;
+    }
   }
 
   // FlappyPeer: the handshake completed, arm the autonomous standby drop.
@@ -648,7 +961,20 @@ NimBLEAttValue FujifilmVirtualCamera::read(NimBLEClient &client,
   if (m_Connected && (m_Client == &client) && hasCharacteristic(service, characteristic)
       && m_Config.secure && matches(service, SECURE_PAIR_SERVICE_UUID)
       && matches(characteristic, SECURE_STATUS_CHARACTERISTIC_UUID)) {
+    // Reading the status characteristic publishes the registration identifier
+    // and arms the camera's 20 000 ms acknowledgement window. The identifier is
+    // the low 28 bits of the four-byte value; byte 3 is the ack flag, zero
+    // before the ack. Evidence: fujifilm-handlers.md sections 3.2 and 3.3.
+    m_StatusIdentifier = 0x009607;
+    m_StatusRead = true;
+    m_StatusReadAt = std::chrono::steady_clock::now();
+    m_RegistrationWindowExpired = false;
     result = NimBLEAttValue({0x07, 0x96, 0x00, 0x00});
+  } else if (m_Config.secure && matches(service, SECURE_NOTIFICATION_SERVICE_UUID)
+             && matches(characteristic, SECURE_NOTIFICATION7_UUID)
+             && (m_LocationSyncValue != 0xFFFF)) {
+    result = NimBLEAttValue({static_cast<uint8_t>(m_LocationSyncValue & 0xff),
+                             static_cast<uint8_t>(m_LocationSyncValue >> 8)});
   }
   // In-flight fault window: the read result is final, the operation has not
   // yet returned to the transport, and the service and characteristic
@@ -726,6 +1052,11 @@ uint32_t FujifilmVirtualCamera::secureInitiateCount() const {
 
 bool FujifilmVirtualCamera::secureConnection(NimBLEClient &client) {
   m_SecureInitiates++;
+  // One-sided bond: the camera deleted its pairing while the central kept
+  // its key. Evidence: fuji-spec section 7.5 and sm section 3.6.
+  if ((m_Fault == Fault::StaleBond) && NimBLEDevice::isBonded(m_Config.address)) {
+    return false;
+  }
   // Block first, like the real call. Parking here rather than polling a cancel
   // is the point: this is the one wait in the connect path that no token can
   // shorten. Only a link terminate ends it early, which is what the peer's own
@@ -829,6 +1160,12 @@ void FujifilmVirtualCamera::setSecureTimeouts(uint32_t attempts) {
 
 void FujifilmVirtualCamera::setRefuseWhileBonded(bool refuse) {
   m_RefuseWhileBonded = refuse;
+}
+
+void FujifilmVirtualCamera::removeCameraBond() {
+  // The camera forgot the registration but the central still holds its bond.
+  // This is the refuse-while-bonded shape, not an SMP unpair.
+  m_RefuseWhileBonded = true;
 }
 
 void FujifilmVirtualCamera::setRequireLongConnParamsAfterIdentifier(bool require) {
@@ -951,6 +1288,38 @@ const NimBLEUUID &FujifilmVirtualCamera::geotagCharacteristicUUID() {
 
 const NimBLEUUID &FujifilmVirtualCamera::advertisedServiceUUID() {
   return ADVERTISED_SERVICE_UUID;
+}
+
+const NimBLEUUID &FujifilmVirtualCamera::secureStatusCharacteristicUUID() {
+  return SECURE_STATUS_CHARACTERISTIC_UUID;
+}
+
+const NimBLEUUID &FujifilmVirtualCamera::securePairServiceUUID() {
+  return SECURE_PAIR_SERVICE_UUID;
+}
+
+const NimBLEUUID &FujifilmVirtualCamera::secureNotificationServiceUUID() {
+  return SECURE_NOTIFICATION_SERVICE_UUID;
+}
+
+const NimBLEUUID &FujifilmVirtualCamera::timeServiceUUID() {
+  return TIME_SERVICE_UUID;
+}
+
+const NimBLEUUID &FujifilmVirtualCamera::localTimeCharacteristicUUID() {
+  return LOCAL_TIME_CHARACTERISTIC_UUID;
+}
+
+const NimBLEUUID &FujifilmVirtualCamera::utcTimeCharacteristicUUID() {
+  return UTC_TIME_CHARACTERISTIC_UUID;
+}
+
+const NimBLEUUID &FujifilmVirtualCamera::powerCharacteristicUUID() {
+  return POWER_CHARACTERISTIC_UUID;
+}
+
+const NimBLEUUID &FujifilmVirtualCamera::syncIntervalCharacteristicUUID() {
+  return SECURE_SYNC_INTERVAL_UUID;
 }
 
 std::string FujifilmVirtualCamera::key(const NimBLEUUID &service,

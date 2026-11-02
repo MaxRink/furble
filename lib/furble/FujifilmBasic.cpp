@@ -5,6 +5,7 @@
 #include <NimBLERemoteService.h>
 
 #include <cstring>
+#include <vector>
 
 #include "Device.h"
 #include "FujifilmBasic.h"
@@ -109,8 +110,11 @@ bool FujifilmBasic::_connect(void) {
     return false;
   if (!pChr->canWrite())
     return false;
-  const auto name = Device::getStringID();
-  if (!gattWrite(pChr, reinterpret_cast<const uint8_t *>(name.data()), name.length(), true))
+  const std::string clientName = Device::getStringID();
+  std::vector<uint8_t> name(clientName.begin(), clientName.end());
+  // Both official apps write UTF-8 plus a NUL terminator.
+  name.push_back(0x00);
+  if (!gattWrite(pChr, name.data(), name.size(), true))
     return false;
   ESP_LOGI(LOG_TAG, "Identified!");
   m_Progress = 40;

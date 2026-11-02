@@ -2,6 +2,7 @@
 #define LUMIX_H
 
 #include <array>
+#include <atomic>
 
 #include <NimBLERemoteCharacteristic.h>
 
@@ -33,6 +34,11 @@ class Lumix: public Camera {
   void focusRelease(void) override final;
   void updateGeoData(const gps_t &gps, const timesync_t &timesync) override final;
 
+  /** There is no focus opcode. `01` and `02` are Confirm and Start. */
+  Capability capabilities(void) const override final {
+    return Camera::Capability {false, true, false};
+  }
+
   size_t getSerialisedBytes(void) const override final;
   bool serialise(void *buffer, size_t bytes) const override final;
 
@@ -51,12 +57,15 @@ class Lumix: public Camera {
   // Remote control service and command characteristic.
   static const NimBLEUUID CONTROL_SVC_UUID;
   static const NimBLEUUID CONTROL_UUID;
+  static const NimBLEUUID CONTROL_READINESS_UUID;
 
   // Location service and clock service.
   static const NimBLEUUID LOCATION_SVC_UUID;
   static const NimBLEUUID LOCATION_CHR_UUID;
+  static const NimBLEUUID LOCATION_READINESS_UUID;
   static const NimBLEUUID CLOCK_SVC_UUID;
   static const NimBLEUUID CLOCK_CHR_UUID;
+  static const NimBLEUUID CLOCK_REQUEST_UUID;
 
   /** GPS push payload, 16 bytes, little-endian. */
   typedef struct __attribute__((packed)) _geo_t {
@@ -81,8 +90,9 @@ class Lumix: public Camera {
   } clock_t;
 
   /** Single-byte remote control commands. */
-  static constexpr uint8_t CMD_FOCUS_PRESS = 0x01;
-  static constexpr uint8_t CMD_FOCUS_RELEASE = 0x02;
+  static constexpr uint8_t CMD_SESSION_CONFIRM = 0x01;
+  static constexpr uint8_t CMD_SESSION_START = 0x02;
+  static constexpr uint8_t CMD_SESSION_FINISH = 0x03;
   static constexpr uint8_t CMD_SHUTTER_PRESS = 0x04;
   static constexpr uint8_t CMD_SHUTTER_RELEASE = 0x05;
 
@@ -93,13 +103,27 @@ class Lumix: public Camera {
   };
 
   NimBLERemoteCharacteristic *m_Control = nullptr;
+  NimBLERemoteCharacteristic *m_ControlReadiness = nullptr;
   NimBLERemoteCharacteristic *m_Location = nullptr;
+  NimBLERemoteCharacteristic *m_LocationReadiness = nullptr;
   NimBLERemoteCharacteristic *m_Clock = nullptr;
+  NimBLERemoteCharacteristic *m_ClockRequest = nullptr;
+  std::atomic<bool> m_ControlReady {false};
+  // Readiness gates. A body that exposes the readiness characteristic is only
+  // written after it reports ready, matching the official app. A body without
+  // it keeps the previous unconditional behavior.
+  std::atomic<bool> m_LocationReady {false};
+  // A 03 readiness value asks for the stored packet to be resent. The next GPS
+  // tick writes the current fix even though no new fix arrived.
+  std::atomic<bool> m_LocationResend {false};
+  std::atomic<bool> m_ClockReady {false};
+  bool m_SessionStarted = false;
 
   bool _connect(void) override final;
   void _disconnect(void) override final;
 
   bool writeCommand(uint8_t command);
+  bool startSession(void);
 };
 }  // namespace Furble
 

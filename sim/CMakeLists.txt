@@ -146,6 +146,13 @@ set(FURBLE_SOURCES
     "${FURBLE_ROOT}/lib/testing/nimble/MockNimBLE.cpp"
     "${FURBLE_ROOT}/lib/testing/peer/FujifilmVirtualCamera.cpp"
     "${FURBLE_ROOT}/lib/testing/peer/RicohVirtualCamera.cpp"
+    "${FURBLE_ROOT}/lib/testing/peer/CanonSmartVirtualCamera.cpp"
+    "${FURBLE_ROOT}/lib/testing/peer/CanonRemoteVirtualCamera.cpp"
+    "${FURBLE_ROOT}/lib/testing/peer/NikonRemoteVirtualCamera.cpp"
+    "${FURBLE_ROOT}/lib/testing/peer/NikonSmartVirtualCamera.cpp"
+    "${FURBLE_ROOT}/lib/testing/peer/SonyVirtualCamera.cpp"
+    "${FURBLE_ROOT}/lib/testing/peer/LumixVirtualCamera.cpp"
+    "${FURBLE_ROOT}/lib/testing/peer/DjiVirtualCamera.cpp"
     "${FURBLE_DEP_ROOT}/TinyGPSPlus/src/TinyGPS++.cpp"
     ${ICON_SOURCES}
     "${FURBLE_ROOT}/src/FurbleMQTT.cpp")

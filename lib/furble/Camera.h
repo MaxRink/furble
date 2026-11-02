@@ -243,6 +243,25 @@ class Camera: public NimBLEClientCallbacks {
    */
   virtual void updateGeoData(const gps_t &gps, const timesync_t &timesync) = 0;
 
+  /**
+   * Controls a camera class can actually honour.
+   *
+   * This is a protocol capability, not a physical-outcome claim. `focus` is
+   * true only where a dedicated focus (half-press) command exists. `bulb` is
+   * true only where the class can end a held exposure with a release command;
+   * every class that only has a local UI hold still reports true because the
+   * press/release pair is what a bulb exposure needs. `movie` is true only
+   * where a movie start and stop command is implemented.
+   */
+  struct Capability {
+    bool focus = true;
+    bool bulb = true;
+    bool movie = true;
+  };
+
+  /** Report the controls this camera class can perform. */
+  virtual Capability capabilities(void) const { return Capability {}; }
+
   virtual size_t getSerialisedBytes(void) const = 0;
   virtual bool serialise(void *buffer, size_t bytes) const = 0;
 
@@ -517,6 +536,19 @@ class Camera: public NimBLEClientCallbacks {
 
   /** Read a characteristic addressed by service and characteristic UUID. */
   bool gattRead(const NimBLEUUID &service, const NimBLEUUID &characteristic, NimBLEAttValue &value);
+
+  /**
+   * Hold from the start of a vendor teardown until its final disconnect.
+   *
+   * onDisconnect takes the same recursive mutex before it clears m_Connected,
+   * and NimBLE frees a self-deleting client only after that callback returns.
+   * Holding this across the teardown writes keeps the client alive when the
+   * link drops mid-sequence on another task. Re-check isConnected() after
+   * acquiring it, and again after every GATT operation before touching a
+   * cached pointer: an inline disconnect on this thread re-enters onDisconnect
+   * despite the recursive lock, so the lock alone cannot stop that free.
+   */
+  std::unique_lock<std::recursive_mutex> lockClientLifetime(void);
 
   /**
    * Subscribe through the single vendor notification journal seam.

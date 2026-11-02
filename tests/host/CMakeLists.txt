@@ -372,6 +372,64 @@ target_compile_options(ricoh_focus_test PRIVATE
                        -Wall -Wextra -Werror -Wno-vla-extension -Wno-format
                        -Wno-unused-parameter -Wno-unused-lambda-capture -Wno-sign-compare)
 
+# Drive the production LUMIX session and shutter paths. The test proves the
+# Confirm 01, Start 02, and Finish 03 handshake and that focus never maps to a
+# session command.
+add_executable(lumix_session_test
+               lumix_session_test.cpp
+               ${HOST_PEER_DIR}/LumixVirtualCamera.cpp
+               ${FURBLE_ROOT}/lib/furble/Lumix.cpp
+               ${FURBLE_PROTOCOL_DIR}/AdvertisementProtocol.cpp
+               ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos_shim.cpp)
+target_link_libraries(lumix_session_test PRIVATE furble_host_camera)
+target_include_directories(lumix_session_test BEFORE PRIVATE
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR}
+                           ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e
+                           ${FURBLE_ROOT}/lib/furble
+                           ${FURBLE_ROOT}/include)
+target_compile_options(lumix_session_test PRIVATE
+                       -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
+                       -Wall -Wextra -Werror -Wno-vla-extension -Wno-format
+                       -Wno-unused-parameter -Wno-unused-lambda-capture -Wno-sign-compare)
+add_test(NAME lumix-session COMMAND lumix_session_test)
+
+# Canon Smart sends an absolute UTC epoch. This pure helper test proves the
+# conversion does not depend on the runtime timezone.
+add_executable(canon_time_test canon_time_test.cpp)
+target_include_directories(canon_time_test PRIVATE
+                           ${FURBLE_ROOT}/lib/furble)
+target_compile_options(canon_time_test PRIVATE -Wall -Wextra -Werror)
+add_test(NAME canon-time COMMAND canon_time_test)
+
+# Ricoh Date Time Zone is a fixed 7-byte packet with a little-endian year.
+add_executable(ricoh_time_test ricoh_time_test.cpp)
+target_include_directories(ricoh_time_test PRIVATE
+                           ${FURBLE_ROOT}/lib/furble)
+target_compile_options(ricoh_time_test PRIVATE -Wall -Wextra -Werror)
+add_test(NAME ricoh-time COMMAND ricoh_time_test)
+
+# Drive the production Sony location path through the Sony peer and prove the
+# DD21-selected 91/95-byte form.
+add_executable(sony_location_test
+               sony_location_test.cpp
+               ${HOST_PEER_DIR}/SonyVirtualCamera.cpp
+               ${FURBLE_ROOT}/lib/furble/Sony.cpp
+               ${FURBLE_PROTOCOL_DIR}/AdvertisementProtocol.cpp
+               ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos_shim.cpp)
+target_link_libraries(sony_location_test PRIVATE furble_host_camera)
+target_include_directories(sony_location_test BEFORE PRIVATE
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR}
+                           ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e
+                           ${FURBLE_ROOT}/lib/furble
+                           ${FURBLE_ROOT}/include)
+target_compile_options(sony_location_test PRIVATE
+                       -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
+                       -Wall -Wextra -Werror -Wno-vla-extension -Wno-format
+                       -Wno-unused-parameter -Wno-unused-lambda-capture -Wno-sign-compare)
+add_test(NAME sony-location COMMAND sony_location_test)
+
 # The sleep gate test drives the production Ricoh shutter path against the
 # virtual peer in BLE standby. It protects the invariant that only a fresh
 # OperationMode read of CAPTURE authorizes the ShootingFlavor and
@@ -943,6 +1001,26 @@ add_executable(ota_mqtt_protocol_test
 target_include_directories(ota_mqtt_protocol_test PRIVATE ${FURBLE_ROOT}/include)
 target_compile_options(ota_mqtt_protocol_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                         -Wno-unused-parameter)
+
+# Teardown must not dereference a self-deleting client: the peer drops the link
+# inline while the GPS stop packet is written.
+add_executable(lumix_teardown_drop_test
+               lumix_teardown_drop_test.cpp
+               ${HOST_PEER_DIR}/LumixVirtualCamera.cpp
+               ${FURBLE_ROOT}/lib/furble/Lumix.cpp
+               ${FURBLE_PROTOCOL_DIR}/AdvertisementProtocol.cpp
+               ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos_shim.cpp)
+target_link_libraries(lumix_teardown_drop_test PRIVATE furble_host_camera)
+target_include_directories(lumix_teardown_drop_test BEFORE PRIVATE
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR}
+                           ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e
+                           ${FURBLE_ROOT}/lib/furble
+                           ${FURBLE_ROOT}/include)
+target_compile_options(lumix_teardown_drop_test PRIVATE
+                       -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
+                       -Wall -Wextra -Werror -Wno-vla-extension -Wno-format
+                       -Wno-unused-parameter -Wno-unused-lambda-capture -Wno-sign-compare)
 
 # Durable anti-rollback journal. The test supplies a fault-injecting backend,
 # while the production JournalReplayStore and its fixed record format are
@@ -1901,6 +1979,7 @@ if(BUILD_TESTING)
   add_test(NAME ethernet-transport COMMAND ethernet_test)
   add_test(NAME poe-power-model COMMAND poe_power_model_test)
   add_test(NAME ota-state-machine COMMAND ota_state_machine_test)
+  add_test(NAME lumix-teardown-drop COMMAND lumix_teardown_drop_test)
   add_test(NAME ota-mqtt-protocol COMMAND ota_mqtt_protocol_test)
   add_test(NAME ota-replay-store COMMAND ota_replay_store_test)
   add_test(NAME ota-partition-sink COMMAND ota_partition_sink_test)
@@ -2044,6 +2123,25 @@ if(BUILD_TESTING)
   add_test(NAME control-fuzz-repro-handshake-phase-drop
            COMMAND control_fuzz --repro handshake-phase-drop 1)
 endif()
+
+# Peer contract: every virtual camera constructs, advertises, exposes its
+# primary service, and exposes a writable characteristic. This is a harness
+# smoke test, not a camera behavior claim.
+include(${HOST_PEER_DIR}/CanonNikonPeers.cmake)
+include(${HOST_PEER_DIR}/SonyLumixDjiPeers.cmake)
+
+add_executable(peer_contract_test
+               peer_contract_test.cpp
+               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
+               ${CANON_NIKON_PEER_SOURCES}
+               ${CANON_NIKON_PEER_DEPENDENCY_SOURCES}
+               ${SONY_LUMIX_DJI_PEER_SOURCES})
+target_include_directories(peer_contract_test PRIVATE
+                           ${HOST_NIMBLE_DIR}
+                           ${CANON_NIKON_PEER_INCLUDE_DIRS}
+                           ${SONY_LUMIX_DJI_PEER_INCLUDE_DIRS})
+target_link_libraries(peer_contract_test PRIVATE Threads::Threads)
+add_test(NAME peer-contract COMMAND peer_contract_test)
 
 # One raw profile per test, named after the test. ctest gives every test the
 # same environment, so without this every profile is named after the process id

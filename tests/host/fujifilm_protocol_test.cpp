@@ -158,6 +158,37 @@ void testShutterFrames() {
         "release uses the firmware-accepted value");
 }
 
+void testTime() {
+  TimeInput input = {};
+  input.year = 2026;
+  input.month = 11;
+  input.day = 1;
+  input.hour = 12;
+  input.minute = 34;
+  input.second = 56;
+  input.utc_offset_minutes = 0;
+  input.dst = 0;
+  const auto packet = encodeTime(input);
+  const std::array<uint8_t, TIME_BYTES> expected = {0xea, 0x07, 0x0b, 0x01, 0x0c, 0x22,
+                                                    0x38, 0x00, 0x00, 0x00, 0x00, 0x00};
+  check(packet == expected, "the 12-byte UTC time packet matches the app layout");
+
+  // 90 minutes is +01:30, which the packet stores as 150 hundredths of an
+  // hour, not as 90. The old direct write encoded 0.90 hours.
+  input.utc_offset_minutes = 90;
+  input.dst = 1;
+  const auto dst = encodeTime(input);
+  check(dst[7] == 0x96 && dst[8] == 0x00 && dst[9] == 0x00 && dst[10] == 0x00 && dst[11] == 0x01,
+        "the time packet converts minutes to hundredths of an hour and carries DST");
+
+  // +05:30 is 330 minutes and 550 hundredths, which needs both offset bytes.
+  input.utc_offset_minutes = 330;
+  input.dst = 0;
+  const auto halfHour = encodeTime(input);
+  check(halfHour[7] == 0x26 && halfHour[8] == 0x02,
+        "a half-hour offset larger than one byte converts and splits correctly");
+}
+
 void testGeotag() {
   GeotagInput input = {};
   input.latitude = 1.0;
@@ -205,6 +236,7 @@ int main() {
   testMatches();
   testNotifications();
   testShutterFrames();
+  testTime();
   testGeotag();
 
   if (g_failures > 0) {

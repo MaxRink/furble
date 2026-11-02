@@ -14,6 +14,8 @@ BGH1 2.5, and G9II 2.7; and DJI Osmo Action 4 and Action 5 Pro.
 | [Fujifilm Secure GATT](fujifilm-secure-gatt.md) | X100VI 1.31 and X-S20 3.30 70-entry UUID table and 13-service layout, plus the X-E5 v4.1 delta | Handles and properties are a public template match, not a runtime capture |
 | [Sony, Panasonic LUMIX, DJI Osmo](sony-lumix-dji.md) | Remote/GPS protocols, generation-specific login, framing and status | Experimental source paths and official accessory support do not establish Furble compatibility |
 | [BT API surface](bt-api-surface.md) | Every service, characteristic, command, notification, and unused feature by family | A supplied surface is not hardware certification or runtime proof |
+| [Parity matrix](parity-matrix.md) | Every Furble action and every camera feature, classified with safe fixes, capture gates, simulator, test, and hardware state | A classification is not a capture |
+| [Simulator parity](simulator-parity.md) | Common peer contract, per-family state models, fault classes, and scenario matrix | Peer success proves wire compatibility, not a physical outcome |
 | [Pairing and security flows](../diagrams/pairing-security-flows.md) | Every family's advertisement, SMP, registration, GATT prerequisites, errors, and recovery | Static evidence is not runtime acceptance |
 | [State machines](../diagrams/state-machines.md) | Connection, mode, capture, GPS, transfer, and recovery states for every family | A code path is not a camera behavior |
 

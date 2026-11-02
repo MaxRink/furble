@@ -76,6 +76,11 @@ bool Sony::_connect(void) {
   m_GeoSvc = m_Client->getService(GEO_SVC_UUID);
   if (m_GeoSvc != nullptr) {
     ESP_LOGI(LOG_TAG, "Retrieved location service!");
+    auto *pStatus = m_GeoSvc->getCharacteristic(GEO_CHR_UUID);
+    if (pStatus != nullptr) {
+      gattSubscribe(
+          pStatus, [](NimBLERemoteCharacteristic *, uint8_t *, size_t, bool) {}, false, true);
+    }
   }
 
   m_Progress = 100;
@@ -85,7 +90,21 @@ bool Sony::_connect(void) {
 }
 
 void Sony::_disconnect(void) {
-  m_Client->disconnect();
+  // The release writes must not race a self-deleting client: hold the teardown
+  // lock so a link drop waits for this sequence, and re-check the link before
+  // each write. gattWrite also checks isConnected().
+  auto lifetime = lockClientLifetime();
+  if (!m_Connected) {
+    return;
+  }
+  if ((m_GeoSvc != nullptr) && isConnected()) {
+    const uint8_t release = 0x00;
+    gattWrite(GEO_SVC_UUID, GEO_ENABLE_CHR_UUID, &release, sizeof(release), false);
+    gattWrite(GEO_SVC_UUID, GEO_ALLOW_CHR_UUID, &release, sizeof(release), false);
+  }
+  if (isConnected()) {
+    m_Client->disconnect();
+  }
 }
 
 void Sony::shutterPress(void) {
@@ -156,7 +175,27 @@ bool Sony::locationEnabled(void) {
 }
 
 void Sony::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
-  if (locationEnabled()) {
+  // The DD21 read can be the drop point and frees the service cache with the
+  // self-deleting client. Hold the teardown lock and re-check the link before
+  // the service pointer is used again.
+  auto lifetime = lockClientLifetime();
+  if (!isConnected()) {
+    return;
+  }
+  if (locationEnabled() && isConnected()) {
+    // DD21 byte 4 bit 1 selects the 91-byte form. The ZV-1F 2.01 firmware
+    // exposes the 91-byte 0x59 entry, not the 95-byte 0x5d entry.
+    bool use95 = true;
+    if (m_GeoSvc != nullptr) {
+      NimBLEAttValue info;
+      if (gattRead(GEO_SVC_UUID, GEO_INFO_CHR_UUID, info) && (info.size() >= 5)) {
+        use95 = (info.data()[4] & 0x02) != 0;
+      }
+    }
+    if (!isConnected()) {
+      return;
+    }
+
     sony_geo_t geo = {
         .prefix = {0x00, 0x5d, 0x08, 0x02, 0xfc, 0x03, 0x00, 0x00, 0x10, 0x10, 0x10},
         .latitude = (int32_t)__builtin_bswap32((uint32_t)(gps.latitude * 10000000)),
@@ -173,8 +212,13 @@ void Sony::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
     };
     // ESP_LOGI(LOG_TAG, "geo: %s", NimBLEUtils::dataToHexString((const uint8_t *)&geo,
     // sizeof(geo)).c_str());
+    if (!use95) {
+      geo.prefix[1] = 0x59;
+      geo.prefix[5] = 0x00;
+    }
     auto *pChr = m_GeoSvc->getCharacteristic(GEO_UPDATE_UUID);
-    gattWrite(pChr, reinterpret_cast<const uint8_t *>(&geo), sizeof(geo), true);
+    const size_t length = use95 ? sizeof(geo) : sizeof(geo) - 4;
+    gattWrite(pChr, reinterpret_cast<const uint8_t *>(&geo), length, true);
   }
 }
 

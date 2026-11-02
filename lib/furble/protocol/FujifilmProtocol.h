@@ -17,6 +17,7 @@ constexpr size_t SERIAL_BYTES = 5;
 constexpr size_t BASIC_ADVERTISEMENT_BYTES = MANUFACTURER_HEADER_BYTES + TOKEN_BYTES;
 constexpr size_t SECURE_ADVERTISEMENT_BYTES = MANUFACTURER_HEADER_BYTES + SERIAL_BYTES;
 constexpr size_t GEOTAG_BYTES = 23;
+constexpr size_t TIME_BYTES = 12;
 
 struct BasicAdvertisement {
   std::array<uint8_t, TOKEN_BYTES> token;
@@ -52,6 +53,19 @@ struct GeotagInput {
   unsigned int hour;
   unsigned int minute;
   unsigned int second;
+};
+
+struct TimeInput {
+  unsigned int year;
+  unsigned int month;
+  unsigned int day;
+  unsigned int hour;
+  unsigned int minute;
+  unsigned int second;
+  // Signed UTC offset in minutes. encodeTime converts it to the packet's
+  // hundredths of an hour (30 minutes -> 50).
+  int32_t utc_offset_minutes;
+  uint8_t dst;
 };
 
 /**
@@ -104,6 +118,7 @@ bool isGeotagRequest(const uint8_t *data, size_t bytes);
 
 ShutterFrame makeShutterFrame(ShutterAction action);
 std::array<uint8_t, GEOTAG_BYTES> encodeGeotag(const GeotagInput &input);
+std::array<uint8_t, TIME_BYTES> encodeTime(const TimeInput &input);
 
 }  // namespace FujifilmProtocol
 }  // namespace Furble

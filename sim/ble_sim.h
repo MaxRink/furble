@@ -148,6 +148,12 @@ size_t bleAdvertisementCount(void);
 /** Number of virtual peers currently registered. */
 size_t blePeerCount(void);
 
+/** Peers whose advertisement matched no camera parser during saved seeding. */
+size_t bleUnmatchedPeerCount(void);
+
+/** Saved cameras in the persisted catalog. */
+size_t bleSavedCameraCount(void);
+
 }  // namespace Furble::Sim
 
 #endif
