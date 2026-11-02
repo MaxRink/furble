@@ -3,11 +3,11 @@
 ## State
 
 Merged on master with PR #273 (merge commit `2e3491de`). Wire ID 43
-(`AUTO_OFF_CHARGING`) and wire ID 46 (`IMU`) both have the BOOL, one-byte
-`ProvisionTLV` schema they were missing. `SETTING_SCHEMAS` now covers every
-source-exposed nonzero wire id, and the provisioning apply test walks every
-`Settings::Key` with a wire id and fails on a missing row. The test also covers
-valid boolean values and rejection of value 2.
+(`AUTO_OFF_CHARGING`) now has the BOOL, one-byte `ProvisionTLV` schema it was
+missing. Wire ID 46 (`IMU`) already had its row by that point. `SETTING_SCHEMAS`
+now covers every source-exposed nonzero wire id, and the provisioning apply test
+walks every `Settings::Key` with a wire id and fails on a missing row. The test
+also covers valid boolean values and rejection of value 2.
 
 The current master ledger (2026-11-02, `ea86482a`) is:
 
