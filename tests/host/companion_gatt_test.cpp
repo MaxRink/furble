@@ -454,6 +454,12 @@ void testCompanionGattFlow(void) {
         "location write stores all valid geodata flags");
   check(external.accuracy_valid && external.accuracy_m == 4.0F,
         "location write carries the phone horizontal accuracy");
+
+  fix.accuracy_m = 255;
+  check(central.write(LOCATION_UUID, bytesOf(fix)), "location UUID accepts an unknown accuracy");
+  const auto unknownAccuracy = Furble::GPS::getInstance().getExternalFix();
+  check(!unknownAccuracy.accuracy_valid,
+        "accuracy 255 is treated as unknown rather than a valid zero-metre fix");
   check(external.gps.latitude == fix.latitude && external.gps.longitude == fix.longitude
             && external.gps.altitude == fix.altitude && external.gps.satellites == fix.satellites,
         "location write stores the companion coordinates and satellites");
