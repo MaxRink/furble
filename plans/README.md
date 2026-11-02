@@ -224,6 +224,7 @@ state and the remaining gate; the issue stays open until that gate lands.
 | [296-companion-accuracy.md](296-companion-accuracy.md) | Carry the phone horizontal accuracy that the companion apps already send into the GPS fix and MQTT payload |
 | [293-gps-casic-offsets.md](293-gps-casic-offsets.md) | Correct the CFG-NAVX navSystem and MON-HW field offsets and pin them in host and simulator fixtures |
 | [294-gps-acquisition-timeout.md](294-gps-acquisition-timeout.md) | Bound the GPS acquisition state so a silent fixed-baud receiver cannot pin the sleep lock and 5 V rail |
+| [297-gps-improvement-roadmap.md](297-gps-improvement-roadmap.md) | GPS power/accuracy findings, the implemented fixes, and the ranked remaining GPS work with bench gates |
 | [298-pre-review-gate.md](implemented/298-pre-review-gate.md) | Pre-review scanners for diff hygiene, settings contracts, C++ safety, and a sanitized host subset, wired into pull-request CI |
 | [299-static-analysis-gate.md](299-static-analysis-gate.md) | cppcheck and clang-tidy on changed production sources, with the fixes and suppressions from the first full-tree pass |
 | [292-low-power-defaults.md](292-low-power-defaults.md) | Fresh devices ship with the low-power connected, inactivity, and screen-off defaults |
