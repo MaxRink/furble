@@ -144,7 +144,7 @@ limit the matrix or relocate its build trees.
 `sim/scripts/run-notouch.sh` runs the certified bug-hunt and end-to-end sets for
 one board with `FURBLE_SIM_NO_TOUCH=1`, so the pages are measured in the layout
 that board ships. It takes the same `FURBLE_SIM_BOARD_ID` and `FURBLE_SIM_BIN`
-as `run-e2e.sh`. Its header names the two 80x160 scenarios it skips and why.
+as `run-e2e.sh`. Its header explains which scenarios the physical-button run guards out and why.
 
 The retained M5PM1 watchdog contract has a dedicated gate:
 `sim/scripts/run-watchdog.sh` runs the feed, near-boundary, expiry, and
@@ -782,7 +782,7 @@ reports nothing about the bottom two rather than proving them clear. Since plan
 168 made the placement a setting, this depends on it: in Bottom placement all
 three are in that band and a fitted page is structurally clear, while in the
 default Buttons placement the Right one is over the content area and the query
-is what proves each page keeps its column clear. `seed legend 0|1` selects it,
+is what proves each page keeps its column clear. `seed legend 0|1|2` selects it,
 and `bughunt/legend-bottom-*.txt` are the files that assert the other value.
 
 `ui.label_overlaps` reports how many pairs of visible content widgets on the

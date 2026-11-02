@@ -144,7 +144,7 @@ missing source or schema.
   `m_RightYOffset` down the right edge, and Bottom puts all three in the
   reserved navbar band. `level_t::navRightYOffset` carries the same offset for
   the level page, which re-anchors all three on rotation, so a new anchor has to
-  change `UI::begin` and `applyLevelRotation` together.
+  change the `UI::UI` constructor and `applyLevelRotation` together.
   `UI::floatingIndicatorReserve()` reports the room rows keep clear and
   `reserveLegendColumns()` applies it consistently to every row that can scroll
   through the floating legend. `UI::legendSelectable()` is the one board list

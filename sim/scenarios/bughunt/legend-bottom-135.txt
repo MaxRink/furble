@@ -3,7 +3,7 @@
 # UI::legendPlacement() reads the LEGEND setting. BUTTONS, the default and what
 # these boards shipped, leaves the Right legend beside the button it names, at
 # LV_ALIGN_RIGHT_MID with a 65 px offset, level with the side button the right edge, drawn over the
-# page; every page then keeps that column clear through legendReserve().
+# page; every page then keeps that column clear through reserveLegendColumns().
 # BOTTOM puts it in the navigation band with the other two, so the three read as
 # one legend row and no page gives up any width.
 #
