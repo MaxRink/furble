@@ -65,7 +65,7 @@ and P-068 Core IP5306 boost keep-on.
 | P01, P02, D06, E14, E15 | Menu idle at 128 and 240 brightness, CPU 160 and 80; sweep; APB lock and RC_FAST A/B | Separates the MCU term from the backlight term |
 | G05 | GPS standby at 5/10/15 s (the console values; 60 s needs a firmware change), B2 and B1, with active and standby residency | In-circuit `$PCAS12` standby is the uncertain term in every GPS policy |
 | P06, P07, P08, P09 | Connected idle at fast and saver intervals, screen on and off, three runs | Fits current against 1/interval; decides `CONN_SAVER` and the interval rows |
-| E06 plus a camera advertising capture | Targeted reconnect with the camera off; `bt scan 60 duplicates` per vendor | The advertising interval gates every scan-duty and scan-duration row |
+| E06 plus a camera advertising capture | Targeted reconnect with the camera off; `bt scan all 60` per vendor | The advertising interval gates every scan-duty and scan-duration row |
 
 ## Rejected items
 

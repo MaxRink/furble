@@ -269,6 +269,35 @@ int main() {
     return 23;
   }
 
+  // An explicit disconnect after a takeover cancels the automatic resume. The
+  // takeover publishes its state in the same critical section that a manual
+  // disconnect clears, so cable loss must not restart a station the operator
+  // stopped.
+  if (!Furble::WiFi::connect()) {
+    return 25;
+  }
+  furble_wifi_handler(nullptr, IP_EVENT, IP_EVENT_STA_GOT_IP, nullptr);
+  Furble::Ethernet::init(wired);
+  wired.emitLinkUp();
+  wired.emitGotIp("192.0.2.12");
+  if (require(Furble::WiFi::hostServiceConnectedWired(),
+              "the wired takeover did not run for the cancel test")
+      || require(Furble::WiFi::hostResumeAfterWired(), "the takeover did not schedule a resume")) {
+    return 26;
+  }
+  Furble::WiFi::disconnect();
+  if (require(!Furble::WiFi::hostDeferredForWired(),
+              "a manual disconnect left the wired deferral set")
+      || require(!Furble::WiFi::hostResumeAfterWired(),
+                 "a manual disconnect did not cancel the wired resume")) {
+    return 27;
+  }
+  Furble::Ethernet::stop();
+  if (require(!Furble::WiFi::hostServiceWired(),
+              "cable loss restarted the station after a manual disconnect")) {
+    return 28;
+  }
+
   // The coexistence retry cap applies to the common scheduling path, so a
   // disconnect event after esp_wifi_connect() cannot grow it past ten seconds.
   if (require(Furble::WiFi::hostCoexRetryCap() == 10000,

@@ -64,6 +64,24 @@ Power::lock_t &Power::getLock(LockType type) {
   return m_Locks[static_cast<size_t>(type)];
 }
 
+// Failure logging lives outside the guarded hot path: it runs only on a PM
+// error, and keeps the per-transition functions free of any level above DEBUG.
+namespace {
+void logAcquireFailure(const char *owner, const char *name, esp_err_t err) {
+  ESP_LOGE(LOG_TAG, "'%s' failed to acquire '%s' power lock (%s).", owner, name,
+           esp_err_to_name(err));
+}
+
+void logReleaseUnheld(const char *owner, const char *name) {
+  ESP_LOGE(LOG_TAG, "'%s' released unheld '%s' power lock.", owner, name);
+}
+
+void logReleaseFailure(const char *owner, const char *name, esp_err_t err) {
+  ESP_LOGE(LOG_TAG, "'%s' failed to release '%s' power lock (%s).", owner, name,
+           esp_err_to_name(err));
+}
+}  // namespace
+
 void Power::acquire(LockType type, const char *owner) {
   auto &lock = getLock(type);
 
@@ -79,8 +97,7 @@ void Power::acquire(LockType type, const char *owner) {
   esp_pm_sim_set_owner(nullptr);
 #endif
   if (err != ESP_OK) {
-    ESP_LOGE(LOG_TAG, "'%s' failed to acquire '%s' power lock (%s).", owner, lock.name,
-             esp_err_to_name(err));
+    logAcquireFailure(owner, lock.name, err);
     return;
   }
 
@@ -108,7 +125,7 @@ void Power::release(LockType type, const char *owner) {
 
   if (lock.count == 0) {
     // an unbalanced release is a bug, do not confuse esp_pm with it
-    ESP_LOGE(LOG_TAG, "'%s' released unheld '%s' power lock.", owner, lock.name);
+    logReleaseUnheld(owner, lock.name);
     return;
   }
 
@@ -120,8 +137,7 @@ void Power::release(LockType type, const char *owner) {
   esp_pm_sim_set_owner(nullptr);
 #endif
   if (err != ESP_OK) {
-    ESP_LOGE(LOG_TAG, "'%s' failed to release '%s' power lock (%s).", owner, lock.name,
-             esp_err_to_name(err));
+    logReleaseFailure(owner, lock.name, err);
     return;
   }
 

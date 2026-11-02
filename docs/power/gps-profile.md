@@ -36,7 +36,7 @@ the rest are settings.
 | 3 | Auto once, then persist the detected rate. Do not force 9600: the Unit GPS v1.1 ships at 115200, and `GPS::enable()` changes only the host UART, not the receiver | Skips the 7.2 s autobaud ladder on later boots without losing reception on a 115200 unit. No receiver current change; saves boot time and avoids a hold on `NO_LIGHT_SLEEP` while probing | `inferred` from `GpsCasic::Autobaud`; vendor rate for the module | Host ladder test; sim boot trace |
 | 4 | No-receiver path must sleep until the retry, never hold `NO_LIGHT_SLEEP` | A silent fixed-baud receiver currently holds the power lock forever | `code` G-03, `inferred` up to 37 mA in the fault case | Sim: enable GPS with no peer, assert the lock is released and the task sleeps |
 | 5 | Standby after a valid fix, not rail cycle | Standby keeps the receiver's ephemeris and RTC; a rail cut costs the measured 107.7 s re-fix | `inferred` G-04, G-16 arithmetic on the published re-fix time | Bench G-04, G-06 |
-| 6 | Duty 10 to 15 s, not 5 s | A 5 s window is shorter than a cold wake-to-fix on the published module, so the fix never lands before the window closes | `inferred` from the 107.7 s cold re-fix and no published 5 s wake-to-fix | Bench G-06 |
+| 6 | Choose `GPS_DUTY` from the G-06 tradeoff, not a fixed 5 s rejection | `GPS_DUTY` sets the sleep interval after an accepted fix, not an acquisition window, so the 107.7 s cold-start time does not show that a 5 s duty prevents fixes. A longer sleep lowers receiver current but leaves the position older; the right value comes from the measured fix-freshness and current comparison | `code` `DUTY_SECONDS`; `inferred` from the published cold re-fix | Bench G-06 |
 | 7 | GPS plus BDS only | CASIC receivers track BDS natively. Adding GLONASS costs a second correlator set and is not documented as free | `inferred`; G-09 is the deciding measurement | Bench G-09 |
 | 8 | SBAS and QZSS off | No documented control and no evidence of a saving | `rejected` G-18 | none |
 | 9 | UART wake disabled | Wake-on-UART loses the triggering byte and everything before it, so NMEA cannot survive | `rejected` G-19 | none |
@@ -68,7 +68,7 @@ the rest are settings.
 | I2C | Not used by GPS | None | No change |
 | SPI | Not used by GPS | None | No change |
 | UART | One port, XTAL clock, pattern-detect interrupt on newline | The pattern interrupt is cheap; the baud ladder is the only avoidable boot cost | Persist the detected baud |
-| GPIO | No PPS, no reset line, no power-enable GPIO found in the tree | The module is powered from the Grove 5 V rail whenever the board rail is on | Record as a board limitation; a rail switch would need a board change |
+| GPIO | No PPS and no reset line; no dedicated GPS-only power-enable GPIO | The module rail is switched through the shared Port A output: `setRailPower()` calls `M5.Power.setExtOutput(..., m5::ext_PA)`, the same control the absent-receiver and rail-cycle paths use | Keep the shared Port A control; a GPS-only switch would need a board change |
 | IMU | Feeds `GPS_MOTION` and the level page | I2C polling and the motion engine are audited in the GPS/IMU lane | Keep behind the existing setting |
 
 ## 4. Bench-gated remainder

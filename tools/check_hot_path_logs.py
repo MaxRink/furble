@@ -55,9 +55,9 @@ def main() -> int:
             print(f"MISSING {relative}: {signature}", file=sys.stderr)
             failures += 1
             continue
-        if re.search(r"\bESP_LOG[IW]\b", body):
+        if re.search(r"\bESP_LOG[IWE]\b", body):
             print(
-                f"FAIL {relative}: {signature} still logs at INFO or above on the hot path",
+                f"FAIL {relative}: {signature} still logs above DEBUG on the hot path",
                 file=sys.stderr,
             )
             failures += 1

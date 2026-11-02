@@ -374,6 +374,33 @@ void stopDriver(void) {
   stopDriverLocked();
 }
 
+// Hand the station back for a wired address. Clearing the request and
+// publishing the resume state happen in one critical section shared with
+// WiFi::disconnect(), so an explicit disconnect or disable that lands before
+// is visible here and cancels the takeover, and one that lands after clears
+// the flags again. Without that serialisation the old code could re-arm the
+// resume after a manual disconnect and restart the station on cable loss.
+bool deferForWired(void) {
+  {
+    const std::lock_guard<std::mutex> lock(g_StateMutex);
+    if (!g_ConnectRequested.load() && !g_Connected.load()) {
+      // Already stopped or cancelled; there is nothing to hand over.
+      return false;
+    }
+    g_ConnectRequested = false;
+    g_Connected = false;
+    g_GotIp = false;
+    g_Ip.clear();
+    g_Rssi = 0;
+    g_DeferredForWired = true;
+    g_ResumeAfterWired = true;
+  }
+  stopNtp();
+  notify(NOTIFY_STOP);
+  stopDriver();
+  return true;
+}
+
 void recordFailure(bool scheduleRetry = true) {
   std::lock_guard<std::mutex> lock(g_StateMutex);
   g_DirectFailures++;
@@ -525,12 +552,7 @@ bool serviceConnectedWired(void) {
   if (!g_Connected.load() || !wiredNetworkActive()) {
     return false;
   }
-  WiFi::disconnect();
-  // An automatic takeover resumes when the wire drops; a manual disconnect
-  // before that clears the request.
-  g_ResumeAfterWired.store(true);
-  g_DeferredForWired.store(true);
-  return true;
+  return deferForWired();
 }
 
 void wifiTask(void *) {
@@ -572,9 +594,7 @@ void wifiTask(void *) {
       // or backing off. The inner loop never reached the connected-state check,
       // so it kept scanning and connecting on a node that already had a wire.
       if (wiredNetworkActive()) {
-        WiFi::disconnect();
-        g_ResumeAfterWired.store(true);
-        g_DeferredForWired.store(true);
+        (void)deferForWired();
         break;
       }
 #endif
@@ -800,6 +820,8 @@ void WiFi::disconnect(void) {
     std::lock_guard<std::mutex> lock(g_StateMutex);
     g_ConnectRequested = false;
     g_DeferredForWired = false;
+    // An explicit disconnect or disable cancels the wired takeover resume.
+    g_ResumeAfterWired = false;
     g_Connected = false;
     g_GotIp = false;
     g_Ip.clear();
@@ -905,6 +927,10 @@ bool WiFi::hostServiceWired(void) {
 
 bool WiFi::hostDeferredForWired(void) {
   return g_DeferredForWired.load();
+}
+
+bool WiFi::hostResumeAfterWired(void) {
+  return g_ResumeAfterWired.load();
 }
 
 bool WiFi::hostServiceConnectedWired(void) {

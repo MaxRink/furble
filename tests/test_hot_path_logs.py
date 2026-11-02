@@ -53,6 +53,11 @@ class HotPathLogTest(unittest.TestCase):
         result = self.run_checker(self.make_tree("ESP_LOGD", "ESP_LOGW"))
         self.assertNotEqual(result.returncode, 0)
 
+    def test_error_on_guarded_path_fails(self):
+        result = self.run_checker(self.make_tree("ESP_LOGD", "ESP_LOGE"))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("hot path", result.stderr)
+
     def test_debug_only_tree_passes(self):
         result = self.run_checker(self.make_tree("ESP_LOGD"))
         self.assertEqual(result.returncode, 0, result.stderr)
