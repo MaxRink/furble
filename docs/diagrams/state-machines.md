@@ -2463,19 +2463,19 @@ sequenceDiagram
 | Location packet size | 16 bytes | little-endian | `furble-source` |
 | GPS time | uint32 seconds since 1980-01-06 | `unixTime - 315964800` | `furble-source` |
 | Latitude, longitude | int32 degrees times 1e7 | signed | `furble-source` |
-| Altitude | uint16 metres | truncated | `furble-source` |
+| Altitude | int16 metres | signed, truncated | `furble-source` |
 | Fix | `0x41` | valid NMEA fix | `furble-source`, `public-source` |
 | Reserved | `0x00` | constant | `furble-source` |
 | Clock packet size | 10 bytes | little-endian | `furble-source` |
 | Year | uint16 | full year | `furble-source` |
 | Month to second | one byte each | local tuple as supplied | `furble-source` |
-| Zero byte | `0x00` | constant | `furble-source` |
-| Timezone offset | int16 minutes | always `0` | `furble-source` |
+| Timezone offset | int16 minutes at bytes 7 to 8 | always `0` | `furble-source` |
+| DST | byte 9 | always `0` | `furble-source` |
 | Ordering | clock written only after a successful location write | enforced | `furble-source` |
 | Time validity | `unixTime` must be at least the GPS epoch offset | otherwise skip both writes | `furble-source` |
 | Readiness gate | none; the two documented readiness notifications are not awaited | `N` | `public-source`, `furble-source` |
 | Retry | none; next GPS tick retries the whole pair | `P` | `furble-source` |
-| DST | not carried | `N` | `furble-source` |
+
 
 The readiness notifications matter. The S5 report documents two notifications,
 `37701B80` and `4CF487C0`, both `01`, before time and GPS, and warns that a

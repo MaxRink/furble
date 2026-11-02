@@ -1734,7 +1734,7 @@ the company ID still needs a raw advertisement capture.
 | MEI0 seed differs from the camera registration | The camera may reject or hang up. | Persist and reuse the seed, or implement the vendor registration. | `public-source` S5 report; `inference` |
 | Bare `04` shutter | The camera may ignore it if Confirm and Start are required. | Send `01`, wait `00`, send `02`, then `04`. | `app-static`; `inference` |
 | GPS write before readiness | The camera may drop the link. | Wait for `37701B80` value `01`. | `public-source` S5 report; `app-static` |
-| Clock timezone field | Furble writes zero. The app writes an offset then a DST byte. | Correct the field order and fill the offset. | `app-static`; `public-source` |
+| Clock timezone field | Furble writes a signed int16 offset at bytes 7 to 8 and a DST flag at byte 9, both zero because it has no timezone source. | Fill them from a timezone source. | `app-static`; `public-source` |
 | No bond | There is no bond to go stale. | Re-register on the camera. | `public-source`; `app-static` |
 
 ### 11.7 Flows

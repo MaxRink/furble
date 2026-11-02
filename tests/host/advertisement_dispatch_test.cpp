@@ -23,7 +23,8 @@ namespace {
 
 class DJIProtocolPeer final: public NimBLEMockPeer {
  public:
-  explicit DJIProtocolPeer(const NimBLEAddress &address) : m_Address(address) {}
+  explicit DJIProtocolPeer(const NimBLEAddress &address, uint32_t responseId = 0x44FF0000U)
+      : m_Address(address), m_ResponseId(responseId) {}
 
   const std::vector<uint8_t> &firstRequest() const { return m_FirstRequest; }
   void clearFirstRequest() { m_FirstRequest.clear(); }
@@ -115,16 +116,18 @@ class DJIProtocolPeer final: public NimBLEMockPeer {
     return crc;
   }
 
-  static std::vector<uint8_t> connectionResponse() {
+  std::vector<uint8_t> connectionResponse() const {
     std::vector<uint8_t> frame(51, 0);
     frame[0] = 0xAA;
     frame[1] = static_cast<uint8_t>(frame.size());
     frame[12] = 0x00;
     frame[13] = 0x19;
-    frame[14] = 0x00;
-    frame[15] = 0x00;
-    frame[16] = 0xFF;
-    frame[17] = 0x44;
+    // Payload starts at 14; the camera device ID is its first four bytes, so
+    // the fixture can speak either published encoding.
+    frame[14] = static_cast<uint8_t>(m_ResponseId);
+    frame[15] = static_cast<uint8_t>(m_ResponseId >> 8);
+    frame[16] = static_cast<uint8_t>(m_ResponseId >> 16);
+    frame[17] = static_cast<uint8_t>(m_ResponseId >> 24);
     frame[40] = 2;
     frame[10] = static_cast<uint8_t>(crc16(frame.data(), 10));
     frame[11] = static_cast<uint8_t>(crc16(frame.data(), 10) >> 8);
@@ -136,6 +139,7 @@ class DJIProtocolPeer final: public NimBLEMockPeer {
   }
 
   NimBLEAddress m_Address;
+  uint32_t m_ResponseId;
   NimBLERemoteCharacteristic *m_Remote = nullptr;
   NimBLENotifyCallback m_Callback;
   std::vector<uint8_t> m_FirstRequest;
@@ -228,6 +232,24 @@ bool testDispatchAndDeduplication() {
   CHECK(peer.firstRequest().size() == 51);
   CHECK(peer.firstRequest()[40] == 0x00);
   dji->disconnect();
+
+  // Both published device-ID encodings must be accepted through the real
+  // handshake: the demo value 0x33FF0000 and the table value 0xFF330000 differ
+  // only in half order. An unknown ID must be refused.
+  for (const uint32_t id : {0x33FF0000U, 0xFF330000U}) {
+    NimBLEDevice::resetMock();
+    DJIProtocolPeer idPeer(djiAdvertisement.getAddress(), id);
+    NimBLEDevice::setMockPeer(&idPeer);
+    auto idCamera = std::make_shared<Furble::DJIOsmo>(&djiAdvertisement);
+    CHECK(idCamera->connect(ESP_PWR_LVL_P3, 1000));
+    CHECK(idPeer.firstRequest().size() == 51);
+    idCamera->disconnect();
+  }
+  NimBLEDevice::resetMock();
+  DJIProtocolPeer unknownPeer(djiAdvertisement.getAddress(), 0x12345678U);
+  NimBLEDevice::setMockPeer(&unknownPeer);
+  auto unknownCamera = std::make_shared<Furble::DJIOsmo>(&djiAdvertisement);
+  CHECK(!unknownCamera->connect(ESP_PWR_LVL_P3, 1000));
 
   // A failed index write for a genuinely new camera must not publish it or
   // transition its pairing lifecycle.
