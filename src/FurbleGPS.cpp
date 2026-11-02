@@ -31,6 +31,7 @@
 #include "FurbleUI.h"
 #include "FurbleWiFi.h"
 #include "Preferences.h"
+#include "protocol/GpsNavx.h"
 
 namespace {
 
@@ -39,7 +40,6 @@ constexpr size_t BINARY_CHECKSUM_SIZE = 4;
 constexpr size_t BINARY_FRAME_OVERHEAD = BINARY_HEADER_SIZE + BINARY_CHECKSUM_SIZE;
 constexpr uint8_t BINARY_SYNC_0 = 0xBA;
 constexpr uint8_t BINARY_SYNC_1 = 0xCE;
-constexpr uint32_t NAVX_MASK_NAV_SYSTEM = 1 << 8;
 
 uint16_t readU16(const uint8_t *data) {
   return static_cast<uint16_t>(data[0]) | (static_cast<uint16_t>(data[1]) << 8);
@@ -2538,22 +2538,18 @@ void GPS::completeNavxQuery(void) {
     m_ConfigStatus[queryStatus].state = CONFIG_ACKED;
   }
 
-  uint32_t mask = 0;
   std::string fallback;
   if (m_NavxConstelSet) {
-    mask |= NAVX_MASK_NAV_SYSTEM;
-    write[GPS::NAVX_NAV_SYSTEM_OFFSET] = m_NavxConstelVal;
     fallback = "PCAS04," + std::to_string(m_NavxConstelVal);
   }
   if (m_NavxDyModelSet) {
-    mask |= NAVX_MASK_DY_MODEL;
-    write[GPS::NAVX_DY_MODEL_OFFSET] = m_NavxDyModelVal;
     if (!fallback.empty()) {
       fallback += "\n";
     }
     fallback += "PCAS11," + std::to_string(m_NavxDyModelVal);
   }
-  writeU32(write.data(), mask);
+  GpsNavx::apply(write.data(), write.size(),
+                 {m_NavxConstelSet, m_NavxConstelVal, m_NavxDyModelSet, m_NavxDyModelVal});
   enqueueConfig(CFG_CLASS, CFG_NAVX_ID, write, fallback, false, true);
 }
 

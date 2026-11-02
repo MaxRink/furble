@@ -27,6 +27,7 @@
 #include <vector>
 
 #include "GpsCasic.h"
+#include "GpsNavx.h"
 
 using namespace Furble;
 
@@ -1301,6 +1302,34 @@ bool testEphemerisFreshness() {
   return g_Failures == before;
 }
 
+bool testNavxApply() {
+  std::cout << "test: CFG-NAVX writes navSystem at 13 without touching minSVs\n";
+  const int before = g_Failures;
+
+  std::vector<uint8_t> payload(GpsNavx::PAYLOAD_SIZE, 0);
+  payload[GpsNavx::OFFSET_MIN_SVS] = 0xAA;
+  payload[GpsNavx::OFFSET_NAV_SYSTEM] = 0x55;
+  payload[GpsNavx::OFFSET_DY_MODEL] = 0x66;
+  const uint32_t mask = GpsNavx::apply(payload.data(), payload.size(), {true, 1, true, 2});
+  check(mask == (GpsNavx::MASK_NAV_SYSTEM | GpsNavx::MASK_DY_MODEL),
+        "both selected fields set their mask bits");
+  check(payload[0] == 0x01 && payload[1] == 0x01, "the mask is written little-endian at offset 0");
+  check(payload[GpsNavx::OFFSET_NAV_SYSTEM] == 1,
+        "constellation is written at navSystem offset 13");
+  check(payload[GpsNavx::OFFSET_MIN_SVS] == 0xAA, "minSVs at offset 6 is preserved");
+  check(payload[GpsNavx::OFFSET_DY_MODEL] == 2, "dynamic model is written at offset 4");
+
+  std::vector<uint8_t> untouched(GpsNavx::PAYLOAD_SIZE, 0x5A);
+  check(GpsNavx::apply(untouched.data(), untouched.size(), {false, 0, false, 0}) == 0,
+        "no selected field writes a zero mask");
+  const auto snapshot = untouched;
+  check(GpsNavx::apply(untouched.data(), untouched.size() - 1, {true, 1, false, 0}) == 0,
+        "a short payload is rejected");
+  check(untouched == snapshot, "a rejected payload is unchanged");
+
+  return g_Failures == before;
+}
+
 int main() {
   testChecksumAndFrame();
   testAutobaudLadderDown();
@@ -1330,6 +1359,7 @@ int main() {
   testEphemerisFreshness();
   testMonHwEdges();
   testConstellationForTalker();
+  testNavxApply();
   testFuzz();
 
   if (g_Failures != 0) {
