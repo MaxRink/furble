@@ -136,6 +136,29 @@ reports which of the two a setting is: immediately, on next connect, or on
 reboot. See the [settings and controls reference](settings-and-controls.md) for
 every setting, its default, and when it applies.
 
+## wifi
+
+`wifi status` reports the station state and the last lifecycle outcome:
+
+| Key | Meaning |
+| :--- | :--- |
+| `enabled` | Saved Wi-Fi setting. |
+| `state` | `disabled`, `idle`, `connecting`, or `connected`. |
+| `ssid`, `psk` | Saved network, with the passphrase reported only as `set` or `unset`. |
+| `bssid`, `channel` | Access point identity once associated. |
+| `rssi` | Signal in dBm while connected, otherwise `unavailable`. |
+| `ip` | Lease address, `none` before DHCP. |
+| `attempts` | Failed attempts in the current retry cycle. |
+| `retry_ms` | Backoff before the next attempt, without the random jitter. |
+| `disconnect_reason` | Raw `WIFI_REASON_*` value from the last disconnect. |
+| `stopped` | `yes` after a terminal auth failure or an exhausted attempt bound; `wifi connect` clears it. |
+| `current`, `estimated_runtime` | Battery drain and runtime estimate when the gauge exposes current. |
+
+`wifi set ssid <ssid>` and `wifi set psk <psk>` write the credentials.
+`wifi enable` and `wifi disable` persist the setting and start or stop the
+station. `wifi connect` and `wifi disconnect` act immediately, and
+`wifi forget` clears the SSID and passphrase.
+
 ## gps
 
 - `gps` with no argument prints enabled, fix, satellites, lat, lon, alt, age,

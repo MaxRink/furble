@@ -2674,12 +2674,17 @@ void restartProcess(void) {
       std::_Exit(1);
     }
   }
+  if (savedArguments.empty()) {
+    std::cerr << "restart requested without a saved command line\n";
+    std::_Exit(1);
+  }
   std::vector<char *> arguments;
   arguments.reserve(savedArguments.size() + 1);
   for (auto &argument : savedArguments) {
     arguments.push_back(argument.data());
   }
   arguments.push_back(nullptr);
+  const char *program = savedArguments.front().c_str();
   // Carry the fixture clock across the re-exec. A receiver's clock does not
   // rewind because the ESP32 rebooted, and letting it reset made the positive
   // ephemeris leg pass on a one second margin.
@@ -2688,7 +2693,7 @@ void restartProcess(void) {
     std::cerr << "restart failed: setenv: " << std::strerror(errno) << '\n';
     std::_Exit(1);
   }
-  execvp(arguments[0], arguments.data());
+  execvp(program, arguments.data());
   std::cerr << "restart failed: execvp: " << std::strerror(errno) << '\n';
   std::_Exit(1);
 }
