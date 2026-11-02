@@ -189,7 +189,15 @@ std::array<uint8_t, TIME_BYTES> encodeTime(const TimeInput &input) {
   // -2400..2400 range.
   int64_t hundredths = (static_cast<int64_t>(input.utc_offset_minutes) * 100) / 60;
   hundredths = std::max<int64_t>(-2400, std::min<int64_t>(2400, hundredths));
-  writeLittleEndian32(data, 7, static_cast<uint32_t>(static_cast<int32_t>(hundredths)));
+  // Write the four offset bytes directly. GCC 14's array-bounds analysis
+  // conflates the 12-byte time array with the 23-byte geotag array when the
+  // shared little-endian helper is inlined for both sizes, and -Werror turns
+  // that false positive into a firmware build failure.
+  const uint32_t offset = static_cast<uint32_t>(static_cast<int32_t>(hundredths));
+  data[7] = static_cast<uint8_t>(offset);
+  data[8] = static_cast<uint8_t>(offset >> 8);
+  data[9] = static_cast<uint8_t>(offset >> 16);
+  data[10] = static_cast<uint8_t>(offset >> 24);
   data[11] = input.dst;
   return data;
 }
