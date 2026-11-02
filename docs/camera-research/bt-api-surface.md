@@ -108,18 +108,22 @@ the Z6 III GATT inventory.
 ## Sony
 
 Both official apps implement CC00, DD00, and EE00; Creators' App adds BB00.
-Furble uses DD01, DD11, DD21, DD30, and DD31. The ILCE-7RM5 4.00 firmware
-confirms CC00, DD00, EE00, BB00, and FF00, with FF01 write and FF02 notify.
-The unused surface includes the CC00 status and settings services, EE01 pairing
-and EE03 state, EE04 camera info, BB00 DiRxTx, the FF00 remote commander
-service, PTP/IP still capture, movie, zoom, power, image transfer, and the full
-location lock and unlock sequence.
+Furble requires the FF00 remote-commander service and writes FF01 for shutter
+and focus. It writes location with DD11 and conditionally enables it through
+DD30 and DD31 on the first GPS update. DD01 (location status) and DD21
+(payload selector) are unused: the driver always sends the 95-byte form and
+does not read the selected length. The unused surface includes the CC00 status
+and settings services, DD01 and DD21, EE01 pairing and EE03 state, EE04 camera
+info, BB00 DiRxTx, FF02 status notifications, PTP/IP still capture, movie,
+zoom, power, image transfer, and the location release sequence.
 
 The location payload is 91 or 95 bytes, selected by `DD21` byte 4 bit 1. The
 app writes timezone and DST into bytes 91 to 94, subscribes `DD01`, locks with
 `DD30` and `DD31`, and unlocks on stop. Furble always sends 95 bytes with zero
-offsets and does not lock. FF02 emits `02 3f`, `02 2d`, `02 a0`, and `02 d5`;
-Furble does not subscribe. EE01 pairing is confirmed but not sent by Furble.
+offsets. It raises the DD30 allow flag and the DD31 enable flag when location
+first turns on, but it has no release path: neither stop nor disconnect clears
+them, and the app's unlock sequence is not implemented. FF02 emits `02 3f`,
+`02 2d`, `02 a0`, and `02 d5`; Furble does not subscribe. EE01 pairing is confirmed but not sent by Furble.
 The four FF01 opcodes remain unproven by the firmware.
 
 Open questions: the FF01 opcode bytes, the exact FF02 action model, the SMP

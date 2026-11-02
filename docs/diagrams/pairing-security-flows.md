@@ -157,7 +157,7 @@ present in the RE corpus.
 | Indications | `A68E3F66`, `BD17BA04`, `049EC406`. | Indicate, two bytes. | CCCD value `0x0002`. | Before the registration wait. | `public-source`, `FujifilmBasic.cpp` |
 | Notifications | `F9150137`, `AD06C7B7`. | Notify, two bytes. | CCCD value `0x0001`. | Before the registration wait. | `public-source`, `FujifilmBasic.cpp` |
 | Registration gate | `F9150137` payload `01 00` or `02 00`. | Notification. | Already subscribed. | Must arrive before shutter discovery and promotion. | `public-source`, `Fujifilm.cpp` |
-| Shutter | `6514EB81` service, `7FCF49C6` characteristic. | Write with response. Two writes: `01 00` then `02 00` press, `00 00` release, `03 00` focus. | None. | After registration. | `public-source`, `FujifilmProtocol.cpp` |
+| Shutter | `6514EB81` service, `7FCF49C6` characteristic. | Write with response. Shutter press is `01 00` then `02 00`; shutter release is `01 00` then `00 00`. Focus is the single half-press `01 00`, and focus release is the single `00 00`. | None. | After registration. | `public-source`, `FujifilmProtocol.cpp`; `firmware-static`, parser accepts only `0`, `1`, `2` |
 | Geotag | `3B46EC2B` service, `0F36EC14` characteristic. | Write with response, 23 bytes. | None. | After registration, when the camera requests it. | `public-source`, `FujifilmProtocol.cpp` |
 | MTU | No explicit request. | 23-byte geotag plus ATT overhead needs at least 26 bytes of ATT MTU in one write. The actual Basic MTU is `unknown`. | Not applicable. | A long write or a larger negotiated MTU is required if the payload exceeds the default. | `inference` from payload sizes; `unknown` for the camera |
 

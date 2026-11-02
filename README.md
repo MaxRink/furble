@@ -118,7 +118,7 @@ The following devices have been tested and confirmed to work:
 | :---:              | :---:    | :---:   | :---:           | :---:   | :---:   |
 | Fujifilm X & GFX   | ✔️        | ✔️       | ✔️               | ✔️[^1]   | ✔️       |
 | Canon EOS (Remote) | ✔️        | ✔️       | ✔️               | ✔️       | :x:[^2] |
-| Canon EOS (Smart)  | ✔️        | ✔️       | ✔️               | :x:[^2] | ✔️       |
+| Canon EOS (Smart)  | ✔️        | ✔️       | ✔️               | ✔️[^5]   | ✔️       |
 | Ricoh              | ✔️        | ✔️       | ✔️[^3]           | :x:[^4]  | ✔️       |
 | Nikon (Remote)     | ✔️        | ✔️       | ✔️[^3]           | :x:[^2] | :x:[^2] |
 | Nikon (Smart)      | ✔️        | :x:     | :x:             | :x:     | :x:     |
@@ -129,6 +129,9 @@ The following devices have been tested and confirmed to work:
 [^3]: Auto-shutter release only, no manual exposure control
 [^4]: Focus-only controls are unsupported and do not send a camera command.
 The supported shutter command performs an immediate capture with autofocus.
+[^5]: AF-only control is implemented from Camera Connect evidence (separate
+`00 03` AF on and `00 04` AF off writes) and awaits hardware validation. It is
+not manual lens focus.
 
 For contributor research across all implemented camera families, see the
 [camera protocol research library](docs/camera-research/README.md). It records

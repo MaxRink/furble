@@ -424,8 +424,8 @@ shutter characteristic exists and `canWrite()`.
 | :--- | :--- | :--- | :--- |
 | Press | `01 00` then `02 00` | `Y` | `app-static` corroborates for XApp and Camera Remote, `hardware-capture` for X100VI |
 | Release | `01 00` then `00 00` | `Y` | `app-static`, `hardware-capture` |
-| Focus press | `01 00` then `03 00` | `P` | `furble-source` only; app-static does not corroborate `03 00` |
-| Focus release | same as release | `Y` | `furble-source` |
+| Focus press | `01 00` | `Y` | `firmware-static` parser accepts `1`; `app-static` |
+| Focus release | `00 00` | `Y` | `firmware-static` parser accepts `0`; `app-static` |
 | Bulb hold | press, wait, release | `P` | local hold; no BLE bulb opcode |
 | Self-timer | no command | `N` | `furble-source` |
 | Interval | orchestrated by UI, per-shot press and release | `P` | `furble-source` |
@@ -559,7 +559,8 @@ Basic has no stale-bond recovery, no security-failure counter, and no
 | FB-09 | Registration confirmed | shutter service present | get shutter characteristic | characteristic object | n/a | `furble-source` |
 | FB-10 | Shutter press | link up, characteristic writable | write `01 00`, then `02 00`, both with response | ATT write responses | n/a | `furble-source`, `app-static` |
 | FB-11 | Shutter release | same | write `01 00`, then `00 00` | ATT write responses | n/a | `furble-source`, `app-static` |
-| FB-12 | Focus press | same | write `01 00`, then `03 00` | ATT write responses | n/a | `furble-source`, uncorroborated |
+| FB-12 | Focus press | same | write `01 00` | ATT write response | n/a | `firmware-static`, `app-static` |
+| FB-12a | Focus release | same | write `00 00` | ATT write response | n/a | `firmware-static`, `app-static` |
 | FB-13 | Geotag request | `01 00` on `AD06C7B7` | set `m_GeoRequested` | camera waits for a packet | up to the next GPS tick | `furble-source`, `hardware-capture` |
 | FB-14 | GPS update tick | `m_GeoRequested` true, characteristic writable | write 23-byte geotag packet | ATT write response | n/a | `furble-source` |
 | FB-15 | Disconnect | `m_Connected` true | `m_Client->disconnect()` | link down, `onDisconnect` clears state | supervision or immediate | `furble-source` |
@@ -568,8 +569,9 @@ Basic has no stale-bond recovery, no security-failure counter, and no
 
 1. Whether any Basic-only body in the supported list still exposes `91F1DE68`
    at its current firmware. No Basic image is in the corpus.
-2. Whether `03 00` is a real half-press on any Fujifilm body. It is not
-   corroborated by XApp or Camera Remote.
+2. Whether `01 00` alone leaves the camera in a half-press state on every
+   body. The parser accepts `1`, but only the full shutter sequence has app
+   corroboration, and `03` is rejected.
 3. What the camera does with a token that no longer matches, including the ATT
    status it returns and whether it drops the link.
 4. The exact ATT status for a missing pair service, and whether the camera
@@ -758,7 +760,8 @@ on registration, so a shutter write before confirmation is impossible through
 
 | Transition | Bytes | Status | Evidence |
 | :--- | :--- | :--- | :--- |
-| Half-press or focus | `01 00` then `03 00` | `P` | `furble-source`; not app-corroborated |
+| Half-press or focus | `01 00` | `Y` | `firmware-static`; `app-static` |
+| Focus release | `00 00` | `Y` | `firmware-static`; `app-static` |
 | Full press | `01 00` then `02 00` | `Y` | `app-static`, `hardware-capture` |
 | Release | `01 00` then `00 00` | `Y` | `app-static`, `hardware-capture` |
 | Bulb hold | press, wait, release | `P` | local hold only |
@@ -2885,7 +2888,8 @@ Fujifilm Basic and Secure:
 4. The geotag speed field unit.
 5. The Secure advertisement type byte on every body.
 6. Per-characteristic security.
-7. Whether `03 00` is a real half-press.
+7. Whether `01 00` alone leaves the camera in a half-press state; `03` is
+   rejected by the parser.
 8. Power control `43070F6C` values and acceptance.
 9. Basic token rejection status and link behaviour.
 

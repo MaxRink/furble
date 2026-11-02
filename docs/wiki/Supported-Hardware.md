@@ -32,7 +32,7 @@ by code review and the FauxNY test camera.
 | :--- | :--- |
 | Fujifilm (Basic) | Older firmware with the token pairing service `91F1DE68`. That service is absent from X100VI 1.31 and X-S20 3.30, so no Basic path is present; use Secure. |
 | Fujifilm (Secure) | Firmware that requires the status and registration handshake. X100VI 1.30 and later, and X-S20 3.30, are this generation. |
-| Canon EOS (Smart) | Smart device pairing. Supports GPS, no manual focus. |
+| Canon EOS (Smart) | Smart device pairing. Supports GPS and AF-only focus. The AF writes come from Camera Connect evidence and await hardware validation; manual lens focus is not available. |
 | Canon EOS (Remote) | Remote controller pairing. Focus, no GPS. |
 | Nikon | Remote controller mode works (shutter only). Smart mode appears but does not pair. |
 | Sony | Sony ZV and most modern Sony bodies. |
