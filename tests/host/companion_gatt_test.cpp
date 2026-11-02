@@ -452,6 +452,8 @@ void testCompanionGattFlow(void) {
   const auto external = Furble::GPS::getInstance().getExternalFix();
   check(external.position_valid && external.time_valid && external.altitude_valid,
         "location write stores all valid geodata flags");
+  check(external.accuracy_valid && external.accuracy_m == 4.0F,
+        "location write carries the phone horizontal accuracy");
   check(external.gps.latitude == fix.latitude && external.gps.longitude == fix.longitude
             && external.gps.altitude == fix.altitude && external.gps.satellites == fix.satellites,
         "location write stores the companion coordinates and satellites");
