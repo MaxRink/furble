@@ -125,9 +125,9 @@ Gates added or extended:
   overlaps or cuts at both ends, and `ui.diag.about.reset_visible yes` at the
   bottom. Its default pass measures touch and `run-notouch.sh` repeats the
   shorter button layout.
-- `ui.diag.about.reset_visible` is viewport-aware: it intersects the rendered
-  Reset label with the current menu page, unlike the recursive
-  `ui.diag.about.reset` lookup that only proves the label exists.
+- `ui.diag.about.reset_visible` is viewport-aware: it requires the rendered
+  Reset label to be visible and fully contained by the current menu page, unlike
+  the recursive `ui.diag.about.reset` lookup that only proves the label exists.
 
 Captures: no layout, font, or row set changed, so the walkthrough screenshots
 in `docs/ui-walkthrough.md` remain valid and no regeneration is owed. The

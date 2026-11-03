@@ -4893,8 +4893,9 @@ std::string UI::simQueryState(const char *key) {
       lv_area_t viewport = {};
       lv_obj_get_coords(label, &labelArea);
       lv_obj_get_coords(page, &viewport);
-      return !((labelArea.x2 < viewport.x1) || (labelArea.x1 > viewport.x2)
-               || (labelArea.y2 < viewport.y1) || (labelArea.y1 > viewport.y2));
+      return lv_obj_is_visible(label) && (labelArea.x1 >= viewport.x1)
+             && (labelArea.x2 <= viewport.x2) && (labelArea.y1 >= viewport.y1)
+             && (labelArea.y2 <= viewport.y2);
     };
 
     const auto labelText = [](lv_obj_t *label) {

@@ -615,7 +615,7 @@ The complete `ui.*` query set is:
 | `ui.focus_on_page` | `yes` or `no`. |
 | `ui.row_text` | Text of the focused menu row, or `none`. Every whitespace character is reported as an underscore, so a literal underscore and a space both read as `_`. |
 | `ui.row_scrolling` | `yes`, `no`, or `none`. Whether the focused menu row's label is running LVGL's scroll animation. |
-| `ui.diag.about.reset_visible` | About page only: `yes` when the rendered Reset label intersects the page viewport. |
+| `ui.diag.about.reset_visible` | About page only: `yes` when the rendered Reset label is visible and fully contained by the page viewport. |
 | `ui.overflow` | `unknown`, `yes`, or `no`. |
 | `ui.nav_layout` | `touch` or `buttons`. |
 | `ui.legend_visible` | `yes` or `no`; Off hides indicator surfaces without disabling physical input targets. |
