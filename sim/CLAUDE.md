@@ -421,7 +421,7 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   disconnect its client's self-delete waits on, so the client outlives a clean
   teardown. `cancel-sweep-fuji-ui`, `cancel-sweep-fuji-pair-ui`,
   `cancel-sweep-fuji-secure-ui` and `reconnect-after-disconnect-sweep` carry
-  it; every leg that does not says why in its own header (plans/172).
+  it; every leg that does not says why in its own header (plans/implemented/172-sim-cancel-sweep.md).
 - Cancel and teardown latency can be asserted in virtual time again (issue
   #279, plans/173). `Control::disconnect()` polls on the UI thread and every
   20 ms slice advances the virtual clock, so the number of slices used to be
