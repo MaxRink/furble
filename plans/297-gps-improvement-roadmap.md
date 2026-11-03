@@ -89,25 +89,36 @@ v4.2 feature. Do not ship a blind `$PCAS15` mask: a wrong mask can disable GPS.
 
 | Order | PR | Value | Risk | Gate |
 | --- | --- | --- | --- | --- |
-| 1 | Duty state machine correctness | Makes the existing standby saving real; prerequisite for 30/60 s | Medium | Host/sim now; G-05 current |
+| 1 | Duty state machine correctness | Makes the existing standby saving real; prerequisite for 30/60 s | Medium | Host/sim now; G05 standby current |
 | 2 | Fix-quality gate + honest age display | Stops bad geotags; uses companion accuracy | Medium | Host/sim now; outdoor threshold |
 | 3 | GPS defaults: Auto baud and RMC+GGA prune | Fixes a fresh install at the v1.1 unit's 115200 and cuts 710 to 91 chars/s | Low | Host/sim; E29/E32 |
 | 4 | Split settings reload | Avoids re-acquisition on hold/power/duty writes | Low | Host now |
 | 5 | Rate/baud consistency guard | Prevents a configuration the UART cannot carry | Low | Host settings test |
-| 6 | Fix-aware backoff (P-084) | Up to ~28 mA during a no-fix episode | Medium | Opt-in now; G-04/G-07 default |
+| 6 | Fix-aware backoff (P-084) | Up to ~28 mA during a no-fix episode | Medium | Opt-in now; G07 degraded backoff |
 | 7 | Motion consumer (P-085) | 15-22 mA while stationary, modelled | High | Plan 18 gate + E38 |
-| 8 | 30/60 s duty with hold | Up to ~19 mA of the 23 mA GPS budget | Medium-high | After 1 and 3; G-05/G-06 |
+| 8 | 30/60 s duty with hold | Up to ~19 mA of the 23 mA GPS budget | Medium-high | After 1 and 3; G05 current + G-06 long-duty experiment |
 | 9 | Receiver identity and GST | Unlocks version-gated accuracy work | Medium | Bench `$PCAS06` first |
 
 ## Bench gates that decide the rest
 
-- **G-05** at B1 and B2: in-circuit standby current, wake-to-first-fix, wake
-  jitter, active/standby residency at 5/10/15/60 s.
-- **G-06**: five `PCAS12` rail cycles at 15 s duty; re-fix stays within
-  90-130 s and charge per cycle within 20 percent of the sum of tracking and
-  cold-start windows. This decides whether rail cycling is viable at all.
-- **G-07**: receiver backoff leaves the lock released and the rail in the
-  expected state.
+Two documents use similar IDs: `docs/power/gps-imu.md` numbers optimization
+opportunities as `G-05`/`G-06`, while `docs/power/measurement-plan.md` numbers
+bench tests as `G05`/`G06`. The roadmap names the document whenever the
+distinction matters.
+
+- **G05** (measurement-plan) at B1 and B2: in-circuit standby current,
+  wake-to-first-fix, wake jitter, active/standby residency at 5/10/15 s. The
+  60 s arm needs the firmware change in row 8.
+- **G-06** (gps-imu): the 30/60 s duty-with-hold experiment and an early-wake
+  command. Its current is measured by G05; the acceptance gate is the same
+  standby residency plus a held position that stays within the configured
+  accuracy.
+- **G06** (measurement-plan): five `PCAS12` rail cycles at 15 s duty; re-fix
+  stays within 90-130 s and charge per cycle within 20 percent of the sum of
+  tracking and cold-start windows. This decides whether rail cycling is viable
+  at all.
+- **G07** (measurement-plan): receiver backoff leaves the lock released and the
+  rail in the expected state.
 - **E29**: a fresh NVS boot fixes with no user action; 9600 still locks; an
   absent unit reaches absent.
 - **E32**: prune reduces character rate without losing the fix.
@@ -119,6 +130,6 @@ v4.2 feature. Do not ship a blind `$PCAS15` mask: a wrong mask can disable GPS.
 
 The installed GPS transport is stronger than the policy on top of it. The
 largest immediate code wins are the duty state-machine fixes and the quality
-gate, in that order. The largest bench decision is G-05: without the in-circuit
+gate, in that order. The largest bench decision is G05: without the in-circuit
 standby current and wake-to-first-fix, neither 60 s duty nor the receiver
 backoff can be promoted from opt-in.
