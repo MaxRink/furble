@@ -29,6 +29,20 @@ class CppcheckParseTest(unittest.TestCase):
         )
         self.assertEqual(findings, [])
 
+    def test_absolute_path_is_normalized(self):
+        findings = CHECKER.parse_cppcheck(
+            f"{ROOT}/src/FurbleGPS.cpp:42:warning:nullPointer:x\n"
+        )
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0]["file"], "src/FurbleGPS.cpp")
+
+
+class ProductionPathTest(unittest.TestCase):
+    def test_c_helper_is_a_production_source(self):
+        sources, headers = CHECKER.production_paths(["sim/env_mutation_guard.c"])
+        self.assertEqual(sources, ["sim/env_mutation_guard.c"])
+        self.assertEqual(headers, [])
+
 
 class HeaderIncluderTest(unittest.TestCase):
     def test_qualified_header_include_is_found(self):
@@ -64,6 +78,14 @@ class ClangTidyParseTest(unittest.TestCase):
         self.assertEqual(findings, [])
         self.assertEqual(len(errors), 1)
         self.assertIn("lvgl.h", errors[0]["message"])
+
+    def test_absolute_path_is_normalized(self):
+        findings, errors = CHECKER.parse_clang_tidy(
+            f"{ROOT}/src/FurbleUI.cpp:1:1: warning: x [bugprone-x]\n"
+        )
+        self.assertEqual(errors, [])
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0]["file"], "src/FurbleUI.cpp")
 
     def test_fatal_error_is_separate(self):
         findings, errors = CHECKER.parse_clang_tidy(

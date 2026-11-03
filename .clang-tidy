@@ -5,6 +5,8 @@
 # current tree. Noisy families (signed bitwise operations, enum size, static
 # initialization on an exception-free embedded target) are deliberately off.
 # `tools/check_static_analysis.py` runs this config on changed files in CI.
+# The preferences shim uses a leading underscore in its include guard, so its
+# cert-dcl37-c/cert-dcl51-cpp reports are disabled below.
 Checks: >
   bugprone-*,
   clang-analyzer-*,
@@ -30,7 +32,6 @@ Checks: >
   -clang-analyzer-optin.performance.Padding,
   -performance-no-int-to-ptr,
   -cert-dcl50-cpp,
-  # The preferences shim uses a leading underscore in its include guard.
   -cert-dcl37-c,
   -cert-dcl51-cpp
 HeaderFilterRegex: '(src|lib/furble|include|sim)/'

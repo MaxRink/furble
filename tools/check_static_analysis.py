@@ -25,7 +25,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 PRODUCTION_PREFIXES = ("src/", "lib/furble/", "include/", "sim/")
 EXCLUDED_PREFIXES = ("sim/build/", "sim/shim/")
-SOURCE_SUFFIXES = (".cpp", ".cc", ".cxx")
+SOURCE_SUFFIXES = (".cpp", ".cc", ".cxx", ".c")
 HEADER_SUFFIXES = (".h",)
 CPPCHECK_SUPPRESSIONS = (
     # Aggregate structs are initialized at their use sites; cppcheck cannot see
@@ -112,6 +112,7 @@ def changed_paths(base: str) -> tuple[list[str], list[str]]:
         "*.cpp",
         "*.cc",
         "*.cxx",
+        "*.c",
         "*.h",
     ]
     output = subprocess.run(
@@ -124,7 +125,7 @@ def changed_paths(base: str) -> tuple[list[str], list[str]]:
 
 def tracked_production_files() -> tuple[list[str], list[str]]:
     output = subprocess.run(
-        ["git", "ls-files", "*.cpp", "*.cc", "*.cxx"],
+        ["git", "ls-files", "*.cpp", "*.cc", "*.cxx", "*.c"],
         cwd=ROOT,
         check=False,
         capture_output=True,
@@ -135,6 +136,18 @@ def tracked_production_files() -> tuple[list[str], list[str]]:
     return production_paths(output.stdout.splitlines())
 
 
+def normalize_path(raw: str) -> str:
+    """Return a repo-relative path when the analyzer reported an absolute one."""
+    text = raw.replace(os.sep, "/")
+    path = Path(text)
+    if path.is_absolute():
+        try:
+            return path.resolve().relative_to(ROOT).as_posix()
+        except (OSError, ValueError):
+            return text
+    return text
+
+
 def parse_cppcheck(text: str) -> list[dict[str, str]]:
     findings: list[dict[str, str]] = []
     for line in text.splitlines():
@@ -142,8 +155,8 @@ def parse_cppcheck(text: str) -> list[dict[str, str]]:
         if match is None:
             continue
         finding = match.groupdict()
-        path = finding["file"].replace(os.sep, "/")
-        if not path.startswith(PRODUCTION_PREFIXES):
+        finding["file"] = normalize_path(finding["file"])
+        if not finding["file"].startswith(PRODUCTION_PREFIXES):
             continue
         findings.append(finding)
     return findings
@@ -156,15 +169,15 @@ def parse_clang_tidy(text: str) -> tuple[list[dict[str, str]], list[dict[str, st
         match = TIDY_LINE.match(line)
         if match is not None:
             finding = match.groupdict()
-            path = finding["file"].replace(os.sep, "/")
-            if path.startswith(PRODUCTION_PREFIXES):
+            finding["file"] = normalize_path(finding["file"])
+            if finding["file"].startswith(PRODUCTION_PREFIXES):
                 findings.append(finding)
             continue
         match = COMPILE_ERROR.match(line)
         if match is not None:
             finding = match.groupdict()
-            path = finding["file"].replace(os.sep, "/")
-            if path.startswith(PRODUCTION_PREFIXES):
+            finding["file"] = normalize_path(finding["file"])
+            if finding["file"].startswith(PRODUCTION_PREFIXES):
                 compile_errors.append(finding)
     return findings, compile_errors
 
@@ -173,34 +186,44 @@ def run_cppcheck(files: list[str], jobs: int) -> list[dict[str, str]]:
     executable = shutil.which("cppcheck")
     if executable is None:
         raise RuntimeError("cppcheck is not installed")
-    command = [
-        executable,
-        "--enable=warning,performance,portability",
-        "--std=c++17",
-        "--language=c++",
-        "--inline-suppr",
-        "--quiet",
-        "--template=" + CPPCHECK_TEMPLATE,
-        f"-j{jobs}",
-        "-I",
-        "include",
-        "-I",
-        "lib/furble",
-        "-I",
-        "sim/shim",
-    ]
-    for suppression in CPPCHECK_SUPPRESSIONS:
-        command.append("--suppress=" + suppression)
-    command.extend(files)
-    output = subprocess.run(
-        command, cwd=ROOT, check=False, capture_output=True, text=True
-    )
-    # cppcheck reports diagnostics on stderr; stdout is progress/verbose text.
-    findings = parse_cppcheck(output.stderr)
-    if output.returncode != 0 and not findings:
-        raise RuntimeError(
-            f"cppcheck exited {output.returncode}: {output.stderr.strip()[:500]}"
+    groups = {
+        "c++": [path for path in files if not path.endswith(".c")],
+        "c": [path for path in files if path.endswith(".c")],
+    }
+    findings: list[dict[str, str]] = []
+    for language, group in groups.items():
+        if not group:
+            continue
+        command = [
+            executable,
+            "--enable=warning,performance,portability",
+            "--std=c++17" if language == "c++" else "--std=c11",
+            "--language=" + language,
+            "--inline-suppr",
+            "--quiet",
+            "--template=" + CPPCHECK_TEMPLATE,
+            f"-j{jobs}",
+            "-I",
+            "include",
+            "-I",
+            "lib/furble",
+            "-I",
+            "sim/shim",
+        ]
+        for suppression in CPPCHECK_SUPPRESSIONS:
+            command.append("--suppress=" + suppression)
+        command.extend(group)
+        output = subprocess.run(
+            command, cwd=ROOT, check=False, capture_output=True, text=True
         )
+        # cppcheck reports diagnostics on stderr; stdout is progress/verbose text.
+        group_findings = parse_cppcheck(output.stderr)
+        findings.extend(group_findings)
+        if output.returncode != 0 and not group_findings:
+            raise RuntimeError(
+                f"cppcheck ({language}) exited {output.returncode}: "
+                f"{output.stderr.strip()[:500]}"
+            )
     return findings
 
 
