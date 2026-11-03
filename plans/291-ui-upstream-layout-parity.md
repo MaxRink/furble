@@ -19,9 +19,11 @@ What remains is content parity, not overlap:
   panel, in both the touch and physical-button layouts, at every text size.
   Resolved by decision: keep all seven rows and certify the scroll. No layout
   change was made. See "About decision and measurements" below.
-- **GPS** has seven top-level rows: the enable switch, baud, rate, sentences,
-  constellation, power, and assist. The upstream page is smaller. The extra
-  receiver-configuration rows overflow on 135x240 and 320x240.
+- **GPS** has eleven direct rows: the enable switch, baud, rate, sentences,
+  constellation, power, assist, Motion Adaptive, Fix Hold, Extrapolate, and
+  Platform, followed by the nested GPS Data, Raw NMEA, and Satellites pages.
+  The upstream page is smaller. The extra receiver-configuration rows overflow
+  on 135x240 and 320x240.
 - **Connected** no longer reports the 13 px overflow plan 168 measured, but its
   eight entries are still more content than upstream. Whether to keep the
   scrolling grid or reduce the entry set is a product decision, not a layout
@@ -143,6 +145,58 @@ that overlay. The recorded result stands at merge-base `2b79ce8d` (audit tree
 everywhere. This PR does not claim upstream row parity; it records the
 divergence as the product decision.
 
+## GPS decision and measurements
+
+The GPS settings page keeps all eleven direct rows: enable, baud, rate,
+sentences, constellation, power, assist, Motion Adaptive, Fix Hold,
+Extrapolate, and Platform, plus the nested data pages. No receiver option is
+removed and no font is shrunk. The page scrolls on 135x240 and 320x240, which the audit
+already recorded as a deliberate fork divergence from upstream's smaller page.
+A scroll is acceptable because both ends stay reachable and the rows keep their
+whole words.
+
+Evidence already on master:
+
+- `bughunt/gps-hold-rows-{normal,small,large}-{touch,buttons}.txt` seed every
+  text size a board offers, in both navigation layouts, and assert
+  `ui.scroll_bottom 0` and `ui.scroll_top 0` after driving the page to each end.
+- `bughunt/page-matrix.txt` reaches the GPS page and asserts the scroll ends in
+  both runner passes.
+- `bughunt/overflow-sweep.txt` records the page as an intentional-scroll route
+  rather than a compact-fit page.
+- The 80x160 floating navigation indicators overlap the GPS page on master.
+  `gps-hold-rows-*` records that with `xassert board-varies
+  ui.indicator_clearance clear`, so the gap is visible and does not block the
+  row decision. It is a shared roller-page indicator issue, not a GPS-specific
+  overflow.
+
+No layout, font, or row set changed, so no walkthrough screenshot regeneration
+is owed.
+
+## Connected decision and measurements
+
+The Connected page keeps its eight entries. On the M5Stack Core the entries use
+the 4x2 grid: the default size fits without scrolling, and Large scrolls. On
+the Stick builds the same entries stay in the flex-row scrolling list. No entry
+is removed and no font is shrunk; both ends stay reachable and no label overlaps
+or is cut.
+
+Evidence already on master:
+
+- `bughunt/core-connected-grid.txt` and `core-connected-grid-large.txt` assert
+  eight rendered cells, `ui.label_overlaps 0`, `ui.scroll_top 0`, `action
+  scroll bottom`, and `ui.scroll_bottom 0` in the Core touch layout at default
+  and Large.
+- `bughunt/core-notouch-layout.txt` asserts the same page in the Core physical
+  button layout the board ships, including `ui.cut_labels 0`.
+- `bughunt/stick-notouch-connected-large.txt` and
+  `bughunt/touch-connected-small-fit.txt` cover the narrow boards at Large and
+  Small.
+- `bughunt/page-matrix.txt` walks the page in both layouts.
+
+No layout, font, or entry set changed, so no walkthrough screenshot regeneration
+is owed.
+
 ## Gates
 
 - `sim/scenarios/bughunt/about-scroll-reachability.txt`
@@ -170,5 +224,6 @@ the page is called shipped.
 
 ## Issue
 
-- [#281](https://github.com/MaxRink/furble/issues/281) stays open until all
-  three page decisions land. Close it with the last page PR, not before.
+- [#281](https://github.com/MaxRink/furble/issues/281) closes with this
+  decision record: About keeps seven rows and scrolls, GPS keeps eleven direct rows and
+  scrolls, and Connected keeps eight entries in the 4x2 grid and scrolls.

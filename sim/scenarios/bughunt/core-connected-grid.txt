@@ -77,4 +77,10 @@ assert ui.page bulb
 action page connected
 wait 150
 assert ui.page connected
+assert ui.overflow no
+action scroll bottom
+assert ui.scroll_bottom 0
+action scroll top
+assert ui.scroll_top 0
+
 exit
