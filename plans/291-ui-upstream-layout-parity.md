@@ -225,5 +225,5 @@ the page is called shipped.
 ## Issue
 
 - [#281](https://github.com/MaxRink/furble/issues/281) closes with this
-  decision record: About keeps seven rows and scrolls, GPS keeps seven rows and
+  decision record: About keeps seven rows and scrolls, GPS keeps eleven direct rows and
   scrolls, and Connected keeps eight entries in the 4x2 grid and scrolls.
