@@ -30,7 +30,7 @@ suite certified the incorrect decode.
 
 ## Validation
 
-- `gps_casic_test`: PASS (389 checks), including the corrected MON-HW vector.
+- `gps_casic_test`: PASS (397 checks), including the corrected MON-HW vector and the pinned CFG-NAVX offsets.
 - Full host CTest: 140/140 after the rebase onto the static-analysis gate.
 - Static analysis: PASS. The NMEA splitter now uses iterators, which also
   clears the cppcheck bounds false positive that fired when the file became a

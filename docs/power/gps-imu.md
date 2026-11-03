@@ -795,10 +795,12 @@ range with its basis, not a claim.
 - **Change.** Verify the MON-HW layout on hardware and surface antenna status
   and jam indicator on the diagnostics page. Use a confirmed antenna fault to
   trigger G-04, not to change receiver settings directly.
-- **Current behavior.** `gps monhw` polls and decodes a conservative subset.
-  The 56-byte layout is unverified. `$GPTXT ANTENNA OPEN` was observed
-  continuously on the v1.1 unit.
-- **Evidence.** `measured` for the GPTXT line; `unknown` for the MON-HW layout.
+- **Current behavior.** `gps monhw` polls and decodes the CASIC 2.14.2 layout:
+  `agcData0` at 12, `antStatus` at 20, and the jamming word at 24. The offsets
+  are specification-derived; the live field values still need a hardware
+  comparison. `$GPTXT ANTENNA OPEN` was observed continuously on the v1.1 unit.
+- **Evidence.** `measured` for the GPTXT line; `spec` plus code for the MON-HW
+  layout; `unknown` for the live status-bit mapping.
 - **Estimated saving.** No direct saving. It lets G-04 distinguish "no sky" from
   "no antenna" and avoid running a deaf receiver at full power.
 - **Risk.** A wrong decode could mislead the policy. Keep it diagnostic until
