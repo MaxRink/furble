@@ -1467,8 +1467,8 @@ Repository documents:
 - `plans/158-sim-scheduler-parity.md`
 - `plans/00-hardware-experiments.md`
 - `plans/63-sim-power-analysis.md`
-- `plans/12-display-off.md`
-- `plans/13-auto-off-low-batt.md`
+- `plans/implemented/12-display-off.md`
+- `plans/implemented/13-auto-off-low-batt.md`
 - `plans/15-gps-power.md`
 - `plans/19-interval-deep-sleep.md`
 - `plans/implemented/26-pm1-watchdog.md`

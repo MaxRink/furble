@@ -49,7 +49,7 @@ lands on fork master. This file applies once it does.
   50+ design documents, 90+ deferred ideas. Do not renumber existing docs.
 - `00-hardware-experiments.md` records measured hardware facts (crystal, GPS
   backup rail, $PCAS support). Cite it instead of re-measuring.
-- Charging auto-off policy work updates `13-auto-off-low-batt.md`. Current
+- Charging auto-off policy work updates `implemented/13-auto-off-low-batt.md`. Current
   master uses wire id 43 for the charging opt-in, 46 for IMU, and 47 for the
   companion-password contract. Wire ids 42 and 45 have historical claims and
   require a compatibility audit before any allocation or reuse.

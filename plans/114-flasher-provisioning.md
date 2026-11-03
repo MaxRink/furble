@@ -105,7 +105,7 @@ provisioned.
   existing setting.
 - `plans/50-companion-app-design.md`: shares the `wire_id` table and TLV format.
   Coordinate so both use one encoder.
-- `plans/116-companion-password.md`: the companion password is one of the fields
+- `plans/implemented/116-companion-password.md`: the companion password is one of the fields
   the flasher sets, so 114 is the delivery mechanism for 116's secret.
 
 ## Risks

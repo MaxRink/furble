@@ -19,6 +19,8 @@ stay in the parent [`plans/`](../README.md) directory.
 | [07-ble-sleep.md](07-ble-sleep.md) | PR07: BLE modem sleep and light sleep while connected |
 | [08-scan-tuning.md](08-scan-tuning.md) | PR08: scan duty presets and scan timeout |
 | [09-reconnect-backoff.md](09-reconnect-backoff.md) | PR09: exponential backoff for infinite reconnect |
+| [100-console-debug.md](100-console-debug.md) | Console debug dump family |
+| [101-boot-splash.md](101-boot-splash.md) | Power-on boot splash |
 | [104-focus-outline-dedup.md](104-focus-outline-dedup.md) | Focus outline dedup: single ring per selected item |
 | [105-ui-fuzzing.md](105-ui-fuzzing.md) | 105 - Seeded UI fuzzer |
 | [107-ui-layout-audit.md](107-ui-layout-audit.md) | UI layout audit: walkthrough screenshot review |
@@ -28,10 +30,12 @@ stay in the parent [`plans/`](../README.md) directory.
 | [113-connection-state-sim-coverage.md](113-connection-state-sim-coverage.md) | Plan 113: connection-state sim coverage |
 | [113-per-board-ota-slots.md](113-per-board-ota-slots.md) | 113 - Per-board OTA slot sizing for boards with spare flash |
 | [115-ota-engine.md](115-ota-engine.md) | 115 - Transport-independent OTA engine |
+| [116-companion-password.md](116-companion-password.md) | Shared-secret gate for privileged companion operations |
 | [117-sim-mqtt-coverage.md](117-sim-mqtt-coverage.md) | 117 - Sim MQTT coverage |
 | [118-sim-ethernet-coverage.md](118-sim-ethernet-coverage.md) | 118 - Sim Ethernet coverage |
 | [118-sim-mqtt-transport.md](118-sim-mqtt-transport.md) | 118 - Optional simulator MQTT transport |
 | [119-companion-gatt-sim.md](119-companion-gatt-sim.md) | Plan 119: companion GATT host coverage |
+| [12-display-off.md](12-display-off.md) | True display off, blind remote mode, longer timeouts |
 | [121-sim-usage-fault-docs.md](121-sim-usage-fault-docs.md) | PR121: simulator usage and fault-injection reference |
 | [122-gps-sim-stability.md](122-gps-sim-stability.md) | 122 - GPS simulator stability and coherent snapshots |
 | [123-host-task-lifecycle.md](123-host-task-lifecycle.md) | 123 - Host control task lifecycle |
@@ -39,6 +43,7 @@ stay in the parent [`plans/`](../README.md) directory.
 | [126-settings-handle-concurrency.md](126-settings-handle-concurrency.md) | 126 - Concurrent settings handles |
 | [127-dev-version-identity.md](127-dev-version-identity.md) | 127 - Development firmware revision identity |
 | [129-m5-dependencies-idf55.md](129-m5-dependencies-idf55.md) | M5 dependency compatibility slice |
+| [13-auto-off-low-batt.md](13-auto-off-low-batt.md) | Auto power off, low battery actions |
 | [130-espressif32-613-idf553.md](130-espressif32-613-idf553.md) | Espressif32 6.13.0 and ESP-IDF 5.5.3 |
 | [131-ota-replay-store.md](131-ota-replay-store.md) | 131 - durable OTA replay-store adapter |
 | [132-ota-partition-sink.md](132-ota-partition-sink.md) | 132 - OTA partition sink adapter |
@@ -85,6 +90,7 @@ stay in the parent [`plans/`](../README.md) directory.
 | [62-issue-140.md](62-issue-140.md) | 62: Configurable button behavior (upstream issue 140) |
 | [67-bulb-ux.md](67-bulb-ux.md) | 67: Bulb exposure UX |
 | [68-flasher-debug-firmware.md](68-flasher-debug-firmware.md) | Web flasher debug firmware |
+| [68-reconnect-after-restart.md](68-reconnect-after-restart.md) | Graceful camera shutdown and patient reconnect after restart |
 | [75-false-connected.md](75-false-connected.md) | PR75: false Connected when the camera is not in pairing mode |
 | [76-ui-polish.md](76-ui-polish.md) | UI polish: focus highlight and sim theme/board capture |
 | [77-battery-saver-profile.md](77-battery-saver-profile.md) | 77 - Battery Saver profile |

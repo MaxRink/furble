@@ -544,7 +544,7 @@ Estimates are not measurements unless the label says `measured-local`.
 - Required test: 30 minutes idle, confirm the power off at the threshold;
   confirm no power off while connected, scanning, or charging; confirm button
   wake; repeat on StickC, Plus, Core2, and StickS3.
-- Citation: `plans/13-auto-off-low-batt.md`; AXP192 off 27 uA; StickS3 14.02 uA.
+- Citation: `plans/implemented/13-auto-off-low-batt.md`; AXP192 off 27 uA; StickS3 14.02 uA.
 
 #### PM-08 Core2: put the touch controller in a low-power mode with the panel
 
@@ -552,7 +552,7 @@ Estimates are not measurements unless the label says `measured-local`.
   wake on the touch interrupt, instead of polling the controller for the whole
   screen-off period.
 - Current behavior: the touch controller is deliberately left running so a tap
-  can wake the screen (`plans/12-display-off.md`). M5Unified's `Touch_Class`
+  can wake the screen (`plans/implemented/12-display-off.md`). M5Unified's `Touch_Class`
   has no power API, so furble cannot change it today.
 - Evidence: `code` (`src/FurbleUI.cpp` display path, `M5.Touch` usage),
   `plan`, `unverified` datasheet detail.
@@ -566,7 +566,7 @@ Estimates are not measurements unless the label says `measured-local`.
   path that proves the interrupt still works.
 - Required test: 10 minutes screen off, 20 out of 20 taps wake the screen, no
   lost touch after wake, analyzer delta against the stock build.
-- Citation: `plans/12-display-off.md`; M5Stack Core2 touch documentation; the
+- Citation: `plans/implemented/12-display-off.md`; M5Stack Core2 touch documentation; the
   FT6336U datasheet (not opened here).
 
 #### PM-09 Core: ESP deep sleep with boost keep-on
@@ -1127,7 +1127,7 @@ Estimates are not measurements unless the label says `measured-local`.
 - Effort: small, plus docs and screenshots.
 - Required test: 30 minutes idle on each battery board, screen off at the
   threshold, wake on the first press, no missed input, current measured.
-- Citation: `plans/12-display-off.md`, `plans/98-power-optimization-audit.md`;
+- Citation: `plans/implemented/12-display-off.md`, `plans/98-power-optimization-audit.md`;
   ST7735S and ST7789V sleep-in currents.
 
 #### PL-08 All boards: tickless and RTOS idle tuning
@@ -1186,7 +1186,7 @@ Estimates are not measurements unless the label says `measured-local`.
 - Effort: small to test.
 - Required test: 1 hour charging with the lock on and off; check charge status,
   charge current, panel behavior, and USB input current.
-- Citation: `plans/13-auto-off-low-batt.md`; `src/FurbleUI.cpp`.
+- Citation: `plans/implemented/13-auto-off-low-batt.md`; `src/FurbleUI.cpp`.
 
 ### 4.5 Network, headless, and developer profiles
 
@@ -1633,8 +1633,8 @@ Open questions that block a default change:
   plan by other documents, but its drain row is not present here.
 - `plans/implemented/06-power-module.md`, `plans/implemented/07-ble-sleep.md`,
   `plans/implemented/08-scan-tuning.md`, `plans/10-adaptive-conn-params.md`,
-  `plans/11-adaptive-tx-power.md`, `plans/12-display-off.md`,
-  `plans/13-auto-off-low-batt.md`, `plans/15-gps-power.md`,
+  `plans/11-adaptive-tx-power.md`, `plans/implemented/12-display-off.md`,
+  `plans/implemented/13-auto-off-low-batt.md`, `plans/15-gps-power.md`,
   `plans/19-interval-deep-sleep.md`, `plans/implemented/26-pm1-watchdog.md`,
   `plans/implemented/42-waveshare-eth-node.md`, `plans/63-sim-power-analysis.md`,
   `plans/implemented/77-battery-saver-profile.md`,

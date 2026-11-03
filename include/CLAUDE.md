@@ -39,7 +39,7 @@ Public headers for the app layer in src/, one header per module
   characteristic must call `allowProtected()` before it acts, which is still
   owed by the reserved OTA control and data ids. `handleLocation` is
   deliberately outside that gate and needs only an encrypted link; see
-  plans/116 for why.
+  plans/implemented/116-companion-password.md for why.
   `Settings::loadPassword()` distinguishes unset credentials from NVS failures;
   pass its success flag to `CompanionAuth::setPassword()` so failures stay closed.
   Password mutations use `Settings::savePassword()` to check both NVS set and
