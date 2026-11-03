@@ -29,14 +29,14 @@ uint32_t readU32(const uint8_t *data) {
 /** Split a comma separated NMEA body, dropping the leading '$' and trailing checksum. */
 std::vector<std::string> splitNmea(const std::string &sentence) {
   std::vector<std::string> fields;
-  size_t begin = 0;
-  if ((begin < sentence.size()) && (sentence[begin] == '$')) {
-    begin++;
+  auto cursor = sentence.begin();
+  if ((cursor != sentence.end()) && (*cursor == '$')) {
+    ++cursor;
   }
 
   std::string current;
-  for (size_t i = begin; i < sentence.size(); i++) {
-    const char c = sentence[i];
+  for (; cursor != sentence.end(); ++cursor) {
+    const char c = *cursor;
     if (c == '*') {
       break;
     }
@@ -594,16 +594,16 @@ std::vector<std::pair<size_t, size_t>> splitFrames(const uint8_t *data, size_t l
 
 MonHw parseMonHw(const uint8_t *payload, size_t length) {
   MonHw hw = {0, 0, 0, 0, false};
-  // The CASIC section 2.14.2 layout could not be confirmed on a live unit, so
-  // this reads a conservative subset and leaves the console to print the raw
-  // bytes. Marked hardware-tuning-pending in plans/32-gps-advanced.md.
+  // CASIC section 2.14.2 offsets. The decode is spec-derived; field values on
+  // the AT6668 still need a live-unit check, so the console also prints the
+  // raw bytes.
   if ((payload == nullptr) || (length < 56)) {
     return hw;
   }
   hw.noise = readU32(payload + 0);
-  hw.agc = readU16(payload + 4);
-  hw.antenna_status = payload[8];
-  hw.jam_indicator = payload[9];
+  hw.agc = readU16(payload + 12);
+  hw.antenna_status = payload[20];
+  hw.jam_indicator = readU32(payload + 24);
   hw.valid = true;
   return hw;
 }

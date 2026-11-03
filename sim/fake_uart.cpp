@@ -366,9 +366,11 @@ void queuePollResponseLocked(const uint8_t *request, uint16_t length) {
     std::vector<uint8_t> payload(monHwShort ? 20 : 56, 0);
     payload[0] = 0x11;  // noise, little endian 0x00000311
     payload[1] = 0x03;
-    payload[4] = 0x2a;  // agc 42
-    payload[8] = 2;     // antenna ok
-    payload[9] = 7;     // jamming indicator
+    payload[12] = 0x2a;  // agc 42
+    if (!monHwShort) {
+      payload[20] = 2;  // antenna ok
+      payload[24] = 7;  // jamming[0]
+    }
     queueRxLocked(binaryFrame(wantClass, wantId, payload));
     return;
   }

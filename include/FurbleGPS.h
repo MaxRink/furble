@@ -27,6 +27,7 @@ using lv_obj_t = _lv_obj_t;
 #include <mutex>
 
 #include "FurbleGPSHold.h"
+#include "protocol/GpsNavx.h"
 #include "FurbleGPSPowerCycle.h"
 #include "FurbleIMU.h"
 #include "FurblePower.h"
@@ -395,7 +396,11 @@ class GPS {
   static constexpr uint8_t MON_HW_ID = 0x09;
   static constexpr uint16_t CFG_MSG_POLL_RATE = 0xFFFF;
   static constexpr uint32_t NAVX_MASK_DY_MODEL = 1 << 0;
-  static constexpr size_t NAVX_DY_MODEL_OFFSET = 4;
+  // CASIC CFG-NAVX payload offsets. The 44-byte layout is mask at 0,
+  // dyModel at 4, fixMode at 5, minSVs at 6, maxSVs at 7, minCNO at 8,
+  // iniFix3D at 10, minElev at 11, drLimit at 12, navSystem at 13.
+  static constexpr size_t NAVX_DY_MODEL_OFFSET = GpsNavx::OFFSET_DY_MODEL;
+  static constexpr size_t NAVX_NAV_SYSTEM_OFFSET = GpsNavx::OFFSET_NAV_SYSTEM;
 
   static constexpr uint32_t EPH_CACHE_MAGIC = 0x48504547;  // "GEPH"
   static constexpr uint8_t EPH_CACHE_VERSION = 1;

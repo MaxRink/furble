@@ -27,6 +27,7 @@
 #include <vector>
 
 #include "GpsCasic.h"
+#include "GpsNavx.h"
 
 using namespace Furble;
 
@@ -365,21 +366,25 @@ bool testMonHw() {
   const int before = g_Failures;
 
   std::vector<uint8_t> buf(56, 0);
-  // noise 0x11223344 little-endian, agc 0x5566, antenna_status 0x07, jam 0x2A.
+  // CASIC 2.14.2: noisePerMs0 at 0, agcData0 at 12, antStatus at 20,
+  // jamming[0] at 24.
   buf[0] = 0x44;
   buf[1] = 0x33;
   buf[2] = 0x22;
   buf[3] = 0x11;
-  buf[4] = 0x66;
-  buf[5] = 0x55;
-  buf[8] = 0x07;
-  buf[9] = 0x2A;
+  buf[12] = 0x66;
+  buf[13] = 0x55;
+  buf[20] = 0x07;
+  buf[24] = 0x2A;
+  buf[25] = 0x33;
+  buf[26] = 0x22;
+  buf[27] = 0x11;
   const Casic::MonHw hw = Casic::parseMonHw(buf.data(), buf.size());
   check(hw.valid, "a 56-byte MON-HW buffer is valid");
   check(hw.noise == 0x11223344u, "noise reads little-endian from offset 0");
-  check(hw.agc == 0x5566u, "agc reads little-endian from offset 4");
-  check(hw.antenna_status == 0x07, "antenna_status reads from offset 8");
-  check(hw.jam_indicator == 0x2A, "jam_indicator reads from offset 9");
+  check(hw.agc == 0x5566u, "agc reads little-endian from offset 12");
+  check(hw.antenna_status == 0x07, "antenna_status reads from offset 20");
+  check(hw.jam_indicator == 0x1122332Au, "jam_indicator reads a 32-bit word from offset 24");
 
   std::vector<uint8_t> shortBuf(10, 0);
   const Casic::MonHw shortHw = Casic::parseMonHw(shortBuf.data(), shortBuf.size());
@@ -1086,7 +1091,7 @@ bool testMonHwEdges() {
 
   std::vector<uint8_t> longBuf(64, 0);
   longBuf[0] = 0x01;
-  longBuf[8] = 0x02;
+  longBuf[20] = 0x02;
   const Casic::MonHw longHw = Casic::parseMonHw(longBuf.data(), longBuf.size());
   check(longHw.valid, "a payload longer than 56 bytes is still decoded");
   check((longHw.noise == 1) && (longHw.antenna_status == 2),
@@ -1297,6 +1302,34 @@ bool testEphemerisFreshness() {
   return g_Failures == before;
 }
 
+bool testNavxApply() {
+  std::cout << "test: CFG-NAVX writes navSystem at 13 without touching minSVs\n";
+  const int before = g_Failures;
+
+  std::vector<uint8_t> payload(GpsNavx::PAYLOAD_SIZE, 0);
+  payload[GpsNavx::OFFSET_MIN_SVS] = 0xAA;
+  payload[GpsNavx::OFFSET_NAV_SYSTEM] = 0x55;
+  payload[GpsNavx::OFFSET_DY_MODEL] = 0x66;
+  const uint32_t mask = GpsNavx::apply(payload.data(), payload.size(), {true, 1, true, 2});
+  check(mask == (GpsNavx::MASK_NAV_SYSTEM | GpsNavx::MASK_DY_MODEL),
+        "both selected fields set their mask bits");
+  check(payload[0] == 0x01 && payload[1] == 0x01, "the mask is written little-endian at offset 0");
+  check(payload[GpsNavx::OFFSET_NAV_SYSTEM] == 1,
+        "constellation is written at navSystem offset 13");
+  check(payload[GpsNavx::OFFSET_MIN_SVS] == 0xAA, "minSVs at offset 6 is preserved");
+  check(payload[GpsNavx::OFFSET_DY_MODEL] == 2, "dynamic model is written at offset 4");
+
+  std::vector<uint8_t> untouched(GpsNavx::PAYLOAD_SIZE, 0x5A);
+  check(GpsNavx::apply(untouched.data(), untouched.size(), {false, 0, false, 0}) == 0,
+        "no selected field writes a zero mask");
+  const auto snapshot = untouched;
+  check(GpsNavx::apply(untouched.data(), untouched.size() - 1, {true, 1, false, 0}) == 0,
+        "a short payload is rejected");
+  check(untouched == snapshot, "a rejected payload is unchanged");
+
+  return g_Failures == before;
+}
+
 int main() {
   testChecksumAndFrame();
   testAutobaudLadderDown();
@@ -1326,6 +1359,7 @@ int main() {
   testEphemerisFreshness();
   testMonHwEdges();
   testConstellationForTalker();
+  testNavxApply();
   testFuzz();
 
   if (g_Failures != 0) {

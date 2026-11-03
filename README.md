@@ -496,9 +496,11 @@ the next time it is powered off.
 altitude, and UTC time. `Raw NMEA` shows received sentences, fix/error
 counters, binary configuration status, and a Hot restart button. `Satellites`
 enables the extra GSV/GSA parser and shows per-satellite C/N0, used flags, and
-PDOP/HDOP/VDOP. `gps platform` and MON-HW diagnostics are intentionally marked
-hardware-tuning-pending; the receiver's response and the effect of its dynamic
-model have not been verified on an AT6668 unit.
+PDOP/HDOP/VDOP. `gps platform` is intentionally marked hardware-tuning-pending;
+the receiver's response and the effect of its dynamic model have not been
+verified on an AT6668 unit. `gps monhw` uses the CASIC 2.14.2 field offsets,
+including the 32-bit jamming word; the layout is specification-derived, while
+the live field values still need a hardware comparison.
 
 ### Intervalometer/Timer
 

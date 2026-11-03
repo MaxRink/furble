@@ -241,16 +241,15 @@ std::vector<std::pair<size_t, size_t>> splitFrames(const uint8_t *data, size_t l
  * MON-HW interference snapshot.
  *
  * MON-HW is class 0x0A id 0x09, 56 bytes, documented in CASIC section 2.14.2:
- * noise power, AGC counts, antenna status and jamming indicator. The exact
- * field offsets could not be verified against a live unit, so this decode is
- * best effort and the console marks it hardware-tuning-pending. See
- * plans/32-gps-advanced.md inventory row MON-HW.
+ * noisePerMs0 at 0, agcData0 at 12, antStatus at 20, and the jamming word
+ * array at 24. The offsets are spec-derived; the values still need a live-unit
+ * check, so the console prints the raw bytes alongside the decoded fields.
  */
 struct MonHw {
-  uint32_t noise;         /**< noise level, receiver units */
-  uint16_t agc;           /**< AGC count */
-  uint8_t antenna_status; /**< 0 init, 1 unknown, 2 ok, 3 short, 4 open, per CASIC */
-  uint8_t jam_indicator;  /**< 0 to 255 interference indicator */
+  uint32_t noise;         /**< noisePerMs0 at offset 0, receiver units */
+  uint16_t agc;           /**< agcData0 at offset 12, AGC count */
+  uint8_t antenna_status; /**< antStatus at offset 20: 0 init, 1 unknown, 2 ok, 3 short, 4 open */
+  uint32_t jam_indicator; /**< jamming[0] at offset 24, first interference word */
   bool valid;
 };
 

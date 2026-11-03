@@ -1,0 +1,56 @@
+# 293 - GPS CASIC offset corrections
+
+## Motivation
+
+Two CASIC decodes used field offsets that do not match the specification. The
+GPS research lane found them while cross-checking the receiver code against
+CASIC v3.6 and v4.2:
+
+- `CFG-NAVX` `navSystem` was written at offset 6. Offset 6 is `minSVs`;
+  `navSystem` is at offset 13. A receiver that accepted the masked write
+  therefore ignored the constellation value, while `$PCAS04` was only sent as a
+  timeout fallback.
+- `MON-HW` read AGC from offset 4, antenna status from 8, and the first jamming
+  byte from 9. The specification places `agcData0` at 12, `antStatus` at 20,
+  and the jamming word array at 24.
+
+The host test and the simulator fixture pinned the same wrong offsets, so the
+suite certified the incorrect decode.
+
+## Implementation state
+
+- `GpsNavx::OFFSET_NAV_SYSTEM` is 13. `GpsNavx.h` documents the full
+  `CFG-NAVX` offset map and pins every named offset plus the 44-byte payload
+  with `static_assert`; `GPS::NAVX_*_OFFSET` aliases those constants so the
+  production write path and the header cannot drift.
+- `Casic::MonHw` reads `noisePerMs0` at 0, `agcData0` at 12, `antStatus` at 20,
+  and `jamming[0]` at 24 as a 32-bit word.
+- `gps monhw` prints the 32-bit jamming word and reports a response shorter
+  than 56 bytes as unavailable instead of printing zeroed fields.
+- The host vector and the simulator fake receiver now use the specification
+  offsets.
+
+## Validation
+
+- `gps_casic_test`: PASS (397 checks), including the corrected MON-HW vector and the pinned CFG-NAVX offsets.
+- Full host CTest: 140/140 after the rebase onto the static-analysis gate.
+- Static analysis: PASS. The NMEA splitter now uses iterators, which also
+  clears the cppcheck bounds false positive that fired when the file became a
+  changed file; the GPS time loop and two string appends were tightened.
+- Simulator: `gps-monhw-poll`, `gps-autobaud-ladder`, `gps-degraded-recovery`,
+  and `gps-ephemeris-replay` pass on the M5StickS3 build.
+
+## Documentation publication
+
+The console reference exists in both `docs/console-commands.md` and the
+published `docs/wiki/Console-Commands.md`; both were updated. The GPS claims in
+`README.md`, `docs/power/gps-imu.md`, and `docs/power/opportunity-matrix.md`
+are engineering references under `docs/power/` and are not mirrored to the
+wiki.
+
+## Remaining gate
+
+The offsets are specification-derived. A receiver check is still owed:
+set constellation to GPS-only, open the satellite page, and confirm only
+`$GPGSV` talkers remain; poll `gps monhw` on the live unit and compare the
+decoded fields with the raw bytes.
