@@ -642,8 +642,20 @@ bool scenarioMultiConnectFujifilm() {
   check(first.connected() && second.connected(), "both peers are live after reconnect");
   check(control.getDisconnectedName().empty(), "the per-device reconnect indicator clears");
 
-  control.disconnect();
-  waitForState(Control::STATE_IDLE, 2000);
+  check(control.disconnect(), "multi-connect disconnect accepted");
+  check(waitForState(Control::STATE_IDLE, 2000), "multi-connect returns to idle");
+  // setState() publishes STATE_IDLE before it releases the power lock, so the
+  // state check is not a lock-release barrier. Poll the count, bounded.
+  const uint32_t lockDeadline = nowMs() + 2000;
+  while ((power.getCount(Furble::Power::LockType::NO_LIGHT_SLEEP) != 0)
+         && (nowMs() < lockDeadline)) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  check(power.getCount(Furble::Power::LockType::NO_LIGHT_SLEEP) == 0,
+        "multi-connect releases the sleep lock");
+  // The two camera objects are still owned by this scenario, so each may keep
+  // its one reusable client; a leak class is more than that.
+
   return g_Failures == 0;
 }
 
