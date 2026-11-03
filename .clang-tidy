@@ -1,0 +1,56 @@
+---
+# Static-analysis policy for the production and simulator sources.
+#
+# The checks below are the high-signal set that has been triaged against the
+# current tree. Noisy families are deliberately off, each with a reason:
+#
+# - signed bitwise operations, enum size, and static initialization on an
+#   exception-free embedded target are noise here;
+# - LVGL and ESP-IDF C typedefs are linkage-compatible handles, not anonymous
+#   structs we can rename;
+# - public APIs intentionally take values or const references, and ordered
+#   containers are used for deterministic host output;
+# - every scanf caller checks its return value, and the remaining atoi sites
+#   are converted where they are not already bounded;
+# - the preferences shim uses a leading underscore in its include guard.
+#
+# `tools/check_static_analysis.py` runs this config on changed files in CI.
+Checks: >
+  bugprone-*,
+  clang-analyzer-*,
+  cert-*,
+  performance-*,
+  portability-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  -bugprone-implicit-widening-of-multiplication-result,
+  -bugprone-reserved-identifier,
+  -bugprone-branch-clone,
+  -bugprone-macro-parentheses,
+  -bugprone-signed-bitwise,
+  -bugprone-throwing-static-initialization,
+  -bugprone-switch-missing-default-case,
+  -bugprone-nondeterministic-pointer-iteration-order,
+  -bugprone-random-generator-seed,
+  -bugprone-unchecked-string-to-number-conversion,
+  -cert-err33-c,
+  -cert-err34-c,
+  -cert-err58-cpp,
+  -cert-dcl21-cpp,
+  -cert-dcl37-c,
+  -cert-dcl50-cpp,
+  -cert-dcl51-cpp,
+  -clang-diagnostic-missing-field-initializers,
+  -clang-diagnostic-non-c-typedef-for-linkage,
+  -clang-analyzer-optin.performance.Padding,
+  -performance-enum-size,
+  -performance-inefficient-vector-operation,
+  -performance-no-automatic-move,
+  -performance-no-int-to-ptr,
+  -performance-unnecessary-copy-initialization,
+  -performance-unnecessary-value-param,
+  -portability-avoid-pragma-once
+HeaderFilterRegex: '(src|lib/furble|include|sim)/'
+FormatStyle: file
+WarningsAsErrors: ''
+...

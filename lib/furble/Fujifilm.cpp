@@ -168,7 +168,7 @@ bool Fujifilm::waitForRegistration(uint8_t progress, bool cancelOnInactive) {
  */
 bool Fujifilm::matches(const NimBLEAdvertisedDevice *pDevice) {
   if (pDevice != nullptr && pDevice->haveManufacturerData()) {
-    const auto manufacturerData = pDevice->getManufacturerData();
+    const auto &manufacturerData = pDevice->getManufacturerData();
     return FujifilmProtocol::isFujifilmAdvertisement(
         reinterpret_cast<const uint8_t *>(manufacturerData.data()), manufacturerData.length());
   }

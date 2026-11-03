@@ -145,6 +145,9 @@ std::string pendingDescription;
 bool pendingWasStop = false;
 ObservableState stateBeforeApply;
 uint32_t escapeActions = 0;
+// Deterministic by design: the seed is replaced from the scenario or a
+// recorded checkpoint, and a fixed default keeps a seedless run reproducible.
+// NOLINTNEXTLINE(cert-msc32-c,cert-msc51-cpp)
 std::mt19937_64 rng;
 std::deque<std::string> recentEvents;
 uint64_t findingCount = 0;
@@ -263,8 +266,12 @@ void checkInvariants(UI *ui, const std::string &event) {
   }
 
   const std::string modalCount = ui->simQueryState("modal_count");
-  if (!modalCount.empty() && std::atoi(modalCount.c_str()) > 1) {
-    recordFinding(ui, "modal-stack", event, "modal_count=" + modalCount);
+  if (!modalCount.empty()) {
+    char *end = nullptr;
+    const long parsed = std::strtol(modalCount.c_str(), &end, 10);
+    if (end != nullptr && *end == '\0' && parsed > 1) {
+      recordFinding(ui, "modal-stack", event, "modal_count=" + modalCount);
+    }
   }
 
   const std::string page = ui->simQueryState("page");
@@ -592,6 +599,9 @@ bool fuzzSaveRestart(void) {
   }
   // tmpfile is private and already unlinked. Inherit only its descriptor, so
   // neither successful re-exec nor a failed boot leaves checkpoint caches.
+  // The stream stays open on success: its descriptor is inherited by the
+  // immediately following execvp and read by the rebooted process.
+  // NOLINTNEXTLINE(clang-analyzer-unix.Stream)
   FILE *checkpoint = std::tmpfile();
   if (checkpoint == nullptr) {
     return false;
@@ -606,6 +616,7 @@ bool fuzzSaveRestart(void) {
     return false;
   }
   // The descriptor must remain open until the immediately following execvp.
+  // NOLINTNEXTLINE(clang-analyzer-unix.Stream)
   return true;
 }
 

@@ -137,6 +137,7 @@ std::vector<CameraList::index_entry_t> CameraList::load_index(void) {
       if (CameraListProtocol::decodeIndex(buffer.data(), bytes, decoded)) {
         ESP_LOGI(LOG_TAG, "Index entries: %d", decoded.size());
         for (const auto &item : decoded) {
+          // NOLINTNEXTLINE(bugprone-invalid-enum-default-initialization)
           index_entry_t entry = {};
           memcpy(entry.name, item.name, sizeof(entry.name));
           entry.type = static_cast<Camera::Type>(item.type);

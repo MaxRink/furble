@@ -4,6 +4,7 @@
 #include <cctype>
 #include <cerrno>
 #include <chrono>
+#include <csignal>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -1657,15 +1658,17 @@ void preparePreferences(void) {
   // The deep-sleep runner deliberately supplies one flash image to two fresh
   // processes. Keep this opt-in seam separate from ordinary scripted runs,
   // which remain isolated per scenario and pid.
-  const char *fixedPath = std::getenv("FURBLE_SIM_DEEP_SLEEP_PREFS");
-  if (fixedPath != nullptr && fixedPath[0] != '\0') {
-    if (setenv("FURBLE_SIM_PREFS", fixedPath, 1) != 0) {
+  const char *fixedPathEnv = std::getenv("FURBLE_SIM_DEEP_SLEEP_PREFS");
+  if (fixedPathEnv != nullptr && fixedPathEnv[0] != '\0') {
+    // setenv may reallocate the environment block, invalidating fixedPathEnv.
+    const std::string fixedPath = fixedPathEnv;
+    if (setenv("FURBLE_SIM_PREFS", fixedPath.c_str(), 1) != 0) {
       std::cerr << "simulator failed to set FURBLE_SIM_PREFS: " << std::strerror(errno) << '\n';
       std::exit(1);
     }
     const char *preserve = std::getenv("FURBLE_SIM_PRESERVE_PREFS");
     if (preserve == nullptr || preserve[0] == '\0' || preserve[0] == '0') {
-      std::remove(fixedPath);
+      std::remove(fixedPath.c_str());
     }
     return;
   }
@@ -2297,8 +2300,7 @@ void driverTick(void) {
                                               : static_cast<int64_t>(parseUnsigned(step));
   }();
   if (crashAtStep >= 0 && static_cast<size_t>(crashAtStep) == stepIndex) {
-    volatile int *fault = nullptr;
-    *fault = 1;
+    std::raise(SIGSEGV);
   }
   switch (step.type) {
     case StepType::WAIT:

@@ -1,0 +1,92 @@
+name: Static analysis
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'lib/furble/**'
+      - 'include/**'
+      - 'sim/**'
+      - 'tools/check_static_analysis.py'
+      - '.clang-tidy'
+      - '.github/workflows/static-analysis.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static-analysis:
+    name: cppcheck and clang-tidy
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Fetch the base ref
+        run: git fetch origin master:refs/remotes/origin/master
+
+      - name: Install analyzers
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            clang-tidy cppcheck cmake ninja-build clang libsdl2-dev
+
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: sim/.pio
+          key: ${{ runner.os }}-static-analysis-${{ hashFiles('sim/platformio.ini', 'src/idf_component.yml', '.github/workflows/static-analysis.yml') }}
+
+      # Keep these pins in sync with sim-e2e.yml, sim/platformio.ini, and
+      # src/idf_component.yml.
+      - name: Fetch simulator dependencies
+        env:
+          DEPS: ${{ github.workspace }}/sim/.pio/libdeps/sim
+        run: |
+          clone_tag() {
+            test -d "$DEPS/$3" || \
+              git clone --depth 1 --branch "$2" "https://github.com/$1" "$DEPS/$3"
+          }
+          mkdir -p "$DEPS"
+          clone_tag m5stack/M5GFX 0.2.27 M5GFX
+          clone_tag m5stack/M5Unified 0.2.20 M5Unified
+          clone_tag lvgl/lvgl v9.4.0 lvgl
+          if [ ! -d "$DEPS/TinyGPSPlus" ]; then
+            git init "$DEPS/TinyGPSPlus"
+            git -C "$DEPS/TinyGPSPlus" fetch --depth 1 \
+              https://github.com/gkoh/TinyGPSPlus \
+              92ac8c21b8179201c2c8c534e46af3320b76d3e7
+            git -C "$DEPS/TinyGPSPlus" checkout --detach FETCH_HEAD
+          fi
+
+      - name: Generate LVGL configuration
+        run: python3 tools/gen_lv_conf.py sdkconfig.m5stick-s3 sim/lv_conf.h
+
+      - name: Configure host compile database
+        run: >
+          cmake -S tests/host -B build-static
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+          -G Ninja
+
+      - name: Configure simulator compile database
+        env:
+          FURBLE_DEP_ROOT: ${{ github.workspace }}/sim/.pio/libdeps/sim
+          FURBLE_LVGL_DIR: ${{ github.workspace }}/sim/.pio/libdeps/sim/lvgl
+        run: >
+          cmake -S sim -B build-sim-static
+          -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+          -G Ninja
+          -DFURBLE_DEP_ROOT=${{ github.workspace }}/sim/.pio/libdeps/sim
+          -DFURBLE_LVGL_DIR=${{ github.workspace }}/sim/.pio/libdeps/sim/lvgl
+
+      - name: Run static analysis
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            python3 tools/check_static_analysis.py --all \
+              --build-dir build-static --build-dir build-sim-static --jobs 2
+          else
+            python3 tools/check_static_analysis.py --base origin/master \
+              --build-dir build-static --build-dir build-sim-static --jobs 2
+          fi

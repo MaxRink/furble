@@ -39,7 +39,7 @@ inline uint32_t utcEpoch(unsigned int year,
         ((current % 4) == 0) && (((current % 100) != 0) || ((current % 400) == 0));
     days += yearLeap ? 366 : 365;
   }
-  for (uint8_t current = 1; current < month; current++) {
+  for (unsigned int current = 1; current < month; current++) {
     days += DAYS[current - 1];
     if ((current == 2) && leap) {
       days++;

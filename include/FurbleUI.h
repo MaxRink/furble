@@ -584,9 +584,9 @@ class UI {
     uint32_t m_CountShots = 0;
     uint32_t m_ResumeWaitMs = 0;
 
-    lv_obj_t *m_StateLabel;
-    lv_obj_t *m_CountLabel;
-    lv_obj_t *m_RemainingLabel;
+    lv_obj_t *m_StateLabel = nullptr;
+    lv_obj_t *m_CountLabel = nullptr;
+    lv_obj_t *m_RemainingLabel = nullptr;
 
    private:
     resume_state_t m_Resume = {};
@@ -1207,7 +1207,7 @@ class UI {
 
   void initInputDevices(void);
 
-  static void setTheme(std::string name, uint8_t textSize);
+  static void setTheme(const std::string &name, uint8_t textSize);
 
   void prepareShutterControl(void);
 

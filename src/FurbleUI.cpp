@@ -190,7 +190,7 @@ bool inputObjectVisible(lv_obj_t *obj) {
 }
 
 void setLabelIfChanged(lv_obj_t *label, const char *text) {
-  if ((label != nullptr) && std::strcmp(lv_label_get_text(label), text)) {
+  if ((label != nullptr) && (std::strcmp(lv_label_get_text(label), text) != 0)) {
     lv_label_set_text(label, text);
   }
 }
@@ -560,8 +560,10 @@ UI::UI(const interval_t &interval)
       [](lv_event_t *e) {
         const auto *area = static_cast<const lv_area_t *>(lv_event_get_param(e));
         if (area != nullptr) {
-          const uint64_t width = static_cast<uint64_t>(area->x2 - area->x1 + 1);
-          const uint64_t height = static_cast<uint64_t>(area->y2 - area->y1 + 1);
+          const uint64_t width =
+              static_cast<uint64_t>(area->x2) - static_cast<uint64_t>(area->x1) + 1;
+          const uint64_t height =
+              static_cast<uint64_t>(area->y2) - static_cast<uint64_t>(area->y1) + 1;
           Sim::profilerInvalidatedArea(width * height);
         }
       },
@@ -1372,7 +1374,8 @@ void UI::companionPairingTimer(lv_timer_t *timer) {
   }
 
   char text[96];
-  std::snprintf(text, sizeof(text), "Confirm number:\n%06lu", companion.getPendingPairingPin());
+  std::snprintf(text, sizeof(text), "Confirm number:\n%06lu",
+                static_cast<unsigned long>(companion.getPendingPairingPin()));
   ui->m_CompanionPairingDialog = lv_msgbox_create(nullptr);
   lv_msgbox_add_title(ui->m_CompanionPairingDialog, "Pair companion");
   lv_msgbox_add_text(ui->m_CompanionPairingDialog, text);
@@ -1776,7 +1779,7 @@ void UI::displayFlush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map
   Sim::profilerFlushedPixels(static_cast<uint64_t>(w) * h);
 #endif
   lv_draw_sw_rgb565_swap(px_map, w * h);
-  M5.Display.pushImageDMA<uint16_t>(area->x1, area->y1, w, h, (uint16_t *)px_map);
+  M5.Display.pushImageDMA<uint16_t>(area->x1, area->y1, w, h, reinterpret_cast<uint16_t *>(px_map));
   lv_disp_flush_ready(disp);
 }
 
@@ -1837,7 +1840,7 @@ void UI::initInputDevices(void) {
   }
 }
 
-void UI::setTheme(std::string name, uint8_t textSize) {
+void UI::setTheme(const std::string &name, uint8_t textSize) {
   lv_display_t *display = lv_display_get_default();
   lv_color_t primary = lv_palette_main(LV_PALETTE_BLUE);
   lv_color_t secondary = lv_color_black();
@@ -7170,9 +7173,11 @@ void UI::intervalometer(lv_timer_t *timer) {
   m_IntervalometerState.store(static_cast<uint8_t>(interval->m_State));
 
   if (interval->m_Count.m_SpinValue.m_Unit == SpinValue::UNIT_INF) {
-    lv_label_set_text_fmt(interval->m_CountLabel, "%09lu", interval->m_CountShots);
+    lv_label_set_text_fmt(interval->m_CountLabel, "%09lu",
+                          static_cast<unsigned long>(interval->m_CountShots));
   } else {
-    lv_label_set_text_fmt(interval->m_CountLabel, "%03lu/%03u", interval->m_CountShots,
+    lv_label_set_text_fmt(interval->m_CountLabel, "%03lu/%03u",
+                          static_cast<unsigned long>(interval->m_CountShots),
                           interval->m_Count.m_SpinValue.m_Value);
   }
 
@@ -7341,7 +7346,7 @@ bool UI::sendRequest(Request request, int32_t arg, Camera *camera) {
   if (item == nullptr) {
     return false;
   }
-  if (xQueueSend(m_RequestQueue, &item, 0) != pdTRUE) {
+  if (xQueueSend(m_RequestQueue, static_cast<void *>(&item), 0) != pdTRUE) {
     delete item;
     return false;
   }
@@ -7359,7 +7364,7 @@ bool UI::sendRequest(Request request, int32_t arg, RequestResult *result) {
     result->state->release();
     return false;
   }
-  if (xQueueSend(m_RequestQueue, &item, 0) != pdTRUE) {
+  if (xQueueSend(m_RequestQueue, static_cast<void *>(&item), 0) != pdTRUE) {
     delete item;
     result->state->release();
     return false;
@@ -7371,7 +7376,7 @@ bool UI::sendRequest(Request request, int32_t arg, RequestResult *result) {
 void UI::serviceRequests(void) {
   request_t *queued = nullptr;
 
-  while (xQueueReceive(m_RequestQueue, &queued, 0) == pdTRUE) {
+  while (xQueueReceive(m_RequestQueue, static_cast<void *>(&queued), 0) == pdTRUE) {
     std::unique_ptr<request_t> owned(queued);
     request_t &item = *owned;
 #if defined(FURBLE_SIM)
@@ -7992,7 +7997,7 @@ void UI::serviceRequests(void) {
 
 void UI::drainRequests(void) {
   request_t *queued = nullptr;
-  while (xQueueReceive(m_RequestQueue, &queued, 0) == pdTRUE) {
+  while (xQueueReceive(m_RequestQueue, static_cast<void *>(&queued), 0) == pdTRUE) {
 #if defined(FURBLE_CONSOLE)
     if (queued->state != nullptr) {
       queued->state->token = "cancelled";
@@ -8060,7 +8065,7 @@ void UI::doConnect(lv_event_t *e) {
   m_ConnectContext.connectProgress = -1;
 
   // activate selected cameras
-  for (auto n = 0; n < CameraList::size(); n++) {
+  for (size_t n = 0; n < CameraList::size(); n++) {
     auto camera = CameraList::get(n);
     if (camera->isActive()) {
       control.addActive(camera);
@@ -9695,7 +9700,7 @@ void UI::addGPSNMEAMenu(const menu_t &parent) {
           snprintf(line, sizeof(line), "cfg %02X/%02X %s x%u", entry.class_id, entry.message_id,
                    GPS::configStateName(entry.state), static_cast<unsigned>(entry.attempts));
           if (!config.empty()) {
-            config += "\n";
+            config += '\n';
           }
           config += line;
         }
@@ -10271,7 +10276,9 @@ void UI::addIntervalometerMenu(const menu_t &parent) {
         uint32_t now = tick();
         uint32_t remaining = Time::deadlineReached(now, m_IntervalNext) ? 0 : m_IntervalNext - now;
         SpinValue::hms_t hms = SpinValue::toHMS(remaining);
-        lv_label_set_text_fmt(label, "%02lu:%02lu:%02lu", hms.hours, hms.minutes, hms.seconds);
+        lv_label_set_text_fmt(label, "%02lu:%02lu:%02lu", static_cast<unsigned long>(hms.hours),
+                              static_cast<unsigned long>(hms.minutes),
+                              static_cast<unsigned long>(hms.seconds));
 
         if (!m_IntervalCountdownActive || (remaining == 0)) {
           m_IntervalLastAnnouncedSecond = 0;
@@ -10297,8 +10304,9 @@ void UI::bulbRefresh(void) {
   uint32_t now = tick();
   uint32_t remaining = Time::deadlineReached(now, m_BulbEnd) ? 0 : m_BulbEnd - now;
   SpinValue::hms_t hms = SpinValue::toHMS(remaining);
-  lv_label_set_text_fmt(m_Bulb.m_RemainingLabel, "%02lu:%02lu:%02lu", hms.hours, hms.minutes,
-                        hms.seconds);
+  lv_label_set_text_fmt(
+      m_Bulb.m_RemainingLabel, "%02lu:%02lu:%02lu", static_cast<unsigned long>(hms.hours),
+      static_cast<unsigned long>(hms.minutes), static_cast<unsigned long>(hms.seconds));
 }
 
 void UI::bulbStart(void) {
@@ -10351,8 +10359,9 @@ void UI::bulbComplete(void) {
   // Show the next exposure length while the completed exposure remains visible.
   m_BulbEnd = now + m_Bulb.m_Duration.m_SpinValue.toMilliseconds();
   bulbRefresh();
-  lv_label_set_text_fmt(m_Bulb.m_StateLabel, "Done (%02lu:%02lu:%02lu)", hms.hours, hms.minutes,
-                        hms.seconds);
+  lv_label_set_text_fmt(
+      m_Bulb.m_StateLabel, "Done (%02lu:%02lu:%02lu)", static_cast<unsigned long>(hms.hours),
+      static_cast<unsigned long>(hms.minutes), static_cast<unsigned long>(hms.seconds));
   lv_label_set_text(m_Bulb.m_ActionLabel, "Restart");
 }
 
@@ -10954,14 +10963,17 @@ void UI::batteryUpdate(lv_timer_t *timer) {
 
     if (status->batteryVoltage != nullptr) {
       uint32_t mv = lroundf(status->meanVoltage);
-      lv_label_set_text_fmt(status->batteryVoltage, "Volts: %lu.%03lu", mv / 1000, mv % 1000);
+      lv_label_set_text_fmt(status->batteryVoltage, "Volts: %lu.%03lu",
+                            static_cast<unsigned long>(mv / 1000),
+                            static_cast<unsigned long>(mv % 1000));
 #if defined(FURBLE_SIM)
       m_BatteryLabelWrites++;
 #endif
     }
 
     if (status->batteryCurrent != nullptr) {
-      lv_label_set_text_fmt(status->batteryCurrent, "Current: %ld mA", status->battery.current);
+      lv_label_set_text_fmt(status->batteryCurrent, "Current: %ld mA",
+                            static_cast<long>(status->battery.current));
 #if defined(FURBLE_SIM)
       m_BatteryLabelWrites++;
 #endif
@@ -10982,8 +10994,9 @@ void UI::batteryUpdate(lv_timer_t *timer) {
         // remaining capacity in mAh divided by the average discharge current
         float remaining = platform.getBatteryCapacity() * (status->meanLevel / 100.0f);
         uint32_t minutes = (remaining / -status->meanCurrent) * 60.0f;
-        lv_label_set_text_fmt(status->batteryRuntime, "Runtime: ~%luh%02lum (est)", minutes / 60,
-                              minutes % 60);
+        lv_label_set_text_fmt(status->batteryRuntime, "Runtime: ~%luh%02lum (est)",
+                              static_cast<unsigned long>(minutes / 60),
+                              static_cast<unsigned long>(minutes % 60));
       } else {
         lv_label_set_text(status->batteryRuntime, "Runtime: unknown");
       }
@@ -11109,7 +11122,7 @@ void UI::addPowerMenu(const menu_t &parent) {
   std::string options;
   for (const auto mhz : frequencies) {
     if (!options.empty()) {
-      options += "\n";
+      options += '\n';
     }
     options += std::to_string(mhz) + " MHz";
   }
@@ -11275,7 +11288,7 @@ void UI::addFeedbackMenu(const menu_t &parent) {
   uint8_t storedOutput = Settings::load<uint8_t>(Settings::FB_OUTPUT);
   for (size_t n = 0; n < outputCount; n++) {
     if (!outputText.empty()) {
-      outputText += "\n";
+      outputText += '\n';
     }
     outputText += outputNames[outputOptions[n]];
     if (outputOptions[n] == static_cast<Feedback::output_t>(storedOutput)) {
@@ -11892,7 +11905,7 @@ void UI::addDeviceInfoMenu(const menu_t &parent) {
   lv_label_set_text_fmt(cores, "Cores: %u", info.cores);
 
   lv_obj_t *size = addInfoRow(cont);
-  lv_label_set_text_fmt(size, "Flash: %lu MB", flash / (1024 * 1024));
+  lv_label_set_text_fmt(size, "Flash: %lu MB", static_cast<unsigned long>(flash / (1024 * 1024)));
 
   // filled in by the diagnostics timer whenever the page is open
   m_Diagnostics.deviceHeap = addInfoRow(cont);
@@ -12290,19 +12303,15 @@ void UI::pollGesture(void) {
 void UI::handleGesture(GestureDetector::gesture_t gesture) {
   const char *name = "unknown";
   bool wakes = false;
-  switch (gesture) {
-    case GestureDetector::gesture_t::TAP:
-      name = "tap";
-      wakes = (m_WakeGesture == 1) || (m_WakeGesture == 3);
-      break;
-    case GestureDetector::gesture_t::SHAKE:
-      name = "shake";
-      wakes = (m_WakeGesture == 2) || (m_WakeGesture == 3);
-      break;
-    case GestureDetector::gesture_t::DOUBLE_TAP:
-      name = "double_tap";
-      wakes = (m_WakeGesture == 1) || (m_WakeGesture == 3);
-      break;
+  if (gesture == GestureDetector::gesture_t::TAP) {
+    name = "tap";
+    wakes = (m_WakeGesture == 1) || (m_WakeGesture == 3);
+  } else if (gesture == GestureDetector::gesture_t::SHAKE) {
+    name = "shake";
+    wakes = (m_WakeGesture == 2) || (m_WakeGesture == 3);
+  } else if (gesture == GestureDetector::gesture_t::DOUBLE_TAP) {
+    name = "double_tap";
+    wakes = (m_WakeGesture == 1) || (m_WakeGesture == 3);
   }
 
   ESP_LOGI("ui", "IMU gesture: %s", name);
@@ -12839,10 +12848,18 @@ bool UI::simulatorBackOnUi(void) {
 }
 
 bool UI::simPressButton(const char *name, bool hold) {
-  const std::string button = name == nullptr ? "" : name;
+  // simRunOnUi can time out and leave the request queued, so the closure owns
+  // the name instead of borrowing the caller's buffer.
+  auto button = std::make_shared<const std::string>(name == nullptr ? "" : name);
   auto result = std::make_shared<std::atomic<bool>>(false);
   if (!simRunOnUi([this, button, hold, result]() {
-        result->store(simPressButtonOnUi(button.c_str(), hold));
+        try {
+          result->store(simPressButtonOnUi(button->c_str(), hold));
+        } catch (...) {
+          // An allocation failure must fail the scenario step, not unwind the
+          // simulator's UI thread.
+          result->store(false);
+        }
       })) {
     return false;
   }
