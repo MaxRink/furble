@@ -1418,7 +1418,7 @@ void GPS::configure(void) {
     if (m_NavxDyModelSet) {
       // $PCAS11 platform numbering is third-party attested only, provisional
       if (!fallback.empty()) {
-        fallback += "\n";
+        fallback += '\n';
       }
       fallback += "PCAS11," + std::to_string(m_NavxDyModelVal);
     }
@@ -1498,7 +1498,7 @@ int64_t GPS::toUnixSeconds(const Camera::timesync_t &timesync) {
     const bool leap = ((year % 4) == 0) && (((year % 100) != 0) || ((year % 400) == 0));
     days += leap ? 366 : 365;
   }
-  for (uint8_t month = 1; month < timesync.month; month++) {
+  for (unsigned int month = 1; month < timesync.month; month++) {
     days += DAYS[month - 1];
     if ((month == 2) && ((timesync.year % 4) == 0)
         && (((timesync.year % 100) != 0) || ((timesync.year % 400) == 0))) {
@@ -2544,7 +2544,7 @@ void GPS::completeNavxQuery(void) {
   }
   if (m_NavxDyModelSet) {
     if (!fallback.empty()) {
-      fallback += "\n";
+      fallback += '\n';
     }
     fallback += "PCAS11," + std::to_string(m_NavxDyModelVal);
   }

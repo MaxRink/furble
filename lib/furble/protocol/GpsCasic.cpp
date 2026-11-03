@@ -29,14 +29,14 @@ uint32_t readU32(const uint8_t *data) {
 /** Split a comma separated NMEA body, dropping the leading '$' and trailing checksum. */
 std::vector<std::string> splitNmea(const std::string &sentence) {
   std::vector<std::string> fields;
-  size_t begin = 0;
-  if ((begin < sentence.size()) && (sentence[begin] == '$')) {
-    begin++;
+  auto cursor = sentence.begin();
+  if ((cursor != sentence.end()) && (*cursor == '$')) {
+    ++cursor;
   }
 
   std::string current;
-  for (size_t i = begin; i < sentence.size(); i++) {
-    const char c = sentence[i];
+  for (; cursor != sentence.end(); ++cursor) {
+    const char c = *cursor;
     if (c == '*') {
       break;
     }

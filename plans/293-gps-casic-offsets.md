@@ -31,7 +31,12 @@ suite certified the incorrect decode.
 ## Validation
 
 - `gps_casic_test`: PASS (389 checks), including the corrected MON-HW vector.
-- Host build passes.
+- Full host CTest: 140/140 after the rebase onto the static-analysis gate.
+- Static analysis: PASS. The NMEA splitter now uses iterators, which also
+  clears the cppcheck bounds false positive that fired when the file became a
+  changed file; the GPS time loop and two string appends were tightened.
+- Simulator: `gps-monhw-poll`, `gps-autobaud-ladder`, `gps-degraded-recovery`,
+  and `gps-ephemeris-replay` pass on the M5StickS3 build.
 
 ## Remaining gate
 
