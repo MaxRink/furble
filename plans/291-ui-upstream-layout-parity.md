@@ -143,6 +143,55 @@ that overlay. The recorded result stands at merge-base `2b79ce8d` (audit tree
 everywhere. This PR does not claim upstream row parity; it records the
 divergence as the product decision.
 
+## GPS decision and measurements
+
+The GPS settings page keeps all seven top-level rows: enable, baud, rate,
+sentences, constellation, power, and assist. No receiver option is removed and
+no font is shrunk. The page scrolls on 135x240 and 320x240, which the audit
+already recorded as a deliberate fork divergence from upstream's smaller page.
+A scroll is acceptable because both ends stay reachable and the rows keep their
+whole words.
+
+Evidence already on master:
+
+- `bughunt/gps-hold-rows-{normal,small,large}-{touch,buttons}.txt` seed every
+  text size a board offers, in both navigation layouts, and assert
+  `ui.scroll_bottom 0` and `ui.scroll_top 0` after driving the page to each end.
+- `bughunt/page-matrix.txt` reaches the GPS page and asserts the scroll ends in
+  both runner passes.
+- `bughunt/overflow-sweep.txt` records the page as an intentional-scroll route
+  rather than a compact-fit page.
+- The 80x160 floating navigation indicators overlap the GPS page on master.
+  `gps-hold-rows-*` records that with `xassert board-varies
+  ui.indicator_clearance clear`, so the gap is visible and does not block the
+  row decision. It is a shared roller-page indicator issue, not a GPS-specific
+  overflow.
+
+No layout, font, or row set changed, so no walkthrough screenshot regeneration
+is owed.
+
+## Connected decision and measurements
+
+The Connected page keeps its eight entries in the 4x2 grid. It scrolls at the
+default and Large text sizes on 320x240 and at Large on the narrower boards,
+instead of reducing the entry set or shrinking the font. Both ends stay
+reachable and no label overlaps or is cut.
+
+Evidence already on master:
+
+- `bughunt/core-connected-grid.txt` and `core-connected-grid-large.txt` assert
+  eight rendered cells, `ui.label_overlaps 0`, `ui.scroll_top 0`, and the
+  bottom end after scrolling, in the Core touch layout at default and Large.
+- `bughunt/core-notouch-layout.txt` asserts the same page in the Core physical
+  button layout the board ships, including `ui.cut_labels 0`.
+- `bughunt/stick-notouch-connected-large.txt` and
+  `bughunt/touch-connected-small-fit.txt` cover the narrow boards at Large and
+  Small.
+- `bughunt/page-matrix.txt` walks the page in both layouts.
+
+No layout, font, or entry set changed, so no walkthrough screenshot regeneration
+is owed.
+
 ## Gates
 
 - `sim/scenarios/bughunt/about-scroll-reachability.txt`
@@ -170,5 +219,6 @@ the page is called shipped.
 
 ## Issue
 
-- [#281](https://github.com/MaxRink/furble/issues/281) stays open until all
-  three page decisions land. Close it with the last page PR, not before.
+- [#281](https://github.com/MaxRink/furble/issues/281) closes with this
+  decision record: About keeps seven rows and scrolls, GPS keeps seven rows and
+  scrolls, and Connected keeps eight entries in the 4x2 grid and scrolls.
