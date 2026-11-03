@@ -778,7 +778,7 @@ This is a documentation and build consistency item, not a separate power lever.
   (`plans/98:240-258`).
 - **Evidence:** inferred (code-read), modeled (plan 98). Plan 12 records that M5GFX
   cuts LDO2 on StickC and StickC Plus and DCDC3 on Core2, so those backlights
-  are PMIC rails, not LEDC (`plans/12:116-124`). The StickS3 backlight is LEDC
+  are PMIC rails, not LEDC (`plans/implemented/12-display-off.md:116-124`). The StickS3 backlight is LEDC
   on GPIO38 (`tools/power-model/board-currents.yaml:369-377`). A held
   `APB_FREQ_MAX` lock maps to `PM_MODE_APB_MAX` and blocks light sleep (IDF
   `pm_impl.c:228-241`, `555-568`).
@@ -802,7 +802,7 @@ This is a documentation and build consistency item, not a separate power lever.
   idle and dim. On the StickS3, run the LEDC clock change with a 30 minute
   display soak and a camera shutter run.
 - **Citation:** `src/FurbleUI.cpp:371-374`, `1316-1318`, `1333-1335`,
-  `plans/12:116-124`, `plans/98:240-258`, IDF `pm_impl.c:228-241`, `555-568`,
+  `plans/implemented/12-display-off.md:116-124`, `plans/98:240-258`, IDF `pm_impl.c:228-241`, `555-568`,
   IDF `esp_driver_spi/src/gpspi/spi_master.c:1281-1290`, IDF
   `components/hal/esp32s3/include/hal/ledc_ll.h:30-40`,
   `components/esp_driver_ledc/include/driver/ledc.h:70-77`.
@@ -1001,7 +1001,7 @@ These were examined and do not justify a power change on the current evidence.
 | Manual light sleep | No `esp_light_sleep_start()` call exists. Only `esp_pm` automatic sleep is used. | `plans/06:70-80` |
 | Task watchdog and brownout | The 5 s task watchdog does not panic, and brownout detection is at level 7. These are safety settings, not power levers. Removing them would trade a reset or brownout risk for unmeasured microamps. | `sdkconfig.m5stick-s3:2281-2287`, `3819-3835` |
 | PM_SLP_IRAM_OPT and CPU power-down | Both are already enabled and are worth about 310 us per sleep and about 650 uA respectively. Turning them off would be a regression. | `sdkconfig.m5stick-s3:2114-2118`, IDF `esp_pm/Kconfig:62-70`, `122-135` |
-| Charging `NO_LIGHT_SLEEP` lock | The device is on external power while charging, so removing the lock cannot improve battery runtime. It could reduce heat, but that is a separate thermal question. | `src/FurbleUI.cpp:9906-9914`, `plans/13:160-170` |
+| Charging `NO_LIGHT_SLEEP` lock | The device is on external power while charging, so removing the lock cannot improve battery runtime. It could reduce heat, but that is a separate thermal question. | `src/FurbleUI.cpp:9906-9914`, `plans/implemented/13-auto-off-low-batt.md:160-170` |
 | `CPU_FREQ_MAX` lock | Created but never acquired. Removing it saves a lock object and a diagnostic slot, not energy. | `include/FurblePower.h:22`, `src/FurblePower.cpp:16-31` |
 | Task stacks and priorities | The sizes are 4 to 16 KB per task. Stack size does not change runtime current. Priorities change latency and preemption, not the idle floor. No power lever was found. | `src/main.cpp:364`, `src/FurbleControl.cpp:977`, `src/FurbleGPS.cpp:185`, `src/FurbleConsole.cpp:68-71`, `src/FurbleCompanion.cpp:128`, `src/FurbleMQTT.cpp:220` |
 | Busy waits | No unbounded CPU spin was found. Registration waits poll with `vTaskDelay` (10 to 100 ms), disconnect waits use 20 ms slices, and the scan start probe is host-only. | `lib/furble/Fujifilm.cpp:120-145`, `lib/furble/FujifilmSecure.cpp:456-470`, `lib/furble/Scan.cpp:489-496` |

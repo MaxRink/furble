@@ -1591,7 +1591,7 @@ plans/00b           -> plans/27 -> everything here
 plans/09 (backoff)  -> 33b reuses the shape, not the code
 plans/02 (battery)  -> 33b wifi status current readout, 33c battery topic
 plans/05 (diag)     -> optional read-only WiFi status page
-plans/12 (display off) -> 33a true display off in CONSOLE mode
+plans/implemented/12-display-off.md (display off) -> 33a true display off in CONSOLE mode
 plans/34            -> budget coupled with 33b and 33c, land 34a first
 plans/90            -> 33b NTP is a second time source for the same path
 ```

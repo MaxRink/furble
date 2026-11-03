@@ -588,8 +588,8 @@ time. Effort: one to two days.
   [10-adaptive-conn-params.md](10-adaptive-conn-params.md) and
   [11-adaptive-tx-power.md](11-adaptive-tx-power.md) define the policies
   the BLE duty model integrates.
-- [12-display-off.md](12-display-off.md) and
-  [13-auto-off-low-batt.md](13-auto-off-low-batt.md) define the dimmed and
+- [12-display-off.md](implemented/12-display-off.md) and
+  [13-auto-off-low-batt.md](implemented/13-auto-off-low-batt.md) define the dimmed and
   off scenarios.
 - [14-gps-pcas.md](implemented/14-gps-pcas.md), [15-gps-power.md](15-gps-power.md) and
   [18-gps-motion.md](18-gps-motion.md) define the GPS duty policies the

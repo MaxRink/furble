@@ -12700,7 +12700,7 @@ void UI::doPowerOff(void) {
   m_PoweringOff = true;
   closeLowBatteryWarning();
 
-  // TODO(plans/68): prepareRestart on feat/68 needs this same quiesce
+  // TODO(plans/implemented/68-reconnect-after-restart.md): prepareRestart on feat/68 needs this same quiesce
   // ordering, a future shared helper should absorb both paths.
 #if defined(FURBLE_M5STICKS3)
   // Stop the watchdog first, the BLE teardown below can outlast a feed period.
