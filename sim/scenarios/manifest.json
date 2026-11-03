@@ -2022,8 +2022,20 @@
       "owner": "sim-e2e",
       "boards": [
         "m5stick-s3",
-        "m5stick-c",
         "m5stack-core"
+      ],
+      "capabilities": [
+        "gps"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/gps-fixed-baud-absent-stickc.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-c"
       ],
       "capabilities": [
         "gps"
@@ -2170,20 +2182,6 @@
     },
     {
       "path": "sim/scenarios/e2e/gps-no-receiver.txt",
-      "suite": "e2e",
-      "owner": "sim-e2e",
-      "boards": [
-        "m5stick-s3",
-        "m5stack-core"
-      ],
-      "capabilities": [
-        "gps"
-      ],
-      "expected_exit": 0,
-      "certified": true
-    },
-    {
-      "path": "sim/scenarios/e2e/gps-fixed-baud-absent.txt",
       "suite": "e2e",
       "owner": "sim-e2e",
       "boards": [

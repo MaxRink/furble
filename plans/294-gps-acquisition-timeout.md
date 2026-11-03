@@ -44,7 +44,9 @@ alive.
   append fixes the rebased file now sees.
 - `gps-fixed-baud-absent`, `gps-no-receiver`, `gps-degraded-recovery`,
   `gps-duty-no-fix`, `gps-autobaud-ladder`, and `gps-monhw-poll` pass on the
-  M5StickS3 build.
+  M5StickS3 build. The rich recovery scenario is certified on StickS3 and Core;
+  the 80x160 layout has no GPS cycle row, so `gps-fixed-baud-absent-stickc`
+  keeps the panel-independent absent and power-lock assertions there.
 
 ## Remaining gate
 

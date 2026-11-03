@@ -1,0 +1,15 @@
+# A stored fixed baud is a claim, not proof that a receiver is attached.
+#
+# The 80x160 layout does not render the GPS cycle row, so this file keeps the
+# panel-independent contract: with no receiver answering at 9600, the
+# acquisition deadline drops the Grove rail, releases NO_LIGHT_SLEEP, and
+# publishes ABSENT. The richer S3/Core scenario also asserts the UI row and
+# recovery.
+seed gps true
+seed gps_baud 9600
+seed gps_receiver none
+wait 1000
+assert gps.receiver present
+assert-eventually-virtual 40000 gps.receiver absent
+assert power.no_light_sleep 0
+exit
