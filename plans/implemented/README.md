@@ -95,3 +95,8 @@ stay in the parent [`plans/`](../README.md) directory.
 | [89-reconnect-ui.md](89-reconnect-ui.md) | 89 - Reconnect UI indicator (task #54) |
 | [92-ui-icons.md](92-ui-icons.md) | 92 - Better suited menu icons |
 | [99-nimble-client-leak.md](99-nimble-client-leak.md) | PR99: Fix the NimBLE client leak that breaks all connects until a reboot |
+| [292-low-power-defaults.md](292-low-power-defaults.md) | Fresh devices ship with the low-power connected, inactivity, and screen-off defaults |
+| [293-gps-casic-offsets.md](293-gps-casic-offsets.md) | Correct the CFG-NAVX navSystem and MON-HW field offsets and pin them in host and simulator fixtures |
+| [294-gps-acquisition-timeout.md](294-gps-acquisition-timeout.md) | Bound the GPS acquisition state so a silent fixed-baud receiver cannot pin the sleep lock and 5 V rail |
+| [296-companion-accuracy.md](296-companion-accuracy.md) | Carry the phone horizontal accuracy that the companion apps already send into the GPS fix and MQTT payload |
+| [299-static-analysis-gate.md](299-static-analysis-gate.md) | cppcheck and clang-tidy on changed production sources, with the fixes and suppressions from the first full-tree pass |
