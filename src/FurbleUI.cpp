@@ -4852,26 +4852,50 @@ std::string UI::simQueryState(const char *key) {
     const lv_obj_t *blePage = m_Menu.at(m_BLEStr).page;
     const lv_obj_t *nmeaPage = m_Menu.at(m_GPSNMEAStr).page;
 
-    const auto findLabel = [](lv_obj_t *root, const char *prefix) {
-      std::function<std::string(lv_obj_t *)> visit = [&](lv_obj_t *obj) {
+    const auto findLabelObject = [](lv_obj_t *root, const char *prefix) -> lv_obj_t * {
+      std::function<lv_obj_t *(lv_obj_t *)> visit = [&](lv_obj_t *obj) -> lv_obj_t * {
         if (obj == nullptr) {
-          return std::string();
+          return nullptr;
         }
         if (lv_obj_check_type(obj, &lv_label_class)) {
           const char *text = lv_label_get_text(obj);
           if (text != nullptr && std::strncmp(text, prefix, std::strlen(prefix)) == 0) {
-            return std::string(text);
+            return obj;
           }
         }
         for (uint32_t n = 0; n < lv_obj_get_child_count(obj); n++) {
-          std::string result = visit(lv_obj_get_child(obj, n));
-          if (!result.empty()) {
+          lv_obj_t *result = visit(lv_obj_get_child(obj, n));
+          if (result != nullptr) {
             return result;
           }
         }
-        return std::string();
+        return nullptr;
       };
       return visit(root);
+    };
+
+    const auto findLabel = [&](lv_obj_t *root, const char *prefix) {
+      lv_obj_t *label = findLabelObject(root, prefix);
+      if (label == nullptr) {
+        return std::string();
+      }
+      const char *text = lv_label_get_text(label);
+      return text == nullptr ? std::string() : std::string(text);
+    };
+
+    const auto labelVisible = [&](lv_obj_t *root, const char *prefix) {
+      lv_obj_t *label = findLabelObject(root, prefix);
+      lv_obj_t *page = lv_menu_get_cur_main_page(m_MainMenu.main);
+      if (label == nullptr || page == nullptr) {
+        return false;
+      }
+      lv_area_t labelArea = {};
+      lv_area_t viewport = {};
+      lv_obj_get_coords(label, &labelArea);
+      lv_obj_get_coords(page, &viewport);
+      return lv_obj_is_visible(label) && (labelArea.x1 >= viewport.x1)
+             && (labelArea.x2 <= viewport.x2) && (labelArea.y1 >= viewport.y1)
+             && (labelArea.y2 <= viewport.y2);
     };
 
     const auto labelText = [](lv_obj_t *label) {
@@ -4924,6 +4948,10 @@ std::string UI::simQueryState(const char *key) {
       return (page == aboutPage && !labelValue(m_Menu.at(m_AboutStr).page, "Reset:\n").empty())
                  ? "yes"
                  : "no";
+    }
+    if (field == "about.reset_visible") {
+      return (page == aboutPage && labelVisible(m_Menu.at(m_AboutStr).page, "Reset:\n")) ? "yes"
+                                                                                          : "no";
     }
 
     if (field == "device.chip") {

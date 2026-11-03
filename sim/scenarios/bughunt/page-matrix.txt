@@ -262,10 +262,21 @@ assert ui.label_overlaps 0
 action nav about
 wait 100
 assert ui.page about
+# About keeps its seven info rows and scrolls on every panel (plan 291). Both
+# ends must stay reachable and nothing may overlap or lose text in either
+# layout, which about-scroll-reachability.txt bounds in the button layout.
+assert ui.overflow yes
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
 action scroll bottom
 assert ui.scroll_bottom 0
+assert ui.diag.about.reset_visible yes
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
 action scroll top
 assert ui.scroll_top 0
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
 action nav power
 wait 100
 assert ui.page power

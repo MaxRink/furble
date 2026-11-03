@@ -1,0 +1,66 @@
+# About keeps its seven info rows on every panel and scrolls. Issue #281 is
+# resolved by decision, not by matching upstream's two-row page: no row is
+# dropped and no font is shrunk, so the contract is that both scroll ends stay
+# reachable and no label overlaps or is cut.
+#
+# This is the touch-layout counterpart; the default runner attaches a
+# touch device, so no no_touch seed is needed.
+#
+# Measured on master 8cd6be97, small text size, touch layout. The
+# extents across the three panels are bounded below.
+#
+# Every panel reported ui.overflow yes, ui.label_overlaps 0, ui.cut_labels 0
+# and ui.indicator_clearance clear at both extents. The bounds encode the
+# measured range: dropping a row fails the minimum, and adding enough content
+# to need more than 135 px fails the maximum.
+seed text_size 0
+wait 300
+assert setting.text_size 0
+
+# Without this a run that lost the seed or the layout would measure the wrong
+# surface and pass for the wrong reason.
+assert ui.nav_layout touch
+
+action page settings
+action nav about
+wait 350
+assert ui.page about
+
+# The page is expected to scroll. That is the accepted outcome for keeping the
+# extra rows, so ui.overflow must stay yes rather than becoming a fit.
+assert ui.overflow yes
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+assert ui.indicator_clearance n/a
+assert ui.scroll_top 0
+assert_min ui.scroll_bottom 106
+assert_max ui.scroll_bottom 135
+
+# The bottom end must expose the last row, Reset. ui.diag.about.reset reads the
+# rendered label, so it fails if the row is missing; addAboutMenu adds it last,
+# and scroll_bottom 0 means the page cannot scroll further.
+action scroll bottom
+wait 250
+assert ui.page about
+assert ui.scroll_bottom 0
+assert_min ui.scroll_top 106
+assert_max ui.scroll_top 135
+assert ui.overflow yes
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+assert ui.indicator_clearance n/a
+assert ui.diag.about.reset yes
+assert ui.diag.about.reset_visible yes
+
+# And the top end must return to the first row, Version.
+action scroll top
+wait 250
+assert ui.page about
+assert ui.scroll_top 0
+assert_min ui.scroll_bottom 106
+assert_max ui.scroll_bottom 135
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+assert ui.indicator_clearance n/a
+
+exit
