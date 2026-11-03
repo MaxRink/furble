@@ -425,14 +425,17 @@ range with its basis, not a claim.
 
 ### G-03 Bound the initial acquisition lock and detect a silent fixed-baud receiver
 
-- **Change.** After a bounded silence, for example 10 seconds at a fixed baud,
-  declare the receiver absent even when `GPS_BAUD` is fixed: drop the rail,
-  release `NO_LIGHT_SLEEP`, and retry once after 60 seconds. The autobaud path
-  already has this state; the fixed-baud path does not.
-- **Current behavior.** A fixed baud publishes `PRESENT` immediately and enters
-  `ACQUIRING` with `m_ProbeDeadline == 0`. `serviceCycle()` re-acquires the lock
-  on every pass and has no exit. The receiver is never declared absent.
-- **Evidence.** `inferred` from `enable()`, `serviceCycle()` and `cycleWait()`.
+- **Change.** After a bounded silence, declare the receiver absent even when
+  `GPS_BAUD` is fixed: drop the rail, release `NO_LIGHT_SLEEP`, and retry once
+  after 60 seconds. The same deadline covers an autobaud lock that goes silent.
+- **Current behavior.** A fixed baud publishes `PRESENT` and enters `ACQUIRING`
+  with a 30-second `m_AcquireDeadline` and the valid-sentence counter recorded.
+  A checksum-valid NMEA sentence clears the deadline; expiry calls
+  `onProbeFailed()`, which publishes `ABSENT` and schedules the one retry. A
+  queued burst after `ABSENT` is rejected. Line noise and binary-only frames do
+  not extend the deadline or the burst gap.
+- **Evidence.** `code` plus simulator evidence; plan 294 records the scenario
+  and the remaining bench gate.
 - **Estimated saving.** `modeled` up to 37 mA while the lock is held. Basis:
   plan 98b's +37 mA; bounded by 40.2 mA active versus 0.240 mA light sleep. The
   case is a fault, but it is reached by enabling GPS with no unit attached at
@@ -441,12 +444,14 @@ range with its basis, not a claim.
   60-second retry recovers it, and the autobaud path already accepts that
   trade. Do not fire while characters are arriving.
 - **Effort.** S to M.
-- **Required test.** Simulator `gps-no-receiver` with a fixed baud seed; device:
-  enable GPS with no unit, confirm `receiver: absent`, no `gps` lock owner in
-  `power stats`, rail off, and a unit attached later is found on the retry.
-- **Citation.** `src/FurbleGPS.cpp:314-391` (`enable`), `:595-708`
-  (`serviceCycle`), `:530-593` (`cycleWait`); `include/FurbleGPS.h:378`
-  (`NO_RECEIVER_RETRY_MS`), `:400` (`SETTLE_MS`); plan 98b lines 14-40.
+- **Required test.** Simulator `gps-fixed-baud-absent` on StickS3 and Core,
+  its StickC variant for the panel-independent absent state, plus
+  `gps-no-receiver`; device: enable GPS with no unit, confirm
+  `receiver: absent`, no `gps` lock owner in `power stats`, rail off, and a
+  unit attached later is found on the retry.
+- **Citation.** `src/FurbleGPS.cpp` (`enable`, `serviceCycle`, `cycleWait`,
+  `serviceSerial`, `beginBurst`); `include/FurbleGPS.h`
+  (`ACQUIRE_TIMEOUT_MS`, `NO_RECEIVER_RETRY_MS`); plan 294.
 
 ### G-04 Back off the receiver when there is no fix
 

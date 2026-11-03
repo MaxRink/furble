@@ -236,8 +236,14 @@ void GPS::task(void) {
 
     if (!absent && !detecting) {
       serviceCycle();
-      serviceConfig();
-      servicePoll();
+      // onProbeFailed() can publish ABSENT inside serviceCycle(). Do not let
+      // the same task pass issue configuration or ephemeris writes after the
+      // rail and lock have been dropped.
+      const auto afterCycle = static_cast<receiver_state_t>(m_ReceiverState.load());
+      if ((afterCycle != receiver_state_t::ABSENT) && (afterCycle != receiver_state_t::DETECTING)) {
+        serviceConfig();
+        servicePoll();
+      }
     }
 
     uart_event_t event;
@@ -2794,13 +2800,12 @@ void GPS::serviceSerial(void) {
     // once per read pass.
     processSerial(buffer.data(), bytes);
 
-    const uint32_t now = Platform::getInstance().tick();
-    m_LastSentence = now;
     // Only a checksum-valid NMEA sentence starts or extends a burst. Line
     // noise, malformed NMEA, and binary-only frames must not clear the
-    // acquisition deadline or move ACQUIRING into BURST.
+    // acquisition deadline, move ACQUIRING into BURST, or extend the burst
+    // gap. beginBurst() owns the last-sentence timestamp.
     if (getStatusSnapshot().sentences_passed != passedBefore) {
-      beginBurst(now);
+      beginBurst(Platform::getInstance().tick());
     }
   }
 }
