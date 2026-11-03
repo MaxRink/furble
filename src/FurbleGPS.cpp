@@ -1454,7 +1454,8 @@ void GPS::configure(void) {
 
 /** Configure the receiver once it is awake, then service one binary command. */
 void GPS::serviceConfig(void) {
-  if (!m_Enabled) {
+  if (!m_Enabled
+      || (static_cast<receiver_state_t>(m_ReceiverState.load()) == receiver_state_t::ABSENT)) {
     return;
   }
 
@@ -1951,7 +1952,8 @@ void GPS::storeEphemeris(void) {
  * fix and at most once an hour after that.
  */
 void GPS::servicePoll(void) {
-  if (!m_Enabled) {
+  if (!m_Enabled
+      || (static_cast<receiver_state_t>(m_ReceiverState.load()) == receiver_state_t::ABSENT)) {
     return;
   }
 
