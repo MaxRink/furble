@@ -30,6 +30,23 @@ class CppcheckParseTest(unittest.TestCase):
         self.assertEqual(findings, [])
 
 
+class HeaderIncluderTest(unittest.TestCase):
+    def test_qualified_header_include_is_found(self):
+        result = CHECKER.header_includers(
+            ["lib/furble/protocol/CanonTime.h"], ["lib/furble/CanonEOSSmart.cpp"]
+        )
+        self.assertIn(
+            "lib/furble/CanonEOSSmart.cpp",
+            result["lib/furble/protocol/CanonTime.h"],
+        )
+
+    def test_unrelated_source_is_not_an_includer(self):
+        result = CHECKER.header_includers(
+            ["lib/furble/protocol/CanonTime.h"], ["src/FurbleGPS.cpp"]
+        )
+        self.assertEqual(result["lib/furble/protocol/CanonTime.h"], [])
+
+
 class ClangTidyParseTest(unittest.TestCase):
     def test_warning_is_parsed_with_check(self):
         findings, errors = CHECKER.parse_clang_tidy(

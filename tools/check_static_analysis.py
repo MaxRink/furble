@@ -230,19 +230,35 @@ def header_includers(headers: list[str], sources: list[str]) -> dict[str, list[s
 
     A header has no compile command of its own. Analyzing a small set of its
     includers is the closest host check; cppcheck also parses the header
-    directly. The cap keeps a widely included header from turning one change
-    into a full-tree clang-tidy run.
+    directly. Includes may name a header by basename or by a path relative to
+    an include root (`protocol/CanonTime.h`), so both forms are matched. The
+    cap keeps a widely included header from turning one change into a
+    full-tree clang-tidy run.
     """
+    roots = ("lib/furble/", "include/", "sim/", "src/")
+    candidates: list[str] = []
+    for header in headers:
+        names = {Path(header).name, header}
+        for root in roots:
+            if header.startswith(root):
+                names.add(header[len(root) :])
+        candidates.extend(sorted(names))
+
     includers: dict[str, list[str]] = {}
     for header in headers:
-        base = Path(header).name
+        names = {Path(header).name, header}
+        for root in roots:
+            if header.startswith(root):
+                names.add(header[len(root) :])
         matches: list[str] = []
         for source in sources:
             try:
                 text = (ROOT / source).read_text(encoding="utf-8", errors="ignore")
             except OSError:
                 continue
-            if f'#include "{base}"' in text or f"#include <{base}>" in text:
+            if any(
+                f'#include "{name}"' in text or f"#include <{name}>" in text for name in names
+            ):
                 matches.append(source)
                 if len(matches) >= 4:
                     break
@@ -375,7 +391,11 @@ def main() -> int:
                 file=sys.stderr,
             )
             return 2
-        includers = header_includers(headers, sources)
+        try:
+            all_sources, _ = tracked_production_files()
+        except RuntimeError:
+            all_sources = sources
+        includers = header_includers(headers, all_sources)
         tidy_targets = list(sources)
         for targets in includers.values():
             tidy_targets.extend(targets)
