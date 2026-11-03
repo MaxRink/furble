@@ -49,9 +49,9 @@ and real camera states. It is a hardware requirement, not a documentation gap.
 
 | ID | Change | Evidence | Estimated saving | Why it is top five |
 | --- | --- | --- | --- | --- |
-| P-040 | Default `SLEEP_CONN` on, or make Battery Saver the documented path | measured floor plus modeled states | About 40 mA connected with the screen off; 43.6 to 3.61 mA modeled | Largest addressable number; mechanism merged; soak is the work |
+| P-040 | `SLEEP_CONN` now defaults on for the StickS3; the per-vendor soak remains the measured-promotion gate | measured floor plus modeled states | About 40 mA connected with the screen off; 43.6 to 3.61 mA modeled | Default shipped; soak is the remaining verification |
 | P-071, P-072 | Scope the display APB lock; on the S3 use RC_FAST LEDC with `KEEP_ALIVE` | modeled plus code and datasheet | 5 to 25 mA screen on for the AXP192 boards; 10 to 30 mA inferred on the S3 | The only lever that cuts the MCU term while the screen is on; high flicker risk |
-| P-073 | Default inactivity to 60 s and Screen off to Off, or make Battery Saver the default | modeled | About 40 to 64 mA after the timeout; up to 81.2 mA at full brightness | Turns the largest idle state into the smallest; product decision |
+| P-073 | Fresh devices now seed inactivity 60 s and screen off Off, except the Core Basic keeps Dim; the 30-minute per-board soak remains | modeled | About 40 to 64 mA after the timeout; up to 81.2 mA at full brightness | Default shipped; soak and wake-latency checks remain |
 | P-086 | GPS duty rework: longer intervals with a cached fix, shorter wake dwell | inferred plus modeled | About 1.5 mA today; up to about 19 mA of the 23 mA GPS budget | GPS is the second-largest always-on load; the clamp and dwell eat the duty |
 | P-001, P-002, P-045, P-046 | Bound and stop the discovery scan; targeted reconnect at 50 percent duty and 10 to 15 s | inferred | Up to half the scan receive current; 6x less scan-on per failed attempt | Worst sustained BLE states; small and reversible |
 
