@@ -51,6 +51,7 @@ from typing import Iterable
 
 SETTINGS_SOURCE = "src/FurbleSettings.cpp"
 SETTINGS_HEADER = "include/FurbleSettings.h"
+SETTINGS_DEFAULTS_HEADER = "include/FurbleSettingsDefaults.h"
 TEXT_SIZE_HEADER = "include/FurbleTextSize.h"
 LEDGER = "include/CLAUDE.md"
 HOST_CMAKE = "tests/host/CMakeLists.txt"
@@ -1837,6 +1838,11 @@ def _parse_source_contracts(
   constants: dict[str, list[Constant]] = {}
   _, header_guards = _source_lines(header_text)
   _parse_constants(SETTINGS_HEADER, header_text, constants, header_guards)
+  defaults_path = root / SETTINGS_DEFAULTS_HEADER
+  if defaults_path.is_file():
+    defaults_text = _read_text(defaults_path, root, report)
+    _, defaults_guards = _source_lines(defaults_text)
+    _parse_constants(SETTINGS_DEFAULTS_HEADER, defaults_text, constants, defaults_guards)
   text_size_path = root / TEXT_SIZE_HEADER
   referenced_headers: set[str] = set()
   if text_size_path.is_file():

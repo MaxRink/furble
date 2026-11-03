@@ -254,6 +254,52 @@ class SettingsContractsTest(unittest.TestCase):
     self.assertEqual(result.returncode, 0, result.stderr)
     self.assertIn("summary: 0 FAIL", result.stdout)
 
+  def test_namespaced_defaults_header_is_resolved(self):
+    defaults = """\
+#ifndef FURBLE_SETTINGS_DEFAULTS_H
+#define FURBLE_SETTINGS_DEFAULTS_H
+
+#include <cstdint>
+
+namespace Furble {
+namespace SettingsDefaults {
+
+constexpr uint8_t INACTIVITY = 2;
+
+}  // namespace SettingsDefaults
+}  // namespace Furble
+
+#endif
+"""
+    source = SOURCE.replace(
+        """        case INACTIVITY:
+        case DISPLAY_OFF:
+        case AUTO_OFF:
+          save<uint8_t>(setting.type, 0);
+          break;""",
+        """        case INACTIVITY:
+          save<uint8_t>(setting.type, SettingsDefaults::INACTIVITY);
+          break;
+        case DISPLAY_OFF:
+        case AUTO_OFF:
+          save<uint8_t>(setting.type, 0);
+          break;""",
+    )
+    docs = DOCS.replace(
+        "| Inactivity timeout | Never |", "| Inactivity timeout | 60 secs |"
+    )
+    write_fixture(
+        self.root,
+        **{
+            "include/FurbleSettingsDefaults.h": defaults,
+            "src/FurbleSettings.cpp": source,
+            "docs/settings-and-controls.md": docs,
+            "docs/wiki/Settings-Reference.md": docs,
+        },
+    )
+    report = self.direct_report()
+    self.assertEqual(self.messages(report, "FAIL"), [])
+
   def test_missing_default_case_is_failed(self):
     source = SOURCE.replace(
         """        case CPU_FREQ:
