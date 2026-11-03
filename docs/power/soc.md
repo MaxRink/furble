@@ -707,10 +707,11 @@ This is a documentation and build consistency item, not a separate power lever.
 
 ### LOCK-01 `SLEEP_CONN` default and the connection lock
 
-- **Change:** Decide whether `SLEEP_CONN` should default on for the StickS3, or
-  whether Battery Saver remains the only way to get it. The mechanism already
-  exists.
-- **Current behavior:** `SLEEP_CONN` defaults false (`src/FurbleSettings.cpp:643-664`).
+- **Change:** Implemented. `SLEEP_CONN` now defaults on for the StickS3; the
+  other boards keep it off because they lack the modem-sleep controller and GPS
+  burst lock. The per-vendor soak remains the promotion gate.
+- **Current behavior:** `SLEEP_CONN` seeds true on the StickS3 and false
+  elsewhere for an unset key; an existing stored choice is preserved.
   `Control::setState()` acquires `NO_LIGHT_SLEEP` on the transition to
   `STATE_ACTIVE` when `Settings::sleepConnEffective()` is false, and releases it
   on the way out (`src/FurbleControl.cpp:1118-1134`). Battery Saver forces it on
@@ -1040,9 +1041,9 @@ measurement to decide. Each still needs its test.
    because it charges no wake cost.
 3. **SOC-06** Raise the RTC calibration interval. A documented per-sleep cost
    multiplied by about 200 sleeps per second. Easy to A/B.
-4. **LOCK-01** Decide the `SLEEP_CONN` default. The mechanism is already merged
-   and the model says about 40 mA. The missing evidence is per-vendor link
-   stability and a calibrated analyzer run.
+4. **LOCK-01** The `SLEEP_CONN` default now ships on for the StickS3. The model
+   says about 40 mA; the missing evidence is per-vendor link stability and a
+   calibrated analyzer run.
 5. **OS-07** Rate-limit the M5PM1 button read. A plausible 0.4 to 0.8 mA
    arithmetic estimate on the S3, entirely unmeasured, with a low-risk fix.
 6. **CON-01** Disable the USB Serial/JTAG secondary console in battery releases.

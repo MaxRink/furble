@@ -29,8 +29,9 @@ Every milliamp figure in this directory is measured elsewhere, datasheet,
 modeled, or inferred; none is local.
 
 The large wins are not radio micro-tuning. They are sleep policy, display duty,
-and receiver duty. The mechanism for the biggest one is already merged and
-default off. Almost every number is modeled or inferred.
+and receiver duty. The connected-sleep mechanism is merged and now defaults on
+for the StickS3; the per-vendor soak is still the measured-promotion gate.
+Almost every number is modeled or inferred.
 
 ## What is closed and what still needs hardware
 
