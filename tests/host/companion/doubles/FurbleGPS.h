@@ -23,6 +23,8 @@ class GPS {
     bool position_valid;
     bool time_valid;
     bool altitude_valid;
+    float accuracy_m;
+    bool accuracy_valid;
   };
 
   static GPS &getInstance();

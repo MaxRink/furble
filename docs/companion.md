@@ -78,3 +78,8 @@ Platform behavior:
 
 Phone location is not a replacement for a good antenna. It is the fallback for
 places where no receiver can hear the satellites.
+
+The horizontal accuracy the phone reports travels in the same location packet
+and is carried into the device fix when known. The MQTT geolocation payload
+includes it as `accuracy`; a phone that reports unknown accuracy omits the
+field rather than claiming a perfect fix.

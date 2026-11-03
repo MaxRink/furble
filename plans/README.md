@@ -221,6 +221,7 @@ state and the remaining gate; the issue stays open until that gate lands.
 | [285-power-accounting.md](285-power-accounting.md) | Issue #285: opt-in synthetic power accounting and frozen comparator identity |
 | [288-provisioning-schema.md](implemented/288-provisioning-schema.md) | Provisioning schema coverage for every keyed setting and current wire-ID reservation ledger |
 | [291-ui-upstream-layout-parity.md](291-ui-upstream-layout-parity.md) | About, GPS, and Connected content parity with upstream, one page PR at a time with per-board captures |
+| [296-companion-accuracy.md](296-companion-accuracy.md) | Carry the phone horizontal accuracy that the companion apps already send into the GPS fix and MQTT payload |
 | [298-pre-review-gate.md](implemented/298-pre-review-gate.md) | Pre-review scanners for diff hygiene, settings contracts, C++ safety, and a sanitized host subset, wired into pull-request CI |
 | [299-static-analysis-gate.md](299-static-analysis-gate.md) | cppcheck and clang-tidy on changed production sources, with the fixes and suppressions from the first full-tree pass |
 | [176-android-camera-catalog.md](176-android-camera-catalog.md) | Android camera characteristic discovery, stable-ID catalog, controls, and bounded protocol decoding |

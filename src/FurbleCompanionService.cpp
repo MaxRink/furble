@@ -321,6 +321,8 @@ void CompanionService::handleLocation(const uint8_t *data, size_t len) {
       packet.minute, packet.second, packet.centisecond,
   };
   fix.age_ms = packet.age_ms;
+  fix.accuracy_m = static_cast<float>(packet.accuracy_m);
+  fix.accuracy_valid = packet.accuracy_m != 255;
   fix.position_valid = (packet.flags & LOCATION_VALID) != 0;
   fix.time_valid = (packet.flags & TIME_VALID) != 0;
   fix.altitude_valid = (packet.flags & ALTITUDE_VALID) != 0;
