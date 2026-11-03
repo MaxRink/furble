@@ -1,7 +1,5 @@
 # PR19 - Deep sleep between intervalometer shots
 
-Status: implemented on master (archived 2026-11-03).
-
 ## Goal
 
 Power the device down between intervalometer shots when the gap is long enough,

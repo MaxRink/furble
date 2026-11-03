@@ -1,7 +1,5 @@
 # PR17 - IMU gestures for wake and shutter
 
-Status: implemented on master (archived 2026-11-03).
-
 ## Goal
 
 Use the IMU to wake the display from the off state added in PR12. Optionally fire

@@ -13,7 +13,7 @@ download and the Home Assistant end to end flow are Claude / hardware work.
 
 ## Motivation
 
-`plans/implemented/34-ota-partitions.md` landed the two-slot layout, the rollback config and
+`plans/34-ota-partitions.md` landed the two-slot layout, the rollback config and
 the health check design, and explicitly scoped PR34a-2 (the `esp_https_ota`
 delivery) as follow-on work "once there is a network to fetch over". Plan 33
 PR33c adds MQTT so a Home Assistant dashboard drives furble. The natural union:
@@ -76,7 +76,7 @@ device inert until the user runs `ota update` or publishes to `cmd/ota`.
 
 ## Dependencies
 
-- `plans/implemented/34-ota-partitions.md` PR34a-1 (layout, rollback, health): landed.
+- `plans/34-ota-partitions.md` PR34a-1 (layout, rollback, health): landed.
 - `plans/implemented/113-per-board-ota-slots.md` PR #167: gives the S3 real headroom to hold the
   WiFi+MQTT+TLS+OTA image. The partition invariant is already on fork/master.
 - `plans/33-wifi-hub.md` PR33b (WiFi): **not landed**. Hard blocker for the

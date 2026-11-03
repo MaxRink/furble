@@ -6,7 +6,7 @@ Land the deterministic OTA lifecycle before any network transport or user-facing
 command depends on it. The engine must be directly host-testable and must reject
 inconsistent transport progress without writing firmware itself.
 
-This is the state-machine slice of `plans/implemented/34-ota-partitions.md`. PR #167 landed
+This is the state-machine slice of `plans/34-ota-partitions.md`. PR #167 landed
 the two-slot layouts first. HTTPS delivery, manifest lookup, precondition checks,
 boot confirmation, rollback, console commands, MQTT triggers, and reboot policy
 remain follow-up slices.

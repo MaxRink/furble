@@ -1,7 +1,5 @@
 # 34 - OTA updates and the partition scheme change that enables them
 
-Status: implemented on master (archived 2026-11-03).
-
 Upstream issue: [#248 WIFI feature](https://github.com/gkoh/furble/issues/248),
 which lists OTA updates under optional quality of life features.
 

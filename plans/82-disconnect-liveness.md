@@ -1,7 +1,5 @@
 # 82 - Disconnect liveness
 
-Status: implemented on master (archived 2026-11-03).
-
 ## Motivation
 
 Hardware testing on the M5StickS3 (during PR #107 work) surfaced two related

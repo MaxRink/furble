@@ -1,7 +1,5 @@
 # PR21 - Position hold when the GPS fix is lost
 
-Status: implemented on master (archived 2026-11-03).
-
 ## Goal
 
 Keep supplying a position to the camera when the GPS fix goes away. Today furble

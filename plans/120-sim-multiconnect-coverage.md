@@ -41,7 +41,7 @@ In scope:
   - A three-camera variant if the fake Control supports it, to prove the
     `i/n` count with n>2.
   - Selection-UI assertions: navigate the multi-connect selection
-    (`plans/implemented/25-multiconnect-ui.md`) and assert the per-camera rows and the
+    (`plans/25-multiconnect-ui.md`) and assert the per-camera rows and the
     connected-count title.
 - **Real-Control panel** (extends `tests/host/control_e2e`):
   - New scenario `multiconnect-survivor-fires`: two real `Camera` targets against
@@ -74,7 +74,7 @@ None. Test-only. Uses the existing `reconnect` and `fauxny` scenario seeds.
 
 ## Dependencies
 
-- `plans/implemented/25-multiconnect-ui.md`, the multi-connect selection UI: landed.
+- `plans/25-multiconnect-ui.md`, the multi-connect selection UI: landed.
 - The real-Control harness (`tests/host/control_e2e`): landed.
 - `plans/implemented/119-companion-gatt-sim.md`: independent; both extend the sim but touch
   different scenarios.

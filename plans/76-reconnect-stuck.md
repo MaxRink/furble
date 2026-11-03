@@ -1,7 +1,5 @@
 # PR76: fast reconnect to a Fujifilm Secure camera stalls in "connecting"
 
-Status: implemented on master (archived 2026-11-03).
-
 ## Status
 
 Fix implemented. The on-device serial capture that was pending has been taken

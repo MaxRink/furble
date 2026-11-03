@@ -72,53 +72,53 @@ state and the remaining gate; the issue stays open until that gate lands.
 
 | Doc | Content |
 |---|---|
-| [12-display-off.md](implemented/12-display-off.md) | True display off, blind remote mode, longer timeouts |
-| [13-auto-off-low-batt.md](implemented/13-auto-off-low-batt.md) | Auto power off, low battery actions |
+| [12-display-off.md](12-display-off.md) | True display off, blind remote mode, longer timeouts |
+| [13-auto-off-low-batt.md](13-auto-off-low-batt.md) | Auto power off, low battery actions |
 
 ## Phase 3: GPS
 
 | Doc | Content |
 |---|---|
 | [14-gps-pcas.md](implemented/14-gps-pcas.md) | $PCAS receiver config: rate, sentences, constellation |
-| [15-gps-power.md](implemented/15-gps-power.md) | GPS duty cycling, light sleep compatible UART |
+| [15-gps-power.md](15-gps-power.md) | GPS duty cycling, light sleep compatible UART |
 
 ## Phase 4: sensors
 
 | Doc | Content |
 |---|---|
-| [16-imu-spirit-level.md](implemented/16-imu-spirit-level.md) | Enable IMU, spirit level page |
-| [17-imu-gestures.md](implemented/17-imu-gestures.md) | Tap and shake wake, double tap shutter |
+| [16-imu-spirit-level.md](16-imu-spirit-level.md) | Enable IMU, spirit level page |
+| [17-imu-gestures.md](17-imu-gestures.md) | Tap and shake wake, double tap shutter |
 | [18-gps-motion.md](18-gps-motion.md) | Motion adaptive GPS |
-| [19-interval-deep-sleep.md](implemented/19-interval-deep-sleep.md) | Deep sleep between intervalometer shots |
+| [19-interval-deep-sleep.md](19-interval-deep-sleep.md) | Deep sleep between intervalometer shots |
 
 ## Phase 5: extended features
 
 | Doc | Content |
 |---|---|
 | [20-imu-hw-motion.md](implemented/20-imu-hw-motion.md) | Hardware motion detection via IMU engines |
-| [21-imu-dead-reckoning.md](implemented/21-imu-dead-reckoning.md) | GPS position hold when fix is lost, bounded hold and extrapolation implemented |
+| [21-imu-dead-reckoning.md](21-imu-dead-reckoning.md) | GPS position hold when fix is lost, bounded hold and extrapolation implemented |
 | [22-ir-remote-trigger.md](implemented/22-ir-remote-trigger.md) | IR shutter trigger (Nikon, Sony, Canon protocols) |
-| [23-feedback-outputs.md](implemented/23-feedback-outputs.md) | Beep, LED, vibration feedback |
+| [23-feedback-outputs.md](23-feedback-outputs.md) | Beep, LED, vibration feedback |
 | [24-sd-gpx-logging.md](implemented/24-sd-gpx-logging.md) | SD card GPX logging and settings backup |
 
 ## Phase 6: usability and robustness
 
 | Doc | Content |
 |---|---|
-| [25-multiconnect-ui.md](implemented/25-multiconnect-ui.md) | Multi-connect selection, Cameras status page |
+| [25-multiconnect-ui.md](25-multiconnect-ui.md) | Multi-connect selection, Cameras status page |
 | [26-pm1-watchdog.md](implemented/26-pm1-watchdog.md) | M5PM1 hardware watchdog, StickS3 lockup recovery |
 | [27-usb-console.md](implemented/27-usb-console.md) | USB serial command console for testing |
-| [76-reconnect-stuck.md](implemented/76-reconnect-stuck.md) | Fast reconnect to Fujifilm Secure stalls in connecting: diagnosis and fix plan |
+| [76-reconnect-stuck.md](76-reconnect-stuck.md) | Fast reconnect to Fujifilm Secure stalls in connecting: diagnosis and fix plan |
 | [28-emulator.md](28-emulator.md) | Host SDL simulator for the furble UI |
-| [29-virtual-test-rig.md](implemented/29-virtual-test-rig.md) | Sim to Android app test rig over TCP, no radio |
+| [29-virtual-test-rig.md](29-virtual-test-rig.md) | Sim to Android app test rig over TCP, no radio |
 | [31-s3-psram.md](31-s3-psram.md) | Enable PSRAM on the M5StickS3 |
 | [32-gps-advanced.md](32-gps-advanced.md) | Advanced GPS support for the GPS/BDS Unit v1.1 |
 | [33-wifi-hub.md](33-wifi-hub.md) | WiFi hub: displayless build, provisioning, MQTT |
-| [34-ota-partitions.md](implemented/34-ota-partitions.md) | OTA updates and the partition scheme change |
+| [34-ota-partitions.md](34-ota-partitions.md) | OTA updates and the partition scheme change |
 | [35-exposure-presets.md](implemented/35-exposure-presets.md) | Exposure time presets in 1/3 stops |
 | [36-camera-test-harness.md](implemented/36-camera-test-harness.md) | Camera protocol test harness: host tests, mock NimBLE, virtual peer |
-| [71-ui-bug-batch.md](implemented/71-ui-bug-batch.md) | UI focus recovery, left escape, connection progress, display-off LED policy |
-| [68-reconnect-after-restart.md](implemented/68-reconnect-after-restart.md) | Graceful camera shutdown and patient reconnect after restart |
+| [71-ui-bug-batch.md](71-ui-bug-batch.md) | UI focus recovery, left escape, connection progress, display-off LED policy |
+| [68-reconnect-after-restart.md](68-reconnect-after-restart.md) | Graceful camera shutdown and patient reconnect after restart |
 | [76-ui-polish.md](implemented/76-ui-polish.md) | Focus ring visible in every theme, simulator theme and board selection for the screenshot matrix |
 
 ## Framework work
@@ -154,7 +154,7 @@ state and the remaining gate; the issue stays open until that gate lands.
 | [139-persistent-time.md](implemented/139-persistent-time.md) | RTC, NVS, GPS, NTP, and companion wall-clock retention policy |
 | [69-flasher-bt-dump.md](69-flasher-bt-dump.md) | Web Serial Capture BT debug dump panel, depends on 68 and PR #76 |
 | [113-per-board-ota-slots.md](implemented/113-per-board-ota-slots.md) | Per-flash-size OTA slots, implemented by PR #167 |
-| [114-provision-parser.md](implemented/114-provision-parser.md) | One-shot provisioning parser and console apply; staged browser transport deferred |
+| [114-provision-parser.md](114-provision-parser.md) | One-shot provisioning parser and console apply; staged browser transport deferred |
 | [114-flasher-provisioning.md](114-flasher-provisioning.md) | Follow-up browser transport for the landed provisioning parser |
 | [115-ota-engine.md](implemented/115-ota-engine.md) | Transport-independent OTA lifecycle, implemented by PR #168 |
 | [115-ota-update-mqtt.md](115-ota-update-mqtt.md) | HTTPS delivery and OTA-over-MQTT follow-up |
@@ -170,7 +170,7 @@ state and the remaining gate; the issue stays open until that gate lands.
 
 | Doc | Content |
 |---|---|
-| [116-companion-password.md](implemented/116-companion-password.md) | Shared-secret gate for privileged companion operations |
+| [116-companion-password.md](116-companion-password.md) | Shared-secret gate for privileged companion operations |
 | [117-sim-mqtt-coverage.md](implemented/117-sim-mqtt-coverage.md) | Host MQTT client and Home Assistant discovery coverage |
 | [118-sim-ethernet-coverage.md](implemented/118-sim-ethernet-coverage.md) | Host Ethernet netif coverage for the transport-neutral MQTT seam |
 | [119-companion-gatt-sim.md](implemented/119-companion-gatt-sim.md) | Companion GATT host coverage, implemented by the companion harness |
@@ -196,7 +196,7 @@ state and the remaining gate; the issue stays open until that gate lands.
 | [153-level-main-menu.md](implemented/153-level-main-menu.md) | Spirit level entry on the main menu, usable without a camera connection |
 | [154-host-flappy-peer-realism.md](implemented/154-host-flappy-peer-realism.md) | Flappy standby peer realism and multi-target disconnect repros in the host harness |
 | [155-sim-ui-liveness.md](155-sim-ui-liveness.md) | Continuous sim liveness invariant and link_lies false-connected coverage |
-| [156-restart-restore-seam.md](implemented/156-restart-restore-seam.md) | Sim restart verb and host Control reset seam, the reboot-lockout reland gate |
+| [156-restart-restore-seam.md](156-restart-restore-seam.md) | Sim restart verb and host Control reset seam, the reboot-lockout reland gate |
 | [157-control-test-sync-points.md](implemented/157-control-test-sync-points.md) | Deterministic interleaving sync points for the control task and the wedge-guard proof test |
 | [158-sim-scheduler-parity.md](158-sim-scheduler-parity.md) | Deterministic unified simulator scheduler and orderly teardown, followed by production connection and calibrated hardware parity |
 | [159-camera-peer-certification.md](159-camera-peer-certification.md) | Capture-backed, fail-closed virtual camera peers and exact feature-level compatibility certification |
@@ -207,13 +207,13 @@ state and the remaining gate; the issue stays open until that gate lands.
 | [163-coverage-floor.md](implemented/163-coverage-floor.md) | Measured host and simulator coverage on all three panels, unioned, published in CI and held by a ratcheting floor |
 | [164-gps-status-detail.md](implemented/164-gps-status-detail.md) | Receiver fix source, sentence age and power cycle state on the GPS Data page, the whole receiver status struct in the console, on a new GPS receiver status accessor |
 | [165-sim-no-touch-layout.md](165-sim-no-touch-layout.md) | Certified per-board simulator coverage of the physical-button layout all three modeled boards ship, plus an indicator-clearance query and the layout gaps it exposes |
-| [166-sim-teardown-livelock.md](implemented/166-sim-teardown-livelock.md) | Simulator boot livelock and teardown disconnect timeout: the M5GFX step-exec false positive, UI-thread scheduler fairness, a host wall-clock stall watchdog with thread dumps, and wall-clock bounds on every scenario |
+| [166-sim-teardown-livelock.md](166-sim-teardown-livelock.md) | Simulator boot livelock and teardown disconnect timeout: the M5GFX step-exec false positive, UI-thread scheduler fairness, a host wall-clock stall watchdog with thread dumps, and wall-clock bounds on every scenario |
 | [167-fujifilm-device-name.md](167-fujifilm-device-name.md) | Fujifilm Secure cameras show the advertised model plus the advertised serial, since the longer camera-menu name is never advertised |
 | [168-notouch-layout-overflows.md](168-notouch-layout-overflows.md) | Close every overflow and indicator collision the physical-button layout ships, promote the recorded gaps to hard assertions, and run the certified set in that layout in CI |
 | [169-flaky-host-tests.md](implemented/169-flaky-host-tests.md) | Three flaky host tests made deterministic: real scheduler waits instead of spin budgets, a registration sync point instead of sleeps, the aborted-connect republish wedge, and a coverage run that fails on a scenario that never finished |
-| [170-control-zombie-connect-cancel.md](implemented/170-control-zombie-connect-cancel.md) | Vendor connect waits honour the plan 148 cancel contract, the interactive teardown cap is logged and honours its bound, and a draining camera is never handed a fresh target that clears its cancel token |
+| [170-control-zombie-connect-cancel.md](170-control-zombie-connect-cancel.md) | Vendor connect waits honour the plan 148 cancel contract, the interactive teardown cap is logged and honours its bound, and a draining camera is never handed a fresh target that clears its cancel token |
 | [171-console-coverage-crash.md](implemented/171-console-coverage-crash.md) | The console suite exits while the control task is still running: stop and join every shim task before static destruction, and a coverage run that names a host test it lost |
-| [172-sim-cancel-sweep.md](implemented/172-sim-cancel-sweep.md) | Simulator reproduction of the 2026-09-04 cancel wedge and a certified cancel sweep: a virtual peer that models the blocking Fujifilm Secure handshake, and cancels at fixed offsets across the connect window for every peer topology and connect entry, each checked against one settle invariant, plus the bench power-off hang and a NimBLE client-pool guard the simulator never had |
+| [172-sim-cancel-sweep.md](172-sim-cancel-sweep.md) | Simulator reproduction of the 2026-09-04 cancel wedge and a certified cancel sweep: a virtual peer that models the blocking Fujifilm Secure handshake, and cancels at fixed offsets across the connect window for every peer topology and connect entry, each checked against one settle invariant, plus the bench power-off hang and a NimBLE client-pool guard the simulator never had |
 | [173-sim-scheduler-visibility.md](173-sim-scheduler-visibility.md) | Scheduler-visible host mutex so virtual time stops tracking host load and the cancel bounds come back, one preferences store per simulated device, and a fatal-fault reporter that names the scenario line |
 | [174-coverage-empty-profiles.md](implemented/174-coverage-empty-profiles.md) | Two host suites that measured nothing under coverage: the control shim adopts the stop-and-join task contract so both exit through main(), a coverage run fails naming a test whose raw profile is empty or missing, the console shim refuses a task created after shutdown, and the ctest summary header is anchored so a failing test cannot fabricate a crash report |
 | [175-coverage-crash-output.md](implemented/175-coverage-crash-output.md) | Failed simulator coverage scenarios retain a bounded output tail so signal diagnostics remain visible in CI |
@@ -235,10 +235,10 @@ document is authoritative over any older summary.
 | Doc | Content |
 | --- | --- |
 | [67-fujifilm-dial-detection.md](67-fujifilm-dial-detection.md) | Fujifilm drive dial detection |
-| [73-pentax-k.md](implemented/73-pentax-k.md) | Pentax K through the Ricoh Imaging BLE family |
-| [74-dji-osmo.md](implemented/74-dji-osmo.md) | DJI Osmo Action BLE remote support |
+| [73-pentax-k.md](73-pentax-k.md) | Pentax K through the Ricoh Imaging BLE family |
+| [74-dji-osmo.md](74-dji-osmo.md) | DJI Osmo Action BLE remote support |
 | [77-battery-saver-profile.md](implemented/77-battery-saver-profile.md) | Battery Saver profile |
-| [82-disconnect-liveness.md](implemented/82-disconnect-liveness.md) | Disconnect liveness |
+| [82-disconnect-liveness.md](82-disconnect-liveness.md) | Disconnect liveness |
 | [83-lifecycle-tests.md](implemented/83-lifecycle-tests.md) | Host regression tests for the connect and disconnect lifecycle |
 | [84-unit-coverage.md](84-unit-coverage.md) | Broader host unit test coverage |
 | [85-sim-e2e.md](implemented/85-sim-e2e.md) | Simulator end-to-end scenarios |
@@ -251,12 +251,12 @@ document is authoritative over any older summary.
 | [98-power-optimization-audit.md](98-power-optimization-audit.md) | Power optimization audit |
 | [98b-power-followup.md](98b-power-followup.md) | GPS degraded lock recovery follow-up |
 | [99-nimble-client-leak.md](implemented/99-nimble-client-leak.md) | NimBLE client leak fix |
-| [100-console-debug.md](implemented/100-console-debug.md) | Console debug dump family |
+| [100-console-debug.md](100-console-debug.md) | Console debug dump family |
 | [100-sim-fault-injection-bughunt.md](100-sim-fault-injection-bughunt.md) | Host fault injection and BLE connect failure hunting |
-| [101-boot-splash.md](implemented/101-boot-splash.md) | Power-on boot splash |
+| [101-boot-splash.md](101-boot-splash.md) | Power-on boot splash |
 | [102-disconnect-freeze.md](102-disconnect-freeze.md) | Disconnect off the UI task |
 | [103-real-control-e2e-harness.md](103-real-control-e2e-harness.md) | Real Control connect/disconnect end-to-end harness |
-| [104-ble-fuzzing.md](implemented/104-ble-fuzzing.md) | Seeded BLE lifecycle fuzzing |
+| [104-ble-fuzzing.md](104-ble-fuzzing.md) | Seeded BLE lifecycle fuzzing |
 | [104-focus-outline-dedup.md](implemented/104-focus-outline-dedup.md) | Single focus ring per selected item |
 | [105-ui-fuzzing.md](implemented/105-ui-fuzzing.md) | Seeded UI fuzzer |
 | [106-flash-size-optimization.md](106-flash-size-optimization.md) | Flash size optimization |
@@ -270,7 +270,7 @@ document is authoritative over any older summary.
 | [118-sim-mqtt-transport.md](implemented/118-sim-mqtt-transport.md) | Optional simulator MQTT transport |
 | [126-esp-optimization-audit.md](126-esp-optimization-audit.md) | ESP-IDF optimization and reproducibility audit |
 | [127-apple-companion.md](127-apple-companion.md) | Apple companion foundation |
-| [127-reproducible-builds.md](implemented/127-reproducible-builds.md) | Reproducible firmware builds |
+| [127-reproducible-builds.md](127-reproducible-builds.md) | Reproducible firmware builds |
 | [129-m5-dependencies-idf55.md](implemented/129-m5-dependencies-idf55.md) | M5 dependency compatibility slice |
 | [130-espressif32-613-idf553.md](implemented/130-espressif32-613-idf553.md) | Espressif32 6.13.0 and ESP-IDF 5.5.3 |
 | [141-ci-manual-dispatch.md](implemented/141-ci-manual-dispatch.md) | Reliable manual firmware CI |
@@ -288,8 +288,8 @@ document is authoritative over any older summary.
 | [65-bt-coexistence.md](65-bt-coexistence.md) | Classic BT feasibility, WiFi+BLE coexistence for hub mode |
 | [64-debug-tooling.md](64-debug-tooling.md) | Expanded debug tooling: power stats, performance monitoring, BT debug console |
 | [67-bulb-ux.md](implemented/67-bulb-ux.md) | Bulb completion state, restart action, and camera mode hint |
-| [66-pairing-code-display.md](implemented/66-pairing-code-display.md) | Camera pairing code on the furble display and console |
-| [70-text-scaling.md](implemented/70-text-scaling.md) | UI text size setting per board, layout audit walker |
+| [66-pairing-code-display.md](66-pairing-code-display.md) | Camera pairing code on the furble display and console |
+| [70-text-scaling.md](70-text-scaling.md) | UI text size setting per board, layout audit walker |
 | [72-lumix.md](72-lumix.md) | Panasonic Lumix BLE support port, untested |
 | [90-scheduled-shooting.md](90-scheduled-shooting.md) | Deferred: scheduled shooting via RTC alarm |
 | [91-mic-trigger.md](91-mic-trigger.md) | Deferred: sound triggered shutter |

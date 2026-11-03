@@ -14,7 +14,7 @@ measurements. Plan 158 still gates any absolute claim.
 Read for this lane:
 
 - `plans/98-power-optimization-audit.md`, `plans/98b-power-followup.md`
-- `plans/implemented/12-display-off.md`, `plans/63-sim-power-analysis.md`,
+- `plans/12-display-off.md`, `plans/63-sim-power-analysis.md`,
   `plans/implemented/77-battery-saver-profile.md`, `plans/111-power-recommendations.md`,
   `plans/285-power-accounting.md`
 - `src/FurbleUI.cpp`, `src/FurblePower.cpp`, `src/FurblePlatform.cpp`,
@@ -472,7 +472,7 @@ absolute model.
 - Effort: medium.
 - Required test: touch controller current in monitor mode versus idle; tap
   wake from panel off; 24 hour soak; calibration retained.
-- Citation: `plans/implemented/12-display-off.md:121-124`, `src/FurbleUI.cpp:1416-1428`,
+- Citation: `plans/12-display-off.md:121-124`, `src/FurbleUI.cpp:1416-1428`,
   `src/FurbleUI.cpp:1294-1348`.
 
 ### D-014 Stop the LEDC timer when the backlight is zero
@@ -725,7 +725,7 @@ behavior change. The 500 ms connected liveness poll is already gentle.
 
 ### Furble plans
 
-- `plans/implemented/12-display-off.md`
+- `plans/12-display-off.md`
 - `plans/63-sim-power-analysis.md`
 - `plans/implemented/77-battery-saver-profile.md`
 - `plans/98-power-optimization-audit.md`

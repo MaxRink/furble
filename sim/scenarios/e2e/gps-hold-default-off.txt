@@ -6,7 +6,7 @@
 # is the guard for that: it counts every object on the page that is not hidden,
 # so a row that leaked into a default build changes the count. The number is
 # master's, measured with the same script against a sim built from
-# fork/master 6245a301 (see plans/implemented/21-imu-dead-reckoning.md).
+# fork/master 6245a301 (see plans/21-imu-dead-reckoning.md).
 #
 # When the receiver goes quiet the geotag stream simply stops, as it always did.
 #

@@ -1467,10 +1467,10 @@ Repository documents:
 - `plans/158-sim-scheduler-parity.md`
 - `plans/00-hardware-experiments.md`
 - `plans/63-sim-power-analysis.md`
-- `plans/implemented/12-display-off.md`
-- `plans/implemented/13-auto-off-low-batt.md`
-- `plans/implemented/15-gps-power.md`
-- `plans/implemented/19-interval-deep-sleep.md`
+- `plans/12-display-off.md`
+- `plans/13-auto-off-low-batt.md`
+- `plans/15-gps-power.md`
+- `plans/19-interval-deep-sleep.md`
 - `plans/implemented/26-pm1-watchdog.md`
 - `plans/32-gps-advanced.md`
 - `plans/implemented/77-battery-saver-profile.md`

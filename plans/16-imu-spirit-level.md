@@ -1,7 +1,5 @@
 # PR16 - Enable the IMU and add a spirit level
 
-Status: implemented on master (archived 2026-11-03).
-
 ## Goal
 
 Turn on the on-board IMU and use it. Add a spirit level page on the Connected

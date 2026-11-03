@@ -1,7 +1,5 @@
 # PR15 - GPS power duty cycling and light sleep compatible UART
 
-Status: implemented on master (archived 2026-11-03).
-
 ## Goal
 
 Stop GPS from blocking light sleep on the S3, and add optional receiver duty

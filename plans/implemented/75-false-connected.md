@@ -209,7 +209,7 @@ A second reconnect blocker found in the same bench session lives in the saved
 scan itself, not in the registration gate: the SAVED-scan matcher rejected a
 Secure-service-only advertisement, so the reconnect never even reached the
 gate. That fix and its regression test are recorded in
-plans/implemented/76-reconnect-stuck.md under "Deviation: saved-scan match never fires
+plans/76-reconnect-stuck.md under "Deviation: saved-scan match never fires
 when the camera advertises only the Secure service (2026-08-28)".
 
 ## Deviation: empty saved-camera selection reports ACTIVE (2026-09-07)

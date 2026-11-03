@@ -1,7 +1,5 @@
 # DJI Osmo Action BLE remote support
 
-Status: implemented on master (archived 2026-11-03).
-
 ## Motivation
 
 The camera compatibility survey ranks DJI Osmo Action 4 and newer as a high-value

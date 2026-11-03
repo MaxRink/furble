@@ -1,6 +1,6 @@
 # 113 - Per-board OTA slot sizing for boards with spare flash
 
-Status: implemented by PR #167. Extends `plans/implemented/34-ota-partitions.md`, which
+Status: implemented by PR #167. Extends `plans/34-ota-partitions.md`, which
 landed the uniform two-slot layout. This document records the per-flash-size
 follow-up that is now on fork/master.
 
@@ -11,7 +11,7 @@ residual hardware step, a real non-destructive reflash, remains with Claude.
 
 ## Motivation
 
-`plans/implemented/34-ota-partitions.md` moved all five environments to the stock
+`plans/34-ota-partitions.md` moved all five environments to the stock
 `partitions_two_ota_large.csv`, a single uniform layout with two 1700K app
 slots. That was the right first move: one layout, one ceiling, one migration,
 and it is already in `platformio.ini:11` on fork master today. Section "Per
@@ -38,7 +38,7 @@ and MQTT track fits with real headroom.
 
 - `platformio.ini:11`, shared `[env]`:
   `board_build.partitions = partitions_two_ota_large.csv`. All envs share it.
-- Per-board flash (from `plans/implemented/34-ota-partitions.md`, cross-checked against the
+- Per-board flash (from `plans/34-ota-partitions.md`, cross-checked against the
   board defs): `m5stick-c` 4 MB, `m5stick-c-plus` 4 MB (this env ships the same
   binary to Plus, Plus2 and Plus SE, so 4 MB is binding), `m5stack-core` 4 MB,
   `m5stack-core2` 16 MB, `m5stick-s3` 8 MB. The task brief's "S3 = 16 MB" is
@@ -114,7 +114,7 @@ and enlarge the slot only on the two boards that have the flash.
 
 ## Dependencies
 
-- `plans/implemented/34-ota-partitions.md` (PR34a-1): landed. This doc edits the layout it
+- `plans/34-ota-partitions.md` (PR34a-1): landed. This doc edits the layout it
   established.
 - Enables `plans/33-wifi-hub.md` PR33c and `plans/implemented/42-waveshare-eth-node.md` to
   use the S3 and Core2 headroom. The WiFi+MQTT+TLS image still needs a measured

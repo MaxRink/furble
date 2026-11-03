@@ -1,7 +1,5 @@
 # 29 - virtual test rig: SDL simulator plus Android emulator
 
-Status: implemented on master (archived 2026-11-03).
-
 Implementation state: Phase 1 is implemented on branch feat/29-golden-payloads.
 tests/protocol/ now contains a clang host suite, a C++ generator compiled
 against include/FurbleCompanion.h, 159 checked-in binary fixtures, and JSON
@@ -20,7 +18,7 @@ through Phase 6.
 
 Run the furble companion feature end to end with no hardware in the room. The
 firmware side is the SDL host simulator from
-[28-emulator.md](../28-emulator.md). The phone side is the Android companion app
+[28-emulator.md](28-emulator.md). The phone side is the Android companion app
 from `companion/android`, running in an Android emulator. The two talk over a
 local TCP socket that carries the same application payloads the GATT service
 carries over the air.
@@ -41,7 +39,7 @@ Kotlin object, and nothing checks that the two copies agree.
 
 They already do not agree. `FurbleProtocol.SERVICE_UUID` in the app is
 `00000001-6675-7262-6c65-e0d1c2b3a495`, which is the placeholder from
-[50-companion-app-design.md](../50-companion-app-design.md) section 3.2. The
+[50-companion-app-design.md](50-companion-app-design.md) section 3.2. The
 firmware froze a real base with `uuidgen`, and
 `Companion::SERVICE_UUID` is `b57f4f5e-087b-4740-b71d-8262cf26ebbc`. Over the
 air the app would scan, filter on a service UUID that no furble advertises, and
@@ -234,7 +232,7 @@ as a CCCD write.
 Connection lifecycle maps one to one. TCP accept is BLE connect. Exactly one
 connection is accepted at a time, and a second connect attempt is closed
 immediately, which mirrors the one companion rule from
-[50-companion-app-design.md](../50-companion-app-design.md) section 7. TCP close or
+[50-companion-app-design.md](50-companion-app-design.md) section 7. TCP close or
 reset is BLE disconnect, and it drives `releaseHeldCommands` the same way.
 
 ### What pairing becomes
@@ -746,11 +744,11 @@ performed.
 
 ## Relationship to other plans
 
-- [28-emulator.md](../28-emulator.md) phase A is a hard prerequisite for phase 3,
+- [28-emulator.md](28-emulator.md) phase A is a hard prerequisite for phase 3,
   and this document requests the GPS revision described in Risks.
-- [28-emulator.md](../28-emulator.md) phase B provides the virtual clock and the
+- [28-emulator.md](28-emulator.md) phase B provides the virtual clock and the
   screenshot capture that scenarios 1, 2 and 5 need.
-- [50-companion-app-design.md](../50-companion-app-design.md) is the protocol
+- [50-companion-app-design.md](50-companion-app-design.md) is the protocol
   contract. Section 3 defines every payload the rig carries. Section 7 defines
   everything the rig cannot test.
 - The firmware GATT PR on `feat/50-gatt-service` must land before phase 2, since
@@ -759,7 +757,7 @@ performed.
 - Section 8 item 2 of the design document calls for a protocol document under
   `docs/`. Phase 1's generated UUID and struct definitions should be that
   document's source, so the contract and the test corpus cannot disagree.
-- [27-usb-console.md](27-usb-console.md) is unrelated but complementary. The
+- [27-usb-console.md](implemented/27-usb-console.md) is unrelated but complementary. The
   console drives the firmware from the host over USB. The rig drives it from a
   phone over a socket. Both are automation surfaces and neither replaces the
   other.

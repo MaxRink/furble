@@ -1,7 +1,5 @@
 # PR25: multi-connect selection and a Cameras status page
 
-Status: implemented on master (archived 2026-11-03).
-
 ## Goal
 
 Make Multi-Connect legible. Fix the camera selection flow so it takes fewer

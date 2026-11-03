@@ -1,7 +1,5 @@
 # PR23 - Audible, visual and haptic feedback
 
-Status: implemented on master (archived 2026-11-03).
-
 ## Goal
 
 Tell the user something happened without looking at the screen. Beep on shutter,

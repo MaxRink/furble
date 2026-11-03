@@ -128,7 +128,7 @@ explicit, one virtual `Camera::autoAcceptPairing()` defaulting to false:
 - **DJI Osmo**: keeps auto-accept, declared in `lib/furble/DJIOsmo.h` with its
   source. DJI's own reference implementation, the
   [Osmo-GPS-Controller-Demo](https://github.com/dji-sdk/Osmo-GPS-Controller-Demo)
-  this vendor was built from (plans/implemented/74-dji-osmo.md), never calls
+  this vendor was built from (plans/74-dji-osmo.md), never calls
   `esp_ble_gap_set_security_param`, sets no IO capability and no `ESP_LE_AUTH_*`
   requirement, and issues every GATT operation with `ESP_GATT_AUTH_REQ_NONE`
   ([ble/ble.c](https://github.com/dji-sdk/Osmo-GPS-Controller-Demo/blob/main/ble/ble.c)).

@@ -193,21 +193,21 @@ are named.
 | `plans/implemented/09-reconnect-backoff.md` | Backoff bounds | BLE |
 | `plans/10-adaptive-conn-params.md` | Idle profile and hardware verification | BLE, Board |
 | `plans/11-adaptive-tx-power.md` | TX power policy | BLE, Board |
-| `plans/implemented/12-display-off.md` | Display states, APB lock, PMIC backlight paths | Display, SoC, Board |
-| `plans/implemented/13-auto-off-low-batt.md` | Auto-off and low-battery policy | Board, SoC |
+| `plans/12-display-off.md` | Display states, APB lock, PMIC backlight paths | Display, SoC, Board |
+| `plans/13-auto-off-low-batt.md` | Auto-off and low-battery policy | Board, SoC |
 | `plans/implemented/14-gps-pcas.md` | PCAS02/03/04/10 definitions, no PCAS00 | GPS/IMU |
-| `plans/implemented/15-gps-power.md` | Burst window, UART wake limitation, standby versus rail cycling, 15 s duty ceiling | GPS/IMU, SoC |
-| `plans/implemented/17-imu-gestures.md` | Gesture thresholds, the 25 Hz tap tradeoff, and the hardware tuning gate | GPS/IMU |
+| `plans/15-gps-power.md` | Burst window, UART wake limitation, standby versus rail cycling, 15 s duty ceiling | GPS/IMU, SoC |
+| `plans/17-imu-gestures.md` | Gesture thresholds, the 25 Hz tap tradeoff, and the hardware tuning gate | GPS/IMU |
 | `plans/18-gps-motion.md` | Motion detector phase 1, no consumer, 60 s hold, blind spots | GPS/IMU |
-| `plans/implemented/19-interval-deep-sleep.md` | Interval deep sleep design and exclusions | SoC, Board |
-| `plans/implemented/21-imu-dead-reckoning.md` | Position hold when the fix is lost; defines the 30 s `MAX_AGE_MS` freshness budget | GPS/IMU |
+| `plans/19-interval-deep-sleep.md` | Interval deep sleep design and exclusions | SoC, Board |
+| `plans/21-imu-dead-reckoning.md` | Position hold when the fix is lost; defines the 30 s `MAX_AGE_MS` freshness budget | GPS/IMU |
 | `plans/implemented/26-pm1-watchdog.md` | PM1 watchdog, feed cadence, `SLP_TO` readback, deep-sleep conflict | SoC, Board |
 | `plans/32-gps-advanced.md` | Autobaud, AID-INI, ephemeris replay, MON-HW, unverified receiver items | GPS/IMU |
 | `plans/33-wifi-hub.md` | Wi-Fi hub design; station power figures; no OTA while connected | Wi-Fi |
 | `plans/implemented/42-waveshare-eth-node.md` | Waveshare node policy, including the fixed-frequency claim | Board |
 | `plans/63-sim-power-analysis.md` | Simulator energy model design | Display, Measurement |
 | `plans/65-bt-coexistence.md` | Coexistence recommendations and field data | BLE, Wi-Fi, Board |
-| `plans/implemented/71-ui-bug-batch.md` | StickS3 LED handling | Board |
+| `plans/71-ui-bug-batch.md` | StickS3 LED handling | Board |
 | `plans/implemented/77-battery-saver-profile.md` | Battery Saver bundle | BLE, SoC, Board |
 | `plans/95-engineering-lessons.md` | Engineering lessons cited by the Board lane | Board |
 | `plans/96-wifi-bt-ble-hardening.md` | BLE and Wi-Fi hardening inventory | BLE, Wi-Fi, Board |

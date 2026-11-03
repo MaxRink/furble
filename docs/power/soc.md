@@ -465,7 +465,7 @@ This is a documentation and build consistency item, not a separate power lever.
 - **Effort:** Large.
 - **Required test:** 100 wake cycles, corrupt state, missed frame, USB recovery,
   PM1 watchdog armed and disarmed, and an analyzer run across a full timelapse.
-- **Citation:** `plans/implemented/19-interval-deep-sleep.md` (implemented;
+- **Citation:** `plans/19-interval-deep-sleep.md` (implemented;
   hardware wake-cycle gate remains), `plans/98:290-297`,
   `plans/26:284-291`.
 
@@ -1236,10 +1236,10 @@ result. A null result is a valid result.
 - `plans/implemented/01-cpu-freq-setting.md`: CPU frequency setting and its risks.
 - `plans/implemented/06-power-module.md`: lock design and the no-manual-sleep rule.
 - `plans/implemented/07-ble-sleep.md`: modem sleep and per-board floors.
-- `plans/implemented/12-display-off.md`: display states, APB lock, PMIC backlight paths.
-- `plans/implemented/13-auto-off-low-batt.md`: charging lock and power-off policy.
-- `plans/implemented/15-gps-power.md`: GPS burst lock, duty limits, UART clock.
-- `plans/implemented/19-interval-deep-sleep.md`: deep sleep between interval frames.
+- `plans/12-display-off.md`: display states, APB lock, PMIC backlight paths.
+- `plans/13-auto-off-low-batt.md`: charging lock and power-off policy.
+- `plans/15-gps-power.md`: GPS burst lock, duty limits, UART clock.
+- `plans/19-interval-deep-sleep.md`: deep sleep between interval frames.
 - `plans/implemented/26-pm1-watchdog.md`: PM1 watchdog, feed cadence, `SLP_TO`, deep sleep
   conflict.
 - `plans/implemented/27-usb-console.md`: console transport and USJ light sleep behavior.

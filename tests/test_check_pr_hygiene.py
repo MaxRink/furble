@@ -148,7 +148,7 @@ class AbsolutePathTest(unittest.TestCase):
 
   def test_backticked_evidence_in_plans_and_docs_is_allowed(self):
     diff = join_diffs(
-        make_diff("plans/implemented/13-auto-off-low-batt.md",
+        make_diff("plans/13-auto-off-low-batt.md",
                   ["  `" + USERS_ROOT + "alice/git/furble/.pio` absent."]),
         make_diff("docs/power.md",
                   ["Evidence: `" + PRIVATE_ROOT + "ab/T/report.json`."]),

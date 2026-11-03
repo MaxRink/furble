@@ -1,7 +1,5 @@
 # UI bug batch
 
-Status: implemented on master (archived 2026-11-03).
-
 ## Motivation
 
 Hardware testing found several input and feedback failures in the LVGL UI:

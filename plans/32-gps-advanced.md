@@ -535,9 +535,9 @@ Read these first. This document does not repeat them.
 | Doc | Covers | Status |
 |---|---|---|
 | `plans/implemented/14-gps-pcas.md` | `$PCAS02` rate, `$PCAS03` sentence pruning, `$PCAS04` constellation, NMEA checksum builder, `sendCommand`, raw NMEA ring buffer, `$PCAS10` restart button | Implemented on `feat/14-gps-pcas`, upstream PR #303 |
-| `plans/implemented/15-gps-power.md` | Burst windowed light sleep, `UART_SCLK_XTAL`, `$PCAS12` standby, 5 V rail cycling | Implemented |
+| `plans/15-gps-power.md` | Burst windowed light sleep, `UART_SCLK_XTAL`, `$PCAS12` standby, 5 V rail cycling | Implemented |
 | `plans/18-gps-motion.md` | IMU stationary detection selecting a PR15 power policy | Planned |
-| `plans/implemented/21-imu-dead-reckoning.md` | Last known fix hold, timestamp advance, extrapolation | Implemented |
+| `plans/21-imu-dead-reckoning.md` | Last known fix hold, timestamp advance, extrapolation | Implemented |
 | `plans/00-hardware-experiments.md` | Experiment B: V_BCKP presence and `$PCAS12` support | Experiment A done, B pending |
 | `plans/implemented/27-usb-console.md` | USB console, `gps send` command | Implemented |
 
@@ -1138,7 +1138,7 @@ drive to the location, which is exactly the furble use case. Size is small: 32
 satellites at 72 bytes of payload plus 10 bytes of framing is about 2.6 kB,
 which fits an NVS blob.
 
-This matters more than it looks because of `plans/implemented/15-gps-power.md` and
+This matters more than it looks because of `plans/15-gps-power.md` and
 Experiment B. The Unit GPS v1.1 has no backup battery and no V_BCKP pin, and
 the AT6558 datasheet is explicit that without VDD_BK the RTC and backup RAM stop
 and "the hot start function will fail". If Experiment B confirms that, every 5 V
@@ -1492,7 +1492,7 @@ unplanned. This is the complete residue.
 | Configuring `CFG-TP` 1PPS | The pin is not on the Grove connector. |
 | Exposing `minCNO`, `minElev` and the DOP limits as settings | Unreasonable to tune without a sky view analyser, and every value can make fixes worse. Read only. |
 | A hardcoded assistance download URL in furble | The only known source is a third party watch vendor's server, reached through someone else's mirror, with a stated daily quota. Not furble's to consume. |
-| Accelerometer aided ephemeris prediction | Not a thing. Rejected in `plans/implemented/21-imu-dead-reckoning.md` for position; there is no sensor path to orbital elements. |
+| Accelerometer aided ephemeris prediction | Not a thing. Rejected in `plans/21-imu-dead-reckoning.md` for position; there is no sensor path to orbital elements. |
 | Setting the receiver's platform automatically from GPS speed rather than the IMU | Circular. The receiver's speed estimate is an output of the model being selected. PR18's IMU is an independent source. |
 
 ## Dependencies

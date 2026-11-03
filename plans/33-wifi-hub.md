@@ -245,7 +245,7 @@ Note it in the PR body as known missing, and make PR33c depend on it.
 
 ### Runtime toggle mechanics
 
-`CONSOLE` mode should do the same thing `plans/implemented/12-display-off.md` calls true
+`CONSOLE` mode should do the same thing `plans/12-display-off.md` calls true
 display off, not merely set brightness to zero. `src/FurbleUI.cpp:2100`, inside
 `UI::processInactivity`, only calls `M5.Display.setBrightness(m_MinimumBrightness)`,
 which leaves the panel powered.
@@ -279,7 +279,7 @@ Measure it, do not estimate it. The S3 release binary today is 1,034,256 bytes
 bytes, a large part of that being the `icons` component and LVGL font data.
 Report `pio run -e m5stick-s3 -t size` against
 `pio run -e esp32-s3-headless -t size` in the PR body. The number matters for
-`plans/implemented/34-ota-partitions.md`, which has to fit two app slots in flash.
+`plans/34-ota-partitions.md`, which has to fit two app slots in flash.
 
 ## Risks
 
@@ -340,7 +340,7 @@ sends.
 Rebase notes:
 
 - `DISPLAY_MODE` is assigned wire_id 36, continuing after `FB_VOLUME` (35)
-- `DISPLAY_MODE` is assigned wire_id 36, continuing after the feedback reservations 33 to 35 recorded in plans/implemented/23-feedback-outputs.md
+- `DISPLAY_MODE` is assigned wire_id 36, continuing after the feedback reservations 33 to 35 recorded in plans/23-feedback-outputs.md
   from PR 30. The table row keeps the `FURBLE_NO_DISPLAY` guard. The
   `feat/21-dead-reckoning` branch provisionally used 36 for `GPS_EXTRAP`;
   this PR is ahead in the queue, so `DISPLAY_MODE` keeps 36 and
@@ -605,7 +605,7 @@ BLE reliability. That is the point.
 `WIFI_PSK` in plaintext NVS is the same trust level as the BLE bonding keys
 already stored there. Say so in the PR body. Do not add NVS encryption in this
 PR. It is a separate decision that affects the migration in
-`plans/implemented/34-ota-partitions.md`.
+`plans/34-ota-partitions.md`.
 
 ## Menu placement
 
@@ -735,7 +735,7 @@ dumps raw NVS.
   bug and it cannot be engineered away. It can only be defaulted off and
   documented, which is what this PR does.
 - Flash and RAM cost. See the budget section below. This is the risk that
-  interacts with `plans/implemented/34-ota-partitions.md` and it needs a measured number
+  interacts with `plans/34-ota-partitions.md` and it needs a measured number
   before 34 can size its app slots.
 - `std::string` load and save specialisations are new in `Settings`. Get the
   length handling wrong and a 63 character passphrase corrupts NVS. Test at the
@@ -1292,7 +1292,7 @@ publishes to it, and costs one subscription.
 | REST API | deferred, PR33d, unchanged |
 | NTP sync | PR33b |
 | Location parser for devices lacking GPS | `cmd/location` topic above, HA side pushes, no OSM client on device |
-| OTA updates | `plans/implemented/34-ota-partitions.md` |
+| OTA updates | `plans/34-ota-partitions.md` |
 
 The maintainer named MQTT as the first target in
 [#248 comment 3843927598](https://github.com/gkoh/furble/issues/248#issuecomment-3843927598).
@@ -1399,7 +1399,7 @@ allocation and Bluetooth time slices are adjusted down.
    fourteen. If a scan is genuinely needed, refuse it while `Control::getState()`
    is `STATE_ACTIVE` and tell the user why.
 2. **Never run OTA while a camera is connected.** A firmware download saturates
-   the radio for a minute or more. `plans/implemented/34-ota-partitions.md` makes this a
+   the radio for a minute or more. `plans/34-ota-partitions.md` makes this a
    hard precondition, not advice.
 3. **Keep the existing connection parameters.** They are already coexistence
    friendly and nothing in this document should change them. If
@@ -1525,7 +1525,7 @@ assumption in either direction.
 
 ## Interaction with plans/34
 
-`plans/implemented/34-ota-partitions.md` sizes OTA app slots at 1700K, which is 1,740,800
+`plans/34-ota-partitions.md` sizes OTA app slots at 1700K, which is 1,740,800
 bytes. Against the current largest image of 1,037,728 bytes that is 686 KB of
 headroom. WiFi plus lwIP plus MQTT plus TLS plus the certificate bundle is
 plausibly most of it.
