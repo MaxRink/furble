@@ -449,8 +449,9 @@ esp_power_level_t Settings::load<esp_power_level_t>(type_t type) {
       return ESP_PWR_LVL_P6;
     case 2:
       return ESP_PWR_LVL_P9;
+    default:
+      return ESP_PWR_LVL_P3;
   }
-  return ESP_PWR_LVL_P3;
 }
 
 template <>

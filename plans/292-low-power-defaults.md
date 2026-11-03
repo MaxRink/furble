@@ -30,7 +30,9 @@ this is not a migration and does not rewrite user choices.
   and the Core Basic display exception.
 - `settings_nvs_roundtrip_test` also seeds legacy Never/Dim/Sleep-off values,
   reruns init, and proves they are preserved.
-- Full host CTest: 128/128.
+- Full host CTest: 143/143 after the rebase onto the static-analysis gate.
+- Static analysis: PASS. The power-level load path now returns a default
+  instead of falling out of its switch.
 - Certified power-gate scenarios: PASS after refreshing the
   `blind-remote-shutter` baseline. The intended default change moves that
   scenario from 43.65 mA to 4.45 mA because the connected screen-off state now
