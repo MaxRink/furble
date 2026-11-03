@@ -95,7 +95,7 @@ v4.2 feature. Do not ship a blind `$PCAS15` mask: a wrong mask can disable GPS.
 | 4 | Split settings reload | Avoids re-acquisition on hold/power/duty writes | Low | Host now |
 | 5 | Rate/baud consistency guard | Prevents a configuration the UART cannot carry | Low | Host settings test |
 | 6 | Fix-aware backoff (P-084) | Up to ~28 mA during a no-fix episode | Medium | Opt-in now; G07 degraded backoff |
-| 7 | Motion consumer (P-085) | 15-22 mA while stationary, modelled | High | Plan 18 gate + E38 |
+| 7 | Motion consumer (P-085) | 15-22 mA while stationary, modelled | High | Plan 18 motion-pattern gate + E38; steady motion may read stationary |
 | 8 | 30/60 s duty with hold | Up to ~19 mA of the 23 mA GPS budget | Medium-high | After 1 and 3; G05 current + G-06 long-duty experiment |
 | 9 | Receiver identity and GST | Unlocks version-gated accuracy work | Medium | Bench `$PCAS06` first |
 
@@ -122,8 +122,10 @@ distinction matters.
 - **E29**: a fresh NVS boot fixes with no user action; 9600 still locks; an
   absent unit reaches absent.
 - **E32**: prune reduces character rate without losing the fix.
-- **E38 + plan 18 gate**: motion state is correct and never reports stationary
-  while moving.
+- **E38 + plan 18 gate**: motion state is correct at rest and through the plan
+  18 motion pattern. The detector is a heuristic, so a steady cruise may read
+  stationary; the gate bounds false-stationary windows and checks the first
+  fix and geotag after each transition, rather than claiming none.
 - Outdoor threshold calibration for the quality gate.
 
 ## Bottom line
