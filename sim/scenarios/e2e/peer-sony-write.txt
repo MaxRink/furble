@@ -1,0 +1,49 @@
+# Sony write path: little-endian FF01 opcodes.
+#
+# A press writes the two-byte opcode 0x0901, a release 0x0801, focus down 0x0701
+# and focus up 0x0601, all little-endian on FF01. The Sony peer refuses those
+# four values by default because only the firmware table confirms FF01 and the
+# opcode parser was never recovered, but it still journals each write, so this
+# scenario certifies the payload Furble emits, not camera acceptance. Evidence:
+# lib/furble/Sony.h and the allow_unproven_ff01 gate in SonyVirtualCamera.
+seed ble_peers sony
+seed ble_saved true
+seed ble_client_selfdelete true
+wait 300
+assert ble.peers 1
+assert ble.saved_cameras 1
+
+# The Sony connect writes nothing, so the journal starts empty.
+action connect
+assert-eventually-virtual 20000 control.state active
+assert control.connected 1
+assert-eventually-virtual 3000 ui.connected yes
+assert ui.capability_focus yes
+assert ble.peer.0.writes 0
+
+action shutter
+wait 200
+assert-eventually-virtual 1000 camera.shutter_presses 1
+assert-eventually-virtual 1000 camera.shutter_releases 1
+assert camera.focus_presses 0
+assert-eventually-virtual 1000 ble.peer.0.writes 2
+assert ble.peer.0.writes 2
+assert ble.peer.0.last_write 0108
+
+action button-mode one-button
+action main-press-hold
+wait 200
+assert-eventually-virtual 1000 camera.focus_presses 1
+assert-eventually-virtual 1000 camera.focus_releases 1
+assert-eventually-virtual 1000 ble.peer.0.writes 4
+assert ble.peer.0.writes 4
+assert ble.peer.0.last_write 0106
+
+action disconnect
+assert-eventually-virtual 5000 control.state idle
+assert control.connected 0
+assert control.targets 0
+assert-eventually-virtual 3000 control.zombies 0
+assert-eventually-virtual 3000 ble.live_clients 0
+assert-eventually-virtual 3000 ui.connected no
+exit

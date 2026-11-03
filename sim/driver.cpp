@@ -1330,6 +1330,49 @@ std::string queryValue(const std::string &key) {
   if (key == "ble.peers") {
     return std::to_string(blePeerCount());
   }
+  if (prefixed("ble.peer.")) {
+    // Per-peer write observability: `ble.peer.<n>.writes` is the journal count
+    // and `ble.peer.<n>.last_write` is its final payload as lowercase hex
+    // without separators. `<n>` is the seeded topology registration order, so
+    // a scenario asserts the far end of a shutter or focus path without the
+    // driver knowing any vendor's payload layout.
+    const std::string sub = key.substr(std::char_traits<char>::length("ble.peer."));
+    const size_t dot = sub.find('.');
+    if (dot == std::string::npos) {
+      std::cerr << "Peer write assert needs <index>.writes or <index>.last_write\n";
+      requestExit(2);
+      return "";
+    }
+    const std::string indexText = sub.substr(0, dot);
+    const std::string field = sub.substr(dot + 1);
+    size_t parsed = 0;
+    size_t index = 0;
+    try {
+      if (indexText.empty() || indexText[0] == '+' || indexText[0] == '-') {
+        throw std::invalid_argument("empty or signed index");
+      }
+      const unsigned long value = std::stoul(indexText, &parsed, 10);
+      if (parsed != indexText.size()) {
+        throw std::invalid_argument("trailing index");
+      }
+      index = static_cast<size_t>(value);
+    } catch (const std::exception &) {
+      std::cerr << "Invalid peer write index: " << indexText << '\n';
+      requestExit(2);
+      return "";
+    }
+    if (field != "writes" && field != "last_write") {
+      std::cerr << "Unknown peer write field: " << field << '\n';
+      requestExit(2);
+      return "";
+    }
+    size_t count = 0;
+    std::string lastWrite;
+    if (!blePeerWriteStats(index, &count, &lastWrite)) {
+      return "";
+    }
+    return field == "writes" ? std::to_string(count) : lastWrite;
+  }
   if (key == "ble.unmatched_peers") {
     return std::to_string(bleUnmatchedPeerCount());
   }

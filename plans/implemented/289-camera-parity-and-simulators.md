@@ -49,6 +49,15 @@ Completed in this branch:
   packet and read back once.
 - LUMIX sends the GPS stop packet (fix `0x56`, sentinel coordinates) on
   disconnect before Finish.
+- Per-vendor simulator write matrix: `ble.peer.<n>.writes` and
+  `ble.peer.<n>.last_write` expose each peer's existing `writes()` journal
+  through one template reader in `sim/BleSim.cpp`, so the scenario driver stays
+  vendor-neutral. Ten certified `sim/scenarios/e2e/peer-*` scenarios connect
+  the seeded peer through the real UI, fire the shutter or focus gesture the
+  vendor supports, assert the exact journal count and final payload at the
+  camera, then disconnect and assert the link is down. Nikon Smart has its own
+  gate scenario: pairing stops at the BLE authentication result, so the
+  certified claim is that no camera command follows.
 
 ## Evidence
 
@@ -77,6 +86,8 @@ Completed in this branch:
   vector.
 - `sim/scenarios/e2e/ricoh-capability-gating.txt` and
   `lumix-capability-gating.txt` pass and assert the disabled controls.
+- The nine `peer-*-write.txt` scenarios and `peer-nikon-smart-gate.txt` pass on
+  the M5StickC, M5StickS3 and M5Stack Core panel builds.
 - `python3 -m unittest`: 192 tests pass.
 - `./sim/build/furble-sim --script sim/scenarios/e2e/ble-peer-topology-smoke.txt`:
   pass, asserts 9 peers.

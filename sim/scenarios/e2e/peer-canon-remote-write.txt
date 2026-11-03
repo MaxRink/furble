@@ -1,0 +1,49 @@
+# Canon Remote write path: one-byte control bitfield.
+#
+# A Canon Remote press is 0x8c (shutter plus immediate mode), a release is 0x0c,
+# AF on is 0x4c and AF off reuses the release byte. The peer journals each
+# accepted control write, so the last byte after a release is 0x0c whether it
+# came from the shutter or the focus path; the command counters and the write
+# count separate the two gestures. Evidence: lib/furble/CanonEOSRemote.h and the
+# CR-03 to CR-10 branch of CanonRemoteVirtualCamera.
+seed ble_peers canon-remote
+seed ble_saved true
+seed ble_client_selfdelete true
+wait 300
+assert ble.peers 1
+assert ble.saved_cameras 1
+
+# The pairing name write is the only connect write.
+action connect
+assert-eventually-virtual 20000 control.state active
+assert control.connected 1
+assert-eventually-virtual 3000 ui.connected yes
+assert ui.capability_focus yes
+assert ble.peer.0.writes 1
+
+action shutter
+wait 200
+assert-eventually-virtual 1000 camera.shutter_presses 1
+assert-eventually-virtual 1000 camera.shutter_releases 1
+assert camera.focus_presses 0
+assert-eventually-virtual 1000 ble.peer.0.writes 3
+assert ble.peer.0.writes 3
+assert ble.peer.0.last_write 0c
+
+action button-mode one-button
+action main-press-hold
+wait 200
+assert-eventually-virtual 1000 camera.focus_presses 1
+assert-eventually-virtual 1000 camera.focus_releases 1
+assert-eventually-virtual 1000 ble.peer.0.writes 5
+assert ble.peer.0.writes 5
+assert ble.peer.0.last_write 0c
+
+action disconnect
+assert-eventually-virtual 5000 control.state idle
+assert control.connected 0
+assert control.targets 0
+assert-eventually-virtual 3000 control.zombies 0
+assert-eventually-virtual 3000 ble.live_clients 0
+assert-eventually-virtual 3000 ui.connected no
+exit

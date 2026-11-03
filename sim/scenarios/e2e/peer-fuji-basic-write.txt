@@ -1,0 +1,51 @@
+# Fujifilm Basic write path: the bytes the camera really receives.
+#
+# The virtual peer journals every GATT write, so this asserts the far end of the
+# production Control -> Camera -> FujifilmBasic path instead of a command
+# counter. A shutter press is a two-write command/parameter pair (01 00 then
+# 02 00), a release is 01 00 then 00 00, and focus reuses the two single-write
+# half-press and release forms. Evidence: fujifilm-handlers.md section 4 and
+# lib/furble/protocol/FujifilmProtocol.h.
+seed ble_peers fuji
+seed ble_saved true
+seed ble_client_selfdelete true
+wait 300
+assert ble.peers 1
+assert ble.saved_cameras 1
+
+# A saved connect writes the pairing token and the NUL-terminated client name,
+# so the journal holds two entries before any camera command.
+action connect
+assert-eventually-virtual 20000 control.state active
+assert control.connected 1
+assert-eventually-virtual 3000 ui.connected yes
+assert ble.peer.0.writes 2
+
+# Two-button shutter: press then release, four writes in total.
+action shutter
+wait 200
+assert-eventually-virtual 1000 camera.shutter_presses 1
+assert-eventually-virtual 1000 camera.shutter_releases 1
+assert camera.focus_presses 0
+assert-eventually-virtual 1000 ble.peer.0.writes 6
+assert ble.peer.0.writes 6
+assert ble.peer.0.last_write 0000
+
+# One-button hold is the focus gesture: half press then release, two writes.
+action button-mode one-button
+action main-press-hold
+wait 200
+assert-eventually-virtual 1000 camera.focus_presses 1
+assert-eventually-virtual 1000 camera.focus_releases 1
+assert-eventually-virtual 1000 ble.peer.0.writes 8
+assert ble.peer.0.writes 8
+assert ble.peer.0.last_write 0000
+
+action disconnect
+assert-eventually-virtual 5000 control.state idle
+assert control.connected 0
+assert control.targets 0
+assert-eventually-virtual 3000 control.zombies 0
+assert-eventually-virtual 3000 ble.live_clients 0
+assert-eventually-virtual 3000 ui.connected no
+exit

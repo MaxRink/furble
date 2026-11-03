@@ -303,7 +303,8 @@ The `clock.ms` query reports the current virtual millisecond clock.
 
 All listed seeds are applied before simulated `Platform::init()` and before the
 UI is constructed. These byte settings are:
-`brightness`, `inactivity`, `display_off`, `gps_rate`, `gps_constel`,
+`brightness`, `inactivity`, `display_off`, `display_mode` (0 GUI, 1 console),
+`gps_rate`, `gps_constel`,
 `gps_power`, `gps_duty`, `gps_hold`, `cpu_freq`, `tx_power`, `scan_mode`,
 `text_size`, `legend`, `auto_off`, `low_batt`, `fb_output`, `hw_motion`, `gps_assist`
 (0 off, 1 position and time, 2 with ephemeris), `gps_platform` (0 do not send,
@@ -360,6 +361,20 @@ scenario loading.
 | `fuji-pair` | two healthy Fujifilm Basic cameras |
 | `fuji-ricoh-flappy` | one healthy Fujifilm plus a Ricoh GR IV in BLE standby that fails one security handshake the way a supervision timeout does (rc=520) before letting a connect through |
 | `fuji-secure-stale` | one Fujifilm Secure body that the central is still bonded to and that no longer holds the pairing, so every security handshake times out and takes the link with it (the 2026-09-02 X100VI bench signature) |
+| `ricoh` | one Ricoh GR IV |
+| `canon-smart` | one Canon EOS RP in Smart mode |
+| `canon-remote` | one Canon EOS RP in Remote mode |
+| `nikon-remote` | one Nikon B600 Remote profile peer |
+| `nikon-smart` | one Nikon Z6III Smart profile peer |
+| `sony` | one Sony ZV-1F |
+| `lumix` | one LUMIX S5II |
+| `dji` | one DJI Osmo Action 4 |
+| `all` | nine peers in this registration order: Fujifilm Secure, Ricoh, Canon Smart, Canon Remote, Nikon Remote, Nikon Smart, Sony, LUMIX, DJI |
+
+`ble.peer.<n>` indexes that registration order. The two Nikon peers are not
+persisted by `ble_saved`, because a saved Nikon record carries the pairing
+identity that only a real pairing produces; the `peer-nikon-*` scenarios pair
+through the production scan row instead.
 
 `ble_saved true` persists the topology's cameras through the production
 `CameraList::match` and `CameraList::save`, so the scenario boots with saved
@@ -449,6 +464,7 @@ action ble-connect-ok
 action ble-withhold-registration
 action ble-allow-registration
 action cancel
+action capability-refresh
 action shutter
 action button-mode one-button
 action button-mode two-button
@@ -753,6 +769,18 @@ The other namespaces are:
 - `scan.advertisements`: number of advertisements the virtual radio has
   delivered.
 - `ble.peers`: number of virtual peers registered by the seeded topology.
+- `ble.peer.<n>.writes` and `ble.peer.<n>.last_write`: the GATT write journal of
+  the peer at index `n` in the seeded topology's registration order. `writes` is
+  the journal count since boot and `last_write` is the final payload as
+  lowercase hex without separators, or empty when the peer has seen no write.
+  Each peer family journals through the same `writes()` API it exposes to the
+  host suite, so a scenario proves the far end of a shutter, focus or handshake
+  path from the bytes the camera received rather than from a command counter.
+  DJI journals its assembled wire frame, which includes the frame header,
+  sequence and CRC. A Sony peer refuses the unproven FF01 opcodes by default but
+  still journals them, so the Sony scenario certifies the emitted payload, not
+  camera acceptance. `ble.peer.0.writes` in a single-peer topology is the peer
+  the scenario seeded first.
 - `camera.shutter_presses`, `camera.shutter_releases`, `camera.focus_presses`,
   and `camera.focus_releases`: numeric counts of the camera commands that
   reached a per-target camera task.

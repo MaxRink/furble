@@ -1,0 +1,49 @@
+# DJI write path: the assembled record-control frame.
+#
+# DJI journals the raw wire frame rather than a payload field, so the expected
+# last write is the whole 27-byte frame the camera received. Furble builds it
+# with the camera device ID little-endian (00 00 33 ff), record control 00 for
+# start, and the frame CRC. The first shutter toggles recording on; release and
+# focus are local no-ops, so the gesture adds exactly one frame. Evidence:
+# lib/furble/DJIOsmo.cpp writeFrame/writeRecordCommand and the RecordControl
+# branch of DjiVirtualCamera.
+seed ble_peers dji
+seed ble_saved true
+seed ble_client_selfdelete true
+wait 300
+assert ble.peers 1
+assert ble.saved_cameras 1
+
+# Connection request, connection response and status subscription.
+action connect
+assert-eventually-virtual 20000 control.state active
+assert control.connected 1
+assert-eventually-virtual 3000 ui.connected yes
+assert ui.capability_focus no
+assert ble.peer.0.writes 3
+
+action shutter
+wait 200
+assert-eventually-virtual 1000 camera.shutter_presses 1
+assert-eventually-virtual 1000 camera.shutter_releases 1
+assert camera.focus_presses 0
+assert-eventually-virtual 1000 ble.peer.0.writes 4
+assert ble.peer.0.writes 4
+assert ble.peer.0.last_write aa1b0001000000000300544e1d03000033ff00000000000b111c93
+
+# No focus primitive: the held gesture must not reach the peer.
+action button-mode one-button
+action main-press-hold
+wait 200
+assert camera.focus_presses 0
+assert ble.peer.0.writes 4
+assert ble.peer.0.last_write aa1b0001000000000300544e1d03000033ff00000000000b111c93
+
+action disconnect
+assert-eventually-virtual 5000 control.state idle
+assert control.connected 0
+assert control.targets 0
+assert-eventually-virtual 3000 control.zombies 0
+assert-eventually-virtual 3000 ble.live_clients 0
+assert-eventually-virtual 3000 ui.connected no
+exit

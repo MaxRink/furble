@@ -1,0 +1,47 @@
+# LUMIX write path: one-byte MEI0 control commands.
+#
+# The session connect writes Confirm 01 and then Start 02 after the readiness
+# notification. A shutter press is 04 and a release 05 on the same control
+# characteristic. There is no focus opcode: 01 and 02 are session commands, so
+# the held focus gesture must send nothing. Evidence: spec/panasonic.md C06 to
+# C08 and F01, and lib/furble/Lumix.h.
+seed ble_peers lumix
+seed ble_saved true
+seed ble_client_selfdelete true
+wait 300
+assert ble.peers 1
+assert ble.saved_cameras 1
+
+# The connect journals the MEI0 identity, controller name, Confirm and Start.
+action connect
+assert-eventually-virtual 20000 control.state active
+assert control.connected 1
+assert-eventually-virtual 3000 ui.connected yes
+assert ui.capability_focus no
+assert ble.peer.0.writes 4
+
+action shutter
+wait 200
+assert-eventually-virtual 1000 camera.shutter_presses 1
+assert-eventually-virtual 1000 camera.shutter_releases 1
+assert camera.focus_presses 0
+assert-eventually-virtual 1000 ble.peer.0.writes 6
+assert ble.peer.0.writes 6
+assert ble.peer.0.last_write 05
+
+# No focus primitive: the held gesture must not reach the peer.
+action button-mode one-button
+action main-press-hold
+wait 200
+assert camera.focus_presses 0
+assert ble.peer.0.writes 6
+assert ble.peer.0.last_write 05
+
+action disconnect
+assert-eventually-virtual 5000 control.state idle
+assert control.connected 0
+assert control.targets 0
+assert-eventually-virtual 3000 control.zombies 0
+assert-eventually-virtual 3000 ble.live_clients 0
+assert-eventually-virtual 3000 ui.connected no
+exit
