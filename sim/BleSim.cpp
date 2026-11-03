@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -18,6 +19,8 @@
 #include <NikonSmartVirtualCamera.h>
 #include <RicohVirtualCamera.h>
 #include <SonyVirtualCamera.h>
+
+#include "WriteJournal.h"
 
 #include "CameraList.h"
 #include "FurbleControl.h"
@@ -108,6 +111,41 @@ size_t advertisementCount = 0;
 size_t unmatchedPeerCount = 0;
 // Guarded by peersMutex like the peer list it serves.
 bool radioRunning = false;
+
+// Every peer family journals its GATT writes, but the byte field differs: the
+// transport vendors keep the wire payload in `payload`, while DJI keeps the
+// assembled frame in `frame`. One reader keeps that vendor distinction here so
+// the driver and the scenario files only ever name indexes and bytes.
+template <typename Write>
+const std::vector<uint8_t> &journaledBytes(const Write &write) {
+  return write.payload;
+}
+
+const std::vector<uint8_t> &journaledBytes(const Host::DjiVirtualCamera::Write &write) {
+  return write.frame;
+}
+
+template <typename Peer>
+bool readWriteJournal(const std::unique_ptr<Peer> &peer, size_t *count, std::string *lastWrite) {
+  if (peer == nullptr) {
+    return false;
+  }
+  const std::lock_guard<std::mutex> journal(Host::peerWriteJournalMutex());
+  const auto &writes = peer->writes();
+  *count = writes.size();
+  lastWrite->clear();
+  if (writes.empty()) {
+    return true;
+  }
+  static constexpr char HEX[] = "0123456789abcdef";
+  const auto &bytes = journaledBytes(writes.back());
+  lastWrite->reserve(bytes.size() * 2);
+  for (const uint8_t byte : bytes) {
+    lastWrite->push_back(HEX[byte >> 4]);
+    lastWrite->push_back(HEX[byte & 0x0f]);
+  }
+  return true;
+}
 
 // Camera command counters. The simulator counts the commands that actually
 // reach a camera task so a scenario can assert the shutter and focus paths
@@ -520,6 +558,45 @@ size_t targetIdleTicks(void) {
 size_t blePeerCount(void) {
   const std::lock_guard<std::mutex> lock(peersMutex);
   return peers.size();
+}
+
+bool blePeerWriteStats(size_t index, size_t *count, std::string *lastWrite) {
+  if (count == nullptr || lastWrite == nullptr) {
+    return false;
+  }
+  const std::lock_guard<std::mutex> lock(peersMutex);
+  if (index >= peers.size()) {
+    return false;
+  }
+  const auto &peer = peers[index];
+  if (peer->fujifilm != nullptr) {
+    return readWriteJournal(peer->fujifilm, count, lastWrite);
+  }
+  if (peer->ricoh != nullptr) {
+    return readWriteJournal(peer->ricoh, count, lastWrite);
+  }
+  if (peer->canon_smart != nullptr) {
+    return readWriteJournal(peer->canon_smart, count, lastWrite);
+  }
+  if (peer->canon_remote != nullptr) {
+    return readWriteJournal(peer->canon_remote, count, lastWrite);
+  }
+  if (peer->nikon_remote != nullptr) {
+    return readWriteJournal(peer->nikon_remote, count, lastWrite);
+  }
+  if (peer->nikon_smart != nullptr) {
+    return readWriteJournal(peer->nikon_smart, count, lastWrite);
+  }
+  if (peer->sony != nullptr) {
+    return readWriteJournal(peer->sony, count, lastWrite);
+  }
+  if (peer->lumix != nullptr) {
+    return readWriteJournal(peer->lumix, count, lastWrite);
+  }
+  if (peer->dji != nullptr) {
+    return readWriteJournal(peer->dji, count, lastWrite);
+  }
+  return false;
 }
 
 size_t bleUnmatchedPeerCount(void) {

@@ -1,0 +1,54 @@
+# Nikon Smart gate: the BLE half stops before any camera command.
+#
+# Nikon Smart pairing needs the Bluetooth Classic continuation, which Furble
+# cannot drive. The production connect therefore stops at the BLE authentication
+# result and reports a connect failure instead of promoting a half-paired
+# session, so no shutter or focus write can follow. This scenario pairs through
+# the production scan row, asserts the failure and the absence of a saved
+# camera, then proves the shutter gesture adds no write to the peer journal.
+#
+# The staged pair bytes are intentionally not asserted: the pairing timestamp
+# and client identity are generated at runtime. The bounded connect retry makes
+# two attempts, so the journal holds four staged writes; the certified claim is
+# the gate and the empty command path after it. Evidence:
+# lib/furble/NikonSmart.cpp connectFinalise and
+# analysis/nikon-b600-handlers.md.
+seed ble_peers nikon-smart
+seed ble_client_selfdelete true
+wait 300
+assert ble.peers 1
+assert ble.saved_cameras 0
+
+home
+wait 200
+action nav scan
+wait 500
+assert ui.page scan
+assert-eventually 2000 camera.count 1
+assert ble.peer.0.writes 0
+
+# The pair attempt reaches the BLE result and stops there.
+action scan-row 0
+assert-eventually-virtual 20000 control.state idle
+assert-eventually-virtual 5000 ui.connect_error connect_failed
+assert ui.modal_overflow no
+assert control.connected 0
+assert control.targets 0
+assert ble.peer.0.writes 4
+
+# Dismiss the box and fire the shutter through the real handler. With no active
+# target the command never reaches a camera task and the peer sees no write.
+action select
+wait 300
+assert ui.connect_error none
+action shutter
+wait 300
+assert camera.shutter_presses 0
+assert ble.peer.0.writes 4
+
+action disconnect
+assert-eventually-virtual 3000 control.state idle
+assert control.connected 0
+assert-eventually-virtual 3000 ble.live_clients 0
+assert ble.saved_cameras 0
+exit

@@ -151,6 +151,18 @@ size_t bleAdvertisementCount(void);
 /** Number of virtual peers currently registered. */
 size_t blePeerCount(void);
 
+/**
+ * Read the GATT write journal of a seeded virtual peer.
+ *
+ * `index` follows topology registration order, the same order `ble_peers`
+ * documents. `count` receives every write the peer journaled and `lastWrite`
+ * receives the final payload as lowercase hex without separators, or an empty
+ * string when the journal is empty. Returns false when no peer is registered at
+ * that index. The vendor payload layout stays in the peer classes; the driver
+ * only sees bytes.
+ */
+bool blePeerWriteStats(size_t index, size_t *count, std::string *lastWrite);
+
 /** Peers whose advertisement matched no camera parser during saved seeding. */
 size_t bleUnmatchedPeerCount(void);
 

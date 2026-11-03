@@ -1,6 +1,7 @@
 #include <algorithm>
 
 #include "DjiVirtualCamera.h"
+#include "WriteJournal.h"
 
 namespace Furble {
 namespace Host {
@@ -989,6 +990,7 @@ bool DjiVirtualCamera::write(NimBLEClient &client,
                              const NimBLEUUID &characteristic,
                              const std::vector<uint8_t> &value,
                              bool response) {
+  const std::lock_guard<std::mutex> journal(Host::peerWriteJournalMutex());
   (void)response;
   if (!m_Connected || (m_Client != &client) || !canWrite(service, characteristic)) {
     return false;
