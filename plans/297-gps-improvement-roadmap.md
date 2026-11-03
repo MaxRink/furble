@@ -6,8 +6,7 @@ Two deep reviews ran against master `a3f29dc1`/`8054d183`: one on receiver
 power and one on accuracy, fix quality, and protocol. This plan records what
 they found, what is already fixed, and the sequence for the rest.
 
-Implemented in the GPS fix PRs (each plan doc is authoritative for its merge
-state; all three were rebased onto the static-analysis gate):
+Implemented on master:
 
 - **PR #325 / plan 293** corrects the `CFG-NAVX` `navSystem` offset (13, not 6)
   and the `MON-HW` offsets. Constellation selection may have been a silent
