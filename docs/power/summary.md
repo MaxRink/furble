@@ -49,7 +49,7 @@ and real camera states. It is a hardware requirement, not a documentation gap.
 
 | ID | Change | Evidence | Estimated saving | Why it is top five |
 | --- | --- | --- | --- | --- |
-| P-040 | `SLEEP_CONN` now defaults on for the StickS3; the per-vendor soak remains the measured-promotion gate | measured floor plus modeled states | About 40 mA connected with the screen off; 43.6 to 3.61 mA modeled | Default shipped; soak is the remaining verification |
+| P-040 | `SLEEP_CONN` now defaults on for the StickS3; the per-vendor soak remains the measured-promotion gate | refreshed `blind-remote-shutter` baseline (4.45 mA) plus the plan 98 model | 4.45 mA refreshed baseline; the older 43.6 to 3.61 mA pair is the pre-radio-floor model | Default shipped; the refreshed baseline is the gate value, the soak is the remaining verification |
 | P-071, P-072 | Scope the display APB lock; on the S3 use RC_FAST LEDC with `KEEP_ALIVE` | modeled plus code and datasheet | 5 to 25 mA screen on for the AXP192 boards; 10 to 30 mA inferred on the S3 | The only lever that cuts the MCU term while the screen is on; high flicker risk |
 | P-073 | Fresh devices now seed inactivity 60 s and screen off Off, except the Core Basic keeps Dim; the 30-minute per-board soak remains | modeled | About 40 to 64 mA after the timeout; up to 81.2 mA at full brightness | Default shipped; soak and wake-latency checks remain |
 | P-086 | GPS duty rework: longer intervals with a cached fix, shorter wake dwell | inferred plus modeled | About 1.5 mA today; up to about 19 mA of the 23 mA GPS budget | GPS is the second-largest always-on load; the clamp and dwell eat the duty |
