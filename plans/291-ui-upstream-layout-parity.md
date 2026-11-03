@@ -19,9 +19,11 @@ What remains is content parity, not overlap:
   panel, in both the touch and physical-button layouts, at every text size.
   Resolved by decision: keep all seven rows and certify the scroll. No layout
   change was made. See "About decision and measurements" below.
-- **GPS** has seven top-level rows: the enable switch, baud, rate, sentences,
-  constellation, power, and assist. The upstream page is smaller. The extra
-  receiver-configuration rows overflow on 135x240 and 320x240.
+- **GPS** has eleven direct rows: the enable switch, baud, rate, sentences,
+  constellation, power, assist, Motion Adaptive, Fix Hold, Extrapolate, and
+  Platform, followed by the nested GPS Data, Raw NMEA, and Satellites pages.
+  The upstream page is smaller. The extra receiver-configuration rows overflow
+  on 135x240 and 320x240.
 - **Connected** no longer reports the 13 px overflow plan 168 measured, but its
   eight entries are still more content than upstream. Whether to keep the
   scrolling grid or reduce the entry set is a product decision, not a layout
@@ -145,9 +147,10 @@ divergence as the product decision.
 
 ## GPS decision and measurements
 
-The GPS settings page keeps all seven top-level rows: enable, baud, rate,
-sentences, constellation, power, and assist. No receiver option is removed and
-no font is shrunk. The page scrolls on 135x240 and 320x240, which the audit
+The GPS settings page keeps all eleven direct rows: enable, baud, rate,
+sentences, constellation, power, assist, Motion Adaptive, Fix Hold,
+Extrapolate, and Platform, plus the nested data pages. No receiver option is
+removed and no font is shrunk. The page scrolls on 135x240 and 320x240, which the audit
 already recorded as a deliberate fork divergence from upstream's smaller page.
 A scroll is acceptable because both ends stay reachable and the rows keep their
 whole words.
@@ -172,16 +175,18 @@ is owed.
 
 ## Connected decision and measurements
 
-The Connected page keeps its eight entries in the 4x2 grid. It scrolls at the
-default and Large text sizes on 320x240 and at Large on the narrower boards,
-instead of reducing the entry set or shrinking the font. Both ends stay
-reachable and no label overlaps or is cut.
+The Connected page keeps its eight entries. On the M5Stack Core the entries use
+the 4x2 grid: the default size fits without scrolling, and Large scrolls. On
+the Stick builds the same entries stay in the flex-row scrolling list. No entry
+is removed and no font is shrunk; both ends stay reachable and no label overlaps
+or is cut.
 
 Evidence already on master:
 
 - `bughunt/core-connected-grid.txt` and `core-connected-grid-large.txt` assert
-  eight rendered cells, `ui.label_overlaps 0`, `ui.scroll_top 0`, and the
-  bottom end after scrolling, in the Core touch layout at default and Large.
+  eight rendered cells, `ui.label_overlaps 0`, `ui.scroll_top 0`, `action
+  scroll bottom`, and `ui.scroll_bottom 0` in the Core touch layout at default
+  and Large.
 - `bughunt/core-notouch-layout.txt` asserts the same page in the Core physical
   button layout the board ships, including `ui.cut_labels 0`.
 - `bughunt/stick-notouch-connected-large.txt` and
