@@ -187,16 +187,17 @@ during `ACQUIRING`, `MEASURING`, `RESYNC` and each `BURST`, and released during
 the four ESP32 boards and the Waveshare S3, the lock does not exist, so the
 burst windowing has no light-sleep effect there.
 
-Two lock lifetimes are unbounded:
+The initial `ACQUIRING` lifetime used to be unbounded: a fixed `GPS_BAUD`
+published `PRESENT` immediately, skipped the autobaud ladder, and a silent
+receiver held `NO_LIGHT_SLEEP` until the user toggled GPS. That case is reached
+by a normal user action, enabling GPS with no unit attached at the default
+9600, so it does not require a fault.
 
-- The initial `ACQUIRING` state has `m_ProbeDeadline == 0`. `serviceCycle()`
-  re-acquires the lock on every pass and has no exit except a received burst.
-- A fixed `GPS_BAUD` publishes `PRESENT` immediately and skips the autobaud
-  ladder entirely. A receiver that is powered but silent therefore holds
-  `NO_LIGHT_SLEEP` forever and is never declared absent.
-
-The second case is reached by a normal user action: enable GPS with no unit
-attached while the stored baud is the default 9600. It does not require a fault.
+`ACQUIRE_TIMEOUT_MS` now bounds both a fixed baud and an autobaud lock that
+goes silent. A checksum-valid NMEA sentence clears the deadline; expiry calls
+`onProbeFailed()`, which drops the rail, releases the lock, publishes `ABSENT`,
+and schedules the single 60-second retry. A late frame after `ABSENT` is
+rejected before it can update the fix.
 
 `plans/98b-power-followup.md` records the cost of a permanently held lock as
 about 37 mA. That figure is modeled, but the bound is solid: S3 active at 80 MHz
@@ -1055,7 +1056,7 @@ happy path. They still need tests, and G-03 changes a fault path.
 
 | Rank | ID | Why now | Est. saving | Effort |
 | --- | --- | --- | --- | --- |
-| 1 | G-03 | A silent fixed-baud receiver holds `NO_LIGHT_SLEEP` forever. Reached by enabling GPS with no unit at the default baud. | Up to 37 mA in the fault case | S to M |
+| 1 | G-03 | A silent fixed-baud receiver used to hold `NO_LIGHT_SLEEP` forever. The 30 s acquisition deadline now releases it. | Up to 37 mA in the fault case, bounded to 30 s | Implemented |
 | 2 | G-01 | The task knows its next deadline and still wakes 10 times per second. | 0.05 to 0.5 mA | S |
 | 3 | G-02 | GPS is off by default, so this is the only GPS cost a default install pays. | 0.02 to 0.2 mA | S |
 | 4 | G-13 | Per-second log lines are pure overhead and they pollute the console during every measurement. | 0.05 to 0.2 mA | S |

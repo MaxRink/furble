@@ -230,17 +230,18 @@ void GPS::task(void) {
     // counter can climb, but hold the cycle and configuration paths until a
     // receiver is found. When nothing answers, idle without spinning.
     serviceProbe();
-    const auto rstate = static_cast<receiver_state_t>(m_ReceiverState.load());
-    const bool absent = (rstate == receiver_state_t::ABSENT);
+    auto rstate = static_cast<receiver_state_t>(m_ReceiverState.load());
+    bool absent = (rstate == receiver_state_t::ABSENT);
     const bool detecting = (rstate == receiver_state_t::DETECTING);
 
     if (!absent && !detecting) {
       serviceCycle();
-      // onProbeFailed() can publish ABSENT inside serviceCycle(). Do not let
-      // the same task pass issue configuration or ephemeris writes after the
-      // rail and lock have been dropped.
-      const auto afterCycle = static_cast<receiver_state_t>(m_ReceiverState.load());
-      if ((afterCycle != receiver_state_t::ABSENT) && (afterCycle != receiver_state_t::DETECTING)) {
+      // onProbeFailed() can publish ABSENT inside serviceCycle(). Refresh the
+      // state before configuration, polling, or a queued UART event can touch
+      // the receiver after the rail and lock have been dropped.
+      rstate = static_cast<receiver_state_t>(m_ReceiverState.load());
+      absent = (rstate == receiver_state_t::ABSENT);
+      if (!absent && (rstate != receiver_state_t::DETECTING)) {
         serviceConfig();
         servicePoll();
       }
@@ -2787,8 +2788,10 @@ void GPS::serviceSerial(void) {
   std::array<uint8_t, BUFFER_SIZE> buffer;
 
   std::unique_lock<std::mutex> lock(m_CycleMutex, std::try_to_lock);
-  if (!lock.owns_lock() || !m_Enabled) {
-    // enable() or disable() owns the cycle state, drop this pass
+  if (!lock.owns_lock() || !m_Enabled
+      || (static_cast<receiver_state_t>(m_ReceiverState.load()) == receiver_state_t::ABSENT)) {
+    // enable() or disable() owns the cycle state, or the receiver is absent;
+    // drop this pass before a late frame can update the fix.
     return;
   }
 
