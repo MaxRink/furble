@@ -22,9 +22,12 @@ The value now reaches:
 
 ## Validation
 
-- `companion-gatt`: the location write now also asserts
-  `accuracy_valid == true` and `accuracy_m == 4`.
-- Host companion suite passes.
+- `companion-gatt`: the location write asserts `accuracy_valid == true` and
+  `accuracy_m == 4`, and a second write with `255` proves the unknown sentinel
+  clears `accuracy_valid`.
+- Full host CTest: 140/140 after the rebase onto the static-analysis gate.
+- Static analysis: PASS.
+- Simulator build passes; the change is in the shared companion parser.
 
 ## Remaining gate
 
