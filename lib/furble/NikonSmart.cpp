@@ -37,7 +37,7 @@ void NikonSmart::SmartPairing::scramble(uint32_t *pL, uint32_t *pR) const {
   uint32_t xR = *pR;
   uint32_t tmp = 0;
 
-  for (int i = 0; i < N; i++) {
+  for (size_t i = 0; i < N; i++) {
     tmp = xL ^ m_P[i];
     xL = f(tmp) ^ xR;
     xR = tmp;

@@ -26,6 +26,13 @@ makes them a required pull-request gate.
 - Analyzer invocation failures fail closed: a nonzero cppcheck exit, a nonzero
   clang-tidy exit with no parsed finding, and `fatal error:` diagnostics all
   fail the gate instead of printing PASS.
+- Absolute diagnostic paths are normalized against the repository root before
+  the production filter, so a CI runner path does not silently drop a finding.
+  C helpers such as `sim/env_mutation_guard.c` run through cppcheck in C mode.
+- Duplicate findings from the host and simulator databases are printed once.
+- The first full-tree pass also fixed the remaining findings: the gesture
+  handler's fully covered switch, the simulator's inherited checkpoint
+  descriptor, and the fuzz harness's intentional fixed default seed.
 - `.github/workflows/static-analysis.yml` configures both databases and runs
   the gate on pull requests touching C/C++ paths, plus manual dispatch.
 - `tests/test_check_static_analysis.py` covers the cppcheck and clang-tidy

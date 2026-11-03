@@ -345,6 +345,22 @@ def run_clang_tidy(
     return findings, compile_errors, skipped
 
 
+def deduplicate(findings: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Drop repeated findings from sources analyzed with two compile databases."""
+    seen: set[tuple[str, ...]] = set()
+    unique: list[dict[str, str]] = []
+    for finding in findings:
+        key = tuple(
+            finding.get(field, "")
+            for field in ("file", "line", "column", "severity", "message", "check", "id")
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(finding)
+    return unique
+
+
 def print_findings(label: str, findings: list[dict[str, str]]) -> None:
     for finding in findings:
         location = f"{finding['file']}:{finding['line']}"
@@ -401,7 +417,7 @@ def main() -> int:
     print(f"static analysis: {len(sources)} source(s), {len(headers)} header(s)")
     failures = 0
 
-    cppcheck_findings = run_cppcheck(sources + headers, args.jobs)
+    cppcheck_findings = deduplicate(run_cppcheck(sources + headers, args.jobs))
     if cppcheck_findings:
         print_findings("cppcheck", cppcheck_findings)
         failures += len(cppcheck_findings)
@@ -426,6 +442,8 @@ def main() -> int:
             tidy_findings, compile_errors, skipped = run_clang_tidy(
                 sorted(set(tidy_targets)), build_dirs, tidy, args.jobs
             )
+            tidy_findings = deduplicate(tidy_findings)
+            compile_errors = deduplicate(compile_errors)
         except RuntimeError as error:
             print(f"FAIL: {error}", file=sys.stderr)
             return 2

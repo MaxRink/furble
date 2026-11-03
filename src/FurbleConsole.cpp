@@ -2689,7 +2689,11 @@ int cmdBt(int argc, char **argv) {
         continue;
       }
       if (!strcasecmp(argv[argument], "pair")) {
-        if ((argument + 1 >= argc) || !parseBtPairMode(argv[++argument], mode)) {
+        if (argument + 1 >= argc) {
+          return fail("expected pair none, just-works or numeric-display-passthrough");
+        }
+        ++argument;
+        if (!parseBtPairMode(argv[argument], mode)) {
           return fail("expected pair none, just-works or numeric-display-passthrough");
         }
         continue;
