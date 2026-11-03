@@ -1,0 +1,72 @@
+# About keeps its seven info rows on every panel and scrolls. Issue #281 is
+# resolved by decision, not by matching upstream's two-row page: no row is
+# dropped and no font is shrunk, so the contract is that both scroll ends stay
+# reachable and no label overlaps or is cut.
+#
+# The M5GFX SDL panel always attaches a mouse-driven touch device, so this file
+# seeds "no_touch true" to measure the physical-button layout every modeled
+# board actually ships. That layout is 26 px shorter than the touch one, so it
+# is the tighter case. The existing page-matrix scenario asserts the same
+# overlap and cut contract in both runner passes, default touch and no-touch
+# buttons; this file pins the button-layout scroll bounds.
+#
+# Measured on master 8cd6be97, small text size, physical-button layout.
+# The extents across the three panels are bounded below; 80x160 clamps Large to
+# its Normal maximum, which stays inside the same range.
+#
+# Every panel reported ui.overflow yes, ui.label_overlaps 0, ui.cut_labels 0
+# and ui.indicator_clearance clear at both extents. A button walk of the seven
+# rows put focus on "Reset:_Power_on" with ui.focus_on_page yes on all three.
+# The bounds below encode the measured range: dropping a row fails the minimum,
+# and adding enough content to need more than 238 px fails the maximum.
+seed no_touch true
+seed text_size 0
+wait 300
+
+# Without this a run that lost the seed would measure the taller touch layout
+# and pass for the wrong reason.
+assert ui.nav_layout buttons
+
+action page settings
+action nav about
+wait 350
+assert ui.page about
+
+# The page is expected to scroll. That is the accepted outcome for keeping the
+# extra rows, so ui.overflow must stay yes rather than becoming a fit.
+assert ui.overflow yes
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+assert ui.indicator_clearance clear
+assert ui.scroll_top 0
+assert_min ui.scroll_bottom 132
+assert_max ui.scroll_bottom 238
+
+# The bottom end must expose the last row, Reset. ui.diag.about.reset reads the
+# rendered label, so it fails if the row is missing; addAboutMenu adds it last,
+# and scroll_bottom 0 means the page cannot scroll further.
+action scroll bottom
+wait 250
+assert ui.page about
+assert ui.scroll_bottom 0
+assert_min ui.scroll_top 132
+assert_max ui.scroll_top 238
+assert ui.overflow yes
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+assert ui.indicator_clearance clear
+assert ui.diag.about.reset yes
+assert ui.diag.about.reset_visible yes
+
+# And the top end must return to the first row, Version.
+action scroll top
+wait 250
+assert ui.page about
+assert ui.scroll_top 0
+assert_min ui.scroll_bottom 132
+assert_max ui.scroll_bottom 238
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+assert ui.indicator_clearance clear
+
+exit

@@ -110,14 +110,21 @@ scenario file cannot switch names.
 
 Gates added or extended:
 
-- `sim/scenarios/bughunt/about-scroll-reachability.txt` bounds the button
-  layout scroll extents (159 to 238 px), asserts both ends, no overlaps, no
-  cuts, clear indicators, and the rendered Reset row. It runs on all three
-  panels.
-- `sim/scenarios/bughunt/page-matrix.txt` now asserts no overlaps and no cuts
-  on About at both ends. The file has no nav-layout guard, so the default
-  runner measures the touch layout and `run-notouch.sh` repeats it in the
+- `sim/scenarios/bughunt/about-scroll-reachability.txt` bounds the default
+  button-layout scroll extents (159 to 238 px), asserts both ends, no overlaps,
+  no cuts, clear indicators, and the rendered Reset row.
+- `sim/scenarios/bughunt/about-scroll-small.txt` and
+  `about-scroll-large.txt` repeat the contract at `text_size 0` and
+  `text_size 2`; their bounds are 132 to 238 px and 359 to 611 px across the
+  three panels. The 80x160 board clamps Large to its Normal maximum, which
+  stays inside the Large range.
+- `sim/scenarios/bughunt/page-matrix.txt` now requires About to overflow, no
+  overlaps or cuts at both ends, and `ui.diag.about.reset_visible yes` at the
+  bottom. Its default pass measures touch and `run-notouch.sh` repeats the
   shorter button layout.
+- `ui.diag.about.reset_visible` is viewport-aware: it intersects the rendered
+  Reset label with the current menu page, unlike the recursive
+  `ui.diag.about.reset` lookup that only proves the label exists.
 
 Captures: no layout, font, or row set changed, so the walkthrough screenshots
 in `docs/ui-walkthrough.md` remain valid and no regeneration is owed. The
@@ -136,6 +143,8 @@ divergence as the product decision.
 ## Gates
 
 - `sim/scenarios/bughunt/about-scroll-reachability.txt`
+- `sim/scenarios/bughunt/about-scroll-small.txt`
+- `sim/scenarios/bughunt/about-scroll-large.txt`
 - `sim/scenarios/bughunt/core-notouch-layout.txt`
 - `sim/scenarios/bughunt/stick-notouch-layout-135.txt`
 - `sim/scenarios/bughunt/stick-notouch-layout-80.txt`

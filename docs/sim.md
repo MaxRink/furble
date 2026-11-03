@@ -303,7 +303,8 @@ The `clock.ms` query reports the current virtual millisecond clock.
 
 All listed seeds are applied before simulated `Platform::init()` and before the
 UI is constructed. These byte settings are:
-`brightness`, `inactivity`, `display_off`, `gps_rate`, `gps_constel`,
+`brightness`, `inactivity`, `display_off`, `display_mode` (0 GUI, 1 console),
+`gps_rate`, `gps_constel`,
 `gps_power`, `gps_duty`, `gps_hold`, `cpu_freq`, `tx_power`, `scan_mode`,
 `text_size`, `legend`, `auto_off`, `low_batt`, `fb_output`, `hw_motion`, `gps_assist`
 (0 off, 1 position and time, 2 with ephemeris), `gps_platform` (0 do not send,
@@ -449,6 +450,7 @@ action ble-connect-ok
 action ble-withhold-registration
 action ble-allow-registration
 action cancel
+action capability-refresh
 action shutter
 action button-mode one-button
 action button-mode two-button
@@ -613,6 +615,7 @@ The complete `ui.*` query set is:
 | `ui.focus_on_page` | `yes` or `no`. |
 | `ui.row_text` | Text of the focused menu row, or `none`. Every whitespace character is reported as an underscore, so a literal underscore and a space both read as `_`. |
 | `ui.row_scrolling` | `yes`, `no`, or `none`. Whether the focused menu row's label is running LVGL's scroll animation. |
+| `ui.diag.about.reset_visible` | About page only: `yes` when the rendered Reset label intersects the page viewport. |
 | `ui.overflow` | `unknown`, `yes`, or `no`. |
 | `ui.nav_layout` | `touch` or `buttons`. |
 | `ui.legend_visible` | `yes` or `no`; Off hides indicator surfaces without disabling physical input targets. |
@@ -1126,3 +1129,4 @@ through the production UI request queue. The simulator exposes resulting
 `consolePrint` fields as `ui.console.<field>` for assertions. These fields are
 query-only observability; the SDL target does not define `FURBLE_CONSOLE`, so
 they do not certify firmware completion-semaphore behavior or hardware.
+
