@@ -12820,13 +12820,13 @@ bool UI::simulatorBackOnUi(void) {
 }
 
 bool UI::simPressButton(const char *name, bool hold) {
-  // Keep the closure free of a std::string copy: the caller's name outlives the
-  // synchronous simRunOnUi call, and the UI-thread copy is guarded below.
-  const char *button = name == nullptr ? "" : name;
+  // simRunOnUi can time out and leave the request queued, so the closure owns
+  // the name instead of borrowing the caller's buffer.
+  auto button = std::make_shared<const std::string>(name == nullptr ? "" : name);
   auto result = std::make_shared<std::atomic<bool>>(false);
   if (!simRunOnUi([this, button, hold, result]() {
         try {
-          result->store(simPressButtonOnUi(button, hold));
+          result->store(simPressButtonOnUi(button->c_str(), hold));
         } catch (...) {
           // An allocation failure must fail the scenario step, not unwind the
           // simulator's UI thread.
