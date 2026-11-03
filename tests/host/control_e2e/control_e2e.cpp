@@ -646,6 +646,13 @@ bool scenarioMultiConnectFujifilm() {
   check(first.connected() && second.connected(), "both peers are live after reconnect");
   check(control.getDisconnectedName().empty(), "the per-device reconnect indicator clears");
 
+  // Assert the client lifetime before the clean teardown can delete the two
+  // connected clients and hide a leaked reconnect client. The mock queues a
+  // dropped self-deleting client for asynchronous reaping; control_e2e does not
+  // run the fuzz harness's quiescent pump, so reap it here.
+  NimBLEDevice::reapDeferredClients();
+  check(NimBLEDevice::liveClientCount() <= 2, "multi-connect leaves no client leak after reap");
+
   check(control.disconnect(), "multi-connect disconnect accepted");
   check(waitForState(Control::STATE_IDLE, 2000), "multi-connect returns to idle");
   // setState() publishes STATE_IDLE before it releases the power lock, so the
@@ -660,11 +667,6 @@ bool scenarioMultiConnectFujifilm() {
   // The two camera objects are still owned by this scenario, so each may keep
   // its one reusable client; a leak class is more than that.
 
-  // The mock queues a dropped self-deleting client for asynchronous reaping;
-  // control_e2e does not run the fuzz harness's quiescent pump. Reap it here so
-  // the live count reflects the two reusable per-camera clients, not the queue.
-  NimBLEDevice::reapDeferredClients();
-  check(NimBLEDevice::liveClientCount() <= 2, "multi-connect leaves no client leak after reap");
   NimBLEDevice::setDeferredClientDelete(false);
   return g_Failures == 0;
 }
