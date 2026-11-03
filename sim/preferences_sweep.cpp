@@ -170,7 +170,15 @@ std::size_t sweepStalePreferences(const std::filesystem::path &directory, int se
       for (std::filesystem::directory_iterator side(directory, error), sideEnd;
            !error && side != sideEnd; side.increment(error)) {
         const std::string sideName = side->path().filename().string();
-        if (sideName.rfind(sidecarPrefix, 0) == 0 && ownedRegularFile(side->path())
+        if (sideName.rfind(sidecarPrefix, 0) != 0) {
+          continue;
+        }
+        int sidecarPid = 0;
+        if (!parsePositivePid(sideName.substr(sidecarPrefix.size()), &sidecarPid)
+            || sidecarPid != *pid) {
+          continue;
+        }
+        if (ownedRegularFile(side->path())
             && std::filesystem::is_regular_file(side->path(), error)) {
           if (std::filesystem::remove(side->path(), error)) {
             removed++;

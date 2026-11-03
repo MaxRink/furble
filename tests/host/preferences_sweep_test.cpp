@@ -105,6 +105,8 @@ int main() {
   const std::filesystem::path temporaryFile = directory / temporaryName;
   const std::filesystem::path callerFile = directory / callerName;
   const std::filesystem::path unrelatedFile = directory / "notes.txt";
+  const std::filesystem::path foreignSidecar = directory / (deadName + ".tmp.999999");
+  const std::filesystem::path notesSidecar = directory / (deadName + ".tmp.notes");
   touch(deadFile);
   touch(std::filesystem::path(deadFile.string() + ".generated"));
   touch(liveFile);
@@ -116,6 +118,8 @@ int main() {
   // never treated as simulator-owned.
   touch(callerFile);
   touch(unrelatedFile);
+  touch(foreignSidecar);
+  touch(notesSidecar);
 
   const std::size_t removed = sweepStalePreferences(directory, static_cast<int>(getpid()));
   check(removed == 2, "the sweep removed the dead store and its sidecar");
@@ -126,6 +130,8 @@ int main() {
   check(std::filesystem::exists(liveFile), "a live store was kept");
   check(std::filesystem::exists(selfFile), "the current process store was kept");
   check(std::filesystem::exists(callerFile), "a caller-owned store without a marker was kept");
+  check(std::filesystem::exists(foreignSidecar), "a sidecar with another pid was kept");
+  check(std::filesystem::exists(notesSidecar), "a non-pid temporary file was kept");
   check(std::filesystem::exists(unrelatedFile), "an unrelated file was kept");
 
   if (live > 0) {
