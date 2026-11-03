@@ -7,6 +7,7 @@
 
 #include "FurbleBatterySaver.h"
 #include "FurbleSettings.h"
+#include "FurbleSettingsDefaults.h"
 #include "FurbleTypes.h"
 #include "Preferences.h"
 
@@ -448,8 +449,9 @@ esp_power_level_t Settings::load<esp_power_level_t>(type_t type) {
       return ESP_PWR_LVL_P6;
     case 2:
       return ESP_PWR_LVL_P9;
+    default:
+      return ESP_PWR_LVL_P3;
   }
-  return ESP_PWR_LVL_P3;
 }
 
 template <>
@@ -590,8 +592,13 @@ void Settings::init(void) {
           save<uint8_t>(setting.type, 128);
           break;
         case INACTIVITY:
+          // 60 secs. A fresh device used to ship with Never, which left the
+          // panel and its backlight on until the user acted.
+          save<uint8_t>(setting.type, SettingsDefaults::INACTIVITY);
+          break;
         case DISPLAY_OFF:
-          save<uint8_t>(setting.type, 0);
+          // Off. The old default was Dim, which still drove the panel.
+          save<uint8_t>(setting.type, SettingsDefaults::displayOff());
           break;
         case THEME:
           save<std::string>(setting.type, "Default");
@@ -682,7 +689,6 @@ void Settings::init(void) {
         case PRESET_PICKER:
         case FAUXNY:
         case AUTOCONNECT:
-        case SLEEP_CONN:
         case COMPANION:
         case SD_GPX:
         // Default off keeps today's behaviour, the profile is strictly opt-in.
@@ -695,6 +701,12 @@ void Settings::init(void) {
           // a scan every 5 s forever; the 2.5 s first retry still recovers a
           // stale session quickly, and later attempts back off to 120 s.
           save<bool>(setting.type, true);
+          break;
+        case SLEEP_CONN:
+          // Only the StickS3 has the modem-sleep controller and the GPS burst
+          // lock. Fresh devices ship with the low-power connected state on;
+          // existing devices keep their stored choice.
+          save<bool>(setting.type, SettingsDefaults::sleepConn());
           break;
         case HW_MOTION:
           // Ships as Software, not Auto. Auto prefers the board's hardware

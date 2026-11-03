@@ -216,8 +216,8 @@ std::vector<SettingCase> settingCases() {
   using namespace Furble;
   return {
       {Settings::BRIGHTNESS, "BRIGHTNESS", uint8_t {128}, uint8_t {77}, StorageKind::U8},
-      {Settings::INACTIVITY, "INACTIVITY", uint8_t {0}, uint8_t {9}, StorageKind::U8},
-      {Settings::DISPLAY_OFF, "DISPLAY_OFF", uint8_t {0}, uint8_t {3}, StorageKind::U8},
+      {Settings::INACTIVITY, "INACTIVITY", uint8_t {2}, uint8_t {9}, StorageKind::U8},
+      {Settings::DISPLAY_OFF, "DISPLAY_OFF", uint8_t {1}, uint8_t {3}, StorageKind::U8},
       {Settings::THEME, "THEME", std::string {"Default"}, std::string {"Dark"},
        StorageKind::STRING},
       {Settings::TEXT_SIZE, "TEXT_SIZE", uint8_t {TextSizePolicy::DEFAULT},
@@ -262,7 +262,7 @@ std::vector<SettingCase> settingCases() {
       {Settings::BATT_STYLE, "BATT_STYLE", uint8_t {Settings::BATT_STYLE_ICON}, uint8_t {2},
        StorageKind::U8},
       {Settings::SHOW_TITLE, "SHOW_TITLE", true, false, StorageKind::BOOL},
-      {Settings::SLEEP_CONN, "SLEEP_CONN", false, true, StorageKind::BOOL},
+      {Settings::SLEEP_CONN, "SLEEP_CONN", true, false, StorageKind::BOOL},
       {Settings::BULB, "BULB", SpinValue::nvs_t {30, SpinValue::UNIT_SEC},
        SpinValue::nvs_t {42, SpinValue::UNIT_MIN}, StorageKind::BLOB},
       {Settings::SCAN_MODE, "SCAN_MODE", uint8_t {0}, uint8_t {2}, StorageKind::U8},
@@ -815,11 +815,33 @@ void testMultiselectLegacyRecordUpgrades() {
 
 }  // namespace
 
+void testExistingLowPowerChoicesArePreserved() {
+  nvs_test_reset();
+  Settings::init();
+  Settings::save<uint8_t>(Settings::INACTIVITY, 0);
+  Settings::save<uint8_t>(Settings::DISPLAY_OFF, 0);
+  Settings::save<bool>(Settings::SLEEP_CONN, false);
+
+  // A second init sees the keys present and must not overwrite them with the
+  // fresh-device defaults.
+  Settings::init();
+  checkValue({Settings::INACTIVITY, "INACTIVITY", uint8_t {2}, uint8_t {0}, StorageKind::U8},
+             Settings::load<uint8_t>(Settings::INACTIVITY), uint8_t {0},
+             "existing inactivity choice");
+  checkValue({Settings::DISPLAY_OFF, "DISPLAY_OFF", uint8_t {1}, uint8_t {0}, StorageKind::U8},
+             Settings::load<uint8_t>(Settings::DISPLAY_OFF), uint8_t {0},
+             "existing screen-off choice");
+  checkValue({Settings::SLEEP_CONN, "SLEEP_CONN", true, false, StorageKind::BOOL},
+             Settings::load<bool>(Settings::SLEEP_CONN), false,
+             "existing sleep-while-connected choice");
+}
+
 int main() {
   const auto cases = settingCases();
   checkTableCoverage(cases);
   testCatalogWireIdsAreUnique();
   testDefaults(cases);
+  testExistingLowPowerChoicesArePreserved();
   testNvsRoundTrips(cases);
   testSdRoundTrips(cases);
   testNetworkIngressValidation();

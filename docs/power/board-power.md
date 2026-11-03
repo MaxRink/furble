@@ -27,8 +27,10 @@ The short version, ranked by the size of the prize and not by readiness:
 5. GPS always-on costs 23 to 31.6 mA while enabled. The current 15 s duty clamp
    saves only about 1.5 mA in the model; a longer interval with a cached fix is
    the real win, and it is unimplemented.
-6. Auto-off and display-off defaults leave 25 to 81 mA running when the user
-   forgets the device. Both mechanisms are implemented and both default off.
+6. Auto-off still defaults off, so 25 to 81 mA can run when the user forgets
+   the device. The display defaults now shorten that window: fresh devices seed
+   a 60 s inactivity timeout and screen off, except the Core Basic, which keeps
+   Dim so its IP5306 boost is not cut.
 
 None of those numbers is a bench measurement on the named board except where
 the text says `measured-local`.
@@ -957,10 +959,12 @@ Estimates are not measurements unless the label says `measured-local`.
 
 #### PL-01 StickS3: `SLEEP_CONN` default
 
-- Change: do not flip the code default yet. Keep the Battery Saver opt-in, run
-  the per-vendor soak, then consider defaulting it on for the StickS3 only.
-- Current behavior: `SLEEP_CONN` defaults to false. The UI hides it on every
-  board except the StickS3. With it off, the Control task holds
+- Change: implemented. `SLEEP_CONN` now defaults on for the StickS3 only; the
+  per-vendor soak remains the promotion gate for calling the saving measured.
+- Current behavior: `SLEEP_CONN` defaults to true on the StickS3 and false on
+  the other boards, which have no modem-sleep controller or GPS burst lock. An
+  existing stored choice is preserved. The UI hides it on every board except
+  the StickS3. With it off, the Control task holds
   `NO_LIGHT_SLEEP` for the whole connection. With the screen off, the model is
   43.6 mA against 3.61 mA with it on.
 - Evidence: `code` (`src/FurbleControl.cpp:1116-1133`,
@@ -1104,12 +1108,14 @@ Estimates are not measurements unless the label says `measured-local`.
 
 #### PL-07 All boards: display inactivity and screen-off defaults
 
-- Change: default `INACTIVITY` to 60 s and `DISPLAY_OFF` to Off (mode 1) on the
-  battery boards. Keep Dim as the default only where the user has no way to
-  wake the screen.
-- Current behavior: `INACTIVITY` defaults to 0 (never) and `DISPLAY_OFF`
-  defaults to 0 (Dim). Dim keeps the APB lock and the MCU active. The model
-  puts the S3 at 50.6 mA dimmed, of which only 10.4 mA is the display.
+- Change: implemented. Fresh devices seed `INACTIVITY` to 60 s and
+  `DISPLAY_OFF` to Off (mode 1), except the M5Stack Core Basic, which keeps Dim
+  so its IP5306 boost is not cut. The 30-minute soak remains the verification
+  gate.
+- Current behavior: `INACTIVITY` seeds to 2 (60 s) and `DISPLAY_OFF` to 1 (Off)
+  on an unset key; the Core Basic seeds Dim. Existing stored choices are
+  preserved. Dim keeps the APB lock and the MCU active; the model puts the S3
+  at 50.6 mA dimmed, of which only 10.4 mA is the display.
 - Evidence: `code` (`src/FurbleSettings.cpp`, `src/FurbleUI.cpp`),
   `model`, `plan`.
 - Estimated saving: about 40 mA when the user forgets the device (`model`).

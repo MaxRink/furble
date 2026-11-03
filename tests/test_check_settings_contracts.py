@@ -254,6 +254,99 @@ class SettingsContractsTest(unittest.TestCase):
     self.assertEqual(result.returncode, 0, result.stderr)
     self.assertIn("summary: 0 FAIL", result.stdout)
 
+  def test_board_conditional_function_uses_default_branch(self):
+    header = """\
+namespace Furble {
+namespace SettingsDefaults {
+
+constexpr uint8_t displayOff() {
+#if defined(FURBLE_M5STACK_CORE)
+  return 0;
+#else
+  return 1;
+#endif
+}
+
+constexpr bool sleepConn() {
+#if defined(FURBLE_M5STICKS3)
+  return true;
+#else
+  return false;
+#endif
+}
+
+}  // namespace SettingsDefaults
+}  // namespace Furble
+"""
+    constants: dict = {}
+    _, guards = CHECKER._source_lines(header)
+    CHECKER._parse_constants("include/FurbleSettingsDefaults.h", header, constants, guards)
+    display = CHECKER._resolve_expression("SettingsDefaults::displayOff()", constants)
+    self.assertEqual((display.kind, display.value), ("int", 1))
+    sleep = CHECKER._resolve_expression("SettingsDefaults::sleepConn()", constants)
+    self.assertEqual((sleep.kind, sleep.value), ("bool", False))
+
+  def test_board_qualified_doc_aliases_use_the_common_branch(self):
+    rules = {rule.symbol: rule for rule in CHECKER.DOC_DEFAULT_RULES}
+    self.assertEqual(
+        CHECKER._canonical_doc_default(
+            rules["DISPLAY_OFF"], "Off (Dim on M5Stack Core Basic)"
+        ),
+        "1",
+    )
+    self.assertEqual(
+        CHECKER._canonical_doc_default(
+            rules["SLEEP_CONN"], "Off (On on M5StickS3)"
+        ),
+        "false",
+    )
+
+  def test_namespaced_defaults_header_is_resolved(self):
+    defaults = """\
+#ifndef FURBLE_SETTINGS_DEFAULTS_H
+#define FURBLE_SETTINGS_DEFAULTS_H
+
+#include <cstdint>
+
+namespace Furble {
+namespace SettingsDefaults {
+
+constexpr uint8_t INACTIVITY = 2;
+
+}  // namespace SettingsDefaults
+}  // namespace Furble
+
+#endif
+"""
+    source = SOURCE.replace(
+        """        case INACTIVITY:
+        case DISPLAY_OFF:
+        case AUTO_OFF:
+          save<uint8_t>(setting.type, 0);
+          break;""",
+        """        case INACTIVITY:
+          save<uint8_t>(setting.type, SettingsDefaults::INACTIVITY);
+          break;
+        case DISPLAY_OFF:
+        case AUTO_OFF:
+          save<uint8_t>(setting.type, 0);
+          break;""",
+    )
+    docs = DOCS.replace(
+        "| Inactivity timeout | Never |", "| Inactivity timeout | 60 secs |"
+    )
+    write_fixture(
+        self.root,
+        **{
+            "include/FurbleSettingsDefaults.h": defaults,
+            "src/FurbleSettings.cpp": source,
+            "docs/settings-and-controls.md": docs,
+            "docs/wiki/Settings-Reference.md": docs,
+        },
+    )
+    report = self.direct_report()
+    self.assertEqual(self.messages(report, "FAIL"), [])
+
   def test_missing_default_case_is_failed(self):
     source = SOURCE.replace(
         """        case CPU_FREQ:

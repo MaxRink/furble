@@ -199,12 +199,12 @@ rank options, not to promise a runtime.
 | D | Screen on 25 percent of the time, BLE connected, GNSS off |
 | E | Screen on, BLE connected, GNSS continuous |
 
-Hours, after the 0.85 derating. The ESP32-S3 rows assume `SLEEP_CONN` on. It defaults off. The default StickS3 row shows the difference. All rows use a generic 40 mA GNSS load, including M10 devices, so the M10 rows are conservative.
+Hours, after the 0.85 derating. The ESP32-S3 rows assume `SLEEP_CONN` on. It defaults on for the StickS3. The row with it off shows the difference. All rows use a generic 40 mA GNSS load, including M10 devices, so the M10 rows are conservative.
 
 | Device | Battery | A | B | C | D | E |
 | :--- | :--- | ---: | ---: | ---: | ---: | ---: |
-| M5StickS3, `SLEEP_CONN` on | 250 mAh | 59 | 4.9 | 15.6 | 9.2 | 1.8 |
-| M5StickS3, default `SLEEP_CONN` off | 250 mAh | 4.9 | 2.5 | 4.0 | 4.0 | 1.8 |
+| M5StickS3, default (`SLEEP_CONN` on) | 250 mAh | 59 | 4.9 | 15.6 | 9.2 | 1.8 |
+| M5StickS3, `SLEEP_CONN` off | 250 mAh | 4.9 | 2.5 | 4.0 | 4.0 | 1.8 |
 | M5Stack CoreS3 | 500 mAh | 118 | 9.7 | 31.2 | 18.5 | 3.5 |
 | M5Stack Core2 plus 1500 mAh module | 1890 mAh | 114 | 28.1 | 64.6 | 52.0 | 12.9 |
 | LilyGO T-Deck Plus | 2000 mAh | 472 | 39.0 | 125 | 73.9 | 14.0 |

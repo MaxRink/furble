@@ -589,8 +589,9 @@ on some boards.
 
 `Settings->Power->Sleep while connected` lets the controller doze between
 Bluetooth events while a camera is connected.
-It is off by default, and it is only offered on the M5StickS3, the other
-controllers cannot sleep with a connection up.
+It is on by default on a fresh M5StickS3 and off elsewhere, and it is only
+offered on the M5StickS3; the other controllers cannot sleep with a connection
+up. Existing devices keep their stored choice.
 
 Turning it on is a worthwhile saving on a long shoot.
 The trade is that the first press after a quiet spell may take a moment longer
@@ -603,6 +604,11 @@ The window title can be hidden with `Settings->Display->Show Title`.
 It is on by default.
 Hiding it frees up space in the header for the status icons, which is welcome
 on the narrow stick displays.
+
+Fresh devices start with an Inactivity timeout of 60 seconds and Screen off set
+to Off. The M5Stack Core Basic keeps Dim because its IP5306 boost cuts the board
+below 45 mA after 32 seconds. Existing devices keep their stored choices, so an
+upgrade does not rewrite a chosen timeout or mode.
 
 ### Themes
 
