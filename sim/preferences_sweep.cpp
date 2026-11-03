@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <system_error>
+#include <vector>
 
 #include <sys/stat.h>
 #include <unistd.h>
@@ -112,15 +113,31 @@ bool processAlive(int pid) {
 }
 
 std::size_t sweepStalePreferences(const std::filesystem::path &directory, int selfPid) {
-  std::error_code error;
-  if (!std::filesystem::is_directory(directory, error)) {
+  std::error_code directoryError;
+  if (!std::filesystem::is_directory(directory, directoryError)) {
     return 0;
   }
 
+  const auto isRegular = [](const std::filesystem::path &path) {
+    std::error_code error;
+    return std::filesystem::is_regular_file(path, error);
+  };
+  const auto removeFile = [](const std::filesystem::path &path) {
+    std::error_code error;
+    return std::filesystem::remove(path, error);
+  };
+
+  // Snapshot the directory before deleting anything. Removing while iterating
+  // made the result depend on host filesystem iteration order.
+  std::vector<std::filesystem::path> entries;
+  std::error_code listError;
+  for (std::filesystem::directory_iterator it(directory, listError), end; !listError && it != end;
+       it.increment(listError)) {
+    entries.push_back(it->path());
+  }
+
   std::size_t removed = 0;
-  for (std::filesystem::directory_iterator it(directory, error), end; !error && it != end;
-       it.increment(error)) {
-    const std::filesystem::path path = it->path();
+  for (const std::filesystem::path &path : entries) {
     const std::string filename = path.filename().string();
     if (filename.rfind(STORE_PREFIX, 0) != 0) {
       continue;
@@ -147,42 +164,36 @@ std::size_t sweepStalePreferences(const std::filesystem::path &directory, int se
       // A sidecar is removable only while its primary store and marker exist.
       const std::string primaryName = filename.substr(0, markerPosition) + STORE_SUFFIX;
       const std::filesystem::path primary = directory / primaryName;
-      if (!ownedRegularFile(primary)
-          || !std::filesystem::is_regular_file(primary.string() + STORE_MARKER_SUFFIX, error)
-          || !std::filesystem::is_regular_file(path, error)) {
+      if (!ownedRegularFile(primary) || !isRegular(primary.string() + STORE_MARKER_SUFFIX)
+          || !isRegular(path)) {
         continue;
       }
-      if (std::filesystem::remove(path, error)) {
+      if (removeFile(path)) {
         removed++;
       }
       continue;
     }
-    if (!std::filesystem::is_regular_file(path, error)
-        || !std::filesystem::is_regular_file(marker, error)) {
+    if (!isRegular(path) || !isRegular(marker)) {
       continue;
     }
-    if (std::filesystem::remove(path, error)) {
+    if (removeFile(path)) {
       removed++;
-      (void)std::filesystem::remove(marker, error);
-      // Remove this store's temporary sidecars too. Otherwise iteration order
-      // decides whether the sidecar branch can still see the primary marker.
+      (void)removeFile(marker);
+      // Remove this store's temporary sidecars too. Otherwise the snapshot
+      // order decides whether the sidecar branch can still see the marker.
       const std::string sidecarPrefix = filename + ".tmp.";
-      for (std::filesystem::directory_iterator side(directory, error), sideEnd;
-           !error && side != sideEnd; side.increment(error)) {
-        const std::string sideName = side->path().filename().string();
+      for (const std::filesystem::path &candidate : entries) {
+        const std::string sideName = candidate.filename().string();
         if (sideName.rfind(sidecarPrefix, 0) != 0) {
           continue;
         }
-        int sidecarPid = 0;
-        if (!parsePositivePid(sideName.substr(sidecarPrefix.size()), &sidecarPid)
-            || sidecarPid != *pid) {
+        int candidatePid = 0;
+        if (!parsePositivePid(sideName.substr(sidecarPrefix.size()), &candidatePid)
+            || candidatePid != *pid) {
           continue;
         }
-        if (ownedRegularFile(side->path())
-            && std::filesystem::is_regular_file(side->path(), error)) {
-          if (std::filesystem::remove(side->path(), error)) {
-            removed++;
-          }
+        if (ownedRegularFile(candidate) && isRegular(candidate) && removeFile(candidate)) {
+          removed++;
         }
       }
     }
