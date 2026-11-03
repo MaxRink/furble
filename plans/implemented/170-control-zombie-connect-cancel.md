@@ -115,13 +115,13 @@ set. The fix closes both the route and the underlying assumption.
 abort. Only the poll is added. The waits themselves, their durations, their
 poll intervals and every protocol step around them are untouched; the vendor
 behaviour they implement comes from the sources already cited in
-[61-camera-compatibility.md](61-camera-compatibility.md), and this change adds
+[61-camera-compatibility.md](../61-camera-compatibility.md), and this change adds
 no protocol knowledge. Both vendors are declared untested on hardware: only
 Fujifilm is available here.
 
 `Nikon`, `NikonBase` and `NikonSmart` were found by the gate below once it was
 widened, and carry the same one-line change. Their protocol sources are the ones
-already recorded in [61-camera-compatibility.md](61-camera-compatibility.md):
+already recorded in [61-camera-compatibility.md](../61-camera-compatibility.md):
 skyblond.info, hurui200320/nsg, the ML-L7 manual, and furble's own classes as
 the working reference. The 60 s scan loop, the 10 s per-stage wait and
 `FINAL_OK_WAIT_MS` are pre-existing constants preserved exactly by the slicing,
