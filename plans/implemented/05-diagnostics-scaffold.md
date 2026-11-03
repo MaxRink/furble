@@ -1,5 +1,7 @@
 # PR05: diagnostics scaffold
 
+Status: implemented on master (archived 2026-11-03).
+
 ## Goal
 
 Expand the About page and add a Settings -> Diagnostics submenu holding device

@@ -1,5 +1,7 @@
 # PR01: CPU frequency setting
 
+Status: implemented on master (archived 2026-11-03).
+
 ## Goal
 
 Resolve the mismatch between the 160 MHz maximum passed to `esp_pm_configure()`

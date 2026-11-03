@@ -39,8 +39,8 @@ Three loose ends remained:
   as 01 00 on service 4c0020fe, characteristics f9150137 and ad06c7b7.
 - PR #239 hardware trace 2026-08-28: saved reconnect stalls the full 25 s
   without the geotag acceptance path while 01 00 arrives on ad06c7b7 every
-  10 s (plans/75-false-connected.md, deviation section).
-- Ricoh rc=520 behavior (plans/147-connect-reclaim-order.md): a standby camera
+  10 s (plans/implemented/75-false-connected.md, deviation section).
+- Ricoh rc=520 behavior (plans/implemented/147-connect-reclaim-order.md): a standby camera
   timing out the encryption handshake kills the link. A single occurrence of
   that shape is transient, not bond loss.
 - X100VI bench run 2026-09-02, firmware dev+g337f6259
@@ -593,7 +593,7 @@ overrides unchanged.
 
 ### 3. Doc reconciliation
 
-- plans/75-false-connected.md: the fix-design section no longer claims that
+- plans/implemented/75-false-connected.md: the fix-design section no longer claims that
   01 00 on GEOTAG_UPDATE is never registration confirmation; it points at the
   implemented #239 deviation.
 - plans/76-reconnect-stuck.md: the diagnosis-era statement that the PR #93

@@ -1,5 +1,7 @@
 # PR03: reach Settings while connected
 
+Status: implemented on master (archived 2026-11-03).
+
 ## Goal
 
 Add a Settings entry to the Connected page so settings are reachable without

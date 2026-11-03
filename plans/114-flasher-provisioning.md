@@ -95,7 +95,7 @@ provisioned.
 
 ## Dependencies
 
-- `plans/27-usb-console.md`: the console is the transport. Hard dependency,
+- `plans/implemented/27-usb-console.md`: the console is the transport. Hard dependency,
   landed.
 - `plans/114-provision-parser.md` / PR #165: the parser, field limits, and
   atomic apply path. Hard dependency, landed.

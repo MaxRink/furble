@@ -462,7 +462,7 @@ jobs:
       # on all three modeled panel binaries; the 80x160 panel is where a layout
       # overflow regression bites first. This keeps timing and navigation
       # findings from being panel-specific.
-      # See plans/105-ui-fuzzing.md.
+      # See plans/implemented/105-ui-fuzzing.md.
       - name: Fuzz the UI (135x240, 80x160, and 320x240)
         env:
           SDL_VIDEODRIVER: dummy

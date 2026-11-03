@@ -1,5 +1,7 @@
 # 89 - Reconnect UI indicator (task #54)
 
+Status: implemented on master (archived 2026-11-03).
+
 ## Motivation
 
 Hardware testing surfaced a gap: when a camera drops mid-session and furble is

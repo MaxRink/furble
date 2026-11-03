@@ -1,5 +1,7 @@
 # PR20 - Hardware motion detection
 
+Status: implemented on master (archived 2026-11-03).
+
 ## Goal
 
 Let the IMU watch for motion in hardware and raise an interrupt on a state

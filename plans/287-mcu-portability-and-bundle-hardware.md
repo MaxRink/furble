@@ -862,7 +862,7 @@ Repo evidence:
 - `tools/portable_core_manifest.txt`, 10 files.
 - `src/FurbleUI.cpp`, `src/FurbleGPS.cpp`, `src/FurblePlatform.cpp`.
 - `sdkconfig.m5stick-s3`, NimBLE roles, 9 connections, 2M and coded PHY.
-- `plans/07-ble-sleep.md`, `plans/15-gps-power.md`,
+- `plans/implemented/07-ble-sleep.md`, `plans/15-gps-power.md`,
   `plans/98-power-optimization-audit.md`, `plans/106-flash-size-optimization.md`,
   `plans/127-nordic-port-baseline.md`.
 - `docs/supported-hardware.md`, `docs/companion.md`,

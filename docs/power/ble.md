@@ -22,9 +22,9 @@ Read for this lane:
 
 - `plans/96-wifi-bt-ble-hardening.md`, `plans/98-power-optimization-audit.md`,
   `plans/98b-power-followup.md`, `plans/158-sim-scheduler-parity.md`
-- `plans/07-ble-sleep.md`, `plans/08-scan-tuning.md`, `plans/09-reconnect-backoff.md`,
+- `plans/implemented/07-ble-sleep.md`, `plans/implemented/08-scan-tuning.md`, `plans/implemented/09-reconnect-backoff.md`,
   `plans/10-adaptive-conn-params.md`, `plans/11-adaptive-tx-power.md`,
-  `plans/65-bt-coexistence.md`, `plans/77-battery-saver-profile.md`
+  `plans/65-bt-coexistence.md`, `plans/implemented/77-battery-saver-profile.md`
 - `lib/furble/Scan.cpp`, `lib/furble/Scan.h`, `lib/furble/Camera.cpp`,
   `lib/furble/Camera.h`, `lib/furble/CameraList.cpp`, `lib/furble/Device.cpp`,
   and the matching `lib/furble/protocol/` parsers
@@ -373,7 +373,7 @@ distance, for 30/120 and 30/320. Simulator timing scenario. A soak that leaves
 the scan page open for 10 minutes with a camera that advertises once per second.
 
 **Citation.** `lib/furble/Scan.h:167-173`; `plans/65-bt-coexistence.md` lines
-356-359; `plans/08-scan-tuning.md` lines 61-69.
+356-359; `plans/implemented/08-scan-tuning.md` lines 61-69.
 
 ### BLE-06 Stop the discovery scan when the panel sleeps
 
@@ -1019,7 +1019,7 @@ interactive cancel path is already bounded by the 100 ms slice.
 time after the camera returns. A drain A/B for 60 minutes with the camera off.
 
 **Citation.** `include/FurbleReconnectBackoff.h`;
-`src/FurbleControl.cpp:318-360`; `plans/09-reconnect-backoff.md`.
+`src/FurbleControl.cpp:318-360`; `plans/implemented/09-reconnect-backoff.md`.
 
 ### BLE-25 TX power below 3 dBm (no change for power)
 
@@ -1254,7 +1254,7 @@ configuration.
 **Citation.** `sdkconfig.m5stick-s3` MODEM SLEEP and Controller Options blocks;
 `sdkconfig.m5stick-c` BTDM block;
 `components/bt/controller/esp32c3/Kconfig.in`;
-`plans/07-ble-sleep.md`; `plans/00-hardware-experiments.md`.
+`plans/implemented/07-ble-sleep.md`; `plans/00-hardware-experiments.md`.
 
 ### BLE-32 The BLE radio is absent from the power model
 
@@ -1643,10 +1643,10 @@ Plans:
 
 - `plans/00-hardware-experiments.md` (3.3 mA measured floor, 32 kHz crystal
   absent)
-- `plans/07-ble-sleep.md`, `plans/08-scan-tuning.md`,
-  `plans/09-reconnect-backoff.md`, `plans/10-adaptive-conn-params.md`,
+- `plans/implemented/07-ble-sleep.md`, `plans/implemented/08-scan-tuning.md`,
+  `plans/implemented/09-reconnect-backoff.md`, `plans/10-adaptive-conn-params.md`,
   `plans/11-adaptive-tx-power.md`, `plans/65-bt-coexistence.md`,
-  `plans/77-battery-saver-profile.md`,
+  `plans/implemented/77-battery-saver-profile.md`,
   `plans/96-wifi-bt-ble-hardening.md`, `plans/98-power-optimization-audit.md`,
   `plans/98b-power-followup.md`, `plans/158-sim-scheduler-parity.md`
 

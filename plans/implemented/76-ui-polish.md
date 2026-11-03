@@ -1,5 +1,7 @@
 # UI polish: focus highlight and sim theme/board capture
 
+Status: implemented on master (archived 2026-11-03).
+
 ## Motivation
 
 A full themes x boards x pages screenshot sweep of the LVGL UI found one clear

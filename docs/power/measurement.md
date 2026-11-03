@@ -1471,9 +1471,9 @@ Repository documents:
 - `plans/13-auto-off-low-batt.md`
 - `plans/15-gps-power.md`
 - `plans/19-interval-deep-sleep.md`
-- `plans/26-pm1-watchdog.md`
+- `plans/implemented/26-pm1-watchdog.md`
 - `plans/32-gps-advanced.md`
-- `plans/77-battery-saver-profile.md`
+- `plans/implemented/77-battery-saver-profile.md`
 - `tools/power-model/README.md`
 - `tools/power-model/board-currents.yaml`
 - `tools/power-model/compare.py`

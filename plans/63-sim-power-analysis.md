@@ -172,7 +172,7 @@ connection event and a larger cost for notification traffic. Advertising
 bursts, the idle versus fast profile switching from the connection saver
 (plan 10) and the reconnect backoff timing (plan 09) all feed the same
 integral. The model runs against the mock NimBLE client layer from
-[36-camera-test-harness.md](36-camera-test-harness.md) tier B, shared with
+[36-camera-test-harness.md](implemented/36-camera-test-harness.md) tier B, shared with
 that plan rather than duplicated. CI catches duty regressions this way: a
 fast profile pinned after a shutter press, or a scan stuck at 100% duty,
 both show as a step in integrated radio-on time.
@@ -287,7 +287,7 @@ came from when it is not the exact PR base.
 
 Those remain hardware measurements.
 [00-hardware-experiments.md](00-hardware-experiments.md) and the battery
-drain console logging from PR02 ([02-battery-display.md](02-battery-display.md))
+drain console logging from PR02 ([02-battery-display.md](implemented/02-battery-display.md))
 are the hardware complement to this plan. Task 14, the assisted-refix
 retest, stays hardware.
 
@@ -579,27 +579,27 @@ time. Effort: one to two days.
 - [29-virtual-test-rig.md](29-virtual-test-rig.md) established the fake
   UART plus real `FurbleGPS.cpp` decision this plan's GPS model relies on,
   and shares the scripted navigation infrastructure.
-- [36-camera-test-harness.md](36-camera-test-harness.md) provides the mock
+- [36-camera-test-harness.md](implemented/36-camera-test-harness.md) provides the mock
   NimBLE layer the BLE duty model runs against. Shared, not duplicated.
-- [06-power-module.md](06-power-module.md) built the counted, named lock
+- [06-power-module.md](implemented/06-power-module.md) built the counted, named lock
   API that makes the sleep estimator attributable.
-- [08-scan-tuning.md](08-scan-tuning.md),
-  [09-reconnect-backoff.md](09-reconnect-backoff.md),
+- [08-scan-tuning.md](implemented/08-scan-tuning.md),
+  [09-reconnect-backoff.md](implemented/09-reconnect-backoff.md),
   [10-adaptive-conn-params.md](10-adaptive-conn-params.md) and
   [11-adaptive-tx-power.md](11-adaptive-tx-power.md) define the policies
   the BLE duty model integrates.
 - [12-display-off.md](12-display-off.md) and
   [13-auto-off-low-batt.md](13-auto-off-low-batt.md) define the dimmed and
   off scenarios.
-- [14-gps-pcas.md](14-gps-pcas.md), [15-gps-power.md](15-gps-power.md) and
+- [14-gps-pcas.md](implemented/14-gps-pcas.md), [15-gps-power.md](15-gps-power.md) and
   [18-gps-motion.md](18-gps-motion.md) define the GPS duty policies the
   receiver model scores.
 - [19-interval-deep-sleep.md](19-interval-deep-sleep.md) and
-  [26-pm1-watchdog.md](26-pm1-watchdog.md) interact through the PMIC; the
+  [26-pm1-watchdog.md](implemented/26-pm1-watchdog.md) interact through the PMIC; the
   behavioral stub makes that interaction CI-testable.
 - [00-hardware-experiments.md](00-hardware-experiments.md) supplies the
   Experiment A floor and the Experiment B cold start penalty.
-- [02-battery-display.md](02-battery-display.md) built the battery
+- [02-battery-display.md](implemented/02-battery-display.md) built the battery
   instrumentation the calibration micro-task reads.
 - The ui-audit walker (`tools/ui-audit.md`, fork PR #42) and the screenshot
   CI job (fork PR #44) share the walker infrastructure. One walker,

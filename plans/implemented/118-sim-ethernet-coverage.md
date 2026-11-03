@@ -67,12 +67,12 @@ None. Test-only. `plans/42` owns any Ethernet settings.
 
 ## Dependencies
 
-- `plans/42-waveshare-eth-node.md` FurbleEthernet: **hard blocker** for the real
+- `plans/implemented/42-waveshare-eth-node.md` FurbleEthernet: **hard blocker** for the real
   assertions. Harness + stub land first.
 - `plans/33-wifi-hub.md` PR33c / #66 MQTT: the transport-agnostic client. If the
   client still keys on WiFi specifically when this lands, this test is the thing
   that catches it. That is the point.
-- `plans/117-sim-mqtt-coverage.md`: reuses `MockEspMqtt`.
+- `plans/implemented/117-sim-mqtt-coverage.md`: reuses `MockEspMqtt`.
 
 ## Risks
 

@@ -1,5 +1,7 @@
 # PR06: FurblePower pm-lock module
 
+Status: implemented on master (archived 2026-11-03).
+
 ## Goal
 
 Add a `FurblePower` module that owns the esp_pm configuration and counted

@@ -1,5 +1,7 @@
 # 87 - per-model physical buttons in the SDL sim
 
+Status: implemented on master (archived 2026-11-03).
+
 ## Goal
 
 Model each board's real physical buttons in the SDL simulator and let a

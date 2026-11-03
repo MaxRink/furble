@@ -1,5 +1,7 @@
 # PR14 - GPS receiver configuration with $PCAS
 
+Status: implemented on master (archived 2026-11-03).
+
 ## Goal
 
 Give furble a TX path to the GPS receiver so it can set the fix rate, prune the

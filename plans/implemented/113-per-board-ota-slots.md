@@ -25,7 +25,7 @@ Two things now push against that ceiling:
   S3 release image at 1,034,256 bytes and called WiFi plus TLS "plausibly most
   of" the 686 KB of headroom. The S3 MQTT build is the tight one: the roadmap
   notes it at roughly 99.7% of a slot once WiFi, MQTT and TLS are in.
-- `plans/42-waveshare-eth-node.md` is a 16 MB board that wants TLS, MQTT and
+- `plans/implemented/42-waveshare-eth-node.md` is a 16 MB board that wants TLS, MQTT and
   BLE resident at once.
 
 The uniform 1700K ceiling is set by the smallest boards (three 4 MB
@@ -116,7 +116,7 @@ and enlarge the slot only on the two boards that have the flash.
 
 - `plans/34-ota-partitions.md` (PR34a-1): landed. This doc edits the layout it
   established.
-- Enables `plans/33-wifi-hub.md` PR33c and `plans/42-waveshare-eth-node.md` to
+- Enables `plans/33-wifi-hub.md` PR33c and `plans/implemented/42-waveshare-eth-node.md` to
   use the S3 and Core2 headroom. The WiFi+MQTT+TLS image still needs a measured
   size check when that implementation lands.
 - No dependency on WiFi, MQTT, companion or the sim. This slice is already

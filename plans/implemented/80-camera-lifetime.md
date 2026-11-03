@@ -1,5 +1,7 @@
 # 80: Camera lifetime, own cameras by shared_ptr
 
+Status: implemented on master (archived 2026-11-03).
+
 ## Motivation
 
 `CameraList` owns the saved and scanned cameras in a

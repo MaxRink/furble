@@ -870,7 +870,7 @@ Estimates are not measurements unless the label says `measured-local`.
   six-axis configuration. Verify no I2C errors and no lost motion events.
 - Citation: BMI270 datasheet `PWR_CTRL` `0x7D`, `PWR_CONF` `0x7C`, `ACC_CONF`
   `0x40`; MPU6886 datasheet `PWR_MGMT_1` `0x6B`, `PWR_MGMT_2` `0x6C`;
-  `src/FurbleIMU.cpp`; `plans/20-imu-hw-motion.md`.
+  `src/FurbleIMU.cpp`; `plans/implemented/20-imu-hw-motion.md`.
 
 ### 4.3 GPIO, pull-ups, and ADC leakage
 
@@ -976,7 +976,7 @@ Estimates are not measurements unless the label says `measured-local`.
 - Required test: the plan 111 states 3 and 4 measurement pair, plus a repeated
   per-vendor soak with no disconnects and an acceptable first shutter latency
   after a 30 s idle gap.
-- Citation: `plans/07-ble-sleep.md`, `plans/98-power-optimization-audit.md`,
+- Citation: `plans/implemented/07-ble-sleep.md`, `plans/98-power-optimization-audit.md`,
   `plans/111-power-recommendations.md`.
 
 #### PL-02 All boards: `CONN_SAVER` default
@@ -1099,7 +1099,7 @@ Estimates are not measurements unless the label says `measured-local`.
 - Effort: small for the default, medium for passive.
 - Required test: discovery time and success rate for each vendor mode at Full,
   Balanced, Low, and passive; current during a scan on the analyzer.
-- Citation: `plans/08-scan-tuning.md`; ESP32 and ESP32-S3 datasheets radio
+- Citation: `plans/implemented/08-scan-tuning.md`; ESP32 and ESP32-S3 datasheets radio
   current; NimBLE scan API.
 
 #### PL-07 All boards: display inactivity and screen-off defaults
@@ -1208,7 +1208,7 @@ Estimates are not measurements unless the label says `measured-local`.
 - Required test: `power stats` lock dump, `pm` config readback, MQTT ping
   latency over 1 hour idle, and a link soak with DFS on and off.
 - Citation: `sdkconfig.waveshare-s3-eth`;
-  `plans/42-waveshare-eth-node.md`; ESP-IDF power management documentation.
+  `plans/implemented/42-waveshare-eth-node.md`; ESP-IDF power management documentation.
 
 #### NB-02 Waveshare: W5500 PHY power-down
 
@@ -1229,7 +1229,7 @@ Estimates are not measurements unless the label says `measured-local`.
 - Required test: 5 V input current with link up, link down, and PHY powered
   down; link recovery time after power-down.
 - Citation: WIZnet W5500 datasheet v1.0.6; `src/FurbleEthernet.cpp`;
-  `plans/42-waveshare-eth-node.md`.
+  `plans/implemented/42-waveshare-eth-node.md`.
 
 #### NB-03 StickS3 and headless: USB Serial/JTAG current and the USJ lock
 
@@ -1625,16 +1625,16 @@ Open questions that block a default change:
 - `plans/00-hardware-experiments.md`: the only recorded local measurements
   (crystal and GPS experiments). The 3.3 mA StickS3 floor is cited from this
   plan by other documents, but its drain row is not present here.
-- `plans/06-power-module.md`, `plans/07-ble-sleep.md`,
-  `plans/08-scan-tuning.md`, `plans/10-adaptive-conn-params.md`,
+- `plans/implemented/06-power-module.md`, `plans/implemented/07-ble-sleep.md`,
+  `plans/implemented/08-scan-tuning.md`, `plans/10-adaptive-conn-params.md`,
   `plans/11-adaptive-tx-power.md`, `plans/12-display-off.md`,
   `plans/13-auto-off-low-batt.md`, `plans/15-gps-power.md`,
-  `plans/19-interval-deep-sleep.md`, `plans/26-pm1-watchdog.md`,
-  `plans/42-waveshare-eth-node.md`, `plans/63-sim-power-analysis.md`,
-  `plans/77-battery-saver-profile.md`,
+  `plans/19-interval-deep-sleep.md`, `plans/implemented/26-pm1-watchdog.md`,
+  `plans/implemented/42-waveshare-eth-node.md`, `plans/63-sim-power-analysis.md`,
+  `plans/implemented/77-battery-saver-profile.md`,
   `plans/95-engineering-lessons.md`, `plans/98-power-optimization-audit.md`,
   `plans/98b-power-followup.md`, `plans/111-power-recommendations.md`,
-  `plans/143-pm1-watchdog-window.md`.
+  `plans/implemented/143-pm1-watchdog-window.md`.
 - `tools/power-model/board-currents.yaml` and `tools/power-model/README.md`.
 - `src/FurblePower.cpp`, `src/FurblePlatform.cpp`, `src/FurbleGPS.cpp`,
   `src/FurbleUI.cpp`, `src/FurbleControl.cpp`, `src/FurbleSD.cpp`,

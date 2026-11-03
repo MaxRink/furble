@@ -69,7 +69,7 @@ sync. It does not model ESP WiFi events, radio association, DHCP, or SNTP.
 
 This does not prove SPI pin wiring, W5500 PHY behavior, DHCP on a physical LAN,
 TLS, or MQTT broker behavior. Those remain the hardware boundary in
-`plans/42-waveshare-eth-node.md` and the MQTT host coverage in plan 117.
+`plans/implemented/42-waveshare-eth-node.md` and the MQTT host coverage in plan 117.
 
 `poe-power-model` is a test-only fixture for the Waveshare ESP32-S3-ETH power
 topology. Its default is no optional PoE HAT, unavailable PoE, link down, and no

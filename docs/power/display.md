@@ -15,7 +15,7 @@ Read for this lane:
 
 - `plans/98-power-optimization-audit.md`, `plans/98b-power-followup.md`
 - `plans/12-display-off.md`, `plans/63-sim-power-analysis.md`,
-  `plans/77-battery-saver-profile.md`, `plans/111-power-recommendations.md`,
+  `plans/implemented/77-battery-saver-profile.md`, `plans/111-power-recommendations.md`,
   `plans/285-power-accounting.md`
 - `src/FurbleUI.cpp`, `src/FurblePower.cpp`, `src/FurblePlatform.cpp`,
   `src/FurbleSettings.cpp`, `src/main.cpp`
@@ -389,7 +389,7 @@ absolute model.
 - Citation: `src/FurbleSettings.cpp:569-575`,
   `include/FurbleBatterySaver.h:22-27`, `src/FurbleUI.cpp:386-390`;
   `plans/98-power-optimization-audit.md:124-156`,
-  `plans/77-battery-saver-profile.md:45-62`,
+  `plans/implemented/77-battery-saver-profile.md:45-62`,
   `plans/111-power-recommendations.md:29-86`.
 
 ### D-010 Lower the default brightness, or add a profile
@@ -727,7 +727,7 @@ behavior change. The 500 ms connected liveness poll is already gentle.
 
 - `plans/12-display-off.md`
 - `plans/63-sim-power-analysis.md`
-- `plans/77-battery-saver-profile.md`
+- `plans/implemented/77-battery-saver-profile.md`
 - `plans/98-power-optimization-audit.md`
 - `plans/98b-power-followup.md`
 - `plans/111-power-recommendations.md`

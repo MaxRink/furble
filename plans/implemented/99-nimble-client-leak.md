@@ -1,5 +1,7 @@
 # PR99: Fix the NimBLE client leak that breaks all connects until a reboot
 
+Status: implemented on master (archived 2026-11-03).
+
 ## Goal
 
 Stop furble leaking a NimBLE client on every failed connect or reconnect

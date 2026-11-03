@@ -60,7 +60,7 @@ the existing reveal behavior.
 - `web-installer/CLAUDE.md`: document the debug variant, the
   `manifest_<board>-debug.json` naming contract, and that debug builds carry
   `FURBLE_CONSOLE`.
-- `plans/68-flasher-debug-firmware.md`, `plans/README.md`.
+- `plans/implemented/68-flasher-debug-firmware.md`, `plans/README.md`.
 
 ## Verification
 

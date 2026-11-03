@@ -76,7 +76,7 @@ None. Test-only. Uses the existing `reconnect` and `fauxny` scenario seeds.
 
 - `plans/25-multiconnect-ui.md`, the multi-connect selection UI: landed.
 - The real-Control harness (`tests/host/control_e2e`): landed.
-- `plans/119-companion-gatt-sim.md`: independent; both extend the sim but touch
+- `plans/implemented/119-companion-gatt-sim.md`: independent; both extend the sim but touch
   different scenarios.
 - **Startable NOW.** No network, no companion, no MQTT.
 

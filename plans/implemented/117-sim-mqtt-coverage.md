@@ -91,7 +91,7 @@ None. Test-only. The MQTT settings themselves are owned by PR33c.
   separate from this host-only owner-loop harness.
 - `plans/115-ota-update-mqtt.md`: shares the inbound-command routing seam; OTA
   routing remains outside this owner-loop regression.
-- `plans/118-sim-ethernet-coverage.md`: the harness uses a generic host netif
+- `plans/implemented/118-sim-ethernet-coverage.md`: the harness uses a generic host netif
   double to prove startup from an Ethernet-labelled GOT_IP condition.
 
 ## Risks

@@ -20,7 +20,7 @@ The current master ledger (2026-11-02, `ea86482a`) is:
 | Open PRs #317, #318, #319 | none |
 
 The matching reservation table and rebase rule live in
-[include/CLAUDE.md](../include/CLAUDE.md).
+[include/CLAUDE.md](../CLAUDE.md).
 
 ## Deviations and remaining gates
 

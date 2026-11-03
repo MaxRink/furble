@@ -1,5 +1,7 @@
 # 83 - host regression tests for the connect and disconnect lifecycle
 
+Status: implemented on master (archived 2026-11-03).
+
 ## Goal
 
 Reproduce the connect and disconnect bugs found only on hardware inside the

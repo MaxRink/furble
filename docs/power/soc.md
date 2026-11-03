@@ -448,25 +448,25 @@ This is a documentation and build consistency item, not a separate power lever.
 
 ### SOC-12 Deep sleep between intervalometer frames
 
-- **Change:** Implement plan 19: deep sleep between frames with a timed wake.
-- **Current behavior:** No `esp_deep_sleep_start()` call exists in the tree. A
-  timelapse keeps the device connected at the connected-idle current between
-  frames.
-- **Evidence:** inferred (code-read), modeled (plan 98). Plan 98 puts connected idle at
-  84.5 mA and deep sleep at 7 uA for the S3, with the M5PM1 timer as the wake
-  source (`plans/98:290-297`). This is a feature, not a tuning change.
+- **Change:** Use the implemented intervalometer timed power-off path.
+- **Current behavior:** `Platform::powerOffUntil()` arms the wake source and
+  powers off between frames. It disarms the M5PM1 watchdog first on the
+  StickS3, flushes the wall clock, and uses the board timer; no bare
+  `esp_deep_sleep_start()` call is used. The implementation is on master.
+- **Evidence:** `code` (`src/FurblePlatform.cpp`); modeled (plan 98). Plan 98
+  puts connected idle at 84.5 mA and deep sleep at 7 uA for the S3, with the
+  M5PM1 timer as the wake source (`plans/98:290-297`).
 - **Estimated saving:** Large in the timelapse scenario, close to the ratio
   between 84.5 mA and 7 uA plus PM1 overhead. No hardware measurement exists for
   the wake cycle.
-- **Risk:** High. The plan 26 watchdog conflict is unresolved: the PM1 watchdog
-  keeps counting in deep sleep and will reset the device unless disarmed or
-  replaced by the PM1 timer (`plans/26:284-291`). Camera reconnect, GPS state,
-  and display restore all become part of the wake path.
+- **Risk:** High until the wake cycle is measured. Camera reconnect, GPS state,
+  and display restore all remain part of the wake path; the watchdog is handled
+  by the power-off sequence rather than left armed.
 - **Effort:** Large.
 - **Required test:** 100 wake cycles, corrupt state, missed frame, USB recovery,
   PM1 watchdog armed and disarmed, and an analyzer run across a full timelapse.
-- **Citation:** `plans/19-interval-deep-sleep.md` (not implemented),
-  `plans/98:290-297`,
+- **Citation:** `plans/19-interval-deep-sleep.md` (implemented;
+  hardware wake-cycle gate remains), `plans/98:290-297`,
   `plans/26:284-291`.
 
 ### SOC-13 WiFi sleep IRAM option
@@ -1233,17 +1233,17 @@ result. A null result is a valid result.
   per-board current inputs and their confidence tags.
 - `plans/00-hardware-experiments.md`: measured 3.3 mA connected idle floor,
   14 uA power off, 107.7 s GPS cold refix, no 32 kHz crystal.
-- `plans/01-cpu-freq-setting.md`: CPU frequency setting and its risks.
-- `plans/06-power-module.md`: lock design and the no-manual-sleep rule.
-- `plans/07-ble-sleep.md`: modem sleep and per-board floors.
+- `plans/implemented/01-cpu-freq-setting.md`: CPU frequency setting and its risks.
+- `plans/implemented/06-power-module.md`: lock design and the no-manual-sleep rule.
+- `plans/implemented/07-ble-sleep.md`: modem sleep and per-board floors.
 - `plans/12-display-off.md`: display states, APB lock, PMIC backlight paths.
 - `plans/13-auto-off-low-batt.md`: charging lock and power-off policy.
 - `plans/15-gps-power.md`: GPS burst lock, duty limits, UART clock.
 - `plans/19-interval-deep-sleep.md`: deep sleep between interval frames.
-- `plans/26-pm1-watchdog.md`: PM1 watchdog, feed cadence, `SLP_TO`, deep sleep
+- `plans/implemented/26-pm1-watchdog.md`: PM1 watchdog, feed cadence, `SLP_TO`, deep sleep
   conflict.
-- `plans/27-usb-console.md`: console transport and USJ light sleep behavior.
-- `plans/77-battery-saver-profile.md`: the opt-in power bundle.
+- `plans/implemented/27-usb-console.md`: console transport and USJ light sleep behavior.
+- `plans/implemented/77-battery-saver-profile.md`: the opt-in power bundle.
 - `plans/96-wifi-bt-ble-hardening.md`: WiFi, BLE, and coexistence audit.
 - `plans/98-power-optimization-audit.md`: the model table and ranked actions.
 - `plans/98b-power-followup.md`: bounded GPS degraded retry.

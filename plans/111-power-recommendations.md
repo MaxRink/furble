@@ -209,8 +209,8 @@ validate the model without a calibrated current measurement.
 
 - `plans/98-power-optimization-audit.md` for the model table, the what-if runs,
   and the ranked action list this document draws on.
-- `plans/77-battery-saver-profile.md` for the opt-in toggle that ships the win.
-- `plans/07-ble-sleep.md` for the `SLEEP_CONN` design, the per-vendor stability
+- `plans/implemented/77-battery-saver-profile.md` for the opt-in toggle that ships the win.
+- `plans/implemented/07-ble-sleep.md` for the `SLEEP_CONN` design, the per-vendor stability
   risk, and the soak verification steps.
 - `plans/00-hardware-experiments.md` for the 3.3 mA measured connected-idle
   floor and the confirmed absence of a 32 kHz crystal.

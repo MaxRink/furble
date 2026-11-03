@@ -1,5 +1,7 @@
 # 85 - simulator end-to-end scenarios
 
+Status: implemented on master (archived 2026-11-03).
+
 ## Goal
 
 Run scripted end-to-end scenarios against the SDL simulator in CI, headlessly,

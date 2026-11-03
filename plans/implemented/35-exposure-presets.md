@@ -1,5 +1,7 @@
 # 35: Exposure time presets in 1/3 stops
 
+Status: implemented on master (archived 2026-11-03).
+
 ## Goal
 
 Select bulb and intervalometer shutter durations from the photographic 1/3

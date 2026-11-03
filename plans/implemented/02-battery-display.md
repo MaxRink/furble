@@ -1,5 +1,7 @@
 # PR02: battery percent and battery info page
 
+Status: implemented on master (archived 2026-11-03).
+
 ## Goal
 
 Show battery percent next to the header icon, and add a Battery info page with

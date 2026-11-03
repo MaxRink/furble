@@ -370,7 +370,7 @@ either the pairing service or ONLY the Secure service (`a9d2b304-...`),
 depending on its session state. The reject was `ESP_LOGD` (compiled out) and
 the scan runs with duplicates filtered, so one silent reject muted the whole
 60 s window. This also blocked and now exonerates the plan 75 hardware gate
-(false-connected doc, see plans/75-false-connected.md): the stalled reconnect
+(false-connected doc, see plans/implemented/75-false-connected.md): the stalled reconnect
 there was this scan-match bug, not a false-connected regression.
 
 Fix: accept either service UUID in `onResult` and keep the serial compare as

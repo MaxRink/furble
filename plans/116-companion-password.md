@@ -91,7 +91,7 @@ Out of scope:
 - The PR27 console table: `companion password` subcommands.
 - `sim/shim/FurbleCompanionService.h` and the companion rig
   (`sim/CompanionRigTransport.cpp`): mirror the auth handshake so
-  `plans/119-companion-gatt-sim.md` can drive it.
+  `plans/implemented/119-companion-gatt-sim.md` can drive it.
 
 ## Settings and defaults
 
@@ -241,7 +241,7 @@ firmware builds only.
   FurbleCompanionService on fork master). **Startable NOW.**
 - `plans/114-flasher-provisioning.md`: the flasher is the intended way to set the
   password at flash time. 114 and 116 share the settings `wire_id` table.
-- `plans/119-companion-gatt-sim.md`: adds the host assertions for this gate; 119's
+- `plans/implemented/119-companion-gatt-sim.md`: adds the host assertions for this gate; 119's
   password-gate slice depends on 116.
 
 ## Risks

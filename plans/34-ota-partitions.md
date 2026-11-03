@@ -360,8 +360,8 @@ In order of preference:
    should decline the erase prompt to keep their cameras. This is the primary
    path and it should be tested first, because if it works the other two are
    only fallbacks.
-2. **Settings export via the console.** `plans/24-sd-gpx-logging.md:212-230`
-   already designs settings export and import, and `plans/27-usb-console.md`
+2. **Settings export via the console.** `plans/implemented/24-sd-gpx-logging.md:212-230`
+   already designs settings export and import, and `plans/implemented/27-usb-console.md`
    gives `settings list` and `settings set`. A user with the console can dump
    settings to the host and replay them. Note that this does not cover camera
    pairings, because BLE bonding keys are not in the `Settings` table and PR27
@@ -463,7 +463,7 @@ survives to the serial console.
 Compile the whole thing out when `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE` is off,
 so a developer build behaves exactly as it does today.
 
-Interaction with `plans/26-pm1-watchdog.md`: the M5PM1 hardware watchdog on the
+Interaction with `plans/implemented/26-pm1-watchdog.md`: the M5PM1 hardware watchdog on the
 StickS3 and the rollback timer both exist to catch a wedged device, at different
 layers. They do not conflict in principle. The PM1 watchdog is now 45 seconds,
 which outlives the planned 30 second health window by 15 seconds. Runtime
@@ -536,7 +536,7 @@ Out of scope for both:
   check, or fold it into `FurbleOTA.cpp` if it stays under 100 lines.
 - `src/main.cpp:21-40`, `app_main`. The health check arms after the control task
   is created at line 32.
-- The `plans/27-usb-console.md` command table. A new `ota` command group.
+- The `plans/implemented/27-usb-console.md` command table. A new `ota` command group.
 - `README.md:89-92`, the Easy Install section, and the linked wiki page. Both
   need a note about the one time reflash.
 
@@ -654,7 +654,7 @@ Refuse to start an update if any of these hold:
   radio that is shared with the camera link, and an update mid-shoot is a bad
   idea regardless.
 - Battery below 40 percent and not charging, on boards where
-  `plans/02-battery-display.md` provides the reading. A device that browns out
+  `plans/implemented/02-battery-display.md` provides the reading. A device that browns out
   mid-write leaves a half written slot. Rollback covers that case, but not
   needing rollback is better.
 - The intervalometer is running.

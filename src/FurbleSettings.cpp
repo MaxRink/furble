@@ -700,7 +700,7 @@ void Settings::init(void) {
           // Ships as Software, not Auto. Auto prefers the board's hardware
           // engine, and that path is unproven on hardware, so the default must
           // not select it. Auto becomes the default in a follow-up commit once
-          // the six-step gate in plans/20-imu-hw-motion.md passes on the S3.
+          // the six-step gate in plans/implemented/20-imu-hw-motion.md passes on the S3.
           save<uint8_t>(setting.type, HW_MOTION_SOFTWARE);
           break;
         case GPS_BAUD:

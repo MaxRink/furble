@@ -757,7 +757,7 @@ performed.
 - Section 8 item 2 of the design document calls for a protocol document under
   `docs/`. Phase 1's generated UUID and struct definitions should be that
   document's source, so the contract and the test corpus cannot disagree.
-- [27-usb-console.md](27-usb-console.md) is unrelated but complementary. The
+- [27-usb-console.md](implemented/27-usb-console.md) is unrelated but complementary. The
   console drives the firmware from the host over USB. The rig drives it from a
   phone over a socket. Both are automation surfaces and neither replaces the
   other.

@@ -1,5 +1,7 @@
 # PR75: false Connected when the camera is not in pairing mode
 
+Status: implemented on master (archived 2026-11-03).
+
 ## Motivation
 
 User report: the Fujifilm X100VI was left in its SETTINGS menu, not on its

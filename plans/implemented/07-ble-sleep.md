@@ -1,5 +1,7 @@
 # PR07: BLE modem sleep and light sleep while connected
 
+Status: implemented on master (archived 2026-11-03).
+
 ## Goal
 
 Let the S3 sleep while a BLE connection is up by enabling Bluetooth controller

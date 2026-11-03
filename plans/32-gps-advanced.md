@@ -534,12 +534,12 @@ Read these first. This document does not repeat them.
 
 | Doc | Covers | Status |
 |---|---|---|
-| `plans/14-gps-pcas.md` | `$PCAS02` rate, `$PCAS03` sentence pruning, `$PCAS04` constellation, NMEA checksum builder, `sendCommand`, raw NMEA ring buffer, `$PCAS10` restart button | Implemented on `feat/14-gps-pcas`, upstream PR #303 |
-| `plans/15-gps-power.md` | Burst windowed light sleep, `UART_SCLK_XTAL`, `$PCAS12` standby, 5 V rail cycling | Planned |
+| `plans/implemented/14-gps-pcas.md` | `$PCAS02` rate, `$PCAS03` sentence pruning, `$PCAS04` constellation, NMEA checksum builder, `sendCommand`, raw NMEA ring buffer, `$PCAS10` restart button | Implemented on `feat/14-gps-pcas`, upstream PR #303 |
+| `plans/15-gps-power.md` | Burst windowed light sleep, `UART_SCLK_XTAL`, `$PCAS12` standby, 5 V rail cycling | Implemented |
 | `plans/18-gps-motion.md` | IMU stationary detection selecting a PR15 power policy | Planned |
-| `plans/21-imu-dead-reckoning.md` | Last known fix hold, timestamp advance, extrapolation | Planned |
+| `plans/21-imu-dead-reckoning.md` | Last known fix hold, timestamp advance, extrapolation | Implemented |
 | `plans/00-hardware-experiments.md` | Experiment B: V_BCKP presence and `$PCAS12` support | Experiment A done, B pending |
-| `plans/27-usb-console.md` | USB console, `gps send` command | In progress on `feat/27-usb-console` |
+| `plans/implemented/27-usb-console.md` | USB console, `gps send` command | Implemented |
 
 ---
 
@@ -1312,7 +1312,7 @@ In scope:
 
 Out of scope:
 
-- Logging any of it to SD. That is `plans/24-sd-gpx-logging.md`.
+- Logging any of it to SD. That is `plans/implemented/24-sd-gpx-logging.md`.
 - `MON-HW` interference data. Deferred, see the inventory.
 
 ### Findings

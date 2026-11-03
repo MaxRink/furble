@@ -1,5 +1,7 @@
 # PR27: USB serial command console
 
+Status: implemented on master (archived 2026-11-03).
+
 ## Goal
 
 Add an optional text console over the USB port that is already there, so a

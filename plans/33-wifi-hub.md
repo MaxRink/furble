@@ -88,9 +88,9 @@ Map to the maintainer's staging as stated in
 
 | gkoh stage | Covered by |
 |---|---|
-| 1. enable an interactive console | `plans/27-usb-console.md` |
+| 1. enable an interactive console | `plans/implemented/27-usb-console.md` |
 | 1b. via console toggle console only or GUI only mode | PR33a, runtime half |
-| 2. flesh out the console commands | `plans/27-usb-console.md`, command set section |
+| 2. flesh out the console commands | `plans/implemented/27-usb-console.md`, command set section |
 | 3. enable a displayless build | PR33a, build half |
 | 4. console support for configuring network, MQTT, etc | PR33b and PR33c |
 
@@ -612,7 +612,7 @@ PR. It is a separate decision that affects the migration in
 None. Console only, per #249 stage 4.
 
 If upstream later wants a status readout on the screen, the right place is the
-Diagnostics submenu from `plans/05-diagnostics-scaffold.md`, read only. Never
+Diagnostics submenu from `plans/implemented/05-diagnostics-scaffold.md`, read only. Never
 put credential entry on a 135 by 240 panel.
 
 ## Implementation notes
@@ -625,19 +625,19 @@ Measured and published figures, ESP32-S3:
 
 | State | Current | Source |
 |---|---|---|
-| BLE connected, modem sleep | 17.9 mA | ESP-IDF chip series comparison, quoted in `plans/07-ble-sleep.md:130-134` |
+| BLE connected, modem sleep | 17.9 mA | ESP-IDF chip series comparison, quoted in `plans/implemented/07-ble-sleep.md:130-134` |
 | BLE connected, light sleep on main XTAL | 3.3 mA | same |
 | WiFi station, modem sleep, DTIM1 | 40.1 mA | ESP-IDF low power mode, WiFi scenario, shielded box |
 | WiFi station, modem sleep, DTIM3 | 38.7 mA | same |
 | WiFi station, modem sleep, DTIM10 | 38.2 mA | same |
 | WiFi station, DTIM1, 160 MHz, DFS on | peak 113.5 mA, min 15.0 mA | same |
 
-The StickS3 has a 250 mAh battery (`plans/02-battery-display.md:126`). At
+The StickS3 has a 250 mAh battery (`plans/implemented/02-battery-display.md:126`). At
 17.9 mA that is roughly 14 hours. At 40.1 mA it is roughly 6 hours. The DTIM
 setting barely matters. What matters is that the radio is on at all.
 
 Worse, WiFi and automatic light sleep do not combine for free. The 3.3 mA
-number that `plans/07-ble-sleep.md` is chasing depends on the CPU actually
+number that `plans/implemented/07-ble-sleep.md` is chasing depends on the CPU actually
 sleeping. A station that has to wake for every DTIM beacon does not get there.
 Enabling WiFi therefore costs more than the difference in the table. It
 forfeits the largest saving in the whole roadmap.
@@ -652,7 +652,7 @@ Rules that follow:
 - Call `esp_wifi_set_ps(WIFI_PS_MIN_MODEM)` explicitly. Do not rely on the
   default.
 - The console `wifi status` output must include the current and the estimated
-  runtime, using the same numbers `plans/02-battery-display.md` produces. A user
+  runtime, using the same numbers `plans/implemented/02-battery-display.md` produces. A user
   who turns on WiFi should be able to see what it cost, on the device, without
   a datasheet.
 - On a battery build, print a warning when `WIFI` is set true. On a headless
@@ -677,7 +677,7 @@ it should be visible rather than hidden.
 
 ### Reconnect policy
 
-Reuse the shape from `plans/09-reconnect-backoff.md`. Exponential backoff from
+Reuse the shape from `plans/implemented/09-reconnect-backoff.md`. Exponential backoff from
 1 s to a 60 s cap, with jitter, reset on success. Do not use a fixed retry
 timer. A studio device whose access point reboots should not hammer the channel
 while a shoot is running.
@@ -898,7 +898,7 @@ trigger. A duplicated `hold 200` fires one extra frame, which is annoying. A
 duplicated `press` with a lost `release` leaves the shutter held, which can fill
 a card or cook a sensor. Publish `press` and `release` as available primitives
 because scripts want them, but tell users to prefer `hold`. This mirrors the
-same advice in `plans/27-usb-console.md`.
+same advice in `plans/implemented/27-usb-console.md`.
 
 Do not use QoS 2. esp-mqtt supports all three levels, but QoS 2 costs two extra
 round trips per message on a shared radio while a camera link is running, and
@@ -1421,7 +1421,7 @@ allocation and Bluetooth time slices are adjusted down.
 ## Testing plan
 
 This is a measurement, not an opinion. The console from
-`plans/27-usb-console.md` is what makes it possible, which is another reason
+`plans/implemented/27-usb-console.md` is what makes it possible, which is another reason
 the maintainer's ordering is correct.
 
 Host script drives `shutter hold 200` 200 times at 2 second intervals, and

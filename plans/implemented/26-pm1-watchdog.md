@@ -1,5 +1,7 @@
 # PR26: M5PM1 hardware watchdog on the StickS3
 
+Status: implemented on master (archived 2026-11-03).
+
 ## Goal
 
 Feed the M5PM1 hardware watchdog on the M5StickS3 so a wedged firmware resets

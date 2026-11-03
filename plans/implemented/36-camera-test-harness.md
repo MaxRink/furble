@@ -1,5 +1,7 @@
 # 36 - camera test harness: protocol tests without cameras
 
+Status: implemented on master (archived 2026-11-03).
+
 ## Goal
 
 Test the camera protocol layer in CI without physical cameras. Cover
@@ -31,7 +33,7 @@ It exercises application flow, not discovery, GATT writes, notifications,
 pairing, or security.
 
 The SDL simulator plan is no substitute either.
-[28-emulator.md](28-emulator.md) explicitly avoids compiling `lib/furble`.
+[28-emulator.md](../28-emulator.md) explicitly avoids compiling `lib/furble`.
 Its mock surface estimate is also far too small for the camera layer: the
 repository contains 61 receiver-qualified NimBLE method uses across
 `NimBLEClient` (12), `NimBLEDevice` (14), `NimBLERemoteService` (3),
@@ -166,7 +168,7 @@ transport access and service presence. The suite covers:
 
 The parser uses explicit byte bounds and little-endian decoding rather than
 reading packed NimBLE templates. Its protocol constants are grounded in the
-existing vendor references in [61-camera-compatibility.md](61-camera-compatibility.md),
+existing vendor references in [61-camera-compatibility.md](../61-camera-compatibility.md),
 including the Sony [coral/freemote implementation](https://github.com/coral/freemote),
 the Panasonic [LUMIX GPS logger](https://github.com/tobiasbrummer/lux-lat-long-log),
 the Nikon [furble issue 209](https://github.com/gkoh/furble/issues/209), and the

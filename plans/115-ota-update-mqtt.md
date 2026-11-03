@@ -1,7 +1,7 @@
 # 115b - HTTPS OTA delivery and OTA-over-MQTT
 
 Status: design only. The transport-independent OTA engine from
-`plans/115-ota-engine.md` landed in PR #168. This document is the delivery
+`plans/implemented/115-ota-engine.md` landed in PR #168. This document is the delivery
 follow-up: HTTPS transport, user-facing status, and an MQTT command trigger on
 top of `plans/33-wifi-hub.md` PR33c.
 
@@ -77,7 +77,7 @@ device inert until the user runs `ota update` or publishes to `cmd/ota`.
 ## Dependencies
 
 - `plans/34-ota-partitions.md` PR34a-1 (layout, rollback, health): landed.
-- `plans/113-per-board-ota-slots.md` PR #167: gives the S3 real headroom to hold the
+- `plans/implemented/113-per-board-ota-slots.md` PR #167: gives the S3 real headroom to hold the
   WiFi+MQTT+TLS+OTA image. The partition invariant is already on fork/master.
 - `plans/33-wifi-hub.md` PR33b (WiFi): **not landed**. Hard blocker for the
   firmware download path.
@@ -129,7 +129,7 @@ ctest --test-dir build/host-tests -R 'ota-state-machine|ota-mqtt-handler|ota-htt
 ```
 
 Exit 0 proves the OTA logic and the MQTT-trigger wiring headless, with no HTTPS
-server and no broker. See `plans/117-sim-mqtt-coverage.md` for the broader MQTT
+server and no broker. See `plans/implemented/117-sim-mqtt-coverage.md` for the broader MQTT
 client coverage that these handler tests plug into once #66 lands.
 
 ## Residual (Claude / hardware) verification

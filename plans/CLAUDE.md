@@ -6,6 +6,10 @@ gkoh/furble. `README.md` here is the index and dependency graph.
 Note: this directory lives on the `plans` branch until the integration merge
 lands on fork master. This file applies once it does.
 
+- Move a plan to `implemented/` once its implementation is complete on master and no
+  implementation work remains. Hardware measurement, soak, or device-look gates
+  recorded in the plan do not block archiving; keep the gate text in the archived
+  plan.
 - Each PR must update its own plans/NN doc before merge: implementation state,
   and any deviation from the written plan with the reason.
 - Fork-only delivery changes record their implementation state in the related
@@ -13,7 +17,7 @@ lands on fork master. This file applies once it does.
 - Plan 121's implementation state covers the simulator runtime boundary as
   well as its reference docs: typed action parsing/dispatch, strict DSL and
   CLI validation, malformed fixtures, focused host coverage, and wrapper
-  contracts must be recorded in `plans/121-sim-usage-fault-docs.md`.
+  contracts must be recorded in `plans/implemented/121-sim-usage-fault-docs.md`.
 - Docs state motivation first, then design. Keep the upstream maintainer's
   preferences in mind: issue first, fewer UI elements, defaults keep current
   behavior, everything new is configurable.

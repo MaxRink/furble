@@ -650,7 +650,7 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   cycles. `sim/fuzz_machine.{h,cpp}` owns the Apply/Settle/Check/Escape/Finish
   phases and raw-output rejection sampling, while the UI task reports each
   completed `lv_task_handler` cycle through `fuzzCycleComplete`. Same seed and
-  board reproduce a finding exactly. See plans/105-ui-fuzzing.md.
+  board reproduce a finding exactly. See plans/implemented/105-ui-fuzzing.md.
 - A firmware restart reached by the fuzzer performs the same orderly task join
   and process re-exec as a scripted restart. Only harness RNG, counters,
   finding counts, coverage, and the last 20 event names cross the exec in a

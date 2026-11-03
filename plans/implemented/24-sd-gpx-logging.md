@@ -1,5 +1,7 @@
 # PR24 - SD card GPX track logging and settings backup
 
+Status: implemented on master (archived 2026-11-03).
+
 ## Goal
 
 Use the SD card slot on the two Core boards. Log GPS fixes to a GPX 1.1 track

@@ -1,5 +1,7 @@
 # PR08: scan duty presets and scan timeout
 
+Status: implemented on master (archived 2026-11-03).
+
 ## Goal
 
 Replace the fixed 100 percent duty cycle BLE scan with three user selectable

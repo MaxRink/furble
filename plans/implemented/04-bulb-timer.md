@@ -1,5 +1,7 @@
 # PR04: bulb timer
 
+Status: implemented on master (archived 2026-11-03).
+
 ## Goal
 
 Add a Bulb page to the Connected menu that holds the shutter open for a set

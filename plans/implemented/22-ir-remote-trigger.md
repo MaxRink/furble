@@ -1,5 +1,7 @@
 # PR22 - Infrared shutter trigger
 
+Status: implemented on master (archived 2026-11-03).
+
 ## Goal
 
 Fire a camera shutter over infrared. This is a second trigger path next to BLE.
