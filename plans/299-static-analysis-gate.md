@@ -46,8 +46,8 @@ makes them a required pull-request gate.
   companion pairing prompt.
 - `FurbleConsole` stripped a two-byte line ending after only checking for a
   non-negative `snprintf` length; the length is now at least four.
-- `GpsCasic::splitNmea` indexed the sentence after a mutable begin offset;
-  it now iterates the substring.
+- `GpsCasic::splitNmea` kept its index loop: the leading `$` offset is
+  computed once, and the parser avoids a per-sentence substring copy.
 - `NikonSmart::hash` used a 16-bit loop counter against a `size_t` bound and
   could read past an odd-length input.
 - `CanonTime` used an 8-bit month loop against an unsigned bound.

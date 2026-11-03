@@ -35,8 +35,8 @@ std::vector<std::string> splitNmea(const std::string &sentence) {
   }
 
   std::string current;
-  const std::string body = sentence.substr(begin);
-  for (const char c : body) {
+  for (size_t i = begin; i < sentence.size(); i++) {
+    const char c = sentence[i];
     if (c == '*') {
       break;
     }
