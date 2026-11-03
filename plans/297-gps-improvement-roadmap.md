@@ -94,7 +94,7 @@ v4.2 feature. Do not ship a blind `$PCAS15` mask: a wrong mask can disable GPS.
 | 3 | GPS defaults: Auto baud and RMC+GGA prune | Fixes a fresh install at the v1.1 unit's 115200 and cuts 710 to 91 chars/s | Low | Host/sim; E29/E32 |
 | 4 | Split settings reload | Avoids re-acquisition on hold/power/duty writes | Low | Host now |
 | 5 | Rate/baud consistency guard | Prevents a configuration the UART cannot carry | Low | Host settings test |
-| 6 | Fix-aware backoff (P-084) | Modeled ~31 mA chip current while a no-fix receiver stays powered; the saving depends on the backoff duty | Medium | Opt-in now; G07 degraded backoff |
+| 6 | Fix-aware backoff (P-084) | Modeled ~31 mA module input current (Unit GPS v1.1 at 5 V) while a no-fix receiver stays powered; the saving depends on the backoff duty | Medium | Opt-in now; G07 degraded backoff |
 | 7 | Motion consumer (P-085) | 15-22 mA while stationary, modelled | High | Plan 18 motion-pattern gate + E38; steady motion may read stationary |
 | 8 | 30/60 s duty with hold | Modeled ~19 mA of the 23 mA AT6558 chip proxy; the in-circuit term is G05 | Medium-high | After 1 and 3; G05 current + G-06 long-duty experiment |
 | 9 | Receiver identity and GST | Unlocks version-gated accuracy work | Medium | Bench `$PCAS06` first |
