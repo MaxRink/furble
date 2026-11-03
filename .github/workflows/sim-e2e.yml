@@ -492,7 +492,7 @@ jobs:
           # in tools/check_sim_scenarios.py restricts text-size-overflow-large
           # to m5stick-s3 and m5stick-c. Closing that gap belongs to a layout PR
           # that can verify on the board. See plans/161-sim-real-control.md and
-          # plans/166-sim-teardown-livelock.md.
+          # plans/implemented/166-sim-teardown-livelock.md.
           FURBLE_SIM_BIN="${{ github.workspace }}/sim/build-core/furble-sim" \
             sh sim/scripts/run-fuzz.sh
 
