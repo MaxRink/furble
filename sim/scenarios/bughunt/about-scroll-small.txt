@@ -3,28 +3,23 @@
 # dropped and no font is shrunk, so the contract is that both scroll ends stay
 # reachable and no label overlaps or is cut.
 #
-# The M5GFX SDL panel always attaches a mouse-driven touch device, so this file
-# seeds "no_touch true" to measure the physical-button layout every modeled
-# board actually ships. That layout is 26 px shorter than the touch one, so it
-# is the tighter case. The existing page-matrix scenario asserts the same
-# overlap and cut contract in both runner passes, default touch and no-touch
-# buttons; this file pins the button-layout scroll bounds.
+# This file seeds "no_touch true" to measure the physical-button layout
+# every modeled board ships; it is the tighter of the two layouts.
 #
-# Measured on master 8cd6be97, small text size, physical-button layout.
-# The extents across the three panels are bounded below; 80x160 clamps Large to
-# its Normal maximum, which stays inside the same range.
+# Measured on master 8cd6be97, small text size, physical-button layout. The
+# extents across the three panels are bounded below.
 #
 # Every panel reported ui.overflow yes, ui.label_overlaps 0, ui.cut_labels 0
-# and ui.indicator_clearance clear at both extents. A button walk of the seven
-# rows put focus on "Reset:_Power_on" with ui.focus_on_page yes on all three.
-# The bounds below encode the measured range: dropping a row fails the minimum,
-# and adding enough content to need more than 238 px fails the maximum.
+# and ui.indicator_clearance clear at both extents. The bounds encode the
+# measured range: dropping a row fails the minimum, and adding enough content
+# to need more than 238 px fails the maximum.
 seed no_touch true
 seed text_size 0
 wait 300
+assert setting.text_size 0
 
-# Without this a run that lost the seed would measure the taller touch layout
-# and pass for the wrong reason.
+# Without this a run that lost the seed or the layout would measure the wrong
+# surface and pass for the wrong reason.
 assert ui.nav_layout buttons
 
 action page settings

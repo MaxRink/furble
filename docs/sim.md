@@ -1129,4 +1129,3 @@ through the production UI request queue. The simulator exposes resulting
 `consolePrint` fields as `ui.console.<field>` for assertions. These fields are
 query-only observability; the SDL target does not define `FURBLE_CONSOLE`, so
 they do not certify firmware completion-semaphore behavior or hardware.
-

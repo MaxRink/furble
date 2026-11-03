@@ -114,10 +114,13 @@ Gates added or extended:
   button-layout scroll extents (159 to 238 px), asserts both ends, no overlaps,
   no cuts, clear indicators, and the rendered Reset row.
 - `sim/scenarios/bughunt/about-scroll-small.txt` and
-  `about-scroll-large.txt` repeat the contract at `text_size 0` and
-  `text_size 2`; their bounds are 132 to 238 px and 359 to 611 px across the
-  three panels. The 80x160 board clamps Large to its Normal maximum, which
-  stays inside the Large range.
+  `about-scroll-large.txt` repeat the button-layout contract at `text_size 0`
+  and `text_size 2`; their bounds are 132 to 238 px and 359 to 611 px across
+  the three panels. `about-scroll-small-touch.txt` and
+  `about-scroll-large-touch.txt` cover the same sizes in the touch layout,
+  bounded 106 to 135 px and 289 to 369 px. Each seeds and asserts
+  `setting.text_size` so a lost seed cannot pass. The 80x160 board clamps Large
+  to its Normal maximum, which stays inside the Large range.
 - `sim/scenarios/bughunt/page-matrix.txt` now requires About to overflow, no
   overlaps or cuts at both ends, and `ui.diag.about.reset_visible yes` at the
   bottom. Its default pass measures touch and `run-notouch.sh` repeats the
@@ -145,6 +148,8 @@ divergence as the product decision.
 - `sim/scenarios/bughunt/about-scroll-reachability.txt`
 - `sim/scenarios/bughunt/about-scroll-small.txt`
 - `sim/scenarios/bughunt/about-scroll-large.txt`
+- `sim/scenarios/bughunt/about-scroll-small-touch.txt`
+- `sim/scenarios/bughunt/about-scroll-large-touch.txt`
 - `sim/scenarios/bughunt/core-notouch-layout.txt`
 - `sim/scenarios/bughunt/stick-notouch-layout-135.txt`
 - `sim/scenarios/bughunt/stick-notouch-layout-80.txt`
