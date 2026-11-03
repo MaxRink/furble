@@ -67,8 +67,11 @@ stay in the parent [`plans/`](../README.md) directory.
 | [162-console-host-coverage.md](162-console-host-coverage.md) | 162 - developer console host coverage and a build inventory gate |
 | [163-coverage-floor.md](163-coverage-floor.md) | 163 - measured coverage on both stacks, with a ratcheting floor |
 | [164-gps-status-detail.md](164-gps-status-detail.md) | 164 - receiver detail on the GPS status page |
+| [166-sim-teardown-livelock.md](166-sim-teardown-livelock.md) | Simulator boot livelock and teardown disconnect timeout |
 | [169-flaky-host-tests.md](169-flaky-host-tests.md) | 169 - deterministic host tests and a coverage run that cannot lose a profile |
+| [170-control-zombie-connect-cancel.md](170-control-zombie-connect-cancel.md) | Vendor connect waits honour the cancel contract; draining cameras are never handed a fresh target |
 | [171-console-coverage-crash.md](171-console-coverage-crash.md) | 171 - the console suite exits while the control task is still running |
+| [172-sim-cancel-sweep.md](172-sim-cancel-sweep.md) | Simulator reproduction of the 2026-09-04 cancel wedge and a certified cancel sweep |
 | [174-coverage-empty-profiles.md](174-coverage-empty-profiles.md) | 174 - two host suites that measured nothing under coverage |
 | [175-coverage-crash-output.md](175-coverage-crash-output.md) | 175 - Coverage crash output |
 | [176-sim-task-notifications.md](176-sim-task-notifications.md) | 176 - Simulator task notifications |
@@ -83,7 +86,12 @@ stay in the parent [`plans/`](../README.md) directory.
 | [288-provisioning-schema.md](288-provisioning-schema.md) | 288 - provisioning schema and wire-ID ledger follow-up |
 | [289-camera-parity-and-simulators.md](289-camera-parity-and-simulators.md) | 289: camera parity, virtual peers, and safe fixes |
 | [290-sim-page-query-map.md](290-sim-page-query-map.md) | 290 - simulator page query map sizing |
+| [292-low-power-defaults.md](292-low-power-defaults.md) | Fresh devices ship with the low-power connected, inactivity, and screen-off defaults |
+| [293-gps-casic-offsets.md](293-gps-casic-offsets.md) | Correct the CFG-NAVX navSystem and MON-HW field offsets and pin them in host and simulator fixtures |
+| [294-gps-acquisition-timeout.md](294-gps-acquisition-timeout.md) | Bound the GPS acquisition state so a silent fixed-baud receiver cannot pin the sleep lock and 5 V rail |
+| [296-companion-accuracy.md](296-companion-accuracy.md) | Carry the phone horizontal accuracy that the companion apps already send into the GPS fix and MQTT payload |
 | [298-pre-review-gate.md](298-pre-review-gate.md) | 298 - pre-review scanner gate |
+| [299-static-analysis-gate.md](299-static-analysis-gate.md) | cppcheck and clang-tidy on changed production sources, with the fixes and suppressions from the first full-tree pass |
 | [35-exposure-presets.md](35-exposure-presets.md) | 35: Exposure time presets in 1/3 stops |
 | [36-camera-test-harness.md](36-camera-test-harness.md) | 36 - camera test harness: protocol tests without cameras |
 | [42-waveshare-eth-node.md](42-waveshare-eth-node.md) | 42 - Waveshare ESP32-S3-ETH wired MQTT node and display-less onboarding |
@@ -101,8 +109,3 @@ stay in the parent [`plans/`](../README.md) directory.
 | [89-reconnect-ui.md](89-reconnect-ui.md) | 89 - Reconnect UI indicator (task #54) |
 | [92-ui-icons.md](92-ui-icons.md) | 92 - Better suited menu icons |
 | [99-nimble-client-leak.md](99-nimble-client-leak.md) | PR99: Fix the NimBLE client leak that breaks all connects until a reboot |
-| [292-low-power-defaults.md](292-low-power-defaults.md) | Fresh devices ship with the low-power connected, inactivity, and screen-off defaults |
-| [293-gps-casic-offsets.md](293-gps-casic-offsets.md) | Correct the CFG-NAVX navSystem and MON-HW field offsets and pin them in host and simulator fixtures |
-| [294-gps-acquisition-timeout.md](294-gps-acquisition-timeout.md) | Bound the GPS acquisition state so a silent fixed-baud receiver cannot pin the sleep lock and 5 V rail |
-| [296-companion-accuracy.md](296-companion-accuracy.md) | Carry the phone horizontal accuracy that the companion apps already send into the GPS fix and MQTT payload |
-| [299-static-analysis-gate.md](299-static-analysis-gate.md) | cppcheck and clang-tidy on changed production sources, with the fixes and suppressions from the first full-tree pass |
