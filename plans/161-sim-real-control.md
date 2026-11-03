@@ -254,6 +254,17 @@ the seed is required to fail there and `run-fuzz.sh` reports loudly if it ever
 starts passing. Fixing the page and promoting the seed back out belongs to a
 layout PR that can verify on the board.
 
+## Scenario timing: CONNECT before CONNECTING
+
+`CMD_CONNECT` is dequeued in `STATE_IDLE` and published as `STATE_CONNECT`; the
+control task moves to `STATE_CONNECTING` on its next housekeeping tick. A
+scenario that asserts `control.state connecting` 200 ms after the click is
+asserting a state that is still one tick away. `e2e/connect-flow` and
+`e2e/modal-input-ownership` now assert the first phase (`control.state connect`)
+and keep their later state assertions, so they still check the progress box and
+the completed connection without pinning the tick boundary. This is scenario
+timing, not a production state change.
+
 ## Residual parity gaps
 
 1. `action ble-kill` severs a link without delivering the GAP disconnect. The

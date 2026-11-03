@@ -7,7 +7,10 @@ assert control.state idle
 assert ui.page main
 action connect
 wait 200
-assert control.state connecting
+# CMD_CONNECT is dequeued in STATE_IDLE and published as STATE_CONNECT; the
+# control task moves to STATE_CONNECTING on its next housekeeping tick. Assert
+# the first phase here so the check does not depend on that tick boundary.
+assert control.state connect
 assert ui.connect_box visible
 wait 2800
 assert-eventually-virtual 3000 control.state active
