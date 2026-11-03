@@ -1,22 +1,11 @@
 # 120 - Sim multiconnect coverage
 
-Status: partially implemented. `control_e2e` scenario
-`multi-connect-fujifilm` drops one of two targets, proves the survivor keeps
-firing, waits for the per-device reconnect, and now also asserts the sleep lock
-is balanced after the session ends. The SDL selection-UI assertions and the
-client-lifetime invariant remain.
-
-The client-lifetime assertion is deliberately not added yet: the harness reports
-three live clients after the two-camera reconnect, one more than the two
-per-camera reusable clients. A first fix in `Camera::connect()` reclaimed the old
-client before creating a new one, but ASan proved that a self-deleted client can
-already be dangling, so that attempt was reverted. The leak needs a
-self-delete-aware owner handoff before it can be asserted.
-
-**Codex-implementable. Startable NOW.** Both vehicles exist on fork master: the
-SDL sim scenarios (`sim/scenarios/e2e/reconnect-multiconnect*.txt`) and the
-real-Control harness (`tests/host/control_e2e/`, scenario
-`reconnect-shutter-drop`).
+Status: partially implemented. The real-Control panel is complete:
+`control_e2e` scenario `multi-connect-fujifilm` drops one of two targets, proves
+the survivor keeps firing, waits for the per-device reconnect, asserts the
+sleep-lock balance, and now models the hardware self-delete path and reaps the
+dropped client before asserting no client leak. The SDL selection-UI assertions
+remain.
 
 ## Motivation
 
@@ -51,11 +40,11 @@ In scope:
   - Selection-UI assertions: navigate the multi-connect selection
     (`plans/25-multiconnect-ui.md`) and assert the per-camera rows and the
     connected-count title.
-- **Real-Control panel** (partially complete): `scenarioMultiConnectFujifilm`
-  covers the two-target drop, survivor shutter, per-device reconnect, and the
-  sleep-lock balance. It does not assert client lifetime: the harness reports
-  three live clients after the reconnect, and the owner handoff needs a separate
-  fix before that assertion can be added. Do not add a duplicate scenario.
+- **Real-Control panel** (complete): `scenarioMultiConnectFujifilm` covers the
+  two-target drop, survivor shutter, per-device reconnect, sleep-lock balance,
+  and client lifetime. The scenario enables the mock's deferred self-delete
+  model and reaps the dropped client before asserting two reusable clients
+  remain.
 
 Out of scope:
 
