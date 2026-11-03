@@ -137,12 +137,19 @@ std::size_t sweepStalePreferences(const std::filesystem::path &directory, int se
     // path can match the generated naming pattern; the marker is the proof
     // that this run created it, not the caller.
     const std::filesystem::path marker = path.string() + STORE_MARKER_SUFFIX;
-    if (!filename.empty() && filename.find(TEMP_MARKER) != std::string::npos) {
+    const std::size_t markerPosition = filename.rfind(TEMP_MARKER);
+    int sidecarPid = 0;
+    const bool sidecar =
+        markerPosition != std::string::npos
+        && parsePositivePid(filename.substr(markerPosition + std::strlen(TEMP_MARKER)),
+                            &sidecarPid);
+    if (sidecar) {
       // A sidecar is removable only while its primary store and marker exist.
-      const std::string primaryName = filename.substr(0, filename.find(TEMP_MARKER)) + STORE_SUFFIX;
+      const std::string primaryName = filename.substr(0, markerPosition) + STORE_SUFFIX;
       const std::filesystem::path primary = directory / primaryName;
       if (!ownedRegularFile(primary)
-          || !std::filesystem::is_regular_file(primary.string() + STORE_MARKER_SUFFIX, error)) {
+          || !std::filesystem::is_regular_file(primary.string() + STORE_MARKER_SUFFIX, error)
+          || !std::filesystem::is_regular_file(path, error)) {
         continue;
       }
       if (std::filesystem::remove(path, error)) {
@@ -150,12 +157,26 @@ std::size_t sweepStalePreferences(const std::filesystem::path &directory, int se
       }
       continue;
     }
-    if (!std::filesystem::is_regular_file(marker, error)) {
+    if (!std::filesystem::is_regular_file(path, error)
+        || !std::filesystem::is_regular_file(marker, error)) {
       continue;
     }
     if (std::filesystem::remove(path, error)) {
       removed++;
       (void)std::filesystem::remove(marker, error);
+      // Remove this store's temporary sidecars too. Otherwise iteration order
+      // decides whether the sidecar branch can still see the primary marker.
+      const std::string sidecarPrefix = filename + ".tmp.";
+      for (std::filesystem::directory_iterator side(directory, error), sideEnd;
+           !error && side != sideEnd; side.increment(error)) {
+        const std::string sideName = side->path().filename().string();
+        if (sideName.rfind(sidecarPrefix, 0) == 0 && ownedRegularFile(side->path())
+            && std::filesystem::is_regular_file(side->path(), error)) {
+          if (std::filesystem::remove(side->path(), error)) {
+            removed++;
+          }
+        }
+      }
     }
   }
   return removed;
