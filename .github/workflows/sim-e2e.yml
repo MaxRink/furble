@@ -102,7 +102,8 @@ jobs:
 
       # Keep the caller-owned and simulator-owned preference boundary on the
       # same freshly built M5StickS3 binary used by this job. The script is
-      # intentionally bounded and does not reclaim abnormal leftovers.
+      # bounded and covers the startup dead-pid sweep, including the
+      # caller-owned path that must never be swept.
       - name: Check simulator preference ownership lifecycle (M5StickS3)
         timeout-minutes: 2
         env:

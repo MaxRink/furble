@@ -1,7 +1,8 @@
 #!/bin/sh
 
-# Check only the simulator-owned preference lifecycle. This does not reclaim
-# abnormal leftovers and never supplies a caller-owned path for cleanup.
+# Check the simulator preference lifecycle: caller-owned paths are never
+# removed, a startup sweep reclaims a generated store whose encoded pid is
+# dead, and orderly cleanup removes only the owned store.
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
@@ -87,13 +88,24 @@ run_expected_crash() {
   fi
 }
 run_expected_crash
+FIRST_CRASH_STORE=$(find "$TMP_DIR/.pio" -maxdepth 1 -type f -name 'furble-sim-preferences-*.bin' \
+  -print -quit)
+if [ -z "$FIRST_CRASH_STORE" ]; then
+  echo "the first crash left no generated preference store" >&2
+  exit 1
+fi
+# The next run reclaims the dead store at startup, so only the second crash's
+# store remains. This is the abnormal-exit reclamation path.
 run_expected_crash
+if [ -f "$FIRST_CRASH_STORE" ]; then
+  echo "the second run did not reclaim the first crash's dead store" >&2
+  exit 1
+fi
 find "$TMP_DIR/.pio" -maxdepth 1 -type f -name 'furble-sim-preferences-*.bin' -print \
   | sort >"$TMP_DIR/crash-before.txt"
 crashCount=$(wc -l <"$TMP_DIR/crash-before.txt" | tr -d ' ')
-uniqueCrashCount=$(sort -u "$TMP_DIR/crash-before.txt" | wc -l | tr -d ' ')
-if [ "$crashCount" -ne 2 ] || [ "$uniqueCrashCount" -ne 2 ]; then
-  echo "generated preference names were not unique" >&2
+if [ "$crashCount" -ne 1 ]; then
+  echo "expected exactly one dead store after the second crash" >&2
   exit 1
 fi
 
@@ -109,12 +121,7 @@ mkdir "$RESTART_DIR"
 find "$TMP_DIR/.pio" -maxdepth 1 -type f -name 'furble-sim-preferences-*.bin' -print \
   | sort >"$TMP_DIR/crash-after.txt"
 if ! cmp -s "$TMP_DIR/crash-before.txt" "$TMP_DIR/crash-after.txt"; then
-  echo "orderly run swept unrelated crash leftovers" >&2
-  exit 1
-fi
-if find "$RESTART_DIR/.pio" -maxdepth 1 -type f -name 'furble-sim-preferences-*' \
-    -print -quit 2>/dev/null | grep -q .; then
-  echo "owned generated preference store survived orderly cleanup" >&2
+  echo "a run in another directory touched this directory's crash leftovers" >&2
   exit 1
 fi
 

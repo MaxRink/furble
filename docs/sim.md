@@ -946,8 +946,13 @@ whatever the production stack does after a fault is what the scenario observes.
   launch-time rendering variants. `FURBLE_SIM_CAPTURE_SPLASH` captures the
   boot splash. `FURBLE_SIM_PREFS` selects the preferences file used by the
   simulator; a scripted run overrides it with a per-run path
-  `.pio/furble-sim-preferences-<scenario>-<pid>.bin` and removes it again on an
-  orderly exit. The path is prepared on the main thread before SDL setup and
+  `.pio/furble-sim-preferences-<scenario>-<pid>-<random>.bin` and removes it
+  again on an orderly exit. When a run is about to create its generated store,
+  it reclaims stores left by dead pids; a `.generated` sidecar marks a store as
+  simulator-owned, so a caller-owned path matching the name pattern is kept.
+  A live pid, the current process, and unrelated files are also kept. The path
+  is prepared on the
+  main thread before SDL setup and
   simulator threads start, so the process-wide environment is not mutated while
   SDL is reading it. One flash image per simulated device: keying it on the
   scenario alone let two simulators running the same script from one working
