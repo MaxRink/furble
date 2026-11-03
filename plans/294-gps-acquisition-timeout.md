@@ -39,9 +39,12 @@ alive.
 - `e2e/gps-fixed-baud-absent.txt`: fixed 9600 baud, no receiver, asserts
   `gps.receiver absent`, `power.no_light_sleep 0`, the absent UI row, and
   recovery through the 60 s retry when a receiver appears.
-- Existing `gps-no-receiver`, `gps-degraded-recovery`, `gps-duty-no-fix`, and
-  `gps-autobaud-ladder` scenarios pass.
-- Host GPS suites pass.
+- Full host CTest: 140/140 after the rebase onto the static-analysis gate.
+- Static analysis: PASS, including the GPS time-loop bound and the two string
+  append fixes the rebased file now sees.
+- `gps-fixed-baud-absent`, `gps-no-receiver`, `gps-degraded-recovery`,
+  `gps-duty-no-fix`, `gps-autobaud-ladder`, and `gps-monhw-poll` pass on the
+  M5StickS3 build.
 
 ## Remaining gate
 
