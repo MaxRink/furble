@@ -642,8 +642,13 @@ bool scenarioMultiConnectFujifilm() {
   check(first.connected() && second.connected(), "both peers are live after reconnect");
   check(control.getDisconnectedName().empty(), "the per-device reconnect indicator clears");
 
-  control.disconnect();
-  waitForState(Control::STATE_IDLE, 2000);
+  check(control.disconnect(), "multi-connect disconnect accepted");
+  check(waitForState(Control::STATE_IDLE, 2000), "multi-connect returns to idle");
+  check(power.getCount(Furble::Power::LockType::NO_LIGHT_SLEEP) == 0,
+        "multi-connect releases the sleep lock");
+  // The two camera objects are still owned by this scenario, so each may keep
+  // its one reusable client; a leak class is more than that.
+
   return g_Failures == 0;
 }
 

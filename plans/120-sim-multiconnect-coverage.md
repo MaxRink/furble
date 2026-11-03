@@ -1,9 +1,17 @@
 # 120 - Sim multiconnect coverage
 
-Status: follow-up design. The SDL simulator already has
-`reconnect-multiconnect-shutter.txt`, including survivor firing and no replay
-after reconnect. This plan closes the remaining selection-UI and real-Control
-sleep-lock/client-lifetime assertions.
+Status: partially implemented. `control_e2e` scenario
+`multi-connect-fujifilm` drops one of two targets, proves the survivor keeps
+firing, waits for the per-device reconnect, and now also asserts the sleep lock
+is balanced after the session ends. The SDL selection-UI assertions and the
+client-lifetime invariant remain.
+
+The client-lifetime assertion is deliberately not added yet: the harness reports
+three live clients after the two-camera reconnect, one more than the two
+per-camera reusable clients. A first fix in `Camera::connect()` reclaimed the old
+client before creating a new one, but ASan proved that a self-deleted client can
+already be dangling, so that attempt was reverted. The leak needs a
+self-delete-aware owner handoff before it can be asserted.
 
 **Codex-implementable. Startable NOW.** Both vehicles exist on fork master: the
 SDL sim scenarios (`sim/scenarios/e2e/reconnect-multiconnect*.txt`) and the
@@ -43,13 +51,11 @@ In scope:
   - Selection-UI assertions: navigate the multi-connect selection
     (`plans/25-multiconnect-ui.md`) and assert the per-camera rows and the
     connected-count title.
-- **Real-Control panel** (extends `tests/host/control_e2e`):
-  - New scenario `multiconnect-survivor-fires`: two real `Camera` targets against
-    the shared mock peer; drop one; assert the control state goes `connecting`
-    with `connected == 1`, a shutter command routes to the survivor's target
-    task, the dropped target reconnects, `connected == 2`, the sleep lock count
-    is balanced, and no client leaks (reuse the existing `Power` lock-count and
-    `liveClientCount` seams).
+- **Real-Control panel** (partially complete): `scenarioMultiConnectFujifilm`
+  covers the two-target drop, survivor shutter, per-device reconnect, and the
+  sleep-lock balance. It does not assert client lifetime: the harness reports
+  three live clients after the reconnect, and the owner handoff needs a separate
+  fix before that assertion can be added. Do not add a duplicate scenario.
 
 Out of scope:
 
