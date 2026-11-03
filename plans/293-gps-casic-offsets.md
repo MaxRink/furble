@@ -25,7 +25,8 @@ suite certified the incorrect decode.
   production write path and the header cannot drift.
 - `Casic::MonHw` reads `noisePerMs0` at 0, `agcData0` at 12, `antStatus` at 20,
   and `jamming[0]` at 24 as a 32-bit word.
-- `gps monhw` prints the 32-bit jamming word.
+- `gps monhw` prints the 32-bit jamming word and reports a response shorter
+  than 56 bytes as unavailable instead of printing zeroed fields.
 - The host vector and the simulator fake receiver now use the specification
   offsets.
 

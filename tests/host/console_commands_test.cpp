@@ -1118,8 +1118,16 @@ void testGPSDiagnostics(void) {
   check(monhw.rc == 0, "gps monhw returns success with a response");
   checkContains(monhw.out, "monhw: noise=1234 agc=56 antenna=2 jam=7",
                 "a decoded snapshot prints its fields");
-  checkContains(monhw.out, "monhw raw: BA CE 0A", "a decoded snapshot prints its raw bytes");
-  check(gps.monHwPolls == 2, "every gps monhw queues a fresh poll");
+  gps.monhw.have = true;
+  gps.monhw.hw = {0, 0, 0, 0, false};
+  gps.monhw.raw_length = 3;
+  const Result shortMonhw = runDirect("gps monhw");
+  check(shortMonhw.rc == 0, "gps monhw returns success for a short response");
+  checkContains(shortMonhw.out, "monhw: response shorter than 56 bytes",
+                "a short MON-HW response is not printed as zeroed fields");
+  checkContains(shortMonhw.out, "monhw raw: BA CE 0A",
+                "a short MON-HW response still prints its raw bytes");
+  check(gps.monHwPolls == 3, "a short response still queues the next poll");
 }
 
 // Test 6. Time, power and performance reporting.
