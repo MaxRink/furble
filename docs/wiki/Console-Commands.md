@@ -79,7 +79,9 @@ current retry cycle, `retry_ms` is the next backoff without jitter, and
   rejected when the board does not support the setting.
 
 
-The companion password is write-only. Use `companion password set <pw>` or
+The subcommand is compared exactly (`password`, `set`, `clear`, `status`);
+anything else prints the usage line. The companion password is write-only. Use
+`companion password set <pw>` or
 `companion password clear`; `companion password status` prints only `set`,
 `unset`, or `unavailable`. The generic `settings get` and `settings set` paths
 reject `companion_pw`. A successful set or clear reloads the live companion

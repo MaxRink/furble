@@ -78,11 +78,15 @@ jobs:
           cmake -S sim -B build-sim-static
           -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
           -G Ninja
+          -DFURBLE_DEP_ROOT=${{ github.workspace }}/sim/.pio/libdeps/sim
+          -DFURBLE_LVGL_DIR=${{ github.workspace }}/sim/.pio/libdeps/sim/lvgl
 
       - name: Run static analysis
-        run: >
-          python3 tools/check_static_analysis.py
-          --base origin/master
-          --build-dir build-static
-          --build-dir build-sim-static
-          --jobs 2
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            python3 tools/check_static_analysis.py --all \
+              --build-dir build-static --build-dir build-sim-static --jobs 2
+          else
+            python3 tools/check_static_analysis.py --base origin/master \
+              --build-dir build-static --build-dir build-sim-static --jobs 2
+          fi

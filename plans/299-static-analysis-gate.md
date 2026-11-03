@@ -18,8 +18,14 @@ makes them a required pull-request gate.
   disabled and named in the file.
 - `tools/check_static_analysis.py` runs cppcheck and clang-tidy on changed
   production sources under `src/`, `lib/furble/`, `include/`, and `sim/`.
-  It accepts the host and simulator compile databases together; a changed file
-  with no compile command is reported as skipped, not silently analyzed.
+  It accepts the host and simulator compile databases together and analyzes a
+  shared source once per distinct database. A changed header is parsed by
+  cppcheck directly and maps to up to four production sources that include it
+  for clang-tidy. A changed file with no compile command is reported as skipped,
+  not silently analyzed.
+- Analyzer invocation failures fail closed: a nonzero cppcheck exit, a nonzero
+  clang-tidy exit with no parsed finding, and `fatal error:` diagnostics all
+  fail the gate instead of printing PASS.
 - `.github/workflows/static-analysis.yml` configures both databases and runs
   the gate on pull requests touching C/C++ paths, plus manual dispatch.
 - `tests/test_check_static_analysis.py` covers the cppcheck and clang-tidy

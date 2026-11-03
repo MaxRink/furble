@@ -29,7 +29,10 @@ Checks: >
   -bugprone-exception-escape,
   -clang-analyzer-optin.performance.Padding,
   -performance-no-int-to-ptr,
-  -cert-dcl50-cpp
+  -cert-dcl50-cpp,
+  # The preferences shim uses a leading underscore in its include guard.
+  -cert-dcl37-c,
+  -cert-dcl51-cpp
 HeaderFilterRegex: '(src|lib/furble|include|sim)/'
 FormatStyle: file
 WarningsAsErrors: ''

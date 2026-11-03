@@ -124,7 +124,9 @@ no software-readable presence or negotiation signal.
   rejected when the board does not support the setting, for example
   `SD_GPX` on a board with no SD card slot.
 
-The companion password is write-only. Use `companion password set <pw>` or
+The subcommand is compared exactly (`password`, `set`, `clear`, `status`);
+anything else prints the usage line. The companion password is write-only. Use
+`companion password set <pw>` or
 `companion password clear`; `companion password status` prints only `set`,
 `unset`, or `unavailable`. The generic `settings get` and `settings set` paths
 reject `companion_pw`. A successful set or clear reloads the live companion

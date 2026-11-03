@@ -48,6 +48,14 @@ class ClangTidyParseTest(unittest.TestCase):
         self.assertEqual(len(errors), 1)
         self.assertIn("lvgl.h", errors[0]["message"])
 
+    def test_fatal_error_is_separate(self):
+        findings, errors = CHECKER.parse_clang_tidy(
+            "src/FurbleUI.cpp:19:10: fatal error: 'lvgl.h' file not found\n"
+        )
+        self.assertEqual(findings, [])
+        self.assertEqual(len(errors), 1)
+        self.assertIn("lvgl.h", errors[0]["message"])
+
     def test_test_findings_are_ignored(self):
         findings, errors = CHECKER.parse_clang_tidy(
             "tests/host/foo.cpp:1:1: warning: ignored [bugprone-x]\n"

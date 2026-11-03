@@ -25,6 +25,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 PRODUCTION_PREFIXES = ("src/", "lib/furble/", "include/", "sim/")
 EXCLUDED_PREFIXES = ("sim/build/", "sim/shim/")
+SOURCE_SUFFIXES = (".cpp", ".cc", ".cxx")
+HEADER_SUFFIXES = (".h",)
 CPPCHECK_SUPPRESSIONS = (
     # Aggregate structs are initialized at their use sites; cppcheck cannot see
     # the designated initializer through the header.
@@ -48,7 +50,7 @@ TIDY_LINE = re.compile(
     r"(?P<message>.*) \[(?P<check>[^\]]+)\]$"
 )
 COMPILE_ERROR = re.compile(
-    r"^(?P<file>[^:]+):(?P<line>\d+):(?P<column>\d+): error: (?P<message>.*)$"
+    r"^(?P<file>[^:]+):(?P<line>\d+):(?P<column>\d+): (?:fatal )?error: (?P<message>.*)$"
 )
 
 
@@ -77,22 +79,29 @@ def find_clang_tidy(explicit: str | None = None) -> str | None:
     return None
 
 
-def production_files(paths: list[str]) -> list[str]:
-    result: list[str] = []
+def production_paths(paths: list[str]) -> tuple[list[str], list[str]]:
+    sources: list[str] = []
+    headers: list[str] = []
     for raw in paths:
         path = raw.replace(os.sep, "/")
-        if not path.endswith((".cpp", ".cc", ".cxx")):
-            continue
         if not path.startswith(PRODUCTION_PREFIXES):
             continue
         if path.startswith(EXCLUDED_PREFIXES):
             continue
-        if (ROOT / path).is_file():
-            result.append(path)
-    return sorted(set(result))
+        if not (ROOT / path).is_file():
+            continue
+        if path.endswith(SOURCE_SUFFIXES):
+            sources.append(path)
+        elif path.endswith(HEADER_SUFFIXES):
+            headers.append(path)
+    return sorted(set(sources)), sorted(set(headers))
 
 
-def changed_files(base: str) -> list[str]:
+def production_files(paths: list[str]) -> list[str]:
+    return production_paths(paths)[0]
+
+
+def changed_paths(base: str) -> tuple[list[str], list[str]]:
     command = [
         "git",
         "diff",
@@ -110,10 +119,10 @@ def changed_files(base: str) -> list[str]:
     )
     if output.returncode != 0:
         raise RuntimeError(output.stderr.strip() or "git diff failed")
-    return production_files(output.stdout.splitlines())
+    return production_paths(output.stdout.splitlines())
 
 
-def tracked_production_files() -> list[str]:
+def tracked_production_files() -> tuple[list[str], list[str]]:
     output = subprocess.run(
         ["git", "ls-files", "*.cpp", "*.cc", "*.cxx"],
         cwd=ROOT,
@@ -123,7 +132,7 @@ def tracked_production_files() -> list[str]:
     )
     if output.returncode != 0:
         raise RuntimeError(output.stderr.strip() or "git ls-files failed")
-    return production_files(output.stdout.splitlines())
+    return production_paths(output.stdout.splitlines())
 
 
 def parse_cppcheck(text: str) -> list[dict[str, str]]:
@@ -187,11 +196,16 @@ def run_cppcheck(files: list[str], jobs: int) -> list[dict[str, str]]:
         command, cwd=ROOT, check=False, capture_output=True, text=True
     )
     # cppcheck reports diagnostics on stderr; stdout is progress/verbose text.
-    return parse_cppcheck(output.stderr)
+    findings = parse_cppcheck(output.stderr)
+    if output.returncode != 0 and not findings:
+        raise RuntimeError(
+            f"cppcheck exited {output.returncode}: {output.stderr.strip()[:500]}"
+        )
+    return findings
 
 
-def compile_database(build_dirs: list[Path]) -> dict[str, Path]:
-    files: dict[str, Path] = {}
+def compile_database(build_dirs: list[Path]) -> dict[str, list[Path]]:
+    files: dict[str, list[Path]] = {}
     for build_dir in build_dirs:
         database = build_dir / "compile_commands.json"
         if not database.is_file():
@@ -205,12 +219,39 @@ def compile_database(build_dirs: list[Path]) -> dict[str, Path]:
                 path = Path(entry["file"]).resolve().relative_to(ROOT)
             except (KeyError, ValueError):
                 continue
-            files.setdefault(path.as_posix(), build_dir)
+            entry_list = files.setdefault(path.as_posix(), [])
+            if build_dir not in entry_list:
+                entry_list.append(build_dir)
     return files
 
 
+def header_includers(headers: list[str], sources: list[str]) -> dict[str, list[str]]:
+    """Map each changed header to production sources that include it.
+
+    A header has no compile command of its own. Analyzing a small set of its
+    includers is the closest host check; cppcheck also parses the header
+    directly. The cap keeps a widely included header from turning one change
+    into a full-tree clang-tidy run.
+    """
+    includers: dict[str, list[str]] = {}
+    for header in headers:
+        base = Path(header).name
+        matches: list[str] = []
+        for source in sources:
+            try:
+                text = (ROOT / source).read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+            if f'#include "{base}"' in text or f"#include <{base}>" in text:
+                matches.append(source)
+                if len(matches) >= 4:
+                    break
+        includers[header] = matches
+    return includers
+
+
 def run_clang_tidy(
-    files: list[str], build_dirs: list[Path], executable: str, jobs: int
+    targets: list[str], build_dirs: list[Path], executable: str, jobs: int
 ) -> tuple[list[dict[str, str]], list[dict[str, str]], list[str]]:
     database_files = compile_database(build_dirs)
     if not database_files:
@@ -219,8 +260,15 @@ def run_clang_tidy(
             f"no compile_commands.json in {joined}; configure the host and simulator "
             "builds with -DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
         )
-    selected = [path for path in files if path in database_files]
-    skipped = [path for path in files if path not in database_files]
+    selected: list[tuple[str, Path]] = []
+    skipped: list[str] = []
+    for path in targets:
+        directories = database_files.get(path, [])
+        if not directories:
+            skipped.append(path)
+            continue
+        for build_dir in directories:
+            selected.append((path, build_dir))
     findings: list[dict[str, str]] = []
     compile_errors: list[dict[str, str]] = []
     extra_args = [
@@ -229,11 +277,11 @@ def run_clang_tidy(
     lvgl = ROOT / "managed_components" / "lvgl__lvgl"
     if lvgl.is_dir():
         extra_args.append(f"-I{lvgl}")
-    for path in selected:
+    for path, build_dir in selected:
         command = [
             executable,
             "-p",
-            str(database_files[path]),
+            str(build_dir),
             "--config-file=.clang-tidy",
             "--quiet",
         ]
@@ -246,6 +294,15 @@ def run_clang_tidy(
         file_findings, file_errors = parse_clang_tidy(output.stdout + output.stderr)
         findings.extend(file_findings)
         compile_errors.extend(file_errors)
+        if output.returncode != 0 and not file_findings and not file_errors:
+            compile_errors.append(
+                {
+                    "file": path,
+                    "line": "0",
+                    "column": "0",
+                    "message": f"clang-tidy exited {output.returncode}",
+                }
+            )
     return findings, compile_errors, skipped
 
 
@@ -291,19 +348,21 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
-        files = tracked_production_files() if args.all else changed_files(args.base)
+        sources, headers = (
+            tracked_production_files() if args.all else changed_paths(args.base)
+        )
     except RuntimeError as error:
         print(f"FAIL: {error}", file=sys.stderr)
         return 2
-    if not files:
+    if not sources and not headers:
         print("static analysis: no changed production C++ files")
         return 0
 
     build_dirs = args.build_dir or [ROOT / ".pio" / "static-build"]
-    print(f"static analysis: {len(files)} file(s)")
+    print(f"static analysis: {len(sources)} source(s), {len(headers)} header(s)")
     failures = 0
 
-    cppcheck_findings = run_cppcheck(files, args.jobs)
+    cppcheck_findings = run_cppcheck(sources + headers, args.jobs)
     if cppcheck_findings:
         print_findings("cppcheck", cppcheck_findings)
         failures += len(cppcheck_findings)
@@ -316,9 +375,13 @@ def main() -> int:
                 file=sys.stderr,
             )
             return 2
+        includers = header_includers(headers, sources)
+        tidy_targets = list(sources)
+        for targets in includers.values():
+            tidy_targets.extend(targets)
         try:
             tidy_findings, compile_errors, skipped = run_clang_tidy(
-                files, build_dirs, tidy, args.jobs
+                sorted(set(tidy_targets)), build_dirs, tidy, args.jobs
             )
         except RuntimeError as error:
             print(f"FAIL: {error}", file=sys.stderr)
