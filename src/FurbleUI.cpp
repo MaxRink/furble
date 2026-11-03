@@ -190,7 +190,7 @@ bool inputObjectVisible(lv_obj_t *obj) {
 }
 
 void setLabelIfChanged(lv_obj_t *label, const char *text) {
-  if ((label != nullptr) && std::strcmp(lv_label_get_text(label), text)) {
+  if ((label != nullptr) && (std::strcmp(lv_label_get_text(label), text) != 0)) {
     lv_label_set_text(label, text);
   }
 }
@@ -1372,7 +1372,8 @@ void UI::companionPairingTimer(lv_timer_t *timer) {
   }
 
   char text[96];
-  std::snprintf(text, sizeof(text), "Confirm number:\n%06lu", companion.getPendingPairingPin());
+  std::snprintf(text, sizeof(text), "Confirm number:\n%06lu",
+                static_cast<unsigned long>(companion.getPendingPairingPin()));
   ui->m_CompanionPairingDialog = lv_msgbox_create(nullptr);
   lv_msgbox_add_title(ui->m_CompanionPairingDialog, "Pair companion");
   lv_msgbox_add_text(ui->m_CompanionPairingDialog, text);
@@ -1776,7 +1777,7 @@ void UI::displayFlush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map
   Sim::profilerFlushedPixels(static_cast<uint64_t>(w) * h);
 #endif
   lv_draw_sw_rgb565_swap(px_map, w * h);
-  M5.Display.pushImageDMA<uint16_t>(area->x1, area->y1, w, h, (uint16_t *)px_map);
+  M5.Display.pushImageDMA<uint16_t>(area->x1, area->y1, w, h, reinterpret_cast<uint16_t *>(px_map));
   lv_disp_flush_ready(disp);
 }
 
@@ -1837,7 +1838,7 @@ void UI::initInputDevices(void) {
   }
 }
 
-void UI::setTheme(std::string name, uint8_t textSize) {
+void UI::setTheme(const std::string &name, uint8_t textSize) {
   lv_display_t *display = lv_display_get_default();
   lv_color_t primary = lv_palette_main(LV_PALETTE_BLUE);
   lv_color_t secondary = lv_color_black();
@@ -7343,7 +7344,7 @@ bool UI::sendRequest(Request request, int32_t arg, RequestResult *result) {
 void UI::serviceRequests(void) {
   request_t *queued = nullptr;
 
-  while (xQueueReceive(m_RequestQueue, &queued, 0) == pdTRUE) {
+  while (xQueueReceive(m_RequestQueue, static_cast<void *>(&queued), 0) == pdTRUE) {
     std::unique_ptr<request_t> owned(queued);
     request_t &item = *owned;
 #if defined(FURBLE_SIM)
@@ -7964,7 +7965,7 @@ void UI::serviceRequests(void) {
 
 void UI::drainRequests(void) {
   request_t *queued = nullptr;
-  while (xQueueReceive(m_RequestQueue, &queued, 0) == pdTRUE) {
+  while (xQueueReceive(m_RequestQueue, static_cast<void *>(&queued), 0) == pdTRUE) {
 #if defined(FURBLE_CONSOLE)
     if (queued->state != nullptr) {
       queued->state->token = "cancelled";
@@ -11247,7 +11248,7 @@ void UI::addFeedbackMenu(const menu_t &parent) {
   uint8_t storedOutput = Settings::load<uint8_t>(Settings::FB_OUTPUT);
   for (size_t n = 0; n < outputCount; n++) {
     if (!outputText.empty()) {
-      outputText += "\n";
+      outputText += '\n';
     }
     outputText += outputNames[outputOptions[n]];
     if (outputOptions[n] == static_cast<Feedback::output_t>(storedOutput)) {

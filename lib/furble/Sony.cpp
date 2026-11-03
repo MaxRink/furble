@@ -30,7 +30,7 @@ Sony::Sony(const NimBLEAdvertisedDevice *pDevice) : Camera(Type::SONY, PairType:
 
 bool Sony::matches(const NimBLEAdvertisedDevice *pDevice) {
   if (pDevice != nullptr && pDevice->haveManufacturerData()) {
-    const auto manufacturerData = pDevice->getManufacturerData();
+    const auto &manufacturerData = pDevice->getManufacturerData();
     return AdvertisementProtocol::matchesSonyAdvertisement(
         reinterpret_cast<const uint8_t *>(manufacturerData.data()), manufacturerData.size());
   }

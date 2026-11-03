@@ -4,6 +4,7 @@
 #include <cctype>
 #include <cerrno>
 #include <chrono>
+#include <csignal>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -2252,8 +2253,7 @@ void driverTick(void) {
                                               : static_cast<int64_t>(parseUnsigned(step));
   }();
   if (crashAtStep >= 0 && static_cast<size_t>(crashAtStep) == stepIndex) {
-    volatile int *fault = nullptr;
-    *fault = 1;
+    std::raise(SIGSEGV);
   }
   switch (step.type) {
     case StepType::WAIT:

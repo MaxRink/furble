@@ -1,0 +1,351 @@
+#!/usr/bin/env python3
+"""Focused static analysis for changed production C++ files.
+
+The old pre-review gate catches diff hygiene and settings drift. This gate adds
+the two analyzers that find the classes of defects the compiler cannot: cppcheck
+for uninitialized/out-of-bounds/format issues and clang-tidy for bugprone,
+analyzer, cert, performance, and portability checks.
+
+Only files under src/, lib/furble/, include/, and sim/ are production code for
+this gate. Generated trees, vendored components, and test doubles are excluded.
+"""
+
+from __future__ import annotations
+
+import argparse
+import glob
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+PRODUCTION_PREFIXES = ("src/", "lib/furble/", "include/", "sim/")
+EXCLUDED_PREFIXES = ("sim/build/", "sim/shim/")
+CPPCHECK_SUPPRESSIONS = (
+    # Aggregate structs are initialized at their use sites; cppcheck cannot see
+    # the designated initializer through the header.
+    "uninitMemberVarNoCtor",
+    # Virtual overrides intentionally repeat a base-class member name.
+    "duplInheritedMember",
+    # Host test shims and mocks reuse type names across translation units.
+    "ctuOneDefinitionRuleViolation",
+    # Test harnesses throw control-flow exceptions from task entry points.
+    "throwInEntryPoint",
+    # cppcheck cannot parse a few ESP-IDF macro-heavy headers.
+    "syntaxError",
+)
+CPPCHECK_TEMPLATE = "{file}:{line}:{severity}:{id}:{message}"
+CPPCHECK_LINE = re.compile(
+    r"^(?P<file>[^:]+):(?P<line>\d+):(?P<severity>error|warning|performance|portability|style):"
+    r"(?P<id>[A-Za-z0-9_]+):(?P<message>.*)$"
+)
+TIDY_LINE = re.compile(
+    r"^(?P<file>[^:]+):(?P<line>\d+):(?P<column>\d+): (?P<severity>warning|error): "
+    r"(?P<message>.*) \[(?P<check>[^\]]+)\]$"
+)
+COMPILE_ERROR = re.compile(
+    r"^(?P<file>[^:]+):(?P<line>\d+):(?P<column>\d+): error: (?P<message>.*)$"
+)
+
+
+def find_clang_tidy(explicit: str | None = None) -> str | None:
+    """Find clang-tidy on PATH or in the common Homebrew/LLVM locations."""
+    candidates: list[str] = []
+    if explicit:
+        candidates.append(explicit)
+    candidates.extend(
+        ["clang-tidy", "clang-tidy-20", "clang-tidy-19", "clang-tidy-18", "clang-tidy-17"]
+    )
+    for candidate in candidates:
+        found = shutil.which(candidate)
+        if found is not None:
+            return found
+        if Path(candidate).is_file():
+            return candidate
+    for pattern in (
+        "/opt/homebrew/opt/llvm/bin/clang-tidy",
+        "/usr/local/opt/llvm/bin/clang-tidy",
+        "/usr/lib/llvm-*/bin/clang-tidy",
+    ):
+        matches = sorted(glob.glob(pattern))
+        if matches:
+            return matches[-1]
+    return None
+
+
+def production_files(paths: list[str]) -> list[str]:
+    result: list[str] = []
+    for raw in paths:
+        path = raw.replace(os.sep, "/")
+        if not path.endswith((".cpp", ".cc", ".cxx")):
+            continue
+        if not path.startswith(PRODUCTION_PREFIXES):
+            continue
+        if path.startswith(EXCLUDED_PREFIXES):
+            continue
+        if (ROOT / path).is_file():
+            result.append(path)
+    return sorted(set(result))
+
+
+def changed_files(base: str) -> list[str]:
+    command = [
+        "git",
+        "diff",
+        "--name-only",
+        "--diff-filter=ACMR",
+        base,
+        "--",
+        "*.cpp",
+        "*.cc",
+        "*.cxx",
+        "*.h",
+    ]
+    output = subprocess.run(
+        command, cwd=ROOT, check=False, capture_output=True, text=True
+    )
+    if output.returncode != 0:
+        raise RuntimeError(output.stderr.strip() or "git diff failed")
+    return production_files(output.stdout.splitlines())
+
+
+def tracked_production_files() -> list[str]:
+    output = subprocess.run(
+        ["git", "ls-files", "*.cpp", "*.cc", "*.cxx"],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if output.returncode != 0:
+        raise RuntimeError(output.stderr.strip() or "git ls-files failed")
+    return production_files(output.stdout.splitlines())
+
+
+def parse_cppcheck(text: str) -> list[dict[str, str]]:
+    findings: list[dict[str, str]] = []
+    for line in text.splitlines():
+        match = CPPCHECK_LINE.match(line)
+        if match is None:
+            continue
+        finding = match.groupdict()
+        path = finding["file"].replace(os.sep, "/")
+        if not path.startswith(PRODUCTION_PREFIXES):
+            continue
+        findings.append(finding)
+    return findings
+
+
+def parse_clang_tidy(text: str) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    findings: list[dict[str, str]] = []
+    compile_errors: list[dict[str, str]] = []
+    for line in text.splitlines():
+        match = TIDY_LINE.match(line)
+        if match is not None:
+            finding = match.groupdict()
+            path = finding["file"].replace(os.sep, "/")
+            if path.startswith(PRODUCTION_PREFIXES):
+                findings.append(finding)
+            continue
+        match = COMPILE_ERROR.match(line)
+        if match is not None:
+            finding = match.groupdict()
+            path = finding["file"].replace(os.sep, "/")
+            if path.startswith(PRODUCTION_PREFIXES):
+                compile_errors.append(finding)
+    return findings, compile_errors
+
+
+def run_cppcheck(files: list[str], jobs: int) -> list[dict[str, str]]:
+    executable = shutil.which("cppcheck")
+    if executable is None:
+        raise RuntimeError("cppcheck is not installed")
+    command = [
+        executable,
+        "--enable=warning,performance,portability",
+        "--std=c++17",
+        "--language=c++",
+        "--inline-suppr",
+        "--quiet",
+        "--template=" + CPPCHECK_TEMPLATE,
+        f"-j{jobs}",
+        "-I",
+        "include",
+        "-I",
+        "lib/furble",
+        "-I",
+        "sim/shim",
+    ]
+    for suppression in CPPCHECK_SUPPRESSIONS:
+        command.append("--suppress=" + suppression)
+    command.extend(files)
+    output = subprocess.run(
+        command, cwd=ROOT, check=False, capture_output=True, text=True
+    )
+    # cppcheck reports diagnostics on stderr; stdout is progress/verbose text.
+    return parse_cppcheck(output.stderr)
+
+
+def compile_database(build_dirs: list[Path]) -> dict[str, Path]:
+    files: dict[str, Path] = {}
+    for build_dir in build_dirs:
+        database = build_dir / "compile_commands.json"
+        if not database.is_file():
+            continue
+        try:
+            entries = json.loads(database.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        for entry in entries:
+            try:
+                path = Path(entry["file"]).resolve().relative_to(ROOT)
+            except (KeyError, ValueError):
+                continue
+            files.setdefault(path.as_posix(), build_dir)
+    return files
+
+
+def run_clang_tidy(
+    files: list[str], build_dirs: list[Path], executable: str, jobs: int
+) -> tuple[list[dict[str, str]], list[dict[str, str]], list[str]]:
+    database_files = compile_database(build_dirs)
+    if not database_files:
+        joined = ", ".join(str(path) for path in build_dirs)
+        raise RuntimeError(
+            f"no compile_commands.json in {joined}; configure the host and simulator "
+            "builds with -DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+        )
+    selected = [path for path in files if path in database_files]
+    skipped = [path for path in files if path not in database_files]
+    findings: list[dict[str, str]] = []
+    compile_errors: list[dict[str, str]] = []
+    extra_args = [
+        f"-I{ROOT / 'sim' / 'shim'}",
+    ]
+    lvgl = ROOT / "managed_components" / "lvgl__lvgl"
+    if lvgl.is_dir():
+        extra_args.append(f"-I{lvgl}")
+    for path in selected:
+        command = [
+            executable,
+            "-p",
+            str(database_files[path]),
+            "--config-file=.clang-tidy",
+            "--quiet",
+        ]
+        for argument in extra_args:
+            command.append("--extra-arg=" + argument)
+        command.append(path)
+        output = subprocess.run(
+            command, cwd=ROOT, check=False, capture_output=True, text=True
+        )
+        file_findings, file_errors = parse_clang_tidy(output.stdout + output.stderr)
+        findings.extend(file_findings)
+        compile_errors.extend(file_errors)
+    return findings, compile_errors, skipped
+
+
+def print_findings(label: str, findings: list[dict[str, str]]) -> None:
+    for finding in findings:
+        location = f"{finding['file']}:{finding['line']}"
+        if "column" in finding:
+            location += f":{finding['column']}"
+        check = finding.get("check") or finding.get("id", "")
+        print(
+            f"{label} {location}: {finding['severity']}: {finding['message']} [{check}]",
+            file=sys.stderr,
+        )
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--base",
+        default="origin/master",
+        help="git ref to diff against; ignored with --all",
+    )
+    parser.add_argument(
+        "--all", action="store_true", help="analyze every tracked production source"
+    )
+    parser.add_argument(
+        "--build-dir",
+        type=Path,
+        action="append",
+        default=None,
+        help="CMake build directory with compile_commands.json; repeat for the host "
+        "and simulator builds",
+    )
+    parser.add_argument(
+        "--clang-tidy",
+        default=None,
+        help="clang-tidy executable (auto-detected when omitted)",
+    )
+    parser.add_argument("--jobs", type=int, default=2, help="cppcheck worker count")
+    parser.add_argument(
+        "--skip-clang-tidy", action="store_true", help="run cppcheck only"
+    )
+    args = parser.parse_args()
+
+    try:
+        files = tracked_production_files() if args.all else changed_files(args.base)
+    except RuntimeError as error:
+        print(f"FAIL: {error}", file=sys.stderr)
+        return 2
+    if not files:
+        print("static analysis: no changed production C++ files")
+        return 0
+
+    build_dirs = args.build_dir or [ROOT / ".pio" / "static-build"]
+    print(f"static analysis: {len(files)} file(s)")
+    failures = 0
+
+    cppcheck_findings = run_cppcheck(files, args.jobs)
+    if cppcheck_findings:
+        print_findings("cppcheck", cppcheck_findings)
+        failures += len(cppcheck_findings)
+
+    if not args.skip_clang_tidy:
+        tidy = find_clang_tidy(args.clang_tidy)
+        if tidy is None:
+            print(
+                "FAIL: clang-tidy is not installed; install it or pass --skip-clang-tidy",
+                file=sys.stderr,
+            )
+            return 2
+        try:
+            tidy_findings, compile_errors, skipped = run_clang_tidy(
+                files, build_dirs, tidy, args.jobs
+            )
+        except RuntimeError as error:
+            print(f"FAIL: {error}", file=sys.stderr)
+            return 2
+        if skipped:
+            print(
+                "static analysis: skipped (no compile command): " + " ".join(skipped),
+                file=sys.stderr,
+            )
+        if compile_errors:
+            for finding in compile_errors:
+                print(
+                    f"clang-tidy {finding['file']}:{finding['line']}: "
+                    f"could not compile: {finding['message']}",
+                    file=sys.stderr,
+                )
+            failures += len(compile_errors)
+        if tidy_findings:
+            print_findings("clang-tidy", tidy_findings)
+            failures += len(tidy_findings)
+
+    if failures:
+        print(f"FAIL: {failures} static-analysis finding(s)", file=sys.stderr)
+        return 1
+    print("PASS: static analysis")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -39,7 +39,7 @@ class Device {
   /**
    * Return pseudo-unique identifier string of this device.
    */
-  static const std::string getStringID(void);
+  static const std::string &getStringID(void);
 
  private:
   static constexpr size_t DEVICE_ID_STR_MAX = 16;

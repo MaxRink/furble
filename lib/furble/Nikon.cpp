@@ -63,7 +63,7 @@ bool Nikon::matches(const NimBLEAdvertisedDevice *pDevice) {
 
 void Nikon::onResult(const NimBLEAdvertisedDevice *pDevice) {
   if (pDevice != nullptr && pDevice->haveManufacturerData() && matchesServiceUUID(pDevice)) {
-    const auto manufacturerData = pDevice->getManufacturerData();
+    const auto &manufacturerData = pDevice->getManufacturerData();
     if (AdvertisementProtocol::matchesNikonReconnect(
             reinterpret_cast<const uint8_t *>(manufacturerData.data()), manufacturerData.size(),
             m_ID.device)) {

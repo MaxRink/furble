@@ -132,6 +132,21 @@ behavior/doc/test coupling, settings defaults and board branches, wire-ID
 ledger drift, container bounds, unsafe filesystem removal, low-byte sentinel
 assertions, and terminal-state lock acquisition.
 
+Run the static analyzers when touching C/C++:
+
+```sh
+cmake -S tests/host -B .pio/static-build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+cmake -S sim -B .pio/static-sim   -DCMAKE_EXPORT_COMPILE_COMMANDS=ON   -DFURBLE_DEP_ROOT="$PWD/.pio/libdeps/m5stick-s3"   -DFURBLE_LVGL_DIR="$PWD/managed_components/lvgl__lvgl"
+python3 tools/check_static_analysis.py --base origin/master   --build-dir .pio/static-build --build-dir .pio/static-sim
+```
+
+The gate runs cppcheck and clang-tidy on changed files under `src/`,
+`lib/furble/`, `include/`, and `sim/`. `.clang-tidy` records the check set;
+`tools/check_static_analysis.py` records the cppcheck suppressions and their
+reasons. `static-analysis.yml` runs the same command on pull requests that
+touch C/C++ paths. A changed file with no compile command is reported as
+skipped; do not treat a skip as analysis.
+
 ## Testing
 
 Validation workflows use path filters and run for pull requests stacked on any
@@ -237,6 +252,7 @@ is in-repo under `docs/wiki/`.
 - [ ] Builds clean for the affected board envs (`FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e <env>`).
 - [ ] Host tests pass (`ctest --test-dir /tmp/furble-host-build`) where they apply.
 - [ ] clang-format 21 clean. No em-dashes. Plain English.
+- [ ] Static analysis clean for changed C/C++ files.
 - [ ] The matching `plans/NN` doc is updated with implementation state and deviations.
 - [ ] Docs updated for this change (README / docs / wiki / walkthrough+screenshots as applicable).
 - [ ] New camera or vendor work cites its protocol data source and states the hardware validation status.

@@ -36,17 +36,14 @@ namespace {
 constexpr uint32_t GPS_EPOCH_OFFSET = 315964800;
 
 time_t toUnixTime(const Camera::timesync_t &timesync) {
-  struct tm time = {
-      .tm_sec = static_cast<int>(timesync.second),
-      .tm_min = static_cast<int>(timesync.minute),
-      .tm_hour = static_cast<int>(timesync.hour),
-      .tm_mday = static_cast<int>(timesync.day),
-      .tm_mon = static_cast<int>(timesync.month - 1),
-      .tm_year = static_cast<int>(timesync.year - 1900),
-      .tm_wday = 0,
-      .tm_yday = 0,
-      .tm_isdst = -1,
-  };
+  struct tm time = {};
+  time.tm_sec = static_cast<int>(timesync.second);
+  time.tm_min = static_cast<int>(timesync.minute);
+  time.tm_hour = static_cast<int>(timesync.hour);
+  time.tm_mday = static_cast<int>(timesync.day);
+  time.tm_mon = static_cast<int>(timesync.month - 1);
+  time.tm_year = static_cast<int>(timesync.year - 1900);
+  time.tm_isdst = -1;
   return mktime(&time);
 }
 
@@ -75,7 +72,7 @@ bool Lumix::matches(const NimBLEAdvertisedDevice *pDevice) {
     return false;
   }
 
-  const auto manufacturerData = pDevice->getManufacturerData();
+  const auto &manufacturerData = pDevice->getManufacturerData();
   return AdvertisementProtocol::matchesLumixAdvertisement(
       reinterpret_cast<const uint8_t *>(manufacturerData.data()), manufacturerData.size(),
       pDevice->isAdvertisingService(SESSION_SVC_UUID));
@@ -126,7 +123,7 @@ bool Lumix::_connect(void) {
     ESP_LOGI(LOG_TAG, "Lumix device-name characteristic unavailable");
     return false;
   }
-  const std::string name = Device::getStringID();
+  const std::string &name = Device::getStringID();
   if (!pChr->writeValue(name.c_str(), name.length(), true)) {
     ESP_LOGI(LOG_TAG, "Lumix device-name write failed");
     return false;

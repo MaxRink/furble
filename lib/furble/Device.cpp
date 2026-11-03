@@ -36,7 +36,7 @@ static uint32_t xorshift(uint32_t x) {
 
 uint64_t Device::getEfuseMac(void) {
   uint64_t _chipmacid = 0LL;
-  esp_efuse_mac_get_default((uint8_t *)(&_chipmacid));
+  esp_efuse_mac_get_default(reinterpret_cast<uint8_t *>(&_chipmacid));
   return _chipmacid;
 }
 
@@ -48,7 +48,8 @@ void Device::init(esp_power_level_t power) {
   }
 
   // truncate ID to 5 hex characters (arbitrary, just make it 'nice' to read)
-  snprintf(m_StringID, DEVICE_ID_STR_MAX, "%s-%05lx", FURBLE_STR, m_Uuid.uint32[0] & 0xFFFFF);
+  snprintf(m_StringID, DEVICE_ID_STR_MAX, "%s-%05lx", FURBLE_STR,
+           static_cast<unsigned long>(m_Uuid.uint32[0] & 0xFFFFF));
 
   m_ID = std::string(m_StringID);
 
@@ -65,7 +66,7 @@ Device::uuid128_t Device::getUUID128(void) {
   return m_Uuid;
 }
 
-const std::string Device::getStringID(void) {
+const std::string &Device::getStringID(void) {
   return m_ID;
 }
 

@@ -53,7 +53,7 @@ std::array<uint32_t, 2> NikonSmart::SmartPairing::hash(const uint32_t *src, size
   uint32_t inL = 0;
   uint32_t inR = 0;
 
-  for (uint16_t i = 0; i < len; i += 2) {
+  for (size_t i = 0; (i + 1) < len; i += 2) {
     inL = src[i] ^ left;
     inR = src[i + 1] ^ right;
     scramble(&inL, &inR);
@@ -217,8 +217,9 @@ void NikonSmart::updateGeoData(const Camera::gps_t &gps, const Camera::timesync_
   degreesToDMSubMin(gps.longitude, geo.longitude_degrees, geo.longitude_minutes,
                     geo.longitude_submin1, geo.longitude_submin2);
 
-  ESP_LOGD(LOG_TAG, "sending GPS = %s",
-           NimBLEUtils::dataToHexString((const uint8_t *)&geo, sizeof(geo)).c_str());
+  ESP_LOGD(
+      LOG_TAG, "sending GPS = %s",
+      NimBLEUtils::dataToHexString(reinterpret_cast<const uint8_t *>(&geo), sizeof(geo)).c_str());
   if (gattWrite(SERVICE_UUID, GEO_CHR_UUID, reinterpret_cast<const uint8_t *>(&geo), sizeof(geo),
                 true)) {
     ESP_LOGI(LOG_TAG, "  success");

@@ -113,8 +113,12 @@ bool GPX::open(const point_t &point) {
   m_File = file;
   m_Points = 0;
   m_LastPointSeconds = 0;
-  if ((fputs(GPX_HEADER, file) == EOF) || ((m_CloserOffset = ftell(file)) < 0) || !writeClosers()
-      || !flush(true)) {
+  if (fputs(GPX_HEADER, file) == EOF) {
+    fail("write header");
+    return false;
+  }
+  m_CloserOffset = ftell(file);
+  if ((m_CloserOffset < 0) || !writeClosers() || !flush(true)) {
     fail("write header");
     return false;
   }

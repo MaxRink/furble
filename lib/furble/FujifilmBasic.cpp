@@ -26,7 +26,7 @@ void FujifilmBasic::print_token(const token_t &token) {
  */
 bool FujifilmBasic::matches(const NimBLEAdvertisedDevice *pDevice) {
   if (pDevice != nullptr && pDevice->haveManufacturerData()) {
-    const auto manufacturerData = pDevice->getManufacturerData();
+    const auto &manufacturerData = pDevice->getManufacturerData();
     return FujifilmProtocol::matchesBasicAdvertisement(
         reinterpret_cast<const uint8_t *>(manufacturerData.data()), manufacturerData.length(),
         pDevice->isAdvertisingService(CR_SVC_UUID), pDevice->isAdvertisingService(XAPP_SVC_UUID));
@@ -48,7 +48,7 @@ FujifilmBasic::FujifilmBasic(const void *data, size_t len)
 
 FujifilmBasic::FujifilmBasic(const NimBLEAdvertisedDevice *pDevice)
     : Fujifilm(Type::FUJIFILM_BASIC, pDevice) {
-  const auto manufacturerData = pDevice->getManufacturerData();
+  const auto &manufacturerData = pDevice->getManufacturerData();
   FujifilmProtocol::BasicAdvertisement advertisement;
   const bool parsed = FujifilmProtocol::parseBasicAdvertisement(
       reinterpret_cast<const uint8_t *>(manufacturerData.data()), manufacturerData.length(),
@@ -110,7 +110,7 @@ bool FujifilmBasic::_connect(void) {
     return false;
   if (!pChr->canWrite())
     return false;
-  const std::string clientName = Device::getStringID();
+  const std::string &clientName = Device::getStringID();
   std::vector<uint8_t> name(clientName.begin(), clientName.end());
   // Both official apps write UTF-8 plus a NUL terminator.
   name.push_back(0x00);

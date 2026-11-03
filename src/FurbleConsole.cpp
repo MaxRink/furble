@@ -687,12 +687,12 @@ int setValue(const Settings::setting_t &setting, const char *text) {
       break;
 
     case Settings::BUTTON_MODE:
-      if (strcasecmp(text, Settings::BUTTON_MODE_TWO_BUTTON_VALUE)
-          && strcasecmp(text, Settings::BUTTON_MODE_ONE_BUTTON_VALUE)) {
+      if ((strcasecmp(text, Settings::BUTTON_MODE_TWO_BUTTON_VALUE) != 0)
+          && (strcasecmp(text, Settings::BUTTON_MODE_ONE_BUTTON_VALUE) != 0)) {
         return fail("expected two-button or one-button");
       }
       Settings::save<std::string>(setting.type,
-                                  strcasecmp(text, Settings::BUTTON_MODE_ONE_BUTTON_VALUE)
+                                  (strcasecmp(text, Settings::BUTTON_MODE_ONE_BUTTON_VALUE) != 0)
                                       ? Settings::BUTTON_MODE_TWO_BUTTON_VALUE
                                       : Settings::BUTTON_MODE_ONE_BUTTON_VALUE);
       break;
@@ -951,7 +951,7 @@ int cmdSettings(int argc, char **argv) {
 }
 
 int cmdCompanion(int argc, char **argv) {
-  if ((argc < 2) || strcasecmp(argv[1], "password")) {
+  if ((argc < 2) || (strcasecmp(argv[1], "password") != 0)) {
     return fail("usage: companion password set <pw> | clear | status");
   }
   if ((argc == 3) && !strcasecmp(argv[2], "status")) {
@@ -1176,7 +1176,7 @@ int gpsSend(const char *body) {
   }
 
   int length = snprintf(sentence, sizeof(sentence), "$%s*%02X\r\n", body, checksum);
-  if ((length < 0) || (static_cast<size_t>(length) >= sizeof(sentence))) {
+  if ((length < 4) || (static_cast<size_t>(length) >= sizeof(sentence))) {
     return fail("command too long");
   }
 
@@ -1186,7 +1186,7 @@ int gpsSend(const char *body) {
   }
 
   // Strip the line ending so the echo is one line.
-  sentence[length - 2] = '\0';
+  sentence[static_cast<size_t>(length) - 2] = '\0';
   printf("sent: %s\n", sentence);
   printf("bytes: %d\n", written);
   return 0;
@@ -1263,6 +1263,8 @@ const char *gpsPowerPolicyName(uint8_t policy) {
       return "standby";
     case GPS::POWER_RAIL_CYCLE:
       return "rail_cycle";
+    default:
+      return "unknown";
   }
   return "unknown";
 }
@@ -1290,15 +1292,15 @@ int gpsStatus(void) {
   printf("receiver: %s\n", GPS::receiverStateName(gps.getReceiverState()));
   printf("detected_baud: %lu\n", static_cast<unsigned long>(gps.getDetectedBaud()));
   printf("fix: %s\n", boolStr(status.fix));
-  printf("satellites: %lu\n", status.satellites);
+  printf("satellites: %lu\n", static_cast<unsigned long>(status.satellites));
   printf("lat: %.5f\n", status.latitude);
   printf("lon: %.5f\n", status.longitude);
   printf("alt: %.2f\n", status.altitude);
-  printf("age: %lu\n", status.location_age);
+  printf("age: %lu\n", static_cast<unsigned long>(status.location_age));
   printf("date: %04u-%02u-%02u\n", status.year, status.month, status.day);
   printf("time: %02u:%02u:%02u\n", status.hour, status.minute, status.second);
-  printf("chars: %lu\n", status.chars_processed);
-  printf("sentences: %lu\n", status.sentences_passed);
+  printf("chars: %lu\n", static_cast<unsigned long>(status.chars_processed));
+  printf("sentences: %lu\n", static_cast<unsigned long>(status.sentences_passed));
   printf("degraded: %s\n", boolStr(receiver.degraded));
   printf("retries: %lu\n", static_cast<unsigned long>(receiver.retries));
 
@@ -1345,7 +1347,7 @@ const char *timeSourceName(TimeSource source) {
 
 int cmdTime(int argc, char **argv) {
   auto &keeper = TimeKeeper::getInstance();
-  if ((argc >= 2) && !strcmp(argv[1], "flush")) {
+  if ((argc >= 2) && (strcmp(argv[1], "flush") == 0)) {
     if (argc != 2) {
       return fail("usage: time flush");
     }
@@ -1353,7 +1355,7 @@ int cmdTime(int argc, char **argv) {
     printf("time: flushed\n");
     return 0;
   }
-  if ((argc >= 2) && strcmp(argv[1], "status")) {
+  if ((argc >= 2) && (strcmp(argv[1], "status") != 0)) {
     return fail("usage: time status | flush");
   }
   const auto status = keeper.status();
@@ -1951,7 +1953,7 @@ int cmdNtp(int argc, char **argv) {
   }
 
   if (!strcasecmp(argv[1], "set")) {
-    if ((argc < 4) || strcasecmp(argv[2], "server")) {
+    if ((argc < 4) || (strcasecmp(argv[2], "server") != 0)) {
       return fail("usage: ntp set server <host>");
     }
     return setValue(Settings::get(Settings::NTP_SERVER), argv[3]);
@@ -2062,8 +2064,8 @@ int cmdStatus(int argc, char **argv) {
   printf("targets: %u\n", static_cast<unsigned>(control.getTargetCameras().size()));
   printf("reset: %s\n", resetReasonName(esp_reset_reason()));
   printf("uptime: %llu\n", esp_timer_get_time() / 1000000ULL);
-  printf("heap: %lu\n", esp_get_free_heap_size());
-  printf("heap_min: %lu\n", esp_get_minimum_free_heap_size());
+  printf("heap: %lu\n", static_cast<unsigned long>(esp_get_free_heap_size()));
+  printf("heap_min: %lu\n", static_cast<unsigned long>(esp_get_minimum_free_heap_size()));
   auto &platform = Platform::getInstance();
   const auto &caps = platform.getBatteryCaps();
   const auto battery = platform.readBattery();
@@ -2110,9 +2112,6 @@ int cmdIMU(int argc, char **argv) {
     case m5::imu_none:
       typeName = "none";
       break;
-    case m5::imu_unknown:
-      typeName = "unknown";
-      break;
     case m5::imu_sh200q:
       typeName = "sh200q";
       break;
@@ -2127,6 +2126,8 @@ int cmdIMU(int argc, char **argv) {
       break;
     case m5::imu_bmi270:
       typeName = "bmi270";
+      break;
+    default:
       break;
   }
   printf("setting: %s\n", boolStr(setting));
@@ -2158,11 +2159,11 @@ int cmdVersion(int argc, char **argv) {
 }
 
 int cmdCameras(int argc, char **argv) {
-  if ((argc >= 2) && !strcmp(argv[1], "status")) {
+  if ((argc >= 2) && (strcmp(argv[1], "status") == 0)) {
     const auto cameras = Control::getInstance().getTargetCameras();
     printf("targets: %u\n", static_cast<unsigned>(cameras.size()));
     for (size_t n = 0; n < cameras.size(); n++) {
-      const auto camera = cameras[n];
+      const auto &camera = cameras[n];
       printf("target%u.name: %s\n", static_cast<unsigned>(n), camera->getName().c_str());
       printf("target%u.connected: %s\n", static_cast<unsigned>(n), boolStr(camera->isConnected()));
       // Connection parameter and supervision timeout telemetry. The supervision
@@ -2182,7 +2183,7 @@ int cmdCameras(int argc, char **argv) {
     return 0;
   }
 
-  if ((argc >= 2) && strcmp(argv[1], "list")) {
+  if ((argc >= 2) && (strcmp(argv[1], "list") != 0)) {
     return fail("expected list or status");
   }
 
@@ -2290,7 +2291,7 @@ int cmdMultiConnect(int argc, char **argv) {
   }
 
   const bool select = !strcmp(argv[1], "select");
-  if (!select && strcmp(argv[1], "deselect")) {
+  if (!select && (strcmp(argv[1], "deselect") != 0)) {
     return fail("expected list, select, deselect or clear");
   }
 
@@ -2389,7 +2390,7 @@ int cmdShutter(int argc, char **argv) {
 }
 
 int cmdIR(int argc, char **argv) {
-  if ((argc < 2) || strcmp(argv[1], "fire")) {
+  if ((argc < 2) || (strcmp(argv[1], "fire") != 0)) {
     return fail("usage: ir fire [protocol]");
   }
 
@@ -2807,7 +2808,7 @@ int cmdLog(int argc, char **argv) {
 }
 
 int cmdFeedback(int argc, char **argv) {
-  if ((argc < 3) || strcmp(argv[1], "test")) {
+  if ((argc < 3) || (strcmp(argv[1], "test") != 0)) {
     return fail("usage: feedback test shutter|countdown|connect|disconnect|battery");
   }
 
@@ -2965,7 +2966,7 @@ int debugBle(void) {
   // Cross-reference each control target against the live NimBLE client list.
   const auto cameras = Control::getInstance().getTargetCameras();
   for (size_t n = 0; n < cameras.size(); n++) {
-    auto camera = cameras[n];
+    const auto &camera = cameras[n];
     const bool live = NimBLEDevice::getClientByPeerAddress(camera->getAddress()) != nullptr;
     printf("ble.target%u: %s client=%s\n", static_cast<unsigned>(n),
            camera->getAddress().toString().c_str(), boolStr(live));

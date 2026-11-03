@@ -3,6 +3,7 @@
 
 #include <condition_variable>
 #include <cstdint>
+#include <exception>
 #include <mutex>
 
 #include "FurbleTime.h"
@@ -48,7 +49,9 @@ std::condition_variable &schedulerCondition(void);
 struct SchedulerMutexWaiter;
 
 /** Cooperative unwind for a non-scheduler thread cancelled while locking. */
-struct SchedulerStopped {};
+struct SchedulerStopped: std::exception {
+  const char *what() const noexcept override { return "scheduler stopped"; }
+};
 
 class SchedulerMutex {
  public:

@@ -37,7 +37,7 @@ bool FujifilmSecure::matches(const NimBLEAdvertisedDevice *pDevice) {
     return false;
   }
 
-  const auto manufacturerData = pDevice->getManufacturerData();
+  const auto &manufacturerData = pDevice->getManufacturerData();
   return FujifilmProtocol::matchesSecureAdvertisement(
       reinterpret_cast<const uint8_t *>(manufacturerData.data()), manufacturerData.length(),
       pDevice->isAdvertisingService(SERVICE_UUID));
@@ -62,7 +62,7 @@ FujifilmSecure::FujifilmSecure(const void *data, size_t len)
 
 FujifilmSecure::FujifilmSecure(const NimBLEAdvertisedDevice *pDevice)
     : Fujifilm(Type::FUJIFILM_SECURE, pDevice) {
-  const auto manufacturerData = pDevice->getManufacturerData();
+  const auto &manufacturerData = pDevice->getManufacturerData();
   FujifilmProtocol::SecureAdvertisement advertisement;
   const bool parsed = FujifilmProtocol::parseSecureAdvertisement(
       reinterpret_cast<const uint8_t *>(manufacturerData.data()), manufacturerData.length(),
@@ -101,7 +101,7 @@ void FujifilmSecure::onResult(const NimBLEAdvertisedDevice *pDevice) {
   if (pDevice == nullptr || !pDevice->haveManufacturerData()) {
     return;
   }
-  const auto manufacturerData = pDevice->getManufacturerData();
+  const auto &manufacturerData = pDevice->getManufacturerData();
   FujifilmProtocol::SecureAdvertisement advertisement;
   if (!FujifilmProtocol::parseSecureAdvertisement(
           reinterpret_cast<const uint8_t *>(manufacturerData.data()), manufacturerData.length(),
@@ -330,7 +330,7 @@ bool FujifilmSecure::_connect(void) {
   }
   m_Progress += 5;
 
-  const std::string clientName = Device::getStringID();
+  const std::string &clientName = Device::getStringID();
   std::vector<uint8_t> name(clientName.begin(), clientName.end());
   // Both official apps write UTF-8 plus a NUL terminator to the connected
   // device name characteristic.

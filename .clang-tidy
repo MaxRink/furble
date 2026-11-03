@@ -1,0 +1,36 @@
+---
+# Static-analysis policy for the production and simulator sources.
+#
+# The checks below are the high-signal set that has been triaged against the
+# current tree. Noisy families (signed bitwise operations, enum size, static
+# initialization on an exception-free embedded target) are deliberately off.
+# `tools/check_static_analysis.py` runs this config on changed files in CI.
+Checks: >
+  bugprone-*,
+  clang-analyzer-*,
+  cert-*,
+  performance-*,
+  portability-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  -bugprone-implicit-widening-of-multiplication-result,
+  -bugprone-reserved-identifier,
+  -bugprone-branch-clone,
+  -bugprone-macro-parentheses,
+  -bugprone-signed-bitwise,
+  -bugprone-throwing-static-initialization,
+  -bugprone-switch-missing-default-case,
+  -cert-err33-c,
+  -cert-err58-cpp,
+  -cert-dcl21-cpp,
+  -performance-enum-size,
+  -performance-inefficient-vector-operation,
+  -portability-avoid-pragma-once,
+  -bugprone-exception-escape,
+  -clang-analyzer-optin.performance.Padding,
+  -performance-no-int-to-ptr,
+  -cert-dcl50-cpp
+HeaderFilterRegex: '(src|lib/furble|include|sim)/'
+FormatStyle: file
+WarningsAsErrors: ''
+...
