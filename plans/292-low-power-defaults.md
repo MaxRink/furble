@@ -25,7 +25,7 @@ this is not a migration and does not rewrite user choices.
 ## Validation
 
 - `settings_nvs_roundtrip_test`: PASS, including the StickS3 defaults.
-- New `settings-default-policy`, `settings-default-policy-stickc`, and
+- New `settings-default-policy`, `settings-default-policy-sticks3`, and
   `settings-default-policy-core` targets exercise both sleep-default branches
   and the Core Basic display exception.
 - `settings_nvs_roundtrip_test` also seeds legacy Never/Dim/Sleep-off values,
@@ -33,6 +33,9 @@ this is not a migration and does not rewrite user choices.
 - Full host CTest: 143/143 after the rebase onto the static-analysis gate.
 - Static analysis: PASS. The power-level load path now returns a default
   instead of falling out of its switch.
+- The settings docs contract parses the zero-argument defaults functions and
+  compares the common branch of a board-conditional default; the exception is
+  pinned by the three `settings-default-policy-*` targets.
 - Certified power-gate scenarios: PASS after refreshing the
   `blind-remote-shutter` baseline. The intended default change moves that
   scenario from 43.65 mA to 4.45 mA because the connected screen-off state now

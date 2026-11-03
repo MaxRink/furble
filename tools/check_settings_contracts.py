@@ -91,12 +91,21 @@ DOC_DEFAULT_RULES = (
     DocDefaultRule(
         "DISPLAY_OFF",
         ("Screen off", "Display off"),
-        {"dim": "0", "off": "1", "off remote on": "2"},
+        {
+            "dim": "0",
+            "off": "1",
+            "off remote on": "2",
+            "off (dim on m5stack core basic)": "1",
+        },
     ),
     DocDefaultRule(
         "SLEEP_CONN",
         ("Sleep while connected",),
-        {"off": "false", "on": "true"},
+        {
+            "off": "false",
+            "on": "true",
+            "off (on on m5sticks3)": "false",
+        },
     ),
     DocDefaultRule(
         "AUTO_OFF",
@@ -585,6 +594,23 @@ def _parse_constants(
       else:
         add(name, explicit or "?", entry_offset)
 
+  function_pattern = re.compile(
+      r"(?:static\s+)?constexpr\s+[^;{}]*?\b([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*\)\s*\{",
+      re.S,
+  )
+  for match in function_pattern.finditer(masked):
+    opening = masked.find("{", match.start())
+    closing = _find_matching(masked, opening, "{", "}")
+    if closing < 0:
+      continue
+    name = match.group(1)
+    namespace = _enclosing_namespace(match.start(1), ranges)
+    body = masked[opening + 1 : closing]
+    for return_match in re.finditer(r"\breturn\s+([^;]+);", body):
+      raw = text[opening + 1 + return_match.start(1) : opening + 1 + return_match.end(1)]
+      offset = opening + 1 + return_match.start(1)
+      add(name, raw, offset, f"{namespace}::{name}" if namespace else None)
+
   # Bare constexpr declarations inside a namespace are keyed both ways, but the
   # Settings header declarations live inside a class, so the unqualified name is
   # the key the defaults use.
@@ -616,6 +642,20 @@ def _lookup_constant(
     kind, value = next(iter(values))
     return Resolved(kind, value, "", frozenset(sources))
   if len(values) > 1:
+    # A board-conditional default is documented by its common branch; the
+    # exception is pinned by the compiled settings-default-policy tests. The
+    # #else branch carries a negated guard, so it is the default.
+    default_values = {
+        (resolved.kind, resolved.value)
+        for entry in entries
+        if all(condition.startswith("!(") or condition.startswith("!defined(")
+               for condition in entry.guard)
+        for resolved in [_resolve_expression(entry.raw, constants, depth + 1)]
+        if resolved.kind != "unknown"
+    }
+    if len(default_values) == 1:
+      kind, value = next(iter(default_values))
+      return Resolved(kind, value, "", frozenset(sources))
     return Resolved(
         "unknown",
         None,
@@ -686,6 +726,12 @@ def _resolve_expression(
 
   if value.startswith("{"):
     return Resolved("unknown", None, "aggregate initializer is not a scalar default")
+
+  call = re.fullmatch(
+      r"([A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z_][A-Za-z0-9_]*)*)\(\s*\)", value
+  )
+  if call:
+    return _lookup_constant(call.group(1), constants, depth)
 
   identifier = re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z_][A-Za-z0-9_]*)*", value)
   if identifier:

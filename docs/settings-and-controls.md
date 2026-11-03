@@ -220,7 +220,7 @@ Submenu: `Settings` > `Power`.
 
 | Setting | Default | Values | Applies | Notes |
 | :--- | :--- | :--- | :--- | :--- |
-| Sleep while connected | On (M5StickS3), Off elsewhere | On, Off | Next connection (dangerous) | M5StickS3 only. Doze between BLE events while connected. Read when a connection is made, so set it before connecting. Fresh StickS3 devices start at On. |
+| Sleep while connected | Off (On on M5StickS3) | On, Off | Next connection (dangerous) | M5StickS3 only. Doze between BLE events while connected. Read when a connection is made, so set it before connecting. Fresh StickS3 devices start at On. |
 | CPU speed | 160 MHz | 80 MHz, 160 MHz, 240 MHz | Now (dangerous) | Higher feels snappier and costs battery. |
 | Battery Style | Icon | Icon, Percent, Both | Now | What the header battery indicator shows. |
 | Auto off | Never | Never, 5 mins, 10 mins, 30 mins, 60 mins | Now | Power off after this idle time. Not offered on M5Stack Core Basic. |
