@@ -339,13 +339,16 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
 - Scripted runs honor a caller-provided `FURBLE_SIM_PREFS` path and never
   remove it. Runs without one receive a unique, valid zero-entry scratch store;
   only that exact generated path and its PID-specific temporary file are
-  removed after a final orderly exit. Abnormal-exit reclamation and cross-run
-  sweeping are intentionally not implemented. Restart ownership also validates
-  the originating PID in its internal marker before adopting a generated path.
-  The focused subprocess check is
+  removed after a final orderly exit. When a run is about to create its own
+  generated store, it reclaims generated stores whose encoded pid is dead and
+  whose `.generated` ownership marker is present; live, self, caller-owned, and
+  foreign-owner stores are kept. Restart ownership also
+  validates the originating PID in its internal marker before adopting a
+  generated path. The focused subprocess check is
   `sim/scripts/check-preferences-lifecycle.sh`; it requires an already-built
   `FURBLE_SIM_BIN`, runs in the S3 simulator CI after that build with a
-  two-minute step bound, and is not a build or abnormal-exit janitor.
+  two-minute step bound, and covers the caller-owned boundary and dead-store
+  reclamation.
 - Scenario parsing is a pre-runtime gate: every verb has strict arity and
   numeric validation, unknown verbs/options and trailing values are rejected
   with status 2, and duplicate `seed` names are invalid. `action` lines are

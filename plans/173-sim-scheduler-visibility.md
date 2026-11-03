@@ -414,10 +414,11 @@ when both path and origin PID match. A different PID treats the path as
 caller-owned and does not adopt or remove it. Final orderly cleanup removes
 only that owned primary and its existing PID-specific `.tmp.<pid>` file.
 
-Cross-run stale sweeping, PID-liveness reclamation, sidecar locks, failed
-restart cleanup, and abnormal-exit cleanup are deliberately deferred. A dead
-encoded PID cannot prove that another process did not intentionally select the
-same store, so this slice makes no cross-process deletion claim.
+`preparePreferences()` reclaims generated stores whose encoded pid is dead
+when it is about to create its own store. Live, self, and foreign-owner stores
+are kept, and a caller-provided `FURBLE_SIM_PREFS` path returns before the
+sweep. Sidecar locks, failed-restart cleanup, and deletion of a store whose pid
+is live remain deferred; an encoded pid cannot prove more than liveness.
 
 The focused subprocess gate is `sim/scripts/check-preferences-lifecycle.sh`.
 It checks explicit-store use and persistence across independent launches,

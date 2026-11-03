@@ -1,5 +1,6 @@
 #include "preferences_sweep.h"
 
+#include <cctype>
 #include <cerrno>
 #include <csignal>
 #include <cstdlib>
@@ -15,6 +16,7 @@ namespace {
 constexpr const char *STORE_PREFIX = "furble-sim-preferences-";
 constexpr const char *STORE_SUFFIX = ".bin";
 constexpr const char *TEMP_MARKER = ".bin.tmp.";
+constexpr const char *STORE_MARKER_SUFFIX = ".generated";
 
 bool parsePositivePid(const std::string &text, int *pid) {
   if (text.empty() || text.size() > 9) {
@@ -42,25 +44,10 @@ bool ownedRegularFile(const std::filesystem::path &path) {
   return info.st_uid == getuid();
 }
 
-}  // namespace
-
-std::optional<int> generatedPreferencePid(const std::string &filename) {
+std::optional<int> parseGeneratedStore(const std::string &filename) {
   if (filename.rfind(STORE_PREFIX, 0) != 0) {
     return std::nullopt;
   }
-
-  // A temporary sidecar is `<store>.bin.tmp.<pid>`.
-  const std::size_t marker = filename.rfind(TEMP_MARKER);
-  if (marker != std::string::npos) {
-    int pid = 0;
-    if (parsePositivePid(filename.substr(marker + std::strlen(TEMP_MARKER)), &pid)) {
-      return pid;
-    }
-    return std::nullopt;
-  }
-
-  // A store is `<prefix><scenario>-<pid>-XXXXXX.bin`; skip the random suffix,
-  // then read the pid. Scenario names may contain dashes.
   const std::size_t suffixLength = std::strlen(STORE_SUFFIX);
   if (filename.size() <= suffixLength
       || filename.compare(filename.size() - suffixLength, suffixLength, STORE_SUFFIX) != 0) {
@@ -70,6 +57,15 @@ std::optional<int> generatedPreferencePid(const std::string &filename) {
   const std::size_t randomSeparator = base.rfind('-');
   if (randomSeparator == std::string::npos) {
     return std::nullopt;
+  }
+  const std::string random = base.substr(randomSeparator + 1);
+  if (random.size() != 6) {
+    return std::nullopt;
+  }
+  for (const char character : random) {
+    if (!std::isalnum(static_cast<unsigned char>(character))) {
+      return std::nullopt;
+    }
   }
   const std::string beforeRandom = base.substr(0, randomSeparator);
   const std::size_t pidSeparator = beforeRandom.rfind('-');
@@ -81,6 +77,27 @@ std::optional<int> generatedPreferencePid(const std::string &filename) {
     return std::nullopt;
   }
   return pid;
+}
+
+}  // namespace
+
+std::optional<int> generatedPreferencePid(const std::string &filename) {
+  // A temporary sidecar is `<store>.bin.tmp.<pid>`. Treat it as a sidecar only
+  // when the trailing component is a pid and the primary store, reconstructed
+  // with its `.bin` suffix, is a valid generated name with the same pid.
+  // Otherwise fall through so a scenario containing `.bin.tmp.` still parses.
+  const std::size_t marker = filename.rfind(TEMP_MARKER);
+  if (marker != std::string::npos) {
+    int sidecarPid = 0;
+    if (parsePositivePid(filename.substr(marker + std::strlen(TEMP_MARKER)), &sidecarPid)) {
+      const std::string primary = filename.substr(0, marker) + STORE_SUFFIX;
+      const std::optional<int> storePid = parseGeneratedStore(primary);
+      if (storePid.has_value() && *storePid == sidecarPid) {
+        return sidecarPid;
+      }
+    }
+  }
+  return parseGeneratedStore(filename);
 }
 
 bool processAlive(int pid) {
@@ -115,8 +132,30 @@ std::size_t sweepStalePreferences(const std::filesystem::path &directory, int se
     if (!ownedRegularFile(path)) {
       continue;
     }
+
+    // Only a store with the simulator-owned marker is ours. A caller-owned
+    // path can match the generated naming pattern; the marker is the proof
+    // that this run created it, not the caller.
+    const std::filesystem::path marker = path.string() + STORE_MARKER_SUFFIX;
+    if (!filename.empty() && filename.find(TEMP_MARKER) != std::string::npos) {
+      // A sidecar is removable only while its primary store and marker exist.
+      const std::string primaryName = filename.substr(0, filename.find(TEMP_MARKER)) + STORE_SUFFIX;
+      const std::filesystem::path primary = directory / primaryName;
+      if (!ownedRegularFile(primary)
+          || !std::filesystem::is_regular_file(primary.string() + STORE_MARKER_SUFFIX, error)) {
+        continue;
+      }
+      if (std::filesystem::remove(path, error)) {
+        removed++;
+      }
+      continue;
+    }
+    if (!std::filesystem::is_regular_file(marker, error)) {
+      continue;
+    }
     if (std::filesystem::remove(path, error)) {
       removed++;
+      (void)std::filesystem::remove(marker, error);
     }
   }
   return removed;

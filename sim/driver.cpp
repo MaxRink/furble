@@ -1609,17 +1609,6 @@ void preparePreferences(void) {
     unsetenv(GENERATED_PREFS_ENV);
     return;
   }
-
-  // Reclaim generated stores from runs that died without orderly cleanup. A
-  // live pid always keeps its store; an encoded pid cannot prove more than
-  // liveness, so the sweep is deliberately conservative.
-  {
-    std::error_code directoryError;
-    std::filesystem::create_directories(".pio", directoryError);
-    if (!directoryError) {
-      (void)sweepStalePreferences(".pio", static_cast<int>(getpid()));
-    }
-  }
   // The deep-sleep runner deliberately supplies one flash image to two fresh
   // processes. Keep this opt-in seam separate from ordinary scripted runs,
   // which remain isolated per scenario and pid.
@@ -1657,6 +1646,19 @@ void preparePreferences(void) {
     return;
   }
 
+  // Reclaim generated stores from runs that died without orderly cleanup. This
+  // runs only when this run is about to create its own generated store, after
+  // every caller-owned and fixed-path branch has returned. A live pid always
+  // keeps its store; an encoded pid cannot prove more than liveness, so the
+  // sweep is deliberately conservative.
+  {
+    std::error_code directoryError;
+    std::filesystem::create_directories(".pio", directoryError);
+    if (!directoryError) {
+      (void)sweepStalePreferences(".pio", static_cast<int>(getpid()));
+    }
+  }
+
   // One flash image per simulator run. mkstemps() reserves the name and the
   // four-byte zero count makes the new store valid to PreferencesSim. No
   // existing path is truncated or removed here.
@@ -1689,10 +1691,22 @@ void preparePreferences(void) {
   }
   generatedPreferencesPath = writablePath.data();
   generatedPreferencesOwned = true;
+  const std::string markerPath = generatedPreferencesPath + ".generated";
+  {
+    std::ofstream marker(markerPath, std::ios::trunc);
+    marker << getpid() << '\n';
+    if (!marker) {
+      std::remove(generatedPreferencesPath.c_str());
+      std::remove(markerPath.c_str());
+      std::cerr << "simulator failed to create the preference ownership marker\n";
+      std::exit(1);
+    }
+  }
   const std::string generatedMarker = generatedPreferencesPath + "|" + std::to_string(getpid());
   if (setenv("FURBLE_SIM_PREFS", generatedPreferencesPath.c_str(), 1) != 0
       || setenv(GENERATED_PREFS_ENV, generatedMarker.c_str(), 1) != 0) {
     std::remove(generatedPreferencesPath.c_str());
+    std::remove(markerPath.c_str());
     std::cerr << "simulator failed to set FURBLE_SIM_PREFS: " << std::strerror(errno) << '\n';
     std::exit(1);
   }
@@ -1708,6 +1722,7 @@ void removePreferences(void) {
     return;
   }
   std::remove(generatedPreferencesPath.c_str());
+  std::remove((generatedPreferencesPath + ".generated").c_str());
   const std::string temporaryPath = generatedPreferencesPath + ".tmp." + std::to_string(getpid());
   std::remove(temporaryPath.c_str());
   unsetenv(GENERATED_PREFS_ENV);
