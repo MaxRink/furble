@@ -39,6 +39,14 @@ suite certified the incorrect decode.
 - Simulator: `gps-monhw-poll`, `gps-autobaud-ladder`, `gps-degraded-recovery`,
   and `gps-ephemeris-replay` pass on the M5StickS3 build.
 
+## Documentation publication
+
+The console reference exists in both `docs/console-commands.md` and the
+published `docs/wiki/Console-Commands.md`; both were updated. The GPS claims in
+`README.md`, `docs/power/gps-imu.md`, and `docs/power/opportunity-matrix.md`
+are engineering references under `docs/power/` and are not mirrored to the
+wiki.
+
 ## Remaining gate
 
 The offsets are specification-derived. A receiver check is still owed:
