@@ -442,7 +442,8 @@ range with its basis, not a claim.
   the default 9600 baud, which is a normal user action.
 - **Risk.** Low to medium. A very slow receiver could be declared absent. The
   60-second retry recovers it, and the autobaud path already accepts that
-  trade. Do not fire while characters are arriving.
+  trade. Do not keep the deadline alive on arbitrary arriving characters: only
+  a checksum-valid NMEA sentence clears it.
 - **Effort.** S to M.
 - **Required test.** Simulator `gps-fixed-baud-absent` on StickS3 and Core,
   its StickC variant for the panel-independent absent state, plus
