@@ -187,16 +187,17 @@ during `ACQUIRING`, `MEASURING`, `RESYNC` and each `BURST`, and released during
 the four ESP32 boards and the Waveshare S3, the lock does not exist, so the
 burst windowing has no light-sleep effect there.
 
-Two lock lifetimes are unbounded:
+The initial `ACQUIRING` lifetime used to be unbounded: a fixed `GPS_BAUD`
+published `PRESENT` immediately, skipped the autobaud ladder, and a silent
+receiver held `NO_LIGHT_SLEEP` until the user toggled GPS. That case is reached
+by a normal user action, enabling GPS with no unit attached at the default
+9600, so it does not require a fault.
 
-- The initial `ACQUIRING` state has `m_ProbeDeadline == 0`. `serviceCycle()`
-  re-acquires the lock on every pass and has no exit except a received burst.
-- A fixed `GPS_BAUD` publishes `PRESENT` immediately and skips the autobaud
-  ladder entirely. A receiver that is powered but silent therefore holds
-  `NO_LIGHT_SLEEP` forever and is never declared absent.
-
-The second case is reached by a normal user action: enable GPS with no unit
-attached while the stored baud is the default 9600. It does not require a fault.
+`ACQUIRE_TIMEOUT_MS` now bounds both a fixed baud and an autobaud lock that
+goes silent. A checksum-valid NMEA sentence clears the deadline; expiry calls
+`onProbeFailed()`, which drops the rail, releases the lock, publishes `ABSENT`,
+and schedules the single 60-second retry. A late frame after `ABSENT` is
+rejected before it can update the fix.
 
 `plans/98b-power-followup.md` records the cost of a permanently held lock as
 about 37 mA. That figure is modeled, but the bound is solid: S3 active at 80 MHz
@@ -425,28 +426,34 @@ range with its basis, not a claim.
 
 ### G-03 Bound the initial acquisition lock and detect a silent fixed-baud receiver
 
-- **Change.** After a bounded silence, for example 10 seconds at a fixed baud,
-  declare the receiver absent even when `GPS_BAUD` is fixed: drop the rail,
-  release `NO_LIGHT_SLEEP`, and retry once after 60 seconds. The autobaud path
-  already has this state; the fixed-baud path does not.
-- **Current behavior.** A fixed baud publishes `PRESENT` immediately and enters
-  `ACQUIRING` with `m_ProbeDeadline == 0`. `serviceCycle()` re-acquires the lock
-  on every pass and has no exit. The receiver is never declared absent.
-- **Evidence.** `inferred` from `enable()`, `serviceCycle()` and `cycleWait()`.
+- **Change.** After a bounded silence, declare the receiver absent even when
+  `GPS_BAUD` is fixed: drop the rail, release `NO_LIGHT_SLEEP`, and retry once
+  after 60 seconds. The same deadline covers an autobaud lock that goes silent.
+- **Current behavior.** A fixed baud publishes `PRESENT` and enters `ACQUIRING`
+  with a 30-second `m_AcquireDeadline` and the valid-sentence counter recorded.
+  A checksum-valid NMEA sentence clears the deadline; expiry calls
+  `onProbeFailed()`, which publishes `ABSENT` and schedules the one retry. A
+  queued burst after `ABSENT` is rejected. Line noise and binary-only frames do
+  not extend the deadline or the burst gap.
+- **Evidence.** `code` plus simulator evidence; plan 294 records the scenario
+  and the remaining bench gate.
 - **Estimated saving.** `modeled` up to 37 mA while the lock is held. Basis:
   plan 98b's +37 mA; bounded by 40.2 mA active versus 0.240 mA light sleep. The
   case is a fault, but it is reached by enabling GPS with no unit attached at
   the default 9600 baud, which is a normal user action.
 - **Risk.** Low to medium. A very slow receiver could be declared absent. The
   60-second retry recovers it, and the autobaud path already accepts that
-  trade. Do not fire while characters are arriving.
+  trade. Do not keep the deadline alive on arbitrary arriving characters: only
+  a checksum-valid NMEA sentence clears it.
 - **Effort.** S to M.
-- **Required test.** Simulator `gps-no-receiver` with a fixed baud seed; device:
-  enable GPS with no unit, confirm `receiver: absent`, no `gps` lock owner in
-  `power stats`, rail off, and a unit attached later is found on the retry.
-- **Citation.** `src/FurbleGPS.cpp:314-391` (`enable`), `:595-708`
-  (`serviceCycle`), `:530-593` (`cycleWait`); `include/FurbleGPS.h:378`
-  (`NO_RECEIVER_RETRY_MS`), `:400` (`SETTLE_MS`); plan 98b lines 14-40.
+- **Required test.** Simulator `gps-fixed-baud-absent` on StickS3 and Core,
+  its StickC variant for the panel-independent absent state, plus
+  `gps-no-receiver`; device: enable GPS with no unit, confirm
+  `receiver: absent`, no `gps` lock owner in `power stats`, rail off, and a
+  unit attached later is found on the retry.
+- **Citation.** `src/FurbleGPS.cpp` (`enable`, `serviceCycle`, `cycleWait`,
+  `serviceSerial`, `beginBurst`); `include/FurbleGPS.h`
+  (`ACQUIRE_TIMEOUT_MS`, `NO_RECEIVER_RETRY_MS`); plan 294.
 
 ### G-04 Back off the receiver when there is no fix
 
@@ -1049,7 +1056,7 @@ happy path. They still need tests, and G-03 changes a fault path.
 
 | Rank | ID | Why now | Est. saving | Effort |
 | --- | --- | --- | --- | --- |
-| 1 | G-03 | A silent fixed-baud receiver holds `NO_LIGHT_SLEEP` forever. Reached by enabling GPS with no unit at the default baud. | Up to 37 mA in the fault case | S to M |
+| 1 | G-03 | A silent fixed-baud receiver used to hold `NO_LIGHT_SLEEP` forever. The 30 s acquisition deadline now releases it. | Up to 37 mA in the fault case, bounded to 30 s | Implemented |
 | 2 | G-01 | The task knows its next deadline and still wakes 10 times per second. | 0.05 to 0.5 mA | S |
 | 3 | G-02 | GPS is off by default, so this is the only GPS cost a default install pays. | 0.02 to 0.2 mA | S |
 | 4 | G-13 | Per-second log lines are pure overhead and they pollute the console during every measurement. | 0.05 to 0.2 mA | S |

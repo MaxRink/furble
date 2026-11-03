@@ -230,14 +230,21 @@ void GPS::task(void) {
     // counter can climb, but hold the cycle and configuration paths until a
     // receiver is found. When nothing answers, idle without spinning.
     serviceProbe();
-    const auto rstate = static_cast<receiver_state_t>(m_ReceiverState.load());
-    const bool absent = (rstate == receiver_state_t::ABSENT);
+    auto rstate = static_cast<receiver_state_t>(m_ReceiverState.load());
+    bool absent = (rstate == receiver_state_t::ABSENT);
     const bool detecting = (rstate == receiver_state_t::DETECTING);
 
     if (!absent && !detecting) {
       serviceCycle();
-      serviceConfig();
-      servicePoll();
+      // onProbeFailed() can publish ABSENT inside serviceCycle(). Refresh the
+      // state before configuration, polling, or a queued UART event can touch
+      // the receiver after the rail and lock have been dropped.
+      rstate = static_cast<receiver_state_t>(m_ReceiverState.load());
+      absent = (rstate == receiver_state_t::ABSENT);
+      if (!absent && (rstate != receiver_state_t::DETECTING)) {
+        serviceConfig();
+        servicePoll();
+      }
     }
 
     uart_event_t event;
@@ -309,6 +316,8 @@ void GPS::resetAcquisition(uint32_t now) {
   m_MeasureDeadline = 0;
   m_ResyncDeadline = 0;
   m_ProbeDeadline = 0;
+  m_AcquireDeadline = 0;
+  m_AcquireSentences = 0;
   m_Degraded.reset();
   m_LastBurstStart = 0;
   m_PeriodSamples.fill(0);
@@ -322,7 +331,6 @@ void GPS::resetAcquisition(uint32_t now) {
   m_SimFreshFixesParsed = 0;
 #endif
   m_CycleRequest = false;
-  m_FixedBaudProbe = false;
   (void)now;
 }
 
@@ -375,7 +383,10 @@ void GPS::enable(void) {
     m_DutySeconds = duty;
     // cached so the status readers never reach NVS on a periodic path
     m_RateMs = static_cast<uint16_t>(rate);
-    resetAcquisition(Platform::getInstance().tick());
+    const uint32_t now = Platform::getInstance().tick();
+    resetAcquisition(now);
+    m_AcquireDeadline = now + ACQUIRE_TIMEOUT_MS;
+    m_AcquireSentences = getStatusSnapshot().sentences_passed;
 
     m_NoReceiverRetried = false;
     m_NoReceiverRetryAt = 0;
@@ -398,13 +409,9 @@ void GPS::enable(void) {
       m_ConfigStart = Platform::getInstance().tick();
       m_ConfigPending = true;
 
-      // A stored fixed baud is only a claim that a receiver is attached. Arm
-      // the same acquisition deadline the degraded retry uses, so a silent
-      // unit falls back instead of holding the wake lock forever. The first
-      // burst clears the flag; a timeout while it is set means the unit is
-      // absent at that rate.
-      m_FixedBaudProbe = true;
-      m_ProbeDeadline = m_ConfigStart + DEGRADED_PROBE_MS;
+      // A stored fixed baud is only a claim that a receiver is attached. The
+      // acquisition deadline armed above bounds the wait for the first valid
+      // sentence on this path too.
     }
   }
 
@@ -481,6 +488,8 @@ void GPS::onProbeLocked(uint32_t now) {
   {
     std::lock_guard<std::mutex> guard(m_CycleMutex);
     resetAcquisition(now);
+    m_AcquireDeadline = now + ACQUIRE_TIMEOUT_MS;
+    m_AcquireSentences = getStatusSnapshot().sentences_passed;
     m_ConfigChars = getStatusSnapshot().chars_processed;
     m_ConfigStart = now;
     m_ConfigPending = true;
@@ -492,7 +501,7 @@ void GPS::onProbeLocked(uint32_t now) {
 }
 
 void GPS::onProbeFailed(uint32_t now) {
-  ESP_LOGW(LOG_TAG, "GPS autobaud found no receiver");
+  ESP_LOGW(LOG_TAG, "GPS receiver not detected");
   m_DetectedBaud.store(0);
   m_ConfigPending = false;
 
@@ -633,6 +642,11 @@ TickType_t GPS::cycleWait(uint32_t now) const {
       if (!m_BurstActive && (m_ProbeDeadline != 0)) {
         wait = std::min(wait, tickUntil(now, m_ProbeDeadline));
       }
+      // the initial acquisition is bounded too, so a silent fixed-baud
+      // receiver cannot pin the lock and the rail forever
+      if (!m_BurstActive && (m_AcquireDeadline != 0)) {
+        wait = std::min(wait, tickUntil(now, m_AcquireDeadline));
+      }
       break;
 
     case cycle_state_t::DEGRADED:
@@ -707,21 +721,22 @@ void GPS::serviceCycle(void) {
       // re-assert the lock, a release raced by enable() must not leave the
       // receiver deaf under light sleep
       acquirePowerLock();
-      // a degraded retry probe must not latch here when no burst arrives, give
-      // up again on the bounded backoff instead of holding the lock forever
-      if (!m_BurstActive && (m_ProbeDeadline != 0) && tickReached(now, m_ProbeDeadline)) {
-        if (m_FixedBaudProbe) {
-          // No sentence ever arrived at the stored rate. Treat it like a
-          // failed autobaud: drop the rail and the wake lock, then retry once
-          // after the absent backoff instead of pinning NO_LIGHT_SLEEP.
-          // onProbeFailed() takes m_CycleMutex, so release it first.
-          m_FixedBaudProbe = false;
+      // A receiver that never emits a valid sentence after enable() or an
+      // autobaud lock used to latch here forever. If no valid sentence arrived
+      // by the deadline, drop the rail and enter the normal absent state with
+      // its one retry.
+      if (!m_BurstActive && (m_AcquireDeadline != 0) && tickReached(now, m_AcquireDeadline)) {
+        if (getStatusSnapshot().sentences_passed == m_AcquireSentences) {
           lock.unlock();
           onProbeFailed(now);
           return;
-        } else {
-          enterDegraded();
         }
+        m_AcquireDeadline = 0;
+      }
+      // a degraded retry probe must not latch here when no burst arrives, give
+      // up again on the bounded backoff instead of holding the lock forever
+      if (!m_BurstActive && (m_ProbeDeadline != 0) && tickReached(now, m_ProbeDeadline)) {
+        enterDegraded();
       }
       break;
 
@@ -780,6 +795,17 @@ void GPS::beginBurst(uint32_t now) {
     return;
   }
 
+  // A queued UART event can be serviced after the acquisition deadline has
+  // already published ABSENT. Do not re-acquire the lock or revive a burst in
+  // that state; serviceCycle() skips an absent receiver, so nothing would
+  // release it again until GPS is toggled.
+  if ((m_CycleState == cycle_state_t::DISABLED)
+      || (static_cast<receiver_state_t>(m_ReceiverState.load()) == receiver_state_t::ABSENT)) {
+    m_BurstActive = false;
+    m_AcquireDeadline = 0;
+    return;
+  }
+
   // A late UART burst can arrive during the degraded backoff. Do not let that
   // event pin NO_LIGHT_SLEEP until the next scheduled retry. The retry path
   // changes to ACQUIRING before acquiring the lock.
@@ -809,8 +835,8 @@ void GPS::beginBurst(uint32_t now) {
 
   if (m_CycleState == cycle_state_t::ACQUIRING) {
     // a burst arrived, the acquisition or degraded retry probe succeeded
-    m_FixedBaudProbe = false;
     m_ProbeDeadline = 0;
+    m_AcquireDeadline = 0;
     if (m_ExpectedInterval == 0) {
       m_CycleState = cycle_state_t::MEASURING;
       m_MeasureDeadline = now + UNKNOWN_MEASURE_MS;
@@ -1429,7 +1455,8 @@ void GPS::configure(void) {
 
 /** Configure the receiver once it is awake, then service one binary command. */
 void GPS::serviceConfig(void) {
-  if (!m_Enabled) {
+  if (!m_Enabled
+      || (static_cast<receiver_state_t>(m_ReceiverState.load()) == receiver_state_t::ABSENT)) {
     return;
   }
 
@@ -1926,7 +1953,8 @@ void GPS::storeEphemeris(void) {
  * fix and at most once an hour after that.
  */
 void GPS::servicePoll(void) {
-  if (!m_Enabled) {
+  if (!m_Enabled
+      || (static_cast<receiver_state_t>(m_ReceiverState.load()) == receiver_state_t::ABSENT)) {
     return;
   }
 
@@ -2760,14 +2788,16 @@ void GPS::serviceSerial(void) {
   std::array<uint8_t, BUFFER_SIZE> buffer;
 
   std::unique_lock<std::mutex> lock(m_CycleMutex, std::try_to_lock);
-  if (!lock.owns_lock() || !m_Enabled) {
-    // enable() or disable() owns the cycle state, drop this pass
+  if (!lock.owns_lock() || !m_Enabled
+      || (static_cast<receiver_state_t>(m_ReceiverState.load()) == receiver_state_t::ABSENT)) {
+    // enable() or disable() owns the cycle state, or the receiver is absent;
+    // drop this pass before a late frame can update the fix.
     return;
   }
 
   int bytes = uart_read_bytes(m_UART, buffer.data(), buffer.size(), 1);
   if (bytes > 0) {
-    beginBurst(Platform::getInstance().tick());
+    const uint32_t passedBefore = getStatusSnapshot().sentences_passed;
 
     // processSerial demultiplexes NMEA and CASIC frames. NMEA bytes route
     // through processNmea, which does the console echo, TinyGPSPlus encode and
@@ -2775,7 +2805,13 @@ void GPS::serviceSerial(void) {
     // once per read pass.
     processSerial(buffer.data(), bytes);
 
-    m_LastSentence = Platform::getInstance().tick();
+    // Only a checksum-valid NMEA sentence starts or extends a burst. Line
+    // noise, malformed NMEA, and binary-only frames must not clear the
+    // acquisition deadline, move ACQUIRING into BURST, or extend the burst
+    // gap. beginBurst() owns the last-sentence timestamp.
+    if (getStatusSnapshot().sentences_passed != passedBefore) {
+      beginBurst(Platform::getInstance().tick());
+    }
   }
 }
 

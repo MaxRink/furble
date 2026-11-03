@@ -470,9 +470,10 @@ The default GPS baud is 9600, preserving existing installations. The v1.1
 AT6668 unit is expected to use 115200. Select `Auto` to probe 115200, 9600,
 38400, 57600, 19200, and 4800, or select a fixed rate under
 `Settings->GPS->GPS Baud`. Auto declares a receiver only after two checksummed
-NMEA sentences; if none arrive it reports `absent`, drops the external rail,
-and retries once after 60 seconds. A live AT6668 lock has not yet been recorded
-on hardware.
+NMEA sentences. A fixed baud instead arms a 30-second acquisition deadline.
+Either way, if no valid sentence arrives the receiver is reported `absent`, the
+external rail is dropped, and furble retries once after 60 seconds. A live
+AT6668 lock has not yet been recorded on hardware.
 
 The GPS receiver itself can also be configured under `Settings->GPS`:
 - `Update rate` (how often the receiver reports a position, from 1000ms down to 100ms)
