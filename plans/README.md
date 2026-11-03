@@ -27,7 +27,7 @@ state and the remaining gate; the issue stays open until that gate lands.
 | #282 | [168](168-notouch-layout-overflows.md) | Resolved on master by the StickC text-size clamp and `bughunt/stickc-connected-large-imu.txt`. |
 | #283 | [173](173-sim-scheduler-visibility.md) | Diagnostics merged; root cause of the restart SIGSEGV still unknown. Tracker stays open. |
 | #288 | [288](implemented/288-provisioning-schema.md) | 43/46 schema rows and the all-keyed walk are merged. Satisfied. |
-| #289 | [173](173-sim-scheduler-visibility.md) | 3 of 5 items done. Per-PID preferences sweep, Secure/reconnect load proof, and fairness/waiter dump remain. |
+| #289 | [173](173-sim-scheduler-visibility.md) | 4 of 5 items done. The Secure/reconnect 50-run load proof remains. |
 | #290 | [290](implemented/290-sim-page-query-map.md) | Merged with PR #273; the query-map contract test passes. Satisfied. |
 
 ## Engineering lessons

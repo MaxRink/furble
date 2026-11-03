@@ -881,7 +881,18 @@ int main() {
       || !waitForBlocked(mutexHighTask)) {
     return fail(__LINE__);
   }
+  std::string mutexDump;
+  furble_sim_report_tasks(mutexDump);
+  if (mutexDump.find("wait=mutex") == std::string::npos) {
+    return fail(__LINE__);
+  }
   schedulerMutex.unlock();
+  // The selected waiter owns the reservation before it becomes runnable. A
+  // try_lock in that native-wake gap must fail instead of starving it.
+  if (schedulerMutex.try_lock()) {
+    schedulerMutex.unlock();
+    return fail(__LINE__);
+  }
   if (furble_sim_task_blocked(mutexHighTask)) {
     return fail(__LINE__);
   }

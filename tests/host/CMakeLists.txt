@@ -994,6 +994,14 @@ target_include_directories(sim_power_profiler_test PRIVATE ${FURBLE_ROOT}/includ
 target_compile_options(sim_power_profiler_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                          -Wno-unused-parameter)
 
+# Dead-pid reclamation for generated simulator preference stores (issue #289).
+add_executable(preferences_sweep_test
+               preferences_sweep_test.cpp
+               ${FURBLE_ROOT}/sim/preferences_sweep.cpp)
+target_include_directories(preferences_sweep_test PRIVATE ${FURBLE_ROOT}/sim)
+target_compile_options(preferences_sweep_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                       -Wno-unused-parameter)
+
 # Link the host regression against the production Ethernet implementation.
 # The source-manifest guard above ensures this test cannot silently drift away
 # from the firmware source list which owns the link.
@@ -2012,6 +2020,7 @@ if(BUILD_TESTING)
   set_tests_properties(sim-watchdog PROPERTIES TIMEOUT 10)
   add_test(NAME sim-fuzz-machine COMMAND sim_fuzz_machine_test)
   add_test(NAME sim-power-profiler COMMAND sim_power_profiler_test)
+  add_test(NAME preferences-sweep COMMAND preferences_sweep_test)
   # Run several independent profiler processes so ctest -j covers report-path
   # isolation. Each process must be able to create and clean up its own report.
   foreach(profiler_worker RANGE 1 4)

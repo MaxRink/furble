@@ -359,14 +359,14 @@ unregistered simulator thread and fails fast without claiming orderly cleanup.
 The host regression in `tests/host/sim_scheduler_test.cpp` covers priority
 selection, registered-waiter cancellation, survivor ownership, and
 unregistered-host-waiter cancellation. Its `try_lock()` assertion runs after
-the selected waiter has acquired the mutex, so it checks exclusion at that
-point and does not independently prove the reservation-before-wake race. No
-deterministic reservation seam exists in this test harness.
+the selected waiter has acquired the mutex. The same case now also calls
+`try_lock()` immediately after `unlock()`, while the granted waiter is not yet
+runnable, so the reservation-before-wake race is covered without a separate
+seam.
 
 Root validation of this runtime and its new test path is recorded below. CI,
 hardware, and physical scheduler-parity results remain separate gates. The
-waiter-state dump and repeated high-load virtual-time-bound proof remain
-separate open work.
+repeated high-load virtual-time-bound proof remains separate open work.
 
 ## SchedulerStopped fail-fast boundary
 
@@ -708,7 +708,7 @@ dump. True stack-overflow coverage remains future work.
 | Item | State |
 | --- | --- |
 | 1. Comment rot naming plan 158 Phase 3 | Done. `sim/freertos.cpp` and `sim/scripts/run-fuzz.sh` now describe the scheduler-visible mutex and the remaining plain host locks. |
-| 2. Per-PID preferences leak on abnormal exit | Partial. Generated stores have an ownership marker, same-PID restart adoption, and orderly cleanup. Cross-run stale sweeping and dead-PID reclamation are deliberately deferred because an encoded PID cannot prove the store is unowned. |
+| 2. Per-PID preferences leak on abnormal exit | Done. Generated stores have an ownership marker, same-PID restart adoption, and orderly cleanup. `preparePreferences()` now sweeps `.pio` and removes a store only when its encoded pid is dead; a live, self, or foreign-owner store is kept. `preferences-sweep` covers the dead, live, self, and unrelated cases. |
 | 3. Crash handler hardening | Done for alt-stack, early installation, and normal-context unwinder warm-up. Stack-exhaustion coverage and formal async-signal safety remain open. |
 | 4. 50-run load proof on the restored bounds | Partial. The FauxNY 24000 ms leg has the 50-run proof. The Secure 31000 ms and reconnect 20000 ms legs still rest on single measurements; issue #289 records 1-in-24 and 4-in-5 failures under load. They need the same 50-run treatment or a wider measured margin before being called stable. |
-| 5. Fairness and waiter-state dump | Open. The task dump does not yet show waiter state, and the `try_lock()` fast path plus a non-runnable waiter has no dedicated starvation proof. |
+| 5. Fairness and waiter-state dump | Done. A task blocked on a scheduler-visible mutex reports `wait=mutex` in the task dump, and `sim-scheduler` checks the dump plus a `try_lock()` during the reservation-before-wake gap; the fast path must fail rather than starve the granted waiter. |

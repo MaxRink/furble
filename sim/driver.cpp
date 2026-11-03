@@ -46,6 +46,7 @@
 #include "fuzz.h"
 #include "platform_state.h"
 #include "power_profiler.h"
+#include "preferences_sweep.h"
 #include "watchdog.h"
 
 namespace Furble::Sim {
@@ -1607,6 +1608,17 @@ void preparePreferences(void) {
   if (scenarioName == "interactive") {
     unsetenv(GENERATED_PREFS_ENV);
     return;
+  }
+
+  // Reclaim generated stores from runs that died without orderly cleanup. A
+  // live pid always keeps its store; an encoded pid cannot prove more than
+  // liveness, so the sweep is deliberately conservative.
+  {
+    std::error_code directoryError;
+    std::filesystem::create_directories(".pio", directoryError);
+    if (!directoryError) {
+      (void)sweepStalePreferences(".pio", static_cast<int>(getpid()));
+    }
   }
   // The deep-sleep runner deliberately supplies one flash image to two fresh
   // processes. Keep this opt-in seam separate from ordinary scripted runs,

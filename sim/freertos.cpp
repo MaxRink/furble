@@ -49,6 +49,7 @@ enum class SimWaitKind : uint8_t {
   queue_send,
   queue_receive,
   notification,
+  mutex,
 };
 
 enum class SimWaitResult : uint8_t {
@@ -669,6 +670,7 @@ void SchedulerMutex::lock(void) {
   m_Waiters = &waiter;
   if (currentTask != nullptr) {
     setTaskBlockedLocked(true);
+    setTaskWaitLocked(SimWaitKind::mutex, nullptr, false, 0);
     waiter.order = currentTask->wait_order;
   } else {
     waiter.order = nextReadyOrder++;
@@ -1050,6 +1052,24 @@ uint64_t furble_sim_scheduler_progress(void) {
   return schedulerProgress.load();
 }
 
+const char *waitKindName(SimWaitKind kind) {
+  switch (kind) {
+    case SimWaitKind::none:
+      return "none";
+    case SimWaitKind::delay:
+      return "delay";
+    case SimWaitKind::queue_send:
+      return "queue_send";
+    case SimWaitKind::queue_receive:
+      return "queue_receive";
+    case SimWaitKind::notification:
+      return "notification";
+    case SimWaitKind::mutex:
+      return "mutex";
+  }
+  return "unknown";
+}
+
 void furble_sim_report_tasks(std::string &out) {
   std::unique_lock<std::mutex> lock(Furble::Sim::schedulerMutex(), std::try_to_lock);
   if (!lock.owns_lock()) {
@@ -1065,8 +1085,7 @@ void furble_sim_report_tasks(std::string &out) {
            + " lifecycle=" + std::to_string(static_cast<unsigned>(task->lifecycle))
            + " running=" + (runningTask == task.get() ? "yes" : "no") + " blocked="
            + (task->blocked ? "yes" : "no") + " runnable=" + (task->runnable ? "yes" : "no")
-           + " parked=" + (task->parked ? "yes" : "no")
-           + " wait=" + std::to_string(static_cast<unsigned>(task->wait_kind));
+           + " parked=" + (task->parked ? "yes" : "no") + " wait=" + waitKindName(task->wait_kind);
     if (task->wait_has_deadline) {
       out += " deadline_ms=" + std::to_string(static_cast<unsigned long>(task->wait_deadline));
     }
