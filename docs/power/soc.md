@@ -465,7 +465,7 @@ This is a documentation and build consistency item, not a separate power lever.
 - **Effort:** Large.
 - **Required test:** 100 wake cycles, corrupt state, missed frame, USB recovery,
   PM1 watchdog armed and disarmed, and an analyzer run across a full timelapse.
-- **Citation:** `plans/19-interval-deep-sleep.md` (not implemented),
+- **Citation:** `plans/implemented/19-interval-deep-sleep.md` (not implemented),
   `plans/98:290-297`,
   `plans/26:284-291`.
 
@@ -1233,17 +1233,17 @@ result. A null result is a valid result.
   per-board current inputs and their confidence tags.
 - `plans/00-hardware-experiments.md`: measured 3.3 mA connected idle floor,
   14 uA power off, 107.7 s GPS cold refix, no 32 kHz crystal.
-- `plans/01-cpu-freq-setting.md`: CPU frequency setting and its risks.
-- `plans/06-power-module.md`: lock design and the no-manual-sleep rule.
-- `plans/07-ble-sleep.md`: modem sleep and per-board floors.
-- `plans/12-display-off.md`: display states, APB lock, PMIC backlight paths.
-- `plans/13-auto-off-low-batt.md`: charging lock and power-off policy.
-- `plans/15-gps-power.md`: GPS burst lock, duty limits, UART clock.
-- `plans/19-interval-deep-sleep.md`: deep sleep between interval frames.
-- `plans/26-pm1-watchdog.md`: PM1 watchdog, feed cadence, `SLP_TO`, deep sleep
+- `plans/implemented/01-cpu-freq-setting.md`: CPU frequency setting and its risks.
+- `plans/implemented/06-power-module.md`: lock design and the no-manual-sleep rule.
+- `plans/implemented/07-ble-sleep.md`: modem sleep and per-board floors.
+- `plans/implemented/12-display-off.md`: display states, APB lock, PMIC backlight paths.
+- `plans/implemented/13-auto-off-low-batt.md`: charging lock and power-off policy.
+- `plans/implemented/15-gps-power.md`: GPS burst lock, duty limits, UART clock.
+- `plans/implemented/19-interval-deep-sleep.md`: deep sleep between interval frames.
+- `plans/implemented/26-pm1-watchdog.md`: PM1 watchdog, feed cadence, `SLP_TO`, deep sleep
   conflict.
-- `plans/27-usb-console.md`: console transport and USJ light sleep behavior.
-- `plans/77-battery-saver-profile.md`: the opt-in power bundle.
+- `plans/implemented/27-usb-console.md`: console transport and USJ light sleep behavior.
+- `plans/implemented/77-battery-saver-profile.md`: the opt-in power bundle.
 - `plans/96-wifi-bt-ble-hardening.md`: WiFi, BLE, and coexistence audit.
 - `plans/98-power-optimization-audit.md`: the model table and ranked actions.
 - `plans/98b-power-followup.md`: bounded GPS degraded retry.

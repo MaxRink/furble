@@ -338,7 +338,7 @@ question from plan 50 section 9.
 - `list` walks `CameraList` saved entries and indicates one record each,
   terminated by `camera_id = 0xFF`, mirroring the settings list terminator.
 - `select` and `deselect` edit the multi-connect target set, the same set the
-  on-device flow in [25-multiconnect-ui.md](25-multiconnect-ui.md) edits.
+  on-device flow in [25-multiconnect-ui.md](implemented/25-multiconnect-ui.md) edits.
   Rejected with status 2 when MULTICONNECT is off.
 - `connect` with an id connects one camera. `connect` with `0xFF` runs the
   multi-connect set through the same path as the on-device connect, honoring
@@ -410,7 +410,7 @@ screen coordinates.
 ## 4. Protocol versioning
 
 The reference is the rig handshake: `rig_hello_t` carries `rig_version` and
-`wire_version` and fails loudly on mismatch (`plans/29-virtual-test-rig.md`,
+`wire_version` and fails loudly on mismatch (`plans/implemented/29-virtual-test-rig.md`,
 transport section). GATT has no hello, so the equivalent is a capability read:
 
 New read-only characteristic, derived UUID
@@ -496,8 +496,8 @@ Verified on fork master at `916e831`:
 - `include/FurbleControl.h:100-112` targets, connectAll, disconnect
 - `companion/android/.../protocol/FurbleProtocol.kt:117-134` SettingRecord
 - `companion/android/.../ble/CompanionState.kt:26-40` CompanionUiState
-- [25-multiconnect-ui.md](25-multiconnect-ui.md) Cameras page row model
-- [29-virtual-test-rig.md](29-virtual-test-rig.md) hello handshake, phases 1
+- [25-multiconnect-ui.md](implemented/25-multiconnect-ui.md) Cameras page row model
+- [29-virtual-test-rig.md](implemented/29-virtual-test-rig.md) hello handshake, phases 1
   and 5
 - [50-companion-app-design.md](50-companion-app-design.md) sections 3.5, 3.6,
   7, 8 and 9

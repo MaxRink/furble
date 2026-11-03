@@ -637,7 +637,7 @@ strongest protection the stack offers.
   before it is cast. Rate limits as described in section 3.6.
 
 Screenless boards cannot show a numeric comparison, so a display-less furble
-needs a different trust anchor. See `plans/42-waveshare-eth-node.md` for the
+needs a different trust anchor. See `plans/implemented/42-waveshare-eth-node.md` for the
 screenless-pairing variant of this security section: physical-presence TOFU plus
 LE Secure Connections plus an SRP6a proof-of-possession handshake.
 

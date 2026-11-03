@@ -4,8 +4,8 @@
 
 161 is free on master and in `plans/README.md`. Two unmerged branches already
 claim numbers in this range: `fork/test/sim-ricoh-exact-peers` carries
-`plans/161-ricoh-peer-safety.md` and PR #259 carries
-`plans/162-console-host-coverage.md`. Whichever of those lands second has to
+the unmerged plan `161-ricoh-peer-safety.md` and PR #259 carries
+`plans/implemented/162-console-host-coverage.md`. Whichever of those lands second has to
 renumber. 156 and 157 remain reserved for PR #251 and PR #252.
 
 ## Motivation

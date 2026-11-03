@@ -1,7 +1,7 @@
 # 114b - Web flasher WiFi and settings provisioning
 
 Status: design only. The firmware parser and one-shot console command from
-`plans/114-provision-parser.md` landed in PR #165. This document is the
+`plans/implemented/114-provision-parser.md` landed in PR #165. This document is the
 follow-up browser transport and WiFi application design. It extends
 `plans/33-wifi-hub.md` PR33b (WiFi settings) and the web installer at
 `web-installer/`.
@@ -84,7 +84,7 @@ Out of scope:
 
 - `web-installer/index.html` and `web-installer/CLAUDE.md`: the post-flash config
   step and its documentation.
-- `plans/114-provision-parser.md`: the firmware command and validation contract.
+- `plans/implemented/114-provision-parser.md`: the firmware command and validation contract.
 
 ## Settings and defaults
 
@@ -95,9 +95,9 @@ provisioned.
 
 ## Dependencies
 
-- `plans/27-usb-console.md`: the console is the transport. Hard dependency,
+- `plans/implemented/27-usb-console.md`: the console is the transport. Hard dependency,
   landed.
-- `plans/114-provision-parser.md` / PR #165: the parser, field limits, and
+- `plans/implemented/114-provision-parser.md` / PR #165: the parser, field limits, and
   atomic apply path. Hard dependency, landed.
 - `plans/33-wifi-hub.md` PR33b: provides `WIFI`, `WIFI_SSID`, `WIFI_PSK`. The
   WiFi part of provisioning is **blocked** on 33b. The generic TLV parser and
@@ -105,7 +105,7 @@ provisioned.
   existing setting.
 - `plans/50-companion-app-design.md`: shares the `wire_id` table and TLV format.
   Coordinate so both use one encoder.
-- `plans/116-companion-password.md`: the companion password is one of the fields
+- `plans/implemented/116-companion-password.md`: the companion password is one of the fields
   the flasher sets, so 114 is the delivery mechanism for 116's secret.
 
 ## Risks

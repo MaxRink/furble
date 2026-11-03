@@ -17,7 +17,7 @@ constexpr uint32_t RMT_RESOLUTION_HZ = 1000000;
 constexpr int RMT_TX_TIMEOUT_MS = 1000;
 
 // Nikon ML-L3 timing source: SB-Projects and Gough Lui, both listed in
-// plans/22-ir-remote-trigger.md.
+// plans/implemented/22-ir-remote-trigger.md.
 constexpr uint32_t NIKON_CARRIER_HZ = 38000;
 constexpr uint32_t NIKON_HEADER_MARK_US = 2000;
 constexpr uint32_t NIKON_HEADER_SPACE_US = 27830;
@@ -33,14 +33,14 @@ constexpr uint32_t NIKON_FRAME_GAP_US = 63000;
 constexpr uint32_t NIKON_GAP_PART_US = NIKON_FRAME_GAP_US / 2;
 
 // Sony SIRC timing source: Ed Cheung and Ken Shirriff, both listed in
-// plans/22-ir-remote-trigger.md.
+// plans/implemented/22-ir-remote-trigger.md.
 constexpr uint32_t SONY_CARRIER_HZ = 40000;
 constexpr uint32_t SONY_REPEAT_INTERVAL_US = 45000;
 constexpr uint32_t SONY_ADDRESS = 0x1E3A;
 constexpr uint32_t SONY_COMMAND = 0x2D;
 
 // Canon RC-1 timing source: the TU Berlin reverse engineering notes, listed
-// in plans/22-ir-remote-trigger.md. The Canon RC-6 handset uses this same
+// in plans/implemented/22-ir-remote-trigger.md. The Canon RC-6 handset uses this same
 // two-burst scheme. It is not the Philips RC-6 protocol.
 constexpr uint32_t CANON_CARRIER_HZ = 32700;
 constexpr uint32_t CANON_BURST_US = 489;

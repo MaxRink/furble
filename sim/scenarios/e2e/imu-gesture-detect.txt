@@ -1,6 +1,6 @@
 # Detector patterns on the shared production seam. imu_wake 3 makes every
 # gesture class observable through ui.gesture_events without a camera.
-# Every assertion here has a recorded killing mutation in plans/17-imu-gestures.md.
+# Every assertion here has a recorded killing mutation in plans/implemented/17-imu-gestures.md.
 seed imu true
 seed imu_wake 3
 wait 400

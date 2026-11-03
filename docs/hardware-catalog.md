@@ -453,7 +453,7 @@ Fetched on 2026-11-01. Prices are from the vendor page unless marked.
 42. M5Stack Unit GPS v1.1 data sheet:
     https://docs.m5stack.com/en/unit/Unit_GPS_v1.1
 43. furble power audit, S3 current model and display split:
-    plans/98-power-optimization-audit.md and plans/07-ble-sleep.md
+    plans/98-power-optimization-audit.md and plans/implemented/07-ble-sleep.md
 44. Bangle.js 2 specifications, GPS and current figures:
     https://www.espruino.com/Bangle.js2 and
     https://shop.espruino.com/banglejs2

@@ -13,7 +13,7 @@ invisible to every existing gate, because src/FurblePlatform.cpp is compiled by
 no host or simulator target, so this guard reads the source instead.
 
 A full host build of the platform GPIO and PMIC logic behind shims would be
-stronger and is recorded as owed in plans/20-imu-hw-motion.md. This catches the
+stronger and is recorded as owed in plans/implemented/20-imu-hw-motion.md. This catches the
 specific regression that already happened once.
 """
 

@@ -399,7 +399,7 @@ Estimates are not measurements unless the label says `measured-local`.
   Compare the frame count and EXIF spacing, report the battery delta, then
   repeat with the camera powered off for one interval to test the reconnect
   policy.
-- Citation: `plans/19-interval-deep-sleep.md`; M5PM1 manual V1.9 `SYS_CMD`
+- Citation: `plans/implemented/19-interval-deep-sleep.md`; M5PM1 manual V1.9 `SYS_CMD`
   `0x0C` value `0xA1`; M5Stack StickS3 product page power table.
 
 #### PM-02 StickS3: characterize the PM1 L1 and L2 states
@@ -492,7 +492,7 @@ Estimates are not measurements unless the label says `measured-local`.
 - Required test: enter console display mode, confirm the LED is dark and the
   panel is asleep, exit, confirm the LED returns. Measure the LED branch
   current if the schematic is available.
-- Citation: M5PM1 manual V1.9 `PWR_CFG` `0x06` bit 4; `plans/71-ui-bug-batch.md`.
+- Citation: M5PM1 manual V1.9 `PWR_CFG` `0x06` bit 4; `plans/implemented/71-ui-bug-batch.md`.
 
 #### PM-06 Core: hold the IP5306 boost on for low-current states
 
@@ -542,7 +542,7 @@ Estimates are not measurements unless the label says `measured-local`.
 - Required test: 30 minutes idle, confirm the power off at the threshold;
   confirm no power off while connected, scanning, or charging; confirm button
   wake; repeat on StickC, Plus, Core2, and StickS3.
-- Citation: `plans/13-auto-off-low-batt.md`; AXP192 off 27 uA; StickS3 14.02 uA.
+- Citation: `plans/implemented/13-auto-off-low-batt.md`; AXP192 off 27 uA; StickS3 14.02 uA.
 
 #### PM-08 Core2: put the touch controller in a low-power mode with the panel
 
@@ -550,7 +550,7 @@ Estimates are not measurements unless the label says `measured-local`.
   wake on the touch interrupt, instead of polling the controller for the whole
   screen-off period.
 - Current behavior: the touch controller is deliberately left running so a tap
-  can wake the screen (`plans/12-display-off.md`). M5Unified's `Touch_Class`
+  can wake the screen (`plans/implemented/12-display-off.md`). M5Unified's `Touch_Class`
   has no power API, so furble cannot change it today.
 - Evidence: `code` (`src/FurbleUI.cpp` display path, `M5.Touch` usage),
   `plan`, `unverified` datasheet detail.
@@ -564,7 +564,7 @@ Estimates are not measurements unless the label says `measured-local`.
   path that proves the interrupt still works.
 - Required test: 10 minutes screen off, 20 out of 20 taps wake the screen, no
   lost touch after wake, analyzer delta against the stock build.
-- Citation: `plans/12-display-off.md`; M5Stack Core2 touch documentation; the
+- Citation: `plans/implemented/12-display-off.md`; M5Stack Core2 touch documentation; the
   FT6336U datasheet (not opened here).
 
 #### PM-09 Core: ESP deep sleep with boost keep-on
@@ -610,7 +610,7 @@ Estimates are not measurements unless the label says `measured-local`.
 - Required test: 5 minutes deep sleep, timer wake, current, panel state, and
   reconnect; then a 1 hour interval run on StickC Plus and Core2.
 - Citation: ESP32 Series Datasheet (deep sleep 10 uA); AXP192 datasheet
-  electrical characteristics; `plans/19-interval-deep-sleep.md`.
+  electrical characteristics; `plans/implemented/19-interval-deep-sleep.md`.
 
 #### PM-11 Plus2: verify the off path before auto-off
 
@@ -662,7 +662,7 @@ Estimates are not measurements unless the label says `measured-local`.
 - Required test: 1 hour with a live fix, log fix age and NMEA gaps at 5, 10,
   15, and 60 s duty; compare battery drain; verify a geotag write on each
   vendor path that supports GPS.
-- Citation: `plans/00-hardware-experiments.md` Experiment B; `plans/15-gps-power.md`;
+- Citation: `plans/00-hardware-experiments.md` Experiment B; `plans/implemented/15-gps-power.md`;
   M5Stack Unit GPS v1.1 (31.64 mA at 5 V); AT6558 datasheet (23 mA tracking,
   below 10 uA standby); CASIC `$PCAS12` command.
 
@@ -870,7 +870,7 @@ Estimates are not measurements unless the label says `measured-local`.
   six-axis configuration. Verify no I2C errors and no lost motion events.
 - Citation: BMI270 datasheet `PWR_CTRL` `0x7D`, `PWR_CONF` `0x7C`, `ACC_CONF`
   `0x40`; MPU6886 datasheet `PWR_MGMT_1` `0x6B`, `PWR_MGMT_2` `0x6C`;
-  `src/FurbleIMU.cpp`; `plans/20-imu-hw-motion.md`.
+  `src/FurbleIMU.cpp`; `plans/implemented/20-imu-hw-motion.md`.
 
 ### 4.3 GPIO, pull-ups, and ADC leakage
 
@@ -976,7 +976,7 @@ Estimates are not measurements unless the label says `measured-local`.
 - Required test: the plan 111 states 3 and 4 measurement pair, plus a repeated
   per-vendor soak with no disconnects and an acceptable first shutter latency
   after a 30 s idle gap.
-- Citation: `plans/07-ble-sleep.md`, `plans/98-power-optimization-audit.md`,
+- Citation: `plans/implemented/07-ble-sleep.md`, `plans/98-power-optimization-audit.md`,
   `plans/111-power-recommendations.md`.
 
 #### PL-02 All boards: `CONN_SAVER` default
@@ -1099,7 +1099,7 @@ Estimates are not measurements unless the label says `measured-local`.
 - Effort: small for the default, medium for passive.
 - Required test: discovery time and success rate for each vendor mode at Full,
   Balanced, Low, and passive; current during a scan on the analyzer.
-- Citation: `plans/08-scan-tuning.md`; ESP32 and ESP32-S3 datasheets radio
+- Citation: `plans/implemented/08-scan-tuning.md`; ESP32 and ESP32-S3 datasheets radio
   current; NimBLE scan API.
 
 #### PL-07 All boards: display inactivity and screen-off defaults
@@ -1121,7 +1121,7 @@ Estimates are not measurements unless the label says `measured-local`.
 - Effort: small, plus docs and screenshots.
 - Required test: 30 minutes idle on each battery board, screen off at the
   threshold, wake on the first press, no missed input, current measured.
-- Citation: `plans/12-display-off.md`, `plans/98-power-optimization-audit.md`;
+- Citation: `plans/implemented/12-display-off.md`, `plans/98-power-optimization-audit.md`;
   ST7735S and ST7789V sleep-in currents.
 
 #### PL-08 All boards: tickless and RTOS idle tuning
@@ -1180,7 +1180,7 @@ Estimates are not measurements unless the label says `measured-local`.
 - Effort: small to test.
 - Required test: 1 hour charging with the lock on and off; check charge status,
   charge current, panel behavior, and USB input current.
-- Citation: `plans/13-auto-off-low-batt.md`; `src/FurbleUI.cpp`.
+- Citation: `plans/implemented/13-auto-off-low-batt.md`; `src/FurbleUI.cpp`.
 
 ### 4.5 Network, headless, and developer profiles
 
@@ -1208,7 +1208,7 @@ Estimates are not measurements unless the label says `measured-local`.
 - Required test: `power stats` lock dump, `pm` config readback, MQTT ping
   latency over 1 hour idle, and a link soak with DFS on and off.
 - Citation: `sdkconfig.waveshare-s3-eth`;
-  `plans/42-waveshare-eth-node.md`; ESP-IDF power management documentation.
+  `plans/implemented/42-waveshare-eth-node.md`; ESP-IDF power management documentation.
 
 #### NB-02 Waveshare: W5500 PHY power-down
 
@@ -1229,7 +1229,7 @@ Estimates are not measurements unless the label says `measured-local`.
 - Required test: 5 V input current with link up, link down, and PHY powered
   down; link recovery time after power-down.
 - Citation: WIZnet W5500 datasheet v1.0.6; `src/FurbleEthernet.cpp`;
-  `plans/42-waveshare-eth-node.md`.
+  `plans/implemented/42-waveshare-eth-node.md`.
 
 #### NB-03 StickS3 and headless: USB Serial/JTAG current and the USJ lock
 
@@ -1625,16 +1625,16 @@ Open questions that block a default change:
 - `plans/00-hardware-experiments.md`: the only recorded local measurements
   (crystal and GPS experiments). The 3.3 mA StickS3 floor is cited from this
   plan by other documents, but its drain row is not present here.
-- `plans/06-power-module.md`, `plans/07-ble-sleep.md`,
-  `plans/08-scan-tuning.md`, `plans/10-adaptive-conn-params.md`,
-  `plans/11-adaptive-tx-power.md`, `plans/12-display-off.md`,
-  `plans/13-auto-off-low-batt.md`, `plans/15-gps-power.md`,
-  `plans/19-interval-deep-sleep.md`, `plans/26-pm1-watchdog.md`,
-  `plans/42-waveshare-eth-node.md`, `plans/63-sim-power-analysis.md`,
-  `plans/77-battery-saver-profile.md`,
+- `plans/implemented/06-power-module.md`, `plans/implemented/07-ble-sleep.md`,
+  `plans/implemented/08-scan-tuning.md`, `plans/10-adaptive-conn-params.md`,
+  `plans/11-adaptive-tx-power.md`, `plans/implemented/12-display-off.md`,
+  `plans/implemented/13-auto-off-low-batt.md`, `plans/implemented/15-gps-power.md`,
+  `plans/implemented/19-interval-deep-sleep.md`, `plans/implemented/26-pm1-watchdog.md`,
+  `plans/implemented/42-waveshare-eth-node.md`, `plans/63-sim-power-analysis.md`,
+  `plans/implemented/77-battery-saver-profile.md`,
   `plans/95-engineering-lessons.md`, `plans/98-power-optimization-audit.md`,
   `plans/98b-power-followup.md`, `plans/111-power-recommendations.md`,
-  `plans/143-pm1-watchdog-window.md`.
+  `plans/implemented/143-pm1-watchdog-window.md`.
 - `tools/power-model/board-currents.yaml` and `tools/power-model/README.md`.
 - `src/FurblePower.cpp`, `src/FurblePlatform.cpp`, `src/FurbleGPS.cpp`,
   `src/FurbleUI.cpp`, `src/FurbleControl.cpp`, `src/FurbleSD.cpp`,

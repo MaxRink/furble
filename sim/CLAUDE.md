@@ -309,7 +309,7 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   seed the setting it toggles. The production CameraList does persist across a
   restart through the preferences file, and a reapplied `saved_camera` seed is
   idempotent because `CameraList::add_index()` overwrites by name (see
-  plans/156-restart-restore-seam.md for the seam limits).
+  plans/implemented/156-restart-restore-seam.md for the seam limits).
   `FURBLE_SIM_THEME` and `FURBLE_SIM_TEXTSIZE` apply only on the fresh boot;
   a UI-triggered reboot retains the NVS value selected by the restart action.
   See `docs/sim.md` for every action value and query key.
@@ -650,7 +650,7 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   cycles. `sim/fuzz_machine.{h,cpp}` owns the Apply/Settle/Check/Escape/Finish
   phases and raw-output rejection sampling, while the UI task reports each
   completed `lv_task_handler` cycle through `fuzzCycleComplete`. Same seed and
-  board reproduce a finding exactly. See plans/105-ui-fuzzing.md.
+  board reproduce a finding exactly. See plans/implemented/105-ui-fuzzing.md.
 - A firmware restart reached by the fuzzer performs the same orderly task join
   and process re-exec as a scripted restart. Only harness RNG, counters,
   finding counts, coverage, and the last 20 event names cross the exec in a

@@ -43,7 +43,7 @@ The lane README's four labels are preserved. `datasheet` is the only addition,
 and it always carries the document and limit in the citation.
 
 Method. This report was built from `plans/18-gps-motion.md`,
-`plans/20-imu-hw-motion.md`, `plans/14-gps-pcas.md`, `plans/15-gps-power.md`,
+`plans/implemented/20-imu-hw-motion.md`, `plans/implemented/14-gps-pcas.md`, `plans/implemented/15-gps-power.md`,
 `plans/32-gps-advanced.md`, `plans/98b-power-followup.md`,
 `plans/111-power-recommendations.md`, `src/FurbleGPS.cpp`,
 `include/FurbleGPS.h`, the three IMU source files and `include/FurbleIMU.h`,
@@ -1248,10 +1248,10 @@ current saving.
 | Document | What it supports |
 | --- | --- |
 | `plans/00-hardware-experiments.md` | Experiment A (no 32 kHz crystal, 3.3 mA floor); Experiment B (PCAS12, pruning 710 to 91, 107.7 s cold start, no backup supply, ANTENNA OPEN) |
-| `plans/14-gps-pcas.md` | PCAS02/03/04/10 definitions and defaults; no PCAS00; rate and pruning ordering |
-| `plans/15-gps-power.md` | Burst window design, UART wake limitation, standby vs rail cycling, 15 s duty ceiling |
+| `plans/implemented/14-gps-pcas.md` | PCAS02/03/04/10 definitions and defaults; no PCAS00; rate and pruning ordering |
+| `plans/implemented/15-gps-power.md` | Burst window design, UART wake limitation, standby vs rail cycling, 15 s duty ceiling |
 | `plans/18-gps-motion.md` | Motion detector phase 1, no consumer, 60 s hold, immediate exit, blind spots, hardware gate |
-| `plans/20-imu-hw-motion.md` | Three backends, register level detail, interrupt path, hardware gate, software bias limitation |
+| `plans/implemented/20-imu-hw-motion.md` | Three backends, register level detail, interrupt path, hardware gate, software bias limitation |
 | `plans/32-gps-advanced.md` | Autobaud, AID-INI, ephemeris replay, MON-HW, satellite page, unverified receiver items |
 | `plans/98b-power-followup.md` | Degraded retry, +37 mA held-lock figure, no permanent latch |
 | `plans/111-power-recommendations.md` | S3 measurement protocol, no battery current register, state list |

@@ -88,9 +88,9 @@ Map to the maintainer's staging as stated in
 
 | gkoh stage | Covered by |
 |---|---|
-| 1. enable an interactive console | `plans/27-usb-console.md` |
+| 1. enable an interactive console | `plans/implemented/27-usb-console.md` |
 | 1b. via console toggle console only or GUI only mode | PR33a, runtime half |
-| 2. flesh out the console commands | `plans/27-usb-console.md`, command set section |
+| 2. flesh out the console commands | `plans/implemented/27-usb-console.md`, command set section |
 | 3. enable a displayless build | PR33a, build half |
 | 4. console support for configuring network, MQTT, etc | PR33b and PR33c |
 
@@ -245,7 +245,7 @@ Note it in the PR body as known missing, and make PR33c depend on it.
 
 ### Runtime toggle mechanics
 
-`CONSOLE` mode should do the same thing `plans/12-display-off.md` calls true
+`CONSOLE` mode should do the same thing `plans/implemented/12-display-off.md` calls true
 display off, not merely set brightness to zero. `src/FurbleUI.cpp:2100`, inside
 `UI::processInactivity`, only calls `M5.Display.setBrightness(m_MinimumBrightness)`,
 which leaves the panel powered.
@@ -279,7 +279,7 @@ Measure it, do not estimate it. The S3 release binary today is 1,034,256 bytes
 bytes, a large part of that being the `icons` component and LVGL font data.
 Report `pio run -e m5stick-s3 -t size` against
 `pio run -e esp32-s3-headless -t size` in the PR body. The number matters for
-`plans/34-ota-partitions.md`, which has to fit two app slots in flash.
+`plans/implemented/34-ota-partitions.md`, which has to fit two app slots in flash.
 
 ## Risks
 
@@ -340,7 +340,7 @@ sends.
 Rebase notes:
 
 - `DISPLAY_MODE` is assigned wire_id 36, continuing after `FB_VOLUME` (35)
-- `DISPLAY_MODE` is assigned wire_id 36, continuing after the feedback reservations 33 to 35 recorded in plans/23-feedback-outputs.md
+- `DISPLAY_MODE` is assigned wire_id 36, continuing after the feedback reservations 33 to 35 recorded in plans/implemented/23-feedback-outputs.md
   from PR 30. The table row keeps the `FURBLE_NO_DISPLAY` guard. The
   `feat/21-dead-reckoning` branch provisionally used 36 for `GPS_EXTRAP`;
   this PR is ahead in the queue, so `DISPLAY_MODE` keeps 36 and
@@ -605,14 +605,14 @@ BLE reliability. That is the point.
 `WIFI_PSK` in plaintext NVS is the same trust level as the BLE bonding keys
 already stored there. Say so in the PR body. Do not add NVS encryption in this
 PR. It is a separate decision that affects the migration in
-`plans/34-ota-partitions.md`.
+`plans/implemented/34-ota-partitions.md`.
 
 ## Menu placement
 
 None. Console only, per #249 stage 4.
 
 If upstream later wants a status readout on the screen, the right place is the
-Diagnostics submenu from `plans/05-diagnostics-scaffold.md`, read only. Never
+Diagnostics submenu from `plans/implemented/05-diagnostics-scaffold.md`, read only. Never
 put credential entry on a 135 by 240 panel.
 
 ## Implementation notes
@@ -625,19 +625,19 @@ Measured and published figures, ESP32-S3:
 
 | State | Current | Source |
 |---|---|---|
-| BLE connected, modem sleep | 17.9 mA | ESP-IDF chip series comparison, quoted in `plans/07-ble-sleep.md:130-134` |
+| BLE connected, modem sleep | 17.9 mA | ESP-IDF chip series comparison, quoted in `plans/implemented/07-ble-sleep.md:130-134` |
 | BLE connected, light sleep on main XTAL | 3.3 mA | same |
 | WiFi station, modem sleep, DTIM1 | 40.1 mA | ESP-IDF low power mode, WiFi scenario, shielded box |
 | WiFi station, modem sleep, DTIM3 | 38.7 mA | same |
 | WiFi station, modem sleep, DTIM10 | 38.2 mA | same |
 | WiFi station, DTIM1, 160 MHz, DFS on | peak 113.5 mA, min 15.0 mA | same |
 
-The StickS3 has a 250 mAh battery (`plans/02-battery-display.md:126`). At
+The StickS3 has a 250 mAh battery (`plans/implemented/02-battery-display.md:126`). At
 17.9 mA that is roughly 14 hours. At 40.1 mA it is roughly 6 hours. The DTIM
 setting barely matters. What matters is that the radio is on at all.
 
 Worse, WiFi and automatic light sleep do not combine for free. The 3.3 mA
-number that `plans/07-ble-sleep.md` is chasing depends on the CPU actually
+number that `plans/implemented/07-ble-sleep.md` is chasing depends on the CPU actually
 sleeping. A station that has to wake for every DTIM beacon does not get there.
 Enabling WiFi therefore costs more than the difference in the table. It
 forfeits the largest saving in the whole roadmap.
@@ -652,7 +652,7 @@ Rules that follow:
 - Call `esp_wifi_set_ps(WIFI_PS_MIN_MODEM)` explicitly. Do not rely on the
   default.
 - The console `wifi status` output must include the current and the estimated
-  runtime, using the same numbers `plans/02-battery-display.md` produces. A user
+  runtime, using the same numbers `plans/implemented/02-battery-display.md` produces. A user
   who turns on WiFi should be able to see what it cost, on the device, without
   a datasheet.
 - On a battery build, print a warning when `WIFI` is set true. On a headless
@@ -677,7 +677,7 @@ it should be visible rather than hidden.
 
 ### Reconnect policy
 
-Reuse the shape from `plans/09-reconnect-backoff.md`. Exponential backoff from
+Reuse the shape from `plans/implemented/09-reconnect-backoff.md`. Exponential backoff from
 1 s to a 60 s cap, with jitter, reset on success. Do not use a fixed retry
 timer. A studio device whose access point reboots should not hammer the channel
 while a shoot is running.
@@ -735,7 +735,7 @@ dumps raw NVS.
   bug and it cannot be engineered away. It can only be defaulted off and
   documented, which is what this PR does.
 - Flash and RAM cost. See the budget section below. This is the risk that
-  interacts with `plans/34-ota-partitions.md` and it needs a measured number
+  interacts with `plans/implemented/34-ota-partitions.md` and it needs a measured number
   before 34 can size its app slots.
 - `std::string` load and save specialisations are new in `Settings`. Get the
   length handling wrong and a 63 character passphrase corrupts NVS. Test at the
@@ -898,7 +898,7 @@ trigger. A duplicated `hold 200` fires one extra frame, which is annoying. A
 duplicated `press` with a lost `release` leaves the shutter held, which can fill
 a card or cook a sensor. Publish `press` and `release` as available primitives
 because scripts want them, but tell users to prefer `hold`. This mirrors the
-same advice in `plans/27-usb-console.md`.
+same advice in `plans/implemented/27-usb-console.md`.
 
 Do not use QoS 2. esp-mqtt supports all three levels, but QoS 2 costs two extra
 round trips per message on a shared radio while a camera link is running, and
@@ -1292,7 +1292,7 @@ publishes to it, and costs one subscription.
 | REST API | deferred, PR33d, unchanged |
 | NTP sync | PR33b |
 | Location parser for devices lacking GPS | `cmd/location` topic above, HA side pushes, no OSM client on device |
-| OTA updates | `plans/34-ota-partitions.md` |
+| OTA updates | `plans/implemented/34-ota-partitions.md` |
 
 The maintainer named MQTT as the first target in
 [#248 comment 3843927598](https://github.com/gkoh/furble/issues/248#issuecomment-3843927598).
@@ -1399,7 +1399,7 @@ allocation and Bluetooth time slices are adjusted down.
    fourteen. If a scan is genuinely needed, refuse it while `Control::getState()`
    is `STATE_ACTIVE` and tell the user why.
 2. **Never run OTA while a camera is connected.** A firmware download saturates
-   the radio for a minute or more. `plans/34-ota-partitions.md` makes this a
+   the radio for a minute or more. `plans/implemented/34-ota-partitions.md` makes this a
    hard precondition, not advice.
 3. **Keep the existing connection parameters.** They are already coexistence
    friendly and nothing in this document should change them. If
@@ -1421,7 +1421,7 @@ allocation and Bluetooth time slices are adjusted down.
 ## Testing plan
 
 This is a measurement, not an opinion. The console from
-`plans/27-usb-console.md` is what makes it possible, which is another reason
+`plans/implemented/27-usb-console.md` is what makes it possible, which is another reason
 the maintainer's ordering is correct.
 
 Host script drives `shutter hold 200` 200 times at 2 second intervals, and
@@ -1525,7 +1525,7 @@ assumption in either direction.
 
 ## Interaction with plans/34
 
-`plans/34-ota-partitions.md` sizes OTA app slots at 1700K, which is 1,740,800
+`plans/implemented/34-ota-partitions.md` sizes OTA app slots at 1700K, which is 1,740,800
 bytes. Against the current largest image of 1,037,728 bytes that is 686 KB of
 headroom. WiFi plus lwIP plus MQTT plus TLS plus the certificate bundle is
 plausibly most of it.

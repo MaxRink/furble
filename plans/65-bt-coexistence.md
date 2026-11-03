@@ -486,5 +486,5 @@ Ordered by value, on the StickS3 plus one plain ESP32 board:
   recommendations bind 33b and 33c.
 - Confirms and depends on the analysis in `plans/60-issue-257.md`.
 - Recommendation 2 interacts with `plans/10-adaptive-conn-params.md`.
-- The camera-count cap feeds `plans/25-multiconnect-ui.md` hub-mode
+- The camera-count cap feeds `plans/implemented/25-multiconnect-ui.md` hub-mode
   documentation.
