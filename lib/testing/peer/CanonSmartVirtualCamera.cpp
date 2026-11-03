@@ -2,6 +2,7 @@
 #include <cstring>
 
 #include "CanonSmartVirtualCamera.h"
+#include "WriteJournal.h"
 
 namespace Furble {
 namespace Host {
@@ -512,6 +513,7 @@ bool CanonSmartVirtualCamera::write(NimBLEClient &client,
                                     const NimBLEUUID &characteristic,
                                     const std::vector<uint8_t> &value,
                                     bool response) {
+  const std::lock_guard<std::mutex> journal(Host::peerWriteJournalMutex());
   // Pairing and identity writes change the advertised identity; the radio
   // task may be building the advertisement at the same time.
   const std::lock_guard<std::recursive_mutex> lock(m_AdvertisementMutex);

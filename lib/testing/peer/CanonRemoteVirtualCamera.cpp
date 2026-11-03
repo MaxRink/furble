@@ -1,4 +1,5 @@
 #include "CanonRemoteVirtualCamera.h"
+#include "WriteJournal.h"
 
 namespace Furble {
 namespace Host {
@@ -244,6 +245,7 @@ bool CanonRemoteVirtualCamera::write(NimBLEClient &client,
                                      const NimBLEUUID &characteristic,
                                      const std::vector<uint8_t> &value,
                                      bool response) {
+  const std::lock_guard<std::mutex> journal(Host::peerWriteJournalMutex());
   if (!m_Connected || (m_Client != &client) || !canWrite(service, characteristic)) {
     return false;
   }

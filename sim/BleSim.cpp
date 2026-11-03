@@ -20,6 +20,8 @@
 #include <RicohVirtualCamera.h>
 #include <SonyVirtualCamera.h>
 
+#include "WriteJournal.h"
+
 #include "CameraList.h"
 #include "FurbleControl.h"
 
@@ -128,6 +130,7 @@ bool readWriteJournal(const std::unique_ptr<Peer> &peer, size_t *count, std::str
   if (peer == nullptr) {
     return false;
   }
+  const std::lock_guard<std::mutex> journal(Host::peerWriteJournalMutex());
   const auto &writes = peer->writes();
   *count = writes.size();
   lastWrite->clear();

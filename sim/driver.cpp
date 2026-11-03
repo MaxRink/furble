@@ -1369,6 +1369,8 @@ std::string queryValue(const std::string &key) {
     size_t count = 0;
     std::string lastWrite;
     if (!blePeerWriteStats(index, &count, &lastWrite)) {
+      std::cerr << "No peer write journal at index " << index << '\n';
+      requestExit(2);
       return "";
     }
     return field == "writes" ? std::to_string(count) : lastWrite;
