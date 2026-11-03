@@ -193,8 +193,8 @@ are named.
 | `plans/implemented/09-reconnect-backoff.md` | Backoff bounds | BLE |
 | `plans/10-adaptive-conn-params.md` | Idle profile and hardware verification | BLE, Board |
 | `plans/11-adaptive-tx-power.md` | TX power policy | BLE, Board |
-| `plans/12-display-off.md` | Display states, APB lock, PMIC backlight paths | Display, SoC, Board |
-| `plans/13-auto-off-low-batt.md` | Auto-off and low-battery policy | Board, SoC |
+| `plans/implemented/12-display-off.md` | Display states, APB lock, PMIC backlight paths | Display, SoC, Board |
+| `plans/implemented/13-auto-off-low-batt.md` | Auto-off and low-battery policy | Board, SoC |
 | `plans/implemented/14-gps-pcas.md` | PCAS02/03/04/10 definitions, no PCAS00 | GPS/IMU |
 | `plans/15-gps-power.md` | Burst window, UART wake limitation, standby versus rail cycling, 15 s duty ceiling | GPS/IMU, SoC |
 | `plans/17-imu-gestures.md` | Gesture thresholds, the 25 Hz tap tradeoff, and the hardware tuning gate | GPS/IMU |

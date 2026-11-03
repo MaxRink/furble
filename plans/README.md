@@ -72,8 +72,6 @@ state and the remaining gate; the issue stays open until that gate lands.
 
 | Doc | Content |
 |---|---|
-| [12-display-off.md](12-display-off.md) | True display off, blind remote mode, longer timeouts |
-| [13-auto-off-low-batt.md](13-auto-off-low-batt.md) | Auto power off, low battery actions |
 
 ## Phase 3: GPS
 
@@ -118,7 +116,6 @@ state and the remaining gate; the issue stays open until that gate lands.
 | [35-exposure-presets.md](implemented/35-exposure-presets.md) | Exposure time presets in 1/3 stops |
 | [36-camera-test-harness.md](implemented/36-camera-test-harness.md) | Camera protocol test harness: host tests, mock NimBLE, virtual peer |
 | [71-ui-bug-batch.md](71-ui-bug-batch.md) | UI focus recovery, left escape, connection progress, display-off LED policy |
-| [68-reconnect-after-restart.md](68-reconnect-after-restart.md) | Graceful camera shutdown and patient reconnect after restart |
 | [76-ui-polish.md](implemented/76-ui-polish.md) | Focus ring visible in every theme, simulator theme and board selection for the screenshot matrix |
 
 ## Framework work
@@ -170,7 +167,6 @@ state and the remaining gate; the issue stays open until that gate lands.
 
 | Doc | Content |
 |---|---|
-| [116-companion-password.md](116-companion-password.md) | Shared-secret gate for privileged companion operations |
 | [117-sim-mqtt-coverage.md](implemented/117-sim-mqtt-coverage.md) | Host MQTT client and Home Assistant discovery coverage |
 | [118-sim-ethernet-coverage.md](implemented/118-sim-ethernet-coverage.md) | Host Ethernet netif coverage for the transport-neutral MQTT seam |
 | [119-companion-gatt-sim.md](implemented/119-companion-gatt-sim.md) | Companion GATT host coverage, implemented by the companion harness |
@@ -257,9 +253,7 @@ document is authoritative over any older summary.
 | [98-power-optimization-audit.md](98-power-optimization-audit.md) | Power optimization audit |
 | [98b-power-followup.md](98b-power-followup.md) | GPS degraded lock recovery follow-up |
 | [99-nimble-client-leak.md](implemented/99-nimble-client-leak.md) | NimBLE client leak fix |
-| [100-console-debug.md](100-console-debug.md) | Console debug dump family |
 | [100-sim-fault-injection-bughunt.md](100-sim-fault-injection-bughunt.md) | Host fault injection and BLE connect failure hunting |
-| [101-boot-splash.md](101-boot-splash.md) | Power-on boot splash |
 | [102-disconnect-freeze.md](102-disconnect-freeze.md) | Disconnect off the UI task |
 | [103-real-control-e2e-harness.md](103-real-control-e2e-harness.md) | Real Control connect/disconnect end-to-end harness |
 | [104-ble-fuzzing.md](104-ble-fuzzing.md) | Seeded BLE lifecycle fuzzing |

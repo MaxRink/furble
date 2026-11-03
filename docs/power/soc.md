@@ -1237,8 +1237,8 @@ result. A null result is a valid result.
 - `plans/implemented/01-cpu-freq-setting.md`: CPU frequency setting and its risks.
 - `plans/implemented/06-power-module.md`: lock design and the no-manual-sleep rule.
 - `plans/implemented/07-ble-sleep.md`: modem sleep and per-board floors.
-- `plans/12-display-off.md`: display states, APB lock, PMIC backlight paths.
-- `plans/13-auto-off-low-batt.md`: charging lock and power-off policy.
+- `plans/implemented/12-display-off.md`: display states, APB lock, PMIC backlight paths.
+- `plans/implemented/13-auto-off-low-batt.md`: charging lock and power-off policy.
 - `plans/15-gps-power.md`: GPS burst lock, duty limits, UART clock.
 - `plans/19-interval-deep-sleep.md`: deep sleep between interval frames.
 - `plans/implemented/26-pm1-watchdog.md`: PM1 watchdog, feed cadence, `SLP_TO`, deep sleep

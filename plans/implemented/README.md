@@ -95,3 +95,9 @@ stay in the parent [`plans/`](../README.md) directory.
 | [89-reconnect-ui.md](89-reconnect-ui.md) | 89 - Reconnect UI indicator (task #54) |
 | [92-ui-icons.md](92-ui-icons.md) | 92 - Better suited menu icons |
 | [99-nimble-client-leak.md](99-nimble-client-leak.md) | PR99: Fix the NimBLE client leak that breaks all connects until a reboot |
+| [12-display-off.md](12-display-off.md) | True display off, blind remote mode, longer timeouts |
+| [13-auto-off-low-batt.md](13-auto-off-low-batt.md) | Auto power off, low battery actions |
+| [68-reconnect-after-restart.md](68-reconnect-after-restart.md) | Graceful camera shutdown and patient reconnect after restart |
+| [100-console-debug.md](100-console-debug.md) | Console debug dump family |
+| [101-boot-splash.md](101-boot-splash.md) | Power-on boot splash |
+| [116-companion-password.md](116-companion-password.md) | Shared-secret gate for privileged companion operations |
