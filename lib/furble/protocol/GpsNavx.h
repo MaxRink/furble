@@ -17,6 +17,13 @@ constexpr size_t PAYLOAD_SIZE = 44;
 constexpr uint32_t MASK_DY_MODEL = 1U << 0;
 constexpr uint32_t MASK_NAV_SYSTEM = 1U << 8;
 
+// The specification offsets are the single source of truth; changing one of
+// these without changing the others fails the build.
+static_assert(OFFSET_DY_MODEL == 4, "CASIC CFG-NAVX dyModel is at offset 4");
+static_assert(OFFSET_MIN_SVS == 6, "CASIC CFG-NAVX minSVs is at offset 6");
+static_assert(OFFSET_NAV_SYSTEM == 13, "CASIC CFG-NAVX navSystem is at offset 13");
+static_assert(PAYLOAD_SIZE == 44, "CASIC CFG-NAVX payload is 44 bytes");
+
 struct Config {
   bool constellationSet;
   uint8_t constellation;

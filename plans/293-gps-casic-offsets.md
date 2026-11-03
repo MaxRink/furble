@@ -19,9 +19,10 @@ suite certified the incorrect decode.
 
 ## Implementation state
 
-- `GPS::NAVX_NAV_SYSTEM_OFFSET` is 13. The header documents the full
-  `CFG-NAVX` offset map, and `FurbleGPS.cpp` pins both writable offsets with
-  `static_assert`.
+- `GpsNavx::OFFSET_NAV_SYSTEM` is 13. `GpsNavx.h` documents the full
+  `CFG-NAVX` offset map and pins every named offset plus the 44-byte payload
+  with `static_assert`; `GPS::NAVX_*_OFFSET` aliases those constants so the
+  production write path and the header cannot drift.
 - `Casic::MonHw` reads `noisePerMs0` at 0, `agcData0` at 12, `antStatus` at 20,
   and `jamming[0]` at 24 as a 32-bit word.
 - `gps monhw` prints the 32-bit jamming word.
