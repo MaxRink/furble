@@ -1373,14 +1373,45 @@ void UI::companionPairingTimer(lv_timer_t *timer) {
     return;
   }
 
-  char text[96];
-  std::snprintf(text, sizeof(text), "Confirm number:\n%06lu",
-                static_cast<unsigned long>(companion.getPendingPairingPin()));
   ui->m_CompanionPairingDialog = lv_msgbox_create(nullptr);
-  lv_msgbox_add_title(ui->m_CompanionPairingDialog, "Pair companion");
-  lv_msgbox_add_text(ui->m_CompanionPairingDialog, text);
+  // The default content-sized msgbox is wider than the 135 px Stick panel and
+  // clipped the title, number and footer pills. Keep it inside the panel with a
+  // symmetric margin and reuse the compact camera-pairing layout.
+  lv_obj_set_width(ui->m_CompanionPairingDialog, LV_PCT(100));
+  lv_obj_set_style_max_width(ui->m_CompanionPairingDialog, ui->m_Width - 12, 0);
+  lv_msgbox_add_title(ui->m_CompanionPairingDialog, "Pair device");
 
-  lv_obj_t *accept = lv_msgbox_add_footer_button(ui->m_CompanionPairingDialog, "Accept");
+  lv_obj_t *content = lv_msgbox_get_content(ui->m_CompanionPairingDialog);
+  lv_obj_set_flex_align(content, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_clear_flag(content, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t *instruction = nullptr;
+  if (ui->m_Height >= 170) {
+    instruction = lv_label_create(content);
+    lv_label_set_text(instruction, "Confirm this number");
+    lv_obj_set_width(instruction, LV_PCT(100));
+    lv_label_set_long_mode(instruction, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_align(instruction, LV_TEXT_ALIGN_CENTER, 0);
+  }
+
+  lv_obj_t *code = lv_label_create(content);
+  lv_label_set_text_fmt(code, "%06lu",
+                        static_cast<unsigned long>(companion.getPendingPairingPin()));
+  lv_obj_set_style_text_font(
+      code, ui->m_Width < 100 ? &lv_font_montserrat_16 : &lv_font_montserrat_22, 0);
+  lv_obj_set_style_text_align(code, LV_TEXT_ALIGN_CENTER, 0);
+
+  const bool narrowFooter = ui->m_Width < 200;
+  const auto fitFooterButton = [narrowFooter](lv_obj_t *button) {
+    if (narrowFooter) {
+      lv_obj_set_style_pad_hor(button, 3, 0);
+      lv_obj_set_style_text_font(button, &lv_font_montserrat_12, 0);
+    }
+  };
+
+  lv_obj_t *accept =
+      lv_msgbox_add_footer_button(ui->m_CompanionPairingDialog, narrowFooter ? "Yes" : "Accept");
+  fitFooterButton(accept);
   // The dedicated modal group below keeps both buttons encoder-operable without
   // exposing background page controls.
   lv_obj_add_event_cb(
@@ -1392,7 +1423,9 @@ void UI::companionPairingTimer(lv_timer_t *timer) {
       },
       LV_EVENT_CLICKED, ui);
 
-  lv_obj_t *reject = lv_msgbox_add_footer_button(ui->m_CompanionPairingDialog, "Reject");
+  lv_obj_t *reject =
+      lv_msgbox_add_footer_button(ui->m_CompanionPairingDialog, narrowFooter ? "No" : "Reject");
+  fitFooterButton(reject);
   lv_obj_add_event_cb(
       reject,
       [](lv_event_t *event) {
@@ -1401,6 +1434,30 @@ void UI::companionPairingTimer(lv_timer_t *timer) {
         ui->closeCompanionPairingDialog();
       },
       LV_EVENT_CLICKED, ui);
+
+  lv_obj_t *footer = lv_msgbox_get_footer(ui->m_CompanionPairingDialog);
+  if (narrowFooter && footer != nullptr) {
+    lv_obj_set_style_pad_hor(footer, 2, 0);
+    lv_obj_set_style_pad_column(footer, 2, 0);
+  }
+
+  lv_obj_update_layout(ui->m_CompanionPairingDialog);
+  if (lv_obj_get_height(ui->m_CompanionPairingDialog)
+      > lv_display_get_vertical_resolution(ui->m_Display)) {
+    const lv_font_t *small = fontForTextSize(Settings::TEXT_SIZE_SMALL);
+    lv_obj_set_style_pad_all(ui->m_CompanionPairingDialog, 2, 0);
+    if (content != nullptr) {
+      lv_obj_set_style_pad_all(content, 2, 0);
+    }
+    if (instruction != nullptr) {
+      lv_obj_set_style_text_font(instruction, small, 0);
+    }
+    lv_obj_set_style_text_font(code, small, 0);
+    if (footer != nullptr) {
+      lv_obj_set_style_pad_all(footer, 2, 0);
+    }
+    lv_obj_update_layout(ui->m_CompanionPairingDialog);
+  }
 
   ui->acquireModalInput(ui->m_CompanionPairingDialog, {accept, reject}, accept);
 }
@@ -4954,7 +5011,7 @@ std::string UI::simQueryState(const char *key) {
     }
     if (field == "about.reset_visible") {
       return (page == aboutPage && labelVisible(m_Menu.at(m_AboutStr).page, "Reset:\n")) ? "yes"
-                                                                                          : "no";
+                                                                                         : "no";
     }
 
     if (field == "device.chip") {
@@ -12700,8 +12757,8 @@ void UI::doPowerOff(void) {
   m_PoweringOff = true;
   closeLowBatteryWarning();
 
-  // TODO(plans/implemented/68-reconnect-after-restart.md): prepareRestart on feat/68 needs this same quiesce
-  // ordering, a future shared helper should absorb both paths.
+  // TODO(plans/implemented/68-reconnect-after-restart.md): prepareRestart on feat/68 needs this
+  // same quiesce ordering, a future shared helper should absorb both paths.
 #if defined(FURBLE_M5STICKS3)
   // Stop the watchdog first, the BLE teardown below can outlast a feed period.
   Platform::getInstance().watchdogEnable(false);
