@@ -135,6 +135,36 @@ public enum FurbleProtocol {
 
     public var charging: Bool { powerFlags & 1 != 0 }
     public var externalPower: Bool { powerFlags & 2 != 0 }
+
+    public init(
+      version: UInt8,
+      batteryPercent: UInt8,
+      batteryMillivolts: UInt16,
+      batteryMilliamps: Int16,
+      powerFlags: UInt8,
+      cameraTotal: UInt8,
+      cameraConnected: UInt8,
+      controlState: UInt8,
+      gpsSource: UInt8,
+      gpsSatellites: UInt8,
+      intervalometerState: UInt8,
+      intervalometerRemaining: UInt16,
+      uptimeSeconds: UInt32
+    ) {
+      self.version = version
+      self.batteryPercent = batteryPercent
+      self.batteryMillivolts = batteryMillivolts
+      self.batteryMilliamps = batteryMilliamps
+      self.powerFlags = powerFlags
+      self.cameraTotal = cameraTotal
+      self.cameraConnected = cameraConnected
+      self.controlState = controlState
+      self.gpsSource = gpsSource
+      self.gpsSatellites = gpsSatellites
+      self.intervalometerState = intervalometerState
+      self.intervalometerRemaining = intervalometerRemaining
+      self.uptimeSeconds = uptimeSeconds
+    }
   }
 
   public struct Capability: Equatable, Sendable {

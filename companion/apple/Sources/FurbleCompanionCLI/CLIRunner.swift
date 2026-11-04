@@ -14,15 +14,25 @@ enum CLIEntry {
       case .help:
         print(CLIArgumentParser.usage)
         return CLIExitCode.success.rawValue
-      case .password(let command):
-        return runPassword(command, connection: invocation.connection)
-      case .scan:
-        return runScan(connection: invocation.connection)
-      case .status, .cameras, .location, .trigger, .monitor:
-        return runConnected(
-          invocation.command,
-          connection: invocation.connection,
-          environment: environment)
+      case .scan, .status, .cameras, .location, .trigger, .monitor, .password:
+        if invocation.connection.transport == .usb {
+          return USBConsoleRunner.run(
+            invocation.command, connection: invocation.connection)
+        }
+        switch invocation.command {
+        case .password(let command):
+          return runPassword(command, connection: invocation.connection)
+        case .scan:
+          return runScan(connection: invocation.connection)
+        case .status, .cameras, .location, .trigger, .monitor:
+          return runConnected(
+            invocation.command,
+            connection: invocation.connection,
+            environment: environment)
+        case .help:
+          print(CLIArgumentParser.usage)
+          return CLIExitCode.success.rawValue
+        }
       }
     } catch let error as CLIUsageError {
       return emit(error.description, code: .usage)

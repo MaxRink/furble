@@ -91,6 +91,21 @@ swift build -c release --product furble-companion-cli
 .build/release/furble-companion-cli status --device Furble
 ```
 
+The CLI also has a USB CDC transport for the StickS3 console:
+
+```sh
+.build/release/furble-companion-cli scan --transport usb
+.build/release/furble-companion-cli status --transport usb --port /dev/cu.usbmodem1101
+.build/release/furble-companion-cli monitor --transport usb --port /dev/cu.usbmodem1101 \
+  --interval 5 --duration 3600 --csv > usb-power.csv
+```
+
+USB supports `scan`, `status`, `cameras`, `monitor`, and `password status`.
+`location` and `trigger` stay on BLE because the console has no equivalent
+command. The USB monitor reads `status` and `gps` from the console and writes
+the same CSV columns as the BLE monitor, so the plotter is shared. USB charging
+invalidates battery-drain comparisons.
+
 It can send a phone-GPS fallback fix, press/release shutter or focus, and poll
 status notifications. The companion password comes from an argument,
 environment variable, file, stdin or the login Keychain, and is never printed.

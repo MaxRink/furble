@@ -290,6 +290,33 @@ struct CLIReportTests {
     name: "Furble-1A2B",
     rssi: -52)
 
+  @Test func usbTransportParsesPortAndRejectsBleOnlyOptions() throws {
+    let invocation = try CLIArgumentParser.parse([
+      "status", "--transport", "usb", "--port", "/dev/cu.usbmodem-test",
+    ])
+    #expect(invocation.connection.transport == .usb)
+    #expect(invocation.connection.serialPort == "/dev/cu.usbmodem-test")
+
+    let defaultInvocation = try CLIArgumentParser.parse(["status"])
+    #expect(defaultInvocation.connection.transport == .ble)
+
+    #expect(throws: CLIUsageError.self) {
+      try CLIArgumentParser.parse(["status", "--port", "/dev/cu.usbmodem-test"])
+    }
+    #expect(throws: CLIUsageError.self) {
+      try CLIArgumentParser.parse([
+        "status", "--transport", "usb", "--port", "/dev/cu.usbmodem-test",
+        "--device", "furble",
+      ])
+    }
+    #expect(throws: CLIUsageError.self) {
+      try CLIArgumentParser.parse([
+        "status", "--transport", "usb", "--port", "/dev/cu.usbmodem-test",
+        "--password-env", "FURBLE_COMPANION_PASSWORD",
+      ])
+    }
+  }
+
   @Test func statusReportPrintsAuthenticationGpsAndCameras() throws {
     let status = try FurbleProtocol.decodeStatus(Data([
       1, 85, 0x18, 0x10, 0x88, 0xff, 3, 3, 1, 0,
