@@ -33,6 +33,22 @@ records and command responses. Notifications carry changed camera state.
 The companion radio advertises for 60 seconds after companion mode is opened.
 Reopen companion mode to pair another phone.
 
+## Pairing and link security
+
+The service starts the BLE security procedure as soon as an accepted companion
+link connects; a protected characteristic read alone does not initiate pairing.
+The link is bonded and encrypted with LE Just Works so a macOS terminal,
+background session, or other client without a usable system pairing prompt can
+connect. Just Works does not provide link-level man-in-the-middle protection.
+The companion password is the application authentication layer: set one with
+`companion password set` before using the app in an untrusted area, and the
+firmware rejects commands until the HMAC exchange succeeds.
+
+When the pairing window is open and the peer presents a new LE address, the
+firmware drops the stale bond for the old address before starting security.
+This handles macOS LE address rotation without leaving a permanently unusable
+bond. Reopen companion mode and retry if a client still holds an old bond.
+
 Camera IDs are stable across catalog reordering and deletion. Selection is the
 same in-memory Multi-Connect target set used by the on-device Cameras page. A
 scan updates only transient scan results, so it does not hide saved cameras.
