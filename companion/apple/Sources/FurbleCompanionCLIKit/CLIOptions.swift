@@ -65,7 +65,16 @@ public enum CLIPasswordSource: Equatable, Sendable {
   case stdin
 }
 
+public enum CLITransport: String, Equatable, Sendable {
+  case ble
+  case usb
+}
+
 public struct CLIConnectionOptions: Equatable, Sendable {
+  public var transport: CLITransport = .ble
+  /// USB CDC path such as `/dev/cu.usbmodem1101`. Empty selects the only
+  /// candidate port when exactly one is present.
+  public var serialPort: String?
   public var device: CLIDeviceQuery = .any
   public var scanTimeout: TimeInterval = 5
   public var connectionTimeout: TimeInterval = 20
@@ -230,6 +239,8 @@ public enum CLIArgumentParser {
       help        Show this help
 
     CONNECTION OPTIONS
+      --transport ble|usb    Connection transport (default ble)
+      --port PATH            USB CDC path for --transport usb
       --device NAME|UUID     Device name substring or macOS peripheral UUID
       --scan-timeout SEC     Scan window in seconds (default 5)
       --timeout SEC          Connect and authentication timeout (default 20)
@@ -244,6 +255,12 @@ public enum CLIArgumentParser {
       otherwise the Keychain item. The password is never printed. A device
       whose companion password is unset authenticates with the firmware's
       explicit not-required result; no local password is needed for that.
+
+    USB TRANSPORT
+      --transport usb        Use the StickS3 USB CDC console instead of BLE
+      --port PATH            /dev/cu.usbmodem... (omit when exactly one exists)
+      USB supports scan, status, cameras, monitor, and password status.
+      location and trigger remain BLE features.
 
     LOCATION OPTIONS
       --latitude DEG        Required position, -90...90
@@ -290,6 +307,7 @@ public enum CLIArgumentParser {
     var command: CLICommand
     var index = 1
     var passwordSourceCount = 0
+    var bleOnlyOptions: [String] = []
 
     func takeValue(_ option: String, allowDash: Bool = false) throws -> String {
       guard index + 1 < arguments.count else {
@@ -358,17 +376,29 @@ public enum CLIArgumentParser {
       }
 
       switch option {
+      case "--transport":
+        let value = try value()
+        guard let transport = CLITransport(rawValue: value) else {
+          throw CLIUsageError.message("--transport must be ble or usb")
+        }
+        connection.transport = transport
+      case "--port":
+        connection.serialPort = try nonEmpty(try value(), option: option)
       case "--device":
         let device = try value()
         guard !device.isEmpty else { throw CLIUsageError.message("--device must not be empty") }
         connection.device = CLIDeviceQuery.parse(device)
       case "--scan-timeout":
+        bleOnlyOptions.append(option)
         connection.scanTimeout = try positiveSeconds(try value(), option: option)
       case "--timeout":
+        bleOnlyOptions.append(option)
         connection.connectionTimeout = try positiveSeconds(try value(), option: option)
       case "--keychain-service":
+        bleOnlyOptions.append(option)
         connection.keychainService = try nonEmpty(try value(), option: option)
       case "--keychain-account":
+        bleOnlyOptions.append(option)
         connection.keychainAccount = try nonEmpty(try value(), option: option)
       case "--password":
         passwordSourceCount += 1
@@ -475,6 +505,32 @@ public enum CLIArgumentParser {
 
     if passwordSourceCount > 1 {
       throw CLIUsageError.message("use only one of --password, --password-env, --password-file or --password-stdin")
+    }
+    if connection.transport == .usb {
+      var isScan = false
+      if case .scan = command { isScan = true }
+      if connection.serialPort == nil && !isScan {
+        let ports = FurbleSerialConsole.candidatePorts()
+        guard ports.count == 1 else {
+          throw CLIUsageError.message(
+            ports.isEmpty
+              ? "no USB CDC port found; connect the device and pass --port"
+              : "multiple USB CDC ports found; pass --port with one of: \(ports.joined(separator: ", "))")
+        }
+        connection.serialPort = ports[0]
+      }
+      if connection.device != .any {
+        throw CLIUsageError.message("--device selects a BLE peripheral; use --port for USB")
+      }
+      if passwordSourceCount > 0 {
+        throw CLIUsageError.message("password options are only valid for the BLE transport")
+      }
+      if !bleOnlyOptions.isEmpty {
+        throw CLIUsageError.message(
+          "\(bleOnlyOptions.joined(separator: ", ")) \(bleOnlyOptions.count == 1 ? "is" : "are") only valid for the BLE transport")
+      }
+    } else if connection.serialPort != nil {
+      throw CLIUsageError.message("--port requires --transport usb")
     }
 
     switch command {

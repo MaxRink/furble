@@ -103,6 +103,22 @@ public enum CLIReport {
     return row
   }
 
+  /// USB console rows have no BLE RSSI and no power flags. Do not print the
+  /// BLE-only external/charging fields as if they were measured false.
+  public static func monitorUSBHumanRow(
+    timestamp: Date, elapsed: TimeInterval, status: FurbleProtocol.Status, label: String
+  ) -> String {
+    let battery = status.batteryPercent == 255 ? "unknown" : "\(status.batteryPercent)%"
+    var row = "\(iso8601Timestamp(timestamp)) elapsed="
+      + "\(decimalString(elapsed))s uptime=\(status.uptimeSeconds)s "
+      + "battery=\(battery) \(voltageLabel(status.batteryMillivolts)) "
+      + "\(status.batteryMilliamps)mA "
+      + "gps=\(gpsSourceLabel(status.gpsSource))/\(status.gpsSatellites) "
+      + "control=\(status.controlState)"
+    if !label.isEmpty { row += " label=\(label)" }
+    return row
+  }
+
   public static func monitorSummary(
     samples: Int,
     first: FurbleProtocol.Status?,

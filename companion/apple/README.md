@@ -273,6 +273,26 @@ by pairing. When the phone GPS toggle is on, the provider sets
 When In Use authorization is enough for a user-started session. The privacy
 manifest and usage strings explain the purpose of every protected API.
 
+### USB console transport
+
+The same CLI can use the StickS3 USB CDC console instead of BLE:
+
+```sh
+furble-companion-cli scan --transport usb
+furble-companion-cli status --transport usb --port /dev/cu.usbmodem1101
+furble-companion-cli monitor --transport usb --port /dev/cu.usbmodem1101 \
+  --interval 5 --duration 3600 --csv > usb-power.csv
+```
+
+`--port` may be omitted when exactly one `/dev/cu.usbmodem*` or
+`/dev/cu.usbserial*` port is present. USB supports `scan`, `status`, `cameras`,
+`monitor`, and `password status`. `location` and `trigger` remain BLE features
+because the console has no equivalent command, and `password set`/`delete` stay
+on the BLE/Keychain path. USB monitoring uses the console `status` and `gps`
+output, so `battery_ma` is still the raw firmware field and USB charging makes a
+drain run non-representative. The CSV columns are identical to the BLE monitor,
+so the same plotter handles both transports.
+
 ## Hardware status (2026-11-04)
 
 The CLI builds and scans a flashed StickS3 successfully (for example

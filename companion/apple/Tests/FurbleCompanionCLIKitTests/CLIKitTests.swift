@@ -290,6 +290,43 @@ struct CLIReportTests {
     name: "Furble-1A2B",
     rssi: -52)
 
+  @Test func usbTransportParsesPortAndRejectsBleOnlyOptions() throws {
+    let invocation = try CLIArgumentParser.parse([
+      "status", "--transport", "usb", "--port", "/dev/cu.usbmodem-test",
+    ])
+    #expect(invocation.connection.transport == .usb)
+    #expect(invocation.connection.serialPort == "/dev/cu.usbmodem-test")
+
+    let defaultInvocation = try CLIArgumentParser.parse(["status"])
+    #expect(defaultInvocation.connection.transport == .ble)
+
+    #expect(throws: CLIUsageError.self) {
+      try CLIArgumentParser.parse(["status", "--port", "/dev/cu.usbmodem-test"])
+    }
+    #expect(throws: CLIUsageError.self) {
+      try CLIArgumentParser.parse([
+        "status", "--transport", "usb", "--port", "/dev/cu.usbmodem-test",
+        "--device", "furble",
+      ])
+    }
+    #expect(throws: CLIUsageError.self) {
+      try CLIArgumentParser.parse([
+        "status", "--transport", "usb", "--port", "/dev/cu.usbmodem-test",
+        "--password-env", "FURBLE_COMPANION_PASSWORD",
+      ])
+    }
+    #expect(throws: CLIUsageError.self) {
+      try CLIArgumentParser.parse([
+        "status", "--transport", "usb", "--port", "/dev/cu.usbmodem-test",
+        "--timeout", "10",
+      ])
+    }
+
+    let scan = try CLIArgumentParser.parse(["scan", "--transport", "usb"])
+    #expect(scan.connection.transport == .usb)
+    #expect(scan.connection.serialPort == nil)
+  }
+
   @Test func statusReportPrintsAuthenticationGpsAndCameras() throws {
     let status = try FurbleProtocol.decodeStatus(Data([
       1, 85, 0x18, 0x10, 0x88, 0xff, 3, 3, 1, 0,
@@ -367,6 +404,19 @@ struct CLIReportTests {
     #expect(human.contains("gps=phone companion/3"))
     #expect(human.contains("external=1 charging=1"))
     #expect(human.contains("rssi=-61dBm label=GPS off"))
+  }
+
+  @Test func usbHumanRowOmitsUnmeasuredPowerFlags() throws {
+    let status = try FurbleProtocol.decodeStatus(Data([
+      1, 85, 0x18, 0x10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 0
+    ]))
+    let row = CLIReport.monitorUSBHumanRow(
+      timestamp: Date(timeIntervalSince1970: 0),
+      elapsed: 1, status: status, label: "usb")
+    #expect(row.contains("battery=85% 4120mV 0mA"))
+    #expect(!row.contains("external="))
+    #expect(!row.contains("charging="))
+    #expect(row.contains("label=usb"))
   }
 
   @Test func monitorMarkerRowsKeepTheSameColumnCount() {
