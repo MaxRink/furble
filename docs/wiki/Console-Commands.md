@@ -30,7 +30,7 @@ About page and exposed through companion BLE Device Information.
 | `gps` | GPS status and control, see below. |
 | `time` | `status` reports wall-clock validity and source; `flush` persists it. |
 | `settings` | `list`, `get <name>`, `set <name> <value>`. |
-| `companion` | `password set <pw>`, `clear`, or `status`. |
+| `companion` | `start` (open the 60 s pairing window), `stop`, `status`, or `password set <pw>`, `clear`, `status`. |
 | `ui` | `audit`, `page`, or `back` for UI diagnostics and navigation. |
 | `cameras` | `list` saved cameras, or `status` for the active targets. Saved rows carry `saved_index`, which is the value `connect` takes. |
 | `connect` | `connect [index]`. No index uses the multi-connect selection. A scan-list position is not a saved index. |

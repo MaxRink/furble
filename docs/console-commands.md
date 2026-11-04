@@ -43,7 +43,7 @@ About page and exposed through companion BLE Device Information.
 | `motion` | `status` for the motion source, or `scale [0.25-4.0]` to calibrate it. |
 | `time` | `status` reports wall-clock validity and source; `flush` persists it. |
 | `settings` | `list`, `get <name>`, `set <name> <value>`. |
-| `companion` | `password set <pw>`, `clear`, or `status`. |
+| `companion` | `start` (open the 60 s pairing window), `stop`, `status`, or `password set <pw>`, `clear`, `status`. |
 | `ui` | `audit`, `page`, or `back` for UI diagnostics and navigation. |
 | `cameras` | `list` saved cameras, or `status` for the active targets. |
 | `connect` | `connect [index]`. No index uses the multi-connect selection. |
