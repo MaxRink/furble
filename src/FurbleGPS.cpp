@@ -2992,7 +2992,12 @@ GPS::status_t GPS::getStatusSnapshot(void) const {
   status.date_valid = gps.date.isValid();
   status.time_valid = gps.time.isValid();
   status.altitude_valid = gps.altitude.isValid();
-  status.fix = status.position_valid && (quality != TinyGPSLocation::Quality::Invalid);
+  // TinyGPSPlus keeps the last valid location and quality long after the
+  // receiver stops producing sentences. A fix is only present while it is
+  // fresh; otherwise the status would claim a fix with zero satellites
+  // indefinitely.
+  status.fix = status.position_valid && (quality != TinyGPSLocation::Quality::Invalid)
+               && (gps.location.age() < MAX_AGE_MS);
   status.satellites = gps.satellites.value();
   status.latitude = gps.location.lat();
   status.longitude = gps.location.lng();
