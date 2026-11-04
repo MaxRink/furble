@@ -22,7 +22,8 @@ This wiki is a friendly fork of the upstream furble project.
   builds.
 - **[Companion camera management](../companion.md)**: the BLE characteristic for
   listing saved cameras, selecting Multi-Connect targets, and connecting or
-  disconnecting cameras.
+  disconnecting cameras, plus the macOS terminal CLI for status, phone GPS,
+  shutter/focus testing and battery CSV monitoring.
 - **[WebUI](WebUI)**: authenticated HTTPS browser control and REST routes.
 
 ## At a glance

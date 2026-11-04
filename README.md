@@ -58,8 +58,12 @@ catalog, select or deselect stable camera IDs for Multi-Connect, and request a
 connect or disconnect. Camera state records include saved, selected,
 active-target, and connected flags, progress, RSSI while connected, state, and
 the camera name. A scan remains separate from the saved catalog, and a connect
-request is reported busy while scanning or another connect is in flight. See
-[the companion reference](docs/companion.md) for the packet layout.
+request is reported busy while scanning or another connect is in flight. The
+Apple package also builds `furble-companion-cli`, a macOS terminal client that
+uses the same protocol, auth and BLE core for scan/status, phone-GPS fallback,
+shutter/focus testing and long-running read-only battery CSV monitoring. See
+[the companion reference](docs/companion.md) for the packet layout and the
+battery observation procedure.
 
 furble is developed on ESP32 devices as a PlatformIO project.
 

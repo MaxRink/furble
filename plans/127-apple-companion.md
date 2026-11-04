@@ -1,10 +1,11 @@
 # 127 - Apple companion foundation
 
 Status: implementation slice. Shared Swift protocol, auth gate, native iOS and
-macOS target definition, host tests, and the capability-gated Cameras tab are
-present under `companion/apple`.
+macOS target definition, host tests, the capability-gated Cameras tab, and a
+headless macOS terminal CLI are present under `companion/apple`.
 The Xcode project is generated reproducibly from `project.yml` with the pinned
-XcodeGen release documented in the companion README.
+XcodeGen release documented in the companion README. The Swift package also
+builds `furble-companion-cli` without an Xcode project or signed app.
 
 ## Delivered
 
@@ -40,6 +41,28 @@ XcodeGen release documented in the companion README.
 - Release tags beginning with `companion-test-` are reserved for companion
   testing and skip the firmware release workflow. Normal firmware release tags
   retain the existing build and publication path.
+- `furble-companion-cli` is a Swift Package executable over the same
+  `FurbleCompanionCore`: scan/select by advertised name or macOS peripheral
+  UUID, explicit device selection, Auth begin/challenge/proof/result, status,
+  capability and camera-catalog printing, phone-GPS fix injection, and paired
+  shutter/focus press/release. Password sources are argument, environment,
+  file, stdin or Keychain and are never printed.
+- `monitor` is a read-only long-run status observer for battery measurements.
+  It samples status notifications into CSV with host time/elapsed, uptime,
+  battery percent/mV/mA, GPS source/satellites, control state, connected-link
+  RSSI and a phase label. BLE drops become marker rows and reconnect through
+  the shared client with exponential backoff; duration, `--until-empty`,
+  notification timeout and a bounded retry window stop the run cleanly. It
+  never writes settings or issues camera/trigger/location commands.
+- The host test suite uses Swift Testing and covers the existing codecs/auth
+  state machine plus device selection, CLI parsing, monitor stop policy, CSV
+  rows/markers and the SVG plot fixture. The native app remains an XcodeGen
+  target; the package no longer builds the SwiftUI app itself, so a
+  Command-Line-Tools-only Mac can build and test the shared core and CLI.
+- `tools/plot_companion_power.py` renders a self-contained SVG with battery
+  percent and millivolt panels, phase-label changes and reconnect markers using
+  only the Python standard library. PNG output is optional when matplotlib is
+  installed.
 
 ## Pairing window for headless testing
 
@@ -69,3 +92,14 @@ the UI row because advertising a pairing window at every boot would be wrong.
 - The platform targets declare the shared Keychain access-group entitlement.
   The shared client deliberately does not enable background location unless
   the user opts in.
+- A physical macOS CLI run needs Bluetooth permission for the launching
+  terminal and a bonded/encrypted companion link before the firmware Auth
+  characteristic will answer. The unsigned macOS app and the CLI were not
+  exercised against hardware in this worktree.
+- No camera is attached on the bench used for this slice. Camera list/state
+  decoding is host-tested, but camera connect/select/disconnect success is not
+  certified and remains a hardware gate.
+- Battery observations must treat `battery_ma == 0` as an absent current
+  backend, not a measurement. A full-drain comparison also needs the same
+  screen, GPS policy, BLE interval and radio distance across runs; the
+  documented procedure is in `docs/companion.md`.

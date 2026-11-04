@@ -1,10 +1,9 @@
-import XCTest
-@testable import FurbleCompanionCore
-#if canImport(CryptoKit)
 import CryptoKit
-#endif
+import Foundation
+import Testing
+@testable import FurbleCompanionCore
 
-final class FurbleProtocolTests: XCTestCase {
+struct FurbleProtocolTests {
   private func canonicalFixture(_ name: String) throws -> Data {
     var root = URL(fileURLWithPath: #filePath)
     let relativePath = "tests/protocol/golden/companion_auth.json"
@@ -37,22 +36,18 @@ final class FurbleProtocolTests: XCTestCase {
     return data
   }
 
-  func testCanonicalAuthFixtureIsConsumed() throws {
-    XCTAssertEqual(FurbleProtocol.authBegin(), try canonicalFixture("begin"))
+  @Test func canonicalAuthFixtureIsConsumed() throws {
+    #expect(FurbleProtocol.authBegin() == (try canonicalFixture("begin")))
     let nonce = try canonicalFixture("nonce")
-    XCTAssertEqual(try FurbleProtocol.decodeAuthChallenge(try canonicalFixture("challenge")), nonce)
-    #if canImport(CryptoKit)
+    #expect(try FurbleProtocol.decodeAuthChallenge(try canonicalFixture("challenge")) == nonce)
     let password = Data("correct horse battery staple".utf8)
     let proof = Data(HMAC<SHA256>.authenticationCode(
       for: nonce, using: SymmetricKey(data: password)).prefix(16))
-    XCTAssertEqual(try FurbleProtocol.encodeAuthProof(proof), try canonicalFixture("proof"))
-    #else
-    throw XCTSkip("CryptoKit is unavailable on this host")
-    #endif
-    XCTAssertEqual(try FurbleProtocol.decodeAuthResult(try canonicalFixture("result_authenticated")), 1)
+    #expect(try FurbleProtocol.encodeAuthProof(proof) == (try canonicalFixture("proof")))
+    #expect(try FurbleProtocol.decodeAuthResult(try canonicalFixture("result_authenticated")) == 1)
   }
 
-  func testLocationRoundTripUsesFrozen42ByteLayout() throws {
+  @Test func locationRoundTripUsesFrozen42ByteLayout() throws {
     let fix = FurbleProtocol.LocationFix(
       positionValid: true, timeValid: true, altitudeValid: true,
       satellites: 7, accuracyMeters: 12, latitude: 12.25,
@@ -60,220 +55,258 @@ final class FurbleProtocolTests: XCTestCase {
       day: 16, hour: 14, minute: 15, second: 16, centisecond: 17,
       ageMilliseconds: 0x01020304)
     let data = try FurbleProtocol.encodeLocation(fix)
-    XCTAssertEqual(data.count, 42)
-    XCTAssertEqual(Array(data[37..<41]), [UInt8(4), 3, 2, 1])
+    #expect(data.count == 42)
+    #expect(Array(data[37..<41]) == [UInt8(4), 3, 2, 1])
     let decoded = try FurbleProtocol.decodeLocation(data)
-    XCTAssertEqual(decoded.positionValid, fix.positionValid)
-    XCTAssertEqual(decoded.timeValid, fix.timeValid)
-    XCTAssertEqual(decoded.altitudeValid, fix.altitudeValid)
-    XCTAssertEqual(decoded.satellites, fix.satellites)
-    XCTAssertEqual(decoded.accuracyMeters, fix.accuracyMeters)
-    XCTAssertEqual(decoded.latitude, fix.latitude)
-    XCTAssertEqual(decoded.longitude, fix.longitude)
-    XCTAssertEqual(decoded.altitude, fix.altitude)
-    XCTAssertEqual(decoded.year, fix.year)
-    XCTAssertEqual(decoded.month, fix.month)
-    XCTAssertEqual(decoded.day, fix.day)
-    XCTAssertEqual(decoded.hour, fix.hour)
-    XCTAssertEqual(decoded.minute, fix.minute)
-    XCTAssertEqual(decoded.second, fix.second)
-    XCTAssertEqual(decoded.centisecond, fix.centisecond)
-    XCTAssertEqual(decoded.ageMilliseconds, fix.ageMilliseconds)
+    #expect(decoded.positionValid == fix.positionValid)
+    #expect(decoded.timeValid == fix.timeValid)
+    #expect(decoded.altitudeValid == fix.altitudeValid)
+    #expect(decoded.satellites == fix.satellites)
+    #expect(decoded.accuracyMeters == fix.accuracyMeters)
+    #expect(decoded.latitude == fix.latitude)
+    #expect(decoded.longitude == fix.longitude)
+    #expect(decoded.altitude == fix.altitude)
+    #expect(decoded.year == fix.year)
+    #expect(decoded.month == fix.month)
+    #expect(decoded.day == fix.day)
+    #expect(decoded.hour == fix.hour)
+    #expect(decoded.minute == fix.minute)
+    #expect(decoded.second == fix.second)
+    #expect(decoded.centisecond == fix.centisecond)
+    #expect(decoded.ageMilliseconds == fix.ageMilliseconds)
   }
 
-  func testLocationRejectsShortAndInvalidCalendarValues() throws {
-    XCTAssertThrowsError(try FurbleProtocol.decodeLocation(Data(repeating: 0, count: 41)))
+  @Test func locationRejectsShortAndInvalidCalendarValues() throws {
+    #expect(throws: FurbleProtocol.Error.self) {
+      try FurbleProtocol.decodeLocation(Data(repeating: 0, count: 41))
+    }
     let invalid = FurbleProtocol.LocationFix(
       positionValid: true, timeValid: true, altitudeValid: false,
       satellites: 0, accuracyMeters: nil, latitude: 0, longitude: 0,
       altitude: 0, year: 2026, month: 13, day: 1, hour: 0, minute: 0,
       second: 0, centisecond: 0, ageMilliseconds: 0)
-    XCTAssertThrowsError(try FurbleProtocol.encodeLocation(invalid))
+    #expect(throws: FurbleProtocol.Error.self) {
+      try FurbleProtocol.encodeLocation(invalid)
+    }
   }
 
-  func testStatusDecodesSignedAndUnsignedFields() throws {
+  @Test func statusDecodesSignedAndUnsignedFields() throws {
     let data = Data([1, 85, 0x18, 0x10, 0x88, 0xff, 3, 2, 1, 4, 2, 9, 5, 0xff, 0xff, 4, 3, 2, 1, 0])
     let status = try FurbleProtocol.decodeStatus(data)
-    XCTAssertEqual(status.batteryPercent, 85)
-    XCTAssertEqual(status.batteryMillivolts, 0x1018)
-    XCTAssertEqual(status.batteryMilliamps, -120)
-    XCTAssertEqual(status.intervalometerRemaining, 0xffff)
-    XCTAssertEqual(status.uptimeSeconds, 0x01020304)
-    XCTAssertTrue(status.charging)
-    XCTAssertTrue(status.externalPower)
-    XCTAssertThrowsError(try FurbleProtocol.decodeStatus(Data(repeating: 0, count: 19)))
+    #expect(status.batteryPercent == 85)
+    #expect(status.batteryMillivolts == 0x1018)
+    #expect(status.batteryMilliamps == -120)
+    #expect(status.intervalometerRemaining == 0xffff)
+    #expect(status.uptimeSeconds == 0x01020304)
+    #expect(status.charging)
+    #expect(status.externalPower)
+    #expect(throws: FurbleProtocol.Error.self) {
+      try FurbleProtocol.decodeStatus(Data(repeating: 0, count: 19))
+    }
   }
 
-  func testCapabilityUsesFrozenCameraBit() throws {
+  @Test func capabilityUsesFrozenCameraBit() throws {
     let capability = try FurbleProtocol.decodeCapability(Data([1, 2, 2, 0, 0, 0]))
-    XCTAssertTrue(capability.supportsCameras)
+    #expect(capability.supportsCameras)
     let settingsOnly = try FurbleProtocol.decodeCapability(Data([1, 2, 1, 0, 0, 0]))
-    XCTAssertFalse(settingsOnly.supportsCameras)
+    #expect(!settingsOnly.supportsCameras)
   }
 
-  func testTriggerUsesFirmwareLengthForEachOperation() {
-    XCTAssertEqual(FurbleProtocol.encodeTrigger(.shutterRelease), Data([1, 0]))
-    XCTAssertEqual(FurbleProtocol.encodeTrigger(.focusPress), Data([1, 2]))
-    XCTAssertEqual(FurbleProtocol.encodeTrigger(.timedShutter, holdMilliseconds: 0x1234),
-      Data([1, 4, 0x34, 0x12]))
+  @Test func triggerUsesFirmwareLengthForEachOperation() {
+    #expect(FurbleProtocol.encodeTrigger(.shutterRelease) == Data([1, 0]))
+    #expect(FurbleProtocol.encodeTrigger(.focusPress) == Data([1, 2]))
+    #expect(FurbleProtocol.encodeTrigger(.timedShutter, holdMilliseconds: 0x1234)
+      == Data([1, 4, 0x34, 0x12]))
   }
 
-  func testTriggerHoldStatePairsEveryPressWithOneRelease() {
+  @Test func triggerHoldStatePairsEveryPressWithOneRelease() {
     var state = TriggerHoldState()
-    XCTAssertEqual(state.pressShutter(), .shutterPress)
-    XCTAssertNil(state.pressShutter())
-    XCTAssertEqual(state.releaseShutter(), .shutterRelease)
-    XCTAssertNil(state.releaseShutter())
-    XCTAssertEqual(state.pressFocus(), .focusPress)
-    XCTAssertEqual(state.releaseAll(), [.focusRelease])
-    XCTAssertFalse(state.shutterHeld)
-    XCTAssertFalse(state.focusHeld)
+    let firstPress = state.pressShutter()
+    #expect(firstPress == .shutterPress)
+    let duplicatePress = state.pressShutter()
+    #expect(duplicatePress == nil)
+    let firstRelease = state.releaseShutter()
+    #expect(firstRelease == .shutterRelease)
+    let duplicateRelease = state.releaseShutter()
+    #expect(duplicateRelease == nil)
+    let focusPress = state.pressFocus()
+    #expect(focusPress == .focusPress)
+    let released = state.releaseAll()
+    #expect(released == [.focusRelease])
+    #expect(!state.shutterHeld)
+    #expect(!state.focusHeld)
   }
 
-  func testTriggerHoldStateRestoresStateAfterFailedWrite() {
+  @Test func triggerHoldStateRestoresStateAfterFailedWrite() {
     var state = TriggerHoldState()
     let press = state.pressShutter()
-    XCTAssertEqual(press, .shutterPress)
+    #expect(press == .shutterPress)
     state.restore(after: .shutterPress)
-    XCTAssertFalse(state.shutterHeld)
-    XCTAssertEqual(state.pressShutter(), .shutterPress)
+    #expect(!state.shutterHeld)
+    let pressedAgain = state.pressShutter()
+    #expect(pressedAgain == .shutterPress)
     state.restore(after: .shutterRelease)
-    XCTAssertTrue(state.shutterHeld)
+    #expect(state.shutterHeld)
   }
 
-  func testSettingsTlvRoundTripsAndRejectsTrailingBytes() throws {
-    XCTAssertEqual(FurbleProtocol.settingsListRequest(), Data([0, 0, 0]))
+  @Test func settingsTlvRoundTripsAndRejectsTrailingBytes() throws {
+    #expect(FurbleProtocol.settingsListRequest() == Data([0, 0, 0]))
     let setting = try FurbleProtocol.settingsSet(id: 7, value: Data([0xff]))
-    XCTAssertEqual(setting, Data([2, 7, 1, 0xff]))
+    #expect(setting == Data([2, 7, 1, 0xff]))
     let response = try FurbleProtocol.decodeSettingResponse(Data([0, 7, 1, 1, 0xfe, 1]))
-    XCTAssertEqual(response.id, 7)
-    XCTAssertEqual(response.value, Data([0xfe]))
-    XCTAssertTrue(response.isListRecord)
-    XCTAssertTrue(response.needsRestart)
-    XCTAssertThrowsError(try FurbleProtocol.decodeSettingResponse(Data([0, 7, 1, 1, 0xfe, 1, 2])))
+    #expect(response.id == 7)
+    #expect(response.value == Data([0xfe]))
+    #expect(response.isListRecord)
+    #expect(response.needsRestart)
+    #expect(throws: FurbleProtocol.Error.self) {
+      try FurbleProtocol.decodeSettingResponse(Data([0, 7, 1, 1, 0xfe, 1, 2]))
+    }
   }
 
-  func testCameraRecordIsLengthCheckedAndUtf8Validated() throws {
+  @Test func cameraRecordIsLengthCheckedAndUtf8Validated() throws {
     let record = try FurbleProtocol.decodeCameraRecord(Data([0, 3, 1, 9, 100, 0xf0, 2, 3, 0x46, 0x75, 0x6a]))
-    XCTAssertEqual(record.name, "Fuj")
-    XCTAssertThrowsError(try FurbleProtocol.decodeCameraRecord(Data([0, 3, 1, 9, 100, 0, 2, 4, 0x46])))
+    #expect(record.name == "Fuj")
+    #expect(throws: FurbleProtocol.Error.self) {
+      try FurbleProtocol.decodeCameraRecord(Data([0, 3, 1, 9, 100, 0, 2, 4, 0x46]))
+    }
   }
 
-  func testCameraRecordExposesStableSelectionAndStateLabels() throws {
+  @Test func cameraRecordExposesStableSelectionAndStateLabels() throws {
     let record = try FurbleProtocol.decodeCameraRecord(
       Data([0, 3, 1, 3, 25, 0xf0, 1, 3, 0x46, 0x75, 0x6a]))
-    XCTAssertTrue(record.isSaved)
-    XCTAssertTrue(record.isSelected)
-    XCTAssertFalse(record.isConnected)
-    XCTAssertEqual(record.typeLabel, "Fujifilm")
-    XCTAssertEqual(record.connectionStateLabel, "connecting 25%")
-    XCTAssertNil(record.operationStatusLabel)
+    #expect(record.isSaved)
+    #expect(record.isSelected)
+    #expect(!record.isConnected)
+    #expect(record.typeLabel == "Fujifilm")
+    #expect(record.connectionStateLabel == "connecting 25%")
+    #expect(record.operationStatusLabel == nil)
 
     let busy = try FurbleProtocol.decodeCameraRecord(
       Data([3, 3, 1, 8, 0, 0x80, 0, 3, 0x46, 0x75, 0x6a]))
-    XCTAssertEqual(busy.operationStatusLabel, "camera operation busy")
+    #expect(busy.operationStatusLabel == "camera operation busy")
   }
 
-  func testCameraAcknowledgementIsNotARealCatalogRecord() throws {
+  @Test func cameraAcknowledgementIsNotARealCatalogRecord() throws {
     let acknowledgement = try FurbleProtocol.decodeCameraRecord(
       Data([3, 7, 0, 0, 0, 0x80, 0, 0]))
-    XCTAssertTrue(acknowledgement.isOperationAcknowledgement)
-    XCTAssertEqual(acknowledgement.operationStatusLabel, "camera operation busy")
+    #expect(acknowledgement.isOperationAcknowledgement)
+    #expect(acknowledgement.operationStatusLabel == "camera operation busy")
 
     let record = try FurbleProtocol.decodeCameraRecord(
       Data([0, 7, 1, 1, 0, 0xe0, 2, 3, 0x58, 0x2d, 0x54]))
-    XCTAssertFalse(record.isOperationAcknowledgement)
+    #expect(!record.isOperationAcknowledgement)
   }
 
-  func testHmacChallengeIsSingleUseAndLocksAfterFailures() throws {
+  @Test func hmacChallengeIsSingleUseAndLocksAfterFailures() throws {
     var auth = try FurbleAuthSession(password: "secret", maxFailures: 2)
     let nonce = Data((0..<16).map(UInt8.init))
     _ = try auth.begin(nonce: nonce)
-    XCTAssertThrowsError(try auth.verify(proof: Data(repeating: 0, count: 16)))
-    XCTAssertEqual(auth.state, .awaitingChallenge)
+    #expect(throws: FurbleProtocol.Error.self) {
+      try auth.verify(proof: Data(repeating: 0, count: 16))
+    }
+    #expect(auth.state == .awaitingChallenge)
     _ = try auth.begin(nonce: nonce)
-    XCTAssertThrowsError(try auth.verify(proof: Data(repeating: 0, count: 16)))
-    XCTAssertEqual(auth.state, .lockedOut)
+    #expect(throws: FurbleProtocol.Error.self) {
+      try auth.verify(proof: Data(repeating: 0, count: 16))
+    }
+    #expect(auth.state == .lockedOut)
   }
 
-  func testPasswordUsesFirmwareUtf8ByteLimit() {
-    XCTAssertThrowsError(try FurbleAuthSession(password: String(repeating: "é", count: 32)))
-    XCTAssertNoThrow(try FurbleAuthSession(password: String(repeating: "é", count: 31) + "a"))
+  @Test func passwordUsesFirmwareUtf8ByteLimit() {
+    #expect(throws: FurbleProtocol.Error.self) {
+      try FurbleAuthSession(password: String(repeating: "é", count: 32))
+    }
+    #expect(throws: Never.self) {
+      try FurbleAuthSession(password: String(repeating: "é", count: 31) + "a")
+    }
   }
 
-  func testPasswordOnboardingValidatesBytesAndConfirmationWithoutStoringSecret() {
+  @Test func passwordOnboardingValidatesBytesAndConfirmationWithoutStoringSecret() {
     var form = PasswordOnboardingState()
-    XCTAssertFalse(form.validate(password: "", confirmation: ""))
-    XCTAssertEqual(form.validation, .empty)
-    XCTAssertFalse(form.validate(password: String(repeating: "é", count: 32), confirmation: ""))
-    XCTAssertEqual(form.validation, .tooLong)
-    XCTAssertFalse(form.validate(password: "secret", confirmation: "different"))
-    XCTAssertEqual(form.validation, .mismatch)
-    XCTAssertTrue(form.validate(password: String(repeating: "é", count: 31) + "a",
-      confirmation: String(repeating: "é", count: 31) + "a"))
-    XCTAssertEqual(form.validation, .none)
-    XCTAssertFalse(form.hasStoredPassword)
+    let empty = form.validate(password: "", confirmation: "")
+    #expect(!empty)
+    #expect(form.validation == .empty)
+    let tooLong = form.validate(password: String(repeating: "é", count: 32), confirmation: "")
+    #expect(!tooLong)
+    #expect(form.validation == .tooLong)
+    let mismatch = form.validate(password: "secret", confirmation: "different")
+    #expect(!mismatch)
+    #expect(form.validation == .mismatch)
+    let valid = form.validate(
+      password: String(repeating: "é", count: 31) + "a",
+      confirmation: String(repeating: "é", count: 31) + "a")
+    #expect(valid)
+    #expect(form.validation == .none)
+    #expect(!form.hasStoredPassword)
   }
 
-  func testPasswordOnboardingClearAndDeleteForgetOnlyPresence() {
+  @Test func passwordOnboardingClearAndDeleteForgetOnlyPresence() {
     var form = PasswordOnboardingState()
     form.setStoredPassword(true)
-    XCTAssertTrue(form.hasStoredPassword)
+    #expect(form.hasStoredPassword)
     form.didDelete()
-    XCTAssertFalse(form.hasStoredPassword)
-    XCTAssertEqual(form.validation, .none)
+    #expect(!form.hasStoredPassword)
+    #expect(form.validation == .none)
     form.didSave()
-    XCTAssertTrue(form.hasStoredPassword)
+    #expect(form.hasStoredPassword)
     form.setStoredPassword(false)
-    XCTAssertFalse(form.hasStoredPassword)
+    #expect(!form.hasStoredPassword)
   }
 
-  func testAuthPacketsHaveExplicitOperationsAndFixedLengths() throws {
-    XCTAssertEqual(FurbleProtocol.authBegin(), Data([1, 0]))
+  @Test func authPacketsHaveExplicitOperationsAndFixedLengths() throws {
+    #expect(FurbleProtocol.authBegin() == Data([1, 0]))
     let challenge = Data([1, 0]) + Data(repeating: 9, count: 16)
-    XCTAssertEqual(try FurbleProtocol.decodeAuthChallenge(challenge), Data(repeating: 9, count: 16))
+    #expect(try FurbleProtocol.decodeAuthChallenge(challenge) == Data(repeating: 9, count: 16))
     let proof = try FurbleProtocol.encodeAuthProof(Data(repeating: 8, count: 16))
-    XCTAssertEqual(proof.count, 18)
-    XCTAssertEqual(try FurbleProtocol.decodeAuthResult(Data([1, 2, 1])), 1)
-    XCTAssertEqual(try FurbleProtocol.decodeAuthResult(Data([1, 2, 4])), 4)
-    XCTAssertThrowsError(try FurbleProtocol.decodeAuthResult(Data([1, 2, 0])))
-    XCTAssertThrowsError(try FurbleProtocol.encodeAuthProof(Data(repeating: 8, count: 15)))
+    #expect(proof.count == 18)
+    #expect(try FurbleProtocol.decodeAuthResult(Data([1, 2, 1])) == 1)
+    #expect(try FurbleProtocol.decodeAuthResult(Data([1, 2, 4])) == 4)
+    #expect(throws: FurbleProtocol.Error.self) {
+      try FurbleProtocol.decodeAuthResult(Data([1, 2, 0]))
+    }
+    #expect(throws: FurbleProtocol.Error.self) {
+      try FurbleProtocol.encodeAuthProof(Data(repeating: 8, count: 15))
+    }
   }
 
-  func testAuthDecodersRejectWrongVersionAndOperation() {
+  @Test func authDecodersRejectWrongVersionAndOperation() {
     let nonce = Data(repeating: 9, count: FurbleProtocol.authNonceSize)
-    XCTAssertThrowsError(try FurbleProtocol.decodeAuthChallenge(Data([2, 0]) + nonce))
-    XCTAssertThrowsError(try FurbleProtocol.decodeAuthChallenge(Data([1, 1]) + nonce))
-    XCTAssertThrowsError(try FurbleProtocol.decodeAuthResult(Data([2, 2, 1])))
-    XCTAssertThrowsError(try FurbleProtocol.decodeAuthResult(Data([1, 1, 1])))
+    #expect(throws: FurbleProtocol.Error.self) {
+      try FurbleProtocol.decodeAuthChallenge(Data([2, 0]) + nonce)
+    }
+    #expect(throws: FurbleProtocol.Error.self) {
+      try FurbleProtocol.decodeAuthChallenge(Data([1, 1]) + nonce)
+    }
+    #expect(throws: FurbleProtocol.Error.self) {
+      try FurbleProtocol.decodeAuthResult(Data([2, 2, 1]))
+    }
+    #expect(throws: FurbleProtocol.Error.self) {
+      try FurbleProtocol.decodeAuthResult(Data([1, 1, 1]))
+    }
   }
 
-  func testAuthProofMatchesAndroidFirmwareGoldenVector() throws {
-    #if canImport(CryptoKit)
+  @Test func authProofMatchesAndroidFirmwareGoldenVector() throws {
     let nonce = Data((0..<16).map(UInt8.init))
     let password = Data("correct horse battery staple".utf8)
     let proof = Data(HMAC<SHA256>.authenticationCode(
       for: nonce, using: SymmetricKey(data: password)).prefix(16))
     let packet = try FurbleProtocol.encodeAuthProof(proof)
-    XCTAssertEqual(packet, Data([
+    #expect(packet == Data([
       1, 1, 0xc5, 0xdf, 0xbf, 0x65, 0x5b, 0xbc, 0xd0, 0x90,
       0xec, 0xb1, 0xa5, 0xbf, 0x71, 0x68, 0xb8, 0x43
     ]))
-    #else
-    throw XCTSkip("CryptoKit is unavailable on this host")
-    #endif
   }
 
-  func testHmacCorrectProofAuthenticatesAndCannotBeReplayed() throws {
+  @Test func hmacCorrectProofAuthenticatesAndCannotBeReplayed() throws {
     var auth = try FurbleAuthSession(password: "secret")
     _ = try auth.begin(nonce: Data(repeating: 7, count: 16))
-    #if canImport(CryptoKit)
-    let proof = Data(HMAC<SHA256>.authenticationCode(for: Data(repeating: 7, count: 16), using: SymmetricKey(data: Data("secret".utf8))).prefix(16))
+    let proof = Data(HMAC<SHA256>.authenticationCode(
+      for: Data(repeating: 7, count: 16),
+      using: SymmetricKey(data: Data("secret".utf8))).prefix(16))
     try auth.verify(proof: proof)
-    XCTAssertEqual(auth.state, .authenticated)
-    XCTAssertThrowsError(try auth.verify(proof: proof))
-    #else
-    throw XCTSkip("CryptoKit is unavailable on this host")
-    #endif
+    #expect(auth.state == .authenticated)
+    #expect(throws: FurbleProtocol.Error.self) {
+      try auth.verify(proof: proof)
+    }
   }
 }

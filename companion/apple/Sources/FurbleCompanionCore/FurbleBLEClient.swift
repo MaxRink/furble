@@ -4,6 +4,25 @@ import Foundation
 import CoreBluetooth
 import Combine
 
+/// Connection policy for the shared CoreBluetooth client. The native app uses
+/// the defaults; the macOS CLI scans without connecting and then selects one
+/// peripheral by UUID.
+public struct FurbleBLEClientOptions: Equatable, Sendable {
+  public var deviceSelection: FurbleDeviceSelection
+  public var connectsAutomatically: Bool
+  public var reconnectsAutomatically: Bool
+
+  public init(
+    deviceSelection: FurbleDeviceSelection = .any,
+    connectsAutomatically: Bool = true,
+    reconnectsAutomatically: Bool = true
+  ) {
+    self.deviceSelection = deviceSelection
+    self.connectsAutomatically = connectsAutomatically
+    self.reconnectsAutomatically = reconnectsAutomatically
+  }
+}
+
 /// Thin CoreBluetooth adapter. All policy and packet parsing stay in the
 /// platform-neutral core and can therefore be tested without a radio.
 @MainActor
@@ -12,10 +31,14 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
   @Published public private(set) var phase = CompanionConnectionPhase.idle
   @Published public private(set) var status: FurbleProtocol.Status?
   @Published public private(set) var cameras: [FurbleProtocol.CameraRecord] = []
+  @Published public private(set) var discoveredDevices: [FurbleDiscoveredDevice] = []
+  @Published public private(set) var targetDevice: FurbleDiscoveredDevice?
+  @Published public private(set) var rssi: Int?
   @Published public private(set) var error: CompanionFailure?
   @Published public private(set) var cameraOperationError: String?
 
   private let credentialStore: FurbleCredentialStore
+  private let options: FurbleBLEClientOptions
   private lazy var central = CBCentralManager(delegate: self, queue: nil,
     options: [CBCentralManagerOptionRestoreIdentifierKey: "com.furble.companion.central"])
   private var peripheral: CBPeripheral?
@@ -29,16 +52,25 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
   private var cameraListTimeout: DispatchWorkItem?
   private var cameraTransaction = CompanionCameraTransaction()
 
-  public init(credentialStore: FurbleCredentialStore = KeychainCredentialStore()) {
+  public init(
+    credentialStore: FurbleCredentialStore = KeychainCredentialStore(),
+    options: FurbleBLEClientOptions = FurbleBLEClientOptions()
+  ) {
     self.credentialStore = credentialStore
+    self.options = options
     super.init()
     _ = central
   }
 
   public func start() {
     guard central.state == .poweredOn else { return }
-    guard state.phase == .idle || state.phase.isFailure else { return }
-    if reconnectGate.requestStart() { beginScan() }
+    guard phase == .idle || phase.isFailure else { return }
+    if reconnectGate.requestStart() {
+      discoveredDevices.removeAll()
+      targetDevice = nil
+      rssi = nil
+      beginScan()
+    }
   }
 
   public func stop() {
@@ -57,6 +89,9 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
     characteristics.removeAll()
     status = nil
     cameras.removeAll()
+    discoveredDevices.removeAll()
+    targetDevice = nil
+    rssi = nil
     cameraOperationError = nil
     triggerHold = TriggerHoldState()
     error = nil
@@ -64,11 +99,28 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
     phase = .idle
   }
 
+  /// Location writes are fire-and-forget on the BLE link. The throwing form
+  /// lets the CLI distinguish an unauthenticated link from an encoder or MTU
+  /// failure; the app keeps using the tolerant wrapper.
+  public func sendLocation(_ fix: FurbleProtocol.LocationFix) throws {
+    guard state.phase == .ready else { throw FurbleProtocol.Error.authenticationRequired }
+    guard let characteristic = characteristics[CBUUID(string: FurbleProtocol.UUIDs.location)] else {
+      throw FurbleProtocol.Error.malformed
+    }
+    let data = try FurbleProtocol.encodeLocation(fix)
+    guard write(data, to: characteristic, type: .withoutResponse) else {
+      throw FurbleProtocol.Error.payloadTooLarge
+    }
+  }
+
   public func writeLocation(_ fix: FurbleProtocol.LocationFix) {
-    guard state.phase == .ready else { return }
-    guard let characteristic = characteristics[CBUUID(string: FurbleProtocol.UUIDs.location)] else { return }
-    guard let data = try? FurbleProtocol.encodeLocation(fix) else { return }
-    write(data, to: characteristic, type: .withoutResponse)
+    try? sendLocation(fix)
+  }
+
+  /// Requests the current connected-link RSSI. The reply arrives through the
+  /// peripheral delegate and updates ``rssi`` asynchronously.
+  public func readRSSI() {
+    peripheral?.readRSSI()
   }
 
   public func requestSettings() throws {
@@ -259,6 +311,8 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
     error = value
     phase = .failed(value)
     state = CompanionStateMachine()
+    targetDevice = nil
+    rssi = nil
     authBeginPending = false
     authExchange.reset()
   }
@@ -375,7 +429,20 @@ extension FurbleBLEClient: @preconcurrency CBCentralManagerDelegate {
   public func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral,
                      advertisementData: [String: Any], rssi RSSI: NSNumber) {
     guard phase == .scanning, !reconnectGate.isCancelling else { return }
+    let advertisedName = advertisementData[CBAdvertisementDataLocalNameKey] as? String
+    let name = advertisedName ?? peripheral.name
+    let device = FurbleDiscoveredDevice(
+      id: peripheral.identifier,
+      name: name,
+      rssi: RSSI.intValue)
+    upsert(device)
+    guard options.connectsAutomatically,
+      options.deviceSelection.matches(name: name, identifier: peripheral.identifier) else {
+      return
+    }
     self.peripheral = peripheral
+    targetDevice = device
+    rssi = device.rssi
     central.stopScan()
     _ = state.didFindPeripheral()
     phase = state.phase
@@ -383,10 +450,21 @@ extension FurbleBLEClient: @preconcurrency CBCentralManagerDelegate {
     central.connect(peripheral)
   }
 
+  private func upsert(_ device: FurbleDiscoveredDevice) {
+    discoveredDevices.removeAll { $0.id == device.id }
+    discoveredDevices.append(device)
+    discoveredDevices.sort {
+      let comparison = $0.displayName.localizedCaseInsensitiveCompare($1.displayName)
+      if comparison == .orderedSame { return $0.id.uuidString < $1.id.uuidString }
+      return comparison == .orderedAscending
+    }
+  }
+
   public func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
     guard isCurrent(peripheral), phase == .connecting else { return }
     _ = state.didConnect()
     phase = state.phase
+    peripheral.readRSSI()
     peripheral.discoverServices([CBUUID(string: FurbleProtocol.UUIDs.service)])
   }
 
@@ -398,6 +476,13 @@ extension FurbleBLEClient: @preconcurrency CBCentralManagerDelegate {
     }
     guard isCurrent(peripheral), phase.shouldReconnectAfterDisconnect else { return }
     self.peripheral = nil
+    targetDevice = nil
+    rssi = nil
+    guard options.reconnectsAutomatically else {
+      self.error = .linkLost
+      phase = .failed(.linkLost)
+      return
+    }
     reconnectAttempt += 1
     phase = .reconnecting(attempt: reconnectAttempt)
     if central.state == .poweredOn { beginScan() }
@@ -415,16 +500,24 @@ extension FurbleBLEClient: @preconcurrency CBCentralManagerDelegate {
     cameraTransaction.cancel()
     state.cancelCameraList()
     self.peripheral = nil
+    targetDevice = nil
+    rssi = nil
     state.didDisconnect()
-    phase = state.phase
-    reconnectAttempt += 1
+    if options.reconnectsAutomatically {
+      phase = state.phase
+      reconnectAttempt += 1
+    } else {
+      self.error = .linkLost
+      phase = .failed(.linkLost)
+      state = CompanionStateMachine()
+    }
     characteristics.removeAll()
     status = nil
     cameras.removeAll()
     triggerHold = TriggerHoldState()
     authBeginPending = false
     authExchange.reset()
-    if central.state == .poweredOn { beginScan() }
+    if options.reconnectsAutomatically, central.state == .poweredOn { beginScan() }
   }
 
   public func centralManager(_ central: CBCentralManager, willRestoreState dict: [String: Any]) {
@@ -474,8 +567,27 @@ extension FurbleBLEClient: @preconcurrency CBPeripheralDelegate {
     }
   }
 
+  public func peripheral(_ peripheral: CBPeripheral, didReadRSSI RSSI: NSNumber, error: Error?) {
+    guard isCurrent(peripheral), error == nil else { return }
+    let value = RSSI.intValue
+    rssi = value
+    let updated = FurbleDiscoveredDevice(
+      id: peripheral.identifier,
+      name: targetDevice?.name,
+      rssi: value)
+    targetDevice = updated
+    if let index = discoveredDevices.firstIndex(where: { $0.id == peripheral.identifier }) {
+      discoveredDevices[index] = updated
+    }
+  }
+
   public func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
     guard isCurrent(peripheral) else { return }
+    if ProcessInfo.processInfo.environment["FURBLE_COMPANION_DEBUG"] != nil {
+      let hex = characteristic.value?.map { String(format: "%02X", $0) }.joined(separator: " ") ?? "<none>"
+      let errorText = error.map { " error=\($0.localizedDescription)" } ?? ""
+      FileHandle.standardError.write(Data("[ble] \(characteristic.uuid.uuidString): \(hex)\(errorText)\n".utf8))
+    }
     guard error == nil, let data = characteristic.value else { fail(.malformedPacket); return }
     if characteristic.uuid == CBUUID(string: FurbleProtocol.UUIDs.capability) {
       guard let command = state.didReadCapability(data) else { fail(state.lastError ?? .malformedPacket); return }
@@ -539,13 +651,6 @@ extension FurbleBLEClient: @preconcurrency CBPeripheralDelegate {
       guard characteristic.isNotifying else { fail(.authenticationUnavailable); return }
       writeAuthBegin(to: characteristic)
     }
-  }
-}
-
-private extension CompanionConnectionPhase {
-  var isFailure: Bool {
-    if case .failed = self { return true }
-    return false
   }
 }
 #endif
