@@ -66,6 +66,8 @@ struct GPSState {
   size_t monhwDelayPolls = 0;
   std::vector<Furble::GPS::config_status_t> config;
   bool binaryResult = true;
+  bool rawResult = true;
+  std::vector<uint8_t> rawBytes;
   bool aidResult = true;
   size_t reloadSettingCalls = 0;
   size_t reloadMotionSettingCalls = 0;

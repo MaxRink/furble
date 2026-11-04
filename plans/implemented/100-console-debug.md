@@ -10,6 +10,15 @@ tooling. This plan closes the state-observability gaps that were left: the
 Control state machine internals, per-camera BLE detail, and the NimBLE client
 pool, none of which a developer could see from the console before.
 
+## GPS raw debug mode
+
+`gps raw on` mirrors decoded NMEA lines and `gps raw hex on` mirrors every
+received UART chunk as hex, including binary frames. `gps raw send <hex bytes>`
+writes exact bytes without sentence or CASIC framing, so a receiver can be
+probed from the USB console without a logic analyser or a serial breakout.
+`gps raw` reports both mode flags. The raw write path is host-tested and does
+not alter the configured baud, rail, or power lock.
+
 ## Motivation
 
 The console already exposes a lot: `status`, `cameras status` (conn params and
