@@ -94,7 +94,9 @@ void CompanionGatt::enable(bool pairingWindow) {
       m_PairingWindow = false;
 
       // Match Camera::connect() and use numeric comparison for the server.
-      NimBLEDevice::setSecurityAuth(true, true, true);
+      // The companion uses an encrypted Just Works bond and authenticates the
+      // application with its HMAC password, so it does not request MITM.
+      NimBLEDevice::setSecurityAuth(true, false, true);
       NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT);
 
       // Scan owns the existing server. This call is the only service-side
@@ -510,6 +512,11 @@ void CompanionGatt::onConnect(NimBLEServer *server, NimBLEConnInfo &connInfo) {
   // forever. Start the security procedure as soon as an accepted companion
   // link is up.
   if (!connInfo.isEncrypted()) {
+    // Camera::connect() also writes these globals for its own pairing mode.
+    // Re-assert the companion policy immediately before starting security so a
+    // camera connect cannot leave the companion on numeric comparison.
+    NimBLEDevice::setSecurityAuth(true, false, true);
+    NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT);
     const bool started = NimBLEDevice::startSecurity(connInfo.getConnHandle());
     ESP_LOGI(LOG_TAG, "Companion security initiate: %s", started ? "started" : "failed");
   }
