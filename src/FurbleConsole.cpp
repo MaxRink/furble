@@ -1417,9 +1417,16 @@ int gpsMonHw(void) {
   auto &gps = GPS::getInstance();
   gps.pollMonHw();
 
-  const auto report = gps.getMonHw();
+  // The GPS task parses the reply on its own pass, so an immediate read races
+  // the first response. Wait up to 1.5 s for it instead of telling the user to
+  // retry a command that would clear the next reply too.
+  auto report = gps.getMonHw();
+  for (int attempt = 0; (attempt < 150) && !report.have; attempt++) {
+    vTaskDelay(pdMS_TO_TICKS(10));
+    report = gps.getMonHw();
+  }
   if (!report.have) {
-    printf("monhw: polled, no response yet, retry 'gps monhw'\n");
+    printf("monhw: polled, no response within 1.5 s\n");
     return 0;
   }
   if (!report.hw.valid) {

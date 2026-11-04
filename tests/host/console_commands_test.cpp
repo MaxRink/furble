@@ -1103,7 +1103,7 @@ void testGPSDiagnostics(void) {
   // and says so instead of printing a zeroed snapshot.
   const Result pending = runDirect("gps monhw");
   check(pending.rc == 0, "gps monhw returns success before a response");
-  checkContains(pending.out, "monhw: polled, no response yet, retry 'gps monhw'",
+  checkContains(pending.out, "monhw: polled, no response within 1.5 s",
                 "an unanswered poll says so");
   check(gps.monHwPolls == 1, "gps monhw queued a poll");
 
