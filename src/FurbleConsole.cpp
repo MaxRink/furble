@@ -1442,7 +1442,8 @@ int gpsMonHw(void) {
   }
   printf("\n");
   printf(
-      "note: MON-HW offsets follow CASIC 2.14.2; live field values are hardware-tuning-pending\n");
+      "note: MON-HW offsets follow CASIC 2.14.2 and the layout is live-confirmed on the "
+      "AT6668; antenna and jam bit meanings still need a qualified antenna test\n");
   return 0;
 }
 
