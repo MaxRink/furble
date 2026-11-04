@@ -1,3 +1,5 @@
+import Darwin
+import Dispatch
 import Foundation
 import FurbleCompanionCLIKit
 import FurbleCompanionCore
@@ -12,9 +14,15 @@ enum USBConsoleRunner {
   static func run(
     _ command: CLICommand, connection: CLIConnectionOptions
   ) -> Int32 {
-    guard let path = connection.serialPort else {
-      return emit("no USB CDC port selected; pass --port", code: .usage)
+    let selected = connection.serialPort
+    func requirePort() -> String? {
+      guard let selected else {
+        _ = emit("no USB CDC port selected; pass --port", code: .usage)
+        return nil
+      }
+      return selected
     }
+
     switch command {
     case .help:
       print(CLIArgumentParser.usage)
@@ -22,6 +30,7 @@ enum USBConsoleRunner {
     case .scan:
       return scan(connection: connection)
     case .password(.status):
+      guard let path = requirePort() else { return CLIExitCode.usage.rawValue }
       return passwordStatus(path: path)
     case .password:
       return emit(
@@ -29,10 +38,13 @@ enum USBConsoleRunner {
           + "use the device console or the native app",
         code: .unsupported)
     case .status:
+      guard let path = requirePort() else { return CLIExitCode.usage.rawValue }
       return status(path: path)
     case .cameras:
+      guard let path = requirePort() else { return CLIExitCode.usage.rawValue }
       return cameras(path: path)
     case .monitor(let options):
+      guard let path = requirePort() else { return CLIExitCode.usage.rawValue }
       return monitor(options, path: path)
     case .location, .trigger:
       return emit(
@@ -158,6 +170,7 @@ enum USBConsoleRunner {
       "Monitoring \(path) every \(formatSeconds(options.interval)) s"
         + (options.duration.map { " for \(formatSeconds($0)) s" } ?? " until Ctrl-C")
         + (options.untilEmpty ? " or battery <= 1%" : "") + ".")
+    note("USB is supplying power; detach USB for a representative battery-drain run.")
 
     func elapsed() -> TimeInterval { Date().timeIntervalSince(start) }
     func emitMarker(_ event: String) {
@@ -171,7 +184,7 @@ enum USBConsoleRunner {
       }
     }
 
-    while true {
+    monitorLoop: while true {
       if interrupt.isSet { break }
       if CLIMonitorPolicy.reachedDuration(elapsed: elapsed(), duration: options.duration) {
         break
@@ -208,11 +221,10 @@ enum USBConsoleRunner {
               rssi: nil,
               label: options.label))
           } else {
-            print(CLIReport.monitorHumanRow(
+            print(CLIReport.monitorUSBHumanRow(
               timestamp: sample.timestamp,
               elapsed: sample.elapsed,
               status: sample.status,
-              rssi: nil,
               label: options.label))
           }
           samples += 1
@@ -234,6 +246,10 @@ enum USBConsoleRunner {
           let until = Date().addingTimeInterval(delay)
           note("USB reconnect in \(formatSeconds(delay)) s: \(error)")
           while Date() < until {
+            if interrupt.isSet
+              || CLIMonitorPolicy.reachedDuration(elapsed: elapsed(), duration: options.duration) {
+              break monitorLoop
+            }
             RunLoop.main.run(until: min(until, Date().addingTimeInterval(0.1)))
           }
           if CLIMonitorPolicy.retryExhausted(

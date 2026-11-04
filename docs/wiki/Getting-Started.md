@@ -68,8 +68,9 @@ no fresh fix and the companion app is connected with phone GPS enabled, furble
 uses the phone fix. The phone also sends its horizontal accuracy, which furble
 keeps with the fix; the `255` sentinel means unknown rather than a zero-metre
 fix. See [Companion camera management](../companion.md) for the phone location
-behavior, including the macOS terminal CLI's read-only battery CSV monitor. See
-[Supported Hardware](Supported-Hardware) for the full GPS unit matrix.
+behavior, including the macOS terminal CLI's read-only battery CSV monitor over
+BLE or the StickS3 USB CDC console. See [Supported Hardware](Supported-Hardware)
+for the full GPS unit matrix.
 
 ## Next steps
 

@@ -406,6 +406,19 @@ struct CLIReportTests {
     #expect(human.contains("rssi=-61dBm label=GPS off"))
   }
 
+  @Test func usbHumanRowOmitsUnmeasuredPowerFlags() throws {
+    let status = try FurbleProtocol.decodeStatus(Data([
+      1, 85, 0x18, 0x10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 0
+    ]))
+    let row = CLIReport.monitorUSBHumanRow(
+      timestamp: Date(timeIntervalSince1970: 0),
+      elapsed: 1, status: status, label: "usb")
+    #expect(row.contains("battery=85% 4120mV 0mA"))
+    #expect(!row.contains("external="))
+    #expect(!row.contains("charging="))
+    #expect(row.contains("label=usb"))
+  }
+
   @Test func monitorMarkerRowsKeepTheSameColumnCount() {
     #expect(CLIReport.monitorMarkerRow(
       timestamp: Date(timeIntervalSince1970: 0), elapsed: 60, event: "link-lost")
