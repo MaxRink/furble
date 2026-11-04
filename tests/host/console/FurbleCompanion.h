@@ -1,6 +1,6 @@
-// Host companion shim. The console only asks the companion transport to reload
-// its setting or password after a provisioning write, so the double counts
-// those calls.
+// Host companion shim. The console asks the companion transport to reload its
+// setting or password after a write, so the double records the reload mode and
+// reads the resulting enabled state back from the real Settings store.
 #ifndef FURBLE_COMPANION_H
 #define FURBLE_COMPANION_H
 

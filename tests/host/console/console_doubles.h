@@ -127,6 +127,9 @@ IRState &ir(void);
 struct MiscState {
   size_t feedbackReloads = 0;
   size_t companionReloads = 0;
+  size_t companionPairingWindowReloads = 0;
+  size_t companionDisableReloads = 0;
+  bool companionEnabled = false;
   size_t companionPasswordReloads = 0;
   bool sdSupported = true;
   size_t usbDriverInstalls = 0;

@@ -163,7 +163,7 @@ const std::vector<SubcommandContract> SUBCOMMANDS = {
     {"time",         "usage: time status | flush",                                       "",                     {"status", "flush"}                   },
     {"settings",     "expected list, get or set",                                        " theme",               {"list", "get", "set"}                },
     {"companion",
-     "usage: companion start | stop | status | password set <pw> | clear",               "",
+     "usage: companion start | stop | status | password set <pw> | clear | status",      "",
      {"start", "stop", "status", "password"}                                                                                                           },
     {"ui",           "expected audit, page or back",                                     "",                     {"audit", "page", "back"}             },
     {"cameras",      "expected list or status",                                          "",                     {"list", "status"}                    },
@@ -380,12 +380,50 @@ void testSettings(void) {
                 "generic settings get points to the safe password commands");
   checkContains(runDirect("companion password status").out, "companion.password: unset",
                 "password status reports unset without revealing a value");
-  checkContains(runDirect("companion start").out, "companion: pairing window open",
-                "companion start opens the pairing window");
-  checkContains(runDirect("companion status").out,
-                "companion.enabled:", "companion status reports the enabled state");
-  checkContains(runDirect("companion stop").out, "companion: disabled",
-                "companion stop disables the service");
+  // companion start/stop persist the setting and drive the live transport with
+  // the matching pairing-window mode. The stateful double reads the real NVS
+  // store, so a lost write or a wrong reload mode fails here.
+  check(!Furble::Settings::load<bool>(Furble::Settings::COMPANION),
+        "companion starts disabled in the test store");
+  const size_t pairingReloadsBefore = ConsoleHost::misc().companionPairingWindowReloads;
+  check(runDirect("companion start").rc == 0, "companion start returns success");
+  check(Furble::Settings::load<bool>(Furble::Settings::COMPANION),
+        "companion start persists the enabled setting");
+  check(ConsoleHost::misc().companionPairingWindowReloads == pairingReloadsBefore + 1,
+        "companion start reloads the live gate with the pairing window");
+  checkContains(runDirect("companion status").out, "companion.enabled: true",
+                "companion status reports the stateful enabled value");
+  check(contains(runDirect("help").out, "companion start | stop | status"),
+        "help advertises the companion pairing commands");
+
+  const size_t disableReloadsBefore = ConsoleHost::misc().companionDisableReloads;
+  check(runDirect("companion stop").rc == 0, "companion stop returns success");
+  check(!Furble::Settings::load<bool>(Furble::Settings::COMPANION),
+        "companion stop persists the disabled setting");
+  check(ConsoleHost::misc().companionDisableReloads == disableReloadsBefore + 1,
+        "companion stop reloads the live gate with the disable mode");
+  checkContains(runDirect("companion status").out, "companion.enabled: false",
+                "companion status reports the stateful disabled value");
+
+  nvs_test_fail_set_on(1);
+  const Result failedStart = runDirect("companion start");
+  check(failedStart.rc != 0 && !contains(failedStart.out, "pairing window open"),
+        "failed companion enable reports failure instead of a window");
+  check(!Furble::Settings::load<bool>(Furble::Settings::COMPANION),
+        "failed companion enable leaves the setting disabled");
+  check(ConsoleHost::misc().companionPairingWindowReloads == pairingReloadsBefore + 1,
+        "failed companion enable does not reload the live gate");
+
+  check(runDirect("companion start").rc == 0, "companion start recovers after a failed write");
+  nvs_test_fail_commit_on(1);
+  const Result failedStop = runDirect("companion stop");
+  check(failedStop.rc != 0 && !contains(failedStop.out, "companion: disabled"),
+        "failed companion disable reports failure");
+  check(Furble::Settings::load<bool>(Furble::Settings::COMPANION),
+        "failed companion disable preserves the enabled setting");
+  check(ConsoleHost::misc().companionDisableReloads == disableReloadsBefore + 1,
+        "failed companion disable does not reload the live gate");
+  check(runDirect("companion stop").rc == 0, "companion stop recovers after a failed commit");
 
   const size_t reloadsBeforePassword = ConsoleHost::misc().companionPasswordReloads;
   check(runDirect("companion password set test-secret").rc == 0, "password set returns success");

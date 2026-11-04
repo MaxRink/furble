@@ -35,6 +35,8 @@
 
 #include "console_doubles.h"
 
+#include "FurbleSettings.h"
+
 #include "driver/uart.h"
 #include "driver/usb_serial_jtag.h"
 #include "driver/usb_serial_jtag_vfs.h"
@@ -1071,12 +1073,19 @@ CompanionGatt &CompanionGatt::getInstance(void) {
   return instance;
 }
 
-void CompanionGatt::reloadSetting(bool) {
-  ConsoleHost::misc().companionReloads++;
+void CompanionGatt::reloadSetting(bool pairingWindow) {
+  auto &state = ConsoleHost::misc();
+  state.companionReloads++;
+  if (pairingWindow) {
+    state.companionPairingWindowReloads++;
+  } else {
+    state.companionDisableReloads++;
+  }
+  state.companionEnabled = Furble::Settings::load<bool>(Furble::Settings::COMPANION);
 }
 
 bool CompanionGatt::isEnabled(void) const {
-  return false;
+  return ConsoleHost::misc().companionEnabled;
 }
 
 void CompanionGatt::reloadPassword(void) {
