@@ -962,6 +962,11 @@ int cmdCompanion(int argc, char **argv) {
       }
     }
     CompanionGatt::getInstance().reloadSetting(true);
+    if (!CompanionGatt::getInstance().isEnabled()) {
+      // Do not leave a persisted "on" that failed to bring the live service up.
+      Settings::save<bool>(Settings::COMPANION, false);
+      return fail("companion failed to start");
+    }
     printf("companion: pairing window open for 60 s\n");
     return 0;
   }
@@ -972,11 +977,17 @@ int cmdCompanion(int argc, char **argv) {
         return fail("companion setting storage failed");
       }
     }
-    CompanionGatt::getInstance().reloadSetting(false);
+    // The console is not in a BLE callback, so stop synchronously and make an
+    // immediate status report agree with the disabled setting.
+    CompanionGatt::getInstance().disableNow();
+    if (CompanionGatt::getInstance().isEnabled()) {
+      return fail("companion failed to stop");
+    }
     printf("companion: disabled\n");
     return 0;
   }
   if ((argc == 2) && !strcasecmp(argv[1], "status")) {
+    printf("companion.setting: %s\n", boolStr(Settings::load<Settings::COMPANION>()));
     printf("companion.enabled: %s\n", boolStr(CompanionGatt::getInstance().isEnabled()));
     return 0;
   }

@@ -1078,10 +1078,18 @@ void CompanionGatt::reloadSetting(bool pairingWindow) {
   state.companionReloads++;
   if (pairingWindow) {
     state.companionPairingWindowReloads++;
+    state.companionEnabled =
+        state.companionEnableSucceeds && Furble::Settings::load<bool>(Furble::Settings::COMPANION);
   } else {
     state.companionDisableReloads++;
+    state.companionEnabled = false;
   }
-  state.companionEnabled = Furble::Settings::load<bool>(Furble::Settings::COMPANION);
+}
+
+void CompanionGatt::disableNow(void) {
+  auto &state = ConsoleHost::misc();
+  state.companionDisableNowCalls++;
+  state.companionEnabled = false;
 }
 
 bool CompanionGatt::isEnabled(void) const {

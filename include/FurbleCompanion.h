@@ -59,6 +59,14 @@ class CompanionGatt: public NimBLEServerCallbacks,
 
   /** Refresh the setting. A true value explicitly opens the pairing window. */
   void reloadSetting(bool pairingWindow = false);
+  /**
+   * Stop the service synchronously.
+   *
+   * Only use this outside a NimBLE callback. The settings path keeps the
+   * one-second grace timer so a companion write response can leave the link
+   * before the GATT services are removed.
+   */
+  void disableNow(void);
   void reloadPassword(void);
 
   bool isEnabled(void) const;

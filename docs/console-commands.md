@@ -124,19 +124,29 @@ no software-readable presence or negotiation signal.
   rejected when the board does not support the setting, for example
   `SD_GPX` on a board with no SD card slot.
 
-The subcommand is compared exactly (`password`, `set`, `clear`, `status`);
-anything else prints the usage line. The companion password is write-only. Use
-`companion password set <pw>` or
-`companion password clear`; `companion password status` prints only `set`,
-`unset`, or `unavailable`. The generic `settings get` and `settings set` paths
-reject `companion_pw`. A successful set or clear reloads the live companion
-session and revokes any authenticated connection.
-
 Saving a setting is not the same as applying it. Settings read on every use take
 effect at once. Settings the UI caches when it starts do not. `settings get`
 reports which of the two a setting is: immediately, on next connect, or on
 reboot. See the [settings and controls reference](settings-and-controls.md) for
 every setting, its default, and when it applies.
+
+## companion
+
+- `companion start` enables Companion mode if it is off, starts the BLE
+  service, and opens the 60 s pairing window. It prints the window line only
+  after the live service reports enabled; a failed start returns an error and
+  leaves the persisted setting off.
+- `companion stop` persists the setting off and stops the live service
+  synchronously.
+- `companion status` prints `companion.setting` (the persisted value) and
+  `companion.enabled` (the live service). A settings-page or companion-write
+  disable can keep the live service up for one second so the BLE write response
+  can leave; the console stop path does not wait.
+- `companion password set <pw>`, `companion password clear`, and
+  `companion password status`. The password is write-only: status prints only
+  `set`, `unset`, or `unavailable`. The generic `settings get` and `settings
+  set` paths reject `companion_pw`. A successful set or clear reloads the live
+  companion session and revokes any authenticated connection.
 
 ## wifi
 

@@ -79,13 +79,23 @@ current retry cycle, `retry_ms` is the next backoff without jitter, and
   rejected when the board does not support the setting.
 
 
-The subcommand is compared exactly (`password`, `set`, `clear`, `status`);
-anything else prints the usage line. The companion password is write-only. Use
-`companion password set <pw>` or
-`companion password clear`; `companion password status` prints only `set`,
-`unset`, or `unavailable`. The generic `settings get` and `settings set` paths
-reject `companion_pw`. A successful set or clear reloads the live companion
-session and revokes any authenticated connection.
+## companion
+
+- `companion start` enables Companion mode if it is off, starts the BLE
+  service, and opens the 60 s pairing window. It prints the window line only
+  after the live service reports enabled; a failed start returns an error and
+  leaves the persisted setting off.
+- `companion stop` persists the setting off and stops the live service
+  synchronously.
+- `companion status` prints `companion.setting` (the persisted value) and
+  `companion.enabled` (the live service). A settings-page or companion-write
+  disable can keep the live service up for one second so the BLE write response
+  can leave; the console stop path does not wait.
+- `companion password set <pw>`, `companion password clear`, and
+  `companion password status`. The password is write-only: status prints only
+  `set`, `unset`, or `unavailable`. The generic `settings get` and `settings
+  set` paths reject `companion_pw`. A successful set or clear reloads the live
+  companion session and revokes any authenticated connection.
 
 Workflow requests are queued to the UI task. A timeout means the outcome is
 unknown and the operation may still execute later. Do not blindly retry a
