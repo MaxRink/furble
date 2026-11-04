@@ -74,7 +74,8 @@ def main(argv: list[str] | None = None) -> int:
                   [PYTHON, "-m", "unittest",
                    "tests.test_check_pr_hygiene",
                    "tests.test_check_settings_contracts",
-                   "tests.test_check_cpp_safety"]))
+                   "tests.test_check_cpp_safety",
+                   "tests.test_plot_companion_power"]))
   if args.sanitized:
     gates.append(("sanitized host subset",
                   ["sh", "tools/run_sanitized_host_tests.sh", "--clean"]))

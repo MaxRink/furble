@@ -16,6 +16,19 @@ public enum CompanionConnectionPhase: Equatable, Sendable {
     default: return true
     }
   }
+
+  public var isFailure: Bool {
+    if case .failed = self { return true }
+    return false
+  }
+}
+
+/// How the firmware completed the AUTH exchange. `.notRequired` is the
+/// explicit firmware result for a device whose companion password is unset; it
+/// is never inferred from a missing local credential.
+public enum CompanionAuthenticationMode: Equatable, Sendable {
+  case password
+  case notRequired
 }
 
 public enum CompanionFailure: Error, Equatable, Sendable {
@@ -181,6 +194,7 @@ public struct CompanionStateMachine: Sendable {
   public private(set) var cameras: [FurbleProtocol.CameraRecord] = []
   public private(set) var lastError: CompanionFailure?
   public private(set) var cameraListError: UInt8?
+  public private(set) var authenticationMode: CompanionAuthenticationMode?
   public private(set) var requiresAuthentication = true
   public var supportsCameras: Bool { hasCameras && capability?.supportsCameras == true }
   public var cameraListPending: Bool { cameraListRecords != nil }
@@ -205,6 +219,7 @@ public struct CompanionStateMachine: Sendable {
     status = nil
     cameras = []
     cameraListError = nil
+    authenticationMode = nil
     auth = nil
     requiresAuthentication = true
     hasStatus = false
@@ -302,6 +317,7 @@ public struct CompanionStateMachine: Sendable {
       return []
     }
     self.auth = auth
+    authenticationMode = .password
     phase = .ready
     var commands: [CompanionCommand] = [.subscribeStatus, .readStatus]
     if hasSettings { commands.append(.subscribeSettings) }
@@ -318,6 +334,7 @@ public struct CompanionStateMachine: Sendable {
       return []
     }
     auth = nil
+    authenticationMode = .notRequired
     phase = .ready
     var commands: [CompanionCommand] = [.subscribeStatus, .readStatus]
     if hasSettings { commands.append(.subscribeSettings) }
@@ -440,6 +457,7 @@ public struct CompanionStateMachine: Sendable {
     capability = nil
     status = nil
     cameras = []
+    authenticationMode = nil
     auth = nil
     requiresAuthentication = true
     hasStatus = false
@@ -460,6 +478,7 @@ public struct CompanionStateMachine: Sendable {
 
   private mutating func fail(_ failure: CompanionFailure) -> CompanionCommand? {
     lastError = failure
+    authenticationMode = nil
     phase = .failed(failure)
     return nil
   }

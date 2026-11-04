@@ -1,89 +1,115 @@
-import XCTest
+import Foundation
+import Testing
 @testable import FurbleCompanionCore
 
-final class CompanionStateMachineTests: XCTestCase {
-  func testRestartWaitsForCancellationAndResumesOnce() {
+struct CompanionStateMachineTests {
+  @Test func restartWaitsForCancellationAndResumesOnce() {
     var gate = CompanionReconnectGate()
     gate.beginStop(hasPeripheral: true)
-    XCTAssertFalse(gate.requestStart())
-    XCTAssertTrue(gate.isCancelling)
-    XCTAssertTrue(gate.didCancel())
-    XCTAssertFalse(gate.isCancelling)
-    XCTAssertFalse(gate.didCancel())
+    let started = gate.requestStart()
+    #expect(!started)
+    #expect(gate.isCancelling)
+    let cancelled = gate.didCancel()
+    #expect(cancelled)
+    #expect(!gate.isCancelling)
+    let cancelledAgain = gate.didCancel()
+    #expect(!cancelledAgain)
   }
 
-  func testExplicitStopDoesNotScheduleRestart() {
+  @Test func explicitStopDoesNotScheduleRestart() {
     var gate = CompanionReconnectGate()
     gate.beginStop(hasPeripheral: true)
-    XCTAssertFalse(gate.didCancel())
+    let cancelled = gate.didCancel()
+    #expect(!cancelled)
   }
 
-  func testAuthExchangeEnforcesBeginChallengeProofResultOrder() {
+  @Test func authExchangeEnforcesBeginChallengeProofResultOrder() {
     var gate = CompanionAuthExchangeGate()
-    XCTAssertFalse(gate.resultReceived())
-    XCTAssertTrue(gate.beginSent())
-    XCTAssertTrue(gate.challengeReceived())
-    XCTAssertFalse(gate.resultReceived())
-    XCTAssertTrue(gate.proofSent())
-    XCTAssertTrue(gate.resultReceived())
-    XCTAssertFalse(gate.resultReceived())
+    let prematureResult = gate.resultReceived()
+    #expect(!prematureResult)
+    let began = gate.beginSent()
+    #expect(began)
+    let challenged = gate.challengeReceived()
+    #expect(challenged)
+    let resultBeforeProof = gate.resultReceived()
+    #expect(!resultBeforeProof)
+    let proof = gate.proofSent()
+    #expect(proof)
+    let result = gate.resultReceived()
+    #expect(result)
+    let replay = gate.resultReceived()
+    #expect(!replay)
   }
 
-  func testPasswordlessAuthResultStillRequiresBegin() {
+  @Test func passwordlessAuthResultStillRequiresBegin() {
     var gate = CompanionAuthExchangeGate()
-    XCTAssertFalse(gate.resultReceived())
-    XCTAssertTrue(gate.beginSent())
-    XCTAssertTrue(gate.resultReceived())
+    let prematureResult = gate.resultReceived()
+    #expect(!prematureResult)
+    let began = gate.beginSent()
+    #expect(began)
+    let result = gate.resultReceived()
+    #expect(result)
   }
 
-  func testTerminalPhasesDoNotReconnectAfterDisconnect() {
-    XCTAssertFalse(CompanionConnectionPhase.idle.shouldReconnectAfterDisconnect)
-    XCTAssertFalse(CompanionConnectionPhase.failed(.authenticationFailed).shouldReconnectAfterDisconnect)
-    XCTAssertTrue(CompanionConnectionPhase.ready.shouldReconnectAfterDisconnect)
+  @Test func terminalPhasesDoNotReconnectAfterDisconnect() {
+    #expect(!CompanionConnectionPhase.idle.shouldReconnectAfterDisconnect)
+    #expect(!CompanionConnectionPhase.failed(.authenticationFailed).shouldReconnectAfterDisconnect)
+    #expect(CompanionConnectionPhase.ready.shouldReconnectAfterDisconnect)
   }
 
-  func testDiscoveryRejectsMissingAuthInsteadOfDowngrading() {
+  @Test func discoveryRejectsMissingAuthInsteadOfDowngrading() {
     var machine = CompanionStateMachine()
     _ = machine.start(bluetoothAvailable: true)
     _ = machine.didFindPeripheral()
     _ = machine.didConnect()
-    XCTAssertNil(machine.didDiscover(serviceFound: true, status: true, settings: true,
-      trigger: true, auth: false, cameras: false))
-    XCTAssertEqual(machine.phase, .failed(.authenticationUnavailable))
+    let command = machine.didDiscover(serviceFound: true, status: true, settings: true,
+      trigger: true, auth: false, cameras: false)
+    #expect(command == nil)
+    #expect(machine.phase == .failed(.authenticationUnavailable))
   }
 
-  func testAuthenticatedFlowSubscribesAndDecodesStatus() throws {
+  @Test func authenticatedFlowSubscribesAndDecodesStatus() throws {
     var machine = CompanionStateMachine()
     _ = machine.start(bluetoothAvailable: true)
     _ = machine.didFindPeripheral()
     _ = machine.didConnect()
-    XCTAssertEqual(machine.didDiscover(serviceFound: true, status: true, settings: true,
-      trigger: true, auth: true, cameras: true), .readCapability)
+    let discoverCommand = machine.didDiscover(serviceFound: true, status: true, settings: true,
+      trigger: true, auth: true, cameras: true)
+    #expect(discoverCommand == .readCapability)
     let capability = Data([1, 2, 3, 0, 0, 0])
-    XCTAssertEqual(machine.didReadCapability(capability), .beginAuthentication)
-    XCTAssertEqual(machine.beginAuthentication(password: "test", nonce: Data(repeating: 1, count: 16))?.isAuthWrite, true)
-    XCTAssertEqual(machine.didAuthenticationAccepted(), [.subscribeStatus, .readStatus, .subscribeSettings, .subscribeCameras])
-    XCTAssertEqual(machine.phase, .ready)
-    XCTAssertTrue(machine.supportsCameras)
+    let capabilityCommand = machine.didReadCapability(capability)
+    #expect(capabilityCommand == .beginAuthentication)
+    let authCommand = machine.beginAuthentication(
+      password: "test", nonce: Data(repeating: 1, count: 16))
+    #expect(authCommand?.isAuthWrite == true)
+    let accepted = machine.didAuthenticationAccepted()
+    #expect(accepted == [.subscribeStatus, .readStatus, .subscribeSettings, .subscribeCameras])
+    #expect(machine.phase == .ready)
+    #expect(machine.authenticationMode == .password)
+    #expect(machine.supportsCameras)
     let status = Data([1, 85, 0x18, 0x10, 0, 0, 1, 0, 0, 0, 0, 0, 0xff, 0xff, 1, 0, 0, 0, 0, 0])
-    XCTAssertTrue(machine.didReceiveStatus(status))
-    XCTAssertEqual(machine.status?.batteryPercent, 85)
+    let received = machine.didReceiveStatus(status)
+    #expect(received)
+    #expect(machine.status?.batteryPercent == 85)
   }
 
-  func testCameraSubscriptionRequiresTheFrozenCapabilityBit() {
+  @Test func cameraSubscriptionRequiresTheFrozenCapabilityBit() {
     var machine = CompanionStateMachine()
     _ = machine.start(bluetoothAvailable: true)
     _ = machine.didFindPeripheral()
     _ = machine.didConnect()
-    XCTAssertEqual(machine.didDiscover(serviceFound: true, status: true, settings: true,
-      trigger: true, auth: true, cameras: true), .readCapability)
-    XCTAssertEqual(machine.didReadCapability(Data([1, 2, 1, 0, 0, 0])), .beginAuthentication)
+    let discoverCommand = machine.didDiscover(serviceFound: true, status: true, settings: true,
+      trigger: true, auth: true, cameras: true)
+    #expect(discoverCommand == .readCapability)
+    let capabilityCommand = machine.didReadCapability(Data([1, 2, 1, 0, 0, 0]))
+    #expect(capabilityCommand == .beginAuthentication)
     _ = machine.beginAuthentication(password: "test", nonce: Data(repeating: 2, count: 16))
-    XCTAssertEqual(machine.didAuthenticationAccepted(), [.subscribeStatus, .readStatus, .subscribeSettings])
-    XCTAssertFalse(machine.supportsCameras)
+    let accepted = machine.didAuthenticationAccepted()
+    #expect(accepted == [.subscribeStatus, .readStatus, .subscribeSettings])
+    #expect(!machine.supportsCameras)
   }
 
-  func testCameraListReplacesStaleCatalogAndKeepsLaterEvents() {
+  @Test func cameraListReplacesStaleCatalogAndKeepsLaterEvents() {
     var machine = CompanionStateMachine()
     _ = machine.start(bluetoothAvailable: true)
     _ = machine.didFindPeripheral()
@@ -95,67 +121,81 @@ final class CompanionStateMachineTests: XCTestCase {
     _ = machine.didAuthenticationAccepted()
 
     let stale = Data([0, 1, 1, 1, 0, 0, 0, 1, 0x41])
-    XCTAssertTrue(machine.didReceiveCamera(stale))
-    XCTAssertEqual(machine.cameras.map(\.cameraID), [1])
+    let staleAccepted = machine.didReceiveCamera(stale)
+    #expect(staleAccepted)
+    #expect(machine.cameras.map(\.cameraID) == [1])
     let acknowledgement = Data([0, 1, 0, 0, 0, 0x80, 0, 0])
-    XCTAssertTrue(machine.didReceiveCameraEvent(acknowledgement))
-    XCTAssertEqual(machine.cameras.map(\.cameraID), [1])
+    let acknowledgementAccepted = machine.didReceiveCameraEvent(acknowledgement)
+    #expect(acknowledgementAccepted)
+    #expect(machine.cameras.map(\.cameraID) == [1])
 
-    XCTAssertTrue(machine.beginCameraList())
-    XCTAssertTrue(machine.cameraListPending)
-    XCTAssertFalse(machine.beginCameraList())
+    let listStarted = machine.beginCameraList()
+    #expect(listStarted)
+    #expect(machine.cameraListPending)
+    let secondList = machine.beginCameraList()
+    #expect(!secondList)
     let interleaved = Data([0, 9, 1, 1, 100, 0xd0, 2, 1, 0x49])
-    XCTAssertTrue(machine.didReceiveCameraEvent(interleaved))
+    let interleavedAccepted = machine.didReceiveCameraEvent(interleaved)
+    #expect(interleavedAccepted)
     let listed = Data([0, 2, 1, 1, 100, 0xf0, 2, 1, 0x42])
     let terminator = Data([0, 0xff, 0, 0, 0, 0, 0, 0])
-    XCTAssertTrue(machine.didReceiveCamera(listed))
-    XCTAssertTrue(machine.didReceiveCamera(terminator))
-    XCTAssertFalse(machine.cameraListPending)
-    XCTAssertEqual(machine.cameras.map(\.cameraID), [2, 9])
+    let listedAccepted = machine.didReceiveCamera(listed)
+    #expect(listedAccepted)
+    let terminatorAccepted = machine.didReceiveCamera(terminator)
+    #expect(terminatorAccepted)
+    #expect(!machine.cameraListPending)
+    #expect(machine.cameras.map(\.cameraID) == [2, 9])
 
     let event = Data([0, 2, 1, 9, 100, 0xe0, 2, 1, 0x42])
-    XCTAssertTrue(machine.didReceiveCamera(event))
-    XCTAssertEqual(machine.cameras.first?.rssi, -32)
+    let eventAccepted = machine.didReceiveCamera(event)
+    #expect(eventAccepted)
+    #expect(machine.cameras.first?.rssi == -32)
 
-    XCTAssertTrue(machine.beginCameraList())
+    let retryList = machine.beginCameraList()
+    #expect(retryList)
     let previousCatalog = machine.cameras
     let failedTerminator = Data([2, 0xff, 0, 0, 0, 0x80, 0, 0])
-    XCTAssertTrue(machine.didReceiveCamera(failedTerminator))
-    XCTAssertFalse(machine.cameraListPending)
-    XCTAssertEqual(machine.cameraListError, 2)
-    XCTAssertEqual(machine.cameras, previousCatalog)
+    let failedAccepted = machine.didReceiveCamera(failedTerminator)
+    #expect(failedAccepted)
+    #expect(!machine.cameraListPending)
+    #expect(machine.cameraListError == 2)
+    #expect(machine.cameras == previousCatalog)
 
-    XCTAssertTrue(machine.beginCameraList())
+    let finalList = machine.beginCameraList()
+    #expect(finalList)
     machine.didDisconnect()
-    XCTAssertFalse(machine.cameraListPending)
-    XCTAssertNil(machine.cameraListError)
+    #expect(!machine.cameraListPending)
+    #expect(machine.cameraListError == nil)
   }
 
-  func testCameraTransactionSerializesAndClassifiesResponsesBeforeCatalog() throws {
+  @Test func cameraTransactionSerializesAndClassifiesResponsesBeforeCatalog() throws {
     var transaction = CompanionCameraTransaction()
-    XCTAssertTrue(transaction.begin(.list))
-    XCTAssertFalse(transaction.begin(.operation(.connect, id: 7)))
+    let listStarted = transaction.begin(.list)
+    #expect(listStarted)
+    let secondBegin = transaction.begin(.operation(.connect, id: 7))
+    #expect(!secondBegin)
 
     let specificAcknowledgement = try FurbleProtocol.decodeCameraRecord(
       Data([0, 7, 0, 0, 0, 0x80, 0, 0]))
-    XCTAssertEqual(transaction.classify(specificAcknowledgement), .ignored)
+    #expect(transaction.classify(specificAcknowledgement) == .ignored)
     let failedTerminator = try FurbleProtocol.decodeCameraRecord(
       Data([2, 0xff, 0, 0, 0, 0x80, 0, 0]))
-    XCTAssertEqual(transaction.classify(failedTerminator), .listTerminator(status: 2))
+    #expect(transaction.classify(failedTerminator) == .listTerminator(status: 2))
 
     transaction.finish()
-    XCTAssertTrue(transaction.begin(.operation(.connect, id: 7)))
-    XCTAssertEqual(transaction.classify(specificAcknowledgement),
-      .operationAcknowledgement(status: 0))
+    let operationStarted = transaction.begin(.operation(.connect, id: 7))
+    #expect(operationStarted)
+    #expect(transaction.classify(specificAcknowledgement) == .operationAcknowledgement(status: 0))
     let liveRecord = try FurbleProtocol.decodeCameraRecord(
       Data([0, 7, 1, 8, 100, 0xe0, 2, 1, 0x58]))
-    XCTAssertEqual(transaction.classify(liveRecord), .unsolicited)
+    #expect(transaction.classify(liveRecord) == .unsolicited)
     transaction.cancel()
-    XCTAssertNil(transaction.kind)
-    XCTAssertTrue(transaction.begin(.list))
+    #expect(transaction.kind == nil)
+    let restarted = transaction.begin(.list)
+    #expect(restarted)
   }
 
-  func testPasswordlessResultCompletesOnlyAfterFirmwareNotRequired() {
+  @Test func passwordlessResultCompletesOnlyAfterFirmwareNotRequired() {
     var machine = CompanionStateMachine()
     _ = machine.start(bluetoothAvailable: true)
     _ = machine.didFindPeripheral()
@@ -163,12 +203,13 @@ final class CompanionStateMachineTests: XCTestCase {
     _ = machine.didDiscover(serviceFound: true, status: true, settings: true,
       trigger: true, auth: true, cameras: true)
     _ = machine.didReadCapability(Data([1, 2, 3, 0, 0, 0]))
-    XCTAssertEqual(machine.didAuthenticationNotRequired(),
-      [.subscribeStatus, .readStatus, .subscribeSettings, .subscribeCameras])
-    XCTAssertEqual(machine.phase, .ready)
+    let accepted = machine.didAuthenticationNotRequired()
+    #expect(accepted == [.subscribeStatus, .readStatus, .subscribeSettings, .subscribeCameras])
+    #expect(machine.phase == .ready)
+    #expect(machine.authenticationMode == .notRequired)
   }
 
-  func testPrivilegedCommandsRequireTheirAdvertisedCapability() throws {
+  @Test func privilegedCommandsRequireTheirAdvertisedCapability() throws {
     var machine = CompanionStateMachine()
     _ = machine.start(bluetoothAvailable: true)
     _ = machine.didFindPeripheral()
@@ -179,22 +220,31 @@ final class CompanionStateMachineTests: XCTestCase {
     // characteristic is available for a privileged command.
     _ = machine.didReadCapability(Data([1, 2, 0, 0, 0, 0]))
     _ = machine.beginAuthentication(password: "test", nonce: Data(repeating: 1, count: 16))
-    XCTAssertEqual(machine.didAuthenticationAccepted(), [.subscribeStatus, .readStatus])
-    XCTAssertThrowsError(try machine.privileged(.writeSettings(Data([0]))) )
-    XCTAssertThrowsError(try machine.privileged(.writeCamera(Data([0, 0xff]))) )
-    XCTAssertNoThrow(try machine.privileged(.writeTrigger(Data([1, 1]))) )
+    let accepted = machine.didAuthenticationAccepted()
+    #expect(accepted == [.subscribeStatus, .readStatus])
+    #expect(throws: FurbleProtocol.Error.self) {
+      try machine.privileged(.writeSettings(Data([0])))
+    }
+    #expect(throws: FurbleProtocol.Error.self) {
+      try machine.privileged(.writeCamera(Data([0, 0xff])))
+    }
+    #expect(throws: Never.self) {
+      try machine.privileged(.writeTrigger(Data([1, 1])))
+    }
   }
 
-  func testDisconnectClearsSensitiveStateAndReconnects() {
+  @Test func disconnectClearsSensitiveStateAndReconnects() {
     var machine = CompanionStateMachine()
     _ = machine.start(bluetoothAvailable: true)
     machine.didDisconnect()
-    XCTAssertEqual(machine.phase, .reconnecting(attempt: 1))
-    XCTAssertNil(machine.status)
-    XCTAssertEqual(machine.retry(attempt: 2), .scan)
+    #expect(machine.phase == .reconnecting(attempt: 1))
+    #expect(machine.status == nil)
+    #expect(machine.authenticationMode == nil)
+    let retry = machine.retry(attempt: 2)
+    #expect(retry == .scan)
   }
 
-  func testReconnectRequiresFreshCapabilityAndAuthentication() {
+  @Test func reconnectRequiresFreshCapabilityAndAuthentication() {
     var machine = CompanionStateMachine()
     _ = machine.start(bluetoothAvailable: true)
     _ = machine.didFindPeripheral()
@@ -205,9 +255,10 @@ final class CompanionStateMachineTests: XCTestCase {
     _ = machine.beginAuthentication(password: "test", nonce: Data(repeating: 3, count: 16))
     _ = machine.didAuthenticationAccepted()
     machine.didDisconnect()
-    XCTAssertEqual(machine.phase, .reconnecting(attempt: 1))
-    XCTAssertEqual(machine.didAuthenticationAccepted(), [])
-    XCTAssertEqual(machine.phase, .failed(.authenticationFailed))
+    #expect(machine.phase == .reconnecting(attempt: 1))
+    let accepted = machine.didAuthenticationAccepted()
+    #expect(accepted == [])
+    #expect(machine.phase == .failed(.authenticationFailed))
   }
 }
 

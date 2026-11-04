@@ -46,6 +46,138 @@ never rendered, printed, or copied into app preferences. **Delete password**
 removes the Keychain item and disconnects the BLE client. It reconnects only
 after a new password is saved.
 
+## macOS terminal CLI
+
+`FurbleCompanionCLI` is a Swift Package executable target. It reuses
+`FurbleCompanionCore` for the packet codecs, HMAC auth exchange,
+`CompanionStateMachine`, CoreBluetooth client, trigger hold state and Keychain
+storage; the CLI does not contain a second packet parser. It runs without
+Xcode, an iPhone, a signed app, or an AppKit window.
+
+Build and run it from this directory:
+
+```sh
+cd companion/apple
+swift build -c release --product furble-companion-cli
+.build/release/furble-companion-cli help
+```
+
+The debug `swift run furble-companion-cli ...` form also works during
+development. `swift build -c release` is preferable for an hour-long battery
+run because the release binary has no debug-build pause/symbol overhead.
+
+Common commands:
+
+```sh
+# List advertising furble devices by advertised name, macOS UUID and RSSI.
+.build/release/furble-companion-cli scan --scan-timeout 10
+
+# Connect, run the Auth begin/challenge/proof/result flow, then print status.
+.build/release/furble-companion-cli status --device Furble
+
+# One-shot phone-GPS fallback test.
+.build/release/furble-companion-cli location --device Furble \
+  --latitude 52.5 --longitude 13.4 --altitude 34 --accuracy 5 --age-ms 100
+
+# Press and release shutter/focus on the same authenticated link.
+.build/release/furble-companion-cli trigger shutter --device Furble --hold-ms 500
+.build/release/furble-companion-cli trigger focus --device Furble --hold-ms 500
+
+# Read-only long-run power observation. Rows are flushed as they are written.
+.build/release/furble-companion-cli monitor --device Furble \
+  --interval 5 --duration 3600 --csv --label "GPS off" > gps-off.csv
+
+# Stop at 1% battery or when the retry window expires after power-off.
+.build/release/furble-companion-cli monitor --device Furble \
+  --interval 5 --until-empty --csv --label "always-on" > always-on.csv
+```
+
+`--device` accepts a case-insensitive name substring or the macOS peripheral
+UUID printed by `scan`. macOS exposes a per-host peripheral UUID rather than
+the BLE MAC address. Without `--device`, the CLI scans and requires exactly one
+matching furble device.
+
+### Monitor CSV
+
+`monitor --csv` writes only rows to stdout. Progress, warnings and the final
+summary go to stderr, so `> file.csv` remains clean. The header is:
+
+```text
+host_time_iso,host_elapsed_s,uptime_s,battery_percent,battery_mv,battery_ma,gps_source,gps_satellites,control_state,rssi,label
+```
+
+Example row:
+
+```text
+2026-11-04T12:34:56Z,300.2,1234,87,4012,0,2,0,0,-61,GPS off
+```
+
+`battery_ma` is the raw signed firmware field. Some firmware has no PMIC
+current backend and reports 0; the CLI does not derive or invent a current. It
+prints a one-time stderr warning if the first sample is 0 mA. Use
+`battery_percent`, `battery_mv` and their slope over time. `rssi` is the
+connected-link RSSI requested every sample and may be empty until the first
+reply.
+
+A BLE drop does not end the run. The CLI emits a marker row with empty
+measurement fields and a `label` of `link-lost`, then retries with exponential
+backoff (1, 2, 4 ... 30 s) through the shared client's scan/auth path. A
+successful reconnect adds a `reconnected` marker. The run stops cleanly with `retry-exhausted` after
+`--retry-window` seconds (default 180) without a reachable device, with
+`status-timeout` if notifications stop, or with `battery-empty` when
+`--until-empty` sees 1% or less. A duration/until-empty/device-power-off stop
+exits 0; usage, Bluetooth and authentication failures are non-zero.
+
+Graph a CSV without matplotlib:
+
+```sh
+python3 ../../tools/plot_companion_power.py gps-off.csv -o gps-off.svg
+# Optional PNG when matplotlib is installed; the SVG is always written.
+python3 ../../tools/plot_companion_power.py gps-off.csv \
+  -o gps-off.svg --png gps-off.png
+```
+
+The SVG has battery percent and millivolts panels, phase-label changes and
+reconnect markers. `tests/test_plot_companion_power.py` covers CSV parsing and
+SVG generation with a synthetic fixture. The full charge-to-empty procedure
+(GPS off, receiver standby 5 s, always-on, USB disconnected, constant screen
+and BLE state) is in `docs/companion.md`.
+
+### Password handling
+
+The CLI never prints, echoes or logs the companion password. Sources, in
+precedence order:
+
+```text
+--password VALUE       visible in the process list; avoid on shared machines
+--password-file PATH   first line of the file
+--password-env VAR     named environment variable
+--password-stdin       standard input
+FURBLE_COMPANION_PASSWORD (used when no explicit source is given)
+login Keychain item    service com.furble.companion, account furble-password
+```
+
+Use `password set` to prompt without echo and store it in the login Keychain,
+`password status` to print only `set`/`unset`, and `password delete` to remove
+the local item. The CLI's unsandboxed Keychain item is separate from the
+signed app's shared access-group item.
+
+When the firmware companion password is unset, the Auth exchange returns the
+explicit `not required` result and the CLI authenticates without a local
+password. When the firmware requires a password and none is supplied, the CLI
+exits non-zero with instructions instead of downgrading the link.
+
+### macOS permissions
+
+The terminal application that launches the CLI needs Bluetooth permission in
+**System Settings > Privacy & Security > Bluetooth**. The first CoreBluetooth
+use prompts for it. A rebuilt binary started through a different terminal path
+can cause a new TCC prompt; the stable installed path is easier to manage.
+If permission is denied, `scan` exits with the Bluetooth-unavailable code and a
+pointing error. The CLI is read-only while monitoring but still performs the
+normal BLE link encryption and pairing required by the firmware Auth
+characteristic.
+
 ## Host tests
 
 ```sh
@@ -54,7 +186,17 @@ swift test
 ```
 
 The command needs the Swift toolchain and CryptoKit. It does not need an Apple
-account, code signing, an iPhone, or a Bluetooth peripheral.
+account, code signing, an iPhone, or a Bluetooth peripheral. The Swift tests
+use Swift Testing and cover the frozen codecs, HMAC auth state machine, Keychain
+policy state, device selection, CLI parsing, monitor stop policy, CSV rows and
+markers. `tests/test_plot_companion_power.py` separately covers CSV parsing and
+SVG generation for the plotter.
+
+On a Command Line Tools-only host the package manifest loads that toolchain's
+matching Swift Testing macro plugin explicitly, so `swift test` works without a
+full Xcode install. A full Xcode install keeps SwiftPM's normal plugin
+discovery. The iOS/macOS SwiftUI app still needs Xcode; only the package and CLI
+are available from Command Line Tools.
 
 ## Native Xcode project
 
@@ -90,6 +232,25 @@ xcodebuild -project FurbleCompanion.xcodeproj -scheme FurbleCompanion-macOS \
   build-for-testing
 ```
 
+Run the unsigned macOS app locally after `xcodegen`:
+
+```sh
+cd companion/apple
+scripts/generate-xcode-project.sh
+xcodebuild -project FurbleCompanion.xcodeproj -scheme FurbleCompanion-macOS \
+  -configuration Debug -derivedDataPath build \
+  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+open build/Build/Products/Debug/FurbleCompanion-macOS.app
+```
+
+This needs a full Xcode installation; Command Line Tools alone cannot compile
+the SwiftUI macros or run `xcodebuild`. The app is unsigned in that command.
+macOS may still ask for Bluetooth permission the first time, and a rebuilt
+unsigned bundle can be treated as a different client by TCC. If the app cannot
+read its shared Keychain group unsigned, use the terminal CLI for password and
+protocol testing; the CLI deliberately uses an unsandboxed login Keychain item.
+No signing identity, certificate, or provisioning profile is added.
+
 The Apple workflow also uploads `furble-companion-macos-debug-unsigned` after
 the macOS tests pass. It contains a zip of the unsigned Debug app, a SHA-256
 checksum, and source/Xcode provenance. This artifact is for CI companion
@@ -119,3 +280,12 @@ targets. Simulator builds do not exercise CoreBluetooth, Keychain entitlements,
 pairing, or real location delivery. OTA remains intentionally absent from this
 client foundation until the firmware OTA trust and signed-image policy are
 complete.
+
+The macOS CLI is host-tested but was not exercised against the StickS3 in this
+worktree. The firmware Auth characteristic requires an encrypted/bonded link,
+so the Mac must complete the OS pairing prompt before `status` or `monitor` can
+authenticate. The terminal application needs Bluetooth permission. The bench
+has no camera attached: camera list/state decoding is tested, but camera
+command success cannot be certified here. Battery runs also require USB to be
+disconnected; the CSV's `battery_ma` may be 0 because the firmware has no PMIC
+current backend. The full procedure is in `docs/companion.md`.

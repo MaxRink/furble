@@ -76,6 +76,101 @@ Platform behavior:
   service with `foregroundServiceType="location"`, the matching permissions, a
   notification, and a field test.
 
+## Apple macOS terminal companion
+
+`companion/apple` also builds `furble-companion-cli`, a headless macOS client
+that shares `FurbleCompanionCore` with the native SwiftUI app. It uses the same
+frozen UUIDs, status/location/camera codecs, HMAC Auth exchange, CoreBluetooth
+client and state machine. The CLI is intended for bench testing from a Mac
+terminal; it does not replace the signed iOS app.
+
+```sh
+cd companion/apple
+swift build -c release --product furble-companion-cli
+.build/release/furble-companion-cli scan --scan-timeout 10
+.build/release/furble-companion-cli status --device Furble
+```
+
+It can send a phone-GPS fallback fix, press/release shutter or focus, and poll
+status notifications. The companion password comes from an argument,
+environment variable, file, stdin or the login Keychain, and is never printed.
+A firmware whose companion password is unset returns the explicit
+`not required` Auth result; a firmware that requires a password and receives
+none fails closed with a non-zero exit instead of downgrading.
+
+The macOS terminal needs Bluetooth permission. macOS exposes a per-host
+peripheral UUID rather than a BLE MAC address, so `--device` accepts the UUID
+from `scan` or an advertised name substring. No camera needs to be attached for
+status and power monitoring; camera command success cannot be certified from a
+bench without a real camera.
+
+## Battery observation run
+
+`monitor` is a read-only long-run mode. It keeps the authenticated BLE link and
+status subscription alive, samples notifications at `--interval`, and writes
+one CSV row per sample. It does not write settings, issue camera commands,
+send location fixes or trigger the shutter. Reconnects use the shared client's
+scan/auth path with 1, 2, 4 ... 30 s backoff; a drop adds a marker row instead
+of ending the run.
+
+CSV columns:
+
+```text
+host_time_iso,host_elapsed_s,uptime_s,battery_percent,battery_mv,battery_ma,gps_source,gps_satellites,control_state,rssi,label
+2026-11-04T12:34:56Z,300.2,1234,87,4012,0,2,0,0,-61,GPS off
+```
+
+The firmware `battery_ma` field is reported raw. Some builds have no PMIC
+current backend and return 0; the CLI prints a one-time stderr warning and
+never derives a current. The useful battery signal is the percentage and
+millivolt slope over time.
+
+Procedure for a comparable drain run:
+
+1. Charge the controller to 100% with USB attached. Open Companion mode and
+   run `status` once to confirm authentication, battery percentage and the
+   expected firmware build.
+2. Choose one BLE/GPS configuration per run: GPS off (`Settings > GPS > GPS`
+   off), GPS on with receiver standby 5 s (`Settings > GPS > Power saving >
+   Receiver: Standby (PCAS12)`, `Sleep between fixes: 5 s`), or GPS always on
+   (`Receiver: Always on`). Keep the screen brightness, display timeout, BLE
+   interval, camera connection state and companion activity constant across
+   runs.
+3. Disconnect USB before starting the measured run. A run started while USB is
+   attached measures charging, not drain.
+4. Start the watcher before or immediately after unplugging USB. Use at least
+   an hour for a trend, or `--until-empty` for a full drain:
+
+   ```sh
+   .build/release/furble-companion-cli monitor --device Furble \
+     --interval 5 --duration 3600 --csv --label "GPS off" > gps-off.csv
+   .build/release/furble-companion-cli monitor --device Furble \
+     --interval 5 --until-empty --csv --label "GPS standby 5s" > standby-5s.csv
+   ```
+
+5. Keep the Mac awake and the terminal attached. The CLI flushes every row, so
+   the CSV remains usable during the run and after an unexpected host restart.
+   A transient BLE drop produces `link-lost`/`reconnected` marker rows; after
+   `--retry-window` seconds with no reachable device it writes
+   `retry-exhausted` and exits 0.
+6. A full drain ends with the controller powering off. The watcher cannot
+   receive a final 0% sample; it stops after the bounded retry window. If the
+   last notification reports 1% or less with `--until-empty`, it writes a
+   `battery-empty` marker.
+7. Recharge the controller with USB attached. Repeat steps 1-6 for the other
+   GPS configurations, then graph each CSV:
+
+   ```sh
+   python3 tools/plot_companion_power.py gps-off.csv -o gps-off.svg
+   python3 tools/plot_companion_power.py standby-5s.csv -o standby-5s.svg
+   ```
+
+BLE itself adds a small, roughly constant load while the link is up, and the
+Mac's radio/connection interval affects it. Compare runs with the same monitor
+interval and the same Mac distance; do not subtract `battery_ma` when it is 0.
+A full-drain run also cooks the battery at low voltage for the final minutes,
+so prefer a 60-90 minute partial run when only comparing GPS policies.
+
 Phone location is not a replacement for a good antenna. It is the fallback for
 places where no receiver can hear the satellites.
 
