@@ -803,11 +803,13 @@ range with its basis, not a claim.
   and jam indicator on the diagnostics page. Use a confirmed antenna fault to
   trigger G-04, not to change receiver settings directly.
 - **Current behavior.** `gps monhw` polls and decodes the CASIC 2.14.2 layout:
-  `agcData0` at 12, `antStatus` at 20, and the jamming word at 24. The offsets
-  are specification-derived; the live field values still need a hardware
-  comparison. `$GPTXT ANTENNA OPEN` was observed continuously on the v1.1 unit.
-- **Evidence.** `measured` for the GPTXT line; `spec` plus code for the MON-HW
-  layout; `unknown` for the live status-bit mapping.
+  `agcData0` at 12, `antStatus` at 20, and the jamming word at 24. A live
+  AT6668 returned a valid 56-byte payload with `noise=0 agc=18 antenna=0 jam=0`
+  on 2026-11-04, so the offsets are live-confirmed. The meaning of the antenna
+  and jam status bits still needs a qualified antenna comparison. `$GPTXT
+  ANTENNA OPEN` was observed continuously on the v1.1 unit.
+- **Evidence.** `measured` for the GPTXT line and the live MON-HW decode;
+  `spec` plus code for the layout; `unknown` for the status-bit mapping.
 - **Estimated saving.** No direct saving. It lets G-04 distinguish "no sky" from
   "no antenna" and avoid running a deaf receiver at full power.
 - **Risk.** A wrong decode could mislead the policy. Keep it diagnostic until
