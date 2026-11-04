@@ -241,10 +241,12 @@ class FurbleProtocolTest {
         assertEquals(FurbleProtocol.SettingType.BLOB, FurbleSettingMetadata.byWireId[7]?.wireType)
         assertEquals(listOf("Dark", "Default", "Mono Furble"), FurbleSettingMetadata.byWireId[3]?.stringOptions)
         assertEquals(FurbleProtocol.SettingType.UINT8, FurbleSettingMetadata.byWireId[42]?.wireType)
-        assertEquals(listOf(0, 1, 2, 3, 4, 5, 6, 7, 8, 9),
+        assertEquals((0..39).toList(),
             FurbleSettingMetadata.byWireId[42]?.options?.map { it.value })
+        assertEquals("Auto (GPS)", FurbleSettingMetadata.byWireId[42]?.options?.last()?.label)
         assertTrue(FurbleProtocol.isSettingValueValid(42, FurbleProtocol.SettingType.UINT8, byteArrayOf(1)))
-        assertFalse(FurbleProtocol.isSettingValueValid(42, FurbleProtocol.SettingType.UINT8, byteArrayOf(10)))
+        assertTrue(FurbleProtocol.isSettingValueValid(42, FurbleProtocol.SettingType.UINT8, byteArrayOf(39)))
+        assertFalse(FurbleProtocol.isSettingValueValid(42, FurbleProtocol.SettingType.UINT8, byteArrayOf(40)))
         assertFalse(
             FurbleProtocol.SettingRecord(45, FurbleProtocol.SettingType.UINT8, byteArrayOf(4)).editable,
         )

@@ -171,6 +171,13 @@ int main() {
   check(!service(2000 + AUTO_MIN_UPDATE_MS + AUTO_RETAIN_MS), "the derived zone is still fresh");
   check(service(2000 + AUTO_MIN_UPDATE_MS + AUTO_RETAIN_MS + 1), "an old derived zone expires");
   check((current() == Id::UTC) && (source() == Source::UTC), "auto falls back to UTC");
+  check(updateAuto(52.52, 13.40, 2000 + AUTO_MIN_UPDATE_MS + AUTO_RETAIN_MS + 2),
+        "a fresh fix re-applies after expiry");
+  check(current() == Id::EUROPE_BERLIN, "the re-applied zone is Berlin");
+  check(updateAuto(-60.0, -30.0, 2000 + AUTO_MIN_UPDATE_MS + AUTO_RETAIN_MS + 3),
+        "a fresh out-of-radius fix falls back to UTC");
+  check((current() == Id::UTC) && (source() == Source::UTC),
+        "auto clears the derived zone outside the snap radius");
 
   check(apply(Id::EUROPE_BERLIN), "manual selection applies");
   check(!updateAuto(40.71, -74.01, 1000 + AUTO_MIN_UPDATE_MS), "manual wins over a GPS candidate");

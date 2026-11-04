@@ -11,6 +11,7 @@
 
 #include "FurbleProvision.h"
 #include "FurbleSettings.h"
+#include "FurbleTimezone.h"
 #include "nvs.h"
 #include "protocol/ProvisionTLV.h"
 
@@ -321,6 +322,7 @@ void testDomainValidation() {
       {SettingValue {72, ValueType::U8, {4}},                      "IMU wake gesture must be 0, 1, 2 or 3"   },
       {SettingValue {69, ValueType::U8, {5}},                      "GPS platform setting must be 0 through 4"},
       {SettingValue {65, ValueType::U8, {3}},                      "legend setting must be 0, 1 or 2"        },
+      {SettingValue {42, ValueType::U8, {40}},                     "time zone setting is out of range"       },
   };
 
   ProvisionBundle offBundle;
@@ -331,6 +333,16 @@ void testDomainValidation() {
   check(apply(offBundle, offReport), "Legend Off value provisions");
   check(Furble::Settings::load<uint8_t>(Furble::Settings::LEGEND) == Furble::Settings::LEGEND_OFF,
         "Legend Off value reaches the store");
+
+  ProvisionBundle autoBundle;
+  autoBundle.settings = {
+      {42, ValueType::U8, {static_cast<uint8_t>(Furble::Timezone::Id::AUTO)}}
+  };
+  ApplyReport autoReport;
+  check(apply(autoBundle, autoReport), "Auto time zone provisions");
+  check(Furble::Settings::load<uint8_t>(Furble::Settings::TIMEZONE)
+            == static_cast<uint8_t>(Furble::Timezone::Id::AUTO),
+        "Auto time zone reaches the store");
 
   for (const auto &entry : cases) {
     ProvisionBundle bundle;

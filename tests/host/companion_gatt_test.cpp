@@ -604,6 +604,17 @@ void testCompanionGattFlow(void) {
           "settings response acknowledges the Brightness TLV");
   }
 
+  central.clearEvents();
+  check(central.write(SETTINGS_UUID, {2, 42, 1, 40}),
+        "companion routes an out-of-range time zone write");
+  check(Furble::Settings::load<uint8_t>(Furble::Settings::TIMEZONE) == 0,
+        "companion rejects a time zone above Auto without persisting it");
+
+  central.clearEvents();
+  check(central.write(SETTINGS_UUID, {2, 42, 1, 39}), "companion routes the Auto time zone write");
+  check(Furble::Settings::load<uint8_t>(Furble::Settings::TIMEZONE) == 39,
+        "companion persists the Auto time zone");
+
   const std::string priorSsid = Furble::Settings::load<std::string>(Furble::Settings::WIFI_SSID);
   std::vector<uint8_t> oversizedSsid = {2, 52, 33};
   oversizedSsid.insert(oversizedSsid.end(), 33, 0x78);

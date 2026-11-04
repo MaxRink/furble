@@ -361,7 +361,16 @@ bool updateAuto(double latitude, double longitude, uint32_t now_ms) {
 
   Id candidate = Id::UTC;
   if (!nearest(latitude, longitude, candidate)) {
-    return false;
+    // A fresh fix outside the snap radius must fall back to UTC immediately.
+    // Keeping the previous derived zone would apply a zone the current
+    // location is not in until the retention window expires.
+    if (!g_AutoValid) {
+      return false;
+    }
+    g_AutoValid = false;
+    g_AutoZone = Id::UTC;
+    g_AutoSeenMs = now_ms;
+    return refreshLocked();
   }
 
   if (g_AutoValid && (candidate != g_AutoZone)

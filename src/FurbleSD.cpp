@@ -441,7 +441,7 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
       return true;
 
     case Settings::TIMEZONE:
-      if (!parseUnsigned(text, static_cast<uint64_t>(Timezone::ZONE_COUNT - 1), value)) {
+      if (!parseUnsigned(text, static_cast<uint64_t>(Timezone::Id::AUTO), value)) {
         return false;
       }
       Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
