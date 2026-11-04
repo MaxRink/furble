@@ -650,10 +650,21 @@ extension FurbleBLEClient: @preconcurrency CBPeripheralDelegate {
   public func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic,
                          error: Error?) {
     guard isCurrent(peripheral) else { return }
-    if error != nil { fail(.malformedPacket); return }
+    if let error {
+      fail(CompanionErrorMapping.failure(for: error))
+      return
+    }
     if characteristic.uuid == CBUUID(string: FurbleProtocol.UUIDs.auth), authBeginPending {
       guard characteristic.isNotifying else { fail(.authenticationUnavailable); return }
       writeAuthBegin(to: characteristic)
+    }
+  }
+
+  public func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic,
+                         error: Error?) {
+    guard isCurrent(peripheral) else { return }
+    if let error {
+      fail(CompanionErrorMapping.failure(for: error))
     }
   }
 }

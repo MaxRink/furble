@@ -310,15 +310,20 @@ enum CLIEntry {
     guard let capability = client.state.capability else {
       throw RunError(message: "the device did not report companion capabilities", code: .failure)
     }
+    // The BLE client resets its state machine when a camera transaction fails.
+    // Snapshot the authenticated report fields first, or a timeout would print
+    // "not authenticated" and "cameras unsupported" alongside the timeout.
+    let authentication = client.state.authenticationMode
+    let cameraListSupported = client.state.supportsCameras
     let cameras = loadCameraCatalog(client)
     let report = CLIStatusReport(
       device: device,
       status: status,
       capability: capability,
-      authentication: client.state.authenticationMode,
+      authentication: authentication,
       passwordOrigin: passwordOrigin,
       cameras: client.cameras,
-      cameraListSupported: client.state.supportsCameras,
+      cameraListSupported: cameraListSupported,
       cameraListError: client.state.cameraListError,
       cameraOperationError: cameras.operationError)
     print(CLIReport.status(report))

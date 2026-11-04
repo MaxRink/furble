@@ -27,6 +27,13 @@ struct CompanionErrorMappingTests {
     #expect(CompanionErrorMapping.failure(for: error) == .linkSecurityFailed)
   }
 
+  @Test func securityFailureHasActionableLocalizedText() {
+    let text = CompanionFailure.linkSecurityFailed.localizedDescription
+    #expect(text.contains("pairing prompt"))
+    #expect(text.contains("Mac"))
+    #expect(!text.contains("malformed"))
+  }
+
   @Test func otherTransportErrorsAreLinkLosses() {
     let error = NSError(
       domain: CBATTErrorDomain,
