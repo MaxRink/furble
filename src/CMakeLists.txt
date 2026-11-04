@@ -30,6 +30,8 @@ set(furble_sources
     FurbleNetworkSettings.cpp
     FurbleTimeKeeper.cpp
     FurbleTimeKeeperPolicy.cpp
+    FurbleTimezone.cpp
+    FurbleTimezoneGPS.cpp
     ../lib/furble/protocol/ProvisionTLV.cpp
     FurbleWiFi.cpp
     main.cpp)

@@ -236,6 +236,7 @@ bool Ricoh::_connect(void) {
   if (pSvc != nullptr) {
     m_Power = pSvc->getCharacteristic(POWER_CHR_UUID);
     m_OperationMode = pSvc->getCharacteristic(OPERATION_MODE_CHR_UUID);
+    m_DateTime = pSvc->getCharacteristic(DATE_TIME_CHR_UUID);
     m_GeotagEnable = pSvc->getCharacteristic(GEOTAG_ENABLE_CHR_UUID);
   } else {
     ESP_LOGW(LOG_TAG, "Ricoh Camera service unavailable");
@@ -316,6 +317,7 @@ void Ricoh::_disconnect(void) {
 void Ricoh::clearRemoteState(void) {
   m_Power = nullptr;
   m_OperationMode = nullptr;
+  m_DateTime = nullptr;
   m_ShootingFlavor = nullptr;
   m_OperationRequest = nullptr;
   m_CaptureStatus = nullptr;
@@ -329,6 +331,7 @@ void Ricoh::clearRemoteState(void) {
   m_CapturesCompleted = 0;
   m_LastGpsWriteMs = 0;
   m_HasGpsWrite = false;
+  m_HasClockWrite = false;
 }
 
 bool Ricoh::writeByte(NimBLERemoteCharacteristic *pChr, uint8_t value, const char *label) {
@@ -479,10 +482,6 @@ void Ricoh::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
     ESP_LOGW(LOG_TAG, "Ricoh GPS skipped: not connected");
     return;
   }
-  if (m_GpsInfo == nullptr || !m_GpsInfo->canWrite()) {
-    ESP_LOGW(LOG_TAG, "Ricoh GPS characteristic unavailable");
-    return;
-  }
   if (!std::isfinite(gps.latitude) || !std::isfinite(gps.longitude) || !std::isfinite(gps.altitude)
       || !validTimesync(timesync)) {
     ESP_LOGW(LOG_TAG,
@@ -494,10 +493,30 @@ void Ricoh::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
   }
 
   // The Date Time characteristic carries local wall-clock time and has no
-  // timezone field. Furble only has UTC from GPS and no timezone source, so a
-  // write here would set the camera wrong by the user's offset. The encoder and
-  // its vector are kept in RicohProtocol for the day a local-time source exists;
-  // do not reintroduce the write without one.
+  // timezone field. Write it when the local minute changes, so a connected
+  // camera follows the selected zone without a BLE write every GPS tick.
+  const bool clockDue = !m_HasClockWrite || (m_LastClock.local.year != timesync.local.year)
+                        || (m_LastClock.local.month != timesync.local.month)
+                        || (m_LastClock.local.day != timesync.local.day)
+                        || (m_LastClock.local.hour != timesync.local.hour)
+                        || (m_LastClock.local.minute != timesync.local.minute);
+  if (clockDue && m_DateTime != nullptr && m_DateTime->canWrite()) {
+    const auto packet = RicohProtocol::encodeDateTime(timesync.local.year, timesync.local.month,
+                                                      timesync.local.day, timesync.local.hour,
+                                                      timesync.local.minute, timesync.local.second);
+    if (gattWrite(m_DateTime, packet.data(), packet.size(), true)) {
+      m_HasClockWrite = true;
+      m_LastClock = timesync;
+      ESP_LOGI(LOG_TAG, "Ricoh local clock %04u-%02u-%02u %02u:%02u:%02u", timesync.local.year,
+               timesync.local.month, timesync.local.day, timesync.local.hour, timesync.local.minute,
+               timesync.local.second);
+    }
+  }
+
+  if (m_GpsInfo == nullptr || !m_GpsInfo->canWrite()) {
+    ESP_LOGW(LOG_TAG, "Ricoh GPS characteristic unavailable");
+    return;
+  }
 
   const uint32_t nowMs = static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
   const bool moved = !m_HasGpsWrite

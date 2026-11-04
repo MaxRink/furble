@@ -128,6 +128,7 @@ int main() {
         .minute = 34,
         .second = 56,
         .centisecond = 0,
+        .local = {2026, 8, 17, 14, 34, 56, 0},
     };
     client.updateGeoData(gps, time);
 
@@ -140,7 +141,7 @@ int main() {
     expected.push_back(0x07);
     expected.push_back(0x08);
     expected.push_back(0x11);
-    expected.push_back(0x0c);
+    expected.push_back(0x0e);
     expected.push_back(0x22);
     expected.push_back(0x38);
     if (!check(peer.lastGeotag() == expected, "the geotag payload is written byte for byte")) {

@@ -1,0 +1,24 @@
+# Automatic time zone from a fresh wired GPS fix.
+#
+# The simulator feeds a fixed Munich-area NMEA fix. Auto must derive the
+# Europe/Berlin zone, report the GPS source, and keep the manual selection
+# visible in the Time page. A second pass overrides the selection manually and
+# proves GPS cannot steal it back.
+seed gps true
+seed gps_uart_mode ack
+seed timezone 39
+wait 2200
+
+assert ui.timezone_selection auto
+assert ui.timezone_source gps
+assert ui.timezone_derived Europe/Berlin
+assert ui.timezone Europe/Berlin
+
+action nav settings
+wait 300
+action nav time
+wait 500
+assert ui.page time
+assert ui.cut_labels 0
+
+exit

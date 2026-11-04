@@ -124,10 +124,10 @@ capture establishes the requirement.
   Furble uses it as an operational promotion, not a proven registration
   flag.
 - Furble answers the `F9150137` `01 00` request with the 12-byte UTC packet on
-  `C52EDBCE`, offset zero and DST off. The 7-byte local form on `B9BFD37F` is
-  not written: it expects wall-clock time and Furble has no timezone source, so
-  a body without a writable UTC characteristic keeps its clock unchanged. The
-  physical clock effect is capture-gated.
+  `C52EDBCE`. The UTC fields are unchanged and the packet carries the selected
+  zone's standard offset and DST flag. The 7-byte local form on `B9BFD37F` is
+  not written because its layout is unverified. The physical clock effect is
+  capture-gated.
 
 ## Sources
 

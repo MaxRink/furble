@@ -228,23 +228,21 @@ bool Fujifilm::sendTimeData(void) {
         m_LastTimesync.hour,
         m_LastTimesync.minute,
         m_LastTimesync.second,
-        0,
-        0,
+        m_LastTimesync.tz_standard_offset_minutes,
+        static_cast<uint8_t>(m_LastTimesync.dst ? 1 : 0),
     };
     const auto packet = FujifilmProtocol::encodeTime(input);
     if (gattWrite(pChr, packet.data(), packet.size(), true)) {
-      ESP_LOGI(LOG_TAG, "Sent UTC time packet");
+      ESP_LOGI(LOG_TAG, "Sent UTC time packet (offset %d min, dst %u)",
+               m_LastTimesync.tz_standard_offset_minutes, m_LastTimesync.dst ? 1U : 0U);
       return true;
     }
     return false;
   }
 
-  // The local-time characteristic (B9BFD37F) has no offset field and expects
-  // wall-clock time. Furble only has UTC, so writing the cached fields there
-  // would set a camera in any non-UTC timezone wrong. If the body exposes no
-  // writable UTC characteristic, leave its clock alone until a local-time
-  // source exists, and treat the request as answered so it is not retried on
-  // every GPS tick.
+  // The local-time characteristic (B9BFD37F) has no offset field. Its 7-byte
+  // layout is not verified, so it stays unwritten. The 12-byte UTC packet above
+  // carries the standard offset and DST flag for bodies that expose it.
   return true;
 }
 
@@ -301,9 +299,10 @@ void Fujifilm::sendGeoData(const gps_t &gps, const timesync_t &timesync) {
   }
 
   if (pChr->canWrite()) {
-    const FujifilmProtocol::GeotagInput input = {gps.latitude,  gps.longitude,   gps.altitude,
-                                                 timesync.year, timesync.month,  timesync.day,
-                                                 timesync.hour, timesync.minute, timesync.second};
+    const FujifilmProtocol::GeotagInput input = {
+        gps.latitude,        gps.longitude,         gps.altitude,
+        timesync.local.year, timesync.local.month,  timesync.local.day,
+        timesync.local.hour, timesync.local.minute, timesync.local.second};
     const auto geotag = FujifilmProtocol::encodeGeotag(input);
     const int32_t latitude = static_cast<int32_t>(gps.latitude * 10000000);
     const int32_t longitude = static_cast<int32_t>(gps.longitude * 10000000);

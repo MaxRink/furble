@@ -297,6 +297,10 @@ bool FujifilmVirtualCamera::utcTimeWritten() const {
   return m_UtcTimeWritten;
 }
 
+const std::vector<uint8_t> &FujifilmVirtualCamera::lastUtcTime() const {
+  return m_LastUtcTime;
+}
+
 bool FujifilmVirtualCamera::powerRequestWritten() const {
   return m_PowerRequestWritten;
 }
@@ -895,6 +899,7 @@ bool FujifilmVirtualCamera::write(NimBLEClient &client,
       result = (offset >= -2400) && (offset <= 2400) && (value[11] < 2);
       if (result) {
         m_UtcTimeWritten = true;
+        m_LastUtcTime = value;
       }
     }
   } else if (matches(service, shutterServiceUUID())

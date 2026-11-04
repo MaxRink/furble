@@ -113,6 +113,8 @@ set(FURBLE_SOURCES
     "${FURBLE_ROOT}/src/FurbleSpinValue.cpp"
     "${FURBLE_ROOT}/src/FurbleTimeKeeper.cpp"
     "${FURBLE_ROOT}/src/FurbleTimeKeeperPolicy.cpp"
+    "${FURBLE_ROOT}/src/FurbleTimezone.cpp"
+    "${FURBLE_ROOT}/src/FurbleTimezoneGPS.cpp"
     "${FURBLE_ROOT}/src/FurbleUI.cpp"
     "${FURBLE_ROOT}/src/FurbleUIBulb.cpp"
     "${FURBLE_ROOT}/src/FurbleUIGesture.cpp"

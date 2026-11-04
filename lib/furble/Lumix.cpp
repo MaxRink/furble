@@ -13,6 +13,7 @@
 #include "Device.h"
 #include "Lumix.h"
 #include "protocol/AdvertisementProtocol.h"
+#include "protocol/UtcTime.h"
 
 namespace Furble {
 
@@ -35,16 +36,9 @@ namespace {
 // Seconds from 1970-01-01 (Unix epoch) to 1980-01-06 (GPS epoch).
 constexpr uint32_t GPS_EPOCH_OFFSET = 315964800;
 
-time_t toUnixTime(const Camera::timesync_t &timesync) {
-  struct tm time = {};
-  time.tm_sec = static_cast<int>(timesync.second);
-  time.tm_min = static_cast<int>(timesync.minute);
-  time.tm_hour = static_cast<int>(timesync.hour);
-  time.tm_mday = static_cast<int>(timesync.day);
-  time.tm_mon = static_cast<int>(timesync.month - 1);
-  time.tm_year = static_cast<int>(timesync.year - 1900);
-  time.tm_isdst = -1;
-  return mktime(&time);
+int64_t toUnixTime(const Camera::timesync_t &timesync) {
+  return UtcTime::epochSeconds(timesync.year, timesync.month, timesync.day, timesync.hour,
+                               timesync.minute, timesync.second);
 }
 
 }  // namespace
@@ -356,7 +350,7 @@ void Lumix::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
     return;
   }
 
-  const time_t unixTime = toUnixTime(timesync);
+  const int64_t unixTime = toUnixTime(timesync);
   const bool timeValid = unixTime >= GPS_EPOCH_OFFSET;
 
   // The clock request is independent of the location gate and of the location
@@ -365,16 +359,17 @@ void Lumix::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
   const bool clockReady = (m_ClockRequest == nullptr) || m_ClockReady.load();
   if (timeValid && clockReady && m_Clock != nullptr && m_Clock->canWrite()) {
     clock_t clock = {
-        .year = static_cast<uint16_t>(timesync.year),
-        .month = static_cast<uint8_t>(timesync.month),
-        .day = static_cast<uint8_t>(timesync.day),
-        .hour = static_cast<uint8_t>(timesync.hour),
-        .minute = static_cast<uint8_t>(timesync.minute),
-        .second = static_cast<uint8_t>(timesync.second),
+        .year = static_cast<uint16_t>(timesync.local.year),
+        .month = static_cast<uint8_t>(timesync.local.month),
+        .day = static_cast<uint8_t>(timesync.local.day),
+        .hour = static_cast<uint8_t>(timesync.local.hour),
+        .minute = static_cast<uint8_t>(timesync.local.minute),
+        .second = static_cast<uint8_t>(timesync.local.second),
         // The official app writes the standard offset at bytes 7 to 8 and a
-        // DST flag at byte 9. Furble has no timezone source, so both are zero.
-        .tz_offset = 0,
-        .dst = 0,
+        // DST flag at byte 9. Send the standard offset, not the current one,
+        // so the camera does not add an hour a second time when dst is set.
+        .tz_offset = timesync.tz_standard_offset_minutes,
+        .dst = static_cast<uint8_t>(timesync.dst ? 1 : 0),
     };
     m_Clock->writeValue(reinterpret_cast<const uint8_t *>(&clock), sizeof(clock), true);
   }

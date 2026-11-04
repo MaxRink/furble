@@ -163,6 +163,7 @@ int main(int argc, char **argv) {
                 .minute = 34,
                 .second = 56,
                 .centisecond = 0,
+                .local = {2026, 8, 17, 12, 34, 56, 0},
             };
             client.updateGeoData(gps, time);
           }

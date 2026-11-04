@@ -35,10 +35,21 @@ bool run(Furble::Host::SonyVirtualCamera &peer,
     return false;
   }
   const Furble::Camera::gps_t gps = {52.5, 13.4, 34.0, 8};
-  const Furble::Camera::timesync_t time = {2026, 11, 1, 12, 34, 56, 0};
+  const Furble::Camera::timesync_t time = {
+      2026, 11, 1, 12, 34, 56, 0, {2026, 11, 1, 13, 34, 56, 0},
+             120, 60, 60, true
+  };
   camera.updateGeoData(gps, time);
-  return check(peer.lastLocationForm() == expected, "the selected location form is used")
-         && check(peer.lastLocation().size() == expectedBytes, "the location length is correct");
+  bool passed =
+      check(peer.lastLocationForm() == expected, "the selected location form is used")
+      && check(peer.lastLocation().size() == expectedBytes, "the location length is correct");
+  if (expectedBytes == 95) {
+    const auto &location = peer.lastLocation();
+    passed &= check((location[91] == 0x00) && (location[92] == 0x78) && (location[93] == 0x00)
+                        && (location[94] == 0x3c),
+                    "the 95-byte form carries the current offset and DST difference");
+  }
+  return passed;
 }
 
 }  // namespace

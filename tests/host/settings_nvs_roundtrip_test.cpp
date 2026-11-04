@@ -121,6 +121,9 @@ StorageKind storageKindFor(Settings::type_t type) {
     case Settings::AUTO_OFF:
     case Settings::LOW_BATT:
     case Settings::IMU_WAKE:
+      return StorageKind::U8;
+    case Settings::TIMEZONE:
+      return StorageKind::U8;
 #if !defined(FURBLE_NO_DISPLAY)
     case Settings::DISPLAY_MODE:
 #endif
@@ -231,6 +234,7 @@ std::vector<SettingCase> settingCases() {
       {Settings::HW_MOTION, "HW_MOTION", uint8_t {Settings::HW_MOTION_SOFTWARE},
        uint8_t {Settings::HW_MOTION_HARDWARE}, StorageKind::U8},
       {Settings::IMU_WAKE, "IMU_WAKE", uint8_t {0}, uint8_t {3}, StorageKind::U8},
+      {Settings::TIMEZONE, "TIMEZONE", uint8_t {0}, uint8_t {1}, StorageKind::U8},
       {Settings::IMU_TRIG, "IMU_TRIG", false, true, StorageKind::BOOL},
       {Settings::GPS_BAUD, "GPS_BAUD", uint32_t {Settings::BAUD_9600},
        uint32_t {Settings::BAUD_115200}, StorageKind::U32},
@@ -371,6 +375,7 @@ ASSERT_STORAGE_TYPE(WIFI_SSID, std::string);
 ASSERT_STORAGE_TYPE(WIFI_PSK, std::string);
 ASSERT_STORAGE_TYPE(NTP, bool);
 ASSERT_STORAGE_TYPE(NTP_SERVER, std::string);
+ASSERT_STORAGE_TYPE(TIMEZONE, uint8_t);
 ASSERT_STORAGE_TYPE(IMU, bool);
 ASSERT_STORAGE_TYPE(IMU_WAKE, uint8_t);
 ASSERT_STORAGE_TYPE(IMU_TRIG, bool);
@@ -407,6 +412,7 @@ SettingValue loadValue(Settings::type_t type) {
     case Settings::AUTO_OFF:
     case Settings::LOW_BATT:
     case Settings::IMU_WAKE:
+    case Settings::TIMEZONE:
 #if !defined(FURBLE_NO_DISPLAY)
     case Settings::DISPLAY_MODE:
 #endif

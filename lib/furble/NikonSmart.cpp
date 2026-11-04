@@ -181,13 +181,15 @@ void NikonSmart::focusRelease(void) {
 }
 
 void NikonSmart::updateGeoData(const Camera::gps_t &gps, const Camera::timesync_t &timesync) {
+  // The 41-byte geotag record carries local civil time. The declared 10-byte
+  // timesync_msg_t with timezone fields is not sent on this path.
   nikon_time_t ntime = {
-      .year = (uint16_t)timesync.year,
-      .month = (uint8_t)timesync.month,
-      .day = (uint8_t)timesync.day,
-      .hour = (uint8_t)timesync.hour,
-      .minute = (uint8_t)timesync.minute,
-      .second = (uint8_t)timesync.second,
+      .year = static_cast<uint16_t>(timesync.local.year),
+      .month = static_cast<uint8_t>(timesync.local.month),
+      .day = static_cast<uint8_t>(timesync.local.day),
+      .hour = static_cast<uint8_t>(timesync.local.hour),
+      .minute = static_cast<uint8_t>(timesync.local.minute),
+      .second = static_cast<uint8_t>(timesync.local.second),
   };
 
   nikon_geo_t geo = {

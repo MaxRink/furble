@@ -43,6 +43,7 @@
 #include "Device.h"
 #include "FujifilmBasic.h"
 #include "FujifilmVirtualCamera.h"
+#include "FurbleTimezone.h"
 #include "NimBLEDevice.h"
 
 #include "FurbleCompanion.h"
@@ -507,6 +508,31 @@ void testSettings(void) {
                 "the saved brightness reads back");
   check(Furble::Settings::load<uint8_t>(Furble::Settings::BRIGHTNESS) == 77,
         "the value reached the real Settings store");
+
+  checkContains(list.out, "timezone: ", "settings list prints the time zone");
+  const Result tzGet = runDirect("settings get timezone");
+  check(tzGet.rc == 0, "settings get timezone returns success");
+  checkContains(tzGet.out, "type: uint8", "timezone reports uint8");
+  checkContains(tzGet.out, "applies: immediately", "timezone applies immediately");
+  checkContains(tzGet.out, "value: UTC", "timezone defaults to UTC");
+  const Result tzSet = runDirect("settings set timezone Europe/Berlin");
+  check(tzSet.rc == 0, "settings set timezone returns success");
+  checkContains(tzSet.out, "timezone: Europe/Berlin", "timezone set confirms the zone");
+  checkContains(runDirect("settings get timezone").out, "value: Europe/Berlin (1)",
+                "the timezone reads back by name");
+  check(Furble::Timezone::current() == Furble::Timezone::Id::EUROPE_BERLIN,
+        "the time zone reached the C library");
+  check(runDirect("settings set timezone 99").rc != 0, "an out-of-range timezone is refused");
+  checkContains(runDirect("settings set timezone America/New_York").out,
+                "timezone: America/New_York", "an IANA zone name selects its zone");
+  check(runDirect("settings set timezone UTC").rc == 0, "timezone returns to UTC");
+  checkContains(runDirect("settings set timezone auto").out, "timezone: Auto (GPS)",
+                "the auto selector is accepted");
+  checkContains(runDirect("settings get timezone").out, "value: Auto (GPS) -> UTC (utc)",
+                "auto without a fix reports its UTC fallback");
+  checkContains(runDirect("settings get timezone").out, "applies: immediately",
+                "auto applies immediately");
+  check(runDirect("settings set timezone UTC").rc == 0, "auto returns to manual UTC");
 
   // A boolean, a string, a uint16 and a uint32, each with its own parser.
   checkContains(runDirect("settings set gps on").out, "saved: gps", "a boolean setting saves");
@@ -1260,6 +1286,18 @@ void testTimePowerPerf(void) {
   checkContains(time.out, "rtc: true", "time status reports the RTC presence");
   checkContains(time.out, "rtc_battery_backed: false", "time status reports the RTC backing");
   checkContains(time.out, "nvs_writes: 4", "time status reports the NVS write count");
+  checkContains(time.out, "timezone: UTC", "time status names the applied zone");
+  checkContains(time.out, "timezone_source: manual", "time status names the manual source");
+  checkContains(time.out, "utc: ", "time status reports plain UTC");
+  checkContains(time.out, "local: ", "time status reports local civil time");
+  checkContains(time.out, "tz_offset_minutes: 0", "time status reports the local offset");
+
+  runDirect("settings set timezone auto");
+  const Result autoTime = runDirect("time status");
+  checkContains(autoTime.out, "timezone_selection: Auto (GPS)", "time status reports auto mode");
+  checkContains(autoTime.out, "timezone_source: utc", "auto without a fix reports UTC");
+  checkContains(autoTime.out, "timezone_derived: UTC", "no derived zone exists without a fix");
+  runDirect("settings set timezone UTC");
 
   // Every clock source has to come back as a name.
   const std::vector<std::pair<Furble::TimeSource, std::string>> sources = {

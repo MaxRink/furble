@@ -324,7 +324,7 @@ void validateSeed(const std::string &name, const std::string &value) {
       "brightness",   "inactivity", "display_off", "display_mode", "gps_rate",  "gps_constel",
       "gps_power",    "gps_duty",   "cpu_freq",    "tx_power",     "scan_mode", "text_size",
       "auto_off",     "low_batt",   "fb_output",   "gps_hold",     "imu_wake",  "gps_assist",
-      "gps_platform", "hw_motion",  "legend",
+      "gps_platform", "hw_motion",  "legend",      "timezone",
   };
   if (std::find(std::begin(byteSeeds), std::end(byteSeeds), name) != std::end(byteSeeds)) {
     if (parseUnsigned(value) > std::numeric_limits<uint8_t>::max()) {
@@ -1797,6 +1797,7 @@ void applyScenarioSettings(void) {
   saveByte("fb_output", Settings::FB_OUTPUT);
   saveByte("hw_motion", Settings::HW_MOTION);
   saveByte("legend", Settings::LEGEND);
+  saveByte("timezone", Settings::TIMEZONE);
   const auto scanTimeout = scenarioSettings.find("scan_timeout");
   if (scanTimeout != scenarioSettings.end()) {
     Settings::save<uint32_t>(Settings::SCAN_TIMEOUT, parseUnsigned(scanTimeout->second));

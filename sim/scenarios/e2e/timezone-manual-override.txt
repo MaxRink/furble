@@ -1,0 +1,16 @@
+# A manual time zone must win over a fresh GPS fix.
+#
+# The receiver is on and producing fixes, but the stored selection is the
+# default manual UTC. The automatic path must not change the effective zone or
+# the source.
+seed gps true
+seed gps_uart_mode ack
+seed timezone 0
+wait 2200
+
+assert ui.timezone_selection UTC
+assert ui.timezone_source manual
+assert ui.timezone UTC
+assert ui.timezone_derived UTC
+
+exit

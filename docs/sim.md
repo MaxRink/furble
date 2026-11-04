@@ -526,7 +526,7 @@ production handler.
 `nav PAGE` accepts `connect`, `scan`, `delete`, `power_off`, `bulb_duration`,
 `bulb`, `settings`, `display`, `features`, `sensors`, `gestures`, `infrared`,
 `gps_rate`, `gps_sentences`, `gps_constellation`, `gps_power`, `gps_assist`,
-`gps_hold`, `gps_baud`, `gps_platform`, `gps`, `gps_data`, `nmea`, `gps_sats`,
+`gps_hold`, `gps_baud`, `gps_platform`, `gps`, `gps_data`, `time`, `nmea`, `gps_sats`,
 `timer`, `theme`, `text_size`, `legend`, `bluetooth`, `tx_power`,
 `about`, `power`, `feedback`, `feedback_events`, `feedback_volume`,
 `diagnostics`, `device_info`, `power_state`, `ble`, `interval_count`,
@@ -538,7 +538,7 @@ production handler.
 `remote_timer`, `remote_gps`, `remote_disconnect`, `timer`, `timer_run`,
 `settings`, `display`, `features`, `sensors`, `infrared`, `gps_rate`,
 `gps_sentences`, `gps_constellation`, `gps_power`, `gps_assist`, `gps_hold`,
-`gps_baud`, `gps_platform`, `gps`, `gps_data`, `nmea`, `gps_sats`, `theme`,
+`gps_baud`, `gps_platform`, `gps`, `gps_data`, `time`, `nmea`, `gps_sats`, `theme`,
 `text_size`, `legend`, `bluetooth`, `tx_power`, `about`,
 `power`, `feedback`, `feedback_events`, `feedback_volume`, `storage`,
 `diagnostics`, `device_info`, `battery`, `power_state`, `ble`, `interval_count`,
@@ -651,6 +651,10 @@ The complete `ui.*` query set is:
 | `ui.motion_interrupts` | Motion state transitions the armed backend has reported. |
 | `ui.text_size` | Numeric roller selection, or `unknown`. |
 | `ui.text_size_options` | Numeric roller option count, or `unknown`. |
+| `ui.timezone` | Effective zone name, for example `Europe/Berlin` or `UTC`. |
+| `ui.timezone_selection` | `auto` or a manual zone name. |
+| `ui.timezone_source` | `manual`, `gps`, or `utc`. |
+| `ui.timezone_derived` | Last GPS-derived zone, or `UTC` before the first fix. |
 | `ui.interval_state` | `idle`, `wait`, `shutter`, `delay`, `finished`, or `unknown`. |
 | `ui.bulb_remaining` | The rendered Bulb countdown, or `unknown`. |
 | `ui.bulb_state` | `idle`, `running`, `done`, or `unknown`. |

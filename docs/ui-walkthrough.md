@@ -221,9 +221,9 @@ not evidence that the attached AT6668 receiver has been hardware-verified.
 ![Settings root](img/settings.png)
 
 The Settings menu groups every option. Its entries in order are Display,
-Features, Infrared, Sensors, GPS, Timer, Theme, Text size, Bluetooth, About,
-Power, Feedback, Diagnostics, Storage. Infrared, Feedback, and Storage appear
-only on boards with the matching hardware.
+Features, Infrared, Sensors, GPS, Time, Timer, Theme, Text size, Bluetooth,
+About, Power, Feedback, Diagnostics, Storage. Infrared, Feedback, and Storage
+appear only on boards with the matching hardware.
 
 The list is longer than the screen. The image above is the top; scrolling down
 reveals the rest:
@@ -322,6 +322,18 @@ counters, binary configuration status, and a Hot restart button. Auto baud
 probing requires two checksummed NMEA sentences; an unsuccessful probe marks the
 receiver absent and cuts the external rail before one delayed retry. Auto
 detection has simulator coverage and is pending live AT6668 verification.
+
+### Time
+
+![Time settings](img/settings-time.png)
+
+The Time page holds the Time zone roller and live clock rows. Local shows the
+selected zone's civil time with its current offset. UTC shows the same instant
+without an offset. The heading names the effective zone and its source
+(`manual`, `gps`, or `utc`). Auto (GPS) picks the nearest curated zone from a
+fresh wired fix; the manual choice wins, and Auto falls back to UTC after 30
+minutes without a fix. UTC is the default so a camera that used UTC before this
+setting existed keeps the same clock.
 
 ### Timer
 

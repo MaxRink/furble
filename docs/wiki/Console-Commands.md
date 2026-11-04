@@ -77,6 +77,9 @@ current retry cycle, `retry_ms` is the next backoff without jitter, and
 - `settings get <name>` prints the name, type, value, and when a change applies.
 - `settings set <name> <value>` saves a setting. Values are range checked and
   rejected when the board does not support the setting.
+- `settings set timezone Europe/Berlin` applies the zone immediately. It accepts
+  a table index, an IANA name, a single-word roller label, or `auto`. Auto uses
+  a fresh wired GPS fix and falls back to UTC after 30 minutes without one.
 
 
 ## companion
@@ -145,8 +148,10 @@ and when it applies.
 
 ## time
 
-- `time status` reports the UTC wall-clock estimate, uncertainty, source, RTC
-  capability, and NVS write count.
+- `time status` reports the UTC wall-clock estimate, the selected time zone,
+  the effective zone and its source (`manual`, `gps`, or `utc`), the last
+  GPS-derived zone, local civil time with its current offset, uncertainty,
+  source, RTC capability, and NVS write count.
 - `time flush` persists the current estimate before a planned restart or power
   removal.
 

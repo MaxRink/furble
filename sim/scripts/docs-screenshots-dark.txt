@@ -59,6 +59,11 @@ wait 350
 capture dark-settings-gps
 print ui.page
 
+action nav time
+wait 700
+capture dark-settings-time
+print ui.page
+
 action nav gps_sats
 wait 2800
 capture dark-gps-satellites

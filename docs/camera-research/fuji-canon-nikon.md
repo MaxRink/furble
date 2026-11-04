@@ -195,10 +195,13 @@ vendor images are not redistributed. The claims below are `firmware-static` or
   semantic claim is not proven.
 - The camera has a 12-byte UTC/timezone packet on `C52EDBCE` and a 7-byte local
   time packet on `B9BFD37F`. Furble answers the `F9150137` `01 00` request with
-  the 12-byte UTC form, offset zero and DST off, because it has no timezone
-  source. The camera-clock physical effect is still capture-gated.
-- The official apps write a geotag speed field in bytes 12 to 15. Furble writes
-  zero. The layout matches; the camera-side unit is unknown.
+  the 12-byte UTC form. The packet keeps UTC fields and carries the selected
+  zone's standard offset and DST flag. The 7-byte local form stays unwritten
+  because its layout is unverified. The camera-clock physical effect is still
+  capture-gated.
+- The 23-byte geotag packet carries the selected local civil time. Furble writes
+  zero in the speed field in bytes 12 to 15. The layout matches; the camera-side
+  unit and the timestamp's local-versus-UTC expectation are capture-gated.
 - The sync interval characteristic accepts 10, 15, 20, 30, 60, 120, 240, and
   480 seconds, plus disable. Furble's 10-second value is one supported setting.
 

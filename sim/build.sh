@@ -112,6 +112,7 @@ INCLUDES="\
 -I$DEP_ROOT/M5GFX/src \
 -I$DEP_ROOT/M5Unified/src \
 -I$LVGL_DIR \
+-I$LVGL_DIR/src \
 -I$LVGL_DIR/.. \
 -I/opt/homebrew/include \
 -I/opt/homebrew/include/SDL2 \
@@ -321,6 +322,8 @@ for source in \
   "$ROOT/src/FurbleSpinValue.cpp" \
   "$ROOT/src/FurbleTimeKeeper.cpp" \
   "$ROOT/src/FurbleTimeKeeperPolicy.cpp" \
+  "$ROOT/src/FurbleTimezone.cpp" \
+  "$ROOT/src/FurbleTimezoneGPS.cpp" \
   "$ROOT/src/FurbleUI.cpp" \
   "$ROOT/src/FurbleUIBulb.cpp" \
   "$ROOT/src/FurbleUIGesture.cpp" \

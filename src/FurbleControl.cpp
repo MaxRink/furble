@@ -15,6 +15,8 @@
 #include "FurblePower.h"
 #include "FurbleSettings.h"
 #include "FurbleTestSync.h"
+#include "FurbleTimezone.h"
+#include "protocol/UtcTime.h"
 
 namespace Furble {
 
@@ -627,8 +629,33 @@ uint32_t Control::getSessionGeneration(void) const {
 }
 
 BaseType_t Control::updateGPS(const Camera::gps_t &gps, const Camera::timesync_t &timesync) {
+  // The GPS task and the aid cache keep UTC. Convert once here so every camera
+  // receives the same civil time and zone while the wall clock stays UTC.
+  Camera::timesync_t local = timesync;
+  const uint32_t utcSeconds = UtcTime::epochSeconds(
+      timesync.year, timesync.month, timesync.day, timesync.hour, timesync.minute, timesync.second);
+  Timezone::local_t civil = {};
+  if ((utcSeconds != 0)
+      && Timezone::toLocal(static_cast<uint64_t>(utcSeconds) * 1000000ULL, civil)) {
+    local.local = {civil.year,   civil.month,  civil.day,           civil.hour,
+                   civil.minute, civil.second, timesync.centisecond};
+    local.tz_offset_minutes = civil.offset_minutes;
+    local.tz_standard_offset_minutes = civil.standard_offset_minutes;
+    local.tz_dst_offset_minutes = civil.dst_offset_minutes;
+    local.dst = civil.dst;
+  } else {
+    // An invalid date has no local view. Keep the old UTC fields so a vendor
+    // packet is still well-formed enough to be rejected by the camera.
+    local.local = {timesync.year,   timesync.month,  timesync.day,        timesync.hour,
+                   timesync.minute, timesync.second, timesync.centisecond};
+    local.tz_offset_minutes = 0;
+    local.tz_standard_offset_minutes = 0;
+    local.tz_dst_offset_minutes = 0;
+    local.dst = false;
+  }
+
   for (const auto &target : m_Targets) {
-    target->updateGPS(gps, timesync);
+    target->updateGPS(gps, local);
   }
 
   cmd_t cmd = CMD_GPS_UPDATE;

@@ -92,9 +92,24 @@ int main() {
             "LUMIX shutter release writes ShutterOff 05");
 
   const Furble::Camera::gps_t gps = {52.5, 13.4, 34.0, 8};
-  const Furble::Camera::timesync_t time = {2026, 11, 1, 12, 34, 56, 0};
+  const Furble::Camera::timesync_t time = {
+      2026, 11, 1, 12, 34, 56, 0, {2026, 11, 1, 12, 34, 56, 0},
+             0, 0, 0, false
+  };
   camera.updateGeoData(gps, time);
   passed &= check(peer.lastGps().size() == 16, "LUMIX GPS packet is written");
+  passed &= check(peer.clockOffsetMinutes() == 0 && peer.clockDst() == 0,
+                  "the UTC clock carries a zero offset and no DST");
+
+  Furble::Camera::timesync_t zoned = time;
+  zoned.local = {2026, 11, 1, 13, 34, 56, 0};
+  zoned.tz_offset_minutes = 120;
+  zoned.tz_standard_offset_minutes = 60;
+  zoned.tz_dst_offset_minutes = 60;
+  zoned.dst = true;
+  camera.updateGeoData(gps, zoned);
+  passed &= check(peer.clockOffsetMinutes() == 60 && peer.clockDst() == 1,
+                  "the LUMIX clock carries local civil time and the standard offset plus DST");
 
   peer.clearEvents();
   camera.disconnect();

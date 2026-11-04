@@ -157,6 +157,8 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   // rea-camera-firmware/analysis/fujifilm-handlers.md sections 5.1 to 5.3.
   bool localTimeWritten() const;
   bool utcTimeWritten() const;
+  /** Last 12-byte UTC packet, empty until one is accepted. */
+  const std::vector<uint8_t> &lastUtcTime() const;
 
   // Power request 43070F6C accepts exactly 01 00 (off) and 00 01 (boot) as a
   // little-endian uint16. Evidence: fujifilm-handlers.md section 9.1.
@@ -484,6 +486,7 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   // Time, power and sync-interval parser state.
   bool m_LocalTimeWritten = false;
   bool m_UtcTimeWritten = false;
+  std::vector<uint8_t> m_LastUtcTime;
   bool m_PowerRequestWritten = false;
   uint16_t m_PowerRequest = 0;
   uint16_t m_SyncInterval = 0;

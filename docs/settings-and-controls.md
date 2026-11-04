@@ -44,7 +44,7 @@ inputs. Closing it returns control to the page underneath; with stacked dialogs,
 input remains with the topmost dialog.
 
 Settings menu at a glance (in on-screen order): Display, Features, Infrared,
-Sensors, GPS, Timer, Theme, Text size, Bluetooth, About, Power, Feedback,
+Sensors, GPS, Time, Timer, Theme, Text size, Bluetooth, About, Power, Feedback,
 Diagnostics, Storage.
 
 ## Part 1: Settings reference
@@ -152,6 +152,34 @@ two checksummed NMEA sentences; a fixed baud arms a 30-second acquisition
 deadline. In both cases a silent receiver is reported as absent, the external
 rail is dropped, and furble retries once after 60 seconds. The AT6668 path has
 simulator coverage but has not yet been verified against a live unit.
+
+### Time
+
+Submenu: `Settings` > `Time`.
+
+| Setting | Default | Values | Applies | Notes |
+| :--- | :--- | :--- | :--- | :--- |
+| Time zone | UTC | UTC, Auto (GPS), Europe/Berlin, Europe/London, US Eastern, US Central, US Mountain, US Pacific, Australia/Sydney, Asia/Tokyo, India, and 29 more curated zones | Now | Selects the local civil time used for display and camera clock writes. UTC keeps the previous camera clock behaviour. Auto (GPS) uses the nearest curated zone from a fresh wired fix. The page also shows local time with its current offset, plain UTC, the effective zone, and whether the zone is manual, GPS, or UTC. |
+
+The manual selection always wins. With `Auto (GPS)` selected, the last derived
+zone is used while the last fresh wired fix is at most 30 minutes old. A
+candidate zone change is held for at least 5 minutes after the previous change,
+so a noisy boundary fix cannot churn the camera clock. Without a fresh fix, or
+outside the 30 degree nearest-zone radius, Auto falls back to UTC. The default
+UTC is a manual choice, so an existing device is never silently moved.
+
+Auto mode uses 39 curated zone rules and 61 representative points. It is a
+nearest-zone approximation, not a polygon database: borders, large countries,
+and remote regions can resolve to a neighbouring rule. The table lives in
+`src/FurbleTimezone.cpp`; `tools/timezone_table.py --check` validates it and
+`--zone-tab` prints refresh coordinates from a tzdata `zone.tab`.
+
+The camera clock path always keeps UTC as its source of truth. A camera whose
+protocol carries a timezone field receives the standard UTC offset and a DST
+flag; a camera with no timezone field receives the selected or derived local
+civil time. The date and time rows on the GPS Data page stay UTC so a fix
+timestamp is never ambiguous. See the vendor notes in
+[docs/camera-research/parity-matrix.md](camera-research/parity-matrix.md).
 
 ### Timer (intervalometer)
 

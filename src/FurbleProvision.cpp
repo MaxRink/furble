@@ -112,6 +112,7 @@ ProvisionTLV::ValueType runtimeType(Settings::type_t type) {
     case Settings::AUTO_OFF:
     case Settings::LOW_BATT:
     case Settings::IMU_WAKE:
+    case Settings::TIMEZONE:
 #if !defined(FURBLE_NO_DISPLAY)
     case Settings::DISPLAY_MODE:
 #endif

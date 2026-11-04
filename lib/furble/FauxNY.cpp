@@ -88,9 +88,9 @@ void FauxNY::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
   geoRecord.count++;
   geoRecord.latitude = gps.latitude;
   geoRecord.longitude = gps.longitude;
-  geoRecord.hour = timesync.hour;
-  geoRecord.minute = timesync.minute;
-  geoRecord.second = timesync.second;
+  geoRecord.hour = timesync.local.hour;
+  geoRecord.minute = timesync.local.minute;
+  geoRecord.second = timesync.local.second;
 #endif
 };
 

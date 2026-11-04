@@ -357,6 +357,10 @@ class UI {
     lv_obj_t *imuBackend;
     lv_obj_t *imuMotion;
     lv_obj_t *imuInterrupts;
+    // Time page rows, refreshed with the same diagnostics timer.
+    lv_obj_t *localTime;
+    lv_obj_t *utcTime;
+    lv_obj_t *timeZone;
     float imuAccelValues[3];
     float imuGyroValues[3];
     bool imuAccelValid;
@@ -764,6 +768,8 @@ class UI {
   static constexpr const char *m_WakeGestureStr = "Wake Gesture";
   static constexpr const char *m_WakeGestureOptions = "Off\nTap\nShake\nBoth";
   static constexpr const char *m_GPSStr = "GPS";
+  static constexpr const char *m_TimeStr = "Time";
+  static constexpr const char *m_TimezoneStr = "Time zone";
   static constexpr const char *m_IntervalometerStr = "Timer";
   static constexpr const char *m_ThemeStr = "Theme";
   static constexpr const char *m_IRSettingsStr = "Infrared";
@@ -949,8 +955,8 @@ class UI {
   // the settings page holds more entries than the main menu, give it its own
   // rows so the main menu keeps its layout
   //
-  // Four rows, not three. The page carries fourteen entries and three rows of
-  // four cells hold twelve, so two pairs shared a cell and drew through each
+  // Four rows, not three. The page carries fifteen entries and three rows of
+  // four cells hold twelve, so extra entries share a cell and draw through each
   // other: Sensors with Intervalometer and IR settings with Feedback. One of
   // each pair could not be opened.
   //
@@ -1273,6 +1279,9 @@ class UI {
 
   /** Add the 'GPS' menu entry. */
   void addGPSMenu(const menu_t &parent);
+
+  /** Add the 'Time' settings and clock page. */
+  void addTimeMenu(const menu_t &parent);
 
   /** Add the 'Power saving' GPS page. */
   void addGPSPowerMenu(const menu_t &parent);

@@ -116,6 +116,11 @@ wait 700
 capture gps-nmea
 print ui.page
 
+action nav time
+wait 700
+capture settings-time
+print ui.page
+
 action nav timer
 wait 350
 capture settings-timer

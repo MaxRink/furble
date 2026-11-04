@@ -143,22 +143,24 @@ when not already enabled; read DD21 and select 91 or 95 bytes from byte 4 bit
 starts `00 5d 08 02 fc 03 00 00 10 10 10`; the 91-byte form uses `00 59 08 02
 fc 00 00 00 10 10 10`. Latitude and longitude are big-endian signed degrees
 times 10^7, year is big-endian, then UTC date/time. Furble releases DD30 and
-DD31 on disconnect. It still writes zero timezone and DST, and it does not read
-DD32 or DD33. The public ILCE7M3ExternalGps protocol says firmware
-protocol >=65 (camera firmware 3.02+) requires DD30 then DD31, in that order,
-and describes DD21 bit 2 (mask `0x02`) as controlling timezone/DST fields and a
-95-byte packet. Its prose/length arithmetic is internally inconsistent,
-however: omitting four bytes from 95 yields 91, not the separately claimed
-older 89-byte form. Treat the bit semantics and 89/95-byte variants as
-unresolved; do not hard-code either behavior until exact model/firmware traces
-are captured.
+DD31 on disconnect. In the 95-byte form it writes the selected zone's current
+UTC offset and DST difference in minutes at bytes 91 to 94; the 91-byte form
+omits them. It does not read DD32 or DD33. The public ILCE7M3ExternalGps
+protocol says firmware protocol >=65 (camera firmware 3.02+) requires DD30 then
+DD31, in that order, and describes DD21 bit 2 (mask `0x02`) as controlling
+timezone/DST fields and a 95-byte packet. Its prose/length arithmetic is
+internally inconsistent, however: omitting four bytes from 95 yields 91, not
+the separately claimed older 89-byte form. Treat the bit semantics and
+89/95-byte variants as unresolved; do not hard-code either behavior until exact
+model/firmware traces are captured.
 
 GPS/time facts supported by the sources: Sony location payload carries UTC
 year/month/day/hour/minute/second, and the public 95-byte form has optional
-timezone and DST offsets. Furble hard-codes zero offset fields, so local-time/
-DST behavior is unknown and likely model/firmware-dependent. Furble has no Sony
-power-control command. The public advertisement decoder reports `0x21` bit 6
-as powered-on versus networked standby and bit 7 as remote-power-on support.
+timezone and DST offsets. Furble now fills those fields from the selected zone;
+local-time/DST behavior is still unknown and likely model/firmware-dependent.
+Furble has no Sony power-control command. The public advertisement decoder
+reports `0x21` bit 6 as powered-on versus networked standby and bit 7 as
+remote-power-on support.
 
 Official Sony ZV-1F semantics: enable Bluetooth Function, enable Bluetooth Rmt
 Ctrl, enter Bluetooth Pairing, pair the remote, then accept the camera's
@@ -259,12 +261,13 @@ GPS/time writes in current Furble:
 * location packet: 16 bytes, little-endian, GPS epoch seconds since
   1980-01-06, latitude/longitude as signed degrees times 10^7, altitude as
   signed int16 metres, fix `0x41`, trailing zero;
-* clock packet: 10 bytes, little-endian year, month/day/hour/minute/second,
-  int16 standard offset at bytes 7 and 8, and a DST flag at byte 9. Furble now
-  matches this layout and writes zero for both because it has no timezone
-  source;
-* clock is written only after a successful location write. LUMIX Sync writes it
-  when the clock readiness notification arrives, independent of GPS.
+* clock packet: 10 bytes, little-endian local year, month/day/hour/minute/
+  second, int16 standard offset at bytes 7 and 8, and a DST flag at byte 9.
+  Furble writes the selected zone's local civil time, standard offset, and DST
+  flag;
+* the clock request is served before the location gate and independent of a
+  location write. LUMIX Sync writes it when the clock readiness notification
+  arrives.
 
 LUMIX Sync also sends a GPS stop packet: fix `0x56`, latitude and longitude
 `0x7fffffff`, and altitude `0x7fff`. Furble sends that packet on disconnect

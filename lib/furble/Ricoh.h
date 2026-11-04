@@ -148,6 +148,7 @@ class Ricoh: public Camera {
 
   NimBLERemoteCharacteristic *m_Power = nullptr;
   NimBLERemoteCharacteristic *m_OperationMode = nullptr;
+  NimBLERemoteCharacteristic *m_DateTime = nullptr;
   NimBLERemoteCharacteristic *m_ShootingFlavor = nullptr;
   NimBLERemoteCharacteristic *m_OperationRequest = nullptr;
   NimBLERemoteCharacteristic *m_CaptureStatus = nullptr;
@@ -172,6 +173,8 @@ class Ricoh: public Camera {
   bool m_HasGpsWrite = false;
   gps_t m_LastGps = {};
   timesync_t m_LastTimesync = {};
+  timesync_t m_LastClock = {};
+  bool m_HasClockWrite = false;
 
   bool _connect(void) override final;
   void _disconnect(void) override final;

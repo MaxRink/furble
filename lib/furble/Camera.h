@@ -118,6 +118,12 @@ class Camera: public NimBLEClientCallbacks {
 
   /**
    * Time synchronisation type.
+   *
+   * `year` through `centisecond` stay UTC, the source of truth. `local` is the
+   * same instant in the selected time zone, for cameras whose clock expects
+   * civil time. `tz_offset_minutes` includes DST and `tz_standard_offset_minutes`
+   * is the base offset a vendor packet carries next to a DST flag. Both are
+   * east positive.
    */
   typedef struct _timesync_t {
     unsigned int year;
@@ -127,6 +133,19 @@ class Camera: public NimBLEClientCallbacks {
     unsigned int minute;
     unsigned int second;
     unsigned int centisecond;
+    struct _local_t {
+      unsigned int year;
+      unsigned int month;
+      unsigned int day;
+      unsigned int hour;
+      unsigned int minute;
+      unsigned int second;
+      unsigned int centisecond;
+    } local = {};
+    int16_t tz_offset_minutes = 0;
+    int16_t tz_standard_offset_minutes = 0;
+    uint8_t tz_dst_offset_minutes = 0;
+    bool dst = false;
   } timesync_t;
 
   Camera();

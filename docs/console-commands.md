@@ -127,8 +127,12 @@ no software-readable presence or negotiation signal.
 Saving a setting is not the same as applying it. Settings read on every use take
 effect at once. Settings the UI caches when it starts do not. `settings get`
 reports which of the two a setting is: immediately, on next connect, or on
-reboot. See the [settings and controls reference](settings-and-controls.md) for
-every setting, its default, and when it applies.
+reboot. `settings set timezone Europe/Berlin` applies the zone immediately and
+accepts a table index, an IANA name, a single-word roller label, or `auto`. The
+`auto` mode is reported by `time status` as `timezone_source: gps` while a
+derived zone is fresh and `timezone_source: utc` after the 30-minute fallback.
+See the [settings and controls reference](settings-and-controls.md) for every
+setting, its default, and when it applies.
 
 ## companion
 
@@ -215,8 +219,10 @@ station. `wifi connect` and `wifi disconnect` act immediately, and
 
 ## time
 
-- `time status` reports the UTC wall-clock estimate, uncertainty, source, RTC
-  capability, and NVS write count.
+- `time status` reports the UTC wall-clock estimate, the selected time zone,
+  the effective zone and its source (`manual`, `gps`, or `utc`), the last
+  GPS-derived zone, local civil time with its current offset, uncertainty,
+  source, RTC capability, and NVS write count.
 - `time flush` persists the current estimate before a planned restart or power
   removal.
 

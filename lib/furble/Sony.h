@@ -50,9 +50,9 @@ class Sony: public Camera {
     uint8_t hour;
     uint8_t minute;
     uint8_t second;
-    uint8_t zero0[65];  // zero bytes
-    uint16_t offset;    // UTC offset in minutes
-    uint8_t zero1[2];   // zero bytes
+    uint8_t zero0[65];    // zero bytes
+    uint16_t offset;      // Difference from UTC to the current timezone, minutes
+    uint16_t dst_offset;  // DST difference in minutes, zero outside DST
   } sony_geo_t;
 
   // Primary service
