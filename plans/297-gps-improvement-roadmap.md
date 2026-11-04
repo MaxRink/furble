@@ -16,6 +16,14 @@ Implemented on master:
 - **PR #328 / plan 296** carries the companion phone's horizontal accuracy into
   the GPS fix.
 
+### Fixed after the indoor hardware check
+
+`gps` reported `fix=true` with `satellites=0` and `fix_state=none` long after
+the last sentence. TinyGPSPlus keeps the last valid location and quality
+indefinitely, so the status needed its own age bound. `getStatusSnapshot()`
+now requires `location.age() < MAX_AGE_MS` for `fix`; the indoor baseline then
+reported no fix once the 30 s freshness window and the Fix Hold window ended.
+
 ## Verified findings still open
 
 ### 1. The duty state machine is unreliable before 30/60 s is attempted
