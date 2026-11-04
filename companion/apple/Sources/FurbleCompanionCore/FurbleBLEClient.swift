@@ -583,6 +583,11 @@ extension FurbleBLEClient: @preconcurrency CBPeripheralDelegate {
 
   public func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
     guard isCurrent(peripheral) else { return }
+    if ProcessInfo.processInfo.environment["FURBLE_COMPANION_DEBUG"] != nil {
+      let hex = characteristic.value?.map { String(format: "%02X", $0) }.joined(separator: " ") ?? "<none>"
+      let errorText = error.map { " error=\($0.localizedDescription)" } ?? ""
+      FileHandle.standardError.write(Data("[ble] \(characteristic.uuid.uuidString): \(hex)\(errorText)\n".utf8))
+    }
     guard error == nil, let data = characteristic.value else { fail(.malformedPacket); return }
     if characteristic.uuid == CBUUID(string: FurbleProtocol.UUIDs.capability) {
       guard let command = state.didReadCapability(data) else { fail(state.lastError ?? .malformedPacket); return }

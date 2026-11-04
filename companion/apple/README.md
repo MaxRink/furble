@@ -270,6 +270,18 @@ by pairing. When the phone GPS toggle is on, the provider sets
 When In Use authorization is enough for a user-started session. The privacy
 manifest and usage strings explain the purpose of every protected API.
 
+## Hardware status (2026-11-04)
+
+The CLI builds and scans a flashed StickS3 successfully (for example
+`furble-38a70`, RSSI -48 dBm). Authenticated `status` currently stops at the
+first protected capability read with `Encryption is insufficient.` The
+characteristic is `READ_ENC`, and a bare command-line executable has no app
+bundle/TCC Bluetooth prompt to complete the BLE pairing. Use the native macOS
+app target for authenticated hardware testing, or wrap the CLI in a minimal
+signed app bundle with the Bluetooth usage description. Set
+`FURBLE_COMPANION_DEBUG=1` to print characteristic UUIDs, hex values, and read
+errors. This is a transport pairing gate, not a protocol decode failure.
+
 ## Physical gates
 
 An iPhone or Mac with Bluetooth, a password-enabled furble firmware build, and
