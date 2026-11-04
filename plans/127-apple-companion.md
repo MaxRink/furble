@@ -104,6 +104,31 @@ clipped the title, number, and both footer pills. The three companion modal
 scenarios assert `ui.modal_overflow no`, so a future content or font change that
 pushes the dialog off the panel fails in the simulator.
 
+## BLE pairing and memory state
+
+The companion GATT service now initiates link security from `onConnect()` for
+an accepted companion link. Without that, a macOS central sees an ATT
+insufficient-encryption error on the capability read and never starts pairing.
+The IO capability is `NoInputNoOutput`, producing an encrypted and bonded LE
+Just Works link because macOS did not present a usable numeric-comparison
+prompt to a terminal/background client. The companion HMAC password remains the
+application authentication layer; a device with no password reports the
+explicit not-required result.
+
+A stale companion bond is deleted when the pairing window is open and the peer
+presents a different LE address. macOS rotates its LE address between sessions,
+and without this clear the next connection tried to encrypt with keys the peer
+no longer had and silently stayed unauthenticated. The accepted link logs
+`encrypted`, `authenticated`, and `bonded` state so this is diagnosable.
+
+On the StickS3, `sdkconfig.m5stick-s3` moves mbedTLS allocations to PSRAM
+(`CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC`). Secure Connections key generation was
+allocating a 68-byte block from a nearly exhausted internal heap and panicking;
+the external allocation keeps the internal heap for the BLE host and tasks.
+Hardware verification: status, monitor, password-required auth, password-clear
+not-required auth, and three reconnect cycles after the stale-bond clear. No
+camera was attached, so trigger/camera success remains a hardware gate.
+
 ## Follow-up gates
 
 - A physical Apple app connection requires firmware exposing the Auth

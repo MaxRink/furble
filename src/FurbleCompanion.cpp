@@ -95,7 +95,7 @@ void CompanionGatt::enable(bool pairingWindow) {
 
       // Match Camera::connect() and use numeric comparison for the server.
       NimBLEDevice::setSecurityAuth(true, true, true);
-      NimBLEDevice::setSecurityIOCap(BLE_HS_IO_DISPLAY_YESNO);
+      NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT);
 
       // Scan owns the existing server. This call is the only service-side
       // server creation path, and it is reached only with COMPANION enabled.
@@ -254,7 +254,7 @@ void CompanionGatt::createGatt(void) {
 
   m_Settings = m_GattService->createCharacteristic(
       SETTINGS_UUID,
-      NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::INDICATE | NIMBLE_PROPERTY::WRITE_AUTHEN, 512);
+      NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::INDICATE | NIMBLE_PROPERTY::WRITE_ENC, 512);
   m_Settings->setCallbacks(this);
 
   m_Capability = m_GattService->createCharacteristic(
@@ -264,7 +264,7 @@ void CompanionGatt::createGatt(void) {
   m_Capability->setValue(reinterpret_cast<const uint8_t *>(&capability), sizeof(capability));
 
   m_Trigger = m_GattService->createCharacteristic(
-      TRIGGER_UUID, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_AUTHEN, 4);
+      TRIGGER_UUID, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_ENC, 4);
   m_Trigger->setCallbacks(this);
 
   // Command responses and list records are indicated, unsolicited state events
@@ -272,11 +272,11 @@ void CompanionGatt::createGatt(void) {
   m_Cameras = m_GattService->createCharacteristic(CAMERAS_UUID,
                                                   NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::INDICATE
                                                       | NIMBLE_PROPERTY::NOTIFY
-                                                      | NIMBLE_PROPERTY::WRITE_AUTHEN,
+                                                      | NIMBLE_PROPERTY::WRITE_ENC,
                                                   256);
   m_Cameras->setCallbacks(this);
   m_Auth = m_GattService->createCharacteristic(
-      AUTH_UUID, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::INDICATE | NIMBLE_PROPERTY::WRITE_AUTHEN,
+      AUTH_UUID, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::INDICATE | NIMBLE_PROPERTY::WRITE_ENC,
       CompanionService::AUTH_CHALLENGE_SIZE);
   m_Auth->setCallbacks(this);
 
@@ -466,6 +466,7 @@ void CompanionGatt::serviceTask(void) {
 void CompanionGatt::onConnect(NimBLEServer *server, NimBLEConnInfo &connInfo) {
   (void)server;
   bool accept = false;
+  bool staleBond = false;
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
     if (!m_Enabled) {
@@ -474,6 +475,11 @@ void CompanionGatt::onConnect(NimBLEServer *server, NimBLEConnInfo &connInfo) {
     accept = !m_CompanionConnected
              && (m_PairingWindow || (m_BondValid && connInfo.getIdAddress().equals(m_BondAddress)));
     if (accept) {
+      // macOS rotates its LE address between sessions on a legacy bond. If the
+      // pairing window is open and the stored bond is for another address,
+      // drop it so the new link can pair instead of silently failing to
+      // encrypt with keys the peer no longer has.
+      staleBond = m_PairingWindow && m_BondValid && !connInfo.getIdAddress().equals(m_BondAddress);
       m_CompanionConnected = true;
       m_CompanionEncrypted = false;
       m_CompanionAuthenticated = false;
@@ -488,8 +494,25 @@ void CompanionGatt::onConnect(NimBLEServer *server, NimBLEConnInfo &connInfo) {
     return;
   }
 
+  if (staleBond) {
+    forgetBond();
+  }
   m_Service.onConnected();
   stopAdvertising();
+
+  ESP_LOGI(LOG_TAG, "Companion link accepted handle=%u encrypted=%d bonded=%d",
+           static_cast<unsigned>(connInfo.getConnHandle()), connInfo.isEncrypted() ? 1 : 0,
+           connInfo.isBonded() ? 1 : 0);
+
+  // A protected read returns ATT "insufficient encryption" but does not itself
+  // start pairing. Phones often initiate security on their own; a macOS central
+  // waits for the peripheral to ask, so the first capability read would fail
+  // forever. Start the security procedure as soon as an accepted companion
+  // link is up.
+  if (!connInfo.isEncrypted()) {
+    const bool started = NimBLEDevice::startSecurity(connInfo.getConnHandle());
+    ESP_LOGI(LOG_TAG, "Companion security initiate: %s", started ? "started" : "failed");
+  }
 }
 
 void CompanionGatt::onDisconnect(NimBLEServer *server, NimBLEConnInfo &connInfo, int reason) {
@@ -532,6 +555,9 @@ void CompanionGatt::onConfirmPassKey(NimBLEConnInfo &connInfo, uint32_t pin) {
 }
 
 void CompanionGatt::onAuthenticationComplete(NimBLEConnInfo &connInfo) {
+  ESP_LOGI(LOG_TAG, "Companion authentication complete encrypted=%d authenticated=%d bonded=%d",
+           connInfo.isEncrypted() ? 1 : 0, connInfo.isAuthenticated() ? 1 : 0,
+           connInfo.isBonded() ? 1 : 0);
   bool companion = false;
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
@@ -541,7 +567,11 @@ void CompanionGatt::onAuthenticationComplete(NimBLEConnInfo &connInfo) {
     return;
   }
 
-  if (!connInfo.isEncrypted() || !connInfo.isAuthenticated() || !connInfo.isBonded()) {
+  // Link encryption is the transport requirement. The companion service has
+  // its own HMAC challenge/response for application authentication, so a
+  // Just Works bond is accepted when the platform cannot present a numeric
+  // comparison prompt (macOS from a terminal or background session).
+  if (!connInfo.isEncrypted() || !connInfo.isBonded()) {
     ESP_LOGW(LOG_TAG, "Companion authentication failed");
     {
       const std::lock_guard<std::mutex> lock(m_Mutex);

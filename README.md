@@ -64,8 +64,11 @@ uses the same protocol, auth and BLE core for scan/status, phone-GPS fallback,
 shutter/focus testing and long-running read-only battery CSV monitoring. It
 also accepts `--transport usb` for the StickS3 CDC console: `scan`, `status`,
 `cameras`, `monitor` and `password status` work over USB, and the monitor writes
-the same CSV columns as BLE. See [the companion reference](docs/companion.md)
-for the packet layout, USB limits, and the battery observation procedure.
+the same CSV columns as BLE. Companion links use an encrypted, bonded LE Just
+Works link and authenticate with the companion password; set a password before
+using the app in an untrusted area. See [the companion reference](docs/companion.md)
+for the packet layout, USB limits, pairing behavior, and the battery observation
+procedure.
 
 furble is developed on ESP32 devices as a PlatformIO project.
 
