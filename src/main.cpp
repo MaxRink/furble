@@ -34,6 +34,8 @@
 #include "FurbleSD.h"
 #include "FurbleSettings.h"
 #include "FurbleTimeKeeper.h"
+#include "FurbleTimezone.h"
+#include "FurbleTimezoneGPS.h"
 #include "FurbleUI.h"
 #include "FurbleWiFi.h"
 #if defined(FURBLE_WEBUI) && FURBLE_WEBUI
@@ -418,6 +420,7 @@ static void vUITask(void *param) {
     const int64_t now = esp_timer_get_time();
     if (now >= nextGPSService) {
       GPS::getInstance().update();
+      (void)TimezoneGPS::service();
       nextGPSService = now + GPS_SERVICE_US;
     }
     // Idle at 50 ms instead of the display task's 5 ms. The request queue is
@@ -442,6 +445,8 @@ void app_main() {
   // Settings must come up before Platform: Platform reads FB_OUTPUT to
   // decide cfg.internal_spk ahead of M5.begin()
   Furble::Settings::init();
+  Furble::Timezone::apply(
+      Furble::Timezone::clamp(Furble::Settings::load<Furble::Settings::TIMEZONE>()));
   Furble::Platform::init();
   Furble::TimeKeeper::init();
 

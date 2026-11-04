@@ -362,13 +362,21 @@ class GPS {
   /** Snapshot the most recent MON-HW frame. */
   monhw_report_t getMonHw(void);
 
+  /**
+   * Freshness rule for a wired fix.
+   *
+   * Location, date, and time each have to be younger than this. Kept public so
+   * non-GPS consumers such as the automatic time zone use the same rule.
+   */
+  static constexpr uint32_t FRESH_FIX_MS = 30 * 1000;
+
  private:
   GPS() {};
 
   static constexpr const size_t BUFFER_SIZE = 256;
   static constexpr const int QUEUE_SIZE = 32;
   static constexpr const uint16_t SERVICE_MS = 1000;
-  static constexpr const uint32_t MAX_AGE_MS = 30 * 1000;
+  static constexpr const uint32_t MAX_AGE_MS = FRESH_FIX_MS;
   static constexpr const char *POWER_LOCK_OWNER = "gps";
 
   static constexpr uint8_t CFG_CLASS = 0x06;

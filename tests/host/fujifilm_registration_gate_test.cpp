@@ -202,7 +202,20 @@ void testGeotagRequestConfirmsReconnect() {
   secureAttempt.join();
   check(secureConnected, "geotag request confirms registration on a Secure reconnect");
   const Furble::Camera::gps_t gps = {52.5, 13.4, 34.0, 8};
-  const Furble::Camera::timesync_t time = {2026, 11, 1, 12, 34, 56, 0};
+  const Furble::Camera::timesync_t time = {
+      .year = 2026,
+      .month = 11,
+      .day = 1,
+      .hour = 12,
+      .minute = 34,
+      .second = 56,
+      .centisecond = 0,
+      .local = {2026, 11, 1, 14, 34, 56, 0},
+      .tz_offset_minutes = 120,
+      .tz_standard_offset_minutes = 60,
+      .tz_dst_offset_minutes = 60,
+      .dst = true,
+  };
   secureCamera.updateGeoData(gps, time);
   check(securePeer.locationSyncValue() == 1,
         "the Secure geotag path enables AAB609C4 and reads the value back");
@@ -217,6 +230,10 @@ void testGeotagRequestConfirmsReconnect() {
   securePeer.clearFaults();
   secureCamera.updateGeoData(gps, time);
   check(securePeer.utcTimeWritten(), "the clock request is retried after a refused write");
+  const auto &clockPacket = securePeer.lastUtcTime();
+  check((clockPacket.size() == 12) && (clockPacket[4] == 12) && (clockPacket[7] == 100)
+            && (clockPacket[8] == 0) && (clockPacket[11] == 1),
+        "the UTC packet keeps UTC fields and carries the standard offset and DST flag");
   secureCamera.disconnect();
 }
 
@@ -239,7 +256,9 @@ void testLocationSyncDropOnWrite() {
   peer.dropLinkOnWrite(Furble::Host::FujifilmVirtualCamera::secureNotificationServiceUUID(),
                        Furble::Host::FujifilmVirtualCamera::locationSyncCharacteristicUUID());
   const Furble::Camera::gps_t gps = {52.5, 13.4, 34.0, 8};
-  const Furble::Camera::timesync_t time = {2026, 11, 1, 12, 34, 56, 0};
+  const Furble::Camera::timesync_t time = {
+      2026, 11, 1, 12, 34, 56, 0, {2026, 11, 1, 12, 34, 56, 0}
+  };
   camera.updateGeoData(gps, time);
 
   check(!camera.isConnected(), "the location-sync write drop severs the link");

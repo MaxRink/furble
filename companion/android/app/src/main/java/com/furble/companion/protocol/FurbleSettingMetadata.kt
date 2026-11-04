@@ -98,6 +98,19 @@ object FurbleSettingMetadata {
         option(2, "Off"),
     )
 
+    private val timezoneOptions = listOf(
+        option(0, "UTC"),
+        option(1, "Europe/Berlin"),
+        option(2, "Europe/London"),
+        option(3, "US Eastern"),
+        option(4, "US Central"),
+        option(5, "US Mountain"),
+        option(6, "US Pacific"),
+        option(7, "Australia/Sydney"),
+        option(8, "Asia/Tokyo"),
+        option(9, "India"),
+    )
+
     private val metadata = listOf(
         SettingMetadata(1, "brightness", "Brightness", "Display", FurbleProtocol.SettingType.UINT8,
             SettingEditorKind.RANGE, range = SettingRange(16, 240, 16)),
@@ -175,6 +188,8 @@ object FurbleSettingMetadata {
             41, "gps_assist", "GPS Assistance", "GPS", FurbleProtocol.SettingType.UINT8,
             SettingEditorKind.ENUM, options = gpsAssistanceOptions,
         ),
+        SettingMetadata(42, "timezone", "Time zone", "GPS", FurbleProtocol.SettingType.UINT8,
+            SettingEditorKind.ENUM, options = timezoneOptions),
         SettingMetadata(7, "interval", "Interval", "Intervalometer", FurbleProtocol.SettingType.BLOB,
             SettingEditorKind.INTERVAL),
         SettingMetadata(8, "multiconnect", "Multi-Connect", "Connections", FurbleProtocol.SettingType.BOOL,

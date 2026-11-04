@@ -96,6 +96,7 @@ class Settings {
     NTP_SERVER,
     IVL_SLEEP,
     IVL_SLEEP_THR,
+    TIMEZONE,
   } type_t;
 
 #if !defined(FURBLE_NO_DISPLAY)
@@ -626,6 +627,10 @@ struct Settings::storage_type<Settings::NTP> {
 template <>
 struct Settings::storage_type<Settings::NTP_SERVER> {
   using type = std::string;
+};
+template <>
+struct Settings::storage_type<Settings::TIMEZONE> {
+  using type = uint8_t;
 };
 
 }  // namespace Furble

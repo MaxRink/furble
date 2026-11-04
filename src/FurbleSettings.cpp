@@ -8,6 +8,7 @@
 #include "FurbleBatterySaver.h"
 #include "FurbleSettings.h"
 #include "FurbleSettingsDefaults.h"
+#include "FurbleTimezone.h"
 #include "FurbleTypes.h"
 #include "Preferences.h"
 
@@ -104,6 +105,7 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {WIFI_PSK,           {WIFI_PSK, 53, "WiFi Passphrase", "wifi_psk", FURBLE_STR}            },
     {NTP,                {NTP, 54, "NTP", "ntp", FURBLE_STR}                                  },
     {NTP_SERVER,         {NTP_SERVER, 55, "NTP Server", "ntp_server", FURBLE_STR}             },
+    {TIMEZONE,           {TIMEZONE, 42, "Time zone", "timezone", FURBLE_STR}                  },
     {IVL_SLEEP,          {IVL_SLEEP, 75, "Deep Sleep", "ivl_sleep", FURBLE_STR}               },
     {IVL_SLEEP_THR,      {IVL_SLEEP_THR, 76, "Sleep Threshold", "ivl_sleep_thr", FURBLE_STR}  },
 };
@@ -172,6 +174,9 @@ bool Settings::appliesImmediately(type_t type) {
     case WIFI:
     case NTP:
     case NTP_SERVER:
+    // The time zone is applied to the C library by the setting save path, so
+    // the next local-time view uses it without a restart.
+    case TIMEZONE:
     // The intervalometer reads these policies on each delay boundary, so a
     // setting write affects the next shot without requiring a reboot.
     case IVL_SLEEP:
@@ -314,6 +319,7 @@ bool Settings::isDangerous(type_t type) {
     case WIFI_PSK:
     case NTP:
     case NTP_SERVER:
+    case TIMEZONE:
       return false;
   }
   return false;
@@ -488,6 +494,11 @@ void Settings::save<bool>(const type_t type, const bool &value) {
 template <>
 void Settings::save<uint8_t>(const type_t type, const uint8_t &value) {
   saveValue<uint8_t>(type, value);
+  if (type == TIMEZONE) {
+    // Every ingress path (UI, console, companion, provisioning, SD import)
+    // lands here, so the process time zone follows the stored value.
+    (void)Timezone::apply(Timezone::clamp(value));
+  }
 }
 
 template <>
@@ -773,6 +784,11 @@ void Settings::init(void) {
           break;
         case NTP_SERVER:
           save<std::string>(setting.type, "pool.ntp.org");
+          break;
+        case TIMEZONE:
+          // UTC preserves the previous camera clock behavior. A user who
+          // wants local civil time selects a zone; nothing changes silently.
+          save<uint8_t>(setting.type, 0);
           break;
         case TOUCH_CALIBRATION:
         {

@@ -55,8 +55,8 @@ Ricoh characteristic classes, GR IV exposes 65, and the GR IIIx 1.41 recording
 contains 51. The full inventory is 76 rows after standard services.
 
 Furble uses model identity, operation mode, GEO Tag, GPS Information, shutter,
-drive mode, capture status, and the paired-device name. Date Time is not written
-because it carries local wall-clock time and Furble has no timezone source.
+drive mode, capture status, the paired-device name, and Date Time. Date Time
+carries local wall-clock time and is written from the selected Time zone.
 At connect it reads camera power, self-timer, and paired-device name through the
 state probe and subscribes to the power, self-timer, capture-status, and
 operation-mode notifications, so those read and notification paths are
@@ -130,8 +130,8 @@ transfer.
 The location payload is 91 or 95 bytes, selected by `DD21` byte 4 bit 1. The
 app writes timezone and DST into bytes 91 to 94, subscribes `DD01`, locks with
 `DD30` and `DD31`, and unlocks on stop. Furble reads `DD21`, subscribes `DD01`,
-selects 91 or 95, and releases the lock on disconnect. It still writes zero
-timezone and DST. FF02 emits `02 3f`, `02 2d`, `02 a0`, and `02 d5`;
+selects 91 or 95, fills bytes 91 to 94 from the selected zone, and releases the
+lock on disconnect. FF02 emits `02 3f`, `02 2d`, `02 a0`, and `02 d5`;
 Furble does not subscribe. EE01 pairing is confirmed but not sent by Furble.
 The four FF01 opcodes remain unproven by the firmware.
 

@@ -55,6 +55,8 @@ constexpr SettingSchema SETTING_SCHEMAS[] = {
     {39,                         ValueType::BOOL,   1,  1                           },
     {40,                         ValueType::U8,     1,  1                           },
     {41,                         ValueType::U8,     1,  1                           },
+    // Time zone: index into the curated POSIX TZ table. 0 is UTC.
+    {42,                         ValueType::U8,     1,  1                           },
     {43,                         ValueType::BOOL,   1,  1                           },
     {44,                         ValueType::BOOL,   1,  1                           },
     {46,                         ValueType::BOOL,   1,  1                           },

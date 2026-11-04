@@ -235,13 +235,18 @@ class FurbleProtocolTest {
 
     @Test
     fun metadataCoversSupportedWireIdsAndUnknownRowsStayReadOnly() {
-        assertEquals(47, FurbleSettingMetadata.byWireId.size)
-        assertEquals((1..41).toSet() + setOf(43, 44, 46, 65, 72, 73), FurbleSettingMetadata.byWireId.keys)
+        assertEquals(48, FurbleSettingMetadata.byWireId.size)
+        assertEquals((1..44).toSet() + setOf(46, 65, 72, 73), FurbleSettingMetadata.byWireId.keys)
         assertEquals("Brightness", FurbleSettingMetadata.byWireId[1]?.name)
         assertEquals(FurbleProtocol.SettingType.BLOB, FurbleSettingMetadata.byWireId[7]?.wireType)
         assertEquals(listOf("Dark", "Default", "Mono Furble"), FurbleSettingMetadata.byWireId[3]?.stringOptions)
+        assertEquals(FurbleProtocol.SettingType.UINT8, FurbleSettingMetadata.byWireId[42]?.wireType)
+        assertEquals(listOf(0, 1, 2, 3, 4, 5, 6, 7, 8, 9),
+            FurbleSettingMetadata.byWireId[42]?.options?.map { it.value })
+        assertTrue(FurbleProtocol.isSettingValueValid(42, FurbleProtocol.SettingType.UINT8, byteArrayOf(1)))
+        assertFalse(FurbleProtocol.isSettingValueValid(42, FurbleProtocol.SettingType.UINT8, byteArrayOf(10)))
         assertFalse(
-            FurbleProtocol.SettingRecord(42, FurbleProtocol.SettingType.UINT8, byteArrayOf(4)).editable,
+            FurbleProtocol.SettingRecord(45, FurbleProtocol.SettingType.UINT8, byteArrayOf(4)).editable,
         )
         // Screen off carries the staged Dim-then-off mode as value 3, and the
         // enum editor and validator both read this list.

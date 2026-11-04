@@ -292,7 +292,7 @@ gps raw hex on|off                  mirror every receiver UART chunk as hex
 gps raw send <hex bytes>            write exact bytes to the receiver UART
 gps binary <class> <id> <bytes>     send a CASIC frame; 256-byte line, 64 arguments
 imu status | scale [value]          IMU diagnostic, gesture calibration
-time status | flush                 wall-clock status or persist before shutdown
+time status | flush                 UTC and local wall clock, or persist before shutdown
 wifi status                         WiFi state, access point, IP, attempts, retry delay and stop reason
 wifi set ssid|psk <value>           save WiFi credentials (passphrases stay masked)
 wifi enable|disable                 enable or disable station reconnects
@@ -301,7 +301,7 @@ ntp status                          NTP state, server, sync time and offset
 ntp set server <host>               save the NTP server
 ntp enable|disable|sync             control or request an NTP synchronization
 imu status | scale [value]          IMU diagnostic, gesture calibration
-time status | flush                 wall-clock status or persist before shutdown
+time status | flush                 UTC and local wall clock, or persist before shutdown
 settings list | get | set           read and write non-secret settings
 companion start|stop|status        pairing window, disable, or enabled state
 companion password set | clear | status manage the companion password without revealing it
@@ -495,6 +495,16 @@ The GPS receiver itself can also be configured under `Settings->GPS`:
 - `Power saving` (always on, PCAS12 standby, or experimental rail cycling)
 - `Assisted start` (position/time, with optional cached ephemeris replay)
 - `Platform` (portable, stationary, pedestrian, or vehicle dynamic model)
+
+`Settings->Time` selects the local time zone. The default UTC keeps the previous
+camera clock behaviour. The Time page also shows local time with its offset and
+plain UTC. Auto (GPS) uses the nearest curated zone from a fresh wired fix; the
+manual choice always wins, and Auto falls back to UTC after 30 minutes without a
+fresh fix. A candidate zone change is held for 5 minutes so a noisy fix cannot
+churn the camera clock. Camera clock writes keep UTC as the source of truth;
+protocols with a timezone field receive the standard offset and DST flag, and
+protocols without one receive the selected or derived local civil time. The GPS
+Data page continues to show the receiver's UTC timestamp.
 
 Update rate, Sentences, and Constellation default to `Default`, which leaves
 those receiver settings alone. Power saving defaults to Always on, Assisted

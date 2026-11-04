@@ -47,6 +47,9 @@
 #include "FurbleSD.h"
 #include "FurbleSettings.h"
 #include "FurbleTime.h"
+#include "FurbleTimeKeeper.h"
+#include "FurbleTimezone.h"
+#include "FurbleTimezoneGPS.h"
 #include "FurbleUI.h"
 #include "interval.h"
 #include "protocol/CameraListProtocol.h"
@@ -139,6 +142,17 @@ void setLabelTextFmtIfChanged(lv_obj_t *label, const char *format, Args... args)
   char text[96];
   std::snprintf(text, sizeof(text), format, args...);
   setLabelTextIfChanged(label, text);
+}
+
+const char *timezoneSourceName(Timezone::Source source) {
+  switch (source) {
+    case Timezone::Source::MANUAL:
+      return "manual";
+    case Timezone::Source::GPS:
+      return "gps";
+    default:
+      return "utc";
+  }
 }
 
 #if !defined(FURBLE_M5STICKC)
@@ -349,6 +363,7 @@ std::unordered_map<const char *, UI::menu_t> UI::m_Menu = {
     {m_SensorsStr,                {nullptr, nullptr, nullptr, nullptr, {3, 0}}},
     {m_GesturesStr,               {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_GPSStr,                    {nullptr, nullptr, nullptr, nullptr, {2, 0}}},
+    {m_TimeStr,                   {nullptr, nullptr, nullptr, nullptr, {3, 3}}},
     {m_GPSDataStr,                {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_GPSBaudStr,                {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
     {m_GPSRateStr,                {nullptr, nullptr, nullptr, nullptr, {0, 0}}},
@@ -655,6 +670,9 @@ UI::UI(const interval_t &interval)
   m_IconTimer = lv_timer_create(
       [](lv_timer_t *timer) {
         FURBLE_SIM_TIMER_FIRE("icon_timer");
+        // A fresh wired fix can change the automatic zone. This runs on the UI
+        // task and never touches the GPS parser directly.
+        (void)TimezoneGPS::service();
         status_t *status = static_cast<status_t *>(lv_timer_get_user_data(timer));
 
         const lv_image_dsc_t *symbol = NULL;
@@ -3061,7 +3079,8 @@ void UI::addMainMenu(void) {
         // The focus is queued so it runs after lv_menu's own page-load focus,
         // which would otherwise put it straight back on the first row.
         if ((page == m_Menu.at(m_IMUDataStr).page) || (page == m_Menu.at(m_BLEStr).page)
-            || (page == m_Menu.at(m_AboutStr).page) || (page == m_Menu.at(m_DeviceInfoStr).page)) {
+            || (page == m_Menu.at(m_AboutStr).page) || (page == m_Menu.at(m_DeviceInfoStr).page)
+            || (page == m_Menu.at(m_TimeStr).page)) {
           lv_async_call(
               [](void *arg) {
                 auto *button = static_cast<lv_obj_t *>(arg);
@@ -3075,7 +3094,7 @@ void UI::addMainMenu(void) {
         // the diagnostics values only refresh while one of their pages is open
         if ((page == m_Menu.at(m_AboutStr).page) || (page == m_Menu.at(m_DeviceInfoStr).page)
             || (page == m_Menu.at(m_PowerStateStr).page) || (page == m_Menu.at(m_BLEStr).page)
-            || (page == m_Menu.at(m_IMUDataStr).page)) {
+            || (page == m_Menu.at(m_IMUDataStr).page) || (page == m_Menu.at(m_TimeStr).page)) {
           lv_timer_resume(ui->m_DiagnosticsTimer);
           lv_timer_ready(ui->m_DiagnosticsTimer);
         } else {
@@ -4019,6 +4038,7 @@ void UI::simScenarioActionOnUi(const Sim::scenario_action_t &action) {
         {"gps_platform",      m_GPSPlatformStr     },
         {"gps",               m_GPSStr             },
         {"gps_data",          m_GPSDataStr         },
+        {"time",              m_TimeStr            },
         {"nmea",              m_GPSNMEAStr         },
         {"gps_sats",          m_GPSSatStr          },
         {"timer",             m_IntervalometerStr  },
@@ -4175,6 +4195,7 @@ void UI::simScenarioActionOnUi(const Sim::scenario_action_t &action) {
       {"gps_platform",      m_GPSPlatformStr      },
       {"gps",               m_GPSStr              },
       {"gps_data",          m_GPSDataStr          },
+      {"time",              m_TimeStr             },
       {"nmea",              m_GPSNMEAStr          },
       {"gps_sats",          m_GPSSatStr           },
       {"theme",             m_ThemeStr            },
@@ -4954,7 +4975,7 @@ std::string UI::simQueryState(const char *key) {
     }
     if (field == "about.reset_visible") {
       return (page == aboutPage && labelVisible(m_Menu.at(m_AboutStr).page, "Reset:\n")) ? "yes"
-                                                                                          : "no";
+                                                                                         : "no";
     }
 
     if (field == "device.chip") {
@@ -5388,6 +5409,7 @@ std::string UI::simQueryState(const char *key) {
         {m_LegendStr,            "legend"           },
         {m_GPSStr,               "gps"              },
         {m_GPSDataStr,           "gps_data"         },
+        {m_TimeStr,              "time"             },
         {m_GPSNMEAStr,           "nmea"             },
         {m_ThemeStr,             "theme"            },
         {m_GPSSatStr,            "gps_sats"         },
@@ -5927,6 +5949,23 @@ std::string UI::simQueryState(const char *key) {
     lv_obj_update_layout(page);
     const int32_t above = lv_obj_get_scroll_top(page);
     return std::to_string(above > 0 ? above : 0);
+  }
+
+  // Time zone observability. These read the production Timezone state, not the
+  // roller text, so a scenario can prove the GPS-derived selection too.
+  if ((query == "timezone") || (query == "timezone_selection") || (query == "timezone_source")
+      || (query == "timezone_derived")) {
+    if (query == "timezone") {
+      return Timezone::name(Timezone::current());
+    }
+    if (query == "timezone_selection") {
+      return Timezone::selection() == Timezone::Id::AUTO ? "auto"
+                                                         : Timezone::name(Timezone::selection());
+    }
+    if (query == "timezone_source") {
+      return timezoneSourceName(Timezone::source());
+    }
+    return Timezone::name(Timezone::derived());
   }
 
   // Report the Text size roller's current selection so scenarios can assert the
@@ -10165,6 +10204,62 @@ void UI::addSpinnerPage(const menu_t &parent, const char *item, Intervalometer::
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }
 
+void UI::addTimeMenu(const menu_t &parent) {
+  menu_t &menu = addMenu(m_TimeStr, &icon_timer, true, parent);
+
+  lv_obj_t *cont = lv_menu_cont_create(menu.page);
+  lv_obj_set_size(cont, LV_PCT(100), LV_PCT(100));
+  lv_obj_set_layout(cont, LV_LAYOUT_FLEX);
+  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_all(cont, 2, 0);
+  lv_obj_set_style_pad_left(cont, 0, 0);
+  lv_obj_set_style_pad_right(cont, 0, 0);
+  lv_obj_set_style_pad_top(cont, 6, 0);
+  lv_obj_set_style_pad_row(cont, 2, 0);
+  lv_obj_set_style_text_font(cont, &lv_font_montserrat_10, 0);
+
+  lv_obj_t *zoneLabel = lv_label_create(cont);
+  lv_obj_set_width(zoneLabel, LV_PCT(100));
+  lv_label_set_text(zoneLabel, "Time zone: UTC (manual)");
+  lv_obj_set_style_text_font(zoneLabel, &lv_font_montserrat_10, 0);
+  lv_obj_set_style_text_align(zoneLabel, LV_TEXT_ALIGN_CENTER, 0);
+  m_Diagnostics.timeZone = zoneLabel;
+
+  // The roller owns a pointer to its option text, so the composed table lives
+  // for the process lifetime.
+  static const std::string options = Timezone::labels();
+  lv_obj_t *roller = lv_roller_create(cont);
+  lv_obj_set_width(roller, LV_PCT(90));
+  lv_obj_add_flag(roller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
+  lv_roller_set_options(roller, options.c_str(), LV_ROLLER_MODE_NORMAL);
+  lv_roller_set_visible_row_count(roller, 1);
+  lv_roller_set_selected(
+      roller, static_cast<uint32_t>(Timezone::clamp(Settings::load<uint8_t>(Settings::TIMEZONE))),
+      LV_ANIM_OFF);
+  addToInputGroup(m_Group, roller);
+  lv_obj_add_event_cb(
+      roller,
+      [](lv_event_t *e) {
+        auto *roller = static_cast<lv_obj_t *>(lv_event_get_target(e));
+        Settings::save<uint8_t>(Settings::TIMEZONE,
+                                static_cast<uint8_t>(lv_roller_get_selected(roller)));
+      },
+      LV_EVENT_VALUE_CHANGED, nullptr);
+
+  // The diagnostics timer fills these rows while the page is open. All three
+  // use the small font so Local, UTC, and the effective zone fit beside the
+  // roller on the 135x240 Stick panel.
+  m_Diagnostics.localTime = addInfoRow(cont);
+  lv_obj_set_style_text_font(m_Diagnostics.localTime, &lv_font_montserrat_10, 0);
+  lv_label_set_text(m_Diagnostics.localTime, "Local: --");
+  m_Diagnostics.utcTime = addInfoRow(cont);
+  lv_obj_set_style_text_font(m_Diagnostics.utcTime, &lv_font_montserrat_10, 0);
+  lv_label_set_text(m_Diagnostics.utcTime, "UTC: --");
+
+  lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
+}
+
 void UI::addIntervalometerMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_IntervalometerStr, &icon_timer, true, parent);
   menu_t &menuIntervalRun = addMenu(m_IntervalometerRunStr, NULL, false, menu);
@@ -11569,6 +11664,41 @@ void UI::diagnosticsUpdate(lv_timer_t *timer) {
                        hms.minutes, hms.seconds);
   setLabelIfChangedFmt(diagnostics->deviceHeap, "Heap:\n%lu B, min %lu B", heap, minimum);
 
+  if ((diagnostics->localTime != nullptr) || (diagnostics->utcTime != nullptr)) {
+    const auto status = TimeKeeper::getInstance().status();
+    const Timezone::Id zone = Timezone::current();
+    setLabelIfChangedFmt(diagnostics->timeZone, "Time zone: %s (%s)", Timezone::name(zone),
+                         timezoneSourceName(Timezone::source()));
+    if (status.valid) {
+      const time_t seconds = static_cast<time_t>(status.epoch_us / 1000000ULL);
+      struct tm utc = {};
+      if (gmtime_r(&seconds, &utc) != nullptr) {
+        setLabelIfChangedFmt(diagnostics->utcTime, "UTC: %04u-%02u-%02u %02u:%02u:%02u",
+                             static_cast<unsigned>(utc.tm_year + 1900),
+                             static_cast<unsigned>(utc.tm_mon + 1),
+                             static_cast<unsigned>(utc.tm_mday), static_cast<unsigned>(utc.tm_hour),
+                             static_cast<unsigned>(utc.tm_min), static_cast<unsigned>(utc.tm_sec));
+      }
+      Timezone::local_t local = {};
+      if (Timezone::toLocal(status.epoch_us, local)) {
+        const int offset = local.offset_minutes;
+        const char sign = offset < 0 ? '-' : '+';
+        const int magnitude = offset < 0 ? -offset : offset;
+        setLabelIfChangedFmt(
+            diagnostics->localTime, "Local: %04u-%02u-%02u %02u:%02u:%02u %c%02d:%02d",
+            static_cast<unsigned>(local.year), static_cast<unsigned>(local.month),
+            static_cast<unsigned>(local.day), static_cast<unsigned>(local.hour),
+            static_cast<unsigned>(local.minute), static_cast<unsigned>(local.second), sign,
+            magnitude / 60, magnitude % 60);
+      } else {
+        setLabelIfChanged(diagnostics->localTime, "Local: --");
+      }
+    } else {
+      setLabelIfChanged(diagnostics->utcTime, "UTC: --");
+      setLabelIfChanged(diagnostics->localTime, "Local: --");
+    }
+  }
+
   if ((diagnostics->powerFrequency != nullptr) || (diagnostics->powerSleep != nullptr)) {
     auto pm = platform.getPMConfig();
 
@@ -12218,6 +12348,7 @@ void UI::addSettingsMenu(void) {
   addIRSettingsMenu(menu);
   addSensorsMenu(menu);
   addGPSMenu(menu);
+  addTimeMenu(menu);
   addIntervalometerMenu(menu);
   addThemeMenu(menu);
   addTextSizeMenu(menu);

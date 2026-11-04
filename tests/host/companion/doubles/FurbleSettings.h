@@ -83,6 +83,7 @@ class Settings {
     NTP_SERVER,
     IVL_SLEEP,
     IVL_SLEEP_THR,
+    TIMEZONE,
   } type_t;
 
   typedef struct {
@@ -247,6 +248,11 @@ struct Furble::Settings::storage_type<Furble::Settings::IVL_SLEEP> {
 template <>
 struct Furble::Settings::storage_type<Furble::Settings::IVL_SLEEP_THR> {
   using type = uint32_t;
+};
+
+template <>
+struct Furble::Settings::storage_type<Furble::Settings::TIMEZONE> {
+  using type = uint8_t;
 };
 
 template <>

@@ -26,6 +26,7 @@
 #endif
 #include "FurblePlatform.h"
 #include "FurbleSettings.h"
+#include "FurbleTimezone.h"
 #include "FurbleTypes.h"
 #include "FurbleUI.h"
 #include "Scan.h"
@@ -64,6 +65,7 @@ int runSimulator() {
   if (!Sim::fuzzResumedBoot()) {
     Sim::applyScenarioSettings();
   }
+  Timezone::apply(Timezone::clamp(Settings::load<Settings::TIMEZONE>()));
   Sim::watchdogPhase("panel bring-up");
   Platform::init();
   // Panel_sdl::main starts its render loop concurrently with this callback.

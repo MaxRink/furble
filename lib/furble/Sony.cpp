@@ -207,8 +207,11 @@ void Sony::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
         .minute = (uint8_t)timesync.minute,
         .second = (uint8_t)timesync.second,
         .zero0 = {0x00},
-        .offset = __builtin_bswap16(0x0000),
-        .zero1 = {0x00},
+        // The 95-byte form carries the current timezone offset and the DST
+        // difference in minutes, both big-endian.
+        .offset = __builtin_bswap16(static_cast<uint16_t>(timesync.tz_offset_minutes)),
+        .dst_offset = __builtin_bswap16(
+            static_cast<uint16_t>(timesync.dst ? timesync.tz_dst_offset_minutes : 0)),
     };
     // ESP_LOGI(LOG_TAG, "geo: %s", NimBLEUtils::dataToHexString((const uint8_t *)&geo,
     // sizeof(geo)).c_str());

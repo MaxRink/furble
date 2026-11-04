@@ -1533,17 +1533,15 @@ sequenceDiagram
 | Longitude | bytes 7 to 10 | absolute float32 degrees | `furble-source` |
 | Elevation sign | byte 11 | `+` or `-` | `furble-source` |
 | Elevation | bytes 12 to 15 | absolute float32 metres | `furble-source` |
-| Timestamp | bytes 16 to 19 | uint32 seconds since the Unix epoch, from `mktime` | `furble-source` |
+| Timestamp | bytes 16 to 19 | uint32 seconds since the Unix epoch, from `CanonProtocol::utcEpoch` | `furble-source` |
 | Gating | updates only when `m_GeoEnabled` | otherwise no write | `furble-source` |
-| Timezone and DST | `mktime` interprets the struct as local time, so the result depends on the runtime TZ | certification gap | `furble-source`, `inference` |
+| Timezone and DST | no runtime TZ input; the tuple is treated as UTC | fixed | `furble-source`, `inference` |
 | Retry | none | n/a | `furble-source` |
 
-`mktime` with `tm_isdst = -1` and zeroed `tm_wday` and `tm_yday` uses the host
-timezone and DST rules. On a device whose TZ is unset this yields UTC; on one
-with a TZ it yields local time. The camera expects seconds since the epoch, so
-the correct behaviour is to treat the tuple as UTC and convert without a local
-timezone. This is a certification gap, not a proven bug, until a capture in a
-non-UTC timezone exists.
+The timestamp conversion has no runtime timezone input. `mktime` previously
+interpreted the tuple in the device timezone; `CanonProtocol::utcEpoch` now
+builds the epoch directly, so a camera in any zone receives the same absolute
+time.
 
 ### 6.5 Transfer and maintenance state machine
 
@@ -2246,10 +2244,10 @@ sequenceDiagram
 | Year | bytes 19 to 20 | uint16 big-endian | `furble-source` |
 | Date and time | bytes 21 to 25 | month, day, hour, minute, second | `furble-source` |
 | Padding | bytes 26 to 90 | 65 zero bytes | `furble-source` |
-| UTC offset | bytes 91 to 92 | big-endian `0x0000` | `furble-source` |
-| Trailer | bytes 93 to 94 | two zero bytes | `furble-source` |
-| Timezone and DST | zero offset, no DST flag | `N` | `furble-source` |
-| Configuration read | `0xDD21` not read | `N`, and bit 2 may control the timezone and DST fields | `public-source` |
+| UTC offset | bytes 91 to 92 | big-endian current UTC offset in minutes | `furble-source` |
+| Trailer | bytes 93 to 94 | big-endian DST difference in minutes | `furble-source` |
+| Timezone and DST | filled from the selected Time zone in the 95-byte form | `P` | `furble-source` |
+| Configuration read | `0xDD21` read to select 91 or 95 | `0xDD21` byte 4 bit 1 | `public-source` |
 | Status read | `0xDD01` not subscribed | `N` | `furble-source` |
 | Retry | `locationEnabled()` re-runs the whole read and write sequence on every update | `P`, no backoff | `furble-source` |
 | Interval | none; driven by the 1 Hz GPS service tick | `N` | `furble-source` |
@@ -2555,7 +2553,8 @@ different generation.
    notifications.
 4. Whether a missing readiness wait is what causes the reported link drop.
 5. Whether the camera accepts a GATT write while asleep, and what wakes it.
-6. Whether the 10-byte clock packet expects a real timezone offset and DST.
+6. Whether the camera honours the standard offset and DST flag that Furble now
+   writes in the 10-byte clock packet.
 7. Whether the clock packet is honoured at all without the readiness handshake.
 8. Whether the address rotates on every LUMIX model or only on the S5 family.
 9. Whether a name anchor is a stable enough identity for a saved reconnect.

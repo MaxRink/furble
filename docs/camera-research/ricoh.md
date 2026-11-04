@@ -210,7 +210,9 @@ Exact files and useful fields:
   coordinates, a little-endian int16 year, month/day/hour/minute/second, and a
   final WGS84 datum byte `0`. It says all fields except year are big-endian and
   the timestamp is UTC acquisition time. The page labels altitude/year ranges
-  as “TBC”.
+  as “TBC”. Furble writes the Camera service Date Time characteristic with the
+  selected local civil time when the local minute changes. It has no timezone
+  field, so the camera menu still owns the zone.
 - `camera/geo_tag.md`: Camera service GEO-tag enable characteristic
   `A36AFDCF-6B67-4046-9BE7-28FB67DBC071`, sint8 `0/1`, read/write/notify.
 - `wlan_control_command/network_type.md`: WLAN service

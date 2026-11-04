@@ -59,6 +59,7 @@
 #include "FurbleUIGesture.h"
 #endif
 #include "FurbleTimeKeeper.h"
+#include "FurbleTimezone.h"
 #include "FurbleTypes.h"
 #include "FurbleUI.h"
 #include "FurbleWiFi.h"
@@ -259,6 +260,7 @@ const char *settingType(Settings::type_t type) {
     case Settings::LOW_BATT:
     case Settings::HW_MOTION:
     case Settings::IMU_WAKE:
+    case Settings::TIMEZONE:
       return "uint8";
     case Settings::GPX_PERIOD:
       return "uint16";
@@ -387,6 +389,7 @@ const char *appliesWhen(Settings::type_t type) {
     case Settings::IVL_SLEEP:
     case Settings::IVL_SLEEP_THR:
     case Settings::GPS_MOTION:
+    case Settings::TIMEZONE:
       return "immediately";
     case Settings::CONN_SAVER:
       // Only the UI toggle applies this live. A console or companion write is
@@ -426,6 +429,17 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::IMU_WAKE:
       printf("%s%u\n", prefix, Settings::load<uint8_t>(type));
       break;
+    case Settings::TIMEZONE:
+    {
+      const uint8_t raw = Settings::load<uint8_t>(type);
+      const Timezone::Id id = Timezone::clamp(raw);
+      if (id == Timezone::Id::AUTO) {
+        printf("%sAuto (GPS) -> %s (%s)\n", prefix, Timezone::name(Timezone::current()),
+               Timezone::source() == Timezone::Source::GPS ? "gps" : "utc");
+      } else {
+        printf("%s%s (%u)\n", prefix, Timezone::name(id), static_cast<unsigned>(id));
+      }
+    } break;
     case Settings::GPX_PERIOD:
       printf("%s%u\n", prefix, Settings::load<uint16_t>(type));
       break;
@@ -521,6 +535,16 @@ void printValue(const char *prefix, Settings::type_t type) {
 
 int setValue(const Settings::setting_t &setting, const char *text) {
   switch (setting.type) {
+    case Settings::TIMEZONE:
+    {
+      Timezone::Id id = Timezone::Id::UTC;
+      if (!Timezone::find(text, id)) {
+        return fail("expected a zone name, label, or table index");
+      }
+      Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(id));
+      printf("timezone: %s\n", Timezone::name(id));
+    } break;
+
     case Settings::BRIGHTNESS:
     case Settings::INACTIVITY:
     case Settings::DISPLAY_OFF:
@@ -1375,6 +1399,17 @@ const char *timeSourceName(TimeSource source) {
   }
 }
 
+const char *timezoneSourceName(Timezone::Source source) {
+  switch (source) {
+    case Timezone::Source::MANUAL:
+      return "manual";
+    case Timezone::Source::GPS:
+      return "gps";
+    default:
+      return "utc";
+  }
+}
+
 int cmdTime(int argc, char **argv) {
   auto &keeper = TimeKeeper::getInstance();
   if ((argc >= 2) && (strcmp(argv[1], "flush") == 0)) {
@@ -1388,6 +1423,7 @@ int cmdTime(int argc, char **argv) {
   if ((argc >= 2) && (strcmp(argv[1], "status") != 0)) {
     return fail("usage: time status | flush");
   }
+  (void)Timezone::service(static_cast<uint32_t>(esp_timer_get_time() / 1000ULL));
   const auto status = keeper.status();
   printf("valid: %s\n", boolStr(status.valid));
   printf("epoch_us: %llu\n", static_cast<unsigned long long>(status.epoch_us));
@@ -1396,6 +1432,46 @@ int cmdTime(int argc, char **argv) {
   printf("rtc: %s\n", boolStr(status.rtc_available));
   printf("rtc_battery_backed: %s\n", boolStr(status.rtc_battery_backed));
   printf("nvs_writes: %lu\n", static_cast<unsigned long>(status.nvs_write_count));
+
+  const Timezone::Id zone = Timezone::current();
+  const Timezone::Id selection = Timezone::selection();
+  printf("timezone: %s\n", Timezone::name(zone));
+  printf("timezone_selection: %s\n", Timezone::name(selection));
+  printf("timezone_source: %s\n", timezoneSourceName(Timezone::source()));
+  printf("timezone_derived: %s\n", Timezone::name(Timezone::derived()));
+  printf("tzdata: %s\n", Timezone::tzdataVersion());
+  if (status.valid) {
+    const time_t seconds = static_cast<time_t>(status.epoch_us / 1000000ULL);
+    struct tm utc = {};
+    if (gmtime_r(&seconds, &utc) != nullptr) {
+      printf("utc: %04u-%02u-%02u %02u:%02u:%02u\n", static_cast<unsigned>(utc.tm_year + 1900),
+             static_cast<unsigned>(utc.tm_mon + 1), static_cast<unsigned>(utc.tm_mday),
+             static_cast<unsigned>(utc.tm_hour), static_cast<unsigned>(utc.tm_min),
+             static_cast<unsigned>(utc.tm_sec));
+    } else {
+      printf("utc: unavailable\n");
+    }
+
+    Timezone::local_t local = {};
+    if (Timezone::toLocal(status.epoch_us, local)) {
+      const int offset = local.offset_minutes;
+      const char sign = offset < 0 ? '-' : '+';
+      const int magnitude = offset < 0 ? -offset : offset;
+      printf("local: %04u-%02u-%02u %02u:%02u:%02u %c%02d:%02d %s\n",
+             static_cast<unsigned>(local.year), static_cast<unsigned>(local.month),
+             static_cast<unsigned>(local.day), static_cast<unsigned>(local.hour),
+             static_cast<unsigned>(local.minute), static_cast<unsigned>(local.second), sign,
+             magnitude / 60, magnitude % 60, Timezone::name(zone));
+      printf("tz_offset_minutes: %d\n", static_cast<int>(local.offset_minutes));
+      printf("tz_standard_offset_minutes: %d\n", static_cast<int>(local.standard_offset_minutes));
+      printf("dst: %s\n", boolStr(local.dst));
+    } else {
+      printf("local: unavailable\n");
+    }
+  } else {
+    printf("utc: unavailable\n");
+    printf("local: unavailable\n");
+  }
   return 0;
 }
 

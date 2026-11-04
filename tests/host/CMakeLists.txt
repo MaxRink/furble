@@ -58,13 +58,15 @@ add_library(furble_host_camera STATIC
             # the shared protocol module landed by the Tier A/B tests. The
             # end-to-end harness compiles the real production sources, so it
             # links the same helper the firmware uses.
-            ${FURBLE_ROOT}/lib/furble/protocol/FujifilmProtocol.cpp)
+            ${FURBLE_ROOT}/lib/furble/protocol/FujifilmProtocol.cpp
+            ${FURBLE_ROOT}/src/FurbleTimezone.cpp)
 
 target_include_directories(furble_host_camera
                            PUBLIC ${HOST_NIMBLE_DIR}
                                   ${HOST_PEER_DIR}
                                   ${HOST_CORPUS_DIR}
                                   ${CMAKE_CURRENT_SOURCE_DIR}/testsync
+                                  ${FURBLE_ROOT}/include
                                   ${FURBLE_ROOT}/lib/furble)
 target_compile_options(furble_host_camera PRIVATE -Wall -Wextra -Werror -Wno-format
                                                  -Wno-unused-parameter)
@@ -162,6 +164,13 @@ add_executable(time_keeper_policy_test
                ${FURBLE_ROOT}/src/FurbleTimeKeeperPolicy.cpp)
 target_include_directories(time_keeper_policy_test PRIVATE ${FURBLE_ROOT}/include)
 target_compile_options(time_keeper_policy_test PRIVATE -Wall -Wextra -Werror -Wno-unused-parameter)
+
+# Local civil time from the curated POSIX TZ table. The cases pin both sides of
+# the 2026 DST transitions for the supported zones.
+add_executable(timezone_test timezone_test.cpp ${FURBLE_ROOT}/src/FurbleTimezone.cpp)
+target_include_directories(timezone_test PRIVATE ${FURBLE_ROOT}/include
+                                                   ${FURBLE_ROOT}/lib/furble)
+target_compile_options(timezone_test PRIVATE -Wall -Wextra -Werror -Wno-unused-parameter)
 
 # Exercise the production TimeKeeper and Preferences wrapper against the
 # durable in-memory NVS implementation. The clock and RTC are controllable so
@@ -791,6 +800,7 @@ add_executable(settings_nvs_roundtrip_test
                settings_platform_stub.cpp
                ${FURBLE_ROOT}/src/FurbleSettings.cpp
                ${FURBLE_ROOT}/src/FurbleNetworkSettings.cpp
+               ${FURBLE_ROOT}/src/FurbleTimezone.cpp
                ${FURBLE_ROOT}/lib/preferences/Preferences.cpp)
 target_include_directories(settings_nvs_roundtrip_test BEFORE PRIVATE
                            ${SETTINGS_TEST_STUB_DIR}
@@ -815,6 +825,7 @@ add_executable(provision_apply_test
                ${FURBLE_ROOT}/src/FurbleProvision.cpp
                ${FURBLE_ROOT}/src/FurbleSettings.cpp
                ${FURBLE_ROOT}/src/FurbleNetworkSettings.cpp
+               ${FURBLE_ROOT}/src/FurbleTimezone.cpp
                ${FURBLE_ROOT}/lib/furble/protocol/ProvisionTLV.cpp
                ${FURBLE_ROOT}/lib/preferences/Preferences.cpp)
 target_include_directories(provision_apply_test BEFORE PRIVATE
@@ -836,6 +847,7 @@ add_executable(provision_apply_mqtt_test
                ${FURBLE_ROOT}/src/FurbleProvision.cpp
                ${FURBLE_ROOT}/src/FurbleSettings.cpp
                ${FURBLE_ROOT}/src/FurbleNetworkSettings.cpp
+               ${FURBLE_ROOT}/src/FurbleTimezone.cpp
                ${FURBLE_ROOT}/lib/furble/protocol/ProvisionTLV.cpp
                ${FURBLE_ROOT}/lib/preferences/Preferences.cpp)
 target_include_directories(provision_apply_mqtt_test BEFORE PRIVATE
@@ -1163,7 +1175,8 @@ add_executable(control_e2e_test
                ${CONTROL_E2E_DIR}/doubles.cpp
                ${CONTROL_E2E_DIR}/freertos_shim.cpp
                ${CONTROL_TESTSYNC_DIR}/TestSyncController.cpp
-               ${FURBLE_ROOT}/src/FurbleControl.cpp)
+               ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/src/FurbleTimezone.cpp)
 target_include_directories(control_e2e_test
                            BEFORE PRIVATE
                                   ${CMAKE_CURRENT_SOURCE_DIR}
@@ -1199,6 +1212,7 @@ add_executable(control_e2e_asan_test
                ${CONTROL_E2E_DIR}/freertos_shim.cpp
                ${CONTROL_TESTSYNC_DIR}/TestSyncController.cpp
                ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/src/FurbleTimezone.cpp
                ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
                ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
                ${FURBLE_ROOT}/lib/furble/Camera.cpp
@@ -1243,6 +1257,7 @@ add_executable(control_teardown_wedge_test
                ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
                ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
                ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/src/FurbleTimezone.cpp
                ${FURBLE_ROOT}/lib/furble/Camera.cpp
                ${FURBLE_ROOT}/lib/furble/Device.cpp
                ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
@@ -1275,6 +1290,7 @@ add_executable(control_secure_stall_test
                ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
                ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
                ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/src/FurbleTimezone.cpp
                ${FURBLE_ROOT}/lib/furble/Camera.cpp
                ${FURBLE_ROOT}/lib/furble/Device.cpp
                ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
@@ -1319,6 +1335,7 @@ add_executable(control_zombie_cancel_test
                ${CONTROL_TESTSYNC_DIR}/TestSyncController.cpp
                ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
                ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/src/FurbleTimezone.cpp
                ${FURBLE_ROOT}/lib/furble/Camera.cpp
                ${FURBLE_ROOT}/lib/furble/Device.cpp
                ${FURBLE_ROOT}/lib/furble/FauxNY.cpp)
@@ -1353,6 +1370,7 @@ add_executable(control_connect_camera_race_test
                ${CONTROL_E2E_DIR}/freertos_shim.cpp
                ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
                ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/src/FurbleTimezone.cpp
                ${FURBLE_ROOT}/lib/furble/BtDebugJournal.cpp
                ${FURBLE_ROOT}/lib/furble/Camera.cpp
                ${FURBLE_ROOT}/lib/furble/Device.cpp
@@ -1389,6 +1407,7 @@ add_executable(control_connecting_snapshot_test
                ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
                ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
                ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/src/FurbleTimezone.cpp
                ${FURBLE_ROOT}/lib/furble/Camera.cpp
                ${FURBLE_ROOT}/lib/furble/BtDebugJournal.cpp
                ${FURBLE_ROOT}/lib/furble/Device.cpp
@@ -1433,6 +1452,7 @@ add_executable(control_interleave_test
                ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
                ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
                ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/src/FurbleTimezone.cpp
                ${FURBLE_ROOT}/lib/furble/Camera.cpp
                ${FURBLE_ROOT}/lib/furble/Device.cpp
                ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
@@ -1470,6 +1490,7 @@ add_executable(control_abort_republish_test
                ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
                ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
                ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/src/FurbleTimezone.cpp
                ${FURBLE_ROOT}/lib/furble/BtDebugJournal.cpp
                ${FURBLE_ROOT}/lib/furble/Camera.cpp
                ${FURBLE_ROOT}/lib/furble/Device.cpp
@@ -1513,6 +1534,7 @@ add_executable(companion_gatt_test
                ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
                ${FURBLE_ROOT}/src/FurbleCompanionService.cpp
                ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/src/FurbleTimezone.cpp
                ${FURBLE_ROOT}/lib/furble/Camera.cpp
                ${FURBLE_ROOT}/lib/furble/CameraList.cpp
                ${FURBLE_ROOT}/lib/furble/Device.cpp
@@ -1571,6 +1593,7 @@ set(HOST_CONTROL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/control)
 add_executable(control_disconnect_test
                control_disconnect_test.cpp
                ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/src/FurbleTimezone.cpp
                ${HOST_CONTROL_DIR}/control_shim.cpp)
 target_include_directories(control_disconnect_test BEFORE PRIVATE
                            ${HOST_CONTROL_DIR}
@@ -1594,6 +1617,7 @@ target_link_libraries(control_disconnect_test PRIVATE furble_host_camera)
 add_executable(control_reclaim_uaf_test
                control_reclaim_uaf_test.cpp
                ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/src/FurbleTimezone.cpp
                ${HOST_CONTROL_DIR}/control_shim.cpp
                ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
                ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
@@ -1700,6 +1724,7 @@ add_executable(fujifilm_repair_needed_test
                ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
                ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
                ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/src/FurbleTimezone.cpp
                ${FURBLE_ROOT}/lib/furble/Camera.cpp
                ${FURBLE_ROOT}/lib/furble/Device.cpp
                ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
@@ -1740,6 +1765,7 @@ add_executable(ricoh_control_flap_test
                ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
                ${HOST_PEER_DIR}/RicohVirtualCamera.cpp
                ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/src/FurbleTimezone.cpp
                ${FURBLE_ROOT}/lib/furble/Camera.cpp
                ${FURBLE_ROOT}/lib/furble/Device.cpp
                ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
@@ -1776,6 +1802,7 @@ add_executable(absent_peer_scan_test
                ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
                ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
                ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/src/FurbleTimezone.cpp
                ${FURBLE_ROOT}/lib/furble/Camera.cpp
                ${FURBLE_ROOT}/lib/furble/Device.cpp
                ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
@@ -1859,6 +1886,7 @@ add_executable(control_fuzz
                ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
                ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
                ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/src/FurbleTimezone.cpp
                ${FURBLE_ROOT}/lib/furble/Camera.cpp
                ${FURBLE_ROOT}/lib/furble/Device.cpp
                ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
@@ -1901,11 +1929,13 @@ add_executable(console_commands_test
                settings_nvs_stub.cpp
                ${FURBLE_ROOT}/src/FurbleConsole.cpp
                ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/src/FurbleTimezone.cpp
                ${FURBLE_ROOT}/src/FurbleIMU.cpp
                ${FURBLE_ROOT}/src/FurblePower.cpp
                ${FURBLE_ROOT}/src/FurbleProvision.cpp
                ${FURBLE_ROOT}/src/FurbleSettings.cpp
                ${FURBLE_ROOT}/src/FurbleNetworkSettings.cpp
+               ${FURBLE_ROOT}/src/FurbleTimezone.cpp
                ${FURBLE_ROOT}/lib/preferences/Preferences.cpp
                ${FURBLE_ROOT}/lib/furble/BtDebugJournal.cpp
                ${FURBLE_ROOT}/lib/furble/Camera.cpp
@@ -1966,6 +1996,7 @@ if(BUILD_TESTING)
   add_test(NAME wrap-safe-time COMMAND wrap_safe_time_test)
   add_test(NAME time-keeper-policy COMMAND time_keeper_policy_test)
   add_test(NAME time-keeper-persistence COMMAND time_keeper_persistence_test)
+  add_test(NAME timezone COMMAND timezone_test)
   add_test(NAME real-wifi-lifecycle COMMAND real_wifi_lifecycle_test)
   foreach(preferences_case missing empty zero-count empty-string typeerror embedded-nul corruption failed-save)
     add_test(NAME preferences-sim-${preferences_case}

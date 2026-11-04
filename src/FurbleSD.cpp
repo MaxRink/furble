@@ -23,6 +23,7 @@
 #include "FurblePlatform.h"
 #include "FurbleSD.h"
 #include "FurbleSettings.h"
+#include "FurbleTimezone.h"
 #include "FurbleTypes.h"
 #if defined(ESP_PLATFORM)
 #include "FurbleWiFi.h"
@@ -221,6 +222,7 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
     case Settings::LOW_BATT:
     case Settings::IMU_WAKE:
     case Settings::HW_MOTION:
+    case Settings::TIMEZONE:
 #if !defined(FURBLE_NO_DISPLAY)
     case Settings::DISPLAY_MODE:
 #endif
@@ -433,6 +435,13 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
 
     case Settings::IMU_WAKE:
       if (!parseUnsigned(text, 3, value)) {
+        return false;
+      }
+      Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
+      return true;
+
+    case Settings::TIMEZONE:
+      if (!parseUnsigned(text, static_cast<uint64_t>(Timezone::ZONE_COUNT - 1), value)) {
         return false;
       }
       Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
