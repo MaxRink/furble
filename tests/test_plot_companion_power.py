@@ -93,6 +93,16 @@ class CompanionPowerPlotTest(unittest.TestCase):
         self.assertEqual(len(run.samples), 3)
         self.assertIn("battery-unknown", [marker.event for marker in run.markers])
 
+    def test_unavailable_voltage_keeps_the_percentage_sample(self):
+        text = SAMPLE_CSV.replace("0.0,100,100,4200,0", "0.0,100,100,65535,0")
+        with tempfile.TemporaryDirectory() as directory:
+            run = self.plot.load_csv(self.write_csv(directory, text))
+        self.assertEqual(len(run.samples), 4)
+        self.assertIsNone(run.samples[0].battery_mv)
+        svg = self.plot.build_svg(run)
+        self.assertNotIn("65535", svg)
+        self.assertIn("unknown→4140mV", svg)
+
     def test_single_sample_svg_still_renders_a_point(self):
         text = SAMPLE_CSV.splitlines()
         single = "\n".join([text[0], text[1]]) + "\n"

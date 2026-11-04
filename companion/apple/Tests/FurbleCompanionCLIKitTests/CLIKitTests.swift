@@ -335,6 +335,17 @@ struct CLIReportTests {
     #expect(text.contains("Battery: 0%, 0 mV, 0 mA"))
   }
 
+  @Test func cameraCatalogTimeoutSurvivesTheClearedPendingFlag() {
+    #expect(CLICameraCatalogPolicy.timedOut(
+      pending: true, phase: .ready))
+    #expect(CLICameraCatalogPolicy.timedOut(
+      pending: false, phase: .failed(.cameraTransactionTimedOut)))
+    #expect(!CLICameraCatalogPolicy.timedOut(
+      pending: false, phase: .failed(.linkLost)))
+    #expect(!CLICameraCatalogPolicy.timedOut(
+      pending: false, phase: .ready))
+  }
+
   @Test func monitorCSVHeaderAndRowKeepPlotColumnsStable() throws {
     let status = try FurbleProtocol.decodeStatus(Data([
       1, 85, 0x18, 0x10, 0x88, 0xff, 3, 3, 1, 4,
@@ -401,6 +412,35 @@ struct CLIReportTests {
     #expect(CLIReport.monitorSummary(
       samples: 1, first: status, last: status, elapsed: 60)
       == "samples=1 elapsed=60.0s battery=unknown->unknown 0mV->0mV")
+  }
+
+  @Test func monitorVoltageSentinelIsUnknownOutsideCSV() throws {
+    let status = try FurbleProtocol.decodeStatus(Data([
+      1, 85, 0xff, 0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 0
+    ]))
+    let human = CLIReport.monitorHumanRow(
+      timestamp: Date(timeIntervalSince1970: 0),
+      elapsed: 0, status: status, rssi: nil, label: "")
+    #expect(human.contains("battery=85% unknown 0mA"))
+    #expect(!human.contains("65535"))
+    #expect(CLIReport.monitorSummary(
+      samples: 1, first: status, last: status, elapsed: 60)
+      == "samples=1 elapsed=60.0s battery=85%->85% unknown->unknown")
+    #expect(CLIReport.monitorCSVRow(
+      timestamp: Date(timeIntervalSince1970: 0),
+      elapsed: 0, status: status, rssi: nil, label: "")
+      .contains(",85,65535,"))
+
+    let capability = try FurbleProtocol.decodeCapability(Data([1, 2, 3, 0, 0, 0]))
+    let report = CLIStatusReport(
+      device: device,
+      status: status,
+      capability: capability,
+      authentication: .notRequired,
+      passwordOrigin: .none,
+      cameras: [],
+      cameraListSupported: false)
+    #expect(CLIReport.status(report).contains("Battery: 85%, unknown, 0 mA"))
   }
 
   @Test func cameraListFailuresAndScanLinesAreHumanReadable() throws {

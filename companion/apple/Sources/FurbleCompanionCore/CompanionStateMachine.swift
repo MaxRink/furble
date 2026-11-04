@@ -38,10 +38,40 @@ public enum CompanionFailure: Error, Equatable, Sendable {
   case authenticationUnavailable
   case authenticationFailed
   case authenticationRequired
+  case linkSecurityFailed
   case malformedPacket
   case payloadTooLarge
   case linkLost
   case cameraTransactionTimedOut
+}
+
+extension CompanionFailure: LocalizedError {
+  public var errorDescription: String? {
+    switch self {
+    case .bluetoothUnavailable:
+      return "Bluetooth is unavailable. Check power and Privacy & Security > Bluetooth."
+    case .serviceMissing:
+      return "Companion mode is not running. Open it on the device and retry."
+    case .requiredCharacteristicMissing(let name):
+      return "The firmware companion service is missing the \(name) characteristic."
+    case .authenticationUnavailable:
+      return "The device does not offer the companion Auth characteristic."
+    case .authenticationFailed:
+      return "Authentication failed. Check the companion password."
+    case .authenticationRequired:
+      return "The device requires a companion password."
+    case .linkSecurityFailed:
+      return "The BLE link could not be encrypted. Confirm the pairing prompt on the Mac and the device, then retry."
+    case .malformedPacket:
+      return "The device sent a malformed companion packet."
+    case .payloadTooLarge:
+      return "The companion packet exceeded the BLE payload limit."
+    case .linkLost:
+      return "The BLE link was lost."
+    case .cameraTransactionTimedOut:
+      return "The camera transaction timed out."
+    }
+  }
 }
 
 /// Serializes an explicit stop followed by a requested restart. CoreBluetooth

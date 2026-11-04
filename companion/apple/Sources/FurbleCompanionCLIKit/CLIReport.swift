@@ -93,7 +93,8 @@ public enum CLIReport {
     let battery = status.batteryPercent == 255 ? "unknown" : "\(status.batteryPercent)%"
     var row = "\(iso8601Timestamp(timestamp)) elapsed="
       + "\(decimalString(elapsed))s uptime=\(status.uptimeSeconds)s "
-      + "battery=\(battery) \(status.batteryMillivolts)mV \(status.batteryMilliamps)mA "
+      + "battery=\(battery) \(voltageLabel(status.batteryMillivolts)) "
+      + "\(status.batteryMilliamps)mA "
       + "gps=\(gpsSourceLabel(status.gpsSource))/\(status.gpsSatellites) "
       + "control=\(status.controlState) "
       + "external=\(status.externalPower ? 1 : 0) charging=\(status.charging ? 1 : 0)"
@@ -112,7 +113,8 @@ public enum CLIReport {
     if let first, let last {
       summary += " battery=\(batteryPercentLabel(first.batteryPercent))"
         + "->\(batteryPercentLabel(last.batteryPercent))"
-      summary += " \(first.batteryMillivolts)mV->\(last.batteryMillivolts)mV"
+      summary += " \(voltageLabel(first.batteryMillivolts))"
+        + "->\(voltageLabel(last.batteryMillivolts))"
     }
     return summary
   }
@@ -121,6 +123,13 @@ public enum CLIReport {
   /// interpolate it as a real reading in a summary.
   private static func batteryPercentLabel(_ percent: UInt8) -> String {
     percent == 255 ? "unknown" : "\(percent)%"
+  }
+
+  /// 0xffff is the wire sentinel for an unavailable voltage. The CSV keeps the
+  /// raw field for diagnostics; human and summary output must say unknown.
+  private static func voltageLabel(_ millivolts: UInt16, separated: Bool = false) -> String {
+    guard millivolts != UInt16.max else { return "unknown" }
+    return separated ? "\(millivolts) mV" : "\(millivolts)mV"
   }
 
   public static func iso8601Timestamp(_ date: Date) -> String {
@@ -151,7 +160,10 @@ public enum CLIReport {
 
     let battery = report.status.batteryPercent == 255
       ? "unknown" : "\(report.status.batteryPercent)%"
-    var power = ["\(report.status.batteryMillivolts) mV", "\(report.status.batteryMilliamps) mA"]
+    var power = [
+      voltageLabel(report.status.batteryMillivolts, separated: true),
+      "\(report.status.batteryMilliamps) mA",
+    ]
     if report.status.charging { power.append("charging") }
     if report.status.externalPower { power.append("external power") }
     lines.append("Battery: \(battery), \(power.joined(separator: ", "))")

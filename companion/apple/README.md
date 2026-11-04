@@ -115,9 +115,12 @@ Example row:
 `battery_ma` is the raw signed firmware field. Some firmware has no PMIC
 current backend and reports 0; the CLI does not derive or invent a current. It
 prints a one-time stderr warning if the first sample is 0 mA. Use
-`battery_percent`, `battery_mv` and their slope over time. `rssi` is the
-connected-link RSSI requested every sample and may be empty until the first
-reply.
+`battery_percent`, `battery_mv` and their slope over time. `battery_mv` is also
+raw: firmware uses `0xffff` when the voltage is unavailable. CSV keeps the raw
+65535 for diagnostics, while human rows and the summary print `unknown`; the
+plotter drops that voltage point and keeps the valid percentage sample. `rssi`
+is the connected-link RSSI requested every sample and may be empty until the
+first reply.
 
 A BLE drop does not end the run. The CLI emits a marker row with empty
 measurement fields and a `label` of `link-lost`, then retries with exponential

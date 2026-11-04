@@ -588,7 +588,11 @@ extension FurbleBLEClient: @preconcurrency CBPeripheralDelegate {
       let errorText = error.map { " error=\($0.localizedDescription)" } ?? ""
       FileHandle.standardError.write(Data("[ble] \(characteristic.uuid.uuidString): \(hex)\(errorText)\n".utf8))
     }
-    guard error == nil, let data = characteristic.value else { fail(.malformedPacket); return }
+    if let error {
+      fail(CompanionErrorMapping.failure(for: error))
+      return
+    }
+    guard let data = characteristic.value else { fail(.malformedPacket); return }
     if characteristic.uuid == CBUUID(string: FurbleProtocol.UUIDs.capability) {
       guard let command = state.didReadCapability(data) else { fail(state.lastError ?? .malformedPacket); return }
       if case .beginAuthentication = command { authenticate() }
@@ -646,10 +650,21 @@ extension FurbleBLEClient: @preconcurrency CBPeripheralDelegate {
   public func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic,
                          error: Error?) {
     guard isCurrent(peripheral) else { return }
-    if error != nil { fail(.malformedPacket); return }
+    if let error {
+      fail(CompanionErrorMapping.failure(for: error))
+      return
+    }
     if characteristic.uuid == CBUUID(string: FurbleProtocol.UUIDs.auth), authBeginPending {
       guard characteristic.isNotifying else { fail(.authenticationUnavailable); return }
       writeAuthBegin(to: characteristic)
+    }
+  }
+
+  public func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic,
+                         error: Error?) {
+    guard isCurrent(peripheral) else { return }
+    if let error {
+      fail(CompanionErrorMapping.failure(for: error))
     }
   }
 }

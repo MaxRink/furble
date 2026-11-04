@@ -123,7 +123,10 @@ host_time_iso,host_elapsed_s,uptime_s,battery_percent,battery_mv,battery_ma,gps_
 The firmware `battery_ma` field is reported raw. Some builds have no PMIC
 current backend and return 0; the CLI prints a one-time stderr warning and
 never derives a current. The useful battery signal is the percentage and
-millivolt slope over time.
+millivolt slope over time. `battery_mv` is also raw: `0xffff` means the voltage
+is unavailable. CSV keeps 65535 for diagnostics, while human rows, the summary
+and the status report print `unknown`; the plotter drops that voltage point but
+keeps the valid percentage sample.
 
 Procedure for a comparable drain run:
 

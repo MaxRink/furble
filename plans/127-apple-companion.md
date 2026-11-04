@@ -78,6 +78,22 @@ one-second grace so the BLE write response can leave; the console stop path
 does not. Boot-time enable still waits for the UI row because advertising a
 pairing window at every boot would be wrong.
 
+## Terminal and transport state
+
+`furble-companion-cli` maps ATT/CB insufficient-encryption errors to a link
+security failure with a pairing-prompt message, while notification-state and
+write failures use the same mapping. The native app renders
+`CompanionFailure.localizedDescription`, so both Apple clients share the
+actionable text. A camera catalog timeout is reported after the BLE client
+resets its state, and the status report snapshots authentication/capability
+first so the printed report does not claim the link was never authenticated.
+
+The monitor treats `battery_ma=0` and `battery_mv=0xffff` as unavailable
+sentinels: CSV keeps the raw fields, human/summary output says `unknown`, and
+the plotter drops only the voltage point while keeping the percentage sample.
+`--transport usb` uses the StickS3 CDC console for scan, status, cameras,
+monitor and password status; location and trigger remain BLE-only.
+
 ## Follow-up gates
 
 - A physical Apple app connection requires firmware exposing the Auth
