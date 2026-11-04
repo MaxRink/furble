@@ -68,7 +68,7 @@ namespace Furble {
 namespace {
 
 constexpr const char *PROMPT = "furble> ";
-constexpr size_t MAX_LINE = 128;
+constexpr size_t MAX_LINE = 256;
 constexpr uint32_t TASK_STACK = 8192;
 
 // Below the control task (4) and the per camera target tasks (3).

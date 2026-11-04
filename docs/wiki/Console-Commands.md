@@ -117,6 +117,7 @@ and when it applies.
 - `gps raw` reports both raw modes.
 - `gps send <body>` sends a raw sentence, for example `gps send PCAS12,10`.
 - `gps binary <class hex> <id hex> [payload bytes]` sends a CASIC binary frame.
+  The console line limit is 256 bytes, enough for a 56-byte AID-INI frame.
 - `gps config` lists the binary configuration status.
 - `gps aid` sends an assisted-start hint.
 - `gps sats [on | off]` enables or disables GSV/GSA capture; `gps sats` prints
