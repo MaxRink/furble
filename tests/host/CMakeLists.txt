@@ -1175,8 +1175,7 @@ add_executable(control_e2e_test
                ${CONTROL_E2E_DIR}/doubles.cpp
                ${CONTROL_E2E_DIR}/freertos_shim.cpp
                ${CONTROL_TESTSYNC_DIR}/TestSyncController.cpp
-               ${FURBLE_ROOT}/src/FurbleControl.cpp
-               ${FURBLE_ROOT}/src/FurbleTimezone.cpp)
+               ${FURBLE_ROOT}/src/FurbleControl.cpp)
 target_include_directories(control_e2e_test
                            BEFORE PRIVATE
                                   ${CMAKE_CURRENT_SOURCE_DIR}
@@ -1935,7 +1934,6 @@ add_executable(console_commands_test
                ${FURBLE_ROOT}/src/FurbleProvision.cpp
                ${FURBLE_ROOT}/src/FurbleSettings.cpp
                ${FURBLE_ROOT}/src/FurbleNetworkSettings.cpp
-               ${FURBLE_ROOT}/src/FurbleTimezone.cpp
                ${FURBLE_ROOT}/lib/preferences/Preferences.cpp
                ${FURBLE_ROOT}/lib/furble/BtDebugJournal.cpp
                ${FURBLE_ROOT}/lib/furble/Camera.cpp

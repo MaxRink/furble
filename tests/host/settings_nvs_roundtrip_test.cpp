@@ -625,6 +625,13 @@ void testNetworkIngressValidation() {
         "an oversized SSID is rejected");
   check(!Settings::validNetworkString(Settings::WIFI_PSK, embedded),
         "an embedded-NUL passphrase is rejected");
+  check(Furble::importSetting(Settings::get(Settings::TIMEZONE), "39"),
+        "SD import accepts the Auto time zone");
+  check(Settings::load<uint8_t>(Settings::TIMEZONE) == static_cast<uint8_t>(Furble::Timezone::Id::AUTO),
+        "Auto time zone round-trips through SD import");
+  check(!Furble::importSetting(Settings::get(Settings::TIMEZONE), "40"),
+        "SD import rejects a time zone above Auto");
+
   check(!Furble::importSetting(Settings::get(Settings::WIFI_SSID), std::string(33, 'x')),
         "SD import rejects an oversized SSID");
   check(!Furble::importSetting(Settings::get(Settings::WIFI_PSK), embedded),

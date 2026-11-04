@@ -5,6 +5,7 @@
 #include <cstring>
 
 #include "FurbleSettings.h"
+#include "FurbleTimezone.h"
 #if defined(ESP_PLATFORM)
 #include "FurbleWiFi.h"
 #endif
@@ -216,6 +217,13 @@ bool validateSetting(const ProvisionTLV::SettingValue &field,
         report.error = ApplyError::BAD_SETTING;
         report.failedSettingId = field.wireId;
         report.message = "legend setting must be 0, 1 or 2";
+        return false;
+      }
+      if ((setting.type == Settings::TIMEZONE)
+          && (field.value[0] > static_cast<uint8_t>(Timezone::Id::AUTO))) {
+        report.error = ApplyError::BAD_SETTING;
+        report.failedSettingId = field.wireId;
+        report.message = "time zone setting is out of range";
         return false;
       }
       if ((setting.type == Settings::HW_MOTION)

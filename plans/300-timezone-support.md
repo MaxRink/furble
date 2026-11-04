@@ -136,3 +136,28 @@ Classic.
 - Auto derivation runs on the UI housekeeping timer and the headless service
   loop, not inside `FurbleGPS.cpp`. A camera can see the previous zone for at
   most one GPS tick after the first fresh fix.
+
+## Review follow-ups (2026-11-05)
+
+The post-merge review of PR #364 found six gaps, all closed here:
+
+- `lib/furble/protocol/UtcTime.h` is now declared in
+  `tools/portable_core_manifest.txt`, so the portability inventory stays
+  complete.
+- The duplicate `FurbleTimezone.cpp` entries are gone from `control_e2e_test`
+  (it links `furble_host_camera`, which already owns the translation unit) and
+  from `console_commands_test` (it listed the file twice).
+- The Android metadata now carries all 39 curated zones plus Auto (GPS) at 39.
+  `isSettingValueValid` therefore accepts the full firmware selector instead of
+  rejecting values 10 through 39.
+- Companion writes and provisioning reject `TIMEZONE` values above Auto instead
+  of persisting a raw value that would silently clamp to UTC.
+- SD import accepts Auto (39) and still rejects 40 and above, so an exported
+  backup round-trips.
+- A fresh fix outside the 30-degree snap radius now clears the derived zone and
+  applies UTC immediately instead of retaining the old zone for 30 minutes.
+
+The wiki walkthrough image is also present under `docs/wiki/img`, so the
+published page no longer links a missing file. Host coverage adds the
+out-of-radius fallback, provisioning range, companion range, SD Auto round-trip
+and Android option-list assertions.

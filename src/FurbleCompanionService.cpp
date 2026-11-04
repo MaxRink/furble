@@ -18,6 +18,7 @@
 #include "FurbleMQTT.h"
 #endif
 #include "FurbleSettings.h"
+#include "FurbleTimezone.h"
 #include "FurbleTypes.h"
 #include "FurbleUI.h"
 #include "FurbleWiFi.h"
@@ -896,6 +897,9 @@ bool CompanionService::saveSetting(Settings::type_t type, const uint8_t *value, 
         return false;
       }
       if ((type == Settings::LEGEND) && (value[0] > Settings::LEGEND_OFF)) {
+        return false;
+      }
+      if ((type == Settings::TIMEZONE) && (value[0] > static_cast<uint8_t>(Timezone::Id::AUTO))) {
         return false;
       }
       Settings::save<uint8_t>(type, value[0]);
