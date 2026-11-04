@@ -394,6 +394,15 @@ struct CLIReportTests {
       == "samples=2 elapsed=60.0s battery=85%->84% 4120mV->4100mV")
   }
 
+  @Test func monitorSummaryReportsUnknownBatteryPercent() throws {
+    let status = try FurbleProtocol.decodeStatus(Data([
+      1, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 0
+    ]))
+    #expect(CLIReport.monitorSummary(
+      samples: 1, first: status, last: status, elapsed: 60)
+      == "samples=1 elapsed=60.0s battery=unknown->unknown 0mV->0mV")
+  }
+
   @Test func cameraListFailuresAndScanLinesAreHumanReadable() throws {
     let status = try FurbleProtocol.decodeStatus(Data([1] + [UInt8](repeating: 0, count: 19)))
     let capability = try FurbleProtocol.decodeCapability(Data([1, 2, 3, 0, 0, 0]))
@@ -413,4 +422,3 @@ struct CLIReportTests {
     #expect(CLIReport.scanHeader(count: 2) == "Discovered 2 furble companion devices:")
   }
 }
-

@@ -19,7 +19,7 @@ import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from xml.sax.saxutils import escape
+from xml.sax.saxutils import escape as _xml_escape
 
 REQUIRED_COLUMNS = (
     "host_time_iso",
@@ -34,6 +34,11 @@ RIGHT = 36
 TOP = 92
 PANEL_HEIGHT = 228
 PANEL_GAP = 58
+
+
+def escape(value: str) -> str:
+    """Escape XML text and the double quote used by SVG attributes."""
+    return _xml_escape(value, {'"': "&quot;", "'": "&apos;"})
 
 
 @dataclass

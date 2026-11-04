@@ -4,6 +4,7 @@ import contextlib
 import importlib.util
 import io
 from pathlib import Path
+import sys
 import tempfile
 import unittest
 
@@ -16,7 +17,14 @@ def load_plotter():
     spec = importlib.util.spec_from_file_location("plot_companion_power", SCRIPT)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
-    spec.loader.exec_module(module)
+    # dataclasses resolves the module by name while executing; without the
+    # sys.modules entry Python 3.12+ cannot find it.
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+    except Exception:
+        sys.modules.pop(spec.name, None)
+        raise
     return module
 
 
@@ -69,6 +77,13 @@ class CompanionPowerPlotTest(unittest.TestCase):
         self.assertIn("battery_ma is 0/absent", svg)
         self.assertNotIn("<script", svg)
         self.assertNotIn("xlink:href", svg)
+
+    def test_svg_attribute_escapes_double_quotes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run = self.plot.load_csv(self.write_csv(directory))
+        svg = self.plot.build_svg(run, 'a"b')
+        self.assertIn('aria-label="a&quot;b"', svg)
+        self.assertNotIn('aria-label="a"b"', svg)
 
     def test_unknown_percent_is_a_marker_not_a_sample(self):
         text = SAMPLE_CSV.replace("0.0,100,100,4200,0",

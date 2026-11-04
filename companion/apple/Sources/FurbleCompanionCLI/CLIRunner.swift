@@ -485,7 +485,7 @@ enum CLIEntry {
         lastActivity: lastStatusAt, now: now, retryWindow: options.retryWindow)
     }
 
-    while true {
+    monitorLoop: while true {
       if interrupt.isSet { break }
       if CLIMonitorPolicy.reachedDuration(
         elapsed: elapsed(), duration: options.duration) { break }
@@ -539,14 +539,14 @@ enum CLIEntry {
             if CLIMonitorPolicy.reachedEmpty(
               batteryPercent: status.batteryPercent, untilEmpty: options.untilEmpty) {
               emitMarker("battery-empty")
-              break
+              break monitorLoop
             }
           }
         }
         if CLIMonitorPolicy.retryExhausted(
           lastActivity: lastStatusAt, now: Date(), retryWindow: options.retryWindow) {
           emitMarker("status-timeout")
-          break
+          break monitorLoop
         }
 
       case .failed(let failure):
@@ -571,7 +571,7 @@ enum CLIEntry {
         }
         if lost, exhausted(Date()) {
           emitMarker("retry-exhausted")
-          break
+          break monitorLoop
         }
 
       default:
@@ -591,7 +591,7 @@ enum CLIEntry {
         }
         if exhausted(now) {
           emitMarker("retry-exhausted")
-          break
+          break monitorLoop
         }
       }
 

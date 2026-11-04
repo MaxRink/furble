@@ -36,6 +36,14 @@ public struct CLIStatusReport: Equatable, Sendable {
 }
 
 public enum CLIReport {
+  /// Fixed-point output is locale-independent so CSV never gains a decimal
+  /// comma that would split a field on a comma-decimal host.
+  private static let decimalLocale = Locale(identifier: "en_US_POSIX")
+
+  private static func decimalString(_ value: TimeInterval) -> String {
+    String(format: "%.1f", locale: decimalLocale, value)
+  }
+
   /// One row per status notification sample. Raw GPS source codes are kept
   /// numeric for plotting; the human form maps them to labels.
   public static let monitorCSVHeader =
@@ -51,7 +59,7 @@ public enum CLIReport {
   ) -> String {
     [
       csvField(iso8601Timestamp(timestamp)),
-      String(format: "%.1f", elapsed),
+      decimalString(elapsed),
       String(status.uptimeSeconds),
       String(status.batteryPercent),
       String(status.batteryMillivolts),
@@ -72,7 +80,7 @@ public enum CLIReport {
   ) -> String {
     [
       csvField(iso8601Timestamp(timestamp)),
-      String(format: "%.1f", elapsed),
+      decimalString(elapsed),
       "", "", "", "", "", "", "", "",
       csvField(event)
     ].joined(separator: ",")
@@ -84,7 +92,7 @@ public enum CLIReport {
   ) -> String {
     let battery = status.batteryPercent == 255 ? "unknown" : "\(status.batteryPercent)%"
     var row = "\(iso8601Timestamp(timestamp)) elapsed="
-      + "\(String(format: "%.1f", elapsed))s uptime=\(status.uptimeSeconds)s "
+      + "\(decimalString(elapsed))s uptime=\(status.uptimeSeconds)s "
       + "battery=\(battery) \(status.batteryMillivolts)mV \(status.batteryMilliamps)mA "
       + "gps=\(gpsSourceLabel(status.gpsSource))/\(status.gpsSatellites) "
       + "control=\(status.controlState) "
@@ -100,12 +108,19 @@ public enum CLIReport {
     last: FurbleProtocol.Status?,
     elapsed: TimeInterval
   ) -> String {
-    var summary = "samples=\(samples) elapsed=\(String(format: "%.1f", elapsed))s"
+    var summary = "samples=\(samples) elapsed=\(decimalString(elapsed))s"
     if let first, let last {
-      summary += " battery=\(first.batteryPercent)%->\(last.batteryPercent)%"
+      summary += " battery=\(batteryPercentLabel(first.batteryPercent))"
+        + "->\(batteryPercentLabel(last.batteryPercent))"
       summary += " \(first.batteryMillivolts)mV->\(last.batteryMillivolts)mV"
     }
     return summary
+  }
+
+  /// 255 is the wire sentinel for "the gauge has no percentage"; never
+  /// interpolate it as a real reading in a summary.
+  private static func batteryPercentLabel(_ percent: UInt8) -> String {
+    percent == 255 ? "unknown" : "\(percent)%"
   }
 
   public static func iso8601Timestamp(_ date: Date) -> String {
