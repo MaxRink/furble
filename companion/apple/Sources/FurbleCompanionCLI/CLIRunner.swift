@@ -254,21 +254,33 @@ enum CLIEntry {
     case .bluetoothUnavailable:
       return RunError(message: bluetoothUnavailableMessage(), code: .bluetoothUnavailable)
     case .authenticationUnavailable:
-      let message: String
+      return RunError(
+        message: "authentication is unavailable. The device does not expose the companion "
+          + "Auth characteristic or rejected the secure link.",
+        code: .authenticationFailed)
+    case .authenticationRequired:
       if passwordOrigin == .none {
-        message = "the device requires a companion password, but no password was supplied. "
-          + "Set FURBLE_COMPANION_PASSWORD, use --password-env/--password-file/--password-stdin, "
-          + "or run 'furble-companion-cli password set'. A device whose password is unset "
-          + "does not need one."
-      } else {
-        message = "authentication is unavailable. The device may lack the Auth characteristic "
-          + "or rejected the companion link."
+        return RunError(
+          message: "the device requires a companion password, but no password was supplied. "
+            + "Set FURBLE_COMPANION_PASSWORD, use --password-env/--password-file/--password-stdin, "
+            + "or run 'furble-companion-cli password set'. A device whose password is unset "
+            + "does not need one.",
+          code: .authenticationFailed)
       }
-      return RunError(message: message, code: .authenticationFailed)
-    case .authenticationFailed, .authenticationRequired:
       return RunError(
         message: "authentication failed. Check the companion password; the firmware may drop "
           + "the link after repeated failures.",
+        code: .authenticationFailed)
+    case .authenticationFailed:
+      return RunError(
+        message: "authentication failed. Check the companion password; the firmware may drop "
+          + "the link after repeated failures.",
+        code: .authenticationFailed)
+    case .linkSecurityFailed:
+      return RunError(
+        message: "the BLE link could not be encrypted. Confirm the pairing prompt on both "
+          + "the Mac and the device, then retry. If no prompt appears, run 'companion start' "
+          + "again on the device and retry within the 60-second pairing window.",
         code: .authenticationFailed)
     case .linkLost, .cameraTransactionTimedOut:
       return RunError(
@@ -310,6 +322,9 @@ enum CLIEntry {
       cameraListError: client.state.cameraListError,
       cameraOperationError: cameras.operationError)
     print(CLIReport.status(report))
+    if let failure = cameras.failure {
+      throw failureError(failure, passwordOrigin: passwordOrigin)
+    }
     if cameras.timedOut {
       throw RunError(message: "timed out while waiting for the camera catalog", code: .timeout)
     }
@@ -335,21 +350,31 @@ enum CLIEntry {
   private struct CameraLoad {
     let timedOut: Bool
     let operationError: String?
+    let failure: CompanionFailure?
   }
 
   private static func loadCameraCatalog(_ client: FurbleBLEClient) -> CameraLoad {
-    guard client.state.supportsCameras else { return CameraLoad(timedOut: false, operationError: nil) }
+    guard client.state.supportsCameras else {
+      return CameraLoad(timedOut: false, operationError: nil, failure: nil)
+    }
     do {
       try client.requestCameras()
     } catch {
-      return CameraLoad(timedOut: false, operationError: cameraErrorDescription(error))
+      return CameraLoad(
+        timedOut: false, operationError: cameraErrorDescription(error), failure: nil)
     }
     let deadline = Date().addingTimeInterval(7)
     _ = pump(until: deadline) {
       !client.state.cameraListPending || client.phase.isFailure
     }
-    let timedOut = client.state.cameraListPending
-    return CameraLoad(timedOut: timedOut, operationError: client.cameraOperationError)
+    let timedOut = CLICameraCatalogPolicy.timedOut(
+      pending: client.state.cameraListPending, phase: client.phase)
+    var failure: CompanionFailure?
+    if case .failed(let phaseFailure) = client.phase {
+      failure = phaseFailure
+    }
+    return CameraLoad(
+      timedOut: timedOut, operationError: client.cameraOperationError, failure: failure)
   }
 
   private static func cameraErrorDescription(_ error: Error) -> String {

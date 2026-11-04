@@ -47,7 +47,7 @@ class Sample:
     timestamp: str
     uptime_s: float | None
     battery_percent: int
-    battery_mv: int
+    battery_mv: int | None
     battery_ma: int | None
     gps_source: int | None
     gps_satellites: int | None
@@ -144,13 +144,17 @@ def load_csv(path: str | Path) -> Run:
             label = (raw.get("label") or "").strip()
             percent = _parse_int(raw.get("battery_percent"))
             millivolts = _parse_int(raw.get("battery_mv"))
-            if percent is None or millivolts is None:
+            if percent is None:
                 event = label or "event"
                 run.markers.append(Marker(elapsed=elapsed, event=event))
                 continue
             if percent < 0 or percent > 100:
                 run.markers.append(Marker(elapsed=elapsed, event="battery-unknown"))
                 continue
+            if millivolts == 0xFFFF:
+                # Firmware sentinel for an unavailable voltage. Keep the valid
+                # percentage sample so the percent panel and drain slope survive.
+                millivolts = None
 
             if label and label != previous_label:
                 run.labels.append((elapsed, label))
@@ -301,8 +305,13 @@ def _panel(
             )
 
 
+def _voltage_label(millivolts: int | None) -> str:
+    return "unknown" if millivolts is None else f"{millivolts}mV"
+
+
 def build_svg(run: Run, title: str = "") -> str:
     samples = run.samples
+    voltage_samples = [sample for sample in samples if sample.battery_mv is not None]
     x_high = max(sample.elapsed for sample in samples)
     if run.markers:
         x_high = max(x_high, max(marker.elapsed for marker in run.markers))
@@ -310,9 +319,13 @@ def build_svg(run: Run, title: str = "") -> str:
         x_high = 1.0
     x_low = 0.0
 
-    values = [sample.battery_mv for sample in samples]
-    mv_low = min(values)
-    mv_high = max(values)
+    values = [sample.battery_mv for sample in voltage_samples]
+    if values:
+        mv_low = min(values)
+        mv_high = max(values)
+    else:
+        mv_low = 0
+        mv_high = 1
     if mv_high <= mv_low:
         mv_high = mv_low + 20
         mv_low = max(0, mv_low - 20)
@@ -342,7 +355,8 @@ def build_svg(run: Run, title: str = "") -> str:
         f'<text x="{LEFT}" y="62" font-size="12" fill="#4a5568">'
         f'{len(samples)} samples · {x_high / 60:.1f} minutes · '
         f'percent {samples[0].battery_percent}%→{samples[-1].battery_percent}% · '
-        f'{samples[0].battery_mv}mV→{samples[-1].battery_mv}mV</text>',
+        f'{_voltage_label(samples[0].battery_mv)}→'
+        f'{_voltage_label(samples[-1].battery_mv)}</text>',
     ]
     if run.all_current_missing:
         parts.append(
@@ -357,7 +371,7 @@ def build_svg(run: Run, title: str = "") -> str:
         0, 100, "#2563eb", run.markers, run.labels,
     )
     _panel(
-        parts, samples, lambda sample: sample.battery_mv,
+        parts, voltage_samples, lambda sample: sample.battery_mv or 0,
         "Battery voltage", " mV", x0, x1, bottom_y0, bottom_y1, x_low, x_high,
         float(mv_low), float(mv_high), "#b91c1c", run.markers, run.labels,
     )
@@ -390,7 +404,10 @@ def write_png(run: Run, path: str | Path, title: str = "") -> bool:
     axes[0].set_ylabel("Battery (%)")
     axes[0].set_ylim(0, 100)
     axes[0].grid(True, alpha=0.25)
-    axes[1].plot(elapsed, [sample.battery_mv for sample in samples], color="#b91c1c")
+    voltage_samples = [sample for sample in samples if sample.battery_mv is not None]
+    axes[1].plot(
+        [sample.elapsed / 60.0 for sample in voltage_samples],
+        [sample.battery_mv for sample in voltage_samples], color="#b91c1c")
     axes[1].set_ylabel("Battery (mV)")
     axes[1].set_xlabel("Elapsed minutes")
     axes[1].grid(True, alpha=0.25)

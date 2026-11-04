@@ -38,6 +38,7 @@ public enum CompanionFailure: Error, Equatable, Sendable {
   case authenticationUnavailable
   case authenticationFailed
   case authenticationRequired
+  case linkSecurityFailed
   case malformedPacket
   case payloadTooLarge
   case linkLost

@@ -49,7 +49,10 @@ private struct ContentView: View {
         Section("Status") {
           if let status = client.status {
             LabeledContent("Battery", value: status.batteryPercent == 255 ? "Unknown" : "\(status.batteryPercent)%")
-            LabeledContent("Voltage", value: "\(status.batteryMillivolts) mV")
+            LabeledContent(
+              "Voltage",
+              value: status.batteryMillivolts == UInt16.max
+                ? "Unknown" : "\(status.batteryMillivolts) mV")
             LabeledContent("Cameras", value: "\(status.cameraConnected)/\(status.cameraTotal)")
             LabeledContent("GPS", value: gpsStatusLabel(status))
           } else {

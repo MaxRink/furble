@@ -588,7 +588,11 @@ extension FurbleBLEClient: @preconcurrency CBPeripheralDelegate {
       let errorText = error.map { " error=\($0.localizedDescription)" } ?? ""
       FileHandle.standardError.write(Data("[ble] \(characteristic.uuid.uuidString): \(hex)\(errorText)\n".utf8))
     }
-    guard error == nil, let data = characteristic.value else { fail(.malformedPacket); return }
+    if let error {
+      fail(CompanionErrorMapping.failure(for: error))
+      return
+    }
+    guard let data = characteristic.value else { fail(.malformedPacket); return }
     if characteristic.uuid == CBUUID(string: FurbleProtocol.UUIDs.capability) {
       guard let command = state.didReadCapability(data) else { fail(state.lastError ?? .malformedPacket); return }
       if case .beginAuthentication = command { authenticate() }
