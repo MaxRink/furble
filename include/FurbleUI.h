@@ -872,6 +872,11 @@ class UI {
 
   // Measured width of the floating right legend, or 0 where there is none.
   static int32_t m_LegendWidth;
+  // Vertical band the floating legend actually occupies. Rows outside it keep
+  // the full page width instead of reserving an empty column for their whole
+  // height.
+  static int32_t m_LegendTop;
+  static int32_t m_LegendBottom;
 
   // Breathing room between a row and the legend beside it.
   static constexpr int32_t LEGEND_GAP = 2;

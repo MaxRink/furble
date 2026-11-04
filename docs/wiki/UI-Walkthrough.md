@@ -241,6 +241,16 @@ all three simulator panel sizes.
 ![Sensors settings](../img/settings-sensors.png)
 ![Gestures settings](../img/settings-gestures.png)
 
+### Companion pairing
+
+![Companion pairing](img/companion-pairing.png)
+
+With the Companion service enabled, a companion app that connects raises a
+pairing dialog showing the six-digit code with Yes and No buttons. Confirm that
+the code matches the Mac or phone, then choose Yes; No rejects the pairing. The
+dialog is width-capped to the Stick panel so the title, code and buttons stay
+fully visible.
+
 ### Infrared
 
 The Infrared submenu holds the Infrared on/off switch and the IR Protocol roller

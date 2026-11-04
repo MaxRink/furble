@@ -1196,3 +1196,16 @@ boards' eight 600-step fuzz seeds and strict seed-2 replay, and 298 physical-lay
 scenarios. Those precede the focused-outline successor and are not a substitute
 for rerunning its UI gates. The Off-mode test setup now uses the existing
 Features switch action instead of an unsupported `preset_picker` seed.
+
+
+## Right-legend reservation regression (2026-11-04)
+
+`8854a374` narrowed every scrollable row by the floating right legend width for
+the page's whole lifetime. The legend only occupies one small band at the
+bottom-right (`m_RightYOffset`), so the upper rows gave up usable width for an
+empty column: on the 135 px Stick panel "Connect" and "Settings" wrapped to two
+lines beside blank space. `reserveLegendColumns()` now measures the legend's
+vertical band after alignment and narrows only rows whose coordinates intersect
+it; rows above and below keep the full page width. The companion pairing modal
+was also content-sized past the panel edge and is now capped to the panel with
+the compact camera-pairing layout; `ui.modal_overflow` covers both modal paths.
