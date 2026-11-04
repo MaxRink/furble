@@ -1143,6 +1143,11 @@ add_executable(gps_casic_test
 target_include_directories(gps_casic_test PRIVATE ${FURBLE_ROOT}/lib/furble/protocol)
 target_compile_options(gps_casic_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                               -Wno-unused-parameter)
+# The status freshness predicate is pure logic. Keeping it in a header target
+# proves the fix/age boundary without pulling TinyGPSPlus and the UART in.
+add_executable(gps_fix_freshness_test gps_fix_freshness_test.cpp)
+target_include_directories(gps_fix_freshness_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(gps_fix_freshness_test PRIVATE -Wall -Wextra -Werror)
 
 # Real-Control end-to-end harness (PR #131). Compiles the production
 # src/FurbleControl.cpp and runs it on real threads against the shared MockNimBLE
@@ -2054,6 +2059,7 @@ if(BUILD_TESTING)
   add_test(NAME gps-power-cycle COMMAND gps_power_cycle_test)
   add_test(NAME gps-power-profiler COMMAND gps_power_profiler_test)
   add_test(NAME gps-casic COMMAND gps_casic_test)
+  add_test(NAME gps-fix-freshness COMMAND gps_fix_freshness_test)
   add_test(NAME fault-tooling COMMAND fault_tooling_test)
   # The console suite drives the real console task through its transport, and
   # 'perf tasks' samples over a full second, so give it room while still

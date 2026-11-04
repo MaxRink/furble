@@ -498,7 +498,9 @@ receiver when GPS is enabled, and the receiver goes back to its own defaults
 the next time it is powered off.
 
 `Settings->GPS->GPS Data` shows fix age, satellites, speed, coordinates,
-altitude, and UTC time. `Raw NMEA` shows received sentences, fix/error
+altitude, and UTC time. A fix is reported only while the last location is
+younger than 30 seconds, so a receiver that stops producing sentences cannot
+keep claiming a live fix. `Raw NMEA` shows received sentences, fix/error
 counters, binary configuration status, and a Hot restart button. `Satellites`
 enables the extra GSV/GSA parser and shows per-satellite C/N0, used flags, and
 PDOP/HDOP/VDOP. `gps platform` is intentionally marked hardware-tuning-pending;

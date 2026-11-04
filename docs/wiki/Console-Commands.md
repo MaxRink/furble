@@ -107,7 +107,9 @@ and when it applies.
 
 - `gps` with no argument prints the receiver state (`detecting`, `present` or
   `absent`), the detected baud, the fix, satellites, position, age, and error
-  counts.
+  counts. `fix` is `yes` only while the position, the GGA quality, and a
+  location younger than the 30 s freshness bound all hold; it turns `no` at
+  30 s even when the receiver still reports a quality.
 - `gps on | off` drives the GPS setting and reloads the receiver.
 - `gps raw on | off` mirrors incoming NMEA to the console.
 - `gps raw hex on | off` mirrors every received UART chunk as hex, including

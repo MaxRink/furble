@@ -164,7 +164,10 @@ station. `wifi connect` and `wifi disconnect` act immediately, and
 ## gps
 
 - `gps` with no argument prints enabled, fix, satellites, lat, lon, alt, age,
-  date, time, and error counts, then the receiver state behind them:
+  date, time, and error counts. `fix` is `yes` only while the position, the GGA
+  quality, and a location younger than the 30 s freshness bound all hold; it
+  turns `no` at 30 s even when the receiver still reports a quality. It also
+  reports the receiver state behind the fix:
   `receiver` (`detecting`, `present` or `absent`), `baud` (the baud the
   autobaud ladder locked, or the configured fixed baud, 0 when none),
   `degraded` and `retries` for the power cycle health, `source` (`uart`,
