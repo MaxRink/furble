@@ -25,6 +25,7 @@
 
 #include <SDL2/SDL.h>
 #include <lgfx/v1/platforms/sdl/common.hpp>
+#include <lvgl.h>
 
 #include <driver/uart.h>
 
@@ -44,6 +45,7 @@
 #include "capture.h"
 #include "clock.h"
 #include "driver.h"
+#include "ui_buttons.h"
 #include "fuzz.h"
 #include "platform_state.h"
 #include "power_profiler.h"
@@ -2263,6 +2265,17 @@ void driverTick(void) {
   // false-connected presentation.
   checkLivenessInvariant();
 
+  // Interactive runs advance the virtual clock much faster than wall time, so
+  // the firmware's 60 s inactivity timeout can expire between two human clicks
+  // and swallow every press as a display wake. Keep the panel active while the
+  // on-screen control window exists; scenario and fuzz runs never create it and
+  // still exercise the real inactivity path.
+  if (interactiveRun() && uiButtonsActive()) {
+    if (lv_display_t *display = lv_display_get_default(); display != nullptr) {
+      lv_display_trigger_activity(display);
+    }
+  }
+
   if (fuzzActive()) {
     fuzzTick(scenarioUi);
     return;
@@ -2710,6 +2723,12 @@ void requestFailureExit(void) {
 
 bool exitRequested(void) {
   return requestedExit.load() >= 0 || restartPending.load();
+}
+
+bool interactiveRun(void) {
+  // Scenario scripts and the fuzzer own the input stream. Only a plain
+  // interactive run may expose the on-screen control window.
+  return !fuzzActive() && scenarioName == "interactive";
 }
 
 int exitResult(void) {

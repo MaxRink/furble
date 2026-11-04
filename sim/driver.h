@@ -49,6 +49,9 @@ void requestFailureExit(void);
 /** Return true once a scenario, fuzzer, or panel close requested shutdown. */
 bool exitRequested(void);
 
+/** True when no scenario script or fuzzer owns the run. */
+bool interactiveRun(void);
+
 /** Return the first requested simulator process result, or zero if unset. */
 int exitResult(void);
 

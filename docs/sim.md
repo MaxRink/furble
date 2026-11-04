@@ -124,6 +124,58 @@ cmake -S sim -B sim/build-cmake
 cmake --build sim/build-cmake
 ```
 
+### Interactive on-screen buttons
+
+A visible interactive run creates a second, simulator-only control window so
+the modeled physical buttons can be clicked instead of typed:
+
+```sh
+sh sim/build.sh
+sim/build/furble-sim
+```
+
+The control window is placed beside the panel, falling back to below and then
+above it, with a gap. It never overlaps the panel, so the panel's own
+button-position overlays stay visible. The window draws a simple top view of
+the modeled device and places the buttons where the physical device has them:
+
+| Modeled board | Window title | A | B | Third button |
+| --- | --- | --- | --- | --- |
+| M5StickC / M5StickS3 | `... - Stick: B top, A front, PWR left` | front/bottom edge, GPIO 39 | top edge, GPIO 38 | PWR on the left side, GPIO 36 |
+| M5Stack Core (`FURBLE_M5COREX`) | `... - Core front: A B C` | front edge, GPIO 39 | front edge, GPIO 38 | C on the front edge, GPIO 37 |
+
+The keyboard letters `a`, `b`, `c` and `p` remain available and select the
+same pins (Sticks use `a`, `b`, `p`; Cores use `a`, `b`, `c`). A click drives
+`lgfx::gpio_lo`/`gpio_hi` on the same emulated GPIO M5Unified's PC build reads,
+so the click, the keyboard letter and the scenario `btn` verb all reach the
+firmware through one input path; the control window does not call a second
+firmware input seam. Mouse down and mouse up model hold and release, and the
+button renders a pressed state. One click produces one press/release
+transition: a per-button debounce ignores a redelivery inside 120 ms, a second
+press on an already held button is a no-op, and a left-button up, a drag out of
+the window, focus loss, hidden window, capture loss, or window close releases
+the GPIO so it cannot remain latched.
+
+Interactive runs keep the simulated panel active while the control window
+exists. The simulator's virtual clock advances much faster than wall time, so
+without that keepalive the firmware's 60 s inactivity timeout can expire
+between two human clicks and swallow every press as a display wake. Scripted,
+headless and fuzz runs never create the window and still exercise the real
+inactivity, dim, sleep and first-press wake behavior. If the panel is already
+asleep, the first click wakes it and is consumed, exactly as on hardware.
+
+The control surface is interactive-only:
+
+- It is not created for a `--script` run or a fuzz run, even when a display is
+  available, so scenarios keep a deterministic input stream.
+- It is skipped automatically under `SDL_VIDEODRIVER=dummy` or `offscreen`.
+- Set `FURBLE_SIM_BUTTONS=0` (also `false`, `no`, or `off`) to keep the
+  interactive run but hide the control window.
+- If window, renderer or SDL event-filter creation fails, the simulator prints
+  one diagnostic and continues without the control surface. Closing the
+  control window hides only that window; closing the panel window still exits
+  the simulator.
+
 Run one scenario headlessly:
 
 ```sh
@@ -972,7 +1024,8 @@ whatever the production stack does after a fault is what the scenario observes.
   peer. This is the headless pairing fault seam.
 - `FURBLE_SIM_IR`, `FURBLE_SIM_FEEDBACK`, and `FURBLE_SIM_SD` inject optional
   capability presence. `FURBLE_SIM_THEME` and `FURBLE_SIM_TEXTSIZE` select
-  launch-time rendering variants. `FURBLE_SIM_CAPTURE_SPLASH` captures the
+  launch-time rendering variants. `FURBLE_SIM_BUTTONS=0` hides the interactive
+  on-screen button window and `FURBLE_SIM_CAPTURE_SPLASH` captures the
   boot splash. `FURBLE_SIM_PREFS` selects the preferences file used by the
   simulator; a scripted run overrides it with a per-run path
   `.pio/furble-sim-preferences-<scenario>-<pid>-<random>.bin` and removes it

@@ -215,6 +215,22 @@ including empty strings and failed-save rollback.
 - The three modeled panels are the 80x160 `FURBLE_M5STICKC` /
   `board_M5StickC`, the 135x240 `FURBLE_M5STICKS3` /
   `board_M5StickS3`, and the 320x240 `FURBLE_M5COREX` / `board_M5Stack`.
+- Visible interactive runs create a simulator-only on-screen button window
+  (`sim/ui_buttons.cpp`) on the SDL main thread after the panel exists. It
+  draws a top-view device outline: Sticks put B on the top edge, A on the
+  front edge and PWR on the left; Cores put A/B/C on the front edge. Clicks
+  drive the same emulated GPIOs as the keyboard letters and the `btn` verb
+  (39/38/36 or 39/38/37), so there is no second firmware input path. It is
+  placed beside the panel, then below or above it, and never overlaps the
+  panel or its button-position overlays. It is skipped under
+  `SDL_VIDEODRIVER=dummy`/`offscreen`, for every script and fuzz run, and with
+  `FURBLE_SIM_BUTTONS=0`; a failed window or renderer creation is a warning,
+  not a run failure. While it exists, `sim/driver.cpp` keeps LVGL activity
+  alive because the interactive virtual clock runs far faster than wall time
+  and would otherwise swallow every click as an inactivity wake; scripted runs
+  still exercise the real inactivity path. One click is one debounced
+  press/release, and a left-button up anywhere, a drag out of the window,
+  focus loss, capture loss or close releases the GPIO so it cannot latch.
 - Keep the firmware source list in `sim/build.sh` and `sim/CMakeLists.txt` in
   sync. Both carry a note. `src/FurbleMQTT.cpp` is named directly in the CMake list so the static
   inventory checker sees the guarded shell-build entry; its translation unit
