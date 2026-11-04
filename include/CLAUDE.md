@@ -22,6 +22,11 @@ Public headers for the app layer in src/, one header per module
 - `FurbleControl::sendCameraCommand()` returns the complete target-set session
   generation captured with delivery. Expected-session releases must fail when
   the whole session has been replaced.
+- `FurbleCompanion::disableNow()` is the synchronous stop for callers outside a
+  NimBLE callback (console stop, tests). `reloadSetting(false)` deliberately
+  keeps the one-second grace timer so a companion settings write can return
+  before the GATT services are removed; never use `disableNow()` from a
+  characteristic callback.
 - `FurbleGPS` exposes the CASIC binary test path and AID-INI injection as
   documented public methods. Keep their wire format comments next to the API.
 - `FurbleSD.h` and `FurbleGPX.h`: all SD and GPX file I/O runs on the SD

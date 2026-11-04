@@ -45,6 +45,7 @@
 #include "FujifilmVirtualCamera.h"
 #include "NimBLEDevice.h"
 
+#include "FurbleCompanion.h"
 #include "FurbleConsole.h"
 #include "FurbleControl.h"
 #include "FurblePlatform.h"
@@ -391,27 +392,59 @@ void testSettings(void) {
         "companion start persists the enabled setting");
   check(ConsoleHost::misc().companionPairingWindowReloads == pairingReloadsBefore + 1,
         "companion start reloads the live gate with the pairing window");
-  checkContains(runDirect("companion status").out, "companion.enabled: true",
-                "companion status reports the stateful enabled value");
+  const Result startedStatus = runDirect("companion status");
+  checkContains(startedStatus.out, "companion.setting: true",
+                "companion status reports the persisted enabled setting");
+  checkContains(startedStatus.out, "companion.enabled: true",
+                "companion status reports the live enabled service");
   check(contains(runDirect("help").out, "companion start | stop | status"),
         "help advertises the companion pairing commands");
 
-  const size_t disableReloadsBefore = ConsoleHost::misc().companionDisableReloads;
+  const size_t disableNowBefore = ConsoleHost::misc().companionDisableNowCalls;
   check(runDirect("companion stop").rc == 0, "companion stop returns success");
   check(!Furble::Settings::load<bool>(Furble::Settings::COMPANION),
         "companion stop persists the disabled setting");
-  check(ConsoleHost::misc().companionDisableReloads == disableReloadsBefore + 1,
-        "companion stop reloads the live gate with the disable mode");
-  checkContains(runDirect("companion status").out, "companion.enabled: false",
-                "companion status reports the stateful disabled value");
+  check(ConsoleHost::misc().companionDisableNowCalls == disableNowBefore + 1,
+        "companion stop disables the live service synchronously");
+  const Result stoppedStatus = runDirect("companion status");
+  checkContains(stoppedStatus.out, "companion.setting: false",
+                "companion status reports the persisted disabled setting");
+  checkContains(stoppedStatus.out, "companion.enabled: false",
+                "companion status reports the live disabled service");
 
+  // The settings/companion-write path keeps the live service up for one
+  // second. The double must model that grace separately from disableNow().
+  check(runDirect("companion start").rc == 0, "companion restarts for the grace check");
+  Furble::Settings::save<bool>(Furble::Settings::COMPANION, false);
+  Furble::CompanionGatt::getInstance().reloadSetting(false);
+  check(ConsoleHost::misc().companionEnabled,
+        "the delayed settings disable keeps the live service up");
+  check(ConsoleHost::misc().companionPendingDisable,
+        "the delayed settings disable records the pending stop");
+  Furble::CompanionGatt::getInstance().completeDelayedDisable();
+  check(!ConsoleHost::misc().companionEnabled,
+        "the delayed settings disable stops the service after the grace");
+  check(!ConsoleHost::misc().companionPendingDisable,
+        "the completed grace clears the pending stop");
+
+  ConsoleHost::misc().companionEnableSucceeds = false;
+  const Result failedLiveStart = runDirect("companion start");
+  check(failedLiveStart.rc != 0 && !contains(failedLiveStart.out, "pairing window open"),
+        "a live start failure reports failure instead of a window");
+  check(!Furble::Settings::load<bool>(Furble::Settings::COMPANION),
+        "a live start failure rolls the persisted setting back to disabled");
+  checkContains(runDirect("companion status").out, "companion.enabled: false",
+                "a live start failure leaves the service disabled");
+  ConsoleHost::misc().companionEnableSucceeds = true;
+
+  const size_t pairingReloadsBeforeFailedWrite = ConsoleHost::misc().companionPairingWindowReloads;
   nvs_test_fail_set_on(1);
   const Result failedStart = runDirect("companion start");
   check(failedStart.rc != 0 && !contains(failedStart.out, "pairing window open"),
         "failed companion enable reports failure instead of a window");
   check(!Furble::Settings::load<bool>(Furble::Settings::COMPANION),
         "failed companion enable leaves the setting disabled");
-  check(ConsoleHost::misc().companionPairingWindowReloads == pairingReloadsBefore + 1,
+  check(ConsoleHost::misc().companionPairingWindowReloads == pairingReloadsBeforeFailedWrite,
         "failed companion enable does not reload the live gate");
 
   check(runDirect("companion start").rc == 0, "companion start recovers after a failed write");
@@ -421,8 +454,8 @@ void testSettings(void) {
         "failed companion disable reports failure");
   check(Furble::Settings::load<bool>(Furble::Settings::COMPANION),
         "failed companion disable preserves the enabled setting");
-  check(ConsoleHost::misc().companionDisableReloads == disableReloadsBefore + 1,
-        "failed companion disable does not reload the live gate");
+  check(ConsoleHost::misc().companionDisableNowCalls == disableNowBefore + 1,
+        "failed companion disable does not stop the live gate");
   check(runDirect("companion stop").rc == 0, "companion stop recovers after a failed commit");
 
   const size_t reloadsBeforePassword = ConsoleHost::misc().companionPasswordReloads;

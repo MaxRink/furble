@@ -38,6 +38,10 @@ void CompanionGatt::reloadSetting(bool pairingWindow) {
   }
 }
 
+void CompanionGatt::disableNow(void) {
+  disable();
+}
+
 void CompanionGatt::reloadPassword(void) {
   m_Service.reloadPassword();
 }

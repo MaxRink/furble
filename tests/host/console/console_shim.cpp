@@ -1078,10 +1078,29 @@ void CompanionGatt::reloadSetting(bool pairingWindow) {
   state.companionReloads++;
   if (pairingWindow) {
     state.companionPairingWindowReloads++;
+    state.companionEnabled =
+        state.companionEnableSucceeds && Furble::Settings::load<bool>(Furble::Settings::COMPANION);
   } else {
     state.companionDisableReloads++;
+    // Production keeps the live service up for one second so a companion
+    // write response can leave. The test completes the timer explicitly.
+    state.companionPendingDisable = state.companionEnabled;
   }
-  state.companionEnabled = Furble::Settings::load<bool>(Furble::Settings::COMPANION);
+}
+
+void CompanionGatt::disableNow(void) {
+  auto &state = ConsoleHost::misc();
+  state.companionDisableNowCalls++;
+  state.companionEnabled = false;
+  state.companionPendingDisable = false;
+}
+
+void CompanionGatt::completeDelayedDisable(void) {
+  auto &state = ConsoleHost::misc();
+  if (!Furble::Settings::load<bool>(Furble::Settings::COMPANION)) {
+    state.companionEnabled = false;
+  }
+  state.companionPendingDisable = false;
 }
 
 bool CompanionGatt::isEnabled(void) const {

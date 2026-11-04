@@ -11,6 +11,8 @@ class CompanionGatt {
   static CompanionGatt &getInstance(void);
 
   void reloadSetting(bool pairingWindow = false);
+  void disableNow(void);
+  void completeDelayedDisable(void);
   bool isEnabled(void) const;
   void reloadPassword(void);
 
