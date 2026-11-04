@@ -10,7 +10,8 @@ class CompanionGatt {
  public:
   static CompanionGatt &getInstance(void);
 
-  void reloadSetting(void);
+  void reloadSetting(bool pairingWindow = false);
+  bool isEnabled(void) const;
   void reloadPassword(void);
 
  private:

@@ -954,8 +954,26 @@ int cmdSettings(int argc, char **argv) {
 }
 
 int cmdCompanion(int argc, char **argv) {
+  if ((argc == 2) && !strcasecmp(argv[1], "start")) {
+    if (!Settings::load<Settings::COMPANION>()) {
+      Settings::save<bool>(Settings::COMPANION, true);
+    }
+    CompanionGatt::getInstance().reloadSetting(true);
+    printf("companion: pairing window open for 60 s\n");
+    return 0;
+  }
+  if ((argc == 2) && !strcasecmp(argv[1], "stop")) {
+    Settings::save<bool>(Settings::COMPANION, false);
+    CompanionGatt::getInstance().reloadSetting(false);
+    printf("companion: disabled\n");
+    return 0;
+  }
+  if ((argc == 2) && !strcasecmp(argv[1], "status")) {
+    printf("companion.enabled: %s\n", boolStr(CompanionGatt::getInstance().isEnabled()));
+    return 0;
+  }
   if ((argc < 2) || (strcasecmp(argv[1], "password") != 0)) {
-    return fail("usage: companion password set <pw> | clear | status");
+    return fail("usage: companion start | stop | status | password set <pw> | clear");
   }
   if ((argc == 3) && !strcasecmp(argv[2], "status")) {
     std::string password;

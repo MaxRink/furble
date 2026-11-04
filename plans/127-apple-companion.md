@@ -41,6 +41,14 @@ XcodeGen release documented in the companion README.
   testing and skip the firmware release workflow. Normal firmware release tags
   retain the existing build and publication path.
 
+## Pairing window for headless testing
+
+`companion start` opens the 60 s pairing window from the console and enables the
+Companion setting if it is off, so a Mac or phone can discover the device
+without navigating the Settings page. `companion stop` disables it and
+`companion status` reports the enabled state. Boot-time enable still waits for
+the UI row because advertising a pairing window at every boot would be wrong.
+
 ## Follow-up gates
 
 - A physical Apple app connection requires firmware exposing the Auth

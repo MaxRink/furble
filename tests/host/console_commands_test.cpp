@@ -162,7 +162,9 @@ const std::vector<SubcommandContract> SUBCOMMANDS = {
      {"on", "off", "raw", "send", "binary", "config", "aid", "sats", "platform", "monhw", "power"}                                                     },
     {"time",         "usage: time status | flush",                                       "",                     {"status", "flush"}                   },
     {"settings",     "expected list, get or set",                                        " theme",               {"list", "get", "set"}                },
-    {"companion",    "usage: companion password set <pw> | clear | status",              " status",              {"password"}                          },
+    {"companion",
+     "usage: companion start | stop | status | password set <pw> | clear",               "",
+     {"start", "stop", "status", "password"}                                                                                                           },
     {"ui",           "expected audit, page or back",                                     "",                     {"audit", "page", "back"}             },
     {"cameras",      "expected list or status",                                          "",                     {"list", "status"}                    },
     {"multiconnect",
@@ -378,6 +380,13 @@ void testSettings(void) {
                 "generic settings get points to the safe password commands");
   checkContains(runDirect("companion password status").out, "companion.password: unset",
                 "password status reports unset without revealing a value");
+  checkContains(runDirect("companion start").out, "companion: pairing window open",
+                "companion start opens the pairing window");
+  checkContains(runDirect("companion status").out,
+                "companion.enabled:", "companion status reports the enabled state");
+  checkContains(runDirect("companion stop").out, "companion: disabled",
+                "companion stop disables the service");
+
   const size_t reloadsBeforePassword = ConsoleHost::misc().companionPasswordReloads;
   check(runDirect("companion password set test-secret").rc == 0, "password set returns success");
   check(Furble::Settings::load<std::string>(Furble::Settings::COMPANION_PASSWORD) == "test-secret",

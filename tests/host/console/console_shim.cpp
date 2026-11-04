@@ -1071,8 +1071,12 @@ CompanionGatt &CompanionGatt::getInstance(void) {
   return instance;
 }
 
-void CompanionGatt::reloadSetting(void) {
+void CompanionGatt::reloadSetting(bool) {
   ConsoleHost::misc().companionReloads++;
+}
+
+bool CompanionGatt::isEnabled(void) const {
+  return false;
 }
 
 void CompanionGatt::reloadPassword(void) {
