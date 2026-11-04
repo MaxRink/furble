@@ -119,9 +119,10 @@ and when it applies.
 - `gps platform 0..4` saves the dynamic model (`0` do not send, `1` portable,
   `2` stationary, `3` pedestrian, `4` vehicle) and reloads the receiver. The
   dyModel/PCAS11 effect is hardware-tuning-pending.
-- `gps monhw` polls the CASIC MON-HW snapshot and prints the decoded and raw
-  response. The offsets follow CASIC 2.14.2; live field values are
-  hardware-tuning-pending.
+- `gps monhw` polls the CASIC MON-HW snapshot and waits up to 1.5 s for the
+  reply, then prints the decoded and raw response. The offsets follow CASIC
+  2.14.2; the decode is hardware-confirmed on the AT6668, while the meaning of
+  individual status bits still needs a qualified antenna test.
 - `gps power on | off` drives the external 5V rail.
 
 ## time

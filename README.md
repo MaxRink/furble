@@ -500,8 +500,9 @@ enables the extra GSV/GSA parser and shows per-satellite C/N0, used flags, and
 PDOP/HDOP/VDOP. `gps platform` is intentionally marked hardware-tuning-pending;
 the receiver's response and the effect of its dynamic model have not been
 verified on an AT6668 unit. `gps monhw` uses the CASIC 2.14.2 field offsets,
-including the 32-bit jamming word; the layout is specification-derived, while
-the live field values still need a hardware comparison.
+including the 32-bit jamming word; the layout and a live decode are confirmed
+on the AT6668, while the meaning of the antenna and jam status bits still needs
+a qualified antenna comparison.
 
 ### Intervalometer/Timer
 

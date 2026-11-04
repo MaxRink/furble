@@ -1103,7 +1103,7 @@ void testGPSDiagnostics(void) {
   // and says so instead of printing a zeroed snapshot.
   const Result pending = runDirect("gps monhw");
   check(pending.rc == 0, "gps monhw returns success before a response");
-  checkContains(pending.out, "monhw: polled, no response yet, retry 'gps monhw'",
+  checkContains(pending.out, "monhw: polled, no response within 1.5 s",
                 "an unanswered poll says so");
   check(gps.monHwPolls == 1, "gps monhw queued a poll");
 
@@ -1118,6 +1118,12 @@ void testGPSDiagnostics(void) {
   check(monhw.rc == 0, "gps monhw returns success with a response");
   checkContains(monhw.out, "monhw: noise=1234 agc=56 antenna=2 jam=7",
                 "a decoded snapshot prints its fields");
+  // The reply arrives after the immediate read; the wait loop must pick it up.
+  gps.monhwDelayPolls = 2;
+  const Result delayed = runDirect("gps monhw");
+  check(delayed.rc == 0, "gps monhw returns success for a delayed response");
+  checkContains(delayed.out, "monhw: noise=1234 agc=56 antenna=2 jam=7",
+                "a reply that lands after the first read is printed");
   gps.monhw.have = true;
   gps.monhw.hw = {0, 0, 0, 0, false};
   gps.monhw.raw_length = 3;
@@ -1127,7 +1133,7 @@ void testGPSDiagnostics(void) {
                 "a short MON-HW response is not printed as zeroed fields");
   checkContains(shortMonhw.out, "monhw raw: BA CE 0A",
                 "a short MON-HW response still prints its raw bytes");
-  check(gps.monHwPolls == 3, "a short response still queues the next poll");
+  check(gps.monHwPolls == 4, "a short response still queues the next poll");
 }
 
 // Test 6. Time, power and performance reporting.

@@ -914,7 +914,14 @@ void GPS::pollMonHw(void) {
 }
 
 GPS::monhw_report_t GPS::getMonHw(void) {
-  return ConsoleHost::gps().monhw;
+  auto &state = ConsoleHost::gps();
+  if (state.monhwDelayPolls > 0) {
+    state.monhwDelayPolls--;
+    monhw_report_t pending = state.monhw;
+    pending.have = false;
+    return pending;
+  }
+  return state.monhw;
 }
 
 const char *GPS::sourceName(source_t source) {

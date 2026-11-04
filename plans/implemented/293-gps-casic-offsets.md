@@ -48,9 +48,26 @@ published `docs/wiki/Console-Commands.md`; both were updated. The GPS claims in
 are engineering references under `docs/power/` and are not mirrored to the
 wiki.
 
+## Hardware check
+
+On 2026-11-04, master `a0488620` plus the `gps monhw` wait fix ran on the
+M5StickS3 with the AT6668 at 115200. The poll returned a valid 56-byte MON-HW
+payload and decoded `noise=0 agc=18 antenna=0 jam=0`; the raw payload places
+`agcData0` at 12 (`12 00`), `antStatus` at 20 (`00`), and the jamming word at
+24 (zero). The MON-HW field offsets are live-confirmed, but `antenna=0` is the
+init value, so a qualified antenna and a disconnected-antenna comparison are
+still owed to interpret the status bits.
+
+The constellation check switched talkers `$GN -> $GP` with `gps send PCAS04,1`
+and back to `$GN` with `PCAS04,7`. However, `gps config` reports the binary
+`CFG-NAVX` (0x06 0x07) write as `NACKED` on this unit, so the working path is
+the `$PCAS04` fallback. The binary offset write is host-tested but not
+live-certified; a receiver or firmware that accepts `CFG-NAVX` is still needed
+to confirm the structured write. The fallback is the supported path on this
+AT6668.
+
 ## Remaining gate
 
-The offsets are specification-derived. A receiver check is still owed:
-set constellation to GPS-only, open the satellite page, and confirm only
-`$GPGSV` talkers remain; poll `gps monhw` on the live unit and compare the
-decoded fields with the raw bytes.
+Compare MON-HW antenna and jam bits with a known-good and a disconnected
+antenna. A live unit that ACKs `CFG-NAVX` is still needed to certify the binary
+offset write; until then `$PCAS04` is the verified constellation path.
