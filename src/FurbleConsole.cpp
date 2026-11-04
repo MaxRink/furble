@@ -964,7 +964,11 @@ int cmdCompanion(int argc, char **argv) {
     CompanionGatt::getInstance().reloadSetting(true);
     if (!CompanionGatt::getInstance().isEnabled()) {
       // Do not leave a persisted "on" that failed to bring the live service up.
+      // Settings::save is void, so verify the rollback instead of trusting it.
       Settings::save<bool>(Settings::COMPANION, false);
+      if (Settings::load<bool>(Settings::COMPANION)) {
+        return fail("companion failed to start and the setting rollback failed");
+      }
       return fail("companion failed to start");
     }
     printf("companion: pairing window open for 60 s\n");

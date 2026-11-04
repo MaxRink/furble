@@ -45,6 +45,7 @@
 #include "FujifilmVirtualCamera.h"
 #include "NimBLEDevice.h"
 
+#include "FurbleCompanion.h"
 #include "FurbleConsole.h"
 #include "FurbleControl.h"
 #include "FurblePlatform.h"
@@ -410,6 +411,21 @@ void testSettings(void) {
                 "companion status reports the persisted disabled setting");
   checkContains(stoppedStatus.out, "companion.enabled: false",
                 "companion status reports the live disabled service");
+
+  // The settings/companion-write path keeps the live service up for one
+  // second. The double must model that grace separately from disableNow().
+  check(runDirect("companion start").rc == 0, "companion restarts for the grace check");
+  Furble::Settings::save<bool>(Furble::Settings::COMPANION, false);
+  Furble::CompanionGatt::getInstance().reloadSetting(false);
+  check(ConsoleHost::misc().companionEnabled,
+        "the delayed settings disable keeps the live service up");
+  check(ConsoleHost::misc().companionPendingDisable,
+        "the delayed settings disable records the pending stop");
+  Furble::CompanionGatt::getInstance().completeDelayedDisable();
+  check(!ConsoleHost::misc().companionEnabled,
+        "the delayed settings disable stops the service after the grace");
+  check(!ConsoleHost::misc().companionPendingDisable,
+        "the completed grace clears the pending stop");
 
   ConsoleHost::misc().companionEnableSucceeds = false;
   const Result failedLiveStart = runDirect("companion start");

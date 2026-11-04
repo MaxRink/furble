@@ -68,9 +68,15 @@ builds `furble-companion-cli` without an Xcode project or signed app.
 
 `companion start` opens the 60 s pairing window from the console and enables the
 Companion setting if it is off, so a Mac or phone can discover the device
-without navigating the Settings page. `companion stop` disables it and
-`companion status` reports the enabled state. Boot-time enable still waits for
-the UI row because advertising a pairing window at every boot would be wrong.
+without navigating the Settings page. It checks the live service after the
+reload and rolls the persisted setting back if the service did not start.
+`companion stop` persists the setting off and calls the synchronous
+`disableNow()`, so an immediate `companion status` agrees with the stop.
+`companion status` prints `companion.setting` (persisted) and
+`companion.enabled` (live). The settings/companion-write disable path keeps a
+one-second grace so the BLE write response can leave; the console stop path
+does not. Boot-time enable still waits for the UI row because advertising a
+pairing window at every boot would be wrong.
 
 ## Follow-up gates
 

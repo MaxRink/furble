@@ -131,6 +131,7 @@ struct MiscState {
   size_t companionDisableReloads = 0;
   size_t companionDisableNowCalls = 0;
   bool companionEnabled = false;
+  bool companionPendingDisable = false;
   bool companionEnableSucceeds = true;
   size_t companionPasswordReloads = 0;
   bool sdSupported = true;
