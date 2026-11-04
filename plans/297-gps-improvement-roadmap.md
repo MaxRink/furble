@@ -23,6 +23,9 @@ the last sentence. TinyGPSPlus keeps the last valid location and quality
 indefinitely, so the status needed its own age bound. `getStatusSnapshot()`
 now requires `location.age() < MAX_AGE_MS` for `fix`; the indoor baseline then
 reported no fix once the 30 s freshness window and the Fix Hold window ended.
+**PR #356** closes the remaining two-read race: `GPSFreshness::evaluate()`
+samples the age once and returns both the verdict and the reported age, and the
+host test counts the reads so a regression back to two calls fails.
 
 ## Verified findings still open
 

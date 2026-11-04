@@ -29,6 +29,34 @@ int main() {
     ok = false;
   }
 
+  // The production snapshot uses evaluate(), so a single age read must drive
+  // both the fix verdict and the reported age. A regression back to two
+  // gps.location.age() calls fails the call count.
+  int ageReads = 0;
+  const auto fresh = Furble::GPSFreshness::evaluate(
+      true, true,
+      [&ageReads]() {
+        ageReads++;
+        return kMaxAge - 1;
+      },
+      kMaxAge);
+  if ((ageReads != 1) || !fresh.fix || (fresh.locationAgeMs != kMaxAge - 1)) {
+    std::fprintf(stderr, "a fresh snapshot did not use exactly one age read\n");
+    ok = false;
+  }
+  ageReads = 0;
+  const auto stale = Furble::GPSFreshness::evaluate(
+      true, true,
+      [&ageReads]() {
+        ageReads++;
+        return kMaxAge;
+      },
+      kMaxAge);
+  if ((ageReads != 1) || stale.fix || (stale.locationAgeMs != kMaxAge)) {
+    std::fprintf(stderr, "a stale snapshot did not use exactly one age read\n");
+    ok = false;
+  }
+
   if (!ok) {
     return 1;
   }

@@ -18,6 +18,25 @@ constexpr bool fixIsCurrent(bool positionValid,
   return positionValid && qualityValid && (locationAgeMs < maxAgeMs);
 }
 
+/** The fix verdict together with the exact age it was based on. */
+struct fix_t {
+  bool fix;
+  uint32_t locationAgeMs;
+};
+
+/**
+ * Sample the location age exactly once and derive both fields from it.
+ *
+ * getStatusSnapshot() used to call gps.location.age() twice, so a snapshot
+ * could report fix=true with location_age=MAX_AGE_MS. This seam makes that
+ * impossible and lets the host test count the age reads.
+ */
+template <typename AgeFn>
+fix_t evaluate(bool positionValid, bool qualityValid, AgeFn ageFn, uint32_t maxAgeMs) {
+  const uint32_t locationAgeMs = ageFn();
+  return {fixIsCurrent(positionValid, qualityValid, locationAgeMs, maxAgeMs), locationAgeMs};
+}
+
 }  // namespace GPSFreshness
 }  // namespace Furble
 
