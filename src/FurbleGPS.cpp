@@ -2996,10 +2996,12 @@ GPS::status_t GPS::getStatusSnapshot(void) const {
   // TinyGPSPlus keeps the last valid location and quality long after the
   // receiver stops producing sentences. A fix is only present while it is
   // fresh; otherwise the status would claim a fix with zero satellites
-  // indefinitely.
-  status.fix = GPSFreshness::fixIsCurrent(status.position_valid,
-                                          quality != TinyGPSLocation::Quality::Invalid,
-                                          gps.location.age(), MAX_AGE_MS);
+  // indefinitely. Sample the age once so the predicate and the reported age
+  // cannot straddle MAX_AGE_MS and disagree.
+  const GPSFreshness::fix_t fix = GPSFreshness::evaluate(
+      status.position_valid, quality != TinyGPSLocation::Quality::Invalid,
+      [&gps]() { return gps.location.age(); }, MAX_AGE_MS);
+  status.fix = fix.fix;
   status.satellites = gps.satellites.value();
   status.latitude = gps.location.lat();
   status.longitude = gps.location.lng();
@@ -3015,7 +3017,7 @@ GPS::status_t GPS::getStatusSnapshot(void) const {
   status.course_deg = gps.course.deg();
   status.speed_mps = gps.speed.mps();
   status.hdop = gps.hdop.hdop();
-  status.location_age = gps.location.age();
+  status.location_age = fix.locationAgeMs;
   status.date_age = gps.date.age();
   status.time_age = gps.time.age();
   status.year = static_cast<uint16_t>(gps.date.year());
