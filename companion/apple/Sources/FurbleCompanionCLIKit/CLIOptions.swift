@@ -307,6 +307,7 @@ public enum CLIArgumentParser {
     var command: CLICommand
     var index = 1
     var passwordSourceCount = 0
+    var bleOnlyOptions: [String] = []
 
     func takeValue(_ option: String, allowDash: Bool = false) throws -> String {
       guard index + 1 < arguments.count else {
@@ -388,12 +389,16 @@ public enum CLIArgumentParser {
         guard !device.isEmpty else { throw CLIUsageError.message("--device must not be empty") }
         connection.device = CLIDeviceQuery.parse(device)
       case "--scan-timeout":
+        bleOnlyOptions.append(option)
         connection.scanTimeout = try positiveSeconds(try value(), option: option)
       case "--timeout":
+        bleOnlyOptions.append(option)
         connection.connectionTimeout = try positiveSeconds(try value(), option: option)
       case "--keychain-service":
+        bleOnlyOptions.append(option)
         connection.keychainService = try nonEmpty(try value(), option: option)
       case "--keychain-account":
+        bleOnlyOptions.append(option)
         connection.keychainAccount = try nonEmpty(try value(), option: option)
       case "--password":
         passwordSourceCount += 1
@@ -502,7 +507,9 @@ public enum CLIArgumentParser {
       throw CLIUsageError.message("use only one of --password, --password-env, --password-file or --password-stdin")
     }
     if connection.transport == .usb {
-      if connection.serialPort == nil {
+      var isScan = false
+      if case .scan = command { isScan = true }
+      if connection.serialPort == nil && !isScan {
         let ports = FurbleSerialConsole.candidatePorts()
         guard ports.count == 1 else {
           throw CLIUsageError.message(
@@ -517,6 +524,10 @@ public enum CLIArgumentParser {
       }
       if passwordSourceCount > 0 {
         throw CLIUsageError.message("password options are only valid for the BLE transport")
+      }
+      if !bleOnlyOptions.isEmpty {
+        throw CLIUsageError.message(
+          "\(bleOnlyOptions.joined(separator: ", ")) \(bleOnlyOptions.count == 1 ? "is" : "are") only valid for the BLE transport")
       }
     } else if connection.serialPort != nil {
       throw CLIUsageError.message("--port requires --transport usb")

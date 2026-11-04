@@ -315,6 +315,16 @@ struct CLIReportTests {
         "--password-env", "FURBLE_COMPANION_PASSWORD",
       ])
     }
+    #expect(throws: CLIUsageError.self) {
+      try CLIArgumentParser.parse([
+        "status", "--transport", "usb", "--port", "/dev/cu.usbmodem-test",
+        "--timeout", "10",
+      ])
+    }
+
+    let scan = try CLIArgumentParser.parse(["scan", "--transport", "usb"])
+    #expect(scan.connection.transport == .usb)
+    #expect(scan.connection.serialPort == nil)
   }
 
   @Test func statusReportPrintsAuthenticationGpsAndCameras() throws {

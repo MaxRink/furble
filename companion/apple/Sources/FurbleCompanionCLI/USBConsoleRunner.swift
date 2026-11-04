@@ -125,10 +125,19 @@ enum USBConsoleRunner {
 
   private static func monitor(_ options: CLIMonitorOptions, path: String) -> Int32 {
     let console = FurbleSerialConsole(path: path)
+    let interrupt = USBInterruptFlag()
+    signal(SIGINT, SIG_IGN)
+    let signalSource = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
+    signalSource.setEventHandler { interrupt.set() }
+    signalSource.resume()
+    defer {
+      signalSource.cancel()
+      signal(SIGINT, SIG_DFL)
+      console.close()
+    }
+
     do {
       try console.open()
-      _ = try console.command("status")
-      console.close()
     } catch {
       return emit("USB monitor failed: \(error)", code: .failure)
     }
@@ -141,7 +150,6 @@ enum USBConsoleRunner {
     var lastStatusAt = start
     var lost = false
     var retry = CLIMonitorBackoff()
-    var warnedCharging = false
 
     if options.csv, options.includeHeader {
       print(CLIReport.monitorCSVHeader)
@@ -164,6 +172,7 @@ enum USBConsoleRunner {
     }
 
     while true {
+      if interrupt.isSet { break }
       if CLIMonitorPolicy.reachedDuration(elapsed: elapsed(), duration: options.duration) {
         break
       }
@@ -173,7 +182,6 @@ enum USBConsoleRunner {
           try console.open()
           let status = try parseStatus(console.command("status"))
           let gps = try parseGPS(console.command("gps"))
-          console.close()
           if lost {
             emitMarker("reconnected")
             lost = false
@@ -206,10 +214,6 @@ enum USBConsoleRunner {
               status: sample.status,
               rssi: nil,
               label: options.label))
-          }
-          if !warnedCharging, sample.status.charging {
-            note("USB is supplying power; battery drain is not representative while charging.")
-            warnedCharging = true
           }
           samples += 1
           if first == nil { first = sample }
@@ -265,6 +269,7 @@ enum USBConsoleRunner {
         batteryPercent: batteryPercent,
         batteryMillivolts: batteryMillivolts,
         batteryMilliamps: batteryMilliamps,
+        // The console status has no power flags; do not invent charging state.
         powerFlags: 0,
         cameraTotal: 0,
         cameraConnected: 0,
@@ -322,12 +327,15 @@ enum USBConsoleRunner {
   }
 
   private static func controlStateCode(_ value: String?) -> UInt8 {
+    // Matches Control::state_t on the wire: idle=0, connect=1, connecting=2,
+    // connect_failed=3, active=4, disconnecting=5.
     switch value {
     case "idle": return 0
-    case "connecting": return 1
-    case "active", "connected": return 2
+    case "connect": return 1
+    case "connecting": return 2
     case "connect_failed": return 3
-    case "disconnecting": return 4
+    case "active", "connected": return 4
+    case "disconnecting": return 5
     default: return 255
     }
   }
@@ -343,5 +351,22 @@ enum USBConsoleRunner {
 
   private static func note(_ message: String) {
     FileHandle.standardError.write(Data((message + "\n").utf8))
+  }
+}
+
+private final class USBInterruptFlag: @unchecked Sendable {
+  private let lock = NSLock()
+  private var value = false
+
+  func set() {
+    lock.lock()
+    value = true
+    lock.unlock()
+  }
+
+  var isSet: Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    return value
   }
 }
