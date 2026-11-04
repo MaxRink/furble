@@ -278,10 +278,12 @@ scroll down through every switch:
 
 ![Companion pairing](img/companion-pairing.png)
 
-With the Companion service enabled, a companion app that connects raises a pairing
-dialog showing a PIN with Accept and Reject buttons. Confirming pairs the app;
-rejecting dismisses it. The simulator injects a pending pairing so the dialog
-renders without a companion peer.
+With the Companion service enabled, a companion app that connects raises a
+pairing dialog showing the six-digit code with Yes and No buttons. Confirm that
+the code matches the Mac or phone, then choose Yes; No rejects the pairing. The
+dialog is width-capped to the Stick panel so the title, code and buttons stay
+fully visible. The simulator injects a pending pairing so the dialog renders
+without a companion peer.
 
 ### Infrared
 

@@ -94,6 +94,16 @@ the plotter drops only the voltage point while keeping the percentage sample.
 `--transport usb` uses the StickS3 CDC console for scan, status, cameras,
 monitor and password status; location and trigger remain BLE-only.
 
+## Companion pairing dialog
+
+The companion confirmation prompt now uses the compact camera-pairing layout:
+a panel-width-capped msgbox with a symmetric margin, a wrapped instruction, a
+large centered six-digit code, and `Yes`/`No` footer buttons on narrow panels.
+The old content-sized `lv_msgbox` grew wider than the 135 px Stick display and
+clipped the title, number, and both footer pills. The three companion modal
+scenarios assert `ui.modal_overflow no`, so a future content or font change that
+pushes the dialog off the panel fails in the simulator.
+
 ## Follow-up gates
 
 - A physical Apple app connection requires firmware exposing the Auth

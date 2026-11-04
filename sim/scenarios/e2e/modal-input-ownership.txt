@@ -39,6 +39,7 @@ assert ui.connect_box visible
 action companion-pair-request
 wait 300
 assert ui.modal open
+assert ui.modal_overflow no
 assert ui.modal_focus_control accept
 
 # Previous stays inside the modal (Accept -> Reject); select rejects only the

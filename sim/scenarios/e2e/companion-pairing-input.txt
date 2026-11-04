@@ -7,6 +7,8 @@
 # pre-fix code is not red here. See the PR for the coverage gap.
 #
 # What this locks in:
+#  - the compact dialog stays inside the panel with no clipped title, number or
+#    footer buttons (ui.modal_overflow is measured on each panel that runs it)
 #  - when the modal opens, the Accept button is in the encoder group and focused
 #  - a second pairing request while the modal is open does not stack or orphan a
 #    dialog (the timer guard keeps exactly one)
@@ -21,6 +23,7 @@ assert ui.modal_count 0
 action companion-pair-request
 wait 400
 assert ui.modal open
+assert ui.modal_overflow no
 assert ui.modal_count 1
 assert ui.modal_focus yes
 assert ui.focus ok

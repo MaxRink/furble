@@ -13,6 +13,7 @@ assert ui.low_battery warn
 action companion-pair-request
 wait 300
 assert ui.modal open
+assert ui.modal_overflow no
 assert ui.modal_focus_control accept
 
 action battery 80 4000 0 false
