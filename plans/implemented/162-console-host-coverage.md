@@ -122,10 +122,10 @@ waits on, it will need the same parking.
   linking the remaining vendor camera classes into the console target.
 - The host `splitArgv()` is not `esp_console_split_argv()`. It has no backslash
   escapes, it treats a tab as a separator, and it enforces neither
-  `max_cmdline_args` (32) nor `max_cmdline_length` (128). The variadic
-  `gps binary` command therefore truncates silently at 31 arguments on device,
-  real behaviour the harness cannot currently catch. Bringing the double up to
-  the real splitter would close that.
+  `max_cmdline_args` (64) nor `max_cmdline_length` (256). The variadic
+  `gps binary` command can now carry a 56-byte AID-INI frame; a device run sent
+  that frame successfully, but the harness still does not model the caps.
+  Bringing the double up to the real splitter would close that.
 - The suite dispatches most commands on the test thread while the production
   console task concurrently runs `powerLogTick()`. Under ThreadSanitizer that
   reports races on `g_PowerLog` which are harness artefacts, not firmware bugs:

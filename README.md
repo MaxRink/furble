@@ -286,6 +286,7 @@ gps                                 GPS status and control, eg. gps send PCAS12,
 gps raw on|off                      mirror decoded NMEA to the console
 gps raw hex on|off                  mirror every receiver UART chunk as hex
 gps raw send <hex bytes>            write exact bytes to the receiver UART
+gps binary <class> <id> <bytes>     send a CASIC frame; 256-byte line, 64 arguments
 imu status | scale [value]          IMU diagnostic, gesture calibration
 time status | flush                 wall-clock status or persist before shutdown
 wifi status                         WiFi state, access point, IP, attempts, retry delay and stop reason
