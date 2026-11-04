@@ -141,6 +141,7 @@ class GPS {
   monhw_report_t getMonHw(void);
 
   bool sendBinary(uint8_t class_id, uint8_t message_id, const std::vector<uint8_t> &payload);
+  bool sendRaw(const uint8_t *data, size_t length);
   bool sendAidIni(void);
   std::vector<config_status_t> getConfigStatus(void) const;
 

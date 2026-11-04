@@ -901,6 +901,25 @@ void testGPS(void) {
   check(!contains(ConsoleHost::capturedSince(offStart), "nmea:"),
         "the raw mirror is silent when off");
 
+  checkContains(runDirect("gps raw hex on").out, "raw_hex: true",
+                "gps raw hex on reports its state");
+  const long hexStart = ConsoleHost::captureOffset();
+  const uint8_t rawFrame[] = {0xBA, 0xCE, 0x38, 0x00};
+  Furble::Console::gpsHex(rawFrame, sizeof(rawFrame));
+  checkContains(ConsoleHost::capturedSince(hexStart), "rx: BA CE 38 00",
+                "raw hex mode mirrors binary UART bytes");
+  checkContains(runDirect("gps raw hex off").out, "raw_hex: false",
+                "gps raw hex off reports its state");
+
+  const Result rawSend = runDirect("gps raw send 24 50 43 41 53");
+  check(rawSend.rc == 0, "gps raw send returns success");
+  checkContains(rawSend.out, "sent: raw 5 bytes", "gps raw send reports the byte count");
+  check(ConsoleHost::gps().rawBytes == std::vector<uint8_t>({0x24, 0x50, 0x43, 0x41, 0x53}),
+        "gps raw send writes the exact bytes without framing");
+  checkContains(runDirect("gps raw send zz").out, "raw payload must contain hex bytes",
+                "gps raw send rejects a non-hex byte");
+  checkContains(runDirect("gps raw send").out, "usage: gps raw send", "gps raw send needs bytes");
+
   // Console::gpsBinary() prints a verified frame as hex.
   const long binaryStart = ConsoleHost::captureOffset();
   const uint8_t frame[] = {0xBA, 0xCE, 0x01};
@@ -982,7 +1001,7 @@ void testGPS(void) {
   checkContains(full.out, "ui request queue unavailable", "an unavailable UI queue is reported");
   ConsoleHost::ui().queueAvailable = true;
 
-  checkContains(runDirect("gps raw").out, "usage: gps raw on | off", "gps raw needs an argument");
+  checkContains(runDirect("gps raw").out, "raw: false", "gps raw reports its state");
   checkContains(runDirect("gps send").out, "usage: gps send", "gps send needs a body");
 
   const Result bogus = runDirect("gps bogus");
@@ -1764,8 +1783,8 @@ void testErrorPaths(void) {
 
   // Every usage error returns non-zero, which is what a host script branches on.
   const std::vector<std::string> failures = {
-      "settings", "shutter", "focus",     "scan",  "gps raw", "power",    "perf",
-      "bt",       "log",     "provision", "debug", "imu",     "feedback", "ui",
+      "settings", "shutter", "focus",     "scan",  "gps raw bogus", "power",    "perf",
+      "bt",       "log",     "provision", "debug", "imu",           "feedback", "ui",
   };
   for (const auto &line : failures) {
     const Result result = runDirect(line);

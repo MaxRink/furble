@@ -1161,6 +1161,21 @@ bool GPS::sendBinary(uint8_t class_id, uint8_t message_id, const std::vector<uin
   return sendBinaryFrame(class_id, message_id, payload);
 }
 
+bool GPS::sendRaw(const uint8_t *data, size_t length) {
+  if (!m_Enabled || (data == nullptr) || (length == 0)) {
+    return false;
+  }
+
+  const std::lock_guard<std::mutex> lock(m_TxMutex);
+  const int written = uart_write_bytes(m_UART, data, length);
+  uart_wait_tx_done(m_UART, pdMS_TO_TICKS(TX_MS));
+  if (written != static_cast<int>(length)) {
+    ESP_LOGE(LOG_TAG, "GPS raw write failed: %d of %u", written, static_cast<unsigned>(length));
+    return false;
+  }
+  return true;
+}
+
 /** Restart the receiver, 0 hot, 1 warm, 2 cold. */
 void GPS::restart(uint8_t mode) {
   if (!m_Enabled || (mode > 2)) {
@@ -2797,6 +2812,9 @@ void GPS::serviceSerial(void) {
 
   int bytes = uart_read_bytes(m_UART, buffer.data(), buffer.size(), 1);
   if (bytes > 0) {
+    // Mirror the exact UART chunk before demultiplexing, so raw hex mode sees
+    // binary CASIC frames as well as NMEA text.
+    Console::gpsHex(buffer.data(), bytes);
     const uint32_t passedBefore = getStatusSnapshot().sentences_passed;
 
     // processSerial demultiplexes NMEA and CASIC frames. NMEA bytes route

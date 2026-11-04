@@ -27,11 +27,11 @@ using lv_obj_t = _lv_obj_t;
 #include <mutex>
 
 #include "FurbleGPSHold.h"
-#include "protocol/GpsNavx.h"
 #include "FurbleGPSPowerCycle.h"
 #include "FurbleIMU.h"
 #include "FurblePower.h"
 #include "protocol/GpsCasic.h"
+#include "protocol/GpsNavx.h"
 
 namespace Furble {
 class GPS {
@@ -303,6 +303,8 @@ class GPS {
 
   /** Send a raw CASIC binary frame. */
   bool sendBinary(uint8_t class_id, uint8_t message_id, const std::vector<uint8_t> &payload);
+  /** Write exact bytes to the receiver UART, without sentence or CASIC framing. */
+  bool sendRaw(const uint8_t *data, size_t length);
 
   /** Inject the cached position and time as AID-INI. */
   bool sendAidIni(void);
@@ -682,6 +684,7 @@ class GPS {
   bool m_NavxPayloadValid = false;
   mutable std::mutex m_ConfigMutex;
   std::mutex m_TxMutex;
+  std::mutex m_UartMutex;
 
   std::vector<uint8_t> m_RxBuffer;
 

@@ -944,6 +944,15 @@ bool GPS::sendBinary(uint8_t class_id, uint8_t message_id, const std::vector<uin
   return state.binaryResult;
 }
 
+bool GPS::sendRaw(const uint8_t *data, size_t length) {
+  auto &state = ConsoleHost::gps();
+  if (!state.rawResult || (data == nullptr) || (length == 0)) {
+    return false;
+  }
+  state.rawBytes.assign(data, data + length);
+  return true;
+}
+
 bool GPS::sendAidIni(void) {
   auto &state = ConsoleHost::gps();
   state.aidCalls++;

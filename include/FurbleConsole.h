@@ -33,12 +33,15 @@ class Console {
   /** Mirror received GPS bytes to the console, see the 'gps raw' command. */
   static void gpsRaw(const char *data, size_t length);
 
+  /** Mirror every received UART chunk as hex, see 'gps raw hex'. */
+  static void gpsHex(const uint8_t *data, size_t length);
   /** Print a verified GPS binary frame, see the 'gps binary' command. */
   static void gpsBinary(const uint8_t *data, size_t length);
 #else
   static inline void init(void) {}
   static inline void gpsRaw(const char *, size_t) {}
   static inline void gpsBinary(const uint8_t *, size_t) {}
+  static inline void gpsHex(const uint8_t *, size_t) {}
 #endif
 };
 }  // namespace Furble

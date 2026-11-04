@@ -110,6 +110,11 @@ and when it applies.
   counts.
 - `gps on | off` drives the GPS setting and reloads the receiver.
 - `gps raw on | off` mirrors incoming NMEA to the console.
+- `gps raw hex on | off` mirrors every received UART chunk as hex, including
+  binary frames.
+- `gps raw send <hex bytes>` writes exact bytes to the receiver UART without
+  sentence or CASIC framing. For example, `gps raw send 24 50 43 41 53 04 01`.
+- `gps raw` reports both raw modes.
 - `gps send <body>` sends a raw sentence, for example `gps send PCAS12,10`.
 - `gps binary <class hex> <id hex> [payload bytes]` sends a CASIC binary frame.
 - `gps config` lists the binary configuration status.
