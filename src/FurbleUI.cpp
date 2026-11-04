@@ -305,8 +305,6 @@ std::mutex UI::m_Mutex;
 UI::ConnectContext_t UI::m_ConnectContext;
 
 int32_t UI::m_LegendWidth = 0;
-int32_t UI::m_LegendTop = -1;
-int32_t UI::m_LegendBottom = -1;
 
 lv_obj_t *UI::m_ScanFinished;
 
@@ -828,10 +826,6 @@ UI::UI(const interval_t &interval)
     // legend box that is actually drawn, not a theme default width.
     lv_obj_update_layout(m_Right);
     m_LegendWidth = lv_obj_get_width(m_Right);
-    lv_area_t legendArea;
-    lv_obj_get_coords(m_Right, &legendArea);
-    m_LegendTop = legendArea.y1;
-    m_LegendBottom = legendArea.y2;
   }
 
   configureControl(ControlMode::MENU);
@@ -2305,11 +2299,7 @@ void UI::reserveLegendColumns(lv_obj_t *page) {
         break;
       }
     }
-    lv_area_t rowArea;
-    lv_obj_get_coords(row, &rowArea);
-    const bool overlapsLegend =
-        (m_LegendTop < 0) || ((rowArea.y2 >= m_LegendTop) && (rowArea.y1 <= m_LegendBottom));
-    if ((reserve > 0) && overlapsLegend) {
+    if (reserve > 0) {
       // The row's own box, not its padding. A child is clipped to its parent's
       // box, so padding alone still lets a roller or switch enter the reserved
       // strip. Recompute from the page so loading twice cannot shrink it twice.
@@ -2318,12 +2308,6 @@ void UI::reserveLegendColumns(lv_obj_t *page) {
       // left by the half-width LVGL would otherwise leave on both sides, so the
       // entire reservation stays beside the right-hand legend.
       lv_obj_set_style_translate_x(row, -(reserve / 2), LV_PART_MAIN);
-    } else if (reserve > 0) {
-      // The legend only occupies one small band on the right edge. Rows above
-      // or below it keep the space; the old whole-page reservation wrapped
-      // "Connect" and "Settings" on the 135 px Stick panel for no reason.
-      lv_obj_set_width(row, LV_PCT(100));
-      lv_obj_set_style_translate_x(row, 0, LV_PART_MAIN);
     }
     lv_obj_update_layout(row);
     for (uint32_t j = 0; j < lv_obj_get_child_count(row); j++) {
@@ -12772,8 +12756,8 @@ void UI::doPowerOff(void) {
   m_PoweringOff = true;
   closeLowBatteryWarning();
 
-  // TODO(plans/implemented/68-reconnect-after-restart.md): prepareRestart on feat/68 needs this same quiesce
-  // ordering, a future shared helper should absorb both paths.
+  // TODO(plans/implemented/68-reconnect-after-restart.md): prepareRestart on feat/68 needs this
+  // same quiesce ordering, a future shared helper should absorb both paths.
 #if defined(FURBLE_M5STICKS3)
   // Stop the watchdog first, the BLE teardown below can outlast a feed period.
   Platform::getInstance().watchdogEnable(false);
