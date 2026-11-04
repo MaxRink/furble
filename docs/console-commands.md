@@ -186,6 +186,7 @@ station. `wifi connect` and `wifi disconnect` act immediately, and
 - `gps raw` reports both raw modes.
 - `gps send <body>` sends a raw sentence, for example `gps send PCAS12,10`.
 - `gps binary <class hex> <id hex> [payload bytes]` sends a CASIC binary frame.
+  The console accepts up to 256-byte lines and 64 arguments, enough for a 56-byte AID-INI frame.
 - `gps config` lists the binary configuration status.
 - `gps aid` sends an assisted-start (AID-INI) hint.
 - `gps sats [on | off]` enables or disables GSV/GSA capture; `gps sats` prints

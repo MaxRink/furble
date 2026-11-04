@@ -958,6 +958,15 @@ void testGPS(void) {
                 "payload length must be a multiple of four", "an odd payload length is rejected");
   checkContains(runDirect("gps binary 06").out, "usage: gps binary", "a short frame prints usage");
 
+  std::string longFrame = "gps binary 0B 01";
+  for (size_t i = 0; i < 56; i++) {
+    longFrame += " 00";
+  }
+  const Result longBinary = runDirect(longFrame);
+  check(longBinary.rc == 0, "gps binary accepts a 56-byte payload");
+  checkContains(longBinary.out, "sent: binary 0B 01, payload 56",
+                "a 56-byte binary frame reaches the UART path");
+
   ConsoleHost::gps().binaryResult = false;
   checkContains(runDirect("gps binary 06 01").out, "binary uart write failed",
                 "a failed binary write is reported");

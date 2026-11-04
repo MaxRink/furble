@@ -68,7 +68,7 @@ namespace Furble {
 namespace {
 
 constexpr const char *PROMPT = "furble> ";
-constexpr size_t MAX_LINE = 128;
+constexpr size_t MAX_LINE = 256;
 constexpr uint32_t TASK_STACK = 8192;
 
 // Below the control task (4) and the per camera target tasks (3).
@@ -3324,6 +3324,8 @@ void Console::init(void) {
 
   esp_console_config_t config = ESP_CONSOLE_CONFIG_DEFAULT();
   config.max_cmdline_length = MAX_LINE;
+  // A 56-byte binary frame needs 56 payload arguments plus class and id.
+  config.max_cmdline_args = 64;
   ESP_ERROR_CHECK(esp_console_init(&config));
   ESP_ERROR_CHECK(esp_console_register_help_command());
 
