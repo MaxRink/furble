@@ -905,7 +905,7 @@ void testGPS(void) {
                 "gps raw hex on reports its state");
   const long hexStart = ConsoleHost::captureOffset();
   const uint8_t rawFrame[] = {0xBA, 0xCE, 0x38, 0x00};
-  Furble::Console::gpsRaw(reinterpret_cast<const char *>(rawFrame), sizeof(rawFrame));
+  Furble::Console::gpsHex(rawFrame, sizeof(rawFrame));
   checkContains(ConsoleHost::capturedSince(hexStart), "rx: BA CE 38 00",
                 "raw hex mode mirrors binary UART bytes");
   checkContains(runDirect("gps raw hex off").out, "raw_hex: false",

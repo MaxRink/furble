@@ -4,6 +4,7 @@
 
 #include <time.h>
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
@@ -80,9 +81,9 @@ constexpr uart_port_t GPS_UART = UART_NUM_2;
 constexpr uart_port_t LOG_UART = static_cast<uart_port_t>(CONFIG_ESP_CONSOLE_UART_NUM);
 
 /** Mirror incoming NMEA to the console. */
-bool g_GPSRaw = false;
+std::atomic<bool> g_GPSRaw {false};
 /** Mirror every received UART chunk as hex, including binary frames. */
-bool g_GPSRawHex = false;
+std::atomic<bool> g_GPSRawHex {false};
 
 struct power_log_t {
   bool active = false;
@@ -1326,8 +1327,8 @@ int gpsStatus(void) {
   printf("hold: %lu\n", static_cast<unsigned long>(gps.getHoldLimitMs()));
   printf("hold_remaining: %lu\n", static_cast<unsigned long>(gps.getHoldRemainingMs()));
 
-  printf("raw: %s\n", boolStr(g_GPSRaw));
-  printf("raw_hex: %s\n", boolStr(g_GPSRawHex));
+  printf("raw: %s\n", boolStr(g_GPSRaw.load()));
+  printf("raw_hex: %s\n", boolStr(g_GPSRawHex.load()));
   return 0;
 }
 
@@ -1464,8 +1465,8 @@ int cmdGPS(int argc, char **argv) {
 
   if (!strcmp(argv[1], "raw")) {
     if (argc == 2) {
-      printf("raw: %s\n", boolStr(g_GPSRaw));
-      printf("raw_hex: %s\n", boolStr(g_GPSRawHex));
+      printf("raw: %s\n", boolStr(g_GPSRaw.load()));
+      printf("raw_hex: %s\n", boolStr(g_GPSRawHex.load()));
       return 0;
     }
     if (!strcmp(argv[2], "send")) {
@@ -1493,15 +1494,15 @@ int cmdGPS(int argc, char **argv) {
       if ((argc < 4) || !parseBool(argv[3], value)) {
         return fail("usage: gps raw hex on | off");
       }
-      g_GPSRawHex = value;
-      printf("raw_hex: %s\n", boolStr(g_GPSRawHex));
+      g_GPSRawHex.store(value);
+      printf("raw_hex: %s\n", boolStr(g_GPSRawHex.load()));
       return 0;
     }
     if (!parseBool(argv[2], value)) {
       return fail("usage: gps raw on | off | hex on | off | send <hex bytes>");
     }
-    g_GPSRaw = value;
-    printf("raw: %s\n", boolStr(g_GPSRaw));
+    g_GPSRaw.store(value);
+    printf("raw: %s\n", boolStr(g_GPSRaw.load()));
     return 0;
   }
 
@@ -3338,22 +3339,25 @@ void Console::init(void) {
   }
 }
 
+void Console::gpsHex(const uint8_t *data, size_t length) {
+  if (!g_GPSRawHex.load() || (data == nullptr)) {
+    return;
+  }
+  constexpr size_t BYTES_PER_LINE = 32;
+  for (size_t offset = 0; offset < length; offset += BYTES_PER_LINE) {
+    printf("rx:");
+    const size_t lineEnd = std::min(offset + BYTES_PER_LINE, length);
+    for (size_t i = offset; i < lineEnd; i++) {
+      printf(" %02X", static_cast<unsigned>(data[i]));
+    }
+    printf("\n");
+  }
+}
+
 void Console::gpsRaw(const char *data, size_t length) {
   static std::string line;
 
-  if (g_GPSRawHex) {
-    constexpr size_t BYTES_PER_LINE = 32;
-    for (size_t offset = 0; offset < length; offset += BYTES_PER_LINE) {
-      printf("rx:");
-      const size_t end = std::min(offset + BYTES_PER_LINE, length);
-      for (size_t i = offset; i < end; i++) {
-        printf(" %02X", static_cast<unsigned char>(data[i]));
-      }
-      printf("\n");
-    }
-  }
-
-  if (!g_GPSRaw) {
+  if (!g_GPSRaw.load()) {
     line.clear();
     return;
   }

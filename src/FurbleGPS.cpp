@@ -2812,6 +2812,9 @@ void GPS::serviceSerial(void) {
 
   int bytes = uart_read_bytes(m_UART, buffer.data(), buffer.size(), 1);
   if (bytes > 0) {
+    // Mirror the exact UART chunk before demultiplexing, so raw hex mode sees
+    // binary CASIC frames as well as NMEA text.
+    Console::gpsHex(buffer.data(), bytes);
     const uint32_t passedBefore = getStatusSnapshot().sentences_passed;
 
     // processSerial demultiplexes NMEA and CASIC frames. NMEA bytes route
