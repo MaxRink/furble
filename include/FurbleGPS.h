@@ -684,6 +684,7 @@ class GPS {
   bool m_NavxPayloadValid = false;
   mutable std::mutex m_ConfigMutex;
   std::mutex m_TxMutex;
+  std::mutex m_UartMutex;
 
   std::vector<uint8_t> m_RxBuffer;
 
