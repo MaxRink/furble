@@ -1196,3 +1196,31 @@ boards' eight 600-step fuzz seeds and strict seed-2 replay, and 298 physical-lay
 scenarios. Those precede the focused-outline successor and are not a substitute
 for rerunning its UI gates. The Off-mode test setup now uses the existing
 Features switch action instead of an unsupported `preset_picker` seed.
+
+## Issue #365: reserve the legend column only inside its band
+
+`8854a374` made `reserveLegendColumns()` narrow every direct page row by
+`m_LegendWidth + LEGEND_GAP` for the page's lifetime. The floating Right legend
+only occupies a 24 px vertical band, so rows above and below it gave up width
+for an empty strip. On 135x240 that wrapped `Connect` and `Settings` even though
+the legend sat below the last home row.
+
+The fix measures the legend's display-coordinate band once, at the same point
+`m_LegendWidth` is sampled, and narrows only a row whose box intersects it.
+Rows outside the band keep `lv_obj_get_content_width(page)`. The band is
+re-evaluated on `LV_EVENT_SCROLL` and settled on `LV_EVENT_SCROLL_END`, so a row
+scrolling into or out of the band gets the right width during the gesture.
+Width and translate writes are guarded by the current value so a repeated event
+cannot cause a layout loop, and hidden rows are skipped. A page-load pass is
+deferred once with `lv_async_call` because `lv_menu_set_page()` raises
+`LV_EVENT_VALUE_CHANGED` before it refreshes the header mode; coordinates read
+inside that event are not final. The single full-height centred-container path
+still intersects the band and keeps the reservation.
+
+`ui.legend_band`, `ui.legend_band_fit`, `ui.legend_band_rows`,
+`ui.legend_band_outside_narrowed` and `ui.page_row_widths` expose the result to
+scenarios. `bughunt/stick-notouch-layout-135.txt` now requires `ok` and zero
+outside-band narrowing on Home and on the Settings page at both scroll ends,
+alongside `ui.cut_labels 0` and `ui.overflow no`. Validation for this change is
+recorded in the pull request and is simulator-only; no physical reflash is
+claimed.

@@ -320,6 +320,11 @@ UI::ConnectContext_t UI::m_ConnectContext;
 
 int32_t UI::m_LegendWidth = 0;
 
+// Empty until UI::UI() measures the floating legend. A top greater than the
+// bottom means no row intersects it.
+int32_t UI::m_LegendBandTop = 0;
+int32_t UI::m_LegendBandBottom = -1;
+
 lv_obj_t *UI::m_ScanFinished;
 
 lv_timer_t *UI::m_ConnectTimer;
@@ -841,9 +846,11 @@ UI::UI(const interval_t &interval)
 
     // Width every potentially scrolling row keeps clear in Buttons placement.
     // Sample after the final size and layout so the reservation matches the
-    // legend box that is actually drawn, not a theme default width.
+    // legend box that is actually drawn, not a theme default width. The same
+    // settled box gives the vertical band the reservation applies to.
     lv_obj_update_layout(m_Right);
     m_LegendWidth = lv_obj_get_width(m_Right);
+    measureLegendBand();
   }
 
   configureControl(ControlMode::MENU);
@@ -2276,83 +2283,214 @@ void UI::setIcon(lv_obj_t *icon, const lv_image_dsc_t *symbol) {
   lv_image_set_src(icon, symbol);
 }
 
-// Keep the floating right legend's column clear for every row that can scroll
-// through it. This runs once when the page loads; changing widths during a
-// focus-driven scroll would re-lay-out the page mid-gesture.
-void UI::reserveLegendColumns(lv_obj_t *page) {
-  if (page == nullptr) {
+// The floating right legend covers only the vertical band its box occupies, so
+// only rows that intersect that band have to keep its column clear. Rows above
+// and below it keep the full page width. A row can scroll into or out of the
+// band, so the widths are re-evaluated on the page's SCROLL and SCROLL_END
+// events rather than once at page load.
+void UI::measureLegendBand(void) {
+  if ((m_Right == nullptr) || !lv_obj_is_valid(m_Right)) {
+    m_LegendBandTop = 0;
+    m_LegendBandBottom = -1;
+    return;
+  }
+  lv_area_t area;
+  lv_obj_get_coords(m_Right, &area);
+  m_LegendBandTop = area.y1;
+  m_LegendBandBottom = area.y2;
+}
+
+bool UI::hasFloatingLegendBand(void) {
+  return (floatingIndicatorReserve() > 0) && (m_LegendBandBottom >= m_LegendBandTop);
+}
+
+bool UI::rowIntersectsLegendBand(const lv_obj_t *row) {
+  if ((row == nullptr) || (m_LegendBandBottom < m_LegendBandTop)) {
+    return false;
+  }
+  lv_area_t area;
+  lv_obj_get_coords(row, &area);
+  return (area.y2 >= m_LegendBandTop) && (area.y1 <= m_LegendBandBottom);
+}
+
+void UI::applyLegendBandWidths(lv_obj_t *page, bool settle, bool pinBottom) {
+  if ((page == nullptr) || !lv_obj_is_valid(page)) {
     return;
   }
   const int32_t indicator = floatingIndicatorReserve();
   const int32_t reserve = indicator > 0 ? indicator + LEGEND_GAP : 0;
-  lv_obj_update_layout(page);
-
-  // Most pages are a list of row containers. Any row can move through the
-  // legend's y band as encoder focus scrolls the page, so the width is stable
-  // for the page's lifetime. A page built as one full-height container of
-  // centred widgets has a single child and receives the same reservation.
+  // Without a floating legend there is no band and no row may be resized.
+  // This matters on Bottom placement and on touch builds, where the reservation
+  // is zero but the page is still built through this path.
+  const bool bandValid = (reserve > 0) && (m_LegendBandBottom >= m_LegendBandTop);
+  if (!bandValid && !settle) {
+    return;
+  }
+  // Remember whether the page was scrolled to its bottom under the widths the
+  // user was actually looking at. Narrowing a row at the band can make it
+  // taller, which extends the content after the scroll position was already
+  // clamped; without this the bottom row would sit below the new extent until
+  // another scroll. Sample before the layout update below, which is what
+  // applies the new row widths.
+  bool wasAtBottom = false;
+  if (settle) {
+    if (pinBottom) {
+      wasAtBottom = lv_obj_get_scroll_bottom(page) <= 0;
+    }
+    lv_obj_update_layout(page);
+  }
+  const int32_t fullWidth = lv_obj_get_content_width(page);
+  if (fullWidth <= 0) {
+    return;
+  }
+  // Most pages are a list of row containers. A page built as one full-height
+  // container of centred widgets has a single child whose box spans the page,
+  // so it intersects every band and keeps receiving the reservation.
   // A label that does not fit the width it was given wraps and the page scrolls
   // vertically. Circular label scrolling invalidates even hidden pages on
   // every frame, so it cannot be used for these eager-built menu rows.
-  // Rows are lv_menu_cont children; a label parked directly on the page, like
-  // the bulb mode hint, is meant to flow over as many lines as it needs and is
-  // left alone.
-  for (uint32_t i = 0; i < lv_obj_get_child_count(page); i++) {
-    lv_obj_t *row = lv_obj_get_child(page, i);
-    if ((row == nullptr) || !lv_obj_is_valid(row) || lv_obj_has_flag(row, LV_OBJ_FLAG_FLOATING)) {
-      continue;
-    }
-    // A row that owns a horizontal control (the Feedback output roller, a
-    // slider or a roller row) keeps its own internal layout. Narrowing the row
-    // is still required for the legend column; only the label rewrap below is
-    // skipped, because wrapping the label beside a roller stacks the row.
-    bool rowHasControl = false;
-    for (uint32_t j = 0; j < lv_obj_get_child_count(row); j++) {
-      lv_obj_t *child = lv_obj_get_child(row, j);
-      if ((child != nullptr)
-          && (lv_obj_check_type(child, &lv_roller_class)
-              || lv_obj_check_type(child, &lv_slider_class)
-              || lv_obj_check_type(child, &lv_switch_class))) {
-        rowHasControl = true;
-        break;
+  // Rows are lv_menu_cont children; a direct button or label child is still
+  // sized with them because it can sit in the legend's column too.
+  // A row only moves when a row above it changes height, so a top-to-bottom
+  // sweep settles. Each pass re-reads the positions the previous pass moved;
+  // the bound stops a pathological page from looping.
+  const uint32_t passes = settle ? (lv_obj_get_child_count(page) + 2) : 1;
+  for (uint32_t pass = 0; pass < passes; pass++) {
+    bool widthChangedAny = false;
+    for (uint32_t i = 0; i < lv_obj_get_child_count(page); i++) {
+      lv_obj_t *row = lv_obj_get_child(page, i);
+      if ((row == nullptr) || !lv_obj_is_valid(row) || lv_obj_has_flag(row, LV_OBJ_FLAG_FLOATING)
+          || lv_obj_has_flag(row, LV_OBJ_FLAG_HIDDEN)) {
+        continue;
+      }
+      bool widthChanged = false;
+      if (bandValid) {
+        // The legend's measured display-coordinate band, against the row's own
+        // box. lv_obj_get_coords includes the page's scroll offset, so this is
+        // the row's current position on the panel, not its content position.
+        const bool inBand = rowIntersectsLegendBand(row);
+        // The row's own box, not its padding. A child is clipped to its
+        // parent's box, so padding alone still lets a roller or switch enter the
+        // reserved strip. Recompute from the page so loading twice cannot shrink
+        // it twice.
+        const int32_t desired = inBand ? (fullWidth - reserve) : fullWidth;
+        if (lv_obj_get_width(row) != desired) {
+          lv_obj_set_width(row, desired);
+          widthChanged = true;
+          widthChangedAny = true;
+        }
+        // Menu pages centre their rows on the cross axis. Move the narrowed row
+        // left by the half-width LVGL would otherwise leave on both sides, so
+        // the entire reservation stays beside the right-hand legend.
+        const int32_t translate = inBand ? -(reserve / 2) : 0;
+        if (lv_obj_get_style_translate_x(row, LV_PART_MAIN) != translate) {
+          lv_obj_set_style_translate_x(row, translate, LV_PART_MAIN);
+        }
+      }
+      // A row that owns a horizontal control (the Feedback output roller, a
+      // slider or a roller row) keeps its own internal layout. Narrowing the row
+      // is still required for the legend column; only the label rewrap below is
+      // skipped, because wrapping the label beside a roller stacks the row.
+      bool rowHasControl = false;
+      if (reserve > 0) {
+        for (uint32_t j = 0; j < lv_obj_get_child_count(row); j++) {
+          lv_obj_t *child = lv_obj_get_child(row, j);
+          if ((child != nullptr)
+              && (lv_obj_check_type(child, &lv_roller_class)
+                  || lv_obj_check_type(child, &lv_slider_class)
+                  || lv_obj_check_type(child, &lv_switch_class))) {
+            rowHasControl = true;
+            break;
+          }
+        }
+      }
+      for (uint32_t j = 0; j < lv_obj_get_child_count(row); j++) {
+        lv_obj_t *child = lv_obj_get_child(row, j);
+        if ((child == nullptr) || !lv_obj_is_valid(child)
+            || !lv_obj_check_type(child, &lv_label_class)) {
+          continue;
+        }
+        if ((settle || widthChanged) && lv_obj_has_flag(child, LV_OBJ_FLAG_USER_1)) {
+          // Give deliberately wrapped content-sized labels the row's final pixel
+          // width so LVGL computes their real multi-line height before drawing.
+          lv_obj_set_style_max_width(child, lv_obj_get_content_width(row), LV_PART_MAIN);
+        }
+        if ((reserve > 0) && !rowHasControl) {
+          const lv_label_long_mode_t mode = lv_label_get_long_mode(child);
+          if ((mode == LV_LABEL_LONG_SCROLL) || (mode == LV_LABEL_LONG_SCROLL_CIRCULAR)) {
+            lv_label_set_long_mode(child, LV_LABEL_LONG_WRAP);
+          }
+        }
+        if (widthChanged && (reserve > 0) && lv_obj_check_type(row, &lv_button_class)) {
+          // A narrowed button label must wrap inside the smaller button instead
+          // of clipping "Restart to apply" to "Restart to a".
+          lv_obj_set_width(child, LV_PCT(100));
+          lv_label_set_long_mode(child, LV_LABEL_LONG_WRAP);
+        }
       }
     }
-    if (reserve > 0) {
-      // The row's own box, not its padding. A child is clipped to its parent's
-      // box, so padding alone still lets a roller or switch enter the reserved
-      // strip. Recompute from the page so loading twice cannot shrink it twice.
-      lv_obj_set_width(row, lv_obj_get_content_width(page) - reserve);
-      // Menu pages centre their rows on the cross axis. Move the narrowed row
-      // left by the half-width LVGL would otherwise leave on both sides, so the
-      // entire reservation stays beside the right-hand legend.
-      lv_obj_set_style_translate_x(row, -(reserve / 2), LV_PART_MAIN);
+    if (!settle || !widthChangedAny) {
+      break;
     }
-    lv_obj_update_layout(row);
-    for (uint32_t j = 0; j < lv_obj_get_child_count(row); j++) {
-      lv_obj_t *child = lv_obj_get_child(row, j);
-      if ((child != nullptr) && lv_obj_check_type(child, &lv_label_class)
-          && lv_obj_has_flag(child, LV_OBJ_FLAG_USER_1)) {
-        // Give deliberately wrapped content-sized labels the row's final pixel
-        // width so LVGL computes their real multi-line height before drawing.
-        lv_obj_set_style_max_width(child, lv_obj_get_content_width(row), LV_PART_MAIN);
-      }
-      if ((reserve > 0) && !rowHasControl && (child != nullptr)
-          && lv_obj_check_type(child, &lv_label_class)
-          && ((lv_label_get_long_mode(child) == LV_LABEL_LONG_SCROLL)
-              || (lv_label_get_long_mode(child) == LV_LABEL_LONG_SCROLL_CIRCULAR))) {
-        lv_label_set_long_mode(child, LV_LABEL_LONG_WRAP);
-      }
-      if ((reserve > 0) && (child != nullptr) && lv_obj_check_type(child, &lv_label_class)
-          && lv_obj_check_type(row, &lv_button_class)) {
-        // A narrowed button label must wrap inside the smaller button instead
-        // of clipping "Restart to apply" to "Restart to a".
-        lv_obj_set_width(child, LV_PCT(100));
-        lv_label_set_long_mode(child, LV_LABEL_LONG_WRAP);
+    // Wrapping changes a row's height, which moves every row below it. Refresh
+    // the page so the next pass measures the rows against their real positions.
+    lv_obj_update_layout(page);
+  }
+  if (settle) {
+    lv_obj_update_layout(page);
+    if (wasAtBottom) {
+      const int32_t below = lv_obj_get_scroll_bottom(page);
+      if (below > 0) {
+        lv_obj_scroll_by(page, 0, -below, LV_ANIM_OFF);
       }
     }
   }
+}
 
-  lv_obj_update_layout(page);
+void UI::legendBandScrollEvent(lv_event_t *e) {
+  auto *page = static_cast<lv_obj_t *>(lv_event_get_user_data(e));
+  // A child's event can bubble into the page; only the page's own scroll moves
+  // its rows through the legend band.
+  if ((page == nullptr) || !lv_obj_is_valid(page) || (lv_event_get_target(e) != page)) {
+    return;
+  }
+  const bool scrollEnd = lv_event_get_code(e) == LV_EVENT_SCROLL_END;
+  applyLegendBandWidths(page, scrollEnd, scrollEnd);
+}
+
+void UI::reserveLegendColumns(lv_obj_t *page) {
+  if (page == nullptr) {
+    return;
+  }
+  // The reservation is band scoped, so it has to follow a page that scrolls: a
+  // row entering the band narrows, and one leaving it gets the full width back.
+  // Install the handler once per page; LV_EVENT_SCROLL_END settles the pass with
+  // a layout refresh between rows, while SCROLL stays allocation and
+  // layout-update free.
+  if (!lv_obj_has_flag(page, LV_OBJ_FLAG_USER_2)) {
+    lv_obj_add_flag(page, LV_OBJ_FLAG_USER_2);
+    lv_obj_add_event_cb(page, legendBandScrollEvent, LV_EVENT_SCROLL, page);
+    lv_obj_add_event_cb(page, legendBandScrollEvent, LV_EVENT_SCROLL_END, page);
+  }
+  applyLegendBandWidths(page, true);
+  // lv_menu_set_page() raises LV_EVENT_VALUE_CHANGED before it refreshes the
+  // header mode, so the row positions read inside that event are not final.
+  // Re-run once on the next LVGL cycle, after the page is attached and laid
+  // out, and before the first frame the user sees. The flag keeps a page load
+  // from queueing one callback per row built into it.
+  if (!lv_obj_has_flag(page, LV_OBJ_FLAG_USER_3)) {
+    lv_obj_add_flag(page, LV_OBJ_FLAG_USER_3);
+    lv_async_call(
+        [](void *arg) {
+          auto *deferred = static_cast<lv_obj_t *>(arg);
+          if ((deferred == nullptr) || !lv_obj_is_valid(deferred)) {
+            return;
+          }
+          lv_obj_remove_flag(deferred, LV_OBJ_FLAG_USER_3);
+          applyLegendBandWidths(deferred, true);
+        },
+        page);
+  }
 }
 
 int32_t UI::floatingIndicatorReserve(void) {
@@ -3105,11 +3243,6 @@ void UI::addMainMenu(void) {
           ui->configureControl(ControlMode::MENU);
         }
 
-        // Rows level with the floating right legend keep its column clear; the
-        // rest of the page keeps its full width. Page load is where the row
-        // geometry is finally known.
-        ui->reserveLegendColumns(page);
-
         // A roller or slider can leave the shared encoder group in edit mode.
         // Menu pages always start in navigation mode so left/right can reach
         // the shared header back button.
@@ -3340,6 +3473,13 @@ void UI::addMainMenu(void) {
           lv_obj_remove_state(back, LV_STATE_DISABLED);
           lv_obj_clear_flag(back, LV_OBJ_FLAG_HIDDEN);
         }
+
+        // Rows level with the floating right legend keep its column clear; the
+        // rest of the page keeps its full width. Apply this after the
+        // page-specific visibility changes above: showing or hiding a row moves
+        // every row below it, so reserving earlier would measure stale
+        // positions. Page load is where the final row geometry is known.
+        ui->reserveLegendColumns(page);
       },
       LV_EVENT_VALUE_CHANGED, this);
 
@@ -5979,6 +6119,87 @@ std::string UI::simQueryState(const char *key) {
       return "n/a";
     }
     return (overlaps > 0) ? "overlap" : "clear";
+  }
+
+  // The floating right legend's vertical band in display coordinates, and the
+  // widths of the current page's visible direct non-floating children. The
+  // reservation is scoped to that band, so a scenario can prove a row above it
+  // keeps the full page width instead of accepting the wrap the old page-wide
+  // reserve caused. `legend_band` reads the live legend box, not the cached copy
+  // the production layout uses.
+  if (query == "legend_band") {
+    if (!hasFloatingLegendBand() || (m_Right == nullptr) || !lv_obj_is_valid(m_Right)) {
+      return "none";
+    }
+    lv_obj_update_layout(m_Right);
+    lv_area_t area;
+    lv_obj_get_coords(m_Right, &area);
+    return std::to_string(area.y1) + "-" + std::to_string(area.y2);
+  }
+
+  if ((query == "legend_band_rows") || (query == "legend_band_outside_narrowed")
+      || (query == "legend_band_fit")) {
+    lv_obj_t *page = lv_menu_get_cur_main_page(m_MainMenu.main);
+    const int32_t indicator = floatingIndicatorReserve();
+    const int32_t reserve = indicator > 0 ? indicator + LEGEND_GAP : 0;
+    if ((page == nullptr) || (reserve <= 0) || (m_LegendBandBottom < m_LegendBandTop)) {
+      return (query == "legend_band_fit") ? "none" : "0";
+    }
+    lv_obj_update_layout(page);
+    const int32_t fullWidth = lv_obj_get_content_width(page);
+    unsigned inBand = 0;
+    unsigned outsideNarrowed = 0;
+    for (uint32_t i = 0; i < lv_obj_get_child_count(page); i++) {
+      lv_obj_t *row = lv_obj_get_child(page, i);
+      if ((row == nullptr) || !lv_obj_is_valid(row) || lv_obj_has_flag(row, LV_OBJ_FLAG_FLOATING)
+          || lv_obj_has_flag(row, LV_OBJ_FLAG_HIDDEN)) {
+        continue;
+      }
+      const bool banded = rowIntersectsLegendBand(row);
+      if (banded) {
+        inBand++;
+      }
+      const int32_t expected = banded ? (fullWidth - reserve) : fullWidth;
+      if (lv_obj_get_width(row) != expected) {
+        if (query == "legend_band_fit") {
+          return "bad";
+        }
+        if (!banded) {
+          outsideNarrowed++;
+        }
+      }
+    }
+    if (query == "legend_band_fit") {
+      return "ok";
+    }
+    if (query == "legend_band_rows") {
+      return std::to_string(inBand);
+    }
+    return std::to_string(outsideNarrowed);
+  }
+
+  if (query == "page_row_widths") {
+    lv_obj_t *page = lv_menu_get_cur_main_page(m_MainMenu.main);
+    if (page == nullptr) {
+      return "unknown";
+    }
+    lv_obj_update_layout(page);
+    std::string widths;
+    for (uint32_t i = 0; i < lv_obj_get_child_count(page); i++) {
+      lv_obj_t *row = lv_obj_get_child(page, i);
+      if ((row == nullptr) || !lv_obj_is_valid(row) || lv_obj_has_flag(row, LV_OBJ_FLAG_FLOATING)
+          || lv_obj_has_flag(row, LV_OBJ_FLAG_HIDDEN)) {
+        continue;
+      }
+      if (!widths.empty()) {
+        widths += ',';
+      }
+      lv_area_t area;
+      lv_obj_get_coords(row, &area);
+      widths += std::to_string(area.y1) + "-" + std::to_string(area.y2) + ":"
+                + std::to_string(lv_obj_get_width(row));
+    }
+    return widths.empty() ? "none" : widths;
   }
 
   // Pixels of content still below the current viewport, so a scroll scenario can
