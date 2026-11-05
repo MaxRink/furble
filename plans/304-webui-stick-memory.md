@@ -64,12 +64,14 @@ A `FURBLE_CONSOLE`-only, read-only BLE debug service was prototyped with:
   bond/window/advertising)
 - a log mirror characteristic `b57f4f71-...` fed by `esp_log_set_vprintf`.
 
-The first prototype crashed the debug image when companion started; the log
-hook was removed to isolate it, but the device became unresponsive before the
-status-only version could be tested. Do not ship the service until it is
-validated with companion enabled and disabled, and until the log hook is proven
-safe from every logging context. The status-only tool design remains the right
-fallback for a dead USB CDC endpoint.
+The first prototype crashed the debug image because `attach()` called the
+status getters while `enable()` held `m_Mutex`, and the log hook was also
+unproven. The shipped bench build now uses a status-only characteristic
+(`b57f4f72-...`), attaches without reading any `CompanionGatt` state, and
+refreshes the snapshot only from the companion service task. It is gated on
+`FURBLE_BLE_DEBUG` with the `m5stick-s3-debug-ble` environment and uses
+`tools/ble_debug.py`. Hardware validation is still pending because the StickS3
+is off USB.
 
 ## Validation blocked
 

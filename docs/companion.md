@@ -154,6 +154,27 @@ from `scan` or an advertised name substring. No camera needs to be attached for
 status and power monitoring; camera command success cannot be certified from a
 bench without a real camera.
 
+## BLE debug status (bench image)
+
+`pio run -e m5stick-s3-debug-ble` adds a read-only BLE status service for
+bench debugging. It is deliberately unencrypted and is not part of the
+production companion contract. The service answers even when companion auth,
+the host GATT cache, or the USB CDC endpoint is broken.
+
+- service `b57f4f70-087b-4740-b71d-8262cf26ebbc`
+- status `b57f4f72-087b-4740-b71d-8262cf26ebbc` (read)
+
+The snapshot reports reset reason, uptime, task count, internal/PSRAM free and
+largest blocks, bond count, BLE connections, and the companion enabled/
+connected/encrypted/authenticated/bond/window/advertising state. Enable
+Companion mode so the service exists, then run:
+
+```sh
+python3 -m pip install bleak
+tools/ble_debug.py --device furble-38a70 --status
+tools/ble_debug.py --device furble-38a70 --status --interval 5
+```
+
 ## Battery observation run
 
 `monitor` is a read-only long-run mode. It keeps the authenticated BLE link and

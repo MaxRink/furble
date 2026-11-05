@@ -5,6 +5,9 @@
 #include "Scan.h"
 
 #include "FurbleCompanion.h"
+#if defined(FURBLE_BLE_DEBUG)
+#include "FurbleCompanionDebug.h"
+#endif
 #include "FurbleGPS.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
@@ -314,6 +317,12 @@ void CompanionGatt::createGatt(void) {
 
   const CompanionService::companion_status_t status = m_Service.getStatus();
   m_Status->setValue(reinterpret_cast<const uint8_t *>(&status), sizeof(status));
+
+#if defined(FURBLE_BLE_DEBUG)
+  // Creating a characteristic here only allocates GATT entries; the snapshot
+  // is refreshed from the service task, outside every CompanionGatt lock.
+  CompanionDebug::getInstance().attach(m_Server);
+#endif
 }
 
 void CompanionGatt::clearWhitelist(void) {
@@ -589,6 +598,9 @@ void CompanionGatt::serviceTask(void) {
 
     m_Service.notifyStatus();
     m_Service.notifyCameras();
+#if defined(FURBLE_BLE_DEBUG)
+    CompanionDebug::getInstance().update();
+#endif
     vTaskDelay(pdMS_TO_TICKS(1000));
   }
 }
