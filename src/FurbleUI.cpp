@@ -528,17 +528,24 @@ UI::UI(const interval_t &interval)
   // StickS3 and 17.3 KiB on the StickC, all of it internal DMA-capable RAM that
   // the optional HTTPS server needs. Both buffers stay internal because they
   // feed the SPI panel and cannot live in PSRAM. Narrow panels also halve the
-  // partial row count, which halves each buffer and doubles the number of
-  // flush bands without changing the number of pixels transferred.
+  // partial row count and use a single buffer, which doubles the number of
+  // flush bands and serialises render with transfer. The single-buffer flush
+  // callback waits for the SPI DMA, so the display stays correct.
   const size_t drawBufferSize = UIMemory::drawBufferBytes(m_Width, m_Height, BYTES_PER_PIXEL);
+  const bool singleBuffer = UIMemory::singleDrawBuffer(m_Width);
   m_Buffer1 = heap_caps_aligned_alloc(64, drawBufferSize, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
-  m_Buffer2 = heap_caps_aligned_alloc(64, drawBufferSize, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+  if (!singleBuffer) {
+    m_Buffer2 = heap_caps_aligned_alloc(64, drawBufferSize, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+  }
   if (m_Buffer1 == nullptr) {
     ESP_LOGE(LOG_TAG, "LVGL draw buffer allocation failed (%u bytes)",
              static_cast<unsigned>(drawBufferSize));
     abort();
   }
-  if (m_Buffer2 == nullptr) {
+  if (singleBuffer) {
+    m_SingleBuffer = true;
+    ESP_LOGI(LOG_TAG, "LVGL single draw buffer on the narrow panel");
+  } else if (m_Buffer2 == nullptr) {
     // LVGL accepts a single buffer. Keep the display usable rather than
     // aborting when only one internal DMA block is available. The flush
     // callback waits for the SPI DMA before releasing a single buffer, because

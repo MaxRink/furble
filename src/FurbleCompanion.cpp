@@ -18,6 +18,15 @@
 
 namespace Furble {
 
+namespace {
+
+// Measured 1,884-byte high-water mark on the StickS3 with the companion
+// connected and a settings write. Keep the task internal because it commits
+// NVS, and keep enough headroom for the NimBLE and Preferences frames.
+constexpr uint32_t COMPANION_TASK_STACK_BYTES = 3072;
+
+}  // namespace
+
 CompanionGatt::CompanionGatt() : m_Service {*this} {
   m_Service.setSettingReloadCallback([this](bool pairingWindow) { reloadSetting(pairingWindow); });
 }
@@ -203,8 +212,8 @@ void CompanionGatt::enable(bool pairingWindow) {
       }
 
       if (m_Task == nullptr) {
-        const BaseType_t result =
-            xTaskCreate(serviceTaskEntry, "companion", 4096, this, 2, &m_Task);
+        const BaseType_t result = xTaskCreate(serviceTaskEntry, "companion",
+                                              COMPANION_TASK_STACK_BYTES, this, 2, &m_Task);
         if (result != pdPASS) {
           ESP_LOGE(LOG_TAG, "Failed to create companion task");
           m_Task = nullptr;

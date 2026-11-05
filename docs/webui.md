@@ -50,8 +50,9 @@ before the radios take the heap.
 The general internal-RAM pass in plan 305 adds four more changes that matter
 here:
 
-- The StickS3 main stack drops from 16 KiB to 12 KiB. The TLS identity now runs
-  on its own 12 KiB internal task at boot and the main task waits for it.
+- The StickS3 main stack drops from 16 KiB to 12 KiB in plan 305 and then to
+  8 KiB in plan 307. The TLS identity runs on its own 12 KiB internal task at
+  boot and the main task waits for it.
 - The StickS3 IR task stack moves to PSRAM, because that task only drives RMT
   and never touches NVS.
 - Narrow panels halve the LVGL partial rows, so each StickS3 draw buffer drops
@@ -77,30 +78,28 @@ first response; those are the numbers to collect for a new board.
 
 | Build | Radio | PSRAM used | Internal free | WebUI |
 | :--- | :--- | :--- | :--- | :--- |
-| `m5stick-s3` (M5StickS3) | WiFi + BLE | 8 MB, mbedTLS in PSRAM | **13.5 KiB measured free / 12.8 KiB largest on the debug image with WebUI off before plan 305**; **10.6 KiB / 9.7 KiB on the debug image with the supervisor running before plan 305**; **about 28.1 KiB / about 25.2 KiB inferred on the debug image after plan 305** | **Measured no before plan 305. After plan 305 the gate is inferred to pass; hardware has not confirmed it. Do not call it supported until a TLS handshake, a settings write and a soak pass.** |
+| `m5stick-s3` (M5StickS3) | WiFi + BLE | 8 MB, mbedTLS in PSRAM | **13.5 KiB free / 12.8 KiB largest measured before plan 305**; **27.4 KiB free / 25.6 KiB largest measured after plan 305 with WebUI off**; **about 34.6 KiB free inferred after plan 307**; the largest block after plan 307 is not inferred | **Measured no before plan 305. Plans 305 and 307 move the WebUI off the critical path; the server gate is inferred to pass but hardware has not confirmed it. Do not call it supported until a TLS handshake, a settings write and a soak pass.** |
 | `m5stack-core2` | WiFi + BLE | 8 MB on board, disabled in firmware (`CONFIG_SPIRAM` unset); TLS buffers internal | Not measured | Expected to fit |
 | `esp32-s3-headless` | WiFi + BLE | 8 MB enabled; mbedTLS now in PSRAM, NimBLE host memory in PSRAM | Not measured; no display buffers | Expected to fit |
 | `waveshare-s3-eth` (ESP32-S3) | Ethernet (WiFi optional) | 8 MB enabled; mbedTLS now in PSRAM | Not measured; WiFi RX pool not allocated while wired | Expected to fit |
 
-Only the StickS3 pre-plan-305 measurements are real. The post-plan-305 figures
-and the other rows are configuration arithmetic until someone runs `perf heap`
-and opens the page on each board. The 4 MB profiles do not compile the WebUI.
+The StickS3 has two real measurements. Before plan 305 it had 13.5 KiB free /
+12.8 KiB largest internal bytes before the WebUI supervisor, and 10.6 KiB /
+9.7 KiB with the 3 KiB supervisor. The server floor is 20,480 / 12,288 bytes,
+so the listener stayed closed. That is the important negative result and the
+reason the fail-closed gate exists. After plan 305 the measured pair with
+WebUI off is 27.4 KiB free / 25.6 KiB largest.
 
-The StickS3 measurement is the important negative result before plan 305. With
-WiFi connected, the companion service enabled and the display running, the
-board had 13.5 KiB free / 12.8 KiB largest internal bytes before the WebUI
-supervisor, and 10.6 KiB / 9.7 KiB with the 3 KiB supervisor. The server floor
-is 20,480 / 12,288 bytes, so the listener stayed closed. The fail-closed gate is
-what prevents the old watchdog boot loop.
-
-Plan 305 removes about 14.6 KiB of steady internal allocations from the debug
-image (12.5 KiB in a release image). In inference that puts the StickS3 above
-the 20,480-byte server floor with roughly 25 KiB free while the supervisor runs.
-The HTTPS task and its TLS session still need about 18.7 KiB, which leaves only
-about 6 KiB of internal heap. That is thin. Treat the result as a hardware
-question, not a support claim, until the gate, the handshake and a soak pass on
-the board. If it is unstable, the existing gate fails closed instead of
-resetting.
+Plan 305 removed about 14.6 KiB of steady internal allocations from the debug
+image (12.5 KiB in a release image). Plan 307 removes another 7.3 KiB with the
+WebUI off. In inference that puts the StickS3 at about 34.6 KiB free before
+the supervisor. The HTTPS task and its TLS session still need about 18.7 KiB,
+which leaves about 12 KiB of internal heap. The largest block after plan 307 is
+not inferred. Treat the result as a hardware question, not a support claim,
+until the gate, the handshake and a soak pass on the board. If it is unstable,
+the existing gate fails closed instead of resetting. The other board rows are
+configuration arithmetic until someone runs `perf heap` and opens the page on
+each board. The 4 MB profiles do not compile the WebUI.
 
 The server stays closed when the WebUI setting is off, WiFi has no address, the
 companion password is unset or unreadable, the TLS identity cannot be loaded,

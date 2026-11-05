@@ -1,5 +1,11 @@
 # 305 - General internal RAM pass
 
+> Plan 307 continues this work after the hardware measurement came in at
+> 27,351 free / 25,588 largest, not the 28,103 inferred here. It reduces the
+> main stack to 8 KiB, uses one draw buffer on narrow panels and reduces the
+> companion stack. The measured and inferred map below remains the #394
+> baseline.
+
 ## Finding
 
 PR #392 fixed the WebUI path on the StickS3: panel-sized LVGL draw buffers,
@@ -296,8 +302,16 @@ gate still fails closed instead of resetting.
 
 - Camera target task in PSRAM: 4,096 bytes per connected camera. Needs a
   high-water mark and a shutter-latency comparison.
-- MQTT owner task in PSRAM after the stack PR merges: 4,096 bytes.
-- Companion stack 3,072 after a hardware high-water with a settings write.
+- MQTT owner task in PSRAM: the hardware build needs 10,240 bytes, so this is
+  the largest remaining stack candidate.
 - Revisit `SPIRAM_TRY_ALLOCATE_WIFI_LWIP` only with an OTA throughput soak.
 - Measure LVGL object memory on the StickS3 with `heap_caps_get_info` around
   UI construction. That is the remaining unquantified internal consumer.
+
+## Follow-up: plan 307
+
+[307-mqtt-ha-memory.md](307-mqtt-ha-memory.md) continues from the measured
+27,351 / 25,588 pair. It reduces the main stack from 12 KiB to 8 KiB, uses one
+LVGL draw buffer on narrow panels, reduces the companion stack to 3 KiB, and
+adds the MQTT start and Home Assistant discovery gates. The companion stack cut
+listed above is implemented there, not here.
