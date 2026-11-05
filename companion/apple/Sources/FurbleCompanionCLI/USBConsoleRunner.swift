@@ -196,8 +196,11 @@ enum USBConsoleRunner {
       if now >= nextSample {
         do {
           try console.open()
-          let status = try parseStatus(console.command("status"))
-          let gps = try parseGPS(console.command("gps"))
+          // The debug UI occasionally holds its lock across a display flush.
+          // A 2 s command timeout made the monitor close and reopen the CDC
+          // port during those windows, which could leave the endpoint wedged.
+          let status = try parseStatus(console.command("status", timeout: 5))
+          let gps = try parseGPS(console.command("gps", timeout: 5))
           if lost {
             emitMarker("reconnected")
             lost = false
