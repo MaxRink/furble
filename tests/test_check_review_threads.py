@@ -82,6 +82,12 @@ class ReviewThreadGateTest(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("failed closed", stderr)
 
+    def test_missing_gh_fails_closed(self):
+        with mock.patch.object(REVIEW.subprocess, "run", side_effect=FileNotFoundError("gh")):
+            code, _, stderr = self.run_gate("--repo", "owner/name", "--pr", "391")
+        self.assertEqual(code, 2)
+        self.assertIn("could not run gh", stderr)
+
     def test_graphql_error_fails_closed(self):
         with mock.patch.object(REVIEW.subprocess, "run",
                                return_value=completed({"errors": [{"message": "boom"}]})):

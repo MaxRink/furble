@@ -63,7 +63,10 @@ def run_graphql(owner: str, name: str, number: int) -> list[dict]:
         ]
         if cursor is not None:
             command += ["-f", f"endCursor={cursor}"]
-        result = subprocess.run(command, capture_output=True, text=True)
+        try:
+            result = subprocess.run(command, capture_output=True, text=True)
+        except OSError as error:
+            raise ReviewQueryError(f"could not run gh api graphql: {error}") from error
         if result.returncode != 0:
             raise ReviewQueryError(
                 f"gh api graphql failed with exit {result.returncode}: "
