@@ -394,4 +394,12 @@ int64_t esp_timer_get_time(void) {
   return HeadlessState::nowUs;
 }
 
+uint32_t furbleBootTimelineHostResetMs(void) {
+  return 0;
+}
+
+int64_t furbleBootTimelineHostNowUs(void) {
+  return HeadlessState::nowUs;
+}
+
 }  // extern "C"

@@ -67,7 +67,7 @@ that compile the production driver unchanged and replace only the lowest
 hardware API. The runner is `sim/scripts/run-boundary-conformance.sh`; the
 manifest entries name its scenario files and production sources. The host
 targets cover display-less `src/main.cpp`, W5500 Ethernet, IR RMT, SD/GPX,
-feedback, `CompanionGatt`, the 4 KiB companion restart and the WebUI
+feedback, `CompanionGatt`, the companion task-stack restart and the WebUI
 TLS/socket allocation path. Physical wiring, analog audio, the SD controller
 and a real mbedTLS handshake remain hardware validation items, not simulator
 claims.

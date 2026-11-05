@@ -47,11 +47,11 @@ void finish(void) {
   using namespace HeadlessState;
 
   const std::vector<std::string> expected = {
-      "crashlog.init", "platform.init", "timekeeper.init", "boot.begin",     "ir.init",
-      "Infrared",      "feedback.init", "Feedback",        "sd.init",        "Storage",
-      "netif.init",    "eventloop.init", "Power",           "device.init",   "Bluetooth",
-      "webui.early",   "companion.init", "Companion",       "mqtt.init",     "ethernet.init",
-      "Ethernet",      "gps.init",       "wifi.init",       "webui.init",    "console.init",
+      "crashlog.init", "netif.init",     "eventloop.init", "platform.init", "timekeeper.init",
+      "boot.begin",    "ir.init",        "Infrared",       "feedback.init", "Feedback",
+      "sd.init",       "Storage",        "Power",          "device.init",   "Bluetooth",
+      "webui.early",   "companion.init", "Companion",      "mqtt.init",     "ethernet.init",
+      "Ethernet",      "wifi.init",      "gps.init",       "webui.init",    "console.init",
       "boot.finish",
   };
   const auto actual = bootWithoutTask();

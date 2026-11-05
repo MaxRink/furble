@@ -209,7 +209,7 @@
       "status": "modeled",
       "known_failing_seeds": [],
       "source": "sim/coverage/crashes.json",
-      "note": "Production CompanionGatt retains the 4096-byte task and GATT database across disable/enable over MockNimBLE; restart asserts no second xTaskCreate.",
+      "note": "Production CompanionGatt retains the configured service task (3072 bytes after #398) and GATT database across disable/enable over MockNimBLE; restart asserts no second xTaskCreate.",
       "model": "src/FurbleCompanion.cpp",
       "runner": "sim/scripts/run-boundary-conformance.sh"
     }

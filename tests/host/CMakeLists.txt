@@ -2605,6 +2605,7 @@ add_executable(boundary_headless_service_test
                ${FURBLE_ROOT}/src/FurbleSettings.cpp
                ${FURBLE_ROOT}/src/FurbleNetworkSettings.cpp
                ${FURBLE_ROOT}/src/FurbleTimezone.cpp
+               ${FURBLE_ROOT}/src/FurbleBootTimeline.cpp
                ${FURBLE_ROOT}/lib/preferences/Preferences.cpp
                ${BOUNDARY_DIR}/m5_stub.cpp
                ${CONTROL_E2E_DIR}/freertos_shim.cpp)
@@ -2623,7 +2624,8 @@ target_compile_definitions(boundary_headless_service_test PRIVATE
                            FURBLE_M5STICKS3
                            FURBLE_WEBUI=1
                            FURBLE_MQTT=1
-                           FURBLE_ETHERNET)
+                           FURBLE_ETHERNET
+                           FURBLE_BOOT_TIMELINE_HOST_TEST=1)
 target_compile_options(boundary_headless_service_test PRIVATE
                        ${BOUNDARY_FREERTOS_INCLUDE}
                        -include${BOUNDARY_SHIM_DIR}/esp_log.h
