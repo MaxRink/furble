@@ -103,8 +103,8 @@ int main() {
   host_webui_tls::setFailAt(2);
   check(!webui.hostStartServer("test certificate", "test key"),
         "an allocation failure did not fail the start");
-  check(host_webui_tls::liveBytes() == host_webui_tls::TLS_CONTEXT_BYTES,
-        "the failed start did not release only the allocations it took");
+  check(host_webui_tls::liveBytes() == 0,
+        "the failed start did not roll back every allocation it took");
   check(Preferences::values == identity, "the allocation failure rewrote the identity");
   std::cout << "tls.alloc_failure failed=1 retained_identity=1\n";
   host_webui_tls::reset();

@@ -41,13 +41,32 @@ NimBLEAddress address(uint64_t value) {
 
 void run(void) {
   NimBLEDevice::resetMock();
+  auto *server = NimBLEDevice::getServer();
+  auto *advertising = NimBLEDevice::getAdvertising();
+
+  // A prior test case must not leak GATT services, callbacks, started state or
+  // counters into this one.
+  auto *scratch = server->createService("1234");
+  scratch->createCharacteristic("5678", NIMBLE_PROPERTY::READ);
+  server->start();
+  advertising->reset();
+  advertising->start();
+  check(server->serviceCount() == 1, "the reset probe did not create a service");
+  check(server->started(), "the reset probe did not start the server");
+  check(advertising->startCount() == 1, "the reset probe did not start advertising");
+  NimBLEDevice::resetMock();
+  check(server->serviceCount() == 0, "resetMock kept the GATT services");
+  check(server->characteristicCount() == 0, "resetMock kept the GATT characteristics");
+  check(!server->started(), "resetMock kept the server started");
+  check(!advertising->isAdvertising() && advertising->startCount() == 0,
+        "resetMock kept advertising state or counters");
+  std::cout << "companion.reset_mock services=0 started=0 advertising=0\n";
+
   NimBLEDevice::init("furble-host");
   Furble::Device::init(ESP_PWR_LVL_P9);
   Furble::Settings::setBool(Furble::Settings::COMPANION, true);
 
   auto &companion = Furble::CompanionGatt::getInstance();
-  auto *server = NimBLEDevice::getServer();
-  auto *advertising = NimBLEDevice::getAdvertising();
   const size_t tasksBefore = furbleHostTaskCreateCount();
 
   companion.init();

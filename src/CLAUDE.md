@@ -126,7 +126,10 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   owns the card mount and all SD I/O. Every other task (LVGL, GPS, NimBLE)
   interacts only through `SD::request()` / `SD::logPoint()` and the atomic
   state accessors.   Never mount, unmount or touch files under `/sd` from
-  another task.
+  another task. The mount point is `/sd` on device. `FURBLE_SD_MOUNT_POINT`
+  exists only so the linked host conformance target can redirect the same
+  production code to a writable sandbox; firmware leaves it undefined and
+  device behavior is unchanged.
 - `FurbleGPX`: GPX 1.1 track writer. Pure file writer with no SD or settings
   knowledge; every method runs on the SD writer task.
 - `FurbleWiFi`: station lifecycle, remembered access point state and NTP.

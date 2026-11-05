@@ -84,7 +84,8 @@ closed. A PSRAM task stack during a flash write fails closed.
 
 The SDL build does not link the production mbedTLS/socket stack, the IR RMT
 driver, the SD writer, the speaker path, the W5500 Ethernet driver or
-`CompanionGatt`. Their allocation sizes are modeled from the budget table and
-their state transitions are scripted, but the production allocation sites are
-not executed. The coverage manifest marks these as approximate and names the
-missing evidence.
+`CompanionGatt`. Their allocation sizes and state transitions are modeled in the
+SDL scenarios. The linked host-boundary suite compiles those production paths
+unchanged against peripheral doubles, so the manifest marks those entries
+modeled. Physical wiring, analog audio, the SD controller and a real mbedTLS
+handshake remain hardware validation items.

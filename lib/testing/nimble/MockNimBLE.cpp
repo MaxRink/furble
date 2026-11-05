@@ -88,6 +88,8 @@ std::recursive_mutex g_ClientsMutex;
 NimBLEServer g_Server;
 NimBLEScan g_Scan;
 NimBLEAdvertising g_Advertising;
+uint16_t g_NextServiceHandle = 1;
+uint16_t g_NextCharacteristicHandle = 1;
 std::vector<NimBLEAddress> g_WhiteList;
 NimBLEAddress g_OwnAddress {};
 uint8_t g_OwnAddressType = 0;
@@ -1491,7 +1493,10 @@ void NimBLEDevice::resetMock() {
   g_OwnAddress = NimBLEAddress {};
   g_OwnAddressType = 0;
   g_StartSecurityCount = 0;
-  g_Advertising.stop();
+  g_Server.resetMockState();
+  g_Advertising.resetMockState();
+  g_NextServiceHandle = 1;
+  g_NextCharacteristicHandle = 1;
   g_AbsentAddresses.clear();
   g_PasskeyPeers.clear();
   g_SecurityPasskey = DEFAULT_SECURITY_PASSKEY;
@@ -1555,8 +1560,7 @@ NimBLECharacteristic::NimBLECharacteristic(const NimBLEUUID &uuid,
                                            uint32_t properties,
                                            size_t max_length)
     : m_Uuid(uuid), m_Properties(properties), m_MaxLength(max_length), m_Handle(0) {
-  static uint16_t next_handle = 1;
-  m_Handle = next_handle++;
+  m_Handle = g_NextCharacteristicHandle++;
 }
 
 void NimBLECharacteristic::setValue(const uint8_t *data, size_t length) {
@@ -1595,8 +1599,7 @@ bool NimBLECharacteristic::indicate(const NimBLEAttValue &value, uint16_t conn_h
 }
 
 NimBLEService::NimBLEService(const NimBLEUUID &uuid) : m_Uuid(uuid), m_Handle(0) {
-  static uint16_t next_handle = 1;
-  m_Handle = next_handle++;
+  m_Handle = g_NextServiceHandle++;
 }
 
 NimBLECharacteristic *NimBLEService::createCharacteristic(const NimBLEUUID &uuid,
@@ -1691,6 +1694,14 @@ void NimBLEServer::mockConfirmPassKey(NimBLEConnInfo &info, uint32_t pin) {
   }
 }
 
+void NimBLEServer::resetMockState() {
+  m_Services.clear();
+  m_Callbacks = nullptr;
+  m_AdvertiseOnDisconnect = false;
+  m_Started = false;
+  m_DisconnectCount = 0;
+}
+
 void NimBLEAdvertising::reset() {
   m_ScanResponse = false;
   m_ConnectableMode = 0;
@@ -1726,6 +1737,13 @@ void NimBLEAdvertising::mockAdvertisingComplete() {
   if (m_CompleteCallback) {
     m_CompleteCallback(this);
   }
+}
+
+void NimBLEAdvertising::resetMockState() {
+  reset();
+  m_Advertising = false;
+  m_StartCount = 0;
+  m_StopCount = 0;
 }
 
 #if !defined(FURBLE_SIM)

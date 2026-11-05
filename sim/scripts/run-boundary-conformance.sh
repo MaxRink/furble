@@ -29,9 +29,17 @@ cmake --build "$BUILD_DIR" -j "${FURBLE_BOUNDARY_JOBS:-4}" --target \
   boundary_headless_service_test real_wifi_lifecycle_test >/dev/null
 
 echo "=== run linked boundary targets ==="
-ctest --test-dir "$BUILD_DIR" -R '^(boundary-|real-wifi-lifecycle$)' -V | tee "$LOG"
-
 status=0
+set +e
+ctest --test-dir "$BUILD_DIR" -R '^(boundary-|real-wifi-lifecycle$)' -V >"$LOG" 2>&1
+ctest_status=$?
+set -e
+cat "$LOG"
+if [ "$ctest_status" -ne 0 ]; then
+  echo "FAIL: boundary ctest exited $ctest_status" >&2
+  status=1
+fi
+
 for token in \
   "headless.no_panel touched=0" \
   "headless.services" \
@@ -49,6 +57,7 @@ for token in \
   "feedback.brownout low_battery_samples=6" \
   "feedback.light event=connected" \
   "companion.enable services=2 characteristics=9" \
+  "companion.reset_mock services=0 started=0 advertising=0" \
   "companion.auth bonded=1" \
   "companion.reidentify address_changed=1" \
   "companion.restart enabled=1 bond=loaded" \

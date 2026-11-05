@@ -152,6 +152,15 @@ extern "C" esp_err_t httpd_ssl_start(httpd_handle_t *server, const httpd_ssl_con
   // Exact-size allocation ledger for the TLS context, the record buffers and
   // one socket object per accepted connection. A configured failure is the
   // allocator refusing that allocation, not a pre-baked start error.
+  //
+  // Roll back every entry charged by this call on failure. A later start must
+  // see the same clean ledger a fresh process sees, and a failed start must
+  // not make liveBytes() disagree with the null server handle it returns.
+  const size_t first_allocation = g_TlsAllocations.size();
+  const auto fail_allocation = [first_allocation]() {
+    g_TlsAllocations.resize(first_allocation);
+    return ESP_ERR_HTTPD_ALLOC_MEM;
+  };
   const size_t allocations[] = {
       host_webui_tls::TLS_CONTEXT_BYTES,
       host_webui_tls::IN_BUFFER_BYTES,
@@ -159,13 +168,13 @@ extern "C" esp_err_t httpd_ssl_start(httpd_handle_t *server, const httpd_ssl_con
   };
   for (size_t index = 0; index < sizeof(allocations) / sizeof(allocations[0]); index++) {
     if (g_TlsFailAt == g_TlsAllocations.size() + 1) {
-      return ESP_ERR_HTTPD_ALLOC_MEM;
+      return fail_allocation();
     }
     g_TlsAllocations.push_back(allocations[index]);
   }
   for (int socket = 0; socket < config->httpd.max_open_sockets; socket++) {
     if (g_TlsFailAt == g_TlsAllocations.size() + 1) {
-      return ESP_ERR_HTTPD_ALLOC_MEM;
+      return fail_allocation();
     }
     g_TlsAllocations.push_back(host_webui_tls::SOCKET_BYTES);
   }

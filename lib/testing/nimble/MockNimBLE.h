@@ -375,6 +375,8 @@ class NimBLEServer {
   size_t characteristicCount() const;
   bool started() const { return m_Started; }
   size_t disconnectCount() const { return m_DisconnectCount; }
+  /** Clear services, callbacks, started state and counters for a fresh test. */
+  void resetMockState();
 
   // Host seam: drive the server callbacks exactly as the NimBLE host task does.
   void mockConnect(NimBLEConnInfo &info);
@@ -413,6 +415,8 @@ class NimBLEAdvertising {
   uint16_t interval() const { return m_Interval; }
   const std::string &name() const { return m_Name; }
   bool scanResponse() const { return m_ScanResponse; }
+  /** Clear advertising state and its test counters for a fresh test. */
+  void resetMockState();
 
  private:
   bool m_Advertising = false;

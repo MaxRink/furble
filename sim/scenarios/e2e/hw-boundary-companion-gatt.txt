@@ -8,6 +8,7 @@
 # Test: boundary-companion-gatt
 #
 # Expected production tokens:
+# companion.reset_mock services=0 started=0 advertising=0
 # companion.enable services=2 characteristics=9 task=1 stack=3072
 # companion.pairing advertising=1 window=1
 # companion.connect handle=7 auth_started=1

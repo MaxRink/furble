@@ -13,7 +13,7 @@
 # eth.dhcp link=up ip=192.0.2.42 callback=1
 # eth.link_down connected=0 stale_ip=ignored
 # eth.reconnect ip=198.51.100.7 callback=2
-# eth.dhcp_lost readaddr=198.51.100.7 callback=3
+# eth.dhcp_lost readdr=198.51.100.7 callback=3
 # eth.stop spi_free=1 netif_destroy=1 mac_del=1 handlers=3
 # eth.restart handlers=6 ip=203.0.113.9
 # wifi.fallback wired_defer=1 wired_resume=1

@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "driver/gpio.h"
+#include "esp_log.h"
 #include "lvgl.h"
 #include "FurblePlatform.h"
 #include "FurbleTypes.h"
@@ -127,6 +128,10 @@ int gpioLevel(int pin) {
 }
 
 bool logContains(const char *needle) {
+  if (needle == nullptr) {
+    return false;
+  }
+  const std::lock_guard<std::mutex> lock(logMutex());
   for (const auto &line : logLines()) {
     if (line.find(needle) != std::string::npos) {
       return true;
