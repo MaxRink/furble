@@ -310,7 +310,7 @@ ntp enable|disable|sync             control or request an NTP synchronization
 imu status | scale [value]          IMU diagnostic, gesture calibration
 time status | flush                 UTC and local wall clock, or persist before shutdown
 settings list | get | set           read and write non-secret settings
-companion start|stop|status        pairing window, stop, or persisted/live state
+companion start|stop|status        pairing window, stop, or persisted/live/bond state
 companion password set | clear | status manage the companion password without revealing it
 ui audit | page | back             inspect or navigate the current page
 cameras list | status               saved cameras, or the active targets

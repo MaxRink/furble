@@ -1080,6 +1080,9 @@ void CompanionGatt::reloadSetting(bool pairingWindow) {
     state.companionPairingWindowReloads++;
     state.companionEnabled =
         state.companionEnableSucceeds && Furble::Settings::load<bool>(Furble::Settings::COMPANION);
+    state.companionBond = state.companionEnabled;
+    state.companionWindow = state.companionEnabled;
+    state.companionAdvertising = state.companionEnabled;
   } else {
     state.companionDisableReloads++;
     // Production keeps the live service up for one second so a companion
@@ -1092,6 +1095,9 @@ void CompanionGatt::disableNow(void) {
   auto &state = ConsoleHost::misc();
   state.companionDisableNowCalls++;
   state.companionEnabled = false;
+  state.companionBond = false;
+  state.companionWindow = false;
+  state.companionAdvertising = false;
   state.companionPendingDisable = false;
 }
 
@@ -1108,15 +1114,15 @@ bool CompanionGatt::isEnabled(void) const {
 }
 
 bool CompanionGatt::hasBond(void) const {
-  return ConsoleHost::misc().companionEnabled;
+  return ConsoleHost::misc().companionBond;
 }
 
 bool CompanionGatt::isPairingWindow(void) const {
-  return false;
+  return ConsoleHost::misc().companionWindow;
 }
 
 bool CompanionGatt::isAdvertising(void) const {
-  return ConsoleHost::misc().companionEnabled;
+  return ConsoleHost::misc().companionAdvertising;
 }
 
 void CompanionGatt::reloadPassword(void) {

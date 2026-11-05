@@ -400,8 +400,8 @@ void testSettings(void) {
                 "companion status reports the live enabled service");
   checkContains(startedStatus.out, "companion.bond: true",
                 "companion status reports the saved bond");
-  checkContains(startedStatus.out, "companion.window: false",
-                "companion status reports the pairing window");
+  checkContains(startedStatus.out, "companion.window: true",
+                "companion status reports the open pairing window");
   checkContains(startedStatus.out, "companion.advertising: true",
                 "companion status reports advertising");
   check(contains(runDirect("help").out, "companion start | stop | status"),
@@ -418,6 +418,11 @@ void testSettings(void) {
                 "companion status reports the persisted disabled setting");
   checkContains(stoppedStatus.out, "companion.enabled: false",
                 "companion status reports the live disabled service");
+  checkContains(stoppedStatus.out, "companion.bond: false", "a stopped companion reports no bond");
+  checkContains(stoppedStatus.out, "companion.window: false",
+                "a stopped companion reports no pairing window");
+  checkContains(stoppedStatus.out, "companion.advertising: false",
+                "a stopped companion reports no advertising");
 
   // The settings/companion-write path keeps the live service up for one
   // second. The double must model that grace separately from disableNow().

@@ -141,6 +141,9 @@ class CompanionGatt: public NimBLEServerCallbacks,
   esp_timer_handle_t m_DisableTimer = nullptr;
 
   mutable std::mutex m_Mutex;
+  // Bond state is read by the console and written by BLE callbacks. Keep it in
+  // its own mutex so the snapshot accessors do not race the service task.
+  mutable std::mutex m_BondMutex;
   bool m_Enabled = false;
   bool m_ServerStarted = false;
   // The GATT database may change across a firmware update. Send the standard
