@@ -8,6 +8,9 @@
 #include "FurbleGPS.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
+#if defined(FURBLE_WEBUI) && FURBLE_WEBUI
+#include "FurbleWebUI.h"
+#endif
 
 namespace Furble {
 
@@ -44,6 +47,12 @@ void CompanionGatt::disableNow(void) {
 
 void CompanionGatt::reloadPassword(void) {
   m_Service.reloadPassword();
+#if defined(FURBLE_WEBUI) && FURBLE_WEBUI
+  // The WebUI authenticates against the same companion password. Re-evaluate
+  // its cached password/identity gate so clearing the password closes the
+  // HTTPS listener instead of leaving it up until the next reboot.
+  WebUI::getInstance().reloadSetting();
+#endif
 }
 
 bool CompanionGatt::isEnabled(void) const {

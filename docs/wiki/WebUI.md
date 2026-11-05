@@ -1,8 +1,13 @@
 # WebUI and REST API
 
-On the M5StickS3 debug image, WiFi plus Bluetooth leaves about 6.8 KiB of
-internal RAM free; the current WebUI needs about 20 KiB, so enabling it can
-reset the device. Use a Core2 or the headless S3 profile until the WebUI memory fix tracked by plan 304 is implemented.
+On the M5StickS3 debug image, WiFi plus Bluetooth left about 6.8 KiB of
+internal RAM free before the WebUI budget work. The firmware now sizes the
+LVGL draw buffers to the panel, trims the WiFi static RX pool, creates the TLS
+identity before the radios and keeps the supervisor/HTTPS tasks at 3 KiB/8 KiB.
+It still refuses to start below a conservative internal-heap floor and prints
+the measured free/largest values, so a low-memory image stays closed instead of
+resetting. The StickS3 is the marginal profile and needs a board measurement;
+Core2 and the headless/Waveshare profiles are expected to have more headroom.
 
 The WebUI is compiled into the 8 MB and 16 MB network hub profiles. It is off
 by default. Configure WiFi and a companion password over USB, then run:

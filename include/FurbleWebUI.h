@@ -28,6 +28,17 @@ class WebUI {
   WebUI &operator=(WebUI const &) = delete;
   WebUI &operator=(WebUI &&) = delete;
 
+  /**
+   * Load or create the TLS identity before the radios and display consume the
+   * internal heap.
+   *
+   * ECDSA/X.509 generation needs a multi-kilobyte stack and writes NVS. On the
+   * StickS3 neither fits after WiFi and the LVGL draw buffers are up, so the
+   * identity is prepared here on the 16 KiB main task while NVS writes are
+   * safe. The supervisor then never generates an identity on its own stack.
+   */
+  static void initEarly(void);
+
   /** Re-read the opt-in setting and wake the supervisor. */
   void reloadSetting(void);
   bool isRunning(void) const { return m_Running.load(); }
@@ -48,23 +59,36 @@ class WebUI {
   static constexpr uint32_t MAX_HOLD_MS = 60 * 1000;
   static constexpr uint32_t RELEASE_RETRY_MS = 200;
   static constexpr uint32_t MANUAL_PRESS_LEASE_MS = 30 * 1000;
+  static constexpr uint32_t BUDGET_RETRY_MS = 10 * 1000;
+  static constexpr uint32_t IDENTITY_STACK_BYTES = 12288;
   static constexpr size_t MAX_BODY_BYTES = 1024;
   static constexpr uint8_t HELD_SHUTTER = 1U << 0;
   static constexpr uint8_t HELD_FOCUS = 1U << 1;
   static constexpr uint8_t TIMER_HOLD = 1U << 0;
   static constexpr uint8_t TIMER_RELEASE_RETRY = 1U << 1;
+  static constexpr uint8_t HTTPD_MAX_SOCKETS = 2;
+  static constexpr size_t HTTPD_MAX_REQ_HDR_LEN = 1024;
+  static constexpr size_t HTTPD_MAX_RESP_HEADERS = 7;
+  static constexpr size_t HTTPD_MAX_URI_HANDLERS = 7;
 
   static void taskEntry(void *param);
+  static void identityTaskEntry(void *param);
   void task(void);
+  void identityTask(void);
   void serviceTimerEvents(void);
   bool networkReady(void) const;
-  bool credentialsReady(void);
+  bool credentialsReady(void) const;
   bool startServer(void);
   void stopServer(void);
+  bool serverMemoryAvailable(void) const;
+  void reportHttpdStack(void);
 
-  bool loadOrCreateIdentity(void);
+  /** Caller must hold m_IdentityMutex. */
+  bool prepareIdentityLocked(void);
+  /** Caller must hold m_IdentityMutex. */
   bool createIdentity(void);
-  void logCertificateFingerprint(void) const;
+  /** Caller must hold m_IdentityMutex. */
+  void logCertificateFingerprint(void);
 
   static esp_err_t handleRoot(httpd_req_t *req);
   static esp_err_t handleStatus(httpd_req_t *req);
@@ -110,6 +134,14 @@ class WebUI {
   std::atomic<uint8_t> m_TimerEvents = 0;
   std::atomic<int64_t> m_HoldDeadlineUs = 0;
   bool m_Reload = false;
+  // The supervisor no longer reads NVS. Setting and password state is cached
+  // by reloadSetting() and initEarly(), then only the booleans are polled.
+  std::atomic<bool> m_Enabled = false;
+  std::atomic<bool> m_PasswordReady = false;
+  std::atomic<bool> m_CredentialsReady = false;
+  std::atomic<bool> m_IdentityTaskActive = false;
+  std::atomic<uint64_t> m_BudgetRetryAfterMs = 0;
+  std::atomic<uint32_t> m_HttpdStackLowWater = 0;
   uint8_t m_Held = 0;
   uint8_t m_ReleasePending = 0;
   uint32_t m_CommandSession = 0;
@@ -122,8 +154,12 @@ class WebUI {
   bool m_IdentityStartFailed = false;
   std::vector<uint64_t> &heldTargets(uint8_t heldBit);
   void startManualLease(uint8_t heldBit);
+  // Identity state is shared by the early boot task, the one-shot generation
+  // task and the supervisor. m_IdentityMutex guards all three strings.
+  std::mutex m_IdentityMutex;
   std::string m_Certificate;
   std::string m_PrivateKey;
+  std::string m_Fingerprint;
 
   std::mutex m_AuthMutex;
   uint8_t m_AuthFailures = 0;

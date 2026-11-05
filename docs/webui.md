@@ -1,7 +1,9 @@
 # WebUI and REST API
 
-The WebUI is available on M5StickS3, M5Stack Core2, the headless S3 profile and
-Waveshare ESP32-S3-ETH. The 4 MB profiles do not compile it.
+The WebUI is compiled for M5StickS3, M5Stack Core2, the headless S3 profile and
+Waveshare ESP32-S3-ETH. The 4 MB profiles do not compile it. On M5StickS3 it is
+gated by the internal-heap check described below; the other profiles are
+expected to fit but have not all been measured.
 
 ## Enable it
 
@@ -19,14 +21,62 @@ browser shows a first-use warning. Compare its SHA-256 fingerprint with the
 `webui` fingerprint printed on the USB log before accepting it. Use `furble` as
 the HTTP username and the companion password as the password.
 
-On the M5StickS3 debug image, WiFi plus the Bluetooth controller leaves about
-6.8 KiB of internal RAM free. The current WebUI supervisor and HTTPS task need
-about 20 KiB, so enabling `web_ui` there can reset the device before the console
-is ready. Use a Core2 or the headless S3 profile until the WebUI memory fix tracked by plan 304 is implemented.
+## Memory budget
+
+The WebUI is optional because it is the largest internal-RAM consumer in the
+network profiles. Both WebUI tasks must stay in internal RAM: the supervisor
+starts and stops the server, and the HTTPS task runs settings reads and writes,
+including NVS commits. A PSRAM task stack is unsafe there because the flash
+cache is disabled during NVS writes.
+
+Measured on the M5StickS3 debug image with WiFi connected, companion disabled,
+before this budget work:
+
+```text
+heap.internal.free: 6827
+heap.internal.largest_block: 6388
+```
+
+The old fixed 320-pixel-wide LVGL draw buffers (two 10,240-byte buffers even on
+the 135x240 panel), an 8 KiB supervisor and a 12 KiB HTTPS task did not fit. The current
+firmware sizes the two draw buffers to the detected panel, reduces the StickS3
+WiFi static RX pool from 10 to 6 (dynamic RX stays 32), keeps the supervisor at
+3 KiB and the HTTPS task at 8 KiB, and creates the TLS identity before the
+radios take the heap.
+
+The server refuses to start below a conservative internal-heap floor instead of
+resetting the device. On the USB log look for:
+
+```text
+HTTPS stays closed: internal free N, largest N (need 20480/12288)
+```
+
+or
+
+```text
+Authenticated WebUI listening on HTTPS port 443 (internal free N, largest N)
+```
+
+Separate log lines report the supervisor and HTTPS stack headroom after the
+first response; those are the numbers to collect for a new board.
+
+| Build | Radio | PSRAM used | Internal free | WebUI |
+| :--- | :--- | :--- | :--- | :--- |
+| `m5stick-s3` (M5StickS3) | WiFi + BLE | 8 MB, mbedTLS in PSRAM | 6.8 KiB measured before this change; about 25 KiB expected with the WebUI off and about 22 KiB at server start | Marginal, gated; needs a board measurement |
+| `m5stack-core2` | WiFi + BLE | 8 MB on board, disabled in firmware (`CONFIG_SPIRAM` unset); TLS buffers internal | Not measured | Expected to fit |
+| `esp32-s3-headless` | WiFi + BLE | 8 MB enabled; mbedTLS and NimBLE host memory internal | Not measured; no display buffers | Expected to fit |
+| `waveshare-s3-eth` | Ethernet (WiFi optional) | 8 MB enabled; mbedTLS internal | Not measured; WiFi RX pool not allocated while wired | Expected to fit |
+
+Only the StickS3 measurement is real. The other rows are configuration
+arithmetic until someone runs `perf heap` and opens the page on each board.
+The 4 MB profiles do not compile the WebUI.
 
 The server stays closed when the WebUI setting is off, WiFi has no address, the
-companion password is unset or unreadable, or the TLS identity cannot be loaded.
-Changing the companion password remains a USB console or provisioning action.
+companion password is unset or unreadable, the TLS identity cannot be loaded,
+or the internal-heap floor is not met. An out-of-memory start keeps the stored
+identity; only a rejected certificate/key pair is replaced. Changing the
+companion password remains a USB console or provisioning action; clearing it
+closes the listener on the next WebUI reload.
 
 ## API
 

@@ -20,6 +20,16 @@ matching `-debug` variant that adds verbose logging and the USB serial console.
 | `m5stack-core2` | ESP32 | 16 MB | Yes | M5Stack Core2, M5Tough (untested) | Yes | On-screen shutter buttons, touch calibration, power-button screen lock. The firmware detects the M5Tough and branches for it, but it has not been verified on hardware. |
 | `waveshare-s3-eth` | ESP32-S3 | 16 MB | Yes | Waveshare ESP32-S3-ETH | No | Display-less wired-Ethernet profile; hardware verification remains outstanding. |
 
+The opt-in HTTPS WebUI is compiled for the four 8 MB/16 MB profiles. On the
+M5StickS3 it is the marginal target: 6.8 KiB of internal RAM was measured free
+with WiFi connected and the Bluetooth controller initialized, and the firmware
+now frees the unused LVGL buffer width and WiFi static RX buffers before it
+starts the 3 KiB/8 KiB WebUI tasks. A runtime internal-heap gate keeps the
+server closed with a measured log line on boards that cannot fit it. The
+M5Stack Core2, `esp32-s3-headless` and Waveshare profiles have more headroom
+but their WebUI budgets are inferred, not measured. See
+[WebUI and REST API](webui.md#memory-budget).
+
 The developer-only `esp32-s3-headless` profile uses the documented 8 MB
 ESP32-S3-DevKitC-1 board and also includes MQTT. The 4 MB profiles omit the
 MQTT implementation, component dependencies, settings, and console capability.

@@ -153,7 +153,9 @@ setting, its default, and when it applies.
   `companion password status`. The password is write-only: status prints only
   `set`, `unset`, or `unavailable`. The generic `settings get` and `settings
   set` paths reject `companion_pw`. A successful set or clear reloads the live
-  companion session and revokes any authenticated connection.
+  companion session and revokes any authenticated connection. It also
+  re-evaluates the WebUI credential gate: clearing the password closes the
+  HTTPS listener on the next supervisor tick.
 
 ## wifi
 

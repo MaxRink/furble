@@ -56,6 +56,8 @@ httpd_req_t invoke(httpd_method_t method,
                    const std::map<std::string, std::string> &headers,
                    const std::string &body = {});
 void setStopHook(std::function<void()> hook);
+/** Force the next httpd_ssl_start() result; ESP_OK restores normal start. */
+void setStartError(esp_err_t error);
 }  // namespace host_webui_http
 
 #endif

@@ -1,4 +1,5 @@
 #include "FurbleWebUI.h"
+#include "FurbleWebUIMemory.h"
 
 #include <algorithm>
 #include <array>
@@ -9,6 +10,7 @@
 #include <vector>
 
 #include <cJSON.h>
+#include <esp_heap_caps.h>
 #include <esp_https_server.h>
 #include <esp_log.h>
 #include <esp_random.h>
@@ -167,23 +169,90 @@ WebUI &WebUI::getInstance(void) {
   return instance;
 }
 
+void WebUI::initEarly(void) {
+  auto &self = getInstance();
+  const bool enabled = Settings::load<Settings::WEB_UI>();
+  std::string password;
+  const bool havePassword = Settings::loadPassword(password) && !password.empty();
+  std::fill(password.begin(), password.end(), '\0');
+
+  self.m_Enabled.store(enabled);
+  self.m_PasswordReady.store(havePassword);
+  if (!enabled || !havePassword) {
+    return;
+  }
+
+  {
+    const std::lock_guard<std::mutex> lock(self.m_IdentityMutex);
+    const bool ready = self.prepareIdentityLocked();
+    self.m_CredentialsReady.store(ready);
+    if (ready) {
+      ESP_LOGI(LOG_TAG, "TLS identity ready before radio and display init");
+    }
+  }
+}
+
 void WebUI::init(void) {
   getInstance().reloadSetting();
 }
 
 void WebUI::reloadSetting(void) {
   const bool enabled = Settings::load<Settings::WEB_UI>();
+  std::string password;
+  const bool havePassword = Settings::loadPassword(password) && !password.empty();
+  std::fill(password.begin(), password.end(), '\0');
+
+  bool needIdentity = false;
+  {
+    const std::lock_guard<std::mutex> lock(m_IdentityMutex);
+    m_Enabled.store(enabled);
+    m_PasswordReady.store(havePassword);
+    if (!havePassword) {
+      m_CredentialsReady.store(false);
+    } else if (!m_Certificate.empty() && !m_PrivateKey.empty()) {
+      m_CredentialsReady.store(true);
+    } else {
+      // Generate off the caller's task. The console and companion tasks do not
+      // have the stack for ECDSA/X.509 generation, and the supervisor must stay
+      // small enough for the StickS3 after WiFi is connected.
+      m_CredentialsReady.store(false);
+      needIdentity = true;
+    }
+  }
+
   TaskHandle_t task = nullptr;
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
     m_Reload = true;
-    if ((m_Task == nullptr) && enabled
-        && (xTaskCreate(taskEntry, "webui", 8192, this, 2, &m_Task) != pdPASS)) {
-      m_Task = nullptr;
-      ESP_LOGE(LOG_TAG, "Could not create WebUI supervisor");
+    if ((m_Task == nullptr) && enabled) {
+      const size_t freeBytes = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+      const size_t largest =
+          heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+      if (!WebUIMemory::supervisorFits(freeBytes, largest)) {
+        ESP_LOGE(LOG_TAG, "WebUI supervisor not created: internal free %u, largest %u (need %u/%u)",
+                 static_cast<unsigned>(freeBytes), static_cast<unsigned>(largest),
+                 static_cast<unsigned>(WebUIMemory::SUPERVISOR_INTERNAL_FREE_FLOOR),
+                 static_cast<unsigned>(WebUIMemory::SUPERVISOR_INTERNAL_LARGEST_FLOOR));
+      } else if (xTaskCreate(taskEntry, "webui", WebUIMemory::SUPERVISOR_STACK_BYTES, this, 2,
+                             &m_Task)
+                 != pdPASS) {
+        m_Task = nullptr;
+        ESP_LOGE(LOG_TAG, "Could not create the %u-byte WebUI supervisor",
+                 static_cast<unsigned>(WebUIMemory::SUPERVISOR_STACK_BYTES));
+      }
     }
     task = m_Task;
   }
+
+  if (needIdentity && !m_IdentityTaskActive.exchange(true)) {
+    if (xTaskCreate(identityTaskEntry, "webui_tls", IDENTITY_STACK_BYTES, this, 2, nullptr)
+        != pdPASS) {
+      m_IdentityTaskActive.store(false);
+      ESP_LOGE(LOG_TAG, "Could not create the %u-byte TLS identity task; reboot to retry",
+               static_cast<unsigned>(IDENTITY_STACK_BYTES));
+    }
+  }
+
   if (task != nullptr) {
     xTaskNotifyGive(task);
   }
@@ -193,7 +262,32 @@ void WebUI::taskEntry(void *param) {
   static_cast<WebUI *>(param)->task();
 }
 
+void WebUI::identityTaskEntry(void *param) {
+  static_cast<WebUI *>(param)->identityTask();
+}
+
+void WebUI::identityTask(void) {
+  bool ready = false;
+  {
+    const std::lock_guard<std::mutex> lock(m_IdentityMutex);
+    ready = prepareIdentityLocked();
+    m_CredentialsReady.store(ready && m_PasswordReady.load());
+  }
+  m_IdentityTaskActive.store(false);
+
+  TaskHandle_t task = nullptr;
+  {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    task = m_Task;
+  }
+  if (task != nullptr) {
+    xTaskNotifyGive(task);
+  }
+  vTaskDelete(nullptr);
+}
+
 void WebUI::task(void) {
+  bool reportedStack = false;
   while (true) {
     serviceTimerEvents();
     bool reload = false;
@@ -205,13 +299,33 @@ void WebUI::task(void) {
     if (reload && (m_Server != nullptr)) {
       stopServer();
     }
-    const bool enabled = Settings::load<Settings::WEB_UI>();
-    if (!enabled || !networkReady() || !credentialsReady()) {
+    const bool enabled = m_Enabled.load() && credentialsReady() && networkReady();
+    if (!enabled) {
       if (m_Server != nullptr) {
         stopServer();
       }
+      m_BudgetRetryAfterMs.store(0);
+      reportedStack = false;
     } else if (m_Server == nullptr) {
-      startServer();
+      const uint64_t now = nowMs();
+      if (now >= m_BudgetRetryAfterMs.load()) {
+        if (startServer()) {
+          m_BudgetRetryAfterMs.store(0);
+          if (!reportedStack) {
+            reportedStack = true;
+#if !defined(FURBLE_WEBUI_HOST_TEST)
+            // ESP-IDF returns this high-water mark in bytes, unlike vanilla
+            // FreeRTOS which returns words.
+            ESP_LOGI(LOG_TAG, "WebUI supervisor stack headroom %u bytes",
+                     static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
+#endif
+          }
+        } else {
+          // A failed start is retried slowly. An immediate retry would spam
+          // the log and, on a memory failure, would keep fragmenting the heap.
+          m_BudgetRetryAfterMs.store(now + BUDGET_RETRY_MS);
+        }
+      }
     }
     ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(TASK_PERIOD_MS));
   }
@@ -249,8 +363,11 @@ void WebUI::serviceTimerEvents(void) {
 
 #if defined(FURBLE_WEBUI_HOST_TEST)
 bool WebUI::hostStartServer(const std::string &certificate, const std::string &privateKey) {
-  m_Certificate = certificate;
-  m_PrivateKey = privateKey;
+  {
+    const std::lock_guard<std::mutex> lock(m_IdentityMutex);
+    m_Certificate = certificate;
+    m_PrivateKey = privateKey;
+  }
   return startServer();
 }
 
@@ -259,12 +376,25 @@ void WebUI::hostStopServer(void) {
 }
 
 bool WebUI::hostCredentialsReady(void) {
-  return credentialsReady();
+  std::string password;
+  const bool havePassword = Settings::loadPassword(password) && !password.empty();
+  std::fill(password.begin(), password.end(), '\0');
+  m_PasswordReady.store(havePassword);
+  if (!havePassword) {
+    m_CredentialsReady.store(false);
+    return false;
+  }
+  const std::lock_guard<std::mutex> lock(m_IdentityMutex);
+  const bool ready = prepareIdentityLocked();
+  m_CredentialsReady.store(ready);
+  return ready;
 }
 
 void WebUI::hostResetIdentity(void) {
+  const std::lock_guard<std::mutex> lock(m_IdentityMutex);
   m_Certificate.clear();
   m_PrivateKey.clear();
+  m_Fingerprint.clear();
 }
 
 void WebUI::hostServiceTimerEvents(void) {
@@ -294,18 +424,15 @@ bool pemLooksValid(const std::string &certificate, const std::string &key) {
 }
 }  // namespace
 
-bool WebUI::credentialsReady(void) {
-  std::string password;
-  const bool ready = Settings::loadPassword(password) && !password.empty();
-  std::fill(password.begin(), password.end(), '\0');
-  if (!ready) {
-    return false;
-  }
-  return loadOrCreateIdentity();
+bool WebUI::credentialsReady(void) const {
+  return m_PasswordReady.load() && m_CredentialsReady.load();
 }
 
-bool WebUI::loadOrCreateIdentity(void) {
+bool WebUI::prepareIdentityLocked(void) {
   if (!m_Certificate.empty() && !m_PrivateKey.empty()) {
+    if (m_Fingerprint.empty()) {
+      logCertificateFingerprint();
+    }
     return true;
   }
 
@@ -323,6 +450,7 @@ bool WebUI::loadOrCreateIdentity(void) {
       || (keyResult == Preferences::string_result_t::ERROR)) {
     m_Certificate.clear();
     m_PrivateKey.clear();
+    m_Fingerprint.clear();
     ESP_LOGE(LOG_TAG, "Failed to read the TLS identity from NVS, keeping HTTPS closed");
     return false;
   }
@@ -330,6 +458,7 @@ bool WebUI::loadOrCreateIdentity(void) {
       && (keyResult == Preferences::string_result_t::OK) && !m_Certificate.empty()
       && !m_PrivateKey.empty()) {
     if (pemLooksValid(m_Certificate, m_PrivateKey)) {
+      logCertificateFingerprint();
       return true;
     }
     ESP_LOGW(LOG_TAG, "Stored TLS identity is malformed, creating a replacement");
@@ -337,7 +466,10 @@ bool WebUI::loadOrCreateIdentity(void) {
 
   m_Certificate.clear();
   m_PrivateKey.clear();
+  m_Fingerprint.clear();
   if (!createIdentity()) {
+    m_Certificate.clear();
+    m_PrivateKey.clear();
     return false;
   }
   if (!preferences.begin(FURBLE_STR, false)) {
@@ -438,7 +570,7 @@ bool WebUI::createIdentity(void) {
   return ok;
 }
 
-void WebUI::logCertificateFingerprint(void) const {
+void WebUI::logCertificateFingerprint(void) {
   mbedtls_x509_crt certificate;
   mbedtls_x509_crt_init(&certificate);
   if (mbedtls_x509_crt_parse(&certificate,
@@ -461,12 +593,39 @@ void WebUI::logCertificateFingerprint(void) const {
         static_cast<size_t>(std::snprintf(text + offset, sizeof(text) - offset, "%02X%s",
                                           digest[index], index + 1 == digest.size() ? "" : ":"));
   }
+  // Cache the text: the supervisor logs it at start without parsing the
+  // certificate again on its small stack.
+  m_Fingerprint.assign(text);
   ESP_LOGI(LOG_TAG, "TLS certificate SHA-256 %s", text);
 }
 
+bool WebUI::serverMemoryAvailable(void) const {
+  const size_t freeBytes = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  const size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  if (WebUIMemory::serverFits(freeBytes, largest)) {
+    return true;
+  }
+  ESP_LOGE(LOG_TAG,
+           "HTTPS stays closed: internal free %u, largest %u (need %u/%u). "
+           "See docs/webui.md for the board budget.",
+           static_cast<unsigned>(freeBytes), static_cast<unsigned>(largest),
+           static_cast<unsigned>(WebUIMemory::SERVER_INTERNAL_FREE_FLOOR),
+           static_cast<unsigned>(WebUIMemory::SERVER_INTERNAL_LARGEST_FLOOR));
+  return false;
+}
+
 bool WebUI::startServer(void) {
-  if ((m_Server != nullptr) || m_Certificate.empty() || m_PrivateKey.empty()) {
-    return m_Server != nullptr;
+  if (m_Server != nullptr) {
+    return true;
+  }
+  {
+    const std::lock_guard<std::mutex> lock(m_IdentityMutex);
+    if (m_Certificate.empty() || m_PrivateKey.empty()) {
+      return false;
+    }
+  }
+  if (!serverMemoryAvailable()) {
+    return false;
   }
   if (m_HoldTimer == nullptr) {
     const esp_timer_create_args_t timerArgs = {
@@ -494,30 +653,63 @@ bool WebUI::startServer(void) {
   }
 
   httpd_ssl_config_t config = HTTPD_SSL_CONFIG_DEFAULT();
-  config.httpd.stack_size = 12288;
-  config.httpd.max_uri_handlers = 8;
+  config.httpd.stack_size = WebUIMemory::HTTPD_STACK_BYTES;
+  config.httpd.max_uri_handlers = HTTPD_MAX_URI_HANDLERS;
+  config.httpd.max_open_sockets = HTTPD_MAX_SOCKETS;
+  // A single browser can leave a stale socket; purge it instead of refusing
+  // the next connection when the one slot is still occupied.
+  config.httpd.lru_purge_enable = true;
+  // The page is small and its headers are short. Capping the scratch buffer
+  // removes 1 KiB of internal heap from every request on the StickS3.
+  config.httpd.max_req_hdr_len = HTTPD_MAX_REQ_HDR_LEN;
+  config.httpd.max_resp_headers = HTTPD_MAX_RESP_HEADERS;
   config.httpd.recv_wait_timeout = 2;
   config.httpd.send_wait_timeout = 2;
   config.tls_handshake_timeout_ms = 5000;
-  config.servercert = reinterpret_cast<const uint8_t *>(m_Certificate.c_str());
-  config.servercert_len = m_Certificate.size() + 1;
-  config.prvtkey_pem = reinterpret_cast<const uint8_t *>(m_PrivateKey.c_str());
-  config.prvtkey_len = m_PrivateKey.size() + 1;
 
-  const esp_err_t result = httpd_ssl_start(&m_Server, &config);
+  esp_err_t result = ESP_FAIL;
+  std::string fingerprint;
+  {
+    // httpd_ssl_start copies the PEM buffers before returning, so the strings
+    // only have to stay alive for the call. Holding the mutex also keeps the
+    // one-shot identity task from replacing them mid-start.
+    const std::lock_guard<std::mutex> lock(m_IdentityMutex);
+    config.servercert = reinterpret_cast<const uint8_t *>(m_Certificate.c_str());
+    config.servercert_len = m_Certificate.size() + 1;
+    config.prvtkey_pem = reinterpret_cast<const uint8_t *>(m_PrivateKey.c_str());
+    config.prvtkey_len = m_PrivateKey.size() + 1;
+    result = httpd_ssl_start(&m_Server, &config);
+    fingerprint = m_Fingerprint;
+  }
   if (result != ESP_OK) {
     m_Server = nullptr;
     ESP_LOGW(LOG_TAG, "HTTPS server start failed: %s", esp_err_to_name(result));
-    if (!m_IdentityStartFailed) {
-      // The stack may have rejected a structurally plausible but corrupt or
-      // mismatched pair. Drop it once so the next pass creates a replacement.
-      m_IdentityStartFailed = true;
-      m_Certificate.clear();
-      m_PrivateKey.clear();
+    const bool memoryFailure = (result == ESP_ERR_NO_MEM) || (result == ESP_ERR_HTTPD_ALLOC_MEM)
+                               || (result == ESP_ERR_HTTPD_TASK);
+    if (!memoryFailure && !m_IdentityStartFailed) {
+      // Out of internal heap is not a bad identity: keep the certificate and
+      // retry later instead of adding NVS writes to an already low heap. Any
+      // other start failure may be a structurally plausible but corrupt or
+      // mismatched pair, so replace it once on the one-shot task.
+      {
+        const std::lock_guard<std::mutex> lock(m_IdentityMutex);
+        m_IdentityStartFailed = true;
+        m_Certificate.clear();
+        m_PrivateKey.clear();
+        m_Fingerprint.clear();
+      }
+      if (!m_IdentityTaskActive.exchange(true)
+          && (xTaskCreate(identityTaskEntry, "webui_tls", IDENTITY_STACK_BYTES, this, 2, nullptr)
+              != pdPASS)) {
+        m_IdentityTaskActive.store(false);
+        ESP_LOGE(LOG_TAG, "Could not create the %u-byte TLS identity task; reboot to retry",
+                 static_cast<unsigned>(IDENTITY_STACK_BYTES));
+      }
     }
     return false;
   }
   m_IdentityStartFailed = false;
+  m_HttpdStackLowWater.store(0);
 
   const httpd_uri_t routes[] = {
       {"/",             HTTP_GET,  handleRoot,         this},
@@ -539,8 +731,14 @@ bool WebUI::startServer(void) {
     m_Stopping = false;
   }
   m_Running.store(true);
-  logCertificateFingerprint();
-  ESP_LOGI(LOG_TAG, "Authenticated WebUI listening on HTTPS port 443");
+  if (!fingerprint.empty()) {
+    ESP_LOGI(LOG_TAG, "TLS certificate SHA-256 %s", fingerprint.c_str());
+  }
+  const size_t freeBytes = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  const size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  ESP_LOGI(LOG_TAG,
+           "Authenticated WebUI listening on HTTPS port 443 (internal free %u, largest %u)",
+           static_cast<unsigned>(freeBytes), static_cast<unsigned>(largest));
   return true;
 }
 
@@ -562,9 +760,30 @@ void WebUI::stopServer(void) {
   if (server != nullptr) {
     httpd_ssl_stop(server);
   }
+  const uint32_t stackLowWater = m_HttpdStackLowWater.exchange(0);
+  if (stackLowWater != 0) {
+    ESP_LOGI(LOG_TAG, "HTTPS task stack minimum headroom was %u bytes",
+             static_cast<unsigned>(stackLowWater));
+  }
   // A handler that was already past the m_Stopping check finished before the
   // join. Run one final pass for any release retry it left queued.
   releaseAll();
+}
+
+void WebUI::reportHttpdStack(void) {
+#if !defined(FURBLE_WEBUI_HOST_TEST)
+  // ESP-IDF returns the high-water mark in bytes.
+  const uint32_t bytes = static_cast<uint32_t>(uxTaskGetStackHighWaterMark(nullptr));
+  uint32_t previous = m_HttpdStackLowWater.load();
+  while (((previous == 0) || (bytes < previous))
+         && !m_HttpdStackLowWater.compare_exchange_weak(previous, bytes)) {
+  }
+  if (previous == 0) {
+    // One line per server run gives hardware validation a real number without
+    // logging on every request.
+    ESP_LOGI(LOG_TAG, "HTTPS task stack headroom %u bytes", static_cast<unsigned>(bytes));
+  }
+#endif
 }
 
 bool WebUI::verifyBasic(const std::string &header) {
@@ -685,6 +904,10 @@ void WebUI::setSecurityHeaders(httpd_req_t *request) {
 }
 
 esp_err_t WebUI::sendJSON(httpd_req_t *request, const std::string &json) {
+  auto *self = static_cast<WebUI *>(request->user_ctx);
+  if (self != nullptr) {
+    self->reportHttpdStack();
+  }
   setSecurityHeaders(request);
   httpd_resp_set_type(request, "application/json");
   return httpd_resp_send(request, json.c_str(), static_cast<ssize_t>(json.size()));
@@ -736,6 +959,7 @@ esp_err_t WebUI::handleRoot(httpd_req_t *request) {
   if (!self->requestAllowed(request, false)) {
     return ESP_OK;
   }
+  self->reportHttpdStack();
   setSecurityHeaders(request);
   httpd_resp_set_type(request, "text/html; charset=utf-8");
   return httpd_resp_send(request, INDEX_HTML, HTTPD_RESP_USE_STRLEN);
@@ -896,7 +1120,13 @@ std::string WebUI::buildSettingsJSON(void) const {
   }
   std::sort(settings.begin(), settings.end(),
             [](const auto *left, const auto *right) { return left->wire_id < right->wire_id; });
-  cJSON *root = cJSON_CreateArray();
+  // Serialize one setting at a time. Building the whole cJSON array and then
+  // printing it held the tree and the text copy at the same time: about 7 KiB
+  // of internal heap for the full catalog, which is the largest allocation the
+  // HTTPS task makes on the StickS3. The wire format is unchanged.
+  std::string result = "[";
+  result.reserve(settings.size() * 128);
+  bool first = true;
   for (const auto *setting : settings) {
     std::vector<uint8_t> value;
     const auto type = CompanionService::settingType(setting->type);
@@ -944,10 +1174,19 @@ std::string WebUI::buildSettingsJSON(void) const {
     } else {
       cJSON_AddNullToObject(item, "value");
     }
-    cJSON_AddItemToArray(root, item);
+    char *text = cJSON_PrintUnformatted(item);
+    cJSON_Delete(item);
+    if (text == nullptr) {
+      return {};
+    }
+    if (!first) {
+      result += ',';
+    }
+    first = false;
+    result += text;
+    cJSON_free(text);
   }
-  const std::string result = jsonString(root);
-  cJSON_Delete(root);
+  result += ']';
   return result;
 }
 

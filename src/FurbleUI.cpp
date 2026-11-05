@@ -51,6 +51,7 @@
 #include "FurbleTimezone.h"
 #include "FurbleTimezoneGPS.h"
 #include "FurbleUI.h"
+#include "FurbleUIMemory.h"
 #include "interval.h"
 #include "protocol/CameraListProtocol.h"
 
@@ -520,10 +521,25 @@ UI::UI(const interval_t &interval)
   lv_display_set_user_data(m_Display, this);
   lv_display_set_flush_cb(m_Display, displayFlush);
 
-  // configure display buffers
-  m_Buffer1 = heap_caps_aligned_alloc(64, BUFFER_SIZE, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
-  m_Buffer2 = heap_caps_aligned_alloc(64, BUFFER_SIZE, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
-  lv_display_set_buffers(m_Display, m_Buffer1, m_Buffer2, BUFFER_SIZE,
+  // Configure display buffers. Size them to the detected panel instead of the
+  // largest supported panel: the old fixed 320x240 pair wasted 11.8 KiB on the
+  // StickS3 and 17.3 KiB on the StickC, all of it internal DMA-capable RAM that
+  // the optional HTTPS server needs. Both buffers stay internal because they
+  // feed the SPI panel and cannot live in PSRAM.
+  const size_t drawBufferSize = UIMemory::drawBufferBytes(m_Width, m_Height, BYTES_PER_PIXEL);
+  m_Buffer1 = heap_caps_aligned_alloc(64, drawBufferSize, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+  m_Buffer2 = heap_caps_aligned_alloc(64, drawBufferSize, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+  if (m_Buffer1 == nullptr) {
+    ESP_LOGE(LOG_TAG, "LVGL draw buffer allocation failed (%u bytes)",
+             static_cast<unsigned>(drawBufferSize));
+    abort();
+  }
+  if (m_Buffer2 == nullptr) {
+    // LVGL accepts a single buffer. Keep the display usable rather than
+    // aborting when only one internal DMA block is available.
+    ESP_LOGW(LOG_TAG, "LVGL second draw buffer unavailable, using single buffering");
+  }
+  lv_display_set_buffers(m_Display, m_Buffer1, m_Buffer2, drawBufferSize,
                          LV_DISPLAY_RENDER_MODE_PARTIAL);
 
   // Motion counts as user activity, the same way the spirit level page keeps the
