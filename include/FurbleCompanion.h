@@ -110,6 +110,7 @@ class CompanionGatt: public NimBLEServerCallbacks,
   void createGatt(void);
   void startPairingWindow(void);
   void startReconnectAdvertising(void);
+  void resumeAdvertisingAfterDisconnect(void);
   void stopAdvertising(void);
   void clearWhitelist(void);
   void serviceTask(void);

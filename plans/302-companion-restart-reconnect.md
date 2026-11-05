@@ -98,3 +98,18 @@ companion link the USB console parser can also time out under load and enter its
 reconnect backoff. The BLE monitor is only meaningful while status notifications
 are actually arriving; a constant `uptime_s` in consecutive rows means the host
 is reading a cached status and the run should be discarded.
+
+## Bond/window locking follow-up (2026-11-05)
+
+Bond state (`m_BondValid`, `m_BondAddress`, `m_BondAddressType`) is owned by
+`m_BondMutex`; every read decision takes a snapshot, and the lock order is
+`m_Mutex` then `m_BondMutex`. Pairing-window state and connection state are
+owned by `m_Mutex`, including the service task's advertising decision and the
+disconnect restart helper. The console double preserves a saved bond across
+`companion stop` to match production, and models bond/window/advertising
+transitions independently.
+
+The shared NimBLE server also serves Sony camera name discovery, so an unknown
+inbound link is left alone rather than disconnected; `onDisconnect` restores
+advertising when it leaves. This is the deliberate trade-off against breaking a
+camera client.
