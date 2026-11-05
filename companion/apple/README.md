@@ -289,7 +289,8 @@ furble-companion-cli monitor --transport usb --port /dev/cu.usbmodem1101 \
 `monitor`, and `password status`. `location` and `trigger` remain BLE features
 because the console has no equivalent command, and `password set`/`delete` stay
 on the BLE/Keychain path. USB monitoring uses the console `status` and `gps`
-output, so `battery_ma` is still the raw firmware field and USB charging makes a
+output, each with a 5 s timeout, so `battery_ma` is still the raw firmware field
+and USB charging makes a
 drain run non-representative. The CSV columns are identical to the BLE monitor,
 so the same plotter handles both transports.
 

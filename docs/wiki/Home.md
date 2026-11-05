@@ -25,7 +25,8 @@ This wiki is a friendly fork of the upstream furble project.
   disconnecting cameras, plus the macOS terminal CLI for status, phone GPS,
   shutter/focus testing and battery CSV monitoring. The CLI also has a USB CDC
   transport (`--transport usb`) for scan, status, cameras, monitor and password
-  status; location and trigger remain BLE-only. Companion links are encrypted
+  status; location and trigger remain BLE-only, and monitor commands use a 5 s
+  timeout. Companion links are encrypted
   bonded LE Just Works and authenticate with the companion password; set one
   before using the app in an untrusted area. An unknown inbound BLE link is
   retained because the server is shared with camera name discovery and can
