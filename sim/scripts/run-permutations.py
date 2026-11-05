@@ -34,12 +34,20 @@ def scenario_for(board: str, combo: dict) -> str:
         f"seed hw_profile {board}",
         f"seed web_ui {'true' if combo['web_ui'] == 'on' else 'false'}",
         "seed webui_password true",
-        "seed mqtt_owner_stack 10240",
-        "seed mqtt_worker_stack 6144" if combo["mqtt_tls"] == "tls"
-        else "seed mqtt_worker_stack 4096",
-        f"seed mqtt_tls {'true' if combo['mqtt_tls'] == 'tls' else 'false'}",
-        f"seed mqtt_ha {'true' if combo['mqtt_ha'] == 'on' else 'false'}",
-        "seed mqtt_buffer 2048",
+    ]
+    # The stack model is only meaningful when MQTT itself is enabled. Seeding
+    # mqtt_owner_stack for an off combination used to turn the model on and
+    # exercise a service the permutation had explicitly disabled.
+    if combo["mqtt"] == "on":
+        lines += [
+            "seed mqtt_owner_stack 10240",
+            "seed mqtt_worker_stack 6144" if combo["mqtt_tls"] == "tls"
+            else "seed mqtt_worker_stack 4096",
+            f"seed mqtt_tls {'true' if combo['mqtt_tls'] == 'tls' else 'false'}",
+            f"seed mqtt_ha {'true' if combo['mqtt_ha'] == 'on' else 'false'}",
+            "seed mqtt_buffer 2048",
+        ]
+    lines += [
         f"seed companion_enabled {'true' if combo['companion'] == 'on' else 'false'}",
         f"seed wifi_connected {'true' if combo['wifi'] == 'connected' else 'false'}",
         "seed fauxny true",
@@ -75,13 +83,15 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
     results = []
+    expected_ids = []
     env = dict(os.environ, SDL_VIDEODRIVER="dummy", SDL_AUDIODRIVER="dummy")
     for index, (board, combo) in enumerate(combinations(manifest)):
         if args.board and board not in args.board:
             continue
+        cid = board + "." + ".".join(f"{key}={combo[key]}" for key in manifest["axes"])
+        expected_ids.append(cid)
         if args.limit and len(results) >= args.limit:
             break
-        cid = board + "." + ".".join(f"{key}={combo[key]}" for key in manifest["axes"])
         with tempfile.TemporaryDirectory() as directory:
             scenario = Path(directory) / f"perm-{index}.txt"
             scenario.write_text(scenario_for(board, combo), encoding="utf-8")
@@ -97,18 +107,31 @@ def main(argv: list[str] | None = None) -> int:
         })
         if run.returncode != 0:
             print(f"FAIL {cid} exit {run.returncode}", file=sys.stderr)
+    result_ids = [result["id"] for result in results]
+    selection_error = ""
+    if len(set(result_ids)) != len(result_ids):
+        selection_error = "permutation results contain duplicate ids"
+    elif result_ids != expected_ids[:len(results)]:
+        selection_error = "permutation results do not match the manifest order"
+    elif not args.limit and not args.board and len(results) != manifest["expected_count"]:
+        selection_error = "a full permutation run did not cover the expected count"
+
     document = {
         "version": 1,
         "expected_count": manifest["expected_count"],
         "run_count": len(results),
-        "complete": len(results) == manifest["expected_count"],
+        "complete": len(results) == len(expected_ids),
         "results": results,
     }
+    if selection_error:
+        document["error"] = selection_error
     args.results.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
     failed = sum(1 for result in results if not result["passed"])
+    if selection_error:
+        print(f"permutations: {selection_error}", file=sys.stderr)
     print(f"permutations: {len(results)} run, {failed} failed "
           f"({'complete' if document['complete'] else 'partial'})")
-    return 1 if failed else 0
+    return 1 if failed or selection_error else 0
 
 
 if __name__ == "__main__":

@@ -1138,6 +1138,28 @@ bool NimBLEDevice::setOwnAddr(const uint8_t address[6]) {
   return true;
 }
 
+bool NimBLEDevice::setOwnAddr(const NimBLEAddress &address) {
+  const uint64_t value = static_cast<uint64_t>(address);
+  uint8_t bytes[6] = {};
+  for (size_t index = 0; index < sizeof(bytes); index++) {
+    bytes[index] = static_cast<uint8_t>((value >> (8 * index)) & 0xFF);
+  }
+  return setOwnAddr(bytes);
+}
+
+std::array<uint8_t, 6> NimBLEDevice::mockOwnAddress() {
+  const uint64_t value = static_cast<uint64_t>(g_OwnAddress);
+  std::array<uint8_t, 6> address = {};
+  for (size_t index = 0; index < address.size(); index++) {
+    address[index] = static_cast<uint8_t>((value >> (8 * index)) & 0xFF);
+  }
+  return address;
+}
+
+uint8_t NimBLEDevice::mockOwnAddressType() {
+  return g_OwnAddressType;
+}
+
 int NimBLEDevice::getNumBonds() {
   return g_Bonded ? 1 : 0;
 }

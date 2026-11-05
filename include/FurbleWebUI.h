@@ -52,6 +52,8 @@ class WebUI {
   bool hostCredentialsReady(void);
   /** Forget the cached identity so the next gate reads NVS again. */
   void hostResetIdentity(void);
+  /** The cached password half of the credential gate. */
+  bool hostPasswordReady(void) const { return m_PasswordReady.load(); }
   void hostServiceTimerEvents(void);
 #endif
 
@@ -69,7 +71,10 @@ class WebUI {
   static constexpr uint8_t HELD_FOCUS = 1U << 1;
   static constexpr uint8_t TIMER_HOLD = 1U << 0;
   static constexpr uint8_t TIMER_RELEASE_RETRY = 1U << 1;
-  static constexpr uint8_t HTTPD_MAX_SOCKETS = 2;
+  // ESP-IDF reserves three sockets per HTTP server for its listener, control
+  // and accept bookkeeping. Setting this to 2 therefore leaves no client slot.
+  // Five client slots keep one browser plus a retry and a health probe usable.
+  static constexpr uint8_t HTTPD_MAX_SOCKETS = 5;
   static constexpr size_t HTTPD_MAX_REQ_HDR_LEN = 1024;
   static constexpr size_t HTTPD_MAX_RESP_HEADERS = 7;
   static constexpr size_t HTTPD_MAX_URI_HANDLERS = 7;

@@ -58,6 +58,8 @@ httpd_req_t invoke(httpd_method_t method,
 void setStopHook(std::function<void()> hook);
 /** Force the next httpd_ssl_start() result; ESP_OK restores normal start. */
 void setStartError(esp_err_t error);
+/** The max_open_sockets value of the most recent start, or zero. */
+int lastMaxOpenSockets();
 }  // namespace host_webui_http
 
 #endif

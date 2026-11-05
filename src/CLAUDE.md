@@ -118,6 +118,15 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   Password console commands verify persistence and reload the live gate.
   The application gate rejects writes with a framed Auth result indication,
   not a custom ATT return from NimBLE's void write callback.
+  `CompanionService::reloadPassword()` is the single live reload path, including
+  a companion GATT password write; its password callback re-evaluates the WebUI
+  credential gate so `m_PasswordReady` cannot stay true after a clear.
+- `CompanionIdentity` owns the random-static LE address rotated by
+  `companion reidentify`. Persist it under `companion_own_addr` and apply it in
+  `CompanionGatt::init()` before advertising. `Device::init()` intentionally
+  restores the default RPA policy; applying the stored identity in the device
+  library would couple protocol code to app NVS policy. Camera bonds are never
+  deleted by the rotation.
 - Settings switch tables in `FurbleConsole`, `FurbleCompanionService` and
   `FurbleSD` must include every new `Settings::type_t` case. The `-debug` build
   enforces this with `-Werror=switch`, so build a debug env after adding a
@@ -140,6 +149,9 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   Control queue accepts them or the camera session ends. Complete Control
   session replacement expires held ownership by generation, including when
   disconnect and reconnect both occur between WebUI supervisor polls.
+  `HTTPD_MAX_SOCKETS` is client slots, not total sockets: ESP-IDF reserves three
+  more per server, so never configure fewer than five. `reloadSetting()` must
+  not create the TLS identity task while `web_ui` is off.
 - `FurbleUI*`: LVGL UI. Respect the changed-check rule for periodic setters.
   LVGL 9.4 retains an encoder input device's `last_pressed` object when that
   object is deleted. Only when switching a persistent physical-button device

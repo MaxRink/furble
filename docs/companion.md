@@ -78,8 +78,11 @@ notifications.
 Use the debug console command `companion reidentify` when the host keeps using
 an old handle map. It disconnects the current link, drops only the companion
 bond (camera bonds are untouched), rotates the LE address, and reopens the 60
-second pairing window. The host then sees a new peripheral identity and builds
-a fresh cache. Pair once more with the companion password.
+second pairing window. The new random-static address is persisted in NVS and
+restored before advertising on later boots, so the host keeps the bond it
+creates after the rotation instead of finding the previous address again. The
+host then sees a new peripheral identity and builds a fresh cache. Pair once
+more with the companion password.
 
 Camera IDs are stable across catalog reordering and deletion. Selection is the
 same in-memory Multi-Connect target set used by the on-device Cameras page. A

@@ -481,7 +481,9 @@ FURBLE_SIM_MQTT_URI=mqtt://127.0.0.1:1 FURBLE_SIM_MQTT_FAST_RECONNECT=1 \
 
 `FURBLE_SIM_MQTT_URI` may name an unreachable broker; no broker is required.
 `boot_defaults_marker` is `current`, `missing` or `stale`; `boot_profile` is
-`debug` or `release`; `psram_memtest` forces the full PSRAM test on or off.
+`debug` or `release`; `boot.splash_shown` reports whether `BootScreen` actually
+reached the panel and recorded `BOOT_SPLASH_SHOWN`; `psram_memtest` forces the
+full PSRAM test on or off.
 `wifi_fast_connect` is `usable` or `unusable`, `wifi_auth` is `known` or
 `unknown`, and `mqtt_discovery_payload` seeds the retained discovery payload
 size in bytes.

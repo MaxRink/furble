@@ -201,6 +201,14 @@ class CompanionService {
   uint32_t getPendingPairingPin(void) const;
   void confirmPairing(bool accept);
   void setSettingReloadCallback(std::function<void(bool)> callback);
+  /**
+   * Run after every live password reload, including a GATT password write.
+   *
+   * The WebUI authenticates against the same credential, so its owner installs
+   * this hook to re-evaluate the HTTPS gate when the password is set or
+   * cleared. The callback runs outside the auth mutex.
+   */
+  void setPasswordReloadCallback(std::function<void()> callback);
 
   void handleLocation(const uint8_t *data, size_t len);
   void handleAuth(const uint8_t *data, size_t len);
@@ -269,6 +277,7 @@ class CompanionService {
   mutable std::mutex m_AuthMutex;
   esp_timer_handle_t m_TimedShutterTimer = nullptr;
   std::function<void(bool)> m_SettingReloadCallback;
+  std::function<void()> m_PasswordReloadCallback;
 
   mutable std::mutex m_Mutex;
   bool m_PendingPairing = false;

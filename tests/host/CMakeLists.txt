@@ -312,6 +312,37 @@ target_include_directories(ui_memory_test PRIVATE ${FURBLE_ROOT}/include)
 target_compile_options(ui_memory_test PRIVATE -Wall -Wextra -Werror)
 add_test(NAME ui-memory COMMAND ui_memory_test)
 
+add_executable(sim_webui_memory_model_test
+               sim_webui_memory_model_test.cpp
+               ${FURBLE_ROOT}/sim/clock.cpp
+               ${FURBLE_ROOT}/sim/heap_model.cpp
+               ${FURBLE_ROOT}/sim/webui_memory_model.cpp)
+target_include_directories(sim_webui_memory_model_test BEFORE PRIVATE
+                           ${FURBLE_ROOT}/include
+                           ${FURBLE_ROOT}/lib/furble
+                           ${FURBLE_ROOT}/sim
+                           ${FURBLE_ROOT}/sim/shim
+                           ${HOST_NIMBLE_DIR})
+target_compile_definitions(sim_webui_memory_model_test PRIVATE FURBLE_SIM)
+target_compile_options(sim_webui_memory_model_test PRIVATE -Wall -Wextra -Werror
+                                                            -Wno-unused-parameter)
+add_test(NAME sim-webui-memory-model COMMAND sim_webui_memory_model_test)
+
+add_executable(device_identity_test
+               device_identity_test.cpp
+               advertisement_preferences_stub.cpp
+               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
+               ${FURBLE_ROOT}/lib/furble/Device.cpp
+               ${FURBLE_ROOT}/src/FurbleCompanionIdentity.cpp)
+target_include_directories(device_identity_test BEFORE PRIVATE
+                           ${FURBLE_ROOT}/include
+                           ${FURBLE_ROOT}/lib/furble
+                           ${FURBLE_ROOT}/lib/preferences
+                           ${HOST_NIMBLE_DIR})
+target_compile_definitions(device_identity_test PRIVATE FURBLE_HOST_TEST)
+target_compile_options(device_identity_test PRIVATE -Wall -Wextra -Werror)
+add_test(NAME device-identity COMMAND device_identity_test)
+
 add_executable(crash_record_test crash_record_test.cpp)
 target_include_directories(crash_record_test PRIVATE ${FURBLE_ROOT}/include)
 target_compile_options(crash_record_test PRIVATE -Wall -Wextra -Werror)

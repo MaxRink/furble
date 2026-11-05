@@ -32,9 +32,12 @@ bool Settings::validMQTTString(type_t type, const std::string &value) {
     }
   }
   if (type == MQTT_URI) {
-    const std::string tls = "mqtts://";
+    const std::string secure = "mqtts://";
+    const std::string secureWebSocket = "wss://";
     const std::string plain = "mqtt://";
-    return ((value.compare(0, tls.size(), tls) == 0) && (value.size() > tls.size()))
+    return ((value.compare(0, secure.size(), secure) == 0) && (value.size() > secure.size()))
+           || ((value.compare(0, secureWebSocket.size(), secureWebSocket) == 0)
+               && (value.size() > secureWebSocket.size()))
            || ((value.compare(0, plain.size(), plain) == 0) && (value.size() > plain.size()));
   }
   if (type == MQTT_BASE) {

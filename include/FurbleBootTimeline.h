@@ -75,6 +75,20 @@ class BootTimeline {
   /** Cycle-counter milliseconds from reset to app_main, or 0 before begin(). */
   static uint32_t resetToAppMs(void);
 
+  /**
+   * Convert a CPU cycle counter delta to milliseconds.
+   *
+   * The reset-to-app measurement must use the free-running CPU cycle counter,
+   * not esp_log_timestamp() or esp_timer_get_time(), because those start after
+   * the ROM bootloader and the PSRAM memory test.
+   */
+  static constexpr uint32_t cycleCountToMs(uint32_t cycles, uint32_t ticksPerUs) {
+    if (ticksPerUs == 0) {
+      return 0;
+    }
+    return static_cast<uint32_t>((static_cast<uint64_t>(cycles) / ticksPerUs) / 1000U);
+  }
+
   /** Short stable label for a mark, used by the console and the summary. */
   static const char *label(mark_t mark);
 

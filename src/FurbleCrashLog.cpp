@@ -1,5 +1,6 @@
 #include "FurbleCrashLog.h"
 
+#include <atomic>
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
@@ -38,7 +39,9 @@ uint32_t s_Sequence = 0;
 bool s_Initialized = false;
 bool s_HookInstalled = false;
 bool s_Recovered = false;
-bool s_Printing = false;
+// Recursion guard for the print path. A panic can interrupt any task, so the
+// read/write pair crosses task contexts and must not be a plain bool.
+std::atomic<bool> s_Printing {false};
 uint64_t s_LastUpdateUs = 0;
 vprintf_like_t s_PreviousVprintf = nullptr;
 record_t s_Printed;
@@ -72,7 +75,7 @@ void stripAnsi(char *line) {
 }
 
 void appendLine(const char *line) {
-  if (line == nullptr || s_Printing) {
+  if (line == nullptr || s_Printing.load(std::memory_order_relaxed)) {
     return;
   }
   portENTER_CRITICAL(&s_Lock);
@@ -113,21 +116,53 @@ void printRecord(const record_t &record) {
   char summary[192] = {};
   Furble::CrashRecord::formatSummary(record, summary, sizeof(summary));
   // The print goes through ESP_LOGE, which re-enters the capture hook. The
-  // guard keeps the record itself out of the retained log tail.
-  s_Printing = true;
+  // guard keeps the record itself out of the retained log tail. Two printing
+  // tasks must not interleave their lines.
+  bool expected = false;
+  if (!s_Printing.compare_exchange_strong(expected, true, std::memory_order_relaxed)) {
+    return;
+  }
   ESP_LOGE(LOG_TAG, "CRASH RECORD: %s", summary);
   for (size_t line = 0; line < LOG_LINES; line++) {
     if (record.log[line][0] != '\0') {
       ESP_LOGE(LOG_TAG, "CRASH LOG: %s", record.log[line]);
     }
   }
-  s_Printing = false;
+  s_Printing.store(false, std::memory_order_relaxed);
 }
 
 void storeRecord(const record_t &record) {
   portENTER_CRITICAL(&s_Lock);
   s_Record = record;
   portEXIT_CRITICAL(&s_Lock);
+}
+
+/** Write a valid snapshot for the current boot. */
+void captureSnapshot(void) {
+  const uint64_t now = esp_timer_get_time();
+  record_t snapshot = {};
+  snapshot.sequence = ++s_Sequence;
+  snapshot.reset_reason = static_cast<uint32_t>(esp_reset_reason());
+  snapshot.uptime_s = static_cast<uint32_t>(now / 1000000);
+  snapshot.heap_free =
+      static_cast<uint32_t>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+  snapshot.heap_largest = static_cast<uint32_t>(
+      heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+
+  portENTER_CRITICAL(&s_Lock);
+  for (size_t index = 0; index < s_Count; index++) {
+    const uint32_t source = (s_Head + LOG_LINES - s_Count + index) % LOG_LINES;
+    std::memcpy(snapshot.log[index], s_Lines[source], LOG_LINE_BYTES);
+  }
+  std::memcpy(snapshot.task, s_LastLogTask, TASK_BYTES);
+  snapshot.task[TASK_BYTES - 1] = '\0';
+  portEXIT_CRITICAL(&s_Lock);
+
+  if (snapshot.task[0] == '\0') {
+    copyTaskName(snapshot.task);
+  }
+  Furble::CrashRecord::finalize(snapshot);
+  storeRecord(snapshot);
 }
 
 }  // namespace
@@ -151,26 +186,22 @@ void init(void) {
   previous = s_Record;
   portEXIT_CRITICAL(&s_Lock);
 
-  if (!CrashRecord::valid(previous)) {
-    return;
+  const bool valid = CrashRecord::valid(previous);
+  const bool clean = valid && CrashRecord::clean(previous);
+  if (valid && !clean) {
+    // The reset reason of the current boot is the reason the previous run
+    // ended.
+    previous.reset_reason = static_cast<uint32_t>(esp_reset_reason());
+    CrashRecord::finalize(previous);
+    printRecord(previous);
+    s_Printed = previous;
+    s_Recovered = true;
   }
-  if (CrashRecord::clean(previous)) {
-    // The previous run reached its shutdown handler. Keep the record for the
-    // next update and do not report a crash.
-    return;
-  }
-  // The reset reason of the current boot is the reason the previous run ended.
-  previous.reset_reason = static_cast<uint32_t>(esp_reset_reason());
-  CrashRecord::finalize(previous);
-  printRecord(previous);
-  s_Printed = previous;
-  s_Recovered = true;
 
-  // Printed exactly once. Clearing the magic is cheaper and safer than
-  // tracking a separate flag through another reset.
-  record_t cleared = {};
-  CrashRecord::clear(cleared);
-  storeRecord(cleared);
+  // Always consume the old record and install a fresh, unclean snapshot for
+  // this boot. Leaving a clean record in place until the first periodic update
+  // let an early-boot crash inherit the previous run's clean flag and vanish.
+  captureSnapshot();
 }
 
 void update(void) {
@@ -179,30 +210,7 @@ void update(void) {
     return;
   }
   s_LastUpdateUs = now;
-
-  record_t snapshot = {};
-  snapshot.sequence = ++s_Sequence;
-  snapshot.reset_reason = static_cast<uint32_t>(esp_reset_reason());
-  snapshot.uptime_s = static_cast<uint32_t>(now / 1000000);
-  snapshot.heap_free =
-      static_cast<uint32_t>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
-  snapshot.heap_largest = static_cast<uint32_t>(
-      heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
-
-  portENTER_CRITICAL(&s_Lock);
-  for (size_t index = 0; index < s_Count; index++) {
-    const uint32_t source = (s_Head + LOG_LINES - s_Count + index) % LOG_LINES;
-    std::memcpy(snapshot.log[index], s_Lines[source], LOG_LINE_BYTES);
-  }
-  std::memcpy(snapshot.task, s_LastLogTask, TASK_BYTES);
-  snapshot.task[TASK_BYTES - 1] = '\0';
-  portEXIT_CRITICAL(&s_Lock);
-
-  if (snapshot.task[0] == '\0') {
-    copyTaskName(snapshot.task);
-  }
-  CrashRecord::finalize(snapshot);
-  storeRecord(snapshot);
+  captureSnapshot();
 }
 
 void markCleanShutdown(void) {

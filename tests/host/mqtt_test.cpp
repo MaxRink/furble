@@ -1,10 +1,12 @@
 #include "FurbleMQTT.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "CameraList.h"
@@ -147,6 +149,12 @@ int main(void) {
   host_mqtt_timer::reset();
   host_mqtt_heap::reset();
 
+  // The host clock is virtual. A real time step between owner iterations used
+  // to expire an offline-ACK deadline and make this suite flaky.
+  const int64_t clockBefore = esp_timer_get_time();
+  std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  require(esp_timer_get_time() == clockBefore, "the host MQTT clock advanced with wall time");
+
   // The budget constants are part of the firmware contract. Keep the host test
   // pinned to the same values the device compiles.
   require(Furble::MQTTMemory::OWNER_STACK_BYTES == 10240, "MQTT owner stack budget changed");
@@ -155,12 +163,28 @@ int main(void) {
   require(Furble::MQTTMemory::TLS_WORKER_STACK_BYTES == 6144,
           "TLS MQTT worker stack budget changed");
   require(Furble::MQTTMemory::BUFFER_SIZE == 1536, "MQTT buffer budget changed");
+  require(Furble::MQTTMemory::START_TLS_INTERNAL_FREE_FLOOR
+              >= Furble::MQTTMemory::START_INTERNAL_FREE_FLOOR
+                     + (Furble::MQTTMemory::TLS_WORKER_STACK_BYTES
+                        - Furble::MQTTMemory::PLAIN_WORKER_STACK_BYTES),
+          "the TLS start floor does not cover the larger worker");
   require(!Furble::MQTTMemory::startFits(Furble::MQTTMemory::START_INTERNAL_FREE_FLOOR - 1,
                                          Furble::MQTTMemory::START_INTERNAL_LARGEST_FLOOR),
           "start gate opened below the free floor");
   require(!Furble::MQTTMemory::startFits(Furble::MQTTMemory::START_INTERNAL_FREE_FLOOR,
                                          Furble::MQTTMemory::START_INTERNAL_LARGEST_FLOOR - 1),
           "start gate opened below the largest-block floor");
+  require(
+      !Furble::MQTTMemory::startFits(Furble::MQTTMemory::START_TLS_INTERNAL_FREE_FLOOR - 1,
+                                     Furble::MQTTMemory::START_TLS_INTERNAL_LARGEST_FLOOR, true),
+      "TLS start gate opened below the free floor");
+  require(!Furble::MQTTMemory::startFits(Furble::MQTTMemory::START_TLS_INTERNAL_FREE_FLOOR,
+                                         Furble::MQTTMemory::START_TLS_INTERNAL_LARGEST_FLOOR - 1,
+                                         true),
+          "TLS start gate opened below the largest-block floor");
+  require(!Furble::MQTTMemory::startFits(Furble::MQTTMemory::START_INTERNAL_FREE_FLOOR,
+                                         Furble::MQTTMemory::START_INTERNAL_LARGEST_FLOOR, true),
+          "the TLS start gate reused the smaller plain-worker floor");
   require(!Furble::MQTTMemory::discoveryFits(Furble::MQTTMemory::DISCOVERY_INTERNAL_FREE_FLOOR - 1,
                                              Furble::MQTTMemory::DISCOVERY_INTERNAL_LARGEST_FLOOR),
           "discovery gate opened below the free floor");
@@ -553,6 +577,30 @@ int main(void) {
   host_mqtt_timer::advance(1000);
   ownerStep(mqtt);
   require(!mqtt.isConnected(), "MQTT disconnect did not clear connected state");
+
+  // Secure URI fixture: mqtts:// must select the 6 KiB TLS worker and must not
+  // start on a pool that only satisfies the plain 3 KiB worker floor.
+  const size_t beforeSecure = host_mqtt::startCount();
+  Settings::mqttURI = "mqtts://broker.example:8883";
+  mqtt.reloadSetting();
+  host_mqtt_heap::set(Furble::MQTTMemory::START_INTERNAL_FREE_FLOOR, 65536);
+  ownerStep(mqtt);
+  require(static_cast<size_t>(host_mqtt::startCount()) == beforeSecure,
+          "secure MQTT started below the TLS worker floor");
+  host_mqtt_heap::reset();
+  ownerStep(mqtt);
+  ownerStep(mqtt);
+  require(static_cast<size_t>(host_mqtt::startCount()) == beforeSecure + 1,
+          "secure MQTT did not start above the TLS worker floor");
+  require(host_mqtt::lastTaskStackSize()
+              == static_cast<int>(Furble::MQTTMemory::TLS_WORKER_STACK_BYTES),
+          "secure MQTT worker did not use the 6 KiB TLS stack");
+  require(mqtt.isConnected(), "secure MQTT fixture did not connect");
+  mqtt.disconnect();
+  ownerStep(mqtt);
+  host_mqtt_timer::advance(1000);
+  ownerStep(mqtt);
+  require(!mqtt.isConnected(), "secure MQTT fixture did not stop");
 
   host_mqtt::reset();
   esp_mqtt_client_config_t raw_config = {};

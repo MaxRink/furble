@@ -256,8 +256,12 @@ class Platform {
 
   /**
    * Get the battery measurements supported by this board.
+   *
+   * Returned by value: the simulator refreshes the flags from the hardware
+   * model on every call, so a reference to shared mutable storage would race
+   * console and UI readers.
    */
-  const battery_caps_t &getBatteryCaps(void);
+  battery_caps_t getBatteryCaps(void);
 
   /**
    * Read the battery, unsupported measurements are returned as zero.

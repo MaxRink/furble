@@ -16,6 +16,8 @@ assert pmic.charge_current_ma 100
 assert pmic.power_latch latched
 assert pmic.download_lock unlocked
 assert pmic.watchdog armed
+wait 1100
+assert_min pmic.watchdog_feeds 1
 assert platform.battery.present yes
 assert platform.battery.charging yes
 assert platform.battery.current -1

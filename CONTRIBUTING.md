@@ -129,6 +129,21 @@ drivers, or simulator fixtures:
 sh tools/run_sanitized_host_tests.sh --clean
 ```
 
+Review threads are a merge gate, not a suggestion. Before merging any pull
+request, every review finding must be fixed in the branch, or proven false or
+outdated with evidence in the thread and in the remediation plan. Run the
+online check against the pull request:
+
+```sh
+python3 tools/check_review_threads.py --repo owner/name --pr <number>
+```
+
+It queries the GitHub GraphQL API through `gh api graphql` and fails closed on
+API errors, so a missing token or network is never treated as a clean result.
+Do not wire this into offline pre-review or fork CI jobs. The remediation pull
+request itself must pass the same check before it merges. Record the audit in
+its `plans/NN-review-feedback.md` table.
+
 `pre-review.yml` runs the scanners on every pull request; `host-sanitized.yml`
 runs the ASan/UBSan subset when C++ paths change. The scanners cover absolute
 workstation paths, whitespace and generated artifacts, debug leftovers,
@@ -150,6 +165,29 @@ The gate runs cppcheck and clang-tidy on changed files under `src/`,
 reasons. `static-analysis.yml` runs the same command on pull requests that
 touch C/C++ paths. A changed file with no compile command is reported as
 skipped; do not treat a skip as analysis.
+
+### Sim-first release gates
+
+Hardware flashing is gated on the simulator. Run the coverage manifest, the
+hardware-quirk gate, the memory-profile dump, the full input/API/memory fuzz
+corpus, the full configuration permutations and the readiness report:
+
+```sh
+python3 tools/check_sim_scenarios.py
+python3 tools/check_sim_coverage.py --require-ready
+sh sim/scripts/check-doc-tokens.sh
+sh sim/scripts/check-hardware-quirks.sh
+python3 sim/scripts/run-memory-profile.py
+python3 sim/scripts/run-fuzz-target.py --all
+python3 sim/scripts/run-permutations.py
+python3 tools/check_flash_readiness.py --ready
+```
+
+`tools/check_flash_readiness.py` validates per-target fuzz results, unique and
+complete permutation results in manifest order, and the exact memory-profile
+scenario set. A top-level `status: pass` alone is not evidence. Coverage
+entries must name executable scenario `assert` lines; a matching token in a
+comment or log string does not count.
 
 ## Testing
 

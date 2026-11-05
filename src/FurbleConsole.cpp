@@ -1036,7 +1036,8 @@ int cmdCompanion(int argc, char **argv) {
     return 0;
   }
   if ((argc < 2) || (strcasecmp(argv[1], "password") != 0)) {
-    return fail("usage: companion start | stop | status | password set <pw> | clear | status");
+    return fail(
+        "usage: companion start | stop | status | reidentify | password set <pw> | clear | status");
   }
   if ((argc == 3) && !strcasecmp(argv[2], "status")) {
     std::string password;
@@ -2199,6 +2200,24 @@ int cmdNtp(int argc, char **argv) {
 
 /** Human readable last reset cause, for boot loop and crash diagnosis. */
 const char *resetReasonName(int reason) {
+  // ESP-IDF 5.5 spells these three as ESP_RST_USB/JTAG/EFUSE. Newer headers
+  // expose the descriptive names below; accept either spelling without
+  // duplicating a case on the local IDF.
+#if defined(ESP_RST_USB_UART_CHIP_RESET)
+  constexpr esp_reset_reason_t resetUsbUart = ESP_RST_USB_UART_CHIP_RESET;
+#else
+  constexpr esp_reset_reason_t resetUsbUart = ESP_RST_USB;
+#endif
+#if defined(ESP_RST_USB_JTAG_CHIP_RESET)
+  constexpr esp_reset_reason_t resetUsbJtag = ESP_RST_USB_JTAG_CHIP_RESET;
+#else
+  constexpr esp_reset_reason_t resetUsbJtag = ESP_RST_JTAG;
+#endif
+#if defined(ESP_RST_EFUSE_CRC)
+  constexpr esp_reset_reason_t resetEfuseCrc = ESP_RST_EFUSE_CRC;
+#else
+  constexpr esp_reset_reason_t resetEfuseCrc = ESP_RST_EFUSE;
+#endif
   switch (reason) {
     case ESP_RST_UNKNOWN:
       return "unknown";
@@ -2222,11 +2241,11 @@ const char *resetReasonName(int reason) {
       return "brownout";
     case ESP_RST_SDIO:
       return "sdio";
-    case ESP_RST_USB:
+    case resetUsbUart:
       return "usb_uart_chip_reset";
-    case ESP_RST_JTAG:
+    case resetUsbJtag:
       return "jtag";
-    case ESP_RST_EFUSE:
+    case resetEfuseCrc:
       return "efuse";
     case ESP_RST_PWR_GLITCH:
       return "power_glitch";
@@ -2309,7 +2328,7 @@ int cmdStatus(int argc, char **argv) {
  * after the boot banner scrolled past.
  */
 int cmdCrash(int argc, char **argv) {
-  if ((argc == 2) && (strcmp(argv[1], "last") != 0)) {
+  if ((argc > 2) || ((argc == 2) && (strcmp(argv[1], "last") != 0))) {
     return fail("usage: crash [last]");
   }
   const auto *record = CrashLog::lastRecord();

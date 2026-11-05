@@ -689,8 +689,10 @@ bool WebUI::startServer(void) {
   config.httpd.stack_size = WebUIMemory::HTTPD_STACK_BYTES;
   config.httpd.max_uri_handlers = HTTPD_MAX_URI_HANDLERS;
   config.httpd.max_open_sockets = HTTPD_MAX_SOCKETS;
-  // A single browser can leave a stale socket; purge it instead of refusing
-  // the next connection when the one slot is still occupied.
+  // ESP-IDF reserves three sockets per server for its listener, control and
+  // accept bookkeeping, so max_open_sockets must leave real client slots. A
+  // single browser can still leave a stale connection; purge it instead of
+  // refusing the next one when all five client slots are occupied.
   config.httpd.lru_purge_enable = true;
   // The page is small and its headers are short. Capping the scratch buffer
   // removes 1 KiB of internal heap from every request on the StickS3.

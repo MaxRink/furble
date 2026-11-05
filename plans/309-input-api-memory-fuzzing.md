@@ -87,7 +87,8 @@ The combined-tree run exercises the production paths, not just constants:
   state machine and the USB ROM/download recovery.
 - `fuzz.psram` runs both PSRAM journal targets and the debug/release memtest
   scenarios plus PSRAM absent/failure and icon allocation scenarios.
-- `fuzz.mqtt` runs the 10 KiB owner, 3 KiB worker, TLS 6 KiB worker, start and
+- `fuzz.mqtt` runs the 10 KiB owner, 3 KiB plain worker and 6 KiB TLS worker,
+  with separate plain and TLS start floors, start and
   discovery gates below/at/above their floors, the cached HA setting and the
   retained discovery records.
 - `fuzz.memory.fragmentation` runs 1,536-byte discovery fragmentation,

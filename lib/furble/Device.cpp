@@ -1,10 +1,31 @@
 #include <NimBLEDevice.h>
 #include <esp_mac.h>
+#include <esp_random.h>
 
 #include "Device.h"
 #include "FurbleTypes.h"
 
 namespace Furble {
+
+namespace {
+
+constexpr size_t IDENTITY_BYTES = 6;
+
+bool validRandomStatic(const uint8_t (&address)[IDENTITY_BYTES]) {
+  // A random-static address has the two most-significant bits set and is not
+  // all zero.
+  if ((address[5] & 0xC0) != 0xC0) {
+    return false;
+  }
+  for (const uint8_t byte : address) {
+    if (byte != 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+}  // namespace
 
 int8_t Device::powerLevelToDbm(esp_power_level_t power) {
   switch (power) {
@@ -60,6 +81,37 @@ void Device::init(esp_power_level_t power) {
   NimBLEDevice::setSecurityInitKey(BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID);
   NimBLEDevice::setSecurityRespKey(BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID);
   NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RPA_PUBLIC_DEFAULT);
+}
+
+bool Device::applyRandomStaticIdentity(const uint8_t address[6]) {
+  if (address == nullptr) {
+    return false;
+  }
+  uint8_t copy[IDENTITY_BYTES] = {};
+  for (size_t index = 0; index < IDENTITY_BYTES; index++) {
+    copy[index] = address[index];
+  }
+  if (!validRandomStatic(copy)) {
+    return false;
+  }
+  if (!NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RANDOM)) {
+    return false;
+  }
+  return NimBLEDevice::setOwnAddr(copy);
+}
+
+bool Device::generateRandomStaticIdentity(uint8_t address[6]) {
+  if (address == nullptr) {
+    return false;
+  }
+  esp_fill_random(address, IDENTITY_BYTES);
+  // Random static: top two bits set. A zero address is not a usable identity.
+  address[5] = static_cast<uint8_t>((address[5] & 0x3F) | 0xC0);
+  uint8_t copy[IDENTITY_BYTES] = {};
+  for (size_t index = 0; index < IDENTITY_BYTES; index++) {
+    copy[index] = address[index];
+  }
+  return validRandomStatic(copy);
 }
 
 Device::uuid128_t Device::getUUID128(void) {

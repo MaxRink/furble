@@ -669,9 +669,10 @@ bool MQTT::startClient(void) {
     return false;
   }
 
+  const bool secure = (m_URI.rfind("mqtts://", 0) == 0) || (m_URI.rfind("wss://", 0) == 0);
   const size_t freeBytes = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
   const size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-  const auto gate = MQTTMemory::startGate(freeBytes, largest);
+  const auto gate = MQTTMemory::startGate(freeBytes, largest, secure);
   if (!gate.open) {
     // Defer instead of letting esp-mqtt allocate its task and buffers into a
     // pool that cannot hold them. The owner counts this as a failed attempt, so
@@ -700,7 +701,6 @@ bool MQTT::startClient(void) {
   config.network.timeout_ms = 10000;
   config.buffer.size = MQTTMemory::BUFFER_SIZE;
   config.buffer.out_size = MQTTMemory::BUFFER_SIZE;
-  const bool secure = (m_URI.rfind("mqtts://", 0) == 0) || (m_URI.rfind("wss://", 0) == 0);
   config.task.stack_size =
       secure ? MQTTMemory::TLS_WORKER_STACK_BYTES : MQTTMemory::PLAIN_WORKER_STACK_BYTES;
 

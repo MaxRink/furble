@@ -104,6 +104,10 @@ void webuiMemoryStart(void) {
     }
     model.reservedBytes += PRE_GATE_SUPERVISOR_STACK_BYTES;
     model.supervisorCreated = true;
+    model.supervisorBlocked = false;
+    model.failClosed = false;
+    model.gateReason = "none";
+    model.gateMessage.clear();
     return;
   }
 
@@ -126,6 +130,10 @@ void webuiMemoryStart(void) {
   }
   model.reservedBytes += WebUIMemory::SUPERVISOR_STACK_BYTES;
   model.supervisorCreated = true;
+  model.supervisorBlocked = false;
+  model.failClosed = false;
+  model.gateReason = "none";
+  model.gateMessage.clear();
 }
 
 void webuiMemoryTick(void) {
@@ -177,7 +185,11 @@ void webuiMemoryTick(void) {
   }
   model.reservedBytes += WebUIMemory::HTTPD_STACK_BYTES;
   model.serverRunning = true;
+  model.serverBlocked = false;
+  model.supervisorBlocked = false;
+  model.failClosed = false;
   model.gateReason = "none";
+  model.gateMessage.clear();
 }
 
 const char *webuiSupervisorState(void) {
@@ -211,8 +223,10 @@ const char *webuiServerState(void) {
 }
 
 const char *webuiGateReason(void) {
+  thread_local std::string copy;
   const std::lock_guard<std::mutex> lock(state().mutex);
-  return state().gateReason.c_str();
+  copy = state().gateReason;
+  return copy.c_str();
 }
 
 uint32_t webuiServerAttempts(void) {
@@ -226,8 +240,10 @@ bool webuiFailClosed(void) {
 }
 
 const char *webuiGateMessage(void) {
+  thread_local std::string copy;
   const std::lock_guard<std::mutex> lock(state().mutex);
-  return state().gateMessage.c_str();
+  copy = state().gateMessage;
+  return copy.c_str();
 }
 
 }  // namespace Furble::Sim

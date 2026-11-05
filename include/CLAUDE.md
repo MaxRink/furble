@@ -28,6 +28,10 @@ Public headers for the app layer in src/, one header per module
   (`m_PairingWindow`, `m_PairingDeadlineMs`) and connection state are owned by
   `m_Mutex`; use the public getters outside a lock. The lock order is `m_Mutex`
   then `m_BondMutex`.
+- `FurbleCompanionIdentity.h` owns the durable random-static LE address used
+  by `companion reidentify`. Apply it before companion advertising; the
+  controller helpers in `lib/furble/Device.h` only touch NimBLE and never NVS.
+  Camera bonds stay in the shared NimBLE store and are not deleted by rotation.
 - `FurbleCompanion.h` serializes the complete advertising operation with
   `m_AdvertisingMutex` (recursive): pairing start, reconnect start, stop, and
   the service task's decision/action. `m_PairingGeneration` invalidates queued
@@ -172,6 +176,11 @@ at every settings-touching rebase.
 - `FurbleWebUI.h` owns the HTTPS supervisor and release-retry state. The pure
   ingress checks in `FurbleWebUIProtocol.h` are shared with host coverage. Held
   ownership never crosses a complete Control session replacement.
+  `HTTPD_MAX_SOCKETS` counts client slots; ESP-IDF reserves three more per
+  server, so five is the minimum that leaves a usable client connection.
+- `FurbleMQTTMemory.h` has separate plain and TLS start floors. A secure
+  `mqtts://` or `wss://` URI must pass the 6 KiB TLS-worker floor, not the
+  plain 3 KiB worker floor.
 - The simulator-only UI geometry surface keeps content overlap, label clipping,
   and focused-control expanded bounds as separate diagnostics. Focus clearance
   excludes the focused object's own descendants and ancestors.

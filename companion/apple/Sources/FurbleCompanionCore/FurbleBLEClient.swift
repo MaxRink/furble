@@ -679,8 +679,9 @@ extension FurbleBLEClient: @preconcurrency CBPeripheralDelegate {
       // The false half of the re-subscribe is expected; only the enabled state
       // sends the begin packet. CoreBluetooth reports the local notification
       // state before the peripheral has processed the CCCD write, so leave a
-      // full second for the CCCD to land. A shorter window intermittently sent
-      // the begin write before the peripheral had an auth subscriber.
+      // 0.3 s settle window for the CCCD to land. A shorter window
+      // intermittently sent the begin write before the peripheral had an auth
+      // subscriber.
       if characteristic.isNotifying {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self, weak peripheral] in
           guard let self, let peripheral, self.isCurrent(peripheral), self.authBeginPending else {

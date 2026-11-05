@@ -518,8 +518,8 @@ void app_main() {
   // stack and before WiFi/display allocations fragment the heap. The identity
   // generation writes NVS, which must run on an internal stack anyway.
   Furble::WebUI::initEarly();
-#endif
   Furble::BootTimeline::mark(Furble::BootTimeline::WEBUI_EARLY_DONE);
+#endif
 #if !defined(FURBLE_ETHERNET)
   // Start the station after BLE and the WebUI TLS identity, so the identity
   // still sees the full internal heap, but before companion and MQTT. The
@@ -533,8 +533,8 @@ void app_main() {
   Furble::BootScreen::step("Companion");
 #if defined(FURBLE_MQTT) && FURBLE_MQTT
   Furble::MQTT::init();
-#endif
   Furble::BootTimeline::mark(Furble::BootTimeline::MQTT_INIT_DONE);
+#endif
 
 #if defined(FURBLE_ETHERNET)
   if (!Furble::Ethernet::init()) {

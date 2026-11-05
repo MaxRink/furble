@@ -10,5 +10,6 @@
 # the live UI completed.
 wait 300
 assert ui.boot_splash shown
+assert boot.splash_shown yes
 assert ui.page main
 exit

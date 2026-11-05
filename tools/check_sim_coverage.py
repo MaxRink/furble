@@ -31,6 +31,67 @@ def scenario_text(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
+def executable_assertions(path: Path) -> set[str]:
+    """Keys checked by executable assert lines, not comment or log text.
+
+    Scenario files use assert/assert_min/assert_max/assert-eventually and the
+    documented xassert form. Shell runners do not have the DSL, so their
+    evidence must be a grep command that inspects the run output.
+    """
+    text = scenario_text(path)
+    assertions: set[str] = set()
+    if path.suffix == ".txt":
+        for line in text.splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            parts = stripped.split()
+            command = parts[0]
+            if command in {"assert", "assert_min", "assert_max"} and len(parts) > 1:
+                assertions.add(parts[1])
+            elif command in {"assert-eventually", "assert-eventually-virtual"} and len(parts) > 2:
+                assertions.add(parts[2])
+            elif command == "xassert":
+                if len(parts) > 2 and parts[1] == "board-varies":
+                    assertions.add(parts[2])
+                elif len(parts) > 1:
+                    assertions.add(parts[1])
+        return assertions
+
+    executable_lines = [line for line in text.splitlines()
+                        if line.strip() and not line.strip().startswith("#")]
+    for line in executable_lines:
+        if "grep" not in line:
+            continue
+        for token in line.replace("\\", " ").split():
+            assertions.add(token.strip("\"'"))
+    return assertions
+
+
+def assertion_evidence(entry: dict) -> tuple[bool, str]:
+    path = ROOT / entry["scenario"]
+    if not path.is_file():
+        return False, f"scenario/runner not found: {entry['scenario']}"
+    if path.suffix == ".txt":
+        evidence = executable_assertions(path)
+        missing = [str(assertion) for assertion in entry["assertions"]
+                   if str(assertion) not in evidence]
+    else:
+        # A shell runner has no assert DSL. Require the token to appear in a
+        # non-comment grep command, so prose in a comment or an echoed log
+        # string does not count.
+        text = scenario_text(path)
+        grep_lines = [line for line in text.splitlines()
+                      if line.strip() and not line.strip().startswith("#")
+                      and "grep" in line]
+        missing = [str(assertion) for assertion in entry["assertions"]
+                   if not any(str(assertion) in line for line in grep_lines)]
+    if missing:
+        return False, (f"{entry['id']}: assertions are not executable in "
+                       f"{entry['scenario']}: {missing!r}")
+    return True, ""
+
+
 def check_hardware(doc: dict) -> tuple[list[str], dict[str, int]]:
     errors: list[str] = []
     entries = doc.get("entries")
@@ -73,19 +134,15 @@ def check_hardware(doc: dict) -> tuple[list[str], dict[str, int]]:
                 errors.append(f"{eid}: external-pending needs missing_evidence")
             continue
         model = ROOT / entry["model"]
-        scenario = ROOT / entry["scenario"]
         if not model.is_file():
             errors.append(f"{eid}: model not found: {entry['model']}")
-        if not scenario.is_file():
-            errors.append(f"{eid}: scenario/runner not found: {entry['scenario']}")
-            continue
         assertions = entry["assertions"]
         if not isinstance(assertions, list) or not assertions:
             errors.append(f"{eid}: no assertions")
             continue
-        text = scenario_text(scenario)
-        if not any(str(assertion).split()[0] in text for assertion in assertions):
-            errors.append(f"{eid}: none of {assertions!r} appear in {entry['scenario']}")
+        ok, error = assertion_evidence(entry)
+        if not ok:
+            errors.append(error)
     return errors, counts
 
 
@@ -119,13 +176,9 @@ def check_crashes(doc: dict) -> tuple[list[str], dict[str, int]]:
             if not entry.get("missing_evidence"):
                 errors.append(f"{cid}: not-modeled needs missing_evidence")
             continue
-        scenario = ROOT / entry["scenario"]
-        if not scenario.is_file():
-            errors.append(f"{cid}: scenario not found: {entry['scenario']}")
-            continue
-        text = scenario_text(scenario)
-        if not any(str(assertion).split()[0] in text for assertion in entry["assertions"]):
-            errors.append(f"{cid}: none of {entry['assertions']!r} appear in {entry['scenario']}")
+        ok, error = assertion_evidence(entry)
+        if not ok:
+            errors.append(error)
         seeds = entry["known_failing_seeds"]
         if not isinstance(seeds, list):
             errors.append(f"{cid}: known_failing_seeds must be a list")
@@ -169,13 +222,9 @@ def check_fuzz(doc: dict) -> tuple[list[str], dict[str, int]]:
         script = command[-1] if command else ""
         if script.startswith("sim/") and not (ROOT / script).is_file():
             errors.append(f"{fid}: command target not found: {script}")
-        scenario = ROOT / entry["scenario"]
-        if not scenario.is_file():
-            errors.append(f"{fid}: scenario not found: {entry['scenario']}")
-            continue
-        text = scenario_text(scenario) + "\n" + scenario_text(ROOT / script)
-        if not any(str(assertion).split()[0] in text for assertion in entry["assertions"]):
-            errors.append(f"{fid}: none of {entry['assertions']!r} appear in scenario or command")
+        ok, error = assertion_evidence(entry)
+        if not ok:
+            errors.append(error)
         for seed in entry["known_failing_seeds"]:
             if not isinstance(seed, dict) or not seed.get("fixed"):
                 errors.append(f"{fid}: failing seed {seed!r} is not fixed")
@@ -202,9 +251,11 @@ def check_permutations(doc: dict) -> tuple[list[str], dict[str, int]]:
     if not scenario.is_file():
         errors.append(f"permutation scenario not found: {doc.get('scenario')}")
     else:
-        text = scenario_text(scenario)
-        if not any(str(assertion).split()[0] in text for assertion in doc.get("assertions", [])):
-            errors.append("permutation assertions do not appear in template")
+        evidence = executable_assertions(scenario)
+        missing = [str(assertion) for assertion in doc.get("assertions", [])
+                   if str(assertion) not in evidence]
+        if missing:
+            errors.append(f"permutation assertions are not executable: {missing!r}")
     results_path = ROOT / doc.get("results", "")
     if results_path.is_file():
         results = load(results_path)

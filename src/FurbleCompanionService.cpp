@@ -160,8 +160,16 @@ void CompanionService::onDisconnected(void) {
 void CompanionService::reloadPassword(void) {
   std::string password;
   const bool loaded = Settings::loadPassword(password);
-  const std::lock_guard<std::mutex> lock(m_AuthMutex);
-  m_Auth.setPassword(password, loaded);
+  {
+    const std::lock_guard<std::mutex> lock(m_AuthMutex);
+    m_Auth.setPassword(password, loaded);
+  }
+  std::fill(password.begin(), password.end(), '\0');
+  // A GATT password write reaches this path directly. The owner installs the
+  // hook so the WebUI credential gate observes the same clear or rotation.
+  if (m_PasswordReloadCallback) {
+    m_PasswordReloadCallback();
+  }
 }
 
 bool CompanionService::isPasswordAuthenticated(void) const {
@@ -197,6 +205,10 @@ void CompanionService::confirmPairing(bool accept) {
 
 void CompanionService::setSettingReloadCallback(std::function<void(bool)> callback) {
   m_SettingReloadCallback = std::move(callback);
+}
+
+void CompanionService::setPasswordReloadCallback(std::function<void()> callback) {
+  m_PasswordReloadCallback = std::move(callback);
 }
 
 CompanionService::companion_status_t CompanionService::getStatus(void) const {

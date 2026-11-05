@@ -8,8 +8,9 @@
 extern "C" uint32_t furbleBootTimelineHostResetMs(void);
 extern "C" int64_t furbleBootTimelineHostNowUs(void);
 #else
+#include <esp_cpu.h>
 #include <esp_log.h>
-#include <esp_log_timestamp.h>
+#include <esp_rom_sys.h>
 #include <esp_timer.h>
 #endif
 
@@ -31,12 +32,13 @@ int64_t nowUs(void) {
 }
 #else
 /**
- * The scheduler is not running when app_main() calls begin(), so this returns
- * the CPU cycle-counter timestamp from reset. It includes the ROM bootloader
- * and the PSRAM memory test that esp_timer cannot see.
+ * The scheduler is not running when app_main() calls begin(), so this reads
+ * the free-running CPU cycle counter, which starts at reset. It includes the
+ * ROM bootloader and the PSRAM memory test that esp_timer and esp_log_timestamp
+ * cannot see.
  */
 uint32_t resetTimestampMs(void) {
-  return esp_log_timestamp();
+  return BootTimeline::cycleCountToMs(esp_cpu_get_cycle_count(), esp_rom_get_cpu_ticks_per_us());
 }
 
 int64_t nowUs(void) {

@@ -405,6 +405,8 @@ void testCompanionGattFlow(void) {
 
   MockCentral central;
   CompanionService service(central);
+  size_t passwordReloads = 0;
+  service.setPasswordReloadCallback([&] { passwordReloads++; });
   central.attach(service);
   service.init();
   central.connect();
@@ -563,6 +565,7 @@ void testCompanionGattFlow(void) {
   check(central.indications().size() == 1 && central.indications()[0].size() == 4
             && central.indications()[0][0] == 4,
         "failed password rotation returns a rejected setting response");
+  check(passwordReloads == 1, "a failed password rotation reloads the shared credential gate");
   Furble::Settings::setPasswordSaveResult(true);
 
   central.clearEvents();
@@ -640,6 +643,7 @@ void testCompanionGattFlow(void) {
         "password rotation revokes the authenticated session before acknowledgement");
   check(central.indications().size() == 1 && central.indications()[0].size() == 4,
         "password rotation returns one compact acknowledgement");
+  check(passwordReloads == 2, "a GATT password rotation reloads the shared credential gate");
 
   central.clearEvents();
   check(central.write(AUTH_UUID, {Furble::CompanionService::AUTH_VERSION,
@@ -665,6 +669,7 @@ void testCompanionGattFlow(void) {
   check(central.indications().size() == 1 && central.indications()[0].size() == 4
             && central.indications()[0][0] == 4,
         "failed password clear returns a rejected setting response");
+  check(passwordReloads == 3, "a failed password clear still reloads the shared credential gate");
   Furble::Settings::setPasswordSaveResult(true);
 
   central.clearEvents();

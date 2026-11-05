@@ -895,7 +895,7 @@ void Platform::initBattery(void) {
            m_BatteryCaps.charging, m_BatteryCapacity);
 }
 
-const Platform::battery_caps_t &Platform::getBatteryCaps(void) {
+Platform::battery_caps_t Platform::getBatteryCaps(void) {
   return m_BatteryCaps;
 }
 

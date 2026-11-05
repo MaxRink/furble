@@ -374,10 +374,11 @@ bool Platform::hasTicklessIdle(void) {
   return false;
 }
 
-const Platform::battery_caps_t &Platform::getBatteryCaps(void) {
-  static battery_caps_t caps = {};
-  caps = {Sim::hwGaugeLevel(), Sim::hwGaugeVoltage(), Sim::hwGaugeCurrent(), Sim::hwGaugeCharge()};
-  return caps;
+Platform::battery_caps_t Platform::getBatteryCaps(void) {
+  // Return a value, not a reference to a function-static record. Console and
+  // UI readers run on different host threads and each call refreshes the flags
+  // from the hardware model.
+  return {Sim::hwGaugeLevel(), Sim::hwGaugeVoltage(), Sim::hwGaugeCurrent(), Sim::hwGaugeCharge()};
 }
 
 Platform::battery_t Platform::readBattery(void) {

@@ -71,7 +71,10 @@ int main() {
   }
   check(captured("CRASH RECORD: reset=panic task=mqtt"), "the boot prints the crash headline");
   check(captured("CRASH LOG: synthetic panic"), "the boot prints the captured log tail");
-  check(!CrashRecord::valid(*CrashLog::hostRecord()), "the record is consumed after the print");
+  check(CrashRecord::valid(*CrashLog::hostRecord()),
+        "the old record is replaced by a fresh snapshot");
+  check(!CrashRecord::clean(*CrashLog::hostRecord()),
+        "the fresh boot snapshot is not marked clean");
   check(CrashLog::printLastRecord(), "the retained record can be reprinted for a console");
 
   // A clean previous shutdown is not a crash.
@@ -83,6 +86,16 @@ int main() {
   CrashLog::init();
   check(!CrashLog::recovered(), "a clean record is not reported");
   check(!captured("CRASH RECORD:"), "a clean boot does not print a crash headline");
+  check(CrashRecord::valid(*CrashLog::hostRecord()), "the clean record is consumed");
+  check(!CrashRecord::clean(*CrashLog::hostRecord()),
+        "the clean record cannot suppress the next early-boot crash");
+  const auto earlyBoot = *CrashLog::hostRecord();
+  CrashLog::hostSetRecord(earlyBoot);
+  hostCrashResetReason() = ESP_RST_PANIC;
+  CrashLog::init();
+  check(CrashLog::recovered(), "an early-boot crash after a clean shutdown is reported");
+  check(CrashRecord::resetReasonName(CrashLog::lastRecord()->reset_reason) == std::string("panic"),
+        "the early-boot crash uses the current reset reason");
 
   // ANSI colour prefixes from the real ESP_LOG path are stripped before the
   // line is retained, so the next boot prints readable crash lines.
