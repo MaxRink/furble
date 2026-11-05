@@ -43,12 +43,22 @@ def read_fragment(path):
   return values
 
 
-def merge_config(source_path, fragment_path, overlay_path):
+def read_fragments(paths):
+  values = {}
+  for path in paths:
+    for key, value in read_fragment(path).items():
+      if key in values:
+        raise RuntimeError("duplicate %s across debug sdkconfig fragments" % key)
+      values[key] = value
+  return values
+
+
+def merge_config(source_path, fragment_paths, overlay_path):
   with open(source_path, encoding="utf-8") as source_file:
     source_lines = source_file.readlines()
 
   source_values = config_map(source_lines, source_path)
-  fragment_values = read_fragment(fragment_path)
+  fragment_values = read_fragments(fragment_paths)
   merged_lines = list(source_lines)
   replaced = set()
 
@@ -88,13 +98,23 @@ if not os.path.isabs(source_path):
   source_path = os.path.join(project_dir, source_path)
 source_path = os.path.abspath(source_path)
 
-fragment_path = env.subst(board_config.get("build.esp-idf.sdkconfig_fragment", ""))
-if not fragment_path:
-  fragment_path = os.path.join(project_dir, "sdkconfig.debug")
-elif not os.path.isabs(fragment_path):
-  fragment_path = os.path.join(project_dir, fragment_path)
+fragment_setting = env.subst(board_config.get("build.esp-idf.sdkconfig_fragment", ""))
+if not fragment_setting:
+  fragment_paths = [os.path.join(project_dir, "sdkconfig.debug")]
+else:
+  # A debug environment may layer extra symbols on top of sdkconfig.debug.
+  # Multiple fragments are comma-separated, for example
+  # "sdkconfig.debug,sdkconfig.spiram-memtest".
+  fragment_paths = []
+  for fragment_path in fragment_setting.split(","):
+    fragment_path = fragment_path.strip()
+    if not fragment_path:
+      continue
+    if not os.path.isabs(fragment_path):
+      fragment_path = os.path.join(project_dir, fragment_path)
+    fragment_paths.append(os.path.abspath(fragment_path))
 overlay_path = os.path.join(env.subst("$BUILD_DIR"), "sdkconfig.debug")
 os.makedirs(os.path.dirname(overlay_path), exist_ok=True)
-merge_config(source_path, fragment_path, overlay_path)
+merge_config(source_path, fragment_paths, overlay_path)
 
 board_config.update("build.esp-idf.sdkconfig_path", overlay_path)

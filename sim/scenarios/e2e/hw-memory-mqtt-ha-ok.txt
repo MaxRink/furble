@@ -1,0 +1,15 @@
+# MQTT Home Assistant discovery succeeds inside the post-#394 budget.
+seed hw_profile sticks3
+seed heap_internal_free 27351
+seed heap_internal_largest 25588
+seed mqtt_owner_stack 10240
+seed mqtt_worker_stack 4096
+seed mqtt_ha true
+seed mqtt_buffer 2048
+wait 100
+assert mqttmodel.state created
+assert mqttmodel.ha ok
+assert mqttmodel.ha_peak 8192
+assert_min heap.free 10000
+assert heap.alloc_failures 0
+exit

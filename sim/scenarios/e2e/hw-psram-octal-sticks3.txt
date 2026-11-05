@@ -1,0 +1,39 @@
+# StickS3 octal PSRAM and internal pool.
+#
+# The S3 module carries 8 MB octal PSRAM. The internal pool stays separate, and
+# the external pool reports its own free and largest block.
+seed hw_profile sticks3
+wait 100
+
+assert hw.psram octal
+assert hw.psram_state ready
+assert heap.spiram_present yes
+assert heap.spiram_mode octal
+assert heap.spiram_state ready
+assert_min heap.spiram_free 8388608
+assert_min heap.spiram_largest 4194304
+assert heap.task_stack_region internal
+
+assert mem.internal_total 524288
+assert mem.psram_total 8388608
+assert mem.component.main_stack 8192
+assert mem.component.lvgl_draw 2160
+assert mem.component.mqtt_owner 10240
+assert mem.component.crash_record 436
+assert hw.usb serial_jtag
+assert hw.wifi yes
+assert hw.ethernet no
+assert hw.ble yes
+assert hw.gauge voltage_charge
+assert hw.profile sticks3
+assert hw.mcu esp32s3
+assert hw.flash_kb 8192
+assert hw.display 135x240
+assert hw.touch no
+assert hw.ir yes
+assert hw.sd no
+assert hw.audio yes
+assert hw.rtc yes
+assert hw.pmic m5pm1
+assert pmic.watchdog armed
+exit

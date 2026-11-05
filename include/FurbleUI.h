@@ -1093,6 +1093,8 @@ class UI {
   std::deque<std::shared_ptr<sim_request_t> > m_SimRequests;
   std::thread::id m_SimUiThread;
   std::atomic<bool> m_SimLastActionOnUi {false};
+  std::atomic<uint32_t> m_SimButtonPresses {0};
+  std::atomic<uint32_t> m_SimButtonHolds {0};
   sim_action_result_t m_SimActionResult = sim_action_result_t::INVALID;
   bool m_SimButtonPressed = false;
 

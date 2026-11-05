@@ -28,6 +28,18 @@ class Preferences {
   bool begin(const char *name, bool readOnly = false, const char *partition_label = NULL);
   void end();
 
+  /**
+   * Stage writes without committing each one. Call commit() once before end().
+   *
+   * The boot settings seed uses this to write one NVS namespace in a single
+   * transaction instead of one commit per default. end() still commits pending
+   * deferred writes if the caller forgets, so data is not silently dropped.
+   */
+  void setDeferredCommit(bool deferred);
+
+  /** Commit staged writes. Returns true when there is nothing to write. */
+  bool commit();
+
   bool clear();
   bool remove(const char *key);
 
@@ -52,6 +64,9 @@ class Preferences {
   size_t freeEntries();
 
  private:
+  /** Commit a set or erase, or stage it when deferred commits are enabled. */
+  bool finishWrite(const char *key);
+
   typedef enum {
     PT_I8,
     PT_U8,
@@ -74,6 +89,8 @@ class Preferences {
   uint32_t _handle;
   bool _started;
   bool _readOnly;
+  bool _deferCommit;
+  bool _dirty;
 };
 
 }  // namespace Furble

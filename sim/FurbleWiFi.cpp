@@ -1,43 +1,31 @@
 #include "FurbleWiFi.h"
 
-#include <atomic>
 #include <string>
 
-namespace {
-
-std::atomic<bool> simWifiConnected {false};
-std::string simWifiIp = "192.0.2.10";
-
-}  // namespace
-
-namespace Furble::Sim {
-
-void setWifiConnected(bool connected) {
-  simWifiConnected.store(connected, std::memory_order_release);
-}
-
-bool wifiConnected(void) {
-  return simWifiConnected.load(std::memory_order_acquire);
-}
-
-}  // namespace Furble::Sim
+#include "hardware_model.h"
+#include "platform_state.h"
 
 namespace Furble {
 
 void WiFi::init(void) {}
 
 bool WiFi::connect(void) {
-  return false;
-}
-
-void WiFi::disconnect(void) {}
-
-bool WiFi::setEnabled(bool enabled) {
-  Furble::Sim::setWifiConnected(enabled);
+  Sim::hwAction("wifi-connect");
   return true;
 }
 
-void WiFi::forget(void) {}
+void WiFi::disconnect(void) {
+  Sim::hwAction("wifi-disconnect");
+}
+
+bool WiFi::setEnabled(bool enabled) {
+  Sim::hwWifiSetConnected(enabled);
+  return true;
+}
+
+void WiFi::forget(void) {
+  Sim::hwWifiSetConnected(false);
+}
 
 void WiFi::clearRememberedAccessPoint(void) {}
 
@@ -51,16 +39,27 @@ bool WiFi::reloadNtp(void) {
 }
 
 bool WiFi::syncNtp(void) {
-  return false;
+  Sim::hwAction("wifi-ntp-sync");
+  return true;
 }
 
 WiFi::status_t WiFi::getStatus(void) {
   status_t status = {};
-  if (Furble::Sim::wifiConnected()) {
+  const std::string state = Sim::hwWifiState();
+  if (state == "connected") {
     status.state = STATE_CONNECTED;
     status.connected = true;
-    status.ip = simWifiIp;
-    status.rssi = -55;
+    status.enabled = true;
+    status.ip = Sim::hwWifiIp();
+    status.ssid = Sim::hwWifiSsid();
+    status.rssi = static_cast<int8_t>(Sim::hwWifiRssi());
+    status.ntp_enabled = true;
+    status.ntp_running = true;
+    status.ntp_synced = Sim::hwNtpSynced();
+  } else if (state == "failed") {
+    status.state = STATE_IDLE;
+    status.attempts = Sim::hwWifiAttempts();
+    status.retry_ms = Sim::hwWifiRetryMs();
   } else {
     status.state = STATE_DISABLED;
   }
@@ -68,7 +67,7 @@ WiFi::status_t WiFi::getStatus(void) {
 }
 
 bool WiFi::getNtpTimesync(Camera::timesync_t &) {
-  return false;
+  return Sim::hwNtpSynced();
 }
 
 }  // namespace Furble

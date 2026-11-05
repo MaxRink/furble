@@ -1,0 +1,216 @@
+{
+  "version": 1,
+  "crashes": [
+    {
+      "id": "webui-pre-gate-8k",
+      "scenario": "sim/scenarios/e2e/memory-webui-pre-gate-alloc.txt",
+      "assertions": [
+        "webui.supervisor",
+        "heap.alloc_failures"
+      ],
+      "status": "modeled",
+      "known_failing_seeds": [],
+      "source": "sim/coverage/crashes.json"
+    },
+    {
+      "id": "webui-https-12k",
+      "scenario": "sim/scenarios/e2e/memory-webui-pre-gate-alloc.txt",
+      "assertions": [
+        "webui.server",
+        "webui.gate"
+      ],
+      "status": "modeled",
+      "known_failing_seeds": [],
+      "source": "sim/coverage/crashes.json"
+    },
+    {
+      "id": "webui-tg1wdt-bootloop",
+      "scenario": "sim/scenarios/e2e/hw-memory-webui-tg1wdt.txt",
+      "assertions": [
+        "crash.reset",
+        "platform.reset_reason"
+      ],
+      "status": "modeled",
+      "known_failing_seeds": [],
+      "source": "sim/coverage/crashes.json"
+    },
+    {
+      "id": "webui-fail-closed-13543",
+      "scenario": "sim/scenarios/e2e/memory-webui-fail-closed.txt",
+      "assertions": [
+        "webui.fail_closed",
+        "webui.server"
+      ],
+      "status": "modeled",
+      "known_failing_seeds": [],
+      "source": "sim/coverage/crashes.json"
+    },
+    {
+      "id": "webui-post394-pass",
+      "scenario": "sim/scenarios/e2e/hw-memory-webui-post394.txt",
+      "assertions": [
+        "webui.server",
+        "webui.gate"
+      ],
+      "status": "modeled",
+      "known_failing_seeds": [],
+      "source": "sim/coverage/crashes.json"
+    },
+    {
+      "id": "mqtt-0x1800-alloc",
+      "scenario": "sim/scenarios/e2e/memory-mqtt-low-heap-retry-limit.txt",
+      "assertions": [
+        "heap.last_failed_task",
+        "mqtt.connect_failures"
+      ],
+      "status": "modeled",
+      "known_failing_seeds": [],
+      "source": "sim/coverage/crashes.json"
+    },
+    {
+      "id": "mqtt-owner-4k-overflow",
+      "scenario": "sim/scenarios/e2e/hw-memory-mqtt-owner-4k-overflow.txt",
+      "assertions": [
+        "mqttmodel.overflow",
+        "mqttmodel.state"
+      ],
+      "status": "modeled",
+      "known_failing_seeds": [],
+      "source": "sim/coverage/crashes.json"
+    },
+    {
+      "id": "mqtt-owner-6k-overflow",
+      "scenario": "sim/scenarios/e2e/hw-memory-mqtt-owner-6k-overflow.txt",
+      "assertions": [
+        "mqttmodel.overflow",
+        "mqttmodel.state"
+      ],
+      "status": "modeled",
+      "known_failing_seeds": [],
+      "source": "sim/coverage/crashes.json"
+    },
+    {
+      "id": "mqtt-ha-oom-1k7",
+      "scenario": "sim/scenarios/e2e/hw-memory-mqtt-ha-oom.txt",
+      "assertions": [
+        "mqttmodel.ha",
+        "heap.free"
+      ],
+      "status": "modeled",
+      "known_failing_seeds": [],
+      "source": "sim/coverage/crashes.json"
+    },
+    {
+      "id": "mqtt-10k-4k-success",
+      "scenario": "sim/scenarios/e2e/hw-memory-mqtt-10k-success.txt",
+      "assertions": [
+        "mqttmodel.state",
+        "mqttmodel.owner_stack"
+      ],
+      "status": "modeled",
+      "known_failing_seeds": [],
+      "source": "sim/coverage/crashes.json"
+    },
+    {
+      "id": "mqtt-tls-6k",
+      "scenario": "sim/scenarios/e2e/hw-memory-mqtt-tls-6k.txt",
+      "assertions": [
+        "mqttmodel.worker_stack",
+        "mqttmodel.tls"
+      ],
+      "status": "modeled",
+      "known_failing_seeds": [],
+      "source": "sim/coverage/crashes.json"
+    },
+    {
+      "id": "usb-cdc-rom-stuck",
+      "scenario": "sim/scenarios/e2e/hw-usb-jtag-rom-stuck-recovery.txt",
+      "assertions": [
+        "usb.mode",
+        "usb.console"
+      ],
+      "status": "modeled",
+      "known_failing_seeds": [],
+      "source": "sim/coverage/crashes.json"
+    },
+    {
+      "id": "ble-auth-timeout",
+      "scenario": "sim/scenarios/e2e/hw-ble-auth-gatt-reidentify.txt",
+      "assertions": [
+        "ble.auth",
+        "ble.auth_timeouts"
+      ],
+      "status": "modeled",
+      "known_failing_seeds": [],
+      "source": "sim/coverage/crashes.json"
+    },
+    {
+      "id": "gatt-cache-reidentify",
+      "scenario": "sim/scenarios/e2e/hw-ble-auth-gatt-reidentify.txt",
+      "assertions": [
+        "ble.gatt_cache",
+        "companion.reidentify"
+      ],
+      "status": "modeled",
+      "known_failing_seeds": [],
+      "source": "sim/coverage/crashes.json"
+    },
+    {
+      "id": "crash-panic",
+      "scenario": "sim/scenarios/e2e/hw-crash-reset-matrix.txt",
+      "assertions": [
+        "crash.recovered",
+        "crash.reset"
+      ],
+      "status": "modeled",
+      "known_failing_seeds": [],
+      "source": "sim/coverage/crashes.json"
+    },
+    {
+      "id": "crash-task-wdt",
+      "scenario": "sim/scenarios/e2e/hw-memory-webui-tg1wdt.txt",
+      "assertions": [
+        "crash.reset",
+        "crash.task"
+      ],
+      "status": "modeled",
+      "known_failing_seeds": [],
+      "source": "sim/coverage/crashes.json"
+    },
+    {
+      "id": "crash-restart-once",
+      "scenario": "sim/scenarios/e2e/crash-record-survives-restart.txt",
+      "assertions": [
+        "crash.recovered",
+        "crash.pending"
+      ],
+      "status": "modeled",
+      "known_failing_seeds": [],
+      "source": "sim/coverage/crashes.json"
+    },
+    {
+      "id": "psram-icon-0x3003",
+      "scenario": "sim/scenarios/e2e/hw-memory-psram-icon-absent.txt",
+      "assertions": [
+        "alloc.icon",
+        "heap.last_failed_task"
+      ],
+      "status": "modeled",
+      "known_failing_seeds": [],
+      "source": "sim/coverage/crashes.json"
+    },
+    {
+      "id": "companion-4k-restart",
+      "scenario": "sim/scenarios/e2e/hw-ble-auth-gatt-reidentify.txt",
+      "assertions": [
+        "companion.reidentify",
+        "ble.bond"
+      ],
+      "status": "approximate",
+      "known_failing_seeds": [],
+      "source": "sim/coverage/crashes.json",
+      "note": "CompanionGatt restart is not linked; reidentify/bond state is modeled.",
+      "missing_evidence": "A MockNimBLE server build that compiles CompanionGatt::enable()/disable()."
+    }
+  ]
+}

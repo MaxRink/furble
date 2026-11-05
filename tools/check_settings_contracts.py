@@ -4,7 +4,9 @@
 The firmware settings table in ``src/FurbleSettings.cpp`` is the source of truth
 for four contracts that otherwise drift silently:
 
-* every exposed setting has a default in ``Settings::init``;
+* every exposed setting has a default in the settings defaults function
+  (``applyDefault`` in the batched implementation, ``Settings::init`` in older
+  trees);
 * every board-conditional default branch is compiled by a host test target;
 * the documented defaults in ``docs/settings-and-controls.md`` and
   ``docs/wiki/Settings-Reference.md`` agree with the source;
@@ -31,8 +33,8 @@ Known parser limits:
   evaluated, and coverage is a textual preprocessor-guard search rather than
   execution coverage.
 * Diff mode sees tracked git changes. An untracked change needs ``--diff-file``.
-  It only inspects ``save<>`` calls, so changing a constant in a header that a
-  default expression uses is not detected as a default change.
+  It only inspects ``save<>`` and ``putDefault`` calls, so changing a constant in a
+  header that a default expression uses is not detected as a default change.
 * Diff mode checks that the required documentation and test files were touched,
   not that their new text describes the changed setting.
 """
@@ -870,19 +872,33 @@ def _parse_settings_table(
   return rows
 
 
+def _defaults_function_match(text: str) -> re.Match[str] | None:
+  """Find the function that owns the first-boot defaults switch.
+
+  The defaults used to live directly in Settings::init(). They now live in the
+  applyDefault() helper so the seed can batch writes by namespace. Accept both
+  shapes: the unit fixtures and older trees use Settings::init(), the batched
+  implementation uses applyDefault().
+  """
+  match = re.search(r"\bbool\s+applyDefault\s*\([^)]*\)\s*\{", text)
+  if match:
+    return match
+  return re.search(r"\bvoid\s+Settings::init\s*\(\s*void\s*\)\s*\{", text)
+
+
 def _parse_default_groups(
     text: str,
     path: str,
     report: CheckReport,
 ) -> list[DefaultGroup]:
-  init_match = re.search(r"\bvoid\s+Settings::init\s*\(\s*void\s*\)\s*\{", text)
+  init_match = _defaults_function_match(text)
   if not init_match:
-    report.fail(path, 0, "Settings::init body was not found")
+    report.fail(path, 0, "Settings defaults function was not found")
     return []
   opening = text.find("{", init_match.start())
   closing = _find_matching(text, opening, "{", "}")
   if closing < 0:
-    report.fail(path, _line_for_offset(_line_starts(text), opening), "Settings::init body is not closed")
+    report.fail(path, _line_for_offset(_line_starts(text), opening), "settings defaults body is not closed")
     return []
   body = text[opening + 1 : closing]
   body_start_line = _line_for_offset(_line_starts(text), opening + 1)
@@ -952,44 +968,67 @@ def _extract_save_call(
     report: CheckReport,
 ) -> tuple[str | None, int]:
   masked = _mask_comments(body)
+  # The legacy path writes through Settings::save<T>(setting.type, value). The
+  # batched path writes through putDefault<T>(prefs, setting.key, value) or
+  # putDefaultBlob(prefs, setting.key, value). The stored value is the last
+  # argument in every shape.
   save_matches = list(re.finditer(r"\bsave\s*<", masked))
-  if not save_matches:
+  put_matches = list(re.finditer(r"\bputDefault(?:Blob)?\s*(?:<[^;()]*>)?\s*\(", masked))
+  match_kind = "save"
+  matches = save_matches
+  if not matches:
+    match_kind = "putDefault"
+    matches = put_matches
+  if not matches:
     return None, 0
-  match = save_matches[0]
-  if len(save_matches) > 1:
+  match = matches[0]
+  if len(matches) > 1:
     line = body_start_line + masked[: match.start()].count("\n")
+    call_name = "save<>" if match_kind == "save" else "putDefault"
     report.warn(
         path,
         line,
-        f"case body has {len(save_matches)} save<> calls; only the first default is "
+        f"case body has {len(matches)} {call_name} calls; only the first default is "
         "compared, so a conditional default may be unverified",
     )
-  angle_open = masked.find("<", match.start())
-  angle_close = _find_matching(masked, angle_open, "<", ">")
-  if angle_close < 0:
-    line = body_start_line + masked[: match.start()].count("\n")
-    report.warn(path, line, "save<> template argument is not closed; default not parsed")
-    return None, 0
-  paren_open = masked.find("(", angle_close)
+  if match_kind == "save":
+    angle_open = masked.find("<", match.start())
+    angle_close = _find_matching(masked, angle_open, "<", ">")
+    if angle_close < 0:
+      line = body_start_line + masked[: match.start()].count("\n")
+      report.warn(path, line, "save<> template argument is not closed; default not parsed")
+      return None, 0
+    paren_open = masked.find("(", angle_close)
+  else:
+    paren_open = masked.find("(", match.start())
   if paren_open < 0:
     line = body_start_line + masked[: match.start()].count("\n")
-    report.warn(path, line, "save<> call has no argument list; default not parsed")
+    report.warn(path, line, "default call has no argument list; default not parsed")
     return None, 0
   paren_close = _find_matching(masked, paren_open, "(", ")")
   if paren_close < 0:
     line = body_start_line + masked[: match.start()].count("\n")
-    report.warn(path, line, "save<> call is not closed; default not parsed")
+    report.warn(path, line, "default call is not closed; default not parsed")
     return None, 0
   arguments = _split_top_level(body[paren_open + 1 : paren_close])
   line = body_start_line + masked[: match.start()].count("\n")
-  if len(arguments) != 2:
+  expected = 2 if match_kind == "save" else 3
+  if len(arguments) != expected:
     report.warn(
         path,
         line,
-        f"save<> call has {len(arguments)} arguments; expected setting.type and a value",
+        f"{match_kind} call has {len(arguments)} arguments; expected "
+        + ("setting.type and a value" if expected == 2 else "a writer, a key and a value"),
     )
     return None, 0
-  return _normalize_space(arguments[1]), line
+  expression = _normalize_space(arguments[-1])
+  # putDefault(prefs, setting.key, "text") is the batched equivalent of
+  # save<std::string>(setting.type, "text"). Older call sites wrapped the
+  # literal in std::string(); accept that form too.
+  wrapped = re.fullmatch(r"std::string\s*\((.*)\)", expression, re.S)
+  if wrapped:
+    expression = _normalize_space(wrapped.group(1))
+  return expression, line
 
 
 # ---------------------------------------------------------------------------
@@ -1612,23 +1651,36 @@ _HUNK_PATTERN = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 
 def _extract_single_line_save(line: str) -> str | None:
   masked = _mask_comments(line)
-  match = re.search(r"\bsave\s*<", masked)
-  if not match:
+  save_match = re.search(r"\bsave\s*<", masked)
+  put_match = re.search(r"\bputDefault(?:Blob)?\s*(?:<[^;()]*>)?\s*\(", masked)
+  if save_match:
+    angle_open = masked.find("<", save_match.start())
+    angle_close = _find_matching(masked, angle_open, "<", ">")
+    if angle_close < 0:
+      return None
+    paren_open = masked.find("(", angle_close)
+    expected = 2
+  elif put_match:
+    paren_open = masked.find("(", put_match.start())
+    expected = 3
+  else:
     return None
-  angle_open = masked.find("<", match.start())
-  angle_close = _find_matching(masked, angle_open, "<", ">")
-  if angle_close < 0:
-    return None
-  paren_open = masked.find("(", angle_close)
   if paren_open < 0:
     return None
   paren_close = _find_matching(masked, paren_open, "(", ")")
   if paren_close < 0 or ";" not in masked[paren_close:]:
     return None
   arguments = _split_top_level(line[paren_open + 1 : paren_close])
-  if len(arguments) != 2:
+  if len(arguments) != expected:
     return None
-  return _normalize_space(arguments[1])
+  expression = _normalize_space(arguments[-1])
+  wrapped = re.fullmatch(r"std::string\s*\((.*)\)", expression, re.S)
+  if wrapped:
+    expression = _normalize_space(wrapped.group(1))
+  # The class-scope qualifier is needed by the new helper but not by the old
+  # in-class save call. It is not part of the stored default value.
+  expression = re.sub(r"\bSettings::", "", expression)
+  return expression
 
 
 def _update_case(side: dict[str, object], content: str) -> None:
@@ -1643,7 +1695,10 @@ def _record_default(
     line_number: int,
     changed: bool = True,
 ) -> None:
-  if "save<" not in line:
+  if not (("save<" in line) or ("putDefault" in line)):
+    return
+  # A helper definition line names putDefault but is not a default call.
+  if ("{" in line) and (";" not in line):
     return
   expression = _extract_single_line_save(line)
   symbol = side.get("case")
@@ -2031,7 +2086,7 @@ def _parse_source_contracts(
 
 
 def _settings_branches(text: str, path: str) -> list[ConditionalBranch]:
-  match = re.search(r"\bvoid\s+Settings::init\s*\(\s*void\s*\)\s*\{", text)
+  match = _defaults_function_match(text)
   if not match:
     return []
   opening = text.find("{", match.start())

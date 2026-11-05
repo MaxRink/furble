@@ -1,0 +1,7 @@
+# Debug boot keeps the full PSRAM memory test.
+seed boot_profile debug
+wait 100
+assert boot.profile debug
+assert boot.psram_memtest on
+assert boot.reset_to_app_ms 1300
+exit

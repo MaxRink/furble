@@ -12,6 +12,8 @@ class Preferences {
   T get(const char *, T value) {
     return value;
   }
+  void setDeferredCommit(bool) {}
+  bool commit() { return true; }
   size_t put(const char *, const void *, size_t len) { return len; }
   template <typename T>
   size_t put(const char *, T value) {

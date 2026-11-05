@@ -1,0 +1,9 @@
+# Keep the full PSRAM memory test on the S3 diagnostic builds.
+#
+# The release sdkconfigs disable it to remove the boot-time write/read pass
+# over the whole PSRAM. That pass is the only early check that a wrong PSRAM
+# mode or a bad part aborts loudly at startup, so every <board>-debug env that
+# has PSRAM merges this fragment back in. Merge it into any other environment
+# with:
+#   board_build.esp-idf.sdkconfig_fragment = sdkconfig.spiram-memtest
+CONFIG_SPIRAM_MEMTEST=y

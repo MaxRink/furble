@@ -16,6 +16,7 @@
 #include "Scan.h"
 #include "clock.h"
 #include "driver.h"
+#include "hardware_model.h"
 #include "platform_state.h"
 #include "ui_buttons.h"
 
@@ -158,6 +159,7 @@ bool Platform::unlockDownloadRecovery(void) {
   if (!m5pm1Access([this, &locked]() { return m_M5PM1.getDownloadLock(&locked); })) {
     return false;
   }
+  Sim::hwSetDownloadLocked(locked);
   return !locked;
 }
 
@@ -207,6 +209,7 @@ bool Platform::watchdogEnable(bool enable) {
     return false;
   }
   m_WatchdogEnabled = enable;
+  Sim::hwSetWatchdogEnabled(enable);
   return true;
 #else
   (void)enable;
@@ -226,6 +229,7 @@ void Platform::watchdogFeed(void) {
   }
   m_WatchdogLastFeed = now;
   (void)m5pm1Access([this]() { return m_M5PM1.wdtFeed(); });
+  Sim::hwNoteWatchdogFeed();
 #endif
 }
 
@@ -371,11 +375,15 @@ bool Platform::hasTicklessIdle(void) {
 }
 
 const Platform::battery_caps_t &Platform::getBatteryCaps(void) {
-  static const battery_caps_t caps = {true, true, false, true};
+  static battery_caps_t caps = {};
+  caps = {Sim::hwGaugeLevel(), Sim::hwGaugeVoltage(), Sim::hwGaugeCurrent(), Sim::hwGaugeCharge()};
   return caps;
 }
 
 Platform::battery_t Platform::readBattery(void) {
+  if (!Sim::hwBatteryPresent()) {
+    return {0, 0, 0, false};
+  }
   const auto reading = Sim::batteryReading();
   return {reading.level, reading.voltage, reading.current, reading.charging};
 }

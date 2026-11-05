@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "order": [
+    {"pr": "#394", "branch": "perf/general-ram-pass", "coverage": ["crash.webui_post394_pass", "memory.lvgl_single_buffer", "memory.main_stack_8k"]},
+    {"pr": "#395", "branch": "sim/memory-crash-repro", "coverage": ["crash.webui_pre_gate_8k", "crash.webui_tg1wdt", "crash.mqtt_0x1800"]},
+    {"pr": "#396", "branch": "fix/webui-gate-log-macro", "coverage": ["crash.webui_gate_13543"]},
+    {"pr": "#397", "branch": "perf/boot-time", "coverage": ["boot.settings_migration", "boot.failed_default_seed", "boot.wifi_fast_connect", "boot.psram_memtest_debug", "boot.psram_memtest_release"]},
+    {"pr": "#398", "branch": "perf/mqtt-ha-memory", "coverage": ["crash.mqtt_10k_success", "memory.mqtt_start_gate_at", "memory.mqtt_discovery_gate_at", "memory.single_lvgl_buffer", "memory.mqtt_ha_cache", "memory.mqtt_discovery_fragments"]},
+    {"pr": "#393", "branch": "fix/mqtt-task-stack", "coverage": ["crash.mqtt_owner_4k", "crash.mqtt_owner_6k", "crash.mqtt_10k_success"]}
+  ],
+  "combined_scenarios": [
+    "sim/scenarios/e2e/hw-memory-post394-budget.txt",
+    "sim/scenarios/e2e/memory-webui-fail-closed.txt",
+    "sim/scenarios/e2e/hw-memory-webui-identity.txt",
+    "sim/scenarios/e2e/hw-mqtt-ha-discovery-fragments.txt",
+    "sim/scenarios/e2e/crash-record-survives-restart.txt"
+  ],
+  "note": "The ready report must be generated from the combined tree after every listed PR is merged in this order. Coverage from one PR alone is not evidence."
+}

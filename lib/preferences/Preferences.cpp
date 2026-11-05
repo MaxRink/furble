@@ -31,7 +31,8 @@ const char *nvs_errors[] = {"OTHER",         "NOT_INITIALIZED",  "NOT_FOUND",   
 #define nvs_error(e) \
   (((e) > ESP_ERR_NVS_BASE) ? nvs_errors[(e) & ~(ESP_ERR_NVS_BASE)] : nvs_errors[0])
 
-Preferences::Preferences() : _handle(0), _started(false), _readOnly(false) {}
+Preferences::Preferences()
+    : _handle(0), _started(false), _readOnly(false), _deferCommit(false), _dirty(false) {}
 
 Preferences::~Preferences() {
   end();
@@ -59,6 +60,8 @@ bool Preferences::begin(const char *name, bool readOnly, const char *partition_l
     return false;
   }
   _started = true;
+  _deferCommit = false;
+  _dirty = false;
   return true;
 }
 
@@ -66,8 +69,46 @@ void Preferences::end() {
   if (!_started) {
     return;
   }
+  if (_deferCommit && _dirty) {
+    (void)commit();
+  }
   nvs_close(_handle);
   _started = false;
+  _deferCommit = false;
+  _dirty = false;
+}
+
+void Preferences::setDeferredCommit(bool deferred) {
+  _deferCommit = deferred;
+}
+
+bool Preferences::commit() {
+  if (!_started) {
+    return false;
+  }
+  if (!_dirty) {
+    return true;
+  }
+  const esp_err_t err = nvs_commit(_handle);
+  if (err) {
+    ESP_LOGE(LOG_TAG, "nvs_commit fail: %s", nvs_error(err));
+    return false;
+  }
+  _dirty = false;
+  return true;
+}
+
+bool Preferences::finishWrite(const char *key) {
+  if (_deferCommit) {
+    _dirty = true;
+    return true;
+  }
+  const esp_err_t err = nvs_commit(_handle);
+  if (err) {
+    ESP_LOGE(LOG_TAG, "nvs_commit fail: %s %s", key == nullptr ? "" : key, nvs_error(err));
+    return false;
+  }
+  return true;
 }
 
 /*
@@ -83,12 +124,7 @@ bool Preferences::clear() {
     ESP_LOGE(LOG_TAG, "nvs_erase_all fail: %s", nvs_error(err));
     return false;
   }
-  err = nvs_commit(_handle);
-  if (err) {
-    ESP_LOGE(LOG_TAG, "nvs_commit fail: %s", nvs_error(err));
-    return false;
-  }
-  return true;
+  return finishWrite(nullptr);
 }
 
 /*
@@ -104,12 +140,7 @@ bool Preferences::remove(const char *key) {
     ESP_LOGE(LOG_TAG, "nvs_erase_key fail: %s %s", key, nvs_error(err));
     return false;
   }
-  err = nvs_commit(_handle);
-  if (err) {
-    ESP_LOGE(LOG_TAG, "nvs_commit fail: %s %s", key, nvs_error(err));
-    return false;
-  }
-  return true;
+  return finishWrite(key);
 }
 
 template <>
@@ -122,12 +153,7 @@ size_t Preferences::put(const char *key, uint8_t value) {
     ESP_LOGE(LOG_TAG, "nvs_set_u8 fail: %s %s", key, nvs_error(err));
     return 0;
   }
-  err = nvs_commit(_handle);
-  if (err) {
-    ESP_LOGE(LOG_TAG, "nvs_commit fail: %s %s", key, nvs_error(err));
-    return 0;
-  }
-  return 1;
+  return finishWrite(key) ? 1 : 0;
 }
 
 template <>
@@ -140,12 +166,7 @@ size_t Preferences::put(const char *key, uint32_t value) {
     ESP_LOGE(LOG_TAG, "nvs_set_u32 fail: %s %s", key, nvs_error(err));
     return 0;
   }
-  err = nvs_commit(_handle);
-  if (err) {
-    ESP_LOGE(LOG_TAG, "nvs_commit fail: %s %s", key, nvs_error(err));
-    return 0;
-  }
-  return 4;
+  return finishWrite(key) ? 4 : 0;
 }
 
 template <>
@@ -158,12 +179,7 @@ size_t Preferences::put(const char *key, uint16_t value) {
     ESP_LOGE(LOG_TAG, "nvs_set_u16 fail: %s %s", key, nvs_error(err));
     return 0;
   }
-  err = nvs_commit(_handle);
-  if (err) {
-    ESP_LOGE(LOG_TAG, "nvs_commit fail: %s %s", key, nvs_error(err));
-    return 0;
-  }
-  return 2;
+  return finishWrite(key) ? 2 : 0;
 }
 
 template <>
@@ -184,12 +200,7 @@ bool Preferences::putString(const char *key, const char *value) {
     ESP_LOGE(LOG_TAG, "nvs_set_str fail: %s %s", key, nvs_error(err));
     return false;
   }
-  err = nvs_commit(_handle);
-  if (err) {
-    ESP_LOGE(LOG_TAG, "nvs_commit fail: %s %s", key, nvs_error(err));
-    return false;
-  }
-  return true;
+  return finishWrite(key);
 }
 
 template <>
@@ -206,12 +217,7 @@ size_t Preferences::put(const char *key, const void *value, size_t len) {
     ESP_LOGE(LOG_TAG, "nvs_set_blob fail: %s %s", key, nvs_error(err));
     return 0;
   }
-  err = nvs_commit(_handle);
-  if (err) {
-    ESP_LOGE(LOG_TAG, "nvs_commit fail: %s %s", key, nvs_error(err));
-    return 0;
-  }
-  return len;
+  return finishWrite(key) ? len : 0;
 }
 
 Preferences::PreferenceType Preferences::getType(const char *key) {

@@ -8,6 +8,7 @@
 #include <freertos/task.h>
 
 #include "FurbleBootScreen.h"
+#include "FurbleBootTimeline.h"
 #include "FurblePlatform.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
@@ -96,6 +97,7 @@ void BootScreen::begin(uint8_t totalStages) {
   s_Step = 0;
   s_Total = (totalStages == 0) ? 1 : totalStages;
   s_StartedAt = Platform::getInstance().tick();
+  BootTimeline::mark(BootTimeline::BOOT_SPLASH_SHOWN);
 
   if (!s_Enabled) {
     return;
@@ -188,6 +190,7 @@ void BootScreen::step(const char *label) {
 
 void BootScreen::finish(void) {
   if (!s_Enabled) {
+    BootTimeline::mark(BootTimeline::BOOT_SPLASH_DONE);
     return;
   }
 
@@ -195,13 +198,21 @@ void BootScreen::finish(void) {
   drawProgress("Ready");
 
 #if !defined(FURBLE_SIM)
-  // Pad only if the boot outran the minimum visible time. Runs on the boot
-  // task before the UI exists, so it blocks nothing and holds no mutex.
-  const uint32_t elapsed = Platform::getInstance().tick() - s_StartedAt;
+  // Pad only if the whole boot, from app_main, outran the minimum visible time.
+  // Measuring from begin() would add the minimum on top of a slow Platform
+  // init; the splash should never extend a boot that already took longer.
+  // Runs on the boot task before the UI exists, so it blocks nothing and holds
+  // no mutex.
+  const int64_t bootStartUs = BootTimeline::at(BootTimeline::APP_MAIN);
+  const uint32_t startedAt =
+      (bootStartUs >= 0) ? static_cast<uint32_t>(bootStartUs / 1000) : s_StartedAt;
+  const uint32_t elapsed = Platform::getInstance().tick() - startedAt;
   if (elapsed < MIN_VISIBLE_MS) {
     vTaskDelay(pdMS_TO_TICKS(MIN_VISIBLE_MS - elapsed));
   }
 #endif
+
+  BootTimeline::mark(BootTimeline::BOOT_SPLASH_DONE);
 }
 
 bool BootScreen::wasShown(void) {

@@ -1,0 +1,15 @@
+# A 3,005-byte retained discovery payload fragments into 2 x 1,536 bytes.
+seed hw_profile sticks3
+seed heap_internal_free 27351
+seed heap_internal_largest 25588
+seed mqtt_owner_stack 10240
+seed mqtt_worker_stack 4096
+seed mqtt_ha true
+seed mqtt_buffer 1536
+wait 100
+assert mqttmodel.state created
+assert mqttmodel.buffer 1536
+assert mqttmodel.ha ok
+assert mqttmodel.discovery_fragments 2
+assert_min heap.free 10000
+exit

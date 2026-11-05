@@ -1,0 +1,12 @@
+# MQTT owner task stack overflow at 6 KiB.
+seed hw_profile sticks3
+seed heap_internal_free 27351
+seed heap_internal_largest 25588
+seed mqtt_owner_stack 6144
+seed mqtt_expect_overflow true
+wait 100
+assert mqttmodel.state overflow
+assert mqttmodel.overflow yes
+assert mqttmodel.owner_stack 6144
+assert ui.page main
+exit

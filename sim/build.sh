@@ -305,6 +305,7 @@ done
 
 for source in \
   "$ROOT/src/FurbleBootScreen.cpp" \
+  "$ROOT/src/FurbleBootTimeline.cpp" \
   "$ROOT/src/FurbleCalibrate.cpp" \
   "$ROOT/src/FurbleCompanionAuth.cpp" \
   "$ROOT/tests/host/companion/companion_hmac.cpp" \

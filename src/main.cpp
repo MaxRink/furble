@@ -15,6 +15,7 @@
 
 #include "FurbleBatteryStatus.h"
 #include "FurbleBootScreen.h"
+#include "FurbleBootTimeline.h"
 #include "FurbleCompanion.h"
 #include "FurbleConsole.h"
 #include "FurbleControl.h"
@@ -413,6 +414,7 @@ static void vUITask(void *param) {
 #if defined(FURBLE_CONSOLE)
   uint32_t count = 0;
 #endif
+  bool reported = false;
   while (true) {
     Platform::getInstance().update();
     CrashLog::update();
@@ -424,6 +426,11 @@ static void vUITask(void *param) {
       GPS::getInstance().update();
       (void)TimezoneGPS::service();
       nextGPSService = now + GPS_SERVICE_US;
+    }
+    if (!reported) {
+      BootTimeline::mark(BootTimeline::SERVICES_READY);
+      BootTimeline::logSummary();
+      reported = true;
     }
     // Idle at 50 ms instead of the display task's 5 ms. The request queue is
     // still drained every pass; the sleep only shortens when the 1 Hz GPS
@@ -442,17 +449,34 @@ void app_main() {
   BaseType_t xRet;
   TaskHandle_t xControlHandle = NULL;
 
+  Furble::BootTimeline::begin();
+  // PSRAM boot init and its memory test run before app_main, so this mark has
+  // the app_main timestamp. resetToAppMs() carries the cycle-counter value that
+  // includes both.
+  Furble::BootTimeline::mark(Furble::BootTimeline::PSRAM_READY);
+
   ESP_LOGI(LOG_TAG, "furble version: '%s'", FURBLE_VERSION);
 
   // Settings must come up before Platform: Platform reads FB_OUTPUT to
   // decide cfg.internal_spk ahead of M5.begin()
   Furble::Settings::init();
+  Furble::BootTimeline::mark(Furble::BootTimeline::SETTINGS_DONE);
   // Print an unclean previous-boot record once, before the services that can
   // fail. The record lives in RTC memory and never needs a flash write.
   Furble::CrashLog::init();
+  Furble::BootTimeline::mark(Furble::BootTimeline::CRASH_LOG_DONE);
   Furble::Timezone::apply(
       Furble::Timezone::clamp(Furble::Settings::load<Furble::Settings::TIMEZONE>()));
+
+  // The network stack is independent of the display. Bring it up before the
+  // radio so WiFi::init() can start associating under the splash instead of
+  // after every other service has initialized.
+  ESP_ERROR_CHECK(esp_netif_init());
+  ESP_ERROR_CHECK(esp_event_loop_create_default());
+  Furble::BootTimeline::mark(Furble::BootTimeline::NETIF_DONE);
+
   Furble::Platform::init();
+  Furble::BootTimeline::mark(Furble::BootTimeline::PLATFORM_DONE);
   Furble::TimeKeeper::init();
 
   // The display is up now, so the boot splash can cover the rest of init. It
@@ -465,14 +489,14 @@ void app_main() {
   );
 
   Furble::IR::init();
+  Furble::BootTimeline::mark(Furble::BootTimeline::IR_DONE);
   Furble::BootScreen::step("Infrared");
   Furble::Feedback::init();
+  Furble::BootTimeline::mark(Furble::BootTimeline::FEEDBACK_DONE);
   Furble::BootScreen::step("Feedback");
   Furble::SD::init();
+  Furble::BootTimeline::mark(Furble::BootTimeline::SD_DONE);
   Furble::BootScreen::step("Storage");
-
-  ESP_ERROR_CHECK(esp_netif_init());
-  ESP_ERROR_CHECK(esp_event_loop_create_default());
 
   // Platform::init() boots at the default frequency, apply the stored one now
   Furble::Platform::getInstance().setCPUMaxFreq(
@@ -483,9 +507,11 @@ void app_main() {
   Furble::Platform::getInstance().watchdogEnable(
       Furble::Settings::load<Furble::Settings::WATCHDOG>());
 #endif
+  Furble::BootTimeline::mark(Furble::BootTimeline::CPU_POLICY_DONE);
   Furble::BootScreen::step("Power");
 
   Furble::Device::init(Furble::Settings::load<esp_power_level_t>(Furble::Settings::TX_POWER));
+  Furble::BootTimeline::mark(Furble::BootTimeline::BLE_DONE);
   Furble::BootScreen::step("Bluetooth");
 #if defined(FURBLE_WEBUI) && FURBLE_WEBUI
   // Prepare the TLS identity while the main task still has its full internal
@@ -493,17 +519,31 @@ void app_main() {
   // generation writes NVS, which must run on an internal stack anyway.
   Furble::WebUI::initEarly();
 #endif
+  Furble::BootTimeline::mark(Furble::BootTimeline::WEBUI_EARLY_DONE);
+#if !defined(FURBLE_ETHERNET)
+  // Start the station after BLE and the WebUI TLS identity, so the identity
+  // still sees the full internal heap, but before companion and MQTT. The
+  // association now overlaps their init instead of extending the boot after
+  // them. Ethernet builds start WiFi after Ethernet::init() so a live wire
+  // still defers the station.
+  Furble::WiFi::init();
+#endif
   Furble::Companion::getInstance().init();
+  Furble::BootTimeline::mark(Furble::BootTimeline::COMPANION_DONE);
   Furble::BootScreen::step("Companion");
 #if defined(FURBLE_MQTT) && FURBLE_MQTT
   Furble::MQTT::init();
 #endif
+  Furble::BootTimeline::mark(Furble::BootTimeline::MQTT_INIT_DONE);
 
 #if defined(FURBLE_ETHERNET)
   if (!Furble::Ethernet::init()) {
     ESP_LOGE(LOG_TAG, "Waveshare Ethernet initialization failed.");
   }
   Furble::BootScreen::step("Ethernet");
+  // A wired address that is already up must defer the station. Starting WiFi
+  // after Ethernet keeps that ordering intact.
+  Furble::WiFi::init();
 #endif
 
   auto &control = Furble::Control::getInstance();
@@ -512,6 +552,7 @@ void app_main() {
     ESP_LOGE(LOG_TAG, "Failed to create control task.");
     abort();
   }
+  Furble::BootTimeline::mark(Furble::BootTimeline::CONTROL_TASK_DONE);
 
 #if defined(FURBLE_NO_DISPLAY)
   // The display build starts GPS when the UI constructs. Headless has no UI, so
@@ -519,7 +560,6 @@ void app_main() {
   // state, then vUITask() ticks GPS::update() to push geotag fixes.
   Furble::GPS::init();
 #endif
-  Furble::WiFi::init();
 
 #if defined(FURBLE_NO_DISPLAY)
   Furble::UI::init();

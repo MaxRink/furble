@@ -1,0 +1,41 @@
+# BLE auth timeout, GATT cache, reidentify and reconnect.
+#
+# macOS can rotate its identity address and keep a stale handle map. The
+# companion must survive the failed auth, a reidentify clears the bond and the
+# cache, and a later reconnect advertises again instead of staying silent.
+seed hw_profile sticks3
+wait 100
+
+assert ble.auth idle
+assert ble.bond none
+assert ble.gatt_cache valid
+assert companion.state off
+
+action ble-auth-timeout
+assert ble.auth timeout
+assert ble.auth_timeouts 1
+assert companion.state reauth
+
+action ble-gatt-stale
+assert ble.gatt_cache stale
+
+action companion-reidentify
+assert companion.reidentify 1
+assert companion.state advertising
+assert ble.bond none
+assert ble.gatt_cache valid
+
+action companion-reconnect
+assert companion.state connected
+assert ble.auth ok
+assert ble.reconnects 1
+
+action companion-reject
+assert companion.state rejected
+assert companion.rejected 1
+
+action companion-reconnect
+assert companion.state connected
+assert ble.reconnects 2
+
+exit

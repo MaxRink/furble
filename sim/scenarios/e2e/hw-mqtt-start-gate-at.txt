@@ -1,0 +1,11 @@
+# MQTT start gate at 8192 free / 4096 largest.
+seed hw_profile sticks3
+seed heap_internal_free 8192
+seed heap_internal_largest 4096
+seed mqtt_owner_stack 10240
+seed mqtt_worker_stack 4096
+wait 100
+assert mqttmodel.start_gate open
+assert mqttmodel.state alloc_failed
+assert ui.page main
+exit

@@ -1,0 +1,15 @@
+# M5Stack Core no PSRAM.
+#
+# The classic Core has no external RAM, so a request that needs PSRAM fails on
+# the internal pool and the state is explicit.
+seed hw_profile core
+wait 100
+
+assert hw.psram absent
+assert hw.psram_state absent
+assert heap.spiram_present no
+assert heap.spiram_free 0
+assert heap.spiram_largest 0
+assert heap.task_stack_region internal
+
+exit

@@ -1,4 +1,5 @@
 #include <esp_bt.h>
+#include <esp_log.h>
 #include <nvs_flash.h>
 
 #include <algorithm>
@@ -7,6 +8,7 @@
 
 #include "FurbleBatterySaver.h"
 #include "FurbleSettings.h"
+#include "FurbleSettingsBootstrap.h"
 #include "FurbleSettingsDefaults.h"
 #include "FurbleTimezone.h"
 #include "FurbleTypes.h"
@@ -575,6 +577,217 @@ void Settings::save<Settings::multiselect_t>(const type_t type, const multiselec
   prefs.end();
 }
 
+namespace {
+
+constexpr const char *LOG_TAG = "settings";
+constexpr const char *DEFAULTS_VERSION_KEY = "cfg_def_ver";
+constexpr size_t MAX_MISSING_DEFAULTS = 128;
+
+template <typename T>
+bool putDefault(Preferences &prefs, const char *key, const T &value) {
+  return prefs.put<T>(key, value) != 0;
+}
+
+bool putDefault(Preferences &prefs, const char *key, const char *value) {
+  return prefs.putString(key, value);
+}
+
+template <typename T>
+bool putDefaultBlob(Preferences &prefs, const char *key, const T &value) {
+  return prefs.put(key, &value, sizeof(value)) == sizeof(value);
+}
+
+/**
+ * Write the first-boot value for one setting into an already open writer.
+ *
+ * The caller has enabled deferred commits, so this stages every key in one NVS
+ * transaction per namespace. The values and the board conditional choices are
+ * the same as the per-setting seeds this replaced.
+ */
+bool applyDefault(Preferences &prefs, Settings::type_t type) {
+  const auto &setting = Settings::get(type);
+  switch (type) {
+    case Settings::BRIGHTNESS:
+      return putDefault<uint8_t>(prefs, setting.key, 128);
+    case Settings::INACTIVITY:
+      // 60 secs. A fresh device used to ship with Never, which left the panel
+      // and its backlight on until the user acted.
+      return putDefault<uint8_t>(prefs, setting.key, SettingsDefaults::INACTIVITY);
+    case Settings::DISPLAY_OFF:
+      // Off. The old default was Dim, which still drove the panel.
+      return putDefault<uint8_t>(prefs, setting.key, SettingsDefaults::displayOff());
+    case Settings::THEME:
+      return putDefault(prefs, setting.key, "Default");
+    case Settings::TEXT_SIZE:
+      // The default is board conditional. Large screens keep Normal, but the
+      // 80x160 M5StickC starts a fresh device at Small because Normal is
+      // already dense on that tiny panel and Large does not fit. This only
+      // seeds an unset key, so an existing device keeps its stored choice.
+      return putDefault<uint8_t>(prefs, setting.key, TextSizePolicy::DEFAULT);
+    case Settings::BUTTON_MODE:
+      return putDefault(prefs, setting.key, Settings::BUTTON_MODE_TWO_BUTTON_VALUE);
+    case Settings::COMPANION_PASSWORD:
+      // Missing passwords already mean unset. Never turn a failed existence
+      // check into a write that clears an existing authentication gate.
+      return true;
+    case Settings::TX_POWER:
+    case Settings::SCAN_MODE:
+    case Settings::GPS_RATE:
+    case Settings::GPS_CONSTEL:
+    case Settings::GPS_POWER:
+    case Settings::GPS_DUTY:
+    case Settings::GPS_ASSIST:
+    case Settings::GPS_PLATFORM:
+    case Settings::IR_PROTO:
+    case Settings::AUTO_OFF:
+    case Settings::LOW_BATT:
+    case Settings::GPS_HOLD:
+    case Settings::IMU_WAKE:
+      return putDefault<uint8_t>(prefs, setting.key, 0);
+    case Settings::AUTO_OFF_CHARGING:
+      return putDefault<bool>(prefs, setting.key, false);
+    case Settings::BATT_STYLE:
+      return putDefault<uint8_t>(prefs, setting.key, Settings::BATT_STYLE_ICON);
+    case Settings::LEGEND:
+      // The legend beside the button it names is what these boards shipped
+      // before the setting existed, so it stays the default.
+      return putDefault<uint8_t>(prefs, setting.key, Settings::LEGEND_BUTTONS);
+    case Settings::SHOW_TITLE:
+      return putDefault<bool>(prefs, setting.key, true);
+    case Settings::INTERVAL:
+    {
+      const interval_t interval = {
+          INTERVAL_DEFAULT_COUNT,
+          INTERVAL_DEFAULT_DELAY,
+          INTERVAL_DEFAULT_SHUTTER,
+          INTERVAL_DEFAULT_WAIT,
+      };
+      return putDefaultBlob(prefs, setting.key, interval);
+    }
+    case Settings::BULB:
+      return putDefaultBlob(prefs, setting.key, Settings::BULB_DEFAULT);
+    // The user asked for the boot screen, so ship it on by default. The toggle
+    // restores the old no-splash boot.
+    case Settings::BOOT_SPLASH:
+      return putDefault<bool>(prefs, setting.key, true);
+#if defined(FURBLE_M5STICKS3)
+    case Settings::WATCHDOG:
+      return putDefault<bool>(prefs, setting.key, true);
+#endif
+    case Settings::MULTISELECT:
+    {
+      const Settings::multiselect_t selection = {};
+      return putDefaultBlob(prefs, setting.key, selection);
+    }
+    case Settings::IVL_SLEEP_THR:
+      return putDefault<uint32_t>(prefs, setting.key, Settings::IVL_SLEEP_THR_DEFAULT);
+    case Settings::GPS:
+    case Settings::IMU:
+    case Settings::IMU_TRIG:
+    case Settings::GPS_NMEA:
+    case Settings::GPS_EXTRAP:
+    case Settings::GPS_MOTION:
+    case Settings::MULTICONNECT:
+    case Settings::RECONNECT:
+    case Settings::TX_ADAPTIVE:
+    case Settings::CONN_SAVER:
+    case Settings::IR:
+    case Settings::PRESET_PICKER:
+    case Settings::FAUXNY:
+    case Settings::AUTOCONNECT:
+    case Settings::COMPANION:
+    case Settings::SD_GPX:
+    // Default off keeps today's behaviour, the profile is strictly opt-in.
+    case Settings::BATTERY_SAVER:
+    case Settings::IVL_SLEEP:
+      return putDefault<bool>(prefs, setting.key, false);
+    case Settings::RECON_BACKOFF:
+      // Default on. A camera that is off or out of range otherwise retries a
+      // scan every 5 s forever; the 2.5 s first retry still recovers a stale
+      // session quickly, and later attempts back off to 120 s.
+      return putDefault<bool>(prefs, setting.key, true);
+    case Settings::SLEEP_CONN:
+      // Only the StickS3 has the modem-sleep controller and the GPS burst
+      // lock. Fresh devices ship with the low-power connected state on;
+      // existing devices keep their stored choice.
+      return putDefault<bool>(prefs, setting.key, SettingsDefaults::sleepConn());
+    case Settings::HW_MOTION:
+      // Ships as Software, not Auto. Auto prefers the board's hardware engine,
+      // and that path is unproven on hardware, so the default must not select
+      // it. Auto becomes the default in a follow-up commit once the six-step
+      // gate in plans/implemented/20-imu-hw-motion.md passes on the S3.
+      return putDefault<uint8_t>(prefs, setting.key, Settings::HW_MOTION_SOFTWARE);
+    case Settings::GPS_BAUD:
+      return putDefault<uint32_t>(prefs, setting.key, Settings::BAUD_9600);
+    case Settings::SCAN_TIMEOUT:
+      // A bounded first boot instead of Never. A forgotten Scan page used to
+      // scan at full receive duty until the user left it. An explicit Never is
+      // still stored as zero and is not rewritten.
+      return putDefault<uint32_t>(prefs, setting.key, Settings::SCAN_TIMEOUT_DEFAULT);
+    case Settings::GPX_PERIOD:
+      return putDefault<uint16_t>(prefs, setting.key, Settings::GPX_PERIOD_DEFAULT);
+    case Settings::CPU_FREQ:
+      return putDefault<uint8_t>(prefs, setting.key, Settings::CPU_FREQ_DEFAULT);
+    case Settings::FB_OUTPUT:
+      return putDefault<uint8_t>(prefs, setting.key, 0);
+    case Settings::FB_EVENTS:
+      return putDefault<uint8_t>(prefs, setting.key, 0x0F);
+    case Settings::FB_VOLUME:
+      return putDefault<uint8_t>(prefs, setting.key, 64);
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+    case Settings::MQTT:
+    case Settings::MQTT_HA:
+      return putDefault<bool>(prefs, setting.key, false);
+    case Settings::MQTT_URI:
+    case Settings::MQTT_USER:
+    case Settings::MQTT_PASS:
+      return putDefault(prefs, setting.key, "");
+    case Settings::MQTT_BASE:
+      return putDefault(prefs, setting.key, "furble");
+#endif
+#if defined(FURBLE_WEBUI) && FURBLE_WEBUI
+    case Settings::WEB_UI:
+      return putDefault<bool>(prefs, setting.key, false);
+#endif
+#if !defined(FURBLE_NO_DISPLAY)
+    case Settings::DISPLAY_MODE:
+      return putDefault<uint8_t>(prefs, setting.key, static_cast<uint8_t>(Settings::GUI));
+#endif
+    case Settings::WIFI:
+    case Settings::NTP:
+      return putDefault<bool>(prefs, setting.key, false);
+    case Settings::WIFI_SSID:
+    case Settings::WIFI_PSK:
+      return putDefault(prefs, setting.key, "");
+    case Settings::NTP_SERVER:
+      return putDefault(prefs, setting.key, "pool.ntp.org");
+    case Settings::TIMEZONE:
+      // UTC preserves the previous camera clock behavior. A user who wants
+      // local civil time selects a zone; nothing changes silently.
+      return putDefault<uint8_t>(prefs, setting.key, 0);
+    case Settings::TOUCH_CALIBRATION:
+    {
+      const Settings::calibration_t calibration = {
+          .points = {0x00},
+          .calibrated = false,
+      };
+      return putDefaultBlob(prefs, setting.key, calibration);
+    }
+  }
+  return true;
+}
+
+size_t namespaceIndex(const char *const *namespaces, size_t count, const char *name) {
+  for (size_t index = 0; index < count; index++) {
+    if (std::strcmp(namespaces[index], name) == 0) {
+      return index;
+    }
+  }
+  return count;
+}
+
+}  // namespace
+
 void Settings::init(void) {
   // Initialize NVS
   esp_err_t ret = nvs_flash_init();
@@ -584,222 +797,169 @@ void Settings::init(void) {
   }
   ESP_ERROR_CHECK(ret);
 
-  // Set default values for all settings
+  // A matching marker means every default was committed by an earlier boot.
+  // Skip the per-key existence scan, which is the common case after the first
+  // boot with this firmware.
+  bool scan = true;
+  {
+    Preferences marker;
+    if (marker.begin(FURBLE_STR, true)) {
+      // A missing or wrong-typed key reads as zero, which always forces the
+      // scan. Avoid isKey() here: it probes every integer type before the
+      // marker lookup, and this runs on every boot.
+      const uint32_t stored = marker.get<uint32_t>(DEFAULTS_VERSION_KEY, 0);
+      scan = SettingsBootstrap::needsDefaultScan(stored, SettingsBootstrap::DEFAULTS_VERSION);
+      marker.end();
+    }
+  }
+  if (!scan) {
+    return;
+  }
+
+  // Find every namespace once. The table has two today; the bound keeps the
+  // batch allocation-free and a future third namespace still fits.
+  const char *namespaces[SettingsBootstrap::MAX_BATCH_NAMESPACES] = {};
+  size_t namespaceCount = 0;
+  bool namespaceOverflow = false;
   for (const auto &it : m_Setting) {
-    auto &setting = it.second;
-    // Missing passwords already mean unset. Never turn a failed existence
-    // check into a write that clears an existing authentication gate.
-    if (setting.type == COMPANION_PASSWORD) {
+    const char *name = it.second.nvs_namespace;
+    if (namespaceIndex(namespaces, namespaceCount, name) != namespaceCount) {
       continue;
     }
-    Preferences prefs;
-    prefs.begin(setting.nvs_namespace, true);
-    bool exists = prefs.isKey(setting.key);
-    prefs.end();
+    if (namespaceCount == SettingsBootstrap::MAX_BATCH_NAMESPACES) {
+      namespaceOverflow = true;
+      break;
+    }
+    namespaces[namespaceCount++] = name;
+  }
 
-    if (!exists) {
-      switch (setting.type) {
-        case BRIGHTNESS:
-          save<uint8_t>(setting.type, 128);
-          break;
-        case INACTIVITY:
-          // 60 secs. A fresh device used to ship with Never, which left the
-          // panel and its backlight on until the user acted.
-          save<uint8_t>(setting.type, SettingsDefaults::INACTIVITY);
-          break;
-        case DISPLAY_OFF:
-          // Off. The old default was Dim, which still drove the panel.
-          save<uint8_t>(setting.type, SettingsDefaults::displayOff());
-          break;
-        case THEME:
-          save<std::string>(setting.type, "Default");
-          break;
-        case TEXT_SIZE:
-          // The default is board conditional. Large screens keep Normal, but the
-          // 80x160 M5StickC starts a fresh device at Small because Normal is
-          // already dense on that tiny panel and Large does not fit. This only
-          // seeds an unset key, so an existing device keeps its stored choice.
-          save<uint8_t>(setting.type, TextSizePolicy::DEFAULT);
-          break;
-        case BUTTON_MODE:
-          save<std::string>(setting.type, BUTTON_MODE_TWO_BUTTON_VALUE);
-          break;
-        case COMPANION_PASSWORD:
-          break;
-        case TX_POWER:
-        case SCAN_MODE:
-        case GPS_RATE:
-        case GPS_CONSTEL:
-        case GPS_POWER:
-        case GPS_DUTY:
-        case GPS_ASSIST:
-        case GPS_PLATFORM:
-        case IR_PROTO:
-        case AUTO_OFF:
-        case LOW_BATT:
-        case GPS_HOLD:
-        case IMU_WAKE:
-          save<uint8_t>(setting.type, 0);
-          break;
-        case AUTO_OFF_CHARGING:
-          save<bool>(setting.type, false);
-          break;
-        case BATT_STYLE:
-          save<uint8_t>(setting.type, BATT_STYLE_ICON);
-          break;
-        case LEGEND:
-          // The legend beside the button it names is what these boards shipped
-          // before the setting existed, so it stays the default.
-          save<uint8_t>(setting.type, LEGEND_BUTTONS);
-          break;
-        case SHOW_TITLE:
-          save<bool>(setting.type, true);
-          break;
-        case INTERVAL:
-        {
-          interval_t interval = {
-              INTERVAL_DEFAULT_COUNT,
-              INTERVAL_DEFAULT_DELAY,
-              INTERVAL_DEFAULT_SHUTTER,
-              INTERVAL_DEFAULT_WAIT,
-          };
-          save<interval_t>(setting.type, interval);
-        } break;
-        case BULB:
-          save<SpinValue::nvs_t>(setting.type, BULB_DEFAULT);
-          break;
-        // The user asked for the boot screen, so ship it on by default. The
-        // toggle restores the old no-splash boot.
-        case BOOT_SPLASH:
-          save<bool>(setting.type, true);
-          break;
-#if defined(FURBLE_M5STICKS3)
-        case WATCHDOG:
-          save<bool>(setting.type, true);
-          break;
-#endif
-        case MULTISELECT:
-        {
-          multiselect_t selection = {};
-          save<multiselect_t>(setting.type, selection);
-        } break;
-        case IVL_SLEEP_THR:
-          save<uint32_t>(setting.type, IVL_SLEEP_THR_DEFAULT);
-          break;
-        case GPS:
-        case IMU:
-        case IMU_TRIG:
-        case GPS_NMEA:
-        case GPS_EXTRAP:
-        case GPS_MOTION:
-        case MULTICONNECT:
-        case RECONNECT:
-        case TX_ADAPTIVE:
-        case CONN_SAVER:
-        case IR:
-        case PRESET_PICKER:
-        case FAUXNY:
-        case AUTOCONNECT:
-        case COMPANION:
-        case SD_GPX:
-        // Default off keeps today's behaviour, the profile is strictly opt-in.
-        case BATTERY_SAVER:
-        case IVL_SLEEP:
-          save<bool>(setting.type, false);
-          break;
-        case RECON_BACKOFF:
-          // Default on. A camera that is off or out of range otherwise retries
-          // a scan every 5 s forever; the 2.5 s first retry still recovers a
-          // stale session quickly, and later attempts back off to 120 s.
-          save<bool>(setting.type, true);
-          break;
-        case SLEEP_CONN:
-          // Only the StickS3 has the modem-sleep controller and the GPS burst
-          // lock. Fresh devices ship with the low-power connected state on;
-          // existing devices keep their stored choice.
-          save<bool>(setting.type, SettingsDefaults::sleepConn());
-          break;
-        case HW_MOTION:
-          // Ships as Software, not Auto. Auto prefers the board's hardware
-          // engine, and that path is unproven on hardware, so the default must
-          // not select it. Auto becomes the default in a follow-up commit once
-          // the six-step gate in plans/implemented/20-imu-hw-motion.md passes on the S3.
-          save<uint8_t>(setting.type, HW_MOTION_SOFTWARE);
-          break;
-        case GPS_BAUD:
-          save<uint32_t>(setting.type, BAUD_9600);
-          break;
-        case SCAN_TIMEOUT:
-          // A bounded first boot instead of Never. A forgotten Scan page used
-          // to scan at full receive duty until the user left it. An explicit
-          // Never is still stored as zero and is not rewritten.
-          save<uint32_t>(setting.type, SCAN_TIMEOUT_DEFAULT);
-          break;
-        case GPX_PERIOD:
-          save<uint16_t>(setting.type, GPX_PERIOD_DEFAULT);
-          break;
-        case CPU_FREQ:
-          save<uint8_t>(setting.type, CPU_FREQ_DEFAULT);
-          break;
-        case FB_OUTPUT:
-          save<uint8_t>(setting.type, 0);
-          break;
-        case FB_EVENTS:
-          save<uint8_t>(setting.type, 0x0F);
-          break;
-        case FB_VOLUME:
-          save<uint8_t>(setting.type, 64);
-          break;
-#if defined(FURBLE_MQTT) && FURBLE_MQTT
-        case MQTT:
-        case MQTT_HA:
-          save<bool>(setting.type, false);
-          break;
-        case MQTT_URI:
-        case MQTT_USER:
-        case MQTT_PASS:
-          save<std::string>(setting.type, "");
-          break;
-        case MQTT_BASE:
-          save<std::string>(setting.type, "furble");
-          break;
-#endif
-#if defined(FURBLE_WEBUI) && FURBLE_WEBUI
-        case WEB_UI:
-          save<bool>(setting.type, false);
-          break;
-#endif
-#if !defined(FURBLE_NO_DISPLAY)
-        case DISPLAY_MODE:
-          save<uint8_t>(setting.type, static_cast<uint8_t>(GUI));
-          break;
-#endif
-        case WIFI:
-        case NTP:
-          save<bool>(setting.type, false);
-          break;
-        case WIFI_SSID:
-        case WIFI_PSK:
-          save<std::string>(setting.type, "");
-          break;
-        case NTP_SERVER:
-          save<std::string>(setting.type, "pool.ntp.org");
-          break;
-        case TIMEZONE:
-          // UTC preserves the previous camera clock behavior. A user who
-          // wants local civil time selects a zone; nothing changes silently.
-          save<uint8_t>(setting.type, 0);
-          break;
-        case TOUCH_CALIBRATION:
-        {
-          calibration_t calibration = {
-              .points = {0x00},
-              .calibrated = false,
-          };
-          save<calibration_t>(setting.type, calibration);
-        } break;
+  const setting_t *missing[MAX_MISSING_DEFAULTS] = {};
+  size_t missingCount = 0;
+  bool missingOverflow = false;
+  auto recordMissing = [&missing, &missingCount, &missingOverflow](const setting_t &setting) {
+    if (missingCount < MAX_MISSING_DEFAULTS) {
+      missing[missingCount++] = &setting;
+    } else {
+      missingOverflow = true;
+    }
+  };
+
+  if (!namespaceOverflow) {
+    Preferences readers[SettingsBootstrap::MAX_BATCH_NAMESPACES];
+    bool opened[SettingsBootstrap::MAX_BATCH_NAMESPACES] = {};
+    for (size_t index = 0; index < namespaceCount; index++) {
+      opened[index] = readers[index].begin(namespaces[index], true);
+    }
+
+    for (const auto &it : m_Setting) {
+      const setting_t &setting = it.second;
+      if (setting.type == COMPANION_PASSWORD) {
+        continue;
+      }
+      const size_t index = namespaceIndex(namespaces, namespaceCount, setting.nvs_namespace);
+      if ((index >= namespaceCount) || !opened[index] || !readers[index].isKey(setting.key)) {
+        recordMissing(setting);
       }
     }
+    for (size_t index = 0; index < namespaceCount; index++) {
+      readers[index].end();
+    }
+  } else {
+    // The table outgrew the fixed namespace bound. Keep the old per-key check
+    // rather than dropping a default; the write path below also falls back to
+    // per-key transactions.
+    for (const auto &it : m_Setting) {
+      const setting_t &setting = it.second;
+      if (setting.type == COMPANION_PASSWORD) {
+        continue;
+      }
+      Preferences reader;
+      if (!reader.begin(setting.nvs_namespace, true) || !reader.isKey(setting.key)) {
+        recordMissing(setting);
+      }
+      reader.end();
+    }
+  }
+
+  bool writesOk = !missingOverflow;
+  bool seededTimezone = false;
+  if (namespaceOverflow) {
+    // Per-key fallback, used only if a future settings table exceeds the
+    // namespace bound. Each put keeps its own commit, exactly like the old
+    // implementation.
+    for (size_t index = 0; index < missingCount; index++) {
+      const setting_t &setting = *missing[index];
+      Preferences writer;
+      if (!writer.begin(setting.nvs_namespace, false)) {
+        writesOk = false;
+        continue;
+      }
+      if (setting.type == TIMEZONE) {
+        seededTimezone = true;
+      }
+      if (!applyDefault(writer, setting.type)) {
+        writesOk = false;
+      }
+      writer.end();
+    }
+  } else if (missingCount > 0) {
+    Preferences writers[SettingsBootstrap::MAX_BATCH_NAMESPACES];
+    bool writerOpen[SettingsBootstrap::MAX_BATCH_NAMESPACES] = {};
+
+    for (size_t index = 0; index < missingCount; index++) {
+      const setting_t &setting = *missing[index];
+      const size_t ns = namespaceIndex(namespaces, namespaceCount, setting.nvs_namespace);
+      if (ns >= namespaceCount) {
+        writesOk = false;
+        continue;
+      }
+      if (!writerOpen[ns]) {
+        if (!writers[ns].begin(namespaces[ns], false)) {
+          writesOk = false;
+          continue;
+        }
+        writers[ns].setDeferredCommit(true);
+        writerOpen[ns] = true;
+      }
+      if (setting.type == TIMEZONE) {
+        seededTimezone = true;
+      }
+      if (!applyDefault(writers[ns], setting.type)) {
+        writesOk = false;
+      }
+    }
+
+    for (size_t index = 0; index < namespaceCount; index++) {
+      if (!writerOpen[index]) {
+        continue;
+      }
+      if (!writers[index].commit()) {
+        writesOk = false;
+      }
+      writers[index].end();
+    }
+  }
+
+  if (writesOk && seededTimezone) {
+    (void)Timezone::apply(Timezone::clamp(0));
+  }
+  if (!writesOk) {
+    // Do not write the marker. The next boot rescans and retries the seed.
+    ESP_LOGE(LOG_TAG, "settings default seed failed, will retry on the next boot");
+    return;
+  }
+
+  Preferences marker;
+  if (!marker.begin(FURBLE_STR, false)
+      || (marker.put<uint32_t>(DEFAULTS_VERSION_KEY, SettingsBootstrap::DEFAULTS_VERSION)
+          != sizeof(uint32_t))) {
+    ESP_LOGE(LOG_TAG, "settings default marker write failed");
+  }
+  marker.end();
+
+  if (missingCount > 0) {
+    ESP_LOGI(LOG_TAG, "settings default seed: %u settings in %u namespaces",
+             static_cast<unsigned>(missingCount), static_cast<unsigned>(namespaceCount));
   }
 }
 

@@ -1,0 +1,106 @@
+{
+  "version": 1,
+  "results": "sim/coverage/fuzz_results.json",
+  "targets": [
+    {
+      "id": "fuzz.ui.touch",
+      "owner": "fuzz-suite",
+      "command": "sh sim/scripts/run-fuzz.sh",
+      "scenario": "sim/scenarios/bughunt/page-matrix.txt",
+      "assertions": ["FUZZ EVENTS", "FUZZ COVERAGE"],
+      "known_failing_seeds": [],
+      "status": "external-pending",
+      "missing_evidence": "Parallel fuzz-suite branch must publish results and any failing seeds."
+    },
+    {
+      "id": "fuzz.ui.physical-buttons",
+      "owner": "fuzz-suite",
+      "command": "FURBLE_SIM_NO_TOUCH=1 sh sim/scripts/run-fuzz.sh",
+      "scenario": "sim/scenarios/bughunt/stick-notouch-layout-135.txt",
+      "assertions": ["FUZZ EVENTS", "FUZZ COVERAGE"],
+      "known_failing_seeds": [],
+      "status": "external-pending",
+      "missing_evidence": "Parallel fuzz-suite branch must publish physical-layout results."
+    },
+    {
+      "id": "fuzz.webui.http",
+      "owner": "fuzz-suite",
+      "command": "python3 sim/scripts/run-fuzz-target.py webui-http",
+      "scenario": "sim/scenarios/e2e/hw-memory-webui-post394.txt",
+      "assertions": ["webui.server", "heap.free"],
+      "known_failing_seeds": [],
+      "status": "external-pending",
+      "missing_evidence": "Parallel fuzz-suite branch owns the HTTP mutation harness."
+    },
+    {
+      "id": "fuzz.companion.ble",
+      "owner": "fuzz-suite",
+      "command": "python3 sim/scripts/run-fuzz-target.py companion-ble",
+      "scenario": "sim/scenarios/e2e/hw-ble-auth-gatt-reidentify.txt",
+      "assertions": ["companion.state", "ble.auth"],
+      "known_failing_seeds": [],
+      "status": "external-pending",
+      "missing_evidence": "Parallel fuzz-suite branch owns the BLE auth/cache mutation harness."
+    },
+    {
+      "id": "fuzz.mqtt",
+      "owner": "fuzz-suite",
+      "command": "python3 sim/scripts/run-fuzz-target.py mqtt",
+      "scenario": "sim/scenarios/e2e/hw-memory-mqtt-10k-success.txt",
+      "assertions": ["mqttmodel.state", "heap.free"],
+      "known_failing_seeds": [],
+      "status": "external-pending",
+      "missing_evidence": "Parallel fuzz-suite branch owns the MQTT payload/concurrency harness."
+    },
+    {
+      "id": "fuzz.ota",
+      "owner": "fuzz-suite",
+      "command": "python3 sim/scripts/run-fuzz-target.py ota",
+      "scenario": "sim/scenarios/e2e/hw-ota-slot-rollback.txt",
+      "assertions": ["ota.slot", "ota.rollback"],
+      "known_failing_seeds": [],
+      "status": "external-pending",
+      "missing_evidence": "Parallel fuzz-suite branch owns the OTA image mutation harness."
+    },
+    {
+      "id": "fuzz.memory.alloc-failure",
+      "owner": "fuzz-suite",
+      "command": "python3 sim/scripts/run-fuzz-target.py memory-alloc",
+      "scenario": "sim/scenarios/e2e/hw-memory-post394-budget.txt",
+      "assertions": ["mem.leaks", "heap.alloc_failures"],
+      "known_failing_seeds": [],
+      "status": "external-pending",
+      "missing_evidence": "Parallel fuzz-suite branch owns the allocation-failure fuzzer."
+    },
+    {
+      "id": "fuzz.memory.fragmentation",
+      "owner": "fuzz-suite",
+      "command": "python3 sim/scripts/run-fuzz-target.py memory-fragmentation",
+      "scenario": "sim/scenarios/e2e/hw-memory-post394-budget.txt",
+      "assertions": ["mem.high_water_largest", "heap.largest"],
+      "known_failing_seeds": [],
+      "status": "external-pending",
+      "missing_evidence": "Parallel fuzz-suite branch owns the fragmentation fuzzer."
+    },
+    {
+      "id": "fuzz.psram",
+      "owner": "fuzz-suite",
+      "command": "python3 sim/scripts/run-fuzz-target.py psram",
+      "scenario": "sim/scenarios/e2e/hw-psram-init-fail.txt",
+      "assertions": ["heap.spiram_state", "heap.spiram_present"],
+      "known_failing_seeds": [],
+      "status": "external-pending",
+      "missing_evidence": "Parallel fuzz-suite branch owns the PSRAM mode fuzzer."
+    },
+    {
+      "id": "fuzz.nvs",
+      "owner": "fuzz-suite",
+      "command": "python3 sim/scripts/run-fuzz-target.py nvs",
+      "scenario": "sim/scenarios/e2e/crash-record-survives-restart.txt",
+      "assertions": ["crash.recovered", "mem.leaks"],
+      "known_failing_seeds": [],
+      "status": "external-pending",
+      "missing_evidence": "Parallel fuzz-suite branch owns the NVS truncation/corruption fuzzer."
+    }
+  ]
+}

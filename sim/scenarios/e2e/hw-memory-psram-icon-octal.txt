@@ -1,0 +1,12 @@
+# 12,291-byte icon decode with octal PSRAM succeeds.
+seed hw_profile sticks3
+seed heap_internal_free 13543
+seed heap_internal_largest 12788
+wait 100
+assert heap.spiram_present yes
+action alloc-icon
+assert alloc.icon ok
+assert heap.alloc_failures 0
+assert heap.free 13543
+assert heap.largest 12788
+exit

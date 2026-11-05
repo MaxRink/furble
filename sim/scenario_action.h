@@ -26,6 +26,7 @@ enum class scenario_action_kind_t {
   SECURE_STALL,
   SCAN_ROW,
   PAIRING_REQUEST,
+  MEMORY_DUMP,
   INVALID,
 };
 

@@ -1,0 +1,19 @@
+# Audio overcurrent, IR RMT timeout and SD card faults.
+seed hw_profile core
+wait 100
+assert audio.state idle
+assert ir.state idle
+assert sd.state absent
+action sd-present
+assert sd.state mounted
+action audio-overcurrent
+assert audio.state overcurrent
+assert audio.overcurrents 1
+action ir-timeout
+assert ir.state timeout
+assert ir.timeouts 1
+action sd-error
+assert sd.state error
+assert sd.errors 1
+assert ui.page main
+exit

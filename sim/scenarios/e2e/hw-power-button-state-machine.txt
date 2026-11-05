@@ -1,0 +1,50 @@
+# StickS3 power button state machine.
+#
+# Single click while running is a reset. Double click is a power off. A long
+# press reaches download mode, which is the only state where the application
+# console and BLE are silent until a single click recovers. The event counters
+# prove one event per gesture, not a duplicate or a missing transition.
+seed hw_profile sticks3
+wait 100
+
+assert power.state on
+assert power.clicks 0
+action power-single-click
+assert power.clicks 1
+assert power.resets 1
+assert platform.reset_reason software
+assert usb.console yes
+assert usb.ble yes
+
+action power-double-click
+assert power.double_clicks 1
+assert power.offs 1
+assert power.state off
+assert platform.power_off yes
+assert usb.console no
+assert usb.ble no
+
+action power-single-click
+assert power.state on
+assert power.clicks 2
+assert platform.reset_reason poweron
+assert usb.console yes
+
+action power-long-press
+assert power.long_presses 1
+assert power.downloads 1
+assert power.state download
+assert usb.mode rom
+assert pmic.download_lock unlocked
+assert usb.console no
+assert usb.ble no
+
+action power-single-click
+assert power.state on
+assert power.clicks 3
+assert power.recoveries 1
+assert usb.mode app
+assert usb.console yes
+assert usb.ble yes
+
+exit

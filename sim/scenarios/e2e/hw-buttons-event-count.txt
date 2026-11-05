@@ -1,0 +1,28 @@
+# Scripted physical button event counts.
+#
+# One press is one event. A short hold is still one event; a hold past one
+# second is one press plus LVGL repeats, which the row movement proves. B is the
+# top-center key on Sticks.
+seed no_touch true
+wait 300
+home
+assert ui.button_presses 0
+assert ui.button_holds 0
+
+btn b
+assert ui.button_presses 1
+assert ui.row_text Settings
+
+home
+btn-hold b 600
+assert ui.button_presses 2
+assert ui.button_holds 1
+assert ui.row_text Settings
+
+home
+btn-hold b 1600
+assert ui.button_presses 3
+assert ui.button_holds 2
+assert ui.row_text Scan
+
+exit

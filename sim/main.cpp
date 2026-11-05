@@ -37,6 +37,7 @@
 #include "crash_log_sim.h"
 #include "driver.h"
 #include "fuzz.h"
+#include "hardware_model.h"
 #include "heap_model.h"
 #include "ui_buttons.h"
 #include "watchdog.h"
@@ -238,6 +239,7 @@ int runSimulator() {
   // service and the display are already resident. Activate the model here so
   // only the optional services started below are charged to it.
   Sim::heapActivate();
+  Sim::hwStart();
   Sim::webuiMemoryConfigure(Sim::scenarioSettingIsTrue("web_ui"),
                             Sim::scenarioSetting("webui_gate", "on") != "off",
                             Sim::scenarioSettingIsTrue("webui_password"));
@@ -306,6 +308,11 @@ int runSimulator() {
   // use-after-free at shutdown.
   Sim::bleStopPeers();
   Sim::stopRig();
+  if (Sim::heapLeakCount() != 0) {
+    std::fprintf(stderr, "SIM FAIL: heap leak(s) at scenario end: %s\n",
+                 Sim::heapLeakReport().c_str());
+    Sim::requestFailureExit();
+  }
   if (!Sim::crashLogInjected()) {
     CrashLog::markCleanShutdown();
   }

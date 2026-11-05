@@ -1,0 +1,27 @@
+# M5Stack Core USB-UART profile (also the developer USB-debug fallback).
+seed hw_profile core
+wait 100
+assert hw.mcu esp32
+assert hw.usb uart
+assert hw.pmic ip5306
+action usb-reset
+assert platform.reset_reason usb_uart_chip_reset
+assert usb.mode app
+assert hw.profile core
+assert hw.flash_kb 4096
+assert hw.psram absent
+assert mem.psram_total 0
+assert hw.display 320x240
+assert hw.touch no
+assert hw.wifi yes
+assert hw.ethernet no
+assert hw.ble yes
+assert hw.ir yes
+assert hw.sd yes
+assert hw.audio yes
+assert hw.rtc yes
+assert hw.gauge four_level
+assert mem.internal_total 532480
+assert mem.component.main_stack 16384
+assert mem.component.lvgl_draw 20480
+exit

@@ -23,6 +23,7 @@ struct Handle {
 std::map<std::string, std::map<std::string, Value>> storage;
 std::map<nvs_handle_t, Handle> handles;
 nvs_handle_t next_handle = 1;
+size_t open_count = 0;
 size_t commit_count = 0;
 size_t commit_attempt_count = 0;
 size_t set_call_count = 0;
@@ -109,6 +110,7 @@ esp_err_t openNamespace(const char *name, int open_mode, nvs_handle_t *out_handl
   storage.try_emplace(name);
   const nvs_handle_t handle = next_handle++;
   handles.emplace(handle, Handle {name, open_mode == NVS_READONLY, {}});
+  open_count++;
   *out_handle = handle;
   return ESP_OK;
 }
@@ -352,6 +354,7 @@ void nvs_test_reset(void) {
   storage.clear();
   handles.clear();
   next_handle = 1;
+  open_count = 0;
   commit_count = 0;
   commit_attempt_count = 0;
   set_call_count = 0;
@@ -377,6 +380,10 @@ nvs_test_value_type_t nvs_test_value_type(const char *name, const char *key) {
 
 size_t nvs_test_commit_count(void) {
   return commit_count;
+}
+
+size_t nvs_test_open_count(void) {
+  return open_count;
 }
 
 void nvs_test_fail_set_on(size_t nth_future_call) {

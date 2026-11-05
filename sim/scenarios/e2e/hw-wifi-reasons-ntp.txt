@@ -1,0 +1,30 @@
+# WiFi state, reason codes and NTP.
+seed hw_profile sticks3
+wait 100
+assert wifi.state disabled
+action wifi-connect
+assert wifi.state connected
+assert wifi.reason none
+assert wifi.ip 192.0.2.10
+assert wifi.rssi -55
+action wifi-disconnect
+assert wifi.state idle
+assert wifi.reason user
+action wifi-fail-auth
+assert wifi.state failed
+assert wifi.reason auth
+assert wifi.attempts 1
+action wifi-fail-notfound
+assert wifi.reason notfound
+assert wifi.attempts 2
+action wifi-connect
+assert wifi.state connected
+assert wifi.reason none
+assert wifi.attempts 0
+action wifi-ntp-sync
+assert wifi.ntp synced
+assert wifi.ntp_offset_us 0
+action wifi-ntp-fail
+assert wifi.ntp idle
+assert wifi.ntp_offset_us 1200000
+exit

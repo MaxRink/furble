@@ -105,6 +105,16 @@ inline const char *resetReasonName(uint32_t reason) {
       return "brownout";
     case 10:
       return "sdio";
+    case 11:
+      return "usb_uart_chip_reset";
+    case 12:
+      return "jtag";
+    case 13:
+      return "efuse";
+    case 14:
+      return "power_glitch";
+    case 15:
+      return "cpu_lockup";
     default:
       return "other";
   }

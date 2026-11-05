@@ -1,0 +1,16 @@
+# MQTT owner task stack overflow at 4 KiB.
+#
+# This is the historical `***ERROR*** A stack overflow in task mqtt` signature.
+# The model expects the overflow explicitly, so the general fail-closed gate
+# does not mask the reproduction.
+seed hw_profile sticks3
+seed heap_internal_free 27351
+seed heap_internal_largest 25588
+seed mqtt_owner_stack 4096
+seed mqtt_expect_overflow true
+wait 100
+assert mqttmodel.state overflow
+assert mqttmodel.overflow yes
+assert mqttmodel.owner_stack 4096
+assert ui.page main
+exit

@@ -310,7 +310,7 @@ gate still fails closed instead of resetting.
 
 ## Follow-up: plan 307
 
-[307-mqtt-ha-memory.md](307-mqtt-ha-memory.md) continues from the measured
+[308-mqtt-ha-memory.md](308-mqtt-ha-memory.md) continues from the measured
 27,351 / 25,588 pair. It reduces the main stack from 12 KiB to 8 KiB, uses one
 LVGL draw buffer on narrow panels, reduces the companion stack to 3 KiB, and
 adds the MQTT start and Home Assistant discovery gates. The companion stack cut
