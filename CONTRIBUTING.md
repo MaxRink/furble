@@ -160,7 +160,9 @@ Node.js is also required for the installer event-flow regression in
 provides it.
 All simulator scenarios are catalogued in
 `sim/scenarios/manifest.json`. Check ownership and certification metadata with
-`python3 tools/check_sim_scenarios.py` after changing those scenarios.
+`python3 tools/check_sim_scenarios.py` after changing those scenarios, and
+`sh sim/scripts/check-doc-tokens.sh` after changing scenario seeds. The
+`sim-e2e` workflow runs both checks.
 CI obtains each suite's certified paths from that manifest; do not introduce a
 directory glob or hand-maintained suite list as an alternate source of truth.
 The power-gate comparator applies its `--threshold` on both increases and

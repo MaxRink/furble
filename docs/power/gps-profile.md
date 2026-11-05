@@ -19,7 +19,7 @@ Every number is datasheet, vendor, modeled, inferred, or unknown.
 | Duty | `GPS_DUTY`: 0, 5, 10, 15 s | `code` `include/FurbleGPS.h` `DUTY_SECONDS` |
 | Assist | `GPS_ASSIST` for `AID-INI`; `GPS_PLATFORM` chooses the CASIC configuration path | `code` |
 | Motion | `GPS_MOTION` uses the IMU to back the receiver off when stationary | `code`, `plans/18-gps-motion.md` |
-| Parser | TinyGPSPlus fork `gkoh/TinyGPSPlus#92ac8c2`; snapshot under the GPS mutex | `code`, pinned library in the datasheet register |
+| Parser | TinyGPSPlus fork `gkoh/TinyGPSPlus#92ac8c21b8179201c2c8c534e46af3320b76d3e7`; snapshot under the GPS mutex | `code`, pinned library in the datasheet register |
 | PPS | Not read. No GPIO ISR and no timestamp capture | `code` |
 | I2C, SPI | Not used by the GPS path. The IMU shares I2C but the GPS does not | `code` |
 
@@ -62,7 +62,7 @@ the rest are settings.
 
 | Library or path | What it does | Cost or risk | Recommendation |
 | --- | --- | --- | --- |
-| TinyGPSPlus `#92ac8c2` | Parses NMEA one byte at a time under the GPS mutex; about 30 accessors per snapshot | Negligible at 1 Hz; the CPU cost is not the lever, receiver on-time is | Keep. No custom parser |
+| TinyGPSPlus `#92ac8c21b8179201c2c8c534e46af3320b76d3e7` | Parses NMEA one byte at a time under the GPS mutex; about 30 accessors per snapshot | Negligible at 1 Hz; the CPU cost is not the lever, receiver on-time is | Keep. No custom parser |
 | `FurbleGPS.cpp` task | 10 Hz wake even when idle; per-second log lines; `NO_LIGHT_SLEEP` held while a receiver is expected | G-01, G-02, G-03, G-13. The fault path is the largest | Deadline-driven wait; stop the timer when GPS is off; release the lock for an absent receiver; rate-limit logs |
 | `GpsCasic` helpers | Autobaud, PCAS framing, CASIC checksum, `CFG-NAVX`, `MON-HW` | Correct and host-tested; the checksum id-first quirk is documented | Keep |
 | I2C | Not used by GPS | None | No change |

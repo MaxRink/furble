@@ -1252,7 +1252,7 @@ current saving.
 | Defaults | `src/FurbleSettings.cpp:545-760` |
 | Per-second logs | `src/FurbleControl.cpp:155-158`, `src/FurblePower.cpp:84-92`, `:118-130` |
 | PM and log config | `sdkconfig.m5stick-s3:2110-2120`, `:2466`, `:2491`, `:2585-2594` |
-| TinyGPSPlus pin | `platformio.ini:22-26` |
+| TinyGPSPlus pin | `platformio.ini:29` |
 
 ### 8.2 Project evidence
 
@@ -1296,7 +1296,7 @@ current saving.
 | M5Unified IMU | `IMU_Class` API: `begin`, `init`, `sleep`, `update`, `getAccel`, `getGyro`, `getType`, `isEnabled`, no feature-engine access | https://docs.m5stack.com/en/arduino/m5unified/imu_class |
 | M5Unified I2C | `I2C_Class`: `readRegister`, `writeRegister`, `writeRegister8`, `readRegister8`, `bitOn`, `bitOff` | https://github.com/m5stack/M5Unified/blob/master/src/utility/I2C_Class.hpp |
 | M5Unified Power | `setExtOutput` and `getBatteryCurrent` | https://raw.githubusercontent.com/m5stack/M5Unified/master/src/utility/Power_Class.hpp |
-| TinyGPSPlus | Fork pinned at `gkoh/TinyGPSPlus#92ac8c2` | https://github.com/gkoh/TinyGPSPlus |
+| TinyGPSPlus | Fork pinned at `gkoh/TinyGPSPlus#92ac8c21b8179201c2c8c534e46af3320b76d3e7` | https://github.com/gkoh/TinyGPSPlus |
 
 ### 8.4 What this document does not establish
 

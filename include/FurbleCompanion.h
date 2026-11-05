@@ -149,6 +149,9 @@ class CompanionGatt: public NimBLEServerCallbacks,
   // service task, explicit pairing start and disconnect restart all mutate the
   // same NimBLEAdvertising object.
   mutable std::recursive_mutex m_AdvertisingMutex;
+  // Invalidates a queued advertising-complete callback from an older pairing
+  // window before the next configuration replaces it.
+  uint32_t m_PairingGeneration = 0;
   bool m_Enabled = false;
   bool m_ServerStarted = false;
   // The GATT database may change across a firmware update. Send the standard

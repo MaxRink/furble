@@ -28,6 +28,12 @@ Public headers for the app layer in src/, one header per module
   (`m_PairingWindow`, `m_PairingDeadlineMs`) and connection state are owned by
   `m_Mutex`; use the public getters outside a lock. The lock order is `m_Mutex`
   then `m_BondMutex`.
+- `FurbleCompanion.h` serializes the complete advertising operation with
+  `m_AdvertisingMutex` (recursive): pairing start, reconnect start, stop, and
+  the service task's decision/action. `m_PairingGeneration` invalidates queued
+  advertising-complete callbacks before a new window is installed. Any new
+  advertising caller must take the same mutex; the lock order is advertising,
+  then `m_Mutex`, then `m_BondMutex`.
 - `FurbleCompanion::disableNow()` is the synchronous stop for callers outside a
   NimBLE callback (console stop, tests). `reloadSetting(false)` deliberately
   keeps the one-second grace timer so a companion settings write can return

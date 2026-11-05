@@ -100,6 +100,7 @@ void CompanionGatt::enable(bool pairingWindow) {
   }
 
   bool startPairing = false;
+  bool taskCreationFailed = false;
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
     if (m_Enabled) {
@@ -126,6 +127,7 @@ void CompanionGatt::enable(bool pairingWindow) {
 
       createGatt();
       m_Server->setCallbacks(this, false);
+      m_Server->advertiseOnDisconnect(false);
       if (!m_ServerStarted) {
         m_ServerStarted = m_Server->start();
         if (!m_ServerStarted) {
@@ -162,6 +164,7 @@ void CompanionGatt::enable(bool pairingWindow) {
         if (result != pdPASS) {
           ESP_LOGE(LOG_TAG, "Failed to create companion task");
           m_Task = nullptr;
+          taskCreationFailed = true;
         }
       }
 
@@ -175,9 +178,10 @@ void CompanionGatt::enable(bool pairingWindow) {
   // on its next tick.
   if (startPairing) {
     startPairingWindow();
-  } else if ((m_Task == nullptr) && hasBond()) {
-    // Task creation failed, so there is no service task to own the first
-    // reconnect. Start it here; this path cannot race the missing task.
+  } else if (taskCreationFailed && hasBond()) {
+    // Task creation failed under the lock, so there is no service task to own
+    // the first reconnect. Starting it here cannot race a task that does not
+    // exist.
     startReconnectAdvertising();
   }
 }
@@ -192,6 +196,7 @@ void CompanionGatt::disable(void) {
     }
     m_Enabled = false;
     m_ServiceReady = false;
+    ++m_PairingGeneration;
     m_PairingWindow = false;
     m_PairingDeadlineMs = 0;
     m_Service.confirmPairing(false);
@@ -368,6 +373,11 @@ void CompanionGatt::startPairingWindow(bool allowNewWindow) {
   }
 
   const uint64_t remaining = m_PairingDeadlineMs - now;
+  uint32_t generation = 0;
+  {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    generation = ++m_PairingGeneration;
+  }
   stopAdvertising();
   clearWhitelist();
   m_Advertising->reset();
@@ -378,12 +388,16 @@ void CompanionGatt::startPairingWindow(bool allowNewWindow) {
   m_Advertising->enableScanResponse(true);
   m_Advertising->setName(Device::getStringID());
   m_Advertising->addServiceUUID(SERVICE_UUID);
-  m_Advertising->setAdvertisingCompleteCallback([this](NimBLEAdvertising *) {
+  m_Advertising->setAdvertisingCompleteCallback([this, generation](NimBLEAdvertising *) {
+    bool current = false;
     {
       const std::lock_guard<std::mutex> lock(m_Mutex);
-      m_PairingWindow = false;
+      current = (generation == m_PairingGeneration);
+      if (current) {
+        m_PairingWindow = false;
+      }
     }
-    if (m_Enabled && !m_CompanionConnected) {
+    if (current && m_Enabled && !m_CompanionConnected) {
       startReconnectAdvertising();
     }
   });
@@ -423,6 +437,10 @@ void CompanionGatt::startReconnectAdvertising(void) {
     return;
   }
 
+  {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    ++m_PairingGeneration;
+  }
   stopAdvertising();
   clearWhitelist();
   // Do not filter reconnect advertising by the stored address. macOS presents a
