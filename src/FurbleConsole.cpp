@@ -70,7 +70,11 @@ namespace {
 
 constexpr const char *PROMPT = "furble> ";
 constexpr size_t MAX_LINE = 256;
-constexpr uint32_t TASK_STACK = 8192;
+// The deepest console command is `perf tasks`, which used to hold two
+// 24-entry TaskStatus_t snapshots (about 2 KiB) on this stack. The snapshots
+// now come from the heap, so 6 KiB leaves roughly 2.5 KiB above the measured
+// 5,504-byte high-water mark from the pre-change image.
+constexpr uint32_t TASK_STACK = 6144;
 
 // Below the control task (4) and the per camera target tasks (3).
 constexpr UBaseType_t TASK_PRIORITY = 2;
@@ -1854,9 +1858,42 @@ int cmdPower(int argc, char **argv) {
 #if !defined(FURBLE_NO_DISPLAY)
 constexpr size_t MAX_TASK_SNAPSHOT = 24;
 
+/**
+ * Heap-backed TaskStatus_t snapshot.
+ *
+ * Two 24-entry arrays cost about 2 KiB on the console stack, which was the
+ * deepest command on the 8 KiB console task. The command is diagnostic and
+ * runs rarely, so the arrays live in PSRAM where the board has it and fall
+ * back to internal heap otherwise. That keeps the console stack at 6 KiB.
+ */
+struct TaskSnapshot {
+  TaskStatus_t *entries = nullptr;
+
+  TaskSnapshot(void) {
+#if defined(CONFIG_SPIRAM)
+    entries = static_cast<TaskStatus_t *>(heap_caps_malloc(MAX_TASK_SNAPSHOT * sizeof(TaskStatus_t),
+                                                           MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+#endif
+    if (entries == nullptr) {
+      entries = static_cast<TaskStatus_t *>(heap_caps_malloc(
+          MAX_TASK_SNAPSHOT * sizeof(TaskStatus_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+    }
+  }
+
+  ~TaskSnapshot(void) { heap_caps_free(entries); }
+
+  TaskSnapshot(const TaskSnapshot &) = delete;
+  TaskSnapshot &operator=(const TaskSnapshot &) = delete;
+};
+
 int cmdPerfTasks(void) {
-  TaskStatus_t before[MAX_TASK_SNAPSHOT] = {};
-  TaskStatus_t after[MAX_TASK_SNAPSHOT] = {};
+  TaskSnapshot beforeSnapshot;
+  TaskSnapshot afterSnapshot;
+  if ((beforeSnapshot.entries == nullptr) || (afterSnapshot.entries == nullptr)) {
+    return fail("not enough heap for the task snapshot");
+  }
+  TaskStatus_t *before = beforeSnapshot.entries;
+  TaskStatus_t *after = afterSnapshot.entries;
   uint32_t beforeTotal = 0;
   uint32_t afterTotal = 0;
 

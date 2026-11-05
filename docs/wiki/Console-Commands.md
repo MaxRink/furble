@@ -53,6 +53,11 @@ About page and exposed through companion BLE Device Information.
 | `reboot` | Restart the device. |
 | `help` | List every command. |
 
+`perf tasks` takes its two 24-entry snapshots from PSRAM when the board has it
+and falls back to internal heap otherwise. If neither allocation succeeds it
+prints `not enough heap for the task snapshot` instead of growing the console
+stack.
+
 On the display-less Waveshare ESP32-S3-ETH, `status` reports battery level and
 voltage as unknown (`-1`) and current as unavailable (`0`). It never infers USB
 or optional PoE power from Ethernet link state because the optional PoE HAT has

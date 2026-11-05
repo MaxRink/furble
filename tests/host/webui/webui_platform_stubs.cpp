@@ -217,6 +217,12 @@ extern "C" BaseType_t xTaskCreate(void (*)(void *),
 extern "C" BaseType_t xTaskNotifyGive(TaskHandle_t) {
   return pdTRUE;
 }
+extern "C" BaseType_t xTaskNotifyWait(uint32_t, uint32_t, uint32_t *, TickType_t) {
+  return pdTRUE;
+}
+extern "C" TaskHandle_t xTaskGetCurrentTaskHandle(void) {
+  return reinterpret_cast<TaskHandle_t>(1);
+}
 extern "C" uint32_t ulTaskNotifyTake(BaseType_t, TickType_t) {
   return 0;
 }

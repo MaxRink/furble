@@ -198,6 +198,11 @@ UI change before approving.
   invalidation logger are the diagnosis tools.
 - PSRAM (S3): `SPIRAM_MALLOC_ALWAYSINTERNAL=4096` routes large allocations to
   PSRAM. DMA display buffers must stay `MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL`.
+- LVGL: `displayFlush()` reports the flush complete as soon as M5GFX queues the
+  SPI DMA, so two draw buffers are required to keep LVGL from overwriting pixels
+  still on the wire. A single-buffer fallback must call `M5.Display.waitDMA()`
+  before `lv_disp_flush_ready()`. Tasks that never write NVS may keep their
+  stack in PSRAM; IR is one, the WebUI, companion, GPS and NimBLE host are not.
 - ESP-IDF 5.5 per-task heap tracking can deadlock concurrent frees during WiFi
   association. Keep `CONFIG_HEAP_TASK_TRACKING` disabled on every board until
   the upstream fix is present in the pinned SDK. Capability heap diagnostics

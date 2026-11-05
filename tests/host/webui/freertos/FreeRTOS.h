@@ -8,5 +8,6 @@ using TaskHandle_t = void *;
 constexpr BaseType_t pdTRUE = 1;
 constexpr BaseType_t pdFALSE = 0;
 constexpr BaseType_t pdPASS = 1;
+constexpr TickType_t portMAX_DELAY = 0xFFFFFFFFUL;
 #define pdMS_TO_TICKS(ms) (ms)
 #endif

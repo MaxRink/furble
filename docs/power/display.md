@@ -658,8 +658,8 @@ These are arithmetic bounds, not measurements.
 - At 16 bits per pixel and a 40 MHz SPI write clock, the raw pixel transfer is
   about 13.0 ms per full frame. That is the floor before command overhead,
   window setup, and CPU draw time.
-- The LVGL buffer is 4,320 bytes, 2,160 pixels at 16 bpp, 1/15 of a 135 x 240
-  panel. A full refresh is therefore about 15 partial flushes.
+- The LVGL buffer is 2,160 bytes, 1,080 pixels at 16 bpp, 1/30 of a 135 x 240
+  panel. A full refresh is therefore about 30 partial flushes.
 - The committed menu-idle baseline records 1.17k flushed pixels per second,
   about 0.036 full frames per second.
 - The committed settings-navigation baseline records 47.8k flushed pixels per

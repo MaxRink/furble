@@ -2,10 +2,11 @@
 
 The WebUI is compiled for M5StickS3, M5Stack Core2, the headless S3 profile and
 Waveshare ESP32-S3-ETH. The 4 MB profiles do not compile it. On M5StickS3 the
-measured internal heap is below the server floor, so the setting can be saved
-but HTTPS stays closed with a log line; the device no longer boot-loops. The
-Core2, headless and Waveshare profiles are expected to fit but have not all
-been measured.
+measured internal heap was below the server floor before plan 305, so the
+setting could be saved but HTTPS stayed closed with a log line; the device no
+longer boot-loops. Plan 305 is inferred to clear the floor, but that result still
+needs hardware confirmation. The Core2, headless and Waveshare profiles are
+expected to fit but have not all been measured.
 
 ## Enable it
 
@@ -32,7 +33,7 @@ including NVS commits. A PSRAM task stack is unsafe there because the flash
 cache is disabled during NVS writes.
 
 Measured on the M5StickS3 debug image with WiFi connected, companion disabled,
-before this budget work:
+before the #392 budget work:
 
 ```text
 heap.internal.free: 6827
@@ -40,11 +41,23 @@ heap.internal.largest_block: 6388
 ```
 
 The old fixed 320-pixel-wide LVGL draw buffers (two 10,240-byte buffers even on
-the 135x240 panel), an 8 KiB supervisor and a 12 KiB HTTPS task did not fit. The current
-firmware sizes the two draw buffers to the detected panel, reduces the StickS3
-WiFi static RX pool from 10 to 6 (dynamic RX stays 32), keeps the supervisor at
-3 KiB and the HTTPS task at 8 KiB, and creates the TLS identity before the
-radios take the heap.
+the 135x240 panel), an 8 KiB supervisor and a 12 KiB HTTPS task did not fit. The
+current firmware sizes the two draw buffers to the detected panel, reduces the
+StickS3 WiFi static RX pool from 10 to 6 (dynamic RX stays 32), keeps the
+supervisor at 3 KiB and the HTTPS task at 8 KiB, and creates the TLS identity
+before the radios take the heap.
+
+The general internal-RAM pass in plan 305 adds four more changes that matter
+here:
+
+- The StickS3 main stack drops from 16 KiB to 12 KiB. The TLS identity now runs
+  on its own 12 KiB internal task at boot and the main task waits for it.
+- The StickS3 IR task stack moves to PSRAM, because that task only drives RMT
+  and never touches NVS.
+- Narrow panels halve the LVGL partial rows, so each StickS3 draw buffer drops
+  from 4,320 to 2,160 bytes. Two internal DMA buffers are still required.
+- The headless and Waveshare S3 images now keep mbedTLS allocations in PSRAM,
+  the same setting the StickS3 already used.
 
 The server refuses to start below a conservative internal-heap floor instead of
 resetting the device. On the USB log look for:
@@ -64,23 +77,30 @@ first response; those are the numbers to collect for a new board.
 
 | Build | Radio | PSRAM used | Internal free | WebUI |
 | :--- | :--- | :--- | :--- | :--- |
-| `m5stick-s3` (M5StickS3) | WiFi + BLE | 8 MB, mbedTLS in PSRAM | **13.5 KiB measured free / 12.8 KiB largest with WebUI off**; **10.6 KiB / 9.7 KiB with the supervisor running** | **No**: stays gated closed; the HTTPS task alone cannot fit |
+| `m5stick-s3` (M5StickS3) | WiFi + BLE | 8 MB, mbedTLS in PSRAM | **13.5 KiB measured free / 12.8 KiB largest on the debug image with WebUI off before plan 305**; **10.6 KiB / 9.7 KiB on the debug image with the supervisor running before plan 305**; **about 28.1 KiB / about 25.2 KiB inferred on the debug image after plan 305** | **Measured no before plan 305. After plan 305 the gate is inferred to pass; hardware has not confirmed it. Do not call it supported until a TLS handshake, a settings write and a soak pass.** |
 | `m5stack-core2` | WiFi + BLE | 8 MB on board, disabled in firmware (`CONFIG_SPIRAM` unset); TLS buffers internal | Not measured | Expected to fit |
-| `esp32-s3-headless` | WiFi + BLE | 8 MB enabled; mbedTLS and NimBLE host memory internal | Not measured; no display buffers | Expected to fit |
-| `waveshare-s3-eth` | Ethernet (WiFi optional) | 8 MB enabled; mbedTLS internal | Not measured; WiFi RX pool not allocated while wired | Expected to fit |
+| `esp32-s3-headless` | WiFi + BLE | 8 MB enabled; mbedTLS now in PSRAM, NimBLE host memory in PSRAM | Not measured; no display buffers | Expected to fit |
+| `waveshare-s3-eth` (ESP32-S3) | Ethernet (WiFi optional) | 8 MB enabled; mbedTLS now in PSRAM | Not measured; WiFi RX pool not allocated while wired | Expected to fit |
 
-Only the StickS3 measurement is real. The other rows are configuration
-arithmetic until someone runs `perf heap` and opens the page on each board.
-The 4 MB profiles do not compile the WebUI.
+Only the StickS3 pre-plan-305 measurements are real. The post-plan-305 figures
+and the other rows are configuration arithmetic until someone runs `perf heap`
+and opens the page on each board. The 4 MB profiles do not compile the WebUI.
 
-The StickS3 measurement is the important negative result. With WiFi connected,
-the companion service enabled and the display running, the board has 13.5 KiB
-free / 12.8 KiB largest internal bytes before the WebUI supervisor, and
-10.6 KiB / 9.7 KiB with the 3 KiB supervisor. The server floor is
-20,480 / 12,288 bytes, so the listener stays closed. The fail-closed gate is
-what prevents the old watchdog boot loop; it does not make the StickS3 a
-supported WebUI target. Use a Core2, the headless S3 profile or the Waveshare
-Ethernet profile for the WebUI.
+The StickS3 measurement is the important negative result before plan 305. With
+WiFi connected, the companion service enabled and the display running, the
+board had 13.5 KiB free / 12.8 KiB largest internal bytes before the WebUI
+supervisor, and 10.6 KiB / 9.7 KiB with the 3 KiB supervisor. The server floor
+is 20,480 / 12,288 bytes, so the listener stayed closed. The fail-closed gate is
+what prevents the old watchdog boot loop.
+
+Plan 305 removes about 14.6 KiB of steady internal allocations from the debug
+image (12.5 KiB in a release image). In inference that puts the StickS3 above
+the 20,480-byte server floor with roughly 25 KiB free while the supervisor runs.
+The HTTPS task and its TLS session still need about 18.7 KiB, which leaves only
+about 6 KiB of internal heap. That is thin. Treat the result as a hardware
+question, not a support claim, until the gate, the handshake and a soak pass on
+the board. If it is unstable, the existing gate fails closed instead of
+resetting.
 
 The server stays closed when the WebUI setting is off, WiFi has no address, the
 companion password is unset or unreadable, the TLS identity cannot be loaded,

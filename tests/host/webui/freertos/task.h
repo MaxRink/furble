@@ -8,6 +8,8 @@ extern "C" BaseType_t xTaskCreate(void (*)(void *),
                                   UBaseType_t,
                                   TaskHandle_t *);
 extern "C" BaseType_t xTaskNotifyGive(TaskHandle_t);
+extern "C" BaseType_t xTaskNotifyWait(uint32_t, uint32_t, uint32_t *, TickType_t);
+extern "C" TaskHandle_t xTaskGetCurrentTaskHandle(void);
 extern "C" uint32_t ulTaskNotifyTake(BaseType_t, TickType_t);
 extern "C" void vTaskDelete(TaskHandle_t);
 #endif

@@ -11,6 +11,7 @@
 #define MALLOC_CAP_INTERNAL (1 << 0)
 #define MALLOC_CAP_DMA (1 << 1)
 #define MALLOC_CAP_SPIRAM (1 << 2)
+#define MALLOC_CAP_8BIT (1 << 3)
 
 typedef struct {
   size_t total_free_bytes;
@@ -23,5 +24,8 @@ typedef struct {
 } multi_heap_info_t;
 
 void heap_caps_get_info(multi_heap_info_t *info, uint32_t capabilities);
+
+void *heap_caps_malloc(size_t size, uint32_t capabilities);
+void heap_caps_free(void *pointer);
 
 #endif
