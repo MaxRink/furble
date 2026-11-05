@@ -20,7 +20,7 @@ assert webui.server off
 assert webui.gate supervisor_task
 assert webui.fail_closed yes
 assert heap.alloc_failures 1
-assert heap.last_failed_task webui
+assert heap.last_failed_task webui_supervisor
 assert heap.free 6800
 assert heap.largest 2048
 assert ui.page main
