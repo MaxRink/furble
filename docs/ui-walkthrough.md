@@ -332,7 +332,8 @@ selected zone's civil time with its current offset. UTC shows the same instant
 without an offset. The heading names the effective zone and its source
 (`manual`, `gps`, or `utc`). Auto (GPS) picks the nearest curated zone from a
 fresh wired fix; the manual choice wins, and Auto falls back to UTC after 30
-minutes without a fix. UTC is the default so a camera that used UTC before this
+minutes without a fix or immediately when a fresh fix is outside the 30-degree
+nearest-zone radius. UTC is the default so a camera that used UTC before this
 setting existed keeps the same clock.
 
 ### Timer
