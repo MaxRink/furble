@@ -22,6 +22,7 @@
 #include <condition_variable>
 #include <cstdarg>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <deque>
 #include <fstream>
@@ -400,6 +401,15 @@ void heap_caps_get_info(multi_heap_info_t *info, uint32_t capabilities) {
   info->total_free_bytes = 100000 + capabilities;
   info->largest_free_block = 50000 + capabilities;
   info->minimum_free_bytes = 40000 + capabilities;
+}
+
+void *heap_caps_malloc(size_t size, uint32_t capabilities) {
+  (void)capabilities;
+  return std::malloc(size);
+}
+
+void heap_caps_free(void *pointer) {
+  std::free(pointer);
 }
 
 esp_err_t esp_pm_lock_create(esp_pm_lock_type_t type,
@@ -1128,6 +1138,16 @@ bool CompanionGatt::isAdvertising(void) const {
 
 void CompanionGatt::reloadPassword(void) {
   ConsoleHost::misc().companionPasswordReloads++;
+}
+
+bool CompanionGatt::reidentify(void) {
+  auto &state = ConsoleHost::misc();
+  // Production rotates the LE address, drops the companion bond and reopens
+  // the pairing window. The console only needs the observable outcome.
+  state.companionBond = false;
+  state.companionWindow = state.companionEnabled;
+  state.companionAdvertising = state.companionEnabled;
+  return true;
 }
 
 SD &SD::getInstance(void) {
