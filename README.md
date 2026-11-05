@@ -507,7 +507,8 @@ The GPS receiver itself can also be configured under `Settings->GPS`:
 camera clock behaviour. The Time page also shows local time with its offset and
 plain UTC. Auto (GPS) uses the nearest curated zone from a fresh wired fix; the
 manual choice always wins, and Auto falls back to UTC after 30 minutes without a
-fresh fix. A candidate zone change is held for 5 minutes so a noisy fix cannot
+fresh fix or immediately when a fresh fix is outside the 30-degree nearest-zone
+radius. A candidate zone change is held for 5 minutes so a noisy fix cannot
 churn the camera clock. Camera clock writes keep UTC as the source of truth;
 protocols with a timezone field receive the standard offset and DST flag, and
 protocols without one receive the selected or derived local civil time. The GPS
