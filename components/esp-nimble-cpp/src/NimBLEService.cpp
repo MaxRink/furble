@@ -312,7 +312,12 @@ NimBLECharacteristic* NimBLEService::getCharacteristic(const NimBLEUUID& uuid, u
  */
 NimBLECharacteristic* NimBLEService::getCharacteristicByHandle(uint16_t handle) const {
     for (const auto& chr : m_vChars) {
-        if (chr->getHandle() == handle) {
+        // The GAP subscribe event reports the CCCD handle, which is the value
+        // handle plus one. NimBLE's server-level onSubscribe() lookup used to
+        // accept only the value handle, so every CCCD write logged "not found"
+        // and the characteristic never recorded the subscription; notify() and
+        // indicate() then failed with BLE_HS_ENOENT. Match both handles.
+        if ((chr->getHandle() == handle) || ((chr->getHandle() + 1) == handle)) {
             return chr;
         }
     }

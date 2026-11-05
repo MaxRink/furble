@@ -1,5 +1,14 @@
 # Companion camera management
 
+The companion keeps its bond and GATT service across `companion stop` and
+`companion start`; restarting does not require a fresh pairing. After the
+60-second window closes the device advertises for the bonded central, and a
+central that presents a different identity must reopen the window. `companion
+status` reports the persisted setting, live service, saved bond, window state
+and current advertising state. Reconnect advertising is unfiltered because
+macOS rotates its LE address; the connect handler still accepts only the stored
+identity outside the pairing window.
+
 The companion BLE service exposes camera management through the Cameras
 characteristic:
 

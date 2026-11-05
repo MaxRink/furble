@@ -91,10 +91,12 @@ current retry cycle, `retry_ms` is the next backoff without jitter, and
   leaves the persisted setting off.
 - `companion stop` persists the setting off and stops the live service
   synchronously.
-- `companion status` prints `companion.setting` (the persisted value) and
-  `companion.enabled` (the live service). A settings-page or companion-write
-  disable can keep the live service up for one second so the BLE write response
-  can leave; the console stop path does not wait.
+- `companion status` prints `companion.setting` (the persisted value),
+  `companion.enabled` (the live service), `companion.bond` (a saved peer exists),
+  `companion.window` (the 60 s pairing window is open) and
+  `companion.advertising` (the device is currently advertising). A settings-page
+  or companion-write disable can keep the live service up for one second so the
+  BLE write response can leave; the console stop path does not wait.
 - `companion password set <pw>`, `companion password clear`, and
   `companion password status`. The password is write-only: status prints only
   `set`, `unset`, or `unavailable`. The generic `settings get` and `settings
