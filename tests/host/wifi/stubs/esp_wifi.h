@@ -6,6 +6,28 @@ enum wifi_interface_t { WIFI_IF_STA };
 enum wifi_mode_t { WIFI_MODE_STA };
 enum wifi_ps_type_t { WIFI_PS_MIN_MODEM };
 enum wifi_storage_t { WIFI_STORAGE_RAM };
+enum wifi_scan_method_t { WIFI_FAST_SCAN = 0, WIFI_ALL_CHANNEL_SCAN = 1 };
+enum wifi_sort_method_t { WIFI_CONNECT_AP_BY_SIGNAL = 0, WIFI_CONNECT_AP_BY_SECURITY = 1 };
+enum wifi_auth_mode_t {
+  WIFI_AUTH_OPEN = 0,
+  WIFI_AUTH_WEP,
+  WIFI_AUTH_WPA_PSK,
+  WIFI_AUTH_WPA2_PSK,
+  WIFI_AUTH_WPA_WPA2_PSK,
+  WIFI_AUTH_ENTERPRISE,
+  WIFI_AUTH_WPA3_PSK,
+  WIFI_AUTH_WPA2_WPA3_PSK,
+  WIFI_AUTH_WAPI_PSK,
+  WIFI_AUTH_OWE,
+  WIFI_AUTH_WPA3_ENT_192,
+  WIFI_AUTH_WPA3_EXT_PSK,
+  WIFI_AUTH_WPA3_EXT_PSK_MIXED_MODE,
+  WIFI_AUTH_DPP,
+  WIFI_AUTH_WPA3_ENTERPRISE,
+  WIFI_AUTH_WPA2_WPA3_ENTERPRISE,
+  WIFI_AUTH_WPA_ENTERPRISE,
+  WIFI_AUTH_MAX
+};
 struct wifi_init_config_t {};
 struct wifi_sta_config_t {
   uint8_t ssid[32];
@@ -13,6 +35,12 @@ struct wifi_sta_config_t {
   uint8_t bssid[6];
   bool bssid_set;
   uint8_t channel;
+  wifi_scan_method_t scan_method;
+  wifi_sort_method_t sort_method;
+  struct {
+    wifi_auth_mode_t authmode;
+    int8_t rssi;
+  } threshold;
 };
 struct wifi_config_t {
   wifi_sta_config_t sta;
@@ -25,6 +53,7 @@ struct wifi_ap_record_t {
   uint8_t primary;
   int8_t rssi;
   uint8_t ssid[33];
+  wifi_auth_mode_t authmode;
 };
 // Disconnect reasons used by the station classification. Values match the
 // ESP-IDF wifi_err_reason_t enum.

@@ -36,9 +36,10 @@ class BootScreen {
   static void step(const char *label);
 
   /**
-   * Fill the bar, show "Ready" and hold briefly so the splash does not flash
-   * past. The short hold is skipped on boots that already took longer than the
-   * minimum and in the simulator. Runs on the boot task, holds no mutex.
+   * Fill the bar and show "Ready". The short minimum-visible hold is measured
+   * from app_main, not from begin(), so a slow Platform init is never extended
+   * by another minimum. The hold is skipped when the boot already took longer
+   * and in the simulator. Runs on the boot task, holds no mutex.
    */
   static void finish(void);
 

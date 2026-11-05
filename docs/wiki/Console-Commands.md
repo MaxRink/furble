@@ -24,6 +24,7 @@ About page and exposed through companion BLE Device Information.
 | Command | What it does |
 | :--- | :--- |
 | `version` | Firmware and IDF version. |
+| `boot` | `boot timing` prints the last boot timeline, its mark deltas, and the cycle-counter reset estimate. |
 | `status` | State, targets, uptime, heap, battery, reset reason. |
 | `crash` | `crash [last]` prints the retained previous-boot crash record. |
 | `power` | `stats`, or `log <seconds>` / `log off` for a CSV power log. |
@@ -76,6 +77,18 @@ current retry cycle, `retry_ms` is the next backoff without jitter, and
 
 `wifi set ssid|psk`, `wifi enable|disable`, `wifi connect|disconnect`, and
 `wifi forget` manage the saved network.
+
+## boot
+
+`boot timing` prints the retained boot timeline. Each mark has `at_ms` from
+`app_main` and `delta_ms` from the previous mark in time order. The
+`reset_to_app_ms` value comes from the CPU cycle counter and includes the ROM
+bootloader and the PSRAM boot init that happen before the firmware timeline
+starts. The same timeline is logged once as `boot: timeline …` after the first
+UI frame or the first headless service pass.
+
+See [boot timing](../boot-timing.md) for the mark list, the measured StickS3
+baseline, and the PSRAM memory-test build option.
 
 ## crash
 

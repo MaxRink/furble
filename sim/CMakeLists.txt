@@ -99,6 +99,7 @@ file(GLOB ICON_SOURCES CONFIGURE_DEPENDS "${FURBLE_ROOT}/components/icons/*.c")
 set(FURBLE_SOURCES
     ${SIM_SOURCES}
     "${FURBLE_ROOT}/src/FurbleBootScreen.cpp"
+    "${FURBLE_ROOT}/src/FurbleBootTimeline.cpp"
     "${FURBLE_ROOT}/src/FurbleCalibrate.cpp"
     "${FURBLE_ROOT}/src/FurbleCompanionAuth.cpp"
     "${FURBLE_ROOT}/tests/host/companion/companion_hmac.cpp"

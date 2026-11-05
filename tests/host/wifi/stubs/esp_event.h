@@ -9,3 +9,4 @@ extern esp_event_base_t IP_EVENT;
 int esp_event_handler_register(esp_event_base_t, int32_t, esp_event_handler_t, void *);
 #define IP_EVENT_STA_GOT_IP 1
 #define WIFI_EVENT_STA_DISCONNECTED 2
+#define WIFI_EVENT_STA_CONNECTED 3

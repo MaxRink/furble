@@ -36,6 +36,7 @@ About page and exposed through companion BLE Device Information.
 | Command | What it does |
 | :--- | :--- |
 | `version` | Firmware and IDF version. |
+| `boot` | `boot timing` prints the last boot timeline, its mark deltas, and the cycle-counter reset estimate. See [boot timing](boot-timing.md). |
 | `status` | State, targets, uptime, heap, battery, reset reason. |
 | `crash` | `crash [last]` prints the retained previous-boot crash record. See [crash diagnostics](crash-diagnostics.md). |
 | `power` | `stats`, or `log <seconds>` / `log off` for a CSV power log. |
@@ -121,6 +122,20 @@ On the display-less Waveshare ESP32-S3-ETH, `status` reports battery level and
 voltage as unknown (`-1`) and current as unavailable (`0`). It never infers USB
 or optional PoE power from Ethernet link state because the optional PoE HAT has
 no software-readable presence or negotiation signal.
+
+## boot
+
+`boot timing` prints the retained boot timeline. Each mark has `at_ms` from
+`app_main` and `delta_ms` from the previous mark in time order. The
+`reset_to_app_ms` value comes from the CPU cycle counter and includes the ROM
+bootloader and the PSRAM boot init that happen before the firmware timeline
+starts. Use it to compare boots without a host-side timestamp.
+
+The same timeline is logged once as `boot: timeline …` after the first UI frame
+or the first headless service pass. The command is useful when the log line
+scrolled past or when a later mark, such as a WiFi reconnect, needs a fresh
+reading. See [boot timing](boot-timing.md) for the full mark list, the measured
+StickS3 baseline, and the PSRAM memory-test build option.
 
 ## crash
 
@@ -398,6 +413,7 @@ and run `flash cancel` manually.
 
 ## Related references
 
+- [Boot timing](boot-timing.md)
 - [Settings and controls reference](settings-and-controls.md)
 - [Supported hardware](supported-hardware.md)
 - [UI walkthrough](ui-walkthrough.md)

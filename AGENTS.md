@@ -73,6 +73,10 @@ Development builds using `FURBLE_VERSION=dev` identify the checkout as
 non-ignored untracked changes. Ignored-only changes stay clean. Explicit release
 versions remain unchanged. See `CLAUDE.md` for build details.
 
+S3 release images disable `CONFIG_SPIRAM_MEMTEST`; the S3 debug environments
+merge `sdkconfig.spiram-memtest` back in. The `boot timing` console command
+prints the retained boot timeline. See `docs/boot-timing.md`.
+
 The developer-only `m5stack-core-usb-debug` profile is USB-UART only and uses a
 single factory app partition. Normal CI builds it as the mandatory Core debug
 profile. Keep it out of release and web-installer matrices; the legacy

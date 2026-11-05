@@ -102,6 +102,10 @@ A settings configuration change must be applied consistently across all six
 committed release `sdkconfig.<env>` files, never for just one env. See
 `CLAUDE.md` for the build traps.
 
+The S3 release sdkconfigs disable the boot-time PSRAM memory test. The S3 debug
+environments merge `sdkconfig.spiram-memtest` back in, and the debug sdkconfig
+script accepts comma-separated fragments for any custom diagnostic profile.
+
 Board-specific ESP-IDF component dependencies need both a compiler define and
 a CMake profile argument. CMake resolves components before conditional C++
 compilation. See the Waveshare Ethernet environment for the established form.

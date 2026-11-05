@@ -304,6 +304,7 @@ unchanged.
 
 ```
 version                             firmware and IDF version
+boot timing                         last boot timeline and mark deltas
 status                              state, targets, uptime, heap, battery, reset reason
 crash [last]                        previous-boot crash record, see docs/crash-diagnostics.md
 power                               power stats, or a CSV power log
@@ -351,6 +352,11 @@ reboot
 
 The full command reference, with every subcommand, is in
 [docs/console-commands.md](docs/console-commands.md).
+
+`boot timing` prints the retained boot timeline with one row per init stage and
+the cycle-counter reset estimate. The measured StickS3 baseline, the expected
+per-board numbers, and the PSRAM memory-test tradeoff are in
+[docs/boot-timing.md](docs/boot-timing.md).
 
 `cameras list` reports both the list position and `saved_index`. A scan can
 rediscover a saved camera at a different list position, so feed `saved_index`

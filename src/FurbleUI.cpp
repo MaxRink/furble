@@ -34,6 +34,7 @@
 
 #include "FurbleAutoOff.h"
 #include "FurbleBootScreen.h"
+#include "FurbleBootTimeline.h"
 #include "FurbleCalibrate.h"
 #include "FurbleCompanion.h"
 #include "FurbleControl.h"
@@ -426,6 +427,7 @@ UI::UI(const interval_t &interval)
       m_Intervalometer(interval),
       m_Bulb(Settings::load<Settings::BULB>()),
       m_CalibrationUI(M5.Display.width(), M5.Display.height()) {
+  BootTimeline::mark(BootTimeline::UI_CTOR_START);
 #if defined(FURBLE_SIM)
   // The regression scenario deliberately applies GPS settings before the
   // shared motion source is armed, matching the headless boot ordering.
@@ -893,7 +895,9 @@ UI::UI(const interval_t &interval)
     startCompanionPairingTimer();
   }
 
+  BootTimeline::mark(BootTimeline::UI_MENU_START);
   addMainMenu();
+  BootTimeline::mark(BootTimeline::UI_MENU_DONE);
 
   setPresetPicker(Settings::load<Settings::PRESET_PICKER>());
   showIMUGestureWidgets(imuEnabledForUI());
@@ -901,6 +905,7 @@ UI::UI(const interval_t &interval)
 
   m_GPS.startService();
   setDisplayMode(Settings::load<uint8_t>(Settings::DISPLAY_MODE));
+  BootTimeline::mark(BootTimeline::UI_CTOR_DONE);
 }
 
 void UI::notifyGestureSettingsChanged(void) {
@@ -13345,6 +13350,10 @@ void UI::task(void) {
       Sim::profilerEndUiCycle();
       Sim::fuzzCycleComplete(this);
 #endif
+    }
+    if (!BootTimeline::recorded(BootTimeline::UI_FIRST_FRAME)) {
+      BootTimeline::mark(BootTimeline::UI_FIRST_FRAME);
+      BootTimeline::logSummary();
     }
     serviceStorage();
     m_Mutex.unlock();

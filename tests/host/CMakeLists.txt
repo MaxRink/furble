@@ -83,12 +83,15 @@ add_executable(mqtt_owner_test
                ${HOST_MQTT_DIR}/cJSON.cpp
                ${HOST_MQTT_DIR}/mqtt_client_mock.cpp
                ${HOST_MQTT_DIR}/mqtt_host_doubles.cpp
+               boot_timeline_host_stub.cpp
+               ${FURBLE_ROOT}/src/FurbleBootTimeline.cpp
                ${FURBLE_ROOT}/src/FurbleMQTT.cpp)
 target_include_directories(mqtt_owner_test BEFORE PRIVATE
                            ${HOST_MQTT_DIR}
                            ${FURBLE_ROOT}/include
                            ${FURBLE_ROOT}/lib/furble)
 target_compile_definitions(mqtt_owner_test PRIVATE FURBLE_MQTT=1 FURBLE_MQTT_HOST_TEST=1
+                                                   FURBLE_BOOT_TIMELINE_HOST_TEST=1
                                                    FURBLE_VERSION="host-test")
 target_compile_options(mqtt_owner_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                -Wno-unused-parameter)
@@ -198,6 +201,8 @@ target_compile_options(time_keeper_persistence_test PRIVATE -Wall -Wextra -Werro
 add_executable(real_wifi_lifecycle_test
                wifi/real_wifi_test.cpp
                eth/MockEthNetif.cpp
+               boot_timeline_host_stub.cpp
+               ${FURBLE_ROOT}/src/FurbleBootTimeline.cpp
                ${FURBLE_ROOT}/src/FurbleWiFi.cpp
                ${FURBLE_ROOT}/src/FurbleEthernet.cpp)
 target_include_directories(real_wifi_lifecycle_test BEFORE PRIVATE
@@ -205,7 +210,8 @@ target_include_directories(real_wifi_lifecycle_test BEFORE PRIVATE
                            ${CMAKE_CURRENT_SOURCE_DIR}/wifi/stubs
                            ${FURBLE_ROOT}/include)
 target_link_libraries(real_wifi_lifecycle_test PRIVATE Threads::Threads)
-target_compile_definitions(real_wifi_lifecycle_test PRIVATE FURBLE_WIFI_HOST_TEST)
+target_compile_definitions(real_wifi_lifecycle_test PRIVATE FURBLE_WIFI_HOST_TEST
+                                                          FURBLE_BOOT_TIMELINE_HOST_TEST=1)
 target_compile_options(real_wifi_lifecycle_test PRIVATE -Wall -Wextra -Werror
                                                          -Wno-unused-parameter)
 
@@ -830,6 +836,36 @@ target_compile_options(settings_nvs_roundtrip_test PRIVATE -Wall -Wextra -Werror
                                                              -Wno-unused-parameter
                                                              -Wno-vla-extension)
 
+# The boot seeder is one transaction per namespace plus a version marker. This
+# suite pins the commit count, proves a current marker skips the scan, and shows
+# an upgrade or a failed commit never overwrites a stored value.
+add_executable(settings_boot_test
+               settings_boot_test.cpp
+               settings_nvs_stub.cpp
+               settings_platform_stub.cpp
+               ${FURBLE_ROOT}/src/FurbleSettings.cpp
+               ${FURBLE_ROOT}/src/FurbleTimezone.cpp
+               ${FURBLE_ROOT}/lib/preferences/Preferences.cpp)
+target_include_directories(settings_boot_test BEFORE PRIVATE
+                           ${SETTINGS_TEST_STUB_DIR}
+                           ${FURBLE_ROOT}/include
+                           ${FURBLE_ROOT}/lib/preferences
+                           ${FURBLE_ROOT}/lib/furble)
+target_compile_definitions(settings_boot_test PRIVATE FURBLE_M5STICKS3)
+target_compile_options(settings_boot_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                  -Wno-unused-parameter -Wno-vla-extension)
+
+add_executable(boot_timeline_test
+               boot_timeline_test.cpp
+               ${FURBLE_ROOT}/src/FurbleBootTimeline.cpp)
+target_include_directories(boot_timeline_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_definitions(boot_timeline_test PRIVATE FURBLE_BOOT_TIMELINE_HOST_TEST)
+target_compile_options(boot_timeline_test PRIVATE -Wall -Wextra -Werror)
+
+add_executable(boot_policy_test boot_policy_test.cpp)
+target_include_directories(boot_policy_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(boot_policy_test PRIVATE -Wall -Wextra -Werror)
+
 add_executable(provision_tlv_test
                provision_tlv_test.cpp
                ${FURBLE_ROOT}/lib/furble/protocol/ProvisionTLV.cpp)
@@ -989,6 +1025,8 @@ add_executable(sim_scheduler_test
                sim_scheduler_test.cpp
                ${FURBLE_ROOT}/sim/clock.cpp
                ${FURBLE_ROOT}/sim/freertos.cpp
+               ${FURBLE_ROOT}/sim/heap_model.cpp
+               ${FURBLE_ROOT}/sim/CrashLogSim.cpp
                ${FURBLE_ROOT}/sim/watchdog.cpp)
 target_include_directories(sim_scheduler_test PRIVATE ${FURBLE_ROOT}/include
                                                        ${FURBLE_ROOT}/sim
@@ -1945,6 +1983,8 @@ add_executable(console_commands_test
                ${HOST_CONSOLE_DIR}/console_shim.cpp
                ${HOST_CONSOLE_DIR}/crash_log_stub.cpp
                settings_nvs_stub.cpp
+               boot_timeline_host_stub.cpp
+               ${FURBLE_ROOT}/src/FurbleBootTimeline.cpp
                ${FURBLE_ROOT}/src/FurbleConsole.cpp
                ${FURBLE_ROOT}/src/FurbleControl.cpp
                ${FURBLE_ROOT}/src/FurbleTimezone.cpp
@@ -1979,6 +2019,7 @@ target_compile_definitions(console_commands_test PRIVATE
                            FURBLE_CONSOLE_CAPTURE_DIR="${CMAKE_CURRENT_BINARY_DIR}"
                            FURBLE_CONSOLE
                            FURBLE_M5STICKS3
+                           FURBLE_BOOT_TIMELINE_HOST_TEST=1
                            FURBLE_VERSION="host"
                            CONFIG_ESP_CONSOLE_UART_NUM=0
                            CONFIG_BT_NIMBLE_MAX_CONNECTIONS=3
@@ -2015,6 +2056,8 @@ if(BUILD_TESTING)
   add_test(NAME time-keeper-persistence COMMAND time_keeper_persistence_test)
   add_test(NAME timezone COMMAND timezone_test)
   add_test(NAME real-wifi-lifecycle COMMAND real_wifi_lifecycle_test)
+  add_test(NAME boot-timeline COMMAND boot_timeline_test)
+  add_test(NAME boot-policy COMMAND boot_policy_test)
   foreach(preferences_case missing empty zero-count empty-string typeerror embedded-nul corruption failed-save)
     add_test(NAME preferences-sim-${preferences_case}
              COMMAND actualPreferencesSim ${preferences_case})
@@ -2050,6 +2093,7 @@ if(BUILD_TESTING)
   add_test(NAME control-secure-stall COMMAND control_secure_stall_test)
   add_test(NAME fujifilm-registration-cancel COMMAND fujifilm_registration_cancel_test)
   add_test(NAME settings-nvs-roundtrip COMMAND settings_nvs_roundtrip_test)
+  add_test(NAME settings-boot COMMAND settings_boot_test)
   add_executable(settings_default_policy_test settings_default_policy_test.cpp)
   target_include_directories(settings_default_policy_test PRIVATE ${FURBLE_ROOT}/include)
   target_compile_options(settings_default_policy_test PRIVATE -Wall -Wextra -Werror)
