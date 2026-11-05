@@ -90,14 +90,17 @@ bond would let any nearby central pair without the window.
 ## Power-monitor note
 
 The USB monitor now disables stdout buffering, so a redirected CSV shows each
-sample immediately. On this bench the longest continuous USB dataset was 35
-minutes; several longer runs ended with the ESP32-S3 enumerating as the ROM
-USB-JTAG unit after 4-35 minutes and needed a hard reset. That reset is a
-separate stability problem, not a monitor parsing issue. With a live BLE
-companion link the USB console parser can also time out under load and enter its
-reconnect backoff. The BLE monitor is only meaningful while status notifications
-are actually arriving; a constant `uptime_s` in consecutive rows means the host
-is reading a cached status and the run should be discarded.
+sample immediately. Earlier long runs ended with the console unresponsive after
+4-35 minutes; the likely contributors were the enable deadlock fixed in #379,
+the manual-flash recovery state, and a 2 s console command timeout that made the
+monitor close and reopen the CDC endpoint during a display flush. The monitor
+now uses 5 s for `status` and `gps` (#382). After the deadlock fix the StickS3
+stayed up for 4.9 hours before a fresh 1 h monitor run, with companion disabled
+and inactivity/display off set to Never. With a live BLE companion link the USB
+console parser can still time out under load and enter its reconnect backoff.
+The BLE monitor is only meaningful while status notifications are actually
+arriving; a constant `uptime_s` in consecutive rows means the host is reading a
+cached status and the run should be discarded.
 
 ## Bond/window locking follow-up (2026-11-05)
 
