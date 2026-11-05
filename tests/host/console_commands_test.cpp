@@ -440,6 +440,8 @@ void testSettings(void) {
         "the delayed settings disable stops the service after the grace");
   check(!ConsoleHost::misc().companionPendingDisable,
         "the completed grace clears the pending stop");
+  check(!ConsoleHost::misc().companionWindow, "the completed grace clears the pairing window");
+  check(!ConsoleHost::misc().companionAdvertising, "the completed grace clears advertising");
 
   ConsoleHost::misc().companionEnableSucceeds = false;
   const Result failedLiveStart = runDirect("companion start");

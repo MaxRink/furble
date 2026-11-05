@@ -100,6 +100,7 @@ void CompanionGatt::enable(bool pairingWindow) {
   }
 
   bool startPairing = false;
+  bool reconnect = false;
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
     if (m_Enabled) {
@@ -166,14 +167,17 @@ void CompanionGatt::enable(bool pairingWindow) {
       }
 
       startPairing = pairingWindow;
-      if (!startPairing && hasBond()) {
-        startReconnectAdvertising();
-      }
+      reconnect = !startPairing && hasBond();
     }
   }
 
+  // startReconnectAdvertising() reads the enabled/window/connected state
+  // through the public getters, which take m_Mutex. Call it only after the
+  // critical section above has been released.
   if (startPairing) {
     startPairingWindow();
+  } else if (reconnect) {
+    startReconnectAdvertising();
   }
 }
 
@@ -662,15 +666,19 @@ void CompanionGatt::resumeAdvertisingAfterDisconnect(void) {
   if (!isEnabled()) {
     return;
   }
-  if (isPairingWindow()) {
-    startPairingWindow();
-    return;
-  }
+  bool pairing = false;
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
-    m_PairingWindow = false;
+    pairing = m_PairingWindow && (nowMs() < m_PairingDeadlineMs);
+    if (!pairing) {
+      m_PairingWindow = false;
+    }
   }
-  startReconnectAdvertising();
+  if (pairing) {
+    startPairingWindow();
+  } else {
+    startReconnectAdvertising();
+  }
 }
 
 void CompanionGatt::onConfirmPassKey(NimBLEConnInfo &connInfo, uint32_t pin) {
