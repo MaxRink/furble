@@ -489,13 +489,19 @@ void CompanionGatt::serviceTask(void) {
       startReconnectAdvertising();
     }
 
-    if (m_ServiceChangedPending && (now >= m_ServiceChangedAt) && m_CompanionConnected
-        && (m_Server != nullptr)) {
+    bool sendServiceChanged = false;
+    {
+      const std::lock_guard<std::mutex> lock(m_Mutex);
+      if (m_ServiceChangedPending && (now >= m_ServiceChangedAt) && m_CompanionConnected) {
+        m_ServiceChangedPending = false;
+        sendServiceChanged = true;
+      }
+    }
+    if (sendServiceChanged && (m_Server != nullptr)) {
       // The central has now enabled its Service Changed subscription. Tell it
       // the handle map may have moved since its cached copy, otherwise macOS
       // keeps writing the old CCCD handles after a firmware update.
       m_Server->sendServiceChangedIndication();
-      m_ServiceChangedPending = false;
       ESP_LOGI(LOG_TAG, "Companion sent Service Changed indication");
     }
 
@@ -648,12 +654,6 @@ void CompanionGatt::onAuthenticationComplete(NimBLEConnInfo &connInfo) {
     return;
   }
 
-  // The central subscribes to the standard Service Changed characteristic a
-  // few milliseconds after this callback. Sending now would race that
-  // subscription and be dropped; the service task sends it one second later.
-  m_ServiceChangedPending = true;
-  m_ServiceChangedAt = nowMs() + 1000;
-
   const NimBLEAddress newAddress = connInfo.getIdAddress();
   if (m_BondValid && !m_BondAddress.equals(newAddress)) {
     NimBLEDevice::deleteBond(m_BondAddress);
@@ -664,6 +664,11 @@ void CompanionGatt::onAuthenticationComplete(NimBLEConnInfo &connInfo) {
     m_CompanionEncrypted = true;
     m_CompanionAuthenticated = true;
     m_PairingWindow = false;
+    // The central subscribes to the standard Service Changed characteristic a
+    // few milliseconds after this callback. Sending now would race that
+    // subscription and be dropped; the service task sends it one second later.
+    m_ServiceChangedPending = true;
+    m_ServiceChangedAt = nowMs() + 1000;
   }
   stopAdvertising();
   m_Service.notifyStatus(true);
