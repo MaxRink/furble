@@ -227,11 +227,11 @@ void MQTT::reloadSetting(void) {
   }
 
   if (m_Task == nullptr) {
-    // The owner task only parses commands and drives the state machine; its
-    // measured high-water mark is under 1 KiB. Keep the internal stack small
-    // so esp-mqtt's own task can still find a contiguous block on the 8 MB
-    // StickS3, where WiFi, BLE and the display leave about 13 KiB free.
-    const BaseType_t result = xTaskCreate(taskEntry, "mqtt", 4096, this, 2, &m_Task);
+    // Keep the proven 6 KiB owner stack. It overflows at 4 KiB during the
+    // first client start (before the idle high-water mark settles), and the
+    // 6 KiB owner plus the 4 KiB plain-MQTT worker fits once the general RAM
+    // pass has freed the display and task-stack headroom.
+    const BaseType_t result = xTaskCreate(taskEntry, "mqtt", 6144, this, 2, &m_Task);
     if (result != pdPASS) {
       m_Task = nullptr;
       ESP_LOGE(MQTT_LOG_TAG, "Failed to create MQTT task.");
