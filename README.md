@@ -222,7 +222,11 @@ The 4 MB M5StickC, M5StickC Plus, and M5Stack Core images omit MQTT and its
 component dependencies so their two OTA slots retain their fixed size.
 
 The same 8 MB and 16 MB profiles include an opt-in authenticated HTTPS WebUI.
-It stays closed until a companion password is configured. See
+It stays closed until a companion password is configured. On the M5StickS3
+debug image, WiFi plus Bluetooth leaves about 6.8 KiB of internal RAM free while
+the current WebUI needs about 20 KiB; enabling `web_ui` can reset the device
+before the console starts. Use a Core2 or the headless S3 profile until the
+memory fix tracked by plan 304 is implemented. See
 [WebUI and REST API](docs/webui.md) for setup, certificate verification and the
 route contract.
 

@@ -41,12 +41,17 @@ Caching the setting removes that read but not the allocation failure.
 
 1. Keep the companion task in internal RAM. PSRAM task stacks are not safe for
    code paths that write NVS while the flash cache is disabled.
-2. Move only the WebUI supervisor to a small internal stack (2 KiB) and move
-   TLS identity generation to a one-shot internal task whose peak stack fits
-   the measured 6.8 KiB free block, or generate the identity before WiFi/BLE
-   initialization while the main task stack is still available.
-3. Start `httpd_ssl_start` with `stack_size = 4096` and one socket. Measure the
-   actual handshake stack before accepting this as sufficient.
+2. Do not budget a one-shot identity task against the 6.8 KiB total. Only
+   6388 bytes are contiguous before the supervisor stack; after a 2 KiB
+   supervisor there are roughly 4.2 KiB total and less contiguous space, while
+   the HTTPS task must also coexist. Generate the identity before WiFi/BLE
+   initialization (while the main task stack is available) or on a dedicated
+   task that runs before the server and frees its stack, rather than alongside
+   the supervisor and httpd task.
+3. Start `httpd_ssl_start` with `stack_size = 4096` and one socket, but measure
+   the contiguous block before the server task starts; a 4 KiB stack cannot be
+   assumed to fit beside the supervisor with the measured 6388-byte largest
+   block. If it does not fit, keep WebUI disabled on StickS3.
 4. Alternatively, keep WebUI disabled on StickS3 and document Core2/headless as
    the supported WebUI targets until the memory split is measured.
 
