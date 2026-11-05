@@ -420,7 +420,8 @@ The choice takes effect after Restart; touch boards omit this
 setting because they have no physical-button legends, while the M5Stack Core
 keeps its physical button legends in the navigation band. With Buttons
 placement the floating right legend reserves its column only for the rows level
-with it; row widths update when a scroll gesture ends.
+with it. Row width and translation update during the scroll; label sizing and the
+full layout settle wait for the gesture to end.
 
 Setting names use the full row width above their switches. Long names wrap,
 and the page scrolls as needed. This retains the selected font and complete
