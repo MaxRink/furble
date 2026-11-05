@@ -131,8 +131,9 @@ bool logContains(const char *needle) {
   if (needle == nullptr) {
     return false;
   }
-  const std::lock_guard<std::mutex> lock(logMutex());
-  for (const auto &line : logLines()) {
+  auto &store = detail::logStore();
+  const std::lock_guard<std::mutex> lock(store.mutex);
+  for (const auto &line : store.lines) {
     if (line.find(needle) != std::string::npos) {
       return true;
     }

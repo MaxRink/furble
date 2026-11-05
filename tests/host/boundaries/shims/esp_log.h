@@ -8,20 +8,22 @@
 #include <vector>
 
 namespace BoundaryHost {
+namespace detail {
 
 // Production drivers log from worker tasks while the test thread polls the
-// same storage. Every access goes through logMutex(); logLines() is exposed
-// only for the logger and must be read under that lock.
-inline std::mutex &logMutex() {
-  static std::mutex mutex;
-  return mutex;
+// same storage. The store owns its lock so no caller can read the vector
+// without synchronizing. Only boundaryLog() appends; tests use logContains().
+struct LogStore {
+  std::mutex mutex;
+  std::vector<std::string> lines;
+};
+
+inline LogStore &logStore() {
+  static LogStore store;
+  return store;
 }
 
-inline std::vector<std::string> &logLines() {
-  static std::vector<std::string> lines;
-  return lines;
-}
-
+}  // namespace detail
 }  // namespace BoundaryHost
 
 inline void boundaryLog(const char *level, const char *tag, const char *format, ...) {
@@ -31,10 +33,9 @@ inline void boundaryLog(const char *level, const char *tag, const char *format, 
   std::vsnprintf(line, sizeof(line), format, args);
   va_end(args);
   std::fprintf(stderr, "[%s] %s: %s\n", level, tag == nullptr ? "boundary" : tag, line);
-  {
-    const std::lock_guard<std::mutex> lock(BoundaryHost::logMutex());
-    BoundaryHost::logLines().emplace_back(line);
-  }
+  auto &store = BoundaryHost::detail::logStore();
+  const std::lock_guard<std::mutex> lock(store.mutex);
+  store.lines.emplace_back(line);
 }
 
 #define ESP_LOGE(tag, format, ...) boundaryLog("E", tag, format, ##__VA_ARGS__)
