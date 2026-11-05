@@ -2376,16 +2376,17 @@ void UI::applyLegendBandWidths(lv_obj_t *page, bool settle, bool pinBottom, bool
         continue;
       }
       bool widthChanged = false;
+      bool rowInBand = false;
       if (bandValid) {
         // The legend's measured display-coordinate band, against the row's own
         // box. lv_obj_get_coords includes the page's scroll offset, so this is
         // the row's current position on the panel, not its content position.
-        const bool inBand = rowIntersectsLegendBand(row);
+        rowInBand = rowIntersectsLegendBand(row);
         // The row's own box, not its padding. A child is clipped to its
         // parent's box, so padding alone still lets a roller or switch enter the
         // reserved strip. Recompute from the page so loading twice cannot shrink
         // it twice.
-        const int32_t desired = inBand ? (fullWidth - reserve) : fullWidth;
+        const int32_t desired = rowInBand ? (fullWidth - reserve) : fullWidth;
         if (lv_obj_get_width(row) != desired) {
           lv_obj_set_width(row, desired);
           widthChanged = true;
@@ -2394,7 +2395,7 @@ void UI::applyLegendBandWidths(lv_obj_t *page, bool settle, bool pinBottom, bool
         // Menu pages centre their rows on the cross axis. Move the narrowed row
         // left by the half-width LVGL would otherwise leave on both sides, so
         // the entire reservation stays beside the right-hand legend.
-        const int32_t translate = inBand ? -(reserve / 2) : 0;
+        const int32_t translate = rowInBand ? -(reserve / 2) : 0;
         if (lv_obj_get_style_translate_x(row, LV_PART_MAIN) != translate) {
           lv_obj_set_style_translate_x(row, translate, LV_PART_MAIN);
         }
@@ -2439,7 +2440,8 @@ void UI::applyLegendBandWidths(lv_obj_t *page, bool settle, bool pinBottom, bool
             lv_label_set_long_mode(child, LV_LABEL_LONG_WRAP);
           }
         }
-        if (widthChanged && (reserve > 0) && lv_obj_check_type(row, &lv_button_class)) {
+        if ((widthChanged || rowInBand) && (reserve > 0)
+            && lv_obj_check_type(row, &lv_button_class)) {
           // A narrowed button label must wrap inside the smaller button instead
           // of clipping "Restart to apply" to "Restart to a".
           lv_obj_set_width(child, LV_PCT(100));
