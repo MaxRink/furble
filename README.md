@@ -223,12 +223,15 @@ component dependencies so their two OTA slots retain their fixed size.
 
 The same 8 MB and 16 MB profiles include an opt-in authenticated HTTPS WebUI.
 It stays closed until a companion password is configured. On the M5StickS3
-debug image, WiFi plus Bluetooth leaves about 6.8 KiB of internal RAM free while
-the current WebUI needs about 20 KiB; enabling `web_ui` can reset the device
-before the console starts. Use a Core2 or the headless S3 profile until the
-memory fix tracked by plan 304 is implemented. See
-[WebUI and REST API](docs/webui.md) for setup, certificate verification and the
-route contract.
+debug image, WiFi plus Bluetooth left about 6.8 KiB of internal RAM free before
+the WebUI budget work; after trimming the LVGL draw buffers and WiFi static RX
+pool and creating the TLS identity before the radios, the measured budget is
+still only 10.6 KiB free / 9.7 KiB largest with the supervisor, below the
+server floor. The server therefore refuses to start with a measured log line
+instead of resetting the device, and the StickS3 is not a supported WebUI
+target. Core2 and the headless/Waveshare profiles are expected to have more
+headroom. See [WebUI and REST API](docs/webui.md) for the budget table, setup,
+certificate verification and the route contract.
 
 ### Debug builds (developers)
 

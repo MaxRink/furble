@@ -1,0 +1,39 @@
+#include <cstdint>
+#include <iostream>
+
+#include "FurbleUIMemory.h"
+
+namespace {
+
+int failures = 0;
+
+void check(bool condition, const char *message) {
+  if (!condition) {
+    std::cerr << "FAIL: " << message << '\n';
+    failures++;
+  }
+}
+
+}  // namespace
+
+int main() {
+  using namespace Furble::UIMemory;
+
+  // The old fixed buffer was 320 * 16 * 2 = 10240 bytes per draw buffer.
+  check(drawBufferBytes(320, 240, 2) == 10240, "320x240 changed the Core2 draw buffer");
+  check(drawBufferBytes(135, 240, 2) == 4320, "135x240 was not sized to the StickS3 panel");
+  check(drawBufferBytes(80, 160, 2) == 1600, "80x160 was not sized to the StickC panel");
+  check(drawBufferBytes(135, 240, 2) < drawBufferBytes(320, 240, 2),
+        "a narrower panel did not free internal DMA memory");
+
+  // Degenerate dimensions must still produce a usable one-line buffer.
+  check(drawBufferBytes(0, 0, 2) == 2, "zero dimensions did not clamp to one line");
+  check(drawBufferBytes(-1, -1, 2) == 2, "negative dimensions did not clamp to one line");
+  check(drawBufferBytes(1000, 1000, 2) == 10240, "oversized dimensions were not capped");
+
+  if (failures != 0) {
+    return 1;
+  }
+  std::cout << "ui_memory_test: PASS\n";
+  return 0;
+}

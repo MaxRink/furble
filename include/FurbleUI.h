@@ -874,9 +874,6 @@ class UI {
   static constexpr const char *m_IntervalSleepThresholdStr = "Sleep Threshold";
 
   static constexpr uint8_t BYTES_PER_PIXEL = (LV_COLOR_FORMAT_GET_SIZE(LV_COLOR_FORMAT_RGB565));
-  static constexpr int32_t MAX_WIDTH = 320;
-  static constexpr int32_t MAX_HEIGHT = 240;
-  static constexpr size_t BUFFER_SIZE = (UI::MAX_WIDTH * (MAX_HEIGHT / 15) * UI::BYTES_PER_PIXEL);
 
 #if defined(FURBLE_M5COREX)
   static constexpr int32_t ICON_MENU_SIZE = 48;

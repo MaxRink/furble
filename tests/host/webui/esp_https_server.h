@@ -6,6 +6,10 @@ struct httpd_ssl_config_t {
   struct {
     int stack_size = 0;
     int max_uri_handlers = 0;
+    int max_open_sockets = 0;
+    bool lru_purge_enable = false;
+    int max_req_hdr_len = 0;
+    int max_resp_headers = 0;
     int recv_wait_timeout = 0;
     int send_wait_timeout = 0;
   } httpd;

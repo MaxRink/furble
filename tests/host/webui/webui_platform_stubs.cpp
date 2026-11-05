@@ -1,3 +1,4 @@
+#include "esp_heap_caps.h"
 #include "esp_https_server.h"
 #include "esp_timer.h"
 #include "freertos/task.h"
@@ -24,7 +25,30 @@ uint64_t g_Now = 0;
 uint64_t g_StartAdvance = 0;
 std::vector<std::pair<esp_timer_cb_t, void *>> g_QueuedCallbacks;
 std::function<void()> g_StopHook;
+esp_err_t g_StartError = ESP_OK;
+size_t g_InternalFree = 65536;
+size_t g_LargestBlock = 32768;
 }  // namespace
+
+extern "C" size_t heap_caps_get_free_size(uint32_t caps) {
+  (void)caps;
+  return g_InternalFree;
+}
+extern "C" size_t heap_caps_get_largest_free_block(uint32_t caps) {
+  (void)caps;
+  return g_LargestBlock;
+}
+
+namespace host_webui_heap {
+void set(size_t freeBytes, size_t largestBlock) {
+  g_InternalFree = freeBytes;
+  g_LargestBlock = largestBlock;
+}
+void reset() {
+  g_InternalFree = 65536;
+  g_LargestBlock = 32768;
+}
+}  // namespace host_webui_heap
 
 extern "C" size_t httpd_req_get_hdr_value_len(httpd_req_t *request, const char *name) {
   const auto found = request->headers.find(name);
@@ -71,6 +95,9 @@ extern "C" esp_err_t httpd_register_uri_handler(httpd_handle_t server, const htt
   return ESP_OK;
 }
 extern "C" esp_err_t httpd_ssl_start(httpd_handle_t *server, const httpd_ssl_config_t *) {
+  if (g_StartError != ESP_OK) {
+    return g_StartError;
+  }
   *server = new host_webui_server_t;
   g_Server = *server;
   return ESP_OK;
@@ -87,6 +114,7 @@ extern "C" esp_err_t httpd_ssl_stop(httpd_handle_t server) {
 namespace host_webui_http {
 void reset() {
   g_StopHook = {};
+  g_StartError = ESP_OK;
 }
 httpd_req_t invoke(httpd_method_t method,
                    const std::string &uri,
@@ -113,6 +141,9 @@ httpd_req_t invoke(httpd_method_t method,
 }
 void setStopHook(std::function<void()> hook) {
   g_StopHook = std::move(hook);
+}
+void setStartError(esp_err_t error) {
+  g_StartError = error;
 }
 }  // namespace host_webui_http
 
@@ -189,3 +220,4 @@ extern "C" BaseType_t xTaskNotifyGive(TaskHandle_t) {
 extern "C" uint32_t ulTaskNotifyTake(BaseType_t, TickType_t) {
   return 0;
 }
+extern "C" void vTaskDelete(TaskHandle_t) {}
