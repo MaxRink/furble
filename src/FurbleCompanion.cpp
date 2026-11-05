@@ -285,8 +285,14 @@ void CompanionGatt::createGatt(void) {
                                                       | NIMBLE_PROPERTY::WRITE_ENC,
                                                   256);
   m_Cameras->setCallbacks(this);
+  // Use notify rather than indicate for the auth exchange. macOS
+  // CoreBluetooth intermittently fails to register an indicate-only CCCD on
+  // this service even though the same central subscribes to the notify-only
+  // Status characteristic. The protocol is request/response over an encrypted
+  // link, so losing the ATT indication acknowledgement is acceptable; the
+  // firmware retries a challenge that receives no proof.
   m_Auth = m_GattService->createCharacteristic(
-      AUTH_UUID, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::INDICATE | NIMBLE_PROPERTY::WRITE_ENC,
+      AUTH_UUID, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY | NIMBLE_PROPERTY::WRITE_ENC,
       CompanionService::AUTH_CHALLENGE_SIZE);
   m_Auth->setCallbacks(this);
 
@@ -748,6 +754,10 @@ void CompanionGatt::indicate(uint8_t charId, const uint8_t *data, size_t len) {
     characteristic = m_Auth;
   }
   if (characteristic == nullptr || data == nullptr || !isConnected()) {
+    return;
+  }
+  if (charId == COMPANION_CHAR_AUTH) {
+    characteristic->notify(data, len, m_CompanionConnHandle);
     return;
   }
   characteristic->indicate(data, len, m_CompanionConnHandle);
