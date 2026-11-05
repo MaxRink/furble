@@ -122,3 +122,11 @@ The enable path computes the reconnect decision under `m_Mutex` but calls
 reads the public getters and would otherwise deadlock. The disconnect restart
 snapshots the window flag and deadline atomically, so an expired window is not
 silently extended.
+
+The complete advertising operation is now serialized by
+`m_AdvertisingMutex`: pairing start, reconnect start, stop, and the service
+task's decision enter through it, and the state checks inside each operation
+prevent a stale reconnect from overriding an explicit pairing window. If task
+creation fails, `enable()` keeps a direct reconnect fallback because there is no
+service task to own it. Only one context mutates the shared NimBLE advertising
+object at a time.
