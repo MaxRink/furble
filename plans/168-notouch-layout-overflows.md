@@ -1229,3 +1229,12 @@ outside-band narrowing on Home and on the Settings page at both scroll ends,
 alongside `ui.cut_labels 0` and `ui.overflow no`. Validation for this change is
 recorded in the pull request and is simulator-only; no physical reflash is
 claimed.
+
+## Button-label settle follow-up (2026-11-05)
+
+The mid-gesture pass can narrow a button row before the scroll-end label pass
+runs, so `widthChanged` is already false when the label is sized. The scroll-end
+pass now applies the button label's 100% width/wrap based on band membership
+too, and marks the label with `LV_OBJ_FLAG_USER_2` so a successful label change
+requests one more settle pass without looping on every pass. Rows below a
+height-changing button are therefore re-read at their real positions.

@@ -90,8 +90,11 @@ bond would let any nearby central pair without the window.
 ## Power-monitor note
 
 The USB monitor now disables stdout buffering, so a redirected CSV shows each
-sample immediately. A 1 h no-companion run samples continuously; with a live BLE
-companion link the USB console parser can still time out under load and enter its
+sample immediately. On this bench the longest continuous USB dataset was 35
+minutes; several longer runs ended with the ESP32-S3 enumerating as the ROM
+USB-JTAG unit after 4-35 minutes and needed a hard reset. That reset is a
+separate stability problem, not a monitor parsing issue. With a live BLE
+companion link the USB console parser can also time out under load and enter its
 reconnect backoff. The BLE monitor is only meaningful while status notifications
 are actually arriving; a constant `uptime_s` in consecutive rows means the host
 is reading a cached status and the run should be discarded.
