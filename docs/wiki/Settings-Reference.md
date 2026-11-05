@@ -86,7 +86,7 @@ that do not fit; focus outlines must not cover adjacent setting names.
 | Screen off | Off (Dim on M5Stack Core Basic) | Dim, Off, Off remote on, Dim then off (button boards). Dim, Off, Dim then off (touch boards) | Restart | Fresh devices start at Off, except the M5Stack Core Basic keeps Dim so its IP5306 boost does not cut the board. Touch boards do not offer the remote-on option. Dim then off dims at the inactivity timeout and sleeps the panel 30 s later. |
 | Calibrate | n/a | action | n/a | Touch boards only. Launches touch calibration and stores the result. |
 | Show Title | On | On, Off | Restart | Hiding the title frees header space on narrow stick displays. |
-| Legend | Buttons | Buttons, Bottom, Off | Restart | Physical-button Stick boards only. Buttons keeps the shipped Right legend beside its button, narrowing only the rows level with that floating legend. Row width and translation update during the scroll; label sizing and the full layout settle wait for the gesture to end. Bottom places all three legends in the navigation band; Off hides the rendered indicators but retains physical input anchors and layout reservation. |
+| Legend | Buttons | Buttons, Bottom, Off | Restart | Physical-button Stick boards only. Buttons keeps the shipped Right legend beside its button, narrowing only the rows level with that floating legend. Row width and translation update during the scroll; label sizing (including button-label wrapping) and the full layout settle wait for the gesture to end. Bottom places all three legends in the navigation band; Off hides the rendered indicators but retains physical input anchors and layout reservation. |
 
 ### Features
 
