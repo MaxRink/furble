@@ -259,7 +259,7 @@ void WebUI::reloadSetting(void) {
           heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
       const auto gate = WebUIMemory::supervisorGate(freeBytes, largest);
       if (!gate.open) {
-        ESP_LOGE(LOG_TAG, WebUIMemory::SUPERVISOR_GATE_LOG, static_cast<unsigned>(gate.freeBytes),
+        ESP_LOGE(LOG_TAG, FURBLE_WEBUI_SUPERVISOR_GATE_LOG, static_cast<unsigned>(gate.freeBytes),
                  static_cast<unsigned>(gate.largestBlock), static_cast<unsigned>(gate.freeFloor),
                  static_cast<unsigned>(gate.largestFloor));
       } else if (xTaskCreate(taskEntry, "webui", WebUIMemory::SUPERVISOR_STACK_BYTES, this, 2,
@@ -641,7 +641,7 @@ bool WebUI::serverMemoryAvailable(void) const {
   if (gate.open) {
     return true;
   }
-  ESP_LOGE(LOG_TAG, WebUIMemory::SERVER_GATE_LOG, static_cast<unsigned>(gate.freeBytes),
+  ESP_LOGE(LOG_TAG, FURBLE_WEBUI_SERVER_GATE_LOG, static_cast<unsigned>(gate.freeBytes),
            static_cast<unsigned>(gate.largestBlock), static_cast<unsigned>(gate.freeFloor),
            static_cast<unsigned>(gate.largestFloor));
   return false;

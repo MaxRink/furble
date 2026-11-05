@@ -83,11 +83,17 @@ inline constexpr bool supervisorFits(size_t freeBytes, size_t largestBlock) {
  * Production log formats, shared with the simulator so its fail-closed output
  * is the sentence a device prints rather than a paraphrase.
  */
-inline constexpr const char *SUPERVISOR_GATE_LOG =
-    "WebUI supervisor not created: internal free %u, largest %u (need %u/%u)";
-inline constexpr const char *SERVER_GATE_LOG =
-    "HTTPS stays closed: internal free %u, largest %u (need %u/%u). "
-    "See docs/webui.md for the board budget.";
+// ESP_LOG_ATTR_STR() needs a string literal when it is passed to ESP_LOGx;
+// keep the text in macros and expose the same text as constants for the
+// simulator.
+#define FURBLE_WEBUI_SUPERVISOR_GATE_LOG \
+  "WebUI supervisor not created: internal free %u, largest %u (need %u/%u)"
+#define FURBLE_WEBUI_SERVER_GATE_LOG                                \
+  "HTTPS stays closed: internal free %u, largest %u (need %u/%u). " \
+  "See docs/webui.md for the board budget."
+
+inline constexpr const char *SUPERVISOR_GATE_LOG = FURBLE_WEBUI_SUPERVISOR_GATE_LOG;
+inline constexpr const char *SERVER_GATE_LOG = FURBLE_WEBUI_SERVER_GATE_LOG;
 
 }  // namespace WebUIMemory
 }  // namespace Furble
