@@ -850,7 +850,7 @@ UI::UI(const interval_t &interval)
     // settled box gives the vertical band the reservation applies to.
     lv_obj_update_layout(m_Right);
     m_LegendWidth = lv_obj_get_width(m_Right);
-    measureLegendBand();
+    measureLegendBand(m_Right);
   }
 
   configureControl(ControlMode::MENU);
@@ -2288,14 +2288,14 @@ void UI::setIcon(lv_obj_t *icon, const lv_image_dsc_t *symbol) {
 // and below it keep the full page width. A row can scroll into or out of the
 // band, so the widths are re-evaluated on the page's SCROLL and SCROLL_END
 // events rather than once at page load.
-void UI::measureLegendBand(void) {
-  if ((m_Right == nullptr) || !lv_obj_is_valid(m_Right)) {
+void UI::measureLegendBand(lv_obj_t *legend) {
+  if ((legend == nullptr) || !lv_obj_is_valid(legend)) {
     m_LegendBandTop = 0;
     m_LegendBandBottom = -1;
     return;
   }
   lv_area_t area;
-  lv_obj_get_coords(m_Right, &area);
+  lv_obj_get_coords(legend, &area);
   m_LegendBandTop = area.y1;
   m_LegendBandBottom = area.y2;
 }
@@ -2447,6 +2447,15 @@ void UI::applyLegendBandWidths(lv_obj_t *page, bool settle, bool pinBottom) {
   }
 }
 
+void UI::legendBandDeferred(void *arg) {
+  auto *page = static_cast<lv_obj_t *>(arg);
+  if ((page == nullptr) || !lv_obj_is_valid(page)) {
+    return;
+  }
+  lv_obj_remove_flag(page, LV_OBJ_FLAG_USER_4);
+  applyLegendBandWidths(page, true, true);
+}
+
 void UI::legendBandScrollEvent(lv_event_t *e) {
   auto *page = static_cast<lv_obj_t *>(lv_event_get_user_data(e));
   // A child's event can bubble into the page; only the page's own scroll moves
@@ -2454,8 +2463,23 @@ void UI::legendBandScrollEvent(lv_event_t *e) {
   if ((page == nullptr) || !lv_obj_is_valid(page) || (lv_event_get_target(e) != page)) {
     return;
   }
-  const bool scrollEnd = lv_event_get_code(e) == LV_EVENT_SCROLL_END;
-  applyLegendBandWidths(page, scrollEnd, scrollEnd);
+  if (lv_event_get_code(e) == LV_EVENT_SCROLL_END) {
+    // Settle immediately once the gesture stops, including encoder focus
+    // scrolling that never sends a separate frame event.
+    if (lv_obj_has_flag(page, LV_OBJ_FLAG_USER_4)) {
+      lv_obj_remove_flag(page, LV_OBJ_FLAG_USER_4);
+    }
+    applyLegendBandWidths(page, true, true);
+    return;
+  }
+  // Never reflow from inside the scroll callback: a size change there can
+  // invalidate the scroll area and feed back into the gesture. Coalesce all
+  // scroll frames into one async pass on the next LVGL cycle instead.
+  if (lv_obj_has_flag(page, LV_OBJ_FLAG_USER_4)) {
+    return;
+  }
+  lv_obj_add_flag(page, LV_OBJ_FLAG_USER_4);
+  lv_async_call(legendBandDeferred, page);
 }
 
 void UI::reserveLegendColumns(lv_obj_t *page) {
@@ -2469,6 +2493,8 @@ void UI::reserveLegendColumns(lv_obj_t *page) {
   // layout-update free.
   if (!lv_obj_has_flag(page, LV_OBJ_FLAG_USER_2)) {
     lv_obj_add_flag(page, LV_OBJ_FLAG_USER_2);
+    // SCROLL frames only queue one coalesced async pass; the geometry change
+    // happens outside the callback. SCROLL_END settles immediately.
     lv_obj_add_event_cb(page, legendBandScrollEvent, LV_EVENT_SCROLL, page);
     lv_obj_add_event_cb(page, legendBandScrollEvent, LV_EVENT_SCROLL_END, page);
   }
@@ -8846,6 +8872,11 @@ void UI::applyLevelRotation(level_t *level, int32_t rotation) {
   if (cont != nullptr) {
     lv_obj_update_layout(cont);
   }
+
+  // The floating legend was re-anchored against the swapped resolution above.
+  // Its cached band is in panel coordinates, so refresh it before the repaint
+  // and before any later page uses the band for row widths.
+  measureLegendBand(level->navRight);
 
   // The panel, the LVGL resolution, every widget and the button overlay now all
   // describe the new orientation. Force one synchronous full repaint so the
