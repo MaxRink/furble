@@ -33,6 +33,8 @@ Release tags beginning with `companion-test-` skip firmware publication and
 are reserved for companion testing; other release tags retain normal behavior.
 All simulator scenarios are owned in `sim/scenarios/manifest.json`; run
 `python3 tools/check_sim_scenarios.py` after adding, removing, or renaming one.
+Run `sh sim/scripts/check-doc-tokens.sh` after changing scenario seeds; the
+`sim-e2e` workflow runs it with the scenario check.
 The built simulator preference ownership gate is
 `sim/scripts/check-preferences-lifecycle.sh`; `sim-e2e.yml` runs it against the
 fresh M5StickS3 binary.

@@ -130,3 +130,7 @@ prevent a stale reconnect from overriding an explicit pairing window. If task
 creation fails, `enable()` keeps a direct reconnect fallback because there is no
 service task to own it. Only one context mutates the shared NimBLE advertising
 object at a time.
+
+The USB monitor documentation surfaces were synchronized in the follow-up to
+#382: `docs/companion.md`, `companion/apple/README.md`, the root README and
+`docs/wiki/Home.md` all state the 5 s console command timeout.

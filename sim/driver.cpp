@@ -381,7 +381,12 @@ void validateSeed(const std::string &name, const std::string &value) {
   }
 
   if (name == "saved_cameras") {
-    parseUnsigned(value);
+    const uint32_t count = parseUnsigned(value);
+    if ((count < 1) || (count > Settings::MULTISELECT_MAX)) {
+      std::cerr << "Invalid saved_cameras: " << value << " (expected 1-"
+                << Settings::MULTISELECT_MAX << ")\n";
+      std::exit(2);
+    }
     return;
   }
 

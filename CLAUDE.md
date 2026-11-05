@@ -131,7 +131,9 @@ CLAUDE.md whose directory it touches.
 - `tools/coverage.py` measures host and simulator line coverage and enforces
   `tests/coverage_floor.json` in CI. See `docs/coverage.md`.
 - The built simulator preference ownership gate is
-  `sim/scripts/check-preferences-lifecycle.sh`; the existing `sim-e2e` job runs
+  `sim/scripts/check-doc-tokens.sh` after changing scenario seeds; the existing
+`sim-e2e` job runs it with `tools/check_sim_scenarios.py`. The
+`sim/scripts/check-preferences-lifecycle.sh` gate; the existing `sim-e2e` job runs
   it against the fresh M5StickS3 binary with a bounded step.
 - The host TSAN wrapper fails on any warning or non-zero child status; see
   `CONTRIBUTING.md` for its exact completion marker and compiler-free contract.
