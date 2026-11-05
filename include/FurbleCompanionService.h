@@ -195,6 +195,8 @@ class CompanionService {
 
   void onConnected(void);
   void onDisconnected(void);
+  /** Re-send an outstanding auth challenge after a lost indication. */
+  void serviceAuth(void);
 
   void beginPairing(uint32_t pin);
   bool hasPendingPairing(void) const;
@@ -267,6 +269,13 @@ class CompanionService {
   // is still draining. Keep the connection-local auth state serialized across
   // those callbacks without holding the lock while calling transport code.
   mutable std::mutex m_AuthMutex;
+  // The auth challenge is an indication. NimBLE can drop the first one when
+  // the central's CCCD write has not reached the stack yet, so keep the packet
+  // and re-send it on the service tick until a proof or the retry budget ends.
+  std::array<uint8_t, AUTH_CHALLENGE_SIZE> m_PendingChallenge = {};
+  uint64_t m_ChallengeSentMs = 0;
+  uint8_t m_ChallengeRetries = 0;
+  bool m_ChallengePending = false;
   esp_timer_handle_t m_TimedShutterTimer = nullptr;
   std::function<void(bool)> m_SettingReloadCallback;
 

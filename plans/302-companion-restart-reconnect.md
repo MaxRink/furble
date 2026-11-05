@@ -51,6 +51,11 @@ StickS3 on internal-heap-tight master:
   therefore logged `attr_handle=8, not found`, the characteristic never
   recorded the subscription, and the HMAC auth indications failed with
   `BLE_HS_ENOENT` on the connections that happened to hit this path.
+- Send the standard Service Changed indication once per boot after a bonded
+  central encrypts. macOS caches the GATT handle map and can keep writing the
+  old Auth CCCD handle after a firmware update, which looks like a lost auth
+  challenge. The CLI also re-asserts the Auth notification subscription before
+  writing the begin packet instead of trusting a cached `isNotifying`.
 
 ## Validation
 

@@ -145,6 +145,8 @@ void CompanionService::onConnected(void) {
   std::string password;
   const bool loaded = Settings::loadPassword(password);
   const std::lock_guard<std::mutex> lock(m_AuthMutex);
+  m_ChallengePending = false;
+  m_ChallengeRetries = 0;
   m_Auth.setPassword(password, loaded);
   m_Auth.onConnected();
 }
@@ -152,9 +154,33 @@ void CompanionService::onConnected(void) {
 void CompanionService::onDisconnected(void) {
   {
     const std::lock_guard<std::mutex> lock(m_AuthMutex);
+    m_ChallengePending = false;
+    m_ChallengeRetries = 0;
     m_Auth.onDisconnected();
   }
   releaseHeldCommands();
+}
+
+void CompanionService::serviceAuth(void) {
+  std::array<uint8_t, AUTH_CHALLENGE_SIZE> packet = {};
+  {
+    const std::lock_guard<std::mutex> lock(m_AuthMutex);
+    if (!m_ChallengePending || m_Auth.isAuthenticated()) {
+      return;
+    }
+    const uint64_t now = nowMs();
+    if ((now - m_ChallengeSentMs) < 1000) {
+      return;
+    }
+    if (m_ChallengeRetries >= 5) {
+      m_ChallengePending = false;
+      return;
+    }
+    packet = m_PendingChallenge;
+    m_ChallengeRetries++;
+    m_ChallengeSentMs = now;
+  }
+  m_Transport.indicate(COMPANION_CHAR_AUTH, packet.data(), packet.size());
 }
 
 void CompanionService::reloadPassword(void) {
@@ -627,8 +653,19 @@ void CompanionService::handleAuth(const uint8_t *data, size_t len) {
     packet[0] = AUTH_VERSION;
     packet[1] = AUTH_OP_BEGIN;
     std::copy(nonce.begin(), nonce.end(), packet.begin() + 2);
+    {
+      const std::lock_guard<std::mutex> lock(m_AuthMutex);
+      m_PendingChallenge = packet;
+      m_ChallengeSentMs = nowMs();
+      m_ChallengeRetries = 0;
+      m_ChallengePending = true;
+    }
     m_Transport.indicate(COMPANION_CHAR_AUTH, packet.data(), packet.size());
   } else {
+    {
+      const std::lock_guard<std::mutex> lock(m_AuthMutex);
+      m_ChallengePending = false;
+    }
     const std::array<uint8_t, AUTH_RESULT_SIZE> packet = {AUTH_VERSION, AUTH_OP_RESULT, wireResult};
     m_Transport.indicate(COMPANION_CHAR_AUTH, packet.data(), packet.size());
   }

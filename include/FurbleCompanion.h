@@ -143,6 +143,11 @@ class CompanionGatt: public NimBLEServerCallbacks,
   mutable std::mutex m_Mutex;
   bool m_Enabled = false;
   bool m_ServerStarted = false;
+  // The GATT database may change across a firmware update. Send the standard
+  // Service Changed indication to a bonded central once per boot so macOS
+  // rebuilds its cached handle map before the next session.
+  bool m_ServiceChangedPending = false;
+  uint64_t m_ServiceChangedAt = 0;
   bool m_PairingWindow = false;
   bool m_CompanionConnected = false;
   bool m_CompanionEncrypted = false;

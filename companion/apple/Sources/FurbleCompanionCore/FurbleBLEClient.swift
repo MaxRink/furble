@@ -335,17 +335,25 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
     // The firmware owns nonce generation. Never authenticate a locally
     // generated nonce or accept a proof without the firmware response.
     guard let peripheral else { fail(.authenticationUnavailable); return }
-    authBeginPending = true
-    if authCharacteristic.isNotifying {
-      writeAuthBegin(to: authCharacteristic)
-    } else {
-      // Auth replies are indications. Subscribe before writing the begin
-      // packet or the firmware's nonce can be lost between the two callbacks.
-      peripheral.setNotifyValue(true, for: authCharacteristic)
+    if ProcessInfo.processInfo.environment["FURBLE_COMPANION_DEBUG"] != nil {
+      FileHandle.standardError.write(
+        Data("[ble] auth begin: isNotifying=\(authCharacteristic.isNotifying) properties=0x\(String(authCharacteristic.properties.rawValue, radix: 16))\n".utf8))
     }
+    authBeginPending = true
+    // Auth replies are indications. Always re-assert the subscription before
+    // writing the begin packet: CoreBluetooth can report isNotifying as true
+    // from the previous connection even though the peripheral has no CCCD
+    // subscription yet, and the firmware's nonce would then be lost.
+    if authCharacteristic.isNotifying {
+      peripheral.setNotifyValue(false, for: authCharacteristic)
+    }
+    peripheral.setNotifyValue(true, for: authCharacteristic)
   }
 
   private func writeAuthBegin(to characteristic: CBCharacteristic) {
+    if ProcessInfo.processInfo.environment["FURBLE_COMPANION_DEBUG"] != nil {
+      FileHandle.standardError.write(Data("[ble] auth begin write\n".utf8))
+    }
     guard write(FurbleProtocol.authBegin(), to: characteristic, type: .withResponse) else {
       fail(.authenticationUnavailable)
       return
@@ -380,10 +388,10 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
       fail(.malformedPacket)
       return
     }
-    guard authExchange.challengeReceived() else {
-      fail(.malformedPacket)
-      return
-    }
+    // The firmware retries a challenge indication when the first one raced the
+    // CCCD subscription. A duplicate is harmless; ignore it instead of failing
+    // a session that may already have sent its proof.
+    guard authExchange.challengeReceived() else { return }
     guard let command = state.beginAuthentication(password: password, nonce: nonce),
       case .writeAuthentication(let proof) = command else {
       fail(.authenticationUnavailable)
@@ -655,8 +663,22 @@ extension FurbleBLEClient: @preconcurrency CBPeripheralDelegate {
       return
     }
     if characteristic.uuid == CBUUID(string: FurbleProtocol.UUIDs.auth), authBeginPending {
-      guard characteristic.isNotifying else { fail(.authenticationUnavailable); return }
-      writeAuthBegin(to: characteristic)
+      if ProcessInfo.processInfo.environment["FURBLE_COMPANION_DEBUG"] != nil {
+        FileHandle.standardError.write(
+          Data("[ble] auth notify state=\(characteristic.isNotifying)\n".utf8))
+      }
+      // The false half of the re-subscribe is expected; only the enabled state
+      // sends the begin packet. CoreBluetooth reports the local notification
+      // state before the peripheral has processed the CCCD write, so give the
+      // link a short settle window before asking for the challenge.
+      if characteristic.isNotifying {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self, weak peripheral] in
+          guard let self, let peripheral, self.isCurrent(peripheral), self.authBeginPending else {
+            return
+          }
+          self.writeAuthBegin(to: characteristic)
+        }
+      }
     }
   }
 

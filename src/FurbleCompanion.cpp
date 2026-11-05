@@ -388,7 +388,10 @@ void CompanionGatt::startReconnectAdvertising(void) {
   m_Advertising->reset();
   m_Advertising->setConnectableMode(BLE_GAP_CONN_MODE_UND);
   m_Advertising->setDiscoverableMode(BLE_GAP_DISC_MODE_GEN);
-  m_Advertising->setAdvertisingInterval(1600);  // 1000 ms in 0.625 ms units
+  // Keep reconnect advertising at the same 100 ms cadence as the pairing
+  // window. The old 1 s interval was invisible to some macOS scan windows even
+  // though the controller reported the advertisement active.
+  m_Advertising->setAdvertisingInterval(160);  // 100 ms in 0.625 ms units
   m_Advertising->setScanFilter(false, false);
   m_Advertising->enableScanResponse(true);
   m_Advertising->setName(Device::getStringID());
@@ -480,6 +483,17 @@ void CompanionGatt::serviceTask(void) {
       startReconnectAdvertising();
     }
 
+    if (m_ServiceChangedPending && (now >= m_ServiceChangedAt) && m_CompanionConnected
+        && (m_Server != nullptr)) {
+      // The central has now enabled its Service Changed subscription. Tell it
+      // the handle map may have moved since its cached copy, otherwise macOS
+      // keeps writing the old CCCD handles after a firmware update.
+      m_Server->sendServiceChangedIndication();
+      m_ServiceChangedPending = false;
+      ESP_LOGI(LOG_TAG, "Companion sent Service Changed indication");
+    }
+
+    m_Service.serviceAuth();
     m_Service.notifyStatus();
     m_Service.notifyCameras();
     vTaskDelay(pdMS_TO_TICKS(1000));
@@ -628,6 +642,12 @@ void CompanionGatt::onAuthenticationComplete(NimBLEConnInfo &connInfo) {
     return;
   }
 
+  // The central subscribes to the standard Service Changed characteristic a
+  // few milliseconds after this callback. Sending now would race that
+  // subscription and be dropped; the service task sends it one second later.
+  m_ServiceChangedPending = true;
+  m_ServiceChangedAt = nowMs() + 1000;
+
   const NimBLEAddress newAddress = connInfo.getIdAddress();
   if (m_BondValid && !m_BondAddress.equals(newAddress)) {
     NimBLEDevice::deleteBond(m_BondAddress);
@@ -657,6 +677,7 @@ void CompanionGatt::onWrite(NimBLECharacteristic *characteristic, NimBLEConnInfo
   if (characteristic == m_Location) {
     m_Service.handleLocation(value.data(), value.size());
   } else if (characteristic == m_Auth) {
+    ESP_LOGI(LOG_TAG, "Companion auth write len=%u", static_cast<unsigned>(value.size()));
     m_Service.handleAuth(value.data(), value.size());
   } else if (characteristic == m_Settings) {
     m_Service.handleSettings(value.data(), value.size());
