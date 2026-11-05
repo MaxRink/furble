@@ -143,6 +143,7 @@ state and the remaining gate; the issue stays open until that gate lands.
 | [122-gps-sim-stability.md](implemented/122-gps-sim-stability.md) | Serialize TinyGPSPlus ownership across the GPS task, LVGL timers, and console snapshots; exercise concurrent GPS pages in the host simulator |
 | [123-host-task-lifecycle.md](implemented/123-host-task-lifecycle.md) | Join real-Control harness tasks before host static destruction |
 | [126-settings-handle-concurrency.md](implemented/126-settings-handle-concurrency.md) | Use operation-local Preferences handles so concurrent settings calls cannot replace or close each other's NVS handle |
+| [301-sim-ui-buttons.md](301-sim-ui-buttons.md) | Interactive on-screen A/B/C or A/B/PWR buttons in a top-view control window that drives the same emulated GPIOs as the keyboard, without covering the panel or its overlays |
 
 ## Tooling and web installer
 

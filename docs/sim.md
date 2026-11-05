@@ -19,13 +19,15 @@ together:
 | M5Stack Core, 320x240 | `FURBLE_M5COREX` | `board_M5Stack` |
 
 The default is the M5StickS3 135x240 panel. The Core panel models the 320x240
-Core class used by the simulator; the Stick panels use the non-touch physical
-button layout when `FURBLE_SIM_NO_TOUCH` is set or a scenario seeds
-`no_touch true`.
+Core class used by the simulator. A visible interactive run with the on-screen
+buttons uses the non-touch physical-button layout so the floating legends are
+visible; `FURBLE_SIM_NO_TOUCH=0` keeps the touch device for a deliberate
+mixed-input session. A scenario seed of `no_touch true` or
+`FURBLE_SIM_NO_TOUCH=1` still forces the physical-button layout.
 
-The SDL panel always attaches a mouse-driven touch device, so an unseeded run
-renders the touch layout on every modeled board. `FURBLE_SIM_NO_TOUCH=1` or a
-scenario's `no_touch true` selects the physical-button layout. None of the
+The SDL panel attaches a mouse-driven touch device by default, so an unseeded
+scripted run renders the touch layout on every modeled board. `FURBLE_SIM_NO_TOUCH=1`
+or a scenario's `no_touch true` selects the physical-button layout. None of the
 three modeled boards has a touch panel. The Sticks and the M5Stack Core Basic
 ship the non-touch layout, whose navbar is 26 px high and whose legend buttons
 are 24x24 px. On Stick boards Left and OK are bottom-edge indicators; the
@@ -123,6 +125,86 @@ The CMake entry point has the same source and board defaults:
 cmake -S sim -B sim/build-cmake
 cmake --build sim/build-cmake
 ```
+
+### Interactive on-screen buttons
+
+A visible interactive run creates a second, simulator-only control window so
+the modeled physical buttons can be clicked instead of typed:
+
+```sh
+sh sim/build.sh
+sim/build/furble-sim
+```
+
+The control window is borderless and is placed left of the panel, falling back
+to below, then above, and only then to the right side, with no gap. Its content
+height matches the panel's content height (240 points for StickS3/Core, 160 for
+StickC) plus a top inset equal to the panel title bar, so the two outer
+rectangles share a top and bottom edge and read as one unit when placed side by
+side. It does not cover the panel or its button-position overlays. A true single
+SDL window is not feasible without vendoring or patching M5GFX: `Panel_sdl`
+owns its `SDL_Window` and renderer inside the protected `monitor` member and
+exposes no caller-provided window or child-window API, and SDL2 has no public
+window-parenting call. The panel keeps its own title bar, and the strip's blank
+top inset matches that height, so the combined silhouette is one rectangle
+rather than two decorated windows. The window draws a simple top view of the
+modeled device and places the buttons where the physical device has them:
+
+| Modeled board | Window title | A | B | Third button |
+| --- | --- | --- | --- | --- |
+| M5StickC / M5StickS3 | `... - Stick: B top, A front, PWR left` | front/bottom edge, GPIO 39 | top edge, GPIO 38 | PWR on the left side, GPIO 36 |
+| M5Stack Core (`FURBLE_M5COREX`) | `... - Core front: A B C` | front edge, GPIO 39 | front edge, GPIO 38 | C on the front edge, GPIO 37 |
+
+StickS3 top view beside the panel, with B on the top edge:
+
+![StickS3 on-screen button strip beside the simulator panel](img/sim-buttons/stick-s3-combined.png)
+
+Core front view, with A/B/C along the front edge:
+
+![Core on-screen button strip beside the simulator panel](img/sim-buttons/core-front-view.png)
+
+The keyboard letters `a`, `b`, `c` and `p` remain available and select the
+same pins (Sticks use `a`, `b`, `p`; Cores use `a`, `b`, `c`). A click and the
+matching keyboard letter drive `lgfx::gpio_lo`/`gpio_hi` on the same emulated
+GPIO M5Unified's PC build reads, so they share one GPIO input path. The
+scenario `btn` verb is a different path: it injects on the UI task through
+`UI::simPressButton` and does not toggle these pins. Mouse down and mouse up
+model hold and release, and the button renders a pressed state. One click
+produces one press/release
+transition: a per-button debounce ignores a redelivery inside 120 ms, a second
+press on an already held button is a no-op, and a left-button up, a drag out of
+the window, focus loss, hidden window, capture loss, or window close releases
+the GPIO so it cannot remain latched.
+
+The simulator's encoder input devices use a 1000 ms long-press time and a
+250 ms repeat interval (`UI::initInputDevices` under `FURBLE_SIM`). A normal
+click is therefore one press/release, and repeats begin only after holding for
+about one second. `ui_buttons.cpp` also debounces duplicate mouse events for
+120 ms, makes a second press on an already held button a no-op, and holds a
+down/up pair for at least 30 ms so a click drained in one UI tick still reaches
+the firmware's 10 ms pin debounce. The `btn-hold NAME MS` scenario verb drives
+the same LVGL input device for a
+virtual hold, so the `button-hold-repeat` scenario proves both the one-event
+click and the one-second threshold without a display.
+
+Interactive runs pace `vTaskDelay` with wall time and keep the simulated panel
+active while the control window exists, so an idle window does not dim or
+sleep between clicks. Scripted, headless and fuzz runs never create the window
+and still exercise the real inactivity, dim, sleep and first-press wake
+behavior. If the panel is already asleep, the first click wakes it and is
+consumed, exactly as on hardware.
+
+The control surface is interactive-only:
+
+- It is not created for a `--script` run or a fuzz run, even when a display is
+  available, so scenarios keep a deterministic input stream.
+- It is skipped automatically under `SDL_VIDEODRIVER=dummy` or `offscreen`.
+- Set `FURBLE_SIM_BUTTONS=0` (also `false`, `no`, or `off`) to keep the
+  interactive run but hide the control window.
+- If window, renderer or SDL event-filter creation fails, the simulator prints
+  one diagnostic and continues without the control surface. Closing the
+  control window hides only that window; closing the panel window still exits
+  the simulator.
 
 Run one scenario headlessly:
 
@@ -268,7 +350,8 @@ text after a comment are ignored. Each line starts with one verb.
 | `wait` / `advance` | `wait MS` or `advance MS` advances virtual time. |
 | `stall` | `stall MS` advances virtual time without running the platform update loop. On the StickS3 model this can expire the PM1 watchdog; `MS` must be non-zero. |
 | `key` / `press` | `key KEY` or `press KEY`, where `KEY` is `up`, `down`, `left`, `right`, `return`, or `enter`. |
-| `btn` / `button` | `btn NAME [hold\|long]` or `button NAME [hold\|long]`. Stick boards expose `a`, `b`, and `pwr`; Core exposes `a`, `b`, and `c`. Pressed/released samples traverse the production read callback and LVGL input processing in the device's current mode. A hold advances virtual time and supplies one additional held sample; it does not reproduce the hardware repeat cadence. |
+| `btn` / `button` | `btn NAME [hold\|long]` or `button NAME [hold\|long]`. Stick boards expose `a`, `b`, and `pwr`; Core exposes `a`, `b`, and `c`. A tap samples one pressed and one released state through the production read callback and LVGL input processing in the device's current mode. The `hold` modifier is the left-button long-press escape and calls `navigateBack()` directly; on other buttons it behaves like a tap because only the left button has that escape. It is not a timed hold. Use `btn-hold` to exercise the repeat cadence. |
+| `btn-hold` / `button-hold` | `btn-hold NAME MS` or `button-hold NAME MS` presses a physical button for `MS` virtual milliseconds (1 to 60000), sampling LVGL every 20 ms through the production encoder read path, then releases it. It proves the long-press and repeat timing configured by `UI::initInputDevices`. The board button names match `btn`. |
 | `capture` | `capture NAME` writes a PNG under the capture directory. |
 | `uart-dump` | Prints captured fake-UART writes as `uart-tx` lines, then clears them. |
 | `home` | Goes to the root menu and focuses Scan. |
@@ -996,7 +1079,8 @@ whatever the production stack does after a fault is what the scenario observes.
   peer. This is the headless pairing fault seam.
 - `FURBLE_SIM_IR`, `FURBLE_SIM_FEEDBACK`, and `FURBLE_SIM_SD` inject optional
   capability presence. `FURBLE_SIM_THEME` and `FURBLE_SIM_TEXTSIZE` select
-  launch-time rendering variants. `FURBLE_SIM_CAPTURE_SPLASH` captures the
+  launch-time rendering variants. `FURBLE_SIM_BUTTONS=0` hides the interactive
+  on-screen button window and `FURBLE_SIM_CAPTURE_SPLASH` captures the
   boot splash. `FURBLE_SIM_PREFS` selects the preferences file used by the
   simulator; a scripted run overrides it with a per-run path
   `.pio/furble-sim-preferences-<scenario>-<pid>-<random>.bin` and removes it

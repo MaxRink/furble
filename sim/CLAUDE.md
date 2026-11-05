@@ -13,9 +13,9 @@ before events; ordinary UI and fuzz runs retain the legacy profiler path.
 Synthetic timer/UI work accounting remains relative simulator evidence, not a
 callback timing measurement or hardware current calibration.
 Simulator-only production policy is forbidden. Narrow `FURBLE_SIM` guards in
-shipping sources are allowed only for observability, deterministic navigation,
-or orderly host exit, and firmware builds must compile the unchanged production
-path. The connection stack is now production: `src/FurbleControl.cpp`,
+shipping sources are allowed only for observability, deterministic navigation
+or input timing, or orderly host exit, and firmware builds must compile the
+unchanged production path. The connection stack is now production: `src/FurbleControl.cpp`,
 `lib/furble/Camera.cpp`, `CameraList.cpp`, `Scan.cpp`, `Device.cpp` and every
 vendor class compile into the simulator over the shared MockNimBLE boundary
 (`lib/testing/nimble`) and the virtual camera peers (`lib/testing/peer`). The
@@ -150,7 +150,8 @@ also uses, and the camera-command counter), `lib/furble/Scan.h` and `Scan.cpp`
 (scan-start probe and scan-end callback counter), `FurbleGPS.cpp` (state/timer
 profiling), `FurblePlatform.h` (watchdog query friend), `FurblePower.cpp`
 (power-lock owner assertions), and `FurbleUI.cpp`/`FurbleUI.h` (profiling,
-queries, deterministic input, scan-start probe,
+queries, deterministic input, simulator encoder long-press/repeat timing,
+scan-start probe,
 disconnect count, and scripted actions). `FurbleUIAudit` is enabled for the
 simulator and console alike. `FURBLE_SIM_*` environment variables select only
 host capabilities, captures, preferences, themes, text size, sanitizers, and
@@ -215,6 +216,39 @@ including empty strings and failed-save rollback.
 - The three modeled panels are the 80x160 `FURBLE_M5STICKC` /
   `board_M5StickC`, the 135x240 `FURBLE_M5STICKS3` /
   `board_M5StickS3`, and the 320x240 `FURBLE_M5COREX` / `board_M5Stack`.
+- Visible interactive runs create a simulator-only on-screen button window
+  (`sim/ui_buttons.cpp`) on the SDL main thread after the panel exists. It
+  draws a top-view device outline: Sticks put B on the top edge, A on the
+  front edge and PWR on the left; Cores put A/B/C on the front edge. Clicks
+  drive the same emulated GPIOs as the keyboard letters (39/38/36 or
+  39/38/37). The scenario `btn` verb is a separate UI-task injection through
+  `UI::simPressButton` and does not use these pins. `btn-hold NAME MS` is the
+  timed-hold counterpart: it samples the same LVGL input device every 20 ms
+  for a virtual duration, so a scenario can prove the repeat threshold. The
+  window is borderless, placed left of the panel, then below or above it, with
+  the right side last, flush against the panel and without overlapping it or
+  its button-position overlays. A true single SDL window is blocked on M5GFX:
+  `Panel_sdl` owns its window and renderer privately in the protected
+  `monitor` member and SDL2 has no window-parenting API. The control strip is
+  height-matched to the panel instead, including a top inset equal to the
+  panel title bar; the two outer rectangles share a top and bottom edge and
+  read as one unit, while the panel keeps its own title bar.
+  It is skipped under `SDL_VIDEODRIVER=dummy`/`offscreen`, for every script and
+  fuzz run, and with `FURBLE_SIM_BUTTONS=0`; a failed window or renderer
+  creation is a warning, not a run failure. While it exists, `sim/driver.cpp`
+  keeps LVGL activity alive so an idle interactive session does not dim or
+  sleep between clicks; interactive runs pace `vTaskDelay` with wall time, and
+  scripted runs still exercise the real inactivity path. One click is one
+  debounced press/release, a down/up pair that lands in one UI tick is held for
+  at least 30 ms so the firmware pin debounce still sees it, and a left-button
+  up anywhere, a drag out of the
+  window, focus loss, capture loss or close releases the GPIO so it cannot
+  latch. The event filter records actions in a small queue and the SDL main
+  thread applies them in its tick, because SDL2 can invoke the filter on the
+  thread that pushes an event; the filter never touches the draw state. Under
+  `FURBLE_SIM`, `UI::initInputDevices` sets each encoder indev's long-press
+  time to 1000 ms and repeat interval to 250 ms, so a click is one
+  press/release and repeats begin only after about one second of holding.
 - Keep the firmware source list in `sim/build.sh` and `sim/CMakeLists.txt` in
   sync. Both carry a note. `src/FurbleMQTT.cpp` is named directly in the CMake list so the static
   inventory checker sees the guarded shell-build entry; its translation unit
@@ -732,10 +766,13 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   variants keep the physical-button shutter fit-required on all three modeled
   boards; `core-touch-remote-shutter-fit.txt` and its Small/Large variants keep
   the 320x240 Core touch fit-required.
-- The SDL panel always attaches a mouse-driven touch device, so an unseeded run
-  renders the touch layout on every modeled board. `FURBLE_SIM_NO_TOUCH=1` or a
-  `no_touch true` seed selects the physical-button layout. None of the three
-  modeled boards has a touch panel: the Sticks and Core Basic ship the
+- The SDL panel attaches a mouse-driven touch device by default. A visible
+  interactive run with the on-screen buttons detaches it and uses the non-touch
+  layout so the floating legends remain visible; `FURBLE_SIM_NO_TOUCH=0` keeps
+  touch for a deliberate mixed-input session. `FURBLE_SIM_NO_TOUCH=1` or a
+  `no_touch true` seed still forces the physical-button layout in any run. None
+  of the three modeled boards has a touch panel: the Sticks and Core Basic ship
+  the
   non-touch layout with a 26 px navbar and 24x24 px legend buttons. On Sticks,
   Left and OK are bottom-edge indicators; default Buttons placement keeps Right
   partway down the right edge and reserves its column in page rows, while Bottom

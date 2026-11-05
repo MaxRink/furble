@@ -1919,6 +1919,18 @@ void UI::initInputDevices(void) {
     default:
       ESP_LOGE("ui", "Unknown hardware, not configuring input devices");
   }
+
+#if defined(FURBLE_SIM)
+  // The simulator's pointer clicks are much easier to over-hold than a real
+  // tact switch. Keep a normal click free of repeats and only start repeating
+  // after one second, matching the hardware's intended long-press feel.
+  for (lv_indev_t *indev : {m_ButtonL, m_ButtonO, m_ButtonR}) {
+    if (indev != nullptr) {
+      lv_indev_set_long_press_time(indev, 1000);
+      lv_indev_set_long_press_repeat_time(indev, 250);
+    }
+  }
+#endif
 }
 
 void UI::setTheme(const std::string &name, uint8_t textSize) {
@@ -13139,8 +13151,8 @@ void UI::doPowerOff(void) {
   m_PoweringOff = true;
   closeLowBatteryWarning();
 
-  // TODO(plans/implemented/68-reconnect-after-restart.md): prepareRestart on feat/68 needs this same quiesce
-  // ordering, a future shared helper should absorb both paths.
+  // TODO(plans/implemented/68-reconnect-after-restart.md): prepareRestart on feat/68 needs this
+  // same quiesce ordering, a future shared helper should absorb both paths.
 #if defined(FURBLE_M5STICKS3)
   // Stop the watchdog first, the BLE teardown below can outlast a feed period.
   Platform::getInstance().watchdogEnable(false);
@@ -13305,14 +13317,14 @@ bool UI::simPressButton(const char *name, bool hold) {
   return result->load();
 }
 
-bool UI::simPressButtonOnUi(const char *name, bool hold) {
+lv_indev_t *UI::simButtonIndev(const char *name) const {
   const std::string button = name == nullptr ? "" : name;
 
   // Resolve the silk-screen button to its LVGL input-device role using the same
   // per-board wiring as initInputDevices(). Each board only exposes the buttons
   // the physical device has: the Sticks carry BtnA, BtnB and the side BtnPWR,
   // the Cores carry BtnA/BtnB/BtnC. Pressing a button the board lacks returns
-  // false so the scenario fails loudly rather than silently doing nothing.
+  // null so the scenario fails loudly rather than silently doing nothing.
   lv_indev_t *indev = nullptr;
   switch (M5.getBoard()) {
     case m5::board_t::board_M5StickC:
@@ -13344,6 +13356,54 @@ bool UI::simPressButtonOnUi(const char *name, bool hold) {
       break;
   }
 
+  return indev;
+}
+
+bool UI::simHoldButton(const char *name, uint32_t milliseconds) {
+  auto button = std::make_shared<const std::string>(name == nullptr ? "" : name);
+  auto result = std::make_shared<std::atomic<bool>>(false);
+  if (!simRunOnUi([this, button, milliseconds, result]() {
+        try {
+          result->store(simHoldButtonOnUi(button->c_str(), milliseconds));
+        } catch (...) {
+          result->store(false);
+        }
+      })) {
+    return false;
+  }
+  return result->load();
+}
+
+bool UI::simHoldButtonOnUi(const char *name, uint32_t milliseconds) {
+  lv_indev_t *indev = simButtonIndev(name);
+  if (indev == nullptr) {
+    return false;
+  }
+
+  // Sample at a fixed cadence instead of one long jump so LVGL sees the
+  // press-to-long-press transition and each repeat tick. The virtual clock is
+  // the same clock the firmware tick callback returns, so the 1000 ms and
+  // 250 ms values configured in initInputDevices are what this exercises.
+  constexpr uint32_t stepMilliseconds = 20;
+  const auto readCb = lv_indev_get_read_cb(indev);
+  lv_indev_set_read_cb(indev, simButtonRead);
+  m_SimButtonPressed = true;
+  lv_indev_read(indev);
+  uint32_t elapsed = 0;
+  while (elapsed < milliseconds) {
+    const uint32_t step = std::min(stepMilliseconds, milliseconds - elapsed);
+    Sim::advanceClock(step);
+    lv_indev_read(indev);
+    elapsed += step;
+  }
+  m_SimButtonPressed = false;
+  lv_indev_read(indev);
+  lv_indev_set_read_cb(indev, readCb);
+  return true;
+}
+
+bool UI::simPressButtonOnUi(const char *name, bool hold) {
+  lv_indev_t *indev = simButtonIndev(name);
   if (indev == nullptr) {
     return false;
   }
@@ -13373,12 +13433,20 @@ bool UI::simPressButtonOnUi(const char *name, bool hold) {
 void UI::simButtonRead(lv_indev_t *drv, lv_indev_data_t *data) {
   auto *ui = static_cast<UI *>(lv_indev_get_user_data(drv));
   data->key = ui->inputKey(drv);
-  data->state = ui->m_SimButtonPressed ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
+  const bool pressed = ui->m_SimButtonPressed;
+  // The real read callbacks run the left-button escape before the display wake
+  // gate. Doing the same here lets a timed hold reach navigateBack() at the
+  // firmware's 800 ms threshold instead of bypassing the real path.
+  if (ui->handleLeftLongPress(drv, pressed)) {
+    data->state = LV_INDEV_STATE_RELEASED;
+    return;
+  }
+  data->state = pressed ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
   // The real read callbacks run every sample through the display wake gate.
   // Do the same for the synthetic press and its release, so a tap on a dark
   // screen wakes the panel and is swallowed instead of activating a hidden
   // control.
-  (void)ui->handleDisplayInput(drv, data, ui->m_SimButtonPressed, true);
+  (void)ui->handleDisplayInput(drv, data, pressed, true);
 }
 #endif
 }  // namespace Furble

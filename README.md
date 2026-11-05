@@ -23,7 +23,9 @@ What this fork adds over upstream right now:
 - Diagnostics pages: device info, power state, reset reason, heap
 - BLE scan duty cycle and scan timeout settings
 - A USB serial console for developers and test automation
-- A host SDL simulator for the UI, plus Android and Apple companion apps
+- A host SDL simulator for the UI with clickable on-screen physical buttons
+  (see the [simulator reference](docs/sim.md)), plus Android and Apple
+  companion apps
 - Companion camera management: list saved cameras, select Multi-Connect targets,
   and connect or disconnect them from the phone
 - A simulator-tested IMU spirit level and live IMU diagnostics page. Enable it

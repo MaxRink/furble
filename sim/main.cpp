@@ -35,6 +35,7 @@
 #include "clock.h"
 #include "driver.h"
 #include "fuzz.h"
+#include "ui_buttons.h"
 #include "watchdog.h"
 
 extern "C" void furble_sim_check_step_detect_suppressed(void);
@@ -316,7 +317,12 @@ int main(int argc, char **argv) {
   }
   int panelLoopResult = 0;
   while (!Furble::Sim::exitRequested() && (panelLoopResult = lgfx::Panel_sdl::loop()) == 0) {
+    // The optional on-screen button window is created on this thread on the
+    // first tick, after the panel window exists. It is interactive-only and
+    // skipped under a headless SDL driver, so scripted runs are unchanged.
+    Furble::Sim::uiButtonsTick();
   }
+  Furble::Sim::uiButtonsShutdown();
 
   if (std::getenv("FURBLE_SIM_FUZZ_DIAGNOSTICS") != nullptr) {
     std::fprintf(stderr, "SIM SDL loop returned %d exit_requested=%d\n", panelLoopResult,

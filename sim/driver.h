@@ -49,6 +49,19 @@ void requestFailureExit(void);
 /** Return true once a scenario, fuzzer, or panel close requested shutdown. */
 bool exitRequested(void);
 
+/** True when no scenario script or fuzzer owns the run. */
+bool interactiveRun(void);
+
+/**
+ * Select wall-clock pacing for vTaskDelay.
+ *
+ * The simulator driver sets this once after argument parsing so the scheduler
+ * translation unit does not need to link the full driver. Host scheduler tests
+ * leave it false and keep deterministic virtual-time stepping.
+ */
+void setInteractivePacing(bool enabled);
+bool interactivePacing(void);
+
 /** Return the first requested simulator process result, or zero if unset. */
 int exitResult(void);
 

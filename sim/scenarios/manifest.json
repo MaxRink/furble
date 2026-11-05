@@ -1569,6 +1569,18 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/e2e/button-hold-repeat.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/e2e/button-mode-dispatch.txt",
       "suite": "e2e",
       "owner": "sim-e2e",

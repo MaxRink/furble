@@ -5,8 +5,6 @@
 
 #include <M5GFX.h>
 #include <M5Unified.h>
-#include <SDL2/SDL.h>
-
 #include <Preferences.h>
 
 #include <driver/uart.h>
@@ -19,6 +17,7 @@
 #include "clock.h"
 #include "driver.h"
 #include "platform_state.h"
+#include "ui_buttons.h"
 
 namespace Furble {
 
@@ -78,7 +77,13 @@ Platform &Platform::getInstance(void) {
     const bool noTouch =
         Sim::scenarioSettingIsTrue("no_touch")
         || (noTouchEnv != nullptr && noTouchEnv[0] != '\0' && noTouchEnv[0] != '0');
-    if (noTouch) {
+    // The on-screen button window is a physical-input surface. Keep the panel
+    // in the physical-button layout too, otherwise the touch driver interprets
+    // a click in the button window as a second touch on the panel and the
+    // floating legends disappear. FURBLE_SIM_NO_TOUCH=0 restores touch for a
+    // deliberate mixed-input session.
+    const bool forceTouch = noTouchEnv != nullptr && noTouchEnv[0] == '0';
+    if (noTouch || (Sim::uiButtonsRequested() && !forceTouch)) {
       M5.Touch.begin(nullptr);
     }
 
@@ -87,9 +92,10 @@ Platform &Platform::getInstance(void) {
     // session with a visible SDL window can drive the physical buttons furble
     // handles on hardware. The M5GFX SDL panel already maps the arrow keys to
     // these pins; the letters just make the button identity explicit. This path
-    // needs the SDL event pump, so it only works interactively: headless
-    // scenarios drive the buttons through the `btn` command, which injects on
-    // the UI task via UI::simPressButton instead of toggling pins.
+    // needs the SDL event pump and shares the emulated GPIOs with the
+    // interactive on-screen control window. Headless scenarios drive the
+    // buttons through the `btn` command, which injects on the UI task via
+    // UI::simPressButton instead of toggling pins.
     lgfx::Panel_sdl::addKeyCodeMapping(SDLK_a, 39);  // BtnA
     lgfx::Panel_sdl::addKeyCodeMapping(SDLK_b, 38);  // BtnB
     lgfx::Panel_sdl::addKeyCodeMapping(SDLK_c, 37);  // BtnC (Core only)

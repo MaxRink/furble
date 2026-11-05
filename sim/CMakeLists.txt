@@ -88,6 +88,9 @@ target_compile_definitions(lvgl PUBLIC LV_CONF_INCLUDE_SIMPLE LV_LVGL_H_INCLUDE_
                                        LV_KCONFIG_IGNORE)
 target_include_directories(lvgl PUBLIC "${CMAKE_CURRENT_LIST_DIR}")
 
+# The simulator module list is globbed so a new host-only file such as
+# ui_buttons.cpp is compiled without a second source list to keep in sync. Its
+# header is included by that translation unit and needs no separate entry.
 file(GLOB SIM_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/*.cpp")
 file(GLOB ICON_SOURCES CONFIGURE_DEPENDS "${FURBLE_ROOT}/components/icons/*.c")
 
