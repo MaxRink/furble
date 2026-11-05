@@ -1,9 +1,12 @@
 # 308 - Input, API and memory fuzzing gate
 
-Status: implemented on `fuzz/input-api-memory`. The gate is intentionally red
-for two hardware crashes owned by parallel PRs: the MQTT owner stack at 4/6 KiB
-and the Home Assistant discovery OOM. No hardware image is built while those
-findings are present.
+Status: implemented on `fuzz/input-api-memory`, rebased on #399 and merged with
+the #397 and #398 production branches for the combined-tree run. The full fuzz
+corpus passes: 10 targets, 104 seed runs, 50,746 iterations, zero failures. The
+#393/#398 MQTT owner stack and HA discovery OOM are now fixed and carry
+regressions. The flash-readiness gate remains blocked only on the non-fuzz
+approximate hardware entries, the full permutation run and the memory profile
+dumps owned by #399.
 
 ## Goal
 
@@ -75,24 +78,51 @@ The known MQTT findings are checked directly:
 Both findings are recorded in `tests/fuzz/seeds.json` with their parallel owner.
 They stay in the gate until those PRs land; they are not marked expected-pass.
 
+## #397 and #398 cover targets
+
+The combined-tree run exercises the production paths, not just constants:
+
+- `fuzz.nvs` runs the real settings migration fuzzer, the NVS round-trip test,
+  `hw-boot-settings-migration`, WiFi fast-connect fallback, the power-button
+  state machine and the USB ROM/download recovery.
+- `fuzz.psram` runs both PSRAM journal targets and the debug/release memtest
+  scenarios plus PSRAM absent/failure and icon allocation scenarios.
+- `fuzz.mqtt` runs the 10 KiB owner, 3 KiB worker, TLS 6 KiB worker, start and
+  discovery gates below/at/above their floors, the cached HA setting and the
+  retained discovery records.
+- `fuzz.memory.fragmentation` runs 1,536-byte discovery fragmentation,
+  repeated HA online replay and the cJSON allocation-failure schedule.
+- `fuzz.webui.http` runs the 8 KiB main stack with the separate 12 KiB WebUI
+  identity task, the WebUI gate and the console workflow.
+- `fuzz.ui.touch` and `fuzz.ui.physical-buttons` run the single-buffer display
+  scenario and the event-count scenario on both layouts.
+
 ## Gate
 
-`tools/check_fuzz.py` is the single entry point. `--smoke` is the pull-request
-budget and `--full` is the pre-hardware budget. It runs the host fuzzers, OTA
-randomized session test, UI fuzz on all three panels in both layouts, the fixed
-MQTT memory scenarios, and the randomized memory boots. A finding prints its
-seed, the reproduction command and the owner when known. `sim-e2e.yml` builds
-the host targets and runs the smoke gate after the dedicated UI fuzz steps.
+`sim/scripts/run-fuzz-target.py --all` is the release-corpus entry point. It
+runs the targets named by `sim/coverage/fuzz_targets.json`, asserts every
+command and scenario, and writes `sim/coverage/fuzz_results.json` with seed
+counts, iterations, failures and fixed regressions. `tools/check_fuzz.py
+--smoke` / `--full` remains the local budget; `sim-e2e.yml` builds the host
+targets and runs the smoke gate after the dedicated UI fuzz steps.
 
 ## Current findings
 
-1. `mqtt-owner-stack`: `src/FurbleMQTT.cpp` creates the owner at 6144 bytes.
-   Hardware overflowed at 4096 during start and 6144 on the first connected
-   event. Owner: `fix/mqtt-task-stack`, which uses 10240.
-2. `ha-discovery-oom`: Home Assistant discovery leaks cJSON nodes when an
-   allocation fails, and the pre-fix build tries the build with about 1.7 KiB
-   free. Owner: `perf/mqtt-ha-memory`, which adds the 10240/4096 discovery gate
-   and null-safe builders.
+No fuzz seed is open. The fixed regressions are recorded in the result file:
+
+1. `sim-preferences-deferred-commit`: #397 added
+   `Preferences::setDeferredCommit()`/`commit()` to the shared settings seeder;
+   the simulator adapter did not implement them, so the simulator link failed.
+   Fixed in `sim/PreferencesSim.cpp` and guarded by the simulator boot
+   migration scenario.
+2. `mqtt-owner-stack`: the owner was 6144 bytes and hardware overflowed at
+   4096 during start and 6144 on the first connected event. #398/#393 keep it
+   at 10240 and the plain worker at 3072. Guarded by
+   `hw-memory-mqtt-10k-success`.
+3. `ha-discovery-oom`: discovery leaked cJSON nodes under allocation failure
+   and tried the build with about 1.7 KiB free. #398 adds the 10240/4096 gate
+   and null-safe builders. Guarded by
+   `mqtt_fuzz --seed 1 --iterations 1 --discovery-oom`.
 
 ## Remaining gaps
 
@@ -113,10 +143,9 @@ the host targets and runs the smoke gate after the dedicated UI fuzz steps.
 ## Validation
 
 ```sh
-python3 tools/check_fuzz.py --smoke --host-build host-build \
-  --mqtt-binary sim/build-mqtt/furble-sim
-python3 tools/check_fuzz.py --full --host-build host-build \
-  --mqtt-binary sim/build-mqtt/furble-sim
+python3 sim/scripts/run-fuzz-target.py --all
+python3 tools/check_sim_coverage.py
+python3 tools/check_flash_readiness.py --ready
 python3 tools/pre_review.py --base origin/master
 python3 tools/check_sim_scenarios.py
 sh sim/scripts/check-doc-tokens.sh
@@ -124,5 +153,7 @@ sh sim/scripts/run-memory.sh
 sh tools/run_sanitized_host_tests.sh --clean
 ```
 
-The smoke and full gates must both pass before a hardware build. The current
-expected output is a `FUZZ GATE FAIL` naming the two owners above.
+`--all` must pass before a hardware build. The readiness gate is still blocked
+by the eight approximate hardware boundaries, the one approximate companion
+crash model, the full 6,912 permutation run and the memory profile dumps. Those
+are #399 evidence gaps, not open fuzz findings.

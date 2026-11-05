@@ -60,8 +60,9 @@ crash, fuzz and permutation manifests; `tools/check_sim_coverage.py` validates
 them and `tools/check_flash_readiness.py --ready` is the only authority for a
 flash candidate. `sim/scripts/check-hardware-quirks.sh`,
 `sim/scripts/run-memory-profile.py` and the full permutation run are required
-before hardware. The parallel fuzz-suite branch owns the fuzz harness and must
-publish `sim/coverage/fuzz_results.json`.
+before hardware. The fuzz harness publishes `sim/coverage/fuzz_results.json`
+with `python3 sim/scripts/run-fuzz-target.py --all`; every target must pass
+before the readiness gate can pass.
 Firmware line coverage is measured by `tools/coverage.py` and gated against
 `tests/coverage_floor.json`. Coverage instrumentation is opt-in in both build
 entry points (`-DFURBLE_COVERAGE=ON` for the host harness,

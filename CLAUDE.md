@@ -143,8 +143,10 @@ CLAUDE.md whose directory it touches.
   Run `sim/scripts/check-hardware-quirks.sh`, `sim/scripts/run-memory-profile.py`
   and the full `sim/scripts/run-permutations.py --results
   sim/coverage/permutation_results.json` before asking for hardware.
-- The fuzz harness is owned by the parallel fuzz-suite branch. Consume its
-  `sim/coverage/fuzz_results.json`; do not duplicate the harness.
+- Run `python3 sim/scripts/run-fuzz-target.py --all` to regenerate
+  `sim/coverage/fuzz_results.json`. The readiness gate consumes that file; every
+  target must pass and any known failing seed must be fixed with its regression.
+  `tools/check_fuzz.py --full` remains the local pre-hardware budget.
 - Run `sh tools/run_sanitized_host_tests.sh --clean` when touching C++ state,
   containers, camera drivers, simulator fixtures, or filesystem lifecycle code.
 - `.github/workflows/pre-review.yml` runs the scanners on pull requests;

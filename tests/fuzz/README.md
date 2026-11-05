@@ -17,6 +17,13 @@ built while it reports a finding.
 
 ## Commands
 
+Run the complete corpus and write the flash-readiness result file:
+
+```sh
+python3 sim/scripts/run-fuzz-target.py --all
+python3 tools/check_flash_readiness.py --ready
+```
+
 Build the host fuzzers and run the pull-request budget:
 
 ```sh

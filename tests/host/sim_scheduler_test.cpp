@@ -15,11 +15,6 @@
 
 #include "clock.h"
 
-// The scheduler test links the modelled heap so xTaskCreate has its production
-// accounting seam. heap_model's ESP_LOG path offers each line to the crash log;
-// this focused test does not need the retained record, so discard it.
-extern "C" void furble_sim_crash_log_capture(const char *, const char *, va_list) {}
-
 namespace Furble::Sim {
 
 std::atomic<int> requestedExit {-1};

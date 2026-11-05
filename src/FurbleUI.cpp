@@ -5065,7 +5065,7 @@ std::string UI::simQueryState(const char *key) {
     return m_Width <= UIMemory::NARROW_PANEL_WIDTH ? "1" : "2";
   }
   if (query == "flush_serialized") {
-    return "yes";
+    return m_SingleBuffer ? "yes" : "no";
   }
   if (query == "button_presses") {
     return std::to_string(m_SimButtonPresses.load(std::memory_order_relaxed));
