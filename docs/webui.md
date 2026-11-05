@@ -1,9 +1,11 @@
 # WebUI and REST API
 
 The WebUI is compiled for M5StickS3, M5Stack Core2, the headless S3 profile and
-Waveshare ESP32-S3-ETH. The 4 MB profiles do not compile it. On M5StickS3 it is
-gated by the internal-heap check described below; the other profiles are
-expected to fit but have not all been measured.
+Waveshare ESP32-S3-ETH. The 4 MB profiles do not compile it. On M5StickS3 the
+measured internal heap is below the server floor, so the setting can be saved
+but HTTPS stays closed with a log line; the device no longer boot-loops. The
+Core2, headless and Waveshare profiles are expected to fit but have not all
+been measured.
 
 ## Enable it
 
@@ -62,7 +64,7 @@ first response; those are the numbers to collect for a new board.
 
 | Build | Radio | PSRAM used | Internal free | WebUI |
 | :--- | :--- | :--- | :--- | :--- |
-| `m5stick-s3` (M5StickS3) | WiFi + BLE | 8 MB, mbedTLS in PSRAM | 6.8 KiB measured before this change; about 25 KiB expected with the WebUI off and about 22 KiB at server start | Marginal, gated; needs a board measurement |
+| `m5stick-s3` (M5StickS3) | WiFi + BLE | 8 MB, mbedTLS in PSRAM | **13.5 KiB measured free / 12.8 KiB largest with WebUI off**; **10.6 KiB / 9.7 KiB with the supervisor running** | **No**: stays gated closed; the HTTPS task alone cannot fit |
 | `m5stack-core2` | WiFi + BLE | 8 MB on board, disabled in firmware (`CONFIG_SPIRAM` unset); TLS buffers internal | Not measured | Expected to fit |
 | `esp32-s3-headless` | WiFi + BLE | 8 MB enabled; mbedTLS and NimBLE host memory internal | Not measured; no display buffers | Expected to fit |
 | `waveshare-s3-eth` | Ethernet (WiFi optional) | 8 MB enabled; mbedTLS internal | Not measured; WiFi RX pool not allocated while wired | Expected to fit |
@@ -70,6 +72,15 @@ first response; those are the numbers to collect for a new board.
 Only the StickS3 measurement is real. The other rows are configuration
 arithmetic until someone runs `perf heap` and opens the page on each board.
 The 4 MB profiles do not compile the WebUI.
+
+The StickS3 measurement is the important negative result. With WiFi connected,
+the companion service enabled and the display running, the board has 13.5 KiB
+free / 12.8 KiB largest internal bytes before the WebUI supervisor, and
+10.6 KiB / 9.7 KiB with the 3 KiB supervisor. The server floor is
+20,480 / 12,288 bytes, so the listener stays closed. The fail-closed gate is
+what prevents the old watchdog boot loop; it does not make the StickS3 a
+supported WebUI target. Use a Core2, the headless S3 profile or the Waveshare
+Ethernet profile for the WebUI.
 
 The server stays closed when the WebUI setting is off, WiFi has no address, the
 companion password is unset or unreadable, the TLS identity cannot be loaded,

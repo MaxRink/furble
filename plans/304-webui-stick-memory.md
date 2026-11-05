@@ -136,7 +136,8 @@ measured before, web_ui off:        6,827 free / 6,388 largest
 panel-sized draw buffers:          +11,840
 WiFi static RX 10 -> 6:             +6,400
 expected after, web_ui still off:  ~25,067 free, largest at least 12,288
-minus the 3 KiB supervisor:        ~21,895 free at server start
+measured after, web_ui still off:  13,543 free, 12,788 largest
+measured with the 3 KiB supervisor: 10,607 free, 9,716 largest (server gated closed)
 ```
 
 The runtime gate is the authority. If the inferred free value is wrong, the
@@ -149,16 +150,18 @@ allocation arithmetic, not a board measurement.
 
 | Build / board | Radio | PSRAM | Internal free | WebUI | Minimum change |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `m5stick-s3` (M5StickS3, ESP32-S3, 8 MB flash) | WiFi + BLE | 8 MB octal, enabled; mbedTLS allocations in PSRAM | **Measured 6,827 / 6,388** before this change, WiFi connected, companion disabled, debug image. Expected ~25 KiB with the WebUI off and ~22 KiB at server start. | **Marginal, gated** | This change: panel-sized LVGL buffers, WiFi static RX 10 -> 6, early identity, 3/8 KiB tasks, 20.5 KiB heap gate. Needs board measurement. |
+| `m5stick-s3` (M5StickS3, ESP32-S3, 8 MB flash) | WiFi + BLE | 8 MB octal, enabled; mbedTLS allocations in PSRAM | **Measured 13,543 / 12,788 with WebUI off** and **10,607 / 9,716 with the 3 KiB supervisor**. The server gate then logs 10,591 / 9,716 and stays closed. | **No**: below the 20,480 / 12,288 floor; the HTTPS task alone cannot fit | This change is the safe failure: no boot loop, measured log line. Enabling WebUI on the StickS3 needs a much larger internal-RAM reduction, not a task-size tweak. |
 | `m5stack-core2` (ESP32, 16 MB flash) | WiFi + BLE | 8 MB hardware PSRAM, **not enabled** (`CONFIG_SPIRAM` unset), so TLS buffers are internal | Unmeasured. 320 KB DRAM, no display-free win; LVGL stays 20,480 bytes. Expected tens of KiB free. | **Expected yes, unmeasured** | Nothing for the task budget. Verify with `perf heap`; if it fails, the same heap gate keeps it closed. |
 | `esp32-s3-headless` (ESP32-S3 DevKitC, 8 MB flash) | WiFi + BLE | 8 MB octal, enabled; **mbedTLS internal** | Unmeasured. No display and no LVGL buffers (`FURBLE_NO_DISPLAY`), but NimBLE host memory is internal. Expected more free than the StickS3. | **Expected yes, unmeasured** | Nothing. Optionally move NimBLE/mbedTLS to PSRAM later; not needed to pass the gate. |
 | `waveshare-s3-eth` (ESP32-S3, 16 MB flash) | Ethernet; WiFi only if separately enabled | 8 MB octal, enabled; mbedTLS internal | Unmeasured. No display; with the default WiFi off the 16 KB static RX pool is not allocated at all. | **Expected yes, unmeasured** | Nothing. Verify the default Ethernet-only boot and, separately, WiFi fallback. |
 | 4 MB profiles (`m5stick-c`, `m5stick-c-plus`, `m5stack-core`) | n/a | n/a | n/a | **Not compiled** | None. |
 
-The StickS3 is the only profile that needs a board measurement before the
-WebUI can be called supported there. Core2/headless/Waveshare have more
-headroom but are inferred until someone runs `perf heap` and opens the page on
-each board.
+The StickS3 is measured and **cannot host the WebUI** with WiFi, BLE, the
+companion service and the display active. The gate keeps the listener closed
+and the device stable; it is not a supported WebUI target. Core2, headless and
+Waveshare have more headroom but remain inferred until someone runs
+`perf heap` and opens the page on each board. Core2 or the headless profile is
+the practical minimum unless a headless/Waveshare measurement says otherwise.
 
 ## Stack evidence
 
@@ -195,20 +198,24 @@ high-water mark after the first response.
 - Firmware: `FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3-debug`.
 - Static analysis: `python3 tools/check_static_analysis.py --base origin/master`.
 - Pre-review: `python3 tools/pre_review.py --base origin/master`.
+- StickS3 hardware, WebUI off: 13,543 free / 12,788 largest internal bytes with
+  WiFi connected, companion enabled, display active.
+- StickS3 hardware, WebUI on: the supervisor starts (high-water 512 bytes of
+  its 3 KiB stack), the server gate logs
+  `HTTPS stays closed: internal free 10591, largest 9716 (need 20480/12288)`,
+  and the device stays up with no watchdog reset. This is the measured
+  fail-closed result.
 
 ## Still needs hardware
 
-1. `perf heap` on the StickS3 debug image with WiFi connected, companion
-   disabled and enabled, before and after opening the WebUI.
-2. Confirm the `HTTPS listening ... (internal free ..., largest ...)` line is
-   above the floors and the page loads, including `/api/settings`.
-3. Read the logged supervisor and HTTPS stack headroom after a GET/POST. If the
-   HTTPS headroom is under 1 KiB, raise `HTTPD_STACK_BYTES` in
-   `FurbleWebUIMemory.h`; if the free value is below the gate, the fallback is
-   WiFi static RX 6 -> 4, a single LVGL draw buffer, or keeping WebUI off on
-   StickS3 and documenting Core2/headless/Waveshare as the supported targets.
-4. Repeat with a BLE camera connected and with the companion enabled.
-5. Confirm the 10 -> 6 WiFi static RX change does not regress MQTT/OTA
+1. Core2 / `esp32-s3-headless` / Waveshare: `perf heap` with the WebUI open, then
+   confirm the `HTTPS listening ...` line clears the floors and `/api/settings`
+   loads. These boards are inferred, not measured.
+2. Read the HTTPS task high-water mark after a GET/POST and raise
+   `HTTPD_STACK_BYTES` if it is under 1 KiB.
+3. Repeat on the chosen board with a BLE camera connected and the companion
+   enabled.
+4. Confirm the 10 -> 6 WiFi static RX change does not regress MQTT/OTA
    throughput on the StickS3 release image.
 
 ## Prioritized follow-ups (not in this change)
@@ -225,7 +232,7 @@ high-water mark after the first response.
 | NimBLE external memory on headless/Waveshare | internal | tens of KiB | Same setting StickS3 already ships | inferred |
 | WebUI JSON size | ~2-3 KiB settings response | none without a contract change | Do not change the wire format | n/a |
 
-## Debug service design (still not validated)
+## Debug service (shipped in #391)
 
 A `FURBLE_CONSOLE`-only, read-only BLE debug service was prototyped with:
 - service `b57f4f70-087b-4740-b71d-8262cf26ebbc`
@@ -240,12 +247,13 @@ unproven. The shipped bench build now uses a status-only characteristic
 (`b57f4f72-...`), attaches without reading any `CompanionGatt` state, and
 refreshes the snapshot only from the companion service task. It is gated on
 `FURBLE_BLE_DEBUG` with the `m5stick-s3-debug-ble` environment and uses
-`tools/ble_debug.py`. Hardware validation is still pending because the StickS3
-is off USB.
+`tools/ble_debug.py`. It was validated on the StickS3 in #391 and shows the
+reset reason, heap, tasks, bonds and companion state without touching the
+encrypted companion link.
 
-## Validation blocked
+## Remaining hardware gate
 
-The StickS3 was left unresponsive after the last WebUI boot loop and needs a
-physical power cycle. Host tests and the rest of the companion work are already
-merged; this plan is the remaining hardware gate.
+The StickS3 fail-closed path is validated. Core2, headless and Waveshare still
+need the `perf heap` + page-load measurement before the WebUI can be called
+supported there.
 

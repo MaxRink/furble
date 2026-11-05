@@ -21,13 +21,13 @@ matching `-debug` variant that adds verbose logging and the USB serial console.
 | `waveshare-s3-eth` | ESP32-S3 | 16 MB | Yes | Waveshare ESP32-S3-ETH | No | Display-less wired-Ethernet profile; hardware verification remains outstanding. |
 
 The opt-in HTTPS WebUI is compiled for the four 8 MB/16 MB profiles. On the
-M5StickS3 it is the marginal target: 6.8 KiB of internal RAM was measured free
-with WiFi connected and the Bluetooth controller initialized, and the firmware
-now frees the unused LVGL buffer width and WiFi static RX buffers before it
-starts the 3 KiB/8 KiB WebUI tasks. A runtime internal-heap gate keeps the
-server closed with a measured log line on boards that cannot fit it. The
-M5Stack Core2, `esp32-s3-headless` and Waveshare profiles have more headroom
-but their WebUI budgets are inferred, not measured. See
+M5StickS3 it is **not usable**: with WiFi connected, the companion service and
+the display running, the measured internal heap is 13.5 KiB free / 12.8 KiB
+largest before the WebUI supervisor, and 10.6 KiB / 9.7 KiB with the 3 KiB
+supervisor. That is below the 20,480 / 12,288-byte server floor, so the listener
+stays closed with a measured log line instead of boot-looping. The Core2,
+`esp32-s3-headless` and Waveshare profiles have more headroom but their WebUI
+budgets are inferred, not measured. See
 [WebUI and REST API](webui.md#memory-budget).
 
 The developer-only `esp32-s3-headless` profile uses the documented 8 MB
