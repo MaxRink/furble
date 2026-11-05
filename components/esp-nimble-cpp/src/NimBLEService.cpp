@@ -316,8 +316,15 @@ NimBLECharacteristic* NimBLEService::getCharacteristicByHandle(uint16_t handle) 
         // handle plus one. NimBLE's server-level onSubscribe() lookup used to
         // accept only the value handle, so every CCCD write logged "not found"
         // and the characteristic never recorded the subscription; notify() and
-        // indicate() then failed with BLE_HS_ENOENT. Match both handles.
-        if ((chr->getHandle() == handle) || ((chr->getHandle() + 1) == handle)) {
+        // indicate() then failed with BLE_HS_ENOENT. Match the CCCD handle only
+        // for characteristics that actually expose one, so the next
+        // characteristic's value handle is never mistaken for this one.
+        const uint16_t valueHandle = chr->getHandle();
+        if (valueHandle == handle) {
+            return chr;
+        }
+        const uint16_t properties = chr->getProperties();
+        if (((properties & (NIMBLE_PROPERTY::NOTIFY | NIMBLE_PROPERTY::INDICATE)) != 0) && ((valueHandle + 1) == handle)) {
             return chr;
         }
     }
