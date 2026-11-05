@@ -100,7 +100,6 @@ void CompanionGatt::enable(bool pairingWindow) {
   }
 
   bool startPairing = false;
-  bool reconnect = false;
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
     if (m_Enabled) {
@@ -167,17 +166,15 @@ void CompanionGatt::enable(bool pairingWindow) {
       }
 
       startPairing = pairingWindow;
-      reconnect = !startPairing && hasBond();
     }
   }
 
-  // startReconnectAdvertising() reads the enabled/window/connected state
-  // through the public getters, which take m_Mutex. Call it only after the
-  // critical section above has been released.
+  // The retained service task is already runnable and owns the reconnect
+  // advertising decision. Starting it here as well would race the task on the
+  // shared NimBLE advertising object, so the task performs the first reconnect
+  // on its next tick.
   if (startPairing) {
     startPairingWindow();
-  } else if (reconnect) {
-    startReconnectAdvertising();
   }
 }
 
@@ -322,7 +319,7 @@ void CompanionGatt::stopAdvertising(void) {
   }
 }
 
-void CompanionGatt::startPairingWindow(void) {
+void CompanionGatt::startPairingWindow(bool allowNewWindow) {
   if (!m_Enabled || (m_Advertising == nullptr) || (m_Server == nullptr)) {
     return;
   }
@@ -341,6 +338,9 @@ void CompanionGatt::startPairingWindow(void) {
     needWindow = !m_PairingWindow || (m_PairingDeadlineMs <= now);
   }
   if (needWindow) {
+    if (!allowNewWindow) {
+      return;
+    }
     if (!bondValid && (NimBLEDevice::getNumBonds() >= static_cast<int>(MAX_BONDS))) {
       ESP_LOGW(LOG_TAG, "Companion pairing refused because all bond slots are in use");
       return;
@@ -535,7 +535,7 @@ void CompanionGatt::serviceTask(void) {
         stopAdvertising();
         break;
       case AdvertisingAction::PAIR:
-        startPairingWindow();
+        startPairingWindow(false);
         break;
       case AdvertisingAction::RECONNECT:
         startReconnectAdvertising();
@@ -675,7 +675,7 @@ void CompanionGatt::resumeAdvertisingAfterDisconnect(void) {
     }
   }
   if (pairing) {
-    startPairingWindow();
+    startPairingWindow(false);
   } else {
     startReconnectAdvertising();
   }

@@ -27,7 +27,9 @@ This wiki is a friendly fork of the upstream furble project.
   transport (`--transport usb`) for scan, status, cameras, monitor and password
   status; location and trigger remain BLE-only. Companion links are encrypted
   bonded LE Just Works and authenticate with the companion password; set one
-  before using the app in an untrusted area.
+  before using the app in an untrusted area. An unknown inbound BLE link is
+  retained because the server is shared with camera name discovery and can
+  delay reconnect advertising until it disconnects.
 - **[WebUI](WebUI)**: authenticated HTTPS browser control and REST routes.
 
 ## At a glance
