@@ -62,7 +62,7 @@ jobs:
       - name: Install SDL2 and Clang
         run: |
           sudo apt-get update
-          sudo apt-get install --no-install-recommends -y clang libsdl2-dev
+          sudo apt-get install --no-install-recommends -y clang libsdl2-dev libmosquitto-dev libcjson-dev
 
       # build.sh never invokes PlatformIO; it only needs the four source trees.
       # Pinned shallow git clones are faster and fail loudly when a pin is
@@ -105,6 +105,23 @@ jobs:
           FURBLE_DEP_ROOT: ${{ github.workspace }}/sim/.pio/libdeps/sim
           FURBLE_LVGL_DIR: ${{ github.workspace }}/sim/.pio/libdeps/sim/lvgl
         run: sh sim/build.sh
+
+      # The MQTT memory-pressure scenarios need the optional native transport.
+      # They run against a closed local port, so no broker is managed here.
+      - name: Build simulator with native MQTT
+        env:
+          FURBLE_DEP_ROOT: ${{ github.workspace }}/sim/.pio/libdeps/sim
+          FURBLE_LVGL_DIR: ${{ github.workspace }}/sim/.pio/libdeps/sim/lvgl
+          FURBLE_SIM_MQTT: 1
+          FURBLE_SIM_BUILD_DIR: ${{ github.workspace }}/sim/build-mqtt
+        run: sh sim/build.sh
+
+      - name: Assert MQTT memory-pressure and retry bounds
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+          FURBLE_SIM_BIN: ${{ github.workspace }}/sim/build-mqtt/furble-sim
+        run: sh sim/scripts/run-memory.sh
 
       # Keep the caller-owned and simulator-owned preference boundary on the
       # same freshly built M5StickS3 binary used by this job. The script is

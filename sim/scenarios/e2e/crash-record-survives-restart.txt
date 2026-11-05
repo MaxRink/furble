@@ -1,0 +1,31 @@
+# Crash record survival and one-shot reporting.
+#
+# Inject a synthetic panic record, reboot the simulator through its real
+# `restart` path, and assert the next boot reports the same reset reason, task,
+# heap figures and log tail exactly once. A second reboot must not print it
+# again because the record was consumed.
+wait 100
+action crash-inject-panic
+assert crash.pending yes
+
+restart
+
+assert crash.recovered yes
+assert crash.reset panic
+assert crash.task ui
+assert crash.clean no
+assert crash.last_log_present yes
+assert crash.heap_free 204800
+assert crash.heap_largest 163840
+assert crash.uptime 0
+assert ui.page main
+
+# The record was consumed by the boot above. A clean reboot must not report it.
+restart
+
+assert crash.recovered no
+assert crash.pending no
+assert crash.reset none
+assert ui.page main
+
+exit

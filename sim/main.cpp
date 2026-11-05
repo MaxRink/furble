@@ -21,6 +21,7 @@
 #include "Device.h"
 #include "FurbleBootScreen.h"
 #include "FurbleControl.h"
+#include "FurbleCrashLog.h"
 #if defined(FURBLE_SIM_MQTT) && FURBLE_SIM_MQTT
 #include "FurbleMQTT.h"
 #endif
@@ -33,10 +34,13 @@
 #include "ble_sim.h"
 #include "capture.h"
 #include "clock.h"
+#include "crash_log_sim.h"
 #include "driver.h"
 #include "fuzz.h"
+#include "heap_model.h"
 #include "ui_buttons.h"
 #include "watchdog.h"
+#include "webui_memory_model.h"
 
 extern "C" void furble_sim_check_step_detect_suppressed(void);
 
@@ -62,6 +66,8 @@ int runSimulator() {
   // boot-input boundary, even though its SDL M5 config remains host-specific.
   Sim::watchdogPhase("settings");
   Settings::init();
+  // Print an unclean previous-boot record once, before any boot step can fail.
+  CrashLog::init();
   Sim::watchdogPhase("scenario settings");
   if (!Sim::fuzzResumedBoot()) {
     Sim::applyScenarioSettings();
@@ -228,6 +234,15 @@ int runSimulator() {
   BootScreen::step("Bluetooth");
   BootScreen::step("Companion");
 
+  // The seeded heap figure describes the device after WiFi, BLE, the companion
+  // service and the display are already resident. Activate the model here so
+  // only the optional services started below are charged to it.
+  Sim::heapActivate();
+  Sim::webuiMemoryConfigure(Sim::scenarioSettingIsTrue("web_ui"),
+                            Sim::scenarioSetting("webui_gate", "on") != "off",
+                            Sim::scenarioSettingIsTrue("webui_password"));
+  Sim::webuiMemoryStart();
+
 #if defined(FURBLE_SIM_MQTT) && FURBLE_SIM_MQTT
   ESP_ERROR_CHECK(esp_netif_init());
   ESP_ERROR_CHECK(esp_event_loop_create_default());
@@ -291,6 +306,9 @@ int runSimulator() {
   // use-after-free at shutdown.
   Sim::bleStopPeers();
   Sim::stopRig();
+  if (!Sim::crashLogInjected()) {
+    CrashLog::markCleanShutdown();
+  }
   Sim::watchdogUnregisterThread();
   return Sim::exitResult();
 }

@@ -33,6 +33,10 @@
 #include <Preferences.h>
 #include "CameraList.h"
 #include "FurbleControl.h"
+#include "FurbleCrashLog.h"
+#if defined(FURBLE_SIM_MQTT) && FURBLE_SIM_MQTT
+#include "FurbleMQTT.h"
+#endif
 #include "FurbleGPS.h"
 #include "FurblePlatform.h"
 #include "FurbleSD.h"
@@ -44,13 +48,16 @@
 #include "ble_sim.h"
 #include "capture.h"
 #include "clock.h"
+#include "crash_log_sim.h"
 #include "driver.h"
 #include "fuzz.h"
+#include "heap_model.h"
 #include "platform_state.h"
 #include "power_profiler.h"
 #include "preferences_sweep.h"
 #include "ui_buttons.h"
 #include "watchdog.h"
+#include "webui_memory_model.h"
 
 namespace Furble::Sim {
 namespace {
@@ -322,7 +329,8 @@ std::vector<std::string> scriptWords(const std::string &line) {
 }
 
 void validateSeed(const std::string &name, const std::string &value) {
-  if (name == "clock_ms" || name == "liveness_grace_ms") {
+  if (name == "clock_ms" || name == "liveness_grace_ms" || name == "heap_internal_free"
+      || name == "heap_internal_largest") {
     parseUnsigned(value);
     return;
   }
@@ -371,6 +379,9 @@ void validateSeed(const std::string &name, const std::string &value) {
       "timed_wake",
       "timed_poweroff_fail",
       "timed_wake_write_fail",
+      "web_ui",
+      "webui_password",
+      "wifi_connected",
   };
   if (std::find(std::begin(booleanSeeds), std::end(booleanSeeds), name) != std::end(booleanSeeds)) {
     if (!booleanSeedValue(value)) {
@@ -508,6 +519,17 @@ void validateSeed(const std::string &name, const std::string &value) {
       std::cerr << "Invalid imu_chip: " << value << '\n';
       std::exit(2);
     }
+    return;
+  } else if (name == "webui_gate") {
+    if (value != "on" && value != "off") {
+      std::cerr << "Invalid webui_gate: " << value << '\n';
+      std::exit(2);
+    }
+    return;
+  } else if (name == "task_create_fail") {
+    // A FreeRTOS task name, or "all". The name is matched exactly when the task
+    // is created; an unknown name is a silent no-op, so scenarios assert the
+    // failure counter rather than assuming the injection fired.
     return;
   }
 
@@ -1197,6 +1219,16 @@ bool applyTransportFaultAction(const scenario_action_t &action, bool *applied) {
     *applied = true;
     return true;
   }
+  if (action.name == "crash-inject-panic") {
+    crashLogInject(4, "ui", "Guru Meditation Error: synthetic panic record");
+    *applied = true;
+    return true;
+  }
+  if (action.name == "crash-inject-task-wdt") {
+    crashLogInject(6, "mqtt", "Task watchdog got triggered: mqtt");
+    *applied = true;
+    return true;
+  }
 
   return false;
 }
@@ -1655,6 +1687,110 @@ std::string queryValue(const std::string &key) {
   if (key == "clock.ms") {
     return std::to_string(clockMillis());
   }
+  if (prefixed("crash.")) {
+    const std::string sub = key.substr(std::char_traits<char>::length("crash."));
+    if (sub == "recovered") {
+      return CrashLog::recovered() ? "yes" : "no";
+    }
+    if (sub == "pending") {
+      return crashLogInjected() ? "yes" : "no";
+    }
+    const CrashRecord::record_t *record = CrashLog::lastRecord();
+    if (record == nullptr) {
+      return (sub == "clear") ? "yes" : "none";
+    }
+    if (sub == "reset") {
+      return CrashRecord::resetReasonName(record->reset_reason);
+    }
+    if (sub == "task") {
+      return record->task;
+    }
+    if (sub == "uptime") {
+      return std::to_string(record->uptime_s);
+    }
+    if (sub == "heap_free") {
+      return std::to_string(record->heap_free);
+    }
+    if (sub == "heap_largest") {
+      return std::to_string(record->heap_largest);
+    }
+    if (sub == "last_log") {
+      return CrashRecord::lastLogLine(*record);
+    }
+    if (sub == "last_log_present") {
+      return CrashRecord::lastLogLine(*record)[0] == '\0' ? "no" : "yes";
+    }
+    if (sub == "clean") {
+      return CrashRecord::clean(*record) ? "yes" : "no";
+    }
+    if (sub == "summary") {
+      char summary[192] = {};
+      CrashRecord::formatSummary(*record, summary, sizeof(summary));
+      return summary;
+    }
+  }
+#if defined(FURBLE_SIM_MQTT) && FURBLE_SIM_MQTT
+  if (prefixed("mqtt.")) {
+    auto &mqtt = MQTT::getInstance();
+    const std::string sub = key.substr(std::char_traits<char>::length("mqtt."));
+    if (sub == "connected") {
+      return mqtt.isConnected() ? "yes" : "no";
+    }
+    if (sub == "task") {
+      return mqtt.simTaskCreated() ? "created" : "failed";
+    }
+    if (sub == "connect_failures") {
+      return std::to_string(mqtt.simConnectFailures());
+    }
+    if (sub == "blocked") {
+      return mqtt.simBlocked() ? "yes" : "no";
+    }
+  }
+#endif
+  if (prefixed("heap.")) {
+    const std::string sub = key.substr(std::char_traits<char>::length("heap."));
+    if (sub == "free") {
+      return std::to_string(heapFree());
+    }
+    if (sub == "largest") {
+      return std::to_string(heapLargest());
+    }
+    if (sub == "minimum") {
+      return std::to_string(heapMinimumFree());
+    }
+    if (sub == "active") {
+      return heapActive() ? "yes" : "no";
+    }
+    if (sub == "alloc_failures" || sub == "task_failures") {
+      return std::to_string(heapAllocationFailures());
+    }
+    if (sub == "last_failed_task") {
+      const char *task = heapLastFailedTask();
+      return (task == nullptr || task[0] == '\0') ? "none" : task;
+    }
+  }
+  if (prefixed("webui.")) {
+    const std::string sub = key.substr(std::char_traits<char>::length("webui."));
+    if (sub == "supervisor") {
+      return webuiSupervisorState();
+    }
+    if (sub == "server") {
+      return webuiServerState();
+    }
+    if (sub == "gate") {
+      return webuiGateReason();
+    }
+    if (sub == "attempts") {
+      return std::to_string(webuiServerAttempts());
+    }
+    if (sub == "fail_closed") {
+      return webuiFailClosed() ? "yes" : "no";
+    }
+    if (sub == "gate_message") {
+      const char *message = webuiGateMessage();
+      return (message == nullptr) ? "" : message;
+    }
+  }
 
   if (key == "platform.timed_wake") {
     return Platform::getInstance().canTimedWake() ? "yes" : "no";
@@ -1813,6 +1949,7 @@ void removePreferences(void) {
   std::remove((generatedPreferencesPath + ".generated").c_str());
   const std::string temporaryPath = generatedPreferencesPath + ".tmp." + std::to_string(getpid());
   std::remove(temporaryPath.c_str());
+  crashLogRemovePersisted();
   unsetenv(GENERATED_PREFS_ENV);
 }
 
@@ -1838,6 +1975,29 @@ void applyScenarioSettings(void) {
   saveByte("hw_motion", Settings::HW_MOTION);
   saveByte("legend", Settings::LEGEND);
   saveByte("timezone", Settings::TIMEZONE);
+  const auto heapFreeSeed = scenarioSettings.find("heap_internal_free");
+  const auto heapLargestSeed = scenarioSettings.find("heap_internal_largest");
+  if (heapFreeSeed != scenarioSettings.end() || heapLargestSeed != scenarioSettings.end()) {
+    const size_t freeBytes =
+        (heapFreeSeed != scenarioSettings.end()) ? parseUnsigned(heapFreeSeed->second) : heapFree();
+    const size_t largestBytes = (heapLargestSeed != scenarioSettings.end())
+                                    ? parseUnsigned(heapLargestSeed->second)
+                                    : freeBytes;
+    if (largestBytes > freeBytes) {
+      std::cerr << "Invalid heap_internal_largest: " << largestBytes
+                << " exceeds heap_internal_free " << freeBytes << '\n';
+      requestExit(2);
+      return;
+    }
+    heapSet(freeBytes, largestBytes);
+  }
+  if (scenarioSettingIsTrue("wifi_connected")) {
+    setWifiConnected(true);
+  }
+  const auto taskCreateFail = scenarioSettings.find("task_create_fail");
+  if (taskCreateFail != scenarioSettings.end()) {
+    heapSetTaskCreateFail(taskCreateFail->second);
+  }
   const auto scanTimeout = scenarioSettings.find("scan_timeout");
   if (scanTimeout != scenarioSettings.end()) {
     Settings::save<uint32_t>(Settings::SCAN_TIMEOUT, parseUnsigned(scanTimeout->second));

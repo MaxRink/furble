@@ -142,7 +142,9 @@ bool validateScenarioAction(const scenario_action_t &action, std::string *error)
                                   "companion-reject",
                                   "camera-pair-accept",
                                   "camera-pair-reject",
-                                  "camera-pair-expire"})) {
+                                  "camera-pair-expire",
+                                  "crash-inject-panic",
+                                  "crash-inject-task-wdt"})) {
         return fail(error, "noncanonical simple action");
       }
       return true;
@@ -452,6 +454,8 @@ bool parseScenarioAction(const std::string &text, scenario_action_t *action, std
       "camera-pair-accept",
       "camera-pair-reject",
       "camera-pair-expire",
+      "crash-inject-panic",
+      "crash-inject-task-wdt",
   };
   for (const char *command : simple) {
     if (exact({command})) {

@@ -152,6 +152,10 @@ def validate_seed_predicates(seed_text):
             "parseUnsigned(value) > std::numeric_limits<uint16_t>::max()",
             "parseUnsigned(value) > 100",
             "parseUnsigned(value) > 999",
+            # saved_cameras parses a count and bounds it by the selection
+            # capacity. Keep this exact shape deliberate rather than allowing
+            # arbitrary count comparisons.
+            "(count < 1) || (count > Settings::MULTISELECT_MAX)",
         }:
             continue
         # Negated validator calls on the seed value. Each one is listed by name

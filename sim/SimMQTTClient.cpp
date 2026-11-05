@@ -2,14 +2,21 @@
 
 #if defined(FURBLE_SIM_MQTT) && FURBLE_SIM_MQTT
 
+#include <algorithm>
+#include <atomic>
 #include <charconv>
+#include <chrono>
 #include <climits>
 #include <condition_variable>
+#include <cstdlib>
 #include <cstring>
 #include <mutex>
 #include <string>
+#include <thread>
 
 #include <mosquitto.h>
+
+#include "heap_model.h"
 
 namespace {
 
@@ -99,6 +106,20 @@ struct esp_mqtt_client {
   size_t operations = 0;
   bool started = false;
   bool stopping = false;
+  // esp-mqtt owns an internal client task. The host transport has no such
+  // task, so the simulator charges its stack to the modelled internal heap.
+  // Zero means the ESP-IDF default, which is 6144 bytes on this target.
+  size_t task_stack_bytes = 6144;
+  size_t heap_reserved = 0;
+  // ESP-IDF's esp-mqtt task retries a failed connection on its own cadence.
+  // libmosquitto's loop_start does not, so the adapter models that retry with a
+  // small wall-clock worker. It only runs while the transport is started.
+  std::thread reconnect_worker;
+  std::atomic<bool> reconnect_stop {false};
+  std::atomic<bool> reconnect_connected {false};
+  std::condition_variable reconnect_wake;
+  std::mutex reconnect_mutex;
+  uint32_t reconnect_delay_ms = 1000;
 
   bool beginOperation(mosquitto *&transport) {
     const std::lock_guard<std::mutex> lock(mutex);
@@ -139,15 +160,33 @@ namespace {
 
 void onConnect(mosquitto *, void *userdata, int result) {
   auto *client = static_cast<esp_mqtt_client *>(userdata);
-  esp_mqtt_event_t event = {};
-  event.event_id = result == 0 ? MQTT_EVENT_CONNECTED : MQTT_EVENT_ERROR;
-  event.client = client;
-  esp_mqtt_error_codes_t error = {result};
-  client->dispatch(event, result == 0 ? nullptr : &error);
+  client->reconnect_connected.store(result == 0);
+  if (result == 0) {
+    esp_mqtt_event_t event = {};
+    event.event_id = MQTT_EVENT_CONNECTED;
+    event.client = client;
+    client->dispatch(event);
+    return;
+  }
+  // A refused or unreachable broker is a connection failure, not only an
+  // error-reporting event. ESP-IDF follows it with MQTT_EVENT_DISCONNECTED so
+  // the application's reconnect accounting runs. The host transport used to
+  // emit ERROR alone, which made the production retry limit unreachable here.
+  esp_mqtt_event_t error = {};
+  error.event_id = MQTT_EVENT_ERROR;
+  error.client = client;
+  esp_mqtt_error_codes_t error_codes = {result};
+  client->dispatch(error, &error_codes);
+
+  esp_mqtt_event_t disconnected = {};
+  disconnected.event_id = MQTT_EVENT_DISCONNECTED;
+  disconnected.client = client;
+  client->dispatch(disconnected);
 }
 
 void onDisconnect(mosquitto *, void *userdata, int result) {
   auto *client = static_cast<esp_mqtt_client *>(userdata);
+  client->reconnect_connected.store(false);
   esp_mqtt_event_t event = {};
   event.event_id = MQTT_EVENT_DISCONNECTED;
   event.client = client;
@@ -193,6 +232,43 @@ void initialiseMosquitto(void) {
   mosquitto_lib_init();
 }
 
+void startReconnectWorker(esp_mqtt_client *client) {
+  client->reconnect_stop.store(false);
+  client->reconnect_connected.store(false);
+  client->reconnect_worker = std::thread([client]() {
+    while (!client->reconnect_stop.load()) {
+      {
+        std::unique_lock<std::mutex> lock(client->reconnect_mutex);
+        client->reconnect_wake.wait_for(lock, std::chrono::milliseconds(client->reconnect_delay_ms),
+                                        [client]() { return client->reconnect_stop.load(); });
+      }
+      if (client->reconnect_stop.load()) {
+        return;
+      }
+      if (!client->reconnect_connected.load()) {
+        const int result = mosquitto_reconnect(client->mosq);
+        if (result != MOSQ_ERR_SUCCESS) {
+          // ESP-IDF reports every failed reconnect attempt to the application.
+          // libmosquitto does not repeat the disconnect callback for a refused
+          // socket, so model the attempt's outcome here.
+          esp_mqtt_event_t event = {};
+          event.event_id = MQTT_EVENT_DISCONNECTED;
+          event.client = client;
+          client->dispatch(event);
+        }
+      }
+    }
+  });
+}
+
+void stopReconnectWorker(esp_mqtt_client *client) {
+  client->reconnect_stop.store(true);
+  client->reconnect_wake.notify_all();
+  if (client->reconnect_worker.joinable()) {
+    client->reconnect_worker.join();
+  }
+}
+
 }  // namespace
 
 extern "C" esp_mqtt_client_handle_t esp_mqtt_client_init(const esp_mqtt_client_config_t *config) {
@@ -225,6 +301,18 @@ extern "C" esp_mqtt_client_handle_t esp_mqtt_client_init(const esp_mqtt_client_c
   client->will_retain = config->session.last_will.retain;
   client->keepalive = config->session.keepalive > 0 ? config->session.keepalive : 60;
   client->clean_session = !config->session.disable_clean_session;
+  if (config->task.stack_size > 0) {
+    client->task_stack_bytes = static_cast<size_t>(config->task.stack_size);
+  }
+  if (config->network.reconnect_timeout_ms > 0) {
+    // The IDF field is a reconnect bound, not the retry period. Model the
+    // component's one-second default and let a scenario shorten it.
+    client->reconnect_delay_ms =
+        std::min<uint32_t>(1000, static_cast<uint32_t>(config->network.reconnect_timeout_ms));
+  }
+  if (std::getenv("FURBLE_SIM_MQTT_FAST_RECONNECT") != nullptr) {
+    client->reconnect_delay_ms = 100;
+  }
 
   client->mosq = mosquitto_new(client->client_id.empty() ? nullptr : client->client_id.c_str(),
                                client->clean_session, client);
@@ -236,6 +324,12 @@ extern "C" esp_mqtt_client_handle_t esp_mqtt_client_init(const esp_mqtt_client_c
   mosquitto_disconnect_callback_set(client->mosq, onDisconnect);
   mosquitto_message_callback_set(client->mosq, onMessage);
   mosquitto_publish_callback_set(client->mosq, onPublish);
+  // Scenario coordination only: the library default backs off exponentially,
+  // which stretches ten refused connections past a bounded host scenario. The
+  // firmware retry accounting is unchanged.
+  if (std::getenv("FURBLE_SIM_MQTT_FAST_RECONNECT") != nullptr) {
+    mosquitto_reconnect_delay_set(client->mosq, 1, 1, false);
+  }
   if (!client->username.empty()
       && mosquitto_username_pw_set(client->mosq, client->username.c_str(),
                                    client->password.empty() ? nullptr : client->password.c_str())
@@ -285,7 +379,23 @@ extern "C" esp_err_t esp_mqtt_client_start(esp_mqtt_client_handle_t client) {
       return ESP_ERR_INVALID_STATE;
     }
   }
+  // Model the esp-mqtt client task before the transport starts, the same point
+  // where the ESP-IDF component allocates it. A failure returns an error to the
+  // production owner, which logs and retries instead of panicking.
+  if (Furble::Sim::heapActive() && !Furble::Sim::heapReserve(client->task_stack_bytes)) {
+    Furble::Sim::heapNoteAllocationFailure(client->task_stack_bytes, "mqtt_client");
+    return ESP_ERR_NO_MEM;
+  }
+  if (Furble::Sim::heapActive()) {
+    const std::lock_guard<std::mutex> lock(client->mutex);
+    client->heap_reserved = client->task_stack_bytes;
+  }
   if (mosquitto_loop_start(client->mosq) != MOSQ_ERR_SUCCESS) {
+    if (client->heap_reserved != 0) {
+      Furble::Sim::heapRelease(client->heap_reserved);
+      const std::lock_guard<std::mutex> lock(client->mutex);
+      client->heap_reserved = 0;
+    }
     return ESP_FAIL;
   }
   {
@@ -301,12 +411,19 @@ extern "C" esp_err_t esp_mqtt_client_start(esp_mqtt_client_handle_t client) {
       client->stopping = true;
     }
     (void)mosquitto_loop_stop(client->mosq, true);
+    size_t reserved = 0;
     {
       const std::lock_guard<std::mutex> lock(client->mutex);
       client->stopping = false;
+      reserved = client->heap_reserved;
+      client->heap_reserved = 0;
+    }
+    if (reserved != 0) {
+      Furble::Sim::heapRelease(reserved);
     }
     return ESP_FAIL;
   }
+  startReconnectWorker(client);
   return ESP_OK;
 }
 
@@ -323,11 +440,18 @@ extern "C" esp_err_t esp_mqtt_client_stop(esp_mqtt_client_handle_t client) {
     client->stopping = true;
     client->operations_drained.wait(lock, [client]() { return client->operations == 0; });
   }
+  stopReconnectWorker(client);
   (void)mosquitto_disconnect(client->mosq);
   const int result = mosquitto_loop_stop(client->mosq, true);
+  size_t reserved = 0;
   {
     const std::lock_guard<std::mutex> lock(client->mutex);
     client->stopping = false;
+    reserved = client->heap_reserved;
+    client->heap_reserved = 0;
+  }
+  if (reserved != 0) {
+    Furble::Sim::heapRelease(reserved);
   }
   return result == MOSQ_ERR_SUCCESS ? ESP_OK : ESP_FAIL;
 }

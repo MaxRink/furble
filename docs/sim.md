@@ -435,6 +435,44 @@ real UART.
 All boolean seeds, including `gps_uart_noise`, reject malformed values during
 scenario loading.
 
+#### Internal-heap pressure model
+
+The host heap is much larger than a StickS3's internal SRAM, so allocation
+failures that boot-loop the device never happen in the simulator by accident.
+Two seeds model the measured pool: `heap_internal_free` and
+`heap_internal_largest` take byte counts. They describe the device after WiFi,
+BLE, the companion service and the display are already resident, which is the
+measurement point in `docs/webui.md`. Only the optional services admitted after
+that point are charged to it: the WebUI supervisor and HTTPS task, the Furble
+MQTT owner task, and the esp-mqtt client task. Boot tasks are part of the
+seeded baseline.
+
+`web_ui` enables the WebUI admission model and `webui_password` says the
+companion password is set. The `webui_gate` seed value `off` skips the #392
+supervisor gate to model the pre-fix 8 KiB allocation. `wifi_connected` makes
+the station report a
+connected network so the WebUI and MQTT network gates can pass. The model runs
+the production gate functions from `include/FurbleWebUIMemory.h` and logs the
+production fail-closed sentence; it does not serve HTTPS, generate a TLS
+identity, or claim TLS parity. `task_create_fail` takes a FreeRTOS task name or
+`all` and fails that task's `xTaskCreate` with the hardware-shaped
+`Mem alloc fail` line, so a production failure branch can be exercised without
+depending on a heap size. The failure is reported by `heap.alloc_failures` and
+`heap.last_failed_task`.
+
+The MQTT scenarios run only against the optional native transport:
+
+```sh
+FURBLE_SIM_MQTT=1 FURBLE_SIM_BUILD_DIR=$PWD/sim/build-mqtt sh sim/build.sh
+FURBLE_SIM_MQTT_URI=mqtt://127.0.0.1:1 FURBLE_SIM_MQTT_FAST_RECONNECT=1 \
+  sim/build-mqtt/furble-sim --script sim/scenarios/e2e/memory-mqtt-unreachable.txt
+```
+
+`FURBLE_SIM_MQTT_URI` may name an unreachable broker; no broker is required.
+`FURBLE_SIM_MQTT_FAST_RECONNECT` only shortens the host transport's one-second
+reconnect cadence so ten refused connections finish inside a bounded scenario.
+It does not change the firmware retry limit.
+
 `ble_peers` selects the virtual BLE radio topology from a strict allowlist:
 
 | Topology | Peers |
@@ -580,7 +618,15 @@ action bulb-stop
 action camera-pair-accept
 action camera-pair-reject
 action camera-pair-expire
+action crash-inject-panic
+action crash-inject-task-wdt
 ```
+
+`crash-inject-panic` and `crash-inject-task-wdt` write a synthetic unclean
+previous-boot record for the next `restart` to consume. They model the retained
+record, not a real panic: the simulator process stays alive, and the recorded
+task and log tail are the injected values. `crash-record-survives-restart.txt`
+asserts the one-shot reporting and the consumed-record path.
 
 The parameterized action forms are:
 
@@ -807,6 +853,28 @@ in `tests/host/gps_format_test.cpp`.
 
 The other namespaces are:
 
+- `heap.free`, `heap.largest`, `heap.minimum`, `heap.active`,
+  `heap.alloc_failures` (alias `heap.task_failures`) and
+  `heap.last_failed_task` report the modelled internal pool used by the
+  heap-pressure seeds. `heap.active` is `yes` once the optional-service
+  admission window opens.
+- `webui.supervisor` is `off`, `pending`, `created`, `blocked` or
+  `alloc_failed`. `webui.server` is `off`, `pending`, `running`, `blocked` or
+  `alloc_failed`. `webui.gate` names the last refusal (`none`,
+  `supervisor_memory`, `server_memory`, `supervisor_task` or `server_task`),
+  `webui.attempts` counts server admission attempts, `webui.fail_closed` is
+  `yes` after a refusal and `webui.gate_message` is the exact production log
+  sentence for `print`.
+- `mqtt.connected`, `mqtt.task` (`created` or `failed`), `mqtt.connect_failures`
+  and `mqtt.blocked` are available only in a `FURBLE_SIM_MQTT=1` build. They read
+  the production owner state. The bounded retry limit is
+  `MAX_CONNECT_FAILURES`, ten.
+- `crash.recovered` is `yes` when this boot found and printed an unclean
+  previous-boot record. `crash.pending` is `yes` between a
+  `crash-inject-*` action and the reboot that consumes it. `crash.reset`,
+  `crash.task`, `crash.uptime`, `crash.heap_free`, `crash.heap_largest`,
+  `crash.last_log`, `crash.last_log_present`, `crash.clean` and `crash.summary`
+  describe the printed record; `crash.reset` is `none` when no record exists.
 - `gps.motion_state` reports the phase 1 motion detector as `off`, `moving`, or
   `stationary`. `off` means the detector is not running, which is the default
   and what every scenario that does not seed `gps_motion` must observe. The

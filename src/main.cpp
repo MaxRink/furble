@@ -18,6 +18,7 @@
 #include "FurbleCompanion.h"
 #include "FurbleConsole.h"
 #include "FurbleControl.h"
+#include "FurbleCrashLog.h"
 #include "FurbleFeedback.h"
 #if defined(FURBLE_ETHERNET)
 #include "FurbleEthernet.h"
@@ -414,6 +415,7 @@ static void vUITask(void *param) {
 #endif
   while (true) {
     Platform::getInstance().update();
+    CrashLog::update();
     // Keep this loop in step with UI::task(), which owns the GUI request queue.
     UI::serviceRequests();
     Scan::getInstance().processPendingCallbacks();
@@ -445,6 +447,9 @@ void app_main() {
   // Settings must come up before Platform: Platform reads FB_OUTPUT to
   // decide cfg.internal_spk ahead of M5.begin()
   Furble::Settings::init();
+  // Print an unclean previous-boot record once, before the services that can
+  // fail. The record lives in RTC memory and never needs a flash write.
+  Furble::CrashLog::init();
   Furble::Timezone::apply(
       Furble::Timezone::clamp(Furble::Settings::load<Furble::Settings::TIMEZONE>()));
   Furble::Platform::init();

@@ -37,6 +37,7 @@
 #include "FurbleCalibrate.h"
 #include "FurbleCompanion.h"
 #include "FurbleControl.h"
+#include "FurbleCrashLog.h"
 #include "FurbleDisplayPolicy.h"
 #include "FurbleFeedback.h"
 #include "FurbleGPS.h"
@@ -72,6 +73,7 @@
 #include "clock.h"
 #include "driver.h"
 #include "power_profiler.h"
+#include "webui_memory_model.h"
 #define FURBLE_SIM_TIMER_FIRE(name) Furble::Sim::profilerTimerFire(name)
 
 namespace {
@@ -13292,6 +13294,7 @@ void UI::task(void) {
   // Keep this loop in step with the headless vUITask() in main.cpp.
   while (true) {
     Platform::getInstance().update();
+    CrashLog::update();
 
     m_Mutex.lock();
     if (m_GestureSettingsSeen != m_GestureSettingsGeneration.load(std::memory_order_acquire)) {
@@ -13314,6 +13317,9 @@ void UI::task(void) {
 #endif
     serviceRequests();
     Scan::getInstance().processPendingCallbacks();
+#if defined(FURBLE_SIM)
+    Sim::webuiMemoryTick();
+#endif
     if (!m_DisplayConsole) {
       handleLockScreen();
 #if defined(FURBLE_SIM)

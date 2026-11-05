@@ -38,15 +38,56 @@ inline constexpr size_t SERVER_INTERNAL_LARGEST_FLOOR = 12288;
 inline constexpr size_t SUPERVISOR_INTERNAL_FREE_FLOOR = 4096;
 inline constexpr size_t SUPERVISOR_INTERNAL_LARGEST_FLOOR = 3584;
 
+/**
+ * One admission decision against a measured internal-heap pair.
+ *
+ * The measurement is recorded in the decision so the caller can log the exact
+ * pair it rejected. The simulator heap model runs this same function, so a
+ * scenario asserts the firmware gate rather than a copy of its thresholds.
+ */
+struct gate_t {
+  bool open;
+  size_t freeBytes;
+  size_t largestBlock;
+  size_t freeFloor;
+  size_t largestFloor;
+};
+
+inline constexpr gate_t evaluate(size_t freeBytes,
+                                 size_t largestBlock,
+                                 size_t freeFloor,
+                                 size_t largestFloor) {
+  return {freeBytes >= freeFloor && largestBlock >= largestFloor, freeBytes, largestBlock,
+          freeFloor, largestFloor};
+}
+
+inline constexpr gate_t serverGate(size_t freeBytes, size_t largestBlock) {
+  return evaluate(freeBytes, largestBlock, SERVER_INTERNAL_FREE_FLOOR,
+                  SERVER_INTERNAL_LARGEST_FLOOR);
+}
+
+inline constexpr gate_t supervisorGate(size_t freeBytes, size_t largestBlock) {
+  return evaluate(freeBytes, largestBlock, SUPERVISOR_INTERNAL_FREE_FLOOR,
+                  SUPERVISOR_INTERNAL_LARGEST_FLOOR);
+}
+
 inline constexpr bool serverFits(size_t freeBytes, size_t largestBlock) {
-  return (freeBytes >= SERVER_INTERNAL_FREE_FLOOR)
-         && (largestBlock >= SERVER_INTERNAL_LARGEST_FLOOR);
+  return serverGate(freeBytes, largestBlock).open;
 }
 
 inline constexpr bool supervisorFits(size_t freeBytes, size_t largestBlock) {
-  return (freeBytes >= SUPERVISOR_INTERNAL_FREE_FLOOR)
-         && (largestBlock >= SUPERVISOR_INTERNAL_LARGEST_FLOOR);
+  return supervisorGate(freeBytes, largestBlock).open;
 }
+
+/**
+ * Production log formats, shared with the simulator so its fail-closed output
+ * is the sentence a device prints rather than a paraphrase.
+ */
+inline constexpr const char *SUPERVISOR_GATE_LOG =
+    "WebUI supervisor not created: internal free %u, largest %u (need %u/%u)";
+inline constexpr const char *SERVER_GATE_LOG =
+    "HTTPS stays closed: internal free %u, largest %u (need %u/%u). "
+    "See docs/webui.md for the board budget.";
 
 }  // namespace WebUIMemory
 }  // namespace Furble

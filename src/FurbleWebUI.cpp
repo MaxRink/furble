@@ -257,11 +257,11 @@ void WebUI::reloadSetting(void) {
       const size_t freeBytes = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
       const size_t largest =
           heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-      if (!WebUIMemory::supervisorFits(freeBytes, largest)) {
-        ESP_LOGE(LOG_TAG, "WebUI supervisor not created: internal free %u, largest %u (need %u/%u)",
-                 static_cast<unsigned>(freeBytes), static_cast<unsigned>(largest),
-                 static_cast<unsigned>(WebUIMemory::SUPERVISOR_INTERNAL_FREE_FLOOR),
-                 static_cast<unsigned>(WebUIMemory::SUPERVISOR_INTERNAL_LARGEST_FLOOR));
+      const auto gate = WebUIMemory::supervisorGate(freeBytes, largest);
+      if (!gate.open) {
+        ESP_LOGE(LOG_TAG, WebUIMemory::SUPERVISOR_GATE_LOG, static_cast<unsigned>(gate.freeBytes),
+                 static_cast<unsigned>(gate.largestBlock), static_cast<unsigned>(gate.freeFloor),
+                 static_cast<unsigned>(gate.largestFloor));
       } else if (xTaskCreate(taskEntry, "webui", WebUIMemory::SUPERVISOR_STACK_BYTES, this, 2,
                              &m_Task)
                  != pdPASS) {
@@ -637,15 +637,13 @@ void WebUI::logCertificateFingerprint(void) {
 bool WebUI::serverMemoryAvailable(void) const {
   const size_t freeBytes = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
   const size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-  if (WebUIMemory::serverFits(freeBytes, largest)) {
+  const auto gate = WebUIMemory::serverGate(freeBytes, largest);
+  if (gate.open) {
     return true;
   }
-  ESP_LOGE(LOG_TAG,
-           "HTTPS stays closed: internal free %u, largest %u (need %u/%u). "
-           "See docs/webui.md for the board budget.",
-           static_cast<unsigned>(freeBytes), static_cast<unsigned>(largest),
-           static_cast<unsigned>(WebUIMemory::SERVER_INTERNAL_FREE_FLOOR),
-           static_cast<unsigned>(WebUIMemory::SERVER_INTERNAL_LARGEST_FLOOR));
+  ESP_LOGE(LOG_TAG, WebUIMemory::SERVER_GATE_LOG, static_cast<unsigned>(gate.freeBytes),
+           static_cast<unsigned>(gate.largestBlock), static_cast<unsigned>(gate.freeFloor),
+           static_cast<unsigned>(gate.largestFloor));
   return false;
 }
 

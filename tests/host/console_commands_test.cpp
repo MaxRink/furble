@@ -133,11 +133,11 @@ bool waitFor(const std::function<bool()> &predicate, int timeout_ms) {
 // help command. A new command or a dropped registration has to update this
 // list, which is the point: the automation surface is a contract.
 const std::vector<std::string> EXPECTED_COMMANDS = {
-    "help",    "version", "status",   "imu",          "motion",     "power",   "perf",
-    "gps",     "time",    "settings", "companion",    "provision",  "ui",      "cameras",
-    "connect", "pair",    "delete",   "multiconnect", "disconnect", "shutter", "interval",
-    "bulb",    "display", "ir",       "focus",        "scan",       "bt",      "feedback",
-    "log",     "debug",   "flash",    "reboot",       "wifi",       "ntp",
+    "help",     "version", "status",  "crash",    "imu",          "motion",     "power",
+    "perf",     "gps",     "time",    "settings", "companion",    "provision",  "ui",
+    "cameras",  "connect", "pair",    "delete",   "multiconnect", "disconnect", "shutter",
+    "interval", "bulb",    "display", "ir",       "focus",        "scan",       "bt",
+    "feedback", "log",     "debug",   "flash",    "reboot",       "wifi",       "ntp",
 };
 
 }  // namespace
@@ -163,6 +163,7 @@ const std::vector<SubcommandContract> SUBCOMMANDS = {
      "expected on, off, raw, send, binary, config, aid, sats, platform, monhw or power", "",
      {"on", "off", "raw", "send", "binary", "config", "aid", "sats", "platform", "monhw", "power"}                                                     },
     {"time",         "usage: time status | flush",                                       "",                     {"status", "flush"}                   },
+    {"crash",        "usage: crash [last]",                                              "",                     {"last"}                              },
     {"settings",     "expected list, get or set",                                        " theme",               {"list", "get", "set"}                },
     {"companion",
      "usage: companion start | stop | status | password set <pw> | clear | status",      "",

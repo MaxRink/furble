@@ -9,6 +9,7 @@
 
 uint32_t ulTaskNotifyTake(BaseType_t clear_count_on_exit, TickType_t ticks_to_wait);
 BaseType_t xTaskNotifyGive(TaskHandle_t task_handle);
+char *pcTaskGetName(TaskHandle_t task_handle);
 
 enum FurbleSimTaskLifecycle : uint8_t {
   FURBLE_SIM_TASK_RUNNING,

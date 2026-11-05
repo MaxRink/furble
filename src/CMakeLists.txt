@@ -8,6 +8,7 @@ set(furble_sources
     FurbleCompanionService.cpp
     FurbleConsole.cpp
     FurbleControl.cpp
+    FurbleCrashLog.cpp
     FurbleEthernet.cpp
     FurbleFeedback.cpp
     FurbleGPS.cpp
