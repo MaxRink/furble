@@ -388,6 +388,7 @@ void testSettings(void) {
   check(!Furble::Settings::load<bool>(Furble::Settings::COMPANION),
         "companion starts disabled in the test store");
   const size_t pairingReloadsBefore = ConsoleHost::misc().companionPairingWindowReloads;
+  ConsoleHost::misc().companionBond = true;  // model a previously saved bond
   check(runDirect("companion start").rc == 0, "companion start returns success");
   check(Furble::Settings::load<bool>(Furble::Settings::COMPANION),
         "companion start persists the enabled setting");
@@ -418,7 +419,8 @@ void testSettings(void) {
                 "companion status reports the persisted disabled setting");
   checkContains(stoppedStatus.out, "companion.enabled: false",
                 "companion status reports the live disabled service");
-  checkContains(stoppedStatus.out, "companion.bond: false", "a stopped companion reports no bond");
+  checkContains(stoppedStatus.out, "companion.bond: true",
+                "a stopped companion preserves the saved bond");
   checkContains(stoppedStatus.out, "companion.window: false",
                 "a stopped companion reports no pairing window");
   checkContains(stoppedStatus.out, "companion.advertising: false",

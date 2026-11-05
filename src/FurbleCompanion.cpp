@@ -166,7 +166,7 @@ void CompanionGatt::enable(bool pairingWindow) {
       }
 
       startPairing = pairingWindow;
-      if (!startPairing && m_BondValid) {
+      if (!startPairing && hasBond()) {
         startReconnectAdvertising();
       }
     }
@@ -390,11 +390,14 @@ void CompanionGatt::startReconnectAdvertising(void) {
     }
     bondAddress = m_BondAddress;
   }
-  if (!m_Enabled || m_PairingWindow || m_CompanionConnected || (m_Advertising == nullptr)
+  const bool enabled = isEnabled();
+  const bool pairingWindow = isPairingWindow();
+  const bool connected = isConnected();
+  if (!enabled || pairingWindow || connected || (m_Advertising == nullptr)
       || Scan::getInstance().isActive()) {
     ESP_LOGD(LOG_TAG,
              "Companion reconnect skipped enabled=%d window=%d connected=%d adv=%d scan=%d",
-             m_Enabled ? 1 : 0, m_PairingWindow ? 1 : 0, m_CompanionConnected ? 1 : 0,
+             enabled ? 1 : 0, pairingWindow ? 1 : 0, connected ? 1 : 0,
              m_Advertising != nullptr ? 1 : 0, Scan::getInstance().isActive() ? 1 : 0);
     return;
   }
@@ -503,21 +506,38 @@ void CompanionGatt::serviceTask(void) {
     }
 
     const uint64_t now = nowMs();
-    if (m_PairingWindow && (now >= m_PairingDeadlineMs)) {
-      {
-        const std::lock_guard<std::mutex> lock(m_Mutex);
+    enum class AdvertisingAction { NONE, STOP, PAIR, RECONNECT, EXPIRE };
+    AdvertisingAction action = AdvertisingAction::NONE;
+    {
+      const std::lock_guard<std::mutex> lock(m_Mutex);
+      const bool advertising = (m_Advertising != nullptr) && m_Advertising->isAdvertising();
+      if (m_PairingWindow && (now >= m_PairingDeadlineMs)) {
         m_PairingWindow = false;
+        action = AdvertisingAction::EXPIRE;
+      } else if (Scan::getInstance().isActive()) {
+        action = AdvertisingAction::STOP;
+      } else if (m_PairingWindow && !m_CompanionConnected && !advertising) {
+        action = AdvertisingAction::PAIR;
+      } else if (!m_CompanionConnected && !m_PairingWindow && hasBond() && !advertising) {
+        action = AdvertisingAction::RECONNECT;
       }
-      stopAdvertising();
-      startReconnectAdvertising();
-    } else if (Scan::getInstance().isActive()) {
-      stopAdvertising();
-    } else if (m_PairingWindow && !m_CompanionConnected
-               && ((m_Advertising == nullptr) || !m_Advertising->isAdvertising())) {
-      startPairingWindow();
-    } else if (!m_CompanionConnected && !m_PairingWindow && m_BondValid
-               && ((m_Advertising == nullptr) || !m_Advertising->isAdvertising())) {
-      startReconnectAdvertising();
+    }
+    switch (action) {
+      case AdvertisingAction::EXPIRE:
+        stopAdvertising();
+        startReconnectAdvertising();
+        break;
+      case AdvertisingAction::STOP:
+        stopAdvertising();
+        break;
+      case AdvertisingAction::PAIR:
+        startPairingWindow();
+        break;
+      case AdvertisingAction::RECONNECT:
+        startReconnectAdvertising();
+        break;
+      case AdvertisingAction::NONE:
+        break;
     }
 
     bool sendServiceChanged = false;
@@ -578,12 +598,10 @@ void CompanionGatt::onConnect(NimBLEServer *server, NimBLEConnInfo &connInfo) {
   }
 
   if (!accept) {
-    // A rejected central must not keep the link: advertising stops as soon as
-    // any connection is established, so holding it would make the bonded
-    // central invisible. Only the pairing window accepts unfiltered peers.
-    if (m_Server != nullptr) {
-      m_Server->disconnect(connInfo.getConnHandle());
-    }
+    // The NimBLE server is shared with Sony camera name discovery. Do not tear
+    // down an unknown inbound link here; onDisconnect restores advertising when
+    // it leaves. A hostile central can hold the link, which is the cost of not
+    // breaking camera clients.
     return;
   }
 
@@ -632,28 +650,27 @@ void CompanionGatt::onDisconnect(NimBLEServer *server, NimBLEConnInfo &connInfo,
     // A rejected link still stopped the controller's advertising. Without this
     // restart the next connect attempt finds nothing and the companion only
     // comes back after a stop/start or reboot.
-    if (!m_Enabled) {
-      return;
-    }
-    if (m_PairingWindow && (nowMs() < m_PairingDeadlineMs)) {
-      startPairingWindow();
-    } else {
-      m_PairingWindow = false;
-      startReconnectAdvertising();
-    }
+    resumeAdvertisingAfterDisconnect();
     return;
   }
 
   m_Service.onDisconnected();
-  if (!m_Enabled) {
+  resumeAdvertisingAfterDisconnect();
+}
+
+void CompanionGatt::resumeAdvertisingAfterDisconnect(void) {
+  if (!isEnabled()) {
     return;
   }
-  if (m_PairingWindow && (nowMs() < m_PairingDeadlineMs)) {
+  if (isPairingWindow()) {
     startPairingWindow();
-  } else {
-    m_PairingWindow = false;
-    startReconnectAdvertising();
+    return;
   }
+  {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    m_PairingWindow = false;
+  }
+  startReconnectAdvertising();
 }
 
 void CompanionGatt::onConfirmPassKey(NimBLEConnInfo &connInfo, uint32_t pin) {

@@ -1080,7 +1080,6 @@ void CompanionGatt::reloadSetting(bool pairingWindow) {
     state.companionPairingWindowReloads++;
     state.companionEnabled =
         state.companionEnableSucceeds && Furble::Settings::load<bool>(Furble::Settings::COMPANION);
-    state.companionBond = state.companionEnabled;
     state.companionWindow = state.companionEnabled;
     state.companionAdvertising = state.companionEnabled;
   } else {
@@ -1095,16 +1094,18 @@ void CompanionGatt::disableNow(void) {
   auto &state = ConsoleHost::misc();
   state.companionDisableNowCalls++;
   state.companionEnabled = false;
-  state.companionBond = false;
   state.companionWindow = false;
   state.companionAdvertising = false;
   state.companionPendingDisable = false;
+  // disable() preserves the saved bond so stop/start keeps the pairing.
 }
 
 void CompanionGatt::completeDelayedDisable(void) {
   auto &state = ConsoleHost::misc();
   if (!Furble::Settings::load<bool>(Furble::Settings::COMPANION)) {
     state.companionEnabled = false;
+    state.companionWindow = false;
+    state.companionAdvertising = false;
   }
   state.companionPendingDisable = false;
 }

@@ -22,6 +22,12 @@ Public headers for the app layer in src/, one header per module
 - `FurbleControl::sendCameraCommand()` returns the complete target-set session
   generation captured with delivery. Expected-session releases must fail when
   the whole session has been replaced.
+- `FurbleCompanion.h` bond state (`m_BondValid`, `m_BondAddress`,
+  `m_BondAddressType`) is owned by `m_BondMutex`; read a snapshot through
+  `hasBond()` or a scoped `m_BondMutex` lock. Pairing-window state
+  (`m_PairingWindow`, `m_PairingDeadlineMs`) and connection state are owned by
+  `m_Mutex`; use the public getters outside a lock. The lock order is `m_Mutex`
+  then `m_BondMutex`.
 - `FurbleCompanion::disableNow()` is the synchronous stop for callers outside a
   NimBLE callback (console stop, tests). `reloadSetting(false)` deliberately
   keeps the one-second grace timer so a companion settings write can return
