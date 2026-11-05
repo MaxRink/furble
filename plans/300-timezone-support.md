@@ -161,3 +161,12 @@ The wiki walkthrough image is also present under `docs/wiki/img`, so the
 published page no longer links a missing file. Host coverage adds the
 out-of-radius fallback, provisioning range, companion range, SD Auto round-trip
 and Android option-list assertions.
+
+## Documentation follow-up (2026-11-05)
+
+The Auto fallback documentation was synchronized across every published
+surface after the #366 review: the README, settings reference, generated UI
+walkthrough, wiki walkthrough, wiki console reference and console reference all
+now say that Auto falls back to UTC after 30 minutes without a fresh fix **and**
+immediately when a fresh fix is outside the 30-degree nearest-zone radius. This
+is a documentation-only follow-up; no wire or behavior change.

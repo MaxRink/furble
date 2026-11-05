@@ -79,7 +79,8 @@ current retry cycle, `retry_ms` is the next backoff without jitter, and
   rejected when the board does not support the setting.
 - `settings set timezone Europe/Berlin` applies the zone immediately. It accepts
   a table index, an IANA name, a single-word roller label, or `auto`. Auto uses
-  a fresh wired GPS fix and falls back to UTC after 30 minutes without one.
+  a fresh wired GPS fix and falls back to UTC after 30 minutes without one or
+  immediately when a fresh fix is outside the 30-degree nearest-zone radius.
 
 
 ## companion
