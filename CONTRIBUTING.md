@@ -264,3 +264,5 @@ UI change before approving.
 ## Dependency updates
 
 Dependabot checks GitHub Actions, Python tooling, Android Gradle dependencies, and the Apple Swift package weekly. Routine minor and patch changes are grouped for review. Firmware pins in PlatformIO and ESP-IDF component manifests remain manual; Dependabot does not support those formats. Updates are proposed through pull requests and do not deploy or flash hardware.
+
+Pin Git-sourced PlatformIO dependencies to the full 40-character commit SHA. The VSCode PlatformIO extension fetches the pin as a remote ref, so a short SHA fails with `couldn't find remote ref` (upstream issue 309).
