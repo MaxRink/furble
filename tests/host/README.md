@@ -43,6 +43,26 @@ UndefinedBehaviorSanitizer. Run a seed directly:
 The CI job runs five fixed seeds plus two seed-pinned regression guards for the
 FujifilmBasic missing-shutter findings, both now fixed and passing.
 
+## Input, API and memory fuzz gate
+
+`fuzz/webui_fuzz.cpp`, `fuzz/companion_fuzz.cpp` and `fuzz/mqtt_fuzz.cpp` are
+seeded host fuzzers for the same production handlers the normal host tests use.
+They cover malformed and oversized requests, auth and origin failures, protocol
+type and length errors, fragmentation and post-fuzz recovery. The MQTT target
+also runs the Home Assistant discovery builder under a seeded cJSON
+allocation-failure schedule.
+
+Run the full gate from the repository root:
+
+```sh
+python3 tools/check_fuzz.py --full --host-build /tmp/furble-host-build \
+  --mqtt-binary sim/build-mqtt/furble-sim
+```
+
+`tests/fuzz/README.md` records the seed budgets and replay commands. The gate
+is fail-closed: the known MQTT owner stack and HA discovery OOM stay red until
+their parallel fixes land.
+
 `control-interleave` parks the real registration wait and the real
 `connectall_returned` boundary, then verifies teardown reaches IDLE, no late
 DISCONNECTING republish occurs after release, and a follow-up connect remains

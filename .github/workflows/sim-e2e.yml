@@ -17,9 +17,15 @@ name: Simulator end-to-end
       - 'components/icons/**'
       - 'sim/**'
       - 'tests/corpus/**'
+      - 'tests/fuzz/**'
+      - 'tests/host/CMakeLists.txt'
+      - 'tests/host/fuzz/**'
+      - 'tests/host/mqtt/**'
+      - 'tests/host/ota_mqtt_protocol_test.cpp'
       - 'sdkconfig.*'
       - 'tools/gen_lv_conf.py'
       - 'tools/check_sim_scenarios.py'
+      - 'tools/check_fuzz.py'
       - 'sim/scenarios/manifest.json'
       - '.github/workflows/sim-e2e.yml'
   push:
@@ -34,9 +40,15 @@ name: Simulator end-to-end
       - 'components/icons/**'
       - 'sim/**'
       - 'tests/corpus/**'
+      - 'tests/fuzz/**'
+      - 'tests/host/CMakeLists.txt'
+      - 'tests/host/fuzz/**'
+      - 'tests/host/mqtt/**'
+      - 'tests/host/ota_mqtt_protocol_test.cpp'
       - 'sdkconfig.*'
       - 'tools/gen_lv_conf.py'
       - 'tools/check_sim_scenarios.py'
+      - 'tools/check_fuzz.py'
       - 'sim/scenarios/manifest.json'
       - '.github/workflows/sim-e2e.yml'
   workflow_dispatch:
@@ -551,3 +563,26 @@ jobs:
             FURBLE_SIM_BIN="${{ github.workspace }}/$binary" \
               sh sim/scripts/run-fuzz.sh
           done
+
+      # Build the host API fuzzers. The UI layer above already ran both layouts
+      # on all three panels, so the gate reuses those results and focuses this
+      # step on the host protocols and the memory-pressure matrix.
+      - name: Build host fuzz targets
+        run: |
+          cmake -S tests/host -B "${{ runner.temp }}/furble-fuzz-host"
+          cmake --build "${{ runner.temp }}/furble-fuzz-host" -j"$(nproc)" \
+            --target webui_fuzz companion_fuzz mqtt_fuzz ota_mqtt_protocol_test
+
+      # Fail-closed gate. The two known hardware findings, the MQTT owner stack
+      # at 6 KiB and the Home Assistant discovery OOM, stay explicit findings
+      # until the parallel memory PRs land. A hardware image is not built while
+      # this step is red.
+      - name: Run the fuzz gate
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: |
+          python3 tools/check_fuzz.py --smoke \
+            --host-build "${{ runner.temp }}/furble-fuzz-host" \
+            --mqtt-binary "${{ github.workspace }}/sim/build-mqtt/furble-sim" \
+            --skip-ui

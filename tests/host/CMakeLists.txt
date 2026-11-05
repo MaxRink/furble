@@ -97,6 +97,26 @@ target_compile_options(mqtt_owner_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                -Wno-unused-parameter)
 target_link_libraries(mqtt_owner_test PRIVATE Threads::Threads)
 
+# Seeded MQTT topic/payload fuzzer over the same production owner task and host
+# broker double. It delivers malformed, oversized, fragmented and retained
+# traffic and asserts only an exact subscribed command can reach Control.
+set(HOST_FUZZ_DIR ${CMAKE_CURRENT_SOURCE_DIR}/fuzz)
+add_executable(mqtt_fuzz
+               ${HOST_FUZZ_DIR}/mqtt_fuzz.cpp
+               ${HOST_MQTT_DIR}/cJSON.cpp
+               ${HOST_MQTT_DIR}/mqtt_client_mock.cpp
+               ${HOST_MQTT_DIR}/mqtt_host_doubles.cpp
+               ${FURBLE_ROOT}/src/FurbleMQTT.cpp)
+target_include_directories(mqtt_fuzz BEFORE PRIVATE
+                           ${HOST_MQTT_DIR}
+                           ${FURBLE_ROOT}/include
+                           ${FURBLE_ROOT}/lib/furble)
+target_compile_definitions(mqtt_fuzz PRIVATE FURBLE_MQTT=1 FURBLE_MQTT_HOST_TEST=1
+                                          FURBLE_VERSION="host-test")
+target_compile_options(mqtt_fuzz PRIVATE -Wall -Wextra -Werror -Wno-format
+                                         -Wno-unused-parameter)
+target_link_libraries(mqtt_fuzz PRIVATE Threads::Threads)
+
 add_executable(fujifilm_camera_test fujifilm_camera_test.cpp)
 target_link_libraries(fujifilm_camera_test PRIVATE furble_host_camera)
 target_compile_options(fujifilm_camera_test PRIVATE -Wall -Wextra -Werror -Wno-format
@@ -319,6 +339,30 @@ target_compile_definitions(webui_handler_test
 target_compile_options(webui_handler_test PRIVATE -Wall -Wextra -Werror)
 target_link_libraries(webui_handler_test PRIVATE Threads::Threads)
 add_test(NAME webui-handler COMMAND webui_handler_test)
+
+# Seeded API fuzzer for the same production WebUI handlers. The fixed corpus
+# covers malformed JSON, auth and origin failures, method mismatches and
+# oversized bodies; seeded mutations widen the search while keeping a finding
+# reproducible from its seed. The smoke budget runs in the normal host suite,
+# and tools/check_fuzz.py runs the wider seed set.
+add_executable(webui_fuzz
+               ${HOST_FUZZ_DIR}/webui_fuzz.cpp
+               webui/webui_platform_stubs.cpp
+               mqtt/cJSON.cpp
+               companion/companion_hmac.cpp
+               ${FURBLE_ROOT}/src/FurbleCompanionAuth.cpp
+               ${FURBLE_ROOT}/src/FurbleWebUI.cpp)
+target_include_directories(webui_fuzz
+                           PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/webui
+                                   ${CMAKE_CURRENT_SOURCE_DIR}/mqtt
+                                   ${CMAKE_CURRENT_SOURCE_DIR}/companion
+                                   ${FURBLE_ROOT}/include)
+target_compile_definitions(webui_fuzz
+                           PRIVATE FURBLE_MQTT=1 FURBLE_WEBUI=1 FURBLE_WEBUI_HOST_TEST=1)
+target_compile_options(webui_fuzz PRIVATE -Wall -Wextra -Werror)
+target_link_libraries(webui_fuzz PRIVATE Threads::Threads)
+add_test(NAME webui-fuzz COMMAND webui_fuzz --seed 1 --iterations 200)
+set_tests_properties(webui-fuzz PROPERTIES TIMEOUT 120)
 
 set(FURBLE_PROTOCOL_DIR ${FURBLE_ROOT}/lib/furble/protocol)
 
@@ -1578,42 +1622,45 @@ target_link_libraries(control_abort_republish_test PRIVATE Threads::Threads)
 # Fujifilm camera paths. The companion-specific doubles replace only hardware
 # status/GPS/settings surfaces that cannot run on the host.
 set(COMPANION_HOST_DIR ${CMAKE_CURRENT_SOURCE_DIR}/companion)
-add_executable(companion_gatt_test
-               companion_gatt_test.cpp
-               ${COMPANION_HOST_DIR}/companion_doubles.cpp
-               ${FURBLE_ROOT}/src/FurbleNetworkSettings.cpp
-               advertisement_preferences_stub.cpp
-               ${COMPANION_HOST_DIR}/companion_hmac.cpp
-               ${FURBLE_ROOT}/src/FurbleCompanionAuth.cpp
-               ${CONTROL_E2E_DIR}/freertos_shim.cpp
-               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
-               ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
-               ${FURBLE_ROOT}/src/FurbleCompanionService.cpp
-               ${FURBLE_ROOT}/src/FurbleControl.cpp
-               ${FURBLE_ROOT}/src/FurbleTimezone.cpp
-               ${FURBLE_ROOT}/lib/furble/Camera.cpp
-               ${FURBLE_ROOT}/lib/furble/CameraList.cpp
-               ${FURBLE_ROOT}/lib/furble/Device.cpp
-               ${FURBLE_ROOT}/lib/furble/Scan.cpp
-               ${FURBLE_ROOT}/lib/furble/CanonEOS.cpp
-               ${FURBLE_ROOT}/lib/furble/CanonEOSRemote.cpp
-               ${FURBLE_ROOT}/lib/furble/CanonEOSSmart.cpp
-               ${FURBLE_ROOT}/lib/furble/DJIOsmo.cpp
-               ${FURBLE_ROOT}/lib/furble/FauxNY.cpp
-               ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
-               ${FURBLE_ROOT}/lib/furble/FujifilmBasic.cpp
-               ${FURBLE_ROOT}/lib/furble/FujifilmSecure.cpp
-               ${FURBLE_ROOT}/lib/furble/Lumix.cpp
-               ${FURBLE_ROOT}/lib/furble/Nikon.cpp
-               ${FURBLE_ROOT}/lib/furble/NikonBase.cpp
-               ${FURBLE_ROOT}/lib/furble/NikonRemote.cpp
-               ${FURBLE_ROOT}/lib/furble/NikonSmart.cpp
-               ${FURBLE_ROOT}/lib/furble/Ricoh.cpp
-               ${FURBLE_ROOT}/lib/furble/Sony.cpp
-               ${FURBLE_ROOT}/lib/blowfish/Blowfish.cpp
-               ${FURBLE_PROTOCOL_DIR}/AdvertisementProtocol.cpp
-               ${FURBLE_PROTOCOL_DIR}/CameraListProtocol.cpp
-               ${FURBLE_PROTOCOL_DIR}/FujifilmProtocol.cpp)
+# Shared by the transport end-to-end test and the companion protocol fuzzer so
+# both run the production service over the same host doubles and real Control
+# and camera stack.
+set(COMPANION_GATT_SOURCES
+    ${COMPANION_HOST_DIR}/companion_doubles.cpp
+    ${FURBLE_ROOT}/src/FurbleNetworkSettings.cpp
+    advertisement_preferences_stub.cpp
+    ${COMPANION_HOST_DIR}/companion_hmac.cpp
+    ${FURBLE_ROOT}/src/FurbleCompanionAuth.cpp
+    ${CONTROL_E2E_DIR}/freertos_shim.cpp
+    ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
+    ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
+    ${FURBLE_ROOT}/src/FurbleCompanionService.cpp
+    ${FURBLE_ROOT}/src/FurbleControl.cpp
+    ${FURBLE_ROOT}/src/FurbleTimezone.cpp
+    ${FURBLE_ROOT}/lib/furble/Camera.cpp
+    ${FURBLE_ROOT}/lib/furble/CameraList.cpp
+    ${FURBLE_ROOT}/lib/furble/Device.cpp
+    ${FURBLE_ROOT}/lib/furble/Scan.cpp
+    ${FURBLE_ROOT}/lib/furble/CanonEOS.cpp
+    ${FURBLE_ROOT}/lib/furble/CanonEOSRemote.cpp
+    ${FURBLE_ROOT}/lib/furble/CanonEOSSmart.cpp
+    ${FURBLE_ROOT}/lib/furble/DJIOsmo.cpp
+    ${FURBLE_ROOT}/lib/furble/FauxNY.cpp
+    ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
+    ${FURBLE_ROOT}/lib/furble/FujifilmBasic.cpp
+    ${FURBLE_ROOT}/lib/furble/FujifilmSecure.cpp
+    ${FURBLE_ROOT}/lib/furble/Lumix.cpp
+    ${FURBLE_ROOT}/lib/furble/Nikon.cpp
+    ${FURBLE_ROOT}/lib/furble/NikonBase.cpp
+    ${FURBLE_ROOT}/lib/furble/NikonRemote.cpp
+    ${FURBLE_ROOT}/lib/furble/NikonSmart.cpp
+    ${FURBLE_ROOT}/lib/furble/Ricoh.cpp
+    ${FURBLE_ROOT}/lib/furble/Sony.cpp
+    ${FURBLE_ROOT}/lib/blowfish/Blowfish.cpp
+    ${FURBLE_PROTOCOL_DIR}/AdvertisementProtocol.cpp
+    ${FURBLE_PROTOCOL_DIR}/CameraListProtocol.cpp
+    ${FURBLE_PROTOCOL_DIR}/FujifilmProtocol.cpp)
+add_executable(companion_gatt_test companion_gatt_test.cpp ${COMPANION_GATT_SOURCES})
 target_include_directories(companion_gatt_test
                            BEFORE PRIVATE
                                   ${COMPANION_HOST_DIR}/doubles
@@ -1962,6 +2009,36 @@ target_compile_options(control_fuzz PRIVATE -Wall -Wextra -Wno-format -Wno-unuse
 target_link_options(control_fuzz PRIVATE ${FUZZ_SANITIZER_FLAGS})
 target_link_libraries(control_fuzz PRIVATE Threads::Threads)
 
+# Seeded companion protocol fuzzer. It drives the production CompanionService
+# packet handlers with malformed auth, settings, camera, location and trigger
+# writes, and with fragmented and oversized payloads. The real service, auth
+# state machine and camera stack run over the host transport doubles, under the
+# same sanitizers as control_fuzz.
+add_executable(companion_fuzz
+               ${FUZZ_DIR}/companion_fuzz.cpp
+               ${COMPANION_GATT_SOURCES})
+target_include_directories(companion_fuzz
+                           BEFORE PRIVATE
+                                  ${COMPANION_HOST_DIR}/doubles
+                                  ${COMPANION_HOST_DIR}
+                                  ${CONTROL_E2E_DIR}
+                                  ${CMAKE_CURRENT_SOURCE_DIR}
+                                  ${FURBLE_ROOT}/include
+                                  ${FURBLE_ROOT}/lib/furble
+                                  ${FURBLE_ROOT}/lib/preferences
+                                  ${FURBLE_ROOT}/lib/blowfish
+                                  ${HOST_NIMBLE_DIR}
+                                  ${HOST_PEER_DIR})
+target_compile_definitions(companion_fuzz PRIVATE FURBLE_NO_DISPLAY
+                                                   FURBLE_HOST_COMPANION_TEST)
+target_compile_options(companion_fuzz PRIVATE -Wall -Wextra -Wno-format
+                                              -Wno-missing-field-initializers -Wno-sign-compare
+                                              -Wno-unused-parameter
+                                              -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h
+                                              ${FUZZ_SANITIZER_FLAGS})
+target_link_options(companion_fuzz PRIVATE ${FUZZ_SANITIZER_FLAGS})
+target_link_libraries(companion_fuzz PRIVATE Threads::Threads)
+
 # USB console command suite (plan 162). CLAUDE.md names the developer console
 # as the automation surface, yet src/FurbleConsole.cpp was compiled by neither
 # the host suite nor the simulator, so all 1851 of its lines were unmeasured.
@@ -2123,6 +2200,9 @@ if(BUILD_TESTING)
   add_test(NAME reconnect-backoff COMMAND reconnect_backoff_test)
   add_test(NAME battery-saver COMMAND battery_saver_test)
   add_test(NAME mqtt-owner COMMAND mqtt_owner_test)
+  foreach(seed 1 2 3 7 42)
+    add_test(NAME mqtt-fuzz-seed-${seed} COMMAND mqtt_fuzz --seed ${seed} --iterations 300)
+  endforeach()
   add_test(NAME pmic-recovery COMMAND pmic_recovery_test)
   add_test(NAME sim-clock COMMAND sim_clock_test)
   add_test(NAME sim-action-parser COMMAND sim_action_parser_test)
@@ -2287,6 +2367,13 @@ if(BUILD_TESTING)
   # the guarded opMidConnectSelfDeleteDrop consumes once that lands.
   add_test(NAME control-fuzz-repro-handshake-phase-drop
            COMMAND control_fuzz --repro handshake-phase-drop 1)
+
+  # Companion protocol fuzz. The fixed seeds keep malformed auth, settings and
+  # camera packet streams reproducible; every finding prints the exact seed and
+  # operation so it can be pinned as a regression.
+  foreach(seed 1 2 3 7 42)
+    add_test(NAME companion-fuzz-seed-${seed} COMMAND companion_fuzz --seed ${seed} --iterations 300)
+  endforeach()
 endif()
 
 # Peer contract: every virtual camera constructs, advertises, exposes its

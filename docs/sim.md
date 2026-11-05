@@ -252,6 +252,15 @@ The simulator command-line options are:
 | `--fuzz-verbose` | Enable fuzzing and print each UI fuzzer event. |
 | `--help` | Print the option synopsis and exit. |
 
+The UI fuzzer draws 27 event classes from one seeded stream: taps, timed holds
+around the 1000 ms repeat threshold, every menu page, scan rows, camera and
+companion pairing, connect/disconnect, BLE link loss, blind remote, shutter and
+focus, bulb and intervalometer runs, presets, button mode and setting switches.
+Its fit invariant follows the shipped layouts: physical-button Home and
+Connected scroll by design, Display and Timer scroll, narrow Stick touch Remote
+scrolls, and Core touch Home plus physical/Core-touch Remote keep their strict
+fit.
+
 The UI fuzzer also accepts `FURBLE_FUZZ_SEED` and `FURBLE_FUZZ_STEPS` as
 fallbacks. Explicit `--seed` and `--fuzz-steps` values take precedence over
 their matching environment variables, even when a wrapper inherits both. The
@@ -1399,6 +1408,26 @@ The peer and mock fault APIs used by that fuzzer are
 `dropLinkDuringConnect`, and `clearFaults`. These faults cover connect failure,
 client-pool exhaustion, stale subscriptions, missing GATT elements, rejected
 handshake writes, link drops during a handshake, and deferred client deletion.
+
+The input, API and memory gate is `tools/check_fuzz.py`. It runs the seeded UI
+fuzzer on all three panels in both layouts, the WebUI, companion, MQTT and OTA
+fuzzers, the fixed memory-pressure scenarios and randomized heap-pressure
+boots. Build the host targets and run the pull-request budget:
+
+```sh
+cmake -S tests/host -B /tmp/furble-fuzz-host
+cmake --build /tmp/furble-fuzz-host -j8 \
+  --target webui_fuzz companion_fuzz mqtt_fuzz ota_mqtt_protocol_test
+python3 tools/check_fuzz.py --smoke \
+  --host-build /tmp/furble-fuzz-host \
+  --mqtt-binary sim/build-mqtt/furble-sim
+```
+
+`--full` is the pre-hardware budget. The fixed seeds live in
+`tests/fuzz/seeds.json`; every finding prints the seed and exact replay
+command. The gate is intentionally red for the MQTT owner stack at 6 KiB and
+the Home Assistant discovery OOM until the parallel MQTT stack and MQTT HA
+memory PRs land.
 
 ## Adding a scenario
 

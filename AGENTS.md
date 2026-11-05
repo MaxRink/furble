@@ -21,6 +21,11 @@ and run `python3 tools/check_ci_workflows.py` after changing workflow triggers.
 The pre-review gate is `python3 tools/pre_review.py --base origin/master`; run
 it before pushing. `pre-review.yml` runs the same scanners in CI, and
 `host-sanitized.yml` runs the ASan/UBSan host subset when C++ paths change.
+The hardware gate is `python3 tools/check_fuzz.py --full --host-build <dir>
+--mqtt-binary sim/build-mqtt/furble-sim`; it must pass before a firmware image
+is built. Its fixed seeds live in `tests/fuzz/seeds.json`. The gate stays red
+for the MQTT owner stack at 6 KiB and the Home Assistant discovery OOM until
+the parallel MQTT stack and MQTT HA memory PRs land.
 Static analysis is `python3 tools/check_static_analysis.py --base origin/master`
 with the host and simulator compile databases; `static-analysis.yml` runs it in
 CI.

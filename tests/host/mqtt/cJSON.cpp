@@ -1,5 +1,6 @@
 #include "cJSON.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -11,12 +12,65 @@
 
 namespace {
 
+uint64_t g_FailureSeed = 0;
+uint32_t g_FailurePercent = 0;
+uint64_t g_FailureDraws = 0;
+size_t g_LiveAllocations = 0;
+size_t g_PeakAllocations = 0;
+
+uint64_t splitmix64(uint64_t value) {
+  value += 0x9e3779b97f4a7c15ULL;
+  value = (value ^ (value >> 30)) * 0xbf58476d1ce4e5b9ULL;
+  value = (value ^ (value >> 27)) * 0x94d049bb133111ebULL;
+  return value ^ (value >> 31);
+}
+
+bool allocationFails(void) {
+  if (g_FailurePercent == 0) {
+    return false;
+  }
+  const uint64_t draw = splitmix64(g_FailureSeed + g_FailureDraws++);
+  return (draw % 100) < g_FailurePercent;
+}
+
+void *trackedMalloc(size_t size) {
+  if (allocationFails()) {
+    return nullptr;
+  }
+  void *pointer = std::malloc(size);
+  if (pointer != nullptr) {
+    g_LiveAllocations++;
+    g_PeakAllocations = std::max(g_PeakAllocations, g_LiveAllocations);
+  }
+  return pointer;
+}
+
+void *trackedCalloc(size_t count, size_t size) {
+  if (allocationFails()) {
+    return nullptr;
+  }
+  void *pointer = std::calloc(count, size);
+  if (pointer != nullptr) {
+    g_LiveAllocations++;
+    g_PeakAllocations = std::max(g_PeakAllocations, g_LiveAllocations);
+  }
+  return pointer;
+}
+
+void trackedFree(void *pointer) {
+  if (pointer == nullptr) {
+    return;
+  }
+  g_LiveAllocations--;
+  std::free(pointer);
+}
+
 char *copyString(const char *value) {
   if (value == nullptr) {
     return nullptr;
   }
   const size_t length = std::strlen(value);
-  auto *copy = static_cast<char *>(std::malloc(length + 1));
+  auto *copy = static_cast<char *>(trackedMalloc(length + 1));
   if (copy != nullptr) {
     std::memcpy(copy, value, length + 1);
   }
@@ -24,7 +78,7 @@ char *copyString(const char *value) {
 }
 
 cJSON *makeNode(int type) {
-  auto *node = static_cast<cJSON *>(std::calloc(1, sizeof(cJSON)));
+  auto *node = static_cast<cJSON *>(trackedCalloc(1, sizeof(cJSON)));
   if (node != nullptr) {
     node->type = type;
   }
@@ -372,6 +426,32 @@ class Parser {
 
 }  // namespace
 
+namespace host_cjson {
+
+void reset() {
+  g_FailureSeed = 0;
+  g_FailurePercent = 0;
+  g_FailureDraws = 0;
+  g_LiveAllocations = 0;
+  g_PeakAllocations = 0;
+}
+
+void setFailureSchedule(uint64_t seed, uint32_t percent) {
+  g_FailureSeed = seed;
+  g_FailurePercent = std::min<uint32_t>(percent, 100);
+  g_FailureDraws = 0;
+}
+
+size_t liveAllocations() {
+  return g_LiveAllocations;
+}
+
+size_t peakAllocations() {
+  return g_PeakAllocations;
+}
+
+}  // namespace host_cjson
+
 extern "C" cJSON *cJSON_CreateObject(void) {
   return makeNode(cJSON_Object);
 }
@@ -397,47 +477,51 @@ extern "C" cJSON *cJSON_CreateNumber(double value) {
   return node;
 }
 
-extern "C" cJSON *cJSON_AddObjectToObject(cJSON *object, const char *name) {
-  cJSON *item = cJSON_CreateObject();
+namespace {
+
+cJSON *attachObject(cJSON *object, const char *name, cJSON *item) {
+  if (item == nullptr) {
+    return nullptr;
+  }
+  if (object == nullptr) {
+    cJSON_Delete(item);
+    return nullptr;
+  }
   cJSON_AddItemToObject(object, name, item);
   return item;
+}
+
+}  // namespace
+
+extern "C" cJSON *cJSON_AddObjectToObject(cJSON *object, const char *name) {
+  return attachObject(object, name, cJSON_CreateObject());
 }
 
 extern "C" cJSON *cJSON_AddArrayToObject(cJSON *object, const char *name) {
-  cJSON *item = cJSON_CreateArray();
-  cJSON_AddItemToObject(object, name, item);
-  return item;
+  return attachObject(object, name, cJSON_CreateArray());
 }
 
 extern "C" cJSON *cJSON_AddStringToObject(cJSON *object, const char *name, const char *value) {
-  cJSON *item = cJSON_CreateString(value);
-  cJSON_AddItemToObject(object, name, item);
-  return item;
+  return attachObject(object, name, cJSON_CreateString(value));
 }
 
 extern "C" cJSON *cJSON_AddBoolToObject(cJSON *object, const char *name, int value) {
-  cJSON *item = makeNode(value ? cJSON_True : cJSON_False);
-  cJSON_AddItemToObject(object, name, item);
-  return item;
+  return attachObject(object, name, makeNode(value ? cJSON_True : cJSON_False));
 }
 
 extern "C" cJSON *cJSON_AddNumberToObject(cJSON *object, const char *name, double value) {
-  cJSON *item = cJSON_CreateNumber(value);
-  cJSON_AddItemToObject(object, name, item);
-  return item;
+  return attachObject(object, name, cJSON_CreateNumber(value));
 }
 
 extern "C" cJSON *cJSON_AddNullToObject(cJSON *object, const char *name) {
-  cJSON *item = makeNode(cJSON_NULL);
-  cJSON_AddItemToObject(object, name, item);
-  return item;
+  return attachObject(object, name, makeNode(cJSON_NULL));
 }
 
 extern "C" void cJSON_AddItemToObject(cJSON *object, const char *name, cJSON *item) {
   if (item == nullptr) {
     return;
   }
-  std::free(item->string);
+  trackedFree(item->string);
   item->string = copyString(name == nullptr ? "" : name);
   appendChild(object, item);
 }
@@ -484,7 +568,7 @@ extern "C" cJSON *cJSON_ParseWithLength(const char *value, size_t length) {
 extern "C" char *cJSON_PrintUnformatted(const cJSON *item) {
   std::string text;
   printNode(item, text);
-  auto *result = static_cast<char *>(std::malloc(text.size() + 1));
+  auto *result = static_cast<char *>(trackedMalloc(text.size() + 1));
   if (result != nullptr) {
     std::memcpy(result, text.c_str(), text.size() + 1);
   }
@@ -501,11 +585,11 @@ extern "C" void cJSON_Delete(cJSON *item) {
     cJSON_Delete(child);
     child = next;
   }
-  std::free(item->valuestring);
-  std::free(item->string);
-  std::free(item);
+  trackedFree(item->valuestring);
+  trackedFree(item->string);
+  trackedFree(item);
 }
 
 extern "C" void cJSON_free(void *item) {
-  std::free(item);
+  trackedFree(item);
 }

@@ -122,6 +122,14 @@ CLAUDE.md whose directory it touches.
 - Run `python3 tools/pre_review.py --base origin/master` before pushing. It
   runs the diff hygiene, settings contract, and C++ safety scanners, the CI
   workflow and simulator manifest checks, and the scanner unit tests.
+- Run the fuzz gate before any hardware image build:
+  `python3 tools/check_fuzz.py --full --host-build <host-build> --mqtt-binary
+  sim/build-mqtt/furble-sim`. `--smoke` is the pull-request budget. It runs
+  seeded UI input on all three panels in both layouts, the WebUI, companion,
+  MQTT and OTA fuzzers, the fixed memory-pressure scenarios, and randomized
+  heap-pressure boots. The current gate is red for the MQTT owner stack at
+  6 KiB and the Home Assistant discovery OOM; those fixes are owned by the
+  parallel MQTT stack and MQTT HA memory PRs. Do not mark them expected-pass.
 - Run the MQTT memory-pressure scenarios with
   `sh sim/scripts/run-memory.sh` after building the simulator with
   `FURBLE_SIM_MQTT=1`. The script uses a closed local port, so no broker is

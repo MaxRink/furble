@@ -1,0 +1,42 @@
+{
+  "ui": {
+    "smoke": [1, 2],
+    "full": [1, 2, 3, 7, 42, 99, 1000, 31337],
+    "smoke_steps": 300,
+    "full_steps": 1200
+  },
+  "webui": {
+    "smoke": [1, 2],
+    "full": [1, 2, 3, 7, 42, 99, 1000],
+    "smoke_iterations": 300,
+    "full_iterations": 1500
+  },
+  "companion": {
+    "smoke": [1, 2],
+    "full": [1, 2, 3, 7, 42, 99, 1000],
+    "smoke_iterations": 150,
+    "full_iterations": 1000
+  },
+  "mqtt": {
+    "smoke": [1, 2],
+    "full": [1, 2, 3, 7, 42, 99, 1000],
+    "smoke_iterations": 100,
+    "full_iterations": 1000
+  },
+  "memory": {
+    "smoke": [1, 2],
+    "full": [1, 2, 3, 4, 7, 42, 99, 1000]
+  },
+  "known_findings": [
+    {
+      "id": "mqtt-owner-stack",
+      "owner": "fix/mqtt-task-stack",
+      "detail": "Hardware overflowed the MQTT owner task at 4 KiB during start and at 6 KiB on the first connected event. The owner stack must be 10240 bytes."
+    },
+    {
+      "id": "ha-discovery-oom",
+      "owner": "perf/mqtt-ha-memory",
+      "detail": "Home Assistant discovery builds a cJSON tree and payload with the last few hundred bytes of internal heap. Allocation failures must not leak nodes or take the device down."
+    }
+  ]
+}
