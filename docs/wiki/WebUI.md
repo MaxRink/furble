@@ -2,7 +2,7 @@
 
 On the M5StickS3 debug image, WiFi plus Bluetooth leaves about 6.8 KiB of
 internal RAM free; the current WebUI needs about 20 KiB, so enabling it can
-reset the device. Use a Core2 or the headless S3 profile until plan 304 lands.
+reset the device. Use a Core2 or the headless S3 profile until the WebUI memory fix tracked by plan 304 is implemented.
 
 The WebUI is compiled into the 8 MB and 16 MB network hub profiles. It is off
 by default. Configure WiFi and a companion password over USB, then run:
