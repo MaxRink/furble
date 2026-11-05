@@ -7,6 +7,7 @@
 // or request the UI. The same seed always produces the same delivery stream.
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
@@ -18,9 +19,11 @@
 #include "CameraList.h"
 #include "Device.h"
 #include "FurbleMQTT.h"
+#include "FurbleMQTTMemory.h"
 #include "FurbleSettings.h"
 #include "FurbleUI.h"
 #include "cJSON.h"
+#include "esp_heap_caps.h"
 #include "esp_netif.h"
 #include "mqtt_client.h"
 #include "mqtt_host_dependencies.h"
@@ -56,6 +59,113 @@ bool isCommandTopic(const std::string &topic, const std::string &root) {
     return true;
   }
   return false;
+}
+
+size_t discoveryPublications(void) {
+  const auto &messages = host_mqtt::published();
+  return static_cast<size_t>(std::count_if(messages.begin(), messages.end(), [](const auto &message) {
+    return message.topic.rfind("homeassistant/device/", 0) == 0 && !message.payload.empty();
+  }));
+}
+
+const host_mqtt::PublishedMessage *latestDiscovery(void) {
+  const auto &messages = host_mqtt::published();
+  for (auto it = messages.rbegin(); it != messages.rend(); ++it) {
+    if (it->topic.rfind("homeassistant/device/", 0) == 0 && !it->payload.empty()) {
+      return &*it;
+    }
+  }
+  return nullptr;
+}
+
+void runGatePermutations(void) {
+  using namespace Furble::MQTTMemory;
+  static_assert(START_INTERNAL_FREE_FLOOR == 8192, "start free floor changed");
+  static_assert(START_INTERNAL_LARGEST_FLOOR == 4096, "start largest floor changed");
+  static_assert(DISCOVERY_INTERNAL_FREE_FLOOR == 10240, "discovery free floor changed");
+  static_assert(DISCOVERY_INTERNAL_LARGEST_FLOOR == 4096, "discovery largest floor changed");
+  const std::array<size_t, 7> values = {
+      0, 1, 4095, 4096, 8191, 8192, 10240};
+  for (size_t freeBytes : values) {
+    for (size_t largest : values) {
+      const auto start = startGate(freeBytes, largest);
+      require(start.open
+                  == (freeBytes >= START_INTERNAL_FREE_FLOOR
+                      && largest >= START_INTERNAL_LARGEST_FLOOR),
+              "start gate disagreed at a boundary");
+      const auto discovery = discoveryGate(freeBytes, largest);
+      require(discovery.open
+                  == (freeBytes >= DISCOVERY_INTERNAL_FREE_FLOOR
+                      && largest >= DISCOVERY_INTERNAL_LARGEST_FLOOR),
+              "discovery gate disagreed at a boundary");
+    }
+  }
+  std::mt19937_64 rng(0x47544145ULL);
+  for (uint32_t iteration = 0; iteration < 5000; iteration++) {
+    const size_t freeBytes = static_cast<size_t>(rng() % 32768);
+    const size_t largest = static_cast<size_t>(rng() % (freeBytes + 1));
+    const auto start = startGate(freeBytes, largest);
+    require(start.open
+                == (freeBytes >= START_INTERNAL_FREE_FLOOR
+                    && largest >= START_INTERNAL_LARGEST_FLOOR),
+            "random start gate disagreed");
+    const auto discovery = discoveryGate(freeBytes, largest);
+    require(discovery.open
+                == (freeBytes >= DISCOVERY_INTERNAL_FREE_FLOOR
+                    && largest >= DISCOVERY_INTERNAL_LARGEST_FLOOR),
+            "random discovery gate disagreed");
+  }
+}
+
+void runDiscoveryBoundaries(Furble::MQTT &mqtt) {
+  using namespace Furble::MQTTMemory;
+  static const std::string status = "homeassistant/status";
+  host_mqtt_heap::set(DISCOVERY_INTERNAL_FREE_FLOOR - 1, DISCOVERY_INTERNAL_LARGEST_FLOOR);
+  size_t before = discoveryPublications();
+  host_mqtt::brokerPublish(status, "online", 0, true);
+  mqtt.hostTaskStep();
+  require(discoveryPublications() == before, "discovery published below the free floor");
+
+  host_mqtt_heap::set(DISCOVERY_INTERNAL_FREE_FLOOR, DISCOVERY_INTERNAL_LARGEST_FLOOR - 1);
+  before = discoveryPublications();
+  host_mqtt::brokerPublish(status, "online", 0, true);
+  mqtt.hostTaskStep();
+  require(discoveryPublications() == before, "discovery published below the largest floor");
+
+  host_mqtt_heap::set(DISCOVERY_INTERNAL_FREE_FLOOR, DISCOVERY_INTERNAL_LARGEST_FLOOR);
+  before = discoveryPublications();
+  host_mqtt::brokerPublish(status, "online", 0, true);
+  mqtt.hostTaskStep();
+  require(discoveryPublications() == before + 2, "discovery did not publish at the exact floor");
+
+  // A fragmented retained HA status must not be treated as a complete replay.
+  before = discoveryPublications();
+  host_mqtt::deliverFragmented(status, "online", 0, 10);
+  mqtt.hostTaskStep();
+  require(discoveryPublications() == before, "fragmented HA status triggered discovery");
+
+  // Discovery payloads deliberately exceed the 1,536-byte network buffer. The
+  // broker fragments them on the wire; the retained record must still be the
+  // complete valid JSON document and survive repeated HA online replays.
+  const auto *hub = latestDiscovery();
+  require(hub != nullptr, "discovery published no hub record");
+  if (hub != nullptr) {
+    require(hub->payload.size() > BUFFER_SIZE,
+            "discovery payload did not exercise the 1,536-byte fragmentation path");
+    cJSON *parsed = cJSON_ParseWithLength(hub->payload.data(), hub->payload.size());
+    require(parsed != nullptr, "discovery payload is not complete JSON after publication");
+    cJSON_Delete(parsed);
+  }
+  for (int replay = 0; replay < 5; replay++) {
+    before = discoveryPublications();
+    host_mqtt::brokerPublish(status, "online", 0, true);
+    mqtt.hostTaskStep();
+    require(discoveryPublications() == before + 2,
+            "repeated HA online replay did not republish both records");
+  }
+  require(host_mqtt::hasRetained("homeassistant/device/furble_hub-fuzz/config"),
+          "hub discovery record was not retained after replays");
+  host_mqtt_heap::reset();
 }
 
 }  // namespace
@@ -102,12 +212,31 @@ int main(int argc, char **argv) {
   CameraList::setCameras({camera});
   UI::reset();
 
+  runGatePermutations();
+
   auto &mqtt = MQTT::getInstance();
   MQTT::init();
+  host_mqtt_heap::set(Furble::MQTTMemory::START_INTERNAL_FREE_FLOOR - 1,
+                      Furble::MQTTMemory::START_INTERNAL_LARGEST_FLOOR);
   host_mqtt_network::setGotIp("ethernet", 0x0a00002a);
   mqtt.hostTaskStep();
   mqtt.hostTaskStep();
+  require(host_mqtt::startCount() == 0,
+          "MQTT client started below the internal-heap start floor");
+
+  host_mqtt_heap::set(Furble::MQTTMemory::START_INTERNAL_FREE_FLOOR,
+                      Furble::MQTTMemory::START_INTERNAL_LARGEST_FLOOR);
+  mqtt.reloadSetting();
+  mqtt.hostTaskStep();
+  mqtt.hostTaskStep();
+  require(host_mqtt::startCount() == 1,
+          "MQTT client did not start at the exact internal-heap floor");
+  require(host_mqtt::lastTaskStackSize() == Furble::MQTTMemory::PLAIN_WORKER_STACK_BYTES,
+          "plain MQTT worker did not use the 3 KiB stack");
+  require(host_mqtt::lastBufferSize() == Furble::MQTTMemory::BUFFER_SIZE,
+          "MQTT network buffer did not use the 1,536-byte budget");
   require(mqtt.isConnected(), "MQTT owner did not connect to the host broker");
+  runDiscoveryBoundaries(mqtt);
 
   const std::string root = "furble/hub-fuzz";
   const std::string cameraId = std::to_string(CameraList::getCameraId(camera.get()));

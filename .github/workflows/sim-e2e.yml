@@ -571,7 +571,10 @@ jobs:
         run: |
           cmake -S tests/host -B "${{ runner.temp }}/furble-fuzz-host"
           cmake --build "${{ runner.temp }}/furble-fuzz-host" -j"$(nproc)" \
-            --target webui_fuzz companion_fuzz mqtt_fuzz ota_mqtt_protocol_test
+            --target webui_fuzz companion_fuzz mqtt_fuzz ota_mqtt_protocol_test \
+                     settings_migration_fuzz wifi_policy_fuzz \
+                     bt_debug_journal_s3_test bt_debug_journal_s3_fallback_test \
+                     settings_nvs_roundtrip_test
 
       # Fail-closed gate. The two known hardware findings, the MQTT owner stack
       # at 6 KiB and the Home Assistant discovery OOM, stay explicit findings

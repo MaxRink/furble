@@ -170,6 +170,8 @@ class Gate:
         else:
             self.finding("host-ota", f"OTA fuzz target missing: {ota}")
         for label, target in (
+            ("host-settings-migration", "settings_migration_fuzz"),
+            ("host-wifi-policy", "wifi_policy_fuzz"),
             ("host-psram-present", "bt_debug_journal_s3_test"),
             ("host-psram-absent", "bt_debug_journal_s3_fallback_test"),
             ("host-nvs-failures", "settings_nvs_roundtrip_test"),

@@ -106,12 +106,15 @@ add_executable(mqtt_fuzz
                ${HOST_MQTT_DIR}/cJSON.cpp
                ${HOST_MQTT_DIR}/mqtt_client_mock.cpp
                ${HOST_MQTT_DIR}/mqtt_host_doubles.cpp
+               boot_timeline_host_stub.cpp
+               ${FURBLE_ROOT}/src/FurbleBootTimeline.cpp
                ${FURBLE_ROOT}/src/FurbleMQTT.cpp)
 target_include_directories(mqtt_fuzz BEFORE PRIVATE
                            ${HOST_MQTT_DIR}
                            ${FURBLE_ROOT}/include
                            ${FURBLE_ROOT}/lib/furble)
 target_compile_definitions(mqtt_fuzz PRIVATE FURBLE_MQTT=1 FURBLE_MQTT_HOST_TEST=1
+                                          FURBLE_BOOT_TIMELINE_HOST_TEST=1
                                           FURBLE_VERSION="host-test")
 target_compile_options(mqtt_fuzz PRIVATE -Wall -Wextra -Werror -Wno-format
                                          -Wno-unused-parameter)
@@ -899,6 +902,28 @@ target_compile_definitions(settings_boot_test PRIVATE FURBLE_M5STICKS3)
 target_compile_options(settings_boot_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                   -Wno-unused-parameter -Wno-vla-extension)
 
+# Seeded migration permutations for the first-boot default seeder. The marker
+# is set to missing, old, future, string and blob shapes, random default keys
+# are removed, and a commit fails at a random ordinal. A clean boot must repair
+# whatever the failed seed left behind.
+set(HOST_FUZZ_DIR ${CMAKE_CURRENT_SOURCE_DIR}/fuzz)
+add_executable(settings_migration_fuzz
+               ${HOST_FUZZ_DIR}/settings_migration_fuzz.cpp
+               settings_nvs_stub.cpp
+               settings_platform_stub.cpp
+               ${FURBLE_ROOT}/src/FurbleSettings.cpp
+               ${FURBLE_ROOT}/src/FurbleTimezone.cpp
+               ${FURBLE_ROOT}/lib/preferences/Preferences.cpp)
+target_include_directories(settings_migration_fuzz BEFORE PRIVATE
+                           ${SETTINGS_TEST_STUB_DIR}
+                           ${FURBLE_ROOT}/include
+                           ${FURBLE_ROOT}/lib/preferences
+                           ${FURBLE_ROOT}/lib/furble)
+target_compile_definitions(settings_migration_fuzz PRIVATE FURBLE_M5STICKS3)
+target_compile_options(settings_migration_fuzz PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                       -Wno-unused-parameter -Wno-vla-extension)
+add_test(NAME settings-migration-fuzz COMMAND settings_migration_fuzz)
+
 add_executable(boot_timeline_test
                boot_timeline_test.cpp
                ${FURBLE_ROOT}/src/FurbleBootTimeline.cpp)
@@ -909,6 +934,14 @@ target_compile_options(boot_timeline_test PRIVATE -Wall -Wextra -Werror)
 add_executable(boot_policy_test boot_policy_test.cpp)
 target_include_directories(boot_policy_test PRIVATE ${FURBLE_ROOT}/include)
 target_compile_options(boot_policy_test PRIVATE -Wall -Wextra -Werror)
+
+# Exhaustive channel/auth permutations and seeded fast-connect lifecycle
+# sequences for the WiFi fallback policy.
+add_executable(wifi_policy_fuzz
+               ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/wifi_policy_fuzz.cpp)
+target_include_directories(wifi_policy_fuzz PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(wifi_policy_fuzz PRIVATE -Wall -Wextra -Werror)
+add_test(NAME wifi-policy-fuzz COMMAND wifi_policy_fuzz)
 
 add_executable(provision_tlv_test
                provision_tlv_test.cpp

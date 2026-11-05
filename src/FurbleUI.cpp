@@ -1894,6 +1894,9 @@ void UI::displayFlush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map
   }
 
 #if defined(FURBLE_SIM)
+  if (ui != nullptr) {
+    ui->m_FlushCount++;
+  }
   Sim::profilerFlushedPixels(static_cast<uint64_t>(w) * h);
 #endif
   lv_draw_sw_rgb565_swap(px_map, w * h);
@@ -1903,6 +1906,9 @@ void UI::displayFlush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map
     // would overwrite the pixels still being shifted out, so wait for the
     // transfer before reporting the flush complete. The two-buffer path keeps
     // the overlap and does not pay this wait.
+#if defined(FURBLE_SIM)
+    ui->m_FlushWaitCount++;
+#endif
     M5.Display.waitDMA();
   }
   lv_disp_flush_ready(disp);
@@ -5670,6 +5676,15 @@ std::string UI::simQueryState(const char *key) {
   // the scenario exercised a redraw while off without paying for it.
   if (query == "flushes_suppressed_off") {
     return std::to_string(m_FlushedWhileOff);
+  }
+  if (query == "single_buffer") {
+    return m_SingleBuffer ? "yes" : "no";
+  }
+  if (query == "flush_count") {
+    return std::to_string(m_FlushCount);
+  }
+  if (query == "flush_wait_count") {
+    return std::to_string(m_FlushWaitCount);
   }
   if (query == "scroll_labels") {
     return std::to_string(countScrollLabels(lv_menu_get_cur_main_page(m_MainMenu.main)));

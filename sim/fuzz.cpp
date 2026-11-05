@@ -381,6 +381,15 @@ ObservableState captureState(UI *ui) {
 // Check the invariants that hold after any event. The stale focus and stacked
 // modal checks map to the freed-object and re-entrancy bug classes; the
 // overflow check maps to the narrow-panel layout class.
+uint64_t parseUnsignedQuery(const std::string &value) {
+  char *end = nullptr;
+  const unsigned long long parsed = std::strtoull(value.c_str(), &end, 10);
+  if (end == value.c_str() || *end != '\0') {
+    return UINT64_MAX;
+  }
+  return static_cast<uint64_t>(parsed);
+}
+
 void checkInvariants(UI *ui, const std::string &event) {
   if (ui->simQueryState("focus") == "stale") {
     recordFinding(ui, "focus-uaf", event, "encoder focus points at a freed object");
@@ -404,6 +413,24 @@ void checkInvariants(UI *ui, const std::string &event) {
                   "compact page overflows the panel text_size="
                       + std::to_string(Settings::load<uint8_t>(Settings::TEXT_SIZE))
                       + " layout=" + ui->simQueryState("nav_layout"));
+  }
+
+  // The narrow panels use one LVGL draw buffer. Every flush must therefore
+  // wait for the SPI DMA before LVGL is told the buffer is free. On a wide
+  // panel the two buffers overlap and must not pay that wait.
+  const uint64_t flushes = parseUnsignedQuery(ui->simQueryState("flush_count"));
+  const uint64_t waits = parseUnsignedQuery(ui->simQueryState("flush_wait_count"));
+  if (flushes != UINT64_MAX && waits != UINT64_MAX) {
+    if (ui->simQueryState("single_buffer") == "yes") {
+      if (waits != flushes) {
+        recordFinding(ui, "flush-overlap", event,
+                      "single-buffer flushes=" + std::to_string(flushes)
+                          + " waits=" + std::to_string(waits));
+      }
+    } else if (waits != 0) {
+      recordFinding(ui, "flush-overlap", event,
+                    "double-buffer path waited for DMA " + std::to_string(waits) + " times");
+    }
   }
 }
 
