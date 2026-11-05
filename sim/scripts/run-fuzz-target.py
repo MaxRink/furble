@@ -66,7 +66,15 @@ class Result:
         self.output: list[str] = []
 
     def record(self, command: list[str], seeds: int, iterations: int) -> None:
-        self.commands.append(" ".join(command))
+        display = []
+        for part in command:
+            text = str(part)
+            if text == str(ROOT):
+                text = "."
+            elif text.startswith(str(ROOT) + "/"):
+                text = text[len(str(ROOT)) + 1 :]
+            display.append(text)
+        self.commands.append(" ".join(display))
         self.seed_runs += seeds
         self.iterations += iterations
 
@@ -92,8 +100,9 @@ def run(result: Result, command: list[str], env: dict[str, str] | None = None,
     if completed.returncode != 0:
         result.failures += 1
         tail = (completed.stdout + completed.stderr).splitlines()[-20:]
+        display = " ".join(str(part).replace(str(ROOT) + "/", "") for part in command)
         result.output.append(
-            f"FAIL {completed.returncode}: {' '.join(command)}\n" + "\n".join(tail)
+            f"FAIL {completed.returncode}: {display}\n" + "\n".join(tail)
         )
         return False
     return True

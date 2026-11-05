@@ -1,7 +1,7 @@
 {
   "version": 1,
   "status": "pass",
-  "commit": "f5396a2171292d7fec87db2d534725a8ca966eda",
+  "commit": "33627292077566eeee632293c32305ba91108ace",
   "targets": [
     {
       "id": "fuzz.ui.touch",
@@ -11,8 +11,8 @@
       "failures": 0,
       "commands": [
         "sh sim/scripts/run-fuzz.sh",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build/furble-sim --script /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/scenarios/e2e/hw-buttons-event-count.txt",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build/furble-sim --script /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/scenarios/e2e/hw-display-single-buffer.txt"
+        "sim/build/furble-sim --script sim/scenarios/e2e/hw-buttons-event-count.txt",
+        "sim/build/furble-sim --script sim/scenarios/e2e/hw-display-single-buffer.txt"
       ],
       "known_failing_seeds": [],
       "output": []
@@ -25,7 +25,7 @@
       "failures": 0,
       "commands": [
         "sh sim/scripts/run-fuzz.sh",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build/furble-sim --script /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/scenarios/e2e/hw-buttons-event-count.txt"
+        "sim/build/furble-sim --script sim/scenarios/e2e/hw-buttons-event-count.txt"
       ],
       "known_failing_seeds": [],
       "output": []
@@ -37,17 +37,17 @@
       "iterations": 10504,
       "failures": 0,
       "commands": [
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/host-build/webui_fuzz --seed 1 --iterations 1500",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/host-build/webui_fuzz --seed 2 --iterations 1500",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/host-build/webui_fuzz --seed 3 --iterations 1500",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/host-build/webui_fuzz --seed 7 --iterations 1500",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/host-build/webui_fuzz --seed 42 --iterations 1500",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/host-build/webui_fuzz --seed 99 --iterations 1500",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/host-build/webui_fuzz --seed 1000 --iterations 1500",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build/furble-sim --script /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/scenarios/e2e/hw-memory-webui-post394.txt",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build/furble-sim --script /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/scenarios/e2e/hw-memory-webui-identity.txt",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build/furble-sim --script /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/scenarios/e2e/memory-webui-fail-closed.txt",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build/furble-sim --script /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/scenarios/bughunt/console-ui-workflow.txt"
+        "host-build/webui_fuzz --seed 1 --iterations 1500",
+        "host-build/webui_fuzz --seed 2 --iterations 1500",
+        "host-build/webui_fuzz --seed 3 --iterations 1500",
+        "host-build/webui_fuzz --seed 7 --iterations 1500",
+        "host-build/webui_fuzz --seed 42 --iterations 1500",
+        "host-build/webui_fuzz --seed 99 --iterations 1500",
+        "host-build/webui_fuzz --seed 1000 --iterations 1500",
+        "sim/build/furble-sim --script sim/scenarios/e2e/hw-memory-webui-post394.txt",
+        "sim/build/furble-sim --script sim/scenarios/e2e/hw-memory-webui-identity.txt",
+        "sim/build/furble-sim --script sim/scenarios/e2e/memory-webui-fail-closed.txt",
+        "sim/build/furble-sim --script sim/scenarios/bughunt/console-ui-workflow.txt"
       ],
       "known_failing_seeds": [],
       "output": []
@@ -59,15 +59,15 @@
       "iterations": 7002,
       "failures": 0,
       "commands": [
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/host-build/companion_fuzz --seed 1 --iterations 1000",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/host-build/companion_fuzz --seed 2 --iterations 1000",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/host-build/companion_fuzz --seed 3 --iterations 1000",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/host-build/companion_fuzz --seed 7 --iterations 1000",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/host-build/companion_fuzz --seed 42 --iterations 1000",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/host-build/companion_fuzz --seed 99 --iterations 1000",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/host-build/companion_fuzz --seed 1000 --iterations 1000",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build/furble-sim --script /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/scenarios/e2e/hw-ble-auth-gatt-reidentify.txt",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build/furble-sim --script /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/scenarios/e2e/hw-memory-post394-budget.txt"
+        "host-build/companion_fuzz --seed 1 --iterations 1000",
+        "host-build/companion_fuzz --seed 2 --iterations 1000",
+        "host-build/companion_fuzz --seed 3 --iterations 1000",
+        "host-build/companion_fuzz --seed 7 --iterations 1000",
+        "host-build/companion_fuzz --seed 42 --iterations 1000",
+        "host-build/companion_fuzz --seed 99 --iterations 1000",
+        "host-build/companion_fuzz --seed 1000 --iterations 1000",
+        "sim/build/furble-sim --script sim/scenarios/e2e/hw-ble-auth-gatt-reidentify.txt",
+        "sim/build/furble-sim --script sim/scenarios/e2e/hw-memory-post394-budget.txt"
       ],
       "known_failing_seeds": [],
       "output": []
@@ -79,22 +79,22 @@
       "iterations": 7009,
       "failures": 0,
       "commands": [
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/host-build/mqtt_fuzz --seed 1 --iterations 1000",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/host-build/mqtt_fuzz --seed 2 --iterations 1000",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/host-build/mqtt_fuzz --seed 3 --iterations 1000",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/host-build/mqtt_fuzz --seed 7 --iterations 1000",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/host-build/mqtt_fuzz --seed 42 --iterations 1000",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/host-build/mqtt_fuzz --seed 99 --iterations 1000",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/host-build/mqtt_fuzz --seed 1000 --iterations 1000",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build/furble-sim --script /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/scenarios/e2e/hw-memory-mqtt-10k-success.txt",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build/furble-sim --script /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/scenarios/e2e/hw-memory-mqtt-tls-6k.txt",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build/furble-sim --script /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/scenarios/e2e/hw-mqtt-start-gate-below.txt",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build/furble-sim --script /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/scenarios/e2e/hw-mqtt-start-gate-at.txt",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build/furble-sim --script /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/scenarios/e2e/hw-mqtt-start-gate-above.txt",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build/furble-sim --script /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/scenarios/e2e/hw-mqtt-discovery-gate-below.txt",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build/furble-sim --script /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/scenarios/e2e/hw-mqtt-discovery-gate-at.txt",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build/furble-sim --script /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/scenarios/e2e/hw-mqtt-discovery-gate-above.txt",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build/furble-sim --script /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/scenarios/e2e/hw-mqtt-ha-cache-toggle.txt"
+        "host-build/mqtt_fuzz --seed 1 --iterations 1000",
+        "host-build/mqtt_fuzz --seed 2 --iterations 1000",
+        "host-build/mqtt_fuzz --seed 3 --iterations 1000",
+        "host-build/mqtt_fuzz --seed 7 --iterations 1000",
+        "host-build/mqtt_fuzz --seed 42 --iterations 1000",
+        "host-build/mqtt_fuzz --seed 99 --iterations 1000",
+        "host-build/mqtt_fuzz --seed 1000 --iterations 1000",
+        "sim/build/furble-sim --script sim/scenarios/e2e/hw-memory-mqtt-10k-success.txt",
+        "sim/build/furble-sim --script sim/scenarios/e2e/hw-memory-mqtt-tls-6k.txt",
+        "sim/build/furble-sim --script sim/scenarios/e2e/hw-mqtt-start-gate-below.txt",
+        "sim/build/furble-sim --script sim/scenarios/e2e/hw-mqtt-start-gate-at.txt",
+        "sim/build/furble-sim --script sim/scenarios/e2e/hw-mqtt-start-gate-above.txt",
+        "sim/build/furble-sim --script sim/scenarios/e2e/hw-mqtt-discovery-gate-below.txt",
+        "sim/build/furble-sim --script sim/scenarios/e2e/hw-mqtt-discovery-gate-at.txt",
+        "sim/build/furble-sim --script sim/scenarios/e2e/hw-mqtt-discovery-gate-above.txt",
+        "sim/build/furble-sim --script sim/scenarios/e2e/hw-mqtt-ha-cache-toggle.txt"
       ],
       "known_failing_seeds": [],
       "output": []
@@ -106,9 +106,9 @@
       "iterations": 3,
       "failures": 0,
       "commands": [
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/host-build/ota_mqtt_protocol_test",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build/furble-sim --script /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/scenarios/e2e/hw-ota-slot-rollback.txt",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build/furble-sim --script /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/scenarios/e2e/hw-crash-reset-matrix.txt"
+        "host-build/ota_mqtt_protocol_test",
+        "sim/build/furble-sim --script sim/scenarios/e2e/hw-ota-slot-rollback.txt",
+        "sim/build/furble-sim --script sim/scenarios/e2e/hw-crash-reset-matrix.txt"
       ],
       "known_failing_seeds": [],
       "output": []
@@ -120,10 +120,10 @@
       "iterations": 4,
       "failures": 0,
       "commands": [
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/host-build/settings_migration_fuzz",
-        "/opt/homebrew/opt/python@3.15/bin/python3.15 tests/fuzz/memory_fuzz.py --sim /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build/furble-sim --seeds 1 2 3 4 7 42 99 1000",
-        "/opt/homebrew/opt/python@3.15/bin/python3.15 tests/fuzz/memory_fuzz.py --sim /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build-mqtt/furble-sim --mqtt --seeds 1 2 3 4 7 42 99 1000",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build/furble-sim --script /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/scenarios/e2e/hw-memory-post394-budget.txt"
+        "host-build/settings_migration_fuzz",
+        "/opt/homebrew/opt/python@3.15/bin/python3.15 tests/fuzz/memory_fuzz.py --sim sim/build/furble-sim --seeds 1 2 3 4 7 42 99 1000",
+        "/opt/homebrew/opt/python@3.15/bin/python3.15 tests/fuzz/memory_fuzz.py --sim sim/build-mqtt/furble-sim --mqtt --seeds 1 2 3 4 7 42 99 1000",
+        "sim/build/furble-sim --script sim/scenarios/e2e/hw-memory-post394-budget.txt"
       ],
       "known_failing_seeds": [],
       "output": []
@@ -135,16 +135,16 @@
       "iterations": 7003,
       "failures": 0,
       "commands": [
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/host-build/mqtt_fuzz --seed 1 --iterations 1000 --discovery-oom",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/host-build/mqtt_fuzz --seed 2 --iterations 1000 --discovery-oom",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/host-build/mqtt_fuzz --seed 3 --iterations 1000 --discovery-oom",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/host-build/mqtt_fuzz --seed 7 --iterations 1000 --discovery-oom",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/host-build/mqtt_fuzz --seed 42 --iterations 1000 --discovery-oom",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/host-build/mqtt_fuzz --seed 99 --iterations 1000 --discovery-oom",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/host-build/mqtt_fuzz --seed 1000 --iterations 1000 --discovery-oom",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build/furble-sim --script /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/scenarios/e2e/hw-mqtt-ha-discovery-fragments.txt",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build/furble-sim --script /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/scenarios/e2e/hw-memory-mqtt-ha-ok.txt",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build/furble-sim --script /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/scenarios/e2e/hw-memory-mqtt-ha-oom.txt"
+        "host-build/mqtt_fuzz --seed 1 --iterations 1000 --discovery-oom",
+        "host-build/mqtt_fuzz --seed 2 --iterations 1000 --discovery-oom",
+        "host-build/mqtt_fuzz --seed 3 --iterations 1000 --discovery-oom",
+        "host-build/mqtt_fuzz --seed 7 --iterations 1000 --discovery-oom",
+        "host-build/mqtt_fuzz --seed 42 --iterations 1000 --discovery-oom",
+        "host-build/mqtt_fuzz --seed 99 --iterations 1000 --discovery-oom",
+        "host-build/mqtt_fuzz --seed 1000 --iterations 1000 --discovery-oom",
+        "sim/build/furble-sim --script sim/scenarios/e2e/hw-mqtt-ha-discovery-fragments.txt",
+        "sim/build/furble-sim --script sim/scenarios/e2e/hw-memory-mqtt-ha-ok.txt",
+        "sim/build/furble-sim --script sim/scenarios/e2e/hw-memory-mqtt-ha-oom.txt"
       ],
       "known_failing_seeds": [],
       "output": []
@@ -156,15 +156,15 @@
       "iterations": 9,
       "failures": 0,
       "commands": [
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/host-build/bt_debug_journal_s3_test",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/host-build/bt_debug_journal_s3_fallback_test",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build/furble-sim --script /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/scenarios/e2e/hw-psram-init-fail.txt",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build/furble-sim --script /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/scenarios/e2e/hw-psram-absent-core.txt",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build/furble-sim --script /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/scenarios/e2e/hw-psram-octal-sticks3.txt",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build/furble-sim --script /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/scenarios/e2e/hw-memory-psram-icon-absent.txt",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build/furble-sim --script /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/scenarios/e2e/hw-memory-psram-icon-octal.txt",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build/furble-sim --script /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/scenarios/e2e/hw-boot-psram-memtest-debug.txt",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build/furble-sim --script /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/scenarios/e2e/hw-boot-psram-memtest-release.txt"
+        "host-build/bt_debug_journal_s3_test",
+        "host-build/bt_debug_journal_s3_fallback_test",
+        "sim/build/furble-sim --script sim/scenarios/e2e/hw-psram-init-fail.txt",
+        "sim/build/furble-sim --script sim/scenarios/e2e/hw-psram-absent-core.txt",
+        "sim/build/furble-sim --script sim/scenarios/e2e/hw-psram-octal-sticks3.txt",
+        "sim/build/furble-sim --script sim/scenarios/e2e/hw-memory-psram-icon-absent.txt",
+        "sim/build/furble-sim --script sim/scenarios/e2e/hw-memory-psram-icon-octal.txt",
+        "sim/build/furble-sim --script sim/scenarios/e2e/hw-boot-psram-memtest-debug.txt",
+        "sim/build/furble-sim --script sim/scenarios/e2e/hw-boot-psram-memtest-release.txt"
       ],
       "known_failing_seeds": [],
       "output": []
@@ -176,15 +176,15 @@
       "iterations": 9,
       "failures": 0,
       "commands": [
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/host-build/settings_migration_fuzz",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/host-build/settings_nvs_roundtrip_test",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build/furble-sim --script /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/scenarios/e2e/hw-boot-settings-migration.txt",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build/furble-sim --script /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/scenarios/e2e/hw-boot-wifi-fast-connect.txt",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build/furble-sim --script /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/scenarios/e2e/crash-record-survives-restart.txt",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build/furble-sim --script /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/scenarios/e2e/ui-restart-persist.txt",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build/furble-sim --script /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/scenarios/e2e/hw-power-button-state-machine.txt",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build/furble-sim --script /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/scenarios/e2e/hw-usb-jtag-rom-stuck-recovery.txt",
-        "/Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/build/furble-sim --script /Users/A92615428/.local/share/opencode/worktree/2005fd/fuzz-suite/sim/scenarios/e2e/hw-pmic-sticks3.txt"
+        "host-build/settings_migration_fuzz",
+        "host-build/settings_nvs_roundtrip_test",
+        "sim/build/furble-sim --script sim/scenarios/e2e/hw-boot-settings-migration.txt",
+        "sim/build/furble-sim --script sim/scenarios/e2e/hw-boot-wifi-fast-connect.txt",
+        "sim/build/furble-sim --script sim/scenarios/e2e/crash-record-survives-restart.txt",
+        "sim/build/furble-sim --script sim/scenarios/e2e/ui-restart-persist.txt",
+        "sim/build/furble-sim --script sim/scenarios/e2e/hw-power-button-state-machine.txt",
+        "sim/build/furble-sim --script sim/scenarios/e2e/hw-usb-jtag-rom-stuck-recovery.txt",
+        "sim/build/furble-sim --script sim/scenarios/e2e/hw-pmic-sticks3.txt"
       ],
       "known_failing_seeds": [],
       "output": []
