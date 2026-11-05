@@ -100,13 +100,39 @@ The connected `Remote` group also offers:
 - `GPS Data`: the live GPS page.
 - `Disconnect`: drop the camera and return.
 
+### Simulator buttons
+
+A visible interactive run of the SDL simulator creates a borderless control
+strip with a top view of the modeled device. It is placed flush left of the
+panel, then below or above it, with the right side last, so it does not cover
+the panel or its button hints. The strip matches the panel's total window height,
+including its title bar, so the two read as one window.
+
+- **Sticks.** B is on the top edge, A is on the front/bottom edge, and PWR is
+  on the left side. The emulated GPIOs are 39, 38, and 36.
+- **Cores.** A, B, and C are in a row along the front edge. The emulated GPIOs
+  are 39, 38, and 37.
+
+Mouse down and mouse up model hold and release, and a click and the matching
+keyboard letter (`a`/`b`/`p` on Sticks, `a`/`b`/`c` on Cores) drive the same
+emulated GPIOs. A normal click is one press/release; repeats start only after
+holding for about one second. The scenario `btn` verb is a different simulator
+seam: it injects on the UI task through `UI::simPressButton` and does not toggle
+those pins. The simulator detaches the touch device while the control window is
+active, so the panel uses the non-touch layout and shows its legends. Set
+`FURBLE_SIM_BUTTONS=0` to hide the control window, or
+`FURBLE_SIM_NO_TOUCH=0` to keep the touch device for a deliberate mixed-input
+session. Scripted, headless and fuzz runs never create it.
+
 ### Automation surface
 
 Debug builds expose a USB serial console for host scripts. Two facts about how it
 drives input:
 
-- The simulator button injector reproduces the real button path, including Back
-  on a left-button hold, and it respects one-button versus two-button mode.
+- The simulator `btn` verb injects the same LVGL button read path on the UI
+  task, including Back on a left-button hold, and it respects one-button versus
+  two-button mode. It does not drive the emulated GPIOs; the interactive
+  control window and keyboard letters do.
 - The console `shutter` and `focus` commands are lower level. They enqueue camera
   commands directly and bypass the button-mode dispatch and the shutter-lock
   state. Use them to trigger the camera, not to test the button gestures.

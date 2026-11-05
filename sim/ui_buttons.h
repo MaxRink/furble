@@ -3,6 +3,9 @@
 
 namespace Furble::Sim {
 
+/** True when an interactive session should show the on-screen buttons. */
+bool uiButtonsRequested(void);
+
 /**
  * Create the optional on-screen button window.
  *

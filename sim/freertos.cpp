@@ -33,7 +33,7 @@ struct FurbleSimQueue {
 
 namespace {
 
-struct SimTaskExit {};
+struct SimTaskExit: std::exception {};
 
 enum class SimTaskLifecycle : uint8_t {
   running,
@@ -540,6 +540,17 @@ BaseType_t queueSend(QueueHandle_t queue, const void *item, TickType_t ticksToWa
 }  // namespace
 
 namespace Furble::Sim {
+namespace {
+std::atomic<bool> interactivePacingEnabled {false};
+}
+
+void setInteractivePacing(bool enabled) {
+  interactivePacingEnabled.store(enabled, std::memory_order_release);
+}
+
+bool interactivePacing(void) {
+  return interactivePacingEnabled.load(std::memory_order_acquire);
+}
 
 void schedulerTimerDueChanged(bool due) {
   timerServiceTask.priority = ESP_TASK_TIMER_PRIO;
@@ -667,6 +678,9 @@ void SchedulerMutex::lock(void) {
   SchedulerMutexWaiter waiter;
   waiter.task = currentTask;
   waiter.next = m_Waiters;
+  // The waiter is stack owned and stays linked only until this blocking lock
+  // either receives the grant or unlinks itself below before lock() returns.
+  // cppcheck-suppress danglingLifetime
   m_Waiters = &waiter;
   if (currentTask != nullptr) {
     setTaskBlockedLocked(true);
@@ -764,7 +778,7 @@ BaseType_t xTaskCreate(TaskFunction_t task,
         if (admitted) {
           task(parameter);
         }
-      } catch (const SimTaskExit &) {
+      } catch (const SimTaskExit &) {  // NOLINT(bugprone-empty-catch)
         // Teardown and vTaskDelete(NULL) use the same cooperative exit path.
       } catch (...) {
         {
@@ -809,6 +823,19 @@ void vTaskDelete(TaskHandle_t taskHandle) {
 
 void vTaskDelay(TickType_t ticks) {
   exitStoppedTask();
+  // Interactive runs use wall-clock pacing. The deterministic virtual clock is
+  // for scripted runs; without pacing, how much LVGL time a human click spans
+  // depends on how fast the UI loop happens to run, so a normal click can turn
+  // into a repeat or a long hold can never reach the repeat threshold.
+  if (Furble::Sim::interactivePacing()) {
+    if (ticks == 0) {
+      std::this_thread::yield();
+      return;
+    }
+    Furble::Sim::advanceClock(ticks);
+    std::this_thread::sleep_for(std::chrono::milliseconds(ticks));
+    return;
+  }
   if (std::strcmp(simTaskName, "ui") == 0 && currentTask == nullptr) {
     Furble::Sim::profilerTaskDelay(simTaskName, ticks);
     Furble::Sim::advanceClock(ticks);
@@ -1089,7 +1116,7 @@ void furble_sim_report_tasks(std::string &out) {
     if (task->wait_has_deadline) {
       out += " deadline_ms=" + std::to_string(static_cast<unsigned long>(task->wait_deadline));
     }
-    out += "\n";
+    out += '\n';
   }
 }
 

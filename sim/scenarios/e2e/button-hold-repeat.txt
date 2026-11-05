@@ -1,0 +1,41 @@
+# A click is one event and LVGL repeats start only after the simulator's
+# one-second long-press threshold. B is the right key on the Stick boards.
+#
+# Without a saved camera the main menu exposes three focusable rows in this
+# order: Scan, Settings, Off. One right step therefore lands on Settings, two
+# on Off, and three wrap back to Scan. The 600 ms and 900 ms holds stay below
+# the threshold and must move exactly one row. The 1600 ms hold crosses the
+# threshold and both 250 ms repeat ticks, so it must move three rows.
+seed no_touch true
+wait 300
+assert ui.page main
+
+# A normal tap is one press/release transition.
+home
+wait 100
+assert ui.row_text Scan
+btn b
+wait 100
+assert ui.row_text Settings
+
+# A slow click below one second still produces exactly one event.
+home
+wait 100
+btn-hold b 600
+wait 100
+assert ui.row_text Settings
+
+# The threshold is one second, not LVGL's 400 ms default.
+home
+wait 100
+btn-hold b 900
+wait 100
+assert ui.row_text Settings
+
+# Past one second the repeat cadence adds one step per 250 ms tick.
+home
+wait 100
+btn-hold b 1600
+wait 100
+assert ui.row_text Scan
+exit

@@ -24,8 +24,8 @@
 #include <unistd.h>
 
 #include <SDL2/SDL.h>
-#include <lgfx/v1/platforms/sdl/common.hpp>
 #include <lvgl.h>
+#include <lgfx/v1/platforms/sdl/common.hpp>
 
 #include <driver/uart.h>
 
@@ -45,11 +45,11 @@
 #include "capture.h"
 #include "clock.h"
 #include "driver.h"
-#include "ui_buttons.h"
 #include "fuzz.h"
 #include "platform_state.h"
 #include "power_profiler.h"
 #include "preferences_sweep.h"
+#include "ui_buttons.h"
 #include "watchdog.h"
 
 namespace Furble::Sim {
@@ -60,6 +60,7 @@ enum class StepType {
   STALL,
   KEY,
   BTN,
+  BTN_HOLD,
   CAPTURE,
   UART_DUMP,
   UART_MODE,
@@ -109,6 +110,10 @@ std::map<std::string, std::string> scenarioSettings;
 std::string captureDirectory = ".pio/furble-sim-captures";
 std::string reportDirectory = ".pio/furble-sim-reports";
 std::string scenarioName = "interactive";
+// True only when --script supplied a scenario file. A script may legitimately
+// be named interactive.txt, so the filename stem is not an interactive-run
+// sentinel.
+bool scriptProvided = false;
 size_t stepIndex = 0;
 uint32_t waitUntil = 0;
 uint32_t releaseAt = 0;
@@ -261,9 +266,9 @@ void pushKey(SDL_Keycode key, bool pressed) {
 // BtnC. The press itself runs through UI::simPressButton, which maps each
 // silk-screen button to the same per-board input device furble wires up in
 // initInputDevices, so the UI reacts exactly as it does to a hardware press.
-// Headless runs cannot drive input through the SDL panel's emulated GPIOs
-// (that path needs a display-backed event pump), so the button is injected on
-// the UI task rather than by toggling pins.
+// This verb is the headless UI-task injection path. It does not toggle the
+// emulated GPIOs; the interactive on-screen control window and the keyboard
+// letters are the GPIO path.
 #if defined(FURBLE_M5COREX)
 // M5Stack Core / Core2: three front buttons A/B/C, no dedicated power button.
 constexpr const char *kSimButtons[] = {"a", "b", "c"};
@@ -597,6 +602,29 @@ void readScript(const std::string &path) {
       } else if (!hold.empty()) {
         std::cerr << "Unknown simulator button modifier: " << hold << '\n';
         std::exit(2);
+      }
+      steps.push_back(step);
+    } else if (command == "btn-hold" || command == "button-hold") {
+      // Press a physical button for a virtual duration, sampling LVGL at the
+      // same cadence its input timer uses. This is the repeat-timing seam:
+      // a short hold is one event, a hold past the long-press threshold
+      // repeats at the configured interval.
+      if (!exactArgs(3)) {
+        rejectArity(command, "a button and a duration in milliseconds");
+      }
+      std::string name = args[1];
+      std::transform(name.begin(), name.end(), name.begin(),
+                     [](unsigned char c) { return std::tolower(c); });
+      if (!buttonKnown(name)) {
+        std::cerr << "Unknown or unavailable simulator button for this board: " << name << '\n';
+        std::exit(2);
+      }
+      Step step;
+      step.type = StepType::BTN_HOLD;
+      step.name = name;
+      step.milliseconds = parseUnsigned(args[2]);
+      if (step.milliseconds == 0 || step.milliseconds > MAX_EVENTUAL_TIMEOUT_MS) {
+        rejectArity(command, "a duration between 1 and 60000 milliseconds");
       }
       steps.push_back(step);
     } else if (command == "capture") {
@@ -1653,7 +1681,7 @@ void preparePreferences(void) {
   generatedPreferencesOwned = false;
   const char *inherited = std::getenv("FURBLE_SIM_PREFS");
   const char *generated = std::getenv(GENERATED_PREFS_ENV);
-  if (scenarioName == "interactive") {
+  if (interactiveRun()) {
     unsetenv(GENERATED_PREFS_ENV);
     return;
   }
@@ -1767,7 +1795,7 @@ void preparePreferences(void) {
 void removePreferences(void) {
   // Scratch state, not an artifact worth keeping. A reboot still needs it, so
   // this only runs once the process is really finished with the device.
-  if (scenarioName == "interactive" || restartPending.load() || !generatedPreferencesOwned
+  if (interactiveRun() || restartPending.load() || !generatedPreferencesOwned
       || generatedPreferencesPath.empty()) {
     return;
   }
@@ -2190,11 +2218,13 @@ void configure(int argc, char **argv) {
   }
 
   rigConfigure(rig, rigPort, ignoreUuidMismatch, dropNotify, delayMs);
+  scriptProvided = scriptOptionProvided;
 
   if (fuzz) {
     scenarioName = "fuzz";
     fuzzConfigure(fuzzSeed, fuzzSteps, fuzzVerbose);
     resumedBoot = resumedBoot || fuzzResumedBoot();
+    setInteractivePacing(false);
     return;
   }
 
@@ -2229,6 +2259,7 @@ void configure(int argc, char **argv) {
       }
     }
   }
+  setInteractivePacing(interactiveRun());
 }
 
 bool resumedDeviceBoot(void) {
@@ -2265,11 +2296,10 @@ void driverTick(void) {
   // false-connected presentation.
   checkLivenessInvariant();
 
-  // Interactive runs advance the virtual clock much faster than wall time, so
-  // the firmware's 60 s inactivity timeout can expire between two human clicks
-  // and swallow every press as a display wake. Keep the panel active while the
-  // on-screen control window exists; scenario and fuzz runs never create it and
-  // still exercise the real inactivity path.
+  // Keep the panel active while the on-screen control window exists so an idle
+  // interactive session does not dim or sleep between clicks. Interactive runs
+  // pace vTaskDelay with wall time, while scenario and fuzz runs never create
+  // the window and still exercise the real inactivity path.
   if (interactiveRun() && uiButtonsActive()) {
     if (lv_display_t *display = lv_display_get_default(); display != nullptr) {
       lv_display_trigger_activity(display);
@@ -2358,6 +2388,20 @@ void driverTick(void) {
         return;
       }
       if (!scenarioUi->simPressButton(step.name.c_str(), step.hold)) {
+        std::cerr << "Simulator button not available on this board: " << step.name << '\n';
+        requestExit(1);
+        return;
+      }
+      ++stepIndex;
+      break;
+
+    case StepType::BTN_HOLD:
+      if (scenarioUi == nullptr) {
+        std::cerr << "Scenario button hold ran before the UI was ready: " << step.name << '\n';
+        requestExit(1);
+        return;
+      }
+      if (!scenarioUi->simHoldButton(step.name.c_str(), step.milliseconds)) {
         std::cerr << "Simulator button not available on this board: " << step.name << '\n';
         requestExit(1);
         return;
@@ -2705,8 +2749,7 @@ void requestRestart(void) {
   // The active scripted step normally seeded restartStepIndex before invoking
   // its UI handler. Keep this fallback for a boot-time callback, but never
   // invent a script continuation for interactive or fuzz runs.
-  if (!fuzzActive() && scenarioName != "interactive" && restartStepIndex == 0
-      && stepIndex < steps.size()) {
+  if (!fuzzActive() && scriptProvided && restartStepIndex == 0 && stepIndex < steps.size()) {
     restartStepIndex = stepIndex + 1;
   }
   restartPending.store(true);
@@ -2726,9 +2769,10 @@ bool exitRequested(void) {
 }
 
 bool interactiveRun(void) {
-  // Scenario scripts and the fuzzer own the input stream. Only a plain
-  // interactive run may expose the on-screen control window.
-  return !fuzzActive() && scenarioName == "interactive";
+  // Scenario scripts and the fuzzer own the input stream. Only a run launched
+  // without --script may expose the on-screen control window, even if the
+  // script file happens to be named interactive.txt.
+  return !fuzzActive() && !scriptProvided;
 }
 
 int exitResult(void) {
@@ -2744,7 +2788,7 @@ void restartProcess(void) {
   std::cout.flush();
   std::cerr.flush();
   const size_t next = restartStepIndex;
-  const bool scripted = !fuzzActive() && scenarioName != "interactive";
+  const bool scripted = !fuzzActive() && scriptProvided;
   if (scripted && (next == 0 || next >= steps.size())) {
     std::cerr << "restart requested without a valid continuation step\n";
     std::_Exit(1);

@@ -275,6 +275,16 @@ class UI {
    * path furble runs on hardware, which the touch-only sim was blind to.
    */
   bool simPressButton(const char *name, bool hold);
+
+  /**
+   * Press a physical button for a virtual duration, then release it.
+   *
+   * The hold is sampled through the same LVGL input device as a real press,
+   * so it exercises the encoder long-press and repeat timing configured in
+   * initInputDevices(). This is the scenario seam for proving that a normal
+   * click is one event and repeats start only after the long-press threshold.
+   */
+  bool simHoldButton(const char *name, uint32_t milliseconds);
 #endif
 
   /** Current intervalometer state for the companion status record. */
@@ -1080,7 +1090,9 @@ class UI {
   void simScenarioActionOnUi(const Sim::scenario_action_t &action);
   bool simulatorHomeOnUi(void);
   bool simulatorBackOnUi(void);
+  lv_indev_t *simButtonIndev(const char *name) const;
   bool simPressButtonOnUi(const char *name, bool hold);
+  bool simHoldButtonOnUi(const char *name, uint32_t milliseconds);
   static void simButtonRead(lv_indev_t *drv, lv_indev_data_t *data);
 
   /**

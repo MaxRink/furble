@@ -423,8 +423,11 @@ The connected `Remote` group also offers:
 Debug builds expose a USB serial console for host scripts. Two facts about how it
 drives input:
 
-- The simulator button injector reproduces the real button path, including Back
-  on a left-button hold, and it respects one-button versus two-button mode.
+- The simulator `btn` verb injects the same LVGL button read path on the UI
+  task, including Back on a left-button hold, and it respects one-button versus
+  two-button mode. It does not drive the emulated GPIOs; the interactive
+  control window and keyboard letters do. See [Controls](Controls) for the
+  simulator button layout and `FURBLE_SIM_BUTTONS=0`.
 - The console `shutter` and `focus` commands are lower level. They enqueue camera
   commands directly and bypass the button-mode dispatch and the shutter-lock
   state. Use them to trigger the camera, not to test the button gestures.
