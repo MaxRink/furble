@@ -469,6 +469,12 @@ FURBLE_SIM_MQTT_URI=mqtt://127.0.0.1:1 FURBLE_SIM_MQTT_FAST_RECONNECT=1 \
 ```
 
 `FURBLE_SIM_MQTT_URI` may name an unreachable broker; no broker is required.
+`boot_defaults_marker` is `current`, `missing` or `stale`; `boot_profile` is
+`debug` or `release`; `psram_memtest` forces the full PSRAM test on or off.
+`wifi_fast_connect` is `usable` or `unusable`, `wifi_auth` is `known` or
+`unknown`, and `mqtt_discovery_payload` seeds the retained discovery payload
+size in bytes.
+
 `FURBLE_SIM_MQTT_FAST_RECONNECT` only shortens the host transport's one-second
 reconnect cadence so ten refused connections finish inside a bounded scenario.
 It does not change the firmware retry limit.
@@ -668,7 +674,6 @@ action ble-gatt-stale
 action ble-gatt-fresh
 action companion-reidentify
 action companion-reconnect
-action companion-reject
 action audio-overcurrent
 action ir-timeout
 action sd-present
@@ -687,6 +692,12 @@ action crash-inject-brownout
 action crash-inject-usb-uart
 action crash-inject-software
 action crash-inject-poweron
+action boot-reboot
+action boot-seed-fail
+action wifi-fast-fail
+action wifi-moved-ap
+action mqtt-ha-toggle
+action mqtt-discovery-payload
 ```
 
 `crash-inject-panic` and `crash-inject-task-wdt` write a synthetic unclean

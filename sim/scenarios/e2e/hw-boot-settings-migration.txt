@@ -1,0 +1,20 @@
+# Boot settings migration from a pre-marker store.
+#
+# A missing marker runs one full default scan and writes the marker. A failed
+# seed leaves the marker unwritten, so the next boot rescans and retries.
+seed boot_defaults_marker missing
+wait 100
+assert boot.defaults_marker missing
+assert boot.marker_written no
+action boot-reboot
+assert boot.default_scans 1
+assert boot.marker_written yes
+assert boot.defaults_marker current
+action boot-seed-fail
+action boot-reboot
+assert boot.default_scans 2
+assert boot.marker_written no
+action boot-reboot
+assert boot.default_scans 3
+assert boot.marker_written no
+exit

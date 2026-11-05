@@ -1328,10 +1328,10 @@ std::string schedulerTaskReport(void) {
       continue;
     }
     if (!report.empty()) {
-      report += ",";
+      report += ',';
     }
     report += task->name;
-    report += ":";
+    report += ':';
     report += std::to_string(task->stack_bytes);
     if (task->heap_external) {
       report += ":psram";

@@ -333,7 +333,7 @@ std::vector<std::string> scriptWords(const std::string &line) {
 void validateSeed(const std::string &name, const std::string &value) {
   if (name == "clock_ms" || name == "liveness_grace_ms" || name == "heap_internal_free"
       || name == "heap_internal_largest" || name == "mqtt_owner_stack"
-      || name == "mqtt_worker_stack" || name == "mqtt_buffer") {
+      || name == "mqtt_worker_stack" || name == "mqtt_buffer" || name == "mqtt_discovery_payload") {
     parseUnsigned(value);
     return;
   }
@@ -389,6 +389,7 @@ void validateSeed(const std::string &name, const std::string &value) {
       "mqtt_expect_overflow",
       "mqtt_ha",
       "companion_enabled",
+      "psram_memtest",
   };
   if (std::find(std::begin(booleanSeeds), std::end(booleanSeeds), name) != std::end(booleanSeeds)) {
     if (!booleanSeedValue(value)) {
@@ -584,6 +585,30 @@ void validateSeed(const std::string &name, const std::string &value) {
   } else if (name == "task_stack_region") {
     if (value != "internal" && value != "psram") {
       std::cerr << "Invalid task_stack_region: " << value << '\n';
+      std::exit(2);
+    }
+    return;
+  } else if (name == "boot_defaults_marker") {
+    if (value != "current" && value != "missing" && value != "stale") {
+      std::cerr << "Invalid boot_defaults_marker: " << value << '\n';
+      std::exit(2);
+    }
+    return;
+  } else if (name == "boot_profile") {
+    if (value != "debug" && value != "release") {
+      std::cerr << "Invalid boot_profile: " << value << '\n';
+      std::exit(2);
+    }
+    return;
+  } else if (name == "wifi_fast_connect") {
+    if (value != "usable" && value != "unusable") {
+      std::cerr << "Invalid wifi_fast_connect: " << value << '\n';
+      std::exit(2);
+    }
+    return;
+  } else if (name == "wifi_auth") {
+    if (value != "known" && value != "unknown") {
+      std::cerr << "Invalid wifi_auth: " << value << '\n';
       std::exit(2);
     }
     return;
@@ -2165,6 +2190,25 @@ void applyScenarioSettings(void) {
   if (taskStackRegion != scenarioSettings.end()) {
     heapSetTaskStackRegion(taskStackRegion->second);
   }
+  const auto bootMarker = scenarioSettings.find("boot_defaults_marker");
+  if (bootMarker != scenarioSettings.end()) {
+    hwSetBootDefaultsMarker(bootMarker->second);
+  }
+  const auto bootProfile = scenarioSettings.find("boot_profile");
+  if (bootProfile != scenarioSettings.end()) {
+    hwSetBootProfile(bootProfile->second);
+  }
+  if (scenarioSettings.find("psram_memtest") != scenarioSettings.end()) {
+    hwSetPsramMemtest(scenarioSettingIsTrue("psram_memtest"));
+  }
+  const auto wifiFast = scenarioSettings.find("wifi_fast_connect");
+  if (wifiFast != scenarioSettings.end()) {
+    hwSetWifiFastConnect(wifiFast->second);
+  }
+  const auto wifiAuth = scenarioSettings.find("wifi_auth");
+  if (wifiAuth != scenarioSettings.end()) {
+    hwSetWifiAuth(wifiAuth->second);
+  }
   const auto mqttOwner = scenarioSettings.find("mqtt_owner_stack");
   const auto mqttWorker = scenarioSettings.find("mqtt_worker_stack");
   if (mqttOwner != scenarioSettings.end() || mqttWorker != scenarioSettings.end()) {
@@ -2175,6 +2219,10 @@ void applyScenarioSettings(void) {
     hwSetMqttStackModel(true, owner, worker, scenarioSettingIsTrue("mqtt_tls"),
                         scenarioSettingIsTrue("mqtt_expect_overflow"));
     hwSetMqttHa(scenarioSettingIsTrue("mqtt_ha"));
+    const auto mqttPayload = scenarioSettings.find("mqtt_discovery_payload");
+    if (mqttPayload != scenarioSettings.end()) {
+      hwSetMqttDiscoveryPayload(parseUnsigned(mqttPayload->second));
+    }
     const auto mqttBuffer = scenarioSettings.find("mqtt_buffer");
     if (mqttBuffer != scenarioSettings.end()) {
       hwSetMqttBuffer(parseUnsigned(mqttBuffer->second));

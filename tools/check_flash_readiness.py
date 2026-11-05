@@ -63,6 +63,7 @@ def main(argv: list[str] | None = None) -> int:
     crashes = read_json(ROOT / "sim/coverage/crashes.json")
     fuzz = read_json(ROOT / "sim/coverage/fuzz_targets.json")
     permutations = read_json(ROOT / "sim/coverage/permutations.json")
+    merge_order = read_json(ROOT / "sim/coverage/merge_order.json")
 
     blockers: list[str] = []
     h_errors, h_counts = coverage.check_hardware(hardware)
@@ -70,6 +71,16 @@ def main(argv: list[str] | None = None) -> int:
     f_errors, f_counts = coverage.check_fuzz(fuzz)
     p_errors, p_counts = coverage.check_permutations(permutations)
     blockers += h_errors + c_errors + f_errors + p_errors
+    known_ids = ({entry.get("id") for entry in hardware.get("entries", [])}
+                 | {entry.get("id") for entry in crashes.get("crashes", [])}
+                 | {entry.get("id") for entry in fuzz.get("targets", [])})
+    for item in merge_order.get("order", []):
+        for coverage_id in item.get("coverage", []):
+            if coverage_id not in known_ids:
+                blockers.append(f"merge order coverage missing: {item.get('pr')} {coverage_id}")
+    for scenario in merge_order.get("combined_scenarios", []):
+        if not (ROOT / scenario).is_file():
+            blockers.append(f"combined scenario missing: {scenario}")
 
     for entry in hardware.get("entries", []):
         if entry.get("status") != "modeled":
@@ -140,6 +151,11 @@ def main(argv: list[str] | None = None) -> int:
         f"- permutations: {p_counts}",
         "",
     ]
+    lines.append("## Merge order")
+    lines.append("")
+    for item in merge_order.get("order", []):
+        lines.append(f"- {item.get('pr')} `{item.get('branch')}`")
+    lines.append("")
     if blockers:
         lines.append("## Blockers")
         lines.append("")

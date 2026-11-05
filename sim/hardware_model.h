@@ -39,6 +39,12 @@ void hwSetMqttStackModel(bool enabled,
                          bool expectOverflow);
 void hwSetMqttHa(bool enabled);
 void hwSetMqttBuffer(size_t bytes);
+void hwSetBootDefaultsMarker(const std::string &marker);
+void hwSetBootProfile(const std::string &profile);
+void hwSetPsramMemtest(bool enabled);
+void hwSetWifiFastConnect(const std::string &state);
+void hwSetWifiAuth(const std::string &auth);
+void hwSetMqttDiscoveryPayload(size_t bytes);
 
 /** Apply defaults and emit the boot diagnostics. Called after seeds apply. */
 void hwStart(void);

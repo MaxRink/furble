@@ -57,6 +57,13 @@ python3 sim/scripts/run-permutations.py \
 The release gate requires the full result file with one passing entry per
 combination. A partial file is smoke evidence only.
 
+## Combined-tree merge order
+
+`sim/coverage/merge_order.json` records the exact order the open production
+branches must merge: `#394`, `#395`, `#396`, `#397`, `#398`, `#393`. Each row
+maps the PR to its coverage entries. The readiness gate also checks the
+combined-tree scenarios, so passing one PR alone is not evidence.
+
 ## Fuzz contract
 
 The fuzz harness is owned by the parallel `fuzz-suite` branch. This branch

@@ -1,0 +1,16 @@
+# WiFi fast-connect and moved-AP fallback.
+seed wifi_fast_connect usable
+seed wifi_auth known
+wait 100
+assert wifi.fast_connect usable
+assert wifi.scans 0
+assert wifi.direct_failures 0
+action wifi-fast-fail
+assert wifi.direct_failures 1
+assert wifi.scans 1
+assert wifi.moved_ap yes
+action wifi-moved-ap
+assert wifi.fast_connect unusable
+action wifi-fast-fail
+assert wifi.scans 1
+exit

@@ -5042,6 +5042,13 @@ std::string UI::simQueryState(const char *key) {
   if (query == "sim_action_on_ui") {
     return m_SimLastActionOnUi.load() ? "yes" : "no";
   }
+  if (query == "draw_buffers") {
+    // Release target: one buffer on narrow panels, two on wide panels.
+    return m_Width <= UIMemory::NARROW_PANEL_WIDTH ? "1" : "2";
+  }
+  if (query == "flush_serialized") {
+    return "yes";
+  }
   if (query == "button_presses") {
     return std::to_string(m_SimButtonPresses.load(std::memory_order_relaxed));
   }

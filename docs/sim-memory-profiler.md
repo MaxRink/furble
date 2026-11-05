@@ -64,6 +64,9 @@ Seeds:
 - `task_stack_region internal|psram`
 - `mqtt_owner_stack`, `mqtt_worker_stack`, `mqtt_buffer`
 - `mqtt_tls`, `mqtt_ha`, `mqtt_expect_overflow`
+- `mqtt_discovery_payload`
+- `boot_defaults_marker`, `boot_profile`, `psram_memtest`
+- `wifi_fast_connect`, `wifi_auth`
 - `task_create_fail <name|all>`
 
 Actions:

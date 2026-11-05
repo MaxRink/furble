@@ -2413,6 +2413,216 @@
       "status": "approximate",
       "note": "Gate/task stacks modeled; TLS/sockets not linked.",
       "missing_evidence": "Host WebUI build with real TLS or hardware heap trace."
+    },
+    {
+      "id": "boot.settings_migration",
+      "profile": "sticks3",
+      "category": "boot",
+      "feature": "Settings marker migration from a pre-marker store",
+      "source": "plans/99-boot-time.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-boot-settings-migration.txt",
+      "assertions": [
+        "boot.defaults_marker",
+        "boot.default_scans"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "boot.failed_default_seed",
+      "profile": "sticks3",
+      "category": "boot",
+      "feature": "Failed default seed retries on the next boot",
+      "source": "plans/99-boot-time.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-boot-settings-migration.txt",
+      "assertions": [
+        "boot.marker_written",
+        "boot.default_scans"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "boot.wifi_fast_connect",
+      "profile": "sticks3",
+      "category": "radio",
+      "feature": "Fast connect and moved-AP fallback scan",
+      "source": "plans/99-boot-time.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-boot-wifi-fast-connect.txt",
+      "assertions": [
+        "wifi.fast_connect",
+        "wifi.scans"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "boot.psram_memtest_debug",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "Debug PSRAM memtest kept",
+      "source": "sdkconfig.spiram-memtest",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-boot-psram-memtest-debug.txt",
+      "assertions": [
+        "boot.psram_memtest",
+        "boot.profile"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "boot.psram_memtest_release",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "Release PSRAM memtest skipped",
+      "source": "sdkconfig.m5stick-s3",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-boot-psram-memtest-release.txt",
+      "assertions": [
+        "boot.psram_memtest",
+        "boot.profile"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.main_stack_8k_webui",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "8 KiB main stack with WebUI identity task",
+      "source": "perf/boot-time and perf/mqtt-ha-memory",
+      "model": "sim/memory_profile.cpp",
+      "scenario": "sim/scenarios/e2e/hw-memory-webui-identity.txt",
+      "assertions": [
+        "mem.component.main_stack",
+        "mem.component.webui_tls"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.single_lvgl_buffer",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "Single LVGL buffer DMA serialization on narrow panels",
+      "source": "perf/mqtt-ha-memory",
+      "model": "sim/memory_profile.cpp",
+      "scenario": "sim/scenarios/e2e/hw-display-single-buffer.txt",
+      "assertions": [
+        "ui.draw_buffers",
+        "ui.flush_serialized"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.mqtt_start_gate_below",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "MQTT start gate just below 8192/4096",
+      "source": "perf/mqtt-ha-memory",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-mqtt-start-gate-below.txt",
+      "assertions": [
+        "mqttmodel.start_gate",
+        "mqttmodel.state"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.mqtt_start_gate_at",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "MQTT start gate at 8192/4096",
+      "source": "perf/mqtt-ha-memory",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-mqtt-start-gate-at.txt",
+      "assertions": [
+        "mqttmodel.start_gate",
+        "mqttmodel.state"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.mqtt_start_gate_above",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "MQTT start gate above 8192/4096",
+      "source": "perf/mqtt-ha-memory",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-mqtt-start-gate-above.txt",
+      "assertions": [
+        "mqttmodel.start_gate",
+        "mqttmodel.state"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.mqtt_discovery_gate_below",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "HA discovery gate just below 10240/4096",
+      "source": "perf/mqtt-ha-memory",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-mqtt-discovery-gate-below.txt",
+      "assertions": [
+        "mqttmodel.discovery_gate",
+        "mqttmodel.state"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.mqtt_discovery_gate_at",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "HA discovery gate at 10240/4096",
+      "source": "perf/mqtt-ha-memory",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-mqtt-discovery-gate-at.txt",
+      "assertions": [
+        "mqttmodel.discovery_gate",
+        "mqttmodel.state"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.mqtt_discovery_gate_above",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "HA discovery gate above 10240/4096",
+      "source": "perf/mqtt-ha-memory",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-mqtt-discovery-gate-above.txt",
+      "assertions": [
+        "mqttmodel.discovery_gate",
+        "mqttmodel.state"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.mqtt_ha_cache",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "Cached MQTT_HA setting invalidation",
+      "source": "perf/mqtt-ha-memory",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-mqtt-ha-cache-toggle.txt",
+      "assertions": [
+        "mqttmodel.ha_cache",
+        "mqttmodel.ha"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.mqtt_discovery_fragments",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "3,005-byte retained discovery payload fragments over 1,536",
+      "source": "perf/mqtt-ha-memory",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-mqtt-ha-discovery-fragments.txt",
+      "assertions": [
+        "mqttmodel.discovery_fragments",
+        "mqttmodel.buffer"
+      ],
+      "status": "modeled"
     }
   ]
 }

@@ -292,6 +292,10 @@ struct mqtt_model_state_t {
   size_t bufferBytes = 2048;
   std::string haState = "off";
   size_t haPeak = 0;
+  std::string startGate = "open";
+  std::string discoveryGate = "open";
+  std::string haCache = "valid";
+  uint32_t discoveryFragments = 0;
   std::string state = "off";
   bool overflow = false;
   size_t heapFreeAfter = 0;
@@ -310,6 +314,24 @@ struct hardware_state_t {
   peripheral_state_t peripheral;
   mqtt_model_state_t mqtt;
   uint64_t leakProbe = 0;
+  std::string bootDefaultsMarker = "current";
+  bool bootSeedFail = false;
+  uint32_t bootDefaultScans = 0;
+  uint32_t bootSeedAttempts = 0;
+  bool bootMarkerWritten = true;
+  bool psramMemtest = true;
+  std::string bootProfile = "debug";
+  uint32_t resetToAppMs = 1300;
+  std::string wifiFastConnect = "usable";
+  std::string wifiAuth = "known";
+  uint32_t wifiDirectFailures = 0;
+  uint32_t wifiScans = 0;
+  bool wifiMovedAp = false;
+  std::string mqttStartGate = "open";
+  std::string mqttDiscoveryGate = "open";
+  std::string mqttHaCache = "valid";
+  uint32_t mqttDiscoveryFragments = 0;
+  size_t mqttDiscoveryPayload = 3005;
   bool companionEnabled = false;
   std::string otaSlot = "ota_0";
   bool otaRollback = false;
@@ -583,6 +605,38 @@ void hwSetMqttBuffer(size_t bytes) {
   state().mqtt.bufferBytes = bytes;
 }
 
+void hwSetBootDefaultsMarker(const std::string &marker) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  state().bootDefaultsMarker = marker;
+  state().bootMarkerWritten = marker == "current";
+}
+
+void hwSetBootProfile(const std::string &profile) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  state().bootProfile = profile;
+  state().psramMemtest = profile == "debug";
+}
+
+void hwSetPsramMemtest(bool enabled) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  state().psramMemtest = enabled;
+}
+
+void hwSetWifiFastConnect(const std::string &mode) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  state().wifiFastConnect = mode;
+}
+
+void hwSetWifiAuth(const std::string &auth) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  state().wifiAuth = auth;
+}
+
+void hwSetMqttDiscoveryPayload(size_t bytes) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  state().mqttDiscoveryPayload = bytes;
+}
+
 void hwStart(void) {
   const std::lock_guard<std::mutex> lock(state().mutex);
   hardware_state_t &hw = state();
@@ -633,6 +687,11 @@ void hwStart(void) {
         mqtt.overflow = true;
         ESP_LOGE("mqtt", "***ERROR*** A stack overflow in task mqtt");
       }
+    } else if (heapFree() < 8192 || heapLargest() < 4096) {
+      mqtt.startGate = "closed";
+      mqtt.state = "start_blocked";
+      ESP_LOGW("mqtt", "MQTT start deferred: internal free %u, largest %u (need 8192/4096)",
+               static_cast<unsigned>(heapFree()), static_cast<unsigned>(heapLargest()));
     } else if (heapAllocTagged(mqtt.ownerStack, "mqtt_owner", false, true) == 0) {
       mqtt.state = "alloc_failed";
       ESP_LOGE("heap", "Mem alloc fail. size 0x%04x caps 0x00000804",
@@ -645,6 +704,9 @@ void hwStart(void) {
                static_cast<unsigned>(mqtt.workerStack));
     } else {
       mqtt.state = "created";
+      mqtt.startGate = "open";
+      mqtt.discoveryFragments = static_cast<uint32_t>(
+          (hw.mqttDiscoveryPayload + mqtt.bufferBytes - 1) / mqtt.bufferBytes);
       ESP_LOGI("mqtt", "owner stack %u worker stack %u%s created",
                static_cast<unsigned>(mqtt.ownerStack), static_cast<unsigned>(mqtt.workerStack),
                mqtt.tls ? " TLS" : "");
@@ -656,15 +718,24 @@ void hwStart(void) {
       requestFailureExit();
     }
     if (mqtt.ha && mqtt.state == "created") {
-      const size_t discovery = 8192;
-      const uint64_t discoveryId = heapAllocTagged(discovery, "mqtt_ha_discovery", false, false);
-      if (discoveryId == 0) {
-        mqtt.haState = "failed";
-        ESP_LOGE("mqtt", "Home Assistant discovery allocation failed; discovery disabled");
+      if (heapFree() < 10240 || heapLargest() < 4096) {
+        mqtt.discoveryGate = "closed";
+        mqtt.haState = "blocked";
+        ESP_LOGW("mqtt", "HA discovery skipped: internal free %u, largest %u (need 10240/4096)",
+                 static_cast<unsigned>(heapFree()), static_cast<unsigned>(heapLargest()));
       } else {
-        mqtt.haState = "ok";
-        mqtt.haPeak = discovery;
-        heapFreeTagged(discoveryId);
+        mqtt.discoveryGate = "open";
+        mqtt.haCache = "valid";
+        const size_t discovery = 8192;
+        const uint64_t discoveryId = heapAllocTagged(discovery, "mqtt_ha_discovery", false, false);
+        if (discoveryId == 0) {
+          mqtt.haState = "failed";
+          ESP_LOGE("mqtt", "Home Assistant discovery allocation failed; discovery disabled");
+        } else {
+          mqtt.haState = "ok";
+          mqtt.haPeak = discovery;
+          heapFreeTagged(discoveryId);
+        }
       }
     }
     mqtt.heapFreeAfter = heapFree();
@@ -917,6 +988,47 @@ bool hwAction(const std::string &name) {
   if (name == "companion-disable") {
     hw.companionEnabled = false;
     hw.ble.companion = "off";
+    return true;
+  }
+  if (name == "boot-reboot") {
+    hw.bootSeedAttempts++;
+    if (hw.bootDefaultsMarker != "current" || hw.bootSeedFail) {
+      hw.bootDefaultScans++;
+      if (hw.bootSeedFail) {
+        hw.bootMarkerWritten = false;
+        ESP_LOGW(LOG_TAG, "settings default seed failed; marker not written, next boot rescans");
+      } else {
+        hw.bootMarkerWritten = true;
+        hw.bootDefaultsMarker = "current";
+      }
+    }
+    return true;
+  }
+  if (name == "boot-seed-fail") {
+    hw.bootSeedFail = true;
+    return true;
+  }
+  if (name == "wifi-fast-fail") {
+    hw.wifiDirectFailures++;
+    hw.wifiMovedAp = true;
+    if (hw.wifiScans == 0) {
+      hw.wifiScans++;
+      ESP_LOGW(LOG_TAG, "fast connect failed; scanning before the next join");
+    }
+    return true;
+  }
+  if (name == "wifi-moved-ap") {
+    hw.wifiMovedAp = true;
+    hw.wifiFastConnect = "unusable";
+    return true;
+  }
+  if (name == "mqtt-ha-toggle") {
+    hw.mqtt.haCache = "invalid";
+    return true;
+  }
+  if (name == "mqtt-discovery-payload") {
+    hw.mqttDiscoveryPayload = 3005;
+    hw.mqttDiscoveryFragments = static_cast<uint32_t>((hw.mqttDiscoveryPayload + 1535) / 1536);
     return true;
   }
   if (name == "ota-update") {
@@ -1262,6 +1374,42 @@ std::string hwQuery(const std::string &key) {
   if (key == "platform.reset_reason") {
     return hw.resetReasonName;
   }
+  if (key == "boot.defaults_marker") {
+    return hw.bootDefaultsMarker;
+  }
+  if (key == "boot.default_scans") {
+    return std::to_string(hw.bootDefaultScans);
+  }
+  if (key == "boot.seed_attempts") {
+    return std::to_string(hw.bootSeedAttempts);
+  }
+  if (key == "boot.marker_written") {
+    return hw.bootMarkerWritten ? "yes" : "no";
+  }
+  if (key == "boot.psram_memtest") {
+    return hw.psramMemtest ? "on" : "off";
+  }
+  if (key == "boot.profile") {
+    return hw.bootProfile;
+  }
+  if (key == "boot.reset_to_app_ms") {
+    return std::to_string(hw.resetToAppMs);
+  }
+  if (key == "wifi.fast_connect") {
+    return hw.wifiFastConnect;
+  }
+  if (key == "wifi.auth") {
+    return hw.wifiAuth;
+  }
+  if (key == "wifi.direct_failures") {
+    return std::to_string(hw.wifiDirectFailures);
+  }
+  if (key == "wifi.scans") {
+    return std::to_string(hw.wifiScans);
+  }
+  if (key == "wifi.moved_ap") {
+    return hw.wifiMovedAp ? "yes" : "no";
+  }
   if (key == "ota.slot") {
     return hw.otaSlot;
   }
@@ -1302,6 +1450,18 @@ std::string hwQuery(const std::string &key) {
     }
     if (sub == "ha_peak") {
       return std::to_string(hw.mqtt.haPeak);
+    }
+    if (sub == "start_gate") {
+      return hw.mqtt.startGate;
+    }
+    if (sub == "discovery_gate") {
+      return hw.mqtt.discoveryGate;
+    }
+    if (sub == "ha_cache") {
+      return hw.mqtt.haCache;
+    }
+    if (sub == "discovery_fragments") {
+      return std::to_string(hw.mqtt.discoveryFragments);
     }
     if (sub == "heap_free_after") {
       return std::to_string(hw.mqtt.heapFreeAfter);

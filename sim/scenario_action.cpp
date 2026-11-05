@@ -177,7 +177,6 @@ bool validateScenarioAction(const scenario_action_t &action, std::string *error)
                                      "ble-gatt-fresh",
                                      "companion-reidentify",
                                      "companion-reconnect",
-                                     "companion-reject",
                                      "audio-overcurrent",
                                      "ir-timeout",
                                      "sd-present",
@@ -196,6 +195,12 @@ bool validateScenarioAction(const scenario_action_t &action, std::string *error)
                                      "crash-inject-usb-uart",
                                      "crash-inject-software",
                                      "crash-inject-poweron",
+                                     "boot-reboot",
+                                     "boot-seed-fail",
+                                     "wifi-fast-fail",
+                                     "wifi-moved-ap",
+                                     "mqtt-ha-toggle",
+                                     "mqtt-discovery-payload",
                                  })) {
         return fail(error, "noncanonical simple action");
       }
@@ -548,7 +553,6 @@ bool parseScenarioAction(const std::string &text, scenario_action_t *action, std
       "ble-gatt-fresh",
       "companion-reidentify",
       "companion-reconnect",
-      "companion-reject",
       "audio-overcurrent",
       "ir-timeout",
       "sd-present",
@@ -567,6 +571,12 @@ bool parseScenarioAction(const std::string &text, scenario_action_t *action, std
       "crash-inject-usb-uart",
       "crash-inject-software",
       "crash-inject-poweron",
+      "boot-reboot",
+      "boot-seed-fail",
+      "wifi-fast-fail",
+      "wifi-moved-ap",
+      "mqtt-ha-toggle",
+      "mqtt-discovery-payload",
   };
   for (const char *command : simple) {
     if (exact({command})) {

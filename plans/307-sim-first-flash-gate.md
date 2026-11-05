@@ -44,6 +44,16 @@ reports `READY TO FLASH`. A passing subset is not completion.
   failure injection, watermarks, timeline and leak detection.
 - New scenarios live under `sim/scenarios/e2e/hw-*` and `memory-*`.
 
+## Combined tree
+
+The gate is evaluated on the combined tree, not each PR alone. The merge order
+is recorded in `sim/coverage/merge_order.json`: `#394`, `#395`, `#396`, `#397`,
+`#398`, `#393`. `#397` covers settings migration, failed default seed retries,
+WiFi fast-connect fallback and the PSRAM memtest split. `#398` covers the 8 KiB
+main stack, single LVGL buffer, 3 KiB companion, 3 KiB plain MQTT worker,
+1,536-byte buffers, cached MQTT_HA, 8,192/4,096 MQTT start gate,
+10,240/4,096 discovery gate and fragmented discovery payload.
+
 ## Current blockers
 
 The first readiness report is expected to be blocked. It names:
