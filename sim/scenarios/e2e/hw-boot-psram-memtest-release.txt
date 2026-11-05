@@ -1,0 +1,7 @@
+# Release boot skips the full PSRAM memory test.
+seed boot_profile release
+wait 100
+assert boot.profile release
+assert boot.psram_memtest off
+assert boot.reset_to_app_ms 1300
+exit

@@ -100,11 +100,28 @@ jobs:
       - name: Check simulator documentation tokens
         run: sh sim/scripts/check-doc-tokens.sh
 
+      - name: Check simulator hardware and memory coverage manifest
+        run: python3 tools/check_sim_coverage.py
+
       - name: Build simulator
         env:
           FURBLE_DEP_ROOT: ${{ github.workspace }}/sim/.pio/libdeps/sim
           FURBLE_LVGL_DIR: ${{ github.workspace }}/sim/.pio/libdeps/sim/lvgl
         run: sh sim/build.sh
+
+      - name: Assert hardware quirks fail closed
+        env:
+          FURBLE_SIM_BIN: ${{ github.workspace }}/sim/build/furble-sim
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: sh sim/scripts/check-hardware-quirks.sh
+
+      - name: Profile simulator memory against the golden budget
+        env:
+          FURBLE_SIM_BIN: ${{ github.workspace }}/sim/build/furble-sim
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: python3 sim/scripts/run-memory-profile.py
 
       # The MQTT memory-pressure scenarios need the optional native transport.
       # They run against a closed local port, so no broker is managed here.

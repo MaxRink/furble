@@ -79,6 +79,11 @@ current retry cycle, `retry_ms` is the next backoff without jitter, and
 
 ## crash
 
+`status` and the crash record name reset reasons as `poweron`, `software`,
+`panic`, `int_wdt`, `task_wdt`, `other_wdt`, `brownout`, `usb_uart_chip_reset`,
+`jtag`, `power_glitch` or `cpu_lockup`.
+
+
 `crash` and `crash last` print the record retained across the last reset. The
 firmware also prints the same block once at boot when the previous run ended
 unclean, then consumes the record. It reports `crash.reset`, `crash.task`,

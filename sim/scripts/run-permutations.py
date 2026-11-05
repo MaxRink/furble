@@ -1,0 +1,115 @@
+#!/usr/bin/env python3
+"""Run the memory-critical configuration permutations.
+
+The manifest expands every board and every memory-critical axis. Full runs are
+long, so --limit selects a deterministic prefix for pull-request smoke coverage.
+The release gate requires a result file covering the full expected count.
+"""
+from __future__ import annotations
+
+import argparse
+import itertools
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def combinations(manifest: dict):
+    boards = manifest["boards"]
+    axes = manifest["axes"]
+    keys = list(axes)
+    for board in boards:
+        for values in itertools.product(*(axes[key] for key in keys)):
+            yield board, dict(zip(keys, values))
+
+
+def scenario_for(board: str, combo: dict) -> str:
+    psram = {"present": "octal", "absent": "absent", "failure": "init_fail"}[combo["psram"]]
+    lines = [
+        f"seed hw_profile {board}",
+        f"seed web_ui {'true' if combo['web_ui'] == 'on' else 'false'}",
+        "seed webui_password true",
+        "seed mqtt_owner_stack 10240",
+        "seed mqtt_worker_stack 6144" if combo["mqtt_tls"] == "tls"
+        else "seed mqtt_worker_stack 4096",
+        f"seed mqtt_tls {'true' if combo['mqtt_tls'] == 'tls' else 'false'}",
+        f"seed mqtt_ha {'true' if combo['mqtt_ha'] == 'on' else 'false'}",
+        "seed mqtt_buffer 2048",
+        f"seed companion_enabled {'true' if combo['companion'] == 'on' else 'false'}",
+        f"seed wifi_connected {'true' if combo['wifi'] == 'connected' else 'false'}",
+        "seed fauxny true",
+        f"seed saved_camera {'true' if combo['camera'] in ('saved', 'connected') else 'false'}",
+        f"seed autoconnect {'true' if combo['camera'] == 'connected' else 'false'}",
+        f"seed psram_mode {psram}",
+    ]
+    if combo["wifi"] == "reconnecting":
+        lines.append("action wifi-fail-auth")
+    lines += [
+        "wait 100",
+        "assert setting.fauxny 1",
+        "assert mem.leaks 0",
+        "assert_min heap.free 0",
+        "exit",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--binary", type=Path,
+                        default=Path(os.environ.get("FURBLE_SIM_BIN",
+                                                    ROOT / "sim/build/furble-sim")))
+    parser.add_argument("--manifest", type=Path,
+                        default=ROOT / "sim/coverage/permutations.json")
+    parser.add_argument("--results", type=Path,
+                        default=ROOT / "sim/coverage/permutation_results.json")
+    parser.add_argument("--limit", type=int, default=0,
+                        help="run only the first N combinations (0 means all)")
+    parser.add_argument("--board", action="append", default=[],
+                        help="restrict to a board (repeatable)")
+    args = parser.parse_args(argv)
+    manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
+    results = []
+    env = dict(os.environ, SDL_VIDEODRIVER="dummy", SDL_AUDIODRIVER="dummy")
+    for index, (board, combo) in enumerate(combinations(manifest)):
+        if args.board and board not in args.board:
+            continue
+        if args.limit and len(results) >= args.limit:
+            break
+        cid = board + "." + ".".join(f"{key}={combo[key]}" for key in manifest["axes"])
+        with tempfile.TemporaryDirectory() as directory:
+            scenario = Path(directory) / f"perm-{index}.txt"
+            scenario.write_text(scenario_for(board, combo), encoding="utf-8")
+            run = subprocess.run([str(args.binary), "--script", str(scenario)],
+                                 cwd=ROOT, env=env, capture_output=True, text=True)
+        results.append({
+            "id": cid,
+            "board": board,
+            "combination": combo,
+            "passed": run.returncode == 0,
+            "exit": run.returncode,
+            "output_tail": (run.stdout + run.stderr)[-1000:],
+        })
+        if run.returncode != 0:
+            print(f"FAIL {cid} exit {run.returncode}", file=sys.stderr)
+    document = {
+        "version": 1,
+        "expected_count": manifest["expected_count"],
+        "run_count": len(results),
+        "complete": len(results) == manifest["expected_count"],
+        "results": results,
+    }
+    args.results.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+    failed = sum(1 for result in results if not result["passed"])
+    print(f"permutations: {len(results)} run, {failed} failed "
+          f"({'complete' if document['complete'] else 'partial'})")
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

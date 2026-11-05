@@ -1,0 +1,52 @@
+# Crash record reset-reason matrix.
+#
+# Each injected reason must survive a restart and report the same token once.
+# A task watchdog reset must never be reported as a panic.
+wait 100
+
+action crash-inject-panic
+restart
+assert crash.recovered yes
+assert crash.reset panic
+assert crash.task ui
+restart
+assert crash.recovered no
+
+action crash-inject-task-wdt
+restart
+assert crash.recovered yes
+assert crash.reset task_wdt
+assert crash.task mqtt
+restart
+assert crash.recovered no
+
+action crash-inject-brownout
+restart
+assert crash.recovered yes
+assert crash.reset brownout
+assert crash.last_log_present yes
+restart
+assert crash.recovered no
+
+action crash-inject-usb-uart
+restart
+assert crash.recovered yes
+assert crash.reset usb_uart_chip_reset
+restart
+assert crash.recovered no
+
+action crash-inject-software
+restart
+assert crash.recovered yes
+assert crash.reset software
+restart
+assert crash.recovered no
+
+action crash-inject-poweron
+restart
+assert crash.recovered yes
+assert crash.reset poweron
+restart
+assert crash.recovered no
+
+exit

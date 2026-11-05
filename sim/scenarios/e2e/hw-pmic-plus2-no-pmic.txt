@@ -1,0 +1,38 @@
+# M5StickC Plus2 no-PMIC profile.
+#
+# Plus2 shares the m5stick-c-plus image but has no PMIC. The battery is an ADC
+# divider and only voltage is available. The HOLD pin is the power latch.
+seed hw_profile stickc-plus2
+wait 100
+
+assert hw.mcu esp32
+assert hw.flash_kb 4096
+assert hw.psram absent
+assert hw.pmic none
+assert hw.gauge voltage
+assert hw.display 135x240
+assert hw.touch no
+assert pmic.power_latch none
+assert pmic.watchdog unavailable
+assert platform.battery.present yes
+assert platform.battery.current -1
+
+action pmic-brownout
+assert pmic.brownouts 1
+assert power.state off
+assert platform.reset_reason brownout
+
+assert mem.internal_total 532480
+assert mem.psram_total 0
+assert mem.component.main_stack 16384
+assert mem.component.lvgl_draw 4320
+assert hw.usb uart
+assert hw.wifi yes
+assert hw.ethernet no
+assert hw.ble yes
+assert hw.gauge voltage
+assert hw.ir yes
+assert hw.sd no
+assert hw.audio yes
+assert hw.rtc yes
+exit

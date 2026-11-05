@@ -89,8 +89,11 @@ struct SimTask {
   uint32_t notification_count = 0;
   // Modelled internal-heap charge for this task's stack and TCB. Released
   // exactly once when the task finishes.
+  std::string name;
+  uint32_t stack_bytes = 0;
   size_t heap_bytes = 0;
   bool heap_charged = false;
+  bool heap_external = false;
 };
 
 class QueueUse {
@@ -450,6 +453,7 @@ bool waitUntilLocked(std::unique_lock<std::mutex> &lock,
 
 void markTaskFinished(const std::shared_ptr<SimTask> &task) {
   size_t heapBytes = 0;
+  bool heapIsExternal = false;
   {
     const std::lock_guard<std::mutex> lock(Furble::Sim::schedulerMutex());
     task->blocked = false;
@@ -464,14 +468,16 @@ void markTaskFinished(const std::shared_ptr<SimTask> &task) {
     }
     if (task->heap_charged) {
       heapBytes = task->heap_bytes;
+      heapIsExternal = task->heap_external;
       task->heap_charged = false;
       task->heap_bytes = 0;
+      task->heap_external = false;
     }
     Furble::Sim::schedulerCondition().notify_all();
   }
   // Released outside the scheduler lock. The heap model has its own leaf lock.
   if (heapBytes != 0) {
-    Furble::Sim::heapRelease(heapBytes);
+    Furble::Sim::heapReleaseTask(heapBytes, heapIsExternal);
   }
 }
 
@@ -766,7 +772,9 @@ BaseType_t xTaskCreate(TaskFunction_t task,
   // on device. Before heapActivate() the seeded measurement already includes
   // the boot tasks, so nothing is charged.
   size_t chargedBytes = 0;
-  if (!Furble::Sim::heapTaskCreate(name, static_cast<size_t>(stack_bytes), &chargedBytes)) {
+  bool chargedExternal = false;
+  if (!Furble::Sim::heapTaskCreate(name, static_cast<size_t>(stack_bytes), &chargedBytes,
+                                   &chargedExternal)) {
     if (task_handle != nullptr) {
       *task_handle = nullptr;
     }
@@ -774,15 +782,19 @@ BaseType_t xTaskCreate(TaskFunction_t task,
   }
 
   const auto state = std::make_shared<SimTask>();
+  state->name = name == nullptr ? "task" : name;
+  state->stack_bytes = stack_bytes;
   state->heap_bytes = chargedBytes;
   state->heap_charged = chargedBytes != 0;
+  state->heap_external = chargedExternal;
   Furble::Sim::setClockAdvanceHook(schedulerClockAdvanced);
   {
     std::unique_lock<std::mutex> lock(Furble::Sim::schedulerMutex());
     if (Furble::Sim::schedulerStopping()) {
-      Furble::Sim::heapRelease(state->heap_bytes);
+      Furble::Sim::heapReleaseTask(state->heap_bytes, state->heap_external);
       state->heap_charged = false;
       state->heap_bytes = 0;
+      state->heap_external = false;
       return pdFALSE;
     }
     // ESP-IDF publishes the handle before admitting the task. A higher-
@@ -1305,3 +1317,27 @@ void furble_sim_queue_set_reset_callback(QueueHandle_t queue,
     queue->reset_callback = callback;
   }
 }
+
+namespace Furble::Sim {
+
+std::string schedulerTaskReport(void) {
+  const std::lock_guard<std::mutex> lock(schedulerMutex());
+  std::string report;
+  for (const auto &task : tasks) {
+    if (task->lifecycle == SimTaskLifecycle::joined) {
+      continue;
+    }
+    if (!report.empty()) {
+      report += ',';
+    }
+    report += task->name;
+    report += ':';
+    report += std::to_string(task->stack_bytes);
+    if (task->heap_external) {
+      report += ":psram";
+    }
+  }
+  return report;
+}
+
+}  // namespace Furble::Sim

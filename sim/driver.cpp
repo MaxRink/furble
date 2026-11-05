@@ -51,7 +51,9 @@
 #include "crash_log_sim.h"
 #include "driver.h"
 #include "fuzz.h"
+#include "hardware_model.h"
 #include "heap_model.h"
+#include "memory_profile.h"
 #include "platform_state.h"
 #include "power_profiler.h"
 #include "preferences_sweep.h"
@@ -330,7 +332,8 @@ std::vector<std::string> scriptWords(const std::string &line) {
 
 void validateSeed(const std::string &name, const std::string &value) {
   if (name == "clock_ms" || name == "liveness_grace_ms" || name == "heap_internal_free"
-      || name == "heap_internal_largest") {
+      || name == "heap_internal_largest" || name == "mqtt_owner_stack"
+      || name == "mqtt_worker_stack" || name == "mqtt_buffer" || name == "mqtt_discovery_payload") {
     parseUnsigned(value);
     return;
   }
@@ -382,6 +385,11 @@ void validateSeed(const std::string &name, const std::string &value) {
       "web_ui",
       "webui_password",
       "wifi_connected",
+      "mqtt_tls",
+      "mqtt_expect_overflow",
+      "mqtt_ha",
+      "companion_enabled",
+      "psram_memtest",
   };
   if (std::find(std::begin(booleanSeeds), std::end(booleanSeeds), name) != std::end(booleanSeeds)) {
     if (!booleanSeedValue(value)) {
@@ -530,6 +538,79 @@ void validateSeed(const std::string &name, const std::string &value) {
     // A FreeRTOS task name, or "all". The name is matched exactly when the task
     // is created; an unknown name is a silent no-op, so scenarios assert the
     // failure counter rather than assuming the injection fired.
+    return;
+  } else if (name == "hw_profile") {
+    if (value != "stickc" && value != "stickc-plus" && value != "stickc-plus2" && value != "sticks3"
+        && value != "core" && value != "core2" && value != "tough" && value != "headless-s3"
+        && value != "waveshare-s3-eth") {
+      std::cerr << "Invalid hw_profile: " << value << '\n';
+      std::exit(2);
+    }
+    return;
+  } else if (name == "psram_mode") {
+    if (value != "absent" && value != "quad" && value != "octal" && value != "init_fail") {
+      std::cerr << "Invalid psram_mode: " << value << '\n';
+      std::exit(2);
+    }
+    return;
+  } else if (name == "pmic_variant") {
+    if (value != "m5pm1" && value != "axp192" && value != "axp2101" && value != "ip5306"
+        && value != "none") {
+      std::cerr << "Invalid pmic_variant: " << value << '\n';
+      std::exit(2);
+    }
+    return;
+  } else if (name == "battery_gauge") {
+    if (value != "none" && value != "voltage" && value != "voltage_current"
+        && value != "voltage_charge" && value != "four_level") {
+      std::cerr << "Invalid battery_gauge: " << value << '\n';
+      std::exit(2);
+    }
+    return;
+  } else if (name == "battery_state") {
+    if (value != "present" && value != "absent" && value != "charging" && value != "full"
+        && value != "low") {
+      std::cerr << "Invalid battery_state: " << value << '\n';
+      std::exit(2);
+    }
+    return;
+  } else if (name == "reset_reason") {
+    if (value != "poweron" && value != "software" && value != "panic" && value != "int_wdt"
+        && value != "task_wdt" && value != "tg1wdt" && value != "other_wdt" && value != "brownout"
+        && value != "usb_uart_chip_reset" && value != "jtag" && value != "power_glitch") {
+      std::cerr << "Invalid reset_reason: " << value << '\n';
+      std::exit(2);
+    }
+    return;
+  } else if (name == "task_stack_region") {
+    if (value != "internal" && value != "psram") {
+      std::cerr << "Invalid task_stack_region: " << value << '\n';
+      std::exit(2);
+    }
+    return;
+  } else if (name == "boot_defaults_marker") {
+    if (value != "current" && value != "missing" && value != "stale") {
+      std::cerr << "Invalid boot_defaults_marker: " << value << '\n';
+      std::exit(2);
+    }
+    return;
+  } else if (name == "boot_profile") {
+    if (value != "debug" && value != "release") {
+      std::cerr << "Invalid boot_profile: " << value << '\n';
+      std::exit(2);
+    }
+    return;
+  } else if (name == "wifi_fast_connect") {
+    if (value != "usable" && value != "unusable") {
+      std::cerr << "Invalid wifi_fast_connect: " << value << '\n';
+      std::exit(2);
+    }
+    return;
+  } else if (name == "wifi_auth") {
+    if (value != "known" && value != "unknown") {
+      std::cerr << "Invalid wifi_auth: " << value << '\n';
+      std::exit(2);
+    }
     return;
   }
 
@@ -1183,6 +1264,11 @@ void checkLivenessInvariant(void) {
 // Returns true when the action was one of these, so the caller does not also
 // dispatch it into the UI.
 bool applyTransportFaultAction(const scenario_action_t &action, bool *applied) {
+  if (action.kind == scenario_action_kind_t::MEMORY_DUMP) {
+    *applied = memoryDump(action.name, scenarioName);
+    return true;
+  }
+
   if (action.kind == scenario_action_kind_t::SECURE_STALL) {
     bleSetSecureStallMs(action.index);
     *applied = true;
@@ -1226,6 +1312,39 @@ bool applyTransportFaultAction(const scenario_action_t &action, bool *applied) {
   }
   if (action.name == "crash-inject-task-wdt") {
     crashLogInject(6, "mqtt", "Task watchdog got triggered: mqtt");
+    *applied = true;
+    return true;
+  }
+  if (action.name == "crash-inject-tg1wdt") {
+    crashLogInject(6, "sys_evt", "TG1WDT_SYS_RST");
+    *applied = true;
+    return true;
+  }
+  if (action.name == "crash-inject-brownout") {
+    crashLogInject(9, "pmic", "brownout reset");
+    *applied = true;
+    return true;
+  }
+  if (action.name == "crash-inject-usb-uart") {
+    crashLogInject(11, "usb_serial_jtag", "USB_UART_CHIP_RESET");
+    *applied = true;
+    return true;
+  }
+  if (action.name == "crash-inject-software") {
+    crashLogInject(3, "ui", "software restart");
+    *applied = true;
+    return true;
+  }
+  if (action.name == "crash-inject-poweron") {
+    crashLogInject(1, "pmic", "power-on reset");
+    *applied = true;
+    return true;
+  }
+
+  // Board, PMIC, power-button, USB, radio and peripheral quirks. The model
+  // returns false for actions it does not own, so the normal UI dispatch still
+  // sees those.
+  if (hwAction(action.name)) {
     *applied = true;
     return true;
   }
@@ -1644,14 +1763,17 @@ std::string queryValue(const std::string &key) {
   }
   if (prefixed("platform.battery.")) {
     const std::string field = key.substr(std::char_traits<char>::length("platform.battery."));
+    if (field == "present") {
+      return hwBatteryPresent() ? "yes" : "no";
+    }
     if (field == "level") {
-      return std::to_string(simulatedBattery.level);
+      return hwGaugeLevel() ? std::to_string(simulatedBattery.level) : "-1";
     }
     if (field == "voltage") {
-      return std::to_string(simulatedBattery.voltage);
+      return hwGaugeVoltage() ? std::to_string(simulatedBattery.voltage) : "-1";
     }
     if (field == "current") {
-      return std::to_string(simulatedBattery.current);
+      return hwGaugeCurrent() ? std::to_string(simulatedBattery.current) : "-1";
     }
     if (field == "charging") {
       return simulatedBattery.charging ? "yes" : "no";
@@ -1768,6 +1890,30 @@ std::string queryValue(const std::string &key) {
       const char *task = heapLastFailedTask();
       return (task == nullptr || task[0] == '\0') ? "none" : task;
     }
+    if (sub == "spiram_present") {
+      return heapPsramPresent() ? "yes" : "no";
+    }
+    if (sub == "spiram_mode") {
+      return heapPsramMode();
+    }
+    if (sub == "spiram_state") {
+      return heapPsramState();
+    }
+    if (sub == "spiram_free") {
+      return std::to_string(heapPsramFree());
+    }
+    if (sub == "spiram_largest") {
+      return std::to_string(heapPsramLargest());
+    }
+    if (sub == "task_stack_region") {
+      return heapTaskStackRegion();
+    }
+    if (sub == "flash_writes") {
+      return std::to_string(heapFlashWrites());
+    }
+    if (sub == "flash_unsafe") {
+      return heapFlashUnsafe() ? "yes" : "no";
+    }
   }
   if (prefixed("webui.")) {
     const std::string sub = key.substr(std::char_traits<char>::length("webui."));
@@ -1803,6 +1949,18 @@ std::string queryValue(const std::string &key) {
     prefs.end();
     return marker ? "yes" : "no";
   }
+
+  {
+    const std::string hardware = hwQuery(key);
+    if (!hardware.empty()) {
+      return hardware;
+    }
+    const std::string memory = memoryQuery(key);
+    if (!memory.empty()) {
+      return memory;
+    }
+  }
+
   std::cerr << "Unknown assert key: " << key << '\n';
   requestExit(2);
   return "";
@@ -1992,11 +2150,83 @@ void applyScenarioSettings(void) {
     heapSet(freeBytes, largestBytes);
   }
   if (scenarioSettingIsTrue("wifi_connected")) {
-    setWifiConnected(true);
+    hwWifiSetConnected(true);
   }
   const auto taskCreateFail = scenarioSettings.find("task_create_fail");
   if (taskCreateFail != scenarioSettings.end()) {
     heapSetTaskCreateFail(taskCreateFail->second);
+  }
+  if (scenarioSettingIsTrue("companion_enabled")) {
+    hwAction("companion-enable");
+  }
+  const auto hwProfile = scenarioSettings.find("hw_profile");
+  if (hwProfile != scenarioSettings.end()) {
+    hwSetProfile(hwProfile->second);
+  }
+  const auto psramMode = scenarioSettings.find("psram_mode");
+  if (psramMode != scenarioSettings.end()) {
+    hwSetPsramMode(psramMode->second);
+  }
+  const auto pmicVariant = scenarioSettings.find("pmic_variant");
+  if (pmicVariant != scenarioSettings.end()) {
+    hwSetPmicVariant(pmicVariant->second);
+  }
+  const auto batteryGauge = scenarioSettings.find("battery_gauge");
+  if (batteryGauge != scenarioSettings.end()) {
+    hwSetBatteryGauge(batteryGauge->second);
+  }
+  const auto batteryState = scenarioSettings.find("battery_state");
+  if (batteryState != scenarioSettings.end()) {
+    hwSetBatteryState(batteryState->second);
+    simulatedBattery = {static_cast<uint8_t>(hwBatteryPercent()),
+                        static_cast<uint16_t>(hwBatteryMillivolts()),
+                        static_cast<int16_t>(hwBatteryCurrentMa()), hwBatteryCharging()};
+  }
+  const auto resetReason = scenarioSettings.find("reset_reason");
+  if (resetReason != scenarioSettings.end()) {
+    hwSetResetReasonName(resetReason->second);
+  }
+  const auto taskStackRegion = scenarioSettings.find("task_stack_region");
+  if (taskStackRegion != scenarioSettings.end()) {
+    heapSetTaskStackRegion(taskStackRegion->second);
+  }
+  const auto bootMarker = scenarioSettings.find("boot_defaults_marker");
+  if (bootMarker != scenarioSettings.end()) {
+    hwSetBootDefaultsMarker(bootMarker->second);
+  }
+  const auto bootProfile = scenarioSettings.find("boot_profile");
+  if (bootProfile != scenarioSettings.end()) {
+    hwSetBootProfile(bootProfile->second);
+  }
+  if (scenarioSettings.find("psram_memtest") != scenarioSettings.end()) {
+    hwSetPsramMemtest(scenarioSettingIsTrue("psram_memtest"));
+  }
+  const auto wifiFast = scenarioSettings.find("wifi_fast_connect");
+  if (wifiFast != scenarioSettings.end()) {
+    hwSetWifiFastConnect(wifiFast->second);
+  }
+  const auto wifiAuth = scenarioSettings.find("wifi_auth");
+  if (wifiAuth != scenarioSettings.end()) {
+    hwSetWifiAuth(wifiAuth->second);
+  }
+  const auto mqttOwner = scenarioSettings.find("mqtt_owner_stack");
+  const auto mqttWorker = scenarioSettings.find("mqtt_worker_stack");
+  if (mqttOwner != scenarioSettings.end() || mqttWorker != scenarioSettings.end()) {
+    const size_t owner =
+        (mqttOwner != scenarioSettings.end()) ? parseUnsigned(mqttOwner->second) : 10240;
+    const size_t worker =
+        (mqttWorker != scenarioSettings.end()) ? parseUnsigned(mqttWorker->second) : 4096;
+    hwSetMqttStackModel(true, owner, worker, scenarioSettingIsTrue("mqtt_tls"),
+                        scenarioSettingIsTrue("mqtt_expect_overflow"));
+    hwSetMqttHa(scenarioSettingIsTrue("mqtt_ha"));
+    const auto mqttPayload = scenarioSettings.find("mqtt_discovery_payload");
+    if (mqttPayload != scenarioSettings.end()) {
+      hwSetMqttDiscoveryPayload(parseUnsigned(mqttPayload->second));
+    }
+    const auto mqttBuffer = scenarioSettings.find("mqtt_buffer");
+    if (mqttBuffer != scenarioSettings.end()) {
+      hwSetMqttBuffer(parseUnsigned(mqttBuffer->second));
+    }
   }
   const auto scanTimeout = scenarioSettings.find("scan_timeout");
   if (scanTimeout != scenarioSettings.end()) {

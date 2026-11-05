@@ -1,0 +1,18 @@
+# AXP2101 PMIC variant model.
+seed hw_profile core2
+seed pmic_variant axp2101
+seed battery_gauge voltage_current
+wait 100
+assert pmic.variant axp2101
+assert pmic.gauge voltage_current
+assert pmic.battery present
+assert pmic.power_latch latched
+assert pmic.watchdog unavailable
+action pmic-charge-on
+assert pmic.charging charging
+assert hw.usb uart
+assert hw.wifi yes
+assert hw.ethernet no
+assert hw.ble yes
+assert hw.gauge voltage_current
+exit

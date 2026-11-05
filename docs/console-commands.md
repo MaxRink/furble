@@ -124,6 +124,11 @@ no software-readable presence or negotiation signal.
 
 ## crash
 
+`status` and the crash record name reset reasons as `poweron`, `software`,
+`panic`, `int_wdt`, `task_wdt`, `other_wdt`, `brownout`, `usb_uart_chip_reset`,
+`jtag`, `power_glitch` or `cpu_lockup`.
+
+
 `crash` and `crash last` print the record retained across the last reset:
 
 ```text

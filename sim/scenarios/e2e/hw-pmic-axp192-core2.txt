@@ -1,0 +1,41 @@
+# Core2 and M5Tough AXP192 profile.
+#
+# The AXP192 reports voltage, current and charge state, has no PM1 watchdog and
+# latches the rails. Touch is present on Core2 and Tough.
+seed hw_profile core2
+wait 100
+
+assert hw.mcu esp32
+assert hw.flash_kb 16384
+assert hw.psram absent
+assert hw.pmic axp192
+assert hw.gauge voltage_current
+assert hw.touch yes
+assert hw.display 320x240
+assert hw.wifi yes
+assert hw.ethernet no
+assert hw.sd yes
+assert hw.audio yes
+assert pmic.battery present
+assert pmic.power_latch latched
+assert pmic.watchdog unavailable
+assert platform.battery.current 0
+
+action pmic-charge-on
+assert pmic.charging charging
+assert pmic.charge_current_ma 100
+action pmic-battery-absent
+assert pmic.battery absent
+assert platform.battery.present no
+action pmic-battery-present
+
+assert mem.internal_total 532480
+assert mem.psram_total 0
+assert mem.component.main_stack 16384
+assert mem.component.lvgl_draw 20480
+assert hw.usb uart
+assert hw.wifi yes
+assert hw.ethernet no
+assert hw.ble yes
+assert hw.gauge voltage_current
+exit

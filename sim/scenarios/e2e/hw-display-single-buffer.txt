@@ -1,0 +1,7 @@
+# Single LVGL buffer on the narrow StickS3 panel, two on the Core.
+seed hw_profile sticks3
+wait 100
+assert ui.draw_buffers 1
+assert ui.flush_serialized yes
+assert mem.component.lvgl_draw 2160
+exit

@@ -1,0 +1,5 @@
+seed task_stack_region psram
+wait 100
+action psram-task-start
+action flash-write
+exit

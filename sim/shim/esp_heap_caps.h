@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstdlib>
 #else
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -28,6 +29,7 @@ extern "C" {
 size_t furble_sim_heap_free(uint32_t capabilities);
 size_t furble_sim_heap_largest(uint32_t capabilities);
 size_t furble_sim_heap_minimum(uint32_t capabilities);
+bool furble_sim_heap_should_fail(size_t bytes, const char *owner);
 
 #ifdef __cplusplus
 }
@@ -35,11 +37,22 @@ size_t furble_sim_heap_minimum(uint32_t capabilities);
 
 static inline void *heap_caps_aligned_alloc(size_t alignment, size_t size, uint32_t capabilities) {
   (void)capabilities;
+  if (furble_sim_heap_should_fail(size, "heap_caps")) {
+    return NULL;
+  }
   void *ptr = NULL;
   if (posix_memalign(&ptr, alignment, size) != 0) {
     return NULL;
   }
   return ptr;
+}
+
+static inline void *heap_caps_malloc(size_t size, uint32_t capabilities) {
+  return heap_caps_aligned_alloc(sizeof(void *), size, capabilities);
+}
+
+static inline void heap_caps_free(void *ptr) {
+  free(ptr);
 }
 
 static inline size_t heap_caps_get_free_size(uint32_t capabilities) {

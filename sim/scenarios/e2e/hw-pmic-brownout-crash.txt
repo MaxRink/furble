@@ -1,0 +1,27 @@
+# Brownout reset and crash record.
+#
+# A PMIC brownout kills the rail before an orderly shutdown. The retained record
+# must survive and print once on the next boot with the brownout reason.
+seed hw_profile sticks3
+wait 100
+
+action pmic-brownout
+assert pmic.brownouts 1
+assert power.state off
+assert platform.reset_reason brownout
+assert crash.pending yes
+
+restart
+
+assert crash.recovered yes
+assert crash.reset brownout
+assert crash.task pmic
+assert crash.last_log_present yes
+assert ui.page main
+
+restart
+
+assert crash.recovered no
+assert crash.reset none
+
+exit

@@ -1,0 +1,31 @@
+# M5Stack Core IP5306 profile.
+#
+# The IP5306 has a four-level gauge, no current ADC, a 32 s low-load boost
+# cutoff and no PM1 watchdog. The board has no PSRAM.
+seed hw_profile core
+wait 100
+
+assert hw.mcu esp32
+assert hw.flash_kb 4096
+assert hw.psram absent
+assert hw.pmic ip5306
+assert hw.gauge four_level
+assert hw.touch no
+assert hw.display 320x240
+assert hw.sd yes
+assert hw.audio yes
+assert pmic.battery present
+assert pmic.power_latch latched
+assert pmic.watchdog unavailable
+assert platform.battery.current -1
+
+assert mem.internal_total 532480
+assert mem.psram_total 0
+assert mem.component.main_stack 16384
+assert mem.component.lvgl_draw 20480
+assert hw.usb uart
+assert hw.wifi yes
+assert hw.ethernet no
+assert hw.ble yes
+assert hw.gauge four_level
+exit

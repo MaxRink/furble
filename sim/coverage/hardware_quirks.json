@@ -1,0 +1,2628 @@
+{
+  "version": 1,
+  "profiles": [
+    "stickc",
+    "stickc-plus",
+    "stickc-plus2",
+    "sticks3",
+    "core",
+    "core2",
+    "tough",
+    "headless-s3",
+    "waveshare-s3-eth",
+    "core-usb-debug"
+  ],
+  "entries": [
+    {
+      "id": "board.stickc.identity",
+      "profile": "stickc",
+      "category": "board",
+      "feature": "MCU/flash/profile identity",
+      "source": "docs/supported-hardware.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-stickc.txt",
+      "assertions": [
+        "hw.profile",
+        "hw.mcu",
+        "hw.flash_kb"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.stickc.psram",
+      "profile": "stickc",
+      "category": "memory",
+      "feature": "PSRAM mode and size",
+      "source": "sdkconfig.*",
+      "model": "sim/heap_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-stickc.txt",
+      "assertions": [
+        "hw.psram",
+        "mem.psram_total"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.stickc.display",
+      "profile": "stickc",
+      "category": "display",
+      "feature": "Panel and touch",
+      "source": "M5GFX board data",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-stickc.txt",
+      "assertions": [
+        "hw.display",
+        "hw.touch"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.stickc.pmic",
+      "profile": "stickc",
+      "category": "power",
+      "feature": "PMIC/gauge/watchdog",
+      "source": "docs/power/board-power.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-stickc.txt",
+      "assertions": [
+        "hw.pmic",
+        "hw.gauge",
+        "pmic.watchdog"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.stickc.usb",
+      "profile": "stickc",
+      "category": "usb",
+      "feature": "USB transport",
+      "source": "docs/supported-hardware.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-stickc.txt",
+      "assertions": [
+        "hw.usb"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.stickc.radios",
+      "profile": "stickc",
+      "category": "radio",
+      "feature": "WiFi/Ethernet/BLE presence",
+      "source": "platformio.ini",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-stickc.txt",
+      "assertions": [
+        "hw.wifi",
+        "hw.ethernet",
+        "hw.ble"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.stickc.peripherals",
+      "profile": "stickc",
+      "category": "peripheral",
+      "feature": "IR/SD/audio/RTC presence",
+      "source": "docs/power/board-power.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-stickc.txt",
+      "assertions": [
+        "hw.ir",
+        "hw.sd",
+        "hw.audio",
+        "hw.rtc"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.stickc.internal_budget",
+      "profile": "stickc",
+      "category": "memory",
+      "feature": "Internal RAM and main stack",
+      "source": "sdkconfig.*",
+      "model": "sim/memory_profile.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-stickc.txt",
+      "assertions": [
+        "mem.internal_total",
+        "mem.component.main_stack"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.stickc.lvgl_budget",
+      "profile": "stickc",
+      "category": "memory",
+      "feature": "LVGL draw buffer budget",
+      "source": "include/FurbleUIMemory.h",
+      "model": "sim/memory_profile.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-stickc.txt",
+      "assertions": [
+        "mem.component.lvgl_draw"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.stickc-plus.identity",
+      "profile": "stickc-plus",
+      "category": "board",
+      "feature": "MCU/flash/profile identity",
+      "source": "docs/supported-hardware.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-stickc-plus.txt",
+      "assertions": [
+        "hw.profile",
+        "hw.mcu",
+        "hw.flash_kb"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.stickc-plus.psram",
+      "profile": "stickc-plus",
+      "category": "memory",
+      "feature": "PSRAM mode and size",
+      "source": "sdkconfig.*",
+      "model": "sim/heap_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-stickc-plus.txt",
+      "assertions": [
+        "hw.psram",
+        "mem.psram_total"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.stickc-plus.display",
+      "profile": "stickc-plus",
+      "category": "display",
+      "feature": "Panel and touch",
+      "source": "M5GFX board data",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-stickc-plus.txt",
+      "assertions": [
+        "hw.display",
+        "hw.touch"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.stickc-plus.pmic",
+      "profile": "stickc-plus",
+      "category": "power",
+      "feature": "PMIC/gauge/watchdog",
+      "source": "docs/power/board-power.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-stickc-plus.txt",
+      "assertions": [
+        "hw.pmic",
+        "hw.gauge",
+        "pmic.watchdog"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.stickc-plus.usb",
+      "profile": "stickc-plus",
+      "category": "usb",
+      "feature": "USB transport",
+      "source": "docs/supported-hardware.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-stickc-plus.txt",
+      "assertions": [
+        "hw.usb"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.stickc-plus.radios",
+      "profile": "stickc-plus",
+      "category": "radio",
+      "feature": "WiFi/Ethernet/BLE presence",
+      "source": "platformio.ini",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-stickc-plus.txt",
+      "assertions": [
+        "hw.wifi",
+        "hw.ethernet",
+        "hw.ble"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.stickc-plus.peripherals",
+      "profile": "stickc-plus",
+      "category": "peripheral",
+      "feature": "IR/SD/audio/RTC presence",
+      "source": "docs/power/board-power.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-stickc-plus.txt",
+      "assertions": [
+        "hw.ir",
+        "hw.sd",
+        "hw.audio",
+        "hw.rtc"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.stickc-plus.internal_budget",
+      "profile": "stickc-plus",
+      "category": "memory",
+      "feature": "Internal RAM and main stack",
+      "source": "sdkconfig.*",
+      "model": "sim/memory_profile.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-stickc-plus.txt",
+      "assertions": [
+        "mem.internal_total",
+        "mem.component.main_stack"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.stickc-plus.lvgl_budget",
+      "profile": "stickc-plus",
+      "category": "memory",
+      "feature": "LVGL draw buffer budget",
+      "source": "include/FurbleUIMemory.h",
+      "model": "sim/memory_profile.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-stickc-plus.txt",
+      "assertions": [
+        "mem.component.lvgl_draw"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.stickc-plus2.identity",
+      "profile": "stickc-plus2",
+      "category": "board",
+      "feature": "MCU/flash/profile identity",
+      "source": "docs/supported-hardware.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-pmic-plus2-no-pmic.txt",
+      "assertions": [
+        "hw.profile",
+        "hw.mcu",
+        "hw.flash_kb"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.stickc-plus2.psram",
+      "profile": "stickc-plus2",
+      "category": "memory",
+      "feature": "PSRAM mode and size",
+      "source": "sdkconfig.*",
+      "model": "sim/heap_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-pmic-plus2-no-pmic.txt",
+      "assertions": [
+        "hw.psram",
+        "mem.psram_total"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.stickc-plus2.display",
+      "profile": "stickc-plus2",
+      "category": "display",
+      "feature": "Panel and touch",
+      "source": "M5GFX board data",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-pmic-plus2-no-pmic.txt",
+      "assertions": [
+        "hw.display",
+        "hw.touch"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.stickc-plus2.pmic",
+      "profile": "stickc-plus2",
+      "category": "power",
+      "feature": "PMIC/gauge/watchdog",
+      "source": "docs/power/board-power.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-pmic-plus2-no-pmic.txt",
+      "assertions": [
+        "hw.pmic",
+        "hw.gauge",
+        "pmic.watchdog"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.stickc-plus2.usb",
+      "profile": "stickc-plus2",
+      "category": "usb",
+      "feature": "USB transport",
+      "source": "docs/supported-hardware.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-pmic-plus2-no-pmic.txt",
+      "assertions": [
+        "hw.usb"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.stickc-plus2.radios",
+      "profile": "stickc-plus2",
+      "category": "radio",
+      "feature": "WiFi/Ethernet/BLE presence",
+      "source": "platformio.ini",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-pmic-plus2-no-pmic.txt",
+      "assertions": [
+        "hw.wifi",
+        "hw.ethernet",
+        "hw.ble"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.stickc-plus2.peripherals",
+      "profile": "stickc-plus2",
+      "category": "peripheral",
+      "feature": "IR/SD/audio/RTC presence",
+      "source": "docs/power/board-power.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-pmic-plus2-no-pmic.txt",
+      "assertions": [
+        "hw.ir",
+        "hw.sd",
+        "hw.audio",
+        "hw.rtc"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.stickc-plus2.internal_budget",
+      "profile": "stickc-plus2",
+      "category": "memory",
+      "feature": "Internal RAM and main stack",
+      "source": "sdkconfig.*",
+      "model": "sim/memory_profile.cpp",
+      "scenario": "sim/scenarios/e2e/hw-pmic-plus2-no-pmic.txt",
+      "assertions": [
+        "mem.internal_total",
+        "mem.component.main_stack"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.stickc-plus2.lvgl_budget",
+      "profile": "stickc-plus2",
+      "category": "memory",
+      "feature": "LVGL draw buffer budget",
+      "source": "include/FurbleUIMemory.h",
+      "model": "sim/memory_profile.cpp",
+      "scenario": "sim/scenarios/e2e/hw-pmic-plus2-no-pmic.txt",
+      "assertions": [
+        "mem.component.lvgl_draw"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.sticks3.identity",
+      "profile": "sticks3",
+      "category": "board",
+      "feature": "MCU/flash/profile identity",
+      "source": "docs/supported-hardware.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-psram-octal-sticks3.txt",
+      "assertions": [
+        "hw.profile",
+        "hw.mcu",
+        "hw.flash_kb"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.sticks3.psram",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "PSRAM mode and size",
+      "source": "sdkconfig.*",
+      "model": "sim/heap_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-psram-octal-sticks3.txt",
+      "assertions": [
+        "hw.psram",
+        "mem.psram_total"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.sticks3.display",
+      "profile": "sticks3",
+      "category": "display",
+      "feature": "Panel and touch",
+      "source": "M5GFX board data",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-psram-octal-sticks3.txt",
+      "assertions": [
+        "hw.display",
+        "hw.touch"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.sticks3.pmic",
+      "profile": "sticks3",
+      "category": "power",
+      "feature": "PMIC/gauge/watchdog",
+      "source": "docs/power/board-power.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-psram-octal-sticks3.txt",
+      "assertions": [
+        "hw.pmic",
+        "hw.gauge",
+        "pmic.watchdog"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.sticks3.usb",
+      "profile": "sticks3",
+      "category": "usb",
+      "feature": "USB transport",
+      "source": "docs/supported-hardware.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-psram-octal-sticks3.txt",
+      "assertions": [
+        "hw.usb"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.sticks3.radios",
+      "profile": "sticks3",
+      "category": "radio",
+      "feature": "WiFi/Ethernet/BLE presence",
+      "source": "platformio.ini",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-psram-octal-sticks3.txt",
+      "assertions": [
+        "hw.wifi",
+        "hw.ethernet",
+        "hw.ble"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.sticks3.peripherals",
+      "profile": "sticks3",
+      "category": "peripheral",
+      "feature": "IR/SD/audio/RTC presence",
+      "source": "docs/power/board-power.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-psram-octal-sticks3.txt",
+      "assertions": [
+        "hw.ir",
+        "hw.sd",
+        "hw.audio",
+        "hw.rtc"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.sticks3.internal_budget",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "Internal RAM and main stack",
+      "source": "sdkconfig.*",
+      "model": "sim/memory_profile.cpp",
+      "scenario": "sim/scenarios/e2e/hw-psram-octal-sticks3.txt",
+      "assertions": [
+        "mem.internal_total",
+        "mem.component.main_stack"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.sticks3.lvgl_budget",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "LVGL draw buffer budget",
+      "source": "include/FurbleUIMemory.h",
+      "model": "sim/memory_profile.cpp",
+      "scenario": "sim/scenarios/e2e/hw-psram-octal-sticks3.txt",
+      "assertions": [
+        "mem.component.lvgl_draw"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.core.identity",
+      "profile": "core",
+      "category": "board",
+      "feature": "MCU/flash/profile identity",
+      "source": "docs/supported-hardware.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-pmic-ip5306-core.txt",
+      "assertions": [
+        "hw.profile",
+        "hw.mcu",
+        "hw.flash_kb"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.core.psram",
+      "profile": "core",
+      "category": "memory",
+      "feature": "PSRAM mode and size",
+      "source": "sdkconfig.*",
+      "model": "sim/heap_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-pmic-ip5306-core.txt",
+      "assertions": [
+        "hw.psram",
+        "mem.psram_total"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.core.display",
+      "profile": "core",
+      "category": "display",
+      "feature": "Panel and touch",
+      "source": "M5GFX board data",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-pmic-ip5306-core.txt",
+      "assertions": [
+        "hw.display",
+        "hw.touch"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.core.pmic",
+      "profile": "core",
+      "category": "power",
+      "feature": "PMIC/gauge/watchdog",
+      "source": "docs/power/board-power.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-pmic-ip5306-core.txt",
+      "assertions": [
+        "hw.pmic",
+        "hw.gauge",
+        "pmic.watchdog"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.core.usb",
+      "profile": "core",
+      "category": "usb",
+      "feature": "USB transport",
+      "source": "docs/supported-hardware.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-pmic-ip5306-core.txt",
+      "assertions": [
+        "hw.usb"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.core.radios",
+      "profile": "core",
+      "category": "radio",
+      "feature": "WiFi/Ethernet/BLE presence",
+      "source": "platformio.ini",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-pmic-ip5306-core.txt",
+      "assertions": [
+        "hw.wifi",
+        "hw.ethernet",
+        "hw.ble"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.core.peripherals",
+      "profile": "core",
+      "category": "peripheral",
+      "feature": "IR/SD/audio/RTC presence",
+      "source": "docs/power/board-power.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-pmic-ip5306-core.txt",
+      "assertions": [
+        "hw.ir",
+        "hw.sd",
+        "hw.audio",
+        "hw.rtc"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.core.internal_budget",
+      "profile": "core",
+      "category": "memory",
+      "feature": "Internal RAM and main stack",
+      "source": "sdkconfig.*",
+      "model": "sim/memory_profile.cpp",
+      "scenario": "sim/scenarios/e2e/hw-pmic-ip5306-core.txt",
+      "assertions": [
+        "mem.internal_total",
+        "mem.component.main_stack"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.core.lvgl_budget",
+      "profile": "core",
+      "category": "memory",
+      "feature": "LVGL draw buffer budget",
+      "source": "include/FurbleUIMemory.h",
+      "model": "sim/memory_profile.cpp",
+      "scenario": "sim/scenarios/e2e/hw-pmic-ip5306-core.txt",
+      "assertions": [
+        "mem.component.lvgl_draw"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.core2.identity",
+      "profile": "core2",
+      "category": "board",
+      "feature": "MCU/flash/profile identity",
+      "source": "docs/supported-hardware.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-pmic-axp192-core2.txt",
+      "assertions": [
+        "hw.profile",
+        "hw.mcu",
+        "hw.flash_kb"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.core2.psram",
+      "profile": "core2",
+      "category": "memory",
+      "feature": "PSRAM mode and size",
+      "source": "sdkconfig.*",
+      "model": "sim/heap_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-pmic-axp192-core2.txt",
+      "assertions": [
+        "hw.psram",
+        "mem.psram_total"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.core2.display",
+      "profile": "core2",
+      "category": "display",
+      "feature": "Panel and touch",
+      "source": "M5GFX board data",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-pmic-axp192-core2.txt",
+      "assertions": [
+        "hw.display",
+        "hw.touch"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.core2.pmic",
+      "profile": "core2",
+      "category": "power",
+      "feature": "PMIC/gauge/watchdog",
+      "source": "docs/power/board-power.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-pmic-axp192-core2.txt",
+      "assertions": [
+        "hw.pmic",
+        "hw.gauge",
+        "pmic.watchdog"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.core2.usb",
+      "profile": "core2",
+      "category": "usb",
+      "feature": "USB transport",
+      "source": "docs/supported-hardware.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-pmic-axp192-core2.txt",
+      "assertions": [
+        "hw.usb"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.core2.radios",
+      "profile": "core2",
+      "category": "radio",
+      "feature": "WiFi/Ethernet/BLE presence",
+      "source": "platformio.ini",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-pmic-axp192-core2.txt",
+      "assertions": [
+        "hw.wifi",
+        "hw.ethernet",
+        "hw.ble"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.core2.peripherals",
+      "profile": "core2",
+      "category": "peripheral",
+      "feature": "IR/SD/audio/RTC presence",
+      "source": "docs/power/board-power.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-pmic-axp192-core2.txt",
+      "assertions": [
+        "hw.ir",
+        "hw.sd",
+        "hw.audio",
+        "hw.rtc"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.core2.internal_budget",
+      "profile": "core2",
+      "category": "memory",
+      "feature": "Internal RAM and main stack",
+      "source": "sdkconfig.*",
+      "model": "sim/memory_profile.cpp",
+      "scenario": "sim/scenarios/e2e/hw-pmic-axp192-core2.txt",
+      "assertions": [
+        "mem.internal_total",
+        "mem.component.main_stack"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.core2.lvgl_budget",
+      "profile": "core2",
+      "category": "memory",
+      "feature": "LVGL draw buffer budget",
+      "source": "include/FurbleUIMemory.h",
+      "model": "sim/memory_profile.cpp",
+      "scenario": "sim/scenarios/e2e/hw-pmic-axp192-core2.txt",
+      "assertions": [
+        "mem.component.lvgl_draw"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.tough.identity",
+      "profile": "tough",
+      "category": "board",
+      "feature": "MCU/flash/profile identity",
+      "source": "docs/supported-hardware.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-tough.txt",
+      "assertions": [
+        "hw.profile",
+        "hw.mcu",
+        "hw.flash_kb"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.tough.psram",
+      "profile": "tough",
+      "category": "memory",
+      "feature": "PSRAM mode and size",
+      "source": "sdkconfig.*",
+      "model": "sim/heap_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-tough.txt",
+      "assertions": [
+        "hw.psram",
+        "mem.psram_total"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.tough.display",
+      "profile": "tough",
+      "category": "display",
+      "feature": "Panel and touch",
+      "source": "M5GFX board data",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-tough.txt",
+      "assertions": [
+        "hw.display",
+        "hw.touch"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.tough.pmic",
+      "profile": "tough",
+      "category": "power",
+      "feature": "PMIC/gauge/watchdog",
+      "source": "docs/power/board-power.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-tough.txt",
+      "assertions": [
+        "hw.pmic",
+        "hw.gauge",
+        "pmic.watchdog"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.tough.usb",
+      "profile": "tough",
+      "category": "usb",
+      "feature": "USB transport",
+      "source": "docs/supported-hardware.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-tough.txt",
+      "assertions": [
+        "hw.usb"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.tough.radios",
+      "profile": "tough",
+      "category": "radio",
+      "feature": "WiFi/Ethernet/BLE presence",
+      "source": "platformio.ini",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-tough.txt",
+      "assertions": [
+        "hw.wifi",
+        "hw.ethernet",
+        "hw.ble"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.tough.peripherals",
+      "profile": "tough",
+      "category": "peripheral",
+      "feature": "IR/SD/audio/RTC presence",
+      "source": "docs/power/board-power.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-tough.txt",
+      "assertions": [
+        "hw.ir",
+        "hw.sd",
+        "hw.audio",
+        "hw.rtc"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.tough.internal_budget",
+      "profile": "tough",
+      "category": "memory",
+      "feature": "Internal RAM and main stack",
+      "source": "sdkconfig.*",
+      "model": "sim/memory_profile.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-tough.txt",
+      "assertions": [
+        "mem.internal_total",
+        "mem.component.main_stack"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.tough.lvgl_budget",
+      "profile": "tough",
+      "category": "memory",
+      "feature": "LVGL draw buffer budget",
+      "source": "include/FurbleUIMemory.h",
+      "model": "sim/memory_profile.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-tough.txt",
+      "assertions": [
+        "mem.component.lvgl_draw"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.headless-s3.identity",
+      "profile": "headless-s3",
+      "category": "board",
+      "feature": "MCU/flash/profile identity",
+      "source": "docs/supported-hardware.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-headless.txt",
+      "assertions": [
+        "hw.profile",
+        "hw.mcu",
+        "hw.flash_kb"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.headless-s3.psram",
+      "profile": "headless-s3",
+      "category": "memory",
+      "feature": "PSRAM mode and size",
+      "source": "sdkconfig.*",
+      "model": "sim/heap_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-headless.txt",
+      "assertions": [
+        "hw.psram",
+        "mem.psram_total"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.headless-s3.display",
+      "profile": "headless-s3",
+      "category": "display",
+      "feature": "Panel and touch",
+      "source": "M5GFX board data",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-headless.txt",
+      "assertions": [
+        "hw.display",
+        "hw.touch"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.headless-s3.pmic",
+      "profile": "headless-s3",
+      "category": "power",
+      "feature": "PMIC/gauge/watchdog",
+      "source": "docs/power/board-power.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-headless.txt",
+      "assertions": [
+        "hw.pmic",
+        "hw.gauge",
+        "pmic.watchdog"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.headless-s3.usb",
+      "profile": "headless-s3",
+      "category": "usb",
+      "feature": "USB transport",
+      "source": "docs/supported-hardware.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-headless.txt",
+      "assertions": [
+        "hw.usb"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.headless-s3.radios",
+      "profile": "headless-s3",
+      "category": "radio",
+      "feature": "WiFi/Ethernet/BLE presence",
+      "source": "platformio.ini",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-headless.txt",
+      "assertions": [
+        "hw.wifi",
+        "hw.ethernet",
+        "hw.ble"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.headless-s3.peripherals",
+      "profile": "headless-s3",
+      "category": "peripheral",
+      "feature": "IR/SD/audio/RTC presence",
+      "source": "docs/power/board-power.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-headless.txt",
+      "assertions": [
+        "hw.ir",
+        "hw.sd",
+        "hw.audio",
+        "hw.rtc"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.headless-s3.internal_budget",
+      "profile": "headless-s3",
+      "category": "memory",
+      "feature": "Internal RAM and main stack",
+      "source": "sdkconfig.*",
+      "model": "sim/memory_profile.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-headless.txt",
+      "assertions": [
+        "mem.internal_total",
+        "mem.component.main_stack"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.headless-s3.lvgl_budget",
+      "profile": "headless-s3",
+      "category": "memory",
+      "feature": "LVGL draw buffer budget",
+      "source": "include/FurbleUIMemory.h",
+      "model": "sim/memory_profile.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-headless.txt",
+      "assertions": [
+        "mem.component.lvgl_draw"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.waveshare-s3-eth.identity",
+      "profile": "waveshare-s3-eth",
+      "category": "board",
+      "feature": "MCU/flash/profile identity",
+      "source": "docs/supported-hardware.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-waveshare.txt",
+      "assertions": [
+        "hw.profile",
+        "hw.mcu",
+        "hw.flash_kb"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.waveshare-s3-eth.psram",
+      "profile": "waveshare-s3-eth",
+      "category": "memory",
+      "feature": "PSRAM mode and size",
+      "source": "sdkconfig.*",
+      "model": "sim/heap_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-waveshare.txt",
+      "assertions": [
+        "hw.psram",
+        "mem.psram_total"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.waveshare-s3-eth.display",
+      "profile": "waveshare-s3-eth",
+      "category": "display",
+      "feature": "Panel and touch",
+      "source": "M5GFX board data",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-waveshare.txt",
+      "assertions": [
+        "hw.display",
+        "hw.touch"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.waveshare-s3-eth.pmic",
+      "profile": "waveshare-s3-eth",
+      "category": "power",
+      "feature": "PMIC/gauge/watchdog",
+      "source": "docs/power/board-power.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-waveshare.txt",
+      "assertions": [
+        "hw.pmic",
+        "hw.gauge",
+        "pmic.watchdog"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.waveshare-s3-eth.usb",
+      "profile": "waveshare-s3-eth",
+      "category": "usb",
+      "feature": "USB transport",
+      "source": "docs/supported-hardware.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-waveshare.txt",
+      "assertions": [
+        "hw.usb"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.waveshare-s3-eth.radios",
+      "profile": "waveshare-s3-eth",
+      "category": "radio",
+      "feature": "WiFi/Ethernet/BLE presence",
+      "source": "platformio.ini",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-waveshare.txt",
+      "assertions": [
+        "hw.wifi",
+        "hw.ethernet",
+        "hw.ble"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.waveshare-s3-eth.peripherals",
+      "profile": "waveshare-s3-eth",
+      "category": "peripheral",
+      "feature": "IR/SD/audio/RTC presence",
+      "source": "docs/power/board-power.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-waveshare.txt",
+      "assertions": [
+        "hw.ir",
+        "hw.sd",
+        "hw.audio",
+        "hw.rtc"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.waveshare-s3-eth.internal_budget",
+      "profile": "waveshare-s3-eth",
+      "category": "memory",
+      "feature": "Internal RAM and main stack",
+      "source": "sdkconfig.*",
+      "model": "sim/memory_profile.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-waveshare.txt",
+      "assertions": [
+        "mem.internal_total",
+        "mem.component.main_stack"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.waveshare-s3-eth.lvgl_budget",
+      "profile": "waveshare-s3-eth",
+      "category": "memory",
+      "feature": "LVGL draw buffer budget",
+      "source": "include/FurbleUIMemory.h",
+      "model": "sim/memory_profile.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-waveshare.txt",
+      "assertions": [
+        "mem.component.lvgl_draw"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.core-usb-debug.identity",
+      "profile": "core-usb-debug",
+      "category": "board",
+      "feature": "MCU/flash/profile identity",
+      "source": "docs/supported-hardware.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-core-uart.txt",
+      "assertions": [
+        "hw.profile",
+        "hw.mcu",
+        "hw.flash_kb"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.core-usb-debug.psram",
+      "profile": "core-usb-debug",
+      "category": "memory",
+      "feature": "PSRAM mode and size",
+      "source": "sdkconfig.*",
+      "model": "sim/heap_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-core-uart.txt",
+      "assertions": [
+        "hw.psram",
+        "mem.psram_total"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.core-usb-debug.display",
+      "profile": "core-usb-debug",
+      "category": "display",
+      "feature": "Panel and touch",
+      "source": "M5GFX board data",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-core-uart.txt",
+      "assertions": [
+        "hw.display",
+        "hw.touch"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.core-usb-debug.pmic",
+      "profile": "core-usb-debug",
+      "category": "power",
+      "feature": "PMIC/gauge/watchdog",
+      "source": "docs/power/board-power.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-core-uart.txt",
+      "assertions": [
+        "hw.pmic",
+        "hw.gauge",
+        "pmic.watchdog"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.core-usb-debug.usb",
+      "profile": "core-usb-debug",
+      "category": "usb",
+      "feature": "USB transport",
+      "source": "docs/supported-hardware.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-core-uart.txt",
+      "assertions": [
+        "hw.usb"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.core-usb-debug.radios",
+      "profile": "core-usb-debug",
+      "category": "radio",
+      "feature": "WiFi/Ethernet/BLE presence",
+      "source": "platformio.ini",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-core-uart.txt",
+      "assertions": [
+        "hw.wifi",
+        "hw.ethernet",
+        "hw.ble"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.core-usb-debug.peripherals",
+      "profile": "core-usb-debug",
+      "category": "peripheral",
+      "feature": "IR/SD/audio/RTC presence",
+      "source": "docs/power/board-power.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-core-uart.txt",
+      "assertions": [
+        "hw.ir",
+        "hw.sd",
+        "hw.audio",
+        "hw.rtc"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.core-usb-debug.internal_budget",
+      "profile": "core-usb-debug",
+      "category": "memory",
+      "feature": "Internal RAM and main stack",
+      "source": "sdkconfig.*",
+      "model": "sim/memory_profile.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-core-uart.txt",
+      "assertions": [
+        "mem.internal_total",
+        "mem.component.main_stack"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.core-usb-debug.lvgl_budget",
+      "profile": "core-usb-debug",
+      "category": "memory",
+      "feature": "LVGL draw buffer budget",
+      "source": "include/FurbleUIMemory.h",
+      "model": "sim/memory_profile.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-core-uart.txt",
+      "assertions": [
+        "mem.component.lvgl_draw"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "crash.webui_pre_gate_8k",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "WebUI supervisor 8 KiB OOM",
+      "source": "plans/304-webui-stick-memory.md",
+      "model": "sim/webui_memory_model.cpp",
+      "scenario": "sim/scenarios/e2e/memory-webui-pre-gate-alloc.txt",
+      "assertions": [
+        "webui.supervisor",
+        "heap.alloc_failures"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "crash.webui_https_12k",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "WebUI HTTPS 12 KiB OOM",
+      "source": "plans/304-webui-stick-memory.md",
+      "model": "sim/webui_memory_model.cpp",
+      "scenario": "sim/scenarios/e2e/memory-webui-pre-gate-alloc.txt",
+      "assertions": [
+        "webui.server",
+        "webui.gate"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "crash.webui_tg1wdt",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "TG1WDT boot loop after WebUI OOM",
+      "source": "plans/304-webui-stick-memory.md",
+      "model": "sim/webui_memory_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-memory-webui-tg1wdt.txt",
+      "assertions": [
+        "crash.reset",
+        "platform.reset_reason"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "crash.webui_gate_13543",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "Fail-closed gate at 13,543/12,788",
+      "source": "plans/304-webui-stick-memory.md",
+      "model": "sim/webui_memory_model.cpp",
+      "scenario": "sim/scenarios/e2e/memory-webui-fail-closed.txt",
+      "assertions": [
+        "webui.server",
+        "webui.fail_closed"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "crash.webui_post394_pass",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "Post-#394 gate pass",
+      "source": "plans/305-general-internal-ram.md",
+      "model": "sim/webui_memory_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-memory-webui-post394.txt",
+      "assertions": [
+        "webui.server",
+        "webui.gate"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "crash.mqtt_0x1800",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "esp-mqtt 0x1800 allocation panic",
+      "source": "plans/306-sim-memory-crash-repro.md",
+      "model": "sim/SimMQTTClient.cpp",
+      "scenario": "sim/scenarios/e2e/memory-mqtt-low-heap-retry-limit.txt",
+      "assertions": [
+        "heap.last_failed_task",
+        "mqtt.connect_failures"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "crash.mqtt_owner_4k",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "MQTT owner 4 KiB stack overflow",
+      "source": "hardware incident",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-memory-mqtt-owner-4k-overflow.txt",
+      "assertions": [
+        "mqttmodel.state",
+        "mqttmodel.overflow"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "crash.mqtt_owner_6k",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "MQTT owner 6 KiB stack overflow",
+      "source": "hardware incident",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-memory-mqtt-owner-6k-overflow.txt",
+      "assertions": [
+        "mqttmodel.state",
+        "mqttmodel.overflow"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "crash.mqtt_ha_oom",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "HA discovery OOM at 1.7 KiB free",
+      "source": "hardware session",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-memory-mqtt-ha-oom.txt",
+      "assertions": [
+        "mqttmodel.ha",
+        "heap.free"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "crash.mqtt_10k_success",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "MQTT 10 KiB owner / 4 KiB worker success",
+      "source": "release-gate target",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-memory-mqtt-10k-success.txt",
+      "assertions": [
+        "mqttmodel.state",
+        "mqttmodel.owner_stack"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "crash.mqtt_tls_6k",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "MQTT TLS 6 KiB worker",
+      "source": "release-gate target",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-memory-mqtt-tls-6k.txt",
+      "assertions": [
+        "mqttmodel.worker_stack",
+        "mqttmodel.tls"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "crash.usb_rom_stuck",
+      "profile": "sticks3",
+      "category": "usb",
+      "feature": "USB CDC wedge and ROM download",
+      "source": "hardware session",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-usb-jtag-rom-stuck-recovery.txt",
+      "assertions": [
+        "usb.mode",
+        "usb.console"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "crash.ble_auth_timeout",
+      "profile": "sticks3",
+      "category": "radio",
+      "feature": "BLE auth timeout and reauth",
+      "source": "plans/302-companion-restart-reconnect.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-ble-auth-gatt-reidentify.txt",
+      "assertions": [
+        "ble.auth",
+        "ble.auth_timeouts"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "crash.gatt_cache",
+      "profile": "sticks3",
+      "category": "radio",
+      "feature": "GATT cache and reidentify",
+      "source": "plans/302-companion-restart-reconnect.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-ble-auth-gatt-reidentify.txt",
+      "assertions": [
+        "ble.gatt_cache",
+        "companion.reidentify"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "crash.panic_record",
+      "profile": "sticks3",
+      "category": "crash",
+      "feature": "Crash record for panic",
+      "source": "docs/crash-diagnostics.md",
+      "model": "sim/CrashLogSim.cpp",
+      "scenario": "sim/scenarios/e2e/hw-crash-reset-matrix.txt",
+      "assertions": [
+        "crash.recovered",
+        "crash.reset"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "crash.task_wdt_record",
+      "profile": "sticks3",
+      "category": "crash",
+      "feature": "Crash record for task WDT",
+      "source": "docs/crash-diagnostics.md",
+      "model": "sim/CrashLogSim.cpp",
+      "scenario": "sim/scenarios/e2e/hw-memory-webui-tg1wdt.txt",
+      "assertions": [
+        "crash.reset",
+        "crash.task"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "crash.restart_once",
+      "profile": "sticks3",
+      "category": "crash",
+      "feature": "Crash record print-once across restart",
+      "source": "docs/crash-diagnostics.md",
+      "model": "sim/CrashLogSim.cpp",
+      "scenario": "sim/scenarios/e2e/crash-record-survives-restart.txt",
+      "assertions": [
+        "crash.recovered",
+        "crash.pending"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "crash.psram_icon_0x3003",
+      "profile": "core",
+      "category": "memory",
+      "feature": "12,291-byte icon OOM without PSRAM",
+      "source": "plans/31-s3-psram.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-memory-psram-icon-absent.txt",
+      "assertions": [
+        "alloc.icon",
+        "heap.last_failed_task"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "crash.psram_icon_ok",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "Icon decode succeeds with PSRAM",
+      "source": "plans/31-s3-psram.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-memory-psram-icon-octal.txt",
+      "assertions": [
+        "alloc.icon",
+        "heap.spiram_present"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "crash.companion_4k_restart",
+      "profile": "sticks3",
+      "category": "radio",
+      "feature": "Companion stop/start 4 KiB allocation failure",
+      "source": "plans/302-companion-restart-reconnect.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-ble-auth-gatt-reidentify.txt",
+      "assertions": [
+        "companion.reidentify",
+        "ble.bond"
+      ],
+      "status": "approximate",
+      "note": "CompanionGatt task restart is not linked; reidentify/bond state is modeled.",
+      "missing_evidence": "A MockNimBLE server build that compiles CompanionGatt::enable()/disable()."
+    },
+    {
+      "id": "power.m5pm1",
+      "profile": "sticks3",
+      "category": "power",
+      "feature": "M5PM1 charger/watchdog/latch",
+      "source": "docs/power/board-power.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-pmic-sticks3.txt",
+      "assertions": [
+        "hw.pmic",
+        "pmic.watchdog"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "power.axp192",
+      "profile": "core2",
+      "category": "power",
+      "feature": "AXP192 charger and gauge",
+      "source": "docs/power/board-power.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-pmic-axp192-core2.txt",
+      "assertions": [
+        "hw.pmic",
+        "pmic.gauge"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "power.axp2101",
+      "profile": "core2",
+      "category": "power",
+      "feature": "AXP2101 variant",
+      "source": "docs/power/datasheet-register.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-pmic-axp2101.txt",
+      "assertions": [
+        "pmic.variant",
+        "pmic.gauge"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "power.ip5306",
+      "profile": "core",
+      "category": "power",
+      "feature": "IP5306 four-level gauge",
+      "source": "docs/power/board-power.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-pmic-ip5306-core.txt",
+      "assertions": [
+        "hw.pmic",
+        "pmic.watchdog"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "power.no_pmic",
+      "profile": "stickc-plus2",
+      "category": "power",
+      "feature": "No-PMIC path",
+      "source": "docs/power/board-power.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-pmic-plus2-no-pmic.txt",
+      "assertions": [
+        "hw.pmic",
+        "pmic.power_latch"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "power.charger",
+      "profile": "sticks3",
+      "category": "power",
+      "feature": "Charger enable/disable",
+      "source": "docs/power/board-power.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-pmic-sticks3.txt",
+      "assertions": [
+        "pmic.charger",
+        "pmic.charge_current_ma"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "power.battery_absent",
+      "profile": "sticks3",
+      "category": "power",
+      "feature": "Battery absent",
+      "source": "docs/power/board-power.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-pmic-sticks3.txt",
+      "assertions": [
+        "pmic.battery",
+        "platform.battery.present"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "power.brownout",
+      "profile": "sticks3",
+      "category": "power",
+      "feature": "Brownout reset",
+      "source": "docs/power/board-power.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-pmic-brownout-crash.txt",
+      "assertions": [
+        "pmic.brownouts",
+        "crash.reset"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "power.watchdog",
+      "profile": "sticks3",
+      "category": "power",
+      "feature": "PM1 watchdog enable/feed/restore",
+      "source": "src/FurblePlatform.cpp",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-pmic-sticks3.txt",
+      "assertions": [
+        "pmic.watchdog",
+        "pmic.watchdog_feeds"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "power.download_lock",
+      "profile": "sticks3",
+      "category": "power",
+      "feature": "Download lock/unlock",
+      "source": "src/FurblePlatform.cpp",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-usb-jtag-rom-stuck-recovery.txt",
+      "assertions": [
+        "pmic.download_lock",
+        "usb.mode"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "power.button_single",
+      "profile": "sticks3",
+      "category": "power",
+      "feature": "Single click reset",
+      "source": "docs/power/board-power.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-power-button-state-machine.txt",
+      "assertions": [
+        "power.clicks",
+        "power.resets"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "power.button_double",
+      "profile": "sticks3",
+      "category": "power",
+      "feature": "Double click power off",
+      "source": "docs/power/board-power.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-power-button-state-machine.txt",
+      "assertions": [
+        "power.double_clicks",
+        "power.state"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "power.button_long",
+      "profile": "sticks3",
+      "category": "power",
+      "feature": "Long press download",
+      "source": "docs/power/board-power.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-power-button-state-machine.txt",
+      "assertions": [
+        "power.long_presses",
+        "power.downloads"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "usb.rom_download",
+      "profile": "sticks3",
+      "category": "usb",
+      "feature": "ROM download mode",
+      "source": "hardware session",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-usb-jtag-rom-stuck-recovery.txt",
+      "assertions": [
+        "usb.mode",
+        "usb.console"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "usb.esptool",
+      "profile": "sticks3",
+      "category": "usb",
+      "feature": "esptool sync",
+      "source": "hardware session",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-usb-jtag-rom-stuck-recovery.txt",
+      "assertions": [
+        "usb.syncs",
+        "usb.mode"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "usb.recovery",
+      "profile": "sticks3",
+      "category": "usb",
+      "feature": "Power-button recovery",
+      "source": "hardware session",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-usb-jtag-rom-stuck-recovery.txt",
+      "assertions": [
+        "usb.recoveries",
+        "power.recoveries"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "usb.uart_reset",
+      "profile": "core",
+      "category": "usb",
+      "feature": "USB-UART chip reset reason",
+      "source": "hardware session",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-core-uart.txt",
+      "assertions": [
+        "platform.reset_reason",
+        "hw.usb"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "radio.wifi",
+      "profile": "sticks3",
+      "category": "radio",
+      "feature": "WiFi state and reasons",
+      "source": "src/FurbleWiFi.cpp",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-wifi-reasons-ntp.txt",
+      "assertions": [
+        "wifi.state",
+        "wifi.reason"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "radio.ntp",
+      "profile": "sticks3",
+      "category": "radio",
+      "feature": "NTP sync/failure",
+      "source": "src/FurbleWiFi.cpp",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-wifi-reasons-ntp.txt",
+      "assertions": [
+        "wifi.ntp",
+        "wifi.ntp_offset_us"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "radio.ethernet",
+      "profile": "waveshare-s3-eth",
+      "category": "radio",
+      "feature": "Ethernet link transitions",
+      "source": "src/FurbleEthernet.cpp",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-waveshare.txt",
+      "assertions": [
+        "net.ethernet",
+        "net.link_ups"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "radio.ble_auth",
+      "profile": "sticks3",
+      "category": "radio",
+      "feature": "BLE auth timeout",
+      "source": "plans/302-companion-restart-reconnect.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-ble-auth-gatt-reidentify.txt",
+      "assertions": [
+        "ble.auth",
+        "ble.auth_timeouts"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "radio.gatt_cache",
+      "profile": "sticks3",
+      "category": "radio",
+      "feature": "GATT cache",
+      "source": "plans/302-companion-restart-reconnect.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-ble-auth-gatt-reidentify.txt",
+      "assertions": [
+        "ble.gatt_cache",
+        "companion.reidentify"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "radio.reconnect",
+      "profile": "sticks3",
+      "category": "radio",
+      "feature": "Companion reconnect",
+      "source": "plans/302-companion-restart-reconnect.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-ble-auth-gatt-reidentify.txt",
+      "assertions": [
+        "companion.state",
+        "ble.reconnects"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "peripheral.audio",
+      "profile": "core",
+      "category": "peripheral",
+      "feature": "Audio overcurrent",
+      "source": "src/FurbleFeedback.cpp",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-audio-ir-sd-faults.txt",
+      "assertions": [
+        "audio.state",
+        "audio.overcurrents"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "peripheral.ir",
+      "profile": "core",
+      "category": "peripheral",
+      "feature": "IR RMT timeout",
+      "source": "src/FurbleIR.cpp",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-audio-ir-sd-faults.txt",
+      "assertions": [
+        "ir.state",
+        "ir.timeouts"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "peripheral.sd",
+      "profile": "core",
+      "category": "peripheral",
+      "feature": "SD absent/mounted/error",
+      "source": "src/FurbleSD.cpp",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-audio-ir-sd-faults.txt",
+      "assertions": [
+        "sd.state",
+        "sd.errors"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "peripheral.gps",
+      "profile": "sticks3",
+      "category": "peripheral",
+      "feature": "GPS no fix and retry",
+      "source": "src/FurbleGPS.cpp",
+      "model": "src/FurbleGPS.cpp",
+      "scenario": "sim/scenarios/e2e/gps-degraded-recovery.txt",
+      "assertions": [
+        "gps.state",
+        "gps.degraded_retries"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "peripheral.imu",
+      "profile": "sticks3",
+      "category": "peripheral",
+      "feature": "IMU motion",
+      "source": "src/FurbleIMU.cpp",
+      "model": "sim/FurbleIMUSim.cpp",
+      "scenario": "sim/scenarios/e2e/gps-motion-detector.txt",
+      "assertions": [
+        "ui.motion_state"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "reset.panic",
+      "profile": "sticks3",
+      "category": "reset",
+      "feature": "Panic reset reason",
+      "source": "include/FurbleCrashRecord.h",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-crash-reset-matrix.txt",
+      "assertions": [
+        "crash.reset"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "reset.task_wdt",
+      "profile": "sticks3",
+      "category": "reset",
+      "feature": "Task WDT reset reason",
+      "source": "include/FurbleCrashRecord.h",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-memory-webui-tg1wdt.txt",
+      "assertions": [
+        "platform.reset_reason",
+        "crash.reset"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "reset.software",
+      "profile": "sticks3",
+      "category": "reset",
+      "feature": "Software reset reason",
+      "source": "include/FurbleCrashRecord.h",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-crash-reset-matrix.txt",
+      "assertions": [
+        "crash.reset"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "reset.usb_uart",
+      "profile": "sticks3",
+      "category": "reset",
+      "feature": "USB UART chip reset reason",
+      "source": "include/FurbleCrashRecord.h",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-crash-reset-matrix.txt",
+      "assertions": [
+        "crash.reset"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "reset.brownout",
+      "profile": "sticks3",
+      "category": "reset",
+      "feature": "Brownout reset reason",
+      "source": "include/FurbleCrashRecord.h",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-crash-reset-matrix.txt",
+      "assertions": [
+        "crash.reset"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "reset.poweron",
+      "profile": "sticks3",
+      "category": "reset",
+      "feature": "Power-on reset reason",
+      "source": "include/FurbleCrashRecord.h",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-crash-reset-matrix.txt",
+      "assertions": [
+        "crash.reset"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "boot.ota_rollback",
+      "profile": "sticks3",
+      "category": "boot",
+      "feature": "OTA slot/rollback",
+      "source": "plans/34-ota-partitions.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-ota-slot-rollback.txt",
+      "assertions": [
+        "ota.slot",
+        "ota.rollback"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "boot.power_off",
+      "profile": "sticks3",
+      "category": "boot",
+      "feature": "Power off and silent console/BLE",
+      "source": "docs/power/board-power.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-power-button-state-machine.txt",
+      "assertions": [
+        "power.state",
+        "usb.console"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.profile_map",
+      "profile": "all",
+      "category": "memory",
+      "feature": "Per-board static budget map",
+      "source": "sdkconfig.*",
+      "model": "sim/memory_profile.cpp",
+      "scenario": "sim/scenarios/e2e/hw-memory-post394-budget.txt",
+      "assertions": [
+        "mem.internal_total",
+        "mem.component.main_stack"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.internal_heap",
+      "profile": "all",
+      "category": "memory",
+      "feature": "Internal heap free/largest",
+      "source": "sim/heap_model.cpp",
+      "model": "sim/heap_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-memory-webui-post394.txt",
+      "assertions": [
+        "heap.free",
+        "heap.largest"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.dma_heap",
+      "profile": "all",
+      "category": "memory",
+      "feature": "DMA-capable internal pool",
+      "source": "include/FurbleUIMemory.h",
+      "model": "sim/heap_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-memory-webui-post394.txt",
+      "assertions": [
+        "heap.largest"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.psram_heap",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "PSRAM pool",
+      "source": "sim/heap_model.cpp",
+      "model": "sim/heap_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-psram-octal-sticks3.txt",
+      "assertions": [
+        "heap.spiram_present",
+        "heap.spiram_free"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.psram_absent",
+      "profile": "core",
+      "category": "memory",
+      "feature": "No PSRAM",
+      "source": "sim/heap_model.cpp",
+      "model": "sim/heap_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-psram-absent-core.txt",
+      "assertions": [
+        "heap.spiram_present"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.psram_init_fail",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "PSRAM init failure",
+      "source": "sim/heap_model.cpp",
+      "model": "sim/heap_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-psram-init-fail.txt",
+      "assertions": [
+        "heap.spiram_state"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.psram_stack_flash",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "PSRAM stack during flash write",
+      "source": "sim/heap_model.cpp",
+      "model": "sim/heap_model.cpp",
+      "scenario": "sim/scripts/check-hardware-quirks.sh",
+      "assertions": [
+        "SIM FAIL"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.fragmentation",
+      "profile": "all",
+      "category": "memory",
+      "feature": "Largest block/fragmentation",
+      "source": "sim/memory_profile.cpp",
+      "model": "sim/memory_profile.cpp",
+      "scenario": "sim/scenarios/e2e/hw-memory-post394-budget.txt",
+      "assertions": [
+        "mem.high_water_largest"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.leaks",
+      "profile": "all",
+      "category": "memory",
+      "feature": "Tagged leak detection",
+      "source": "sim/main.cpp",
+      "model": "sim/main.cpp",
+      "scenario": "sim/scenarios/e2e/hw-memory-post394-budget.txt",
+      "assertions": [
+        "mem.leaks"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.failure_injection",
+      "profile": "all",
+      "category": "memory",
+      "feature": "Exact-size failure injection",
+      "source": "sim/heap_model.cpp",
+      "model": "sim/heap_model.cpp",
+      "scenario": "sim/scenarios/e2e/memory-webui-pre-gate-alloc.txt",
+      "assertions": [
+        "heap.alloc_failures",
+        "heap.last_failed_task"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.timeline",
+      "profile": "all",
+      "category": "memory",
+      "feature": "Heap timeline",
+      "source": "sim/memory_profile.cpp",
+      "model": "sim/memory_profile.cpp",
+      "scenario": "sim/scenarios/e2e/hw-memory-post394-budget.txt",
+      "assertions": [
+        "mem.timeline_samples"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.task_stacks",
+      "profile": "all",
+      "category": "memory",
+      "feature": "Task stacks",
+      "source": "sim/freertos.cpp",
+      "model": "sim/freertos.cpp",
+      "scenario": "sim/scenarios/e2e/hw-memory-post394-budget.txt",
+      "assertions": [
+        "mem.tasks"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.lvgl_single_buffer",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "Single LVGL buffer",
+      "source": "plans/305-general-internal-ram.md",
+      "model": "sim/memory_profile.cpp",
+      "scenario": "sim/scenarios/e2e/hw-memory-post394-budget.txt",
+      "assertions": [
+        "mem.component.lvgl_draw"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.main_stack_8k",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "Main stack 8 KiB",
+      "source": "release-gate target",
+      "model": "sim/memory_profile.cpp",
+      "scenario": "sim/scenarios/e2e/hw-memory-post394-budget.txt",
+      "assertions": [
+        "mem.component.main_stack"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.companion_3k",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "Companion stack 3 KiB",
+      "source": "release-gate target",
+      "model": "sim/memory_profile.cpp",
+      "scenario": "sim/scenarios/e2e/hw-memory-post394-budget.txt",
+      "assertions": [
+        "mem.component.companion_task"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.mqtt_buffer_limit",
+      "profile": "all",
+      "category": "memory",
+      "feature": "MQTT buffers <=2048",
+      "source": "release-gate target",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-memory-mqtt-10k-success.txt",
+      "assertions": [
+        "mqttmodel.buffer"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.mqtt_ha",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "HA discovery 8 KiB transient",
+      "source": "release-gate target",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-memory-mqtt-ha-ok.txt",
+      "assertions": [
+        "mqttmodel.ha",
+        "mqttmodel.ha_peak"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "boundary.headless_ui",
+      "profile": "headless-s3",
+      "category": "display",
+      "feature": "Display-less production UI",
+      "source": "src/main.cpp FURBLE_NO_DISPLAY",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-headless.txt",
+      "assertions": [
+        "hw.display"
+      ],
+      "status": "approximate",
+      "note": "SDL still brings up a panel; profile/memory/radio state is modeled.",
+      "missing_evidence": "A headless simulator build or headless host contract."
+    },
+    {
+      "id": "boundary.waveshare_eth",
+      "profile": "waveshare-s3-eth",
+      "category": "radio",
+      "feature": "W5500 production driver",
+      "source": "src/FurbleEthernet.cpp",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-profile-waveshare.txt",
+      "assertions": [
+        "net.ethernet"
+      ],
+      "status": "approximate",
+      "note": "Link state only; W5500 SPI is not linked.",
+      "missing_evidence": "A Waveshare/headless build with a W5500 double."
+    },
+    {
+      "id": "boundary.ir_driver",
+      "profile": "core",
+      "category": "peripheral",
+      "feature": "IR RMT driver",
+      "source": "src/FurbleIR.cpp",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-audio-ir-sd-faults.txt",
+      "assertions": [
+        "ir.state"
+      ],
+      "status": "approximate",
+      "note": "IR state/timeout modeled; RMT not linked.",
+      "missing_evidence": "Compile FurbleIR.cpp with an RMT double."
+    },
+    {
+      "id": "boundary.sd_driver",
+      "profile": "core",
+      "category": "peripheral",
+      "feature": "SD writer driver",
+      "source": "src/FurbleSD.cpp",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-audio-ir-sd-faults.txt",
+      "assertions": [
+        "sd.state"
+      ],
+      "status": "approximate",
+      "note": "SD state modeled; SPI/SD not linked.",
+      "missing_evidence": "Compile FurbleSD.cpp with a filesystem double."
+    },
+    {
+      "id": "boundary.audio_driver",
+      "profile": "core",
+      "category": "peripheral",
+      "feature": "Speaker driver",
+      "source": "src/FurbleFeedback.cpp",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-audio-ir-sd-faults.txt",
+      "assertions": [
+        "audio.state"
+      ],
+      "status": "approximate",
+      "note": "Audio state modeled; M5 speaker not linked.",
+      "missing_evidence": "Compile FurbleFeedback.cpp with the M5 speaker double."
+    },
+    {
+      "id": "boundary.companion_gatt",
+      "profile": "sticks3",
+      "category": "radio",
+      "feature": "CompanionGatt service",
+      "source": "src/FurbleCompanion.cpp",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-ble-auth-gatt-reidentify.txt",
+      "assertions": [
+        "companion.state"
+      ],
+      "status": "approximate",
+      "note": "Auth/cache/reidentify modeled; CompanionGatt not linked.",
+      "missing_evidence": "Compile FurbleCompanion.cpp against MockNimBLE server support."
+    },
+    {
+      "id": "boundary.tls_socket",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "mbedTLS/socket allocations",
+      "source": "src/FurbleWebUI.cpp",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-memory-webui-post394.txt",
+      "assertions": [
+        "heap.largest"
+      ],
+      "status": "approximate",
+      "note": "Gate/task stacks modeled; TLS/sockets not linked.",
+      "missing_evidence": "Host WebUI build with real TLS or hardware heap trace."
+    },
+    {
+      "id": "boot.settings_migration",
+      "profile": "sticks3",
+      "category": "boot",
+      "feature": "Settings marker migration from a pre-marker store",
+      "source": "plans/99-boot-time.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-boot-settings-migration.txt",
+      "assertions": [
+        "boot.defaults_marker",
+        "boot.default_scans"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "boot.failed_default_seed",
+      "profile": "sticks3",
+      "category": "boot",
+      "feature": "Failed default seed retries on the next boot",
+      "source": "plans/99-boot-time.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-boot-settings-migration.txt",
+      "assertions": [
+        "boot.marker_written",
+        "boot.default_scans"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "boot.wifi_fast_connect",
+      "profile": "sticks3",
+      "category": "radio",
+      "feature": "Fast connect and moved-AP fallback scan",
+      "source": "plans/99-boot-time.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-boot-wifi-fast-connect.txt",
+      "assertions": [
+        "wifi.fast_connect",
+        "wifi.scans"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "boot.psram_memtest_debug",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "Debug PSRAM memtest kept",
+      "source": "sdkconfig.spiram-memtest",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-boot-psram-memtest-debug.txt",
+      "assertions": [
+        "boot.psram_memtest",
+        "boot.profile"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "boot.psram_memtest_release",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "Release PSRAM memtest skipped",
+      "source": "sdkconfig.m5stick-s3",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-boot-psram-memtest-release.txt",
+      "assertions": [
+        "boot.psram_memtest",
+        "boot.profile"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.main_stack_8k_webui",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "8 KiB main stack with WebUI identity task",
+      "source": "perf/boot-time and perf/mqtt-ha-memory",
+      "model": "sim/memory_profile.cpp",
+      "scenario": "sim/scenarios/e2e/hw-memory-webui-identity.txt",
+      "assertions": [
+        "mem.component.main_stack",
+        "mem.component.webui_tls"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.single_lvgl_buffer",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "Single LVGL buffer DMA serialization on narrow panels",
+      "source": "perf/mqtt-ha-memory",
+      "model": "sim/memory_profile.cpp",
+      "scenario": "sim/scenarios/e2e/hw-display-single-buffer.txt",
+      "assertions": [
+        "ui.draw_buffers",
+        "ui.flush_serialized"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.mqtt_start_gate_below",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "MQTT start gate just below 8192/4096",
+      "source": "perf/mqtt-ha-memory",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-mqtt-start-gate-below.txt",
+      "assertions": [
+        "mqttmodel.start_gate",
+        "mqttmodel.state"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.mqtt_start_gate_at",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "MQTT start gate at 8192/4096",
+      "source": "perf/mqtt-ha-memory",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-mqtt-start-gate-at.txt",
+      "assertions": [
+        "mqttmodel.start_gate",
+        "mqttmodel.state"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.mqtt_start_gate_above",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "MQTT start gate above 8192/4096",
+      "source": "perf/mqtt-ha-memory",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-mqtt-start-gate-above.txt",
+      "assertions": [
+        "mqttmodel.start_gate",
+        "mqttmodel.state"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.mqtt_discovery_gate_below",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "HA discovery gate just below 10240/4096",
+      "source": "perf/mqtt-ha-memory",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-mqtt-discovery-gate-below.txt",
+      "assertions": [
+        "mqttmodel.discovery_gate",
+        "mqttmodel.state"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.mqtt_discovery_gate_at",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "HA discovery gate at 10240/4096",
+      "source": "perf/mqtt-ha-memory",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-mqtt-discovery-gate-at.txt",
+      "assertions": [
+        "mqttmodel.discovery_gate",
+        "mqttmodel.state"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.mqtt_discovery_gate_above",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "HA discovery gate above 10240/4096",
+      "source": "perf/mqtt-ha-memory",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-mqtt-discovery-gate-above.txt",
+      "assertions": [
+        "mqttmodel.discovery_gate",
+        "mqttmodel.state"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.mqtt_ha_cache",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "Cached MQTT_HA setting invalidation",
+      "source": "perf/mqtt-ha-memory",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-mqtt-ha-cache-toggle.txt",
+      "assertions": [
+        "mqttmodel.ha_cache",
+        "mqttmodel.ha"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.mqtt_discovery_fragments",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "3,005-byte retained discovery payload fragments over 1,536",
+      "source": "perf/mqtt-ha-memory",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-mqtt-ha-discovery-fragments.txt",
+      "assertions": [
+        "mqttmodel.discovery_fragments",
+        "mqttmodel.buffer"
+      ],
+      "status": "modeled"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+# 8 KiB main stack with a separate WebUI identity task.
+seed hw_profile sticks3
+seed heap_internal_free 27351
+seed heap_internal_largest 25588
+seed web_ui true
+seed webui_password true
+seed wifi_connected true
+wait 100
+assert mem.component.main_stack 8192
+assert mem.component.webui_tls 12288
+assert mem.component.webui_supervisor 3072
+assert webui.supervisor created
+assert webui.server running
+assert ui.draw_buffers 1
+assert ui.flush_serialized yes
+exit

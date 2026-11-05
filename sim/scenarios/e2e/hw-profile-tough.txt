@@ -1,0 +1,25 @@
+# M5Tough profile model. Tough shares Core2 but uses LDO3 for backlight.
+seed hw_profile tough
+wait 100
+assert hw.profile tough
+assert hw.mcu esp32
+assert hw.flash_kb 16384
+assert hw.pmic axp192
+assert hw.display 320x240
+assert hw.touch yes
+assert hw.sd yes
+assert hw.audio yes
+assert hw.rtc yes
+assert mem.internal_total 532480
+assert mem.component.lvgl_draw 20480
+assert hw.usb uart
+assert hw.wifi yes
+assert hw.ethernet no
+assert hw.ble yes
+assert hw.gauge voltage_current
+assert hw.psram absent
+assert mem.psram_total 0
+assert hw.ir yes
+assert pmic.watchdog unavailable
+assert mem.component.main_stack 16384
+exit

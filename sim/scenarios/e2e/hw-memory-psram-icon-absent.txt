@@ -1,0 +1,15 @@
+# 12,291-byte icon decode without PSRAM.
+#
+# Plan 31 recorded `Mem alloc fail. size 0x3003 caps 0x00001800` when a
+# compressed icon was inflated on the internal pool. The model reproduces the
+# exact size and capability token, and the UI stays alive.
+seed hw_profile core
+seed heap_internal_free 10000
+seed heap_internal_largest 8000
+wait 100
+action alloc-icon
+assert alloc.icon failed
+assert heap.alloc_failures 1
+assert heap.last_failed_task icon_decode
+assert ui.page main
+exit
