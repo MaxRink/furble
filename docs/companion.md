@@ -65,6 +65,22 @@ firmware drops the stale bond for the old address before starting security.
 This handles macOS LE address rotation without leaving a permanently unusable
 bond. Reopen companion mode and retry if a client still holds an old bond.
 
+### Recovering a stale host GATT cache
+
+CoreBluetooth caches the GATT handle map per peripheral. A firmware update that
+moves characteristics (for example the bench-only debug service) can leave the
+host writing CCCD values to handles that no longer exist. The firmware no
+longer sends a Service Changed indication during authentication because
+CoreBluetooth reacts by rediscovering services while the auth exchange is in
+flight, which intermittently dropped the auth write or the first status
+notifications.
+
+Use the debug console command `companion reidentify` when the host keeps using
+an old handle map. It disconnects the current link, drops only the companion
+bond (camera bonds are untouched), rotates the LE address, and reopens the 60
+second pairing window. The host then sees a new peripheral identity and builds
+a fresh cache. Pair once more with the companion password.
+
 Camera IDs are stable across catalog reordering and deletion. Selection is the
 same in-memory Multi-Connect target set used by the on-device Cameras page. A
 scan updates only transient scan results, so it does not hide saved cameras.
@@ -153,6 +169,27 @@ peripheral UUID rather than a BLE MAC address, so `--device` accepts the UUID
 from `scan` or an advertised name substring. No camera needs to be attached for
 status and power monitoring; camera command success cannot be certified from a
 bench without a real camera.
+
+## BLE debug status (bench image)
+
+`pio run -e m5stick-s3-debug-ble` adds a read-only BLE status service for
+bench debugging. It is deliberately unencrypted and is not part of the
+production companion contract. The service answers even when companion auth,
+the host GATT cache, or the USB CDC endpoint is broken.
+
+- service `b57f4f70-087b-4740-b71d-8262cf26ebbc`
+- status `b57f4f72-087b-4740-b71d-8262cf26ebbc` (read)
+
+The snapshot reports reset reason, uptime, task count, internal/PSRAM free and
+largest blocks, bond count, BLE connections, and the companion enabled/
+connected/encrypted/authenticated/bond/window/advertising state. Enable
+Companion mode so the service exists, then run:
+
+```sh
+python3 -m pip install bleak
+tools/ble_debug.py --device furble-38a70 --status
+tools/ble_debug.py --device furble-38a70 --status --interval 5
+```
 
 ## Battery observation run
 

@@ -73,6 +73,13 @@ class CompanionGatt: public NimBLEServerCallbacks,
   bool hasBond(void) const;
   bool isPairingWindow(void) const;
   bool isAdvertising(void) const;
+
+  /**
+   * Debug-console recovery: rotate the LE address and drop the companion bond
+   * so the host rebuilds its cached GATT handle map, then reopen the pairing
+   * window. Camera bonds are untouched.
+   */
+  bool reidentify(void);
   bool hasPendingPairing(void) const;
   uint32_t getPendingPairingPin(void) const;
   void confirmPairing(bool accept);
@@ -157,8 +164,6 @@ class CompanionGatt: public NimBLEServerCallbacks,
   // The GATT database may change across a firmware update. Send the standard
   // Service Changed indication to a bonded central once per boot so macOS
   // rebuilds its cached handle map before the next session.
-  bool m_ServiceChangedPending = false;
-  uint64_t m_ServiceChangedAt = 0;
   bool m_PairingWindow = false;
   bool m_CompanionConnected = false;
   bool m_CompanionEncrypted = false;

@@ -364,6 +364,9 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
 
   private func handleAuth(_ data: Data) {
     if let result = try? FurbleProtocol.decodeAuthResult(data) {
+      if ProcessInfo.processInfo.environment["FURBLE_COMPANION_DEBUG"] != nil {
+        FileHandle.standardError.write(Data("[ble] auth result=\(result)\n".utf8))
+      }
       guard authExchange.resultReceived() else { fail(.malformedPacket); return }
       guard result == FurbleProtocol.authResultAuthenticated ||
         result == FurbleProtocol.authResultNotRequired else {
@@ -388,6 +391,9 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
       fail(.malformedPacket)
       return
     }
+    if ProcessInfo.processInfo.environment["FURBLE_COMPANION_DEBUG"] != nil {
+      FileHandle.standardError.write(Data("[ble] auth challenge\n".utf8))
+    }
     // The firmware retries a challenge indication when the first one raced the
     // CCCD subscription. A duplicate is harmless; ignore it instead of failing
     // a session that may already have sent its proof.
@@ -396,6 +402,9 @@ public final class FurbleBLEClient: NSObject, ObservableObject {
       case .writeAuthentication(let proof) = command else {
       fail(.authenticationUnavailable)
       return
+    }
+    if ProcessInfo.processInfo.environment["FURBLE_COMPANION_DEBUG"] != nil {
+      FileHandle.standardError.write(Data("[ble] auth proof write\n".utf8))
     }
     guard let packet = try? FurbleProtocol.encodeAuthProof(proof) else {
       fail(.authenticationUnavailable)
@@ -669,10 +678,11 @@ extension FurbleBLEClient: @preconcurrency CBPeripheralDelegate {
       }
       // The false half of the re-subscribe is expected; only the enabled state
       // sends the begin packet. CoreBluetooth reports the local notification
-      // state before the peripheral has processed the CCCD write, so give the
-      // link a short settle window before asking for the challenge.
+      // state before the peripheral has processed the CCCD write, so leave a
+      // full second for the CCCD to land. A shorter window intermittently sent
+      // the begin write before the peripheral had an auth subscriber.
       if characteristic.isNotifying {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self, weak peripheral] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self, weak peripheral] in
           guard let self, let peripheral, self.isCurrent(peripheral), self.authBeginPending else {
             return
           }

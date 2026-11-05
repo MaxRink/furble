@@ -51,41 +51,50 @@ StickS3 on internal-heap-tight master:
   therefore logged `attr_handle=8, not found`, the characteristic never
   recorded the subscription, and the HMAC auth indications failed with
   `BLE_HS_ENOENT` on the connections that happened to hit this path.
-- Send the standard Service Changed indication once per boot after a bonded
-  central encrypts. macOS caches the GATT handle map and can keep writing the
-  old Auth CCCD handle after a firmware update, which looks like a lost auth
-  challenge. The CLI also re-asserts the Auth notification subscription before
-  writing the begin packet instead of trusting a cached `isNotifying`.
+- Re-assert the Auth notification subscription in the macOS CLI before writing
+  the begin packet instead of trusting a cached `isNotifying`.
+- Do not send a Service Changed indication during authentication. CoreBluetooth
+  responds by rediscovering services while the auth exchange is in flight,
+  which intermittently dropped the auth write or the first status notification.
+  A host with a genuinely stale handle map uses `companion reidentify` instead.
+- Preserve the link encryption state in `onConnect()`. NimBLE can deliver the
+  encryption-change callback before the connect callback for a bonded central;
+  the old hardcoded `false` assignments then made the first auth write look
+  unencrypted and it was silently ignored. The flags now come from `connInfo`,
+  and `onAuthenticationComplete()` remains the normal path when encryption
+  finishes after connect.
 
 ## Validation
 
 - Host suite and pre-review on the branch.
 - On the StickS3: `companion stop` -> `companion start` repeated ten times
   without a panic; `perf heap` recorded before and after each transition.
-- Repeated BLE `status` cycles from the macOS CLI were partial: link encryption
-  and several sessions authenticated, but the host GATT cache produced
-  HMAC-auth timeouts (see the known limit below). USB `scan`, `status`,
-  `cameras`, a 35-minute monitor, and the password-authenticated BLE flow all
-  passed. With companion and autoconnect both enabled, the device booted into
+- Repeated BLE `status` cycles from the macOS CLI now pass 10/10 after the
+  `onConnect()` encryption-state fix, with the auth subscription re-asserted
+  and a 0.3 s settle window before the begin packet. USB `scan`, `status`,
+  `cameras`, a 35-minute monitor, and wrong-password rejection all passed. With
+  companion and autoconnect both enabled, the device booted into
   `state: connecting` with 27 KiB internal free and no panic (issue #353).
 - Clean stop leaves the persisted setting false and `companion.enabled: false`.
 
-## Known host-cache limit
+## Host-cache recovery
 
-macOS CoreBluetooth can keep a GATT handle map from an older firmware. When it
-writes a CCCD to the cached handle, the device logs `subscribe event;
-attr_handle=8, not found`, no characteristic records the subscription, and the
-auth/status notifications are lost even though link encryption and the HMAC
-password path succeed. The device now sends the standard Service Changed
-indication after the subscription settles, but a host that subscribed to a
-stale handle cannot receive it. Clearing the host pairing is the reliable
-recovery. `blueutil --unpair` is experimental on macOS 26 and did not remove the
-`nimble` entry here, so the remaining validation step is a manual
-System Settings removal or a fresh host.
+The observed `Companion auth write len=2` followed by no challenge was not a
+lost GATT cache. The device accepted the encrypted bond, but `onConnect()`
+re-cleared `m_CompanionEncrypted`/`m_CompanionAuthenticated` after NimBLE had
+already delivered `onAuthenticationComplete()`. `CompanionService::handleAuth()`
+therefore ignored the begin packet as unencrypted. The flags now inherit
+`connInfo.isEncrypted()`/`isBonded()` in `onConnect()`; the normal
+encryption-after-connect path still sets them in `onAuthenticationComplete()`.
 
-The address-rotation policy itself is unchanged: a different identity address
-outside the pairing window is still rejected, because accepting an arbitrary new
-bond would let any nearby central pair without the window.
+The remaining `subscribe event; attr_handle=8, not found` line is the standard
+GAP Service Changed CCCD, which is not part of the application service vector.
+It is unrelated to companion auth.
+
+For a host that genuinely has a stale handle map from an older firmware layout,
+`companion reidentify` rotates the LE address and drops the companion bond
+without touching camera bonds. Clearing the host pairing is then no longer
+required, and the host builds a fresh GATT cache.
 
 ## Power-monitor note
 

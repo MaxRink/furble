@@ -1014,6 +1014,13 @@ int cmdCompanion(int argc, char **argv) {
     printf("companion: disabled\n");
     return 0;
   }
+  if ((argc == 2) && !strcasecmp(argv[1], "reidentify")) {
+    if (!CompanionGatt::getInstance().reidentify()) {
+      return fail("companion reidentify failed");
+    }
+    printf("companion: address rotated, pairing window open for 60 s\n");
+    return 0;
+  }
   if ((argc == 2) && !strcasecmp(argv[1], "status")) {
     printf("companion.setting: %s\n", boolStr(Settings::load<Settings::COMPANION>()));
     printf("companion.enabled: %s\n", boolStr(CompanionGatt::getInstance().isEnabled()));
@@ -3291,7 +3298,7 @@ const esp_console_cmd_t COMMANDS[] = {
     command("ui", "ui audit | page | back", cmdUI),
     command("cameras", "cameras list | status", cmdCameras),
     command("companion",
-            "companion start | stop | status | password set | clear | status",
+            "companion start | stop | status | reidentify | password set | clear | status",
             cmdCompanion),
     command("connect", "connect [index], no index uses the multi-connect selection", cmdConnect),
     command("pair", "pair <scan index>, onboard a camera from 'scan list'", cmdPair),
