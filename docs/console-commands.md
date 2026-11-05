@@ -43,7 +43,7 @@ About page and exposed through companion BLE Device Information.
 | `motion` | `status` for the motion source, or `scale [0.25-4.0]` to calibrate it. |
 | `time` | `status` reports wall-clock validity and source; `flush` persists it. |
 | `settings` | `list`, `get <name>`, `set <name> <value>`. |
-| `companion` | `start` (open the 60 s pairing window), `stop`, `status`, or `password set <pw>`, `clear`, `status`. |
+| `companion` | `start` (open the 60 s pairing window), `stop`, `status`, `reidentify` (rotate the LE address and drop the companion bond), or `password set <pw>`, `clear`, `status`. |
 | `ui` | `audit`, `page`, or `back` for UI diagnostics and navigation. |
 | `cameras` | `list` saved cameras, or `status` for the active targets. |
 | `connect` | `connect [index]`. No index uses the multi-connect selection. |
@@ -143,6 +143,10 @@ setting, its default, and when it applies.
   leaves the persisted setting off.
 - `companion stop` persists the setting off and stops the live service
   synchronously.
+- `companion reidentify` is the recovery path for a host that keeps using a
+  stale GATT handle map. It disconnects the companion link, deletes the saved
+  companion bond (camera bonds are untouched), generates a new random static LE
+  address, and opens the 60 s pairing window. The host must pair again.
 - `companion status` prints `companion.setting` (the persisted value),
   `companion.enabled` (the live service), `companion.bond` (a saved peer exists),
   `companion.window` (the 60 s pairing window is open) and

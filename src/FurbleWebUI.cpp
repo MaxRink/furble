@@ -211,6 +211,12 @@ void WebUI::reloadSetting(void) {
       m_CredentialsReady.store(false);
     } else if (!m_Certificate.empty() && !m_PrivateKey.empty()) {
       m_CredentialsReady.store(true);
+    } else if (!enabled) {
+      // Do not spend a 12 KiB internal task and an NVS write while the WebUI
+      // is off. When it is enabled at runtime, this path runs again and uses
+      // the one-shot task; a first-time enable is best done before boot so
+      // initEarly() can generate the identity with the full heap.
+      m_CredentialsReady.store(false);
     } else {
       // Generate off the caller's task. The console and companion tasks do not
       // have the stack for ECDSA/X.509 generation, and the supervisor must stay

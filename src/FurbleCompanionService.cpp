@@ -157,7 +157,6 @@ void CompanionService::onDisconnected(void) {
   releaseHeldCommands();
 }
 
-
 void CompanionService::reloadPassword(void) {
   std::string password;
   const bool loaded = Settings::loadPassword(password);
@@ -583,6 +582,8 @@ void CompanionService::handleCameras(const uint8_t *data, size_t len) {
 
 void CompanionService::handleAuth(const uint8_t *data, size_t len) {
   if (!m_Transport.isEncrypted() || !m_Transport.isAuthenticated() || data == nullptr) {
+    ESP_LOGW(LOG_TAG, "Companion auth write ignored encrypted=%d authenticated=%d",
+             m_Transport.isEncrypted() ? 1 : 0, m_Transport.isAuthenticated() ? 1 : 0);
     return;
   }
 

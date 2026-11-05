@@ -235,6 +235,10 @@ budget table, setup, certificate verification and the route contract.
 
 ### Debug builds (developers)
 
+`pio run -e m5stick-s3-debug-ble` adds a read-only, unencrypted BLE status
+service for bench diagnosis; `tools/ble_debug.py` reads it with `bleak`. It is
+not part of the production companion contract.
+
 Every board has an optional `<board>-debug` environment, for example
 `m5stick-s3-debug`. These are built with `build_type = debug` and with
 `LOG_LOCAL_LEVEL=ESP_LOG_VERBOSE`, so `ESP_LOGD` and `ESP_LOGV` in furble
