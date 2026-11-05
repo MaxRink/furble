@@ -175,6 +175,10 @@ void CompanionGatt::enable(bool pairingWindow) {
   // on its next tick.
   if (startPairing) {
     startPairingWindow();
+  } else if ((m_Task == nullptr) && hasBond()) {
+    // Task creation failed, so there is no service task to own the first
+    // reconnect. Start it here; this path cannot race the missing task.
+    startReconnectAdvertising();
   }
 }
 
@@ -314,12 +318,14 @@ void CompanionGatt::clearWhitelist(void) {
 }
 
 void CompanionGatt::stopAdvertising(void) {
+  const std::lock_guard<std::recursive_mutex> lock(m_AdvertisingMutex);
   if ((m_Advertising != nullptr) && m_Advertising->isAdvertising()) {
     m_Advertising->stop();
   }
 }
 
 void CompanionGatt::startPairingWindow(bool allowNewWindow) {
+  const std::lock_guard<std::recursive_mutex> advertisingLock(m_AdvertisingMutex);
   if (!m_Enabled || (m_Advertising == nullptr) || (m_Server == nullptr)) {
     return;
   }
@@ -385,6 +391,7 @@ void CompanionGatt::startPairingWindow(bool allowNewWindow) {
 }
 
 void CompanionGatt::startReconnectAdvertising(void) {
+  const std::lock_guard<std::recursive_mutex> advertisingLock(m_AdvertisingMutex);
   NimBLEAddress bondAddress;
   {
     const std::lock_guard<std::mutex> lock(m_BondMutex);
@@ -513,37 +520,39 @@ void CompanionGatt::serviceTask(void) {
     enum class AdvertisingAction { NONE, STOP, PAIR, RECONNECT, EXPIRE };
     AdvertisingAction action = AdvertisingAction::NONE;
     {
-      const std::lock_guard<std::mutex> lock(m_Mutex);
-      const bool advertising = (m_Advertising != nullptr) && m_Advertising->isAdvertising();
-      if (m_PairingWindow && (now >= m_PairingDeadlineMs)) {
-        m_PairingWindow = false;
-        action = AdvertisingAction::EXPIRE;
-      } else if (Scan::getInstance().isActive()) {
-        action = AdvertisingAction::STOP;
-      } else if (m_PairingWindow && !m_CompanionConnected && !advertising) {
-        action = AdvertisingAction::PAIR;
-      } else if (!m_CompanionConnected && !m_PairingWindow && hasBond() && !advertising) {
-        action = AdvertisingAction::RECONNECT;
+      const std::lock_guard<std::recursive_mutex> advertisingLock(m_AdvertisingMutex);
+      {
+        const std::lock_guard<std::mutex> lock(m_Mutex);
+        const bool advertising = (m_Advertising != nullptr) && m_Advertising->isAdvertising();
+        if (m_PairingWindow && (now >= m_PairingDeadlineMs)) {
+          m_PairingWindow = false;
+          action = AdvertisingAction::EXPIRE;
+        } else if (Scan::getInstance().isActive()) {
+          action = AdvertisingAction::STOP;
+        } else if (m_PairingWindow && !m_CompanionConnected && !advertising) {
+          action = AdvertisingAction::PAIR;
+        } else if (!m_CompanionConnected && !m_PairingWindow && hasBond() && !advertising) {
+          action = AdvertisingAction::RECONNECT;
+        }
+      }
+      switch (action) {
+        case AdvertisingAction::EXPIRE:
+          stopAdvertising();
+          startReconnectAdvertising();
+          break;
+        case AdvertisingAction::STOP:
+          stopAdvertising();
+          break;
+        case AdvertisingAction::PAIR:
+          startPairingWindow(false);
+          break;
+        case AdvertisingAction::RECONNECT:
+          startReconnectAdvertising();
+          break;
+        case AdvertisingAction::NONE:
+          break;
       }
     }
-    switch (action) {
-      case AdvertisingAction::EXPIRE:
-        stopAdvertising();
-        startReconnectAdvertising();
-        break;
-      case AdvertisingAction::STOP:
-        stopAdvertising();
-        break;
-      case AdvertisingAction::PAIR:
-        startPairingWindow(false);
-        break;
-      case AdvertisingAction::RECONNECT:
-        startReconnectAdvertising();
-        break;
-      case AdvertisingAction::NONE:
-        break;
-    }
-
     bool sendServiceChanged = false;
     {
       const std::lock_guard<std::mutex> lock(m_Mutex);
