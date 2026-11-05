@@ -73,6 +73,7 @@ carries the audit.
 | #399 | CONTRIBUTING did not document the hardware-coverage, memory-profile, full-permutation and flash-readiness workflow. | Fixed in this PR. Added the sim-first release-gate command block and the per-target evidence rule. | Doc review. |
 | #399 | `docs/sim-memory-profiler.md` said the crash record is 434 bytes; the layout is 436. | Fixed in this PR. Document now says 436 bytes. | `sizeof(CrashRecord::record_t)` layout and the simulator scenario assertion. |
 | #402 | Add the required plan record for the host link fix. | Fixed in this PR. Recorded here and in plan 99: CrashLogSim is the single `furble_sim_crash_log_capture` definition; the duplicate stub is removed. | Host build links `sim_scheduler_test`; full CTest. |
+| #402 | Full CTest exposed a `sim-scheduler` flake: the watchdog-style `try_lock` report can return "lock held" under parallel load, so one sample lacked `wait=mutex`. | Fixed in this PR. The test retries the report against a real deadline instead of treating one unavailable sample as a missing waiter. | `sim-scheduler` 50/50 repeated runs and a full parallel CTest. |
 | Policy | No merge before every review finding is fixed or proven false/outdated with evidence; the remediation PR must pass the online thread check. | Fixed in this PR. Added `tools/check_review_threads.py`, its unit tests, and CONTRIBUTING/AGENTS policy text. Not wired into offline pre-review or fork CI. | `tests/test_check_review_threads.py`; run the tool against the PR before merge. |
 
 ## Verification commands
