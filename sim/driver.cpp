@@ -380,6 +380,11 @@ void validateSeed(const std::string &name, const std::string &value) {
     return;
   }
 
+  if (name == "saved_cameras") {
+    parseUnsigned(value);
+    return;
+  }
+
   if (name == "watchdog") {
 #if defined(FURBLE_M5STICKS3)
     if (!booleanSeedValue(value)) {

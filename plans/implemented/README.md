@@ -36,12 +36,14 @@ stay in the parent [`plans/`](../README.md) directory.
 | [118-sim-mqtt-transport.md](118-sim-mqtt-transport.md) | 118 - Optional simulator MQTT transport |
 | [119-companion-gatt-sim.md](119-companion-gatt-sim.md) | Plan 119: companion GATT host coverage |
 | [12-display-off.md](12-display-off.md) | True display off, blind remote mode, longer timeouts |
+| [120-sim-multiconnect-coverage.md](120-sim-multiconnect-coverage.md) | Multi-camera survivor, reconnect, and selection-page coverage |
 | [121-sim-usage-fault-docs.md](121-sim-usage-fault-docs.md) | PR121: simulator usage and fault-injection reference |
 | [122-gps-sim-stability.md](122-gps-sim-stability.md) | 122 - GPS simulator stability and coherent snapshots |
 | [123-host-task-lifecycle.md](123-host-task-lifecycle.md) | 123 - Host control task lifecycle |
 | [124-sim-incremental-deps.md](124-sim-incremental-deps.md) | 124 - Reliable incremental simulator builds |
 | [126-settings-handle-concurrency.md](126-settings-handle-concurrency.md) | 126 - Concurrent settings handles |
 | [127-dev-version-identity.md](127-dev-version-identity.md) | 127 - Development firmware revision identity |
+| [127-reproducible-builds.md](127-reproducible-builds.md) | Reproducible firmware builds |
 | [129-m5-dependencies-idf55.md](129-m5-dependencies-idf55.md) | M5 dependency compatibility slice |
 | [13-auto-off-low-batt.md](13-auto-off-low-batt.md) | Auto power off, low battery actions |
 | [130-espressif32-613-idf553.md](130-espressif32-613-idf553.md) | Espressif32 6.13.0 and ESP-IDF 5.5.3 |
@@ -74,6 +76,7 @@ stay in the parent [`plans/`](../README.md) directory.
 | [172-sim-cancel-sweep.md](172-sim-cancel-sweep.md) | Simulator reproduction of the 2026-09-04 cancel wedge and a certified cancel sweep |
 | [174-coverage-empty-profiles.md](174-coverage-empty-profiles.md) | 174 - two host suites that measured nothing under coverage |
 | [175-coverage-crash-output.md](175-coverage-crash-output.md) | 175 - Coverage crash output |
+| [176-android-camera-catalog.md](176-android-camera-catalog.md) | Android camera characteristic discovery, stable-ID catalog, controls, and bounded protocol decoding |
 | [176-sim-task-notifications.md](176-sim-task-notifications.md) | 176 - Simulator task notifications |
 | [178-sim-startup-settings-order.md](178-sim-startup-settings-order.md) | 178 - simulator startup settings order |
 | [20-imu-hw-motion.md](20-imu-hw-motion.md) | PR20 - Hardware motion detection |
@@ -92,6 +95,7 @@ stay in the parent [`plans/`](../README.md) directory.
 | [296-companion-accuracy.md](296-companion-accuracy.md) | Carry the phone horizontal accuracy that the companion apps already send into the GPS fix and MQTT payload |
 | [298-pre-review-gate.md](298-pre-review-gate.md) | 298 - pre-review scanner gate |
 | [299-static-analysis-gate.md](299-static-analysis-gate.md) | cppcheck and clang-tidy on changed production sources, with the fixes and suppressions from the first full-tree pass |
+| [300-timezone-support.md](300-timezone-support.md) | Local civil time and vendor timezone fields, UTC stays the source of truth |
 | [35-exposure-presets.md](35-exposure-presets.md) | 35: Exposure time presets in 1/3 stops |
 | [36-camera-test-harness.md](36-camera-test-harness.md) | 36 - camera test harness: protocol tests without cameras |
 | [42-waveshare-eth-node.md](42-waveshare-eth-node.md) | 42 - Waveshare ESP32-S3-ETH wired MQTT node and display-less onboarding |

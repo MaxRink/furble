@@ -389,7 +389,8 @@ UI is constructed. These byte settings are:
 `brightness`, `inactivity`, `display_off`, `display_mode` (0 GUI, 1 console),
 `gps_rate`, `gps_constel`,
 `gps_power`, `gps_duty`, `gps_hold`, `cpu_freq`, `tx_power`, `scan_mode`,
-`text_size`, `legend`, `auto_off`, `low_batt`, `fb_output`, `hw_motion`, `gps_assist`
+`text_size`, `legend`, `timezone`, `auto_off`, `low_batt`, `fb_output`,
+`hw_motion`, `gps_assist`
 (0 off, 1 position and time, 2 with ephemeris), `gps_platform` (0 do not send,
 1 to 4 the dynamic models), and `imu_wake` (0 off, 1 tap, 2 shake, 3 both).
 
@@ -496,10 +497,13 @@ scenario is timed against. The knob is the peer's
 `FujifilmVirtualCamera::setSecureConnectionStallMs()`, shared with the host
 suite, which spends real milliseconds where the simulator spends virtual ones.
 
-The scenario-only settings are `saved_camera`, `connect_fail`, `no_touch`,
-`scan_start_probe`, `ble_saved`, `liveness_check`, and
+The scenario-only settings are `saved_camera`, `saved_cameras`, `connect_fail`,
+`no_touch`, `scan_start_probe`, `ble_saved`, `liveness_check`, and
 `liveness_grace_ms`. `saved_camera` adds an
-inactive saved camera, `connect_fail` registers one virtual Fujifilm peer and
+inactive saved camera, while `saved_cameras N` adds N saved FauxNY cameras with
+stable names `Sim Camera 1` through `Sim Camera N` for multi-connect selection
+scenarios (N is 1 through 8, the selection capacity). `connect_fail` registers
+one virtual Fujifilm peer and
 makes `NimBLEClient::connect()` fail at the transport (FauxNY has no radio to
 fail at), and
 `no_touch` selects the physical-button layout. `liveness_check
@@ -702,6 +706,7 @@ The complete `ui.*` query set is:
 | `ui.bulb_named` | `yes` or `no`. |
 | `ui.connect_timer` | `none`, `paused`, or `running`. |
 | `ui.connected` | `yes` or `no`. |
+| `ui.connect_count` | Number of cameras selected on the multi-connect page. |
 | `ui.page` | A page name, or `other`. |
 | `ui.back` | `none`, `hidden`, `disabled`, or `visible`. |
 | `ui.modal` | `open` or `closed` for either a camera-pairing or companion-pairing dialog. |
@@ -711,6 +716,7 @@ The complete `ui.*` query set is:
 | `ui.focus` | `none`, `stale`, or `ok`. |
 | `ui.focus_on_page` | `yes` or `no`. |
 | `ui.row_text` | Text of the focused menu row, or `none`. Every whitespace character is reported as an underscore, so a literal underscore and a space both read as `_`. |
+| `ui.row_checked` | `yes`, `no`, or `none`. Checked state of the focused multi-connect checkbox; `none` when the focused object is not a checkbox. |
 | `ui.row_scrolling` | `yes`, `no`, or `none`. Whether the focused menu row's label is running LVGL's scroll animation. |
 | `ui.diag.about.reset_visible` | About page only: `yes` when the rendered Reset label is visible and fully contained by the page viewport. |
 | `ui.overflow` | `unknown`, `yes`, or `no`. |

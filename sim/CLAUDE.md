@@ -854,10 +854,15 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   losing digits.
 - Scenario seams for the list pages: the `saved_camera` seed adds a saved but
   inactive camera so the Connect and Delete lists render and their buttons
-  enable; `ui.row_text` reports the focused row's text with whitespace as
+  enable; `saved_cameras N` adds N saved FauxNY cameras with stable
+  `Sim Camera 1..N` labels for multi-connect selection coverage;
+  `ui.row_text` reports the focused row's text with whitespace as
   underscores, since a scenario expected value is a single token;
-  `ui.row_scrolling` reports whether that row's label is running LVGL's scroll
-  animation, so a scenario proves a composed name fits rather than assuming it;
+  `ui.row_checked` reports the focused multi-connect checkbox state, or `none`
+  when focus is not on a checkbox; `ui.connect_count` reports the selected
+  camera count; `ui.row_scrolling` reports whether that row's label is running
+  LVGL's scroll animation, so a scenario proves a composed name fits rather
+  than assuming it;
   the `nav` action reaches `scan`, `connect`, `delete`, `infrared`,
   `feedback` and `storage` in addition to the settings pages. `nav level_main`
   clicks the home menu Level entry (plan 153), which is a second button onto

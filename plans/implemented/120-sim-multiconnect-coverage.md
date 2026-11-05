@@ -1,11 +1,13 @@
 # 120 - Sim multiconnect coverage
 
-Status: partially implemented. The real-Control panel is complete:
+Status: implemented. The real-Control panel is complete:
 `control_e2e` scenario `multi-connect-fujifilm` drops one of two targets, proves
 the survivor keeps firing, waits for the per-device reconnect, asserts the
 sleep-lock balance, and now models the hardware self-delete path and reaps the
-dropped client before asserting no client leak. The SDL selection-UI assertions
-remain.
+dropped client before asserting no client leak. The SDL selection-UI half is
+also complete: `e2e/multiconnect-selection-three.txt` walks three saved FauxNY
+cameras through the physical-button selection page, connects all three, drops
+one, and asserts the `1/3` reconnect count plus survivor shutter routing.
 
 ## Motivation
 
@@ -119,3 +121,30 @@ survivor stays live and fires, per-device reconnect, no leak) headless.
   hardware confirms the UI renders the count; note in the PR body that true
   two-real-camera behavior is covered by the mock peer, per the repo's
   one-Fujifilm constraint.
+
+## Implementation state
+
+The SDL selection-UI half landed after the real-Control half.
+
+- `e2e/multiconnect-selection-three.txt` is certified for the 135x240
+  M5StickS3 build. It seeds three saved FauxNY cameras with stable names,
+  enables Multi-Connect through its production switch, and walks the real
+  physical previous/select buttons. It asserts each row's checkbox state and
+  the selection count at every step, reaches `Connect 3`, connects all three,
+  drops one target, and proves `ui.reconnect_count 1/3` while the two survivors
+  still fire the shutter. It then waits for the third link to return and asserts
+  the count clears.
+- `seed saved_cameras N` creates one to eight saved FauxNY cameras with stable
+  `Sim Camera 1..N` rows. It is simulator-only and uses the `FURBLE_SIM` camera
+  rename seam; no production behavior changes.
+- `ui.row_checked` reports the focused multi-connect checkbox state (or `none`
+  when focus is not a checkbox), and `ui.connect_count` reports the selected
+  camera count. Both are query-only.
+- The existing `reconnect-multiconnect*.txt` survivor-shutter scenarios remain
+  the baseline and were not duplicated.
+
+Verification: the new scenario passes headless on the 135x240 build, the full
+`sim/scripts/run-e2e.sh` selection is unchanged apart from the new manifest
+entry, and `python3 tools/check_sim_scenarios.py` reports a complete manifest.
+No hardware gate applies to the selection-UI coverage itself; real multi-camera
+hardware remains limited to one Fujifilm body as above.

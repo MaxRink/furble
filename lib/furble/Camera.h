@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <functional>
 #include <mutex>
+#include <string>
 
 #include <NimBLEAddress.h>
 #include <NimBLEAttValue.h>
@@ -71,6 +72,19 @@ class Camera: public NimBLEClientCallbacks {
 
   /** Mark a scan-created camera saved after its record is persisted. */
   void markSaved(void);
+
+#if defined(FURBLE_SIM)
+  /**
+   * Rename a simulated camera.
+   *
+   * Multi-camera simulator fixtures need stable, distinct row labels so a
+   * scenario can assert each selection row. FauxNY normally derives its name
+   * from a random id, which makes a three-camera fixture collide about one run
+   * in fourteen. This is simulator-only; firmware and host builds do not see
+   * it.
+   */
+  void simSetName(const std::string &name) { m_Name = name; }
+#endif
   enum class PairingType : uint8_t {
     NONE,
     PASSKEY_DISPLAY,

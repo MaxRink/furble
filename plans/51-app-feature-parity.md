@@ -457,7 +457,7 @@ the app PR that consumes it.
    catalog. The Apple client lists the catalog, supports selection,
    connect-selected and disconnect, and renders live state. The Android
    implementation is recorded in
-   [176-android-camera-catalog.md](176-android-camera-catalog.md).
+   [implemented/176-android-camera-catalog.md](implemented/176-android-camera-catalog.md).
    Both tabs are hidden entirely when feature bit 1 or the characteristic is
    absent.
 5. **Rig: scenarios and corpus.** Plans/29 phase 1 golden payloads gain the
