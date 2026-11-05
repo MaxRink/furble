@@ -227,11 +227,11 @@ void MQTT::reloadSetting(void) {
   }
 
   if (m_Task == nullptr) {
-    // Keep the proven 6 KiB owner stack. It overflows at 4 KiB during the
-    // first client start (before the idle high-water mark settles), and the
-    // 6 KiB owner plus the 4 KiB plain-MQTT worker fits once the general RAM
-    // pass has freed the display and task-stack headroom.
-    const BaseType_t result = xTaskCreate(taskEntry, "mqtt", 6144, this, 2, &m_Task);
+    // The owner handles the connected event, discovery and status JSON, so it
+    // needs more than the idle high-water mark suggests. Hardware overflowed
+    // at 4 KiB during start and at 6 KiB on the first connected event; keep
+    // 10 KiB and pair it with the 4 KiB plain-MQTT worker.
+    const BaseType_t result = xTaskCreate(taskEntry, "mqtt", 10240, this, 2, &m_Task);
     if (result != pdPASS) {
       m_Task = nullptr;
       ESP_LOGE(MQTT_LOG_TAG, "Failed to create MQTT task.");
