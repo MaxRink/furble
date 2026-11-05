@@ -32,6 +32,8 @@
 namespace Furble {
 namespace {
 
+// The device mount point is fixed. Host conformance targets override it to a
+// writable sandbox so the production writer runs over real POSIX I/O.
 #ifndef FURBLE_SD_MOUNT_POINT
 #define FURBLE_SD_MOUNT_POINT "/sd"
 #endif
