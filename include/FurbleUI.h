@@ -879,6 +879,13 @@ class UI {
   // Measured width of the floating right legend, or 0 where there is none.
   static int32_t m_LegendWidth;
 
+  // Display-coordinate vertical band the floating right legend occupies,
+  // measured with m_LegendWidth. Only rows whose box intersects this band keep
+  // the legend column clear; rows above or below it use the full page width.
+  // The band is empty (top > bottom) where there is no floating legend.
+  static int32_t m_LegendBandTop;
+  static int32_t m_LegendBandBottom;
+
   // Breathing room between a row and the legend beside it.
   static constexpr int32_t LEGEND_GAP = 2;
 
@@ -1226,6 +1233,34 @@ class UI {
   /** Pixels to keep clear on the right of a full width menu row. */
   static int32_t floatingIndicatorReserve(void);
   static void reserveLegendColumns(lv_obj_t *page);
+
+  /**
+   * Apply the floating right legend's column to every row of a page.
+   *
+   * A row whose box intersects the legend's measured vertical band is narrowed
+   * and shifted so the reservation sits beside the legend; every other row keeps
+   * the full page width. When `settle` is set the page layout is refreshed
+   * between rows so a height change from wrapping cannot leave the rows below it
+   * measured against stale coordinates. The scroll handler passes false and
+   * relies on the next scroll frame or scroll end for that correction.
+   *
+   * `pinBottom` is set only for a scroll-end pass: if the page was at its
+   * bottom before the widths changed, the new taller content is scrolled back
+   * to the bottom so a bottom gesture does not leave the last row clipped.
+   */
+  static void applyLegendBandWidths(lv_obj_t *page, bool settle, bool pinBottom = false);
+
+  /** True when the floating right legend overlaps the page at all. */
+  static bool hasFloatingLegendBand(void);
+
+  /** True when a row's box intersects the floating legend's vertical band. */
+  static bool rowIntersectsLegendBand(const lv_obj_t *row);
+
+  /** Re-read the floating legend's display-coordinate vertical band. */
+  void measureLegendBand(void);
+
+  /** Page scroll handler that re-applies the band-scoped row widths. */
+  static void legendBandScrollEvent(lv_event_t *e);
 
   /** Add a menu item. */
   static lv_obj_t *addMenuItem(const menu_t &menu,

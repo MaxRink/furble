@@ -634,6 +634,11 @@ The complete `ui.*` query set is:
 | `ui.nav_layout` | `touch` or `buttons`. |
 | `ui.legend_visible` | `yes` or `no`; Off hides indicator surfaces without disabling physical input targets. |
 | `ui.legend_visible_count` | Number of rendered primary left/OK/right indicator objects, measured after hidden ancestors and effective opacity. |
+| `ui.legend_band` | The floating right legend's display-coordinate vertical band as `top-bottom`, or `none` without a floating legend. |
+| `ui.legend_band_rows` | Number of visible direct page rows whose box intersects `ui.legend_band`. |
+| `ui.legend_band_outside_narrowed` | Number of visible direct page rows outside the band that are still narrowed. Must read `0`: rows above and below the band keep the full page width. |
+| `ui.legend_band_fit` | `ok` when every visible direct page row is full width outside the band and narrowed by the legend reserve inside it, `bad` otherwise, or `none` without a floating legend. |
+| `ui.page_row_widths` | Visible direct page rows as comma-separated `y1-y2:width`, or `none`. |
 | `ui.indicator_clearance` | `clear`, `overlap`, or `n/a`. |
 | `ui.indicator_overlaps` | Numeric count of widgets under an indicator. |
 | `ui.label_overlaps` | Numeric count of visible content-widget pairs on the current page that overlap: labels by their drawn text, plus rollers, sliders, switches, checkboxes and bars. |
@@ -817,6 +822,21 @@ three are in that band and a fitted page is structurally clear, while in the
 default Buttons placement the Right one is over the content area and the query
 is what proves each page keeps its column clear. `seed legend 0|1|2` selects it,
 and `bughunt/legend-bottom-*.txt` are the files that assert the other value.
+
+`ui.legend_band` exposes the measured display-coordinate vertical band the
+floating right legend actually occupies. The reservation is scoped to that
+band: a row level with it is narrowed by the legend width, while a row above or
+below it keeps the full page width. `ui.legend_band_fit` compares every visible
+direct page row against that rule and reads `ok` only when all of them agree;
+`ui.legend_band_rows` proves the check is not vacuous and
+`ui.legend_band_outside_narrowed` names the regression where a row away from
+the band still gives up width. `ui.page_row_widths` prints the measured
+`y1-y2:width` of each visible row for diagnosis. The band is re-applied on page
+load, on `LV_EVENT_SCROLL`, and again on `LV_EVENT_SCROLL_END`, so a row that
+scrolls into or out of the band gets the right width in the same gesture. The
+page-load pass is deferred once through `lv_async_call` because
+`lv_menu_set_page()` raises its value-changed event before refreshing the header
+mode, so the coordinates read inside that event are not yet final.
 
 `ui.label_overlaps` reports how many pairs of visible content widgets on the
 current page draw through each other: labels by their drawn text extent, and the

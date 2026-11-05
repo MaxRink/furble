@@ -47,6 +47,14 @@ assert ui.page main
 # anything else.
 assert ui.label_overlaps 0
 assert ui.indicator_clearance clear
+# The floating legend's band is measured, not the page's whole lifetime. On this
+# panel the last home row is the only one level with it; the rows above keep the
+# full page width and do not wrap "Connect"/"Settings" for an empty column.
+assert ui.legend_band_fit ok
+assert_min ui.legend_band_rows 1
+assert ui.legend_band_outside_narrowed 0
+assert ui.cut_labels 0
+assert ui.overflow no
 
 # Display page.
 action nav display
@@ -59,8 +67,29 @@ assert ui.page display
 assert ui.label_overlaps 0
 assert ui.indicator_clearance clear
 
-# Sensors tile.
+# Settings grid. It is taller than the panel, so scroll it through the legend
+# band and require the reservation to follow the rows: whichever row is level
+# with the band is narrowed, every row above it keeps the full page width.
 action page settings
+wait 250
+assert ui.page settings
+assert ui.legend_band_fit ok
+assert_min ui.legend_band_rows 1
+assert ui.legend_band_outside_narrowed 0
+assert ui.cut_labels 0
+action scroll bottom
+wait 250
+assert ui.scroll_bottom 0
+assert ui.legend_band_fit ok
+assert_min ui.legend_band_rows 1
+assert ui.legend_band_outside_narrowed 0
+action scroll top
+wait 250
+assert ui.scroll_top 0
+assert ui.legend_band_fit ok
+assert ui.legend_band_outside_narrowed 0
+
+# Sensors tile.
 action nav sensors
 wait 150
 assert ui.page sensors
