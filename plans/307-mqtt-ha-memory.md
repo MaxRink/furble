@@ -37,7 +37,8 @@ control           8,192 stack, 7,468 used
 | Start gate before `esp_mqtt_client_init()` | fail closed instead of allocating into a low pool | Requires 8,192 free and 4,096 largest internal bytes. Below that the owner counts a failed attempt and the existing retry limit stops a hopeless start. | `MQTTMemory::startGate` |
 | Discovery gate before the HA tree | fail closed instead of crashing | Requires 10,240 free and 4,096 largest internal bytes. Below that only the optional retained discovery records are skipped. The broker link stays up. | `MQTTMemory::discoveryGate` |
 
-The steady internal saving with MQTT connected is:
+The steady internal saving with MQTT connected, against the measured build that
+already has the 10 KiB owner stack, is:
 
 ```text
 main stack            4,096

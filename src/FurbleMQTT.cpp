@@ -699,8 +699,7 @@ bool MQTT::startClient(void) {
   config.network.timeout_ms = 10000;
   config.buffer.size = MQTTMemory::BUFFER_SIZE;
   config.buffer.out_size = MQTTMemory::BUFFER_SIZE;
-  const bool secure =
-      (m_URISetting.rfind("mqtts://", 0) == 0) || (m_URISetting.rfind("wss://", 0) == 0);
+  const bool secure = (m_URI.rfind("mqtts://", 0) == 0) || (m_URI.rfind("wss://", 0) == 0);
   config.task.stack_size =
       secure ? MQTTMemory::TLS_WORKER_STACK_BYTES : MQTTMemory::PLAIN_WORKER_STACK_BYTES;
 
