@@ -12,10 +12,10 @@ using esp_mqtt_client_handle_t = esp_mqtt_client *;
 enum mqtt_event_id_t {
   MQTT_EVENT_ANY = -1,
   MQTT_EVENT_CONNECTED = 1,
-  MQTT_EVENT_DISCONNECTED,
-  MQTT_EVENT_DATA,
-  MQTT_EVENT_ERROR,
-  MQTT_EVENT_PUBLISHED,
+  MQTT_EVENT_DISCONNECTED = 2,
+  MQTT_EVENT_DATA = 3,
+  MQTT_EVENT_ERROR = 4,
+  MQTT_EVENT_PUBLISHED = 5,
 };
 
 constexpr int MQTT_PROTOCOL_V_3_1_1 = 4;
@@ -78,6 +78,9 @@ struct esp_mqtt_client_config_t {
     int size;
     int out_size;
   } buffer;
+  struct {
+    int stack_size;
+  } task;
 };
 
 extern "C" {

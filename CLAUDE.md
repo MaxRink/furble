@@ -118,6 +118,11 @@ CLAUDE.md whose directory it touches.
 - Run `python3 tools/pre_review.py --base origin/master` before pushing. It
   runs the diff hygiene, settings contract, and C++ safety scanners, the CI
   workflow and simulator manifest checks, and the scanner unit tests.
+- Run the MQTT memory-pressure scenarios with
+  `sh sim/scripts/run-memory.sh` after building the simulator with
+  `FURBLE_SIM_MQTT=1`. The script uses a closed local port, so no broker is
+  required. The default-build WebUI gate and crash-record scenarios run in
+  `sim/scripts/run-e2e.sh`.
 - Run `sh tools/run_sanitized_host_tests.sh --clean` when touching C++ state,
   containers, camera drivers, simulator fixtures, or filesystem lifecycle code.
 - `.github/workflows/pre-review.yml` runs the scanners on pull requests;

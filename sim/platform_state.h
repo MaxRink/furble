@@ -32,6 +32,13 @@ const char *downloadLockState(void);
 /** Return the last Platform::setDisplayOff input. */
 const char *displayOffState(void);
 
+/**
+ * Model a connected station so WebUI/MQTT network gates can be exercised on the
+ * host. The SDL build has no radio and reports WiFi disabled by default.
+ */
+void setWifiConnected(bool connected);
+bool wifiConnected(void);
+
 }  // namespace Furble::Sim
 
 #endif

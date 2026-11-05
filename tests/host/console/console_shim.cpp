@@ -1136,10 +1136,6 @@ bool CompanionGatt::isAdvertising(void) const {
   return ConsoleHost::misc().companionAdvertising;
 }
 
-void CompanionGatt::reloadPassword(void) {
-  ConsoleHost::misc().companionPasswordReloads++;
-}
-
 bool CompanionGatt::reidentify(void) {
   auto &state = ConsoleHost::misc();
   // Production rotates the LE address, drops the companion bond and reopens
@@ -1148,6 +1144,10 @@ bool CompanionGatt::reidentify(void) {
   state.companionWindow = state.companionEnabled;
   state.companionAdvertising = state.companionEnabled;
   return true;
+}
+
+void CompanionGatt::reloadPassword(void) {
+  ConsoleHost::misc().companionPasswordReloads++;
 }
 
 SD &SD::getInstance(void) {

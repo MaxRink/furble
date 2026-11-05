@@ -37,6 +37,7 @@ About page and exposed through companion BLE Device Information.
 | :--- | :--- |
 | `version` | Firmware and IDF version. |
 | `status` | State, targets, uptime, heap, battery, reset reason. |
+| `crash` | `crash [last]` prints the retained previous-boot crash record. See [crash diagnostics](crash-diagnostics.md). |
 | `power` | `stats`, or `log <seconds>` / `log off` for a CSV power log. |
 | `perf` | `tasks`, `heap`, or `lvgl [overlay on\|off]`. |
 | `gps` | GPS status and control, see below. |
@@ -120,6 +121,26 @@ On the display-less Waveshare ESP32-S3-ETH, `status` reports battery level and
 voltage as unknown (`-1`) and current as unavailable (`0`). It never infers USB
 or optional PoE power from Ethernet link state because the optional PoE HAT has
 no software-readable presence or negotiation signal.
+
+## crash
+
+`crash` and `crash last` print the record retained across the last reset:
+
+```text
+crash.summary: reset=panic task=mqtt uptime=312s heap_free=13543 heap_largest=12788 clean=no
+crash.reset: panic
+crash.task: mqtt
+crash.uptime: 312
+crash.heap_free: 13543
+crash.heap_largest: 12788
+crash.last_log: MQTT client start failed, attempt 10.
+```
+
+The firmware already prints the same block once at boot when the previous run
+ended unclean. The record is consumed after that print, so `crash` reports
+`crash.none: true` until a later reset produces a new one. The task and log tail
+are the last normal snapshot, not a guaranteed panic task. See
+[crash diagnostics](crash-diagnostics.md).
 
 ## settings
 

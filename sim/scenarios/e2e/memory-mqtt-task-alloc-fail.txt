@@ -1,0 +1,27 @@
+# MQTT owner-task allocation failure.
+#
+# The pre-#392 MQTT boot loop on the StickS3 was an allocation failure inside
+# esp_mqtt_client_start -> xTaskCreate at 0x1800, after the Furble MQTT owner
+# task had already taken its stack. This leg fails the owner task deliberately
+# and proves the firmware logs the failure and keeps the UI alive instead of
+# panicking or rebooting.
+#
+# Requires the native MQTT simulator build: FURBLE_SIM_MQTT=1.
+seed wifi_connected true
+seed task_create_fail mqtt
+wait 100
+
+assert heap.active yes
+assert heap.alloc_failures 1
+assert heap.last_failed_task mqtt
+assert mqtt.task failed
+assert mqtt.connected no
+assert ui.page main
+assert platform.watchdog armed
+
+wait 5000
+assert mqtt.task failed
+assert ui.page main
+assert platform.watchdog armed
+
+exit

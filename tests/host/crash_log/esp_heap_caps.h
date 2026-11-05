@@ -1,0 +1,28 @@
+#ifndef FURBLE_HOST_CRASH_ESP_HEAP_CAPS_H
+#define FURBLE_HOST_CRASH_ESP_HEAP_CAPS_H
+
+#include <cstddef>
+#include <cstdint>
+
+#define MALLOC_CAP_8BIT 0x0004
+#define MALLOC_CAP_INTERNAL 0x0800
+
+inline size_t &hostCrashHeapFree(void) {
+  static size_t value = 13543;
+  return value;
+}
+
+inline size_t &hostCrashHeapLargest(void) {
+  static size_t value = 12788;
+  return value;
+}
+
+inline size_t heap_caps_get_free_size(uint32_t) {
+  return hostCrashHeapFree();
+}
+
+inline size_t heap_caps_get_largest_free_block(uint32_t) {
+  return hostCrashHeapLargest();
+}
+
+#endif
