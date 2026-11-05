@@ -84,6 +84,20 @@ int main() {
   check(!CrashLog::recovered(), "a clean record is not reported");
   check(!captured("CRASH RECORD:"), "a clean boot does not print a crash headline");
 
+  // ANSI colour prefixes from the real ESP_LOG path are stripped before the
+  // line is retained, so the next boot prints readable crash lines.
+  CrashLog::hostReset();
+  hostCrashLogLines().clear();
+  hostCrashNowUs() = 4500000;
+  ESP_LOGE("test", "\x1b[0;31mred line\x1b[0m");
+  CrashLog::update();
+  check(std::string(CrashRecord::lastLogLine(*CrashLog::hostRecord())).find("red line")
+            != std::string::npos,
+        "ANSI-coloured log lines are retained");
+  check(std::string(CrashRecord::lastLogLine(*CrashLog::hostRecord())).find("\x1b")
+            == std::string::npos,
+        "ANSI escapes are stripped from the retained log");
+
   // The periodic snapshot carries the log tail and the current heap.
   CrashLog::hostReset();
   hostCrashLogLines().clear();

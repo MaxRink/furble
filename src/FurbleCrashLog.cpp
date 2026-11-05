@@ -51,6 +51,26 @@ void copyTaskName(char (&destination)[TASK_BYTES]) {
   std::snprintf(destination, TASK_BYTES, "%s", name);
 }
 
+/** Remove the ESP_LOG colour prefix/suffix so retained lines stay readable. */
+void stripAnsi(char *line) {
+  char *source = line;
+  char *destination = line;
+  while (*source != '\0') {
+    if ((source[0] == '\x1b') && (source[1] == '[')) {
+      source += 2;
+      while ((*source != '\0') && ((*source < '@') || (*source > '~'))) {
+        source++;
+      }
+      if (*source != '\0') {
+        source++;
+      }
+      continue;
+    }
+    *destination++ = *source++;
+  }
+  *destination = '\0';
+}
+
 void appendLine(const char *line) {
   if (line == nullptr || s_Printing) {
     return;
@@ -77,7 +97,10 @@ int logVprintf(const char *format, va_list args) {
       line[--length] = '\0';
     }
     if (length > 0) {
-      appendLine(line);
+      stripAnsi(line);
+      if (line[0] != '\0') {
+        appendLine(line);
+      }
     }
   }
   if (s_PreviousVprintf != nullptr) {
