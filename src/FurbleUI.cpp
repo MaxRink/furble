@@ -2325,7 +2325,7 @@ bool UI::rowIntersectsLegendBand(const lv_obj_t *row) {
   return (area.y2 >= m_LegendBandTop) && (area.y1 <= m_LegendBandBottom);
 }
 
-void UI::applyLegendBandWidths(lv_obj_t *page, bool settle, bool pinBottom) {
+void UI::applyLegendBandWidths(lv_obj_t *page, bool settle, bool pinBottom, bool labels) {
   if ((page == nullptr) || !lv_obj_is_valid(page)) {
     return;
   }
@@ -2399,6 +2399,12 @@ void UI::applyLegendBandWidths(lv_obj_t *page, bool settle, bool pinBottom) {
           lv_obj_set_style_translate_x(row, translate, LV_PART_MAIN);
         }
       }
+      if (!labels) {
+        // Mid-gesture passes change only the row box. Label widths, long modes
+        // and button wrapping all invalidate or re-measure text and can change
+        // a row's height, so they wait for the scroll-end settle.
+        continue;
+      }
       // A row that owns a horizontal control (the Feedback output roller, a
       // slider or a roller row) keeps its own internal layout. Narrowing the row
       // is still required for the legend column; only the label rewrap below is
@@ -2466,9 +2472,8 @@ void UI::legendBandDeferred(void *arg) {
   }
   lv_obj_remove_flag(page, LV_OBJ_FLAG_USER_4);
   // A mid-gesture pass only updates the row boxes. It must not settle the
-  // layout or pin the bottom; both belong to SCROLL_END, where no gesture is
-  // active.
-  applyLegendBandWidths(page, false, false);
+  // layout, pin the bottom or touch label modes; those belong to SCROLL_END.
+  applyLegendBandWidths(page, false, false, false);
 }
 
 void UI::legendBandScrollEvent(lv_event_t *e) {

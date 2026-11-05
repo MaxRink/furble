@@ -1209,10 +1209,10 @@ The fix measures the legend's display-coordinate band once, at the same point
 `m_LegendWidth` is sampled, and narrows only a row whose box intersects it.
 Rows outside the band keep `lv_obj_get_content_width(page)`. The band is
 re-evaluated after scrolling. A `LV_EVENT_SCROLL` frame only queues one
-coalesced async row-width pass; it does not settle the layout or pin the bottom.
-`LV_EVENT_SCROLL_END` performs the full settle and pin. Neither path mutates row
-geometry inside the scroll callback, so a row cannot change height under the
-user's finger. The follow-up review of PR #367 also refreshes the
+coalesced async row-width/translation pass; it does not touch label widths or
+long modes, settle the layout or pin the bottom. `LV_EVENT_SCROLL_END` performs
+the full settle, label pass and pin. Neither path mutates row geometry inside
+the scroll callback, so a row cannot change height under the user's finger. The follow-up review of PR #367 also refreshes the
 cached band after `applyLevelRotation()` re-anchors the floating legend for
 landscape.
 Width and translate writes are guarded by the current value so a repeated event

@@ -1254,14 +1254,17 @@ class UI {
    * the full page width. When `settle` is set the page layout is refreshed
    * between rows so a height change from wrapping cannot leave the rows below it
    * measured against stale coordinates. SCROLL frames only queue a coalesced
-   * async pass; SCROLL_END settles, so the page never reflows inside the
-   * scroll callback.
+   * row-width/translation pass (`labels` false); SCROLL_END settles and updates
+   * label modes, so the page never reflows inside the scroll callback.
    *
    * `pinBottom` is set only for a scroll-end pass: if the page was at its
    * bottom before the widths changed, the new taller content is scrolled back
    * to the bottom so a bottom gesture does not leave the last row clipped.
    */
-  static void applyLegendBandWidths(lv_obj_t *page, bool settle, bool pinBottom = false);
+  static void applyLegendBandWidths(lv_obj_t *page,
+                                    bool settle,
+                                    bool pinBottom = false,
+                                    bool labels = true);
 
   /** True when the floating right legend overlaps the page at all. */
   static bool hasFloatingLegendBand(void);
