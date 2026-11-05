@@ -12,10 +12,11 @@ seed mqtt_ha true
 seed mqtt_buffer 2048
 wait 100
 assert mqttmodel.state created
-assert mqttmodel.ha failed
+assert mqttmodel.ha blocked
 assert mqttmodel.ha_peak 0
+assert mqttmodel.discovery_gate closed
 assert heap.free 1664
-assert heap.alloc_failures 1
-assert heap.last_failed_task mqtt_ha_discovery
+assert heap.alloc_failures 0
+assert heap.last_failed_task none
 assert ui.page main
 exit

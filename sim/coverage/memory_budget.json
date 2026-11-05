@@ -23,7 +23,7 @@
       "min_internal_free": 1664,
       "min_internal_largest": 1664,
       "max_leaks": 0,
-      "min_alloc_failures": 1
+      "min_alloc_failures": 0
     },
     "hw-memory-mqtt-ha-ok": {
       "min_internal_free": 13015,
