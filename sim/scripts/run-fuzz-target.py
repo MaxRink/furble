@@ -140,24 +140,30 @@ def run_scenarios(result: Result, scenarios: list[str], sim: Path = DEFAULT_SIM)
 
 
 def run_ui(result: Result, physical: bool) -> None:
-    binary = DEFAULT_SIM
-    if not binary.is_file():
-        result.failures += 1
-        result.output.append(f"missing simulator binary: {binary}")
-        return
-    env = {
-        "SDL_VIDEODRIVER": "dummy",
-        "SDL_AUDIODRIVER": "dummy",
-        "FURBLE_SIM_BIN": str(binary),
-        "FURBLE_FUZZ_SEEDS": " ".join(str(seed) for seed in SEEDS["ui"]["full"]),
-        "FURBLE_FUZZ_STEPS": str(SEEDS["ui"]["full_steps"]),
-        "FURBLE_FUZZ_REPEAT_SEED": "31337",
-    }
-    if physical:
-        env["FURBLE_SIM_NO_TOUCH"] = "1"
-    run(result, ["sh", "sim/scripts/run-fuzz.sh"], env=env,
-        seeds=len(SEEDS["ui"]["full"]),
-        iterations=len(SEEDS["ui"]["full"]) * SEEDS["ui"]["full_steps"], timeout=3600)
+    binaries = [
+        DEFAULT_SIM,
+        ROOT / "sim/build-stickc/furble-sim",
+        ROOT / "sim/build-core/furble-sim",
+    ]
+    for binary in binaries:
+        if not binary.is_file():
+            result.failures += 1
+            result.output.append(f"missing simulator binary: {binary}")
+            continue
+        env = {
+            "SDL_VIDEODRIVER": "dummy",
+            "SDL_AUDIODRIVER": "dummy",
+            "FURBLE_SIM_BIN": str(binary),
+            "FURBLE_FUZZ_SEEDS": " ".join(str(seed) for seed in SEEDS["ui"]["full"]),
+            "FURBLE_FUZZ_STEPS": str(SEEDS["ui"]["full_steps"]),
+            "FURBLE_FUZZ_REPEAT_SEED": "31337",
+        }
+        if physical:
+            env["FURBLE_SIM_NO_TOUCH"] = "1"
+        run(result, ["sh", "sim/scripts/run-fuzz.sh"], env=env,
+            seeds=len(SEEDS["ui"]["full"]),
+            iterations=len(SEEDS["ui"]["full"]) * SEEDS["ui"]["full_steps"], timeout=3600)
+    # The hardware-model scenarios name the StickS3 panel explicitly.
     run_scenarios(result, ["sim/scenarios/e2e/hw-buttons-event-count.txt"])
     if not physical:
         run_scenarios(result, ["sim/scenarios/e2e/hw-display-single-buffer.txt"])

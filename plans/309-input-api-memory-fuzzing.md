@@ -2,7 +2,7 @@
 
 Status: implemented on `fuzz/input-api-memory`, rebased on #399 and merged with
 the #397 and #398 production branches for the combined-tree run. The full fuzz
-corpus passes: 10 targets, 104 seed runs, 50,746 iterations, zero failures. The
+corpus passes: 10 targets, 136 seed runs, 89,146 iterations, zero failures across all three panel binaries and both layouts. The
 #393/#398 MQTT owner stack and HA discovery OOM are now fixed and carry
 regressions. The flash-readiness gate remains blocked only on the non-fuzz
 approximate hardware entries, the full permutation run and the memory profile
