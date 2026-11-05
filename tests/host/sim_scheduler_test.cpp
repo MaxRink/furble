@@ -1822,8 +1822,3 @@ int main() {
   furble_sim_reset_tasks();
   return 0;
 }
-
-// The scheduler test links the simulator heap model so task-create charges are
-// the same as the built simulator. It does not exercise crash records, so the
-// log capture hook only needs to satisfy the linker.
-extern "C" void furble_sim_crash_log_capture(const char *, const char *, va_list) {}
