@@ -19,6 +19,7 @@ std::vector<host_mqtt::PublishedMessage> g_Retained;
 esp_mqtt_client_handle_t g_Client = nullptr;
 int g_StartCount = 0;
 int g_NextMessageID = 1;
+int g_LastTaskStackSize = 0;
 
 bool topicMatches(const std::string &filter, const std::string &topic) {
   auto levels = [](const std::string &value) {
@@ -266,6 +267,10 @@ void emitStaleData(const std::string &topic, const std::string &payload) {
        payload_copy.data(), static_cast<int>(payload_copy.size()));
 }
 
+int lastTaskStackSize(void) {
+  return g_LastTaskStackSize;
+}
+
 void emitStaleDisconnect(void) {
   static esp_mqtt_client stale_client;
   if (g_Client != nullptr) {
@@ -283,6 +288,7 @@ extern "C" esp_mqtt_client_handle_t esp_mqtt_client_init(const esp_mqtt_client_c
   }
   auto *client = new esp_mqtt_client;
   client->config = *config;
+  g_LastTaskStackSize = config->task.stack_size;
   g_Client = client;
   return client;
 }

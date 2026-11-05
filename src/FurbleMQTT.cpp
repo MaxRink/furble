@@ -226,7 +226,11 @@ void MQTT::reloadSetting(void) {
   }
 
   if (m_Task == nullptr) {
-    const BaseType_t result = xTaskCreate(taskEntry, "mqtt", 6144, this, 2, &m_Task);
+    // The owner task only parses commands and drives the state machine; its
+    // measured high-water mark is under 1 KiB. Keep the internal stack small
+    // so esp-mqtt's own task can still find a contiguous block on the 8 MB
+    // StickS3, where WiFi, BLE and the display leave about 13 KiB free.
+    const BaseType_t result = xTaskCreate(taskEntry, "mqtt", 4096, this, 2, &m_Task);
     if (result != pdPASS) {
       m_Task = nullptr;
       ESP_LOGE(MQTT_LOG_TAG, "Failed to create MQTT task.");
@@ -635,6 +639,12 @@ bool MQTT::startClient(void) {
   config.network.timeout_ms = 10000;
   config.buffer.size = 2048;
   config.buffer.out_size = 2048;
+  // Plain MQTT does not need the TLS-sized 6 KiB client task. Keep TLS builds
+  // at the default; on the StickS3 the 4 KiB plain-MQTT task is what makes the
+  // difference between a working broker link and an allocation panic at boot.
+  const bool secure =
+      (m_URISetting.rfind("mqtts://", 0) == 0) || (m_URISetting.rfind("wss://", 0) == 0);
+  config.task.stack_size = secure ? 6144 : 4096;
 
   esp_mqtt_client_handle_t client = esp_mqtt_client_init(&config);
   if (client == nullptr) {

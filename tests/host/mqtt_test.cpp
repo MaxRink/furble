@@ -181,6 +181,8 @@ int main(void) {
   // step rather than running broker work on the callback stack.
   mqtt.hostTaskStep();
   require(host_mqtt::startCount() == 1, "MQTT client did not start after Ethernet GOT_IP");
+  require(host_mqtt::lastTaskStackSize() == 4096,
+          "plain MQTT client task did not use the 4 KiB internal stack");
   require(mqtt.isConnected(), "MQTT client did not process the connected event");
 
   const std::string root_topic = "furble/hub-42";

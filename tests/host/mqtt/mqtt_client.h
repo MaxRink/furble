@@ -78,6 +78,9 @@ struct esp_mqtt_client_config_t {
     int timeout_ms;
   } network;
   struct {
+    int stack_size;
+  } task;
+  struct {
     int size;
     int out_size;
   } buffer;
@@ -119,6 +122,7 @@ void emitDataBurst(const std::string &topic, const std::string &payload, size_t 
 void emitRawDataBurst(const std::string &topic, const std::string &payload, size_t count);
 void emitStaleData(const std::string &topic, const std::string &payload);
 void emitStaleDisconnect(void);
+int lastTaskStackSize(void);
 
 }  // namespace host_mqtt
 
