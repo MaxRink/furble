@@ -51,7 +51,10 @@ background session, or other client without a usable system pairing prompt can
 connect. Just Works does not provide link-level man-in-the-middle protection.
 The companion password is the application authentication layer: set one with
 `companion password set` before using the app in an untrusted area, and the
-firmware rejects commands until the HMAC exchange succeeds.
+firmware rejects commands until the HMAC exchange succeeds. The challenge and
+result packets use the Auth characteristic's notification path; the client
+subscribes before writing the begin packet, and the firmware re-sends a
+challenge that receives no proof.
 
 When the pairing window is open and the peer presents a new LE address, the
 firmware drops the stale bond for the old address before starting security.
@@ -125,7 +128,9 @@ The CLI also has a USB CDC transport for the StickS3 console:
   --interval 5 --duration 3600 --csv > usb-power.csv
 ```
 
-USB supports `scan`, `status`, `cameras`, `monitor`, and `password status`.
+USB supports `scan`, `status`, `cameras`, `monitor`, and `password status`. CSV
+rows are written per sample, so a redirected monitor can be tailed and keeps the
+samples already collected if it is interrupted.
 `location` and `trigger` stay on BLE because the console has no equivalent
 command. The USB monitor reads `status` and `gps` from the console and writes
 the same CSV columns as the BLE monitor, so the plotter is shared. USB charging
