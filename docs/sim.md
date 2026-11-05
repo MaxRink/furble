@@ -1017,6 +1017,7 @@ The other namespaces are:
   terminating the process, so the scenario can assert shutdown ordering.
 - `platform.download_lock` reports the StickS3 PMIC long-press download lock as
   `unlocked` or `locked`. Firmware boot is required to leave this `unlocked`.
+
 - `boot_settings_imu` reports `1` or `0` for the `IMU` setting loaded at the
   simulated platform construction boundary.
 - `boot_settings_fb_output` reports the numeric `FB_OUTPUT` value loaded at
