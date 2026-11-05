@@ -19,6 +19,11 @@ browser shows a first-use warning. Compare its SHA-256 fingerprint with the
 `webui` fingerprint printed on the USB log before accepting it. Use `furble` as
 the HTTP username and the companion password as the password.
 
+On the M5StickS3 debug image, WiFi plus the Bluetooth controller leaves about
+6.8 KiB of internal RAM free. The current WebUI supervisor and HTTPS task need
+about 20 KiB, so enabling `web_ui` there can reset the device before the console
+is ready. Use a Core2 or the headless S3 profile until plan 304 lands.
+
 The server stays closed when the WebUI setting is off, WiFi has no address, the
 companion password is unset or unreadable, or the TLS identity cannot be loaded.
 Changing the companion password remains a USB console or provisioning action.
