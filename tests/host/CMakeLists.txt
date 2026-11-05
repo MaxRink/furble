@@ -278,6 +278,11 @@ target_include_directories(webui_security_test PRIVATE ${FURBLE_ROOT}/include)
 target_compile_options(webui_security_test PRIVATE -Wall -Wextra -Werror)
 add_test(NAME webui-security COMMAND webui_security_test)
 
+add_executable(ui_memory_test ui_memory_test.cpp)
+target_include_directories(ui_memory_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(ui_memory_test PRIVATE -Wall -Wextra -Werror)
+add_test(NAME ui-memory COMMAND ui_memory_test)
+
 add_executable(webui_handler_test
                webui_handler_test.cpp
                webui/webui_platform_stubs.cpp

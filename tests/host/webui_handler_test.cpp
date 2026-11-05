@@ -5,6 +5,8 @@
 #include "FurbleControl.h"
 #include "FurbleSettings.h"
 #include "FurbleWebUI.h"
+#include "FurbleWebUIMemory.h"
+#include "esp_heap_caps.h"
 #include "esp_http_server.h"
 #include "esp_timer.h"
 
@@ -39,6 +41,7 @@ int main() {
   control.reset();
   host_webui_http::reset();
   host_webui_timer::reset();
+  host_webui_heap::reset();
   Furble::Settings::password = "correct horse";
   Furble::Settings::passwordLoaded = true;
 
@@ -60,6 +63,28 @@ int main() {
   check(Preferences::values.size() == 2, "the certificate and key were persisted");
   webui.hostResetIdentity();
   check(webui.hostCredentialsReady(), "a persisted identity is reused");
+
+  // The heap gate must refuse the server before allocating its task, and a
+  // failed start due to memory pressure must not throw away the persisted
+  // identity. Regeneration would add NVS writes to an already low heap.
+  const auto persistedIdentity = Preferences::values;
+  host_webui_heap::set(Furble::WebUIMemory::SERVER_INTERNAL_FREE_FLOOR - 1,
+                       Furble::WebUIMemory::SERVER_INTERNAL_LARGEST_FLOOR);
+  check(!webui.hostStartServer("test certificate", "test key"),
+        "the WebUI started below the internal free floor");
+  host_webui_heap::set(Furble::WebUIMemory::SERVER_INTERNAL_FREE_FLOOR,
+                       Furble::WebUIMemory::SERVER_INTERNAL_LARGEST_FLOOR - 1);
+  check(!webui.hostStartServer("test certificate", "test key"),
+        "the WebUI started below the largest-block floor");
+  host_webui_heap::reset();
+  host_webui_http::setStartError(ESP_ERR_NO_MEM);
+  check(!webui.hostStartServer("test certificate", "test key"),
+        "a simulated out-of-memory start succeeded");
+  host_webui_http::setStartError(ESP_OK);
+  webui.hostResetIdentity();
+  check(webui.hostCredentialsReady(), "an out-of-memory start discarded the identity");
+  check(Preferences::values == persistedIdentity,
+        "an out-of-memory start rewrote the persisted identity");
   webui.hostResetIdentity();
 
   check(webui.hostStartServer("test certificate", "test key"), "real WebUI server did not start");

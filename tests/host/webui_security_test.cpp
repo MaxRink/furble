@@ -2,6 +2,7 @@
 #include <iostream>
 #include <limits>
 
+#include "FurbleWebUIMemory.h"
 #include "FurbleWebUIProtocol.h"
 
 namespace {
@@ -42,6 +43,24 @@ int main() {
   check(!holdExpired(0, 2000, false), "manual release did not invalidate an old hold wake");
   check(!holdExpired(3000, 2000, false), "an old wake released a newer timed hold");
   check(!holdExpired(1000, 2000, true), "an active replacement hold was released");
+
+  using namespace Furble::WebUIMemory;
+  check(serverFits(SERVER_INTERNAL_FREE_FLOOR, SERVER_INTERNAL_LARGEST_FLOOR),
+        "the exact server memory floor was rejected");
+  check(!serverFits(SERVER_INTERNAL_FREE_FLOOR - 1, SERVER_INTERNAL_LARGEST_FLOOR),
+        "the server started one byte below the free floor");
+  check(!serverFits(SERVER_INTERNAL_FREE_FLOOR, SERVER_INTERNAL_LARGEST_FLOOR - 1),
+        "the server started below the largest-block floor");
+  check(supervisorFits(SUPERVISOR_INTERNAL_FREE_FLOOR, SUPERVISOR_INTERNAL_LARGEST_FLOOR),
+        "the exact supervisor memory floor was rejected");
+  check(!supervisorFits(SUPERVISOR_INTERNAL_FREE_FLOOR - 1, SUPERVISOR_INTERNAL_LARGEST_FLOOR),
+        "the supervisor started one byte below the free floor");
+  check(!supervisorFits(SUPERVISOR_INTERNAL_FREE_FLOOR, SUPERVISOR_INTERNAL_LARGEST_FLOOR - 1),
+        "the supervisor started below the largest-block floor");
+  static_assert(HTTPD_STACK_BYTES >= 6144,
+                "a TLS handshake needs at least 6 KiB of internal stack");
+  static_assert(SERVER_INTERNAL_FREE_FLOOR > HTTPD_STACK_BYTES,
+                "the free floor must cover more than the httpd stack");
 
   if (failures != 0) {
     return 1;

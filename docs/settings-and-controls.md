@@ -338,7 +338,11 @@ board.
 `WebUI` is an 8 MB and 16 MB profile setting with wire id 62. It defaults Off
 and applies immediately. Set `web_ui` from the USB console, provisioning, or an
 already authenticated WebUI. The HTTPS server also requires a loaded non-empty
-companion password. See [WebUI and REST API](webui.md).
+companion password and enough internal RAM; below the floor the setting stays
+On but the server stays closed and logs the measured budget. The TLS identity is
+created at the next boot when possible; enabling the WebUI for the first time
+after boot uses a short one-shot task, and the log asks for a reboot if that
+task cannot be allocated. See [WebUI and REST API](webui.md).
 
 - **Bulb duration** default 30 seconds. Set it under the connected `Bulb` page,
   `Bulb` > `Duration`. Restart to change is not needed. The value is remembered

@@ -482,6 +482,12 @@ void app_main() {
 
   Furble::Device::init(Furble::Settings::load<esp_power_level_t>(Furble::Settings::TX_POWER));
   Furble::BootScreen::step("Bluetooth");
+#if defined(FURBLE_WEBUI) && FURBLE_WEBUI
+  // Prepare the TLS identity while the main task still has its full internal
+  // stack and before WiFi/display allocations fragment the heap. The identity
+  // generation writes NVS, which must run on an internal stack anyway.
+  Furble::WebUI::initEarly();
+#endif
   Furble::Companion::getInstance().init();
   Furble::BootScreen::step("Companion");
 #if defined(FURBLE_MQTT) && FURBLE_MQTT
