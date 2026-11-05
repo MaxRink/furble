@@ -2440,12 +2440,15 @@ void UI::applyLegendBandWidths(lv_obj_t *page, bool settle, bool pinBottom, bool
             lv_label_set_long_mode(child, LV_LABEL_LONG_WRAP);
           }
         }
-        if ((widthChanged || rowInBand) && (reserve > 0)
-            && lv_obj_check_type(row, &lv_button_class)) {
+        if ((widthChanged || rowInBand) && (reserve > 0) && lv_obj_check_type(row, &lv_button_class)
+            && !lv_obj_has_flag(child, LV_OBJ_FLAG_USER_2)) {
           // A narrowed button label must wrap inside the smaller button instead
-          // of clipping "Restart to apply" to "Restart to a".
+          // of clipping "Restart to apply" to "Restart to a". Mark it so a
+          // settle pass does not request another pass on every iteration.
+          lv_obj_add_flag(child, LV_OBJ_FLAG_USER_2);
           lv_obj_set_width(child, LV_PCT(100));
           lv_label_set_long_mode(child, LV_LABEL_LONG_WRAP);
+          widthChangedAny = true;
         }
       }
     }
