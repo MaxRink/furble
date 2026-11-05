@@ -166,6 +166,9 @@ class Settings {
   static void reset(void);
   static bool mqttEnabled;
   static bool mqttHA;
+  // Counts the host double's MQTT_HA reads so a test can prove the owner uses
+  // the cached value instead of touching settings on every event.
+  static uint32_t mqttHALoads;
   static bool gpsEnabled;
   static bool reconnect;
   static std::string mqttURI;
@@ -250,6 +253,7 @@ inline std::string Settings::load<Settings::MQTT_BASE>() {
 }
 template <>
 inline bool Settings::load<Settings::MQTT_HA>() {
+  mqttHALoads++;
   return mqttHA;
 }
 

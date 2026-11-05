@@ -30,6 +30,8 @@
 #include "interval.h"
 #endif
 
+struct cJSON;
+
 namespace Furble {
 
 class MQTT {
@@ -169,7 +171,7 @@ class MQTT {
                               const std::string &device_id,
                               const std::string &name,
                               const std::string &via_device,
-                              const std::string &components);
+                              cJSON *components);
   void clearDiscoveryRecords(void);
 
   bool sendCommand(Control::cmd_t command);
@@ -241,7 +243,10 @@ class MQTT {
   std::vector<std::string> m_DiscoveredCameraIDs;
 
   // Settings are read once in reloadSetting() and reused by the 1 Hz task.
-  // The task used to load five NVS keys on every iteration (P-030).
+  // The task used to load five NVS keys on every iteration (P-030). MQTT_HA is
+  // cached too, so the connected event and the HA status replay do not touch
+  // NVS from the owner task.
+  std::atomic<bool> m_HomeAssistantCached = false;
   bool m_EnabledCached = false;
   std::string m_BaseSetting;
   std::string m_URISetting;

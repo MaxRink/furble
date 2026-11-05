@@ -5,6 +5,7 @@
 #include <deque>
 #include <vector>
 
+#include "esp_heap_caps.h"
 #include "esp_netif.h"
 #include "esp_timer.h"
 #include "freertos/task.h"
@@ -19,8 +20,34 @@ struct HostQueue {
 
 esp_netif_t g_Netif = {false, 0};
 bool g_HasNetif = false;
+size_t g_HeapFree = 100000;
+size_t g_HeapLargest = 50000;
 
 }  // namespace
+
+namespace host_mqtt_heap {
+
+void set(size_t freeBytes, size_t largestBlock) {
+  g_HeapFree = freeBytes;
+  g_HeapLargest = largestBlock;
+}
+
+void reset(void) {
+  g_HeapFree = 100000;
+  g_HeapLargest = 50000;
+}
+
+}  // namespace host_mqtt_heap
+
+extern "C" size_t heap_caps_get_free_size(uint32_t caps) {
+  (void)caps;
+  return g_HeapFree;
+}
+
+extern "C" size_t heap_caps_get_largest_free_block(uint32_t caps) {
+  (void)caps;
+  return g_HeapLargest;
+}
 
 namespace Furble {
 
@@ -89,6 +116,7 @@ void GPS::reset(void) {
 
 bool Settings::mqttEnabled = true;
 bool Settings::mqttHA = true;
+uint32_t Settings::mqttHALoads = 0;
 bool Settings::gpsEnabled = false;
 bool Settings::reconnect = false;
 std::string Settings::mqttURI = "mqtt://loopback";
@@ -105,6 +133,7 @@ interval_t Settings::interval = {
 void Settings::reset(void) {
   mqttEnabled = true;
   mqttHA = true;
+  mqttHALoads = 0;
   gpsEnabled = false;
   reconnect = false;
   mqttURI = "mqtt://loopback";

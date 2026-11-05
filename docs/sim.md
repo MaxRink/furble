@@ -452,13 +452,15 @@ companion password is set. The `webui_gate` seed value `off` skips the #392
 supervisor gate to model the pre-fix 8 KiB allocation. `wifi_connected` makes
 the station report a
 connected network so the WebUI and MQTT network gates can pass. The model runs
-the production gate functions from `include/FurbleWebUIMemory.h` and logs the
-production fail-closed sentence; it does not serve HTTPS, generate a TLS
-identity, or claim TLS parity. `task_create_fail` takes a FreeRTOS task name or
-`all` and fails that task's `xTaskCreate` with the hardware-shaped
-`Mem alloc fail` line, so a production failure branch can be exercised without
-depending on a heap size. The failure is reported by `heap.alloc_failures` and
-`heap.last_failed_task`.
+the production gate functions from `include/FurbleWebUIMemory.h` and
+`include/FurbleMQTTMemory.h` and logs the production fail-closed sentences; it
+does not serve HTTPS, generate a TLS identity, or claim TLS parity. When the
+MQTT start gate rejects the pool, the owner counts a deferred attempt and the
+esp-mqtt client task is never allocated, so `heap.alloc_failures` stays zero.
+`task_create_fail` takes a FreeRTOS task name or `all` and fails that task's
+`xTaskCreate` with the hardware-shaped `Mem alloc fail` line, so a production
+failure branch can be exercised without depending on a heap size. The failure
+is reported by `heap.alloc_failures` and `heap.last_failed_task`.
 
 The MQTT scenarios run only against the optional native transport:
 

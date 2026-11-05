@@ -2,10 +2,11 @@
 #
 # This is the combination that boot-looped before #392: the companion service,
 # WiFi and the display are part of the seeded baseline, the WebUI supervisor
-# takes its 3 KiB, the MQTT owner task takes 6 KiB, and esp-mqtt's 6 KiB client
-# task can no longer be allocated. The device must log the fail-closed WebUI
-# decision and the 0x1800 allocation failure, stop MQTT at its retry limit, and
-# keep the UI and watchdog alive. Nothing here may panic or trigger a reset.
+# takes its 3 KiB, and the MQTT owner needs 10 KiB. At the pre-#394 13.5 KiB
+# measurement the two optional services no longer fit together, so the MQTT
+# owner allocation fails and the WebUI server stays gated closed. The device
+# must log both fail-closed decisions and keep the UI and watchdog alive.
+# Nothing here may panic or trigger a reset.
 #
 # Requires the native MQTT simulator build: FURBLE_SIM_MQTT=1.
 seed heap_internal_free 13543
@@ -19,17 +20,16 @@ assert webui.supervisor created
 assert webui.server blocked
 assert webui.gate server_memory
 assert webui.fail_closed yes
-assert mqtt.task created
+assert mqtt.task failed
 assert mqtt.connected no
+assert heap.alloc_failures 1
+assert heap.last_failed_task mqtt
 assert ui.page main
 assert platform.watchdog armed
 
-wait 15000
-assert mqtt.blocked yes
-assert mqtt.connect_failures 10
-assert heap.alloc_failures 10
-assert heap.last_failed_task mqtt_client
-assert_min webui.attempts 2
+wait 5000
+assert mqtt.task failed
+assert mqtt.connected no
 assert ui.page main
 assert platform.watchdog armed
 
