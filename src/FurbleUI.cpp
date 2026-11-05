@@ -525,7 +525,9 @@ UI::UI(const interval_t &interval)
   // largest supported panel: the old fixed 320x240 pair wasted 11.8 KiB on the
   // StickS3 and 17.3 KiB on the StickC, all of it internal DMA-capable RAM that
   // the optional HTTPS server needs. Both buffers stay internal because they
-  // feed the SPI panel and cannot live in PSRAM.
+  // feed the SPI panel and cannot live in PSRAM. Narrow panels also halve the
+  // partial row count, which halves each buffer and doubles the number of
+  // flush bands without changing the pixel throughput.
   const size_t drawBufferSize = UIMemory::drawBufferBytes(m_Width, m_Height, BYTES_PER_PIXEL);
   m_Buffer1 = heap_caps_aligned_alloc(64, drawBufferSize, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
   m_Buffer2 = heap_caps_aligned_alloc(64, drawBufferSize, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
@@ -536,7 +538,11 @@ UI::UI(const interval_t &interval)
   }
   if (m_Buffer2 == nullptr) {
     // LVGL accepts a single buffer. Keep the display usable rather than
-    // aborting when only one internal DMA block is available.
+    // aborting when only one internal DMA block is available. The flush
+    // callback waits for the SPI DMA before releasing a single buffer, because
+    // M5GFX starts the transfer asynchronously and LVGL would otherwise draw
+    // over pixels that are still on the wire.
+    m_SingleBuffer = true;
     ESP_LOGW(LOG_TAG, "LVGL second draw buffer unavailable, using single buffering");
   }
   lv_display_set_buffers(m_Display, m_Buffer1, m_Buffer2, drawBufferSize,
@@ -1877,6 +1883,13 @@ void UI::displayFlush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map
 #endif
   lv_draw_sw_rgb565_swap(px_map, w * h);
   M5.Display.pushImageDMA<uint16_t>(area->x1, area->y1, w, h, reinterpret_cast<uint16_t *>(px_map));
+  if ((ui != nullptr) && ui->m_SingleBuffer) {
+    // M5GFX only queues the SPI DMA. With one LVGL buffer the next render
+    // would overwrite the pixels still being shifted out, so wait for the
+    // transfer before reporting the flush complete. The two-buffer path keeps
+    // the overlap and does not pay this wait.
+    M5.Display.waitDMA();
+  }
   lv_disp_flush_ready(disp);
 }
 

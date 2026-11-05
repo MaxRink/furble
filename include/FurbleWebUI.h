@@ -34,8 +34,11 @@ class WebUI {
    *
    * ECDSA/X.509 generation needs a multi-kilobyte stack and writes NVS. On the
    * StickS3 neither fits after WiFi and the LVGL draw buffers are up, so the
-   * identity is prepared here on the 16 KiB main task while NVS writes are
-   * safe. The supervisor then never generates an identity on its own stack.
+   * identity is prepared here while NVS writes are safe. The work runs on the
+   * dedicated 12 KiB identity task rather than the main task, which lets the
+   * main stack stay at 12 KiB. The main task blocks until the identity task
+   * finishes so the heap ordering does not change. The supervisor itself never
+   * generates an identity on its own stack.
    */
   static void initEarly(void);
 
@@ -126,6 +129,9 @@ class WebUI {
   mutable std::mutex m_Mutex;
   std::recursive_mutex m_CommandMutex;
   TaskHandle_t m_Task = nullptr;
+  // Set by initEarly() while it waits for the dedicated identity task. The
+  // task clears and notifies it before it exits.
+  TaskHandle_t m_EarlyIdentityWaiter = nullptr;
   httpd_handle_t m_Server = nullptr;
   esp_timer_handle_t m_HoldTimer = nullptr;
   esp_timer_handle_t m_ReleaseTimer = nullptr;

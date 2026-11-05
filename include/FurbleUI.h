@@ -898,6 +898,7 @@ class UI {
 
   LV_ATTRIBUTE_MEM_ALIGN void *m_Buffer1;
   LV_ATTRIBUTE_MEM_ALIGN void *m_Buffer2;
+  bool m_SingleBuffer = false;
 
   /** 'Scan finished' notice on the Scan page, hidden while scanning. */
   static lv_obj_t *m_ScanFinished;

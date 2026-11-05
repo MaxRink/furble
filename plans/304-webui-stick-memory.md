@@ -1,5 +1,9 @@
 # 304 - WebUI memory budget on the StickS3
 
+> Plan 305 supersedes the task-stack and draw-buffer numbers in this document.
+> The measurements below are the pre-305 baseline. See the follow-up section at
+> the end.
+
 ## Finding
 
 Enabling `web_ui` on the M5StickS3 with WiFi connected and the debug image
@@ -256,4 +260,25 @@ encrypted companion link.
 The StickS3 fail-closed path is validated. Core2, headless and Waveshare still
 need the `perf heap` + page-load measurement before the WebUI can be called
 supported there.
+
+## Follow-up: plan 305
+
+[305-general-internal-ram.md](305-general-internal-ram.md) is the general pass
+that follows this document. It keeps the fail-closed gate and changes the
+StickS3 baseline:
+
+- The main stack drops from 16 KiB to 12 KiB. The boot TLS identity now runs on
+  the existing 12 KiB internal identity task, and the main task waits for it.
+- The IR task stack moves to PSRAM.
+- Narrow panels halve the LVGL partial rows. Each StickS3 draw buffer drops from
+  4,320 to 2,160 bytes and two internal DMA buffers are still used.
+- The debug console stack drops from 8 KiB to 6 KiB and its `perf tasks`
+  snapshots move off the stack.
+- Headless and Waveshare move mbedTLS allocations to PSRAM.
+
+The StickS3 idle internal saving is about 12.5 KiB in a release image and about
+14.6 KiB in a debug image. In inference that clears the 20,480 / 12,288 server
+floor with about 25 KiB free while the supervisor runs. The numbers in this
+document remain the measured pre-305 baseline. The StickS3 is not a supported
+WebUI target until plan 305's hardware gate passes.
 

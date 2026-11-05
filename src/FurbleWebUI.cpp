@@ -182,13 +182,36 @@ void WebUI::initEarly(void) {
     return;
   }
 
+  // Run the identity read or generation on the dedicated task. It may write
+  // NVS, so its stack stays in internal RAM, but it no longer needs the 16 KiB
+  // main stack. The main task blocks until the task finishes, which preserves
+  // the old ordering: the identity is ready before WiFi, the display and the
+  // companion consume the internal heap.
   {
-    const std::lock_guard<std::mutex> lock(self.m_IdentityMutex);
-    const bool ready = self.prepareIdentityLocked();
-    self.m_CredentialsReady.store(ready);
-    if (ready) {
-      ESP_LOGI(LOG_TAG, "TLS identity ready before radio and display init");
+    const std::lock_guard<std::mutex> lock(self.m_Mutex);
+    self.m_EarlyIdentityWaiter = xTaskGetCurrentTaskHandle();
+  }
+  self.m_IdentityTaskActive.store(true);
+  if (xTaskCreate(identityTaskEntry, "webui_tls", IDENTITY_STACK_BYTES, &self, 2, nullptr)
+      != pdPASS) {
+    self.m_IdentityTaskActive.store(false);
+    {
+      const std::lock_guard<std::mutex> lock(self.m_Mutex);
+      self.m_EarlyIdentityWaiter = nullptr;
     }
+    self.m_CredentialsReady.store(false);
+    ESP_LOGE(LOG_TAG, "Could not create the %u-byte TLS identity task; HTTPS stays closed",
+             static_cast<unsigned>(IDENTITY_STACK_BYTES));
+    return;
+  }
+
+  // Share the boot notification bit. The early path only runs before other
+  // tasks exist, so no other producer can satisfy this wait.
+  xTaskNotifyWait(0, UINT32_MAX, nullptr, portMAX_DELAY);
+  if (self.m_CredentialsReady.load()) {
+    ESP_LOGI(LOG_TAG, "TLS identity ready before radio and display init");
+  } else {
+    ESP_LOGW(LOG_TAG, "TLS identity unavailable, HTTPS stays closed");
   }
 }
 
@@ -282,9 +305,15 @@ void WebUI::identityTask(void) {
   m_IdentityTaskActive.store(false);
 
   TaskHandle_t task = nullptr;
+  TaskHandle_t earlyWaiter = nullptr;
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
     task = m_Task;
+    earlyWaiter = m_EarlyIdentityWaiter;
+    m_EarlyIdentityWaiter = nullptr;
+  }
+  if (earlyWaiter != nullptr) {
+    xTaskNotifyGive(earlyWaiter);
   }
   if (task != nullptr) {
     xTaskNotifyGive(task);

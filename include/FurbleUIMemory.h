@@ -19,6 +19,9 @@ inline constexpr int32_t MAX_HEIGHT = 240;
  */
 inline constexpr int32_t PARTIAL_LINES = 15;
 
+/** Panels at or below this width are narrow enough to halve the partial rows. */
+inline constexpr int32_t NARROW_PANEL_WIDTH = 160;
+
 /**
  * Bytes for one LVGL partial-render buffer.
  *
@@ -26,11 +29,20 @@ inline constexpr int32_t PARTIAL_LINES = 15;
  * and the 80x160 StickC. Both draw buffers must stay in DMA-capable internal
  * RAM because they feed the SPI panel, so the wasted width was real internal
  * heap that the optional HTTPS server then could not use.
+ *
+ * Narrow panels halve the row count again. Two buffers are still required:
+ * displayFlush() reports the flush complete as soon as M5GFX starts the SPI
+ * DMA, so LVGL renders the next band into the other buffer while the first one
+ * is on the wire. On the StickS3 this drops each 135x240 buffer from 4,320 to
+ * 2,160 bytes without changing the total pixel throughput.
  */
 inline constexpr size_t drawBufferBytes(int32_t width, int32_t height, size_t bytesPerPixel) {
   const int32_t boundedWidth = std::clamp<int32_t>(width, 1, MAX_WIDTH);
   const int32_t boundedHeight = std::clamp<int32_t>(height, PARTIAL_LINES, MAX_HEIGHT);
-  const int32_t lines = std::max<int32_t>(1, boundedHeight / PARTIAL_LINES);
+  int32_t lines = std::max<int32_t>(1, boundedHeight / PARTIAL_LINES);
+  if (boundedWidth <= NARROW_PANEL_WIDTH) {
+    lines = std::max<int32_t>(1, lines / 2);
+  }
   return static_cast<size_t>(boundedWidth) * static_cast<size_t>(lines) * bytesPerPixel;
 }
 

@@ -1,8 +1,14 @@
 #include <array>
 
 #include <M5Unified.h>
+#include <esp_heap_caps.h>
 #include <esp_log.h>
 #include <soc/soc_caps.h>
+
+#if defined(CONFIG_SPIRAM) && defined(CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM) \
+    && CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM
+#include <freertos/idf_additions.h>
+#endif
 
 #include "FurbleIR.h"
 #include "FurbleSettings.h"
@@ -15,6 +21,9 @@ constexpr uint32_t RMT_RESOLUTION_HZ = 1000000;
 
 /** Give up on a stalled transmission instead of holding the APB lock forever. */
 constexpr int RMT_TX_TIMEOUT_MS = 1000;
+
+/** Measured 3,420-byte high-water mark on the StickS3, with headroom. */
+constexpr uint32_t IR_TASK_STACK_BYTES = 4096;
 
 // Nikon ML-L3 timing source: SB-Projects and Gough Lui, both listed in
 // plans/implemented/22-ir-remote-trigger.md.
@@ -168,7 +177,22 @@ void IR::init(void) {
     return;
   }
 
-  BaseType_t result = xTaskCreate(taskEntry, "ir", 4096, &instance, 3, &instance.m_Task);
+  // The IR task only drives RMT and logs. It never writes NVS and never
+  // touches the flash cache, so its stack may live in PSRAM on boards that
+  // have it. That frees 4 KiB of internal RAM on the StickS3. A failed PSRAM
+  // allocation falls back to internal RAM rather than dropping the feature.
+  BaseType_t result = pdFAIL;
+#if defined(CONFIG_SPIRAM) && defined(CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM) \
+    && CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM
+  result = xTaskCreateWithCaps(taskEntry, "ir", IR_TASK_STACK_BYTES, &instance, 3, &instance.m_Task,
+                               MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (result != pdPASS) {
+    ESP_LOGW(LOG_TAG, "IR PSRAM stack unavailable, using internal RAM");
+  }
+#endif
+  if (result != pdPASS) {
+    result = xTaskCreate(taskEntry, "ir", IR_TASK_STACK_BYTES, &instance, 3, &instance.m_Task);
+  }
   if (result != pdPASS) {
     ESP_LOGE(LOG_TAG, "Failed to create IR trigger task.");
     vQueueDelete(instance.m_Queue);

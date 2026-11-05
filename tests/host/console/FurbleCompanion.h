@@ -18,6 +18,7 @@ class CompanionGatt {
   bool isPairingWindow(void) const;
   bool isAdvertising(void) const;
   void reloadPassword(void);
+  bool reidentify(void);
 
  private:
   CompanionGatt() = default;
