@@ -108,7 +108,7 @@ class CompanionGatt: public NimBLEServerCallbacks,
   void scheduleDisable(void);
   static void delayedDisable(void *param);
   void createGatt(void);
-  void startPairingWindow(void);
+  void startPairingWindow(bool allowNewWindow = true);
   void startReconnectAdvertising(void);
   void resumeAdvertisingAfterDisconnect(void);
   void stopAdvertising(void);
