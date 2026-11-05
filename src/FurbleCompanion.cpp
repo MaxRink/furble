@@ -51,6 +51,21 @@ bool CompanionGatt::isEnabled(void) const {
   return m_Enabled;
 }
 
+bool CompanionGatt::hasBond(void) const {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+  return m_BondValid;
+}
+
+bool CompanionGatt::isPairingWindow(void) const {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+  return m_PairingWindow;
+}
+
+bool CompanionGatt::isAdvertising(void) const {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+  return (m_Advertising != nullptr) && m_Advertising->isAdvertising();
+}
+
 bool CompanionGatt::hasPendingPairing(void) const {
   return m_Service.hasPendingPairing();
 }
@@ -111,10 +126,17 @@ void CompanionGatt::enable(bool pairingWindow) {
 
       createGatt();
       m_Server->setCallbacks(this, false);
-      m_Server->start();
+      if (!m_ServerStarted) {
+        m_ServerStarted = m_Server->start();
+        ESP_LOGI(LOG_TAG, "Companion server start=%d", m_ServerStarted ? 1 : 0);
+      }
+      ESP_LOGI(LOG_TAG, "Companion handles status=%u settings=%u auth=%u cameras=%u",
+               m_Status->getHandle(), m_Settings->getHandle(), m_Auth->getHandle(),
+               m_Cameras->getHandle());
       m_Advertising = NimBLEDevice::getAdvertising();
       loadBond();
       m_Service.init();
+      m_ServiceReady = true;
 
       if (m_DisableTimer == nullptr) {
         const esp_timer_create_args_t args = {
@@ -152,7 +174,6 @@ void CompanionGatt::enable(bool pairingWindow) {
 
 void CompanionGatt::disable(void) {
   NimBLEServer *server = nullptr;
-  TaskHandle_t task = nullptr;
   esp_timer_handle_t disableTimer = nullptr;
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
@@ -160,12 +181,12 @@ void CompanionGatt::disable(void) {
       return;
     }
     m_Enabled = false;
+    m_ServiceReady = false;
     m_PairingWindow = false;
     m_PairingDeadlineMs = 0;
     m_Service.confirmPairing(false);
     m_PendingPairingHandle = INVALID_CONN_HANDLE;
     server = m_Server;
-    task = m_Task;
     disableTimer = m_DisableTimer;
   }
 
@@ -180,30 +201,17 @@ void CompanionGatt::disable(void) {
   }
   m_Service.deinit();
 
-  if (task != nullptr) {
-    vTaskDelete(task);
-    m_Task = nullptr;
-  }
-
-  // Remove the custom attributes when the setting is switched off at runtime.
-  // On a normal boot with the default false setting no service is ever created.
+  // The task stays alive and idles while the companion is disabled. Deleting
+  // it here freed its 4 KiB internal-heap stack, but the next enable could not
+  // find a contiguous block and aborted in xTaskCreate. Keeping the task makes
+  // stop/start repeatable on the StickS3, where internal heap is tight.
+  //
+  // Keep the GATT services and the started server for the next enable. Removing
+  // and re-creating them freed a few hundred bytes but the re-registration
+  // (ble_gatts_start) could not find a contiguous internal block on the
+  // StickS3 and aborted. With NimBLE host allocations in PSRAM the retained
+  // services do not compete with the camera tasks for internal heap.
   if (server != nullptr) {
-    if (m_GattService != nullptr) {
-      server->removeService(m_GattService, true);
-      m_GattService = nullptr;
-    }
-    if (m_DeviceInfoService != nullptr) {
-      server->removeService(m_DeviceInfoService, true);
-      m_DeviceInfoService = nullptr;
-    }
-    m_Location = nullptr;
-    m_Status = nullptr;
-    m_Settings = nullptr;
-    m_Trigger = nullptr;
-    m_Auth = nullptr;
-    m_Capability = nullptr;
-    m_Firmware = nullptr;
-    m_Manufacturer = nullptr;
     m_Server->setCallbacks(nullptr, false);
   }
   m_CompanionConnected = false;
@@ -277,8 +285,14 @@ void CompanionGatt::createGatt(void) {
                                                       | NIMBLE_PROPERTY::WRITE_ENC,
                                                   256);
   m_Cameras->setCallbacks(this);
+  // Use notify rather than indicate for the auth exchange. macOS
+  // CoreBluetooth intermittently fails to register an indicate-only CCCD on
+  // this service even though the same central subscribes to the notify-only
+  // Status characteristic. The protocol is request/response over an encrypted
+  // link, so losing the ATT indication acknowledgement is acceptable; the
+  // firmware retries a challenge that receives no proof.
   m_Auth = m_GattService->createCharacteristic(
-      AUTH_UUID, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::INDICATE | NIMBLE_PROPERTY::WRITE_ENC,
+      AUTH_UUID, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY | NIMBLE_PROPERTY::WRITE_ENC,
       CompanionService::AUTH_CHALLENGE_SIZE);
   m_Auth->setCallbacks(this);
 
@@ -353,33 +367,51 @@ void CompanionGatt::startPairingWindow(void) {
 void CompanionGatt::startReconnectAdvertising(void) {
   if (!m_Enabled || m_PairingWindow || m_CompanionConnected || !m_BondValid
       || (m_Advertising == nullptr) || Scan::getInstance().isActive()) {
+    ESP_LOGD(LOG_TAG,
+             "Companion reconnect skipped enabled=%d window=%d connected=%d bond=%d adv=%d scan=%d",
+             m_Enabled ? 1 : 0, m_PairingWindow ? 1 : 0, m_CompanionConnected ? 1 : 0,
+             m_BondValid ? 1 : 0, m_Advertising != nullptr ? 1 : 0,
+             Scan::getInstance().isActive() ? 1 : 0);
     return;
   }
 
   if (!NimBLEDevice::isBonded(m_BondAddress)) {
+    ESP_LOGW(LOG_TAG, "Companion reconnect bond %s is no longer in the bond store",
+             m_BondAddress.toString().c_str());
     m_BondValid = false;
     return;
   }
 
   stopAdvertising();
   clearWhitelist();
-  NimBLEDevice::whiteListAdd(m_BondAddress);
+  // Do not filter reconnect advertising by the stored address. macOS presents a
+  // resolvable private address and the filter entry can be saved with the wrong
+  // address type, which makes the device advertise invisibly; the controller
+  // also rejects whitelist updates while the previous link tears down.
+  // onConnect() still accepts only the stored identity (or any peer while the
+  // pairing window is open), so an unknown central cannot read the protected
+  // characteristics.
   m_Advertising->reset();
   m_Advertising->setConnectableMode(BLE_GAP_CONN_MODE_UND);
   m_Advertising->setDiscoverableMode(BLE_GAP_DISC_MODE_GEN);
-  m_Advertising->setAdvertisingInterval(1600);  // 1000 ms in 0.625 ms units
-  m_Advertising->setScanFilter(false, true);
+  // Keep reconnect advertising at the same 100 ms cadence as the pairing
+  // window. The old 1 s interval was invisible to some macOS scan windows even
+  // though the controller reported the advertisement active.
+  m_Advertising->setAdvertisingInterval(160);  // 100 ms in 0.625 ms units
+  m_Advertising->setScanFilter(false, false);
   m_Advertising->enableScanResponse(true);
   m_Advertising->setName(Device::getStringID());
   m_Advertising->addServiceUUID(SERVICE_UUID);
   m_Advertising->setAdvertisingCompleteCallback(nullptr);
-  m_Advertising->start(0);
+  const bool started = m_Advertising->start(0);
+  ESP_LOGI(LOG_TAG, "Companion reconnect advertising bond=%s started=%d",
+           m_BondAddress.toString().c_str(), started ? 1 : 0);
 }
 
 void CompanionGatt::loadBond(void) {
   m_Prefs.begin(FURBLE_STR, true);
   const std::string address = m_Prefs.get<std::string>("companion_addr", "");
-  const uint8_t type = m_Prefs.get<uint8_t>("companion_addr_type", 0);
+  const uint8_t type = m_Prefs.get<uint8_t>("companion_ty", 0);
   m_Prefs.end();
 
   if (address.empty()) {
@@ -393,7 +425,7 @@ void CompanionGatt::loadBond(void) {
   if (!m_BondValid) {
     m_Prefs.begin(FURBLE_STR, false);
     m_Prefs.remove("companion_addr");
-    m_Prefs.remove("companion_addr_type");
+    m_Prefs.remove("companion_ty");
     m_Prefs.end();
   }
 }
@@ -404,7 +436,7 @@ void CompanionGatt::saveBond(const NimBLEAddress &address) {
   m_BondValid = true;
   m_Prefs.begin(FURBLE_STR, false);
   m_Prefs.put("companion_addr", address.toString());
-  m_Prefs.put("companion_addr_type", m_BondAddressType);
+  m_Prefs.put("companion_ty", m_BondAddressType);
   m_Prefs.end();
 }
 
@@ -415,7 +447,7 @@ void CompanionGatt::forgetBond(void) {
   m_BondValid = false;
   m_Prefs.begin(FURBLE_STR, false);
   m_Prefs.remove("companion_addr");
-  m_Prefs.remove("companion_addr_type");
+  m_Prefs.remove("companion_ty");
   m_Prefs.end();
 }
 
@@ -433,10 +465,11 @@ void CompanionGatt::serviceTask(void) {
     bool enabled = false;
     {
       const std::lock_guard<std::mutex> lock(m_Mutex);
-      enabled = m_Enabled;
+      enabled = m_Enabled && m_ServiceReady;
     }
     if (!enabled) {
-      break;
+      vTaskDelay(pdMS_TO_TICKS(100));
+      continue;
     }
 
     const uint64_t now = nowMs();
@@ -456,13 +489,27 @@ void CompanionGatt::serviceTask(void) {
       startReconnectAdvertising();
     }
 
+    bool sendServiceChanged = false;
+    {
+      const std::lock_guard<std::mutex> lock(m_Mutex);
+      if (m_ServiceChangedPending && (now >= m_ServiceChangedAt) && m_CompanionConnected) {
+        m_ServiceChangedPending = false;
+        sendServiceChanged = true;
+      }
+    }
+    if (sendServiceChanged && (m_Server != nullptr)) {
+      // The central has now enabled its Service Changed subscription. Tell it
+      // the handle map may have moved since its cached copy, otherwise macOS
+      // keeps writing the old CCCD handles after a firmware update.
+      m_Server->sendServiceChangedIndication();
+      ESP_LOGI(LOG_TAG, "Companion sent Service Changed indication");
+    }
+
+    m_Service.serviceAuth();
     m_Service.notifyStatus();
     m_Service.notifyCameras();
     vTaskDelay(pdMS_TO_TICKS(1000));
   }
-
-  m_Task = nullptr;
-  vTaskDelete(nullptr);
 }
 
 void CompanionGatt::onConnect(NimBLEServer *server, NimBLEConnInfo &connInfo) {
@@ -476,6 +523,10 @@ void CompanionGatt::onConnect(NimBLEServer *server, NimBLEConnInfo &connInfo) {
     }
     accept = !m_CompanionConnected
              && (m_PairingWindow || (m_BondValid && connInfo.getIdAddress().equals(m_BondAddress)));
+    ESP_LOGI(LOG_TAG, "Companion connect peer=%s id=%s bond=%s window=%d accept=%d bonds=%d",
+             connInfo.getAddress().toString().c_str(), connInfo.getIdAddress().toString().c_str(),
+             m_BondValid ? m_BondAddress.toString().c_str() : "none", m_PairingWindow ? 1 : 0,
+             accept ? 1 : 0, NimBLEDevice::getNumBonds());
     if (accept) {
       // macOS rotates its LE address between sessions on a legacy bond. If the
       // pairing window is open and the stored bond is for another address,
@@ -538,6 +589,18 @@ void CompanionGatt::onDisconnect(NimBLEServer *server, NimBLEConnInfo &connInfo,
   }
 
   if (!wasCompanion) {
+    // A rejected link still stopped the controller's advertising. Without this
+    // restart the next connect attempt finds nothing and the companion only
+    // comes back after a stop/start or reboot.
+    if (!m_Enabled) {
+      return;
+    }
+    if (m_PairingWindow && (nowMs() < m_PairingDeadlineMs)) {
+      startPairingWindow();
+    } else {
+      m_PairingWindow = false;
+      startReconnectAdvertising();
+    }
     return;
   }
 
@@ -601,6 +664,11 @@ void CompanionGatt::onAuthenticationComplete(NimBLEConnInfo &connInfo) {
     m_CompanionEncrypted = true;
     m_CompanionAuthenticated = true;
     m_PairingWindow = false;
+    // The central subscribes to the standard Service Changed characteristic a
+    // few milliseconds after this callback. Sending now would race that
+    // subscription and be dropped; the service task sends it one second later.
+    m_ServiceChangedPending = true;
+    m_ServiceChangedAt = nowMs() + 1000;
   }
   stopAdvertising();
   m_Service.notifyStatus(true);
@@ -620,6 +688,7 @@ void CompanionGatt::onWrite(NimBLECharacteristic *characteristic, NimBLEConnInfo
   if (characteristic == m_Location) {
     m_Service.handleLocation(value.data(), value.size());
   } else if (characteristic == m_Auth) {
+    ESP_LOGI(LOG_TAG, "Companion auth write len=%u", static_cast<unsigned>(value.size()));
     m_Service.handleAuth(value.data(), value.size());
   } else if (characteristic == m_Settings) {
     m_Service.handleSettings(value.data(), value.size());
@@ -690,6 +759,10 @@ void CompanionGatt::indicate(uint8_t charId, const uint8_t *data, size_t len) {
     characteristic = m_Auth;
   }
   if (characteristic == nullptr || data == nullptr || !isConnected()) {
+    return;
+  }
+  if (charId == COMPANION_CHAR_AUTH) {
+    characteristic->notify(data, len, m_CompanionConnHandle);
     return;
   }
   characteristic->indicate(data, len, m_CompanionConnHandle);

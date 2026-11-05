@@ -398,6 +398,12 @@ void testSettings(void) {
                 "companion status reports the persisted enabled setting");
   checkContains(startedStatus.out, "companion.enabled: true",
                 "companion status reports the live enabled service");
+  checkContains(startedStatus.out, "companion.bond: true",
+                "companion status reports the saved bond");
+  checkContains(startedStatus.out, "companion.window: false",
+                "companion status reports the pairing window");
+  checkContains(startedStatus.out, "companion.advertising: true",
+                "companion status reports advertising");
   check(contains(runDirect("help").out, "companion start | stop | status"),
         "help advertises the companion pairing commands");
 

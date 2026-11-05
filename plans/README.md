@@ -80,6 +80,7 @@ state and the remaining gate; the issue stays open until that gate lands.
 | [14-gps-pcas.md](implemented/14-gps-pcas.md) | $PCAS receiver config: rate, sentences, constellation |
 | [15-gps-power.md](15-gps-power.md) | GPS duty cycling, light sleep compatible UART |
 | [300-timezone-support.md](300-timezone-support.md) | Local civil time and vendor timezone fields, UTC stays the source of truth |
+| [302-companion-restart-reconnect.md](302-companion-restart-reconnect.md) | Companion stop/start without a heap panic, and advertising restart after a rejected link |
 
 ## Phase 4: sensors
 

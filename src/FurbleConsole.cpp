@@ -1017,6 +1017,9 @@ int cmdCompanion(int argc, char **argv) {
   if ((argc == 2) && !strcasecmp(argv[1], "status")) {
     printf("companion.setting: %s\n", boolStr(Settings::load<Settings::COMPANION>()));
     printf("companion.enabled: %s\n", boolStr(CompanionGatt::getInstance().isEnabled()));
+    printf("companion.bond: %s\n", boolStr(CompanionGatt::getInstance().hasBond()));
+    printf("companion.window: %s\n", boolStr(CompanionGatt::getInstance().isPairingWindow()));
+    printf("companion.advertising: %s\n", boolStr(CompanionGatt::getInstance().isAdvertising()));
     return 0;
   }
   if ((argc < 2) || (strcasecmp(argv[1], "password") != 0)) {

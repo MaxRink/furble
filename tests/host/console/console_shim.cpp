@@ -1107,6 +1107,18 @@ bool CompanionGatt::isEnabled(void) const {
   return ConsoleHost::misc().companionEnabled;
 }
 
+bool CompanionGatt::hasBond(void) const {
+  return ConsoleHost::misc().companionEnabled;
+}
+
+bool CompanionGatt::isPairingWindow(void) const {
+  return false;
+}
+
+bool CompanionGatt::isAdvertising(void) const {
+  return ConsoleHost::misc().companionEnabled;
+}
+
 void CompanionGatt::reloadPassword(void) {
   ConsoleHost::misc().companionPasswordReloads++;
 }

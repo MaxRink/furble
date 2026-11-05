@@ -136,6 +136,9 @@ enum USBConsoleRunner {
   }
 
   private static func monitor(_ options: CLIMonitorOptions, path: String) -> Int32 {
+    // Long runs are usually redirected to a CSV file. Line buffering would
+    // hide every sample until the process exits, so write each row immediately.
+    setvbuf(stdout, nil, _IONBF, 0)
     let console = FurbleSerialConsole(path: path)
     let interrupt = USBInterruptFlag()
     signal(SIGINT, SIG_IGN)

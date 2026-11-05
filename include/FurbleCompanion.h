@@ -70,6 +70,9 @@ class CompanionGatt: public NimBLEServerCallbacks,
   void reloadPassword(void);
 
   bool isEnabled(void) const;
+  bool hasBond(void) const;
+  bool isPairingWindow(void) const;
+  bool isAdvertising(void) const;
   bool hasPendingPairing(void) const;
   uint32_t getPendingPairingPin(void) const;
   void confirmPairing(bool accept);
@@ -139,10 +142,19 @@ class CompanionGatt: public NimBLEServerCallbacks,
 
   mutable std::mutex m_Mutex;
   bool m_Enabled = false;
+  bool m_ServerStarted = false;
+  // The GATT database may change across a firmware update. Send the standard
+  // Service Changed indication to a bonded central once per boot so macOS
+  // rebuilds its cached handle map before the next session.
+  bool m_ServiceChangedPending = false;
+  uint64_t m_ServiceChangedAt = 0;
   bool m_PairingWindow = false;
   bool m_CompanionConnected = false;
   bool m_CompanionEncrypted = false;
   bool m_CompanionAuthenticated = false;
+  // The retained task may only touch the service after init() and before
+  // deinit(). Enabled alone is set before the service is rebuilt.
+  bool m_ServiceReady = false;
   uint64_t m_PairingDeadlineMs = 0;
   uint16_t m_CompanionConnHandle = INVALID_CONN_HANDLE;
 

@@ -14,6 +14,9 @@ class CompanionGatt {
   void disableNow(void);
   void completeDelayedDisable(void);
   bool isEnabled(void) const;
+  bool hasBond(void) const;
+  bool isPairingWindow(void) const;
+  bool isAdvertising(void) const;
   void reloadPassword(void);
 
  private:
