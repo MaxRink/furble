@@ -5,6 +5,6 @@ framework=3.50503.0
 M5PM1=1.0.6
 M5GFX=0.2.27
 M5Unified=0.2.20
-TinyGPSPlus=92ac8c2
+TinyGPSPlus=92ac8c21b8179201c2c8c534e46af3320b76d3e7
 NimBLE=2.5.0
 LVGL=9.4.0
