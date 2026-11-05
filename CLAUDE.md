@@ -143,6 +143,12 @@ CLAUDE.md whose directory it touches.
   Run `sim/scripts/check-hardware-quirks.sh`, `sim/scripts/run-memory-profile.py`
   and the full `sim/scripts/run-permutations.py --results
   sim/coverage/permutation_results.json` before asking for hardware.
+- Linked host-boundary evidence is `sh sim/scripts/run-boundary-conformance.sh`.
+  It compiles the production headless service loop and the IR, SD, feedback,
+  W5500 Ethernet, CompanionGatt and WebUI TLS/socket paths unchanged against
+  peripheral doubles. These are the linked paths behind the boundary entries in
+  `sim/coverage/hardware_quirks.json`; keep the runner and the manifest tokens
+  aligned when changing a driver.
 - Run `python3 sim/scripts/run-fuzz-target.py --all` to regenerate
   `sim/coverage/fuzz_results.json`. The readiness gate consumes that file; every
   target must pass and any known failing seed must be fixed with its regression.
