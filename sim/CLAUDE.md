@@ -438,7 +438,10 @@ shortens that host retry cadence for a bounded scenario.
   `tools/check_sim_coverage.py` validates model/scenario/assertion evidence.
   `tools/check_flash_readiness.py --ready` is the only authority for a flash
   candidate. It refuses approximate hardware entries, pending fuzz results,
-  unfixed failing seeds, incomplete permutations and a dirty worktree.
+  unfixed failing seeds, incomplete permutations, missing memory profile dumps
+  and a dirty worktree. The fuzz corpus passes; the gate is blocked only by the
+  memory profile dumps and the full permutation run, which is a separate
+  evidence PR.
 - `sim/memory_profile.cpp`, the tagged heap, `action memory-dump PATH` and
   `sim/scripts/run-memory-profile.py` are the memory profiler. The budget is
   compared against `sim/coverage/memory_budget.json`. `sim/scripts/run-permutations.py`

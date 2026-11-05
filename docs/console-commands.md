@@ -127,9 +127,10 @@ no software-readable presence or negotiation signal.
 
 `boot timing` prints the retained boot timeline. Each mark has `at_ms` from
 `app_main` and `delta_ms` from the previous mark in time order. The
-`reset_to_app_ms` value comes from the CPU cycle counter and includes the ROM
-bootloader and the PSRAM boot init that happen before the firmware timeline
-starts. Use it to compare boots without a host-side timestamp.
+`reset_to_app_ms` value comes from the free-running CPU cycle counter and
+includes the ROM bootloader and the PSRAM boot init that happen before the
+firmware timeline starts. Use it to compare boots without a host-side
+timestamp.
 
 The same timeline is logged once as `boot: timeline …` after the first UI frame
 or the first headless service pass. The command is useful when the log line
@@ -158,9 +159,10 @@ crash.last_log: MQTT client start failed, attempt 10.
 
 The firmware already prints the same block once at boot when the previous run
 ended unclean. The record is consumed after that print, so `crash` reports
-`crash.none: true` until a later reset produces a new one. The task and log tail
-are the last normal snapshot, not a guaranteed panic task. See
-[crash diagnostics](crash-diagnostics.md).
+`crash.none: true` until a later reset produces a new one. The retained lines
+are ANSI-normalized before storage, so colour escapes never nest across boots.
+The task and log tail are the last normal snapshot, not a guaranteed panic task.
+See [crash diagnostics](crash-diagnostics.md).
 
 ## settings
 

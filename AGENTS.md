@@ -5,6 +5,20 @@ Directory-specific rules live in the `CLAUDE.md` of each directory you touch
 (`src/`, `include/`, `lib/furble/`, `sim/`, `web-installer/`, `components/icons/`,
 `plans/`).
 
+## Review and merge gate
+
+Do not merge a PR with an unresolved review thread. Every Copilot or human
+finding must be recorded as fixed, already fixed, or a false positive with
+evidence. Resolving a thread without a fix is not acceptable. This rule also
+applies to a remediation PR that closes review findings.
+
+Every review finding must be fixed, or proven false or outdated with evidence,
+before merge. The online gate is
+`python3 tools/check_review_threads.py --repo owner/name --pr N`; it fails
+closed on API errors and is intentionally not part of the offline pre-review or
+fork CI jobs. The remediation PR must pass it before merge; record the audit in
+`plans/NN-review-feedback.md`.
+
 ## Documentation mandate
 
 Any PR that changes user-facing behavior, settings, console commands, supported
@@ -15,23 +29,19 @@ docs in the same PR. The doc surface to change-type mapping is the
 
 A PR that changes behavior without its doc update is incomplete. Verify every doc
 claim against the code, not against a plan doc.
+
 CI trigger changes must keep validation workflows usable for stacked pull
 requests. Keep pull request jobs path-filtered and read-only for fork safety,
 and run `python3 tools/check_ci_workflows.py` after changing workflow triggers.
 The pre-review gate is `python3 tools/pre_review.py --base origin/master`; run
 it before pushing. `pre-review.yml` runs the same scanners in CI, and
 `host-sanitized.yml` runs the ASan/UBSan host subset when C++ paths change.
-Every review finding must be fixed, or proven false or outdated with evidence,
-before merge. The online gate is
-`python3 tools/check_review_threads.py --repo owner/name --pr N`; it fails
-closed on API errors and is intentionally not part of the offline pre-review or
-fork CI jobs. The remediation PR must pass it before merge; record the audit in
-`plans/NN-review-feedback.md`.
-The hardware gate is `python3 tools/check_fuzz.py --full --host-build <dir>
---mqtt-binary sim/build-mqtt/furble-sim`; it must pass before a firmware image
-is built. Its fixed seeds live in `tests/fuzz/seeds.json`. The gate stays red
-for the MQTT owner stack at 6 KiB and the Home Assistant discovery OOM until
-the parallel MQTT stack and MQTT HA memory PRs land.
+The pre-hardware fuzz budget is `python3 tools/check_fuzz.py --full
+--host-build <dir> --mqtt-binary sim/build-mqtt/furble-sim`; the full corpus
+currently passes 10 targets, 136 seed runs and 89,146 iterations with zero
+failures. Its fixed seeds live in `tests/fuzz/seeds.json`; the earlier MQTT
+owner stack overflow and Home Assistant discovery OOM are fixed and carry
+regressions. The flash-readiness gate below remains the authority.
 Static analysis is `python3 tools/check_static_analysis.py --base origin/master`
 with the host and simulator compile databases; `static-analysis.yml` runs it in
 CI.
@@ -64,14 +74,18 @@ followed by `restart`; the record is printed once on the next boot.
 Hardware flashing is gated on the simulator. `sim/coverage/` holds the hardware,
 crash, fuzz and permutation manifests; `tools/check_sim_coverage.py` validates
 them and `tools/check_flash_readiness.py --ready` is the only authority for a
-flash candidate. `sim/scripts/check-hardware-quirks.sh`,
-`sim/scripts/run-memory-profile.py` and the full permutation run are required
-before hardware. `sh sim/scripts/run-boundary-conformance.sh` compiles the
-production headless service loop and the IR, SD, feedback, W5500 Ethernet,
-CompanionGatt and WebUI TLS/socket paths unchanged against peripheral doubles;
-those linked paths back the boundary manifest entries. The fuzz harness publishes
-`sim/coverage/fuzz_results.json` with `python3 sim/scripts/run-fuzz-target.py
---all`; every target must pass before the readiness gate can pass.
+flash candidate. Run `python3 tools/check_sim_coverage.py --require-ready`,
+`sim/scripts/check-hardware-quirks.sh`, `sim/scripts/run-memory-profile.py` and
+the full permutation run before hardware.
+`sh sim/scripts/run-boundary-conformance.sh` compiles the production headless
+service loop and the IR, SD, feedback, W5500 Ethernet, CompanionGatt and WebUI
+TLS/socket paths unchanged against peripheral doubles; those linked paths back
+the boundary manifest entries. The fuzz harness publishes
+`sim/coverage/fuzz_results.json` with
+`python3 sim/scripts/run-fuzz-target.py --all`; every target must pass before
+the readiness gate can pass. The gate is currently blocked only by the
+missing memory profile dumps and the full 6,912-combination permutation run,
+which is a separate evidence PR.
 Firmware line coverage is measured by `tools/coverage.py` and gated against
 `tests/coverage_floor.json`. Coverage instrumentation is opt-in in both build
 entry points (`-DFURBLE_COVERAGE=ON` for the host harness,

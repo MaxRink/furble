@@ -162,9 +162,9 @@ class CompanionGatt: public NimBLEServerCallbacks,
   uint32_t m_PairingGeneration = 0;
   bool m_Enabled = false;
   bool m_ServerStarted = false;
-  // The GATT database may change across a firmware update. Send the standard
-  // Service Changed indication to a bonded central once per boot so macOS
-  // rebuilds its cached handle map before the next session.
+  // Do not send a Service Changed indication during authentication: macOS
+  // rediscovers services while the auth exchange is in flight and drops the
+  // auth write. A stale host handle map is recovered with reidentify().
   bool m_PairingWindow = false;
   bool m_CompanionConnected = false;
   bool m_CompanionEncrypted = false;

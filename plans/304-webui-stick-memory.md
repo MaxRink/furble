@@ -24,9 +24,13 @@ heap.internal.free: 6827
 heap.internal.largest_block: 6388
 ```
 
-Those are the only measured StickS3 numbers. The rest of this plan is a
-compile-time budget and a set of inferred board estimates. **No board was
-measured for this change: the StickS3 is off USB.**
+The 6,827 / 6,388 pair and the two allocation failures are the pre-#392
+baseline. The rest of the original budget was compile-time arithmetic and
+inferred board estimates; at the time #392 was written the StickS3 was off USB,
+so no post-change row had been measured. The later hardware runs recorded below
+measured the fail-closed path, and #391 validated the read-only BLE debug
+service on the same board. The Core2, headless and Waveshare rows remain
+inferred.
 
 Two independent problems were mixed together:
 
@@ -239,7 +243,8 @@ high-water mark after the first response.
 
 ## Debug service (shipped in #391)
 
-A `FURBLE_CONSOLE`-only, read-only BLE debug service was prototyped with:
+A `FURBLE_CONSOLE`-only prototype of a read-only BLE debug service was built
+with:
 - service `b57f4f70-087b-4740-b71d-8262cf26ebbc`
 - status characteristic `b57f4f72-...` (reset reason, uptime, internal/PSRAM
   heap, task count, bonds, companion enabled/connected/encrypted/authenticated/

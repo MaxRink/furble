@@ -97,6 +97,13 @@ carries the audit.
 | #402 | Full CTest exposed a `sim-scheduler` flake: the watchdog-style `try_lock` report can return "lock held" under parallel load, so one sample lacked `wait=mutex`. | Fixed in this PR. The test retries the report against a real deadline instead of treating one unavailable sample as a missing waiter. | `sim-scheduler` 50/50 repeated runs and a full parallel CTest. |
 | Policy | No merge before every review finding is fixed or proven false/outdated with evidence; the remediation PR must pass the online thread check. | Fixed in this PR. Added `tools/check_review_threads.py`, its unit tests, and CONTRIBUTING/AGENTS policy text. Not wired into offline pre-review or fork CI. | `tests/test_check_review_threads.py`; run the tool against the PR before merge. |
 
+## Documentation audit
+
+The docs-only mapping for this remediation PR is in
+[`plans/evidence/2026-11-05-docs-review-audit.md`](evidence/2026-11-05-docs-review-audit.md).
+It records where each #391, #392, #396, #397, #398, #399, #400, #401 and #402
+documentation finding was fixed and verifies the claims against the merged tree.
+
 ## Verification commands
 
 ```sh

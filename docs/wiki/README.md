@@ -22,6 +22,7 @@ Pages:
 - `Controls.md`: button map and input modes.
 - `Supported-Hardware.md`: controllers, cameras, and GPS units.
 - `Console-Commands.md`: the USB serial console in debug builds.
+- `BLE-Debug.md`: the read-only BLE status service in the bench image.
 - `img/`: the screenshots the pages embed.
 
 The page content mirrors the in-repo docs under `docs/`. Internal links use wiki

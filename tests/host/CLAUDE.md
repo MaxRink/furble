@@ -38,3 +38,20 @@ password half of the HTTP gate and the client socket count. `mqtt-owner` uses a
 virtual timer: never reintroduce wall-clock reads into the host double, or an
 offline-ACK deadline becomes a timing flake. `console-commands` pins the
 `companion reidentify` command and `crash` argument validation.
+
+## WebUI and companion contracts
+
+- `webui-security` and `webui-handler` run the production WebUI gate and
+  handlers against host doubles. Keep the 20,480/12,288 server floors, the
+  4,096/3,584 supervisor floors, the cached setting/password state, the
+  streamed settings JSON and the identity persistence contract covered there.
+  A new route or a new credential path needs a matching case.
+- `ui-memory` pins `FurbleUIMemory::drawBufferBytes()` and the narrow-panel
+  single-buffer rule. Update its expected sizes with any panel or row change.
+- `companion-gatt` and `companion-auth` own the transport-side auth and bond
+  state; `companion-fuzz` owns malformed and fragmented writes. Keep the
+  `onAuthenticationComplete()` before `onConnect()` ordering and the
+  no-Service-Changed contract covered. `device-identity` owns durable address
+  restore and untouched camera bonds. The live LE address rotation is asserted
+  by `sim/scenarios/e2e/hw-ble-auth-gatt-reidentify.txt`, not by the host
+  double.

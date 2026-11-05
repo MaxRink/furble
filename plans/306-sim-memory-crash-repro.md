@@ -43,8 +43,8 @@ comparable to a device log.
 
 `sim/webui_memory_model.cpp` runs the production
 `WebUIMemory::supervisorGate()` and `serverGate()` functions against the modelled
-pool. The log formats are shared constants in `include/FurbleWebUIMemory.h`, so
-the simulator prints the production sentence. `webui_gate off` skips the
+pool. The log formats are the macros in `include/FurbleWebUIMemory.h`; the
+matching constants let the simulator print the production sentence. `webui_gate off` skips the
 supervisor gate and asks for the pre-#392 8 KiB stack, which reproduces the
 `0x2000` failure without claiming the old image is built.
 
@@ -108,6 +108,24 @@ Implemented on the branch:
 - a pre-existing `saved_cameras` predicate in `sim/scripts/check-doc-tokens.sh`
   that the allowlist did not accept, which made the gate fail on master. The
   exact shape is now listed with its reason.
+
+## Post-merge fixes
+
+Two follow-ups kept the shared simulator text and the retained crash log
+faithful to the firmware:
+
+- **#396, gate log literals.** `ESP_LOG_ATTR_STR()` expands to the no-load
+  string path for compile-time constants and therefore needs a literal.
+  Passing the namespace-scope `constexpr` pointer in
+  `include/FurbleWebUIMemory.h` broke every firmware build after the shared
+  simulator gate text landed. The text now lives in
+  `FURBLE_WEBUI_*_GATE_LOG` macros, and the same macros expose the constants
+  the simulator prints. Keep a new gate sentence in the macro, not in a second
+  literal.
+- **#400, ANSI-normalized crash lines.** ESP_LOG adds colour escapes before the
+  retained `vprintf` hook sees a line, so the next boot printed nested ANSI
+  sequences. `stripAnsi()` now removes CSI sequences in place before a line is
+  stored. `crash_log_test` covers the stripped record.
 
 ## Validation
 

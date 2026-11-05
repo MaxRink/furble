@@ -77,5 +77,7 @@ python3 tests/fuzz/memory_fuzz.py --sim sim/build-mqtt/furble-sim --mqtt --seeds
 
 When a product bug is fixed, keep the failing seed in `seeds.json` so the gate
 continues to replay it. If a fix belongs to a parallel PR, leave the regression
-check in place and record the owner in `known_findings`; the gate stays red
-until that PR lands instead of silently removing coverage.
+check in place and record the owner in `known_findings` until that PR lands
+instead of silently removing coverage. A landed fix moves to
+`fixed_regressions` in `sim/coverage/fuzz_results.json` and keeps its replay
+command.

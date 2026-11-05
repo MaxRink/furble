@@ -1,6 +1,6 @@
 # 305 - General internal RAM pass
 
-> Plan 307 continues this work after the hardware measurement came in at
+> Plan 308 continues this work after the hardware measurement came in at
 > 27,351 free / 25,588 largest, not the 28,103 inferred here. It reduces the
 > main stack to 8 KiB, uses one draw buffer on narrow panels and reduces the
 > companion stack. The measured and inferred map below remains the #394
@@ -309,7 +309,7 @@ gate still fails closed instead of resetting.
 - Measure LVGL object memory on the StickS3 with `heap_caps_get_info` around
   UI construction. That is the remaining unquantified internal consumer.
 
-## Follow-up: plan 307
+## Follow-up: plan 308
 
 [308-mqtt-ha-memory.md](308-mqtt-ha-memory.md) continues from the measured
 27,351 / 25,588 pair. It reduces the main stack from 12 KiB to 8 KiB, uses one
