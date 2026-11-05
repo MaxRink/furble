@@ -2443,3 +2443,212 @@ if(FURBLE_COVERAGE AND FURBLE_PROFILE_DIR)
                          "LLVM_PROFILE_FILE=${FURBLE_PROFILE_DIR}/${furble_test_name}.%p.profraw")
   endforeach()
 endif()
+
+# Sim-first boundary conformance. Each target compiles the production driver or
+# service path unchanged and replaces only the lowest hardware boundary. These
+# are the linked-code evidence the flash-readiness manifest names for the
+# approximate sim boundaries.
+set(BOUNDARY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/boundaries)
+set(BOUNDARY_SHIM_DIR ${BOUNDARY_DIR}/shims)
+set(BOUNDARY_SUPPORT ${BOUNDARY_DIR}/boundary_support.cpp ${BOUNDARY_DIR}/m5_stub.cpp)
+set(BOUNDARY_COMMON_INCLUDES
+    ${BOUNDARY_DIR}
+    ${BOUNDARY_SHIM_DIR}
+    ${CONTROL_E2E_DIR}
+    ${SETTINGS_TEST_STUB_DIR}
+    ${FURBLE_ROOT}/include
+    ${FURBLE_ROOT}/lib/preferences
+    ${FURBLE_ROOT}/lib/furble)
+set(BOUNDARY_FREERTOS_INCLUDE
+    -include${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
+set(BOUNDARY_SETTINGS_SOURCES
+    settings_nvs_stub.cpp
+    ${FURBLE_ROOT}/src/FurbleSettings.cpp
+    ${FURBLE_ROOT}/src/FurbleNetworkSettings.cpp
+    ${FURBLE_ROOT}/src/FurbleTimezone.cpp
+    ${FURBLE_ROOT}/lib/preferences/Preferences.cpp
+    ${CONTROL_E2E_DIR}/freertos_shim.cpp)
+
+add_executable(boundary_ir_test
+               ${BOUNDARY_DIR}/ir_driver_test.cpp
+               ${BOUNDARY_SUPPORT}
+               ${BOUNDARY_SETTINGS_SOURCES}
+               ${FURBLE_ROOT}/src/FurbleIR.cpp)
+target_include_directories(boundary_ir_test PRIVATE ${BOUNDARY_COMMON_INCLUDES})
+target_compile_options(boundary_ir_test PRIVATE ${BOUNDARY_FREERTOS_INCLUDE}
+                                                -Wall -Wextra -Wno-unused-parameter)
+target_compile_definitions(boundary_ir_test PRIVATE FURBLE_M5STICKS3 CONFIG_SPIRAM
+                                                     CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM=1)
+target_link_libraries(boundary_ir_test PRIVATE Threads::Threads)
+
+add_executable(boundary_sd_test
+               ${BOUNDARY_DIR}/sd_driver_test.cpp
+               ${BOUNDARY_SUPPORT}
+               ${BOUNDARY_SETTINGS_SOURCES}
+               ${FURBLE_ROOT}/src/FurbleSD.cpp
+               ${FURBLE_ROOT}/src/FurbleGPX.cpp)
+target_include_directories(boundary_sd_test PRIVATE ${BOUNDARY_COMMON_INCLUDES})
+target_compile_options(boundary_sd_test PRIVATE ${BOUNDARY_FREERTOS_INCLUDE}
+                                                -Wall -Wextra -Wno-unused-parameter)
+target_compile_definitions(boundary_sd_test PRIVATE
+                           FURBLE_M5STICKS3
+                           FURBLE_SD_MOUNT_POINT="/tmp/furble-boundary-sd"
+                           FURBLE_GPX_DIRECTORY="/tmp/furble-boundary-sd/furble"
+                           FURBLE_BOUNDARY_SD_MOUNT="/tmp/furble-boundary-sd")
+target_link_libraries(boundary_sd_test PRIVATE Threads::Threads)
+
+add_executable(boundary_feedback_test
+               ${BOUNDARY_DIR}/feedback_driver_test.cpp
+               ${BOUNDARY_SUPPORT}
+               ${BOUNDARY_SETTINGS_SOURCES}
+               ${FURBLE_ROOT}/src/FurbleFeedback.cpp)
+target_include_directories(boundary_feedback_test PRIVATE ${BOUNDARY_COMMON_INCLUDES})
+target_compile_options(boundary_feedback_test PRIVATE ${BOUNDARY_FREERTOS_INCLUDE}
+                                                      -Wall -Wextra -Wno-unused-parameter)
+target_compile_definitions(boundary_feedback_test PRIVATE FURBLE_M5STICKS3)
+target_link_libraries(boundary_feedback_test PRIVATE Threads::Threads)
+
+add_executable(boundary_ethernet_test
+               ${BOUNDARY_DIR}/ethernet_w5500_test.cpp
+               ${BOUNDARY_SUPPORT}
+               ${FURBLE_ROOT}/src/FurbleEthernet.cpp
+               ${CONTROL_E2E_DIR}/freertos_shim.cpp)
+target_include_directories(boundary_ethernet_test PRIVATE ${BOUNDARY_COMMON_INCLUDES})
+target_compile_options(boundary_ethernet_test PRIVATE ${BOUNDARY_FREERTOS_INCLUDE}
+                                                      -Wall -Wextra -Wno-unused-parameter)
+target_compile_definitions(boundary_ethernet_test PRIVATE ESP_PLATFORM FURBLE_ETHERNET)
+target_link_libraries(boundary_ethernet_test PRIVATE Threads::Threads)
+
+set(BOUNDARY_COMPANION_SOURCES
+    ${BOUNDARY_DIR}/companion_gatt_transport_test.cpp
+    ${COMPANION_HOST_DIR}/companion_doubles.cpp
+    ${COMPANION_HOST_DIR}/companion_hmac.cpp
+    ${FURBLE_ROOT}/src/FurbleNetworkSettings.cpp
+    ${FURBLE_ROOT}/src/FurbleCompanionAuth.cpp
+    ${FURBLE_ROOT}/src/FurbleCompanionService.cpp
+    ${FURBLE_ROOT}/src/FurbleCompanion.cpp
+    ${FURBLE_ROOT}/src/FurbleControl.cpp
+    ${FURBLE_ROOT}/src/FurbleTimezone.cpp
+    ${FURBLE_ROOT}/lib/furble/Camera.cpp
+    ${FURBLE_ROOT}/lib/furble/CameraList.cpp
+    ${FURBLE_ROOT}/lib/furble/Device.cpp
+    ${FURBLE_ROOT}/lib/furble/Scan.cpp
+    ${FURBLE_ROOT}/lib/furble/CanonEOS.cpp
+    ${FURBLE_ROOT}/lib/furble/CanonEOSRemote.cpp
+    ${FURBLE_ROOT}/lib/furble/CanonEOSSmart.cpp
+    ${FURBLE_ROOT}/lib/furble/DJIOsmo.cpp
+    ${FURBLE_ROOT}/lib/furble/FauxNY.cpp
+    ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
+    ${FURBLE_ROOT}/lib/furble/FujifilmBasic.cpp
+    ${FURBLE_ROOT}/lib/furble/FujifilmSecure.cpp
+    ${FURBLE_ROOT}/lib/furble/Lumix.cpp
+    ${FURBLE_ROOT}/lib/furble/Nikon.cpp
+    ${FURBLE_ROOT}/lib/furble/NikonBase.cpp
+    ${FURBLE_ROOT}/lib/furble/NikonRemote.cpp
+    ${FURBLE_ROOT}/lib/furble/NikonSmart.cpp
+    ${FURBLE_ROOT}/lib/furble/Ricoh.cpp
+    ${FURBLE_ROOT}/lib/furble/Sony.cpp
+    ${FURBLE_ROOT}/lib/blowfish/Blowfish.cpp
+    ${FURBLE_PROTOCOL_DIR}/AdvertisementProtocol.cpp
+    ${FURBLE_PROTOCOL_DIR}/CameraListProtocol.cpp
+    ${FURBLE_PROTOCOL_DIR}/FujifilmProtocol.cpp
+    ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
+    ${FURBLE_ROOT}/sim/PreferencesSim.cpp
+    ${CONTROL_E2E_DIR}/freertos_shim.cpp)
+add_executable(boundary_companion_test ${BOUNDARY_COMPANION_SOURCES})
+target_include_directories(boundary_companion_test BEFORE PRIVATE
+                           ${COMPANION_HOST_DIR}/doubles
+                           ${COMPANION_HOST_DIR}
+                           ${CONTROL_E2E_DIR}
+                           ${CMAKE_CURRENT_SOURCE_DIR}
+                           ${BOUNDARY_DIR}
+                           ${BOUNDARY_SHIM_DIR}
+                           ${FURBLE_ROOT}/include
+                           ${FURBLE_ROOT}/lib/furble
+                           ${FURBLE_ROOT}/lib/preferences
+                           ${FURBLE_ROOT}/lib/blowfish
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR})
+target_compile_definitions(boundary_companion_test PRIVATE
+                           FURBLE_NO_DISPLAY
+                           FURBLE_HOST_COMPANION_TEST
+                           FURBLE_VERSION="boundary")
+target_compile_options(boundary_companion_test PRIVATE
+                       ${BOUNDARY_FREERTOS_INCLUDE}
+                       -Wall -Wextra -Wno-format -Wno-sign-compare
+                       -Wno-unused-parameter)
+target_link_libraries(boundary_companion_test PRIVATE Threads::Threads)
+
+add_executable(boundary_webui_tls_test
+               ${BOUNDARY_DIR}/webui_tls_socket_test.cpp
+               ${CMAKE_CURRENT_SOURCE_DIR}/webui/webui_platform_stubs.cpp
+               ${CMAKE_CURRENT_SOURCE_DIR}/mqtt/cJSON.cpp
+               ${COMPANION_HOST_DIR}/companion_hmac.cpp
+               ${FURBLE_ROOT}/src/FurbleCompanionAuth.cpp
+               ${FURBLE_ROOT}/src/FurbleWebUI.cpp)
+target_include_directories(boundary_webui_tls_test PRIVATE
+                           ${CMAKE_CURRENT_SOURCE_DIR}/webui
+                           ${CMAKE_CURRENT_SOURCE_DIR}/mqtt
+                           ${COMPANION_HOST_DIR}
+                           ${FURBLE_ROOT}/include)
+target_compile_definitions(boundary_webui_tls_test PRIVATE
+                           FURBLE_MQTT=1 FURBLE_WEBUI=1 FURBLE_WEBUI_HOST_TEST=1)
+target_compile_options(boundary_webui_tls_test PRIVATE -Wall -Wextra -Werror)
+target_link_libraries(boundary_webui_tls_test PRIVATE Threads::Threads)
+
+set(HEADLESS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/headless)
+add_executable(boundary_headless_service_test
+               ${HEADLESS_DIR}/headless_service_test.cpp
+               ${HEADLESS_DIR}/headless_doubles.cpp
+               ${FURBLE_ROOT}/src/main.cpp
+               settings_nvs_stub.cpp
+               ${FURBLE_ROOT}/src/FurbleSettings.cpp
+               ${FURBLE_ROOT}/src/FurbleNetworkSettings.cpp
+               ${FURBLE_ROOT}/src/FurbleTimezone.cpp
+               ${FURBLE_ROOT}/src/FurbleBootTimeline.cpp
+               ${FURBLE_ROOT}/lib/preferences/Preferences.cpp
+               ${BOUNDARY_DIR}/m5_stub.cpp
+               ${CONTROL_E2E_DIR}/freertos_shim.cpp)
+target_include_directories(boundary_headless_service_test BEFORE PRIVATE
+                           ${HEADLESS_DIR}/include
+                           ${HEADLESS_DIR}
+                           ${BOUNDARY_SHIM_DIR}
+                           ${CONTROL_E2E_DIR}
+                           ${SETTINGS_TEST_STUB_DIR}
+                           ${FURBLE_ROOT}/include
+                           ${FURBLE_ROOT}/lib/preferences
+                           ${FURBLE_ROOT}/lib/furble)
+target_compile_definitions(boundary_headless_service_test PRIVATE
+                           FURBLE_NO_DISPLAY
+                           FURBLE_CONSOLE
+                           FURBLE_M5STICKS3
+                           FURBLE_WEBUI=1
+                           FURBLE_MQTT=1
+                           FURBLE_ETHERNET
+                           FURBLE_BOOT_TIMELINE_HOST_TEST=1)
+target_compile_options(boundary_headless_service_test PRIVATE
+                       ${BOUNDARY_FREERTOS_INCLUDE}
+                       -include${BOUNDARY_SHIM_DIR}/esp_log.h
+                       -Wall -Wextra -Wno-unused-parameter -Wno-format)
+target_link_libraries(boundary_headless_service_test PRIVATE Threads::Threads)
+
+if(BUILD_TESTING)
+  foreach(mode protocols psram-fallback queue-timeout unsupported)
+    add_test(NAME boundary-ir-${mode} COMMAND boundary_ir_test ${mode})
+  endforeach()
+  foreach(mode mount-write mount-fail full removed)
+    add_test(NAME boundary-sd-${mode} COMMAND boundary_sd_test ${mode})
+  endforeach()
+  set_tests_properties(boundary-sd-mount-write boundary-sd-mount-fail
+                       boundary-sd-full boundary-sd-removed
+                       PROPERTIES RESOURCE_LOCK boundary-sd)
+  foreach(mode sound light overcurrent low-battery vibration)
+    add_test(NAME boundary-feedback-${mode} COMMAND boundary_feedback_test ${mode})
+  endforeach()
+  add_test(NAME boundary-ethernet-w5500 COMMAND boundary_ethernet_test)
+  add_test(NAME boundary-companion-gatt COMMAND boundary_companion_test)
+  set_tests_properties(boundary-companion-gatt PROPERTIES ENVIRONMENT
+                       "FURBLE_SIM_PREFS=${CMAKE_CURRENT_BINARY_DIR}/boundary-companion-prefs.bin")
+  add_test(NAME boundary-webui-tls COMMAND boundary_webui_tls_test)
+  add_test(NAME boundary-headless-service COMMAND boundary_headless_service_test)
+endif()

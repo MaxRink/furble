@@ -4796,6 +4796,118 @@
       "capabilities": [],
       "expected_exit": 0,
       "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/hw-boundary-audio.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Linked host boundary evidence; run sim/scripts/run-boundary-conformance.sh, not an SDL DSL script."
+    },
+    {
+      "path": "sim/scenarios/e2e/hw-boundary-companion-gatt.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Linked host boundary evidence; run sim/scripts/run-boundary-conformance.sh, not an SDL DSL script."
+    },
+    {
+      "path": "sim/scenarios/e2e/hw-boundary-companion-restart.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Linked host boundary evidence; run sim/scripts/run-boundary-conformance.sh, not an SDL DSL script."
+    },
+    {
+      "path": "sim/scenarios/e2e/hw-boundary-headless.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Linked host boundary evidence; run sim/scripts/run-boundary-conformance.sh, not an SDL DSL script."
+    },
+    {
+      "path": "sim/scenarios/e2e/hw-boundary-ir.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Linked host boundary evidence; run sim/scripts/run-boundary-conformance.sh, not an SDL DSL script."
+    },
+    {
+      "path": "sim/scenarios/e2e/hw-boundary-sd.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Linked host boundary evidence; run sim/scripts/run-boundary-conformance.sh, not an SDL DSL script."
+    },
+    {
+      "path": "sim/scenarios/e2e/hw-boundary-tls.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Linked host boundary evidence; run sim/scripts/run-boundary-conformance.sh, not an SDL DSL script."
+    },
+    {
+      "path": "sim/scenarios/e2e/hw-boundary-waveshare-eth.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Linked host boundary evidence; run sim/scripts/run-boundary-conformance.sh, not an SDL DSL script."
     }
   ]
 }

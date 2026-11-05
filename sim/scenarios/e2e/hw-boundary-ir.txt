@@ -1,0 +1,20 @@
+# Linked boundary: production IR RMT driver in src/FurbleIR.cpp.
+#
+# The real encoder, RMT channel lifecycle, queue and task creation run against
+# a host RMT double. All protocols, the queue-full drop, the bounded RMT wait,
+# the PSRAM stack fallback and the no-NVS rule are asserted.
+#
+# Runner: sh sim/scripts/run-boundary-conformance.sh
+# Tests: boundary-ir-protocols, boundary-ir-psram-fallback,
+#        boundary-ir-queue-timeout, boundary-ir-unsupported
+#
+# Expected production tokens:
+# ir.transmit protocol=nikon carrier=38000 symbols=13
+# ir.transmit protocol=sony carrier=40000 symbols=63
+# ir.transmit protocol=canon carrier=32700 symbols=2
+# ir.transmit protocol=canon-delayed carrier=32700 symbols=2
+# ir.channel enables=5 disables=5 transmits=5
+# ir.stack psram=unavailable fallback=internal transmits=1
+# ir.queue full=1 dropped=1
+# ir.timeout wait_ms=1000 logged=1
+# ir.unsupported board=core fire=no-op

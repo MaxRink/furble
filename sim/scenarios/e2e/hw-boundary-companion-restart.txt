@@ -1,0 +1,16 @@
+# Linked crash reproduction: CompanionGatt 4 KiB task restart.
+#
+# The production CompanionGatt retains its 3072-byte service task and GATT
+# database across disable/enable. A restart must not call xTaskCreate again or
+# rebuild the GATT entries, which is the allocation failure that aborted the
+# StickS3 after the previous stop/start path.
+#
+# Runner: sh sim/scripts/run-boundary-conformance.sh
+# Test: boundary-companion-gatt
+#
+# Expected production tokens:
+# companion.enable services=2 characteristics=9 task=1 stack=3072
+# companion.disable enabled=0 task_retained=1 gatt_retained=1
+# companion.restart enabled=1 bond=loaded task=retained gatt=retained
+# companion.restart second=1 task=retained gatt=retained
+# companion_gatt_transport_test: PASS

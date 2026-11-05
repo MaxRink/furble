@@ -1,0 +1,6 @@
+#ifndef FURBLE_HOST_NIMBLE_ADVERTISING_H
+#define FURBLE_HOST_NIMBLE_ADVERTISING_H
+
+#include "MockNimBLE.h"
+
+#endif

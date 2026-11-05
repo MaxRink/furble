@@ -11,3 +11,23 @@ covered even when the TSAN binary is unavailable.
 Provisioning tests cover Legend Off through the production apply path and NVS
 store. Keep `Furble::Settings` qualified outside its namespace; run both the
 ordinary and MQTT-enabled provisioning targets when changing this coverage.
+
+## Linked boundary conformance
+
+`boundaries/` and `headless/` compile production drivers and the production
+`FURBLE_NO_DISPLAY` service loop against host peripheral doubles. The runner is
+`sh sim/scripts/run-boundary-conformance.sh`; it builds the targets and checks
+the production tokens named in `sim/coverage/hardware_quirks.json`. The test
+targets are normal CTest entries, so the host CI job runs them.
+
+The SD boundary compiles `src/FurbleSD.cpp` with `FURBLE_SD_MOUNT_POINT` set to
+`/tmp/furble-boundary-sd`. That define is a host-only override; the firmware
+default remains `/sd` and no device behavior changes. The same target sets
+`FURBLE_GPX_DIRECTORY` for `src/FurbleGPX.cpp`.
+
+The boundary log shim stores production log lines under a mutex because worker
+tasks write them while the test thread polls. Keep `BoundaryHost::logContains()`
+as the reader; do not return the underlying vector without the lock. The
+`MockNimBLE::resetMock()` path resets the server services, callbacks, started
+flag, counters and advertising counters, so a test never inherits the previous
+case's GATT database.

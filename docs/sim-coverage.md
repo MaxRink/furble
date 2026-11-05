@@ -20,6 +20,33 @@ model. `approximate` means only a boundary or state model exists and the entry
 names the missing evidence. `not-modeled` is allowed only with a reason and
 missing evidence, and blocks the flash gate.
 
+## Linked host boundaries
+
+A boundary whose SDL model cannot reach the production driver is proved by a
+host conformance target that compiles the same production source unchanged and
+replaces only the lowest hardware API. The evidence runner is:
+
+```sh
+sh sim/scripts/run-boundary-conformance.sh
+```
+
+| Boundary | Production path | Host double |
+| :--- | :--- | :--- |
+| Headless UI | `src/main.cpp` with `FURBLE_NO_DISPLAY` | module doubles, no SDL/M5GFX |
+| W5500 Ethernet | `src/FurbleEthernet.cpp` | SPI, GPIO, W5500 MAC/PHY, netif, event loop |
+| IR RMT | `src/FurbleIR.cpp` | RMT TX channel, encoder and task API |
+| SD writer | `src/FurbleSD.cpp`, `src/FurbleGPX.cpp` | SD/SPI/VFS mount over host POSIX I/O |
+| Feedback | `src/FurbleFeedback.cpp` | M5 speaker/LED/vibration and LVGL timer |
+| CompanionGatt | `src/FurbleCompanion.cpp` | MockNimBLE server/advertising and file-backed Preferences |
+| TLS/socket | `src/FurbleWebUI.cpp` | precise allocator-instrumented TLS/socket layer |
+
+The TLS/socket row models the exact allocation sizes and the start/stop path. It
+does not claim a real mbedTLS handshake on the host. Physical SPI wiring, W5500
+PHY behavior, DHCP on a physical LAN, analog audio, the SD card controller and
+TLS on hardware remain hardware validation items even though the production
+decisions are linked.
+
+
 ## Checkers
 
 ```sh
@@ -94,6 +121,7 @@ identity task, and the 3 KiB companion budget.
 ```sh
 python3 tools/check_sim_scenarios.py
 python3 tools/check_sim_coverage.py --require-ready
+sh sim/scripts/run-boundary-conformance.sh
 sh sim/scripts/check-doc-tokens.sh
 sh sim/scripts/check-hardware-quirks.sh
 python3 sim/scripts/run-memory-profile.py

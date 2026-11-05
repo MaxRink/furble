@@ -1,0 +1,16 @@
+# Linked boundary: production FURBLE_NO_DISPLAY service loop.
+#
+# src/main.cpp is compiled unchanged with FURBLE_NO_DISPLAY. The production
+# app_main boot order, console request queue, vUITask cadence and 1 Hz GPS
+# service run without SDL, M5GFX or a panel. Modules are host doubles.
+#
+# Runner: sh sim/scripts/run-boundary-conformance.sh
+# Test: boundary-headless-service
+#
+# Expected production tokens:
+# headless.boot[0]=crashlog.init
+# headless.boot[25]=boot.finish
+# headless.loop platform=45 crash=45 scan=45 gps=3
+# headless.services console=1 ir=1 sd=1 wifi=1 gps=1 ble=1 webui=1 mqtt=1 ethernet=1
+# headless.no_panel touched=0
+# headless_service_test: PASS

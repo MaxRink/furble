@@ -1,0 +1,21 @@
+# Linked boundary: production feedback driver in src/FurbleFeedback.cpp.
+#
+# The real event-to-tone/LED/vibration mapping, volume path, event mask,
+# amplifier retry and low-battery sampler run against a host M5/LVGL double.
+# Overcurrent is modelled as two speaker begin failures; brownout is the low
+# battery sampler at 3.0 V. Both use production failure handling.
+#
+# Runner: sh sim/scripts/run-boundary-conformance.sh
+# Tests: boundary-feedback-sound, boundary-feedback-light,
+#        boundary-feedback-overcurrent, boundary-feedback-low-battery,
+#        boundary-feedback-vibration
+#
+# Expected production tokens:
+# feedback.sound event=shutter frequency=4000 duration=40 volume=77
+# feedback.sound event=connected tones=2 volume_live=42
+# feedback.sound event=disconnected tones=2
+# feedback.light event=connected blinks=2
+# feedback.overcurrent begin_failures=2 dropped=1
+# feedback.overcurrent recovered=1
+# feedback.brownout low_battery_samples=6 vibration=255 voltage_mv=3000
+# feedback.vibration event=connected pulses=1

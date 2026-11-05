@@ -1,0 +1,18 @@
+# Linked boundary: production SD writer in src/FurbleSD.cpp and GPX writer.
+#
+# The real writer task, mount decision, failure counter and dated GPX path run
+# against a host SD/SPI/VFS double over real POSIX file I/O. Mount, write,
+# full-card failure, removed card and power-off are asserted.
+#
+# Runner: sh sim/scripts/run-boundary-conformance.sh
+# Tests: boundary-sd-mount-write, boundary-sd-mount-fail,
+#        boundary-sd-full, boundary-sd-removed
+#
+# Expected production tokens:
+# sd.mount state=mounted calls=1
+# sd.write path=/tmp/furble-boundary-sd/furble/20261105-120000.gpx bytes=488
+# sd.card capacity_mb=32768 free_mb=30720 generation=1
+# sd.power_off unmounted=1 calls=1
+# sd.mount_fail state=failed calls=1
+# sd.full write_failed=1 disabled=0
+# sd.removed mount_failures=3 gpx_disabled=1

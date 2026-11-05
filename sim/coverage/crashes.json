@@ -201,16 +201,17 @@
     },
     {
       "id": "companion-4k-restart",
-      "scenario": "sim/scenarios/e2e/hw-ble-auth-gatt-reidentify.txt",
+      "scenario": "sim/scenarios/e2e/hw-boundary-companion-restart.txt",
       "assertions": [
-        "companion.reidentify",
-        "ble.bond"
+        "companion.restart",
+        "companion.disable"
       ],
-      "status": "approximate",
+      "status": "modeled",
       "known_failing_seeds": [],
       "source": "sim/coverage/crashes.json",
-      "note": "CompanionGatt restart is not linked; reidentify/bond state is modeled.",
-      "missing_evidence": "A MockNimBLE server build that compiles CompanionGatt::enable()/disable()."
+      "note": "Production CompanionGatt retains the configured service task (3072 bytes after #398) and GATT database across disable/enable over MockNimBLE; restart asserts no second xTaskCreate.",
+      "model": "src/FurbleCompanion.cpp",
+      "runner": "sim/scripts/run-boundary-conformance.sh"
     }
   ]
 }

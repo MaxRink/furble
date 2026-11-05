@@ -34,6 +34,9 @@ std::chrono::steady_clock::time_point g_Start = std::chrono::steady_clock::now()
 std::atomic<bool> g_StopTasks {false};
 std::mutex g_TasksMutex;
 std::vector<std::thread> g_Tasks;
+std::atomic<size_t> g_TaskCreateCount {0};
+std::atomic<uint32_t> g_LastTaskStackBytes {0};
+FurbleHostDelayHook g_DelayHook = nullptr;
 std::mutex g_QueuesMutex;
 std::vector<FurbleHostQueue *> g_Queues;
 
@@ -42,7 +45,7 @@ struct StopTask {};
 
 BaseType_t xTaskCreate(TaskFunction_t task,
                        const char *name,
-                       uint32_t,
+                       uint32_t stack_size,
                        void *parameter,
                        UBaseType_t,
                        TaskHandle_t *task_handle) {
@@ -55,6 +58,8 @@ BaseType_t xTaskCreate(TaskFunction_t task,
   if (g_StopTasks.load()) {
     return pdFALSE;
   }
+  g_TaskCreateCount.fetch_add(1);
+  g_LastTaskStackBytes.store(stack_size);
   g_Tasks.emplace_back([task, parameter]() {
     try {
       task(parameter);
@@ -72,9 +77,16 @@ void vTaskDelete(TaskHandle_t) {}
 
 void vTaskDelay(TickType_t ticks) {
   std::this_thread::sleep_for(std::chrono::milliseconds(ticks));
+  if (g_DelayHook != nullptr) {
+    g_DelayHook();
+  }
   if (g_StopTasks.load()) {
     throw StopTask {};
   }
+}
+
+void furbleHostSetDelayHook(FurbleHostDelayHook hook) {
+  g_DelayHook = hook;
 }
 
 TickType_t xTaskGetTickCount(void) {
@@ -155,14 +167,26 @@ BaseType_t xQueueReceive(QueueHandle_t queue, void *item, TickType_t ticks_to_wa
   return pdTRUE;
 }
 
+size_t furbleHostTaskCreateCount(void) {
+  return g_TaskCreateCount.load();
+}
+
+uint32_t furbleHostLastTaskStackBytes(void) {
+  return g_LastTaskStackBytes.load();
+}
+
 void furbleHostStopTasks(void) {
   g_StopTasks.store(true);
 
   // Wake every queue wait immediately. The predicate also checks the stop
   // flag, so a task cannot miss shutdown between the notify and its wakeup.
+  // Take each queue mutex before notifying: a waiter that has set the stop
+  // flag but not yet entered wait_for can otherwise miss the notification and
+  // sleep for portMAX_DELAY.
   {
     const std::lock_guard<std::mutex> lock(g_QueuesMutex);
     for (auto *queue : g_Queues) {
+      const std::lock_guard<std::mutex> queueLock(queue->mutex);
       queue->condition.notify_all();
     }
   }
@@ -208,4 +232,58 @@ void vQueueDelete(QueueHandle_t queue) {
     }
   }
   delete queue;
+}
+
+// Binary semaphores for drivers that wait on a writer task. The simulator's
+// virtual scheduler is not used here: these are real host semaphores with the
+// same take/give contract as FreeRTOS.
+struct FurbleHostSemaphore {
+  std::mutex mutex;
+  std::condition_variable condition;
+  bool available = false;
+};
+
+SemaphoreHandle_t xSemaphoreCreateBinary(void) {
+  return new FurbleHostSemaphore;
+}
+
+BaseType_t xSemaphoreTake(SemaphoreHandle_t semaphore, TickType_t ticks_to_wait) {
+  if (semaphore == nullptr) {
+    return pdFALSE;
+  }
+  std::unique_lock<std::mutex> lock(semaphore->mutex);
+  if (semaphore->available) {
+    semaphore->available = false;
+    return pdTRUE;
+  }
+  if (ticks_to_wait == 0) {
+    return pdFALSE;
+  }
+  const auto ready = semaphore->condition.wait_for(
+      lock, std::chrono::milliseconds(ticks_to_wait),
+      [semaphore] { return g_StopTasks.load() || semaphore->available; });
+  if (g_StopTasks.load()) {
+    throw StopTask {};
+  }
+  if (!ready || !semaphore->available) {
+    return pdFALSE;
+  }
+  semaphore->available = false;
+  return pdTRUE;
+}
+
+BaseType_t xSemaphoreGive(SemaphoreHandle_t semaphore) {
+  if (semaphore == nullptr) {
+    return pdFALSE;
+  }
+  {
+    const std::lock_guard<std::mutex> lock(semaphore->mutex);
+    semaphore->available = true;
+  }
+  semaphore->condition.notify_one();
+  return pdTRUE;
+}
+
+void vSemaphoreDelete(SemaphoreHandle_t semaphore) {
+  delete semaphore;
 }

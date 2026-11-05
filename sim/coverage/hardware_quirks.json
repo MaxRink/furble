@@ -1575,15 +1575,15 @@
       "category": "radio",
       "feature": "Companion stop/start 4 KiB allocation failure",
       "source": "plans/302-companion-restart-reconnect.md",
-      "model": "sim/hardware_model.cpp",
-      "scenario": "sim/scenarios/e2e/hw-ble-auth-gatt-reidentify.txt",
+      "model": "src/FurbleCompanion.cpp",
+      "scenario": "sim/scenarios/e2e/hw-boundary-companion-restart.txt",
       "assertions": [
-        "companion.reidentify",
-        "ble.bond"
+        "companion.restart",
+        "companion.disable"
       ],
-      "status": "approximate",
-      "note": "CompanionGatt task restart is not linked; reidentify/bond state is modeled.",
-      "missing_evidence": "A MockNimBLE server build that compiles CompanionGatt::enable()/disable()."
+      "status": "modeled",
+      "note": "Production CompanionGatt retains the configured service task (3072 bytes after #398) and GATT database across disable/enable over MockNimBLE; restart asserts no second xTaskCreate.",
+      "runner": "sim/scripts/run-boundary-conformance.sh"
     },
     {
       "id": "power.m5pm1",
@@ -2315,14 +2315,16 @@
       "category": "display",
       "feature": "Display-less production UI",
       "source": "src/main.cpp FURBLE_NO_DISPLAY",
-      "model": "sim/hardware_model.cpp",
-      "scenario": "sim/scenarios/e2e/hw-profile-headless.txt",
+      "model": "src/main.cpp",
+      "scenario": "sim/scenarios/e2e/hw-boundary-headless.txt",
       "assertions": [
-        "hw.display"
+        "headless.no_panel",
+        "headless.services",
+        "headless_service_test:"
       ],
-      "status": "approximate",
-      "note": "SDL still brings up a panel; profile/memory/radio state is modeled.",
-      "missing_evidence": "A headless simulator build or headless host contract."
+      "status": "modeled",
+      "note": "src/main.cpp compiled unchanged with FURBLE_NO_DISPLAY; host doubles for modules and no SDL/M5GFX link.",
+      "runner": "sim/scripts/run-boundary-conformance.sh"
     },
     {
       "id": "boundary.waveshare_eth",
@@ -2330,14 +2332,16 @@
       "category": "radio",
       "feature": "W5500 production driver",
       "source": "src/FurbleEthernet.cpp",
-      "model": "sim/hardware_model.cpp",
-      "scenario": "sim/scenarios/e2e/hw-profile-waveshare.txt",
+      "model": "src/FurbleEthernet.cpp",
+      "scenario": "sim/scenarios/e2e/hw-boundary-waveshare-eth.txt",
       "assertions": [
-        "net.ethernet"
+        "eth.dhcp",
+        "eth.reconnect",
+        "wifi.fallback"
       ],
-      "status": "approximate",
-      "note": "Link state only; W5500 SPI is not linked.",
-      "missing_evidence": "A Waveshare/headless build with a W5500 double."
+      "status": "modeled",
+      "note": "EspEthTransport compiled with host SPI/GPIO/W5500/netif/event doubles; production WiFi deferral checked by real-wifi-lifecycle.",
+      "runner": "sim/scripts/run-boundary-conformance.sh"
     },
     {
       "id": "boundary.ir_driver",
@@ -2345,14 +2349,16 @@
       "category": "peripheral",
       "feature": "IR RMT driver",
       "source": "src/FurbleIR.cpp",
-      "model": "sim/hardware_model.cpp",
-      "scenario": "sim/scenarios/e2e/hw-audio-ir-sd-faults.txt",
+      "model": "src/FurbleIR.cpp",
+      "scenario": "sim/scenarios/e2e/hw-boundary-ir.txt",
       "assertions": [
-        "ir.state"
+        "ir.transmit",
+        "ir.stack",
+        "ir.timeout"
       ],
-      "status": "approximate",
-      "note": "IR state/timeout modeled; RMT not linked.",
-      "missing_evidence": "Compile FurbleIR.cpp with an RMT double."
+      "status": "modeled",
+      "note": "Production encoder, queue, task and RMT lifecycle with a host RMT double.",
+      "runner": "sim/scripts/run-boundary-conformance.sh"
     },
     {
       "id": "boundary.sd_driver",
@@ -2360,14 +2366,16 @@
       "category": "peripheral",
       "feature": "SD writer driver",
       "source": "src/FurbleSD.cpp",
-      "model": "sim/hardware_model.cpp",
-      "scenario": "sim/scenarios/e2e/hw-audio-ir-sd-faults.txt",
+      "model": "src/FurbleSD.cpp",
+      "scenario": "sim/scenarios/e2e/hw-boundary-sd.txt",
       "assertions": [
-        "sd.state"
+        "sd.write",
+        "sd.full",
+        "sd.removed"
       ],
-      "status": "approximate",
-      "note": "SD state modeled; SPI/SD not linked.",
-      "missing_evidence": "Compile FurbleSD.cpp with a filesystem double."
+      "status": "modeled",
+      "note": "Production writer, mount/failure policy and GPX path over host VFS/SD double and real POSIX I/O.",
+      "runner": "sim/scripts/run-boundary-conformance.sh"
     },
     {
       "id": "boundary.audio_driver",
@@ -2375,14 +2383,17 @@
       "category": "peripheral",
       "feature": "Speaker driver",
       "source": "src/FurbleFeedback.cpp",
-      "model": "sim/hardware_model.cpp",
-      "scenario": "sim/scenarios/e2e/hw-audio-ir-sd-faults.txt",
+      "model": "src/FurbleFeedback.cpp",
+      "scenario": "sim/scenarios/e2e/hw-boundary-audio.txt",
       "assertions": [
-        "audio.state"
+        "feedback.sound",
+        "feedback.overcurrent",
+        "feedback.brownout",
+        "feedback.light"
       ],
-      "status": "approximate",
-      "note": "Audio state modeled; M5 speaker not linked.",
-      "missing_evidence": "Compile FurbleFeedback.cpp with the M5 speaker double."
+      "status": "modeled",
+      "note": "Production event mapping, volume, LED, vibration and low-battery sampler with host M5/LVGL double; overcurrent is two speaker begin failures.",
+      "runner": "sim/scripts/run-boundary-conformance.sh"
     },
     {
       "id": "boundary.companion_gatt",
@@ -2390,14 +2401,16 @@
       "category": "radio",
       "feature": "CompanionGatt service",
       "source": "src/FurbleCompanion.cpp",
-      "model": "sim/hardware_model.cpp",
-      "scenario": "sim/scenarios/e2e/hw-ble-auth-gatt-reidentify.txt",
+      "model": "src/FurbleCompanion.cpp",
+      "scenario": "sim/scenarios/e2e/hw-boundary-companion-gatt.txt",
       "assertions": [
-        "companion.state"
+        "companion.enable",
+        "companion.auth",
+        "companion.reidentify"
       ],
-      "status": "approximate",
-      "note": "Auth/cache/reidentify modeled; CompanionGatt not linked.",
-      "missing_evidence": "Compile FurbleCompanion.cpp against MockNimBLE server support."
+      "status": "modeled",
+      "note": "Production CompanionGatt over MockNimBLE server with file-backed Preferences bond store.",
+      "runner": "sim/scripts/run-boundary-conformance.sh"
     },
     {
       "id": "boundary.tls_socket",
@@ -2405,14 +2418,16 @@
       "category": "memory",
       "feature": "mbedTLS/socket allocations",
       "source": "src/FurbleWebUI.cpp",
-      "model": "sim/hardware_model.cpp",
-      "scenario": "sim/scenarios/e2e/hw-memory-webui-post394.txt",
+      "model": "src/FurbleWebUI.cpp",
+      "scenario": "sim/scenarios/e2e/hw-boundary-tls.txt",
       "assertions": [
-        "heap.largest"
+        "tls.handshake",
+        "tls.alloc_failure",
+        "tls.reopen"
       ],
-      "status": "approximate",
-      "note": "Gate/task stacks modeled; TLS/sockets not linked.",
-      "missing_evidence": "Host WebUI build with real TLS or hardware heap trace."
+      "status": "modeled",
+      "note": "Production WebUI over a precise allocator-instrumented TLS/socket double. Exact allocation sizes are modelled; a real mbedTLS handshake remains outside the host boundary.",
+      "runner": "sim/scripts/run-boundary-conformance.sh"
     },
     {
       "id": "boot.settings_migration",

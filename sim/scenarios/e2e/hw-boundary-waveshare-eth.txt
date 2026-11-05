@@ -1,0 +1,19 @@
+# Linked boundary: production W5500 transport in src/FurbleEthernet.cpp.
+#
+# The real EspEthTransport runs against a host SPI/GPIO/W5500/netif/event
+# double. Link up, DHCP, link down, reconnect, IP loss, teardown and restart
+# are asserted from the production callbacks. The production WiFi station
+# deferral is covered by real-wifi-lifecycle over the same Ethernet state.
+#
+# Runner: sh sim/scripts/run-boundary-conformance.sh
+# Tests: boundary-ethernet-w5500, real-wifi-lifecycle
+#
+# Expected production tokens:
+# eth.init spi=1 mac=1 phy=1 event_handlers=3 clock_hz=20000000
+# eth.dhcp link=up ip=192.0.2.42 callback=1
+# eth.link_down connected=0 stale_ip=ignored
+# eth.reconnect ip=198.51.100.7 callback=2
+# eth.dhcp_lost readdr=198.51.100.7 callback=3
+# eth.stop spi_free=1 netif_destroy=1 mac_del=1 handlers=3
+# eth.restart handlers=6 ip=203.0.113.9
+# wifi.fallback wired_defer=1 wired_resume=1

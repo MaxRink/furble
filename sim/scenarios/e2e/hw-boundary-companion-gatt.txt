@@ -1,0 +1,18 @@
+# Linked boundary: production CompanionGatt transport in src/FurbleCompanion.cpp.
+#
+# The real enable/disable, pairing window, connection accept, authentication
+# bond save, reidentify address rotation and GATT retention run over the
+# MockNimBLE server. Bond storage uses the simulator's file-backed Preferences.
+#
+# Runner: sh sim/scripts/run-boundary-conformance.sh
+# Test: boundary-companion-gatt
+#
+# Expected production tokens:
+# companion.reset_mock services=0 started=0 advertising=0
+# companion.enable services=2 characteristics=9 task=1 stack=3072
+# companion.pairing advertising=1 window=1
+# companion.connect handle=7 auth_started=1
+# companion.auth bonded=1 encrypted=1 authenticated=1
+# companion.disable enabled=0 task_retained=1 gatt_retained=1
+# companion.restart enabled=1 bond=loaded task=retained gatt=retained
+# companion.reidentify address_changed=1 bond=0 window=1

@@ -3,10 +3,15 @@
 
 #include "nvs.h"
 
-enum {
-  ESP_ERR_NVS_NO_FREE_PAGES = ESP_ERR_NVS_BASE + 10,
-  ESP_ERR_NVS_NEW_VERSION_FOUND = ESP_ERR_NVS_BASE + 11,
-};
+#ifndef ESP_ERR_NVS_BASE
+#define ESP_ERR_NVS_BASE 0x1100
+#endif
+#ifndef ESP_ERR_NVS_NO_FREE_PAGES
+#define ESP_ERR_NVS_NO_FREE_PAGES (ESP_ERR_NVS_BASE + 10)
+#endif
+#ifndef ESP_ERR_NVS_NEW_VERSION_FOUND
+#define ESP_ERR_NVS_NEW_VERSION_FOUND (ESP_ERR_NVS_BASE + 11)
+#endif
 
 extern "C" {
 esp_err_t nvs_flash_init(void);

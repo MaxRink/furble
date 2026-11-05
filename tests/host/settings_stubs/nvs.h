@@ -4,13 +4,16 @@
 #include <cstddef>
 #include <cstdint>
 
+#ifndef FURBLE_BOUNDARY_ESP_ERR_H
 using esp_err_t = int32_t;
+#endif
 using nvs_handle_t = uint32_t;
 
 struct nvs_stats_t {
   size_t free_entries;
 };
 
+#ifndef ESP_OK
 enum {
   ESP_OK = 0,
   ESP_FAIL = -1,
@@ -21,6 +24,26 @@ enum {
   ESP_ERR_NVS_INVALID_NAME = ESP_ERR_NVS_BASE + 6,
   ESP_ERR_NVS_INVALID_HANDLE = ESP_ERR_NVS_BASE + 7,
 };
+#else
+#ifndef ESP_ERR_NVS_BASE
+#define ESP_ERR_NVS_BASE 0x1100
+#endif
+#ifndef ESP_ERR_NVS_NOT_FOUND
+#define ESP_ERR_NVS_NOT_FOUND (ESP_ERR_NVS_BASE + 1)
+#endif
+#ifndef ESP_ERR_NVS_TYPE_MISMATCH
+#define ESP_ERR_NVS_TYPE_MISMATCH (ESP_ERR_NVS_BASE + 2)
+#endif
+#ifndef ESP_ERR_NVS_INVALID_LENGTH
+#define ESP_ERR_NVS_INVALID_LENGTH (ESP_ERR_NVS_BASE + 12)
+#endif
+#ifndef ESP_ERR_NVS_INVALID_NAME
+#define ESP_ERR_NVS_INVALID_NAME (ESP_ERR_NVS_BASE + 6)
+#endif
+#ifndef ESP_ERR_NVS_INVALID_HANDLE
+#define ESP_ERR_NVS_INVALID_HANDLE (ESP_ERR_NVS_BASE + 7)
+#endif
+#endif
 
 enum {
   NVS_READONLY = 0,
