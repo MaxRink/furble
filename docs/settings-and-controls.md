@@ -317,6 +317,18 @@ credentials, `mqtt_base` is the topic root (default `furble`), and `mqtt_ha`
 enables Home Assistant discovery. The console also provides `mqtt status`,
 `mqtt connect`, `mqtt disconnect`, and `mqtt discovery clear`.
 
+`mqtt_ha` is read when the MQTT settings reload and cached for the owner task.
+A change takes effect on the next reload, not between owner iterations.
+
+MQTT is the largest optional network consumer. Before the esp-mqtt client is
+created the firmware requires 8,192 bytes of free internal heap and a 4,096-byte
+largest block. Home Assistant discovery is optional and requires 10,240 bytes
+free and a 4,096-byte largest block. Below either floor the firmware logs the
+measured pair and either defers the start (the owner retry limit still applies)
+or skips only the retained discovery records. The broker link and the command
+path stay up when discovery is skipped. The plain MQTT worker uses a 3 KiB
+stack and 1,536-byte network and outbox buffers; TLS keeps a 6 KiB worker.
+
 `mqtt://` is intentionally supported for local-broker compatibility, but it is
 unencrypted and sends credentials and commands in plaintext. Use it only on a
 trusted LAN; use `mqtts://` when transport confidentiality is required.

@@ -17,6 +17,7 @@
 #include <cJSON.h>
 #include <esp_crt_bundle.h>
 #include <esp_event.h>
+#include <esp_heap_caps.h>
 #include <esp_log.h>
 #include <esp_netif.h>
 #include <esp_system.h>
@@ -34,6 +35,7 @@
 
 #include "FurbleBootTimeline.h"
 #include "FurbleGPS.h"
+#include "FurbleMQTTMemory.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
 #include "FurbleUI.h"
@@ -95,6 +97,9 @@ bool parseNumber(const cJSON *object, const char *name, double &value) {
 }
 
 void addAvailability(cJSON *component, const std::string &topic) {
+  if (component == nullptr) {
+    return;
+  }
   cJSON_AddStringToObject(component, "availability_topic", topic.c_str());
   cJSON_AddStringToObject(component, "payload_available", "online");
   cJSON_AddStringToObject(component, "payload_not_available", "offline");
@@ -103,21 +108,31 @@ void addAvailability(cJSON *component, const std::string &topic) {
 void addCameraAvailability(cJSON *component,
                            const std::string &hub_topic,
                            const std::string &camera_topic) {
+  if (component == nullptr) {
+    return;
+  }
   cJSON *availability = cJSON_AddArrayToObject(component, "availability");
+  if (availability == nullptr) {
+    return;
+  }
 
   cJSON *hub = cJSON_CreateObject();
-  cJSON_AddStringToObject(hub, "topic", hub_topic.c_str());
-  cJSON_AddStringToObject(hub, "payload_available", "online");
-  cJSON_AddStringToObject(hub, "payload_not_available", "offline");
-  cJSON_AddItemToArray(availability, hub);
+  if (hub != nullptr) {
+    cJSON_AddStringToObject(hub, "topic", hub_topic.c_str());
+    cJSON_AddStringToObject(hub, "payload_available", "online");
+    cJSON_AddStringToObject(hub, "payload_not_available", "offline");
+    cJSON_AddItemToArray(availability, hub);
+  }
 
   cJSON *camera = cJSON_CreateObject();
-  cJSON_AddStringToObject(camera, "topic", camera_topic.c_str());
-  cJSON_AddStringToObject(camera, "value_template",
-                          "{{ 'online' if value_json.connected else 'offline' }}");
-  cJSON_AddStringToObject(camera, "payload_available", "online");
-  cJSON_AddStringToObject(camera, "payload_not_available", "offline");
-  cJSON_AddItemToArray(availability, camera);
+  if (camera != nullptr) {
+    cJSON_AddStringToObject(camera, "topic", camera_topic.c_str());
+    cJSON_AddStringToObject(camera, "value_template",
+                            "{{ 'online' if value_json.connected else 'offline' }}");
+    cJSON_AddStringToObject(camera, "payload_available", "online");
+    cJSON_AddStringToObject(camera, "payload_not_available", "offline");
+    cJSON_AddItemToArray(availability, camera);
+  }
 
   cJSON_AddStringToObject(component, "availability_mode", "all");
 }
@@ -126,9 +141,17 @@ void addDevice(cJSON *root,
                const std::string &id,
                const std::string &name,
                const std::string &via_device) {
+  if (root == nullptr) {
+    return;
+  }
   cJSON *device = cJSON_AddObjectToObject(root, "dev");
+  if (device == nullptr) {
+    return;
+  }
   cJSON *identifiers = cJSON_AddArrayToObject(device, "identifiers");
-  cJSON_AddItemToArray(identifiers, cJSON_CreateString(id.c_str()));
+  if (identifiers != nullptr) {
+    cJSON_AddItemToArray(identifiers, cJSON_CreateString(id.c_str()));
+  }
   cJSON_AddStringToObject(device, "name", name.c_str());
   cJSON_AddStringToObject(device, "manufacturer", "furble");
   cJSON_AddStringToObject(device, "model", "BLE camera shutter remote");
@@ -139,12 +162,21 @@ void addDevice(cJSON *root,
 }
 
 void addOrigin(cJSON *root) {
+  if (root == nullptr) {
+    return;
+  }
   cJSON *origin = cJSON_AddObjectToObject(root, "o");
+  if (origin == nullptr) {
+    return;
+  }
   cJSON_AddStringToObject(origin, "name", "furble");
   cJSON_AddStringToObject(origin, "sw_version", FURBLE_VERSION);
 }
 
 void addUniqueID(cJSON *component, const std::string &device_id, const char *entity) {
+  if (component == nullptr) {
+    return;
+  }
   cJSON_AddStringToObject(component, "unique_id", (device_id + "_" + entity).c_str());
 }
 
@@ -200,6 +232,7 @@ void MQTT::init(void) {
 
 void MQTT::reloadSetting(void) {
   const bool enabled = Settings::load<Settings::MQTT>();
+  const bool homeAssistant = Settings::load<Settings::MQTT_HA>();
   const std::string baseSetting = Settings::load<Settings::MQTT_BASE>();
   const std::string uriSetting = Settings::load<Settings::MQTT_URI>();
   const std::string userSetting = Settings::load<Settings::MQTT_USER>();
@@ -212,6 +245,7 @@ void MQTT::reloadSetting(void) {
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
     m_EnabledCached = enabled;
+    m_HomeAssistantCached.store(homeAssistant);
     m_BaseSetting = baseSetting;
     m_URISetting = uriSetting;
     m_UserSetting = userSetting;
@@ -228,7 +262,8 @@ void MQTT::reloadSetting(void) {
   }
 
   if (m_Task == nullptr) {
-    const BaseType_t result = xTaskCreate(taskEntry, "mqtt", 6144, this, 2, &m_Task);
+    const BaseType_t result =
+        xTaskCreate(taskEntry, "mqtt", MQTTMemory::OWNER_STACK_BYTES, this, 2, &m_Task);
     if (result != pdPASS) {
       m_Task = nullptr;
       ESP_LOGE(MQTT_LOG_TAG, "Failed to create MQTT task.");
@@ -634,6 +669,19 @@ bool MQTT::startClient(void) {
     return false;
   }
 
+  const size_t freeBytes = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  const size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  const auto gate = MQTTMemory::startGate(freeBytes, largest);
+  if (!gate.open) {
+    // Defer instead of letting esp-mqtt allocate its task and buffers into a
+    // pool that cannot hold them. The owner counts this as a failed attempt, so
+    // the existing retry limit still stops a hopeless start.
+    ESP_LOGW(MQTT_LOG_TAG, FURBLE_MQTT_START_GATE_LOG, static_cast<unsigned>(gate.freeBytes),
+             static_cast<unsigned>(gate.largestBlock), static_cast<unsigned>(gate.freeFloor),
+             static_cast<unsigned>(gate.largestFloor));
+    return false;
+  }
+
   esp_mqtt_client_config_t config = {};
   config.broker.address.uri = m_URI.c_str();
   config.broker.verification.crt_bundle_attach = esp_crt_bundle_attach;
@@ -650,8 +698,11 @@ bool MQTT::startClient(void) {
   config.session.protocol_ver = MQTT_PROTOCOL_V_3_1_1;
   config.network.reconnect_timeout_ms = 10000;
   config.network.timeout_ms = 10000;
-  config.buffer.size = 2048;
-  config.buffer.out_size = 2048;
+  config.buffer.size = MQTTMemory::BUFFER_SIZE;
+  config.buffer.out_size = MQTTMemory::BUFFER_SIZE;
+  const bool secure = (m_URI.rfind("mqtts://", 0) == 0) || (m_URI.rfind("wss://", 0) == 0);
+  config.task.stack_size =
+      secure ? MQTTMemory::TLS_WORKER_STACK_BYTES : MQTTMemory::PLAIN_WORKER_STACK_BYTES;
 
   esp_mqtt_client_handle_t client = esp_mqtt_client_init(&config);
   if (client == nullptr) {
@@ -822,11 +873,11 @@ void MQTT::handleEvent(const queued_event_t &event) {
       ESP_LOGI(MQTT_LOG_TAG, "MQTT connected.");
       publish(m_StatusTopic, "online", 1, true);
       publishState(true);
-      if (Settings::load<Settings::MQTT_HA>()) {
+      if (m_HomeAssistantCached.load()) {
         publishDiscovery();
       }
       esp_mqtt_client_subscribe(event.client, (m_RootTopic + "/cmd/#").c_str(), 1);
-      if (Settings::load<Settings::MQTT_HA>()) {
+      if (m_HomeAssistantCached.load()) {
         esp_mqtt_client_subscribe(event.client, HOME_ASSISTANT_STATUS, 0);
       }
       break;
@@ -912,7 +963,7 @@ void MQTT::handleCommand(const std::string &topic, const std::string &payload) {
   const std::string value = trimWhitespace(payload);
 
   if ((topic == HOME_ASSISTANT_STATUS) && (value == "online")) {
-    if (Settings::load<Settings::MQTT_HA>()) {
+    if (m_HomeAssistantCached.load()) {
       publishDiscovery();
     }
     return;
@@ -1687,18 +1738,23 @@ void MQTT::publishDiscoveryDevice(const std::string &topic,
                                   const std::string &device_id,
                                   const std::string &name,
                                   const std::string &via_device,
-                                  const std::string &components) {
+                                  cJSON *components) {
+  if (components == nullptr) {
+    return;
+  }
+
   cJSON *root = cJSON_CreateObject();
-  cJSON *component_object = cJSON_ParseWithLength(components.c_str(), components.size());
-  if ((root == nullptr) || (component_object == nullptr)) {
-    cJSON_Delete(root);
-    cJSON_Delete(component_object);
+  if (root == nullptr) {
+    cJSON_Delete(components);
     return;
   }
 
   addDevice(root, device_id, name, via_device);
   addOrigin(root);
-  cJSON_AddItemToObject(root, "cmps", component_object);
+  // The root owns the component object now. This avoids serialising the
+  // components and parsing them back into a second tree, which was the largest
+  // transient allocation on the Home Assistant discovery path.
+  cJSON_AddItemToObject(root, "cmps", components);
 
   const std::string payload = jsonString(root);
   cJSON_Delete(root);
@@ -1706,7 +1762,19 @@ void MQTT::publishDiscoveryDevice(const std::string &topic,
 }
 
 void MQTT::publishDiscovery(void) {
-  if (!Settings::load<Settings::MQTT_HA>()) {
+  if (!m_HomeAssistantCached.load()) {
+    return;
+  }
+
+  const size_t freeBytes = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  const size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  const auto gate = MQTTMemory::discoveryGate(freeBytes, largest);
+  if (!gate.open) {
+    // Discovery is optional. Keep the broker session and the command path
+    // alive, and skip only the retained Home Assistant records.
+    ESP_LOGW(MQTT_LOG_TAG, FURBLE_MQTT_DISCOVERY_GATE_LOG, static_cast<unsigned>(gate.freeBytes),
+             static_cast<unsigned>(gate.largestBlock), static_cast<unsigned>(gate.freeFloor),
+             static_cast<unsigned>(gate.largestFloor));
     return;
   }
 
@@ -1800,9 +1868,7 @@ void MQTT::publishDiscovery(void) {
   cJSON_AddStringToObject(gps, "source_type", "gps");
   addAvailability(gps, m_StatusTopic);
 
-  const std::string hub_payload = jsonString(hub_components);
-  cJSON_Delete(hub_components);
-  publishDiscoveryDevice(m_HomeAssistantTopic, hub_id, "furble " + m_ID, {}, hub_payload);
+  publishDiscoveryDevice(m_HomeAssistantTopic, hub_id, "furble " + m_ID, {}, hub_components);
 
   std::vector<std::string> current_ids;
   const auto cameras = CameraList::savedSnapshot();
@@ -1852,10 +1918,8 @@ void MQTT::publishDiscovery(void) {
     cJSON_AddStringToObject(rssi, "entity_category", "diagnostic");
     addCameraAvailability(rssi, m_StatusTopic, camera_state_topic);
 
-    const std::string component_payload = jsonString(components);
-    cJSON_Delete(components);
     const std::string topic = "homeassistant/device/" + device_id + "/config";
-    publishDiscoveryDevice(topic, device_id, camera->getName(), hub_id, component_payload);
+    publishDiscoveryDevice(topic, device_id, camera->getName(), hub_id, components);
     current_ids.push_back(device_id);
   }
 

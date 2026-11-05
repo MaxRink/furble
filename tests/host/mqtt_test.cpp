@@ -9,9 +9,11 @@
 
 #include "CameraList.h"
 #include "Device.h"
+#include "FurbleMQTTMemory.h"
 #include "FurbleSettings.h"
 #include "FurbleUI.h"
 #include "cJSON.h"
+#include "esp_heap_caps.h"
 #include "esp_netif.h"
 #include "mqtt_client.h"
 #include "mqtt_host_dependencies.h"
@@ -143,6 +145,29 @@ int main(void) {
   host_mqtt::reset();
   host_mqtt_network::reset();
   host_mqtt_timer::reset();
+  host_mqtt_heap::reset();
+
+  // The budget constants are part of the firmware contract. Keep the host test
+  // pinned to the same values the device compiles.
+  require(Furble::MQTTMemory::OWNER_STACK_BYTES == 10240, "MQTT owner stack budget changed");
+  require(Furble::MQTTMemory::PLAIN_WORKER_STACK_BYTES == 3072,
+          "plain MQTT worker stack budget changed");
+  require(Furble::MQTTMemory::TLS_WORKER_STACK_BYTES == 6144,
+          "TLS MQTT worker stack budget changed");
+  require(Furble::MQTTMemory::BUFFER_SIZE == 1536, "MQTT buffer budget changed");
+  require(!Furble::MQTTMemory::startFits(Furble::MQTTMemory::START_INTERNAL_FREE_FLOOR - 1,
+                                         Furble::MQTTMemory::START_INTERNAL_LARGEST_FLOOR),
+          "start gate opened below the free floor");
+  require(!Furble::MQTTMemory::startFits(Furble::MQTTMemory::START_INTERNAL_FREE_FLOOR,
+                                         Furble::MQTTMemory::START_INTERNAL_LARGEST_FLOOR - 1),
+          "start gate opened below the largest-block floor");
+  require(!Furble::MQTTMemory::discoveryFits(Furble::MQTTMemory::DISCOVERY_INTERNAL_FREE_FLOOR - 1,
+                                             Furble::MQTTMemory::DISCOVERY_INTERNAL_LARGEST_FLOOR),
+          "discovery gate opened below the free floor");
+  require(
+      !Furble::MQTTMemory::discoveryFits(Furble::MQTTMemory::DISCOVERY_INTERNAL_FREE_FLOOR,
+                                         Furble::MQTTMemory::DISCOVERY_INTERNAL_LARGEST_FLOOR - 1),
+      "discovery gate opened below the largest-block floor");
 
   const std::string camera_address = "camera-7";
   auto camera = std::make_shared<Camera>(camera_address, "X100VI", Camera::Type::FUJIFILM_BASIC);
@@ -176,11 +201,27 @@ int main(void) {
   // This is deliberately an Ethernet-labelled netif. The production code must
   // follow the generic IP assignment, not a WiFi-only event or netif symbol.
   host_mqtt_network::setGotIp("ethernet", 0x0a00002a);
+
+  // The start gate must refuse a pool that cannot hold the esp-mqtt worker and
+  // buffers. It reports a failed attempt instead of letting esp-mqtt allocate
+  // into the last few hundred bytes.
+  host_mqtt_heap::set(Furble::MQTTMemory::START_INTERNAL_FREE_FLOOR - 1, 65536);
+  mqtt.hostTaskStep();
+  require(host_mqtt::startCount() == 0, "start gate allowed a low-heap MQTT client");
+  require(!mqtt.isConnected(), "a deferred MQTT start reported connected");
+
+  host_mqtt_heap::reset();
+  mqtt.reloadSetting();
   mqtt.hostTaskStep();
   // startClient queues MQTT_EVENT_CONNECTED; the owner handles it on its next
   // step rather than running broker work on the callback stack.
   mqtt.hostTaskStep();
   require(host_mqtt::startCount() == 1, "MQTT client did not start after Ethernet GOT_IP");
+  require(host_mqtt::lastTaskStackSize()
+              == static_cast<int>(Furble::MQTTMemory::PLAIN_WORKER_STACK_BYTES),
+          "plain MQTT worker did not use the budgeted stack");
+  require(host_mqtt::lastBufferSize() == static_cast<int>(Furble::MQTTMemory::BUFFER_SIZE),
+          "MQTT network buffer did not use the budgeted size");
   require(mqtt.isConnected(), "MQTT client did not process the connected event");
 
   const std::string root_topic = "furble/hub-42";
@@ -201,6 +242,28 @@ int main(void) {
   require(online.payload == "online" && online.qos == 1 && online.retain,
           "online status publication is wrong");
   assertDiscoveryPayloads(root_topic, camera_id);
+
+  // The owner caches MQTT_HA in reloadSetting(). A settings change between
+  // reloads must not be observed, and no owner iteration may read the key.
+  const uint32_t haLoads = Settings::mqttHALoads;
+  Settings::mqttHA = false;
+  ownerStep(mqtt);
+  host_mqtt::brokerPublish("homeassistant/status", "online", 0, true);
+  ownerStep(mqtt);
+  require(Settings::mqttHALoads == haLoads, "MQTT owner read MQTT_HA outside reloadSetting");
+  require(discoveryCount() == 4, "the cached MQTT_HA value was not used");
+  Settings::mqttHA = true;
+
+  // Discovery is optional. Below the gate the broker link must stay up and no
+  // retained discovery record may be published. The Home Assistant status
+  // replay is the simplest path that reaches publishDiscovery().
+  const size_t beforeGate = discoveryCount();
+  host_mqtt_heap::set(Furble::MQTTMemory::DISCOVERY_INTERNAL_FREE_FLOOR - 1, 65536);
+  host_mqtt::brokerPublish("homeassistant/status", "online", 0, true);
+  ownerStep(mqtt);
+  require(discoveryCount() == beforeGate, "HA discovery ran below the memory floor");
+  require(mqtt.isConnected(), "the discovery gate dropped the MQTT session");
+  host_mqtt_heap::reset();
 
   const size_t filtered_command_count = Control::commands().size();
   host_mqtt::deliver(root_topic + "/other", "press");

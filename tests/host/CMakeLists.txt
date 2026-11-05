@@ -1025,6 +1025,7 @@ add_executable(sim_scheduler_test
                sim_scheduler_test.cpp
                ${FURBLE_ROOT}/sim/clock.cpp
                ${FURBLE_ROOT}/sim/freertos.cpp
+               # freertos.cpp charges task stacks to the shared heap model.
                ${FURBLE_ROOT}/sim/heap_model.cpp
                ${FURBLE_ROOT}/sim/CrashLogSim.cpp
                ${FURBLE_ROOT}/sim/watchdog.cpp)

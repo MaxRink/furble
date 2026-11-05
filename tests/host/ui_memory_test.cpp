@@ -30,6 +30,13 @@ int main() {
   check(drawBufferBytes(135, 240, 2) < drawBufferBytes(320, 240, 2),
         "a narrower panel did not free internal DMA memory");
 
+  // Narrow panels use one draw buffer. The flush callback waits for SPI DMA,
+  // so this is a memory decision, not a correctness one.
+  check(singleDrawBuffer(135), "135-wide panel did not use a single draw buffer");
+  check(singleDrawBuffer(80), "80-wide panel did not use a single draw buffer");
+  check(!singleDrawBuffer(240), "240-wide panel dropped the second draw buffer");
+  check(!singleDrawBuffer(320), "320-wide panel dropped the second draw buffer");
+
   // Degenerate dimensions must still produce a usable one-line buffer.
   check(drawBufferBytes(0, 0, 2) == 2, "zero dimensions did not clamp to one line");
   check(drawBufferBytes(-1, -1, 2) == 2, "negative dimensions did not clamp to one line");

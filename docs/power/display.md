@@ -660,6 +660,11 @@ These are arithmetic bounds, not measurements.
   window setup, and CPU draw time.
 - The LVGL buffer is 2,160 bytes, 1,080 pixels at 16 bpp, 1/30 of a 135 x 240
   panel. A full refresh is therefore about 30 partial flushes.
+- Narrow panels use one LVGL draw buffer, so each band is rendered, then
+  shifted out before the next band starts. The 2,160-byte transfer is about
+  0.216 ms at 80 MHz SPI. A full-screen page change pays roughly 6.5 ms more
+  than the two-buffer overlap. The UI has no full-screen animation, so the
+  cost lands on page changes, not on the idle menu.
 - The committed menu-idle baseline records 1.17k flushed pixels per second,
   about 0.036 full frames per second.
 - The committed settings-navigation baseline records 47.8k flushed pixels per

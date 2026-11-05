@@ -896,8 +896,8 @@ class UI {
   // Breathing room between a row and the legend beside it.
   static constexpr int32_t LEGEND_GAP = 2;
 
-  LV_ATTRIBUTE_MEM_ALIGN void *m_Buffer1;
-  LV_ATTRIBUTE_MEM_ALIGN void *m_Buffer2;
+  LV_ATTRIBUTE_MEM_ALIGN void *m_Buffer1 = nullptr;
+  LV_ATTRIBUTE_MEM_ALIGN void *m_Buffer2 = nullptr;
   bool m_SingleBuffer = false;
 
   /** 'Scan finished' notice on the Scan page, hidden while scanning. */
