@@ -1,3 +1,4 @@
+#include <esp_random.h>
 #include <esp_timer.h>
 
 #include "CameraList.h"
@@ -67,6 +68,37 @@ bool CompanionGatt::isPairingWindow(void) const {
 bool CompanionGatt::isAdvertising(void) const {
   const std::lock_guard<std::mutex> lock(m_Mutex);
   return (m_Advertising != nullptr) && m_Advertising->isAdvertising();
+}
+
+bool CompanionGatt::reidentify(void) {
+  bool enabled = false;
+  bool connected = false;
+  uint16_t handle = INVALID_CONN_HANDLE;
+  {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    enabled = m_Enabled;
+    connected = m_CompanionConnected;
+    handle = m_CompanionConnHandle;
+  }
+  if (!enabled) {
+    return false;
+  }
+
+  stopAdvertising();
+  if ((m_Server != nullptr) && connected && (handle != INVALID_CONN_HANDLE)) {
+    m_Server->disconnect(handle);
+  }
+  forgetBond();
+
+  uint8_t address[6] = {};
+  esp_fill_random(address, sizeof(address));
+  // Random static address: the top two bits select the static sub-type.
+  address[5] |= 0xC0;
+  if (!NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RANDOM) || !NimBLEDevice::setOwnAddr(address)) {
+    return false;
+  }
+  startPairingWindow();
+  return true;
 }
 
 bool CompanionGatt::hasPendingPairing(void) const {
@@ -580,22 +612,6 @@ void CompanionGatt::serviceTask(void) {
           break;
       }
     }
-    bool sendServiceChanged = false;
-    {
-      const std::lock_guard<std::mutex> lock(m_Mutex);
-      if (m_ServiceChangedPending && (now >= m_ServiceChangedAt) && m_CompanionConnected) {
-        m_ServiceChangedPending = false;
-        sendServiceChanged = true;
-      }
-    }
-    if (sendServiceChanged && (m_Server != nullptr)) {
-      // The central has now enabled its Service Changed subscription. Tell it
-      // the handle map may have moved since its cached copy, otherwise macOS
-      // keeps writing the old CCCD handles after a firmware update.
-      m_Server->sendServiceChangedIndication();
-      ESP_LOGI(LOG_TAG, "Companion sent Service Changed indication");
-    }
-
     m_Service.notifyStatus();
     m_Service.notifyCameras();
 #if defined(FURBLE_BLE_DEBUG)
@@ -634,8 +650,12 @@ void CompanionGatt::onConnect(NimBLEServer *server, NimBLEConnInfo &connInfo) {
       // encrypt with keys the peer no longer has.
       staleBond = m_PairingWindow && bondValid && !connInfo.getIdAddress().equals(bondAddress);
       m_CompanionConnected = true;
-      m_CompanionEncrypted = false;
-      m_CompanionAuthenticated = false;
+      // NimBLE can deliver the encryption-change callback before this connect
+      // callback when a bonded central encrypts immediately. Never clobber an
+      // already-completed link state with a hardcoded false, or the first auth
+      // write on the next session is ignored as unencrypted.
+      m_CompanionEncrypted = connInfo.isEncrypted();
+      m_CompanionAuthenticated = connInfo.isEncrypted() && connInfo.isBonded();
       m_CompanionConnHandle = connInfo.getConnHandle();
     }
   }
@@ -775,11 +795,12 @@ void CompanionGatt::onAuthenticationComplete(NimBLEConnInfo &connInfo) {
     m_CompanionEncrypted = true;
     m_CompanionAuthenticated = true;
     m_PairingWindow = false;
-    // The central subscribes to the standard Service Changed characteristic a
-    // few milliseconds after this callback. Sending now would race that
-    // subscription and be dropped; the service task sends it one second later.
-    m_ServiceChangedPending = true;
-    m_ServiceChangedAt = nowMs() + 1000;
+    // Do not send a Service Changed indication here. CoreBluetooth handles the
+    // indication by rediscovering services, and doing that while the companion
+    // is authenticating intermittently drops the auth write or the following
+    // status notifications. A firmware image that actually moves GATT handles
+    // must rotate the LE identity instead (`companion reidentify`) so the host
+    // builds a fresh cache; see docs/companion.md.
   }
   stopAdvertising();
   m_Service.notifyStatus(true);
@@ -813,7 +834,9 @@ void CompanionGatt::onWrite(NimBLECharacteristic *characteristic, NimBLEConnInfo
 void CompanionGatt::onSubscribe(NimBLECharacteristic *characteristic,
                                 NimBLEConnInfo &connInfo,
                                 uint16_t subValue) {
-  (void)subValue;
+  ESP_LOGD(LOG_TAG, "Companion subscribe char=%s sub=%u conn=%u",
+           characteristic->getUUID().toString().c_str(), static_cast<unsigned>(subValue),
+           static_cast<unsigned>(connInfo.getConnHandle()));
   if (!isCompanionConnection(connInfo)) {
     return;
   }
@@ -872,7 +895,9 @@ void CompanionGatt::indicate(uint8_t charId, const uint8_t *data, size_t len) {
   if (characteristic == nullptr || data == nullptr || !isConnected()) {
     return;
   }
-  characteristic->indicate(data, len, m_CompanionConnHandle);
+  if (!characteristic->indicate(data, len, m_CompanionConnHandle)) {
+    ESP_LOGW(LOG_TAG, "Companion indicate failed char 0x%02x", charId);
+  }
 }
 
 void CompanionGatt::error(uint8_t charId, uint8_t attError) {

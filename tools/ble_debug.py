@@ -32,22 +32,42 @@ SERVICE_UUID = "b57f4f70-087b-4740-b71d-8262cf26ebbc"
 STATUS_UUID = "b57f4f72-087b-4740-b71d-8262cf26ebbc"
 
 
-def matches(device, target: str | None) -> bool:
+def matches(device, advertisement, target: str | None) -> bool:
     if not target:
         return True
     needle = target.lower()
-    return needle in (device.name or "").lower() or needle in (device.address or "").lower()
+    # macOS keeps the first name it saw for a CoreBluetooth identifier even
+    # after a firmware rename or address rotation, so also check the local name
+    # carried in the current advertisement.
+    return (
+        needle in (device.name or "").lower()
+        or needle in (advertisement.local_name or "").lower()
+        or needle in (device.address or "").lower()
+    )
 
 
 async def find_device(target: str | None, timeout: float):
-    devices = await BleakScanner.discover(timeout=timeout)
-    matched = [device for device in devices if matches(device, target)]
+    devices = await BleakScanner.discover(timeout=timeout, return_adv=True)
+    matched = [
+        (device, advertisement)
+        for device, advertisement in devices.values()
+        if matches(device, advertisement, target)
+    ]
     if not matched:
-        names = ", ".join(sorted({device.name or device.address for device in devices})) or "none"
+        names = ", ".join(
+            sorted(
+                {
+                    advertisement.local_name or device.name or device.address
+                    for device, advertisement in devices.values()
+                }
+            )
+        ) or "none"
         print(f"no BLE device matched {target!r}; saw: {names}", file=sys.stderr)
         return None
-    matched.sort(key=lambda device: (device.name or "").lower().find("furble") < 0)
-    return matched[0]
+    matched.sort(
+        key=lambda item: (item[1].local_name or item[0].name or "").lower().find("furble") < 0
+    )
+    return matched[0][0]
 
 
 async def run(args) -> int:

@@ -65,6 +65,22 @@ firmware drops the stale bond for the old address before starting security.
 This handles macOS LE address rotation without leaving a permanently unusable
 bond. Reopen companion mode and retry if a client still holds an old bond.
 
+### Recovering a stale host GATT cache
+
+CoreBluetooth caches the GATT handle map per peripheral. A firmware update that
+moves characteristics (for example the bench-only debug service) can leave the
+host writing CCCD values to handles that no longer exist. The firmware no
+longer sends a Service Changed indication during authentication because
+CoreBluetooth reacts by rediscovering services while the auth exchange is in
+flight, which intermittently dropped the auth write or the first status
+notifications.
+
+Use the debug console command `companion reidentify` when the host keeps using
+an old handle map. It disconnects the current link, drops only the companion
+bond (camera bonds are untouched), rotates the LE address, and reopens the 60
+second pairing window. The host then sees a new peripheral identity and builds
+a fresh cache. Pair once more with the companion password.
+
 Camera IDs are stable across catalog reordering and deletion. Selection is the
 same in-memory Multi-Connect target set used by the on-device Cameras page. A
 scan updates only transient scan results, so it does not hide saved cameras.
