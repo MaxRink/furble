@@ -134,7 +134,8 @@ The CLI also has a USB CDC transport for the StickS3 console:
 
 USB supports `scan`, `status`, `cameras`, `monitor`, and `password status`. CSV
 rows are written per sample, so a redirected monitor can be tailed and keeps the
-samples already collected if it is interrupted.
+samples already collected if it is interrupted. The monitor gives each console
+command a 5 s timeout so a debug display flush does not look like a dead link.
 `location` and `trigger` stay on BLE because the console has no equivalent
 command. The USB monitor reads `status` and `gps` from the console and writes
 the same CSV columns as the BLE monitor, so the plotter is shared. USB charging
