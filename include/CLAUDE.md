@@ -176,11 +176,13 @@ at every settings-touching rebase.
 - `FurbleWebUI.h` owns the HTTPS supervisor and release-retry state. The pure
   ingress checks in `FurbleWebUIProtocol.h` are shared with host coverage. Held
   ownership never crosses a complete Control session replacement.
-  `HTTPD_MAX_SOCKETS` counts client slots; ESP-IDF reserves three more per
-  server, so five is the minimum that leaves a usable client connection.
+  `HTTPD_MAX_SOCKETS` is a total socket budget; ESP-IDF reserves three per
+  server, so five leaves two client slots. Do not describe it as five client
+  slots.
 - `FurbleMQTTMemory.h` has separate plain and TLS start floors. A secure
-  `mqtts://` or `wss://` URI must pass the 6 KiB TLS-worker floor, not the
-  plain 3 KiB worker floor.
+  `mqtts://` URI must pass the 6 KiB TLS-worker floor, not the plain 3 KiB
+  worker floor. `wss://` is not part of the contract because no firmware build
+  enables the WebSocket transport.
 - The simulator-only UI geometry surface keeps content overlap, label clipping,
   and focused-control expanded bounds as separate diagnostics. Focus clearance
   excludes the focused object's own descendants and ancestors.

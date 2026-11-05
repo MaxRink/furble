@@ -245,6 +245,7 @@ def main(argv: list[str] | None = None) -> int:
     lines.append("sh sim/scripts/check-hardware-quirks.sh")
     lines.append("python3 sim/scripts/run-memory-profile.py")
     lines.append("sh sim/scripts/run-fuzz.sh")
+    lines.append("python3 sim/scripts/run-permutations.py --compact")
     lines.append("python3 tools/check_flash_readiness.py --ready")
     lines.append("python3 tools/pre_review.py --base origin/master")
     lines.append("```")

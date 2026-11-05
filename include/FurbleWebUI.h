@@ -71,9 +71,9 @@ class WebUI {
   static constexpr uint8_t HELD_FOCUS = 1U << 1;
   static constexpr uint8_t TIMER_HOLD = 1U << 0;
   static constexpr uint8_t TIMER_RELEASE_RETRY = 1U << 1;
-  // ESP-IDF reserves three sockets per HTTP server for its listener, control
-  // and accept bookkeeping. Setting this to 2 therefore leaves no client slot.
-  // Five client slots keep one browser plus a retry and a health probe usable.
+  // This is the total socket budget: ESP-IDF reserves three sockets per HTTP
+  // server for its listener and accept bookkeeping, so five total sockets leave
+  // two client slots. That is enough for one browser plus a retry/health probe.
   static constexpr uint8_t HTTPD_MAX_SOCKETS = 5;
   static constexpr size_t HTTPD_MAX_REQ_HDR_LEN = 1024;
   static constexpr size_t HTTPD_MAX_RESP_HEADERS = 7;

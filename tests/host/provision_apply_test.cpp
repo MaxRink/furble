@@ -379,12 +379,14 @@ void testDedicatedMQTTFields() {
         "dedicated MQTT fields report applied rather than deferred");
   check(Furble::Settings::load<std::string>(Furble::Settings::MQTT_URI) == "mqtts://broker.example",
         "dedicated MQTT URI is persisted");
-  check(Furble::Settings::validMQTTString(Furble::Settings::MQTT_URI, "wss://broker.example/mqtt"),
-        "a secure WebSocket MQTT URI is accepted");
+  check(Furble::Settings::validMQTTString(Furble::Settings::MQTT_URI, "mqtts://broker.example"),
+        "a secure MQTT URI is accepted");
   check(Furble::Settings::validMQTTString(Furble::Settings::MQTT_URI, "mqtt://broker.example"),
         "a plain MQTT URI is accepted");
+  check(!Furble::Settings::validMQTTString(Furble::Settings::MQTT_URI, "wss://broker.example/mqtt"),
+        "a secure WebSocket MQTT URI is rejected without the WebSocket transport");
   check(!Furble::Settings::validMQTTString(Furble::Settings::MQTT_URI, "ws://broker.example/mqtt"),
-        "a plain WebSocket MQTT URI still fails closed");
+        "a plain WebSocket MQTT URI is rejected");
   check(Furble::Settings::load<std::string>(Furble::Settings::MQTT_USER) == "camera",
         "dedicated MQTT username is persisted");
   check(Furble::Settings::load<std::string>(Furble::Settings::MQTT_PASS) == "secret",

@@ -22,8 +22,8 @@ inline constexpr size_t HTTPD_STACK_BYTES = 8192;
  * before httpd_ssl_start creates its task and per-server bookkeeping.
  *
  * Breakdown of the allocations that land on the internal heap:
- * - httpd_data, five client socket slots, response headers and the copied PEM
- *   identity
+ * - httpd_data, five total socket slots (two client slots after the three
+ *   ESP-IDF reserves), response headers and the copied PEM identity
  * - one esp_tls_t (about 2.2 KiB) for the active TLS session
  * - the 1 KiB request scratch buffer
  * - the largest JSON reply (settings) and the lwIP pbufs for it

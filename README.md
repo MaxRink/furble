@@ -238,9 +238,11 @@ verification and the route contract.
 effect on the next reload instead of on every owner iteration. Both MQTT start
 and Home Assistant discovery fail closed when internal heap is below their
 floors: the broker link stays down for a blocked start, and only the optional
-retained discovery records are skipped when discovery lacks headroom. Secure
-`mqtts://`/`wss://` links use a 6 KiB TLS worker and a higher start floor than
-the 3 KiB plain worker. See [MQTT and Home Assistant](docs/settings-and-controls.md#mqtt-8-mb-debugconsole-builds).
+retained discovery records are skipped when discovery lacks headroom. The
+accepted URI schemes are `mqtt://` and `mqtts://`; WebSocket MQTT is not part of
+the product contract because no firmware build enables that transport. Secure
+`mqtts://` links use a 6 KiB TLS worker and a higher start floor than the 3 KiB
+plain worker. See [MQTT and Home Assistant](docs/settings-and-controls.md#mqtt-8-mb-debugconsole-builds).
 
 ### Debug builds (developers)
 

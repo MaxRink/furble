@@ -51,6 +51,7 @@ void CompanionGatt::init(void) {
     // Restore the identity rotated by a previous reidentify before the service
     // starts advertising. Device::init() leaves the default RPA policy, so a
     // host that paired after the rotation would otherwise lose its bond.
+    // enable() repeats the application for the disabled->enabled path.
     CompanionIdentity::applyPersisted();
     enable(false);
   }
@@ -166,6 +167,13 @@ void CompanionGatt::enable(bool pairingWindow) {
     } else {
       m_Enabled = true;
       m_PairingWindow = false;
+
+      // Apply the durable identity on every disabled->enabled transition, not
+      // just the boot path in init(). A companion enabled later from the
+      // console or a settings write must still advertise the address the host
+      // bonded to after reidentify. The init() call is intentionally harmless
+      // double application.
+      CompanionIdentity::applyPersisted();
 
       // Match Camera::connect() and use numeric comparison for the server.
       // The companion uses an encrypted Just Works bond and authenticates the

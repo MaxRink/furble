@@ -33,11 +33,12 @@ bool Settings::validMQTTString(type_t type, const std::string &value) {
   }
   if (type == MQTT_URI) {
     const std::string secure = "mqtts://";
-    const std::string secureWebSocket = "wss://";
     const std::string plain = "mqtt://";
+    // The firmware enables the esp-mqtt SSL transport for every MQTT build but
+    // not the WebSocket transport, so wss:// would be accepted by the parser
+    // and then fail at esp_mqtt_client_init(). Keep the product contract to
+    // mqtt:// and mqtts://.
     return ((value.compare(0, secure.size(), secure) == 0) && (value.size() > secure.size()))
-           || ((value.compare(0, secureWebSocket.size(), secureWebSocket) == 0)
-               && (value.size() > secureWebSocket.size()))
            || ((value.compare(0, plain.size(), plain) == 0) && (value.size() > plain.size()));
   }
   if (type == MQTT_BASE) {

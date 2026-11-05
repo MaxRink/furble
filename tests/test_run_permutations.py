@@ -1,8 +1,12 @@
 """Regression tests for the permutation scenario generator."""
 
 import importlib.util
+import json
+import os
 from pathlib import Path
+import stat
 import sys
+import tempfile
 import unittest
 
 
@@ -50,6 +54,23 @@ class ScenarioGeneratorTest(unittest.TestCase):
         script = PERMS.scenario_for("sticks3", reconnecting)
         self.assertIn("seed wifi_connected false", script)
         self.assertIn("action wifi-fail-auth", script)
+
+    def test_compact_result_omits_output_and_is_small(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            fake = root / "fake-sim"
+            fake.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            fake.chmod(fake.stat().st_mode | stat.S_IXUSR)
+            results = root / "results.json"
+            code = PERMS.main(["--binary", str(fake), "--results", str(results),
+                               "--limit", "1", "--compact"])
+            self.assertEqual(code, 0)
+            raw = results.read_text(encoding="utf-8")
+            document = json.loads(raw)
+        self.assertNotIn("\n  ", raw)
+        self.assertEqual(len(document["results"]), 1)
+        entry = document["results"][0]
+        self.assertEqual(set(entry), {"id", "board", "combination", "passed", "exit"})
 
 
 if __name__ == "__main__":

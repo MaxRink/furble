@@ -4,6 +4,10 @@
 The manifest expands every board and every memory-critical axis. Full runs are
 long, so --limit selects a deterministic prefix for pull-request smoke coverage.
 The release gate requires a result file covering the full expected count.
+
+Use --compact for the release artifact. It drops the per-result output tail and
+writes compact JSON, which keeps all 6,912 results small enough to review. The
+readiness gate only needs id, board, combination, passed and exit.
 """
 from __future__ import annotations
 
@@ -80,6 +84,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="run only the first N combinations (0 means all)")
     parser.add_argument("--board", action="append", default=[],
                         help="restrict to a board (repeatable)")
+    parser.add_argument("--compact", action="store_true",
+                        help="omit output_tail and write compact release JSON")
     args = parser.parse_args(argv)
     manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
     results = []
@@ -97,14 +103,16 @@ def main(argv: list[str] | None = None) -> int:
             scenario.write_text(scenario_for(board, combo), encoding="utf-8")
             run = subprocess.run([str(args.binary), "--script", str(scenario)],
                                  cwd=ROOT, env=env, capture_output=True, text=True)
-        results.append({
+        result = {
             "id": cid,
             "board": board,
             "combination": combo,
             "passed": run.returncode == 0,
             "exit": run.returncode,
-            "output_tail": (run.stdout + run.stderr)[-1000:],
-        })
+        }
+        if not args.compact:
+            result["output_tail"] = (run.stdout + run.stderr)[-1000:]
+        results.append(result)
         if run.returncode != 0:
             print(f"FAIL {cid} exit {run.returncode}", file=sys.stderr)
     result_ids = [result["id"] for result in results]
@@ -125,7 +133,9 @@ def main(argv: list[str] | None = None) -> int:
     }
     if selection_error:
         document["error"] = selection_error
-    args.results.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+    encoding = json.dumps(document, separators=(",", ":")) if args.compact \
+        else json.dumps(document, indent=2)
+    args.results.write_text(encoding + "\n", encoding="utf-8")
     failed = sum(1 for result in results if not result["passed"])
     if selection_error:
         print(f"permutations: {selection_error}", file=sys.stderr)

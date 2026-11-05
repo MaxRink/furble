@@ -78,8 +78,8 @@ StickS3 and the 80x160 StickC. On the StickS3 the two buffers held 20,480 bytes,
    including the companion GATT write path, invokes `WebUI::reloadSetting()`
    through the service callback so clearing the password closes the listener.
 3. **Small internal tasks.** The supervisor is 3 KiB and the HTTPS task is
-   8 KiB (`httpd_config_t::stack_size`). Five client sockets (ESP-IDF reserves
-   three more per server), `lru_purge_enable = true`, `max_req_hdr_len = 1024`,
+   8 KiB (`httpd_config_t::stack_size`). Five total sockets (ESP-IDF reserves
+   three, leaving two client slots), `lru_purge_enable = true`, `max_req_hdr_len = 1024`,
    seven response headers and seven URI handlers remove per-request/per-server
    bookkeeping. The TLS
    certificate fingerprint is computed once and cached; `startServer()` no
@@ -114,7 +114,7 @@ compiler (`sizeof` for the StickS3 configuration):
 | Object | Bytes |
 | :--- | ---: |
 | `struct httpd_data` | 776 |
-| `struct sock_db` (five client sockets) | 960 |
+| `struct sock_db` (five total sockets) | 960 |
 | `struct httpd_config` | 96 |
 | `struct resp_hdr` (seven headers) | 56 |
 | `esp_tls_t` (one connection) | 2,184 |

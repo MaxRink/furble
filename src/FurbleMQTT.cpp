@@ -669,7 +669,9 @@ bool MQTT::startClient(void) {
     return false;
   }
 
-  const bool secure = (m_URI.rfind("mqtts://", 0) == 0) || (m_URI.rfind("wss://", 0) == 0);
+  // The validator accepts only mqtt:// and mqtts://; the WebSocket transport is
+  // not enabled in any firmware sdkconfig.
+  const bool secure = (m_URI.rfind("mqtts://", 0) == 0);
   const size_t freeBytes = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
   const size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
   const auto gate = MQTTMemory::startGate(freeBytes, largest, secure);

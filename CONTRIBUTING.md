@@ -179,7 +179,7 @@ sh sim/scripts/check-doc-tokens.sh
 sh sim/scripts/check-hardware-quirks.sh
 python3 sim/scripts/run-memory-profile.py
 python3 sim/scripts/run-fuzz-target.py --all
-python3 sim/scripts/run-permutations.py
+python3 sim/scripts/run-permutations.py --compact
 python3 tools/check_flash_readiness.py --ready
 ```
 

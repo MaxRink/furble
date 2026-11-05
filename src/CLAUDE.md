@@ -149,9 +149,10 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   Control queue accepts them or the camera session ends. Complete Control
   session replacement expires held ownership by generation, including when
   disconnect and reconnect both occur between WebUI supervisor polls.
-  `HTTPD_MAX_SOCKETS` is client slots, not total sockets: ESP-IDF reserves three
-  more per server, so never configure fewer than five. `reloadSetting()` must
-  not create the TLS identity task while `web_ui` is off.
+  `HTTPD_MAX_SOCKETS` is a total socket budget: ESP-IDF reserves three per
+  server, so five leaves two client slots. Never describe it as five client
+  slots. `reloadSetting()` must not create the TLS identity task while `web_ui`
+  is off.
 - `FurbleUI*`: LVGL UI. Respect the changed-check rule for periodic setters.
   LVGL 9.4 retains an encoder input device's `last_pressed` object when that
   object is deleted. Only when switching a persistent physical-button device
