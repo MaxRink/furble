@@ -131,6 +131,9 @@ struct MiscState {
   size_t companionDisableReloads = 0;
   size_t companionDisableNowCalls = 0;
   bool companionEnabled = false;
+  bool companionBond = false;
+  bool companionWindow = false;
+  bool companionAdvertising = false;
   bool companionPendingDisable = false;
   bool companionEnableSucceeds = true;
   size_t companionPasswordReloads = 0;

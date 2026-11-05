@@ -62,8 +62,12 @@ StickS3 on internal-heap-tight master:
 - Host suite and pre-review on the branch.
 - On the StickS3: `companion stop` -> `companion start` repeated ten times
   without a panic; `perf heap` recorded before and after each transition.
-- Ten BLE `status` cycles from the macOS CLI, each authenticated, with the
-  connect log showing the addresses used.
+- Repeated BLE `status` cycles from the macOS CLI were partial: link encryption
+  and several sessions authenticated, but the host GATT cache produced
+  HMAC-auth timeouts (see the known limit below). USB `scan`, `status`,
+  `cameras`, a 35-minute monitor, and the password-authenticated BLE flow all
+  passed. With companion and autoconnect both enabled, the device booted into
+  `state: connecting` with 27 KiB internal free and no panic (issue #353).
 - Clean stop leaves the persisted setting false and `companion.enabled: false`.
 
 ## Known host-cache limit

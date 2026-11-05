@@ -52,9 +52,8 @@ connect. Just Works does not provide link-level man-in-the-middle protection.
 The companion password is the application authentication layer: set one with
 `companion password set` before using the app in an untrusted area, and the
 firmware rejects commands until the HMAC exchange succeeds. The challenge and
-result packets use the Auth characteristic's notification path; the client
-subscribes before writing the begin packet, and the firmware re-sends a
-challenge that receives no proof.
+result packets use indications on the Auth characteristic; the client subscribes
+before writing the begin packet.
 
 When the pairing window is open and the peer presents a new LE address, the
 firmware drops the stale bond for the old address before starting security.
