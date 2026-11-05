@@ -2465,7 +2465,10 @@ void UI::legendBandDeferred(void *arg) {
     return;
   }
   lv_obj_remove_flag(page, LV_OBJ_FLAG_USER_4);
-  applyLegendBandWidths(page, true, true);
+  // A mid-gesture pass only updates the row boxes. It must not settle the
+  // layout or pin the bottom; both belong to SCROLL_END, where no gesture is
+  // active.
+  applyLegendBandWidths(page, false, false);
 }
 
 void UI::legendBandScrollEvent(lv_event_t *e) {
@@ -2506,7 +2509,8 @@ void UI::reserveLegendColumns(lv_obj_t *page) {
   if (!lv_obj_has_flag(page, LV_OBJ_FLAG_USER_2)) {
     lv_obj_add_flag(page, LV_OBJ_FLAG_USER_2);
     // SCROLL frames only queue one coalesced async pass; the geometry change
-    // happens outside the callback. SCROLL_END settles immediately.
+    // happens outside the callback and does not settle the page. SCROLL_END
+    // performs the full settle and bottom pin.
     lv_obj_add_event_cb(page, legendBandScrollEvent, LV_EVENT_SCROLL, page);
     lv_obj_add_event_cb(page, legendBandScrollEvent, LV_EVENT_SCROLL_END, page);
   }
