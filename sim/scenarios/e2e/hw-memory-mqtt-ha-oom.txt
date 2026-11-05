@@ -1,0 +1,21 @@
+# MQTT Home Assistant discovery OOM at 1.7 KiB free.
+#
+# A 10 KiB owner and 4 KiB worker leave 1,664 bytes from a 16,000-byte pool.
+# Discovery needs about 8 KiB transiently: it must fail cleanly, keep the owner
+# and worker alive, and never panic.
+seed hw_profile sticks3
+seed heap_internal_free 16000
+seed heap_internal_largest 16000
+seed mqtt_owner_stack 10240
+seed mqtt_worker_stack 4096
+seed mqtt_ha true
+seed mqtt_buffer 2048
+wait 100
+assert mqttmodel.state created
+assert mqttmodel.ha failed
+assert mqttmodel.ha_peak 0
+assert heap.free 1664
+assert heap.alloc_failures 1
+assert heap.last_failed_task mqtt_ha_discovery
+assert ui.page main
+exit

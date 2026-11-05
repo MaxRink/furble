@@ -8,8 +8,8 @@
 
 #include "FurbleWebUIMemory.h"
 #include "clock.h"
+#include "hardware_model.h"
 #include "heap_model.h"
-#include "platform_state.h"
 
 namespace {
 
@@ -37,6 +37,8 @@ struct model_state_t {
   uint32_t serverAttempts = 0;
   uint32_t retryAfterMs = 0;
   uint32_t reservedBytes = 0;
+  uint64_t supervisorAllocation = 0;
+  uint64_t serverAllocation = 0;
   std::string gateReason = "none";
   std::string gateMessage;
 };
@@ -90,8 +92,9 @@ void webuiMemoryStart(void) {
   if (!model.gateEnabled) {
     // Pre-#392 shape: skip the gate and ask the allocator for the old 8 KiB
     // supervisor. On device this is where the boot loop began.
-    if (!heapReserve(PRE_GATE_SUPERVISOR_STACK_BYTES)) {
-      heapNoteAllocationFailure(PRE_GATE_SUPERVISOR_STACK_BYTES, "webui");
+    model.supervisorAllocation =
+        heapAllocTagged(PRE_GATE_SUPERVISOR_STACK_BYTES, "webui_supervisor", false, true);
+    if (model.supervisorAllocation == 0) {
       model.supervisorAllocFailed = true;
       model.gateReason = "supervisor_task";
       model.failClosed = true;
@@ -111,8 +114,9 @@ void webuiMemoryStart(void) {
                    gate.largestBlock, gate.freeFloor, gate.largestFloor);
     return;
   }
-  if (!heapReserve(WebUIMemory::SUPERVISOR_STACK_BYTES)) {
-    heapNoteAllocationFailure(WebUIMemory::SUPERVISOR_STACK_BYTES, "webui");
+  model.supervisorAllocation =
+      heapAllocTagged(WebUIMemory::SUPERVISOR_STACK_BYTES, "webui_supervisor", false, true);
+  if (model.supervisorAllocation == 0) {
     model.supervisorAllocFailed = true;
     model.gateReason = "supervisor_task";
     model.failClosed = true;
@@ -132,9 +136,12 @@ void webuiMemoryTick(void) {
   }
   const uint32_t now = clockMillis();
 
-  if (!model.enabled || !model.credentialsReady || !wifiConnected()) {
+  if (!model.enabled || !model.credentialsReady || !hwWifiConnected()) {
     if (model.serverRunning) {
-      heapRelease(WebUIMemory::HTTPD_STACK_BYTES);
+      if (model.serverAllocation != 0) {
+        heapFreeTagged(model.serverAllocation);
+        model.serverAllocation = 0;
+      }
       model.reservedBytes -= WebUIMemory::HTTPD_STACK_BYTES;
       model.serverRunning = false;
     }
@@ -157,8 +164,9 @@ void webuiMemoryTick(void) {
     model.retryAfterMs = now + BUDGET_RETRY_MS;
     return;
   }
-  if (!heapReserve(WebUIMemory::HTTPD_STACK_BYTES)) {
-    heapNoteAllocationFailure(WebUIMemory::HTTPD_STACK_BYTES, "webui_https");
+  model.serverAllocation =
+      heapAllocTagged(WebUIMemory::HTTPD_STACK_BYTES, "webui_https", false, true);
+  if (model.serverAllocation == 0) {
     model.serverAllocFailed = true;
     model.gateReason = "server_task";
     model.failClosed = true;

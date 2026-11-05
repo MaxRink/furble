@@ -473,6 +473,27 @@ FURBLE_SIM_MQTT_URI=mqtt://127.0.0.1:1 FURBLE_SIM_MQTT_FAST_RECONNECT=1 \
 reconnect cadence so ten refused connections finish inside a bounded scenario.
 It does not change the firmware retry limit.
 
+#### Board, PMIC, USB and memory-profile model
+
+`hw_profile` selects a supported board identity from `stickc`, `stickc-plus`,
+`stickc-plus2`, `sticks3`, `core`, `core2`, `tough`, `headless-s3`,
+`waveshare-s3-eth` or the Core USB-UART fallback. It selects PMIC, gauge, USB,
+radio, peripheral and memory-budget rows; it does not replace the compiled SDL
+panel class. `psram_mode` is `absent`, `quad`, `octal` or `init_fail`.
+`pmic_variant` is `m5pm1`, `axp192`, `axp2101`, `ip5306` or `none`.
+`battery_gauge` is `none`, `voltage`, `voltage_current`, `voltage_charge` or
+`four_level`. `battery_state` is `present`, `absent`, `charging`, `full` or
+`low`. `reset_reason` is `poweron`, `software`, `panic`, `int_wdt`, `task_wdt`,
+`tg1wdt`, `other_wdt`, `brownout`, `usb_uart_chip_reset`, `jtag` or
+`power_glitch`. `task_stack_region` is `internal` or `psram`.
+
+The MQTT stack model is opt-in with `mqtt_owner_stack` and `mqtt_worker_stack`
+byte counts, plus `mqtt_tls`, `mqtt_ha` and `mqtt_buffer`. The model fails
+closed when the owner stack is below 10,240 bytes or a buffer is above 2,048
+bytes. `mqtt_expect_overflow` set to `true` is the deliberate historical-overflow
+override used by the 4 KiB and 6 KiB regression scenarios. `companion_enabled`
+seeds the companion state.
+
 `ble_peers` selects the virtual BLE radio topology from a strict allowlist:
 
 | Topology | Peers |
@@ -577,11 +598,10 @@ action blind
 action blind-shutter
 action indicator-click-focus
 action focus-lock
+action capability-refresh
 action connect
 action connect-two
 action disconnect
-action drop
-action drop N
 action ble-kill
 action ble-standby
 action ble-connect-fail
@@ -589,37 +609,84 @@ action ble-connect-ok
 action ble-withhold-registration
 action ble-allow-registration
 action cancel
-action capability-refresh
-action shutter
-action button-mode one-button
-action button-mode two-button
-action main-press-hold
-action main-double-click
-action main-click-hold
-action intervalometer
-action stop
-action bulb-start
-action preset-step-up
-action preset-step-down
-action companion-pair-request
-action companion-accept
-action companion-reject
-action imu.enable
-action imu.disable
 action motion.arm
 action motion.disarm
+action imu.enable
+action imu.disable
 action imu.accel.fail
 action imu.accel.recover
 action imu.gyro.fail
 action imu.gyro.recover
 action invalidate.reset
+action shutter
+action main-press-hold
+action main-double-click
+action main-click-hold
 action select
+action intervalometer
+action bulb-start
 action bulb-stop
+action stop
+action preset-step-up
+action preset-step-down
+action companion-pair-request
+action companion-accept
+action companion-reject
 action camera-pair-accept
 action camera-pair-reject
 action camera-pair-expire
 action crash-inject-panic
 action crash-inject-task-wdt
+action power-single-click
+action power-double-click
+action power-long-press
+action usb-open
+action usb-close
+action usb-dtr
+action usb-rts
+action usb-reset
+action usb-rom-entry
+action usb-esptool-sync
+action pmic-charge-on
+action pmic-charge-off
+action pmic-battery-present
+action pmic-battery-absent
+action pmic-brownout
+action pmic-watchdog-on
+action pmic-watchdog-off
+action wifi-connect
+action wifi-disconnect
+action wifi-fail-auth
+action wifi-fail-notfound
+action wifi-fail-timeout
+action wifi-ntp-sync
+action wifi-ntp-fail
+action ethernet-up
+action ethernet-down
+action ble-auth-timeout
+action ble-gatt-stale
+action ble-gatt-fresh
+action companion-reidentify
+action companion-reconnect
+action companion-reject
+action audio-overcurrent
+action ir-timeout
+action sd-present
+action sd-absent
+action sd-error
+action psram-task-start
+action heap-leak-probe
+action heap-leak-free
+action alloc-icon
+action ota-rollback
+action ota-commit
+action ota-update
+action flash-write
+action crash-inject-tg1wdt
+action crash-inject-brownout
+action crash-inject-usb-uart
+action crash-inject-software
+action crash-inject-poweron
 ```
 
 `crash-inject-panic` and `crash-inject-task-wdt` write a synthetic unclean
@@ -641,7 +708,12 @@ action imu.accel X Y Z
 action imu.gyro X Y Z
 action imu.roll DEGREES
 action imu.pitch DEGREES
+action memory-dump PATH
 ```
+
+`memory-dump PATH` writes the static budget, heap state, owner totals, leak list,
+task stacks and timeline as JSON. `sim/scripts/run-memory-profile.py` generates
+the dumps and compares them with `sim/coverage/memory_budget.json`.
 
 `toggle NAME` accepts `gps`, `gps_nmea`, `gps_motion`, `autoconnect`,
 `reconnect`, `multiconnect`, `companion`, `watchdog`, `ir`, `show_title`,
@@ -857,7 +929,38 @@ The other namespaces are:
   `heap.alloc_failures` (alias `heap.task_failures`) and
   `heap.last_failed_task` report the modelled internal pool used by the
   heap-pressure seeds. `heap.active` is `yes` once the optional-service
-  admission window opens.
+  admission window opens. `heap.spiram_present`, `heap.spiram_mode`,
+  `heap.spiram_state`, `heap.spiram_free`, `heap.spiram_largest`,
+  `heap.task_stack_region`, `heap.flash_writes` and `heap.flash_unsafe` report
+  the external pool and the flash-cache safety model.
+- `hw.*` reports profile identity and capabilities (`hw.profile`, `hw.mcu`,
+  `hw.flash_kb`, `hw.psram`, `hw.pmic`, `hw.gauge`, `hw.usb`, `hw.display`,
+  `hw.touch`, `hw.wifi`, `hw.ethernet`, `hw.ble`, `hw.ir`, `hw.sd`, `hw.audio`,
+  `hw.rtc`, `hw.battery`). `pmic.*` reports variant, gauge, battery, charging,
+  charger, charge current, watchdog, download lock, power latch, brownouts and
+  battery millivolts/percent.
+- `power.*` reports the button state machine and one-event counters:
+  `power.state`, `power.clicks`, `power.double_clicks`, `power.long_presses`,
+  `power.resets`, `power.offs`, `power.downloads` and `power.recoveries`.
+- `usb.*` reports `usb.transport`, `usb.mode`, `usb.host`, `usb.console`,
+  `usb.ble`, `usb.rom_entries`, `usb.syncs` and `usb.recoveries`.
+  `platform.reset_reason` reports the current boot reason.
+- `wifi.*` reports state, reason, IP, SSID, RSSI, attempts, retry delay, NTP
+  state and NTP offset. `net.ethernet`, `net.link_ups` and `net.link_downs`
+  report the wired link model.
+- `ble.*` reports bond, auth, GATT cache, auth timeouts and reconnects.
+  `companion.*` reports enabled, state, reidentify count and rejected links.
+- `audio.*`, `ir.*`, `sd.*` and `alloc.icon` report peripheral fault states.
+  `ota.slot`, `ota.rollback`, `ota.updates` and `ota.commits` report the OTA
+  slot model.
+- `mem.*` is the memory profiler: `mem.profile`, `mem.internal_total`,
+  `mem.psram_total`, `mem.flash_kb`, `mem.component.<name>`, `mem.leaks`,
+  `mem.leak_report`, `mem.owners`, `mem.timeline_samples`,
+  `mem.high_water_free`, `mem.high_water_largest`, `mem.allocations` and
+  `mem.tasks`.
+- `mqttmodel.*` reports the stack-sizing regression model: `state`, `overflow`,
+  `owner_stack`, `worker_stack`, `tls`, `buffer`, `ha`, `ha_peak` and
+  `heap_free_after`.
 - `webui.supervisor` is `off`, `pending`, `created`, `blocked` or
   `alloc_failed`. `webui.server` is `off`, `pending`, `running`, `blocked` or
   `alloc_failed`. `webui.gate` names the last refusal (`none`,

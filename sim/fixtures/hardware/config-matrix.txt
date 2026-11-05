@@ -1,0 +1,21 @@
+# Generated from sim/coverage/permutations.json by sim/scripts/run-permutations.py.
+# Seed placeholders are substituted per combination. This file is a template,
+# not a runnable scenario as written.
+seed hw_profile BOARD
+seed web_ui WEBUI
+seed webui_password true
+seed mqtt_owner_stack 10240
+seed mqtt_worker_stack WORKER
+seed mqtt_tls TLS
+seed mqtt_ha HA
+seed mqtt_buffer 2048
+seed wifi_connected WIFI
+seed companion_enabled COMPANION
+seed fauxny true
+seed saved_camera CAMERA_SAVED
+seed autoconnect CAMERA_CONNECTED
+seed psram_mode PSRAM
+wait 100
+assert setting.fauxny 1
+assert mem.leaks 0
+assert_min heap.free 0

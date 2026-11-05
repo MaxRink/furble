@@ -1,0 +1,22 @@
+# M5StickC Plus profile.
+seed hw_profile stickc-plus
+wait 100
+assert hw.profile stickc-plus
+assert hw.mcu esp32
+assert hw.psram absent
+assert hw.pmic axp192
+assert hw.display 135x240
+assert hw.touch no
+assert hw.audio yes
+assert hw.sd no
+assert pmic.watchdog unavailable
+assert mem.internal_total 532480
+assert mem.psram_total 0
+assert mem.component.main_stack 16384
+assert mem.component.lvgl_draw 4320
+assert hw.usb uart
+assert hw.wifi yes
+assert hw.ethernet no
+assert hw.ble yes
+assert hw.gauge voltage_current
+exit

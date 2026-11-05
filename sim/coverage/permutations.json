@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "boards": [
+    "sticks3",
+    "core2",
+    "core",
+    "stickc",
+    "stickc-plus",
+    "stickc-plus2",
+    "headless-s3",
+    "waveshare-s3-eth"
+  ],
+  "axes": {
+    "web_ui": [
+      "on",
+      "off"
+    ],
+    "mqtt": [
+      "on",
+      "off"
+    ],
+    "mqtt_ha": [
+      "on",
+      "off"
+    ],
+    "companion": [
+      "on",
+      "off"
+    ],
+    "wifi": [
+      "connected",
+      "disconnected",
+      "reconnecting"
+    ],
+    "camera": [
+      "none",
+      "saved",
+      "connected"
+    ],
+    "psram": [
+      "present",
+      "absent",
+      "failure"
+    ],
+    "mqtt_tls": [
+      "plain",
+      "tls"
+    ]
+  },
+  "expected_count": 6912,
+  "scenario": "sim/fixtures/hardware/config-matrix.txt",
+  "assertions": [
+    "setting.fauxny",
+    "mem.leaks",
+    "heap.free"
+  ],
+  "results": "sim/coverage/permutation_results.json",
+  "memory_critical": [
+    "web_ui",
+    "mqtt",
+    "mqtt_ha",
+    "companion",
+    "wifi",
+    "camera",
+    "psram",
+    "mqtt_tls"
+  ]
+}

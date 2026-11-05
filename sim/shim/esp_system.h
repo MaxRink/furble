@@ -30,10 +30,21 @@ typedef enum {
   ESP_RST_DEEPSLEEP,
   ESP_RST_BROWNOUT,
   ESP_RST_SDIO,
+  ESP_RST_USB,
+  ESP_RST_JTAG,
+  ESP_RST_EFUSE,
+  ESP_RST_PWR_GLITCH,
+  ESP_RST_CPU_LOCKUP,
 } esp_reset_reason_t;
 
+#ifdef __cplusplus
+extern "C" uint32_t furble_sim_hw_reset_reason(void);
+#else
+uint32_t furble_sim_hw_reset_reason(void);
+#endif
+
 static inline esp_reset_reason_t esp_reset_reason(void) {
-  return ESP_RST_POWERON;
+  return (esp_reset_reason_t)furble_sim_hw_reset_reason();
 }
 
 static inline unsigned int esp_get_free_heap_size(void) {

@@ -1,0 +1,36 @@
+# Waveshare ESP32-S3-ETH profile model.
+#
+# The SDL simulator still brings up a panel, so this scenario asserts the
+# Waveshare profile identity and wired-network model without asserting display.
+seed hw_profile waveshare-s3-eth
+wait 100
+assert hw.profile waveshare-s3-eth
+assert hw.mcu esp32s3
+assert hw.flash_kb 16384
+assert hw.psram octal
+assert hw.pmic none
+assert hw.display none
+assert hw.wifi no
+assert hw.ethernet yes
+assert hw.battery absent
+assert net.ethernet down
+action ethernet-up
+assert net.ethernet up
+assert net.link_ups 1
+action ethernet-down
+assert net.ethernet down
+assert net.link_downs 1
+assert mem.internal_total 524288
+assert mem.psram_total 8388608
+assert mem.component.main_stack 8192
+assert mem.component.lvgl_draw 0
+assert hw.usb serial_jtag
+assert hw.wifi no
+assert hw.ethernet yes
+assert hw.ble yes
+assert hw.gauge none
+assert hw.ir no
+assert hw.sd yes
+assert hw.audio no
+assert hw.rtc yes
+exit

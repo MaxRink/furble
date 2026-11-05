@@ -1,0 +1,35 @@
+# StickS3 M5PM1, charger and gauge.
+#
+# The PM1 reports voltage and charge state on GPIO0, has no current gauge, owns
+# the 45 s watchdog and the download lock, and latches the rails. The production
+# boot path must leave download recovery unlocked.
+seed hw_profile sticks3
+seed battery_state charging
+wait 100
+
+assert hw.pmic m5pm1
+assert hw.gauge voltage_charge
+assert pmic.battery present
+assert pmic.charging charging
+assert pmic.charger on
+assert pmic.charge_current_ma 100
+assert pmic.power_latch latched
+assert pmic.download_lock unlocked
+assert pmic.watchdog armed
+assert platform.battery.present yes
+assert platform.battery.charging yes
+assert platform.battery.current -1
+
+# Charging can be stopped without removing the pack, and the pack can be absent.
+action pmic-charge-off
+assert pmic.charger off
+assert pmic.charging idle
+action pmic-battery-absent
+assert pmic.battery absent
+assert platform.battery.present no
+assert platform.battery.level -1
+action pmic-battery-present
+assert pmic.battery present
+assert platform.battery.present yes
+
+exit

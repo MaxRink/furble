@@ -1,0 +1,19 @@
+# OTA slot selection and rollback.
+seed hw_profile sticks3
+wait 100
+assert ota.slot ota_0
+assert ota.rollback no
+action ota-update
+assert ota.slot ota_1
+assert ota.rollback yes
+assert ota.updates 1
+action ota-rollback
+assert ota.slot ota_0
+assert ota.rollback no
+action ota-update
+assert ota.slot ota_1
+assert ota.rollback yes
+action ota-commit
+assert ota.rollback no
+assert ota.commits 1
+exit

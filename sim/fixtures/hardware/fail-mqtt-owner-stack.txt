@@ -1,0 +1,3 @@
+seed mqtt_owner_stack 4096
+wait 100
+exit

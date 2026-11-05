@@ -2221,6 +2221,16 @@ const char *resetReasonName(int reason) {
       return "brownout";
     case ESP_RST_SDIO:
       return "sdio";
+    case ESP_RST_USB:
+      return "usb_uart_chip_reset";
+    case ESP_RST_JTAG:
+      return "jtag";
+    case ESP_RST_EFUSE:
+      return "efuse";
+    case ESP_RST_PWR_GLITCH:
+      return "power_glitch";
+    case ESP_RST_CPU_LOCKUP:
+      return "cpu_lockup";
     default:
       return "other";
   }

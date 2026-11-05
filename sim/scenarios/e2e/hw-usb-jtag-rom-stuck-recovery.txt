@@ -1,0 +1,50 @@
+# USB Serial/JTAG ROM download mode and recovery.
+#
+# This is the "flashed then stuck in ROM download mode" sequence: the host opens
+# the port, asserts DTR and RTS, the chip resets into the ROM, esptool syncs,
+# and closing the host port does not leave the ROM. The application console and
+# BLE stay silent until the power button performs a single-click reset.
+seed hw_profile sticks3
+wait 100
+
+assert usb.transport serial_jtag
+assert usb.mode app
+assert usb.host closed
+assert usb.console yes
+assert usb.ble yes
+
+action usb-open
+assert usb.host open
+action usb-dtr
+action usb-rts
+assert usb.mode rom
+assert usb.rom_entries 1
+assert power.state download
+assert pmic.download_lock unlocked
+assert usb.console no
+assert usb.ble no
+
+# Closing the host port is not a recovery. The device stays in the ROM.
+action usb-close
+assert usb.host closed
+assert usb.mode rom
+assert usb.console no
+assert usb.ble no
+
+action usb-esptool-sync
+assert usb.mode esptool
+assert usb.syncs 1
+assert usb.console no
+assert usb.ble no
+
+# The single click is the recovery path. A double click or long press is not.
+action power-single-click
+assert usb.mode app
+assert usb.host closed
+assert usb.recoveries 1
+assert power.recoveries 1
+assert usb.console yes
+assert usb.ble yes
+assert platform.reset_reason poweron
+
+exit

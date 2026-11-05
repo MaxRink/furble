@@ -1,0 +1,38 @@
+# WebUI pre-gate OOM followed by a TG1WDT reset, not a panic loop.
+#
+# The old 8 KiB supervisor and 12 KiB HTTPS task both fail under the StickS3
+# pressure. The reset that followed on hardware was a task watchdog reset; the
+# crash record must report task_wdt, not panic, and must be printed once.
+seed hw_profile sticks3
+seed heap_internal_free 6800
+seed heap_internal_largest 2048
+seed web_ui true
+seed webui_password true
+seed wifi_connected true
+seed webui_gate off
+seed reset_reason task_wdt
+wait 100
+
+assert webui.supervisor alloc_failed
+assert webui.server off
+assert heap.alloc_failures 1
+assert platform.reset_reason task_wdt
+assert ui.page main
+
+action crash-inject-tg1wdt
+assert crash.pending yes
+
+restart
+
+assert crash.recovered yes
+assert crash.reset task_wdt
+assert crash.task sys_evt
+assert platform.reset_reason task_wdt
+assert ui.page main
+
+restart
+
+assert crash.recovered no
+assert crash.reset none
+
+exit

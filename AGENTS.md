@@ -50,6 +50,13 @@ bounds. `sh sim/scripts/run-memory.sh` runs the MQTT subset against the optional
 `FURBLE_SIM_MQTT=1` build with a closed local port, so no broker is required.
 Crash-record scenarios use `crash-inject-panic` or `crash-inject-task-wdt`
 followed by `restart`; the record is printed once on the next boot.
+Hardware flashing is gated on the simulator. `sim/coverage/` holds the hardware,
+crash, fuzz and permutation manifests; `tools/check_sim_coverage.py` validates
+them and `tools/check_flash_readiness.py --ready` is the only authority for a
+flash candidate. `sim/scripts/check-hardware-quirks.sh`,
+`sim/scripts/run-memory-profile.py` and the full permutation run are required
+before hardware. The parallel fuzz-suite branch owns the fuzz harness and must
+publish `sim/coverage/fuzz_results.json`.
 Firmware line coverage is measured by `tools/coverage.py` and gated against
 `tests/coverage_floor.json`. Coverage instrumentation is opt-in in both build
 entry points (`-DFURBLE_COVERAGE=ON` for the host harness,

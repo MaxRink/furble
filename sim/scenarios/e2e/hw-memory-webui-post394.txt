@@ -1,0 +1,22 @@
+# Post-#394 StickS3 WebUI gate pass.
+#
+# The RAM pass left 27,351 free / 25,588 largest internal bytes. The 3 KiB
+# supervisor and the 8 KiB HTTPS task both fit, so the server must run.
+seed hw_profile sticks3
+seed heap_internal_free 27351
+seed heap_internal_largest 25588
+seed web_ui true
+seed webui_password true
+seed wifi_connected true
+wait 100
+
+assert webui.supervisor created
+assert webui.server running
+assert webui.gate none
+assert webui.fail_closed no
+assert heap.free 16087
+assert heap.largest 14324
+assert mem.leaks 0
+assert platform.watchdog armed
+
+exit

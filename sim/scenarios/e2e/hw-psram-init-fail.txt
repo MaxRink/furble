@@ -1,0 +1,16 @@
+# Octal PSRAM init failure.
+#
+# A wrong timing or a missing module leaves the external pool unavailable. The
+# firmware must continue on internal RAM and report the failure, not panic.
+seed hw_profile sticks3
+seed psram_mode init_fail
+wait 100
+
+assert hw.psram init_fail
+assert hw.psram_state init_failed
+assert heap.spiram_present no
+assert heap.spiram_state init_failed
+assert heap.spiram_free 0
+assert ui.page main
+
+exit

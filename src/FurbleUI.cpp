@@ -72,6 +72,7 @@
 
 #include "clock.h"
 #include "driver.h"
+#include "memory_profile.h"
 #include "power_profiler.h"
 #include "webui_memory_model.h"
 #define FURBLE_SIM_TIMER_FIRE(name) Furble::Sim::profilerTimerFire(name)
@@ -5040,6 +5041,12 @@ std::string UI::simQueryState(const char *key) {
   }
   if (query == "sim_action_on_ui") {
     return m_SimLastActionOnUi.load() ? "yes" : "no";
+  }
+  if (query == "button_presses") {
+    return std::to_string(m_SimButtonPresses.load(std::memory_order_relaxed));
+  }
+  if (query == "button_holds") {
+    return std::to_string(m_SimButtonHolds.load(std::memory_order_relaxed));
   }
 
   if (query == "pairing_code" || query == "pairing_kind" || query == "pairing_overflow") {
@@ -13319,6 +13326,7 @@ void UI::task(void) {
     Scan::getInstance().processPendingCallbacks();
 #if defined(FURBLE_SIM)
     Sim::webuiMemoryTick();
+    Sim::memoryProfileTick();
 #endif
     if (!m_DisplayConsole) {
       handleLockScreen();
@@ -13453,6 +13461,8 @@ bool UI::simHoldButtonOnUi(const char *name, uint32_t milliseconds) {
   if (indev == nullptr) {
     return false;
   }
+  m_SimButtonPresses.fetch_add(1, std::memory_order_relaxed);
+  m_SimButtonHolds.fetch_add(1, std::memory_order_relaxed);
 
   // Sample at a fixed cadence instead of one long jump so LVGL sees the
   // press-to-long-press transition and each repeat tick. The virtual clock is
@@ -13480,6 +13490,10 @@ bool UI::simPressButtonOnUi(const char *name, bool hold) {
   lv_indev_t *indev = simButtonIndev(name);
   if (indev == nullptr) {
     return false;
+  }
+  m_SimButtonPresses.fetch_add(1, std::memory_order_relaxed);
+  if (hold) {
+    m_SimButtonHolds.fetch_add(1, std::memory_order_relaxed);
   }
 
   // A long press of the left button is furble's universal back escape. This is

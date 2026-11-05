@@ -123,6 +123,16 @@ CLAUDE.md whose directory it touches.
   `FURBLE_SIM_MQTT=1`. The script uses a closed local port, so no broker is
   required. The default-build WebUI gate and crash-record scenarios run in
   `sim/scripts/run-e2e.sh`.
+- Hardware flashing is gated on the simulator. The gate manifests are under
+  `sim/coverage/`; `python3 tools/check_sim_coverage.py` validates evidence and
+  `python3 tools/check_flash_readiness.py --ready` is the only authority for a
+  flash candidate. It fails on approximate entries, pending fuzz results,
+  unfixed seeds, incomplete permutations, memory-budget misses or a dirty tree.
+  Run `sim/scripts/check-hardware-quirks.sh`, `sim/scripts/run-memory-profile.py`
+  and the full `sim/scripts/run-permutations.py --results
+  sim/coverage/permutation_results.json` before asking for hardware.
+- The fuzz harness is owned by the parallel fuzz-suite branch. Consume its
+  `sim/coverage/fuzz_results.json`; do not duplicate the harness.
 - Run `sh tools/run_sanitized_host_tests.sh --clean` when touching C++ state,
   containers, camera drivers, simulator fixtures, or filesystem lifecycle code.
 - `.github/workflows/pre-review.yml` runs the scanners on pull requests;

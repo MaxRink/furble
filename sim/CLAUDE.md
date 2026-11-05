@@ -433,6 +433,20 @@ shortens that host retry cadence for a bounded scenario.
   preferences store. The production record writes only RTC memory and is never
   written from a panic handler: `CrashLog::update()` snapshots from a normal
   task loop and a shutdown handler marks a clean reset.
+- `sim/coverage/hardware_quirks.json`, `crashes.json`, `fuzz_targets.json`,
+  `permutations.json` and `memory_budget.json` are the release-gate manifests.
+  `tools/check_sim_coverage.py` validates model/scenario/assertion evidence.
+  `tools/check_flash_readiness.py --ready` is the only authority for a flash
+  candidate. It refuses approximate hardware entries, pending fuzz results,
+  unfixed failing seeds, incomplete permutations and a dirty worktree.
+- `sim/memory_profile.cpp`, the tagged heap, `action memory-dump PATH` and
+  `sim/scripts/run-memory-profile.py` are the memory profiler. The budget is
+  compared against `sim/coverage/memory_budget.json`. `sim/scripts/run-permutations.py`
+  writes the permutation result file; a `--limit` run is smoke evidence only.
+- `sim/scripts/check-hardware-quirks.sh` is the fail-closed hardware gate. It
+  asserts that the PSRAM-stack/flash-write, MQTT-owner-stack and MQTT-buffer
+  fixtures exit non-zero with `SIM FAIL`, then runs the positive power, USB,
+  WebUI, MQTT and memory scenarios.
   The simulator suppresses only the first post-stall bookkeeping feed, so the
   following assertion observes retained PMIC state before another normal UI
   cycle can feed it.

@@ -1,0 +1,35 @@
+# Post-#394 release budget: 27,351 free / 25,588 largest internal.
+#
+# Target: 10 KiB owner, 4 KiB plain worker, 2048-byte buffers, 8192-byte HA
+# discovery transient, 8 KiB main stack, 3 KiB companion, one LVGL draw buffer
+# on the narrow panel, and at least 10 KiB internal free afterwards.
+seed hw_profile sticks3
+seed heap_internal_free 27351
+seed heap_internal_largest 25588
+seed mqtt_owner_stack 10240
+seed mqtt_worker_stack 4096
+seed mqtt_ha true
+seed mqtt_buffer 2048
+wait 100
+
+assert mem.component.main_stack 8192
+assert mem.component.companion_task 3072
+assert mem.component.lvgl_draw 2160
+assert mem.component.mqtt_owner 10240
+assert mem.component.mqtt_worker 4096
+assert mqttmodel.state created
+assert mqttmodel.owner_stack 10240
+assert mqttmodel.worker_stack 4096
+assert mqttmodel.buffer 2048
+assert mqttmodel.ha ok
+assert mqttmodel.ha_peak 8192
+assert_min heap.free 10000
+assert mem.leaks 0
+assert_min mem.high_water_largest 2000
+assert ui.page main
+assert platform.watchdog armed
+
+wait 1200
+assert_min mem.timeline_samples 1
+print mem.tasks
+exit
