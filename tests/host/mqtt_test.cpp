@@ -150,11 +150,11 @@ int main(void) {
   // The budget constants are part of the firmware contract. Keep the host test
   // pinned to the same values the device compiles.
   require(Furble::MQTTMemory::OWNER_STACK_BYTES == 10240, "MQTT owner stack budget changed");
-  require(Furble::MQTTMemory::PLAIN_WORKER_STACK_BYTES == 4096,
+  require(Furble::MQTTMemory::PLAIN_WORKER_STACK_BYTES == 3072,
           "plain MQTT worker stack budget changed");
   require(Furble::MQTTMemory::TLS_WORKER_STACK_BYTES == 6144,
           "TLS MQTT worker stack budget changed");
-  require(Furble::MQTTMemory::BUFFER_SIZE == 2048, "MQTT buffer budget changed");
+  require(Furble::MQTTMemory::BUFFER_SIZE == 1536, "MQTT buffer budget changed");
   require(!Furble::MQTTMemory::startFits(Furble::MQTTMemory::START_INTERNAL_FREE_FLOOR - 1,
                                          Furble::MQTTMemory::START_INTERNAL_LARGEST_FLOOR),
           "start gate opened below the free floor");

@@ -203,11 +203,15 @@ UI change before approving.
   invalidation logger are the diagnosis tools.
 - PSRAM (S3): `SPIRAM_MALLOC_ALWAYSINTERNAL=4096` routes large allocations to
   PSRAM. DMA display buffers must stay `MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL`.
-- LVGL: `displayFlush()` reports the flush complete as soon as M5GFX queues the
-  SPI DMA, so two draw buffers are required to keep LVGL from overwriting pixels
-  still on the wire. A single-buffer fallback must call `M5.Display.waitDMA()`
-  before `lv_disp_flush_ready()`. Tasks that never write NVS may keep their
-  stack in PSRAM; IR is one, the WebUI, companion, GPS and NimBLE host are not.
+- LVGL: wide panels need two draw buffers because `displayFlush()` reports the
+  flush complete as soon as M5GFX queues the SPI DMA. Narrow panels use one
+  buffer and must call `M5.Display.waitDMA()` before `lv_disp_flush_ready()`.
+  Tasks that never write NVS may keep their stack in PSRAM; IR is one, the
+  WebUI, companion, GPS and NimBLE host are not.
+- MQTT: the owner needs 10 KiB. Plain MQTT uses a 3 KiB worker and 1,536-byte
+  buffers; TLS keeps a 6 KiB worker. The start gate requires 8,192/4,096 and
+  Home Assistant discovery requires 10,240/4,096 internal bytes. `mqtt_ha` is
+  cached on reload; never read it from the owner event path.
 - ESP-IDF 5.5 per-task heap tracking can deadlock concurrent frees during WiFi
   association. Keep `CONFIG_HEAP_TASK_TRACKING` disabled on every board until
   the upstream fix is present in the pinned SDK. Capability heap diagnostics

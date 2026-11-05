@@ -18,9 +18,10 @@ inline constexpr size_t OWNER_STACK_BYTES = 10240;
 
 /**
  * esp-mqtt client task stacks. Plain MQTT measured a 704-byte high-water mark
- * on the StickS3. TLS keeps the 6 KiB default for the handshake.
+ * on the StickS3, so the plain worker uses 3 KiB. TLS keeps the 6 KiB default
+ * for the handshake.
  */
-inline constexpr size_t PLAIN_WORKER_STACK_BYTES = 4096;
+inline constexpr size_t PLAIN_WORKER_STACK_BYTES = 3072;
 inline constexpr size_t TLS_WORKER_STACK_BYTES = 6144;
 
 /**
@@ -28,10 +29,10 @@ inline constexpr size_t TLS_WORKER_STACK_BYTES = 6144;
  *
  * The Home Assistant hub discovery payload is about 3,005 bytes and the camera
  * payload about 1,874 bytes. esp-mqtt fragments an outgoing payload that is
- * larger than the network buffer, so 2,048 bytes does not cap the discovery
+ * larger than the network buffer, so 1,536 bytes does not cap the discovery
  * payload. Incoming commands are all far below this size.
  */
-inline constexpr size_t BUFFER_SIZE = 2048;
+inline constexpr size_t BUFFER_SIZE = 1536;
 
 /**
  * Free internal heap required before the esp-mqtt client is created.
