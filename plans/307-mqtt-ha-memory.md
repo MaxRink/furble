@@ -108,11 +108,14 @@ and the floors, and neither takes the broker link down.
 ## Coordination with the MQTT stack PR
 
 The open `fix/mqtt-task-stack` branch also changes the owner stack and the
-plain worker stack. This pass agrees on the 10 KiB owner. It changes the plain
-worker to 3 KiB and the buffers to 1,536, which conflicts with that branch's
-4 KiB worker and 2,048 buffers. Merge order: land `fix/mqtt-task-stack` first,
-then rebase this branch. The conflicting worker and buffer edits are isolated
-in their own commit so the rebase is mechanical.
+plain worker stack. This pass agrees on the 10 KiB owner. The gate commit
+introduces the worker and buffer configuration with the same 4 KiB worker and
+2,048-byte buffers as the open branch. The follow-up commit
+`perf(mqtt): size the plain worker and buffers for the StickS3` changes the
+shared header constants and host assertions to 3 KiB and 1,536 bytes. Merge
+order: land `fix/mqtt-task-stack` first, then rebase this branch. Expect a
+small conflict on the configuration lines, resolved in favour of this branch's
+3 KiB and 1,536-byte values.
 
 ## Validation done
 
