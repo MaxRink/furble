@@ -131,6 +131,24 @@ int runSimulator() {
     auto camera = CameraList::last();
     CameraList::save(camera);
     camera->setActive(true);
+  } else if (const std::string savedCameras = Sim::scenarioSetting("saved_cameras", "");
+             !savedCameras.empty()) {
+    // Several saved FauxNY cameras with stable, distinct names, so a
+    // multi-connect selection scenario can assert every row. The seed is
+    // numeric and validated before boot; clamp to the selection capacity here
+    // so a typo cannot build an unusable page.
+    const unsigned long count = std::stoul(savedCameras);
+    if (count > Settings::MULTISELECT_MAX) {
+      std::fprintf(stderr, "Invalid saved_cameras: %s (max %u)\n", savedCameras.c_str(),
+                   static_cast<unsigned>(Settings::MULTISELECT_MAX));
+      std::exit(2);
+    }
+    for (unsigned long n = 0; n < count; n++) {
+      CameraList::addFauxNY();
+      auto camera = CameraList::last();
+      camera->simSetName("Sim Camera " + std::to_string(n + 1));
+      CameraList::save(camera);
+    }
   } else if (Sim::scenarioSettingIsTrue("saved_camera")) {
     // Seed a saved but inactive camera so the Connect and Delete list pages
     // render entries and their main-menu buttons are enabled. Unlike

@@ -170,3 +170,11 @@ walkthrough, wiki walkthrough, wiki console reference and console reference all
 now say that Auto falls back to UTC after 30 minutes without a fresh fix **and**
 immediately when a fresh fix is outside the 30-degree nearest-zone radius. This
 is a documentation-only follow-up; no wire or behavior change.
+
+## Simulator documentation follow-up
+
+`seed timezone` was accepted by the scenario parser but missing from the
+effective-seed list in `docs/sim.md`; the source-text doc-token gate caught it.
+The seed is now documented and the gate runs as a sim-e2e CI step, so the next
+undocumented simulator token fails before the build. No simulator behavior or
+wire value changed.

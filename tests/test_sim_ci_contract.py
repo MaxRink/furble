@@ -178,3 +178,7 @@ class SimCIContractTest(unittest.TestCase):
     self.assertIn("- 'tools/check_sim_scenarios.py'", power)
     self.assertIn("if ! scenarios=$(python3 tools/check_sim_scenarios.py", power)
     self.assertIn('if [ -z "$scenarios" ]', power)
+
+  def test_sim_e2e_runs_the_documentation_token_gate(self):
+    text = (ROOT / ".github/workflows/sim-e2e.yml").read_text(encoding="utf-8")
+    self.assertIn("sh sim/scripts/check-doc-tokens.sh", text)

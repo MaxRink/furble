@@ -2995,6 +2995,17 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/e2e/multiconnect-selection-three.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/e2e/peer-canon-remote-write.txt",
       "suite": "e2e",
       "owner": "sim-e2e",

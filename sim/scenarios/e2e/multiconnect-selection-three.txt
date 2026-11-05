@@ -1,0 +1,103 @@
+# Plan 120: the SDL multi-connect selection page.
+#
+# The real-Control harness already proves the survivor, reconnect and resource
+# invariants for a two-camera drop. This scenario covers the remaining half:
+# the on-device selection UI itself, with three cameras so the (i/n) counter is
+# exercised with n greater than two.
+#
+# Three saved FauxNY cameras give stable, distinct rows. The physical-button
+# layout is the one every Stick ships, so the walk uses the real previous and
+# select buttons rather than direct page navigation. Entering the page focuses
+# the first camera row; the Connect button is one row above it.
+seed no_touch true
+seed saved_cameras 3
+wait 300
+
+# Turn the multi-connect list on through its production switch.
+action toggle multiconnect
+wait 200
+assert setting.multiconnect 1
+
+home
+wait 200
+action nav connect
+wait 300
+assert ui.page connect
+assert ui.focus_on_page yes
+
+# The first camera row is focused on entry. Its checkbox starts clear, and the
+# Connect title still reads zero.
+assert ui.row_text Sim_Camera_1
+assert ui.row_checked no
+assert ui.connect_count 0
+button a
+wait 100
+assert ui.row_checked yes
+assert ui.connect_count 1
+
+# Walk the second and third rows and toggle each. Every step proves the focus
+# landed on a real checkbox, not a label or the Connect button.
+button b
+wait 100
+assert ui.row_text Sim_Camera_2
+assert ui.row_checked no
+button a
+wait 100
+assert ui.row_checked yes
+assert ui.connect_count 2
+button b
+wait 100
+assert ui.row_text Sim_Camera_3
+assert ui.row_checked no
+button a
+wait 100
+assert ui.row_checked yes
+assert ui.connect_count 3
+
+# Three previous presses return from the third row to the Connect button.
+button pwr
+button pwr
+button pwr
+wait 200
+assert ui.row_text Connect_3
+assert ui.focus_on_page yes
+
+# Connect all three. The selection is persisted by the same button handler a
+# touch press runs, then the production Control session starts.
+button a
+wait 5200
+assert-eventually-virtual 5000 control.state active
+assert control.targets 3
+assert control.connected 3
+assert-eventually-virtual 2000 ui.connected yes
+assert ui.status_text Connected
+assert ui.reconnect_count 0/3
+
+# Drop one target. Two links stay live, the Connected page stays up, and the
+# per-device count names the one camera of three that is reconnecting.
+action drop 0
+wait 700
+assert control.state connecting
+assert control.targets 3
+assert control.connected 2
+assert ui.connect_box hidden
+assert ui.page connected
+assert-eventually-virtual 2000 ui.reconnecting yes
+assert ui.reconnect_count 1/3
+
+# The surviving cameras still fire while the third reconnects. Two presses
+# reached the two live links and nothing is buffered for the dropped target.
+action shutter
+wait 200
+assert-eventually-virtual 1000 camera.shutter_presses 2
+assert-eventually-virtual 1000 camera.shutter_releases 2
+
+# The dropped target returns, all three links are live, and the count clears.
+wait 2700
+assert-eventually-virtual 3000 control.state active
+assert control.connected 3
+assert ui.connected yes
+assert ui.reconnecting no
+assert ui.reconnect_count 0/3
+assert-eventually-virtual 1000 camera.shutter_presses 2
+exit

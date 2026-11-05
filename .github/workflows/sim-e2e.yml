@@ -94,6 +94,12 @@ jobs:
       - name: Check simulator scenario ownership
         run: python3 tools/check_sim_scenarios.py
 
+      # Keep docs/sim.md tied to the simulator vocabulary. The gate is
+      # source-text only and needs no build, so it runs before the simulator
+      # build and fails fast on an undocumented seed, action, or query.
+      - name: Check simulator documentation tokens
+        run: sh sim/scripts/check-doc-tokens.sh
+
       - name: Build simulator
         env:
           FURBLE_DEP_ROOT: ${{ github.workspace }}/sim/.pio/libdeps/sim

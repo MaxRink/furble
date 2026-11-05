@@ -477,12 +477,12 @@ control-teardown race that the slower instrumented build exposes, in the same
 family as the three plan 169 made deterministic, and it belongs with that work
 rather than with a layout change.
 
-`sim/scripts/check-doc-tokens.sh` is not run by any workflow. It caught a real
-gap here, the new `intervalSeedIsValid` predicate its `validateSeed` reader did
-not recognise, and it caught it only because it was run by hand. Wiring it into
-`.github/workflows/sim-e2e.yml`, or into the python tests beside
-`tests/test_build_inventory.py`, is a small follow-up and belongs to whoever
-owns that script rather than to a layout change.
+`sim/scripts/check-doc-tokens.sh` is now a sim-e2e CI step, so it no longer
+depends on being run by hand. It had already caught a real gap here, the new
+`intervalSeedIsValid` predicate its `validateSeed` reader did not recognise, and
+its first CI-facing follow-up caught the missing `seed timezone` documentation.
+`tests/test_sim_ci_contract.py` pins the workflow step. No layout behavior
+changed.
 
 The `FURBLE_SIM_NO_TOUCH=1` fuzz leg, follow-up 3's other half, is also still
 open. The four `mustFit` pages the fuzzer checks are green in this layout now,

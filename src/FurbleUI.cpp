@@ -5933,6 +5933,31 @@ std::string UI::simQueryState(const char *key) {
     return reported.empty() ? std::string("none") : reported;
   }
 
+  // Checked state of the focused multi-connect row. "none" means the focused
+  // object is not a checkbox, which lets a scenario prove it really walked the
+  // per-camera rows rather than a label or the Connect button.
+  if (query == "row_checked") {
+    lv_obj_t *focused = lv_group_get_focused(m_Group);
+    if (focused == nullptr || !lv_obj_is_valid(focused)
+        || !lv_obj_check_type(focused, &lv_checkbox_class)) {
+      return "none";
+    }
+    return lv_obj_has_state(focused, LV_STATE_CHECKED) ? "yes" : "no";
+  }
+
+  // Number of cameras selected on the multi-connect page. The Connect button
+  // renders the same count; this integer form avoids asserting a label whose
+  // spaces the scenario DSL would rewrite as underscores.
+  if (query == "connect_count") {
+    size_t selected = 0;
+    for (size_t n = 0; n < CameraList::size(); n++) {
+      if (CameraList::get(n)->isActive()) {
+        selected++;
+      }
+    }
+    return std::to_string(selected);
+  }
+
   // Whether the focused menu row is running LVGL's scroll animation. A label in
   // LV_LABEL_LONG_SCROLL_CIRCULAR whose text is wider than the row scrolls
   // forever and invalidates the row on every frame, which is the redraw trap
