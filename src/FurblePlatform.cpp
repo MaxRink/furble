@@ -9,6 +9,7 @@
 
 #include <M5PM1.h>
 
+#include "FurbleBootTimeline.h"
 #include "FurbleControl.h"
 #include "FurbleFeedback.h"
 #include "FurblePlatform.h"
@@ -100,6 +101,7 @@ Platform &Platform::getInstance(void) {
     } else {
       M5.Rtc.disableIRQ();
     }
+    BootTimeline::mark(BootTimeline::DISPLAY_READY);
 
     // M5Unified enables every AXP192 ADC channel at 25 Hz. Trim the unused
     // channels, but only when the detected PMIC really is an AXP192: Core2 v1.1
@@ -137,6 +139,7 @@ Platform &Platform::getInstance(void) {
 #endif
 
     instance.initBattery();
+    BootTimeline::mark(BootTimeline::PMIC_READY);
 
     instance.m_Init = true;
   }

@@ -25,9 +25,11 @@
 #include <sys/time.h>
 #include <time.h>
 
+#include "FurbleBootTimeline.h"
 #include "FurbleControl.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
+#include "FurbleWiFiPolicy.h"
 #include "Preferences.h"
 
 namespace Furble {
@@ -37,6 +39,7 @@ namespace {
 [[maybe_unused]] constexpr const char *LOG_TAG = "wifi";
 constexpr const char *BSSID_KEY = "wifi_bssid";
 constexpr const char *CHANNEL_KEY = "wifi_chan";
+constexpr const char *AUTH_KEY = "wifi_auth";
 constexpr size_t BSSID_LENGTH = 6;
 
 constexpr uint32_t NOTIFY_REQUEST = 1U << 0;
@@ -76,6 +79,8 @@ std::atomic<bool> g_GotIp = false;
 bool g_BssidSet = false;
 std::array<uint8_t, BSSID_LENGTH> g_Bssid = {};
 uint8_t g_Channel = 0;
+bool g_AuthSet = false;
+uint8_t g_AuthMode = WiFiPolicy::AUTH_UNKNOWN;
 int8_t g_Rssi = 0;
 std::string g_Ip;
 
@@ -91,7 +96,11 @@ std::atomic<bool> g_DeferredForWired {false};
 std::atomic<bool> g_ResumeAfterWired {false};
 uint8_t g_LastDisconnectReason = 0;
 bool g_ScanAttempted = false;
+// A direct join to the remembered BSSID failed. Force one scan before the next
+// join so a moved or replaced access point is not retried for the whole backoff.
+bool g_FastConnectFailed = false;
 bool g_ScanShowHidden = false;
+std::atomic<bool> g_LastAttemptUsedBssid {false};
 std::atomic<bool> g_ScanRefusedForCoex {false};
 // Incremented by every disconnect and GOT_IP event. The join wait uses it to
 // distinguish a real lifecycle event from the periodic cancellation poll, so
@@ -178,19 +187,30 @@ void loadRememberedAccessPoint(void) {
     return;
   }
 
+  bool bssidSet = false;
+  std::array<uint8_t, BSSID_LENGTH> bssid = {};
+  uint8_t channel = 0;
+  bool authSet = false;
+  uint8_t authMode = WiFiPolicy::AUTH_UNKNOWN;
+
   if (preferences.isKey(BSSID_KEY) && (preferences.getBytesLength(BSSID_KEY) == BSSID_LENGTH)) {
-    g_StateMutex.lock();
-    preferences.get(BSSID_KEY, g_Bssid.data(), g_Bssid.size());
-    g_BssidSet = true;
-    g_StateMutex.unlock();
+    bssidSet = preferences.get(BSSID_KEY, bssid.data(), bssid.size()) == bssid.size();
   }
   if (preferences.isKey(CHANNEL_KEY)) {
-    g_StateMutex.lock();
-    g_Channel = preferences.get<uint8_t>(CHANNEL_KEY, 0);
-    g_StateMutex.unlock();
+    channel = preferences.get<uint8_t>(CHANNEL_KEY, 0);
   }
-
+  if (preferences.isKey(AUTH_KEY)) {
+    authMode = preferences.get<uint8_t>(AUTH_KEY, WiFiPolicy::AUTH_UNKNOWN);
+    authSet = WiFiPolicy::authUsable(true, authMode);
+  }
   preferences.end();
+
+  const std::lock_guard<std::mutex> lock(g_StateMutex);
+  g_Bssid = bssid;
+  g_BssidSet = bssidSet;
+  g_Channel = channel;
+  g_AuthMode = authMode;
+  g_AuthSet = authSet;
 }
 
 void saveRememberedAccessPoint(const wifi_ap_record_t &record) {
@@ -199,39 +219,58 @@ void saveRememberedAccessPoint(const wifi_ap_record_t &record) {
     return;
   }
 
+  preferences.setDeferredCommit(true);
   preferences.put(BSSID_KEY, record.bssid, BSSID_LENGTH);
   preferences.put<uint8_t>(CHANNEL_KEY, record.primary);
+  preferences.put<uint8_t>(AUTH_KEY, static_cast<uint8_t>(record.authmode));
+  (void)preferences.commit();
   preferences.end();
 
   std::lock_guard<std::mutex> lock(g_StateMutex);
+  g_FastConnectFailed = false;
   if (!g_ConnectRequested) {
     return;
   }
   std::memcpy(g_Bssid.data(), record.bssid, BSSID_LENGTH);
   g_BssidSet = true;
   g_Channel = record.primary;
+  g_AuthMode = static_cast<uint8_t>(record.authmode);
+  g_AuthSet = WiFiPolicy::authUsable(true, g_AuthMode);
   g_Rssi = record.rssi;
 }
 
-void clearStoredAccessPoint(void) {
+void eraseStoredAccessPoint(void) {
   Preferences preferences;
   if (!preferences.begin(FURBLE_STR, false)) {
     return;
   }
 
+  preferences.setDeferredCommit(true);
   if (preferences.isKey(BSSID_KEY)) {
     preferences.remove(BSSID_KEY);
   }
   if (preferences.isKey(CHANNEL_KEY)) {
     preferences.remove(CHANNEL_KEY);
   }
+  if (preferences.isKey(AUTH_KEY)) {
+    preferences.remove(AUTH_KEY);
+  }
+  (void)preferences.commit();
   preferences.end();
+}
+
+void clearStoredAccessPoint(void) {
+  eraseStoredAccessPoint();
 
   std::lock_guard<std::mutex> lock(g_StateMutex);
   g_Bssid = {};
   g_BssidSet = false;
   g_Channel = 0;
+  g_AuthMode = WiFiPolicy::AUTH_UNKNOWN;
+  g_AuthSet = false;
   g_Rssi = 0;
+  g_FastConnectFailed = false;
+  g_LastAttemptUsedBssid.store(false);
 }
 
 void timeSyncCallback(struct timeval *tv) {
@@ -243,10 +282,13 @@ void timeSyncCallback(struct timeval *tv) {
   const int64_t elapsedUs = esp_timer_get_time() - g_SyncStartMonoUs;
   const int64_t expectedWallUs = g_SyncStartWallUs + elapsedUs;
 
-  std::lock_guard<std::mutex> lock(g_StateMutex);
-  g_NtpSynced = true;
-  g_NtpLastSync = tv->tv_sec;
-  g_NtpOffsetUs = syncedWallUs - expectedWallUs;
+  {
+    std::lock_guard<std::mutex> lock(g_StateMutex);
+    g_NtpSynced = true;
+    g_NtpLastSync = tv->tv_sec;
+    g_NtpOffsetUs = syncedWallUs - expectedWallUs;
+  }
+  BootTimeline::mark(BootTimeline::NTP_SYNCED);
 }
 
 void stopNtp(void) {
@@ -329,10 +371,22 @@ bool configureStation(void) {
 
   {
     std::lock_guard<std::mutex> lock(g_StateMutex);
-    if (g_BssidSet && (g_Channel != 0)) {
+    const WiFiPolicy::remembered_ap_t ap = {g_BssidSet, g_Channel, g_AuthSet, g_AuthMode};
+    if (WiFiPolicy::fastConnectUsable(ap)) {
       std::memcpy(config.sta.bssid, g_Bssid.data(), BSSID_LENGTH);
       config.sta.bssid_set = true;
       config.sta.channel = g_Channel;
+      // A direct join has no scan to compare candidates, so keep the driver's
+      // fast path explicit and reject an AP whose security is weaker than the
+      // one remembered beside the BSSID.
+      config.sta.scan_method = WIFI_FAST_SCAN;
+      config.sta.sort_method = WIFI_CONNECT_AP_BY_SIGNAL;
+      if (WiFiPolicy::authUsable(g_AuthSet, g_AuthMode)) {
+        config.sta.threshold.authmode = static_cast<wifi_auth_mode_t>(g_AuthMode);
+      }
+      g_LastAttemptUsedBssid.store(true);
+    } else {
+      g_LastAttemptUsedBssid.store(false);
     }
   }
 
@@ -500,6 +554,8 @@ bool serviceWiredDeferral(void) {
     g_StoppedForReason = false;
     g_LastDisconnectReason = 0;
     g_ScanAttempted = false;
+    g_FastConnectFailed = false;
+    g_LastAttemptUsedBssid.store(false);
   }
   notify(NOTIFY_REQUEST);
   return true;
@@ -725,7 +781,7 @@ void wifiTask(void *) {
       bool scan = false;
       {
         std::lock_guard<std::mutex> lock(g_StateMutex);
-        scan = (g_DirectFailures >= 2) && !g_ScanAttempted;
+        scan = WiFiPolicy::shouldScan(g_DirectFailures, g_ScanAttempted, g_FastConnectFailed);
         if (scan) {
           g_ScanAttempted = true;
         }
@@ -750,6 +806,11 @@ void wifiTask(void *) {
 }
 
 void eventHandler(void *, esp_event_base_t eventBase, int32_t eventId, void *eventData) {
+  if ((eventBase == WIFI_EVENT) && (eventId == WIFI_EVENT_STA_CONNECTED)) {
+    BootTimeline::mark(BootTimeline::WIFI_ASSOC);
+    return;
+  }
+
   if ((eventBase == WIFI_EVENT) && (eventId == WIFI_EVENT_STA_DISCONNECTED)) {
     uint8_t reason = 0;
     if (eventData != nullptr) {
@@ -757,8 +818,10 @@ void eventHandler(void *, esp_event_base_t eventBase, int32_t eventId, void *eve
     }
 
     const DisconnectClass cls = classifyDisconnect(reason);
+    const bool wasConnected = g_Connected.load();
     bool retry = false;
     bool stopped = false;
+    bool invalidateRemembered = false;
     {
       std::lock_guard<std::mutex> lock(g_StateMutex);
       g_Connected = false;
@@ -766,6 +829,21 @@ void eventHandler(void *, esp_event_base_t eventBase, int32_t eventId, void *eve
       g_Ip.clear();
       g_Rssi = 0;
       g_LastDisconnectReason = reason;
+
+      // A direct join that never reached an IP may be pointing at a BSSID that
+      // moved or was replaced. Drop it and scan once before the next attempt.
+      // A disconnect after a live session keeps the remembered AP for a fast
+      // reconnect.
+      if (!wasConnected && g_LastAttemptUsedBssid.load() && g_BssidSet) {
+        g_Bssid = {};
+        g_BssidSet = false;
+        g_Channel = 0;
+        g_AuthMode = WiFiPolicy::AUTH_UNKNOWN;
+        g_AuthSet = false;
+        g_FastConnectFailed = true;
+        g_LastAttemptUsedBssid.store(false);
+        invalidateRemembered = true;
+      }
 
       const uint32_t nextAttempt = g_ConnectAttempts + 1;
       const bool authFailure = cls == DisconnectClass::AUTH;
@@ -778,6 +856,10 @@ void eventHandler(void *, esp_event_base_t eventBase, int32_t eventId, void *eve
         stopped = true;
       }
       retry = g_ConnectRequested;
+    }
+    if (invalidateRemembered) {
+      eraseStoredAccessPoint();
+      ESP_LOGW(LOG_TAG, "WiFi direct join failed, forgetting the remembered BSSID");
     }
     g_LifecycleEvent.fetch_add(1, std::memory_order_relaxed);
     stopNtp();
@@ -809,7 +891,10 @@ void eventHandler(void *, esp_event_base_t eventBase, int32_t eventId, void *eve
       g_StoppedForReason = false;
       g_LastDisconnectReason = 0;
       g_ScanAttempted = false;
+      g_FastConnectFailed = false;
+      g_LastAttemptUsedBssid.store(false);
     }
+    BootTimeline::mark(BootTimeline::WIFI_IP);
 
     wifi_ap_record_t record = {};
     if (esp_wifi_sta_get_ap_info(&record) == ESP_OK) {
@@ -918,7 +1003,10 @@ bool WiFi::connect(void) {
     g_StoppedForReason = false;
     g_LastDisconnectReason = 0;
     g_ScanAttempted = false;
+    g_FastConnectFailed = false;
+    g_LastAttemptUsedBssid.store(false);
   }
+  BootTimeline::mark(BootTimeline::WIFI_STARTED);
   notify(NOTIFY_REQUEST);
   return true;
 }

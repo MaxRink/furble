@@ -36,6 +36,7 @@
 #include "Scan.h"
 
 #include "Camera.h"
+#include "FurbleBootTimeline.h"
 #include "FurbleBtDebug.h"
 #include "FurbleCompanion.h"
 #include "FurbleCompanionAuth.h"
@@ -2402,6 +2403,14 @@ int cmdVersion(int argc, char **argv) {
   return 0;
 }
 
+int cmdBoot(int argc, char **argv) {
+  if ((argc == 2) && (strcmp(argv[1], "timing") == 0)) {
+    BootTimeline::print();
+    return 0;
+  }
+  return fail("usage: boot timing");
+}
+
 int cmdCameras(int argc, char **argv) {
   if ((argc >= 2) && (strcmp(argv[1], "status") == 0)) {
     const auto cameras = Control::getInstance().getTargetCameras();
@@ -3344,6 +3353,7 @@ constexpr esp_console_cmd_t command(const char *name,
 
 const esp_console_cmd_t COMMANDS[] = {
     command("version", "Firmware and IDF version", cmdVersion),
+    command("boot", "boot timing, last boot timeline and mark deltas", cmdBoot),
     command("status", "State, targets, uptime, heap and battery", cmdStatus),
     command("crash", "crash [last], previous-boot crash record", cmdCrash),
 #if defined(FURBLE_NO_DISPLAY)
@@ -3478,6 +3488,7 @@ void task(void) {
 
   printf("\nfurble console ready, type 'help'\n%s", PROMPT);
   fflush(stdout);
+  BootTimeline::mark(BootTimeline::CONSOLE_READY);
 
   while (true) {
     powerLogTick();

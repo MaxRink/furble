@@ -133,11 +133,12 @@ bool waitFor(const std::function<bool()> &predicate, int timeout_ms) {
 // help command. A new command or a dropped registration has to update this
 // list, which is the point: the automation surface is a contract.
 const std::vector<std::string> EXPECTED_COMMANDS = {
-    "help",     "version", "status",  "crash",    "imu",          "motion",     "power",
-    "perf",     "gps",     "time",    "settings", "companion",    "provision",  "ui",
-    "cameras",  "connect", "pair",    "delete",   "multiconnect", "disconnect", "shutter",
-    "interval", "bulb",    "display", "ir",       "focus",        "scan",       "bt",
-    "feedback", "log",     "debug",   "flash",    "reboot",       "wifi",       "ntp",
+    "help",      "version",      "boot",       "status",  "crash",    "imu",
+    "motion",    "power",        "perf",       "gps",     "time",     "settings",
+    "companion", "provision",    "ui",         "cameras", "connect",  "pair",
+    "delete",    "multiconnect", "disconnect", "shutter", "interval", "bulb",
+    "display",   "ir",           "focus",      "scan",    "bt",       "feedback",
+    "log",       "debug",        "flash",      "reboot",  "wifi",     "ntp",
 };
 
 }  // namespace
@@ -157,6 +158,7 @@ struct SubcommandContract {
 };
 
 const std::vector<SubcommandContract> SUBCOMMANDS = {
+    {"boot",         "usage: boot timing",                                               "",                     {"timing"}                            },
     {"power",        "expected stats, log or off",                                       "",                     {"stats", "log", "off"}               },
     {"perf",         "expected tasks, heap or lvgl",                                     "",                     {"tasks", "heap", "lvgl"}             },
     {"gps",
@@ -295,6 +297,16 @@ void testSubcommandSets(void) {
 }
 
 // Test 3. The state reporting commands, which are what a host script polls.
+void testBootTiming(void) {
+  std::cerr << "test: boot timing prints the retained timeline\n";
+
+  const Result timing = runDirect("boot timing");
+  check(timing.rc == 0, "boot timing returns success");
+  checkContains(timing.out, "boot.origin: app_main", "boot timing names its origin");
+  checkContains(timing.out, "boot.reset_to_app_ms: ", "boot timing reports the reset estimate");
+  checkContains(timing.out, "boot.not_recorded:", "boot timing lists unset marks");
+}
+
 void testStatusAndVersion(void) {
   std::cerr << "test: version and status report the device state\n";
   ConsoleHost::resetDoubles();
@@ -2331,6 +2343,7 @@ int main(void) {
   testWorkflowCompletionState();
   testCommandTable();
   testSubcommandSets();
+  testBootTiming();
   testStatusAndVersion();
   testSettings();
   testGPS();

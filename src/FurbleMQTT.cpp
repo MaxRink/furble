@@ -32,6 +32,7 @@
 #include "Device.h"
 #include "Scan.h"
 
+#include "FurbleBootTimeline.h"
 #include "FurbleGPS.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
@@ -817,6 +818,7 @@ void MQTT::handleEvent(const queued_event_t &event) {
     case MQTT_EVENT_CONNECTED:
       m_Connected.store(true);
       m_ConnectFailures = 0;
+      BootTimeline::mark(BootTimeline::MQTT_CONNECTED);
       ESP_LOGI(MQTT_LOG_TAG, "MQTT connected.");
       publish(m_StatusTopic, "online", 1, true);
       publishState(true);

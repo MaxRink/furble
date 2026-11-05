@@ -1,5 +1,6 @@
 set(furble_sources
     FurbleBootScreen.cpp
+    FurbleBootTimeline.cpp
     FurbleBtDebug.cpp
     FurbleCompanion.cpp
     FurbleCompanionAuth.cpp
