@@ -1241,8 +1241,9 @@ class UI {
    * and shifted so the reservation sits beside the legend; every other row keeps
    * the full page width. When `settle` is set the page layout is refreshed
    * between rows so a height change from wrapping cannot leave the rows below it
-   * measured against stale coordinates. The scroll handler passes false and
-   * relies on the next scroll frame or scroll end for that correction.
+   * measured against stale coordinates. SCROLL frames only queue a coalesced
+   * async pass; SCROLL_END settles, so the page never reflows inside the
+   * scroll callback.
    *
    * `pinBottom` is set only for a scroll-end pass: if the page was at its
    * bottom before the widths changed, the new taller content is scrolled back
@@ -1256,11 +1257,14 @@ class UI {
   /** True when a row's box intersects the floating legend's vertical band. */
   static bool rowIntersectsLegendBand(const lv_obj_t *row);
 
-  /** Re-read the floating legend's display-coordinate vertical band. */
-  void measureLegendBand(void);
+  /** Re-read a floating legend's display-coordinate vertical band. */
+  static void measureLegendBand(lv_obj_t *legend);
 
   /** Page scroll handler that re-applies the band-scoped row widths. */
   static void legendBandScrollEvent(lv_event_t *e);
+
+  /** Coalesced scroll-end work queued outside the scroll callback. */
+  static void legendBandDeferred(void *arg);
 
   /** Add a menu item. */
   static lv_obj_t *addMenuItem(const menu_t &menu,

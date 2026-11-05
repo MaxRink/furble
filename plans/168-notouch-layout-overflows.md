@@ -1208,8 +1208,12 @@ the legend sat below the last home row.
 The fix measures the legend's display-coordinate band once, at the same point
 `m_LegendWidth` is sampled, and narrows only a row whose box intersects it.
 Rows outside the band keep `lv_obj_get_content_width(page)`. The band is
-re-evaluated on `LV_EVENT_SCROLL` and settled on `LV_EVENT_SCROLL_END`, so a row
-scrolling into or out of the band gets the right width during the gesture.
+re-evaluated after scrolling. A `LV_EVENT_SCROLL` frame only queues one
+coalesced async pass; `LV_EVENT_SCROLL_END` settles immediately. Neither path
+mutates row geometry inside the scroll callback, so a row cannot change height
+under the user's finger. The follow-up review of PR #367 also refreshes the
+cached band after `applyLevelRotation()` re-anchors the floating legend for
+landscape.
 Width and translate writes are guarded by the current value so a repeated event
 cannot cause a layout loop, and hidden rows are skipped. A page-load pass is
 deferred once with `lv_async_call` because `lv_menu_set_page()` raises
