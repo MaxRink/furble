@@ -34,7 +34,7 @@ inline constexpr int32_t NARROW_PANEL_WIDTH = 160;
  * displayFlush() reports the flush complete as soon as M5GFX starts the SPI
  * DMA, so LVGL renders the next band into the other buffer while the first one
  * is on the wire. On the StickS3 this drops each 135x240 buffer from 4,320 to
- * 2,160 bytes without changing the total pixel throughput.
+ * 2,160 bytes without changing the number of pixels transferred.
  */
 inline constexpr size_t drawBufferBytes(int32_t width, int32_t height, size_t bytesPerPixel) {
   const int32_t boundedWidth = std::clamp<int32_t>(width, 1, MAX_WIDTH);

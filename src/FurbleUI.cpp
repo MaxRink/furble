@@ -527,7 +527,7 @@ UI::UI(const interval_t &interval)
   // the optional HTTPS server needs. Both buffers stay internal because they
   // feed the SPI panel and cannot live in PSRAM. Narrow panels also halve the
   // partial row count, which halves each buffer and doubles the number of
-  // flush bands without changing the pixel throughput.
+  // flush bands without changing the number of pixels transferred.
   const size_t drawBufferSize = UIMemory::drawBufferBytes(m_Width, m_Height, BYTES_PER_PIXEL);
   m_Buffer1 = heap_caps_aligned_alloc(64, drawBufferSize, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
   m_Buffer2 = heap_caps_aligned_alloc(64, drawBufferSize, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);

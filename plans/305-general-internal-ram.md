@@ -42,8 +42,9 @@ not another 32 KiB of free internal RAM.
 ### Task stacks
 
 All task stacks are allocated from internal RAM by FreeRTOS
-(`components/freertos/heap_idf.c`, `portFREERTOS_HEAP_CAPS`). Sizes below are the
-configured stack bytes, excluding the task control block.
+(`components/freertos/heap_idf.c`, `portFREERTOS_HEAP_CAPS`), except the IR
+task, which this pass moves to PSRAM. Sizes below are the configured stack
+bytes, excluding the task control block.
 
 | Task | Configured stack | High-water | Evidence |
 | :--- | ---: | ---: | :--- |
@@ -134,8 +135,9 @@ stack, the controller, and the driver structures.
 The draw buffers must stay in `MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL` because
 M5GFX hands them to the SPI DMA engine. PSRAM is not a safe home for them.
 The large LVGL buffers are already in PSRAM because they exceed the 4,096-byte
-`malloc` threshold. The many small LVGL objects stay internal by design, which
-is why the remaining internal heap is fragmented and hard to reclaim.
+`malloc` threshold. The many small LVGL objects stay internal by design. That
+is the inferred reason the remaining internal heap is fragmented and hard to
+reclaim.
 
 ### mbedTLS, HTTP and JSON
 
