@@ -66,8 +66,28 @@ StickS3 on internal-heap-tight master:
   connect log showing the addresses used.
 - Clean stop leaves the persisted setting false and `companion.enabled: false`.
 
-The address-rotation policy itself is unchanged in this plan: a different
-identity address outside the pairing window is still rejected, because accepting
-an arbitrary new bond would let any nearby central pair without the window. If
-the hardware log shows macOS rotating to a non-resolvable address, the next
-step is to resolve it through the stored IRK or require the pairing window.
+## Known host-cache limit
+
+macOS CoreBluetooth can keep a GATT handle map from an older firmware. When it
+writes a CCCD to the cached handle, the device logs `subscribe event;
+attr_handle=8, not found`, no characteristic records the subscription, and the
+auth/status notifications are lost even though link encryption and the HMAC
+password path succeed. The device now sends the standard Service Changed
+indication after the subscription settles, but a host that subscribed to a
+stale handle cannot receive it. Clearing the host pairing is the reliable
+recovery. `blueutil --unpair` is experimental on macOS 26 and did not remove the
+`nimble` entry here, so the remaining validation step is a manual
+System Settings removal or a fresh host.
+
+The address-rotation policy itself is unchanged: a different identity address
+outside the pairing window is still rejected, because accepting an arbitrary new
+bond would let any nearby central pair without the window.
+
+## Power-monitor note
+
+The USB monitor now disables stdout buffering, so a redirected CSV shows each
+sample immediately. A 1 h no-companion run samples continuously; with a live BLE
+companion link the USB console parser can still time out under load and enter its
+reconnect backoff. The BLE monitor is only meaningful while status notifications
+are actually arriving; a constant `uptime_s` in consecutive rows means the host
+is reading a cached status and the run should be discarded.
