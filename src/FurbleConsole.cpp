@@ -40,6 +40,7 @@
 #include "FurbleCompanion.h"
 #include "FurbleCompanionAuth.h"
 #include "FurbleControl.h"
+#include "FurbleCrashLog.h"
 #include "FurbleFeedback.h"
 #include "FurbleGPS.h"
 #if defined(FURBLE_MQTT) && FURBLE_MQTT
@@ -2196,7 +2197,7 @@ int cmdNtp(int argc, char **argv) {
  */
 
 /** Human readable last reset cause, for boot loop and crash diagnosis. */
-const char *resetReasonName(esp_reset_reason_t reason) {
+const char *resetReasonName(int reason) {
   switch (reason) {
     case ESP_RST_UNKNOWN:
       return "unknown";
@@ -2288,6 +2289,33 @@ int cmdStatus(int argc, char **argv) {
   printf("battery: %ld\n", caps.level ? static_cast<long>(battery.level) : -1L);
   printf("voltage: %ld\n", caps.voltage ? static_cast<long>(battery.voltage) : -1L);
   printf("current: %ld\n", caps.current ? static_cast<long>(battery.current) : 0L);
+  return 0;
+}
+
+/**
+ * Previous-boot crash record. The record is retained in RTC memory and printed
+ * once at boot; this command re-prints it for a console session that opened
+ * after the boot banner scrolled past.
+ */
+int cmdCrash(int argc, char **argv) {
+  if ((argc == 2) && (strcmp(argv[1], "last") != 0)) {
+    return fail("usage: crash [last]");
+  }
+  const auto *record = CrashLog::lastRecord();
+  if (record == nullptr) {
+    printf("crash.none: true\n");
+    return 0;
+  }
+  char summary[192] = {};
+  CrashRecord::formatSummary(*record, summary, sizeof(summary));
+  printf("crash.summary: %s\n", summary);
+  printf("crash.reset: %s\n", CrashRecord::resetReasonName(record->reset_reason));
+  printf("crash.task: %s\n", record->task);
+  printf("crash.uptime: %lu\n", static_cast<unsigned long>(record->uptime_s));
+  printf("crash.heap_free: %lu\n", static_cast<unsigned long>(record->heap_free));
+  printf("crash.heap_largest: %lu\n", static_cast<unsigned long>(record->heap_largest));
+  printf("crash.last_log: %s\n", CrashRecord::lastLogLine(*record));
+  CrashLog::printLastRecord();
   return 0;
 }
 
@@ -3317,6 +3345,7 @@ constexpr esp_console_cmd_t command(const char *name,
 const esp_console_cmd_t COMMANDS[] = {
     command("version", "Firmware and IDF version", cmdVersion),
     command("status", "State, targets, uptime, heap and battery", cmdStatus),
+    command("crash", "crash [last], previous-boot crash record", cmdCrash),
 #if defined(FURBLE_NO_DISPLAY)
     command("imu", "imu status (diagnostic sensor probe)", cmdIMU),
 #else

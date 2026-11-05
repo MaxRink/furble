@@ -283,6 +283,19 @@ target_include_directories(ui_memory_test PRIVATE ${FURBLE_ROOT}/include)
 target_compile_options(ui_memory_test PRIVATE -Wall -Wextra -Werror)
 add_test(NAME ui-memory COMMAND ui_memory_test)
 
+add_executable(crash_record_test crash_record_test.cpp)
+target_include_directories(crash_record_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(crash_record_test PRIVATE -Wall -Wextra -Werror)
+add_test(NAME crash-record COMMAND crash_record_test)
+
+add_executable(crash_log_test crash_log_test.cpp ${FURBLE_ROOT}/src/FurbleCrashLog.cpp)
+target_include_directories(crash_log_test BEFORE PRIVATE
+                           ${CMAKE_CURRENT_SOURCE_DIR}/crash_log
+                           ${FURBLE_ROOT}/include)
+target_compile_definitions(crash_log_test PRIVATE FURBLE_CRASH_LOG_HOST_TEST=1)
+target_compile_options(crash_log_test PRIVATE -Wall -Wextra -Werror)
+add_test(NAME crash-log COMMAND crash_log_test)
+
 add_executable(webui_handler_test
                webui_handler_test.cpp
                webui/webui_platform_stubs.cpp
@@ -1930,6 +1943,7 @@ set(HOST_CONSOLE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/console)
 add_executable(console_commands_test
                console_commands_test.cpp
                ${HOST_CONSOLE_DIR}/console_shim.cpp
+               ${HOST_CONSOLE_DIR}/crash_log_stub.cpp
                settings_nvs_stub.cpp
                ${FURBLE_ROOT}/src/FurbleConsole.cpp
                ${FURBLE_ROOT}/src/FurbleControl.cpp

@@ -9,11 +9,26 @@
 #include <stdio.h>
 #endif
 
+/*
+ * The retained crash log needs the same lines the console sees. Every ESP_LOG
+ * call in the simulator therefore offers the formatted text to the crash
+ * capture before printing it. The callee copies the argument list and never
+ * consumes the caller's va_list.
+ */
+#ifdef __cplusplus
+extern "C" {
+#endif
+void furble_sim_crash_log_capture(const char *tag, const char *format, va_list args);
+#ifdef __cplusplus
+}
+#endif
+
 #ifdef __cplusplus
 inline void furble_sim_log(const char *level, const char *tag, const char *format, ...) {
   std::fprintf(stderr, "[%s] %s: ", level, tag == nullptr ? "sim" : tag);
   va_list args;
   va_start(args, format);
+  furble_sim_crash_log_capture(tag, format, args);
   std::vfprintf(stderr, format, args);
   va_end(args);
   std::fputc('\n', stderr);
@@ -23,6 +38,7 @@ static inline void furble_sim_log(const char *level, const char *tag, const char
   fprintf(stderr, "[%s] %s: ", level, tag == NULL ? "sim" : tag);
   va_list args;
   va_start(args, format);
+  furble_sim_crash_log_capture(tag, format, args);
   vfprintf(stderr, format, args);
   va_end(args);
   fputc('\n', stderr);

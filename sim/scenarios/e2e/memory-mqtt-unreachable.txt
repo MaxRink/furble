@@ -1,0 +1,24 @@
+# MQTT against an unreachable broker.
+#
+# The broker is down but the heap is not the limiting factor, so the transport
+# starts and the connection fails asynchronously. The production owner must
+# count the failures, stop at MAX_CONNECT_FAILURES and keep the UI alive.
+# Run with FURBLE_SIM_MQTT=1 and an unreachable URI, for example
+# FURBLE_SIM_MQTT_URI=mqtt://127.0.0.1:1.
+seed wifi_connected true
+wait 100
+
+assert mqtt.task created
+assert mqtt.connected no
+assert ui.page main
+
+# Retry accounting is wall-clock in the host transport, so use the wall-bound
+# assertion rather than a virtual-time wait.
+assert-eventually 30000 mqtt.blocked yes
+assert mqtt.connect_failures 10
+assert mqtt.connected no
+assert heap.alloc_failures 0
+assert ui.page main
+assert platform.watchdog armed
+
+exit

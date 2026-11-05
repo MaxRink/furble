@@ -1,0 +1,41 @@
+# PR #392 fail-closed gate under the measured StickS3 internal-heap pressure.
+#
+# Hardware with WiFi, BLE, the companion service and the display active measured
+# 13,543 free / 12,788 largest internal bytes with the WebUI off before the
+# #394 RAM pass. The supervisor fits (4,096/3,584) but the HTTPS server does not
+# (20,480/12,288), so the firmware logs the measured pair and stays closed.
+# This scenario proves the same decision, the production log sentence, a bounded
+# 10 s retry and a fed watchdog instead of the pre-#392 8 KiB/12 KiB allocation
+# boot loop. The pair is an input, not a claim about the post-#394 image: seed
+# the new measured pair here to re-check the gate after a RAM change.
+seed heap_internal_free 13543
+seed heap_internal_largest 12788
+seed wifi_connected true
+seed web_ui true
+seed webui_password true
+wait 100
+
+assert heap.active yes
+assert heap.free 10471
+assert heap.largest 9716
+assert webui.supervisor created
+assert webui.server blocked
+assert webui.gate server_memory
+assert webui.fail_closed yes
+assert heap.alloc_failures 0
+print webui.gate_message
+assert ui.page main
+assert platform.watchdog armed
+
+# One attempt at t=0, then the 10 s budget retry. The retry must be slow rather
+# than every supervisor period, and the pool must not move on each attempt.
+wait 25000
+assert_min webui.attempts 3
+assert_max webui.attempts 3
+assert heap.free 10471
+assert heap.largest 9716
+assert heap.alloc_failures 0
+assert ui.page main
+assert platform.watchdog armed
+
+exit

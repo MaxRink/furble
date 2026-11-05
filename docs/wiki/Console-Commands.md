@@ -25,6 +25,7 @@ About page and exposed through companion BLE Device Information.
 | :--- | :--- |
 | `version` | Firmware and IDF version. |
 | `status` | State, targets, uptime, heap, battery, reset reason. |
+| `crash` | `crash [last]` prints the retained previous-boot crash record. |
 | `power` | `stats`, or `log <seconds>` / `log off` for a CSV power log. |
 | `perf` | `tasks`, `heap`, or `lvgl [overlay on\|off]`. |
 | `gps` | GPS status and control, see below. |
@@ -75,6 +76,15 @@ current retry cycle, `retry_ms` is the next backoff without jitter, and
 
 `wifi set ssid|psk`, `wifi enable|disable`, `wifi connect|disconnect`, and
 `wifi forget` manage the saved network.
+
+## crash
+
+`crash` and `crash last` print the record retained across the last reset. The
+firmware also prints the same block once at boot when the previous run ended
+unclean, then consumes the record. It reports `crash.reset`, `crash.task`,
+`crash.uptime`, `crash.heap_free`, `crash.heap_largest`, `crash.last_log` and a
+one-line summary. The task and log tail are the last normal snapshot, not a
+guaranteed panic task. The record lives in RTC memory and never writes flash.
 
 ## settings
 

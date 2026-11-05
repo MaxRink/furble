@@ -305,6 +305,7 @@ unchanged.
 ```
 version                             firmware and IDF version
 status                              state, targets, uptime, heap, battery, reset reason
+crash [last]                        previous-boot crash record, see docs/crash-diagnostics.md
 power                               power stats, or a CSV power log
 perf                                task, heap, and LVGL performance
 gps                                 GPS status and control, eg. gps send PCAS12,10

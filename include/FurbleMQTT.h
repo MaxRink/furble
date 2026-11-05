@@ -56,6 +56,13 @@ class MQTT {
 #if defined(FURBLE_SIM_MQTT)
   /** Stop the native simulator transport before simulator tasks are joined. */
   bool shutdownForSimulator(uint32_t timeout_ms);
+
+  /** Simulator observability: the owner task exists. */
+  bool simTaskCreated(void) const;
+  /** Simulator observability: bounded connection-failure accounting. */
+  uint32_t simConnectFailures(void) const;
+  /** Simulator observability: the retry limit stopped the client. */
+  bool simBlocked(void) const;
 #endif
 
   bool isConfigured(void) const;

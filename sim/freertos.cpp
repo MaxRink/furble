@@ -17,6 +17,7 @@
 
 #include "clock.h"
 #include "driver.h"
+#include "heap_model.h"
 #include "power_profiler.h"
 #include "watchdog.h"
 
@@ -86,6 +87,10 @@ struct SimTask {
   size_t join_waiters = 0;
   bool join_claimed = false;
   uint32_t notification_count = 0;
+  // Modelled internal-heap charge for this task's stack and TCB. Released
+  // exactly once when the task finishes.
+  size_t heap_bytes = 0;
+  bool heap_charged = false;
 };
 
 class QueueUse {
@@ -444,18 +449,30 @@ bool waitUntilLocked(std::unique_lock<std::mutex> &lock,
 }
 
 void markTaskFinished(const std::shared_ptr<SimTask> &task) {
-  const std::lock_guard<std::mutex> lock(Furble::Sim::schedulerMutex());
-  task->blocked = false;
-  task->runnable = false;
-  if (runningTask == task.get()) {
-    runningTask = nullptr;
+  size_t heapBytes = 0;
+  {
+    const std::lock_guard<std::mutex> lock(Furble::Sim::schedulerMutex());
+    task->blocked = false;
+    task->runnable = false;
+    if (runningTask == task.get()) {
+      runningTask = nullptr;
+    }
+    dispatchNextLocked();
+    if (task->lifecycle == SimTaskLifecycle::running
+        || task->lifecycle == SimTaskLifecycle::stop_requested) {
+      task->lifecycle = SimTaskLifecycle::finished;
+    }
+    if (task->heap_charged) {
+      heapBytes = task->heap_bytes;
+      task->heap_charged = false;
+      task->heap_bytes = 0;
+    }
+    Furble::Sim::schedulerCondition().notify_all();
   }
-  dispatchNextLocked();
-  if (task->lifecycle == SimTaskLifecycle::running
-      || task->lifecycle == SimTaskLifecycle::stop_requested) {
-    task->lifecycle = SimTaskLifecycle::finished;
+  // Released outside the scheduler lock. The heap model has its own leaf lock.
+  if (heapBytes != 0) {
+    Furble::Sim::heapRelease(heapBytes);
   }
-  Furble::Sim::schedulerCondition().notify_all();
 }
 
 void joinTask(const std::shared_ptr<SimTask> &task) {
@@ -736,7 +753,7 @@ void SchedulerMutex::unlock(void) {
 
 BaseType_t xTaskCreate(TaskFunction_t task,
                        const char *name,
-                       uint32_t,
+                       uint32_t stack_bytes,
                        void *parameter,
                        UBaseType_t priority,
                        TaskHandle_t *task_handle) {
@@ -744,11 +761,28 @@ BaseType_t xTaskCreate(TaskFunction_t task,
     return pdFALSE;
   }
 
+  // Charge the stack to the modelled internal heap before the task is
+  // published. A production caller that ignores pdFAIL is the same bug here as
+  // on device. Before heapActivate() the seeded measurement already includes
+  // the boot tasks, so nothing is charged.
+  size_t chargedBytes = 0;
+  if (!Furble::Sim::heapTaskCreate(name, static_cast<size_t>(stack_bytes), &chargedBytes)) {
+    if (task_handle != nullptr) {
+      *task_handle = nullptr;
+    }
+    return pdFALSE;
+  }
+
   const auto state = std::make_shared<SimTask>();
+  state->heap_bytes = chargedBytes;
+  state->heap_charged = chargedBytes != 0;
   Furble::Sim::setClockAdvanceHook(schedulerClockAdvanced);
   {
     std::unique_lock<std::mutex> lock(Furble::Sim::schedulerMutex());
     if (Furble::Sim::schedulerStopping()) {
+      Furble::Sim::heapRelease(state->heap_bytes);
+      state->heap_charged = false;
+      state->heap_bytes = 0;
       return pdFALSE;
     }
     // ESP-IDF publishes the handle before admitting the task. A higher-
@@ -917,6 +951,12 @@ BaseType_t xTaskNotifyGive(TaskHandle_t taskHandle) {
   preemptForHigherPriorityLocked(lock);
   Furble::Sim::schedulerCondition().notify_all();
   return pdTRUE;
+}
+
+char *pcTaskGetName(TaskHandle_t) {
+  // The simulator names its worker threads through the thread-local task name.
+  // The UI task and other non-FreeRTOS callers keep the default "ui".
+  return const_cast<char *>(simTaskName);
 }
 
 uint32_t ulTaskNotifyTake(BaseType_t clearCountOnExit, TickType_t ticksToWait) {

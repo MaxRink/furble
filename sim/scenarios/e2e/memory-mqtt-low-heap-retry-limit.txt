@@ -1,0 +1,27 @@
+# MQTT against an unreachable broker under StickS3 heap pressure.
+#
+# The device must not panic or reboot while the broker is down. The production
+# owner counts connection failures and stops at MAX_CONNECT_FAILURES instead of
+# retrying forever. Run with FURBLE_SIM_MQTT=1 and an unreachable URI, for
+# example FURBLE_SIM_MQTT_URI=mqtt://127.0.0.1:1.
+seed heap_internal_free 13543
+seed heap_internal_largest 12788
+seed wifi_connected true
+wait 100
+
+assert mqtt.task created
+assert mqtt.connected no
+assert ui.page main
+
+# The retry limit is 10. One attempt lands inside the boot window; the wait
+# below covers the remaining bounded retries at the one-second owner period.
+wait 15000
+assert mqtt.blocked yes
+assert mqtt.connect_failures 10
+assert mqtt.connected no
+assert heap.alloc_failures 10
+assert heap.last_failed_task mqtt_client
+assert ui.page main
+assert platform.watchdog armed
+
+exit

@@ -12,6 +12,7 @@
 #include <cstring>
 #include <ctime>
 #include <limits>
+#include <utility>
 
 #include <cJSON.h>
 #include <esp_crt_bundle.h>
@@ -283,6 +284,21 @@ bool MQTT::shutdownForSimulator(uint32_t timeout_ms) {
                              : std::min(grace_deadline, timeout_deadline);
     m_SimulatorShutdownCondition.wait_until(lock, wake_at);
   }
+}
+
+bool MQTT::simTaskCreated(void) const {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+  return m_Task != nullptr;
+}
+
+uint32_t MQTT::simConnectFailures(void) const {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+  return m_ConnectFailures;
+}
+
+bool MQTT::simBlocked(void) const {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+  return m_Blocked;
 }
 #endif
 
@@ -1794,7 +1810,8 @@ void MQTT::publishDiscovery(void) {
       continue;
     }
     const std::string camera_id = std::to_string(cameraId);
-    const std::string device_id = hub_id + "_" + camera_id;
+    std::string device_id = hub_id;
+    device_id.append("_").append(camera_id);
     cJSON *components = cJSON_CreateObject();
     if (components == nullptr) {
       continue;
@@ -1845,7 +1862,7 @@ void MQTT::publishDiscovery(void) {
       publish("homeassistant/device/" + old_id + "/config", {}, 1, true);
     }
   }
-  m_DiscoveredCameraIDs = current_ids;
+  m_DiscoveredCameraIDs = std::move(current_ids);
 }
 
 void MQTT::clearDiscoveryRecords(void) {

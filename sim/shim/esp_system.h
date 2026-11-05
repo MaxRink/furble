@@ -3,6 +3,7 @@
 
 #ifdef __cplusplus
 #include <cstdlib>
+#include "esp_heap_caps.h"
 #else
 #include <stdlib.h>
 #endif
@@ -36,11 +37,13 @@ static inline esp_reset_reason_t esp_reset_reason(void) {
 }
 
 static inline unsigned int esp_get_free_heap_size(void) {
-  return 200 * 1024;
+  return static_cast<unsigned int>(
+      furble_sim_heap_free(static_cast<uint32_t>(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)));
 }
 
 static inline unsigned int esp_get_minimum_free_heap_size(void) {
-  return 100 * 1024;
+  return static_cast<unsigned int>(
+      furble_sim_heap_minimum(static_cast<uint32_t>(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)));
 }
 
 #endif

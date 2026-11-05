@@ -4185,6 +4185,89 @@
       "capabilities": [],
       "expected_exit": 0,
       "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/crash-record-survives-restart.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/memory-boot-combination.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Requires the optional FURBLE_SIM_MQTT=1 build and an unreachable broker URI; run by sim/scripts/run-memory.sh."
+    },
+    {
+      "path": "sim/scenarios/e2e/memory-mqtt-low-heap-retry-limit.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Requires the optional FURBLE_SIM_MQTT=1 build and an unreachable broker URI; run by sim/scripts/run-memory.sh."
+    },
+    {
+      "path": "sim/scenarios/e2e/memory-mqtt-task-alloc-fail.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Requires the optional FURBLE_SIM_MQTT=1 build and an unreachable broker URI; run by sim/scripts/run-memory.sh."
+    },
+    {
+      "path": "sim/scenarios/e2e/memory-mqtt-unreachable.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Requires the optional FURBLE_SIM_MQTT=1 build and an unreachable broker URI; run by sim/scripts/run-memory.sh."
+    },
+    {
+      "path": "sim/scenarios/e2e/memory-webui-fail-closed.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/memory-webui-pre-gate-alloc.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
     }
   ]
 }

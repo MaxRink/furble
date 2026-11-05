@@ -79,6 +79,8 @@ and target boundary (a new seam needs a contract test and an entry here):
 | IMU bus visibility | Production lock discipline is unchanged: the engines, the spirit level, the IMU live page and the console probe all take the same lock at the same points | `Furble::imu_mutex_t` is `std::mutex` everywhere except a `FURBLE_SIM` build, where it is `Sim::SchedulerMutex`, the same reason and pattern as `connect_mutex_t`: a task waiting on the IMU bus stops being runnable instead of being timed out by the host-clock deadlock breaker (issue #279). |
 | Optional hardware | Production capability checks and menu paths | IR, feedback and SD shims report an env-selected capability because no host GPIO/SD/audio device exists. They do not bypass UI or persistence handlers. |
 | Build-time observations | Production behavior is unchanged | `FURBLE_SIM` adds profiler counters, query-only state, the UI-task switch registry, click-streak input injection, the scan-start probe, and the post-`lv_task_handler` `fuzzCycleComplete` seam. The dependency-free `fuzz_machine` owns fuzzer phase/cadence state and counters; these are observability/input seams, not alternate policy. Plan 158 now covers retained task lifecycle records and delete-other quiescence. The cooperative simulator unwind is safer than abrupt cleanup but is not FreeRTOS cleanup parity; production Companion remains blocked pending worker-owned shutdown. Scheduler priority, boundary preemption, same-tick dispatch, and queue ownership are modeled at simulator scheduler boundaries; instruction-level preemption, core affinity, and CPU-time accounting remain unsupported. |
+| Internal heap | Production gates (`WebUIMemory::supervisorGate`/`serverGate`), failure branches and log formats | `sim/heap_model.cpp` carries a seeded internal free/largest pair when a scenario asks for one. It is a one-pool model that charges only the optional services admitted after the seeded post-boot measurement: WebUI supervisor, WebUI HTTPS task, MQTT owner and esp-mqtt client. `sim/webui_memory_model.cpp` runs the production WebUI gate but not the HTTPS server, identity generation or TLS. It logs the production fail-closed sentence. The model does not claim fragmentation parity. |
+| Crash record | `include/FurbleCrashRecord.h`, `include/FurbleCrashLog.h`, the panic-safe RTC writer and the console `crash` command | `sim/CrashLogSim.cpp` stores the same record in a sidecar next to `FURBLE_SIM_PREFS` so the real `restart` path can prove one-shot reporting. It is host persistence, not an RTC claim; production writes only RTC memory. |
 
 ### Hardware identity status
 
@@ -286,6 +288,12 @@ Fresh saved-camera fixtures use ID `1`; override with
 `FURBLE_SIM_MQTT_CAMERA_ID` for an existing preference store.
 The finite virtual scenario window can race external broker I/O; report such
 failures as coordination-window evidence, not as a UI-service ordering defect.
+The host transport charges its modelled 6 KiB esp-mqtt client task to the heap
+model and returns `ESP_ERR_NO_MEM` when it cannot. A refused connection emits
+both the error and the disconnect event, and a small wall-clock worker retries
+the socket at the component's one-second cadence, so the production
+`MAX_CONNECT_FAILURES` accounting runs. `FURBLE_SIM_MQTT_FAST_RECONNECT` only
+shortens that host retry cadence for a bounded scenario.
 
 ## Determinism caveats
 
@@ -403,6 +411,28 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
   `bulb_duration`, `gps_uart_mode`, `ble_peers`, `ble_saved`, `scan_timeout`,
   `liveness_check`, and `liveness_grace_ms`; keep their values synchronized with
   `docs/sim.md` and `validateSeed`.
+- Memory-pressure scenarios seed `heap_internal_free` and
+  `heap_internal_largest`. The pair is a post-boot measurement: WiFi, BLE, the
+  companion service, the display, Control and the UI are already resident, and
+  only optional services admitted afterwards are charged. `web_ui`,
+  `webui_password`, `webui_gate` and `wifi_connected` configure the WebUI
+  admission model. `task_create_fail <name|all>` fails a task's `xTaskCreate`
+  with the hardware-shaped `Mem alloc fail` line. `heap.free`, `heap.largest`,
+  `heap.minimum`, `heap.alloc_failures`, `heap.last_failed_task`,
+  `webui.supervisor`, `webui.server`, `webui.gate`, `webui.attempts`,
+  `webui.fail_closed` and `webui.gate_message` are the observables. The WebUI
+  model runs the production gate functions and log sentence; it does not serve
+  HTTPS or claim TLS parity. `memory-webui-fail-closed.txt`,
+  `memory-webui-pre-gate-alloc.txt`, `memory-mqtt-task-alloc-fail.txt`,
+  `memory-mqtt-unreachable.txt`, `memory-mqtt-low-heap-retry-limit.txt` and
+  `memory-boot-combination.txt` are the scenario set.
+- `crash-inject-panic` and `crash-inject-task-wdt` write an unclean record for
+  the next `restart`; `crash.recovered`, `crash.reset`, `crash.task`,
+  `crash.heap_free`, `crash.heap_largest`, `crash.uptime`, `crash.last_log` and
+  `crash.pending` are assertable. The host sidecar is removed with a generated
+  preferences store. The production record writes only RTC memory and is never
+  written from a panic handler: `CrashLog::update()` snapshots from a normal
+  task loop and a shutdown handler marks a clean reset.
   The simulator suppresses only the first post-stall bookkeeping feed, so the
   following assertion observes retained PMIC state before another normal UI
   cycle can feed it.

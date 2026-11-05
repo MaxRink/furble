@@ -44,6 +44,12 @@ UI fuzz validation covers both touch and physical-button layouts on all three
 panel binaries, using the same seeds and strict replay comparison.
 UI screenshot CI selects `FURBLE_SIM_NO_TOUCH=1` and checks page identity before
 every capture; its direct navigation routes do not certify physical input.
+Memory-pressure scenarios seed `heap_internal_free` and
+`heap_internal_largest` and assert the production WebUI gate and MQTT retry
+bounds. `sh sim/scripts/run-memory.sh` runs the MQTT subset against the optional
+`FURBLE_SIM_MQTT=1` build with a closed local port, so no broker is required.
+Crash-record scenarios use `crash-inject-panic` or `crash-inject-task-wdt`
+followed by `restart`; the record is printed once on the next boot.
 Firmware line coverage is measured by `tools/coverage.py` and gated against
 `tests/coverage_floor.json`. Coverage instrumentation is opt-in in both build
 entry points (`-DFURBLE_COVERAGE=ON` for the host harness,
