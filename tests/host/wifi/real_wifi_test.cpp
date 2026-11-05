@@ -379,6 +379,7 @@ int main() {
     }
   }
 
+  std::cout << "wifi.fallback wired_defer=1 wired_resume=1\n";
   std::cout << "real wifi lifecycle: PASS\n";
   return 0;
 }

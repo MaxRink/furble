@@ -11,10 +11,7 @@ void nimbleMockSetGapScanStartAllowed(bool allowed);
 // while an advertiser keeps emitting it. See MockNimBLE.h.
 bool nimbleMockScanDeliveryAllowed(const NimBLEAdvertisedDevice *device);
 class NimBLEScanResults {};
-class NimBLEServer {
- public:
-  void start() {}
-};
+class NimBLEServer;
 
 class NimBLEScanCallbacks {
  public:

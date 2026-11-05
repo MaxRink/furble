@@ -28,7 +28,50 @@ std::function<void()> g_StopHook;
 esp_err_t g_StartError = ESP_OK;
 size_t g_InternalFree = 65536;
 size_t g_LargestBlock = 32768;
+std::vector<size_t> g_TlsAllocations;
+size_t g_TlsFailAt = 0;
+size_t g_TlsHandshakes = 0;
+size_t g_TlsCloses = 0;
+int g_TlsTimeoutMs = 0;
 }  // namespace
+
+namespace host_webui_tls {
+void reset() {
+  g_TlsAllocations.clear();
+  g_TlsFailAt = 0;
+  g_TlsHandshakes = 0;
+  g_TlsCloses = 0;
+  g_TlsTimeoutMs = 0;
+}
+void setFailAt(size_t index) {
+  g_TlsFailAt = index;
+}
+size_t handshakeCount() {
+  return g_TlsHandshakes;
+}
+size_t closeCount() {
+  return g_TlsCloses;
+}
+size_t liveBytes() {
+  size_t total = 0;
+  for (size_t bytes : g_TlsAllocations) {
+    total += bytes;
+  }
+  return total;
+}
+size_t socketCount() {
+  size_t count = 0;
+  for (size_t bytes : g_TlsAllocations) {
+    if (bytes == SOCKET_BYTES) {
+      count++;
+    }
+  }
+  return count;
+}
+int lastHandshakeTimeoutMs() {
+  return g_TlsTimeoutMs;
+}
+}  // namespace host_webui_tls
 
 extern "C" size_t heap_caps_get_free_size(uint32_t caps) {
   (void)caps;
@@ -94,10 +137,40 @@ extern "C" esp_err_t httpd_register_uri_handler(httpd_handle_t server, const htt
   server->routes.push_back(*route);
   return ESP_OK;
 }
-extern "C" esp_err_t httpd_ssl_start(httpd_handle_t *server, const httpd_ssl_config_t *) {
+extern "C" esp_err_t httpd_ssl_start(httpd_handle_t *server, const httpd_ssl_config_t *config) {
   if (g_StartError != ESP_OK) {
     return g_StartError;
   }
+  if (config == nullptr || server == nullptr) {
+    return ESP_ERR_INVALID_ARG;
+  }
+  if (config->httpd.stack_size < 6144 || config->httpd.max_open_sockets <= 0
+      || config->httpd.max_req_hdr_len <= 0 || config->tls_handshake_timeout_ms <= 0) {
+    return ESP_ERR_INVALID_ARG;
+  }
+
+  // Exact-size allocation ledger for the TLS context, the record buffers and
+  // one socket object per accepted connection. A configured failure is the
+  // allocator refusing that allocation, not a pre-baked start error.
+  const size_t allocations[] = {
+      host_webui_tls::TLS_CONTEXT_BYTES,
+      host_webui_tls::IN_BUFFER_BYTES,
+      host_webui_tls::OUT_BUFFER_BYTES,
+  };
+  for (size_t index = 0; index < sizeof(allocations) / sizeof(allocations[0]); index++) {
+    if (g_TlsFailAt == g_TlsAllocations.size() + 1) {
+      return ESP_ERR_HTTPD_ALLOC_MEM;
+    }
+    g_TlsAllocations.push_back(allocations[index]);
+  }
+  for (int socket = 0; socket < config->httpd.max_open_sockets; socket++) {
+    if (g_TlsFailAt == g_TlsAllocations.size() + 1) {
+      return ESP_ERR_HTTPD_ALLOC_MEM;
+    }
+    g_TlsAllocations.push_back(host_webui_tls::SOCKET_BYTES);
+  }
+  g_TlsHandshakes++;
+  g_TlsTimeoutMs = config->tls_handshake_timeout_ms;
   *server = new host_webui_server_t;
   g_Server = *server;
   return ESP_OK;
@@ -107,6 +180,8 @@ extern "C" esp_err_t httpd_ssl_stop(httpd_handle_t server) {
     g_StopHook();
   if (g_Server == server)
     g_Server = nullptr;
+  g_TlsAllocations.clear();
+  g_TlsCloses++;
   delete server;
   return ESP_OK;
 }
@@ -115,6 +190,7 @@ namespace host_webui_http {
 void reset() {
   g_StopHook = {};
   g_StartError = ESP_OK;
+  host_webui_tls::reset();
 }
 httpd_req_t invoke(httpd_method_t method,
                    const std::string &uri,

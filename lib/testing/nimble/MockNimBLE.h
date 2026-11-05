@@ -13,7 +13,6 @@
 #include <string>
 #include <vector>
 
-#include "NimBLEScan.h"
 // Angle include on purpose. The host suite resolves this to the no-op
 // esp_log.h beside this header; the simulator resolves it to its own shim
 // earlier on the include path, so only one set of ESP_LOG macros is ever
@@ -40,10 +39,24 @@ constexpr uint8_t BLE_HS_IO_KEYBOARD_DISPLAY = 4;
 constexpr uint8_t BLE_SM_PAIR_KEY_DIST_ENC = 0x01;
 constexpr uint8_t BLE_SM_PAIR_KEY_DIST_ID = 0x02;
 constexpr uint8_t BLE_OWN_ADDR_RPA_PUBLIC_DEFAULT = 0;
+constexpr uint8_t BLE_OWN_ADDR_RANDOM = 1;
+constexpr uint8_t BLE_HS_IO_NO_INPUT_OUTPUT = 3;
 constexpr uint16_t BLE_GAP_INITIAL_CONN_ITVL_MIN = 6;
 constexpr uint16_t BLE_GAP_INITIAL_CONN_ITVL_MAX = 12;
 constexpr uint16_t BLE_GAP_INITIAL_SUPERVISION_TIMEOUT = 100;
 constexpr uint16_t BLE_HS_CONN_HANDLE_NONE = 0xffff;
+constexpr uint8_t BLE_GAP_CONN_MODE_UND = 0;
+constexpr uint8_t BLE_GAP_DISC_MODE_GEN = 0;
+
+namespace NIMBLE_PROPERTY {
+constexpr uint32_t READ = 1U << 0;
+constexpr uint32_t WRITE = 1U << 1;
+constexpr uint32_t WRITE_NR = 1U << 2;
+constexpr uint32_t READ_ENC = 1U << 3;
+constexpr uint32_t WRITE_ENC = 1U << 4;
+constexpr uint32_t NOTIFY = 1U << 5;
+constexpr uint32_t INDICATE = 1U << 6;
+}  // namespace NIMBLE_PROPERTY
 
 struct ble_gap_upd_params {
   uint16_t itvl_min = 0;
@@ -70,8 +83,8 @@ class NimBLEUUID {
   NimBLEUUID();
   explicit NimBLEUUID(uint16_t shortUuid);
   NimBLEUUID(uint32_t first, uint16_t second, uint16_t third, uint64_t tail);
-  explicit NimBLEUUID(const char *uuid);
-  explicit NimBLEUUID(const std::string &uuid);
+  NimBLEUUID(const char *uuid);
+  NimBLEUUID(const std::string &uuid);
 
   std::string toString() const;
 
@@ -87,9 +100,11 @@ class NimBLEAddress {
  public:
   NimBLEAddress();
   NimBLEAddress(uint64_t address, uint8_t type = 0);
+  NimBLEAddress(const std::string &address, uint8_t type = 0);
 
   uint8_t getType() const;
   std::string toString() const;
+  bool equals(const NimBLEAddress &other) const { return *this == other; }
 
   explicit operator uint64_t() const;
   bool operator==(const NimBLEAddress &other) const;
@@ -127,6 +142,8 @@ class NimBLEAttValue {
 class NimBLEClient;
 class NimBLERemoteCharacteristic;
 class NimBLERemoteService;
+class NimBLEScan;
+class NimBLEServer;
 
 using NimBLENotifyCallback =
     std::function<void(NimBLERemoteCharacteristic *, uint8_t *, size_t, bool)>;
@@ -245,12 +262,169 @@ class NimBLEConnInfo {
   // handle from the GAP descriptor; the mock stamps it from the client, so an
   // answer recorded against an earlier link is detectable as stale.
   void mockSetConnHandle(uint16_t handle) { m_Handle = handle; }
+  void mockSetSecurity(bool encrypted, bool authenticated, bool bonded) {
+    m_Encrypted = encrypted;
+    m_Authenticated = authenticated;
+    m_Bonded = bonded;
+  }
+  void mockSetAddress(const NimBLEAddress &address) { m_Address = address; }
+  void mockSetIdAddress(const NimBLEAddress &address) { m_IdAddress = address; }
 
  private:
   uint16_t m_Interval;
   uint16_t m_Latency;
   uint16_t m_Timeout;
   uint16_t m_Handle = BLE_HS_CONN_HANDLE_NONE;
+  bool m_Encrypted = true;
+  bool m_Authenticated = true;
+  bool m_Bonded = true;
+  NimBLEAddress m_Address {};
+  NimBLEAddress m_IdAddress {};
+};
+
+class NimBLECharacteristic;
+
+class NimBLECharacteristicCallbacks {
+ public:
+  virtual ~NimBLECharacteristicCallbacks() = default;
+  virtual void onRead(NimBLECharacteristic *, NimBLEConnInfo &) {}
+  virtual void onWrite(NimBLECharacteristic *, NimBLEConnInfo &) {}
+  virtual void onSubscribe(NimBLECharacteristic *, NimBLEConnInfo &, uint16_t) {}
+};
+
+class NimBLEServerCallbacks {
+ public:
+  virtual ~NimBLEServerCallbacks() = default;
+  virtual void onConnect(NimBLEServer *, NimBLEConnInfo &) {}
+  virtual void onDisconnect(NimBLEServer *, NimBLEConnInfo &, int) {}
+  virtual void onConfirmPassKey(NimBLEConnInfo &, uint32_t) {}
+  virtual void onAuthenticationComplete(NimBLEConnInfo &) {}
+};
+
+class NimBLECharacteristic {
+ public:
+  NimBLECharacteristic(const NimBLEUUID &uuid, uint32_t properties, size_t max_length);
+
+  const NimBLEUUID &getUUID() const { return m_Uuid; }
+  uint16_t getHandle() const { return m_Handle; }
+  void setCallbacks(NimBLECharacteristicCallbacks *callbacks, bool = false) {
+    m_Callbacks = callbacks;
+  }
+  NimBLECharacteristicCallbacks *callbacks() const { return m_Callbacks; }
+  void setValue(const uint8_t *data, size_t length);
+  void setValue(const char *value);
+  NimBLEAttValue getValue() const { return m_Value; }
+  bool notify(uint16_t conn_handle);
+  bool notify(uint16_t conn_handle, const uint8_t *data, size_t length);
+  bool indicate(const uint8_t *data, size_t length, uint16_t conn_handle);
+  bool indicate(const NimBLEAttValue &value, uint16_t conn_handle);
+  uint32_t properties() const { return m_Properties; }
+  size_t maxLength() const { return m_MaxLength; }
+
+  // Host observability for the transport boundary.
+  size_t notifyCount() const { return m_NotifyCount; }
+  size_t indicateCount() const { return m_IndicateCount; }
+  uint16_t lastConnHandle() const { return m_LastConnHandle; }
+
+ private:
+  NimBLEUUID m_Uuid;
+  uint32_t m_Properties;
+  size_t m_MaxLength;
+  uint16_t m_Handle;
+  NimBLEAttValue m_Value;
+  NimBLECharacteristicCallbacks *m_Callbacks = nullptr;
+  size_t m_NotifyCount = 0;
+  size_t m_IndicateCount = 0;
+  uint16_t m_LastConnHandle = BLE_HS_CONN_HANDLE_NONE;
+};
+
+class NimBLEService {
+ public:
+  explicit NimBLEService(const NimBLEUUID &uuid);
+
+  const NimBLEUUID &getUUID() const { return m_Uuid; }
+  uint16_t getHandle() const { return m_Handle; }
+  NimBLECharacteristic *createCharacteristic(const NimBLEUUID &uuid,
+                                             uint32_t properties,
+                                             size_t max_length = 20);
+  NimBLECharacteristic *getCharacteristic(const NimBLEUUID &uuid);
+  void start();
+  size_t characteristicCount() const { return m_Characteristics.size(); }
+
+ private:
+  NimBLEUUID m_Uuid;
+  uint16_t m_Handle;
+  std::vector<std::unique_ptr<NimBLECharacteristic>> m_Characteristics;
+};
+
+class NimBLEServer {
+ public:
+  NimBLEServer();
+
+  NimBLEService *createService(const NimBLEUUID &uuid);
+  NimBLEService *getService(const NimBLEUUID &uuid);
+  bool start();
+  void disconnect(uint16_t conn_handle);
+  void setCallbacks(NimBLEServerCallbacks *callbacks, bool = false) {
+    m_Callbacks = callbacks;
+  }
+  NimBLEServerCallbacks *callbacks() const { return m_Callbacks; }
+  void advertiseOnDisconnect(bool enabled) { m_AdvertiseOnDisconnect = enabled; }
+  NimBLEConnInfo getPeerInfoByHandle(uint16_t conn_handle) const;
+  size_t serviceCount() const { return m_Services.size(); }
+  size_t characteristicCount() const;
+  bool started() const { return m_Started; }
+  size_t disconnectCount() const { return m_DisconnectCount; }
+
+  // Host seam: drive the server callbacks exactly as the NimBLE host task does.
+  void mockConnect(NimBLEConnInfo &info);
+  void mockDisconnect(NimBLEConnInfo &info, int reason);
+  void mockAuthenticationComplete(NimBLEConnInfo &info);
+  void mockConfirmPassKey(NimBLEConnInfo &info, uint32_t pin);
+
+ private:
+  std::vector<std::unique_ptr<NimBLEService>> m_Services;
+  NimBLEServerCallbacks *m_Callbacks = nullptr;
+  bool m_AdvertiseOnDisconnect = false;
+  bool m_Started = false;
+  size_t m_DisconnectCount = 0;
+};
+
+class NimBLEAdvertising {
+ public:
+  void reset();
+  bool start(uint32_t duration_ms = 0);
+  void stop();
+  bool isAdvertising() const { return m_Advertising; }
+  void setConnectableMode(uint8_t mode) { m_ConnectableMode = mode; }
+  void setDiscoverableMode(uint8_t mode) { m_DiscoverableMode = mode; }
+  void setAdvertisingInterval(uint16_t interval) { m_Interval = interval; }
+  void setScanFilter(bool, bool) {}
+  void enableScanResponse(bool enabled) { m_ScanResponse = enabled; }
+  void setName(const std::string &name) { m_Name = name; }
+  void addServiceUUID(const NimBLEUUID &uuid) { m_Services.push_back(uuid); }
+  void removeServiceUUID(const NimBLEUUID &uuid);
+  void setAdvertisingCompleteCallback(std::function<void(NimBLEAdvertising *)> callback) {
+    m_CompleteCallback = std::move(callback);
+  }
+  void mockAdvertisingComplete();
+  size_t startCount() const { return m_StartCount; }
+  size_t stopCount() const { return m_StopCount; }
+  uint16_t interval() const { return m_Interval; }
+  const std::string &name() const { return m_Name; }
+  bool scanResponse() const { return m_ScanResponse; }
+
+ private:
+  bool m_Advertising = false;
+  bool m_ScanResponse = false;
+  uint8_t m_ConnectableMode = 0;
+  uint8_t m_DiscoverableMode = 0;
+  uint16_t m_Interval = 0;
+  std::string m_Name;
+  std::vector<NimBLEUUID> m_Services;
+  std::function<void(NimBLEAdvertising *)> m_CompleteCallback;
+  size_t m_StartCount = 0;
+  size_t m_StopCount = 0;
 };
 
 class NimBLEClientCallbacks {
@@ -494,6 +668,8 @@ class NimBLEUtils {
 class NimBLEDevice {
  public:
   static NimBLEServer *createServer();
+  static NimBLEServer *getServer();
+  static NimBLEAdvertising *getAdvertising();
   static NimBLEScan *getScan();
   static void init(const std::string &name);
   static bool setPower(int8_t power);
@@ -506,7 +682,13 @@ class NimBLEDevice {
   static void setSecurityIOCap(uint8_t capability);
   static void setSecurityInitKey(uint8_t key_distribution);
   static void setSecurityRespKey(uint8_t key_distribution);
-  static void setOwnAddrType(uint8_t address_type);
+  static bool setOwnAddrType(uint8_t address_type);
+  static bool setOwnAddr(const uint8_t address[6]);
+  static int getNumBonds();
+  static bool startSecurity(uint16_t conn_handle);
+  static size_t getWhiteListCount();
+  static NimBLEAddress getWhiteListAddress(size_t index);
+  static bool whiteListRemove(const NimBLEAddress &address);
 
   // Mirrors of the real NimBLEDevice accessors the developer console's
   // 'debug ble' dump reports from: whether the host stack is up, the
@@ -655,5 +837,7 @@ class NimBLEDevice {
   // Number of clients queued for asynchronous reap but not yet freed.
   static size_t pendingReapCount();
 };
+
+#include "NimBLEScan.h"
 
 #endif

@@ -32,9 +32,13 @@
 namespace Furble {
 namespace {
 
-constexpr const char *SD_MOUNT_POINT = "/sd";
-constexpr const char *SETTINGS_DIRECTORY = "/sd/furble";
-constexpr const char *SETTINGS_FILE = "/sd/furble/settings.txt";
+#ifndef FURBLE_SD_MOUNT_POINT
+#define FURBLE_SD_MOUNT_POINT "/sd"
+#endif
+
+constexpr const char *SD_MOUNT_POINT = FURBLE_SD_MOUNT_POINT;
+constexpr const char *SETTINGS_DIRECTORY = FURBLE_SD_MOUNT_POINT "/furble";
+constexpr const char *SETTINGS_FILE = FURBLE_SD_MOUNT_POINT "/furble/settings.txt";
 constexpr uint32_t SD_SPI_FREQUENCY_KHZ = 10000;
 constexpr UBaseType_t WRITER_QUEUE_LENGTH = 8;
 constexpr uint32_t WRITER_STACK_BYTES = 6144;

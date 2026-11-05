@@ -270,4 +270,9 @@ struct Furble::Settings::storage_type<Furble::Settings::COMPANION_PASSWORD> {
   using type = std::string;
 };
 
+template <>
+struct Furble::Settings::storage_type<Furble::Settings::COMPANION> {
+  using type = bool;
+};
+
 #endif

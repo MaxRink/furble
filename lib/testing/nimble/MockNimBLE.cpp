@@ -3,6 +3,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <mutex>
 #include <thread>
 
@@ -86,6 +87,11 @@ std::array<uint8_t, 16> uuidBytes(uint32_t first, uint16_t second, uint16_t thir
 std::recursive_mutex g_ClientsMutex;
 NimBLEServer g_Server;
 NimBLEScan g_Scan;
+NimBLEAdvertising g_Advertising;
+std::vector<NimBLEAddress> g_WhiteList;
+NimBLEAddress g_OwnAddress {};
+uint8_t g_OwnAddressType = 0;
+size_t g_StartSecurityCount = 0;
 NimBLEMockPeer *g_Peer = nullptr;
 std::vector<std::pair<NimBLEAddress, NimBLEMockPeer *>> g_Peers;
 std::vector<std::unique_ptr<NimBLEClient>> g_Clients;
@@ -191,6 +197,14 @@ NimBLEServer *NimBLEDevice::createServer() {
   return &g_Server;
 }
 
+NimBLEServer *NimBLEDevice::getServer() {
+  return &g_Server;
+}
+
+NimBLEAdvertising *NimBLEDevice::getAdvertising() {
+  return &g_Advertising;
+}
+
 NimBLEScan *NimBLEDevice::getScan() {
   return &g_Scan;
 }
@@ -228,6 +242,18 @@ bool NimBLEUUID::operator<(const NimBLEUUID &other) const {
 NimBLEAddress::NimBLEAddress() : m_Address(0), m_Type(0) {}
 
 NimBLEAddress::NimBLEAddress(uint64_t address, uint8_t type) : m_Address(address), m_Type(type) {}
+
+NimBLEAddress::NimBLEAddress(const std::string &address, uint8_t type) : m_Address(0), m_Type(type) {
+  std::string hex;
+  for (const char character : address) {
+    if (character != ':') {
+      hex.push_back(character);
+    }
+  }
+  if (!hex.empty()) {
+    m_Address = std::strtoull(hex.c_str(), nullptr, 16);
+  }
+}
 
 uint8_t NimBLEAddress::getType() const {
   return m_Type;
@@ -438,25 +464,27 @@ uint16_t NimBLEConnInfo::getConnTimeout() const {
 }
 
 bool NimBLEConnInfo::isEncrypted() const {
-  return true;
+  return m_Encrypted;
 }
 bool NimBLEConnInfo::isAuthenticated() const {
-  return true;
+  return m_Authenticated;
 }
 bool NimBLEConnInfo::isBonded() const {
-  return true;
+  return m_Bonded;
 }
 uint8_t NimBLEConnInfo::getSecKeySize() const {
   return 16;
 }
 const NimBLEAddress &NimBLEConnInfo::getAddress() const {
-  static const NimBLEAddress address;
-  return address;
+  return m_Address;
 }
 
 const NimBLEAddress &NimBLEConnInfo::getIdAddress() const {
   // An explicitly filed identity wins; otherwise the live link's own peer,
   // which is what an unresolved address resolves to.
+  if (m_IdAddress != NimBLEAddress {}) {
+    return m_IdAddress;
+  }
   return (g_IdAddress == NimBLEAddress {}) ? g_LinkPeerAddress : g_IdAddress;
 }
 
@@ -1033,6 +1061,9 @@ bool NimBLEDevice::isInitialized() {
 }
 
 NimBLEAddress NimBLEDevice::getAddress() {
+  if (g_OwnAddress != NimBLEAddress {}) {
+    return g_OwnAddress;
+  }
   // A fixed controller address. The mock has no radio, so this only has to be
   // stable and printable.
   return NimBLEAddress(0x0011223344ULL, 0);
@@ -1088,8 +1119,48 @@ void NimBLEDevice::setSecurityRespKey(uint8_t key_distribution) {
   (void)key_distribution;
 }
 
-void NimBLEDevice::setOwnAddrType(uint8_t address_type) {
-  (void)address_type;
+bool NimBLEDevice::setOwnAddrType(uint8_t address_type) {
+  g_OwnAddressType = address_type;
+  return true;
+}
+
+bool NimBLEDevice::setOwnAddr(const uint8_t address[6]) {
+  if (address == nullptr) {
+    return false;
+  }
+  uint64_t value = 0;
+  for (size_t index = 0; index < 6; index++) {
+    value |= static_cast<uint64_t>(address[index]) << (index * 8);
+  }
+  g_OwnAddress = NimBLEAddress(value, g_OwnAddressType);
+  return true;
+}
+
+int NimBLEDevice::getNumBonds() {
+  return g_Bonded ? 1 : 0;
+}
+
+bool NimBLEDevice::startSecurity(uint16_t conn_handle) {
+  (void)conn_handle;
+  g_StartSecurityCount++;
+  return true;
+}
+
+size_t NimBLEDevice::getWhiteListCount() {
+  return g_WhiteList.size();
+}
+
+NimBLEAddress NimBLEDevice::getWhiteListAddress(size_t index) {
+  return index < g_WhiteList.size() ? g_WhiteList[index] : NimBLEAddress {};
+}
+
+bool NimBLEDevice::whiteListRemove(const NimBLEAddress &address) {
+  const auto found = std::find(g_WhiteList.begin(), g_WhiteList.end(), address);
+  if (found == g_WhiteList.end()) {
+    return false;
+  }
+  g_WhiteList.erase(found);
+  return true;
 }
 
 NimBLEClient *NimBLEDevice::createClient() {
@@ -1416,6 +1487,11 @@ void NimBLEDevice::resetMock() {
   g_IdAddress = NimBLEAddress {};
   g_LinkPeerAddress = NimBLEAddress {};
   g_DeleteBondCount = 0;
+  g_WhiteList.clear();
+  g_OwnAddress = NimBLEAddress {};
+  g_OwnAddressType = 0;
+  g_StartSecurityCount = 0;
+  g_Advertising.stop();
   g_AbsentAddresses.clear();
   g_PasskeyPeers.clear();
   g_SecurityPasskey = DEFAULT_SECURITY_PASSKEY;
@@ -1470,6 +1546,186 @@ void NimBLEDevice::setConnectDelayMs(uint32_t ms) {
 
 void NimBLEDevice::setConnParamApplyDelayReads(size_t reads) {
   g_ConnParamApplyDelayReads = reads;
+}
+
+
+// Server-side transport ------------------------------------------------------
+
+NimBLECharacteristic::NimBLECharacteristic(const NimBLEUUID &uuid,
+                                           uint32_t properties,
+                                           size_t max_length)
+    : m_Uuid(uuid), m_Properties(properties), m_MaxLength(max_length), m_Handle(0) {
+  static uint16_t next_handle = 1;
+  m_Handle = next_handle++;
+}
+
+void NimBLECharacteristic::setValue(const uint8_t *data, size_t length) {
+  m_Value = NimBLEAttValue(data, length);
+}
+
+void NimBLECharacteristic::setValue(const char *value) {
+  m_Value = NimBLEAttValue(value);
+}
+
+bool NimBLECharacteristic::notify(uint16_t conn_handle) {
+  m_NotifyCount++;
+  m_LastConnHandle = conn_handle;
+  return true;
+}
+
+bool NimBLECharacteristic::notify(uint16_t conn_handle, const uint8_t *data, size_t length) {
+  setValue(data, length);
+  return notify(conn_handle);
+}
+
+bool NimBLECharacteristic::indicate(const uint8_t *data, size_t length, uint16_t conn_handle) {
+  if (data != nullptr) {
+    setValue(data, length);
+  }
+  m_IndicateCount++;
+  m_LastConnHandle = conn_handle;
+  return true;
+}
+
+bool NimBLECharacteristic::indicate(const NimBLEAttValue &value, uint16_t conn_handle) {
+  m_Value = value;
+  m_IndicateCount++;
+  m_LastConnHandle = conn_handle;
+  return true;
+}
+
+NimBLEService::NimBLEService(const NimBLEUUID &uuid) : m_Uuid(uuid), m_Handle(0) {
+  static uint16_t next_handle = 1;
+  m_Handle = next_handle++;
+}
+
+NimBLECharacteristic *NimBLEService::createCharacteristic(const NimBLEUUID &uuid,
+                                                          uint32_t properties,
+                                                          size_t max_length) {
+  auto characteristic = std::make_unique<NimBLECharacteristic>(uuid, properties, max_length);
+  auto *result = characteristic.get();
+  m_Characteristics.push_back(std::move(characteristic));
+  return result;
+}
+
+NimBLECharacteristic *NimBLEService::getCharacteristic(const NimBLEUUID &uuid) {
+  for (auto &characteristic : m_Characteristics) {
+    if (characteristic->getUUID() == uuid) {
+      return characteristic.get();
+    }
+  }
+  return nullptr;
+}
+
+void NimBLEService::start() {}
+
+NimBLEServer::NimBLEServer() = default;
+
+NimBLEService *NimBLEServer::createService(const NimBLEUUID &uuid) {
+  auto service = std::make_unique<NimBLEService>(uuid);
+  auto *result = service.get();
+  m_Services.push_back(std::move(service));
+  return result;
+}
+
+NimBLEService *NimBLEServer::getService(const NimBLEUUID &uuid) {
+  for (auto &service : m_Services) {
+    if (service->getUUID() == uuid) {
+      return service.get();
+    }
+  }
+  return nullptr;
+}
+
+bool NimBLEServer::start() {
+  m_Started = true;
+  return true;
+}
+
+void NimBLEServer::disconnect(uint16_t conn_handle) {
+  m_DisconnectCount++;
+  NimBLEConnInfo info;
+  info.mockSetConnHandle(conn_handle);
+  if (m_Callbacks != nullptr) {
+    m_Callbacks->onDisconnect(this, info, 0);
+  }
+}
+
+NimBLEConnInfo NimBLEServer::getPeerInfoByHandle(uint16_t conn_handle) const {
+  NimBLEConnInfo info;
+  info.mockSetConnHandle(conn_handle);
+  info.mockSetSecurity(true, true, true);
+  return info;
+}
+
+size_t NimBLEServer::characteristicCount() const {
+  size_t count = 0;
+  for (const auto &service : m_Services) {
+    count += service->characteristicCount();
+  }
+  return count;
+}
+
+void NimBLEServer::mockConnect(NimBLEConnInfo &info) {
+  if (m_Callbacks != nullptr) {
+    m_Callbacks->onConnect(this, info);
+  }
+}
+
+void NimBLEServer::mockDisconnect(NimBLEConnInfo &info, int reason) {
+  m_DisconnectCount++;
+  if (m_Callbacks != nullptr) {
+    m_Callbacks->onDisconnect(this, info, reason);
+  }
+}
+
+void NimBLEServer::mockAuthenticationComplete(NimBLEConnInfo &info) {
+  if (m_Callbacks != nullptr) {
+    m_Callbacks->onAuthenticationComplete(info);
+  }
+}
+
+void NimBLEServer::mockConfirmPassKey(NimBLEConnInfo &info, uint32_t pin) {
+  if (m_Callbacks != nullptr) {
+    m_Callbacks->onConfirmPassKey(info, pin);
+  }
+}
+
+void NimBLEAdvertising::reset() {
+  m_ScanResponse = false;
+  m_ConnectableMode = 0;
+  m_DiscoverableMode = 0;
+  m_Interval = 0;
+  m_Name.clear();
+  m_Services.clear();
+  m_CompleteCallback = nullptr;
+}
+
+bool NimBLEAdvertising::start(uint32_t) {
+  m_Advertising = true;
+  m_StartCount++;
+  return true;
+}
+
+void NimBLEAdvertising::stop() {
+  if (m_Advertising) {
+    m_Advertising = false;
+    m_StopCount++;
+  }
+}
+
+void NimBLEAdvertising::removeServiceUUID(const NimBLEUUID &uuid) {
+  const auto found = std::find(m_Services.begin(), m_Services.end(), uuid);
+  if (found != m_Services.end()) {
+    m_Services.erase(found);
+  }
+}
+
+void NimBLEAdvertising::mockAdvertisingComplete() {
+  m_Advertising = false;
+  if (m_CompleteCallback) {
+    m_CompleteCallback(this);
+  }
 }
 
 #if !defined(FURBLE_SIM)

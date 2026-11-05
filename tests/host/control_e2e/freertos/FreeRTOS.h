@@ -20,11 +20,15 @@ typedef void *TaskHandle_t;
 struct FurbleHostQueue;
 typedef FurbleHostQueue *QueueHandle_t;
 
+struct FurbleHostSemaphore;
+typedef FurbleHostSemaphore *SemaphoreHandle_t;
+
 typedef void (*TaskFunction_t)(void *);
 
 #define pdTRUE 1
 #define pdFALSE 0
 #define pdPASS 1
+#define pdFAIL 0
 #define errQUEUE_FULL 0
 #define portMAX_DELAY UINT32_MAX
 #define pdMS_TO_TICKS(ms) (static_cast<TickType_t>(ms))
@@ -40,6 +44,10 @@ void vTaskDelay(TickType_t ticks);
 TickType_t xTaskGetTickCount(void);
 
 // Stop and join every std::thread-backed task before host static destruction.
+using FurbleHostDelayHook = void (*)(void);
+void furbleHostSetDelayHook(FurbleHostDelayHook hook);
+size_t furbleHostTaskCreateCount(void);
+uint32_t furbleHostLastTaskStackBytes(void);
 void furbleHostStopTasks(void);
 
 class FurbleHostTaskScope {

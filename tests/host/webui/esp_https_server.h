@@ -24,4 +24,21 @@ inline httpd_ssl_config_t HTTPD_SSL_CONFIG_DEFAULT() {
 }
 extern "C" esp_err_t httpd_ssl_start(httpd_handle_t *server, const httpd_ssl_config_t *config);
 extern "C" esp_err_t httpd_ssl_stop(httpd_handle_t server);
+
+namespace host_webui_tls {
+/** Exact TLS/socket allocation sizes charged by the socket layer double. */
+constexpr size_t TLS_CONTEXT_BYTES = 16 * 1024;
+constexpr size_t IN_BUFFER_BYTES = 4 * 1024;
+constexpr size_t OUT_BUFFER_BYTES = 4 * 1024;
+constexpr size_t SOCKET_BYTES = 2 * 1024;
+
+void reset();
+/** Fail the n-th allocation (1-based); zero disables the injection. */
+void setFailAt(size_t index);
+size_t handshakeCount();
+size_t closeCount();
+size_t liveBytes();
+size_t socketCount();
+int lastHandshakeTimeoutMs();
+}  // namespace host_webui_tls
 #endif
