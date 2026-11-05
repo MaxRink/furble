@@ -66,13 +66,28 @@ combined-tree scenarios, so passing one PR alone is not evidence.
 
 ## Fuzz contract
 
-The fuzz harness is owned by the parallel `fuzz-suite` branch. This branch
-consumes its `sim/coverage/fuzz_results.json` and does not duplicate the harness.
-Every target record names its command, scenario, assertions and known failing
-seeds. A failing seed must carry `fixed: true` and a regression scenario before
-the gate can pass. The target list covers touch and physical-button layouts,
-WebUI HTTP, companion BLE, MQTT, OTA, allocation failure, fragmentation, PSRAM
-and NVS.
+`sim/scripts/run-fuzz-target.py` runs the targets named by
+`sim/coverage/fuzz_targets.json` and writes `sim/coverage/fuzz_results.json`.
+Use the full corpus before a hardware build:
+
+```sh
+python3 sim/scripts/run-fuzz-target.py --all
+```
+
+Each target record names its seeds, total iterations, failures, commands and
+known failing seeds. The document's top-level `status` is `pass` only when every
+target passed. A known failing seed must carry `fixed: true` and a regression
+scenario before the gate can pass; none are currently open. Fixed regressions
+that came from a production PR are listed in `fixed_regressions` with the file
+and the regression command.
+
+The target list covers touch and physical-button layouts, WebUI HTTP, companion
+BLE, MQTT, OTA, allocation failure, fragmentation, PSRAM and NVS. The #397 cover
+targets run real settings migration and WiFi fast-connect paths plus the PSRAM
+memtest debug/release split. The #398 cover targets run the MQTT start and HA
+discovery gates at below/at/above values, 1,536-byte discovery fragmentation,
+single-buffer display behavior, the 8 KiB main stack with a separate WebUI
+identity task, and the 3 KiB companion budget.
 
 ## Required commands for the flash report
 

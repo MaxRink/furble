@@ -21,6 +21,11 @@ and run `python3 tools/check_ci_workflows.py` after changing workflow triggers.
 The pre-review gate is `python3 tools/pre_review.py --base origin/master`; run
 it before pushing. `pre-review.yml` runs the same scanners in CI, and
 `host-sanitized.yml` runs the ASan/UBSan host subset when C++ paths change.
+The hardware gate is `python3 tools/check_fuzz.py --full --host-build <dir>
+--mqtt-binary sim/build-mqtt/furble-sim`; it must pass before a firmware image
+is built. Its fixed seeds live in `tests/fuzz/seeds.json`. The gate stays red
+for the MQTT owner stack at 6 KiB and the Home Assistant discovery OOM until
+the parallel MQTT stack and MQTT HA memory PRs land.
 Static analysis is `python3 tools/check_static_analysis.py --base origin/master`
 with the host and simulator compile databases; `static-analysis.yml` runs it in
 CI.
@@ -55,8 +60,9 @@ crash, fuzz and permutation manifests; `tools/check_sim_coverage.py` validates
 them and `tools/check_flash_readiness.py --ready` is the only authority for a
 flash candidate. `sim/scripts/check-hardware-quirks.sh`,
 `sim/scripts/run-memory-profile.py` and the full permutation run are required
-before hardware. The parallel fuzz-suite branch owns the fuzz harness and must
-publish `sim/coverage/fuzz_results.json`.
+before hardware. The fuzz harness publishes `sim/coverage/fuzz_results.json`
+with `python3 sim/scripts/run-fuzz-target.py --all`; every target must pass
+before the readiness gate can pass.
 Firmware line coverage is measured by `tools/coverage.py` and gated against
 `tests/coverage_floor.json`. Coverage instrumentation is opt-in in both build
 entry points (`-DFURBLE_COVERAGE=ON` for the host harness,

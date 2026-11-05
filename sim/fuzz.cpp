@@ -17,6 +17,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "FurbleSettings.h"
+#include "FurbleTextSize.h"
 #include "FurbleUI.h"
 #include "driver.h"
 #include "fuzz.h"
@@ -54,24 +56,102 @@ constexpr const char *kBtnBack = "pwr";
 // Menu pages reachable through the real menu button click path. simScenarioAction
 // looks each entry up and no-ops when a board omits the page, so listing all of
 // them here is safe on every panel.
-constexpr std::array<const char *, 17> kNavPages = {
-    "settings",    "display",     "features",    "gps",       "gps_data", "nmea",
-    "timer",       "theme",       "text_size",   "bluetooth", "about",    "power",
-    "diagnostics", "device_info", "power_state", "ble",       "battery"};
+constexpr const char *kNavPages[] = {"connect",
+                                     "scan",
+                                     "delete",
+                                     "power_off",
+                                     "bulb_duration",
+                                     "bulb",
+                                     "settings",
+                                     "display",
+                                     "features",
+                                     "sensors",
+                                     "gestures",
+                                     "infrared",
+                                     "gps_rate",
+                                     "gps_sentences",
+                                     "gps_constellation",
+                                     "gps_power",
+                                     "gps_assist",
+                                     "gps_hold",
+                                     "gps_baud",
+                                     "gps_platform",
+                                     "gps",
+                                     "gps_data",
+                                     "time",
+                                     "nmea",
+                                     "gps_sats",
+                                     "timer",
+                                     "theme",
+                                     "text_size",
+                                     "legend",
+                                     "bluetooth",
+                                     "tx_power",
+                                     "about",
+                                     "power",
+                                     "feedback",
+                                     "feedback_events",
+                                     "feedback_volume",
+                                     "storage",
+                                     "diagnostics",
+                                     "device_info",
+                                     "battery",
+                                     "power_state",
+                                     "ble",
+                                     "interval_count",
+                                     "interval_delay",
+                                     "interval_shutter",
+                                     "interval_wait"};
 
 // Boolean settings the real switch widgets can toggle through simScenarioAction.
-constexpr std::array<const char *, 12> kToggles = {
-    "gps", "gps_nmea",   "autoconnect", "reconnect",  "multiconnect",  "companion",
-    "ir",  "show_title", "tx_adaptive", "conn_saver", "preset_picker", "recon_backoff"};
+constexpr const char *kToggles[] = {"gps",           "gps_nmea",     "gps_motion", "autoconnect",
+                                    "reconnect",     "multiconnect", "companion",  "ir",
+                                    "show_title",    "tx_adaptive",  "conn_saver", "preset_picker",
+                                    "recon_backoff", "watchdog"};
 
-// Pages that must always fit their panel without scrolling. These are the
-// compact home and interactive pages; a "yes" overflow on any of them is a
-// layout bug. The long settings and diagnostics lists scroll by design and are
-// deliberately excluded (see the overflow-sweep scenario for the same split).
-bool mustFit(const std::string &page) {
-  return page == "main" || page == "connected" || page == "shutter" || page == "bulb"
-         || page == "bulb_run" || page == "timer_run" || page == "display"
-         || (page == "timer" && !Platform::getInstance().canTimedWake());
+// The fit rule follows the shipped layout contract rather than an assumption
+// that every compact page always fits. A "yes" overflow on a fit-required page
+// is a layout bug; the long settings and diagnostics lists, and the pages named
+// below, scroll by design.
+// - Physical-button pages, including Home and Connected, scroll by design once
+//   their rows exceed the panel. The dedicated no-touch layout scenarios assert
+//   label overlap, cut labels, clearances and scroll extents instead.
+// - The 320x240 Core touch Home fits at every text size, and its Connected grid
+//   fits at Normal and Small.
+// - The narrow Stick touch layout wraps its full-size Remote controls and
+//   scrolls, while the physical-button layout and the 320x240 Core touch layout
+//   keep the Remote shutter fit-required.
+// - Display and Timer scroll by design; Timer also carries extra timed-wake
+//   rows on boards that support them.
+// - Bulb and Bulb-run are fit-required on the touch layout.
+bool mustFit(UI *ui, const std::string &page) {
+  const bool touch = ui->simQueryState("nav_layout") == "touch";
+  const uint8_t textSize = TextSizePolicy::clamp(Settings::load<uint8_t>(Settings::TEXT_SIZE));
+#if defined(FURBLE_M5STICKC) || defined(FURBLE_M5STICKS3)
+  const bool narrowTouch = touch;
+  const bool core = false;
+#else
+  const bool narrowTouch = false;
+  const bool core = true;
+#endif
+  const bool coreTouch = core && touch;
+
+  if (page == "main") {
+    return (textSize < TextSizePolicy::LARGE && !(core && !touch)) || coreTouch;
+  }
+  if (page == "connected") {
+    return coreTouch && textSize < TextSizePolicy::LARGE;
+  }
+  if (page == "shutter") {
+    return !narrowTouch;
+  }
+  if (page == "bulb" || page == "bulb_run") {
+    return touch;
+  }
+  if (page == "timer") {
+    return (textSize < TextSizePolicy::LARGE) && !Platform::getInstance().canTimedWake();
+  }
+  return false;
 }
 
 enum class Event {
@@ -93,6 +173,15 @@ enum class Event {
   PRESET,
   COMPANION_REQUEST,
   COMPANION_ANSWER,
+  SCAN_ROW,
+  CAMERA_PAIR_REQUEST,
+  CAMERA_PAIR_ACCEPT,
+  CAMERA_PAIR_REJECT,
+  CAMERA_PAIR_EXPIRE,
+  BULB_START,
+  BULB_STOP,
+  BLE_KILL,
+  HOLD,
   COUNT,
 };
 
@@ -118,6 +207,15 @@ constexpr std::array<int, static_cast<size_t>(Event::COUNT)> kWeights = {
     3,   // PRESET
     3,   // COMPANION_REQUEST
     4,   // COMPANION_ANSWER
+    3,   // SCAN_ROW
+    2,   // CAMERA_PAIR_REQUEST
+    3,   // CAMERA_PAIR_ACCEPT
+    2,   // CAMERA_PAIR_REJECT
+    2,   // CAMERA_PAIR_EXPIRE
+    3,   // BULB_START
+    3,   // BULB_STOP
+    3,   // BLE_KILL
+    4,   // HOLD
 };
 
 // These are the state surfaces the fuzzer can observe without reaching into
@@ -197,10 +295,33 @@ const char *eventName(Event event) {
       return "companion-request";
     case Event::COMPANION_ANSWER:
       return "companion-answer";
+    case Event::SCAN_ROW:
+      return "scan-row";
+    case Event::CAMERA_PAIR_REQUEST:
+      return "camera-pair-request";
+    case Event::CAMERA_PAIR_ACCEPT:
+      return "camera-pair-accept";
+    case Event::CAMERA_PAIR_REJECT:
+      return "camera-pair-reject";
+    case Event::CAMERA_PAIR_EXPIRE:
+      return "camera-pair-expire";
+    case Event::BULB_START:
+      return "bulb-start";
+    case Event::BULB_STOP:
+      return "bulb-stop";
+    case Event::BLE_KILL:
+      return "ble-kill";
+    case Event::HOLD:
+      return "hold";
     case Event::COUNT:
       break;
   }
   return "unknown";
+}
+
+template <typename T, size_t N>
+constexpr size_t arraySize(const T (&)[N]) {
+  return N;
 }
 
 uint32_t pick(uint32_t bound) {
@@ -260,6 +381,15 @@ ObservableState captureState(UI *ui) {
 // Check the invariants that hold after any event. The stale focus and stacked
 // modal checks map to the freed-object and re-entrancy bug classes; the
 // overflow check maps to the narrow-panel layout class.
+uint64_t parseUnsignedQuery(const std::string &value) {
+  char *end = nullptr;
+  const unsigned long long parsed = std::strtoull(value.c_str(), &end, 10);
+  if (end == value.c_str() || *end != '\0') {
+    return UINT64_MAX;
+  }
+  return static_cast<uint64_t>(parsed);
+}
+
 void checkInvariants(UI *ui, const std::string &event) {
   if (ui->simQueryState("focus") == "stale") {
     recordFinding(ui, "focus-uaf", event, "encoder focus points at a freed object");
@@ -278,8 +408,29 @@ void checkInvariants(UI *ui, const std::string &event) {
   if (!page.empty()) {
     pageCounts[page]++;
   }
-  if (mustFit(page) && ui->simQueryState("overflow") == "yes") {
-    recordFinding(ui, "layout-overflow", event, "compact page overflows the panel");
+  if (mustFit(ui, page) && ui->simQueryState("overflow") == "yes") {
+    recordFinding(ui, "layout-overflow", event,
+                  "compact page overflows the panel text_size="
+                      + std::to_string(Settings::load<uint8_t>(Settings::TEXT_SIZE))
+                      + " layout=" + ui->simQueryState("nav_layout"));
+  }
+
+  // The narrow panels use one LVGL draw buffer. Every flush must therefore
+  // wait for the SPI DMA before LVGL is told the buffer is free. On a wide
+  // panel the two buffers overlap and must not pay that wait.
+  const uint64_t flushes = parseUnsignedQuery(ui->simQueryState("flush_count"));
+  const uint64_t waits = parseUnsignedQuery(ui->simQueryState("flush_wait_count"));
+  if (flushes != UINT64_MAX && waits != UINT64_MAX) {
+    if (ui->simQueryState("single_buffer") == "yes") {
+      if (waits != flushes) {
+        recordFinding(ui, "flush-overlap", event,
+                      "single-buffer flushes=" + std::to_string(flushes)
+                          + " waits=" + std::to_string(waits));
+      }
+    } else if (waits != 0) {
+      recordFinding(ui, "flush-overlap", event,
+                    "double-buffer path waited for DMA " + std::to_string(waits) + " times");
+    }
   }
 }
 
@@ -326,7 +477,7 @@ void applyEvent(UI *ui, Event event) {
       ui->simulatorHome();
       break;
     case Event::NAV:
-      ui->simScenarioAction((std::string("nav ") + kNavPages[pick(kNavPages.size())]).c_str());
+      ui->simScenarioAction((std::string("nav ") + kNavPages[pick(arraySize(kNavPages))]).c_str());
       break;
     case Event::CONNECT:
       ui->simScenarioAction("connect");
@@ -360,7 +511,7 @@ void applyEvent(UI *ui, Event event) {
       ui->simScenarioAction("stop");
       break;
     case Event::TOGGLE:
-      ui->simScenarioAction((std::string("toggle ") + kToggles[pick(kToggles.size())]).c_str());
+      ui->simScenarioAction((std::string("toggle ") + kToggles[pick(arraySize(kToggles))]).c_str());
       break;
     case Event::BUTTON_MODE:
       ui->simScenarioAction(pick(2) == 0 ? "button-mode one-button" : "button-mode two-button");
@@ -374,6 +525,50 @@ void applyEvent(UI *ui, Event event) {
     case Event::COMPANION_ANSWER:
       ui->simScenarioAction(pick(2) == 0 ? "companion-accept" : "companion-reject");
       break;
+    case Event::SCAN_ROW:
+    {
+      char action[32] = {};
+      std::snprintf(action, sizeof(action), "scan-row %u", pick(4));
+      ui->simScenarioAction(action);
+      break;
+    }
+    case Event::CAMERA_PAIR_REQUEST:
+    {
+      char action[48] = {};
+      std::snprintf(action, sizeof(action), "camera-pair-request %s %06u",
+                    pick(2) == 0 ? "confirm" : "display", pick(1000000));
+      ui->simScenarioAction(action);
+      break;
+    }
+    case Event::CAMERA_PAIR_ACCEPT:
+      ui->simScenarioAction("camera-pair-accept");
+      break;
+    case Event::CAMERA_PAIR_REJECT:
+      ui->simScenarioAction("camera-pair-reject");
+      break;
+    case Event::CAMERA_PAIR_EXPIRE:
+      ui->simScenarioAction("camera-pair-expire");
+      break;
+    case Event::BULB_START:
+      ui->simScenarioAction("bulb-start");
+      break;
+    case Event::BULB_STOP:
+      ui->simScenarioAction("bulb-stop");
+      break;
+    case Event::BLE_KILL:
+      ui->simScenarioAction("ble-kill");
+      break;
+    case Event::HOLD:
+    {
+      // Sample the production input path across the long-press threshold. The
+      // 20 ms cadence in simHoldButton runs the same read callback as hardware,
+      // so a short hold must produce one activation and a hold past 1000 ms
+      // must only then start repeating.
+      constexpr std::array<uint32_t, 8> durations = {50, 500, 900, 1000, 1050, 1250, 1600, 2000};
+      const char *button = pick(3) == 0 ? kBtnPrev : (pick(2) == 0 ? kBtnSelect : kBtnNext);
+      ui->simHoldButton(button, durations[pick(durations.size())]);
+      break;
+    }
     case Event::COUNT:
       break;
   }

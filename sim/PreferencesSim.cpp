@@ -210,6 +210,15 @@ Preferences::~Preferences() {
   end();
 }
 
+// The host store commits each put through the temporary-file replacement, so a
+// deferred batch has nothing extra to flush. Keep the production API available
+// to the shared Settings bootstrap without changing the checked adapter.
+void Preferences::setDeferredCommit(bool) {}
+
+bool Preferences::commit() {
+  return true;
+}
+
 bool Preferences::begin(const char *name, bool readOnly, const char *) {
   if (_started) {
     return false;

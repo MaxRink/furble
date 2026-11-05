@@ -122,6 +122,14 @@ CLAUDE.md whose directory it touches.
 - Run `python3 tools/pre_review.py --base origin/master` before pushing. It
   runs the diff hygiene, settings contract, and C++ safety scanners, the CI
   workflow and simulator manifest checks, and the scanner unit tests.
+- Run the fuzz gate before any hardware image build:
+  `python3 tools/check_fuzz.py --full --host-build <host-build> --mqtt-binary
+  sim/build-mqtt/furble-sim`. `--smoke` is the pull-request budget. It runs
+  seeded UI input on all three panels in both layouts, the WebUI, companion,
+  MQTT and OTA fuzzers, the fixed memory-pressure scenarios, and randomized
+  heap-pressure boots. The current gate is red for the MQTT owner stack at
+  6 KiB and the Home Assistant discovery OOM; those fixes are owned by the
+  parallel MQTT stack and MQTT HA memory PRs. Do not mark them expected-pass.
 - Run the MQTT memory-pressure scenarios with
   `sh sim/scripts/run-memory.sh` after building the simulator with
   `FURBLE_SIM_MQTT=1`. The script uses a closed local port, so no broker is
@@ -135,8 +143,10 @@ CLAUDE.md whose directory it touches.
   Run `sim/scripts/check-hardware-quirks.sh`, `sim/scripts/run-memory-profile.py`
   and the full `sim/scripts/run-permutations.py --results
   sim/coverage/permutation_results.json` before asking for hardware.
-- The fuzz harness is owned by the parallel fuzz-suite branch. Consume its
-  `sim/coverage/fuzz_results.json`; do not duplicate the harness.
+- Run `python3 sim/scripts/run-fuzz-target.py --all` to regenerate
+  `sim/coverage/fuzz_results.json`. The readiness gate consumes that file; every
+  target must pass and any known failing seed must be fixed with its regression.
+  `tools/check_fuzz.py --full` remains the local pre-hardware budget.
 - Run `sh tools/run_sanitized_host_tests.sh --clean` when touching C++ state,
   containers, camera drivers, simulator fixtures, or filesystem lifecycle code.
 - `.github/workflows/pre-review.yml` runs the scanners on pull requests;

@@ -725,10 +725,12 @@ shortens that host retry cadence for a bounded scenario.
 
 - `--fuzz --seed N --fuzz-steps N [--fuzz-verbose]` (or `FURBLE_FUZZ_SEED` /
   `FURBLE_FUZZ_STEPS`) runs `sim/fuzz.cpp` instead of a script: a deterministic
-  randomized stream of button, navigation, settings and modal events into the
-  real UI, with crash, stale-focus, stacked-modal, must-fit-overflow, timer-leak
-  and navigation-trap invariants checked after each event's completed settle
-  cycles. `sim/fuzz_machine.{h,cpp}` owns the Apply/Settle/Check/Escape/Finish
+  randomized stream of 27 event classes into the real UI, including taps,
+  timed holds around the 1000 ms repeat threshold, scan rows, camera and
+  companion pairing, BLE link loss, bulb and intervalometer runs, settings
+  switches and every menu page. Crash, stale-focus, stacked-modal,
+  must-fit-overflow, timer-leak and navigation-trap invariants are checked after
+  each event's completed settle cycles. `sim/fuzz_machine.{h,cpp}` owns the Apply/Settle/Check/Escape/Finish
   phases and raw-output rejection sampling, while the UI task reports each
   completed `lv_task_handler` cycle through `fuzzCycleComplete`. Same seed and
   board reproduce a finding exactly. See plans/implemented/105-ui-fuzzing.md.
@@ -753,10 +755,14 @@ shortens that host retry cadence for a bounded scenario.
 - `FURBLE_SIM_SANITIZE=address,undefined sh sim/build.sh` builds an instrumented
   binary for the deeper memory hunt. Off by default so the plain build and CI
   stay fast.
-- The fuzz compact-page fit rule keeps shutter fit-required on physical-button
-  builds and on the 320x240 Core touch model. It permits scrolling only for the
-  touch layout compiled for the existing narrow Stick panels. Global overlap
-  and runaway-scroll checks remain unconditional; the dedicated scenarios also
+- The fuzz fit rule follows the layouts the scenarios certify. Remote shutter
+  stays fit-required on physical-button builds and on the 320x240 Core touch
+  model, and narrow Stick touch may scroll. Physical-button Home and Connected
+  scroll by design, so they are not fit-required there; Core touch Home fits at
+  every text size and Core touch Connected fits at Normal and Small. Display and
+  Timer always scroll, Timer also carries extra timed-wake rows, and Bulb and
+  Bulb-run are fit-required only on the touch layout. Global overlap and
+  runaway-scroll checks remain unconditional; the dedicated scenarios also
   assert that labels are not clipped.
 
 ## Docs screenshots and sim capabilities

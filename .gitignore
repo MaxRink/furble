@@ -8,6 +8,8 @@ managed_components
 sdkconfig.*.old
 coverage-report/
 __pycache__/
+host-build/
+tests/fuzz/failures/
 
 # local agent workspaces
 .claude/

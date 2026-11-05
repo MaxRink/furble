@@ -84,6 +84,7 @@ state and the remaining gate; the issue stays open until that gate lands.
 | [306-sim-memory-crash-repro.md](306-sim-memory-crash-repro.md) | Simulator heap-pressure reproduction, MQTT/WebUI admission scenarios and retained crash logging |
 | [307-sim-first-flash-gate.md](307-sim-first-flash-gate.md) | Sim-first crash, memory, fuzz and permutation release gate before any hardware flash |
 | [308-mqtt-ha-memory.md](308-mqtt-ha-memory.md) | MQTT and Home Assistant discovery memory budget, admission gates and cached HA setting |
+| [309-input-api-memory-fuzzing.md](309-input-api-memory-fuzzing.md) | Seeded input, API and memory fuzz gate with replay corpus and known-finding owners |
 | [302-companion-restart-reconnect.md](302-companion-restart-reconnect.md) | Companion stop/start without a heap panic, and advertising restart after a rejected link |
 | [303-upstream-sync.md](303-upstream-sync.md) | Read-only upstream audit, open issue mapping, and full SHA PlatformIO pins for upstream issue 309 |
 

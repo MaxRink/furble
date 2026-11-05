@@ -757,6 +757,64 @@ void testCanonicalSignatureBytes() {
          "nested chunk session cannot differ from envelope session");
 }
 
+void testRandomizedSessionFuzz() {
+  std::cout << "test: randomized OTA session sequences stay bounded and fail closed\n";
+  const OTA::MessageMeta good {1, false, false};
+  uint32_t random = 0x51ed270bU;
+  for (uint32_t seed = 1; seed <= 16; seed++) {
+    random ^= seed * 0x9e3779b9U;
+    FakeSink sink;
+    FakeReplayStore store;
+    SessionHarness session(sink, store);
+    const OTA::SessionId sessionId = id(static_cast<uint8_t>(seed));
+    const OTA::Manifest value = manifest(sessionId, 128);
+    expect(session.onMessage(good, begin(value)).accepted, "fuzz begin is accepted");
+    size_t acceptedBytes = 0;
+    for (uint32_t step = 0; step < 48; step++) {
+      random ^= random << 13;
+      random ^= random >> 17;
+      random ^= random << 5;
+      const uint32_t select = random % 5;
+      OTA::Outcome outcome;
+      if (select < 3) {
+        const uint32_t offset = random % (value.imageSize + 16);
+        const size_t length = random % 32;
+        std::vector<uint8_t> bytes(length);
+        for (auto &byte : bytes) {
+          random ^= random << 13;
+          random ^= random >> 17;
+          random ^= random << 5;
+          byte = static_cast<uint8_t>(random);
+        }
+        OTA::Message message;
+        message.kind = OTA::Kind::Chunk;
+        message.sessionId = sessionId;
+        message.sequence = step + 2;
+        message.chunk.sessionId = sessionId;
+        message.chunk.offset = offset;
+        message.chunk.data = std::move(bytes);
+        message.chunk.checksum = OTA::crc32(message.chunk.data.data(), message.chunk.data.size());
+        outcome = session.onMessage(good, message);
+      } else if (select == 3) {
+        outcome = session.onMessage(good, control(OTA::Kind::Abort, sessionId, step + 2));
+      } else {
+        outcome = session.onMessage(good, control(OTA::Kind::Commit, sessionId, step + 2));
+      }
+      if (outcome.accepted) {
+        acceptedBytes = session.receivedBytes();
+      }
+      expect(session.receivedBytes() <= value.imageSize,
+             "fuzzed session never accepts more than the declared image");
+      expect(acceptedBytes <= value.imageSize, "fuzzed session byte total stays inside the image");
+      expect(session.state() == OTA::State::Idle || session.state() == OTA::State::Receiving
+                 || session.state() == OTA::State::Verifying || session.state() == OTA::State::Done
+                 || session.state() == OTA::State::Aborted || session.state() == OTA::State::Error,
+             "fuzzed session keeps a canonical state");
+    }
+    (void)session.onMessage(good, control(OTA::Kind::Abort, sessionId, 100));
+  }
+}
+
 }  // namespace
 
 int main() {
@@ -772,6 +830,7 @@ int main() {
   testAbortReservationAndCompetingSessions();
   testSessionObjectBudgetAndDispatchGuard();
   testGlobalReservationLifecycle();
+  testRandomizedSessionFuzz();
   if (failures != 0) {
     std::cerr << failures << " failure(s)\n";
     return 1;

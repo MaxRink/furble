@@ -2,6 +2,7 @@
 #define FURBLE_HOST_MQTT_CJSON_H
 
 #include <cstddef>
+#include <cstdint>
 
 struct cJSON {
   cJSON *next = nullptr;
@@ -24,6 +25,16 @@ enum {
   cJSON_Array = 1 << 5,
   cJSON_Object = 1 << 6,
 };
+
+namespace host_cjson {
+/** Reset counters and disable the failure schedule. */
+void reset();
+/** Fail each tracked allocation with a deterministic seeded percentage. */
+void setFailureSchedule(uint64_t seed, uint32_t percent);
+/** Tracked nodes and strings currently owned by cJSON. */
+size_t liveAllocations();
+size_t peakAllocations();
+}  // namespace host_cjson
 
 extern "C" {
 cJSON *cJSON_CreateObject(void);

@@ -190,6 +190,22 @@ attempt to infer changed paths without a pull request or push comparison base.
   `control-connect-camera-race: PASS`. Check this shell contract without a
   compiler with `sh tests/host/run_tsan_race_contract.sh`.
 
+- Run the fuzz gate before building a hardware image:
+
+  ```sh
+  python3 tools/check_fuzz.py --full \
+    --host-build /tmp/furble-fuzz-host \
+    --mqtt-binary sim/build-mqtt/furble-sim
+  ```
+
+  `--smoke` is the pull-request budget. The fixed seeds are in
+  `tests/fuzz/seeds.json`; `tests/fuzz/README.md` lists the replay commands.
+  The gate covers seeded input on all three panels in both layouts, the WebUI,
+  companion, MQTT and OTA protocol fuzzers, the fixed memory-pressure
+  scenarios and randomized heap-pressure boots. It stays red for the MQTT
+  owner stack at 6 KiB and the Home Assistant discovery OOM until the parallel
+  MQTT PRs land.
+
 - The protocol and camera vector tests live under `tests/protocol` and
   `tests/camera`. CI runs them through `protocol-tests.yml` and
   `camera-tests.yml`.

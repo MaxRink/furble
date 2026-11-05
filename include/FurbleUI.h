@@ -1170,6 +1170,10 @@ class UI {
   const char *m_GestureLast = "none";
   // Flush callbacks that arrived while the panel was in SLPIN. Must stay zero.
   uint64_t m_FlushedWhileOff = 0;
+  // Single-buffer correctness probe: every flush on a narrow panel must wait
+  // for the SPI DMA before LVGL may reuse the one buffer.
+  uint64_t m_FlushCount = 0;
+  uint64_t m_FlushWaitCount = 0;
   // Battery-page label writes, so a hidden page can be proven idle. Static
   // because the timer callback has no instance parameter.
   static uint64_t m_BatteryLabelWrites;

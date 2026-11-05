@@ -79,6 +79,12 @@ constexpr size_t kButtonCount = sizeof(kButtons) / sizeof(kButtons[0]);
 constexpr SDL_Rect kBodyRect = {105, 56, 90, 128};
 constexpr SDL_Rect kScreenRect = {120, 78, 60, 48};
 constexpr const char *kWindowTitle = "furble buttons - Stick: B top, A front, PWR left";
+// B is a top-edge control, not a side control. Keep its centre on the body's
+// centre line and keep it straddling the top edge, so a strip placed beside the
+// panel cannot visually turn it into a right-side button.
+static_assert(kButtons[1].rect.x + kButtons[1].rect.w / 2 == kBodyRect.x + kBodyRect.w / 2,
+              "StickS3 B must stay centred on the body top edge");
+static_assert(kButtons[1].rect.y < kBodyRect.y, "StickS3 B must straddle the body top edge");
 #elif defined(FURBLE_M5STICKC)
 constexpr int kWindowHeight = 160;
 constexpr button_t kButtons[] = {
@@ -90,6 +96,12 @@ constexpr size_t kButtonCount = sizeof(kButtons) / sizeof(kButtons[0]);
 constexpr SDL_Rect kBodyRect = {105, 44, 90, 72};
 constexpr SDL_Rect kScreenRect = {120, 58, 60, 40};
 constexpr const char *kWindowTitle = "furble buttons - Stick: B top, A front, PWR left";
+// Same top-edge contract as the StickS3 layout above.
+static_assert(kButtons[1].rect.x + kButtons[1].rect.w / 2
+                  == kBodyRect.x + kBodyRect.w / 2,
+              "StickC B must stay centred on the body top edge");
+static_assert(kButtons[1].rect.y < kBodyRect.y,
+              "StickC B must straddle the body top edge");
 #else
 // An unmodeled board gets no control surface rather than the wrong buttons.
 constexpr int kWindowHeight = 240;
