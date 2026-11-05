@@ -164,9 +164,10 @@ Submenu: `Settings` > `Time`.
 The manual selection always wins. With `Auto (GPS)` selected, the last derived
 zone is used while the last fresh wired fix is at most 30 minutes old. A
 candidate zone change is held for at least 5 minutes after the previous change,
-so a noisy boundary fix cannot churn the camera clock. Without a fresh fix, or
-outside the 30 degree nearest-zone radius, Auto falls back to UTC. The default
-UTC is a manual choice, so an existing device is never silently moved.
+so a noisy boundary fix cannot churn the camera clock. Auto falls back to UTC
+after 30 minutes without a fresh fix, and immediately when a fresh fix is
+outside the 30-degree nearest-zone radius. The default UTC is a manual choice,
+so an existing device is never silently moved.
 
 Auto mode uses 39 curated zone rules and 61 representative points. It is a
 nearest-zone approximation, not a polygon database: borders, large countries,

@@ -130,7 +130,8 @@ reports which of the two a setting is: immediately, on next connect, or on
 reboot. `settings set timezone Europe/Berlin` applies the zone immediately and
 accepts a table index, an IANA name, a single-word roller label, or `auto`. The
 `auto` mode is reported by `time status` as `timezone_source: gps` while a
-derived zone is fresh and `timezone_source: utc` after the 30-minute fallback.
+derived zone is fresh and `timezone_source: utc` after the 30-minute fallback or
+immediately when a fresh fix is outside the 30-degree nearest-zone radius.
 See the [settings and controls reference](settings-and-controls.md) for every
 setting, its default, and when it applies.
 

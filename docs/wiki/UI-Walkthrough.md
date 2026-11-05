@@ -284,7 +284,8 @@ The Time page holds the Time zone roller and live clock rows. Local shows the
 selected zone's civil time with its current offset. UTC shows the same instant
 without an offset. The heading names the effective zone and its source.
 Auto (GPS) picks the nearest curated zone from a fresh wired fix; the manual
-choice wins, and Auto falls back to UTC after 30 minutes without a fix.
+choice wins, and Auto falls back to UTC after 30 minutes without a fix or
+immediately when a fresh fix is outside the 30-degree nearest-zone radius.
 
 ### Timer
 
