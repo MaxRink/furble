@@ -113,3 +113,9 @@ The shared NimBLE server also serves Sony camera name discovery, so an unknown
 inbound link is left alone rather than disconnected; `onDisconnect` restores
 advertising when it leaves. This is the deliberate trade-off against breaking a
 camera client.
+
+The enable path computes the reconnect decision under `m_Mutex` but calls
+`startReconnectAdvertising()` only after releasing it, because that function
+reads the public getters and would otherwise deadlock. The disconnect restart
+snapshots the window flag and deadline atomically, so an expired window is not
+silently extended.

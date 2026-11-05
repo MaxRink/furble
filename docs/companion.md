@@ -9,6 +9,11 @@ and current advertising state. Reconnect advertising is unfiltered because
 macOS rotates its LE address; the connect handler still accepts only the stored
 identity outside the pairing window.
 
+The NimBLE server is shared with Sony camera name discovery, so an unknown
+inbound link is not torn down. It can keep the link (and therefore suppress
+companion advertising) until it disconnects; advertising restarts when the link
+ends. This is the availability cost of not breaking camera clients.
+
 The companion BLE service exposes camera management through the Cameras
 characteristic:
 

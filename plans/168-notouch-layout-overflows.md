@@ -1238,3 +1238,8 @@ pass now applies the button label's 100% width/wrap based on band membership
 too, and marks the label with `LV_OBJ_FLAG_USER_2` so a successful label change
 requests one more settle pass without looping on every pass. Rows below a
 height-changing button are therefore re-read at their real positions.
+
+The documentation follow-up for this change updated `README.md`,
+`docs/settings-and-controls.md` and `docs/wiki/Settings-Reference.md` to name
+button-label wrapping explicitly. The in-repo wiki copy must be pushed to the
+GitHub wiki after merge.
