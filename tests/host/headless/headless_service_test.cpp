@@ -47,6 +47,11 @@ std::vector<std::string> bootWithoutTask() {
 void finish(void) {
   using namespace HeadlessState;
 
+  // Join the production control task before observing its counter. The
+  // counter is atomic, but a scheduling delay could otherwise let this
+  // assertion run before the task has incremented it.
+  furbleHostStopTasks();
+
   const std::vector<std::string> expected = {
       "crashlog.init", "netif.init",     "eventloop.init", "platform.init", "timekeeper.init",
       "boot.begin",    "ir.init",        "Infrared",       "feedback.init", "Feedback",

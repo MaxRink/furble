@@ -97,7 +97,8 @@ int main() {
         "the reopen did not reacquire every allocation");
   check(host_webui_tls::socketCount() == clientSockets,
         "the reopen did not restore both client sockets");
-  std::cout << "tls.reopen handshakes=2 bytes=" << host_webui_tls::liveBytes() << '\n';
+  std::cout << "tls.reopen handshakes=2 bytes=" << host_webui_tls::liveBytes()
+            << " sockets=" << clientSockets << '\n';
 
   // A precise allocation failure must fail the start and keep the persisted
   // identity for the next attempt. The production branch also logs the exact
