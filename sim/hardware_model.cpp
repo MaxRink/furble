@@ -689,6 +689,19 @@ void hwStart(void) {
 
   mqtt_model_state_t &mqtt = hw.mqtt;
   if (mqtt.enabled) {
+    // The 30,007-byte hardware seed was measured with the 8 KiB main stack.
+    // Charge the 12 KiB revert before the MQTT owner so the pool matches the
+    // production stack rather than the experiment.
+    if (mqtt.mainStackBytes > 8192) {
+      const size_t delta = mqtt.mainStackBytes - 8192;
+      if (heapAllocTagged(delta, "main_stack_12k", false, true) == 0) {
+        mqtt.state = "alloc_failed";
+        ESP_LOGE("heap", "Mem alloc fail. size 0x%04x caps 0x00000804",
+                 static_cast<unsigned>(delta));
+        mqtt.heapFreeAfter = heapFree();
+        return;
+      }
+    }
     // The main task high-water was 3,476 bytes before the MQTT path. The
     // hardware 8 KiB stack overflowed after MQTT was enabled, so model 8,500
     // bytes for the combined path and require the 12 KiB stack.

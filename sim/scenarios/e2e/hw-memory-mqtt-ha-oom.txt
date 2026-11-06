@@ -17,7 +17,7 @@ assert mqttmodel.state owner_blocked
 assert mqttmodel.queue_bytes 0
 assert mqttmodel.camera_bytes 0
 assert mqttmodel.ha off
-assert heap.free 16000
+assert heap.free 11904
 assert heap.alloc_failures 0
 assert heap.last_failed_task none
 assert ui.page main

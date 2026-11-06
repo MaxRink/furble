@@ -51,21 +51,24 @@ Inferred after reverting to 12 KiB and moving the queue to PSRAM:
 
 ```text
 MQTT off:           30,007 - 4,096 = 25,911 free
+MQTT on, after owner:
+                     25,911 - 10,240 = 15,671 free
 MQTT on, before camera snapshot:
-                     25,911 - 10,752 owner - 3,584 worker - 3,072 buffers
-                     = 8,503 free
+                     15,671 - 3,072 worker - 3,072 buffers = 9,527 free
 MQTT on, after camera snapshot:
-                     8,503 - 5,120 = 3,383 free
+                     9,527 - 5,120 = 4,407 free
 ```
 
-The start gate passes at 8,503 free. That is the 8 to 10 KiB target. The camera
+The task control blocks add roughly 1 KiB across the owner and worker, so the
+hardware values may be about 1 KiB lower. The start gate passes. The camera
 snapshot then loads, and the discovery gate requires 10,240 free, so it closes.
 Home Assistant discovery is skipped on this measured pool. The broker link and
 command path stay up, and the main stack no longer overflows.
 
-The simulator budget scenario reports 8,503 free / 7,156 largest after the
-camera snapshot, with no allocation failures and no leaks. The exact largest
-block on hardware remains to be measured.
+The simulator budget scenario reports 4,407 free / 3,060 largest after the
+camera snapshot, with no allocation failures and no leaks. The target 8 to
+10 KiB is met before the camera snapshot (9,527). The exact largest block on
+hardware remains to be measured.
 
 ## Gate thresholds
 

@@ -2,8 +2,8 @@
   "version": 1,
   "scenarios": {
     "hw-memory-post394-budget": {
-      "min_internal_free": 7000,
-      "min_internal_largest": 5000,
+      "min_internal_free": 4000,
+      "min_internal_largest": 3000,
       "max_leaks": 0,
       "max_fragmentation_permille": 500,
       "components": {
@@ -22,8 +22,8 @@
       "max_leaks": 0
     },
     "hw-memory-mqtt-ha-oom": {
-      "min_internal_free": 16000,
-      "min_internal_largest": 16000,
+      "min_internal_free": 11000,
+      "min_internal_largest": 11000,
       "max_leaks": 0,
       "min_alloc_failures": 0
     },

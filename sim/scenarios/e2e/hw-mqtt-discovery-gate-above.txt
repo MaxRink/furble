@@ -1,7 +1,7 @@
 # HA discovery gate above 10240 free after the camera snapshot.
 seed hw_profile sticks3
-seed heap_internal_free 31745
-seed heap_internal_largest 31745
+seed heap_internal_free 35841
+seed heap_internal_largest 35841
 seed mqtt_owner_stack 10240
 seed mqtt_worker_stack 3072
 seed mqtt_buffer 1536

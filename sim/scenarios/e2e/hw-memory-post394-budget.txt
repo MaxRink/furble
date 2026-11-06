@@ -32,8 +32,8 @@ assert mqttmodel.main_stack 12288
 assert mqttmodel.main_stack_ok yes
 assert mqttmodel.ha blocked
 assert mqttmodel.discovery_gate closed
-assert_min heap.free 7000
-assert_min mem.high_water_largest 5000
+assert_min heap.free 4000
+assert_min mem.high_water_largest 3000
 assert mem.leaks 0
 assert ui.page main
 assert platform.watchdog armed

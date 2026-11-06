@@ -3,8 +3,8 @@
 # Seed 32,767: owner 10,752 + worker 3,584 + buffers 3,072 + camera 5,120
 # leave 10,239 bytes, one below the discovery floor.
 seed hw_profile sticks3
-seed heap_internal_free 31743
-seed heap_internal_largest 31743
+seed heap_internal_free 35839
+seed heap_internal_largest 35839
 seed mqtt_owner_stack 10240
 seed mqtt_worker_stack 3072
 seed mqtt_buffer 1536
