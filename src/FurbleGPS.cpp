@@ -330,6 +330,7 @@ void GPS::resetAcquisition(uint32_t now) {
   m_PushedSequence = 0;
 #if defined(FURBLE_SIM)
   m_SimFreshFixesParsed = 0;
+  m_SimDutyWakeFixesParsed = 0;
 #endif
   m_CycleRequest = false;
   (void)now;
@@ -2699,6 +2700,11 @@ void GPS::processNmea(uint8_t *data, size_t length) {
           m_FixSequence = m_BurstSequence.load();
 #if defined(FURBLE_SIM)
           m_SimFreshFixesParsed.fetch_add(1);
+          // The burst after STANDBY/RAIL_OFF is the duty wake this counter
+          // isolates from the acquisition fix that armed the cycle.
+          if (m_DutyWake) {
+            m_SimDutyWakeFixesParsed.fetch_add(1);
+          }
 #endif
         }
       }

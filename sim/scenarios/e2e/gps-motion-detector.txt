@@ -52,7 +52,12 @@ assert gps.motion_state stationary
 assert gps.state tracking
 assert gps.degraded 0
 assert uart.count 0
-assert power.no_light_sleep 0
+# The receiver itself takes NO_LIGHT_SLEEP for its 1 Hz burst and releases it
+# about 75 ms later, so a one-shot read can catch that legitimate hold. The
+# detector has no release path of its own: if it took the lock it would stay
+# held, so a bounded wait for zero still fails when the detector owns it. The
+# state, degraded and UART assertions above stay exact.
+assert-eventually-virtual 2000 power.no_light_sleep 0
 
 # Exit is immediate. 2 g is 1 g away from the 1 g rest reference, five times the
 # 0.20 g threshold, so the next poll reports moving.
@@ -62,9 +67,9 @@ assert ui.motion_state moving
 assert gps.motion_state moving
 
 # And the receiver still did not move. Same reads, same values, one transition
-# later.
+# later. The same burst hold applies, so bound the lock read here too.
 assert gps.state tracking
 assert gps.degraded 0
 assert uart.count 0
-assert power.no_light_sleep 0
+assert-eventually-virtual 2000 power.no_light_sleep 0
 exit
