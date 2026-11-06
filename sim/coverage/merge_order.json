@@ -57,6 +57,16 @@
         "crash.mqtt_owner_6k",
         "crash.mqtt_10k_success"
       ]
+    },
+    {
+      "pr": "#407",
+      "branch": "fix/mqtt-queue-psram",
+      "coverage": [
+        "crash.mqtt_main_stack_8k",
+        "memory.mqtt_queue_psram",
+        "memory.mqtt_owner_gate",
+        "memory.main_stack_12k"
+      ]
     }
   ],
   "combined_scenarios": [
@@ -64,7 +74,8 @@
     "sim/scenarios/e2e/memory-webui-fail-closed.txt",
     "sim/scenarios/e2e/hw-memory-webui-identity.txt",
     "sim/scenarios/e2e/hw-mqtt-ha-discovery-fragments.txt",
-    "sim/scenarios/e2e/crash-record-survives-restart.txt"
+    "sim/scenarios/e2e/crash-record-survives-restart.txt",
+    "sim/scenarios/e2e/hw-memory-mqtt-main-stack-8k.txt"
   ],
   "note": "The ready report must be generated from the combined tree after every listed PR is merged in this order. Coverage from one PR alone is not evidence."
 }
