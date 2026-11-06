@@ -245,7 +245,8 @@ NimBLEAddress::NimBLEAddress() : m_Address(0), m_Type(0) {}
 
 NimBLEAddress::NimBLEAddress(uint64_t address, uint8_t type) : m_Address(address), m_Type(type) {}
 
-NimBLEAddress::NimBLEAddress(const std::string &address, uint8_t type) : m_Address(0), m_Type(type) {
+NimBLEAddress::NimBLEAddress(const std::string &address, uint8_t type)
+    : m_Address(0), m_Type(type) {
   std::string hex;
   for (const char character : address) {
     if (character != ':') {
@@ -1574,7 +1575,6 @@ void NimBLEDevice::setConnectDelayMs(uint32_t ms) {
 void NimBLEDevice::setConnParamApplyDelayReads(size_t reads) {
   g_ConnParamApplyDelayReads = reads;
 }
-
 
 // Server-side transport ------------------------------------------------------
 

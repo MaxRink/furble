@@ -8,10 +8,13 @@
 #include <array>
 #include <cstdint>
 #include <iostream>
+#include <string>
+#include <vector>
 
 #include "Device.h"
 #include "FurbleCompanionIdentity.h"
 #include "NimBLEDevice.h"
+#include "Preferences.h"
 #include "advertisement_preferences_stub.h"
 
 namespace {
@@ -52,6 +55,25 @@ int main(void) {
   check(NimBLEDevice::isBonded(cameraBond), "the camera bond survives the rotation");
   check(NimBLEDevice::deleteBondCount() == 0, "the rotation does not delete any bond");
   check(Furble::Host::preferencesKeyCount() == 1, "the rotated identity is persisted");
+  const std::vector<std::string> keys = Furble::Host::preferenceKeys();
+  check(keys.size() == 1 && keys[0] == "companion_bleid",
+        "the identity uses the distinct companion_bleid key");
+  for (const auto &key : keys) {
+    check(key.size() <= 15, "the identity key fits the ESP-IDF NVS 15-character limit");
+    check(key != "companion_addr", "the identity key does not collide with the peer bond");
+  }
+
+  // The host stub enforces the same NVS key bound as ESP-IDF, so a future
+  // regression fails before a device would silently truncate the key.
+  {
+    Furble::Preferences preferences;
+    check(preferences.begin("furble", false), "the stub namespace opens");
+    const uint8_t value = 1;
+    check(preferences.put("this_key_is_too_long", &value, sizeof(value)) == 0,
+          "the host Preferences stub rejects keys longer than 15 characters");
+    check(!preferences.isKey("this_key_is_too_long"), "the rejected long key was not stored");
+    preferences.end();
+  }
 
   // A boot re-runs Device::init() and then CompanionGatt::init() applies the
   // stored identity before advertising. It must not fall back to the default

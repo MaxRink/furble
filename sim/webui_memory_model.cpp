@@ -186,6 +186,7 @@ void webuiMemoryTick(void) {
   model.reservedBytes += WebUIMemory::HTTPD_STACK_BYTES;
   model.serverRunning = true;
   model.serverBlocked = false;
+  model.serverAllocFailed = false;
   model.supervisorBlocked = false;
   model.failClosed = false;
   model.gateReason = "none";

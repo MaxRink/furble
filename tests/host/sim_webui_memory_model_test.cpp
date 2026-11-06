@@ -9,6 +9,7 @@
 #include <iostream>
 #include <string>
 
+#include "FurbleWebUIMemory.h"
 #include "clock.h"
 #include "heap_model.h"
 #include "webui_memory_model.h"
@@ -67,6 +68,25 @@ int main(void) {
   check(std::strcmp(webuiGateMessage(), "") == 0, "a successful admission clears the message");
   check(webuiGateReason() != nullptr && webuiGateMessage() != nullptr,
         "the query accessors return stable copies");
+
+  // Exact allocation failure, then a successful retry. The retry must clear
+  // serverAllocFailed or the state accessor keeps reporting alloc_failed while
+  // the server is actually running.
+  webuiMemoryConfigure(false, true, true);
+  webuiMemoryTick();
+  check(std::strcmp(webuiServerState(), "pending") == 0, "disabling did not stop the server");
+  webuiMemoryConfigure(true, true, true);
+  heapSet(60000, 30000);
+  heapSetAllocFailureOnce(Furble::WebUIMemory::HTTPD_STACK_BYTES, "webui_https");
+  setClockMillis(30000);
+  webuiMemoryTick();
+  check(std::strcmp(webuiServerState(), "alloc_failed") == 0,
+        "the forced allocation failure did not report alloc_failed");
+  setClockMillis(41000);
+  webuiMemoryTick();
+  check(std::strcmp(webuiServerState(), "running") == 0,
+        "the successful retry did not clear serverAllocFailed");
+  check(!webuiFailClosed(), "the successful retry kept the stale fail-closed flag");
 
   if (g_Failures != 0) {
     std::cerr << "sim webui memory model: " << g_Failures << " FAILED\n";

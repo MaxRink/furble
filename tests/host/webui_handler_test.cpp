@@ -107,8 +107,8 @@ int main() {
   webui.hostResetIdentity();
 
   check(webui.hostStartServer("test certificate", "test key"), "real WebUI server did not start");
-  check(host_webui_http::lastMaxOpenSockets() >= 5,
-        "the WebUI configured fewer client sockets than ESP-IDF's reserved slots allow");
+  check(host_webui_http::lastMaxOpenSockets() == Furble::WebUI::maxOpenSockets(),
+        "the WebUI start did not carry the production client socket count");
 
   // Settings serialization and writes. The catalog is populated by the host
   // double so this exercises redaction, typed writes and the password guard.

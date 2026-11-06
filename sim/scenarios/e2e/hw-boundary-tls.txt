@@ -9,8 +9,9 @@
 # Runner: sh sim/scripts/run-boundary-conformance.sh
 # Test: boundary-webui-tls
 #
-# Expected tokens:
-# tls.handshake handshakes=1 bytes=28672 sockets=2 timeout_ms=5000
+# Expected tokens. The socket count and byte total are derived from
+# Furble::WebUI::maxOpenSockets() by the linked test:
+# tls.handshake handshakes=1 bytes=<derived> sockets=<derived> timeout_ms=5000
 # tls.header oversized=1 status=401 commands=0
 # tls.body oversized=1 status=413 commands=0
 # tls.reopen handshakes=2 bytes=28672

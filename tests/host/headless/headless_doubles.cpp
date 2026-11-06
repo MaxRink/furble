@@ -25,17 +25,18 @@
 #include "FurbleUI.h"
 #include "FurbleWebUI.h"
 #include "FurbleWiFi.h"
+#include "M5Unified.h"
 #include "Scan.h"
 #include "esp_event.h"
 #include "esp_netif.h"
 #include "esp_timer.h"
-#include "M5Unified.h"
 
 const char *LOG_TAG = FURBLE_STR;
 
 namespace {
 
 void record(const char *stage) {
+  const std::lock_guard<std::mutex> lock(HeadlessState::bootMutex);
   HeadlessState::boot.emplace_back(stage);
 }
 
@@ -225,9 +226,8 @@ IR &IR::getInstance() {
 }
 
 IR::protocol_t IR::clampProtocol(uint8_t value) {
-  return value > static_cast<uint8_t>(protocol_t::CANON_DELAYED)
-             ? protocol_t::NIKON
-             : static_cast<protocol_t>(value);
+  return value > static_cast<uint8_t>(protocol_t::CANON_DELAYED) ? protocol_t::NIKON
+                                                                 : static_cast<protocol_t>(value);
 }
 
 void IR::init() {
@@ -365,10 +365,9 @@ void MQTT::init() {
 void Console::init() {
   HeadlessState::consoleInit++;
   record("console.init");
-  HeadlessState::consoleQueued =
-      Furble::UI::sendRequest(Furble::UI::Request::FEEDBACK_TEST, 0)
-      && Furble::UI::sendRequest(Furble::UI::Request::FEEDBACK_RELOAD, 0)
-      && Furble::UI::sendRequest(Furble::UI::Request::GPS_RELOAD, 0);
+  HeadlessState::consoleQueued = Furble::UI::sendRequest(Furble::UI::Request::FEEDBACK_TEST, 0)
+                                 && Furble::UI::sendRequest(Furble::UI::Request::FEEDBACK_RELOAD, 0)
+                                 && Furble::UI::sendRequest(Furble::UI::Request::GPS_RELOAD, 0);
 }
 
 }  // namespace Furble

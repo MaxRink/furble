@@ -24,6 +24,7 @@ class ExecutableAssertionTest(unittest.TestCase):
                 "# assert heap.free 1\n"
                 "seed tag heap.free\n"
                 "print heap.free\n"
+                "xassert heap.free 1\n"
                 "assert ui.page main\n"
                 "assert_min heap.largest 1\n"
                 "assert-eventually 100 gps.state standby\n",
@@ -54,6 +55,35 @@ class ExecutableAssertionTest(unittest.TestCase):
             finally:
                 COVERAGE.ROOT = old_root
         self.assertTrue(ok, error)
+
+    def test_runner_evidence_requires_an_executable_script(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runner = root / "runner.sh"
+            runner.write_text("#!/bin/sh\necho 'tls.handshake handshakes=1'\nexit 0\n",
+                              encoding="utf-8")
+            old_root = COVERAGE.ROOT
+            COVERAGE.ROOT = root
+            try:
+                runner.chmod(0o644)
+                not_executable, error = COVERAGE.assertion_evidence({
+                    "id": "boundary.example",
+                    "runner": "runner.sh",
+                    "scenario": "runner.sh",
+                    "assertions": ["tls.handshake"],
+                })
+                runner.chmod(0o755)
+                executable, _ = COVERAGE.assertion_evidence({
+                    "id": "boundary.example",
+                    "runner": "runner.sh",
+                    "scenario": "runner.sh",
+                    "assertions": ["tls.handshake"],
+                })
+            finally:
+                COVERAGE.ROOT = old_root
+        self.assertFalse(not_executable)
+        self.assertIn("not executable", error)
+        self.assertTrue(executable)
 
     def test_missing_executable_assertion_is_reported(self):
         with tempfile.TemporaryDirectory() as directory:

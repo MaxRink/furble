@@ -52,7 +52,9 @@ void CompanionGatt::init(void) {
     // starts advertising. Device::init() leaves the default RPA policy, so a
     // host that paired after the rotation would otherwise lose its bond.
     // enable() repeats the application for the disabled->enabled path.
-    CompanionIdentity::applyPersisted();
+    if (!CompanionIdentity::applyPersisted()) {
+      ESP_LOGD(LOG_TAG, "No persisted companion identity was applied at boot");
+    }
     enable(false);
   }
 }
@@ -109,18 +111,19 @@ bool CompanionGatt::reidentify(void) {
     return false;
   }
 
+  // Persist and apply the new address before dropping the current link and
+  // bond. A persistence or controller failure then leaves the companion in its
+  // previous usable state instead of silent and bondless.
+  if (!CompanionIdentity::rotate()) {
+    ESP_LOGW(LOG_TAG, "Companion identity rotation failed; keeping the active link and bond");
+    return false;
+  }
+
   stopAdvertising();
   if ((m_Server != nullptr) && connected && (handle != INVALID_CONN_HANDLE)) {
     m_Server->disconnect(handle);
   }
   forgetBond();
-
-  // The new address is persisted before it is applied, so the next boot
-  // restores the identity the host is about to pair with. Camera bonds stay in
-  // the shared NimBLE bond store untouched.
-  if (!CompanionIdentity::rotate()) {
-    return false;
-  }
   startPairingWindow();
   return true;
 }
@@ -173,7 +176,9 @@ void CompanionGatt::enable(bool pairingWindow) {
       // console or a settings write must still advertise the address the host
       // bonded to after reidentify. The init() call is intentionally harmless
       // double application.
-      CompanionIdentity::applyPersisted();
+      if (!CompanionIdentity::applyPersisted()) {
+        ESP_LOGD(LOG_TAG, "No persisted companion identity was applied on enable");
+      }
 
       // Match Camera::connect() and use numeric comparison for the server.
       // The companion uses an encrypted Just Works bond and authenticates the

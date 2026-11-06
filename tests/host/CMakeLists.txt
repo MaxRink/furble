@@ -2558,6 +2558,7 @@ set(BOUNDARY_COMPANION_SOURCES
     ${FURBLE_ROOT}/src/FurbleCompanionAuth.cpp
     ${FURBLE_ROOT}/src/FurbleCompanionService.cpp
     ${FURBLE_ROOT}/src/FurbleCompanion.cpp
+    ${FURBLE_ROOT}/src/FurbleCompanionIdentity.cpp
     ${FURBLE_ROOT}/src/FurbleControl.cpp
     ${FURBLE_ROOT}/src/FurbleTimezone.cpp
     ${FURBLE_ROOT}/lib/furble/Camera.cpp
@@ -2603,6 +2604,7 @@ target_include_directories(boundary_companion_test BEFORE PRIVATE
 target_compile_definitions(boundary_companion_test PRIVATE
                            FURBLE_NO_DISPLAY
                            FURBLE_HOST_COMPANION_TEST
+                           FURBLE_WEBUI=1
                            FURBLE_VERSION="boundary")
 target_compile_options(boundary_companion_test PRIVATE
                        ${BOUNDARY_FREERTOS_INCLUDE}

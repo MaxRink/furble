@@ -57,14 +57,18 @@ python3 tools/check_flash_readiness.py
 python3 tools/check_flash_readiness.py --ready
 ```
 
-`check_sim_coverage.py` validates the manifest structure and evidence. The
-normal form passes when every modeled or approximate entry has a model,
-scenario or runner, and at least one assertion that the scenario contains.
-`--require-ready` fails on any approximate or not-modeled entry, any pending fuzz
-target, any known failing seed, and any incomplete or failed permutation result.
+`check_sim_coverage.py` validates the manifest structure and evidence. A
+scenario must contain a real `assert` step: `xassert`, comments and log strings
+never count. A shell scenario must run the token through an actual `grep`
+command. A modeled `runner` entry must point at an executable script with the
+assertions in non-comment commands. `--require-ready` fails on any approximate
+or not-modeled entry, any pending fuzz target, any known failing seed, and any
+incomplete or failed permutation result.
 
 `check_flash_readiness.py` prints the report and the exact blockers. `--ready`
-returns non-zero while any blocker remains. It also refuses a dirty worktree.
+returns non-zero while any blocker remains. It runs every manifest `runner` and
+fails on a nonzero exit, so the linked boundaries are executed evidence. It
+also refuses a dirty worktree.
 
 ## Permutations
 
@@ -76,8 +80,8 @@ memory-critical axes: `web_ui`, `mqtt`, `mqtt_ha`, `companion`, `wifi`, `camera`
 # deterministic pull-request smoke prefix
 python3 sim/scripts/run-permutations.py --limit 64 \
   --results .pio/permutation-results.json
-# full release run
-python3 sim/scripts/run-permutations.py \
+# full release run (compact artifact, no per-result output tail)
+python3 sim/scripts/run-permutations.py --compact \
   --results sim/coverage/permutation_results.json
 ```
 
@@ -125,7 +129,7 @@ sh sim/scripts/run-boundary-conformance.sh
 sh sim/scripts/check-doc-tokens.sh
 sh sim/scripts/check-hardware-quirks.sh
 python3 sim/scripts/run-memory-profile.py
-python3 sim/scripts/run-permutations.py \
+python3 sim/scripts/run-permutations.py --compact \
   --results sim/coverage/permutation_results.json
 sh sim/scripts/run-fuzz.sh
 python3 tools/check_flash_readiness.py --ready \

@@ -365,9 +365,7 @@ class NimBLEServer {
   NimBLEService *getService(const NimBLEUUID &uuid);
   bool start();
   void disconnect(uint16_t conn_handle);
-  void setCallbacks(NimBLEServerCallbacks *callbacks, bool = false) {
-    m_Callbacks = callbacks;
-  }
+  void setCallbacks(NimBLEServerCallbacks *callbacks, bool = false) { m_Callbacks = callbacks; }
   NimBLEServerCallbacks *callbacks() const { return m_Callbacks; }
   void advertiseOnDisconnect(bool enabled) { m_AdvertiseOnDisconnect = enabled; }
   NimBLEConnInfo getPeerInfoByHandle(uint16_t conn_handle) const;

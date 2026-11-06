@@ -61,6 +61,16 @@ class CompanionIdentityEnableContractTest(unittest.TestCase):
                 self.assertLess(apply_at, position,
                                 f"{advertising} runs before the identity is applied")
 
+    def test_reidentify_rotates_before_dropping_the_link_or_bond(self):
+        body = function_body(self.text, "bool CompanionGatt::reidentify(void)")
+        rotate_at = body.find("CompanionIdentity::rotate()")
+        self.assertGreaterEqual(rotate_at, 0, "reidentify does not rotate the identity")
+        for destructive in ("stopAdvertising()", "m_Server->disconnect(", "forgetBond()"):
+            position = body.find(destructive)
+            self.assertGreaterEqual(position, 0, f"reidentify is missing {destructive}")
+            self.assertLess(rotate_at, position,
+                            f"{destructive} runs before identity rotation can fail")
+
 
 if __name__ == "__main__":
     unittest.main()

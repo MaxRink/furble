@@ -69,8 +69,61 @@ class ScenarioGeneratorTest(unittest.TestCase):
             document = json.loads(raw)
         self.assertNotIn("\n  ", raw)
         self.assertEqual(len(document["results"]), 1)
+        self.assertFalse(document["complete"])
         entry = document["results"][0]
         self.assertEqual(set(entry), {"id", "board", "combination", "passed", "exit"})
+
+    def _write_small_manifest(self, root):
+        manifest = {
+            "version": 1,
+            "boards": ["sticks3", "core2"],
+            "axes": {
+                "web_ui": ["on"],
+                "mqtt": ["off"],
+                "mqtt_ha": ["off"],
+                "companion": ["off"],
+                "wifi": ["disconnected"],
+                "camera": ["none"],
+                "psram": ["present"],
+                "mqtt_tls": ["plain"],
+            },
+            "expected_count": 2,
+            "scenario": "sim/fixtures/hardware/config-matrix.txt",
+            "assertions": ["setting.fauxny"],
+        }
+        path = root / "permutations.json"
+        path.write_text(json.dumps(manifest), encoding="utf-8")
+        return path
+
+    def _fake_binary(self, root):
+        fake = root / "fake-sim"
+        fake.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        fake.chmod(fake.stat().st_mode | stat.S_IXUSR)
+        return fake
+
+    def test_unknown_board_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self._write_small_manifest(root)
+            fake = self._fake_binary(root)
+            code = PERMS.main(["--binary", str(fake), "--manifest", str(manifest),
+                               "--results", str(root / "results.json"),
+                               "--board", "not-a-board", "--compact"])
+        self.assertEqual(code, 2)
+
+    def test_board_filtered_run_is_not_complete(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = self._write_small_manifest(root)
+            fake = self._fake_binary(root)
+            results = root / "results.json"
+            code = PERMS.main(["--binary", str(fake), "--manifest", str(manifest),
+                               "--results", str(results), "--board", "sticks3",
+                               "--compact"])
+            self.assertEqual(code, 0)
+            document = json.loads(results.read_text(encoding="utf-8"))
+        self.assertEqual(document["run_count"], 1)
+        self.assertFalse(document["complete"])
 
 
 if __name__ == "__main__":

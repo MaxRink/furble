@@ -3,6 +3,7 @@
 import importlib.util
 from pathlib import Path
 import sys
+import tempfile
 import unittest
 
 
@@ -59,6 +60,45 @@ class FuzzResultTest(unittest.TestCase):
         errors = READINESS.check_fuzz_results(FUZZ_MANIFEST, document)
         self.assertTrue(any("duplicated" in error for error in errors))
         self.assertTrue(any("no manifest target" in error for error in errors))
+
+
+class BoundaryRunnerTest(unittest.TestCase):
+    def docs(self, runner):
+        return ({"entries": [{"runner": runner}]}, {"crashes": []})
+
+    def test_failing_runner_is_a_blocker(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runner = root / "boundary.sh"
+            runner.write_text("#!/bin/sh\necho 'headless_service_test: PASS'\nexit 1\n",
+                              encoding="utf-8")
+            runner.chmod(0o755)
+            errors = READINESS.check_boundary_runners(
+                *self.docs("boundary.sh"), root=root, execute=True)
+        self.assertTrue(any("boundary runner failed (1)" in error for error in errors))
+
+    def test_missing_or_non_executable_runner_is_a_blocker(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runner = root / "boundary.sh"
+            runner.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            runner.chmod(0o644)
+            errors = READINESS.check_boundary_runners(
+                *self.docs("boundary.sh"), root=root, execute=True)
+            missing = READINESS.check_boundary_runners(
+                *self.docs("missing.sh"), root=root, execute=True)
+        self.assertTrue(any("not executable" in error for error in errors))
+        self.assertTrue(any("missing" in error for error in missing))
+
+    def test_successful_runner_passes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runner = root / "boundary.sh"
+            runner.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            runner.chmod(0o755)
+            errors = READINESS.check_boundary_runners(
+                *self.docs("boundary.sh"), root=root, execute=True)
+        self.assertEqual(errors, [])
 
 
 class MemoryScenarioSetTest(unittest.TestCase):

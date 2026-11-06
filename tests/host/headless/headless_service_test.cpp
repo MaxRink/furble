@@ -11,12 +11,12 @@
 #include <string>
 #include <vector>
 
-#include "headless_state.h"
 #include "FurbleBootScreen.h"
 #include "FurblePlatform.h"
 #include "FurbleUI.h"
 #include "M5Unified.h"
 #include "freertos/FreeRTOS.h"
+#include "headless_state.h"
 
 extern "C" void app_main(void);
 
@@ -34,6 +34,7 @@ void check(bool condition, const char *message) {
 }
 
 std::vector<std::string> bootWithoutTask() {
+  const std::lock_guard<std::mutex> lock(HeadlessState::bootMutex);
   std::vector<std::string> filtered;
   for (const auto &stage : HeadlessState::boot) {
     if (stage != "control.task") {
@@ -87,11 +88,11 @@ void finish(void) {
   }
   std::cout << "headless.loop platform=" << platformUpdates << " crash=" << crashUpdates
             << " scan=" << scanProcessed << " gps=" << gpsUpdates << '\n';
-  std::cout << "headless.services console=" << consoleInit << " ir=" << irInit
-            << " sd=" << sdInit << " wifi=" << wifiInit << " gps=" << gpsInit
-            << " ble=" << bleInit << " webui=" << webuiInit << " mqtt=" << mqttInit
-            << " ethernet=" << ethernetInit << '\n';
-  std::cout << "headless.no_panel touched=0\n";
+  std::cout << "headless.services console=" << consoleInit << " ir=" << irInit << " sd=" << sdInit
+            << " wifi=" << wifiInit << " gps=" << gpsInit << " ble=" << bleInit
+            << " webui=" << webuiInit << " mqtt=" << mqttInit << " ethernet=" << ethernetInit
+            << '\n';
+  std::cout << "headless.no_panel touched=" << (M5.Display.panelUsed() ? 1 : 0) << '\n';
 
   if (g_Failures != 0) {
     std::cout.flush();

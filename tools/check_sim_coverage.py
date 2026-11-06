@@ -12,7 +12,9 @@ from __future__ import annotations
 import argparse
 import itertools
 import json
+import os
 from pathlib import Path
+import re
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -51,24 +53,40 @@ def executable_assertions(path: Path) -> set[str]:
                 assertions.add(parts[1])
             elif command in {"assert-eventually", "assert-eventually-virtual"} and len(parts) > 2:
                 assertions.add(parts[2])
-            elif command == "xassert":
-                if len(parts) > 2 and parts[1] == "board-varies":
-                    assertions.add(parts[2])
-                elif len(parts) > 1:
-                    assertions.add(parts[1])
+        # xassert documents an expected failure; it can never be modeled
+        # evidence for the release gate.
         return assertions
 
+    grep_command = re.compile(r"(?:^|[;&|!(]|\$\(|\bthen\b|\bdo\b)\s*grep\b")
+    return {
+        line.strip()
+        for line in text.splitlines()
+        if line.strip() and not line.strip().startswith("#")
+        and grep_command.search(line)
+    }
+
+
+def runner_evidence(entry: dict) -> tuple[bool, str]:
+    """A modeled runner entry must point at an executable, non-comment script."""
+    runner = ROOT / entry["runner"]
+    if not runner.is_file():
+        return False, f"{entry['id']}: runner not found: {entry['runner']}"
+    if not os.access(runner, os.X_OK):
+        return False, f"{entry['id']}: runner is not executable: {entry['runner']}"
+    text = scenario_text(runner)
     executable_lines = [line for line in text.splitlines()
                         if line.strip() and not line.strip().startswith("#")]
-    for line in executable_lines:
-        if "grep" not in line:
-            continue
-        for token in line.replace("\\", " ").split():
-            assertions.add(token.strip("\"'"))
-    return assertions
+    missing = [str(assertion) for assertion in entry["assertions"]
+               if not any(str(assertion) in line for line in executable_lines)]
+    if missing:
+        return False, (f"{entry['id']}: runner {entry['runner']} has no executable "
+                       f"evidence for {missing!r}")
+    return True, ""
 
 
 def assertion_evidence(entry: dict) -> tuple[bool, str]:
+    if entry.get("runner"):
+        return runner_evidence(entry)
     path = ROOT / entry["scenario"]
     if not path.is_file():
         return False, f"scenario/runner not found: {entry['scenario']}"
@@ -77,13 +95,9 @@ def assertion_evidence(entry: dict) -> tuple[bool, str]:
         missing = [str(assertion) for assertion in entry["assertions"]
                    if str(assertion) not in evidence]
     else:
-        # A shell runner has no assert DSL. Require the token to appear in a
-        # non-comment grep command, so prose in a comment or an echoed log
-        # string does not count.
-        text = scenario_text(path)
-        grep_lines = [line for line in text.splitlines()
-                      if line.strip() and not line.strip().startswith("#")
-                      and "grep" in line]
+        # The token must appear on an actual grep command line. A scene/log
+        # string elsewhere in the script is not evidence.
+        grep_lines = executable_assertions(path)
         missing = [str(assertion) for assertion in entry["assertions"]
                    if not any(str(assertion) in line for line in grep_lines)]
     if missing:

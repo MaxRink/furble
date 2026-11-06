@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -88,6 +89,44 @@ def expected_permutation_ids(manifest: dict) -> list[tuple[str, str, dict]]:
     return expected
 
 
+def boundary_runners(hardware_doc: dict, crash_doc: dict) -> list[str]:
+    runners = {
+        entry.get("runner")
+        for entry in (hardware_doc.get("entries", []) + crash_doc.get("crashes", []))
+        if entry.get("runner")
+    }
+    return sorted(runners)
+
+
+def check_boundary_runners(hardware_doc: dict,
+                           crash_doc: dict,
+                           root: Path = ROOT,
+                           execute: bool = False) -> list[str]:
+    """Validate and, for the readiness gate, execute every declared runner."""
+    errors: list[str] = []
+    for runner in boundary_runners(hardware_doc, crash_doc):
+        path = root / runner
+        if not path.is_file():
+            errors.append(f"boundary runner missing: {runner}")
+            continue
+        if not os.access(path, os.X_OK):
+            errors.append(f"boundary runner is not executable: {runner}")
+            continue
+        if not execute:
+            continue
+        try:
+            result = subprocess.run([str(path)], cwd=root, timeout=900)
+        except subprocess.TimeoutExpired:
+            errors.append(f"boundary runner timed out: {runner}")
+            continue
+        except OSError as error:
+            errors.append(f"boundary runner could not start: {runner}: {error}")
+            continue
+        if result.returncode != 0:
+            errors.append(f"boundary runner failed ({result.returncode}): {runner}")
+    return errors
+
+
 def memory_scenario_set_errors(seen: set[str], expected: set[str]) -> list[str]:
     """The dump directory must contain exactly the budgeted scenarios."""
     errors = [f"memory dump missing: {name}" for name in sorted(expected - seen)]
@@ -147,6 +186,7 @@ def main(argv: list[str] | None = None) -> int:
     f_errors, f_counts = coverage.check_fuzz(fuzz)
     p_errors, p_counts = coverage.check_permutations(permutations)
     blockers += h_errors + c_errors + f_errors + p_errors
+    blockers += check_boundary_runners(hardware, crashes, execute=args.ready)
     known_ids = ({entry.get("id") for entry in hardware.get("entries", [])}
                  | {entry.get("id") for entry in crashes.get("crashes", [])}
                  | {entry.get("id") for entry in fuzz.get("targets", [])})

@@ -59,9 +59,12 @@ for token in \
   "companion.enable services=2 characteristics=9" \
   "companion.reset_mock services=0 started=0 advertising=0" \
   "companion.auth bonded=1" \
+  "companion.password_gate webui_reloads=1" \
   "companion.reidentify address_changed=1" \
+  "companion.disable enabled=0" \
   "companion.restart enabled=1 bond=loaded" \
   "tls.handshake handshakes=1" \
+  "tls.socket_count sockets=" \
   "tls.alloc_failure failed=1" \
   "tls.reopen handshakes=2" \
   "webui_tls_socket_test: PASS" \

@@ -10,7 +10,9 @@ namespace CompanionIdentity {
 
 namespace {
 
-constexpr const char *IDENTITY_KEY = "companion_own_addr";
+// ESP-IDF NVS keys are at most 15 characters. Keep this distinct from the
+// persisted peer-bond key "companion_addr".
+constexpr const char *IDENTITY_KEY = "companion_bleid";
 constexpr size_t IDENTITY_BYTES = 6;
 
 bool load(uint8_t (&address)[IDENTITY_BYTES]) {

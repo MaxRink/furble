@@ -88,6 +88,10 @@ def main(argv: list[str] | None = None) -> int:
                         help="omit output_tail and write compact release JSON")
     args = parser.parse_args(argv)
     manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
+    unknown_boards = sorted(set(args.board) - set(manifest.get("boards", [])))
+    if unknown_boards:
+        print(f"unknown --board value(s): {', '.join(unknown_boards)}", file=sys.stderr)
+        return 2
     results = []
     expected_ids = []
     env = dict(os.environ, SDL_VIDEODRIVER="dummy", SDL_AUDIODRIVER="dummy")
@@ -128,7 +132,10 @@ def main(argv: list[str] | None = None) -> int:
         "version": 1,
         "expected_count": manifest["expected_count"],
         "run_count": len(results),
-        "complete": len(results) == len(expected_ids),
+        # A board- or limit-filtered smoke run is never a complete release
+        # artifact, even when it covered every selected combination.
+        "complete": (not args.board and not args.limit
+                     and len(results) == manifest["expected_count"]),
         "results": results,
     }
     if selection_error:
