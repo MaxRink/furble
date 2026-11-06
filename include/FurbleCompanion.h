@@ -7,6 +7,7 @@
 #include <NimBLEServer.h>
 #include <NimBLEService.h>
 
+#include <Preferences.h>
 #include <freertos/FreeRTOS.h>
 
 #include <cstddef>
