@@ -38,10 +38,16 @@ LOG="$WORK/result.log"
 : >"$LOG"
 status=0
 
-# run_fixture BINARY FIXTURE
+# run_fixture BINARY FIXTURE ABORT_LINE TASK RECORD_TASK
+# Each fixture must name its own allocation: its abort line and task are
+# checked against that run alone, so another fixture cannot supply them.
+# RECORD_TASK is TASK cut to the 15 characters a crash record keeps.
 run_fixture() {
   binary=$1
   fixture=$2
+  abort_line=$3
+  task=$4
+  record_task=$5
   prefs="$WORK/$(basename "$fixture" .txt).prefs"
   echo "=== expect panic: $fixture ===" | tee -a "$LOG"
   set +e
@@ -56,14 +62,23 @@ run_fixture() {
     status=1
     return
   fi
+  if ! grep -F -- "abort() was called: $abort_line" "$WORK/run.log" >/dev/null 2>&1 \
+    || ! grep -F -- "SIM PANIC: allocation failure in task $task aborts" "$WORK/run.log" \
+      >/dev/null 2>&1; then
+    echo "FAIL: $fixture aborted, but not on '$abort_line' in task $task" >&2
+    cat "$WORK/run.log" >&2
+    status=1
+    return
+  fi
   set +e
   FURBLE_SIM_PREFS=$prefs "$TIMEOUT_CMD" -k 10 120 "$binary" \
     --script "$ROOT/sim/fixtures/hardware/panic-record.txt" >"$WORK/record.log" 2>&1
   rc=$?
   set -e
   cat "$WORK/record.log" >>"$LOG"
-  if [ "$rc" -ne 0 ]; then
-    echo "FAIL: $fixture left no panic crash record for the next boot" >&2
+  if [ "$rc" -ne 0 ] || ! grep -F -- "crash.task = $record_task" "$WORK/record.log" \
+    >/dev/null 2>&1; then
+    echo "FAIL: $fixture left no panic crash record for task $record_task" >&2
     cat "$WORK/record.log" >&2
     status=1
     return
@@ -71,9 +86,12 @@ run_fixture() {
   echo "PASS: $fixture aborted and its record survived the reboot"
 }
 
-run_fixture "$BIN" sim/fixtures/hardware/panic-webui-pre-gate-alloc.txt
-run_fixture "$BIN" sim/fixtures/hardware/panic-icon-no-psram.txt
-run_fixture "$MQTT_BIN" sim/fixtures/hardware/panic-mqtt-task-alloc-fail.txt
+run_fixture "$BIN" sim/fixtures/hardware/panic-webui-pre-gate-alloc.txt \
+  "Mem alloc fail. size 0x2000 caps 0x00000804" webui_supervisor webui_superviso
+run_fixture "$BIN" sim/fixtures/hardware/panic-icon-no-psram.txt \
+  "Mem alloc fail. size 0x3003 caps 0x00001800" icon_decode icon_decode
+run_fixture "$MQTT_BIN" sim/fixtures/hardware/panic-mqtt-task-alloc-fail.txt \
+  "Mem alloc fail. size 0x2800 caps 0x00000804" mqtt mqtt
 
 # Structured evidence markers consumed by tools/check_sim_coverage.py. Each
 # token is checked against the captured run output. A crash record keeps 15

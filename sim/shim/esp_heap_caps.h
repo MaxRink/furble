@@ -53,6 +53,8 @@ static inline void *heap_caps_aligned_alloc(size_t alignment, size_t size, uint3
   }
   void *ptr = NULL;
   if (posix_memalign(&ptr, alignment, size) != 0) {
+    /* A real host failure follows the same board abort policy. */
+    furble_sim_heap_alloc_failed(size, capabilities, "heap_caps");
     return NULL;
   }
   return ptr;
