@@ -8,16 +8,13 @@ Directory-specific rules live in the `CLAUDE.md` of each directory you touch
 ## Review and merge gate
 
 Do not merge a PR with an unresolved review thread. Every Copilot or human
-finding must be recorded as fixed, already fixed, or a false positive with
-evidence. Resolving a thread without a fix is not acceptable. This rule also
-applies to a remediation PR that closes review findings.
-
-Every review finding must be fixed, or proven false or outdated with evidence,
-before merge. The online gate is
+finding must be fixed, or proven false or outdated with evidence, before merge.
+Record it as fixed, already fixed, or a false positive in
+`plans/NN-review-feedback.md`. Resolving a thread without a fix is not
+acceptable. The online gate is
 `python3 tools/check_review_threads.py --repo owner/name --pr N`; it fails
 closed on API errors and is intentionally not part of the offline pre-review or
-fork CI jobs. The remediation PR must pass it before merge; record the audit in
-`plans/NN-review-feedback.md`.
+fork CI jobs. The remediation PR must pass it before merge.
 
 ## Documentation mandate
 

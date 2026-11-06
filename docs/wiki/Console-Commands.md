@@ -145,7 +145,6 @@ tools/ble_debug.py --device furble-38a70 --status
 tools/ble_debug.py --device furble-38a70 --status --interval 5
 ```
 
-
 ## boot
 
 `boot timing` prints the retained boot timeline. Each mark has `at_ms` from
