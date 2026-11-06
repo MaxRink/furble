@@ -154,10 +154,11 @@ its TLS buffers are internal. The headless and Waveshare S3 images had TLS
 allocations in internal RAM until this pass.
 
 The WebUI per-connection budget from plan 304 is still the reference:
-`httpd_data` 776, two socket slots 384, `httpd_config` 96, seven response
-headers 56, one request scratch buffer 1,024, one `esp_tls_t` 2,184, the
-streamed settings JSON about 2,000, and lwIP pbufs about 3,000. The server gate
-requires 20,480 free and a 12,288 largest block before it allocates any of it.
+`httpd_data` 776, two client socket slots 384, `httpd_config` 96, seven
+response headers 56, one request scratch buffer 1,024, one `esp_tls_t` 2,184,
+the streamed settings JSON about 2,000, and lwIP pbufs about 3,000. The server
+gate requires 20,480 free and a 12,288 largest block before it allocates any of
+it.
 
 The WebUI settings response is streamed one setting at a time. The MQTT
 discovery tree still uses cJSON nodes, which are small internal allocations,

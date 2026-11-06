@@ -65,7 +65,7 @@ class Platform {
   void restart(void);
   void dumpPMLocks(void);
 
-  const battery_caps_t &getBatteryCaps(void) const { return m_Caps; }
+  battery_caps_t getBatteryCaps(void) const { return m_Caps; }
   battery_t readBattery(void) const { return m_Sample.battery; }
   battery_sample_t getBatterySample(void) const { return m_Sample; }
   pm_config_t getPMConfig(void) const { return m_PM; }

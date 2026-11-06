@@ -1,11 +1,13 @@
 #include "crash_log_sim.h"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <mutex>
 #include <string>
 
 #include <esp_log.h>
@@ -29,12 +31,17 @@ constexpr uint32_t UPDATE_PERIOD_MS = 1000;
 char s_Lines[LOG_LINES][LOG_LINE_BYTES] = {};
 uint32_t s_Head = 0;
 uint32_t s_Count = 0;
-uint32_t s_Sequence = 0;
+// The simulator runs the UI, control and service tasks on real host threads.
+// The retained tail and its sequence cross those threads, so guard both.
+std::mutex s_Mutex;
+std::mutex s_PersistMutex;
+std::atomic<uint32_t> s_Sequence {0};
 uint32_t s_LastUpdateMs = 0;
-bool s_Printing = false;
+std::atomic<bool> s_Printing {false};
 bool s_Initialized = false;
 bool s_Recovered = false;
-bool s_Injected = false;
+// The driver action and simulator task threads both touch the injected flag.
+std::atomic<bool> s_Injected {false};
 record_t s_Printed;
 record_t s_Current = {};
 bool s_HaveCurrent = false;
@@ -63,6 +70,7 @@ bool readPersisted(record_t &record) {
 }
 
 void writePersisted(const record_t &record) {
+  const std::lock_guard<std::mutex> lock(s_PersistMutex);
   const std::string path = recordPath();
   if (path.empty()) {
     return;
@@ -80,9 +88,10 @@ void writePersisted(const record_t &record) {
 }
 
 void appendLine(const char *line) {
-  if (line == nullptr || line[0] == '\0' || s_Printing) {
+  if (line == nullptr || line[0] == '\0' || s_Printing.load(std::memory_order_relaxed)) {
     return;
   }
+  const std::lock_guard<std::mutex> lock(s_Mutex);
   std::snprintf(s_Lines[s_Head], LOG_LINE_BYTES, "%s", line);
   s_Head = (s_Head + 1) % LOG_LINES;
   if (s_Count < LOG_LINES) {
@@ -105,9 +114,12 @@ void fillSnapshot(record_t &snapshot, uint32_t resetReason) {
   snapshot.uptime_s = Furble::Sim::clockMillis() / 1000;
   snapshot.heap_free = static_cast<uint32_t>(Furble::Sim::heapFree());
   snapshot.heap_largest = static_cast<uint32_t>(Furble::Sim::heapLargest());
-  for (uint32_t index = 0; index < s_Count; index++) {
-    const uint32_t source = (s_Head + LOG_LINES - s_Count + index) % LOG_LINES;
-    std::memcpy(snapshot.log[index], s_Lines[source], LOG_LINE_BYTES);
+  {
+    const std::lock_guard<std::mutex> lock(s_Mutex);
+    for (uint32_t index = 0; index < s_Count; index++) {
+      const uint32_t source = (s_Head + LOG_LINES - s_Count + index) % LOG_LINES;
+      std::memcpy(snapshot.log[index], s_Lines[source], LOG_LINE_BYTES);
+    }
   }
   copyTaskName(snapshot.task);
   Furble::CrashRecord::finalize(snapshot);
@@ -116,14 +128,17 @@ void fillSnapshot(record_t &snapshot, uint32_t resetReason) {
 void printRecord(const record_t &record) {
   char summary[192] = {};
   Furble::CrashRecord::formatSummary(record, summary, sizeof(summary));
-  s_Printing = true;
+  bool expected = false;
+  if (!s_Printing.compare_exchange_strong(expected, true, std::memory_order_relaxed)) {
+    return;
+  }
   ESP_LOGE(LOG_TAG, "CRASH RECORD: %s", summary);
   for (size_t line = 0; line < LOG_LINES; line++) {
     if (record.log[line][0] != '\0') {
       ESP_LOGE(LOG_TAG, "CRASH LOG: %s", record.log[line]);
     }
   }
-  s_Printing = false;
+  s_Printing.store(false, std::memory_order_relaxed);
 }
 
 }  // namespace
@@ -158,20 +173,26 @@ void init(void) {
   s_Initialized = true;
 
   record_t previous = {};
-  if (!readPersisted(previous) || !CrashRecord::valid(previous)) {
-    return;
+  const bool valid = readPersisted(previous) && CrashRecord::valid(previous);
+  const bool clean = valid && CrashRecord::clean(previous);
+  if (valid && !clean) {
+    printRecord(previous);
+    s_Printed = previous;
+    s_Recovered = true;
   }
-  if (CrashRecord::clean(previous)) {
-    return;
-  }
-  printRecord(previous);
-  s_Printed = previous;
-  s_Recovered = true;
   s_Injected = false;
 
-  record_t cleared = {};
-  CrashRecord::clear(cleared);
-  writePersisted(cleared);
+  // Consume the old record and persist a fresh unclean snapshot for this boot.
+  // Keeping a clean sidecar until the first periodic update let an early crash
+  // inherit the previous run's clean flag and disappear.
+  record_t snapshot = {};
+  fillSnapshot(snapshot, 1);  // ESP_RST_POWERON
+  {
+    const std::lock_guard<std::mutex> lock(s_Mutex);
+    s_Current = snapshot;
+    s_HaveCurrent = true;
+  }
+  writePersisted(snapshot);
 }
 
 void update(void) {
@@ -185,8 +206,11 @@ void update(void) {
   s_LastUpdateMs = now;
   record_t snapshot = {};
   fillSnapshot(snapshot, 1);  // ESP_RST_POWERON
-  s_Current = snapshot;
-  s_HaveCurrent = true;
+  {
+    const std::lock_guard<std::mutex> lock(s_Mutex);
+    s_Current = snapshot;
+    s_HaveCurrent = true;
+  }
   // The snapshot is an in-memory RTC substitute. Persist at most once per wall
   // second so virtual-time-heavy scenarios are not turned into file-I/O tests,
   // which perturbs unrelated cross-task timing assertions.
@@ -205,9 +229,15 @@ void markCleanShutdown(void) {
     return;
   }
   record_t snapshot;
-  if (s_HaveCurrent) {
-    snapshot = s_Current;
-  } else if (!readPersisted(snapshot) || !CrashRecord::valid(snapshot)) {
+  bool haveCurrent = false;
+  {
+    const std::lock_guard<std::mutex> lock(s_Mutex);
+    haveCurrent = s_HaveCurrent;
+    if (haveCurrent) {
+      snapshot = s_Current;
+    }
+  }
+  if (!haveCurrent && (!readPersisted(snapshot) || !CrashRecord::valid(snapshot))) {
     Furble::CrashRecord::clear(snapshot);
     snapshot.sequence = ++s_Sequence;
     snapshot.reset_reason = 1;
@@ -248,9 +278,12 @@ void crashLogInject(uint32_t resetReason, const char *task, const char *line) {
   record.heap_largest = static_cast<uint32_t>(Furble::Sim::heapLargest());
   record.flags = 0;
   copyTaskName(record.task);
-  for (uint32_t index = 0; index < s_Count; index++) {
-    const uint32_t source = (s_Head + LOG_LINES - s_Count + index) % LOG_LINES;
-    std::memcpy(record.log[index], s_Lines[source], LOG_LINE_BYTES);
+  {
+    const std::lock_guard<std::mutex> lock(s_Mutex);
+    for (uint32_t index = 0; index < s_Count; index++) {
+      const uint32_t source = (s_Head + LOG_LINES - s_Count + index) % LOG_LINES;
+      std::memcpy(record.log[index], s_Lines[source], LOG_LINE_BYTES);
+    }
   }
   if (task != nullptr && task[0] != '\0') {
     std::snprintf(record.task, TASK_BYTES, "%s", task);

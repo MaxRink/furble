@@ -1036,7 +1036,8 @@ int cmdCompanion(int argc, char **argv) {
     return 0;
   }
   if ((argc < 2) || (strcasecmp(argv[1], "password") != 0)) {
-    return fail("usage: companion start | stop | status | password set <pw> | clear | status");
+    return fail(
+        "usage: companion start | stop | status | reidentify | password set <pw> | clear | status");
   }
   if ((argc == 3) && !strcasecmp(argv[2], "status")) {
     std::string password;
@@ -2199,6 +2200,9 @@ int cmdNtp(int argc, char **argv) {
 
 /** Human readable last reset cause, for boot loop and crash diagnosis. */
 const char *resetReasonName(int reason) {
+  // Use the names pinned by this repository's ESP-IDF 5.5.3 headers. A future
+  // IDF that removes them should fail the target build instead of silently
+  // keeping a dead compatibility branch.
   switch (reason) {
     case ESP_RST_UNKNOWN:
       return "unknown";
@@ -2309,7 +2313,7 @@ int cmdStatus(int argc, char **argv) {
  * after the boot banner scrolled past.
  */
 int cmdCrash(int argc, char **argv) {
-  if ((argc == 2) && (strcmp(argv[1], "last") != 0)) {
+  if ((argc > 2) || ((argc == 2) && (strcmp(argv[1], "last") != 0))) {
     return fail("usage: crash [last]");
   }
   const auto *record = CrashLog::lastRecord();

@@ -32,7 +32,7 @@ About page and exposed through companion BLE Device Information.
 | `gps` | GPS status and control, see below. |
 | `time` | `status` reports wall-clock validity and source; `flush` persists it. |
 | `settings` | `list`, `get <name>`, `set <name> <value>`. |
-| `companion` | `start` (open the 60 s pairing window), `stop`, `status`, or `password set <pw>`, `clear`, `status`. |
+| `companion` | `start` (open the 60 s pairing window), `stop`, `status`, `reidentify` (rotate the LE address and drop only the companion bond), or `password set <pw>`, `clear`, `status`. |
 | `ui` | `audit`, `page`, or `back` for UI diagnostics and navigation. |
 | `cameras` | `list` saved cameras, or `status` for the active targets. Saved rows carry `saved_index`, which is the value `connect` takes. |
 | `connect` | `connect [index]`. No index uses the multi-connect selection. A scan-list position is not a saved index. |
@@ -64,6 +64,27 @@ On the display-less Waveshare ESP32-S3-ETH, `status` reports battery level and
 voltage as unknown (`-1`) and current as unavailable (`0`). It never infers USB
 or optional PoE power from Ethernet link state because the optional PoE HAT has
 no software-readable presence or negotiation signal.
+
+## BLE debug status (bench image)
+
+`pio run -e m5stick-s3-debug-ble` adds a read-only, unencrypted BLE status
+service for bench diagnosis. It is not part of the production companion
+contract. It answers when companion authentication, the host GATT cache, or the
+USB CDC endpoint is broken.
+
+- service `b57f4f70-087b-4740-b71d-8262cf26ebbc`
+- status `b57f4f72-087b-4740-b71d-8262cf26ebbc` (read)
+
+The snapshot reports reset reason, uptime, task count, internal and PSRAM free
+and largest blocks, bond count, BLE connections, and companion enabled/
+connected/encrypted/authenticated/bond/window/advertising state. Enable
+Companion mode so the service exists, then run:
+
+```sh
+python3 -m pip install bleak
+tools/ble_debug.py --device furble-38a70 --status
+tools/ble_debug.py --device furble-38a70 --status --interval 5
+```
 
 ## wifi
 
@@ -124,6 +145,11 @@ guaranteed panic task. The record lives in RTC memory and never writes flash.
   leaves the persisted setting off.
 - `companion stop` persists the setting off and stops the live service
   synchronously.
+- `companion reidentify` is the recovery path for a host with a stale GATT
+  handle map. It disconnects the link, deletes only the companion bond, persists
+  a new random-static LE address, and reopens the 60 s pairing window. The
+  address is restored before advertising on later boots, so the host keeps the
+  bond it creates after the rotation. Camera bonds are untouched.
 - `companion status` prints `companion.setting` (the persisted value),
   `companion.enabled` (the live service), `companion.bond` (a saved peer exists),
   `companion.window` (the 60 s pairing window is open) and

@@ -31,3 +31,10 @@ as the reader; do not return the underlying vector without the lock. The
 `MockNimBLE::resetMock()` path resets the server services, callbacks, started
 flag, counters and advertising counters, so a test never inherits the previous
 case's GATT database.
+
+`device-identity` covers the durable companion random-static identity,
+including reboot restore and untouched camera bonds. `webui-handler` covers the
+password half of the HTTP gate and the client socket count. `mqtt-owner` uses a
+virtual timer: never reintroduce wall-clock reads into the host double, or an
+offline-ACK deadline becomes a timing flake. `console-commands` pins the
+`companion reidentify` command and `crash` argument validation.

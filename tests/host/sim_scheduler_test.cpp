@@ -883,8 +883,16 @@ int main() {
     return fail(__LINE__);
   }
   std::string mutexDump;
-  furble_sim_report_tasks(mutexDump);
-  if (mutexDump.find("wait=mutex") == std::string::npos) {
+  // report_tasks() takes the scheduler lock with try_lock because it is also a
+  // watchdog path. A loaded host can catch that lock held by the scheduler and
+  // return the "unavailable" sentence, which is not evidence that the waiter
+  // is missing. Retry for the real report instead of failing on one sample.
+  const bool mutexReported = waitUntil("mutex waiter report", [&mutexDump]() {
+    mutexDump.clear();
+    furble_sim_report_tasks(mutexDump);
+    return mutexDump.find("wait=mutex") != std::string::npos;
+  });
+  if (!mutexReported) {
     return fail(__LINE__);
   }
   schedulerMutex.unlock();

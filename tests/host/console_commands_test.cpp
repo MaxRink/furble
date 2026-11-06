@@ -158,44 +158,44 @@ struct SubcommandContract {
 };
 
 const std::vector<SubcommandContract> SUBCOMMANDS = {
-    {"boot",         "usage: boot timing",                                               "",                     {"timing"}                            },
-    {"power",        "expected stats, log or off",                                       "",                     {"stats", "log", "off"}               },
-    {"perf",         "expected tasks, heap or lvgl",                                     "",                     {"tasks", "heap", "lvgl"}             },
+    {"boot",         "usage: boot timing",                                                       "",                     {"timing"}                            },
+    {"power",        "expected stats, log or off",                                               "",                     {"stats", "log", "off"}               },
+    {"perf",         "expected tasks, heap or lvgl",                                             "",                     {"tasks", "heap", "lvgl"}             },
     {"gps",
-     "expected on, off, raw, send, binary, config, aid, sats, platform, monhw or power", "",
-     {"on", "off", "raw", "send", "binary", "config", "aid", "sats", "platform", "monhw", "power"}                                                     },
-    {"time",         "usage: time status | flush",                                       "",                     {"status", "flush"}                   },
-    {"crash",        "usage: crash [last]",                                              "",                     {"last"}                              },
-    {"settings",     "expected list, get or set",                                        " theme",               {"list", "get", "set"}                },
+     "expected on, off, raw, send, binary, config, aid, sats, platform, monhw or power",         "",
+     {"on", "off", "raw", "send", "binary", "config", "aid", "sats", "platform", "monhw", "power"}                                                             },
+    {"time",         "usage: time status | flush",                                               "",                     {"status", "flush"}                   },
+    {"crash",        "usage: crash [last]",                                                      "",                     {"last"}                              },
+    {"settings",     "expected list, get or set",                                                " theme",               {"list", "get", "set"}                },
     {"companion",
-     "usage: companion start | stop | status | password set <pw> | clear | status",      "",
-     {"start", "stop", "status", "password"}                                                                                                           },
-    {"ui",           "expected audit, page or back",                                     "",                     {"audit", "page", "back"}             },
-    {"cameras",      "expected list or status",                                          "",                     {"list", "status"}                    },
+     "usage: companion start | stop | status | reidentify | password set <pw> | clear | status", "",
+     {"start", "stop", "status", "reidentify", "password"}                                                                                                     },
+    {"ui",           "expected audit, page or back",                                             "",                     {"audit", "page", "back"}             },
+    {"cameras",      "expected list or status",                                                  "",                     {"list", "status"}                    },
     {"multiconnect",
-     "expected list, select, deselect or clear",                                         " 0",
-     {"list", "select", "deselect", "clear"}                                                                                                           },
-    {"interval",     "expected start, stop or status",                                   "",                     {"start", "stop", "status"}           },
-    {"bulb",         "expected start, stop or status",                                   "",                     {"start", "stop", "status"}           },
-    {"display",      "expected status, mode or brightness",                              " gui",                 {"status", "mode", "brightness"}      },
-    {"motion",       "usage: motion status | scale [0.25-4.0]",                          "",                     {"status", "scale"}                   },
-    {"imu",          "usage: imu status",                                                "",                     {"status"}                            },
-    {"shutter",      "expected press, release or hold",                                  "",                     {"press", "release", "hold"}          },
-    {"ir",           "usage: ir fire [protocol]",                                        "",                     {"fire"}                              },
-    {"focus",        "expected press or release",                                        "",                     {"press", "release"}                  },
-    {"scan",         "expected start, stop or list",                                     "",                     {"start", "stop", "list"}             },
-    {"bt",           "expected scan, explore, pair or journal",                          "",                     {"scan", "explore", "pair", "journal"}},
-    {"feedback",     "usage: feedback test",                                             " shutter",             {"test"}                              },
-    {"flash",        "usage: flash prepare | cancel",                                    "",                     {"prepare", "cancel"}                 },
+     "expected list, select, deselect or clear",                                                 " 0",
+     {"list", "select", "deselect", "clear"}                                                                                                                   },
+    {"interval",     "expected start, stop or status",                                           "",                     {"start", "stop", "status"}           },
+    {"bulb",         "expected start, stop or status",                                           "",                     {"start", "stop", "status"}           },
+    {"display",      "expected status, mode or brightness",                                      " gui",                 {"status", "mode", "brightness"}      },
+    {"motion",       "usage: motion status | scale [0.25-4.0]",                                  "",                     {"status", "scale"}                   },
+    {"imu",          "usage: imu status",                                                        "",                     {"status"}                            },
+    {"shutter",      "expected press, release or hold",                                          "",                     {"press", "release", "hold"}          },
+    {"ir",           "usage: ir fire [protocol]",                                                "",                     {"fire"}                              },
+    {"focus",        "expected press or release",                                                "",                     {"press", "release"}                  },
+    {"scan",         "expected start, stop or list",                                             "",                     {"start", "stop", "list"}             },
+    {"bt",           "expected scan, explore, pair or journal",                                  "",                     {"scan", "explore", "pair", "journal"}},
+    {"feedback",     "usage: feedback test",                                                     " shutter",             {"test"}                              },
+    {"flash",        "usage: flash prepare | cancel",                                            "",                     {"prepare", "cancel"}                 },
     {"wifi",
-     "expected status, set, enable, disable, connect, disconnect or forget",             " ssid test",
-     {"status", "set", "enable", "disable", "connect", "disconnect", "forget"}                                                                         },
+     "expected status, set, enable, disable, connect, disconnect or forget",                     " ssid test",
+     {"status", "set", "enable", "disable", "connect", "disconnect", "forget"}                                                                                 },
     {"ntp",
-     "expected status, set, enable, disable or sync",                                    " server pool.example",
-     {"status", "set", "enable", "disable", "sync"}                                                                                                    },
+     "expected status, set, enable, disable or sync",                                            " server pool.example",
+     {"status", "set", "enable", "disable", "sync"}                                                                                                            },
     {"debug",
-     "expected control, camera, ble, heap, tasks, power, gps, settings or all",          "",
-     {"control", "camera", "ble", "heap", "tasks", "power", "gps", "settings", "all"}                                                                  },
+     "expected control, camera, ble, heap, tasks, power, gps, settings or all",                  "",
+     {"control", "camera", "ble", "heap", "tasks", "power", "gps", "settings", "all"}                                                                          },
 };
 
 size_t expectedSubcommandCount(void) {
@@ -365,6 +365,13 @@ void testStatusAndVersion(void) {
   checkContains(blind.out, "voltage: -1", "status reports -1 without a voltmeter");
   checkContains(blind.out, "current: 0", "status reports 0 without a current sensor");
   Furble::Platform::getInstance().setBatteryCaps(caps);
+
+  const Result crash = runDirect("crash");
+  check(crash.rc == 0, "crash without a retained record returns success");
+  checkContains(crash.out, "crash.none: true", "crash without a record says so");
+  const Result crashExtra = runDirect("crash last extra");
+  check(crashExtra.rc != 0, "crash with an extra argument is rejected");
+  checkContains(crashExtra.out, "usage: crash [last]", "crash names its accepted forms");
 }
 
 // Test 4. The settings commands roundtrip a real value through the production

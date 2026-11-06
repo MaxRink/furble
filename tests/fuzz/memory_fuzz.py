@@ -85,6 +85,10 @@ def build_script(seed: int, mqtt: bool) -> tuple[str, dict[str, object]]:
             "assert heap.active yes",
             "assert ui.page main",
             "assert platform.watchdog armed",
+            # Keep the post-#398 stack budgets under the memory fuzzer too:
+            # the 8 KiB main task and the 3 KiB internal companion task.
+            "assert mem.component.main_stack 8192",
+            "assert mem.component.companion_task 3072",
             "print webui.supervisor",
             "print webui.server",
             "print webui.fail_closed",

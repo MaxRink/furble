@@ -51,18 +51,20 @@ int main() {
   check(webui.hostCredentialsReady(), "the test identity was not prepared");
   check(webui.hostStartServer("test certificate", "test key"), "the WebUI did not start");
 
-  const size_t expectedBytes = host_webui_tls::TLS_CONTEXT_BYTES
-                               + host_webui_tls::IN_BUFFER_BYTES
+  const size_t clientSockets = Furble::WebUI::maxOpenSockets();
+  const size_t expectedBytes = host_webui_tls::TLS_CONTEXT_BYTES + host_webui_tls::IN_BUFFER_BYTES
                                + host_webui_tls::OUT_BUFFER_BYTES
-                               + (2 * host_webui_tls::SOCKET_BYTES);
+                               + (clientSockets * host_webui_tls::SOCKET_BYTES);
   check(host_webui_tls::handshakeCount() == 1, "the TLS handshake was not started once");
   check(host_webui_tls::liveBytes() == expectedBytes,
         "the TLS/socket allocation ledger does not match the production config");
-  check(host_webui_tls::socketCount() == 2, "the production socket count did not reach the layer");
+  check(host_webui_tls::socketCount() == clientSockets,
+        "the production socket count did not reach the layer");
   check(host_webui_tls::lastHandshakeTimeoutMs() == 5000,
         "the production TLS handshake timeout changed");
-  std::cout << "tls.handshake handshakes=1 bytes=" << expectedBytes
-            << " sockets=2 timeout_ms=5000\n";
+  std::cout << "tls.handshake handshakes=1 bytes=" << expectedBytes << " sockets=" << clientSockets
+            << " timeout_ms=5000\n";
+  std::cout << "tls.socket_count sockets=" << clientSockets << '\n';
 
   // A header over the production 256-byte scratch bound is refused before any
   // control command is reached.
@@ -76,8 +78,8 @@ int main() {
   std::cout << "tls.header oversized=1 status=401 commands=0\n";
 
   // A body over MAX_BODY_BYTES is refused by the production handler.
-  const std::string oversizedBody = R"({"action":"press","padding":")" + std::string(1100, 'x')
-                                    + R"("})";
+  const std::string oversizedBody =
+      R"({"action":"press","padding":")" + std::string(1100, 'x') + R"("})";
   const auto bodyResult =
       host_webui_http::invoke(HTTP_POST, "/api/shutter", validHeaders, oversizedBody);
   check(bodyResult.responseStatus == "413 Payload Too Large",
@@ -91,9 +93,12 @@ int main() {
   check(host_webui_tls::closeCount() == 1, "the close was not recorded once");
   check(webui.hostStartServer("test certificate", "test key"), "the WebUI did not reopen");
   check(host_webui_tls::handshakeCount() == 2, "the reopen did not handshake again");
-  check(host_webui_tls::liveBytes() == expectedBytes, "the reopen did not reacquire every allocation");
-  check(host_webui_tls::socketCount() == 2, "the reopen did not restore both sockets");
-  std::cout << "tls.reopen handshakes=2 bytes=" << host_webui_tls::liveBytes() << '\n';
+  check(host_webui_tls::liveBytes() == expectedBytes,
+        "the reopen did not reacquire every allocation");
+  check(host_webui_tls::socketCount() == clientSockets,
+        "the reopen did not restore both client sockets");
+  std::cout << "tls.reopen handshakes=2 bytes=" << host_webui_tls::liveBytes()
+            << " sockets=" << clientSockets << '\n';
 
   // A precise allocation failure must fail the start and keep the persisted
   // identity for the next attempt. The production branch also logs the exact

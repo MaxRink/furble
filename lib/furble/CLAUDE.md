@@ -49,6 +49,12 @@ protocol core.
   connect. The runtime adaptive level lives in the app layer Control. NimBLE
   transmit power calls take dBm, so map the supported P3, P6 and P9 enum
   levels through `Device::powerLevelToDbm`.
+- `Device::init()` keeps the default resolvable-private address policy. The
+  app layer owns the durable companion identity: `CompanionIdentity` loads and
+  persists the random-static address and calls
+  `Device::applyRandomStaticIdentity()` before companion advertising. Keep the
+  controller-address helpers free of NVS so the protocol library stays free of
+  app storage policy.
   Both live RSSI accessors use `connect_mutex_t`, preserving scheduler-visible
   waits in simulator builds. Nonblocking status consumers use `getConnParams()`.
 - Connection profiles: with the experimental conn saver on, `Camera` switches

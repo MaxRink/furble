@@ -2239,7 +2239,8 @@
       "model": "sim/freertos.cpp",
       "scenario": "sim/scenarios/e2e/hw-memory-post394-budget.txt",
       "assertions": [
-        "mem.tasks"
+        "mem.component.main_stack",
+        "mem.component.companion_task"
       ],
       "status": "modeled"
     },

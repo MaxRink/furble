@@ -12,6 +12,7 @@ seed mqtt_ha true
 seed mqtt_buffer 2048
 wait 100
 
+assert mem.internal_total 524288
 assert mem.component.main_stack 8192
 assert mem.component.companion_task 3072
 assert mem.component.lvgl_draw 2160

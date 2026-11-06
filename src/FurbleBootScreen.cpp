@@ -97,7 +97,6 @@ void BootScreen::begin(uint8_t totalStages) {
   s_Step = 0;
   s_Total = (totalStages == 0) ? 1 : totalStages;
   s_StartedAt = Platform::getInstance().tick();
-  BootTimeline::mark(BootTimeline::BOOT_SPLASH_SHOWN);
 
   if (!s_Enabled) {
     return;
@@ -149,6 +148,9 @@ void BootScreen::begin(uint8_t totalStages) {
   display.drawRect(s_BarX, s_BarY, s_BarWidth, s_BarHeight, frame);
 
   s_Shown = true;
+  // Only a splash that actually reached the panel counts as shown. A disabled
+  // setting or a headless/invalid panel returned above without drawing.
+  BootTimeline::mark(BootTimeline::BOOT_SPLASH_SHOWN);
   drawProgress("Starting");
 }
 

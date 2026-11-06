@@ -40,38 +40,44 @@ if [ "$ctest_status" -ne 0 ]; then
   status=1
 fi
 
-for token in \
-  "headless.no_panel touched=0" \
-  "headless.services" \
-  "eth.dhcp link=up ip=192.0.2.42" \
-  "eth.reconnect ip=198.51.100.7" \
-  "wifi.fallback wired_defer=1 wired_resume=1" \
-  "ir.transmit protocol=sony carrier=40000 symbols=63" \
-  "ir.stack psram=unavailable fallback=internal" \
-  "ir.timeout wait_ms=1000" \
-  "sd.write path=" \
-  "sd.full write_failed=1" \
-  "sd.removed mount_failures=3" \
-  "feedback.sound event=shutter" \
-  "feedback.overcurrent begin_failures=2" \
-  "feedback.brownout low_battery_samples=6" \
-  "feedback.light event=connected" \
-  "companion.enable services=2 characteristics=9" \
-  "companion.reset_mock services=0 started=0 advertising=0" \
-  "companion.auth bonded=1" \
-  "companion.reidentify address_changed=1" \
-  "companion.restart enabled=1 bond=loaded" \
-  "tls.handshake handshakes=1" \
-  "tls.alloc_failure failed=1" \
-  "tls.reopen handshakes=2" \
-  "webui_tls_socket_test: PASS" \
-  "headless_service_test: PASS" \
-  "companion_gatt_transport_test: PASS"; do
-  if ! grep -F -- "$token" "$LOG" >/dev/null 2>&1; then
-    echo "FAIL: linked boundary token missing: $token" >&2
+# Structured evidence marker consumed by tools/check_sim_coverage.py. Each
+# token is checked against the captured ctest output, never a README or comment.
+assert_token() {
+  if ! grep -F -- "$1" "$LOG" >/dev/null 2>&1; then
+    echo "FAIL: linked boundary token missing: $1" >&2
     status=1
   fi
-done
+}
+
+assert_token "headless.no_panel touched=0"
+assert_token "headless.services"
+assert_token "eth.dhcp link=up ip=192.0.2.42"
+assert_token "eth.reconnect ip=198.51.100.7"
+assert_token "wifi.fallback wired_defer=1 wired_resume=1"
+assert_token "ir.transmit protocol=sony carrier=40000 symbols=63"
+assert_token "ir.stack psram=unavailable fallback=internal"
+assert_token "ir.timeout wait_ms=1000"
+assert_token "sd.write path="
+assert_token "sd.full write_failed=1"
+assert_token "sd.removed mount_failures=3"
+assert_token "feedback.sound event=shutter"
+assert_token "feedback.overcurrent begin_failures=2"
+assert_token "feedback.brownout low_battery_samples=6"
+assert_token "feedback.light event=connected"
+assert_token "companion.enable services=2 characteristics=9"
+assert_token "companion.reset_mock services=0 started=0 advertising=0"
+assert_token "companion.auth bonded=1"
+assert_token "companion.password_gate webui_reloads=1"
+assert_token "companion.reidentify address_changed=1"
+assert_token "companion.disable enabled=0"
+assert_token "companion.restart enabled=1 bond=loaded"
+assert_token "tls.handshake handshakes=1"
+assert_token "tls.socket_count sockets="
+assert_token "tls.alloc_failure failed=1"
+assert_token "tls.reopen handshakes=2"
+assert_token "webui_tls_socket_test: PASS"
+assert_token "headless_service_test: PASS"
+assert_token "companion_gatt_transport_test: PASS"
 
 if [ "$status" -eq 0 ]; then
   echo "Linked boundary conformance passed."

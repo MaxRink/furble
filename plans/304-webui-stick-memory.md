@@ -74,13 +74,14 @@ StickS3 and the 80x160 StickC. On the StickS3 the two buffers held 20,480 bytes,
    of crashing or boot-looping.
 2. **No NVS in the supervisor loop.** `reloadSetting()` caches `m_Enabled`,
    `m_PasswordReady` and `m_CredentialsReady`. The supervisor polls atomics and
-   never calls `Settings::load`/`loadPassword`. A companion password change
-   calls `WebUI::reloadSetting()` through `CompanionGatt::reloadPassword()` so
-   clearing the password closes the listener.
+   never calls `Settings::load`/`loadPassword`. Every live password reload,
+   including the companion GATT write path, invokes `WebUI::reloadSetting()`
+   through the service callback so clearing the password closes the listener.
 3. **Small internal tasks.** The supervisor is 3 KiB and the HTTPS task is
-   8 KiB (`httpd_config_t::stack_size`). Two open sockets (one active, one queued),
-   `lru_purge_enable = true`, `max_req_hdr_len = 1024`, seven response headers and
-   seven URI handlers remove per-request/per-server bookkeeping. The TLS
+   8 KiB (`httpd_config_t::stack_size`). Two client sockets plus the three
+   ESP-IDF-reserved internal sockets, `lru_purge_enable = true`, `max_req_hdr_len = 1024`,
+   seven response headers and seven URI handlers remove per-request/per-server
+   bookkeeping. The TLS
    certificate fingerprint is computed once and cached; `startServer()` no
    longer re-parses the certificate on the 3 KiB supervisor stack.
 4. **Draw buffers sized to the panel.** `UIMemory::drawBufferBytes()` replaces
@@ -113,7 +114,7 @@ compiler (`sizeof` for the StickS3 configuration):
 | Object | Bytes |
 | :--- | ---: |
 | `struct httpd_data` | 776 |
-| `struct sock_db` (two sockets) | 384 |
+| `struct sock_db` (two client sockets) | 384 |
 | `struct httpd_config` | 96 |
 | `struct resp_hdr` (seven headers) | 56 |
 | `esp_tls_t` (one connection) | 2,184 |

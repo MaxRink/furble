@@ -4,6 +4,7 @@ wait 100
 assert hw.mcu esp32
 assert hw.usb uart
 assert hw.pmic ip5306
+assert pmic.watchdog unavailable
 action usb-reset
 assert platform.reset_reason usb_uart_chip_reset
 assert usb.mode app

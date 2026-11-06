@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -47,6 +48,120 @@ def git_dirty() -> bool:
     return bool(result.stdout.strip())
 
 
+def check_fuzz_results(manifest: dict, results: dict) -> list[str]:
+    """Every manifest target must have exactly one passing result entry."""
+    errors: list[str] = []
+    if results.get("status") != "pass":
+        errors.append("fuzz results are not passing")
+    expected = [entry.get("id") for entry in manifest.get("targets", [])]
+    entries = results.get("targets", [])
+    if not isinstance(entries, list):
+        return errors + ["fuzz results have no target list"]
+    seen: set[str] = set()
+    for entry in entries:
+        target_id = entry.get("id")
+        if target_id in seen:
+            errors.append(f"fuzz result duplicated: {target_id}")
+        seen.add(target_id)
+        if target_id not in expected:
+            errors.append(f"fuzz result has no manifest target: {target_id}")
+        if entry.get("status") != "pass":
+            errors.append(f"fuzz target not passing: {target_id}")
+    for target_id in expected:
+        if target_id not in seen:
+            errors.append(f"fuzz result missing: {target_id}")
+    return errors
+
+
+def expected_permutation_ids(manifest: dict) -> list[tuple[str, str, dict]]:
+    """Expand the manifest in the same order run-permutations.py uses."""
+    import itertools
+
+    boards = manifest.get("boards", [])
+    axes = manifest.get("axes", {})
+    keys = list(axes)
+    expected: list[tuple[str, str, dict]] = []
+    for board in boards:
+        for values in itertools.product(*(axes[key] for key in keys)):
+            combination = dict(zip(keys, values))
+            perm_id = board + "." + ".".join(f"{key}={combination[key]}" for key in keys)
+            expected.append((board, perm_id, combination))
+    return expected
+
+
+def boundary_runners(hardware_doc: dict, crash_doc: dict) -> list[str]:
+    runners = {
+        entry.get("runner")
+        for entry in (hardware_doc.get("entries", []) + crash_doc.get("crashes", []))
+        if entry.get("runner")
+    }
+    return sorted(runners)
+
+
+def check_boundary_runners(hardware_doc: dict,
+                           crash_doc: dict,
+                           root: Path = ROOT,
+                           execute: bool = False) -> list[str]:
+    """Validate and, for the readiness gate, execute every declared runner."""
+    errors: list[str] = []
+    for runner in boundary_runners(hardware_doc, crash_doc):
+        path = root / runner
+        if not path.is_file():
+            errors.append(f"boundary runner missing: {runner}")
+            continue
+        if not os.access(path, os.X_OK):
+            errors.append(f"boundary runner is not executable: {runner}")
+            continue
+        if not execute:
+            continue
+        try:
+            result = subprocess.run([str(path)], cwd=root, timeout=900)
+        except subprocess.TimeoutExpired:
+            errors.append(f"boundary runner timed out: {runner}")
+            continue
+        except OSError as error:
+            errors.append(f"boundary runner could not start: {runner}: {error}")
+            continue
+        if result.returncode != 0:
+            errors.append(f"boundary runner failed ({result.returncode}): {runner}")
+    return errors
+
+
+def memory_scenario_set_errors(seen: set[str], expected: set[str]) -> list[str]:
+    """The dump directory must contain exactly the budgeted scenarios."""
+    errors = [f"memory dump missing: {name}" for name in sorted(expected - seen)]
+    errors += [f"memory dump unexpected: {name}" for name in sorted(seen - expected)]
+    return errors
+
+
+def check_permutation_results(manifest: dict, document: dict) -> list[str]:
+    """Results must be unique, complete and in manifest order."""
+    errors: list[str] = []
+    expected = expected_permutation_ids(manifest)
+    entries = document.get("results", [])
+    if not isinstance(entries, list):
+        return ["permutation results have no result list"]
+    if len(entries) != len(expected):
+        errors.append("permutation results incomplete")
+    ids = [entry.get("id") for entry in entries]
+    if len(set(ids)) != len(ids):
+        errors.append("permutation results are not unique")
+    for index, entry in enumerate(entries):
+        if entry.get("passed") is not True:
+            errors.append(f"permutation failed: {entry.get('id')}")
+        if index >= len(expected):
+            errors.append(f"unexpected permutation result: {entry.get('id')}")
+            continue
+        board, perm_id, combination = expected[index]
+        if entry.get("id") != perm_id:
+            errors.append(f"permutation order mismatch: {entry.get('id')} != {perm_id}")
+        if entry.get("board") != board:
+            errors.append(f"permutation board mismatch: {entry.get('id')}")
+        if entry.get("combination") != combination:
+            errors.append(f"permutation combination mismatch: {entry.get('id')}")
+    return errors
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ready", action="store_true",
@@ -71,6 +186,7 @@ def main(argv: list[str] | None = None) -> int:
     f_errors, f_counts = coverage.check_fuzz(fuzz)
     p_errors, p_counts = coverage.check_permutations(permutations)
     blockers += h_errors + c_errors + f_errors + p_errors
+    blockers += check_boundary_runners(hardware, crashes, execute=args.ready)
     known_ids = ({entry.get("id") for entry in hardware.get("entries", [])}
                  | {entry.get("id") for entry in crashes.get("crashes", [])}
                  | {entry.get("id") for entry in fuzz.get("targets", [])})
@@ -102,19 +218,12 @@ def main(argv: list[str] | None = None) -> int:
     if not fuzz_results.is_file():
         blockers.append("fuzz results missing")
     else:
-        results = read_json(fuzz_results)
-        if results.get("status") != "pass":
-            blockers.append("fuzz results are not passing")
+        blockers.extend(check_fuzz_results(fuzz, read_json(fuzz_results)))
     perm_results = ROOT / permutations.get("results", "")
     if not perm_results.is_file():
         blockers.append("permutation results missing")
     else:
-        results = read_json(perm_results).get("results", [])
-        if len(results) != permutations.get("expected_count"):
-            blockers.append("permutation results incomplete")
-        for result in results:
-            if not result.get("passed"):
-                blockers.append(f"permutation failed: {result.get('id')}")
+        blockers.extend(check_permutation_results(permutations, read_json(perm_results)))
     if not args.memory_dir.is_dir():
         blockers.append("memory profile dumps missing")
     else:
@@ -123,6 +232,7 @@ def main(argv: list[str] | None = None) -> int:
         dumps = sorted(args.memory_dir.glob("*.json"))
         if not dumps:
             blockers.append("memory profile dumps missing")
+        seen_scenarios: set[str] = set()
         for dump_path in dumps:
             try:
                 dump = read_json(dump_path)
@@ -133,8 +243,13 @@ def main(argv: list[str] | None = None) -> int:
             if scenario not in budget.get("scenarios", {}):
                 blockers.append(f"memory dump has no budget: {scenario}")
                 continue
+            if scenario in seen_scenarios:
+                blockers.append(f"memory dump duplicated: {scenario}")
+            seen_scenarios.add(scenario)
             for error in memory.check_dump(dump, budget["scenarios"][scenario]):
                 blockers.append(f"memory {scenario}: {error}")
+        expected_scenarios = set(budget.get("scenarios", {}))
+        blockers.extend(memory_scenario_set_errors(seen_scenarios, expected_scenarios))
     if git_dirty():
         blockers.append("worktree is dirty")
 
@@ -170,6 +285,7 @@ def main(argv: list[str] | None = None) -> int:
     lines.append("sh sim/scripts/check-hardware-quirks.sh")
     lines.append("python3 sim/scripts/run-memory-profile.py")
     lines.append("sh sim/scripts/run-fuzz.sh")
+    lines.append("python3 sim/scripts/run-permutations.py --compact")
     lines.append("python3 tools/check_flash_readiness.py --ready")
     lines.append("python3 tools/pre_review.py --base origin/master")
     lines.append("```")

@@ -20,7 +20,7 @@ class IBus {
   virtual bus_type_t busType() const { return bus_unknown; }
 };
 
-class Bus_SPI : public IBus {
+class Bus_SPI: public IBus {
  public:
   struct config_t {
     int spi_host = 1;
@@ -111,9 +111,7 @@ class Power_Class {
   int16_t getBatteryVoltage() const { return batteryVoltage; }
   int32_t getBatteryCurrent() const { return batteryCurrent; }
   int16_t getVBUSVoltage() const { return vbusVoltage; }
-  is_charging_t isCharging() const {
-    return charging ? is_charging : is_discharging;
-  }
+  is_charging_t isCharging() const { return charging ? is_charging : is_discharging; }
   void powerOff() { powerOffCalled = true; }
 
   uint8_t vibration = 0;
@@ -127,13 +125,34 @@ class Power_Class {
 
 class Display_Class {
  public:
-  int32_t width() const { return 320; }
-  int32_t height() const { return 240; }
-  lgfx::Panel_Device *getPanel() { return &panel; }
+  int32_t width() const {
+    used = true;
+    return 320;
+  }
+  int32_t height() const {
+    used = true;
+    return 240;
+  }
+  lgfx::Panel_Device *getPanel() {
+    used = true;
+    return &panel;
+  }
+  // The headless service loop must never reach a panel drawing entry point.
+  // Marking every access makes the no_panel check a real probe rather than a
+  // constant that no code can ever set.
+  void fillScreen(uint16_t) const { used = true; }
+  void drawRect(int32_t, int32_t, int32_t, int32_t, uint16_t) const { used = true; }
+  void fillRect(int32_t, int32_t, int32_t, int32_t, uint16_t) const { used = true; }
+  void drawString(const char *, int32_t, int32_t) const { used = true; }
+  void setTextColor(uint16_t) const { used = true; }
+  void setTextColor(uint16_t, uint16_t) const { used = true; }
+  void setTextDatum(int) const { used = true; }
+  void setTextSize(float) const { used = true; }
+  void setTextSize(uint8_t) const { used = true; }
   bool panelUsed() const { return used; }
 
   lgfx::Panel_Device panel;
-  bool used = false;
+  mutable bool used = false;
 };
 
 class M5Unified {

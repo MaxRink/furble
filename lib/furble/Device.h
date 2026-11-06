@@ -32,6 +32,24 @@ class Device {
   static int8_t powerLevelToDbm(esp_power_level_t power);
 
   /**
+   * Apply a random-static LE identity to the controller.
+   *
+   * The caller owns persistence. The address must have the random-static top
+   * bits set; an invalid value is rejected instead of being truncated.
+   */
+  static bool applyRandomStaticIdentity(const uint8_t address[6]);
+
+  /** Restore the default resolvable-private/public address policy. */
+  static bool applyDefaultIdentity(void);
+
+  /**
+   * Fill a buffer with a valid, non-zero random-static LE identity.
+   *
+   * This does not touch the controller or NVS.
+   */
+  static bool generateRandomStaticIdentity(uint8_t address[6]);
+
+  /**
    * Return a device consistent 128-bit UUID.
    */
   static uuid128_t getUUID128(void);

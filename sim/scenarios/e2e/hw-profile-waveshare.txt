@@ -10,6 +10,8 @@ assert hw.flash_kb 16384
 assert hw.psram octal
 assert hw.pmic none
 assert hw.display none
+assert hw.touch no
+assert pmic.watchdog unavailable
 assert hw.wifi no
 assert hw.ethernet yes
 assert hw.battery absent

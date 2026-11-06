@@ -64,6 +64,25 @@ int main() {
   webui.hostResetIdentity();
   check(webui.hostCredentialsReady(), "a persisted identity is reused");
 
+  // The password half of the gate is refreshed by reloadSetting(), including
+  // when a companion GATT write clears the credential. The WebUI-off branch
+  // must not create an identity task or write NVS.
+  const auto identityBeforeGate = Preferences::values;
+  Preferences::values.clear();
+  webui.hostResetIdentity();
+  Furble::Settings::webEnabled = false;
+  Furble::Settings::password = "";
+  webui.reloadSetting();
+  check(!webui.hostPasswordReady(), "reloadSetting clears the cached password gate");
+  check(Preferences::values.empty(), "the WebUI-off reload does not create an identity");
+  Furble::Settings::password = "correct horse";
+  webui.reloadSetting();
+  check(webui.hostPasswordReady(), "reloadSetting restores the cached password gate");
+  check(Preferences::values.empty(), "the WebUI-off reload never generates on the caller task");
+  Furble::Settings::webEnabled = true;
+  Preferences::values = identityBeforeGate;
+  webui.hostResetIdentity();
+
   // The heap gate must refuse the server before allocating its task, and a
   // failed start due to memory pressure must not throw away the persisted
   // identity. Regeneration would add NVS writes to an already low heap.
@@ -88,6 +107,8 @@ int main() {
   webui.hostResetIdentity();
 
   check(webui.hostStartServer("test certificate", "test key"), "real WebUI server did not start");
+  check(host_webui_http::lastMaxOpenSockets() == Furble::WebUI::maxOpenSockets(),
+        "the WebUI start did not carry the production client socket count");
 
   // Settings serialization and writes. The catalog is populated by the host
   // double so this exercises redaction, typed writes and the password guard.

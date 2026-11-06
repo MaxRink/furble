@@ -1,7 +1,7 @@
 # Linked boundary: production WebUI over an allocator-instrumented TLS/socket
 # layer. FurbleWebUI.cpp is compiled unchanged. The esp_https_server double
-# charges the exact TLS context, record buffers and two sockets, and can refuse
-# one allocation at a time.
+# charges the exact TLS context, record buffers and two client sockets (three
+# IDF-reserved sockets, five total), and can refuse one allocation at a time.
 #
 # This is a precise size model of the TLS/socket allocations, not a real
 # mbedTLS handshake. The manifest records that limit explicitly.
@@ -9,11 +9,12 @@
 # Runner: sh sim/scripts/run-boundary-conformance.sh
 # Test: boundary-webui-tls
 #
-# Expected tokens:
-# tls.handshake handshakes=1 bytes=28672 sockets=2 timeout_ms=5000
+# Expected tokens. The socket count and byte total are derived from
+# Furble::WebUI::maxOpenSockets() by the linked test:
+# tls.handshake handshakes=1 bytes=<derived> sockets=<derived> timeout_ms=5000
 # tls.header oversized=1 status=401 commands=0
 # tls.body oversized=1 status=413 commands=0
-# tls.reopen handshakes=2 bytes=28672
+# tls.reopen handshakes=2 bytes=<derived> sockets=<derived>
 # tls.alloc_failure failed=1 retained_identity=1
 # tls.alloc_recovery started=1 live_bytes=0
 # webui_tls_socket_test: PASS

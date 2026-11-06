@@ -63,9 +63,10 @@ bool isCommandTopic(const std::string &topic, const std::string &root) {
 
 size_t discoveryPublications(void) {
   const auto &messages = host_mqtt::published();
-  return static_cast<size_t>(std::count_if(messages.begin(), messages.end(), [](const auto &message) {
-    return message.topic.rfind("homeassistant/device/", 0) == 0 && !message.payload.empty();
-  }));
+  return static_cast<size_t>(
+      std::count_if(messages.begin(), messages.end(), [](const auto &message) {
+        return message.topic.rfind("homeassistant/device/", 0) == 0 && !message.payload.empty();
+      }));
 }
 
 const host_mqtt::PublishedMessage *latestDiscovery(void) {
@@ -82,10 +83,11 @@ void runGatePermutations(void) {
   using namespace Furble::MQTTMemory;
   static_assert(START_INTERNAL_FREE_FLOOR == 8192, "start free floor changed");
   static_assert(START_INTERNAL_LARGEST_FLOOR == 4096, "start largest floor changed");
+  static_assert(START_TLS_INTERNAL_FREE_FLOOR == 11264, "TLS start free floor changed");
+  static_assert(START_TLS_INTERNAL_LARGEST_FLOOR == 7168, "TLS start largest floor changed");
   static_assert(DISCOVERY_INTERNAL_FREE_FLOOR == 10240, "discovery free floor changed");
   static_assert(DISCOVERY_INTERNAL_LARGEST_FLOOR == 4096, "discovery largest floor changed");
-  const std::array<size_t, 7> values = {
-      0, 1, 4095, 4096, 8191, 8192, 10240};
+  const std::array<size_t, 9> values = {0, 1, 4095, 4096, 7167, 7168, 8191, 8192, 11264};
   for (size_t freeBytes : values) {
     for (size_t largest : values) {
       const auto start = startGate(freeBytes, largest);
@@ -93,6 +95,11 @@ void runGatePermutations(void) {
                   == (freeBytes >= START_INTERNAL_FREE_FLOOR
                       && largest >= START_INTERNAL_LARGEST_FLOOR),
               "start gate disagreed at a boundary");
+      const auto secure = startGate(freeBytes, largest, true);
+      require(secure.open
+                  == (freeBytes >= START_TLS_INTERNAL_FREE_FLOOR
+                      && largest >= START_TLS_INTERNAL_LARGEST_FLOOR),
+              "TLS start gate disagreed at a boundary");
       const auto discovery = discoveryGate(freeBytes, largest);
       require(discovery.open
                   == (freeBytes >= DISCOVERY_INTERNAL_FREE_FLOOR
@@ -105,10 +112,15 @@ void runGatePermutations(void) {
     const size_t freeBytes = static_cast<size_t>(rng() % 32768);
     const size_t largest = static_cast<size_t>(rng() % (freeBytes + 1));
     const auto start = startGate(freeBytes, largest);
-    require(start.open
-                == (freeBytes >= START_INTERNAL_FREE_FLOOR
-                    && largest >= START_INTERNAL_LARGEST_FLOOR),
-            "random start gate disagreed");
+    require(
+        start.open
+            == (freeBytes >= START_INTERNAL_FREE_FLOOR && largest >= START_INTERNAL_LARGEST_FLOOR),
+        "random start gate disagreed");
+    const auto secure = startGate(freeBytes, largest, true);
+    require(secure.open
+                == (freeBytes >= START_TLS_INTERNAL_FREE_FLOOR
+                    && largest >= START_TLS_INTERNAL_LARGEST_FLOOR),
+            "random TLS start gate disagreed");
     const auto discovery = discoveryGate(freeBytes, largest);
     require(discovery.open
                 == (freeBytes >= DISCOVERY_INTERNAL_FREE_FLOOR
@@ -221,8 +233,7 @@ int main(int argc, char **argv) {
   host_mqtt_network::setGotIp("ethernet", 0x0a00002a);
   mqtt.hostTaskStep();
   mqtt.hostTaskStep();
-  require(host_mqtt::startCount() == 0,
-          "MQTT client started below the internal-heap start floor");
+  require(host_mqtt::startCount() == 0, "MQTT client started below the internal-heap start floor");
 
   host_mqtt_heap::set(Furble::MQTTMemory::START_INTERNAL_FREE_FLOOR,
                       Furble::MQTTMemory::START_INTERNAL_LARGEST_FLOOR);

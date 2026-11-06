@@ -5,6 +5,8 @@
 // it and read it back, without an ESP-IDF partition.
 
 #include <cstddef>
+#include <string>
+#include <vector>
 
 namespace Furble {
 namespace Host {
@@ -23,6 +25,9 @@ void failNextRemoveForKey(const char *key);
 
 /** Number of stored keys, for tests that assert a key was written or removed. */
 size_t preferencesKeyCount(void);
+
+/** Every stored key, for length and collision checks. */
+std::vector<std::string> preferenceKeys(void);
 
 }  // namespace Host
 }  // namespace Furble

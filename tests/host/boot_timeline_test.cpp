@@ -35,6 +35,11 @@ int main() {
   check(BootTimeline::recorded(BootTimeline::APP_MAIN), "begin records app_main");
   check(BootTimeline::at(BootTimeline::APP_MAIN) == 0, "app_main is the microsecond origin");
   check(BootTimeline::resetToAppMs() == 2310, "the cycle-counter reset value is kept");
+  check(BootTimeline::cycleCountToMs(240000000U, 240U) == 1000,
+        "cycle counts convert to milliseconds");
+  check(BootTimeline::cycleCountToMs(123456U, 240U) == 0,
+        "sub-millisecond cycle counts round down");
+  check(BootTimeline::cycleCountToMs(123456U, 0U) == 0, "a zero tick rate does not divide by zero");
 
   g_nowUs = 12000;
   BootTimeline::mark(BootTimeline::SETTINGS_DONE);

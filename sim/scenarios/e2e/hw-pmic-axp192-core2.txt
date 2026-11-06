@@ -5,6 +5,7 @@
 seed hw_profile core2
 wait 100
 
+assert hw.profile core2
 assert hw.mcu esp32
 assert hw.flash_kb 16384
 assert hw.psram absent
@@ -37,5 +38,8 @@ assert hw.usb uart
 assert hw.wifi yes
 assert hw.ethernet no
 assert hw.ble yes
+assert hw.ir yes
+assert hw.rtc yes
 assert hw.gauge voltage_current
+assert pmic.gauge voltage_current
 exit

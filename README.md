@@ -224,14 +224,25 @@ component dependencies so their two OTA slots retain their fixed size.
 The same 8 MB and 16 MB profiles include an opt-in authenticated HTTPS WebUI.
 It stays closed until a companion password is configured. On the M5StickS3
 debug image, WiFi plus Bluetooth left about 6.8 KiB of internal RAM free before
-the WebUI budget work; after trimming the LVGL draw buffers and WiFi static RX
-pool and creating the TLS identity before the radios, the measured budget is
-still only 10.6 KiB free / 9.7 KiB largest with the supervisor, below the
-server floor. The server therefore refuses to start with a measured log line
-instead of resetting the device, and the StickS3 is not a supported WebUI
-target. Core2 and the headless/Waveshare profiles are expected to have more
-headroom. See [WebUI and REST API](docs/webui.md) for the budget table, setup,
-certificate verification and the route contract.
+the WebUI budget work. After plan 305 the measured pair with the WebUI off is
+27.4 KiB free / 25.6 KiB largest; plan 307 infers about 34.6 KiB free after its
+further reductions. The server still refuses to start below its measured floor
+(20,480 free / 12,288 largest) with a log line instead of resetting the device.
+The StickS3 is not a supported WebUI target until a TLS handshake, a settings
+write and a soak pass succeed on hardware. Core2, the headless S3 profile and
+the Waveshare profile are expected to have more headroom. See
+[WebUI and REST API](docs/webui.md) for the budget table, setup, certificate
+verification and the route contract.
+
+`mqtt_ha` is cached when the MQTT settings reload, so a settings change takes
+effect on the next reload instead of on every owner iteration. Both MQTT start
+and Home Assistant discovery fail closed when internal heap is below their
+floors: the broker link stays down for a blocked start, and only the optional
+retained discovery records are skipped when discovery lacks headroom. The
+accepted URI schemes are `mqtt://` and `mqtts://`; WebSocket MQTT is not part of
+the product contract because no firmware build enables that transport. Secure
+`mqtts://` links use a 6 KiB TLS worker and a higher start floor than the 3 KiB
+plain worker. See [MQTT and Home Assistant](docs/settings-and-controls.md#mqtt-8-mb-debugconsole-builds).
 
 ### Debug builds (developers)
 
@@ -327,6 +338,7 @@ imu status | scale [value]          IMU diagnostic, gesture calibration
 time status | flush                 UTC and local wall clock, or persist before shutdown
 settings list | get | set           read and write non-secret settings
 companion start|stop|status        pairing window, stop, or persisted/live/bond state
+companion reidentify               rotate the LE address and drop only the companion bond
 companion password set | clear | status manage the companion password without revealing it
 ui audit | page | back             inspect or navigate the current page
 cameras list | status               saved cameras, or the active targets

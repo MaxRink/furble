@@ -3,12 +3,17 @@
 #include <cstring>
 #include <vector>
 
-#include "driver/gpio.h"
-#include "esp_log.h"
-#include "lvgl.h"
 #include "FurblePlatform.h"
 #include "FurbleTypes.h"
+#include "driver/gpio.h"
+#include "esp_err.h"
+#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
+#include "lvgl.h"
+
+// Keep the boundary shim aligned with the IDF esp_err.h values.
+static_assert(ESP_ERR_NVS_NO_FREE_PAGES == 0x110a, "NVS no-free-pages value changed");
+static_assert(ESP_ERR_NVS_NEW_VERSION_FOUND == 0x110b, "NVS version-found value changed");
 
 const char *LOG_TAG = FURBLE_STR;
 

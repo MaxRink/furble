@@ -26,6 +26,7 @@ uint64_t g_StartAdvance = 0;
 std::vector<std::pair<esp_timer_cb_t, void *>> g_QueuedCallbacks;
 std::function<void()> g_StopHook;
 esp_err_t g_StartError = ESP_OK;
+int g_LastMaxOpenSockets = 0;
 size_t g_InternalFree = 65536;
 size_t g_LargestBlock = 32768;
 std::vector<size_t> g_TlsAllocations;
@@ -180,6 +181,7 @@ extern "C" esp_err_t httpd_ssl_start(httpd_handle_t *server, const httpd_ssl_con
   }
   g_TlsHandshakes++;
   g_TlsTimeoutMs = config->tls_handshake_timeout_ms;
+  g_LastMaxOpenSockets = config->httpd.max_open_sockets;
   *server = new host_webui_server_t;
   g_Server = *server;
   return ESP_OK;
@@ -200,6 +202,7 @@ void reset() {
   g_StopHook = {};
   g_StartError = ESP_OK;
   host_webui_tls::reset();
+  g_LastMaxOpenSockets = 0;
 }
 httpd_req_t invoke(httpd_method_t method,
                    const std::string &uri,
@@ -229,6 +232,9 @@ void setStopHook(std::function<void()> hook) {
 }
 void setStartError(esp_err_t error) {
   g_StartError = error;
+}
+int lastMaxOpenSockets() {
+  return g_LastMaxOpenSockets;
 }
 }  // namespace host_webui_http
 

@@ -41,9 +41,16 @@ inline constexpr size_t BUFFER_SIZE = 1536;
  * allocates its own structures and lwIP pbufs. The floor leaves about 2 KiB
  * beyond the known allocations instead of starting into a measured 1,739-byte
  * pool like the pre-gate StickS3 build did.
+ *
+ * The TLS worker is 6 KiB rather than 3 KiB, so a secure URI gets its own
+ * floors. Reusing the plain floor would admit a start that cannot hold the TLS
+ * worker plus the same buffers and overhead. The TLS floors are the plain
+ * floors plus the 3 KiB worker difference.
  */
 inline constexpr size_t START_INTERNAL_FREE_FLOOR = 8192;
 inline constexpr size_t START_INTERNAL_LARGEST_FLOOR = 4096;
+inline constexpr size_t START_TLS_INTERNAL_FREE_FLOOR = 11264;
+inline constexpr size_t START_TLS_INTERNAL_LARGEST_FLOOR = 7168;
 
 /**
  * Free internal heap required before Home Assistant discovery is built.
@@ -79,8 +86,11 @@ inline constexpr gate_t evaluate(size_t freeBytes,
           freeFloor, largestFloor};
 }
 
-inline constexpr gate_t startGate(size_t freeBytes, size_t largestBlock) {
-  return evaluate(freeBytes, largestBlock, START_INTERNAL_FREE_FLOOR, START_INTERNAL_LARGEST_FLOOR);
+inline constexpr gate_t startGate(size_t freeBytes, size_t largestBlock, bool secure = false) {
+  return secure ? evaluate(freeBytes, largestBlock, START_TLS_INTERNAL_FREE_FLOOR,
+                           START_TLS_INTERNAL_LARGEST_FLOOR)
+                : evaluate(freeBytes, largestBlock, START_INTERNAL_FREE_FLOOR,
+                           START_INTERNAL_LARGEST_FLOOR);
 }
 
 inline constexpr gate_t discoveryGate(size_t freeBytes, size_t largestBlock) {
@@ -88,8 +98,8 @@ inline constexpr gate_t discoveryGate(size_t freeBytes, size_t largestBlock) {
                   DISCOVERY_INTERNAL_LARGEST_FLOOR);
 }
 
-inline constexpr bool startFits(size_t freeBytes, size_t largestBlock) {
-  return startGate(freeBytes, largestBlock).open;
+inline constexpr bool startFits(size_t freeBytes, size_t largestBlock, bool secure = false) {
+  return startGate(freeBytes, largestBlock, secure).open;
 }
 
 inline constexpr bool discoveryFits(size_t freeBytes, size_t largestBlock) {

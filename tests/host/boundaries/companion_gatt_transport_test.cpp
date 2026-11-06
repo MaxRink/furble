@@ -10,12 +10,13 @@
 #include <cstdlib>
 #include <iostream>
 #include <string>
+#include <vector>
 
 #include "CompanionHostSettings.h"
-#include "Preferences.h"
 #include "Device.h"
 #include "FurbleCompanion.h"
 #include "FurbleCompanionService.h"
+#include "FurbleWebUI.h"
 #include "NimBLEAdvertising.h"
 #include "NimBLEDevice.h"
 #include "NimBLEScan.h"
@@ -23,10 +24,12 @@
 #include "Preferences.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
+#include "protocol/ProvisionTLV.h"
 
 namespace {
 
 int g_Failures = 0;
+int g_WebUIReloads = 0;
 
 void check(bool condition, const char *message) {
   if (!condition) {
@@ -113,6 +116,24 @@ void run(void) {
         "the authentication path changed the companion setting");
   std::cout << "companion.auth bonded=1 encrypted=1 authenticated=1\n";
 
+  // A GATT password write must reach the WebUI credential gate through the
+  // production service callback. This never calls WebUI::reloadSetting()
+  // directly.
+  auto *gatt = server->getService(NimBLEUUID(Furble::CompanionGatt::SERVICE_UUID));
+  check(gatt != nullptr, "the companion GATT service was not found");
+  auto *settings = gatt == nullptr
+                       ? nullptr
+                       : gatt->getCharacteristic(NimBLEUUID(Furble::CompanionGatt::SETTINGS_UUID));
+  check(settings != nullptr, "the companion settings characteristic was not found");
+  if (settings != nullptr) {
+    const std::vector<uint8_t> setPassword {
+        2, Furble::ProvisionTLV::COMPANION_PASSWORD_WIRE_ID, 3, 'n', 'e', 'w'};
+    settings->setValue(setPassword.data(), setPassword.size());
+    settings->callbacks()->onWrite(settings, info);
+    check(g_WebUIReloads == 1, "a GATT password write did not reload the WebUI gate");
+  }
+  std::cout << "companion.password_gate webui_reloads=" << g_WebUIReloads << '\n';
+
   // Graceful disable must retain the service task and the GATT database.
   Furble::Settings::setBool(Furble::Settings::COMPANION, false);
   companion.reloadSetting(false);
@@ -163,6 +184,19 @@ void run(void) {
 }
 
 }  // namespace
+
+namespace Furble {
+
+WebUI &WebUI::getInstance(void) {
+  static WebUI instance;
+  return instance;
+}
+
+void WebUI::reloadSetting(void) {
+  g_WebUIReloads++;
+}
+
+}  // namespace Furble
 
 int main() {
   const char *prefs = std::getenv("FURBLE_SIM_PREFS");

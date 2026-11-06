@@ -32,6 +32,7 @@
 #include <FauxNY.h>
 #include <Preferences.h>
 #include "CameraList.h"
+#include "FurbleBootTimeline.h"
 #include "FurbleControl.h"
 #include "FurbleCrashLog.h"
 #if defined(FURBLE_SIM_MQTT) && FURBLE_SIM_MQTT
@@ -1948,6 +1949,10 @@ std::string queryValue(const std::string &key) {
     const bool marker = prefs.get<bool>("sim_timed_wake", false);
     prefs.end();
     return marker ? "yes" : "no";
+  }
+
+  if (key == "boot.splash_shown") {
+    return BootTimeline::recorded(BootTimeline::BOOT_SPLASH_SHOWN) ? "yes" : "no";
   }
 
   {

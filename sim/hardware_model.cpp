@@ -10,6 +10,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
+#include "FurbleMQTTMemory.h"
 #include "clock.h"
 #include "crash_log_sim.h"
 #include "driver.h"
@@ -687,29 +688,36 @@ void hwStart(void) {
         mqtt.overflow = true;
         ESP_LOGE("mqtt", "***ERROR*** A stack overflow in task mqtt");
       }
-    } else if (heapFree() < 8192 || heapLargest() < 4096) {
-      mqtt.startGate = "closed";
-      mqtt.state = "start_blocked";
-      ESP_LOGW("mqtt", "MQTT start deferred: internal free %u, largest %u (need 8192/4096)",
-               static_cast<unsigned>(heapFree()), static_cast<unsigned>(heapLargest()));
-    } else if (heapAllocTagged(mqtt.ownerStack, "mqtt_owner", false, true) == 0) {
-      mqtt.state = "alloc_failed";
-      ESP_LOGE("heap", "Mem alloc fail. size 0x%04x caps 0x00000804",
-               static_cast<unsigned>(mqtt.ownerStack));
-    } else if (heapAllocTagged(mqtt.workerStack, mqtt.tls ? "mqtt_tls_worker" : "mqtt_worker",
-                               false, true)
-               == 0) {
-      mqtt.state = "alloc_failed";
-      ESP_LOGE("heap", "Mem alloc fail. size 0x%04x caps 0x00000804",
-               static_cast<unsigned>(mqtt.workerStack));
     } else {
-      mqtt.state = "created";
-      mqtt.startGate = "open";
-      mqtt.discoveryFragments = static_cast<uint32_t>(
-          (hw.mqttDiscoveryPayload + mqtt.bufferBytes - 1) / mqtt.bufferBytes);
-      ESP_LOGI("mqtt", "owner stack %u worker stack %u%s created",
-               static_cast<unsigned>(mqtt.ownerStack), static_cast<unsigned>(mqtt.workerStack),
-               mqtt.tls ? " TLS" : "");
+      const size_t freeFloor = mqtt.tls ? Furble::MQTTMemory::START_TLS_INTERNAL_FREE_FLOOR
+                                        : Furble::MQTTMemory::START_INTERNAL_FREE_FLOOR;
+      const size_t largestFloor = mqtt.tls ? Furble::MQTTMemory::START_TLS_INTERNAL_LARGEST_FLOOR
+                                           : Furble::MQTTMemory::START_INTERNAL_LARGEST_FLOOR;
+      if (heapFree() < freeFloor || heapLargest() < largestFloor) {
+        mqtt.startGate = "closed";
+        mqtt.state = "start_blocked";
+        ESP_LOGW("mqtt", "MQTT start deferred: internal free %u, largest %u (need %u/%u)",
+                 static_cast<unsigned>(heapFree()), static_cast<unsigned>(heapLargest()),
+                 static_cast<unsigned>(freeFloor), static_cast<unsigned>(largestFloor));
+      } else if (heapAllocTagged(mqtt.ownerStack, "mqtt_owner", false, true) == 0) {
+        mqtt.state = "alloc_failed";
+        ESP_LOGE("heap", "Mem alloc fail. size 0x%04x caps 0x00000804",
+                 static_cast<unsigned>(mqtt.ownerStack));
+      } else if (heapAllocTagged(mqtt.workerStack, mqtt.tls ? "mqtt_tls_worker" : "mqtt_worker",
+                                 false, true)
+                 == 0) {
+        mqtt.state = "alloc_failed";
+        ESP_LOGE("heap", "Mem alloc fail. size 0x%04x caps 0x00000804",
+                 static_cast<unsigned>(mqtt.workerStack));
+      } else {
+        mqtt.state = "created";
+        mqtt.startGate = "open";
+        mqtt.discoveryFragments = static_cast<uint32_t>(
+            (hw.mqttDiscoveryPayload + mqtt.bufferBytes - 1) / mqtt.bufferBytes);
+        ESP_LOGI("mqtt", "owner stack %u worker stack %u%s created",
+                 static_cast<unsigned>(mqtt.ownerStack), static_cast<unsigned>(mqtt.workerStack),
+                 mqtt.tls ? " TLS" : "");
+      }
     }
     if (mqtt.bufferBytes > 2048) {
       hw.failClosed = true;

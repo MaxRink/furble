@@ -194,9 +194,11 @@ int64_t g_TimerOffsetUs = 0;
 uint32_t g_TaskNotifications = 0;
 
 extern "C" int64_t esp_timer_get_time(void) {
-  static const auto start = std::chrono::steady_clock::now();
-  const auto elapsed = std::chrono::steady_clock::now() - start;
-  return std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count() + g_TimerOffsetUs;
+  // Host time belongs to the test, not the wall clock. A real elapsed second
+  // between two owner steps used to expire an offline-ACK or hold deadline and
+  // made the mqtt-owner suite flaky on a loaded machine. Only
+  // host_mqtt_timer::advance() moves this clock.
+  return g_TimerOffsetUs;
 }
 
 extern "C" esp_err_t esp_timer_create(const esp_timer_create_args_t *args,

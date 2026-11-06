@@ -45,6 +45,8 @@ class WebUI {
   /** Re-read the opt-in setting and wake the supervisor. */
   void reloadSetting(void);
   bool isRunning(void) const { return m_Running.load(); }
+  /** Client sockets configured for httpd_ssl_start (the three IDF sockets are additional). */
+  static constexpr uint8_t maxOpenSockets(void) { return HTTPD_MAX_SOCKETS; }
 #if defined(FURBLE_WEBUI_HOST_TEST)
   bool hostStartServer(const std::string &certificate, const std::string &privateKey);
   void hostStopServer(void);
@@ -52,6 +54,8 @@ class WebUI {
   bool hostCredentialsReady(void);
   /** Forget the cached identity so the next gate reads NVS again. */
   void hostResetIdentity(void);
+  /** The cached password half of the credential gate. */
+  bool hostPasswordReady(void) const { return m_PasswordReady.load(); }
   void hostServiceTimerEvents(void);
 #endif
 
@@ -69,6 +73,8 @@ class WebUI {
   static constexpr uint8_t HELD_FOCUS = 1U << 1;
   static constexpr uint8_t TIMER_HOLD = 1U << 0;
   static constexpr uint8_t TIMER_RELEASE_RETRY = 1U << 1;
+  // Two client sockets. ESP-IDF additionally reserves three internal sockets
+  // per server for its listener and accept bookkeeping, so the total is five.
   static constexpr uint8_t HTTPD_MAX_SOCKETS = 2;
   static constexpr size_t HTTPD_MAX_REQ_HDR_LEN = 1024;
   static constexpr size_t HTTPD_MAX_RESP_HEADERS = 7;

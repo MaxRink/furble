@@ -18,6 +18,7 @@ assert hw.ble yes
 assert hw.ir no
 assert hw.sd no
 assert hw.audio no
+assert hw.rtc yes
 assert pmic.watchdog unavailable
 assert mem.internal_total 524288
 assert mem.psram_total 8388608

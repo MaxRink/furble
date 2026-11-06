@@ -27,10 +27,10 @@ using esp_err_t = int32_t;
 #define ESP_ERR_NOT_FOUND 0x105
 #endif
 #ifndef ESP_ERR_NVS_NO_FREE_PAGES
-#define ESP_ERR_NVS_NO_FREE_PAGES 0x110d
+#define ESP_ERR_NVS_NO_FREE_PAGES 0x110a
 #endif
 #ifndef ESP_ERR_NVS_NEW_VERSION_FOUND
-#define ESP_ERR_NVS_NEW_VERSION_FOUND 0x1110
+#define ESP_ERR_NVS_NEW_VERSION_FOUND 0x110b
 #endif
 
 inline const char *esp_err_to_name(esp_err_t error) {

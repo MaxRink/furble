@@ -16,8 +16,9 @@ reports `READY TO FLASH`. A passing subset is not completion.
 
 - `sim/coverage/hardware_quirks.json` is the denominator for every supported
   board/profile and every hardware or memory quirk. Every modeled or
-  approximate entry has a model, a proving scenario or runner, and an assertion
-  that the scenario contains.
+  approximate entry has a model, a proving scenario or executable runner, and a
+  real `assert` step. `xassert`, comments and log strings are not evidence.
+  The readiness gate executes every declared runner and fails on its exit code.
 - `sim/coverage/crashes.json` enumerates every known crash and boot loop. The
   release gate requires every entry to be `modeled`, every scenario to exist,
   and every known failing seed to be fixed with a regression.

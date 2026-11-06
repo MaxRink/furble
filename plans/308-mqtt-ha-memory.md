@@ -34,7 +34,7 @@ control           8,192 stack, 7,468 used
 | MQTT network and outbox buffers 2,048 to 1,536 | 1,024 | The 3,005-byte hub payload fragments through the buffer and the outbox. Incoming commands are far below 1,536 bytes. | `config.buffer.size`, `config.buffer.out_size`, host payload test |
 | Cache `MQTT_HA` in `reloadSetting()` | removes NVS reads and stack from the connected and HA status paths | The owner reads the cached atomic. A settings change takes effect on the next reload. | `m_HomeAssistantCached`, host load counter |
 | Build Home Assistant discovery without a JSON round trip | about 2,000 to 4,000 peak, inferred | The component tree is attached to the root directly instead of being serialised and parsed again. The wire JSON is unchanged and the host test parses it. | `publishDiscoveryDevice(cJSON *)` |
-| Start gate before `esp_mqtt_client_init()` | fail closed instead of allocating into a low pool | Requires 8,192 free and 4,096 largest internal bytes. Below that the owner counts a failed attempt and the existing retry limit stops a hopeless start. | `MQTTMemory::startGate` |
+| Start gate before `esp_mqtt_client_init()` | fail closed instead of allocating into a low pool | Requires 8,192 free and 4,096 largest internal bytes for a plain URI. A secure `mqtts://` URI requires 11,264 free and 7,168 largest because its worker is 6 KiB, not 3 KiB. Below the matching floor the owner counts a failed attempt and the existing retry limit stops a hopeless start. | `MQTTMemory::startGate(free, largest, secure)` |
 | Discovery gate before the HA tree | fail closed instead of crashing | Requires 10,240 free and 4,096 largest internal bytes. Below that only the optional retained discovery records are skipped. The broker link stays up. | `MQTTMemory::discoveryGate` |
 
 The steady internal saving with MQTT connected, against the measured build that
@@ -85,7 +85,8 @@ accepted for the 2,160-byte internal saving.
 
 | Gate | Free floor | Largest floor | Why |
 | :--- | ---: | ---: | :--- |
-| MQTT start | 8,192 | 4,096 | 3 KiB worker, two 1.5 KiB buffers, esp-mqtt structures and lwIP pbufs |
+| MQTT start (plain) | 8,192 | 4,096 | 3 KiB worker, two 1.5 KiB buffers, esp-mqtt structures and lwIP pbufs |
+| MQTT start (TLS) | 11,264 | 7,168 | 6 KiB TLS worker plus the same buffers and overhead |
 | HA discovery | 10,240 | 4,096 | Hub and camera cJSON trees, the final payload string and the retained enqueue |
 
 The measured pre-gate pool was 1,739 / 1,076. Starting esp-mqtt there is what

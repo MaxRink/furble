@@ -20,6 +20,13 @@ size_t g_FailBeginCount = 0;
 std::string g_FailPutKey;
 std::string g_FailRemoveKey;
 
+// ESP-IDF NVS_KEY_NAME_MAX_SIZE is 16 including the terminator.
+constexpr size_t NVS_KEY_MAX = 15;
+
+bool validKey(const char *key) {
+  return (key != nullptr) && (std::strlen(key) <= NVS_KEY_MAX);
+}
+
 }  // namespace
 
 namespace Furble {
@@ -44,6 +51,14 @@ void failNextRemoveForKey(const char *key) {
 
 size_t preferencesKeyCount(void) {
   return g_Store.size();
+}
+
+std::vector<std::string> preferenceKeys(void) {
+  std::vector<std::string> keys;
+  for (const auto &entry : g_Store) {
+    keys.push_back(entry.first);
+  }
+  return keys;
 }
 
 }  // namespace Host
@@ -71,7 +86,7 @@ bool Preferences::clear() {
 }
 
 bool Preferences::remove(const char *key) {
-  if (key == nullptr) {
+  if (!validKey(key)) {
     return false;
   }
   if (!g_FailRemoveKey.empty() && g_FailRemoveKey == key) {
@@ -82,7 +97,7 @@ bool Preferences::remove(const char *key) {
 }
 
 size_t Preferences::put(const char *key, const void *value, size_t bytes) {
-  if ((key == nullptr) || ((value == nullptr) && (bytes != 0))) {
+  if (!validKey(key) || ((value == nullptr) && (bytes != 0))) {
     return 0;
   }
   if (!g_FailPutKey.empty() && g_FailPutKey == key) {
@@ -102,7 +117,7 @@ size_t Preferences::put(const char *key, const char *value) {
 }
 
 size_t Preferences::get(const char *key, void *buf, size_t maxLen) {
-  if (key == nullptr) {
+  if (!validKey(key)) {
     return 0;
   }
   const auto found = g_Store.find(key);
@@ -117,11 +132,11 @@ size_t Preferences::get(const char *key, void *buf, size_t maxLen) {
 }
 
 bool Preferences::isKey(const char *key) {
-  return (key != nullptr) && (g_Store.count(key) != 0);
+  return validKey(key) && (g_Store.count(key) != 0);
 }
 
 size_t Preferences::getBytesLength(const char *key) {
-  if (key == nullptr) {
+  if (!validKey(key)) {
     return 0;
   }
   const auto found = g_Store.find(key);

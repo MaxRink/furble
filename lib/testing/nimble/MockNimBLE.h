@@ -365,9 +365,7 @@ class NimBLEServer {
   NimBLEService *getService(const NimBLEUUID &uuid);
   bool start();
   void disconnect(uint16_t conn_handle);
-  void setCallbacks(NimBLEServerCallbacks *callbacks, bool = false) {
-    m_Callbacks = callbacks;
-  }
+  void setCallbacks(NimBLEServerCallbacks *callbacks, bool = false) { m_Callbacks = callbacks; }
   NimBLEServerCallbacks *callbacks() const { return m_Callbacks; }
   void advertiseOnDisconnect(bool enabled) { m_AdvertiseOnDisconnect = enabled; }
   NimBLEConnInfo getPeerInfoByHandle(uint16_t conn_handle) const;
@@ -688,11 +686,18 @@ class NimBLEDevice {
   static void setSecurityRespKey(uint8_t key_distribution);
   static bool setOwnAddrType(uint8_t address_type);
   static bool setOwnAddr(const uint8_t address[6]);
+  static bool setOwnAddr(const NimBLEAddress &address);
   static int getNumBonds();
   static bool startSecurity(uint16_t conn_handle);
   static size_t getWhiteListCount();
   static NimBLEAddress getWhiteListAddress(size_t index);
   static bool whiteListRemove(const NimBLEAddress &address);
+  // Identity rotation coverage: the mock records the last controller address
+  // and type so a host test can prove a persisted address is restored.
+  static std::array<uint8_t, 6> mockOwnAddress();
+  static uint8_t mockOwnAddressType();
+  static void mockFailSetOwnAddr(bool fail);
+  static bool mockSetOwnAddrFailed();
 
   // Mirrors of the real NimBLEDevice accessors the developer console's
   // 'debug ble' dump reports from: whether the host stack is up, the

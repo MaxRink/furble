@@ -5,6 +5,7 @@
 seed hw_profile stickc-plus2
 wait 100
 
+assert hw.profile stickc-plus2
 assert hw.mcu esp32
 assert hw.flash_kb 4096
 assert hw.psram absent

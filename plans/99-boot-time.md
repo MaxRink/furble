@@ -136,7 +136,10 @@ after `app_main` still holds the splash.
 The full host build needed one pre-existing link gap repaired:
 `sim_scheduler_test` now links `sim/heap_model.cpp` and `sim/CrashLogSim.cpp`,
 which `sim/freertos.cpp` already calls after the issue #395 heap model landed.
-That is a build-only fix and does not change simulator behavior.
+That is a build-only fix and does not change simulator behavior. A later merge
+added both CrashLogSim and a second local `furble_sim_crash_log_capture` stub
+to the same target; #402 removes the duplicate stub and leaves CrashLogSim as
+the single definition.
 
 No simulator scenario is added. The simulator compiles the timeline source and
 prints the boot summary, but its clock is virtual, so a timing assertion would

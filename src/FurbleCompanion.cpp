@@ -1,4 +1,3 @@
-#include <esp_random.h>
 #include <esp_timer.h>
 
 #include "CameraList.h"
@@ -9,6 +8,7 @@
 #if defined(FURBLE_BLE_DEBUG)
 #include "FurbleCompanionDebug.h"
 #endif
+#include "FurbleCompanionIdentity.h"
 #include "FurbleGPS.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
@@ -29,6 +29,12 @@ constexpr uint32_t COMPANION_TASK_STACK_BYTES = 3072;
 
 CompanionGatt::CompanionGatt() : m_Service {*this} {
   m_Service.setSettingReloadCallback([this](bool pairingWindow) { reloadSetting(pairingWindow); });
+#if defined(FURBLE_WEBUI) && FURBLE_WEBUI
+  // A companion settings write can rotate or clear the shared password without
+  // going through the console wrapper. Re-evaluate the WebUI gate here so
+  // m_PasswordReady cannot stay true after the credential is gone.
+  m_Service.setPasswordReloadCallback([] { WebUI::getInstance().reloadSetting(); });
+#endif
 }
 
 CompanionGatt &CompanionGatt::getInstance(void) {
@@ -42,6 +48,13 @@ uint64_t CompanionGatt::nowMs(void) {
 
 void CompanionGatt::init(void) {
   if (Settings::load<Settings::COMPANION>()) {
+    // Restore the identity rotated by a previous reidentify before the service
+    // starts advertising. Device::init() leaves the default RPA policy, so a
+    // host that paired after the rotation would otherwise lose its bond.
+    // enable() repeats the application for the disabled->enabled path.
+    if (!CompanionIdentity::applyPersisted()) {
+      ESP_LOGD(LOG_TAG, "No persisted companion identity was applied at boot");
+    }
     enable(false);
   }
 }
@@ -59,13 +72,9 @@ void CompanionGatt::disableNow(void) {
 }
 
 void CompanionGatt::reloadPassword(void) {
+  // The service owns the single reload path and invokes the WebUI hook, so the
+  // console and a companion GATT password write have identical side effects.
   m_Service.reloadPassword();
-#if defined(FURBLE_WEBUI) && FURBLE_WEBUI
-  // The WebUI authenticates against the same companion password. Re-evaluate
-  // its cached password/identity gate so clearing the password closes the
-  // HTTPS listener instead of leaving it up until the next reboot.
-  WebUI::getInstance().reloadSetting();
-#endif
 }
 
 bool CompanionGatt::isEnabled(void) const {
@@ -102,19 +111,24 @@ bool CompanionGatt::reidentify(void) {
     return false;
   }
 
+  // Setting a new own address while the controller is advertising or serving a
+  // link may be rejected or only take effect on the next advertising start.
+  // Stop advertising first, but keep the link and bond until the rotation has
+  // actually succeeded.
+  const bool wasAdvertising = isAdvertising();
   stopAdvertising();
+  if (!CompanionIdentity::rotate()) {
+    ESP_LOGW(LOG_TAG, "Companion identity rotation failed; keeping the link and bond");
+    if (wasAdvertising) {
+      resumeAdvertisingAfterDisconnect();
+    }
+    return false;
+  }
+
   if ((m_Server != nullptr) && connected && (handle != INVALID_CONN_HANDLE)) {
     m_Server->disconnect(handle);
   }
   forgetBond();
-
-  uint8_t address[6] = {};
-  esp_fill_random(address, sizeof(address));
-  // Random static address: the top two bits select the static sub-type.
-  address[5] |= 0xC0;
-  if (!NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RANDOM) || !NimBLEDevice::setOwnAddr(address)) {
-    return false;
-  }
   startPairingWindow();
   return true;
 }
@@ -161,6 +175,15 @@ void CompanionGatt::enable(bool pairingWindow) {
     } else {
       m_Enabled = true;
       m_PairingWindow = false;
+
+      // Apply the durable identity on every disabled->enabled transition, not
+      // just the boot path in init(). A companion enabled later from the
+      // console or a settings write must still advertise the address the host
+      // bonded to after reidentify. The init() call is intentionally harmless
+      // double application.
+      if (!CompanionIdentity::applyPersisted()) {
+        ESP_LOGD(LOG_TAG, "No persisted companion identity was applied on enable");
+      }
 
       // Match Camera::connect() and use numeric comparison for the server.
       // The companion uses an encrypted Just Works bond and authenticates the

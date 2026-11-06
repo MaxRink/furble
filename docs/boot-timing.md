@@ -40,9 +40,11 @@ boot.not_recorded: ...
 - `boot.not_recorded` lists marks that never occurred, for example `wifi_ip`
   when WiFi is disabled.
 
-The reset estimate uses the same 32-bit cycle counter as the early ESP-IDF log
-timestamp. It is accurate for the first boot tens of seconds and wraps after
-about 53 seconds at 80 MHz, so it is only sampled once at `app_main`.
+The reset estimate reads the CPU cycle counter directly
+(`esp_cpu_get_cycle_count()`), not `esp_log_timestamp()` or
+`esp_timer_get_time()`, because those timestamps start after the ROM bootloader
+and the PSRAM init. The 32-bit counter wraps after about 18 seconds at 240 MHz
+or 53 seconds at 80 MHz, so it is only sampled once at `app_main`.
 
 ## Baseline and expected change
 

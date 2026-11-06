@@ -84,6 +84,9 @@ class Settings {
     IVL_SLEEP,
     IVL_SLEEP_THR,
     TIMEZONE,
+#if defined(FURBLE_WEBUI) && FURBLE_WEBUI
+    WEB_UI,
+#endif
   } type_t;
 
   typedef struct {
@@ -274,5 +277,12 @@ template <>
 struct Furble::Settings::storage_type<Furble::Settings::COMPANION> {
   using type = bool;
 };
+
+#if defined(FURBLE_WEBUI) && FURBLE_WEBUI
+template <>
+struct Furble::Settings::storage_type<Furble::Settings::WEB_UI> {
+  using type = bool;
+};
+#endif
 
 #endif

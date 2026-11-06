@@ -60,6 +60,11 @@ here:
 - The headless and Waveshare S3 images now keep mbedTLS allocations in PSRAM,
   the same setting the StickS3 already used.
 
+The HTTPS server admits two client sockets. ESP-IDF reserves three additional
+internal sockets per server for its listener and accept bookkeeping, so the
+actual total is five. The two `sock_db` client records cost 384 bytes, which is
+already included in the floor below.
+
 The server refuses to start below a conservative internal-heap floor instead of
 resetting the device. On the USB log look for:
 

@@ -21,6 +21,12 @@ and run `python3 tools/check_ci_workflows.py` after changing workflow triggers.
 The pre-review gate is `python3 tools/pre_review.py --base origin/master`; run
 it before pushing. `pre-review.yml` runs the same scanners in CI, and
 `host-sanitized.yml` runs the ASan/UBSan host subset when C++ paths change.
+Every review finding must be fixed, or proven false or outdated with evidence,
+before merge. The online gate is
+`python3 tools/check_review_threads.py --repo owner/name --pr N`; it fails
+closed on API errors and is intentionally not part of the offline pre-review or
+fork CI jobs. The remediation PR must pass it before merge; record the audit in
+`plans/NN-review-feedback.md`.
 The hardware gate is `python3 tools/check_fuzz.py --full --host-build <dir>
 --mqtt-binary sim/build-mqtt/furble-sim`; it must pass before a firmware image
 is built. Its fixed seeds live in `tests/fuzz/seeds.json`. The gate stays red

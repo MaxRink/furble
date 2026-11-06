@@ -6,6 +6,7 @@ set(furble_sources
     FurbleCompanionAuth.cpp
     FurbleCompanionDebug.cpp
     FurbleCompanionCrypto.cpp
+    FurbleCompanionIdentity.cpp
     FurbleCompanionService.cpp
     FurbleConsole.cpp
     FurbleControl.cpp

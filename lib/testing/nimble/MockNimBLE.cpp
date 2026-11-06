@@ -117,6 +117,7 @@ bool g_Bonded = false;
 // filed under sets it explicitly.
 NimBLEAddress g_BondAddress {};
 NimBLEAddress g_IdAddress {};
+bool g_FailSetOwnAddr = false;
 // The peer of the most recent link. With no bond there is no IRK to resolve an
 // RPA with, so the identity address a live link reports is simply the address
 // it connected to; only a test that files a bond under a different identity
@@ -245,7 +246,8 @@ NimBLEAddress::NimBLEAddress() : m_Address(0), m_Type(0) {}
 
 NimBLEAddress::NimBLEAddress(uint64_t address, uint8_t type) : m_Address(address), m_Type(type) {}
 
-NimBLEAddress::NimBLEAddress(const std::string &address, uint8_t type) : m_Address(0), m_Type(type) {
+NimBLEAddress::NimBLEAddress(const std::string &address, uint8_t type)
+    : m_Address(0), m_Type(type) {
   std::string hex;
   for (const char character : address) {
     if (character != ':') {
@@ -1127,7 +1129,8 @@ bool NimBLEDevice::setOwnAddrType(uint8_t address_type) {
 }
 
 bool NimBLEDevice::setOwnAddr(const uint8_t address[6]) {
-  if (address == nullptr) {
+  if (address == nullptr || g_FailSetOwnAddr) {
+    g_FailSetOwnAddr = false;
     return false;
   }
   uint64_t value = 0;
@@ -1136,6 +1139,36 @@ bool NimBLEDevice::setOwnAddr(const uint8_t address[6]) {
   }
   g_OwnAddress = NimBLEAddress(value, g_OwnAddressType);
   return true;
+}
+
+bool NimBLEDevice::setOwnAddr(const NimBLEAddress &address) {
+  const uint64_t value = static_cast<uint64_t>(address);
+  uint8_t bytes[6] = {};
+  for (size_t index = 0; index < sizeof(bytes); index++) {
+    bytes[index] = static_cast<uint8_t>((value >> (8 * index)) & 0xFF);
+  }
+  return setOwnAddr(bytes);
+}
+
+std::array<uint8_t, 6> NimBLEDevice::mockOwnAddress() {
+  const uint64_t value = static_cast<uint64_t>(g_OwnAddress);
+  std::array<uint8_t, 6> address = {};
+  for (size_t index = 0; index < address.size(); index++) {
+    address[index] = static_cast<uint8_t>((value >> (8 * index)) & 0xFF);
+  }
+  return address;
+}
+
+uint8_t NimBLEDevice::mockOwnAddressType() {
+  return g_OwnAddressType;
+}
+
+void NimBLEDevice::mockFailSetOwnAddr(bool fail) {
+  g_FailSetOwnAddr = fail;
+}
+
+bool NimBLEDevice::mockSetOwnAddrFailed() {
+  return g_FailSetOwnAddr;
 }
 
 int NimBLEDevice::getNumBonds() {
@@ -1487,6 +1520,7 @@ void NimBLEDevice::resetMock() {
   g_Bonded = false;
   g_BondAddress = NimBLEAddress {};
   g_IdAddress = NimBLEAddress {};
+  g_FailSetOwnAddr = false;
   g_LinkPeerAddress = NimBLEAddress {};
   g_DeleteBondCount = 0;
   g_WhiteList.clear();
@@ -1552,7 +1586,6 @@ void NimBLEDevice::setConnectDelayMs(uint32_t ms) {
 void NimBLEDevice::setConnParamApplyDelayReads(size_t reads) {
   g_ConnParamApplyDelayReads = reads;
 }
-
 
 // Server-side transport ------------------------------------------------------
 
