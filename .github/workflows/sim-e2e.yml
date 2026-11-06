@@ -24,6 +24,7 @@ name: Simulator end-to-end
       - 'tests/host/ota_mqtt_protocol_test.cpp'
       - 'sdkconfig.*'
       - 'tools/gen_lv_conf.py'
+      - 'tools/gen_sim_sdkconfig.py'
       - 'tools/check_sim_scenarios.py'
       - 'tools/check_fuzz.py'
       - 'sim/scenarios/manifest.json'
@@ -47,6 +48,7 @@ name: Simulator end-to-end
       - 'tests/host/ota_mqtt_protocol_test.cpp'
       - 'sdkconfig.*'
       - 'tools/gen_lv_conf.py'
+      - 'tools/gen_sim_sdkconfig.py'
       - 'tools/check_sim_scenarios.py'
       - 'tools/check_fuzz.py'
       - 'sim/scenarios/manifest.json'
@@ -151,6 +153,16 @@ jobs:
           SDL_AUDIODRIVER: dummy
           FURBLE_SIM_BIN: ${{ github.workspace }}/sim/build-mqtt/furble-sim
         run: sh sim/scripts/run-memory.sh
+
+      # Every furble sdkconfig aborts on a failed allocation. The panic fixtures
+      # must abort with the hardware line and leave a reboot-visible record.
+      - name: Assert allocation failures abort like hardware
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+          FURBLE_SIM_BIN: ${{ github.workspace }}/sim/build/furble-sim
+          FURBLE_SIM_MQTT_BIN: ${{ github.workspace }}/sim/build-mqtt/furble-sim
+        run: sh sim/scripts/run-panic-fixtures.sh
 
       # Keep the caller-owned and simulator-owned preference boundary on the
       # same freshly built M5StickS3 binary used by this job. The script is

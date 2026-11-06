@@ -23,6 +23,14 @@
 #define MALLOC_CAP_INTERNAL 0x0800
 
 #ifdef __cplusplus
+#include "esp_err.h"
+#else
+typedef int esp_err_t;
+#endif
+
+typedef void (*esp_alloc_failed_hook_t)(size_t size, uint32_t caps, const char *function_name);
+
+#ifdef __cplusplus
 extern "C" {
 #endif
 
@@ -30,14 +38,17 @@ size_t furble_sim_heap_free(uint32_t capabilities);
 size_t furble_sim_heap_largest(uint32_t capabilities);
 size_t furble_sim_heap_minimum(uint32_t capabilities);
 bool furble_sim_heap_should_fail(size_t bytes, const char *owner);
+/* Records the failure, calls the registered hook and aborts like hardware. */
+void furble_sim_heap_alloc_failed(size_t bytes, uint32_t capabilities, const char *owner);
+esp_err_t heap_caps_register_failed_alloc_callback(esp_alloc_failed_hook_t callback);
 
 #ifdef __cplusplus
 }
 #endif
 
 static inline void *heap_caps_aligned_alloc(size_t alignment, size_t size, uint32_t capabilities) {
-  (void)capabilities;
   if (furble_sim_heap_should_fail(size, "heap_caps")) {
+    furble_sim_heap_alloc_failed(size, capabilities, "heap_caps");
     return NULL;
   }
   void *ptr = NULL;

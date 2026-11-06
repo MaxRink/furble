@@ -36,7 +36,6 @@ fi
 status=0
 count=0
 for name in \
-  memory-mqtt-task-alloc-fail \
   memory-mqtt-unreachable \
   memory-mqtt-low-heap-retry-limit \
   memory-boot-combination; do

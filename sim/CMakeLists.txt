@@ -182,6 +182,23 @@ file(GLOB M5GFX_SOURCES CONFIGURE_DEPENDS
 file(GLOB_RECURSE M5UNIFIED_SOURCES CONFIGURE_DEPENDS
      "${M5UNIFIED_DIR}/src/*.cpp")
 
+# Memory-relevant sdkconfig subset of the modelled board, force-included into
+# firmware and simulator sources only. Keep in step with sim/build.sh.
+set(FURBLE_SIM_SDKCONFIG "${FURBLE_ROOT}/sdkconfig.m5stick-s3"
+    CACHE FILEPATH "Board sdkconfig whose memory settings the simulator models")
+set(FURBLE_SIM_SDKCONFIG_HEADER "${CMAKE_CURRENT_BINARY_DIR}/sdkconfig_sim.h")
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+execute_process(
+  COMMAND "${Python3_EXECUTABLE}" "${FURBLE_ROOT}/tools/gen_sim_sdkconfig.py"
+          "${FURBLE_SIM_SDKCONFIG}" "${FURBLE_SIM_SDKCONFIG_HEADER}"
+  RESULT_VARIABLE _sdkconfig_result)
+if(NOT _sdkconfig_result EQUAL 0)
+  message(FATAL_ERROR "Could not generate ${FURBLE_SIM_SDKCONFIG_HEADER}")
+endif()
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${FURBLE_SIM_SDKCONFIG}")
+set_source_files_properties(${FURBLE_SOURCES} PROPERTIES COMPILE_OPTIONS
+                            "-include;${FURBLE_SIM_SDKCONFIG_HEADER}")
+
 add_executable(furble-sim ${FURBLE_SOURCES} ${M5GFX_SOURCES}
                            ${M5UNIFIED_SOURCES})
 

@@ -258,7 +258,6 @@ def run_target(target_id: str) -> Result:
             "sim/scenarios/e2e/hw-psram-init-fail.txt",
             "sim/scenarios/e2e/hw-psram-absent-core.txt",
             "sim/scenarios/e2e/hw-psram-octal-sticks3.txt",
-            "sim/scenarios/e2e/hw-memory-psram-icon-absent.txt",
             "sim/scenarios/e2e/hw-memory-psram-icon-octal.txt",
             "sim/scenarios/e2e/hw-boot-psram-memtest-debug.txt",
             "sim/scenarios/e2e/hw-boot-psram-memtest-release.txt",

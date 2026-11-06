@@ -10,7 +10,9 @@ built while it reports a finding.
   MQTT, OTA and memory pressure. Change a seed here only with the replay
   evidence that justifies it.
 - `memory_fuzz.py`: generates deterministic heap-pressure boot scripts and
-  checks fail-closed behavior, watchdog liveness and crash-free shutdown.
+  checks fail-closed behavior, watchdog liveness and crash-free shutdown. A
+  failed allocation aborts the simulator like the device, so a passing seed
+  proves the admission gates refused every service in time.
 - `failures/`: created only when a finding reproduces. Each file is the exact
   log or generated script needed to replay that seed. The directory is ignored
   so a local finding is not committed by accident.

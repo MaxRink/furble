@@ -8,6 +8,22 @@
 namespace Furble::Sim {
 
 /*
+ * Process exit status of a modelled allocation abort. Every furble sdkconfig
+ * sets CONFIG_HEAP_ABORT_WHEN_ALLOCATION_FAILS, so on hardware a failed
+ * malloc, heap_caps_malloc or xTaskCreate calls the registered failed-alloc
+ * hook and then esp_system_abort(). The simulator does the same: it writes a
+ * panic crash record and exits with this status instead of returning NULL to
+ * a fallback branch the device can never reach.
+ */
+constexpr int SIM_PANIC_EXIT = 3;
+
+/** Writer for the panic crash record of an allocation abort. */
+using panic_recorder_t = void (*)(uint32_t resetReason, const char *task, const char *line);
+
+/** The simulator crash log registers its writer here at init. */
+void heapSetPanicRecorder(panic_recorder_t recorder);
+
+/*
  * Internal-heap accounting model for the host simulator.
  *
  * The SDL build runs on a host heap that is orders of magnitude larger than
@@ -83,7 +99,11 @@ void heapReleaseTask(size_t bytes, bool external);
  * `persistent` allocations are lifetime buffers and are exempt from the
  * scenario-end leak check.
  */
-uint64_t heapAllocTagged(size_t bytes, const char *owner, bool external, bool persistent = false);
+uint64_t heapAllocTagged(size_t bytes,
+                         const char *owner,
+                         bool external,
+                         bool persistent = false,
+                         uint32_t caps = 0);
 void heapFreeTagged(uint64_t id);
 
 /** Fail the next `count` allocations of this size and owner. Empty owner is a

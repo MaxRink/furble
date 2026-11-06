@@ -160,7 +160,7 @@ class SimCIContractTest(unittest.TestCase):
   def test_trigger_paths_are_exact_and_equivalent(self):
     text = (ROOT / ".github/workflows/sim-e2e.yml").read_text(encoding="utf-8")
     document = CI_CHECKER._load_text(text)
-    expected = ["src/**", "include/**", "lib/furble/**", "lib/preferences/**", "lib/blowfish/**", "lib/testing/**", "components/icons/**", "sim/**", "tests/corpus/**", "sdkconfig.*", "tools/gen_lv_conf.py", "tools/check_sim_scenarios.py", "sim/scenarios/manifest.json", ".github/workflows/sim-e2e.yml"]
+    expected = ["src/**", "include/**", "lib/furble/**", "lib/preferences/**", "lib/blowfish/**", "lib/testing/**", "components/icons/**", "sim/**", "tests/corpus/**", "tests/fuzz/**", "tests/host/CMakeLists.txt", "tests/host/fuzz/**", "tests/host/mqtt/**", "tests/host/ota_mqtt_protocol_test.cpp", "sdkconfig.*", "tools/gen_lv_conf.py", "tools/gen_sim_sdkconfig.py", "tools/check_sim_scenarios.py", "tools/check_fuzz.py", "sim/scenarios/manifest.json", ".github/workflows/sim-e2e.yml"]
     self.assertEqual(document["on"]["pull_request"]["paths"], expected)
     self.assertEqual(document["on"]["push"]["paths"], expected)
     self.assertNotIn("- 'lib/**'", text)
