@@ -180,3 +180,64 @@ Deviations:
   and Core sims render with 130 DPI and the 16 px default font, while their
   sdkconfigs set 64 DPI and 12 px. Changing that moves their layouts and needs
   scenario re-certification.
+
+## PR 3: per-board boot heap from datasheets and code
+
+Implemented on `feat/314-sim-board-baselines`, stacked on PR 2. No hardware.
+
+- `tools/derive_sim_heap.py` reads each release env's `firmware.elf` and
+  `sdkconfig.<env>`. It takes the internal 8-bit regions the pinned ESP-IDF
+  registers (`components/heap/port/<chip>/memory_layout.c`) and subtracts the
+  ranges it reserves: `.data`/`.bss` (`_data_start`..`_heap_start`), S3 IRAM
+  code on shared DIRAM, the ESP32 ROM data, and the ESP32 BT controller
+  ranges that stay reserved after NimBLE releases the classic-BT window
+  (`bt.c`, `esp_bt.h`). It then subtracts the boot allocations the source
+  sizes: kernel and IDF task stacks with a TCB read from the ELF's DWARF, the
+  BT controller task, NimBLE pools, static WiFi RX buffers, the furble boot
+  tasks and LVGL draw buffers, each with its citation. Output is
+  `sim/coverage/board_heap.json`.
+- Each ELF's static DRAM matches PlatformIO's "RAM used" figure to the byte.
+- `CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL` is not subtracted: `esp_psram.c`
+  re-registers that pool with INTERNAL | DMA | 8BIT caps, so it stays in
+  `heap_caps_get_free_size(INTERNAL | 8BIT)`. Plain `malloc` cannot use it.
+- `sim/scripts/run-memory-profile.py` seeds each board profile with its
+  derived free and largest upper bounds instead of the shared 200 KiB / 160
+  KiB default, which an ESP32 Core can never have. The `profile-*` budget
+  floors equal the derived pair, and `tests/test_sim_profile_sdkconfig.py`
+  keeps them equal.
+- The profile table in `sim/memory_profile.cpp` listed an 8 KiB main stack
+  for `headless-s3` and `waveshare-s3-eth`; both sdkconfigs set 16 KiB. Fixed,
+  and the same test now checks every row's main stack and PSRAM presence.
+
+| Env | Static DRAM | Heap at app start | Largest span | Attributable boot | Derived free (upper bound) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| m5stick-c | 54,928 | 255,132 | 129,984 | 111,420 | 143,712 |
+| m5stick-c-plus | 54,904 | 255,156 | 129,984 | 113,072 | 142,084 |
+| m5stick-s3 | 47,704 | 261,800 | 261,800 | 82,948 | 178,852 |
+| m5stack-core | 54,952 | 255,108 | 129,984 | 128,236 | 126,872 |
+| m5stack-core2 | 56,384 | 253,676 | 129,984 | 128,236 | 125,440 |
+| waveshare-s3-eth | 52,136 | 258,136 | 258,136 | 109,148 | 148,988 |
+
+Limit of a code-only derivation: the StickS3 console measurement already in
+the repo (30,007 free, MQTT off, debug image with the 8 KiB main stack) sits
+148,845 bytes below the derived bound. That gap is boot cost the source does
+not size: the closed WiFi driver's task and allocations, NimBLE host state,
+lwIP control blocks and the LVGL object tree, which stays internal because
+its objects are below the 4 KiB PSRAM threshold. The derived figures are
+therefore proven ceilings, not realistic post-boot seeds. A realistic seed per
+board needs one console `heap` measurement per board, which belongs to the
+deferred hardware pass. The measured StickS3 seeds remain the inputs of the
+pressure scenarios.
+
+Deviations:
+
+- Lifecycle charges for WiFi up, BLE connect and the TLS handshake are not in
+  this PR. The closed WiFi driver and mbedTLS session sizes cannot be derived
+  from code alone; PR 2 already charges the open parts (task stacks, NimBLE
+  peer state through the counter, LVGL).
+- Findings for PR 8 from this work: the Core2 build reports 4.5 MB of RAM
+  because the board has 8 MB PSRAM, yet its sdkconfig leaves `CONFIG_SPIRAM`
+  off (audit H1). Regenerating the StickS3 sdkconfig drops a stale
+  `CONFIG_NIMBLE_MEM_ALLOC_MODE_INTERNAL=y` alias that contradicts the file's
+  `EXTERNAL` choice. Both need all six release sdkconfigs regenerated
+  together.
