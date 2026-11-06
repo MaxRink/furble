@@ -35,6 +35,17 @@ inline constexpr size_t TLS_WORKER_STACK_BYTES = 6144;
 inline constexpr size_t BUFFER_SIZE = 1536;
 
 /**
+ * Owner event queue.
+ *
+ * The queue holds four 2,304-byte command copies (a 256-byte topic and a
+ * 2,048-byte payload plus framing). It contains copied characters and client
+ * handles only, never a flash or NVS pointer. On boards with PSRAM the queue is
+ * allocated there so it does not take about 9.2 KiB of internal RAM before the
+ * client can start. Boards without PSRAM fall back to the internal heap.
+ */
+inline constexpr size_t EVENT_QUEUE_BYTES = 9216;
+
+/**
  * Free internal heap required before the esp-mqtt client is created.
  *
  * The plain worker is 3 KiB, the two buffers are 1.5 KiB each, and esp-mqtt
@@ -51,6 +62,20 @@ inline constexpr size_t START_INTERNAL_FREE_FLOOR = 8192;
 inline constexpr size_t START_INTERNAL_LARGEST_FLOOR = 4096;
 inline constexpr size_t START_TLS_INTERNAL_FREE_FLOOR = 11264;
 inline constexpr size_t START_TLS_INTERNAL_LARGEST_FLOOR = 7168;
+
+/**
+ * Free internal heap required before the 10 KiB owner task is created.
+ *
+ * The owner is created before the client start gate runs. Admitting it with
+ * only the start floor creates a 10 KiB task that cannot start a client, which
+ * is the 5,199-byte hardware case. Add the owner stack to the start floor so
+ * the owner only exists when the worker and buffers can follow. The queue is
+ * PSRAM on the StickS3 and is not part of this floor.
+ */
+inline constexpr size_t OWNER_INTERNAL_FREE_FLOOR = START_INTERNAL_FREE_FLOOR + OWNER_STACK_BYTES;
+inline constexpr size_t OWNER_TLS_INTERNAL_FREE_FLOOR =
+    START_TLS_INTERNAL_FREE_FLOOR + OWNER_STACK_BYTES;
+inline constexpr size_t OWNER_INTERNAL_LARGEST_FLOOR = 12288;
 
 /**
  * Free internal heap required before Home Assistant discovery is built.
@@ -93,6 +118,13 @@ inline constexpr gate_t startGate(size_t freeBytes, size_t largestBlock, bool se
                            START_INTERNAL_LARGEST_FLOOR);
 }
 
+inline constexpr gate_t ownerGate(size_t freeBytes, size_t largestBlock, bool secure = false) {
+  return secure ? evaluate(freeBytes, largestBlock, OWNER_TLS_INTERNAL_FREE_FLOOR,
+                           OWNER_INTERNAL_LARGEST_FLOOR)
+                : evaluate(freeBytes, largestBlock, OWNER_INTERNAL_FREE_FLOOR,
+                           OWNER_INTERNAL_LARGEST_FLOOR);
+}
+
 inline constexpr gate_t discoveryGate(size_t freeBytes, size_t largestBlock) {
   return evaluate(freeBytes, largestBlock, DISCOVERY_INTERNAL_FREE_FLOOR,
                   DISCOVERY_INTERNAL_LARGEST_FLOOR);
@@ -100,6 +132,10 @@ inline constexpr gate_t discoveryGate(size_t freeBytes, size_t largestBlock) {
 
 inline constexpr bool startFits(size_t freeBytes, size_t largestBlock, bool secure = false) {
   return startGate(freeBytes, largestBlock, secure).open;
+}
+
+inline constexpr bool ownerFits(size_t freeBytes, size_t largestBlock, bool secure = false) {
+  return ownerGate(freeBytes, largestBlock, secure).open;
 }
 
 inline constexpr bool discoveryFits(size_t freeBytes, size_t largestBlock) {
@@ -113,10 +149,13 @@ inline constexpr bool discoveryFits(size_t freeBytes, size_t largestBlock) {
 // ESP_LOG_ATTR_STR() needs a string literal when it is passed to ESP_LOGx;
 // keep the text in macros and expose the same text as constants for the
 // simulator.
+#define FURBLE_MQTT_OWNER_GATE_LOG \
+  "MQTT owner not created: internal free %u, largest %u (need %u/%u)"
 #define FURBLE_MQTT_START_GATE_LOG "MQTT start deferred: internal free %u, largest %u (need %u/%u)"
 #define FURBLE_MQTT_DISCOVERY_GATE_LOG \
   "HA discovery skipped: internal free %u, largest %u (need %u/%u)"
 
+inline constexpr const char *OWNER_GATE_LOG = FURBLE_MQTT_OWNER_GATE_LOG;
 inline constexpr const char *START_GATE_LOG = FURBLE_MQTT_START_GATE_LOG;
 inline constexpr const char *DISCOVERY_GATE_LOG = FURBLE_MQTT_DISCOVERY_GATE_LOG;
 

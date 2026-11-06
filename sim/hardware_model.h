@@ -39,6 +39,7 @@ void hwSetMqttStackModel(bool enabled,
                          bool expectOverflow);
 void hwSetMqttHa(bool enabled);
 void hwSetMqttBuffer(size_t bytes);
+void hwSetMqttMainStack(size_t bytes, size_t highWater);
 void hwSetBootDefaultsMarker(const std::string &marker);
 void hwSetBootProfile(const std::string &profile);
 void hwSetPsramMemtest(bool enabled);

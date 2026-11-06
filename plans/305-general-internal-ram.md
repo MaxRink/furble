@@ -1,10 +1,10 @@
 # 305 - General internal RAM pass
 
-> Plan 308 continues this work after the hardware measurement came in at
-> 27,351 free / 25,588 largest, not the 28,103 inferred here. It reduces the
-> main stack to 8 KiB, uses one draw buffer on narrow panels and reduces the
-> companion stack. The measured and inferred map below remains the #394
-> baseline.
+> Plan 308 continued this work after the hardware measurement came in at
+> 27,351 free / 25,588 largest, not the 28,103 inferred here. It also reduced
+> the main stack to 8 KiB, which plan 311 reverted to 12 KiB after the MQTT
+> path overflowed it on hardware. The measured and inferred map below remains
+> the #394 baseline. Plan 311 recorded the later 30,007 / 28,660 baseline.
 
 ## Finding
 
@@ -312,7 +312,8 @@ gate still fails closed instead of resetting.
 ## Follow-up: plan 308
 
 [308-mqtt-ha-memory.md](308-mqtt-ha-memory.md) continues from the measured
-27,351 / 25,588 pair. It reduces the main stack from 12 KiB to 8 KiB, uses one
-LVGL draw buffer on narrow panels, reduces the companion stack to 3 KiB, and
-adds the MQTT start and Home Assistant discovery gates. The companion stack cut
-listed above is implemented there, not here.
+27,351 / 25,588 pair. It uses one LVGL draw buffer on narrow panels, reduces
+the companion stack to 3 KiB, and adds the MQTT start and Home Assistant
+discovery gates. The companion stack cut listed above is implemented there, not
+here. Its 8 KiB main-stack reduction was unsafe and
+[311-mqtt-queue-psram.md](311-mqtt-queue-psram.md) reverts it to 12 KiB.

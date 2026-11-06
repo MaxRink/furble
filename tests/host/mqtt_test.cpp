@@ -185,6 +185,16 @@ int main(void) {
   require(!Furble::MQTTMemory::startFits(Furble::MQTTMemory::START_INTERNAL_FREE_FLOOR,
                                          Furble::MQTTMemory::START_INTERNAL_LARGEST_FLOOR, true),
           "the TLS start gate reused the smaller plain-worker floor");
+  require(Furble::MQTTMemory::EVENT_QUEUE_BYTES == 9216,
+          "MQTT event queue budget changed without updating the gate");
+  require(!Furble::MQTTMemory::ownerFits(Furble::MQTTMemory::OWNER_INTERNAL_FREE_FLOOR - 1, 65536),
+          "owner gate opened below the free floor");
+  require(!Furble::MQTTMemory::ownerFits(Furble::MQTTMemory::OWNER_INTERNAL_FREE_FLOOR,
+                                         Furble::MQTTMemory::OWNER_INTERNAL_LARGEST_FLOOR - 1),
+          "owner gate opened below the largest-block floor");
+  require(Furble::MQTTMemory::ownerFits(Furble::MQTTMemory::OWNER_INTERNAL_FREE_FLOOR,
+                                        Furble::MQTTMemory::OWNER_INTERNAL_LARGEST_FLOOR),
+          "owner gate closed at its exact floors");
   require(!Furble::MQTTMemory::discoveryFits(Furble::MQTTMemory::DISCOVERY_INTERNAL_FREE_FLOOR - 1,
                                              Furble::MQTTMemory::DISCOVERY_INTERNAL_LARGEST_FLOOR),
           "discovery gate opened below the free floor");
@@ -202,7 +212,15 @@ int main(void) {
   UI::reset();
 
   auto &mqtt = MQTT::getInstance();
+
+  // The owner is 10 KiB. Do not create it when the pool cannot also hold the
+  // client and buffers. A later reload with recovered heap creates it.
+  host_mqtt_heap::set(Furble::MQTTMemory::OWNER_INTERNAL_FREE_FLOOR - 1, 65536);
   MQTT::init();
+  require(!mqtt.hostTaskCreated(), "MQTT owner was created below the pre-task floor");
+  host_mqtt_heap::reset();
+  mqtt.reloadSetting();
+  require(mqtt.hostTaskCreated(), "MQTT owner was not created after the heap recovered");
 
   // P-030: the owner reads its five settings on reloadSetting(), not on every
   // iteration, and idles on a one-second deadline instead of four times a

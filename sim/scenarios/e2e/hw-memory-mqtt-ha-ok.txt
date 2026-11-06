@@ -1,15 +1,18 @@
-# MQTT Home Assistant discovery succeeds inside the post-#394 budget.
+# MQTT Home Assistant discovery succeeds with the queue in PSRAM.
 seed hw_profile sticks3
-seed heap_internal_free 27351
-seed heap_internal_largest 25588
+seed heap_internal_free 40000
+seed heap_internal_largest 40000
 seed mqtt_owner_stack 10240
-seed mqtt_worker_stack 4096
+seed mqtt_worker_stack 3072
 seed mqtt_ha true
-seed mqtt_buffer 2048
+seed mqtt_buffer 1536
+seed main_stack 12288
 wait 100
 assert mqttmodel.state created
 assert mqttmodel.ha ok
 assert mqttmodel.ha_peak 8192
-assert_min heap.free 10000
+assert mqttmodel.queue_region psram
+assert mqttmodel.main_stack_ok yes
+assert_min heap.free 9000
 assert heap.alloc_failures 0
 exit

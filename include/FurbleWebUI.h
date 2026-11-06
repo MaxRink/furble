@@ -36,7 +36,7 @@ class WebUI {
    * StickS3 neither fits after WiFi and the LVGL draw buffers are up, so the
    * identity is prepared here while NVS writes are safe. The work runs on the
    * dedicated 12 KiB identity task rather than the main task, which lets the
-   * main stack stay at 8 KiB. The main task blocks until the identity task
+   * main stack stay at 12 KiB. The main task blocks until the identity task
    * finishes so the heap ordering does not change. The supervisor itself never
    * generates an identity on its own stack.
    */

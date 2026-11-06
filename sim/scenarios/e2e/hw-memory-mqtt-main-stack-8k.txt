@@ -1,0 +1,20 @@
+# Pre-fix 8 KiB main stack overflowed after MQTT was enabled.
+#
+# The main high-water was 3,476 bytes before the MQTT path, but the queue,
+# camera snapshot and owner work pushed the 8 KiB stack over. The model
+# requires the 12 KiB stack for the combined path.
+seed hw_profile sticks3
+seed heap_internal_free 30007
+seed heap_internal_largest 28660
+seed mqtt_owner_stack 10240
+seed mqtt_worker_stack 3072
+seed main_stack 8192
+seed main_high_water 8500
+wait 100
+
+assert mqttmodel.main_stack 8192
+assert mqttmodel.main_high_water 8500
+assert mqttmodel.main_stack_ok no
+assert mqttmodel.state main_overflow
+assert ui.page main
+exit

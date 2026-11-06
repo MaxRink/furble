@@ -12,9 +12,10 @@ record. Values come from `sdkconfig.*`, `platformio.ini`, the task creation
 sites and `include/FurbleUIMemory.h`.
 
 The table is a release target, not a hardware measurement. The S3 row encodes
-the sim-first target: 8 KiB main stack, 3 KiB companion, 10 KiB MQTT owner,
-4 KiB plain worker, one 2,160-byte LVGL draw buffer and a 436-byte crash record
-(the `sizeof(record_t)` from `include/FurbleCrashRecord.h`).
+the sim-first target: 12 KiB main stack, 3 KiB companion, 10 KiB MQTT owner,
+3 KiB plain worker, a 9,216-byte MQTT event queue in PSRAM, a 5,120-byte camera
+snapshot on connect, one 2,160-byte LVGL draw buffer and a 436-byte crash
+record (the `sizeof(record_t)` from `include/FurbleCrashRecord.h`).
 
 ## Dynamic heap model
 

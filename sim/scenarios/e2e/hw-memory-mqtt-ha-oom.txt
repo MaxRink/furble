@@ -1,21 +1,23 @@
-# MQTT Home Assistant discovery OOM at 1.7 KiB free.
+# MQTT Home Assistant discovery OOM at 1.7 KiB free before the queue fix.
 #
-# A 10 KiB owner and 4 KiB worker leave 1,664 bytes from a 16,000-byte pool.
-# Discovery needs about 8 KiB transiently: it must fail cleanly, keep the owner
-# and worker alive, and never panic.
+# The pre-task owner gate now rejects the 10 KiB owner at 16,000 bytes before
+# any queue, camera snapshot or discovery allocation. The device must stay up
+# with no allocation failure.
 seed hw_profile sticks3
 seed heap_internal_free 16000
 seed heap_internal_largest 16000
 seed mqtt_owner_stack 10240
-seed mqtt_worker_stack 4096
+seed mqtt_worker_stack 3072
 seed mqtt_ha true
-seed mqtt_buffer 2048
+seed mqtt_buffer 1536
+seed main_stack 12288
 wait 100
-assert mqttmodel.state created
-assert mqttmodel.ha blocked
-assert mqttmodel.ha_peak 0
-assert mqttmodel.discovery_gate closed
-assert heap.free 1664
+assert mqttmodel.owner_gate closed
+assert mqttmodel.state owner_blocked
+assert mqttmodel.queue_bytes 0
+assert mqttmodel.camera_bytes 0
+assert mqttmodel.ha off
+assert heap.free 16000
 assert heap.alloc_failures 0
 assert heap.last_failed_task none
 assert ui.page main

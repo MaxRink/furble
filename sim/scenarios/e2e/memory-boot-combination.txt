@@ -1,12 +1,9 @@
 # WebUI + MQTT + companion at the pre-#394 StickS3 heap pressure.
 #
-# This is the combination that boot-looped before #392: the companion service,
-# WiFi and the display are part of the seeded baseline, the WebUI supervisor
-# takes its 3 KiB, and the MQTT owner needs 10 KiB. At the pre-#394 13.5 KiB
-# measurement the two optional services no longer fit together, so the MQTT
-# owner allocation fails and the WebUI server stays gated closed. The device
+# The pre-task MQTT owner gate requires 18,432 free / 12,288 largest. The
+# 13,543 seed is below it, so the 10 KiB MQTT owner is never created. The WebUI
+# supervisor still fits and the HTTPS server stays gated closed. The device
 # must log both fail-closed decisions and keep the UI and watchdog alive.
-# Nothing here may panic or trigger a reset.
 #
 # Requires the native MQTT simulator build: FURBLE_SIM_MQTT=1.
 seed heap_internal_free 13543
@@ -22,14 +19,16 @@ assert webui.gate server_memory
 assert webui.fail_closed yes
 assert mqtt.task failed
 assert mqtt.connected no
-assert heap.alloc_failures 1
-assert heap.last_failed_task mqtt
+assert mqtt.connect_failures 0
+assert heap.alloc_failures 0
+assert heap.last_failed_task none
 assert ui.page main
 assert platform.watchdog armed
 
 wait 5000
 assert mqtt.task failed
 assert mqtt.connected no
+assert heap.alloc_failures 0
 assert ui.page main
 assert platform.watchdog armed
 

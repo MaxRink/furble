@@ -320,16 +320,21 @@ enables Home Assistant discovery. The console also provides `mqtt status`,
 `mqtt_ha` is read when the MQTT settings reload and cached for the owner task.
 A change takes effect on the next reload, not between owner iterations.
 
-MQTT is the largest optional network consumer. Before the esp-mqtt client is
-created the firmware requires 8,192 bytes of free internal heap and a 4,096-byte
-largest block for a plain `mqtt://` URI. A secure `mqtts://` URI requires
-11,264 free and 7,168 largest because its worker is 6 KiB, not 3 KiB. Home
-Assistant discovery is optional and requires 10,240 bytes free and a 4,096-byte
-largest block. Below the matching floor the firmware logs the measured pair and
-either defers the start (the owner retry limit still applies) or skips only the
-retained discovery records. The broker link and the command path stay up when
-discovery is skipped. The plain MQTT worker uses a 3 KiB stack and 1,536-byte
-network and outbox buffers; TLS keeps a 6 KiB worker.
+MQTT is the largest optional network consumer. The 10 KiB owner task is
+created only when 18,432 bytes of free internal heap and a 12,288-byte largest
+block are available for a plain `mqtt://` URI; a secure `mqtts://` URI needs
+21,504 free because its client worker is 6 KiB, not 3 KiB. Below that the
+service logs the measured pair and stays off. After the owner exists, the
+esp-mqtt client requires 8,192 free and a 4,096-byte largest block for plain
+MQTT, or 11,264 / 7,168 for TLS. Home Assistant discovery is optional and
+requires 10,240 free and a 4,096-byte largest block after the saved camera list
+loads. Below a floor the firmware logs the measured pair and either defers the
+start (the owner retry limit still applies) or skips only the retained
+discovery records. The broker link and the command path stay up when discovery
+is skipped. The 9,216-byte command event queue lives in PSRAM with an internal
+fallback, and the saved camera list loads on connect rather than at
+initialization. The plain MQTT worker uses a 3 KiB stack and 1,536-byte network
+and outbox buffers; TLS keeps a 6 KiB worker.
 
 `mqtt://` is intentionally supported for local-broker compatibility, but it is
 unencrypted and sends credentials and commands in plaintext. Use it only on a

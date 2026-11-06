@@ -86,6 +86,7 @@ state and the remaining gate; the issue stays open until that gate lands.
 | [308-mqtt-ha-memory.md](308-mqtt-ha-memory.md) | MQTT and Home Assistant discovery memory budget, admission gates and cached HA setting |
 | [309-input-api-memory-fuzzing.md](309-input-api-memory-fuzzing.md) | Seeded input, API and memory fuzz gate with replay corpus and known-finding owners |
 | [310-review-feedback.md](310-review-feedback.md) | Review-thread audit, code fixes, regression evidence and the online merge gate |
+| [311-mqtt-queue-psram.md](311-mqtt-queue-psram.md) | MQTT event queue in PSRAM, pre-task owner gate and the 12 KiB main-stack revert |
 | [302-companion-restart-reconnect.md](302-companion-restart-reconnect.md) | Companion stop/start without a heap panic, and advertising restart after a rejected link |
 | [303-upstream-sync.md](303-upstream-sync.md) | Read-only upstream audit, open issue mapping, and full SHA PlatformIO pins for upstream issue 309 |
 

@@ -255,10 +255,16 @@ check.
   buffer and must call `M5.Display.waitDMA()` before `lv_disp_flush_ready()`.
   Tasks that never write NVS may keep their stack in PSRAM; IR is one, the
   WebUI, companion, GPS and NimBLE host are not.
-- MQTT: the owner needs 10 KiB. Plain MQTT uses a 3 KiB worker and 1,536-byte
-  buffers; TLS keeps a 6 KiB worker. The start gate requires 8,192/4,096 and
-  Home Assistant discovery requires 10,240/4,096 internal bytes. `mqtt_ha` is
-  cached on reload; never read it from the owner event path.
+- MQTT: the owner needs 10 KiB. Gate owner creation at 18,432/12,288 internal
+  bytes; the client start gate is 8,192/4,096. Plain MQTT uses a 3 KiB worker
+  and 1,536-byte buffers; TLS keeps a 6 KiB worker. The 9,216-byte event queue
+  lives in PSRAM because it holds only copied topic and payload bytes, never
+  flash or NVS pointers. Home Assistant discovery requires 10,240/4,096 after
+  the saved camera list loads. `mqtt_ha` is cached on reload; never read it from
+  the owner event path.
+- Main task stack: keep the StickS3 at 12 KiB. The 8 KiB experiment overflowed
+  in task main after MQTT was enabled, even though the MQTT-off high-water was
+  only 3,476 bytes.
 - ESP-IDF 5.5 per-task heap tracking can deadlock concurrent frees during WiFi
   association. Keep `CONFIG_HEAP_TASK_TRACKING` disabled on every board until
   the upstream fix is present in the pinned SDK. Capability heap diagnostics

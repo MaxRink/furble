@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "FurbleCrashRecord.h"
+#include "FurbleMQTTMemory.h"
 #include "FurbleUIMemory.h"
 #include "clock.h"
 #include "hardware_model.h"
@@ -38,19 +39,19 @@ struct profile_budget_t {
 };
 
 const profile_budget_t BUDGETS[] = {
-    {"stickc",           532480, 0,               4096,  16384, 4096, 6144,  6144, 4096, 80 * 8 * 2,   false, 20480, 0,
+    {"stickc",           532480,     0,               4096,  16384, 4096, 6144,  6144, 4096, 80 * 8 * 2,   false, 20480, 0,
      "esp32"                                                                                                                             },
-    {"stickc-plus",      532480, 0,               4096,  16384, 4096, 6144,  6144, 4096, 135 * 8 * 2,  false, 20480,
-     0,                                                                                                                         "esp32"  },
-    {"stickc-plus2",     532480, 0,               4096,  16384, 4096, 6144,  6144, 4096, 135 * 8 * 2,  false, 20480,
-     0,                                                                                                                         "esp32"  },
-    {"sticks3",          512 * 1024, 8 * 1024 * 1024, 8192,  8192,  3072, 10240, 4096, 4096, 135 * 8 * 2,  true,
-     0,                                                                                                                  32768, "esp32s3"},
-    {"core",             532480, 0,               4096,  16384, 4096, 6144,  6144, 4096, 320 * 16 * 2, false, 20480, 0,
+    {"stickc-plus",      532480,     0,               4096,  16384, 4096, 6144,  6144, 4096, 135 * 8 * 2,  false, 20480, 0,
      "esp32"                                                                                                                             },
-    {"core2",            532480, 0,               16384, 16384, 4096, 6144,  6144, 4096, 320 * 16 * 2, false, 20480, 0,
+    {"stickc-plus2",     532480,     0,               4096,  16384, 4096, 6144,  6144, 4096, 135 * 8 * 2,  false, 20480, 0,
      "esp32"                                                                                                                             },
-    {"tough",            532480, 0,               16384, 16384, 4096, 6144,  6144, 4096, 320 * 16 * 2, false, 20480, 0,
+    {"sticks3",          512 * 1024, 8 * 1024 * 1024, 8192,  12288, 3072, 10240, 3072, 4096, 135 * 8 * 2,
+     true,                                                                                                        0,     32768, "esp32s3"},
+    {"core",             532480,     0,               4096,  16384, 4096, 6144,  6144, 4096, 320 * 16 * 2, false, 20480, 0,
+     "esp32"                                                                                                                             },
+    {"core2",            532480,     0,               16384, 16384, 4096, 6144,  6144, 4096, 320 * 16 * 2, false, 20480, 0,
+     "esp32"                                                                                                                             },
+    {"tough",            532480,     0,               16384, 16384, 4096, 6144,  6144, 4096, 320 * 16 * 2, false, 20480, 0,
      "esp32"                                                                                                                             },
     {"headless-s3",      512 * 1024, 8 * 1024 * 1024, 8192,  8192,  3072, 10240, 4096, 4096, 0,            false, 0,
      32768,                                                                                                                     "esp32s3"},
@@ -84,6 +85,9 @@ std::vector<component_t> componentsFor(const profile_budget_t &budget) {
       {"webui_httpd",            8192,                                                  "internal",     "FurbleWebUIMemory::HTTPD_STACK_BYTES"         },
       {"mqtt_owner",             budget.mqttOwner,                                      "internal",     "release-gate MQTT owner stack"                },
       {"mqtt_worker",            budget.mqttWorker,                                     "internal",     "release-gate MQTT worker stack"               },
+      {"mqtt_queue",             Furble::MQTTMemory::EVENT_QUEUE_BYTES,                 "psram",
+       "FurbleMQTTMemory::EVENT_QUEUE_BYTES"                                                                                                           },
+      {"mqtt_camera",            5120,                                                  "internal",     "CameraList::savedSnapshot on connect"         },
       {"console_task",           6144,                                                  "internal",     "src/FurbleConsole.cpp after PR 394"           },
       {"crash_record",           sizeof(Furble::CrashRecord::record_t),                 "rtc",          "include/FurbleCrashRecord.h"                  },
       {"lvgl_draw",              (budget.singleDrawBuffer ? 1 : 2) * budget.drawBuffer, "internal_dma",

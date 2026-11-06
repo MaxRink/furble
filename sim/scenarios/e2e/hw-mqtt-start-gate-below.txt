@@ -1,11 +1,18 @@
-# MQTT start gate at 8191 free / 4096 largest.
+# Pre-task MQTT owner gate below 18,432 free / 12,288 largest.
+#
+# The 10 KiB owner would leave less than the 8,192-byte client start floor, so
+# the owner is never created. This is the 5,199-byte hardware case.
 seed hw_profile sticks3
-seed heap_internal_free 8191
-seed heap_internal_largest 4096
+seed heap_internal_free 18431
+seed heap_internal_largest 18431
 seed mqtt_owner_stack 10240
-seed mqtt_worker_stack 4096
+seed mqtt_worker_stack 3072
+seed main_stack 12288
 wait 100
-assert mqttmodel.start_gate closed
-assert mqttmodel.state start_blocked
+assert mqttmodel.owner_gate closed
+assert mqttmodel.state owner_blocked
+assert mqttmodel.start_gate open
+assert mqttmodel.queue_bytes 0
+assert mqttmodel.camera_bytes 0
 assert ui.page main
 exit

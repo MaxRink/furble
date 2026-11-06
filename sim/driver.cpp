@@ -334,7 +334,8 @@ std::vector<std::string> scriptWords(const std::string &line) {
 void validateSeed(const std::string &name, const std::string &value) {
   if (name == "clock_ms" || name == "liveness_grace_ms" || name == "heap_internal_free"
       || name == "heap_internal_largest" || name == "mqtt_owner_stack"
-      || name == "mqtt_worker_stack" || name == "mqtt_buffer" || name == "mqtt_discovery_payload") {
+      || name == "mqtt_worker_stack" || name == "mqtt_buffer" || name == "mqtt_discovery_payload"
+      || name == "main_stack" || name == "main_high_water") {
     parseUnsigned(value);
     return;
   }
@@ -2231,6 +2232,13 @@ void applyScenarioSettings(void) {
     const auto mqttBuffer = scenarioSettings.find("mqtt_buffer");
     if (mqttBuffer != scenarioSettings.end()) {
       hwSetMqttBuffer(parseUnsigned(mqttBuffer->second));
+    }
+    const auto mainStack = scenarioSettings.find("main_stack");
+    const auto mainHighWater = scenarioSettings.find("main_high_water");
+    if (mainStack != scenarioSettings.end() || mainHighWater != scenarioSettings.end()) {
+      hwSetMqttMainStack(
+          mainStack != scenarioSettings.end() ? parseUnsigned(mainStack->second) : 12288,
+          mainHighWater != scenarioSettings.end() ? parseUnsigned(mainHighWater->second) : 8500);
     }
   }
   const auto scanTimeout = scenarioSettings.find("scan_timeout");

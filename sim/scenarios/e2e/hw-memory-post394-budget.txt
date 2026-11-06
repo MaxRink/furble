@@ -1,32 +1,40 @@
-# Post-#394 release budget: 27,351 free / 25,588 largest internal.
+# Post-#394 + MQTT queue fix budget: 30,007 free / 28,660 largest internal.
 #
-# Target: 10 KiB owner, 4 KiB plain worker, 2048-byte buffers, 8192-byte HA
-# discovery transient, 8 KiB main stack, 3 KiB companion, one LVGL draw buffer
-# on the narrow panel, and at least 10 KiB internal free afterwards.
+# Target: 12 KiB main, 10 KiB owner, 3 KiB plain worker, 1,536-byte buffers,
+# 9,216-byte event queue in PSRAM, 5,120-byte camera snapshot on connect,
+# 8 KiB HA discovery transient, 3 KiB companion, one LVGL draw buffer on the
+# narrow panel, and no main-stack overflow.
 seed hw_profile sticks3
-seed heap_internal_free 27351
-seed heap_internal_largest 25588
+seed heap_internal_free 30007
+seed heap_internal_largest 28660
 seed mqtt_owner_stack 10240
-seed mqtt_worker_stack 4096
+seed mqtt_worker_stack 3072
+seed mqtt_buffer 1536
 seed mqtt_ha true
-seed mqtt_buffer 2048
+seed main_stack 12288
 wait 100
 
 assert mem.internal_total 524288
-assert mem.component.main_stack 8192
+assert mem.component.main_stack 12288
 assert mem.component.companion_task 3072
 assert mem.component.lvgl_draw 2160
 assert mem.component.mqtt_owner 10240
-assert mem.component.mqtt_worker 4096
+assert mem.component.mqtt_worker 3072
+assert mem.component.mqtt_queue 9216
+assert mem.component.mqtt_camera 5120
 assert mqttmodel.state created
-assert mqttmodel.owner_stack 10240
-assert mqttmodel.worker_stack 4096
-assert mqttmodel.buffer 2048
-assert mqttmodel.ha ok
-assert mqttmodel.ha_peak 8192
-assert_min heap.free 10000
+assert mqttmodel.owner_gate open
+assert mqttmodel.start_gate open
+assert mqttmodel.queue_region psram
+assert mqttmodel.queue_bytes 9216
+assert mqttmodel.camera_bytes 5120
+assert mqttmodel.main_stack 12288
+assert mqttmodel.main_stack_ok yes
+assert mqttmodel.ha blocked
+assert mqttmodel.discovery_gate closed
+assert_min heap.free 7000
+assert_min mem.high_water_largest 5000
 assert mem.leaks 0
-assert_min mem.high_water_largest 2000
 assert ui.page main
 assert platform.watchdog armed
 
