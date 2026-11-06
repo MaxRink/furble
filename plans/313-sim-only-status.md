@@ -33,7 +33,7 @@ upstream issue, comment, pull request or push was made for this closeout.
   21,504 / 12,288), and restored the StickS3 main stack to 12 KiB.
 - The current MQTT budget is a 10 KiB owner, a 3 KiB plain worker, a 6 KiB TLS
   worker, 1,536-byte network and outbox buffers, a 9,392-byte queue, a
-  8,192 / 4,096 plain start gate, a 11,264 / 7,168 TLS start gate and a
+  8,192 / 4,096 plain start gate, an 11,264 / 7,168 TLS start gate and a
   10,240 / 4,096 discovery gate.
 - The HTTPD budget is two client sockets plus three ESP-IDF-reserved sockets,
   five total. The constant counts clients only.
