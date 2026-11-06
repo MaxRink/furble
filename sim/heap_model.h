@@ -52,6 +52,35 @@ void heapActivate(void);
 
 bool heapActive(void);
 
+/**
+ * Start counting every device allocation: firmware `new` and `malloc`, LVGL,
+ * every device task stack and every queue. Called where the seeded pair was
+ * measured, after the UI is built, so the baseline is not counted twice.
+ */
+void heapCountingActivate(void);
+bool heapCounting(void);
+/** Lock-free form for the allocation hot path. */
+bool heapCountingFast(void);
+
+/** True for the simulator's own tasks, which are not device memory. */
+bool heapHostOnlyTask(const char *name);
+
+/**
+ * Charge one default `malloc`/`new` block, routed like
+ * heap_caps_malloc_default on the board. The charge includes the TLSF header
+ * and poisoning overhead. A failure follows the board abort policy.
+ */
+bool heapCountedAlloc(size_t requested, const char *owner, size_t *charged, bool *external);
+
+/** Same charge for an explicit capability request; 0 means default malloc. */
+bool heapCountedAllocCaps(size_t requested,
+                          uint32_t caps,
+                          const char *owner,
+                          size_t *charged,
+                          bool *external);
+void heapCountedFree(size_t charged, bool external);
+size_t heapCountedBytes(bool external);
+
 size_t heapFree(void);
 size_t heapLargest(void);
 size_t heapMinimumFree(void);

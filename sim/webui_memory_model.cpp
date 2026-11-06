@@ -1,4 +1,5 @@
 #include "webui_memory_model.h"
+#include "heap_count.h"
 
 #include <cstdio>
 #include <mutex>
@@ -137,6 +138,7 @@ void webuiMemoryStart(void) {
 }
 
 void webuiMemoryTick(void) {
+  const Furble::Sim::HostAllocScope hostScope;
   const std::lock_guard<std::mutex> lock(state().mutex);
   model_state_t &model = state();
   if (!model.started || !model.supervisorCreated) {

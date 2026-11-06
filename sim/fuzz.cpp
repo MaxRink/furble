@@ -23,6 +23,7 @@
 #include "driver.h"
 #include "fuzz.h"
 #include "fuzz_machine.h"
+#include "heap_count.h"
 
 // Seeded UI fuzzer. See fuzz.h for the contract. The fuzzer drives the real
 // FurbleUI through the same FURBLE_SIM seams the scripted scenarios use
@@ -423,9 +424,9 @@ void checkInvariants(UI *ui, const std::string &event) {
   if (flushes != UINT64_MAX && waits != UINT64_MAX) {
     if (ui->simQueryState("single_buffer") == "yes") {
       if (waits != flushes) {
-        recordFinding(ui, "flush-overlap", event,
-                      "single-buffer flushes=" + std::to_string(flushes)
-                          + " waits=" + std::to_string(waits));
+        recordFinding(
+            ui, "flush-overlap", event,
+            "single-buffer flushes=" + std::to_string(flushes) + " waits=" + std::to_string(waits));
       }
     } else if (waits != 0) {
       recordFinding(ui, "flush-overlap", event,
@@ -874,6 +875,7 @@ void fuzzTick(UI *ui) {
 }
 
 void fuzzCycleComplete(UI *ui) {
+  const Furble::Sim::HostAllocScope hostScope;
   if (!active || ui == nullptr || machine == nullptr) {
     return;
   }

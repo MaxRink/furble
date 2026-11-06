@@ -1,0 +1,32 @@
+# Device allocations after boot are charged to the modelled heap.
+#
+# The seeded pair is the booted device. Connecting a camera then creates the
+# per-camera Control target task (a 4 KiB stack plus TCB) and its queue, and
+# the connected page allocates LVGL objects. Before plan 314 PR 2 none of
+# that was charged, so a scenario could not see the camera connect consume the
+# memory that MQTT and the WebUI also need. Disconnecting must return the
+# task; a few hundred bytes of session state may stay.
+seed fauxny true
+seed saved_camera true
+seed heap_internal_free 60000
+seed heap_internal_largest 50000
+wait 500
+assert heap.counting yes
+assert heap.free 60000
+assert heap.counted_internal 0
+home
+wait 300
+action connect
+wait 1800
+assert-eventually-virtual 60000 ui.connected yes
+print heap.free
+print heap.counted_internal
+assert_max heap.free 55392
+assert_min heap.counted_internal 1
+assert heap.alloc_failures 0
+action disconnect
+wait 2000
+print heap.free
+assert_min heap.free 59000
+assert heap.alloc_failures 0
+exit

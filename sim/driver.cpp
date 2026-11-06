@@ -53,6 +53,7 @@
 #include "driver.h"
 #include "fuzz.h"
 #include "hardware_model.h"
+#include "heap_count.h"
 #include "heap_model.h"
 #include "memory_profile.h"
 #include "platform_state.h"
@@ -1380,10 +1381,18 @@ bool expectedSimActionResult(const scenario_action_t &action, UI::sim_action_res
   return false;
 }
 
+std::string queryValueUnscoped(const std::string &key);
+
 // Resolve an assertable state key to a string. UI keys run on the UI task, so
 // LVGL reads stay single threaded. Control and camera keys read the shared
-// state the real app maintains.
+// state the real app maintains. An observation must not move the device heap,
+// so the whole query runs in a host allocation scope.
 std::string queryValue(const std::string &key) {
+  const HostAllocScope scope;
+  return queryValueUnscoped(key);
+}
+
+std::string queryValueUnscoped(const std::string &key) {
   const auto prefixed = [&key](const char *prefix) {
     const size_t length = std::char_traits<char>::length(prefix);
     return key.size() >= length && key.compare(0, length, prefix) == 0;
@@ -1887,6 +1896,15 @@ std::string queryValue(const std::string &key) {
     }
     if (sub == "active") {
       return heapActive() ? "yes" : "no";
+    }
+    if (sub == "counting") {
+      return heapCounting() ? "yes" : "no";
+    }
+    if (sub == "counted_internal") {
+      return std::to_string(heapCountedBytes(false));
+    }
+    if (sub == "counted_external") {
+      return std::to_string(heapCountedBytes(true));
     }
     if (sub == "alloc_failures" || sub == "task_failures") {
       return std::to_string(heapAllocationFailures());
@@ -2694,6 +2712,20 @@ void startProfiler(void) {
 }
 
 void driverTick(void) {
+  // The seeded heap pair was measured from the console of a booted device
+  // whose UI had drawn its first frame. The production boot timeline marks
+  // that point; from there every device allocation is charged. This thread
+  // is the firmware UI task.
+  static bool countingStarted = false;
+  if (!countingStarted && BootTimeline::recorded(BootTimeline::UI_FIRST_FRAME)) {
+    countingStarted = true;
+    heapMarkDeviceThread("main");
+    heapCountingActivate();
+  }
+  // The scenario driver is host work. Only the steps that call straight into
+  // a firmware handler re-enter device counting below.
+  const HostAllocScope hostScope;
+
   // Test-only fault injection for the runSimulator SchedulerStopped fail-fast
   // path. This executes from UI::task after its LVGL mutex is held and exits on
   // the first tick, so it does not alter normal scenarios.
@@ -2724,6 +2756,7 @@ void driverTick(void) {
   }
 
   if (fuzzActive()) {
+    const DeviceAllocScope deviceScope;
     fuzzTick(scenarioUi);
     return;
   }
@@ -2804,7 +2837,8 @@ void driverTick(void) {
         requestExit(1);
         return;
       }
-      if (!scenarioUi->simPressButton(step.name.c_str(), step.hold)) {
+      if (const DeviceAllocScope deviceScope;
+          !scenarioUi->simPressButton(step.name.c_str(), step.hold)) {
         std::cerr << "Simulator button not available on this board: " << step.name << '\n';
         requestExit(1);
         return;
@@ -2818,7 +2852,8 @@ void driverTick(void) {
         requestExit(1);
         return;
       }
-      if (!scenarioUi->simHoldButton(step.name.c_str(), step.milliseconds)) {
+      if (const DeviceAllocScope deviceScope;
+          !scenarioUi->simHoldButton(step.name.c_str(), step.milliseconds)) {
         std::cerr << "Simulator button not available on this board: " << step.name << '\n';
         requestExit(1);
         return;
@@ -2911,7 +2946,8 @@ void driverTick(void) {
     }
 
     case StepType::HOME:
-      if (backTarget == nullptr || !backTarget->simulatorHome()) {
+      if (const DeviceAllocScope deviceScope;
+          backTarget == nullptr || !backTarget->simulatorHome()) {
         std::cerr << "Could not navigate home in simulator\n";
         requestExit(1);
         return;
@@ -2920,7 +2956,8 @@ void driverTick(void) {
       break;
 
     case StepType::BACK:
-      if (backTarget == nullptr || !backTarget->simulatorBack()) {
+      if (const DeviceAllocScope deviceScope;
+          backTarget == nullptr || !backTarget->simulatorBack()) {
         std::cerr << "Could not navigate back in simulator\n";
         requestExit(1);
         return;
@@ -2979,6 +3016,7 @@ void driverTick(void) {
         result =
             applied ? UI::sim_action_result_t::APPLIED : UI::sim_action_result_t::VALID_NO_EFFECT;
       } else {
+        const DeviceAllocScope deviceScope;
         result = scenarioUi->simScenarioAction(step.action);
       }
       if (!expectedSimActionResult(step.action, result)) {

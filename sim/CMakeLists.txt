@@ -87,6 +87,14 @@ add_subdirectory("${FURBLE_LVGL_DIR}" "lvgl-build" EXCLUDE_FROM_ALL)
 target_compile_definitions(lvgl PUBLIC LV_CONF_INCLUDE_SIMPLE LV_LVGL_H_INCLUDE_SIMPLE
                                        LV_KCONFIG_IGNORE)
 target_include_directories(lvgl PUBLIC "${CMAKE_CURRENT_LIST_DIR}")
+# LVGL's C library allocator is the device path (LV_STDLIB_CLIB). Route its
+# three calls through the device allocation counter. Keep in step with
+# sim/build.sh.
+set_source_files_properties(
+  "${FURBLE_LVGL_DIR}/src/stdlib/clib/lv_mem_core_clib.c"
+  TARGET_DIRECTORY lvgl
+  PROPERTIES COMPILE_DEFINITIONS
+             "malloc=furble_sim_fw_malloc;realloc=furble_sim_fw_realloc;free=furble_sim_fw_free")
 
 # The simulator module list is globbed so a new host-only file such as
 # ui_buttons.cpp is compiled without a second source list to keep in sync. Its

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "status": "pass",
-  "commit": "96f8c9e7e9b234496dd95f3cdd21dc80d94ca32c",
+  "commit": "695dff0f70f51170f757d4419ebca366d164c9cd",
   "targets": [
     {
       "id": "fuzz.ui.touch",

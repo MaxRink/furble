@@ -94,3 +94,62 @@ Validation (local, macOS):
 - `tests/fuzz/memory_fuzz.py` seeds 1-40, default and MQTT builds: pass.
 - Host suite: 183 of 183. CMake simulator build: pass.
 - Fuzz corpus after PR 1: 10 targets, 135 seed runs, 89,145 iterations, 0 failures. The psram target lost the moved icon scenario.
+
+## PR 2: count every device allocation
+
+Implemented on `feat/314-sim-count-allocations`, stacked on PR 1:
+
+- `sim/heap_count.cpp` replaces the global `operator new`/`delete` family and
+  provides `furble_sim_fw_malloc`, `realloc` and `free`. LVGL's
+  `lv_mem_core_clib.c`, the device allocator path for `LV_STDLIB_CLIB`, is
+  compiled against them in both simulator builds.
+- Counting starts at the production `BootTimeline::UI_FIRST_FRAME` mark, read
+  from the first driver tick after it. That is where the seeded pairs were
+  measured, so the UI tree and the first render are baseline, not charges.
+- Each charge is the ESP-IDF 5.5.3 block cost: payload plus the 12-byte
+  comprehensive-poisoning head and tail, rounded to 4 bytes, minimum 12, plus
+  the 4-byte TLSF header.
+- Default `malloc` follows `heap_caps_malloc_default`: up to
+  `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL` internal first, above it PSRAM first,
+  then either pool. Failure caps are 0x1000 with PSRAM malloc and 0x1800
+  without, matching the plan 31 record.
+- Every device task stack and TCB is charged once counting runs, not only the
+  four optional services. Host tasks (`ble-radio`, `psram_probe`) are not.
+- Every queue is charged at `StaticQueue_t` (84 bytes on the 32-bit port with
+  queue sets) plus storage, internal through `pvPortMalloc`, or the named
+  pool through `xQueueCreateWithCaps`.
+- An allocation counts only on a device task thread and outside a
+  `HostAllocScope`. The whole scenario driver tick is a host scope; only the
+  steps that call straight into a firmware handler (actions, button presses,
+  home, back and fuzz events) re-enter device counting through
+  `DeviceAllocScope`. The heap model and power profiler locks, queries,
+  screenshot capture, memory dumps, crash-log sidecar writes, fuzz
+  bookkeeping, the WebUI model tick, the rig, scheduler bookkeeping and every
+  MockNimBLE call into a virtual peer are host scopes too. Idle heap is flat
+  for 70 s after the first frame.
+- The StickC and Core simulator runs found the gap that made the driver a
+  host scope: a `capture` step allocated a full RGB frame (230,400 bytes on the
+  320x240 panel) on the UI thread and aborted against the 200 KiB pool.
+- `crash-record-survives-restart` now bounds the recorded heap to 1 KiB below
+  the default pool instead of asserting the untouched pool exactly, because
+  each panel builds a different first page before the panic.
+- `heap.counting`, `heap.counted_internal` and `heap.counted_external` are new
+  observables. `memory-counted-camera-connect.txt` proves a camera connect
+  charges its 4 KiB target task (5,172 bytes in total) and returns it.
+- `memory.device_allocation_counting` joins the hardware coverage manifest
+  (189 entries).
+
+Deviations:
+
+- The first-fit fragmentation model moves to its own PR (2b) so counting can
+  be reviewed alone. `heap.largest` still uses the one-pool approximation.
+- The scripted MQTT model in `sim/hardware_model.cpp` stays. The default
+  build has no production MQTT, so its seeded budget scenarios still need it;
+  the `FURBLE_SIM_MQTT=1` build now counts the production MQTT path as well.
+- `SPIRAM_MALLOC_RESERVE_INTERNAL` is not yet modelled; PR 3 accounts for it
+  in the derived baseline.
+- Host objects are 64-bit. Pointer-heavy structures such as LVGL objects are
+  counted at up to twice their 32-bit size, so the count is an upper bound and
+  the simulator fails before the device would.
+- Calls from a virtual peer back into firmware callbacks run inside the peer
+  host scope and are not counted.

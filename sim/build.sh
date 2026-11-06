@@ -317,7 +317,15 @@ compile_c() {
     return
   fi
   echo "[C]   ${source#$ROOT/}"
-  "$CC" $CFLAGS $(coverage_flags_for "$source") \
+  extra=""
+  case "$source" in
+    # LVGL's C library allocator is the device path (LV_STDLIB_CLIB). Route
+    # its three calls through the device allocation counter.
+    "$LVGL_DIR/src/stdlib/clib/lv_mem_core_clib.c")
+      extra="-Dmalloc=furble_sim_fw_malloc -Drealloc=furble_sim_fw_realloc -Dfree=furble_sim_fw_free"
+      ;;
+  esac
+  "$CC" $CFLAGS $extra $(coverage_flags_for "$source") \
     -MMD -MP -MF "$depfile" -MT "$object" -c "$source" -o "$object"
   write_depfile_recipe "$depfile"
   OBJECTS="$OBJECTS $object"
