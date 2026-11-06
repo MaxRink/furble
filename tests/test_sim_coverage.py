@@ -60,7 +60,7 @@ class ExecutableAssertionTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             runner = root / "runner.sh"
-            runner.write_text("#!/bin/sh\necho 'tls.handshake handshakes=1'\nexit 0\n",
+            runner.write_text('#!/bin/sh\nassert_token "tls.handshake handshakes=1"\n',
                               encoding="utf-8")
             old_root = COVERAGE.ROOT
             COVERAGE.ROOT = root
@@ -84,6 +84,27 @@ class ExecutableAssertionTest(unittest.TestCase):
         self.assertFalse(not_executable)
         self.assertIn("not executable", error)
         self.assertTrue(executable)
+
+    def test_grep_against_the_wrong_file_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            scenario = root / "check.sh"
+            scenario.write_text(
+                "grep 'FUZZ SUMMARY' README.md\n"
+                "# grep 'FUZZ SUMMARY' result.log\n",
+                encoding="utf-8")
+            old_root = COVERAGE.ROOT
+            COVERAGE.ROOT = root
+            try:
+                ok, error = COVERAGE.assertion_evidence({
+                    "id": "fuzz.example",
+                    "scenario": "check.sh",
+                    "assertions": ["FUZZ SUMMARY"],
+                })
+            finally:
+                COVERAGE.ROOT = old_root
+        self.assertFalse(ok)
+        self.assertIn("not executable", error)
 
     def test_missing_executable_assertion_is_reported(self):
         with tempfile.TemporaryDirectory() as directory:

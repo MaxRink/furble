@@ -40,7 +40,8 @@ uint32_t s_LastUpdateMs = 0;
 std::atomic<bool> s_Printing {false};
 bool s_Initialized = false;
 bool s_Recovered = false;
-bool s_Injected = false;
+// The driver action and simulator task threads both touch the injected flag.
+std::atomic<bool> s_Injected {false};
 record_t s_Printed;
 record_t s_Current = {};
 bool s_HaveCurrent = false;

@@ -59,9 +59,11 @@ python3 tools/check_flash_readiness.py --ready
 
 `check_sim_coverage.py` validates the manifest structure and evidence. A
 scenario must contain a real `assert` step: `xassert`, comments and log strings
-never count. A shell scenario must run the token through an actual `grep`
-command. A modeled `runner` entry must point at an executable script with the
-assertions in non-comment commands. `--require-ready` fails on any approximate
+never count. A shell scenario must use the structured
+`assert_token "token"` form, or a grep that explicitly reads the captured
+runner output (`$LOG`/`$log`/`$output` or a result file). A modeled `runner`
+entry must point at an executable script with `assert_token` markers.
+`--require-ready` fails on any approximate
 or not-modeled entry, any pending fuzz target, any known failing seed, and any
 incomplete or failed permutation result.
 

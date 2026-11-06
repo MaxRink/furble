@@ -2200,24 +2200,9 @@ int cmdNtp(int argc, char **argv) {
 
 /** Human readable last reset cause, for boot loop and crash diagnosis. */
 const char *resetReasonName(int reason) {
-  // ESP-IDF 5.5 spells these three as ESP_RST_USB/JTAG/EFUSE. Newer headers
-  // expose the descriptive names below; accept either spelling without
-  // duplicating a case on the local IDF.
-#if defined(ESP_RST_USB_UART_CHIP_RESET)
-  constexpr esp_reset_reason_t resetUsbUart = ESP_RST_USB_UART_CHIP_RESET;
-#else
-  constexpr esp_reset_reason_t resetUsbUart = ESP_RST_USB;
-#endif
-#if defined(ESP_RST_USB_JTAG_CHIP_RESET)
-  constexpr esp_reset_reason_t resetUsbJtag = ESP_RST_USB_JTAG_CHIP_RESET;
-#else
-  constexpr esp_reset_reason_t resetUsbJtag = ESP_RST_JTAG;
-#endif
-#if defined(ESP_RST_EFUSE_CRC)
-  constexpr esp_reset_reason_t resetEfuseCrc = ESP_RST_EFUSE_CRC;
-#else
-  constexpr esp_reset_reason_t resetEfuseCrc = ESP_RST_EFUSE;
-#endif
+  // Use the names pinned by this repository's ESP-IDF 5.5.3 headers. A future
+  // IDF that removes them should fail the target build instead of silently
+  // keeping a dead compatibility branch.
   switch (reason) {
     case ESP_RST_UNKNOWN:
       return "unknown";
@@ -2241,11 +2226,11 @@ const char *resetReasonName(int reason) {
       return "brownout";
     case ESP_RST_SDIO:
       return "sdio";
-    case resetUsbUart:
+    case ESP_RST_USB:
       return "usb_uart_chip_reset";
-    case resetUsbJtag:
+    case ESP_RST_JTAG:
       return "jtag";
-    case resetEfuseCrc:
+    case ESP_RST_EFUSE:
       return "efuse";
     case ESP_RST_PWR_GLITCH:
       return "power_glitch";

@@ -15,8 +15,7 @@ RUNNER = ROOT / "sim" / "scripts" / "run-boundary-conformance.sh"
 
 def runner_tokens() -> list[str]:
     text = RUNNER.read_text(encoding="utf-8")
-    block = text.split("for token in \\", 1)[1].split("; do", 1)[0]
-    return re.findall(r'"([^"]+)"', block)
+    return re.findall(r'^assert_token\s+"([^"]+)"', text, re.MULTILINE)
 
 
 def fake_tool(directory: Path, name: str, body: str) -> None:

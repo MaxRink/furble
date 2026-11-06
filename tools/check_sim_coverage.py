@@ -57,29 +57,45 @@ def executable_assertions(path: Path) -> set[str]:
         # evidence for the release gate.
         return assertions
 
+    tokens = set()
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        match = re.match(r"assert_token\s+[\"']([^\"']+)[\"']", stripped)
+        if match:
+            tokens.add(match.group(1))
+    return tokens
+
+
+def _executable_lines(path: Path) -> list[str]:
+    return [line.strip() for line in scenario_text(path).splitlines()
+            if line.strip() and not line.strip().startswith("#")]
+
+
+def shell_grep_evidence(path: Path, assertion: str) -> bool:
+    """A grep token only counts when it reads a real result sink."""
     grep_command = re.compile(r"(?:^|[;&|!(]|\$\(|\bthen\b|\bdo\b)\s*grep\b")
-    return {
-        line.strip()
-        for line in text.splitlines()
-        if line.strip() and not line.strip().startswith("#")
-        and grep_command.search(line)
-    }
+    result_sink = re.compile(
+        r"\$(?:\{)?(?:LOG|log|output)(?:\})?\b|result\.(?:log|txt|json)")
+    for line in _executable_lines(path):
+        if grep_command.search(line) and result_sink.search(line) and assertion in line:
+            return True
+    return False
 
 
 def runner_evidence(entry: dict) -> tuple[bool, str]:
-    """A modeled runner entry must point at an executable, non-comment script."""
+    """A modeled runner entry must point at an executable structured runner."""
     runner = ROOT / entry["runner"]
     if not runner.is_file():
         return False, f"{entry['id']}: runner not found: {entry['runner']}"
     if not os.access(runner, os.X_OK):
         return False, f"{entry['id']}: runner is not executable: {entry['runner']}"
-    text = scenario_text(runner)
-    executable_lines = [line for line in text.splitlines()
-                        if line.strip() and not line.strip().startswith("#")]
+    tokens = executable_assertions(runner)
     missing = [str(assertion) for assertion in entry["assertions"]
-               if not any(str(assertion) in line for line in executable_lines)]
+               if not any(str(assertion) in token for token in tokens)]
     if missing:
-        return False, (f"{entry['id']}: runner {entry['runner']} has no executable "
+        return False, (f"{entry['id']}: runner {entry['runner']} has no assert_token "
                        f"evidence for {missing!r}")
     return True, ""
 
@@ -95,11 +111,13 @@ def assertion_evidence(entry: dict) -> tuple[bool, str]:
         missing = [str(assertion) for assertion in entry["assertions"]
                    if str(assertion) not in evidence]
     else:
-        # The token must appear on an actual grep command line. A scene/log
-        # string elsewhere in the script is not evidence.
-        grep_lines = executable_assertions(path)
+        # Prefer a structured assert_token. A plain grep only counts when it
+        # explicitly reads the captured runner output ($LOG/$log/$output or a
+        # result file), never a README or an inline comment.
+        structured = executable_assertions(path)
         missing = [str(assertion) for assertion in entry["assertions"]
-                   if not any(str(assertion) in line for line in grep_lines)]
+                   if str(assertion) not in structured
+                   and not shell_grep_evidence(path, str(assertion))]
     if missing:
         return False, (f"{entry['id']}: assertions are not executable in "
                        f"{entry['scenario']}: {missing!r}")
