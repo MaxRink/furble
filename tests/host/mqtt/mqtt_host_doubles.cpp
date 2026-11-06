@@ -22,8 +22,8 @@ esp_netif_t g_Netif = {false, 0};
 bool g_HasNetif = false;
 size_t g_HeapFree = 100000;
 size_t g_HeapLargest = 50000;
-size_t g_PsramFree = 8u * 1024u * 1024u;
-size_t g_PsramLargest = 4u * 1024u * 1024u;
+size_t g_PsramFree = 0;
+size_t g_PsramLargest = 0;
 
 }  // namespace
 
@@ -42,8 +42,8 @@ void setPsram(size_t freeBytes, size_t largestBlock) {
 void reset(void) {
   g_HeapFree = 100000;
   g_HeapLargest = 50000;
-  g_PsramFree = 8u * 1024u * 1024u;
-  g_PsramLargest = 4u * 1024u * 1024u;
+  g_PsramFree = 0;
+  g_PsramLargest = 0;
 }
 
 }  // namespace host_mqtt_heap
