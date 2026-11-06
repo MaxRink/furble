@@ -42,9 +42,17 @@ constexpr bool ABORT_ON_FAILURE = true;
 constexpr bool ABORT_ON_FAILURE = false;
 #endif
 
-// Registered once and read from whichever task fails an allocation.
-std::atomic<esp_alloc_failed_hook_t> s_FailedAllocHook{nullptr};
-std::atomic<Furble::Sim::panic_recorder_t> s_PanicRecorder{nullptr};
+// Registered once and read from whichever task fails an allocation. Both are
+// constant-initialized, so a registration from another translation unit's
+// dynamic initializer (sim/CrashLogSim.cpp) always sees a constructed atomic.
+// Clang enforces that at compile time.
+#if defined(__clang__)
+#define FURBLE_CONSTANT_INIT [[clang::require_constant_initialization]]
+#else
+#define FURBLE_CONSTANT_INIT
+#endif
+FURBLE_CONSTANT_INIT std::atomic<esp_alloc_failed_hook_t> s_FailedAllocHook {nullptr};
+FURBLE_CONSTANT_INIT std::atomic<Furble::Sim::panic_recorder_t> s_PanicRecorder {nullptr};
 
 /*
  * A failure noted under the heap mutex. The abort runs after the mutex is
