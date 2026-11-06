@@ -75,6 +75,8 @@ class MQTT {
   void hostTaskStep(void);
   /** Idle wait in milliseconds, so a test can prove the task period. */
   uint32_t hostTaskWaitMs(void) const;
+  /** Whether the pre-task owner gate admitted the owner task. */
+  bool hostTaskCreated(void) const { return m_Task != nullptr; }
 #endif
 
  private:

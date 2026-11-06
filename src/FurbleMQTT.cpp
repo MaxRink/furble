@@ -23,6 +23,11 @@
 #include <esp_system.h>
 #include <freertos/FreeRTOS.h>
 
+#if defined(CONFIG_SPIRAM) && defined(CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM) \
+    && CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM
+#include <freertos/idf_additions.h>
+#endif
+
 // M5PM1.h (pulled in transitively via FurblePlatform.h) leaks the Arduino GPIO
 // macros LOW and HIGH, which collide with the Scan::Mode enumerators. furble is
 // ESP-IDF and does not use them, so drop them before the NimBLE headers.
@@ -223,11 +228,10 @@ MQTT &MQTT::getInstance(void) {
 }
 
 void MQTT::init(void) {
-  auto &instance = getInstance();
-  if (Settings::load<Settings::MQTT>()) {
-    (void)CameraList::savedSnapshot();
-  }
-  instance.reloadSetting();
+  // The saved camera list is loaded on demand by publishCameras() and
+  // publishDiscovery(). Loading it here made MQTT take about 5 KiB even when
+  // the start gate then refused the client.
+  getInstance().reloadSetting();
 }
 
 void MQTT::reloadSetting(void) {
@@ -262,6 +266,20 @@ void MQTT::reloadSetting(void) {
   }
 
   if (m_Task == nullptr) {
+    const std::string uri = trimWhitespace(uriSetting);
+    const bool secure = (uri.rfind("mqtts://", 0) == 0) || (uri.rfind("wss://", 0) == 0);
+    const size_t freeBytes = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    const size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    const auto gate = MQTTMemory::ownerGate(freeBytes, largest, secure);
+    if (!gate.open) {
+      // Do not create a 10 KiB owner that cannot start a client. The service
+      // stays off until a later reload sees enough internal RAM.
+      ESP_LOGW(MQTT_LOG_TAG, FURBLE_MQTT_OWNER_GATE_LOG, static_cast<unsigned>(gate.freeBytes),
+               static_cast<unsigned>(gate.largestBlock), static_cast<unsigned>(gate.freeFloor),
+               static_cast<unsigned>(gate.largestFloor));
+      return;
+    }
+
     const BaseType_t result =
         xTaskCreate(taskEntry, "mqtt", MQTTMemory::OWNER_STACK_BYTES, this, 2, &m_Task);
     if (result != pdPASS) {
@@ -398,14 +416,6 @@ TickType_t MQTT::taskWaitTicks(void) const {
 }
 
 void MQTT::taskStep(void) {
-  if (m_EventQueue == nullptr) {
-    m_EventQueue = xQueueCreate(EVENT_QUEUE_LENGTH, sizeof(queued_event_t));
-    if (m_EventQueue == nullptr) {
-      ESP_LOGE(MQTT_LOG_TAG, "Failed to create MQTT event queue.");
-      return;
-    }
-  }
-
   bool reload = false;
   bool manual_disconnect = false;
   bool blocked = false;
@@ -433,13 +443,15 @@ void MQTT::taskStep(void) {
   if (!m_Connected.load() && !m_OfflineStopPending) {
     releaseOwnedActuators();
   }
-  queued_event_t event;
-  for (size_t processed = 0; processed < EVENT_QUEUE_LENGTH; processed++) {
-    processDueTimers();
-    if (xQueueReceive(m_EventQueue, &event, 0) != pdTRUE) {
-      break;
+  if (m_EventQueue != nullptr) {
+    queued_event_t event;
+    for (size_t processed = 0; processed < EVENT_QUEUE_LENGTH; processed++) {
+      processDueTimers();
+      if (xQueueReceive(m_EventQueue, &event, 0) != pdTRUE) {
+        break;
+      }
+      processEvent(event);
     }
-    processEvent(event);
   }
   processDueTimers();
 
@@ -674,7 +686,13 @@ bool MQTT::startClient(void) {
   const bool secure = (m_URI.rfind("mqtts://", 0) == 0);
   const size_t freeBytes = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
   const size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-  const auto gate = MQTTMemory::startGate(freeBytes, largest, secure);
+  const size_t psramLargest = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
+  const bool queueInPsram = psramLargest >= MQTTMemory::EVENT_QUEUE_BYTES;
+  // Without PSRAM the queue is a 9,392-byte internal allocation, so the start
+  // floor must include it. Otherwise the gate admits a client that cannot
+  // allocate its queue and burns the retry budget.
+  const auto gate = MQTTMemory::startGate(freeBytes, largest, secure,
+                                          queueInPsram ? 0 : MQTTMemory::EVENT_QUEUE_BYTES);
   if (!gate.open) {
     // Defer instead of letting esp-mqtt allocate its task and buffers into a
     // pool that cannot hold them. The owner counts this as a failed attempt, so
@@ -683,6 +701,40 @@ bool MQTT::startClient(void) {
              static_cast<unsigned>(gate.largestBlock), static_cast<unsigned>(gate.freeFloor),
              static_cast<unsigned>(gate.largestFloor));
     return false;
+  }
+
+  if (m_EventQueue == nullptr) {
+    // The queue holds copied topic and payload bytes, not flash or NVS
+    // pointers. On boards with PSRAM it belongs there: the owner only touches
+    // it with the cache enabled, and no code writes NVS from the MQTT path.
+#if defined(CONFIG_SPIRAM) && defined(CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM) \
+    && CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM
+    if (queueInPsram) {
+      m_EventQueue = xQueueCreateWithCaps(EVENT_QUEUE_LENGTH, sizeof(queued_event_t),
+                                          MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+      if (m_EventQueue == nullptr) {
+        ESP_LOGW(MQTT_LOG_TAG, "MQTT event queue PSRAM allocation failed, using internal RAM");
+      }
+    }
+#endif
+    if (m_EventQueue == nullptr) {
+      const size_t internalFree = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+      const size_t internalLargest =
+          heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+      if (internalFree < MQTTMemory::EVENT_QUEUE_BYTES
+          || internalLargest < MQTTMemory::EVENT_QUEUE_BYTES) {
+        ESP_LOGE(MQTT_LOG_TAG,
+                 "MQTT event queue cannot fit internal RAM: free %u, largest %u (need %u)",
+                 static_cast<unsigned>(internalFree), static_cast<unsigned>(internalLargest),
+                 static_cast<unsigned>(MQTTMemory::EVENT_QUEUE_BYTES));
+        return false;
+      }
+      m_EventQueue = xQueueCreate(EVENT_QUEUE_LENGTH, sizeof(queued_event_t));
+    }
+    if (m_EventQueue == nullptr) {
+      ESP_LOGE(MQTT_LOG_TAG, "Failed to create MQTT event queue.");
+      return false;
+    }
   }
 
   esp_mqtt_client_config_t config = {};

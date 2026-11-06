@@ -4908,6 +4908,17 @@
       "expected_exit": 0,
       "certified": false,
       "reason": "Linked host boundary evidence; run sim/scripts/run-boundary-conformance.sh, not an SDL DSL script."
+    },
+    {
+      "path": "sim/scenarios/e2e/hw-memory-mqtt-main-stack-8k.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
     }
   ]
 }

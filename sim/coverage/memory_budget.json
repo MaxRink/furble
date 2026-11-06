@@ -2,16 +2,18 @@
   "version": 1,
   "scenarios": {
     "hw-memory-post394-budget": {
-      "min_internal_free": 10000,
-      "min_internal_largest": 10000,
+      "min_internal_free": 4000,
+      "min_internal_largest": 3000,
       "max_leaks": 0,
       "max_fragmentation_permille": 500,
       "components": {
-        "main_stack": 8192,
+        "main_stack": 12288,
         "companion_task": 3072,
         "lvgl_draw": 2160,
         "mqtt_owner": 10240,
-        "mqtt_worker": 4096
+        "mqtt_worker": 3072,
+        "mqtt_queue": 9392,
+        "mqtt_camera": 5120
       }
     },
     "hw-memory-webui-post394": {
@@ -20,13 +22,13 @@
       "max_leaks": 0
     },
     "hw-memory-mqtt-ha-oom": {
-      "min_internal_free": 1664,
-      "min_internal_largest": 1664,
+      "min_internal_free": 11000,
+      "min_internal_largest": 11000,
       "max_leaks": 0,
       "min_alloc_failures": 0
     },
     "hw-memory-mqtt-ha-ok": {
-      "min_internal_free": 13015,
+      "min_internal_free": 9000,
       "max_leaks": 0
     },
     "memory-webui-fail-closed": {
@@ -102,8 +104,11 @@
       "min_internal_largest": 160000,
       "max_leaks": 0,
       "components": {
-        "main_stack": 8192,
-        "lvgl_draw": 2160
+        "main_stack": 12288,
+        "lvgl_draw": 2160,
+        "mqtt_queue": 9392,
+        "mqtt_camera": 5120,
+        "mqtt_worker": 3072
       }
     }
   }

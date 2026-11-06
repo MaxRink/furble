@@ -212,6 +212,17 @@
       "note": "Production CompanionGatt retains the configured service task (3072 bytes after #398) and GATT database across disable/enable over MockNimBLE; restart asserts no second xTaskCreate.",
       "model": "src/FurbleCompanion.cpp",
       "runner": "sim/scripts/run-boundary-conformance.sh"
+    },
+    {
+      "id": "mqtt-main-stack-8k-overflow",
+      "scenario": "sim/scenarios/e2e/hw-memory-mqtt-main-stack-8k.txt",
+      "assertions": [
+        "mqttmodel.main_stack_ok",
+        "mqttmodel.state"
+      ],
+      "status": "modeled",
+      "known_failing_seeds": [],
+      "source": "hardware incident"
     }
   ]
 }

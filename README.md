@@ -224,24 +224,28 @@ component dependencies so their two OTA slots retain their fixed size.
 MQTT is off by default and is configured with `settings set` in a debug build.
 `mqtt_uri` accepts `mqtt://host:1883` or `mqtts://host:8883`; WebSocket MQTT is
 not part of the product contract because no firmware build enables that
-transport. `mqtts://` keeps the 6 KiB TLS worker and requires 11,264 free /
-7,168 largest internal bytes to start, while plain `mqtt://` uses a 3 KiB
-worker and 1,536-byte network and outbox buffers and requires 8,192 / 4,096.
+transport. The 10 KiB owner is created only at 18,432 free / 12,288 largest
+internal bytes (21,504 free for `mqtts://`). After the owner exists, plain
+`mqtt://` uses a 3 KiB worker, 1,536-byte network and outbox buffers, and
+8,192 / 4,096 to start; `mqtts://` keeps the 6 KiB TLS worker and requires
+11,264 / 7,168. The 9,392-byte command event queue is placed in PSRAM when it
+is available and falls back to internal RAM, where the start floor includes
+the queue. The saved camera list loads on connect, not at initialization.
 `mqtt_ha` is cached when the MQTT settings reload, so a change takes effect on
 the next reload. Home Assistant discovery is optional and is skipped below
-10,240 / 4,096; the broker link and command path stay up when discovery is
-skipped. See
+10,240 / 4,096 after the camera list loads; the broker link and command path
+stay up when discovery is skipped. See
 [MQTT and Home Assistant](docs/settings-and-controls.md#mqtt-8-mb-debugconsole-builds)
 for the full setting list.
 
 The same 8 MB and 16 MB profiles include an opt-in authenticated HTTPS WebUI.
 It stays closed until a companion password is configured. On the M5StickS3
 debug image, WiFi plus Bluetooth left about 6.8 KiB of internal RAM free before
-the WebUI budget work. After plan 305 the measured pair with the WebUI off is
-27,351 free / 25,588 largest, above the floor on paper but without a server
-start; plan 308 infers about 34,631 free after its further reductions. The
-server still refuses to start below its measured floor (20,480 free / 12,288
-largest) with a log line instead of resetting the device. The StickS3 is not a
+the WebUI budget work. After plan 311 the StickS3 runs a 12 KiB main stack and
+measures about 25,911 free with the WebUI off, after reverting the short-lived
+8 KiB experiment that overflowed on hardware. The server still refuses to start
+below its measured floor (20,480 free / 12,288 largest) with a log line instead
+of resetting the device. The StickS3 is not a
 supported WebUI target until a TLS handshake, a settings write and a soak pass
 succeed on hardware. Core2, the headless S3 profile and the Waveshare profile
 are expected to have more headroom. See [WebUI and REST API](docs/webui.md) for

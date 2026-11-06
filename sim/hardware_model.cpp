@@ -293,10 +293,16 @@ struct mqtt_model_state_t {
   size_t bufferBytes = 2048;
   std::string haState = "off";
   size_t haPeak = 0;
+  std::string ownerGate = "open";
   std::string startGate = "open";
   std::string discoveryGate = "open";
   std::string haCache = "valid";
   uint32_t discoveryFragments = 0;
+  size_t queueBytes = 0;
+  std::string queueRegion = "none";
+  size_t cameraBytes = 0;
+  size_t mainStackBytes = 12288;
+  size_t mainHighWater = 3476;
   std::string state = "off";
   bool overflow = false;
   size_t heapFreeAfter = 0;
@@ -606,6 +612,12 @@ void hwSetMqttBuffer(size_t bytes) {
   state().mqtt.bufferBytes = bytes;
 }
 
+void hwSetMqttMainStack(size_t bytes, size_t highWater) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  state().mqtt.mainStackBytes = bytes;
+  state().mqtt.mainHighWater = highWater;
+}
+
 void hwSetBootDefaultsMarker(const std::string &marker) {
   const std::lock_guard<std::mutex> lock(state().mutex);
   state().bootDefaultsMarker = marker;
@@ -677,7 +689,27 @@ void hwStart(void) {
 
   mqtt_model_state_t &mqtt = hw.mqtt;
   if (mqtt.enabled) {
-    if (mqtt.ownerStack < 10240) {
+    // The 30,007-byte hardware seed was measured with the 8 KiB main stack.
+    // Charge the 12 KiB revert before the MQTT owner so the pool matches the
+    // production stack rather than the experiment.
+    if (mqtt.mainStackBytes > 8192) {
+      const size_t delta = mqtt.mainStackBytes - 8192;
+      if (heapAllocTagged(delta, "main_stack_12k", false, true) == 0) {
+        mqtt.state = "alloc_failed";
+        ESP_LOGE("heap", "Mem alloc fail. size 0x%04x caps 0x00000804",
+                 static_cast<unsigned>(delta));
+        mqtt.heapFreeAfter = heapFree();
+        return;
+      }
+    }
+    // The main task high-water was 3,476 bytes before the MQTT path. The
+    // hardware 8 KiB stack overflowed after MQTT was enabled, so model 8,500
+    // bytes for the combined path and require the 12 KiB stack.
+    if (mqtt.mainStackBytes < mqtt.mainHighWater) {
+      mqtt.state = "main_overflow";
+      mqtt.overflow = true;
+      ESP_LOGE("mqtt", "***ERROR*** A stack overflow in task main");
+    } else if (mqtt.ownerStack < 10240) {
       if (!mqtt.expectOverflow) {
         hw.failClosed = true;
         ESP_LOGE(LOG_TAG, "SIM FAIL: MQTT owner stack %u below 10240 bytes",
@@ -689,34 +721,88 @@ void hwStart(void) {
         ESP_LOGE("mqtt", "***ERROR*** A stack overflow in task mqtt");
       }
     } else {
+      const size_t ownerFreeFloor = mqtt.tls ? Furble::MQTTMemory::OWNER_TLS_INTERNAL_FREE_FLOOR
+                                             : Furble::MQTTMemory::OWNER_INTERNAL_FREE_FLOOR;
+      const size_t ownerLargestFloor = Furble::MQTTMemory::OWNER_INTERNAL_LARGEST_FLOOR;
       const size_t freeFloor = mqtt.tls ? Furble::MQTTMemory::START_TLS_INTERNAL_FREE_FLOOR
                                         : Furble::MQTTMemory::START_INTERNAL_FREE_FLOOR;
       const size_t largestFloor = mqtt.tls ? Furble::MQTTMemory::START_TLS_INTERNAL_LARGEST_FLOOR
                                            : Furble::MQTTMemory::START_INTERNAL_LARGEST_FLOOR;
-      if (heapFree() < freeFloor || heapLargest() < largestFloor) {
+      if (heapFree() < ownerFreeFloor || heapLargest() < ownerLargestFloor) {
+        mqtt.ownerGate = "closed";
+        mqtt.state = "owner_blocked";
+        ESP_LOGW("mqtt", "MQTT owner not created: internal free %u, largest %u (need %u/%u)",
+                 static_cast<unsigned>(heapFree()), static_cast<unsigned>(heapLargest()),
+                 static_cast<unsigned>(ownerFreeFloor), static_cast<unsigned>(ownerLargestFloor));
+      } else if (heapAllocTagged(mqtt.ownerStack, "mqtt_owner", false, true) == 0) {
+        mqtt.state = "alloc_failed";
+        ESP_LOGE("heap", "Mem alloc fail. size 0x%04x caps 0x00000804",
+                 static_cast<unsigned>(mqtt.ownerStack));
+      } else if (heapFree() < freeFloor || heapLargest() < largestFloor) {
         mqtt.startGate = "closed";
         mqtt.state = "start_blocked";
         ESP_LOGW("mqtt", "MQTT start deferred: internal free %u, largest %u (need %u/%u)",
                  static_cast<unsigned>(heapFree()), static_cast<unsigned>(heapLargest()),
                  static_cast<unsigned>(freeFloor), static_cast<unsigned>(largestFloor));
-      } else if (heapAllocTagged(mqtt.ownerStack, "mqtt_owner", false, true) == 0) {
-        mqtt.state = "alloc_failed";
-        ESP_LOGE("heap", "Mem alloc fail. size 0x%04x caps 0x00000804",
-                 static_cast<unsigned>(mqtt.ownerStack));
-      } else if (heapAllocTagged(mqtt.workerStack, mqtt.tls ? "mqtt_tls_worker" : "mqtt_worker",
-                                 false, true)
-                 == 0) {
-        mqtt.state = "alloc_failed";
-        ESP_LOGE("heap", "Mem alloc fail. size 0x%04x caps 0x00000804",
-                 static_cast<unsigned>(mqtt.workerStack));
       } else {
-        mqtt.state = "created";
+        mqtt.ownerGate = "open";
         mqtt.startGate = "open";
+        bool queueReady = false;
+        if (heapPsramPresent() && heapPsramLargest() >= Furble::MQTTMemory::EVENT_QUEUE_BYTES) {
+          const uint64_t queue =
+              heapAllocTagged(Furble::MQTTMemory::EVENT_QUEUE_BYTES, "mqtt_queue", true, true);
+          if (queue != 0) {
+            mqtt.queueRegion = "psram";
+            mqtt.queueBytes = Furble::MQTTMemory::EVENT_QUEUE_BYTES;
+            queueReady = true;
+          }
+        }
+        if (!queueReady) {
+          if (heapAllocTagged(Furble::MQTTMemory::EVENT_QUEUE_BYTES, "mqtt_queue", false, true)
+              == 0) {
+            mqtt.state = "alloc_failed";
+            ESP_LOGE("heap", "Mem alloc fail. size 0x%04x caps 0x00000804",
+                     static_cast<unsigned>(Furble::MQTTMemory::EVENT_QUEUE_BYTES));
+            mqtt.heapFreeAfter = heapFree();
+            return;
+          }
+          mqtt.queueRegion = "internal";
+          mqtt.queueBytes = Furble::MQTTMemory::EVENT_QUEUE_BYTES;
+        }
+        if (heapAllocTagged(mqtt.workerStack, mqtt.tls ? "mqtt_tls_worker" : "mqtt_worker", false,
+                            true)
+            == 0) {
+          mqtt.state = "alloc_failed";
+          ESP_LOGE("heap", "Mem alloc fail. size 0x%04x caps 0x00000804",
+                   static_cast<unsigned>(mqtt.workerStack));
+          mqtt.heapFreeAfter = heapFree();
+          return;
+        }
+        for (int buffer = 0; buffer < 2; buffer++) {
+          if (heapAllocTagged(mqtt.bufferBytes, "mqtt_buffer", false, true) == 0) {
+            mqtt.state = "alloc_failed";
+            ESP_LOGE("heap", "Mem alloc fail. size 0x%04x caps 0x00000804",
+                     static_cast<unsigned>(mqtt.bufferBytes));
+            mqtt.heapFreeAfter = heapFree();
+            return;
+          }
+        }
+        // publishState(true) loads the saved camera list before discovery.
+        constexpr size_t CAMERA_SNAPSHOT_BYTES = 5120;
+        if (heapAllocTagged(CAMERA_SNAPSHOT_BYTES, "mqtt_camera", false, true) == 0) {
+          mqtt.state = "alloc_failed";
+          ESP_LOGE("heap", "Mem alloc fail. size 0x%04x caps 0x00000804",
+                   static_cast<unsigned>(CAMERA_SNAPSHOT_BYTES));
+          mqtt.heapFreeAfter = heapFree();
+          return;
+        }
+        mqtt.cameraBytes = CAMERA_SNAPSHOT_BYTES;
+        mqtt.state = "created";
         mqtt.discoveryFragments = static_cast<uint32_t>(
             (hw.mqttDiscoveryPayload + mqtt.bufferBytes - 1) / mqtt.bufferBytes);
-        ESP_LOGI("mqtt", "owner stack %u worker stack %u%s created",
+        ESP_LOGI("mqtt", "owner stack %u worker stack %u%s queue %s created",
                  static_cast<unsigned>(mqtt.ownerStack), static_cast<unsigned>(mqtt.workerStack),
-                 mqtt.tls ? " TLS" : "");
+                 mqtt.tls ? " TLS" : "", mqtt.queueRegion.c_str());
       }
     }
     if (mqtt.bufferBytes > 2048) {
@@ -1459,11 +1545,32 @@ std::string hwQuery(const std::string &key) {
     if (sub == "ha_peak") {
       return std::to_string(hw.mqtt.haPeak);
     }
+    if (sub == "owner_gate") {
+      return hw.mqtt.ownerGate;
+    }
     if (sub == "start_gate") {
       return hw.mqtt.startGate;
     }
     if (sub == "discovery_gate") {
       return hw.mqtt.discoveryGate;
+    }
+    if (sub == "queue_bytes") {
+      return std::to_string(hw.mqtt.queueBytes);
+    }
+    if (sub == "queue_region") {
+      return hw.mqtt.queueRegion;
+    }
+    if (sub == "camera_bytes") {
+      return std::to_string(hw.mqtt.cameraBytes);
+    }
+    if (sub == "main_stack") {
+      return std::to_string(hw.mqtt.mainStackBytes);
+    }
+    if (sub == "main_high_water") {
+      return std::to_string(hw.mqtt.mainHighWater);
+    }
+    if (sub == "main_stack_ok") {
+      return hw.mqtt.mainStackBytes >= hw.mqtt.mainHighWater ? "yes" : "no";
     }
     if (sub == "ha_cache") {
       return hw.mqtt.haCache;

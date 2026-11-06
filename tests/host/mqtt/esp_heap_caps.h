@@ -10,6 +10,7 @@
 
 namespace host_mqtt_heap {
 void set(size_t freeBytes, size_t largestBlock);
+void setPsram(size_t freeBytes, size_t largestBlock);
 void reset(void);
 }  // namespace host_mqtt_heap
 

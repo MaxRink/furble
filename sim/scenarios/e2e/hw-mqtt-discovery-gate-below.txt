@@ -1,12 +1,18 @@
-# HA discovery gate at 24575 free after the 10 KiB owner and 4 KiB worker.
+# HA discovery gate below 10240 free after the camera snapshot.
+#
+# Seed 32,767: owner 10,752 + worker 3,584 + buffers 3,072 + camera 5,120
+# leave 10,239 bytes, one below the discovery floor.
 seed hw_profile sticks3
-seed heap_internal_free 24575
-seed heap_internal_largest 20000
+seed heap_internal_free 35839
+seed heap_internal_largest 35839
 seed mqtt_owner_stack 10240
-seed mqtt_worker_stack 4096
+seed mqtt_worker_stack 3072
+seed mqtt_buffer 1536
 seed mqtt_ha true
+seed main_stack 12288
 wait 100
 assert mqttmodel.state created
 assert mqttmodel.discovery_gate closed
+assert mqttmodel.ha blocked
 assert ui.page main
 exit

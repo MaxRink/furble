@@ -2258,15 +2258,16 @@
       "status": "modeled"
     },
     {
-      "id": "memory.main_stack_8k",
+      "id": "memory.main_stack_12k",
       "profile": "sticks3",
       "category": "memory",
-      "feature": "Main stack 8 KiB",
-      "source": "release-gate target",
+      "feature": "Main stack 12 KiB",
+      "source": "perf/mqtt-queue-psram",
       "model": "sim/memory_profile.cpp",
       "scenario": "sim/scenarios/e2e/hw-memory-post394-budget.txt",
       "assertions": [
-        "mem.component.main_stack"
+        "mem.component.main_stack",
+        "mqttmodel.main_stack_ok"
       ],
       "status": "modeled"
     },
@@ -2501,11 +2502,11 @@
       "status": "modeled"
     },
     {
-      "id": "memory.main_stack_8k_webui",
+      "id": "memory.main_stack_12k_webui",
       "profile": "sticks3",
       "category": "memory",
-      "feature": "8 KiB main stack with WebUI identity task",
-      "source": "perf/boot-time and perf/mqtt-ha-memory",
+      "feature": "12 KiB main stack with WebUI identity task",
+      "source": "perf/mqtt-queue-psram",
       "model": "sim/memory_profile.cpp",
       "scenario": "sim/scenarios/e2e/hw-memory-webui-identity.txt",
       "assertions": [
@@ -2529,15 +2530,15 @@
       "status": "modeled"
     },
     {
-      "id": "memory.mqtt_start_gate_below",
+      "id": "memory.mqtt_owner_gate_below",
       "profile": "sticks3",
       "category": "memory",
-      "feature": "MQTT start gate just below 8192/4096",
-      "source": "perf/mqtt-ha-memory",
+      "feature": "MQTT owner gate just below 18,432/12,288",
+      "source": "perf/mqtt-queue-psram",
       "model": "sim/hardware_model.cpp",
       "scenario": "sim/scenarios/e2e/hw-mqtt-start-gate-below.txt",
       "assertions": [
-        "mqttmodel.start_gate",
+        "mqttmodel.owner_gate",
         "mqttmodel.state"
       ],
       "status": "modeled"
@@ -2637,6 +2638,48 @@
       "assertions": [
         "mqttmodel.discovery_fragments",
         "mqttmodel.buffer"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "crash.mqtt_main_stack_8k",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "8 KiB main stack overflow after MQTT enabled",
+      "source": "hardware incident",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-memory-mqtt-main-stack-8k.txt",
+      "assertions": [
+        "mqttmodel.main_stack_ok",
+        "mqttmodel.state"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.mqtt_queue_psram",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "9,216-byte MQTT event queue in PSRAM",
+      "source": "perf/mqtt-queue-psram",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-memory-post394-budget.txt",
+      "assertions": [
+        "mqttmodel.queue_region",
+        "mqttmodel.queue_bytes"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "memory.mqtt_owner_gate",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "Pre-task MQTT owner gate at 18,432/12,288",
+      "source": "perf/mqtt-queue-psram",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-memory-mqtt-ha-oom.txt",
+      "assertions": [
+        "mqttmodel.owner_gate",
+        "mqttmodel.state"
       ],
       "status": "modeled"
     }

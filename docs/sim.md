@@ -463,9 +463,12 @@ the station report a
 connected network so the WebUI and MQTT network gates can pass. The model runs
 the production gate functions from `include/FurbleWebUIMemory.h` and
 `include/FurbleMQTTMemory.h` and logs the production fail-closed sentences; it
-does not serve HTTPS, generate a TLS identity, or claim TLS parity. When the
-MQTT start gate rejects the pool, the owner counts a deferred attempt and the
-esp-mqtt client task is never allocated, so `heap.alloc_failures` stays zero.
+does not serve HTTPS, generate a TLS identity, or claim TLS parity. The
+pre-task owner gate rejects at 18,432 free / 12,288 largest; below that no
+10 KiB owner is created. Once the owner exists, a start-gate rejection counts a
+deferred attempt and the esp-mqtt client task is never allocated, so
+`heap.alloc_failures` stays zero. The 9,392-byte event queue is modeled in
+PSRAM, and the 5,120-byte saved camera snapshot is charged on connect.
 `task_create_fail` takes a FreeRTOS task name or `all` and fails that task's
 `xTaskCreate` with the hardware-shaped `Mem alloc fail` line, so a production
 failure branch can be exercised without depending on a heap size. The failure
@@ -509,9 +512,11 @@ panel class. `psram_mode` is `absent`, `quad`, `octal` or `init_fail`.
 The MQTT stack model is opt-in with `mqtt_owner_stack` and `mqtt_worker_stack`
 byte counts, plus `mqtt_tls`, `mqtt_ha` and `mqtt_buffer`. The model fails
 closed when the owner stack is below 10,240 bytes or a buffer is above 2,048
-bytes. `mqtt_expect_overflow` set to `true` is the deliberate historical-overflow
-override used by the 4 KiB and 6 KiB regression scenarios. `companion_enabled`
-seeds the companion state.
+bytes. `main_stack` and `main_high_water` set the modeled main stack and the
+combined MQTT-path high-water; the default is 12,288 / 3,476, and the pre-fix
+regression seeds 8,192 / 8,500 to report `main_overflow`. `mqtt_expect_overflow`
+set to `true` is the deliberate historical-overflow override used by the 4 KiB
+and 6 KiB regression scenarios. `companion_enabled` seeds the companion state.
 
 `ble_peers` selects the virtual BLE radio topology from a strict allowlist:
 

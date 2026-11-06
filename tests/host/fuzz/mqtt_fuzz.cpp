@@ -228,15 +228,21 @@ int main(int argc, char **argv) {
 
   auto &mqtt = MQTT::getInstance();
   MQTT::init();
-  host_mqtt_heap::set(Furble::MQTTMemory::START_INTERNAL_FREE_FLOOR - 1,
-                      Furble::MQTTMemory::START_INTERNAL_LARGEST_FLOOR);
+  // The host build has no PSRAM queue path, so the queue is internal and the
+  // start floor includes it.
+  const size_t queueFreeFloor =
+      Furble::MQTTMemory::START_INTERNAL_FREE_FLOOR + Furble::MQTTMemory::EVENT_QUEUE_BYTES;
+  const size_t queueLargestFloor =
+      Furble::MQTTMemory::EVENT_QUEUE_BYTES > Furble::MQTTMemory::START_INTERNAL_LARGEST_FLOOR
+          ? Furble::MQTTMemory::EVENT_QUEUE_BYTES
+          : Furble::MQTTMemory::START_INTERNAL_LARGEST_FLOOR;
+  host_mqtt_heap::set(queueFreeFloor - 1, queueLargestFloor);
   host_mqtt_network::setGotIp("ethernet", 0x0a00002a);
   mqtt.hostTaskStep();
   mqtt.hostTaskStep();
   require(host_mqtt::startCount() == 0, "MQTT client started below the internal-heap start floor");
 
-  host_mqtt_heap::set(Furble::MQTTMemory::START_INTERNAL_FREE_FLOOR,
-                      Furble::MQTTMemory::START_INTERNAL_LARGEST_FLOOR);
+  host_mqtt_heap::set(queueFreeFloor, queueLargestFloor);
   mqtt.reloadSetting();
   mqtt.hostTaskStep();
   mqtt.hostTaskStep();

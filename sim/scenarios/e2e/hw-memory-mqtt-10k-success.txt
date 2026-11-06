@@ -1,15 +1,19 @@
-# Corrected MQTT stack budget: 10 KiB owner and 4 KiB plain worker.
+# Corrected MQTT stack budget: 12 KiB main, 10 KiB owner, 3 KiB plain worker.
 seed hw_profile sticks3
-seed heap_internal_free 27351
-seed heap_internal_largest 25588
+seed heap_internal_free 40000
+seed heap_internal_largest 40000
 seed mqtt_owner_stack 10240
-seed mqtt_worker_stack 4096
-seed mqtt_buffer 2048
+seed mqtt_worker_stack 3072
+seed mqtt_buffer 1536
+seed main_stack 12288
 wait 100
 assert mqttmodel.state created
 assert mqttmodel.owner_stack 10240
-assert mqttmodel.worker_stack 4096
-assert mqttmodel.buffer 2048
+assert mqttmodel.worker_stack 3072
+assert mqttmodel.buffer 1536
+assert mqttmodel.queue_region psram
+assert mqttmodel.camera_bytes 5120
+assert mqttmodel.main_stack_ok yes
 assert mqttmodel.overflow no
 assert_min heap.free 10000
 assert heap.alloc_failures 0
