@@ -110,7 +110,25 @@ mkdir -p "$BUILD_DIR/obj"
 SDKCONFIG_HEADER="$BUILD_DIR/sdkconfig_sim.h"
 python3 "$ROOT/tools/gen_sim_sdkconfig.py" "$SDKCONFIG" "$SDKCONFIG_HEADER"
 
+# LVGL configuration for this build: the shared sim/lv_conf.h with the
+# modelled board's image cache size. The cache is a memory setting: the ESP32
+# boards set it to 0, and a 256 KiB cache on a board without PSRAM fills the
+# internal pool with decoded icons the device never keeps. Font and DPI parity
+# is a separate change (plan 314, PR 2c). Written only on change so the
+# depfile check keeps objects cached.
+mkdir -p "$BUILD_DIR/lvgl-conf"
+LV_CONF="$BUILD_DIR/lvgl-conf/lv_conf.h"
+cache=$(sed -n 's/^CONFIG_LV_CACHE_DEF_SIZE=//p' "$SDKCONFIG")
+sed "s/^#define LV_CACHE_DEF_SIZE .*/#define LV_CACHE_DEF_SIZE ${cache:-0}/" "$ROOT/sim/lv_conf.h" \
+  >"$LV_CONF.new"
+if cmp -s "$LV_CONF.new" "$LV_CONF"; then
+  rm -f "$LV_CONF.new"
+else
+  mv "$LV_CONF.new" "$LV_CONF"
+fi
+
 INCLUDES="\
+-I$BUILD_DIR/lvgl-conf \
 -I$ROOT/sim \
 -I$ROOT/sim/shim \
 -I$ROOT/include \
@@ -210,7 +228,11 @@ sdkconfig_flags_for() {
 # the shaping flags and drop the cache when they change. A build dir holding
 # objects but no stamp predates this check, so it is treated as a mismatch once.
 FLAG_STAMP="$BUILD_DIR/build-flags"
-FLAG_VALUE="root=$ROOT dep_root=$DEP_ROOT lvgl=$LVGL_DIR board=$FURBLE_BOARD m5gfx=$M5GFX_BOARD rig=${FURBLE_SIM_RIG:-1} mqtt=$MQTT_ENABLED sdkconfig=$SDKCONFIG sanitize=$SANITIZE coverage=$COVERAGE"
+# The script's own checksum is part of the stamp: per-file flags such as the
+# LVGL allocator defines below live in this script, and an edit to them must
+# not reuse objects compiled before it.
+SCRIPT_SUM=$(cksum <"$0" | cut -d' ' -f1)
+FLAG_VALUE="root=$ROOT dep_root=$DEP_ROOT lvgl=$LVGL_DIR board=$FURBLE_BOARD m5gfx=$M5GFX_BOARD rig=${FURBLE_SIM_RIG:-1} mqtt=$MQTT_ENABLED sdkconfig=$SDKCONFIG sanitize=$SANITIZE coverage=$COVERAGE script=$SCRIPT_SUM"
 if [ ! -f "$FLAG_STAMP" ] || [ "$(cat "$FLAG_STAMP")" != "$FLAG_VALUE" ]; then
   if [ -f "$FLAG_STAMP" ] || [ -n "$(ls -A "$BUILD_DIR/obj" 2>/dev/null)" ]; then
     echo "[CLEAN] build flags changed, dropping $BUILD_DIR/obj"
@@ -270,7 +292,7 @@ object_is_current() {
   depfile=$2
   config_is_newer=$3
 
-  [ "$config_is_newer" = false ] || [ "$object" -nt "$ROOT/sim/lv_conf.h" ] || return 1
+  [ "$config_is_newer" = false ] || [ "$object" -nt "$LV_CONF" ] || return 1
   dependency_is_current "$object" "$depfile"
 }
 

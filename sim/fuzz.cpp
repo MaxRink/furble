@@ -821,6 +821,7 @@ bool fuzzActive(void) {
 }
 
 void fuzzTick(UI *ui) {
+  const Furble::Sim::HostAllocScope hostScope;
   if (!active || ui == nullptr) {
     return;
   }
@@ -834,7 +835,10 @@ void fuzzTick(UI *ui) {
       pendingDescription = eventName(pendingEvent);
       pendingWasStop = pendingEvent == Event::INTERVAL_STOP;
       stateBeforeApply = captureState(ui);
-      applyEvent(ui, pendingEvent);
+      {
+        const Furble::Sim::DeviceAllocScope deviceScope;
+        applyEvent(ui, pendingEvent);
+      }
       recordEvent(pendingDescription);
       eventCounts[pendingDescription]++;
       // The post-handler hook counts the current LVGL cycle and the next
@@ -865,8 +869,11 @@ void fuzzTick(UI *ui) {
     }
 
     case FuzzPhase::ESCAPE:
+    {
+      const Furble::Sim::DeviceAllocScope deviceScope;
       escapeTick(ui);
       return;
+    }
 
     case FuzzPhase::FINISH:
       finish();

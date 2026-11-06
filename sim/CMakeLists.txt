@@ -83,9 +83,27 @@ if(NOT TARGET SDL2::SDL2)
   add_library(SDL2::SDL2 ALIAS furble_sdl)
 endif()
 
+# LVGL configuration for this build: the shared sim/lv_conf.h with the board
+# sdkconfig's image cache size, a memory setting. Keep in step with
+# sim/build.sh.
+set(FURBLE_SIM_SDKCONFIG "${FURBLE_ROOT}/sdkconfig.m5stick-s3"
+    CACHE FILEPATH "Board sdkconfig whose memory settings the simulator models")
+file(STRINGS "${FURBLE_SIM_SDKCONFIG}" _lv_cache REGEX "^CONFIG_LV_CACHE_DEF_SIZE=")
+string(REGEX REPLACE "^CONFIG_LV_CACHE_DEF_SIZE=" "" _lv_cache "${_lv_cache}")
+if(_lv_cache STREQUAL "")
+  set(_lv_cache 0)
+endif()
+file(READ "${CMAKE_CURRENT_LIST_DIR}/lv_conf.h" _lv_conf)
+string(REGEX REPLACE "#define LV_CACHE_DEF_SIZE [0-9]+" "#define LV_CACHE_DEF_SIZE ${_lv_cache}"
+       _lv_conf "${_lv_conf}")
+file(CONFIGURE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/lvgl-conf/lv_conf.h" CONTENT "${_lv_conf}"
+     @ONLY)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/lv_conf.h")
+
 add_subdirectory("${FURBLE_LVGL_DIR}" "lvgl-build" EXCLUDE_FROM_ALL)
 target_compile_definitions(lvgl PUBLIC LV_CONF_INCLUDE_SIMPLE LV_LVGL_H_INCLUDE_SIMPLE
                                        LV_KCONFIG_IGNORE)
+target_include_directories(lvgl BEFORE PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/lvgl-conf")
 target_include_directories(lvgl PUBLIC "${CMAKE_CURRENT_LIST_DIR}")
 # LVGL's C library allocator is the device path (LV_STDLIB_CLIB). Route its
 # three calls through the device allocation counter. Keep in step with
@@ -192,8 +210,6 @@ file(GLOB_RECURSE M5UNIFIED_SOURCES CONFIGURE_DEPENDS
 
 # Memory-relevant sdkconfig subset of the modelled board, force-included into
 # firmware and simulator sources only. Keep in step with sim/build.sh.
-set(FURBLE_SIM_SDKCONFIG "${FURBLE_ROOT}/sdkconfig.m5stick-s3"
-    CACHE FILEPATH "Board sdkconfig whose memory settings the simulator models")
 set(FURBLE_SIM_SDKCONFIG_HEADER "${CMAKE_CURRENT_BINARY_DIR}/sdkconfig_sim.h")
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 execute_process(
@@ -214,6 +230,7 @@ add_executable(furble-sim ${FURBLE_SOURCES} ${M5GFX_SOURCES}
 target_include_directories(
   furble-sim
   PRIVATE
+    "${CMAKE_CURRENT_BINARY_DIR}/lvgl-conf"
     "${CMAKE_CURRENT_LIST_DIR}"
     "${CMAKE_CURRENT_LIST_DIR}/shim"
     "${FURBLE_ROOT}/include"

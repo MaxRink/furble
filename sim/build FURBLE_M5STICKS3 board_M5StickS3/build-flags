@@ -1,0 +1,1 @@
+root=/private/tmp/claude-503/x/wt-pr2 dep_root=/Users/A92615428/git/GitHub/MaxRink/furble/.pio/libdeps/m5stick-s3 lvgl=/Users/A92615428/git/GitHub/MaxRink/furble/managed_components/lvgl__lvgl board=FURBLE_M5STICKS3 m5gfx=board_M5StickS3 rig=1 mqtt=0 sdkconfig=/private/tmp/claude-503/x/wt-pr2/sdkconfig.m5stick-s3 sanitize= coverage=0 script=3329885798

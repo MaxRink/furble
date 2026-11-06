@@ -41,6 +41,13 @@ bool furble_sim_heap_should_fail(size_t bytes, const char *owner);
 /* Records the failure, calls the registered hook and aborts like hardware. */
 void furble_sim_heap_alloc_failed(size_t bytes, uint32_t capabilities, const char *owner);
 esp_err_t heap_caps_register_failed_alloc_callback(esp_alloc_failed_hook_t callback);
+/*
+ * Host allocation plus the device charge for its caps. The simulator's device
+ * counter defines these; host unit targets get the plain fallbacks in
+ * sim/heap_model.cpp.
+ */
+void *furble_sim_caps_alloc(size_t alignment, size_t size, uint32_t capabilities);
+void furble_sim_caps_free(void *pointer);
 
 #ifdef __cplusplus
 }
@@ -51,13 +58,7 @@ static inline void *heap_caps_aligned_alloc(size_t alignment, size_t size, uint3
     furble_sim_heap_alloc_failed(size, capabilities, "heap_caps");
     return NULL;
   }
-  void *ptr = NULL;
-  if (posix_memalign(&ptr, alignment, size) != 0) {
-    /* A real host failure follows the same board abort policy. */
-    furble_sim_heap_alloc_failed(size, capabilities, "heap_caps");
-    return NULL;
-  }
-  return ptr;
+  return furble_sim_caps_alloc(alignment, size, capabilities);
 }
 
 static inline void *heap_caps_malloc(size_t size, uint32_t capabilities) {
@@ -65,7 +66,7 @@ static inline void *heap_caps_malloc(size_t size, uint32_t capabilities) {
 }
 
 static inline void heap_caps_free(void *ptr) {
-  free(ptr);
+  furble_sim_caps_free(ptr);
 }
 
 static inline size_t heap_caps_get_free_size(uint32_t capabilities) {

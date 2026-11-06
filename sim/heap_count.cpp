@@ -27,6 +27,9 @@ thread_local int t_HostDepth = 0;
 struct counted_t {
   size_t charged = 0;
   bool external = false;
+  // Allocated before counting started: part of the seeded baseline. Freeing
+  // it once counting runs returns its block to the pool, as on the device.
+  bool baseline = false;
 };
 
 // The table must not allocate through the operator new it serves.
@@ -81,20 +84,26 @@ size_t usableSize(void *pointer) {
 #endif
 }
 
-bool shouldCount(void) {
-  return t_DeviceThread && t_HostDepth == 0 && Furble::Sim::heapCountingFast();
-}
-
-void *countAllocation(void *pointer, size_t size) {
-  if (pointer == nullptr || !shouldCount()) {
+void *countAllocation(void *pointer, size_t size, uint32_t caps = 0) {
+  if (pointer == nullptr || !t_DeviceThread || t_HostDepth != 0) {
     return pointer;
   }
   size_t charged = 0;
   bool external = false;
+  if (!Furble::Sim::heapCountingFast()) {
+    // Record the baseline block without charging it.
+    const Furble::Sim::HostAllocScope scope;
+    Furble::Sim::heapBaselineBlock(size, caps, &charged, &external);
+    registry_t &counts = registry();
+    const std::lock_guard<std::mutex> lock(counts.mutex);
+    counts.table[pointer] = {charged, external, true};
+    counts.live.fetch_add(1);
+    return pointer;
+  }
   {
     // The heap model logs and samples its timeline; keep that off the count.
     const Furble::Sim::HostAllocScope scope;
-    if (!Furble::Sim::heapCountedAlloc(size, t_DeviceTask, &charged, &external)) {
+    if (!Furble::Sim::heapCountedAllocCaps(size, caps, t_DeviceTask, &charged, &external)) {
       // Only reached when the board has no abort policy.
       std::free(pointer);
       return nullptr;
@@ -128,7 +137,11 @@ void releaseAllocation(void *pointer) {
     }
     if (found) {
       const Furble::Sim::HostAllocScope scope;
-      Furble::Sim::heapCountedFree(counted.charged, counted.external);
+      if (!counted.baseline) {
+        Furble::Sim::heapCountedFree(counted.charged, counted.external);
+      } else if (Furble::Sim::heapCountingFast()) {
+        Furble::Sim::heapRefundBaseline(counted.charged, counted.external);
+      }
     }
   }
   std::free(pointer);
@@ -189,6 +202,22 @@ extern "C" void furble_sim_host_alloc_exit(void) {
 
 extern "C" void *furble_sim_fw_malloc(size_t size) {
   return allocate(size, alignof(std::max_align_t));
+}
+
+extern "C" void *furble_sim_caps_alloc(size_t alignment, size_t size, uint32_t capabilities) {
+  void *pointer = nullptr;
+  if (posix_memalign(&pointer, alignment < sizeof(void *) ? sizeof(void *) : alignment,
+                     size == 0 ? 1 : size)
+      != 0) {
+    furble_sim_heap_alloc_failed(size, capabilities, t_DeviceTask);
+    return nullptr;
+  }
+  // The charge draws from the pool the caps name, as heap_caps_malloc does.
+  return countAllocation(pointer, size, capabilities);
+}
+
+extern "C" void furble_sim_caps_free(void *pointer) {
+  releaseAllocation(pointer);
 }
 
 extern "C" void furble_sim_fw_free(void *pointer) {

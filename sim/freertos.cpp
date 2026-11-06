@@ -98,6 +98,7 @@ struct SimTask {
   size_t heap_bytes = 0;
   bool heap_charged = false;
   bool heap_external = false;
+  bool heap_counted = false;
 };
 
 class QueueUse {
@@ -458,6 +459,7 @@ bool waitUntilLocked(std::unique_lock<std::mutex> &lock,
 void markTaskFinished(const std::shared_ptr<SimTask> &task) {
   size_t heapBytes = 0;
   bool heapIsExternal = false;
+  bool heapIsCounted = false;
   {
     const std::lock_guard<std::mutex> lock(Furble::Sim::schedulerMutex());
     task->blocked = false;
@@ -473,15 +475,17 @@ void markTaskFinished(const std::shared_ptr<SimTask> &task) {
     if (task->heap_charged) {
       heapBytes = task->heap_bytes;
       heapIsExternal = task->heap_external;
+      heapIsCounted = task->heap_counted;
       task->heap_charged = false;
       task->heap_bytes = 0;
       task->heap_external = false;
+      task->heap_counted = false;
     }
     Furble::Sim::schedulerCondition().notify_all();
   }
   // Released outside the scheduler lock. The heap model has its own leaf lock.
   if (heapBytes != 0) {
-    Furble::Sim::heapReleaseTask(heapBytes, heapIsExternal);
+    Furble::Sim::heapReleaseTask(heapBytes, heapIsExternal, heapIsCounted);
   }
 }
 
@@ -785,8 +789,9 @@ BaseType_t xTaskCreate(TaskFunction_t task,
   // the boot tasks, so nothing is charged.
   size_t chargedBytes = 0;
   bool chargedExternal = false;
+  bool chargedCounted = false;
   if (!Furble::Sim::heapTaskCreate(name, static_cast<size_t>(stack_bytes), &chargedBytes,
-                                   &chargedExternal)) {
+                                   &chargedExternal, &chargedCounted)) {
     if (task_handle != nullptr) {
       *task_handle = nullptr;
     }
@@ -799,11 +804,12 @@ BaseType_t xTaskCreate(TaskFunction_t task,
   state->heap_bytes = chargedBytes;
   state->heap_charged = chargedBytes != 0;
   state->heap_external = chargedExternal;
+  state->heap_counted = chargedCounted;
   Furble::Sim::setClockAdvanceHook(schedulerClockAdvanced);
   {
     std::unique_lock<std::mutex> lock(Furble::Sim::schedulerMutex());
     if (Furble::Sim::schedulerStopping()) {
-      Furble::Sim::heapReleaseTask(state->heap_bytes, state->heap_external);
+      Furble::Sim::heapReleaseTask(state->heap_bytes, state->heap_external, state->heap_counted);
       state->heap_charged = false;
       state->heap_bytes = 0;
       state->heap_external = false;
@@ -825,10 +831,11 @@ BaseType_t xTaskCreate(TaskFunction_t task,
     state->worker = std::thread([state, task, parameter, name]() {
       currentTask = state.get();
       simTaskName = name == nullptr ? "task" : name;
+      // Register with the host watchdog first: its registry is host memory.
+      Furble::Sim::watchdogRegisterThread(simTaskName);
       if (!Furble::Sim::heapHostOnlyTask(simTaskName)) {
         Furble::Sim::heapMarkDeviceThread(simTaskName);
       }
-      Furble::Sim::watchdogRegisterThread(simTaskName);
       bool admitted = false;
       {
         std::unique_lock<std::mutex> lock(Furble::Sim::schedulerMutex());

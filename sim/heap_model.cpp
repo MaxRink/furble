@@ -22,10 +22,10 @@
 namespace {
 
 constexpr const char *LOG_TAG = "heap";
-// Host allocation record overhead for one FreeRTOS task: TCB, stack canary and
-// alignment. The real figure differs per architecture, so the model charges a
-// fixed conservative cost and documents it as an approximation.
-constexpr size_t TASK_TCB_BYTES = 512;
+// sizeof(StaticTask_t) in the ESP-IDF 5.5.3 Xtensa firmware, read from the
+// DWARF of the m5stick-s3 image with the toolchain gdb. xTaskCreate makes two
+// pvPortMalloc blocks, the stack and the TCB, each with the TLSF block cost.
+constexpr size_t TASK_TCB_BYTES = 336;
 // Default host model: a roomy internal pool. Existing scenarios seed nothing,
 // so every measured query and every gate stays on the same side it was before
 // the model existed.
@@ -180,6 +180,7 @@ struct heap_state_t {
   bool counting = false;
   size_t countedInternal = 0;
   size_t countedExternal = 0;
+  size_t countedTasks = 0;
   size_t minimumLargest = DEFAULT_LARGEST;
   uint32_t allocationFailures = 0;
   uint32_t allocationCount = 0;
@@ -317,6 +318,11 @@ bool heapHostOnlyTask(const char *name) {
   return hostOnlyTask(name);
 }
 
+size_t heapCountedTaskBytes(void) {
+  const model_lock_t lock;
+  return state().countedTasks;
+}
+
 size_t heapCountedBytes(bool external) {
   const model_lock_t lock;
   return external ? state().countedExternal : state().countedInternal;
@@ -398,6 +404,30 @@ bool heapCountedAllocCaps(size_t requested,
   }
   sampleTimelineLocked(false);
   return true;
+}
+
+void heapBaselineBlock(size_t requested, uint32_t caps, size_t *bytes, bool *external) {
+  const model_lock_t lock;
+  heap_state_t &heap = state();
+  *bytes = blockBytes(requested);
+  const bool psramReady = heap.psramState == "ready";
+  if (caps != 0) {
+    *external = (caps & MALLOC_CAP_SPIRAM) != 0;
+  } else {
+    *external = MALLOC_MAY_USE_PSRAM && psramReady && requested > MALLOC_ALWAYSINTERNAL;
+  }
+}
+
+void heapRefundBaseline(size_t bytes, bool external) {
+  const model_lock_t lock;
+  heap_state_t &heap = state();
+  if (external) {
+    heap.psramFree += bytes;
+    heap.psramLargest = std::min(heap.psramFree, heap.psramLargest + bytes);
+  } else {
+    heap.freeBytes += bytes;
+    heap.largestBlock = std::min(heap.freeBytes, heap.largestBlock + bytes);
+  }
 }
 
 void heapCountedFree(size_t charged, bool external) {
@@ -578,14 +608,21 @@ void heapNoteAllocationFailure(size_t bytes, const char *task) {
   noteFailureLocked(bytes, task);
 }
 
-bool heapTaskCreate(const char *name, size_t stackBytes, size_t *chargedBytes, bool *external) {
+bool heapTaskCreate(const char *name,
+                    size_t stackBytes,
+                    size_t *chargedBytes,
+                    bool *external,
+                    bool *counted) {
   if (chargedBytes != nullptr) {
     *chargedBytes = 0;
+  }
+  if (counted != nullptr) {
+    *counted = false;
   }
   if (external != nullptr) {
     *external = false;
   }
-  const size_t bytes = stackBytes + TASK_TCB_BYTES;
+  const size_t bytes = blockBytes(stackBytes) + blockBytes(TASK_TCB_BYTES);
   const abort_check_t abortCheck;
   const model_lock_t lock;
   heap_state_t &heap = state();
@@ -627,6 +664,13 @@ bool heapTaskCreate(const char *name, size_t stackBytes, size_t *chargedBytes, b
       return false;
     }
     heap.psramFree -= bytes;
+    if (deviceTask) {
+      heap.countedExternal += bytes;
+      heap.countedTasks += bytes;
+      if (counted != nullptr) {
+        *counted = true;
+      }
+    }
     heap.psramLargest = std::min(heap.psramLargest - bytes, heap.psramFree);
     heap.externalTasks++;
     heap.minimumLargest = std::min(heap.minimumLargest, heap.psramLargest);
@@ -645,15 +689,26 @@ bool heapTaskCreate(const char *name, size_t stackBytes, size_t *chargedBytes, b
   if (chargedBytes != nullptr) {
     *chargedBytes = bytes;
   }
+  if (deviceTask) {
+    heap.countedInternal += bytes;
+    heap.countedTasks += bytes;
+    if (counted != nullptr) {
+      *counted = true;
+    }
+  }
   return true;
 }
 
-void heapReleaseTask(size_t bytes, bool external) {
+void heapReleaseTask(size_t bytes, bool external, bool counted) {
   if (bytes == 0) {
     return;
   }
   const model_lock_t lock;
   heap_state_t &heap = state();
+  if (counted) {
+    (external ? heap.countedExternal : heap.countedInternal) -= bytes;
+    heap.countedTasks -= bytes;
+  }
   if (external) {
     heap.psramFree += bytes;
     heap.psramLargest = std::min(heap.psramFree, heap.psramLargest + bytes);
@@ -825,6 +880,23 @@ uint32_t heapAllocationCount(void) {
 
 extern "C" bool furble_sim_heap_should_fail(size_t bytes, const char *owner) {
   return Furble::Sim::heapShouldFailAllocation(bytes, owner);
+}
+
+// Host unit targets link the model without sim/heap_count.cpp; its strong
+// definitions replace these in the simulator.
+extern "C" __attribute__((weak)) void *furble_sim_caps_alloc(size_t alignment,
+                                                             size_t size,
+                                                             uint32_t capabilities) {
+  void *pointer = nullptr;
+  if (posix_memalign(&pointer, alignment, size) != 0) {
+    furble_sim_heap_alloc_failed(size, capabilities, "heap_caps");
+    return nullptr;
+  }
+  return pointer;
+}
+
+extern "C" __attribute__((weak)) void furble_sim_caps_free(void *pointer) {
+  free(pointer);
 }
 
 extern "C" void furble_sim_heap_alloc_failed(size_t bytes,
