@@ -467,7 +467,7 @@ does not serve HTTPS, generate a TLS identity, or claim TLS parity. The
 pre-task owner gate rejects at 18,432 free / 12,288 largest; below that no
 10 KiB owner is created. Once the owner exists, a start-gate rejection counts a
 deferred attempt and the esp-mqtt client task is never allocated, so
-`heap.alloc_failures` stays zero. The 9,216-byte event queue is modeled in
+`heap.alloc_failures` stays zero. The 9,392-byte event queue is modeled in
 PSRAM, and the 5,120-byte saved camera snapshot is charged on connect.
 `task_create_fail` takes a FreeRTOS task name or `all` and fails that task's
 `xTaskCreate` with the hardware-shaped `Mem alloc fail` line, so a production

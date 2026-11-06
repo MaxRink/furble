@@ -12,7 +12,7 @@
         "lvgl_draw": 2160,
         "mqtt_owner": 10240,
         "mqtt_worker": 3072,
-        "mqtt_queue": 9216,
+        "mqtt_queue": 9392,
         "mqtt_camera": 5120
       }
     },
@@ -106,7 +106,7 @@
       "components": {
         "main_stack": 12288,
         "lvgl_draw": 2160,
-        "mqtt_queue": 9216,
+        "mqtt_queue": 9392,
         "mqtt_camera": 5120,
         "mqtt_worker": 3072
       }

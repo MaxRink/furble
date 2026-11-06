@@ -22,6 +22,8 @@ esp_netif_t g_Netif = {false, 0};
 bool g_HasNetif = false;
 size_t g_HeapFree = 100000;
 size_t g_HeapLargest = 50000;
+size_t g_PsramFree = 8u * 1024u * 1024u;
+size_t g_PsramLargest = 4u * 1024u * 1024u;
 
 }  // namespace
 
@@ -32,21 +34,26 @@ void set(size_t freeBytes, size_t largestBlock) {
   g_HeapLargest = largestBlock;
 }
 
+void setPsram(size_t freeBytes, size_t largestBlock) {
+  g_PsramFree = freeBytes;
+  g_PsramLargest = largestBlock;
+}
+
 void reset(void) {
   g_HeapFree = 100000;
   g_HeapLargest = 50000;
+  g_PsramFree = 8u * 1024u * 1024u;
+  g_PsramLargest = 4u * 1024u * 1024u;
 }
 
 }  // namespace host_mqtt_heap
 
 extern "C" size_t heap_caps_get_free_size(uint32_t caps) {
-  (void)caps;
-  return g_HeapFree;
+  return (caps & MALLOC_CAP_SPIRAM) != 0 ? g_PsramFree : g_HeapFree;
 }
 
 extern "C" size_t heap_caps_get_largest_free_block(uint32_t caps) {
-  (void)caps;
-  return g_HeapLargest;
+  return (caps & MALLOC_CAP_SPIRAM) != 0 ? g_PsramLargest : g_HeapLargest;
 }
 
 namespace Furble {

@@ -30,7 +30,7 @@ was already done before the gate:
 
 | Change | Effect | Safety |
 | :--- | :--- | :--- |
-| Move the 9,216-byte event queue to PSRAM | removes 9.2 KiB from the internal pool | The queue holds copied topic/payload bytes and client handles, never flash or NVS pointers. The owner only touches it with the cache enabled. Internal heap fallback when PSRAM allocation is unavailable. |
+| Move the 9,392-byte event queue to PSRAM | removes 9.2 KiB from the internal pool | The queue holds copied topic/payload bytes and client handles, never flash or NVS pointers. The owner only touches it with the cache enabled. Internal heap fallback when PSRAM allocation is unavailable. |
 | Create the queue in `startClient()` after the start gate | a refused start no longer pays 9.2 KiB | The queue is not created in every `taskStep()`. `enqueueEvent()` drops events when the queue is absent. |
 | Remove the early `CameraList::savedSnapshot()` | removes about 5 KiB from the MQTT-init path | `publishCameras()` and `publishDiscovery()` already load the saved list on demand. Camera behavior is unchanged. |
 | Revert the main stack to 12 KiB | restores the safe main stack | The 8 KiB experiment overflowed on hardware. The WebUI TLS identity still runs on its own 12 KiB internal task. |

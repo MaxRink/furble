@@ -257,7 +257,7 @@ check.
   WebUI, companion, GPS and NimBLE host are not.
 - MQTT: the owner needs 10 KiB. Gate owner creation at 18,432/12,288 internal
   bytes; the client start gate is 8,192/4,096. Plain MQTT uses a 3 KiB worker
-  and 1,536-byte buffers; TLS keeps a 6 KiB worker. The 9,216-byte event queue
+  and 1,536-byte buffers; TLS keeps a 6 KiB worker. The 9,392-byte event queue
   lives in PSRAM because it holds only copied topic and payload bytes, never
   flash or NVS pointers. Home Assistant discovery requires 10,240/4,096 after
   the saved camera list loads. `mqtt_ha` is cached on reload; never read it from

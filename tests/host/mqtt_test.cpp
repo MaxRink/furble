@@ -185,8 +185,20 @@ int main(void) {
   require(!Furble::MQTTMemory::startFits(Furble::MQTTMemory::START_INTERNAL_FREE_FLOOR,
                                          Furble::MQTTMemory::START_INTERNAL_LARGEST_FLOOR, true),
           "the TLS start gate reused the smaller plain-worker floor");
-  require(Furble::MQTTMemory::EVENT_QUEUE_BYTES == 9216,
+  require(Furble::MQTTMemory::EVENT_QUEUE_BYTES == 9392,
           "MQTT event queue budget changed without updating the gate");
+  require(
+      !Furble::MQTTMemory::startFits(
+          Furble::MQTTMemory::START_INTERNAL_FREE_FLOOR + Furble::MQTTMemory::EVENT_QUEUE_BYTES - 1,
+          Furble::MQTTMemory::EVENT_QUEUE_BYTES, false, Furble::MQTTMemory::EVENT_QUEUE_BYTES),
+      "start gate ignored the internal queue free floor");
+  require(Furble::MQTTMemory::startFits(
+              Furble::MQTTMemory::START_INTERNAL_FREE_FLOOR + Furble::MQTTMemory::EVENT_QUEUE_BYTES,
+              Furble::MQTTMemory::EVENT_QUEUE_BYTES, false, Furble::MQTTMemory::EVENT_QUEUE_BYTES),
+          "start gate closed at the internal queue floor");
+  require(!Furble::MQTTMemory::startFits(65536, Furble::MQTTMemory::EVENT_QUEUE_BYTES - 1, false,
+                                         Furble::MQTTMemory::EVENT_QUEUE_BYTES),
+          "start gate ignored the internal queue largest-block floor");
   require(!Furble::MQTTMemory::ownerFits(Furble::MQTTMemory::OWNER_INTERNAL_FREE_FLOOR - 1, 65536),
           "owner gate opened below the free floor");
   require(!Furble::MQTTMemory::ownerFits(Furble::MQTTMemory::OWNER_INTERNAL_FREE_FLOOR,
@@ -221,6 +233,19 @@ int main(void) {
   host_mqtt_heap::reset();
   mqtt.reloadSetting();
   require(mqtt.hostTaskCreated(), "MQTT owner was not created after the heap recovered");
+
+  // On a board without PSRAM the 9,392-byte queue is internal. The start gate
+  // must include it, otherwise a client is admitted with only the worker floor.
+  host_mqtt_heap::setPsram(0, 0);
+  host_mqtt_heap::set(
+      Furble::MQTTMemory::START_INTERNAL_FREE_FLOOR + Furble::MQTTMemory::EVENT_QUEUE_BYTES - 1,
+      65536);
+  mqtt.reloadSetting();
+  mqtt.hostTaskStep();
+  require(host_mqtt::startCount() == 0,
+          "start gate admitted a client whose internal queue cannot fit");
+  host_mqtt_heap::reset();
+  mqtt.reloadSetting();
 
   // P-030: the owner reads its five settings on reloadSetting(), not on every
   // iteration, and idles on a one-second deadline instead of four times a

@@ -686,7 +686,13 @@ bool MQTT::startClient(void) {
   const bool secure = (m_URI.rfind("mqtts://", 0) == 0);
   const size_t freeBytes = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
   const size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-  const auto gate = MQTTMemory::startGate(freeBytes, largest, secure);
+  const size_t psramLargest = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
+  const bool queueInPsram = psramLargest >= MQTTMemory::EVENT_QUEUE_BYTES;
+  // Without PSRAM the queue is a 9,392-byte internal allocation, so the start
+  // floor must include it. Otherwise the gate admits a client that cannot
+  // allocate its queue and burns the retry budget.
+  const auto gate = MQTTMemory::startGate(freeBytes, largest, secure,
+                                          queueInPsram ? 0 : MQTTMemory::EVENT_QUEUE_BYTES);
   if (!gate.open) {
     // Defer instead of letting esp-mqtt allocate its task and buffers into a
     // pool that cannot hold them. The owner counts this as a failed attempt, so
@@ -703,13 +709,26 @@ bool MQTT::startClient(void) {
     // it with the cache enabled, and no code writes NVS from the MQTT path.
 #if defined(CONFIG_SPIRAM) && defined(CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM) \
     && CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM
-    m_EventQueue = xQueueCreateWithCaps(EVENT_QUEUE_LENGTH, sizeof(queued_event_t),
-                                        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    if (m_EventQueue == nullptr) {
-      ESP_LOGW(MQTT_LOG_TAG, "MQTT event queue PSRAM allocation failed, using internal RAM");
+    if (queueInPsram) {
+      m_EventQueue = xQueueCreateWithCaps(EVENT_QUEUE_LENGTH, sizeof(queued_event_t),
+                                          MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+      if (m_EventQueue == nullptr) {
+        ESP_LOGW(MQTT_LOG_TAG, "MQTT event queue PSRAM allocation failed, using internal RAM");
+      }
     }
 #endif
     if (m_EventQueue == nullptr) {
+      const size_t internalFree = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+      const size_t internalLargest =
+          heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+      if (internalFree < MQTTMemory::EVENT_QUEUE_BYTES
+          || internalLargest < MQTTMemory::EVENT_QUEUE_BYTES) {
+        ESP_LOGE(MQTT_LOG_TAG,
+                 "MQTT event queue cannot fit internal RAM: free %u, largest %u (need %u)",
+                 static_cast<unsigned>(internalFree), static_cast<unsigned>(internalLargest),
+                 static_cast<unsigned>(MQTTMemory::EVENT_QUEUE_BYTES));
+        return false;
+      }
       m_EventQueue = xQueueCreate(EVENT_QUEUE_LENGTH, sizeof(queued_event_t));
     }
     if (m_EventQueue == nullptr) {

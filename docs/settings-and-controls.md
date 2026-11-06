@@ -331,7 +331,7 @@ requires 10,240 free and a 4,096-byte largest block after the saved camera list
 loads. Below a floor the firmware logs the measured pair and either defers the
 start (the owner retry limit still applies) or skips only the retained
 discovery records. The broker link and the command path stay up when discovery
-is skipped. The 9,216-byte command event queue lives in PSRAM with an internal
+is skipped. The 9,392-byte command event queue lives in PSRAM with an internal
 fallback, and the saved camera list loads on connect rather than at
 initialization. The plain MQTT worker uses a 3 KiB stack and 1,536-byte network
 and outbox buffers; TLS keeps a 6 KiB worker.
