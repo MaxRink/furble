@@ -20,6 +20,7 @@
 
 #include "clock.h"
 #include "driver.h"
+#include "heap_count.h"
 #include "heap_model.h"
 #include "power_profiler.h"
 #include "watchdog.h"
@@ -533,6 +534,9 @@ void joinTask(const std::shared_ptr<SimTask> &task) {
 }
 
 BaseType_t queueSend(QueueHandle_t queue, const void *item, TickType_t ticksToWait, bool front) {
+  // Device queues copy into preallocated storage; the host item vector is not
+  // device memory.
+  const Furble::Sim::HostAllocScope scope;
   exitStoppedTask();
   if (queue == nullptr || item == nullptr) {
     return pdFALSE;
@@ -604,6 +608,8 @@ void runSchedulerTimerCallback(SchedulerCallback callback, void *argument) {
   const char *previousName = simTaskName;
   currentTask = &timerServiceTask;
   simTaskName = "timer";
+  // esp_timer callbacks are firmware running in the timer service task.
+  Furble::Sim::heapMarkDeviceThread("timer");
 
   std::unique_lock<std::mutex> lock(schedulerMutex());
   timerServiceTask.priority = ESP_TASK_TIMER_PRIO;
@@ -769,6 +775,9 @@ BaseType_t xTaskCreate(TaskFunction_t task,
   if (task == nullptr) {
     return pdFALSE;
   }
+  // The scheduler's own bookkeeping below is host memory; the device cost is
+  // the stack and TCB charge.
+  const Furble::Sim::HostAllocScope scope;
 
   // Charge the stack to the modelled internal heap before the task is
   // published. A production caller that ignores pdFAIL is the same bug here as
@@ -816,6 +825,9 @@ BaseType_t xTaskCreate(TaskFunction_t task,
     state->worker = std::thread([state, task, parameter, name]() {
       currentTask = state.get();
       simTaskName = name == nullptr ? "task" : name;
+      if (!Furble::Sim::heapHostOnlyTask(simTaskName)) {
+        Furble::Sim::heapMarkDeviceThread(simTaskName);
+      }
       Furble::Sim::watchdogRegisterThread(simTaskName);
       bool admitted = false;
       {
@@ -999,6 +1011,7 @@ uint32_t ulTaskNotifyTake(BaseType_t clearCountOnExit, TickType_t ticksToWait) {
 }
 
 void furble_sim_stop_all_tasks(void) {
+  const Furble::Sim::HostAllocScope hostScope;
   std::vector<std::shared_ptr<SimTask>> snapshot;
   Furble::Sim::schedulerStop();
   {
@@ -1181,58 +1194,78 @@ bool furble_sim_task_join_claimed(TaskHandle_t taskHandle) {
   return task != nullptr && task->join_claimed;
 }
 
-QueueHandle_t xQueueCreate(UBaseType_t queue_length, UBaseType_t item_size) {
-  if (queue_length == 0 || item_size == 0) {
+namespace {
+// StaticQueue_t on the 32-bit ESP-IDF 5.5 port with queue sets enabled and the
+// trace facility off: the control block xQueueGenericCreate allocates in front
+// of the item storage.
+constexpr size_t QUEUE_CONTROL_BYTES = 84;
+// pvPortMalloc is heap_caps_malloc(INTERNAL | 8BIT) in the ESP-IDF port.
+constexpr uint32_t QUEUE_DEFAULT_CAPS = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
+
+struct queue_charge_t {
+  size_t charged = 0;
+  bool external = false;
+};
+std::mutex s_QueueChargeMutex;
+std::map<QueueHandle_t, queue_charge_t> s_QueueCharges;
+
+QueueHandle_t createQueue(UBaseType_t queueLength,
+                          UBaseType_t itemSize,
+                          uint32_t caps,
+                          bool alwaysCharge) {
+  const Furble::Sim::HostAllocScope scope;
+  if (queueLength == 0 || itemSize == 0) {
     return nullptr;
   }
   if (Furble::Sim::schedulerStopping()) {
     return nullptr;
   }
-  return new FurbleSimQueue(queue_length, item_size);
+  queue_charge_t charge;
+  if (alwaysCharge || Furble::Sim::heapCounting()) {
+    const char *owner = pcTaskGetName(nullptr);
+    if (!Furble::Sim::heapCountedAllocCaps(
+            QUEUE_CONTROL_BYTES + static_cast<size_t>(queueLength) * itemSize, caps,
+            owner == nullptr ? "queue" : owner, &charge.charged, &charge.external)) {
+      return nullptr;
+    }
+  }
+  QueueHandle_t queue = new FurbleSimQueue(queueLength, itemSize);
+  if (charge.charged != 0) {
+    const std::lock_guard<std::mutex> lock(s_QueueChargeMutex);
+    s_QueueCharges[queue] = charge;
+  }
+  return queue;
 }
 
-namespace {
-std::mutex s_CapsQueueMutex;
-std::map<QueueHandle_t, uint64_t> s_CapsQueues;
+void releaseQueueCharge(QueueHandle_t queue) {
+  queue_charge_t charge;
+  {
+    const std::lock_guard<std::mutex> lock(s_QueueChargeMutex);
+    const auto found = s_QueueCharges.find(queue);
+    if (found == s_QueueCharges.end()) {
+      return;
+    }
+    charge = found->second;
+    s_QueueCharges.erase(found);
+  }
+  Furble::Sim::heapCountedFree(charge.charged, charge.external);
+}
 }  // namespace
+
+QueueHandle_t xQueueCreate(UBaseType_t queue_length, UBaseType_t item_size) {
+  return createQueue(queue_length, item_size, QUEUE_DEFAULT_CAPS, false);
+}
 
 QueueHandle_t xQueueCreateWithCaps(UBaseType_t queue_length,
                                    UBaseType_t item_size,
                                    UBaseType_t caps) {
-  if (queue_length == 0 || item_size == 0) {
-    return nullptr;
-  }
-  const bool external = (caps & MALLOC_CAP_SPIRAM) != 0;
-  const uint64_t charge =
-      Furble::Sim::heapAllocTagged(static_cast<size_t>(queue_length) * item_size, "queue_caps",
-                                   external, true, static_cast<uint32_t>(caps));
-  if (charge == 0) {
-    return nullptr;
-  }
-  QueueHandle_t queue = xQueueCreate(queue_length, item_size);
-  if (queue == nullptr) {
-    Furble::Sim::heapFreeTagged(charge);
-    return nullptr;
-  }
-  const std::lock_guard<std::mutex> lock(s_CapsQueueMutex);
-  s_CapsQueues[queue] = charge;
-  return queue;
+  // A capability-placed queue is charged even before general counting starts,
+  // because it is always an explicit placement decision.
+  return createQueue(queue_length, item_size, static_cast<uint32_t>(caps), true);
 }
 
 void vQueueDeleteWithCaps(QueueHandle_t queue) {
-  uint64_t charge = 0;
-  {
-    const std::lock_guard<std::mutex> lock(s_CapsQueueMutex);
-    const auto found = s_CapsQueues.find(queue);
-    if (found != s_CapsQueues.end()) {
-      charge = found->second;
-      s_CapsQueues.erase(found);
-    }
-  }
   vQueueDelete(queue);
-  if (charge != 0) {
-    Furble::Sim::heapFreeTagged(charge);
-  }
 }
 
 BaseType_t xQueueSend(QueueHandle_t queue, const void *item, TickType_t ticksToWait) {
@@ -1244,6 +1277,7 @@ BaseType_t xQueueSendToFront(QueueHandle_t queue, const void *item, TickType_t t
 }
 
 BaseType_t xQueueReceive(QueueHandle_t queue, void *item, TickType_t ticksToWait) {
+  const Furble::Sim::HostAllocScope scope;
   exitStoppedTask();
   if (queue == nullptr || item == nullptr) {
     Furble::Sim::profilerQueueReceive("queue", false);
@@ -1312,6 +1346,8 @@ void vQueueDelete(QueueHandle_t queue) {
   if (queue == nullptr) {
     return;
   }
+  const Furble::Sim::HostAllocScope scope;
+  releaseQueueCharge(queue);
   bool deleteNow = false;
   {
     std::unique_lock<std::mutex> lock(Furble::Sim::schedulerMutex());

@@ -10,6 +10,7 @@
 #include "FurbleUIMemory.h"
 #include "clock.h"
 #include "hardware_model.h"
+#include "heap_count.h"
 #include "heap_model.h"
 
 namespace {
@@ -152,10 +153,12 @@ std::string heapJson(void) {
 namespace Furble::Sim {
 
 void memoryProfileTick(void) {
+  const Furble::Sim::HostAllocScope hostScope;
   heapSampleTimeline();
 }
 
 bool memoryDump(const std::string &path, const std::string &scenario) {
+  const HostAllocScope scope;
   std::ofstream out(path, std::ios::trunc);
   if (!out) {
     return false;

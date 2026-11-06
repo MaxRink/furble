@@ -15,8 +15,13 @@ assert crash.reset panic
 assert crash.task ui
 assert crash.clean no
 assert crash.last_log_present yes
-assert crash.heap_free 204800
-assert crash.heap_largest 163840
+# The record carries the live heap at the panic. Device allocations after the
+# first frame are charged since plan 314, and the panel builds differ per
+# board, so the figure sits just below the 204,800 / 163,840 default pool.
+assert_max crash.heap_free 204800
+assert_min crash.heap_free 203776
+assert_max crash.heap_largest 163840
+assert_min crash.heap_largest 162816
 assert crash.uptime 0
 assert ui.page main
 

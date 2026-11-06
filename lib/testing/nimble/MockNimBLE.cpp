@@ -7,6 +7,21 @@
 #include <mutex>
 #include <thread>
 
+// The virtual camera peers are the far end of the link, not device memory.
+// The simulator's device allocation counter replaces these weak no-ops; host
+// tests keep them. Every call into a peer runs inside this scope.
+extern "C" __attribute__((weak)) void furble_sim_host_alloc_enter(void) {}
+extern "C" __attribute__((weak)) void furble_sim_host_alloc_exit(void) {}
+
+namespace {
+struct PeerAllocScope {
+  PeerAllocScope() { furble_sim_host_alloc_enter(); }
+  ~PeerAllocScope() { furble_sim_host_alloc_exit(); }
+  PeerAllocScope(const PeerAllocScope &) = delete;
+  PeerAllocScope &operator=(const PeerAllocScope &) = delete;
+};
+}  // namespace
+
 namespace {
 
 uint8_t hexDigit(char value) {
@@ -554,6 +569,7 @@ void NimBLEClient::setSelfDelete(bool delete_on_disconnect, bool delete_on_conne
     const int reason = m_LinkDeadReason;
     NimBLEMockPeer *peer = m_Peer;
     if (peer != nullptr) {
+      const PeerAllocScope peerScope;
       peer->disconnect(*this, reason);
       m_Peer = nullptr;
     }
@@ -564,6 +580,7 @@ void NimBLEClient::setSelfDelete(bool delete_on_disconnect, bool delete_on_conne
     }
     eraseClient(this);
     if (peer != nullptr) {
+      const PeerAllocScope peerScope;
       peer->disconnectComplete();
     }
     return;
@@ -629,6 +646,7 @@ bool NimBLEClient::connect(const NimBLEAddress &address) {
       break;
     }
   }
+  const PeerAllocScope peerScope;
   if ((peer == nullptr) || !peer->acceptConnection(*this, address)) {
     return false;
   }
@@ -666,6 +684,7 @@ void NimBLEClient::disconnect() {
     const int reason = m_LinkDeadReason;
     NimBLEMockPeer *peer = m_Peer;
     if (peer != nullptr) {
+      const PeerAllocScope peerScope;
       peer->disconnect(*this, reason);
       m_Peer = nullptr;
     }
@@ -679,6 +698,7 @@ void NimBLEClient::disconnect() {
       eraseClient(this);
     }
     if (peer != nullptr) {
+      const PeerAllocScope peerScope;
       peer->disconnectComplete();
     }
     return;
@@ -693,6 +713,7 @@ void NimBLEClient::disconnect() {
 
   NimBLEMockPeer *peer = m_Peer;
   if (peer != nullptr) {
+    const PeerAllocScope peerScope;
     peer->disconnect(*this, 0);
   }
 
@@ -725,6 +746,7 @@ void NimBLEClient::disconnect() {
     eraseClient(this);
   }
   if (peer != nullptr) {
+    const PeerAllocScope peerScope;
     peer->disconnectComplete();
   }
 }
@@ -748,6 +770,7 @@ bool NimBLEClient::mockCompleteAsyncDisconnect(void) {
     eraseClient(this);
   }
   if (peer != nullptr) {
+    const PeerAllocScope peerScope;
     peer->disconnectComplete();
   }
   return true;
@@ -768,6 +791,7 @@ bool NimBLEClient::isConnected() const {
 void NimBLEClient::mockDropLink(int reason, bool fire_callback) {
   NimBLEMockPeer *peer = m_Peer;
   if (peer != nullptr) {
+    const PeerAllocScope peerScope;
     peer->disconnect(*this, reason);
     m_Peer = nullptr;
   }
@@ -788,6 +812,7 @@ void NimBLEClient::mockDropLink(int reason, bool fire_callback) {
     g_PendingReap.push_back(this);
   }
   if (peer != nullptr) {
+    const PeerAllocScope peerScope;
     peer->disconnectComplete();
   }
 }
@@ -797,6 +822,7 @@ void NimBLEClient::mockDropLinkSelfDelete(int reason) {
   // peer power-cycle does mid-handshake.
   NimBLEMockPeer *peer = m_Peer;
   if (peer != nullptr) {
+    const PeerAllocScope peerScope;
     peer->disconnect(*this, reason);
     m_Peer = nullptr;
   }
@@ -823,6 +849,7 @@ void NimBLEClient::mockDropLinkSelfDelete(int reason) {
     eraseClient(this);
   }
   if (peer != nullptr) {
+    const PeerAllocScope peerScope;
     peer->disconnectComplete();
   }
 }
@@ -858,6 +885,7 @@ void NimBLEClient::mockCompleteStalledTerminate(int reason) {
   m_Handle = BLE_HS_CONN_HANDLE_NONE;
   NimBLEMockPeer *peer = m_Peer;
   if (peer != nullptr) {
+    const PeerAllocScope peerScope;
     peer->disconnect(*this, reason);
     m_Peer = nullptr;
   }
@@ -870,6 +898,7 @@ void NimBLEClient::mockCompleteStalledTerminate(int reason) {
     NimBLEDevice::deleteClient(this);
   }
   if (peer != nullptr) {
+    const PeerAllocScope peerScope;
     peer->disconnectComplete();
   }
 }
@@ -892,6 +921,7 @@ bool NimBLEClient::mockPeerRequestConnParams(const ble_gap_upd_params &params) {
 }
 
 NimBLERemoteService *NimBLEClient::getService(const NimBLEUUID &service) {
+  const PeerAllocScope peerScope;
   if (!m_Connected || (m_Peer == nullptr) || !m_Peer->hasService(service)) {
     return nullptr;
   }
@@ -910,6 +940,7 @@ void NimBLEClient::dropServiceCache() {
 }
 
 bool NimBLEClient::secureConnection() {
+  const PeerAllocScope peerScope;
   return (m_Peer != nullptr) && m_Peer->secureConnection(*this);
 }
 
@@ -917,6 +948,7 @@ NimBLEAttValue NimBLEClient::getValue(const NimBLEUUID &service, const NimBLEUUI
   if ((m_Peer == nullptr) || !m_Connected) {
     return {};
   }
+  const PeerAllocScope peerScope;
   return m_Peer->read(*this, service, characteristic);
 }
 
@@ -927,6 +959,7 @@ bool NimBLEClient::setValue(const NimBLEUUID &service,
   if ((m_Peer == nullptr) || !m_Connected) {
     return false;
   }
+  const PeerAllocScope peerScope;
   return m_Peer->write(*this, service, characteristic,
                        std::vector<uint8_t>(value.data(), value.data() + value.size()), response);
 }
@@ -938,6 +971,7 @@ bool NimBLEClient::updateConnParams(uint16_t min_interval,
   if ((m_Peer == nullptr) || !m_Connected) {
     return false;
   }
+  const PeerAllocScope peerScope;
   if (!m_Peer->updateConnectionParams(*this, min_interval, max_interval, latency, timeout)) {
     return false;
   }
@@ -976,6 +1010,7 @@ bool NimBLEClient::mockConnParamUpdatePending() const {
 }
 
 int NimBLEClient::getRssi() const {
+  const PeerAllocScope peerScope;
   return (m_Peer == nullptr) ? 0 : m_Peer->getRssi();
 }
 
@@ -1339,6 +1374,7 @@ void NimBLEDevice::injectPassKey(NimBLEConnInfo &connInfo, uint32_t passKey) {
     }
   }
   if (peer != nullptr) {
+    const PeerAllocScope peerScope;
     peer->onPasskeyEntered(passKey);
   }
 }
@@ -1355,6 +1391,7 @@ void NimBLEDevice::injectConfirmPasskey(NimBLEConnInfo &connInfo, bool accept) {
     }
   }
   if (peer != nullptr) {
+    const PeerAllocScope peerScope;
     peer->onPasskeyConfirmed(accept);
   }
   const NimBLEDevice::host_hook_t hook = g_ConfirmPasskeyHook.load();

@@ -483,6 +483,19 @@ therefore cannot assert anything after an allocation fails.
 `sim/fixtures/hardware/panic-*.txt`, requires status 3 and checks that the
 next boot reports the panic record.
 
+From the production `UI_FIRST_FRAME` boot mark the simulator charges every
+device allocation to the modelled heap: firmware `new` and `malloc`, LVGL
+through its C library allocator, every device task stack and every queue. The
+charge includes the ESP-IDF TLSF header and poisoning overhead, and default
+`malloc` uses the board's PSRAM routing. The simulator's own work on device
+threads, such as queries, the power profiler and the virtual camera peers,
+stays off the count. Host objects are 64-bit, so the count is an upper bound
+for pointer-heavy structures. `heap.counting`, `heap.counted_internal` and
+`heap.counted_external` report the general count; `heap.free` and
+`heap.largest` include it. `memory-counted-camera-connect.txt` shows a camera
+connect charging its 4 KiB Control target task and returning it on
+disconnect.
+
 `sim/build.sh` generates `sdkconfig_sim.h` in the build directory with
 `tools/gen_sim_sdkconfig.py` and force-includes it into firmware and simulator
 sources, never into M5GFX or M5Unified. It carries the memory-relevant
