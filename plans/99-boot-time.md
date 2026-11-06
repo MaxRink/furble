@@ -1,5 +1,8 @@
 # 99 - Boot timeline and safe boot-time reductions
 
+Status: merged on master with #397. The boot-time hardware gates at the end are
+deferred in sim-only mode and are not board measurements.
+
 ## Goal
 
 The reported M5StickS3 startup "took a while". Measure the real stages first,

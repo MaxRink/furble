@@ -33,7 +33,7 @@ was already done before the gate:
 | Move the 9,392-byte event queue to PSRAM | removes 9.2 KiB from the internal pool | The queue holds copied topic/payload bytes and client handles, never flash or NVS pointers. The owner only touches it with the cache enabled. Internal heap fallback when PSRAM allocation is unavailable. |
 | Create the queue in `startClient()` after the start gate | a refused start no longer pays 9.2 KiB | The queue is not created in every `taskStep()`. `enqueueEvent()` drops events when the queue is absent. |
 | Remove the early `CameraList::savedSnapshot()` | removes about 5 KiB from the MQTT-init path | `publishCameras()` and `publishDiscovery()` already load the saved list on demand. Camera behavior is unchanged. |
-| Revert the main stack to 12 KiB | restores the safe main stack | The 8 KiB experiment overflowed on hardware. The WebUI TLS identity still runs on its own 12 KiB internal task. |
+| Revert the StickS3 main stack to 12 KiB | restores the safe main stack | The 8 KiB experiment overflowed on hardware. The WebUI TLS identity still runs on its own 12 KiB internal task. |
 | Gate owner creation at 18,432 free / 12,288 largest | a low pool no longer creates a 10 KiB owner that cannot start | The owner gate is the start floor plus the owner stack. Below it the service logs the pair and stays off. TLS uses 21,504 / 12,288. |
 | Keep the start gate at 8,192 / 4,096 | the queue is no longer part of the internal start budget | The gate now covers the worker, buffers and esp-mqtt overhead only. |
 | Model the queue, camera snapshot, owner gate and 12 KiB main stack in the simulator | the hardware crash has a regression | The model asserts the queue is in PSRAM, the camera snapshot loads on connect, the owner gate closes at 16,000 bytes and the 8 KiB main stack reports `main_overflow`. |
@@ -109,6 +109,12 @@ never created. That is the intended fail-closed behavior.
 - Pre-review, static analysis and the flash-readiness gate before the PR.
 
 ## Still needs hardware
+
+Sim-only mode defers this list. The last hardware flash, of the candidate before
+#407, reproduced the MQTT main-stack overflow at 5,199 free / 4,596 largest.
+#407 is the fix and has not been flashed or retested. Every post-fix number
+above is inferred or modeled, not a board measurement. See
+[313-sim-only-status.md](313-sim-only-status.md).
 
 1. `perf heap` with `mqtt=true` on the StickS3. Confirm the free/largest pair
    after the owner gate, the queue move and the camera snapshot.

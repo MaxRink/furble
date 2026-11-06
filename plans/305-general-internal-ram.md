@@ -33,7 +33,8 @@ The build reports 48,600 bytes of static DRAM:
 RAM: 14.8% (used 48600 bytes from 327680 bytes)
 ```
 
-`CONFIG_ESP_MAIN_TASK_STACK_SIZE` is 16,384 on every board in this tree. The
+At the start of this pass, `CONFIG_ESP_MAIN_TASK_STACK_SIZE` was 16,384 on
+every board in this tree; this pass reduced only the StickS3 to 12,288. The
 StickS3 main task measured a 7,020-byte high-water mark with `web_ui=false`.
 The stack was sized for the TLS identity generation that runs from `initEarly()`
 when the WebUI is enabled, not for the UI loop.
@@ -163,7 +164,9 @@ it.
 The WebUI settings response is streamed one setting at a time. The MQTT
 discovery tree still uses cJSON nodes, which are small internal allocations,
 and the final text is one buffer that goes to PSRAM when it exceeds 4,096
-bytes. This was not changed because MQTT is owned by the open stack PR.
+bytes. This was not changed here because MQTT was owned by the then-open stack
+PR. #398 later added the discovery gate, #393/#398 sized the owner and worker,
+and #407 moved the event queue to PSRAM.
 
 ### Companion, console, NVS and logging
 
@@ -205,7 +208,7 @@ console saving.
 | Console stack below 6 KiB | 6,144 | 1,024 | The 5,504-byte high-water included the snapshots. The remaining margin is about 2.5 KiB and `esp_console_run` depth is input dependent. |
 | Companion stack 4,096 to 3,072 | 4,096 | 1,024 | 2,012 bytes measured, but the worker performs NVS writes and the remaining margin is only 1 KiB. Needs a hardware high-water with a companion write first. |
 | Camera target task in PSRAM | 4,096 per camera | 4,096 per active camera | The task never writes NVS, so it is safe in principle, but there is no high-water mark and shutter latency has not been measured. Deferred. |
-| MQTT owner task in PSRAM | 4,096 in #393 | 4,096 | The task does not write NVS, but MQTT is owned by the open stack PR. Deferred to a follow-up. |
+| MQTT owner task in PSRAM | 10,240 | 10,240 | The task does not write NVS, but there is no hardware high-water on the PSRAM stack path and it handles settings and discovery. Deferred. #407 keeps it internal. |
 | WiFi static RX below 6 | 6 x 1.6 KiB | 1.6 KiB per buffer | IDF recommends at least the AMPDU RX BA window of 6. Below that, throughput and compatibility regress. |
 | WiFi dynamic RX/TX below 32 | caps | 0 steady | They are caps, not preallocations. |
 | Smaller TCP windows | 5,760 | up to 2,880 per socket | Direct MQTT/OTA throughput regression. |
@@ -216,7 +219,10 @@ console saving.
 | Reduce LVGL image cache | 262,144 PSRAM | 0 internal | It is already in PSRAM. |
 | Reduce `CONFIG_LV_DRAW_LAYER_SIMPLE_BUF_SIZE` | 24,576 PSRAM | 0 internal | It is already in PSRAM. |
 
-## MQTT after #392 and #393
+## MQTT after #392 and #393 (historical)
+
+This section records the state before #398 and #407. The current gates and
+stacks are in [311-mqtt-queue-psram.md](311-mqtt-queue-psram.md).
 
 The pre-#392 failure was `Mem alloc fail. size 0x00001800 caps 0x00000804` in
 `esp_mqtt_client_start` after the 6 KiB Furble owner task had already been

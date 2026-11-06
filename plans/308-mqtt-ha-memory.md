@@ -18,7 +18,9 @@ The MQTT owner needs 10 KiB. A 4 KiB and a 6 KiB owner stack both overflowed
 during start and the first connected event. The measured owner high-water on
 the working 10 KiB build was 3,084 bytes. The task is not reduced in this pass.
 
-Measured MQTT task high-water marks from the StickS3:
+Measured MQTT task high-water marks from the StickS3 during the #398
+experiment. The main row is historical; the current StickS3 main stack is
+12 KiB.
 
 ```text
 mqtt owner       10,240 stack, 3,084 used
@@ -32,7 +34,7 @@ control           8,192 stack, 7,468 used
 
 | Change | Saving | Safety | Evidence |
 | :--- | ---: | :--- | :--- |
-| Main stack 12 KiB to 8 KiB | 4,096 | 3,020 measured high-water. The WebUI identity still runs on its own 12 KiB internal task and the main task only waits. | `CONFIG_ESP_MAIN_TASK_STACK_SIZE`, `perf tasks` |
+| Main stack 12 KiB to 8 KiB (reverted by #311) | 0 current; 4,096 in the #398 experiment | The 8 KiB experiment overflowed in task main once MQTT was enabled. The StickS3 main stack is 12 KiB. The WebUI identity still runs on its own 12 KiB internal task. | `plans/311-mqtt-queue-psram.md`, `CONFIG_ESP_MAIN_TASK_STACK_SIZE`, `perf tasks` |
 | One LVGL draw buffer on narrow panels | 2,160 on StickS3, 800 on StickC | The single-buffer flush path already waits for the SPI DMA before `lv_disp_flush_ready()`. Render and transfer are serialised per band. | `UIMemory::singleDrawBuffer`, `displayFlush()` |
 | Companion task 4 KiB to 3 KiB | 1,024 | 1,884 measured. The task commits NVS, so the stack stays internal. | `src/FurbleCompanion.cpp` |
 | Plain MQTT worker 4 KiB to 3 KiB | 1,024 | 704 measured. TLS keeps the 6 KiB worker for the handshake. | `MQTTMemory::PLAIN_WORKER_STACK_BYTES`, `config.task.stack_size` |
@@ -46,33 +48,46 @@ The steady internal saving with MQTT connected, against the measured build that
 already has the 10 KiB owner stack, is:
 
 ```text
-main stack            4,096
-one LVGL buffer       2,160
-companion stack       1,024
-plain MQTT worker     1,024
-MQTT buffers          1,024
-                    -------
-                      9,328 bytes
+main stack (reverted by #311)   0 current; 4,096 in the #398 experiment
+one LVGL buffer                 2,160
+companion stack                 1,024
+plain MQTT worker               1,024
+MQTT buffers                    1,024
+                              -------
+current, excluding the reverted main stack
+                                5,232 bytes
 ```
+
+The #398-era total including the 8 KiB main-stack cut was 9,328 bytes. That
+line is historical and is not part of the current tree.
 
 ## Inferred result
 
-Measured before, MQTT connected and HA off: 1,739 free / 1,076 largest.
+Measured before #398, MQTT connected and HA off: 1,739 free / 1,076 largest.
 
 ```text
-after: 1,739 + 9,328 = 11,067 free
+#398 inference: 1,739 + 9,328 = 11,067 free
 largest: 1,076 plus the freed 4 KiB main block, 2,160-byte LVGL block,
          1 KiB companion block, 1 KiB worker block and 1 KiB buffer blocks
 ```
 
-The largest block is the remaining unknown. The freed main stack is one 4 KiB
-block, so the largest is expected to be at least 4,096 bytes. That is exactly
-the discovery gate's largest floor. If the allocator does not coalesce the
-freed regions, HA discovery is skipped and the MQTT command path stays alive.
-The hardware run must read the actual pair.
+The #398 inference was optimistic. Hardware with the 8 KiB main stack later
+measured 30,007 free / 28,660 largest with MQTT off, so the actual idle pool
+was about 4.6 KiB lower than the 34,631 inference. Plan 311 records the current
+numbers after the #407 queue fix and the 12 KiB main-stack revert:
 
-With MQTT off the idle pool rises by 4,096 + 2,160 + 1,024 = 7,280 bytes, from
-27,351 to an inferred 34,631 free.
+```text
+MQTT off, 12 KiB main        25,911 free   inferred from the 30,007 measurement
+after owner gate             15,671 free   inferred, minus 10,240
+before camera snapshot        9,527 free   inferred, minus 3,072 worker and 3,072 buffers
+after camera snapshot         4,407 free   inferred, matched by the simulator model
+```
+
+The simulator reports 4,407 free / 3,060 largest after the camera snapshot. The
+largest block after the 12 KiB revert is not measured on hardware. The start
+gate passes at the inferred 15,671 free. The camera snapshot then loads, and
+the discovery gate requires 10,240 free, so HA discovery is skipped on this
+pool while the broker link and command path stay up.
 
 The Home Assistant hub discovery payload is 3,005 bytes and a camera payload
 is 1,874 bytes. The 1,536-byte network buffer does not cap them. esp-mqtt sends
@@ -136,6 +151,10 @@ small conflict on the configuration lines, resolved in favour of this branch's
 - Pre-review and static analysis before the PR.
 
 ## Still needs hardware
+
+Hardware validation is deferred in sim-only mode. The candidate before #407
+overflowed task main with MQTT enabled. #407 is the queue and owner-gate fix
+and has not been flashed or retested.
 
 1. `perf heap` on the StickS3 with plain MQTT connected. Confirm the free and
    largest values and whether the discovery gate opens.

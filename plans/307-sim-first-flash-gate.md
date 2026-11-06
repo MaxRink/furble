@@ -49,21 +49,33 @@ reports `READY TO FLASH`. A passing subset is not completion.
 
 The gate is evaluated on the combined tree, not each PR alone. The merge order
 is recorded in `sim/coverage/merge_order.json`: `#394`, `#395`, `#396`, `#397`,
-`#398`, `#393`. `#397` covers settings migration, failed default seed retries,
-WiFi fast-connect fallback and the PSRAM memtest split. `#398` covers the 8 KiB
-main stack, single LVGL buffer, 3 KiB companion, 3 KiB plain MQTT worker,
-1,536-byte buffers, cached MQTT_HA, 8,192/4,096 MQTT start gate,
-10,240/4,096 discovery gate and fragmented discovery payload.
+`#398`, `#393`, `#407`. `#397` covers settings migration, failed default seed
+retries, WiFi fast-connect fallback and the PSRAM memtest split. `#398` covers
+the single LVGL buffer, 3 KiB companion, 3 KiB plain MQTT worker, 1,536-byte
+buffers, cached MQTT_HA, 8,192/4,096 MQTT start gate, 10,240/4,096 discovery
+gate and fragmented discovery payload. `#407` moves the 9,392-byte MQTT event
+queue to PSRAM, removes the early camera snapshot, gates owner creation at
+18,432/12,288 (TLS 21,504/12,288) and restores the StickS3 12 KiB main stack.
 
-## Current blockers
+## Gate status on master
 
-The fuzz corpus has landed and passes: 10 targets, 136 seed runs, 89,146
-iterations and zero failures. The readiness report is still blocked by:
+The readiness report passes on master at `0883a31e`:
 
-- the memory profile dumps, which have not been generated for the combined
-  tree;
-- the full 6,912-combination permutation run, which is intentionally not a
-  pull-request smoke run and is tracked by a separate evidence PR.
+- hardware entries: 188 of 188 modeled, 0 approximate, 0 not modeled;
+- crash entries: 20 of 20 modeled;
+- fuzz targets: 10 of 10 modeled, with 136 seed runs, 89,146 iterations and
+  zero failures in `sim/coverage/fuzz_results.json`, which records commit
+  `0883a31e`;
+- permutations: 6,912 of 6,912 passed in
+  `sim/coverage/permutation_results.json`;
+- memory profile: 13 of 13 dumps pass after
+  `python3 sim/scripts/run-memory-profile.py` generates the ignored dumps in
+  `.pio/sim-memory`;
+- linked boundary conformance: 18 of 18.
+
+The memory dumps are generated evidence and are not committed. A clean checkout
+must run the profiler before the final readiness command. Do not delete a
+manifest entry or edit a result file to make the report green.
 
 The approximate SDL boundaries were closed by linked host conformance targets
 that compile the production driver unchanged and replace only the lowest
@@ -75,8 +87,8 @@ TLS/socket allocation path. Physical wiring, analog audio, the SD controller
 and a real mbedTLS handshake remain hardware validation items, not simulator
 claims.
 
-Each blocker names its missing evidence in the manifest. Do not delete a
-blocker to make the gate green.
+Every manifest row names its scenario, runner or assertion. Keep the manifest
+and the evidence aligned when a driver or gate changes.
 
 ## Commands
 
@@ -100,3 +112,9 @@ every gate above, and the hardware test plan: StickS3 USB boot, WebUI gate log,
 MQTT owner/worker/HA, USB ROM recovery, power-button single/double/long, BLE
 auth/reidentify, crash record and a memory soak. No hardware action is taken
 until the report says `READY TO FLASH`.
+
+The last hardware flash, of the candidate before #407, reproduced the MQTT main
+stack overflow. #407 is the fix and has not been flashed or retested. A green
+simulator report does not close that hardware gate. Sim-only mode and the
+resume criteria are recorded in
+[313-sim-only-status.md](313-sim-only-status.md).

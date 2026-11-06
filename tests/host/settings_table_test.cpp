@@ -157,8 +157,7 @@ bool validateReservations(const std::vector<Reservation> &reservations,
       "Master",
       "Master (conditional)",
       "Historical claims",
-      "Free",
-      "Open PRs #317, #318, #319"};
+      "Free"};
   std::set<std::string> owners;
   std::set<std::string> ownerRows;
   std::map<int, std::string> reservationOwners;
@@ -206,15 +205,14 @@ void testReservationParser() {
       "| Master | shipped | 1-2, 65 |\n"
       "| Master (conditional) | conditional | 3 (S3 42) |\n"
       "| Historical claims | audit | 4, 5 |\n"
-      "| Free | available | 6, 7 |\n"
-      "| Open PRs #317, #318, #319 | none | none |\n";
+      "| Free | available | 6, 7 |\n";
   std::vector<Reservation> parsed;
   std::string error;
   check(parseReservations(valid, parsed, error), "reservation parser accepts annotated IDs");
   check(validateReservations(parsed, {1, 2, 3, 65}, error),
         "complete reservation owner set validates");
 
-  std::string deleted = valid.substr(0, valid.find("| Open PRs"));
+  std::string deleted = valid.substr(0, valid.find("| Free"));
   check(parseReservations(deleted, parsed, error), "deleted-row fixture parses");
   check(!validateReservations(parsed, {1, 2, 3, 65}, error),
         "deleted reservation owner row is rejected");

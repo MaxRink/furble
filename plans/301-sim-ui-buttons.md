@@ -1,10 +1,10 @@
 # 301 - simulator on-screen buttons
 
-Status: implemented on branch `feat/sim-ui-buttons` (2026-11-04). PR #359
-review follow-up applied: left-first flush placement, event-filter action queue
-for cross-thread safety, explicit `scriptProvided` sentinel, sentinel
+Status: merged on master with PR #359 (2026-11-04). The review follow-up
+applied left-first flush placement, the event-filter action queue for
+cross-thread safety, the explicit `scriptProvided` sentinel, sentinel
 initialization for hover/pressed/`lastChange`, the `btn-hold` repeat-timing
-scenario, and root README plus wiki docs. Do not merge from this worktree.
+scenario, and the root README plus wiki docs.
 
 ## Goal
 

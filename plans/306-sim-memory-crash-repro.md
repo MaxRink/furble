@@ -96,7 +96,7 @@ The MQTT scenarios require `FURBLE_SIM_MQTT=1` and an unreachable
 
 ## Implementation state
 
-Implemented on the branch:
+Merged on master with #395:
 
 - heap seeds and queries, the WebUI admission model and its scenarios;
 - MQTT client-task accounting, disconnect-on-refused-connect, and the host

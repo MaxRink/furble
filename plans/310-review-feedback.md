@@ -61,7 +61,7 @@ carries the audit.
 | #398 | Add a secure-URI `mqtts://` fixture asserting the 6 KiB worker. | Fixed in this PR. | `mqtt-owner` secure fixture. |
 | #398 | Verify HA gate, cached HA and start-gate boundary coverage. | Verified in this PR, with TLS boundaries added. Existing tests cover both discovery floors and cached `MQTT_HA`; failures are per-target. | `mqtt-owner`, `mqtt-fuzz`. |
 | #398 | README settings overview did not explain cached `mqtt_ha` or the fail-closed MQTT/discovery floors. | Fixed in this PR. The README MQTT paragraph now records the cache and both fail-closed gates. | Doc review against `docs/settings-and-controls.md`. |
-| #398 | README WebUI figures contradicted the updated `docs/webui.md` budget table. | Fixed in this PR. README now carries the 27.4/25.6 KiB measured pair, the 34.6 KiB inference and the unchanged server floor. | Doc review against `docs/webui.md`. |
+| #398 | README WebUI figures contradicted the updated `docs/webui.md` budget table. | Fixed in this PR. README carried the 27.4/25.6 KiB measured pair, the then-current 34.6 KiB inference and the unchanged server floor. #407 later replaced that inference with 25,911 under the 12 KiB main stack. | Doc review against `docs/webui.md`, `README.md` at #407. |
 | #398 | Check the 3 KiB companion and 8 KiB main stack against fuzz/host tests. | Fixed in this PR. The memory fuzzer asserts both stack budgets, and the simulator budget scenario pins them. The main stack later reverted to 12 KiB in #311 after the MQTT path overflowed the 8 KiB stack on hardware. | `memory_fuzz.py`, `hw-memory-post394-budget`, `plans/311-mqtt-queue-psram.md`. |
 | #399 | `getBatteryCaps()` returned a mutable reference rewritten on every call. | Fixed in this PR. The API and simulator return `battery_caps_t` by value. | Sim and firmware builds; console battery paths compile against the value API. |
 | #399 | Console reset constants must use the descriptive IDF names. | Fixed in this PR by using the pinned IDF 5.5.3 names directly (`ESP_RST_USB`, `ESP_RST_JTAG`, `ESP_RST_EFUSE`). The dead `#if defined` compatibility branch was removed; a future header change fails the target build loudly. | `m5stick-s3` and `m5stick-s3-debug` target builds. |
@@ -118,7 +118,10 @@ FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3
 FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e waveshare-s3-eth
 ```
 
-The flash-readiness report remains blocked only by the parallel permutation
-results and boundary work, not by these review findings. The full permutation
-run is a long release gate; this PR proves the generator and result validation
-without claiming a completed 6,912-combination run.
+The flash-readiness report passes on master at `0883a31e`, not because of a
+relaxed finding but because the evidence landed: #404 linked the boundary
+paths, #405 closed these review findings, #406 recorded 6,912 of 6,912
+permutations and #407 fixed the MQTT owner and queue path. The memory profile
+is 13 of 13 after `python3 sim/scripts/run-memory-profile.py` generates the
+ignored dumps in `.pio/sim-memory`. Hardware validation of #407 is deferred;
+see [313-sim-only-status.md](313-sim-only-status.md).

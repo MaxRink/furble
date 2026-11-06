@@ -80,9 +80,13 @@ TLS/socket paths unchanged against peripheral doubles; those linked paths back
 the boundary manifest entries. The fuzz harness publishes
 `sim/coverage/fuzz_results.json` with
 `python3 sim/scripts/run-fuzz-target.py --all`; every target must pass before
-the readiness gate can pass. The gate is currently blocked only by the
-missing memory profile dumps and the full 6,912-combination permutation run,
-which is a separate evidence PR.
+the readiness gate can pass. On master at `0883a31e` the gate passes: 188 of
+188 hardware entries, 20 of 20 crash entries, 10 of 10 fuzz targets, 6,912 of
+6,912 permutations, 13 of 13 memory dumps and 18 of 18 linked boundaries. The
+memory dumps are ignored generated evidence, so run
+`python3 sim/scripts/run-memory-profile.py` before the final check. Hardware
+validation is deferred in sim-only mode and #407 has not been hardware-retested;
+see `plans/313-sim-only-status.md`.
 Firmware line coverage is measured by `tools/coverage.py` and gated against
 `tests/coverage_floor.json`. Coverage instrumentation is opt-in in both build
 entry points (`-DFURBLE_COVERAGE=ON` for the host harness,
