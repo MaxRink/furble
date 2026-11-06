@@ -194,8 +194,10 @@ Implemented on `feat/314-sim-board-baselines`, stacked on PR 2. No hardware.
   (`bt.c`, `esp_bt.h`). It then subtracts the boot allocations the source
   sizes: kernel and IDF task stacks with a TCB read from the ELF's DWARF, the
   BT controller task, NimBLE pools, static WiFi RX data and management
-  buffers, the furble boot tasks (with the board-conditional IR and SD tasks
-  and queues) and LVGL draw buffers, each with its citation. Output is
+  buffers, the GPS UART driver's allocations, the furble boot tasks (with the
+  board-conditional IR and SD tasks, queues and semaphore, and the headless
+  request queue) and LVGL draw buffers, each with its citation. Kernel and
+  driver struct sizes come from each ELF's DWARF. Output is
   `sim/coverage/board_heap.json`.
 - Each ELF's static DRAM matches PlatformIO's "RAM used" figure to the byte.
 - `CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL` is not subtracted: `esp_psram.c`
@@ -212,16 +214,16 @@ Implemented on `feat/314-sim-board-baselines`, stacked on PR 2. No hardware.
 
 | Env | Static DRAM | Heap at app start | Largest span | Attributable boot | Derived free (upper bound) |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| m5stick-c | 54,928 | 255,132 | 129,984 | 118,568 | 136,564 |
-| m5stick-c-plus | 54,904 | 255,156 | 129,984 | 120,220 | 134,936 |
-| m5stick-s3 | 47,704 | 261,800 | 261,800 | 85,632 | 176,168 |
-| m5stack-core | 54,952 | 255,108 | 129,984 | 137,812 | 117,296 |
-| m5stack-core2 | 56,384 | 253,676 | 129,984 | 137,812 | 115,864 |
-| waveshare-s3-eth | 52,136 | 258,136 | 258,136 | 111,728 | 146,408 |
+| m5stick-c | 54,928 | 255,132 | 129,984 | 120,780 | 134,352 |
+| m5stick-c-plus | 54,904 | 255,156 | 129,984 | 122,432 | 132,724 |
+| m5stick-s3 | 47,704 | 261,800 | 261,800 | 87,844 | 173,956 |
+| m5stack-core | 54,952 | 255,108 | 129,984 | 140,124 | 114,984 |
+| m5stack-core2 | 56,384 | 253,676 | 129,984 | 140,124 | 113,552 |
+| waveshare-s3-eth | 52,136 | 258,136 | 258,136 | 114,128 | 144,008 |
 
 Limit of a code-only derivation: the StickS3 console measurement already in
 the repo (30,007 free, MQTT off, debug image with the 8 KiB main stack) sits
-146,161 bytes below the derived bound. That gap is boot cost the source does
+143,949 bytes below the derived bound. That gap is boot cost the source does
 not size: the closed WiFi driver's task and allocations, NimBLE host state,
 lwIP control blocks and the LVGL object tree, which stays internal because
 its objects are below the 4 KiB PSRAM threshold. The derived figures are

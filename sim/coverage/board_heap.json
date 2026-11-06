@@ -14,7 +14,13 @@
         "_iram_start": "0x40080000"
       },
       "static_dram_bytes": 54928,
-      "tcb_bytes": 336,
+      "dwarf_sizes": {
+        "StaticTask_t": 336,
+        "StaticQueue_t": 84,
+        "StaticRingbuffer_t": 112,
+        "uart_obj_t": 124,
+        "uart_event_t": 12
+      },
       "heap_at_app_start": 255132,
       "largest_span_at_app_start": 129984,
       "attributable_boot": [
@@ -94,6 +100,11 @@
           "source": "src/FurbleGPS.cpp gps task"
         },
         {
+          "term": "gps_uart_driver",
+          "bytes": 2212,
+          "source": "components/esp_driver_uart/src/uart.c uart_driver_install, uart_pattern_queue_reset"
+        },
+        {
           "term": "companion",
           "bytes": 3440,
           "source": "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES"
@@ -114,8 +125,8 @@
           "source": "include/FurbleUIMemory.h PARTIAL_LINES, singleDrawBuffer"
         }
       ],
-      "attributable_bytes": 118568,
-      "derived_free_upper_bound": 136564,
+      "attributable_bytes": 120780,
+      "derived_free_upper_bound": 134352,
       "derived_largest_upper_bound": 129984,
       "status": "derived"
     },
@@ -130,7 +141,13 @@
         "_iram_start": "0x40080000"
       },
       "static_dram_bytes": 54904,
-      "tcb_bytes": 336,
+      "dwarf_sizes": {
+        "StaticTask_t": 336,
+        "StaticQueue_t": 84,
+        "StaticRingbuffer_t": 112,
+        "uart_obj_t": 124,
+        "uart_event_t": 12
+      },
       "heap_at_app_start": 255156,
       "largest_span_at_app_start": 129984,
       "attributable_boot": [
@@ -210,6 +227,11 @@
           "source": "src/FurbleGPS.cpp gps task"
         },
         {
+          "term": "gps_uart_driver",
+          "bytes": 2212,
+          "source": "components/esp_driver_uart/src/uart.c uart_driver_install, uart_pattern_queue_reset"
+        },
+        {
           "term": "companion",
           "bytes": 3440,
           "source": "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES"
@@ -230,8 +252,8 @@
           "source": "include/FurbleUIMemory.h PARTIAL_LINES, singleDrawBuffer"
         }
       ],
-      "attributable_bytes": 120220,
-      "derived_free_upper_bound": 134936,
+      "attributable_bytes": 122432,
+      "derived_free_upper_bound": 132724,
       "derived_largest_upper_bound": 129984,
       "status": "derived"
     },
@@ -246,7 +268,13 @@
         "_iram_start": "0x40374000"
       },
       "static_dram_bytes": 47704,
-      "tcb_bytes": 336,
+      "dwarf_sizes": {
+        "StaticTask_t": 336,
+        "StaticQueue_t": 84,
+        "StaticRingbuffer_t": 112,
+        "uart_obj_t": 124,
+        "uart_event_t": 12
+      },
       "heap_at_app_start": 261800,
       "largest_span_at_app_start": 261800,
       "attributable_boot": [
@@ -316,6 +344,11 @@
           "source": "src/FurbleGPS.cpp gps task"
         },
         {
+          "term": "gps_uart_driver",
+          "bytes": 2212,
+          "source": "components/esp_driver_uart/src/uart.c uart_driver_install, uart_pattern_queue_reset"
+        },
+        {
           "term": "companion",
           "bytes": 3440,
           "source": "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES"
@@ -331,14 +364,14 @@
           "source": "include/FurbleUIMemory.h PARTIAL_LINES, singleDrawBuffer"
         }
       ],
-      "attributable_bytes": 85632,
-      "derived_free_upper_bound": 176168,
-      "derived_largest_upper_bound": 176168,
+      "attributable_bytes": 87844,
+      "derived_free_upper_bound": 173956,
+      "derived_largest_upper_bound": 173956,
       "status": "derived",
       "internal_reserved_for_caps_only": 32768,
       "measured_free": 30007,
       "measured_source": "sim/scenarios/e2e/hw-memory-post394-budget.txt",
-      "unattributed_gap": 146161
+      "unattributed_gap": 143949
     },
     {
       "env": "m5stack-core",
@@ -351,7 +384,13 @@
         "_iram_start": "0x40080000"
       },
       "static_dram_bytes": 54952,
-      "tcb_bytes": 336,
+      "dwarf_sizes": {
+        "StaticTask_t": 336,
+        "StaticQueue_t": 84,
+        "StaticRingbuffer_t": 112,
+        "uart_obj_t": 124,
+        "uart_event_t": 12
+      },
       "heap_at_app_start": 255108,
       "largest_span_at_app_start": 129984,
       "attributable_boot": [
@@ -431,6 +470,11 @@
           "source": "src/FurbleGPS.cpp gps task"
         },
         {
+          "term": "gps_uart_driver",
+          "bytes": 2212,
+          "source": "components/esp_driver_uart/src/uart.c uart_driver_install, uart_pattern_queue_reset"
+        },
+        {
           "term": "companion",
           "bytes": 3440,
           "source": "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES"
@@ -446,14 +490,19 @@
           "source": "src/FurbleSD.cpp WRITER_QUEUE_LENGTH x sizeof(message_t)"
         },
         {
+          "term": "sd_power_off_done",
+          "bytes": 100,
+          "source": "src/FurbleSD.cpp xSemaphoreCreateBinary(), a zero-item queue"
+        },
+        {
           "term": "lvgl_draw",
           "bytes": 19232,
           "source": "include/FurbleUIMemory.h PARTIAL_LINES, singleDrawBuffer"
         }
       ],
-      "attributable_bytes": 137812,
-      "derived_free_upper_bound": 117296,
-      "derived_largest_upper_bound": 117296,
+      "attributable_bytes": 140124,
+      "derived_free_upper_bound": 114984,
+      "derived_largest_upper_bound": 114984,
       "status": "derived"
     },
     {
@@ -467,7 +516,13 @@
         "_iram_start": "0x40080000"
       },
       "static_dram_bytes": 56384,
-      "tcb_bytes": 336,
+      "dwarf_sizes": {
+        "StaticTask_t": 336,
+        "StaticQueue_t": 84,
+        "StaticRingbuffer_t": 112,
+        "uart_obj_t": 124,
+        "uart_event_t": 12
+      },
       "heap_at_app_start": 253676,
       "largest_span_at_app_start": 129984,
       "attributable_boot": [
@@ -547,6 +602,11 @@
           "source": "src/FurbleGPS.cpp gps task"
         },
         {
+          "term": "gps_uart_driver",
+          "bytes": 2212,
+          "source": "components/esp_driver_uart/src/uart.c uart_driver_install, uart_pattern_queue_reset"
+        },
+        {
           "term": "companion",
           "bytes": 3440,
           "source": "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES"
@@ -562,14 +622,19 @@
           "source": "src/FurbleSD.cpp WRITER_QUEUE_LENGTH x sizeof(message_t)"
         },
         {
+          "term": "sd_power_off_done",
+          "bytes": 100,
+          "source": "src/FurbleSD.cpp xSemaphoreCreateBinary(), a zero-item queue"
+        },
+        {
           "term": "lvgl_draw",
           "bytes": 19232,
           "source": "include/FurbleUIMemory.h PARTIAL_LINES, singleDrawBuffer"
         }
       ],
-      "attributable_bytes": 137812,
-      "derived_free_upper_bound": 115864,
-      "derived_largest_upper_bound": 115864,
+      "attributable_bytes": 140124,
+      "derived_free_upper_bound": 113552,
+      "derived_largest_upper_bound": 113552,
       "status": "derived"
     },
     {
@@ -583,7 +648,13 @@
         "_iram_start": "0x40374000"
       },
       "static_dram_bytes": 52136,
-      "tcb_bytes": 348,
+      "dwarf_sizes": {
+        "StaticTask_t": 348,
+        "StaticQueue_t": 92,
+        "StaticRingbuffer_t": 112,
+        "uart_obj_t": 124,
+        "uart_event_t": 12
+      },
       "heap_at_app_start": 258136,
       "largest_span_at_app_start": 258136,
       "attributable_boot": [
@@ -663,14 +734,24 @@
           "source": "src/FurbleGPS.cpp gps task"
         },
         {
+          "term": "gps_uart_driver",
+          "bytes": 2260,
+          "source": "components/esp_driver_uart/src/uart.c uart_driver_install, uart_pattern_queue_reset"
+        },
+        {
           "term": "companion",
           "bytes": 3452,
           "source": "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES"
+        },
+        {
+          "term": "headless_requests",
+          "bytes": 140,
+          "source": "src/main.cpp HEADLESS_REQUEST_QUEUE_LENGTH x sizeof(headless_request_t *)"
         }
       ],
-      "attributable_bytes": 111728,
-      "derived_free_upper_bound": 146408,
-      "derived_largest_upper_bound": 146408,
+      "attributable_bytes": 114128,
+      "derived_free_upper_bound": 144008,
+      "derived_largest_upper_bound": 144008,
       "status": "derived",
       "internal_reserved_for_caps_only": 32768
     }

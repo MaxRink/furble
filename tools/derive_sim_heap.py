@@ -59,8 +59,15 @@ IR_QUEUE = {"m5stick-c", "m5stick-c-plus", "m5stick-s3"}
 SD_WRITER = {"m5stack-core", "m5stack-core2"}
 # sizeof(Furble::SD::message_t) from the m5stack-core ELF's DWARF.
 SD_MESSAGE_BYTES = 48
-# sizeof(StaticQueue_t), as in sim/freertos.cpp.
-QUEUE_CONTROL_BYTES = 84
+# Headless builds create the request queue in app_main (src/main.cpp).
+HEADLESS = {"waveshare-s3-eth"}
+HEADLESS_REQUEST_QUEUE_LENGTH = 8
+POINTER_BYTES = 4
+# GPS UART (src/FurbleGPS.cpp, include/FurbleGPS.h) and the UART hardware FIFO
+# (SOC_UART_FIFO_LEN, 128 on both chips).
+GPS_RX_BUFFER = 256
+GPS_QUEUE = 32
+UART_FIFO_LEN = 128
 
 # Measured on hardware and already recorded in sim/scenarios/e2e headers. Used
 # only to report the gap, never to derive a value.
@@ -148,15 +155,20 @@ def tool(pattern: str, fallback: str) -> str:
     return found
 
 
-def tcb_bytes(elf: Path) -> int:
-    """sizeof(StaticTask_t) from the image's own DWARF."""
+DWARF_TYPES = ("StaticTask_t", "StaticQueue_t", "StaticRingbuffer_t", "uart_obj_t", "uart_event_t")
+
+
+def dwarf_sizes(elf: Path) -> dict:
+    """sizeof() of the kernel and driver types, from the image's own DWARF."""
     gdb = tool("tool-xtensa-esp-elf-gdb/bin/xtensa-esp*-elf-gdb", "gdb")
-    output = subprocess.run([gdb, "-batch", "-ex", "print sizeof(StaticTask_t)", str(elf)],
-                            capture_output=True, text=True, check=True).stdout
-    match = re.search(r"= (\d+)", output)
-    if match is None:
-        raise SystemExit(f"{elf}: could not read sizeof(StaticTask_t)")
-    return int(match.group(1))
+    command = [gdb, "-batch"]
+    for name in DWARF_TYPES:
+        command += ["-ex", f"print sizeof({name})"]
+    output = subprocess.run(command + [str(elf)], capture_output=True, text=True, check=True).stdout
+    values = [int(value) for value in re.findall(r"^\$\d+ = (\d+)$", output, re.M)]
+    if len(values) != len(DWARF_TYPES):
+        raise SystemExit(f"{elf}: could not read sizeof() for {DWARF_TYPES}")
+    return dict(zip(DWARF_TYPES, values))
 
 
 def symbols(elf: Path, wanted: set) -> dict:
@@ -205,11 +217,33 @@ def task(name: str, stack: int, tcb: int, source: str) -> dict:
     return {"term": name, "bytes": block(stack) + block(tcb), "source": source}
 
 
-def queue(name: str, length: int, item: int, source: str) -> dict:
-    return {"term": name, "bytes": block(QUEUE_CONTROL_BYTES + length * item), "source": source}
+def queue(name: str, length: int, item: int, size: dict, source: str) -> dict:
+    # xQueueCreate is one pvPortMalloc block: StaticQueue_t then storage.
+    return {"term": name, "bytes": block(size["StaticQueue_t"] + length * item), "source": source}
 
 
-def attributable(env: str, width: int, cfg: dict, tcb: int) -> list:
+def gps_uart(size: dict) -> list:
+    """uart_driver_install() and uart_pattern_queue_reset() allocations.
+
+    components/esp_driver_uart/src/uart.c: the driver object, the FIFO copy
+    buffer, an event queue and an RX ring buffer (each WithCaps creator makes
+    a control block and a storage block), two mutexes and three binary
+    semaphores, then the pattern queue that the reset reallocates at 32 ints.
+    """
+    source = "components/esp_driver_uart/src/uart.c uart_driver_install, uart_pattern_queue_reset"
+    parts = [
+        size["uart_obj_t"],
+        UART_FIFO_LEN * 4,
+        size["StaticQueue_t"], GPS_QUEUE * size["uart_event_t"],
+        size["StaticRingbuffer_t"], GPS_RX_BUFFER,
+        *([size["StaticQueue_t"]] * 5),
+        GPS_QUEUE * 4,
+    ]
+    return [{"term": "gps_uart_driver", "bytes": sum(block(part) for part in parts), "source": source}]
+
+
+def attributable(env: str, width: int, cfg: dict, size: dict) -> list:
+    tcb = size["StaticTask_t"]
     cores = 1 if cfg.get("CONFIG_FREERTOS_UNICORE") else 2
     extra = 0 if cfg.get("CONFIG_NEWLIB_NANO_FORMAT") else 512
     terms = []
@@ -257,15 +291,21 @@ def attributable(env: str, width: int, cfg: dict, tcb: int) -> list:
                           "source": "CONFIG_BT_NIMBLE_TRANSPORT_ACL/EVT counts x sizes"})
     terms.append(task("control", 8192, tcb, "src/main.cpp control task"))
     terms.append(task("gps", 4096, tcb, "src/FurbleGPS.cpp gps task"))
+    terms.extend(gps_uart(size))
     terms.append(task("companion", 3072, tcb, "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES"))
     if env in IR_INTERNAL_TASK:
         terms.append(task("ir", 4096, tcb, "src/FurbleIR.cpp IR_TASK_STACK_BYTES, internal fallback"))
     if env in IR_QUEUE:
-        terms.append(queue("ir_queue", 1, 1, "src/FurbleIR.cpp xQueueCreate(1, sizeof(protocol_t))"))
+        terms.append(queue("ir_queue", 1, 1, size, "src/FurbleIR.cpp xQueueCreate(1, sizeof(protocol_t))"))
     if env in SD_WRITER:
         terms.append(task("sd", 6144, tcb, "src/FurbleSD.cpp WRITER_STACK_BYTES"))
-        terms.append(queue("sd_queue", 8, SD_MESSAGE_BYTES,
+        terms.append(queue("sd_queue", 8, SD_MESSAGE_BYTES, size,
                            "src/FurbleSD.cpp WRITER_QUEUE_LENGTH x sizeof(message_t)"))
+        terms.append(queue("sd_power_off_done", 0, 0, size,
+                           "src/FurbleSD.cpp xSemaphoreCreateBinary(), a zero-item queue"))
+    if env in HEADLESS:
+        terms.append(queue("headless_requests", HEADLESS_REQUEST_QUEUE_LENGTH, POINTER_BYTES, size,
+                           "src/main.cpp HEADLESS_REQUEST_QUEUE_LENGTH x sizeof(headless_request_t *)"))
     if width:
         lines = 15
         buffers = 1 if width <= 160 else 2
@@ -298,8 +338,8 @@ def derive(env: str) -> dict:
         offset = 0x40378000 - 0x3FC88000
         reserved.append((sym["_iram_start"] - offset, sym["_iram_end"] - offset, "iram_code"))
     at_start, largest_span = subtract(REGIONS[chip], reserved)
-    tcb = tcb_bytes(elf)
-    terms = attributable(env, width, cfg, tcb)
+    size = dwarf_sizes(elf)
+    terms = attributable(env, width, cfg, size)
     charged = sum(term["bytes"] for term in terms)
     result = {
         "env": env,
@@ -307,7 +347,7 @@ def derive(env: str) -> dict:
         "chip": chip,
         "elf_symbols": {name: hex(value) for name, value in sorted(sym.items())},
         "static_dram_bytes": sym["_heap_start"] - sym["_data_start"],
-        "tcb_bytes": tcb,
+        "dwarf_sizes": size,
         "heap_at_app_start": at_start,
         "largest_span_at_app_start": largest_span,
         "attributable_boot": terms,
