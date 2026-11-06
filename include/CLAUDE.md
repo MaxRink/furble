@@ -123,8 +123,8 @@ Audit snapshot (2026-11-04): the MaxRink/furble master reviewed was `dd31f47e`
 (the PR #350 merge). The shipped settings table and `SETTING_SCHEMAS` were
 checked together. Wire IDs 42 (`TIMEZONE`), 43 (`AUTO_OFF_CHARGING`), 46 (`IMU`),
 75/76 (`IVL_SLEEP`, `IVL_SLEEP_THR`), and 62 (`WEB_UI`) are merged. PRs #317,
-#318 and #319 merged on 2026-11-02 without a setting claim. No pull request was
-open at the 2026-11-06 recheck. Refresh this snapshot at every
+#318 and #319 merged on 2026-11-02 without a setting claim. No pull request
+claimed a setting id at the 2026-11-06 recheck. Refresh this snapshot at every
 settings-touching rebase.
 - `FurbleSettings.h` widened `MULTISELECT_NAME_MAX` from 16 to 32, which changed
   the stored record size. `Settings::load<multiselect_t>()` and the SD settings

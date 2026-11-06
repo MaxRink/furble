@@ -10,10 +10,10 @@ cameras are available for hardware tests. Other vendors are covered by code
 review and the FauxNY test camera, and are marked as untested in each PR.
 
 **Sim-only mode (2026-11-06).** Master at `0883a31e` (#407) is the baseline and
-no pull request is open. All simulator-doable work is complete. Hardware
-validation is deferred, so no board measurement after #407 is claimed. The
-exact gate results, the hardware-deferred list and the resume criteria are in
-[313-sim-only-status.md](313-sim-only-status.md).
+no implementation pull request is open. All simulator-doable work is complete.
+Hardware validation is deferred, so no board measurement after #407 is
+claimed. The exact gate results, the hardware-deferred list and the resume
+criteria are in [313-sim-only-status.md](313-sim-only-status.md).
 
 A plan is a historical record once its work lands. The "Implementation state"
 or "State" section inside each document is authoritative over the roadmap
@@ -321,8 +321,8 @@ historical claim and needs a compatibility audit before reuse. Id 42 is merged
 as `TIMEZONE`. Off-wire id 0 remains used by `BULB`, `TOUCH_CALIBRATION`,
 `MULTISELECT`, `GPX_PERIOD`, and `BATTERY_SAVER`.
 
-No pull request is open and none claims a setting id. PRs #317, #318 and #319
-merged on 2026-11-02 without one. Recheck every open feature PR head
+No pull request claims a setting id. PRs #317, #318 and #319 merged on
+2026-11-02 without one. Recheck every open feature PR head
 immediately before a rebase or merge; ids only freeze when a PR merges, and a
 shipped id such as 46 (`IMU`) never moves.
 

@@ -1,7 +1,8 @@
 # 313 - Sim-only closeout status
 
-Status: current on master, 2026-11-06, baseline `0883a31e` (#407). No pull
-request is open. No hardware was flashed or measured for this record.
+Status: current on master, 2026-11-06, baseline `0883a31e` (#407). No
+implementation pull request is open. No hardware was flashed or measured for
+this record.
 
 ## Mode
 
@@ -59,7 +60,7 @@ These results were produced at `0883a31e` on 2026-11-06.
 | Host CTest | 183 of 183 pass |
 | Pre-review | 8 of 8 gates pass |
 | `check_flash_readiness.py --ready` | `READY TO FLASH` |
-| Open pull requests | none |
+| Open implementation PRs | none (this docs audit is the only open PR) |
 
 The memory dumps are generated, ignored evidence in `.pio/sim-memory`. A clean
 checkout reports `memory profile dumps missing` until
