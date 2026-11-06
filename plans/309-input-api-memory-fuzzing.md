@@ -95,7 +95,7 @@ The combined-tree run exercises the production paths, not just constants:
   retained discovery records.
 - `fuzz.memory.fragmentation` runs 1,536-byte discovery fragmentation,
   repeated HA online replay and the cJSON allocation-failure schedule.
-- `fuzz.webui.http` runs the 8 KiB main stack with the separate 12 KiB WebUI
+- `fuzz.webui.http` runs the 12 KiB main stack with the separate 12 KiB WebUI
   identity task, the WebUI gate and the console workflow.
 - `fuzz.ui.touch` and `fuzz.ui.physical-buttons` run the single-buffer display
   scenario and the event-count scenario on both layouts.

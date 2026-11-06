@@ -143,7 +143,7 @@ small conflict on the configuration lines, resolved in favour of this branch's
    Home Assistant without a reset. Read `heap.internal.free` and
    `heap.internal.largest` immediately before and after discovery.
 3. Confirm the 3 KiB companion stack with a companion settings write.
-4. Confirm the 8 KiB main stack with the WebUI enabled and the identity task
+4. Confirm the 12 KiB main stack with the WebUI enabled and the identity task
    running.
 5. Confirm UI smoothness on the StickS3 and StickC with the single buffer.
 6. Re-run the MQTT OTA path to confirm throughput did not regress with the
