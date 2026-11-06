@@ -1906,6 +1906,9 @@ std::string queryValueUnscoped(const std::string &key) {
     if (sub == "counted_external") {
       return std::to_string(heapCountedBytes(true));
     }
+    if (sub == "counted_tasks") {
+      return std::to_string(heapCountedTaskBytes());
+    }
     if (sub == "alloc_failures" || sub == "task_failures") {
       return std::to_string(heapAllocationFailures());
     }
@@ -2711,13 +2714,24 @@ void startProfiler(void) {
   profilerBegin(scenarioName.c_str(), reporting_enabled);
 }
 
+// One period of the UI's one-second housekeeping timers.
+constexpr uint32_t COUNT_SETTLE_MS = 1000;
+
 void driverTick(void) {
-  // The seeded heap pair was measured from the console of a booted device
-  // whose UI had drawn its first frame. The production boot timeline marks
-  // that point; from there every device allocation is charged. This thread
-  // is the firmware UI task.
+  // The seeded heap pair was measured from the console of an idle, booted
+  // device: after the production boot timeline's first frame, after the boot
+  // focus transitions released their style copies, and after the one-second
+  // UI timers had run once and sized their labels and layouts. From there
+  // every device allocation is charged. This thread is the firmware UI task.
   static bool countingStarted = false;
-  if (!countingStarted && BootTimeline::recorded(BootTimeline::UI_FIRST_FRAME)) {
+  static bool firstFrameSeen = false;
+  static uint32_t firstFrameAt = 0;
+  if (!firstFrameSeen && BootTimeline::recorded(BootTimeline::UI_FIRST_FRAME)) {
+    firstFrameSeen = true;
+    firstFrameAt = clockMillis();
+  }
+  if (!countingStarted && firstFrameSeen && clockMillis() - firstFrameAt >= COUNT_SETTLE_MS
+      && lv_anim_count_running() == 0) {
     countingStarted = true;
     heapMarkDeviceThread("main");
     heapCountingActivate();
@@ -2756,7 +2770,8 @@ void driverTick(void) {
   }
 
   if (fuzzActive()) {
-    const DeviceAllocScope deviceScope;
+    // fuzzTick keeps its bookkeeping on the host heap and re-enters device
+    // counting only around the firmware dispatch.
     fuzzTick(scenarioUi);
     return;
   }
@@ -2894,9 +2909,12 @@ void driverTick(void) {
       break;
 
     case StepType::GPS_RESTART:
+    {
+      const DeviceAllocScope deviceScope;
       Furble::GPS::getInstance().restart(step.name == "hot" ? 0 : step.name == "warm" ? 1 : 2);
       ++stepIndex;
       break;
+    }
 
     case StepType::GPS_RECEIVER:
       if (step.name == "none") {
@@ -2910,10 +2928,13 @@ void driverTick(void) {
       break;
 
     case StepType::GPS_MONHW:
+    {
       furble_sim_uart_set_monhw_short(step.name == "short");
+      const DeviceAllocScope deviceScope;
       Furble::GPS::getInstance().pollMonHw();
       ++stepIndex;
       break;
+    }
 
     case StepType::GPS_SATS:
       furble_sim_uart_set_satellite_fixture(step.name.c_str());

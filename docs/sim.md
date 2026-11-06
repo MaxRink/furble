@@ -483,18 +483,23 @@ therefore cannot assert anything after an allocation fails.
 `sim/fixtures/hardware/panic-*.txt`, requires status 3 and checks that the
 next boot reports the panic record.
 
-From the production `UI_FIRST_FRAME` boot mark the simulator charges every
-device allocation to the modelled heap: firmware `new` and `malloc`, LVGL
-through its C library allocator, every device task stack and every queue. The
+One UI timer period after the production `UI_FIRST_FRAME` boot mark, once no
+LVGL animation runs, the simulator charges every device allocation to the
+modelled heap: firmware `new` and `malloc`, LVGL through its C library
+allocator, `heap_caps_*` requests against the pool their caps name, every
+device task stack and every queue. That is where the seeded idle-device pairs
+were measured. Earlier device allocations are baseline blocks, refunded if
+freed later. The
 charge includes the ESP-IDF TLSF header and poisoning overhead, and default
 `malloc` uses the board's PSRAM routing. The simulator's own work on device
 threads, such as queries, the power profiler and the virtual camera peers,
 stays off the count. Host objects are 64-bit, so the count is an upper bound
-for pointer-heavy structures. `heap.counting`, `heap.counted_internal` and
-`heap.counted_external` report the general count; `heap.free` and
+for pointer-heavy structures. `heap.counting`, `heap.counted_internal`, `heap.counted_external` and
+`heap.counted_tasks` report the general count; `heap.free` and
 `heap.largest` include it. `memory-counted-camera-connect.txt` shows a camera
-connect charging its 4 KiB Control target task and returning it on
-disconnect.
+connect charging its 4,464-byte Control target task and returning it on
+disconnect. Each build writes its own `lv_conf.h` with the modelled board's
+`LV_CACHE_DEF_SIZE`; the rest of `sim/lv_conf.h` is shared.
 
 `sim/build.sh` generates `sdkconfig_sim.h` in the build directory with
 `tools/gen_sim_sdkconfig.py` and force-includes it into firmware and simulator
