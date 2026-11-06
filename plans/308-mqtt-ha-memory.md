@@ -1,4 +1,4 @@
-# 307 - MQTT and Home Assistant discovery memory
+# 308 - MQTT and Home Assistant discovery memory
 
 ## Finding
 

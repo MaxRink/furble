@@ -132,6 +132,20 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   policy; applying the stored identity in the device library would couple
   protocol code to app NVS policy. Camera bonds are never deleted by the
   rotation.
+- NimBLE may deliver `onAuthenticationComplete()` before `onConnect()` for a
+  bonded central. `onConnect()` must inherit `connInfo.isEncrypted()` and
+  `connInfo.isBonded()`; do not reset the flags to false, or the first auth
+  write is ignored as unencrypted. Do not send a Service Changed indication
+  during authentication. `CompanionGatt::reidentify()` is the explicit
+  recovery for a stale host GATT cache: it drops only the companion bond,
+  applies and persists the rotated LE address and reopens the pairing window.
+  Camera bonds are untouched.
+- `CompanionDebug` is the `FURBLE_BLE_DEBUG`-only, read-only BLE status service.
+  It attaches during GATT construction without reading `CompanionGatt` state,
+  and refreshes its snapshot only from the companion service task. Never call
+  its update path while `CompanionGatt` holds `m_Mutex`, and keep it
+  unencrypted so it still answers when companion auth or the host cache is
+  broken. It is not part of the production companion contract.
 - Settings switch tables in `FurbleConsole`, `FurbleCompanionService` and
   `FurbleSD` must include every new `Settings::type_t` case. The `-debug` build
   enforces this with `-Werror=switch`, so build a debug env after adding a
@@ -157,6 +171,14 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   `HTTPD_MAX_SOCKETS` counts client sockets; ESP-IDF reserves three additional
   internal sockets. The production value is two clients (five total).
   `reloadSetting()` must not create the TLS identity task while `web_ui` is off.
+  `initEarly()` prepares the TLS identity before the radios and display; the
+  supervisor and HTTPS stacks stay in internal RAM at 3 KiB/8 KiB and must not
+  move to PSRAM because the HTTPS task commits NVS. `reloadSetting()` caches
+  the setting, password and credential state, so the supervisor loop never
+  reads NVS. `startServer()` runs `WebUIMemory::serverGate()` before allocating
+  and logs the measured free/largest pair when it refuses. An out-of-memory
+  start keeps the stored identity; only a rejected certificate/key pair is
+  replaced once.
 - `FurbleUI*`: LVGL UI. Respect the changed-check rule for periodic setters.
   LVGL 9.4 retains an encoder input device's `last_pressed` object when that
   object is deleted. Only when switching a persistent physical-button device

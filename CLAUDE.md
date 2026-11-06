@@ -127,22 +127,26 @@ CLAUDE.md whose directory it touches.
   sim/build-mqtt/furble-sim`. `--smoke` is the pull-request budget. It runs
   seeded UI input on all three panels in both layouts, the WebUI, companion,
   MQTT and OTA fuzzers, the fixed memory-pressure scenarios, and randomized
-  heap-pressure boots. The current gate is red for the MQTT owner stack at
-  6 KiB and the Home Assistant discovery OOM; those fixes are owned by the
-  parallel MQTT stack and MQTT HA memory PRs. Do not mark them expected-pass.
+  heap-pressure boots. The full corpus currently passes 10 targets, 136 seed
+  runs and 89,146 iterations with zero failures. The earlier MQTT owner stack
+  overflow and Home Assistant discovery OOM are fixed and carry regressions.
+  Do not mark a known failure expected-pass; fix it and keep the regression.
 - Run the MQTT memory-pressure scenarios with
   `sh sim/scripts/run-memory.sh` after building the simulator with
   `FURBLE_SIM_MQTT=1`. The script uses a closed local port, so no broker is
   required. The default-build WebUI gate and crash-record scenarios run in
   `sim/scripts/run-e2e.sh`.
 - Hardware flashing is gated on the simulator. The gate manifests are under
-  `sim/coverage/`; `python3 tools/check_sim_coverage.py` validates evidence and
-  `python3 tools/check_flash_readiness.py --ready` is the only authority for a
-  flash candidate. It fails on approximate entries, pending fuzz results,
-  unfixed seeds, incomplete permutations, memory-budget misses or a dirty tree.
-  Run `sim/scripts/check-hardware-quirks.sh`, `sim/scripts/run-memory-profile.py`
-  and the full `sim/scripts/run-permutations.py --results
-  sim/coverage/permutation_results.json` before asking for hardware.
+  `sim/coverage/`; `python3 tools/check_sim_coverage.py --require-ready`
+  validates evidence and `python3 tools/check_flash_readiness.py --ready` is
+  the only authority for a flash candidate. It fails on approximate entries,
+  pending fuzz results, unfixed seeds, incomplete permutations, memory-budget
+  misses, missing memory profile dumps or a dirty tree. Run
+  `sim/scripts/check-hardware-quirks.sh`, `sim/scripts/run-memory-profile.py`
+  and the full `sim/scripts/run-permutations.py --compact` before asking for
+  hardware. The gate
+  is currently blocked only by the missing memory profile dumps and the full
+  6,912-combination permutation run, which is a separate evidence PR.
 - Linked host-boundary evidence is `sh sim/scripts/run-boundary-conformance.sh`.
   It compiles the production headless service loop and the IR, SD, feedback,
   W5500 Ethernet, CompanionGatt and WebUI TLS/socket paths unchanged against
@@ -200,6 +204,19 @@ in-repo copies and note in the PR that the wiki needs a push.
 
 Reviewers confirm the mapped docs were updated for any user-facing, behavior, or
 UI change before approving.
+
+## Review and merge gate
+
+A PR must have zero unresolved review threads before merge. Record every
+Copilot or human finding as fixed, already fixed, or a false positive with
+evidence. Resolving a thread without a fix is not acceptable. The same rule
+applies to a remediation PR that closes review findings. The online gate is
+`python3 tools/check_review_threads.py --repo owner/name --pr N`; it fails
+closed on API errors and is intentionally not part of the offline pre-review or
+fork CI jobs. Record the audit in `plans/NN-review-feedback.md`. Run the final
+gate set before pushing or merging: `python3 tools/pre_review.py --base
+origin/master`, `sh sim/scripts/check-doc-tokens.sh`, and the review-thread
+check.
 
 ## Hardware traps (hard-won, do not relearn)
 

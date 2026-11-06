@@ -1017,6 +1017,7 @@ The other namespaces are:
   terminating the process, so the scenario can assert shutdown ordering.
 - `platform.download_lock` reports the StickS3 PMIC long-press download lock as
   `unlocked` or `locked`. Firmware boot is required to leave this `unlocked`.
+
 - `boot_settings_imu` reports `1` or `0` for the `IMU` setting loaded at the
   simulated platform construction boundary.
 - `boot_settings_fb_output` reports the numeric `FB_OUTPUT` value loaded at
@@ -1427,9 +1428,13 @@ python3 tools/check_fuzz.py --smoke \
 
 `--full` is the pre-hardware budget. The fixed seeds live in
 `tests/fuzz/seeds.json`; every finding prints the seed and exact replay
-command. The gate is intentionally red for the MQTT owner stack at 6 KiB and
-the Home Assistant discovery OOM until the parallel MQTT stack and MQTT HA
-memory PRs land.
+command. The full corpus currently passes: 10 targets, 136 seed runs, 89,146
+iterations and zero failures across all three panel binaries and both layouts.
+The earlier MQTT owner stack overflow at 4 KiB/6 KiB and the Home Assistant
+discovery OOM are fixed by #398/#393 and recorded in `fixed_regressions` in
+`sim/coverage/fuzz_results.json`. The flash-readiness gate is still blocked by
+the memory profile dumps and the full 6,912-combination permutation run, which
+is a separate evidence PR; no fuzz seed is open.
 
 ## Adding a scenario
 

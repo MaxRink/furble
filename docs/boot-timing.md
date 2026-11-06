@@ -46,6 +46,44 @@ The reset estimate reads the CPU cycle counter directly
 and the PSRAM init. The 32-bit counter wraps after about 18 seconds at 240 MHz
 or 53 seconds at 80 MHz, so it is only sampled once at `app_main`.
 
+## Marks
+
+`boot timing` prints every recorded mark in time order. The labels are stable
+because scripts parse them:
+
+| Mark | Recorded after |
+| :--- | :--- |
+| `app_main` | The first statement in `app_main`. |
+| `psram_ready` | The same point as `app_main`; PSRAM init runs before the firmware timeline starts. |
+| `settings_done` | The settings seed or upgrade. |
+| `crash_log_done` | The previous-boot crash record is printed and consumed. |
+| `netif_done` | `esp_netif_init()` and the default event loop exist. |
+| `platform_done` | `Platform::init()` returns. |
+| `display_ready` | The panel is up, when the board has one. |
+| `pmic_ready` | The PMIC is initialized, on boards that have one. |
+| `splash_shown` | The boot splash was drawn on the panel. A disabled splash setting, a headless build or an invalid panel returns before this mark. |
+| `ir_done`, `feedback_done`, `sd_done` | Each optional service init returns. |
+| `cpu_policy_done` | The stored CPU frequency and S3 watchdog policy are applied. |
+| `ble_done` | The BLE device and controller are initialized. |
+| `webui_early_done` | The WebUI TLS identity is prepared before the radios, when compiled and enabled. |
+| `companion_done` | Companion service init returns. |
+| `mqtt_init_done` | MQTT init returns, when compiled. |
+| `control_task_done` | The control task is created. |
+| `wifi_started` | The station starts or is deferred for a wired link. |
+| `console_ready` | The debug console task is ready. |
+| `splash_done` | `BootScreen::finish()` runs, including the disabled and headless paths. |
+| `ui_ctor_start`, `ui_menu_start`, `ui_menu_done`, `ui_ctor_done` | The UI constructor and menu build stages. |
+| `ui_first_frame` | The first production LVGL frame completes. |
+| `services_ready` | The headless service loop reaches its first pass. |
+| `wifi_assoc`, `wifi_ip` | Association and the DHCP lease. |
+| `ntp_synced` | The first NTP sync. |
+| `mqtt_connected` | The first broker connection. |
+
+`psram_ready` does not measure the PSRAM test. It is a timeline origin marker.
+`splash_shown` is absent when no splash was drawn, while `splash_done` is still
+recorded on the disabled and headless paths. The splash duration is the gap
+from `splash_shown` to `splash_done`, so compute it only when both marks exist.
+
 ## Baseline and expected change
 
 The only hardware measured for this change is an M5StickS3 debug build with

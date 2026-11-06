@@ -12,8 +12,13 @@ a panic handler, and it never touches flash.
 | task | The task that emitted the newest captured log line. On a quiet crash this is the best available context, not a guaranteed panic task. |
 | uptime | Seconds since the previous run's boot. |
 | heap free / largest | Internal 8-bit heap free and largest block at the last snapshot. |
-| last log lines | Up to four recent log lines, truncated to 96 bytes each. |
+| last log lines | Up to four recent log lines, ANSI-normalized and truncated to 96 bytes each. |
 | clean flag | Set by the shutdown handler. A clean record is never reported as a crash. |
+
+ESP_LOG adds colour escapes before the retained `vprintf` hook sees a line. The
+hook removes ANSI CSI sequences in place before storing each line, so the next
+boot prints plain text instead of nested escape sequences. This does not change
+the 96-byte record field, the 436-byte record size, or the console output.
 
 The snapshot is refreshed about once per second from the UI task. A panic can
 therefore lose up to one second of state. That is deliberate: the record is a

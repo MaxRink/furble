@@ -141,6 +141,15 @@ added both CrashLogSim and a second local `furble_sim_crash_log_capture` stub
 to the same target; #402 removes the duplicate stub and leaves CrashLogSim as
 the single definition.
 
+### Follow-up: duplicate crash-log capture stub (#402)
+
+After #401 merged, `sim_scheduler_test` inherited
+`furble_sim_crash_log_capture` from `sim/CrashLogSim.cpp`. The old local stub
+in `tests/host/sim_scheduler_test.cpp` then produced a duplicate-symbol link
+failure. #402 removed the local stub and kept the shared simulator
+implementation. Do not re-add a test-local capture symbol; the host and
+simulator crash-log tests already link the shared implementation.
+
 No simulator scenario is added. The simulator compiles the timeline source and
 prints the boot summary, but its clock is virtual, so a timing assertion would
 not be a hardware measurement. The scenario manifest is also owned by the

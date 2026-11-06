@@ -1,12 +1,12 @@
-# 308 - Input, API and memory fuzzing gate
+# 309 - Input, API and memory fuzzing gate
 
 Status: implemented on `fuzz/input-api-memory`, rebased on #399 and merged with
 the #397 and #398 production branches for the combined-tree run. The full fuzz
 corpus passes: 10 targets, 136 seed runs, 89,146 iterations, zero failures across all three panel binaries and both layouts. The
 #393/#398 MQTT owner stack and HA discovery OOM are now fixed and carry
-regressions. The flash-readiness gate remains blocked only on the non-fuzz
-approximate hardware entries, the full permutation run and the memory profile
-dumps owned by #399.
+regressions. The flash-readiness gate remains blocked only on the full
+permutation run and the memory profile dumps owned by #399; the full
+permutation artifact is a separate evidence PR.
 
 ## Goal
 
@@ -75,8 +75,10 @@ The known MQTT findings are checked directly:
 - `mqtt_fuzz --discovery-oom` fails on any leaked cJSON allocation while Home
   Assistant discovery is rebuilt under allocation failure.
 
-Both findings are recorded in `tests/fuzz/seeds.json` with their parallel owner.
-They stay in the gate until those PRs land; they are not marked expected-pass.
+Both findings were recorded in `tests/fuzz/seeds.json` with their parallel
+owner. They stayed in the gate until those PRs landed, were never marked
+expected-pass, and now carry fixed regressions in
+`sim/coverage/fuzz_results.json`.
 
 ## #397 and #398 cover targets
 
@@ -155,6 +157,6 @@ sh tools/run_sanitized_host_tests.sh --clean
 ```
 
 `--all` must pass before a hardware build. The readiness gate is still blocked
-by the eight approximate hardware boundaries, the one approximate companion
-crash model, the full 6,912 permutation run and the memory profile dumps. Those
-are #399 evidence gaps, not open fuzz findings.
+by the full 6,912 permutation run and the memory profile dumps. Those are #399
+evidence gaps, not open fuzz findings; the full permutation artifact is a
+separate evidence PR.

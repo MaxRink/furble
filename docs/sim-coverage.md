@@ -72,6 +72,11 @@ returns non-zero while any blocker remains. It runs every manifest `runner` and
 fails on a nonzero exit, so the linked boundaries are executed evidence. It
 also refuses a dirty worktree.
 
+The fuzz corpus has landed and passes: 10 targets, 136 seed runs, 89,146
+iterations and zero failures. The readiness report is still blocked by the
+missing memory profile dumps and the full 6,912-combination permutation run,
+which is a separate evidence PR. No fuzz seed is open.
+
 ## Permutations
 
 `sim/coverage/permutations.json` expands eight memory boards against the

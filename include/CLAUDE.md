@@ -43,6 +43,17 @@ Public headers for the app layer in src/, one header per module
   keeps the one-second grace timer so a companion settings write can return
   before the GATT services are removed; never use `disableNow()` from a
   characteristic callback.
+- `FurbleCompanion::onAuthenticationComplete()` and `onConnect()` may arrive in
+  either order for a bonded central. `onConnect()` must inherit the encrypted
+  and authenticated state from `connInfo`; resetting those flags drops the
+  first auth write. Authentication must not send a Service Changed indication.
+  `reidentify()` is the explicit stale-host-cache recovery and may drop only
+  the companion bond. Keep camera bonds intact.
+- `FurbleCompanionDebug.h` exists only under `FURBLE_BLE_DEBUG`. Its service is
+  read-only and unencrypted so it still answers when companion auth or the host
+  GATT cache is broken. `attach()` runs during GATT construction and must not
+  read `CompanionGatt` state; `update()` runs from the companion service task
+  and never under `CompanionGatt::m_Mutex`.
 - `FurbleGPS` exposes the CASIC binary test path and AID-INI injection as
   documented public methods. Keep their wire format comments next to the API.
 - `FurbleSD.h` and `FurbleGPX.h`: all SD and GPX file I/O runs on the SD
@@ -178,10 +189,20 @@ at every settings-touching rebase.
   ownership never crosses a complete Control session replacement.
   `HTTPD_MAX_SOCKETS` counts client sockets; ESP-IDF reserves three additional
   internal sockets. The production value is two clients (five total).
+  `initEarly()` must run before WiFi/display allocation. Both WebUI task stacks
+  stay in internal RAM; `FurbleWebUIMemory.h` holds the 3 KiB/8 KiB sizes and
+  the 20,480/12,288 server gate. The gate log text lives in the
+  `FURBLE_WEBUI_*_GATE_LOG` macros because `ESP_LOG_ATTR_STR()` needs a
+  literal; the matching constants are for the simulator.
 - `FurbleMQTTMemory.h` has separate plain and TLS start floors. A secure
   `mqtts://` URI must pass the 6 KiB TLS-worker floor, not the plain 3 KiB
   worker floor. `wss://` is not part of the contract because no firmware build
   enables the WebSocket transport.
+- `FurbleUIMemory.h` owns the panel-sized LVGL draw-buffer contract. Narrow
+  panels use one buffer and wait for the SPI DMA before `lv_disp_flush_ready()`;
+  wide panels keep two buffers. Both stay DMA-capable internal RAM. Update
+  `tests/host/ui_memory_test.cpp` whenever a size or the single-buffer rule
+  changes.
 - The simulator-only UI geometry surface keeps content overlap, label clipping,
   and focused-control expanded bounds as separate diagnostics. Focus clearance
   excludes the focused object's own descendants and ancestors.

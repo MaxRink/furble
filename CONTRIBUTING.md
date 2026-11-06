@@ -240,9 +240,33 @@ attempt to infer changed paths without a pull request or push comparison base.
   `tests/fuzz/seeds.json`; `tests/fuzz/README.md` lists the replay commands.
   The gate covers seeded input on all three panels in both layouts, the WebUI,
   companion, MQTT and OTA protocol fuzzers, the fixed memory-pressure
-  scenarios and randomized heap-pressure boots. It stays red for the MQTT
-  owner stack at 6 KiB and the Home Assistant discovery OOM until the parallel
-  MQTT PRs land.
+  scenarios and randomized heap-pressure boots. The full corpus currently
+  passes: 10 targets, 136 seed runs, 89,146 iterations and zero failures. The
+  earlier MQTT owner stack overflow and Home Assistant discovery OOM are fixed
+  and carry regressions; no fuzz seed is open.
+
+- Before a hardware flash, run the simulator evidence gate:
+
+  ```sh
+  python3 tools/check_sim_scenarios.py
+  python3 tools/check_sim_coverage.py --require-ready
+  sh sim/scripts/check-doc-tokens.sh
+  sh sim/scripts/run-boundary-conformance.sh
+  sh sim/scripts/check-hardware-quirks.sh
+  python3 sim/scripts/run-memory-profile.py
+  python3 sim/scripts/run-permutations.py --compact
+  python3 sim/scripts/run-fuzz-target.py --all
+  python3 tools/check_flash_readiness.py --ready
+  ```
+
+  `check_flash_readiness.py --ready` is the only authority for a flash
+  candidate. It refuses approximate or unmodeled hardware entries, pending
+  fuzz results, unfixed failing seeds, incomplete or failed permutations,
+  memory-budget misses, missing memory profile dumps and a dirty worktree, so
+  commit or stash before the final run. The full permutation run is not a
+  pull-request smoke test; a `--limit` run is smoke evidence only. See
+  [docs/sim-coverage.md](docs/sim-coverage.md) and
+  [docs/sim-memory-profiler.md](docs/sim-memory-profiler.md).
 
 - The protocol and camera vector tests live under `tests/protocol` and
   `tests/camera`. CI runs them through `protocol-tests.yml` and
@@ -309,6 +333,15 @@ is in-repo under `docs/wiki/`.
 
 ## Pull request checklist
 
+A PR must have zero unresolved review threads before merge. Record every
+Copilot or human finding as fixed, already fixed, or a false positive with
+evidence. Resolving a thread without a fix is not acceptable. This rule also
+applies to a remediation PR that closes review findings. The final gate is
+`python3 tools/check_review_threads.py --repo owner/name --pr <number>`, after
+`python3 tools/pre_review.py --base origin/master` and
+`sh sim/scripts/check-doc-tokens.sh` pass.
+
+- [ ] Every review thread is resolved with a fix or recorded evidence, not just marked resolved.
 - [ ] Builds clean for the affected board envs (`FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e <env>`).
 - [ ] Host tests pass (`ctest --test-dir /tmp/furble-host-build`) where they apply.
 - [ ] clang-format 21 clean. No em-dashes. Plain English.

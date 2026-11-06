@@ -20,6 +20,9 @@ This wiki is a friendly fork of the upstream furble project.
   units.
 - **[Console Commands](Console-Commands)**: the USB serial console in debug
   builds.
+- **[BLE debug status](BLE-Debug)**: the read-only, unencrypted BLE status
+  service in the `m5stick-s3-debug-ble` bench image, plus
+  `companion reidentify` for a stale host GATT cache.
 - **[Companion camera management](../companion.md)**: the BLE characteristic for
   listing saved cameras, selecting Multi-Connect targets, and connecting or
   disconnecting cameras, plus the macOS terminal CLI for status, phone GPS,

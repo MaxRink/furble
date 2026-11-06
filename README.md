@@ -221,28 +221,31 @@ M5Stack Core2, and Waveshare ESP32-S3-ETH (plus the 8 MB headless S3 profile).
 The 4 MB M5StickC, M5StickC Plus, and M5Stack Core images omit MQTT and its
 component dependencies so their two OTA slots retain their fixed size.
 
+MQTT is off by default and is configured with `settings set` in a debug build.
+`mqtt_uri` accepts `mqtt://host:1883` or `mqtts://host:8883`; WebSocket MQTT is
+not part of the product contract because no firmware build enables that
+transport. `mqtts://` keeps the 6 KiB TLS worker and requires 11,264 free /
+7,168 largest internal bytes to start, while plain `mqtt://` uses a 3 KiB
+worker and 1,536-byte network and outbox buffers and requires 8,192 / 4,096.
+`mqtt_ha` is cached when the MQTT settings reload, so a change takes effect on
+the next reload. Home Assistant discovery is optional and is skipped below
+10,240 / 4,096; the broker link and command path stay up when discovery is
+skipped. See
+[MQTT and Home Assistant](docs/settings-and-controls.md#mqtt-8-mb-debugconsole-builds)
+for the full setting list.
+
 The same 8 MB and 16 MB profiles include an opt-in authenticated HTTPS WebUI.
 It stays closed until a companion password is configured. On the M5StickS3
 debug image, WiFi plus Bluetooth left about 6.8 KiB of internal RAM free before
 the WebUI budget work. After plan 305 the measured pair with the WebUI off is
-27.4 KiB free / 25.6 KiB largest; plan 307 infers about 34.6 KiB free after its
-further reductions. The server still refuses to start below its measured floor
-(20,480 free / 12,288 largest) with a log line instead of resetting the device.
-The StickS3 is not a supported WebUI target until a TLS handshake, a settings
-write and a soak pass succeed on hardware. Core2, the headless S3 profile and
-the Waveshare profile are expected to have more headroom. See
-[WebUI and REST API](docs/webui.md) for the budget table, setup, certificate
-verification and the route contract.
-
-`mqtt_ha` is cached when the MQTT settings reload, so a settings change takes
-effect on the next reload instead of on every owner iteration. Both MQTT start
-and Home Assistant discovery fail closed when internal heap is below their
-floors: the broker link stays down for a blocked start, and only the optional
-retained discovery records are skipped when discovery lacks headroom. The
-accepted URI schemes are `mqtt://` and `mqtts://`; WebSocket MQTT is not part of
-the product contract because no firmware build enables that transport. Secure
-`mqtts://` links use a 6 KiB TLS worker and a higher start floor than the 3 KiB
-plain worker. See [MQTT and Home Assistant](docs/settings-and-controls.md#mqtt-8-mb-debugconsole-builds).
+27,351 free / 25,588 largest, above the floor on paper but without a server
+start; plan 308 infers about 34,631 free after its further reductions. The
+server still refuses to start below its measured floor (20,480 free / 12,288
+largest) with a log line instead of resetting the device. The StickS3 is not a
+supported WebUI target until a TLS handshake, a settings write and a soak pass
+succeed on hardware. Core2, the headless S3 profile and the Waveshare profile
+are expected to have more headroom. See [WebUI and REST API](docs/webui.md) for
+the budget table, setup, certificate verification and the route contract.
 
 ### Debug builds (developers)
 
@@ -326,6 +329,7 @@ gps raw hex on|off                  mirror every receiver UART chunk as hex
 gps raw send <hex bytes>            write exact bytes to the receiver UART
 gps binary <class> <id> <bytes>     send a CASIC frame; 256-byte line, 64 arguments
 imu status | scale [value]          IMU diagnostic, gesture calibration
+motion status | scale [value]       motion source and software calibration
 time status | flush                 UTC and local wall clock, or persist before shutdown
 wifi status                         WiFi state, access point, IP, attempts, retry delay and stop reason
 wifi set ssid|psk <value>           save WiFi credentials (passphrases stay masked)
@@ -334,8 +338,6 @@ wifi connect|disconnect|forget      control the saved station credentials
 ntp status                          NTP state, server, sync time and offset
 ntp set server <host>               save the NTP server
 ntp enable|disable|sync             control or request an NTP synchronization
-imu status | scale [value]          IMU diagnostic, gesture calibration
-time status | flush                 UTC and local wall clock, or persist before shutdown
 settings list | get | set           read and write non-secret settings
 companion start|stop|status        pairing window, stop, or persisted/live/bond state
 companion reidentify               rotate the LE address and drop only the companion bond
@@ -357,6 +359,7 @@ ir fire [protocol]                  fire the IR emitter
 scan start | stop | list
 bt scan | explore | pair | journal   Bluetooth diagnostics
 feedback test <event>               play a feedback pattern
+flash prepare | cancel              PMIC watchdog preflight and restore
 log <tag> <level>
 debug <subsystem>                   dump internal state
 reboot

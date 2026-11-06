@@ -57,11 +57,13 @@ main stack, single LVGL buffer, 3 KiB companion, 3 KiB plain MQTT worker,
 
 ## Current blockers
 
-The first readiness report is expected to be blocked. It names:
+The fuzz corpus has landed and passes: 10 targets, 136 seed runs, 89,146
+iterations and zero failures. The readiness report is still blocked by:
 
-- the parallel fuzz targets that have no results yet;
-- the full permutation run, which is intentionally not a pull-request smoke
-  run.
+- the memory profile dumps, which have not been generated for the combined
+  tree;
+- the full 6,912-combination permutation run, which is intentionally not a
+  pull-request smoke run and is tracked by a separate evidence PR.
 
 The approximate SDL boundaries were closed by linked host conformance targets
 that compile the production driver unchanged and replace only the lowest
@@ -84,8 +86,7 @@ python3 tools/check_sim_coverage.py --require-ready
 sh sim/scripts/check-doc-tokens.sh
 sh sim/scripts/check-hardware-quirks.sh
 python3 sim/scripts/run-memory-profile.py
-python3 sim/scripts/run-permutations.py \
-  --results sim/coverage/permutation_results.json
+python3 sim/scripts/run-permutations.py --compact
 sh sim/scripts/run-fuzz.sh
 python3 tools/check_flash_readiness.py --ready \
   --write-report plans/evidence/flash-readiness.md

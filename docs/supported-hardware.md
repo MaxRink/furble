@@ -20,15 +20,18 @@ matching `-debug` variant that adds verbose logging and the USB serial console.
 | `m5stack-core2` | ESP32 | 16 MB | Yes | M5Stack Core2, M5Tough (untested) | Yes | On-screen shutter buttons, touch calibration, power-button screen lock. The firmware detects the M5Tough and branches for it, but it has not been verified on hardware. |
 | `waveshare-s3-eth` | ESP32-S3 | 16 MB | Yes | Waveshare ESP32-S3-ETH | No | Display-less wired-Ethernet profile; hardware verification remains outstanding. |
 
-The opt-in HTTPS WebUI is compiled for the four 8 MB/16 MB profiles. On the
-M5StickS3 it is **not usable**: with WiFi connected, the companion service and
-the display running, the measured internal heap is 13.5 KiB free / 12.8 KiB
-largest before the WebUI supervisor, and 10.6 KiB / 9.7 KiB with the 3 KiB
-supervisor. That is below the 20,480 / 12,288-byte server floor, so the listener
-stays closed with a measured log line instead of boot-looping. The Core2,
-`esp32-s3-headless` and Waveshare profiles have more headroom but their WebUI
-budgets are inferred, not measured. See
-[WebUI and REST API](webui.md#memory-budget).
+The opt-in HTTPS WebUI is compiled for the four 8 MB/16 MB profiles. The
+M5StickS3 is **not yet a supported WebUI target**. With WiFi connected, the
+companion service and the display running, it measured 13,543 free / 12,788
+largest internal bytes with the WebUI off before plan 305, and 10,607 / 9,716
+with the 3 KiB supervisor, which is below the 20,480 / 12,288-byte server
+floor. Plan 305 then measured 27,351 free / 25,588 largest with the WebUI off,
+above the floor on paper but without a server start. Plan 308 is inferred to
+reach about 34,631 free for the combined MQTT and WebUI budget, but the largest
+block, a real TLS handshake, a settings write and a soak are still unmeasured. The runtime gate keeps a low-memory image closed with a
+measured log line instead of boot-looping. The Core2, `esp32-s3-headless` and
+Waveshare profiles have more headroom but their WebUI budgets are inferred,
+not measured. See [WebUI and REST API](webui.md#memory-budget).
 
 The developer-only `esp32-s3-headless` profile uses the documented 8 MB
 ESP32-S3-DevKitC-1 board and also includes MQTT. The 4 MB profiles omit the

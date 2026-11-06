@@ -33,6 +33,17 @@ before a reviewer spends time on them.
 Both workflows expose `workflow_dispatch` so stacked or retargeted branches can
 be validated manually without changing their base.
 
+## Review thread closure
+
+The scanners do not replace review. A PR must have zero unresolved review
+threads before merge. Every Copilot or human finding must be recorded as fixed,
+already fixed, or a false positive with evidence. Resolving a thread without a
+fix is not acceptable. A remediation PR that closes review findings follows the
+same rule. The online gate is
+`python3 tools/check_review_threads.py --repo owner/name --pr N`; run it after
+`python3 tools/pre_review.py --base origin/master` and
+`sh sim/scripts/check-doc-tokens.sh` pass.
+
 ## Deliberate limits
 
 - The scanners are conservative. Unresolved construct shapes are warnings, not
