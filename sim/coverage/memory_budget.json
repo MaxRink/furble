@@ -37,7 +37,7 @@
       "max_leaks": 0
     },
     "profile-stickc": {
-      "min_internal_free": 143712,
+      "min_internal_free": 136564,
       "min_internal_largest": 129984,
       "max_leaks": 0,
       "components": {
@@ -46,7 +46,7 @@
       }
     },
     "profile-stickc-plus": {
-      "min_internal_free": 142084,
+      "min_internal_free": 134936,
       "min_internal_largest": 129984,
       "max_leaks": 0,
       "components": {
@@ -64,8 +64,8 @@
       }
     },
     "profile-core": {
-      "min_internal_free": 126872,
-      "min_internal_largest": 126872,
+      "min_internal_free": 117296,
+      "min_internal_largest": 117296,
       "max_leaks": 0,
       "components": {
         "main_stack": 16384,
@@ -73,8 +73,8 @@
       }
     },
     "profile-core2": {
-      "min_internal_free": 125440,
-      "min_internal_largest": 125440,
+      "min_internal_free": 115864,
+      "min_internal_largest": 115864,
       "max_leaks": 0,
       "components": {
         "main_stack": 16384,
@@ -91,8 +91,8 @@
       }
     },
     "profile-waveshare-s3-eth": {
-      "min_internal_free": 148988,
-      "min_internal_largest": 148988,
+      "min_internal_free": 146408,
+      "min_internal_largest": 146408,
       "max_leaks": 0,
       "components": {
         "main_stack": 16384,
@@ -100,8 +100,8 @@
       }
     },
     "profile-sticks3": {
-      "min_internal_free": 178852,
-      "min_internal_largest": 178852,
+      "min_internal_free": 176168,
+      "min_internal_largest": 176168,
       "max_leaks": 0,
       "components": {
         "main_stack": 12288,

@@ -49,6 +49,19 @@ ENVS = {
     "waveshare-s3-eth": ("esp32s3", 0, 0, "waveshare-s3-eth"),
 }
 
+# Board-conditional boot tasks from app_main. IR::init() runs where
+# pinForBoard() names a pin (src/FurbleIR.cpp): StickC and StickC Plus use an
+# internal stack, the StickS3 puts stack and TCB in PSRAM with
+# xTaskCreateWithCaps, so only its queue is internal. SD::init() runs on the
+# Core boards (isCoreBoard() in src/FurbleSD.cpp).
+IR_INTERNAL_TASK = {"m5stick-c", "m5stick-c-plus"}
+IR_QUEUE = {"m5stick-c", "m5stick-c-plus", "m5stick-s3"}
+SD_WRITER = {"m5stack-core", "m5stack-core2"}
+# sizeof(Furble::SD::message_t) from the m5stack-core ELF's DWARF.
+SD_MESSAGE_BYTES = 48
+# sizeof(StaticQueue_t), as in sim/freertos.cpp.
+QUEUE_CONTROL_BYTES = 84
+
 # Measured on hardware and already recorded in sim/scenarios/e2e headers. Used
 # only to report the gap, never to derive a value.
 MEASURED = {"m5stick-s3": {"free": 30007, "source": "sim/scenarios/e2e/hw-memory-post394-budget.txt"}}
@@ -192,7 +205,11 @@ def task(name: str, stack: int, tcb: int, source: str) -> dict:
     return {"term": name, "bytes": block(stack) + block(tcb), "source": source}
 
 
-def attributable(width: int, cfg: dict, tcb: int) -> list:
+def queue(name: str, length: int, item: int, source: str) -> dict:
+    return {"term": name, "bytes": block(QUEUE_CONTROL_BYTES + length * item), "source": source}
+
+
+def attributable(env: str, width: int, cfg: dict, tcb: int) -> list:
     cores = 1 if cfg.get("CONFIG_FREERTOS_UNICORE") else 2
     extra = 0 if cfg.get("CONFIG_NEWLIB_NANO_FORMAT") else 512
     terms = []
@@ -218,6 +235,10 @@ def attributable(width: int, cfg: dict, tcb: int) -> list:
         rx = cfg["CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM"]
         terms.append({"term": "wifi_static_rx", "bytes": rx * block(1600),
                       "source": "CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM x 1600 (ESP-IDF Wi-Fi buffer usage)"})
+        if cfg.get("CONFIG_ESP_WIFI_STATIC_RX_MGMT_BUFFER"):
+            mgmt = cfg["CONFIG_ESP_WIFI_RX_MGMT_BUF_NUM_DEF"]
+            terms.append({"term": "wifi_static_rx_mgmt", "bytes": mgmt * block(500),
+                          "source": "CONFIG_ESP_WIFI_RX_MGMT_BUF_NUM_DEF x about 500 (esp_wifi Kconfig help)"})
         terms.append(task("wifi_furble", 4096, tcb, "src/FurbleWiFi.cpp TASK_STACK"))
     if cfg.get("CONFIG_BT_ENABLED"):
         terms.append(task("btController", 3584 + extra, tcb,
@@ -237,6 +258,14 @@ def attributable(width: int, cfg: dict, tcb: int) -> list:
     terms.append(task("control", 8192, tcb, "src/main.cpp control task"))
     terms.append(task("gps", 4096, tcb, "src/FurbleGPS.cpp gps task"))
     terms.append(task("companion", 3072, tcb, "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES"))
+    if env in IR_INTERNAL_TASK:
+        terms.append(task("ir", 4096, tcb, "src/FurbleIR.cpp IR_TASK_STACK_BYTES, internal fallback"))
+    if env in IR_QUEUE:
+        terms.append(queue("ir_queue", 1, 1, "src/FurbleIR.cpp xQueueCreate(1, sizeof(protocol_t))"))
+    if env in SD_WRITER:
+        terms.append(task("sd", 6144, tcb, "src/FurbleSD.cpp WRITER_STACK_BYTES"))
+        terms.append(queue("sd_queue", 8, SD_MESSAGE_BYTES,
+                           "src/FurbleSD.cpp WRITER_QUEUE_LENGTH x sizeof(message_t)"))
     if width:
         lines = 15
         buffers = 1 if width <= 160 else 2
@@ -270,7 +299,7 @@ def derive(env: str) -> dict:
         reserved.append((sym["_iram_start"] - offset, sym["_iram_end"] - offset, "iram_code"))
     at_start, largest_span = subtract(REGIONS[chip], reserved)
     tcb = tcb_bytes(elf)
-    terms = attributable(width, cfg, tcb)
+    terms = attributable(env, width, cfg, tcb)
     charged = sum(term["bytes"] for term in terms)
     result = {
         "env": env,

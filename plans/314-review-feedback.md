@@ -36,3 +36,11 @@ items; the CMake simulator configures and builds.
 | 9 | Self-found. Counting from the first frame charged the one-second UI timers' first label and layout sizing (2,016 bytes on the StickS3), which the idle-device measurement already includes; the post-#407 budget read a false 2,391 / 1,044. | Fixed. Counting starts one UI timer period after the settled first frame, and baseline blocks freed later are refunded. The budget is back to its documented 4,407 / 3,060. | `sim/driver.cpp`, `sim/heap_count.cpp`, `sim/heap_model.cpp` |
 | 10 | Review summary nit on f2fd2433: build output was checked in. | Fixed in a721b633. A wrapper loop had created `sim/build FURBLE_M5STICKS3 board_M5StickS3/`, which `git add -A` picked up; the directory is removed and diff hygiene passes. | `git ls-files sim/` |
 | 11 | Review summary nit on f2fd2433: `fuzz_results.json` recorded `../hb-pr2/...` host fuzzer paths that cannot be replayed from the repository. | Fixed. Regenerated with the documented `FURBLE_HOST_BUILD=/tmp/furble-host-build`: 10 targets, 135 seed runs, 89,145 iterations, 0 failures. | `sim/coverage/fuzz_results.json` |
+
+## PR 3 (#413, `feat/314-sim-board-baselines`)
+
+| # | Finding | Resolution | Evidence |
+| ---: | :--- | :--- | :--- |
+| 1 | The boot terms omitted the static WiFi management RX pool (`CONFIG_ESP_WIFI_STATIC_RX_MGMT_BUFFER`, 5 buffers). | Fixed. `wifi_static_rx_mgmt` charges `CONFIG_ESP_WIFI_RX_MGMT_BUF_NUM_DEF` x 500 with block cost; the esp_wifi Kconfig help fixes each buffer at about 500 bytes. | `tools/derive_sim_heap.py` |
+| 2 | The boot terms omitted board-conditional tasks from `app_main`: the IR task and queue, and the Core SD writer. | Fixed. StickC and StickC Plus charge the internal 4,096-byte IR task, the StickS3 only its internal queue (stack and TCB go to PSRAM through `xTaskCreateWithCaps`), and Core and Core2 charge the 6,144-byte SD writer and its 8 x 48-byte queue (`sizeof(message_t)` from DWARF). | `tools/derive_sim_heap.py`, `sim/coverage/board_heap.json` |
+
