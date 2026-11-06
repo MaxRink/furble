@@ -1,6 +1,6 @@
 # 313 - Sim-only closeout status
 
-Status: current on master, 2026-11-06, baseline `0883a31e` (#407). No
+Status: current on master, 2026-11-06, baseline `2d2be868` (#409). No
 implementation pull request is open. No hardware was flashed or measured for
 this record.
 
@@ -27,6 +27,9 @@ upstream issue, comment, pull request or push was made for this closeout.
   duplicate crash-log capture stub. #404 linked the production boundary paths
   against peripheral doubles. #406 recorded the full memory-critical
   permutation run.
+- #408 refreshed the plans and evidence for the current stack/MQTT model. #409
+  repaired four e2e timing contracts and added the duty-wake observability
+  counter; the full e2e suite is 206 of 206.
 - #407 moved the 9,392-byte MQTT event queue to PSRAM with an internal
   fallback, removed the early camera snapshot, created the queue only after the
   start gate, gated owner creation at 18,432 free / 12,288 largest (TLS
@@ -45,7 +48,7 @@ upstream issue, comment, pull request or push was made for this closeout.
 
 ## Gate results on master
 
-These results were produced at `0883a31e` on 2026-11-06.
+These results were produced at `2d2be868` on 2026-11-06.
 
 | Check | Result |
 | --- | --- |
@@ -58,9 +61,10 @@ These results were produced at `0883a31e` on 2026-11-06.
 | Memory profile | 13 of 13 dumps pass |
 | Linked boundary conformance | 18 of 18 pass |
 | Host CTest | 183 of 183 pass |
+| End-to-end scenarios | 206 of 206 pass |
 | Pre-review | 8 of 8 gates pass |
 | `check_flash_readiness.py --ready` | `READY TO FLASH` |
-| Open implementation PRs | none (this docs audit is the only open PR) |
+| Open implementation PRs | none |
 
 The memory dumps are generated, ignored evidence in `.pio/sim-memory`. A clean
 checkout reports `memory profile dumps missing` until

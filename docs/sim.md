@@ -1440,7 +1440,7 @@ command. The full corpus currently passes: 10 targets, 136 seed runs, 89,146
 iterations and zero failures across all three panel binaries and both layouts.
 The earlier MQTT owner stack overflow at 4 KiB/6 KiB and the Home Assistant
 discovery OOM are fixed by #398/#393 and recorded in `fixed_regressions` in
-`sim/coverage/fuzz_results.json`. On master at `0883a31e` the flash-readiness
+`sim/coverage/fuzz_results.json`. On master at `2d2be868` the flash-readiness
 gate passes: 6,912 of 6,912 permutations, 13 of 13 memory dumps and 18 of 18
 linked boundaries. The memory dumps are ignored generated evidence, so run
 `python3 sim/scripts/run-memory-profile.py` before the final check. No fuzz

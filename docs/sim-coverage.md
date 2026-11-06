@@ -73,7 +73,7 @@ fails on a nonzero exit, so the linked boundaries are executed evidence. It
 also refuses a dirty worktree.
 
 The fuzz corpus has landed and passes: 10 targets, 136 seed runs, 89,146
-iterations and zero failures. On master at `0883a31e` the readiness report
+iterations and zero failures. On master at `2d2be868` the readiness report
 passes: 6,912 of 6,912 permutations, 13 of 13 memory dumps and 18 of 18 linked
 boundaries. The memory dumps are ignored generated evidence, so run
 `python3 sim/scripts/run-memory-profile.py` before the final readiness check.

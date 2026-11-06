@@ -144,7 +144,7 @@ CLAUDE.md whose directory it touches.
   misses, missing memory profile dumps or a dirty tree. Run
   `sim/scripts/check-hardware-quirks.sh`, `sim/scripts/run-memory-profile.py`
   and the full `sim/scripts/run-permutations.py --compact` before asking for
-  hardware. On master at `0883a31e` the gate passes: 188 of 188 hardware
+  hardware. On master at `2d2be868` the gate passes: 188 of 188 hardware
   entries, 20 of 20 crash entries, 10 of 10 fuzz targets, 6,912 of 6,912
   permutations, 13 of 13 memory dumps and 18 of 18 linked boundaries. The
   memory dumps are ignored generated evidence, so run
