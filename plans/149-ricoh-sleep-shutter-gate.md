@@ -1,4 +1,4 @@
-# 148: Ricoh GR IV sleep shutter gate
+# 149: Ricoh GR IV sleep shutter gate
 
 ## Status
 

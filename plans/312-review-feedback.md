@@ -17,4 +17,7 @@ evidence.
 
 - Host `mqtt-owner` test includes the internal-fallback start gate case.
 - Simulator memory profile and the MQTT memory scenarios pass.
-- The hardware coverage and flash-readiness gates are rerun on the final commit.
+- The hardware coverage and flash-readiness gates pass on master at `0883a31e`
+  with the generated memory dumps. That is simulator evidence only. #407 has
+  not been flashed, so no post-fix hardware result is claimed. See
+  [313-sim-only-status.md](313-sim-only-status.md).

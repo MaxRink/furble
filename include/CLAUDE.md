@@ -110,7 +110,6 @@ rebase time.
 | Master (conditional) | display, MQTT, S3 watchdog | 23 (`WATCHDOG` on `FURBLE_M5STICKS3`), 36 (`DISPLAY_MODE` without `FURBLE_NO_DISPLAY`), 56-61 (`FURBLE_MQTT`) |
 | Historical claims | compatibility audit required | 45 |
 | Free | available after rechecking open heads | 48-50, 63-64, 70-71 |
-| Open PRs #317, #318, #319 | no setting claim | none |
 
 Take the next free id only after checking every open PR head. Id 45 has a
 historical claim in older branches; keep it reserved and do not allocate or
@@ -123,9 +122,10 @@ settings.
 Audit snapshot (2026-11-04): the MaxRink/furble master reviewed was `dd31f47e`
 (the PR #350 merge). The shipped settings table and `SETTING_SCHEMAS` were
 checked together. Wire IDs 42 (`TIMEZONE`), 43 (`AUTO_OFF_CHARGING`), 46 (`IMU`),
-75/76 (`IVL_SLEEP`, `IVL_SLEEP_THR`), and 62 (`WEB_UI`) are merged. The only open
-heads at that date (#317, #318, #319) claim no setting id. Refresh this snapshot
-at every settings-touching rebase.
+75/76 (`IVL_SLEEP`, `IVL_SLEEP_THR`), and 62 (`WEB_UI`) are merged. PRs #317,
+#318 and #319 merged on 2026-11-02 without a setting claim. No pull request was
+open at the 2026-11-06 recheck. Refresh this snapshot at every
+settings-touching rebase.
 - `FurbleSettings.h` widened `MULTISELECT_NAME_MAX` from 16 to 32, which changed
   the stored record size. `Settings::load<multiselect_t>()` and the SD settings
   importer both read the old layout through `multiselect_legacy_t` and widen it.

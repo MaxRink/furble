@@ -1,12 +1,12 @@
 # 309 - Input, API and memory fuzzing gate
 
-Status: implemented on `fuzz/input-api-memory`, rebased on #399 and merged with
-the #397 and #398 production branches for the combined-tree run. The full fuzz
-corpus passes: 10 targets, 136 seed runs, 89,146 iterations, zero failures across all three panel binaries and both layouts. The
-#393/#398 MQTT owner stack and HA discovery OOM are now fixed and carry
-regressions. The flash-readiness gate remains blocked only on the full
-permutation run and the memory profile dumps owned by #399; the full
-permutation artifact is a separate evidence PR.
+Status: merged on master with #401, after the #397, #398 and #407 production
+branches. The full fuzz corpus passes: 10 targets, 136 seed runs, 89,146
+iterations and zero failures across all three panel binaries and both layouts.
+The #393/#398 MQTT owner stack and HA discovery OOM are fixed and carry
+regressions. The flash-readiness gate passes on master at `0883a31e`: the full
+permutation artifact is 6,912 of 6,912 and the memory profile is 13 of 13
+after `python3 sim/scripts/run-memory-profile.py` generates the ignored dumps.
 
 ## Goal
 
@@ -156,7 +156,8 @@ sh sim/scripts/run-memory.sh
 sh tools/run_sanitized_host_tests.sh --clean
 ```
 
-`--all` must pass before a hardware build. The readiness gate is still blocked
-by the full 6,912 permutation run and the memory profile dumps. Those are #399
-evidence gaps, not open fuzz findings; the full permutation artifact is a
-separate evidence PR.
+`--all` must pass before a hardware build. On master the readiness gate passes
+with the generated memory dumps. The permutation artifact and the memory
+budget are complete evidence, not open fuzz findings. Hardware validation is
+deferred in sim-only mode; see
+[313-sim-only-status.md](313-sim-only-status.md).

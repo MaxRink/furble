@@ -3,8 +3,9 @@
 Numbered improvement plans. One document per planned PR against upstream
 gkoh/furble. `README.md` here is the index and dependency graph.
 
-Note: this directory lives on the `plans` branch until the integration merge
-lands on fork master. This file applies once it does.
+The directory is merged on fork master. Plans land with their implementation
+PRs. The current sim-only closeout state is in
+[313-sim-only-status.md](313-sim-only-status.md).
 
 - Move a plan to `implemented/` once its implementation is complete on master and no
   implementation work remains. Hardware measurement, soak, or device-look gates

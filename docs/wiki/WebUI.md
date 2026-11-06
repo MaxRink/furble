@@ -6,12 +6,13 @@ the WebUI off before plan 305, and 10,607 / 9,716 with the 3 KiB supervisor.
 That was below the 20,480 / 12,288 server floor, so the listener stayed closed
 with a measured log line instead of resetting. Plan 305 measured 27,351 free /
 25,588 largest with the WebUI off, above the floor on paper but without a
-server start. Plan 308 is inferred to reach about 34,631 free for the combined
-MQTT and WebUI budget, but the largest block and a real TLS handshake are still
-unmeasured. The StickS3 is therefore **not yet a supported WebUI
-target** until a board run passes the gate, loads the settings page, writes a
-setting and soaks. Core2 and the headless/Waveshare profiles have more headroom
-but remain inferred.
+server start. The 8 KiB main-stack experiment measured 30,007 free / 28,660
+largest with MQTT off. Plan 311 restored the 12 KiB main stack, which leaves an
+inferred 25,911 free, and #407 moved the MQTT event queue to PSRAM. The largest
+block and a real TLS handshake are still unmeasured. The StickS3 is therefore
+**not yet a supported WebUI target** until a board run passes the gate, loads
+the settings page, writes a setting and soaks. Core2 and the
+headless/Waveshare profiles have more headroom but remain inferred.
 
 The WebUI is compiled into the 8 MB and 16 MB network hub profiles. It is off
 by default. Configure WiFi and a companion password over USB, then run:

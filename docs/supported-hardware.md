@@ -26,12 +26,15 @@ companion service and the display running, it measured 13,543 free / 12,788
 largest internal bytes with the WebUI off before plan 305, and 10,607 / 9,716
 with the 3 KiB supervisor, which is below the 20,480 / 12,288-byte server
 floor. Plan 305 then measured 27,351 free / 25,588 largest with the WebUI off,
-above the floor on paper but without a server start. Plan 308 is inferred to
-reach about 34,631 free for the combined MQTT and WebUI budget, but the largest
-block, a real TLS handshake, a settings write and a soak are still unmeasured. The runtime gate keeps a low-memory image closed with a
-measured log line instead of boot-looping. The Core2, `esp32-s3-headless` and
-Waveshare profiles have more headroom but their WebUI budgets are inferred,
-not measured. See [WebUI and REST API](webui.md#memory-budget).
+above the floor on paper but without a server start. The 8 KiB main-stack
+experiment measured 30,007 free / 28,660 largest with MQTT off. Plan 311
+restored the 12 KiB main stack, which leaves an inferred 25,911 free, and #407
+moved the MQTT event queue to PSRAM. The largest block, a real TLS handshake, a
+settings write and a soak are still unmeasured. The runtime gate keeps a
+low-memory image closed with a measured log line instead of boot-looping. The
+Core2, `esp32-s3-headless` and Waveshare profiles have more headroom but their
+WebUI budgets are inferred, not measured. See
+[WebUI and REST API](webui.md#memory-budget).
 
 The developer-only `esp32-s3-headless` profile uses the documented 8 MB
 ESP32-S3-DevKitC-1 board and also includes MQTT. The 4 MB profiles omit the

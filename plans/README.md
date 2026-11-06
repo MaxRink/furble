@@ -1,12 +1,19 @@
 # furble improvement plans
 
 Roadmap for power optimization and new features. Each numbered document is one
-planned pull request against upstream gkoh/furble. Each PR is independently
-mergeable. All new behavior is configurable. Defaults keep current behavior.
+planned change, usually one pull request. Fork-only changes land on fork master.
+Each PR is independently mergeable. All new behavior is configurable. Defaults
+keep current behavior.
 
 Primary test hardware: M5StickS3 with GPS/BDS Unit v1.1 (AT6668). Only Fujifilm
 cameras are available for hardware tests. Other vendors are covered by code
 review and the FauxNY test camera, and are marked as untested in each PR.
+
+**Sim-only mode (2026-11-06).** Master at `0883a31e` (#407) is the baseline and
+no pull request is open. All simulator-doable work is complete. Hardware
+validation is deferred, so no board measurement after #407 is claimed. The
+exact gate results, the hardware-deferred list and the resume criteria are in
+[313-sim-only-status.md](313-sim-only-status.md).
 
 A plan is a historical record once its work lands. The "Implementation state"
 or "State" section inside each document is authoritative over the roadmap
@@ -15,20 +22,20 @@ by the plans in the table below.
 
 Fully implemented plans are archived under [implemented/](implemented/README.md).
 
-## Open issue ownership (2026-11-02)
+## Open issue ownership (2026-11-06)
 
 Every open issue maps to one owning plan. The plan records the implementation
 state and the remaining gate; the issue stays open until that gate lands.
 
 | Issue | Plan | Current state |
 | --- | --- | --- |
-| #280 | [288](implemented/288-provisioning-schema.md) | Ledger refreshed; no open PR claims a wire id. Only the documented rebase-time re-audit remains. |
-| #281 | [291](291-ui-upstream-layout-parity.md) | Open. About, GPS, and Connected content parity with upstream, one page PR each. |
-| #282 | [168](168-notouch-layout-overflows.md) | Resolved on master by the StickC text-size clamp and `bughunt/stickc-connected-large-imu.txt`. |
 | #283 | [173](173-sim-scheduler-visibility.md) | Diagnostics merged; root cause of the restart SIGSEGV still unknown. Tracker stays open. |
-| #288 | [288](implemented/288-provisioning-schema.md) | 43/46 schema rows and the all-keyed walk are merged. Satisfied. |
 | #289 | [173](173-sim-scheduler-visibility.md) | 4 of 5 items done. The Secure/reconnect 50-run load proof remains. |
-| #290 | [290](implemented/290-sim-page-query-map.md) | Merged with PR #273; the query-map contract test passes. Satisfied. |
+| #381 | [302](302-companion-restart-reconnect.md) | Open. Long USB console runs reset into the ROM USB-JTAG unit. The 5 s command timeout and monitor fixes are merged; a UART0 panic capture and a host-side recovery test remain. |
+| #390 | [304](304-webui-stick-memory.md) | Open. The WebUI now fails closed on the StickS3 instead of boot-looping. A support claim still needs the hardware memory gate, a TLS handshake, a settings write and a soak. |
+
+Closed issues #280, #281, #282, #288 and #290 are retained in their plans and in
+the git history. They are no longer ownership rows.
 
 ## Engineering lessons
 
@@ -88,6 +95,7 @@ state and the remaining gate; the issue stays open until that gate lands.
 | [310-review-feedback.md](310-review-feedback.md) | Review-thread audit, code fixes, regression evidence and the online merge gate |
 | [311-mqtt-queue-psram.md](311-mqtt-queue-psram.md) | MQTT event queue in PSRAM, pre-task owner gate and the 12 KiB main-stack revert |
 | [312-review-feedback.md](312-review-feedback.md) | Review-feedback record for the MQTT queue fix, including the internal fallback gate |
+| [313-sim-only-status.md](313-sim-only-status.md) | Sim-only closeout: exact gate results, hardware-deferred items and resume criteria |
 | [302-companion-restart-reconnect.md](302-companion-restart-reconnect.md) | Companion stop/start without a heap panic, and advertising restart after a rejected link |
 | [303-upstream-sync.md](303-upstream-sync.md) | Read-only upstream audit, open issue mapping, and full SHA PlatformIO pins for upstream issue 309 |
 
@@ -254,6 +262,7 @@ document is authoritative over any older summary.
 | [97-followups.md](97-followups.md) | Consolidated follow-up backlog |
 | [98-power-optimization-audit.md](98-power-optimization-audit.md) | Power optimization audit |
 | [98b-power-followup.md](98b-power-followup.md) | GPS degraded lock recovery follow-up |
+| [99-boot-time.md](99-boot-time.md) | Boot timeline instrumentation and measured boot-time reductions |
 | [99-nimble-client-leak.md](implemented/99-nimble-client-leak.md) | NimBLE client leak fix |
 | [100-sim-fault-injection-bughunt.md](100-sim-fault-injection-bughunt.md) | Host fault injection and BLE connect failure hunting |
 | [102-disconnect-freeze.md](102-disconnect-freeze.md) | Disconnect off the UI task |
@@ -304,17 +313,18 @@ checks the ledger against the source and rejects duplicate owners;
 missing schema row. The executable reservation table lives in
 [include/CLAUDE.md](../include/CLAUDE.md).
 
-Current master (`ea86482a`, 2026-11-02) uses 1-22, 24-35, 37-41, 43-44, 46-47,
+Current master (`0883a31e`, 2026-11-06) uses 1-22, 24-35, 37-44, 46-47,
 51-55, 62, 65-69, and 72-76. Conditional ids are 23 (`WATCHDOG` on
 `FURBLE_M5STICKS3`), 36 (`DISPLAY_MODE` without `FURBLE_NO_DISPLAY`), and 56-61
-(`FURBLE_MQTT`). Ids 48-50, 63-64, and 70-71 are free. Ids 42 and 45 retain
-historical claims and need a compatibility audit before reuse. Off-wire id 0
-remains used by `BULB`, `TOUCH_CALIBRATION`, `MULTISELECT`, `GPX_PERIOD`, and
-`BATTERY_SAVER`.
+(`FURBLE_MQTT`). Ids 48-50, 63-64, and 70-71 are free. Id 45 retains a
+historical claim and needs a compatibility audit before reuse. Id 42 is merged
+as `TIMEZONE`. Off-wire id 0 remains used by `BULB`, `TOUCH_CALIBRATION`,
+`MULTISELECT`, `GPX_PERIOD`, and `BATTERY_SAVER`.
 
-The three open PR heads (#317, #318, #319) claim no setting id. Recheck every
-open feature PR head immediately before a rebase or merge; ids only freeze when
-a PR merges, and a shipped id such as 46 (`IMU`) never moves.
+No pull request is open and none claims a setting id. PRs #317, #318 and #319
+merged on 2026-11-02 without one. Recheck every open feature PR head
+immediately before a rebase or merge; ids only freeze when a PR merges, and a
+shipped id such as 46 (`IMU`) never moves.
 
 ## Dependencies
 

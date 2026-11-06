@@ -439,9 +439,12 @@ shortens that host retry cadence for a bounded scenario.
   `tools/check_flash_readiness.py --ready` is the only authority for a flash
   candidate. It refuses approximate hardware entries, pending fuzz results,
   unfixed failing seeds, incomplete permutations, missing memory profile dumps
-  and a dirty worktree. The fuzz corpus passes; the gate is blocked only by the
-  memory profile dumps and the full permutation run, which is a separate
-  evidence PR.
+  and a dirty worktree. On master at `0883a31e` the gate passes with 188 of 188
+  hardware entries, 20 of 20 crash entries, 10 of 10 fuzz targets, 6,912 of
+  6,912 permutations, 13 of 13 memory dumps and 18 of 18 linked boundaries.
+  The dumps are ignored generated evidence, so run
+  `python3 sim/scripts/run-memory-profile.py` before the final check. Hardware
+  validation is deferred; #407 has not been hardware-retested.
 - `sim/memory_profile.cpp`, the tagged heap, `action memory-dump PATH` and
   `sim/scripts/run-memory-profile.py` are the memory profiler. The budget is
   compared against `sim/coverage/memory_budget.json`. `sim/scripts/run-permutations.py`

@@ -71,11 +71,12 @@ StickS3 and the 80x160 StickC. On the StickS3 the two buffers held 20,480 bytes,
 1. **Identity before the radios.** `WebUI::initEarly()` runs from `app_main`
    after `Device::init()` (so the device ID for the CN exists) and before
    `Companion::init()`/WiFi/display init. When `web_ui` is on and a companion
-   password exists, it loads or creates the identity on the 16 KiB main task,
-   while NVS writes are safe and the internal heap is still large. A runtime
-   enable with no cached identity uses a one-shot 12 KiB internal task that
-   deletes itself; if that cannot be allocated, the log says to reboot instead
-   of crashing or boot-looping.
+   password exists, it loads or creates the identity while NVS writes are safe
+   and the internal heap is still large. At the time of #392 this ran on the
+   16 KiB main task. Plan 305 moved the work to a dedicated 12 KiB internal
+   task and let the StickS3 main stack drop to 12 KiB. A runtime enable with no
+   cached identity uses the same one-shot 12 KiB task; if that cannot be
+   allocated, the log says to reboot instead of crashing or boot-looping.
 2. **No NVS in the supervisor loop.** `reloadSetting()` caches `m_Enabled`,
    `m_PasswordReady` and `m_CredentialsReady`. The supervisor polls atomics and
    never calls `Settings::load`/`loadPassword`. Every live password reload,

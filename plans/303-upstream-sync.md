@@ -1,6 +1,6 @@
 # 303 - upstream sync audit and full SHA dependency pins
 
-Status: implemented on `chore/upstream-sync`.
+Status: merged on master with #385.
 
 ## Scope and method
 

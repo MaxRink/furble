@@ -144,9 +144,13 @@ CLAUDE.md whose directory it touches.
   misses, missing memory profile dumps or a dirty tree. Run
   `sim/scripts/check-hardware-quirks.sh`, `sim/scripts/run-memory-profile.py`
   and the full `sim/scripts/run-permutations.py --compact` before asking for
-  hardware. The gate
-  is currently blocked only by the missing memory profile dumps and the full
-  6,912-combination permutation run, which is a separate evidence PR.
+  hardware. On master at `0883a31e` the gate passes: 188 of 188 hardware
+  entries, 20 of 20 crash entries, 10 of 10 fuzz targets, 6,912 of 6,912
+  permutations, 13 of 13 memory dumps and 18 of 18 linked boundaries. The
+  memory dumps are ignored generated evidence, so run
+  `python3 sim/scripts/run-memory-profile.py` before the final check. Hardware
+  validation is deferred in sim-only mode and #407 has not been
+  hardware-retested; see `plans/313-sim-only-status.md`.
 - Linked host-boundary evidence is `sh sim/scripts/run-boundary-conformance.sh`.
   It compiles the production headless service loop and the IR, SD, feedback,
   W5500 Ethernet, CompanionGatt and WebUI TLS/socket paths unchanged against

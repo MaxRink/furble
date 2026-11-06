@@ -9,7 +9,10 @@ now covers every source-exposed nonzero wire id, and the provisioning apply test
 walks every `Settings::Key` with a wire id and fails on a missing row. The test
 also covers valid boolean values and rejection of value 2.
 
-The current master ledger (2026-11-02, `ea86482a`) is:
+The ledger snapshot at merge time (2026-11-02, `ea86482a`) is below. It is
+historical. PRs #317, #318 and #319 merged later that day without a setting
+id, and id 42 merged as `TIMEZONE` with #364 on 2026-11-04. The current ledger
+is in [include/CLAUDE.md](../CLAUDE.md).
 
 | Owner | Wire ids |
 | --- | --- |
@@ -17,7 +20,7 @@ The current master ledger (2026-11-02, `ea86482a`) is:
 | Master, conditional | 23 (`WATCHDOG` on `FURBLE_M5STICKS3`), 36 (`DISPLAY_MODE` without `FURBLE_NO_DISPLAY`), 56-61 (`FURBLE_MQTT`) |
 | Historical | 42, 45: keep reserved; a compatibility audit is required before reuse |
 | Free | 48-50, 63-64, 70-71 |
-| Open PRs #317, #318, #319 | none |
+| Then-open PRs #317, #318, #319 (merged 2026-11-02) | none |
 
 The matching reservation table and rebase rule live in
 [include/CLAUDE.md](../CLAUDE.md).
@@ -39,6 +42,6 @@ not replace the live open-head audit.
 - **#288** is satisfied by the 43/46 schema rows and the all-keyed walk. It can
   close after this plan update.
 - **#280** is satisfied by the refreshed ledger and the absence of any wire-id
-  claim on the three open PR heads. The only residual action is the documented
-  rebase-time re-audit; it is not an open implementation task. It can close
-  after this plan update.
+  claim on the three then-open PR heads. The only residual action is the
+  documented rebase-time re-audit; it is not an open implementation task. The
+  issue closed after this plan update.

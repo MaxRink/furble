@@ -241,9 +241,10 @@ for the full setting list.
 The same 8 MB and 16 MB profiles include an opt-in authenticated HTTPS WebUI.
 It stays closed until a companion password is configured. On the M5StickS3
 debug image, WiFi plus Bluetooth left about 6.8 KiB of internal RAM free before
-the WebUI budget work. After plan 311 the StickS3 runs a 12 KiB main stack and
-measures about 25,911 free with the WebUI off, after reverting the short-lived
-8 KiB experiment that overflowed on hardware. The server still refuses to start
+the WebUI budget work. The 8 KiB main-stack experiment measured 30,007 free /
+28,660 largest with MQTT off before it overflowed on hardware. After plan 311
+the StickS3 runs a 12 KiB main stack, which leaves an inferred 25,911 free with
+the WebUI off. The server still refuses to start
 below its measured floor (20,480 free / 12,288 largest) with a log line instead
 of resetting the device. The StickS3 is not a
 supported WebUI target until a TLS handshake, a settings write and a soak pass

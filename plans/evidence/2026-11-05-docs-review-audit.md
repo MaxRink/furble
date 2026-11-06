@@ -1,5 +1,11 @@
 # Documentation review audit, 2026-11-05
 
+> Historical record. Later merges changed both the memory values and the gate
+> state: #406 recorded 6,912 of 6,912 permutations and #407 moved the MQTT
+> queue to PSRAM and restored the 12 KiB StickS3 main stack. The 34,631-byte
+> inference in this record is superseded by the 25,911-byte inference in plan
+> 311. Current status: [313-sim-only-status.md](../313-sim-only-status.md).
+
 This note records each documentation, plan and contract finding from the merged
 PR review and where the remediation branch fixed it. Every row was checked
 against the current tree, not against an older plan summary.
@@ -38,5 +44,6 @@ stale fuzz `known_findings` are closed. The boot-timing docs now match the
 - `sh sim/scripts/check-doc-tokens.sh`
 - `python3 tools/check_review_threads.py --repo MaxRink/furble --pr <number>`
 - `python3 tools/check_flash_readiness.py --ready`
-- The readiness gate remains blocked only by the missing memory profile dumps
-  and the full permutation run, which is a separate evidence PR.
+- At the time of this audit, the readiness gate remained blocked only by the
+  missing memory profile dumps and the full permutation run. #406 and #407
+  closed both items; see the banner above and plan 313.
