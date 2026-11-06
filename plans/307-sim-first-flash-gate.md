@@ -64,7 +64,8 @@ The readiness report passes on master at `0883a31e`:
 - hardware entries: 188 of 188 modeled, 0 approximate, 0 not modeled;
 - crash entries: 20 of 20 modeled;
 - fuzz targets: 10 of 10 modeled, with 136 seed runs, 89,146 iterations and
-  zero failures in `sim/coverage/fuzz_results.json`;
+  zero failures in `sim/coverage/fuzz_results.json`, which records commit
+  `0883a31e`;
 - permutations: 6,912 of 6,912 passed in
   `sim/coverage/permutation_results.json`;
 - memory profile: 13 of 13 dumps pass after

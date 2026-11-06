@@ -5,8 +5,9 @@ branches. The full fuzz corpus passes: 10 targets, 136 seed runs, 89,146
 iterations and zero failures across all three panel binaries and both layouts.
 The #393/#398 MQTT owner stack and HA discovery OOM are fixed and carry
 regressions. The flash-readiness gate passes on master at `0883a31e`: the full
-permutation artifact is 6,912 of 6,912 and the memory profile is 13 of 13
-after `python3 sim/scripts/run-memory-profile.py` generates the ignored dumps.
+permutation artifact is 6,912 of 6,912, the committed fuzz result is bound to
+`0883a31e` and the memory profile is 13 of 13 after
+`python3 sim/scripts/run-memory-profile.py` generates the ignored dumps.
 
 ## Goal
 

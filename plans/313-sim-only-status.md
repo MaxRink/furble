@@ -54,7 +54,7 @@ These results were produced at `0883a31e` on 2026-11-06.
 | Crash entries | 20 of 20 modeled |
 | Fuzz targets | 10 of 10 modeled |
 | Permutations | 6,912 of 6,912 passed |
-| Fuzz corpus | 10 targets, 136 seed runs, 89,146 iterations, 0 failures |
+| Fuzz corpus | 10 targets, 136 seed runs, 89,146 iterations, 0 failures; artifact commit `0883a31e` |
 | Memory profile | 13 of 13 dumps pass |
 | Linked boundary conformance | 18 of 18 pass |
 | Host CTest | 183 of 183 pass |
