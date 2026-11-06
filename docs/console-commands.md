@@ -190,12 +190,14 @@ setting, its default, and when it applies.
 - `companion stop` persists the setting off and stops the live service
   synchronously.
 - `companion reidentify` is the recovery path for a host that keeps using a
-  stale GATT handle map. It disconnects the companion link, deletes the saved
-  companion bond (camera bonds are untouched), generates and persists a new
-  random static LE address, and opens the 60 s pairing window. The persisted
-  address is restored by `CompanionGatt::init()` before advertising on the next
-  boot, so the host keeps the bond it creates after the rotation. The host must
-  pair again once.
+  stale GATT handle map. It stops advertising, generates/applies/persists a new
+  random static LE address, then disconnects the companion link, deletes only
+  the companion bond (camera bonds are untouched), and opens the 60 s pairing
+  window. A rotation or NVS failure restores the previous advertising state and
+  keeps the link and bond. The persisted address is restored by
+  `CompanionGatt::init()` and `CompanionGatt::enable()` before advertising on
+  later boots, so the host keeps the bond it creates after the rotation. The
+  host must pair again once.
 - `companion status` prints `companion.setting` (the persisted value),
   `companion.enabled` (the live service), `companion.bond` (a saved peer exists),
   `companion.window` (the 60 s pairing window is open) and

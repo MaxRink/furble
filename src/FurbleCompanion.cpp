@@ -111,15 +111,20 @@ bool CompanionGatt::reidentify(void) {
     return false;
   }
 
-  // Persist and apply the new address before dropping the current link and
-  // bond. A persistence or controller failure then leaves the companion in its
-  // previous usable state instead of silent and bondless.
+  // Setting a new own address while the controller is advertising or serving a
+  // link may be rejected or only take effect on the next advertising start.
+  // Stop advertising first, but keep the link and bond until the rotation has
+  // actually succeeded.
+  const bool wasAdvertising = isAdvertising();
+  stopAdvertising();
   if (!CompanionIdentity::rotate()) {
-    ESP_LOGW(LOG_TAG, "Companion identity rotation failed; keeping the active link and bond");
+    ESP_LOGW(LOG_TAG, "Companion identity rotation failed; keeping the link and bond");
+    if (wasAdvertising) {
+      resumeAdvertisingAfterDisconnect();
+    }
     return false;
   }
 
-  stopAdvertising();
   if ((m_Server != nullptr) && connected && (handle != INVALID_CONN_HANDLE)) {
     m_Server->disconnect(handle);
   }

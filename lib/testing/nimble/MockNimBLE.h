@@ -696,6 +696,8 @@ class NimBLEDevice {
   // and type so a host test can prove a persisted address is restored.
   static std::array<uint8_t, 6> mockOwnAddress();
   static uint8_t mockOwnAddressType();
+  static void mockFailSetOwnAddr(bool fail);
+  static bool mockSetOwnAddrFailed();
 
   // Mirrors of the real NimBLEDevice accessors the developer console's
   // 'debug ble' dump reports from: whether the host stack is up, the

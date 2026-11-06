@@ -32,6 +32,16 @@ bool randomStatic(const std::array<uint8_t, 6> &address) {
   return (address[5] & 0xC0) == 0xC0;
 }
 
+std::array<uint8_t, 6> persistedAddress(void) {
+  std::array<uint8_t, 6> address = {};
+  Furble::Preferences preferences;
+  if (preferences.begin("furble", true)) {
+    (void)preferences.get("companion_bleid", address.data(), address.size());
+    preferences.end();
+  }
+  return address;
+}
+
 }  // namespace
 
 int main(void) {
@@ -46,6 +56,15 @@ int main(void) {
         "a wiped device keeps the default address policy");
   check(!Furble::CompanionIdentity::applyPersisted(),
         "a wiped device has no persisted companion identity");
+
+  // Persistence failure with no previous record restores the default policy.
+  Furble::Host::failNextPutForKey("companion_bleid");
+  check(!Furble::CompanionIdentity::rotate(),
+        "a first-boot persistence failure did not fail the rotation");
+  check(NimBLEDevice::mockOwnAddressType() == BLE_OWN_ADDR_RPA_PUBLIC_DEFAULT,
+        "a first-boot persistence failure did not restore the default identity");
+  check(Furble::Host::preferencesKeyCount() == 0,
+        "a first-boot persistence failure left an identity key");
 
   check(Furble::CompanionIdentity::rotate(), "the identity rotates");
   const auto first = NimBLEDevice::mockOwnAddress();
@@ -74,6 +93,24 @@ int main(void) {
     check(!preferences.isKey("this_key_is_too_long"), "the rejected long key was not stored");
     preferences.end();
   }
+
+  // Apply failure: NVS must keep the previous identity, and the controller
+  // must go back to the address it had before the attempt.
+  NimBLEDevice::mockFailSetOwnAddr(true);
+  check(!Furble::CompanionIdentity::rotate(),
+        "a controller apply failure did not fail the rotation");
+  check(NimBLEDevice::mockOwnAddress() == first,
+        "an apply failure did not restore the previous controller address");
+  check(persistedAddress() == first, "an apply failure changed the persisted identity");
+
+  // Persist failure: the new address is applied first, then rolled back when
+  // the NVS write fails, so the next boot cannot adopt an address the
+  // controller never kept.
+  Furble::Host::failNextPutForKey("companion_bleid");
+  check(!Furble::CompanionIdentity::rotate(), "a persistence failure did not fail the rotation");
+  check(NimBLEDevice::mockOwnAddress() == first,
+        "a persistence failure did not restore the previous controller address");
+  check(persistedAddress() == first, "a persistence failure changed the persisted identity");
 
   // A boot re-runs Device::init() and then CompanionGatt::init() applies the
   // stored identity before advertising. It must not fall back to the default

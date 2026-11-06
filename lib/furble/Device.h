@@ -39,6 +39,9 @@ class Device {
    */
   static bool applyRandomStaticIdentity(const uint8_t address[6]);
 
+  /** Restore the default resolvable-private/public address policy. */
+  static bool applyDefaultIdentity(void);
+
   /**
    * Fill a buffer with a valid, non-zero random-static LE identity.
    *

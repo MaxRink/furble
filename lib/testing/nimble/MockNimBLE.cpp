@@ -117,6 +117,7 @@ bool g_Bonded = false;
 // filed under sets it explicitly.
 NimBLEAddress g_BondAddress {};
 NimBLEAddress g_IdAddress {};
+bool g_FailSetOwnAddr = false;
 // The peer of the most recent link. With no bond there is no IRK to resolve an
 // RPA with, so the identity address a live link reports is simply the address
 // it connected to; only a test that files a bond under a different identity
@@ -1128,7 +1129,8 @@ bool NimBLEDevice::setOwnAddrType(uint8_t address_type) {
 }
 
 bool NimBLEDevice::setOwnAddr(const uint8_t address[6]) {
-  if (address == nullptr) {
+  if (address == nullptr || g_FailSetOwnAddr) {
+    g_FailSetOwnAddr = false;
     return false;
   }
   uint64_t value = 0;
@@ -1159,6 +1161,14 @@ std::array<uint8_t, 6> NimBLEDevice::mockOwnAddress() {
 
 uint8_t NimBLEDevice::mockOwnAddressType() {
   return g_OwnAddressType;
+}
+
+void NimBLEDevice::mockFailSetOwnAddr(bool fail) {
+  g_FailSetOwnAddr = fail;
+}
+
+bool NimBLEDevice::mockSetOwnAddrFailed() {
+  return g_FailSetOwnAddr;
 }
 
 int NimBLEDevice::getNumBonds() {
@@ -1510,6 +1520,7 @@ void NimBLEDevice::resetMock() {
   g_Bonded = false;
   g_BondAddress = NimBLEAddress {};
   g_IdAddress = NimBLEAddress {};
+  g_FailSetOwnAddr = false;
   g_LinkPeerAddress = NimBLEAddress {};
   g_DeleteBondCount = 0;
   g_WhiteList.clear();

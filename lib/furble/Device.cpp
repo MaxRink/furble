@@ -100,6 +100,10 @@ bool Device::applyRandomStaticIdentity(const uint8_t address[6]) {
   return NimBLEDevice::setOwnAddr(copy);
 }
 
+bool Device::applyDefaultIdentity(void) {
+  return NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RPA_PUBLIC_DEFAULT);
+}
+
 bool Device::generateRandomStaticIdentity(uint8_t address[6]) {
   if (address == nullptr) {
     return false;

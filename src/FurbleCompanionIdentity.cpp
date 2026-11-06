@@ -1,6 +1,7 @@
 #include "FurbleCompanionIdentity.h"
 
 #include <Preferences.h>
+#include <esp_log.h>
 
 #include "Device.h"
 #include "FurbleTypes.h"
@@ -40,6 +41,15 @@ bool store(const uint8_t (&address)[IDENTITY_BYTES]) {
   return written == IDENTITY_BYTES;
 }
 
+bool restore(bool havePrevious, const uint8_t (&previous)[IDENTITY_BYTES]) {
+  const bool restored =
+      havePrevious ? Device::applyRandomStaticIdentity(previous) : Device::applyDefaultIdentity();
+  if (!restored) {
+    ESP_LOGE(FURBLE_STR, "Companion identity rollback failed after a rotation error");
+  }
+  return restored;
+}
+
 }  // namespace
 
 bool applyPersisted(void) {
@@ -51,16 +61,29 @@ bool applyPersisted(void) {
 }
 
 bool rotate(void) {
+  uint8_t previous[IDENTITY_BYTES] = {};
+  const bool havePrevious = load(previous);
+
   uint8_t address[IDENTITY_BYTES] = {};
   if (!Device::generateRandomStaticIdentity(address)) {
     return false;
   }
-  // Persist before applying: a reboot between the two steps then restores the
-  // identity the host is about to pair with, instead of the old address.
-  if (!store(address)) {
+
+  // Apply first, then persist. If the controller rejects the new identity, NVS
+  // still describes the old one. If persistence fails after a successful
+  // apply, restore the old controller identity so the next boot and the live
+  // radio agree.
+  if (!Device::applyRandomStaticIdentity(address)) {
+    ESP_LOGW(FURBLE_STR, "Companion identity apply failed; keeping the persisted identity");
+    (void)restore(havePrevious, previous);
     return false;
   }
-  return Device::applyRandomStaticIdentity(address);
+  if (!store(address)) {
+    ESP_LOGW(FURBLE_STR, "Companion identity persist failed; restoring the previous identity");
+    (void)restore(havePrevious, previous);
+    return false;
+  }
+  return true;
 }
 
 #if defined(FURBLE_HOST_TEST)
