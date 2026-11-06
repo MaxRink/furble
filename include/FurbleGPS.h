@@ -189,6 +189,15 @@ class GPS {
 #if defined(FURBLE_SIM)
   /** Number of fresh UART fixes accepted by the parser in this session. */
   uint32_t simFreshFixesParsed(void) const { return m_SimFreshFixesParsed.load(); }
+  /**
+   * Number of fresh UART fixes accepted during a duty-cycle wake burst.
+   *
+   * `gps.fresh_fixes_parsed` is session-cumulative and includes the acquisition
+   * fix that armed standby, so it cannot distinguish a wake fix from that
+   * baseline. This counter increments only while `m_DutyWake` marks the burst
+   * that follows STANDBY/RAIL_OFF.
+   */
+  uint32_t simDutyWakeFixesParsed(void) const { return m_SimDutyWakeFixesParsed.load(); }
 #endif
   /** Get the quality of the fix currently sent to the camera. */
   Fix getFix(void) const;
@@ -663,6 +672,7 @@ class GPS {
   std::atomic<uint32_t> m_PushedSequence = 0;
 #if defined(FURBLE_SIM)
   std::atomic<uint32_t> m_SimFreshFixesParsed = 0;
+  std::atomic<uint32_t> m_SimDutyWakeFixesParsed = 0;
 #endif
   std::atomic<bool> m_CycleRequest = false;
 

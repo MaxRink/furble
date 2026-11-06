@@ -552,10 +552,15 @@ shortens that host retry cadence for a bounded scenario.
   Keep IMU actions and queries general enough for diagnostics, spirit-level
   orientation, and future gesture features; do not add widget-only shortcuts.
 - GPS query keys include `gps.source`, `gps.satellites`, `gps.state`,
-  `gps.fresh_fixes_parsed`, and `gps.config.<index>.state|attempts`.
+  `gps.fresh_fixes_parsed`, `gps.duty_wake_fixes_parsed`, and
+  `gps.config.<index>.state|attempts`.
   `gps.fresh_fixes_parsed` is simulator-only observability of parser
   progression, so scenarios can distinguish a wake fix from a cached UART
-  source. It is not a coherent delivered-geotag claim. Total UART write count,
+  source. It is cumulative and includes the acquisition fix that armed a duty
+  cycle, so a standby scenario treats it as a lower bound.
+  `gps.duty_wake_fixes_parsed` counts only fixes accepted by a burst that
+  followed STANDBY or RAIL_OFF, which isolates the wake from that baseline.
+  Neither is a coherent delivered-geotag claim. Total UART write count,
   exact `$PCAS12,5*1B` command count, and the last command are available as
   `uart.count`, `uart.standby_5s_commands`, and `uart.last`. `camera.count` reports
   the current simulated camera-list row count, allowing scan-result

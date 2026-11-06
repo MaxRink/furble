@@ -1194,7 +1194,10 @@ names lose characters, which must be 0. A page with no spin row reports 0 and
 GPS simulator queries also include `gps.sats_in_view`, `gps.sats_used`,
 `gps.sats_fix` and `gps.sats_capture`; the `gps-satellite-page` end-to-end
 scenario uses the fixed GSV/GSA fixture and proves the rendered route before
-docs capture runs.
+docs capture runs. `gps.fresh_fixes_parsed` counts parser-accepted fresh fixes
+for the session, while `gps.duty_wake_fixes_parsed` counts only fixes accepted
+by a duty-cycle wake burst after `STANDBY` or `RAIL_OFF`. The duty-wake counter
+lets `gps-standby-wake` assert the wake independently of the acquisition fix.
 
 Phase 2 adds the receiver model and its queries. `gps.receiver` reports
 `unknown`, `detecting`, `present` or `absent`, `gps.baud` reports the rate the

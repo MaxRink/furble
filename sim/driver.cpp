@@ -1594,6 +1594,9 @@ std::string queryValue(const std::string &key) {
     if (sub == "fresh_fixes_parsed") {
       return std::to_string(gps.simFreshFixesParsed());
     }
+    if (sub == "duty_wake_fixes_parsed") {
+      return std::to_string(gps.simDutyWakeFixesParsed());
+    }
 #endif
     if (sub == "sats_in_view") {
       return std::to_string(gps.getSatelliteReport().in_view);

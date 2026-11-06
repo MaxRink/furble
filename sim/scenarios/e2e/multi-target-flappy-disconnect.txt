@@ -31,11 +31,15 @@ assert control.connected 2
 assert ui.connected yes
 
 # The GR runs its standby drop and the healthy link goes with it, so the
-# control task is in the middle of a reconnect cycle.
+# control task is in the middle of a reconnect cycle. ACTIVE requires every
+# target to be live (Control::allConnected), so the flappy link forces the
+# reconnect state rather than the healthy one keeping the session up. The
+# control task notices the drops on its 250 ms housekeeping tick and publishes
+# CONNECT before CONNECTING, so assert convergence instead of pinning a tick
+# boundary; a state stuck at ACTIVE still fails the bound.
 action ble-standby
 action drop
-wait 200
-assert control.state connecting
+assert-eventually-virtual 1500 control.state connecting
 assert ui.connected no
 
 # Disconnect from the UI mid-cycle. This is the exact window that wedged.
