@@ -195,7 +195,8 @@ execute_process(
 if(NOT _sdkconfig_result EQUAL 0)
   message(FATAL_ERROR "Could not generate ${FURBLE_SIM_SDKCONFIG_HEADER}")
 endif()
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${FURBLE_SIM_SDKCONFIG}")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${FURBLE_SIM_SDKCONFIG}"
+                                                          "${FURBLE_ROOT}/tools/gen_sim_sdkconfig.py")
 set_source_files_properties(${FURBLE_SOURCES} PROPERTIES COMPILE_OPTIONS
                             "-include;${FURBLE_SIM_SDKCONFIG_HEADER}")
 

@@ -15,5 +15,8 @@ a false positive, with evidence.
 
 | 3 | The panic recorder is registered from a namespace-scope dynamic initializer in `sim/CrashLogSim.cpp`, while the atomic it stores into lives in `sim/heap_model.cpp`; cross-unit initialization order is unspecified. | False positive, hardened. `std::atomic<T *>` has a constexpr constructor, so `s_PanicRecorder{nullptr}` is constant-initialized before any dynamic initializer runs ([basic.start.static]). Both hook atomics now carry `[[clang::require_constant_initialization]]`, so a change that made them dynamically initialized fails to compile. | `sim/heap_model.cpp` |
 
+| 4 | Review body: the CMake configure step did not track `tools/gen_sim_sdkconfig.py`, so an allowlist change kept a stale `sdkconfig_sim.h` until a manual reconfigure. | Fixed. The generator is a `CMAKE_CONFIGURE_DEPENDS` entry next to the board sdkconfig. `sim/build.sh` already runs the generator on every build. | `sim/CMakeLists.txt` |
+| 5 | Review body: enabling `CONFIG_SPIRAM` and `CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM` makes `src/FurbleIR.cpp` compile its `xTaskCreateWithCaps` path, which the simulator does not shim, so both simulator builds fail. | False positive. `src/FurbleIR.cpp` is not in the simulator source list of `sim/build.sh` or `sim/CMakeLists.txt`; the simulator uses `sim/shim/FurbleIR.h`. The linked boundary suite compiles the production IR file in `tests/host` without the generated header. Both simulator builds and the host suite build clean on this branch. | `sim/build.sh`, `sim/CMakeLists.txt`, `sim/shim/FurbleIR.h` |
+
 Validation: `sh sim/scripts/run-panic-fixtures.sh` passes 3 of 3 after all
-three items.
+items; the CMake simulator configures and builds.
