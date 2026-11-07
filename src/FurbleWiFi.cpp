@@ -66,6 +66,13 @@ constexpr size_t TASK_STACK = 4096;
 esp_netif_t *g_StaNetif = nullptr;
 TaskHandle_t g_Task = nullptr;
 std::mutex g_StateMutex;
+// Serializes the stored access point. Every NVS save or erase of it runs
+// under this mutex, always taken before g_StateMutex.
+std::mutex g_ApStorageMutex;
+// Bumped by each clear, under both mutexes. A save captures it when it reads
+// the configuration it saves for, and is dropped if a clear ran since, so a
+// save that started before a clear can never land after it.
+uint32_t g_ApGeneration = 0;
 std::mutex g_DriverMutex;
 // First-time initialization creates a netif, event handlers, and a task. Two
 // console/companion/WebUI callers at once must not create them twice.
@@ -213,7 +220,7 @@ void loadRememberedAccessPoint(void) {
   g_AuthSet = authSet;
 }
 
-void saveRememberedAccessPoint(const wifi_ap_record_t &record) {
+void persistAccessPoint(const wifi_ap_record_t &record) {
   Preferences preferences;
   if (!preferences.begin(FURBLE_STR, false)) {
     return;
@@ -225,8 +232,19 @@ void saveRememberedAccessPoint(const wifi_ap_record_t &record) {
   preferences.put<uint8_t>(AUTH_KEY, static_cast<uint8_t>(record.authmode));
   (void)preferences.commit();
   preferences.end();
+}
 
+uint32_t apGeneration(void) {
+  const std::lock_guard<std::mutex> lock(g_StateMutex);
+  return g_ApGeneration;
+}
+
+/** The in-memory half of remembering an access point; no NVS. */
+void rememberAccessPoint(const wifi_ap_record_t &record, uint32_t generation) {
   std::lock_guard<std::mutex> lock(g_StateMutex);
+  if (generation != g_ApGeneration) {
+    return;
+  }
   g_FastConnectFailed = false;
   if (!g_ConnectRequested) {
     return;
@@ -237,6 +255,16 @@ void saveRememberedAccessPoint(const wifi_ap_record_t &record) {
   g_AuthMode = static_cast<uint8_t>(record.authmode);
   g_AuthSet = WiFiPolicy::authUsable(true, g_AuthMode);
   g_Rssi = record.rssi;
+}
+
+/** Save and remember record unless a clear ran since generation was read. */
+void saveRememberedAccessPoint(const wifi_ap_record_t &record, uint32_t generation) {
+  const std::lock_guard<std::mutex> storage(g_ApStorageMutex);
+  if (apGeneration() != generation) {
+    return;
+  }
+  persistAccessPoint(record);
+  rememberAccessPoint(record, generation);
 }
 
 void eraseStoredAccessPoint(void) {
@@ -259,7 +287,11 @@ void eraseStoredAccessPoint(void) {
   preferences.end();
 }
 
+void cancelPendingApStorage(void);
+
 void clearStoredAccessPoint(void) {
+  const std::lock_guard<std::mutex> storage(g_ApStorageMutex);
+  cancelPendingApStorage();
   eraseStoredAccessPoint();
 
   std::lock_guard<std::mutex> lock(g_StateMutex);
@@ -569,6 +601,8 @@ bool scanForNetwork(void) {
   }
   g_ScanRefusedForCoex.store(false);
 
+  // Read before the SSID: a clear after this point drops the save below.
+  const uint32_t generation = apGeneration();
   const std::string ssid = Settings::load<Settings::WIFI_SSID>();
   wifi_scan_config_t config = {};
   // The SSID is known. Asking the driver for hidden results makes it include
@@ -601,7 +635,7 @@ bool scanForNetwork(void) {
         strnlen(reinterpret_cast<const char *>(record.ssid), sizeof(record.ssid));
     if ((recordLength == ssid.size())
         && (std::memcmp(record.ssid, ssid.data(), recordLength) == 0)) {
-      saveRememberedAccessPoint(record);
+      saveRememberedAccessPoint(record, generation);
       ESP_LOGI(LOG_TAG, "WiFi found saved access point on channel %u",
                static_cast<unsigned>(record.primary));
       return true;
@@ -726,9 +760,63 @@ bool serviceConnectedWired(void) {
   return deferForWired();
 }
 
+/*
+ * NVS work the event handler hands to the worker. The handler runs on the
+ * default event loop task, whose stack is CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE
+ * (2,304 bytes); an NVS open, write or the NTP setting read there reached
+ * 2,864 bytes in tools/stack_budget.py. The worker has 4 KiB. A save and an
+ * erase cancel each other, so only the newest outcome is persisted. Guarded by
+ * g_StateMutex.
+ */
+wifi_ap_record_t g_PendingAp = {};
+bool g_PendingApSave = false;
+bool g_PendingApErase = false;
+bool g_PendingNtp = false;
+
+/** Drop a queued save or erase and end the generation. Caller holds g_ApStorageMutex. */
+void cancelPendingApStorage(void) {
+  std::lock_guard<std::mutex> lock(g_StateMutex);
+  g_ApGeneration++;
+  g_PendingApSave = false;
+  g_PendingApErase = false;
+}
+
+/** Run the storage work the event handler deferred. Worker task only. */
+void serviceEventStorage(void) {
+  bool ntp = false;
+  {
+    const std::lock_guard<std::mutex> storage(g_ApStorageMutex);
+    wifi_ap_record_t record = {};
+    bool save = false;
+    bool erase = false;
+    {
+      std::lock_guard<std::mutex> lock(g_StateMutex);
+      save = g_PendingApSave;
+      erase = g_PendingApErase;
+      ntp = g_PendingNtp;
+      record = g_PendingAp;
+      g_PendingApSave = false;
+      g_PendingApErase = false;
+      g_PendingNtp = false;
+    }
+    if (erase) {
+      eraseStoredAccessPoint();
+    }
+    if (save) {
+      persistAccessPoint(record);
+    }
+  }
+  if (ntp && Settings::load<Settings::NTP>()) {
+    startNtp();
+  }
+}
+
 void wifiTask(void *) {
   while (true) {
     uint32_t notification = 0;
+    // Every wait below returns here, so deferred event storage runs before
+    // the next one.
+    serviceEventStorage();
 
     if (g_DeferredForWired.load()) {
       xTaskNotifyWait(0, UINT32_MAX, &notification, pdMS_TO_TICKS(WIRED_RECHECK_MS));
@@ -764,6 +852,8 @@ void wifiTask(void *) {
     xTaskNotifyWait(0, UINT32_MAX, &notification, idleWait);
 
     while (g_ConnectRequested && !g_Connected) {
+      // A failed direct join queues its erase here; persist it before retrying.
+      serviceEventStorage();
 #if defined(FURBLE_ETHERNET)
       // Ethernet can obtain an address while the station is still associating
       // or backing off. The inner loop never reached the connected-state check,
@@ -829,6 +919,7 @@ void eventHandler(void *, esp_event_base_t eventBase, int32_t eventId, void *eve
       g_Ip.clear();
       g_Rssi = 0;
       g_LastDisconnectReason = reason;
+      g_PendingNtp = false;
 
       // A direct join that never reached an IP may be pointing at a BSSID that
       // moved or was replaced. Drop it and scan once before the next attempt.
@@ -843,6 +934,8 @@ void eventHandler(void *, esp_event_base_t eventBase, int32_t eventId, void *eve
         g_FastConnectFailed = true;
         g_LastAttemptUsedBssid.store(false);
         invalidateRemembered = true;
+        g_PendingApErase = true;
+        g_PendingApSave = false;
       }
 
       const uint32_t nextAttempt = g_ConnectAttempts + 1;
@@ -858,7 +951,6 @@ void eventHandler(void *, esp_event_base_t eventBase, int32_t eventId, void *eve
       retry = g_ConnectRequested;
     }
     if (invalidateRemembered) {
-      eraseStoredAccessPoint();
       ESP_LOGW(LOG_TAG, "WiFi direct join failed, forgetting the remembered BSSID");
     }
     g_LifecycleEvent.fetch_add(1, std::memory_order_relaxed);
@@ -878,11 +970,13 @@ void eventHandler(void *, esp_event_base_t eventBase, int32_t eventId, void *eve
   }
 
   if ((eventBase == IP_EVENT) && (eventId == IP_EVENT_STA_GOT_IP)) {
+    uint32_t generation = 0;
     {
       std::lock_guard<std::mutex> lock(g_StateMutex);
       if (!g_ConnectRequested) {
         return;
       }
+      generation = g_ApGeneration;
       g_Connected = true;
       g_GotIp = true;
       g_DirectFailures = 0;
@@ -898,7 +992,15 @@ void eventHandler(void *, esp_event_base_t eventBase, int32_t eventId, void *eve
 
     wifi_ap_record_t record = {};
     if (esp_wifi_sta_get_ap_info(&record) == ESP_OK) {
-      saveRememberedAccessPoint(record);
+      rememberAccessPoint(record, generation);
+      std::lock_guard<std::mutex> lock(g_StateMutex);
+      // A clear after this handler read the generation already cancelled the
+      // save; do not queue it again.
+      if (generation == g_ApGeneration) {
+        g_PendingAp = record;
+        g_PendingApSave = true;
+        g_PendingApErase = false;
+      }
     }
 
     char ip[16] = {};
@@ -922,8 +1024,11 @@ void eventHandler(void *, esp_event_base_t eventBase, int32_t eventId, void *eve
     }
     g_LifecycleEvent.fetch_add(1, std::memory_order_relaxed);
     ESP_LOGI(LOG_TAG, "WiFi connected, ip=%s", ip);
-    if (Settings::load<Settings::NTP>()) {
-      startNtp();
+    {
+      // The worker reads the NTP setting and starts SNTP; see
+      // serviceEventStorage().
+      std::lock_guard<std::mutex> lock(g_StateMutex);
+      g_PendingNtp = true;
     }
     notify(NOTIFY_EVENT);
   }
@@ -1131,6 +1236,10 @@ bool WiFi::hostResumeAfterWired(void) {
 
 void WiFi::hostServiceTerminalStop(void) {
   serviceTerminalStop();
+}
+
+void WiFi::hostServiceEventStorage(void) {
+  serviceEventStorage();
 }
 
 bool WiFi::hostConnectAttempt(void) {
