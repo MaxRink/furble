@@ -2453,6 +2453,24 @@ void UI::applyLegendBandWidths(lv_obj_t *page, bool settle, bool pinBottom, bool
         if (lv_obj_get_style_translate_x(row, LV_PART_MAIN) != translate) {
           lv_obj_set_style_translate_x(row, translate, LV_PART_MAIN);
         }
+        // An info page is one full-height container of wrapped text, so it is in
+        // the band at every scroll position. The reservation already keeps its
+        // text clear of the legend, so its own right padding would only take a
+        // second gap from what is left. On the 80 px StickC that left 34 px and
+        // broke "Reset:" over five lines, taller than the viewport.
+        if (lv_obj_has_flag(row, LV_OBJ_FLAG_USER_1)) {
+          bool padChanged = false;
+          if (rowInBand) {
+            if (lv_obj_get_style_pad_right(row, LV_PART_MAIN) != 0) {
+              lv_obj_set_style_pad_right(row, 0, LV_PART_MAIN);
+              padChanged = true;
+            }
+          } else {
+            padChanged = lv_obj_remove_local_style_prop(row, LV_STYLE_PAD_RIGHT, LV_PART_MAIN);
+          }
+          widthChanged = widthChanged || padChanged;
+          widthChangedAny = widthChangedAny || padChanged;
+        }
       }
       if (!labels) {
         // Mid-gesture passes change only the row box. Label widths, long modes
@@ -2545,8 +2563,12 @@ void UI::legendBandScrollEvent(lv_event_t *e) {
   if (lv_event_get_code(e) == LV_EVENT_SCROLL_END) {
     // Settle immediately once the gesture stops, including encoder focus
     // scrolling that never sends a separate frame event.
+    // Cancel the pass a SCROLL frame queued. It would run after this settle,
+    // re-read the rows at their settled positions, change their widths again
+    // and, being non-settling, leave the bottom row below the new extent.
     if (lv_obj_has_flag(page, LV_OBJ_FLAG_USER_4)) {
       lv_obj_remove_flag(page, LV_OBJ_FLAG_USER_4);
+      lv_async_call_cancel(legendBandDeferred, page);
     }
     applyLegendBandWidths(page, true, true);
     return;
@@ -12046,6 +12068,17 @@ void UI::addTransmitPowerMenu(const menu_t &parent) {
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
 }
 
+lv_obj_t *UI::addInfoPage(lv_obj_t *page) {
+  lv_obj_t *cont = lv_menu_cont_create(page);
+  lv_obj_set_width(cont, LV_PCT(100));
+  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  // applyLegendBandWidths() drops this container's right padding while the
+  // legend reservation narrows it.
+  lv_obj_add_flag(cont, LV_OBJ_FLAG_USER_1);
+  return cont;
+}
+
 lv_obj_t *UI::addInfoRow(lv_obj_t *cont) {
   lv_obj_t *label = lv_label_create(cont);
   lv_obj_set_width(label, LV_PCT(100));
@@ -12421,10 +12454,7 @@ void UI::addBluetoothMenu(const menu_t &parent) {
 
 void UI::addAboutMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_AboutStr, &icon_info, true, parent);
-  lv_obj_t *cont = lv_menu_cont_create(menu.page);
-  lv_obj_set_width(cont, LV_PCT(100));
-  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_t *cont = addInfoPage(menu.page);
 
   lv_obj_t *version = addInfoRow(cont);
   lv_label_set_text_fmt(version, "Version:\n%s", FURBLE_VERSION);
@@ -12450,10 +12480,7 @@ void UI::addAboutMenu(const menu_t &parent) {
 
 void UI::addDeviceInfoMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_DeviceInfoStr, NULL, true, parent);
-  lv_obj_t *cont = lv_menu_cont_create(menu.page);
-  lv_obj_set_width(cont, LV_PCT(100));
-  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_t *cont = addInfoPage(menu.page);
 
   esp_chip_info_t info;
   esp_chip_info(&info);
@@ -12487,10 +12514,7 @@ void UI::addDeviceInfoMenu(const menu_t &parent) {
 
 void UI::addPowerStateMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_PowerStateStr, NULL, true, parent);
-  lv_obj_t *cont = lv_menu_cont_create(menu.page);
-  lv_obj_set_width(cont, LV_PCT(100));
-  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_t *cont = addInfoPage(menu.page);
 
   // filled in by the diagnostics timer whenever the page is open
   m_Diagnostics.powerFrequency = addInfoRow(cont);
@@ -12521,10 +12545,7 @@ void UI::addPowerStateMenu(const menu_t &parent) {
 
 void UI::addBLEMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_BLEStr, NULL, true, parent);
-  lv_obj_t *cont = lv_menu_cont_create(menu.page);
-  lv_obj_set_width(cont, LV_PCT(100));
-  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_t *cont = addInfoPage(menu.page);
 
   // Filled in by the diagnostics timer whenever the page is open.
   m_Diagnostics.ble = addInfoRow(cont);
@@ -12534,10 +12555,7 @@ void UI::addBLEMenu(const menu_t &parent) {
 
 void UI::addIMUDataMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_IMUDataStr, NULL, true, parent);
-  lv_obj_t *cont = lv_menu_cont_create(menu.page);
-  lv_obj_set_width(cont, LV_PCT(100));
-  lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_t *cont = addInfoPage(menu.page);
 
   m_Diagnostics.imuAccel = addInfoRow(cont);
   lv_label_set_text(m_Diagnostics.imuAccel, "Accel (G):\n--");
