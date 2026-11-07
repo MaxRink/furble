@@ -113,3 +113,5 @@ pairing box over the connect captures, then `camera-pair-reject` returns
 - `python3 tools/pre_review.py --base origin/master`: 8 gates pass.
 - `sh sim/scripts/check-doc-tokens.sh`: pass.
 - Hardware validation is deferred in sim-only mode.
+
+Wiki: the Time page capture also changes `docs/wiki/img/settings-time.png`, so the GitHub wiki needs a push after merge.
