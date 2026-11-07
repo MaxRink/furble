@@ -12,6 +12,7 @@
 #include <cstring>
 #include <ctime>
 #include <limits>
+#include <new>
 #include <utility>
 
 #include <cJSON.h>
@@ -687,12 +688,18 @@ bool MQTT::startClient(void) {
   const size_t freeBytes = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
   const size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
   const size_t psramLargest = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
-  const bool queueInPsram = psramLargest >= MQTTMemory::EVENT_QUEUE_BYTES;
-  // Without PSRAM the queue is a 9,392-byte internal allocation, so the start
-  // floor must include it. Otherwise the gate admits a client that cannot
-  // allocate its queue and burns the retry budget.
-  const auto gate = MQTTMemory::startGate(freeBytes, largest, secure,
-                                          queueInPsram ? 0 : MQTTMemory::EVENT_QUEUE_BYTES);
+  const bool queueInPsram = psramLargest >= MQTTMemory::EVENT_QUEUE_BLOCK_BYTES;
+  // The queue and the incoming copy survive stopClient(), so reserve only the
+  // blocks still missing; a restart must not count them twice. Without PSRAM
+  // they are internal allocations and the largest block must hold the bigger
+  // of the two, not their sum. Otherwise the gate admits a client that cannot
+  // allocate them and burns the retry budget.
+  const size_t queueMissing = (m_EventQueue == nullptr) ? MQTTMemory::EVENT_QUEUE_BLOCK_BYTES : 0;
+  const size_t incomingMissing =
+      (m_Incoming == nullptr) ? MQTTMemory::INCOMING_EVENT_BLOCK_BYTES : 0;
+  const auto gate = MQTTMemory::startGate(
+      freeBytes, largest, secure, queueInPsram ? 0 : queueMissing + incomingMissing,
+      queueMissing > incomingMissing ? queueMissing : incomingMissing);
   if (!gate.open) {
     // Defer instead of letting esp-mqtt allocate its task and buffers into a
     // pool that cannot hold them. The owner counts this as a failed attempt, so
@@ -703,30 +710,49 @@ bool MQTT::startClient(void) {
     return false;
   }
 
+  // Every board aborts on a failed allocation
+  // (CONFIG_HEAP_ABORT_WHEN_ALLOCATION_FAILS), so a failed PSRAM attempt never
+  // returns to fall back. Choose the memory from a fresh largest-block reading
+  // before allocating instead, and re-run the start gate whenever the choice
+  // is internal: the admission above reserved nothing internal when PSRAM
+  // looked large enough.
+  const auto inPsram = [](size_t bytes) {
+#if defined(CONFIG_SPIRAM)
+    return heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) >= bytes;
+#else
+    (void)bytes;
+    return false;
+#endif
+  };
+  const auto internalAdmits = [secure](size_t extraBytes, size_t extraLargest) {
+    const auto fallback = MQTTMemory::startGate(
+        heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
+        heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT), secure, extraBytes,
+        extraLargest);
+    if (!fallback.open) {
+      ESP_LOGW(MQTT_LOG_TAG, FURBLE_MQTT_START_GATE_LOG, static_cast<unsigned>(fallback.freeBytes),
+               static_cast<unsigned>(fallback.largestBlock),
+               static_cast<unsigned>(fallback.freeFloor),
+               static_cast<unsigned>(fallback.largestFloor));
+    }
+    return fallback.open;
+  };
+
   if (m_EventQueue == nullptr) {
     // The queue holds copied topic and payload bytes, not flash or NVS
     // pointers. On boards with PSRAM it belongs there: the owner only touches
     // it with the cache enabled, and no code writes NVS from the MQTT path.
 #if defined(CONFIG_SPIRAM) && defined(CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM) \
     && CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM
-    if (queueInPsram) {
+    if (inPsram(MQTTMemory::EVENT_QUEUE_BLOCK_BYTES)) {
       m_EventQueue = xQueueCreateWithCaps(EVENT_QUEUE_LENGTH, sizeof(queued_event_t),
                                           MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-      if (m_EventQueue == nullptr) {
-        ESP_LOGW(MQTT_LOG_TAG, "MQTT event queue PSRAM allocation failed, using internal RAM");
-      }
     }
 #endif
     if (m_EventQueue == nullptr) {
-      const size_t internalFree = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-      const size_t internalLargest =
-          heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-      if (internalFree < MQTTMemory::EVENT_QUEUE_BYTES
-          || internalLargest < MQTTMemory::EVENT_QUEUE_BYTES) {
-        ESP_LOGE(MQTT_LOG_TAG,
-                 "MQTT event queue cannot fit internal RAM: free %u, largest %u (need %u)",
-                 static_cast<unsigned>(internalFree), static_cast<unsigned>(internalLargest),
-                 static_cast<unsigned>(MQTTMemory::EVENT_QUEUE_BYTES));
+      // Reserve the incoming copy too when it is still missing.
+      if (!internalAdmits(MQTTMemory::EVENT_QUEUE_BLOCK_BYTES + incomingMissing,
+                          MQTTMemory::EVENT_QUEUE_BLOCK_BYTES)) {
         return false;
       }
       m_EventQueue = xQueueCreate(EVENT_QUEUE_LENGTH, sizeof(queued_event_t));
@@ -735,6 +761,24 @@ bool MQTT::startClient(void) {
       ESP_LOGE(MQTT_LOG_TAG, "Failed to create MQTT event queue.");
       return false;
     }
+  }
+
+  // The gate reserves INCOMING_EVENT_BYTES for this copy on the 32-bit target.
+  static_assert(
+      (sizeof(void *) != 4) || (sizeof(queued_event_t) == MQTTMemory::INCOMING_EVENT_BYTES),
+      "INCOMING_EVENT_BYTES must match queued_event_t on the target");
+  if (m_Incoming == nullptr) {
+    void *incoming = nullptr;
+    if (inPsram(MQTTMemory::INCOMING_EVENT_BLOCK_BYTES)) {
+      incoming = heap_caps_malloc(sizeof(queued_event_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    } else if (internalAdmits(MQTTMemory::INCOMING_EVENT_BLOCK_BYTES,
+                              MQTTMemory::INCOMING_EVENT_BLOCK_BYTES)) {
+      incoming = heap_caps_malloc(sizeof(queued_event_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    }
+    if (incoming == nullptr) {
+      return false;
+    }
+    m_Incoming = new (incoming) queued_event_t();
   }
 
   esp_mqtt_client_config_t config = {};
@@ -870,22 +914,34 @@ void MQTT::eventHandler(void *handler_arg,
     return;
   }
 
-  MQTT::queued_event_t event;
-  event.type = MQTT::queued_event_type_t::MQTT;
-  event.client = source->client;
-  event.event_id = source->event_id;
-  event.qos = source->qos;
-  event.retain = source->retain;
-  event.dup = source->dup;
-  event.message_id = source->msg_id;
-  if (source->error_handle != nullptr) {
-    event.error_type = source->error_handle->error_type;
-  }
-
   if ((source->event_id == MQTT_EVENT_CONNECTED) || (source->event_id == MQTT_EVENT_DISCONNECTED)) {
     mqtt->queueLifecycleEvent(source->client, source->event_id);
     return;
   }
+
+  // This runs on the esp-mqtt client task. A queued_event_t is 2,348 bytes
+  // and the plain client stack is 3 KiB, so the event is built in the owner's
+  // preallocated copy, never on this stack. Every field is assigned: a
+  // whole-struct reset could materialize a temporary here.
+  const std::lock_guard<std::mutex> lock(mqtt->m_IncomingMutex);
+  if (mqtt->m_Incoming == nullptr) {
+    return;
+  }
+  MQTT::queued_event_t &event = *mqtt->m_Incoming;
+  event.type = MQTT::queued_event_type_t::MQTT;
+  event.client = source->client;
+  event.event_id = source->event_id;
+  event.current_data_offset = 0;
+  event.total_data_len = 0;
+  event.topic_len = 0;
+  event.data_len = 0;
+  event.error_type = (source->error_handle != nullptr) ? source->error_handle->error_type : 0;
+  event.message_id = source->msg_id;
+  event.qos = source->qos;
+  event.retain = source->retain;
+  event.dup = source->dup;
+  event.topic[0] = '\0';
+  event.data[0] = '\0';
 
   if (source->event_id == MQTT_EVENT_DATA) {
     if ((source->topic == nullptr) || (source->data == nullptr) || (source->topic_len <= 0)

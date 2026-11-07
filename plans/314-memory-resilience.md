@@ -289,3 +289,20 @@ read 1,088 bytes at idle and `memory-counted-camera-connect` failed. gdb on the
 Linux build attributed every idle counted allocation to these two sites. Both
 now check for pending work under their lock first. The Linux ASan build reads 0
 counted bytes at idle and passes the scenario; the macOS e2e suite is unchanged.
+
+## Fix: the esp-mqtt worker stack overflow
+
+State: implemented, found by the PR 4a stack walk before that PR merged.
+`MQTT::eventHandler` runs on the esp-mqtt client task, which has a 3,072-byte
+stack on plain MQTT since #407. The handler held a 2,348-byte
+`queued_event_t` on that stack (a 2,384-byte frame), and the walk through
+`esp_event_loop_run` reached 4,352 bytes. Release builds have no stack
+watchpoint, so an overflow would corrupt memory silently.
+
+The handler now fills `m_Incoming`, a copy the owner allocates with the event
+queue, in PSRAM when the queue is there. It is never freed, because a stopped
+client may still deliver a late callback, and a mutex covers overlapping
+clients. Without PSRAM the start gate reserves it with the queue
+(`EVENT_STORAGE_BYTES`), while the largest-block floor stays the queue alone,
+since the two are separate blocks. The walk now reports 2,560 of 3,072 on the
+StickS3. No hardware retest yet.
