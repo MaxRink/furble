@@ -80,6 +80,18 @@ items; the CMake simulator configures and builds.
 | 6 | Summary, previously missed: the simulator's MQTT model did not allocate the copy. | Fixed in 91246dd7: `mqtt_incoming` in the scripted model and the memory profile. | `sim/hardware_model.cpp`, `sim/memory_profile.cpp` |
 | 7 | Final summary: PSRAM placement, late callbacks, restarts and the stack margin need runtime validation on hardware. | Documented limit. The stack margin comes from the call-graph walk (2,560 of 3,072); the rest waits for the deferred hardware pass in `plans/313-sim-only-status.md`. | `docs/stack-budget.md` |
 
+## PR 4a (#414, `feat/314-stack-budget`)
+
+| # | Finding | Resolution | Evidence |
+| ---: | :--- | :--- | :--- |
+| 1 | A caller rule whose targets match nothing still counted its call sites as resolved. | Fixed in 887dd54f: a site resolves only when a target matched; otherwise it stays in the unresolved count. | `tools/stack_budget.py` |
+| 2 | `sdkconfig.m5stack-core-usb-debug` is a fragment without `CONFIG_IDF_TARGET`, so that CI build would crash. | Fixed in 887dd54f: only complete sdkconfigs count as release configs, so the env maps to `m5stack-core`. | `tools/stack_budget.py` |
+| 3 | Callees with no `.ci` node added zero bytes silently. | Fixed in 887dd54f: they are reported; C1/D1 aliases resolve to their C2/D2 bodies; prebuilt code gets frames and calls from the `firmware.elf` disassembly. Only mask ROM stays frameless. | `tools/stack_budget.py`, `docs/stack-budget.md` |
+| 4 | The headless env, built only in `reproducible.yml`, never ran the check. | Fixed in 887dd54f: that workflow keeps its build and runs the check on it. | `.github/workflows/reproducible.yml` |
+| 5 | The reproducible workflow ran the check without `--objdump`, so the tool looked only under `~/.platformio`, while the kept build used its own `a/pio-core`. | Fixed. `stack_budget.py` honours `PLATFORMIO_CORE_DIR`, and the step sets it to the kept core. A run with a missing core fails with the missing objdump path, not a silent pass. | `tools/stack_budget.py`, `.github/workflows/reproducible.yml` |
+| 6 | `reproducible.yml` path filters omitted `tools/stack_budget.py` and `tools/stack_budget.json`, so a tool or manifest change skipped the headless budget. | Fixed. Both are in the push and pull request filters. | `.github/workflows/reproducible.yml` |
+| 7 | README and wiki lost the `crash.alloc_*` note that #426 added. | Fixed. The branch tree was built from a merge made before #426 landed, so the push silently reverted it. Both files are restored from master, and `git diff origin/master` now shows only this PR's own files. | `README.md`, `docs/wiki/Console-Commands.md`, `plans/314-review-feedback.md` |
+
 ## Fix: no NVS on the default event task (#424, `fix/wifi-event-nvs`)
 
 | # | Finding | Resolution | Evidence |

@@ -335,6 +335,53 @@ clients. Without PSRAM the start gate reserves it with the queue
 since the two are separate blocks. The walk now reports 2,560 of 3,072 on the
 StickS3. No hardware retest yet.
 
+## PR 4a: task stack budget from the compiler call graph
+
+State: implemented. Every firmware object is compiled with
+`-fcallgraph-info=su`. `tools/stack_budget.py` merges the `.ci` call graphs
+and walks each task entry in `tools/stack_budget.json`, adding the Xtensa
+port overhead (interrupt frame plus coprocessor save area, 288 bytes on ESP32
+and 512 on ESP32-S3). Firmware CI fails a task whose resolved worst case
+exceeds its stack. `docs/stack-budget.md` has the per-board table; every task
+passes on all seven envs.
+
+The flag does not change the image: a StickS3 build with and without it
+differs only in `app_elf_sha256` and the trailing image hash, both of which
+cover the ELF's debug info.
+
+Phase 1 exit, MQTT owner: replaying the 6 KiB owner fails (7,840 of 6,144 on
+the StickS3) with no scripted constant.
+
+Deviations:
+
+- The plan asked for `-fstack-usage` plus objdump. `-fcallgraph-info=su`
+  gives frames and call edges for everything compiled here. Prebuilt ESP-IDF
+  libraries have no `.ci`, so an ELF pass reads their `entry a1, N` frames and
+  `call8` or `l32r`/`callx8` edges from the disassembly, and skips every
+  symbol that a `.ci` already describes.
+- The sim pthread stack sizing, the real permutation floor, the component
+  check against derived charges and the sim ASan/UBSan/LSan job move to PR 4b
+  to keep this review small.
+- Indirect calls are followed only where a manifest rule resolves them: LVGL's
+  dispatchers by callback signature, and the `esp_event` loop by the handlers
+  registered on it. A rule may be scoped to tasks; it then replaces the
+  unscoped rule for that caller on those tasks. `main` and `nimble_host` keep most of their depth behind
+  unresolved virtuals and callbacks, so their numbers are lower bounds. The
+  8 KiB StickS3 main overflow is not reproduced by the walk; its evidence stays
+  the hardware high-water mark.
+
+Findings for Phase 2:
+
+- `MQTT::taskStep` and `MQTT::processLifecycleEvents` each hold a stack copy
+  of `queued_event_t` (2,400-byte frames). One owner-task buffer would remove
+  about 4.6 KB of depth, enough to shrink the 10 KiB internal owner stack.
+- The WebUI supervisor has 80 bytes of resolved headroom on the Waveshare and
+  headless builds (2,992 of 3,072) and 320 on the StickS3.
+- The companion task has 288 bytes on the Waveshare and headless builds.
+- Fixed in #424: the WiFi event handler ran NVS and SNTP on the 2,304-byte
+  default event loop task (`sys_evt`, 2,864 bytes on Waveshare and headless).
+  After the fix it is 2,096 there and 1,632 to 1,856 elsewhere.
+
 ## Fix: no NVS on the default event task
 
 State: implemented, found by the PR 4a stack walk once it covered the default
