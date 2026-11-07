@@ -729,6 +729,7 @@ action ble-gatt-stale
 action ble-gatt-fresh
 action companion-reidentify
 action companion-reconnect
+action companion-reject-central
 action audio-overcurrent
 action ir-timeout
 action sd-present

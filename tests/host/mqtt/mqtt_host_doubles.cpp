@@ -1,6 +1,7 @@
 #include "mqtt_host_dependencies.h"
 
 #include <chrono>
+#include <cstdlib>
 #include <cstring>
 #include <deque>
 #include <vector>
@@ -54,6 +55,12 @@ extern "C" size_t heap_caps_get_free_size(uint32_t caps) {
 
 extern "C" size_t heap_caps_get_largest_free_block(uint32_t caps) {
   return (caps & MALLOC_CAP_SPIRAM) != 0 ? g_PsramLargest : g_HeapLargest;
+}
+
+// Fails like a pool whose largest block is too small; never frees, like the
+// owner's incoming event copy.
+extern "C" void *heap_caps_malloc(size_t size, uint32_t caps) {
+  return size <= heap_caps_get_largest_free_block(caps) ? std::malloc(size) : nullptr;
 }
 
 namespace Furble {

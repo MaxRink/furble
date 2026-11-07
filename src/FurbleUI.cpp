@@ -3749,6 +3749,14 @@ bool UI::simRunOnUi(std::function<void()> operation) {
 }
 
 void UI::serviceSimRequests(void) {
+  // Runs every UI tick; libstdc++ allocates in the deque constructor, so an
+  // idle tick returns first, as Scan::processPendingCallbacks does.
+  {
+    std::lock_guard<std::mutex> lock(m_SimRequestMutex);
+    if (m_SimRequests.empty()) {
+      return;
+    }
+  }
   std::deque<std::shared_ptr<sim_request_t>> requests;
   {
     std::lock_guard<std::mutex> lock(m_SimRequestMutex);
@@ -8680,8 +8688,10 @@ void UI::rebuildCamerasPage(menu_t &menu) {
   for (const auto &camera : cameras) {
     lv_obj_t *label = lv_label_create(menu.page);
     lv_obj_set_width(label, LV_PCT(100));
-    // The text is near static, so clip with dots instead of a circular
-    // scroll that would invalidate the row on every tick.
+    // Not a circular scroll, which would invalidate the row on every tick.
+    // With the default content height LVGL adds dots only when the text is
+    // taller than the label, which never happens here, so the name wraps in
+    // full; ui.cut_labels proves no row is cut.
     lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
     updateCameraRow(label, camera.get(), state);
   }

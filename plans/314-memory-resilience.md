@@ -255,3 +255,54 @@ Deviations:
   `CONFIG_NIMBLE_MEM_ALLOC_MODE_INTERNAL=y` alias that contradicts the file's
   `EXTERNAL` choice. Both need all six release sdkconfigs regenerated
   together.
+
+## Baseline: regenerated release sdkconfigs
+
+State: implemented, as the clean baseline for PR 8 config tuning.
+
+Every firmware build rewrote the committed sdkconfig files, which left the tree
+dirty (the flash readiness gate refuses a dirty tree) and the seven files
+inconsistent with each other. This commits what the pinned ESP-IDF 5.5.3
+confgen writes for m5stick-c, m5stick-c-plus, m5stack-core, m5stack-core2,
+m5stick-s3, waveshare-s3-eth and esp32-s3-headless:
+
+- deprecated aliases follow their real options (`REDUCE_PHY_TX_POWER`, the
+  StickS3 `NIMBLE_MEM_ALLOC_MODE`, `MAIN_TASK_STACK_SIZE`);
+- options hidden by disabled dependencies are no longer written;
+- the `# default:` annotations that only four files carried are gone;
+- the StickS3 static RX comment is dropped; plan 304 item 5 keeps its reason.
+
+The effective configuration is unchanged, and a second build regenerates the
+files byte for byte. Deviation: none. PR 8 makes its tuning changes against
+this baseline, and CLAUDE.md now says to keep setting rationale in plan docs,
+because regeneration strips comments.
+
+## Fix: no deque allocation on an idle UI tick
+
+State: implemented, found while building the PR 4b sanitizer job.
+
+`Scan::processPendingCallbacks()` and the simulator request queue run on every
+UI tick and built a `std::deque` before checking for work. libstdc++, which the
+device uses, allocates the deque's map and a 512-byte node in that constructor.
+macOS libc++ does not, so only the Linux simulator showed it: the counted heap
+read 1,088 bytes at idle and `memory-counted-camera-connect` failed. gdb on the
+Linux build attributed every idle counted allocation to these two sites. Both
+now check for pending work under their lock first. The Linux ASan build reads 0
+counted bytes at idle and passes the scenario; the macOS e2e suite is unchanged.
+
+## Fix: the esp-mqtt worker stack overflow
+
+State: implemented, found by the PR 4a stack walk before that PR merged.
+`MQTT::eventHandler` runs on the esp-mqtt client task, which has a 3,072-byte
+stack on plain MQTT since #407. The handler held a 2,348-byte
+`queued_event_t` on that stack (a 2,384-byte frame), and the walk through
+`esp_event_loop_run` reached 4,352 bytes. Release builds have no stack
+watchpoint, so an overflow would corrupt memory silently.
+
+The handler now fills `m_Incoming`, a copy the owner allocates with the event
+queue, in PSRAM when the queue is there. It is never freed, because a stopped
+client may still deliver a late callback, and a mutex covers overlapping
+clients. Without PSRAM the start gate reserves it with the queue
+(`EVENT_STORAGE_BYTES`), while the largest-block floor stays the queue alone,
+since the two are separate blocks. The walk now reports 2,560 of 3,072 on the
+StickS3. No hardware retest yet.

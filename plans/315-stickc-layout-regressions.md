@@ -113,3 +113,13 @@ pairing box over the connect captures, then `camera-pair-reject` returns
 - `python3 tools/pre_review.py --base origin/master`: 8 gates pass.
 - `sh sim/scripts/check-doc-tokens.sh`: pass.
 - Hardware validation is deferred in sim-only mode.
+
+Wiki: the Time page capture also changes `docs/wiki/img/settings-time.png`, so the GitHub wiki needs a push after merge.
+
+## Review feedback
+
+| # | Finding | Resolution | Evidence |
+| ---: | :--- | :--- | :--- |
+| 1 | The regenerated Time capture was not copied to `docs/wiki/img/settings-time.png`, and the PR said no wiki push was needed. | Fixed (b11e73b4, 05a8e4c2): the wiki copy matches, and the plan and PR say the wiki needs a push. | `docs/wiki/img/settings-time.png` |
+| 2 | The camera row comment said the name wraps while the label uses `LV_LABEL_LONG_DOT`. | The wrap claim is correct: LVGL 9.4 adds dots only when the text is taller than the label, and these labels keep the default content height. The misleading "clip with dots" comment is reworded (1a944b7e). | `lv_label.c` `lv_label_refr_text`, `src/FurbleUI.cpp` |
+| 3 | Summary: the layout changes are verified only in the simulator. | Documented limit. Hardware validation stays deferred under `plans/313-sim-only-status.md`. | this plan |

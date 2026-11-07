@@ -30,7 +30,7 @@ assert companion.state connected
 assert ble.auth ok
 assert ble.reconnects 1
 
-action companion-reject
+action companion-reject-central
 assert companion.state rejected
 assert companion.rejected 1
 

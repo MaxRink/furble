@@ -193,6 +193,11 @@ class MQTT {
   mutable std::mutex m_LifecycleMutex;
   TaskHandle_t m_Task = nullptr;
   QueueHandle_t m_EventQueue = nullptr;
+  // eventHandler builds each event here, not on the 3 KiB esp-mqtt client
+  // stack. Allocated with the queue and never freed, because a stopped client
+  // may still deliver a late callback; the mutex covers overlapping clients.
+  std::mutex m_IncomingMutex;
+  queued_event_t *m_Incoming = nullptr;
   esp_mqtt_client_handle_t m_Client = nullptr;
   esp_timer_handle_t m_HoldTimer = nullptr;
   esp_timer_handle_t m_IntervalTimer = nullptr;

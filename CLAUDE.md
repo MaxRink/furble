@@ -36,7 +36,9 @@ CLAUDE.md whose directory it touches.
   share the release sdkconfig via `board_build.esp-idf.sdkconfig_path`.
   Regenerating builds may append derived symbols to sdkconfig files. Commit
   those changes consistently across all six release files, never for just one
-  env.
+  env. Regeneration also strips comments and rewrites deprecated aliases to
+  match their real options, so keep the reason for a setting in its plan doc,
+  never in an sdkconfig comment.
 - S3 release sdkconfigs disable `CONFIG_SPIRAM_MEMTEST` to remove the full
   boot-time PSRAM test. The S3 debug envs merge `sdkconfig.spiram-memtest` back
   in. `patches/debug_sdkconfig.py` accepts comma-separated fragments so a
@@ -277,7 +279,9 @@ check.
   lives in PSRAM because it holds only copied topic and payload bytes, never
   flash or NVS pointers. Home Assistant discovery requires 10,240/4,096 after
   the saved camera list loads. `mqtt_ha` is cached on reload; never read it from
-  the owner event path.
+  the owner event path. The event handler runs on the 3 KiB esp-mqtt worker:
+  never put a 2,348-byte `queued_event_t` on its stack. It fills the owner's
+  preallocated `m_Incoming` copy, which lives with the queue and is never freed.
 - Main task stack: keep the StickS3 at 12 KiB. The 8 KiB experiment overflowed
   in task main after MQTT was enabled, even though the MQTT-off high-water was
   only 3,476 bytes.
