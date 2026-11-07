@@ -1491,6 +1491,9 @@ class UI {
   /** Add the live BLE diagnostics page. */
   void addBLEMenu(const menu_t &parent);
 
+  /** Add the full-height container that holds an info page's rows. */
+  static lv_obj_t *addInfoPage(lv_obj_t *page);
+
   /** Add a read only text row to a page container. */
   static lv_obj_t *addInfoRow(lv_obj_t *cont);
 

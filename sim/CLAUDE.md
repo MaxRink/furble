@@ -955,8 +955,9 @@ shortens that host retry cadence for a bounded scenario.
   135x240 M5StickS3, and 320x240 M5Stack Core, so a page that only fails on a
   particular geometry cannot hide behind a single reference panel.
 - Physical 80x160 Sensors is one of those intentional-scroll pages: the measured
-  fixture leaves 7 px to scroll. Its shared scenarios assert complete labels
-  at the top, bottom and restored top. `touch-sensors-default-fit` and
+  fixture leaves 18 px to scroll since the Gestures entry joined it. Its shared
+  scenarios, `stick-notouch-layout-80` included, assert complete labels at the
+  top, bottom and restored top. `touch-sensors-default-fit` and
   `touch-sensors-small-fit` retain the stricter no-overflow contract in
   explicitly touch-guarded supplemental lanes.
 - `bughunt/stickc-connected-large-imu.txt` covers the persisted-Large Connected
