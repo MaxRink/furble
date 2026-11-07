@@ -124,16 +124,19 @@
         {
           "term": "companion",
           "bytes": 3440,
-          "source": "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES"
+          "source": "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES",
+          "condition": "companion"
         },
         {
           "term": "esp_timer companion disable",
           "bytes": 48,
+          "condition": "companion",
           "source": "src/FurbleCompanion*.cpp esp_timer_create, esp_timer.c heap_caps_calloc"
         },
         {
           "term": "esp_timer companion shutter",
           "bytes": 48,
+          "condition": "companion",
           "source": "src/FurbleCompanion*.cpp esp_timer_create, esp_timer.c heap_caps_calloc"
         },
         {
@@ -159,8 +162,12 @@
       ],
       "attributable_bytes": 120388,
       "derived_free_upper_bound": 134744,
-      "derived_free_wifi_off": 157948,
-      "condition": "WiFi enabled with an SSID, as in the measured seeds",
+      "derived_free_without": {
+        "wifi": 157948,
+        "companion": 138280,
+        "wifi_and_companion": 161484
+      },
+      "condition": "WiFi with an SSID and the companion enabled, as in the measured seeds",
       "derived_largest_upper_bound": 129984,
       "status": "derived"
     },
@@ -285,16 +292,19 @@
         {
           "term": "companion",
           "bytes": 3440,
-          "source": "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES"
+          "source": "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES",
+          "condition": "companion"
         },
         {
           "term": "esp_timer companion disable",
           "bytes": 48,
+          "condition": "companion",
           "source": "src/FurbleCompanion*.cpp esp_timer_create, esp_timer.c heap_caps_calloc"
         },
         {
           "term": "esp_timer companion shutter",
           "bytes": 48,
+          "condition": "companion",
           "source": "src/FurbleCompanion*.cpp esp_timer_create, esp_timer.c heap_caps_calloc"
         },
         {
@@ -320,8 +330,12 @@
       ],
       "attributable_bytes": 121748,
       "derived_free_upper_bound": 133408,
-      "derived_free_wifi_off": 156612,
-      "condition": "WiFi enabled with an SSID, as in the measured seeds",
+      "derived_free_without": {
+        "wifi": 156612,
+        "companion": 136944,
+        "wifi_and_companion": 160148
+      },
+      "condition": "WiFi with an SSID and the companion enabled, as in the measured seeds",
       "derived_largest_upper_bound": 129984,
       "status": "derived"
     },
@@ -436,16 +450,19 @@
         {
           "term": "companion",
           "bytes": 3440,
-          "source": "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES"
+          "source": "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES",
+          "condition": "companion"
         },
         {
           "term": "esp_timer companion disable",
           "bytes": 48,
+          "condition": "companion",
           "source": "src/FurbleCompanion*.cpp esp_timer_create, esp_timer.c heap_caps_calloc"
         },
         {
           "term": "esp_timer companion shutter",
           "bytes": 48,
+          "condition": "companion",
           "source": "src/FurbleCompanion*.cpp esp_timer_create, esp_timer.c heap_caps_calloc"
         },
         {
@@ -466,8 +483,12 @@
       ],
       "attributable_bytes": 87160,
       "derived_free_upper_bound": 174640,
-      "derived_free_wifi_off": 191380,
-      "condition": "WiFi enabled with an SSID, as in the measured seeds",
+      "derived_free_without": {
+        "wifi": 191380,
+        "companion": 178176,
+        "wifi_and_companion": 194916
+      },
+      "condition": "WiFi with an SSID and the companion enabled, as in the measured seeds",
       "derived_largest_upper_bound": 174640,
       "status": "derived",
       "internal_reserved_for_caps_only": 32768,
@@ -596,16 +617,19 @@
         {
           "term": "companion",
           "bytes": 3440,
-          "source": "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES"
+          "source": "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES",
+          "condition": "companion"
         },
         {
           "term": "esp_timer companion disable",
           "bytes": 48,
+          "condition": "companion",
           "source": "src/FurbleCompanion*.cpp esp_timer_create, esp_timer.c heap_caps_calloc"
         },
         {
           "term": "esp_timer companion shutter",
           "bytes": 48,
+          "condition": "companion",
           "source": "src/FurbleCompanion*.cpp esp_timer_create, esp_timer.c heap_caps_calloc"
         },
         {
@@ -636,8 +660,12 @@
       ],
       "attributable_bytes": 142612,
       "derived_free_upper_bound": 112496,
-      "derived_free_wifi_off": 135700,
-      "condition": "WiFi enabled with an SSID, as in the measured seeds",
+      "derived_free_without": {
+        "wifi": 135700,
+        "companion": 116032,
+        "wifi_and_companion": 139236
+      },
+      "condition": "WiFi with an SSID and the companion enabled, as in the measured seeds",
       "derived_largest_upper_bound": 112496,
       "status": "derived"
     },
@@ -762,16 +790,19 @@
         {
           "term": "companion",
           "bytes": 3440,
-          "source": "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES"
+          "source": "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES",
+          "condition": "companion"
         },
         {
           "term": "esp_timer companion disable",
           "bytes": 48,
+          "condition": "companion",
           "source": "src/FurbleCompanion*.cpp esp_timer_create, esp_timer.c heap_caps_calloc"
         },
         {
           "term": "esp_timer companion shutter",
           "bytes": 48,
+          "condition": "companion",
           "source": "src/FurbleCompanion*.cpp esp_timer_create, esp_timer.c heap_caps_calloc"
         },
         {
@@ -802,8 +833,12 @@
       ],
       "attributable_bytes": 142612,
       "derived_free_upper_bound": 111064,
-      "derived_free_wifi_off": 134268,
-      "condition": "WiFi enabled with an SSID, as in the measured seeds",
+      "derived_free_without": {
+        "wifi": 134268,
+        "companion": 114600,
+        "wifi_and_companion": 137804
+      },
+      "condition": "WiFi with an SSID and the companion enabled, as in the measured seeds",
       "derived_largest_upper_bound": 111064,
       "status": "derived"
     },
@@ -928,16 +963,19 @@
         {
           "term": "companion",
           "bytes": 3452,
-          "source": "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES"
+          "source": "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES",
+          "condition": "companion"
         },
         {
           "term": "esp_timer companion disable",
           "bytes": 48,
+          "condition": "companion",
           "source": "src/FurbleCompanion*.cpp esp_timer_create, esp_timer.c heap_caps_calloc"
         },
         {
           "term": "esp_timer companion shutter",
           "bytes": 48,
+          "condition": "companion",
           "source": "src/FurbleCompanion*.cpp esp_timer_create, esp_timer.c heap_caps_calloc"
         },
         {
@@ -948,8 +986,12 @@
       ],
       "attributable_bytes": 115228,
       "derived_free_upper_bound": 142908,
-      "derived_free_wifi_off": 166124,
-      "condition": "WiFi enabled with an SSID, as in the measured seeds",
+      "derived_free_without": {
+        "wifi": 166124,
+        "companion": 146456,
+        "wifi_and_companion": 169672
+      },
+      "condition": "WiFi with an SSID and the companion enabled, as in the measured seeds",
       "derived_largest_upper_bound": 142908,
       "status": "derived",
       "internal_reserved_for_caps_only": 32768

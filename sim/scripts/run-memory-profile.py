@@ -14,6 +14,9 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 BOARDS = ("sticks3", "core2", "core", "stickc", "stickc-plus", "stickc-plus2",
           "headless-s3", "waveshare-s3-eth")
+# Profiles that have no release env to derive from. They boot on the
+# simulator default pool; any other profile without a derived pool fails.
+UNDERIVED_PROFILES = {"stickc-plus2", "headless-s3"}
 BUDGET_SCENARIOS = (
     "hw-memory-post394-budget",
     "hw-memory-webui-post394",
@@ -64,6 +67,11 @@ def main(argv: list[str] | None = None) -> int:
         if board in pools:
             free, largest = pools[board]
             seeds += f"seed heap_internal_free {free}\nseed heap_internal_largest {largest}\n"
+        elif board not in UNDERIVED_PROFILES:
+            print(f"FAIL profile-{board}: no derived pool in sim/coverage/board_heap.json",
+                  file=sys.stderr)
+            failures += 1
+            continue
         scenario.write_text(
             f"{seeds}wait 1200\nprint mem.profile\nassert mem.leaks 0\nexit\n", encoding="utf-8")
         dump = args.output / f"profile-{board}.json"

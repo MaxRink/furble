@@ -320,9 +320,13 @@ def attributable(env: str, width: int, height: int, cfg: dict, size: dict) -> li
                        "src/FurbleControl.cpp Control::getInstance(), m_QueueLength x sizeof(cmd_t)"))
     terms.append(task("gps", 4096, tcb, "src/FurbleGPS.cpp gps task"))
     terms.extend(gps_uart(size))
-    terms.append(task("companion", 3072, tcb, "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES"))
+    # The companion task and its timers exist only with the COMPANION setting
+    # on (CompanionGatt::enable in src/FurbleCompanion.cpp).
+    terms.append({**task("companion", 3072, tcb, "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES"),
+                  "condition": "companion"})
     for name in ("companion disable", "companion shutter"):
         terms.append({"term": f"esp_timer {name}", "bytes": block(size["struct esp_timer"]),
+                      "condition": "companion",
                       "source": "src/FurbleCompanion*.cpp esp_timer_create, esp_timer.c heap_caps_calloc"})
     if env in IR_INTERNAL_TASK:
         terms.append(task("ir", 4096, tcb, "src/FurbleIR.cpp IR_TASK_STACK_BYTES, internal fallback"))
@@ -384,10 +388,14 @@ def derive(env: str) -> dict:
         "attributable_boot": terms,
         "attributable_bytes": charged,
         "derived_free_upper_bound": at_start - charged,
-        # The same ceiling for a boot with WiFi off or no SSID stored.
-        "derived_free_wifi_off": at_start - charged
-        + sum(term["bytes"] for term in terms if term.get("condition") == "wifi"),
-        "condition": "WiFi enabled with an SSID, as in the measured seeds",
+        # The same ceiling with optional boot services off. WiFi needs the
+        # setting and a stored SSID; the companion needs its setting.
+        "derived_free_without": {
+            name: at_start - charged + sum(term["bytes"] for term in terms if term.get("condition") in names)
+            for name, names in (("wifi", {"wifi"}), ("companion", {"companion"}),
+                                ("wifi_and_companion", {"wifi", "companion"}))
+        },
+        "condition": "WiFi with an SSID and the companion enabled, as in the measured seeds",
         # Boot charges land in the largest span first, so the largest block
         # can be no larger than the span and no larger than the free total.
         "derived_largest_upper_bound": min(largest_span, at_start - charged),

@@ -205,8 +205,12 @@ Implemented on `feat/314-sim-board-baselines`, stacked on PR 2. No hardware.
   `heap_caps_get_free_size(INTERNAL | 8BIT)`. Plain `malloc` cannot use it.
 - WiFi starts only with the WiFi setting on and an SSID stored
   (`WiFi::init`). The WiFi buffers and furble's WiFi task carry that
-  condition; the JSON reports both ceilings. The profile seeds use the WiFi-on
-  figure, the state of the measured seeds and of every MQTT and WebUI path.
+  condition, and the companion task and timers carry the COMPANION setting.
+  The JSON reports the ceiling with each optional service off. The profile
+  seeds use the all-on figure, the state of the measured seeds (WiFi, BLE,
+  companion and display active) and of every MQTT and WebUI path.
+- The profile runner fails a board that has neither a derived pool nor an
+  entry in its explicit underived list (`stickc-plus2`, `headless-s3`).
   `esp_netif_init()` and the default event loop run on every boot, so the
   tcpip and event tasks, the loop object, its queue and its mutex are always
   charged.
@@ -219,14 +223,14 @@ Implemented on `feat/314-sim-board-baselines`, stacked on PR 2. No hardware.
   for `headless-s3` and `waveshare-s3-eth`; both sdkconfigs set 16 KiB. Fixed,
   and the same test now checks every row's main stack and PSRAM presence.
 
-| Env | Static DRAM | Heap at app start | Largest span | Attributable boot | Derived free, WiFi on | Derived free, WiFi off |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| m5stick-c | 54,928 | 255,132 | 129,984 | 120,388 | 134,744 | 157,948 |
-| m5stick-c-plus | 54,904 | 255,156 | 129,984 | 121,748 | 133,408 | 156,612 |
-| m5stick-s3 | 47,704 | 261,800 | 261,800 | 87,160 | 174,640 | 191,380 |
-| m5stack-core | 54,952 | 255,108 | 129,984 | 142,612 | 112,496 | 135,700 |
-| m5stack-core2 | 56,384 | 253,676 | 129,984 | 142,612 | 111,064 | 134,268 |
-| waveshare-s3-eth | 52,136 | 258,136 | 258,136 | 115,228 | 142,908 | 166,124 |
+| Env | Static DRAM | Heap at app start | Largest span | Attributable boot | Derived free, all on | WiFi off | WiFi and companion off |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| m5stick-c | 54,928 | 255,132 | 129,984 | 120,388 | 134,744 | 157,948 | 161,484 |
+| m5stick-c-plus | 54,904 | 255,156 | 129,984 | 121,748 | 133,408 | 156,612 | 160,148 |
+| m5stick-s3 | 47,704 | 261,800 | 261,800 | 87,160 | 174,640 | 191,380 | 194,916 |
+| m5stack-core | 54,952 | 255,108 | 129,984 | 142,612 | 112,496 | 135,700 | 139,236 |
+| m5stack-core2 | 56,384 | 253,676 | 129,984 | 142,612 | 111,064 | 134,268 | 137,804 |
+| waveshare-s3-eth | 52,136 | 258,136 | 258,136 | 115,228 | 142,908 | 166,124 | 169,672 |
 
 Limit of a code-only derivation: the StickS3 console measurement already in
 the repo (30,007 free, MQTT off, debug image with the 8 KiB main stack) sits

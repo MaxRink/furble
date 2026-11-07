@@ -88,6 +88,15 @@ class ProfileSdkconfigTest(unittest.TestCase):
 
 class DerivedHeapTest(unittest.TestCase):
 
+    def test_every_profile_is_derived_or_explicitly_underived(self):
+        spec = importlib.util.spec_from_file_location(
+            "run_memory_profile", ROOT / "sim/scripts/run-memory-profile.py")
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        derived = set(runner.derived_pools())
+        self.assertEqual(derived | runner.UNDERIVED_PROFILES, set(runner.BOARDS))
+        self.assertFalse(derived & runner.UNDERIVED_PROFILES)
+
     def test_subtract_merges_adjacent_regions_and_cuts_reservations(self):
         regions = [(0x1000, 0x1000, "a"), (0x2000, 0x1000, "b"), (0x4000, 0x800, "c")]
         reserved = [(0x1800, 0x1900, "x"), (0x3F00, 0x4100, "y")]
