@@ -36,7 +36,9 @@ CLAUDE.md whose directory it touches.
   share the release sdkconfig via `board_build.esp-idf.sdkconfig_path`.
   Regenerating builds may append derived symbols to sdkconfig files. Commit
   those changes consistently across all six release files, never for just one
-  env.
+  env. Regeneration also strips comments and rewrites deprecated aliases to
+  match their real options, so keep the reason for a setting in its plan doc,
+  never in an sdkconfig comment.
 - S3 release sdkconfigs disable `CONFIG_SPIRAM_MEMTEST` to remove the full
   boot-time PSRAM test. The S3 debug envs merge `sdkconfig.spiram-memtest` back
   in. `patches/debug_sdkconfig.py` accepts comma-separated fragments so a
