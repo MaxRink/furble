@@ -40,8 +40,13 @@ EXEMPTIONS = "tests/build_inventory_exemptions.json"
 HOST_CMAKE = "tests/host/CMakeLists.txt"
 SIM_CMAKE = "sim/CMakeLists.txt"
 SIM_SHELL = "sim/build.sh"
-# Canary source for the drop fixtures below. Any vendor source works.
-CANARY = "lib/furble/CanonEOS.cpp"
+# Synthetic sources for the mutation fixtures below. They exist only in the
+# fixture tree, so the fixtures do not depend on which real sources the live
+# build lists happen to build or exempt.
+CANARY = "src/FurbleInventoryCanary.cpp"
+EXEMPT = "src/FurbleInventoryExempt.cpp"
+CANARY_LINE = "               ${FURBLE_ROOT}/%s\n" % CANARY
+CANARY_TARGET = "\nadd_executable(inventory_canary_test\n%s)\n" % CANARY_LINE
 
 # Directories that hold firmware sources. Each is scanned non-recursively.
 FIRMWARE_DIRS = (
@@ -276,28 +281,28 @@ class BuildInventoryTest(unittest.TestCase):
       self.assertIn("uncovered firmware source: src/Foo.cpp is in neither build list nor %s"
                     % EXEMPTIONS, check_inventory(root))
 
-  def drop_canary_from_sim_lists(self, root):
-    # The simulator builds the whole vendor set since plan 161, so a canary the
-    # host build drops is still covered there. Take it out of both simulator
-    # lists too, so these fixtures test the host-side drop they are about.
-    cmake = root / SIM_CMAKE
-    text = cmake.read_text(encoding="utf-8")
-    cmake.write_text(text.replace('    "${FURBLE_ROOT}/%s"\n' % CANARY, ""), encoding="utf-8")
-    shell = root / SIM_SHELL
-    text = shell.read_text(encoding="utf-8")
-    shell.write_text(text.replace('  "$ROOT/%s" \\\n' % CANARY, ""), encoding="utf-8")
-    self.assertNotIn(CANARY, sim_cmake_sources(root))
-    self.assertNotIn(CANARY, sim_shell_sources(root))
+  def add_canary_to_host_cmake(self, root):
+    # Give the fixture its own host-built source, so dropping it cannot be
+    # masked by another target or a simulator list that also builds it.
+    (root / CANARY).touch()
+    cmake = root / HOST_CMAKE
+    cmake.write_text(cmake.read_text(encoding="utf-8") + CANARY_TARGET, encoding="utf-8")
+    self.assertIn(CANARY, host_sources(root))
+    self.assertEqual(check_inventory(root), check_inventory(ROOT))
+    return cmake
+
+  def add_exemption(self, root, path, reason):
+    exemptions = load_exemptions(root)
+    exemptions[path] = reason
+    (root / EXEMPTIONS).write_text(json.dumps(exemptions), encoding="utf-8")
 
   def test_source_dropped_from_host_cmake_is_rejected(self):
     with tempfile.TemporaryDirectory() as directory:
       root = self.copy_fixture(Path(directory))
-      self.drop_canary_from_sim_lists(root)
-      cmake = root / HOST_CMAKE
-      text = cmake.read_text(encoding="utf-8")
-      dropped = "${FURBLE_ROOT}/%s" % CANARY
-      self.assertIn(dropped, text)
-      cmake.write_text(text.replace(dropped, ""), encoding="utf-8")
+      cmake = self.add_canary_to_host_cmake(root)
+      cmake.write_text(cmake.read_text(encoding="utf-8").replace(CANARY_LINE, ""),
+                       encoding="utf-8")
+      self.assertNotIn(CANARY, host_sources(root))
       self.assertIn("uncovered firmware source: %s is in neither build "
                     "list nor %s" % (CANARY, EXEMPTIONS), check_inventory(root))
 
@@ -306,13 +311,10 @@ class BuildInventoryTest(unittest.TestCase):
     # to see it as uncovered rather than reading the path out of the comment.
     with tempfile.TemporaryDirectory() as directory:
       root = self.copy_fixture(Path(directory))
-      self.drop_canary_from_sim_lists(root)
-      cmake = root / HOST_CMAKE
-      text = cmake.read_text(encoding="utf-8")
-      live = "               ${FURBLE_ROOT}/%s\n" % CANARY
-      self.assertIn(live, text)
+      cmake = self.add_canary_to_host_cmake(root)
       commented = "               # ${FURBLE_ROOT}/%s\n" % CANARY
-      cmake.write_text(text.replace(live, commented), encoding="utf-8")
+      cmake.write_text(cmake.read_text(encoding="utf-8").replace(CANARY_LINE, commented),
+                       encoding="utf-8")
       self.assertNotIn(CANARY, host_sources(root))
       self.assertIn("uncovered firmware source: %s is in neither build "
                     "list nor %s" % (CANARY, EXEMPTIONS), check_inventory(root))
@@ -322,18 +324,26 @@ class BuildInventoryTest(unittest.TestCase):
     # would fire the redundant-exemption check on a file nothing compiles.
     with tempfile.TemporaryDirectory() as directory:
       root = self.copy_fixture(Path(directory))
+      (root / EXEMPT).touch()
+      self.add_exemption(root, EXEMPT, "fixture: exempt and never built")
+      baseline = check_inventory(root)
+      self.assertEqual(baseline, check_inventory(ROOT))
       cmake = root / HOST_CMAKE
       cmake.write_text(cmake.read_text(encoding="utf-8")
-                       + "\n# See ${FURBLE_ROOT}/src/FurbleUIAudit.cpp for the widget walk.\n",
+                       + "\n# See ${FURBLE_ROOT}/%s for the widget walk.\n" % EXEMPT,
                        encoding="utf-8")
-      self.assertNotIn("src/FurbleUIAudit.cpp", host_sources(root))
-      self.assertEqual(check_inventory(root), [])
+      self.assertNotIn(EXEMPT, host_sources(root))
+      self.assertEqual(check_inventory(root), baseline)
 
   def test_stale_exemption_is_rejected(self):
     with tempfile.TemporaryDirectory() as directory:
       root = self.copy_fixture(Path(directory))
-      (root / "src/main.cpp").unlink()
-      self.assertIn("stale exemption: src/main.cpp does not exist", check_inventory(root))
+      (root / EXEMPT).touch()
+      self.add_exemption(root, EXEMPT, "fixture: exempt and never built")
+      stale = "stale exemption: %s does not exist" % EXEMPT
+      self.assertNotIn(stale, check_inventory(root))
+      (root / EXEMPT).unlink()
+      self.assertIn(stale, check_inventory(root))
 
   def test_sim_lists_that_disagree_are_rejected(self):
     with tempfile.TemporaryDirectory() as directory:
