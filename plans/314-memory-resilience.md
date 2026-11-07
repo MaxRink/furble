@@ -214,16 +214,16 @@ Implemented on `feat/314-sim-board-baselines`, stacked on PR 2. No hardware.
 
 | Env | Static DRAM | Heap at app start | Largest span | Attributable boot | Derived free (upper bound) |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| m5stick-c | 54,928 | 255,132 | 129,984 | 120,780 | 134,352 |
-| m5stick-c-plus | 54,904 | 255,156 | 129,984 | 122,432 | 132,724 |
-| m5stick-s3 | 47,704 | 261,800 | 261,800 | 87,844 | 173,956 |
-| m5stack-core | 54,952 | 255,108 | 129,984 | 140,124 | 114,984 |
-| m5stack-core2 | 56,384 | 253,676 | 129,984 | 140,124 | 113,552 |
-| waveshare-s3-eth | 52,136 | 258,136 | 258,136 | 114,128 | 144,008 |
+| m5stick-c | 54,928 | 255,132 | 129,984 | 121,236 | 133,896 |
+| m5stick-c-plus | 54,904 | 255,156 | 129,984 | 122,888 | 132,268 |
+| m5stick-s3 | 47,704 | 261,800 | 261,800 | 88,300 | 173,500 |
+| m5stack-core | 54,952 | 255,108 | 129,984 | 140,580 | 114,528 |
+| m5stack-core2 | 56,384 | 253,676 | 129,984 | 140,580 | 113,096 |
+| waveshare-s3-eth | 52,136 | 258,136 | 258,136 | 114,460 | 143,676 |
 
 Limit of a code-only derivation: the StickS3 console measurement already in
 the repo (30,007 free, MQTT off, debug image with the 8 KiB main stack) sits
-143,949 bytes below the derived bound. That gap is boot cost the source does
+143,493 bytes below the derived bound. That gap is boot cost the source does
 not size: the closed WiFi driver's task and allocations, NimBLE host state,
 lwIP control blocks and the LVGL object tree, which stays internal because
 its objects are below the 4 KiB PSRAM threshold. The derived figures are

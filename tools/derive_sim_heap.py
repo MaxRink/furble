@@ -155,7 +155,8 @@ def tool(pattern: str, fallback: str) -> str:
     return found
 
 
-DWARF_TYPES = ("StaticTask_t", "StaticQueue_t", "StaticRingbuffer_t", "uart_obj_t", "uart_event_t")
+DWARF_TYPES = ("StaticTask_t", "StaticQueue_t", "StaticRingbuffer_t", "uart_obj_t", "uart_event_t",
+               "'Furble::Control::cmd_t'", "struct esp_timer")
 
 
 def dwarf_sizes(elf: Path) -> dict:
@@ -168,7 +169,7 @@ def dwarf_sizes(elf: Path) -> dict:
     values = [int(value) for value in re.findall(r"^\$\d+ = (\d+)$", output, re.M)]
     if len(values) != len(DWARF_TYPES):
         raise SystemExit(f"{elf}: could not read sizeof() for {DWARF_TYPES}")
-    return dict(zip(DWARF_TYPES, values))
+    return {name.strip("'"): value for name, value in zip(DWARF_TYPES, values)}
 
 
 def symbols(elf: Path, wanted: set) -> dict:
@@ -290,9 +291,14 @@ def attributable(env: str, width: int, cfg: dict, size: dict) -> list:
             terms.append({"term": "nimble_transport", "bytes": block(transport),
                           "source": "CONFIG_BT_NIMBLE_TRANSPORT_ACL/EVT counts x sizes"})
     terms.append(task("control", 8192, tcb, "src/main.cpp control task"))
+    terms.append(queue("control_queue", 32, size["Furble::Control::cmd_t"], size,
+                       "src/FurbleControl.cpp Control::getInstance(), m_QueueLength x sizeof(cmd_t)"))
     terms.append(task("gps", 4096, tcb, "src/FurbleGPS.cpp gps task"))
     terms.extend(gps_uart(size))
     terms.append(task("companion", 3072, tcb, "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES"))
+    for name in ("companion disable", "companion shutter"):
+        terms.append({"term": f"esp_timer {name}", "bytes": block(size["struct esp_timer"]),
+                      "source": "src/FurbleCompanion*.cpp esp_timer_create, esp_timer.c heap_caps_calloc"})
     if env in IR_INTERNAL_TASK:
         terms.append(task("ir", 4096, tcb, "src/FurbleIR.cpp IR_TASK_STACK_BYTES, internal fallback"))
     if env in IR_QUEUE:
@@ -307,6 +313,8 @@ def attributable(env: str, width: int, cfg: dict, size: dict) -> list:
         terms.append(queue("headless_requests", HEADLESS_REQUEST_QUEUE_LENGTH, POINTER_BYTES, size,
                            "src/main.cpp HEADLESS_REQUEST_QUEUE_LENGTH x sizeof(headless_request_t *)"))
     if width:
+        terms.append(queue("ui_requests", 8, POINTER_BYTES, size,
+                           "src/FurbleUI.cpp m_RequestQueueLength x sizeof(request_t *)"))
         lines = 15
         buffers = 1 if width <= 160 else 2
         draw = width * lines * 2

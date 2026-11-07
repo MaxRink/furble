@@ -19,7 +19,9 @@
         "StaticQueue_t": 84,
         "StaticRingbuffer_t": 112,
         "uart_obj_t": 124,
-        "uart_event_t": 12
+        "uart_event_t": 12,
+        "Furble::Control::cmd_t": 4,
+        "struct esp_timer": 32
       },
       "heap_at_app_start": 255132,
       "largest_span_at_app_start": 129984,
@@ -95,6 +97,11 @@
           "source": "src/main.cpp control task"
         },
         {
+          "term": "control_queue",
+          "bytes": 228,
+          "source": "src/FurbleControl.cpp Control::getInstance(), m_QueueLength x sizeof(cmd_t)"
+        },
+        {
           "term": "gps",
           "bytes": 4464,
           "source": "src/FurbleGPS.cpp gps task"
@@ -110,6 +117,16 @@
           "source": "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES"
         },
         {
+          "term": "esp_timer companion disable",
+          "bytes": 48,
+          "source": "src/FurbleCompanion*.cpp esp_timer_create, esp_timer.c heap_caps_calloc"
+        },
+        {
+          "term": "esp_timer companion shutter",
+          "bytes": 48,
+          "source": "src/FurbleCompanion*.cpp esp_timer_create, esp_timer.c heap_caps_calloc"
+        },
+        {
           "term": "ir",
           "bytes": 4464,
           "source": "src/FurbleIR.cpp IR_TASK_STACK_BYTES, internal fallback"
@@ -120,13 +137,18 @@
           "source": "src/FurbleIR.cpp xQueueCreate(1, sizeof(protocol_t))"
         },
         {
+          "term": "ui_requests",
+          "bytes": 132,
+          "source": "src/FurbleUI.cpp m_RequestQueueLength x sizeof(request_t *)"
+        },
+        {
           "term": "lvgl_draw",
           "bytes": 2416,
           "source": "include/FurbleUIMemory.h PARTIAL_LINES, singleDrawBuffer"
         }
       ],
-      "attributable_bytes": 120780,
-      "derived_free_upper_bound": 134352,
+      "attributable_bytes": 121236,
+      "derived_free_upper_bound": 133896,
       "derived_largest_upper_bound": 129984,
       "status": "derived"
     },
@@ -146,7 +168,9 @@
         "StaticQueue_t": 84,
         "StaticRingbuffer_t": 112,
         "uart_obj_t": 124,
-        "uart_event_t": 12
+        "uart_event_t": 12,
+        "Furble::Control::cmd_t": 4,
+        "struct esp_timer": 32
       },
       "heap_at_app_start": 255156,
       "largest_span_at_app_start": 129984,
@@ -222,6 +246,11 @@
           "source": "src/main.cpp control task"
         },
         {
+          "term": "control_queue",
+          "bytes": 228,
+          "source": "src/FurbleControl.cpp Control::getInstance(), m_QueueLength x sizeof(cmd_t)"
+        },
+        {
           "term": "gps",
           "bytes": 4464,
           "source": "src/FurbleGPS.cpp gps task"
@@ -237,6 +266,16 @@
           "source": "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES"
         },
         {
+          "term": "esp_timer companion disable",
+          "bytes": 48,
+          "source": "src/FurbleCompanion*.cpp esp_timer_create, esp_timer.c heap_caps_calloc"
+        },
+        {
+          "term": "esp_timer companion shutter",
+          "bytes": 48,
+          "source": "src/FurbleCompanion*.cpp esp_timer_create, esp_timer.c heap_caps_calloc"
+        },
+        {
           "term": "ir",
           "bytes": 4464,
           "source": "src/FurbleIR.cpp IR_TASK_STACK_BYTES, internal fallback"
@@ -247,13 +286,18 @@
           "source": "src/FurbleIR.cpp xQueueCreate(1, sizeof(protocol_t))"
         },
         {
+          "term": "ui_requests",
+          "bytes": 132,
+          "source": "src/FurbleUI.cpp m_RequestQueueLength x sizeof(request_t *)"
+        },
+        {
           "term": "lvgl_draw",
           "bytes": 4068,
           "source": "include/FurbleUIMemory.h PARTIAL_LINES, singleDrawBuffer"
         }
       ],
-      "attributable_bytes": 122432,
-      "derived_free_upper_bound": 132724,
+      "attributable_bytes": 122888,
+      "derived_free_upper_bound": 132268,
       "derived_largest_upper_bound": 129984,
       "status": "derived"
     },
@@ -273,7 +317,9 @@
         "StaticQueue_t": 84,
         "StaticRingbuffer_t": 112,
         "uart_obj_t": 124,
-        "uart_event_t": 12
+        "uart_event_t": 12,
+        "Furble::Control::cmd_t": 4,
+        "struct esp_timer": 32
       },
       "heap_at_app_start": 261800,
       "largest_span_at_app_start": 261800,
@@ -339,6 +385,11 @@
           "source": "src/main.cpp control task"
         },
         {
+          "term": "control_queue",
+          "bytes": 228,
+          "source": "src/FurbleControl.cpp Control::getInstance(), m_QueueLength x sizeof(cmd_t)"
+        },
+        {
           "term": "gps",
           "bytes": 4464,
           "source": "src/FurbleGPS.cpp gps task"
@@ -354,9 +405,24 @@
           "source": "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES"
         },
         {
+          "term": "esp_timer companion disable",
+          "bytes": 48,
+          "source": "src/FurbleCompanion*.cpp esp_timer_create, esp_timer.c heap_caps_calloc"
+        },
+        {
+          "term": "esp_timer companion shutter",
+          "bytes": 48,
+          "source": "src/FurbleCompanion*.cpp esp_timer_create, esp_timer.c heap_caps_calloc"
+        },
+        {
           "term": "ir_queue",
           "bytes": 104,
           "source": "src/FurbleIR.cpp xQueueCreate(1, sizeof(protocol_t))"
+        },
+        {
+          "term": "ui_requests",
+          "bytes": 132,
+          "source": "src/FurbleUI.cpp m_RequestQueueLength x sizeof(request_t *)"
         },
         {
           "term": "lvgl_draw",
@@ -364,14 +430,14 @@
           "source": "include/FurbleUIMemory.h PARTIAL_LINES, singleDrawBuffer"
         }
       ],
-      "attributable_bytes": 87844,
-      "derived_free_upper_bound": 173956,
-      "derived_largest_upper_bound": 173956,
+      "attributable_bytes": 88300,
+      "derived_free_upper_bound": 173500,
+      "derived_largest_upper_bound": 173500,
       "status": "derived",
       "internal_reserved_for_caps_only": 32768,
       "measured_free": 30007,
       "measured_source": "sim/scenarios/e2e/hw-memory-post394-budget.txt",
-      "unattributed_gap": 143949
+      "unattributed_gap": 143493
     },
     {
       "env": "m5stack-core",
@@ -389,7 +455,9 @@
         "StaticQueue_t": 84,
         "StaticRingbuffer_t": 112,
         "uart_obj_t": 124,
-        "uart_event_t": 12
+        "uart_event_t": 12,
+        "Furble::Control::cmd_t": 4,
+        "struct esp_timer": 32
       },
       "heap_at_app_start": 255108,
       "largest_span_at_app_start": 129984,
@@ -465,6 +533,11 @@
           "source": "src/main.cpp control task"
         },
         {
+          "term": "control_queue",
+          "bytes": 228,
+          "source": "src/FurbleControl.cpp Control::getInstance(), m_QueueLength x sizeof(cmd_t)"
+        },
+        {
           "term": "gps",
           "bytes": 4464,
           "source": "src/FurbleGPS.cpp gps task"
@@ -478,6 +551,16 @@
           "term": "companion",
           "bytes": 3440,
           "source": "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES"
+        },
+        {
+          "term": "esp_timer companion disable",
+          "bytes": 48,
+          "source": "src/FurbleCompanion*.cpp esp_timer_create, esp_timer.c heap_caps_calloc"
+        },
+        {
+          "term": "esp_timer companion shutter",
+          "bytes": 48,
+          "source": "src/FurbleCompanion*.cpp esp_timer_create, esp_timer.c heap_caps_calloc"
         },
         {
           "term": "sd",
@@ -495,14 +578,19 @@
           "source": "src/FurbleSD.cpp xSemaphoreCreateBinary(), a zero-item queue"
         },
         {
+          "term": "ui_requests",
+          "bytes": 132,
+          "source": "src/FurbleUI.cpp m_RequestQueueLength x sizeof(request_t *)"
+        },
+        {
           "term": "lvgl_draw",
           "bytes": 19232,
           "source": "include/FurbleUIMemory.h PARTIAL_LINES, singleDrawBuffer"
         }
       ],
-      "attributable_bytes": 140124,
-      "derived_free_upper_bound": 114984,
-      "derived_largest_upper_bound": 114984,
+      "attributable_bytes": 140580,
+      "derived_free_upper_bound": 114528,
+      "derived_largest_upper_bound": 114528,
       "status": "derived"
     },
     {
@@ -521,7 +609,9 @@
         "StaticQueue_t": 84,
         "StaticRingbuffer_t": 112,
         "uart_obj_t": 124,
-        "uart_event_t": 12
+        "uart_event_t": 12,
+        "Furble::Control::cmd_t": 4,
+        "struct esp_timer": 32
       },
       "heap_at_app_start": 253676,
       "largest_span_at_app_start": 129984,
@@ -597,6 +687,11 @@
           "source": "src/main.cpp control task"
         },
         {
+          "term": "control_queue",
+          "bytes": 228,
+          "source": "src/FurbleControl.cpp Control::getInstance(), m_QueueLength x sizeof(cmd_t)"
+        },
+        {
           "term": "gps",
           "bytes": 4464,
           "source": "src/FurbleGPS.cpp gps task"
@@ -610,6 +705,16 @@
           "term": "companion",
           "bytes": 3440,
           "source": "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES"
+        },
+        {
+          "term": "esp_timer companion disable",
+          "bytes": 48,
+          "source": "src/FurbleCompanion*.cpp esp_timer_create, esp_timer.c heap_caps_calloc"
+        },
+        {
+          "term": "esp_timer companion shutter",
+          "bytes": 48,
+          "source": "src/FurbleCompanion*.cpp esp_timer_create, esp_timer.c heap_caps_calloc"
         },
         {
           "term": "sd",
@@ -627,14 +732,19 @@
           "source": "src/FurbleSD.cpp xSemaphoreCreateBinary(), a zero-item queue"
         },
         {
+          "term": "ui_requests",
+          "bytes": 132,
+          "source": "src/FurbleUI.cpp m_RequestQueueLength x sizeof(request_t *)"
+        },
+        {
           "term": "lvgl_draw",
           "bytes": 19232,
           "source": "include/FurbleUIMemory.h PARTIAL_LINES, singleDrawBuffer"
         }
       ],
-      "attributable_bytes": 140124,
-      "derived_free_upper_bound": 113552,
-      "derived_largest_upper_bound": 113552,
+      "attributable_bytes": 140580,
+      "derived_free_upper_bound": 113096,
+      "derived_largest_upper_bound": 113096,
       "status": "derived"
     },
     {
@@ -653,7 +763,9 @@
         "StaticQueue_t": 92,
         "StaticRingbuffer_t": 112,
         "uart_obj_t": 124,
-        "uart_event_t": 12
+        "uart_event_t": 12,
+        "Furble::Control::cmd_t": 4,
+        "struct esp_timer": 32
       },
       "heap_at_app_start": 258136,
       "largest_span_at_app_start": 258136,
@@ -729,6 +841,11 @@
           "source": "src/main.cpp control task"
         },
         {
+          "term": "control_queue",
+          "bytes": 236,
+          "source": "src/FurbleControl.cpp Control::getInstance(), m_QueueLength x sizeof(cmd_t)"
+        },
+        {
           "term": "gps",
           "bytes": 4476,
           "source": "src/FurbleGPS.cpp gps task"
@@ -744,14 +861,24 @@
           "source": "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES"
         },
         {
+          "term": "esp_timer companion disable",
+          "bytes": 48,
+          "source": "src/FurbleCompanion*.cpp esp_timer_create, esp_timer.c heap_caps_calloc"
+        },
+        {
+          "term": "esp_timer companion shutter",
+          "bytes": 48,
+          "source": "src/FurbleCompanion*.cpp esp_timer_create, esp_timer.c heap_caps_calloc"
+        },
+        {
           "term": "headless_requests",
           "bytes": 140,
           "source": "src/main.cpp HEADLESS_REQUEST_QUEUE_LENGTH x sizeof(headless_request_t *)"
         }
       ],
-      "attributable_bytes": 114128,
-      "derived_free_upper_bound": 144008,
-      "derived_largest_upper_bound": 144008,
+      "attributable_bytes": 114460,
+      "derived_free_upper_bound": 143676,
+      "derived_largest_upper_bound": 143676,
       "status": "derived",
       "internal_reserved_for_caps_only": 32768
     }
