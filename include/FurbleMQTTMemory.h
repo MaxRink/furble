@@ -56,8 +56,20 @@ inline constexpr size_t EVENT_QUEUE_BYTES = 9392;
  */
 inline constexpr size_t INCOMING_EVENT_BYTES = 2348;
 
+/**
+ * What one heap block costs beyond its payload. A queue also carries its
+ * 84-byte StaticQueue_t control block (from the target DWARF), in the same
+ * block for xQueueCreate() and a second block for xQueueCreateWithCaps(), and
+ * every block pays the TLSF header and the comprehensive-poisoning words. A
+ * placement check against the bare payload could choose a pool that then
+ * cannot hold the block, and every board aborts on a failed allocation.
+ */
+inline constexpr size_t BLOCK_OVERHEAD_BYTES = 128;
+inline constexpr size_t EVENT_QUEUE_BLOCK_BYTES = EVENT_QUEUE_BYTES + BLOCK_OVERHEAD_BYTES;
+inline constexpr size_t INCOMING_EVENT_BLOCK_BYTES = INCOMING_EVENT_BYTES + BLOCK_OVERHEAD_BYTES;
+
 /** Everything the owner allocates for events: the queue and the incoming copy. */
-inline constexpr size_t EVENT_STORAGE_BYTES = EVENT_QUEUE_BYTES + INCOMING_EVENT_BYTES;
+inline constexpr size_t EVENT_STORAGE_BYTES = EVENT_QUEUE_BLOCK_BYTES + INCOMING_EVENT_BLOCK_BYTES;
 
 /**
  * Free internal heap required before the esp-mqtt client is created.

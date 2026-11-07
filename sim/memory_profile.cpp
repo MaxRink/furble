@@ -87,6 +87,8 @@ std::vector<component_t> componentsFor(const profile_budget_t &budget) {
       {"mqtt_worker",            budget.mqttWorker,                                     "internal",     "release-gate MQTT worker stack"               },
       {"mqtt_queue",             Furble::MQTTMemory::EVENT_QUEUE_BYTES,
        budget.psramTotal > 0 ? "psram" : "internal",                                                    "FurbleMQTTMemory::EVENT_QUEUE_BYTES"          },
+      {"mqtt_incoming",          Furble::MQTTMemory::INCOMING_EVENT_BYTES,
+       budget.psramTotal > 0 ? "psram" : "internal",                                                    "FurbleMQTTMemory::INCOMING_EVENT_BYTES"       },
       {"mqtt_camera",            5120,                                                  "internal",     "CameraList::savedSnapshot on connect"         },
       {"console_task",           6144,                                                  "internal",     "src/FurbleConsole.cpp after PR 394"           },
       {"crash_record",           sizeof(Furble::CrashRecord::record_t),                 "rtc",          "include/FurbleCrashRecord.h"                  },
