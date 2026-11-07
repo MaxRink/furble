@@ -117,7 +117,14 @@ waits on, it will need the same parking.
 
 - `src/FurblePlatform.cpp`, `src/FurbleFeedback.cpp`, `src/FurbleIR.cpp` and
   `src/FurbleCompanion.cpp` are exempted as planned simulator work. Each should
-  drop out of the exemption file when its build lands.
+  drop out of the exemption file when its build lands. The linked boundary
+  targets of #404 now build `FurbleCompanion.cpp`, `FurbleFeedback.cpp`,
+  `FurbleIR.cpp`, `FurbleSD.cpp` and `main.cpp`, so `fix/build-inventory`
+  dropped those exemptions. It also exempted `src/FurbleCompanionDebug.cpp`
+  from #391, which compiles only under `FURBLE_BLE_DEBUG` and reads NimBLE
+  and reset state. The mutation fixtures now add their own synthetic canary
+  and exempt sources, so they no longer depend on which real sources the live
+  build lists build or exempt.
 - `cameraTypeName()` needs one target of each vendor to cover, which means
   linking the remaining vendor camera classes into the console target.
 - The host `splitArgv()` is not `esp_console_split_argv()`. It has no backslash
