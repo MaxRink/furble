@@ -194,12 +194,12 @@ def worst_case(graph, entry, resolve, pruned=frozenset(), recursion=()):
             depth, why = bound(cycle)
             notes["recursion"][cycle] = (depth, why)
             if depth:
-                # Any member may head the recursion and each pass costs the
-                # whole cycle. Charging every member over-counts a path that
-                # crosses several of them, which is the safe direction.
+                # The walk entered the cycle at fn, so every path through the
+                # cycle runs through fn. Each extra pass costs the whole cycle;
+                # charge it once, at fn, so a path crossing several members
+                # pays depth passes, not one set per member.
                 cost = (depth - 1) * sum(graph.frame[c] for c in cycle)
-                for c in cycle:
-                    extra[c] = max(extra.get(c, 0), cost)
+                extra[fn] = max(extra.get(fn, 0), cost)
             return 0, []
         body = graph.defined(fn)
         if body is None:

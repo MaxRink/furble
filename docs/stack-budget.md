@@ -73,8 +73,8 @@ walk cuts it there, so it follows the deepest path that visits each function
 once. A task whose path holds a cycle fails unless a member matches an entry
 in the manifest's `recursion_bounds`. An entry's `depth` is the number of
 passes the cycle can make, cited from source; the walk adds `depth - 1` more
-passes of the cycle's frames at every member, which over-counts a path that
-crosses several members. An entry without `depth` records a documented known
+passes of the whole cycle's frames once, at the member where the walk entered
+the cycle, so every path through the cycle pays exactly `depth` passes. An entry without `depth` records a documented known
 limit and adds nothing; `tasks` scopes an entry. `--verbose` lists every
 cycle and its bound.
 
@@ -129,17 +129,17 @@ against the plain 3 KiB worker; TLS uses 6 KiB.
 | gps | 4,096 | 2,352 | 2,352 | 2,352 | 2,352 | 2,832 | 3,056 | 3,056 |
 | wifi | 4,096 | 2,208 | 2,208 | 2,208 | 2,208 | 2,432 | 2,944 | 2,944 |
 | companion | 3,072 | 2,208 | 2,208 | 2,208 | 2,208 | 2,272 | 2,784 | 2,784 |
-| ir | 4,096 | 1,840 | 1,840 |  |  | 2,160 |  |  |
-| sd | 6,144 |  |  | 3,456 | 3,456 |  |  |  |
-| mqtt | 10,240 |  |  |  | 7,680 | 7,904 | 8,128 | 8,128 |
-| mqtt_client | 3,072 |  |  |  | 1,776 | 2,000 | 2,256 | 2,256 |
-| webui | 3,072 |  |  |  | 2,528 | 2,752 | 2,992 | 2,992 |
-| webui_https | 8,192 |  |  |  | 2,224 | 2,512 | 2,752 | 2,752 |
-| webui_tls | 12,288 |  |  |  | 6,960 | 7,488 | 7,744 | 7,744 |
+| ir | 4,096 | 1,840 | 1,840 | | | 2,160 | | |
+| sd | 6,144 | | | 3,456 | 3,456 | | | |
+| mqtt | 10,240 | | | | 7,680 | 7,904 | 8,128 | 8,128 |
+| mqtt_client | 3,072 | | | | 1,776 | 2,000 | 2,256 | 2,256 |
+| webui | 3,072 | | | | 2,528 | 2,752 | 2,992 | 2,992 |
+| webui_https | 8,192 | | | | 2,192 | 2,480 | 2,720 | 2,720 |
+| webui_tls | 12,288 | | | | 6,960 | 7,488 | 7,744 | 7,744 |
 
-Against the #414 results, `webui_https` grows by 160 bytes on every board
-that has it: `netconn_drain` and `netconn_free` each carry their bounded
-second pass. `mqtt` grows by 48 to 64 bytes through the nine bounded
+Against the #414 results, `webui_https` grows by 128 bytes on every board
+that has it: the `netconn_drain` and `netconn_free` cycle carries its bounded
+second pass, charged once. `mqtt` grows by 48 to 64 bytes through the nine bounded
 `parse_value` passes. The Core `gps` row reads 2,352 where #414 reported
 2,560; the #414 tool reports the same 2,352 on this build, so the change came
 from master between the two. The `esp_timer` row is new.
