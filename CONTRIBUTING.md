@@ -197,8 +197,10 @@ release envs and run `python3 tools/derive_sim_heap.py`; see
 After a firmware build, `python3 tools/stack_budget.py --env <env>` checks
 each task's worst-case stack from the `-fcallgraph-info=su` call graph against
 `tools/stack_budget.json`. Firmware CI runs it after every build. Add a task
-there when you create one, and see `docs/stack-budget.md` for the indirect
-call rules and limits.
+there when you create one. A recursion or an `alloca`/VLA frame on a task's
+path fails the check until `recursion_bounds` or `dynamic_bounds` in the
+manifest cites a bound from source. See `docs/stack-budget.md` for the
+indirect call rules, the bounds and the limits.
 
 `run-panic-fixtures.sh` needs the default binary and the `FURBLE_SIM_MQTT=1`
 binary. Every sdkconfig aborts on a failed allocation, so the simulator does

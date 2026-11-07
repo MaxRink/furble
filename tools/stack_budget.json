@@ -23,6 +23,12 @@
       "source": "esp_event_loop_create_default(): the default loop task runs the WiFi, IP and Ethernet event handlers"
     },
     {
+      "name": "esp_timer",
+      "entry": "esp_timer\\.c:timer_task$",
+      "stack_bytes": "CONFIG_ESP_TIMER_TASK_STACK_SIZE",
+      "source": "esp_timer_init() creates the esp_timer task; it runs every ESP_TIMER_TASK callback (timer_process_alarm is inlined into timer_task)"
+    },
+    {
       "name": "control",
       "entry": "^void control_task\\(void\\*\\)$",
       "stack_bytes": 8192,
@@ -222,11 +228,100 @@
         "\\(void\\*, esp_event_base_t, int32_t, void\\*\\)$"
       ],
       "why": "esp_event.c handler_execute calls each registered esp_event_handler_t; it is inlined into esp_event_loop_run on some builds and a separate function on others. esp-mqtt dispatches its events through it on the client task"
+    },
+    {
+      "caller": "^timer_task$",
+      "targets": [
+        "^static void Furble::(CompanionGatt::delayedDisable|CompanionService::timedShutter|MQTT::holdTimerCallback|MQTT::intervalTimerCallback|WebUI::holdTimerCallback|WebUI::releaseTimerCallback)\\(void\\*\\)$",
+        "^(ble_npl_event_fn_wrapper|eth_check_link_timer_cb|phy_track_pll_timer_callback|alarm_cb_handler|btdm_slp_tmr_callback)$"
+      ],
+      "why": "esp_timer.c timer_process_alarm calls each ESP_TIMER_TASK callback. Furble creates six (src/FurbleCompanion.cpp delayedDisable, src/FurbleCompanionService.cpp timedShutter, src/FurbleMQTT.cpp holdTimerCallback and intervalTimerCallback, src/FurbleWebUI.cpp holdTimerCallback and releaseTimerCallback). The linked ESP-IDF callbacks are the NimBLE callout wrapper, the Ethernet link check, the PHY PLL tracker and the Bluetooth OSI alarm and controller sleep timers. wifi_prov_mgr and touch_element timers are linked but never started: furble calls neither wifi_prov_mgr_start_provisioning nor touch_element_install. The WiFi and coexistence blobs arm ets_timer callbacks whose names the image does not expose; see docs/stack-budget.md"
     }
   ],
   "boot_only": [
     "^void m5::M5Unified::begin\\(config_t\\)$",
     "^esp_err_t nvs::Storage::init\\(uint32_t, uint32_t\\)$"
   ],
-  "boot_only_comment": "Functions that run once on main before any task exists, so other tasks never reach them. M5.begin() runs only in the Platform constructor, which Platform::init() runs at src/main.cpp before the first xTaskCreate; a later Platform::getInstance() returns the built object. nvs::Storage::init runs only for a partition that is not yet initialized; Settings::init() initializes NVS in app_main before any task starts, so a later Preferences::begin() returns from nvs_flash_init_partition early."
+  "boot_only_comment": "Functions that run once on main before any task exists, so other tasks never reach them. M5.begin() runs only in the Platform constructor, which Platform::init() runs at src/main.cpp before the first xTaskCreate; a later Platform::getInstance() returns the built object. nvs::Storage::init runs only for a partition that is not yet initialized; Settings::init() initializes NVS in app_main before any task starts, so a later Preferences::begin() returns from nvs_flash_init_partition early.",
+  "recursion_bounds": [
+    {
+      "function": "^esp_cache_get_alignment$",
+      "depth": 1,
+      "why": "esp_log lazily creates its mutex (log/src/os/log_lock.c), and malloc can reach esp_log only through the ESP_RETURN_ON_FALSE null check in esp_cache_get_alignment (esp_mm/esp_cache_msync.c). esp_heap_adjust_alignment_to_hw always passes the address of a local (esp_mm/heap_align_hw.c), so malloc never re-enters esp_log."
+    },
+    {
+      "function": "^_ZNSt11logic_errorC1EPKc$|^__cxa_begin_catch$",
+      "depth": 1,
+      "why": "C++ exceptions are disabled (CONFIG_COMPILER_CXX_EXCEPTIONS unset). The libstdc++ cycle is an exception constructor building its message string, which throws again only when a literal message exceeds max_size() or is null; std::terminate aborts and never returns into __cxa_begin_catch."
+    },
+    {
+      "function": "_M_erase\\(_Link_type\\) \\[with _Key = std::__cxx11::basic_string<char>; _Val = std::pair<const std::__cxx11::basic_string<char>, unsigned char>",
+      "depth": 21,
+      "why": "The only std::map<std::string, uint8_t> is the camera id map (lib/furble/CameraList.cpp). It holds at most one node per saved index entry. The index is one blob in the 24 KiB NVS partition, so it has fewer than 1,171 entries of 21 bytes (INDEX_ENTRY_BYTES); a red-black tree of n nodes is at most 2 log2(n + 1) < 21 levels high, and _M_erase recurses once per level."
+    },
+    {
+      "function": "__introsort_loop.*long unsigned int\\*",
+      "depth": 1,
+      "why": "GPS::finishMeasurement sorts at most m_PeriodSamples.size() = 5 values (src/FurbleGPS.cpp, include/FurbleGPS.h). introsort recurses only on ranges above its 16-element threshold, so the loop body never runs."
+    },
+    {
+      "function": "^netconn_drain$",
+      "depth": 2,
+      "why": "lwip api_msg.c netconn_drain drains a listening netconn's acceptmbox and calls netconn_drain and netconn_free on each accepted netconn. Only a listening netconn has an acceptmbox, so the nested call stops one level down."
+    },
+    {
+      "function": "^lwip_sendto$",
+      "depth": 1,
+      "why": "lwip sockets.c lwip_send forwards a non-TCP socket to lwip_sendto, and lwip_sendto forwards a TCP socket to lwip_send. The socket type does not change between the two calls, so at most one forward happens."
+    },
+    {
+      "function": "^mpi_mult_mpi_overlong",
+      "depth": 1,
+      "tasks": [
+        "webui_tls"
+      ],
+      "why": "The identity task generates one SECP256R1 key and signs one certificate (src/FurbleWebUI.cpp). Its products are at most 512 bits; esp_bignum.c reaches mpi_mult_mpi_overlong only for a product above SOC_RSA_MAX_BIT_LEN (4,096 bits)."
+    },
+    {
+      "function": "^esp_aes_process_dma$",
+      "depth": 2,
+      "why": "mbedtls port aes/dma/esp_aes_dma_core.c esp_aes_process_dma copies a buffer the DMA cannot reach into an internal DMA-capable buffer (esp_aes_process_dma_ext_ram) and calls itself once on it. That buffer passes s_check_dma_capable, so it does not recurse again."
+    },
+    {
+      "function": "^parse_value$",
+      "depth": 9,
+      "why": "cJSON parse_array and parse_object refuse to nest deeper than CJSON_NESTING_LIMIT, which platformio.ini sets to 8 for every component. parse_value therefore nests at most 8 containers plus one leaf. Every furble request body and MQTT payload is a flat object."
+    },
+    {
+      "function": "^print_value$",
+      "depth": 6,
+      "why": "Furble prints only JSON it builds. The deepest is the Home Assistant device discovery (src/FurbleMQTT.cpp): root, cmps, a component, its availability array, an availability object and a string leaf, six print_value levels."
+    },
+    {
+      "function": "^cJSON_Delete$",
+      "depth": 9,
+      "why": "cJSON_Delete recurses once per tree level. A parsed tree has at most 9 levels (CJSON_NESTING_LIMIT 8 plus a leaf) and a built one at most 6 (see print_value)."
+    },
+    {
+      "function": ".",
+      "tasks": [
+        "main"
+      ],
+      "why": "Known limit. The LVGL dispatcher rules join every UI callback into cycles through lv_event_send, lv_obj_invalidate and the refresh path, which the firmware cannot take as written; the real recursion is LVGL's widget tree walk, bounded by the page depth furble builds. main is already a lower bound behind unresolved virtuals, and its evidence is the hardware high-water mark."
+    }
+  ],
+  "recursion_bounds_comment": "A cycle on a task's resolved path fails the task unless a member matches one entry here. depth is the number of passes of the cycle; the walk counts one and adds depth - 1 more at every cycle member. An entry without depth records a documented known limit and adds nothing. tasks scopes an entry.",
+  "dynamic_bounds": [
+    {
+      "function": "^s_i2c_start_end_command$",
+      "bytes": 32,
+      "why": "esp_driver_i2c/i2c_master.c declares uint8_t addr_write[addr_byte] and addr_read[addr_byte] with addr_byte at most 2 (a 10-bit address); each VLA is rounded to the 16-byte Xtensa stack alignment."
+    },
+    {
+      "function": "m5::Log_Class::output",
+      "bytes": 256,
+      "why": "M5Unified Log_Class.cpp allocas len + 1 for a line longer than its 64-byte buffer. Furble never calls M5.Log; M5Unified's own M5_LOGx lines are a millis stamp, a basename, a line number, a function name and a fixed message under 110 characters with at most two integer or short string arguments, under 256 bytes in total."
+    }
+  ],
+  "dynamic_bounds_comment": "GCC marks an alloca or VLA frame dynamic and reports only its static part. A task that reaches one fails unless an entry here adds a cited maximum in bytes."
 }

@@ -326,22 +326,13 @@ uint16_t Preferences::get(const char *key, const uint16_t defaultValue) {
 
 template <>
 std::string Preferences::get(const char *key, const std::string defaultValue) {
-  if (!_started || !key) {
+  // getString() sizes a heap string from the stored length. A stack VLA here
+  // would let stored data choose the caller's frame size.
+  std::string value;
+  if (getString(key, value) != string_result_t::OK) {
     return std::string(defaultValue);
   }
-  size_t len = 0;
-  esp_err_t err = nvs_get_str(_handle, key, NULL, &len);
-  if (err) {
-    ESP_LOGE(LOG_TAG, "nvs_get_str len fail: %s %s", key, nvs_error(err));
-    return std::string(defaultValue);
-  }
-  char buf[len];
-  err = nvs_get_str(_handle, key, buf, &len);
-  if (err) {
-    ESP_LOGE(LOG_TAG, "nvs_get_str fail: %s %s", key, nvs_error(err));
-    return std::string(defaultValue);
-  }
-  return std::string(buf);
+  return value;
 }
 
 Preferences::string_result_t Preferences::getString(const char *key, std::string &value) {
