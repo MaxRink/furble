@@ -1063,9 +1063,11 @@ bool Control::disconnect(uint32_t timeout_ms, bool forRestart) {
     // Wake the control task so it reaps the drain now. Its queue wait is the
     // 250 ms idle tick, and nothing else wakes it after a cancel, so without
     // this every cancel held the connect gate for up to one extra tick.
-    // CMD_ERROR carries no work and is ignored in every state.
+    // CMD_ERROR carries no work and is ignored in every state. A failed send
+    // loses nothing: it fails only when the queue is full, and then the next
+    // receive returns at once and the task reaps on that pass anyway.
     cmd_t wake = CMD_ERROR;
-    xQueueSend(m_Queue, &wake, 0);
+    (void)xQueueSend(m_Queue, &wake, 0);
     return true;
   }
 
