@@ -26,7 +26,7 @@ assert platform.reset_reason brownout
 assert mem.internal_total 532480
 assert mem.psram_total 0
 assert mem.component.main_stack 16384
-assert mem.component.lvgl_draw 4320
+assert mem.component.lvgl_draw 2160
 assert hw.usb uart
 assert hw.wifi yes
 assert hw.ethernet no
