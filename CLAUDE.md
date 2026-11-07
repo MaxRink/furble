@@ -158,6 +158,10 @@ CLAUDE.md whose directory it touches.
   build. Indirect calls are followed only where the manifest resolves them, so
   a task with unresolved sites reports a lower bound; see
   `docs/stack-budget.md`. Update the manifest when a task or its stack changes.
+  A recursion or an `alloca`/VLA frame on a task's path fails it until
+  `recursion_bounds` or `dynamic_bounds` cites a bound from source.
+  `platformio.ini` sets `CJSON_NESTING_LIMIT=8` for every component; the
+  cJSON recursion bounds depend on it.
 - Hardware flashing is gated on the simulator. The gate manifests are under
   `sim/coverage/`; `python3 tools/check_sim_coverage.py --require-ready`
   validates evidence and `python3 tools/check_flash_readiness.py --ready` is

@@ -9,8 +9,10 @@ tools/stack_budget.json and reports the deepest path.
 The walk is exact for direct calls. GCC cannot name the target of an indirect
 call (virtual, std::function, a C callback), so each indirect call site on a
 path is listed, not followed; the manifest may resolve a caller's indirect
-calls to named targets. Recursion and dynamic frames are reported too. A task
-fails when its resolved worst case plus the interrupt frame exceeds its stack.
+calls to named targets. A task fails when its resolved worst case plus the
+port overhead exceeds its stack, when its path recurses through a function
+with no manifest recursion bound, or when it reaches an alloca or VLA frame
+with no manifest size bound.
 """
 
 import argparse
@@ -29,11 +31,24 @@ EDGE = re.compile(r'edge: \{ sourcename: "([^"]*)" targetname: "([^"]*)"(?: labe
 FRAME = re.compile(r"\\n(\d+) bytes \(([a-z,]+)\)")
 INDIRECT = "__indirect_call"
 ALIAS = re.compile(r"([CD])1E")
-FUNC = re.compile(r"^[0-9a-f]+ <([^>+]+)>:$")
-ENTRY = re.compile(r"\tentry\ta1, (\d+)$")
-CALL = re.compile(r"\tcall(?:0|4|8|12)\t[0-9a-f]+ <([^>+]+)>$")
-LITERAL = re.compile(r"\tl32r\t(a\d+), .*\([0-9a-f]+ <([^>+]+)>\)$")
-CALLX = re.compile(r"\tcallx(?:0|4|8|12)\t(a\d+)$")
+FUNC = re.compile(r"^([0-9a-f]+) <([^>+]+)>:$")
+ENTRY = re.compile(r"^\s*([0-9a-f]+):.*\tentry\ta1, (\d+)$")
+# A blob's static functions have no symbol, so objdump lists them under the
+# previous one and calls them as <symbol+0xoffset>. Each entry instruction
+# after the first in a symbol starts such a function, named that way.
+CALL = re.compile(r"\tcall(0|4|8|12)\t[0-9a-f]+ <([^>]+)>$")
+# objdump prints "l32r aN, <slot> (<value>)" when it can read the literal and
+# "l32r aN, <slot>" when it cannot. The bare form names the literal's slot, not
+# its value, so it is never a call target.
+LITERAL = re.compile(r"\tl32r\t(a\d+), [^(]*(?:\([0-9a-f]+ <([^>]+)>\))?")
+CALLX = re.compile(r"\tcallx(0|4|8|12)\t(a\d+)$")
+WRITE = re.compile(r"\t([a-z][\w.]*)\t(a\d+)\b")
+READS_FIRST = re.compile(r"(s(8|16|32)i(\.n)?|s32ri|s32e|b\w*|j\w*)$")  # stores, branches
+
+
+def clobber(literal, window):
+    """callN rotates the window by N: the callee may change aN to a15."""
+    return {reg: value for reg, value in literal.items() if int(reg[1:]) < int(window)}
 
 
 class Graph:
@@ -69,43 +84,60 @@ class Graph:
         """Frames and calls of prebuilt code (newlib, libstdc++, the WiFi and
         BT blobs) from the image's disassembly. Only functions with no .ci
         node are taken: the frame is the windowed ABI entry allocation, a
-        call is call8 to a symbol or a longcall l32r literal then callx8."""
+        call is call8 to a symbol or a longcall l32r literal then callx8.
+        A literal names its target only until its register is written again
+        or a call rotates the window over it; a callx8 through any other
+        register is an indirect call."""
         out = subprocess.run([objdump, "-d", str(elf)], capture_output=True, text=True,
                              check=True).stdout
         # A static function's .ci title is "file:symbol"; the ELF names it by
         # the bare symbol. Never add a second node for code compiled here.
         compiled = {title.rsplit(":", 1)[-1] for title in self.frame}
-        fn, literal = None, {}
+        fn, symbol, base, literal = None, None, 0, {}
         for line in out.splitlines():
             m = FUNC.match(line)
             if m:
-                fn = m.group(1)
+                base, symbol = int(m.group(1), 16), m.group(2)
+                fn = symbol
                 if fn in compiled or fn.replace("$", ".") in compiled:
-                    fn = None  # compiled here: the .ci node is authoritative
+                    symbol = fn = None  # compiled here: the .ci node is authoritative
                 literal = {}
                 continue
             if fn is None:
                 continue
             m = ENTRY.search(line)
-            if m and fn not in self.frame:
-                self.frame[fn] = int(m.group(1))
-                self.kind[fn] = "static"
-                self.name[fn] = fn
+            if m:
+                offset = int(m.group(1), 16) - base
+                fn = f"{symbol}+0x{offset:x}" if fn != symbol or symbol in self.frame else symbol
+                if fn not in self.frame:
+                    self.frame[fn] = int(m.group(2))
+                    self.kind[fn] = "static"
+                    self.name[fn] = fn
+                literal = {}
                 continue
             m = CALL.search(line)
             if m:
-                self.calls.setdefault(fn, set()).add(m.group(1))
+                self.calls.setdefault(fn, set()).add(m.group(2))
+                literal = clobber(literal, m.group(1))
                 continue
             m = LITERAL.search(line)
             if m:
-                literal[m.group(1)] = m.group(2)
+                literal[m.group(1)] = m.group(2)  # None: the value is unknown
                 continue
             m = CALLX.search(line)
             if m:
-                if m.group(1) in literal:
-                    self.calls.setdefault(fn, set()).add(literal[m.group(1)])
+                target = literal.get(m.group(2))
+                if target:
+                    self.calls.setdefault(fn, set()).add(target)
                 else:
                     self.indirect.setdefault(fn, []).append("elf")
+                literal = clobber(literal, m.group(1))
+                continue
+            m = WRITE.search(line)
+            # any other write to a literal register makes its value unknown;
+            # stores and branches only read their first operand
+            if m and m.group(2) in literal and not READS_FIRST.match(m.group(1)):
+                del literal[m.group(2)]
 
     def defined(self, title):
         """The node holding title's frame: itself, its global name, or the
@@ -122,11 +154,19 @@ class Graph:
         return [t for t in self.frame if rx.search(self.name[t]) or rx.search(t)]
 
 
-def worst_case(graph, entry, resolve, pruned=frozenset()):
-    """Deepest frame sum from entry; returns (bytes, path, notes)."""
+def worst_case(graph, entry, resolve, pruned=frozenset(), recursion=()):
+    """Deepest frame sum from entry; returns (bytes, path, notes).
+
+    A call back into a function already on the walk's stack closes a cycle.
+    The cycle is cut there, so the walk follows the deepest path that visits
+    each function once. recursion lists (regex, depth, why) bounds: a cycle
+    with a matching member adds depth - 1 more passes of its frames at every
+    member. A bound with no depth records a documented known limit and adds
+    nothing. Any other cycle is noted as unbounded."""
     memo = {}
-    notes = {"recursion": set(), "dynamic": set(), "indirect": {}, "unknown": set()}
-    onstack = set()
+    extra = {}  # function -> bytes of the extra passes of its bounded cycles
+    notes = {"recursion": {}, "dynamic": set(), "indirect": {}, "unknown": set()}
+    stack = []
 
     def targets(fn):
         out = set(graph.calls.get(fn, ()))
@@ -140,11 +180,26 @@ def worst_case(graph, entry, resolve, pruned=frozenset()):
                 notes["indirect"][fn] = graph.indirect[fn]
         return out
 
+    def bound(cycle):
+        for rx, depth, why in recursion:
+            if any(rx.search(graph.name[c]) or rx.search(c) for c in cycle):
+                return depth, why
+        return None, None
+
     def walk(fn):
         if fn in memo:
             return memo[fn]
-        if fn in onstack:
-            notes["recursion"].add(fn)
+        if fn in stack:
+            cycle = tuple(stack[stack.index(fn):])
+            depth, why = bound(cycle)
+            notes["recursion"][cycle] = (depth, why)
+            if depth:
+                # Any member may head the recursion and each pass costs the
+                # whole cycle. Charging every member over-counts a path that
+                # crosses several of them, which is the safe direction.
+                cost = (depth - 1) * sum(graph.frame[c] for c in cycle)
+                for c in cycle:
+                    extra[c] = max(extra.get(c, 0), cost)
             return 0, []
         body = graph.defined(fn)
         if body is None:
@@ -152,20 +207,21 @@ def worst_case(graph, entry, resolve, pruned=frozenset()):
             return 0, []
         if body != fn:
             return walk(body)
-        if graph.kind[fn] != "static":
+        if graph.kind[fn] == "dynamic":
             notes["dynamic"].add(fn)
-        onstack.add(fn)
+        stack.append(fn)
         best, best_path = 0, []
         for dst in sorted(targets(fn) - pruned):
             depth, path = walk(dst)
             if depth > best:
                 best, best_path = depth, path
-        onstack.discard(fn)
-        memo[fn] = (graph.frame[fn] + best, [fn] + best_path)
+        stack.pop()
+        memo[fn] = (graph.frame[fn] + extra.get(fn, 0) + best, [fn] + best_path)
         return memo[fn]
 
     sys.setrecursionlimit(20000)
     depth, path = walk(entry)
+    notes["extra"] = extra
     return depth, path, notes
 
 
@@ -221,6 +277,16 @@ def main():
             dst.update(graph.find(pattern))
         resolve.append((re.compile(rule["caller"]), dst, frozenset(rule.get("tasks", ()))))
 
+    # GCC reports an alloca or VLA frame as "dynamic" with only its static
+    # part. A manifest bound adds the cited maximum; an unbounded one fails.
+    for rule in manifest.get("dynamic_bounds", []):
+        for fn in graph.find(rule["function"]):
+            if graph.kind[fn] == "dynamic":
+                graph.frame[fn] += rule["bytes"]
+                graph.kind[fn] = "dynamic,bounded"
+    recursion = [(re.compile(rule["function"]), rule.get("depth"), rule["why"],
+                  frozenset(rule.get("tasks", ()))) for rule in manifest.get("recursion_bounds", [])]
+
     boot_only = set()
     for pattern in manifest.get("boot_only", []):
         boot_only.update(graph.find(pattern))
@@ -241,28 +307,45 @@ def main():
         scoped_callers = {rx.pattern for rx, _ in scoped}
         task_rules = scoped + [(rx, dst) for rx, dst, tasks in resolve
                                if not tasks and rx.pattern not in scoped_callers]
-        depth, path, notes = worst_case(graph, found[0], task_rules, pruned)
+        task_bounds = [(rx, depth, why) for rx, depth, why, tasks in recursion
+                       if not tasks or task["name"] in tasks]
+        depth, path, notes = worst_case(graph, found[0], task_rules, pruned, task_bounds)
         need = depth + margin
         stack = overrides.get(task["name"], task["stack_bytes"])
         if isinstance(stack, str):
             stack = int(sdkconfig[stack])
-        ok = need <= stack
+        unbounded = [c for c, (_, why) in notes["recursion"].items() if why is None]
+        known = [c for c, (depth, why) in notes["recursion"].items() if why and depth is None]
+        ok = need <= stack and not unbounded and not notes["dynamic"]
         failed += not ok
         flags = []
         if notes["indirect"]:
             flags.append(f"{sum(len(v) for v in notes['indirect'].values())} unresolved indirect")
         if notes["recursion"]:
-            flags.append(f"{len(notes['recursion'])} recursive")
+            flags.append(f"{len(notes['recursion'])} recursive"
+                         + (f" ({len(unbounded)} unbounded)" if unbounded else "")
+                         + (f" ({len(known)} known limit)" if known else ""))
         if notes["unknown"]:
             flags.append(f"{len(notes['unknown'])} callees without a frame")
         if notes["dynamic"]:
-            flags.append(f"{len(notes['dynamic'])} dynamic")
+            flags.append(f"{len(notes['dynamic'])} unbounded dynamic")
         print(f"{'PASS' if ok else 'FAIL'} {task['name']}: {need} of {stack} bytes"
               f" ({depth} frames + {margin} port overhead)" + (f"; {', '.join(flags)}" if flags else ""))
         if args.verbose or not ok:
             for fn in path:
-                print(f"    {graph.frame[fn]:6d}  {graph.name[fn]}")
+                more = notes["extra"].get(fn)
+                print(f"    {graph.frame[fn]:6d}  {graph.name[fn]}"
+                      + (f" (+{more} for its bounded recursion)" if more else ""))
+            for comp in unbounded:
+                print("    recursion without a recursion_bounds entry: "
+                      + " <-> ".join(graph.name[fn] for fn in comp))
+            for fn in sorted(notes["dynamic"]):
+                print(f"    dynamic frame without a dynamic_bounds entry: {graph.name[fn]}")
         if args.verbose:
+            for comp, (depth, why) in notes["recursion"].items():
+                if why:
+                    print(f"    recursion, {f'{depth} passes' if depth else 'known limit'}: "
+                          + " <-> ".join(graph.name[fn] for fn in comp))
             for fn in sorted(notes["unknown"]):
                 print(f"    no frame (ROM, prebuilt or assembly): {fn}")
             for fn, sites in sorted(notes["indirect"].items()):

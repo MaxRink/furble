@@ -77,7 +77,10 @@ boot heap ceiling into `sim/coverage/board_heap.json`, which the memory
 profile seeds per board.
 `tools/stack_budget.py` checks each firmware task's worst-case stack from the
 `-fcallgraph-info=su` call graph against `tools/stack_budget.json`; firmware CI
-runs it after every build. See `docs/stack-budget.md`.
+runs it after every build. A recursion or an `alloca`/VLA frame on a task's
+path fails until the manifest cites a bound from source. `platformio.ini` sets
+`CJSON_NESTING_LIMIT=8`, which the cJSON bounds depend on. See
+`docs/stack-budget.md`.
 Hardware flashing is gated on the simulator. `sim/coverage/` holds the hardware,
 crash, fuzz and permutation manifests; `tools/check_sim_coverage.py` validates
 them and `tools/check_flash_readiness.py --ready` is the only authority for a

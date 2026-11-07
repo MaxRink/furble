@@ -369,6 +369,14 @@ Deviations:
   unresolved virtuals and callbacks, so their numbers are lower bounds. The
   8 KiB StickS3 main overflow is not reproduced by the walk; its evidence stays
   the hardware high-water mark.
+- Post-merge follow-up (`fix/stack-budget-review`): recursion and unbounded
+  `alloca`/VLA frames now fail a task unless the manifest cites a bound
+  (`recursion_bounds`, `dynamic_bounds`). `main` records its LVGL cycles as a
+  known limit. The ELF pass drops a literal once its register is rewritten,
+  which removed 299 wrong edges on the StickS3. The `esp_timer` task is
+  checked. The gate found cJSON's 1,000-level default nesting on the MQTT and
+  HTTPS parsers; `CJSON_NESTING_LIMIT=8` bounds it. The
+  `Preferences::get<std::string>()` VLA is gone.
 
 Findings for Phase 2:
 
