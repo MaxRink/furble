@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 from pathlib import Path
 import shutil
@@ -13,6 +14,9 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 BOARDS = ("sticks3", "core2", "core", "stickc", "stickc-plus", "stickc-plus2",
           "headless-s3", "waveshare-s3-eth")
+# Profiles that have no release env to derive from. They boot on the
+# simulator default pool; any other profile without a derived pool fails.
+UNDERIVED_PROFILES = {"stickc-plus2", "headless-s3"}
 BUDGET_SCENARIOS = (
     "hw-memory-post394-budget",
     "hw-memory-webui-post394",
@@ -20,6 +24,18 @@ BUDGET_SCENARIOS = (
     "hw-memory-mqtt-ha-ok",
     "memory-webui-fail-closed",
 )
+
+
+def derived_pools() -> dict:
+    """Board profile to the code-derived boot heap from tools/derive_sim_heap.py.
+
+    The figures are upper bounds: they exclude boot allocations the source
+    does not size. Profiles with no firmware env (stickc-plus2, headless-s3)
+    keep the simulator default pool.
+    """
+    document = json.loads((ROOT / "sim/coverage/board_heap.json").read_text(encoding="utf-8"))
+    return {board["profile"]: (board["derived_free_upper_bound"], board["derived_largest_upper_bound"])
+            for board in document["boards"]}
 
 
 def run(binary: Path, scenario: Path, dump: Path) -> tuple[int, str]:
@@ -44,11 +60,20 @@ def main(argv: list[str] | None = None) -> int:
     args.output.mkdir(parents=True, exist_ok=True)
     dumps: list[Path] = []
     failures = 0
+    pools = derived_pools()
     for board in BOARDS:
         scenario = args.output / f"profile-{board}.txt"
+        seeds = f"seed hw_profile {board}\n"
+        if board in pools:
+            free, largest = pools[board]
+            seeds += f"seed heap_internal_free {free}\nseed heap_internal_largest {largest}\n"
+        elif board not in UNDERIVED_PROFILES:
+            print(f"FAIL profile-{board}: no derived pool in sim/coverage/board_heap.json",
+                  file=sys.stderr)
+            failures += 1
+            continue
         scenario.write_text(
-            f"seed hw_profile {board}\nwait 1200\nprint mem.profile\n"
-            "assert mem.leaks 0\nexit\n", encoding="utf-8")
+            f"{seeds}wait 1200\nprint mem.profile\nassert mem.leaks 0\nexit\n", encoding="utf-8")
         dump = args.output / f"profile-{board}.json"
         rc, output = run(args.binary, scenario, dump)
         if rc != 0:

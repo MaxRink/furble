@@ -72,7 +72,9 @@ Every sdkconfig aborts on a failed allocation and the simulator does the same:
 `SIM PANIC`, a panic record and exit status 3. `sh sim/scripts/run-panic-fixtures.sh`
 certifies the abort fixtures with the default and `FURBLE_SIM_MQTT=1` binaries.
 The simulator build force-includes the board's memory sdkconfig subset from
-`tools/gen_sim_sdkconfig.py`.
+`tools/gen_sim_sdkconfig.py`. `tools/derive_sim_heap.py` derives each board's
+boot heap ceiling into `sim/coverage/board_heap.json`, which the memory
+profile seeds per board.
 Hardware flashing is gated on the simulator. `sim/coverage/` holds the hardware,
 crash, fuzz and permutation manifests; `tools/check_sim_coverage.py` validates
 them and `tools/check_flash_readiness.py --ready` is the only authority for a

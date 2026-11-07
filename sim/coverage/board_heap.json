@@ -1,0 +1,1000 @@
+{
+  "version": 1,
+  "sdk": "ESP-IDF 5.5.3 (pinned PlatformIO framework-espidf)",
+  "method": "tools/derive_sim_heap.py docstring",
+  "boards": [
+    {
+      "env": "m5stick-c",
+      "profile": "stickc",
+      "chip": "esp32",
+      "elf_symbols": {
+        "_data_start": "0x3ffbdb60",
+        "_heap_start": "0x3ffcb1f0",
+        "_iram_end": "0x4009c080",
+        "_iram_start": "0x40080000"
+      },
+      "static_dram_bytes": 54928,
+      "dwarf_sizes": {
+        "StaticTask_t": 336,
+        "StaticQueue_t": 84,
+        "StaticRingbuffer_t": 112,
+        "uart_obj_t": 124,
+        "uart_event_t": 12,
+        "Furble::Control::cmd_t": 4,
+        "struct esp_timer": 32,
+        "esp_event_loop_instance_t": 24,
+        "esp_event_post_instance_t": 16
+      },
+      "heap_at_app_start": 255132,
+      "largest_span_at_app_start": 129984,
+      "attributable_boot": [
+        {
+          "term": "idle0",
+          "bytes": 1904,
+          "source": "components/freertos/port_common.c, CONFIG_FREERTOS_IDLE_TASK_STACKSIZE"
+        },
+        {
+          "term": "tmr_svc",
+          "bytes": 2416,
+          "source": "components/freertos/port_common.c, CONFIG_FREERTOS_TIMER_TASK_STACK_DEPTH"
+        },
+        {
+          "term": "main",
+          "bytes": 16752,
+          "source": "components/freertos/app_startup.c, CONFIG_ESP_MAIN_TASK_STACK_SIZE"
+        },
+        {
+          "term": "esp_timer",
+          "bytes": 3952,
+          "source": "CONFIG_ESP_TIMER_TASK_STACK_SIZE"
+        },
+        {
+          "term": "sys_evt",
+          "bytes": 2672,
+          "source": "CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE"
+        },
+        {
+          "term": "event_loop",
+          "bytes": 752,
+          "source": "esp_event.c: loop calloc, CONFIG_ESP_SYSTEM_EVENT_QUEUE_SIZE queue, mutex"
+        },
+        {
+          "term": "tiT",
+          "bytes": 3440,
+          "source": "CONFIG_LWIP_TCPIP_TASK_STACK_SIZE, esp_netif_init()"
+        },
+        {
+          "term": "wifi_static_rx",
+          "bytes": 16160,
+          "condition": "wifi",
+          "source": "CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM x 1600 (ESP-IDF Wi-Fi buffer usage)"
+        },
+        {
+          "term": "wifi_static_rx_mgmt",
+          "bytes": 2580,
+          "condition": "wifi",
+          "source": "CONFIG_ESP_WIFI_RX_MGMT_BUF_NUM_DEF x about 500 (esp_wifi Kconfig help)"
+        },
+        {
+          "term": "wifi_furble",
+          "bytes": 4464,
+          "source": "src/FurbleWiFi.cpp TASK_STACK",
+          "condition": "wifi"
+        },
+        {
+          "term": "btController",
+          "bytes": 4464,
+          "source": "components/esp_system/include/esp_task.h ESP_TASK_BT_CONTROLLER_STACK"
+        },
+        {
+          "term": "nimble_host",
+          "bytes": 16752,
+          "source": "CONFIG_BT_NIMBLE_HOST_TASK_STACK_SIZE"
+        },
+        {
+          "term": "nimble_msys",
+          "bytes": 10768,
+          "source": "CONFIG_BT_NIMBLE_MSYS_1/2_BLOCK_COUNT x BLOCK_SIZE"
+        },
+        {
+          "term": "nimble_transport",
+          "bytes": 8796,
+          "source": "CONFIG_BT_NIMBLE_TRANSPORT_ACL/EVT counts x sizes"
+        },
+        {
+          "term": "control",
+          "bytes": 8560,
+          "source": "src/main.cpp control task"
+        },
+        {
+          "term": "control_queue",
+          "bytes": 228,
+          "source": "src/FurbleControl.cpp Control::getInstance(), m_QueueLength x sizeof(cmd_t)"
+        },
+        {
+          "term": "gps",
+          "bytes": 4464,
+          "source": "src/FurbleGPS.cpp gps task"
+        },
+        {
+          "term": "gps_uart_driver",
+          "bytes": 2212,
+          "source": "components/esp_driver_uart/src/uart.c uart_driver_install, uart_pattern_queue_reset"
+        },
+        {
+          "term": "companion",
+          "bytes": 3440,
+          "source": "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES",
+          "condition": "companion"
+        },
+        {
+          "term": "esp_timer companion disable",
+          "bytes": 48,
+          "condition": "companion",
+          "source": "src/FurbleCompanion*.cpp esp_timer_create, esp_timer.c heap_caps_calloc"
+        },
+        {
+          "term": "esp_timer companion shutter",
+          "bytes": 48,
+          "condition": "companion",
+          "source": "src/FurbleCompanion*.cpp esp_timer_create, esp_timer.c heap_caps_calloc"
+        },
+        {
+          "term": "ir",
+          "bytes": 4464,
+          "source": "src/FurbleIR.cpp IR_TASK_STACK_BYTES, internal fallback"
+        },
+        {
+          "term": "ir_queue",
+          "bytes": 104,
+          "source": "src/FurbleIR.cpp xQueueCreate(1, sizeof(protocol_t))"
+        },
+        {
+          "term": "ui_requests",
+          "bytes": 132,
+          "source": "src/FurbleUI.cpp m_RequestQueueLength x sizeof(request_t *)"
+        },
+        {
+          "term": "lvgl_draw",
+          "bytes": 816,
+          "source": "include/FurbleUIMemory.h drawBufferBytes, singleDrawBuffer"
+        }
+      ],
+      "attributable_bytes": 120388,
+      "derived_free_upper_bound": 134744,
+      "derived_free_without": {
+        "wifi": 157948,
+        "companion": 138280,
+        "wifi_and_companion": 161484
+      },
+      "condition": "WiFi with an SSID and the companion enabled, as in the measured seeds",
+      "derived_largest_upper_bound": 129984,
+      "status": "derived"
+    },
+    {
+      "env": "m5stick-c-plus",
+      "profile": "stickc-plus",
+      "chip": "esp32",
+      "elf_symbols": {
+        "_data_start": "0x3ffbdb60",
+        "_heap_start": "0x3ffcb1d8",
+        "_iram_end": "0x4009c080",
+        "_iram_start": "0x40080000"
+      },
+      "static_dram_bytes": 54904,
+      "dwarf_sizes": {
+        "StaticTask_t": 336,
+        "StaticQueue_t": 84,
+        "StaticRingbuffer_t": 112,
+        "uart_obj_t": 124,
+        "uart_event_t": 12,
+        "Furble::Control::cmd_t": 4,
+        "struct esp_timer": 32,
+        "esp_event_loop_instance_t": 24,
+        "esp_event_post_instance_t": 16
+      },
+      "heap_at_app_start": 255156,
+      "largest_span_at_app_start": 129984,
+      "attributable_boot": [
+        {
+          "term": "idle0",
+          "bytes": 1904,
+          "source": "components/freertos/port_common.c, CONFIG_FREERTOS_IDLE_TASK_STACKSIZE"
+        },
+        {
+          "term": "tmr_svc",
+          "bytes": 2416,
+          "source": "components/freertos/port_common.c, CONFIG_FREERTOS_TIMER_TASK_STACK_DEPTH"
+        },
+        {
+          "term": "main",
+          "bytes": 16752,
+          "source": "components/freertos/app_startup.c, CONFIG_ESP_MAIN_TASK_STACK_SIZE"
+        },
+        {
+          "term": "esp_timer",
+          "bytes": 3952,
+          "source": "CONFIG_ESP_TIMER_TASK_STACK_SIZE"
+        },
+        {
+          "term": "sys_evt",
+          "bytes": 2672,
+          "source": "CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE"
+        },
+        {
+          "term": "event_loop",
+          "bytes": 752,
+          "source": "esp_event.c: loop calloc, CONFIG_ESP_SYSTEM_EVENT_QUEUE_SIZE queue, mutex"
+        },
+        {
+          "term": "tiT",
+          "bytes": 3440,
+          "source": "CONFIG_LWIP_TCPIP_TASK_STACK_SIZE, esp_netif_init()"
+        },
+        {
+          "term": "wifi_static_rx",
+          "bytes": 16160,
+          "condition": "wifi",
+          "source": "CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM x 1600 (ESP-IDF Wi-Fi buffer usage)"
+        },
+        {
+          "term": "wifi_static_rx_mgmt",
+          "bytes": 2580,
+          "condition": "wifi",
+          "source": "CONFIG_ESP_WIFI_RX_MGMT_BUF_NUM_DEF x about 500 (esp_wifi Kconfig help)"
+        },
+        {
+          "term": "wifi_furble",
+          "bytes": 4464,
+          "source": "src/FurbleWiFi.cpp TASK_STACK",
+          "condition": "wifi"
+        },
+        {
+          "term": "btController",
+          "bytes": 4464,
+          "source": "components/esp_system/include/esp_task.h ESP_TASK_BT_CONTROLLER_STACK"
+        },
+        {
+          "term": "nimble_host",
+          "bytes": 16752,
+          "source": "CONFIG_BT_NIMBLE_HOST_TASK_STACK_SIZE"
+        },
+        {
+          "term": "nimble_msys",
+          "bytes": 10768,
+          "source": "CONFIG_BT_NIMBLE_MSYS_1/2_BLOCK_COUNT x BLOCK_SIZE"
+        },
+        {
+          "term": "nimble_transport",
+          "bytes": 8796,
+          "source": "CONFIG_BT_NIMBLE_TRANSPORT_ACL/EVT counts x sizes"
+        },
+        {
+          "term": "control",
+          "bytes": 8560,
+          "source": "src/main.cpp control task"
+        },
+        {
+          "term": "control_queue",
+          "bytes": 228,
+          "source": "src/FurbleControl.cpp Control::getInstance(), m_QueueLength x sizeof(cmd_t)"
+        },
+        {
+          "term": "gps",
+          "bytes": 4464,
+          "source": "src/FurbleGPS.cpp gps task"
+        },
+        {
+          "term": "gps_uart_driver",
+          "bytes": 2212,
+          "source": "components/esp_driver_uart/src/uart.c uart_driver_install, uart_pattern_queue_reset"
+        },
+        {
+          "term": "companion",
+          "bytes": 3440,
+          "source": "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES",
+          "condition": "companion"
+        },
+        {
+          "term": "esp_timer companion disable",
+          "bytes": 48,
+          "condition": "companion",
+          "source": "src/FurbleCompanion*.cpp esp_timer_create, esp_timer.c heap_caps_calloc"
+        },
+        {
+          "term": "esp_timer companion shutter",
+          "bytes": 48,
+          "condition": "companion",
+          "source": "src/FurbleCompanion*.cpp esp_timer_create, esp_timer.c heap_caps_calloc"
+        },
+        {
+          "term": "ir",
+          "bytes": 4464,
+          "source": "src/FurbleIR.cpp IR_TASK_STACK_BYTES, internal fallback"
+        },
+        {
+          "term": "ir_queue",
+          "bytes": 104,
+          "source": "src/FurbleIR.cpp xQueueCreate(1, sizeof(protocol_t))"
+        },
+        {
+          "term": "ui_requests",
+          "bytes": 132,
+          "source": "src/FurbleUI.cpp m_RequestQueueLength x sizeof(request_t *)"
+        },
+        {
+          "term": "lvgl_draw",
+          "bytes": 2176,
+          "source": "include/FurbleUIMemory.h drawBufferBytes, singleDrawBuffer"
+        }
+      ],
+      "attributable_bytes": 121748,
+      "derived_free_upper_bound": 133408,
+      "derived_free_without": {
+        "wifi": 156612,
+        "companion": 136944,
+        "wifi_and_companion": 160148
+      },
+      "condition": "WiFi with an SSID and the companion enabled, as in the measured seeds",
+      "derived_largest_upper_bound": 129984,
+      "status": "derived"
+    },
+    {
+      "env": "m5stick-s3",
+      "profile": "sticks3",
+      "chip": "esp32s3",
+      "elf_symbols": {
+        "_data_start": "0x3fca4700",
+        "_heap_start": "0x3fcb0158",
+        "_iram_end": "0x40394700",
+        "_iram_start": "0x40374000"
+      },
+      "static_dram_bytes": 47704,
+      "dwarf_sizes": {
+        "StaticTask_t": 336,
+        "StaticQueue_t": 84,
+        "StaticRingbuffer_t": 112,
+        "uart_obj_t": 124,
+        "uart_event_t": 12,
+        "Furble::Control::cmd_t": 4,
+        "struct esp_timer": 32,
+        "esp_event_loop_instance_t": 24,
+        "esp_event_post_instance_t": 16
+      },
+      "heap_at_app_start": 261800,
+      "largest_span_at_app_start": 261800,
+      "attributable_boot": [
+        {
+          "term": "idle0",
+          "bytes": 1904,
+          "source": "components/freertos/port_common.c, CONFIG_FREERTOS_IDLE_TASK_STACKSIZE"
+        },
+        {
+          "term": "tmr_svc",
+          "bytes": 2416,
+          "source": "components/freertos/port_common.c, CONFIG_FREERTOS_TIMER_TASK_STACK_DEPTH"
+        },
+        {
+          "term": "main",
+          "bytes": 12656,
+          "source": "components/freertos/app_startup.c, CONFIG_ESP_MAIN_TASK_STACK_SIZE"
+        },
+        {
+          "term": "esp_timer",
+          "bytes": 3952,
+          "source": "CONFIG_ESP_TIMER_TASK_STACK_SIZE"
+        },
+        {
+          "term": "sys_evt",
+          "bytes": 2672,
+          "source": "CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE"
+        },
+        {
+          "term": "event_loop",
+          "bytes": 752,
+          "source": "esp_event.c: loop calloc, CONFIG_ESP_SYSTEM_EVENT_QUEUE_SIZE queue, mutex"
+        },
+        {
+          "term": "tiT",
+          "bytes": 3440,
+          "source": "CONFIG_LWIP_TCPIP_TASK_STACK_SIZE, esp_netif_init()"
+        },
+        {
+          "term": "wifi_static_rx",
+          "bytes": 9696,
+          "condition": "wifi",
+          "source": "CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM x 1600 (ESP-IDF Wi-Fi buffer usage)"
+        },
+        {
+          "term": "wifi_static_rx_mgmt",
+          "bytes": 2580,
+          "condition": "wifi",
+          "source": "CONFIG_ESP_WIFI_RX_MGMT_BUF_NUM_DEF x about 500 (esp_wifi Kconfig help)"
+        },
+        {
+          "term": "wifi_furble",
+          "bytes": 4464,
+          "source": "src/FurbleWiFi.cpp TASK_STACK",
+          "condition": "wifi"
+        },
+        {
+          "term": "btController",
+          "bytes": 4464,
+          "source": "components/esp_system/include/esp_task.h ESP_TASK_BT_CONTROLLER_STACK"
+        },
+        {
+          "term": "nimble_host",
+          "bytes": 16752,
+          "source": "CONFIG_BT_NIMBLE_HOST_TASK_STACK_SIZE"
+        },
+        {
+          "term": "control",
+          "bytes": 8560,
+          "source": "src/main.cpp control task"
+        },
+        {
+          "term": "control_queue",
+          "bytes": 228,
+          "source": "src/FurbleControl.cpp Control::getInstance(), m_QueueLength x sizeof(cmd_t)"
+        },
+        {
+          "term": "gps",
+          "bytes": 4464,
+          "source": "src/FurbleGPS.cpp gps task"
+        },
+        {
+          "term": "gps_uart_driver",
+          "bytes": 2212,
+          "source": "components/esp_driver_uart/src/uart.c uart_driver_install, uart_pattern_queue_reset"
+        },
+        {
+          "term": "companion",
+          "bytes": 3440,
+          "source": "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES",
+          "condition": "companion"
+        },
+        {
+          "term": "esp_timer companion disable",
+          "bytes": 48,
+          "condition": "companion",
+          "source": "src/FurbleCompanion*.cpp esp_timer_create, esp_timer.c heap_caps_calloc"
+        },
+        {
+          "term": "esp_timer companion shutter",
+          "bytes": 48,
+          "condition": "companion",
+          "source": "src/FurbleCompanion*.cpp esp_timer_create, esp_timer.c heap_caps_calloc"
+        },
+        {
+          "term": "ir_queue",
+          "bytes": 104,
+          "source": "src/FurbleIR.cpp xQueueCreate(1, sizeof(protocol_t))"
+        },
+        {
+          "term": "ui_requests",
+          "bytes": 132,
+          "source": "src/FurbleUI.cpp m_RequestQueueLength x sizeof(request_t *)"
+        },
+        {
+          "term": "lvgl_draw",
+          "bytes": 2176,
+          "source": "include/FurbleUIMemory.h drawBufferBytes, singleDrawBuffer"
+        }
+      ],
+      "attributable_bytes": 87160,
+      "derived_free_upper_bound": 174640,
+      "derived_free_without": {
+        "wifi": 191380,
+        "companion": 178176,
+        "wifi_and_companion": 194916
+      },
+      "condition": "WiFi with an SSID and the companion enabled, as in the measured seeds",
+      "derived_largest_upper_bound": 174640,
+      "status": "derived",
+      "internal_reserved_for_caps_only": 32768,
+      "measured_free": 30007,
+      "measured_source": "sim/scenarios/e2e/hw-memory-post394-budget.txt",
+      "unattributed_gap": 144633
+    },
+    {
+      "env": "m5stack-core",
+      "profile": "core",
+      "chip": "esp32",
+      "elf_symbols": {
+        "_data_start": "0x3ffbdb60",
+        "_heap_start": "0x3ffcb208",
+        "_iram_end": "0x4009c080",
+        "_iram_start": "0x40080000"
+      },
+      "static_dram_bytes": 54952,
+      "dwarf_sizes": {
+        "StaticTask_t": 336,
+        "StaticQueue_t": 84,
+        "StaticRingbuffer_t": 112,
+        "uart_obj_t": 124,
+        "uart_event_t": 12,
+        "Furble::Control::cmd_t": 4,
+        "struct esp_timer": 32,
+        "esp_event_loop_instance_t": 24,
+        "esp_event_post_instance_t": 16
+      },
+      "heap_at_app_start": 255108,
+      "largest_span_at_app_start": 129984,
+      "attributable_boot": [
+        {
+          "term": "idle0",
+          "bytes": 1904,
+          "source": "components/freertos/port_common.c, CONFIG_FREERTOS_IDLE_TASK_STACKSIZE"
+        },
+        {
+          "term": "tmr_svc",
+          "bytes": 2416,
+          "source": "components/freertos/port_common.c, CONFIG_FREERTOS_TIMER_TASK_STACK_DEPTH"
+        },
+        {
+          "term": "main",
+          "bytes": 16752,
+          "source": "components/freertos/app_startup.c, CONFIG_ESP_MAIN_TASK_STACK_SIZE"
+        },
+        {
+          "term": "esp_timer",
+          "bytes": 3952,
+          "source": "CONFIG_ESP_TIMER_TASK_STACK_SIZE"
+        },
+        {
+          "term": "sys_evt",
+          "bytes": 2672,
+          "source": "CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE"
+        },
+        {
+          "term": "event_loop",
+          "bytes": 752,
+          "source": "esp_event.c: loop calloc, CONFIG_ESP_SYSTEM_EVENT_QUEUE_SIZE queue, mutex"
+        },
+        {
+          "term": "tiT",
+          "bytes": 3440,
+          "source": "CONFIG_LWIP_TCPIP_TASK_STACK_SIZE, esp_netif_init()"
+        },
+        {
+          "term": "wifi_static_rx",
+          "bytes": 16160,
+          "condition": "wifi",
+          "source": "CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM x 1600 (ESP-IDF Wi-Fi buffer usage)"
+        },
+        {
+          "term": "wifi_static_rx_mgmt",
+          "bytes": 2580,
+          "condition": "wifi",
+          "source": "CONFIG_ESP_WIFI_RX_MGMT_BUF_NUM_DEF x about 500 (esp_wifi Kconfig help)"
+        },
+        {
+          "term": "wifi_furble",
+          "bytes": 4464,
+          "source": "src/FurbleWiFi.cpp TASK_STACK",
+          "condition": "wifi"
+        },
+        {
+          "term": "btController",
+          "bytes": 4464,
+          "source": "components/esp_system/include/esp_task.h ESP_TASK_BT_CONTROLLER_STACK"
+        },
+        {
+          "term": "nimble_host",
+          "bytes": 16752,
+          "source": "CONFIG_BT_NIMBLE_HOST_TASK_STACK_SIZE"
+        },
+        {
+          "term": "nimble_msys",
+          "bytes": 10768,
+          "source": "CONFIG_BT_NIMBLE_MSYS_1/2_BLOCK_COUNT x BLOCK_SIZE"
+        },
+        {
+          "term": "nimble_transport",
+          "bytes": 8796,
+          "source": "CONFIG_BT_NIMBLE_TRANSPORT_ACL/EVT counts x sizes"
+        },
+        {
+          "term": "control",
+          "bytes": 8560,
+          "source": "src/main.cpp control task"
+        },
+        {
+          "term": "control_queue",
+          "bytes": 228,
+          "source": "src/FurbleControl.cpp Control::getInstance(), m_QueueLength x sizeof(cmd_t)"
+        },
+        {
+          "term": "gps",
+          "bytes": 4464,
+          "source": "src/FurbleGPS.cpp gps task"
+        },
+        {
+          "term": "gps_uart_driver",
+          "bytes": 2212,
+          "source": "components/esp_driver_uart/src/uart.c uart_driver_install, uart_pattern_queue_reset"
+        },
+        {
+          "term": "companion",
+          "bytes": 3440,
+          "source": "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES",
+          "condition": "companion"
+        },
+        {
+          "term": "esp_timer companion disable",
+          "bytes": 48,
+          "condition": "companion",
+          "source": "src/FurbleCompanion*.cpp esp_timer_create, esp_timer.c heap_caps_calloc"
+        },
+        {
+          "term": "esp_timer companion shutter",
+          "bytes": 48,
+          "condition": "companion",
+          "source": "src/FurbleCompanion*.cpp esp_timer_create, esp_timer.c heap_caps_calloc"
+        },
+        {
+          "term": "sd",
+          "bytes": 6512,
+          "source": "src/FurbleSD.cpp WRITER_STACK_BYTES"
+        },
+        {
+          "term": "sd_queue",
+          "bytes": 484,
+          "source": "src/FurbleSD.cpp WRITER_QUEUE_LENGTH x sizeof(message_t)"
+        },
+        {
+          "term": "sd_power_off_done",
+          "bytes": 100,
+          "source": "src/FurbleSD.cpp xSemaphoreCreateBinary(), a zero-item queue"
+        },
+        {
+          "term": "ui_requests",
+          "bytes": 132,
+          "source": "src/FurbleUI.cpp m_RequestQueueLength x sizeof(request_t *)"
+        },
+        {
+          "term": "lvgl_draw",
+          "bytes": 20512,
+          "source": "include/FurbleUIMemory.h drawBufferBytes, singleDrawBuffer"
+        }
+      ],
+      "attributable_bytes": 142612,
+      "derived_free_upper_bound": 112496,
+      "derived_free_without": {
+        "wifi": 135700,
+        "companion": 116032,
+        "wifi_and_companion": 139236
+      },
+      "condition": "WiFi with an SSID and the companion enabled, as in the measured seeds",
+      "derived_largest_upper_bound": 112496,
+      "status": "derived"
+    },
+    {
+      "env": "m5stack-core2",
+      "profile": "core2",
+      "chip": "esp32",
+      "elf_symbols": {
+        "_data_start": "0x3ffbdb60",
+        "_heap_start": "0x3ffcb7a0",
+        "_iram_end": "0x4009c2cc",
+        "_iram_start": "0x40080000"
+      },
+      "static_dram_bytes": 56384,
+      "dwarf_sizes": {
+        "StaticTask_t": 336,
+        "StaticQueue_t": 84,
+        "StaticRingbuffer_t": 112,
+        "uart_obj_t": 124,
+        "uart_event_t": 12,
+        "Furble::Control::cmd_t": 4,
+        "struct esp_timer": 32,
+        "esp_event_loop_instance_t": 24,
+        "esp_event_post_instance_t": 16
+      },
+      "heap_at_app_start": 253676,
+      "largest_span_at_app_start": 129984,
+      "attributable_boot": [
+        {
+          "term": "idle0",
+          "bytes": 1904,
+          "source": "components/freertos/port_common.c, CONFIG_FREERTOS_IDLE_TASK_STACKSIZE"
+        },
+        {
+          "term": "tmr_svc",
+          "bytes": 2416,
+          "source": "components/freertos/port_common.c, CONFIG_FREERTOS_TIMER_TASK_STACK_DEPTH"
+        },
+        {
+          "term": "main",
+          "bytes": 16752,
+          "source": "components/freertos/app_startup.c, CONFIG_ESP_MAIN_TASK_STACK_SIZE"
+        },
+        {
+          "term": "esp_timer",
+          "bytes": 3952,
+          "source": "CONFIG_ESP_TIMER_TASK_STACK_SIZE"
+        },
+        {
+          "term": "sys_evt",
+          "bytes": 2672,
+          "source": "CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE"
+        },
+        {
+          "term": "event_loop",
+          "bytes": 752,
+          "source": "esp_event.c: loop calloc, CONFIG_ESP_SYSTEM_EVENT_QUEUE_SIZE queue, mutex"
+        },
+        {
+          "term": "tiT",
+          "bytes": 3440,
+          "source": "CONFIG_LWIP_TCPIP_TASK_STACK_SIZE, esp_netif_init()"
+        },
+        {
+          "term": "wifi_static_rx",
+          "bytes": 16160,
+          "condition": "wifi",
+          "source": "CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM x 1600 (ESP-IDF Wi-Fi buffer usage)"
+        },
+        {
+          "term": "wifi_static_rx_mgmt",
+          "bytes": 2580,
+          "condition": "wifi",
+          "source": "CONFIG_ESP_WIFI_RX_MGMT_BUF_NUM_DEF x about 500 (esp_wifi Kconfig help)"
+        },
+        {
+          "term": "wifi_furble",
+          "bytes": 4464,
+          "source": "src/FurbleWiFi.cpp TASK_STACK",
+          "condition": "wifi"
+        },
+        {
+          "term": "btController",
+          "bytes": 4464,
+          "source": "components/esp_system/include/esp_task.h ESP_TASK_BT_CONTROLLER_STACK"
+        },
+        {
+          "term": "nimble_host",
+          "bytes": 16752,
+          "source": "CONFIG_BT_NIMBLE_HOST_TASK_STACK_SIZE"
+        },
+        {
+          "term": "nimble_msys",
+          "bytes": 10768,
+          "source": "CONFIG_BT_NIMBLE_MSYS_1/2_BLOCK_COUNT x BLOCK_SIZE"
+        },
+        {
+          "term": "nimble_transport",
+          "bytes": 8796,
+          "source": "CONFIG_BT_NIMBLE_TRANSPORT_ACL/EVT counts x sizes"
+        },
+        {
+          "term": "control",
+          "bytes": 8560,
+          "source": "src/main.cpp control task"
+        },
+        {
+          "term": "control_queue",
+          "bytes": 228,
+          "source": "src/FurbleControl.cpp Control::getInstance(), m_QueueLength x sizeof(cmd_t)"
+        },
+        {
+          "term": "gps",
+          "bytes": 4464,
+          "source": "src/FurbleGPS.cpp gps task"
+        },
+        {
+          "term": "gps_uart_driver",
+          "bytes": 2212,
+          "source": "components/esp_driver_uart/src/uart.c uart_driver_install, uart_pattern_queue_reset"
+        },
+        {
+          "term": "companion",
+          "bytes": 3440,
+          "source": "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES",
+          "condition": "companion"
+        },
+        {
+          "term": "esp_timer companion disable",
+          "bytes": 48,
+          "condition": "companion",
+          "source": "src/FurbleCompanion*.cpp esp_timer_create, esp_timer.c heap_caps_calloc"
+        },
+        {
+          "term": "esp_timer companion shutter",
+          "bytes": 48,
+          "condition": "companion",
+          "source": "src/FurbleCompanion*.cpp esp_timer_create, esp_timer.c heap_caps_calloc"
+        },
+        {
+          "term": "sd",
+          "bytes": 6512,
+          "source": "src/FurbleSD.cpp WRITER_STACK_BYTES"
+        },
+        {
+          "term": "sd_queue",
+          "bytes": 484,
+          "source": "src/FurbleSD.cpp WRITER_QUEUE_LENGTH x sizeof(message_t)"
+        },
+        {
+          "term": "sd_power_off_done",
+          "bytes": 100,
+          "source": "src/FurbleSD.cpp xSemaphoreCreateBinary(), a zero-item queue"
+        },
+        {
+          "term": "ui_requests",
+          "bytes": 132,
+          "source": "src/FurbleUI.cpp m_RequestQueueLength x sizeof(request_t *)"
+        },
+        {
+          "term": "lvgl_draw",
+          "bytes": 20512,
+          "source": "include/FurbleUIMemory.h drawBufferBytes, singleDrawBuffer"
+        }
+      ],
+      "attributable_bytes": 142612,
+      "derived_free_upper_bound": 111064,
+      "derived_free_without": {
+        "wifi": 134268,
+        "companion": 114600,
+        "wifi_and_companion": 137804
+      },
+      "condition": "WiFi with an SSID and the companion enabled, as in the measured seeds",
+      "derived_largest_upper_bound": 111064,
+      "status": "derived"
+    },
+    {
+      "env": "waveshare-s3-eth",
+      "profile": "waveshare-s3-eth",
+      "chip": "esp32s3",
+      "elf_symbols": {
+        "_data_start": "0x3fca4400",
+        "_heap_start": "0x3fcb0fa8",
+        "_iram_end": "0x40394400",
+        "_iram_start": "0x40374000"
+      },
+      "static_dram_bytes": 52136,
+      "dwarf_sizes": {
+        "StaticTask_t": 348,
+        "StaticQueue_t": 92,
+        "StaticRingbuffer_t": 112,
+        "uart_obj_t": 124,
+        "uart_event_t": 12,
+        "Furble::Control::cmd_t": 4,
+        "struct esp_timer": 32,
+        "esp_event_loop_instance_t": 24,
+        "esp_event_post_instance_t": 16
+      },
+      "heap_at_app_start": 258136,
+      "largest_span_at_app_start": 258136,
+      "attributable_boot": [
+        {
+          "term": "idle0",
+          "bytes": 1916,
+          "source": "components/freertos/port_common.c, CONFIG_FREERTOS_IDLE_TASK_STACKSIZE"
+        },
+        {
+          "term": "tmr_svc",
+          "bytes": 2428,
+          "source": "components/freertos/port_common.c, CONFIG_FREERTOS_TIMER_TASK_STACK_DEPTH"
+        },
+        {
+          "term": "main",
+          "bytes": 16764,
+          "source": "components/freertos/app_startup.c, CONFIG_ESP_MAIN_TASK_STACK_SIZE"
+        },
+        {
+          "term": "esp_timer",
+          "bytes": 3964,
+          "source": "CONFIG_ESP_TIMER_TASK_STACK_SIZE"
+        },
+        {
+          "term": "sys_evt",
+          "bytes": 2684,
+          "source": "CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE"
+        },
+        {
+          "term": "event_loop",
+          "bytes": 768,
+          "source": "esp_event.c: loop calloc, CONFIG_ESP_SYSTEM_EVENT_QUEUE_SIZE queue, mutex"
+        },
+        {
+          "term": "tiT",
+          "bytes": 3452,
+          "source": "CONFIG_LWIP_TCPIP_TASK_STACK_SIZE, esp_netif_init()"
+        },
+        {
+          "term": "wifi_static_rx",
+          "bytes": 16160,
+          "condition": "wifi",
+          "source": "CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM x 1600 (ESP-IDF Wi-Fi buffer usage)"
+        },
+        {
+          "term": "wifi_static_rx_mgmt",
+          "bytes": 2580,
+          "condition": "wifi",
+          "source": "CONFIG_ESP_WIFI_RX_MGMT_BUF_NUM_DEF x about 500 (esp_wifi Kconfig help)"
+        },
+        {
+          "term": "wifi_furble",
+          "bytes": 4476,
+          "source": "src/FurbleWiFi.cpp TASK_STACK",
+          "condition": "wifi"
+        },
+        {
+          "term": "btController",
+          "bytes": 4476,
+          "source": "components/esp_system/include/esp_task.h ESP_TASK_BT_CONTROLLER_STACK"
+        },
+        {
+          "term": "nimble_host",
+          "bytes": 16764,
+          "source": "CONFIG_BT_NIMBLE_HOST_TASK_STACK_SIZE"
+        },
+        {
+          "term": "nimble_msys",
+          "bytes": 10768,
+          "source": "CONFIG_BT_NIMBLE_MSYS_1/2_BLOCK_COUNT x BLOCK_SIZE"
+        },
+        {
+          "term": "nimble_transport",
+          "bytes": 8796,
+          "source": "CONFIG_BT_NIMBLE_TRANSPORT_ACL/EVT counts x sizes"
+        },
+        {
+          "term": "control",
+          "bytes": 8572,
+          "source": "src/main.cpp control task"
+        },
+        {
+          "term": "control_queue",
+          "bytes": 236,
+          "source": "src/FurbleControl.cpp Control::getInstance(), m_QueueLength x sizeof(cmd_t)"
+        },
+        {
+          "term": "gps",
+          "bytes": 4476,
+          "source": "src/FurbleGPS.cpp gps task"
+        },
+        {
+          "term": "gps_uart_driver",
+          "bytes": 2260,
+          "source": "components/esp_driver_uart/src/uart.c uart_driver_install, uart_pattern_queue_reset"
+        },
+        {
+          "term": "companion",
+          "bytes": 3452,
+          "source": "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES",
+          "condition": "companion"
+        },
+        {
+          "term": "esp_timer companion disable",
+          "bytes": 48,
+          "condition": "companion",
+          "source": "src/FurbleCompanion*.cpp esp_timer_create, esp_timer.c heap_caps_calloc"
+        },
+        {
+          "term": "esp_timer companion shutter",
+          "bytes": 48,
+          "condition": "companion",
+          "source": "src/FurbleCompanion*.cpp esp_timer_create, esp_timer.c heap_caps_calloc"
+        },
+        {
+          "term": "headless_requests",
+          "bytes": 140,
+          "source": "src/main.cpp HEADLESS_REQUEST_QUEUE_LENGTH x sizeof(headless_request_t *)"
+        }
+      ],
+      "attributable_bytes": 115228,
+      "derived_free_upper_bound": 142908,
+      "derived_free_without": {
+        "wifi": 166124,
+        "companion": 146456,
+        "wifi_and_companion": 169672
+      },
+      "condition": "WiFi with an SSID and the companion enabled, as in the measured seeds",
+      "derived_largest_upper_bound": 142908,
+      "status": "derived",
+      "internal_reserved_for_caps_only": 32768
+    }
+  ]
+}

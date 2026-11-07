@@ -57,6 +57,35 @@ The runner profiles all supported board identities, then the WebUI and MQTT
 budget scenarios, and fails when free, largest, fragmentation, leaks or a
 component size misses the golden budget.
 
+## Per-board boot heap
+
+Each board profile with a release env boots on its own pool from
+`sim/coverage/board_heap.json`, written by `tools/derive_sim_heap.py` from the board's `firmware.elf`, its
+sdkconfig and the pinned ESP-IDF heap region tables. The figure is the
+internal 8-bit heap at app start minus the boot allocations the source sizes,
+each term cited in the JSON. It is an upper bound: the closed WiFi driver,
+NimBLE host state, lwIP and the LVGL object tree are not attributable from
+code, and on the StickS3 they account for about 141 KiB against the measured
+console figure. Those `profile-*` budget floors equal the derived pair.
+`stickc-plus2` and `headless-s3` have no release env to derive from; they are
+listed in `UNDERIVED_PROFILES` in `sim/scripts/run-memory-profile.py` and keep
+the simulator default pool. Any other profile without a derived pool fails the
+run.
+
+Regenerate after a change that moves static RAM or a boot allocation:
+
+```sh
+for env in m5stick-c m5stick-c-plus m5stick-s3 m5stack-core m5stack-core2 waveshare-s3-eth; do
+  FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e "$env"
+done
+python3 tools/derive_sim_heap.py
+python3 -m unittest tests.test_sim_profile_sdkconfig
+```
+
+Update the `profile-*` floors in `sim/coverage/memory_budget.json` to the new
+pair; the unit test fails until they match. Restore any `sdkconfig.<env>` the
+builds rewrote unless all six release files change together.
+
 ## Failure injection
 
 Seeds:

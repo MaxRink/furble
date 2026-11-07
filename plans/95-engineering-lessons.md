@@ -133,6 +133,12 @@ The root CLAUDE.md lists the short form of these. The detail lives here.
   before staging. A marker once slipped into `src/CLAUDE.md` because the grep
   was scoped to source and header directories. Do not rely on the build to catch
   it: a marker in an unreached code path produces no error.
+- Never `git stash`, `checkout` or `restore` files while a `pio run` is in
+  progress. ESP-IDF rewrites `sdkconfig.<env>` in place during configure, so a
+  stash and pop in that window left `sdkconfig.m5stick-c` 489 lines short and
+  the build reading it. Stop the build, `git checkout -- sdkconfig.*`, rebuild.
+  A concurrent `pio run` also refreshes `managed_components/`, which breaks a
+  simulator build running at the same time; run them one after the other.
 - The two-gate merge rule. Code-review approval and full per-check CI green are
   both independently necessary. Each has missed a real defect the other caught.
   CI green alone missed a runtime SIGSEGV. Review alone missed it too. Require

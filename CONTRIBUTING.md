@@ -184,6 +184,11 @@ python3 sim/scripts/run-permutations.py --compact
 python3 tools/check_flash_readiness.py --ready
 ```
 
+`run-memory-profile.py` seeds each board from `sim/coverage/board_heap.json`.
+After a change that moves static RAM or a boot allocation, rebuild the six
+release envs and run `python3 tools/derive_sim_heap.py`; see
+`docs/sim-memory-profiler.md`.
+
 `run-panic-fixtures.sh` needs the default binary and the `FURBLE_SIM_MQTT=1`
 binary. Every sdkconfig aborts on a failed allocation, so the simulator does
 too: each fixture must exit 3 with `SIM PANIC` and leave a panic record for the

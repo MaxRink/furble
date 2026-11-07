@@ -37,21 +37,21 @@
       "max_leaks": 0
     },
     "profile-stickc": {
-      "min_internal_free": 200000,
-      "min_internal_largest": 160000,
+      "min_internal_free": 134744,
+      "min_internal_largest": 129984,
       "max_leaks": 0,
       "components": {
         "main_stack": 16384,
-        "lvgl_draw": 2560
+        "lvgl_draw": 800
       }
     },
     "profile-stickc-plus": {
-      "min_internal_free": 200000,
-      "min_internal_largest": 160000,
+      "min_internal_free": 133408,
+      "min_internal_largest": 129984,
       "max_leaks": 0,
       "components": {
         "main_stack": 16384,
-        "lvgl_draw": 4320
+        "lvgl_draw": 2160
       }
     },
     "profile-stickc-plus2": {
@@ -60,12 +60,12 @@
       "max_leaks": 0,
       "components": {
         "main_stack": 16384,
-        "lvgl_draw": 4320
+        "lvgl_draw": 2160
       }
     },
     "profile-core": {
-      "min_internal_free": 200000,
-      "min_internal_largest": 160000,
+      "min_internal_free": 112496,
+      "min_internal_largest": 112496,
       "max_leaks": 0,
       "components": {
         "main_stack": 16384,
@@ -73,8 +73,8 @@
       }
     },
     "profile-core2": {
-      "min_internal_free": 200000,
-      "min_internal_largest": 160000,
+      "min_internal_free": 111064,
+      "min_internal_largest": 111064,
       "max_leaks": 0,
       "components": {
         "main_stack": 16384,
@@ -86,22 +86,22 @@
       "min_internal_largest": 160000,
       "max_leaks": 0,
       "components": {
-        "main_stack": 8192,
+        "main_stack": 16384,
         "lvgl_draw": 0
       }
     },
     "profile-waveshare-s3-eth": {
-      "min_internal_free": 200000,
-      "min_internal_largest": 160000,
+      "min_internal_free": 142908,
+      "min_internal_largest": 142908,
       "max_leaks": 0,
       "components": {
-        "main_stack": 8192,
+        "main_stack": 16384,
         "lvgl_draw": 0
       }
     },
     "profile-sticks3": {
-      "min_internal_free": 200000,
-      "min_internal_largest": 160000,
+      "min_internal_free": 174640,
+      "min_internal_largest": 174640,
       "max_leaks": 0,
       "components": {
         "main_stack": 12288,
