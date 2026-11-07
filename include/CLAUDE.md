@@ -204,8 +204,10 @@ settings-touching rebase.
   event queue (PSRAM when the queue is there) and never frees it, because a
   stopped client may still deliver a late callback. `m_IncomingMutex` guards it
   for overlapping clients; hold it only across filling and queueing the copy.
-  Without PSRAM the start gate reserves `EVENT_STORAGE_BYTES`, and any internal
-  fallback after a failed PSRAM attempt re-runs the gate first.
+  Without PSRAM the start gate reserves `EVENT_STORAGE_BYTES`. A failed
+  allocation aborts on every board, so the queue and the copy pick PSRAM from a
+  fresh largest-block reading before allocating, never by trying and falling
+  back, and an internal choice re-runs the start gate first.
 - `FurbleUIMemory.h` owns the panel-sized LVGL draw-buffer contract. Narrow
   panels use one buffer and wait for the SPI DMA before `lv_disp_flush_ready()`;
   wide panels keep two buffers. Both stay DMA-capable internal RAM. Update

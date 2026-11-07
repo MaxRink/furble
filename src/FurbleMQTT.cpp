@@ -706,9 +706,20 @@ bool MQTT::startClient(void) {
     return false;
   }
 
-  // A PSRAM attempt can still fail, so every internal fallback re-runs the
-  // start gate on a fresh reading with its own reserve. The admission above
-  // reserved nothing internal when PSRAM looked large enough.
+  // Every board aborts on a failed allocation
+  // (CONFIG_HEAP_ABORT_WHEN_ALLOCATION_FAILS), so a failed PSRAM attempt never
+  // returns to fall back. Choose the memory from a fresh largest-block reading
+  // before allocating instead, and re-run the start gate whenever the choice
+  // is internal: the admission above reserved nothing internal when PSRAM
+  // looked large enough.
+  const auto inPsram = [](size_t bytes) {
+#if defined(CONFIG_SPIRAM)
+    return heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) >= bytes;
+#else
+    (void)bytes;
+    return false;
+#endif
+  };
   const auto internalAdmits = [secure](size_t extraBytes, size_t extraLargest) {
     const auto fallback = MQTTMemory::startGate(
         heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
@@ -729,12 +740,9 @@ bool MQTT::startClient(void) {
     // it with the cache enabled, and no code writes NVS from the MQTT path.
 #if defined(CONFIG_SPIRAM) && defined(CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM) \
     && CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM
-    if (queueInPsram) {
+    if (inPsram(MQTTMemory::EVENT_QUEUE_BYTES)) {
       m_EventQueue = xQueueCreateWithCaps(EVENT_QUEUE_LENGTH, sizeof(queued_event_t),
                                           MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-      if (m_EventQueue == nullptr) {
-        ESP_LOGW(MQTT_LOG_TAG, "MQTT event queue PSRAM allocation failed, using internal RAM");
-      }
     }
 #endif
     if (m_EventQueue == nullptr) {
@@ -756,15 +764,9 @@ bool MQTT::startClient(void) {
       "INCOMING_EVENT_BYTES must match queued_event_t on the target");
   if (m_Incoming == nullptr) {
     void *incoming = nullptr;
-#if defined(CONFIG_SPIRAM)
-    if (queueInPsram) {
+    if (inPsram(sizeof(queued_event_t))) {
       incoming = heap_caps_malloc(sizeof(queued_event_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    }
-#endif
-    if (incoming == nullptr) {
-      if (!internalAdmits(MQTTMemory::INCOMING_EVENT_BYTES, MQTTMemory::INCOMING_EVENT_BYTES)) {
-        return false;
-      }
+    } else if (internalAdmits(MQTTMemory::INCOMING_EVENT_BYTES, MQTTMemory::INCOMING_EVENT_BYTES)) {
       incoming = heap_caps_malloc(sizeof(queued_event_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     }
     if (incoming == nullptr) {
