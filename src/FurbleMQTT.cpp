@@ -417,6 +417,24 @@ TickType_t MQTT::taskWaitTicks(void) const {
   return pdMS_TO_TICKS(static_cast<TickType_t>(std::max<uint64_t>(wait_ms, 1)));
 }
 
+MQTT::start_extra_t MQTT::startExtra(void) const {
+  const size_t psramLargest = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
+  const bool queueInPsram = psramLargest >= MQTTMemory::EVENT_QUEUE_BLOCK_BYTES;
+  // The queue and the incoming copy survive stopClient(), so reserve only the
+  // blocks still missing; a restart must not count them twice. Without PSRAM
+  // they are internal allocations and the largest block must hold the bigger
+  // of the two, not their sum. Otherwise the gate admits a client that cannot
+  // allocate them and burns the retry budget.
+  const size_t queueMissing = (m_EventQueue == nullptr) ? MQTTMemory::EVENT_QUEUE_BLOCK_BYTES : 0;
+  const size_t incomingMissing =
+      (m_Incoming == nullptr) ? MQTTMemory::INCOMING_EVENT_BLOCK_BYTES : 0;
+  if (queueInPsram) {
+    return {0, SIZE_MAX};
+  }
+  return {queueMissing + incomingMissing,
+          queueMissing > incomingMissing ? queueMissing : incomingMissing};
+}
+
 void MQTT::taskStep(void) {
   bool reload = false;
   bool manual_disconnect = false;
@@ -484,7 +502,9 @@ void MQTT::taskStep(void) {
     return m_EnabledCached;
   }();
   // A memory pause is not a connect failure; the client restarts through
-  // startGate() once the governor clears.
+  // startGate() once the governor clears. Report the storage that start still
+  // has to allocate, so the governor leaves RED only when it fits.
+  MemoryPressure::setMQTTStartExtra((enabled && (m_Client == nullptr)) ? startExtra().bytes : 0);
   const bool paused = MemoryPressure::pausesMQTT(MemoryPressure::current());
   if (!enabled || manual_disconnect || blocked || paused || !isConfigured()) {
     if (m_Client != nullptr) {
@@ -691,19 +711,11 @@ bool MQTT::startClient(void) {
   const bool secure = (m_URI.rfind("mqtts://", 0) == 0);
   const size_t freeBytes = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
   const size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-  const size_t psramLargest = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
-  const bool queueInPsram = psramLargest >= MQTTMemory::EVENT_QUEUE_BLOCK_BYTES;
-  // The queue and the incoming copy survive stopClient(), so reserve only the
-  // blocks still missing; a restart must not count them twice. Without PSRAM
-  // they are internal allocations and the largest block must hold the bigger
-  // of the two, not their sum. Otherwise the gate admits a client that cannot
-  // allocate them and burns the retry budget.
-  const size_t queueMissing = (m_EventQueue == nullptr) ? MQTTMemory::EVENT_QUEUE_BLOCK_BYTES : 0;
   const size_t incomingMissing =
       (m_Incoming == nullptr) ? MQTTMemory::INCOMING_EVENT_BLOCK_BYTES : 0;
-  const auto gate = MQTTMemory::startGate(
-      freeBytes, largest, secure, queueInPsram ? 0 : queueMissing + incomingMissing,
-      queueMissing > incomingMissing ? queueMissing : incomingMissing);
+  const start_extra_t extra = startExtra();
+  const auto gate =
+      MQTTMemory::startGate(freeBytes, largest, secure, extra.bytes, extra.largestBlock);
   if (!gate.open) {
     // Defer instead of letting esp-mqtt allocate its task and buffers into a
     // pool that cannot hold them. The owner counts this as a failed attempt, so

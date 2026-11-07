@@ -144,6 +144,12 @@ class MQTT {
   void handleLocation(const std::string &payload);
 
   bool networkReady(void) const;
+  /** Internal storage the next client start must allocate beyond its floor. */
+  struct start_extra_t {
+    size_t bytes;
+    size_t largestBlock;
+  };
+  start_extra_t startExtra(void) const;
   bool startClient(void);
   void stopClient(void);
   void loadTopics(void);

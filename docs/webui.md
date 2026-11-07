@@ -76,7 +76,7 @@ the saved settings never change:
 | Level | Enter when | Paused | Leave when (five readings) |
 | :--- | :--- | :--- | :--- |
 | `amber` | free < 12,288 or largest < 8,192 | WebUI server | free >= 20,480 and largest >= 12,288 |
-| `red` | free < 8,192 or largest < 6,144 | WebUI server and MQTT client | free >= 19,456 (31,452 on the Core2, which has no PSRAM for the MQTT event queue) and largest >= 10,240 |
+| `red` | free < 8,192 or largest < 6,144 | WebUI server and MQTT client | free >= 19,456 and largest >= 10,240; while the MQTT event queue is not yet allocated and has to be internal (the Core2 has no PSRAM), add its 11,996 bytes |
 
 The thresholds keep room for a camera connect, whose 4 KiB control task must
 always fit. A level is left only when the paused service fits above it again,

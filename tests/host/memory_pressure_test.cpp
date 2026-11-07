@@ -17,10 +17,14 @@ void check(bool ok, const char *what) {
   }
 }
 
-level_t feed(Governor &governor, int ticks, size_t freeBytes, size_t largest) {
+level_t feed(Governor &governor,
+             int ticks,
+             size_t freeBytes,
+             size_t largest,
+             size_t mqttExtra = 0) {
   level_t level = governor.level();
   for (int i = 0; i < ticks; i++) {
-    level = governor.update(freeBytes, largest);
+    level = governor.update(freeBytes, largest, mqttExtra);
   }
   return level;
 }
@@ -50,12 +54,23 @@ int main() {
   check(feed(governor, EXIT_TICKS * 2, redExit - 1, 30000) == RED,
         "red holds until MQTT fits again");
   check(feed(governor, EXIT_TICKS, redExit, 30000) == AMBER, "red steps up to amber");
-  // The host build has no CONFIG_SPIRAM, like the Core2: leaving RED must admit
-  // a first mqtts:// start that still has to allocate its queue internally.
-  check(Furble::MQTTMemory::startGate(redExit, 30000, true, Furble::MQTTMemory::EVENT_STORAGE_BYTES,
-                                      Furble::MQTTMemory::EVENT_QUEUE_BLOCK_BYTES)
-            .open,
-        "red clears only when a first TLS start with internal queue fits");
+  // A client whose queue and incoming copy are still missing and will be
+  // internal (no PSRAM, or PSRAM too fragmented) reports that storage. RED
+  // then holds at the plain exit and clears only where that first mqtts://
+  // start passes its own gate, so a refused start cannot spend the retries.
+  {
+    constexpr size_t extra = Furble::MQTTMemory::EVENT_STORAGE_BYTES;
+    Governor internalQueue;
+    feed(internalQueue, ENTER_TICKS, 6000, 30000);
+    check(feed(internalQueue, EXIT_TICKS * 2, redExit, 30000, extra) == RED,
+          "red holds while the missing internal queue does not fit");
+    check(feed(internalQueue, EXIT_TICKS, redExit + extra, 30000, extra) == AMBER,
+          "red clears once the internal queue fits too");
+    check(Furble::MQTTMemory::startGate(redExit + extra, 30000, true, extra,
+                                        Furble::MQTTMemory::EVENT_QUEUE_BLOCK_BYTES)
+              .open,
+          "a first TLS start with an internal queue fits at the red exit");
+  }
   const size_t amberExit = ENTER[AMBER].freeBytes + RESTORE_BYTES[AMBER];
   check(feed(governor, EXIT_TICKS - 1, amberExit, 30000) == AMBER,
         "amber waits for a sustained recovery");

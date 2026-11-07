@@ -4,10 +4,6 @@
 #include <cstddef>
 #include <cstdint>
 
-#if __has_include(<sdkconfig.h>)
-#include <sdkconfig.h>
-#endif
-
 #include "FurbleMQTTMemory.h"
 #include "FurbleWebUIMemory.h"
 
@@ -71,22 +67,18 @@ inline constexpr threshold_t ENTER[] = {
  * - RED, MQTT client: `MQTTMemory::START_TLS_INTERNAL_FREE_FLOOR`. The
  *   `mqtts://` start floor covers the 6 KiB TLS worker, so a returning secure
  *   client cannot push free back under RED. A plain client needs less and only
- *   recovers later. Without PSRAM (Core2) the first start also allocates the
- *   event queue and incoming copy internally, so `EVENT_STORAGE_BYTES` is
- *   added. Otherwise RED could clear inside the start gate's floor and each
- *   refused start would spend the retry budget until MQTT blocks.
+ *   recovers later. When the client's event queue or incoming copy is still
+ *   missing and will be internal (no PSRAM, or PSRAM too fragmented), its next
+ *   start needs those bytes too. MQTT reports them through
+ *   `setMQTTStartExtra()` from the same calculation its start gate uses, and
+ *   RED adds them. Otherwise RED could clear inside the start gate's floor and
+ *   each refused start would spend the retry budget until MQTT blocks.
  * Each service still passes its own start gate when it returns.
  */
-#if defined(CONFIG_SPIRAM)
-inline constexpr size_t MQTT_RESTORE_BYTES = MQTTMemory::START_TLS_INTERNAL_FREE_FLOOR;
-#else
-inline constexpr size_t MQTT_RESTORE_BYTES =
-    MQTTMemory::START_TLS_INTERNAL_FREE_FLOOR + MQTTMemory::EVENT_STORAGE_BYTES;
-#endif
 inline constexpr size_t RESTORE_BYTES[] = {
     0,
     WebUIMemory::HTTPD_STACK_BYTES,
-    MQTT_RESTORE_BYTES,
+    MQTTMemory::START_TLS_INTERNAL_FREE_FLOOR,
 };
 
 /** Largest-block margin above a level's threshold before it is left. */
@@ -108,9 +100,17 @@ inline constexpr level_t classify(size_t freeBytes, size_t largestBlock) {
   return NORMAL;
 }
 
-/** True when a reading leaves room to re-admit the service level paused. */
-inline constexpr bool clears(level_t level, size_t freeBytes, size_t largestBlock) {
-  return (freeBytes >= ENTER[level].freeBytes + RESTORE_BYTES[level])
+/**
+ * True when a reading leaves room to re-admit the service level paused.
+ * mqttExtra is the internal storage the MQTT client's next start still has to
+ * allocate; it only applies to RED.
+ */
+inline constexpr bool clears(level_t level,
+                             size_t freeBytes,
+                             size_t largestBlock,
+                             size_t mqttExtra = 0) {
+  const size_t extra = (level == RED) ? mqttExtra : 0;
+  return (freeBytes >= ENTER[level].freeBytes + RESTORE_BYTES[level] + extra)
          && (largestBlock >= ENTER[level].largestBlock + LARGEST_HYSTERESIS_BYTES);
 }
 
@@ -121,7 +121,7 @@ inline constexpr bool clears(level_t level, size_t freeBytes, size_t largestBloc
  */
 class Governor {
  public:
-  level_t update(size_t freeBytes, size_t largestBlock) {
+  level_t update(size_t freeBytes, size_t largestBlock, size_t mqttExtra = 0) {
     const level_t raw = classify(freeBytes, largestBlock);
     if (raw > m_Level) {
       m_Exit = 0;
@@ -129,7 +129,7 @@ class Governor {
         m_Enter = 0;
         m_Level = raw;
       }
-    } else if ((m_Level > NORMAL) && clears(m_Level, freeBytes, largestBlock)) {
+    } else if ((m_Level > NORMAL) && clears(m_Level, freeBytes, largestBlock, mqttExtra)) {
       m_Enter = 0;
       if (++m_Exit >= EXIT_TICKS) {
         m_Exit = 0;
@@ -152,6 +152,13 @@ class Governor {
 
 /** Run one governor step from the UI loop; reads the heap at most once a second. */
 void tick(void);
+
+/**
+ * Internal bytes beyond its start floor that the MQTT client's next start
+ * must allocate. The MQTT owner sets it from its start gate inputs; zero once
+ * the queue and incoming copy exist or will be in PSRAM. Safe from any task.
+ */
+void setMQTTStartExtra(size_t bytes);
 
 /** The current level, safe from any task. */
 level_t current(void);

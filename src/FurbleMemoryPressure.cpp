@@ -17,6 +17,7 @@ constexpr int64_t TICK_PERIOD_US = 1000000;
 // The governor is stepped only from the UI loop; other tasks read the level.
 Governor s_Governor;
 std::atomic<level_t> s_Level {NORMAL};
+std::atomic<size_t> s_MQTTStartExtra {0};
 int64_t s_LastTickUs = 0;
 bool s_Ticked = false;
 
@@ -34,13 +35,18 @@ void tick(void) {
   const size_t freeBytes = heap_caps_get_free_size(caps);
   const size_t largest = heap_caps_get_largest_free_block(caps);
   const level_t previous = s_Level.load(std::memory_order_relaxed);
-  const level_t level = s_Governor.update(freeBytes, largest);
+  const level_t level =
+      s_Governor.update(freeBytes, largest, s_MQTTStartExtra.load(std::memory_order_relaxed));
   if (level == previous) {
     return;
   }
   s_Level.store(level, std::memory_order_release);
   ESP_LOGW(LOG_TAG, "memory pressure %s -> %s: free=%u largest=%u", levelName(previous),
            levelName(level), static_cast<unsigned>(freeBytes), static_cast<unsigned>(largest));
+}
+
+void setMQTTStartExtra(size_t bytes) {
+  s_MQTTStartExtra.store(bytes, std::memory_order_relaxed);
 }
 
 level_t current(void) {
