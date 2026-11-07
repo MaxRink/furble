@@ -1374,6 +1374,8 @@ class UI {
 
   /** Show or hide the widgets which need GPS enabled. */
   static void showGPSWidgets(status_t *status, bool show);
+  /** Show the header GPS icon only while GPS or the companion source is active. */
+  static void updateGpsIcon(status_t *status);
 
   /** Add the 'Features' menu entry. */
   void addFeaturesMenu(const menu_t &parent);

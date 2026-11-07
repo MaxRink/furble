@@ -641,19 +641,16 @@ UI::UI(const interval_t &interval)
   }
   m_Status.gps = &m_GPS;
 
-  // A zero-width flex-grow spacer between the title and the status icons pins
-  // the icon-and-battery block to the header's right edge. The battery is the
-  // last child, so its right edge stays fixed no matter which status icons
-  // (GPS, the reconnecting Bluetooth symbol) show or hide, and it no longer
-  // shifts when the title is hidden (the sticks drop it for header width) and
-  // the block would otherwise pack to the left. It grows alongside the title
-  // when the title is shown, which is inert: the title text is left aligned and
-  // the icons stay right, so the visible layout is unchanged.
-  lv_obj_t *headerSpacer = lv_obj_create(m_Header);
-  lv_obj_remove_style_all(headerSpacer);
-  lv_obj_set_size(headerSpacer, 0, 0);
-  lv_obj_set_flex_grow(headerSpacer, 1);
-  lv_obj_clear_flag(headerSpacer, LV_OBJ_FLAG_SCROLLABLE);
+  // End-align the header row so the icon-and-battery block is pinned to the
+  // right edge. The battery is the last child, so its right edge stays fixed
+  // no matter which status icons (GPS, the reconnecting Bluetooth symbol) show
+  // or hide, and whether the title is shown or hidden (the sticks drop it for
+  // header width). A shown title still grows into the free space and stays
+  // left aligned. With the title hidden, icons that need more than the row
+  // spill off the left edge instead of pushing the battery off the right one.
+  // Do not use a zero-width spacer for this: it still costs a flex column gap,
+  // which overflowed the 80 px header with three icons.
+  lv_obj_set_flex_align(m_Header, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
   m_Status.reconnectIcon = addIcon(&icon_all_inclusive);
   // Non-blocking indicator for an in-progress mid-session reconnect. Hidden
@@ -695,6 +692,9 @@ UI::UI(const interval_t &interval)
   setShowTitle(Settings::load<Settings::SHOW_TITLE>());
 
   m_GPS.setIcon(m_Status.gpsIcon);
+  // Set the GPS icon before the first frame. It is created visible, and
+  // waiting for the first icon tick showed it for 500 ms with GPS off.
+  updateGpsIcon(&m_Status);
 
   // sample the battery every 5s, the PMIC is on I2C and the values move slowly
   m_BatteryTimer = lv_timer_create(batteryUpdate, 5000, &m_Status);
@@ -742,11 +742,7 @@ UI::UI(const interval_t &interval)
           lv_label_set_text_fmt(status->batteryLabel, "%u%%", level);
         }
 
-        if (status->gps->isEnabled() || (status->gps->getSource() == GPS::SOURCE_COMPANION)) {
-          lv_obj_clear_flag(status->gpsIcon, LV_OBJ_FLAG_HIDDEN);
-        } else {
-          lv_obj_add_flag(status->gpsIcon, LV_OBJ_FLAG_HIDDEN);
-        }
+        updateGpsIcon(status);
 
         static lv_obj_t *lockMsgBox = NULL;
         if (status->screenLocked && (lockMsgBox == NULL)) {
@@ -2330,6 +2326,14 @@ void UI::prepareShutterControl(void) {
   lv_obj_add_event_cb(m_OK, handleButtonMode, LV_EVENT_ALL, this);
 
   lv_obj_add_event_cb(m_Right, handleFocus, LV_EVENT_ALL, this);
+}
+
+void UI::updateGpsIcon(status_t *status) {
+  if (status->gps->isEnabled() || (status->gps->getSource() == GPS::SOURCE_COMPANION)) {
+    lv_obj_clear_flag(status->gpsIcon, LV_OBJ_FLAG_HIDDEN);
+  } else {
+    lv_obj_add_flag(status->gpsIcon, LV_OBJ_FLAG_HIDDEN);
+  }
 }
 
 lv_obj_t *UI::addIcon(const lv_image_dsc_t *symbol) {
@@ -6717,10 +6721,9 @@ std::string UI::simQueryState(const char *key) {
   //   "battery_drift"  x minus the anchor captured on the FIRST battery_drift
   //                    read, so a scenario asserts 0 at its baseline state and
   //                    then 0 again across every connection and GPS state
-  // The battery currently rides a left-packed flex row, so showing or hiding the
-  // reconnect, reconnecting or GPS icon to its left shoves it sideways; the
-  // matrix marks the post-baseline "0" expectations WILL_FAIL until the battery
-  // is anchored so its position no longer depends on the icons beside it. The
+  // The header row is end aligned, so the battery holds the right edge while
+  // the icons fit. On 80x160 the shown title plus three icons still needs 2 px
+  // more than the row, so those states stay board-varies xasserts. The
   // anchor is a function-local static: one sim process runs one scenario, so it
   // is established once per run and is FURBLE_SIM only.
   if (query == "battery_x" || query == "battery_drift") {
@@ -8655,18 +8658,18 @@ void UI::rebuildCamerasPage(menu_t &menu) {
   for (const auto &camera : cameras) {
     lv_obj_t *label = lv_label_create(menu.page);
     lv_obj_set_width(label, LV_PCT(100));
-    // The composed camera name plus the status word wraps onto a second line,
-    // which reaches the navigation indicators the Stick boards float over the
-    // page. Keep the right indicator's width clear, as the camera list rows do,
-    // and leave the theme's padding alone where there is nothing to clear.
-    if (const int32_t reserve = floatingIndicatorReserve(); reserve > 0) {
-      lv_obj_set_style_pad_right(label, reserve, LV_PART_MAIN);
-    }
     // The text is near static, so clip with dots instead of a circular
     // scroll that would invalidate the row on every tick.
     lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
     updateCameraRow(label, camera.get(), state);
   }
+  // The composed camera name plus the status word wraps onto a second line,
+  // which can reach the right indicator the Stick boards float over the page.
+  // The shared band reservation narrows only the rows level with it. Do not
+  // also pad the label: that reserved the column twice and left the 80 px
+  // panel a text box too narrow for one word. The timer rebuild needs this call
+  // too, because it does not pass through the page load event.
+  reserveLegendColumns(menu.page);
 }
 
 void UI::camerasUpdate(lv_timer_t *timer) {
@@ -10638,8 +10641,12 @@ void UI::addSpinnerPage(const menu_t &parent, const char *item, Intervalometer::
 void UI::addTimeMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_TimeStr, &icon_timer, true, parent);
 
+  // Content height, so the page scrolls when the rows do not fit. A full-page
+  // container became its own scroller on 80x160 and drew the UTC row below
+  // its box. On the wider panels the container now ends above the floating
+  // legend band, so its rows keep the full width.
   lv_obj_t *cont = lv_menu_cont_create(menu.page);
-  lv_obj_set_size(cont, LV_PCT(100), LV_PCT(100));
+  lv_obj_set_size(cont, LV_PCT(100), LV_SIZE_CONTENT);
   lv_obj_set_layout(cont, LV_LAYOUT_FLEX);
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
