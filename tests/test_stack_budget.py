@@ -1,6 +1,7 @@
 """tools/stack_budget.py on a synthetic call graph."""
 
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -77,6 +78,34 @@ class StackBudgetTest(unittest.TestCase):
         r = self.run_tool(4096, extra=("--stack", "t=800"))
         self.assertEqual(r.returncode, 1)
         self.assertIn("FAIL t: 820 of 800", r.stdout)
+
+
+class ManifestSourceTest(unittest.TestCase):
+    """The stack sizes in the manifests must be the ones the firmware creates."""
+
+    def test_numeric_stacks_match_their_cited_source(self):
+        manifest = json.loads((ROOT / "tools" / "stack_budget.json").read_text())
+        for task in manifest["tasks"]:
+            if isinstance(task["stack_bytes"], str):
+                continue
+            with self.subTest(task=task["name"]):
+                path, pattern = task["source"]
+                found = re.findall(pattern, (ROOT / path).read_text())
+                self.assertEqual(found, [str(task["stack_bytes"])], f"{path}: {pattern}")
+
+    def test_memory_budget_components_match_the_task_stacks(self):
+        stacks = {t["name"]: t["stack_bytes"]
+                  for t in json.loads((ROOT / "tools" / "stack_budget.json").read_text())["tasks"]}
+        component_task = {"mqtt_owner": "mqtt", "mqtt_worker": "mqtt_client", "companion_task": "companion"}
+        budget = json.loads((ROOT / "sim" / "coverage" / "memory_budget.json").read_text())
+        checked = 0
+        for name, scenario in budget["scenarios"].items():
+            for component, task in component_task.items():
+                if component in scenario.get("components", {}):
+                    with self.subTest(scenario=name, component=component):
+                        self.assertEqual(scenario["components"][component], stacks[task])
+                    checked += 1
+        self.assertGreater(checked, 0)
 
 
 if __name__ == "__main__":

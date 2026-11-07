@@ -1,5 +1,5 @@
 {
-  "comment": "Task entries for tools/stack_budget.py. stack_bytes is a number from the cited source or an sdkconfig key. envs lists the release envs that link the task; omit it for every env.",
+  "comment": "Task entries for tools/stack_budget.py. stack_bytes is a number or an sdkconfig key. A numeric stack cites its source as [file, regex]; tests/test_stack_budget.py checks that the regex's group matches it. envs lists the release envs that link the task; omit it for every env.",
   "overhead_bytes": {
     "comment": "Carved from every task stack by the pinned ESP-IDF Xtensa port: the interrupt frame XT_STK_FRMSZ (192 on both chips) plus the coprocessor save area XT_CP_SIZE rounded up to 16 (96 on ESP32, 316 to 320 on ESP32-S3). Values from xtensa_context.h and port.c uxInitialiseStackCPSA. No TLS section and no task wrapper in release builds.",
     "esp32": 288,
@@ -20,37 +20,55 @@
       "name": "control",
       "entry": "^void control_task\\(void\\*\\)$",
       "stack_bytes": 8192,
-      "source": "src/main.cpp xTaskCreate(control_task, ..., 8192"
+      "source": [
+        "src/main.cpp",
+        "xTaskCreate\\(control_task, \"control\", (\\d+),"
+      ]
     },
     {
       "name": "camera_target",
       "entry": "^void Furble::Control::Target::task\\(\\)$",
       "stack_bytes": 4096,
-      "source": "src/FurbleControl.cpp addActive xTaskCreate 4096"
+      "source": [
+        "src/FurbleControl.cpp",
+        "camera->getName\\(\\)\\.c_str\\(\\), (\\d+), target\\.get\\(\\)"
+      ]
     },
     {
       "name": "gps",
       "entry": "^void gps_task\\(void\\*\\)$",
       "stack_bytes": 4096,
-      "source": "src/FurbleGPS.cpp xTaskCreate(gps_task, LOG_TAG, 4096"
+      "source": [
+        "src/FurbleGPS.cpp",
+        "xTaskCreate\\(gps_task, LOG_TAG, (\\d+),"
+      ]
     },
     {
       "name": "wifi",
       "entry": "wifiTask\\(void\\*\\)$",
       "stack_bytes": 4096,
-      "source": "src/FurbleWiFi.cpp TASK_STACK"
+      "source": [
+        "src/FurbleWiFi.cpp",
+        "constexpr size_t TASK_STACK = (\\d+);"
+      ]
     },
     {
       "name": "companion",
       "entry": "CompanionGatt::serviceTaskEntry\\(void\\*\\)$",
       "stack_bytes": 3072,
-      "source": "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES"
+      "source": [
+        "src/FurbleCompanion.cpp",
+        "COMPANION_TASK_STACK_BYTES = (\\d+);"
+      ]
     },
     {
       "name": "ir",
       "entry": "Furble::IR::taskEntry\\(void\\*\\)$",
       "stack_bytes": 4096,
-      "source": "src/FurbleIR.cpp IR_TASK_STACK_BYTES",
+      "source": [
+        "src/FurbleIR.cpp",
+        "IR_TASK_STACK_BYTES = (\\d+);"
+      ],
       "envs": [
         "m5stick-c",
         "m5stick-c-plus",
@@ -61,7 +79,10 @@
       "name": "sd",
       "entry": "Furble::SD::init\\(\\)::<lambda\\(void\\*\\)>::_FUN",
       "stack_bytes": 6144,
-      "source": "src/FurbleSD.cpp WRITER_STACK_BYTES",
+      "source": [
+        "src/FurbleSD.cpp",
+        "WRITER_STACK_BYTES = (\\d+);"
+      ],
       "envs": [
         "m5stack-core",
         "m5stack-core2",
@@ -72,7 +93,10 @@
       "name": "mqtt",
       "entry": "Furble::MQTT::taskEntry\\(void\\*\\)$",
       "stack_bytes": 10240,
-      "source": "include/FurbleMQTTMemory.h OWNER_STACK_BYTES",
+      "source": [
+        "include/FurbleMQTTMemory.h",
+        "OWNER_STACK_BYTES = (\\d+);"
+      ],
       "envs": [
         "m5stick-s3",
         "m5stack-core2",
@@ -84,7 +108,10 @@
       "name": "mqtt_client",
       "entry": "^esp_mqtt_task$",
       "stack_bytes": 3072,
-      "source": "include/FurbleMQTTMemory.h PLAIN_WORKER_STACK_BYTES (TLS uses 6144)",
+      "source": [
+        "include/FurbleMQTTMemory.h",
+        "PLAIN_WORKER_STACK_BYTES = (\\d+);"
+      ],
       "envs": [
         "m5stick-s3",
         "m5stack-core2",
@@ -96,7 +123,10 @@
       "name": "webui",
       "entry": "Furble::WebUI::taskEntry\\(void\\*\\)$",
       "stack_bytes": 3072,
-      "source": "include/FurbleWebUIMemory.h SUPERVISOR_STACK_BYTES",
+      "source": [
+        "include/FurbleWebUIMemory.h",
+        "SUPERVISOR_STACK_BYTES = (\\d+);"
+      ],
       "envs": [
         "m5stick-s3",
         "m5stack-core2",
@@ -108,7 +138,10 @@
       "name": "webui_https",
       "entry": "^httpd_thread$",
       "stack_bytes": 8192,
-      "source": "include/FurbleWebUIMemory.h HTTPD_STACK_BYTES",
+      "source": [
+        "include/FurbleWebUIMemory.h",
+        "HTTPD_STACK_BYTES = (\\d+);"
+      ],
       "envs": [
         "m5stick-s3",
         "m5stack-core2",
@@ -120,7 +153,10 @@
       "name": "webui_tls",
       "entry": "Furble::WebUI::identityTaskEntry\\(void\\*\\)$",
       "stack_bytes": 12288,
-      "source": "include/FurbleWebUI.h IDENTITY_STACK_BYTES",
+      "source": [
+        "include/FurbleWebUI.h",
+        "IDENTITY_STACK_BYTES = (\\d+);"
+      ],
       "envs": [
         "m5stick-s3",
         "m5stack-core2",
