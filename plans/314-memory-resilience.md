@@ -316,14 +316,19 @@ State: implemented.
   suite with LeakSanitizer on. The full suite takes about six minutes.
 - On the first full run, every UBSan report came from LVGL or M5GFX:
   function-type casts, null plus zero, packed misaligned members, a negative
-  shift and an infinite float cast. The only leak was M5GFX's SDL frame
-  buffers. `sim/ubsan.supp` and `sim/lsan.supp` name each site and its reason.
+  shift and an infinite float cast. LeakSanitizer reported two leaks: M5GFX's
+  SDL frame buffers, the only one in linked code, and the sanitizer runtime's
+  own symbolizer (`__sanitizer::Symbolizer::PlatformDemangle`), which keeps
+  its demangled names. `sim/ubsan.supp` and `sim/lsan.supp` name each site and
+  its reason.
   No furble frame is suppressed.
 - Three virtual camera peers used `std::recursive_mutex` without
   `<mutex>`. That compiled only through libc++ transitive includes, so the
   simulator did not build on Linux at all.
 - Permutations asserted `heap.free >= 0` on an unsigned value. They now assert
   `heap.alloc_failures 0`; exhaustion already aborts the run with status 3.
+  The permutation manifest and its `config-matrix.txt` template name the same
+  assertion, so the coverage gate describes the executable check.
 
 Deviations:
 
