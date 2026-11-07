@@ -11,6 +11,7 @@
 #include <mutex>
 #include <string>
 
+#include <esp_heap_caps.h>
 #include <esp_log.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -110,6 +111,23 @@ void copyTaskName(char (&destination)[TASK_BYTES]) {
   std::snprintf(destination, TASK_BYTES, "%s", name);
 }
 
+/*
+ * The production callback edits the RTC record in place. Here the panic
+ * recorder builds the persisted record right after the hook returns, so the
+ * hook keeps the failure and crashLogInject() writes it into that record.
+ */
+std::mutex s_AllocMutex;
+bool s_AllocFailed = false;
+record_t s_AllocFailure = {};
+
+void recordAllocFailure(size_t size, uint32_t caps, const char *function) {
+  char task[TASK_BYTES];
+  copyTaskName(task);
+  const std::lock_guard<std::mutex> lock(s_AllocMutex);
+  Furble::CrashRecord::noteAllocFailure(s_AllocFailure, size, caps, function, task);
+  s_AllocFailed = true;
+}
+
 void fillSnapshot(record_t &snapshot, uint32_t resetReason) {
   Furble::CrashRecord::clear(snapshot);
   snapshot.sequence = ++s_Sequence;
@@ -129,7 +147,7 @@ void fillSnapshot(record_t &snapshot, uint32_t resetReason) {
 }
 
 void printRecord(const record_t &record) {
-  char summary[192] = {};
+  char summary[Furble::CrashRecord::SUMMARY_BYTES] = {};
   Furble::CrashRecord::formatSummary(record, summary, sizeof(summary));
   bool expected = false;
   if (!s_Printing.compare_exchange_strong(expected, true, std::memory_order_relaxed)) {
@@ -196,6 +214,8 @@ void init(void) {
     s_HaveCurrent = true;
   }
   writePersisted(snapshot);
+  // Registered after the fresh snapshot, as in production.
+  heap_caps_register_failed_alloc_callback(recordAllocFailure);
 }
 
 void update(void) {
@@ -293,6 +313,19 @@ void crashLogInject(uint32_t resetReason, const char *task, const char *line) {
   }
   if (line != nullptr && line[0] != '\0') {
     std::snprintf(record.log[LOG_LINES - 1], LOG_LINE_BYTES, "%s", line);
+  }
+  {
+    const std::lock_guard<std::mutex> lock(s_AllocMutex);
+    if (s_AllocFailed) {
+      // On the device the callback runs on the failing task. A scripted model
+      // allocates for a modelled task from another host thread, so the task
+      // the abort names is the faithful one; the hook's own name is the
+      // fallback.
+      const bool named = (task != nullptr) && (task[0] != '\0');
+      Furble::CrashRecord::noteAllocFailure(
+          record, s_AllocFailure.alloc_size, s_AllocFailure.alloc_caps,
+          s_AllocFailure.alloc_function, named ? task : s_AllocFailure.alloc_task);
+    }
   }
   Furble::CrashRecord::finalize(record);
   writePersisted(record);

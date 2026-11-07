@@ -256,6 +256,30 @@ Deviations:
   `EXTERNAL` choice. Both need all six release sdkconfigs regenerated
   together.
 
+## PR 5: failed-allocation diagnostics
+
+State: implemented, except the `esp_timer_create` return checks in
+`src/FurbleMQTT.cpp`, which follow once the MQTT stack fix lands to avoid a
+conflict in the same function.
+
+- The crash record is version 2 (484 bytes, was 436) and carries the failed
+  allocation: size, capabilities, task and allocating function.
+- `CrashLog::init()` registers `heap_caps_register_failed_alloc_callback`
+  after it has consumed the previous record and written this boot's snapshot.
+  ESP-IDF calls the callback on the failing task just before the abort. It
+  edits the RTC record in place under the record lock: no logging, no
+  allocation, and no second record on what may be a 3 KiB stack.
+- The panic handler prints "Mem alloc fail" directly, never through the log
+  hook, so before this change a record named the last logging task and nothing
+  about the allocation.
+- The console `crash` output, the summary line (`alloc_fail=... caps=... in=...
+  fn=...`, now sized by `SUMMARY_BYTES`), and the simulator `crash.alloc_*`
+  queries expose it. The simulator twin registers the same callback and the
+  panic fixtures assert that the recorded size, caps and task match the abort
+  line.
+- A version 1 record from before the update fails validation once and is not
+  reported. That is the documented behavior for a record format change.
+
 ## Baseline: regenerated release sdkconfigs
 
 State: implemented, as the clean baseline for PR 8 config tuning.

@@ -59,6 +59,13 @@ items; the CMake simulator configures and builds.
 | 16 | Final review summary: the ceilings rest on ESP-IDF layout and allocator assumptions not yet checked on hardware, including approximate WiFi and optional-service accounting. | Documented limit, not a defect. Every term is tagged `derived` and cites its source; the StickS3 gap of 144,633 bytes to the measured figure is reported, not hidden. Closing it needs per-board console heap readings, deferred with the rest of hardware validation in `plans/313-sim-only-status.md`. | `sim/coverage/board_heap.json`, `plans/314-memory-resilience.md` |
 | 17 | Post-merge, found by a full three-panel e2e run: five `hw-profile` scenarios still asserted the old profile table values that #8 and the headless main-stack fix corrected (StickC draw buffer 2,560, StickC Plus and Plus2 4,320, headless and Waveshare main stack 8,192). | Fixed in a follow-up PR. The scenarios now assert 800, 2,160 and 16,384, the values the firmware rule and the sdkconfigs give. The earlier full e2e run predated those commits. | `sim/scenarios/e2e/hw-profile-*.txt`, `hw-pmic-plus2-no-pmic.txt` |
 
+## PR 5 (#423, `feat/314-alloc-fail-diagnostics`)
+
+| # | Finding | Status and evidence | Files |
+| :--- | :--- | :--- | :--- |
+| 1 | `CrashLog::update()` builds its snapshot outside the record lock. A `storeRecord()` after the heap callback and before the abort wrote a snapshot with `alloc_size == 0` and erased the failure. | Fixed. The callback sets `s_AllocFailed` under the lock, and `storeRecord()` carries the failure into any later snapshot with `CrashRecord::keepAllocFailure()`. The latch is plain RAM, so a new boot never inherits it. A host check stores a snapshot after the callback and fails without the fix. | `src/FurbleCrashLog.cpp`, `include/FurbleCrashRecord.h`, `tests/host/crash_log_test.cpp`, `tests/host/crash_record_test.cpp` |
+| 2 | The `Reading it` section of the crash diagnostics page still listed only the pre-PR `crash last` lines. | Fixed. It names the four conditional `crash.alloc_*` lines and the summary suffix. | `docs/crash-diagnostics.md` |
+| 3 | The branch carried regenerated `sdkconfig.m5stick-c` and `sdkconfig.m5stick-s3`, including `CONFIG_ESP_PHY_REDUCE_TX_POWER` on the StickC, with no config intent. | Fixed. Local builds from a base older than #421 rewrote them and the review-fix commit staged them. Both files are restored to master; the PR changes no sdkconfig. | `git diff origin/master -- 'sdkconfig*'` is empty |
 
 ## Fix: esp-mqtt worker stack (#417, `fix/mqtt-worker-stack`)
 

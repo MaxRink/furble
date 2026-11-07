@@ -14,11 +14,22 @@ a panic handler, and it never touches flash.
 | heap free / largest | Internal 8-bit heap free and largest block at the last snapshot. |
 | last log lines | Up to four recent log lines, ANSI-normalized and truncated to 96 bytes each. |
 | clean flag | Set by the shutdown handler. A clean record is never reported as a crash. |
+| failed allocation | Size, capabilities, task and allocating function of the allocation whose failure aborted the run. Written by the heap's failed-allocation callback, just before the abort; empty when no allocation failed. |
 
 ESP_LOG adds colour escapes before the retained `vprintf` hook sees a line. The
 hook removes ANSI CSI sequences in place before storing each line, so the next
 boot prints plain text instead of nested escape sequences. This does not change
-the 96-byte record field, the 436-byte record size, or the console output.
+the 96-byte record field, the 484-byte record size, or the console output.
+
+Every board sets `CONFIG_HEAP_ABORT_WHEN_ALLOCATION_FAILS`, so a failed
+allocation aborts at once, and the panic handler's "Mem alloc fail" line never
+reaches the retained log tail. `CrashLog::init()` therefore registers a
+failed-allocation callback. ESP-IDF calls it on the failing task just before
+the abort, and it writes the size, capabilities, task and function into the
+record in place, under the record lock, with no logging, no allocation and no
+second copy of the record on the failing task's stack. The callback also sets
+a latch, so a periodic snapshot stored between the callback and the abort
+keeps the allocation fields instead of erasing them.
 
 The snapshot is refreshed about once per second from the UI task. A panic can
 therefore lose up to one second of state. That is deliberate: the record is a
@@ -43,8 +54,11 @@ crash last
 
 `crash last` prints `crash.summary`, `crash.reset`, `crash.task`,
 `crash.uptime`, `crash.heap_free`, `crash.heap_largest` and
-`crash.last_log`, then reprints the captured log tail. `status` continues to
-report the current boot's reset reason and heap.
+`crash.last_log`. When an allocation failure caused the abort, it also prints
+`crash.alloc_size`, `crash.alloc_caps`, `crash.alloc_task` and
+`crash.alloc_function`, and the summary ends with the same fields. Those four
+lines are absent when no allocation failed. It then reprints the captured log
+tail. `status` continues to report the current boot's reset reason and heap.
 
 ## What it does not claim
 
