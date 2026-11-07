@@ -47,6 +47,18 @@ class ScenarioGeneratorTest(unittest.TestCase):
         self.assertIn("seed mqtt_worker_stack 6144", script)
         self.assertIn("seed mqtt_tls true", script)
 
+    def test_every_scenario_fails_a_modelled_allocation_failure(self):
+        # heap.free is unsigned, so the old floor of 0 could never fail. The
+        # generated scenario must assert the failure counter instead, and the
+        # coverage manifest must name the same assertion.
+        manifest = json.loads((ROOT / "sim" / "coverage" / "permutations.json").read_text())
+        for board in ("sticks3", "stickc", "core"):
+            script = PERMS.scenario_for(board, COMBO).splitlines()
+            self.assertIn("assert heap.alloc_failures 0", script)
+            self.assertFalse(any(line.startswith("assert_min heap.free") for line in script))
+        self.assertIn("heap.alloc_failures", manifest["assertions"])
+        self.assertNotIn("heap.free", manifest["assertions"])
+
     def test_wifi_seed_is_boolean(self):
         script = PERMS.scenario_for("sticks3", COMBO)
         self.assertIn("seed wifi_connected true", script)

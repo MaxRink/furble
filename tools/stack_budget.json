@@ -1,0 +1,232 @@
+{
+  "comment": "Task entries for tools/stack_budget.py. stack_bytes is a number or an sdkconfig key. A numeric stack cites its source as [file, regex]; tests/test_stack_budget.py checks that the regex's group matches it. envs lists the release envs that link the task; omit it for every env.",
+  "overhead_bytes": {
+    "comment": "Carved from every task stack by the pinned ESP-IDF Xtensa port: the interrupt frame XT_STK_FRMSZ (192 on both chips) plus the coprocessor save area XT_CP_SIZE rounded up to 16 (96 on ESP32, 316 to 320 on ESP32-S3). Values from xtensa_context.h and port.c uxInitialiseStackCPSA. No TLS section and no task wrapper in release builds.",
+    "esp32": 288,
+    "esp32s3": 512
+  },
+  "tasks": [
+    {
+      "name": "main",
+      "entry": "^void app_main\\(\\)$",
+      "stack_bytes": "CONFIG_ESP_MAIN_TASK_STACK_SIZE"
+    },
+    {
+      "name": "nimble_host",
+      "entry": "^nimble_host_task$",
+      "stack_bytes": "CONFIG_BT_NIMBLE_HOST_TASK_STACK_SIZE"
+    },
+    {
+      "name": "sys_evt",
+      "entry": "esp_event\\.c:esp_event_loop_run_task$",
+      "stack_bytes": "CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE",
+      "source": "esp_event_loop_create_default(): the default loop task runs the WiFi, IP and Ethernet event handlers"
+    },
+    {
+      "name": "control",
+      "entry": "^void control_task\\(void\\*\\)$",
+      "stack_bytes": 8192,
+      "source": [
+        "src/main.cpp",
+        "xTaskCreate\\(control_task, \"control\", (\\d+),"
+      ]
+    },
+    {
+      "name": "camera_target",
+      "entry": "^void Furble::Control::Target::task\\(\\)$",
+      "stack_bytes": 4096,
+      "source": [
+        "src/FurbleControl.cpp",
+        "camera->getName\\(\\)\\.c_str\\(\\), (\\d+), target\\.get\\(\\)"
+      ]
+    },
+    {
+      "name": "gps",
+      "entry": "^void gps_task\\(void\\*\\)$",
+      "stack_bytes": 4096,
+      "source": [
+        "src/FurbleGPS.cpp",
+        "xTaskCreate\\(gps_task, LOG_TAG, (\\d+),"
+      ]
+    },
+    {
+      "name": "wifi",
+      "entry": "wifiTask\\(void\\*\\)$",
+      "stack_bytes": 4096,
+      "source": [
+        "src/FurbleWiFi.cpp",
+        "constexpr size_t TASK_STACK = (\\d+);"
+      ]
+    },
+    {
+      "name": "companion",
+      "entry": "CompanionGatt::serviceTaskEntry\\(void\\*\\)$",
+      "stack_bytes": 3072,
+      "source": [
+        "src/FurbleCompanion.cpp",
+        "COMPANION_TASK_STACK_BYTES = (\\d+);"
+      ]
+    },
+    {
+      "name": "ir",
+      "entry": "Furble::IR::taskEntry\\(void\\*\\)$",
+      "stack_bytes": 4096,
+      "source": [
+        "src/FurbleIR.cpp",
+        "IR_TASK_STACK_BYTES = (\\d+);"
+      ],
+      "envs": [
+        "m5stick-c",
+        "m5stick-c-plus",
+        "m5stick-s3"
+      ]
+    },
+    {
+      "name": "sd",
+      "entry": "Furble::SD::init\\(\\)::<lambda\\(void\\*\\)>::_FUN",
+      "stack_bytes": 6144,
+      "source": [
+        "src/FurbleSD.cpp",
+        "WRITER_STACK_BYTES = (\\d+);"
+      ],
+      "envs": [
+        "m5stack-core",
+        "m5stack-core2"
+      ]
+    },
+    {
+      "name": "mqtt",
+      "entry": "Furble::MQTT::taskEntry\\(void\\*\\)$",
+      "stack_bytes": 10240,
+      "source": [
+        "include/FurbleMQTTMemory.h",
+        "OWNER_STACK_BYTES = (\\d+);"
+      ],
+      "envs": [
+        "m5stick-s3",
+        "m5stack-core2",
+        "waveshare-s3-eth",
+        "esp32-s3-headless"
+      ]
+    },
+    {
+      "name": "mqtt_client",
+      "entry": "^esp_mqtt_task$",
+      "stack_bytes": 3072,
+      "source": [
+        "include/FurbleMQTTMemory.h",
+        "PLAIN_WORKER_STACK_BYTES = (\\d+);"
+      ],
+      "envs": [
+        "m5stick-s3",
+        "m5stack-core2",
+        "waveshare-s3-eth",
+        "esp32-s3-headless"
+      ]
+    },
+    {
+      "name": "webui",
+      "entry": "Furble::WebUI::taskEntry\\(void\\*\\)$",
+      "stack_bytes": 3072,
+      "source": [
+        "include/FurbleWebUIMemory.h",
+        "SUPERVISOR_STACK_BYTES = (\\d+);"
+      ],
+      "envs": [
+        "m5stick-s3",
+        "m5stack-core2",
+        "waveshare-s3-eth",
+        "esp32-s3-headless"
+      ]
+    },
+    {
+      "name": "webui_https",
+      "entry": "^httpd_thread$",
+      "stack_bytes": 8192,
+      "source": [
+        "include/FurbleWebUIMemory.h",
+        "HTTPD_STACK_BYTES = (\\d+);"
+      ],
+      "envs": [
+        "m5stick-s3",
+        "m5stack-core2",
+        "waveshare-s3-eth",
+        "esp32-s3-headless"
+      ]
+    },
+    {
+      "name": "webui_tls",
+      "entry": "Furble::WebUI::identityTaskEntry\\(void\\*\\)$",
+      "stack_bytes": 12288,
+      "source": [
+        "include/FurbleWebUI.h",
+        "IDENTITY_STACK_BYTES = (\\d+);"
+      ],
+      "envs": [
+        "m5stick-s3",
+        "m5stack-core2",
+        "waveshare-s3-eth",
+        "esp32-s3-headless"
+      ]
+    }
+  ],
+  "indirect": [
+    {
+      "caller": "^(esp_event_loop_run|handler_execute)$",
+      "targets": [
+        "Furble::MQTT::eventHandler\\(void\\*, esp_event_base_t, int32_t, void\\*\\)$"
+      ],
+      "tasks": [
+        "mqtt_client"
+      ],
+      "why": "esp-mqtt runs its own event loop on the client task and registers only MQTT::eventHandler on it (src/FurbleMQTT.cpp esp_mqtt_client_register_event)"
+    },
+    {
+      "caller": "^lv_event_send$",
+      "targets": [
+        "\\(lv_event_t\\*\\)$"
+      ],
+      "why": "lv_event.c calls each registered event_cb"
+    },
+    {
+      "caller": "^lv_obj_event_base$",
+      "targets": [
+        "^lv_\\w+_event$"
+      ],
+      "why": "lv_obj_event.c calls the widget class event_cb; LVGL is C, so its class callbacks match by their lv_<class>_event name"
+    },
+    {
+      "caller": "^lv_timer_handler(_resume)?$",
+      "targets": [
+        "\\(lv_timer_t\\*\\)$"
+      ],
+      "why": "lv_timer.c calls each timer_cb"
+    },
+    {
+      "caller": "^draw_buf_flush$",
+      "targets": [
+        "\\(lv_display_t\\*, const lv_area_t\\*, uint8_t\\*\\)$"
+      ],
+      "why": "lv_refr.c calls the display flush_cb"
+    },
+    {
+      "caller": "^lv_indev_read$",
+      "targets": [
+        "\\(lv_indev_t\\*, lv_indev_data_t\\*\\)$"
+      ],
+      "why": "lv_indev.c calls the indev read_cb"
+    },
+    {
+      "caller": "^(esp_event_loop_run|handler_execute)$",
+      "targets": [
+        "\\(void\\*, esp_event_base_t, int32_t, void\\*\\)$"
+      ],
+      "why": "esp_event.c handler_execute calls each registered esp_event_handler_t; it is inlined into esp_event_loop_run on some builds and a separate function on others. esp-mqtt dispatches its events through it on the client task"
+    }
+  ],
+  "boot_only": [
+    "^void m5::M5Unified::begin\\(config_t\\)$",
+    "^esp_err_t nvs::Storage::init\\(uint32_t, uint32_t\\)$"
+  ],
+  "boot_only_comment": "Functions that run once on main before any task exists, so other tasks never reach them. M5.begin() runs only in the Platform constructor, which Platform::init() runs at src/main.cpp before the first xTaskCreate; a later Platform::getInstance() returns the built object. nvs::Storage::init runs only for a partition that is not yet initialized; Settings::init() initializes NVS in app_main before any task starts, so a later Preferences::begin() returns from nvs_flash_init_partition early."
+}

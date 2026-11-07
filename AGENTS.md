@@ -33,6 +33,8 @@ and run `python3 tools/check_ci_workflows.py` after changing workflow triggers.
 The pre-review gate is `python3 tools/pre_review.py --base origin/master`; run
 it before pushing. `pre-review.yml` runs the same scanners in CI, and
 `host-sanitized.yml` runs the ASan/UBSan host subset when C++ paths change.
+The `sim-sanitizers` job runs the e2e suite under ASan, UBSan and LeakSanitizer
+on Linux; `sim/ubsan.supp` and `sim/lsan.supp` hold only third-party sites.
 The pre-hardware fuzz budget is `python3 tools/check_fuzz.py --full
 --host-build <dir> --mqtt-binary sim/build-mqtt/furble-sim`; the full corpus
 currently passes 10 targets, 135 seed runs and 89,145 iterations with zero
@@ -75,6 +77,9 @@ The simulator build force-includes the board's memory sdkconfig subset from
 `tools/gen_sim_sdkconfig.py`. `tools/derive_sim_heap.py` derives each board's
 boot heap ceiling into `sim/coverage/board_heap.json`, which the memory
 profile seeds per board.
+`tools/stack_budget.py` checks each firmware task's worst-case stack from the
+`-fcallgraph-info=su` call graph against `tools/stack_budget.json`; firmware CI
+runs it after every build. See `docs/stack-budget.md`.
 Hardware flashing is gated on the simulator. `sim/coverage/` holds the hardware,
 crash, fuzz and permutation manifests; `tools/check_sim_coverage.py` validates
 them and `tools/check_flash_readiness.py --ready` is the only authority for a

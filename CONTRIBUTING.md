@@ -145,7 +145,12 @@ request itself must pass the same check before it merges. Record the audit in
 its `plans/NN-review-feedback.md` table.
 
 `pre-review.yml` runs the scanners on every pull request; `host-sanitized.yml`
-runs the ASan/UBSan subset when C++ paths change. The scanners cover absolute
+runs the ASan/UBSan subset when C++ paths change. The `sim-sanitizers` job in
+`sim-e2e.yml` runs the certified e2e suite under ASan, UBSan and LeakSanitizer
+on Linux. LeakSanitizer does not run on macOS, so reproduce a leak report in a
+Linux container with `FURBLE_SIM_SANITIZE=address,undefined`, the job's
+`ASAN_OPTIONS`, and `sim/lsan.supp` and `sim/ubsan.supp`. Those files list only
+third-party sites, each with its reason. The scanners cover absolute
 workstation paths, whitespace and generated artifacts, debug leftovers,
 behavior/doc/test coupling, settings defaults and board branches, wire-ID
 ledger drift, container bounds, unsafe filesystem removal, low-byte sentinel
@@ -188,6 +193,12 @@ python3 tools/check_flash_readiness.py --ready
 After a change that moves static RAM or a boot allocation, rebuild the six
 release envs and run `python3 tools/derive_sim_heap.py`; see
 `docs/sim-memory-profiler.md`.
+
+After a firmware build, `python3 tools/stack_budget.py --env <env>` checks
+each task's worst-case stack from the `-fcallgraph-info=su` call graph against
+`tools/stack_budget.json`. Firmware CI runs it after every build. Add a task
+there when you create one, and see `docs/stack-budget.md` for the indirect
+call rules and limits.
 
 `run-panic-fixtures.sh` needs the default binary and the `FURBLE_SIM_MQTT=1`
 binary. Every sdkconfig aborts on a failed allocation, so the simulator does

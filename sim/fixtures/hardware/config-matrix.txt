@@ -19,4 +19,4 @@ seed psram_mode PSRAM
 wait 100
 assert setting.fauxny 1
 assert mem.leaks 0
-assert_min heap.free 0
+assert heap.alloc_failures 0
