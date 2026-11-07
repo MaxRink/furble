@@ -66,11 +66,13 @@ constexpr size_t TASK_STACK = 4096;
 esp_netif_t *g_StaNetif = nullptr;
 TaskHandle_t g_Task = nullptr;
 std::mutex g_StateMutex;
-// Serializes the stored access point. The worker holds it from taking the
-// deferred work to its NVS write, and a clear holds it while it cancels that
-// work and erases NVS, so a clear cannot be undone by a deferred save. Always
-// taken before g_StateMutex.
+// Serializes the stored access point. Every NVS save or erase of it runs
+// under this mutex, always taken before g_StateMutex.
 std::mutex g_ApStorageMutex;
+// Bumped by each clear, under both mutexes. A save captures it when it reads
+// the configuration it saves for, and is dropped if a clear ran since, so a
+// save that started before a clear can never land after it.
+uint32_t g_ApGeneration = 0;
 std::mutex g_DriverMutex;
 // First-time initialization creates a netif, event handlers, and a task. Two
 // console/companion/WebUI callers at once must not create them twice.
@@ -232,9 +234,17 @@ void persistAccessPoint(const wifi_ap_record_t &record) {
   preferences.end();
 }
 
+uint32_t apGeneration(void) {
+  const std::lock_guard<std::mutex> lock(g_StateMutex);
+  return g_ApGeneration;
+}
+
 /** The in-memory half of remembering an access point; no NVS. */
-void rememberAccessPoint(const wifi_ap_record_t &record) {
+void rememberAccessPoint(const wifi_ap_record_t &record, uint32_t generation) {
   std::lock_guard<std::mutex> lock(g_StateMutex);
+  if (generation != g_ApGeneration) {
+    return;
+  }
   g_FastConnectFailed = false;
   if (!g_ConnectRequested) {
     return;
@@ -247,9 +257,14 @@ void rememberAccessPoint(const wifi_ap_record_t &record) {
   g_Rssi = record.rssi;
 }
 
-void saveRememberedAccessPoint(const wifi_ap_record_t &record) {
+/** Save and remember record unless a clear ran since generation was read. */
+void saveRememberedAccessPoint(const wifi_ap_record_t &record, uint32_t generation) {
+  const std::lock_guard<std::mutex> storage(g_ApStorageMutex);
+  if (apGeneration() != generation) {
+    return;
+  }
   persistAccessPoint(record);
-  rememberAccessPoint(record);
+  rememberAccessPoint(record, generation);
 }
 
 void eraseStoredAccessPoint(void) {
@@ -586,6 +601,8 @@ bool scanForNetwork(void) {
   }
   g_ScanRefusedForCoex.store(false);
 
+  // Read before the SSID: a clear after this point drops the save below.
+  const uint32_t generation = apGeneration();
   const std::string ssid = Settings::load<Settings::WIFI_SSID>();
   wifi_scan_config_t config = {};
   // The SSID is known. Asking the driver for hidden results makes it include
@@ -618,7 +635,7 @@ bool scanForNetwork(void) {
         strnlen(reinterpret_cast<const char *>(record.ssid), sizeof(record.ssid));
     if ((recordLength == ssid.size())
         && (std::memcmp(record.ssid, ssid.data(), recordLength) == 0)) {
-      saveRememberedAccessPoint(record);
+      saveRememberedAccessPoint(record, generation);
       ESP_LOGI(LOG_TAG, "WiFi found saved access point on channel %u",
                static_cast<unsigned>(record.primary));
       return true;
@@ -756,9 +773,10 @@ bool g_PendingApSave = false;
 bool g_PendingApErase = false;
 bool g_PendingNtp = false;
 
-/** Drop a queued save or erase. Caller holds g_ApStorageMutex. */
+/** Drop a queued save or erase and end the generation. Caller holds g_ApStorageMutex. */
 void cancelPendingApStorage(void) {
   std::lock_guard<std::mutex> lock(g_StateMutex);
+  g_ApGeneration++;
   g_PendingApSave = false;
   g_PendingApErase = false;
 }
@@ -952,11 +970,13 @@ void eventHandler(void *, esp_event_base_t eventBase, int32_t eventId, void *eve
   }
 
   if ((eventBase == IP_EVENT) && (eventId == IP_EVENT_STA_GOT_IP)) {
+    uint32_t generation = 0;
     {
       std::lock_guard<std::mutex> lock(g_StateMutex);
       if (!g_ConnectRequested) {
         return;
       }
+      generation = g_ApGeneration;
       g_Connected = true;
       g_GotIp = true;
       g_DirectFailures = 0;
@@ -972,11 +992,15 @@ void eventHandler(void *, esp_event_base_t eventBase, int32_t eventId, void *eve
 
     wifi_ap_record_t record = {};
     if (esp_wifi_sta_get_ap_info(&record) == ESP_OK) {
-      rememberAccessPoint(record);
+      rememberAccessPoint(record, generation);
       std::lock_guard<std::mutex> lock(g_StateMutex);
-      g_PendingAp = record;
-      g_PendingApSave = true;
-      g_PendingApErase = false;
+      // A clear after this handler read the generation already cancelled the
+      // save; do not queue it again.
+      if (generation == g_ApGeneration) {
+        g_PendingAp = record;
+        g_PendingApSave = true;
+        g_PendingApErase = false;
+      }
     }
 
     char ip[16] = {};
