@@ -1,0 +1,7 @@
+# LeakSanitizer suppressions for the simulator's sanitizer job.
+# M5GFX's host SDL panel allocates its frame buffers in initFrameBuffer and
+# never frees them; every scenario reports the same 521,328 bytes there.
+leak:lgfx::v1::Panel_sdl::initFrameBuffer
+# The sanitizer's own symbolizer demangles through libstdc++ and keeps the
+# result.
+leak:__sanitizer::Symbolizer::PlatformDemangle

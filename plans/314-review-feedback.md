@@ -80,6 +80,16 @@ items; the CMake simulator configures and builds.
 | 6 | Summary, previously missed: the simulator's MQTT model did not allocate the copy. | Fixed in 91246dd7: `mqtt_incoming` in the scripted model and the memory profile. | `sim/hardware_model.cpp`, `sim/memory_profile.cpp` |
 | 7 | Final summary: PSRAM placement, late callbacks, restarts and the stack margin need runtime validation on hardware. | Documented limit. The stack margin comes from the call-graph walk (2,560 of 3,072); the rest waits for the deferred hardware pass in `plans/313-sim-only-status.md`. | `docs/stack-budget.md` |
 
+## PR 4b (#425, `feat/314-sim-gates`)
+
+| # | Finding | Resolution | Evidence |
+| ---: | :--- | :--- | :--- |
+| 1 | The `function:` UBSan entries name source paths, which the reviewer read as matching only function symbols, so the LVGL reports would not be suppressed. | False positive. A UBSan suppression pattern matches the function name, the source file or the module (LLVM UBSan documentation, "Runtime suppressions"). The unsuppressed Linux run logged 227 reports at each of the five LVGL `function` sites. With `sim/ubsan.supp` and `halt_on_error=1`, the suite logged zero `runtime error` lines. | A rerun on this branch after #422 in Docker `ubuntu:24.04` (clang 18): all 206 e2e scenarios pass with zero `runtime error` and zero ASan or LSan errors; the LeakSanitizer summary lists only the M5GFX frame buffer suppression. |
+| 2 | The permutation manifest and the `config-matrix.txt` template still named `heap.free` after the generator moved to `heap.alloc_failures`. | Fixed. Both name `heap.alloc_failures`; `tools/check_sim_coverage.py` passes and `tests/test_run_permutations.py` passes. | `sim/coverage/permutations.json`, `sim/fixtures/hardware/config-matrix.txt` |
+| 3 | The plan called the M5GFX frame buffers the only leak, but `sim/lsan.supp` also suppresses the sanitizer runtime's symbolizer. | Fixed. The plan names both and says which is in linked code. | `plans/314-memory-resilience.md` |
+| 4 | `alignment:bits/stl_algobase.h` masked every alignment report from the libstdc++ header, which could hide a furble caller. | Fixed, narrowed. UBSan matches only the reporting frame, and at `-O0` the `std::min<long>` instance is a COMDAT shared across objects, so building M5GFX with `-fno-sanitize=alignment` did not remove the report (a Linux rerun failed all 206 scenarios on it). The header entry is replaced by `std::min<long>` and `std::max<long>`, the only two instances M5GFX's packed `range_t` reaches. An alignment fault in any other libstdc++ function now fails the job; the documented residual is a furble `std::min<long>` or `std::max<long>` on a misaligned long. Rerun: 206 of 206 pass, zero `runtime error`. | `sim/ubsan.supp` |
+| 5 | Review summary: the generated permutation guard was not covered by a regression test. | Fixed. `tests/test_run_permutations.py` asserts that every generated scenario carries `assert heap.alloc_failures 0`, no `heap.free` floor, and that the manifest names the same assertion. Reverting the generator line fails the test. | `tests/test_run_permutations.py` |
+
 ## PR 4a (#414, `feat/314-stack-budget`)
 
 | # | Finding | Resolution | Evidence |

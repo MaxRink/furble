@@ -52,7 +52,7 @@
   "assertions": [
     "setting.fauxny",
     "mem.leaks",
-    "heap.free"
+    "heap.alloc_failures"
   ],
   "results": "sim/coverage/permutation_results.json",
   "memory_critical": [

@@ -777,8 +777,12 @@ shortens that host retry cadence for a bounded scenario.
   `FURBLE_FUZZ_STEPS` fallbacks. `--fuzz-verbose` also enables fuzzing when it
   is supplied by itself.
 - `FURBLE_SIM_SANITIZE=address,undefined sh sim/build.sh` builds an instrumented
-  binary for the deeper memory hunt. Off by default so the plain build and CI
-  stay fast.
+  binary for the deeper memory hunt. Off by default so the plain build stays
+  fast; the `sim-sanitizers` CI job builds it on Linux and runs the e2e suite
+  with LeakSanitizer on. `sim/ubsan.supp` and `sim/lsan.supp` hold only
+  LVGL, M5GFX and sanitizer-runtime sites. Linux libstdc++, like the device's,
+  allocates in a `std::deque` constructor where macOS libc++ does not, so a
+  per-tick deque shows up as counted heap on Linux only.
 - The fuzz fit rule follows the layouts the scenarios certify. Remote shutter
   stays fit-required on physical-button builds and on the 320x240 Core touch
   model, and narrow Stick touch may scroll. Physical-button Home and Connected
