@@ -43,7 +43,13 @@ CALL = re.compile(r"\tcall(0|4|8|12)\t[0-9a-f]+ <([^>]+)>$")
 LITERAL = re.compile(r"\tl32r\t(a\d+), [^(]*(?:\([0-9a-f]+ <([^>]+)>\))?")
 CALLX = re.compile(r"\tcallx(0|4|8|12)\t(a\d+)$")
 WRITE = re.compile(r"\t([a-z][\w.]*)\t(a\d+)\b")
-READS_FIRST = re.compile(r"(s(8|16|32)i(\.n)?|s32ri|s32e|b\w*|j\w*)$")  # stores, branches
+# Mnemonics whose first a-register operand is only read, from every form that
+# occurs in the firmware listings: stores, branches and jumps, shift-amount
+# loads, special and user register writes, TLB writes, loops and MAC16
+# multiplies. S32C1I, XSR and the post-increment ee.*.ip/xp forms do write
+# their first operand and are not listed.
+READS_FIRST = re.compile(r"(s(8|16|32)i(\.n)?|s32ri|s32e|s32nb|b\w*|j\w*|ssl|ssr|ssa8[bl]"
+                         r"|wsr\.\w+|wur\.\w+|wer|w[di]tlb|[di]itlb|loop\w*|u?mula?\.aa\.\w+)$")
 
 
 def clobber(literal, window):

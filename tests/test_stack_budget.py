@@ -88,6 +88,8 @@ LISTING = """
 40000010:\t006136        \tentry\ta1, 64
 40000013:\tfffba5        \tcall8\t40000000 <elf_leaf>
 40000016:\tfffa81        \tl32r\ta8, 40000100 <elf_mid+0xf0> (40000200 <elf_far>)
+40000017:\t130800        \twsr.ps\ta8
+40000018:\t400800        \tssl\ta8
 40000019:\t0008e0        \tcallx8\ta8
 4000001c:\tfff981        \tl32r\ta8, 4033a03c <elf_slot+0x2ec668>
 4000001f:\t0008e0        \tcallx8\ta8
