@@ -59,14 +59,18 @@ component size misses the golden budget.
 
 ## Per-board boot heap
 
-Each board profile boots on its own pool from `sim/coverage/board_heap.json`,
-written by `tools/derive_sim_heap.py` from the board's `firmware.elf`, its
+Each board profile with a release env boots on its own pool from
+`sim/coverage/board_heap.json`, written by `tools/derive_sim_heap.py` from the board's `firmware.elf`, its
 sdkconfig and the pinned ESP-IDF heap region tables. The figure is the
 internal 8-bit heap at app start minus the boot allocations the source sizes,
 each term cited in the JSON. It is an upper bound: the closed WiFi driver,
 NimBLE host state, lwIP and the LVGL object tree are not attributable from
 code, and on the StickS3 they account for about 141 KiB against the measured
-console figure. The `profile-*` budget floors equal the derived pair.
+console figure. Those `profile-*` budget floors equal the derived pair.
+`stickc-plus2` and `headless-s3` have no release env to derive from; they are
+listed in `UNDERIVED_PROFILES` in `sim/scripts/run-memory-profile.py` and keep
+the simulator default pool. Any other profile without a derived pool fails the
+run.
 
 Regenerate after a change that moves static RAM or a boot allocation:
 
