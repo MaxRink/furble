@@ -105,6 +105,21 @@ class DerivedHeapTest(unittest.TestCase):
         # 0x1900..0x3000 spans the merged a/b boundary.
         self.assertEqual(largest, 0x3000 - 0x1900)
 
+    def test_subset_run_keeps_the_other_boards(self):
+        import tempfile
+        from unittest import mock
+        boards = json.loads((ROOT / "sim/coverage/board_heap.json").read_text())["boards"]
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "board_heap.json"
+            output.write_text(json.dumps({"version": 1, "boards": boards}))
+            changed = dict(boards[0], derived_free_upper_bound=1)
+            with mock.patch.object(DERIVE, "derive", return_value=changed):
+                DERIVE.main(["--env", boards[0]["env"], "--output", str(output)])
+            written = json.loads(output.read_text())["boards"]
+        self.assertEqual([board["env"] for board in written], [board["env"] for board in boards])
+        self.assertEqual(written[0]["derived_free_upper_bound"], 1)
+        self.assertEqual(written[1:], boards[1:])
+
     def test_profile_floors_match_the_derived_board_heap(self):
         boards = json.loads((ROOT / "sim/coverage/board_heap.json").read_text())["boards"]
         budget = json.loads((ROOT / "sim/coverage/memory_budget.json").read_text())["scenarios"]

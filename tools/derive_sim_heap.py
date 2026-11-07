@@ -418,6 +418,14 @@ def main(argv: list) -> int:
     args = parser.parse_args(argv)
     envs = args.env or list(ENVS)
     boards = [derive(env) for env in envs]
+    if args.env and args.output.is_file():
+        # A subset run updates its boards in place and keeps the others, so the
+        # checked-in file never loses a board the memory profile needs.
+        derived = {board["env"]: board for board in boards}
+        previous = json.loads(args.output.read_text())["boards"]
+        boards = [derived.pop(board["env"], board) for board in previous] + list(derived.values())
+        order = list(ENVS)
+        boards.sort(key=lambda board: order.index(board["env"]))
     document = {
         "version": 1,
         "sdk": "ESP-IDF 5.5.3 (pinned PlatformIO framework-espidf)",
@@ -425,7 +433,7 @@ def main(argv: list) -> int:
         "boards": boards,
     }
     args.output.write_text(json.dumps(document, indent=2) + "\n")
-    for board in boards:
+    for board in (board for board in boards if board["env"] in envs):
         line = (f"{board['env']:18} static {board['static_dram_bytes']:7} at_start {board['heap_at_app_start']:7} "
                 f"attributable {board['attributable_bytes']:7} derived {board['derived_free_upper_bound']:7}")
         if "measured_free" in board:
