@@ -50,6 +50,12 @@ int main() {
   check(feed(governor, EXIT_TICKS * 2, redExit - 1, 30000) == RED,
         "red holds until MQTT fits again");
   check(feed(governor, EXIT_TICKS, redExit, 30000) == AMBER, "red steps up to amber");
+  // The host build has no CONFIG_SPIRAM, like the Core2: leaving RED must admit
+  // a first mqtts:// start that still has to allocate its queue internally.
+  check(Furble::MQTTMemory::startGate(redExit, 30000, true, Furble::MQTTMemory::EVENT_STORAGE_BYTES,
+                                      Furble::MQTTMemory::EVENT_QUEUE_BLOCK_BYTES)
+            .open,
+        "red clears only when a first TLS start with internal queue fits");
   const size_t amberExit = ENTER[AMBER].freeBytes + RESTORE_BYTES[AMBER];
   check(feed(governor, EXIT_TICKS - 1, amberExit, 30000) == AMBER,
         "amber waits for a sustained recovery");

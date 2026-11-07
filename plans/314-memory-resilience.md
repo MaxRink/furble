@@ -294,7 +294,7 @@ it, one level at a time:
 | Level | Enter | Pauses | Leave |
 | :--- | :--- | :--- | :--- |
 | AMBER | free < 12,288 or largest < 8,192 | WebUI server | free >= 20,480, largest >= 12,288 |
-| RED | free < 8,192 or largest < 6,144 | WebUI server, MQTT client | free >= 19,456, largest >= 10,240 |
+| RED | free < 8,192 or largest < 6,144 | WebUI server, MQTT client | free >= 19,456 (Core2 31,452), largest >= 10,240 |
 
 The WebUI supervisor and the MQTT owner add the level to their existing run
 decision, so a pause stops the server or client exactly like a disabled

@@ -4,6 +4,10 @@
 #include <cstddef>
 #include <cstdint>
 
+#if __has_include(<sdkconfig.h>)
+#include <sdkconfig.h>
+#endif
+
 #include "FurbleMQTTMemory.h"
 #include "FurbleWebUIMemory.h"
 
@@ -67,13 +71,22 @@ inline constexpr threshold_t ENTER[] = {
  * - RED, MQTT client: `MQTTMemory::START_TLS_INTERNAL_FREE_FLOOR`. The
  *   `mqtts://` start floor covers the 6 KiB TLS worker, so a returning secure
  *   client cannot push free back under RED. A plain client needs less and only
- *   recovers later.
+ *   recovers later. Without PSRAM (Core2) the first start also allocates the
+ *   event queue and incoming copy internally, so `EVENT_STORAGE_BYTES` is
+ *   added. Otherwise RED could clear inside the start gate's floor and each
+ *   refused start would spend the retry budget until MQTT blocks.
  * Each service still passes its own start gate when it returns.
  */
+#if defined(CONFIG_SPIRAM)
+inline constexpr size_t MQTT_RESTORE_BYTES = MQTTMemory::START_TLS_INTERNAL_FREE_FLOOR;
+#else
+inline constexpr size_t MQTT_RESTORE_BYTES =
+    MQTTMemory::START_TLS_INTERNAL_FREE_FLOOR + MQTTMemory::EVENT_STORAGE_BYTES;
+#endif
 inline constexpr size_t RESTORE_BYTES[] = {
     0,
     WebUIMemory::HTTPD_STACK_BYTES,
-    MQTTMemory::START_TLS_INTERNAL_FREE_FLOOR,
+    MQTT_RESTORE_BYTES,
 };
 
 /** Largest-block margin above a level's threshold before it is left. */
