@@ -401,6 +401,10 @@ shortens that host retry cadence for a bounded scenario.
   `INVALID`, and malformed direct calls fail closed. Plain `action` lines
   require `APPLIED`; intentional `VALID_NO_EFFECT` or `UNAVAILABLE` outcomes
   must use `action expect no-effect ...` or `action expect unavailable ...`.
+  The driver offers each action to the hardware model (`hwAction`) before the
+  UI, so a hardware-model action must never reuse a UI action name. The
+  hardware `companion-reject` once shadowed the pairing dialog's Reject and
+  stopped the docs capture; it is now `companion-reject-central` (plan 316).
   The valid root aliases
   `page main` and `page menu` both dispatch to the root page. Signed pixel
   scrolling accepts -2147483647 through 2147483647 (plus `top`, `bottom`, and

@@ -1053,7 +1053,7 @@ bool hwAction(const std::string &name) {
     ESP_LOGI(LOG_TAG, "companion reidentify: address rotated, bond dropped, pairing reopened");
     return true;
   }
-  if (name == "companion-reject") {
+  if (name == "companion-reject-central") {
     hw.ble.rejectedLinks++;
     hw.ble.companion = "rejected";
     ESP_LOGW(LOG_TAG, "companion rejected an unbonded central");
