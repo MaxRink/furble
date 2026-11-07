@@ -52,6 +52,7 @@
 #endif
 #include "FurbleIMU.h"
 #include "FurbleIR.h"
+#include "FurbleMemoryPressure.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
 #include "FurbleProvision.h"
@@ -2298,6 +2299,7 @@ int cmdStatus(int argc, char **argv) {
   printf("uptime: %llu\n", esp_timer_get_time() / 1000000ULL);
   printf("heap: %lu\n", static_cast<unsigned long>(esp_get_free_heap_size()));
   printf("heap_min: %lu\n", static_cast<unsigned long>(esp_get_minimum_free_heap_size()));
+  printf("memory_pressure: %s\n", MemoryPressure::levelName(MemoryPressure::current()));
   auto &platform = Platform::getInstance();
   const auto &caps = platform.getBatteryCaps();
   const auto battery = platform.readBattery();

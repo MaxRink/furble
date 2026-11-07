@@ -173,6 +173,14 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   Every NVS write of the access point runs under `g_ApStorageMutex`. A clear
   bumps `g_ApGeneration` and cancels the queued work; a save captured under an
   older generation is dropped, so a clear is never undone.
+- `FurbleMemoryPressure`: the runtime load-shedding governor. `tick()` runs
+  right after `CrashLog::update()` in both UI loops and reads the internal heap
+  once a second. AMBER pauses the WebUI server, RED also pauses the MQTT
+  client; each service reads `MemoryPressure::current()` in its own run
+  decision and returns through its own start gate. A pause never writes NVS,
+  is not a connect failure and never touches BLE, Control, the UI, GPS, WiFi
+  or the companion. Policy and thresholds live in the header and are host
+  tested in `tests/host/memory_pressure_test.cpp`.
 - `FurbleWebUI`: HTTPS-only browser and REST surface. Keep it fail closed on
   password or TLS identity errors. Camera actions stay on `UI::sendRequest`,
   settings stay on `Provision::apply`, and held releases remain owned until the

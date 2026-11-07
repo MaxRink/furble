@@ -4236,6 +4236,18 @@
       "reason": "Requires the optional FURBLE_SIM_MQTT=1 build and an unreachable broker URI; run by sim/scripts/run-memory.sh."
     },
     {
+      "path": "sim/scenarios/e2e/memory-pressure-mqtt-shed.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Requires the optional FURBLE_SIM_MQTT=1 build and an unreachable broker URI; run by sim/scripts/run-memory.sh."
+    },
+    {
       "path": "sim/scenarios/e2e/memory-counted-camera-connect.txt",
       "suite": "e2e",
       "owner": "sim-e2e",
@@ -4250,6 +4262,17 @@
     },
     {
       "path": "sim/scenarios/e2e/memory-webui-fail-closed.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/memory-webui-retry-bounded.txt",
       "suite": "e2e",
       "owner": "sim-e2e",
       "boards": [
@@ -4393,6 +4416,17 @@
     },
     {
       "path": "sim/scenarios/e2e/hw-memory-webui-post394.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/memory-pressure-webui-shed.txt",
       "suite": "e2e",
       "owner": "sim-e2e",
       "boards": [

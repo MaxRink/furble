@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <cstring>
 #include <mutex>
+#include <vector>
 
 #include <esp_log.h>
 #include <esp_system.h>
@@ -321,6 +322,8 @@ struct hardware_state_t {
   peripheral_state_t peripheral;
   mqtt_model_state_t mqtt;
   uint64_t leakProbe = 0;
+  // Blocks held by heap-squeeze, freed by heap-release.
+  std::vector<uint64_t> squeeze;
   std::string bootDefaultsMarker = "current";
   bool bootSeedFail = false;
   uint32_t bootDefaultScans = 0;
@@ -1192,6 +1195,23 @@ bool hwAction(const std::string &name) {
       heapFreeTagged(hw.leakProbe);
       hw.leakProbe = 0;
     }
+    return true;
+  }
+  // Runtime memory pressure: each squeeze holds one more 4 KiB internal block
+  // under its own tag, so a scenario walks the heap down past the governor
+  // thresholds while services run, then gives it back.
+  if (name == "heap-squeeze") {
+    const uint64_t id = heapAllocTagged(4096, "heap_squeeze", false, false);
+    if (id != 0) {
+      hw.squeeze.push_back(id);
+    }
+    return true;
+  }
+  if (name == "heap-release") {
+    for (const uint64_t id : hw.squeeze) {
+      heapFreeTagged(id);
+    }
+    hw.squeeze.clear();
     return true;
   }
   if (name == "psram-task-start") {

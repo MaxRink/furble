@@ -1,0 +1,31 @@
+# The WebUI server gate stays closed above the memory pressure floors and
+# retries at the bounded 10 s cadence.
+#
+# 18,000 free leaves 14,928 after the 3 KiB supervisor. That is above the
+# 12,288 AMBER floor, so the governor does not pause the server, but it is below
+# the 20,480 server floor, so the server logs the measured pair and stays
+# closed. One attempt at t=0, then one every 10 s: never every supervisor
+# period, and the pool must not move on each attempt.
+seed heap_internal_free 18000
+seed heap_internal_largest 18000
+seed wifi_connected true
+seed web_ui true
+seed webui_password true
+wait 100
+
+assert heap.free 14928
+assert webui.supervisor created
+assert webui.server blocked
+assert webui.gate server_memory
+assert webui.fail_closed yes
+
+wait 25000
+assert heap.pressure normal
+assert_min webui.attempts 3
+assert_max webui.attempts 3
+assert heap.free 14928
+assert heap.alloc_failures 0
+assert ui.page main
+assert platform.watchdog armed
+
+exit

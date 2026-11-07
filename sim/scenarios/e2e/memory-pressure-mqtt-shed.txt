@@ -1,0 +1,41 @@
+# Plan 314 PR 6: the memory pressure governor pauses the MQTT client at RED and
+# lets it return once the restored client fits above RED again.
+#
+# Run with FURBLE_SIM_MQTT=1 against a closed port (sim/scripts/run-memory.sh).
+# After boot the owner and the plain client leave 12,945 bytes free. Three 4 KiB
+# squeezes take it to 657, below the 8,192 RED floor. After three readings the
+# governor pauses the client; its 3 KiB worker and buffers come back (4,401
+# free) and stay back for the whole pause, because a memory pause is not a
+# connect failure and does not retry. Releasing the squeeze clears the 16,384
+# RED exit, so after five clear readings the governor steps up to AMBER, which
+# does not pause MQTT, and the client starts again through its own gate.
+seed hw_profile sticks3
+seed heap_internal_free 26625
+seed heap_internal_largest 26625
+seed wifi_connected true
+wait 3000
+
+assert mqtt.task created
+assert heap.free 12945
+assert heap.pressure normal
+
+action heap-squeeze
+action heap-squeeze
+action heap-squeeze
+assert heap.free 657
+wait 5000
+assert heap.pressure red
+assert heap.free 4401
+wait 5000
+assert heap.free 4401
+assert mqtt.blocked no
+
+action heap-release
+wait 8000
+assert heap.pressure amber
+assert heap.free 12945
+assert heap.alloc_failures 0
+assert ui.page main
+assert platform.watchdog armed
+
+exit

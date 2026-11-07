@@ -35,6 +35,7 @@
 #include "FurbleBootTimeline.h"
 #include "FurbleControl.h"
 #include "FurbleCrashLog.h"
+#include "FurbleMemoryPressure.h"
 #if defined(FURBLE_SIM_MQTT) && FURBLE_SIM_MQTT
 #include "FurbleMQTT.h"
 #endif
@@ -1922,6 +1923,9 @@ std::string queryValueUnscoped(const std::string &key) {
     }
     if (sub == "counted_tasks") {
       return std::to_string(heapCountedTaskBytes());
+    }
+    if (sub == "pressure") {
+      return MemoryPressure::levelName(MemoryPressure::current());
     }
     if (sub == "alloc_failures" || sub == "task_failures") {
       return std::to_string(heapAllocationFailures());

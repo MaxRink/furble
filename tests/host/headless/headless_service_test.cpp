@@ -83,6 +83,8 @@ void finish(void) {
         "the headless vUITask stopped pumping Platform::update");
   check(crashUpdates >= static_cast<uint32_t>(REQUIRED_LOOPS),
         "the headless vUITask stopped pumping CrashLog::update");
+  check(pressureTicks >= static_cast<uint32_t>(REQUIRED_LOOPS),
+        "the headless vUITask stopped ticking the memory pressure governor");
   check(scanProcessed >= static_cast<uint32_t>(REQUIRED_LOOPS),
         "the headless vUITask stopped draining Scan callbacks");
   check(gpsUpdates >= 2, "the headless vUITask did not service GPS at 1 Hz");

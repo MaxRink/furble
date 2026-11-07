@@ -132,6 +132,7 @@ set(FURBLE_SOURCES
     "${FURBLE_ROOT}/src/FurbleCompanionService.cpp"
     "${FURBLE_ROOT}/src/FurbleControl.cpp"
     "${FURBLE_ROOT}/src/FurbleGPS.cpp"
+    "${FURBLE_ROOT}/src/FurbleMemoryPressure.cpp"
     "${FURBLE_ROOT}/src/FurbleOTAMQTT.cpp"
     "${FURBLE_ROOT}/src/FurbleOTAPartitionSink.cpp"
     "${FURBLE_ROOT}/src/FurbleOTAReplayStore.cpp"

@@ -1,0 +1,52 @@
+# Plan 314 PR 6: the memory pressure governor pauses the WebUI server when
+# runtime use takes internal RAM below AMBER, and lets it return only once the
+# restored server fits above the threshold again.
+#
+# The seed is the post-#394 StickS3 pair. The supervisor and the 8,192-byte server
+# leave 16,087 free, which is healthy. One 4 KiB squeeze drops free to 11,991, below
+# the 12,288 AMBER floor. After three one-second readings the governor pauses
+# the server, which gives its 8,192 bytes back (20,183 free). That is still
+# short of the 20,480 exit level, so the server must stay paused: restarting it
+# would put the heap straight back below AMBER. Releasing the squeeze clears the
+# exit level, and after five clear readings the server starts again through its
+# own gate.
+seed hw_profile sticks3
+seed heap_internal_free 27351
+seed heap_internal_largest 25588
+seed web_ui true
+seed webui_password true
+seed wifi_connected true
+wait 2000
+
+assert webui.server running
+assert heap.free 16087
+assert heap.pressure normal
+
+action heap-squeeze
+assert heap.free 11991
+wait 1500
+# Debounced: one or two low readings do not shed.
+assert heap.pressure normal
+wait 3000
+assert heap.pressure amber
+wait 1000
+assert webui.server pending
+assert heap.free 20183
+
+# Room for the server, but not for the server above AMBER: no thrash.
+wait 10000
+assert heap.pressure amber
+assert webui.server pending
+assert webui.fail_closed no
+
+action heap-release
+wait 7000
+assert heap.pressure normal
+wait 1000
+assert webui.server running
+assert heap.free 16087
+assert heap.alloc_failures 0
+assert mem.leaks 0
+assert platform.watchdog armed
+
+exit

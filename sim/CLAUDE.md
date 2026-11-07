@@ -432,7 +432,11 @@ shortens that host retry cadence for a bounded scenario.
   HTTPS or claim TLS parity. `memory-counted-camera-connect.txt`,
   `memory-webui-fail-closed.txt`,
   `memory-mqtt-unreachable.txt`, `memory-mqtt-low-heap-retry-limit.txt` and
-  `memory-boot-combination.txt` are the scenario set. The allocation-abort
+  `memory-boot-combination.txt` are the scenario set. The production memory
+  pressure governor runs in the simulator: `action heap-squeeze` and
+  `heap-release` move the pool at runtime, `heap.pressure` reports the level,
+  and `memory-pressure-webui-shed.txt` and `memory-pressure-mqtt-shed.txt` (the
+  latter in `run-memory.sh`) cover pause and return. The allocation-abort
   fixtures `sim/fixtures/hardware/panic-*.txt` run only through
   `sim/scripts/run-panic-fixtures.sh`, which needs the default and the
   `FURBLE_SIM_MQTT=1` binaries.

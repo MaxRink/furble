@@ -38,6 +38,7 @@ count=0
 for name in \
   memory-mqtt-unreachable \
   memory-mqtt-low-heap-retry-limit \
+  memory-pressure-mqtt-shed \
   memory-boot-combination; do
   scenario="$ROOT/sim/scenarios/e2e/$name.txt"
   count=$((count + 1))

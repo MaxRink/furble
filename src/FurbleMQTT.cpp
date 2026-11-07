@@ -42,6 +42,7 @@
 #include "FurbleBootTimeline.h"
 #include "FurbleGPS.h"
 #include "FurbleMQTTMemory.h"
+#include "FurbleMemoryPressure.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
 #include "FurbleUI.h"
@@ -482,7 +483,10 @@ void MQTT::taskStep(void) {
     const std::lock_guard<std::mutex> lock(m_Mutex);
     return m_EnabledCached;
   }();
-  if (!enabled || manual_disconnect || blocked || !isConfigured()) {
+  // A memory pause is not a connect failure; the client restarts through
+  // startGate() once the governor clears.
+  const bool paused = MemoryPressure::pausesMQTT(MemoryPressure::current());
+  if (!enabled || manual_disconnect || blocked || paused || !isConfigured()) {
     if (m_Client != nullptr) {
       stopClient();
     }
