@@ -228,10 +228,10 @@ int main(int argc, char **argv) {
 
   auto &mqtt = MQTT::getInstance();
   MQTT::init();
-  // The host build has no PSRAM queue path, so the queue is internal and the
-  // start floor includes it.
+  // The host build has no PSRAM queue path, so the queue and the incoming
+  // event copy are internal and the start floor includes both.
   const size_t queueFreeFloor =
-      Furble::MQTTMemory::START_INTERNAL_FREE_FLOOR + Furble::MQTTMemory::EVENT_QUEUE_BYTES;
+      Furble::MQTTMemory::START_INTERNAL_FREE_FLOOR + Furble::MQTTMemory::EVENT_STORAGE_BYTES;
   const size_t queueLargestFloor =
       Furble::MQTTMemory::EVENT_QUEUE_BYTES > Furble::MQTTMemory::START_INTERNAL_LARGEST_FLOOR
           ? Furble::MQTTMemory::EVENT_QUEUE_BYTES

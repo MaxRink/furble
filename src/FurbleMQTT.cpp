@@ -12,6 +12,7 @@
 #include <cstring>
 #include <ctime>
 #include <limits>
+#include <new>
 #include <utility>
 
 #include <cJSON.h>
@@ -688,11 +689,13 @@ bool MQTT::startClient(void) {
   const size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
   const size_t psramLargest = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
   const bool queueInPsram = psramLargest >= MQTTMemory::EVENT_QUEUE_BYTES;
-  // Without PSRAM the queue is a 9,392-byte internal allocation, so the start
-  // floor must include it. Otherwise the gate admits a client that cannot
-  // allocate its queue and burns the retry budget.
+  // Without PSRAM the 9,392-byte queue and the 2,348-byte incoming copy are
+  // internal allocations, so the start floor must include both, and the
+  // largest block must hold the queue. Otherwise the gate admits a client that
+  // cannot allocate them and burns the retry budget.
   const auto gate = MQTTMemory::startGate(freeBytes, largest, secure,
-                                          queueInPsram ? 0 : MQTTMemory::EVENT_QUEUE_BYTES);
+                                          queueInPsram ? 0 : MQTTMemory::EVENT_STORAGE_BYTES,
+                                          MQTTMemory::EVENT_QUEUE_BYTES);
   if (!gate.open) {
     // Defer instead of letting esp-mqtt allocate its task and buffers into a
     // pool that cannot hold them. The owner counts this as a failed attempt, so
@@ -735,6 +738,34 @@ bool MQTT::startClient(void) {
       ESP_LOGE(MQTT_LOG_TAG, "Failed to create MQTT event queue.");
       return false;
     }
+  }
+
+  // The gate reserves INCOMING_EVENT_BYTES for this copy on the 32-bit target.
+  static_assert(
+      (sizeof(void *) != 4) || (sizeof(queued_event_t) == MQTTMemory::INCOMING_EVENT_BYTES),
+      "INCOMING_EVENT_BYTES must match queued_event_t on the target");
+  if (m_Incoming == nullptr) {
+    void *incoming = nullptr;
+#if defined(CONFIG_SPIRAM)
+    if (queueInPsram) {
+      incoming = heap_caps_malloc(sizeof(queued_event_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    }
+#endif
+    if (incoming == nullptr) {
+      const size_t internalLargest =
+          heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+      if (internalLargest < sizeof(queued_event_t)) {
+        ESP_LOGE(MQTT_LOG_TAG, "MQTT incoming event cannot fit internal RAM: largest %u (need %u)",
+                 static_cast<unsigned>(internalLargest),
+                 static_cast<unsigned>(sizeof(queued_event_t)));
+        return false;
+      }
+      incoming = heap_caps_malloc(sizeof(queued_event_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    }
+    if (incoming == nullptr) {
+      return false;
+    }
+    m_Incoming = new (incoming) queued_event_t();
   }
 
   esp_mqtt_client_config_t config = {};
@@ -870,22 +901,34 @@ void MQTT::eventHandler(void *handler_arg,
     return;
   }
 
-  MQTT::queued_event_t event;
-  event.type = MQTT::queued_event_type_t::MQTT;
-  event.client = source->client;
-  event.event_id = source->event_id;
-  event.qos = source->qos;
-  event.retain = source->retain;
-  event.dup = source->dup;
-  event.message_id = source->msg_id;
-  if (source->error_handle != nullptr) {
-    event.error_type = source->error_handle->error_type;
-  }
-
   if ((source->event_id == MQTT_EVENT_CONNECTED) || (source->event_id == MQTT_EVENT_DISCONNECTED)) {
     mqtt->queueLifecycleEvent(source->client, source->event_id);
     return;
   }
+
+  // This runs on the esp-mqtt client task. A queued_event_t is 2,348 bytes
+  // and the plain client stack is 3 KiB, so the event is built in the owner's
+  // preallocated copy, never on this stack. Every field is assigned: a
+  // whole-struct reset could materialize a temporary here.
+  const std::lock_guard<std::mutex> lock(mqtt->m_IncomingMutex);
+  if (mqtt->m_Incoming == nullptr) {
+    return;
+  }
+  MQTT::queued_event_t &event = *mqtt->m_Incoming;
+  event.type = MQTT::queued_event_type_t::MQTT;
+  event.client = source->client;
+  event.event_id = source->event_id;
+  event.current_data_offset = 0;
+  event.total_data_len = 0;
+  event.topic_len = 0;
+  event.data_len = 0;
+  event.error_type = (source->error_handle != nullptr) ? source->error_handle->error_type : 0;
+  event.message_id = source->msg_id;
+  event.qos = source->qos;
+  event.retain = source->retain;
+  event.dup = source->dup;
+  event.topic[0] = '\0';
+  event.data[0] = '\0';
 
   if (source->event_id == MQTT_EVENT_DATA) {
     if ((source->topic == nullptr) || (source->data == nullptr) || (source->topic_len <= 0)

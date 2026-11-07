@@ -2,6 +2,7 @@
 #define FURBLE_MQTT_MEMORY_H
 
 #include <cstddef>
+#include <cstdint>
 
 namespace Furble {
 namespace MQTTMemory {
@@ -47,6 +48,18 @@ inline constexpr size_t BUFFER_SIZE = 1536;
 inline constexpr size_t EVENT_QUEUE_BYTES = 9392;
 
 /**
+ * The event the esp-mqtt client task builds before queueing it.
+ *
+ * One 2,348-byte command copy. The event handler runs on the client task,
+ * whose plain stack is 3 KiB, so the copy must not live on that stack. It is
+ * allocated with the queue, in the same memory, and never freed.
+ */
+inline constexpr size_t INCOMING_EVENT_BYTES = 2348;
+
+/** Everything the owner allocates for events: the queue and the incoming copy. */
+inline constexpr size_t EVENT_STORAGE_BYTES = EVENT_QUEUE_BYTES + INCOMING_EVENT_BYTES;
+
+/**
  * Free internal heap required before the esp-mqtt client is created.
  *
  * The plain worker is 3 KiB, the two buffers are 1.5 KiB each, and esp-mqtt
@@ -58,8 +71,9 @@ inline constexpr size_t EVENT_QUEUE_BYTES = 9392;
  * floors. Reusing the plain floor would admit a start that cannot hold the TLS
  * worker plus the same buffers and overhead. The TLS floors are the plain
  * floors plus the 3 KiB worker difference. When PSRAM is unavailable the
- * 9,392-byte event queue is allocated internally, so the caller adds
- * `EVENT_QUEUE_BYTES` as `extraInternalBytes` and the floor covers it.
+ * event queue and the incoming event copy are allocated internally, so the
+ * caller adds `EVENT_STORAGE_BYTES` as `extraInternalBytes` and the floor
+ * covers both.
  */
 inline constexpr size_t START_INTERNAL_FREE_FLOOR = 8192;
 inline constexpr size_t START_INTERNAL_LARGEST_FLOOR = 4096;
@@ -114,15 +128,20 @@ inline constexpr gate_t evaluate(size_t freeBytes,
           freeFloor, largestFloor};
 }
 
+// extraLargestBlock is the biggest single internal allocation among the extra
+// bytes; it defaults to all of them as one block.
 inline constexpr gate_t startGate(size_t freeBytes,
                                   size_t largestBlock,
                                   bool secure = false,
-                                  size_t extraInternalBytes = 0) {
+                                  size_t extraInternalBytes = 0,
+                                  size_t extraLargestBlock = SIZE_MAX) {
   const size_t baseFree = secure ? START_TLS_INTERNAL_FREE_FLOOR : START_INTERNAL_FREE_FLOOR;
   const size_t baseLargest =
       secure ? START_TLS_INTERNAL_LARGEST_FLOOR : START_INTERNAL_LARGEST_FLOOR;
+  const size_t extraLargest =
+      extraLargestBlock < extraInternalBytes ? extraLargestBlock : extraInternalBytes;
   const size_t freeFloor = baseFree + extraInternalBytes;
-  const size_t largestFloor = extraInternalBytes > baseLargest ? extraInternalBytes : baseLargest;
+  const size_t largestFloor = extraLargest > baseLargest ? extraLargest : baseLargest;
   return evaluate(freeBytes, largestBlock, freeFloor, largestFloor);
 }
 
@@ -141,8 +160,9 @@ inline constexpr gate_t discoveryGate(size_t freeBytes, size_t largestBlock) {
 inline constexpr bool startFits(size_t freeBytes,
                                 size_t largestBlock,
                                 bool secure = false,
-                                size_t extraInternalBytes = 0) {
-  return startGate(freeBytes, largestBlock, secure, extraInternalBytes).open;
+                                size_t extraInternalBytes = 0,
+                                size_t extraLargestBlock = SIZE_MAX) {
+  return startGate(freeBytes, largestBlock, secure, extraInternalBytes, extraLargestBlock).open;
 }
 
 inline constexpr bool ownerFits(size_t freeBytes, size_t largestBlock, bool secure = false) {
