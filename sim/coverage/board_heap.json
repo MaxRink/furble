@@ -21,7 +21,9 @@
         "uart_obj_t": 124,
         "uart_event_t": 12,
         "Furble::Control::cmd_t": 4,
-        "struct esp_timer": 32
+        "struct esp_timer": 32,
+        "esp_event_loop_instance_t": 24,
+        "esp_event_post_instance_t": 16
       },
       "heap_at_app_start": 255132,
       "largest_span_at_app_start": 129984,
@@ -52,24 +54,32 @@
           "source": "CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE"
         },
         {
+          "term": "event_loop",
+          "bytes": 752,
+          "source": "esp_event.c: loop calloc, CONFIG_ESP_SYSTEM_EVENT_QUEUE_SIZE queue, mutex"
+        },
+        {
           "term": "tiT",
           "bytes": 3440,
-          "source": "CONFIG_LWIP_TCPIP_TASK_STACK_SIZE"
+          "source": "CONFIG_LWIP_TCPIP_TASK_STACK_SIZE, esp_netif_init()"
         },
         {
           "term": "wifi_static_rx",
           "bytes": 16160,
+          "condition": "wifi",
           "source": "CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM x 1600 (ESP-IDF Wi-Fi buffer usage)"
         },
         {
           "term": "wifi_static_rx_mgmt",
           "bytes": 2580,
+          "condition": "wifi",
           "source": "CONFIG_ESP_WIFI_RX_MGMT_BUF_NUM_DEF x about 500 (esp_wifi Kconfig help)"
         },
         {
           "term": "wifi_furble",
           "bytes": 4464,
-          "source": "src/FurbleWiFi.cpp TASK_STACK"
+          "source": "src/FurbleWiFi.cpp TASK_STACK",
+          "condition": "wifi"
         },
         {
           "term": "btController",
@@ -143,12 +153,14 @@
         },
         {
           "term": "lvgl_draw",
-          "bytes": 2416,
-          "source": "include/FurbleUIMemory.h PARTIAL_LINES, singleDrawBuffer"
+          "bytes": 816,
+          "source": "include/FurbleUIMemory.h drawBufferBytes, singleDrawBuffer"
         }
       ],
-      "attributable_bytes": 121236,
-      "derived_free_upper_bound": 133896,
+      "attributable_bytes": 120388,
+      "derived_free_upper_bound": 134744,
+      "derived_free_wifi_off": 157948,
+      "condition": "WiFi enabled with an SSID, as in the measured seeds",
       "derived_largest_upper_bound": 129984,
       "status": "derived"
     },
@@ -170,7 +182,9 @@
         "uart_obj_t": 124,
         "uart_event_t": 12,
         "Furble::Control::cmd_t": 4,
-        "struct esp_timer": 32
+        "struct esp_timer": 32,
+        "esp_event_loop_instance_t": 24,
+        "esp_event_post_instance_t": 16
       },
       "heap_at_app_start": 255156,
       "largest_span_at_app_start": 129984,
@@ -201,24 +215,32 @@
           "source": "CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE"
         },
         {
+          "term": "event_loop",
+          "bytes": 752,
+          "source": "esp_event.c: loop calloc, CONFIG_ESP_SYSTEM_EVENT_QUEUE_SIZE queue, mutex"
+        },
+        {
           "term": "tiT",
           "bytes": 3440,
-          "source": "CONFIG_LWIP_TCPIP_TASK_STACK_SIZE"
+          "source": "CONFIG_LWIP_TCPIP_TASK_STACK_SIZE, esp_netif_init()"
         },
         {
           "term": "wifi_static_rx",
           "bytes": 16160,
+          "condition": "wifi",
           "source": "CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM x 1600 (ESP-IDF Wi-Fi buffer usage)"
         },
         {
           "term": "wifi_static_rx_mgmt",
           "bytes": 2580,
+          "condition": "wifi",
           "source": "CONFIG_ESP_WIFI_RX_MGMT_BUF_NUM_DEF x about 500 (esp_wifi Kconfig help)"
         },
         {
           "term": "wifi_furble",
           "bytes": 4464,
-          "source": "src/FurbleWiFi.cpp TASK_STACK"
+          "source": "src/FurbleWiFi.cpp TASK_STACK",
+          "condition": "wifi"
         },
         {
           "term": "btController",
@@ -292,12 +314,14 @@
         },
         {
           "term": "lvgl_draw",
-          "bytes": 4068,
-          "source": "include/FurbleUIMemory.h PARTIAL_LINES, singleDrawBuffer"
+          "bytes": 2176,
+          "source": "include/FurbleUIMemory.h drawBufferBytes, singleDrawBuffer"
         }
       ],
-      "attributable_bytes": 122888,
-      "derived_free_upper_bound": 132268,
+      "attributable_bytes": 121748,
+      "derived_free_upper_bound": 133408,
+      "derived_free_wifi_off": 156612,
+      "condition": "WiFi enabled with an SSID, as in the measured seeds",
       "derived_largest_upper_bound": 129984,
       "status": "derived"
     },
@@ -319,7 +343,9 @@
         "uart_obj_t": 124,
         "uart_event_t": 12,
         "Furble::Control::cmd_t": 4,
-        "struct esp_timer": 32
+        "struct esp_timer": 32,
+        "esp_event_loop_instance_t": 24,
+        "esp_event_post_instance_t": 16
       },
       "heap_at_app_start": 261800,
       "largest_span_at_app_start": 261800,
@@ -350,24 +376,32 @@
           "source": "CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE"
         },
         {
+          "term": "event_loop",
+          "bytes": 752,
+          "source": "esp_event.c: loop calloc, CONFIG_ESP_SYSTEM_EVENT_QUEUE_SIZE queue, mutex"
+        },
+        {
           "term": "tiT",
           "bytes": 3440,
-          "source": "CONFIG_LWIP_TCPIP_TASK_STACK_SIZE"
+          "source": "CONFIG_LWIP_TCPIP_TASK_STACK_SIZE, esp_netif_init()"
         },
         {
           "term": "wifi_static_rx",
           "bytes": 9696,
+          "condition": "wifi",
           "source": "CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM x 1600 (ESP-IDF Wi-Fi buffer usage)"
         },
         {
           "term": "wifi_static_rx_mgmt",
           "bytes": 2580,
+          "condition": "wifi",
           "source": "CONFIG_ESP_WIFI_RX_MGMT_BUF_NUM_DEF x about 500 (esp_wifi Kconfig help)"
         },
         {
           "term": "wifi_furble",
           "bytes": 4464,
-          "source": "src/FurbleWiFi.cpp TASK_STACK"
+          "source": "src/FurbleWiFi.cpp TASK_STACK",
+          "condition": "wifi"
         },
         {
           "term": "btController",
@@ -426,18 +460,20 @@
         },
         {
           "term": "lvgl_draw",
-          "bytes": 4068,
-          "source": "include/FurbleUIMemory.h PARTIAL_LINES, singleDrawBuffer"
+          "bytes": 2176,
+          "source": "include/FurbleUIMemory.h drawBufferBytes, singleDrawBuffer"
         }
       ],
-      "attributable_bytes": 88300,
-      "derived_free_upper_bound": 173500,
-      "derived_largest_upper_bound": 173500,
+      "attributable_bytes": 87160,
+      "derived_free_upper_bound": 174640,
+      "derived_free_wifi_off": 191380,
+      "condition": "WiFi enabled with an SSID, as in the measured seeds",
+      "derived_largest_upper_bound": 174640,
       "status": "derived",
       "internal_reserved_for_caps_only": 32768,
       "measured_free": 30007,
       "measured_source": "sim/scenarios/e2e/hw-memory-post394-budget.txt",
-      "unattributed_gap": 143493
+      "unattributed_gap": 144633
     },
     {
       "env": "m5stack-core",
@@ -457,7 +493,9 @@
         "uart_obj_t": 124,
         "uart_event_t": 12,
         "Furble::Control::cmd_t": 4,
-        "struct esp_timer": 32
+        "struct esp_timer": 32,
+        "esp_event_loop_instance_t": 24,
+        "esp_event_post_instance_t": 16
       },
       "heap_at_app_start": 255108,
       "largest_span_at_app_start": 129984,
@@ -488,24 +526,32 @@
           "source": "CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE"
         },
         {
+          "term": "event_loop",
+          "bytes": 752,
+          "source": "esp_event.c: loop calloc, CONFIG_ESP_SYSTEM_EVENT_QUEUE_SIZE queue, mutex"
+        },
+        {
           "term": "tiT",
           "bytes": 3440,
-          "source": "CONFIG_LWIP_TCPIP_TASK_STACK_SIZE"
+          "source": "CONFIG_LWIP_TCPIP_TASK_STACK_SIZE, esp_netif_init()"
         },
         {
           "term": "wifi_static_rx",
           "bytes": 16160,
+          "condition": "wifi",
           "source": "CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM x 1600 (ESP-IDF Wi-Fi buffer usage)"
         },
         {
           "term": "wifi_static_rx_mgmt",
           "bytes": 2580,
+          "condition": "wifi",
           "source": "CONFIG_ESP_WIFI_RX_MGMT_BUF_NUM_DEF x about 500 (esp_wifi Kconfig help)"
         },
         {
           "term": "wifi_furble",
           "bytes": 4464,
-          "source": "src/FurbleWiFi.cpp TASK_STACK"
+          "source": "src/FurbleWiFi.cpp TASK_STACK",
+          "condition": "wifi"
         },
         {
           "term": "btController",
@@ -584,13 +630,15 @@
         },
         {
           "term": "lvgl_draw",
-          "bytes": 19232,
-          "source": "include/FurbleUIMemory.h PARTIAL_LINES, singleDrawBuffer"
+          "bytes": 20512,
+          "source": "include/FurbleUIMemory.h drawBufferBytes, singleDrawBuffer"
         }
       ],
-      "attributable_bytes": 140580,
-      "derived_free_upper_bound": 114528,
-      "derived_largest_upper_bound": 114528,
+      "attributable_bytes": 142612,
+      "derived_free_upper_bound": 112496,
+      "derived_free_wifi_off": 135700,
+      "condition": "WiFi enabled with an SSID, as in the measured seeds",
+      "derived_largest_upper_bound": 112496,
       "status": "derived"
     },
     {
@@ -611,7 +659,9 @@
         "uart_obj_t": 124,
         "uart_event_t": 12,
         "Furble::Control::cmd_t": 4,
-        "struct esp_timer": 32
+        "struct esp_timer": 32,
+        "esp_event_loop_instance_t": 24,
+        "esp_event_post_instance_t": 16
       },
       "heap_at_app_start": 253676,
       "largest_span_at_app_start": 129984,
@@ -642,24 +692,32 @@
           "source": "CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE"
         },
         {
+          "term": "event_loop",
+          "bytes": 752,
+          "source": "esp_event.c: loop calloc, CONFIG_ESP_SYSTEM_EVENT_QUEUE_SIZE queue, mutex"
+        },
+        {
           "term": "tiT",
           "bytes": 3440,
-          "source": "CONFIG_LWIP_TCPIP_TASK_STACK_SIZE"
+          "source": "CONFIG_LWIP_TCPIP_TASK_STACK_SIZE, esp_netif_init()"
         },
         {
           "term": "wifi_static_rx",
           "bytes": 16160,
+          "condition": "wifi",
           "source": "CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM x 1600 (ESP-IDF Wi-Fi buffer usage)"
         },
         {
           "term": "wifi_static_rx_mgmt",
           "bytes": 2580,
+          "condition": "wifi",
           "source": "CONFIG_ESP_WIFI_RX_MGMT_BUF_NUM_DEF x about 500 (esp_wifi Kconfig help)"
         },
         {
           "term": "wifi_furble",
           "bytes": 4464,
-          "source": "src/FurbleWiFi.cpp TASK_STACK"
+          "source": "src/FurbleWiFi.cpp TASK_STACK",
+          "condition": "wifi"
         },
         {
           "term": "btController",
@@ -738,13 +796,15 @@
         },
         {
           "term": "lvgl_draw",
-          "bytes": 19232,
-          "source": "include/FurbleUIMemory.h PARTIAL_LINES, singleDrawBuffer"
+          "bytes": 20512,
+          "source": "include/FurbleUIMemory.h drawBufferBytes, singleDrawBuffer"
         }
       ],
-      "attributable_bytes": 140580,
-      "derived_free_upper_bound": 113096,
-      "derived_largest_upper_bound": 113096,
+      "attributable_bytes": 142612,
+      "derived_free_upper_bound": 111064,
+      "derived_free_wifi_off": 134268,
+      "condition": "WiFi enabled with an SSID, as in the measured seeds",
+      "derived_largest_upper_bound": 111064,
       "status": "derived"
     },
     {
@@ -765,7 +825,9 @@
         "uart_obj_t": 124,
         "uart_event_t": 12,
         "Furble::Control::cmd_t": 4,
-        "struct esp_timer": 32
+        "struct esp_timer": 32,
+        "esp_event_loop_instance_t": 24,
+        "esp_event_post_instance_t": 16
       },
       "heap_at_app_start": 258136,
       "largest_span_at_app_start": 258136,
@@ -796,24 +858,32 @@
           "source": "CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE"
         },
         {
+          "term": "event_loop",
+          "bytes": 768,
+          "source": "esp_event.c: loop calloc, CONFIG_ESP_SYSTEM_EVENT_QUEUE_SIZE queue, mutex"
+        },
+        {
           "term": "tiT",
           "bytes": 3452,
-          "source": "CONFIG_LWIP_TCPIP_TASK_STACK_SIZE"
+          "source": "CONFIG_LWIP_TCPIP_TASK_STACK_SIZE, esp_netif_init()"
         },
         {
           "term": "wifi_static_rx",
           "bytes": 16160,
+          "condition": "wifi",
           "source": "CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM x 1600 (ESP-IDF Wi-Fi buffer usage)"
         },
         {
           "term": "wifi_static_rx_mgmt",
           "bytes": 2580,
+          "condition": "wifi",
           "source": "CONFIG_ESP_WIFI_RX_MGMT_BUF_NUM_DEF x about 500 (esp_wifi Kconfig help)"
         },
         {
           "term": "wifi_furble",
           "bytes": 4476,
-          "source": "src/FurbleWiFi.cpp TASK_STACK"
+          "source": "src/FurbleWiFi.cpp TASK_STACK",
+          "condition": "wifi"
         },
         {
           "term": "btController",
@@ -876,9 +946,11 @@
           "source": "src/main.cpp HEADLESS_REQUEST_QUEUE_LENGTH x sizeof(headless_request_t *)"
         }
       ],
-      "attributable_bytes": 114460,
-      "derived_free_upper_bound": 143676,
-      "derived_largest_upper_bound": 143676,
+      "attributable_bytes": 115228,
+      "derived_free_upper_bound": 142908,
+      "derived_free_wifi_off": 166124,
+      "condition": "WiFi enabled with an SSID, as in the measured seeds",
+      "derived_largest_upper_bound": 142908,
       "status": "derived",
       "internal_reserved_for_caps_only": 32768
     }

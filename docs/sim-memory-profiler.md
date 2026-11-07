@@ -65,7 +65,7 @@ sdkconfig and the pinned ESP-IDF heap region tables. The figure is the
 internal 8-bit heap at app start minus the boot allocations the source sizes,
 each term cited in the JSON. It is an upper bound: the closed WiFi driver,
 NimBLE host state, lwIP and the LVGL object tree are not attributable from
-code, and on the StickS3 they account for about 140 KiB against the measured
+code, and on the StickS3 they account for about 141 KiB against the measured
 console figure. The `profile-*` budget floors equal the derived pair.
 
 Regenerate after a change that moves static RAM or a boot allocation:

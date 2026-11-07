@@ -203,6 +203,13 @@ Implemented on `feat/314-sim-board-baselines`, stacked on PR 2. No hardware.
 - `CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL` is not subtracted: `esp_psram.c`
   re-registers that pool with INTERNAL | DMA | 8BIT caps, so it stays in
   `heap_caps_get_free_size(INTERNAL | 8BIT)`. Plain `malloc` cannot use it.
+- WiFi starts only with the WiFi setting on and an SSID stored
+  (`WiFi::init`). The WiFi buffers and furble's WiFi task carry that
+  condition; the JSON reports both ceilings. The profile seeds use the WiFi-on
+  figure, the state of the measured seeds and of every MQTT and WebUI path.
+  `esp_netif_init()` and the default event loop run on every boot, so the
+  tcpip and event tasks, the loop object, its queue and its mutex are always
+  charged.
 - `sim/scripts/run-memory-profile.py` seeds each board profile with its
   derived free and largest upper bounds instead of the shared 200 KiB / 160
   KiB default, which an ESP32 Core can never have. The `profile-*` budget
@@ -212,18 +219,18 @@ Implemented on `feat/314-sim-board-baselines`, stacked on PR 2. No hardware.
   for `headless-s3` and `waveshare-s3-eth`; both sdkconfigs set 16 KiB. Fixed,
   and the same test now checks every row's main stack and PSRAM presence.
 
-| Env | Static DRAM | Heap at app start | Largest span | Attributable boot | Derived free (upper bound) |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| m5stick-c | 54,928 | 255,132 | 129,984 | 121,236 | 133,896 |
-| m5stick-c-plus | 54,904 | 255,156 | 129,984 | 122,888 | 132,268 |
-| m5stick-s3 | 47,704 | 261,800 | 261,800 | 88,300 | 173,500 |
-| m5stack-core | 54,952 | 255,108 | 129,984 | 140,580 | 114,528 |
-| m5stack-core2 | 56,384 | 253,676 | 129,984 | 140,580 | 113,096 |
-| waveshare-s3-eth | 52,136 | 258,136 | 258,136 | 114,460 | 143,676 |
+| Env | Static DRAM | Heap at app start | Largest span | Attributable boot | Derived free, WiFi on | Derived free, WiFi off |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| m5stick-c | 54,928 | 255,132 | 129,984 | 120,388 | 134,744 | 157,948 |
+| m5stick-c-plus | 54,904 | 255,156 | 129,984 | 121,748 | 133,408 | 156,612 |
+| m5stick-s3 | 47,704 | 261,800 | 261,800 | 87,160 | 174,640 | 191,380 |
+| m5stack-core | 54,952 | 255,108 | 129,984 | 142,612 | 112,496 | 135,700 |
+| m5stack-core2 | 56,384 | 253,676 | 129,984 | 142,612 | 111,064 | 134,268 |
+| waveshare-s3-eth | 52,136 | 258,136 | 258,136 | 115,228 | 142,908 | 166,124 |
 
 Limit of a code-only derivation: the StickS3 console measurement already in
 the repo (30,007 free, MQTT off, debug image with the 8 KiB main stack) sits
-143,493 bytes below the derived bound. That gap is boot cost the source does
+144,633 bytes below the derived bound. That gap is boot cost the source does
 not size: the closed WiFi driver's task and allocations, NimBLE host state,
 lwIP control blocks and the LVGL object tree, which stays internal because
 its objects are below the 4 KiB PSRAM threshold. The derived figures are

@@ -7,6 +7,7 @@ Waveshare listed 8 KiB against a 16 KiB config). This test reads both.
 
 import importlib.util
 import json
+import math
 import re
 import unittest
 from pathlib import Path
@@ -61,6 +62,28 @@ class ProfileSdkconfigTest(unittest.TestCase):
                 self.assertEqual(int(fields[3]), int(config["CONFIG_ESP_MAIN_TASK_STACK_SIZE"]))
                 has_psram = fields[1] != "0"
                 self.assertEqual(has_psram, config.get("CONFIG_SPIRAM") == "y")
+
+    def test_draw_buffers_follow_the_firmware_rule(self):
+        rows = profile_rows()
+        for profile, env in PROFILE_ENV.items():
+            _, width, height, _ = DERIVE.ENVS.get(env, (None, 0, 0, None))
+            if not width:
+                continue
+            with self.subTest(profile=profile):
+                fields = rows[profile]
+                # Field 8 is one buffer's bytes, field 9 the single-buffer flag.
+                self.assertEqual(math.prod(int(term) for term in fields[8].split("*")),
+                                 DERIVE.draw_buffer_bytes(width, height))
+                self.assertEqual(fields[9] == "true", DERIVE.single_draw_buffer(width))
+
+    def test_draw_buffer_rule_matches_the_host_test_pins(self):
+        # tests/host/ui_memory_test.cpp pins these values for the C++ rule.
+        self.assertEqual(DERIVE.draw_buffer_bytes(320, 240), 10240)
+        self.assertEqual(DERIVE.draw_buffer_bytes(135, 240), 2160)
+        self.assertEqual(DERIVE.draw_buffer_bytes(80, 160), 800)
+        self.assertEqual(DERIVE.draw_buffer_bytes(240, 135), 4320)
+        self.assertEqual(DERIVE.draw_buffer_bytes(0, 0), 2)
+        self.assertEqual(DERIVE.draw_buffer_bytes(1000, 1000), 10240)
 
 
 class DerivedHeapTest(unittest.TestCase):

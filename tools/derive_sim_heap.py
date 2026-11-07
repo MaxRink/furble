@@ -156,7 +156,8 @@ def tool(pattern: str, fallback: str) -> str:
 
 
 DWARF_TYPES = ("StaticTask_t", "StaticQueue_t", "StaticRingbuffer_t", "uart_obj_t", "uart_event_t",
-               "'Furble::Control::cmd_t'", "struct esp_timer")
+               "'Furble::Control::cmd_t'", "struct esp_timer", "esp_event_loop_instance_t",
+               "esp_event_post_instance_t")
 
 
 def dwarf_sizes(elf: Path) -> dict:
@@ -218,6 +219,21 @@ def task(name: str, stack: int, tcb: int, source: str) -> dict:
     return {"term": name, "bytes": block(stack) + block(tcb), "source": source}
 
 
+def single_draw_buffer(width: int) -> bool:
+    """UIMemory::singleDrawBuffer in include/FurbleUIMemory.h."""
+    return width <= 160
+
+
+def draw_buffer_bytes(width: int, height: int, bytes_per_pixel: int = 2) -> int:
+    """UIMemory::drawBufferBytes in include/FurbleUIMemory.h, line for line."""
+    width = min(max(width, 1), 320)
+    height = min(max(height, 15), 240)
+    lines = max(1, height // 15)
+    if width <= 160:
+        lines = max(1, lines // 2)
+    return width * lines * bytes_per_pixel
+
+
 def queue(name: str, length: int, item: int, size: dict, source: str) -> dict:
     # xQueueCreate is one pvPortMalloc block: StaticQueue_t then storage.
     return {"term": name, "bytes": block(size["StaticQueue_t"] + length * item), "source": source}
@@ -243,7 +259,7 @@ def gps_uart(size: dict) -> list:
     return [{"term": "gps_uart_driver", "bytes": sum(block(part) for part in parts), "source": source}]
 
 
-def attributable(env: str, width: int, cfg: dict, size: dict) -> list:
+def attributable(env: str, width: int, height: int, cfg: dict, size: dict) -> list:
     tcb = size["StaticTask_t"]
     cores = 1 if cfg.get("CONFIG_FREERTOS_UNICORE") else 2
     extra = 0 if cfg.get("CONFIG_NEWLIB_NANO_FORMAT") else 512
@@ -262,19 +278,28 @@ def attributable(env: str, width: int, cfg: dict, size: dict) -> list:
                       "components/freertos/app_startup.c, CONFIG_ESP_MAIN_TASK_STACK_SIZE"))
     terms.append(task("esp_timer", cfg["CONFIG_ESP_TIMER_TASK_STACK_SIZE"], tcb,
                       "CONFIG_ESP_TIMER_TASK_STACK_SIZE"))
+    # src/main.cpp runs esp_netif_init() and esp_event_loop_create_default()
+    # on every boot (components/esp_event/esp_event.c esp_event_loop_create).
     terms.append(task("sys_evt", cfg["CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE"], tcb,
                       "CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE"))
+    terms.append({"term": "event_loop", "bytes": block(size["esp_event_loop_instance_t"])
+                  + block(size["StaticQueue_t"]
+                          + cfg["CONFIG_ESP_SYSTEM_EVENT_QUEUE_SIZE"] * size["esp_event_post_instance_t"])
+                  + block(size["StaticQueue_t"]),
+                  "source": "esp_event.c: loop calloc, CONFIG_ESP_SYSTEM_EVENT_QUEUE_SIZE queue, mutex"})
+    terms.append(task("tiT", cfg["CONFIG_LWIP_TCPIP_TASK_STACK_SIZE"], tcb,
+                      "CONFIG_LWIP_TCPIP_TASK_STACK_SIZE, esp_netif_init()"))
     if cfg.get("CONFIG_ESP_WIFI_ENABLED"):
-        terms.append(task("tiT", cfg["CONFIG_LWIP_TCPIP_TASK_STACK_SIZE"], tcb,
-                          "CONFIG_LWIP_TCPIP_TASK_STACK_SIZE"))
+        # WiFi starts only with the WiFi setting on and an SSID stored
+        # (WiFi::init in src/FurbleWiFi.cpp). These terms carry that condition.
         rx = cfg["CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM"]
-        terms.append({"term": "wifi_static_rx", "bytes": rx * block(1600),
+        terms.append({"term": "wifi_static_rx", "bytes": rx * block(1600), "condition": "wifi",
                       "source": "CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM x 1600 (ESP-IDF Wi-Fi buffer usage)"})
         if cfg.get("CONFIG_ESP_WIFI_STATIC_RX_MGMT_BUFFER"):
             mgmt = cfg["CONFIG_ESP_WIFI_RX_MGMT_BUF_NUM_DEF"]
-            terms.append({"term": "wifi_static_rx_mgmt", "bytes": mgmt * block(500),
+            terms.append({"term": "wifi_static_rx_mgmt", "bytes": mgmt * block(500), "condition": "wifi",
                           "source": "CONFIG_ESP_WIFI_RX_MGMT_BUF_NUM_DEF x about 500 (esp_wifi Kconfig help)"})
-        terms.append(task("wifi_furble", 4096, tcb, "src/FurbleWiFi.cpp TASK_STACK"))
+        terms.append({**task("wifi_furble", 4096, tcb, "src/FurbleWiFi.cpp TASK_STACK"), "condition": "wifi"})
     if cfg.get("CONFIG_BT_ENABLED"):
         terms.append(task("btController", 3584 + extra, tcb,
                           "components/esp_system/include/esp_task.h ESP_TASK_BT_CONTROLLER_STACK"))
@@ -315,11 +340,9 @@ def attributable(env: str, width: int, cfg: dict, size: dict) -> list:
     if width:
         terms.append(queue("ui_requests", 8, POINTER_BYTES, size,
                            "src/FurbleUI.cpp m_RequestQueueLength x sizeof(request_t *)"))
-        lines = 15
-        buffers = 1 if width <= 160 else 2
-        draw = width * lines * 2
-        terms.append({"term": "lvgl_draw", "bytes": buffers * block(draw),
-                      "source": "include/FurbleUIMemory.h PARTIAL_LINES, singleDrawBuffer"})
+        buffers = 1 if single_draw_buffer(width) else 2
+        terms.append({"term": "lvgl_draw", "bytes": buffers * block(draw_buffer_bytes(width, height)),
+                      "source": "include/FurbleUIMemory.h drawBufferBytes, singleDrawBuffer"})
     # CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL is not a term: esp_psram.c
     # re-registers that pool with INTERNAL | DMA | 8BIT caps, so it stays in
     # heap_caps_get_free_size(INTERNAL | 8BIT). Plain malloc cannot use it.
@@ -327,7 +350,7 @@ def attributable(env: str, width: int, cfg: dict, size: dict) -> list:
 
 
 def derive(env: str) -> dict:
-    chip, width, _, profile = ENVS[env]
+    chip, width, height, profile = ENVS[env]
     elf = ROOT / ".pio/build" / env / "firmware.elf"
     if not elf.is_file():
         raise SystemExit(f"{elf} not found; run: FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e {env}")
@@ -347,7 +370,7 @@ def derive(env: str) -> dict:
         reserved.append((sym["_iram_start"] - offset, sym["_iram_end"] - offset, "iram_code"))
     at_start, largest_span = subtract(REGIONS[chip], reserved)
     size = dwarf_sizes(elf)
-    terms = attributable(env, width, cfg, size)
+    terms = attributable(env, width, height, cfg, size)
     charged = sum(term["bytes"] for term in terms)
     result = {
         "env": env,
@@ -361,6 +384,10 @@ def derive(env: str) -> dict:
         "attributable_boot": terms,
         "attributable_bytes": charged,
         "derived_free_upper_bound": at_start - charged,
+        # The same ceiling for a boot with WiFi off or no SSID stored.
+        "derived_free_wifi_off": at_start - charged
+        + sum(term["bytes"] for term in terms if term.get("condition") == "wifi"),
+        "condition": "WiFi enabled with an SSID, as in the measured seeds",
         # Boot charges land in the largest span first, so the largest block
         # can be no larger than the span and no larger than the free total.
         "derived_largest_upper_bound": min(largest_span, at_start - charged),
