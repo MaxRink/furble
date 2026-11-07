@@ -89,6 +89,9 @@ class WiFi {
   /** Run the terminal-disconnect driver cleanup once. */
   static void hostServiceTerminalStop(void);
   /** Issue one connect request without waiting for the join outcome. */
+  /** Run the NVS work the event handler deferred to the worker. */
+  static void hostServiceEventStorage(void);
+
   static bool hostConnectAttempt(void);
   /** Run the production connect-and-wait join step once. */
   static bool hostConnectAndWaitForJoin(void);

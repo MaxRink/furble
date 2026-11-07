@@ -306,3 +306,22 @@ clients. Without PSRAM the start gate reserves it with the queue
 (`EVENT_STORAGE_BYTES`), while the largest-block floor stays the queue alone,
 since the two are separate blocks. The walk now reports 2,560 of 3,072 on the
 StickS3. No hardware retest yet.
+
+## Fix: no NVS on the default event task
+
+State: implemented, found by the PR 4a stack walk once it covered the default
+event loop task (`sys_evt`, `CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE` 2,304
+bytes on every board).
+
+The WiFi event handler read the NTP setting and started SNTP on `GOT_IP`,
+persisted the remembered access point there, and erased it after a failed
+direct join, all on that task. The NTP setting read alone, through
+`Preferences::begin()` and the NVS namespace lookup, walked to 2,864 bytes on
+the Waveshare and headless builds and 2,288 on the StickS3.
+
+The handler now updates the in-memory access point state and queues the save,
+the erase and the NTP start under `g_StateMutex`. The WiFi worker, with 4 KiB,
+runs them at the top of its loop and before each retry. A newer save or erase
+cancels the older one, so only the latest outcome is persisted. A host test
+proves `GOT_IP` opens no NVS and starts no SNTP, and that the worker then does
+both exactly once.

@@ -161,7 +161,11 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
 - `FurbleGPX`: GPX 1.1 track writer. Pure file writer with no SD or settings
   knowledge; every method runs on the SD writer task.
 - `FurbleWiFi`: station lifecycle, remembered access point state and NTP.
-  Never fall back to a WiFi scan while a camera is active.
+  Never fall back to a WiFi scan while a camera is active. The event handler
+  runs on the default event loop task (2,304-byte stack): it must not open
+  NVS, read a setting or start SNTP. It updates memory and queues the
+  access point save or erase and the NTP start for the 4 KiB worker
+  (`serviceEventStorage()`); a newer save or erase replaces the older one.
 - `FurbleWebUI`: HTTPS-only browser and REST surface. Keep it fail closed on
   password or TLS identity errors. Camera actions stay on `UI::sendRequest`,
   settings stay on `Provision::apply`, and held releases remain owned until the

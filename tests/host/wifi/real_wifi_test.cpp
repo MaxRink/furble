@@ -9,6 +9,7 @@
 #include "FurbleEthernet.h"
 #include "FurbleSettings.h"
 #include "FurbleWiFi.h"
+#include "Preferences.h"
 #include "esp_event.h"
 #include "esp_netif.h"
 #include "esp_netif_sntp.h"
@@ -54,7 +55,9 @@ const char *esp_ip4addr_ntoa(const esp_ip4_addr_t *, char *b, int) {
 int esp_netif_sntp_init(const esp_sntp_config_t *) {
   return 0;
 }
+int sntp_starts = 0;
 int esp_netif_sntp_start() {
+  sntp_starts++;
   return 0;
 }
 void esp_netif_sntp_deinit() {}
@@ -315,9 +318,27 @@ int main() {
   Furble::Ethernet::init(wired);
   wired.emitLinkUp();
   wired.emitGotIp("192.0.2.11");
+  const int beginsBefore = Furble::preferencesBegins;
+  const int sntpBefore = sntp_starts;
   furble_wifi_handler(nullptr, IP_EVENT, IP_EVENT_STA_GOT_IP, nullptr);
   if (require(Furble::WiFi::getStatus().connected, "the station reports connected")) {
     return 21;
+  }
+  // The handler runs on the 2,304-byte default event task: it must not open
+  // NVS or start SNTP. The worker does both.
+  if (require(Furble::preferencesBegins == beginsBefore, "GOT_IP opened NVS on the event task")
+      || require(sntp_starts == sntpBefore, "GOT_IP started SNTP on the event task")) {
+    return 40;
+  }
+  Furble::WiFi::hostServiceEventStorage();
+  if (require(Furble::preferencesBegins == beginsBefore + 1,
+              "the worker did not persist the access point")
+      || require(sntp_starts == sntpBefore + 1, "the worker did not start SNTP")) {
+    return 41;
+  }
+  Furble::WiFi::hostServiceEventStorage();
+  if (require(Furble::preferencesBegins == beginsBefore + 1, "the deferred storage ran twice")) {
+    return 42;
   }
   if (require(Furble::WiFi::hostServiceConnectedWired(),
               "a wired address did not take over a connected station")

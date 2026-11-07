@@ -213,7 +213,7 @@ void loadRememberedAccessPoint(void) {
   g_AuthSet = authSet;
 }
 
-void saveRememberedAccessPoint(const wifi_ap_record_t &record) {
+void persistAccessPoint(const wifi_ap_record_t &record) {
   Preferences preferences;
   if (!preferences.begin(FURBLE_STR, false)) {
     return;
@@ -225,7 +225,10 @@ void saveRememberedAccessPoint(const wifi_ap_record_t &record) {
   preferences.put<uint8_t>(AUTH_KEY, static_cast<uint8_t>(record.authmode));
   (void)preferences.commit();
   preferences.end();
+}
 
+/** The in-memory half of remembering an access point; no NVS. */
+void rememberAccessPoint(const wifi_ap_record_t &record) {
   std::lock_guard<std::mutex> lock(g_StateMutex);
   g_FastConnectFailed = false;
   if (!g_ConnectRequested) {
@@ -237,6 +240,11 @@ void saveRememberedAccessPoint(const wifi_ap_record_t &record) {
   g_AuthMode = static_cast<uint8_t>(record.authmode);
   g_AuthSet = WiFiPolicy::authUsable(true, g_AuthMode);
   g_Rssi = record.rssi;
+}
+
+void saveRememberedAccessPoint(const wifi_ap_record_t &record) {
+  persistAccessPoint(record);
+  rememberAccessPoint(record);
 }
 
 void eraseStoredAccessPoint(void) {
@@ -726,9 +734,52 @@ bool serviceConnectedWired(void) {
   return deferForWired();
 }
 
+/*
+ * NVS work the event handler hands to the worker. The handler runs on the
+ * default event loop task, whose stack is CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE
+ * (2,304 bytes); an NVS open, write or the NTP setting read there reached
+ * 2,864 bytes in tools/stack_budget.py. The worker has 4 KiB. A save and an
+ * erase cancel each other, so only the newest outcome is persisted. Guarded by
+ * g_StateMutex.
+ */
+wifi_ap_record_t g_PendingAp = {};
+bool g_PendingApSave = false;
+bool g_PendingApErase = false;
+bool g_PendingNtp = false;
+
+/** Run the storage work the event handler deferred. Worker task only. */
+void serviceEventStorage(void) {
+  wifi_ap_record_t record = {};
+  bool save = false;
+  bool erase = false;
+  bool ntp = false;
+  {
+    std::lock_guard<std::mutex> lock(g_StateMutex);
+    save = g_PendingApSave;
+    erase = g_PendingApErase;
+    ntp = g_PendingNtp;
+    record = g_PendingAp;
+    g_PendingApSave = false;
+    g_PendingApErase = false;
+    g_PendingNtp = false;
+  }
+  if (erase) {
+    eraseStoredAccessPoint();
+  }
+  if (save) {
+    persistAccessPoint(record);
+  }
+  if (ntp && Settings::load<Settings::NTP>()) {
+    startNtp();
+  }
+}
+
 void wifiTask(void *) {
   while (true) {
     uint32_t notification = 0;
+    // Every wait below returns here, so deferred event storage runs before
+    // the next one.
+    serviceEventStorage();
 
     if (g_DeferredForWired.load()) {
       xTaskNotifyWait(0, UINT32_MAX, &notification, pdMS_TO_TICKS(WIRED_RECHECK_MS));
@@ -764,6 +815,8 @@ void wifiTask(void *) {
     xTaskNotifyWait(0, UINT32_MAX, &notification, idleWait);
 
     while (g_ConnectRequested && !g_Connected) {
+      // A failed direct join queues its erase here; persist it before retrying.
+      serviceEventStorage();
 #if defined(FURBLE_ETHERNET)
       // Ethernet can obtain an address while the station is still associating
       // or backing off. The inner loop never reached the connected-state check,
@@ -829,6 +882,7 @@ void eventHandler(void *, esp_event_base_t eventBase, int32_t eventId, void *eve
       g_Ip.clear();
       g_Rssi = 0;
       g_LastDisconnectReason = reason;
+      g_PendingNtp = false;
 
       // A direct join that never reached an IP may be pointing at a BSSID that
       // moved or was replaced. Drop it and scan once before the next attempt.
@@ -843,6 +897,8 @@ void eventHandler(void *, esp_event_base_t eventBase, int32_t eventId, void *eve
         g_FastConnectFailed = true;
         g_LastAttemptUsedBssid.store(false);
         invalidateRemembered = true;
+        g_PendingApErase = true;
+        g_PendingApSave = false;
       }
 
       const uint32_t nextAttempt = g_ConnectAttempts + 1;
@@ -858,7 +914,6 @@ void eventHandler(void *, esp_event_base_t eventBase, int32_t eventId, void *eve
       retry = g_ConnectRequested;
     }
     if (invalidateRemembered) {
-      eraseStoredAccessPoint();
       ESP_LOGW(LOG_TAG, "WiFi direct join failed, forgetting the remembered BSSID");
     }
     g_LifecycleEvent.fetch_add(1, std::memory_order_relaxed);
@@ -898,7 +953,11 @@ void eventHandler(void *, esp_event_base_t eventBase, int32_t eventId, void *eve
 
     wifi_ap_record_t record = {};
     if (esp_wifi_sta_get_ap_info(&record) == ESP_OK) {
-      saveRememberedAccessPoint(record);
+      rememberAccessPoint(record);
+      std::lock_guard<std::mutex> lock(g_StateMutex);
+      g_PendingAp = record;
+      g_PendingApSave = true;
+      g_PendingApErase = false;
     }
 
     char ip[16] = {};
@@ -922,8 +981,11 @@ void eventHandler(void *, esp_event_base_t eventBase, int32_t eventId, void *eve
     }
     g_LifecycleEvent.fetch_add(1, std::memory_order_relaxed);
     ESP_LOGI(LOG_TAG, "WiFi connected, ip=%s", ip);
-    if (Settings::load<Settings::NTP>()) {
-      startNtp();
+    {
+      // The worker reads the NTP setting and starts SNTP; see
+      // serviceEventStorage().
+      std::lock_guard<std::mutex> lock(g_StateMutex);
+      g_PendingNtp = true;
     }
     notify(NOTIFY_EVENT);
   }
@@ -1131,6 +1193,10 @@ bool WiFi::hostResumeAfterWired(void) {
 
 void WiFi::hostServiceTerminalStop(void) {
   serviceTerminalStop();
+}
+
+void WiFi::hostServiceEventStorage(void) {
+  serviceEventStorage();
 }
 
 bool WiFi::hostConnectAttempt(void) {
