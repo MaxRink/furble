@@ -818,7 +818,12 @@ bool MQTT::startClient(void) {
           .name = "mqtt_hold",
           .skip_unhandled_events = false,
       };
-      esp_timer_create(&args, &m_HoldTimer);
+      // A failure leaves the handle null. Every hold user refuses a null
+      // timer, and the owner loop wakes on its own deadlines.
+      const esp_err_t timerErr = esp_timer_create(&args, &m_HoldTimer);
+      if (timerErr != ESP_OK) {
+        ESP_LOGW(MQTT_LOG_TAG, "MQTT hold timer unavailable: %s", esp_err_to_name(timerErr));
+      }
     }
     if (m_IntervalTimer == nullptr) {
       const esp_timer_create_args_t args = {
@@ -828,7 +833,12 @@ bool MQTT::startClient(void) {
           .name = "mqtt_interval",
           .skip_unhandled_events = false,
       };
-      esp_timer_create(&args, &m_IntervalTimer);
+      // A failure leaves the handle null. Every interval user refuses a null
+      // timer, and the owner loop wakes on its own deadlines.
+      const esp_err_t timerErr = esp_timer_create(&args, &m_IntervalTimer);
+      if (timerErr != ESP_OK) {
+        ESP_LOGW(MQTT_LOG_TAG, "MQTT interval timer unavailable: %s", esp_err_to_name(timerErr));
+      }
     }
     err = esp_mqtt_client_start(client);
   }
@@ -1453,7 +1463,9 @@ void MQTT::scheduleInterval(uint32_t delay_ms) {
     m_IntervalNextMs = nowMs() + delay;
   }
   esp_timer_stop(m_IntervalTimer);
-  esp_timer_start_once(m_IntervalTimer, static_cast<uint64_t>(delay) * 1000ULL);
+  // Only the wake is lost on failure: the owner loop waits for
+  // m_IntervalNextMs itself.
+  (void)esp_timer_start_once(m_IntervalTimer, static_cast<uint64_t>(delay) * 1000ULL);
 }
 
 void MQTT::intervalTimerCallback(void *arg) {

@@ -258,9 +258,13 @@ Deviations:
 
 ## PR 5: failed-allocation diagnostics
 
-State: implemented, except the `esp_timer_create` return checks in
-`src/FurbleMQTT.cpp`, which follow once the MQTT stack fix lands to avoid a
-conflict in the same function.
+State: implemented. The `esp_timer_create` return checks in
+`src/FurbleMQTT.cpp` landed separately after the MQTT stack fix. The audit
+found the ignored results already safe: a failed create leaves the handle
+null, the hold and interval paths refuse a null timer, and the owner loop
+waits for the hold and interval deadlines itself, so a failed
+`esp_timer_start_once` loses only a wake. The failures are now logged and the
+start result is discarded explicitly.
 
 - The crash record is version 2 (484 bytes, was 436) and carries the failed
   allocation: size, capabilities, task and allocating function.
