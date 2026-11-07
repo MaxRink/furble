@@ -167,6 +167,14 @@ first-call `Platform::getInstance()` that cannot happen after boot.
 
 ## Known limits
 
+- The walk memoizes each function once. A function first reached inside an
+  open cycle has that cycle's back edge cut, and its value is reused on other
+  paths, so depth behind the cut can be missed. An exact re-walk is
+  exponential on `main`'s LVGL cycles; with `main` left on the fast walk it
+  runs in seconds but raises most tasks by roughly 100 to 1,000 bytes, and on
+  the StickS3 it puts `sys_evt` (2,432 of 2,304) and `webui` (3,296 of 3,072)
+  over budget through paths that end in `abort` and `__assert_func`. A
+  follow-up PR settles how panic paths count and replaces the walk.
 - `main` and the NimBLE host run most of their depth through unresolved
   indirect calls (LVGL widget code, M5GFX virtuals, NimBLE callbacks into
   vendor classes). Their numbers are not a proof of fit. The 8 KiB StickS3
