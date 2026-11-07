@@ -56,6 +56,19 @@ edge: { sourcename: "a" targetname: "b" label: "m.cpp:2:5" }
 edge: { sourcename: "b" targetname: "a" label: "m.cpp:3:5" }
 }
 '''
+# entry -> a; a -> b -> a and a -> c -> a: two cycles through one head
+N_CI = r'''graph: { title: "n.cpp"
+node: { title: "entry" label: "void entry(void*)\nn.cpp:1:1\n32 bytes (static)" }
+node: { title: "a" label: "void a(int)\nn.cpp:2:1\n40 bytes (static)" }
+node: { title: "b" label: "void b(int)\nn.cpp:3:1\n24 bytes (static)" }
+node: { title: "c" label: "void c(int)\nn.cpp:4:1\n16 bytes (static)" }
+edge: { sourcename: "entry" targetname: "a" label: "n.cpp:1:5" }
+edge: { sourcename: "a" targetname: "b" label: "n.cpp:2:5" }
+edge: { sourcename: "b" targetname: "a" label: "n.cpp:3:5" }
+edge: { sourcename: "a" targetname: "c" label: "n.cpp:2:9" }
+edge: { sourcename: "c" targetname: "a" label: "n.cpp:4:5" }
+}
+'''
 # entry calls elf_mid, which only the ELF defines
 E_CI = r'''graph: { title: "e.cpp"
 node: { title: "entry" label: "void entry(void*)\ne.cpp:1:1\n32 bytes (static)" }
@@ -192,6 +205,16 @@ class StackBudgetTest(unittest.TestCase):
         self.assertIn("PASS t: 512 of 512 bytes (224 frames + 288 port overhead); 1 recursive\n",
                       r.stdout)
         self.assertEqual(self.run_tool(511, indirect=False, cis=m_ci,
+                                       manifest_extra=bounds).returncode, 1)
+
+    def test_cycles_sharing_a_head_add_their_passes(self):
+        bounds = {"recursion_bounds": [{"function": r"^void a\(int\)$", "depth": 3, "why": "test"}]}
+        n_ci = (("n.cpp.ci", N_CI),)
+        # 32 + a 40 + b 24 + extra passes of both cycles, 2 x 64 + 2 x 56, + 288
+        r = self.run_tool(624, indirect=False, cis=n_ci, manifest_extra=bounds)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("PASS t: 624 of 624 bytes (336 frames + 288 port overhead)", r.stdout)
+        self.assertEqual(self.run_tool(623, indirect=False, cis=n_ci,
                                        manifest_extra=bounds).returncode, 1)
 
     def test_known_limit_passes_only_on_its_tasks(self):

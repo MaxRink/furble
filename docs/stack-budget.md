@@ -74,7 +74,9 @@ once. A task whose path holds a cycle fails unless a member matches an entry
 in the manifest's `recursion_bounds`. An entry's `depth` is the number of
 passes the cycle can make, cited from source; the walk adds `depth - 1` more
 passes of the whole cycle's frames once, at the member where the walk entered
-the cycle, so every path through the cycle pays exactly `depth` passes. An entry without `depth` records a documented known
+the cycle, so every path through the cycle pays exactly `depth` passes.
+Cycles that share an entry member add their passes, because one can nest
+inside the other. An entry without `depth` records a documented known
 limit and adds nothing; `tasks` scopes an entry. `--verbose` lists every
 cycle and its bound.
 

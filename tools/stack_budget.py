@@ -164,7 +164,7 @@ def worst_case(graph, entry, resolve, pruned=frozenset(), recursion=()):
     member. A bound with no depth records a documented known limit and adds
     nothing. Any other cycle is noted as unbounded."""
     memo = {}
-    extra = {}  # function -> bytes of the extra passes of its bounded cycles
+    cycles = {}  # function -> {cycle: bytes of its extra passes}, cycles entered there
     notes = {"recursion": {}, "dynamic": set(), "indirect": {}, "unknown": set()}
     stack = []
 
@@ -198,8 +198,11 @@ def worst_case(graph, entry, resolve, pruned=frozenset(), recursion=()):
                 # cycle runs through fn. Each extra pass costs the whole cycle;
                 # charge it once, at fn, so a path crossing several members
                 # pays depth passes, not one set per member.
+                # Two cycles through the same head can nest (A-B-A, then
+                # A-C-A from an inner A), so their passes add; summing them
+                # also bounds the sequential case.
                 cost = (depth - 1) * sum(graph.frame[c] for c in cycle)
-                extra[fn] = max(extra.get(fn, 0), cost)
+                cycles.setdefault(fn, {})[frozenset(cycle)] = cost
             return 0, []
         body = graph.defined(fn)
         if body is None:
@@ -216,12 +219,13 @@ def worst_case(graph, entry, resolve, pruned=frozenset(), recursion=()):
             if depth > best:
                 best, best_path = depth, path
         stack.pop()
-        memo[fn] = (graph.frame[fn] + extra.get(fn, 0) + best, [fn] + best_path)
+        more = sum(cycles.get(fn, {}).values())
+        memo[fn] = (graph.frame[fn] + more + best, [fn] + best_path)
         return memo[fn]
 
     sys.setrecursionlimit(20000)
     depth, path = walk(entry)
-    notes["extra"] = extra
+    notes["extra"] = {fn: sum(costs.values()) for fn, costs in cycles.items()}
     return depth, path, notes
 
 
