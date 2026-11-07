@@ -4,6 +4,9 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "FurbleMQTTMemory.h"
+#include "FurbleWebUIMemory.h"
+
 namespace Furble {
 namespace MemoryPressure {
 
@@ -61,11 +64,17 @@ inline constexpr threshold_t ENTER[] = {
  * re-admitted service cannot push the heap straight back below it:
  * - AMBER, WebUI server: `WebUIMemory::HTTPD_STACK_BYTES`, the 8 KiB HTTPS
  *   task. The 3 KiB supervisor keeps running while the server is paused.
- * - RED, MQTT client: `MQTTMemory::START_INTERNAL_FREE_FLOOR`, which covers
- *   the 3 KiB plain worker and its two 1,536-byte buffers.
+ * - RED, MQTT client: `MQTTMemory::START_TLS_INTERNAL_FREE_FLOOR`. The
+ *   `mqtts://` start floor covers the 6 KiB TLS worker, so a returning secure
+ *   client cannot push free back under RED. A plain client needs less and only
+ *   recovers later.
  * Each service still passes its own start gate when it returns.
  */
-inline constexpr size_t RESTORE_BYTES[] = {0, 8192, 8192};
+inline constexpr size_t RESTORE_BYTES[] = {
+    0,
+    WebUIMemory::HTTPD_STACK_BYTES,
+    MQTTMemory::START_TLS_INTERNAL_FREE_FLOOR,
+};
 
 /** Largest-block margin above a level's threshold before it is left. */
 inline constexpr size_t LARGEST_HYSTERESIS_BYTES = 4096;
