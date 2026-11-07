@@ -276,3 +276,16 @@ The effective configuration is unchanged, and a second build regenerates the
 files byte for byte. Deviation: none. PR 8 makes its tuning changes against
 this baseline, and CLAUDE.md now says to keep setting rationale in plan docs,
 because regeneration strips comments.
+
+## Fix: no deque allocation on an idle UI tick
+
+State: implemented, found while building the PR 4b sanitizer job.
+
+`Scan::processPendingCallbacks()` and the simulator request queue run on every
+UI tick and built a `std::deque` before checking for work. libstdc++, which the
+device uses, allocates the deque's map and a 512-byte node in that constructor.
+macOS libc++ does not, so only the Linux simulator showed it: the counted heap
+read 1,088 bytes at idle and `memory-counted-camera-connect` failed. gdb on the
+Linux build attributed every idle counted allocation to these two sites. Both
+now check for pending work under their lock first. The Linux ASan build reads 0
+counted bytes at idle and passes the scenario; the macOS e2e suite is unchanged.
