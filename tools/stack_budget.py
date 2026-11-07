@@ -15,6 +15,7 @@ fails when its resolved worst case plus the interrupt frame exceeds its stack.
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -205,7 +206,9 @@ def main():
     target = sdkconfig["CONFIG_IDF_TARGET"]
     margin = manifest["overhead_bytes"][target]
     if not args.no_elf:
-        objdump = args.objdump or str(Path.home() / ".platformio" / "packages" / "toolchain-xtensa-esp-elf"
+        # PlatformIO keeps its packages under PLATFORMIO_CORE_DIR when set.
+        core = Path(os.environ.get("PLATFORMIO_CORE_DIR") or Path.home() / ".platformio")
+        objdump = args.objdump or str(core / "packages" / "toolchain-xtensa-esp-elf"
                                       / "bin" / f"xtensa-{target}-elf-objdump")
         graph.load_elf(build / "firmware.elf", objdump)
 

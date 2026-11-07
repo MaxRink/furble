@@ -17,6 +17,8 @@ on:
       - "partitions_*.csv"
       - "tools/reproducible_build.py"
       - "tools/reproducible-build.lock"
+      - "tools/stack_budget.py"
+      - "tools/stack_budget.json"
       - ".github/workflows/sim-e2e.yml"
       - ".github/workflows/power-gate.yml"
       - ".github/workflows/ui-screenshots.yml"
@@ -37,6 +39,8 @@ on:
       - "partitions_*.csv"
       - "tools/reproducible_build.py"
       - "tools/reproducible-build.lock"
+      - "tools/stack_budget.py"
+      - "tools/stack_budget.json"
       - ".github/workflows/sim-e2e.yml"
       - ".github/workflows/power-gate.yml"
       - ".github/workflows/ui-screenshots.yml"
@@ -111,6 +115,8 @@ jobs:
           ENVIRONMENT: ${{ matrix.environment }}
         run: |
           set -eu
-          set -- "$RUNNER_TEMP"/repro/furble-repro-*/a/source/.pio/build/"$ENVIRONMENT"
-          test "$#" -eq 1 && test -d "$1"
-          python3 tools/stack_budget.py --env "$ENVIRONMENT" --build-dir "$1"
+          set -- "$RUNNER_TEMP"/repro/furble-repro-*/a
+          test "$#" -eq 1 && test -d "$1/source/.pio/build/$ENVIRONMENT"
+          # The kept build ran with its own PlatformIO core; use its toolchain.
+          PLATFORMIO_CORE_DIR="$1/pio-core" python3 tools/stack_budget.py \
+            --env "$ENVIRONMENT" --build-dir "$1/source/.pio/build/$ENVIRONMENT"

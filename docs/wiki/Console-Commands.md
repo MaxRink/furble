@@ -38,7 +38,7 @@ About page and exposed through companion BLE Device Information.
 | `version` | Firmware and IDF version. |
 | `boot` | `boot timing` prints the last boot timeline, its mark deltas, and the cycle-counter reset estimate. See [boot timing](../boot-timing.md). |
 | `status` | State, targets, uptime, heap, battery, reset reason. |
-| `crash` | `crash [last]` prints the retained previous-boot crash record. See [crash diagnostics](../crash-diagnostics.md). |
+| `crash` | `crash [last]` prints the retained previous-boot crash record. After a failed-allocation abort it adds the `crash.alloc_*` lines. See [crash diagnostics](../crash-diagnostics.md). |
 | `power` | `stats`, or `log <seconds>` / `log off` for a CSV power log. |
 | `perf` | `tasks`, `heap`, or `lvgl [overlay on\|off]`. |
 | `gps` | GPS status and control, see below. |
