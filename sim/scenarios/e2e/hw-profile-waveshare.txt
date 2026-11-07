@@ -24,7 +24,7 @@ assert net.ethernet down
 assert net.link_downs 1
 assert mem.internal_total 524288
 assert mem.psram_total 8388608
-assert mem.component.main_stack 8192
+assert mem.component.main_stack 16384
 assert mem.component.lvgl_draw 0
 assert hw.usb serial_jtag
 assert hw.wifi no

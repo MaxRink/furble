@@ -17,7 +17,7 @@ assert pmic.watchdog unavailable
 assert mem.internal_total 532480
 assert mem.psram_total 0
 assert mem.component.main_stack 16384
-assert mem.component.lvgl_draw 2560
+assert mem.component.lvgl_draw 800
 assert mem.component.crash_record 436
 assert hw.usb uart
 assert hw.wifi yes
