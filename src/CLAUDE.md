@@ -275,6 +275,13 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   an explicit fresh connect.
   `ControlMode::PRESET` remaps the three keys to minus, confirm and plus while
   the bulb Duration page uses the exposure preset picker.
+  The header row is end aligned so the battery holds the right edge. Do not
+  add a zero-width spacer or other empty header child: each one still costs a
+  flex column gap, which pushed the battery off the 80 px header (plan 315).
+  The Cameras page relies on `reserveLegendColumns()` alone; padding its
+  labels as well reserves the legend column twice. A page container that can
+  outgrow the 80x160 viewport is content sized so the page scrolls, never a
+  full-height nested scroller.
   Fonts come from `fontForTextSize` and `fontForIconMenu` in FurbleUI.cpp:
   never hardcode a Montserrat font in a widget, and Large may only grow the
   icon menu font, never below its montserrat 16 default.

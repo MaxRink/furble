@@ -818,7 +818,9 @@ shortens that host retry cadence for a bounded scenario.
   the switches live in `sim/shim/FurbleSimCaps.h`.
 - `FURBLE_SIM_NO_TOUCH=1` selects the non-touch physical-button layout without a
   scenario seed, so a harness can pick it per board. `FURBLE_SIM_RIG=0` builds
-  without the rig so the shipped one-line header title renders.
+  without the rig so the shipped one-line header title renders. The docs
+  capture uses that build, and CI does not, so its non-rig branch of
+  `sim/CompanionRigTransport.cpp` must include its own `heap_count.h`.
   `FURBLE_SIM_CAPTURE_SPLASH=<png>` snapshots the boot splash before the LVGL UI
   starts.
 - The touch Remote shutter page retains full-size 64 px controls. On a panel

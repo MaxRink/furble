@@ -617,6 +617,7 @@ void rigInjectPendingPairing(uint32_t pin) {
 #include <atomic>
 
 #include "driver.h"
+#include "heap_count.h"
 
 namespace Furble::Sim {
 namespace {
