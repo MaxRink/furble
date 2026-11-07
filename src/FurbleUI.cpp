@@ -3723,6 +3723,14 @@ bool UI::simRunOnUi(std::function<void()> operation) {
 }
 
 void UI::serviceSimRequests(void) {
+  // Runs every UI tick; libstdc++ allocates in the deque constructor, so an
+  // idle tick returns first, as Scan::processPendingCallbacks does.
+  {
+    std::lock_guard<std::mutex> lock(m_SimRequestMutex);
+    if (m_SimRequests.empty()) {
+      return;
+    }
+  }
   std::deque<std::shared_ptr<sim_request_t>> requests;
   {
     std::lock_guard<std::mutex> lock(m_SimRequestMutex);
