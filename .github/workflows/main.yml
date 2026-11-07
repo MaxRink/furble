@@ -362,6 +362,11 @@ jobs:
             echo "PlatformIO build failed on attempt $attempt. Retrying once."
           done
 
+      # Every object is compiled with -fcallgraph-info=su; the walk fails a
+      # task whose resolved worst-case stack exceeds its configured size.
+      - name: Check task stack budgets (${{ matrix.platform }})
+        run: python3 tools/stack_budget.py --env "${{ matrix.platform }}"
+
       - name: Extract firmware size (${{ matrix.platform }})
         shell: bash
         env:

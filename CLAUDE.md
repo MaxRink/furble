@@ -148,6 +148,14 @@ CLAUDE.md whose directory it touches.
   `sim/coverage/board_heap.json`; the memory profile seeds each board with it.
   Regenerate it after static RAM or boot allocations change, see
   `docs/sim-memory-profiler.md`.
+- Every firmware object is compiled with `-fcallgraph-info=su`, which writes a
+  `.ci` call graph next to it and does not change the image.
+  `python3 tools/stack_budget.py --env <env>` walks it from each task entry in
+  `tools/stack_budget.json` and fails a task whose resolved worst case plus
+  the Xtensa port overhead exceeds its stack. Firmware CI runs it after every
+  build. Indirect calls are followed only where the manifest resolves them, so
+  a task with unresolved sites reports a lower bound; see
+  `docs/stack-budget.md`. Update the manifest when a task or its stack changes.
 - Hardware flashing is gated on the simulator. The gate manifests are under
   `sim/coverage/`; `python3 tools/check_sim_coverage.py --require-ready`
   validates evidence and `python3 tools/check_flash_readiness.py --ready` is
