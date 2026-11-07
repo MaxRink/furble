@@ -94,6 +94,20 @@ inline void noteAllocFailure(record_t &record,
                 function != nullptr ? function : "");
 }
 
+/**
+ * Carry the allocation failure in failed into a newer snapshot that has none.
+ * A periodic snapshot built before the failure must not erase it.
+ */
+inline void keepAllocFailure(record_t &record, const record_t &failed) {
+  if ((failed.alloc_size == 0) || (record.alloc_size != 0)) {
+    return;
+  }
+  record.alloc_size = failed.alloc_size;
+  record.alloc_caps = failed.alloc_caps;
+  std::memcpy(record.alloc_task, failed.alloc_task, TASK_BYTES);
+  std::memcpy(record.alloc_function, failed.alloc_function, ALLOC_FUNCTION_BYTES);
+}
+
 inline bool valid(const record_t &record) {
   return record.magic == MAGIC && record.version == VERSION && record.size == sizeof(record_t)
          && record.crc == checksum(record);

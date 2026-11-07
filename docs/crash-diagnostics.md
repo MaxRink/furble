@@ -27,7 +27,9 @@ reaches the retained log tail. `CrashLog::init()` therefore registers a
 failed-allocation callback. ESP-IDF calls it on the failing task just before
 the abort, and it writes the size, capabilities, task and function into the
 record in place, under the record lock, with no logging, no allocation and no
-second copy of the record on the failing task's stack.
+second copy of the record on the failing task's stack. The callback also sets
+a latch, so a periodic snapshot stored between the callback and the abort
+keeps the allocation fields instead of erasing them.
 
 The snapshot is refreshed about once per second from the UI task. A panic can
 therefore lose up to one second of state. That is deliberate: the record is a
@@ -52,8 +54,11 @@ crash last
 
 `crash last` prints `crash.summary`, `crash.reset`, `crash.task`,
 `crash.uptime`, `crash.heap_free`, `crash.heap_largest` and
-`crash.last_log`, then reprints the captured log tail. `status` continues to
-report the current boot's reset reason and heap.
+`crash.last_log`. When an allocation failure caused the abort, it also prints
+`crash.alloc_size`, `crash.alloc_caps`, `crash.alloc_task` and
+`crash.alloc_function`, and the summary ends with the same fields. Those four
+lines are absent when no allocation failed. It then reprints the captured log
+tail. `status` continues to report the current boot's reset reason and heap.
 
 ## What it does not claim
 

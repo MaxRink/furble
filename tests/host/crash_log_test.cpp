@@ -152,6 +152,15 @@ int main() {
   check(std::string(failed->alloc_function) == "heap_caps_malloc",
         "the callback records the allocating function");
   check(!CrashRecord::clean(*failed), "a failed allocation leaves the record unclean");
+  // A snapshot stored after the callback, before the abort, keeps the failure.
+  const uint32_t failedSequence = failed->sequence;
+  hostCrashNowUs() = 9000000;
+  CrashLog::update();
+  check(CrashLog::hostRecord()->sequence == failedSequence + 1, "a later snapshot is stored");
+  check(CrashLog::hostRecord()->alloc_size == 9216
+            && std::string(CrashLog::hostRecord()->alloc_function) == "heap_caps_malloc",
+        "a later snapshot keeps the failed allocation");
+  check(CrashRecord::valid(*CrashLog::hostRecord()), "the merged snapshot validates");
 
   // The shutdown handler marks the record clean and is registered.
   check(hostCrashShutdownHandler() != nullptr, "init registers a shutdown handler");

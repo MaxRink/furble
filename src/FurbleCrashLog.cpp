@@ -31,6 +31,9 @@ using Furble::CrashRecord::TASK_BYTES;
 RTC_NOINIT_ATTR record_t s_Record;
 
 portMUX_TYPE s_Lock = portMUX_INITIALIZER_UNLOCKED;
+// Set by the heap callback under s_Lock. Plain RAM, so it starts false on
+// every boot and never preserves the previous run's failure.
+bool s_AllocFailed = false;
 char s_Lines[LOG_LINES][LOG_LINE_BYTES] = {};
 uint32_t s_Head = 0;
 uint32_t s_Count = 0;
@@ -131,8 +134,14 @@ void printRecord(const record_t &record) {
   s_Printing.store(false, std::memory_order_relaxed);
 }
 
-void storeRecord(const record_t &record) {
+void storeRecord(record_t &record) {
   portENTER_CRITICAL(&s_Lock);
+  // update() builds its snapshot outside the lock. If the heap callback ran in
+  // between, the abort is imminent and this store must keep its details.
+  if (s_AllocFailed) {
+    Furble::CrashRecord::keepAllocFailure(record, s_Record);
+    Furble::CrashRecord::finalize(record);
+  }
   s_Record = record;
   portEXIT_CRITICAL(&s_Lock);
 }
@@ -178,6 +187,7 @@ void recordAllocFailure(size_t size, uint32_t caps, const char *function) {
   portENTER_CRITICAL(&s_Lock);
   Furble::CrashRecord::noteAllocFailure(s_Record, size, caps, function, task);
   Furble::CrashRecord::finalize(s_Record);
+  s_AllocFailed = true;
   portEXIT_CRITICAL(&s_Lock);
 }
 
@@ -271,10 +281,13 @@ void hostSetRecord(const record_t &record) {
   s_Printing = false;
   s_Printed = {};
   s_LastUpdateUs = 0;
-  storeRecord(record);
+  s_AllocFailed = false;
+  record_t copy = record;
+  storeRecord(copy);
 }
 
 void hostReset(void) {
+  s_AllocFailed = false;
   s_Initialized = false;
   s_Recovered = false;
   s_Printing = false;

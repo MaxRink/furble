@@ -105,6 +105,17 @@ int main() {
   record.alloc_size++;
   check(!valid(record), "the CRC covers the allocation failure");
   record.alloc_size--;
+  // A periodic snapshot stored after the callback keeps the failure.
+  Furble::CrashRecord::record_t later = {};
+  fill(later);
+  Furble::CrashRecord::keepAllocFailure(later, record);
+  check(later.alloc_size == 0x2400 && later.alloc_caps == 0x1800
+            && std::strcmp(later.alloc_task, record.alloc_task) == 0
+            && std::strcmp(later.alloc_function, record.alloc_function) == 0,
+        "a later snapshot keeps the allocation failure");
+  later.alloc_size = 7;
+  Furble::CrashRecord::keepAllocFailure(later, record);
+  check(later.alloc_size == 7, "a snapshot with its own failure is unchanged");
   // Every field at its widest still fits the summary buffer.
   record.reset_reason = 14;
   record.uptime_s = 0xffffffffU;
