@@ -53,7 +53,7 @@ class StackBudgetTest(unittest.TestCase):
             (tmp / "manifest.json").write_text(json.dumps(manifest))
             return subprocess.run(
                 [sys.executable, str(TOOL), "--env", "x", "--build-dir", str(build), "--sdkconfig",
-                 str(tmp / "sdkconfig"), "--manifest", str(tmp / "manifest.json"), *extra],
+                 str(tmp / "sdkconfig"), "--manifest", str(tmp / "manifest.json"), "--no-elf", *extra],
                 capture_output=True, text=True)
 
     def test_resolved_depth_and_overhead(self):

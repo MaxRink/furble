@@ -85,8 +85,7 @@
       ],
       "envs": [
         "m5stack-core",
-        "m5stack-core2",
-        "m5stack-core-usb-debug"
+        "m5stack-core2"
       ]
     },
     {
@@ -200,6 +199,13 @@
         "\\(lv_indev_t\\*, lv_indev_data_t\\*\\)$"
       ],
       "why": "lv_indev.c calls the indev read_cb"
+    },
+    {
+      "caller": "^esp_event_loop_run$",
+      "targets": [
+        "\\(void\\*, esp_event_base_t, int32_t, void\\*\\)$"
+      ],
+      "why": "esp_event.c handler_execute, inlined here, calls each registered esp_event_handler_t; esp-mqtt dispatches its events through it on the client task"
     }
   ],
   "boot_only": [

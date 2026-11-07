@@ -97,6 +97,20 @@ jobs:
           python3 tests/test_reproducible_paths.py
 
       - name: Compare clean builds
+        env:
+          TMPDIR: ${{ runner.temp }}/repro
         run: >-
+          mkdir -p "$TMPDIR" &&
           python3 tools/reproducible_build.py
-          --env "${{ matrix.environment }}" --negative-version
+          --env "${{ matrix.environment }}" --negative-version --keep
+
+      # The firmware CI matrix has no headless build, so the stack budget for
+      # that env runs on the kept reproducible build instead.
+      - name: Check task stack budgets
+        env:
+          ENVIRONMENT: ${{ matrix.environment }}
+        run: |
+          set -eu
+          set -- "$RUNNER_TEMP"/repro/furble-repro-*/a/source/.pio/build/"$ENVIRONMENT"
+          test "$#" -eq 1 && test -d "$1"
+          python3 tools/stack_budget.py --env "$ENVIRONMENT" --build-dir "$1"

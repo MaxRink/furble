@@ -16,6 +16,7 @@ fails when its resolved worst case plus the interrupt frame exceeds its stack.
 import argparse
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -26,6 +27,12 @@ NODE = re.compile(r'node: \{ title: "([^"]*)" label: "([^"]*)"')
 EDGE = re.compile(r'edge: \{ sourcename: "([^"]*)" targetname: "([^"]*)"(?: label: "([^"]*)")?')
 FRAME = re.compile(r"\\n(\d+) bytes \(([a-z,]+)\)")
 INDIRECT = "__indirect_call"
+ALIAS = re.compile(r"([CD])1E")
+FUNC = re.compile(r"^[0-9a-f]+ <([^>+]+)>:$")
+ENTRY = re.compile(r"\tentry\ta1, (\d+)$")
+CALL = re.compile(r"\tcall(?:0|4|8|12)\t[0-9a-f]+ <([^>+]+)>$")
+LITERAL = re.compile(r"\tl32r\t(a\d+), .*\([0-9a-f]+ <([^>+]+)>\)$")
+CALLX = re.compile(r"\tcallx(?:0|4|8|12)\t(a\d+)$")
 
 
 class Graph:
@@ -57,6 +64,54 @@ class Graph:
                     self.calls.setdefault(src, set()).add(dst)
         return len(files)
 
+    def load_elf(self, elf, objdump):
+        """Frames and calls of prebuilt code (newlib, libstdc++, the WiFi and
+        BT blobs) from the image's disassembly. Only functions with no .ci
+        node are taken: the frame is the windowed ABI entry allocation, a
+        call is call8 to a symbol or a longcall l32r literal then callx8."""
+        out = subprocess.run([objdump, "-d", str(elf)], capture_output=True, text=True,
+                             check=True).stdout
+        fn, literal = None, {}
+        for line in out.splitlines():
+            m = FUNC.match(line)
+            if m:
+                fn = m.group(1)
+                if fn in self.frame:
+                    fn = None  # compiled here: the .ci node is authoritative
+                literal = {}
+                continue
+            if fn is None:
+                continue
+            m = ENTRY.search(line)
+            if m and fn not in self.frame:
+                self.frame[fn] = int(m.group(1))
+                self.kind[fn] = "static"
+                self.name[fn] = fn
+                continue
+            m = CALL.search(line)
+            if m:
+                self.calls.setdefault(fn, set()).add(m.group(1))
+                continue
+            m = LITERAL.search(line)
+            if m:
+                literal[m.group(1)] = m.group(2)
+                continue
+            m = CALLX.search(line)
+            if m:
+                if m.group(1) in literal:
+                    self.calls.setdefault(fn, set()).add(literal[m.group(1)])
+                else:
+                    self.indirect.setdefault(fn, []).append("elf")
+
+    def defined(self, title):
+        """The node holding title's frame: itself, its global name, or the
+        C2/D2 body that a C1/D1 constructor or destructor aliases."""
+        symbol = title.rsplit(":", 1)[-1]
+        for candidate in (title, symbol, ALIAS.sub(r"\g<1>2E", symbol), symbol.replace(".", "$")):
+            if candidate in self.frame:
+                return candidate
+        return None
+
     def find(self, pattern):
         """Titles whose demangled signature or title matches pattern exactly once."""
         rx = re.compile(pattern)
@@ -72,7 +127,8 @@ def worst_case(graph, entry, resolve, pruned=frozenset()):
     def targets(fn):
         out = set(graph.calls.get(fn, ()))
         if fn in graph.indirect:
-            hit = [(rx, dst) for rx, dst in resolve if rx.search(graph.name.get(fn, fn))]
+            hit = [(rx, dst) for rx, dst in resolve
+                   if dst and rx.search(graph.name.get(fn, fn))]
             if hit:
                 for _, dst in hit:
                     out.update(dst)
@@ -86,9 +142,12 @@ def worst_case(graph, entry, resolve, pruned=frozenset()):
         if fn in onstack:
             notes["recursion"].add(fn)
             return 0, []
-        if fn not in graph.frame:
+        body = graph.defined(fn)
+        if body is None:
             notes["unknown"].add(fn)
             return 0, []
+        if body != fn:
+            return walk(body)
         if graph.kind[fn] != "static":
             notes["dynamic"].add(fn)
         onstack.add(fn)
@@ -111,6 +170,9 @@ def main():
     ap.add_argument("--env", required=True, help="PlatformIO env, e.g. m5stick-s3")
     ap.add_argument("--build-dir", help="default .pio/build/<env>")
     ap.add_argument("--manifest", default=str(MANIFEST))
+    ap.add_argument("--no-elf", action="store_true",
+                    help="skip prebuilt code from firmware.elf (for synthetic graphs)")
+    ap.add_argument("--objdump", help="default: the PlatformIO Xtensa toolchain for the target")
     ap.add_argument("--sdkconfig", help="default sdkconfig.<release env>")
     ap.add_argument("--stack", action="append", default=[], metavar="TASK=BYTES",
                     help="override one task's stack, e.g. to replay a past size")
@@ -124,6 +186,26 @@ def main():
         print(f"no .ci files under {build}; build with -fcallgraph-info=su", file=sys.stderr)
         return 2
 
+    sdkconfig = {}
+    # a debug or diagnostic env shares its release env's sdkconfig and tasks
+    # only a complete sdkconfig names its target; fragments such as
+    # sdkconfig.m5stack-core-usb-debug layer on the release file
+    release_envs = [p.name.split(".", 1)[1] for p in ROOT.glob("sdkconfig.*")
+                    if "\nCONFIG_IDF_TARGET=" in p.read_text()]
+    release_env = max((e for e in release_envs if args.env == e or args.env.startswith(e + "-")),
+                      key=len, default=args.env)
+    sdkconfig_path = Path(args.sdkconfig or ROOT / f"sdkconfig.{release_env}")
+    for line in sdkconfig_path.read_text().splitlines():
+        key, sep, value = line.partition("=")
+        if sep and not key.startswith("#"):
+            sdkconfig[key] = value.strip('"')
+    target = sdkconfig["CONFIG_IDF_TARGET"]
+    margin = manifest["overhead_bytes"][target]
+    if not args.no_elf:
+        objdump = args.objdump or str(Path.home() / ".platformio" / "packages" / "toolchain-xtensa-esp-elf"
+                                      / "bin" / f"xtensa-{target}-elf-objdump")
+        graph.load_elf(build / "firmware.elf", objdump)
+
     resolve = []
     for rule in manifest.get("indirect", []):
         # a rule without a linked caller or target is inert, e.g. LVGL headless;
@@ -133,17 +215,6 @@ def main():
             dst.update(graph.find(pattern))
         resolve.append((re.compile(rule["caller"]), dst))
 
-    sdkconfig = {}
-    # a debug or diagnostic env shares its release env's sdkconfig and tasks
-    release_envs = [p.name.split(".", 1)[1] for p in ROOT.glob("sdkconfig.*")]
-    release_env = max((e for e in release_envs if args.env == e or args.env.startswith(e + "-")),
-                      key=len, default=args.env)
-    sdkconfig_path = Path(args.sdkconfig or ROOT / f"sdkconfig.{release_env}")
-    for line in sdkconfig_path.read_text().splitlines():
-        key, sep, value = line.partition("=")
-        if sep and not key.startswith("#"):
-            sdkconfig[key] = value.strip('"')
-    margin = manifest["overhead_bytes"][sdkconfig["CONFIG_IDF_TARGET"]]
     boot_only = set()
     for pattern in manifest.get("boot_only", []):
         boot_only.update(graph.find(pattern))
@@ -170,6 +241,8 @@ def main():
             flags.append(f"{sum(len(v) for v in notes['indirect'].values())} unresolved indirect")
         if notes["recursion"]:
             flags.append(f"{len(notes['recursion'])} recursive")
+        if notes["unknown"]:
+            flags.append(f"{len(notes['unknown'])} callees without a frame")
         if notes["dynamic"]:
             flags.append(f"{len(notes['dynamic'])} dynamic")
         print(f"{'PASS' if ok else 'FAIL'} {task['name']}: {need} of {stack} bytes"
@@ -178,6 +251,8 @@ def main():
             for fn in path:
                 print(f"    {graph.frame[fn]:6d}  {graph.name[fn]}")
         if args.verbose:
+            for fn in sorted(notes["unknown"]):
+                print(f"    no frame (ROM, prebuilt or assembly): {fn}")
             for fn, sites in sorted(notes["indirect"].items()):
                 print(f"    indirect in {graph.name.get(fn, fn)}: {len(sites)} site(s)")
     return 1 if failed else 0

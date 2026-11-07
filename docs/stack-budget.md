@@ -14,6 +14,13 @@ not change code or data: a StickS3 image built with and without it differs
 only in the app descriptor's `app_elf_sha256` and the trailing image hash,
 both of which cover the ELF's debug info.
 
+Prebuilt code has no `.ci` file: newlib, libstdc++ template instances, and the
+WiFi and Bluetooth blobs. For every function the `.ci` graph does not define,
+the tool reads `firmware.elf` with the toolchain's objdump. The frame is the
+windowed ABI `entry a1, N` allocation; a call is a `call8` to a symbol or a
+longcall `l32r` literal followed by `callx8`. That is how `snprintf` (192
+bytes), `_svfprintf_r` (800) and `__ssvfscanf_r` (896) are counted.
+
 The tool merges every `.ci` file in `.pio/build/<env>`, then walks the graph
 from each task entry in `tools/stack_budget.json`. It sums the deepest path
 and adds the per-task overhead that the pinned ESP-IDF Xtensa port carves from
@@ -33,13 +40,16 @@ release env's tasks and sdkconfig.
 
 ## What the number means
 
-The walk is exact for direct calls. GCC cannot name the target of an indirect
+The walk is exact for direct calls into code in the ELF. Callees outside it,
+the mask ROM functions such as `strlen` or `esp_rom_printf`, count as zero and
+are reported as "callees without a frame"; `--verbose` lists them. GCC cannot name the target of an indirect
 call (a virtual call, a `std::function`, a C callback), so each indirect call
 is listed, not followed, unless the manifest's `indirect` section resolves the
 caller. The rules there resolve LVGL's dispatchers by callback signature: any
 C++ function taking `(lv_event_t*)` may run under `lv_event_send`, and so on
-for timers, display flush and input reads. That over-approximates, which is
-the safe direction. A task with unresolved indirect sites therefore reports a
+for timers, display flush and input reads. `esp_event_loop_run` resolves to
+every `esp_event_handler_t`, which is how the esp-mqtt client task reaches
+`MQTT::eventHandler`. That over-approximates, which is the safe direction. A task with unresolved indirect sites therefore reports a
 lower bound for paths through them, and the gate catches growth in the
 resolved part only.
 
