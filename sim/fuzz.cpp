@@ -23,6 +23,7 @@
 #include "driver.h"
 #include "fuzz.h"
 #include "fuzz_machine.h"
+#include "heap_count.h"
 
 // Seeded UI fuzzer. See fuzz.h for the contract. The fuzzer drives the real
 // FurbleUI through the same FURBLE_SIM seams the scripted scenarios use
@@ -423,9 +424,9 @@ void checkInvariants(UI *ui, const std::string &event) {
   if (flushes != UINT64_MAX && waits != UINT64_MAX) {
     if (ui->simQueryState("single_buffer") == "yes") {
       if (waits != flushes) {
-        recordFinding(ui, "flush-overlap", event,
-                      "single-buffer flushes=" + std::to_string(flushes)
-                          + " waits=" + std::to_string(waits));
+        recordFinding(
+            ui, "flush-overlap", event,
+            "single-buffer flushes=" + std::to_string(flushes) + " waits=" + std::to_string(waits));
       }
     } else if (waits != 0) {
       recordFinding(ui, "flush-overlap", event,
@@ -820,6 +821,7 @@ bool fuzzActive(void) {
 }
 
 void fuzzTick(UI *ui) {
+  const Furble::Sim::HostAllocScope hostScope;
   if (!active || ui == nullptr) {
     return;
   }
@@ -833,7 +835,10 @@ void fuzzTick(UI *ui) {
       pendingDescription = eventName(pendingEvent);
       pendingWasStop = pendingEvent == Event::INTERVAL_STOP;
       stateBeforeApply = captureState(ui);
-      applyEvent(ui, pendingEvent);
+      {
+        const Furble::Sim::DeviceAllocScope deviceScope;
+        applyEvent(ui, pendingEvent);
+      }
       recordEvent(pendingDescription);
       eventCounts[pendingDescription]++;
       // The post-handler hook counts the current LVGL cycle and the next
@@ -864,8 +869,11 @@ void fuzzTick(UI *ui) {
     }
 
     case FuzzPhase::ESCAPE:
+    {
+      const Furble::Sim::DeviceAllocScope deviceScope;
       escapeTick(ui);
       return;
+    }
 
     case FuzzPhase::FINISH:
       finish();
@@ -874,6 +882,7 @@ void fuzzTick(UI *ui) {
 }
 
 void fuzzCycleComplete(UI *ui) {
+  const Furble::Sim::HostAllocScope hostScope;
   if (!active || ui == nullptr || machine == nullptr) {
     return;
   }

@@ -1,0 +1,40 @@
+# Device allocations after boot are charged to the modelled heap.
+#
+# The seeded pair is the idle booted device. Connecting a camera then creates
+# the per-camera Control target task, a 4 KiB stack and a 336-byte TCB that
+# cost 4,464 bytes with their TLSF and poisoning overhead, and the connected
+# page decodes its icons into the LVGL image cache. Icons above the 4 KiB
+# SPIRAM_MALLOC_ALWAYSINTERNAL threshold land in PSRAM, smaller ones stay
+# internal, as on the device. Before plan 314 PR 2 none of that was charged.
+# Disconnecting must return the target task; the image cache stays.
+seed fauxny true
+seed saved_camera true
+seed heap_internal_free 60000
+seed heap_internal_largest 50000
+# Counting starts one UI timer period after the settled first frame, where
+# the seeded pair was measured. The idle UI then charges nothing.
+wait 1500
+assert heap.counting yes
+assert heap.free 60000
+assert heap.counted_internal 0
+assert heap.counted_tasks 0
+home
+wait 300
+action connect
+wait 1800
+assert-eventually-virtual 60000 ui.connected yes
+assert heap.counted_tasks 4464
+assert_max heap.free 55536
+wait 500
+assert_min heap.counted_external 4097
+print heap.free
+print heap.counted_internal
+print heap.counted_external
+assert heap.alloc_failures 0
+action disconnect
+wait 2000
+assert control.state idle
+assert heap.counted_tasks 0
+print heap.free
+assert heap.alloc_failures 0
+exit

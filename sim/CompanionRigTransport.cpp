@@ -23,6 +23,7 @@
 #include "FurbleTypes.h"
 #include "driver.h"
 #include "esp_log.h"
+#include "heap_count.h"
 #include "rig_frame.h"
 
 namespace Furble::Sim {
@@ -604,6 +605,7 @@ void rigReloadSetting(bool pairingWindow) {
 }
 
 void rigInjectPendingPairing(uint32_t pin) {
+  const Furble::Sim::HostAllocScope hostScope;
   injectedPin.store(pin);
   injectedPairing.store(true);
 }
@@ -648,6 +650,7 @@ void rigConfirmPairing(bool) {
 }
 void rigReloadSetting(bool) {}
 void rigInjectPendingPairing(uint32_t pin) {
+  const Furble::Sim::HostAllocScope hostScope;
   injectedPin.store(pin);
   injectedPairing.store(true);
 }

@@ -52,6 +52,42 @@ void heapActivate(void);
 
 bool heapActive(void);
 
+/**
+ * Start counting every device allocation: firmware `new` and `malloc`, LVGL,
+ * every device task stack and every queue. Called where the seeded pair was
+ * measured, after the UI is built, so the baseline is not counted twice.
+ */
+void heapCountingActivate(void);
+bool heapCounting(void);
+/** Lock-free form for the allocation hot path. */
+bool heapCountingFast(void);
+
+/** True for the simulator's own tasks, which are not device memory. */
+bool heapHostOnlyTask(const char *name);
+
+/**
+ * Charge one default `malloc`/`new` block, routed like
+ * heap_caps_malloc_default on the board. The charge includes the TLSF header
+ * and poisoning overhead. A failure follows the board abort policy.
+ */
+bool heapCountedAlloc(size_t requested, const char *owner, size_t *charged, bool *external);
+
+/** Same charge for an explicit capability request; 0 means default malloc. */
+bool heapCountedAllocCaps(size_t requested,
+                          uint32_t caps,
+                          const char *owner,
+                          size_t *charged,
+                          bool *external);
+void heapCountedFree(size_t charged, bool external);
+
+/** Block cost and pool of an allocation made before counting started. */
+void heapBaselineBlock(size_t requested, uint32_t caps, size_t *bytes, bool *external);
+/** Return a baseline block freed after counting started. */
+void heapRefundBaseline(size_t bytes, bool external);
+size_t heapCountedBytes(bool external);
+/** Live counted task stacks and TCBs, a subset of the counted totals. */
+size_t heapCountedTaskBytes(void);
+
 size_t heapFree(void);
 size_t heapLargest(void);
 size_t heapMinimumFree(void);
@@ -91,7 +127,7 @@ bool heapReserve(size_t bytes);
 void heapRelease(size_t bytes);
 
 /** Return one modelled task stack to its internal or PSRAM pool. */
-void heapReleaseTask(size_t bytes, bool external);
+void heapReleaseTask(size_t bytes, bool external, bool counted = false);
 
 /**
  * Owner-tagged allocation for the memory profiler. The tag is used for
@@ -148,7 +184,11 @@ void heapNoteAllocationFailure(size_t bytes, const char *task);
  * when the task finishes, or zero when the model is inactive. external is true
  * when the charge came from the PSRAM pool rather than internal RAM.
  */
-bool heapTaskCreate(const char *name, size_t stackBytes, size_t *chargedBytes, bool *external);
+bool heapTaskCreate(const char *name,
+                    size_t stackBytes,
+                    size_t *chargedBytes,
+                    bool *external,
+                    bool *counted = nullptr);
 
 extern "C" size_t furble_sim_heap_free(uint32_t capabilities);
 extern "C" size_t furble_sim_heap_largest(uint32_t capabilities);

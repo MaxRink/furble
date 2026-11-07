@@ -38,6 +38,7 @@
 #include "driver.h"
 #include "fuzz.h"
 #include "hardware_model.h"
+#include "heap_count.h"
 #include "heap_model.h"
 #include "ui_buttons.h"
 #include "watchdog.h"
@@ -260,6 +261,9 @@ int runSimulator() {
   BootScreen::finish();
 
   const auto interval = Settings::load<Settings::INTERVAL>();
+  // From here this thread is the firmware UI task. Its allocations are device
+  // memory: baseline until counting starts, charged after.
+  Sim::heapMarkDeviceThread("main");
   UI ui(interval);
   Sim::setBackTarget(&ui);
   Sim::registerUI(&ui);

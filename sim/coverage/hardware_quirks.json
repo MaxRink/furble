@@ -2221,6 +2221,21 @@
       "runner": "sim/scripts/run-panic-fixtures.sh"
     },
     {
+      "id": "memory.device_allocation_counting",
+      "profile": "sticks3",
+      "category": "memory",
+      "feature": "Every device allocation after boot draws from the modelled heap",
+      "source": "plans/314-memory-resilience.md",
+      "model": "sim/heap_count.cpp",
+      "scenario": "sim/scenarios/e2e/memory-counted-camera-connect.txt",
+      "assertions": [
+        "heap.counting",
+        "heap.counted_internal",
+        "heap.free"
+      ],
+      "status": "modeled"
+    },
+    {
       "id": "memory.timeline",
       "profile": "all",
       "category": "memory",

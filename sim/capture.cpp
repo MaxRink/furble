@@ -7,6 +7,7 @@
 #include <M5Unified.h>
 
 #include "capture.h"
+#include "heap_count.h"
 
 namespace Furble::Sim {
 namespace {
@@ -77,6 +78,8 @@ std::vector<uint8_t> deflateStore(const std::vector<uint8_t> &data) {
 }  // namespace
 
 bool captureFrame(const std::string &path) {
+  // Screenshot buffers are host memory, not the device frame buffer.
+  const Furble::Sim::HostAllocScope hostScope;
   const int32_t width = M5.Display.width();
   const int32_t height = M5.Display.height();
   if (width <= 0 || height <= 0) {

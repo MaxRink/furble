@@ -1,4 +1,5 @@
 #include "crash_log_sim.h"
+#include "heap_count.h"
 
 #include <algorithm>
 #include <atomic>
@@ -56,6 +57,7 @@ std::string recordPath(void) {
 }
 
 bool readPersisted(record_t &record) {
+  const Furble::Sim::HostAllocScope hostScope;
   const std::string path = recordPath();
   if (path.empty()) {
     return false;
@@ -70,6 +72,7 @@ bool readPersisted(record_t &record) {
 }
 
 void writePersisted(const record_t &record) {
+  const Furble::Sim::HostAllocScope hostScope;
   const std::lock_guard<std::mutex> lock(s_PersistMutex);
   const std::string path = recordPath();
   if (path.empty()) {

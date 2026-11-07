@@ -53,6 +53,7 @@
 #include "driver.h"
 #include "fuzz.h"
 #include "hardware_model.h"
+#include "heap_count.h"
 #include "heap_model.h"
 #include "memory_profile.h"
 #include "platform_state.h"
@@ -1380,10 +1381,18 @@ bool expectedSimActionResult(const scenario_action_t &action, UI::sim_action_res
   return false;
 }
 
+std::string queryValueUnscoped(const std::string &key);
+
 // Resolve an assertable state key to a string. UI keys run on the UI task, so
 // LVGL reads stay single threaded. Control and camera keys read the shared
-// state the real app maintains.
+// state the real app maintains. An observation must not move the device heap,
+// so the whole query runs in a host allocation scope.
 std::string queryValue(const std::string &key) {
+  const HostAllocScope scope;
+  return queryValueUnscoped(key);
+}
+
+std::string queryValueUnscoped(const std::string &key) {
   const auto prefixed = [&key](const char *prefix) {
     const size_t length = std::char_traits<char>::length(prefix);
     return key.size() >= length && key.compare(0, length, prefix) == 0;
@@ -1887,6 +1896,18 @@ std::string queryValue(const std::string &key) {
     }
     if (sub == "active") {
       return heapActive() ? "yes" : "no";
+    }
+    if (sub == "counting") {
+      return heapCounting() ? "yes" : "no";
+    }
+    if (sub == "counted_internal") {
+      return std::to_string(heapCountedBytes(false));
+    }
+    if (sub == "counted_external") {
+      return std::to_string(heapCountedBytes(true));
+    }
+    if (sub == "counted_tasks") {
+      return std::to_string(heapCountedTaskBytes());
     }
     if (sub == "alloc_failures" || sub == "task_failures") {
       return std::to_string(heapAllocationFailures());
@@ -2693,7 +2714,32 @@ void startProfiler(void) {
   profilerBegin(scenarioName.c_str(), reporting_enabled);
 }
 
+// One period of the UI's one-second housekeeping timers.
+constexpr uint32_t COUNT_SETTLE_MS = 1000;
+
 void driverTick(void) {
+  // The seeded heap pair was measured from the console of an idle, booted
+  // device: after the production boot timeline's first frame, after the boot
+  // focus transitions released their style copies, and after the one-second
+  // UI timers had run once and sized their labels and layouts. From there
+  // every device allocation is charged. This thread is the firmware UI task.
+  static bool countingStarted = false;
+  static bool firstFrameSeen = false;
+  static uint32_t firstFrameAt = 0;
+  if (!firstFrameSeen && BootTimeline::recorded(BootTimeline::UI_FIRST_FRAME)) {
+    firstFrameSeen = true;
+    firstFrameAt = clockMillis();
+  }
+  if (!countingStarted && firstFrameSeen && clockMillis() - firstFrameAt >= COUNT_SETTLE_MS
+      && lv_anim_count_running() == 0) {
+    countingStarted = true;
+    heapMarkDeviceThread("main");
+    heapCountingActivate();
+  }
+  // The scenario driver is host work. Only the steps that call straight into
+  // a firmware handler re-enter device counting below.
+  const HostAllocScope hostScope;
+
   // Test-only fault injection for the runSimulator SchedulerStopped fail-fast
   // path. This executes from UI::task after its LVGL mutex is held and exits on
   // the first tick, so it does not alter normal scenarios.
@@ -2724,6 +2770,8 @@ void driverTick(void) {
   }
 
   if (fuzzActive()) {
+    // fuzzTick keeps its bookkeeping on the host heap and re-enters device
+    // counting only around the firmware dispatch.
     fuzzTick(scenarioUi);
     return;
   }
@@ -2804,7 +2852,8 @@ void driverTick(void) {
         requestExit(1);
         return;
       }
-      if (!scenarioUi->simPressButton(step.name.c_str(), step.hold)) {
+      if (const DeviceAllocScope deviceScope;
+          !scenarioUi->simPressButton(step.name.c_str(), step.hold)) {
         std::cerr << "Simulator button not available on this board: " << step.name << '\n';
         requestExit(1);
         return;
@@ -2818,7 +2867,8 @@ void driverTick(void) {
         requestExit(1);
         return;
       }
-      if (!scenarioUi->simHoldButton(step.name.c_str(), step.milliseconds)) {
+      if (const DeviceAllocScope deviceScope;
+          !scenarioUi->simHoldButton(step.name.c_str(), step.milliseconds)) {
         std::cerr << "Simulator button not available on this board: " << step.name << '\n';
         requestExit(1);
         return;
@@ -2859,9 +2909,12 @@ void driverTick(void) {
       break;
 
     case StepType::GPS_RESTART:
+    {
+      const DeviceAllocScope deviceScope;
       Furble::GPS::getInstance().restart(step.name == "hot" ? 0 : step.name == "warm" ? 1 : 2);
       ++stepIndex;
       break;
+    }
 
     case StepType::GPS_RECEIVER:
       if (step.name == "none") {
@@ -2875,10 +2928,13 @@ void driverTick(void) {
       break;
 
     case StepType::GPS_MONHW:
+    {
       furble_sim_uart_set_monhw_short(step.name == "short");
+      const DeviceAllocScope deviceScope;
       Furble::GPS::getInstance().pollMonHw();
       ++stepIndex;
       break;
+    }
 
     case StepType::GPS_SATS:
       furble_sim_uart_set_satellite_fixture(step.name.c_str());
@@ -2911,7 +2967,8 @@ void driverTick(void) {
     }
 
     case StepType::HOME:
-      if (backTarget == nullptr || !backTarget->simulatorHome()) {
+      if (const DeviceAllocScope deviceScope;
+          backTarget == nullptr || !backTarget->simulatorHome()) {
         std::cerr << "Could not navigate home in simulator\n";
         requestExit(1);
         return;
@@ -2920,7 +2977,8 @@ void driverTick(void) {
       break;
 
     case StepType::BACK:
-      if (backTarget == nullptr || !backTarget->simulatorBack()) {
+      if (const DeviceAllocScope deviceScope;
+          backTarget == nullptr || !backTarget->simulatorBack()) {
         std::cerr << "Could not navigate back in simulator\n";
         requestExit(1);
         return;
@@ -2979,6 +3037,7 @@ void driverTick(void) {
         result =
             applied ? UI::sim_action_result_t::APPLIED : UI::sim_action_result_t::VALID_NO_EFFECT;
       } else {
+        const DeviceAllocScope deviceScope;
         result = scenarioUi->simScenarioAction(step.action);
       }
       if (!expectedSimActionResult(step.action, result)) {

@@ -1,4 +1,5 @@
 #include "power_profiler.h"
+#include "heap_count.h"
 
 #include <algorithm>
 #include <cctype>
@@ -17,6 +18,7 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <unistd.h>
@@ -24,6 +26,14 @@
 
 #include "clock.h"
 #include "driver.h"
+
+// Profiler bookkeeping is host observability. It runs on device task threads
+// through the FURBLE_SIM hooks, so every lock also enters a host scope.
+struct profiler_lock_t {
+  explicit profiler_lock_t(std::mutex &mutex) : guard(mutex) {}
+  Furble::Sim::HostAllocScope scope;
+  std::lock_guard<std::mutex> guard;
+};
 
 namespace Furble::Sim {
 namespace {
@@ -594,7 +604,7 @@ std::string shellQuote(const std::string &value) {
       quoted += character;
     }
   }
-  quoted += "'";
+  quoted += '\'';
   return quoted;
 }
 
@@ -608,6 +618,8 @@ std::string digestPath(const std::filesystem::path &path) {
   const std::string quoted_path = shellQuote(path.string());
   for (const std::string command : {"sha256sum -- ", "shasum -a 256 "}) {
     const std::string invocation = command + quoted_path;
+    // The digest tool is a fixed command and the path is single-quoted above.
+    // NOLINTNEXTLINE(bugprone-command-processor,cert-env33-c)
     FILE *pipe = popen(invocation.c_str(), "r");
     if (pipe == nullptr) {
       continue;
@@ -1006,7 +1018,10 @@ ModelLoadResult loadCurrentModel(void) {
         double parsed = 0.0;
         if (parseNumber(value, parsed)) {
           if (assignModelValue(result.model, anchor, pending_entry, parsed)) {
-            if (!seen_entries.emplace(anchor + ":" + pending_entry).second) {
+            std::string entry = anchor;
+            entry += ':';
+            entry += pending_entry;
+            if (!seen_entries.emplace(std::move(entry)).second) {
               return result;
             }
           }
@@ -1581,7 +1596,7 @@ void resetWindowLocked(uint32_t now) {
 }  // namespace
 
 void profilerBegin(const char *scenario, bool reporting_enabled) {
-  std::lock_guard<std::mutex> lock(state.mutex);
+  profiler_lock_t lock(state.mutex);
   state.started = true;
   state.scenario = scenario == nullptr ? "sim" : scenario;
   state.reporting_enabled = reporting_enabled;
@@ -1621,13 +1636,13 @@ void profilerBegin(const char *scenario, bool reporting_enabled) {
 }
 
 uint64_t profilerTimerFireCount(const char *name) {
-  const std::lock_guard<std::mutex> lock(state.mutex);
+  const profiler_lock_t lock(state.mutex);
   const auto found = state.timer_fires.find(name == nullptr ? "unknown_timer" : name);
   return found == state.timer_fires.end() ? 0 : found->second;
 }
 
 void profilerTimerFire(const char *name) {
-  std::lock_guard<std::mutex> lock(state.mutex);
+  profiler_lock_t lock(state.mutex);
   ensureStartedLocked();
   integrateLocked(clockMicros());
   uint64_t &fire_count = state.timer_fires[name == nullptr ? "unknown_timer" : name];
@@ -1654,7 +1669,7 @@ void profilerTimerFire(const char *name) {
 }
 
 void profilerInvalidatedArea(uint64_t pixels) {
-  std::lock_guard<std::mutex> lock(state.mutex);
+  profiler_lock_t lock(state.mutex);
   ensureStartedLocked();
   state.invalidated_area_pixels += pixels;
   // Count invalidation events for the redraw-storm probe. Independent of the
@@ -1663,23 +1678,23 @@ void profilerInvalidatedArea(uint64_t pixels) {
 }
 
 void profilerResetInvalidationProbe(void) {
-  std::lock_guard<std::mutex> lock(state.mutex);
+  profiler_lock_t lock(state.mutex);
   state.invalidation_probe_count = 0;
 }
 
 uint32_t profilerInvalidationProbeCount(void) {
-  std::lock_guard<std::mutex> lock(state.mutex);
+  profiler_lock_t lock(state.mutex);
   return state.invalidation_probe_count;
 }
 
 void profilerFlushedPixels(uint64_t pixels) {
-  std::lock_guard<std::mutex> lock(state.mutex);
+  profiler_lock_t lock(state.mutex);
   ensureStartedLocked();
   state.flushed_pixels += pixels;
 }
 
 void profilerBeginUiCycle(void) {
-  std::lock_guard<std::mutex> lock(state.mutex);
+  profiler_lock_t lock(state.mutex);
   ensureStartedLocked();
   integrateLocked(clockMicros());
   if (state.reporting_enabled && state.model.accounting_enabled) {
@@ -1695,7 +1710,7 @@ void profilerBeginUiCycle(void) {
 }
 
 void profilerEndUiCycle(void) {
-  std::lock_guard<std::mutex> lock(state.mutex);
+  profiler_lock_t lock(state.mutex);
   ensureStartedLocked();
   if (state.model.accounting_enabled) {
     integrateLocked(clockMicros());
@@ -1705,7 +1720,7 @@ void profilerEndUiCycle(void) {
 }
 
 void profilerQueueReceive(const char *queue_name, bool returned_data) {
-  std::lock_guard<std::mutex> lock(state.mutex);
+  profiler_lock_t lock(state.mutex);
   ensureStartedLocked();
   const std::string name = queue_name == nullptr ? "unnamed" : queue_name;
   if (returned_data) {
@@ -1719,7 +1734,7 @@ void profilerQueueReceive(const char *queue_name, bool returned_data) {
 }
 
 void profilerTaskDelay(const char *task_name, uint32_t milliseconds) {
-  std::lock_guard<std::mutex> lock(state.mutex);
+  profiler_lock_t lock(state.mutex);
   ensureStartedLocked();
   const std::string name = task_name == nullptr ? "unnamed" : task_name;
   state.task_delay_count[name]++;
@@ -1727,32 +1742,32 @@ void profilerTaskDelay(const char *task_name, uint32_t milliseconds) {
 }
 
 void profilerSetDisplayState(const char *display_state) {
-  std::lock_guard<std::mutex> lock(state.mutex);
+  profiler_lock_t lock(state.mutex);
   ensureStartedLocked();
   integrateLocked(clockMicros());
   state.display_state = display_state == nullptr ? "on" : display_state;
 }
 
 void profilerSetRadioConnected(bool connected) {
-  std::lock_guard<std::mutex> lock(state.mutex);
+  profiler_lock_t lock(state.mutex);
   ensureStartedLocked();
   integrateLocked(clockMicros());
   state.radio_connected = connected;
 }
 
 bool profilerRadioConnected(void) {
-  const std::lock_guard<std::mutex> lock(state.mutex);
+  const profiler_lock_t lock(state.mutex);
   return state.radio_connected;
 }
 
 void profilerRadioEvent(const char *name) {
-  std::lock_guard<std::mutex> lock(state.mutex);
+  profiler_lock_t lock(state.mutex);
   ensureStartedLocked();
   state.radio_events[name == nullptr ? "unknown" : name]++;
 }
 
 void profilerSetGpsState(const char *gps_state) {
-  std::lock_guard<std::mutex> lock(state.mutex);
+  profiler_lock_t lock(state.mutex);
   ensureStartedLocked();
   integrateLocked(clockMicros());
   state.gps_state = gps_state == nullptr ? "off" : gps_state;
@@ -1760,13 +1775,13 @@ void profilerSetGpsState(const char *gps_state) {
 
 const char *profilerGpsState(void) {
   static thread_local std::string current;
-  std::lock_guard<std::mutex> lock(state.mutex);
+  profiler_lock_t lock(state.mutex);
   current = state.gps_state;
   return current.c_str();
 }
 
 void profilerPowerConfig(int max_frequency_mhz, int min_frequency_mhz, bool light_sleep_enabled) {
-  std::lock_guard<std::mutex> lock(state.mutex);
+  profiler_lock_t lock(state.mutex);
   ensureStartedLocked();
   integrateLocked(clockMicros());
   state.configured_max_frequency_mhz = max_frequency_mhz;
@@ -1775,7 +1790,7 @@ void profilerPowerConfig(int max_frequency_mhz, int min_frequency_mhz, bool ligh
 }
 
 void profilerPowerLockAcquire(int lock_type, const char *lock_name, const char *owner) {
-  std::lock_guard<std::mutex> lock(state.mutex);
+  profiler_lock_t lock(state.mutex);
   ensureStartedLocked();
   const uint32_t now = clockMillis();
   integrateLocked(clockMicros());
@@ -1796,7 +1811,7 @@ void profilerPowerLockAcquire(int lock_type, const char *lock_name, const char *
 }
 
 void profilerPowerLockRelease(int lock_type, const char *lock_name, const char *owner) {
-  std::lock_guard<std::mutex> lock(state.mutex);
+  profiler_lock_t lock(state.mutex);
   ensureStartedLocked();
   const uint32_t now = clockMillis();
   integrateLocked(clockMicros());
@@ -1832,7 +1847,7 @@ void profilerPowerLockRelease(int lock_type, const char *lock_name, const char *
 }
 
 void profilerWriteReport(const char *path, const char *scenario) {
-  std::lock_guard<std::mutex> lock(state.mutex);
+  profiler_lock_t lock(state.mutex);
   ensureStartedLocked();
   const std::filesystem::path output_path(path == nullptr ? "power-report.json" : path);
   const std::filesystem::path parent = output_path.parent_path();
@@ -1848,7 +1863,7 @@ void profilerWriteReport(const char *path, const char *scenario) {
 }
 
 void profilerResetWindow(void) {
-  std::lock_guard<std::mutex> lock(state.mutex);
+  profiler_lock_t lock(state.mutex);
   ensureStartedLocked();
   resetWindowLocked(clockMillis());
 }
