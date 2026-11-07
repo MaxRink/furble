@@ -19,7 +19,7 @@ assert mem.psram_total 8388608
 assert mem.component.main_stack 12288
 assert mem.component.lvgl_draw 2160
 assert mem.component.mqtt_owner 10240
-assert mem.component.crash_record 436
+assert mem.component.crash_record 484
 assert hw.usb serial_jtag
 assert hw.wifi yes
 assert hw.ethernet no

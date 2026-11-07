@@ -113,7 +113,7 @@ int logVprintf(const char *format, va_list args) {
 }
 
 void printRecord(const record_t &record) {
-  char summary[192] = {};
+  char summary[Furble::CrashRecord::SUMMARY_BYTES] = {};
   Furble::CrashRecord::formatSummary(record, summary, sizeof(summary));
   // The print goes through ESP_LOGE, which re-enters the capture hook. The
   // guard keeps the record itself out of the retained log tail. Two printing
@@ -165,6 +165,22 @@ void captureSnapshot(void) {
   storeRecord(snapshot);
 }
 
+/**
+ * Failed-allocation callback. ESP-IDF calls it from heap_caps_alloc_failed()
+ * just before CONFIG_HEAP_ABORT_WHEN_ALLOCATION_FAILS aborts, on the task whose
+ * allocation failed. That can be a small stack and the heap is exhausted, so it
+ * edits the RTC record in place under the lock and never logs, allocates or
+ * copies the record.
+ */
+void recordAllocFailure(size_t size, uint32_t caps, const char *function) {
+  char task[TASK_BYTES];
+  copyTaskName(task);
+  portENTER_CRITICAL(&s_Lock);
+  Furble::CrashRecord::noteAllocFailure(s_Record, size, caps, function, task);
+  Furble::CrashRecord::finalize(s_Record);
+  portEXIT_CRITICAL(&s_Lock);
+}
+
 }  // namespace
 
 namespace Furble {
@@ -202,6 +218,9 @@ void init(void) {
   // this boot. Leaving a clean record in place until the first periodic update
   // let an early-boot crash inherit the previous run's clean flag and vanish.
   captureSnapshot();
+  // Registered only now, so a failure edits this boot's snapshot and never the
+  // previous record that was just printed.
+  heap_caps_register_failed_alloc_callback(recordAllocFailure);
 }
 
 void update(void) {

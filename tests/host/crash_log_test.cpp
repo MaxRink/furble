@@ -139,6 +139,20 @@ int main() {
   CrashLog::update();
   check(CrashLog::hostRecord()->sequence == sequence + 1, "a later update advances the sequence");
 
+  // The failed-allocation callback writes this boot's record in place.
+  check(hostCrashFailedAllocHook() != nullptr, "init registers a failed-allocation callback");
+  check(CrashLog::hostRecord()->alloc_size == 0, "a fresh snapshot has no failed allocation");
+  hostCrashFailedAllocHook()(9216, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT, "heap_caps_malloc");
+  const auto *failed = CrashLog::hostRecord();
+  check(CrashRecord::valid(*failed), "the record still validates after the callback");
+  check(failed->alloc_size == 9216, "the callback records the size");
+  check(failed->alloc_caps == (MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
+        "the callback records the caps");
+  check(std::string(failed->alloc_task) == "ui", "the callback records the failing task");
+  check(std::string(failed->alloc_function) == "heap_caps_malloc",
+        "the callback records the allocating function");
+  check(!CrashRecord::clean(*failed), "a failed allocation leaves the record unclean");
+
   // The shutdown handler marks the record clean and is registered.
   check(hostCrashShutdownHandler() != nullptr, "init registers a shutdown handler");
   hostCrashShutdownHandler()();

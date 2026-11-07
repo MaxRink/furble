@@ -79,7 +79,7 @@ int main() {
   check(valid(record), "an empty record can still validate");
 
   fill(record);
-  char summary[192] = {};
+  char summary[Furble::CrashRecord::SUMMARY_BYTES] = {};
   const int written = formatSummary(record, summary, sizeof(summary));
   check(written > 0, "summary formatting returns a length");
   check(std::string(summary).find("reset=panic") != std::string::npos, "summary names the reset");
@@ -89,6 +89,35 @@ int main() {
   check(std::string(summary).find("heap_largest=12788") != std::string::npos,
         "summary carries the largest block");
   check(std::string(summary).find("clean=no") != std::string::npos, "summary carries the flag");
+  check(std::string(summary).find("alloc_fail") == std::string::npos,
+        "a record without an allocation failure does not mention one");
+
+  // The failed allocation, written in place by the heap callback.
+  fill(record);
+  Furble::CrashRecord::noteAllocFailure(record, 0x2400, 0x1800, "heap_caps_malloc_with_a_long_name",
+                                        "a_task_name_longer_than_fifteen");
+  Furble::CrashRecord::finalize(record);
+  check(valid(record), "a record with an allocation failure validates");
+  check(record.alloc_size == 0x2400 && record.alloc_caps == 0x1800, "size and caps are kept");
+  check(std::strlen(record.alloc_task) == TASK_BYTES - 1, "the task name is bounded");
+  check(std::strlen(record.alloc_function) == Furble::CrashRecord::ALLOC_FUNCTION_BYTES - 1,
+        "the function name is bounded");
+  record.alloc_size++;
+  check(!valid(record), "the CRC covers the allocation failure");
+  record.alloc_size--;
+  // Every field at its widest still fits the summary buffer.
+  record.reset_reason = 14;
+  record.uptime_s = 0xffffffffU;
+  record.heap_free = 0xffffffffU;
+  record.heap_largest = 0xffffffffU;
+  record.alloc_size = 0xffffffffU;
+  record.alloc_caps = 0xffffffffU;
+  std::memset(record.task, 'x', TASK_BYTES - 1);
+  const int wide = formatSummary(record, summary, sizeof(summary));
+  check(wide > 0 && static_cast<size_t>(wide) < sizeof(summary),
+        "the widest summary fits SUMMARY_BYTES");
+  check(std::string(summary).find("alloc_fail=4294967295 caps=0xffffffff") != std::string::npos,
+        "summary carries the failed size and caps");
 
   // Truncation must stay terminated.
   char tiny[8] = {};

@@ -179,6 +179,17 @@ crash.heap_largest: 12788
 crash.last_log: MQTT client start failed, attempt 10.
 ```
 
+When an allocation failure caused the abort, the summary ends with
+`alloc_fail=<size> caps=<caps> in=<task> fn=<function>` and four more lines
+follow:
+
+```text
+crash.alloc_size: 9216
+crash.alloc_caps: 0x00001800
+crash.alloc_task: mqtt
+crash.alloc_function: heap_caps_malloc
+```
+
 The firmware already prints the same block once at boot when the previous run
 ended unclean. The record is consumed after that print, so `crash` reports
 `crash.none: true` until a later reset produces a new one. The retained lines

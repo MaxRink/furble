@@ -1859,8 +1859,22 @@ std::string queryValueUnscoped(const std::string &key) {
     if (sub == "clean") {
       return CrashRecord::clean(*record) ? "yes" : "no";
     }
+    if (sub == "alloc_size") {
+      return std::to_string(record->alloc_size);
+    }
+    if (sub == "alloc_caps") {
+      char caps[16];
+      std::snprintf(caps, sizeof(caps), "0x%08lx", static_cast<unsigned long>(record->alloc_caps));
+      return caps;
+    }
+    if (sub == "alloc_task") {
+      return record->alloc_size == 0 ? "none" : record->alloc_task;
+    }
+    if (sub == "alloc_function") {
+      return record->alloc_size == 0 ? "none" : record->alloc_function;
+    }
     if (sub == "summary") {
-      char summary[192] = {};
+      char summary[CrashRecord::SUMMARY_BYTES] = {};
       CrashRecord::formatSummary(*record, summary, sizeof(summary));
       return summary;
     }

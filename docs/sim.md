@@ -1042,8 +1042,12 @@ The other namespaces are:
   previous-boot record. `crash.pending` is `yes` between a
   `crash-inject-*` action and the reboot that consumes it. `crash.reset`,
   `crash.task`, `crash.uptime`, `crash.heap_free`, `crash.heap_largest`,
-  `crash.last_log`, `crash.last_log_present`, `crash.clean` and `crash.summary`
-  describe the printed record; `crash.reset` is `none` when no record exists.
+  `crash.last_log`, `crash.last_log_present`, `crash.clean`, `crash.summary`,
+  `crash.alloc_size`, `crash.alloc_caps`, `crash.alloc_task` and
+  `crash.alloc_function` describe the printed record; `crash.reset` is `none`
+  when no record exists. The four `alloc` keys come from the failed-allocation
+  callback that runs before a modelled abort; `alloc_size` is `0` and the task
+  and function are `none` when no allocation failed.
 - `gps.motion_state` reports the phase 1 motion detector as `off`, `moving`, or
   `stationary`. `off` means the detector is not running, which is the default
   and what every scenario that does not seed `gps_motion` must observe. The
