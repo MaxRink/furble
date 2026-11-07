@@ -65,3 +65,16 @@ items; the CMake simulator configures and builds.
 | :--- | :--- | :--- | :--- |
 | 1 | `CrashLog::update()` builds its snapshot outside the record lock. A `storeRecord()` after the heap callback and before the abort wrote a snapshot with `alloc_size == 0` and erased the failure. | Fixed. The callback sets `s_AllocFailed` under the lock, and `storeRecord()` carries the failure into any later snapshot with `CrashRecord::keepAllocFailure()`. The latch is plain RAM, so a new boot never inherits it. A host check stores a snapshot after the callback and fails without the fix. | `src/FurbleCrashLog.cpp`, `include/FurbleCrashRecord.h`, `tests/host/crash_log_test.cpp`, `tests/host/crash_record_test.cpp` |
 | 2 | The `Reading it` section of the crash diagnostics page still listed only the pre-PR `crash last` lines. | Fixed. It names the four conditional `crash.alloc_*` lines and the summary suffix. | `docs/crash-diagnostics.md` |
+| 3 | The branch carried regenerated `sdkconfig.m5stick-c` and `sdkconfig.m5stick-s3`, including `CONFIG_ESP_PHY_REDUCE_TX_POWER` on the StickC, with no config intent. | Fixed. Local builds from a base older than #421 rewrote them and the review-fix commit staged them. Both files are restored to master; the PR changes no sdkconfig. | `git diff origin/master -- 'sdkconfig*'` is empty |
+
+## Fix: esp-mqtt worker stack (#417, `fix/mqtt-worker-stack`)
+
+| # | Finding | Resolution | Evidence |
+| ---: | :--- | :--- | :--- |
+| 1 | A failed PSRAM queue or copy allocation fell back to internal RAM with no reserve, because admission reserved nothing internal when PSRAM looked large enough. | Fixed in b1fa9776: every internal choice re-runs the start gate on a fresh reading with its own reserve. | `src/FurbleMQTT.cpp` |
+| 2 | The new `m_Incoming` ownership and locking contract was not in `include/CLAUDE.md`. | Fixed in b1fa9776. | `include/CLAUDE.md` |
+| 3 | Under `CONFIG_HEAP_ABORT_WHEN_ALLOCATION_FAILS` a failed PSRAM allocation aborts, so try-then-fall-back was unreachable; the queue's older PSRAM path had the same flaw. | Fixed in 41027379: placement is chosen from a fresh largest-block reading before allocating. | `src/FurbleMQTT.cpp`, StickS3 firmware build |
+| 4 | Summary, previously missed: placement compared only the payload, not the control block and allocator overhead. | Fixed in 91246dd7: `BLOCK_OVERHEAD_BYTES` and the block-size constants, pinned by a host assertion. | `include/FurbleMQTTMemory.h`, `tests/host/mqtt_test.cpp` |
+| 5 | Summary, previously missed: a client restart reserved the retained queue and copy again. | Fixed in 91246dd7: the gate reserves only the missing blocks. | `src/FurbleMQTT.cpp` |
+| 6 | Summary, previously missed: the simulator's MQTT model did not allocate the copy. | Fixed in 91246dd7: `mqtt_incoming` in the scripted model and the memory profile. | `sim/hardware_model.cpp`, `sim/memory_profile.cpp` |
+| 7 | Final summary: PSRAM placement, late callbacks, restarts and the stack margin need runtime validation on hardware. | Documented limit. The stack margin comes from the call-graph walk (2,560 of 3,072); the rest waits for the deferred hardware pass in `plans/313-sim-only-status.md`. | `docs/stack-budget.md` |

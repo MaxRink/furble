@@ -67,5 +67,9 @@ wait 300
 assert ui.page cameras
 assert ui.overflow no
 assert ui.indicator_clearance clear
+# The row is narrowed once, by the shared legend band reservation. Padding the
+# label as well reserved the column twice and broke FUJIFILM mid-word on
+# 80x160, which this reads as a cut label (plan 315).
+assert ui.cut_labels 0
 
 exit

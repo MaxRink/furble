@@ -407,6 +407,15 @@ void Scan::clear(void) {
 
 void Scan::processPendingCallbacks(void) {
   const std::lock_guard<std::recursive_mutex> dispatchLock(m_DispatchMutex);
+  // The UI task calls this every tick. libstdc++ allocates a std::deque's map
+  // and first node in its constructor, so an idle tick must return before
+  // building one; an event queued after this check waits for the next tick.
+  {
+    const std::lock_guard<std::mutex> lock(m_StateMutex);
+    if (m_PendingEvents.empty()) {
+      return;
+    }
+  }
   std::deque<PendingEvent> events;
   {
     const std::lock_guard<std::mutex> lock(m_StateMutex);

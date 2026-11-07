@@ -26,9 +26,9 @@
 # fall back to the touch layout and pass for the wrong reason, which is the
 # exact failure this scenario exists to remove.
 #
-# Indicator and overlap regressions below are hard assertions. The Sensors fit
-# remains an explicit xassert for its documented 7 px vertical overflow; that
-# page scrolls rather than shrinking the selected text size. See
+# Indicator and overlap regressions below are hard assertions. Sensors scrolls
+# on this panel rather than shrinking the selected text size, so it asserts
+# complete labels at both scroll ends instead of a fit. See
 # plans/165-sim-no-touch-layout.md and plans/168-notouch-layout-overflows.md.
 seed no_touch true
 seed fauxny true
@@ -65,13 +65,29 @@ action page settings
 action nav sensors
 wait 150
 assert ui.page sensors
-# WILL_FAIL: overflows by 7 px on this panel. It was 10 px before the
-# gesture work folded the 'Restart to apply' caption into the button it
-# describes, so this page got closer to fitting, not further away. The
-# remaining gap is the button and switch row padding at this font size.
+# This page scrolls on this panel by design, like Home and Display above. The
+# Gestures entry joined it after plan 168 measured a 7 px overflow, and
+# addSensorsMenu() records that the 80x160 physical layout may scroll; the
+# measured extent is now 18 px. The contract is the one sim/CLAUDE.md states for
+# it: complete labels at the top, the bottom and the restored top, and both
+# extents reachable. touch-sensors-default-fit keeps the strict fit in the
+# touch lane.
 print ui.scroll_bottom
-assert ui.overflow no
+assert ui.overflow yes
+assert ui.cut_labels 0
+assert ui.label_overlaps 0
 print ui.indicator_overlaps
+assert ui.indicator_clearance clear
+action scroll bottom
+wait 200
+assert ui.scroll_bottom 0
+assert ui.cut_labels 0
+assert ui.label_overlaps 0
+assert ui.indicator_clearance clear
+action scroll top
+wait 200
+assert ui.scroll_top 0
+assert ui.cut_labels 0
 assert ui.indicator_clearance clear
 
 # Settings > GPS list, carrying the new Motion Adaptive row (plans/18). The list

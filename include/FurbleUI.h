@@ -1374,6 +1374,8 @@ class UI {
 
   /** Show or hide the widgets which need GPS enabled. */
   static void showGPSWidgets(status_t *status, bool show);
+  /** Show the header GPS icon only while GPS or the companion source is active. */
+  static void updateGpsIcon(status_t *status);
 
   /** Add the 'Features' menu entry. */
   void addFeaturesMenu(const menu_t &parent);
@@ -1488,6 +1490,9 @@ class UI {
 
   /** Add the live BLE diagnostics page. */
   void addBLEMenu(const menu_t &parent);
+
+  /** Add the full-height container that holds an info page's rows. */
+  static lv_obj_t *addInfoPage(lv_obj_t *page);
 
   /** Add a read only text row to a page container. */
   static lv_obj_t *addInfoRow(lv_obj_t *cont);

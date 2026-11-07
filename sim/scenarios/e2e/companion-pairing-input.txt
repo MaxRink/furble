@@ -13,6 +13,8 @@
 #  - a second pairing request while the modal is open does not stack or orphan a
 #    dialog (the timer guard keeps exactly one)
 #  - accepting closes the modal and restores focus to a control on the page below
+#  - rejecting closes the modal too: `action companion-reject` must reach the
+#    dialog's Reject button and not a hardware-model action of the same name
 wait 300
 assert ui.page main
 assert ui.modal closed
@@ -44,5 +46,16 @@ assert ui.modal_count 0
 
 # Input is restored: a valid control on the returned page holds focus.
 assert ui.focus ok
+assert ui.focus_on_page yes
+
+# Reject through the dialog's own Reject handler. The run fails if the action is
+# swallowed before the UI, since the modal then stays open.
+action companion-pair-request
+wait 400
+assert ui.modal open
+action companion-reject
+wait 500
+assert ui.modal closed
+assert ui.modal_count 0
 assert ui.focus_on_page yes
 exit

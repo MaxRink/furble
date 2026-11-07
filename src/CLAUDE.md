@@ -13,6 +13,10 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   wait, and the S3 watchdog shutdown stay together.
   An empty connect target set returns idle, never active. A concurrent cancel
   still takes precedence and returns disconnecting.
+  The control task's queue wait is a 250 ms idle tick. Work that is not a
+  command, such as reaping the drain after a cancel, must wake it: the
+  interactive disconnect posts one no-op `CMD_ERROR`, or every cancel holds
+  the connect gate for up to a tick (plan 317).
 - The simulator UI loop calls its post-`lv_task_handler` hook only after the
   real production UI handler returns. Keep this hook observational: it may
   advance simulator settle bookkeeping, but must not move restart ownership or
@@ -201,6 +205,10 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   zero. `LEGEND_OFF` uses the Buttons geometry and reservation but makes the
   indicator surfaces transparent; the LVGL button objects and physical input
   points remain live. Do not relayout rows from a scroll callback.
+  The SCROLL_END settle cancels the async pass a SCROLL frame queued; a stale
+  pass after the settle moves rows without re-pinning the bottom. Info pages
+  use `addInfoPage()`: the reservation replaces its container's right
+  padding while it is narrowed (plan 317).
   The width sample must follow the final 24x24 indicator sizing and a settled
   layout; the 2026-09-13 host-GDB trace found the pre-fix `m_LegendWidth` was
   26 px while the final Right box was 24 px (`x1=111,y1=173,x2=134,y2=196`).
@@ -275,6 +283,13 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   an explicit fresh connect.
   `ControlMode::PRESET` remaps the three keys to minus, confirm and plus while
   the bulb Duration page uses the exposure preset picker.
+  The header row is end aligned so the battery holds the right edge. Do not
+  add a zero-width spacer or other empty header child: each one still costs a
+  flex column gap, which pushed the battery off the 80 px header (plan 315).
+  The Cameras page relies on `reserveLegendColumns()` alone; padding its
+  labels as well reserves the legend column twice. A page container that can
+  outgrow the 80x160 viewport is content sized so the page scrolls, never a
+  full-height nested scroller.
   Fonts come from `fontForTextSize` and `fontForIconMenu` in FurbleUI.cpp:
   never hardcode a Montserrat font in a widget, and Large may only grow the
   icon menu font, never below its montserrat 16 default.

@@ -208,6 +208,7 @@ capture companion-pairing
 print ui.modal
 action companion-reject
 wait 250
+assert ui.modal closed
 
 # Connect flow. action connect drives the real connect the camera button
 # triggers. Capture the connecting overlay first, then the connected page.

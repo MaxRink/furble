@@ -98,6 +98,9 @@ the git history. They are no longer ownership rows.
 | [313-sim-only-status.md](313-sim-only-status.md) | Sim-only closeout: exact gate results, hardware-deferred items and resume criteria |
 | [314-memory-resilience.md](314-memory-resilience.md) | Memory resilience: sim heap fidelity and abort parity, load shedding, static and dynamic memory gates |
 | [314-review-feedback.md](314-review-feedback.md) | Review-feedback record for the plan 314 memory resilience series |
+| [315-stickc-layout-regressions.md](315-stickc-layout-regressions.md) | M5StickC header battery anchor, Cameras page double reserve and Time page scroll fixes |
+| [316-docs-capture-companion-reject.md](316-docs-capture-companion-reject.md) | Docs capture: rename the hardware-model action that shadowed the companion pairing Reject |
+| [317-notouch-regressions.md](317-notouch-regressions.md) | Physical-button suite: control drain wake, stale legend pass, info page padding, memory profile constants |
 | [302-companion-restart-reconnect.md](302-companion-restart-reconnect.md) | Companion stop/start without a heap panic, and advertising restart after a rejected link |
 | [303-upstream-sync.md](303-upstream-sync.md) | Read-only upstream audit, open issue mapping, and full SHA PlatformIO pins for upstream issue 309 |
 

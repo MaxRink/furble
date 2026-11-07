@@ -198,6 +198,16 @@ settings-touching rebase.
   `mqtts://` URI must pass the 6 KiB TLS-worker floor, not the plain 3 KiB
   worker floor. `wss://` is not part of the contract because no firmware build
   enables the WebSocket transport.
+- `FurbleMQTT.h` `m_Incoming` is the one event copy the esp-mqtt client task
+  fills in `eventHandler`; that task's plain stack is 3 KiB, so a
+  `queued_event_t` must never live on it. The owner allocates the copy with the
+  event queue (PSRAM when the queue is there) and never frees it, because a
+  stopped client may still deliver a late callback. `m_IncomingMutex` guards it
+  for overlapping clients; hold it only across filling and queueing the copy.
+  Without PSRAM the start gate reserves `EVENT_STORAGE_BYTES`. A failed
+  allocation aborts on every board, so the queue and the copy pick PSRAM from a
+  fresh largest-block reading before allocating, never by trying and falling
+  back, and an internal choice re-runs the start gate first.
 - `FurbleUIMemory.h` owns the panel-sized LVGL draw-buffer contract. Narrow
   panels use one buffer and wait for the SPI DMA before `lv_disp_flush_ready()`;
   wide panels keep two buffers. Both stay DMA-capable internal RAM. Update

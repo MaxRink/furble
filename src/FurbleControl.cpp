@@ -524,7 +524,7 @@ void Control::task(void) {
 
         sampleAdaptivePower();
 
-        if (ret == pdTRUE) {
+        if ((ret == pdTRUE) && (cmd != CMD_ERROR)) {
           for (const auto &target : m_Targets) {
             switch (cmd) {
               case CMD_SHUTTER_PRESS:
@@ -1060,6 +1060,14 @@ bool Control::disconnect(uint32_t timeout_ms, bool forRestart) {
       m_ConnectCamera = nullptr;  // caller holds m_Mutex
     }
     setState(STATE_IDLE);
+    // Wake the control task so it reaps the drain now. Its queue wait is the
+    // 250 ms idle tick, and nothing else wakes it after a cancel, so without
+    // this every cancel held the connect gate for up to one extra tick.
+    // CMD_ERROR carries no work and is ignored in every state. A failed send
+    // loses nothing: it fails only when the queue is full, and then the next
+    // receive returns at once and the task reaps on that pass anyway.
+    cmd_t wake = CMD_ERROR;
+    (void)xQueueSend(m_Queue, &wake, 0);
     return true;
   }
 
