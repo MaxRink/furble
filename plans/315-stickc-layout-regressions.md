@@ -98,7 +98,9 @@ pairing box over the connect captures, then `camera-pair-reject` returns
 
 ## Validation (simulator only)
 
-- The three target scenarios pass on 80x160.
+- The three target scenarios pass on 80x160. `camera-name-rows` now also
+  asserts `ui.cut_labels 0` on the Cameras page, the direct symptom of the
+  double reservation; it passes on all three panels.
 - `run-e2e.sh`: 320x240 Core 69 of 69. 80x160 StickC 62 of 65 and 135x240
   S3 204 of 206; every failure is a `hw-profile-*` or `hw-pmic-*` memory
   constant that disagrees with `sim/memory_profile.cpp` on master (#413).
