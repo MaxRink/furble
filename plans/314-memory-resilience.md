@@ -256,6 +256,81 @@ Deviations:
   `EXTERNAL` choice. Both need all six release sdkconfigs regenerated
   together.
 
+## PR 5: failed-allocation diagnostics
+
+State: implemented, except the `esp_timer_create` return checks in
+`src/FurbleMQTT.cpp`, which follow once the MQTT stack fix lands to avoid a
+conflict in the same function.
+
+- The crash record is version 2 (484 bytes, was 436) and carries the failed
+  allocation: size, capabilities, task and allocating function.
+- `CrashLog::init()` registers `heap_caps_register_failed_alloc_callback`
+  after it has consumed the previous record and written this boot's snapshot.
+  ESP-IDF calls the callback on the failing task just before the abort. It
+  edits the RTC record in place under the record lock: no logging, no
+  allocation, and no second record on what may be a 3 KiB stack.
+- The panic handler prints "Mem alloc fail" directly, never through the log
+  hook, so before this change a record named the last logging task and nothing
+  about the allocation.
+- The console `crash` output, the summary line (`alloc_fail=... caps=... in=...
+  fn=...`, now sized by `SUMMARY_BYTES`), and the simulator `crash.alloc_*`
+  queries expose it. The simulator twin registers the same callback and the
+  panic fixtures assert that the recorded size, caps and task match the abort
+  line.
+- A version 1 record from before the update fails validation once and is not
+  reported. That is the documented behavior for a record format change.
+
+## Baseline: regenerated release sdkconfigs
+
+State: implemented, as the clean baseline for PR 8 config tuning.
+
+Every firmware build rewrote the committed sdkconfig files, which left the tree
+dirty (the flash readiness gate refuses a dirty tree) and the seven files
+inconsistent with each other. This commits what the pinned ESP-IDF 5.5.3
+confgen writes for m5stick-c, m5stick-c-plus, m5stack-core, m5stack-core2,
+m5stick-s3, waveshare-s3-eth and esp32-s3-headless:
+
+- deprecated aliases follow their real options (`REDUCE_PHY_TX_POWER`, the
+  StickS3 `NIMBLE_MEM_ALLOC_MODE`, `MAIN_TASK_STACK_SIZE`);
+- options hidden by disabled dependencies are no longer written;
+- the `# default:` annotations that only four files carried are gone;
+- the StickS3 static RX comment is dropped; plan 304 item 5 keeps its reason.
+
+The effective configuration is unchanged, and a second build regenerates the
+files byte for byte. Deviation: none. PR 8 makes its tuning changes against
+this baseline, and CLAUDE.md now says to keep setting rationale in plan docs,
+because regeneration strips comments.
+
+## Fix: no deque allocation on an idle UI tick
+
+State: implemented, found while building the PR 4b sanitizer job.
+
+`Scan::processPendingCallbacks()` and the simulator request queue run on every
+UI tick and built a `std::deque` before checking for work. libstdc++, which the
+device uses, allocates the deque's map and a 512-byte node in that constructor.
+macOS libc++ does not, so only the Linux simulator showed it: the counted heap
+read 1,088 bytes at idle and `memory-counted-camera-connect` failed. gdb on the
+Linux build attributed every idle counted allocation to these two sites. Both
+now check for pending work under their lock first. The Linux ASan build reads 0
+counted bytes at idle and passes the scenario; the macOS e2e suite is unchanged.
+
+## Fix: the esp-mqtt worker stack overflow
+
+State: implemented, found by the PR 4a stack walk before that PR merged.
+`MQTT::eventHandler` runs on the esp-mqtt client task, which has a 3,072-byte
+stack on plain MQTT since #407. The handler held a 2,348-byte
+`queued_event_t` on that stack (a 2,384-byte frame), and the walk through
+`esp_event_loop_run` reached 4,352 bytes. Release builds have no stack
+watchpoint, so an overflow would corrupt memory silently.
+
+The handler now fills `m_Incoming`, a copy the owner allocates with the event
+queue, in PSRAM when the queue is there. It is never freed, because a stopped
+client may still deliver a late callback, and a mutex covers overlapping
+clients. Without PSRAM the start gate reserves it with the queue
+(`EVENT_STORAGE_BYTES`), while the largest-block floor stays the queue alone,
+since the two are separate blocks. The walk now reports 2,560 of 3,072 on the
+StickS3. No hardware retest yet.
+
 ## PR 4a: task stack budget from the compiler call graph
 
 State: implemented. Every firmware object is compiled with
@@ -276,13 +351,17 @@ the StickS3) with no scripted constant.
 Deviations:
 
 - The plan asked for `-fstack-usage` plus objdump. `-fcallgraph-info=su`
-  gives frames and call edges in one compiler output, so no disassembly
-  parsing is needed.
+  gives frames and call edges for everything compiled here. Prebuilt ESP-IDF
+  libraries have no `.ci`, so an ELF pass reads their `entry a1, N` frames and
+  `call8` or `l32r`/`callx8` edges from the disassembly, and skips every
+  symbol that a `.ci` already describes.
 - The sim pthread stack sizing, the real permutation floor, the component
   check against derived charges and the sim ASan/UBSan/LSan job move to PR 4b
   to keep this review small.
-- Indirect calls are followed only for LVGL's dispatchers, resolved by
-  callback signature. `main` and `nimble_host` keep most of their depth behind
+- Indirect calls are followed only where a manifest rule resolves them: LVGL's
+  dispatchers by callback signature, and the `esp_event` loop by the handlers
+  registered on it. A rule may be scoped to tasks; it then replaces the
+  unscoped rule for that caller on those tasks. `main` and `nimble_host` keep most of their depth behind
   unresolved virtuals and callbacks, so their numbers are lower bounds. The
   8 KiB StickS3 main overflow is not reproduced by the walk; its evidence stays
   the hardware high-water mark.
@@ -294,4 +373,26 @@ Findings for Phase 2:
   about 4.6 KB of depth, enough to shrink the 10 KiB internal owner stack.
 - The WebUI supervisor has 80 bytes of resolved headroom on the Waveshare and
   headless builds (2,992 of 3,072) and 320 on the StickS3.
-- The companion task has 272 bytes on the Waveshare and headless builds.
+- The companion task has 288 bytes on the Waveshare and headless builds.
+- Fixed in #424: the WiFi event handler ran NVS and SNTP on the 2,304-byte
+  default event loop task (`sys_evt`, 2,864 bytes on Waveshare and headless).
+  After the fix it is 2,096 there and 1,632 to 1,856 elsewhere.
+
+## Fix: no NVS on the default event task
+
+State: implemented, found by the PR 4a stack walk once it covered the default
+event loop task (`sys_evt`, `CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE` 2,304
+bytes on every board).
+
+The WiFi event handler read the NTP setting and started SNTP on `GOT_IP`,
+persisted the remembered access point there, and erased it after a failed
+direct join, all on that task. The NTP setting read alone, through
+`Preferences::begin()` and the NVS namespace lookup, walked to 2,864 bytes on
+the Waveshare and headless builds and 2,288 on the StickS3.
+
+The handler now updates the in-memory access point state and queues the save,
+the erase and the NTP start under `g_StateMutex`. The WiFi worker, with 4 KiB,
+runs them at the top of its loop and before each retry. A newer save or erase
+cancels the older one, so only the latest outcome is persisted. A host test
+proves `GOT_IP` opens no NVS and starts no SNTP, and that the worker then does
+both exactly once.

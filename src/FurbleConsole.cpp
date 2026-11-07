@@ -2321,7 +2321,7 @@ int cmdCrash(int argc, char **argv) {
     printf("crash.none: true\n");
     return 0;
   }
-  char summary[192] = {};
+  char summary[CrashRecord::SUMMARY_BYTES] = {};
   CrashRecord::formatSummary(*record, summary, sizeof(summary));
   printf("crash.summary: %s\n", summary);
   printf("crash.reset: %s\n", CrashRecord::resetReasonName(record->reset_reason));
@@ -2330,6 +2330,12 @@ int cmdCrash(int argc, char **argv) {
   printf("crash.heap_free: %lu\n", static_cast<unsigned long>(record->heap_free));
   printf("crash.heap_largest: %lu\n", static_cast<unsigned long>(record->heap_largest));
   printf("crash.last_log: %s\n", CrashRecord::lastLogLine(*record));
+  if (record->alloc_size != 0) {
+    printf("crash.alloc_size: %lu\n", static_cast<unsigned long>(record->alloc_size));
+    printf("crash.alloc_caps: 0x%08lx\n", static_cast<unsigned long>(record->alloc_caps));
+    printf("crash.alloc_task: %s\n", record->alloc_task);
+    printf("crash.alloc_function: %s\n", record->alloc_function);
+  }
   CrashLog::printLastRecord();
   return 0;
 }

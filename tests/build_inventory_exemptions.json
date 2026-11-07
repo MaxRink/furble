@@ -1,13 +1,9 @@
 {
   "src/FurbleBtDebug.cpp": "hardware-bound: NimBLE HCI scan and explore dumping",
-  "src/FurbleCompanion.cpp": "planned: plans/16x simulator coverage",
   "src/FurbleCompanionCrypto.cpp": "hardware-bound: mbedTLS HMAC adapter, the host and simulator link tests/host/companion/companion_hmac.cpp instead",
-  "src/FurbleFeedback.cpp": "planned: plans/16x simulator coverage",
-  "src/FurbleIR.cpp": "planned: plans/16x simulator coverage",
+  "src/FurbleCompanionDebug.cpp": "hardware-bound: FURBLE_BLE_DEBUG only NimBLE bond and reset status dump",
   "src/FurbleOTAPartitionSinkArduino.cpp": "hardware-bound: Arduino OTA partition backend",
   "src/FurbleOTAPartitionSinkESP.cpp": "hardware-bound: ESP-IDF OTA partition backend",
   "src/FurblePlatform.cpp": "planned: plans/16x simulator coverage",
-  "src/FurbleSD.cpp": "hardware-bound: SD SPI host and FAT VFS mount",
-  "src/FurbleUIAudit.cpp": "hardware-bound: walks the live LVGL widget tree",
-  "src/main.cpp": "hardware-bound: boot glue, app_main and device task wiring"
+  "src/FurbleUIAudit.cpp": "hardware-bound: walks the live LVGL widget tree"
 }

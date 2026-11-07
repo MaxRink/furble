@@ -37,7 +37,7 @@ node: { title: "leaf" label: "void leaf()\nc.cpp:1:1\n64 bytes (static)" }
 
 
 class StackBudgetTest(unittest.TestCase):
-    def run_tool(self, stack, indirect=True, extra=()):
+    def run_tool(self, stack, indirect=True, extra=(), rules=()):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
             build = tmp / "build"
@@ -48,7 +48,8 @@ class StackBudgetTest(unittest.TestCase):
             manifest = {
                 "overhead_bytes": {"esp32": 288},
                 "tasks": [{"name": "t", "entry": r"^void entry\(void\*\)$", "stack_bytes": "CONFIG_STACK"}],
-                "indirect": [{"caller": r"^void mid\(\)$", "targets": [r"\(cb_t\*\)$"]}] if indirect else [],
+                "indirect": ([{"caller": r"^void mid\(\)$", "targets": [r"\(cb_t\*\)$"]}]
+                             if indirect else []) + list(rules),
             }
             (tmp / "manifest.json").write_text(json.dumps(manifest))
             return subprocess.run(
@@ -73,6 +74,15 @@ class StackBudgetTest(unittest.TestCase):
         r = self.run_tool(484, indirect=False)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("484 of 484 bytes (196 frames + 288 port overhead); 1 unresolved indirect", r.stdout)
+
+    def test_task_scoped_rule_overrides_the_unscoped_rule(self):
+        # On task t, mid dispatches only cb_small, so the comdat leaf (64) is deepest.
+        scoped = {"caller": r"^void mid\(\)$", "targets": [r"cb_small"], "tasks": ["t"]}
+        r = self.run_tool(484, rules=(scoped,))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("484 of 484 bytes (196 frames + 288 port overhead)", r.stdout)
+        other = dict(scoped, tasks=["other"])
+        self.assertEqual(self.run_tool(484, rules=(other,)).returncode, 1)
 
     def test_stack_override_replays_a_smaller_size(self):
         r = self.run_tool(4096, extra=("--stack", "t=800"))

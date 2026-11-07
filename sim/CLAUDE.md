@@ -401,6 +401,10 @@ shortens that host retry cadence for a bounded scenario.
   `INVALID`, and malformed direct calls fail closed. Plain `action` lines
   require `APPLIED`; intentional `VALID_NO_EFFECT` or `UNAVAILABLE` outcomes
   must use `action expect no-effect ...` or `action expect unavailable ...`.
+  The driver offers each action to the hardware model (`hwAction`) before the
+  UI, so a hardware-model action must never reuse a UI action name. The
+  hardware `companion-reject` once shadowed the pairing dialog's Reject and
+  stopped the docs capture; it is now `companion-reject-central` (plan 316).
   The valid root aliases
   `page main` and `page menu` both dispatch to the root page. Signed pixel
   scrolling accepts -2147483647 through 2147483647 (plus `top`, `bottom`, and
@@ -434,8 +438,11 @@ shortens that host retry cadence for a bounded scenario.
   `FURBLE_SIM_MQTT=1` binaries.
 - `crash-inject-panic` and `crash-inject-task-wdt` write an unclean record for
   the next `restart`; `crash.recovered`, `crash.reset`, `crash.task`,
-  `crash.heap_free`, `crash.heap_largest`, `crash.uptime`, `crash.last_log` and
-  `crash.pending` are assertable. The host sidecar is removed with a generated
+  `crash.heap_free`, `crash.heap_largest`, `crash.uptime`, `crash.last_log`,
+  `crash.pending` and the failed-allocation fields `crash.alloc_size`,
+  `crash.alloc_caps`, `crash.alloc_task` and `crash.alloc_function` are
+  assertable. The panic fixtures check that the allocation fields match the
+  abort line. The host sidecar is removed with a generated
   preferences store. The production record writes only RTC memory and is never
   written from a panic handler: `CrashLog::update()` snapshots from a normal
   task loop and a shutdown handler marks a clean reset.
@@ -818,7 +825,9 @@ shortens that host retry cadence for a bounded scenario.
   the switches live in `sim/shim/FurbleSimCaps.h`.
 - `FURBLE_SIM_NO_TOUCH=1` selects the non-touch physical-button layout without a
   scenario seed, so a harness can pick it per board. `FURBLE_SIM_RIG=0` builds
-  without the rig so the shipped one-line header title renders.
+  without the rig so the shipped one-line header title renders. The docs
+  capture uses that build, and CI does not, so its non-rig branch of
+  `sim/CompanionRigTransport.cpp` must include its own `heap_count.h`.
   `FURBLE_SIM_CAPTURE_SPLASH=<png>` snapshots the boot splash before the LVGL UI
   starts.
 - The touch Remote shutter page retains full-size 64 px controls. On a panel
@@ -949,8 +958,9 @@ shortens that host retry cadence for a bounded scenario.
   135x240 M5StickS3, and 320x240 M5Stack Core, so a page that only fails on a
   particular geometry cannot hide behind a single reference panel.
 - Physical 80x160 Sensors is one of those intentional-scroll pages: the measured
-  fixture leaves 7 px to scroll. Its shared scenarios assert complete labels
-  at the top, bottom and restored top. `touch-sensors-default-fit` and
+  fixture leaves 18 px to scroll since the Gestures entry joined it. Its shared
+  scenarios, `stick-notouch-layout-80` included, assert complete labels at the
+  top, bottom and restored top. `touch-sensors-default-fit` and
   `touch-sensors-small-fit` retain the stricter no-overflow contract in
   explicitly touch-guarded supplemental lanes.
 - `bughunt/stickc-connected-large-imu.txt` covers the persisted-Large Connected

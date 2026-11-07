@@ -71,12 +71,15 @@ class Graph:
         call is call8 to a symbol or a longcall l32r literal then callx8."""
         out = subprocess.run([objdump, "-d", str(elf)], capture_output=True, text=True,
                              check=True).stdout
+        # A static function's .ci title is "file:symbol"; the ELF names it by
+        # the bare symbol. Never add a second node for code compiled here.
+        compiled = {title.rsplit(":", 1)[-1] for title in self.frame}
         fn, literal = None, {}
         for line in out.splitlines():
             m = FUNC.match(line)
             if m:
                 fn = m.group(1)
-                if fn in self.frame:
+                if fn in compiled or fn.replace("$", ".") in compiled:
                     fn = None  # compiled here: the .ci node is authoritative
                 literal = {}
                 continue
@@ -213,7 +216,7 @@ def main():
         dst = set()
         for pattern in rule["targets"]:
             dst.update(graph.find(pattern))
-        resolve.append((re.compile(rule["caller"]), dst))
+        resolve.append((re.compile(rule["caller"]), dst, frozenset(rule.get("tasks", ()))))
 
     boot_only = set()
     for pattern in manifest.get("boot_only", []):
@@ -229,7 +232,13 @@ def main():
             failed += 1
             continue
         pruned = frozenset() if task["name"] == "main" else frozenset(boot_only)
-        depth, path, notes = worst_case(graph, found[0], resolve, pruned)
+        # A rule scoped to tasks overrides the unscoped rules for its caller
+        # on those tasks, e.g. an esp_event loop that dispatches one handler.
+        scoped = [(rx, dst) for rx, dst, tasks in resolve if task["name"] in tasks]
+        scoped_callers = {rx.pattern for rx, _ in scoped}
+        task_rules = scoped + [(rx, dst) for rx, dst, tasks in resolve
+                               if not tasks and rx.pattern not in scoped_callers]
+        depth, path, notes = worst_case(graph, found[0], task_rules, pruned)
         need = depth + margin
         stack = overrides.get(task["name"], task["stack_bytes"])
         if isinstance(stack, str):

@@ -1,9 +1,14 @@
 #pragma once
 #include <cstddef>
 namespace Furble {
+/** NVS opens, so a test can prove a path does no storage work. */
+inline int preferencesBegins = 0;
 class Preferences {
  public:
-  bool begin(const char *, bool = false, const char * = nullptr) { return true; }
+  bool begin(const char *, bool = false, const char * = nullptr) {
+    preferencesBegins++;
+    return true;
+  }
   void end() {}
   bool isKey(const char *) { return false; }
   size_t getBytesLength(const char *) { return 0; }

@@ -65,19 +65,20 @@ worker; TLS uses 6 KiB.
 
 | Task | Stack | StickC | StickC Plus | Core | Core2 | StickS3 | Waveshare | Headless |
 | :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| main | 12,288/16,384 | 6,560 | 6,560 | 6,560 | 6,560 | 6,640 | 3,744 | 3,744 |
+| main | 12,288/16,384 | 6,816 | 6,816 | 6,816 | 6,816 | 6,928 | 3,744 | 3,744 |
 | nimble_host | 16,384 | 1,104 | 1,104 | 1,104 | 1,104 | 1,328 | 1,504 | 1,504 |
-| control | 8,192 | 1,968 | 1,968 | 1,968 | 1,968 | 2,192 | 2,736 | 3,168 |
-| camera_target | 4,096 | 1,536 | 1,536 | 1,536 | 1,536 | 1,888 | 2,224 | 2,832 |
-| gps | 4,096 | 2,352 | 2,352 | 2,352 | 2,352 | 2,832 | 3,072 | 3,072 |
-| wifi | 4,096 | 1,968 | 1,968 | 1,968 | 1,968 | 2,192 | 2,720 | 2,720 |
-| companion | 3,072 | 2,208 | 2,208 | 2,208 | 2,208 | 2,272 | 2,800 | 2,800 |
+| sys_evt | 2,304 | 1,632 | 1,632 | 1,632 | 1,632 | 1,856 | 2,096 | 2,096 |
+| control | 8,192 | 1,968 | 1,968 | 1,968 | 1,968 | 2,192 | 2,720 | 3,168 |
+| camera_target | 4,096 | 1,872 | 1,872 | 1,872 | 1,872 | 2,096 | 2,320 | 3,168 |
+| gps | 4,096 | 2,352 | 2,352 | 2,560 | 2,352 | 2,832 | 3,056 | 3,056 |
+| wifi | 4,096 | 2,208 | 2,208 | 2,208 | 2,208 | 2,432 | 2,944 | 2,944 |
+| companion | 3,072 | 2,208 | 2,208 | 2,208 | 2,208 | 2,272 | 2,784 | 2,784 |
 | ir | 4,096 | 1,840 | 1,840 | | | 2,160 | | |
 | sd | 6,144 | | | 3,456 | 3,456 | | | |
 | mqtt | 10,240 | | | | 7,616 | 7,840 | 8,080 | 8,080 |
-| mqtt_client | 3,072 | | | | 1,568 | 1,792 | 1,936 | 1,936 |
+| mqtt_client | 3,072 | | | | 1,776 | 2,000 | 2,256 | 2,256 |
 | webui | 3,072 | | | | 2,528 | 2,752 | 2,992 | 2,992 |
-| webui_https | 8,192 | | | | 2,064 | 2,288 | 2,528 | 2,528 |
+| webui_https | 8,192 | | | | 2,064 | 2,352 | 2,592 | 2,592 |
 | webui_tls | 12,288 | | | | 6,960 | 7,488 | 7,744 | 7,744 |
 
 Replaying the 6 KiB MQTT owner that overflowed on hardware fails without any
@@ -85,6 +86,14 @@ scripted constant: `--stack mqtt=6144` on the StickS3 reports 7,840 of 6,144.
 Its deepest path runs through `MQTT::taskStep` and
 `MQTT::processLifecycleEvents`, 2,400 bytes each, because both hold a
 `queued_event_t` copy with the full topic and payload buffers.
+
+The `sys_evt` row is the ESP-IDF default event loop task
+(`CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE`, 2,304 bytes), which runs the WiFi
+event handler. Before #424 that handler saved the access point to NVS and
+started SNTP there, and the walk reached 2,864 of 2,304 bytes on Waveshare and
+headless. The handler now queues that work for the 4 KiB WiFi worker. A
+`tasks`-scoped indirect rule keeps each event loop to the handlers registered
+on it: the esp-mqtt loop dispatches only `MQTT::eventHandler`.
 
 The `boot_only` list keeps functions that run once on main before any task
 exists out of every other task's walk. `M5Unified::begin` is the one entry:

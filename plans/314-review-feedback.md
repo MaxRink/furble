@@ -57,3 +57,42 @@ items; the CMake simulator configures and builds.
 | 14 | Review summary: the profiler doc said every board profile boots on a derived pool. | Fixed. The doc names the two underived profiles and the fail-closed rule for the rest. | `docs/sim-memory-profiler.md` |
 | 15 | Review summary: `derive_sim_heap.py --env` overwrote `board_heap.json` with only the named boards, which would fail every omitted profile. | Fixed. A subset run updates its boards in place and keeps the others in env order; a test proves the other boards survive byte-for-byte. | `tools/derive_sim_heap.py`, `tests/test_sim_profile_sdkconfig.py` |
 | 16 | Final review summary: the ceilings rest on ESP-IDF layout and allocator assumptions not yet checked on hardware, including approximate WiFi and optional-service accounting. | Documented limit, not a defect. Every term is tagged `derived` and cites its source; the StickS3 gap of 144,633 bytes to the measured figure is reported, not hidden. Closing it needs per-board console heap readings, deferred with the rest of hardware validation in `plans/313-sim-only-status.md`. | `sim/coverage/board_heap.json`, `plans/314-memory-resilience.md` |
+| 17 | Post-merge, found by a full three-panel e2e run: five `hw-profile` scenarios still asserted the old profile table values that #8 and the headless main-stack fix corrected (StickC draw buffer 2,560, StickC Plus and Plus2 4,320, headless and Waveshare main stack 8,192). | Fixed in a follow-up PR. The scenarios now assert 800, 2,160 and 16,384, the values the firmware rule and the sdkconfigs give. The earlier full e2e run predated those commits. | `sim/scenarios/e2e/hw-profile-*.txt`, `hw-pmic-plus2-no-pmic.txt` |
+
+## PR 5 (#423, `feat/314-alloc-fail-diagnostics`)
+
+| # | Finding | Status and evidence | Files |
+| :--- | :--- | :--- | :--- |
+| 1 | `CrashLog::update()` builds its snapshot outside the record lock. A `storeRecord()` after the heap callback and before the abort wrote a snapshot with `alloc_size == 0` and erased the failure. | Fixed. The callback sets `s_AllocFailed` under the lock, and `storeRecord()` carries the failure into any later snapshot with `CrashRecord::keepAllocFailure()`. The latch is plain RAM, so a new boot never inherits it. A host check stores a snapshot after the callback and fails without the fix. | `src/FurbleCrashLog.cpp`, `include/FurbleCrashRecord.h`, `tests/host/crash_log_test.cpp`, `tests/host/crash_record_test.cpp` |
+| 2 | The `Reading it` section of the crash diagnostics page still listed only the pre-PR `crash last` lines. | Fixed. It names the four conditional `crash.alloc_*` lines and the summary suffix. | `docs/crash-diagnostics.md` |
+| 3 | The branch carried regenerated `sdkconfig.m5stick-c` and `sdkconfig.m5stick-s3`, including `CONFIG_ESP_PHY_REDUCE_TX_POWER` on the StickC, with no config intent. | Fixed. Local builds from a base older than #421 rewrote them and the review-fix commit staged them. Both files are restored to master; the PR changes no sdkconfig. | `git diff origin/master -- 'sdkconfig*'` is empty |
+
+## Fix: esp-mqtt worker stack (#417, `fix/mqtt-worker-stack`)
+
+| # | Finding | Resolution | Evidence |
+| ---: | :--- | :--- | :--- |
+| 1 | A failed PSRAM queue or copy allocation fell back to internal RAM with no reserve, because admission reserved nothing internal when PSRAM looked large enough. | Fixed in b1fa9776: every internal choice re-runs the start gate on a fresh reading with its own reserve. | `src/FurbleMQTT.cpp` |
+| 2 | The new `m_Incoming` ownership and locking contract was not in `include/CLAUDE.md`. | Fixed in b1fa9776. | `include/CLAUDE.md` |
+| 3 | Under `CONFIG_HEAP_ABORT_WHEN_ALLOCATION_FAILS` a failed PSRAM allocation aborts, so try-then-fall-back was unreachable; the queue's older PSRAM path had the same flaw. | Fixed in 41027379: placement is chosen from a fresh largest-block reading before allocating. | `src/FurbleMQTT.cpp`, StickS3 firmware build |
+| 4 | Summary, previously missed: placement compared only the payload, not the control block and allocator overhead. | Fixed in 91246dd7: `BLOCK_OVERHEAD_BYTES` and the block-size constants, pinned by a host assertion. | `include/FurbleMQTTMemory.h`, `tests/host/mqtt_test.cpp` |
+| 5 | Summary, previously missed: a client restart reserved the retained queue and copy again. | Fixed in 91246dd7: the gate reserves only the missing blocks. | `src/FurbleMQTT.cpp` |
+| 6 | Summary, previously missed: the simulator's MQTT model did not allocate the copy. | Fixed in 91246dd7: `mqtt_incoming` in the scripted model and the memory profile. | `sim/hardware_model.cpp`, `sim/memory_profile.cpp` |
+| 7 | Final summary: PSRAM placement, late callbacks, restarts and the stack margin need runtime validation on hardware. | Documented limit. The stack margin comes from the call-graph walk (2,560 of 3,072); the rest waits for the deferred hardware pass in `plans/313-sim-only-status.md`. | `docs/stack-budget.md` |
+
+## PR 4a (#414, `feat/314-stack-budget`)
+
+| # | Finding | Resolution | Evidence |
+| ---: | :--- | :--- | :--- |
+| 1 | A caller rule whose targets match nothing still counted its call sites as resolved. | Fixed in 887dd54f: a site resolves only when a target matched; otherwise it stays in the unresolved count. | `tools/stack_budget.py` |
+| 2 | `sdkconfig.m5stack-core-usb-debug` is a fragment without `CONFIG_IDF_TARGET`, so that CI build would crash. | Fixed in 887dd54f: only complete sdkconfigs count as release configs, so the env maps to `m5stack-core`. | `tools/stack_budget.py` |
+| 3 | Callees with no `.ci` node added zero bytes silently. | Fixed in 887dd54f: they are reported; C1/D1 aliases resolve to their C2/D2 bodies; prebuilt code gets frames and calls from the `firmware.elf` disassembly. Only mask ROM stays frameless. | `tools/stack_budget.py`, `docs/stack-budget.md` |
+| 4 | The headless env, built only in `reproducible.yml`, never ran the check. | Fixed in 887dd54f: that workflow keeps its build and runs the check on it. | `.github/workflows/reproducible.yml` |
+
+## Fix: no NVS on the default event task (#424, `fix/wifi-event-nvs`)
+
+| # | Finding | Resolution | Evidence |
+| ---: | :--- | :--- | :--- |
+| 1 | A GOT_IP save queued before `clearStoredAccessPoint()` (SSID change or `wifi forget`) could run after the clear and write the old BSSID back. | Fixed. `g_ApStorageMutex` covers the worker from taking the deferred work to its NVS write, and a clear cancels the queued save or erase under it before erasing. Lock order is storage, then state. A host check queues a save, clears, then services; it fails without the cancel. | `src/FurbleWiFi.cpp`, `tests/host/wifi/real_wifi_test.cpp` (return 43) |
+| 2 | The connect-request comment sat on `hostServiceEventStorage()`, leaving `hostConnectAttempt()` undocumented. | Fixed. Each declaration has its own comment. | `include/FurbleWiFi.h` |
+| 3 | The scan path's `saveRememberedAccessPoint()` wrote NVS outside `g_ApStorageMutex`, so a scan save could land after a clear. | Fixed with a generation counter. A clear bumps `g_ApGeneration` under both mutexes. The scan reads it before the SSID, and the save writes only if it is unchanged, checked and written under `g_ApStorageMutex`. A mutex alone orders the two writes but cannot stop a save that started before the clear from landing after it. | `src/FurbleWiFi.cpp` |
+| 4 | GOT_IP could remember the record, lose the race to a clear, then queue the save. | Fixed by the same counter. The handler reads the generation with its connect state, and both the in-memory remember and the enqueue are dropped if a clear ran since. The enqueue check and the clear's cancel take `g_StateMutex`, so one always sees the other. No host test: the window is inside one handler call and needs a second thread to hit; the return 43 check covers the clear-before-service order. | `src/FurbleWiFi.cpp` |
