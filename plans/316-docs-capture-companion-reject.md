@@ -46,7 +46,22 @@ compares found `companion-reject` is the only collision.
 The branch starts from PR #415, which adds the `heap_count.h` include the
 non-rig `sim/CompanionRigTransport.cpp` branch needs to compile.
 
+## Regenerated captures
+
+With the fix, `connecting`, `remote` and `camera-pairing` are byte-identical
+to the committed images. They only differed in the stopped run because the
+pairing box covered them. These captures did change:
+
+| Images | Change | Cause |
+| --- | --- | --- |
+| `diag-device-info`, `textsize/{small,normal}/device-info`, `scroll/{default,dark}/about-{2,3}` | Heap reads 175056 B on Device info and 189520 B, min 187040 B on About, not 204800 B | #412 and #413 seed each board with its code-derived boot heap and charge device allocations |
+| `textsize/large/{connected,device-info,settings}` | The header title is no longer cut at the top edge | The PR #415 header row fix |
+| `connected` | One pixel in the Bulb icon is one antialiasing shade lighter | Not isolated. It reproduced byte-identically in two runs on this branch |
+
+The wiki copies of `connected` and `diag-device-info` are updated in
+`docs/wiki/img/`. The wiki needs a push. `docs/ui-walkthrough.md` embeds
+these files by path and quotes no heap value, so its text is unchanged.
+
 ## Implementation state
 
-Implemented. See the PR for the verification results and the regenerated
-gallery images.
+Implemented. `docs-capture.sh` completes on all three boards and themes.
