@@ -166,6 +166,8 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   NVS, read a setting or start SNTP. It updates memory and queues the
   access point save or erase and the NTP start for the 4 KiB worker
   (`serviceEventStorage()`); a newer save or erase replaces the older one.
+  A clear cancels the queued save or erase under `g_ApStorageMutex`, which
+  the worker holds through its NVS write, so a clear is never undone.
 - `FurbleWebUI`: HTTPS-only browser and REST surface. Keep it fail closed on
   password or TLS identity errors. Camera actions stay on `UI::sendRequest`,
   settings stay on `Provision::apply`, and held releases remain owned until the

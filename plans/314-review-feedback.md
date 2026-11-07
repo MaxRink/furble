@@ -71,3 +71,10 @@ items; the CMake simulator configures and builds.
 | 5 | Summary, previously missed: a client restart reserved the retained queue and copy again. | Fixed in 91246dd7: the gate reserves only the missing blocks. | `src/FurbleMQTT.cpp` |
 | 6 | Summary, previously missed: the simulator's MQTT model did not allocate the copy. | Fixed in 91246dd7: `mqtt_incoming` in the scripted model and the memory profile. | `sim/hardware_model.cpp`, `sim/memory_profile.cpp` |
 | 7 | Final summary: PSRAM placement, late callbacks, restarts and the stack margin need runtime validation on hardware. | Documented limit. The stack margin comes from the call-graph walk (2,560 of 3,072); the rest waits for the deferred hardware pass in `plans/313-sim-only-status.md`. | `docs/stack-budget.md` |
+
+## Fix: no NVS on the default event task (#424, `fix/wifi-event-nvs`)
+
+| # | Finding | Resolution | Evidence |
+| ---: | :--- | :--- | :--- |
+| 1 | A GOT_IP save queued before `clearStoredAccessPoint()` (SSID change or `wifi forget`) could run after the clear and write the old BSSID back. | Fixed. `g_ApStorageMutex` covers the worker from taking the deferred work to its NVS write, and a clear cancels the queued save or erase under it before erasing. Lock order is storage, then state. A host check queues a save, clears, then services; it fails without the cancel. | `src/FurbleWiFi.cpp`, `tests/host/wifi/real_wifi_test.cpp` (return 43) |
+| 2 | The connect-request comment sat on `hostServiceEventStorage()`, leaving `hostConnectAttempt()` undocumented. | Fixed. Each declaration has its own comment. | `include/FurbleWiFi.h` |

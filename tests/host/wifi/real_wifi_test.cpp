@@ -340,6 +340,16 @@ int main() {
   if (require(Furble::preferencesBegins == beginsBefore + 1, "the deferred storage ran twice")) {
     return 42;
   }
+  // A clear after the event and before the worker cancels the queued save, so
+  // the old access point is not written back.
+  furble_wifi_handler(nullptr, IP_EVENT, IP_EVENT_STA_GOT_IP, nullptr);
+  Furble::WiFi::clearRememberedAccessPoint();
+  const int beginsAfterClear = Furble::preferencesBegins;
+  Furble::WiFi::hostServiceEventStorage();
+  if (require(Furble::preferencesBegins == beginsAfterClear,
+              "a deferred save ran after the access point was cleared")) {
+    return 43;
+  }
   if (require(Furble::WiFi::hostServiceConnectedWired(),
               "a wired address did not take over a connected station")
       || require(!Furble::WiFi::getStatus().connected,

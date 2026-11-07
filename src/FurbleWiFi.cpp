@@ -66,6 +66,11 @@ constexpr size_t TASK_STACK = 4096;
 esp_netif_t *g_StaNetif = nullptr;
 TaskHandle_t g_Task = nullptr;
 std::mutex g_StateMutex;
+// Serializes the stored access point. The worker holds it from taking the
+// deferred work to its NVS write, and a clear holds it while it cancels that
+// work and erases NVS, so a clear cannot be undone by a deferred save. Always
+// taken before g_StateMutex.
+std::mutex g_ApStorageMutex;
 std::mutex g_DriverMutex;
 // First-time initialization creates a netif, event handlers, and a task. Two
 // console/companion/WebUI callers at once must not create them twice.
@@ -267,7 +272,11 @@ void eraseStoredAccessPoint(void) {
   preferences.end();
 }
 
+void cancelPendingApStorage(void);
+
 void clearStoredAccessPoint(void) {
+  const std::lock_guard<std::mutex> storage(g_ApStorageMutex);
+  cancelPendingApStorage();
   eraseStoredAccessPoint();
 
   std::lock_guard<std::mutex> lock(g_StateMutex);
@@ -747,27 +756,37 @@ bool g_PendingApSave = false;
 bool g_PendingApErase = false;
 bool g_PendingNtp = false;
 
+/** Drop a queued save or erase. Caller holds g_ApStorageMutex. */
+void cancelPendingApStorage(void) {
+  std::lock_guard<std::mutex> lock(g_StateMutex);
+  g_PendingApSave = false;
+  g_PendingApErase = false;
+}
+
 /** Run the storage work the event handler deferred. Worker task only. */
 void serviceEventStorage(void) {
-  wifi_ap_record_t record = {};
-  bool save = false;
-  bool erase = false;
   bool ntp = false;
   {
-    std::lock_guard<std::mutex> lock(g_StateMutex);
-    save = g_PendingApSave;
-    erase = g_PendingApErase;
-    ntp = g_PendingNtp;
-    record = g_PendingAp;
-    g_PendingApSave = false;
-    g_PendingApErase = false;
-    g_PendingNtp = false;
-  }
-  if (erase) {
-    eraseStoredAccessPoint();
-  }
-  if (save) {
-    persistAccessPoint(record);
+    const std::lock_guard<std::mutex> storage(g_ApStorageMutex);
+    wifi_ap_record_t record = {};
+    bool save = false;
+    bool erase = false;
+    {
+      std::lock_guard<std::mutex> lock(g_StateMutex);
+      save = g_PendingApSave;
+      erase = g_PendingApErase;
+      ntp = g_PendingNtp;
+      record = g_PendingAp;
+      g_PendingApSave = false;
+      g_PendingApErase = false;
+      g_PendingNtp = false;
+    }
+    if (erase) {
+      eraseStoredAccessPoint();
+    }
+    if (save) {
+      persistAccessPoint(record);
+    }
   }
   if (ntp && Settings::load<Settings::NTP>()) {
     startNtp();
