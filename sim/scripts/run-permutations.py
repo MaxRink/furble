@@ -65,7 +65,10 @@ def scenario_for(board: str, combo: dict) -> str:
         "wait 100",
         "assert setting.fauxny 1",
         "assert mem.leaks 0",
-        "assert_min heap.free 0",
+        # heap.free is unsigned, so a floor of 0 could never fail. Exhaustion
+        # already aborts the run with status 3, as on the device; this also
+        # fails a modelled allocation failure that a seam reported and survived.
+        "assert heap.alloc_failures 0",
         "exit",
     ]
     return "\n".join(lines) + "\n"

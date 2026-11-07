@@ -33,6 +33,8 @@ and run `python3 tools/check_ci_workflows.py` after changing workflow triggers.
 The pre-review gate is `python3 tools/pre_review.py --base origin/master`; run
 it before pushing. `pre-review.yml` runs the same scanners in CI, and
 `host-sanitized.yml` runs the ASan/UBSan host subset when C++ paths change.
+The `sim-sanitizers` job runs the e2e suite under ASan, UBSan and LeakSanitizer
+on Linux; `sim/ubsan.supp` and `sim/lsan.supp` hold only third-party sites.
 The pre-hardware fuzz budget is `python3 tools/check_fuzz.py --full
 --host-build <dir> --mqtt-binary sim/build-mqtt/furble-sim`; the full corpus
 currently passes 10 targets, 135 seed runs and 89,145 iterations with zero

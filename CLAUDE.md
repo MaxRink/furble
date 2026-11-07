@@ -180,6 +180,10 @@ CLAUDE.md whose directory it touches.
 - `.github/workflows/pre-review.yml` runs the scanners on pull requests;
   `.github/workflows/host-sanitized.yml` runs the ASan/UBSan subset on C++
   changes. Both are path-filtered, read-only, and dispatchable for stacked PRs.
+  The `sim-sanitizers` job in `sim-e2e.yml` runs the certified e2e suite under
+  ASan, UBSan and LeakSanitizer on Linux. Only the third-party sites in
+  `sim/ubsan.supp` and `sim/lsan.supp` are suppressed, each with its reason;
+  never add a furble frame there.
 - The USB console (debug builds, `FURBLE_CONSOLE`) is the automation surface:
   settings get/set, gps subcommands, shutter, status.
 - Hardware verification on the attached M5StickS3 happens before PRs.

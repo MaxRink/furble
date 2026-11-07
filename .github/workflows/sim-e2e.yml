@@ -601,3 +601,69 @@ jobs:
             --host-build "${{ runner.temp }}/furble-fuzz-host" \
             --mqtt-binary "${{ github.workspace }}/sim/build-mqtt/furble-sim" \
             --skip-ui
+
+  # AddressSanitizer, UndefinedBehaviorSanitizer and LeakSanitizer over the
+  # certified end-to-end suite. LeakSanitizer only runs on Linux, which is why
+  # this lives here and not in a local macOS habit. Every report fails the job
+  # except the third-party sites in sim/ubsan.supp and sim/lsan.supp, each of
+  # which names its reason. The full suite takes about six minutes.
+  sim-sanitizers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: sim/.pio
+          key: ${{ runner.os }}-sim-e2e-${{ hashFiles('sim/platformio.ini', '.github/workflows/sim-e2e.yml') }}
+
+      # --no-install-recommends drops the clang runtime that holds the
+      # sanitizer libraries, so name it. llvm symbolizes the reports.
+      - name: Install SDL2, Clang and the sanitizer runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y clang libclang-rt-dev llvm libsdl2-dev
+
+      # Same pins as the sim-e2e job above; keep them in sync.
+      - name: Fetch simulator dependencies
+        env:
+          DEPS: ${{ github.workspace }}/sim/.pio/libdeps/sim
+        run: |
+          clone_tag() {
+            test -d "$DEPS/$3" || \
+              git clone --depth 1 --branch "$2" "https://github.com/$1" "$DEPS/$3"
+          }
+          mkdir -p "$DEPS"
+          clone_tag m5stack/M5GFX 0.2.27 M5GFX
+          clone_tag m5stack/M5Unified 0.2.20 M5Unified
+          clone_tag lvgl/lvgl v9.4.0 lvgl
+          if [ ! -d "$DEPS/TinyGPSPlus" ]; then
+            git init "$DEPS/TinyGPSPlus"
+            git -C "$DEPS/TinyGPSPlus" fetch --depth 1 \
+              https://github.com/gkoh/TinyGPSPlus \
+              92ac8c21b8179201c2c8c534e46af3320b76d3e7
+            git -C "$DEPS/TinyGPSPlus" checkout --detach FETCH_HEAD
+          fi
+
+      - name: Generate LVGL configuration
+        run: python3 tools/gen_lv_conf.py sdkconfig.m5stick-s3 sim/lv_conf.h
+
+      - name: Build sanitized simulator
+        env:
+          FURBLE_DEP_ROOT: ${{ github.workspace }}/sim/.pio/libdeps/sim
+          FURBLE_LVGL_DIR: ${{ github.workspace }}/sim/.pio/libdeps/sim/lvgl
+          FURBLE_SIM_BUILD_DIR: ${{ github.workspace }}/sim/build-asan
+          FURBLE_SIM_SANITIZE: address,undefined
+        run: sh sim/build.sh
+
+      - name: Run end-to-end scenarios under the sanitizers
+        env:
+          FURBLE_SIM_BIN: ${{ github.workspace }}/sim/build-asan/furble-sim
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          LSAN_OPTIONS: suppressions=${{ github.workspace }}/sim/lsan.supp
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1:suppressions=${{ github.workspace }}/sim/ubsan.supp
+        run: sh sim/scripts/run-e2e.sh

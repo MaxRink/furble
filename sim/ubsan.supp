@@ -1,0 +1,25 @@
+# UndefinedBehaviorSanitizer suppressions for the simulator's sanitizer job.
+# Every entry is third-party code that furble does not own, found by running
+# the full certified e2e suite on Linux. Furble's own code has no entry; any
+# report from it fails the job.
+
+# M5GFX packs range_t with #pragma pack(1) (lgfx/v1/misc/range.hpp) and binds
+# std::min/std::max to its int_fast16_t members, which are 8 bytes and
+# misaligned on a 64-bit host. The report lands in the libstdc++ header.
+alignment:lgfx/v1/panel/Panel_FrameBufferBase.cpp
+alignment:bits/stl_algobase.h
+# M5GFX's pgmspace.h writes a uint16_t through an unaligned pointer.
+alignment:utility/pgmspace.h
+# M5GFX calls a mixin method through a base pointer (LGFXBase.hpp).
+vptr:lgfx/v1/LGFXBase.hpp
+# The host SDL panel converts an infinite scale factor to int.
+float-cast-overflow:lgfx/v1/platforms/sdl/Panel_sdl.cpp
+# LVGL calls comparators and mask callbacks through void-pointer function
+# types, offsets a null style pointer by zero, and shifts a negative roller
+# offset.
+function:lvgl__lvgl/src/misc/lv_rb.c
+function:lvgl__lvgl/src/misc/cache/class/lv_cache_lru_rb.c
+function:lvgl__lvgl/src/draw/sw/lv_draw_sw_mask.c
+pointer-overflow:lvgl__lvgl/src/core/lv_obj_style.c
+pointer-overflow:misc/lv_style.h
+shift-base:lvgl__lvgl/src/widgets/roller/lv_roller.c
