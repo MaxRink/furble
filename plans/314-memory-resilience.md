@@ -255,3 +255,24 @@ Deviations:
   `CONFIG_NIMBLE_MEM_ALLOC_MODE_INTERNAL=y` alias that contradicts the file's
   `EXTERNAL` choice. Both need all six release sdkconfigs regenerated
   together.
+
+## Baseline: regenerated release sdkconfigs
+
+State: implemented, as the clean baseline for PR 8 config tuning.
+
+Every firmware build rewrote the committed sdkconfig files, which left the tree
+dirty (the flash readiness gate refuses a dirty tree) and the seven files
+inconsistent with each other. This commits what the pinned ESP-IDF 5.5.3
+confgen writes for m5stick-c, m5stick-c-plus, m5stack-core, m5stack-core2,
+m5stick-s3, waveshare-s3-eth and esp32-s3-headless:
+
+- deprecated aliases follow their real options (`REDUCE_PHY_TX_POWER`, the
+  StickS3 `NIMBLE_MEM_ALLOC_MODE`, `MAIN_TASK_STACK_SIZE`);
+- options hidden by disabled dependencies are no longer written;
+- the `# default:` annotations that only four files carried are gone;
+- the StickS3 static RX comment is dropped; plan 304 item 5 keeps its reason.
+
+The effective configuration is unchanged, and a second build regenerates the
+files byte for byte. Deviation: none. PR 8 makes its tuning changes against
+this baseline, and CLAUDE.md now says to keep setting rationale in plan docs,
+because regeneration strips comments.
