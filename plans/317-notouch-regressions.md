@@ -1,4 +1,4 @@
-# 316: physical-button layout suite regressions
+# 317: physical-button layout suite regressions
 
 ## Motivation
 
@@ -142,3 +142,13 @@ from this PR and are not committed.
   `timer-overflow-no-timed-wake`, see above.
 - `sh tools/run_sanitized_host_tests.sh --clean`: pass.
 - Hardware validation is deferred in sim-only mode.
+
+## Review feedback
+
+| # | Finding | Resolution | Evidence |
+| ---: | :--- | :--- | :--- |
+| 1 | `lv_obj_remove_local_style_prop` was said to be void, so assigning its result would not compile. | False positive: LVGL 9.4 declares it `bool` (`lv_obj_style.h:229`); the branch builds and passes both suites on all three panels. | `managed_components/lvgl__lvgl/src/core/lv_obj_style.h` |
+| 2 | The non-blocking cancel wake ignored its result, so a full queue would drop it. | No wake can be lost: the send fails only on a full queue, and then the next receive returns at once and reaps. The comment says so and the result is explicitly discarded (15da029a). | `src/FurbleControl.cpp` |
+
+Numbering: this plan was opened as 316, which collided with plan 316 from the
+docs capture fix, so it is 317.
