@@ -4,10 +4,17 @@
 # report from it fails the job.
 
 # M5GFX packs range_t with #pragma pack(1) (lgfx/v1/misc/range.hpp) and binds
-# std::min/std::max to its int_fast16_t members, which are 8 bytes and
-# misaligned on a 64-bit host. The report lands in the libstdc++ header.
+# std::min/std::max to its int_fast16_t members, which are 8-byte longs and
+# misaligned on a 64-bit host. The fault is reported both at the M5GFX call
+# site (Panel_FrameBufferBase.cpp) and inside the template instance.
+# UBSan matches only the reporting frame, which is the out-of-line template
+# instance a -O0 link shares across objects, so no per-object exclusion can
+# reach it. The entries name those two instances, not the whole header: an
+# alignment fault in any other libstdc++ function still fails the job. The
+# residual: a furble std::min<long> or std::max<long> on a misaligned long.
 alignment:lgfx/v1/panel/Panel_FrameBufferBase.cpp
-alignment:bits/stl_algobase.h
+alignment:std::min<long>
+alignment:std::max<long>
 # M5GFX's pgmspace.h writes a uint16_t through an unaligned pointer.
 alignment:utility/pgmspace.h
 # M5GFX calls a mixin method through a base pointer (LGFXBase.hpp).
