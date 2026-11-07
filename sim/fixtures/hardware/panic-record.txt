@@ -1,0 +1,8 @@
+# Boot after a modelled allocation abort. The panic fixture wrote its crash
+# record next to FURBLE_SIM_PREFS, the host stand-in for the RTC record.
+wait 100
+assert crash.recovered yes
+assert crash.reset panic
+print crash.task
+print crash.last_log
+exit

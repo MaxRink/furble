@@ -1,7 +1,7 @@
 {
   "version": 1,
   "status": "pass",
-  "commit": "0883a31e1eb511fd58e4158d9ff94ede5f59c20a",
+  "commit": "96f8c9e7e9b234496dd95f3cdd21dc80d94ca32c",
   "targets": [
     {
       "id": "fuzz.ui.touch",
@@ -156,8 +156,8 @@
     {
       "id": "fuzz.psram",
       "status": "pass",
-      "seeds": 9,
-      "iterations": 9,
+      "seeds": 8,
+      "iterations": 8,
       "failures": 0,
       "commands": [
         "/tmp/furble-host-build/bt_debug_journal_s3_test",
@@ -165,7 +165,6 @@
         "sim/build/furble-sim --script sim/scenarios/e2e/hw-psram-init-fail.txt",
         "sim/build/furble-sim --script sim/scenarios/e2e/hw-psram-absent-core.txt",
         "sim/build/furble-sim --script sim/scenarios/e2e/hw-psram-octal-sticks3.txt",
-        "sim/build/furble-sim --script sim/scenarios/e2e/hw-memory-psram-icon-absent.txt",
         "sim/build/furble-sim --script sim/scenarios/e2e/hw-memory-psram-icon-octal.txt",
         "sim/build/furble-sim --script sim/scenarios/e2e/hw-boot-psram-memtest-debug.txt",
         "sim/build/furble-sim --script sim/scenarios/e2e/hw-boot-psram-memtest-release.txt"
@@ -221,8 +220,8 @@
     "targets": 10,
     "passed": 10,
     "failed": 0,
-    "seed_runs": 136,
-    "iterations": 89146,
+    "seed_runs": 135,
+    "iterations": 89145,
     "failures": 0
   }
 }

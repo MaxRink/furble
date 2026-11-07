@@ -5,14 +5,17 @@
 #include <deque>
 #include <exception>
 #include <functional>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
 
+#include <esp_heap_caps.h>
 #include <esp_timer.h>
 #include <freertos/FreeRTOS.h>
+#include <freertos/idf_additions.h>
 #include <freertos/task.h>
 
 #include "clock.h"
@@ -1186,6 +1189,50 @@ QueueHandle_t xQueueCreate(UBaseType_t queue_length, UBaseType_t item_size) {
     return nullptr;
   }
   return new FurbleSimQueue(queue_length, item_size);
+}
+
+namespace {
+std::mutex s_CapsQueueMutex;
+std::map<QueueHandle_t, uint64_t> s_CapsQueues;
+}  // namespace
+
+QueueHandle_t xQueueCreateWithCaps(UBaseType_t queue_length,
+                                   UBaseType_t item_size,
+                                   UBaseType_t caps) {
+  if (queue_length == 0 || item_size == 0) {
+    return nullptr;
+  }
+  const bool external = (caps & MALLOC_CAP_SPIRAM) != 0;
+  const uint64_t charge =
+      Furble::Sim::heapAllocTagged(static_cast<size_t>(queue_length) * item_size, "queue_caps",
+                                   external, true, static_cast<uint32_t>(caps));
+  if (charge == 0) {
+    return nullptr;
+  }
+  QueueHandle_t queue = xQueueCreate(queue_length, item_size);
+  if (queue == nullptr) {
+    Furble::Sim::heapFreeTagged(charge);
+    return nullptr;
+  }
+  const std::lock_guard<std::mutex> lock(s_CapsQueueMutex);
+  s_CapsQueues[queue] = charge;
+  return queue;
+}
+
+void vQueueDeleteWithCaps(QueueHandle_t queue) {
+  uint64_t charge = 0;
+  {
+    const std::lock_guard<std::mutex> lock(s_CapsQueueMutex);
+    const auto found = s_CapsQueues.find(queue);
+    if (found != s_CapsQueues.end()) {
+      charge = found->second;
+      s_CapsQueues.erase(found);
+    }
+  }
+  vQueueDelete(queue);
+  if (charge != 0) {
+    Furble::Sim::heapFreeTagged(charge);
+  }
 }
 
 BaseType_t xQueueSend(QueueHandle_t queue, const void *item, TickType_t ticksToWait) {

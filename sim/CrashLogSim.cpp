@@ -296,6 +296,15 @@ void crashLogInject(uint32_t resetReason, const char *task, const char *line) {
   s_Injected = true;
 }
 
+namespace {
+// Registered at static initialization so an allocation abort during boot,
+// before CrashLog::init(), still leaves its panic record.
+const bool s_PanicRecorderRegistered = [] {
+  heapSetPanicRecorder(&crashLogInject);
+  return true;
+}();
+}  // namespace
+
 bool crashLogInjected(void) {
   return s_Injected;
 }

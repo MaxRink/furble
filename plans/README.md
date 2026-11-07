@@ -96,6 +96,8 @@ the git history. They are no longer ownership rows.
 | [311-mqtt-queue-psram.md](311-mqtt-queue-psram.md) | MQTT event queue in PSRAM, pre-task owner gate and the 12 KiB main-stack revert |
 | [312-review-feedback.md](312-review-feedback.md) | Review-feedback record for the MQTT queue fix, including the internal fallback gate |
 | [313-sim-only-status.md](313-sim-only-status.md) | Sim-only closeout: exact gate results, hardware-deferred items and resume criteria |
+| [314-memory-resilience.md](314-memory-resilience.md) | Memory resilience: sim heap fidelity and abort parity, load shedding, static and dynamic memory gates |
+| [314-review-feedback.md](314-review-feedback.md) | Review-feedback record for the plan 314 memory resilience series |
 | [302-companion-restart-reconnect.md](302-companion-restart-reconnect.md) | Companion stop/start without a heap panic, and advertising restart after a rejected link |
 | [303-upstream-sync.md](303-upstream-sync.md) | Read-only upstream audit, open issue mapping, and full SHA PlatformIO pins for upstream issue 309 |
 

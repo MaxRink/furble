@@ -1,0 +1,17 @@
+# Pre-#392 WebUI supervisor allocation shape. Expected: SIM PANIC, exit 3.
+#
+# Before #392 the supervisor task was 8 KiB and had no heap gate, so on the
+# StickS3 it failed inside xTaskCreate and the device boot-looped. Every furble
+# sdkconfig sets CONFIG_HEAP_ABORT_WHEN_ALLOCATION_FAILS, so that failure is an
+# abort, not a logged fallback. The gate is disabled here to model the old
+# branch: the 8 KiB request must print the hardware-shaped
+# `Mem alloc fail. size 0x2000 caps 0x00000804` line and abort.
+# sim/scripts/run-panic-fixtures.sh runs this and checks the panic record.
+seed heap_internal_free 6800
+seed heap_internal_largest 2048
+seed wifi_connected true
+seed web_ui true
+seed webui_password true
+seed webui_gate off
+wait 100
+exit

@@ -1155,12 +1155,12 @@ bool hwAction(const std::string &name) {
         heapFreeTagged(id);
       }
     } else {
-      const uint64_t id = heapAllocTagged(bytes, "icon_decode", false, false);
+      // Plan 31 recorded caps 0x1800 for this malloc: MALLOC_CAP_DEFAULT plus
+      // MALLOC_CAP_INTERNAL. The model logs it and aborts like the device.
+      const uint64_t id = heapAllocTagged(bytes, "icon_decode", false, false, 0x1800);
       hw.iconState = id == 0 ? "failed" : "ok";
       if (id != 0) {
         heapFreeTagged(id);
-      } else {
-        ESP_LOGE("heap", "Mem alloc fail. size 0x3003 caps 0x00001800");
       }
     }
     return true;

@@ -470,9 +470,28 @@ deferred attempt and the esp-mqtt client task is never allocated, so
 `heap.alloc_failures` stays zero. The 9,392-byte event queue is modeled in
 PSRAM, and the 5,120-byte saved camera snapshot is charged on connect.
 `task_create_fail` takes a FreeRTOS task name or `all` and fails that task's
-`xTaskCreate` with the hardware-shaped `Mem alloc fail` line, so a production
-failure branch can be exercised without depending on a heap size. The failure
-is reported by `heap.alloc_failures` and `heap.last_failed_task`.
+`xTaskCreate` with the hardware-shaped `Mem alloc fail` line.
+
+Every furble sdkconfig sets `CONFIG_HEAP_ABORT_WHEN_ALLOCATION_FAILS`, so a
+failed allocation aborts the device; the firmware's NULL and `pdPASS` fallback
+branches are unreachable on hardware. The simulator does the same. Any modelled
+allocation failure, injected or real, prints the `Mem alloc fail` line, calls
+the hook registered with `heap_caps_register_failed_alloc_callback`, prints
+`SIM PANIC`, writes a panic crash record and exits with status 3. A scenario
+therefore cannot assert anything after an allocation fails.
+`sim/scripts/run-panic-fixtures.sh` runs the allocation fixtures under
+`sim/fixtures/hardware/panic-*.txt`, requires status 3 and checks that the
+next boot reports the panic record.
+
+`sim/build.sh` generates `sdkconfig_sim.h` in the build directory with
+`tools/gen_sim_sdkconfig.py` and force-includes it into firmware and simulator
+sources, never into M5GFX or M5Unified. It carries the memory-relevant
+`CONFIG_*` subset of the modelled board: SPIRAM placement, the heap abort
+policy, task stack sizes, NimBLE, WiFi, lwIP and mbedTLS buffers. The panel
+class picks the board (`sdkconfig.m5stick-s3`, `sdkconfig.m5stick-c` or
+`sdkconfig.m5stack-core`) and `FURBLE_SIM_SDKCONFIG` overrides it. Target
+identity symbols stay out, so `CONFIG_IDF_TARGET_*` branches still compile
+their host path.
 
 The MQTT scenarios run only against the optional native transport:
 
@@ -1436,7 +1455,7 @@ python3 tools/check_fuzz.py --smoke \
 
 `--full` is the pre-hardware budget. The fixed seeds live in
 `tests/fuzz/seeds.json`; every finding prints the seed and exact replay
-command. The full corpus currently passes: 10 targets, 136 seed runs, 89,146
+command. The full corpus currently passes: 10 targets, 135 seed runs, 89,145
 iterations and zero failures across all three panel binaries and both layouts.
 The earlier MQTT owner stack overflow at 4 KiB/6 KiB and the Home Assistant
 discovery OOM are fixed by #398/#393 and recorded in `fixed_regressions` in

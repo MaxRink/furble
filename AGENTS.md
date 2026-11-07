@@ -35,7 +35,7 @@ it before pushing. `pre-review.yml` runs the same scanners in CI, and
 `host-sanitized.yml` runs the ASan/UBSan host subset when C++ paths change.
 The pre-hardware fuzz budget is `python3 tools/check_fuzz.py --full
 --host-build <dir> --mqtt-binary sim/build-mqtt/furble-sim`; the full corpus
-currently passes 10 targets, 136 seed runs and 89,146 iterations with zero
+currently passes 10 targets, 135 seed runs and 89,145 iterations with zero
 failures. Its fixed seeds live in `tests/fuzz/seeds.json`; the earlier MQTT
 owner stack overflow and Home Assistant discovery OOM are fixed and carry
 regressions. The flash-readiness gate below remains the authority.
@@ -68,6 +68,11 @@ MQTT retry bounds. `sh sim/scripts/run-memory.sh` runs the MQTT subset against t
 `FURBLE_SIM_MQTT=1` build with a closed local port, so no broker is required.
 Crash-record scenarios use `crash-inject-panic` or `crash-inject-task-wdt`
 followed by `restart`; the record is printed once on the next boot.
+Every sdkconfig aborts on a failed allocation and the simulator does the same:
+`SIM PANIC`, a panic record and exit status 3. `sh sim/scripts/run-panic-fixtures.sh`
+certifies the abort fixtures with the default and `FURBLE_SIM_MQTT=1` binaries.
+The simulator build force-includes the board's memory sdkconfig subset from
+`tools/gen_sim_sdkconfig.py`.
 Hardware flashing is gated on the simulator. `sim/coverage/` holds the hardware,
 crash, fuzz and permutation manifests; `tools/check_sim_coverage.py` validates
 them and `tools/check_flash_readiness.py --ready` is the only authority for a

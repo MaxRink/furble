@@ -60,8 +60,8 @@ python3 tools/check_fuzz.py --full --host-build /tmp/furble-host-build \
 ```
 
 `tests/fuzz/README.md` records the seed budgets and replay commands. The gate
-is fail-closed. The full corpus currently passes: 10 targets, 136 seed runs,
-89,146 iterations and zero failures. The earlier MQTT owner stack overflow and
+is fail-closed. The full corpus currently passes: 10 targets, 135 seed runs,
+89,145 iterations and zero failures. The earlier MQTT owner stack overflow and
 Home Assistant discovery OOM are fixed and carry regressions; no fuzz seed is
 open.
 

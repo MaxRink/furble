@@ -1,21 +1,24 @@
-# WebUI pre-gate OOM followed by a TG1WDT reset, not a panic loop.
+# TG1WDT reset record after WebUI memory pressure, not a panic loop.
 #
-# The old 8 KiB supervisor and 12 KiB HTTPS task both fail under the StickS3
-# pressure. The reset that followed on hardware was a task watchdog reset; the
-# crash record must report task_wdt, not panic, and must be printed once.
+# The reset that followed the WebUI pressure on hardware was a watchdog reset;
+# the crash record must report task_wdt, not panic, and must be printed once.
+# Every furble sdkconfig aborts on a failed allocation, so a recorded TG1WDT
+# cannot follow an allocation failure: the production gate refuses the
+# supervisor first and no allocation fails. The pre-gate allocation shape is
+# the panic fixture sim/fixtures/hardware/panic-webui-pre-gate-alloc.txt.
 seed hw_profile sticks3
 seed heap_internal_free 6800
 seed heap_internal_largest 2048
 seed web_ui true
 seed webui_password true
 seed wifi_connected true
-seed webui_gate off
 seed reset_reason task_wdt
 wait 100
 
-assert webui.supervisor alloc_failed
+assert webui.supervisor blocked
 assert webui.server off
-assert heap.alloc_failures 1
+assert webui.fail_closed yes
+assert heap.alloc_failures 0
 assert platform.reset_reason task_wdt
 assert ui.page main
 

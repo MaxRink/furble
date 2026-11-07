@@ -1,6 +1,9 @@
 #include "heap_model.h"
 
 #include <algorithm>
+#include <atomic>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <deque>
 #include <map>
@@ -10,6 +13,7 @@
 
 #include <esp_heap_caps.h>
 #include <esp_log.h>
+#include <esp_system.h>
 
 #include "clock.h"
 
@@ -25,6 +29,83 @@ constexpr size_t TASK_TCB_BYTES = 512;
 // the model existed.
 constexpr size_t DEFAULT_FREE = 200 * 1024;
 constexpr size_t DEFAULT_LARGEST = 160 * 1024;
+
+// Internal and external 8-bit capability pairs, as ESP-IDF prints them.
+constexpr uint32_t CAPS_INTERNAL = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
+constexpr uint32_t CAPS_EXTERNAL = MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT;
+
+// The board sdkconfig decides, as on hardware. Host unit targets that link
+// the model without the generated header keep the returning behavior.
+#if defined(CONFIG_HEAP_ABORT_WHEN_ALLOCATION_FAILS)
+constexpr bool ABORT_ON_FAILURE = true;
+#else
+constexpr bool ABORT_ON_FAILURE = false;
+#endif
+
+// Registered once and read from whichever task fails an allocation. Both are
+// constant-initialized, so a registration from another translation unit's
+// dynamic initializer (sim/CrashLogSim.cpp) always sees a constructed atomic.
+// Clang enforces that at compile time.
+#if defined(__clang__)
+#define FURBLE_CONSTANT_INIT [[clang::require_constant_initialization]]
+#else
+#define FURBLE_CONSTANT_INIT
+#endif
+FURBLE_CONSTANT_INIT std::atomic<esp_alloc_failed_hook_t> s_FailedAllocHook {nullptr};
+FURBLE_CONSTANT_INIT std::atomic<Furble::Sim::panic_recorder_t> s_PanicRecorder {nullptr};
+
+/*
+ * A failure noted under the heap mutex. The abort runs after the mutex is
+ * released, because the crash record and the registered hook may query the
+ * heap again.
+ */
+struct pending_failure_t {
+  bool set = false;
+  size_t bytes = 0;
+  uint32_t caps = 0;
+  std::string task;
+};
+thread_local pending_failure_t t_Pending;
+
+[[noreturn]] void abortOnAllocationFailure(const pending_failure_t &failure) {
+  // heap_caps.c calls the registered hook first, then esp_system_abort().
+  const esp_alloc_failed_hook_t hook = s_FailedAllocHook.load();
+  if (hook != nullptr) {
+    hook(failure.bytes, failure.caps, "heap_caps_malloc");
+  }
+  char line[96];
+  std::snprintf(line, sizeof(line), "Mem alloc fail. size 0x%04x caps 0x%08x",
+                static_cast<unsigned>(failure.bytes), static_cast<unsigned>(failure.caps));
+  std::fprintf(stderr, "abort() was called: %s\n", line);
+  std::fprintf(stderr, "SIM PANIC: allocation failure in task %s aborts the device\n",
+               failure.task.c_str());
+  const Furble::Sim::panic_recorder_t recorder = s_PanicRecorder.load();
+  if (recorder != nullptr) {
+    recorder(ESP_RST_PANIC, failure.task.c_str(), line);
+  }
+  std::fflush(stdout);
+  std::fflush(stderr);
+  std::_Exit(Furble::Sim::SIM_PANIC_EXIT);
+}
+
+/*
+ * Declared before the heap lock guard in every entry point that can fail, so
+ * its destructor runs after the guard has released the mutex.
+ */
+struct abort_check_t {
+  abort_check_t() = default;
+  abort_check_t(const abort_check_t &) = delete;
+  abort_check_t &operator=(const abort_check_t &) = delete;
+  ~abort_check_t() {
+    if (!t_Pending.set) {
+      return;
+    }
+    if (ABORT_ON_FAILURE) {
+      abortOnAllocationFailure(t_Pending);
+    }
+    t_Pending = {};
+  }
+};
 
 struct tagged_alloc_t {
   size_t bytes = 0;
@@ -80,14 +161,15 @@ heap_state_t &state(void) {
   return instance;
 }
 
-void noteFailureLocked(size_t bytes, const char *task) {
+void noteFailureLocked(size_t bytes, const char *task, uint32_t caps = CAPS_INTERNAL) {
   heap_state_t &heap = state();
   heap.allocationFailures++;
   heap.lastFailedTask = (task == nullptr || task[0] == '\0') ? "unknown" : task;
   // Keep this line in the shape the ESP-IDF heap component prints on hardware.
-  // The caps value is MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT, which is 0x804.
+  // The internal pair is MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT, which is 0x804.
   ESP_LOGE(LOG_TAG, "Mem alloc fail. size 0x%04x caps 0x%08x", static_cast<unsigned>(bytes),
-           static_cast<unsigned>(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+           static_cast<unsigned>(caps));
+  t_Pending = {true, bytes, caps, heap.lastFailedTask};
 }
 
 bool reserveLocked(size_t bytes) {
@@ -247,6 +329,10 @@ bool heapFlashUnsafe(void) {
   return state().flashUnsafe;
 }
 
+void heapSetPanicRecorder(panic_recorder_t recorder) {
+  s_PanicRecorder = recorder;
+}
+
 bool heapActive(void) {
   const std::lock_guard<std::mutex> lock(state().mutex);
   return state().active;
@@ -311,6 +397,7 @@ bool heapTaskCreateMustFail(const char *name) {
 }
 
 void heapNoteAllocationFailure(size_t bytes, const char *task) {
+  const abort_check_t abortCheck;
   const std::lock_guard<std::mutex> lock(state().mutex);
   noteFailureLocked(bytes, task);
 }
@@ -323,6 +410,7 @@ bool heapTaskCreate(const char *name, size_t stackBytes, size_t *chargedBytes, b
     *external = false;
   }
   const size_t bytes = stackBytes + TASK_TCB_BYTES;
+  const abort_check_t abortCheck;
   const std::lock_guard<std::mutex> lock(state().mutex);
   heap_state_t &heap = state();
   // Fault injection is independent of activation so a boot-time task can be
@@ -356,7 +444,7 @@ bool heapTaskCreate(const char *name, size_t stackBytes, size_t *chargedBytes, b
       return false;
     }
     if ((bytes > heap.psramFree) || (bytes > heap.psramLargest)) {
-      noteFailureLocked(stackBytes, name);
+      noteFailureLocked(stackBytes, name, CAPS_EXTERNAL);
       return false;
     }
     heap.psramFree -= bytes;
@@ -399,12 +487,20 @@ void heapReleaseTask(size_t bytes, bool external) {
   heap.largestBlock = std::min(heap.freeBytes, heap.largestBlock + bytes);
 }
 
-uint64_t heapAllocTagged(size_t bytes, const char *owner, bool external, bool persistent) {
+uint64_t heapAllocTagged(size_t bytes,
+                         const char *owner,
+                         bool external,
+                         bool persistent,
+                         uint32_t caps) {
+  const abort_check_t abortCheck;
   const std::lock_guard<std::mutex> lock(state().mutex);
   heap_state_t &heap = state();
   const char *tag = owner == nullptr ? "unknown" : owner;
+  if (caps == 0) {
+    caps = external ? CAPS_EXTERNAL : CAPS_INTERNAL;
+  }
   if (failRuleMatchesLocked(tag, bytes)) {
-    noteFailureLocked(bytes, tag);
+    noteFailureLocked(bytes, tag, caps);
     return 0;
   }
   bool charged = false;
@@ -419,7 +515,7 @@ uint64_t heapAllocTagged(size_t bytes, const char *owner, bool external, bool pe
     charged = true;
   }
   if (!charged) {
-    noteFailureLocked(bytes, tag);
+    noteFailureLocked(bytes, tag, caps);
     return 0;
   }
   const uint64_t id = heap.nextAllocationId++;
@@ -550,6 +646,22 @@ uint32_t heapAllocationCount(void) {
 
 extern "C" bool furble_sim_heap_should_fail(size_t bytes, const char *owner) {
   return Furble::Sim::heapShouldFailAllocation(bytes, owner);
+}
+
+extern "C" void furble_sim_heap_alloc_failed(size_t bytes,
+                                             uint32_t capabilities,
+                                             const char *owner) {
+  const abort_check_t abortCheck;
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  noteFailureLocked(bytes, owner, capabilities);
+}
+
+extern "C" esp_err_t heap_caps_register_failed_alloc_callback(esp_alloc_failed_hook_t callback) {
+  if (callback == nullptr) {
+    return ESP_ERR_INVALID_ARG;
+  }
+  s_FailedAllocHook = callback;
+  return ESP_OK;
 }
 
 extern "C" size_t furble_sim_heap_free(uint32_t capabilities) {

@@ -21,6 +21,16 @@ CC=${CC:-clang}
 FURBLE_BOARD=${FURBLE_SIM_FURBLE_BOARD:-FURBLE_M5STICKS3}
 M5GFX_BOARD=${FURBLE_SIM_M5GFX_BOARD:-board_M5StickS3}
 
+# The memory-relevant sdkconfig subset of the modelled board. The panel class
+# picks the default; FURBLE_SIM_SDKCONFIG overrides it for another board of
+# the same class.
+case "$FURBLE_BOARD" in
+  FURBLE_M5STICKC) default_sdkconfig="$ROOT/sdkconfig.m5stick-c" ;;
+  FURBLE_M5COREX) default_sdkconfig="$ROOT/sdkconfig.m5stack-core" ;;
+  *) default_sdkconfig="$ROOT/sdkconfig.m5stick-s3" ;;
+esac
+SDKCONFIG=${FURBLE_SIM_SDKCONFIG:-$default_sdkconfig}
+
 MQTT_ENABLED=${FURBLE_SIM_MQTT:-0}
 MQTT_CXXFLAGS=
 MQTT_CFLAGS=
@@ -96,6 +106,9 @@ if ! command -v make >/dev/null 2>&1; then
 fi
 
 mkdir -p "$BUILD_DIR/obj"
+
+SDKCONFIG_HEADER="$BUILD_DIR/sdkconfig_sim.h"
+python3 "$ROOT/tools/gen_sim_sdkconfig.py" "$SDKCONFIG" "$SDKCONFIG_HEADER"
 
 INCLUDES="\
 -I$ROOT/sim \
@@ -180,13 +193,24 @@ coverage_flags_for() {
   esac
 }
 
+# Echo the forced sdkconfig include for a firmware or simulator translation
+# unit, and nothing for a dependency. M5GFX and M5Unified key on SPIRAM
+# symbols for on-device board detection and must keep their host paths.
+sdkconfig_flags_for() {
+  case "$1" in
+    "$ROOT"/src/*|"$ROOT"/lib/*|"$ROOT"/sim/*|"$ROOT"/tests/*)
+      printf '%s' "-include $SDKCONFIG_HEADER"
+      ;;
+  esac
+}
+
 # The object cache keys on source timestamps only, so it cannot see a flag
 # change. Toggling coverage, a sanitizer or the board in an existing build dir
 # would otherwise silently reuse objects compiled with the previous flags. Stamp
 # the shaping flags and drop the cache when they change. A build dir holding
 # objects but no stamp predates this check, so it is treated as a mismatch once.
 FLAG_STAMP="$BUILD_DIR/build-flags"
-FLAG_VALUE="root=$ROOT dep_root=$DEP_ROOT lvgl=$LVGL_DIR board=$FURBLE_BOARD m5gfx=$M5GFX_BOARD rig=${FURBLE_SIM_RIG:-1} mqtt=$MQTT_ENABLED sanitize=$SANITIZE coverage=$COVERAGE"
+FLAG_VALUE="root=$ROOT dep_root=$DEP_ROOT lvgl=$LVGL_DIR board=$FURBLE_BOARD m5gfx=$M5GFX_BOARD rig=${FURBLE_SIM_RIG:-1} mqtt=$MQTT_ENABLED sdkconfig=$SDKCONFIG sanitize=$SANITIZE coverage=$COVERAGE"
 if [ ! -f "$FLAG_STAMP" ] || [ "$(cat "$FLAG_STAMP")" != "$FLAG_VALUE" ]; then
   if [ -f "$FLAG_STAMP" ] || [ -n "$(ls -A "$BUILD_DIR/obj" 2>/dev/null)" ]; then
     echo "[CLEAN] build flags changed, dropping $BUILD_DIR/obj"
@@ -272,7 +296,7 @@ compile_cpp() {
   case "$source" in
     "$DEP_ROOT/TinyGPSPlus/"*) extra="-D__AVR__" ;;
   esac
-  "$CXX" $CXXFLAGS $extra $(coverage_flags_for "$source") \
+  "$CXX" $CXXFLAGS $extra $(sdkconfig_flags_for "$source") $(coverage_flags_for "$source") \
     -MMD -MP -MF "$depfile" -MT "$object" -c "$source" -o "$object"
   write_depfile_recipe "$depfile"
   OBJECTS="$OBJECTS $object"

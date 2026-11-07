@@ -177,11 +177,17 @@ python3 tools/check_sim_scenarios.py
 python3 tools/check_sim_coverage.py --require-ready
 sh sim/scripts/check-doc-tokens.sh
 sh sim/scripts/check-hardware-quirks.sh
+sh sim/scripts/run-panic-fixtures.sh
 python3 sim/scripts/run-memory-profile.py
 python3 sim/scripts/run-fuzz-target.py --all
 python3 sim/scripts/run-permutations.py --compact
 python3 tools/check_flash_readiness.py --ready
 ```
+
+`run-panic-fixtures.sh` needs the default binary and the `FURBLE_SIM_MQTT=1`
+binary. Every sdkconfig aborts on a failed allocation, so the simulator does
+too: each fixture must exit 3 with `SIM PANIC` and leave a panic record for the
+next boot. A scenario cannot pass by surviving an allocation failure.
 
 `tools/check_flash_readiness.py` validates per-target fuzz results, unique and
 complete permutation results in manifest order, and the exact memory-profile
@@ -241,7 +247,7 @@ attempt to infer changed paths without a pull request or push comparison base.
   The gate covers seeded input on all three panels in both layouts, the WebUI,
   companion, MQTT and OTA protocol fuzzers, the fixed memory-pressure
   scenarios and randomized heap-pressure boots. The full corpus currently
-  passes: 10 targets, 136 seed runs, 89,146 iterations and zero failures. The
+  passes: 10 targets, 135 seed runs, 89,145 iterations and zero failures. The
   earlier MQTT owner stack overflow and Home Assistant discovery OOM are fixed
   and carry regressions; no fuzz seed is open.
 
@@ -253,6 +259,7 @@ attempt to infer changed paths without a pull request or push comparison base.
   sh sim/scripts/check-doc-tokens.sh
   sh sim/scripts/run-boundary-conformance.sh
   sh sim/scripts/check-hardware-quirks.sh
+  sh sim/scripts/run-panic-fixtures.sh
   python3 sim/scripts/run-memory-profile.py
   python3 sim/scripts/run-permutations.py --compact
   python3 sim/scripts/run-fuzz-target.py --all

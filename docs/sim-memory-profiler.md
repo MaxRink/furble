@@ -69,7 +69,8 @@ Seeds:
 - `mqtt_discovery_payload`
 - `boot_defaults_marker`, `boot_profile`, `psram_memtest`
 - `wifi_fast_connect`, `wifi_auth`
-- `task_create_fail <name|all>`
+- `task_create_fail <name|all>`: the named task's allocation fails, which
+  aborts the run with status 3 under the board's heap abort policy
 
 Actions:
 

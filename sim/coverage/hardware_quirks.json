@@ -1310,12 +1310,13 @@
       "feature": "WebUI supervisor 8 KiB OOM",
       "source": "plans/304-webui-stick-memory.md",
       "model": "sim/webui_memory_model.cpp",
-      "scenario": "sim/scenarios/e2e/memory-webui-pre-gate-alloc.txt",
+      "scenario": "sim/fixtures/hardware/panic-webui-pre-gate-alloc.txt",
       "assertions": [
-        "webui.supervisor",
-        "heap.alloc_failures"
+        "SIM PANIC: allocation failure in task webui_supervisor",
+        "crash.task = webui_superviso"
       ],
-      "status": "modeled"
+      "status": "modeled",
+      "runner": "sim/scripts/run-panic-fixtures.sh"
     },
     {
       "id": "crash.webui_https_12k",
@@ -1324,7 +1325,7 @@
       "feature": "WebUI HTTPS 12 KiB OOM",
       "source": "plans/304-webui-stick-memory.md",
       "model": "sim/webui_memory_model.cpp",
-      "scenario": "sim/scenarios/e2e/memory-webui-pre-gate-alloc.txt",
+      "scenario": "sim/scenarios/e2e/memory-webui-fail-closed.txt",
       "assertions": [
         "webui.server",
         "webui.gate"
@@ -1548,12 +1549,13 @@
       "feature": "12,291-byte icon OOM without PSRAM",
       "source": "plans/31-s3-psram.md",
       "model": "sim/hardware_model.cpp",
-      "scenario": "sim/scenarios/e2e/hw-memory-psram-icon-absent.txt",
+      "scenario": "sim/fixtures/hardware/panic-icon-no-psram.txt",
       "assertions": [
-        "alloc.icon",
-        "heap.last_failed_task"
+        "abort() was called: Mem alloc fail. size 0x3003 caps 0x00001800",
+        "crash.task = icon_decode"
       ],
-      "status": "modeled"
+      "status": "modeled",
+      "runner": "sim/scripts/run-panic-fixtures.sh"
     },
     {
       "id": "crash.psram_icon_ok",
@@ -2210,12 +2212,13 @@
       "feature": "Exact-size failure injection",
       "source": "sim/heap_model.cpp",
       "model": "sim/heap_model.cpp",
-      "scenario": "sim/scenarios/e2e/memory-webui-pre-gate-alloc.txt",
+      "scenario": "sim/fixtures/hardware/panic-mqtt-task-alloc-fail.txt",
       "assertions": [
-        "heap.alloc_failures",
-        "heap.last_failed_task"
+        "SIM PANIC: allocation failure in task mqtt aborts",
+        "crash.task = mqtt"
       ],
-      "status": "modeled"
+      "status": "modeled",
+      "runner": "sim/scripts/run-panic-fixtures.sh"
     },
     {
       "id": "memory.timeline",

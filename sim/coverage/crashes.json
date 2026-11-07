@@ -3,18 +3,19 @@
   "crashes": [
     {
       "id": "webui-pre-gate-8k",
-      "scenario": "sim/scenarios/e2e/memory-webui-pre-gate-alloc.txt",
+      "scenario": "sim/fixtures/hardware/panic-webui-pre-gate-alloc.txt",
       "assertions": [
-        "webui.supervisor",
-        "heap.alloc_failures"
+        "SIM PANIC: allocation failure in task webui_supervisor",
+        "crash.task = webui_superviso"
       ],
       "status": "modeled",
       "known_failing_seeds": [],
-      "source": "sim/coverage/crashes.json"
+      "source": "sim/coverage/crashes.json",
+      "runner": "sim/scripts/run-panic-fixtures.sh"
     },
     {
       "id": "webui-https-12k",
-      "scenario": "sim/scenarios/e2e/memory-webui-pre-gate-alloc.txt",
+      "scenario": "sim/scenarios/e2e/memory-webui-fail-closed.txt",
       "assertions": [
         "webui.server",
         "webui.gate"
@@ -190,14 +191,15 @@
     },
     {
       "id": "psram-icon-0x3003",
-      "scenario": "sim/scenarios/e2e/hw-memory-psram-icon-absent.txt",
+      "scenario": "sim/fixtures/hardware/panic-icon-no-psram.txt",
       "assertions": [
-        "alloc.icon",
-        "heap.last_failed_task"
+        "abort() was called: Mem alloc fail. size 0x3003 caps 0x00001800",
+        "crash.task = icon_decode"
       ],
       "status": "modeled",
       "known_failing_seeds": [],
-      "source": "sim/coverage/crashes.json"
+      "source": "sim/coverage/crashes.json",
+      "runner": "sim/scripts/run-panic-fixtures.sh"
     },
     {
       "id": "companion-4k-restart",
