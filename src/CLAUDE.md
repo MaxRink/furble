@@ -13,6 +13,10 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   wait, and the S3 watchdog shutdown stay together.
   An empty connect target set returns idle, never active. A concurrent cancel
   still takes precedence and returns disconnecting.
+  The control task's queue wait is a 250 ms idle tick. Work that is not a
+  command, such as reaping the drain after a cancel, must wake it: the
+  interactive disconnect posts one no-op `CMD_ERROR`, or every cancel holds
+  the connect gate for up to a tick (plan 317).
 - The simulator UI loop calls its post-`lv_task_handler` hook only after the
   real production UI handler returns. Keep this hook observational: it may
   advance simulator settle bookkeeping, but must not move restart ownership or
@@ -161,7 +165,14 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
 - `FurbleGPX`: GPX 1.1 track writer. Pure file writer with no SD or settings
   knowledge; every method runs on the SD writer task.
 - `FurbleWiFi`: station lifecycle, remembered access point state and NTP.
-  Never fall back to a WiFi scan while a camera is active.
+  Never fall back to a WiFi scan while a camera is active. The event handler
+  runs on the default event loop task (2,304-byte stack): it must not open
+  NVS, read a setting or start SNTP. It updates memory and queues the
+  access point save or erase and the NTP start for the 4 KiB worker
+  (`serviceEventStorage()`); a newer save or erase replaces the older one.
+  Every NVS write of the access point runs under `g_ApStorageMutex`. A clear
+  bumps `g_ApGeneration` and cancels the queued work; a save captured under an
+  older generation is dropped, so a clear is never undone.
 - `FurbleWebUI`: HTTPS-only browser and REST surface. Keep it fail closed on
   password or TLS identity errors. Camera actions stay on `UI::sendRequest`,
   settings stay on `Provision::apply`, and held releases remain owned until the
@@ -201,6 +212,10 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   zero. `LEGEND_OFF` uses the Buttons geometry and reservation but makes the
   indicator surfaces transparent; the LVGL button objects and physical input
   points remain live. Do not relayout rows from a scroll callback.
+  The SCROLL_END settle cancels the async pass a SCROLL frame queued; a stale
+  pass after the settle moves rows without re-pinning the bottom. Info pages
+  use `addInfoPage()`: the reservation replaces its container's right
+  padding while it is narrowed (plan 317).
   The width sample must follow the final 24x24 indicator sizing and a settled
   layout; the 2026-09-13 host-GDB trace found the pre-fix `m_LegendWidth` was
   26 px while the final Right box was 24 px (`x1=111,y1=173,x2=134,y2=196`).

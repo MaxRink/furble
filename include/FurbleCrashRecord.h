@@ -18,8 +18,9 @@ namespace CrashRecord {
  * trusts any value.
  */
 inline constexpr uint32_t MAGIC = 0x46524348U;  // "FRCH"
-inline constexpr uint16_t VERSION = 1;
+inline constexpr uint16_t VERSION = 2;
 inline constexpr size_t TASK_BYTES = 16;
+inline constexpr size_t ALLOC_FUNCTION_BYTES = 24;
 inline constexpr size_t LOG_LINE_BYTES = 96;
 inline constexpr size_t LOG_LINES = 4;
 inline constexpr uint32_t FLAG_CLEAN = 1U << 0;
@@ -36,6 +37,13 @@ struct record_t {
   uint32_t flags;
   char task[TASK_BYTES];
   char log[LOG_LINES][LOG_LINE_BYTES];
+  // The last allocation failure, written by the heap's failed-allocation
+  // callback just before CONFIG_HEAP_ABORT_WHEN_ALLOCATION_FAILS aborts.
+  // alloc_size is zero when no allocation failed.
+  uint32_t alloc_size;
+  uint32_t alloc_caps;
+  char alloc_task[TASK_BYTES];
+  char alloc_function[ALLOC_FUNCTION_BYTES];
   uint32_t crc;
 };
 
@@ -64,7 +72,40 @@ inline void finalize(record_t &record) {
   for (size_t line = 0; line < LOG_LINES; line++) {
     record.log[line][LOG_LINE_BYTES - 1] = '\0';
   }
+  record.alloc_task[TASK_BYTES - 1] = '\0';
+  record.alloc_function[ALLOC_FUNCTION_BYTES - 1] = '\0';
   record.crc = checksum(record);
+}
+
+/**
+ * Record a failed allocation in place. It runs inside the failing
+ * allocation, possibly on a small task stack, so it copies only bounded
+ * strings and builds no second record.
+ */
+inline void noteAllocFailure(record_t &record,
+                             size_t size,
+                             uint32_t caps,
+                             const char *function,
+                             const char *task) {
+  record.alloc_size = static_cast<uint32_t>(size);
+  record.alloc_caps = caps;
+  std::snprintf(record.alloc_task, TASK_BYTES, "%s", task != nullptr ? task : "");
+  std::snprintf(record.alloc_function, ALLOC_FUNCTION_BYTES, "%s",
+                function != nullptr ? function : "");
+}
+
+/**
+ * Carry the allocation failure in failed into a newer snapshot that has none.
+ * A periodic snapshot built before the failure must not erase it.
+ */
+inline void keepAllocFailure(record_t &record, const record_t &failed) {
+  if ((failed.alloc_size == 0) || (record.alloc_size != 0)) {
+    return;
+  }
+  record.alloc_size = failed.alloc_size;
+  record.alloc_caps = failed.alloc_caps;
+  std::memcpy(record.alloc_task, failed.alloc_task, TASK_BYTES);
+  std::memcpy(record.alloc_function, failed.alloc_function, ALLOC_FUNCTION_BYTES);
 }
 
 inline bool valid(const record_t &record) {
@@ -124,13 +165,24 @@ inline bool clean(const record_t &record) {
   return (record.flags & FLAG_CLEAN) != 0;
 }
 
+/** Summary buffer size that holds every field at its widest. */
+inline constexpr size_t SUMMARY_BYTES = 256;
+
 /** One line for the console or the simulator query surface. */
 inline int formatSummary(const record_t &record, char *output, size_t size) {
-  return std::snprintf(
+  const int written = std::snprintf(
       output, size, "reset=%s task=%s uptime=%lus heap_free=%lu heap_largest=%lu clean=%s",
       resetReasonName(record.reset_reason), record.task,
       static_cast<unsigned long>(record.uptime_s), static_cast<unsigned long>(record.heap_free),
       static_cast<unsigned long>(record.heap_largest), clean(record) ? "yes" : "no");
+  if ((record.alloc_size == 0) || (written < 0) || (static_cast<size_t>(written) >= size)) {
+    return written;
+  }
+  const int more = std::snprintf(
+      output + written, size - static_cast<size_t>(written),
+      " alloc_fail=%lu caps=0x%08lx in=%s fn=%s", static_cast<unsigned long>(record.alloc_size),
+      static_cast<unsigned long>(record.alloc_caps), record.alloc_task, record.alloc_function);
+  return more < 0 ? written : written + more;
 }
 
 /** The most recent captured line, or an empty string. */

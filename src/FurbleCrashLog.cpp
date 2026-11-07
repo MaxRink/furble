@@ -31,6 +31,9 @@ using Furble::CrashRecord::TASK_BYTES;
 RTC_NOINIT_ATTR record_t s_Record;
 
 portMUX_TYPE s_Lock = portMUX_INITIALIZER_UNLOCKED;
+// Set by the heap callback under s_Lock. Plain RAM, so it starts false on
+// every boot and never preserves the previous run's failure.
+bool s_AllocFailed = false;
 char s_Lines[LOG_LINES][LOG_LINE_BYTES] = {};
 uint32_t s_Head = 0;
 uint32_t s_Count = 0;
@@ -113,7 +116,7 @@ int logVprintf(const char *format, va_list args) {
 }
 
 void printRecord(const record_t &record) {
-  char summary[192] = {};
+  char summary[Furble::CrashRecord::SUMMARY_BYTES] = {};
   Furble::CrashRecord::formatSummary(record, summary, sizeof(summary));
   // The print goes through ESP_LOGE, which re-enters the capture hook. The
   // guard keeps the record itself out of the retained log tail. Two printing
@@ -131,8 +134,14 @@ void printRecord(const record_t &record) {
   s_Printing.store(false, std::memory_order_relaxed);
 }
 
-void storeRecord(const record_t &record) {
+void storeRecord(record_t &record) {
   portENTER_CRITICAL(&s_Lock);
+  // update() builds its snapshot outside the lock. If the heap callback ran in
+  // between, the abort is imminent and this store must keep its details.
+  if (s_AllocFailed) {
+    Furble::CrashRecord::keepAllocFailure(record, s_Record);
+    Furble::CrashRecord::finalize(record);
+  }
   s_Record = record;
   portEXIT_CRITICAL(&s_Lock);
 }
@@ -163,6 +172,23 @@ void captureSnapshot(void) {
   }
   Furble::CrashRecord::finalize(snapshot);
   storeRecord(snapshot);
+}
+
+/**
+ * Failed-allocation callback. ESP-IDF calls it from heap_caps_alloc_failed()
+ * just before CONFIG_HEAP_ABORT_WHEN_ALLOCATION_FAILS aborts, on the task whose
+ * allocation failed. That can be a small stack and the heap is exhausted, so it
+ * edits the RTC record in place under the lock and never logs, allocates or
+ * copies the record.
+ */
+void recordAllocFailure(size_t size, uint32_t caps, const char *function) {
+  char task[TASK_BYTES];
+  copyTaskName(task);
+  portENTER_CRITICAL(&s_Lock);
+  Furble::CrashRecord::noteAllocFailure(s_Record, size, caps, function, task);
+  Furble::CrashRecord::finalize(s_Record);
+  s_AllocFailed = true;
+  portEXIT_CRITICAL(&s_Lock);
 }
 
 }  // namespace
@@ -202,6 +228,9 @@ void init(void) {
   // this boot. Leaving a clean record in place until the first periodic update
   // let an early-boot crash inherit the previous run's clean flag and vanish.
   captureSnapshot();
+  // Registered only now, so a failure edits this boot's snapshot and never the
+  // previous record that was just printed.
+  heap_caps_register_failed_alloc_callback(recordAllocFailure);
 }
 
 void update(void) {
@@ -252,10 +281,13 @@ void hostSetRecord(const record_t &record) {
   s_Printing = false;
   s_Printed = {};
   s_LastUpdateUs = 0;
-  storeRecord(record);
+  s_AllocFailed = false;
+  record_t copy = record;
+  storeRecord(copy);
 }
 
 void hostReset(void) {
+  s_AllocFailed = false;
   s_Initialized = false;
   s_Recovered = false;
   s_Printing = false;

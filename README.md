@@ -326,6 +326,7 @@ version                             firmware and IDF version
 boot timing                         last boot timeline and mark deltas
 status                              state, targets, uptime, heap, battery, reset reason
 crash [last]                        previous-boot crash record, see docs/crash-diagnostics.md
+                                    adds crash.alloc_* lines after a failed allocation
 power                               power stats, or a CSV power log
 perf                                task, heap, and LVGL performance
 gps                                 GPS status and control, eg. gps send PCAS12,10

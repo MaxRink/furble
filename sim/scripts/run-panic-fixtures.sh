@@ -83,6 +83,19 @@ run_fixture() {
     status=1
     return
   fi
+  # The failed-allocation callback must have written the same size, caps and
+  # task the abort line names into the record.
+  alloc_size=$(($(echo "$abort_line" | sed 's/.*size \(0x[0-9a-fA-F]*\).*/\1/')))
+  alloc_caps=$(echo "$abort_line" | sed 's/.*caps \(0x[0-9a-fA-F]*\).*/\1/')
+  for expected in "crash.alloc_size = $alloc_size" "crash.alloc_caps = $alloc_caps" \
+    "crash.alloc_task = $record_task"; do
+    if ! grep -F -- "$expected" "$WORK/record.log" >/dev/null 2>&1; then
+      echo "FAIL: $fixture record lacks '$expected'" >&2
+      cat "$WORK/record.log" >&2
+      status=1
+      return
+    fi
+  done
   echo "PASS: $fixture aborted and its record survived the reboot"
 }
 

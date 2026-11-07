@@ -5,4 +5,8 @@ assert crash.recovered yes
 assert crash.reset panic
 print crash.task
 print crash.last_log
+print crash.alloc_size
+print crash.alloc_caps
+print crash.alloc_task
+print crash.alloc_function
 exit

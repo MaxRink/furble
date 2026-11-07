@@ -38,7 +38,7 @@ About page and exposed through companion BLE Device Information.
 | `version` | Firmware and IDF version. |
 | `boot` | `boot timing` prints the last boot timeline, its mark deltas, and the cycle-counter reset estimate. See [boot timing](../boot-timing.md). |
 | `status` | State, targets, uptime, heap, battery, reset reason. |
-| `crash` | `crash [last]` prints the retained previous-boot crash record. See [crash diagnostics](../crash-diagnostics.md). |
+| `crash` | `crash [last]` prints the retained previous-boot crash record. After a failed-allocation abort it adds the `crash.alloc_*` lines. See [crash diagnostics](../crash-diagnostics.md). |
 | `power` | `stats`, or `log <seconds>` / `log off` for a CSV power log. |
 | `perf` | `tasks`, `heap`, or `lvgl [overlay on\|off]`. |
 | `gps` | GPS status and control, see below. |
@@ -177,6 +177,17 @@ crash.uptime: 312
 crash.heap_free: 13543
 crash.heap_largest: 12788
 crash.last_log: MQTT client start failed, attempt 10.
+```
+
+When an allocation failure caused the abort, the summary ends with
+`alloc_fail=<size> caps=<caps> in=<task> fn=<function>` and four more lines
+follow:
+
+```text
+crash.alloc_size: 9216
+crash.alloc_caps: 0x00001800
+crash.alloc_task: mqtt
+crash.alloc_function: heap_caps_malloc
 ```
 
 The firmware already prints the same block once at boot when the previous run

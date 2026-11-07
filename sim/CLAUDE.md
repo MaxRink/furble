@@ -438,8 +438,11 @@ shortens that host retry cadence for a bounded scenario.
   `FURBLE_SIM_MQTT=1` binaries.
 - `crash-inject-panic` and `crash-inject-task-wdt` write an unclean record for
   the next `restart`; `crash.recovered`, `crash.reset`, `crash.task`,
-  `crash.heap_free`, `crash.heap_largest`, `crash.uptime`, `crash.last_log` and
-  `crash.pending` are assertable. The host sidecar is removed with a generated
+  `crash.heap_free`, `crash.heap_largest`, `crash.uptime`, `crash.last_log`,
+  `crash.pending` and the failed-allocation fields `crash.alloc_size`,
+  `crash.alloc_caps`, `crash.alloc_task` and `crash.alloc_function` are
+  assertable. The panic fixtures check that the allocation fields match the
+  abort line. The host sidecar is removed with a generated
   preferences store. The production record writes only RTC memory and is never
   written from a panic handler: `CrashLog::update()` snapshots from a normal
   task loop and a shutdown handler marks a clean reset.
@@ -959,8 +962,9 @@ shortens that host retry cadence for a bounded scenario.
   135x240 M5StickS3, and 320x240 M5Stack Core, so a page that only fails on a
   particular geometry cannot hide behind a single reference panel.
 - Physical 80x160 Sensors is one of those intentional-scroll pages: the measured
-  fixture leaves 7 px to scroll. Its shared scenarios assert complete labels
-  at the top, bottom and restored top. `touch-sensors-default-fit` and
+  fixture leaves 18 px to scroll since the Gestures entry joined it. Its shared
+  scenarios, `stick-notouch-layout-80` included, assert complete labels at the
+  top, bottom and restored top. `touch-sensors-default-fit` and
   `touch-sensors-small-fit` retain the stricter no-overflow contract in
   explicitly touch-guarded supplemental lanes.
 - `bughunt/stickc-connected-large-imu.txt` covers the persisted-Large Connected

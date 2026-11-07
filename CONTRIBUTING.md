@@ -194,6 +194,12 @@ After a change that moves static RAM or a boot allocation, rebuild the six
 release envs and run `python3 tools/derive_sim_heap.py`; see
 `docs/sim-memory-profiler.md`.
 
+After a firmware build, `python3 tools/stack_budget.py --env <env>` checks
+each task's worst-case stack from the `-fcallgraph-info=su` call graph against
+`tools/stack_budget.json`. Firmware CI runs it after every build. Add a task
+there when you create one, and see `docs/stack-budget.md` for the indirect
+call rules and limits.
+
 `run-panic-fixtures.sh` needs the default binary and the `FURBLE_SIM_MQTT=1`
 binary. Every sdkconfig aborts on a failed allocation, so the simulator does
 too: each fixture must exit 3 with `SIM PANIC` and leave a panic record for the
