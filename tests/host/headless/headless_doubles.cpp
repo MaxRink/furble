@@ -16,6 +16,7 @@
 #include "FurbleGPS.h"
 #include "FurbleIR.h"
 #include "FurbleMQTT.h"
+#include "FurbleMemoryPressure.h"
 #include "FurblePlatform.h"
 #include "FurbleSD.h"
 #include "FurbleSettings.h"
@@ -138,6 +139,22 @@ bool recovered() {
 }
 
 }  // namespace CrashLog
+
+namespace MemoryPressure {
+
+void tick(void) {
+  HeadlessState::pressureTicks++;
+}
+
+level_t current(void) {
+  return NORMAL;
+}
+
+const char *levelName(level_t) {
+  return "normal";
+}
+
+}  // namespace MemoryPressure
 
 const std::string &Device::getStringID() {
   static const std::string id = "furble-headless";

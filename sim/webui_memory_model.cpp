@@ -7,6 +7,7 @@
 
 #include <esp_log.h>
 
+#include "FurbleMemoryPressure.h"
 #include "FurbleWebUIMemory.h"
 #include "clock.h"
 #include "hardware_model.h"
@@ -146,7 +147,9 @@ void webuiMemoryTick(void) {
   }
   const uint32_t now = clockMillis();
 
-  if (!model.enabled || !model.credentialsReady || !hwWifiConnected()) {
+  // Mirrors WebUI::task(): memory pressure pauses the server like a disable.
+  const bool paused = MemoryPressure::pausesWebUI(MemoryPressure::current());
+  if (!model.enabled || !model.credentialsReady || !hwWifiConnected() || paused) {
     if (model.serverRunning) {
       if (model.serverAllocation != 0) {
         heapFreeTagged(model.serverAllocation);

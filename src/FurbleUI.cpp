@@ -44,6 +44,7 @@
 #include "FurbleGPS.h"
 #include "FurbleGPSFormat.h"
 #include "FurbleIR.h"
+#include "FurbleMemoryPressure.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
 #include "FurbleSD.h"
@@ -13371,6 +13372,7 @@ void UI::task(void) {
   while (true) {
     Platform::getInstance().update();
     CrashLog::update();
+    MemoryPressure::tick();
 
     m_Mutex.lock();
     if (m_GestureSettingsSeen != m_GestureSettingsGeneration.load(std::memory_order_acquire)) {

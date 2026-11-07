@@ -37,7 +37,7 @@ About page and exposed through companion BLE Device Information.
 | :--- | :--- |
 | `version` | Firmware and IDF version. |
 | `boot` | `boot timing` prints the last boot timeline, its mark deltas, and the cycle-counter reset estimate. See [boot timing](boot-timing.md). |
-| `status` | State, targets, uptime, heap, battery, reset reason. |
+| `status` | State, targets, uptime, heap, memory pressure, battery, reset reason. `memory_pressure` is `normal`, `amber` (WebUI server paused) or `red` (WebUI and MQTT client paused); see [WebUI memory pressure](webui.md#memory-pressure). |
 | `crash` | `crash [last]` prints the retained previous-boot crash record. See [crash diagnostics](crash-diagnostics.md). |
 | `power` | `stats`, or `log <seconds>` / `log off` for a CSV power log. |
 | `perf` | `tasks`, `heap`, or `lvgl [overlay on\|off]`. |

@@ -19,6 +19,7 @@ set(furble_sources
     FurbleIMUMotionBMI270.cpp
     FurbleIMUMotionMPU6886.cpp
     FurbleIR.cpp
+    FurbleMemoryPressure.cpp
     FurbleOTA.cpp
     FurbleOTAMQTT.cpp
     FurbleOTAPartitionSink.cpp

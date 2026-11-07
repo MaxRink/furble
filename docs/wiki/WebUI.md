@@ -35,3 +35,9 @@ security details are in the repository's `docs/webui.md`.
 The certificate and private key persist in NVS. The key has the same at-rest
 protection as the other NVS credentials. Enable and provision ESP-IDF NVS
 encryption where physical flash extraction is in the threat model.
+
+When internal RAM runs low, furble pauses the WebUI server first and then the
+MQTT client, so a camera connect still fits, and brings them back once there is
+room again. The saved settings do not change. `status` on the USB console
+reports `memory_pressure`; the thresholds are in the repository's
+`docs/webui.md`.

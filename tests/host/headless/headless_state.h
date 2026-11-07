@@ -16,6 +16,7 @@ inline std::mutex bootMutex;
 inline std::vector<std::string> boot;
 inline std::atomic<uint32_t> platformUpdates {0};
 inline std::atomic<uint32_t> crashUpdates {0};
+inline std::atomic<uint32_t> pressureTicks {0};
 inline std::atomic<uint32_t> gpsUpdates {0};
 inline std::atomic<uint32_t> scanProcessed {0};
 inline std::atomic<uint32_t> feedbackSignals {0};

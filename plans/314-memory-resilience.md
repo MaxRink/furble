@@ -284,6 +284,55 @@ start result is discarded explicitly.
 - A version 1 record from before the update fails validation once and is not
   reported. That is the documented behavior for a record format change.
 
+## PR 6: memory pressure governor
+
+State: implemented. `include/FurbleMemoryPressure.h` holds the policy and
+`src/FurbleMemoryPressure.cpp` the one-second tick beside `CrashLog::update()`
+in both UI loops. Three low readings enter a level; five clear readings leave
+it, one level at a time:
+
+| Level | Enter | Pauses | Leave |
+| :--- | :--- | :--- | :--- |
+| AMBER | free < 12,288 or largest < 8,192 | WebUI server | free >= 20,480, largest >= 12,288 |
+| RED | free < 8,192 or largest < 6,144 | WebUI server, MQTT client | free >= 19,456 plus any internal MQTT queue storage still missing (11,996), largest >= 10,240 |
+
+The WebUI supervisor and the MQTT owner add the level to their existing run
+decision, so a pause stops the server or client exactly like a disabled
+setting, without an NVS write, and the service returns through its own start
+gate. The simulator's WebUI model mirrors the supervisor decision.
+`action heap-squeeze` and `heap-release` move the modelled heap at runtime and
+`heap.pressure` reports the level. The console `status` prints
+`memory_pressure`.
+
+Evidence: `tests/host/memory_pressure_test.cpp` (classification, debounce,
+one-level recovery, the post-#394 StickS3 WebUI pair staying normal),
+`memory-pressure-webui-shed.txt` (pause, no thrash while the restored server
+would land below AMBER, return after release) and
+`memory-pressure-mqtt-shed.txt` (pause frees the 3 KiB worker, no retries
+while paused, return at AMBER).
+
+Deviations:
+
+- The plan's seven tiers become two. HA discovery is already gated per
+  publish by `MQTTMemory::discoveryGate`. GPX logging frees no heap because
+  the SD writer task and its queue stay. The BT debug journal is console-only
+  and off by default. The companion keeps its task and GATT server across a
+  disable (re-creating them aborted on the StickS3), and WiFi's driver pools do
+  not grow at runtime, so neither would free RAM worth the outage. WiFi is
+  also not production code in the simulator.
+- The plan's AMBER 16 KiB threshold would pause a healthy post-#394 StickS3
+  WebUI session (16,087 free), and a flat 4 KiB hysteresis would thrash. The
+  thresholds keep room for a camera connect instead, and each exit level
+  includes the cost of the service it re-admits.
+- `ensure(bytes)` before `Control::addTarget` is not added. The RED floor
+  keeps the target task's block free whenever an optional service is running;
+  a demand path that sheds synchronously from the UI task can follow if a
+  measured session shows a connect still failing.
+- No UI status row: that is a UI change with a screenshot regeneration, and
+  the console line plus the log cover diagnosis. It can follow with PR 7.
+- The thresholds are derived. A hardware reading of a busy WebUI and MQTT
+  session is pending with the rest of hardware validation.
+
 ## Baseline: regenerated release sdkconfigs
 
 State: implemented, as the clean baseline for PR 8 config tuning.

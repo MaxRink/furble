@@ -24,6 +24,8 @@ typedef struct {
 } multi_heap_info_t;
 
 void heap_caps_get_info(multi_heap_info_t *info, uint32_t capabilities);
+size_t heap_caps_get_free_size(uint32_t capabilities);
+size_t heap_caps_get_largest_free_block(uint32_t capabilities);
 
 void *heap_caps_malloc(size_t size, uint32_t capabilities);
 void heap_caps_free(void *pointer);

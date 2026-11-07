@@ -366,6 +366,7 @@ for source in \
   "$ROOT/src/FurbleCompanionService.cpp" \
   "$ROOT/src/FurbleControl.cpp" \
   "$ROOT/src/FurbleGPS.cpp" \
+  "$ROOT/src/FurbleMemoryPressure.cpp" \
   "$ROOT/src/FurbleOTAMQTT.cpp" \
   "$ROOT/src/FurbleOTAPartitionSink.cpp" \
   "$ROOT/src/FurbleOTAReplayStore.cpp" \

@@ -33,6 +33,7 @@
 #include "FurbleFeedback.h"
 #include "FurbleGPS.h"
 #include "FurbleMQTT.h"
+#include "FurbleMemoryPressure.h"
 #include "FurblePlatform.h"
 #include "FurbleProvision.h"
 #include "FurbleSettings.h"
@@ -334,7 +335,10 @@ void WebUI::task(void) {
     if (reload && (m_Server != nullptr)) {
       stopServer();
     }
-    const bool enabled = m_Enabled.load() && credentialsReady() && networkReady();
+    // Memory pressure pauses the server without touching the saved setting;
+    // it restarts through startServer()'s own gate once the governor clears.
+    const bool enabled = m_Enabled.load() && credentialsReady() && networkReady()
+                         && !MemoryPressure::pausesWebUI(MemoryPressure::current());
     if (!enabled) {
       if (m_Server != nullptr) {
         stopServer();

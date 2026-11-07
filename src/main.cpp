@@ -21,6 +21,7 @@
 #include "FurbleControl.h"
 #include "FurbleCrashLog.h"
 #include "FurbleFeedback.h"
+#include "FurbleMemoryPressure.h"
 #if defined(FURBLE_ETHERNET)
 #include "FurbleEthernet.h"
 #endif
@@ -418,6 +419,7 @@ static void vUITask(void *param) {
   while (true) {
     Platform::getInstance().update();
     CrashLog::update();
+    MemoryPressure::tick();
     // Keep this loop in step with UI::task(), which owns the GUI request queue.
     UI::serviceRequests();
     Scan::getInstance().processPendingCallbacks();

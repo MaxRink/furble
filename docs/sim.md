@@ -738,6 +738,8 @@ action sd-error
 action psram-task-start
 action heap-leak-probe
 action heap-leak-free
+action heap-squeeze
+action heap-release
 action alloc-icon
 action ota-rollback
 action ota-commit
@@ -992,6 +994,11 @@ in `tests/host/gps_format_test.cpp`.
 
 The other namespaces are:
 
+- `heap.pressure` reports the production memory pressure governor level:
+  `normal`, `amber` or `red`. `action heap-squeeze` holds one more 4 KiB
+  internal block per call and `action heap-release` frees them all, so a
+  scenario can drive the governor at runtime
+  (`memory-pressure-webui-shed.txt`, `memory-pressure-mqtt-shed.txt`).
 - `heap.free`, `heap.largest`, `heap.minimum`, `heap.active`,
   `heap.alloc_failures` (alias `heap.task_failures`) and
   `heap.last_failed_task` report the modelled internal pool used by the

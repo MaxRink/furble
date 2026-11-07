@@ -403,6 +403,14 @@ void heap_caps_get_info(multi_heap_info_t *info, uint32_t capabilities) {
   info->minimum_free_bytes = 40000 + capabilities;
 }
 
+size_t heap_caps_get_free_size(uint32_t capabilities) {
+  return 100000 + capabilities;
+}
+
+size_t heap_caps_get_largest_free_block(uint32_t capabilities) {
+  return 50000 + capabilities;
+}
+
 void *heap_caps_malloc(size_t size, uint32_t capabilities) {
   (void)capabilities;
   return std::malloc(size);

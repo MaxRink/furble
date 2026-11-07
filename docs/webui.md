@@ -66,6 +66,34 @@ internal sockets per server for its listener and accept bookkeeping, so the
 actual total is five. The two `sock_db` client records cost 384 bytes, which is
 already included in the floor below.
 
+## Memory pressure
+
+Every board aborts on a failed allocation, so the firmware sheds optional
+services before the heap runs out. A governor in the UI loop reads the internal
+heap once a second. Three low readings in a row pause services in this order;
+the saved settings never change:
+
+| Level | Enter when | Paused | Leave when (five readings) |
+| :--- | :--- | :--- | :--- |
+| `amber` | free < 12,288 or largest < 8,192 | WebUI server | free >= 20,480 and largest >= 12,288 |
+| `red` | free < 8,192 or largest < 6,144 | WebUI server and MQTT client | free >= 19,456 and largest >= 10,240; while the MQTT event queue is not yet allocated and has to be internal (the Core2 has no PSRAM), add its 11,996 bytes |
+
+The thresholds keep room for a camera connect, whose 4 KiB control task must
+always fit. A level is left only when the paused service fits above it again,
+so a returning service cannot pause itself straight away. Services return one
+level at a time, each through its own start gate below. The WebUI supervisor,
+the MQTT owner, BLE, the companion and WiFi keep running. `status` on the
+console prints `memory_pressure`, and the log reports each change:
+
+```text
+memory pressure normal -> amber: free=11991 largest=10228
+```
+
+The thresholds are derived from the firmware's own sizes and are not yet
+checked against a hardware reading of a busy session.
+
+## Start gate
+
 The server refuses to start below a conservative internal-heap floor instead of
 resetting the device. On the USB log look for:
 

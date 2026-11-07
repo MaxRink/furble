@@ -27,11 +27,14 @@ print webui.gate_message
 assert ui.page main
 assert platform.watchdog armed
 
-# One attempt at t=0, then the 10 s budget retry. The retry must be slow rather
-# than every supervisor period, and the pool must not move on each attempt.
+# 10,471 free is below the 12,288 AMBER floor, so after three readings the
+# memory pressure governor (plan 314 PR 6) pauses the server: the one attempt
+# at t=0 is the last, instead of a retry every 10 s. The bounded retry cadence
+# above AMBER is memory-webui-retry-bounded.txt.
 wait 25000
-assert_min webui.attempts 3
-assert_max webui.attempts 3
+assert heap.pressure amber
+assert_min webui.attempts 1
+assert_max webui.attempts 1
 assert heap.free 10471
 assert heap.largest 9716
 assert heap.alloc_failures 0

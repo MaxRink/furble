@@ -85,7 +85,8 @@ add_executable(mqtt_owner_test
                ${HOST_MQTT_DIR}/mqtt_host_doubles.cpp
                boot_timeline_host_stub.cpp
                ${FURBLE_ROOT}/src/FurbleBootTimeline.cpp
-               ${FURBLE_ROOT}/src/FurbleMQTT.cpp)
+               ${FURBLE_ROOT}/src/FurbleMQTT.cpp
+               ${FURBLE_ROOT}/src/FurbleMemoryPressure.cpp)
 target_include_directories(mqtt_owner_test BEFORE PRIVATE
                            ${HOST_MQTT_DIR}
                            ${FURBLE_ROOT}/include
@@ -108,7 +109,8 @@ add_executable(mqtt_fuzz
                ${HOST_MQTT_DIR}/mqtt_host_doubles.cpp
                boot_timeline_host_stub.cpp
                ${FURBLE_ROOT}/src/FurbleBootTimeline.cpp
-               ${FURBLE_ROOT}/src/FurbleMQTT.cpp)
+               ${FURBLE_ROOT}/src/FurbleMQTT.cpp
+               ${FURBLE_ROOT}/src/FurbleMemoryPressure.cpp)
 target_include_directories(mqtt_fuzz BEFORE PRIVATE
                            ${HOST_MQTT_DIR}
                            ${FURBLE_ROOT}/include
@@ -316,7 +318,8 @@ add_executable(sim_webui_memory_model_test
                sim_webui_memory_model_test.cpp
                ${FURBLE_ROOT}/sim/clock.cpp
                ${FURBLE_ROOT}/sim/heap_model.cpp
-               ${FURBLE_ROOT}/sim/webui_memory_model.cpp)
+               ${FURBLE_ROOT}/sim/webui_memory_model.cpp
+               ${FURBLE_ROOT}/src/FurbleMemoryPressure.cpp)
 target_include_directories(sim_webui_memory_model_test BEFORE PRIVATE
                            ${FURBLE_ROOT}/include
                            ${FURBLE_ROOT}/lib/furble
@@ -343,6 +346,11 @@ target_compile_definitions(device_identity_test PRIVATE FURBLE_HOST_TEST)
 target_compile_options(device_identity_test PRIVATE -Wall -Wextra -Werror)
 add_test(NAME device-identity COMMAND device_identity_test)
 
+add_executable(memory_pressure_test memory_pressure_test.cpp)
+target_include_directories(memory_pressure_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(memory_pressure_test PRIVATE -Wall -Wextra -Werror)
+add_test(NAME memory-pressure COMMAND memory_pressure_test)
+
 add_executable(crash_record_test crash_record_test.cpp)
 target_include_directories(crash_record_test PRIVATE ${FURBLE_ROOT}/include)
 target_compile_options(crash_record_test PRIVATE -Wall -Wextra -Werror)
@@ -362,7 +370,8 @@ add_executable(webui_handler_test
                mqtt/cJSON.cpp
                companion/companion_hmac.cpp
                ${FURBLE_ROOT}/src/FurbleCompanionAuth.cpp
-               ${FURBLE_ROOT}/src/FurbleWebUI.cpp)
+               ${FURBLE_ROOT}/src/FurbleWebUI.cpp
+               ${FURBLE_ROOT}/src/FurbleMemoryPressure.cpp)
 target_include_directories(webui_handler_test
                            PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/webui
                                    ${CMAKE_CURRENT_SOURCE_DIR}/mqtt
@@ -385,7 +394,8 @@ add_executable(webui_fuzz
                mqtt/cJSON.cpp
                companion/companion_hmac.cpp
                ${FURBLE_ROOT}/src/FurbleCompanionAuth.cpp
-               ${FURBLE_ROOT}/src/FurbleWebUI.cpp)
+               ${FURBLE_ROOT}/src/FurbleWebUI.cpp
+               ${FURBLE_ROOT}/src/FurbleMemoryPressure.cpp)
 target_include_directories(webui_fuzz
                            PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/webui
                                    ${CMAKE_CURRENT_SOURCE_DIR}/mqtt
@@ -2128,6 +2138,7 @@ add_executable(console_commands_test
                boot_timeline_host_stub.cpp
                ${FURBLE_ROOT}/src/FurbleBootTimeline.cpp
                ${FURBLE_ROOT}/src/FurbleConsole.cpp
+               ${FURBLE_ROOT}/src/FurbleMemoryPressure.cpp
                ${FURBLE_ROOT}/src/FurbleControl.cpp
                ${FURBLE_ROOT}/src/FurbleTimezone.cpp
                ${FURBLE_ROOT}/src/FurbleIMU.cpp
@@ -2618,7 +2629,8 @@ add_executable(boundary_webui_tls_test
                ${CMAKE_CURRENT_SOURCE_DIR}/mqtt/cJSON.cpp
                ${COMPANION_HOST_DIR}/companion_hmac.cpp
                ${FURBLE_ROOT}/src/FurbleCompanionAuth.cpp
-               ${FURBLE_ROOT}/src/FurbleWebUI.cpp)
+               ${FURBLE_ROOT}/src/FurbleWebUI.cpp
+               ${FURBLE_ROOT}/src/FurbleMemoryPressure.cpp)
 target_include_directories(boundary_webui_tls_test PRIVATE
                            ${CMAKE_CURRENT_SOURCE_DIR}/webui
                            ${CMAKE_CURRENT_SOURCE_DIR}/mqtt
