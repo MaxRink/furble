@@ -11,6 +11,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
+#include "FurbleCompanionMemory.h"
 #include "FurbleMQTTMemory.h"
 #include "clock.h"
 #include "crash_log_sim.h"
@@ -343,6 +344,11 @@ struct hardware_state_t {
   uint32_t mqttDiscoveryFragments = 0;
   size_t mqttDiscoveryPayload = 3005;
   bool companionEnabled = false;
+  // The first enable creates the retained task and GATT database. A seeded
+  // boot enable is already part of the seeded heap; a runtime first enable is
+  // charged once and passes CompanionMemory::startGate first.
+  bool companionResident = false;
+  std::string companionGate = "none";
   std::string otaSlot = "ota_0";
   bool otaRollback = false;
   uint32_t otaUpdates = 0;
@@ -1093,7 +1099,31 @@ bool hwAction(const std::string &name) {
     hw.peripheral.sdErrors++;
     return true;
   }
+  if (name == "companion-boot") {
+    hw.companionResident = true;
+    hw.companionEnabled = true;
+    hw.ble.companion = "advertising";
+    return true;
+  }
   if (name == "companion-enable") {
+    if (hw.companionEnabled) {
+      return true;
+    }
+    if (!hw.companionResident) {
+      // Mirrors CompanionGatt::enable(): refuse before the first allocation.
+      const auto gate = CompanionMemory::startGate(heapFree(), heapLargest());
+      if (!gate.open) {
+        hw.companionGate = "memory";
+        ESP_LOGE("companion", FURBLE_COMPANION_START_GATE_LOG,
+                 static_cast<unsigned>(gate.freeBytes), static_cast<unsigned>(gate.largestBlock),
+                 static_cast<unsigned>(gate.freeFloor), static_cast<unsigned>(gate.largestFloor));
+        return true;
+      }
+      heapAllocTagged(CompanionMemory::TASK_STACK_BYTES, "companion", false, true);
+      heapAllocTagged(CompanionMemory::GATT_BYTES, "companion_gatt", false, true);
+      hw.companionResident = true;
+    }
+    hw.companionGate = "none";
     hw.companionEnabled = true;
     hw.ble.companion = "advertising";
     return true;
@@ -1463,6 +1493,9 @@ std::string hwQuery(const std::string &key) {
     const std::string sub = key.substr(10);
     if (sub == "enabled") {
       return hw.companionEnabled ? "yes" : "no";
+    }
+    if (sub == "gate") {
+      return hw.companionGate;
     }
     if (sub == "state") {
       return hw.ble.companion;

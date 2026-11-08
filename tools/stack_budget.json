@@ -69,8 +69,8 @@
       "entry": "CompanionGatt::serviceTaskEntry\\(void\\*\\)$",
       "stack_bytes": 3072,
       "source": [
-        "src/FurbleCompanion.cpp",
-        "COMPANION_TASK_STACK_BYTES = (\\d+);"
+        "include/FurbleCompanionMemory.h",
+        "TASK_STACK_BYTES = (\\d+);"
       ]
     },
     {
@@ -165,7 +165,7 @@
       "entry": "Furble::WebUI::identityTaskEntry\\(void\\*\\)$",
       "stack_bytes": 12288,
       "source": [
-        "include/FurbleWebUI.h",
+        "include/FurbleWebUIMemory.h",
         "IDENTITY_STACK_BYTES = (\\d+);"
       ],
       "envs": [

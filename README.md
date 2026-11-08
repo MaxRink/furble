@@ -71,7 +71,9 @@ use an encrypted, bonded LE Just
 Works link and authenticate with the companion password; set a password before
 using the app in an untrusted area. An unknown inbound BLE link is retained
 because the server is shared with camera name discovery; it can delay reconnect
-advertising until it disconnects. See [the companion reference](docs/companion.md)
+advertising until it disconnects. The first enable needs 7,552 bytes of free
+internal RAM; below that the companion stays off with a log line instead of
+resetting the device. See [the companion reference](docs/companion.md)
 for the packet layout, USB limits, pairing behavior, and the battery observation
 procedure.
 
@@ -246,8 +248,9 @@ the WebUI budget work. The 8 KiB main-stack experiment measured 30,007 free /
 the StickS3 runs a 12 KiB main stack, which leaves an inferred 25,911 free with
 the WebUI off. The server still refuses to start
 below its measured floor (20,480 free / 12,288 largest) with a log line instead
-of resetting the device. The StickS3 is not a
-supported WebUI target until a TLS handshake, a settings write and a soak pass
+of resetting the device. A TLS identity first generated at runtime needs 20,864
+free / 12,672 largest; below that HTTPS stays closed until a reboot. The
+StickS3 is not a supported WebUI target until a TLS handshake, a settings write and a soak pass
 succeed on hardware. Core2, the headless S3 profile and the Waveshare profile
 are expected to have more headroom. See [WebUI and REST API](docs/webui.md) for
 the budget table, setup, certificate verification and the route contract.

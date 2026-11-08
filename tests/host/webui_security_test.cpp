@@ -57,6 +57,20 @@ int main() {
         "the supervisor started one byte below the free floor");
   check(!supervisorFits(SUPERVISOR_INTERNAL_FREE_FLOOR, SUPERVISOR_INTERNAL_LARGEST_FLOOR - 1),
         "the supervisor started below the largest-block floor");
+  check(identityFits(IDENTITY_INTERNAL_FREE_FLOOR, IDENTITY_INTERNAL_LARGEST_FLOOR),
+        "the exact identity memory floor was rejected");
+  check(!identityFits(IDENTITY_INTERNAL_FREE_FLOOR - 1, IDENTITY_INTERNAL_LARGEST_FLOOR),
+        "the identity task started one byte below the free floor");
+  check(!identityFits(IDENTITY_INTERNAL_FREE_FLOOR, IDENTITY_INTERNAL_LARGEST_FLOOR - 1),
+        "the identity task started below the largest-block floor");
+  static_assert(IDENTITY_INTERNAL_FREE_FLOOR == 20864, "identity free floor drifted");
+  static_assert(IDENTITY_INTERNAL_LARGEST_FLOOR == 12672, "identity largest floor drifted");
+  static_assert(IDENTITY_INTERNAL_LARGEST_FLOOR > IDENTITY_STACK_BYTES,
+                "the largest block must hold the identity stack and its overhead");
+  // The post-#394 StickS3 pair minus the supervisor still admits a runtime
+  // first enable.
+  check(identityFits(27351 - SUPERVISOR_STACK_BYTES, 25588 - SUPERVISOR_STACK_BYTES),
+        "the post-#394 StickS3 runtime enable was refused");
   static_assert(HTTPD_STACK_BYTES >= 6144,
                 "a TLS handshake needs at least 6 KiB of internal stack");
   static_assert(SERVER_INTERNAL_FREE_FLOOR > HTTPD_STACK_BYTES,

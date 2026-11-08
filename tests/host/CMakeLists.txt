@@ -346,6 +346,11 @@ target_compile_definitions(device_identity_test PRIVATE FURBLE_HOST_TEST)
 target_compile_options(device_identity_test PRIVATE -Wall -Wextra -Werror)
 add_test(NAME device-identity COMMAND device_identity_test)
 
+add_executable(companion_memory_test companion_memory_test.cpp)
+target_include_directories(companion_memory_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(companion_memory_test PRIVATE -Wall -Wextra -Werror)
+add_test(NAME companion-memory COMMAND companion_memory_test)
+
 add_executable(memory_pressure_test memory_pressure_test.cpp)
 target_include_directories(memory_pressure_test PRIVATE ${FURBLE_ROOT}/include)
 target_compile_options(memory_pressure_test PRIVATE -Wall -Wextra -Werror)

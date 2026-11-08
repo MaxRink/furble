@@ -427,7 +427,8 @@ shortens that host retry cadence for a bounded scenario.
   `heap.minimum`, `heap.counting`, `heap.counted_internal`,
   `heap.counted_external`, `heap.counted_tasks`, `heap.alloc_failures`, `heap.last_failed_task`,
   `webui.supervisor`, `webui.server`, `webui.gate`, `webui.attempts`,
-  `webui.fail_closed` and `webui.gate_message` are the observables. The WebUI
+  `webui.fail_closed`, `webui.gate_message`, `webui.identity` and
+  `companion.gate` are the observables. The WebUI
   model runs the production gate functions and log sentence; it does not serve
   HTTPS or claim TLS parity. `memory-counted-camera-connect.txt`,
   `memory-webui-fail-closed.txt`,
@@ -436,7 +437,13 @@ shortens that host retry cadence for a bounded scenario.
   pressure governor runs in the simulator: `action heap-squeeze` and
   `heap-release` move the pool at runtime, `heap.pressure` reports the level,
   and `memory-pressure-webui-shed.txt` and `memory-pressure-mqtt-shed.txt` (the
-  latter in `run-memory.sh`) cover pause and return. The allocation-abort
+  latter in `run-memory.sh`) cover pause and return. Plan 314 PR 7 adds the
+  runtime first-enable gates: `seed webui_identity_absent true` with
+  `action webui-enable` runs the identity gate
+  (`memory-webui-identity-gate.txt`), and `action companion-enable` runs the
+  companion start gate on a companion that was off at boot
+  (`memory-companion-start-gate.txt`). A seeded `companion_enabled` boot is
+  already part of the seeded heap and is not charged. The allocation-abort
   fixtures `sim/fixtures/hardware/panic-*.txt` run only through
   `sim/scripts/run-panic-fixtures.sh`, which needs the default and the
   `FURBLE_SIM_MQTT=1` binaries.

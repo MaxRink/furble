@@ -200,7 +200,15 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   reads NVS. `startServer()` runs `WebUIMemory::serverGate()` before allocating
   and logs the measured free/largest pair when it refuses. An out-of-memory
   start keeps the stored identity; only a rejected certificate/key pair is
-  replaced once.
+  replaced once. Every runtime identity task goes through
+  `startIdentityTask()`, which runs `WebUIMemory::identityGate()` first; a
+  refusal clears `m_IdentityTaskActive` and writes no NVS, so the next
+  `reloadSetting()` retries. Only the boot path in `initEarly()` is ungated.
+- `FurbleCompanion`: `CompanionGatt::enable()` runs
+  `CompanionMemory::startGate()` (`include/FurbleCompanionMemory.h`) before the
+  first enable creates the retained task and GATT database. A refusal leaves
+  `m_Enabled` false and logs the measured pair. Later enables reuse both and
+  are not gated; never delete the task or the services on disable.
 - `FurbleUI*`: LVGL UI. Respect the changed-check rule for periodic setters.
   LVGL 9.4 retains an encoder input device's `last_pressed` object when that
   object is deleted. Only when switching a persistent physical-button device

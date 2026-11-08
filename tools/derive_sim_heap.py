@@ -322,7 +322,7 @@ def attributable(env: str, width: int, height: int, cfg: dict, size: dict) -> li
     terms.extend(gps_uart(size))
     # The companion task and its timers exist only with the COMPANION setting
     # on (CompanionGatt::enable in src/FurbleCompanion.cpp).
-    terms.append({**task("companion", 3072, tcb, "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES"),
+    terms.append({**task("companion", 3072, tcb, "include/FurbleCompanionMemory.h TASK_STACK_BYTES"),
                   "condition": "companion"})
     for name in ("companion disable", "companion shutter"):
         terms.append({"term": f"esp_timer {name}", "bytes": block(size["struct esp_timer"]),

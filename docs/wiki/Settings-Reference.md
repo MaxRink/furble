@@ -100,7 +100,7 @@ Submenu: `Settings` > `Features`.
 | Infinite-ReConnect | Off | On, Off | Now | Keep retrying a lost connection forever. |
 | Reconnect Backoff | On | On, Off | Now | Space out reconnect attempts to save battery. The first retry stays quick at 2.5 s; later attempts back off to 120 s. |
 | Multi-Connect | Off | On, Off | Now | Allow connecting to more than one camera at once. |
-| Companion | Off | On, Off | Restart (dangerous) | Enables the companion BLE service. Connection-affecting. |
+| Companion | Off | On, Off | Restart (dangerous) | Enables the companion BLE service. Connection-affecting. Stays off with a log line when internal RAM is too low for its first start. |
 | Watchdog | On | On, Off | Restart | M5StickS3 only. Turn off before attaching a JTAG debugger. |
 | Preset Picker | Off | On, Off | Restart | Adds the exposure preset stepper on the shutter page. |
 | Boot screen | On | On, Off | Next boot | The startup splash. Off restores the old plain boot. |

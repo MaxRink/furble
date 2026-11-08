@@ -333,6 +333,129 @@ Deviations:
 - The thresholds are derived. A hardware reading of a busy WebUI and MQTT
   session is pending with the rest of hardware validation.
 
+## PR 7: missing gates
+
+State: implemented. Every board aborts on a failed allocation, so each
+runtime path that creates a task or a retained structure needs an admission
+gate that measures internal free and largest bytes first and refuses with a
+log. The audit covered five sites.
+
+1. Runtime WebUI TLS identity task. Gated.
+   `WebUIMemory::identityGate()` admits the 12 KiB `webui_tls` task only at
+   20,864 free / 12,672 largest. Both runtime sites, the enable path in
+   `reloadSetting()` and the replacement after a non-memory
+   `httpd_ssl_start` failure, now go through `WebUI::startIdentityTask()`.
+   A refusal does not create the task, clears `m_IdentityTaskActive`, writes no
+   NVS and logs `TLS identity not generated: internal free N, largest N (need
+   20864/12672). HTTPS stays closed; reboot or change a setting once more
+   internal RAM is free to retry.` The next
+   `reloadSetting()` with the WebUI on retries, as the old "reboot to retry"
+   path did. The boot path in `initEarly()` stays ungated: it runs before
+   WiFi, the display and the companion take their share.
+2. Companion first enable. Gated. `CompanionMemory::startGate()` in the new
+   `include/FurbleCompanionMemory.h` runs in `CompanionGatt::enable()` when
+   `m_Task` is null, before the identity, GATT, server start, timers and task
+   allocations. The floor is 7,552 free / 3,456 largest. A refusal leaves
+   `m_Enabled` false, keeps the saved setting and logs `Companion not
+   started: internal free N, largest N (need 7552/3456). It stays off; enable
+   it again or reboot to retry.` Later enables reuse the retained task and
+   services and are not gated. The task stack constant moved into the header,
+   and `tools/stack_budget.json` reads it there.
+3. OTA start. No gate, no code. No production path starts an OTA update.
+   `OTA::PartitionSink`, `EspIdfPartitionTarget` and the MQTT OTA engine are
+   compiled (`src/CMakeLists.txt`) but nothing in `src/`, `lib/` or
+   `include/` outside the OTA files constructs them: no console command,
+   companion characteristic (`createGatt()` says "OTA is intentionally
+   reserved only"), WebUI route or MQTT handler. None of the seven release
+   images links `esp_ota_begin` or a `PartitionSink` symbol (`nm
+   firmware.elf`; `esp_ota_get_running_partition` is present as a
+   control). When a
+   transport is wired, its start allocates `esp_ota_begin`'s 52-byte
+   `ota_ops_entry_t` (m5stack-core2 DWARF) plus the transport's receive
+   buffer and task; that PR must add the gate with the transport.
+4. `Control::Target` queue and per-camera task. No change. The
+   `xQueueCreate` result in `Target::Target()` and the `xTaskCreate` `!=
+   pdPASS` branch in `Control::addTarget()` are dead under abort semantics,
+   and a camera connect is the core path, never refused. PR 6 did not add
+   `ensure()`; instead the governor's RED floor keeps the 4 KiB target task's
+   block free while any optional service runs. The NULL checks stay as
+   harmless host-build fallbacks.
+5. Scan start probe thread. No change. `Scan::runStartProbe()` and its
+   `std::thread` are inside `#if defined(FURBLE_SIM)` and run only when a
+   scenario installs a probe with `seed scan_start_probe true`. The firmware
+   does not compile them.
+
+Derived floors:
+
+| Gate | Free floor | Largest floor | Derivation |
+| :--- | ---: | ---: | :--- |
+| WebUI identity | 20,864 | 12,672 | 12,288 stack + 384 task overhead + 8,192 mbedTLS heap; largest is stack + overhead |
+| Companion start | 7,552 | 3,456 | 3,072 stack + 384 task overhead + 4,096 GATT database; largest is stack + overhead |
+
+- Task overhead, 384: the largest `StaticTask_t` in
+  `sim/coverage/board_heap.json` is 348 bytes (Waveshare; 336 elsewhere), and
+  the stack and TCB are two blocks with a 16-byte head each (4-byte TLSF
+  header, 12 bytes of comprehensive poisoning). 380, rounded up.
+- mbedTLS heap, 8,192: the peak of `createIdentity()` on the pinned mbedTLS
+  3.6.5 is `mbedtls_pk_write_key_pem()`'s DER buffer. `esp_config.h` always
+  defines `MBEDTLS_RSA_C`, so `PRV_DER_MAX_BYTES` is the RSA bound, 47 +
+  3 x 1,024 + 5 x 512 = 5,679 bytes. The key pair (128-byte
+  `mbedtls_ecp_keypair` plus limbs), the subject and issuer name nodes and the
+  subject string are live with it, about 6.6 KiB. Key generation and ECDSA
+  signing peak near 4.6 KiB: an 8-point comb table (window 4, fixed-point
+  optimization off) and the HMAC-DRBG and signing temporaries. Rounded up to
+  8 KiB. The S3 boards set `CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC`, so there the
+  floor is conservative; the Core2 is internal.
+- GATT database, 4,096: from the m5stack-core2 DWARF, 2 `NimBLEService` (68
+  bytes) and 9 `NimBLECharacteristic` (92 bytes) objects, 9 initial values of
+  21 bytes, the `ble_gatt_svc_def` and `ble_gatt_chr_def` arrays, the vectors,
+  the NimBLE attribute and client-configuration pools that `ble_gatts_start()`
+  rebuilds and the two `esp_timer`s: about 3.1 KiB with block heads, rounded
+  up. The S3 boards keep the NimBLE pools in PSRAM.
+
+Both floors hold for the measured StickS3 pairs: the post-#394 27,351 / 25,588
+less the 3 KiB supervisor admits the identity task, and the pre-#394
+13,543 / 12,788 admits the companion. Host checks pin both.
+
+Simulator: the WebUI model gains `seed webui_identity_absent`,
+`action webui-enable` and `webui.identity`, and runs `identityGate()` on the
+runtime enable. The hardware model's runtime `action companion-enable` runs
+`CompanionMemory::startGate()` and charges the retained task and GATT
+database once; a seeded boot enable (`companion-boot`) is part of the seeded
+heap. `memory-webui-identity-gate.txt` and `memory-companion-start-gate.txt`
+squeeze the heap until the gate refuses, assert no allocation failure, release
+and assert recovery.
+
+Deviations:
+
+- The identity floor is one constant for all boards. A per-board floor keyed on
+  `CONFIG_MBEDTLS_INTERNAL_MEM_ALLOC` would admit the S3 boards about 8 KiB
+  earlier, but the header is shared with the host tests and simulator, and the
+  StickS3 runtime enable already passes.
+- The simulator charges only the identity stack, because the StickS3 keeps
+  the mbedTLS heap in PSRAM. The gate still requires the full floor.
+- The `!= pdPASS` fallbacks after each gate stay. They are dead on hardware and
+  keep the host doubles meaningful.
+- The companion gate tells the user to enable it again; nothing re-enables it
+  automatically, because a retry loop would spend the radio on a heap that has
+  not recovered.
+
+Validation (local, macOS, sim-only, no hardware):
+
+- Host suite: 185 of 185, including `companion-memory`, the identity checks in
+  `webui-security`, the production `reloadSetting()` refusal and retry in
+  `webui-handler`, and the linked `boundary-companion-gatt`.
+- `sh tools/run_sanitized_host_tests.sh --clean`: 10 of 10.
+- `sh sim/scripts/run-e2e.sh`: StickS3 210 of 210, StickC 65 of 65, Core 69
+  of 69.
+- `sh sim/scripts/run-memory.sh` (MQTT build): 4 of 4.
+- `sh sim/scripts/run-panic-fixtures.sh`: pass.
+- Firmware: all seven envs build; `tools/stack_budget.py` passes every task
+  with zero FAIL. The supervisor and companion figures are unchanged
+  (Waveshare and headless `webui` 2,992 of 3,072, `companion` 2,784 of 3,072).
+- `python3 tools/pre_review.py --base origin/master`: 8 gates pass.
+  `sh sim/scripts/check-doc-tokens.sh`: pass.
+
 ## Baseline: regenerated release sdkconfigs
 
 State: implemented, as the clean baseline for PR 8 config tuning.
