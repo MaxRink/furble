@@ -527,6 +527,58 @@ Validation (local, macOS, sim-only, no hardware):
 - `python3 tools/pre_review.py --base origin/master`: pass.
   `sh sim/scripts/check-doc-tokens.sh` and `tools/check_sim_coverage.py`: pass.
 
+## PR 9: GPS buffer audit
+
+The plan asked to confirm or add caps on the GPS line buffers. Every buffer
+the UART bytes can grow already had a cap. This PR deletes `m_SatPartial`, a
+`std::string` member no code ever read or wrote, and tightens the GSV bound:
+`feedGsv` consumed every quad on a line, so a checksum-valid 96-byte line
+could add more satellites than the four the format allows. It now
+reads at most four, which bounds a set at 32, the `MAX_SATELLITES` publish
+cap.
+
+| Buffer | Bound | Where |
+|---|---|---|
+| `m_Partial` (raw NMEA line) | `SENTENCE_LEN` (96) bytes; longer lines are cut | `GPS::captureSentences` |
+| `m_Sentences` ring | `SENTENCES` (8) lines of at most 96 bytes | `include/FurbleGPS.h` |
+| `m_EphNmeaPartial` | 96 bytes; `$`, CR or LF resets it | `GPS::noteEphemerisDate` |
+| `m_RxBuffer` | one pending frame: `MAX_BINARY_PAYLOAD` (2,048) plus the 10-byte overhead plus one UART read; NMEA bytes are drained at once | `GPS::processSerial` |
+| `m_ConfigQueue` and `m_ConfigStatus` | `MAX_CONFIG_COMMANDS` (16); a full queue logs and drops | `GPS::enqueueConfig` |
+| `splitNmea` fields | at most one field per byte of a 96-byte line | `lib/furble/protocol/GpsCasic.cpp` |
+| GSV `TalkerSet` list | one per constellation, six values | `NmeaSatellites::setFor` |
+| GSV `building` | `total <= 8` sentences of at most four satellites (enforced since this PR), repeated sentence numbers ignored: 32 | `NmeaSatellites::feedGsv` |
+| GSA used list | `MAX_USED_SATELLITES` (64) | `NmeaSatellites::feedGsa` |
+
+Not done: the optional ESP32-S3 LVGL allocator that prefers PSRAM. The plan
+adopts it only if the simulator shows no redraw regression, and the simulator
+does not model PSRAM access latency, so it cannot show that. It stays
+deferred until a hardware timing pass.
+
+### Fix: stack budget parsed a destructor alias from the ELF
+
+Removing the member moved code, and `tools/stack_budget.py` then failed the
+StickS3 control task: 5,216 bytes with 164 unbounded recursions, against
+2,192 bytes on the parent commit. objdump labelled the shared address of
+`std::_Vector_base<NimBLERemoteService*>::~_Vector_base()` by its D1 alias.
+The D2 body has a `.ci` node, but the tool only skipped ELF functions whose
+exact name was compiled, so it parsed the alias and read past its `retw.n`
+into the literal pool. Those bytes decoded as a call to `GPS::update`, which
+reaches the UI and LVGL event recursion. The tool now skips a C1/D1 alias of
+a compiled body and resolves calls to it through the body's `file:symbol`
+node. `body_of()` finds the C1/D1 by walking the `_ZN...E` nested name: its
+length-prefixed source names, substitutions and template arguments. So
+`A::ABC1()` is left alone and the destructor of a class `Foo2` still resolves.
+The alias is skipped only when `objdump -t` puts it at its body's address; a
+distinct C1 or D1, as with virtual bases, is parsed.
+The control task is back at 2,192 bytes, and the StickS3 main task lists 23
+fewer callees without a frame. `tests/test_stack_budget.py` covers the alias.
+All nine envs built for PR 8 still pass with the fixed tool.
+
+Validation: m5stick-s3 and esp32-s3-headless build and pass the stack budget;
+the default and MQTT simulator builds; e2e 210 of 210; `run-memory.sh`; the
+memory profile 13 of 13; host 185 of 185; `pre_review.py`, the doc token check
+and `check_sim_coverage.py`.
+
 ## Baseline: regenerated release sdkconfigs
 
 State: implemented, as the clean baseline for PR 8 config tuning.

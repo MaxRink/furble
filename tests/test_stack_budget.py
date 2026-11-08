@@ -76,6 +76,39 @@ node: { title: "elf_mid" label: "elf_mid\n<built-in>" shape : ellipse }
 edge: { sourcename: "entry" targetname: "elf_mid" label: "e.cpp:1:5" }
 }
 '''
+# entry calls the D1 destructor, which aliases a D2 body compiled here
+D_CI = r'''graph: { title: "d.cpp"
+node: { title: "entry" label: "void entry(void*)\nd.cpp:1:1\n32 bytes (static)" }
+node: { title: "d.cpp:_ZN1XD2Ev" label: "X::~X()\nd.cpp:2:1\n16 bytes (static)" }
+edge: { sourcename: "entry" targetname: "_ZN1XD1Ev" label: "d.cpp:1:5" }
+}
+'''
+# objdump labels the shared address by the D1 alias; the bytes after its retw
+# decode as a call into a 4,000-byte function that must not be followed.
+ALIAS_LISTING = """
+40000000 <_ZN1XD1Ev>:
+40000000:\t004136        \tentry\ta1, 32
+40000003:\t000090        \tretw.n
+40000006:\tfffba5        \tcall8\t40000300 <elf_stale>
+
+40000300 <elf_stale>:
+40000300:\t7d0136        \tentry\ta1, 4000
+"""
+ALIAS_SYMBOLS = """
+40000000  w    F .flash.text\t00000006 _ZN1XD1Ev
+40000000  w    F .flash.text\t00000006 _ZN1XD2Ev
+"""
+# A class with virtual bases: the complete-object D1 is its own code, at its
+# own address, and must be parsed even though the D2 body is compiled here.
+DISTINCT_LISTING = """
+40000000 <_ZN1XD1Ev>:
+40000000:\t006136        \tentry\ta1, 48
+40000003:\t000090        \tretw.n
+"""
+DISTINCT_SYMBOLS = """
+40000000  w    F .flash.text\t00000006 _ZN1XD1Ev
+40000500  w    F .flash.text\t00000006 _ZN1XD2Ev
+"""
 # Both l32r forms that objdump prints. The parenthesized value is a longcall
 # target. The bare form names the literal's slot, and a load into the
 # register drops its literal, so neither 4,000-byte function is reached.
@@ -114,7 +147,7 @@ LISTING = """
 
 class StackBudgetTest(unittest.TestCase):
     def run_tool(self, stack, indirect=True, extra=(), rules=(), cis=None, manifest_extra=None,
-                 listing=None):
+                 listing=None, symbols=""):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
             build = tmp / "build"
@@ -133,11 +166,13 @@ class StackBudgetTest(unittest.TestCase):
             (tmp / "manifest.json").write_text(json.dumps(manifest))
             elf = ["--no-elf"]
             if listing is not None:
-                # a fake objdump that prints the crafted listing
+                # a fake objdump: -t prints the symbol table, -d the listing
                 (tmp / "listing.txt").write_text(listing)
+                (tmp / "symbols.txt").write_text(symbols)
                 objdump = tmp / "objdump"
                 objdump.write_text(f"#!{sys.executable}\nimport sys\n"
-                                   f"sys.stdout.write(open({str(tmp / 'listing.txt')!r}).read())\n")
+                                   f"name = 'symbols.txt' if '-t' in sys.argv else 'listing.txt'\n"
+                                   f"sys.stdout.write(open({str(tmp)!r} + '/' + name).read())\n")
                 objdump.chmod(0o755)
                 elf = ["--objdump", str(objdump)]
             return subprocess.run(
@@ -243,6 +278,38 @@ class StackBudgetTest(unittest.TestCase):
                       "2 unresolved indirect\n", r.stdout)
         r = self.run_tool(879, indirect=False, cis=e_ci, listing=LISTING)
         self.assertEqual(r.returncode, 1, r.stdout)
+
+    def test_elf_alias_of_a_compiled_body_is_not_parsed(self):
+        # 32 + the compiled D2 body 16 + 288 overhead
+        r = self.run_tool(336, indirect=False, cis=(("d.cpp.ci", D_CI),), listing=ALIAS_LISTING,
+                          symbols=ALIAS_SYMBOLS)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("PASS t: 336 of 336 bytes (48 frames + 288 port overhead)", r.stdout)
+
+    def test_elf_distinct_address_constructor_is_parsed(self):
+        # 32 + the ELF D1's own 48-byte frame + 288 overhead, not the D2 body's 16
+        r = self.run_tool(368, indirect=False, cis=(("d.cpp.ci", D_CI),),
+                          listing=DISTINCT_LISTING, symbols=DISTINCT_SYMBOLS)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("PASS t: 368 of 368 bytes (80 frames + 288 port overhead)", r.stdout)
+
+    def test_alias_rewrites_only_a_constructor_component(self):
+        sys.path.insert(0, str(TOOL.parent))
+        import stack_budget
+        self.assertEqual(stack_budget.body_of("_ZN1XD1Ev"), "_ZN1XD2Ev")
+        self.assertEqual(stack_budget.body_of("_ZN3FooC1ERKS_"), "_ZN3FooC2ERKS_")
+        # A::ABC1() and A::C1() are ordinary functions whose names end in C1
+        self.assertEqual(stack_budget.body_of("_ZN1A4ABC1Ev"), "_ZN1A4ABC1Ev")
+        self.assertEqual(stack_budget.body_of("_ZN1A2C1Ev"), "_ZN1A2C1Ev")
+        # a class name that ends in a digit is not a length prefix
+        self.assertEqual(stack_budget.body_of("_ZN2A2C1Ev"), "_ZN2A2C2Ev")
+        self.assertEqual(stack_budget.body_of("_ZN4Foo2D1Ev"), "_ZN4Foo2D2Ev")
+        # template arguments, including a literal, are skipped whole
+        self.assertEqual(stack_budget.body_of("_ZN3FooILi5EEC1Ev"), "_ZN3FooILi5EEC2Ev")
+        self.assertEqual(stack_budget.body_of("_ZN3FooIJiEEC1Ev"), "_ZN3FooIJiEEC2Ev")
+        self.assertEqual(
+            stack_budget.body_of("_ZNSt12_Vector_baseIP19NimBLERemoteServiceSaIS1_EED1Ev"),
+            "_ZNSt12_Vector_baseIP19NimBLERemoteServiceSaIS1_EED2Ev")
 
 
 class ManifestSourceTest(unittest.TestCase):
