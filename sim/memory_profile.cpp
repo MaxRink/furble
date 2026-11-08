@@ -69,13 +69,18 @@ const profile_budget_t &budgetFor(const std::string &profile) {
 }
 
 std::vector<component_t> componentsFor(const profile_budget_t &budget) {
+  // Every PSRAM board sets CONFIG_BT_NIMBLE_MEM_ALLOC_MODE_EXTERNAL, which
+  // moves both NimBLE pools to PSRAM. tools/derive_sim_heap.py drops them from
+  // the internal boot heap on the same condition.
+  const char *nimble = budget.psramTotal > 0 ? "psram" : "internal";
   return {
       {"main_stack",             budget.mainStack,                                      "internal",     "CONFIG_ESP_MAIN_TASK_STACK_SIZE"              },
       {"event_task",             2304,                                                  "internal",     "CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE"      },
       {"timer_task",             3584,                                                  "internal",     "CONFIG_ESP_TIMER_TASK_STACK_SIZE"             },
       {"tcpip_task",             3072,                                                  "internal",     "CONFIG_LWIP_TCPIP_TASK_STACK_SIZE"            },
       {"nimble_host",            16384,                                                 "internal",     "CONFIG_BT_NIMBLE_HOST_TASK_STACK_SIZE"        },
-      {"nimble_msys",            12 * 256 + 24 * 320,                                   "internal",     "CONFIG_BT_NIMBLE_MSYS_1/2"                    },
+      {"nimble_msys",            12 * 256 + 24 * 320,                                   nimble,         "CONFIG_BT_NIMBLE_MSYS_1/2"                    },
+      {"nimble_transport",       24 * 255 + (30 + 8) * 70,                              nimble,         "CONFIG_BT_NIMBLE_TRANSPORT_ACL/EVT"           },
       {"control_task",           8192,                                                  "internal",     "src/main.cpp xTaskCreate control"             },
       {"gps_task",               4096,                                                  "internal",     "src/FurbleGPS.cpp xTaskCreate"                },
       {"ir_task",                budget.irStack,                                        "psram",        "src/FurbleIR.cpp after PR 394"                },

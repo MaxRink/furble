@@ -123,8 +123,10 @@ TLS identity not generated: internal free N, largest N (need 20864/12672). HTTPS
 Reboot with the WebUI setting on, or change a setting once more internal RAM is
 free, to try again. Nothing is written to NVS until the identity is generated.
 The floor covers the stack, the task overhead and the 8 KiB mbedTLS working
-heap that key generation needs on the Core2, where mbedTLS is internal; the S3
-boards keep that heap in PSRAM, so the floor is conservative there.
+heap that key generation needs on a board where mbedTLS is internal. Every
+WebUI board, the Core2 included since plan 314 PR 8, keeps that heap in PSRAM,
+so the floor is conservative there. It is kept so the gate does not depend on
+the PSRAM placement.
 
 | Build | Radio | PSRAM used | Internal free | WebUI |
 | :--- | :--- | :--- | :--- | :--- |
