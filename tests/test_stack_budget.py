@@ -276,6 +276,14 @@ class StackBudgetTest(unittest.TestCase):
         # A::ABC1() and A::C1() are ordinary functions whose names end in C1
         self.assertEqual(stack_budget.body_of("_ZN1A4ABC1Ev"), "_ZN1A4ABC1Ev")
         self.assertEqual(stack_budget.body_of("_ZN1A2C1Ev"), "_ZN1A2C1Ev")
+        # a class name that ends in a digit is not a length prefix
+        self.assertEqual(stack_budget.body_of("_ZN2A2C1Ev"), "_ZN2A2C2Ev")
+        self.assertEqual(stack_budget.body_of("_ZN4Foo2D1Ev"), "_ZN4Foo2D2Ev")
+        # template arguments, including a literal, are skipped whole
+        self.assertEqual(stack_budget.body_of("_ZN3FooILi5EEC1Ev"), "_ZN3FooILi5EEC2Ev")
+        self.assertEqual(
+            stack_budget.body_of("_ZNSt12_Vector_baseIP19NimBLERemoteServiceSaIS1_EED1Ev"),
+            "_ZNSt12_Vector_baseIP19NimBLERemoteServiceSaIS1_EED2Ev")
 
 
 class ManifestSourceTest(unittest.TestCase):

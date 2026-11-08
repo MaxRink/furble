@@ -30,17 +30,61 @@ NODE = re.compile(r'node: \{ title: "([^"]*)" label: "([^"]*)"')
 EDGE = re.compile(r'edge: \{ sourcename: "([^"]*)" targetname: "([^"]*)"(?: label: "([^"]*)")?')
 FRAME = re.compile(r"\\n(\d+) bytes \(([a-z,]+)\)")
 INDIRECT = "__indirect_call"
-ALIAS = re.compile(r"([CD])1E")
+
+
+def _skip_name(s, i):
+    """Index past the length-prefixed source name or substitution at i."""
+    if s[i].isdigit():
+        j = i
+        while s[j].isdigit():
+            j += 1
+        return j + int(s[i:j])
+    if s[i] == "S":  # St, Sa, Ss... or S<seq-id>_
+        return i + 2 if s[i + 1].islower() else s.index("_", i) + 1
+    return i + 1
+
+
+def _skip_template_args(s, i):
+    """Index past the I...E template argument list that starts at i."""
+    depth, i = 1, i + 1
+    while depth:
+        c = s[i]
+        if c.isdigit() or c == "S":
+            i = _skip_name(s, i)
+        elif c == "L":  # a literal such as Li5E holds digits that are not names
+            i = s.index("E", i) + 1
+        elif c in "INX":
+            depth, i = depth + 1, i + 1
+        elif c == "E":
+            depth, i = depth - 1, i + 1
+        else:
+            i += 1
+    return i
 
 
 def body_of(symbol):
     """The C2/D2 body a C1/D1 constructor or destructor aliases, else symbol.
-    Itanium source names are length-prefixed, so a C1E or D1E that ends a
-    name such as 4ABC1E is part of that name, not a constructor component."""
-    for m in ALIAS.finditer(symbol):
-        end = m.start() + 2  # one past the "1"
-        if not any(symbol[:end - n].endswith(str(n)) for n in range(1, end)):
-            return symbol[:m.start() + 1] + "2" + symbol[m.start() + 2:]
+    A constructor or destructor is always a member, so its C1 or D1 is a
+    top-level component of the _ZN...E nested name. Walking the length-prefixed
+    names keeps a name that merely ends in C1, such as A::ABC1(), unchanged."""
+    if not symbol.startswith("_ZN"):
+        return symbol
+    i = 3
+    try:
+        while symbol[i] in "rVK":
+            i += 1
+        while symbol[i] != "E":
+            c = symbol[i]
+            if c in "CD" and symbol[i + 1] == "1":
+                return symbol[:i + 1] + "2" + symbol[i + 2:]
+            if c == "I":
+                i = _skip_template_args(symbol, i)
+            elif c == "B":  # ABI tag: B<source-name>
+                i = _skip_name(symbol, i + 1)
+            else:
+                i = _skip_name(symbol, i)
+    except (IndexError, ValueError):
+        pass  # not a name this parser understands: leave it alone
     return symbol
 FUNC = re.compile(r"^([0-9a-f]+) <([^>+]+)>:$")
 ENTRY = re.compile(r"^\s*([0-9a-f]+):.*\tentry\ta1, (\d+)$")

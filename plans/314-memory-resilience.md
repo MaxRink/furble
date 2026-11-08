@@ -565,8 +565,9 @@ exact name was compiled, so it parsed the alias and read past its `retw.n`
 into the literal pool. Those bytes decoded as a call to `GPS::update`, which
 reaches the UI and LVGL event recursion. The tool now skips a C1/D1 alias of
 a compiled body and resolves calls to it through the body's `file:symbol`
-node. Only a C1/D1 that is the constructor component is rewritten: a match
-that ends a length-prefixed source name, such as `A::ABC1()`, is left alone.
+node. `body_of()` finds the C1/D1 by walking the `_ZN...E` nested name: its
+length-prefixed source names, substitutions and template arguments. So
+`A::ABC1()` is left alone and the destructor of a class `Foo2` still resolves.
 The control task is back at 2,192 bytes, and the StickS3 main task lists 23
 fewer callees without a frame. `tests/test_stack_budget.py` covers the alias.
 All nine envs built for PR 8 still pass with the fixed tool.
