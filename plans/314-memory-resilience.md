@@ -530,8 +530,12 @@ Validation (local, macOS, sim-only, no hardware):
 ## PR 9: GPS buffer audit
 
 The plan asked to confirm or add caps on the GPS line buffers. Every buffer
-the UART bytes can grow already has a cap, so the only change is deleting
-`m_SatPartial`, a `std::string` member no code ever read or wrote.
+the UART bytes can grow already had a cap. This PR deletes `m_SatPartial`, a
+`std::string` member no code ever read or wrote, and tightens the GSV bound:
+`feedGsv` consumed every quad on a line, so a checksum-valid 96-byte line
+could add more satellites than the four the format allows. It now
+reads at most four, which bounds a set at 32, the `MAX_SATELLITES` publish
+cap.
 
 | Buffer | Bound | Where |
 |---|---|---|
@@ -542,7 +546,7 @@ the UART bytes can grow already has a cap, so the only change is deleting
 | `m_ConfigQueue` and `m_ConfigStatus` | `MAX_CONFIG_COMMANDS` (16); a full queue logs and drops | `GPS::enqueueConfig` |
 | `splitNmea` fields | at most one field per byte of a 96-byte line | `lib/furble/protocol/GpsCasic.cpp` |
 | GSV `TalkerSet` list | one per constellation, six values | `NmeaSatellites::setFor` |
-| GSV `building` | `total <= 8` sentences, four satellites each, repeated sentence numbers ignored | `NmeaSatellites::feedGsv` |
+| GSV `building` | `total <= 8` sentences of at most four satellites (enforced since this PR), repeated sentence numbers ignored: 32 | `NmeaSatellites::feedGsv` |
 | GSA used list | `MAX_USED_SATELLITES` (64) | `NmeaSatellites::feedGsa` |
 
 Not done: the optional ESP32-S3 LVGL allocator that prefers PSRAM. The plan
@@ -561,7 +565,9 @@ exact name was compiled, so it parsed the alias and read past its `retw.n`
 into the literal pool. Those bytes decoded as a call to `GPS::update`, which
 reaches the UI and LVGL event recursion. The tool now skips a C1/D1 alias of
 a compiled body and resolves calls to it through the body's `file:symbol`
-node. The control task is back at 2,192 bytes, and the StickS3 main task lists 23
+node. Only a C1/D1 that is the constructor component is rewritten: a match
+that ends a length-prefixed source name, such as `A::ABC1()`, is left alone.
+The control task is back at 2,192 bytes, and the StickS3 main task lists 23
 fewer callees without a frame. `tests/test_stack_budget.py` covers the alias.
 All nine envs built for PR 8 still pass with the fixed tool.
 

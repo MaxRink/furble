@@ -266,7 +266,9 @@ bool NmeaSatellites::feedGsv(uint8_t constellation, const std::vector<std::strin
     return true;
   }
 
-  for (size_t base = 4; (base + 3) < fields.size(); base += 4) {
+  // A GSV sentence carries at most four satellites. Extra quads are not part
+  // of the format, and ignoring them bounds a set at 8 x 4 = 32 entries.
+  for (size_t base = 4; ((base + 3) < fields.size()) && (base < 4 + (4 * 4)); base += 4) {
     // stop at the trailing signalId field, which is not a satellite quad
     if ((base + 4) > fields.size()) {
       break;

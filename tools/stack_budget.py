@@ -31,6 +31,17 @@ EDGE = re.compile(r'edge: \{ sourcename: "([^"]*)" targetname: "([^"]*)"(?: labe
 FRAME = re.compile(r"\\n(\d+) bytes \(([a-z,]+)\)")
 INDIRECT = "__indirect_call"
 ALIAS = re.compile(r"([CD])1E")
+
+
+def body_of(symbol):
+    """The C2/D2 body a C1/D1 constructor or destructor aliases, else symbol.
+    Itanium source names are length-prefixed, so a C1E or D1E that ends a
+    name such as 4ABC1E is part of that name, not a constructor component."""
+    for m in ALIAS.finditer(symbol):
+        end = m.start() + 2  # one past the "1"
+        if not any(symbol[:end - n].endswith(str(n)) for n in range(1, end)):
+            return symbol[:m.start() + 1] + "2" + symbol[m.start() + 2:]
+    return symbol
 FUNC = re.compile(r"^([0-9a-f]+) <([^>+]+)>:$")
 ENTRY = re.compile(r"^\s*([0-9a-f]+):.*\tentry\ta1, (\d+)$")
 # A blob's static functions have no symbol, so objdump lists them under the
@@ -110,7 +121,7 @@ class Graph:
                 # address, and objdump may label it by either name. Parsing it
                 # would read past its retw into the literal pool that follows.
                 if (fn in compiled or fn.replace("$", ".") in compiled
-                        or ALIAS.sub(r"\g<1>2E", fn) in compiled):
+                        or body_of(fn) in compiled):
                     symbol = fn = None  # compiled here: the .ci node is authoritative
                 literal = {}
                 continue
@@ -154,7 +165,7 @@ class Graph:
         """The node holding title's frame: itself, its global name, or the
         C2/D2 body that a C1/D1 constructor or destructor aliases."""
         symbol = title.rsplit(":", 1)[-1]
-        body = ALIAS.sub(r"\g<1>2E", symbol)
+        body = body_of(symbol)
         for candidate in (title, symbol, body, symbol.replace(".", "$")):
             if candidate in self.frame:
                 return candidate

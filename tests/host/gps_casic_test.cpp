@@ -232,6 +232,19 @@ bool testNmeaReassembly() {
   return g_Failures == before;
 }
 
+bool testGsvFourSatellitesPerSentence() {
+  std::cout << "test: a GSV sentence contributes at most four satellites\n";
+  const int before = g_Failures;
+
+  Casic::NmeaSatellites sats;
+  // Six quads plus the signal ID: only the first four are part of the format.
+  sats.feed(nmea("GPGSV,1,1,06,01,40,100,45,02,30,200,40,03,20,300,35,04,10,050,30,05,45,010,50,"
+                 "06,35,020,42,1"));
+  check(sats.inView() == 4, "quads past the fourth are ignored");
+
+  return g_Failures == before;
+}
+
 bool testGsaSystemId() {
   std::cout << "test: GNGSA system ID keeps used flags scoped to one constellation\n";
   const int before = g_Failures;
@@ -1337,6 +1350,7 @@ int main() {
   testAutobaudLockLaterStep();
   testNmeaParse();
   testNmeaReassembly();
+  testGsvFourSatellitesPerSentence();
   testGsaSystemId();
   testNmeaMalformed();
   testEphemerisCollector();

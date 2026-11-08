@@ -268,6 +268,15 @@ class StackBudgetTest(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("PASS t: 336 of 336 bytes (48 frames + 288 port overhead)", r.stdout)
 
+    def test_alias_rewrites_only_a_constructor_component(self):
+        sys.path.insert(0, str(TOOL.parent))
+        import stack_budget
+        self.assertEqual(stack_budget.body_of("_ZN1XD1Ev"), "_ZN1XD2Ev")
+        self.assertEqual(stack_budget.body_of("_ZN3FooC1ERKS_"), "_ZN3FooC2ERKS_")
+        # A::ABC1() and A::C1() are ordinary functions whose names end in C1
+        self.assertEqual(stack_budget.body_of("_ZN1A4ABC1Ev"), "_ZN1A4ABC1Ev")
+        self.assertEqual(stack_budget.body_of("_ZN1A2C1Ev"), "_ZN1A2C1Ev")
+
 
 class ManifestSourceTest(unittest.TestCase):
     """The stack sizes in the manifests must be the ones the firmware creates."""
