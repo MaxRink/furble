@@ -161,15 +161,33 @@ Run the static analyzers when touching C/C++:
 ```sh
 cmake -S tests/host -B .pio/static-build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 cmake -S sim -B .pio/static-sim   -DCMAKE_EXPORT_COMPILE_COMMANDS=ON   -DFURBLE_DEP_ROOT="$PWD/.pio/libdeps/m5stick-s3"   -DFURBLE_LVGL_DIR="$PWD/managed_components/lvgl__lvgl"
-python3 tools/check_static_analysis.py --base origin/master   --build-dir .pio/static-build --build-dir .pio/static-sim
+for env in m5stick-s3 m5stick-c; do
+  FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e $env -t compiledb
+  python3 tools/firmware_compile_db.py --env $env
+done
+python3 tools/check_static_analysis.py --base origin/master   --build-dir .pio/static-build --build-dir .pio/static-sim   --build-dir .pio/static-build/firmware-m5stick-s3   --build-dir .pio/static-build/firmware-m5stick-c
 ```
 
 The gate runs cppcheck and clang-tidy on changed files under `src/`,
 `lib/furble/`, `include/`, and `sim/`. `.clang-tidy` records the check set;
 `tools/check_static_analysis.py` records the cppcheck suppressions and their
 reasons. `static-analysis.yml` runs the same command on pull requests that
-touch C/C++ paths. A changed file with no compile command is reported as
-skipped; do not treat a skip as analysis.
+touch C/C++ paths.
+
+The firmware databases cover the ESP-IDF-only sources, such as the WiFi,
+Ethernet, IR and IMU drivers, that the host and simulator builds never
+compile. `tools/firmware_compile_db.py` rewrites the Xtensa GCC commands for
+clang: an i686 stand-in target, `__XTENSA__` defined, GCC-only flags dropped,
+the toolchain's libstdc++ and newlib as system headers, and `-w` because GCC
+owns firmware compiler warnings. A changed source that no database compiles
+fails the gate; the only exemptions are listed in `NO_COMPILE_DB` with their
+reasons.
+
+`cppcoreguidelines-owning-memory` flags C++ `new` and `delete` outside a
+`std::unique_ptr`. FILE handles and the C allocators are left to the
+path-sensitive `clang-analyzer-unix.Stream` and `unix.Malloc` checks. The
+memory families are `WarningsAsErrors`; a promoted check in a vendored header
+is not a compile failure, but any other clang-tidy error is.
 
 ### Sim-first release gates
 

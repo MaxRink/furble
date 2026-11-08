@@ -435,7 +435,7 @@ void DJIOsmo::handleNotification(const uint8_t *data, size_t length) {
   if (!response && cmdSet == CMD_SET_CAMERA && cmdId == CMD_STATUS_PUSH && payloadLength >= 7) {
     const uint8_t cameraMode = payload[0];
     const uint8_t cameraStatus = payload[1];
-    const uint16_t recordTime = readLE16(payload + 5);
+    [[maybe_unused]] const uint16_t recordTime = readLE16(payload + 5);  // logged only
     const bool recording = cameraStatus == 0x05 || (cameraStatus == 0x03 && cameraMode != 0x05);
     const std::lock_guard<std::mutex> lock(m_ProtocolMutex);
     m_Recording = recording;

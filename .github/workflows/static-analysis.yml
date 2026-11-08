@@ -8,6 +8,12 @@ on:
       - 'include/**'
       - 'sim/**'
       - 'tools/check_static_analysis.py'
+      - 'tools/firmware_compile_db.py'
+      - 'tests/test_check_static_analysis.py'
+      - 'tests/test_firmware_compile_db.py'
+      - 'platformio.ini'
+      - 'sdkconfig.m5stick-s3'
+      - 'sdkconfig.m5stick-c'
       - '.clang-tidy'
       - '.github/workflows/static-analysis.yml'
   workflow_dispatch:
@@ -81,12 +87,52 @@ jobs:
           -DFURBLE_DEP_ROOT=${{ github.workspace }}/sim/.pio/libdeps/sim
           -DFURBLE_LVGL_DIR=${{ github.workspace }}/sim/.pio/libdeps/sim/lvgl
 
+      - name: Cache PlatformIO packages and platforms
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: |
+            ~/.platformio/packages
+            ~/.platformio/platforms
+            ~/.platformio/.cache
+          key: ${{ runner.os }}-pio-static-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-platformio-
+
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install PlatformIO
+        run: python -m pip install -r requirements.txt
+
+      # The firmware databases cover the ESP-IDF-only sources (WiFi, Ethernet,
+      # IR, IMU drivers) that neither host database compiles. The S3 profile
+      # has PSRAM, MQTT and the WebUI; the StickC is the plain ESP32 profile.
+      - name: Generate firmware compile databases
+        env:
+          FURBLE_VERSION: dev
+          FURBLE_TEST: "0"
+        run: |
+          for env in m5stick-s3 m5stick-c; do
+            # The first TinyGPSPlus install in a fresh libdeps can fail once.
+            platformio run -e "$env" -t compiledb || platformio run -e "$env" -t compiledb
+            python3 tools/firmware_compile_db.py --env "$env"
+          done
+
       - name: Run static analysis
         run: |
+          dirs="--build-dir build-static --build-dir build-sim-static"
+          dirs="$dirs --build-dir .pio/static-build/firmware-m5stick-s3"
+          dirs="$dirs --build-dir .pio/static-build/firmware-m5stick-c"
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            python3 tools/check_static_analysis.py --all \
-              --build-dir build-static --build-dir build-sim-static --jobs 2
+            python3 tools/check_static_analysis.py --all $dirs --jobs 2
           else
-            python3 tools/check_static_analysis.py --base origin/master \
-              --build-dir build-static --build-dir build-sim-static --jobs 2
+            python3 tools/check_static_analysis.py --base origin/master $dirs --jobs 2
           fi
+
+      - name: Static analysis tool tests
+        run: >
+          python3 -m unittest tests.test_check_static_analysis
+          tests.test_firmware_compile_db

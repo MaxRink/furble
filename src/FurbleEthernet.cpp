@@ -138,7 +138,8 @@ constexpr int ETH_SPI_CLOCK_HZ = 20 * 1000 * 1000;
 
 class EspEthTransport final: public Ethernet::Transport {
  public:
-  ~EspEthTransport() override { stop(); }
+  // Firmware builds with -fno-exceptions, so nothing can escape stop().
+  ~EspEthTransport() override { stop(); }  // NOLINT(bugprone-exception-escape)
 
   bool init(EventCallback callback) override {
     {

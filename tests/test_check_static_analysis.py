@@ -1,7 +1,10 @@
 """Tests for the static-analysis gate parsing."""
 
 import importlib.util
+import json
 from pathlib import Path
+import sys
+import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -101,6 +104,70 @@ class ClangTidyParseTest(unittest.TestCase):
         )
         self.assertEqual(findings, [])
         self.assertEqual(errors, [])
+
+
+class ClangTidyRunTest(unittest.TestCase):
+    """run_clang_tidy against a fake clang-tidy that prints its arguments."""
+
+    def run_tidy(self, dirname, targets):
+        with tempfile.TemporaryDirectory() as tmp:
+            build = Path(tmp) / dirname
+            build.mkdir()
+            entry = {"directory": str(ROOT), "file": str(ROOT / "src" / "main.cpp"),
+                     "arguments": ["clang++", "-c", "src/main.cpp"]}
+            (build / "compile_commands.json").write_text(json.dumps([entry]))
+            tidy = Path(tmp) / "clang-tidy"
+            tidy.write_text(f"#!{sys.executable}\nimport sys\nprint(' '.join(sys.argv[1:]))\n")
+            tidy.chmod(0o755)
+            return CHECKER.run_clang_tidy(targets, [build], str(tidy), 1)
+
+    def test_source_without_a_compile_command_is_reported(self):
+        _, _, skipped = self.run_tidy("host", ["src/main.cpp", "src/FurbleGPS.cpp"])
+        self.assertEqual(skipped, ["src/FurbleGPS.cpp"])
+
+    def test_named_exemption_is_not_reported(self):
+        _, _, skipped = self.run_tidy("host", ["sim/env_mutation_guard.c"])
+        self.assertEqual(skipped, [])
+
+    def run_fake(self, script):
+        with tempfile.TemporaryDirectory() as tmp:
+            build = Path(tmp) / "host"
+            build.mkdir()
+            entry = {"directory": str(ROOT), "file": str(ROOT / "src" / "main.cpp"),
+                     "arguments": ["clang++", "-c", "src/main.cpp"]}
+            (build / "compile_commands.json").write_text(json.dumps([entry]))
+            tidy = Path(tmp) / "clang-tidy"
+            tidy.write_text(f"#!{sys.executable}\nimport sys\n{script}\n")
+            tidy.chmod(0o755)
+            return CHECKER.run_clang_tidy(["src/main.cpp"], [build], str(tidy), 1)
+
+    def test_promoted_check_in_a_vendored_header_is_not_a_compile_error(self):
+        findings, errors, _ = self.run_fake(
+            "print('/x/.pio/libdeps/M5GFX/a.hpp:1:1: error: deleting [cppcoreguidelines-owning-"
+            "memory,-warnings-as-errors]'); sys.exit(1)")
+        self.assertEqual((findings, errors), ([], []))
+
+    def test_silent_failure_and_real_error_are_compile_errors(self):
+        _, errors, _ = self.run_fake("sys.exit(1)")
+        self.assertEqual(len(errors), 1)
+        _, errors, _ = self.run_fake("print('/x/vendor.h:1:1: error: unknown type name'); sys.exit(1)")
+        self.assertEqual(len(errors), 1)
+
+    def test_firmware_database_gets_no_simulator_shims(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for name, shimmed in (("host", True), ("firmware-x", False)):
+                build = Path(tmp) / name
+                build.mkdir()
+                entry = {"directory": str(ROOT), "file": str(ROOT / "src" / "main.cpp"),
+                         "arguments": ["clang++", "-c", "src/main.cpp"]}
+                (build / "compile_commands.json").write_text(json.dumps([entry]))
+                log = Path(tmp) / f"{name}.args"
+                tidy = Path(tmp) / f"tidy-{name}"
+                tidy.write_text(f"#!{sys.executable}\nimport sys\n"
+                                f"open({str(log)!r}, 'w').write(' '.join(sys.argv[1:]))\n")
+                tidy.chmod(0o755)
+                CHECKER.run_clang_tidy(["src/main.cpp"], [build], str(tidy), 1)
+                self.assertEqual("sim/shim" in log.read_text(), shimmed, name)
 
 
 if __name__ == "__main__":

@@ -12,12 +12,23 @@
 #   containers are used for deterministic host output;
 # - every scanf caller checks its return value, and the remaining atoi sites
 #   are converted where they are not already bounded;
-# - the preferences shim uses a leading underscore in its include guard.
+# - the preferences shim uses a leading underscore in its include guard;
+# - ESP-IDF config structs (wifi_config_t, rmt_tx_channel_config_t) are
+#   zero-initialized by their documented contract, and several of their C
+#   enums have no zero enumerator.
+#
+# cppcoreguidelines-owning-memory flags C++ new and delete whose pointer is not
+# a std::unique_ptr or gsl::owner. Its legacy-resource lists are emptied: FILE
+# handles and the C allocators are tracked by the path-sensitive
+# clang-analyzer-unix.Stream and unix.Malloc checks instead, which need no
+# annotations on C APIs. The memory families are errors so a direct
+# clang-tidy run fails the same way the gate does.
 #
 # `tools/check_static_analysis.py` runs this config on changed files in CI.
 Checks: >
   bugprone-*,
   clang-analyzer-*,
+  cppcoreguidelines-owning-memory,
   cert-*,
   performance-*,
   portability-*,
@@ -28,6 +39,7 @@ Checks: >
   -bugprone-branch-clone,
   -bugprone-macro-parentheses,
   -bugprone-signed-bitwise,
+  -bugprone-invalid-enum-default-initialization,
   -bugprone-throwing-static-initialization,
   -bugprone-switch-missing-default-case,
   -bugprone-nondeterministic-pointer-iteration-order,
@@ -52,5 +64,8 @@ Checks: >
   -portability-avoid-pragma-once
 HeaderFilterRegex: '(src|lib/furble|include|sim)/'
 FormatStyle: file
-WarningsAsErrors: ''
+WarningsAsErrors: 'cppcoreguidelines-owning-memory,bugprone-unchecked-optional-access,bugprone-use-after-move,bugprone-dangling-handle,clang-analyzer-cplusplus.NewDelete*,clang-analyzer-cplusplus.InnerPointer,clang-analyzer-unix.Malloc*,clang-analyzer-unix.Stream'
+CheckOptions:
+  cppcoreguidelines-owning-memory.LegacyResourceProducers: ''
+  cppcoreguidelines-owning-memory.LegacyResourceConsumers: ''
 ...

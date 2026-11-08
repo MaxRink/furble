@@ -1236,6 +1236,8 @@ QueueHandle_t createQueue(UBaseType_t queueLength,
       return nullptr;
     }
   }
+  // A FreeRTOS handle is a raw pointer by API; vQueueDelete owns the delete.
+  // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
   QueueHandle_t queue = new FurbleSimQueue(queueLength, itemSize);
   if (charge.charged != 0) {
     const std::lock_guard<std::mutex> lock(s_QueueChargeMutex);
@@ -1392,7 +1394,7 @@ void vQueueDelete(QueueHandle_t queue) {
     }
   }
   if (deleteNow) {
-    delete queue;
+    delete queue;  // NOLINT(cppcoreguidelines-owning-memory): the handle from xQueueCreate
   }
 }
 

@@ -106,7 +106,7 @@ inline void furbleSimTimerDispatcherRun(void) {
     if (timer->delete_requested) {
       furbleSimEraseTimerLocked(timer);
       lock.unlock();
-      delete timer;
+      delete timer;  // NOLINT(cppcoreguidelines-owning-memory): an IDF timer handle
       lock.lock();
     }
     Furble::Sim::schedulerCondition().notify_all();
@@ -151,11 +151,13 @@ inline esp_err_t esp_timer_create(const esp_timer_create_args_t *args,
     return ESP_FAIL;
   }
 
+  // An IDF handle is a raw pointer by API; esp_timer_delete owns the delete.
+  // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
   FurbleSimTimer *timer = new FurbleSimTimer(*args);
   {
     const std::lock_guard<std::mutex> lock(Furble::Sim::schedulerMutex());
     if (Furble::Sim::schedulerStopping()) {
-      delete timer;
+      delete timer;  // NOLINT(cppcoreguidelines-owning-memory): an IDF timer handle
       return ESP_FAIL;
     }
     furbleSimTimerRegistry().push_back(timer);
@@ -182,7 +184,7 @@ inline esp_err_t esp_timer_delete(esp_timer_handle_t timer) {
     furbleSimEraseTimerLocked(timer);
     Furble::Sim::schedulerTimerDueChanged(furbleSimNextDueTimerLocked() != nullptr);
   }
-  delete timer;
+  delete timer;  // NOLINT(cppcoreguidelines-owning-memory): an IDF timer handle
   return ESP_OK;
 }
 

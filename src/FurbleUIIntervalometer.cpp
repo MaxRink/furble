@@ -291,6 +291,8 @@ void UI::Intervalometer::Spinner::update(void) {
       case 2:
         m_SpinValue.m_Unit = SpinValue::UNIT_MIN;
         break;
+      default:
+        break;
     }
   }
   updateLabels();

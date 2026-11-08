@@ -42,8 +42,9 @@ failures. Its fixed seeds live in `tests/fuzz/seeds.json`; the earlier MQTT
 owner stack overflow and Home Assistant discovery OOM are fixed and carry
 regressions. The flash-readiness gate below remains the authority.
 Static analysis is `python3 tools/check_static_analysis.py --base origin/master`
-with the host and simulator compile databases; `static-analysis.yml` runs it in
-CI.
+with the host, simulator and firmware compile databases
+(`tools/firmware_compile_db.py` for m5stick-s3 and m5stick-c);
+`static-analysis.yml` runs it in CI. A source no database compiles fails.
 The simulator power gate uses the two-sided `tools/power-model/compare.py`
 threshold; its default 10% value is compatibility policy, not calibrated
 hardware noise. Focused coverage is `python3 -m unittest tests/test_power_compare.py`.

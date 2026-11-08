@@ -248,7 +248,7 @@ bool Preferences::clear() {
   if (load_status == LoadStatus::ERROR) {
     return false;
   }
-  const auto previous = values;
+  auto previous = values;
   const std::string prefix = std::to_string(_handle) + ":";
   for (auto it = values.begin(); it != values.end();) {
     if (it->first.compare(0, prefix.size(), prefix) == 0) {

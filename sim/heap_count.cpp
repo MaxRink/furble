@@ -46,7 +46,7 @@ struct MallocAllocator {
     }
     return static_cast<T *>(pointer);
   }
-  void deallocate(T *pointer, size_t) { std::free(pointer); }
+  void deallocate(T *pointer, size_t) { std::free(static_cast<void *>(pointer)); }
   template <typename U>
   bool operator==(const MallocAllocator<U> &) const {
     return true;
@@ -72,6 +72,8 @@ struct registry_t {
 // Never destroyed: allocations are freed during static destruction too.
 registry_t &registry(void) {
   alignas(registry_t) static unsigned char storage[sizeof(registry_t)];
+  // Placement new into static storage: nothing is allocated or freed.
+  // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
   static registry_t *instance = new (storage) registry_t();
   return *instance;
 }

@@ -206,6 +206,8 @@ struct heap_state_t {
 // destruction too, after a function-local static would already be gone.
 heap_state_t &state(void) {
   alignas(heap_state_t) static unsigned char storage[sizeof(heap_state_t)];
+  // Placement new into static storage: nothing is allocated or freed.
+  // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
   static heap_state_t *instance = new (storage) heap_state_t();
   return *instance;
 }
@@ -368,6 +370,8 @@ bool heapCountedAllocCaps(size_t requested,
     return true;
   }
   const bool psram = MALLOC_MAY_USE_PSRAM && psramReady;
+  // Never called on a board built without PSRAM, where psram is constant false.
+  // NOLINTNEXTLINE(clang-analyzer-deadcode.DeadStores)
   auto takeExternal = [&heap, bytes]() {
     if (bytes > heap.psramFree || bytes > heap.psramLargest) {
       return false;
@@ -410,11 +414,11 @@ void heapBaselineBlock(size_t requested, uint32_t caps, size_t *bytes, bool *ext
   const model_lock_t lock;
   heap_state_t &heap = state();
   *bytes = blockBytes(requested);
-  const bool psramReady = heap.psramState == "ready";
   if (caps != 0) {
     *external = (caps & MALLOC_CAP_SPIRAM) != 0;
   } else {
-    *external = MALLOC_MAY_USE_PSRAM && psramReady && requested > MALLOC_ALWAYSINTERNAL;
+    *external =
+        MALLOC_MAY_USE_PSRAM && (heap.psramState == "ready") && requested > MALLOC_ALWAYSINTERNAL;
   }
 }
 

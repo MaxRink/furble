@@ -733,8 +733,8 @@ bool SD::isSupported(void) const {
 
 void SD::init(void) {
   auto &sd = getInstance();
-  const int cs = static_cast<int>(M5.getPin(m5::pin_name_t::sd_spi_cs));
-  sd.m_Supported = isCoreBoard() && (cs >= 0) && (cs != 255);
+  const int8_t cs = M5.getPin(m5::pin_name_t::sd_spi_cs);
+  sd.m_Supported = isCoreBoard() && (cs >= 0);
 
   if (!sd.m_Supported) {
     ESP_LOGI(LOG_TAG, "SD card storage is not supported on this board.");
@@ -933,9 +933,9 @@ bool SD::mount(void) {
 
   m_MountFailed = true;
 
-  const int cs = static_cast<int>(M5.getPin(m5::pin_name_t::sd_spi_cs));
+  const int8_t cs = M5.getPin(m5::pin_name_t::sd_spi_cs);
   auto *panel = M5.Display.getPanel();
-  if ((cs < 0) || (cs == 255) || (panel == nullptr)) {
+  if ((cs < 0) || (panel == nullptr)) {
     ESP_LOGE(LOG_TAG, "SD card pins or display panel are unavailable.");
     return false;
   }
@@ -953,7 +953,7 @@ bool SD::mount(void) {
   host.max_freq_khz = SD_SPI_FREQUENCY_KHZ;
 
   sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
-  slot_config.gpio_cs = static_cast<gpio_num_t>(cs);
+  slot_config.gpio_cs = static_cast<gpio_num_t>(static_cast<uint8_t>(cs));  // cs >= 0 above
   slot_config.host_id = static_cast<spi_host_device_t>(host.slot);
 
   esp_vfs_fat_mount_config_t mount_config = {};

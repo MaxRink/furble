@@ -506,11 +506,10 @@ void Scan::runStartProbe(void) {
     m_StartProbeBlocked = blocked;
     if (blocked) {
       m_ProbeWorkers.push_back(std::move(worker));
+      return;
     }
   }
-  if (!blocked) {
-    worker.join();
-  }
+  worker.join();
 }
 
 void Scan::joinStartProbes(void) {

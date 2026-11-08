@@ -165,7 +165,7 @@ void warmCrashUnwinder(void) {
   const int depth = backtrace(frames, MAX_FRAMES);
   if (depth > 0) {
     char **symbols = backtrace_symbols(frames, depth);
-    std::free(symbols);
+    std::free(static_cast<void *>(symbols));
   }
 }
 

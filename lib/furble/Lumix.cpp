@@ -404,7 +404,8 @@ void Lumix::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
       .fix = 0x41,
       .reserved = 0x00,
   };
-  bool rc = m_Location->writeValue(reinterpret_cast<const uint8_t *>(&geo), sizeof(geo), true);
+  [[maybe_unused]] const bool rc =
+      m_Location->writeValue(reinterpret_cast<const uint8_t *>(&geo), sizeof(geo), true);
 
   ESP_LOGD(LOG_TAG, "Lumix GPS lat=%.7f lon=%.7f alt=%.1f utc=%04u-%02u-%02u %02u:%02u:%02u => %s",
            gps.latitude, gps.longitude, gps.altitude, timesync.year, timesync.month, timesync.day,
