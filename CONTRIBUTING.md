@@ -102,8 +102,8 @@ A settings configuration change must be applied consistently across all six
 committed release `sdkconfig.<env>` files, never for just one env. See
 `CLAUDE.md` for the build traps.
 
-The S3 release sdkconfigs disable the boot-time PSRAM memory test. The S3 debug
-environments merge `sdkconfig.spiram-memtest` back in, and the debug sdkconfig
+The S3 and Core2 release sdkconfigs disable the boot-time PSRAM memory test.
+Their debug environments merge `sdkconfig.spiram-memtest` back in, and the debug sdkconfig
 script accepts comma-separated fragments for any custom diagnostic profile.
 
 Board-specific ESP-IDF component dependencies need both a compiler define and

@@ -162,7 +162,7 @@ Initially targeted at the M5StickC, the following controllers from [M5Stack](htt
 * M5StickC Plus2
 * M5StickS3
 * M5Core Basic
-* M5Core2
+* M5Core2 (8 MB PSRAM enabled)
 * M5Tough (untested)
 
 furble builds six release firmware images, one per board environment. M5Unified
@@ -251,8 +251,9 @@ below its measured floor (20,480 free / 12,288 largest) with a log line instead
 of resetting the device. A TLS identity first generated at runtime needs 20,864
 free / 12,672 largest; below that HTTPS stays closed until a reboot. The
 StickS3 is not a supported WebUI target until a TLS handshake, a settings write and a soak pass
-succeed on hardware. Core2, the headless S3 profile and the Waveshare profile
-are expected to have more headroom. See [WebUI and REST API](docs/webui.md) for
+succeed on hardware. Core2 (PSRAM enabled since plan 314), the headless S3
+profile and the Waveshare profile keep mbedTLS and NimBLE host memory in PSRAM
+and are expected to have more headroom. See [WebUI and REST API](docs/webui.md) for
 the budget table, setup, certificate verification and the route contract.
 
 ### Debug builds (developers)

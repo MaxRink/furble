@@ -456,6 +456,77 @@ Validation (local, macOS, sim-only, no hardware):
 - `python3 tools/pre_review.py --base origin/master`: 8 gates pass.
   `sh sim/scripts/check-doc-tokens.sh`: pass.
 
+## PR 8: per-board config tuning
+
+State: implemented. Every change is in the committed release sdkconfigs; all
+seven release files were rebuilt together.
+
+Changes:
+
+- Core2: `CONFIG_SPIRAM` on, with the StickS3 PSRAM profile:
+  `SPIRAM_USE_MALLOC`, `SPIRAM_MALLOC_ALWAYSINTERNAL=4096`,
+  `SPIRAM_MALLOC_RESERVE_INTERNAL=32768`, `FREERTOS_TASK_CREATE_ALLOW_EXT_MEM`,
+  mbedTLS and the NimBLE host in PSRAM, and the release memtest off. The Core2
+  datasheet lists 8 MB quad PSRAM on GPIO16/17, which furble does not use
+  there (GPS is on Port A, GPIO32/33). M5GFX and M5Unified do not key ESP32
+  board detection on PSRAM. The display draw buffers already request
+  `MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL`, and every PSRAM path in the firmware
+  is behind `CONFIG_SPIRAM`, the same code the StickS3 runs.
+- Core2: `CONFIG_ESP32_REV_MIN_3`. With PSRAM, the default revision 0 floor
+  enables the rev 1 PSRAM cache workaround, which places libc in IRAM and
+  overflowed `iram0_0_seg` by 1,692 bytes. Core2 and Tough ship the
+  ESP32-D0WDQ6-V3 (revision 3), where the bug is fixed, so the workaround is
+  not needed. The bootloader refuses an older chip instead of running it.
+- Core2 debug merges `sdkconfig.spiram-memtest` like the S3 debug envs.
+- Waveshare and headless: `BT_NIMBLE_MEM_ALLOC_MODE_EXTERNAL`, as on the
+  StickS3. `docs/webui.md` already claimed this for the headless build.
+- All boards: WiFi dynamic RX and TX buffer caps 32 to 16. Plan 305 rejected
+  this because the caps are not preallocated and save nothing steady. Under
+  `HEAP_ABORT_WHEN_ALLOCATION_FAILS` the cap matters: a receive burst that
+  cannot allocate its buffer reboots the device, and the cap bounds that
+  transient at 16 frames of about 1.6 KiB. 16 still exceeds the 6-frame
+  AMPDU BA window.
+
+Derived boot heap (`tools/derive_sim_heap.py`, upper bound): Core2 111,064 to
+130,292 free and 129,984 largest, Waveshare 142,908 to 162,288. The sim models Core2
+and Tough with 8 MB quad PSRAM. Their memory profile rows had stale figures (a
+6 KiB MQTT owner and worker and 20 KiB internal mbedTLS) and now match the
+firmware constants: 10,240 owner, 3,072 plain worker, mbedTLS external, the
+32 KiB PSRAM internal reserve.
+
+Not changed, with the reason:
+
+- NimBLE connections 9 to 5 and bonds 15 to 8. Fewer connections caps
+  Multi-Connect, a user-visible limit. Fewer bonds drops existing bonds on
+  upgrade and contradicts `CompanionGatt::MAX_BONDS` (15). The saving is a few
+  hundred bytes per connection.
+- `SPIRAM_TRY_ALLOCATE_WIFI_LWIP`. It forces static WiFi TX buffers; plan 305
+  defers it to an OTA throughput soak, which needs hardware.
+- `MBEDTLS_DYNAMIC_BUFFER` on boards without PSRAM. With Core2 on PSRAM, no
+  board without PSRAM runs TLS (the 4 MB boards build neither MQTT nor WebUI).
+- `HEAP_POISONING_LIGHT` in release. Light and comprehensive add the same
+  per-block header and canary, so it saves CPU, not memory.
+- A uniform assertion level. It is a diagnostics choice, so PR 13 decides it.
+
+Preexisting: the `board_heap.json` committed with #430 was derived from an
+older ELF. Master's own build already ends static DRAM 176 bytes later on the
+ESP32 boards and 184 on the StickS3 (`_heap_start` 0x3ffcb2a0 on the StickC
+in both builds), so the regenerated derivation and the golden floors in
+`sim/coverage/memory_budget.json` move down by that amount there. The Core2
+and Waveshare floors move up to their new derived values.
+
+Validation (local, macOS, sim-only, no hardware):
+
+- Firmware: all seven release envs plus `m5stack-core2-debug` and
+  `m5stick-s3-debug` build; `tools/stack_budget.py` passes every env. Core2
+  uses 1,966,069 bytes of its 6,291,456-byte slot.
+- `sh sim/scripts/run-e2e.sh`: 210 of 210. `sh sim/scripts/run-memory.sh`
+  (MQTT build): pass. `python3 sim/scripts/run-memory-profile.py`: 13 of 13
+  dumps within budget.
+- Host suite: 185 of 185.
+- `python3 tools/pre_review.py --base origin/master`: pass.
+  `sh sim/scripts/check-doc-tokens.sh` and `tools/check_sim_coverage.py`: pass.
+
 ## Baseline: regenerated release sdkconfigs
 
 State: implemented, as the clean baseline for PR 8 config tuning.

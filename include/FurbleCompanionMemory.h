@@ -17,7 +17,7 @@ inline constexpr size_t TASK_STACK_BYTES = 3072;
 
 /**
  * Derived: the GATT database the first enable builds and keeps, sized from the
- * m5stack-core2 DWARF (NimBLE internal on the ESP32 boards):
+ * m5stack-core2 DWARF:
  * - 2 NimBLEService (68 bytes) and 9 NimBLECharacteristic (92 bytes) objects,
  *   1,140 bytes with block headers;
  * - 9 initial attribute values of CONFIG_NIMBLE_CPP_ATT_VALUE_INIT_LENGTH 20
@@ -28,9 +28,12 @@ inline constexpr size_t TASK_STACK_BYTES = 3072;
  * - the NimBLE attribute entry pool (20 bytes per attribute) and client
  *   configuration pool that ble_gatts_start() rebuilds, about 1 KiB;
  * - the disable and timed-shutter esp_timers, 96 bytes.
- * About 3.1 KiB, rounded up to 4 KiB. On the S3 boards
- * CONFIG_BT_NIMBLE_MEM_ALLOC_MODE_EXTERNAL moves the NimBLE pools to PSRAM, so
- * the floor is conservative there.
+ * About 3.1 KiB, rounded up to 4 KiB. The boards without PSRAM keep all of it
+ * internal. The PSRAM boards (S3 and Core2) set
+ * CONFIG_BT_NIMBLE_MEM_ALLOC_MODE_EXTERNAL, which moves the NimBLE attribute
+ * pools to PSRAM; the NimBLE-cpp objects, arrays and timers are below
+ * SPIRAM_MALLOC_ALWAYSINTERNAL and stay internal. The floor is conservative
+ * there.
  */
 inline constexpr size_t GATT_BYTES = 4096;
 

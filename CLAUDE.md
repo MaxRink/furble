@@ -39,8 +39,8 @@ CLAUDE.md whose directory it touches.
   env. Regeneration also strips comments and rewrites deprecated aliases to
   match their real options, so keep the reason for a setting in its plan doc,
   never in an sdkconfig comment.
-- S3 release sdkconfigs disable `CONFIG_SPIRAM_MEMTEST` to remove the full
-  boot-time PSRAM test. The S3 debug envs merge `sdkconfig.spiram-memtest` back
+- S3 and Core2 release sdkconfigs disable `CONFIG_SPIRAM_MEMTEST` to remove the
+  full boot-time PSRAM test. Their debug envs merge `sdkconfig.spiram-memtest` back
   in. `patches/debug_sdkconfig.py` accepts comma-separated fragments so a
   diagnostic env can layer one on `sdkconfig.debug`.
 - `FURBLE_VERSION` and `FURBLE_TEST` env vars are required for every build:
@@ -284,7 +284,7 @@ check.
   compressed and cost a 12.3 KB decompress per 64x64 draw unless the image
   cache covers them. `CONFIG_LV_USE_REFR_DEBUG` plus the console-gated
   invalidation logger are the diagnosis tools.
-- PSRAM (S3): `SPIRAM_MALLOC_ALWAYSINTERNAL=4096` routes large allocations to
+- PSRAM (S3 and Core2): `SPIRAM_MALLOC_ALWAYSINTERNAL=4096` routes large allocations to
   PSRAM. DMA display buffers must stay `MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL`.
 - LVGL: wide panels need two draw buffers because `displayFlush()` reports the
   flush complete as soon as M5GFX queues the SPI DMA. Narrow panels use one

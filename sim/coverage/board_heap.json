@@ -9,11 +9,11 @@
       "chip": "esp32",
       "elf_symbols": {
         "_data_start": "0x3ffbdb60",
-        "_heap_start": "0x3ffcb1f0",
+        "_heap_start": "0x3ffcb2a0",
         "_iram_end": "0x4009c080",
         "_iram_start": "0x40080000"
       },
-      "static_dram_bytes": 54928,
+      "static_dram_bytes": 55104,
       "dwarf_sizes": {
         "StaticTask_t": 336,
         "StaticQueue_t": 84,
@@ -25,7 +25,7 @@
         "esp_event_loop_instance_t": 24,
         "esp_event_post_instance_t": 16
       },
-      "heap_at_app_start": 255132,
+      "heap_at_app_start": 254956,
       "largest_span_at_app_start": 129984,
       "attributable_boot": [
         {
@@ -161,11 +161,11 @@
         }
       ],
       "attributable_bytes": 120388,
-      "derived_free_upper_bound": 134744,
+      "derived_free_upper_bound": 134568,
       "derived_free_without": {
-        "wifi": 157948,
-        "companion": 138280,
-        "wifi_and_companion": 161484
+        "wifi": 157772,
+        "companion": 138104,
+        "wifi_and_companion": 161308
       },
       "condition": "WiFi with an SSID and the companion enabled, as in the measured seeds",
       "derived_largest_upper_bound": 129984,
@@ -177,11 +177,11 @@
       "chip": "esp32",
       "elf_symbols": {
         "_data_start": "0x3ffbdb60",
-        "_heap_start": "0x3ffcb1d8",
+        "_heap_start": "0x3ffcb288",
         "_iram_end": "0x4009c080",
         "_iram_start": "0x40080000"
       },
-      "static_dram_bytes": 54904,
+      "static_dram_bytes": 55080,
       "dwarf_sizes": {
         "StaticTask_t": 336,
         "StaticQueue_t": 84,
@@ -193,7 +193,7 @@
         "esp_event_loop_instance_t": 24,
         "esp_event_post_instance_t": 16
       },
-      "heap_at_app_start": 255156,
+      "heap_at_app_start": 254980,
       "largest_span_at_app_start": 129984,
       "attributable_boot": [
         {
@@ -329,11 +329,11 @@
         }
       ],
       "attributable_bytes": 121748,
-      "derived_free_upper_bound": 133408,
+      "derived_free_upper_bound": 133232,
       "derived_free_without": {
-        "wifi": 156612,
-        "companion": 136944,
-        "wifi_and_companion": 160148
+        "wifi": 156436,
+        "companion": 136768,
+        "wifi_and_companion": 159972
       },
       "condition": "WiFi with an SSID and the companion enabled, as in the measured seeds",
       "derived_largest_upper_bound": 129984,
@@ -345,11 +345,11 @@
       "chip": "esp32s3",
       "elf_symbols": {
         "_data_start": "0x3fca4700",
-        "_heap_start": "0x3fcb0158",
+        "_heap_start": "0x3fcb0210",
         "_iram_end": "0x40394700",
         "_iram_start": "0x40374000"
       },
-      "static_dram_bytes": 47704,
+      "static_dram_bytes": 47888,
       "dwarf_sizes": {
         "StaticTask_t": 336,
         "StaticQueue_t": 84,
@@ -361,8 +361,8 @@
         "esp_event_loop_instance_t": 24,
         "esp_event_post_instance_t": 16
       },
-      "heap_at_app_start": 261800,
-      "largest_span_at_app_start": 261800,
+      "heap_at_app_start": 261616,
+      "largest_span_at_app_start": 261616,
       "attributable_boot": [
         {
           "term": "idle0",
@@ -482,19 +482,19 @@
         }
       ],
       "attributable_bytes": 87160,
-      "derived_free_upper_bound": 174640,
+      "derived_free_upper_bound": 174456,
       "derived_free_without": {
-        "wifi": 191380,
-        "companion": 178176,
-        "wifi_and_companion": 194916
+        "wifi": 191196,
+        "companion": 177992,
+        "wifi_and_companion": 194732
       },
       "condition": "WiFi with an SSID and the companion enabled, as in the measured seeds",
-      "derived_largest_upper_bound": 174640,
+      "derived_largest_upper_bound": 174456,
       "status": "derived",
       "internal_reserved_for_caps_only": 32768,
       "measured_free": 30007,
       "measured_source": "sim/scenarios/e2e/hw-memory-post394-budget.txt",
-      "unattributed_gap": 144633
+      "unattributed_gap": 144449
     },
     {
       "env": "m5stack-core",
@@ -502,11 +502,11 @@
       "chip": "esp32",
       "elf_symbols": {
         "_data_start": "0x3ffbdb60",
-        "_heap_start": "0x3ffcb208",
+        "_heap_start": "0x3ffcb2b8",
         "_iram_end": "0x4009c080",
         "_iram_start": "0x40080000"
       },
-      "static_dram_bytes": 54952,
+      "static_dram_bytes": 55128,
       "dwarf_sizes": {
         "StaticTask_t": 336,
         "StaticQueue_t": 84,
@@ -518,7 +518,7 @@
         "esp_event_loop_instance_t": 24,
         "esp_event_post_instance_t": 16
       },
-      "heap_at_app_start": 255108,
+      "heap_at_app_start": 254932,
       "largest_span_at_app_start": 129984,
       "attributable_boot": [
         {
@@ -659,14 +659,14 @@
         }
       ],
       "attributable_bytes": 142612,
-      "derived_free_upper_bound": 112496,
+      "derived_free_upper_bound": 112320,
       "derived_free_without": {
-        "wifi": 135700,
-        "companion": 116032,
-        "wifi_and_companion": 139236
+        "wifi": 135524,
+        "companion": 115856,
+        "wifi_and_companion": 139060
       },
       "condition": "WiFi with an SSID and the companion enabled, as in the measured seeds",
-      "derived_largest_upper_bound": 112496,
+      "derived_largest_upper_bound": 112320,
       "status": "derived"
     },
     {
@@ -675,11 +675,11 @@
       "chip": "esp32",
       "elf_symbols": {
         "_data_start": "0x3ffbdb60",
-        "_heap_start": "0x3ffcb7a0",
-        "_iram_end": "0x4009c2cc",
+        "_heap_start": "0x3ffcb8f0",
+        "_iram_end": "0x4009d614",
         "_iram_start": "0x40080000"
       },
-      "static_dram_bytes": 56384,
+      "static_dram_bytes": 56720,
       "dwarf_sizes": {
         "StaticTask_t": 336,
         "StaticQueue_t": 84,
@@ -691,7 +691,7 @@
         "esp_event_loop_instance_t": 24,
         "esp_event_post_instance_t": 16
       },
-      "heap_at_app_start": 253676,
+      "heap_at_app_start": 253340,
       "largest_span_at_app_start": 129984,
       "attributable_boot": [
         {
@@ -758,16 +758,6 @@
           "source": "CONFIG_BT_NIMBLE_HOST_TASK_STACK_SIZE"
         },
         {
-          "term": "nimble_msys",
-          "bytes": 10768,
-          "source": "CONFIG_BT_NIMBLE_MSYS_1/2_BLOCK_COUNT x BLOCK_SIZE"
-        },
-        {
-          "term": "nimble_transport",
-          "bytes": 8796,
-          "source": "CONFIG_BT_NIMBLE_TRANSPORT_ACL/EVT counts x sizes"
-        },
-        {
           "term": "control",
           "bytes": 8560,
           "source": "src/main.cpp control task"
@@ -831,16 +821,17 @@
           "source": "include/FurbleUIMemory.h drawBufferBytes, singleDrawBuffer"
         }
       ],
-      "attributable_bytes": 142612,
-      "derived_free_upper_bound": 111064,
+      "attributable_bytes": 123048,
+      "derived_free_upper_bound": 130292,
       "derived_free_without": {
-        "wifi": 134268,
-        "companion": 114600,
-        "wifi_and_companion": 137804
+        "wifi": 153496,
+        "companion": 133828,
+        "wifi_and_companion": 157032
       },
       "condition": "WiFi with an SSID and the companion enabled, as in the measured seeds",
-      "derived_largest_upper_bound": 111064,
-      "status": "derived"
+      "derived_largest_upper_bound": 129984,
+      "status": "derived",
+      "internal_reserved_for_caps_only": 32768
     },
     {
       "env": "waveshare-s3-eth",
@@ -848,11 +839,11 @@
       "chip": "esp32s3",
       "elf_symbols": {
         "_data_start": "0x3fca4400",
-        "_heap_start": "0x3fcb0fa8",
+        "_heap_start": "0x3fcb1060",
         "_iram_end": "0x40394400",
         "_iram_start": "0x40374000"
       },
-      "static_dram_bytes": 52136,
+      "static_dram_bytes": 52320,
       "dwarf_sizes": {
         "StaticTask_t": 348,
         "StaticQueue_t": 92,
@@ -864,8 +855,8 @@
         "esp_event_loop_instance_t": 24,
         "esp_event_post_instance_t": 16
       },
-      "heap_at_app_start": 258136,
-      "largest_span_at_app_start": 258136,
+      "heap_at_app_start": 257952,
+      "largest_span_at_app_start": 257952,
       "attributable_boot": [
         {
           "term": "idle0",
@@ -931,16 +922,6 @@
           "source": "CONFIG_BT_NIMBLE_HOST_TASK_STACK_SIZE"
         },
         {
-          "term": "nimble_msys",
-          "bytes": 10768,
-          "source": "CONFIG_BT_NIMBLE_MSYS_1/2_BLOCK_COUNT x BLOCK_SIZE"
-        },
-        {
-          "term": "nimble_transport",
-          "bytes": 8796,
-          "source": "CONFIG_BT_NIMBLE_TRANSPORT_ACL/EVT counts x sizes"
-        },
-        {
           "term": "control",
           "bytes": 8572,
           "source": "src/main.cpp control task"
@@ -984,15 +965,15 @@
           "source": "src/main.cpp HEADLESS_REQUEST_QUEUE_LENGTH x sizeof(headless_request_t *)"
         }
       ],
-      "attributable_bytes": 115228,
-      "derived_free_upper_bound": 142908,
+      "attributable_bytes": 95664,
+      "derived_free_upper_bound": 162288,
       "derived_free_without": {
-        "wifi": 166124,
-        "companion": 146456,
-        "wifi_and_companion": 169672
+        "wifi": 185504,
+        "companion": 165836,
+        "wifi_and_companion": 189052
       },
       "condition": "WiFi with an SSID and the companion enabled, as in the measured seeds",
-      "derived_largest_upper_bound": 142908,
+      "derived_largest_upper_bound": 162288,
       "status": "derived",
       "internal_reserved_for_caps_only": 32768
     }

@@ -17,8 +17,8 @@ assert hw.wifi yes
 assert hw.ethernet no
 assert hw.ble yes
 assert hw.gauge voltage_current
-assert hw.psram absent
-assert mem.psram_total 0
+assert hw.psram quad
+assert mem.psram_total 8388608
 assert hw.ir yes
 assert pmic.watchdog unavailable
 assert mem.component.main_stack 16384

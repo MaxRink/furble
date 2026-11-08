@@ -61,9 +61,9 @@ inline constexpr size_t IDENTITY_STACK_BYTES = 12288;
  * signature peak lower, at about 4.6 KiB: an 8-point comb table
  * (MBEDTLS_ECP_WINDOW_SIZE 4, fixed-point optimization off) of 24 limb
  * arrays, the HMAC-DRBG digest contexts and the signing temporaries. Rounded
- * up to 8 KiB. The S3 boards set CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC, so there
- * this heap is PSRAM and the floor is conservative; the Core2 sets
- * CONFIG_MBEDTLS_INTERNAL_MEM_ALLOC and needs it internal.
+ * up to 8 KiB. Every WebUI board (the S3 boards and the Core2) sets
+ * CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC, so this heap is PSRAM and the floor is
+ * conservative. It is kept so the gate does not depend on placement.
  */
 inline constexpr size_t IDENTITY_MBEDTLS_HEAP_BYTES = 8192;
 
