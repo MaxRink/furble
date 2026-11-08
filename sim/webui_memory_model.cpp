@@ -181,7 +181,9 @@ void webuiMemoryEnable(void) {
   const std::lock_guard<std::mutex> lock(state().mutex);
   model_state_t &model = state();
   // Mirrors WebUI::reloadSetting() after the setting is turned on at runtime:
-  // the supervisor gate, then the identity gate when none is stored.
+  // the supervisor gate, then the identity gate when none is stored. Like the
+  // firmware, the supervisor starts without a password so its stack is
+  // charged; webuiSupervisorState() reports the service, which stays off.
   model.enabled = true;
   if (!model.supervisorCreated) {
     startSupervisorLocked(model);
