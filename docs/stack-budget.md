@@ -36,10 +36,13 @@ first in a symbol therefore starts a function of that name. Without the split
 the StickC Plus WiFi blob showed six recursions that were only neighbouring
 functions merged into one, such as `cnx_remove_rc`.
 
-A C1 or D1 constructor or destructor is an alias of its C2 or D2 body, at the
-same address, and objdump may label that address by the alias. The tool skips
-such an alias when the body is compiled here and resolves calls to it through
-the body's `.ci` node, which a comdat body titles `file:symbol`. Parsing the
+A C1 or D1 constructor or destructor is usually an alias of its C2 or D2
+body, at the same address, and objdump may label that address by the alias.
+The tool skips such an alias when the body is compiled here and the symbol
+table (`objdump -t`) puts both at one address, and resolves calls to it
+through the body's `.ci` node, which a comdat body titles `file:symbol`. A
+C1 or D1 at its own address, as with virtual bases, is distinct code and is
+parsed like any other prebuilt function. Parsing the
 alias instead read past its `retw` into the literal pool that follows. In plan
 314 PR 9 that turned a `std::vector` destructor in `NimBLEClient` into a call
 to `GPS::update` and the UI, so the StickS3 control task reported 164

@@ -87,6 +87,8 @@ def body_of(symbol):
         pass  # not a name this parser understands: leave it alone
     return symbol
 FUNC = re.compile(r"^([0-9a-f]+) <([^>+]+)>:$")
+# objdump -t: "42086bd8  w    F .flash.text\t00000014 _ZN...D1Ev"
+SYMBOL = re.compile(r"^([0-9a-f]+)\s.*\sF\s+\S+\s+[0-9a-f]+\s+(\S+)$")
 ENTRY = re.compile(r"^\s*([0-9a-f]+):.*\tentry\ta1, (\d+)$")
 # A blob's static functions have no symbol, so objdump lists them under the
 # previous one and calls them as <symbol+0xoffset>. Each entry instruction
@@ -152,6 +154,13 @@ class Graph:
         register is an indirect call."""
         out = subprocess.run([objdump, "-d", str(elf)], capture_output=True, text=True,
                              check=True).stdout
+        table = subprocess.run([objdump, "-t", str(elf)], capture_output=True, text=True,
+                               check=True).stdout
+        address = {}
+        for line in table.splitlines():
+            m = SYMBOL.match(line)
+            if m:
+                address[m.group(2)] = int(m.group(1), 16)
         # A static function's .ci title is "file:symbol"; the ELF names it by
         # the bare symbol. Never add a second node for code compiled here.
         compiled = {title.rsplit(":", 1)[-1] for title in self.frame}
@@ -161,11 +170,14 @@ class Graph:
             if m:
                 base, symbol = int(m.group(1), 16), m.group(2)
                 fn = symbol
-                # A C1/D1 constructor or destructor shares its C2/D2 body's
-                # address, and objdump may label it by either name. Parsing it
-                # would read past its retw into the literal pool that follows.
+                # A C1/D1 constructor or destructor usually shares its C2/D2
+                # body's address, and objdump may label it by either name.
+                # Parsing that alias would read past its retw into the literal
+                # pool that follows. A C1/D1 at its own address (a class with
+                # virtual bases) is distinct code and is parsed.
+                body = body_of(fn)
                 if (fn in compiled or fn.replace("$", ".") in compiled
-                        or body_of(fn) in compiled):
+                        or (body in compiled and address.get(body) == base)):
                     symbol = fn = None  # compiled here: the .ci node is authoritative
                 literal = {}
                 continue

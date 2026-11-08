@@ -568,6 +568,8 @@ a compiled body and resolves calls to it through the body's `file:symbol`
 node. `body_of()` finds the C1/D1 by walking the `_ZN...E` nested name: its
 length-prefixed source names, substitutions and template arguments. So
 `A::ABC1()` is left alone and the destructor of a class `Foo2` still resolves.
+The alias is skipped only when `objdump -t` puts it at its body's address; a
+distinct C1 or D1, as with virtual bases, is parsed.
 The control task is back at 2,192 bytes, and the StickS3 main task lists 23
 fewer callees without a frame. `tests/test_stack_budget.py` covers the alias.
 All nine envs built for PR 8 still pass with the fixed tool.

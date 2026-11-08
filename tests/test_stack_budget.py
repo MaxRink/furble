@@ -94,6 +94,21 @@ ALIAS_LISTING = """
 40000300 <elf_stale>:
 40000300:\t7d0136        \tentry\ta1, 4000
 """
+ALIAS_SYMBOLS = """
+40000000  w    F .flash.text\t00000006 _ZN1XD1Ev
+40000000  w    F .flash.text\t00000006 _ZN1XD2Ev
+"""
+# A class with virtual bases: the complete-object D1 is its own code, at its
+# own address, and must be parsed even though the D2 body is compiled here.
+DISTINCT_LISTING = """
+40000000 <_ZN1XD1Ev>:
+40000000:\t006136        \tentry\ta1, 48
+40000003:\t000090        \tretw.n
+"""
+DISTINCT_SYMBOLS = """
+40000000  w    F .flash.text\t00000006 _ZN1XD1Ev
+40000500  w    F .flash.text\t00000006 _ZN1XD2Ev
+"""
 # Both l32r forms that objdump prints. The parenthesized value is a longcall
 # target. The bare form names the literal's slot, and a load into the
 # register drops its literal, so neither 4,000-byte function is reached.
@@ -132,7 +147,7 @@ LISTING = """
 
 class StackBudgetTest(unittest.TestCase):
     def run_tool(self, stack, indirect=True, extra=(), rules=(), cis=None, manifest_extra=None,
-                 listing=None):
+                 listing=None, symbols=""):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
             build = tmp / "build"
@@ -151,11 +166,13 @@ class StackBudgetTest(unittest.TestCase):
             (tmp / "manifest.json").write_text(json.dumps(manifest))
             elf = ["--no-elf"]
             if listing is not None:
-                # a fake objdump that prints the crafted listing
+                # a fake objdump: -t prints the symbol table, -d the listing
                 (tmp / "listing.txt").write_text(listing)
+                (tmp / "symbols.txt").write_text(symbols)
                 objdump = tmp / "objdump"
                 objdump.write_text(f"#!{sys.executable}\nimport sys\n"
-                                   f"sys.stdout.write(open({str(tmp / 'listing.txt')!r}).read())\n")
+                                   f"name = 'symbols.txt' if '-t' in sys.argv else 'listing.txt'\n"
+                                   f"sys.stdout.write(open({str(tmp)!r} + '/' + name).read())\n")
                 objdump.chmod(0o755)
                 elf = ["--objdump", str(objdump)]
             return subprocess.run(
@@ -264,9 +281,17 @@ class StackBudgetTest(unittest.TestCase):
 
     def test_elf_alias_of_a_compiled_body_is_not_parsed(self):
         # 32 + the compiled D2 body 16 + 288 overhead
-        r = self.run_tool(336, indirect=False, cis=(("d.cpp.ci", D_CI),), listing=ALIAS_LISTING)
+        r = self.run_tool(336, indirect=False, cis=(("d.cpp.ci", D_CI),), listing=ALIAS_LISTING,
+                          symbols=ALIAS_SYMBOLS)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("PASS t: 336 of 336 bytes (48 frames + 288 port overhead)", r.stdout)
+
+    def test_elf_distinct_address_constructor_is_parsed(self):
+        # 32 + the ELF D1's own 48-byte frame + 288 overhead, not the D2 body's 16
+        r = self.run_tool(368, indirect=False, cis=(("d.cpp.ci", D_CI),),
+                          listing=DISTINCT_LISTING, symbols=DISTINCT_SYMBOLS)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("PASS t: 368 of 368 bytes (80 frames + 288 port overhead)", r.stdout)
 
     def test_alias_rewrites_only_a_constructor_component(self):
         sys.path.insert(0, str(TOOL.parent))
