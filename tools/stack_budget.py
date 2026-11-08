@@ -64,6 +64,7 @@ class Graph:
         self.name = {}  # title -> demangled signature
         self.calls = {}  # title -> set of target titles
         self.indirect = {}  # title -> list of call-site labels
+        self.bodies = None  # C2/D2 symbol -> its "file:symbol" title, built on first use
 
     def load(self, build_dir):
         files = sorted(Path(build_dir).rglob("*.ci"))
@@ -105,7 +106,11 @@ class Graph:
             if m:
                 base, symbol = int(m.group(1), 16), m.group(2)
                 fn = symbol
-                if fn in compiled or fn.replace("$", ".") in compiled:
+                # A C1/D1 constructor or destructor shares its C2/D2 body's
+                # address, and objdump may label it by either name. Parsing it
+                # would read past its retw into the literal pool that follows.
+                if (fn in compiled or fn.replace("$", ".") in compiled
+                        or ALIAS.sub(r"\g<1>2E", fn) in compiled):
                     symbol = fn = None  # compiled here: the .ci node is authoritative
                 literal = {}
                 continue
@@ -149,9 +154,21 @@ class Graph:
         """The node holding title's frame: itself, its global name, or the
         C2/D2 body that a C1/D1 constructor or destructor aliases."""
         symbol = title.rsplit(":", 1)[-1]
-        for candidate in (title, symbol, ALIAS.sub(r"\g<1>2E", symbol), symbol.replace(".", "$")):
+        body = ALIAS.sub(r"\g<1>2E", symbol)
+        for candidate in (title, symbol, body, symbol.replace(".", "$")):
             if candidate in self.frame:
                 return candidate
+        if body != symbol:
+            # A comdat C2/D2 body can be titled "file:symbol". Every copy is
+            # the same code, so take the largest frame.
+            if self.bodies is None:
+                self.bodies = {}
+                for t in self.frame:
+                    s = t.rsplit(":", 1)[-1]
+                    if t != s and re.search(r"[CD]2E", s):
+                        if self.frame[t] >= self.frame.get(self.bodies.get(s), -1):
+                            self.bodies[s] = t
+            return self.bodies.get(body)
         return None
 
     def find(self, pattern):

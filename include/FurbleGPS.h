@@ -738,7 +738,6 @@ class GPS {
   std::atomic<bool> m_SatCapture = false;
   std::mutex m_SatMutex;
   Casic::NmeaSatellites m_SatTable;
-  std::string m_SatPartial;
 
   // tier 2 ephemeris cache: poll while a fix is held, replay on the next enable
   std::atomic<bool> m_EphCapture = false;

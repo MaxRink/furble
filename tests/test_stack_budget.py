@@ -76,6 +76,24 @@ node: { title: "elf_mid" label: "elf_mid\n<built-in>" shape : ellipse }
 edge: { sourcename: "entry" targetname: "elf_mid" label: "e.cpp:1:5" }
 }
 '''
+# entry calls the D1 destructor, which aliases a D2 body compiled here
+D_CI = r'''graph: { title: "d.cpp"
+node: { title: "entry" label: "void entry(void*)\nd.cpp:1:1\n32 bytes (static)" }
+node: { title: "d.cpp:_ZN1XD2Ev" label: "X::~X()\nd.cpp:2:1\n16 bytes (static)" }
+edge: { sourcename: "entry" targetname: "_ZN1XD1Ev" label: "d.cpp:1:5" }
+}
+'''
+# objdump labels the shared address by the D1 alias; the bytes after its retw
+# decode as a call into a 4,000-byte function that must not be followed.
+ALIAS_LISTING = """
+40000000 <_ZN1XD1Ev>:
+40000000:\t004136        \tentry\ta1, 32
+40000003:\t000090        \tretw.n
+40000006:\tfffba5        \tcall8\t40000300 <elf_stale>
+
+40000300 <elf_stale>:
+40000300:\t7d0136        \tentry\ta1, 4000
+"""
 # Both l32r forms that objdump prints. The parenthesized value is a longcall
 # target. The bare form names the literal's slot, and a load into the
 # register drops its literal, so neither 4,000-byte function is reached.
@@ -243,6 +261,12 @@ class StackBudgetTest(unittest.TestCase):
                       "2 unresolved indirect\n", r.stdout)
         r = self.run_tool(879, indirect=False, cis=e_ci, listing=LISTING)
         self.assertEqual(r.returncode, 1, r.stdout)
+
+    def test_elf_alias_of_a_compiled_body_is_not_parsed(self):
+        # 32 + the compiled D2 body 16 + 288 overhead
+        r = self.run_tool(336, indirect=False, cis=(("d.cpp.ci", D_CI),), listing=ALIAS_LISTING)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("PASS t: 336 of 336 bytes (48 frames + 288 port overhead)", r.stdout)
 
 
 class ManifestSourceTest(unittest.TestCase):
