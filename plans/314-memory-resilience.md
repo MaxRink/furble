@@ -579,6 +579,62 @@ the default and MQTT simulator builds; e2e 210 of 210; `run-memory.sh`; the
 memory profile 13 of 13; host 185 of 185; `pre_review.py`, the doc token check
 and `check_sim_coverage.py`.
 
+## PR 10: static analysis on the firmware and raw ownership
+
+The gate ran clang-tidy only with the host and simulator compile databases,
+skipped any changed source missing from both, and had no ownership check.
+
+- `tools/firmware_compile_db.py` rewrites the `pio run -t compiledb` database
+  for clang. Released LLVM has no Xtensa target, so it uses an i686 stand-in:
+  32-bit, little-endian, and its `a` constraint accepts the `=a` outputs of
+  the Xtensa FreeRTOS port. riscv32 was tried first and rejects them. It
+  defines `__XTENSA__`, drops GCC-only flags, adds the toolchain's libstdc++
+  and newlib as system headers, and passes `-w`, because GCC owns compiler
+  warnings on firmware. Every furble source parses with zero errors. The
+  m5stick-s3 database covers 75 sources and the m5stick-c database 73.
+- With both firmware databases, every tracked production source is in a
+  database except `sim/env_mutation_guard.c`, a Linux `LD_PRELOAD` helper. It is
+  named in `NO_COMPILE_DB`; any other source without a compile command now
+  fails the gate instead of being skipped.
+- `cppcoreguidelines-owning-memory` is on, with its legacy-resource lists
+  empty: `FILE` handles and the C allocators are left to the path-sensitive
+  `clang-analyzer-unix.Stream` and `unix.Malloc` checks, which need no
+  annotations on C APIs. `bugprone-unchecked-optional-access` was already on
+  through `bugprone-*` and has no findings. The memory families are
+  `WarningsAsErrors`. A promoted check inside a vendored header, such as the
+  M5GFX `LGFXBase.hpp` deletes, is not reported as a compile failure; any other
+  clang-tidy error still is.
+- `bugprone-invalid-enum-default-initialization` is off: ESP-IDF config
+  structs are zero-initialized by contract and several of their C enums have
+  no zero enumerator.
+- The UI and headless request queues used raw `new` and `delete`. They now
+  build a `std::unique_ptr`, `release()` it into the queue and `reset()` it on a
+  failed send, and every drain wraps the received pointer. The remaining
+  `new` sites are placement new into static or preallocated storage and the
+  simulator's FreeRTOS and IDF handle shims; each carries a NOLINT with that
+  reason.
+
+Running the gate over all 104 sources with the four databases found these
+preexisting issues, fixed here:
+
+| Site | Finding | Fix |
+|---|---|---|
+| `lib/furble/Scan.cpp` | use-after-move of the probe worker (path-insensitive; the move and join were guarded by the same flag) | the blocked branch moves and returns, so `join()` is unconditional after it |
+| `include/FurbleMemoryPressure.h` | `clears()` indexed `ENTER` with an unchecked level | a level past RED returns false |
+| `src/FurbleSD.cpp` | `getPin()` returns `int8_t`, so `cs == 255` could never match | dropped; the gpio cast goes through `uint8_t` after the `>= 0` check |
+| `src/FurbleWiFi.cpp` | `g_ScanShowHidden` written, never read | deleted |
+| `src/main.cpp` | unused headless `count`; implicit `T**` to `void*` at the queue calls | deleted; explicit casts |
+| `src/FurbleCalibrate.cpp` | corner initializers missed the union braces | `{{x, y}}` |
+| `src/FurbleUIIntervalometer.cpp` | unit switch had no default | `default: break` |
+| `lib/furble/NikonBase.cpp` | C-style casts (cppcheck) | `reinterpret_cast` |
+| `lib/furble/DJIOsmo.cpp`, `Lumix.cpp`, `sim/heap_model.cpp` | values only logged, or used on PSRAM boards only | `[[maybe_unused]]`, a narrower scope, or a NOLINT naming the board condition |
+| `sim/PreferencesSim.cpp` | `std::move` of a `const` copy | non-const |
+| `src/FurbleIR.cpp`, `src/FurbleEthernet.cpp` | GPIO 46 cast out of range on the ESP32 database; destructor may throw | NOLINT: only the S3 image runs on a StickS3; firmware has no exceptions |
+
+`static-analysis.yml` installs PlatformIO, generates both firmware databases
+and passes them to the gate, then runs the tool tests. Fork Actions are
+disabled, so this was validated locally only.
+
 ## Baseline: regenerated release sdkconfigs
 
 State: implemented, as the clean baseline for PR 8 config tuning.
