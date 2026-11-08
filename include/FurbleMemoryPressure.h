@@ -109,6 +109,9 @@ inline constexpr bool clears(level_t level,
                              size_t freeBytes,
                              size_t largestBlock,
                              size_t mqttExtra = 0) {
+  if (level > RED) {
+    return false;
+  }
   const size_t extra = (level == RED) ? mqttExtra : 0;
   return (freeBytes >= ENTER[level].freeBytes + RESTORE_BYTES[level] + extra)
          && (largestBlock >= ENTER[level].largestBlock + LARGEST_HYSTERESIS_BYTES);

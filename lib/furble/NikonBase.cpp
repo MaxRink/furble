@@ -100,12 +100,13 @@ bool NikonBase::handshake4Stage(void) {
   bool success = true;
   for (uint8_t stage = 0; stage < 4 && success; stage += 2) {
     const auto *msg = m_Pairing->getMessage();
-    if (!gattWrite(m_PairChr, (const uint8_t *)msg, sizeof(*msg), true)) {
+    if (!gattWrite(m_PairChr, reinterpret_cast<const uint8_t *>(msg), sizeof(*msg), true)) {
       return false;
     }
 #if NIKON_DEBUG
-    ESP_LOGI(LOG_TAG, "sent = %s",
-             NimBLEUtils::dataToHexString((const uint8_t *)msg, sizeof(*msg)).c_str());
+    ESP_LOGI(
+        LOG_TAG, "sent = %s",
+        NimBLEUtils::dataToHexString(reinterpret_cast<const uint8_t *>(msg), sizeof(*msg)).c_str());
 #endif
 
     // Wait 10 s for a notification, in slices so the plan 148 cancel token can

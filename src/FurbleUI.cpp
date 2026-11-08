@@ -7837,16 +7837,14 @@ bool UI::sendRequest(Request request, int32_t arg, Camera *camera) {
     return false;
   }
 
-  auto *item = new (std::nothrow) request_t {request, arg, camera,
+  auto item = std::make_unique<request_t>(request_t {request, arg, camera,
 #if defined(FURBLE_CONSOLE)
-                                             nullptr
+                                                     nullptr
 #endif
-  };
-  if (item == nullptr) {
-    return false;
-  }
-  if (xQueueSend(m_RequestQueue, static_cast<void *>(&item), 0) != pdTRUE) {
-    delete item;
+  });
+  request_t *queued = item.release();  // the queue owns it once sent
+  if (xQueueSend(m_RequestQueue, static_cast<void *>(&queued), 0) != pdTRUE) {
+    item.reset(queued);
     return false;
   }
   return true;
@@ -7858,13 +7856,10 @@ bool UI::sendRequest(Request request, int32_t arg, RequestResult *result) {
     return false;
   }
   result->state->retain();
-  auto *item = new (std::nothrow) request_t {request, arg, nullptr, result->state};
-  if (item == nullptr) {
-    result->state->release();
-    return false;
-  }
-  if (xQueueSend(m_RequestQueue, static_cast<void *>(&item), 0) != pdTRUE) {
-    delete item;
+  auto item = std::make_unique<request_t>(request_t {request, arg, nullptr, result->state});
+  request_t *queued = item.release();  // the queue owns it once sent
+  if (xQueueSend(m_RequestQueue, static_cast<void *>(&queued), 0) != pdTRUE) {
+    item.reset(queued);
     result->state->release();
     return false;
   }
@@ -8497,14 +8492,14 @@ void UI::serviceRequests(void) {
 void UI::drainRequests(void) {
   request_t *queued = nullptr;
   while (xQueueReceive(m_RequestQueue, static_cast<void *>(&queued), 0) == pdTRUE) {
+    const std::unique_ptr<request_t> owned(queued);
 #if defined(FURBLE_CONSOLE)
-    if (queued->state != nullptr) {
-      queued->state->token = "cancelled";
-      xSemaphoreGive(queued->state->done);
-      queued->state->release();
+    if (owned->state != nullptr) {
+      owned->state->token = "cancelled";
+      xSemaphoreGive(owned->state->done);
+      owned->state->release();
     }
 #endif
-    delete queued;
   }
 }
 

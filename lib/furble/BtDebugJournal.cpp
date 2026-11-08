@@ -177,6 +177,8 @@ bool BtDebugJournal::allocateLocked() {
     }
   }
 #else
+  // Host builds share the ESP raw-buffer member; releaseLocked() owns the delete.
+  // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
   m_Events = new (std::nothrow) BtDebugRecord[MAX_EVENTS]();
   m_EventCapacity = m_Events != nullptr ? MAX_EVENTS : 0;
 #endif

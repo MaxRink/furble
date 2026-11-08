@@ -26,6 +26,12 @@ ROOT = Path(__file__).resolve().parent.parent
 PRODUCTION_PREFIXES = ("src/", "lib/furble/", "include/", "sim/")
 EXCLUDED_PREFIXES = ("sim/build/", "sim/shim/")
 SOURCE_SUFFIXES = (".cpp", ".cc", ".cxx", ".c")
+# Production sources no compile database builds. clang-tidy cannot analyze
+# them, so they are named here instead of being skipped silently; cppcheck
+# still covers them. Every other source missing from the databases fails.
+NO_COMPILE_DB = {
+    "sim/env_mutation_guard.c": "Linux LD_PRELOAD helper built by sim/scripts/run-env-order.sh",
+}
 HEADER_SUFFIXES = (".h",)
 CPPCHECK_SUPPRESSIONS = (
     # Aggregate structs are initialized at their use sites; cppcheck cannot see
@@ -304,7 +310,8 @@ def run_clang_tidy(
     for path in targets:
         directories = database_files.get(path, [])
         if not directories:
-            skipped.append(path)
+            if path not in NO_COMPILE_DB:
+                skipped.append(path)
             continue
         for build_dir in directories:
             selected.append((path, build_dir))
@@ -324,8 +331,11 @@ def run_clang_tidy(
             "--config-file=.clang-tidy",
             "--quiet",
         ]
-        for argument in extra_args:
-            command.append("--extra-arg=" + argument)
+        # The simulator shims stand in for ESP-IDF headers; a firmware
+        # database from tools/firmware_compile_db.py has the real ones.
+        if not build_dir.name.startswith("firmware-"):
+            for argument in extra_args:
+                command.append("--extra-arg=" + argument)
         command.append(path)
         output = subprocess.run(
             command, cwd=ROOT, check=False, capture_output=True, text=True
@@ -333,7 +343,13 @@ def run_clang_tidy(
         file_findings, file_errors = parse_clang_tidy(output.stdout + output.stderr)
         findings.extend(file_findings)
         compile_errors.extend(file_errors)
-        if output.returncode != 0 and not file_findings and not file_errors:
+        # WarningsAsErrors turns a check in a vendored header into an error and
+        # a non-zero exit. Only an error that is not a promoted check means
+        # the translation unit did not compile.
+        errors = [line for line in (output.stdout + output.stderr).splitlines()
+                  if " error: " in line]
+        promoted = bool(errors) and all("-warnings-as-errors]" in line for line in errors)
+        if output.returncode != 0 and not file_findings and not file_errors and not promoted:
             compile_errors.append(
                 {
                     "file": path,
@@ -413,7 +429,8 @@ def main() -> int:
         print("static analysis: no changed production C++ files")
         return 0
 
-    build_dirs = args.build_dir or [ROOT / ".pio" / "static-build"]
+    static = ROOT / ".pio" / "static-build"
+    build_dirs = args.build_dir or [static, *sorted(static.glob("firmware-*"))]
     print(f"static analysis: {len(sources)} source(s), {len(headers)} header(s)")
     failures = 0
 
@@ -448,10 +465,13 @@ def main() -> int:
             print(f"FAIL: {error}", file=sys.stderr)
             return 2
         if skipped:
-            print(
-                "static analysis: skipped (no compile command): " + " ".join(skipped),
-                file=sys.stderr,
-            )
+            for path in skipped:
+                print(
+                    f"clang-tidy {path}: no compile command in any database; add its "
+                    "build to a --build-dir or list it in NO_COMPILE_DB",
+                    file=sys.stderr,
+                )
+            failures += len(skipped)
         if compile_errors:
             for finding in compile_errors:
                 print(

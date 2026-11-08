@@ -1,5 +1,7 @@
 .pio
 .pio-core
+# pio run -t compiledb output; tools/firmware_compile_db.py reads it
+/compile_commands.json
 sim/build
 sim/build-*
 .vscode

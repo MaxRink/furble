@@ -136,7 +136,8 @@ gpio_num_t pinForBoard(m5::board_t board) {
     case m5::board_t::board_M5StickCPlus2:
       return static_cast<gpio_num_t>(19);
     case m5::board_t::board_M5StickS3:
-      return static_cast<gpio_num_t>(46);
+      // Only the S3 image runs on a StickS3, and the S3 has GPIO 46.
+      return static_cast<gpio_num_t>(46);  // NOLINT(clang-analyzer-optin.core.EnumCastOutOfRange)
     case m5::board_t::board_M5Stack:
     case m5::board_t::board_M5StackCore2:
     default:

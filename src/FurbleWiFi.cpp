@@ -106,7 +106,6 @@ bool g_ScanAttempted = false;
 // A direct join to the remembered BSSID failed. Force one scan before the next
 // join so a moved or replaced access point is not retried for the whole backoff.
 bool g_FastConnectFailed = false;
-bool g_ScanShowHidden = false;
 std::atomic<bool> g_LastAttemptUsedBssid {false};
 std::atomic<bool> g_ScanRefusedForCoex {false};
 // Incremented by every disconnect and GOT_IP event. The join wait uses it to
@@ -609,7 +608,6 @@ bool scanForNetwork(void) {
   // hidden APs in every join scan, which does not help a saved non-hidden
   // network and adds probe traffic on each cycle.
   config.show_hidden = false;
-  g_ScanShowHidden = config.show_hidden;
   esp_err_t err = esp_wifi_scan_start(&config, true);
   if (err != ESP_OK) {
     ESP_LOGW(LOG_TAG, "WiFi scan failed: %s", esp_err_to_name(err));

@@ -63,13 +63,15 @@ inline esp_err_t esp_pm_lock_create(esp_pm_lock_type_t type,
   if (out_handle == nullptr) {
     return ESP_FAIL;
   }
+  // An IDF handle is a raw pointer by API; esp_pm_lock_delete owns the delete.
+  // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
   auto *lock = new esp_pm_lock {type, name == nullptr ? "unnamed" : name, 0};
   *out_handle = lock;
   return ESP_OK;
 }
 
 inline esp_err_t esp_pm_lock_delete(esp_pm_lock_handle_t handle) {
-  delete handle;
+  delete handle;  // NOLINT(cppcoreguidelines-owning-memory): the esp_pm_lock_create handle
   return ESP_OK;
 }
 

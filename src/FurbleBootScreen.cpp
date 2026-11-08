@@ -34,7 +34,7 @@ namespace {
 // Keep the splash visible at least this long so a fast boot does not flash the
 // wordmark past. Real boots spend longer than this in BLE init, so the pad in
 // finish() is usually zero. Skipped entirely in the simulator.
-constexpr uint32_t MIN_VISIBLE_MS = 700;
+[[maybe_unused]] constexpr uint32_t MIN_VISIBLE_MS = 700;
 
 // A dark slate background with a bright accent bar reads on every panel class.
 constexpr uint8_t BG_R = 8, BG_G = 10, BG_B = 16;

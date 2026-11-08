@@ -794,6 +794,8 @@ bool MQTT::startClient(void) {
     if (incoming == nullptr) {
       return false;
     }
+    // Placement new into the heap_caps block above, which is never freed.
+    // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
     m_Incoming = new (incoming) queued_event_t();
   }
 

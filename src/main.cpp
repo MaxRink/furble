@@ -4,6 +4,7 @@
 #include <esp_event.h>
 #include <esp_netif.h>
 #include <algorithm>
+#include <memory>
 
 #if defined(FURBLE_NO_DISPLAY)
 #include <M5Unified.h>
@@ -245,15 +246,15 @@ void scanCameras(void) {
 void UI::init(void) {
   if (g_HeadlessRequestQueue != nullptr) {
     headless_request_t *queued = nullptr;
-    while (xQueueReceive(g_HeadlessRequestQueue, &queued, 0) == pdTRUE) {
+    while (xQueueReceive(g_HeadlessRequestQueue, static_cast<void *>(&queued), 0) == pdTRUE) {
+      const std::unique_ptr<headless_request_t> owned(queued);
 #if defined(FURBLE_CONSOLE)
-      if (queued->state != nullptr) {
-        queued->state->token = "cancelled";
-        xSemaphoreGive(queued->state->done);
-        queued->state->release();
+      if (owned->state != nullptr) {
+        owned->state->token = "cancelled";
+        xSemaphoreGive(owned->state->done);
+        owned->state->release();
       }
 #endif
-      delete queued;
     }
     vQueueDelete(g_HeadlessRequestQueue);
     g_HeadlessRequestQueue = nullptr;
@@ -271,15 +272,15 @@ void UI::shutdown(void) {
     return;
   }
   headless_request_t *queued = nullptr;
-  while (xQueueReceive(g_HeadlessRequestQueue, &queued, 0) == pdTRUE) {
+  while (xQueueReceive(g_HeadlessRequestQueue, static_cast<void *>(&queued), 0) == pdTRUE) {
+    const std::unique_ptr<headless_request_t> owned(queued);
 #if defined(FURBLE_CONSOLE)
-    if (queued->state != nullptr) {
-      queued->state->token = "cancelled";
-      xSemaphoreGive(queued->state->done);
-      queued->state->release();
+    if (owned->state != nullptr) {
+      owned->state->token = "cancelled";
+      xSemaphoreGive(owned->state->done);
+      owned->state->release();
     }
 #endif
-    delete queued;
   }
   vQueueDelete(g_HeadlessRequestQueue);
   g_HeadlessRequestQueue = nullptr;
@@ -290,16 +291,14 @@ bool UI::sendRequest(Request request, int32_t arg) {
     return false;
   }
 
-  auto *item = new (std::nothrow) headless_request_t {request, arg,
+  auto item = std::make_unique<headless_request_t>(headless_request_t {request, arg,
 #if defined(FURBLE_CONSOLE)
-                                                      nullptr
+                                                                       nullptr
 #endif
-  };
-  if (item == nullptr) {
-    return false;
-  }
-  if (xQueueSend(g_HeadlessRequestQueue, &item, 0) != pdTRUE) {
-    delete item;
+  });
+  headless_request_t *queued = item.release();  // the queue owns it once sent
+  if (xQueueSend(g_HeadlessRequestQueue, static_cast<void *>(&queued), 0) != pdTRUE) {
+    item.reset(queued);
     return false;
   }
   return true;
@@ -311,13 +310,11 @@ bool UI::sendRequest(Request request, int32_t arg, RequestResult *result) {
     return false;
   }
   result->state->retain();
-  auto *item = new (std::nothrow) headless_request_t {request, arg, result->state};
-  if (item == nullptr) {
-    result->state->release();
-    return false;
-  }
-  if (xQueueSend(g_HeadlessRequestQueue, &item, 0) != pdTRUE) {
-    delete item;
+  auto item =
+      std::make_unique<headless_request_t>(headless_request_t {request, arg, result->state});
+  headless_request_t *queued = item.release();  // the queue owns it once sent
+  if (xQueueSend(g_HeadlessRequestQueue, static_cast<void *>(&queued), 0) != pdTRUE) {
+    item.reset(queued);
     result->state->release();
     return false;
   }
@@ -328,7 +325,7 @@ bool UI::sendRequest(Request request, int32_t arg, RequestResult *result) {
 void UI::serviceRequests(void) {
   headless_request_t *queued = nullptr;
 
-  while (xQueueReceive(g_HeadlessRequestQueue, &queued, 0) == pdTRUE) {
+  while (xQueueReceive(g_HeadlessRequestQueue, static_cast<void *>(&queued), 0) == pdTRUE) {
     std::unique_ptr<headless_request_t> owned(queued);
     headless_request_t &item = *owned;
     const char *token = "ok";
@@ -412,9 +409,6 @@ static void vUITask(void *param) {
   // geotag fixes still push to the camera.
   constexpr int64_t GPS_SERVICE_US = 1000 * 1000;
   int64_t nextGPSService = esp_timer_get_time();
-#if defined(FURBLE_CONSOLE)
-  uint32_t count = 0;
-#endif
   bool reported = false;
   while (true) {
     Platform::getInstance().update();

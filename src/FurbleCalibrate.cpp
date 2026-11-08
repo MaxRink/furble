@@ -122,18 +122,22 @@ void CalibrationUI::calibrate(void) {
       [](lv_event_t *e) {
         auto *calibrationUI = static_cast<CalibrationUI *>(lv_event_get_user_data(e));
         Settings::calibration_t calibration = {
-            .top_left =
-                {static_cast<uint16_t>(lv_subject_get_int(&calibrationUI->m_Corners[0].subject_x)),
-                           static_cast<uint16_t>(lv_subject_get_int(&calibrationUI->m_Corners[0].subject_y))},
-            .bottom_left =
-                {static_cast<uint16_t>(lv_subject_get_int(&calibrationUI->m_Corners[1].subject_x)),
-                           static_cast<uint16_t>(lv_subject_get_int(&calibrationUI->m_Corners[1].subject_y))},
-            .top_right =
-                {static_cast<uint16_t>(lv_subject_get_int(&calibrationUI->m_Corners[2].subject_x)),
-                           static_cast<uint16_t>(lv_subject_get_int(&calibrationUI->m_Corners[2].subject_y))},
-            .bottom_right =
-                {static_cast<uint16_t>(lv_subject_get_int(&calibrationUI->m_Corners[3].subject_x)),
-                           static_cast<uint16_t>(lv_subject_get_int(&calibrationUI->m_Corners[3].subject_y))},
+            .top_left = {{static_cast<uint16_t>(
+                              lv_subject_get_int(&calibrationUI->m_Corners[0].subject_x)),
+                          static_cast<uint16_t>(
+                              lv_subject_get_int(&calibrationUI->m_Corners[0].subject_y))}},
+            .bottom_left = {{static_cast<uint16_t>(
+                                 lv_subject_get_int(&calibrationUI->m_Corners[1].subject_x)),
+                             static_cast<uint16_t>(
+                                 lv_subject_get_int(&calibrationUI->m_Corners[1].subject_y))}},
+            .top_right = {{static_cast<uint16_t>(
+                               lv_subject_get_int(&calibrationUI->m_Corners[2].subject_x)),
+                           static_cast<uint16_t>(
+                               lv_subject_get_int(&calibrationUI->m_Corners[2].subject_y))}},
+            .bottom_right = {{static_cast<uint16_t>(
+                                  lv_subject_get_int(&calibrationUI->m_Corners[3].subject_x)),
+                              static_cast<uint16_t>(
+                                  lv_subject_get_int(&calibrationUI->m_Corners[3].subject_y))}},
             .calibrated = true,
         };
         Settings::save<Settings::TOUCH_CALIBRATION>(calibration);
