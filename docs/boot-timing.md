@@ -154,7 +154,7 @@ until `boot timing` is captured on it.
 | Board | PSRAM test removed | Settings seed | WiFi overlap | UI marks |
 | :--- | :--- | :--- | :--- | :--- |
 | M5StickS3 | Yes, release only | Yes | Yes | Yes |
-| M5Stack Core2 | No PSRAM | Yes | Yes | Yes |
+| M5Stack Core2 | Yes, release only | Yes | Yes | Yes |
 | M5StickC / Plus / Plus2 | No PSRAM | Yes | If enabled | Yes, Plus2 differs by panel |
 | M5Stack Core | No PSRAM | Yes | If enabled | Yes |
 | esp32-s3-headless | Yes | Yes | Yes | Headless service marks only |

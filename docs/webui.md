@@ -76,7 +76,7 @@ the saved settings never change:
 | Level | Enter when | Paused | Leave when (five readings) |
 | :--- | :--- | :--- | :--- |
 | `amber` | free < 12,288 or largest < 8,192 | WebUI server | free >= 20,480 and largest >= 12,288 |
-| `red` | free < 8,192 or largest < 6,144 | WebUI server and MQTT client | free >= 19,456 and largest >= 10,240; while the MQTT event queue is not yet allocated and has to be internal (the Core2 has no PSRAM), add its 11,996 bytes |
+| `red` | free < 8,192 or largest < 6,144 | WebUI server and MQTT client | free >= 19,456 and largest >= 10,240; while the MQTT event queue is not yet allocated and has to be internal (a board without PSRAM), add its 11,996 bytes |
 
 The thresholds keep room for a camera connect, whose 4 KiB control task must
 always fit. A level is left only when the paused service fits above it again,
@@ -129,9 +129,9 @@ boards keep that heap in PSRAM, so the floor is conservative there.
 | Build | Radio | PSRAM used | Internal free | WebUI |
 | :--- | :--- | :--- | :--- | :--- |
 | `m5stick-s3` (M5StickS3) | WiFi + BLE | 8 MB, mbedTLS in PSRAM | **13.5 KiB free / 12.8 KiB largest measured before plan 305**; **27.4 KiB free / 25.6 KiB largest measured after plan 305 with WebUI off**; **30.0 KiB free / 28.7 KiB largest measured with the 8 KiB main-stack experiment**; **about 25.9 KiB free inferred after plan 311 reverts the main stack to 12 KiB**; the largest block after plan 311 is not inferred | **Measured as not fitting before plan 305: the server gate stayed closed at 13.5 KiB free / 12.8 KiB largest with WebUI off. Later plans move some consumers to PSRAM; the gate is inferred to pass, but hardware has not confirmed it. Do not call it supported until a TLS handshake, a settings write and a soak pass.** |
-| `m5stack-core2` | WiFi + BLE | 8 MB on board, disabled in firmware (`CONFIG_SPIRAM` unset); TLS buffers internal | Not measured | Expected to fit |
-| `esp32-s3-headless` | WiFi + BLE | 8 MB enabled; mbedTLS now in PSRAM, NimBLE host memory in PSRAM | Not measured; no display buffers | Expected to fit |
-| `waveshare-s3-eth` (ESP32-S3) | Ethernet (WiFi optional) | 8 MB enabled; mbedTLS now in PSRAM | Not measured; WiFi RX pool not allocated while wired | Expected to fit |
+| `m5stack-core2` | WiFi + BLE | 8 MB enabled since plan 314 PR 8; mbedTLS and NimBLE host memory in PSRAM | Not measured | Expected to fit |
+| `esp32-s3-headless` | WiFi + BLE | 8 MB enabled; mbedTLS and NimBLE host memory in PSRAM | Not measured; no display buffers | Expected to fit |
+| `waveshare-s3-eth` (ESP32-S3) | Ethernet (WiFi optional) | 8 MB enabled; mbedTLS and NimBLE host memory in PSRAM | Not measured; WiFi RX pool not allocated while wired | Expected to fit |
 
 The StickS3 has two real measurements. Before plan 305 it had 13.5 KiB free /
 12.8 KiB largest internal bytes before the WebUI supervisor, and 10.6 KiB /
