@@ -193,7 +193,12 @@ settings-touching rebase.
   stay in internal RAM; `FurbleWebUIMemory.h` holds the 3 KiB/8 KiB sizes and
   the 20,480/12,288 server gate. The gate log text lives in the
   `FURBLE_WEBUI_*_GATE_LOG` macros because `ESP_LOG_ATTR_STR()` needs a
-  literal; the matching constants are for the simulator.
+  literal; the matching constants are for the simulator. It also holds the
+  12 KiB identity stack and the 20,864/12,672 runtime identity gate; keep its
+  derivation comment current when the identity code or mbedTLS pin changes.
+- `FurbleCompanionMemory.h` holds the 3 KiB companion task stack and the
+  7,552/3,456 first-enable gate. `tools/stack_budget.json` reads the stack
+  value from it. The simulator logs through `FURBLE_COMPANION_START_GATE_LOG`.
 - `FurbleMQTTMemory.h` has separate plain and TLS start floors. A secure
   `mqtts://` URI must pass the 6 KiB TLS-worker floor, not the plain 3 KiB
   worker floor. `wss://` is not part of the contract because no firmware build

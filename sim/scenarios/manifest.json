@@ -4426,6 +4426,28 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/e2e/memory-webui-identity-gate.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/memory-companion-start-gate.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/e2e/memory-pressure-webui-shed.txt",
       "suite": "e2e",
       "owner": "sim-e2e",

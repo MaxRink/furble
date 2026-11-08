@@ -27,6 +27,11 @@ password. The certificate is unique and self-signed. Compare the browser's
 SHA-256 fingerprint with the `webui` fingerprint printed on the USB log before
 accepting the first-use warning.
 
+The TLS identity is created at boot when the WebUI is on. If you first turn the
+WebUI on at runtime with little internal RAM free, furble does not create the
+identity and logs `TLS identity not generated: ... reboot to generate the
+identity.` HTTPS stays closed until a reboot with the WebUI on.
+
 The server stays closed without a loaded non-empty companion password. Secret
 settings are never returned. Camera connect/disconnect, shutter, focus, timed
 hold and validated settings writes are available from the page. REST route and

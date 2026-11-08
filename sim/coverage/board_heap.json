@@ -124,7 +124,7 @@
         {
           "term": "companion",
           "bytes": 3440,
-          "source": "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES",
+          "source": "include/FurbleCompanionMemory.h TASK_STACK_BYTES",
           "condition": "companion"
         },
         {
@@ -292,7 +292,7 @@
         {
           "term": "companion",
           "bytes": 3440,
-          "source": "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES",
+          "source": "include/FurbleCompanionMemory.h TASK_STACK_BYTES",
           "condition": "companion"
         },
         {
@@ -450,7 +450,7 @@
         {
           "term": "companion",
           "bytes": 3440,
-          "source": "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES",
+          "source": "include/FurbleCompanionMemory.h TASK_STACK_BYTES",
           "condition": "companion"
         },
         {
@@ -617,7 +617,7 @@
         {
           "term": "companion",
           "bytes": 3440,
-          "source": "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES",
+          "source": "include/FurbleCompanionMemory.h TASK_STACK_BYTES",
           "condition": "companion"
         },
         {
@@ -790,7 +790,7 @@
         {
           "term": "companion",
           "bytes": 3440,
-          "source": "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES",
+          "source": "include/FurbleCompanionMemory.h TASK_STACK_BYTES",
           "condition": "companion"
         },
         {
@@ -963,7 +963,7 @@
         {
           "term": "companion",
           "bytes": 3452,
-          "source": "src/FurbleCompanion.cpp COMPANION_TASK_STACK_BYTES",
+          "source": "include/FurbleCompanionMemory.h TASK_STACK_BYTES",
           "condition": "companion"
         },
         {

@@ -1,0 +1,48 @@
+# Plan 314 PR 7: the first companion enable creates the retained 3 KiB task
+# and the GATT database, so it is admitted only above the
+# CompanionMemory::startGate floors (7,552 free, 3,456 largest).
+#
+# The companion is off at boot. Five 4 KiB squeezes take the post-#394
+# StickS3 pair to 6,871 free. Turning the companion on is refused before any
+# allocation and the companion stays off. After the release the next enable
+# passes, and the task and GATT database stay resident across a disable, so
+# the second enable costs nothing and is not gated.
+seed hw_profile sticks3
+seed heap_internal_free 27351
+seed heap_internal_largest 25588
+wait 2000
+
+assert companion.enabled no
+assert heap.free 27351
+
+action heap-squeeze
+action heap-squeeze
+action heap-squeeze
+action heap-squeeze
+action heap-squeeze
+assert heap.free 6871
+action companion-enable
+assert companion.enabled no
+assert companion.gate memory
+assert companion.state off
+assert heap.free 6871
+assert heap.alloc_failures 0
+
+action heap-release
+assert heap.free 27351
+action companion-enable
+assert companion.enabled yes
+assert companion.gate none
+assert companion.state advertising
+assert heap.free 20183
+
+action companion-disable
+assert companion.enabled no
+assert heap.free 20183
+action companion-enable
+assert companion.enabled yes
+assert heap.free 20183
+assert heap.alloc_failures 0
+assert platform.watchdog armed
+
+exit

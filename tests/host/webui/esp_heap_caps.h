@@ -14,6 +14,8 @@ extern "C" size_t heap_caps_get_largest_free_block(uint32_t caps);
 namespace host_webui_heap {
 void set(size_t freeBytes, size_t largestBlock);
 void reset();
+/** Tasks the code under test created with this name. */
+size_t tasksCreated(const char *name);
 }  // namespace host_webui_heap
 
 #endif

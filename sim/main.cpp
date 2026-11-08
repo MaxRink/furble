@@ -243,7 +243,8 @@ int runSimulator() {
   Sim::hwStart();
   Sim::webuiMemoryConfigure(Sim::scenarioSettingIsTrue("web_ui"),
                             Sim::scenarioSetting("webui_gate", "on") != "off",
-                            Sim::scenarioSettingIsTrue("webui_password"));
+                            Sim::scenarioSettingIsTrue("webui_password"),
+                            !Sim::scenarioSettingIsTrue("webui_identity_absent"));
   Sim::webuiMemoryStart();
 
 #if defined(FURBLE_SIM_MQTT) && FURBLE_SIM_MQTT

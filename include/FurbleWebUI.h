@@ -67,7 +67,6 @@ class WebUI {
   static constexpr uint32_t RELEASE_RETRY_MS = 200;
   static constexpr uint32_t MANUAL_PRESS_LEASE_MS = 30 * 1000;
   static constexpr uint32_t BUDGET_RETRY_MS = 10 * 1000;
-  static constexpr uint32_t IDENTITY_STACK_BYTES = 12288;
   static constexpr size_t MAX_BODY_BYTES = 1024;
   static constexpr uint8_t HELD_SHUTTER = 1U << 0;
   static constexpr uint8_t HELD_FOCUS = 1U << 1;
@@ -84,6 +83,12 @@ class WebUI {
   static void identityTaskEntry(void *param);
   void task(void);
   void identityTask(void);
+  /**
+   * Create the runtime identity task behind WebUIMemory::identityGate().
+   * The caller has set m_IdentityTaskActive. A refusal clears it and logs, so
+   * the next reloadSetting() tries again.
+   */
+  void startIdentityTask(void);
   void serviceTimerEvents(void);
   bool networkReady(void) const;
   bool credentialsReady(void) const;

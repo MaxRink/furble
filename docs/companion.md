@@ -9,6 +9,18 @@ and current advertising state. Reconnect advertising is unfiltered because
 macOS rotates its LE address; the connect handler still accepts only the stored
 identity outside the pairing window.
 
+The first enable after boot creates the 3 KiB companion task and the GATT
+service, and both stay for the rest of the session. That first enable needs
+7,552 bytes of free internal RAM and a 3,456-byte block. Below that the
+companion stays off and the USB log says:
+
+```text
+Companion not started: internal free N, largest N (need 7552/3456). It stays off; enable it again or reboot to retry.
+```
+
+The saved setting does not change. Enabling it again once RAM is free, or a
+reboot, retries. The same check runs at boot, where free RAM is well above it.
+
 The NimBLE server is shared with Sony camera name discovery, so an unknown
 inbound link is not torn down. It can keep the link (and therefore suppress
 companion advertising) until it disconnects; advertising restarts when the link

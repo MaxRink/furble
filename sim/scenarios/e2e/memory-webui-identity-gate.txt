@@ -1,0 +1,57 @@
+# Plan 314 PR 7: the runtime TLS identity task is admitted only above the
+# WebUIMemory::identityGate floors (20,864 free, 12,672 largest).
+#
+# The device has never generated an identity and boots with the WebUI off, so
+# the boot path does not run. Two 4 KiB squeezes take the post-#394 StickS3
+# pair to 19,159 free. Turning the WebUI on creates the 3 KiB supervisor
+# (16,087 free) and then refuses the 12 KiB identity task instead of aborting:
+# HTTPS stays closed and the log tells the user to reboot. After the squeeze
+# is released, the next reload passes the gate, the one-shot task runs and
+# frees its stack, and the server starts through its own gate.
+seed hw_profile sticks3
+seed heap_internal_free 27351
+seed heap_internal_largest 25588
+seed web_ui false
+seed webui_password true
+seed webui_identity_absent true
+seed wifi_connected true
+wait 2000
+
+assert webui.identity absent
+assert webui.supervisor off
+assert heap.free 27351
+
+action heap-squeeze
+action heap-squeeze
+assert heap.free 19159
+action webui-enable
+assert webui.supervisor created
+assert webui.identity blocked
+assert webui.gate identity_memory
+assert webui.fail_closed yes
+print webui.gate_message
+assert heap.free 16087
+assert heap.alloc_failures 0
+
+# No identity, no server and no retry until the next reload.
+wait 5000
+assert webui.identity blocked
+assert webui.server pending
+assert webui.attempts 0
+assert heap.free 16087
+
+action heap-release
+assert heap.free 24279
+action webui-enable
+wait 2000
+# The one-shot task held its 12 KiB stack until it stored the identity.
+assert heap.minimum 11991
+assert webui.identity stored
+assert webui.server running
+assert webui.fail_closed no
+assert heap.free 16087
+assert heap.alloc_failures 0
+assert mem.leaks 0
+assert platform.watchdog armed
+
+exit

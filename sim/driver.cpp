@@ -388,6 +388,7 @@ void validateSeed(const std::string &name, const std::string &value) {
       "timed_wake_write_fail",
       "web_ui",
       "webui_password",
+      "webui_identity_absent",
       "wifi_connected",
       "mqtt_tls",
       "mqtt_expect_overflow",
@@ -1348,6 +1349,11 @@ bool applyTransportFaultAction(const scenario_action_t &action, bool *applied) {
   // Board, PMIC, power-button, USB, radio and peripheral quirks. The model
   // returns false for actions it does not own, so the normal UI dispatch still
   // sees those.
+  if (action.name == "webui-enable") {
+    webuiMemoryEnable();
+    *applied = true;
+    return true;
+  }
   if (hwAction(action.name)) {
     *applied = true;
     return true;
@@ -1976,6 +1982,9 @@ std::string queryValueUnscoped(const std::string &key) {
     if (sub == "fail_closed") {
       return webuiFailClosed() ? "yes" : "no";
     }
+    if (sub == "identity") {
+      return webuiIdentityState();
+    }
     if (sub == "gate_message") {
       const char *message = webuiGateMessage();
       return (message == nullptr) ? "" : message;
@@ -2205,7 +2214,7 @@ void applyScenarioSettings(void) {
     heapSetTaskCreateFail(taskCreateFail->second);
   }
   if (scenarioSettingIsTrue("companion_enabled")) {
-    hwAction("companion-enable");
+    hwAction("companion-boot");
   }
   const auto hwProfile = scenarioSettings.find("hw_profile");
   if (hwProfile != scenarioSettings.end()) {

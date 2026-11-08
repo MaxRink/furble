@@ -193,7 +193,10 @@ void WebUI::initEarly(void) {
     self.m_EarlyIdentityWaiter = xTaskGetCurrentTaskHandle();
   }
   self.m_IdentityTaskActive.store(true);
-  if (xTaskCreate(identityTaskEntry, "webui_tls", IDENTITY_STACK_BYTES, &self, 2, nullptr)
+  // Not gated: this runs before WiFi, the display and the companion take
+  // their share of the internal heap, so the identity has the full boot heap.
+  if (xTaskCreate(identityTaskEntry, "webui_tls", WebUIMemory::IDENTITY_STACK_BYTES, &self, 2,
+                  nullptr)
       != pdPASS) {
     self.m_IdentityTaskActive.store(false);
     {
@@ -202,7 +205,7 @@ void WebUI::initEarly(void) {
     }
     self.m_CredentialsReady.store(false);
     ESP_LOGE(LOG_TAG, "Could not create the %u-byte TLS identity task; HTTPS stays closed",
-             static_cast<unsigned>(IDENTITY_STACK_BYTES));
+             static_cast<unsigned>(WebUIMemory::IDENTITY_STACK_BYTES));
     return;
   }
 
@@ -275,12 +278,7 @@ void WebUI::reloadSetting(void) {
   }
 
   if (needIdentity && !m_IdentityTaskActive.exchange(true)) {
-    if (xTaskCreate(identityTaskEntry, "webui_tls", IDENTITY_STACK_BYTES, this, 2, nullptr)
-        != pdPASS) {
-      m_IdentityTaskActive.store(false);
-      ESP_LOGE(LOG_TAG, "Could not create the %u-byte TLS identity task; reboot to retry",
-               static_cast<unsigned>(IDENTITY_STACK_BYTES));
-    }
+    startIdentityTask();
   }
 
   if (task != nullptr) {
@@ -294,6 +292,26 @@ void WebUI::taskEntry(void *param) {
 
 void WebUI::identityTaskEntry(void *param) {
   static_cast<WebUI *>(param)->identityTask();
+}
+
+void WebUI::startIdentityTask(void) {
+  const size_t freeBytes = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  const size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  const auto gate = WebUIMemory::identityGate(freeBytes, largest);
+  if (!gate.open) {
+    m_IdentityTaskActive.store(false);
+    ESP_LOGE(LOG_TAG, FURBLE_WEBUI_IDENTITY_GATE_LOG, static_cast<unsigned>(gate.freeBytes),
+             static_cast<unsigned>(gate.largestBlock), static_cast<unsigned>(gate.freeFloor),
+             static_cast<unsigned>(gate.largestFloor));
+    return;
+  }
+  if (xTaskCreate(identityTaskEntry, "webui_tls", WebUIMemory::IDENTITY_STACK_BYTES, this, 2,
+                  nullptr)
+      != pdPASS) {
+    m_IdentityTaskActive.store(false);
+    ESP_LOGE(LOG_TAG, "Could not create the %u-byte TLS identity task; reboot to retry",
+             static_cast<unsigned>(WebUIMemory::IDENTITY_STACK_BYTES));
+  }
 }
 
 void WebUI::identityTask(void) {
@@ -737,12 +755,8 @@ bool WebUI::startServer(void) {
         m_PrivateKey.clear();
         m_Fingerprint.clear();
       }
-      if (!m_IdentityTaskActive.exchange(true)
-          && (xTaskCreate(identityTaskEntry, "webui_tls", IDENTITY_STACK_BYTES, this, 2, nullptr)
-              != pdPASS)) {
-        m_IdentityTaskActive.store(false);
-        ESP_LOGE(LOG_TAG, "Could not create the %u-byte TLS identity task; reboot to retry",
-                 static_cast<unsigned>(IDENTITY_STACK_BYTES));
+      if (!m_IdentityTaskActive.exchange(true)) {
+        startIdentityTask();
       }
     }
     return false;

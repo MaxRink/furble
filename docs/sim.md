@@ -458,7 +458,10 @@ seeded baseline.
 
 `web_ui` enables the WebUI admission model and `webui_password` says the
 companion password is set. The `webui_gate` seed value `off` skips the #392
-supervisor gate to model the pre-fix 8 KiB allocation. `wifi_connected` makes
+supervisor gate to model the pre-fix 8 KiB allocation. `webui_identity_absent`
+set to `true` models a device with no stored TLS identity; with `web_ui` off at
+boot, `action webui-enable` turns the WebUI on at runtime and runs the
+supervisor gate and then the identity gate. `wifi_connected` makes
 the station report a
 connected network so the WebUI and MQTT network gates can pass. The model runs
 the production gate functions from `include/FurbleWebUIMemory.h` and
@@ -553,7 +556,11 @@ bytes. `main_stack` and `main_high_water` set the modeled main stack and the
 combined MQTT-path high-water; the default is 12,288 / 3,476, and the pre-fix
 regression seeds 8,192 / 8,500 to report `main_overflow`. `mqtt_expect_overflow`
 set to `true` is the deliberate historical-overflow override used by the 4 KiB
-and 6 KiB regression scenarios. `companion_enabled` seeds the companion state.
+and 6 KiB regression scenarios. `companion_enabled` seeds the companion state
+as enabled at boot, with its task and GATT database already in the seeded
+heap. `action companion-enable` on a companion that was off at boot runs the
+production `CompanionMemory::startGate` and charges the retained 3 KiB task and
+4 KiB GATT database once; `action companion-disable` keeps both.
 
 `ble_peers` selects the virtual BLE radio topology from a strict allowlist:
 
@@ -727,6 +734,8 @@ action ethernet-down
 action ble-auth-timeout
 action ble-gatt-stale
 action ble-gatt-fresh
+action companion-enable
+action companion-disable
 action companion-reidentify
 action companion-reconnect
 action companion-reject-central
@@ -739,6 +748,7 @@ action psram-task-start
 action heap-leak-probe
 action heap-leak-free
 action heap-squeeze
+action webui-enable
 action heap-release
 action alloc-icon
 action ota-rollback
@@ -1024,6 +1034,8 @@ The other namespaces are:
   report the wired link model.
 - `ble.*` reports bond, auth, GATT cache, auth timeouts and reconnects.
   `companion.*` reports enabled, state, reidentify count and rejected links.
+  `companion.gate` is `memory` after the start gate refused the last enable
+  and `none` otherwise.
 - `audio.*`, `ir.*`, `sd.*` and `alloc.icon` report peripheral fault states.
   `ota.slot`, `ota.rollback`, `ota.updates` and `ota.commits` report the OTA
   slot model.
@@ -1038,7 +1050,9 @@ The other namespaces are:
 - `webui.supervisor` is `off`, `pending`, `created`, `blocked` or
   `alloc_failed`. `webui.server` is `off`, `pending`, `running`, `blocked` or
   `alloc_failed`. `webui.gate` names the last refusal (`none`,
-  `supervisor_memory`, `server_memory`, `supervisor_task` or `server_task`),
+  `supervisor_memory`, `server_memory`, `identity_memory`, `supervisor_task`
+  or `server_task`), `webui.identity` is `stored`, `generating`, `blocked` or
+  `absent`,
   `webui.attempts` counts server admission attempts, `webui.fail_closed` is
   `yes` after a refusal and `webui.gate_message` is the exact production log
   sentence for `print`.

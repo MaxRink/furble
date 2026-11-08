@@ -217,6 +217,31 @@ int main() {
             && control.commands.back() == Control::CMD_SHUTTER_RELEASE,
         "shutdown did not release the replacement session without admitting its racing press");
 
+  // A runtime enable without a stored identity creates the 12 KiB identity
+  // task only above the identity gate. A refusal creates nothing, writes no
+  // NVS and leaves the next reload free to try again.
+  Preferences::values.clear();
+  webui.hostResetIdentity();
+  Furble::Settings::webEnabled = true;
+  const size_t identityTasks = host_webui_heap::tasksCreated("webui_tls");
+  host_webui_heap::set(Furble::WebUIMemory::IDENTITY_INTERNAL_FREE_FLOOR - 1,
+                       Furble::WebUIMemory::IDENTITY_INTERNAL_LARGEST_FLOOR);
+  webui.reloadSetting();
+  check(host_webui_heap::tasksCreated("webui_tls") == identityTasks,
+        "the identity task was created below the free floor");
+  host_webui_heap::set(Furble::WebUIMemory::IDENTITY_INTERNAL_FREE_FLOOR,
+                       Furble::WebUIMemory::IDENTITY_INTERNAL_LARGEST_FLOOR - 1);
+  webui.reloadSetting();
+  check(host_webui_heap::tasksCreated("webui_tls") == identityTasks,
+        "the identity task was created below the largest-block floor");
+  check(Preferences::values.empty(), "a refused identity task wrote NVS");
+  host_webui_heap::set(Furble::WebUIMemory::IDENTITY_INTERNAL_FREE_FLOOR,
+                       Furble::WebUIMemory::IDENTITY_INTERNAL_LARGEST_FLOOR);
+  webui.reloadSetting();
+  check(host_webui_heap::tasksCreated("webui_tls") == identityTasks + 1,
+        "a refused identity task was not retried by the next reload");
+  host_webui_heap::reset();
+
   if (failures != 0)
     return 1;
   std::cout << "webui_handler_test: PASS\n";

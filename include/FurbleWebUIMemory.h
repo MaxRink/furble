@@ -40,6 +40,53 @@ inline constexpr size_t SUPERVISOR_INTERNAL_FREE_FLOOR = 4096;
 inline constexpr size_t SUPERVISOR_INTERNAL_LARGEST_FLOOR = 3584;
 
 /**
+ * The one-shot TLS identity task. It writes NVS, so its stack stays internal.
+ * The stack holds the 1 KiB key and 2 KiB certificate PEM arrays of
+ * createIdentity() and the 1 KiB signature buffer of
+ * mbedtls_x509write_crt_der(). tools/stack_budget.json reads this value.
+ */
+inline constexpr size_t IDENTITY_STACK_BYTES = 12288;
+
+/**
+ * Derived: what one task costs beyond its stack. The largest StaticTask_t in
+ * sim/coverage/board_heap.json is 348 bytes (Waveshare DWARF; 336 elsewhere),
+ * and the stack and TCB are two heap blocks of 16 bytes each (4-byte TLSF
+ * header plus 12 bytes of comprehensive poisoning). 348 + 32 = 380, rounded
+ * up to 384.
+ */
+inline constexpr size_t TASK_OVERHEAD_BYTES = 384;
+
+/**
+ * Derived: peak mbedTLS heap of WebUI::createIdentity() on the pinned
+ * mbedTLS 3.6.5 (ESP-IDF 5.5.3). The largest block is the private-key DER
+ * buffer that mbedtls_pk_write_key_pem() callocs: PRV_DER_MAX_BYTES is the RSA
+ * bound because esp_config.h always defines MBEDTLS_RSA_C, 47 + 3 * 1024 +
+ * 5 * 512 = 5,679 bytes. While it is live the key pair (128-byte
+ * mbedtls_ecp_keypair plus its d and Q limbs, about 450 bytes with block
+ * headers), the four subject and issuer name nodes (about 450 bytes) and the
+ * subject string are also live: about 6.6 KiB. Key generation and the ECDSA
+ * signature peak lower, at about 4.6 KiB: an 8-point comb table
+ * (MBEDTLS_ECP_WINDOW_SIZE 4, fixed-point optimization off) of 24 limb
+ * arrays, the HMAC-DRBG digest contexts and the signing temporaries. Rounded
+ * up to 8 KiB. The S3 boards set CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC, so there
+ * this heap is PSRAM and the floor is conservative; the Core2 sets
+ * CONFIG_MBEDTLS_INTERNAL_MEM_ALLOC and needs it internal.
+ */
+inline constexpr size_t IDENTITY_MBEDTLS_HEAP_BYTES = 8192;
+
+/**
+ * Free internal heap required before the runtime identity task is created:
+ * the stack, the TCB and block overhead, and the mbedTLS working heap
+ * (20,864 bytes). The largest block must hold the stack plus overhead
+ * (12,672 bytes). The boot path in WebUI::initEarly() is not gated: it runs
+ * before WiFi, the display and the companion take their share.
+ */
+inline constexpr size_t IDENTITY_INTERNAL_FREE_FLOOR =
+    IDENTITY_STACK_BYTES + TASK_OVERHEAD_BYTES + IDENTITY_MBEDTLS_HEAP_BYTES;
+inline constexpr size_t IDENTITY_INTERNAL_LARGEST_FLOOR =
+    IDENTITY_STACK_BYTES + TASK_OVERHEAD_BYTES;
+
+/**
  * One admission decision against a measured internal-heap pair.
  *
  * The measurement is recorded in the decision so the caller can log the exact
@@ -72,12 +119,21 @@ inline constexpr gate_t supervisorGate(size_t freeBytes, size_t largestBlock) {
                   SUPERVISOR_INTERNAL_LARGEST_FLOOR);
 }
 
+inline constexpr gate_t identityGate(size_t freeBytes, size_t largestBlock) {
+  return evaluate(freeBytes, largestBlock, IDENTITY_INTERNAL_FREE_FLOOR,
+                  IDENTITY_INTERNAL_LARGEST_FLOOR);
+}
+
 inline constexpr bool serverFits(size_t freeBytes, size_t largestBlock) {
   return serverGate(freeBytes, largestBlock).open;
 }
 
 inline constexpr bool supervisorFits(size_t freeBytes, size_t largestBlock) {
   return supervisorGate(freeBytes, largestBlock).open;
+}
+
+inline constexpr bool identityFits(size_t freeBytes, size_t largestBlock) {
+  return identityGate(freeBytes, largestBlock).open;
 }
 
 /**
@@ -92,9 +148,13 @@ inline constexpr bool supervisorFits(size_t freeBytes, size_t largestBlock) {
 #define FURBLE_WEBUI_SERVER_GATE_LOG                                \
   "HTTPS stays closed: internal free %u, largest %u (need %u/%u). " \
   "See docs/webui.md for the board budget."
+#define FURBLE_WEBUI_IDENTITY_GATE_LOG                                      \
+  "TLS identity not generated: internal free %u, largest %u (need %u/%u). " \
+  "HTTPS stays closed; reboot to generate the identity."
 
 inline constexpr const char *SUPERVISOR_GATE_LOG = FURBLE_WEBUI_SUPERVISOR_GATE_LOG;
 inline constexpr const char *SERVER_GATE_LOG = FURBLE_WEBUI_SERVER_GATE_LOG;
+inline constexpr const char *IDENTITY_GATE_LOG = FURBLE_WEBUI_IDENTITY_GATE_LOG;
 
 }  // namespace WebUIMemory
 }  // namespace Furble

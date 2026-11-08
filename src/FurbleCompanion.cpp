@@ -1,3 +1,4 @@
+#include <esp_heap_caps.h>
 #include <esp_timer.h>
 
 #include "CameraList.h"
@@ -5,6 +6,7 @@
 #include "Scan.h"
 
 #include "FurbleCompanion.h"
+#include "FurbleCompanionMemory.h"
 #if defined(FURBLE_BLE_DEBUG)
 #include "FurbleCompanionDebug.h"
 #endif
@@ -17,15 +19,6 @@
 #endif
 
 namespace Furble {
-
-namespace {
-
-// Measured 1,884-byte high-water mark on the StickS3 with the companion
-// connected and a settings write. Keep the task internal because it commits
-// NVS, and keep enough headroom for the NimBLE and Preferences frames.
-constexpr uint32_t COMPANION_TASK_STACK_BYTES = 3072;
-
-}  // namespace
 
 CompanionGatt::CompanionGatt() : m_Service {*this} {
   m_Service.setSettingReloadCallback([this](bool pairingWindow) { reloadSetting(pairingWindow); });
@@ -173,6 +166,21 @@ void CompanionGatt::enable(bool pairingWindow) {
     if (m_Enabled) {
       startPairing = pairingWindow;
     } else {
+      if (m_Task == nullptr) {
+        // The first enable creates the retained task and the GATT database.
+        // Every board aborts on a failed allocation, so refuse here instead
+        // and stay disabled. A later enable passes through this gate again.
+        const size_t freeBytes = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        const size_t largest =
+            heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        const auto gate = CompanionMemory::startGate(freeBytes, largest);
+        if (!gate.open) {
+          ESP_LOGE(LOG_TAG, FURBLE_COMPANION_START_GATE_LOG, static_cast<unsigned>(gate.freeBytes),
+                   static_cast<unsigned>(gate.largestBlock), static_cast<unsigned>(gate.freeFloor),
+                   static_cast<unsigned>(gate.largestFloor));
+          return;
+        }
+      }
       m_Enabled = true;
       m_PairingWindow = false;
 
@@ -236,7 +244,7 @@ void CompanionGatt::enable(bool pairingWindow) {
 
       if (m_Task == nullptr) {
         const BaseType_t result = xTaskCreate(serviceTaskEntry, "companion",
-                                              COMPANION_TASK_STACK_BYTES, this, 2, &m_Task);
+                                              CompanionMemory::TASK_STACK_BYTES, this, 2, &m_Task);
         if (result != pdPASS) {
           ESP_LOGE(LOG_TAG, "Failed to create companion task");
           m_Task = nullptr;

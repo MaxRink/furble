@@ -110,6 +110,22 @@ Authenticated WebUI listening on HTTPS port 443 (internal free N, largest N)
 Separate log lines report the supervisor and HTTPS stack headroom after the
 first response; those are the numbers to collect for a new board.
 
+The TLS identity is normally created at boot, before WiFi and the display take
+their share of the heap. When the WebUI is first turned on at runtime and no
+identity is stored yet, the one-shot 12 KiB identity task starts only with
+20,864 bytes free and a 12,672-byte block. Below that the task is not created,
+HTTPS stays closed, and the log says:
+
+```text
+TLS identity not generated: internal free N, largest N (need 20864/12672). HTTPS stays closed; reboot to generate the identity.
+```
+
+Reboot with the WebUI setting on, or change a setting once more internal RAM is
+free, to try again. Nothing is written to NVS until the identity is generated.
+The floor covers the stack, the task overhead and the 8 KiB mbedTLS working
+heap that key generation needs on the Core2, where mbedTLS is internal; the S3
+boards keep that heap in PSRAM, so the floor is conservative there.
+
 | Build | Radio | PSRAM used | Internal free | WebUI |
 | :--- | :--- | :--- | :--- | :--- |
 | `m5stick-s3` (M5StickS3) | WiFi + BLE | 8 MB, mbedTLS in PSRAM | **13.5 KiB free / 12.8 KiB largest measured before plan 305**; **27.4 KiB free / 25.6 KiB largest measured after plan 305 with WebUI off**; **30.0 KiB free / 28.7 KiB largest measured with the 8 KiB main-stack experiment**; **about 25.9 KiB free inferred after plan 311 reverts the main stack to 12 KiB**; the largest block after plan 311 is not inferred | **Measured as not fitting before plan 305: the server gate stayed closed at 13.5 KiB free / 12.8 KiB largest with WebUI off. Later plans move some consumers to PSRAM; the gate is inferred to pass, but hardware has not confirmed it. Do not call it supported until a TLS handshake, a settings write and a soak pass.** |

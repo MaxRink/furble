@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cstring>
 #include <memory>
+#include <string>
 #include <vector>
 
 struct host_webui_server_t {
@@ -34,6 +35,7 @@ size_t g_TlsFailAt = 0;
 size_t g_TlsHandshakes = 0;
 size_t g_TlsCloses = 0;
 int g_TlsTimeoutMs = 0;
+std::vector<std::string> g_CreatedTasks;
 }  // namespace
 
 namespace host_webui_tls {
@@ -91,6 +93,9 @@ void set(size_t freeBytes, size_t largestBlock) {
 void reset() {
   g_InternalFree = 65536;
   g_LargestBlock = 32768;
+}
+size_t tasksCreated(const char *name) {
+  return static_cast<size_t>(std::count(g_CreatedTasks.begin(), g_CreatedTasks.end(), name));
 }
 }  // namespace host_webui_heap
 
@@ -297,12 +302,15 @@ void setStartAdvance(uint64_t microseconds) {
 }  // namespace host_webui_timer
 
 extern "C" BaseType_t xTaskCreate(void (*)(void *),
-                                  const char *,
+                                  const char *name,
                                   uint32_t,
                                   void *,
                                   UBaseType_t,
                                   TaskHandle_t *handle) {
-  *handle = reinterpret_cast<void *>(1);
+  g_CreatedTasks.emplace_back(name);
+  if (handle != nullptr) {
+    *handle = reinterpret_cast<void *>(1);
+  }
   return pdPASS;
 }
 extern "C" BaseType_t xTaskNotifyGive(TaskHandle_t) {
