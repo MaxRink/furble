@@ -140,3 +140,4 @@ branch `fix/stack-budget-review`.
 | # | Finding | Resolution | Evidence |
 | ---: | :--- | :--- | :--- |
 | 1 | #429 review summary: the queue and the incoming copy could be placed in different memory, exhausting internal RAM. | False positive. `startExtra()` and `startClient()` test PSRAM against `EVENT_QUEUE_BLOCK_BYTES` (9,520), which is larger than `INCOMING_EVENT_BLOCK_BYTES` (2,476), so whenever the queue fits in PSRAM the incoming copy does too, and any internal fallback for the copy passes `internalAdmits()` first. | `src/FurbleMQTT.cpp` |
+| 2 | #430 review: the wiki said HTTPS stays closed until a reboot, but a later setting change reruns `reloadSetting()` and retries the identity task. | Fixed. `docs/wiki/WebUI.md` now matches `docs/webui.md`: reboot with the WebUI on, or change a setting once more internal RAM is free. | `docs/wiki/WebUI.md` |
