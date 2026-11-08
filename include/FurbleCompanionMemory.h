@@ -3,6 +3,8 @@
 
 #include <cstddef>
 
+#include "FurbleTaskMemory.h"
+
 namespace Furble {
 namespace CompanionMemory {
 
@@ -12,14 +14,6 @@ namespace CompanionMemory {
  * NVS, so it stays internal. tools/stack_budget.json reads this value.
  */
 inline constexpr size_t TASK_STACK_BYTES = 3072;
-
-/**
- * Derived: TCB plus allocator overhead of one task. The largest StaticTask_t
- * in sim/coverage/board_heap.json is 348 bytes, and the stack and TCB are two
- * blocks of 16 bytes each (TLSF header plus comprehensive poisoning). 380,
- * rounded up to 384.
- */
-inline constexpr size_t TASK_OVERHEAD_BYTES = 384;
 
 /**
  * Derived: the GATT database the first enable builds and keeps, sized from the
@@ -46,8 +40,9 @@ inline constexpr size_t GATT_BYTES = 4096;
  * plus overhead (3,456 bytes). Later enables reuse both and are not gated.
  */
 inline constexpr size_t START_INTERNAL_FREE_FLOOR =
-    TASK_STACK_BYTES + TASK_OVERHEAD_BYTES + GATT_BYTES;
-inline constexpr size_t START_INTERNAL_LARGEST_FLOOR = TASK_STACK_BYTES + TASK_OVERHEAD_BYTES;
+    TASK_STACK_BYTES + TaskMemory::TASK_OVERHEAD_BYTES + GATT_BYTES;
+inline constexpr size_t START_INTERNAL_LARGEST_FLOOR =
+    TASK_STACK_BYTES + TaskMemory::TASK_OVERHEAD_BYTES;
 
 /**
  * One admission decision against a measured internal-heap pair. The host test

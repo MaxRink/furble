@@ -199,6 +199,8 @@ settings-touching rebase.
 - `FurbleCompanionMemory.h` holds the 3 KiB companion task stack and the
   7,552/3,456 first-enable gate. `tools/stack_budget.json` reads the stack
   value from it. The simulator logs through `FURBLE_COMPANION_START_GATE_LOG`.
+- `FurbleTaskMemory.h` holds the derived 384-byte TCB and allocator overhead
+  of one task. Every task admission gate adds it; do not copy the value.
 - `FurbleMQTTMemory.h` has separate plain and TLS start floors. A secure
   `mqtts://` URI must pass the 6 KiB TLS-worker floor, not the plain 3 KiB
   worker floor. `wss://` is not part of the contract because no firmware build

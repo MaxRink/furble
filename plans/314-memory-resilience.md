@@ -347,7 +347,8 @@ log. The audit covered five sites.
    `httpd_ssl_start` failure, now go through `WebUI::startIdentityTask()`.
    A refusal does not create the task, clears `m_IdentityTaskActive`, writes no
    NVS and logs `TLS identity not generated: internal free N, largest N (need
-   20864/12672). HTTPS stays closed; reboot to generate the identity.` The next
+   20864/12672). HTTPS stays closed; reboot or change a setting once more
+   internal RAM is free to retry.` The next
    `reloadSetting()` with the WebUI on retries, as the old "reboot to retry"
    path did. The boot path in `initEarly()` stays ungated: it runs before
    WiFi, the display and the companion take their share.

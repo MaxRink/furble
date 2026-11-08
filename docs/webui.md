@@ -117,7 +117,7 @@ identity is stored yet, the one-shot 12 KiB identity task starts only with
 HTTPS stays closed, and the log says:
 
 ```text
-TLS identity not generated: internal free N, largest N (need 20864/12672). HTTPS stays closed; reboot to generate the identity.
+TLS identity not generated: internal free N, largest N (need 20864/12672). HTTPS stays closed; reboot or change a setting once more internal RAM is free to retry.
 ```
 
 Reboot with the WebUI setting on, or change a setting once more internal RAM is

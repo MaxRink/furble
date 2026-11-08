@@ -3,6 +3,8 @@
 
 #include <cstddef>
 
+#include "FurbleTaskMemory.h"
+
 namespace Furble {
 namespace WebUIMemory {
 
@@ -48,15 +50,6 @@ inline constexpr size_t SUPERVISOR_INTERNAL_LARGEST_FLOOR = 3584;
 inline constexpr size_t IDENTITY_STACK_BYTES = 12288;
 
 /**
- * Derived: what one task costs beyond its stack. The largest StaticTask_t in
- * sim/coverage/board_heap.json is 348 bytes (Waveshare DWARF; 336 elsewhere),
- * and the stack and TCB are two heap blocks of 16 bytes each (4-byte TLSF
- * header plus 12 bytes of comprehensive poisoning). 348 + 32 = 380, rounded
- * up to 384.
- */
-inline constexpr size_t TASK_OVERHEAD_BYTES = 384;
-
-/**
  * Derived: peak mbedTLS heap of WebUI::createIdentity() on the pinned
  * mbedTLS 3.6.5 (ESP-IDF 5.5.3). The largest block is the private-key DER
  * buffer that mbedtls_pk_write_key_pem() callocs: PRV_DER_MAX_BYTES is the RSA
@@ -82,9 +75,9 @@ inline constexpr size_t IDENTITY_MBEDTLS_HEAP_BYTES = 8192;
  * before WiFi, the display and the companion take their share.
  */
 inline constexpr size_t IDENTITY_INTERNAL_FREE_FLOOR =
-    IDENTITY_STACK_BYTES + TASK_OVERHEAD_BYTES + IDENTITY_MBEDTLS_HEAP_BYTES;
+    IDENTITY_STACK_BYTES + TaskMemory::TASK_OVERHEAD_BYTES + IDENTITY_MBEDTLS_HEAP_BYTES;
 inline constexpr size_t IDENTITY_INTERNAL_LARGEST_FLOOR =
-    IDENTITY_STACK_BYTES + TASK_OVERHEAD_BYTES;
+    IDENTITY_STACK_BYTES + TaskMemory::TASK_OVERHEAD_BYTES;
 
 /**
  * One admission decision against a measured internal-heap pair.
@@ -150,7 +143,7 @@ inline constexpr bool identityFits(size_t freeBytes, size_t largestBlock) {
   "See docs/webui.md for the board budget."
 #define FURBLE_WEBUI_IDENTITY_GATE_LOG                                      \
   "TLS identity not generated: internal free %u, largest %u (need %u/%u). " \
-  "HTTPS stays closed; reboot to generate the identity."
+  "HTTPS stays closed; reboot or change a setting once more internal RAM is free to retry."
 
 inline constexpr const char *SUPERVISOR_GATE_LOG = FURBLE_WEBUI_SUPERVISOR_GATE_LOG;
 inline constexpr const char *SERVER_GATE_LOG = FURBLE_WEBUI_SERVER_GATE_LOG;
