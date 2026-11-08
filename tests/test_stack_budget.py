@@ -281,6 +281,7 @@ class StackBudgetTest(unittest.TestCase):
         self.assertEqual(stack_budget.body_of("_ZN4Foo2D1Ev"), "_ZN4Foo2D2Ev")
         # template arguments, including a literal, are skipped whole
         self.assertEqual(stack_budget.body_of("_ZN3FooILi5EEC1Ev"), "_ZN3FooILi5EEC2Ev")
+        self.assertEqual(stack_budget.body_of("_ZN3FooIJiEEC1Ev"), "_ZN3FooIJiEEC2Ev")
         self.assertEqual(
             stack_budget.body_of("_ZNSt12_Vector_baseIP19NimBLERemoteServiceSaIS1_EED1Ev"),
             "_ZNSt12_Vector_baseIP19NimBLERemoteServiceSaIS1_EED2Ev")

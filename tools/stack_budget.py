@@ -53,7 +53,7 @@ def _skip_template_args(s, i):
             i = _skip_name(s, i)
         elif c == "L":  # a literal such as Li5E holds digits that are not names
             i = s.index("E", i) + 1
-        elif c in "INX":
+        elif c in "IJNX":  # J...E is a template argument pack
             depth, i = depth + 1, i + 1
         elif c == "E":
             depth, i = depth - 1, i + 1
