@@ -43,7 +43,7 @@ offline-ACK deadline becomes a timing flake. `console-commands` pins the
 
 - `webui-security` and `webui-handler` run the production WebUI gate and
   handlers against host doubles. Keep the 20,480/12,288 server floors, the
-  4,096/3,584 supervisor floors, the 20,864/12,672 runtime identity floors and
+  4,608/4,096 supervisor floors, the 20,864/12,672 runtime identity floors and
   their refuse-then-retry path, the cached setting/password state, the
   streamed settings JSON and the identity persistence contract covered there.
   A new route or a new credential path needs a matching case.

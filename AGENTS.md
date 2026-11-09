@@ -128,7 +128,7 @@ single factory app partition. Normal CI builds it as the mandatory Core debug
 profile. Keep it out of release and web-installer matrices; the legacy
 `m5stack-core-debug` OTA profile is an explicit workflow-dispatch opt-in, and
 returning to dual OTA requires a USB partition-table reflash. After the plan 314
-flash slimming it fits its OTA slot again (1,719,437 bytes).
+flash slimming it fits its OTA slot again (1,719,453 bytes).
 
 Single-board images set `M5GFX_BOARD` (`m5stick-c`, `m5stack-core`,
 `m5stick-s3`); `post:patches/m5gfx_board.py` pins it in `M5GFX::autodetect`.

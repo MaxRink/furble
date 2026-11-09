@@ -36,8 +36,8 @@ CRASH_PATTERNS = (
     "Aborted",
 )
 
-SUPERVISOR_FREE_FLOOR = 4096
-SUPERVISOR_LARGEST_FLOOR = 3584
+SUPERVISOR_FREE_FLOOR = 4608
+SUPERVISOR_LARGEST_FLOOR = 4096
 
 
 def parse_state(output: str, name: str) -> str:

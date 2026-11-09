@@ -3,6 +3,8 @@
 On the M5StickS3 debug image, WiFi plus Bluetooth with the companion service
 and display active measured 13,543 free / 12,788 largest internal bytes with
 the WebUI off before plan 305, and 10,607 / 9,716 with the 3 KiB supervisor.
+Plan 314 later raised the supervisor to 3.5 KiB (floors 4,608 / 4,096),
+because ESP-IDF Log V2 adds 144 bytes to its deepest logging path.
 That was below the 20,480 / 12,288 server floor, so the listener stayed closed
 with a measured log line instead of resetting. Plan 305 measured 27,351 free /
 25,588 largest with the WebUI off, above the floor on paper but without a
