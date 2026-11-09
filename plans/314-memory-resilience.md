@@ -653,13 +653,23 @@ per-clone setting. The first cut used a `PreToolUse` gate script instead.
 Review showed that a gate running before the command cannot see the refs a
 push sends or scope `--no-verify` to one push, so Git now does both.
 
+Git exports `GIT_DIR` and related variables to a hook run from a linked
+worktree. The first push through the hook from such a worktree ran the
+scanner unit tests with them set, and the tests that build scratch
+repositories committed into the real one, set `core.bare=true` and wrote a
+test `[user]` into its shared config. The hook blocked that push, so nothing
+reached GitHub, and the repository was restored. The hook now clears them with
+`unset $(git rev-parse --local-env-vars)` before the gate runs, and a test
+pushes from a linked worktree with a reviewer that fails if `GIT_DIR` reaches
+it; it fails without the fix.
+
 Setting `core.hooksPath` replaces `.git/hooks`. furble stores no Git LFS
 objects, so the LFS hooks a global `git lfs install` writes there are unused.
 
 `tests/test_push_hooks.py` pushes through real git to a local bare remote with
 the settings env and a stub reviewer. It covers a clean push, a blocked push,
-a push of a ref other than `HEAD`, `--no-verify` on one push only, and a
-deletion.
+a push of a ref other than `HEAD`, `--no-verify` on one push only, a push
+from a linked worktree, and a deletion.
 
 ## PR 13: debug hardening
 

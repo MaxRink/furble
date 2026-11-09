@@ -17,7 +17,9 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 HOOK = ROOT / ".githooks" / "pre-push"
 SETTINGS = ROOT / ".claude" / "settings.json"
-STUB = """import subprocess, sys
+STUB = """import os, subprocess, sys
+if "GIT_DIR" in os.environ:
+    sys.exit("GIT_DIR leaked into the reviewer")
 head = sys.argv[sys.argv.index("--head") + 1]
 open("review.log", "a").write(head + "\\n")
 message = subprocess.run(["git", "log", "-1", "--format=%s", head],
@@ -32,7 +34,9 @@ class PushHookTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.tmp)
         self.remote = self.tmp / "remote.git"
         self.work = self.tmp / "work"
-        env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_CONFIG")}
+        # A hook exports GIT_DIR to the gate, which runs this suite; keep the
+        # scratch repositories from inheriting it.
+        env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
         env.update(json.loads(SETTINGS.read_text(encoding="utf-8"))["env"])
         env.update(GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t", GIT_COMMITTER_NAME="t",
                    GIT_COMMITTER_EMAIL="t@t", GIT_CONFIG_GLOBAL=os.devnull,
@@ -92,6 +96,18 @@ class PushHookTest(unittest.TestCase):
         self.assertEqual((result.returncode, self.reviewed()), (0, []))
         self.git("push", "-q", "origin", "master:refs/heads/copy", check=False)
         self.assertEqual(len(self.reviewed()), 1)
+
+    def test_a_push_from_a_linked_worktree_hides_git_dir_from_the_gate(self):
+        # Git exports GIT_DIR to a hook run from a linked worktree. The gate's
+        # own tests build scratch repositories, so a leaked GIT_DIR once
+        # committed into, and reconfigured, the real repository.
+        tree = self.tmp / "linked"
+        self.git("worktree", "add", "-q", "-b", "side", str(tree))
+        (tree / "g.txt").write_text("x", encoding="utf-8")
+        self.git("add", "g.txt", cwd=tree)
+        self.git("commit", "-q", "-m", "good", cwd=tree)
+        result = self.git("push", "-q", "origin", "side", cwd=tree, check=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_a_branch_deletion_skips_the_review(self):
         self.git("push", "-q", "--no-verify", "origin", "master:refs/heads/old")
