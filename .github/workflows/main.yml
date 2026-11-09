@@ -406,7 +406,11 @@ jobs:
           ram_used = int(matches["RAM"][1])
           ram_total = int(matches["RAM"][2])
           firmware_environment = os.environ["FIRMWARE_ENV"]
-          if firmware_environment == "m5stack-core-usb-debug":
+          if firmware_environment in (
+              "m5stack-core-usb-debug",
+              "m5stick-c-debug",
+              "m5stick-c-plus-debug",
+          ):
               flash_slot = 0x3E0000
           else:
               release_environment = firmware_environment.removesuffix("-debug")

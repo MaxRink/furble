@@ -47,8 +47,11 @@ There are six release board environments: `m5stick-c`, `m5stick-c-plus`,
 `m5stick-s3`, `m5stack-core`, `m5stack-core2`, and `waveshare-s3-eth`. Each has
 a matching `-debug` environment that adds verbose logging and the USB serial
 console. CI builds the six release environments and their mandatory debug
-profiles. Releases publish the six release images and five OTA-compatible debug
-images. The Core single-factory USB debug profile remains developer-only.
+profiles. Releases publish the six release images and five debug images. The
+StickC and StickC Plus debug images use a single factory partition because they
+outgrew the 1,700 KiB OTA slot; their installer manifests omit the OTA data
+part, and they have no wireless update path. The Core single-factory USB debug
+profile remains developer-only.
 
 Normal CI uses the USB-only Core debug profile. The legacy dual-OTA
 `m5stack-core-debug` profile is available only through **Run workflow** with
@@ -80,7 +83,9 @@ Keep the existing NVS partition by avoiding a full-chip erase. Returning to a
 normal OTA image requires USB reflashing its dual-OTA partition table and
 `ota_data_initial.bin`.
 
-Validate its partition and upload contract without a build:
+The StickC debug environments use the same single factory table through
+`sdkconfig.single-factory-4m`. Validate the table and the three profiles
+without a build:
 
 ```sh
 python3 tools/check_single_factory_profile.py

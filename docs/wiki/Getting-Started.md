@@ -41,6 +41,11 @@ partition, and is not a release or wireless-update image. Avoid a full erase
 when preserving NVS settings and camera bonds. Normal CI uses this profile for
 the Core debug lane; the legacy dual-OTA Core debug profile is opt-in only.
 
+The StickC and StickC Plus debug images also use one factory app partition,
+because they outgrew the OTA slot. The web installer still offers them; once
+installed they cannot be updated over the air, and installing a release image
+again restores the OTA layout. Settings and camera bonds are kept.
+
 ## First pairing
 
 1. Put the camera into its Bluetooth pairing mode. Check the camera manual for

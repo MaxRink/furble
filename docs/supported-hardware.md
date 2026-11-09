@@ -44,6 +44,9 @@ USB-UART-only fallback with one factory app partition. It is not a supported
 release environment, is the mandatory Core debug profile in normal CI, does not
 provide wireless updates or rollback, and is not included in the web installer.
 The legacy dual-OTA Core debug profile is an explicit workflow-dispatch opt-in.
+The StickC and StickC Plus debug images use the same single factory partition
+because they outgrew the OTA slot. They are still published and offered by the
+web installer, without wireless updates.
 
 Build a board with its environment name:
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the developer-only Core single-factory profile."""
+"""Validate the single-factory debug profiles and their shared partition table."""
 
 from __future__ import annotations
 
@@ -16,6 +16,12 @@ FACTORY_SIZE = 0x3E0000
 CSV_NAME = "partitions_single_factory_4m.csv"
 PROFILE_NAME = "m5stack-core-usb-debug"
 FRAGMENT_NAME = "sdkconfig.m5stack-core-usb-debug"
+# The StickC debug images outgrew the OTA slot; they layer this partition-only
+# fragment on sdkconfig.debug.
+STICK_PROFILES = ("m5stick-c-debug", "m5stick-c-plus-debug")
+STICK_FRAGMENTS = "sdkconfig.debug,sdkconfig.single-factory-4m"
+PARTITION_KEYS = ("CONFIG_PARTITION_TABLE_CUSTOM", "CONFIG_PARTITION_TABLE_CUSTOM_FILENAME",
+                  "CONFIG_PARTITION_TABLE_FILENAME")
 
 
 def require(condition: bool, message: str) -> None:
@@ -23,9 +29,9 @@ def require(condition: bool, message: str) -> None:
     raise CheckError(message)
 
 
-def profile_section(text: str) -> str:
-  match = re.search(rf"(?ms)^\[env:{re.escape(PROFILE_NAME)}\]\s*\n(.*?)(?=^\[|\Z)", text)
-  require(match is not None, f"platformio.ini: [{PROFILE_NAME}] is missing")
+def profile_section(text: str, name: str = PROFILE_NAME) -> str:
+  match = re.search(rf"(?ms)^\[env:{re.escape(name)}\]\s*\n(.*?)(?=^\[|\Z)", text)
+  require(match is not None, f"platformio.ini: [{name}] is missing")
   return match.group(1)
 
 
@@ -46,6 +52,13 @@ def check_platformio(repo_root: Path) -> None:
   require(option(section, "board_build.esp-idf.sdkconfig_fragment")
           == "${platformio.src_dir}/../" + FRAGMENT_NAME,
           f"[{PROFILE_NAME}]: wrong sdkconfig fragment")
+
+  for name in STICK_PROFILES:
+    stick = profile_section(text, name)
+    require(option(stick, "board_build.partitions") == CSV_NAME,
+            f"[{name}]: wrong partition CSV")
+    require(option(stick, "board_build.esp-idf.sdkconfig_fragment") == STICK_FRAGMENTS,
+            f"[{name}]: must layer {STICK_FRAGMENTS}")
 
   global_match = re.search(
       r"(?ms)^\[env\]\s*$.*?^board_upload\.offset_address\s*=\s*([^\s;#]+)",
@@ -71,6 +84,24 @@ def check_manifest(repo_root: Path) -> None:
   ota_parts = re.findall(r"ota_data_initial", manifest)
   require(len(ota_parts) == 2,
           "web-installer/manifest.tmpl: published OTA parts must remain present")
+
+
+def partition_lines(path: Path) -> dict[str, str]:
+  values = {}
+  for line in path.read_text(encoding="utf-8").splitlines():
+    match = re.match(r"^(CONFIG_PARTITION_TABLE_[A-Z_]+)=(.*)$", line)
+    if match:
+      values[match.group(1)] = match.group(2)
+  return values
+
+
+def check_fragments(repo_root: Path) -> None:
+  # The StickC fragment must select the same table as the Core USB fragment.
+  core = partition_lines(repo_root / FRAGMENT_NAME)
+  stick = partition_lines(repo_root / "sdkconfig.single-factory-4m")
+  for key in PARTITION_KEYS:
+    require(stick.get(key) == core.get(key) and core.get(key) is not None,
+            f"sdkconfig.single-factory-4m: {key} differs from {FRAGMENT_NAME}")
 
 
 def check_table(csv_path: Path) -> None:
@@ -110,11 +141,13 @@ def main(argv: list[str] | None = None) -> int:
   try:
     check_table(csv_path)
     check_platformio(repo_root)
+    check_fragments(repo_root)
     check_manifest(repo_root)
   except (CheckError, OSError) as exc:
     print(f"FAIL: {exc}")
     return 1
-  print(f"PASS: {PROFILE_NAME} single-factory table and USB upload contract")
+  print(f"PASS: {PROFILE_NAME}, {', '.join(STICK_PROFILES)} single-factory table and USB "
+        "upload contract")
   return 0
 
 

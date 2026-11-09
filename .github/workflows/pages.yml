@@ -96,8 +96,14 @@ jobs:
             "$firmware_dir/furble-bootloader-$platform-$version.bin"
           cp ".pio/build/$platform/partitions.bin" \
             "$firmware_dir/furble-partitions-$platform-$version.bin"
-          cp ".pio/build/$platform/ota_data_initial.bin" \
-            "$firmware_dir/furble-ota_data_initial-$platform-$version.bin"
+          # A single factory image (the StickC debug profiles) has no otadata
+          # partition, so the build writes no ota_data_initial.bin.
+          if [ -f ".pio/build/$platform/ota_data_initial.bin" ]; then
+            cp ".pio/build/$platform/ota_data_initial.bin" \
+              "$firmware_dir/furble-ota_data_initial-$platform-$version.bin"
+          else
+            echo "OTA_DATA=0" >> "$GITHUB_ENV"
+          fi
 
       - name: Generate manifest
         working-directory: web-installer
@@ -105,7 +111,7 @@ jobs:
           VERSION: ${{ github.ref_name }}
           ASSET_BASE_URL: ${{ env.ASSET_BASE_URL }}
         run: |
-          python generate-manifest.py > \
+          OTA_DATA="${OTA_DATA:-1}" python generate-manifest.py > \
             "$GITHUB_WORKSPACE/site/manifest_${PLATFORM}.json"
 
       - name: Upload installer files

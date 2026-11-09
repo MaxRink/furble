@@ -45,7 +45,11 @@ committed.
   release workflow sets `PLATFORM=<board>-debug`, and the `-debug` suffix flows
   straight into every binary path in `manifest.tmpl`. Flash offsets and
   chipFamily entries are shared with the release path, because debug envs share
-  the release `sdkconfig`. `generate-manifest.py` needs no variant logic.
+  the release `sdkconfig`. One exception: the StickC and StickC Plus debug
+  images use a single factory partition and have no `ota_data_initial.bin`.
+  The release and Pages jobs then set `OTA_DATA=0`, and `generate-manifest.py`
+  drops the OTA data part from that manifest. The other parts and offsets are
+  unchanged. `tests/test_generate_manifest.py` covers both forms.
 - Naming contract: the debug manifest is `manifest_<board>-debug.json` and its
   binaries are `furble[-part]-<board>-debug-$VERSION.bin`. These sit next to
   the release `manifest_<board>.json` in the deploy root and `deploy/firmware`.

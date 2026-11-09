@@ -13,7 +13,15 @@ CLAUDE.md whose directory it touches.
   development. CI builds the six release envs and mandatory debug profiles;
   releases build the six release envs and their matching debug profiles.
 - The three 4 MB debug envs use size-optimized debug flags (`-Os -g2 -ggdb2`)
-  to keep dual-OTA slots while retaining symbols, logs and assertions; stepping is less exact.
+  while retaining symbols, logs and assertions; stepping is less exact.
+- `m5stick-c-debug` and `m5stick-c-plus-debug` outgrew the 1,700 KiB OTA slot
+  (1,760,581 bytes at #433), so they use the single factory partition
+  (`partitions_single_factory_4m.csv`, layered by `sdkconfig.single-factory-4m`).
+  NVS and phy_init keep their offsets. They are still published: the release
+  and Pages jobs drop the OTA data part from their manifests because a single
+  factory build writes no `ota_data_initial.bin`. They have no OTA or rollback
+  path. Scoping `LOG_LOCAL_LEVEL` to furble sources would fit them in the OTA
+  slot, but the console `log <tag> verbose` would lose ESP-IDF component logs.
 - `m5stack-core-usb-debug` is a developer-only USB-UART fallback with one
   factory app partition. Normal CI uses it as the mandatory Core debug profile.
   It is not part of the six-board release or web installer matrices and has no
@@ -67,7 +75,8 @@ CLAUDE.md whose directory it touches.
 - Release tags beginning with `companion-test-` are reserved for companion
   testing and skip the firmware release workflow; other release tags are
   unchanged. Release and Pages matrices omit the Core single-factory debug
-  profile because it has no OTA data partition. The release artifact job has
+  profile; the StickC single-factory debug images are published with a
+  manifest that has no OTA data part. The release artifact job has
   scoped `contents: write` permission;
   keep that permission on the publishing job, not on firmware build jobs.
   All simulator scenarios are listed in

@@ -67,7 +67,14 @@ jobs:
           mv .pio/build/${{ matrix.platform }}${{ matrix.variant }}/firmware.bin $FIRMWARE_NAME
           mv .pio/build/${{ matrix.platform }}${{ matrix.variant }}/bootloader.bin $BOOTLOADER_NAME
           mv .pio/build/${{ matrix.platform }}${{ matrix.variant }}/partitions.bin $PARTITIONS_NAME
-          mv .pio/build/${{ matrix.platform }}${{ matrix.variant }}/ota_data_initial.bin $OTA_DATA_NAME
+          # A single factory image (the StickC debug profiles) has no otadata
+          # partition, so the build writes no ota_data_initial.bin.
+          ota_data=.pio/build/${{ matrix.platform }}${{ matrix.variant }}/ota_data_initial.bin
+          if [ -f "$ota_data" ]; then
+            mv "$ota_data" $OTA_DATA_NAME
+          else
+            echo "OTA_DATA=0" >> "$GITHUB_ENV"
+          fi
 
       - name: Generate manifest (${{ matrix.platform }}${{ matrix.variant }})
         working-directory: ./web-installer
@@ -79,7 +86,8 @@ jobs:
           RELEASE: ${{ github.ref_name }}
           PLATFORM: ${{ matrix.platform }}${{ matrix.variant }}
         run: |
-          python generate-manifest.py > ../manifest_${{ matrix.platform }}${{ matrix.variant }}.json
+          OTA_DATA="${OTA_DATA:-1}" python generate-manifest.py \
+            > ../manifest_${{ matrix.platform }}${{ matrix.variant }}.json
 
       - name: Upload artifacts (${{ matrix.platform }}${{ matrix.variant }})
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

@@ -635,6 +635,43 @@ preexisting issues, fixed here:
 and passes them to the gate, then runs the tool tests. Fork Actions are
 disabled, so this was validated locally only.
 
+## Fix: StickC debug images in a single factory slot
+
+Measuring every env for the PR 11 size budget showed that master's
+`m5stick-c-debug` (1,760,581 bytes) and `m5stick-c-plus-debug` (1,761,261
+bytes) no longer fit the 1,740,800-byte OTA slot; PlatformIO fails both
+builds. Both are mandatory CI debug profiles and release assets. Fork Actions
+are off, so no run caught it.
+
+Where the 118 KB over the release image goes, from `xtensa-esp32-elf-size` on
+the release and debug objects:
+
+- 62.9 KB in furble objects: the console (43.1 KB), Bluetooth debug commands
+  (12.7 KB) and the UI audit (3.6 KB). Furble's own verbose logs are almost
+  free: furble has 38 `ESP_LOGD`/`ESP_LOGV` calls.
+- about 55 KB across ESP-IDF libraries. `-DLOG_LOCAL_LEVEL=ESP_LOG_VERBOSE` is in
+  the env's `build_flags`, which PlatformIO also applies to every ESP-IDF
+  component, so each one compiles in its debug and verbose log strings.
+  Scoping it to `build_src_flags` saved 35.5 KB (1,725,057 bytes, a fit), but
+  the console's `log <tag> verbose` would then show nothing for ESP-IDF tags
+  such as NimBLE or WiFi. Lowering VERBOSE to DEBUG saved only 6.9 KB.
+
+Nothing else of that size could go without dropping a debug feature, so both
+StickC debug envs now use `partitions_single_factory_4m.csv` (3,968 KiB app)
+through `sdkconfig.single-factory-4m`, like `m5stack-core-usb-debug`. NVS stays
+at 0x9000/0x6000 and phy_init at 0x11000, so moving between a debug and a
+release image keeps settings and bonds. The images have no OTA or rollback
+path; `EspIdfPartitionTarget::begin()` already refuses an update when there is
+no next OTA partition.
+
+They stay published. A single factory build writes no `ota_data_initial.bin`,
+so the release and Pages jobs set `OTA_DATA=0` for it and
+`web-installer/generate-manifest.py` drops the OTA data part; the other parts
+and offsets are unchanged. `tools/check_single_factory_profile.py` validates
+the StickC envs and that their fragment selects the same table as the Core
+one. Validation: both envs build (43.3% and 43.4% of the factory slot) and pass
+the stack budget; `tests/test_generate_manifest.py`; `pre_review.py`.
+
 ## Baseline: regenerated release sdkconfigs
 
 State: implemented, as the clean baseline for PR 8 config tuning.

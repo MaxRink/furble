@@ -266,10 +266,12 @@ Every board has an optional `<board>-debug` environment, for example
 `m5stick-s3-debug`. These are built with `build_type = debug` and with
 `LOG_LOCAL_LEVEL=ESP_LOG_VERBOSE`, so `ESP_LOGD` and `ESP_LOGV` in furble
 sources are compiled in. They share the release `sdkconfig` of the board they
-extend, except for the Core USB fallback's single-factory partition fragment.
-Normal CI builds the six release environments and their mandatory debug
-profiles. Releases publish the six release images and the five OTA-compatible
-debug images; the Core USB single-factory debug profile remains developer-only.
+extend, except for the single-factory partition fragments. The StickC and
+StickC Plus debug images outgrew the 1,700 KiB OTA slot, so they use one large
+factory partition and cannot be updated over the air. Normal CI builds the six
+release environments and their mandatory debug profiles. Releases publish the
+six release images and five debug images; the Core USB single-factory debug
+profile remains developer-only.
 
 Build, flash and watch the log:
 - `platformio run -e m5stick-s3-debug -t upload`
