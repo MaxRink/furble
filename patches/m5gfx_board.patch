@@ -1,0 +1,12 @@
+--- a/src/M5GFX.cpp
++++ b/src/M5GFX.cpp
+@@ -1147,4 +1147,9 @@
+   board_t M5GFX::autodetect(bool use_reset, board_t board)
+   {
++#if defined ( M5GFX_BOARD )
++    // furble: a single-board image pins its board, so the compiler drops
++    // every other board's probe, panel and touch driver.
++    board = M5GFX_BOARD;
++#endif
+     auto bus_spi = new Bus_SPI();
+     _bus_last.reset(bus_spi);

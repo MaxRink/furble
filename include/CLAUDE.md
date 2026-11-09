@@ -190,7 +190,7 @@ settings-touching rebase.
   `HTTPD_MAX_SOCKETS` counts client sockets; ESP-IDF reserves three additional
   internal sockets. The production value is two clients (five total).
   `initEarly()` must run before WiFi/display allocation. Both WebUI task stacks
-  stay in internal RAM; `FurbleWebUIMemory.h` holds the 3 KiB/8 KiB sizes and
+  stay in internal RAM; `FurbleWebUIMemory.h` holds the 3.5 KiB/8 KiB sizes and
   the 20,480/12,288 server gate. The gate log text lives in the
   `FURBLE_WEBUI_*_GATE_LOG` macros because `ESP_LOG_ATTR_STR()` needs a
   literal; the matching constants are for the simulator. It also holds the

@@ -53,6 +53,14 @@ constexpr uint32_t REQUEST_SEND_TIMEOUT_MS = 100;
 constexpr uint32_t POWER_OFF_WAIT_MS = 3000;
 constexpr uint8_t MAX_FAILURES = 3;
 
+// The StickC profiles have no SD slot. Making that a compile-time fact lets the
+// linker drop FATFS, SDMMC and the SDSPI host from those images.
+#if defined(FURBLE_M5STICKC) || defined(FURBLE_M5STICKC_PLUS)
+constexpr bool SD_HARDWARE = false;
+#else
+constexpr bool SD_HARDWARE = true;
+#endif
+
 bool isCoreBoard(void) {
   switch (M5.getBoard()) {
     case m5::board_t::board_M5Stack:
@@ -924,7 +932,7 @@ void SD::handleTransfer(bool import) {
 }
 
 bool SD::mount(void) {
-  if (!m_Supported) {
+  if (!SD_HARDWARE || !m_Supported) {
     return false;
   }
   if (m_Mounted) {
@@ -977,7 +985,7 @@ bool SD::mount(void) {
 }
 
 void SD::unmount(void) {
-  if (!m_Mounted) {
+  if (!SD_HARDWARE || !m_Mounted) {
     return;
   }
 
@@ -1001,7 +1009,7 @@ void SD::publish(void) {
   uint32_t capacityMB = 0;
   uint32_t freeMB = 0;
 
-  if (m_Mounted) {
+  if (SD_HARDWARE && m_Mounted) {
     state = card_state_t::MOUNTED;
     if (m_Card != nullptr) {
       capacityMB = static_cast<uint32_t>(

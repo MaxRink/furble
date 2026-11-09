@@ -2,7 +2,7 @@
 #
 # Hardware with WiFi, BLE, the companion service and the display active measured
 # 13,543 free / 12,788 largest internal bytes with the WebUI off before the
-# #394 RAM pass. The supervisor fits (4,096/3,584) but the HTTPS server does not
+# #394 RAM pass. The supervisor fits (4,608/4,096) but the HTTPS server does not
 # (20,480/12,288), so the firmware logs the measured pair and stays closed.
 # This scenario proves the same decision, the production log sentence, a bounded
 # 10 s retry and a fed watchdog instead of the pre-#392 8 KiB/12 KiB allocation
@@ -16,8 +16,8 @@ seed webui_password true
 wait 100
 
 assert heap.active yes
-assert heap.free 10471
-assert heap.largest 9716
+assert heap.free 9959
+assert heap.largest 9204
 assert webui.supervisor created
 assert webui.server blocked
 assert webui.gate server_memory
@@ -27,7 +27,7 @@ print webui.gate_message
 assert ui.page main
 assert platform.watchdog armed
 
-# 10,471 free is below the 12,288 AMBER floor, so after three readings the
+# 9,959 free is below the 12,288 AMBER floor, so after three readings the
 # memory pressure governor (plan 314 PR 6) pauses the server: the one attempt
 # at t=0 is the last, instead of a retry every 10 s. The bounded retry cadence
 # above AMBER is memory-webui-retry-bounded.txt.
@@ -35,8 +35,8 @@ wait 25000
 assert heap.pressure amber
 assert_min webui.attempts 1
 assert_max webui.attempts 1
-assert heap.free 10471
-assert heap.largest 9716
+assert heap.free 9959
+assert heap.largest 9204
 assert heap.alloc_failures 0
 assert ui.page main
 assert platform.watchdog armed

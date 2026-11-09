@@ -139,7 +139,9 @@ The StickS3 has two real measurements. Before plan 305 it had 13.5 KiB free /
 12.8 KiB largest internal bytes before the WebUI supervisor, and 10.6 KiB /
 9.7 KiB with the 3 KiB supervisor. The server floor is 20,480 / 12,288 bytes,
 so the listener stayed closed. That is the important negative result and the
-reason the fail-closed gate exists. After plan 305 the measured pair with
+reason the fail-closed gate exists. Plan 314 later raised the supervisor to
+3.5 KiB, with floors of 4,608 / 4,096 bytes, because ESP-IDF Log V2 adds 144
+bytes to its deepest logging path. After plan 305 the measured pair with
 WebUI off is 27.4 KiB free / 25.6 KiB largest.
 
 Plan 305 removed about 14.6 KiB of steady internal allocations from the debug

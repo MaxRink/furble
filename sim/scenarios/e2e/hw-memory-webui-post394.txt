@@ -14,8 +14,8 @@ assert webui.supervisor created
 assert webui.server running
 assert webui.gate none
 assert webui.fail_closed no
-assert heap.free 16087
-assert heap.largest 14324
+assert heap.free 15575
+assert heap.largest 13812
 assert ui.single_buffer yes
 assert ui.flush_serialized yes
 assert mem.leaks 0

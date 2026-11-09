@@ -125,9 +125,10 @@ int main() {
   check(snapshot->heap_free == 9000, "the snapshot records free heap");
   check(snapshot->heap_largest == 8000, "the snapshot records the largest block");
   check(std::string(snapshot->task) == "ui", "the snapshot records the task name");
-  check(std::string(CrashRecord::lastLogLine(*snapshot)).find("line before the snapshot")
-            != std::string::npos,
-        "the snapshot keeps the newest log line");
+  check(
+      std::string(CrashRecord::lastLogLine(*snapshot)).find("E (0) test: line before the snapshot")
+          != std::string::npos,
+      "the snapshot keeps the newest log line");
 
   // The throttle keeps two updates inside one second from rewriting the
   // sequence, then a later update advances it.

@@ -36,6 +36,14 @@ first in a symbol therefore starts a function of that name. Without the split
 the StickC Plus WiFi blob showed six recursions that were only neighbouring
 functions merged into one, such as `cnx_remove_rc`.
 
+An `entry` that follows alignment padding can be misdecoded, so the split
+alone misses that function. The tool therefore stops reading a symbol at its
+`objdump -t` size until the next decoded `entry`, which always starts its own
+`symbol+offset` function. In the plan 314 slimming the
+0x1e-byte `config_get_wifi_task_stack_size` otherwise took the calls of the
+unnamed function behind it, and the headless WiFi task walked into three
+association cycles in the blob.
+
 A C1 or D1 constructor or destructor is usually an alias of its C2 or D2
 body, at the same address, and objdump may label that address by the alias.
 The tool skips such an alias when the body is compiled here and the symbol
@@ -127,29 +135,37 @@ keeps the library default.
 
 ## Current results
 
-Resolved worst case in bytes, port overhead included, on the 2026-11-07
-builds of `fix/stack-budget-review`. Every task passes. The main row has two
+Resolved worst case in bytes, port overhead included, on the 2026-11-09
+builds of `fix/stickc-slim`. Every task passes. The main row has two
 stacks: 12,288 on the StickS3, 16,384 elsewhere. `mqtt_client` is checked
 against the plain 3 KiB worker; TLS uses 6 KiB.
 
 | Task | Stack | StickC | StickC Plus | Core | Core2 | StickS3 | Waveshare | Headless |
 | :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| main | 12,288/16,384 | 6,816 | 6,816 | 6,816 | 6,816 | 6,928 | 3,744 | 3,744 |
-| nimble_host | 16,384 | 1,104 | 1,104 | 1,104 | 1,104 | 1,328 | 1,504 | 1,504 |
-| sys_evt | 2,304 | 1,632 | 1,632 | 1,632 | 1,632 | 1,856 | 2,096 | 2,096 |
-| esp_timer | 3,584 | 1,696 | 1,696 | 1,696 | 1,696 | 1,920 | 2,144 | 2,144 |
-| control | 8,192 | 1,968 | 1,968 | 1,968 | 1,968 | 2,192 | 2,720 | 3,168 |
-| camera_target | 4,096 | 1,872 | 1,872 | 1,872 | 1,872 | 2,096 | 2,320 | 3,168 |
-| gps | 4,096 | 2,352 | 2,352 | 2,352 | 2,352 | 2,832 | 3,056 | 3,056 |
-| wifi | 4,096 | 2,208 | 2,208 | 2,208 | 2,208 | 2,432 | 2,944 | 2,944 |
-| companion | 3,072 | 2,208 | 2,208 | 2,208 | 2,208 | 2,272 | 2,784 | 2,784 |
-| ir | 4,096 | 1,840 | 1,840 | | | 2,160 | | |
-| sd | 6,144 | | | 3,456 | 3,456 | | | |
-| mqtt | 10,240 | | | | 7,680 | 7,904 | 8,128 | 8,128 |
-| mqtt_client | 3,072 | | | | 1,776 | 2,000 | 2,256 | 2,256 |
-| webui | 3,072 | | | | 2,528 | 2,752 | 2,992 | 2,992 |
-| webui_https | 8,192 | | | | 2,192 | 2,480 | 2,720 | 2,720 |
-| webui_tls | 12,288 | | | | 6,960 | 7,488 | 7,744 | 7,744 |
+| main | 12,288/16,384 | 6,992 | 6,992 | 6,992 | 6,992 | 6,928 | 3,920 | 3,920 |
+| nimble_host | 16,384 | 1,440 | 1,440 | 1,440 | 1,440 | 1,664 | 1,856 | 1,856 |
+| sys_evt | 2,304 | 1,728 | 1,728 | 1,728 | 1,728 | 1,952 | 2,192 | 2,192 |
+| esp_timer | 3,584 | 1,696 | 1,696 | 1,696 | 1,696 | 1,920 | 2,128 | 2,128 |
+| control | 8,192 | 2,112 | 2,112 | 2,112 | 2,112 | 2,896 | 3,120 | 3,728 |
+| camera_target | 4,096 | 2,048 | 2,048 | 2,048 | 2,048 | 2,560 | 2,784 | 3,392 |
+| gps | 4,096 | 2,512 | 2,512 | 2,512 | 2,512 | 2,992 | 3,232 | 3,232 |
+| wifi | 4,096 | 2,368 | 2,368 | 2,368 | 2,368 | 2,592 | 3,120 | 3,120 |
+| companion | 3,072 | 2,208 | 2,208 | 2,208 | 2,208 | 2,560 | 2,960 | 2,960 |
+| ir | 4,096 | 2,112 | 2,112 | | | 2,352 | | |
+| sd | 6,144 | | | 3,632 | 3,632 | | | |
+| mqtt | 10,240 | | | | 7,856 | 8,080 | 8,304 | 8,304 |
+| mqtt_client | 3,072 | | | | 1,712 | 1,936 | 2,208 | 2,208 |
+| webui | 3,584 | | | | 2,688 | 2,912 | 3,136 | 3,136 |
+| webui_https | 8,192 | | | | 2,352 | 2,640 | 2,864 | 2,864 |
+| webui_tls | 12,288 | | | | 6,960 | 7,664 | 7,920 | 7,920 |
+
+ESP-IDF Log V2 (plan 314 flash slimming) raises most rows by 100 to 700
+bytes against the 2026-11-07 table. A V2 record formats the prefix,
+message and newline in three calls under the stdout lock, so a log call
+reaches `esp_log`, `esp_log_va`, `esp_log_format` and the recursive lock. That
+pushed `webui` to 3,136 bytes, so the supervisor grew from 3 KiB to 3.5 KiB.
+The tightest rows are now the headless `sys_evt` and `companion`, each with
+112 bytes left.
 
 Against the #414 results, `webui_https` grows by 128 bytes on every board
 that has it: the `netconn_drain` and `netconn_free` cycle carries its bounded

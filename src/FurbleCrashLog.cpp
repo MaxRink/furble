@@ -47,6 +47,11 @@ bool s_Recovered = false;
 std::atomic<bool> s_Printing {false};
 uint64_t s_LastUpdateUs = 0;
 vprintf_like_t s_PreviousVprintf = nullptr;
+// Log V2 emits one record as several vprintf calls: the level, timestamp and
+// tag prefix, the message, then the newline. Fragments collect here under
+// s_Lock until a newline or a full buffer completes the retained line.
+char s_Pending[LOG_LINE_BYTES] = {};
+size_t s_PendingLength = 0;
 record_t s_Printed;
 
 void copyTaskName(char (&destination)[TASK_BYTES]) {
@@ -99,6 +104,22 @@ int logVprintf(const char *format, va_list args) {
   va_end(copy);
   if (written > 0) {
     size_t length = std::strlen(line);
+    const bool complete = (static_cast<size_t>(written) >= sizeof(line))
+                          || ((length > 0) && (line[length - 1] == '\n'));
+    portENTER_CRITICAL(&s_Lock);
+    const size_t room = sizeof(s_Pending) - 1 - s_PendingLength;
+    const size_t take = (length < room) ? length : room;
+    std::memcpy(s_Pending + s_PendingLength, line, take);
+    s_PendingLength += take;
+    s_Pending[s_PendingLength] = '\0';
+    const bool flush = complete || (s_PendingLength == sizeof(s_Pending) - 1);
+    if (flush) {
+      std::memcpy(line, s_Pending, s_PendingLength + 1);
+      s_PendingLength = 0;
+      s_Pending[0] = '\0';
+    }
+    portEXIT_CRITICAL(&s_Lock);
+    length = flush ? std::strlen(line) : 0;
     while ((length > 0) && (line[length - 1] == '\n' || line[length - 1] == '\r')) {
       line[--length] = '\0';
     }

@@ -88,7 +88,8 @@ def body_of(symbol):
     return symbol
 FUNC = re.compile(r"^([0-9a-f]+) <([^>+]+)>:$")
 # objdump -t: "42086bd8  w    F .flash.text\t00000014 _ZN...D1Ev"
-SYMBOL = re.compile(r"^([0-9a-f]+)\s.*\sF\s+\S+\s+[0-9a-f]+\s+(\S+)$")
+SYMBOL = re.compile(r"^([0-9a-f]+)\s.*\sF\s+\S+\s+([0-9a-f]+)\s+(\S+)$")
+ADDRESS = re.compile(r"^\s*([0-9a-f]+):")
 ENTRY = re.compile(r"^\s*([0-9a-f]+):.*\tentry\ta1, (\d+)$")
 # A blob's static functions have no symbol, so objdump lists them under the
 # previous one and calls them as <symbol+0xoffset>. Each entry instruction
@@ -156,20 +157,26 @@ class Graph:
                              check=True).stdout
         table = subprocess.run([objdump, "-t", str(elf)], capture_output=True, text=True,
                                check=True).stdout
-        address = {}
+        address, size = {}, {}
         for line in table.splitlines():
             m = SYMBOL.match(line)
             if m:
-                address[m.group(2)] = int(m.group(1), 16)
+                address[m.group(3)] = int(m.group(1), 16)
+                size[(m.group(3), int(m.group(1), 16))] = int(m.group(2), 16)
         # A static function's .ci title is "file:symbol"; the ELF names it by
         # the bare symbol. Never add a second node for code compiled here.
         compiled = {title.rsplit(":", 1)[-1] for title in self.frame}
-        fn, symbol, base, literal = None, None, 0, {}
+        fn, symbol, base, end, literal = None, None, 0, None, {}
         for line in out.splitlines():
             m = FUNC.match(line)
             if m:
                 base, symbol = int(m.group(1), 16), m.group(2)
                 fn = symbol
+                # Past its symbol size, code belongs to an unnamed static
+                # function. objdump can misdecode that function's entry after
+                # alignment padding; until an entry is decoded, nothing there
+                # is the symbol's own call.
+                end = base + size[(symbol, base)] if size.get((symbol, base)) else None
                 # A C1/D1 constructor or destructor usually shares its C2/D2
                 # body's address, and objdump may label it by either name.
                 # Parsing that alias would read past its retw into the literal
@@ -183,10 +190,16 @@ class Graph:
                 continue
             if fn is None:
                 continue
+            m = ADDRESS.match(line)
+            if (fn == symbol and end is not None and m and int(m.group(1), 16) >= end
+                    and not ENTRY.search(line)):
+                continue
             m = ENTRY.search(line)
             if m:
                 offset = int(m.group(1), 16) - base
-                fn = f"{symbol}+0x{offset:x}" if fn != symbol or symbol in self.frame else symbol
+                past = end is not None and base + offset >= end
+                fn = (f"{symbol}+0x{offset:x}"
+                      if fn != symbol or symbol in self.frame or past else symbol)
                 if fn not in self.frame:
                     self.frame[fn] = int(m.group(2))
                     self.kind[fn] = "static"
