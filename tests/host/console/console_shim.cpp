@@ -44,6 +44,7 @@
 #include "driver/usb_serial_jtag_vfs.h"
 #include "esp_console.h"
 #include "esp_heap_caps.h"
+#include "esp_heap_trace.h"
 #include "esp_log.h"
 #include "esp_pm.h"
 #include "esp_system.h"
@@ -412,6 +413,50 @@ size_t heap_caps_get_free_size(uint32_t capabilities) {
 
 size_t heap_caps_get_largest_free_block(uint32_t capabilities) {
   return 50000 + capabilities;
+}
+
+ConsoleHost::HeapTraceState &ConsoleHost::heapTrace(void) {
+  static HeapTraceState state;
+  return state;
+}
+
+esp_err_t heap_trace_init_standalone(heap_trace_record_t *record_buffer, size_t num_records) {
+  ConsoleHost::HeapTraceState &state = ConsoleHost::heapTrace();
+  if ((record_buffer == nullptr) || (num_records == 0)) {
+    return ESP_ERR_INVALID_ARG;
+  }
+  if (state.initResult != ESP_OK) {
+    return static_cast<esp_err_t>(state.initResult);
+  }
+  state.initRecords = num_records;
+  return ESP_OK;
+}
+
+esp_err_t heap_trace_start(heap_trace_mode_t mode) {
+  (void)mode;
+  ConsoleHost::HeapTraceState &state = ConsoleHost::heapTrace();
+  if (state.initRecords == 0) {
+    return ESP_ERR_INVALID_STATE;
+  }
+  if (state.startResult != ESP_OK) {
+    return static_cast<esp_err_t>(state.startResult);
+  }
+  state.running = true;
+  return ESP_OK;
+}
+
+esp_err_t heap_trace_stop(void) {
+  ConsoleHost::heapTrace().running = false;
+  return ESP_OK;
+}
+
+size_t heap_trace_get_count(void) {
+  return 3;
+}
+
+void heap_trace_dump(void) {
+  ConsoleHost::heapTrace().dumps++;
+  printf("====== Heap Trace: 3 records ======\n");
 }
 
 void *heap_caps_malloc(size_t size, uint32_t capabilities) {

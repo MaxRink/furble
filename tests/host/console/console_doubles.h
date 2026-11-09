@@ -78,6 +78,17 @@ struct GPSState {
 
 GPSState &gps(void);
 
+/** The esp_heap_trace double. Set a result to make that call fail. */
+struct HeapTraceState {
+  int initResult = 0;
+  int startResult = 0;
+  size_t initRecords = 0;
+  bool running = false;
+  size_t dumps = 0;
+};
+
+HeapTraceState &heapTrace(void);
+
 struct UartState {
   std::vector<std::string> writes;
   /** Report a short write, which is the 'uart write failed' branch. */

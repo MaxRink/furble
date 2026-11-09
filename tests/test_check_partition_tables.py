@@ -44,17 +44,17 @@ class CoredumpTest(unittest.TestCase):
             self.assertEqual(TOOL.main(["--stock-csv", str(stock)]), 0)
 
     def test_coredump_right_after_ota_1_passes(self):
-        self.check(SPEC_8M, OTA_8M + "coredump, data, coredump, 0x620000, 0x10000,\n")
+        self.check(SPEC_8M, OTA_8M + "coredump, data, coredump, 0x620000, 0x40000,\n")
 
     def test_missing_moved_or_resized_coredump_fails(self):
         for tail in ("",
-                     "coredump, data, coredump, 0x630000, 0x10000,\n",
+                     "coredump, data, coredump, 0x630000, 0x40000,\n",
                      "coredump, data, coredump, 0x620000, 0x20000,\n"):
             with self.assertRaises(TOOL.CheckError, msg=tail):
                 self.check(SPEC_8M, OTA_8M + tail)
 
     def test_a_4m_table_rejects_a_coredump(self):
-        table = STOCK_4M + "coredump, data, coredump, 0x379000, 0x10000,\n"
+        table = STOCK_4M + "coredump, data, coredump, 0x379000, 0x40000,\n"
         with self.assertRaises(TOOL.CheckError):
             self.check(SPEC_4M, table)
 

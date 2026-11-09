@@ -57,7 +57,7 @@ CLAUDE.md whose directory it touches.
   define `FURBLE_TASK_WDT`, which subscribes the MQTT, WebUI and companion
   loops to the 5 s task watchdog through `FurbleTaskWatchdog.h`; a timeout
   logs a backtrace but `CONFIG_ESP_TASK_WDT_PANIC` stays off until a hardware
-  soak. The 8 and 16 MB tables end with a 64 KiB `coredump` partition after
+  soak. The 8 and 16 MB tables end with a 256 KiB `coredump` partition after
   `ota_1`, and their debug envs merge `sdkconfig.coredump-flash`.
   `m5stack-core-usb-debug` layers both under its partition fragment.
 - S3 and Core2 release sdkconfigs disable `CONFIG_SPIRAM_MEMTEST` to remove the

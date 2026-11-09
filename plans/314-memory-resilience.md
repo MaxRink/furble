@@ -659,10 +659,15 @@ The debug images gain four checks. None reaches a release image.
   tracer. `start` takes 1 to 1,000 records, default 100, and admits the
   record buffer only if the largest internal block is at least twice its
   size, so it cannot be the allocation that aborts. Other builds report that
-  tracing is not enabled.
+  tracing is not enabled. The host console suite compiles the enabled path
+  against an `esp_heap_trace` double and covers each of these cases.
 
-The 8 and 16 MB partition tables end with a 64 KiB `coredump` partition right
-after `ota_1`, which takes space that was unallocated. The debug envs for
+The 8 and 16 MB partition tables end with a 256 KiB `coredump` partition right
+after `ota_1`, which takes space that was unallocated. The ELF dump holds each
+task's TCB and used stack; with every stack full the manifest tasks (about
+106 KB on Core2), the ESP-IDF service tasks, transient tasks and headers
+come to about 180 KB, and ESP-IDF writes nothing when a dump does not fit.
+The first cut was 64 KiB; review showed that was too small. The debug envs for
 those boards merge `sdkconfig.coredump-flash`, so a panic writes a core dump
 there. `tools/check_partition_tables.py` requires that partition, its size
 and its position on boards larger than 4 MB and rejects it on 4 MB tables.
