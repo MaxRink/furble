@@ -21,7 +21,12 @@ STUB = """import os, subprocess, sys
 if "GIT_DIR" in os.environ:
     sys.exit("GIT_DIR leaked into the reviewer")
 head = sys.argv[sys.argv.index("--head") + 1]
-open("review.log", "a").write(head + "\\n")
+checkout = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+if checkout != head:
+    sys.exit("the gate ran in a checkout of " + checkout + ", not " + head)
+if os.path.exists("f.txt") and "dirty" in open("f.txt").read():
+    sys.exit("the gate saw an uncommitted change")
+open(os.environ["REVIEW_LOG"], "a").write(head + "\\n")
 message = subprocess.run(["git", "log", "-1", "--format=%s", head],
                          capture_output=True, text=True).stdout
 sys.exit(1 if "bad" in message else 0)
@@ -41,6 +46,7 @@ class PushHookTest(unittest.TestCase):
         env.update(GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t", GIT_COMMITTER_NAME="t",
                    GIT_COMMITTER_EMAIL="t@t", GIT_CONFIG_GLOBAL=os.devnull,
                    GIT_CONFIG_NOSYSTEM="1")
+        env["REVIEW_LOG"] = str(self.tmp / "review.log")
         self.env = env
         self.git("init", "-q", "--bare", "-b", "master", str(self.remote), cwd=self.tmp)
         self.git("init", "-q", "-b", "master", str(self.work), cwd=self.tmp)
@@ -48,7 +54,6 @@ class PushHookTest(unittest.TestCase):
         shutil.copy2(HOOK, self.work / ".githooks" / "pre-push")
         (self.work / "tools").mkdir()
         (self.work / "tools" / "pre_review.py").write_text(STUB, encoding="utf-8")
-        (self.work / ".gitignore").write_text("review.log\n", encoding="utf-8")
         self.git("add", ".")
         self.git("commit", "-q", "-m", "base")
         self.git("remote", "add", "origin", str(self.remote))
@@ -66,7 +71,7 @@ class PushHookTest(unittest.TestCase):
         return self.git("rev-parse", "HEAD").stdout.strip()
 
     def reviewed(self):
-        log = self.work / "review.log"
+        log = self.tmp / "review.log"
         return log.read_text(encoding="utf-8").split() if log.exists() else []
 
     def test_the_settings_env_enables_the_tracked_hook(self):
@@ -89,6 +94,14 @@ class PushHookTest(unittest.TestCase):
         self.git("switch", "-q", "-c", "other", "HEAD~1")
         self.assertNotEqual(self.git("push", "-q", "origin", "master", check=False).returncode, 0)
         self.assertEqual(self.reviewed(), [sha])
+
+    def test_uncommitted_changes_do_not_reach_the_gate(self):
+        sha = self.commit("good")
+        (self.work / "f.txt").write_text("dirty", encoding="utf-8")
+        result = self.git("push", "-q", "origin", "master", check=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.reviewed(), [sha])
+        self.assertEqual(self.git("worktree", "list").stdout.count("\n"), 1)
 
     def test_no_verify_skips_only_its_own_push(self):
         self.commit("bad")

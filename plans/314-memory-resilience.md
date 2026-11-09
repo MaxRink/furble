@@ -642,7 +642,9 @@ State: implemented.
 `.githooks/pre-push` runs `tools/pre_review.py --base origin/master --head
 <sha>` for every pushed ref and skips deletions. Git runs it at push time, so
 it reviews the commit actually sent, including one made earlier in the same
-command line. Enable it once per clone with
+command line. Each SHA is checked out in a temporary detached worktree, which
+is removed afterwards, because `--head` steers only the diff scanners; the
+workflow, scenario and coverage checks and the unit tests read the checkout. Enable it once per clone with
 `git config core.hooksPath .githooks`; `git push --no-verify` skips one push.
 
 `.claude/settings.json` is now tracked, and `.gitignore` still ignores the
@@ -668,8 +670,9 @@ objects, so the LFS hooks a global `git lfs install` writes there are unused.
 
 `tests/test_push_hooks.py` pushes through real git to a local bare remote with
 the settings env and a stub reviewer. It covers a clean push, a blocked push,
-a push of a ref other than `HEAD`, `--no-verify` on one push only, a push
-from a linked worktree, and a deletion.
+a push of a ref other than `HEAD`, a push with an uncommitted change,
+`--no-verify` on one push only, a push from a linked worktree, and a deletion.
+The stub fails unless it runs in a checkout of exactly the pushed SHA.
 
 ## PR 13: debug hardening
 
