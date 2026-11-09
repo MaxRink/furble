@@ -63,15 +63,17 @@ jobs:
         run: platformio run -e ${{ matrix.platform }}${{ matrix.variant }}
 
       - name: Rename binaries (${{ matrix.platform }}${{ matrix.variant }})
+        # Only files that exist are staged in dist/, which is uploaded whole.
         run: |
-          mv .pio/build/${{ matrix.platform }}${{ matrix.variant }}/firmware.bin $FIRMWARE_NAME
-          mv .pio/build/${{ matrix.platform }}${{ matrix.variant }}/bootloader.bin $BOOTLOADER_NAME
-          mv .pio/build/${{ matrix.platform }}${{ matrix.variant }}/partitions.bin $PARTITIONS_NAME
+          mkdir -p dist
+          mv .pio/build/${{ matrix.platform }}${{ matrix.variant }}/firmware.bin dist/$FIRMWARE_NAME
+          mv .pio/build/${{ matrix.platform }}${{ matrix.variant }}/bootloader.bin dist/$BOOTLOADER_NAME
+          mv .pio/build/${{ matrix.platform }}${{ matrix.variant }}/partitions.bin dist/$PARTITIONS_NAME
           # A single factory image (the StickC debug profiles) has no otadata
           # partition, so the build writes no ota_data_initial.bin.
           ota_data=.pio/build/${{ matrix.platform }}${{ matrix.variant }}/ota_data_initial.bin
           if [ -f "$ota_data" ]; then
-            mv "$ota_data" $OTA_DATA_NAME
+            mv "$ota_data" dist/$OTA_DATA_NAME
           else
             echo "OTA_DATA=0" >> "$GITHUB_ENV"
           fi
@@ -87,18 +89,13 @@ jobs:
           PLATFORM: ${{ matrix.platform }}${{ matrix.variant }}
         run: |
           OTA_DATA="${OTA_DATA:-1}" python generate-manifest.py \
-            > ../manifest_${{ matrix.platform }}${{ matrix.variant }}.json
+            > ../dist/manifest_${{ matrix.platform }}${{ matrix.variant }}.json
 
       - name: Upload artifacts (${{ matrix.platform }}${{ matrix.variant }})
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ env.FIRMWARE_NAME }}
-          path: |
-            ${{ env.FIRMWARE_NAME }}
-            ${{ env.BOOTLOADER_NAME }}
-            ${{ env.PARTITIONS_NAME }}
-            ${{ env.OTA_DATA_NAME }}
-            manifest_${{ matrix.platform }}${{ matrix.variant }}.json
+          path: dist/
           if-no-files-found: error
 
   release:

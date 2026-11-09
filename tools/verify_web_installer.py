@@ -19,6 +19,14 @@ EXPECTED_FLASH_OFFSETS = {
   "ESP32": (0x1000, 0x8000, 0xF000, 0x20000),
   "ESP32-S3": (0x0, 0x8000, 0xF000, 0x20000),
 }
+OTA_DATA_OFFSET = 0xF000
+
+# Single factory images have no otadata partition, so their manifests flash no
+# OTA data part: three parts, without 0xF000. Every other manifest keeps four.
+SINGLE_FACTORY_MANIFESTS = {
+  "manifest_m5stick-c-debug.json",
+  "manifest_m5stick-c-plus-debug.json",
+}
 
 
 def build_family_error(builds):
@@ -51,10 +59,12 @@ def expected_manifests():
   }
 
 
-def flash_offset_error(build):
+def flash_offset_error(build, single_factory=False):
   """Return an error when a generated manifest has the wrong flash map."""
   chip_family = build.get("chipFamily") if isinstance(build, dict) else None
   expected = EXPECTED_FLASH_OFFSETS.get(chip_family)
+  if expected is not None and single_factory:
+    expected = tuple(offset for offset in expected if offset != OTA_DATA_OFFSET)
   parts = build.get("parts") if isinstance(build, dict) else None
   if expected is None:
     return f"unsupported chip family: {chip_family!r}"
@@ -102,13 +112,15 @@ def validate(site: Path):
     family_error = build_family_error(builds)
     if family_error:
       errors.append(f"{manifest_path.name}: {family_error}")
+    single_factory = manifest_path.name in SINGLE_FACTORY_MANIFESTS
+    part_count = 3 if single_factory else 4
     for build in builds:
-      offset_error = flash_offset_error(build)
+      offset_error = flash_offset_error(build, single_factory)
       if offset_error:
         errors.append(f"{manifest_path.name}: {offset_error}")
       parts = build.get("parts") if isinstance(build, dict) else None
-      if not isinstance(parts, list) or len(parts) != 4:
-        errors.append(f"{manifest_path.name}: expected four flash parts")
+      if not isinstance(parts, list) or len(parts) != part_count:
+        errors.append(f"{manifest_path.name}: expected {part_count} flash parts")
         continue
       for part in parts:
         path = part.get("path") if isinstance(part, dict) else None
