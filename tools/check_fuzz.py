@@ -78,18 +78,20 @@ CRASH_MARKERS = (
 
 
 
-def host_fuzz_sanitized(host_build: Path) -> bool:
-    """True when the host build compiled the fuzz targets with ASan/UBSan.
+def binary_sanitized(binary: Path) -> bool:
+    """True when the fuzz binary itself links the ASan and UBSan runtimes.
 
-    tests/host/CMakeLists.txt records the compiler probe in the cache; only an
-    explicit FURBLE_FUZZ_ALLOW_UNSANITIZED=ON build gets past it without them.
-    A build without a cache cannot show its flags and fails closed.
+    The binary is checked, not the CMake cache: a host build configured
+    before every fuzz target got the flags, or with
+    FURBLE_FUZZ_ALLOW_UNSANITIZED=ON, can still hold unsanitized binaries.
+    Both runtimes leave their entry symbols in the image on every supported
+    toolchain, as a definition or as a dynamic import.
     """
     try:
-        cache = (host_build / "CMakeCache.txt").read_text(encoding="utf-8", errors="replace")
+        image = binary.read_bytes()
     except OSError:
         return False
-    return re.search(r"^FUZZ_HAVE_SANITIZERS:INTERNAL=1$", cache, re.MULTILINE) is not None
+    return b"__asan_init" in image and b"__ubsan_handle_" in image
 
 
 class Gate:
@@ -155,10 +157,6 @@ class Gate:
             )
 
     def run_host_fuzz(self, host_build: Path, seeds: dict, smoke: bool) -> None:
-        if not host_fuzz_sanitized(host_build):
-            self.finding("host-sanitizers",
-                         f"{host_build} built the fuzz targets without ASan/UBSan "
-                         "(FURBLE_FUZZ_ALLOW_UNSANITIZED); rebuild with a compiler that has them")
         binaries = {
             "webui": host_build / "webui_fuzz",
             "companion": host_build / "companion_fuzz",
@@ -168,6 +166,11 @@ class Gate:
         for name, binary in binaries.items():
             if not binary.is_file():
                 self.finding(f"host-{name}", f"fuzz binary missing: {binary}")
+                continue
+            if not binary_sanitized(binary):
+                self.finding(f"host-{name}",
+                             f"{binary} has no ASan/UBSan runtime; rebuild the host tests "
+                             "with a compiler that has them")
                 continue
             area = seeds[name]
             for seed in area[key]:

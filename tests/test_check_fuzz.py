@@ -7,7 +7,7 @@ import sys
 import tempfile
 import unittest
 
-from tools.check_fuzz import host_fuzz_sanitized, load_seeds, resolve_mqtt_owner_stack
+from tools.check_fuzz import binary_sanitized, load_seeds, resolve_mqtt_owner_stack
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,14 +22,16 @@ MEMORY_SPEC.loader.exec_module(MEMORY_FUZZ)
 
 
 class HostSanitizerTest(unittest.TestCase):
-  def test_only_a_sanitized_cache_passes(self):
+  def test_only_a_binary_with_both_runtimes_passes(self):
     with tempfile.TemporaryDirectory() as directory:
-      build = Path(directory)
-      self.assertFalse(host_fuzz_sanitized(build))
-      (build / "CMakeCache.txt").write_text("FUZZ_HAVE_SANITIZERS:INTERNAL=\n", encoding="utf-8")
-      self.assertFalse(host_fuzz_sanitized(build))
-      (build / "CMakeCache.txt").write_text("FUZZ_HAVE_SANITIZERS:INTERNAL=1\n", encoding="utf-8")
-      self.assertTrue(host_fuzz_sanitized(build))
+      binary = Path(directory) / "webui_fuzz"
+      self.assertFalse(binary_sanitized(binary))
+      binary.write_bytes(b"\x7fELF plain test")
+      self.assertFalse(binary_sanitized(binary))
+      binary.write_bytes(b"\x7fELF __asan_init only")
+      self.assertFalse(binary_sanitized(binary))
+      binary.write_bytes(b"\x7fELF __asan_init __ubsan_handle_add_overflow")
+      self.assertTrue(binary_sanitized(binary))
 
 
 class FuzzTargetFlagsTest(unittest.TestCase):

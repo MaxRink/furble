@@ -27,6 +27,7 @@
 #include <deque>
 #include <fstream>
 #include <iterator>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -248,7 +249,7 @@ struct FurbleHostTask {
 namespace {
 
 std::mutex g_TasksMutex;
-std::vector<FurbleHostTask *> g_Tasks;
+std::vector<std::unique_ptr<FurbleHostTask>> g_Tasks;
 UBaseType_t g_NextTaskNumber = 1;
 
 // The mock BLE layer owns esp_timer_get_time(), so share its clock rather than
@@ -274,11 +275,12 @@ BaseType_t xTaskCreate(TaskFunction_t task_code,
     return pdFAIL;
   }
 
-  auto *task = new FurbleHostTask();
+  auto owned = std::make_unique<FurbleHostTask>();
+  FurbleHostTask *task = owned.get();
   task->name = (name != nullptr) ? name : "unnamed";
   task->priority = priority;
   task->number = g_NextTaskNumber++;
-  g_Tasks.push_back(task);
+  g_Tasks.push_back(std::move(owned));
   // Created under g_TasksMutex, so a concurrent shutdown either sees the task
   // and joins it or is rejected above. Left joinable for that join.
   task->thread = std::thread([task_code, parameters] {
@@ -340,8 +342,9 @@ UBaseType_t uxTaskGetSystemState(TaskStatus_t *array,
   array[index].usStackHighWaterMark = 512;
   index++;
 
-  for (const auto *task : g_Tasks) {
-    array[index].xHandle = const_cast<FurbleHostTask *>(task);
+  for (const auto &owned : g_Tasks) {
+    FurbleHostTask *task = owned.get();
+    array[index].xHandle = task;
     array[index].pcTaskName = task->name.c_str();
     array[index].xTaskNumber = task->number;
     array[index].uxCurrentPriority = task->priority;
@@ -1328,7 +1331,9 @@ void furbleHostStopTasks(void) {
   std::vector<FurbleHostTask *> tasks;
   {
     const std::lock_guard<std::mutex> lock(g_TasksMutex);
-    tasks = g_Tasks;
+    for (const auto &owned : g_Tasks) {
+      tasks.push_back(owned.get());
+    }
   }
   for (auto *task : tasks) {
     if (task->thread.joinable()) {
@@ -1338,9 +1343,6 @@ void furbleHostStopTasks(void) {
   // Every thread has ended and no task can be created any more, so the
   // records can go; LeakSanitizer reports them otherwise.
   const std::lock_guard<std::mutex> lock(g_TasksMutex);
-  for (auto *task : g_Tasks) {
-    delete task;  // NOLINT(cppcoreguidelines-owning-memory): owned by g_Tasks
-  }
   g_Tasks.clear();
 }
 

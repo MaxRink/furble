@@ -653,8 +653,9 @@ ctest suite on every firmware change.
 The fuzz targets used to drop ASan and UBSan silently when the compiler
 lacked them. That is now a configure error unless
 `-DFURBLE_FUZZ_ALLOW_UNSANITIZED=ON`, and `tools/check_fuzz.py` reports a
-`host-sanitizers` finding for any host build whose cache does not record the
-sanitizer probe as passed, so an unsanitized build cannot pass the fuzz gate.
+finding for any fuzz binary that does not contain both the `__asan_init` and
+`__ubsan_handle_` runtime symbols. It checks the binary it is about to run,
+not the CMake cache, so a stale build from before this change cannot pass.
 The flags used to reach only `control_fuzz` and `companion_fuzz`; `mqtt_fuzz`,
 `webui_fuzz`, `settings_migration_fuzz` and `wifi_policy_fuzz` ran without
 them in the normal host build. The probe now sits before the first fuzz
