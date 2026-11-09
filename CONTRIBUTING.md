@@ -141,10 +141,12 @@ git config core.hooksPath .githooks
 
 `.githooks/pre-push` reviews each pushed commit against `origin/master` and
 skips branch deletions; `git push --no-verify` bypasses it for one push.
-Claude Code sessions in this repository also load `.claude/settings.json`,
-whose `PreToolUse` hook runs the same gate before a `git push` and returns
-the failure to the agent. It stands aside when `core.hooksPath` is already
-`.githooks`, so a push is never reviewed twice.
+Claude Code sessions in this repository load the tracked
+`.claude/settings.json`, whose `env` sets the same `core.hooksPath` through
+`GIT_CONFIG_COUNT`, so every agent push runs the hook without a per-clone
+setting. Setting `core.hooksPath` replaces `.git/hooks`; furble stores no Git
+LFS objects, so the LFS hooks a global `git lfs install` places there are not
+needed.
 
 Run the sanitized host tests when touching C++ state, containers, camera
 drivers, or simulator fixtures. They cover every host test except the two

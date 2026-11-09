@@ -640,22 +640,26 @@ disabled, so this was validated locally only.
 State: implemented.
 
 `.githooks/pre-push` runs `tools/pre_review.py --base origin/master --head
-<sha>` for every pushed ref and skips deletions. Git only runs it after
-`git config core.hooksPath .githooks`, once per clone; `git push --no-verify`
-skips it for one push.
+<sha>` for every pushed ref and skips deletions. Git runs it at push time, so
+it reviews the commit actually sent, including one made earlier in the same
+command line. Enable it once per clone with
+`git config core.hooksPath .githooks`; `git push --no-verify` skips one push.
 
 `.claude/settings.json` is now tracked, and `.gitignore` still ignores the
-rest of `.claude/`. Its `PreToolUse` hook on Bash runs
-`.claude/hooks/pre_push_gate.py`, which reads the hook event, matches a
-`git push` command, and runs the same gate in the session's checkout. On a
-failure it exits 2 with the tail of the output, which blocks the call and
-returns the failure to the agent. It does nothing for other commands, for
-`--no-verify`, outside this repository, or when `core.hooksPath` is already
-`.githooks`, so a push is never reviewed twice. It reviews the session's
-working directory rather than a `cd` or `-C` target inside the command.
+rest of `.claude/`. Its `env` sets `GIT_CONFIG_COUNT=1`,
+`GIT_CONFIG_KEY_0=core.hooksPath` and `GIT_CONFIG_VALUE_0=.githooks` for
+every Claude Code Bash call, so an agent's push runs the same hook with no
+per-clone setting. The first cut used a `PreToolUse` gate script instead.
+Review showed that a gate running before the command cannot see the refs a
+push sends or scope `--no-verify` to one push, so Git now does both.
 
-`tests/test_push_hooks.py` covers push detection, the pass-through cases and
-a deletion-only push.
+Setting `core.hooksPath` replaces `.git/hooks`. furble stores no Git LFS
+objects, so the LFS hooks a global `git lfs install` writes there are unused.
+
+`tests/test_push_hooks.py` pushes through real git to a local bare remote with
+the settings env and a stub reviewer. It covers a clean push, a blocked push,
+a push of a ref other than `HEAD`, `--no-verify` on one push only, and a
+deletion.
 
 ## PR 13: debug hardening
 
