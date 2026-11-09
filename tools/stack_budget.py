@@ -197,7 +197,9 @@ class Graph:
             m = ENTRY.search(line)
             if m:
                 offset = int(m.group(1), 16) - base
-                fn = f"{symbol}+0x{offset:x}" if fn != symbol or symbol in self.frame else symbol
+                past = end is not None and base + offset >= end
+                fn = (f"{symbol}+0x{offset:x}"
+                      if fn != symbol or symbol in self.frame or past else symbol)
                 if fn not in self.frame:
                     self.frame[fn] = int(m.group(2))
                     self.kind[fn] = "static"

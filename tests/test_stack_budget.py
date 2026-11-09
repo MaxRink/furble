@@ -127,6 +127,29 @@ TAIL_SYMBOLS = """
 40000010 g     F .flash.text\t00000006 elf_mid
 40000300 g     F .flash.text\t00000010 elf_stale
 """
+# A symbol without an entry of its own (a call0 leaf), then an unnamed
+# windowed function past its size that callers reach by offset. The boundary
+# entry must start elf_mid+0x8, not become elf_mid's own frame.
+OFFSET_CI = r'''graph: { title: "o.cpp"
+node: { title: "entry" label: "void entry(void*)\no.cpp:1:1\n32 bytes (static)" }
+node: { title: "elf_mid+0x8" label: "elf_mid+0x8\n<built-in>" shape : ellipse }
+edge: { sourcename: "entry" targetname: "elf_mid+0x8" label: "o.cpp:1:5" }
+}
+'''
+BOUNDARY_LISTING = """
+40000010 <elf_mid>:
+40000010:\t000090        \tret.n
+40000012:\tfffba5        \tcall8\t40000018 <elf_mid+0x8>
+40000018:\t00c136        \tentry\ta1, 96
+4000001b:\tfffba5        \tcall8\t40000200 <elf_far>
+
+40000200 <elf_far>:
+40000200:\t00c136        \tentry\ta1, 400
+"""
+BOUNDARY_SYMBOLS = """
+40000010 g     F .flash.text\t00000008 elf_mid
+40000200 g     F .flash.text\t00000010 elf_far
+"""
 # Both l32r forms that objdump prints. The parenthesized value is a longcall
 # target. The bare form names the literal's slot, and a load into the
 # register drops its literal, so neither 4,000-byte function is reached.
@@ -310,6 +333,13 @@ class StackBudgetTest(unittest.TestCase):
                           listing=TAIL_LISTING, symbols=TAIL_SYMBOLS)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("PASS t: 384 of 384 bytes (96 frames + 288 port overhead)", r.stdout)
+
+    def test_elf_entry_past_the_symbol_size_starts_its_own_function(self):
+        # elf_mid+0x8 (96) calls elf_far (400): 32 + 96 + 400 + 288
+        r = self.run_tool(816, indirect=False, cis=(("o.cpp.ci", OFFSET_CI),),
+                          listing=BOUNDARY_LISTING, symbols=BOUNDARY_SYMBOLS)
+        self.assertIn("PASS t: 816 of 816 bytes (528 frames + 288 port overhead)", r.stdout)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
     def test_elf_distinct_address_constructor_is_parsed(self):
         # 32 + the ELF D1's own 48-byte frame + 288 overhead, not the D2 body's 16

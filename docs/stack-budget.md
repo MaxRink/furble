@@ -38,7 +38,8 @@ functions merged into one, such as `cnx_remove_rc`.
 
 An `entry` that follows alignment padding can be misdecoded, so the split
 alone misses that function. The tool therefore stops reading a symbol at its
-`objdump -t` size until the next decoded `entry`. In the plan 314 slimming the
+`objdump -t` size until the next decoded `entry`, which always starts its own
+`symbol+offset` function. In the plan 314 slimming the
 0x1e-byte `config_get_wifi_task_stack_size` otherwise took the calls of the
 unnamed function behind it, and the headless WiFi task walked into three
 association cycles in the blob.
