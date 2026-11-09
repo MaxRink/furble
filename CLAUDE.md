@@ -145,6 +145,10 @@ CLAUDE.md whose directory it touches.
 - Run `python3 tools/pre_review.py --base origin/master` before pushing. It
   runs the diff hygiene, settings contract, and C++ safety scanners, the CI
   workflow and simulator manifest checks, and the scanner unit tests.
+  `git config core.hooksPath .githooks` runs it from `.githooks/pre-push` on
+  every push. Without that, the tracked `.claude/settings.json` `PreToolUse`
+  hook runs it before a Bash `git push` and blocks the push on failure. It
+  reviews the session's working directory, so push from that tree.
 - Run the fuzz gate before any hardware image build:
   `python3 tools/check_fuzz.py --full --host-build <host-build> --mqtt-binary
   sim/build-mqtt/furble-sim`. `--smoke` is the pull-request budget. It runs

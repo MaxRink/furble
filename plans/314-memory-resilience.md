@@ -635,6 +635,28 @@ preexisting issues, fixed here:
 and passes them to the gate, then runs the tool tests. Fork Actions are
 disabled, so this was validated locally only.
 
+## PR 14: push hooks
+
+State: implemented.
+
+`.githooks/pre-push` runs `tools/pre_review.py --base origin/master --head
+<sha>` for every pushed ref and skips deletions. Git only runs it after
+`git config core.hooksPath .githooks`, once per clone; `git push --no-verify`
+skips it for one push.
+
+`.claude/settings.json` is now tracked, and `.gitignore` still ignores the
+rest of `.claude/`. Its `PreToolUse` hook on Bash runs
+`.claude/hooks/pre_push_gate.py`, which reads the hook event, matches a
+`git push` command, and runs the same gate in the session's checkout. On a
+failure it exits 2 with the tail of the output, which blocks the call and
+returns the failure to the agent. It does nothing for other commands, for
+`--no-verify`, outside this repository, or when `core.hooksPath` is already
+`.githooks`, so a push is never reviewed twice. It reviews the session's
+working directory rather than a `cd` or `-C` target inside the command.
+
+`tests/test_push_hooks.py` covers push detection, the pass-through cases and
+a deletion-only push.
+
 ## PR 13: debug hardening
 
 State: implemented.

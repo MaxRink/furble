@@ -133,6 +133,19 @@ It runs the diff hygiene scanner, the settings contract scanner, the C++ safety
 scanner, the CI workflow checker, the simulator manifest checker, and the
 scanner unit tests. It fails closed on review-blocking findings.
 
+To run it on every push, enable the tracked hook once per clone:
+
+```sh
+git config core.hooksPath .githooks
+```
+
+`.githooks/pre-push` reviews each pushed commit against `origin/master` and
+skips branch deletions; `git push --no-verify` bypasses it for one push.
+Claude Code sessions in this repository also load `.claude/settings.json`,
+whose `PreToolUse` hook runs the same gate before a `git push` and returns
+the failure to the agent. It stands aside when `core.hooksPath` is already
+`.githooks`, so a push is never reviewed twice.
+
 Run the sanitized host tests when touching C++ state, containers, camera
 drivers, or simulator fixtures. They cover every host test except the two
 ThreadSanitizer probes, which the normal host build runs through
