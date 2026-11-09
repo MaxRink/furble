@@ -635,6 +635,45 @@ preexisting issues, fixed here:
 and passes them to the gate, then runs the tool tests. Fork Actions are
 disabled, so this was validated locally only.
 
+## PR 14: push hooks
+
+State: implemented.
+
+`.githooks/pre-push` runs `tools/pre_review.py --base origin/master --head
+<sha>` for every pushed ref and skips deletions. Git runs it at push time, so
+it reviews the commit actually sent, including one made earlier in the same
+command line. Each SHA is checked out in a temporary detached worktree, which
+is removed afterwards, because `--head` steers only the diff scanners; the
+workflow, scenario and coverage checks and the unit tests read the checkout. Enable it once per clone with
+`git config core.hooksPath .githooks`; `git push --no-verify` skips one push.
+
+`.claude/settings.json` is now tracked, and `.gitignore` still ignores the
+rest of `.claude/`. Its `env` sets `GIT_CONFIG_COUNT=1`,
+`GIT_CONFIG_KEY_0=core.hooksPath` and `GIT_CONFIG_VALUE_0=.githooks` for
+every Claude Code Bash call, so an agent's push runs the same hook with no
+per-clone setting. The first cut used a `PreToolUse` gate script instead.
+Review showed that a gate running before the command cannot see the refs a
+push sends or scope `--no-verify` to one push, so Git now does both.
+
+Git exports `GIT_DIR` and related variables to a hook run from a linked
+worktree. The first push through the hook from such a worktree ran the
+scanner unit tests with them set, and the tests that build scratch
+repositories committed into the real one, set `core.bare=true` and wrote a
+test `[user]` into its shared config. The hook blocked that push, so nothing
+reached GitHub, and the repository was restored. The hook now clears them with
+`unset $(git rev-parse --local-env-vars)` before the gate runs, and a test
+pushes from a linked worktree with a reviewer that fails if `GIT_DIR` reaches
+it; it fails without the fix.
+
+Setting `core.hooksPath` replaces `.git/hooks`. furble stores no Git LFS
+objects, so the LFS hooks a global `git lfs install` writes there are unused.
+
+`tests/test_push_hooks.py` pushes through real git to a local bare remote with
+the settings env and a stub reviewer. It covers a clean push, a blocked push,
+a push of a ref other than `HEAD`, a push with an uncommitted change,
+`--no-verify` on one push only, a push from a linked worktree, and a deletion.
+The stub fails unless it runs in a checkout of exactly the pushed SHA.
+
 ## PR 13: debug hardening
 
 State: implemented.

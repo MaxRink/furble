@@ -133,6 +133,24 @@ It runs the diff hygiene scanner, the settings contract scanner, the C++ safety
 scanner, the CI workflow checker, the simulator manifest checker, and the
 scanner unit tests. It fails closed on review-blocking findings.
 
+To run it on every push, enable the tracked hook once per clone:
+
+```sh
+git config core.hooksPath .githooks
+```
+
+`.githooks/pre-push` reviews each pushed commit against `origin/master` and
+skips branch deletions; `git push --no-verify` bypasses it for one push.
+Claude Code sessions in this repository load the tracked
+`.claude/settings.json`, whose `env` sets the same `core.hooksPath` through
+`GIT_CONFIG_COUNT`, so every agent push runs the hook without a per-clone
+setting. Setting `core.hooksPath` replaces `.git/hooks`; furble stores no Git
+LFS objects, so the LFS hooks a global `git lfs install` places there are not
+needed.
+If you already export `GIT_CONFIG_COUNT` for other settings, add
+`core.hooksPath` to your own list; the project env replaces it in Claude Code
+sessions.
+
 Run the sanitized host tests when touching C++ state, containers, camera
 drivers, or simulator fixtures. They cover every host test except the two
 ThreadSanitizer probes, which the normal host build runs through

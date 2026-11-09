@@ -13,5 +13,6 @@ __pycache__/
 host-build/
 tests/fuzz/failures/
 
-# local agent workspaces
-.claude/
+# local agent workspaces; the shared project settings are tracked
+.claude/*
+!.claude/settings.json
