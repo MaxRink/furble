@@ -162,6 +162,14 @@ CLAUDE.md whose directory it touches.
   `sim/coverage/board_heap.json`; the memory profile seeds each board with it.
   Regenerate it after static RAM or boot allocations change, see
   `docs/sim-memory-profiler.md`.
+- `python3 tools/check_size_budget.py --env <env>` fails a build whose
+  `firmware.bin` outgrows its app slot or whose static DRAM
+  (`.dram0.data + .noinit + .dram0.bss`) or IRAM grows past
+  `tools/size_budget.json`. Firmware CI runs it after the stack budget, and
+  the reproducible workflow runs it on `esp32-s3-headless`. A RAM budget is
+  the measured size plus at least 512 bytes of headroom, rounded up to a KiB;
+  a change that crosses one raises it with `--write` and states the reason in
+  its PR.
 - Every firmware object is compiled with `-fcallgraph-info=su`, which writes a
   `.ci` call graph next to it and does not change the image.
   `python3 tools/stack_budget.py --env <env>` walks it from each task entry in
