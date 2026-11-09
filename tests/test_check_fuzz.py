@@ -34,6 +34,27 @@ class HostSanitizerTest(unittest.TestCase):
       self.assertTrue(binary_sanitized(binary))
 
 
+class FuzzGateRunsOnlySanitizedTest(unittest.TestCase):
+  def test_every_fuzz_binary_the_gate_runs_is_checked(self):
+    from tools.check_fuzz import Gate
+    with tempfile.TemporaryDirectory() as directory:
+      build = Path(directory)
+      for name in ("webui_fuzz", "companion_fuzz", "mqtt_fuzz", "settings_migration_fuzz",
+                   "wifi_policy_fuzz"):
+        (build / name).write_bytes(b"\x7fELF unsanitized")
+      gate = Gate(load_seeds())
+      ran = []
+      gate.run = lambda label, command, **_: ran.append(label)
+      gate.run_host_fuzz(build, load_seeds(), smoke=True)
+      gate.run_discovery_oom(build)
+    # Only unsanitized fuzz binaries exist here, so nothing may run.
+    self.assertEqual(ran, [])
+    for label in ("host-webui", "host-companion", "host-mqtt", "host-settings-migration",
+                  "host-wifi-policy", "ha-discovery-oom"):
+      self.assertTrue(any(f.startswith(f"[{label}]") and "ASan/UBSan" in f
+                          for f in gate.findings), label)
+
+
 class FuzzTargetFlagsTest(unittest.TestCase):
   def test_every_fuzz_executable_gets_the_sanitizer_flags(self):
     cmake = (ROOT / "tests" / "host" / "CMakeLists.txt").read_text(encoding="utf-8")

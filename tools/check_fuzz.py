@@ -156,6 +156,17 @@ class Gate:
                 f"Use 10240 (owned by {owner}).",
             )
 
+    def fuzz_ready(self, label: str, binary: Path) -> bool:
+        """A fuzz binary runs only if it exists and links ASan and UBSan."""
+        if not binary.is_file():
+            self.finding(label, f"fuzz binary missing: {binary}")
+            return False
+        if not binary_sanitized(binary):
+            self.finding(label, f"{binary} has no ASan/UBSan runtime; rebuild the host "
+                                "tests with a compiler that has them")
+            return False
+        return True
+
     def run_host_fuzz(self, host_build: Path, seeds: dict, smoke: bool) -> None:
         binaries = {
             "webui": host_build / "webui_fuzz",
@@ -164,13 +175,7 @@ class Gate:
         }
         key = "smoke" if smoke else "full"
         for name, binary in binaries.items():
-            if not binary.is_file():
-                self.finding(f"host-{name}", f"fuzz binary missing: {binary}")
-                continue
-            if not binary_sanitized(binary):
-                self.finding(f"host-{name}",
-                             f"{binary} has no ASan/UBSan runtime; rebuild the host tests "
-                             "with a compiler that has them")
+            if not self.fuzz_ready(f"host-{name}", binary):
                 continue
             area = seeds[name]
             for seed in area[key]:
@@ -198,7 +203,10 @@ class Gate:
             ("host-nvs-failures", "settings_nvs_roundtrip_test"),
         ):
             binary = host_build / target
-            if binary.is_file():
+            if target.endswith("_fuzz"):
+                if self.fuzz_ready(label, binary):
+                    self.run(label, [str(binary)], timeout=300)
+            elif binary.is_file():
                 self.run(label, [str(binary)], timeout=300)
             else:
                 self.finding(label, f"memory-failure target missing: {binary}")
@@ -211,8 +219,7 @@ class Gate:
 
     def run_discovery_oom(self, host_build: Path) -> None:
         binary = host_build / "mqtt_fuzz"
-        if not binary.is_file():
-            self.finding("ha-discovery-oom", f"fuzz binary missing: {binary}")
+        if not self.fuzz_ready("ha-discovery-oom", binary):
             return
         command = [str(binary), "--seed", "1", "--iterations", "1", "--discovery-oom"]
         result = self.run(
