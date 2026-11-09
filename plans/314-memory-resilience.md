@@ -635,6 +635,51 @@ preexisting issues, fixed here:
 and passes them to the gate, then runs the tool tests. Fork Actions are
 disabled, so this was validated locally only.
 
+## PR 12: dynamic analysis on every host test
+
+State: implemented.
+
+`tools/run_sanitized_host_tests.sh` ran three test groups by default (GPS
+CASIC, GPS power cycle, preferences). It now runs every host test under ASan
+and UBSan except the two ThreadSanitizer probes, which it excludes with
+`ctest -E` instead of refusing the selection. `-R` still narrows a run. The
+`host-sanitized.yml` job inherits the new default.
+
+The ThreadSanitizer item needed no change: `control-connect-camera-race` and
+`control-connecting-snapshot` are ctest entries that run through
+`tests/host/run_tsan_race.sh`, and the `main.yml` host job runs the full
+ctest suite on every firmware change.
+
+The fuzz targets used to drop ASan and UBSan silently when the compiler
+lacked them. That is now a configure error unless
+`-DFURBLE_FUZZ_ALLOW_UNSANITIZED=ON`, and `tools/check_fuzz.py` reports a
+finding for any fuzz binary that does not contain both the `__asan_init` and
+`__ubsan_handle_` runtime symbols. It checks the binary it is about to run,
+not the CMake cache, so a stale build from before this change cannot pass.
+The flags used to reach only `control_fuzz` and `companion_fuzz`; `mqtt_fuzz`,
+`webui_fuzz`, `settings_migration_fuzz` and `wifi_policy_fuzz` ran without
+them in the normal host build. The probe now sits before the first fuzz
+target, one loop applies the compile and link flags to every entry in
+`FUZZ_TARGETS`, and a test requires every `*_fuzz` executable to be listed.
+The normal host suite passes 185 of 185 with all six sanitized, on macOS and
+on native arm64 Linux with LeakSanitizer.
+
+The wider run found five preexisting faults, all in host doubles and tests;
+no firmware source changed:
+
+| Test | Sanitizer | Fault | Fix |
+|---|---|---|---|
+| `webui-fuzz` | UBSan | the host cJSON double cast an out-of-range number (7.8e145) to `int` | saturate to `INT_MAX`/`INT_MIN` like upstream cJSON; firmware uses ESP-IDF cJSON, which already does |
+| `real-wifi-lifecycle` | UBSan | the WiFi stub `Control::state_t` had two values, and the test feeds all six | the stub mirrors the six production states |
+| `sim-watchdog` | ASan (macOS) | the test disabled its thread's alternate signal stack on exit, discarding the one ASan installed, so ASan failed to unmap it | restore the stack the thread started with |
+| `console-commands` | LeakSanitizer (Linux) | the console shim joined its task threads but never freed their three records | free them after the join |
+| `boundary-sd-mount-write` | timing (emulated Linux) | the test read the GPX file once it was non-empty, before the point and closers were written | wait for a `<trkpt` and `</gpx>`; the full-card case measured the same partial file |
+
+Results: macOS ASan+UBSan 183 of 183 (LeakSanitizer is unsupported there),
+native arm64 Linux with GCC and LeakSanitizer 183 of 183, and the normal
+host suite 185 of 185. Under amd64 emulation `sim-watchdog` hit its 5 s
+fatal-child deadline from emulation overhead alone; native Linux passes.
+
 ## PR 11: size budget gate
 
 State: implemented.

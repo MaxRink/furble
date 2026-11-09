@@ -209,8 +209,13 @@ CLAUDE.md whose directory it touches.
   `tools/check_fuzz.py --full` remains the local pre-hardware budget.
 - Run `sh tools/run_sanitized_host_tests.sh --clean` when touching C++ state,
   containers, camera drivers, simulator fixtures, or filesystem lifecycle code.
+  It runs every host test under ASan and UBSan except the two ThreadSanitizer
+  probes, which the normal host build runs through `run_tsan_race.sh`.
+  The fuzz targets refuse to configure without ASan/UBSan unless
+  `-DFURBLE_FUZZ_ALLOW_UNSANITIZED=ON`, and `tools/check_fuzz.py` rejects a
+  host build made that way.
 - `.github/workflows/pre-review.yml` runs the scanners on pull requests;
-  `.github/workflows/host-sanitized.yml` runs the ASan/UBSan subset on C++
+  `.github/workflows/host-sanitized.yml` runs the sanitized host tests on C++
   changes. Both are path-filtered, read-only, and dispatchable for stacked PRs.
   The `sim-sanitizers` job in `sim-e2e.yml` runs the certified e2e suite under
   ASan, UBSan and LeakSanitizer on Linux. Only the third-party sites in

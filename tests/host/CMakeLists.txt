@@ -98,6 +98,28 @@ target_compile_options(mqtt_owner_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                -Wno-unused-parameter)
 target_link_libraries(mqtt_owner_test PRIVATE Threads::Threads)
 
+# Every fuzz target is built with AddressSanitizer and UndefinedBehaviorSanitizer,
+# applied in one place after the last fuzz target (FUZZ_TARGETS below).
+include(CheckCXXCompilerFlag)
+set(FUZZ_SANITIZER_FLAGS -fsanitize=address,undefined -fno-sanitize-recover=all)
+set(CMAKE_REQUIRED_FLAGS "-fsanitize=address,undefined")
+check_cxx_compiler_flag("" FUZZ_HAVE_SANITIZERS)
+unset(CMAKE_REQUIRED_FLAGS)
+# A fuzz target without ASan and UBSan misses the faults it exists to find,
+# so a compiler without them is a configure error, not a silent downgrade.
+option(FURBLE_FUZZ_ALLOW_UNSANITIZED
+       "Build the fuzz targets without ASan/UBSan when the compiler lacks them" OFF)
+if(NOT FUZZ_HAVE_SANITIZERS)
+  if(NOT FURBLE_FUZZ_ALLOW_UNSANITIZED)
+    message(FATAL_ERROR "The fuzz targets need -fsanitize=address,undefined, which "
+                        "${CMAKE_CXX_COMPILER} does not support. Use a compiler that "
+                        "does, or pass -DFURBLE_FUZZ_ALLOW_UNSANITIZED=ON to build "
+                        "them unsanitized on purpose.")
+  endif()
+  message(WARNING "Fuzz targets built WITHOUT sanitizers (FURBLE_FUZZ_ALLOW_UNSANITIZED=ON)")
+  set(FUZZ_SANITIZER_FLAGS "")
+endif()
+
 # Seeded MQTT topic/payload fuzzer over the same production owner task and host
 # broker double. It delivers malformed, oversized, fragmented and retained
 # traffic and asserts only an exact subscribed command can reach Control.
@@ -2052,15 +2074,6 @@ target_link_libraries(gatt_journal_uaf_test PRIVATE Threads::Threads)
 # use-after-free class is caught. The sanitizer is used only when the host
 # toolchain supports it, so the fuzz job stays portable.
 set(FUZZ_DIR ${CMAKE_CURRENT_SOURCE_DIR}/fuzz)
-include(CheckCXXCompilerFlag)
-set(FUZZ_SANITIZER_FLAGS -fsanitize=address,undefined -fno-sanitize-recover=all)
-set(CMAKE_REQUIRED_FLAGS "-fsanitize=address,undefined")
-check_cxx_compiler_flag("" FUZZ_HAVE_SANITIZERS)
-unset(CMAKE_REQUIRED_FLAGS)
-if(NOT FUZZ_HAVE_SANITIZERS)
-  set(FUZZ_SANITIZER_FLAGS "")
-endif()
-
 add_executable(control_fuzz
                ${FUZZ_DIR}/control_fuzz.cpp
                ${CONTROL_E2E_DIR}/doubles.cpp
@@ -2084,8 +2097,7 @@ target_include_directories(control_fuzz
                                   ${HOST_NIMBLE_DIR}
                                   ${HOST_PEER_DIR})
 target_compile_options(control_fuzz PRIVATE -Wall -Wextra -Wno-format -Wno-unused-parameter
-                       -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h ${FUZZ_SANITIZER_FLAGS})
-target_link_options(control_fuzz PRIVATE ${FUZZ_SANITIZER_FLAGS})
+                       -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
 target_link_libraries(control_fuzz PRIVATE Threads::Threads)
 
 # Seeded companion protocol fuzzer. It drives the production CompanionService
@@ -2113,10 +2125,15 @@ target_compile_definitions(companion_fuzz PRIVATE FURBLE_NO_DISPLAY
 target_compile_options(companion_fuzz PRIVATE -Wall -Wextra -Wno-format
                                               -Wno-missing-field-initializers -Wno-sign-compare
                                               -Wno-unused-parameter
-                                              -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h
-                                              ${FUZZ_SANITIZER_FLAGS})
-target_link_options(companion_fuzz PRIVATE ${FUZZ_SANITIZER_FLAGS})
+                                              -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
 target_link_libraries(companion_fuzz PRIVATE Threads::Threads)
+
+set(FUZZ_TARGETS mqtt_fuzz webui_fuzz settings_migration_fuzz wifi_policy_fuzz control_fuzz
+                 companion_fuzz)
+foreach(target ${FUZZ_TARGETS})
+  target_compile_options(${target} PRIVATE ${FUZZ_SANITIZER_FLAGS})
+  target_link_options(${target} PRIVATE ${FUZZ_SANITIZER_FLAGS})
+endforeach()
 
 # USB console command suite (plan 162). CLAUDE.md names the developer console
 # as the automation surface, yet src/FurbleConsole.cpp was compiled by neither

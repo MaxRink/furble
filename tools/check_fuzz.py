@@ -78,6 +78,22 @@ CRASH_MARKERS = (
 
 
 
+def binary_sanitized(binary: Path) -> bool:
+    """True when the fuzz binary itself links the ASan and UBSan runtimes.
+
+    The binary is checked, not the CMake cache: a host build configured
+    before every fuzz target got the flags, or with
+    FURBLE_FUZZ_ALLOW_UNSANITIZED=ON, can still hold unsanitized binaries.
+    Both runtimes leave their entry symbols in the image on every supported
+    toolchain, as a definition or as a dynamic import.
+    """
+    try:
+        image = binary.read_bytes()
+    except OSError:
+        return False
+    return b"__asan_init" in image and b"__ubsan_handle_" in image
+
+
 class Gate:
     def __init__(self, seeds: dict) -> None:
         self.findings: list[str] = []
@@ -140,6 +156,17 @@ class Gate:
                 f"Use 10240 (owned by {owner}).",
             )
 
+    def fuzz_ready(self, label: str, binary: Path) -> bool:
+        """A fuzz binary runs only if it exists and links ASan and UBSan."""
+        if not binary.is_file():
+            self.finding(label, f"fuzz binary missing: {binary}")
+            return False
+        if not binary_sanitized(binary):
+            self.finding(label, f"{binary} has no ASan/UBSan runtime; rebuild the host "
+                                "tests with a compiler that has them")
+            return False
+        return True
+
     def run_host_fuzz(self, host_build: Path, seeds: dict, smoke: bool) -> None:
         binaries = {
             "webui": host_build / "webui_fuzz",
@@ -148,8 +175,7 @@ class Gate:
         }
         key = "smoke" if smoke else "full"
         for name, binary in binaries.items():
-            if not binary.is_file():
-                self.finding(f"host-{name}", f"fuzz binary missing: {binary}")
+            if not self.fuzz_ready(f"host-{name}", binary):
                 continue
             area = seeds[name]
             for seed in area[key]:
@@ -177,7 +203,10 @@ class Gate:
             ("host-nvs-failures", "settings_nvs_roundtrip_test"),
         ):
             binary = host_build / target
-            if binary.is_file():
+            if target.endswith("_fuzz"):
+                if self.fuzz_ready(label, binary):
+                    self.run(label, [str(binary)], timeout=300)
+            elif binary.is_file():
                 self.run(label, [str(binary)], timeout=300)
             else:
                 self.finding(label, f"memory-failure target missing: {binary}")
@@ -190,8 +219,7 @@ class Gate:
 
     def run_discovery_oom(self, host_build: Path) -> None:
         binary = host_build / "mqtt_fuzz"
-        if not binary.is_file():
-            self.finding("ha-discovery-oom", f"fuzz binary missing: {binary}")
+        if not self.fuzz_ready("ha-discovery-oom", binary):
             return
         command = [str(binary), "--seed", "1", "--iterations", "1", "--discovery-oom"]
         result = self.run(

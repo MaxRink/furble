@@ -46,7 +46,11 @@ bool checkRegisteredThreadStack(void) {
     stack_t supplied {};
     supplied.ss_sp = suppliedStorage.data();
     supplied.ss_size = suppliedStorage.size();
-    if (sigaltstack(&supplied, nullptr) != 0) {
+    // Keep whatever stack the thread started with (ASan installs one per
+    // thread) and put it back at the end: its runtime unmaps that stack when
+    // the thread exits.
+    stack_t original {};
+    if (sigaltstack(&supplied, &original) != 0) {
       return;
     }
     stack_t before {};
@@ -58,9 +62,7 @@ bool checkRegisteredThreadStack(void) {
     installed = altStackIsInstalled(&after);
     preserved = installed && after.ss_sp == before.ss_sp && after.ss_size == before.ss_size;
     Furble::Sim::watchdogUnregisterThread();
-    stack_t disabled {};
-    disabled.ss_flags = SS_DISABLE;
-    sigaltstack(&disabled, nullptr);
+    sigaltstack(&original, nullptr);
   });
   worker.join();
   return check(installed, "registered worker has no alternate signal stack")

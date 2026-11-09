@@ -21,14 +21,14 @@
 #include <sys/resource.h>
 #include <sys/stat.h>
 
-#include "boundary_host.h"
-#include "M5Unified.h"
-#include "driver/gpio.h"
-#include "driver/sdspi_host.h"
-#include "esp_vfs_fat.h"
 #include "FurbleGPX.h"
 #include "FurbleSD.h"
 #include "FurbleSettings.h"
+#include "M5Unified.h"
+#include "boundary_host.h"
+#include "driver/gpio.h"
+#include "driver/sdspi_host.h"
+#include "esp_vfs_fat.h"
 #include "nvs.h"
 
 #ifndef FURBLE_BOUNDARY_SD_MOUNT
@@ -124,19 +124,26 @@ std::string gpxPath(uint8_t minute) {
   return path;
 }
 
+// The SD task writes the header, the point and the closers in separate calls,
+// so a non-empty file is not yet a complete one. Wait for a point and the
+// closing tag; a slow host otherwise reads or measures a partial file.
+bool fileIsComplete(const std::string &path) {
+  std::ifstream file(path);
+  const std::string contents((std::istreambuf_iterator<char>(file)),
+                             std::istreambuf_iterator<char>());
+  return contents.find("<trkpt") != std::string::npos
+         && contents.find("</gpx>") != std::string::npos;
+}
+
 bool waitForFile(const std::string &path, uint32_t timeout_ms = 5000) {
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
   while (std::chrono::steady_clock::now() < deadline) {
-    std::error_code error;
-    if (std::filesystem::is_regular_file(path, error)
-        && std::filesystem::file_size(path, error) > 0) {
+    if (fileIsComplete(path)) {
       return true;
     }
     sleepMs(10);
   }
-  std::error_code error;
-  return std::filesystem::is_regular_file(path, error)
-         && std::filesystem::file_size(path, error) > 0;
+  return fileIsComplete(path);
 }
 
 void runMountWrite(void) {
@@ -157,7 +164,8 @@ void runMountWrite(void) {
   check(waitForFile(path), "the GPX file was not created at the dated path");
 
   std::ifstream file(path);
-  const std::string contents((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+  const std::string contents((std::istreambuf_iterator<char>(file)),
+                             std::istreambuf_iterator<char>());
   check(contents.find("<gpx version=\"1.1\"") != std::string::npos, "the GPX header is missing");
   check(contents.find("<trkpt lat=\"52.520000\" lon=\"13.405000\">") != std::string::npos,
         "the GPX track point is missing or has the wrong coordinates");
@@ -185,7 +193,8 @@ void runMountFail(void) {
 
   Furble::SD::init();
   check(waitFor(Furble::SD::card_state_t::FAILED), "a failed mount did not publish FAILED");
-  check(BoundaryHost::logContains("SD card mount failed: ESP_FAIL"), "the mount failure log is missing");
+  check(BoundaryHost::logContains("SD card mount failed: ESP_FAIL"),
+        "the mount failure log is missing");
   check(g_MountCalls > 0, "the mount double was not called");
   std::cout << "sd.mount_fail state=failed calls=" << g_MountCalls << '\n';
 }
@@ -228,7 +237,8 @@ void runRemoved(void) {
 
   Furble::SD::init();
   check(waitFor(Furble::SD::card_state_t::MOUNTED), "SD card did not mount before removal");
-  check(Furble::SD::getInstance().logPoint(point(3, 52.52, 13.405)), "the pre-removal point was not queued");
+  check(Furble::SD::getInstance().logPoint(point(3, 52.52, 13.405)),
+        "the pre-removal point was not queued");
   const std::string path = gpxPath(3);
   check(waitForFile(path), "the pre-removal GPX file was not created");
 
@@ -290,7 +300,8 @@ esp_err_t esp_vfs_fat_sdcard_unmount(const char *base_path, sdmmc_card_t *card) 
   return ESP_OK;
 }
 
-esp_err_t esp_vfs_fat_info(const char *base_path, uint64_t *out_total_bytes,
+esp_err_t esp_vfs_fat_info(const char *base_path,
+                           uint64_t *out_total_bytes,
                            uint64_t *out_free_bytes) {
   if (!g_Mounted || base_path == nullptr || std::strcmp(base_path, MOUNT) != 0) {
     return ESP_FAIL;

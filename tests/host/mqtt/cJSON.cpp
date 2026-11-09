@@ -1,6 +1,7 @@
 #include "cJSON.h"
 
 #include <algorithm>
+#include <climits>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -472,7 +473,15 @@ extern "C" cJSON *cJSON_CreateNumber(double value) {
   cJSON *node = makeNode(cJSON_Number);
   if (node != nullptr) {
     node->valuedouble = value;
-    node->valueint = static_cast<int>(value);
+    // Saturate like upstream cJSON: converting an out-of-range double to int
+    // is undefined behavior, and request bodies can carry any number.
+    if (value >= static_cast<double>(INT_MAX)) {
+      node->valueint = INT_MAX;
+    } else if (value <= static_cast<double>(INT_MIN)) {
+      node->valueint = INT_MIN;
+    } else {
+      node->valueint = static_cast<int>(value);
+    }
   }
   return node;
 }

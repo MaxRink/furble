@@ -2,11 +2,12 @@
 
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
+import re
 import sys
 import tempfile
 import unittest
 
-from tools.check_fuzz import load_seeds, resolve_mqtt_owner_stack
+from tools.check_fuzz import binary_sanitized, load_seeds, resolve_mqtt_owner_stack
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,6 +19,50 @@ assert MEMORY_SPEC is not None and MEMORY_SPEC.loader is not None
 MEMORY_FUZZ = module_from_spec(MEMORY_SPEC)
 sys.modules[MEMORY_SPEC.name] = MEMORY_FUZZ
 MEMORY_SPEC.loader.exec_module(MEMORY_FUZZ)
+
+
+class HostSanitizerTest(unittest.TestCase):
+  def test_only_a_binary_with_both_runtimes_passes(self):
+    with tempfile.TemporaryDirectory() as directory:
+      binary = Path(directory) / "webui_fuzz"
+      self.assertFalse(binary_sanitized(binary))
+      binary.write_bytes(b"\x7fELF plain test")
+      self.assertFalse(binary_sanitized(binary))
+      binary.write_bytes(b"\x7fELF __asan_init only")
+      self.assertFalse(binary_sanitized(binary))
+      binary.write_bytes(b"\x7fELF __asan_init __ubsan_handle_add_overflow")
+      self.assertTrue(binary_sanitized(binary))
+
+
+class FuzzGateRunsOnlySanitizedTest(unittest.TestCase):
+  def test_every_fuzz_binary_the_gate_runs_is_checked(self):
+    from tools.check_fuzz import Gate
+    with tempfile.TemporaryDirectory() as directory:
+      build = Path(directory)
+      for name in ("webui_fuzz", "companion_fuzz", "mqtt_fuzz", "settings_migration_fuzz",
+                   "wifi_policy_fuzz"):
+        (build / name).write_bytes(b"\x7fELF unsanitized")
+      gate = Gate(load_seeds())
+      ran = []
+      gate.run = lambda label, command, **_: ran.append(label)
+      gate.run_host_fuzz(build, load_seeds(), smoke=True)
+      gate.run_discovery_oom(build)
+    # Only unsanitized fuzz binaries exist here, so nothing may run.
+    self.assertEqual(ran, [])
+    for label in ("host-webui", "host-companion", "host-mqtt", "host-settings-migration",
+                  "host-wifi-policy", "ha-discovery-oom"):
+      self.assertTrue(any(f.startswith(f"[{label}]") and "ASan/UBSan" in f
+                          for f in gate.findings), label)
+
+
+class FuzzTargetFlagsTest(unittest.TestCase):
+  def test_every_fuzz_executable_gets_the_sanitizer_flags(self):
+    cmake = (ROOT / "tests" / "host" / "CMakeLists.txt").read_text(encoding="utf-8")
+    defined = set(re.findall(r"add_executable\((\w+_fuzz)\b", cmake))
+    listed = re.search(r"set\(FUZZ_TARGETS([^)]*)\)", cmake)
+    self.assertIsNotNone(listed)
+    self.assertTrue(defined)
+    self.assertEqual(defined, set(listed.group(1).split()))
 
 
 class MqttOwnerStackTest(unittest.TestCase):
