@@ -655,6 +655,13 @@ lacked them. That is now a configure error unless
 `-DFURBLE_FUZZ_ALLOW_UNSANITIZED=ON`, and `tools/check_fuzz.py` reports a
 `host-sanitizers` finding for any host build whose cache does not record the
 sanitizer probe as passed, so an unsanitized build cannot pass the fuzz gate.
+The flags used to reach only `control_fuzz` and `companion_fuzz`; `mqtt_fuzz`,
+`webui_fuzz`, `settings_migration_fuzz` and `wifi_policy_fuzz` ran without
+them in the normal host build. The probe now sits before the first fuzz
+target, one loop applies the compile and link flags to every entry in
+`FUZZ_TARGETS`, and a test requires every `*_fuzz` executable to be listed.
+The normal host suite passes 185 of 185 with all six sanitized, on macOS and
+on native arm64 Linux with LeakSanitizer.
 
 The wider run found five preexisting faults, all in host doubles and tests;
 no firmware source changed:

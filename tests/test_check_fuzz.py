@@ -2,6 +2,7 @@
 
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
+import re
 import sys
 import tempfile
 import unittest
@@ -29,6 +30,16 @@ class HostSanitizerTest(unittest.TestCase):
       self.assertFalse(host_fuzz_sanitized(build))
       (build / "CMakeCache.txt").write_text("FUZZ_HAVE_SANITIZERS:INTERNAL=1\n", encoding="utf-8")
       self.assertTrue(host_fuzz_sanitized(build))
+
+
+class FuzzTargetFlagsTest(unittest.TestCase):
+  def test_every_fuzz_executable_gets_the_sanitizer_flags(self):
+    cmake = (ROOT / "tests" / "host" / "CMakeLists.txt").read_text(encoding="utf-8")
+    defined = set(re.findall(r"add_executable\((\w+_fuzz)\b", cmake))
+    listed = re.search(r"set\(FUZZ_TARGETS([^)]*)\)", cmake)
+    self.assertIsNotNone(listed)
+    self.assertTrue(defined)
+    self.assertEqual(defined, set(listed.group(1).split()))
 
 
 class MqttOwnerStackTest(unittest.TestCase):

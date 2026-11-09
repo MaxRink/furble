@@ -183,3 +183,9 @@ branch `fix/stack-budget-review`.
 | 2 | #436 review summary: the slot test skipped the stock table when the ESP-IDF package is missing, as in the `python-tools` job. | Fixed. It falls back to the OTA size `check_partition_tables.BOARD_SPECS` pins for the stock CSV (0x1A9000), so it fails closed. `test_stock_slot_is_checked_without_the_esp_idf_package` forces that path. | `tests/test_check_size_budget.py` |
 | 3 | #436 review summary: only `apps[0]` was compared, so a smaller later OTA slot would go unnoticed. | Fixed. The budget must equal the smallest app partition in the CSV. | `tests/test_check_size_budget.py` |
 | 4 | #436 review summary: `esp32-s3-headless` is not in the firmware matrix, so its budget was never checked in CI. | Fixed. `--build-dir` measures one env in a given directory, and `reproducible.yml` runs the check on the kept headless build next to the stack budget, with both new files in its path filters. | `tools/check_size_budget.py`, `.github/workflows/reproducible.yml` |
+
+## PR 12 (#437, `feat/314-dynamic-analysis`)
+
+| # | Finding | Resolution | Evidence |
+| ---: | :--- | :--- | :--- |
+| 1 | #437 review: the sanitizer probe and flags applied only to `control_fuzz` and `companion_fuzz`; `mqtt_fuzz` and `webui_fuzz`, which `check_fuzz.py` runs, had none, so the new cache check passed while they ran unsanitized. | Fixed, and wider than reported: `settings_migration_fuzz` and `wifi_policy_fuzz` had none either. The probe moved before the first fuzz target, and one loop applies the compile and link flags to every target in `FUZZ_TARGETS`. `FuzzTargetFlagsTest` fails if an `add_executable(*_fuzz)` is missing from the list. All four `flags.make` files now carry `-fsanitize=address`; the normal host suite passes 185 of 185 on macOS and on arm64 Linux with LeakSanitizer, and the `check_fuzz.py --smoke` host targets have no findings. | `tests/host/CMakeLists.txt`, `tests/test_check_fuzz.py` |
