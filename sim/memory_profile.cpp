@@ -85,7 +85,7 @@ std::vector<component_t> componentsFor(const profile_budget_t &budget) {
       {"gps_task",               4096,                                                  "internal",     "src/FurbleGPS.cpp xTaskCreate"                },
       {"ir_task",                budget.irStack,                                        "psram",        "src/FurbleIR.cpp after PR 394"                },
       {"companion_task",         budget.companionStack,                                 "internal",     "src/FurbleCompanion.cpp xTaskCreate"          },
-      {"webui_supervisor",       3072,                                                  "internal",     "FurbleWebUIMemory::SUPERVISOR_STACK_BYTES"    },
+      {"webui_supervisor",       3584,                                                  "internal",     "FurbleWebUIMemory::SUPERVISOR_STACK_BYTES"    },
       {"webui_tls",              12288,                                                 "internal",     "FurbleWebUI::IDENTITY_STACK_BYTES"            },
       {"webui_httpd",            8192,                                                  "internal",     "FurbleWebUIMemory::HTTPD_STACK_BYTES"         },
       {"mqtt_owner",             budget.mqttOwner,                                      "internal",     "release-gate MQTT owner stack"                },

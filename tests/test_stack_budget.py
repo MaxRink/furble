@@ -109,6 +109,24 @@ DISTINCT_SYMBOLS = """
 40000000  w    F .flash.text\t00000006 _ZN1XD1Ev
 40000500  w    F .flash.text\t00000006 _ZN1XD2Ev
 """
+# The WiFi blob's config_get_wifi_task_stack_size is 0x1e bytes. The unnamed
+# static function after it starts behind alignment padding, objdump misdecodes
+# its entry, and its call8 is listed under the getter. Past the symbol size,
+# that call is not the getter's.
+TAIL_LISTING = """
+40000010 <elf_mid>:
+40000010:\t006136        \tentry\ta1, 64
+40000013:\t000090        \tretw.n
+40000016:\t360000        \tee.ldf.64.xp\tf0, f3, a0, a0
+40000019:\tfffba5        \tcall8\t40000300 <elf_stale>
+
+40000300 <elf_stale>:
+40000300:\t7d0136        \tentry\ta1, 4000
+"""
+TAIL_SYMBOLS = """
+40000010 g     F .flash.text\t00000006 elf_mid
+40000300 g     F .flash.text\t00000010 elf_stale
+"""
 # Both l32r forms that objdump prints. The parenthesized value is a longcall
 # target. The bare form names the literal's slot, and a load into the
 # register drops its literal, so neither 4,000-byte function is reached.
@@ -285,6 +303,13 @@ class StackBudgetTest(unittest.TestCase):
                           symbols=ALIAS_SYMBOLS)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("PASS t: 336 of 336 bytes (48 frames + 288 port overhead)", r.stdout)
+
+    def test_elf_call_past_the_symbol_size_is_not_followed(self):
+        # 32 + elf_mid 64 + 288 overhead; the misdecoded tail's call is dropped
+        r = self.run_tool(384, indirect=False, cis=(("e.cpp.ci", E_CI),),
+                          listing=TAIL_LISTING, symbols=TAIL_SYMBOLS)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("PASS t: 384 of 384 bytes (96 frames + 288 port overhead)", r.stdout)
 
     def test_elf_distinct_address_constructor_is_parsed(self):
         # 32 + the ELF D1's own 48-byte frame + 288 overhead, not the D2 body's 16

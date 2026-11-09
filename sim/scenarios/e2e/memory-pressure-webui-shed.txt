@@ -3,9 +3,9 @@
 # restored server fits above the threshold again.
 #
 # The seed is the post-#394 StickS3 pair. The supervisor and the 8,192-byte server
-# leave 16,087 free, which is healthy. One 4 KiB squeeze drops free to 11,991, below
+# leave 15,575 free, which is healthy. One 4 KiB squeeze drops free to 11,479, below
 # the 12,288 AMBER floor. After three one-second readings the governor pauses
-# the server, which gives its 8,192 bytes back (20,183 free). That is still
+# the server, which gives its 8,192 bytes back (19,671 free). That is still
 # short of the 20,480 exit level, so the server must stay paused: restarting it
 # would put the heap straight back below AMBER. Releasing the squeeze clears the
 # exit level, and after five clear readings the server starts again through its
@@ -19,11 +19,11 @@ seed wifi_connected true
 wait 2000
 
 assert webui.server running
-assert heap.free 16087
+assert heap.free 15575
 assert heap.pressure normal
 
 action heap-squeeze
-assert heap.free 11991
+assert heap.free 11479
 wait 1500
 # Debounced: one or two low readings do not shed.
 assert heap.pressure normal
@@ -31,7 +31,7 @@ wait 3000
 assert heap.pressure amber
 wait 1000
 assert webui.server pending
-assert heap.free 20183
+assert heap.free 19671
 
 # Room for the server, but not for the server above AMBER: no thrash.
 wait 10000
@@ -44,7 +44,7 @@ wait 7000
 assert heap.pressure normal
 wait 1000
 assert webui.server running
-assert heap.free 16087
+assert heap.free 15575
 assert heap.alloc_failures 0
 assert mem.leaks 0
 assert platform.watchdog armed

@@ -8,7 +8,7 @@ seed wifi_connected true
 wait 100
 assert mem.component.main_stack 12288
 assert mem.component.webui_tls 12288
-assert mem.component.webui_supervisor 3072
+assert mem.component.webui_supervisor 3584
 assert webui.supervisor created
 assert webui.server running
 assert ui.draw_buffers 1

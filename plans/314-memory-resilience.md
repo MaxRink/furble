@@ -635,6 +635,80 @@ preexisting issues, fixed here:
 and passes them to the gate, then runs the tool tests. Fork Actions are
 disabled, so this was validated locally only.
 
+## Fix: flash slimming, every debug image back in its OTA slot
+
+State: implemented. Size-only change: no feature, log line or console command
+is removed, and IPv6 stays enabled on every board.
+
+Master's `m5stick-c-debug` (1,760,585 bytes) and `m5stick-c-plus-debug`
+(1,761,261) had outgrown the 1,740,800-byte OTA slot, and the opt-in
+`m5stack-core-debug` was 1,810,109. #434 proposed a single factory slot for
+the StickC debug images; this change makes it unnecessary.
+
+| Change | Boards | Saving |
+|---|---|---|
+| `SD_HARDWARE` constant compiles out FATFS, SDMMC and SDSPI | StickC, StickC Plus (no SD slot) | 54 to 65 KB |
+| Pairing code uses only Montserrat 16 on the 80 px panel | StickC | about 25 KB |
+| `CONFIG_LOG_VERSION_2` (ESP-IDF Log V2) | all | about 31 KB of format strings plus smaller call sites; S3 release 80 KB with the two below |
+| `CONFIG_LWIP_DHCPS=n`: only SoftAP used it, and SoftAP is compiled out | all | 2,916 bytes |
+| `CONFIG_MBEDTLS_GCM_SUPPORT_NON_AES_CIPHER=n`: only AES-GCM is used | all | 1,804 bytes |
+| `M5GFX_BOARD` pins the board in `M5GFX::autodetect` | `m5stick-c`, `m5stack-core`, `m5stick-s3` | about 22 KB on ESP32 |
+
+`patches/m5gfx_board.patch` adds a three-line `#if defined(M5GFX_BOARD)` in
+`autodetect`, so the compiler drops every other board's probe, panel and
+touch driver. PlatformIO installs `lib_deps` after `pre:` scripts run, so
+`post:patches/m5gfx_board.py` applies it through the existing locked,
+marker-checked `apply_patch`. A fresh libdeps directory was verified.
+StickC Plus/Plus2 and Core2/Tough share an image and keep autodetect.
+
+Log V2 writes one record as three vprintf calls: prefix, message, newline.
+`FurbleCrashLog::logVprintf` now joins fragments up to the newline under its
+lock before keeping the last line. ESP-IDF holds the stdout lock across the
+three calls, so records from different tasks do not interleave. The host
+double sends the V2 shape, and `crash_log_test` fails on the old hook.
+
+Log V2 also deepens every logging path by 100 to 700 bytes. The WebUI
+supervisor reached 3,136 of 3,072 bytes on Waveshare and headless, so
+`SUPERVISOR_STACK_BYTES` is now 3,584 and its admission floors 4,608 / 4,096.
+The WebUI e2e scenarios and the two memory budget floors move by exactly
+those 512 bytes; the pressure and gate decisions they test are unchanged.
+
+Rejected: IPv6 off (required), `BT_NIMBLE_PRINT_ERR_NAME=n` (a debug
+feature), non-P-256 curves (WPA3), newlib nano printf (`%f`, `%llx` and
+`PRId64` are used), scanf and `strtod` removal (pulled in by `tzset` and
+`strtof`), font symbol stripping and compressed fonts (regenerated assets or
+render cost), and M5Unified IMU, PMIC and touch drivers (runtime probed, no
+macro). The NimBLE services, error string, LVGL widget and compiler options
+already cost nothing.
+
+`tools/stack_budget.py` fix found here: an `entry` after alignment padding
+can be misdecoded, and the 0x1e-byte `config_get_wifi_task_stack_size` took
+the calls of the unnamed blob function behind it. The headless WiFi task then
+reported three unbounded association cycles. The walk now stops at the
+`objdump -t` symbol size until the next decoded `entry`, with a regression
+test.
+
+Before is master, except the two StickC release rows, which already include
+the SD and font changes. Debug rows are master.
+
+| Image | Before | After | Slot |
+|---|---:|---:|---:|
+| m5stick-c | 1,562,925 | 1,490,037 | 1,740,800 |
+| m5stick-c-plus | 1,589,793 | 1,540,097 | 1,740,800 |
+| m5stack-core | 1,691,621 | 1,613,277 | 1,740,800 |
+| m5stick-s3 | 1,984,333 | 1,847,137 | 3,145,728 |
+| m5stack-core2 | 1,964,637 | 1,898,081 | 6,291,456 |
+| waveshare-s3-eth | 1,790,793 | 1,696,065 | 6,291,456 |
+| esp32-s3-headless | 1,846,417 | 1,758,649 | 3,145,728 |
+| m5stick-c-debug | 1,760,585 | 1,588,353 | 1,740,800 |
+| m5stick-c-plus-debug | 1,761,261 | 1,637,797 | 1,740,800 |
+| m5stack-core-debug | 1,810,109 | 1,719,453 | 1,740,800 |
+
+`m5stack-core-debug` fits again with 21,347 bytes free. It stays a
+workflow-dispatch opt-in here; making it the mandatory Core debug profile
+again is a separate CI change. Serial output and the crash-log tail under
+Log V2 are not yet verified on hardware (sim-only mode).
+
 ## Baseline: regenerated release sdkconfigs
 
 State: implemented, as the clean baseline for PR 8 config tuning.

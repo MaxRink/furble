@@ -127,7 +127,12 @@ The developer-only `m5stack-core-usb-debug` profile is USB-UART only and uses a
 single factory app partition. Normal CI builds it as the mandatory Core debug
 profile. Keep it out of release and web-installer matrices; the legacy
 `m5stack-core-debug` OTA profile is an explicit workflow-dispatch opt-in, and
-returning to dual OTA requires a USB partition-table reflash.
+returning to dual OTA requires a USB partition-table reflash. After the plan 314
+flash slimming it fits its OTA slot again (1,719,437 bytes).
+
+Single-board images set `M5GFX_BOARD` (`m5stick-c`, `m5stack-core`,
+`m5stick-s3`); `post:patches/m5gfx_board.py` pins it in `M5GFX::autodetect`.
+Images shared by two boards (StickC Plus/Plus2, Core2/Tough) must not set it.
 
 The StickS3 flash helper is fail-closed. Use `--preflight-only` to validate the
 PMIC handshake without uploading. After a successful prepare, it must issue

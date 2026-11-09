@@ -32,6 +32,16 @@ CLAUDE.md whose directory it touches.
   The `-Oz` experiment produced the identical size despite confirmed object-file
   flags, so it was reverted. The combined image still does not fit; release
   optimization, security features and the OTA layout are unchanged.
+- Flash slimming (plan 314) keeps every feature and IPv6. All boards use ESP-IDF
+  Log V2 with the DHCP server and non-AES GCM off. StickC images compile out
+  the SD stack and the unused Montserrat 22. Images that map to one M5GFX board
+  (`m5stick-c`, `m5stack-core`, `m5stick-s3`) set `M5GFX_BOARD`, and
+  `post:patches/m5gfx_board.py` pins it in `M5GFX::autodetect`, so the other
+  boards' panel and touch drivers drop out. StickC Plus/Plus2 and Core2/Tough
+  share an image and keep autodetect. Core debug is now 1,719,437 bytes and
+  fits its OTA slot again; it stays a workflow-dispatch opt-in. Log V2 writes
+  one record as three vprintf calls, so `FurbleCrashLog` joins fragments up to
+  the newline.
 - Per-env `sdkconfig.<env>` files are committed at the repo root. Debug envs
   share the release sdkconfig via `board_build.esp-idf.sdkconfig_path`.
   Regenerating builds may append derived symbols to sdkconfig files. Commit

@@ -133,7 +133,7 @@
     {
       "name": "webui",
       "entry": "Furble::WebUI::taskEntry\\(void\\*\\)$",
-      "stack_bytes": 3072,
+      "stack_bytes": 3584,
       "source": [
         "include/FurbleWebUIMemory.h",
         "SUPERVISOR_STACK_BYTES = (\\d+);"

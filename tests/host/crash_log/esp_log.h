@@ -26,16 +26,27 @@ inline vprintf_like_t esp_log_set_vprintf(vprintf_like_t callback) {
   return previous;
 }
 
+inline int hostCrashLogPrint(const char *format, ...) {
+  va_list args;
+  va_start(args, format);
+  const int written = hostCrashLogVprintf()(format, args);
+  va_end(args);
+  return written;
+}
+
 inline void furbleHostCrashLog(const char *format, ...) {
   char line[256] = {};
   va_list args;
   va_start(args, format);
   if (hostCrashLogVprintf() != nullptr) {
+    // Log V2 shape: the prefix, the message and the newline arrive as three
+    // separate vprintf calls, and the hook must join them into one line.
+    hostCrashLogPrint("%s", "E (0) test: ");
     va_list copy;
     va_copy(copy, args);
     hostCrashLogVprintf()(format, copy);
     va_end(copy);
-    std::fputc('\n', stdout);
+    hostCrashLogPrint("%s", "\n");
   }
   std::vsnprintf(line, sizeof(line), format, args);
   va_end(args);

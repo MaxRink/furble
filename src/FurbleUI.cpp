@@ -1101,8 +1101,14 @@ void UI::showCameraPairing(Camera *camera) {
 
   lv_obj_t *code = lv_label_create(content);
   lv_label_set_text_fmt(code, "%06lu", static_cast<unsigned long>(owner->getPairingCode()));
+#if defined(FURBLE_M5STICKC)
+  // The 80 px StickC panel always takes the narrow branch; naming only that
+  // font keeps the unused 25 KB Montserrat 22 out of the image.
+  lv_obj_set_style_text_font(code, &lv_font_montserrat_16, 0);
+#else
   lv_obj_set_style_text_font(code, m_Width < 100 ? &lv_font_montserrat_16 : &lv_font_montserrat_22,
                              0);
+#endif
   lv_obj_set_style_text_align(code, LV_TEXT_ALIGN_CENTER, 0);
 
   const bool narrowFooter = m_Width < 200;
