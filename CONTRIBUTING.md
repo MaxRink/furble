@@ -227,9 +227,11 @@ indirect call rules, the bounds and the limits.
 `python3 tools/check_size_budget.py --env <env>` then checks that
 `firmware.bin` fits its app partition and that static DRAM
 (`.dram0.data + .noinit + .dram0.bss`) and IRAM stay inside
-`tools/size_budget.json`. Each RAM budget is the measured size rounded up to a
-KiB, so real growth fails. Raise it with `--write` and give the reason in the
-PR. Firmware CI runs it after the stack budget.
+`tools/size_budget.json`. Each RAM budget is the measured size plus at least
+512 bytes of headroom, rounded up to a KiB, so real growth fails while a few
+bytes of churn do not. Raise it with `--write` and give the reason in the PR.
+Firmware CI runs it after the stack budget; the reproducible workflow runs it
+on `esp32-s3-headless`, which the firmware matrix does not build.
 
 `run-panic-fixtures.sh` needs the default binary and the `FURBLE_SIM_MQTT=1`
 binary. Every sdkconfig aborts on a failed allocation, so the simulator does

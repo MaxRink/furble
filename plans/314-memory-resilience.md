@@ -659,7 +659,12 @@ failed. A change that crosses a budget raises it with `--write` and states
 its reason in the PR. A test requires an entry for every `[env:*]` in
 `platformio.ini`, which added the `m5stick-s3-debug-ble` bench image. A
 missing build reports `FAIL <env>: not built` instead of a traceback. Firmware
-CI runs the check after the stack budget on every matrix env.
+CI runs the check after the stack budget on every matrix env. The matrix has
+no headless build, so `reproducible.yml` runs it on the kept
+`esp32-s3-headless` build through `--build-dir`, as it does the stack budget.
+The slot test takes the smallest app partition, and without the ESP-IDF
+package it compares the stock table against the OTA size that
+`check_partition_tables.py` pins, so it never skips.
 
 `-Wframe-larger-than=2048` from the original plan was dropped.
 `tools/stack_budget.py` already checks every task's full path against its

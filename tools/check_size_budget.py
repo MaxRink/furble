@@ -46,8 +46,8 @@ def sections(elf: Path) -> dict[str, int]:
     return out
 
 
-def measure(env: str) -> dict[str, int]:
-    build = ROOT / ".pio" / "build" / env
+def measure(env: str, build: Path | None = None) -> dict[str, int]:
+    build = build or ROOT / ".pio" / "build" / env
     sizes = sections(build / "firmware.elf")
     return {
         "flash": (build / "firmware.bin").stat().st_size,
@@ -78,7 +78,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--env", action="append", required=True, help="PlatformIO env; repeat")
     parser.add_argument("--write", action="store_true",
                         help="record the measured RAM sizes plus headroom, rounded up to a KiB")
+    parser.add_argument("--build-dir", type=Path,
+                        help="build directory for a single --env, e.g. a kept reproducible build")
     args = parser.parse_args(argv)
+    if args.build_dir and len(args.env) != 1:
+        parser.error("--build-dir takes exactly one --env")
     budgets = json.loads(BUDGET.read_text(encoding="utf-8"))
     failed = False
     for env in args.env:
@@ -88,7 +92,7 @@ def main(argv: list[str] | None = None) -> int:
             continue
         budget = budgets["envs"][env]
         try:
-            used = measure(env)
+            used = measure(env, args.build_dir)
         except FileNotFoundError as error:
             print(f"FAIL {env}: not built ({error.filename})")
             failed = True

@@ -22,6 +22,8 @@ def load(name):
 
 TOOL = load("check_size_budget")
 PARTITIONS = load("check_partition_tables")
+STOCK_OTA_SIZE, = {spec.expected_ota_size for spec in PARTITIONS.BOARD_SPECS
+                   if spec.csv_name == PARTITIONS.STOCK_PARTITION_CSV}
 
 
 def elf(sections):
@@ -74,6 +76,15 @@ class CheckTest(unittest.TestCase):
         self.assertEqual(TOOL.budget_for(1024 - 512), 1024)
         self.assertEqual(TOOL.budget_for(1024 - 511), 2048)
 
+    def test_build_dir_measures_that_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            build = Path(tmp)
+            (build / "firmware.elf").write_bytes(elf([(".dram0.bss", 100), (".iram0.text", 200)]))
+            (build / "firmware.bin").write_bytes(bytes(300))
+            self.assertEqual(TOOL.measure("any", build), {"flash": 300, "dram": 100, "iram": 200})
+        with self.assertRaises(SystemExit):
+            TOOL.main(["--env", "a", "--env", "b", "--build-dir", "x"])
+
     def test_a_missing_build_fails_without_a_traceback(self):
         with unittest.mock.patch.object(TOOL, "measure", side_effect=FileNotFoundError(2, "x", "firmware.elf")):
             with unittest.mock.patch("builtins.print") as out:
@@ -83,6 +94,12 @@ class CheckTest(unittest.TestCase):
 
 class BudgetFileTest(unittest.TestCase):
     """Every recorded slot is the app partition of the CSV it names."""
+
+    def test_stock_slot_is_checked_without_the_esp_idf_package(self):
+        missing = PARTITIONS.CheckError("not installed")
+        with unittest.mock.patch.object(PARTITIONS, "find_stock_csv", side_effect=missing):
+            self.test_flash_slots_match_the_partition_tables()
+        self.assertEqual(STOCK_OTA_SIZE, 0x1A9000)
 
     def test_every_platformio_env_has_a_budget(self):
         config = (ROOT / "platformio.ini").read_text(encoding="utf-8")
@@ -98,11 +115,16 @@ class BudgetFileTest(unittest.TestCase):
                 try:
                     path = PARTITIONS.find_stock_csv(ROOT, None)
                 except PARTITIONS.CheckError:
-                    continue  # the ESP-IDF package is not installed here
+                    # Without the ESP-IDF package, compare against the OTA
+                    # size the partition checker pins for the stock table.
+                    self.assertEqual(budget["flash_slot"], STOCK_OTA_SIZE, env)
+                    continue
             else:
                 path = ROOT / name
-            apps = [p for p in PARTITIONS.parse_csv(path) if p.subtype in ("ota_0", "factory")]
-            self.assertEqual(budget["flash_slot"], apps[0].size, env)
+            # The image must fit every app slot it can be written to.
+            apps = [p.size for p in PARTITIONS.parse_csv(path) if p.kind == "app"]
+            self.assertTrue(apps, env)
+            self.assertEqual(budget["flash_slot"], min(apps), env)
             self.assertGreater(budget["dram_bytes"], 0, env)
             self.assertGreater(budget["iram_bytes"], 0, env)
 
