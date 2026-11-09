@@ -49,6 +49,17 @@ CLAUDE.md whose directory it touches.
   env. Regeneration also strips comments and rewrites deprecated aliases to
   match their real options, so keep the reason for a setting in its plan doc,
   never in an sdkconfig comment.
+- Debug hardening (plan 314 PR 13): `sdkconfig.debug` turns on the
+  end-of-stack watchpoint and standalone heap tracing (`heap trace` console
+  command). Every debug env except `m5stack-core-debug` also merges
+  `sdkconfig.stack-protector` (`COMPILER_STACK_CHECK_MODE_NORM`); its 24 KB
+  does not fit that opt-in OTA slot. Debug builds
+  define `FURBLE_TASK_WDT`, which subscribes the MQTT, WebUI and companion
+  loops to the 5 s task watchdog through `FurbleTaskWatchdog.h`; a timeout
+  logs a backtrace but `CONFIG_ESP_TASK_WDT_PANIC` stays off until a hardware
+  soak. The 8 and 16 MB tables end with a 256 KiB `coredump` partition after
+  `ota_1`, and their debug envs merge `sdkconfig.coredump-flash`.
+  `m5stack-core-usb-debug` layers both under its partition fragment.
 - S3 and Core2 release sdkconfigs disable `CONFIG_SPIRAM_MEMTEST` to remove the
   full boot-time PSRAM test. Their debug envs merge `sdkconfig.spiram-memtest` back
   in. `patches/debug_sdkconfig.py` accepts comma-separated fragments so a

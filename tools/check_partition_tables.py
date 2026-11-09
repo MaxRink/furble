@@ -15,6 +15,7 @@ from pathlib import Path
 FLASH_4M = 4 * 1024 * 1024
 FLASH_8M = 8 * 1024 * 1024
 FLASH_16M = 16 * 1024 * 1024
+COREDUMP_SIZE = 0x40000
 PARTITION_TABLE_END = 0x9000
 DATA_ALIGNMENT = 0x1000
 APP_ALIGNMENT = 0x10000
@@ -31,6 +32,9 @@ REFERENCE_APP_SIZES = {
     "m5stack-core2": 1_037_728,
     "m5stick-s3": 1_034_256,
     "esp32-s3-headless": 1_034_256,
+    # Not in that plan: the release waveshare-s3-eth image measured at the
+    # base of plan 314 PR 13.
+    "waveshare-s3-eth": 1_696_065,
 }
 
 
@@ -102,6 +106,13 @@ BOARD_SPECS = (
         FLASH_8M,
         REFERENCE_APP_SIZES["esp32-s3-headless"],
         0x300000,
+    ),
+    BoardSpec(
+        "waveshare-s3-eth",
+        "partitions_waveshare_s3_eth.csv",
+        FLASH_16M,
+        REFERENCE_APP_SIZES["waveshare-s3-eth"],
+        0x600000,
     ),
 )
 
@@ -255,7 +266,35 @@ def check_board(spec: BoardSpec, csv_path: Path) -> tuple[Partition, Partition]:
         ota_1.offset == align_up(ota_0.end, APP_ALIGNMENT),
         f"{spec.name}: ota_1 is not contiguous after app alignment",
     )
+    check_coredump(spec, partitions, ota_1)
     return ota_0, ota_1
+
+
+def check_coredump(spec: BoardSpec, partitions: list[Partition], ota_1: Partition) -> None:
+    """The 8 and 16 MB tables end with a 256 KiB core dump partition.
+
+    It sits in flash after ota_1 that no earlier table used, so adding it moved
+    nothing and an OTA-updated device keeps working with its old table (the
+    debug images then log that no core dump partition exists). A 4 MB table
+    has no room for one.
+
+    The ELF dump holds each task's TCB and used stack. With every stack full,
+    the tasks in tools/stack_budget.json (about 106 KB on Core2), the ESP-IDF
+    service tasks, transient tasks and the headers come to about 180 KB. A
+    dump that does not fit is not written at all, so the partition holds
+    that worst case with margin.
+    """
+    coredumps = [p for p in partitions if (p.kind, p.subtype) == ("data", "coredump")]
+    if spec.flash_size <= FLASH_4M:
+        require(not coredumps, f"{spec.name}: a 4 MB table has no room for a core dump")
+        return
+    require(len(coredumps) == 1, f"{spec.name}: expected one core dump partition")
+    coredump = coredumps[0]
+    require(
+        (coredump.offset, coredump.size) == (ota_1.end, COREDUMP_SIZE),
+        f"{spec.name}: the core dump partition must be {COREDUMP_SIZE:#x} bytes right after ota_1",
+    )
+    require(partitions[-1] is coredump, f"{spec.name}: the core dump partition must be last")
 
 
 def check_upload_offset(repo_root: Path) -> None:
@@ -355,6 +394,7 @@ def main(argv: list[str] | None = None) -> int:
     print("Partition-table invariant check")
     print("Reference firmware sizes: plans/33-wifi-hub.md:1296-1304, commit 2b79ce8")
     print("The headless S3 env uses the measured m5stick-s3 image as its reference.")
+    print("The waveshare-s3-eth reference is its release image at plan 314 PR 13.")
     print()
 
     try:

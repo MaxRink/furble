@@ -15,6 +15,9 @@
 
 #include <esp_console.h>
 #include <esp_heap_caps.h>
+#if defined(CONFIG_HEAP_TRACING_STANDALONE)
+#include <esp_heap_trace.h>
+#endif
 #include <esp_log.h>
 #include <esp_pm.h>
 #include <esp_system.h>
@@ -2026,6 +2029,96 @@ int cmdPerf(int argc, char **argv) {
 }
 #endif
 
+#if defined(CONFIG_HEAP_TRACING_STANDALONE)
+constexpr unsigned long HEAP_TRACE_DEFAULT_RECORDS = 100;
+constexpr unsigned long HEAP_TRACE_MAX_RECORDS = 1000;
+// The record buffer stays allocated after 'stop' so 'dump' can read it, and is
+// replaced on the next 'start'. It lives in internal RAM, where the heap
+// tracer keeps its records.
+heap_trace_record_t *g_HeapTraceRecords = nullptr;
+bool g_HeapTraceRunning = false;
+
+int heapTraceStart(unsigned long records) {
+  if (g_HeapTraceRunning) {
+    return fail("heap trace is already running; stop it first");
+  }
+  const size_t bytes = records * sizeof(heap_trace_record_t);
+  heap_caps_free(g_HeapTraceRecords);
+  g_HeapTraceRecords = nullptr;
+  // Every sdkconfig aborts on a failed allocation, so admit the buffer only
+  // when the largest internal block holds it with room to spare.
+  const size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  if (largest < (bytes * 2)) {
+    printf("error: %lu records need %lu bytes; largest internal block is %lu\n", records,
+           static_cast<unsigned long>(bytes), static_cast<unsigned long>(largest));
+    g_CommandReported = true;
+    return 1;
+  }
+  g_HeapTraceRecords = static_cast<heap_trace_record_t *>(
+      heap_caps_malloc(bytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+  esp_err_t err = heap_trace_init_standalone(g_HeapTraceRecords, records);
+  if (err == ESP_OK) {
+    err = heap_trace_start(HEAP_TRACE_LEAKS);
+  }
+  if (err != ESP_OK) {
+    heap_caps_free(g_HeapTraceRecords);
+    g_HeapTraceRecords = nullptr;
+    printf("error: heap trace start failed: %s\n", esp_err_to_name(err));
+    g_CommandReported = true;
+    return 1;
+  }
+  g_HeapTraceRunning = true;
+  printf("heap_trace: started, %lu records, %lu bytes\n", records,
+         static_cast<unsigned long>(bytes));
+  return 0;
+}
+
+int cmdHeap(int argc, char **argv) {
+  static constexpr char USAGE[] = "usage: heap trace start [records] | stop | dump";
+  if ((argc < 3) || strcmp(argv[1], "trace")) {
+    return fail(USAGE);
+  }
+  if (!strcmp(argv[2], "start")) {
+    unsigned long records = HEAP_TRACE_DEFAULT_RECORDS;
+    if (argc == 4) {
+      char *end = nullptr;
+      records = strtoul(argv[3], &end, 10);
+      if ((end == argv[3]) || (*end != '\0') || (records == 0)
+          || (records > HEAP_TRACE_MAX_RECORDS)) {
+        return fail("records must be 1 to 1000");
+      }
+    } else if (argc != 3) {
+      return fail(USAGE);
+    }
+    return heapTraceStart(records);
+  }
+  if ((argc == 3) && !strcmp(argv[2], "stop")) {
+    if (!g_HeapTraceRunning) {
+      return fail("heap trace is not running");
+    }
+    (void)heap_trace_stop();
+    g_HeapTraceRunning = false;
+    printf("heap_trace: stopped, %lu records held\n",
+           static_cast<unsigned long>(heap_trace_get_count()));
+    return 0;
+  }
+  if ((argc == 3) && !strcmp(argv[2], "dump")) {
+    if (g_HeapTraceRecords == nullptr) {
+      return fail("no heap trace recorded; run 'heap trace start' first");
+    }
+    heap_trace_dump();
+    return 0;
+  }
+  return fail(USAGE);
+}
+#else
+int cmdHeap(int argc, char **argv) {
+  (void)argc;
+  (void)argv;
+  return fail("heap tracing is not enabled in this build; it is in the debug images");
+}
+#endif
+
 const char *wifiStateStr(WiFi::state_t state) {
   switch (state) {
     case WiFi::STATE_DISABLED:
@@ -3385,6 +3478,7 @@ const esp_console_cmd_t COMMANDS[] = {
 #endif
     command("power", "power stats | log <seconds> | log off | off", cmdPower),
     command("perf", "perf tasks | heap | lvgl [overlay on | off]", cmdPerf),
+    command("heap", "heap trace start [records] | stop | dump (debug images)", cmdHeap),
     command("gps", "gps [on|off|raw|send|binary|config|aid|sats|platform|monhw|power]", cmdGPS),
     command("time", "time status | flush", cmdTime),
     command("wifi",

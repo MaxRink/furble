@@ -63,8 +63,10 @@ tail. `status` continues to report the current boot's reset reason and heap.
 ## What it does not claim
 
 - The task and log tail describe the last normal snapshot, not the instruction
-  that faulted. A full backtrace still comes from the ROM panic output and, when
-  enabled, a core dump.
+  that faulted. A full backtrace still comes from the ROM panic output and, on
+  the 8 and 16 MB debug images, the ELF core dump in the `coredump` partition.
+  Read it over USB with `esp-coredump info_corefile` (or `idf.py coredump-info`)
+  against the matching `firmware.elf`.
 - The record is not a persistence format. It is invalidated by the magic,
   version, size and CRC check, so stale RTC contents after a power-on are
   ignored.

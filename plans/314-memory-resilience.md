@@ -635,6 +635,56 @@ preexisting issues, fixed here:
 and passes them to the gate, then runs the tool tests. Fork Actions are
 disabled, so this was validated locally only.
 
+## PR 13: debug hardening
+
+State: implemented.
+
+The debug images gain four checks. None reaches a release image.
+
+- `sdkconfig.debug` adds the FreeRTOS end-of-stack watchpoint and standalone
+  heap tracing.
+- `sdkconfig.stack-protector` adds `COMPILER_STACK_CHECK_MODE_NORM`. Every
+  debug env merges it except the opt-in `m5stack-core-debug` OTA profile. On
+  Core it costs 24,284 bytes; the image measured 1,746,997 bytes against the
+  1,740,800-byte slot with it and 1,722,697 without. Heap tracing costs only
+  2,376 bytes there and stays. `m5stack-core-usb-debug`, the mandatory Core
+  debug build, keeps the protector.
+- `FURBLE_TASK_WDT` subscribes the MQTT owner, the WebUI supervisor and the
+  companion service loop to the task watchdog through
+  `include/FurbleTaskWatchdog.h`, and each loop feeds it once per pass. The
+  timeout logs a backtrace of every CPU. `CONFIG_ESP_TASK_WDT_PANIC` stays off
+  by decision until a hardware soak shows no false trigger. Release,
+  simulator and host builds compile both calls to nothing.
+- The console `heap trace start [records] | stop | dump` command drives the
+  tracer. `start` takes 1 to 1,000 records, default 100, and admits the
+  record buffer only if the largest internal block is at least twice its
+  size, so it cannot be the allocation that aborts. Other builds report that
+  tracing is not enabled. The host console suite compiles the enabled path
+  against an `esp_heap_trace` double and covers each of these cases.
+
+The 8 and 16 MB partition tables end with a 256 KiB `coredump` partition right
+after `ota_1`, which takes space that was unallocated. The ELF dump holds each
+task's TCB and used stack; with every stack full the manifest tasks (about
+106 KB on Core2), the ESP-IDF service tasks, transient tasks and headers
+come to about 180 KB, and ESP-IDF writes nothing when a dump does not fit.
+The first cut was 64 KiB; review showed that was too small. The debug envs for
+those boards merge `sdkconfig.coredump-flash`, so a panic writes a core dump
+there. `tools/check_partition_tables.py` requires that partition, its size
+and its position on boards larger than 4 MB and rejects it on 4 MB tables.
+Waveshare was missing from the checker and is now covered, with its release
+image as the reference app size;
+`tests/test_check_partition_tables.py` covers each rule.
+
+`m5stack-core-usb-debug` used to repeat four `sdkconfig.debug` lines in its
+own fragment. It now layers `sdkconfig.debug` and the protector under a
+fragment that holds only its partition choice.
+
+The debug RAM budgets were re-recorded with `check_size_budget.py --write`.
+The largest budget moves are S3 DRAM +3 KiB and Core2 DRAM +4 KiB, where the
+flash core dump is also on. The flash slots are unchanged and every image
+fits. Every task still passes `stack_budget.py`
+with the protector's frame cost.
+
 ## PR 12: dynamic analysis on every host test
 
 State: implemented.

@@ -1,0 +1,7 @@
+# Stack-smashing protection for the debug images (plan 314 PR 13). Every debug
+# env layers it on sdkconfig.debug except m5stack-core-debug, whose OTA slot
+# cannot hold its 24 KB of canary checks; m5stack-core-usb-debug keeps it.
+# CONFIG_COMPILER_STACK_CHECK_MODE_NONE is not set
+CONFIG_COMPILER_STACK_CHECK_MODE_NORM=y
+# CONFIG_STACK_CHECK_NONE is not set
+CONFIG_STACK_CHECK_NORM=y

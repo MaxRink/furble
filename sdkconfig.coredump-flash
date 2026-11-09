@@ -1,0 +1,9 @@
+# Write an ELF core dump to the coredump partition on a panic.
+#
+# Only the 8 and 16 MB debug envs merge this fragment: their partition tables
+# end with a 256 KiB coredump partition after ota_1. Read a dump back over USB
+# with `idf.py coredump-info` or `esp-coredump info_corefile`.
+# CONFIG_ESP_COREDUMP_ENABLE_TO_NONE is not set
+CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
+# CONFIG_ESP32_ENABLE_COREDUMP_TO_NONE is not set
+CONFIG_ESP32_ENABLE_COREDUMP_TO_FLASH=y

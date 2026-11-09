@@ -333,6 +333,7 @@ crash [last]                        previous-boot crash record, see docs/crash-d
                                     adds crash.alloc_* lines after a failed allocation
 power                               power stats, or a CSV power log
 perf                                task, heap, and LVGL performance
+heap trace start [n] | stop | dump  heap allocation trace (debug images)
 gps                                 GPS status and control, eg. gps send PCAS12,10
 gps raw on|off                      mirror decoded NMEA to the console
 gps raw hex on|off                  mirror every receiver UART chunk as hex

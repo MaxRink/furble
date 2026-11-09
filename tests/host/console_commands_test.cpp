@@ -133,12 +133,11 @@ bool waitFor(const std::function<bool()> &predicate, int timeout_ms) {
 // help command. A new command or a dropped registration has to update this
 // list, which is the point: the automation surface is a contract.
 const std::vector<std::string> EXPECTED_COMMANDS = {
-    "help",      "version",      "boot",       "status",  "crash",    "imu",
-    "motion",    "power",        "perf",       "gps",     "time",     "settings",
-    "companion", "provision",    "ui",         "cameras", "connect",  "pair",
-    "delete",    "multiconnect", "disconnect", "shutter", "interval", "bulb",
-    "display",   "ir",           "focus",      "scan",    "bt",       "feedback",
-    "log",       "debug",        "flash",      "reboot",  "wifi",     "ntp",
+    "help",    "version", "boot",   "status", "crash",        "imu",        "motion",    "power",
+    "perf",    "heap",    "gps",    "time",   "settings",     "companion",  "provision", "ui",
+    "cameras", "connect", "pair",   "delete", "multiconnect", "disconnect", "shutter",   "interval",
+    "bulb",    "display", "ir",     "focus",  "scan",         "bt",         "feedback",  "log",
+    "debug",   "flash",   "reboot", "wifi",   "ntp",
 };
 
 }  // namespace
@@ -1425,6 +1424,46 @@ void testTimePowerPerf(void) {
   checkContains(heap.out, "heap.internal.free:", "perf heap reports the internal heap");
   checkContains(heap.out, "heap.dma.largest_block:", "perf heap reports the DMA heap");
   checkContains(heap.out, "heap.spiram.minimum_free:", "perf heap reports PSRAM");
+
+  // 'heap trace' runs against the esp_heap_trace double. The host largest
+  // internal block is 50,009 bytes and a host record is 56, so 1,000 records
+  // fail the twice-the-buffer admission and 100 pass it.
+  ConsoleHost::HeapTraceState &trace = ConsoleHost::heapTrace();
+  checkContains(runDirect("heap trace").out, "usage: heap trace", "heap trace needs a verb");
+  for (const char *bad : {"heap trace start 0", "heap trace start 1001", "heap trace start x"}) {
+    checkContains(runDirect(bad).out, "records must be 1 to 1000", bad);
+  }
+  checkContains(runDirect("heap trace dump").out, "no heap trace recorded",
+                "dump before any trace reports none");
+  checkContains(runDirect("heap trace stop").out, "heap trace is not running",
+                "stop before start is rejected");
+  const Result tooBig = runDirect("heap trace start 1000");
+  check(tooBig.rc != 0, "a buffer over half the largest block is refused");
+  checkContains(tooBig.out, "largest internal block is", "the refusal names the block");
+  check(trace.initRecords == 0, "a refused buffer never reaches the tracer");
+
+  trace.initResult = ESP_ERR_INVALID_STATE;
+  checkContains(runDirect("heap trace start").out, "heap trace start failed",
+                "an init failure is reported");
+  trace.initResult = ESP_OK;
+  checkContains(runDirect("heap trace dump").out, "no heap trace recorded",
+                "a failed init leaves no buffer to dump");
+  trace.startResult = ESP_FAIL;
+  checkContains(runDirect("heap trace start").out, "heap trace start failed",
+                "a start failure is reported");
+  trace.startResult = ESP_OK;
+  checkContains(runDirect("heap trace dump").out, "no heap trace recorded",
+                "a failed start leaves no buffer to dump");
+
+  checkContains(runDirect("heap trace start 50").out, "heap_trace: started, 50 records",
+                "heap trace start reports the record count");
+  check((trace.initRecords == 50) && trace.running, "the tracer was initialized and started");
+  checkContains(runDirect("heap trace start").out, "already running", "a second start is rejected");
+  checkContains(runDirect("heap trace stop").out, "heap_trace: stopped, 3 records held",
+                "stop reports the held records");
+  check(!trace.running, "the tracer stopped");
+  const Result dump = runDirect("heap trace dump");
+  check((dump.rc == 0) && (trace.dumps == 1), "dump reaches the tracer once");
 
   const Result tasks = runDirect("perf tasks");
   check(tasks.rc == 0, "perf tasks returns success");

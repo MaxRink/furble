@@ -2200,6 +2200,9 @@ target_compile_definitions(console_commands_test PRIVATE
                            CONFIG_BT_NIMBLE_MAX_CONNECTIONS=3
                            CONFIG_SPIRAM
                            CONFIG_LV_USE_PERF_MONITOR
+                           # The debug sdkconfig sets it, so 'heap trace' runs
+                           # its real path against the esp_heap_trace double.
+                           CONFIG_HEAP_TRACING_STANDALONE
                            FURBLE_HOST_REGISTRATION_TIMEOUT_MS=100)
 target_compile_options(console_commands_test PRIVATE
                        -include ${HOST_CONSOLE_DIR}/freertos/FreeRTOS.h

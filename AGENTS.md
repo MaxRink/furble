@@ -129,6 +129,14 @@ S3 release images disable `CONFIG_SPIRAM_MEMTEST`; the S3 debug environments
 merge `sdkconfig.spiram-memtest` back in. The `boot timing` console command
 prints the retained boot timeline. See `docs/boot-timing.md`.
 
+Debug images also carry the end-of-stack watchpoint, heap tracing (`heap trace` console command) and log-only task watchdog
+subscriptions for the MQTT, WebUI and companion loops (`FURBLE_TASK_WDT`).
+Every debug env except the opt-in `m5stack-core-debug` OTA profile also
+merges the stack protector (`sdkconfig.stack-protector`), whose 24 KB does not
+fit that slot.
+The 8 and 16 MB tables end with a 256 KiB `coredump` partition after `ota_1`,
+which their debug envs fill on a panic (`sdkconfig.coredump-flash`).
+
 The developer-only `m5stack-core-usb-debug` profile is USB-UART only and uses a
 single factory app partition. Normal CI builds it as the mandatory Core debug
 profile. Keep it out of release and web-installer matrices; the legacy

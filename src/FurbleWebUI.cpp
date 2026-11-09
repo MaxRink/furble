@@ -37,6 +37,7 @@
 #include "FurblePlatform.h"
 #include "FurbleProvision.h"
 #include "FurbleSettings.h"
+#include "FurbleTaskWatchdog.h"
 #include "FurbleTypes.h"
 #include "FurbleUI.h"
 #include "FurbleWebUIProtocol.h"
@@ -342,7 +343,9 @@ void WebUI::identityTask(void) {
 
 void WebUI::task(void) {
   bool reportedStack = false;
+  TaskWatchdog::subscribe();
   while (true) {
+    TaskWatchdog::feed();
     serviceTimerEvents();
     bool reload = false;
     {
