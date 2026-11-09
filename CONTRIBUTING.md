@@ -147,6 +147,9 @@ Claude Code sessions in this repository load the tracked
 setting. Setting `core.hooksPath` replaces `.git/hooks`; furble stores no Git
 LFS objects, so the LFS hooks a global `git lfs install` places there are not
 needed.
+If you already export `GIT_CONFIG_COUNT` for other settings, add
+`core.hooksPath` to your own list; the project env replaces it in Claude Code
+sessions.
 
 Run the sanitized host tests when touching C++ state, containers, camera
 drivers, or simulator fixtures. They cover every host test except the two
