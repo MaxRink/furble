@@ -665,7 +665,9 @@ The 8 and 16 MB partition tables end with a 64 KiB `coredump` partition right
 after `ota_1`, which takes space that was unallocated. The debug envs for
 those boards merge `sdkconfig.coredump-flash`, so a panic writes a core dump
 there. `tools/check_partition_tables.py` requires that partition, its size
-and its position on boards larger than 4 MB and rejects it on 4 MB tables;
+and its position on boards larger than 4 MB and rejects it on 4 MB tables.
+Waveshare was missing from the checker and is now covered, with its release
+image as the reference app size;
 `tests/test_check_partition_tables.py` covers each rule.
 
 `m5stack-core-usb-debug` used to repeat four `sdkconfig.debug` lines in its

@@ -2061,6 +2061,8 @@ int heapTraceStart(unsigned long records) {
     err = heap_trace_start(HEAP_TRACE_LEAKS);
   }
   if (err != ESP_OK) {
+    heap_caps_free(g_HeapTraceRecords);
+    g_HeapTraceRecords = nullptr;
     printf("error: heap trace start failed: %s\n", esp_err_to_name(err));
     g_CommandReported = true;
     return 1;

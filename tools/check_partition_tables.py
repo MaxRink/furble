@@ -32,6 +32,9 @@ REFERENCE_APP_SIZES = {
     "m5stack-core2": 1_037_728,
     "m5stick-s3": 1_034_256,
     "esp32-s3-headless": 1_034_256,
+    # Not in that plan: the release waveshare-s3-eth image measured at the
+    # base of plan 314 PR 13.
+    "waveshare-s3-eth": 1_696_065,
 }
 
 
@@ -103,6 +106,13 @@ BOARD_SPECS = (
         FLASH_8M,
         REFERENCE_APP_SIZES["esp32-s3-headless"],
         0x300000,
+    ),
+    BoardSpec(
+        "waveshare-s3-eth",
+        "partitions_waveshare_s3_eth.csv",
+        FLASH_16M,
+        REFERENCE_APP_SIZES["waveshare-s3-eth"],
+        0x600000,
     ),
 )
 
@@ -378,6 +388,7 @@ def main(argv: list[str] | None = None) -> int:
     print("Partition-table invariant check")
     print("Reference firmware sizes: plans/33-wifi-hub.md:1296-1304, commit 2b79ce8")
     print("The headless S3 env uses the measured m5stick-s3 image as its reference.")
+    print("The waveshare-s3-eth reference is its release image at plan 314 PR 13.")
     print()
 
     try:
