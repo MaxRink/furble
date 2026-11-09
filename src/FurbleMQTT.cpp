@@ -44,6 +44,7 @@
 #include "FurbleMQTTMemory.h"
 #include "FurbleMemoryPressure.h"
 #include "FurbleSettings.h"
+#include "FurbleTaskWatchdog.h"
 #include "FurbleTypes.h"
 #include "FurbleUI.h"
 #include "protocol/CameraListProtocol.h"
@@ -384,7 +385,9 @@ void MQTT::taskEntry(void *param) {
 }
 
 void MQTT::task(void) {
+  TaskWatchdog::subscribe();
   while (true) {
+    TaskWatchdog::feed();
     taskStep();
     ulTaskNotifyTake(pdTRUE, taskWaitTicks());
   }

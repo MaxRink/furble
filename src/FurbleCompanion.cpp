@@ -13,6 +13,7 @@
 #include "FurbleCompanionIdentity.h"
 #include "FurbleGPS.h"
 #include "FurbleSettings.h"
+#include "FurbleTaskWatchdog.h"
 #include "FurbleTypes.h"
 #if defined(FURBLE_WEBUI) && FURBLE_WEBUI
 #include "FurbleWebUI.h"
@@ -613,7 +614,9 @@ void CompanionGatt::serviceTaskEntry(void *param) {
 }
 
 void CompanionGatt::serviceTask(void) {
+  TaskWatchdog::subscribe();
   while (true) {
+    TaskWatchdog::feed();
     bool enabled = false;
     {
       const std::lock_guard<std::mutex> lock(m_Mutex);

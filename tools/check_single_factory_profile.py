@@ -44,7 +44,7 @@ def check_platformio(repo_root: Path) -> None:
   require(option(section, "board_build.partitions") == CSV_NAME,
           f"[{PROFILE_NAME}]: wrong partition CSV")
   require(option(section, "board_build.esp-idf.sdkconfig_fragment")
-          == "${platformio.src_dir}/../" + FRAGMENT_NAME,
+          == "sdkconfig.debug,sdkconfig.stack-protector,${platformio.src_dir}/../" + FRAGMENT_NAME,
           f"[{PROFILE_NAME}]: wrong sdkconfig fragment")
 
   global_match = re.search(

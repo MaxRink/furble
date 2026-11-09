@@ -133,12 +133,11 @@ bool waitFor(const std::function<bool()> &predicate, int timeout_ms) {
 // help command. A new command or a dropped registration has to update this
 // list, which is the point: the automation surface is a contract.
 const std::vector<std::string> EXPECTED_COMMANDS = {
-    "help",      "version",      "boot",       "status",  "crash",    "imu",
-    "motion",    "power",        "perf",       "gps",     "time",     "settings",
-    "companion", "provision",    "ui",         "cameras", "connect",  "pair",
-    "delete",    "multiconnect", "disconnect", "shutter", "interval", "bulb",
-    "display",   "ir",           "focus",      "scan",    "bt",       "feedback",
-    "log",       "debug",        "flash",      "reboot",  "wifi",     "ntp",
+    "help",    "version", "boot",   "status", "crash",        "imu",        "motion",    "power",
+    "perf",    "heap",    "gps",    "time",   "settings",     "companion",  "provision", "ui",
+    "cameras", "connect", "pair",   "delete", "multiconnect", "disconnect", "shutter",   "interval",
+    "bulb",    "display", "ir",     "focus",  "scan",         "bt",         "feedback",  "log",
+    "debug",   "flash",   "reboot", "wifi",   "ntp",
 };
 
 }  // namespace
@@ -1425,6 +1424,13 @@ void testTimePowerPerf(void) {
   checkContains(heap.out, "heap.internal.free:", "perf heap reports the internal heap");
   checkContains(heap.out, "heap.dma.largest_block:", "perf heap reports the DMA heap");
   checkContains(heap.out, "heap.spiram.minimum_free:", "perf heap reports PSRAM");
+
+  // The host build has no CONFIG_HEAP_TRACING_STANDALONE, which only the debug
+  // sdkconfig fragment sets, so 'heap trace' reports that and changes nothing.
+  const Result trace = runDirect("heap trace start");
+  check(trace.rc != 0, "heap trace fails without heap tracing");
+  checkContains(trace.out, "heap tracing is not enabled in this build",
+                "heap trace names the missing build option");
 
   const Result tasks = runDirect("perf tasks");
   check(tasks.rc == 0, "perf tasks returns success");

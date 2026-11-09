@@ -41,6 +41,7 @@ About page and exposed through companion BLE Device Information.
 | `crash` | `crash [last]` prints the retained previous-boot crash record. After a failed-allocation abort it adds the `crash.alloc_*` lines. See [crash diagnostics](../crash-diagnostics.md). |
 | `power` | `stats`, or `log <seconds>` / `log off` for a CSV power log. |
 | `perf` | `tasks`, `heap`, or `lvgl [overlay on\|off]`. |
+| `heap` | `heap trace start [records]`, `stop`, or `dump`: ESP-IDF standalone heap tracing in leak mode, debug images only. `start` takes 1 to 1000 records (default 100) from internal RAM and refuses when the largest block cannot hold twice that. |
 | `gps` | GPS status and control, see below. |
 | `motion` | `status` for the motion source, or `scale [0.25-4.0]` to calibrate it. |
 | `time` | `status` reports wall-clock validity and source; `flush` persists it. |
@@ -417,6 +418,24 @@ record ring consumes at most 8 KiB of internal memory on non-S3 boards. On S3
 with `CONFIG_SPIRAM`, the 128-record ring requests PSRAM, with a 32-record
 internal fallback when PSRAM is unavailable at runtime. The journal is RAM-only
 and never changes bonds or NVS.
+
+## heap
+
+The debug images build ESP-IDF standalone heap tracing in. `heap trace start`
+allocates the record buffer and traces in leak mode, so a record is dropped
+again when its block is freed. `stop` ends the trace and `dump` prints what is
+left: each outstanding allocation with its size and caller addresses. Decode
+the addresses with `xtensa-esp32-elf-addr2line -e firmware.elf` (or the S3
+toolchain). A release image answers
+`error: heap tracing is not enabled in this build`.
+
+```
+> heap trace start 200
+heap_trace: started, 200 records, <bytes> bytes
+> heap trace stop
+heap_trace: stopped, 3 records held
+> heap trace dump
+```
 
 ## debug
 

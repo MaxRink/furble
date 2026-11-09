@@ -109,6 +109,13 @@ committed release `sdkconfig.<env>` files, never for just one env. See
 The S3 and Core2 release sdkconfigs disable the boot-time PSRAM memory test.
 Their debug environments merge `sdkconfig.spiram-memtest` back in, and the debug sdkconfig
 script accepts comma-separated fragments for any custom diagnostic profile.
+Every debug env merges `sdkconfig.debug` (end-of-stack watchpoint, heap
+tracing) and `sdkconfig.stack-protector`, except the opt-in
+`m5stack-core-debug` OTA profile, whose slot cannot hold the protector's
+24 KB. The 8 and 16 MB envs add
+`sdkconfig.coredump-flash`, which writes a core dump to the `coredump`
+partition at the end of their tables. Read it back with
+`esp-coredump info_corefile` against the matching `firmware.elf`.
 
 Board-specific ESP-IDF component dependencies need both a compiler define and
 a CMake profile argument. CMake resolves components before conditional C++

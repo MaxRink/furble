@@ -15,6 +15,7 @@ from pathlib import Path
 FLASH_4M = 4 * 1024 * 1024
 FLASH_8M = 8 * 1024 * 1024
 FLASH_16M = 16 * 1024 * 1024
+COREDUMP_SIZE = 0x10000
 PARTITION_TABLE_END = 0x9000
 DATA_ALIGNMENT = 0x1000
 APP_ALIGNMENT = 0x10000
@@ -255,7 +256,29 @@ def check_board(spec: BoardSpec, csv_path: Path) -> tuple[Partition, Partition]:
         ota_1.offset == align_up(ota_0.end, APP_ALIGNMENT),
         f"{spec.name}: ota_1 is not contiguous after app alignment",
     )
+    check_coredump(spec, partitions, ota_1)
     return ota_0, ota_1
+
+
+def check_coredump(spec: BoardSpec, partitions: list[Partition], ota_1: Partition) -> None:
+    """The 8 and 16 MB tables end with a 64 KiB core dump partition.
+
+    It sits in flash after ota_1 that no earlier table used, so adding it moved
+    nothing and an OTA-updated device keeps working with its old table (the
+    debug images then log that no core dump partition exists). A 4 MB table
+    has no room for one.
+    """
+    coredumps = [p for p in partitions if (p.kind, p.subtype) == ("data", "coredump")]
+    if spec.flash_size <= FLASH_4M:
+        require(not coredumps, f"{spec.name}: a 4 MB table has no room for a core dump")
+        return
+    require(len(coredumps) == 1, f"{spec.name}: expected one core dump partition")
+    coredump = coredumps[0]
+    require(
+        (coredump.offset, coredump.size) == (ota_1.end, COREDUMP_SIZE),
+        f"{spec.name}: the core dump partition must be {COREDUMP_SIZE:#x} bytes right after ota_1",
+    )
+    require(partitions[-1] is coredump, f"{spec.name}: the core dump partition must be last")
 
 
 def check_upload_offset(repo_root: Path) -> None:
