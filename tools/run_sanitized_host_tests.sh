@@ -1,8 +1,10 @@
 #!/bin/sh
 
 # Build and run the host test suite under AddressSanitizer and
-# UndefinedBehaviorSanitizer in a dedicated build tree. The script is
-# fail-closed: a missing compiler, a compiler without both sanitizers, an
+# UndefinedBehaviorSanitizer in a dedicated build tree. By default every host
+# test runs except the two ThreadSanitizer probes, which cannot combine with
+# ASan and run in the normal host build through tests/host/run_tsan_race.sh.
+# The script is fail-closed: a missing compiler, a compiler without both sanitizers, an
 # unmatched test regex, or any sanitizer failure returns non-zero.
 #
 # The normal host build tree is never reused or modified. The default build
@@ -26,14 +28,18 @@ SOURCE_DIR="$ROOT/tests/host"
 BUILD_DIR="$ROOT/.pio/host-sanitized"
 BUILD_TYPE="Debug"
 JOBS=""
-TEST_REGEX='^(gps-casic|gps-power-cycle|preferences-sim-)'
+TEST_REGEX='.'
+# The ThreadSanitizer probes build with -fsanitize=thread, which cannot be
+# combined with ASan; tests/host/run_tsan_race.sh runs them in the normal host
+# build. Every other host test runs here by default.
+TSAN_TESTS='^(control-connect-camera-race|control-connecting-snapshot)$'
 CLEAN=0
 LIST_TESTS=0
 CC=${CC:-cc}
 CXX=${CXX:-c++}
 
 usage() {
-  sed -n '3,20p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '3,23p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 die() {
@@ -245,13 +251,9 @@ echo "building sanitized host tests with $JOBS job(s)"
 # would also build the ThreadSanitizer probes, and TSAN cannot be combined with
 # ASan in one compiler invocation. A selected script-only test contributes no
 # target and runs unchanged.
-SELECTED_NAMES=$(ctest --test-dir "$BUILD_DIR" -N -R "$TEST_REGEX" 2>/dev/null \
+SELECTED_NAMES=$(ctest --test-dir "$BUILD_DIR" -N -R "$TEST_REGEX" -E "$TSAN_TESTS" 2>/dev/null \
   | sed -n 's/^[[:space:]]*Test[[:space:]]*#[0-9][0-9]*:[[:space:]]*//p')
-[ -n "$SELECTED_NAMES" ] || die "no tests match regex: $TEST_REGEX"
-if printf '%s\n' "$SELECTED_NAMES" \
-    | grep -Eq '^(control-connect-camera-race|control-connecting-snapshot)$'; then
-  die "ThreadSanitizer tests cannot run under ASan+UBSan; use tests/host/run_tsan_race.sh"
-fi
+[ -n "$SELECTED_NAMES" ] || die "no tests match regex: $TEST_REGEX (ThreadSanitizer probes excluded)"
 export SELECTED_NAMES
 
 TARGET_CANDIDATES=$(BUILD_DIR="$BUILD_DIR" python3 -c '
@@ -314,7 +316,8 @@ UBSAN_OPTIONS=${UBSAN_OPTIONS:-halt_on_error=1:print_stacktrace=1:abort_on_error
 export ASAN_OPTIONS UBSAN_OPTIONS
 
 echo "running sanitized host tests matching: $TEST_REGEX"
-if ! ctest --test-dir "$BUILD_DIR" --output-on-failure -R "$TEST_REGEX"; then
+if ! ctest --test-dir "$BUILD_DIR" --output-on-failure -R "$TEST_REGEX" -E "$TSAN_TESTS" \
+    --parallel "$JOBS"; then
   die "sanitized host tests failed"
 fi
 

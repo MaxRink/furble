@@ -2057,7 +2057,18 @@ set(FUZZ_SANITIZER_FLAGS -fsanitize=address,undefined -fno-sanitize-recover=all)
 set(CMAKE_REQUIRED_FLAGS "-fsanitize=address,undefined")
 check_cxx_compiler_flag("" FUZZ_HAVE_SANITIZERS)
 unset(CMAKE_REQUIRED_FLAGS)
+# A fuzz target without ASan and UBSan misses the faults it exists to find,
+# so a compiler without them is a configure error, not a silent downgrade.
+option(FURBLE_FUZZ_ALLOW_UNSANITIZED
+       "Build the fuzz targets without ASan/UBSan when the compiler lacks them" OFF)
 if(NOT FUZZ_HAVE_SANITIZERS)
+  if(NOT FURBLE_FUZZ_ALLOW_UNSANITIZED)
+    message(FATAL_ERROR "The fuzz targets need -fsanitize=address,undefined, which "
+                        "${CMAKE_CXX_COMPILER} does not support. Use a compiler that "
+                        "does, or pass -DFURBLE_FUZZ_ALLOW_UNSANITIZED=ON to build "
+                        "them unsanitized on purpose.")
+  endif()
+  message(WARNING "Fuzz targets built WITHOUT sanitizers (FURBLE_FUZZ_ALLOW_UNSANITIZED=ON)")
   set(FUZZ_SANITIZER_FLAGS "")
 endif()
 

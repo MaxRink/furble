@@ -78,6 +78,20 @@ CRASH_MARKERS = (
 
 
 
+def host_fuzz_sanitized(host_build: Path) -> bool:
+    """True when the host build compiled the fuzz targets with ASan/UBSan.
+
+    tests/host/CMakeLists.txt records the compiler probe in the cache; only an
+    explicit FURBLE_FUZZ_ALLOW_UNSANITIZED=ON build gets past it without them.
+    A build without a cache cannot show its flags and fails closed.
+    """
+    try:
+        cache = (host_build / "CMakeCache.txt").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return re.search(r"^FUZZ_HAVE_SANITIZERS:INTERNAL=1$", cache, re.MULTILINE) is not None
+
+
 class Gate:
     def __init__(self, seeds: dict) -> None:
         self.findings: list[str] = []
@@ -141,6 +155,10 @@ class Gate:
             )
 
     def run_host_fuzz(self, host_build: Path, seeds: dict, smoke: bool) -> None:
+        if not host_fuzz_sanitized(host_build):
+            self.finding("host-sanitizers",
+                         f"{host_build} built the fuzz targets without ASan/UBSan "
+                         "(FURBLE_FUZZ_ALLOW_UNSANITIZED); rebuild with a compiler that has them")
         binaries = {
             "webui": host_build / "webui_fuzz",
             "companion": host_build / "companion_fuzz",

@@ -16,11 +16,13 @@ permissions:
 
 jobs:
   asan-ubsan:
-    name: ASan and UBSan host subset
+    name: ASan and UBSan host tests
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Run the sanitized host subset
+      # Every host test except the two ThreadSanitizer probes, which the
+      # normal host build in main.yml runs through run_tsan_race.sh.
+      - name: Run the sanitized host tests
         run: sh tools/run_sanitized_host_tests.sh --clean

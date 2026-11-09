@@ -126,8 +126,10 @@ It runs the diff hygiene scanner, the settings contract scanner, the C++ safety
 scanner, the CI workflow checker, the simulator manifest checker, and the
 scanner unit tests. It fails closed on review-blocking findings.
 
-Run the sanitized host subset when touching C++ state, containers, camera
-drivers, or simulator fixtures:
+Run the sanitized host tests when touching C++ state, containers, camera
+drivers, or simulator fixtures. They cover every host test except the two
+ThreadSanitizer probes, which the normal host build runs through
+`tests/host/run_tsan_race.sh`. Pass `-R <regex>` to run a subset:
 
 ```sh
 sh tools/run_sanitized_host_tests.sh --clean
@@ -149,7 +151,9 @@ request itself must pass the same check before it merges. Record the audit in
 its `plans/NN-review-feedback.md` table.
 
 `pre-review.yml` runs the scanners on every pull request; `host-sanitized.yml`
-runs the ASan/UBSan subset when C++ paths change. The `sim-sanitizers` job in
+runs the sanitized host tests when C++ paths change. The fuzz targets fail to
+configure without ASan/UBSan unless you pass `-DFURBLE_FUZZ_ALLOW_UNSANITIZED=ON`,
+and `tools/check_fuzz.py` rejects a host build configured that way. The `sim-sanitizers` job in
 `sim-e2e.yml` runs the certified e2e suite under ASan, UBSan and LeakSanitizer
 on Linux. LeakSanitizer does not run on macOS, so reproduce a leak report in a
 Linux container with `FURBLE_SIM_SANITIZE=address,undefined`, the job's

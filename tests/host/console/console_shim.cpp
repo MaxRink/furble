@@ -1335,6 +1335,13 @@ void furbleHostStopTasks(void) {
       task->thread.join();
     }
   }
+  // Every thread has ended and no task can be created any more, so the
+  // records can go; LeakSanitizer reports them otherwise.
+  const std::lock_guard<std::mutex> lock(g_TasksMutex);
+  for (auto *task : g_Tasks) {
+    delete task;  // NOLINT(cppcoreguidelines-owning-memory): owned by g_Tasks
+  }
+  g_Tasks.clear();
 }
 
 // The console reports the motion source, so FurbleIMU.cpp is linked in. Its two

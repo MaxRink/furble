@@ -8,6 +8,13 @@ is `control-connect-camera-race: PASS`; near matches do not count. Keep the
 shell contract test runnable without a compiler so wrapper behavior remains
 covered even when the TSAN binary is unavailable.
 
+Every other host test must pass under ASan and UBSan
+(`tools/run_sanitized_host_tests.sh`) and, on Linux, LeakSanitizer. A host
+double that stands in for a production type must keep its full value range:
+UBSan rejects an enum value the stub does not declare. A shim that creates
+objects for host tasks frees them after joining the threads, and a test that
+replaces a thread's alternate signal stack restores the original one.
+
 Provisioning tests cover Legend Off through the production apply path and NVS
 store. Keep `Furble::Settings` qualified outside its namespace; run both the
 ordinary and MQTT-enabled provisioning targets when changing this coverage.

@@ -6,7 +6,7 @@ import sys
 import tempfile
 import unittest
 
-from tools.check_fuzz import load_seeds, resolve_mqtt_owner_stack
+from tools.check_fuzz import host_fuzz_sanitized, load_seeds, resolve_mqtt_owner_stack
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,6 +18,17 @@ assert MEMORY_SPEC is not None and MEMORY_SPEC.loader is not None
 MEMORY_FUZZ = module_from_spec(MEMORY_SPEC)
 sys.modules[MEMORY_SPEC.name] = MEMORY_FUZZ
 MEMORY_SPEC.loader.exec_module(MEMORY_FUZZ)
+
+
+class HostSanitizerTest(unittest.TestCase):
+  def test_only_a_sanitized_cache_passes(self):
+    with tempfile.TemporaryDirectory() as directory:
+      build = Path(directory)
+      self.assertFalse(host_fuzz_sanitized(build))
+      (build / "CMakeCache.txt").write_text("FUZZ_HAVE_SANITIZERS:INTERNAL=\n", encoding="utf-8")
+      self.assertFalse(host_fuzz_sanitized(build))
+      (build / "CMakeCache.txt").write_text("FUZZ_HAVE_SANITIZERS:INTERNAL=1\n", encoding="utf-8")
+      self.assertTrue(host_fuzz_sanitized(build))
 
 
 class MqttOwnerStackTest(unittest.TestCase):
