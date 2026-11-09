@@ -89,9 +89,9 @@ def check_manifest(repo_root: Path) -> None:
 def partition_lines(path: Path) -> dict[str, str]:
   values = {}
   for line in path.read_text(encoding="utf-8").splitlines():
-    match = re.match(r"^(CONFIG_PARTITION_TABLE_[A-Z_]+)=(.*)$", line)
+    match = re.match(r"^(CONFIG_PARTITION_TABLE_[A-Z_]+)=(.*)$", line.strip())
     if match:
-      values[match.group(1)] = match.group(2)
+      values[match.group(1)] = match.group(2).strip()
   return values
 
 

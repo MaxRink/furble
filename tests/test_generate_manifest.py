@@ -8,7 +8,8 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location(
     "generate_manifest", ROOT / "web-installer" / "generate-manifest.py")
-assert SPEC is not None and SPEC.loader is not None
+if SPEC is None or SPEC.loader is None:
+    raise RuntimeError("cannot load web-installer/generate-manifest.py")
 TOOL = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(TOOL)
 TEMPLATE = str(ROOT / "web-installer" / "manifest.tmpl")
