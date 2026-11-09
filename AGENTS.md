@@ -78,6 +78,9 @@ The simulator build force-includes the board's memory sdkconfig subset from
 `tools/gen_sim_sdkconfig.py`. `tools/derive_sim_heap.py` derives each board's
 boot heap ceiling into `sim/coverage/board_heap.json`, which the memory
 profile seeds per board.
+`tools/check_size_budget.py` fails a firmware build that outgrows its app slot
+or the static DRAM or IRAM budget in `tools/size_budget.json`; firmware CI runs
+it after every build. Raise a budget with `--write` and its reason in the PR.
 `tools/stack_budget.py` checks each firmware task's worst-case stack from the
 `-fcallgraph-info=su` call graph against `tools/stack_budget.json`; firmware CI
 runs it after every build. A recursion or an `alloca`/VLA frame on a task's

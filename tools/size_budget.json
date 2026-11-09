@@ -1,0 +1,95 @@
+{
+  "_note": "flash_slot is the app partition in partitions; dram_bytes and iram_bytes are the measured static sizes plus at least 512 bytes, rounded up to a KiB. Raise one only with its reason in the PR. tools/check_size_budget.py --write re-records the RAM budgets.",
+  "envs": {
+    "m5stick-c": {
+      "partitions": "partitions_two_ota_large.csv",
+      "flash_slot": 1740800,
+      "dram_bytes": 55296,
+      "iram_bytes": 114688
+    },
+    "m5stick-c-plus": {
+      "partitions": "partitions_two_ota_large.csv",
+      "flash_slot": 1740800,
+      "dram_bytes": 55296,
+      "iram_bytes": 114688
+    },
+    "m5stack-core": {
+      "partitions": "partitions_two_ota_large.csv",
+      "flash_slot": 1740800,
+      "dram_bytes": 56320,
+      "iram_bytes": 116736
+    },
+    "m5stack-core2": {
+      "partitions": "partitions_two_ota_16m.csv",
+      "flash_slot": 6291456,
+      "dram_bytes": 57344,
+      "iram_bytes": 121856
+    },
+    "m5stick-s3": {
+      "partitions": "partitions_two_ota_8m.csv",
+      "flash_slot": 3145728,
+      "dram_bytes": 48128,
+      "iram_bytes": 134144
+    },
+    "waveshare-s3-eth": {
+      "partitions": "partitions_waveshare_s3_eth.csv",
+      "flash_slot": 6291456,
+      "dram_bytes": 52224,
+      "iram_bytes": 133120
+    },
+    "esp32-s3-headless": {
+      "partitions": "partitions_two_ota_8m.csv",
+      "flash_slot": 3145728,
+      "dram_bytes": 53248,
+      "iram_bytes": 141312
+    },
+    "m5stick-c-debug": {
+      "partitions": "partitions_two_ota_large.csv",
+      "flash_slot": 1740800,
+      "dram_bytes": 56320,
+      "iram_bytes": 117760
+    },
+    "m5stick-c-plus-debug": {
+      "partitions": "partitions_two_ota_large.csv",
+      "flash_slot": 1740800,
+      "dram_bytes": 56320,
+      "iram_bytes": 117760
+    },
+    "m5stack-core-usb-debug": {
+      "partitions": "partitions_single_factory_4m.csv",
+      "flash_slot": 4063232,
+      "dram_bytes": 57344,
+      "iram_bytes": 118784
+    },
+    "m5stack-core-debug": {
+      "partitions": "partitions_two_ota_large.csv",
+      "flash_slot": 1740800,
+      "dram_bytes": 57344,
+      "iram_bytes": 118784
+    },
+    "m5stack-core2-debug": {
+      "partitions": "partitions_two_ota_16m.csv",
+      "flash_slot": 6291456,
+      "dram_bytes": 58368,
+      "iram_bytes": 123904
+    },
+    "m5stick-s3-debug": {
+      "partitions": "partitions_two_ota_8m.csv",
+      "flash_slot": 3145728,
+      "dram_bytes": 50176,
+      "iram_bytes": 152576
+    },
+    "m5stick-s3-debug-ble": {
+      "partitions": "partitions_two_ota_8m.csv",
+      "flash_slot": 3145728,
+      "dram_bytes": 50176,
+      "iram_bytes": 152576
+    },
+    "waveshare-s3-eth-debug": {
+      "partitions": "partitions_waveshare_s3_eth.csv",
+      "flash_slot": 6291456,
+      "dram_bytes": 53248,
+      "iram_bytes": 147456
+    }
+  }
+}

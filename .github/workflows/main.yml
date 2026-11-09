@@ -367,6 +367,11 @@ jobs:
       - name: Check task stack budgets (${{ matrix.platform }})
         run: python3 tools/stack_budget.py --env "${{ matrix.platform }}"
 
+      # firmware.bin must fit its app slot, and static DRAM and IRAM must stay
+      # inside tools/size_budget.json; growing either raises the budget in the PR.
+      - name: Check size budget (${{ matrix.platform }})
+        run: python3 tools/check_size_budget.py --env "${{ matrix.platform }}"
+
       - name: Extract firmware size (${{ matrix.platform }})
         shell: bash
         env:

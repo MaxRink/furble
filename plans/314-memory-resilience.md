@@ -635,6 +635,60 @@ preexisting issues, fixed here:
 and passes them to the gate, then runs the tool tests. Fork Actions are
 disabled, so this was validated locally only.
 
+## PR 11: size budget gate
+
+State: implemented.
+
+`tools/check_size_budget.py --env <env>` fails a build that outgrows its
+flash slot or its static RAM budget. `tools/size_budget.json` records, per
+env:
+
+- `flash_slot`: the app partition size from the CSV it names. `firmware.bin`
+  must fit, or the image cannot be flashed or installed over the air. A test
+  checks every slot against `check_partition_tables.parse_csv`, so a
+  partition change cannot leave a stale slot behind.
+- `dram_bytes`: static DRAM, `.dram0.data + .noinit + .dram0.bss`. Every byte
+  comes out of the boot heap that `tools/derive_sim_heap.py` derives.
+- `iram_bytes`: every `.iram0.*` section.
+
+The sections come from the ELF section headers through a small reader in the
+tool, so it needs no toolchain. A RAM budget is the measured size plus at
+least 512 bytes, rounded up to a KiB. Plain KiB rounding left the Core IRAM
+budget 44 bytes above the image, where any unrelated change would have
+failed. A change that crosses a budget raises it with `--write` and states
+its reason in the PR. A test requires an entry for every `[env:*]` in
+`platformio.ini`, which added the `m5stick-s3-debug-ble` bench image. A
+missing build reports `FAIL <env>: not built` instead of a traceback. Firmware
+CI runs the check after the stack budget on every matrix env.
+
+`-Wframe-larger-than=2048` from the original plan was dropped.
+`tools/stack_budget.py` already checks every task's full path against its
+real stack, which is stricter than a per-frame limit. On the current builds
+the only frame above 2,048 bytes is `WebUI::createIdentity` (4,048), which
+runs on the 12 KiB TLS identity task and passes its budget.
+
+| Env | Flash / slot | DRAM / budget | IRAM / budget |
+|---|---:|---:|---:|
+| m5stick-c | 1,490,112 / 1,740,800 | 54,780 / 55,296 | 114,024 / 114,688 |
+| m5stick-c-plus | 1,540,112 / 1,740,800 | 54,756 / 55,296 | 114,024 / 114,688 |
+| m5stack-core | 1,614,288 / 1,740,800 | 54,884 / 56,320 | 115,668 / 116,736 |
+| m5stack-core2 | 1,898,592 / 6,291,456 | 56,496 / 57,344 | 121,036 / 121,856 |
+| m5stick-s3 | 1,848,896 / 3,145,728 | 47,208 / 48,128 | 132,864 / 134,144 |
+| waveshare-s3-eth | 1,696,464 / 6,291,456 | 51,332 / 52,224 | 132,352 / 133,120 |
+| esp32-s3-headless | 1,759,328 / 3,145,728 | 51,952 / 53,248 | 140,032 / 141,312 |
+| m5stick-c-debug | 1,588,016 / 1,740,800 | 55,772 / 56,320 | 116,336 / 117,760 |
+| m5stick-c-plus-debug | 1,637,488 / 1,740,800 | 55,748 / 56,320 | 116,336 / 117,760 |
+| m5stack-core-usb-debug | 1,719,456 / 4,063,232 | 55,876 / 57,344 | 118,056 / 118,784 |
+| m5stack-core-debug | 1,719,952 / 1,740,800 | 55,892 / 57,344 | 118,056 / 118,784 |
+| m5stack-core2-debug | 2,008,368 / 6,291,456 | 57,536 / 58,368 | 123,280 / 123,904 |
+| m5stick-s3-debug | 2,200,224 / 3,145,728 | 48,932 / 50,176 | 151,296 / 152,576 |
+| m5stick-s3-debug-ble | 2,201,376 / 3,145,728 | 48,940 / 50,176 | 151,296 / 152,576 |
+| waveshare-s3-eth-debug | 1,987,184 / 6,291,456 | 52,272 / 53,248 | 146,688 / 147,456 |
+
+Flash is the `firmware.bin` file size, which runs about 500 bytes above
+PlatformIO's "Flash used" figure because it includes the image header and
+padding.
+
 ## Fix: flash slimming, every debug image back in its OTA slot
 
 State: implemented. Size-only change: no feature, log line or console command

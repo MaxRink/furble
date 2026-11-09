@@ -224,6 +224,13 @@ path fails the check until `recursion_bounds` or `dynamic_bounds` in the
 manifest cites a bound from source. See `docs/stack-budget.md` for the
 indirect call rules, the bounds and the limits.
 
+`python3 tools/check_size_budget.py --env <env>` then checks that
+`firmware.bin` fits its app partition and that static DRAM
+(`.dram0.data + .noinit + .dram0.bss`) and IRAM stay inside
+`tools/size_budget.json`. Each RAM budget is the measured size rounded up to a
+KiB, so real growth fails. Raise it with `--write` and give the reason in the
+PR. Firmware CI runs it after the stack budget.
+
 `run-panic-fixtures.sh` needs the default binary and the `FURBLE_SIM_MQTT=1`
 binary. Every sdkconfig aborts on a failed allocation, so the simulator does
 too: each fixture must exit 3 with `SIM PANIC` and leave a panic record for the
