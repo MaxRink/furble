@@ -294,6 +294,15 @@ and USB charging makes a
 drain run non-representative. The CSV columns are identical to the BLE monitor,
 so the same plotter handles both transports.
 
+The USB monitor reopens a port that vanished or hung up, and reads the ESP32
+ROM reset line when the chip resets with the port open (`rom-reset:<reason>`
+marker). A chip stuck in ROM download mode, or a console silent across three
+reopens, is reset only with `--usb-hard-reset`, using esptool's
+`--after hard_reset` RTS pulse with DTR low (`hard-reset` marker). Without the
+flag the monitor writes `hard-reset-needed` once and keeps retrying. A lower
+`uptime` between samples adds a `device-reset:<reason>` marker, and the console
+`crash` summary is printed to stderr. `docs/companion.md` has the details.
+
 ## Hardware status (2026-11-04)
 
 The CLI builds and scans a flashed StickS3 successfully (for example

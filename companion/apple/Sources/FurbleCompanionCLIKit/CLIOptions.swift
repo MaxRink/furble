@@ -176,6 +176,9 @@ public struct CLIMonitorOptions: Equatable, Sendable {
   public var includeHeader: Bool
   public var retryWindow: TimeInterval
   public var label: String
+  /// USB only: allow an RTS hard reset when the chip is stuck in ROM or the
+  /// console stays silent across reopens.
+  public var allowHardReset: Bool
 
   public init(
     interval: TimeInterval = 5,
@@ -184,7 +187,8 @@ public struct CLIMonitorOptions: Equatable, Sendable {
     csv: Bool = false,
     includeHeader: Bool = true,
     retryWindow: TimeInterval = 180,
-    label: String = ""
+    label: String = "",
+    allowHardReset: Bool = false
   ) {
     self.interval = interval
     self.duration = duration
@@ -193,6 +197,7 @@ public struct CLIMonitorOptions: Equatable, Sendable {
     self.includeHeader = includeHeader
     self.retryWindow = retryWindow
     self.label = label
+    self.allowHardReset = allowHardReset
   }
 }
 
@@ -282,6 +287,8 @@ public enum CLIArgumentParser {
       --label TEXT          Phase label stored in every CSV row
       --csv                 Write only CSV rows to stdout; progress goes to stderr
       --no-header           Omit the CSV header (useful when appending runs)
+      --usb-hard-reset      USB only: reset the chip into the app when it is stuck
+                            in ROM download mode or the console stays silent
 
     PASSWORD COMMANDS
       password set          Prompt without echo and store in the login Keychain
@@ -483,6 +490,12 @@ public enum CLIArgumentParser {
         }
         options.csv = true
         command = .monitor(options)
+      case "--usb-hard-reset":
+        guard case .monitor(var options) = command else {
+          throw CLIUsageError.message("--usb-hard-reset is only valid for monitor")
+        }
+        options.allowHardReset = true
+        command = .monitor(options)
       case "--no-header":
         guard case .monitor(var options) = command else {
           throw CLIUsageError.message("--no-header is only valid for monitor")
@@ -531,6 +544,8 @@ public enum CLIArgumentParser {
       }
     } else if connection.serialPort != nil {
       throw CLIUsageError.message("--port requires --transport usb")
+    } else if case .monitor(let options) = command, options.allowHardReset {
+      throw CLIUsageError.message("--usb-hard-reset requires --transport usb")
     }
 
     switch command {

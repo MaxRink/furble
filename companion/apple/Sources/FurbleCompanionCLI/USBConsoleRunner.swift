@@ -165,6 +165,8 @@ enum USBConsoleRunner {
     var lastStatusAt = start
     var lost = false
     var retry = CLIMonitorBackoff()
+    var recovery = CLIUSBRecovery(allowHardReset: options.allowHardReset)
+    var resetAdvised = false
 
     if options.csv, options.includeHeader {
       print(CLIReport.monitorCSVHeader)
@@ -176,6 +178,17 @@ enum USBConsoleRunner {
     note("USB is supplying power; detach USB for a representative battery-drain run.")
 
     func elapsed() -> TimeInterval { Date().timeIntervalSince(start) }
+    // The reset reason and the previous run's crash record are the only
+    // evidence of why the app restarted; the USB endpoint drops the panic.
+    func reportReset(_ status: [String: String], marker: Bool) {
+      let reason = status["reset"] ?? "unknown"
+      if marker { emitMarker("device-reset:\(reason)") }
+      note("Device reset reason: \(reason), uptime \(status["uptime"] ?? "unknown") s.")
+      if let crash = try? parseKeyValues(console.command("crash", timeout: 5)),
+        let summary = crash["crash.summary"] {
+        note("Previous run crash record: \(summary)")
+      }
+    }
     func emitMarker(_ event: String) {
       let now = Date()
       if options.csv {
@@ -204,14 +217,22 @@ enum USBConsoleRunner {
           if lost {
             emitMarker("reconnected")
             lost = false
+            resetAdvised = false
             retry.reset()
+            recovery.recovered()
+          }
+          let uptime = UInt32(status["uptime"] ?? "0") ?? 0
+          if first == nil {
+            reportReset(status, marker: false)
+          } else if CLIUSBRecovery.rebooted(previousUptime: last?.uptime, uptime: uptime) {
+            reportReset(status, marker: true)
           }
           lastStatusAt = Date()
           let sampleTime = Date()
           let sample = Sample(
             timestamp: sampleTime,
             elapsed: sampleTime.timeIntervalSince(start),
-            uptime: UInt32(status["uptime"] ?? "0") ?? 0,
+            uptime: uptime,
             batteryPercent: UInt8(status["battery"] ?? "255") ?? 255,
             batteryMillivolts: UInt16(status["voltage"] ?? "65535") ?? 65535,
             batteryMilliamps: Int16(status["current"] ?? "0") ?? 0,
@@ -247,6 +268,32 @@ enum USBConsoleRunner {
           if !lost {
             emitMarker("link-lost")
             lost = true
+          }
+          let failure = CLIUSBRecovery.classify(error)
+          if case .rom(let banner) = failure {
+            emitMarker("rom-reset:\(banner.reason ?? "unknown")")
+            note("ROM banner: \(banner.resetLine)")
+          }
+          switch recovery.next(after: failure) {
+          case .reopen:
+            break
+          case .hardReset:
+            do {
+              try console.hardReset()
+              emitMarker("hard-reset")
+            } catch {
+              note("USB hard reset failed: \(error)")
+            }
+            console.close()
+          case .needsHardReset:
+            if !resetAdvised {
+              emitMarker("hard-reset-needed")
+              resetAdvised = true
+            }
+            note(
+              "The chip is stuck in ROM or the console stays silent. Rerun with "
+                + "--usb-hard-reset, or run esptool.py --chip esp32s3 --port \(path) "
+                + "--after hard_reset chip_id.")
           }
           let delay = retry.nextDelay()
           let until = Date().addingTimeInterval(delay)

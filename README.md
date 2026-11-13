@@ -66,7 +66,10 @@ uses the same protocol, auth and BLE core for scan/status, phone-GPS fallback,
 shutter/focus testing and long-running read-only battery CSV monitoring. It
 also accepts `--transport usb` for the StickS3 CDC console: `scan`, `status`,
 `cameras`, `monitor` and `password status` work over USB, and the monitor writes
-the same CSV columns as BLE with a 5 s console command timeout. Companion links
+the same CSV columns as BLE with a 5 s console command timeout. The USB monitor
+reopens a lost port, records ROM reset lines and app restarts as CSV markers,
+and resets a chip stuck in ROM download mode only with `--usb-hard-reset`.
+Companion links
 use an encrypted, bonded LE Just
 Works link and authenticate with the companion password; set a password before
 using the app in an untrusted area. An unknown inbound BLE link is retained

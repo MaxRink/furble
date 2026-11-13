@@ -174,6 +174,26 @@ command. The USB monitor reads `status` and `gps` from the console and writes
 the same CSV columns as the BLE monitor, so the plotter is shared. USB charging
 invalidates battery-drain comparisons.
 
+The USB monitor recovers from a lost or silent console (issue #381). A port
+that disappears or hangs up after a USB re-enumeration is reopened with the
+same backoff as BLE. A console that answers no prompt is a stall. When the chip
+resets while the port is open, the ESP32 ROM prints its reset line on the same
+port; the monitor writes it to stderr and adds a `rom-reset:<reason>` marker,
+for example `rom-reset:USB_UART_CHIP_RESET`. A chip parked in ROM download
+mode, or a console that stays silent across three reopens, needs a reset. The
+monitor sends one only with `--usb-hard-reset`: it pulses RTS with DTR low,
+which is esptool's `--after hard_reset` sequence, and adds a `hard-reset`
+marker. Without the flag it adds one `hard-reset-needed` marker and keeps
+retrying until `--retry-window` runs out. The first sample prints the console
+`reset` reason and the previous run's `crash` summary to stderr. A later sample
+with a lower `uptime` means the app restarted: the monitor adds a
+`device-reset:<reason>` marker and prints the same two lines.
+
+```sh
+.build/release/furble-companion-cli monitor --transport usb --port /dev/cu.usbmodem1101 \
+  --interval 5 --duration 3600 --csv --usb-hard-reset > usb-power.csv
+```
+
 It can send a phone-GPS fallback fix, press/release shutter or focus, and poll
 status notifications. The companion password comes from an argument,
 environment variable, file, stdin or the login Keychain, and is never printed.
