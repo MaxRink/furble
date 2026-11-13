@@ -1079,5 +1079,8 @@ link `libSDL3.dylib` directly with `-needed_library` on macOS. dyld maps SDL3
 at launch, before the sdl2-compat initializer runs, and its dlopen returns the
 loaded image. `DYLD_PRINT_LIBRARIES` shows SDL3 mapped once. If SDL3 cannot be
 loaded, dyld stops the launch with an error on stderr, which the gates report.
-Linux and CI link real SDL2 and are unchanged. When SDL3 is absent the build
-falls back to the old link line.
+Linux and CI link real SDL2 and are unchanged. A macOS build without SDL3
+keeps the plain SDL2 link only for a real SDL2. When `libSDL2.dylib`
+resolves into sdl2-compat and no SDL3 is installed, `build.sh` exits and the
+CMake configure fails, each naming `brew install sdl3`, because that binary
+could only fail at launch through the dialog.

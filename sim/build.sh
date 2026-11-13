@@ -474,12 +474,29 @@ if [ "$(uname -s)" = "Darwin" ]; then
   # dlopen reuses the loaded image and a real load failure ends the launch
   # with a dyld message on stderr instead of a dialog. Keep in step with
   # sim/CMakeLists.txt.
-  for sdl3_dir in /opt/homebrew/lib /usr/local/lib; do
-    if [ -e "$sdl3_dir/libSDL3.dylib" ]; then
-      LINK_FLAGS="$LINK_FLAGS -Wl,-needed_library,$sdl3_dir/libSDL3.dylib"
+  # Linking SDL2 without SDL3 is allowed only for a real SDL2. sdl2-compat
+  # without SDL3 would fail at launch through that dialog, so stop here.
+  SDL3_LINKED=0
+  for sdl_dir in /opt/homebrew/lib /usr/local/lib; do
+    if [ -e "$sdl_dir/libSDL3.dylib" ]; then
+      LINK_FLAGS="$LINK_FLAGS -Wl,-needed_library,$sdl_dir/libSDL3.dylib"
+      SDL3_LINKED=1
       break
     fi
   done
+  if [ "$SDL3_LINKED" = 0 ]; then
+    for sdl_dir in /opt/homebrew/lib /usr/local/lib; do
+      if [ -e "$sdl_dir/libSDL2.dylib" ]; then
+        case "$(cd "$(dirname "$sdl_dir/libSDL2.dylib")" && pwd -P)/$(readlink "$sdl_dir/libSDL2.dylib" || true)" in
+          *sdl2-compat*)
+            echo "sim/build.sh: $sdl_dir/libSDL2.dylib is sdl2-compat but no libSDL3.dylib was found. Install SDL3 (brew install sdl3)." >&2
+            exit 1
+            ;;
+        esac
+        break
+      fi
+    done
+  fi
 fi
 
 "$CXX" $CXXFLAGS $COVERAGE_LINK_FLAGS $OBJECTS -o "$BUILD_DIR/furble-sim" $LINK_FLAGS

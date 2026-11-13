@@ -275,7 +275,9 @@ including empty strings and failed-save rollback.
   `CMakeLists.txt` link `libSDL3.dylib` directly with `-needed_library`, so
   dyld maps it at launch and the sdl2-compat dlopen reuses it. A real load
   failure now stops the launch with a dyld error on stderr, never a dialog.
-  `otool -L sim/build/furble-sim` lists both libraries.
+  `otool -L sim/build/furble-sim` lists both libraries. Without SDL3 the build
+  links SDL2 alone only for a real SDL2; sdl2-compat without SDL3 fails the
+  build with a `brew install sdl3` message.
 
 ### Optional native MQTT transport
 
