@@ -67,6 +67,11 @@ requested v1 shutter and recording scope are known.
 **UNTESTED:** No DJI Osmo Action 4 or Action 5 Pro hardware is available for
 validation. Firmware compilation and simulator checks are the available coverage.
 
+Documentation, 2026-11-13: the README vendor notes and feature table,
+`docs/supported-hardware.md` and the wiki hardware page now list DJI Osmo
+Action as untested on hardware. Shutter toggles recording, focus is disabled,
+and GPS is listed as unsupported because `updateGeoData` is a no-op.
+
 Rebase and verification, 2026-08-19:
 
 - Rebased onto fork master `734b759`. The only conflict was a doc merge in

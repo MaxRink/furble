@@ -51,9 +51,10 @@ K-3 III owner or HCI capture is available here to prove camera-side acceptance.
   target is intentionally not assigned a new persisted type.
 - Shutter uses the existing `ShootingFlavor::IMMEDIATE` write followed by
   `OperationRequest { START, AF }`.
-- Focus keeps the existing Ricoh behavior, which selects the two-second
-  shooting flavor and sends `OperationRequest { START, AF }`. This is not a
-  half-press implementation.
+- Focus keeps the existing Ricoh behavior. At merge time that selected the
+  two-second shooting flavor and sent `OperationRequest { START, AF }`. Ricoh
+  focus is now an intentional no-op (`Ricoh::focusPress()`), because that
+  request starts a capture, so PENTAX K has no focus control either.
 - GPS keeps the existing location-control enable write, rate and movement
   gates, byte-swapped doubles, and packed time payload.
 - All service and characteristic UUIDs, write-with-response choices,
@@ -123,3 +124,8 @@ Verification results:
   `.pio/libdeps/m5stick-s3/M5GFX` is not present in this worktree. No new
   simulator module or shim caused this failure.
 - Hardware: UNTESTED. Needs a K-3 III owner. FauxNY and review only.
+
+Documentation, 2026-11-13: the README vendor notes and feature table,
+`docs/supported-hardware.md` and the wiki hardware page now list PENTAX K as
+untested on hardware, with shutter capture with autofocus and GPS from the
+Ricoh class and no focus control.

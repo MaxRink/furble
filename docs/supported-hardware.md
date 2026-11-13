@@ -69,6 +69,8 @@ and the feature matrix.
 | Sony | `Sony` | Sony ZV and most modern Sony bodies. |
 | Ricoh | `Ricoh` | GR IV and GR IV HDF, firmware 1.20. Shutter capture with autofocus and GPS supported. Focus-only control is unsupported. GR III and GR IIIx expose the same BLE service UUIDs but remain uncertified because power and WLAN behaviour differ. GR II is Wi-Fi only. Numeric-comparison pairing displays the camera's six-digit code on the furble screen and is untested on hardware. |
 | Panasonic LUMIX | `Lumix` | Implemented from S5II and BGH1 protocol traces. Shutter and GPS with clock are supported. There is no focus opcode, so focus control is disabled. Untested on hardware. |
+| PENTAX K | `Ricoh` | PENTAX K bodies (K-1, K-3 Mark III and Monochrome, K-70, KF, KP) are matched by the Ricoh service UUIDs or the PENTAX name and use the Ricoh Imaging protocol path unchanged. Shutter capture with autofocus and GPS follow the Ricoh class. Focus-only control is unsupported. Untested on hardware. |
+| DJI Osmo Action | `DJIOsmo` | Action 4 and Action 5 Pro, from DJI's published R SDK protocol and ESP32 reference. The shutter toggles video recording. Focus control is disabled and GPS is not implemented. Pairing is DJI's own camera approval, not a Bluetooth passkey. Untested on hardware. |
 | FauxNY | `FauxNY` | Software test camera. Enabled by the FauxNY setting for development. |
 
 ## GPS units

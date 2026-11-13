@@ -132,6 +132,13 @@ Panasonic LUMIX support is implemented from public protocol traces of the S5II
 and BGH1. It is host and simulator tested only. No LUMIX body has been tested
 on hardware.
 
+PENTAX K bodies (K-1, K-3 Mark III and Monochrome, K-70, KF, KP) are matched by
+the Ricoh service UUIDs or the PENTAX name and driven by the shared Ricoh
+Imaging class. DJI Osmo Action 4 and Action 5 Pro support is implemented from
+DJI's published protocol and ESP32 reference. Both are covered by host tests,
+and the simulator covers DJI and the shared Ricoh path. No PENTAX or DJI body
+has been tested on hardware.
+
 ## Table of Features
 
 | Camera             | Scanning | Pairing | Shutter Release | Focus   | GPS     |
@@ -144,6 +151,8 @@ on hardware.
 | Nikon (Smart)      | ✔️        | :x:     | :x:             | :x:     | :x:     |
 | Sony ZV            | ✔️        | ✔️       | ✔️               | ✔️       | ✔️       |
 | Panasonic LUMIX[^6] | ✔️       | ✔️       | ✔️               | :x:[^2] | ✔️       |
+| PENTAX K[^7]       | ✔️        | ✔️       | ✔️[^3]           | :x:[^4]  | ✔️       |
+| DJI Osmo Action[^8] | ✔️       | ✔️       | ✔️[^9]           | :x:[^2] | :x:[^10] |
 
 [^1]: see [#99](https://github.com/gkoh/furble/discussions/99)
 [^2]: Non-existent
@@ -155,6 +164,14 @@ The supported shutter command performs an immediate capture with autofocus.
 not manual lens focus.
 [^6]: Untested on hardware. Pairing is the LUMIX session registration, not SMP
 bonding. A fresh S5II may still need a Lumix Sync first-pair flow.
+[^7]: Untested on hardware. Uses the Ricoh Imaging protocol path unchanged;
+see [plan 73](plans/implemented/73-pentax-k.md).
+[^8]: Untested on hardware. Action 4 and Action 5 Pro. Pairing is DJI's own
+first-pair verification and camera approval, not a Bluetooth passkey.
+[^9]: Each press toggles video recording start and stop. furble sends no
+still capture command.
+[^10]: Not implemented. DJI's GPS direction is camera to remote, the opposite
+of furble's geotag push, so location updates are a no-op.
 
 For contributor research across all implemented camera families, see the
 [camera protocol research library](docs/camera-research/README.md). It records
