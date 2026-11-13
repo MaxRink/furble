@@ -1819,6 +1819,10 @@ void UI::sleepDisplay(void) {
   Sim::profilerSetDisplayState("off");
 #endif
   lv_timer_pause(m_IconTimer);
+  // Nobody can see the panel. Stop recording invalidations so periodic setters
+  // cannot resume the refresh timer and render frames that are never flushed.
+  // LVGL keeps the refresh timer paused while nothing is invalid.
+  lv_display_enable_invalidation(m_Display, false);
 
   // The backlight PWM no longer needs a fixed APB clock while the panel sleeps.
   Power::getInstance().release(Power::LockType::APB_FREQ_MAX, "display");
@@ -1846,8 +1850,9 @@ void UI::wakeDisplay(void) {
   M5.Display.setBrightness(Settings::load<uint8_t>(Settings::BRIGHTNESS));
   m_WakeTick = tick();
   m_DisplayOff = false;
-  // Flushes were skipped while the panel slept, so LVGL believes the old
-  // frame is still on the glass. Redraw the active screen once.
+  // Invalidation was disabled while the panel slept, so LVGL believes the old
+  // frame is still on the glass. Re-enable it and redraw the active screen once.
+  lv_display_enable_invalidation(m_Display, true);
   lv_obj_invalidate(lv_screen_active());
   m_DisplayState = DisplayState::ACTIVE;
   // Console mode keeps the panel logically off even after a wake event from
@@ -1885,10 +1890,11 @@ void UI::displayFlush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map
   auto *ui = static_cast<UI *>(lv_display_get_user_data(disp));
 
   if ((ui != nullptr) && ui->m_DisplayOff) {
-    // The panel is in SLPIN. Swapping and pushing pixels nobody can see costs
-    // CPU, bus time, and a DMA completion for no output. Report the flush as
-    // done so LVGL can keep its bookkeeping moving; wakeDisplay() invalidates
-    // the screen so the next visible frame is complete.
+    // The panel is in SLPIN. sleepDisplay() disables invalidation, so only a
+    // frame already pending at sleep time can reach here. Swapping and pushing
+    // pixels nobody can see costs CPU, bus time, and a DMA completion for no
+    // output. Report the flush as done so LVGL can keep its bookkeeping moving;
+    // wakeDisplay() invalidates the screen so the next visible frame is complete.
 #if defined(FURBLE_SIM)
     ui->m_FlushedWhileOff++;
 #endif

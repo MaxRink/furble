@@ -1,17 +1,27 @@
-# A sleeping panel must not receive flushed pixels.
+# A sleeping panel must not render or receive flushed pixels.
 #
-# The panel is in SLPIN after the inactivity timer. A redraw still produces
-# LVGL flush callbacks, and the guard must return before the RGB swap and the
-# DMA push. The suppressed counter proves the callbacks happened; the code path
-# returns before any pixel leaves the buffer.
+# The panel is in SLPIN after the inactivity timer. sleepDisplay() disables
+# LVGL invalidation, so periodic setters and blind-remote shutter feedback
+# cannot resume the refresh timer. Before this gate the blind-remote run
+# invalidated about 17.7k px/s with the panel off. The suppressed flush counter
+# and the invalidation probe must both stay at zero while the panel is off.
+# camera-pairing-notouch covers the wake press that re-enables invalidation
+# and redraws the whole screen.
 
 seed fauxny true
 seed autoconnect true
 seed inactivity 1
 seed display_off 2
 wait 31000
+assert ui.display off
+action invalidate.reset
 action blind
 action blind-shutter
 wait 2000
-assert_min ui.flushes_suppressed_off 1
+action blind-shutter
+wait 2000
+assert ui.display off
+assert ui.invalidate_count 0
+assert ui.flushes_suppressed_off 0
+
 exit

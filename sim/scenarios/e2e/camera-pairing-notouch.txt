@@ -45,9 +45,15 @@ assert ui.blind_remote no
 # The first BtnA press only wakes the panel. Blind-remote input is stood down
 # while the prompt is open, so the same gate that wakes a sleeping page
 # swallows this press instead of accepting a code nobody can see.
+# The prompt was built while the panel slept, so it recorded no invalidation.
+# The wake re-enables invalidation and redraws the whole screen.
+action invalidate.reset
+wait 100
+assert ui.invalidate_count 0
 btn a
 wait 400
 assert ui.display on
+assert_min ui.invalidate_count 1
 assert ui.modal open
 assert ui.pairing_pending yes
 assert ble.pairing_answers 0
