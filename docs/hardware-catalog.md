@@ -8,7 +8,8 @@ ESP32-S3-ETH wired node.
 
 The catalog was checked on 2026-11-01. Prices are vendor list prices in the
 currency the vendor shows, excluding tax and shipping unless the vendor says
-otherwise. They move. Check before ordering.
+otherwise. They move. Check before ordering. Corrections from the 2026-11-13
+hardware research are cited as sources 45 to 54.
 
 The analysis that turns this list into porting decisions is
 [plans/287-mcu-portability-and-bundle-hardware.md](../plans/287-mcu-portability-and-bundle-hardware.md).
@@ -43,9 +44,9 @@ is the zero-port exception: it already meets all four requirements.
 | :--- | :--- | :--- |
 | Best development target | LilyGO T-Deck Plus | 16 MB flash, 8 MB PSRAM, touch, keyboard, GPS, 2000 mAh, 70.99 USD |
 | Best GPS, with a UBX driver | LilyGO T-Deck Plus or T-Watch Ultra | u-blox MIA-M10Q, -167 dBm tracking, 1 second hot or assisted fix, 25 mW class |
-| Best GPS, no new driver | Elecrow ThinkNode M5 or T-Beam Supreme L76K | L76K `$PCAS`, standby and a rail switch. Same driver as today. |
+| Best GPS, no new driver | T-Beam Supreme L76K | L76K `$PCAS`, standby and a rail switch. Same driver as today. The ThinkNode M5 qualifies only as hardware v1.0; v2.0 uses the AG3352 [45]. |
 | Best wearable | LilyGO T-Watch Ultra | 2.06 inch AMOLED touch, GPS, IP65, 1100 mAh, 78.32 USD |
-| Best `$PCAS` sidecar | Elecrow ThinkNode M5 | ESP32-S3, L76K `$PCAS`, e-paper, 1200 mAh, 53.90 USD |
+| Best `$PCAS` sidecar | Elecrow ThinkNode M5 v1.0 | ESP32-S3, L76K `$PCAS`, e-paper, 1200 mAh, 53.90 USD. Check the revision: v2.0 uses the AG3352, `$PAIR` [45]. |
 | Best sidecar runtime, with a port | LilyGO T-Echo Plus | nRF52840, e-paper, 2400 mAh, 47 hours of continuous GNSS |
 | Best runtime with the current code | LilyGO T-Beam Supreme, L76K trim | swappable 3400 mAh 18650, 66 hours of continuous GNSS, 37.12 USD plus cell |
 | Best big screen | LilyGO T-Display P4 | 4.1 inch AMOLED touch, ESP32-P4 plus C6, L76K, 119.30 USD |
@@ -74,7 +75,8 @@ The class decides whether furble's existing GPS code and power work apply.
 | `$PCAS` | Quectel L76K, AT6668, ATGM336H | Existing code. Probe with `$PCAS06`. Plans 14, 15, 19 and 32 apply. |
 | UBX | u-blox MIA-M10Q, MAX-M10S, NEO-M10S, ZOE-M8Q | New driver. NMEA parsing still works, but the configuration and standby commands do not. |
 | `$CFG` | Unicore UC6580 | New driver. Different sentence set and 115200 baud. |
-| Other | Quectel LC76G, MediaTek AG3335, LR1110 scan, unnamed modules | Treat as a new driver until proven otherwise. The LR1110 needs a position solver, not just a driver. Probe on hardware before promising reuse. |
+| `$PAIR` | Airoha AG3352, Quectel LC76G | New driver. The LC76G also has Quectel `$PQTM` commands [46]. |
+| Other | MediaTek AG3335, LR1110 scan, unnamed modules | Treat as a new driver until proven otherwise. The LR1110 needs a position solver, not just a driver. Probe on hardware before promising reuse. |
 
 A Meshtastic variant file that names an L76K is strong evidence, not proof.
 Elecrow's own documentation does not always name the receiver. The device in
@@ -89,14 +91,14 @@ Assistance and backup power decide how long it takes.
 | Receiver | Bands | Sensitivity | TTFF | Current | Backup or standby | Assistance | furble class | Verdict |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | AT6668, M5 Unit GPS v1.1 | L1 | -162 dBm tracking, -148 dBm cold | cold about 108 s without backup in the field reports | 31.64 mA at 5 V | no backup rail; firmware can send `$PCAS12` timed standby | CASIC aiding and ephemeris cache when `GPS_ASSIST` is on | `$PCAS` | The current baseline. Fine outdoors, weak indoors, slow after a rail cut. The lack of a backup rail is the hardware gap, not a lack of standby or assistance support. |
-| Quectel L76K | L1 | -162 dBm tracking, -148 dBm cold | 30 s cold, 5.5 s hot | 41 mA tracking, 360 uA standby | standby rail | vendor AGPS | `$PCAS` | Same sensitivity as the AT6668, but real standby and a rail switch. The ThinkNode M5 and T-Beam L76K trim use it. |
+| Quectel L76K | L1 | -162 dBm tracking, -148 dBm cold | 30 s cold, 5.5 s hot | 41 mA tracking, 360 uA standby | standby rail | vendor AGPS | `$PCAS` | Same sensitivity as the AT6668, but real standby and a rail switch. The ThinkNode M5 v1.0, the ThinkNode M4, and the T-Beam and T-Deck Plus L76K trims use it. |
 | u-blox MIA-M10Q | L1, four GNSS | -167 dBm tracking, -148 dBm cold | 27 s cold, 1 s hot, 1 s AssistNow | 25 mW, about 8 to 12 mA at 3 V | 28 to 32 uA backup, 46 uA software standby | AssistNow Online, Offline, Autonomous | UBX | The best all-round upgrade. Lower power, better sensitivity, one second hot or aided fix, real backup. |
 | u-blox MAX-M10S | L1, four GNSS | -167 dBm tracking, -148 dBm cold | 27 s cold, 1 s hot, 1 s AssistNow | 25 mW | same as M10 | AssistNow | UBX | Same silicon as the MIA-M10Q in a larger module. The T-Beam M10S trim uses it. |
 | u-blox NEO-F10N | L1 and L5 | -148 dBm cold, tracking figure in the data sheet | 28 s cold, 2 s hot | about twice an L1 receiver | backup rail | AssistNow | UBX | Better in urban multipath, not an indoor fix. Costs power. Useful only if urban accuracy is the goal. |
 | Unicore UC6580 | L1 and L5 | vendor figures, verify | vendor figures, verify | vendor figures, verify | vendor figures, verify | vendor dependent | `$CFG` | Dual band on the Heltec Wireless Tracker V2. Needs a new driver and more power. |
-| Quectel LC76G | L1 | vendor figures, verify | vendor figures, verify | vendor figures, verify | vendor dependent | vendor dependent | other | Used on the Waveshare AMOLED 1.75-G. Verify the command set before assuming reuse. |
+| Quectel LC76G | L1 | vendor figures, verify | vendor figures, verify | vendor figures, verify | vendor dependent | vendor dependent | `$PAIR` | Used on the Waveshare AMOLED 1.75-G, read over I2C there; UART needs R15 and R16 fitted [46]. GPS traffic on that I2C bus breaks touch [47]. |
 | MediaTek AG3335 | L1 | vendor figures, verify | vendor figures, verify | vendor figures, verify | vendor dependent | vendor dependent | other | Used on the SenseCAP T1000-E. A new driver. |
-| Semtech LR1110 GNSS | L1 scan engine | vendor figures, verify | needs a solver, no standalone NMEA fix | vendor figures, verify | not applicable | cloud or local solver; WiFi scan too | other | Used on the Wio Tracker 1110. It scans GNSS and WiFi and needs a position solver, so it is not a drop-in NMEA receiver. The ThinkNode M3 uses an ATGM336H. The ThinkNode M4 receiver is unnamed. |
+| Semtech LR1110 GNSS | L1 scan engine | vendor figures, verify | needs a solver, no standalone NMEA fix | vendor figures, verify | not applicable | cloud or local solver; WiFi scan too | other | Used on the Wio Tracker 1110. It scans GNSS and WiFi and needs a position solver, so it is not a drop-in NMEA receiver. The ThinkNode M3 uses an ATGM336H. The ThinkNode M4 pairs an L76K with an LR1110 [49]. |
 
 Three conclusions from this table.
 
@@ -115,20 +117,20 @@ a short Grove cable.
 
 | Device | MCU | GNSS | Display and touch | WiFi | Battery | Price | Tier | Notes |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| LilyGO T-Deck Plus | ESP32-S3FN16R8, 16 MB, 8 MB PSRAM | MIA-M10Q, UBX | 2.8 inch 320x240 IPS, touch, keyboard, trackball | yes | 2000 mAh | 70.99 USD [1] | T1 | The best single development target. 16 MB flash leaves room for two large OTA slots. |
+| LilyGO T-Deck Plus | ESP32-S3FN16R8, 16 MB, 8 MB PSRAM | MIA-M10Q, UBX; or L76K, `$PCAS`, in the 61.34 USD L76K trim [48] | 2.8 inch 320x240 IPS, touch, keyboard, trackball | yes | 2000 mAh | 70.99 USD [1] | T1 | The best single development target. 16 MB flash leaves room for two large OTA slots. |
 | LilyGO T-Deck Pro | ESP32-S3FN16R8, 16 MB, 8 MB PSRAM | MIA-M10Q, UBX | 3.1 inch 320x240 e-paper, touch, keyboard | yes | 1400 to 1500 mAh, sources conflict | 84.96 USD audio, 99.98 USD 4G [2] | T1 | E-paper refresh is slow for LVGL. The 4G variant is irrelevant to furble. |
 | LilyGO T-Watch Ultra | ESP32-S3R8, 16 MB, 8 MB PSRAM | MIA-M10Q, UBX | 2.06 inch 410x502 AMOLED, touch | yes | 1100 mAh | 78.32 USD [3] | T1 | IP65. Best wearable shape. Heavy for a camera strap. |
 | LilyGO T-Watch S3 Plus | ESP32-S3, 16 MB, 8 MB PSRAM | MIA-M10Q, UBX | 1.54 inch 240x240 IPS, touch | yes | 940 mAh | 58.74 USD [4] | T1 | Smaller and cheaper than the Ultra. Micro USB. |
 | LilyGO T-LoRa Pager | ESP32-S3, 16 MB, 8 MB PSRAM | MIA-M10Q, UBX | 2.33 inch 480x222 IPS, no touch, keyboard and encoder | yes | internal LiPo | 87.35 USD [5] | T1 | Pager shape. Stock comes and goes. |
-| Elecrow ThinkNode M5 | ESP32-S3, 4 MB flash per vendor wiki, 8 MB PSRAM | L76K, `$PCAS` | 1.54 inch 200x200 e-paper, no touch | yes | 1200 mAh | 53.90 USD [6] | T1 | The best sidecar. Vendor flash claims conflict, verify the module. |
-| Elecrow ThinkNode M9 | ESP32-S3R8, 16 MB, 8 MB PSRAM | Multi-constellation, chip unnamed | 2.4 inch 240x320 TFT, no touch, 37 keys | yes | 2300 mAh | 74.90 USD [6] | T1 | Keyboard terminal. Touch is absent by specification. |
-| Elecrow ThinkNode M1 | nRF52840, 1 MB, 256 KB RAM | L76K, `$PCAS` | 1.54 inch e-paper, no touch, rotary knob | no | 1200 mAh | 53.90 USD [6] | T2 | Low power, but a Nordic rewrite. |
-| LilyGO T-Echo Plus | nRF52840, 1 MB internal, 256 KB RAM. Vendor lists 2 MB. | L76K, `$PCAS` | 1.54 inch e-paper, no touch | no | 2400 mAh | 64.22 USD [7] | T2 | Clip and tripod mount. Good camera-bag shape. |
+| Elecrow ThinkNode M5 | ESP32-S3, 4 MB flash per vendor wiki, 8 MB PSRAM | v1.0: L76K, `$PCAS`. v2.0: Airoha AG3352, `$PAIR` [45] | 1.54 inch 200x200 e-paper, no touch | yes | 1200 mAh | 53.90 USD [6] | T1 | The best sidecar only as v1.0. On v2.0 the GPS switch does not cut power [45]. Vendor flash claims conflict, verify the module. |
+| Elecrow ThinkNode M9 | ESP32-S3R8, 16 MB, 8 MB PSRAM | Airoha AG3352, `$PAIR` [45] | 2.4 inch 240x320 TFT, no touch, 37 keys | yes | 2300 mAh | 74.90 USD [6] | T1 | Keyboard terminal. Touch is absent by specification. |
+| Elecrow ThinkNode M1 | nRF52840, 1 MB, 256 KB RAM | L76K, `$PCAS` | 1.54 inch e-paper, no touch, two buttons [49] | no | 1200 mAh | 53.90 USD [6] | T2 | Low power, but a Nordic rewrite. |
+| LilyGO T-Echo Plus | nRF52840, 1 MB internal plus 2 MB external QSPI flash, 256 KB RAM [50] | L76K, `$PCAS` | 1.54 inch e-paper, no touch | no | 2400 mAh | 64.22 USD [7] | T2 | Clip and tripod mount. Good camera-bag shape. |
 | Bangle.js 2 | nRF52840, 1 MB internal plus 8 MB external, 256 KB RAM | AT6558 or AT6558R, `$PCAS` | 1.3 inch 176x176 always-on LCD, touch | no | 175 mAh | 99.60 GBP [44] | T2 | IP67 watch with a full touchscreen and a `$PCAS` receiver. The 175 mAh cell limits continuous GNSS to about 6 hours. |
 | Seeed Wio Tracker L1 Pro | nRF52840, 1 MB, 256 KB RAM | L76K, `$PCAS` | 1.3 inch 128x64 OLED, no touch, joystick | no | 2000 mAh | 47.90 USD [8] | T2 | The cheapest complete BLE plus GPS plus display device. |
-| RAK WisMesh Pocket V2 and V3 | nRF52840, 1 MB, 256 KB RAM | Onboard GNSS, module not published | 1.3 inch OLED, no touch | no | 3200 mAh | 77.97 USD V2, 84.97 USD V3 [9] | T2 | V3 adds an IP67 case and a buzzer. |
+| RAK WisMesh Pocket V2 and V3 | nRF52840, 1 MB, 256 KB RAM | u-blox ZOE-M8Q on the RAK19026, UBX [51] | 1.3 inch OLED, no touch | no | 3200 mAh | 77.97 USD V2, 84.97 USD V3 [9] | T2 | V3 adds an IP67 case and a buzzer. |
 | M5Stack CoreS3 plus Unit GPS v1.1 | ESP32-S3, 16 MB, 8 MB PSRAM | AT6668, `$PCAS` | 2.0 inch 320x240 IPS, touch | yes | 500 mAh internal | 59.90 USD plus 9.95 USD [10] | T1 | M5Unified knows the panel, but furble has no CoreS3 input callbacks and no CoreS3 battery backend. Needs a board profile plus input and power integration. |
-| M5Stack Core2 plus Unit GPS plus Battery Module 13.2 | ESP32, 16 MB | AT6668, `$PCAS` | 2.0 inch 320x240 IPS, touch | yes | internal plus 1500 mAh module | 49.90 plus 9.95 plus 11.90 USD [10] | T0 | This stack works today. It is the zero-port reference. |
+| M5Stack Core2 plus Unit GPS plus Battery Module 13.2 | ESP32, 16 MB | AT6668, `$PCAS` | 2.0 inch 320x240 IPS, touch | yes | internal plus 1500 mAh module | 49.90 plus 9.95 plus 11.90 USD [10] | T0 | This stack works today. It is the zero-port reference. Core2 v1.1 moved to an ILI9342E panel on 2026-08-07, which needs M5GFX 0.2.27 or newer; furble pins `M5GFX@0.2.27` (`platformio.ini:31`). Core2 v1.3 returns to the AXP192 [52]. |
 | M5Stack Tab5 plus Unit GPS | ESP32-P4 plus ESP32-C6, 16 MB, 32 MB PSRAM | AT6668, `$PCAS` | 5 inch 1280x720 IPS, touch | WiFi 6 through C6 | NP-F550, 2000 mAh | 55 to 60 USD plus 9.95 USD [11] | T1P | Big and heavy. The P4 path needs ESP-Hosted and two images to update. |
 
 ## Bare boards with onboard GNSS
@@ -140,14 +142,14 @@ right buy for a bench prototype.
 | Device | MCU | GNSS | Display and touch | WiFi | Battery | Price | Tier | Notes |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | LilyGO T-Beam Supreme, L76K trim | ESP32-S3FN8, 8 MB, 8 MB PSRAM | L76K, `$PCAS` | 1.3 inch 128x64 OLED, no touch | yes | 18650 holder, cell extra | 37.12 USD [12] | T1 | Best runtime per euro. AXP2101, IMU, BME280, microSD. Bare board with SMA. |
-| LilyGO T-Beam Supreme, M10S trim | ESP32-S3FN8, 8 MB, 8 MB PSRAM | MAX-M10S, UBX | 1.3 inch 128x64 OLED, no touch | yes | 18650 holder, cell extra | 37.12 USD and up [12] | T1 | Better receiver, but it voids the `$PCAS` work. |
+| LilyGO T-Beam Supreme, M10S trim | ESP32-S3FN8, 8 MB, 8 MB PSRAM | MAX-M10S, UBX | 1.3 inch 128x64 OLED, no touch | yes | 18650 holder, cell extra | 50.04 USD [54] | T1 | Better receiver, but it needs a UBX driver. Plan 318 picks it as the next board. |
 | Heltec Wireless Tracker V2 | ESP32-S3FN8, 8 MB, no PSRAM | UC6580, `$CFG` | 0.96 inch 160x80 TFT, no touch | yes | LiPo connector, solar input | 26.90 USD, 34.95 EUR [13] | T1 | Cheapest ESP32-S3 with GNSS. Needs a new GNSS driver. |
 | Heltec WiFi LoRa 32 V4 plus GPS kit | ESP32-S3, 8 MB | GPS module in the kit, chip to verify | 0.96 inch OLED, no touch | yes | kit battery | about 30 EUR, verify [14] | T1 | Cheap OLED node. Verify the GNSS chip before assuming `$PCAS`. |
 | Heltec Mesh Node T114 plus GPS module | nRF52840, 1 MB, 256 KB RAM | L76K module, `$PCAS` | 1.14 inch 135x240 TFT, no touch | no | LiPo or solar | 17.90 to 33.70 USD, kit 56.90 USD [15] | T2 | 11 uA deep sleep. Display and GPS are options, not standard. |
-| Waveshare ESP32-S3-Touch-AMOLED-1.75-G | ESP32-S3R8, 16 MB, 8 MB PSRAM | LC76G, other | 1.75 inch 466x466 AMOLED, touch | yes | battery pads, cell extra | 39.99 USD, 46.04 EUR [16] | T1 | Round display. The GPS version does not fit the metal case variant. |
+| Waveshare ESP32-S3-Touch-AMOLED-1.75-G | ESP32-S3R8, 16 MB, 8 MB PSRAM | LC76G, `$PAIR`, over I2C [46] | 1.75 inch 466x466 AMOLED, touch | yes | battery pads, cell extra | 39.99 USD, 46.04 EUR [16] | T1 | Round display. GPS traffic on the shared I2C bus breaks touch [47]. This board has no metal-case variant; the aluminium-cased 1.75C is a separate product [16]. |
 | LilyGO T-Display P4 | ESP32-P4 plus ESP32-C6, 16 MB, 32 MB PSRAM | L76K, `$PCAS` | 4.1 inch AMOLED, touch | WiFi 6 through C6 | charge management, cell extra | 119.30 USD [17] | T1P | Best big-screen plus `$PCAS` combination. Also has LoRa and a camera. |
 | Elecrow ThinkNode M3 | nRF52840, 1 MB, 256 KB RAM | ATGM336H, `$PCAS` | none | no | 770 mAh | see vendor [6] | T2 | 64x64x10 mm, IP66. Pogo-pin USB. |
-| Elecrow ThinkNode M4 | nRF52840, 1 MB, 256 KB RAM | Multi-constellation, chip unnamed | none | no | 7000 mAh 18650 pack | about 69.90 EUR [18] | T2 | Power bank shape. The battery argument, not the software argument. |
+| Elecrow ThinkNode M4 | nRF52840, 1 MB, 256 KB RAM | L76K, `$PCAS`, plus LR1110 [49] | none | no | 7000 mAh 18650 pack | about 69.90 EUR [18] | T2 | Power bank shape. The battery argument, not the software argument. |
 | Elecrow ThinkNode M6 | nRF52840, 1 MB, 256 KB RAM | L76K, `$PCAS` | none | no | 6 W solar plus two 18650 cells | see vendor [6] | T2 | Outdoor node. Not a remote. |
 | Seeed SenseCAP T1000-E | nRF52840, 1 MB, 256 KB RAM | MediaTek AG3335, other | none | no | 700 mAh | 39.90 USD [19] | T2 | Credit-card tracker, IP65, pogo charging. |
 | Seeed Wio Tracker 1110 | nRF52840 plus LR1110 | LR1110 scan, other | none | no | LiPo connector | see vendor [20] | T2 | Development board. GNSS and WiFi are scans that need a position solver, not a standalone NMEA fix. |
@@ -291,7 +293,7 @@ These are common suggestions that fail a requirement.
 | Device | Why it is excluded |
 | :--- | :--- |
 | Heltec MeshPocket | nRF52840, e-paper and a large power bank, but no GNSS. |
-| M5Stack Cardputer and Cardputer Adv | No onboard GNSS. A Grove unit adds it. |
+| M5Stack Cardputer and Cardputer Adv | No onboard GNSS. A Grove unit adds it. The original Cardputer v1.1 is end of life [53]. |
 | M5Stack Tab5 without a GPS unit | No onboard GNSS. It is a P4 tablet, not a tracker. |
 | Waveshare ESP32-P4-WIFI6 boards without a GPS module | No onboard GNSS. Add one over UART. |
 | Elecrow CrowPanel | No onboard GNSS. Add one over UART. |
@@ -306,9 +308,7 @@ These decide whether the hardware works in the hand, not just on the datasheet.
 
 - GNSS antenna. Keep the patch or the active antenna at least 20 mm from the
   2.4 GHz antenna and from the battery. A ground plane of 40 by 40 mm or more
-  is worth more than a receiver upgrade. A metal case blocks GNSS. The
-  Waveshare AMOLED GPS version does not fit its metal case because the module
-  is taller, which is a physical fit issue, not an RF one.
+  is worth more than a receiver upgrade. A metal case blocks GNSS.
 - Antenna connectors. An SMA or U.FL connector lets the antenna move away from
   the electronics. A board with a built-in patch and no connector is a closed
   design decision.
@@ -340,6 +340,8 @@ These decide whether the hardware works in the hand, not just on the datasheet.
   receiver and a new driver.
 - An external antenna connector matters more than the receiver model in a
   camera bag. The T-Beam and Heltec boards win there.
+- The M5StickC Plus2 and the original Cardputer v1.1 are end of life [53].
+  The Plus2 stays a supported furble board, but buy a StickS3 instead.
 - EU stock changes weekly. BerryBase, OpenELAB, TinyTronics, Hexaspot and
   Passion Radio were the useful shops at the check date. Vendor-direct
   shipping from China is usually cheaper and slower.
@@ -457,3 +459,31 @@ Fetched on 2026-11-01. Prices are from the vendor page unless marked.
 44. Bangle.js 2 specifications, GPS and current figures:
     https://www.espruino.com/Bangle.js2 and
     https://shop.espruino.com/banglejs2
+45. ThinkNode M5 v2.0 and M9 use the Airoha AG3352 (`$PAIR`); the M5 v2.0 GPS
+    switch does not cut power:
+    https://github.com/meshtastic/firmware/pull/12113 and
+    https://github.com/sjmaple/cr-firmware/pull/8 and
+    https://github.com/meshcore-dev/MeshCore/pull/3748
+46. Quectel LC76G command set and interfaces, and the Waveshare 1.75-G GPS
+    wiring:
+    https://www.waveshare.com/wiki/LC76G_GNSS_Module and
+    https://www.quectel.com/content/uploads/2023/05/Quectel_LC76G_Series_Hardware_Design_V1.3.pdf
+    and https://files.waveshare.com/wiki/ESP32-S3-Touch-AMOLED-1.75/ESP32-S3-Touch-AMOLED-1.75.pdf
+47. Waveshare 1.75-G GPS on I2C breaks touch, user reports:
+    https://github.com/waveshareteam/ESP32-S3-Touch-AMOLED-1.75/issues/7 and
+    https://github.com/waveshareteam/ESP32-S3-Touch-AMOLED-1.75/issues/8
+48. LilyGO T-Deck Plus variants, L76K trim 61.34 USD:
+    https://lilygo.cc/products/t-deck-plus-1.json
+49. Meshtastic nRF52840 variants (ThinkNode M1 buttons, ThinkNode M4 GNSS):
+    https://github.com/meshtastic/firmware/tree/develop/variants/nrf52840
+50. LilyGO T-Echo flash and RAM:
+    https://github.com/Xinyuan-LilyGO/T-Echo
+51. RAK WisMesh Pocket GNSS (ZOE-M8Q on RAK19026):
+    https://docs.rakwireless.com/product-categories/meshtastic/wismesh-base/datasheet-vc/
+52. M5Stack Core2 v1.1 ILI9342E panel change and Core2 v1.3:
+    https://docs.m5stack.com/en/core/Core2%20v1.1 and
+    https://docs.m5stack.com/en/core/Core2_v1.3
+53. M5Stack shop product status (StickC Plus2 and Cardputer v1.1 end of life):
+    https://shop.m5stack.com
+54. LilyGO T-Beam Supreme variants, L76K 37.12 USD and u-blox 50.04 USD:
+    https://lilygo.cc/products/t-beam-supreme.json
