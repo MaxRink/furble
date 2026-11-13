@@ -83,12 +83,15 @@ jobs:
       # llvm-18 carries llvm-profdata and llvm-cov. Their profile format must
       # match the clang that instrumented the binaries, which is why both come
       # from the same pinned major. The version print is the record of what
-      # produced the numbers in the artifact.
+      # produced the numbers in the artifact. libclang-rt-18-dev holds the
+      # profile and sanitizer runtimes; clang-18 only recommends it, so
+      # --no-install-recommends drops it unless it is named here.
       - name: Install SDL2 and the pinned Clang and LLVM
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y \
-            clang-18 llvm-18 libsdl2-dev
+            clang-18 llvm-18 libclang-rt-18-dev libsdl2-dev
+          test -f "$(clang-18 -print-file-name=libclang_rt.profile-x86_64.a)"
           "$CXX" --version
           "$LLVM_COV" --version
 

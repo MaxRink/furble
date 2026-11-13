@@ -1116,3 +1116,48 @@ branch changes, under the same directories and suffixes as the CI step.
 formatting failure before merge. A missing or non-21 clang-format fails the
 gate with the install command. A test pins its directory and suffix list to
 the CI step.
+
+## Fix: the coverage job lost its compiler-rt runtimes
+
+`Coverage floor` failed on every master run from `e8ce6184`. The host configure
+first stopped at the fuzz sanitizer probe from PR 12 (#437). With that probe
+bypassed, the link showed the real cause: `libclang_rt.profile` and the ASan
+runtimes are missing from `/usr/lib/llvm-18`. The workflow installs
+`clang-18` with `--no-install-recommends`, and current Ubuntu packaging moves
+compiler-rt into `libclang-rt-18-dev`, which `clang-18` only recommends. The
+probe failure was a symptom, not a reason to build unsanitized.
+
+`coverage.yml` now installs `libclang-rt-18-dev` and checks that the profile
+runtime exists before building. The pinned clang major and the floor are
+unchanged. `docs/coverage.md` lists the package for local runs.
+
+With the runtimes back, the run reached the profile check and found 17 host
+tests that wrote no raw profile, all `boundary-*`. `tests/host/CMakeLists.txt`
+gives each test its own `LLVM_PROFILE_FILE` in a loop over the tests already
+registered, and the boundary tests were added below that loop. The job had
+not run on master since September, so nothing noticed. The loop now sits last
+in the file and appends to each test's environment, so
+`boundary-companion-gatt` keeps its `FURBLE_SIM_PREFS`. A test fails if any
+`add_test` follows the loop.
+
+The next run left one test, `boundary-headless-service`, with an empty raw
+profile. It runs the production `app_main` and must leave from inside the
+never-returning service loop, so it calls `std::_Exit`, which skips the exit
+handler that writes the profile. Under coverage, CMake now defines
+`FURBLE_HOST_COVERAGE`, and the test calls `__llvm_profile_write_file()`
+before `std::_Exit`. A local coverage build writes a 41 KB profile for it.
+
+The run after that merged no profiles: `boundary-sd-full` wrote a truncated
+one. The test simulates a full card with `RLIMIT_FSIZE` and set both the soft
+and the hard limit. An unprivileged process cannot raise a hard limit again,
+so its `(void)` restore failed silently and the profile written at exit was
+cut off. The test now lowers only the soft limit, restores the original pair
+and checks that the restore succeeds.
+
+With every profile merging, the floor check ran for the first time since
+September and failed one file: `src/FurbleConsole.cpp` at 88.64% against its
+89.08% floor. `crash last` with a retained record had never been tested, so
+the lines that print it, including the failed-allocation fields from PR 5,
+were uncovered. The console stub now lets a test install a record, and the
+console test checks every printed field with and without a failed
+allocation. The console reaches 89.26% locally. The floor is not lowered.

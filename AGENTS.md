@@ -115,7 +115,9 @@ Firmware line coverage is measured by `tools/coverage.py` and gated against
 `tests/coverage_floor.json`. Coverage instrumentation is opt-in in both build
 entry points (`-DFURBLE_COVERAGE=ON` for the host harness,
 `FURBLE_SIM_COVERAGE=1` for `sim/build.sh`); never make it a default. Lowering a
-floor needs a stated reason in the PR.
+floor needs a stated reason in the PR. The coverage job installs
+`libclang-rt-18-dev` by name; `clang-18` only recommends it, and without it
+neither the profile nor the sanitizer runtimes link.
 Manual PlatformIO dispatches must run the complete firmware matrix. Do not
 derive a comparison range from repository root commits.
 Gate board-specific ESP-IDF component dependencies with a CMake profile

@@ -243,7 +243,9 @@ CLAUDE.md whose directory it touches.
 - Only Fujifilm cameras are available. Other vendors get code review plus the
   FauxNY test camera and are declared untested in the PR.
 - `tools/coverage.py` measures host and simulator line coverage and enforces
-  `tests/coverage_floor.json` in CI. See `docs/coverage.md`.
+  `tests/coverage_floor.json` in CI. See `docs/coverage.md`. It needs the
+  compiler-rt profile runtime; on Ubuntu install `libclang-rt-18-dev`
+  explicitly, because `clang-18` only recommends it.
 - The built simulator preference ownership gate is
   `sim/scripts/check-doc-tokens.sh` after changing scenario seeds; the existing
 `sim-e2e` job runs it with `tools/check_sim_scenarios.py`. The
