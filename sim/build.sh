@@ -468,6 +468,22 @@ echo "[LD]  sim/build/furble-sim"
 LINK_FLAGS="-rdynamic -L/opt/homebrew/lib -L/usr/local/lib -lSDL2 -lpthread $MQTT_LINK_FLAGS"
 if [ "$(uname -s)" = "Darwin" ]; then
   LINK_FLAGS="$LINK_FLAGS -framework Cocoa"
+  # Homebrew SDL2 is sdl2-compat, which dlopens "libSDL3.dylib" and finds it
+  # through its own LC_RPATH. The ASan runtime intercepts dlopen, so the search
+  # uses the executable's rpaths instead, SDL3 is not found, and sdl2-compat
+  # raises a modal "Failed loading SDL3 library" dialog and aborts. Give a
+  # sanitized binary the SDL3 directory itself.
+  if [ -n "$SANITIZE" ]; then
+    SDL3_LIBDIR=$(pkg-config --variable=libdir sdl3 2>/dev/null || true)
+    if [ -z "$SDL3_LIBDIR" ] && command -v brew >/dev/null 2>&1; then
+      SDL3_LIBDIR="$(brew --prefix sdl3 2>/dev/null || true)/lib"
+    fi
+    if [ -f "$SDL3_LIBDIR/libSDL3.dylib" ]; then
+      LINK_FLAGS="$LINK_FLAGS -Wl,-rpath,$SDL3_LIBDIR"
+    else
+      echo "warning: SDL3 not found; a sanitized sdl2-compat binary cannot start" >&2
+    fi
+  fi
 fi
 
 "$CXX" $CXXFLAGS $COVERAGE_LINK_FLAGS $OBJECTS -o "$BUILD_DIR/furble-sim" $LINK_FLAGS
