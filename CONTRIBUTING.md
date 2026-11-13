@@ -385,7 +385,9 @@ attempt to infer changed paths without a pull request or push comparison base.
   `python3 tools/coverage.py`, and CI holds it to the per-stack, union and
   per-file minimums in `tests/coverage_floor.json`. A change that raises
   coverage should raise the floor in the same commit with
-  `python3 tools/coverage.py --ratchet`. See `docs/coverage.md`.
+  `python3 tools/coverage.py --ratchet`. See `docs/coverage.md`. On Ubuntu,
+  install `libclang-rt-18-dev` next to `clang-18`; it holds the profile
+  runtime and is only a recommended dependency.
 - The Apple workflow runs unsigned iOS simulator and macOS tests. After the
   macOS tests pass, it uploads `furble-companion-macos-debug-unsigned`, which
   contains the unsigned Debug app, a SHA-256 checksum, and source/Xcode

@@ -241,3 +241,9 @@ branch `fix/stack-budget-review`.
 | # | Finding | Resolution | Evidence |
 | ---: | :--- | :--- | :--- |
 | 1 | #447 review: the sync test only checked that the checker's directories and suffixes appear in `main.yml`, so a CI list that grows would pass while the checker skips files. | Fixed. The test parses the `Check clang-format` step and asserts the directory tuple and the suffix set are equal in both directions. A mutant with an extra `*.ipp` suffix in the step is detected. | `tests/test_check_format.py` |
+
+## Follow-up (#448, `fix/coverage-unsanitized-fuzz`)
+
+| # | Finding | Resolution | Evidence |
+| ---: | :--- | :--- | :--- |
+| 1 | #448 review on `87b14f46`: `CLAUDE.md` described the `FURBLE_FUZZ_ALLOW_UNSANITIZED` opt-out in `tools/coverage.py`, but `AGENTS.md` did not. | Superseded. The first CI run on that head showed `libclang_rt.profile` itself missing, so the opt-out was a symptom fix. The branch now installs `libclang-rt-18-dev` instead and drops the opt-out and its docs. The new prerequisite is documented in `CLAUDE.md`, `AGENTS.md`, `CONTRIBUTING.md` and `docs/coverage.md`. | `.github/workflows/coverage.yml`, run 43496814945 |

@@ -1116,3 +1116,17 @@ branch changes, under the same directories and suffixes as the CI step.
 formatting failure before merge. A missing or non-21 clang-format fails the
 gate with the install command. A test pins its directory and suffix list to
 the CI step.
+
+## Fix: the coverage job lost its compiler-rt runtimes
+
+`Coverage floor` failed on every master run from `e8ce6184`. The host configure
+first stopped at the fuzz sanitizer probe from PR 12 (#437). With that probe
+bypassed, the link showed the real cause: `libclang_rt.profile` and the ASan
+runtimes are missing from `/usr/lib/llvm-18`. The workflow installs
+`clang-18` with `--no-install-recommends`, and current Ubuntu packaging moves
+compiler-rt into `libclang-rt-18-dev`, which `clang-18` only recommends. The
+probe failure was a symptom, not a reason to build unsanitized.
+
+`coverage.yml` now installs `libclang-rt-18-dev` and checks that the profile
+runtime exists before building. The pinned clang major and the floor are
+unchanged. `docs/coverage.md` lists the package for local runs.
