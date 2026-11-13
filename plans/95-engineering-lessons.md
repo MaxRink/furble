@@ -97,6 +97,22 @@ The root CLAUDE.md lists the short form of these. The detail lives here.
 - The sim had a `Preferences::begin` data race: `handleFor` touched a static map
   before taking `values_mutex`, which caused intermittent SIGSEGV in the
   ui-screenshots capture. The fix widened the lock to cover the map access.
+- Never grow the process environment while another thread can call getenv.
+  glibc walks `environ` without a lock, and a setenv that adds a variable
+  reallocates the array and frees the old one under that walk. The sim's SDL
+  main loop calls getenv thousands of times a second, so a growing setenv on
+  the simulator thread is a use-after-free that shows up as a rare SIGSEGV
+  under load (issue #283). A replace is one pointer store and is safe. The
+  coverage runtime's own `__LLVM_PROFILE_RT_INIT_ONCE` setenv is enough to
+  make the next growth a freeing one. Check every caller, firmware included:
+  production Timezone's `setenv("TZ")` reintroduced the race two months after
+  the sim's own calls were moved.
+- On macOS, Homebrew SDL2 is sdl2-compat. It dlopens SDL3 through its own
+  rpath, and the ASan runtime's dlopen interceptor hides that rpath. A
+  sanitized sim then fails to find SDL3, raises a modal desktop dialog per
+  process and aborts. `sim/build.sh` links the SDL3 directory as an rpath into
+  sanitized Darwin builds. Check `otool -l` for it, and prove SDL loads with a
+  single process before any parallel sanitized run on a shared desktop.
 - GitHub Actions cache is branch-scoped. A `pull_request` run cannot restore a
   cache written by a master push, even through a `restore-keys` prefix. For a
   cross-branch baseline, download an artifact from the latest successful master

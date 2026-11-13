@@ -699,10 +699,9 @@ residual items below; it is not an unmerged implementation plan.
 Fatal diagnostics are merged: argument and scenario parsing are covered, every
 registered simulator thread gets an alternate signal stack, handlers use
 `SA_ONSTACK`, and the handler prints the phase and scenario line before a
-best-effort unwinder. This is observability only. The restarted-re-exec SIGSEGV
-has not been reproduced on demand and its root cause is not established. The
-issue stays open as a sighting tracker; the next occurrence should now leave a
-dump. True stack-overflow coverage remains future work.
+best-effort unwinder. True stack-overflow coverage remains future work. The
+root cause is now identified as an environment use-after-free; see the
+2026-11-13 section below.
 
 ### Issue #289 follow-ups
 
@@ -711,5 +710,141 @@ dump. True stack-overflow coverage remains future work.
 | 1. Comment rot naming plan 158 Phase 3 | Done. `sim/freertos.cpp` and `sim/scripts/run-fuzz.sh` now describe the scheduler-visible mutex and the remaining plain host locks. |
 | 2. Per-PID preferences leak on abnormal exit | Done. Generated stores have an ownership marker, same-PID restart adoption, and orderly cleanup. `preparePreferences()` now sweeps `.pio` and removes a store only when its encoded pid is dead; a live, self, or foreign-owner store is kept. `preferences-sweep` covers the dead, live, self, and unrelated cases. |
 | 3. Crash handler hardening | Done for alt-stack, early installation, and normal-context unwinder warm-up. Stack-exhaustion coverage and formal async-signal safety remain open. |
-| 4. 50-run load proof on the restored bounds | Partial. The FauxNY 24000 ms leg has the 50-run proof. The Secure 31000 ms and reconnect 20000 ms legs still rest on single measurements; issue #289 records 1-in-24 and 4-in-5 failures under load. They need the same 50-run treatment or a wider measured margin before being called stable. |
+| 4. 50-run load proof on the restored bounds | Measured 2026-11-13, see below. 266 completed runs across the two legs and three panels, every one inside its bound with at least 39 percent headroom. 43 to 45 runs completed per cell rather than 50, because 34 runs stalled in boot on host filesystem stalls before their first scenario step. |
 | 5. Fairness and waiter-state dump | Done. A task blocked on a scheduler-visible mutex reports `wait=mutex` in the task dump, and `sim-scheduler` checks the dump plus a `try_lock()` during the reservation-before-wake gap; the fast path must fail rather than starve the granted waiter. |
+
+## Issue #283 root cause and the #289 load proof, 2026-11-13
+
+### #283: a growing setenv frees `environ` under the SDL loop
+
+glibc's `getenv` walks `environ` without a lock. A `setenv` that adds a
+variable reallocates that array. The first growth in a process copies the
+initial stack array and frees nothing. Every later growth calls `realloc`, which
+frees the old array whenever it moves. The SDL main loop on the main thread
+calls `getenv` for SDL hints thousands of times a second. A growth on another
+thread can therefore free the array that walk is reading. The freed chunk's
+first words become tcache pointers, and dereferencing them is a SIGSEGV. The
+window is one short array walk per call, so it takes a preempted walk on a
+loaded host to hit it. That fits a single shot under parallel workers that
+goes green on rerun.
+
+Measured with an `LD_PRELOAD` probe that counts `getenv` calls after
+`SDL_Init` and reports every `setenv` with its thread. The runs were in an
+ubuntu:24.04 container (glibc 2.39, clang 18, arm64), against
+`bughunt/power-off-state-matrix.txt` on the 320x240 build:
+
+| Build | First boot, simulator thread, SDL live | Main thread getenv calls before the last growth |
+| --- | --- | --- |
+| pre-fix `8a94d2cb`, sim-e2e shape | `setenv(FURBLE_SIM_PREFS)` adds, then `setenv(FURBLE_SIM_RESTART_STEP)` adds | 35,971 |
+| pre-fix `8a94d2cb`, coverage build, caller `FURBLE_SIM_PREFS` | the coverage runtime's own `setenv(__LLVM_PROFILE_RT_INIT_ONCE)` adds on the main thread before SDL, then `setenv(FURBLE_SIM_RESTART_STEP)` adds | 23,584 |
+| master `e66e8807`, both shapes | `setenv(TZ)` adds, from production `Timezone`, after the preferences or coverage-runtime growth on the main thread | 24, and the loop keeps calling |
+
+Both CI shapes on the pre-fix tree therefore had exactly one freeing growth, at
+the first `restart` step, on the simulator thread, with SDL live. A second
+preload that logs whether `environ` moved recorded `moved` for that
+`FURBLE_SIM_RESTART_STEP` growth on 3 of 3 pre-fix runs. That is the step the
+first sighting named. `a57e77e7` (2026-09-08) moved the Furble `setenv`
+calls out of the SDL window. All three sightings were on 2026-09-06 heads that
+predate it (`188b603c`, `cf5ec483`, `3c87f819`), and there has been no
+sighting since. The coverage runtime explains the two coverage sightings: with
+a caller-owned `FURBLE_SIM_PREFS`, the Furble code alone grew the environment
+only once, which frees nothing.
+
+Master still had one instance of the race. Production `Timezone` (`f10b35ef`,
+2026-11-04) calls `setenv("TZ")` from the simulator thread at boot. `TZ` is
+normally unset on CI runners, so that call is a growth. In both shapes it is a freeing
+one, because the preferences or coverage-runtime growth comes first. `main()`
+now creates `TZ` with `setenv("TZ", "UTC0", 0)` before SDL starts. Every later
+write, at boot or on a zone change, is a pointer-sized in-place replace. A
+caller's `TZ` is kept, and the firmware replaces it with the selected zone at
+boot either way.
+
+The regression is the existing preload guard, widened and wired into CI.
+`sim/env_mutation_guard.c` gains a `growth` target that rejects any `setenv`
+that adds a variable and any `unsetenv`, from any caller, while SDL is
+initialized. It prints an armed line so a guard that never loaded cannot pass.
+`sim/scripts/run-env-order.sh` runs smoke and `restart-persist.txt` under
+every target with `TZ` unset. The old-binary legs are now optional. The
+sim-e2e S3 job runs it.
+
+| Guard run, Linux container | Result |
+| --- | --- |
+| master `e66e8807` 320x240, `growth`, smoke | status 86, `sim env guard: setenv(TZ) after SDL initialization` |
+| this branch 135x240, all targets, smoke and `restart-persist.txt` | passed |
+| this branch with `FURBLE_SIM_ENV_GUARD_OLD_BIN` = `8a94d2cb` | passed, old binary rejected at both named targets |
+
+The crash itself was not reproduced on demand. What was run:
+
+| Runs | Build | Shape | Load | SIGSEGV |
+| --- | --- | --- | --- | --- |
+| 160 `power-off-state-matrix`, 8 workers | pre-fix `8a94d2cb` 320x240, Linux | sim-e2e | container loadavg 5 to 8 | 0 |
+| 1500 one-restart probe (`wait 300`, `restart`, `wait 10`), 16 workers, plus six concurrent builds | pre-fix `8a94d2cb` 320x240, Linux | sim-e2e | container loadavg 17 to 48 | 0 |
+| 3 one-restart runs with `getenv` stretched to 50 us per entry on the main thread | pre-fix `8a94d2cb` 320x240, Linux | sim-e2e | as above | 0 |
+
+The stretch preload walks `environ` itself. The freed chunk loses only its
+first two slots until another allocation reuses it, so a wider walk still
+rarely reads a clobbered slot. A first 1500-run attempt is discarded: it ran
+with its working directory on the host bind mount, and all 200 of its failures
+were stalls in `open()` of the preferences store for the full 120 s watchdog
+bound, none a crash. A macOS ASan batch of 120 runs is also discarded. All
+120 ended in SIGABRT from sdl2-compat, or were killed while its dialog was up,
+before reaching a scenario step. That is the sdl2-compat trap below. The runs
+were stopped because each failure raised a desktop dialog.
+
+So the mechanism is shown directly: the free happened on every probed pre-fix
+run, SDL calls `getenv` constantly, and glibc's `getenv` takes no lock. Its
+timing matches every sighting, and the one surviving instance is now fixed and
+gated.
+The crash rate per run is too low to reproduce here. Reopen #283 if a
+`SIM CRASH` dump appears on a head that contains this change. Treat a dump
+whose faulting frame is in `getenv`, `secure_getenv` or SDL's hint lookup as
+this class, and look for a new environment mutation the guard does not
+exercise.
+
+### sdl2-compat and ASan on macOS
+
+Homebrew SDL2 is now sdl2-compat. It dlopens `libSDL3.dylib` and finds it
+through its own `LC_RPATH`. The ASan runtime intercepts `dlopen`, so the
+search runs with the executable's and the ASan runtime's rpaths instead.
+SDL3 is not found, and sdl2-compat shows a modal "Fatal error! Cannot
+continue! Failed loading SDL3 library" dialog and aborts. A five-line `dlopen`
+probe reproduces this without SDL: the leaf lookup fails under ASan and
+succeeds once linked with `-Wl,-rpath` to the SDL3 directory. `sim/build.sh`
+now adds that rpath to sanitized Darwin links, resolved from
+`pkg-config --variable=libdir sdl3` with `brew --prefix sdl3` as the
+fallback. It was verified with `otool -l` only; no simulator was launched on
+the host.
+
+### #289 item 4: Secure 31000 ms and reconnect 20000 ms under load
+
+Plain builds of master `e66e8807`, macOS 12-core host, three panels. Each
+scenario ran as an unchanged copy with `print clock.ms` added before its final
+`assert_max clock.ms`, 50 runs per cell, three workers per cell, six cells at
+once. 36 spin loops ran for the first part. Other agents' builds and a Linux
+container build shared the host throughout. The sampled 1-minute loadavg was
+36 to 142, mean about 80.
+
+| Scenario | Panel | Completed | Bound failures | clock.ms min | median | p95 | max |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `cancel-sweep-fuji-secure-ui`, bound 31000 | 135x240 | 43 | 0 | 18560 | 18575 | 18785 | 18875 |
+| | 80x160 | 45 | 0 | 18560 | 18610 | 18800 | 18835 |
+| | 320x240 | 45 | 0 | 18560 | 18610 | 18725 | 18815 |
+| `cancel-sweep-reconnect-entry`, bound 20000 | 135x240 | 44 | 0 | 7120 | 7165 | 7285 | 7485 |
+| | 80x160 | 45 | 0 | 7120 | 7160 | 7275 | 7480 |
+| | 320x240 | 44 | 0 | 7130 | 7190 | 7325 | 7655 |
+
+The other 34 runs exited 3 on the stall watchdog with `phase=settings` and
+virtual clock 0. They stopped in boot before any scenario step, blocked in a
+filesystem call. The same stall hit the container's bind-mounted directory in
+the same window. They say nothing about the bound and are not counted.
+Completed host time was 112 to 128 s median per run, 210 s at worst.
+
+Every completed run is inside its bound. The worst Secure run leaves 12,125 ms
+(39 percent) of headroom and the worst reconnect run 12,345 ms (62 percent).
+Both legs are much faster than the single measurements this plan recorded at
+restore time (28430 to 28545 and 17460 to 17965). The issue #289 failures
+(39045 on Secure in 1 of 24 runs, and 1 failure in 5 runs on each leg) were
+on master `7e3e0d8d`, before the queued-waiter runtime `df40247f` landed. No bound was changed. The cells fall short of 50
+completed runs by 5 to 7 each, and those were boot stalls rather than bound
+failures. The spread across 266 runs at loadavg 80 is 315 ms on Secure and
+535 ms on reconnect. That is the load independence the bound needs.

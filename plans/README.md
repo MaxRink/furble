@@ -29,8 +29,8 @@ state and the remaining gate; the issue stays open until that gate lands.
 
 | Issue | Plan | Current state |
 | --- | --- | --- |
-| #283 | [173](173-sim-scheduler-visibility.md) | Diagnostics merged; root cause of the restart SIGSEGV still unknown. Tracker stays open. |
-| #289 | [173](173-sim-scheduler-visibility.md) | 4 of 5 items done. The Secure/reconnect 50-run load proof remains. |
+| #283 | [173](173-sim-scheduler-visibility.md) | Root cause identified: a growing `setenv` freed `environ` under the SDL loop's `getenv`. `a57e77e7` fixed the Furble calls; the remaining `TZ` growth is fixed and gated in sim-e2e. Not reproduced on demand. Ready to close; reopen on a new `SIM CRASH` dump. |
+| #289 | [173](173-sim-scheduler-visibility.md) | All items done. Load proof at loadavg about 80: 266 completed runs, 43 to 45 per cell, none over its bound, max 18875/31000 and 7655/20000. Ready to close if 43 to 45 completed runs per cell is accepted. |
 | #381 | [302](302-companion-restart-reconnect.md) | Open. Long USB console runs reset into the ROM USB-JTAG unit. The 5 s command timeout and monitor fixes are merged; a UART0 panic capture and a host-side recovery test remain. |
 | #390 | [304](304-webui-stick-memory.md) | Open. The WebUI now fails closed on the StickS3 instead of boot-looping. A support claim still needs the hardware memory gate, a TLS handshake, a settings write and a soak. |
 
