@@ -16,6 +16,7 @@
 
 #include <mosquitto.h>
 
+#include "heap_count.h"
 #include "heap_model.h"
 
 namespace {
@@ -275,6 +276,12 @@ extern "C" esp_mqtt_client_handle_t esp_mqtt_client_init(const esp_mqtt_client_c
   if (config == nullptr || config->broker.address.uri == nullptr) {
     return nullptr;
   }
+  // The adapter object, its strings and its worker thread are host transport
+  // state, not esp-mqtt's device memory. Their sizes follow the host C++
+  // library: libstdc++ and libc++ disagree on std::string, std::mutex and
+  // pthread sizes, so counting them made heap.free differ by platform. The
+  // device client is modelled by the task stack charged in start().
+  const Furble::Sim::HostAllocScope scope;
 
   static std::once_flag library_once;
   std::call_once(library_once, initialiseMosquitto);
@@ -368,6 +375,8 @@ extern "C" esp_err_t esp_mqtt_client_start(esp_mqtt_client_handle_t client) {
   if (client == nullptr) {
     return ESP_FAIL;
   }
+  // The reconnect worker std::thread is host transport state; see init().
+  const Furble::Sim::HostAllocScope scope;
   BrokerAddress address;
   if (!parsePlainUri(client->uri.c_str(), address)) {
     return ESP_FAIL;
