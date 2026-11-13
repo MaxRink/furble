@@ -93,6 +93,16 @@ device inert until the user runs `ota update` or publishes to `cmd/ota`.
 - **QoS-1 redelivery of `cmd/ota`.** A duplicated OTA command must not start two
   downloads. The state machine rejects a `begin` while already running and the
   topic handler is idempotent on the URL. Assert this in the mock test.
+- **No image is ever marked valid (latent today).** Every OTA-capable
+  sdkconfig sets `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y`, and nothing calls
+  `esp_ota_mark_app_valid_cancel_rollback()`. ESP-IDF marks a still-pending
+  image ABORTED on its second boot and reverts to the old slot
+  ([esp_ota_ops.c](https://github.com/espressif/esp-idf/blob/v5.5.1/components/app_update/esp_ota_ops.c)).
+  No production path calls the partition sink yet, so nothing is affected
+  today. This delivery must wire the plan 125 boot-health evaluator to the
+  mark-valid API before it links the sink, or a successful update silently
+  reverts after the second reboot. The hardware check is OTA, reboot twice,
+  then read `esp_ota_get_running_partition()`.
 - **Rollback masks a broken release.** `ota status` and the `state/ota` topic
   must report a rollback loudly, per `plans/34`.
 - **Pages CDN is a runtime dependency.** `OTA_URL` being configurable is the

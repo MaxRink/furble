@@ -432,3 +432,21 @@ watchdog timeout and feed period live in the dependency-light
 `include/FurbleWatchdog.h`, which is consumed by the firmware, simulator, and
 host test so this safety conclusion cannot drift from the armed PM1 setting.
 The longer timeout still needs a hardware-backed boot and recovery test.
+
+Latent rollback finding (2026-11-13). Every sdkconfig that builds an OTA
+image (the six release profiles and `esp32-s3-headless`) sets
+`CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y`, and nothing in `src/`,
+`include/`, `lib/` or `components/` calls
+`esp_ota_mark_app_valid_cancel_rollback()` (checked with grep). In ESP-IDF,
+an image selected by `esp_ota_set_boot_partition()` from a rollback-enabled
+app boots once as PENDING_VERIFY and is marked ABORTED on the next boot if
+it was never marked valid, so the bootloader reverts to the other slot
+([esp_ota_ops.c](https://github.com/espressif/esp-idf/blob/v5.5.1/components/app_update/esp_ota_ops.c),
+[bootloader_utility.c](https://github.com/espressif/esp-idf/blob/v5.5.1/components/bootloader_support/src/bootloader_utility.c)).
+Today no production path calls the OTA partition sink: only
+`src/FurbleOTAPartitionSink*.cpp` and `include/FurbleOTAPartitionAdapters.h`
+reference it, and `esp_ota_set_boot_partition()` appears only in the ESP and
+Arduino sinks. So the bug is latent. Any future OTA wiring must run this
+health evaluator and call the mark-valid API after a healthy boot, or every
+updated image reverts on its second reboot. Plan 115 and plan 319 depend on
+it.
