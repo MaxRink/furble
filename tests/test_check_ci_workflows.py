@@ -2,6 +2,7 @@
 
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
+import json
 import re
 import shutil
 import sys
@@ -442,6 +443,48 @@ jobs:
     self.assertIn("PlatformIO CI mandatory Core OTA debug profile is incorrect", errors)
     self.assertIn("PlatformIO CI Core OTA debug profile must not be optional", errors)
     self.assertIn("PlatformIO CI firmware build must fail strictly", errors)
+
+
+  def _run_discover(self, workflow_text: str | None = None) -> list[str]:
+    """Run main.yml's discover step on the real platformio.ini."""
+
+    document = (
+        CHECKER._load_text(workflow_text)
+        if workflow_text is not None
+        else CHECKER._load_workflow(ROOT / ".github" / "workflows" / "main.yml")
+    )
+    job = document["jobs"]["discover"]
+    step = next(s for s in job["steps"] if s.get("id") == "environments")
+    with tempfile.TemporaryDirectory() as scratch:
+      shutil.copy(ROOT / "platformio.ini", Path(scratch) / "platformio.ini")
+      output = Path(scratch) / "github_output"
+      env = {"PATH": "/usr/bin:/bin", "GITHUB_OUTPUT": str(output)}
+      env.update({key: str(value) for key, value in job["env"].items()})
+      subprocess.run(
+          ["bash", "-c", step["run"]], cwd=scratch, env=env, check=True,
+          capture_output=True, text=True,
+      )
+      line = output.read_text(encoding="utf-8").strip()
+    self.assertTrue(line.startswith("matrix="), line)
+    return json.loads(line.removeprefix("matrix="))["platform"]
+
+  def test_discover_emits_both_mandatory_core_debug_profiles(self):
+    platforms = self._run_discover()
+    self.assertIn("m5stack-core-usb-debug", platforms)
+    self.assertIn("m5stack-core-debug", platforms)
+    for board in ("m5stick-c", "m5stick-c-plus", "m5stack-core2",
+                  "m5stick-s3", "waveshare-s3-eth"):
+      self.assertIn(board, platforms)
+      self.assertIn(f"{board}-debug", platforms)
+    self.assertEqual(len(platforms), len(set(platforms)))
+
+  def test_discover_test_catches_a_dropped_core_ota_profile(self):
+    text = (ROOT / ".github" / "workflows" / "main.yml").read_text(encoding="utf-8")
+    dropped = text.replace(
+        ',\n                   os.environ["MANDATORY_CORE_OTA_DEBUG"]]', "]", 1
+    )
+    self.assertNotEqual(dropped, text)
+    self.assertNotIn("m5stack-core-debug", self._run_discover(dropped))
 
 
 if __name__ == "__main__":

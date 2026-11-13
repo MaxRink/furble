@@ -646,7 +646,8 @@ from outgrowing the slot again unnoticed. `main.yml` now builds it on every
 firmware change next to `m5stack-core-usb-debug`, with the same strict stack
 and size budget steps, and the `core_ota_debug` input is gone.
 `tools/check_ci_workflows.py` requires both profiles in the discover env and
-rejects an opt-in input or an optional Core debug entry. Release and web
+rejects an opt-in input or an optional Core debug entry. Tests run the real discover
+step and assert its matrix holds both profiles. Release and web
 installer matrices are unchanged.
 
 ## PR 14: push hooks
