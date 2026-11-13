@@ -567,7 +567,10 @@ configure a network for is not useful.
 ### Where the firmware comes from
 
 Two candidate sources exist and only one of them is pleasant. Both were checked
-live.
+live against upstream releases on 2026-08-16. The fork has no firmware
+releases yet and dropped the upstream Cloudflare deploy (see
+`.github/workflows/release.yml`), so its installer and manifests are on GitHub
+Pages at https://maxrink.github.io/furble/.
 
 **GitHub releases.** `https://github.com/MaxRink/furble/releases/download/<tag>/<asset>`
 returns a 302 to `release-assets.githubusercontent.com` with a signed URL
