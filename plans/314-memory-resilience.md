@@ -1063,3 +1063,21 @@ runs them at the top of its loop and before each retry. A newer save or erase
 cancels the older one, so only the latest outcome is persisted. A host test
 proves `GOT_IP` opens no NVS and starts no SNTP, and that the worker then does
 both exactly once.
+
+## Fix: no SDL3 dialog from the macOS simulator
+
+Six simulator runs on macOS stopped on a blocking "Fatal error! Cannot
+continue! Failed loading SDL3 library." dialog. Homebrew's `sdl2` 2.32 is
+sdl2-compat. Its library initializer dlopens SDL3 through its own rpath and
+shows that dialog, then aborts, when the load fails. No environment variable
+suppresses it, and a headless gate run then hangs on a GUI window until its
+timeout. The failing binaries were already deleted, so the load failure could
+not be reproduced; SDL3 resolves in every normal run.
+
+The fix does not depend on the cause. `sim/build.sh` and `sim/CMakeLists.txt`
+link `libSDL3.dylib` directly with `-needed_library` on macOS. dyld maps SDL3
+at launch, before the sdl2-compat initializer runs, and its dlopen returns the
+loaded image. `DYLD_PRINT_LIBRARIES` shows SDL3 mapped once. If SDL3 cannot be
+loaded, dyld stops the launch with an error on stderr, which the gates report.
+Linux and CI link real SDL2 and are unchanged. When SDL3 is absent the build
+falls back to the old link line.

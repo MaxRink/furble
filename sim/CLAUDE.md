@@ -269,6 +269,13 @@ including empty strings and failed-save rollback.
 - LVGL comes from `managed_components/lvgl__lvgl`, which tracks the version
   pinned by `src/idf_component.yml` (override with `FURBLE_LVGL_DIR`).
 - SDL2 comes from Homebrew or /usr/local.
+- On macOS, Homebrew's `sdl2` is sdl2-compat. Its library initializer
+  dlopens SDL3 and shows a blocking "Fatal error! Cannot continue! Failed
+  loading SDL3 library." dialog when that load fails. Both `build.sh` and
+  `CMakeLists.txt` link `libSDL3.dylib` directly with `-needed_library`, so
+  dyld maps it at launch and the sdl2-compat dlopen reuses it. A real load
+  failure now stops the launch with a dyld error on stderr, never a dialog.
+  `otool -L sim/build/furble-sim` lists both libraries.
 
 ### Optional native MQTT transport
 

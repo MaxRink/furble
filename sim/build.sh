@@ -468,6 +468,18 @@ echo "[LD]  sim/build/furble-sim"
 LINK_FLAGS="-rdynamic -L/opt/homebrew/lib -L/usr/local/lib -lSDL2 -lpthread $MQTT_LINK_FLAGS"
 if [ "$(uname -s)" = "Darwin" ]; then
   LINK_FLAGS="$LINK_FLAGS -framework Cocoa"
+  # Homebrew's sdl2 is sdl2-compat, which dlopens SDL3 from a library
+  # initializer and shows a blocking "Fatal error! Cannot continue!" dialog
+  # when that fails. Linking SDL3 directly makes dyld map it at launch, so the
+  # dlopen reuses the loaded image and a real load failure ends the launch
+  # with a dyld message on stderr instead of a dialog. Keep in step with
+  # sim/CMakeLists.txt.
+  for sdl3_dir in /opt/homebrew/lib /usr/local/lib; do
+    if [ -e "$sdl3_dir/libSDL3.dylib" ]; then
+      LINK_FLAGS="$LINK_FLAGS -Wl,-needed_library,$sdl3_dir/libSDL3.dylib"
+      break
+    fi
+  done
 fi
 
 "$CXX" $CXXFLAGS $COVERAGE_LINK_FLAGS $OBJECTS -o "$BUILD_DIR/furble-sim" $LINK_FLAGS
