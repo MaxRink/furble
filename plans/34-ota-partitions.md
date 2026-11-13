@@ -1094,3 +1094,12 @@ unchanged at 0x9000, 6 entries). After boot every baseline setting read back
 identical, both camera bonds loaded and reconnected, and the new settings
 appeared with their defaults. Verdict: PASS. The bootloader log confirmed
 `Loaded app from partition at offset 0x20000`.
+
+## CI fix, 2026-11-13: check after the build
+
+`tools/check_partition_tables.py` reads the stock `partitions_two_ota_large.csv`
+from the framework-espidf package. The m5stick-c job ran it before the
+PlatformIO build, so it passed only on a warm package cache. GitHub Actions was
+disabled on the fork for three weeks, every cache expired, and the first cold
+run failed with "stock partition CSV not found". The step now runs after the
+build, which always installs the framework. The check itself is unchanged.

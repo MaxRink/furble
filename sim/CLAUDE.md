@@ -703,6 +703,20 @@ shortens that host retry cadence for a bounded scenario.
   an interactive debugging session, where the stall watchdog reports the
   deadlock instead of spinning on it. Do not reintroduce a busy-wait in
   `sim/main.cpp`: spinning made the load that provokes the stall worse.
+- Under `SDL_VIDEODRIVER=dummy` or `offscreen`, `sim/main.cpp` sets
+  `SDL_HINT_RENDER_DRIVER=software` before `Panel_sdl::setup()`. Those drivers
+  have no accelerated renderer, and without one M5GFX's `_update_scaling()`
+  divides by an output size SDL never wrote, which UBSan reports as a
+  float-cast or signed overflow depending on the compiler. An explicit
+  `SDL_RENDER_DRIVER` still wins, and visible runs are unchanged.
+  `sim/shim/FurbleSDLWrap.h` also routes `SDL_CreateRenderer` and
+  `SDL_DestroyRenderer` through `sim/sdl_lifecycle.cpp`, because
+  `Panel_sdl::close()` never destroys its renderer; the shim destroys any
+  renderer still live before `SDL_Quit`.
+- The host MQTT transport (`sim/SimMQTTClient.cpp`) allocates inside a
+  `HostAllocScope`. Its adapter object, strings and reconnect thread have host
+  library sizes, so counting them made `heap.free` differ between macOS and
+  Linux. The device client is modelled by the task stack it charges.
 - `run-e2e.sh` and `run-watchdog.sh` bound every scenario with `timeout -k 10`
   (`FURBLE_SIM_SCENARIO_TIMEOUT`, default 300 s). `run-fuzz.sh` keeps its own
   larger per-seed bound (`FURBLE_FUZZ_SEED_TIMEOUT`, default 600 s), because a

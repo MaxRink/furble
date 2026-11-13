@@ -1161,3 +1161,49 @@ the lines that print it, including the failed-allocation fields from PR 5,
 were uncovered. The console stub now lets a test install a record, and the
 console test checks every printed field with and without a failed
 allocation. The console reaches 89.26% locally. The floor is not lowered.
+
+## Fix: CI re-enable, 2026-11-13
+
+State: implemented on `ci/master-green`. GitHub Actions was disabled on the
+fork from 2026-10-21, so the plan 314 PRs of that window merged with no CI.
+Three of their gates failed on the first run. See `plans/95-engineering-lessons.md`
+for the full incident.
+
+- PR 12, ASan and UBSan host tests: `gpx-writer` failed only there. GPX::open()
+  formats its path into 64 bytes, and the test sandbox was the absolute
+  build-tree path. The plain tree truncated silently and the test truncated its
+  expectation the same way; the sanitized tree is deeper, so the path was cut
+  inside the directory name. The sandbox is relative to the ctest working
+  directory now and a static_assert bounds it. The coverage workflow no longer
+  needs a short build directory.
+- PR 6, `memory-pressure-mqtt-shed`: the paused figure of 8,497 was measured on
+  macOS. Linux read 8,457 on arm64 and 8,441 on x86_64. The host MQTT
+  transport allocated its adapter object, strings and reconnect thread on the
+  owner task, and the counter charged them as device memory, so their host
+  sizes leaked into the model. `esp_mqtt_client_init()` and `start()` now
+  allocate inside a `HostAllocScope`. The paused client gives back exactly its
+  3,072-byte worker on every host. The scenario is reseeded 672 bytes higher so
+  the paused reading is still 8,497, between the RED floor and the RED exit,
+  which keeps the check that such a reading holds RED.
+- PR 4b, sim-sanitizers: every scenario failed with a signed overflow in
+  M5GFX `Panel_sdl::_update_scaling()`. Under the dummy video driver
+  `SDL_CreateRenderer` returns NULL, `SDL_GetRendererOutputSize` never writes
+  its outputs, and M5GFX divides by uninitialized stack ints. clang 18 made
+  that an infinite float, which the old `float-cast-overflow` entry
+  suppressed; clang 21 on ubuntu-26.04 made it a signed overflow. The
+  simulator now sets `SDL_HINT_RENDER_DRIVER=software` before
+  `Panel_sdl::setup()` when the video driver is dummy or offscreen, so the
+  renderer exists and its size is real. The `float-cast-overflow` suppression
+  is removed. An explicit `SDL_RENDER_DRIVER` in the environment still wins.
+  A live renderer exposed one more M5GFX lifetime gap: `Panel_sdl::close()`
+  never destroys it, and LeakSanitizer reported its 768 bytes in every
+  scenario. The SDL lifecycle shim (`sim/shim/FurbleSDLWrap.h`) now routes
+  `SDL_CreateRenderer` and `SDL_DestroyRenderer` through
+  `sim/sdl_lifecycle.cpp`, which destroys any renderer still live before
+  `SDL_Quit`. No leak suppression was added.
+- PR 4b, the same job: with the M5GFX report gone, every scenario then stopped
+  on an LVGL `function` report that `sim/ubsan.supp` names. The LVGL entries
+  were written against `managed_components/lvgl__lvgl/src/...`, but CI clones
+  LVGL into `sim/.pio/libdeps/sim/lvgl/src/...`, so they never matched there.
+  A pattern matches anywhere in the path, so the entries now start at
+  `lvgl/src/`, which covers both layouts. The suppressed sites are unchanged.

@@ -107,6 +107,59 @@ The root CLAUDE.md lists the short form of these. The detail lives here.
   not a compile error. A job that builds and links clean can still fail at a
   later runtime or capture step. Broad `error:` greps also match benign M5GFX
   constexpr notes and hide the real failing step.
+- Actions was disabled for three weeks; merges without CI accumulated these
+  failures. GitHub Actions was off on the fork from 2026-10-21 to 2026-11-13,
+  and PRs #411 to #439 merged with no check runs at all. Re-enabling it turned
+  master red in eight jobs with eight separate root causes, each fixed on
+  `ci/master-green`:
+  - clang-format (code): twelve sim and host test files were never formatted.
+    CI installs clang-format 21.1.8 from pip; the local 21.1.2 agrees with it
+    on every file, so this was not version drift.
+  - build (m5stick-c) (workflow): the partition-table check reads the stock
+    ESP-IDF CSV from the framework package but ran before the build installed
+    it. It only passed on a warm PlatformIO cache, and every cache expired
+    while Actions was off. The check now runs after the build.
+  - ASan and UBSan host tests (test): the GPX writer builds its path in a
+    64-byte buffer and the test sandbox was an absolute build-tree path, so
+    every path was truncated. The shallow plain build tree hid it; the deeper
+    sanitized tree truncated into the directory itself. The sandbox is now
+    relative and a static_assert bounds it.
+  - Coverage floor (runner drift): `ubuntu-latest` moved to ubuntu-26.04,
+    which does not preinstall clang-18 with compiler-rt. The workflow installs
+    clang-18 without recommends, so the sanitizer runtime was missing and the
+    fuzz targets failed configure. `libclang-rt-18-dev` is now named.
+  - sim-e2e (simulator model): `memory-pressure-mqtt-shed` asserted a figure
+    measured on macOS. The host MQTT transport allocated its own adapter
+    object, strings and thread on the owner task, and the heap counter charged
+    them as device memory. Their sizes follow the host C++ library and pthread
+    ABI, so the paused figure was 8,497 on macOS, 8,457 on arm64 Linux and
+    8,441 on x86_64 Linux. The transport now allocates inside a
+    `HostAllocScope`, like every other sim hook production code calls.
+  - sim-sanitizers (third-party read of uninitialized memory, then a
+    suppression-path bug): M5GFX's `Panel_sdl` divides by the renderer
+    output size, which SDL never writes when the dummy video driver has no
+    accelerated renderer. The result is
+    stack garbage. clang 18 on ubuntu-24.04 made it an infinite float, which
+    `sim/ubsan.supp` already suppressed; clang 21 on ubuntu-26.04 made it a
+    signed overflow in every scenario. The simulator now asks SDL for its
+    software renderer under a headless driver, so the size is real and both
+    reports are gone. The live renderer then leaked at exit, because M5GFX
+    never destroys it on close, so the SDL shim now destroys live renderers
+    before `SDL_Quit`. Behind it, the LVGL entries in `sim/ubsan.supp` named
+    `lvgl__lvgl/src/...`, the managed_components path, while CI clones LVGL
+    to `sim/.pio/libdeps/sim/lvgl`. They now start at `lvgl/src/`, which
+    matches both. A suppression list must be proven on the CI layout.
+  - Apple (runner retirement): GitHub retired the macos-14 images on
+    2026-11-02 and cancels jobs on that label within a second. The workflow
+    moved to macos-15 with Xcode 16.4.
+- A merged PR whose head has no check runs is now a hard failure.
+  `tools/check_review_threads.py`, the last gate before every merge, also
+  reads the head commit's check rollup. It fails when no check ran, when a
+  check is still running, and when any check ended in anything but success,
+  neutral or skipped. Run against #439 it reports that no CI ran on its head.
+- A green local gate set is not CI. `pre_review.py` does not run clang-format,
+  the sanitizers or the Linux simulator, so a branch can pass it and still
+  break all three. Never merge on local evidence alone; wait for the checks.
 
 ## Multi-agent and git workflow
 
