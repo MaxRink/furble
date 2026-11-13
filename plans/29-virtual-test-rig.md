@@ -32,7 +32,7 @@ Line anchors below were read at `6306be4` on `feat/50-gatt-service`, at
 ## Motivation
 
 The companion feature has two halves that have never met. The firmware GATT
-service lives on `feat/50-gatt-service`. The Android app lives on
+service lived on `feat/50-gatt-service` at the time (merged as #21). The Android app lives on
 `feat/50-companion-android`. Neither branch contains the other. Every payload
 struct, every enum, every UUID is duplicated by hand across a C++ header and a
 Kotlin object, and nothing checks that the two copies agree.

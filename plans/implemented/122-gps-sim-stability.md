@@ -59,7 +59,7 @@ console output, NVS, or camera operations.
 
 ## Implementation state
 
-Implemented on `test/gps-sim-stability`: all TinyGPSPlus access is serialized,
+Merged as #179 (`ffb82677`) from `test/gps-sim-stability`: all TinyGPSPlus access is serialized,
 callers consume the status snapshot, and the concurrent-page scenario is added.
 The SDL pixel readback issue is explicitly deferred to simulator
 infrastructure because it is independent of the GPS race.

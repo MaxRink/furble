@@ -414,7 +414,7 @@ The comment contains, in order:
 - A link to the full JSON report artifact for the run.
 
 Consolidation. Three PR-facing sim reports exist or are planned: the
-screenshot comment (fork PR #44, branch `feat/ui-screenshot-ci`), the
+screenshot comment (merged as #67), the
 ui-audit overlap findings (fork PR #42), and this power table. They
 consolidate into one combined sim-report workflow with one sticky comment
 holding three sections, in order: power table, overlap findings, screenshot

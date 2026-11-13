@@ -17,8 +17,8 @@ Five separately mergeable pull requests. Every default keeps current behaviour
 except one, and that exception is called out explicitly in PR32a.
 
 All line anchors on `master` were read at commit `2b79ce8`. Anchors marked
-"on feat/14" were read on branch `feat/14-gps-pcas`, which is upstream PR #303
-and not yet merged.
+"on feat/14" were read on branch `feat/14-gps-pcas`, which was upstream gkoh/furble#303
+(closed unmerged; merged on the fork in `51a6f28a`).
 
 ## Implementation state
 
@@ -538,11 +538,11 @@ Read these first. This document does not repeat them.
 
 | Doc | Covers | Status |
 |---|---|---|
-| `plans/implemented/14-gps-pcas.md` | `$PCAS02` rate, `$PCAS03` sentence pruning, `$PCAS04` constellation, NMEA checksum builder, `sendCommand`, raw NMEA ring buffer, `$PCAS10` restart button | Implemented on `feat/14-gps-pcas`, upstream PR #303 |
+| `plans/implemented/14-gps-pcas.md` | `$PCAS02` rate, `$PCAS03` sentence pruning, `$PCAS04` constellation, NMEA checksum builder, `sendCommand`, raw NMEA ring buffer, `$PCAS10` restart button | Implemented on master (`51a6f28a`); upstream gkoh/furble#303 closed unmerged |
 | `plans/implemented/15-gps-power.md` | Burst windowed light sleep, `UART_SCLK_XTAL`, `$PCAS12` standby, 5 V rail cycling | Implemented |
-| `plans/18-gps-motion.md` | IMU stationary detection selecting a PR15 power policy | Planned |
+| `plans/18-gps-motion.md` | IMU stationary detection selecting a PR15 power policy | Detector merged (#65); receiver policy open |
 | `plans/implemented/21-imu-dead-reckoning.md` | Last known fix hold, timestamp advance, extrapolation | Implemented |
-| `plans/00-hardware-experiments.md` | Experiment B: V_BCKP presence and `$PCAS12` support | Experiment A done, B pending |
+| `plans/00-hardware-experiments.md` | Experiment B: V_BCKP presence and `$PCAS12` support | Experiments A and B done |
 | `plans/implemented/27-usb-console.md` | USB console, `gps send` command | Implemented |
 
 ---

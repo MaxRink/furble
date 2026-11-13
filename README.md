@@ -154,7 +154,7 @@ The supported shutter command performs an immediate capture with autofocus.
 `00 03` AF on and `00 04` AF off writes) and awaits hardware validation. It is
 not manual lens focus.
 [^6]: Untested on hardware. Pairing is the LUMIX session registration, not SMP
-bonding.
+bonding. A fresh S5II may still need a Lumix Sync first-pair flow.
 
 For contributor research across all implemented camera families, see the
 [camera protocol research library](docs/camera-research/README.md). It records

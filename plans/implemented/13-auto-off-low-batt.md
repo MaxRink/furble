@@ -2,7 +2,7 @@
 
 ## Implementation status
 
-State: Implemented on `feat/13-auto-off-low-batt`.
+State: Merged as #35 (`1e73eca2`) from `feat/13-auto-off-low-batt`.
 
 Rebase notes:
 

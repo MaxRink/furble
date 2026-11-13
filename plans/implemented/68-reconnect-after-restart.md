@@ -1,6 +1,6 @@
 # Reconnect after restart
 
-Status: implemented in `feat/68-reconnect-restart`, disconnect lifecycle
+Status: merged as #62 (`332f711a`) from `feat/68-reconnect-restart`, disconnect lifecycle
 redesigned after the first hardware run crashed. Hardware verification remains to
 be re-run on the M5StickS3 with a Fujifilm camera. The redesign is not claimed
 hardware-safe; it awaits re-review and re-verification.

@@ -117,7 +117,7 @@ items; the CMake simulator configures and builds.
 | 19 | #428 review: the `timer_task` target pattern starts with `static `, which GCC call-graph labels supposedly omit, so the six Furble timer callbacks would go unmatched. | False positive. GCC 14 writes the `static` specifier into the `.ci` label of a static member function. Against the m5stick-s3 build the pattern matches all six: `CompanionGatt::delayedDisable`, `CompanionService::timedShutter`, the two `MQTT` and the two `WebUI` timer callbacks. The `ir`, `mqtt` and `webui` entry patterns are unanchored suffixes, so they match with or without the prefix. | `tools/stack_budget.json` |
 
 Findings 8 to 12 arrived after #414 merged. They are fixed in the follow-up
-branch `fix/stack-budget-review`.
+branch `fix/stack-budget-review`, merged as #428.
 
 ## Fix: no NVS on the default event task (#424, `fix/wifi-event-nvs`)
 

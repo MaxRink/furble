@@ -2,7 +2,7 @@
 
 ## State
 
-Implemented on `feat/timezone-support`, based on `origin/master` at
+Merged as #364 (`2145cd9a`) from `feat/timezone-support`, based on `origin/master` at
 `dd31f47e`.
 
 - `Settings::TIMEZONE` uses the reserved wire id 42 and the NVS key `timezone`.

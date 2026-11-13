@@ -270,7 +270,7 @@ supported there.
 
 ## Follow-up: plan 305
 
-[305-general-internal-ram.md](305-general-internal-ram.md) is the general pass
+[305-general-internal-ram.md](implemented/305-general-internal-ram.md) is the general pass
 that follows this document. It keeps the fail-closed gate and changes the
 StickS3 baseline:
 

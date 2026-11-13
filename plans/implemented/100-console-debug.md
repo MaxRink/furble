@@ -1,6 +1,6 @@
 # 100: console debug dump family
 
-Status: implemented on `feat/console-debug`, off fork master `b71d895`. Debug
+Status: merged as #130 (`b50c54ba`), from `feat/console-debug` off fork master `b71d895`. Debug
 build only, behind `FURBLE_CONSOLE`. Release binaries are unchanged in behaviour:
 every new command is compiled out of release, and the new log lines are all
 `ESP_LOGD`, which release builds drop at compile time.

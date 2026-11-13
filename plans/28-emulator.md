@@ -666,7 +666,7 @@ The host implementation is under `sim/`.
 
 ## Screenshot CI
 
-Screenshot CI is implemented on `feat/ui-screenshot-ci`, rebased onto the
+Screenshot CI merged as #67 (`f43910ac`), rebased onto the
 merged simulator on master. The deterministic script captures the modeled
 M5StickS3 135 by 240 UI pages, and `.github/workflows/ui-screenshots.yml`
 builds the simulator, runs the capture under Xvfb, uploads `ui-screenshots`,
