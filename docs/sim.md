@@ -440,7 +440,12 @@ which leaves every scenario written before the receiver model unchanged),
 picks the GSV/GSA fixture and `gps_fix_date` picks the fix burst; both are
 detailed under the receiver model below. `gps_uart_chunk` serves the burst that
 many bytes at a time, paced, so a sentence spans several reads as it does off a
-real UART.
+real UART. `gps_reader_hold_ms` holds the GPS cycle snapshot reader
+(`GPS::getCycleStatusSnapshot()`, which `isDegraded()` and the UI's once a
+second `GPS::update()` use) for that many milliseconds of host time. It models a slow
+reader overlapping the GPS task. Readers once held `m_CycleMutex` there and the
+task dropped a consumed UART event while they did; `e2e/gps-reader-hold.txt`
+seeds 30 and asserts the cycle never degrades.
 All boolean seeds, including `gps_uart_noise`, reject malformed values during
 scenario loading.
 

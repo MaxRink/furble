@@ -151,8 +151,8 @@ and
 `FurbleControl.cpp` (link-drop declaration, the debug state snapshot the console
 also uses, and the camera-command counter), `lib/furble/Scan.h` and `Scan.cpp`
 (scan-start probe and scan-end callback counter), `FurbleGPS.cpp` (state/timer
-profiling), `FurblePlatform.h` (watchdog query friend), `FurblePower.cpp`
-(power-lock owner assertions), and `FurbleUI.cpp`/`FurbleUI.h` (profiling,
+profiling and the status reader hold seam), `FurblePlatform.h` (watchdog query
+friend), `FurblePower.cpp` (power-lock owner assertions), and `FurbleUI.cpp`/`FurbleUI.h` (profiling,
 queries, deterministic input, simulator encoder long-press/repeat timing,
 scan-start probe,
 disconnect count, and scripted actions). `FurbleUIAudit` is enabled for the
@@ -599,6 +599,14 @@ shortens that host retry cadence for a bounded scenario.
 - `e2e/gps-motion-prearm.txt` deliberately loads GPS motion before the UI arms
   the shared source, then disarms and re-arms it through real MotionSource calls;
   it asserts the gate changes without a GPS reset or setting toggle.
+- `seed gps_reader_hold_ms N` holds each GPS cycle status reader for N ms of
+  host time through `Sim::gpsReaderHold()`, a timing seam in
+  `GPS::getCycleStatusSnapshot()`. `e2e/gps-reader-hold.txt` seeds 30 and
+  asserts the cycle never degrades. Readers used to hold `m_CycleMutex` while
+  the GPS task skipped any pass it could not lock, so a reader overlapping a
+  UART event lost the burst. That was the rare `gps-motion-detector` failure
+  under parallel load (plans/18-gps-motion.md). Keep the seam where the
+  snapshot is read: a reader lock added later then encloses the hold.
 - The `scan_start_probe` boolean seed enables a concurrent callback-shaped
   probe during scan startup. `scan.start_probe_blocked` reports whether that
   callback waited for the UI mutex, guarding the watchdog-sensitive scan-start

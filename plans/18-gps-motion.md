@@ -346,6 +346,7 @@ Simulator, all certified on the 80x160 M5StickC, the 135x240 M5StickS3 and the
 | Scenario | What it pins |
 |---|---|
 | `e2e/gps-motion-detector.txt` | That the source armed at all, slow entry and immediate exit, and the phase 1 contract: `gps.state`, `gps.degraded`, `uart.count` and `power.no_light_sleep` all read the same on both sides of a transition. |
+| `e2e/gps-reader-hold.txt` | A 30 ms slow status reader never costs the receiver a burst: the cycle never degrades in two minutes. See "Fix: gps-motion-detector flake". |
 | `e2e/gps-motion-setting.txt` | Default off, the real Settings > GPS switch turning the detector on and off, and the receiver still tracking 50 ms after each flip. The 50 ms is the point: the old code re-acquired and was back at tracking within a second, so a settled assertion could not see it. |
 | `e2e/gps-motion-prearm.txt` | GPS loads persisted `GPS_MOTION` before `MotionSource::arm()`, then source disarm/re-arm updates the motion gate and stationary verdict without a setting toggle, receiver reset or UART write. |
 | `bughunt/gps-motion-row.txt` | The row at Normal text size: renders, both scroll extents reachable, no indicator overlap, and it follows the GPS visibility gate. |
@@ -578,6 +579,63 @@ would have caught this PR shipping wire id 66 without a schema row: it walks
 every setting and requires a `SETTING_SCHEMAS` row, with 43 and 46 pinned as
 `KNOWN_MISSING`. Wire id 66 has its row and the test passes with it. Wire id 46
 has since gained a row too, so the only gap left in that list is 43.
+
+## Fix: gps-motion-detector flake
+
+`e2e/gps-motion-detector.txt` failed rarely on the 320x240 Core in the
+physical-button layout under parallel load. The failing assert was
+`gps.degraded expected '0' got '1'` at about 63 s. The motion detector itself
+was never wrong: the MotionSource poll runs on the UI task in virtual time and
+measured the same 61,035 ms stationary entry in every probe run.
+
+Root cause, a firmware race. `GPS::serviceSerial()` and `GPS::serviceCycle()`
+took `m_CycleMutex` with `try_lock` and skipped the pass when it was held. The
+skip was meant for `enable()` and `disable()`, but both reset the cycle under
+`m_ServiceMutex`, which the GPS task holds for its whole pass, so they could
+never be the holder. The only real holders were the status readers:
+`GPS::update()` calls `isDegraded()` on the UI task once a second. When that
+read overlapped the task's handling of a UART pattern event, the event was
+consumed with no read. On hardware the burst is late and costs a resync. In the
+simulator the fake receiver waits for the burst to be read before sending the
+next one, so nothing more arrives, `BURST` times out after 5 s and the cycle
+goes degraded for the 10 s first backoff. A drop between about 48 s and 53 s
+was still degraded at the 63 s assert.
+
+Fix. The readers (`getCycleStatusSnapshot()`, `isDegraded()`,
+`degradedRetries()`, `getReceiverStatus()`) no longer take `m_CycleMutex`. They
+load one packed word, `m_CycleStatus` (state, retries, policy, duty and rate),
+plus the last sentence tick. The GPS task publishes both before it blocks and
+at the end of each pass, and `enable()` and `disable()` publish after a reset.
+The service passes take `m_CycleMutex` blocking. Nothing else holds it outside
+`m_ServiceMutex` now, so the wait never happens and a consumed UART event can
+never be skipped. The UI task holds no lock the GPS task waits on.
+
+Lock audit of `m_CycleMutex` after the fix. Holders: `serviceCycle()`,
+`serviceSerial()`, `onProbeLocked()` and `onProbeFailed()` on the GPS task
+inside its `m_ServiceMutex` pass, and `enable()` and `disable()` under
+`m_ServiceMutex`. Under it `serviceSerial()` takes `m_GPSMutex` through the
+parser and reads the UART with a one tick timeout, as before. No path takes
+`m_ServiceMutex` while holding it, so the order stays service, then cycle.
+
+Regression. `seed gps_reader_hold_ms N` holds each snapshot reader for N ms of
+host time through a `FURBLE_SIM` seam in `getCycleStatusSnapshot()`.
+`e2e/gps-reader-hold.txt` seeds 30 and samples `gps.degraded` every 5 s for
+two minutes. It is certified on all three boards.
+
+Evidence, all on the Core physical-button layout:
+
+| Run | Binary | Result |
+|---|---|---|
+| `gps-motion-detector`, 32 parallel | master `e66e8807` | 1 failure in 384 runs |
+| `gps-motion-detector`, sequential, 30 ms reader hold inside the lock | master plus a temporary probe | 3 failures in 5 runs, 13 degraded entries, every dropped read at a whole second |
+| `gps-reader-hold`, 16 parallel | master reader and `try_lock` passes with the seam | 32 failures in 32 runs |
+| `gps-reader-hold`, 16 parallel | this fix | 0 failures in 32 runs |
+| `gps-motion-detector`, 16 parallel | this fix | 0 failures in 512 runs |
+
+Not covered: the fake receiver still waits for each burst to be read before it
+schedules the next, so any future dropped event stalls it for good. A real
+receiver keeps its own 1 Hz clock. The regression scenario does not depend on
+that model.
 
 ## References
 
