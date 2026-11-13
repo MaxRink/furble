@@ -151,6 +151,7 @@ the git history. They are no longer ownership rows.
 | [41-alternative-hardware.md](41-alternative-hardware.md) | Alternative sidecar hardware |
 | [42-waveshare-eth-node.md](implemented/42-waveshare-eth-node.md) | Waveshare ESP32-S3-ETH wired MQTT node |
 | [287-mcu-portability-and-bundle-hardware.md](287-mcu-portability-and-bundle-hardware.md) | Whole-stack MCU portability, battery model, GPS quality, and buyable BLE plus GNSS hardware |
+| [322-hardware-abstraction.md](322-hardware-abstraction.md) | Hardware abstraction for the next boards: dependency audit, pure chip drivers, board profile and power backend |
 
 ## Bug analyses
 

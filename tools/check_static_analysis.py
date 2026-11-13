@@ -6,7 +6,7 @@ the two analyzers that find the classes of defects the compiler cannot: cppcheck
 for uninitialized/out-of-bounds/format issues and clang-tidy for bugprone,
 analyzer, cert, performance, and portability checks.
 
-Only files under src/, lib/furble/, include/, and sim/ are production code for
+Only files under src/, lib/furble/, lib/hal/, include/, and sim/ are production code for
 this gate. Generated trees, vendored components, and test doubles are excluded.
 """
 
@@ -23,7 +23,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-PRODUCTION_PREFIXES = ("src/", "lib/furble/", "include/", "sim/")
+PRODUCTION_PREFIXES = ("src/", "lib/furble/", "lib/hal/", "include/", "sim/")
 EXCLUDED_PREFIXES = ("sim/build/", "sim/shim/")
 SOURCE_SUFFIXES = (".cpp", ".cc", ".cxx", ".c")
 # Production sources no compile database builds. clang-tidy cannot analyze
@@ -214,6 +214,8 @@ def run_cppcheck(files: list[str], jobs: int) -> list[dict[str, str]]:
             "-I",
             "lib/furble",
             "-I",
+            "lib/hal",
+            "-I",
             "sim/shim",
         ]
         for suppression in CPPCHECK_SUPPRESSIONS:
@@ -264,7 +266,7 @@ def header_includers(headers: list[str], sources: list[str]) -> dict[str, list[s
     cap keeps a widely included header from turning one change into a
     full-tree clang-tidy run.
     """
-    roots = ("lib/furble/", "include/", "sim/", "src/")
+    roots = ("lib/furble/", "lib/hal/", "include/", "sim/", "src/")
     candidates: list[str] = []
     for header in headers:
         names = {Path(header).name, header}
