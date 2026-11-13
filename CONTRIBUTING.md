@@ -174,6 +174,10 @@ python3 tools/check_review_threads.py --repo owner/name --pr <number>
 
 It queries the GitHub GraphQL API through `gh api graphql` and fails closed on
 API errors, so a missing token or network is never treated as a clean result.
+It also fails when the pull request head has no check runs at all, or any
+check is still running or did not pass. Actions was once disabled on the
+fork for three weeks, and pull requests merged with no CI; a head without
+checks is now a hard failure.
 Do not wire this into offline pre-review or fork CI jobs. The remediation pull
 request itself must pass the same check before it merges. Record the audit in
 its `plans/NN-review-feedback.md` table.

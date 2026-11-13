@@ -15,6 +15,8 @@ acceptable. The online gate is
 `python3 tools/check_review_threads.py --repo owner/name --pr N`; it fails
 closed on API errors and is intentionally not part of the offline pre-review or
 fork CI jobs. The remediation PR must pass it before merge.
+The same gate fails when the PR head has no check runs, or any check is
+still running or did not pass, so merging without CI is never silent.
 
 ## Documentation mandate
 
