@@ -50,6 +50,7 @@ stay in the parent [`plans/`](../README.md) directory.
 | [131-ota-replay-store.md](131-ota-replay-store.md) | 131 - durable OTA replay-store adapter |
 | [132-ota-partition-sink.md](132-ota-partition-sink.md) | 132 - OTA partition sink adapter |
 | [139-persistent-time.md](139-persistent-time.md) | PR139: persistent wall-clock time |
+| [139-review-feedback.md](139-review-feedback.md) | Review-feedback record for the wall clock across soft resets |
 | [14-gps-pcas.md](14-gps-pcas.md) | PR14 - GPS receiver configuration with $PCAS |
 | [141-ci-manual-dispatch.md](141-ci-manual-dispatch.md) | Plan 141: reliable manual firmware CI |
 | [142-bt-journal-memory.md](142-bt-journal-memory.md) | Plan 142: bounded Bluetooth journal storage |

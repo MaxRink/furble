@@ -119,8 +119,6 @@ bool clockSurvives(esp_reset_reason_t reason) {
     case ESP_RST_WDT:
     case ESP_RST_DEEPSLEEP:
     case ESP_RST_USB:
-    case ESP_RST_JTAG:
-    case ESP_RST_CPU_LOCKUP:
       return true;
     default:
       return false;
@@ -305,7 +303,8 @@ int main() {
         CHECK(status.valid);
         CHECK(nvs_test_commit_count() == 1);
         if (rtc == Rtc::ABSENT && recordValid && clockSurvives(reason)) {
-          CHECK(status.source == Furble::TimeSource::GPS);
+          // The kept clock is demoted to RTC authority.
+          CHECK(status.source == Furble::TimeSource::RTC);
           CHECK(status.epoch_us == epoch + twoHoursMs * 1000ULL);
           CHECK(status.uncertainty_ms == keptUncertainty);
         } else if (rtc != Rtc::ABSENT) {
@@ -348,6 +347,23 @@ int main() {
   CHECK(keeper.status().uncertainty_ms
         == nvsUncertainty + 720 + 360 + 2U * Furble::TimeKeeperPolicy::SOFT_RESET_UNCERTAINTY_MS);
   CHECK(nvs_test_commit_count() == 1);
+
+  // Lockout regression: the RC-carried clock comes back 6 s fast. The next
+  // GPS fix must still correct it, backwards, and the correction is retained.
+  nvs_test_reset();
+  powerOnClock();
+  boot(Rtc::ABSENT, ESP_RST_POWERON, true);
+  CHECK(keeper.update(Furble::TimeSource::GPS, epoch, 1000));
+  setTimeMs(twoHoursMs);
+  softResetClock();
+  system_base_us += 6000000ULL;
+  boot(Rtc::ABSENT, ESP_RST_PANIC, false);
+  CHECK(keeper.status().source == Furble::TimeSource::RTC);
+  CHECK(keeper.status().epoch_us == epoch + twoHoursMs * 1000ULL + 6000000ULL);
+  CHECK(keeper.update(Furble::TimeSource::GPS, epoch + twoHoursMs * 1000ULL, 1000));
+  CHECK(keeper.status().source == Furble::TimeSource::GPS);
+  CHECK(keeper.status().epoch_us == epoch + twoHoursMs * 1000ULL);
+  CHECK(furble_sim_system_time_us() == epoch + twoHoursMs * 1000ULL);
 
   // A boot without time clears the record. A clock set behind TimeKeeper's
   // back is not trusted after the next soft reset.

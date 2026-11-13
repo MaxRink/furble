@@ -201,11 +201,19 @@ bool restoreRetained(const uint8_t *record,
   // drives the same growth bound a running clock uses.
   const uint32_t grown =
       predictedUncertaintyMs(retained, (system_epoch_us - retained.epoch_us) / 1000ULL);
+  // The kept value is whatever the RC-carried system clock reads, and SNTP
+  // may have written that clock directly. Like an NVS restore, it loses its
+  // GPS, NTP or companion authority across the reboot. Otherwise an
+  // equal-priority fix more than BACKWARD_TOLERANCE_MS behind a fast kept
+  // clock would be rejected until the seven-day ceiling.
+  const TimeSource source = sourcePriority(retained.source) > sourcePriority(TimeSource::RTC)
+                                ? TimeSource::RTC
+                                : retained.source;
   const TimeSample restored = {system_epoch_us,
                                grown > MAX_UNCERTAINTY_MS - SOFT_RESET_UNCERTAINTY_MS
                                    ? MAX_UNCERTAINTY_MS
                                    : grown + SOFT_RESET_UNCERTAINTY_MS,
-                               retained.source, 0};
+                               source, 0};
   if (!validAt(restored, 0)) {
     return false;
   }

@@ -174,6 +174,7 @@ the git history. They are no longer ownership rows.
 |---|---|
 | [68-flasher-debug-firmware.md](implemented/68-flasher-debug-firmware.md) | Web flasher debug firmware option: build *-debug envs, debug manifests, install checkbox |
 | [139-persistent-time.md](implemented/139-persistent-time.md) | RTC, NVS, GPS, NTP, and companion wall-clock retention policy |
+| [139-review-feedback.md](implemented/139-review-feedback.md) | Review-feedback record for the wall clock across soft resets |
 | [69-flasher-bt-dump.md](69-flasher-bt-dump.md) | Web Serial Capture BT debug dump panel, depends on 68 and PR #76 |
 | [113-per-board-ota-slots.md](implemented/113-per-board-ota-slots.md) | Per-flash-size OTA slots, implemented by PR #167 |
 | [114-provision-parser.md](114-provision-parser.md) | One-shot provisioning parser and console apply; staged browser transport deferred |

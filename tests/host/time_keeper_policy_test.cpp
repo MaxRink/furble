@@ -84,7 +84,7 @@ int main() {
   CHECK(!valid(unknown));
 
   // A soft reset trusts the running system clock. Two hours at 100 ppm add
-  // 720 ms, plus the fixed one-second hand-off bound. The source is kept.
+  // 720 ms, plus the fixed one-second hand-off estimate. GPS is demoted to RTC.
   std::array<uint8_t, RECORD_BYTES> retained = {};
   CHECK(encode(gps, retained.data(), retained.size()) == RECORD_BYTES);
   constexpr uint64_t twoHoursUs = 2ULL * 60ULL * 60ULL * 1000000ULL;
@@ -92,9 +92,26 @@ int main() {
   CHECK(restoreRetained(retained.data(), retained.size(), gps.epoch_us + twoHoursUs, kept));
   CHECK(kept.epoch_us == gps.epoch_us + twoHoursUs);
   CHECK(kept.uncertainty_ms == gps.uncertainty_ms + 720 + SOFT_RESET_UNCERTAINTY_MS);
-  CHECK(kept.source == TimeSource::GPS);
+  CHECK(kept.source == TimeSource::RTC);
   CHECK(kept.monotonic_ms == 0);
-  // No elapsed time still pays the hand-off bound.
+
+  // Regression for the kept-clock lockout: a kept clock 6 s fast must still
+  // accept the next GPS fix. With the GPS source kept, the 5 s backward
+  // tolerance rejected every equal-priority fix until the seven-day ceiling.
+  TimeSample fast = {};
+  CHECK(restoreRetained(retained.data(), retained.size(), gps.epoch_us + 6000000ULL, fast));
+  const TimeSample fix = {gps.epoch_us, 1000, TimeSource::GPS, 0};
+  CHECK(shouldAccept(&fast, fix, 0));
+  const TimeSample companion = {gps.epoch_us, 5000, TimeSource::COMPANION, 0};
+  CHECK(shouldAccept(&fast, companion, 0));
+
+  // An NVS-seeded record is never promoted by a soft reset.
+  std::array<uint8_t, RECORD_BYTES> fromNvs = {};
+  CHECK(encode(nvs, fromNvs.data(), fromNvs.size()) == RECORD_BYTES);
+  TimeSample keptNvs = {};
+  CHECK(restoreRetained(fromNvs.data(), fromNvs.size(), nvs.epoch_us, keptNvs));
+  CHECK(keptNvs.source == TimeSource::NVS);
+  // No elapsed time still pays the hand-off estimate.
   CHECK(restoreRetained(retained.data(), retained.size(), gps.epoch_us, kept));
   CHECK(kept.uncertainty_ms == gps.uncertainty_ms + SOFT_RESET_UNCERTAINTY_MS);
 

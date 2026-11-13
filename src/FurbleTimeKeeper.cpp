@@ -97,9 +97,12 @@ uint64_t systemTimeUs(void) {
 #endif
 }
 
-// The RTC timer keeps counting through these resets, so the system clock is
-// still the one TimeKeeper set. Power-on, brownout, power glitch and unknown
-// resets fail closed to the RTC chip or NVS path.
+// These resets usually keep the RTC timer, so the system clock is still the
+// one TimeKeeper set. ESP_RST_WDT also covers RTC and super watchdog system
+// resets that clear the RTC domain. The clock then reads behind the record and
+// restoreRetained() fails closed. Power-on, brownout, power glitch and unknown
+// resets go straight to the RTC chip or NVS path. ESP32 and ESP32-S3 never
+// report ESP_RST_JTAG or ESP_RST_CPU_LOCKUP, so they are not listed.
 bool clockSurvivedReset(void) {
   switch (esp_reset_reason()) {
     case ESP_RST_SW:
@@ -109,8 +112,6 @@ bool clockSurvivedReset(void) {
     case ESP_RST_WDT:
     case ESP_RST_DEEPSLEEP:
     case ESP_RST_USB:
-    case ESP_RST_JTAG:
-    case ESP_RST_CPU_LOCKUP:
       return true;
     default:
       return false;

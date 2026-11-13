@@ -307,10 +307,14 @@ uncertainty penalty until GPS, NTP, or a companion supplies a fresh sample.
 
 On a board where M5Unified finds no calendar RTC chip, such as StickS3 or Core,
 a soft reset keeps the running clock. After `esp_restart()`, an OTA restart, a
-panic, a watchdog reset or a USB reset, `time status` keeps the previous source
-and its uncertainty grows by the elapsed time at 100 ppm plus one second. A
-power-on, brownout or unknown reset still restores the NVS value. Boards with a
-calendar RTC chip still seed from it on every boot.
+panic or a USB reset, `time status` reports source `rtc` with `rtc: no`, and the
+uncertainty grows by an estimate: the elapsed time at 100 ppm plus one second.
+The real hand-off error depends on the internal RC slow clock and is not yet
+measured. The next GPS, NTP or companion sample replaces the kept value, in
+either direction. A clock seeded from NVS stays source `nvs`. Most watchdog
+resets keep it; an RTC watchdog system reset clears the clock and falls back to
+NVS. A power-on, brownout or unknown reset still restores the NVS value. Boards
+with a calendar RTC chip still seed from it on every boot.
 
 ## imu
 

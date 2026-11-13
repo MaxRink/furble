@@ -51,7 +51,11 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   A copy of the same record in `RTC_NOINIT_ATTR` memory keeps the running
   system clock across soft resets on boards without an RTC chip. Rewrite it on
   every accepted sample, anchored where the system clock was set; never seed
-  the system clock from NVS after a reset that kept it (plan 139).
+  the system clock from NVS after a reset that kept it. The kept sample is
+  demoted to `RTC` authority (NVS stays NVS) so the next GPS, NTP or companion
+  sample can correct it; never restore it as GPS or NTP. Its uncertainty is an
+  estimate of RC slow-clock drift, not a bound. The intervalometer does not
+  trust an `RTC` sample when no RTC chip is present (plan 139).
 - The StickS3 M5PM1 watchdog is armed for 45 seconds through the shared
   `Watchdog` constants. Keep `watchdogFeed()` at its one second cadence and
   preserve verified disarm and readback before flash or power-off paths.

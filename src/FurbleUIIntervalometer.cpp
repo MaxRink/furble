@@ -20,11 +20,15 @@ constexpr int64_t MAX_VALID_EPOCH = 4102444800;
  * wake time. An NVS-restored sample is deliberately excluded: it does not
  * advance across the power-off interval. The M5PM1 timer is the authority on
  * that board, so its resume starts immediately instead of trusting a stale
- * clock. The BM8563 path reports an RTC sample and is trusted.
+ * clock. The BM8563 path reports an RTC sample and is trusted. On a board
+ * without an RTC chip, an RTC sample is the clock kept across a soft reset.
+ * Its hand-off error is unmeasured, so it is not trusted for a deadline
+ * either.
  */
 bool trustedWallClock(void) {
   const auto status = TimeKeeper::getInstance().status();
-  return status.valid && (status.source != TimeSource::NVS);
+  return status.valid && (status.source != TimeSource::NVS)
+         && ((status.source != TimeSource::RTC) || status.rtc_available);
 }
 
 SpinValue::nvs_t sleepThresholdNvs(void) {

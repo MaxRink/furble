@@ -96,23 +96,53 @@ separate follow-up work because the current simulator has no wall-clock UI.
 Branch `fix/time-across-soft-reset` (research item C1 in the RTC domain survey).
 No plan 320 exists on master, so this owning plan records the change.
 
-- Verified defect. With `CONFIG_LIBC_TIME_SYSCALL_USE_RTC_HRT`, the ESP system
-  clock keeps counting through every reset except power-on. On a board where
-  M5Unified finds no calendar RTC chip, `TimeKeeper::init()` still restored
-  the NVS checkpoint and called `settimeofday()` with it. A panic or OTA
-  restart rewound a GPS-quality clock to a checkpoint up to hours old and
+- Verified defect. With `CONFIG_LIBC_TIME_SYSCALL_USE_RTC_HRT`, the RTC timer
+  keeps the ESP system clock counting through most soft resets. On a board
+  where M5Unified finds no calendar RTC chip, `TimeKeeper::init()` still
+  restored the NVS checkpoint and called `settimeofday()` with it. A panic or
+  OTA restart rewound a GPS-quality clock to a checkpoint up to hours old and
   added the one-hour penalty, and every later soft reset added it again.
 - Change. A 28-byte copy of the encoded `TimeSample` record (same magic,
   version and CRC32 as NVS) lives in `RTC_NOINIT_ATTR` memory. It is rewritten
   in RAM whenever the accepted sample changes and is anchored where the system
   clock was set to it. It costs no NVS write. After `ESP_RST_SW`, `PANIC`,
-  `INT_WDT`, `TASK_WDT`, `WDT`, `DEEPSLEEP`, `USB`, `JTAG` or `CPU_LOCKUP`,
-  `TimeKeeperPolicy::restoreRetained()` accepts the running system clock with
-  uncertainty grown by the elapsed system time at 100 ppm plus a fixed
-  one-second hand-off bound (`SOFT_RESET_UNCERTAINTY_MS`, not measured). The
-  source is kept because the clock never lost continuity. A clock behind the
-  record, a corrupt record or a boot without time fail closed, and a boot
-  without time clears the record.
+  `INT_WDT`, `TASK_WDT`, `WDT`, `DEEPSLEEP` or `USB`,
+  `TimeKeeperPolicy::restoreRetained()` accepts the running system clock. A
+  clock behind the record, a corrupt record or a boot without time fail
+  closed, and a boot without time clears the record. ESP32 and ESP32-S3 never
+  report `ESP_RST_JTAG` or `ESP_RST_CPU_LOCKUP` (IDF
+  `esp_system/port/soc/esp32*/reset_reason.c`), so those are not listed.
+- Watchdog resets. Most watchdog resets keep the clock; an RTC watchdog system
+  reset clears the clock and falls back to NVS. `ESP_RST_WDT` covers both,
+  because IDF also reports RTC and super watchdog system resets there
+  (bootloader WDT, panic RTC WDT and `esp_restart_noos` stage 1 use
+  `WDT_STAGE_ACTION_RESET_RTC`). The cleared clock reads behind the record, so
+  the restore fails closed.
+- Authority. The kept value is whatever the RC-carried system clock reads,
+  and SNTP writes that clock without telling TimeKeeper. Like an NVS restore,
+  the kept sample is demoted: a GPS, NTP or companion source becomes `RTC`,
+  and an NVS source stays `NVS`. GPS, NTP and companion time outrank it and
+  correct it in either direction. Keeping the GPS source was a lockout: a kept
+  clock more than `BACKWARD_TOLERANCE_MS` (5 s) fast rejected every later
+  equal-priority fix until the seven-day ceiling (review finding 1).
+- `time status` shows source `rtc` and `rtc: no` for a kept clock on a board
+  without an RTC chip. The intervalometer trusted-clock check treats that
+  combination like NVS: it does not use it for a resume deadline. After a
+  panic the resume record is also discarded, because the resume path needs a
+  verified timed-wake marker and a panic is not a timed wake. The BM8563 `RTC`
+  sample on a board with a chip stays trusted.
+- Uncertainty is an estimate, not a bound. The system time after reset is
+  boot time plus the RTC timer offset plus esp_timer. `esp_rtc_get_time_us()`
+  converts all RTC ticks since the last accumulation with one calibration,
+  refreshed only at boot or light-sleep entry, and every sdkconfig uses the
+  internal RC slow clock. Without light sleep, the hand-off error is the RC
+  drift over the whole interval since the previous boot, not since the
+  record's anchor. The restored uncertainty still grows at the 100 ppm crystal
+  figure plus a fixed one second (`SOFT_RESET_UNCERTAINTY_MS`). The hand-off
+  accuracy depends on RC slow-clock drift since the last calibration and is
+  unmeasured. The demotion above makes any such error self-correcting at the
+  next GPS, NTP or companion sample. A separate growth constant for the kept
+  clock should come from the hardware measurement below.
 - Power-on, brownout, power glitch, eFuse, SDIO, external pin and unknown
   resets keep the RTC chip or NVS path unchanged.
 - Boards with an RTC chip are unchanged. `M5.begin()` calls
@@ -127,12 +157,24 @@ No plan 320 exists on master, so this owning plan records the change.
   simulator reboot is a new process. Weak `furble_sim_system_time_us()` and
   `furble_sim_set_system_time_us()` hooks default to a clock that never
   validates, so simulator behavior is unchanged and no scenario is added.
-- Evidence. `time_keeper_policy_test` covers restore arithmetic, every
+- Evidence. `time_keeper_policy_test` covers restore arithmetic, demotion,
+  the 6 s fast lockout regression (GPS and companion accepted), every
   single-byte corruption, length, null, backward clock and the uncertainty
   ceiling. `time_keeper_persistence_test` runs every reset reason against a
   valid or lost clock with no RTC chip, an unbacked chip and a backed chip,
-  plus a chained NVS-seeded case and the cleared record. Two mutations (drop
-  the RTC chip gate, trust brownout) fail it.
-- Hardware validation is deferred: that the record and system clock survive
-  `esp_restart()`, a forced panic and the S3 USB Serial/JTAG port-open reset
-  (`ESP_RST_USB`) on the StickS3. The one-second hand-off bound is unmeasured.
+  plus a chained NVS-seeded case, the cleared record and an end-to-end
+  lockout regression: a kept clock 6 s fast takes the next GPS fix and the
+  system clock follows. Mutations that drop the RTC chip gate, trust
+  brownout or keep the GPS source each fail it. The reviewer's standalone
+  repro reported the GPS fix rejected at 0, 24 and 720 h before the fix and
+  accepted at all three after it.
+- Hardware validation is deferred:
+  - that the record and system clock survive `esp_restart()`, a forced panic
+    and the S3 USB Serial/JTAG port-open reset (`ESP_RST_USB`) on the StickS3;
+  - the hand-off error: on a StickS3, set the clock from GPS, run several
+    hours with the display on, call `esp_restart()`, then compare the kept
+    value with the next GPS fix. That result should set a separate growth
+    constant for the kept clock.
+
+Review feedback is recorded in
+[139-review-feedback.md](139-review-feedback.md).
