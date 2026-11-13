@@ -405,16 +405,11 @@ jobs:
             """name: PlatformIO CI
 on:
   workflow_dispatch:
-    inputs:
-      core_ota_debug:
-        type: boolean
-        required: false
-        default: false
 jobs:
   discover:
     env:
       MANDATORY_CORE_DEBUG: m5stack-core-usb-debug
-      OPTIONAL_CORE_DEBUG: m5stack-core-debug
+      MANDATORY_CORE_OTA_DEBUG: m5stack-core-debug
   build: {}
 """
         )
@@ -442,11 +437,10 @@ jobs:
 """
         )
     )
-    self.assertIn("PlatformIO CI core_ota_debug input must be boolean", errors)
-    self.assertIn("PlatformIO CI core_ota_debug input must default to false", errors)
-    self.assertIn("PlatformIO CI core_ota_debug input must be optional", errors)
+    self.assertIn("PlatformIO CI must not offer a core_ota_debug opt-in", errors)
     self.assertIn("PlatformIO CI mandatory Core debug profile is incorrect", errors)
-    self.assertIn("PlatformIO CI optional Core debug profile is incorrect", errors)
+    self.assertIn("PlatformIO CI mandatory Core OTA debug profile is incorrect", errors)
+    self.assertIn("PlatformIO CI Core OTA debug profile must not be optional", errors)
     self.assertIn("PlatformIO CI firmware build must fail strictly", errors)
 
 

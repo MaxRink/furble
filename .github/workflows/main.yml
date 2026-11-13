@@ -13,12 +13,6 @@ on:
       - 'README.md'
       - '**/*.md'
   workflow_dispatch:
-    inputs:
-      core_ota_debug:
-        description: 'Also build the legacy dual-OTA Core debug profile (strict)'
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   contents: read
@@ -233,9 +227,8 @@ jobs:
     outputs:
       matrix: ${{ steps.environments.outputs.matrix }}
     env:
-      CORE_OTA_DEBUG: ${{ inputs.core_ota_debug || false }}
       MANDATORY_CORE_DEBUG: m5stack-core-usb-debug
-      OPTIONAL_CORE_DEBUG: m5stack-core-debug
+      MANDATORY_CORE_OTA_DEBUG: m5stack-core-debug
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -264,19 +257,16 @@ jobs:
           )
           debug = []
           for name in release:
-              candidate = (
-                  os.environ["MANDATORY_CORE_DEBUG"]
+              candidates = (
+                  [os.environ["MANDATORY_CORE_DEBUG"],
+                   os.environ["MANDATORY_CORE_OTA_DEBUG"]]
                   if name == "m5stack-core"
-                  else f"{name}-debug"
+                  else [f"{name}-debug"]
               )
-              if candidate not in environments:
-                  raise SystemExit(f"Mandatory debug environment is missing: {candidate}")
-              debug.append(candidate)
-          if os.environ["CORE_OTA_DEBUG"].lower() == "true":
-              optional = os.environ["OPTIONAL_CORE_DEBUG"]
-              if optional not in environments:
-                  raise SystemExit(f"Optional debug environment is missing: {optional}")
-              debug.append(optional)
+              for candidate in candidates:
+                  if candidate not in environments:
+                      raise SystemExit(f"Mandatory debug environment is missing: {candidate}")
+                  debug.append(candidate)
           platforms = release + debug
           matrix = {"platform": platforms}
 

@@ -50,9 +50,9 @@ console. CI builds the six release environments and their mandatory debug
 profiles. Releases publish the six release images and five OTA-compatible debug
 images. The Core single-factory USB debug profile remains developer-only.
 
-Normal CI uses the USB-only Core debug profile. The legacy dual-OTA
-`m5stack-core-debug` profile is available only through **Run workflow** with
-the `core_ota_debug` boolean enabled. If selected, its failure is strict.
+Normal CI builds both Core debug profiles: the USB-only
+`m5stack-core-usb-debug` and the dual-OTA `m5stack-core-debug`. Both fail
+strictly, so a Core debug image that outgrows its OTA slot fails CI.
 
 Firmware prereleases use a `v*` tag followed by a published GitHub prerelease.
 The tag starts the Pages installer build; publishing the release starts the

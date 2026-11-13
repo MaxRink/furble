@@ -635,6 +635,20 @@ preexisting issues, fixed here:
 and passes them to the gate, then runs the tool tests. Fork Actions are
 disabled, so this was validated locally only.
 
+## Follow-up: the Core OTA debug profile is a mandatory CI lane
+
+State: implemented.
+
+After the flash slimming `m5stack-core-debug` fits its 1,740,800-byte slot
+again: 1,723,200 bytes at #438, with the stack protector left out of that
+profile only. It was still a `workflow_dispatch` opt-in, so nothing stopped it
+from outgrowing the slot again unnoticed. `main.yml` now builds it on every
+firmware change next to `m5stack-core-usb-debug`, with the same strict stack
+and size budget steps, and the `core_ota_debug` input is gone.
+`tools/check_ci_workflows.py` requires both profiles in the discover env and
+rejects an opt-in input or an optional Core debug entry. Release and web
+installer matrices are unchanged.
+
 ## PR 14: push hooks
 
 State: implemented.
@@ -683,7 +697,7 @@ The debug images gain four checks. None reaches a release image.
 - `sdkconfig.debug` adds the FreeRTOS end-of-stack watchpoint and standalone
   heap tracing.
 - `sdkconfig.stack-protector` adds `COMPILER_STACK_CHECK_MODE_NORM`. Every
-  debug env merges it except the opt-in `m5stack-core-debug` OTA profile. On
+  debug env merges it except the `m5stack-core-debug` OTA profile. On
   Core it costs 24,284 bytes; the image measured 1,746,997 bytes against the
   1,740,800-byte slot with it and 1,722,697 without. Heap tracing costs only
   2,376 bytes there and stays. `m5stack-core-usb-debug`, the mandatory Core

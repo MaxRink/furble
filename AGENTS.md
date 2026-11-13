@@ -133,7 +133,7 @@ prints the retained boot timeline. See `docs/boot-timing.md`.
 
 Debug images also carry the end-of-stack watchpoint, heap tracing (`heap trace` console command) and log-only task watchdog
 subscriptions for the MQTT, WebUI and companion loops (`FURBLE_TASK_WDT`).
-Every debug env except the opt-in `m5stack-core-debug` OTA profile also
+Every debug env except the `m5stack-core-debug` OTA profile also
 merges the stack protector (`sdkconfig.stack-protector`), whose 24 KB does not
 fit that slot.
 The 8 and 16 MB tables end with a 256 KiB `coredump` partition after `ota_1`,
@@ -141,10 +141,10 @@ which their debug envs fill on a panic (`sdkconfig.coredump-flash`).
 
 The developer-only `m5stack-core-usb-debug` profile is USB-UART only and uses a
 single factory app partition. Normal CI builds it as the mandatory Core debug
-profile. Keep it out of release and web-installer matrices; the legacy
-`m5stack-core-debug` OTA profile is an explicit workflow-dispatch opt-in, and
-returning to dual OTA requires a USB partition-table reflash. After the plan 314
-flash slimming it fits its OTA slot again (1,719,453 bytes).
+profile. Keep it out of release and web-installer matrices. Normal CI also
+builds the dual-OTA `m5stack-core-debug` profile as a mandatory lane; it fits
+its OTA slot again after the plan 314 flash slimming. Returning a device from
+the USB profile to dual OTA requires a USB partition-table reflash.
 
 Single-board images set `M5GFX_BOARD` (`m5stick-c`, `m5stack-core`,
 `m5stick-s3`); `post:patches/m5gfx_board.py` pins it in `M5GFX::autodetect`.

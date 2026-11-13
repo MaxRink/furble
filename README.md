@@ -301,9 +301,8 @@ The 4 MB M5Stack Core also has a developer-only `m5stack-core-usb-debug`
 environment. It uses one large factory app partition when the normal Core debug
 image no longer fits its dual-OTA slot. Flash it over the Core USB-UART bridge;
 it has no wireless update or rollback path and is not published by the release
-or web installer. Normal CI uses it for the Core debug lane. The legacy
-dual-OTA Core debug profile remains available only as an explicit
-workflow-dispatch opt-in. The partition keeps NVS at its existing address, so
+or web installer. Normal CI builds it and the dual-OTA Core debug profile as
+mandatory Core debug lanes. The partition keeps NVS at its existing address, so
 do not erase the chip when preserving settings and camera bonds matters.
 
 ### Serial console (developers)

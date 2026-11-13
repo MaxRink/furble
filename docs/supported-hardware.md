@@ -43,8 +43,8 @@ For an oversized Core debug image, `m5stack-core-usb-debug` is a separate
 USB-UART-only fallback with one factory app partition. It is not a supported
 release environment, is the mandatory Core debug profile in normal CI, does not
 provide wireless updates or rollback, and is not included in the web installer.
-The legacy dual-OTA Core debug profile is an explicit workflow-dispatch opt-in.
-It fits its OTA slot again after the plan 314 flash slimming.
+The dual-OTA Core debug profile fits its OTA slot again after the plan 314
+flash slimming and is also a mandatory CI build.
 
 Build a board with its environment name:
 

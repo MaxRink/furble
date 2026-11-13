@@ -17,8 +17,9 @@ CLAUDE.md whose directory it touches.
 - `m5stack-core-usb-debug` is a developer-only USB-UART fallback with one
   factory app partition. Normal CI uses it as the mandatory Core debug profile.
   It is not part of the six-board release or web installer matrices and has no
-  wireless update or rollback path. The legacy `m5stack-core-debug` OTA profile
-  is an explicit workflow-dispatch opt-in.
+  wireless update or rollback path. Normal CI also builds the dual-OTA
+  `m5stack-core-debug` profile as a mandatory, strict lane, so an image that
+  outgrows its OTA slot fails CI.
 - Unsupported Enterprise WiFi and SoftAP are compiled out on all boards.
   WPA2/WPA3 Personal station mode and application TLS remain enabled.
 - The HTTPS WebUI is compiled with MQTT only on the 8 MB and 16 MB profiles.
@@ -39,7 +40,7 @@ CLAUDE.md whose directory it touches.
   `post:patches/m5gfx_board.py` pins it in `M5GFX::autodetect`, so the other
   boards' panel and touch drivers drop out. StickC Plus/Plus2 and Core2/Tough
   share an image and keep autodetect. Core debug is now 1,719,453 bytes and
-  fits its OTA slot again; it stays a workflow-dispatch opt-in. Log V2 writes
+  fits its OTA slot again and is a mandatory CI lane. Log V2 writes
   one record as three vprintf calls, so `FurbleCrashLog` joins fragments up to
   the newline.
 - Per-env `sdkconfig.<env>` files are committed at the repo root. Debug envs
@@ -53,7 +54,7 @@ CLAUDE.md whose directory it touches.
   end-of-stack watchpoint and standalone heap tracing (`heap trace` console
   command). Every debug env except `m5stack-core-debug` also merges
   `sdkconfig.stack-protector` (`COMPILER_STACK_CHECK_MODE_NORM`); its 24 KB
-  does not fit that opt-in OTA slot. Debug builds
+  does not fit that OTA slot. Debug builds
   define `FURBLE_TASK_WDT`, which subscribes the MQTT, WebUI and companion
   loops to the 5 s task watchdog through `FurbleTaskWatchdog.h`; a timeout
   logs a backtrace but `CONFIG_ESP_TASK_WDT_PANIC` stays off until a hardware
