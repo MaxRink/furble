@@ -79,9 +79,11 @@ bool validCoordinate(double value, double min, double max) {
 #include "power_profiler.h"
 #define FURBLE_SIM_GPS_STATE(state) Furble::Sim::profilerSetGpsState(state)
 #define FURBLE_SIM_TIMER_FIRE(name) Furble::Sim::profilerTimerFire(name)
+#define FURBLE_SIM_GPS_READER_HOLD() Furble::Sim::gpsReaderHold()
 #else
 #define FURBLE_SIM_GPS_STATE(state) ((void)0)
 #define FURBLE_SIM_TIMER_FIRE(name) ((void)0)
+#define FURBLE_SIM_GPS_READER_HOLD() ((void)0)
 #endif
 
 void gps_task(void *param) {
@@ -248,6 +250,8 @@ void GPS::task(void) {
       }
     }
 
+    // publish before blocking, so readers see this pass while the task waits
+    publishCycleStatus();
     uart_event_t event;
     const bool gotEvent =
         xQueueReceive(m_Queue, &event, cycleWait(Platform::getInstance().tick())) == pdTRUE;
@@ -299,6 +303,7 @@ void GPS::task(void) {
       servicePoll();
       serviceCycle();
     }
+    publishCycleStatus();
   }
 }
 
@@ -416,6 +421,7 @@ void GPS::enable(void) {
       // sentence on this path too.
     }
   }
+  publishCycleStatus();
 
   m_Enabled = true;
   // reset() cleared the queue, so the cancellation wake sent before it is gone.
@@ -665,11 +671,11 @@ TickType_t GPS::cycleWait(uint32_t now) const {
 }
 
 void GPS::serviceCycle(void) {
-  std::unique_lock<std::mutex> lock(m_CycleMutex, std::try_to_lock);
-  if (!lock.owns_lock()) {
-    // enable() or disable() is resetting the cycle state
-    return;
-  }
+  // Block, never skip. enable() and disable() reset the cycle under
+  // m_ServiceMutex, which this task holds for its whole pass, and readers use
+  // the published snapshot, so this never waits. It used to try_lock and skip
+  // the pass, which let a status reader drop a burst edge.
+  std::unique_lock<std::mutex> lock(m_CycleMutex);
 
   if (!m_Enabled) {
     releasePowerLock();
@@ -1253,33 +1259,73 @@ const char *GPS::cycleStateName(cycle_state_t state) {
   return "unknown";
 }
 
+namespace {
+// m_CycleStatus layout. The retry count saturates; GpsDegradedRetry caps it at
+// 16 anyway.
+constexpr unsigned CYCLE_STATE_SHIFT = 0;
+constexpr unsigned CYCLE_RETRIES_SHIFT = 8;
+constexpr unsigned CYCLE_POLICY_SHIFT = 16;
+constexpr unsigned CYCLE_DUTY_SHIFT = 24;
+constexpr unsigned CYCLE_RATE_SHIFT = 32;
+
+uint8_t cycleByte(uint64_t word, unsigned shift) {
+  return static_cast<uint8_t>((word >> shift) & 0xffU);
+}
+}  // namespace
+
+/**
+ * Publish the cycle status for the lock free readers.
+ *
+ * Called by the GPS task at the end of each service pass, and by enable() and
+ * disable() after a reset. Every writer of these fields runs under
+ * m_ServiceMutex, so the publishers never race each other.
+ */
+void GPS::publishCycleStatus(void) {
+  const uint32_t failures = m_Degraded.failures();
+  const uint64_t word =
+      (static_cast<uint64_t>(m_CycleState) << CYCLE_STATE_SHIFT)
+      | (static_cast<uint64_t>(std::min<uint32_t>(failures, 0xffU)) << CYCLE_RETRIES_SHIFT)
+      | (static_cast<uint64_t>(m_PowerPolicy) << CYCLE_POLICY_SHIFT)
+      | (static_cast<uint64_t>(m_DutySeconds) << CYCLE_DUTY_SHIFT)
+      | (static_cast<uint64_t>(m_RateMs) << CYCLE_RATE_SHIFT);
+  m_PublishedLastSentence.store(m_LastSentence, std::memory_order_relaxed);
+  m_CycleStatus.store(word, std::memory_order_release);
+}
+
+GPS::cycle_status_t GPS::getCycleStatusSnapshot(void) const {
+  // Models a slow reader. Readers used to hold m_CycleMutex here, and one that
+  // overlapped a UART event made the GPS task drop it (plans/18-gps-motion.md).
+  FURBLE_SIM_GPS_READER_HOLD();
+  const uint64_t word = m_CycleStatus.load(std::memory_order_acquire);
+  return {static_cast<cycle_state_t>(cycleByte(word, CYCLE_STATE_SHIFT)) == cycle_state_t::DEGRADED,
+          cycleByte(word, CYCLE_RETRIES_SHIFT)};
+}
+
 /**
  * Report the receiver power, rate and assist state.
  *
- * The cycle fields come from the same mutex getCycleStatusSnapshot() takes, and
- * from one acquisition of it, so they are a coherent set. The assist fields are
- * read afterwards, under the AID mutex, with the cycle mutex already released.
- * The two locks are never nested, so this adds no lock order edge to the GPS
- * task.
+ * The cycle fields come from one load of the word getCycleStatusSnapshot()
+ * reads, so they are a coherent set from one service pass. The assist fields
+ * are read afterwards, under the AID mutex.
  */
 GPS::receiver_status_t GPS::getReceiverStatus(void) const {
   receiver_status_t status = {};
 
-  {
-    const std::lock_guard<std::mutex> lock(m_CycleMutex);
-    status.cycle_state = cycleStateName(m_CycleState);
-    status.power_policy = m_PowerPolicy;
-    status.duty_seconds = m_DutySeconds;
-    status.rate_ms = m_RateMs;
-    status.have_sentence = m_LastSentence != 0;
-    // unsigned subtraction, so this stays correct across a tick wrap
-    status.last_sentence_age_ms =
-        status.have_sentence ? (Platform::getInstance().tick() - m_LastSentence) : 0;
-    // read under the same acquisition as the state, a second one could pair a
-    // fresh state with a stale retry count
-    status.degraded = m_CycleState == cycle_state_t::DEGRADED;
-    status.retries = m_Degraded.failures();
-  }
+  const uint64_t word = m_CycleStatus.load(std::memory_order_acquire);
+  const uint32_t lastSentence = m_PublishedLastSentence.load(std::memory_order_relaxed);
+  const auto state = static_cast<cycle_state_t>(cycleByte(word, CYCLE_STATE_SHIFT));
+  status.cycle_state = cycleStateName(state);
+  status.power_policy = cycleByte(word, CYCLE_POLICY_SHIFT);
+  status.duty_seconds = cycleByte(word, CYCLE_DUTY_SHIFT);
+  status.rate_ms = static_cast<uint16_t>((word >> CYCLE_RATE_SHIFT) & 0xffffU);
+  status.have_sentence = lastSentence != 0;
+  // unsigned subtraction, so this stays correct across a tick wrap
+  status.last_sentence_age_ms =
+      status.have_sentence ? (Platform::getInstance().tick() - lastSentence) : 0;
+  // from the same word as the state, a second load could pair a fresh state
+  // with a stale retry count
+  status.degraded = state == cycle_state_t::DEGRADED;
+  status.retries = cycleByte(word, CYCLE_RETRIES_SHIFT);
 
   status.aid_mode = m_AidMode.load();
   {
@@ -2086,6 +2132,7 @@ void GPS::disable(void) {
     m_Degraded.reset();
     m_CycleState = cycle_state_t::DISABLED;
   }
+  publishCycleStatus();
 
   // power off, no mutex may be held across the PMIC access
   setRailPower(false);
@@ -2809,10 +2856,12 @@ void GPS::processSerial(const uint8_t *data, size_t length) {
 void GPS::serviceSerial(void) {
   std::array<uint8_t, BUFFER_SIZE> buffer;
 
-  std::unique_lock<std::mutex> lock(m_CycleMutex, std::try_to_lock);
-  if (!lock.owns_lock() || !m_Enabled
+  // Block, never skip: see serviceCycle(). This pass consumes the UART event,
+  // so returning without a read lost the whole burst.
+  const std::lock_guard<std::mutex> lock(m_CycleMutex);
+  if (!m_Enabled
       || (static_cast<receiver_state_t>(m_ReceiverState.load()) == receiver_state_t::ABSENT)) {
-    // enable() or disable() owns the cycle state, or the receiver is absent;
+    // enable() or disable() is waiting to reset, or the receiver is absent;
     // drop this pass before a late frame can update the fix.
     return;
   }
