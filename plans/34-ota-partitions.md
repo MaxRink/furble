@@ -569,7 +569,7 @@ configure a network for is not useful.
 Two candidate sources exist and only one of them is pleasant. Both were checked
 live.
 
-**GitHub releases.** `https://github.com/gkoh/furble/releases/download/<tag>/<asset>`
+**GitHub releases.** `https://github.com/MaxRink/furble/releases/download/<tag>/<asset>`
 returns a 302 to `release-assets.githubusercontent.com` with a signed URL
 carrying a JWT and roughly 800 characters of query string. The two hosts have
 different certificate chains: `github.com` is issued by Sectigo Public Server
