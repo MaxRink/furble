@@ -289,3 +289,91 @@ floor with about 25 KiB free while the supervisor runs. The numbers in this
 document remain the measured pre-305 baseline. The StickS3 is not a supported
 WebUI target until plan 305's hardware gate passes.
 
+## Issue #390 sim closeout (2026-11-13)
+
+State: every simulator-verifiable item is done. The issue stays open for
+hardware. The project is in sim-only mode; nothing below ran on a board.
+
+The issue asked for one of two outcomes: generate the identity before WiFi and
+BLE, or keep the WebUI disabled on the StickS3. Both hold today.
+`WebUI::initEarly()` runs in `app_main` right after `Device::init()`, before
+`WiFi::init()`, `Companion::init()` and the display. It needs `Device::init()`
+for the certificate CN, so the BLE host is up but the WiFi station, the
+companion and LVGL are not. Every later path is gated and fails closed.
+
+Simulator check added: `sim/scenarios/e2e/hw-memory-webui-first-boot.txt`
+boots the full #390 configuration (StickS3 profile, WiFi connected, companion
+enabled, WebUI on with a password, FauxNY camera saved) on a device that never
+generated its TLS identity, at the measured post-#394 pair (27,351 / 25,588).
+It asserts:
+
+- the boot path stores the identity and no runtime identity task runs;
+- the supervisor and server start once, at 15,575 free / 13,812 largest;
+- a 60 s soak keeps one start attempt, a flat heap and no allocation failure;
+- a FauxNY connect, which charges the 4,464-byte target task and the
+  connected-page icons, drops the pool to 10,291 / 8,528, below the AMBER
+  floor; the governor pauses the server (14,059 / 12,296 while connected)
+  and nothing aborts;
+- after disconnect the pool is 18,831 / 17,068. The icons stay in the LVGL
+  image cache, so it stays under the 20,480 AMBER exit floor and HTTPS stays
+  paused with one start attempt. Restarting the 8 KiB server there would land
+  it back in AMBER, so this is the governor refusing to thrash, not a fault.
+
+Finding: on the measured post-#394 StickS3 heap the WebUI and a connected
+camera do not coexist. The first camera connect pauses HTTPS until a reboot
+or until something else frees about 1.7 KiB of internal RAM. This is a
+simulator prediction from the seeded pair and the counted allocations, not a
+board result.
+
+The seed is the measured pair, not `sim/coverage/board_heap.json`. That file's
+StickS3 figure (174,456) is an upper bound without the WiFi and NimBLE driver
+state, which `docs/sim-memory-profiler.md` puts at about 141 KiB. It cannot
+answer whether the server fits.
+
+Evidence: `sh sim/scripts/run-e2e.sh` on the StickS3 binary passes 211 of
+211, including the new scenario. `python3 tools/pre_review.py --base
+origin/master` passes 8 gates and `sh sim/scripts/check-doc-tokens.sh`
+passes. No firmware source changed, so no firmware build or stack budget
+rerun was needed.
+
+What the simulator cannot show: the HTTPS server, mbedTLS, a handshake, the
+real fragmentation and the closed WiFi and NimBLE allocations. The camera-leg
+result is a prediction for hardware step 4 below, not a measurement.
+
+Hardware procedure (StickS3 debug image built from a `READY TO FLASH`
+candidate per plan 313, flashed with `tools/flash_prepare.py`, USB console
+open):
+
+1. Baseline, WebUI off. Connect WiFi, enable the companion, leave the display
+   on. Run `status` and `perf heap`. Record `heap.internal.free` and
+   `heap.internal.largest`. Pass: a pair at or above 24,064 / 15,872, the
+   3,584-byte supervisor plus the 20,480 / 12,288 server floor.
+2. First-boot identity. Run `companion password set <password>`, then
+   `settings set web_ui on`, then `reboot`. Pass: the boot log shows the
+   `TLS certificate SHA-256` line and `Authenticated WebUI listening on HTTPS
+   port 443 (internal free N, largest N)`, `status` shows `reset: software`
+   and `memory_pressure: normal`, and `crash` prints `crash.none: true`.
+   A fail-closed `HTTPS stays closed: internal free N, largest N` line with
+   no reset passes for stability but not for support. Record N either way.
+3. TLS handshake and settings write. From a host on the same network, send
+   `GET /api/status` and `GET /api/settings` with HTTP basic auth `furble` and
+   the companion password (`curl -k -u furble:<password> https://<ip>/...`),
+   then `POST /api/settings` with `{"id":<wire id>,"value":<v>}` and read the
+   value back with `settings get`. Compare the certificate fingerprint from
+   `openssl s_client -connect <ip>:443` with the boot log. Record the
+   `HTTPS task stack headroom` and `WebUI supervisor stack headroom` lines.
+   Pass: all three requests succeed and the HTTPS headroom is at least 1 KiB.
+4. Camera connect. Connect the Fujifilm camera while the WebUI is up. Run
+   `status` and `perf heap`. Pass: the camera reaches active and the device
+   does not reset. The simulator predicts `memory_pressure: amber` with HTTPS
+   paused while connected and still paused after a disconnect. Record whether
+   that holds, the pair while connected and the pair after the disconnect.
+5. Soak. Leave WiFi, the companion and the WebUI up for one hour, polling
+   `/api/status` every 10 s from the host and running the USB monitor
+   (`furble-companion-cli monitor --transport usb`) in parallel. Pass: no
+   `link-lost`, `rom-reset` or `device-reset` marker, the uptime keeps rising,
+   and `perf heap` at the end is within 1 KiB of step 2.
+6. Record the pairs, headroom lines and pass or fail in this plan and in
+   `docs/webui.md`. Only a full pass makes the StickS3 a supported WebUI
+   target.
+
