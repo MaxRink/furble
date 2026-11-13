@@ -1,5 +1,5 @@
 {
-  "comment": "Task entries for tools/stack_budget.py. stack_bytes is a number or an sdkconfig key. A numeric stack cites its source as [file, regex]; tests/test_stack_budget.py checks that the regex's group matches it. envs lists the release envs that link the task; omit it for every env.",
+  "comment": "Task entries for tools/stack_budget.py. stack_bytes is a number or an sdkconfig key. A numeric stack cites its source as [file, regex]; tests/test_stack_budget.py checks that the regex's group matches it. envs lists the release envs that link the task; omit it for every env. debug_stack_bytes is the stack a -debug env creates; debug_source cites its debug margin, the first match of its regex. A -debug env without one uses stack_bytes, with sdkconfig keys read through sdkconfig.debug. A debug stack below the release stack fails.",
   "overhead_bytes": {
     "comment": "Carved from every task stack by the pinned ESP-IDF Xtensa port: the interrupt frame XT_STK_FRMSZ (192 on both chips) plus the coprocessor save area XT_CP_SIZE rounded up to 16 (96 on ESP32, 316 to 320 on ESP32-S3). Values from xtensa_context.h and port.c uxInitialiseStackCPSA. No TLS section and no task wrapper in release builds.",
     "esp32": 288,
@@ -43,7 +43,12 @@
       "stack_bytes": 4096,
       "source": [
         "src/FurbleControl.cpp",
-        "camera->getName\\(\\)\\.c_str\\(\\), (\\d+), target\\.get\\(\\)"
+        "TARGET_TASK_STACK_RELEASE = (\\d+);"
+      ],
+      "debug_stack_bytes": 4352,
+      "debug_source": [
+        "src/FurbleControl.cpp",
+        "TARGET_TASK_STACK_DEBUG_EXTRA = (\\d+);"
       ]
     },
     {
@@ -52,7 +57,12 @@
       "stack_bytes": 4096,
       "source": [
         "src/FurbleGPS.cpp",
-        "xTaskCreate\\(gps_task, LOG_TAG, (\\d+),"
+        "GPS_TASK_STACK_RELEASE = (\\d+);"
+      ],
+      "debug_stack_bytes": 4352,
+      "debug_source": [
+        "src/FurbleGPS.cpp",
+        "GPS_TASK_STACK_DEBUG_EXTRA = (\\d+);"
       ]
     },
     {
@@ -61,7 +71,12 @@
       "stack_bytes": 4096,
       "source": [
         "src/FurbleWiFi.cpp",
-        "constexpr size_t TASK_STACK = (\\d+);"
+        "TASK_STACK_RELEASE = (\\d+);"
+      ],
+      "debug_stack_bytes": 4352,
+      "debug_source": [
+        "src/FurbleWiFi.cpp",
+        "TASK_STACK_DEBUG_EXTRA = (\\d+);"
       ]
     },
     {
@@ -70,7 +85,12 @@
       "stack_bytes": 3840,
       "source": [
         "include/FurbleCompanionMemory.h",
-        "TASK_STACK_BYTES = (\\d+);"
+        "TASK_STACK_RELEASE_BYTES = (\\d+);"
+      ],
+      "debug_stack_bytes": 4352,
+      "debug_source": [
+        "include/FurbleCompanionMemory.h",
+        "TASK_STACK_DEBUG_EXTRA = (\\d+);"
       ]
     },
     {
@@ -121,7 +141,12 @@
       "stack_bytes": 3072,
       "source": [
         "include/FurbleMQTTMemory.h",
-        "PLAIN_WORKER_STACK_BYTES = (\\d+);"
+        "PLAIN_WORKER_STACK_RELEASE_BYTES = (\\d+);"
+      ],
+      "debug_stack_bytes": 3328,
+      "debug_source": [
+        "include/FurbleMQTTMemory.h",
+        "PLAIN_WORKER_STACK_DEBUG_EXTRA = (\\d+);"
       ],
       "envs": [
         "m5stick-s3",
@@ -136,7 +161,12 @@
       "stack_bytes": 4096,
       "source": [
         "include/FurbleWebUIMemory.h",
-        "SUPERVISOR_STACK_BYTES = (\\d+);"
+        "SUPERVISOR_STACK_RELEASE_BYTES = (\\d+);"
+      ],
+      "debug_stack_bytes": 4352,
+      "debug_source": [
+        "include/FurbleWebUIMemory.h",
+        "SUPERVISOR_STACK_DEBUG_EXTRA = (\\d+);"
       ],
       "envs": [
         "m5stick-s3",

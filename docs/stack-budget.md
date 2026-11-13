@@ -216,6 +216,18 @@ internal RAM cost is 768 bytes on every board for `sys_evt`, 768 more where
 the companion is enabled, and 512 more on the four MQTT and WebUI boards
 (Core2, StickS3, Waveshare, headless) while the WebUI runs.
 
+Debug images have bigger frames: the stack protector adds a canary to most
+frames and `-Os` inlines less. A `-debug` env is therefore checked against
+its own stacks, which release images never pay for. `sdkconfig.debug` sets
+`sys_evt` to 3,328 and `esp_timer` to 3,840, and the gate reads sdkconfig keys
+through it for a `-debug` env. Each furble task's owner holds a named
+`..._DEBUG_EXTRA` margin under `FURBLE_DEBUG_BUILD`, which only the `-debug`
+envs define, and the manifest's `debug_stack_bytes` and `debug_source` record
+the result: `camera_target`, `gps`, `wifi`, `companion` and `webui` at 4,352,
+`mqtt_client` at 3,328. The gate fails a task whose debug stack is below its
+release stack. The gates that admit the companion, the WebUI supervisor and
+the MQTT client include the margin, so a debug build admits what it creates.
+
 Replaying the 6 KiB MQTT owner that overflowed on hardware fails without any
 scripted constant: `--stack mqtt=6144` on the StickS3 reports 7,840 of 6,144.
 Its deepest path runs through `MQTT::taskStep` and

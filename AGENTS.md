@@ -92,7 +92,8 @@ runs it after every build. A recursion or an `alloca`/VLA frame on a task's
 path fails until the manifest cites a bound from source. The walk is exact
 outside cycles, and every path to `abort` also pays the panic handler, which
 runs on the task stack. An `infeasible_calls` edge cut needs a file:line
-citation of its guard. `platformio.ini` sets
+citation of its guard. `-debug` envs are checked against their own stacks
+(`debug_stack_bytes`, `sdkconfig.debug`, `FURBLE_DEBUG_BUILD`). `platformio.ini` sets
 `CJSON_NESTING_LIMIT=8`, which the cJSON bounds depend on. See
 `docs/stack-budget.md`.
 Hardware flashing is gated on the simulator. `sim/coverage/` holds the hardware,

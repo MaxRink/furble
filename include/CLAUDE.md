@@ -196,7 +196,8 @@ settings-touching rebase.
   literal; the matching constants are for the simulator. It also holds the
   12 KiB identity stack and the 20,864/12,672 runtime identity gate; keep its
   derivation comment current when the identity code or mbedTLS pin changes.
-- `FurbleCompanionMemory.h` holds the 3.75 KiB companion task stack and the
+- `FurbleCompanionMemory.h` holds the 3.75 KiB companion task stack (plus a
+  512-byte margin under `FURBLE_DEBUG_BUILD`) and the
   8,320/4,224 first-enable gate. `tools/stack_budget.json` reads the stack
   value from it. The simulator logs through `FURBLE_COMPANION_START_GATE_LOG`.
 - `FurbleTaskMemory.h` holds the derived 384-byte TCB and allocator overhead

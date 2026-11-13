@@ -61,7 +61,15 @@ constexpr uint32_t WIRED_RECHECK_MS = 5000;
 // While a camera session blocks the join scan, retry soon after it ends
 // instead of waiting out the full reconnect backoff.
 constexpr uint32_t COEX_RETRY_MS = 10 * 1000;
-constexpr size_t TASK_STACK = 4096;
+constexpr size_t TASK_STACK_RELEASE = 4096;
+// A debug build's stack protector and -Os frames reach 4,240 bytes on the
+// ESP32 debug builds (plan 314 PR 4c). tools/stack_budget.json reads both.
+#if defined(FURBLE_DEBUG_BUILD)
+constexpr size_t TASK_STACK_DEBUG_EXTRA = 256;
+#else
+constexpr size_t TASK_STACK_DEBUG_EXTRA = 0;
+#endif
+constexpr size_t TASK_STACK = TASK_STACK_RELEASE + TASK_STACK_DEBUG_EXTRA;
 
 esp_netif_t *g_StaNetif = nullptr;
 TaskHandle_t g_Task = nullptr;

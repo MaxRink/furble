@@ -16,7 +16,18 @@ namespace WebUIMemory {
  * neither task may live in PSRAM: the flash cache is disabled while NVS commits
  * and a PSRAM stack cannot be resumed from a flash operation.
  */
-inline constexpr size_t SUPERVISOR_STACK_BYTES = 4096;
+inline constexpr size_t SUPERVISOR_STACK_RELEASE_BYTES = 4096;
+/**
+ * A debug build's stack protector and -Os frames need more: 4,240 bytes on
+ * the Waveshare debug build (plan 314 PR 4c). tools/stack_budget.json reads it.
+ */
+#if defined(FURBLE_DEBUG_BUILD)
+inline constexpr size_t SUPERVISOR_STACK_DEBUG_EXTRA = 256;
+#else
+inline constexpr size_t SUPERVISOR_STACK_DEBUG_EXTRA = 0;
+#endif
+inline constexpr size_t SUPERVISOR_STACK_BYTES =
+    SUPERVISOR_STACK_RELEASE_BYTES + SUPERVISOR_STACK_DEBUG_EXTRA;
 inline constexpr size_t HTTPD_STACK_BYTES = 8192;
 
 /**
@@ -37,9 +48,12 @@ inline constexpr size_t HTTPD_STACK_BYTES = 8192;
 inline constexpr size_t SERVER_INTERNAL_FREE_FLOOR = 20480;
 inline constexpr size_t SERVER_INTERNAL_LARGEST_FLOOR = 12288;
 
-/** Enough contiguous internal RAM for the 4 KiB supervisor task plus TCB. */
-inline constexpr size_t SUPERVISOR_INTERNAL_FREE_FLOOR = 5120;
-inline constexpr size_t SUPERVISOR_INTERNAL_LARGEST_FLOOR = 4608;
+/**
+ * Enough contiguous internal RAM for the supervisor task plus TCB: 5,120 /
+ * 4,608 bytes for the 4 KiB release stack, and the debug margin on top.
+ */
+inline constexpr size_t SUPERVISOR_INTERNAL_LARGEST_FLOOR = SUPERVISOR_STACK_BYTES + 512;
+inline constexpr size_t SUPERVISOR_INTERNAL_FREE_FLOOR = SUPERVISOR_INTERNAL_LARGEST_FLOOR + 512;
 
 /**
  * The one-shot TLS identity task. It writes NVS, so its stack stays internal.

@@ -11,9 +11,18 @@ namespace CompanionMemory {
 /**
  * The retained companion service task. A measured 1,884-byte high-water mark
  * on the StickS3 with the companion connected and a settings write. It commits
- * NVS, so it stays internal. tools/stack_budget.json reads this value.
+ * NVS, so it stays internal. tools/stack_budget.json reads both values: the
+ * release stack, and the margin a debug build adds for its stack protector
+ * and -Os frames (4,192 bytes measured on the ESP32 debug builds, plan 314
+ * PR 4c).
  */
-inline constexpr size_t TASK_STACK_BYTES = 3840;
+inline constexpr size_t TASK_STACK_RELEASE_BYTES = 3840;
+#if defined(FURBLE_DEBUG_BUILD)
+inline constexpr size_t TASK_STACK_DEBUG_EXTRA = 512;
+#else
+inline constexpr size_t TASK_STACK_DEBUG_EXTRA = 0;
+#endif
+inline constexpr size_t TASK_STACK_BYTES = TASK_STACK_RELEASE_BYTES + TASK_STACK_DEBUG_EXTRA;
 
 /**
  * Derived: the GATT database the first enable builds and keeps, sized from the

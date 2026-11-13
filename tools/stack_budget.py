@@ -431,6 +431,8 @@ def main():
                     help="skip prebuilt code from firmware.elf (for synthetic graphs)")
     ap.add_argument("--objdump", help="default: the PlatformIO Xtensa toolchain for the target")
     ap.add_argument("--sdkconfig", help="default sdkconfig.<release env>")
+    ap.add_argument("--debug-sdkconfig", default=str(ROOT / "sdkconfig.debug"),
+                    help="fragment every -debug env merges over the release sdkconfig")
     ap.add_argument("--stack", action="append", default=[], metavar="TASK=BYTES",
                     help="override one task's stack, e.g. to replay a past size")
     ap.add_argument("--verbose", action="store_true", help="print paths and indirect sites")
@@ -452,10 +454,19 @@ def main():
     release_env = max((e for e in release_envs if args.env == e or args.env.startswith(e + "-")),
                       key=len, default=args.env)
     sdkconfig_path = Path(args.sdkconfig or ROOT / f"sdkconfig.{release_env}")
-    for line in sdkconfig_path.read_text().splitlines():
-        key, sep, value = line.partition("=")
-        if sep and not key.startswith("#"):
-            sdkconfig[key] = value.strip('"')
+
+    def read_config(path, into):
+        for line in path.read_text().splitlines():
+            key, sep, value = line.partition("=")
+            if sep and not key.startswith("#"):
+                into[key] = value.strip('"')
+
+    read_config(sdkconfig_path, sdkconfig)
+    # Every -debug env merges sdkconfig.debug (patches/debug_sdkconfig.py) and
+    # creates its furble tasks with their debug margins.
+    debug = "-debug" in args.env
+    debug_sdkconfig = dict(sdkconfig)
+    read_config(Path(args.debug_sdkconfig), debug_sdkconfig)
     target = sdkconfig["CONFIG_IDF_TARGET"]
     margin = manifest["overhead_bytes"][target]
     if not args.no_elf:
@@ -542,9 +553,16 @@ def main():
                        if not tasks or task["name"] in tasks]
         depth, path, notes = worst_case(graph, found[0], task_rules, pruned, task_bounds)
         need = depth + margin
-        stack = overrides.get(task["name"], task["stack_bytes"])
-        if isinstance(stack, str):
-            stack = int(sdkconfig[stack])
+        def resolve(value, config):
+            return int(config[value]) if isinstance(value, str) else value
+
+        release_stack = resolve(task["stack_bytes"], sdkconfig)
+        debug_stack = resolve(task.get("debug_stack_bytes", task["stack_bytes"]), debug_sdkconfig)
+        if debug_stack < release_stack:
+            print(f"FAIL {task['name']}: debug stack {debug_stack} is below the release stack"
+                  f" {release_stack}")
+            failed += 1
+        stack = overrides.get(task["name"], debug_stack if debug else release_stack)
         unbounded = [c for c, (_, why) in notes["recursion"].items() if why is None]
         known = [c for c, (depth, why) in notes["recursion"].items() if why and depth is None]
         ok = need <= stack and not unbounded and not notes["dynamic"]

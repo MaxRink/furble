@@ -92,6 +92,15 @@ void gps_task(void *param) {
 namespace Furble {
 
 namespace {
+constexpr uint32_t GPS_TASK_STACK_RELEASE = 4096;
+// A debug build's stack protector and -Os frames reach 4,256 bytes on the
+// Waveshare debug build (plan 314 PR 4c). tools/stack_budget.json reads both.
+#if defined(FURBLE_DEBUG_BUILD)
+constexpr uint32_t GPS_TASK_STACK_DEBUG_EXTRA = 256;
+#else
+constexpr uint32_t GPS_TASK_STACK_DEBUG_EXTRA = 0;
+#endif
+constexpr uint32_t GPS_TASK_STACK = GPS_TASK_STACK_RELEASE + GPS_TASK_STACK_DEBUG_EXTRA;
 constexpr uint32_t BURST_GAP_MS = 75;
 constexpr uint32_t WINDOW_DEFAULT_MS = 50;
 constexpr uint32_t WINDOW_MIN_MS = 20;
@@ -182,7 +191,7 @@ GPS &GPS::getInstance() {
     uart_pattern_queue_reset(instance.m_UART, QUEUE_SIZE);
     uart_flush(instance.m_UART);
 
-    BaseType_t err = xTaskCreate(gps_task, LOG_TAG, 4096, &instance, 3, &instance.m_Task);
+    BaseType_t err = xTaskCreate(gps_task, LOG_TAG, GPS_TASK_STACK, &instance, 3, &instance.m_Task);
     if (err != pdTRUE) {
       ESP_LOGE(LOG_TAG, "Failed to create gps task.");
       abort();

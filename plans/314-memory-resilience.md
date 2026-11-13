@@ -707,7 +707,51 @@ Before and after, bytes including port overhead:
 | webui_https | 8,192 | 2,640 | 2,848 | 2,864 | 3,312 |
 | webui_tls | 12,288 | 7,664 | 8,144 | 7,920 | 8,672 |
 
-StickC, StickC Plus, Core, Core2 and headless: firmware CI on the PR.
+Release envs in the firmware CI dispatch (run 43476535693), need in bytes;
+every row passes, the ESP32 boards share one column because StickC, StickC
+Plus, Core and Core2 measured the same:
+
+| Task | Stack | ESP32 boards | StickS3 | Waveshare |
+| :--- | ---: | ---: | ---: | ---: |
+| panic handler | | 1,216 | 512 | 752 |
+| sys_evt | 3,072 | 2,912 | 2,432 | 2,944 |
+| esp_timer | 3,584 | 3,184 | 2,704 | 3,504 |
+| control | 8,192 | 3,296 | 2,816 | 3,648 |
+| camera_target | 4,096 | 2,864 | 2,384 | 3,248 |
+| gps | 4,096 | 3,696 | 3,392 | 3,984 |
+| wifi | 4,096 | 3,552 | 3,072 | 3,872 |
+| companion | 3,840 | 3,424 | 2,912 | 3,712 |
+| ir (StickC, Plus, S3) | 4,096 | 3,296 | 2,800 | |
+| sd (Core, Core2) | 6,144 | 4,816 | | |
+| mqtt (Core2) | 10,240 | 8,736 | 8,256 | 9,056 |
+| mqtt_client (Core2) | 3,072 | 2,832 | 2,352 | 2,896 |
+| webui (Core2) | 4,096 | 3,632 | 3,152 | 3,952 |
+| webui_https (Core2) | 8,192 | 3,328 | 2,848 | 3,312 |
+| webui_tls (Core2) | 12,288 | 7,904 | 8,144 | 8,672 |
+
+The ESP32 `main` row is 7,888 to 7,936 against 16,384. Every release size
+budget passes. The headless env is not in that matrix; the reproducible
+workflow (run 43476529248) runs its stack and size budgets on the kept build
+and both pass. Headless matches Waveshare except `control` 4,096 of 8,192
+and `camera_target` 3,856 of 4,096.
+
+Debug envs. The first dispatch failed five of six debug envs against the
+release stacks, because the stack protector and `-Os` make frames bigger:
+the ESP32 debug builds needed `sys_evt` 3,088, `esp_timer` 3,664, `gps`
+4,160, `wifi` 4,240 and `companion` 4,192 (Core2 debug also `webui` 4,128);
+Waveshare debug needed `sys_evt` 3,264, `camera_target` 4,144, `gps` 4,256,
+`companion` 3,968, `mqtt_client` 3,216 and `webui` 4,240. Raising the
+release stacks for debug-only frames would have cost every release image
+about 2 to 3 KB more, so debug images get their own sizes instead:
+`sdkconfig.debug` sets `sys_evt` 3,328 and `esp_timer` 3,840, and each task
+owner adds a named `..._DEBUG_EXTRA` under `FURBLE_DEBUG_BUILD`, defined only
+by the `-debug` envs: `camera_target`, `gps`, `wifi`, `webui` +256 to 4,352,
+`companion` +512 to 4,352 and `mqtt_client` +256 to 3,328. The manifest
+records each as `debug_stack_bytes` with its cited `debug_source`, the gate
+uses it for a `-debug` env and fails a debug stack below its release stack.
+The companion, WebUI supervisor and MQTT client admission gates include the
+margin. Host tests and the simulator build without the define and keep the
+release values.
 
 Stack changes, each raised to the measured maximum across envs rounded up to
 256 bytes:
@@ -729,9 +773,12 @@ companion is enabled, and 512 more on Core2, StickS3, Waveshare and headless
 while the WebUI runs: up to 1,536 bytes on StickC, StickC Plus and Core and
 2,048 on the other four. `tools/derive_sim_heap.py`,
 `sim/memory_profile.cpp`, `sim/coverage/memory_budget.json` and the host
-gate tests carry the new values. `sim/coverage/board_heap.json` and the
-simulator memory profile are regenerated once the builds and the simulator
-are available again.
+gate tests carry the new values. `sim/coverage/board_heap.json` is
+re-derived: StickS3 and Waveshare from fresh images, whose static DRAM had
+already drifted from the recorded values, and the ESP32 boards from their
+recorded ELF symbols with the new stack terms. The profile floors in
+`memory_budget.json` follow it. The simulator memory profile run waits for
+the simulator to be available again.
 
 Deviations:
 

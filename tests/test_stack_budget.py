@@ -216,6 +216,7 @@ LISTING = """
 
 class StackBudgetTest(unittest.TestCase):
     def run_tool(self, stack, indirect=True, extra=(), rules=(), cis=None, manifest_extra=None,
+                 env="x", debug_config="",
                  listing=None, symbols=""):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
@@ -225,6 +226,7 @@ class StackBudgetTest(unittest.TestCase):
             for name, text in cis:
                 (build / name).write_text(text)
             (tmp / "sdkconfig").write_text('CONFIG_IDF_TARGET="esp32"\nCONFIG_STACK=%d\n' % stack)
+            (tmp / "sdkconfig.debug").write_text(debug_config)
             manifest = {
                 "overhead_bytes": {"esp32": 288},
                 "tasks": [{"name": "t", "entry": r"^void entry\(void\*\)$", "stack_bytes": "CONFIG_STACK"}],
@@ -245,8 +247,9 @@ class StackBudgetTest(unittest.TestCase):
                 objdump.chmod(0o755)
                 elf = ["--objdump", str(objdump)]
             return subprocess.run(
-                [sys.executable, str(TOOL), "--env", "x", "--build-dir", str(build), "--sdkconfig",
-                 str(tmp / "sdkconfig"), "--manifest", str(tmp / "manifest.json"), *elf, *extra],
+                [sys.executable, str(TOOL), "--env", env, "--build-dir", str(build), "--sdkconfig",
+                 str(tmp / "sdkconfig"), "--debug-sdkconfig", str(tmp / "sdkconfig.debug"),
+                 "--manifest", str(tmp / "manifest.json"), *elf, *extra],
                 capture_output=True, text=True)
 
     def test_resolved_depth_and_overhead(self):
@@ -255,6 +258,33 @@ class StackBudgetTest(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         # cb_deep is dynamic,bounded: GCC already reports its maximum, so it passes
         self.assertIn("PASS t: 820 of 820 bytes (532 frames + 288 port overhead)\n", r.stdout)
+
+    def test_debug_env_uses_its_debug_stack(self):
+        # The graph needs 820 bytes. Release checks 400, a -debug env 900.
+        task = {"tasks": [{"name": "t", "entry": r"^void entry\(void\*\)$", "stack_bytes": 400,
+                           "debug_stack_bytes": 900}]}
+        r = self.run_tool(0, manifest_extra=task)
+        self.assertIn("FAIL t: 820 of 400", r.stdout)
+        r = self.run_tool(0, manifest_extra=task, env="x-debug")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("PASS t: 820 of 900", r.stdout)
+
+    def test_debug_env_reads_sdkconfig_keys_through_the_debug_fragment(self):
+        r = self.run_tool(400, debug_config="CONFIG_STACK=900\n")
+        self.assertIn("FAIL t: 820 of 400", r.stdout)
+        r = self.run_tool(400, debug_config="CONFIG_STACK=900\n", env="x-debug")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("PASS t: 820 of 900", r.stdout)
+
+    def test_debug_stack_below_the_release_stack_fails(self):
+        task = {"tasks": [{"name": "t", "entry": r"^void entry\(void\*\)$", "stack_bytes": 900,
+                           "debug_stack_bytes": 850}]}
+        for env in ("x", "x-debug"):
+            r = self.run_tool(0, manifest_extra=task, env=env)
+            self.assertEqual(r.returncode, 1, r.stdout)
+            self.assertIn("FAIL t: debug stack 850 is below the release stack 900", r.stdout)
+        r = self.run_tool(900, debug_config="CONFIG_STACK=800\n")
+        self.assertIn("FAIL t: debug stack 800 is below the release stack 900", r.stdout)
 
     def test_fails_one_byte_short_and_prints_path(self):
         r = self.run_tool(819)
@@ -459,6 +489,21 @@ class ManifestSourceTest(unittest.TestCase):
                 path, pattern = task["source"]
                 found = re.findall(pattern, (ROOT / path).read_text())
                 self.assertEqual(found, [str(task["stack_bytes"])], f"{path}: {pattern}")
+                if "debug_stack_bytes" in task:
+                    # the debug margin is the first branch of its #if
+                    path, pattern = task["debug_source"]
+                    found = re.findall(pattern, (ROOT / path).read_text())
+                    self.assertEqual(found, [str(task["debug_stack_bytes"] - task["stack_bytes"]), "0"],
+                                     f"{path}: {pattern}")
+
+    def test_debug_fragment_sizes_the_sdkconfig_tasks(self):
+        # The default event loop and esp_timer tasks grow only in debug images.
+        release = (ROOT / "sdkconfig.m5stick-c").read_text()
+        debug = (ROOT / "sdkconfig.debug").read_text()
+        for key in ("CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE", "CONFIG_ESP_TIMER_TASK_STACK_SIZE"):
+            with self.subTest(key=key):
+                value = int(re.search(rf"^{key}=(\d+)$", debug, re.M).group(1))
+                self.assertGreaterEqual(value, int(re.search(rf"^{key}=(\d+)$", release, re.M).group(1)))
 
     def test_memory_budget_components_match_the_task_stacks(self):
         stacks = {t["name"]: t["stack_bytes"]
