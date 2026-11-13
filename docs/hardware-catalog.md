@@ -9,7 +9,7 @@ ESP32-S3-ETH wired node.
 The catalog was checked on 2026-11-01. Prices are vendor list prices in the
 currency the vendor shows, excluding tax and shipping unless the vendor says
 otherwise. They move. Check before ordering. Corrections from the 2026-11-13
-hardware research are cited as sources 45 to 54.
+hardware research are cited as sources 45 to 55.
 
 The analysis that turns this list into porting decisions is
 [plans/287-mcu-portability-and-bundle-hardware.md](../plans/287-mcu-portability-and-bundle-hardware.md).
@@ -45,7 +45,7 @@ is the zero-port exception: it already meets all four requirements.
 | Best development target | LilyGO T-Deck Plus | 16 MB flash, 8 MB PSRAM, touch, keyboard, GPS, 2000 mAh, 70.99 USD |
 | Best GPS, with a UBX driver | LilyGO T-Deck Plus or T-Watch Ultra | u-blox MIA-M10Q, -167 dBm tracking, 1 second hot or assisted fix, 25 mW class |
 | Best GPS, no new driver | T-Beam Supreme L76K | L76K `$PCAS`, standby and a rail switch. Same driver as today. The ThinkNode M5 qualifies only as hardware v1.0; v2.0 uses the AG3352 [45]. |
-| Best wearable | LilyGO T-Watch Ultra | 2.06 inch AMOLED touch, GPS, IP65, 1100 mAh, 78.32 USD |
+| Best wearable | LilyGO T-Watch Ultra | 2.06 inch AMOLED touch, GPS, IP65, 1100 mAh, 90.34 USD [55] |
 | Best `$PCAS` sidecar | Elecrow ThinkNode M5 v1.0 | ESP32-S3, L76K `$PCAS`, e-paper, 1200 mAh, 53.90 USD. Check the revision: v2.0 uses the AG3352, `$PAIR` [45]. |
 | Best sidecar runtime, with a port | LilyGO T-Echo Plus | nRF52840, e-paper, 2400 mAh, 47 hours of continuous GNSS |
 | Best runtime with the current code | LilyGO T-Beam Supreme, L76K trim | swappable 3400 mAh 18650, 66 hours of continuous GNSS, 37.12 USD plus cell |
@@ -119,7 +119,7 @@ a short Grove cable.
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | LilyGO T-Deck Plus | ESP32-S3FN16R8, 16 MB, 8 MB PSRAM | MIA-M10Q, UBX; or L76K, `$PCAS`, in the 61.34 USD L76K trim [48] | 2.8 inch 320x240 IPS, touch, keyboard, trackball | yes | 2000 mAh | 70.99 USD [1] | T1 | The best single development target. 16 MB flash leaves room for two large OTA slots. |
 | LilyGO T-Deck Pro | ESP32-S3FN16R8, 16 MB, 8 MB PSRAM | MIA-M10Q, UBX | 3.1 inch 320x240 e-paper, touch, keyboard | yes | 1400 to 1500 mAh, sources conflict | 84.96 USD audio, 99.98 USD 4G [2] | T1 | E-paper refresh is slow for LVGL. The 4G variant is irrelevant to furble. |
-| LilyGO T-Watch Ultra | ESP32-S3R8, 16 MB, 8 MB PSRAM | MIA-M10Q, UBX | 2.06 inch 410x502 AMOLED, touch | yes | 1100 mAh | 78.32 USD [3] | T1 | IP65. Best wearable shape. Heavy for a camera strap. |
+| LilyGO T-Watch Ultra | ESP32-S3R8, 16 MB, 8 MB PSRAM | MIA-M10Q, UBX | 2.06 inch 410x502 AMOLED, touch | yes | 1100 mAh | 90.34 USD [55] | T1 | IP65. Best wearable shape. Heavy for a camera strap. |
 | LilyGO T-Watch S3 Plus | ESP32-S3, 16 MB, 8 MB PSRAM | MIA-M10Q, UBX | 1.54 inch 240x240 IPS, touch | yes | 940 mAh | 58.74 USD [4] | T1 | Smaller and cheaper than the Ultra. Micro USB. |
 | LilyGO T-LoRa Pager | ESP32-S3, 16 MB, 8 MB PSRAM | MIA-M10Q, UBX | 2.33 inch 480x222 IPS, no touch, keyboard and encoder | yes | internal LiPo | 87.35 USD [5] | T1 | Pager shape. Stock comes and goes. |
 | Elecrow ThinkNode M5 | ESP32-S3, 4 MB flash per vendor wiki, 8 MB PSRAM | v1.0: L76K, `$PCAS`. v2.0: Airoha AG3352, `$PAIR` [45] | 1.54 inch 200x200 e-paper, no touch | yes | 1200 mAh | 53.90 USD [6] | T1 | The best sidecar only as v1.0. On v2.0 the GPS switch does not cut power [45]. Vendor flash claims conflict, verify the module. |
@@ -354,7 +354,7 @@ Fetched on 2026-11-01. Prices are from the vendor page unless marked.
 2. LilyGO T-Deck Pro, 84.96 USD audio and 99.98 USD 4G:
    https://wiki.lilygo.cc/products/t-deck-series/t-deck-pro and
    https://www.cnx-software.com/2025/04/03/lilygo-t-deck-pro-esp32-s3-lora-messenger-e-paper-touch-display-keyboard-and-4g-lte-or-audio-codec-option
-3. LilyGO T-Watch Ultra, 78.32 USD:
+3. LilyGO T-Watch Ultra, 78.32 USD on 2026-11-01 (see [55] for the current price):
    https://lilygo.cc/en-us/products/t-watch-ultra and
    https://wiki.lilygo.cc/products/t-watch-series/t-watch-ultra
 4. LilyGO T-Watch S3 Plus, 58.74 USD:
@@ -483,7 +483,11 @@ Fetched on 2026-11-01. Prices are from the vendor page unless marked.
 52. M5Stack Core2 v1.1 ILI9342E panel change and Core2 v1.3:
     https://docs.m5stack.com/en/core/Core2%20v1.1 and
     https://docs.m5stack.com/en/core/Core2_v1.3
-53. M5Stack shop product status (StickC Plus2 and Cardputer v1.1 end of life):
-    https://shop.m5stack.com
+53. M5Stack shop product status, both pages marked EOL (StickC Plus2 and the
+    original Cardputer kit K132):
+    https://shop.m5stack.com/products/m5stickc-plus2-esp32-mini-iot-development-kit
+    and https://shop.m5stack.com/products/m5stack-cardputer-kit-w-m5stamps3
 54. LilyGO T-Beam Supreme variants, L76K 37.12 USD and u-blox 50.04 USD:
     https://lilygo.cc/products/t-beam-supreme.json
+55. LilyGO T-Watch Ultra variants, 90.34 USD, re-read 2026-11-13:
+    https://lilygo.cc/products/t-watch-ultra.json
