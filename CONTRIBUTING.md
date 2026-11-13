@@ -362,7 +362,9 @@ attempt to infer changed paths without a pull request or push comparison base.
   the cache stamp also identifies the absolute firmware, dependency, and LVGL
   roots so shared build directories cannot mix checkout objects. Verify the
   cache with `sh sim/scripts/test-build-deps.sh` after changing the build
-  script. It never changes firmware behavior.
+  script. It never changes firmware behavior. On macOS the build links SDL3
+  directly next to Homebrew's sdl2-compat, so a broken SDL3 install fails the
+  launch on stderr instead of opening a blocking dialog.
 - UI screenshot CI uses `FURBLE_SIM_NO_TOUCH=1` for the StickS3 and asserts
   each page before capture. Its setup routes are not physical-input validation.
 - UI fuzz CI runs all three panel binaries in touch and physical-button

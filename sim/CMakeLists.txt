@@ -290,6 +290,32 @@ set_target_properties(furble-sim PROPERTIES ENABLE_EXPORTS ON)
 
 if(APPLE)
   target_link_libraries(furble-sim PRIVATE "-framework Cocoa")
+  # Homebrew's sdl2 is sdl2-compat, which dlopens SDL3 from a library
+  # initializer and shows a blocking "Fatal error! Cannot continue!" dialog
+  # when that fails. Linking SDL3 directly makes dyld map it at launch, so the
+  # dlopen reuses the loaded image and a real load failure ends the launch
+  # with a dyld message on stderr instead of a dialog. Keep in step with
+  # sim/build.sh.
+  find_library(FURBLE_SDL3_LIBRARY SDL3 PATHS /opt/homebrew/lib /usr/local/lib
+               NO_DEFAULT_PATH)
+  if(FURBLE_SDL3_LIBRARY)
+    target_link_options(furble-sim PRIVATE
+                        "LINKER:-needed_library,${FURBLE_SDL3_LIBRARY}")
+  else()
+    # A real SDL2 needs no SDL3. sdl2-compat without SDL3 would fail at
+    # launch through that dialog, so stop at configure time.
+    foreach(furble_sdl_dir /opt/homebrew/lib /usr/local/lib)
+      if(EXISTS "${furble_sdl_dir}/libSDL2.dylib")
+        file(REAL_PATH "${furble_sdl_dir}/libSDL2.dylib" furble_sdl2_real)
+        if(furble_sdl2_real MATCHES "sdl2-compat")
+          message(FATAL_ERROR
+                  "${furble_sdl_dir}/libSDL2.dylib is sdl2-compat but no "
+                  "libSDL3.dylib was found. Install SDL3 (brew install sdl3).")
+        endif()
+        break()
+      endif()
+    endforeach()
+  endif()
 endif()
 
 # TinyGPSPlus ages readings against a global millis(). Suppress its host
