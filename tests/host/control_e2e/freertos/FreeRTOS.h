@@ -42,6 +42,8 @@ BaseType_t xTaskCreate(TaskFunction_t task,
 void vTaskDelete(TaskHandle_t task_handle);
 void vTaskDelay(TickType_t ticks);
 TickType_t xTaskGetTickCount(void);
+uint32_t ulTaskNotifyTake(BaseType_t clear_on_exit, TickType_t ticks_to_wait);
+BaseType_t xTaskNotifyGive(TaskHandle_t task_handle);
 
 // Stop and join every std::thread-backed task before host static destruction.
 using FurbleHostDelayHook = void (*)(void);
@@ -49,6 +51,8 @@ void furbleHostSetDelayHook(FurbleHostDelayHook hook);
 size_t furbleHostTaskCreateCount(void);
 uint32_t furbleHostLastTaskStackBytes(void);
 void furbleHostStopTasks(void);
+// Tasks blocked in ulTaskNotifyTake() without a timeout.
+size_t furbleHostNotifyWaiters(void);
 
 class FurbleHostTaskScope {
  public:

@@ -162,8 +162,10 @@ void CompanionGatt::enable(bool pairingWindow) {
 
   bool startPairing = false;
   bool taskCreationFailed = false;
+  TaskHandle_t task = nullptr;
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
+    task = m_Task;
     if (m_Enabled) {
       startPairing = pairingWindow;
     } else {
@@ -255,6 +257,12 @@ void CompanionGatt::enable(bool pairingWindow) {
 
       startPairing = pairingWindow;
     }
+  }
+
+  // A task retained from an earlier enable is blocked while disabled. Wake it
+  // now that the service is ready again.
+  if (task != nullptr) {
+    xTaskNotifyGive(task);
   }
 
   // The retained service task is already runnable and owns the reconnect
@@ -623,7 +631,12 @@ void CompanionGatt::serviceTask(void) {
       enabled = m_Enabled && m_ServiceReady;
     }
     if (!enabled) {
-      vTaskDelay(pdMS_TO_TICKS(100));
+      // The task is retained across disable. Block until enable() notifies it
+      // instead of polling forever; a give that raced this check is kept by
+      // the notification count, so the take returns at once.
+      TaskWatchdog::unsubscribe();
+      (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+      TaskWatchdog::subscribe();
       continue;
     }
 

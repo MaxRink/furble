@@ -31,6 +31,19 @@ inline void subscribe(void) {
 #endif
 }
 
+/**
+ * Unsubscribe the calling task before an unbounded wait. A disabled service
+ * blocks on a task notification and must not trip the watchdog meanwhile.
+ * Call subscribe() again once the wait returns.
+ */
+inline void unsubscribe(void) {
+#if defined(FURBLE_TASK_WDT) && FURBLE_TASK_WDT
+  if (esp_task_wdt_status(nullptr) == ESP_OK) {
+    (void)esp_task_wdt_delete(nullptr);
+  }
+#endif
+}
+
 /** Feed the watchdog from the calling task's loop; a no-op if unsubscribed. */
 inline void feed(void) {
 #if defined(FURBLE_TASK_WDT) && FURBLE_TASK_WDT
