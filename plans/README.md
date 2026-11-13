@@ -163,6 +163,7 @@ implemented.
 | [318-next-board-battery-gps.md](318-next-board-battery-gps.md) | Next board for battery life and GPS: 32.768 kHz crystal finding, T-Beam Supreme M10S first, UBX driver design and bench plan |
 | [319-meshtastic-dual-boot.md](319-meshtastic-dual-boot.md) | Design only: furble and Meshtastic on one ESP32-S3 node, slot ownership, private NVS and switching |
 | [320-rtc-use.md](320-rtc-use.md) | RTC domain use: wall clock across soft resets, timed-wake time restore, drift calibration, rejected ULP ideas |
+| [324-hw-research-review-feedback.md](324-hw-research-review-feedback.md) | Review-feedback record for the hardware research branch |
 
 ## Bug analyses
 

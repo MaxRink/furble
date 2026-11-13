@@ -1,0 +1,19 @@
+# 324 - Review feedback for the hardware research branch
+
+Implementation state (2026-11-13): this is the review-feedback record for
+`docs/hw-research-and-fixes`, which adds plans 318 to 320, corrects the
+hardware catalog and lists PENTAX K-3 Mark III and DJI Osmo Action. Every
+finding is recorded as fixed or a false positive, with evidence.
+
+## `docs/hw-research-and-fixes`
+
+| # | Source | Finding | Resolution | Evidence |
+| ---: | :--- | :--- | :--- | :--- |
+| 1 | Subagent review | The PENTAX rows claimed the K-1, K-70, KF and KP. Those bodies connect over Wi-Fi only, so `Ricoh::matches()` cannot scan them. | Fixed. The README, `docs/supported-hardware.md` and the wiki claim the K-3 Mark III and K-3 Mark III Monochrome only, and list the K-1, K-1 Mark II, KP, KF and K-70 as Wi-Fi only and unsupported. Plan 73 records a dated correction. The connect page does not name the Monochrome; it stays because it is the K-3 Mark III body. | https://www.ricoh-imaging.co.jp/english/products/app/image-sync2/connect.html |
+| 2 | Subagent review | Plan 319 said to align furble to IDF 5.5.5 because the bootloader must not be older than its apps. That contradicts its own rule that the bootloader boots newer apps, not older. | Fixed. The bootloader must not be newer than any app. The section lists the options for the IDF 5.5.0 loader (build the bootloader from 5.5.0, rebuild the loader, or drop it per slot rule 5) and asks for a bench test. | https://docs.espressif.com/projects/esp-idf/en/v5.5.1/esp32s3/api-guides/bootloader.html |
+| 3 | Subagent review | The catalog listed the T-Watch Ultra at 78.32 USD. | Fixed. 90.34 USD, cited as source 55. Source 3 keeps the 2026-11-01 price with a pointer. | https://lilygo.cc/products/t-watch-ultra.json |
+| 4 | Subagent review | Plan 320 said every S3 profile sets `MAIN_XTAL_PU_DURING_LIGHT_SLEEP`. | Fixed. StickS3 and headless set it; the Waveshare profile does not. | `grep -c CONFIG_BT_CTRL_MAIN_XTAL_PU_DURING_LIGHT_SLEEP=y sdkconfig.*` |
+| 5 | Subagent review | Plan 318 left the Pager cell size, the CO5300 and BQ27220 parts, the XIAO price and the Heltec V4 crystal claim unsourced. Plan 319's verdict table had no tag. | Fixed. The cell size is tagged inferred, the parts cite the LilyGO schematics, the XIAO module cites Seeed with the total tagged inferred, and the Heltec V4 is dropped because the report listed its crystal as not found. The verdict table is tagged as derived from the facts below. | `plans/318-next-board-battery-gps.md`, `plans/319-meshtastic-dual-boot.md` |
+| 6 | Subagent review | Catalog source 53 linked the M5Stack shop root for the EOL claims, and the README did not mark the StickC Plus2 EOL. | Fixed. Source 53 links both product pages, which M5Stack marks EOL. The README controller list and both board tables mark the Plus2 EOL. | https://shop.m5stack.com/products/m5stickc-plus2-esp32-mini-iot-development-kit , https://shop.m5stack.com/products/m5stack-cardputer-kit-w-m5stamps3 |
+| 7 | Subagent review | Plans 319 and 125 cited IDF v5.5.1 lines only, and plan 125 did not name every file that references the OTA sink. | Fixed. Both plans confirm the same rollback logic in the pinned IDF 5.5.3. Plan 125 names `src/CMakeLists.txt`, `sim/CMakeLists.txt`, `sim/build.sh` and `tests/host/ota_partition_sink_test.cpp` as build and test references, with no production caller. | `~/.platformio/packages/framework-espidf` 5.5.3: `esp_ota_ops.c` 113-120 and 552-599, `bootloader_utility.c` 399-449 |
+| 8 | Subagent review | Plan 287 repeated the ThinkNode M5 L76K and Waveshare LC76G claims that the catalog corrected. | Fixed. Plan 287 has a dated correction, says v1.0 wherever it recommends the ThinkNode M5, notes the LC76G touch conflict and answers its two open GNSS questions. | `plans/287-mcu-portability-and-bundle-hardware.md`, catalog sources 45 to 47 |
