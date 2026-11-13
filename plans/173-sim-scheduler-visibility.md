@@ -710,7 +710,7 @@ root cause is now identified as an environment use-after-free; see the
 | 1. Comment rot naming plan 158 Phase 3 | Done. `sim/freertos.cpp` and `sim/scripts/run-fuzz.sh` now describe the scheduler-visible mutex and the remaining plain host locks. |
 | 2. Per-PID preferences leak on abnormal exit | Done. Generated stores have an ownership marker, same-PID restart adoption, and orderly cleanup. `preparePreferences()` now sweeps `.pio` and removes a store only when its encoded pid is dead; a live, self, or foreign-owner store is kept. `preferences-sweep` covers the dead, live, self, and unrelated cases. |
 | 3. Crash handler hardening | Done for alt-stack, early installation, and normal-context unwinder warm-up. Stack-exhaustion coverage and formal async-signal safety remain open. |
-| 4. 50-run load proof on the restored bounds | Measured 2026-11-13, see below. 266 completed runs across the two legs and three panels, every one inside its bound with at least 39 percent headroom. 43 to 45 runs completed per cell rather than 50, because 34 runs stalled in boot on host filesystem stalls before their first scenario step. |
+| 4. 50-run load proof on the restored bounds | Open. Measured 2026-11-13, see below. The clock bounds held on all 565 completed runs: 266 on macOS (43 to 45 per cell) and 299 in a Linux container (49 or 50 per cell). The container run also produced one 6000 ms settle failure (`control.zombies` 1) and a reconnect run at 17850 of 20000, so a wait the scheduler does not see correctly still lets load into virtual time. |
 | 5. Fairness and waiter-state dump | Done. A task blocked on a scheduler-visible mutex reports `wait=mutex` in the task dump, and `sim-scheduler` checks the dump plus a `try_lock()` during the reservation-before-wake gap; the fast path must fail rather than starve the granted waiter. |
 
 ## Issue #283 root cause and the #289 load proof, 2026-11-13
@@ -825,34 +825,60 @@ the host.
 
 ### #289 item 4: Secure 31000 ms and reconnect 20000 ms under load
 
-Plain builds of master `e66e8807`, macOS 12-core host, three panels. Each
-scenario ran as an unchanged copy with `print clock.ms` added before its final
-`assert_max clock.ms`, 50 runs per cell, three workers per cell, six cells at
-once. 36 spin loops ran for the first part. Other agents' builds and a Linux
-container build shared the host throughout. The sampled 1-minute loadavg was
-36 to 142, mean about 80.
+Each scenario ran as an unchanged copy with `print clock.ms` added before its
+final `assert_max clock.ms`. Every cell had 50 runs and three workers, and all
+six cells ran at once. The two hosts are reported separately. They differ in
+OS, libc, scheduler and the source of load, and the macOS batch lost runs to
+boot stalls. Merged figures are given only as a cross-check.
 
-| Scenario | Panel | Completed | Bound failures | clock.ms min | median | p95 | max |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `cancel-sweep-fuji-secure-ui`, bound 31000 | 135x240 | 43 | 0 | 18560 | 18575 | 18785 | 18875 |
-| | 80x160 | 45 | 0 | 18560 | 18610 | 18800 | 18835 |
-| | 320x240 | 45 | 0 | 18560 | 18610 | 18725 | 18815 |
-| `cancel-sweep-reconnect-entry`, bound 20000 | 135x240 | 44 | 0 | 7120 | 7165 | 7285 | 7485 |
-| | 80x160 | 45 | 0 | 7120 | 7160 | 7275 | 7480 |
-| | 320x240 | 44 | 0 | 7130 | 7190 | 7325 | 7655 |
+**macOS host.** Plain builds of `e66e8807`, 12 cores. 36 spin loops ran for
+the first part. Other agents' builds shared the host throughout. The sampled
+1-minute loadavg was 36 to 142, mean about 80. 34 runs exited 3 on the stall
+watchdog with `phase=settings` and virtual clock 0. They stopped in boot
+before any scenario step, blocked in a filesystem call on the shared host
+disk, and are not counted.
 
-The other 34 runs exited 3 on the stall watchdog with `phase=settings` and
-virtual clock 0. They stopped in boot before any scenario step, blocked in a
-filesystem call. The same stall hit the container's bind-mounted directory in
-the same window. They say nothing about the bound and are not counted.
-Completed host time was 112 to 128 s median per run, 210 s at worst.
+**Linux container.** ubuntu:24.04, glibc 2.39, clang 18, arm64, 12 vCPUs.
+Plain builds of `e66e8807` were built and run on the container's own
+filesystem. 24 spin loops (2x the vCPUs) ran throughout. The VM's 1-minute
+loadavg was 63 to 99, median 76, over 88 samples. The VM also hosted other
+agents' containers.
 
-Every completed run is inside its bound. The worst Secure run leaves 12,125 ms
-(39 percent) of headroom and the worst reconnect run 12,345 ms (62 percent).
-Both legs are much faster than the single measurements this plan recorded at
-restore time (28430 to 28545 and 17460 to 17965). The issue #289 failures
-(39045 on Secure in 1 of 24 runs, and 1 failure in 5 runs on each leg) were
-on master `7e3e0d8d`, before the queued-waiter runtime `df40247f` landed. No bound was changed. The cells fall short of 50
-completed runs by 5 to 7 each, and those were boot stalls rather than bound
-failures. The spread across 266 runs at loadavg 80 is 315 ms on Secure and
-535 ms on reconnect. That is the load independence the bound needs.
+| Scenario, bound | Panel | macOS completed / failed | macOS p95 / max | container completed / failed | container p95 / max |
+| --- | --- | --- | --- | --- | --- |
+| `cancel-sweep-fuji-secure-ui`, 31000 | 135x240 | 43 / 0 | 18785 / 18875 | 50 / 0 | 18740 / 19665 |
+| | 80x160 | 45 / 0 | 18800 / 18835 | 49 / 1 | 18735 / 18840 |
+| | 320x240 | 45 / 0 | 18725 / 18815 | 50 / 0 | 18745 / 20960 |
+| `cancel-sweep-reconnect-entry`, 20000 | 135x240 | 44 / 0 | 7285 / 7485 | 50 / 0 | 7435 / 8020 |
+| | 80x160 | 45 / 0 | 7275 / 7480 | 50 / 0 | 7545 / 17850 |
+| | 320x240 | 44 / 0 | 7325 / 7655 | 50 / 0 | 7635 / 8630 |
+
+Medians are 18545 to 18610 on Secure and 7130 to 7190 on reconnect on both
+hosts. Merged, every cell has 93 to 95 completed runs.
+
+The clock bounds held on all 565 completed runs. They are not tight against
+load in the tail, though, and the container run produced one failure:
+
+- One Secure run on 80x160 failed the 6000 ms settle bound,
+  `control.zombies expected '0' got '1'`, on its second cancel (offset 900
+  ms). The log shows `Connected, transmit power requested ... set ok` from
+  `Camera::connect()`, then the cancel. The UI's teardown then reached its
+  30000 ms interactive cap with the target still running. Only after that did
+  the target log `Connected`, `Securing` and a failed connect. The whole run
+  took 18 s of host time. So the 30 virtual seconds were not spent waiting on
+  host time slice by slice. The target task sat in some wait the scheduler
+  counted as blocked while the UI advanced the clock. Between those two log
+  lines it takes the plain `m_ConnParamsMutex` and runs the Fujifilm
+  identity and bond lookups. Which wait it was is not established.
+- One reconnect run on 80x160 reported 17850 against a 7135 median, 89
+  percent of its bound. Single Secure runs at 19665 and 20960, and a
+  reconnect run at 8630, show the same tail more mildly.
+
+No bound was changed. Widening the clock bounds would hide the tail without
+explaining it. The settle failure is the same class of defect issue #279
+closed for `Camera::m_Mutex`: a wait the virtual scheduler does not see
+correctly lets the clock run ahead of a task that is not progressing. Item 4
+therefore stays open. The next step is to instrument the target task between
+`Camera.cpp`'s transmit-power log and `FujifilmSecure`'s `Securing` log under
+the same container load. Then make the offending wait scheduler-visible, as
+was done for `Camera::m_Mutex`.

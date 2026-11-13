@@ -30,7 +30,7 @@ state and the remaining gate; the issue stays open until that gate lands.
 | Issue | Plan | Current state |
 | --- | --- | --- |
 | #283 | [173](173-sim-scheduler-visibility.md) | Root cause identified: a growing `setenv` freed `environ` under the SDL loop's `getenv`. `a57e77e7` removed the mid-loop growth. The boot `TZ` growth is ordered before the loop, and the sim now creates `TZ` first so a sim-e2e guard can forbid any growth after `SDL_Init`. Not reproduced on demand. Ready to close; reopen on a new `SIM CRASH` dump. |
-| #289 | [173](173-sim-scheduler-visibility.md) | All items done. Load proof at loadavg about 80: 266 completed runs, 43 to 45 per cell, none over its bound, max 18875/31000 and 7655/20000. Ready to close if 43 to 45 completed runs per cell is accepted. |
+| #289 | [173](173-sim-scheduler-visibility.md) | Items 1, 2, 3 and 5 done. Item 4 open: 565 completed runs at loadavg about 80 kept both clock bounds, max 20960/31000 and 17850/20000, but a Linux container run failed the 6000 ms settle bound once with the target task stalled after its transmit-power log. The offending wait must be made scheduler-visible before the issue closes. |
 | #381 | [302](302-companion-restart-reconnect.md) | Open. Long USB console runs reset into the ROM USB-JTAG unit. The 5 s command timeout and monitor fixes are merged; a UART0 panic capture and a host-side recovery test remain. |
 | #390 | [304](304-webui-stick-memory.md) | Open. The WebUI now fails closed on the StickS3 instead of boot-looping. A support claim still needs the hardware memory gate, a TLS handshake, a settings write and a soak. |
 
