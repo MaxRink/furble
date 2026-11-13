@@ -2,6 +2,7 @@
 
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -35,11 +36,16 @@ class CheckedPathTest(unittest.TestCase):
     self.assertFalse(CHECKER.checked_path("tests/test_check_format.py"))
     self.assertFalse(CHECKER.checked_path("srcx/file.cpp"))
 
-  def test_directories_match_main_yml(self):
+  def test_directories_and_suffixes_match_main_yml(self):
     workflow = (ROOT / ".github" / "workflows" / "main.yml").read_text(encoding="utf-8")
-    self.assertIn("find " + " ".join(CHECKER.DIRECTORIES) + " -type f", workflow)
-    for suffix in CHECKER.SUFFIXES:
-      self.assertIn(f"-name '*{suffix}'", workflow)
+    start = workflow.index("- name: Check clang-format")
+    step = workflow[start:workflow.index("- name:", start + 1)]
+    directories = re.search(r"\bfind ((?:\S+ )+?)-type f", step)
+    self.assertIsNotNone(directories, step)
+    suffixes = re.findall(r"-name '\*(\.[A-Za-z]+)'", step)
+    # Compare both ways so a list that grows on either side fails here.
+    self.assertEqual(tuple(directories.group(1).split()), CHECKER.DIRECTORIES)
+    self.assertEqual(sorted(suffixes), sorted(CHECKER.SUFFIXES))
 
 
 @unittest.skipUnless(
