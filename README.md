@@ -132,9 +132,10 @@ Panasonic LUMIX support is implemented from public protocol traces of the S5II
 and BGH1. It is host and simulator tested only. No LUMIX body has been tested
 on hardware.
 
-PENTAX K bodies (K-1, K-3 Mark III and Monochrome, K-70, KF, KP) are matched by
-the Ricoh service UUIDs or the PENTAX name and driven by the shared Ricoh
-Imaging class. DJI Osmo Action 4 and Action 5 Pro support is implemented from
+The PENTAX K-3 Mark III and K-3 Mark III Monochrome are matched by the Ricoh
+service UUIDs or the PENTAX name and driven by the shared Ricoh Imaging class.
+The K-1, K-1 Mark II, KP, KF and K-70 connect over Wi-Fi only and are not
+supported. DJI Osmo Action 4 and Action 5 Pro support is implemented from
 DJI's published protocol and ESP32 reference. Both are covered by host tests,
 and the simulator covers DJI and the shared Ricoh path. No PENTAX or DJI body
 has been tested on hardware.
@@ -151,7 +152,7 @@ has been tested on hardware.
 | Nikon (Smart)      | ✔️        | :x:     | :x:             | :x:     | :x:     |
 | Sony ZV            | ✔️        | ✔️       | ✔️               | ✔️       | ✔️       |
 | Panasonic LUMIX[^6] | ✔️       | ✔️       | ✔️               | :x:[^2] | ✔️       |
-| PENTAX K[^7]       | ✔️        | ✔️       | ✔️[^3]           | :x:[^4]  | ✔️       |
+| PENTAX K-3 III[^7] | ✔️        | ✔️       | ✔️[^3]           | :x:[^4]  | ✔️       |
 | DJI Osmo Action[^8] | ✔️       | ✔️       | ✔️[^9]           | :x:[^2] | :x:[^10] |
 
 [^1]: see [#99](https://github.com/gkoh/furble/discussions/99)
@@ -183,7 +184,7 @@ supported-camera claims.
 Initially targeted at the M5StickC, the following controllers from [M5Stack](https://m5stack.com/) are supported:
 * M5StickC (EOL)
 * M5StickC Plus
-* M5StickC Plus2
+* M5StickC Plus2 (EOL)
 * M5StickS3
 * M5Core Basic
 * M5Core2 (8 MB PSRAM enabled)

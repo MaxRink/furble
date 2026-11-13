@@ -129,3 +129,12 @@ Documentation, 2026-11-13: the README vendor notes and feature table,
 `docs/supported-hardware.md` and the wiki hardware page now list PENTAX K as
 untested on hardware, with shutter capture with autofocus and GPS from the
 Ricoh class and no focus control.
+
+Correction, 2026-11-13: Ricoh's Image Sync connect page
+(https://www.ricoh-imaging.co.jp/english/products/app/image-sync2/connect.html)
+gives Bluetooth steps only for the K-3 Mark III. The K-1 Mark II, K-1, KP, KF
+and K-70 appear only in its Wi-Fi connection section, so `Ricoh::matches()`
+can never scan them. The docs now claim only the K-3 Mark III and the K-3 Mark
+III Monochrome, and list the other five as Wi-Fi only and unsupported. The
+connect page does not name the Monochrome; it is kept because it is the K-3
+Mark III body and the BLE reference above lists it.
