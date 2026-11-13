@@ -121,9 +121,6 @@ jobs:
       - name: Generate LVGL configuration
         run: python3 tools/gen_lv_conf.py sdkconfig.m5stick-s3 sim/lv_conf.h
 
-      # The build directory stays short on purpose. The gpx-writer host test
-      # truncates paths into a 64 byte buffer, so a deep runner temp path makes
-      # it fail for reasons that have nothing to do with coverage.
       - name: Measure coverage and check the floor
         id: measure
         env:
