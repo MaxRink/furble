@@ -24,11 +24,14 @@ selected by `esp_ota_set_boot_partition()` from a rollback-enabled app is
 NEW; the bootloader turns NEW into PENDING_VERIFY on the first boot and
 marks a still-pending image ABORTED on the next boot, then falls back
 [source: IDF v5.5.1 `esp_ota_ops.c` 599-665, `bootloader_utility.c`
-380-470]. No production path calls the OTA sink today, so this is latent.
+380-470; the same logic is in furble's pinned IDF 5.5.3 at `esp_ota_ops.c`
+113-120 and 552-599 and `bootloader_utility.c` 399-449]. No production path calls the OTA sink today, so this is latent.
 It is recorded in plans 125 and 115. Any dual boot switch into furble
 depends on mark-valid being wired first.
 
 ## Verdict per platform family
+
+[source: derived from the facts below]
 
 | Family | Side by side with boot choice | Verdict |
 | :--- | :--- | :--- |
@@ -178,10 +181,20 @@ disables coredump. Never touch `spiffs`.
 
 ### Bootloader IDF version
 
-Use furble's bootloader, but first align furble to IDF 5.5.5 or newer,
-because the bootloader must not be older than the apps it boots. Meshtastic
-2.8 is 5.5.5. The unified loader is 5.5.0, older but the same minor
-[inferred]. Meshtastic 2.7.x (IDF 4.4, NimBLE-Arduino 1.4.3 bond format) is
+The IDF bootloader guide says the bootloader boots apps built from newer IDF
+versions, and does not support booting apps from older ones [source: IDF
+bootloader guide]. So the bootloader must not be newer than any app it boots.
+A furble bootloader from IDF 5.5.3 boots furble (5.5.3) and Meshtastic 2.8
+(5.5.5). The unified loader is IDF 5.5.0, older than that bootloader, which the
+guide does not support. Options:
+
+- Build the bootloader from IDF 5.5.0, the oldest app on the device.
+- Rebuild the loader from `meshtastic/esp32-unified-ota` at or above the
+  bootloader's IDF version.
+- Drop the loader and accept slot rule 5: Meshtastic loses BLE and WiFi OTA.
+
+Bench-test whichever is chosen: boot every slot under the deployed
+bootloader binary, as the guide advises. Meshtastic 2.7.x (IDF 4.4, NimBLE-Arduino 1.4.3 bond format) is
 out of scope. Chip and eFuse revision ranges are compatible, the MMU page is
 64 KB on the S3, and each app retunes MSPI from its own config [inferred].
 Secure boot and flash encryption are off on both sides. Enabling either on

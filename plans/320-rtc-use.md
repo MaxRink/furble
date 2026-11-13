@@ -20,7 +20,7 @@ changes worth making.
 | Area | Current state | Evidence |
 | :--- | :--- | :--- |
 | RTC slow clock | Internal RC on every board (`CONFIG_RTC_CLK_SRC_INT_RC=y`), recalibrated on every automatic light sleep (`CONFIG_PM_LIGHTSLEEP_RTC_OSC_CAL_INTERVAL=1`). 8MD256, external crystal and external oscillator are unset. | all six release sdkconfigs |
-| BLE sleep clock | ESP32: `CONFIG_BTDM_CTRL_LPCLK_SEL_MAIN_XTAL`. S3: `CONFIG_BT_CTRL_LPCLK_SEL_MAIN_XTAL` plus `MAIN_XTAL_PU_DURING_LIGHT_SLEEP`. | sdkconfigs; [00-hardware-experiments.md](00-hardware-experiments.md) experiment A |
+| BLE sleep clock | ESP32: `CONFIG_BTDM_CTRL_LPCLK_SEL_MAIN_XTAL`. S3: `CONFIG_BT_CTRL_LPCLK_SEL_MAIN_XTAL`; StickS3 and headless also set `CONFIG_BT_CTRL_MAIN_XTAL_PU_DURING_LIGHT_SLEEP`, the Waveshare profile does not. | sdkconfigs; [00-hardware-experiments.md](00-hardware-experiments.md) experiment A |
 | System time | `CONFIG_LIBC_TIME_SYSCALL_USE_RTC_HRT=y` (RTC timer plus high-resolution timer). | `sdkconfig.m5stick-s3:2379` |
 | RTC memory | Only `src/FurbleCrashLog.cpp:31` uses `RTC_NOINIT_ATTR`. No `RTC_DATA_ATTR`. On the S3, RTC fast RAM is heap (`CONFIG_ESP_SYSTEM_ALLOW_RTC_FAST_MEM_AS_HEAP=y`). | grep of `src/`, `include/`, `lib/` |
 | ULP | `CONFIG_ULP_COPROC_ENABLED` unset. | `sdkconfig.m5stick-s3:2560` |

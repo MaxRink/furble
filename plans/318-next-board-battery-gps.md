@@ -48,8 +48,8 @@ E213 and T190, and Wireless Paper [H25, H30, H32].
 No M5Stack board and no Waveshare board that was checked has one. On M5
 boards the only 32 kHz crystal belongs to the RTC chip [schematic: M2, M4,
 M6, M10, M14]. The T-Display S3, T-Deck, T-Deck Plus, T-Deck Pro, T-Watch S3
-and S3 Plus, every XIAO and the Heltec V4 have none either [schematic: L1,
-L6, L10, L17; vendor: H40].
+and S3 Plus, and every XIAO have none either [schematic: L1, L6, L10, L17;
+vendor: H40].
 
 No measurement of BLE-connected light sleep on a crystal board was found. The
 230 uA figure is a vendor example figure, not a furble measurement. It is the
@@ -129,8 +129,9 @@ GPS backup and the effort weigh more than a perfect form factor.
    form factor** [vendor: L26]. Both have the crystal and an M10 receiver with
    VRTC backup [schematic: L17]. The Ultra has a 2.06 inch CO5300 AMOLED and
    touch. The Pager has a keyboard, a rotary encoder and a BQ27220 fuel
-   gauge. Both reuse the UBX driver from step 1. Open risks: the Pager cell
-   size differs between sources (1200 or 1500 mAh), a reviewer reports BLE
+   gauge [schematic: L17]. Both reuse the UBX driver from step 1. Open risks: the Pager cell
+   size is unsettled (1200 or 1500 mAh; the research report saw both
+   figures in listings it did not cite) [inferred], a reviewer reports BLE
    drops when its screen sleeps [anecdote: L20], and one Ultra user reports a
    USB reconnect loop after third-party firmware [anecdote: L28].
 3. **T-Beam Supreme L76K (37.12 USD) as the no-new-driver fallback**
@@ -224,7 +225,8 @@ commit and meter in the result.
 ## Nordic track
 
 A separate product, not the next remote. The proof board is a Seeed XIAO
-nRF52840 with the L76K XIAO module, about 21 USD. h2zero's n-able Arduino
+nRF52840 with the L76K XIAO module (10.90 USD [vendor: N22]), about 21 USD
+in total [inferred]. h2zero's n-able Arduino
 core runs NimBLE host and controller on nRF52840 with no SoftDevice under
 NimBLE-Arduino, which has the same C++ API as furble's `esp-nimble-cpp`
 [firmware: N53]. It could show whether `lib/furble` builds there with no
@@ -274,6 +276,7 @@ of plan 127 [vendor: N44]. See plans 127 and 287.
 - H30 https://resource.heltec.cn/download/HT-VMT190/HT-VMT90%20Schematic%20Diagram.pdf
 - H32 https://resource.heltec.cn/download/Wireless_Paper/Wireless_Paper_V0.4_Schematic_Diagram.pdf
 - H40 https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/
+- N22 https://www.seeedstudio.com/L76K-GNSS-Module-for-Seeed-Studio-XIAO-p-5864.html
 - N27 https://www.seeedstudio.com/Wio-Tracker-L1-Pro-p-6454.html
 - N44 https://www.cnx-software.com/2026/06/30/xiao-nrf54lm20a-sense-board-enables-ultra-low-power-bluetooth-6-0-matter-thread-zigbee-or-2-4-ghz-proprietary-applications/
 - N53 https://github.com/h2zero/n-able-Arduino and https://github.com/h2zero/NimBLE-Arduino

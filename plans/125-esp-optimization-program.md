@@ -443,9 +443,13 @@ app boots once as PENDING_VERIFY and is marked ABORTED on the next boot if
 it was never marked valid, so the bootloader reverts to the other slot
 ([esp_ota_ops.c](https://github.com/espressif/esp-idf/blob/v5.5.1/components/app_update/esp_ota_ops.c),
 [bootloader_utility.c](https://github.com/espressif/esp-idf/blob/v5.5.1/components/bootloader_support/src/bootloader_utility.c)).
-Today no production path calls the OTA partition sink: only
-`src/FurbleOTAPartitionSink*.cpp` and `include/FurbleOTAPartitionAdapters.h`
-reference it, and `esp_ota_set_boot_partition()` appears only in the ESP and
+The same logic is in the pinned IDF 5.5.3 (`esp_ota_ops.c` 113-120 and
+552-599, `bootloader_utility.c` 399-449 in `framework-espidf@3.50503.0`).
+Today no production path calls the OTA partition sink. Outside
+`src/FurbleOTAPartitionSink*.cpp` and `include/FurbleOTAPartitionAdapters.h`,
+only `src/CMakeLists.txt`, `sim/CMakeLists.txt`, `sim/build.sh` and
+`tests/host/ota_partition_sink_test.cpp` reference it, to build and test it.
+`esp_ota_set_boot_partition()` appears only in the ESP and `esp_ota_set_boot_partition()` appears only in the ESP and
 Arduino sinks. So the bug is latent. Any future OTA wiring must run this
 health evaluator and call the mark-valid API after a healthy boot, or every
 updated image reverts on its second reboot. Plan 115 and plan 319 depend on
