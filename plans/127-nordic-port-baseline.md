@@ -227,3 +227,27 @@ same `furble-core` files.
 
 This baseline is documentation and an inventory guard only. No Nordic binary,
 board environment, SDK dependency, or hardware test is claimed.
+
+### Coupling ratchet (port stack step 1)
+
+- `tools/check_coupling_ratchet.py` counts, per file, four kinds of coupling:
+  preprocessor conditionals naming a board identity macro, `M5.` uses,
+  `M5.getBoard()` runtime switches, and ESP-IDF or NimBLE type names in the
+  public headers under `include/` and `lib/furble/`. Comments and string
+  literals are ignored.
+- The committed manifest is `tools/coupling_ratchet.json`. A count above its
+  entry fails. A count below it also fails until the manifest is regenerated
+  with `--update`, so each reduction is locked in.
+- `tools/pre_review.py` runs it, and `tests/test_check_coupling_ratchet.py`
+  is in the scanner unit test set of the gate and of `pre-review.yml`.
+- Board identity macros are `FURBLE_M5STICKC`, `FURBLE_M5STICKC_PLUS`,
+  `FURBLE_M5STICKS3`, `FURBLE_M5COREX`, `FURBLE_M5STACK_CORE`,
+  `FURBLE_GROVE_CORE` and `FURBLE_WAVESHARE_S3_ETH`. `FURBLE_NO_DISPLAY` and
+  `FURBLE_ETHERNET` are not counted: they are already profile capability
+  flags, set as both a compiler define and a CMake argument, and a ratchet on
+  them would have no replacement to point to.
+- Baseline on master `e66e8807`: 96 board identity guards in 16 files, 204
+  `M5.` uses in 15 files, 31 `M5.getBoard()` switches in 7 files, and 351
+  ESP/NimBLE header type names in 28 headers. Including the two profile flags
+  there are 165 guard lines in 19 files; the review estimate of 174 also
+  counted a header include guard and commented-out lines.

@@ -130,8 +130,17 @@ python3 tools/pre_review.py --base origin/master
 ```
 
 It runs the diff hygiene scanner, the settings contract scanner, the C++ safety
-scanner, the CI workflow checker, the simulator manifest checker, and the
-scanner unit tests. It fails closed on review-blocking findings.
+scanner, the CI workflow checker, the simulator manifest checker, the coupling
+ratchet, and the scanner unit tests. It fails closed on review-blocking
+findings.
+
+The coupling ratchet, `tools/check_coupling_ratchet.py`, counts board identity
+guards, `M5.` calls, `M5.getBoard()` switches and ESP-IDF or NimBLE types in
+public headers, per file, against `tools/coupling_ratchet.json`. A count that
+grows fails. Use a capability macro from `include/FurbleBoardCaps.h` or a
+`Platform` function instead of a new board guard. A count that shrinks also
+fails until you lock it in with
+`python3 tools/check_coupling_ratchet.py --update` and commit the manifest.
 
 To run it on every push, enable the tracked hook once per clone:
 

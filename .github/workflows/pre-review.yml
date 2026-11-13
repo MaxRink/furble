@@ -54,6 +54,7 @@ jobs:
             tests.test_check_pr_hygiene \
             tests.test_check_settings_contracts \
             tests.test_check_cpp_safety \
+            tests.test_check_coupling_ratchet \
             tests.test_plot_companion_power
 
       - name: Run pre-review scanners
