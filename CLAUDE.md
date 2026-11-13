@@ -365,6 +365,8 @@ check.
 - `src/` + `include/`: app layer (tasks, UI, settings, GPS, platform).
 - `lib/furble/`: BLE camera protocol library, one class per vendor mode.
 - `lib/blowfish/`, `lib/preferences/`: support libs used by lib/furble.
+- `lib/hal/`: pure, host-tested chip drivers (AXP2101, BQ27220, XL9555,
+  SX1262 sleep) behind a register-bus seam. See plans/322.
 - `components/icons/`: generated LVGL image arrays.
 - `sim/`: host SDL simulator for the UI (shims, fakes, script driver). It
   never modifies firmware sources.

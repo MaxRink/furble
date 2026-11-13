@@ -1091,6 +1091,17 @@ target_include_directories(imu_motion_encoding_test PRIVATE
 target_compile_options(imu_motion_encoding_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                         -Wno-unused-parameter)
 
+# Pure chip drivers in lib/hal against a recording register bus and a fake
+# radio port. Expected values come from the datasheets cited in the test.
+add_executable(hal_drivers_test
+               hal_drivers_test.cpp
+               ${FURBLE_ROOT}/lib/hal/AXP2101.cpp
+               ${FURBLE_ROOT}/lib/hal/BQ27220.cpp
+               ${FURBLE_ROOT}/lib/hal/SX1262.cpp
+               ${FURBLE_ROOT}/lib/hal/XL9555.cpp)
+target_include_directories(hal_drivers_test PRIVATE ${FURBLE_ROOT}/lib/hal)
+target_compile_options(hal_drivers_test PRIVATE -Wall -Wextra -Werror)
+
 add_executable(stale_connect_test stale_connect_test.cpp)
 target_link_libraries(stale_connect_test PRIVATE furble_host_camera)
 target_compile_options(stale_connect_test PRIVATE -Wall -Wextra -Werror -Wno-format
@@ -2310,6 +2321,7 @@ if(BUILD_TESTING)
   add_test(NAME provision-apply-mqtt COMMAND provision_apply_mqtt_test)
   add_test(NAME text-size-policy COMMAND text_size_policy_test)
   add_test(NAME imu-motion-encoding COMMAND imu_motion_encoding_test)
+  add_test(NAME hal-drivers COMMAND hal_drivers_test)
   add_test(NAME text-size-policy-stickc COMMAND text_size_policy_stickc_test)
   add_test(NAME stale-connect COMMAND stale_connect_test)
   add_test(NAME client-leak COMMAND client_leak_test)

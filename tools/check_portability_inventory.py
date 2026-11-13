@@ -17,7 +17,7 @@ import sys
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PORTABLE_RELATIVE_PATHS = (Path("lib/furble/protocol"),)
+PORTABLE_RELATIVE_PATHS = (Path("lib/furble/protocol"), Path("lib/hal"))
 MANIFEST_RELATIVE_PATH = Path("tools/portable_core_manifest.txt")
 NORDIC_SOC_PATTERN = re.compile(r"nrf(?:52840|5340|54[a-z0-9-]*)$", re.IGNORECASE)
 
