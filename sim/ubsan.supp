@@ -19,8 +19,6 @@ alignment:std::max<long>
 alignment:utility/pgmspace.h
 # M5GFX calls a mixin method through a base pointer (LGFXBase.hpp).
 vptr:lgfx/v1/LGFXBase.hpp
-# The host SDL panel converts an infinite scale factor to int.
-float-cast-overflow:lgfx/v1/platforms/sdl/Panel_sdl.cpp
 # LVGL calls comparators and mask callbacks through void-pointer function
 # types, offsets a null style pointer by zero, and shifts a negative roller
 # offset.
