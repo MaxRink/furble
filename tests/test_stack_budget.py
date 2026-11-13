@@ -69,6 +69,34 @@ edge: { sourcename: "a" targetname: "c" label: "n.cpp:2:9" }
 edge: { sourcename: "c" targetname: "a" label: "n.cpp:4:5" }
 }
 '''
+# entry -> a -> {big, x}, x -> a, entry -> z -> x: x is first reached inside
+# the open a-x cycle and later again under z
+X_CI = r'''graph: { title: "x.cpp"
+node: { title: "entry" label: "void entry(void*)\nx.cpp:1:1\n32 bytes (static)" }
+node: { title: "a" label: "void a(int)\nx.cpp:2:1\n16 bytes (static)" }
+node: { title: "big" label: "void big()\nx.cpp:3:1\n300 bytes (static)" }
+node: { title: "x" label: "void x(int)\nx.cpp:4:1\n8 bytes (static)" }
+node: { title: "z" label: "void z()\nx.cpp:5:1\n400 bytes (static)" }
+edge: { sourcename: "entry" targetname: "a" label: "x.cpp:1:5" }
+edge: { sourcename: "entry" targetname: "z" label: "x.cpp:1:9" }
+edge: { sourcename: "a" targetname: "big" label: "x.cpp:2:5" }
+edge: { sourcename: "a" targetname: "x" label: "x.cpp:2:9" }
+edge: { sourcename: "x" targetname: "a" label: "x.cpp:4:5" }
+edge: { sourcename: "z" targetname: "x" label: "x.cpp:5:5" }
+}
+'''
+# entry -> abort -> panic_abort; the handler is reached by an exception and
+# can itself abort, a nested panic
+P_CI = r'''graph: { title: "p.c"
+node: { title: "entry" label: "void entry(void*)\np.c:1:1\n32 bytes (static)" }
+node: { title: "abort" label: "abort\np.c:2:1\n48 bytes (static)" }
+node: { title: "panic_abort" label: "panic_abort\np.c:3:1\n16 bytes (static)" }
+node: { title: "xt_unhandled_exception" label: "xt_unhandled_exception\np.c:4:1\n208 bytes (static)" }
+edge: { sourcename: "entry" targetname: "abort" label: "p.c:1:5" }
+edge: { sourcename: "abort" targetname: "panic_abort" label: "p.c:2:5" }
+edge: { sourcename: "xt_unhandled_exception" targetname: "abort" label: "p.c:4:5" }
+}
+'''
 # entry calls elf_mid, which only the ELF defines
 E_CI = r'''graph: { title: "e.cpp"
 node: { title: "entry" label: "void entry(void*)\ne.cpp:1:1\n32 bytes (static)" }
@@ -285,15 +313,67 @@ class StackBudgetTest(unittest.TestCase):
         self.assertEqual(self.run_tool(511, indirect=False, cis=m_ci,
                                        manifest_extra=bounds).returncode, 1)
 
-    def test_cycles_sharing_a_head_add_their_passes(self):
+    def test_cycles_in_one_component_charge_every_member_per_pass(self):
         bounds = {"recursion_bounds": [{"function": r"^void a\(int\)$", "depth": 3, "why": "test"}]}
         n_ci = (("n.cpp.ci", N_CI),)
-        # 32 + a 40 + b 24 + extra passes of both cycles, 2 x 64 + 2 x 56, + 288
-        r = self.run_tool(624, indirect=False, cis=n_ci, manifest_extra=bounds)
+        # a, b and c form one component: 32 + 3 passes of (40 + 24 + 16) + 288
+        r = self.run_tool(560, indirect=False, cis=n_ci, manifest_extra=bounds)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("PASS t: 624 of 624 bytes (336 frames + 288 port overhead)", r.stdout)
-        self.assertEqual(self.run_tool(623, indirect=False, cis=n_ci,
+        self.assertIn("PASS t: 560 of 560 bytes (272 frames + 288 port overhead)", r.stdout)
+        self.assertEqual(self.run_tool(559, indirect=False, cis=n_ci,
                                        manifest_extra=bounds).returncode, 1)
+        # two rules in one component add their extra passes: 1 + 2 + 1 = 4
+        bounds["recursion_bounds"].append({"function": r"^void c\(int\)$", "depth": 2, "why": "t"})
+        r = self.run_tool(640, indirect=False, cis=n_ci, manifest_extra=bounds)
+        self.assertIn("PASS t: 640 of 640 bytes (352 frames + 288 port overhead)", r.stdout)
+
+    def test_depth_behind_a_cut_cycle_is_found_on_another_path(self):
+        # The memoized walk reached x first inside the open a-x cycle, cut
+        # x -> a and reused x's 8 bytes under z. The real path is
+        # entry -> z -> x -> a -> big: 32 + 400 + 8 + 16 + 300 + 288.
+        bounds = {"recursion_bounds": [{"function": r"^void a\(int\)$", "depth": 1, "why": "test"}]}
+        r = self.run_tool(1044, indirect=False, cis=(("x.cpp.ci", X_CI),), manifest_extra=bounds)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("PASS t: 1044 of 1044 bytes (756 frames + 288 port overhead)", r.stdout)
+        r = self.run_tool(1043, indirect=False, cis=(("x.cpp.ci", X_CI),), manifest_extra=bounds)
+        self.assertEqual(r.returncode, 1, r.stdout)
+
+    def test_infeasible_call_is_not_followed(self):
+        # Uncut, entry -> z -> x -> a -> big is 1,044 bytes (see above).
+        # Cutting z -> x leaves z alone: 32 + 400 + 288 = 720.
+        cut = {"infeasible_calls": [{"caller": r"^void z\(\)$", "callee": r"^void x\(int\)$",
+                                     "why": "test"}],
+               "recursion_bounds": [{"function": r"^void a\(int\)$", "depth": 1, "why": "test"}]}
+        r = self.run_tool(720, indirect=False, cis=(("x.cpp.ci", X_CI),), manifest_extra=cut)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("PASS t: 720 of 720 bytes (432 frames + 288 port overhead)", r.stdout)
+
+    def test_infeasible_calls_cite_their_guard(self):
+        manifest = json.loads((ROOT / "tools" / "stack_budget.json").read_text())
+        for rule in manifest["infeasible_calls"]:
+            with self.subTest(caller=rule["caller"]):
+                self.assertRegex(rule["why"], r"\.(c|h|cpp):\d+")
+
+    def test_panic_handler_counts_on_the_faulting_stack(self):
+        # entry -> abort -> panic_abort, whose ill instruction enters the
+        # handler on the same stack. The handler's own abort is followed to
+        # abort (48) but not into a second panic: handler 208 + 48 = 256,
+        # task 32 + 48 + 16 + 256 + 288 overhead.
+        p_ci = (("p.cpp.ci", P_CI),)
+        panic = {"panic": {"abort": "^panic_abort$", "handler": "^xt_unhandled_exception$",
+                           "why": "test"}}
+        r = self.run_tool(640, indirect=False, cis=p_ci, manifest_extra=panic)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("PASS panic handler: 256 bytes from xt_unhandled_exception\n", r.stdout)
+        self.assertIn("PASS t: 640 of 640 bytes (352 frames + 288 port overhead)", r.stdout)
+        self.assertEqual(self.run_tool(639, indirect=False, cis=p_ci,
+                                       manifest_extra=panic).returncode, 1)
+        # without the rule the handler is invisible: 32 + 48 + 16 + 288
+        self.assertIn("PASS t: 384 of 384 bytes", self.run_tool(384, indirect=False, cis=p_ci).stdout)
+        # the real manifest enters the ESP-IDF handler from panic_abort
+        manifest = json.loads((ROOT / "tools" / "stack_budget.json").read_text())
+        self.assertEqual(manifest["panic"]["abort"], "^panic_abort$")
+        self.assertEqual(manifest["panic"]["handler"], "^xt_unhandled_exception$")
 
     def test_known_limit_passes_only_on_its_tasks(self):
         dyn = {"function": r"^void vla", "bytes": 0, "why": "test"}
