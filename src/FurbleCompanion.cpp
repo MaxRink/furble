@@ -6,6 +6,7 @@
 #include "Scan.h"
 
 #include "FurbleCompanion.h"
+#include "FurbleCompanionAdvertising.h"
 #include "FurbleCompanionMemory.h"
 #if defined(FURBLE_BLE_DEBUG)
 #include "FurbleCompanionDebug.h"
@@ -89,6 +90,21 @@ bool CompanionGatt::isPairingWindow(void) const {
 bool CompanionGatt::isAdvertising(void) const {
   const std::lock_guard<std::mutex> lock(m_Mutex);
   return (m_Advertising != nullptr) && m_Advertising->isAdvertising();
+}
+
+void CompanionGatt::boostAdvertising(void) {
+  TaskHandle_t task = nullptr;
+  {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    if (!m_Enabled) {
+      return;
+    }
+    m_ReconnectCadence.boost(nowMs());
+    task = m_Task;
+  }
+  if (task != nullptr) {
+    xTaskNotifyGive(task);
+  }
 }
 
 bool CompanionGatt::reidentify(void) {
@@ -186,6 +202,8 @@ void CompanionGatt::enable(bool pairingWindow) {
       }
       m_Enabled = true;
       m_PairingWindow = false;
+      // Boot and a user enable both expect the host to reconnect soon.
+      m_ReconnectCadence.boost(nowMs());
 
       // Apply the durable identity on every disabled->enabled transition, not
       // just the boot path in init(). A companion enabled later from the
@@ -476,6 +494,7 @@ void CompanionGatt::startPairingWindow(bool allowNewWindow) {
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
     generation = ++m_PairingGeneration;
+    m_ReconnectInterval = 0;
   }
   stopAdvertising();
   clearWhitelist();
@@ -552,18 +571,29 @@ void CompanionGatt::startReconnectAdvertising(void) {
   m_Advertising->reset();
   m_Advertising->setConnectableMode(BLE_GAP_CONN_MODE_UND);
   m_Advertising->setDiscoverableMode(BLE_GAP_DISC_MODE_GEN);
-  // Keep reconnect advertising at the same 100 ms cadence as the pairing
-  // window. The old 1 s interval was invisible to some macOS scan windows even
-  // though the controller reported the advertisement active.
-  m_Advertising->setAdvertisingInterval(160);  // 100 ms in 0.625 ms units
+  // Advertise at the pairing window's 100 ms cadence for a fast window after
+  // enable, boot, disconnect or a button wake, then fall back to 1022.5 ms.
+  // The old fixed 1 s interval was invisible to some macOS scan windows, so a
+  // host that is actively reconnecting gets the fast cadence; the service task
+  // restarts advertising when the window opens or closes.
+  uint16_t interval = 0;
+  {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    interval = m_ReconnectCadence.interval(nowMs());
+  }
+  m_Advertising->setAdvertisingInterval(interval);
   m_Advertising->setScanFilter(false, false);
   m_Advertising->enableScanResponse(true);
   m_Advertising->setName(Device::getStringID());
   m_Advertising->addServiceUUID(SERVICE_UUID);
   m_Advertising->setAdvertisingCompleteCallback(nullptr);
   const bool started = m_Advertising->start(0);
-  ESP_LOGI(LOG_TAG, "Companion reconnect advertising bond=%s started=%d",
-           bondAddress.toString().c_str(), started ? 1 : 0);
+  {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    m_ReconnectInterval = started ? interval : 0;
+  }
+  ESP_LOGI(LOG_TAG, "Companion reconnect advertising bond=%s interval=%u started=%d",
+           bondAddress.toString().c_str(), static_cast<unsigned>(interval), started ? 1 : 0);
 }
 
 void CompanionGatt::loadBond(void) {
@@ -655,7 +685,12 @@ void CompanionGatt::serviceTask(void) {
           action = AdvertisingAction::STOP;
         } else if (m_PairingWindow && !m_CompanionConnected && !advertising) {
           action = AdvertisingAction::PAIR;
-        } else if (!m_CompanionConnected && !m_PairingWindow && hasBond() && !advertising) {
+        } else if (!m_CompanionConnected && !m_PairingWindow && hasBond()
+                   && (!advertising
+                       || ((m_ReconnectInterval != 0)
+                           && m_ReconnectCadence.needsRestart(m_ReconnectInterval, now)))) {
+          // Not advertising, or the fast window opened or closed since the
+          // reconnect advertising started.
           action = AdvertisingAction::RECONNECT;
         }
       }
@@ -682,7 +717,8 @@ void CompanionGatt::serviceTask(void) {
 #if defined(FURBLE_BLE_DEBUG)
     CompanionDebug::getInstance().update();
 #endif
-    vTaskDelay(pdMS_TO_TICKS(1000));
+    // A boost or enable notifies the task so a cadence change applies at once.
+    (void)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1000));
   }
 }
 
@@ -765,6 +801,8 @@ void CompanionGatt::onDisconnect(NimBLEServer *server, NimBLEConnInfo &connInfo,
   bool wasCompanion = false;
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
+    // A host that just dropped the link usually comes straight back.
+    m_ReconnectCadence.boost(nowMs());
     if (m_CompanionConnected && (m_CompanionConnHandle == connInfo.getConnHandle())) {
       m_CompanionConnected = false;
       m_CompanionEncrypted = false;

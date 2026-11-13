@@ -1680,6 +1680,8 @@ bool UI::handleDisplayInput(lv_indev_t *drv,
   wakeDisplay();
   // the swallowed press never reaches LVGL, so record the activity here
   lv_display_trigger_activity(m_Display);
+  // A user who wakes the panel may be reaching for the companion app.
+  Companion::getInstance().boostAdvertising();
   data->state = LV_INDEV_STATE_RELEASED;
   if (releaseExpected) {
     m_SwallowInput = true;

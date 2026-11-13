@@ -277,6 +277,13 @@ target_include_directories(pm1_poll_policy_test PRIVATE ${FURBLE_ROOT}/include)
 target_compile_options(pm1_poll_policy_test PRIVATE -Wall -Wextra -Werror)
 add_test(NAME pm1-poll-policy COMMAND pm1_poll_policy_test)
 
+# Companion reconnect advertising runs fast for a window after enable, boot,
+# disconnect or a button wake, then falls back to the slow interval.
+add_executable(companion_advertising_test companion_advertising_test.cpp)
+target_include_directories(companion_advertising_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(companion_advertising_test PRIVATE -Wall -Wextra -Werror)
+add_test(NAME companion-advertising COMMAND companion_advertising_test)
+
 # The staged display mode dims at the inactivity timeout and sleeps after a
 # fixed dwell. This policy test pins the dwell and its wrap arithmetic.
 add_executable(display_policy_test display_policy_test.cpp)

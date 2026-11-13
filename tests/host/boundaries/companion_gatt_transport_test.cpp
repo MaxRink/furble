@@ -178,6 +178,13 @@ void run(void) {
   check(server->serviceCount() == 2 && server->characteristicCount() == 9,
         "re-enable duplicated the retained GATT database");
   check(waitForNotifyWaiters(0), "re-enable did not wake the blocked companion task");
+  // An enable opens the fast reconnect window. The cadence policy itself is
+  // covered by companion-advertising.
+  check(waitFor([advertising]() {
+          return advertising->isAdvertising()
+                 && (advertising->interval() == Furble::CompanionAdvertising::FAST_INTERVAL);
+        }),
+        "re-enable did not start fast reconnect advertising");
   std::cout << "companion.restart enabled=1 bond=loaded task=retained gatt=retained woken=1\n";
 
   const std::string oldAddress = NimBLEDevice::getAddress().toString();

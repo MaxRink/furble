@@ -9,6 +9,13 @@ and current advertising state. Reconnect advertising is unfiltered because
 macOS rotates its LE address; the connect handler still accepts only the stored
 identity outside the pairing window.
 
+Reconnect advertising runs at 100 ms for 60 seconds after the companion is
+enabled, after boot, after any disconnect, and after a button press wakes the
+display. It then falls back to 1022.5 ms, Apple's recommended step, until the
+host reconnects. If the app does not find the device, press a button to wake
+the display and reopen the fast window. The slow interval is untested on iOS
+and macOS hardware.
+
 The first enable after boot creates the 3 KiB companion task and the GATT
 service, and both stay for the rest of the session. That first enable needs
 7,552 bytes of free internal RAM and a 3,456-byte block. Below that the

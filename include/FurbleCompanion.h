@@ -15,6 +15,7 @@
 #include <mutex>
 #include <string>
 
+#include "FurbleCompanionAdvertising.h"
 #include "FurbleCompanionService.h"
 
 namespace Furble {
@@ -74,6 +75,11 @@ class CompanionGatt: public NimBLEServerCallbacks,
   bool hasBond(void) const;
   bool isPairingWindow(void) const;
   bool isAdvertising(void) const;
+  /**
+   * Open the fast reconnect advertising window. The UI calls this on a
+   * button wake, when the user is likely to reach for the host app.
+   */
+  void boostAdvertising(void);
 
   /**
    * Debug-console recovery: rotate the LE address and drop the companion bond
@@ -173,6 +179,10 @@ class CompanionGatt: public NimBLEServerCallbacks,
   // deinit(). Enabled alone is set before the service is rebuilt.
   bool m_ServiceReady = false;
   uint64_t m_PairingDeadlineMs = 0;
+  // Reconnect advertising cadence and the interval it is running at, 0 when
+  // no reconnect advertising is running. Owned by m_Mutex.
+  CompanionAdvertising::Cadence m_ReconnectCadence;
+  uint16_t m_ReconnectInterval = 0;
   uint16_t m_CompanionConnHandle = INVALID_CONN_HANDLE;
 
   bool m_BondValid = false;
