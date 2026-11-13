@@ -104,9 +104,12 @@ The root CLAUDE.md lists the short form of these. The detail lives here.
   the simulator thread is a use-after-free that shows up as a rare SIGSEGV
   under load (issue #283). A replace is one pointer store and is safe. The
   coverage runtime's own `__LLVM_PROFILE_RT_INIT_ONCE` setenv is enough to
-  make the next growth a freeing one. Check every caller, firmware included:
-  production Timezone's `setenv("TZ")` reintroduced the race two months after
-  the sim's own calls were moved.
+  make the next growth a freeing one. Check every caller, firmware included,
+  and check ordering rather than thread alone: production Timezone's boot
+  `setenv("TZ")` grows the environment after `SDL_Init`, but before
+  `panelReady` releases the loop, so it was ordered and not a live race. The
+  sim creates `TZ` first anyway, so the guard can forbid all growth after
+  `SDL_Init`.
 - On macOS, Homebrew SDL2 is sdl2-compat. It dlopens SDL3 through its own
   rpath, and the ASan runtime's dlopen interceptor hides that rpath. A
   sanitized sim then fails to find SDL3, raises a modal desktop dialog per

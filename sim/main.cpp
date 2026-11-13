@@ -338,12 +338,13 @@ int main(int argc, char **argv) {
   // thread start. SDL and the watchdog read process environment state while
   // they initialize and run, so this write must happen before either starts.
   Furble::Sim::preparePreferences();
-  // Production Timezone calls setenv("TZ") from the simulator thread while the
-  // SDL loop on this thread calls getenv thousands of times a second. Adding a
-  // variable makes glibc reallocate environ and free the array that unlocked
-  // walk may still be reading (issue 283). Creating TZ here, before SDL starts,
-  // makes every later setenv("TZ") an in-place replace. A caller's TZ is kept;
-  // the firmware replaces it with the selected zone at boot either way.
+  // Adding a variable makes glibc reallocate environ and free the array an
+  // unlocked getenv walk may be reading, and the SDL loop on this thread calls
+  // getenv thousands of times a second (issue 283). Production Timezone's boot
+  // setenv("TZ") runs after SDL_Init but before panelReady releases that loop,
+  // so it is ordered today. Creating TZ here makes every TZ write a replace, so
+  // the env guard can enforce the stricter rule: no growth after SDL_Init. A
+  // caller's TZ is kept; the firmware replaces it with the selected zone.
   if (setenv("TZ", "UTC0", 0) != 0) {
     std::perror("simulator failed to reserve TZ");
     return 1;

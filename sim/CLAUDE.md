@@ -208,16 +208,20 @@ including empty strings and failed-save rollback.
 - `sim/scripts/run-env-order.sh`: on Linux, compiles a small `LD_PRELOAD`
   interposer and runs the fresh and restart scenarios against the current
   binary. The named targets reject one Furble `setenv` or `unsetenv` after SDL
-  initialization; the `growth` target rejects any setenv that adds a variable
-  and any unsetenv, from any caller. The sim-e2e S3 job runs it. With
+  initialization; the `growth` target rejects any variable added by `setenv`
+  or `putenv`, any `unsetenv`, and `clearenv`, from any caller. A small SDL
+  self-test program must trip it first. The sim-e2e S3 job runs it. With
   `FURBLE_SIM_ENV_GUARD_OLD_BIN` it also expects the pre-fix binary to trip
   each named target.
 - Never grow the process environment while SDL is live. glibc's getenv walks
   `environ` without a lock, the SDL main loop calls it thousands of times a
   second, and a setenv that adds a variable frees the array under that walk.
   This is the issue #283 restart SIGSEGV class. Replacing an existing variable
-  is safe. Production Timezone sets `TZ` from the simulator thread, so `main()`
-  creates `TZ` before SDL starts.
+  is safe. Production Timezone's boot `setenv("TZ")` runs after `SDL_Init` but
+  before `panelReady` releases the main loop, so it is ordered before any loop
+  getenv and was not a live race. `main()` creates `TZ` first so every `TZ`
+  write is a replace, and the guard enforces the stricter rule: no growth after
+  `SDL_Init`.
 - `sim/CMakeLists.txt`: the CMake path for machines with CMake installed.
   Forced C++ platform shim includes apply only to C++ sources. Generated C
   icon sources must compile as C without the C++ FreeRTOS header.
@@ -798,14 +802,15 @@ shortens that host retry cadence for a bounded scenario.
   binary for the deeper memory hunt. Off by default so the plain build stays
   fast; the `sim-sanitizers` CI job builds it on Linux and runs the e2e suite
   with LeakSanitizer on. `sim/ubsan.supp` and `sim/lsan.supp` hold only
-  LVGL, M5GFX and sanitizer-runtime sites. On macOS, Homebrew SDL2 is
-  sdl2-compat, which dlopens SDL3 through its own rpath; the ASan dlopen
-  interceptor hides that rpath, so `sim/build.sh` links the SDL3 directory as
-  an rpath into sanitized Darwin builds. Without it every sanitized process
-  raises a modal "Failed loading SDL3 library" desktop dialog and aborts.
-  Check `otool -l` for that `LC_RPATH` before running a sanitized binary. Linux libstdc++, like the device's,
-  allocates in a `std::deque` constructor where macOS libc++ does not, so a
-  per-tick deque shows up as counted heap on Linux only.
+  LVGL, M5GFX and sanitizer-runtime sites. Linux libstdc++, like the
+  device's, allocates in a `std::deque` constructor where macOS libc++ does
+  not, so a per-tick deque shows up as counted heap on Linux only.
+- On macOS, Homebrew SDL2 is sdl2-compat, which dlopens SDL3 through its own
+  rpath. The ASan dlopen interceptor hides that rpath, so `sim/build.sh` links
+  the SDL3 directory as an rpath into sanitized Darwin builds. Without it every
+  sanitized process raises a modal "Failed loading SDL3 library" desktop
+  dialog and aborts. Check `otool -l` for that `LC_RPATH` before running a
+  sanitized binary.
 - The fuzz fit rule follows the layouts the scenarios certify. Remote shutter
   stays fit-required on physical-button builds and on the 320x240 Core touch
   model, and narrow Stick touch may scroll. Physical-button Home and Connected

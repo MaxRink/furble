@@ -1379,13 +1379,16 @@ whatever the production stack does after a fault is what the scenario observes.
   one, so the reboot reads the flash the previous boot wrote. It lives exactly
   one boot; a value outside the script's step range fails the run with status 2.
   `sim/scripts/run-env-order.sh` guards these mutations with a Linux
-  `LD_PRELOAD` interposer, and its `growth` target rejects any setenv that adds
-  a variable, or any unsetenv, from any caller while SDL is live. The sim-e2e
-  S3 job runs it. glibc's getenv walks `environ` without a lock and the SDL
-  main loop calls it thousands of times a second, so a growing setenv on
-  another thread frees the array under that walk (issue #283). The production
-  Timezone `setenv("TZ")` is the one runtime mutation, so `main()` creates `TZ`
-  before SDL starts and every later write replaces it in place.
+  `LD_PRELOAD` interposer, and its `growth` target rejects any variable added
+  by setenv or putenv, any unsetenv, and clearenv, from any caller while SDL
+  is live. The sim-e2e S3 job runs it. glibc's getenv walks `environ` without
+  a lock and the SDL main loop calls it thousands of times a second, so a
+  growing setenv on another thread frees the array under that walk (issue
+  #283). Production
+  Timezone's boot `setenv("TZ")` runs after `SDL_Init` but before `panelReady`
+  releases the main loop, so it is ordered before any loop getenv. `main()`
+  creates `TZ` first so every `TZ` write is a replace, and the guard can
+  enforce the stricter rule: no growth after `SDL_Init`.
 - `Platform::restart()` uses the same post-teardown re-exec seam. Interactive
   restarts have no script continuation; scripted UI restarts defer arming until
   the driver records the next step. Fuzz owners must call

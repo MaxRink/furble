@@ -182,12 +182,12 @@ and `tools/check_fuzz.py` rejects a host build configured that way. The `sim-san
 `sim-e2e.yml` runs the certified e2e suite under ASan, UBSan and LeakSanitizer
 on Linux. LeakSanitizer does not run on macOS, so reproduce a leak report in a
 Linux container with `FURBLE_SIM_SANITIZE=address,undefined`, the job's
-`ASAN_OPTIONS`, and `sim/lsan.supp` and `sim/ubsan.supp`. A sanitized macOS
-build links an rpath to SDL3, because Homebrew's sdl2-compat cannot find SDL3
-under the ASan dlopen interceptor and shows a dialog instead; confirm it with
-`otool -l` first. The sim-e2e S3 job also runs `sim/scripts/run-env-order.sh`,
-which fails any setenv that adds a variable while SDL is live. Those files list only
-third-party sites, each with its reason. The scanners cover absolute
+`ASAN_OPTIONS`, and `sim/lsan.supp` and `sim/ubsan.supp`. Those files list only
+third-party sites, each with its reason. A sanitized macOS build links an
+rpath to SDL3, because Homebrew's sdl2-compat cannot find SDL3 under the ASan
+dlopen interceptor and shows a dialog instead; confirm it with `otool -l`
+first. The sim-e2e S3 job also runs `sim/scripts/run-env-order.sh`, which
+fails any environment growth while SDL is live. The scanners cover absolute
 workstation paths, whitespace and generated artifacts, debug leftovers,
 behavior/doc/test coupling, settings defaults and board branches, wire-ID
 ledger drift, container bounds, unsafe filesystem removal, low-byte sentinel

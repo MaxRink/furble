@@ -737,7 +737,7 @@ ubuntu:24.04 container (glibc 2.39, clang 18, arm64), against
 | --- | --- | --- |
 | pre-fix `8a94d2cb`, sim-e2e shape | `setenv(FURBLE_SIM_PREFS)` adds, then `setenv(FURBLE_SIM_RESTART_STEP)` adds | 35,971 |
 | pre-fix `8a94d2cb`, coverage build, caller `FURBLE_SIM_PREFS` | the coverage runtime's own `setenv(__LLVM_PROFILE_RT_INIT_ONCE)` adds on the main thread before SDL, then `setenv(FURBLE_SIM_RESTART_STEP)` adds | 23,584 |
-| master `e66e8807`, both shapes | `setenv(TZ)` adds, from production `Timezone`, after the preferences or coverage-runtime growth on the main thread | 24, and the loop keeps calling |
+| master `e66e8807`, both shapes | `setenv(TZ)` adds, from production `Timezone`, after `SDL_Init` but before `panelReady` releases the loop | 24, all from `SDL_Init` itself; the loop has not started |
 
 Both CI shapes on the pre-fix tree therefore had exactly one freeing growth, at
 the first `restart` step, on the simulator thread, with SDL live. A second
@@ -750,26 +750,34 @@ sighting since. The coverage runtime explains the two coverage sightings: with
 a caller-owned `FURBLE_SIM_PREFS`, the Furble code alone grew the environment
 only once, which frees nothing.
 
-Master still had one instance of the race. Production `Timezone` (`f10b35ef`,
-2026-11-04) calls `setenv("TZ")` from the simulator thread at boot. `TZ` is
-normally unset on CI runners, so that call is a growth. In both shapes it is a freeing
-one, because the preferences or coverage-runtime growth comes first. `main()`
-now creates `TZ` with `setenv("TZ", "UTC0", 0)` before SDL starts. Every later
-write, at boot or on a zone change, is a pointer-sized in-place replace. A
-caller's `TZ` is kept, and the firmware replaces it with the selected zone at
-boot either way.
+Master has one remaining growth after `SDL_Init`, and it is not a live race.
+Production `Timezone` (`f10b35ef`, 2026-11-04) calls `setenv("TZ")` in
+`runSimulator()` at boot. `TZ` is normally unset on CI runners, so that call
+adds a variable, and it can free the array. It runs before
+`panelReady.store(release)`, though, and until then the main thread only
+spins on `panelReady.load(acquire)`. No other thread walks `environ` at that
+point: the M5GFX `dbg` thread is suppressed, and the watchdog reads its one
+variable in `watchdogStart()`. The growth is therefore ordered before any loop
+`getenv`. The 24 main-thread calls the probe counted all came from `SDL_Init`
+itself. `main()` now creates `TZ` with `setenv("TZ", "UTC0", 0)` before SDL
+starts, so every `TZ` write is a pointer-sized in-place replace. That lets the
+guard enforce the stricter rule, no growth after `SDL_Init`, without an
+exception for a boot-ordered call. A caller's `TZ` is kept, and the firmware
+replaces it with the selected zone at boot either way.
 
 The regression is the existing preload guard, widened and wired into CI.
-`sim/env_mutation_guard.c` gains a `growth` target that rejects any `setenv`
-that adds a variable and any `unsetenv`, from any caller, while SDL is
-initialized. It prints an armed line so a guard that never loaded cannot pass.
-`sim/scripts/run-env-order.sh` runs smoke and `restart-persist.txt` under
-every target with `TZ` unset. The old-binary legs are now optional. The
-sim-e2e S3 job runs it.
+`sim/env_mutation_guard.c` gains a `growth` target that rejects any variable
+added by `setenv` or `putenv`, any `unsetenv` or value-less `putenv`, and
+`clearenv`, from any caller, while SDL is initialized. It prints an armed line
+so a guard that never loaded cannot pass. `sim/scripts/run-env-order.sh` first
+compiles a small program that calls `SDL_Init` and then adds a variable, and
+requires the guard to stop it with status 86 and the exact message. It then
+runs smoke and `restart-persist.txt` under every target with `TZ` unset. The
+old-binary legs are now optional. The sim-e2e S3 job runs it.
 
 | Guard run, Linux container | Result |
 | --- | --- |
-| master `e66e8807` 320x240, `growth`, smoke | status 86, `sim env guard: setenv(TZ) after SDL initialization` |
+| master `e66e8807` 320x240, `growth`, smoke | status 86, `sim env guard: setenv(TZ) after SDL initialization`. The stricter rule fires on the boot-ordered `TZ` growth; it was not a live race. |
 | this branch 135x240, all targets, smoke and `restart-persist.txt` | passed |
 | this branch with `FURBLE_SIM_ENV_GUARD_OLD_BIN` = `8a94d2cb` | passed, old binary rejected at both named targets |
 
@@ -793,9 +801,9 @@ were stopped because each failure raised a desktop dialog.
 
 So the mechanism is shown directly: the free happened on every probed pre-fix
 run, SDL calls `getenv` constantly, and glibc's `getenv` takes no lock. Its
-timing matches every sighting, and the one surviving instance is now fixed and
-gated.
-The crash rate per run is too low to reproduce here. Reopen #283 if a
+timing matches every sighting. `a57e77e7` removed the mid-loop growth, and the
+guard now keeps every growth out of the window after `SDL_Init`. The crash
+rate per run is too low to reproduce here. Reopen #283 if a
 `SIM CRASH` dump appears on a head that contains this change. Treat a dump
 whose faulting frame is in `getenv`, `secure_getenv` or SDL's hint lookup as
 this class, and look for a new environment mutation the guard does not
