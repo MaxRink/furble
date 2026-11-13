@@ -9,6 +9,7 @@
 
 #include <M5PM1.h>
 
+#include "FurbleBoardCaps.h"
 #include "FurbleBootTimeline.h"
 #include "FurbleControl.h"
 #include "FurbleFeedback.h"
@@ -24,7 +25,7 @@
 
 namespace Furble {
 
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_M5PM1
 namespace {
 using Watchdog::PM1_FEED_PERIOD_MS;
 using Watchdog::PM1_TIMEOUT_S;
@@ -126,7 +127,7 @@ Platform &Platform::getInstance(void) {
         instance.m_PMICHack = false;
     }
 
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_M5PM1
     instance.m_M5PM1.begin(&M5.In_I2C);
     instance.m_M5PM1.setSingleResetDisable(true);  // disable BtnPWR single-click reset
     instance.m_M5PM1.setDoubleOffDisable(true);    // disable BtnPWR double-click power off
@@ -161,7 +162,7 @@ void Platform::prepareRestart(void) {
     ESP_LOGW(LOG_TAG, "Restart continuing after camera disconnect timeout.");
   }
 
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_M5PM1
   watchdogEnable(false);
 #endif
 }
@@ -171,7 +172,7 @@ void Platform::restart(void) {
   esp_restart();
 }
 
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_M5PM1
 bool Platform::unlockDownloadRecovery(void) {
   if (!m5pm1Access([this]() { return m_M5PM1.setDownloadLock(false); })) {
     ESP_LOGW(LOG_TAG, "Unable to unlock M5PM1 download recovery");
@@ -323,7 +324,7 @@ void Platform::setDisplayOff(bool off) {
 }
 #endif
 
-#if !defined(FURBLE_M5STICKS3)
+#if !FURBLE_HAS_M5PM1
 // Boards without the M5PM1 have no hardware watchdog to feed.
 void Platform::watchdogFeed(void) {}
 #endif
@@ -423,7 +424,7 @@ bool Platform::powerOff(void) {
   // the SD writer task closes the track and unmounts, wait for it to finish
   SD::getInstance().powerOff();
 
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_M5PM1
   const bool wasArmed = m_WatchdogEnabled;
   watchdogEnable(false);
 
@@ -444,7 +445,7 @@ bool Platform::powerOff(void) {
 #endif
 }
 
-#if !defined(FURBLE_M5STICKS3)
+#if !FURBLE_HAS_M5PM1
 void Platform::setDisplayOff(bool off) {
   (void)off;
 }
@@ -486,7 +487,7 @@ gpio_num_t motionWakeGpio(void) {
     case m5::board_t::board_M5StickC:
     case m5::board_t::board_M5StickCPlus:
       return GPIO_NUM_35;
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_M5PM1
     case m5::board_t::board_M5StickS3:
       return GPIO_NUM_13;
 #endif
@@ -509,7 +510,7 @@ bool Platform::armMotionWake(void) {
       gpio = GPIO_NUM_35;
       break;
 
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_M5PM1
     case m5::board_t::board_M5StickS3:
     {
       if (!m5pm1Access([this]() {
@@ -557,7 +558,7 @@ bool Platform::armMotionWake(void) {
     m_MotionWakeArmed = true;
     return true;
   }
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_M5PM1
   if (M5.getBoard() == m5::board_t::board_M5StickS3) {
     m5pm1Access([this]() { return m_M5PM1.gpioSetWakeEnable(M5PM1_GPIO_NUM_4, false); });
     m5pm1Access(
@@ -578,7 +579,7 @@ void Platform::disarmMotionWake(void) {
     case m5::board_t::board_M5StickCPlus:
       gpio = GPIO_NUM_35;
       break;
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_M5PM1
     case m5::board_t::board_M5StickS3:
       gpio = GPIO_NUM_13;
       m5pm1Access([this]() { return m_M5PM1.gpioSetWakeEnable(M5PM1_GPIO_NUM_4, false); });
@@ -603,7 +604,7 @@ bool Platform::motionWakeAsserted(void) const {
     return false;
   }
 
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_M5PM1
   if (M5.getBoard() == m5::board_t::board_M5StickS3) {
     // The BMI270 interrupt never reaches the SoC. GPIO13 carries the PMIC's
     // aggregated IRQ, so reading it answers "did the PMIC raise something",
@@ -632,7 +633,7 @@ bool Platform::motionWakeSample(void) {
     return false;
   }
 
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_M5PM1
   if (M5.getBoard() == m5::board_t::board_M5StickS3) {
     // The PMIC latches a GPIO4 edge in its IRQ status. Read and clear it: the
     // flag is what makes a fast INT1 train visible to a one-second poll, and
@@ -676,7 +677,7 @@ void Platform::clearMotionWake(void) {
   if (!m_MotionWakeArmed) {
     return;
   }
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_M5PM1
   if (M5.getBoard() == m5::board_t::board_M5StickS3) {
     // m5pm1Access retries once, which is the documented behaviour of the first
     // transaction after the PMIC's idle sleep, and a wake is exactly when that
@@ -688,7 +689,7 @@ void Platform::clearMotionWake(void) {
 
 bool Platform::canTimedWake(void) {
   switch (M5.getBoard()) {
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_M5PM1
     case m5::board_t::board_M5StickS3:
       return true;
 #endif
@@ -709,7 +710,7 @@ bool Platform::powerOffUntil(uint32_t seconds) {
   // on an older RTC value.
   TimeKeeper::getInstance().flush();
 
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_M5PM1
   if (M5.getBoard() == m5::board_t::board_M5StickS3) {
     const bool watchdogWasEnabled = m_WatchdogEnabled;
     const auto restoreWatchdog = [this, watchdogWasEnabled]() {
@@ -805,7 +806,7 @@ bool Platform::powerOffUntil(uint32_t seconds) {
 }
 
 bool Platform::consumeTimedWake(void) {
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_M5PM1
   if (M5.getBoard() == m5::board_t::board_M5StickS3) {
     uint8_t wakeSource = 0;
     if (!m5pm1Access([this, &wakeSource]() {
@@ -915,7 +916,7 @@ Platform::battery_t Platform::readBattery(void) {
     battery.level = (level > 0) ? level : 0;
   }
 
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_M5PM1
   // the M5PM1 reports voltage and charge status, but no battery current
   if (m_BatteryCaps.voltage) {
     uint16_t mv = 0;
@@ -982,7 +983,7 @@ Platform::battery_sample_t Platform::getBatterySample(void) const {
 
 void Platform::update(void) {
   M5.update();
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_M5PM1
   // The UI calls update() every 5 ms. Reading the PMIC button on every pass is
   // about 200 I2C transactions per second for a human-speed input; 50 Hz is
   // plenty and cuts the bus traffic tenfold.

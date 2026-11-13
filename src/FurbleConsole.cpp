@@ -1,4 +1,5 @@
 #include "FurbleConsole.h"
+#include "FurbleBoardCaps.h"
 
 #if defined(FURBLE_CONSOLE)
 
@@ -27,7 +28,7 @@
 #include <freertos/task.h>
 
 #include <driver/uart.h>
-#if defined(FURBLE_M5STICKS3) || defined(FURBLE_USB_CONSOLE)
+#if FURBLE_HAS_USB_SERIAL_JTAG_CONSOLE
 #include <driver/usb_serial_jtag.h>
 #include <driver/usb_serial_jtag_vfs.h>
 #endif
@@ -3422,7 +3423,7 @@ int cmdReboot(int argc, char **argv) {
  * when the application cannot answer.
  */
 int cmdFlash(int argc, char **argv) {
-#if !defined(FURBLE_M5STICKS3)
+#if !FURBLE_HAS_M5PM1
   (void)argc;
   (void)argv;
   return fail("flash preparation is only supported on the StickS3");
@@ -3549,7 +3550,7 @@ const esp_console_cmd_t COMMANDS[] = {
  */
 
 void startTransport(void) {
-#if defined(FURBLE_M5STICKS3) || defined(FURBLE_USB_CONSOLE)
+#if FURBLE_HAS_USB_SERIAL_JTAG_CONSOLE
   usb_serial_jtag_driver_config_t config = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
   ESP_ERROR_CHECK(usb_serial_jtag_driver_install(&config));
   // Move the secondary console output onto the driver we just installed.
@@ -3575,7 +3576,7 @@ void startTransport(void) {
 }
 
 int readByte(uint8_t *byte) {
-#if defined(FURBLE_M5STICKS3) || defined(FURBLE_USB_CONSOLE)
+#if FURBLE_HAS_USB_SERIAL_JTAG_CONSOLE
   return usb_serial_jtag_read_bytes(byte, 1, pdMS_TO_TICKS(Console::READ_TIMEOUT_MS));
 #else
   return uart_read_bytes(LOG_UART, byte, 1, pdMS_TO_TICKS(Console::READ_TIMEOUT_MS));

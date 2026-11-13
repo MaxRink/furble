@@ -80,6 +80,24 @@ class CouplingRatchetTest(unittest.TestCase):
         "#if defined(FURBLE_M5STICKS3)\n#define FURBLE_HAS_M5PM1 1\n#endif\n", encoding="utf-8")
     self.assertEqual(self.run_main(), 0)
 
+  def test_capability_macro_needs_direct_include(self):
+    self.run_main("--update")
+    (self.root / "src/b.cpp").write_text("#if FURBLE_HAS_SD\n#endif\n", encoding="utf-8")
+    self.assertEqual(self.run_main(), 1)
+    (self.root / "src/b.cpp").write_text(
+        '#include "FurbleBoardCaps.h"\n#if FURBLE_HAS_SD\n#endif\n', encoding="utf-8")
+    self.assertEqual(self.run_main(), 0)
+
+  def test_capability_macro_rejects_ifdef(self):
+    self.run_main("--update")
+    (self.root / "src/b.cpp").write_text(
+        '#include "FurbleBoardCaps.h"\n#ifdef FURBLE_HAS_SD\n#endif\n', encoding="utf-8")
+    self.assertEqual(self.run_main(), 1)
+    (self.root / "src/b.cpp").write_text(
+        '#include "FurbleBoardCaps.h"\n#if defined(FURBLE_PANEL_80X160)\n#endif\n',
+        encoding="utf-8")
+    self.assertEqual(self.run_main(), 1)
+
   def test_current_tree_matches_manifest(self):
     with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
       self.assertEqual(ratchet.main(["--root", str(ROOT)]), 0)

@@ -33,6 +33,7 @@
 #include "icons.h"
 
 #include "FurbleAutoOff.h"
+#include "FurbleBoardCaps.h"
 #include "FurbleBootScreen.h"
 #include "FurbleBootTimeline.h"
 #include "FurbleCalibrate.h"
@@ -95,7 +96,7 @@ uint32_t g_simDisconnectCalls = 0;
 #include "FurbleUIAudit.h"
 #endif
 
-#if defined(FURBLE_M5STICKC) || defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
+#if FURBLE_PANEL_NARROW
 // Use 24x24 icons for StickC screens
 #define icon_add_a_photo icon_add_a_photo_24
 #define icon_adjust icon_adjust_24
@@ -161,7 +162,7 @@ const char *timezoneSourceName(Timezone::Source source) {
   }
 }
 
-#if !defined(FURBLE_M5STICKC)
+#if !FURBLE_PANEL_80X160
 /**
  * Create one receiver detail row on the GPS Data page.
  *
@@ -244,18 +245,18 @@ const lv_font_t *fontForTextSize(uint8_t textSize) {
   textSize = TextSizePolicy::clamp(textSize);
   switch (textSize) {
     case Settings::TEXT_SIZE_SMALL:
-#if defined(FURBLE_M5STICKC)
+#if FURBLE_PANEL_80X160
       return &lv_font_montserrat_10;
-#elif defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
+#elif FURBLE_PANEL_135X240
       return &lv_font_montserrat_12;
 #else
       return &lv_font_montserrat_16;
 #endif
 
     case Settings::TEXT_SIZE_LARGE:
-#if defined(FURBLE_M5STICKC)
+#if FURBLE_PANEL_80X160
       return &lv_font_montserrat_14;
-#elif defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
+#elif FURBLE_PANEL_135X240
       return &lv_font_montserrat_22;
 #else
       return &lv_font_montserrat_28;
@@ -1101,7 +1102,7 @@ void UI::showCameraPairing(Camera *camera) {
 
   lv_obj_t *code = lv_label_create(content);
   lv_label_set_text_fmt(code, "%06lu", static_cast<unsigned long>(owner->getPairingCode()));
-#if defined(FURBLE_M5STICKC)
+#if FURBLE_PANEL_80X160
   // The 80 px StickC panel always takes the narrow branch; naming only that
   // font keeps the unused 25 KB Montserrat 22 out of the image.
   lv_obj_set_style_text_font(code, &lv_font_montserrat_16, 0);
@@ -2692,7 +2693,7 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
   // hides its back button, so it is the session root and none of its entries
   // can be dropped. Two of the fixes below are scoped to it.
   [[maybe_unused]] const bool connectedPage = menu.page == m_Menu.at(m_ConnectedStr).page;
-#if defined(FURBLE_M5COREX)
+#if FURBLE_PANEL_320X240
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
   // Home rows follow their wrapped icon labels at every text size. Other Core
   // grids use content rows only at Large. A content-sized row is as tall as the
@@ -2706,14 +2707,14 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
   }
 #else
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_ROW);
-#if defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
+#if FURBLE_PANEL_135X240
   // The device walk kept the home row spacing and accepted vertical scrolling
   // instead of shrinking the chosen font or removing its icons.
   const bool mainPage = menu.page == m_MainMenu.page;
   const int32_t pad = connectedPage ? 0 : (mainPage ? 3 : 6);
   lv_obj_set_style_pad_top(cont, pad, LV_STATE_DEFAULT);
   lv_obj_set_style_pad_bottom(cont, pad, LV_STATE_DEFAULT);
-#elif defined(FURBLE_M5STICKC)
+#elif FURBLE_PANEL_80X160
   // 80x160 is the shortest panel. Trim the per-row padding so the home menu
   // (Connect, Scan, Delete, IR, Settings, Level, Power off) fits without
   // scrolling. It has no icons, so a row is one text line plus the padding
@@ -2733,7 +2734,7 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
 #endif
   lv_obj_clear_flag(cont, LV_OBJ_FLAG_SCROLLABLE);
 
-#if defined(FURBLE_M5STICKC)
+#if FURBLE_PANEL_80X160
   // screen is too small for icons
 #else
   if (icon) {
@@ -2763,7 +2764,7 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
     lv_obj_t *label = lv_label_create(cont);
     lv_label_set_text(label, text);
     if (icon) {
-#if defined(FURBLE_M5COREX)
+#if FURBLE_PANEL_320X240
       lv_obj_set_style_text_font(label, fontForIconMenu(Settings::load<Settings::TEXT_SIZE>()), 0);
       // Wrap inside the cell rather than scroll across it. The rows size to
       // their content now, so the name is visible instead of clipped away, and
@@ -2843,7 +2844,7 @@ lv_obj_t *UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_
   lv_obj_set_width(label, LV_PCT(100));
 
   lv_obj_t *sw = lv_switch_create(obj);
-#if defined(FURBLE_M5STICKC)
+#if FURBLE_PANEL_80X160
   // Sized to the row's text rather than to the theme's 50x25 default, which ate
   // most of an 80 px row. A track twice as wide as it is tall still reads as a
   // switch and still shows its state at a glance.
@@ -3306,11 +3307,11 @@ void UI::addMainMenu(void) {
       }
     }
   }
-#if defined(FURBLE_M5COREX) || defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
+#if FURBLE_PANEL_320X240 || FURBLE_PANEL_135X240
   // StickC display too narrow for icons
   lv_obj_t *back_img = lv_obj_get_child(back, 0);
   lv_image_set_src(back_img, &icon_undo);
-#if defined(FURBLE_M5COREX)
+#if FURBLE_PANEL_320X240
   lv_obj_set_width(back_img, 48);
 #else
   lv_obj_set_width(back_img, 24);
@@ -3323,7 +3324,7 @@ void UI::addMainMenu(void) {
   m_MainMenu.page = lv_menu_page_create(m_MainMenu.main, NULL);
   m_MainMenu.group = m_Group;
 
-#if defined(FURBLE_M5COREX)
+#if FURBLE_PANEL_320X240
   lv_obj_set_grid_dsc_array(m_MainMenu.page, m_GridLayoutColDsc.data(), m_GridLayoutRowDsc.data());
   lv_obj_set_layout(m_MainMenu.page, LV_LAYOUT_GRID);
 #else
@@ -9144,7 +9145,7 @@ void UI::applyLevelSample(level_t *level, const float accel[3]) {
 UI::menu_t &UI::addConnectedMenu(void) {
   menu_t &menuConnected = addMenu(m_ConnectedStr, NULL, false);
 
-#if defined(FURBLE_M5COREX)
+#if FURBLE_PANEL_320X240
   // three by two suits the landscape screens, Cameras fills the last open cell
   static int32_t column_dsc[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1),
                                  LV_GRID_TEMPLATE_LAST};
@@ -9210,7 +9211,7 @@ UI::menu_t &UI::addConnectedMenu(void) {
       auto &buttonCont = std::get<0>(i);
 
       buttonCont = lv_obj_create(cont);
-#if defined(FURBLE_M5COREX)
+#if FURBLE_PANEL_320X240
       // The plain wrapper inherits the card's horizontal PAD_DEF on the
       // 320x240 theme. That padding is not part of the touch control, and at
       // Large it makes the content-sized wrappers wrap before all three 64 px
@@ -9790,7 +9791,7 @@ void UI::addGPSPowerMenu(const menu_t &parent) {
     setStaticLabelMode(label);
 
     lv_obj_t *roller = lv_roller_create(row);
-#if !defined(FURBLE_M5COREX)
+#if !FURBLE_PANEL_320X240
     lv_obj_set_width(roller, LV_PCT(90));
 #endif
     lv_obj_add_flag(roller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
@@ -9956,7 +9957,7 @@ UI::menu_t &UI::addOptionMenu(const menu_t &parent,
   lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
   lv_obj_t *roller = lv_roller_create(cont);
-#if !defined(FURBLE_M5COREX)
+#if !FURBLE_PANEL_320X240
   lv_obj_set_width(roller, LV_PCT(90));
 #endif
   lv_obj_add_flag(roller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
@@ -10032,11 +10033,11 @@ void UI::addGPSDataMenu(const menu_t &parent) {
         static lv_obj_t *alt = lv_label_create(gpsData->page);
         setLabelTextFmtIfChanged(alt, "%.2f m", status.altitude);
 
-#if !defined(FURBLE_M5STICKC)
+#if !FURBLE_PANEL_80X160
         static lv_obj_t *datetime = nullptr;
         if (datetime == nullptr) {
           datetime = lv_label_create(gpsData->page);
-#if !defined(FURBLE_M5COREX)
+#if !FURBLE_PANEL_320X240
           // 135x240 fits the combined stamp only in the small font, and merging
           // the two rows is what buys the receiver detail rows below their space
           lv_obj_set_style_text_font(datetime, &lv_font_montserrat_12, 0);
@@ -10052,7 +10053,7 @@ void UI::addGPSDataMenu(const menu_t &parent) {
         setLabelTextFmtIfChanged(time, "%02u:%02u:%02u", status.hour, status.minute, status.second);
 #endif
 
-#if defined(FURBLE_M5STICKC)
+#if FURBLE_PANEL_80X160
     // The 80x160 panel has no vertical headroom left on this page, and the
     // page carries no focusable control, so LVGL group navigation cannot
     // scroll it. Detail rows would render below the fold with no way to
@@ -10423,7 +10424,7 @@ lv_obj_t *UI::addSpinItem(lv_obj_t *page, const char *item, Intervalometer::Spin
   // name and the page scrolls vertically rather than clipping either string.
   lv_obj_set_flex_flow(spinner.m_Button, LV_FLEX_FLOW_ROW_WRAP);
   lv_obj_add_flag(spinner.m_Button, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
-#if defined(FURBLE_M5STICKC)
+#if FURBLE_PANEL_80X160
   // The Bulb page has one narrow Duration row; its default flex gap adds 8 px
   // without improving the two-line name/value layout.
   lv_obj_set_style_pad_row(spinner.m_Button, 0, LV_STATE_DEFAULT);
@@ -10435,7 +10436,7 @@ lv_obj_t *UI::addSpinItem(lv_obj_t *page, const char *item, Intervalometer::Spin
   // Delay, Shutter and Wait rows keep their complete values in the narrow width.
   lv_obj_set_style_pad_top(spinner.m_Button, 0, LV_STATE_DEFAULT);
   lv_obj_set_style_pad_bottom(spinner.m_Button, 0, LV_STATE_DEFAULT);
-#elif defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
+#elif FURBLE_PANEL_135X240
   // Keep the vertical breathing room, but not horizontal padding: at the Large
   // font "999 mins" is 103 px, exactly the narrowed row's outer width.
   // Spending four of those pixels on padding wraps the value to a second line
@@ -10978,7 +10979,7 @@ void UI::addBulbMenu(const menu_t &parent) {
   lv_label_set_text(startLabel, "Start");
   lv_obj_set_width(startLabel, LV_PCT(100));
   lv_obj_set_style_text_align(startLabel, LV_TEXT_ALIGN_CENTER, 0);
-#if defined(FURBLE_M5STICKC)
+#if FURBLE_PANEL_80X160
   // The floating legend narrows this button to 48 px. Remove the theme's
   // horizontal padding so the 24 px Start label remains complete, and trim
   // one more pixel from each vertical edge to keep the compact page fitted.
@@ -11376,7 +11377,7 @@ void UI::addLegendMenu(const menu_t &parent) {
                         LV_FLEX_ALIGN_CENTER);
 
   lv_obj_t *roller = lv_roller_create(cont);
-#if !defined(FURBLE_M5COREX)
+#if !FURBLE_PANEL_320X240
   lv_obj_set_width(roller, LV_PCT(90));
 #endif
   lv_roller_set_options(roller, "Buttons\nBottom\nOff", LV_ROLLER_MODE_INFINITE);
@@ -11393,7 +11394,7 @@ void UI::addLegendMenu(const menu_t &parent) {
       [](lv_event_t *e) {
         auto *roller = static_cast<lv_obj_t *>(lv_event_get_user_data(e));
         Settings::save<Settings::LEGEND>(lv_roller_get_selected(roller));
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_M5PM1
         Platform::getInstance().watchdogEnable(false);
 #endif
         Platform::getInstance().restart();
@@ -11406,7 +11407,7 @@ void UI::addLegendMenu(const menu_t &parent) {
 void UI::addTextSizeMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_TextSizeStr, &icon_clear_all_24, true, parent);
   lv_obj_t *cont = lv_menu_cont_create(menu.page);
-#if defined(FURBLE_M5STICKC)
+#if FURBLE_PANEL_80X160
   // The floating legend leaves the explanatory note only 27 px wide. It wraps
   // below the roller, so a fixed-height SPACE_EVENLY container overlaps them.
   // Let the complete controls establish the height and let the page scroll.
@@ -11420,7 +11421,7 @@ void UI::addTextSizeMenu(const menu_t &parent) {
                         LV_FLEX_ALIGN_CENTER);
 
   lv_obj_t *roller = lv_roller_create(cont);
-#if !defined(FURBLE_M5COREX)
+#if !FURBLE_PANEL_320X240
   lv_obj_set_width(roller, LV_PCT(90));
 #endif
   // The 80x160 M5StickC cannot fit the Large font, so it drops Large and offers
@@ -11452,7 +11453,7 @@ void UI::addTextSizeMenu(const menu_t &parent) {
       [](lv_event_t *e) {
         auto *roller = static_cast<lv_obj_t *>(lv_event_get_user_data(e));
         Settings::save<Settings::TEXT_SIZE>(lv_roller_get_selected(roller));
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_M5PM1
         Platform::getInstance().watchdogEnable(false);
 #endif
         Platform::getInstance().restart();
@@ -11889,7 +11890,7 @@ void UI::addFeedbackMenu(const menu_t &parent) {
   lv_obj_add_event_cb(
       restart,
       [](lv_event_t *) {
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_M5PM1
         Platform::getInstance().watchdogEnable(false);
 #endif
         Platform::getInstance().restart();
@@ -11996,7 +11997,7 @@ void UI::addThemeMenu(const menu_t &parent) {
   lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
                         LV_FLEX_ALIGN_CENTER);
   lv_obj_t *roller = lv_roller_create(cont);
-#if !defined(FURBLE_M5COREX)
+#if !FURBLE_PANEL_320X240
   lv_obj_set_width(roller, LV_PCT(90));
 #endif
 
@@ -12797,7 +12798,7 @@ void UI::confirmStorageAction(void) {
 void UI::addSettingsMenu(void) {
   menu_t &menu = addMenu(m_SettingsStr, &icon_settings);
 
-#if defined(FURBLE_M5COREX)
+#if FURBLE_PANEL_320X240
   // Same rule as the Connected grid: equal rows while the entries fit, content
   // rows at Large so a name is never clipped away below its icon.
   lv_obj_set_grid_dsc_array(
@@ -13301,7 +13302,7 @@ void UI::doPowerOff(void) {
 
   // TODO(plans/implemented/68-reconnect-after-restart.md): prepareRestart on feat/68 needs this
   // same quiesce ordering, a future shared helper should absorb both paths.
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_M5PM1
   // Stop the watchdog first, the BLE teardown below can outlast a feed period.
   Platform::getInstance().watchdogEnable(false);
 #endif

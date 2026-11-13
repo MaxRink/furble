@@ -9,6 +9,8 @@
 
 #include <M5PM1.h>
 
+#include "FurbleBoardCaps.h"
+
 namespace Furble {
 #if defined(FURBLE_SIM)
 namespace Sim {
@@ -284,7 +286,7 @@ class Platform {
    */
   uint32_t getBatteryFailCount(void);
 
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_M5PM1
   /**
    * Prepare the StickS3 for an intentional serial flash.
    *
@@ -347,7 +349,7 @@ class Platform {
    */
   void initBattery(void);
 
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_M5PM1
   /** Ensure the PMIC long-press download recovery path is not locked. */
   bool unlockDownloadRecovery(void);
 #endif
@@ -369,7 +371,7 @@ class Platform {
   battery_sample_t m_BatterySample = {};
   bool m_BatterySampleInitialized = false;
   bool m_MotionWakeArmed = false;
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_M5PM1
   bool m_StatusLedLevel = false;
   bool m_StatusLedLevelValid = false;
   bool m_WatchdogEnabled = false;

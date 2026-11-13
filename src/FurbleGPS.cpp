@@ -17,6 +17,7 @@
 #include "icons.h"
 #endif
 
+#include "FurbleBoardCaps.h"
 #include "FurbleConsole.h"
 #include "FurbleControl.h"
 #include "FurbleGPS.h"
@@ -522,7 +523,7 @@ void GPS::onProbeFailed(uint32_t now) {
 }
 
 void GPS::acquirePowerLock(void) {
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_GPS_BURST_LOCK
   if (!gpsPowerLockRequired(m_Enabled.load(), m_CycleState == cycle_state_t::DEGRADED)) {
     return;
   }
@@ -535,7 +536,7 @@ void GPS::acquirePowerLock(void) {
 }
 
 void GPS::releasePowerLock(void) {
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_GPS_BURST_LOCK
   std::lock_guard<std::mutex> guard(m_PowerLockMutex);
   m_PowerLock.reset();
 #endif

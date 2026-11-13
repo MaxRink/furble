@@ -15,6 +15,7 @@
 #include "Scan.h"
 
 #include "FurbleBatteryStatus.h"
+#include "FurbleBoardCaps.h"
 #include "FurbleBootScreen.h"
 #include "FurbleBootTimeline.h"
 #include "FurbleCompanion.h"
@@ -71,11 +72,11 @@ int32_t UI::getBatteryCurrent(void) {
 }
 
 int16_t UI::getBatteryVBUSVoltage(void) {
-#if defined(FURBLE_WAVESHARE_S3_ETH)
+#if FURBLE_HAS_VBUS_SENSE
+  return BatteryStatus::vbus(true, M5.Power.getVBUSVoltage());
+#else
   // The board exposes no software-readable VBUS/PoE telemetry.
   return BatteryStatus::vbus(false, 0);
-#else
-  return BatteryStatus::vbus(true, M5.Power.getVBUSVoltage());
 #endif
 }
 

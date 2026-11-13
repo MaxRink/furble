@@ -2,6 +2,7 @@
 #include <driver/gpio.h>
 #include <esp_log.h>
 
+#include "FurbleBoardCaps.h"
 #include "FurbleFeedback.h"
 #include "FurbleTime.h"
 
@@ -331,7 +332,7 @@ void Feedback::signal(event_t event, bool force) {
 }
 
 bool Feedback::beginSpeaker(void) {
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_M5PM1
   // The M5PM1 powers the amplifier and the first I2C transaction after its
   // idle sleep only wakes it and fails (root CLAUDE.md trap). The speaker is
   // closed between patterns, so the enable path can hit exactly that first

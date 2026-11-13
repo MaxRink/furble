@@ -251,3 +251,28 @@ board environment, SDK dependency, or hardware test is claimed.
   ESP/NimBLE header type names in 28 headers. Including the two profile flags
   there are 165 guard lines in 19 files; the review estimate of 174 also
   counted a header include guard and commented-out lines.
+
+### Capability macros (port stack step 2)
+
+- `include/FurbleBoardCaps.h` derives 0/1 capability macros from the board
+  identity macros: `FURBLE_HAS_M5PM1`, `FURBLE_HAS_GPS_BURST_LOCK`,
+  `FURBLE_HAS_USB_SERIAL_JTAG_CONSOLE`, `FURBLE_HAS_SD`,
+  `FURBLE_HAS_VBUS_SENSE`, and the panel classes `FURBLE_PANEL_80X160`,
+  `FURBLE_PANEL_135X240`, `FURBLE_PANEL_320X240` and `FURBLE_PANEL_NARROW`.
+- 70 board guards became capability guards. The ratchet went from 96 board
+  identity guards in 16 files to 26 in 12 files.
+- The ratchet also fails a file that tests a capability macro with `#ifdef`
+  or `defined()`, or uses one without including the header directly. Both
+  mistakes would silently read the macro as 0.
+- Deliberately unchanged: the `WATCHDOG` setting enum entry, its default and
+  every switch case that names it stay on `FURBLE_M5STICKS3`, because the
+  settings contract scanner checks each board-conditional setting against the
+  host test target that defines that board macro. Code that reads the
+  setting stays with it. `FurbleTextSize.h` and `FurbleSettingsDefaults.h` are
+  settings contract files and keep their board macros for the same reason.
+- Deliberately unchanged identity checks: the hand-placed legend arrows for
+  the StickC and the Core Basic buttons, the StickS3 side button offset, the
+  Core Basic timer wake clear before power off, and the GPS UART clock guard,
+  which already falls back to `CONFIG_IDF_TARGET_ESP32S3`.
+- `FURBLE_NO_DISPLAY` and `FURBLE_ETHERNET` were already capability flags and
+  are unchanged. No `FURBLE_HAS_DISPLAY` alias was added.

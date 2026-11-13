@@ -3,6 +3,8 @@
 
 #include <mutex>
 
+#include "FurbleBoardCaps.h"
+
 #if defined(FURBLE_CONSOLE)
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
@@ -491,7 +493,7 @@ class UI {
       // three digit rollers, where four columns of four characters do not fit
       // a 135 px or 80 px panel at any text size and the unit is unambiguous
       // from one or three.
-#if defined(FURBLE_M5STICKC) || defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
+#if FURBLE_PANEL_NARROW
       static constexpr const char *m_SpinUnitsRoller = "ms\ns\nmin";
 #else
       static constexpr const char *m_SpinUnitsRoller = "msec\nsecs\nmins";
@@ -875,7 +877,7 @@ class UI {
 
   static constexpr uint8_t BYTES_PER_PIXEL = (LV_COLOR_FORMAT_GET_SIZE(LV_COLOR_FORMAT_RGB565));
 
-#if defined(FURBLE_M5COREX)
+#if FURBLE_PANEL_320X240
   static constexpr int32_t ICON_MENU_SIZE = 48;
 #else
   static constexpr int32_t ICON_MENU_SIZE = 24;

@@ -1,21 +1,17 @@
 {
   "board_guards": {
-    "include/FurbleGPS.h": 1,
-    "include/FurblePlatform.h": 3,
     "include/FurbleSettings.h": 2,
     "include/FurbleSettingsDefaults.h": 2,
     "include/FurbleTextSize.h": 1,
-    "include/FurbleUI.h": 3,
+    "include/FurbleUI.h": 1,
     "src/FurbleCompanionService.cpp": 2,
-    "src/FurbleConsole.cpp": 7,
-    "src/FurbleFeedback.cpp": 1,
-    "src/FurbleGPS.cpp": 3,
-    "src/FurblePlatform.cpp": 19,
+    "src/FurbleConsole.cpp": 3,
+    "src/FurbleGPS.cpp": 1,
     "src/FurbleProvision.cpp": 1,
-    "src/FurbleSD.cpp": 3,
-    "src/FurbleSettings.cpp": 5,
-    "src/FurbleUI.cpp": 41,
-    "src/main.cpp": 2
+    "src/FurbleSD.cpp": 2,
+    "src/FurbleSettings.cpp": 4,
+    "src/FurbleUI.cpp": 6,
+    "src/main.cpp": 1
   },
   "header_types": {
     "include/FurbleCompanion.h": 37,

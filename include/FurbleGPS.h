@@ -26,6 +26,7 @@ using lv_obj_t = _lv_obj_t;
 #include <cstdint>
 #include <mutex>
 
+#include "FurbleBoardCaps.h"
 #include "FurbleGPSHold.h"
 #include "FurbleGPSPowerCycle.h"
 #include "FurbleIMU.h"
@@ -680,7 +681,7 @@ class GPS {
   // never held across PMIC, UART or other blocking hardware setup
   mutable std::mutex m_CycleMutex;
 
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_GPS_BURST_LOCK
   // held only during a receive burst or the burst acquisition window
   std::mutex m_PowerLockMutex;
   std::optional<Power::Lock> m_PowerLock;

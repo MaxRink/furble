@@ -20,6 +20,8 @@ manifest is regenerated, so every reduction is locked in. Regenerate with
 
 `include/FurbleBoardCaps.h` is where board identity is turned into capability
 macros, so it is the one file allowed to name boards without a ratchet entry.
+Its macros are always 0 or 1, so a file that tests one with `#ifdef` or
+`defined()`, or uses one without including the header directly, fails.
 """
 
 from __future__ import annotations
@@ -64,6 +66,12 @@ STRIP = re.compile(r'//[^\n]*|/\*.*?\*/|"(?:\\.|[^"\\\n])*"', re.DOTALL)
 
 CATEGORIES = ("board_guards", "m5_calls", "m5_get_board", "header_types")
 
+CAPS_MACRO = re.compile(r"\bFURBLE_(?:HAS|PANEL)_[A-Z0-9_]+\b")
+CAPS_DEFINED = re.compile(
+    r"^\s*#\s*(?:ifdef|ifndef)\s+FURBLE_(?:HAS|PANEL)_|\bdefined\s*\(?\s*FURBLE_(?:HAS|PANEL)_",
+    re.MULTILINE)
+CAPS_INCLUDE = re.compile(r'^\s*#\s*include\s+"FurbleBoardCaps\.h"', re.MULTILINE)
+
 
 def strip_comments(text: str) -> str:
   return STRIP.sub(lambda match: "\n" * match.group(0).count("\n"), text)
@@ -99,6 +107,22 @@ def count(root: Path) -> dict[str, dict[str, int]]:
     text = strip_comments(path.read_text(encoding="utf-8", errors="replace"))
     record("header_types", name, len(HEADER_TYPE.findall(text)))
   return counts
+
+
+def caps_misuse(root: Path) -> list[str]:
+  """Capability macros are 0 or 1, so a missing include or an #ifdef is silent."""
+  errors: list[str] = []
+  for path in files_under(root, SCAN_ROOTS, SOURCE_SUFFIXES):
+    name = path.relative_to(root).as_posix()
+    if name == BOARD_CAPS_HEADER:
+      continue
+    raw = path.read_text(encoding="utf-8", errors="replace")
+    text = strip_comments(raw)
+    if CAPS_DEFINED.search(text):
+      errors.append(f"{name}: test a capability macro with #if, not #ifdef or defined()")
+    if CAPS_MACRO.search(text) and not CAPS_INCLUDE.search(raw):
+      errors.append(f"{name}: uses a capability macro without including FurbleBoardCaps.h")
+  return errors
 
 
 def compare(manifest: dict[str, dict[str, int]],
@@ -151,11 +175,17 @@ def main(argv: list[str] | None = None) -> int:
     return 1
 
   grown, stale = compare(manifest, current)
+  misuse = caps_misuse(root)
   print(f"coupling: {totals(current)}")
+  for line in misuse:
+    print(f"CAPS  {line}", file=sys.stderr)
   for line in grown:
     print(f"GREW  {line}", file=sys.stderr)
   for line in stale:
     print(f"STALE {line}", file=sys.stderr)
+  if misuse:
+    print("FAIL: capability macro misuse, see include/FurbleBoardCaps.h", file=sys.stderr)
+    return 1
   if grown:
     print("FAIL: coupling grew. Use a capability macro from include/FurbleBoardCaps.h "
           "or a Platform function instead.", file=sys.stderr)
