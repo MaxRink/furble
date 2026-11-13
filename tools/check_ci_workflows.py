@@ -239,7 +239,7 @@ def _lint_firmware_change_filter(document: Mapping[str, Any]) -> list[str]:
 
 
 def _lint_platformio_ci_contract(document: Mapping[str, Any]) -> list[str]:
-  """Check the mandatory and opt-in firmware debug profile contract."""
+  """Check the mandatory firmware debug profile contract."""
 
   if document.get("name") != "PlatformIO CI":
     return []
@@ -247,20 +247,10 @@ def _lint_platformio_ci_contract(document: Mapping[str, Any]) -> list[str]:
   trigger = document.get("on")
   dispatch = trigger.get("workflow_dispatch") if isinstance(trigger, Mapping) else None
   errors: list[str] = []
-  if not isinstance(dispatch, Mapping):
-    errors.append("PlatformIO CI workflow_dispatch must configure profile inputs")
-  else:
-    inputs = dispatch.get("inputs")
-    core_ota = inputs.get("core_ota_debug") if isinstance(inputs, Mapping) else None
-    if not isinstance(core_ota, Mapping):
-      errors.append("PlatformIO CI core_ota_debug input is missing")
-    else:
-      if core_ota.get("type") != "boolean":
-        errors.append("PlatformIO CI core_ota_debug input must be boolean")
-      if str(core_ota.get("default", "")).lower() != "false":
-        errors.append("PlatformIO CI core_ota_debug input must default to false")
-      if str(core_ota.get("required", "")).lower() != "false":
-        errors.append("PlatformIO CI core_ota_debug input must be optional")
+  inputs = dispatch.get("inputs") if isinstance(dispatch, Mapping) else None
+  if isinstance(inputs, Mapping) and "core_ota_debug" in inputs:
+    # Both Core debug profiles are mandatory, so no input may skip one.
+    errors.append("PlatformIO CI must not offer a core_ota_debug opt-in")
 
   jobs = document.get("jobs")
   discover = jobs.get("discover") if isinstance(jobs, Mapping) else None
@@ -270,8 +260,10 @@ def _lint_platformio_ci_contract(document: Mapping[str, Any]) -> list[str]:
   else:
     if discover_env.get("MANDATORY_CORE_DEBUG") != "m5stack-core-usb-debug":
       errors.append("PlatformIO CI mandatory Core debug profile is incorrect")
-    if discover_env.get("OPTIONAL_CORE_DEBUG") != "m5stack-core-debug":
-      errors.append("PlatformIO CI optional Core debug profile is incorrect")
+    if discover_env.get("MANDATORY_CORE_OTA_DEBUG") != "m5stack-core-debug":
+      errors.append("PlatformIO CI mandatory Core OTA debug profile is incorrect")
+    if "OPTIONAL_CORE_DEBUG" in discover_env:
+      errors.append("PlatformIO CI Core OTA debug profile must not be optional")
 
   build = jobs.get("build") if isinstance(jobs, Mapping) else None
   if isinstance(build, Mapping) and "continue-on-error" in build:

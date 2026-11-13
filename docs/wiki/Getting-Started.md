@@ -39,7 +39,7 @@ If the 4 MB Core debug image exceeds its OTA slot, use the developer-only
 `m5stack-core-usb-debug` environment. It is USB-UART only, uses one factory app
 partition, and is not a release or wireless-update image. Avoid a full erase
 when preserving NVS settings and camera bonds. Normal CI uses this profile for
-the Core debug lane; the legacy dual-OTA Core debug profile is opt-in only.
+a Core debug lane, together with the dual-OTA Core debug profile.
 
 ## First pairing
 
