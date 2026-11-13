@@ -47,9 +47,6 @@ python3 tools/coverage.py \
   --json coverage.json --markdown coverage.md --html html
 ```
 
-Keep `--build-dir` short. The gpx-writer host test truncates paths into a 64
-byte buffer, so a deep scratch path makes it fail for unrelated reasons.
-
 Useful narrowing while iterating:
 
 - `--stack host` or `--stack sim` measures one stack.
