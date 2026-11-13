@@ -1,5 +1,7 @@
 # PR19 - Deep sleep between intervalometer shots
 
+Implementation state (2026-11-13): merged as #59. The PMIC and RTC timed wake stays a hardware gate.
+
 ## Goal
 
 Power the device down between intervalometer shots when the gap is long enough,
@@ -301,7 +303,7 @@ charging, so all drain runs happen unplugged.
 
 ## Implementation state
 
-Implemented on branch `feat/19-interval-deep-sleep`.
+Implemented and merged as #59 (`d15329be`).
 
 - Added `IVL_SLEEP` and `IVL_SLEEP_THR` with persistent NVS settings.
 - Added the intervalometer menu controls and runtime hiding on unsupported boards.

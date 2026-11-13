@@ -1,5 +1,11 @@
 # PR30 - Upstream M5Stack framework work and fork strategy
 
+Implementation state (2026-11-13): the pins below are the plan-time snapshot. Master pins
+`M5GFX@0.2.27` and `M5Unified@0.2.20` (which already includes `M5PM1_Class`), keeps the
+standalone `M5PM1@1.0.6`, pins TinyGPSPlus to the full 40-character SHA and vendors
+esp-nimble-cpp under `components/` through `override_path`. The G1, G2, G4 and G5 upstream
+PRs are not filed; G6 is now due.
+
 ## Goal
 
 Several furble plans need capabilities that the M5Stack libraries do not expose.

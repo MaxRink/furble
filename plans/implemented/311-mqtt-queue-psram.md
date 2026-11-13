@@ -1,5 +1,8 @@
 # 311 - MQTT event queue, owner gate and main stack
 
+Implementation state (2026-11-13): merged as #407. `memory-mqtt-task-alloc-fail.txt` was deleted in #411 and became
+`sim/fixtures/hardware/panic-mqtt-task-alloc-fail.txt`.
+
 ## Finding
 
 Hardware validation of the merged #398 candidate found a second MQTT memory

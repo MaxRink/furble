@@ -1,5 +1,7 @@
 # 72: Panasonic Lumix BLE support
 
+Implementation state (2026-11-13): merged as #79 (`604993b5`). The next free wire id is no longer 41; see `plans/README.md`.
+
 ## Motivation
 
 Panasonic Lumix cameras are the highest-ranked missing vendor in plan 61.

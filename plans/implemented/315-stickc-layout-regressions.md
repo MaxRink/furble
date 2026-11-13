@@ -1,5 +1,7 @@
 # 315: M5StickC layout regressions
 
+Implementation state (2026-11-13): merged as #415. The other failures quoted "on master" below were fixed by #419 and #420.
+
 ## Motivation
 
 Three certified e2e scenarios failed on master at `8f0fd5be` on the 80x160

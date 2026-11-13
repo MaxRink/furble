@@ -1,5 +1,8 @@
 # PR11: RSSI based adaptive transmit power
 
+Implementation state (2026-11-13): merged as #25. The hardware pass is recorded below (2026-08-17); the "owed before merge" line
+predates it.
+
 ## Goal
 
 Step BLE transmit power down when the camera is close and back up when the link
@@ -176,7 +179,7 @@ Camera testing:
 
 ## Implementation status
 
-Implemented on `feat/11-adaptive-tx-power`.
+Implemented and merged as #25 (`39f0b2a0`).
 
 - Added the `TX_ADAPTIVE` boolean setting with NVS key `tx_adaptive`, defaulting
   to `false`, and added its switch to `Settings > Bluetooth > TX Power`.

@@ -1,6 +1,8 @@
 # 96: WiFi, Bluetooth and BLE hardening
 
-Status: analysis complete, remediation not started. Docs-only PR. This document
+Status: analysis complete. Remediation started: B3 landed with #62, and
+later PRs such as #109, #128 and #307 address parts of B1, B2, B4 and B7.
+Per-item state is not re-audited here. Docs-only PR. This document
 is the issue inventory and the sequenced fix plan. Each fix batch becomes its
 own PR and updates this doc with its implementation state.
 

@@ -1,5 +1,7 @@
 # 301 - simulator on-screen buttons
 
+Implementation state (2026-11-13): merged as #359. The failures quoted "on master" below were fixed by #419 and #420.
+
 Status: merged on master with PR #359 (2026-11-04). The review follow-up
 applied left-first flush placement, the event-filter action queue for
 cross-thread safety, the explicit `scriptProvided` sentinel, sentinel

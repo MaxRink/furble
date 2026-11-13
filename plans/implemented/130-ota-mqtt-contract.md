@@ -1,6 +1,7 @@
 # 130 - OTA-over-MQTT signed transfer contract
 
-Status: implementation slice on fork/master `ef8aca7` (follow-up to PR #213). This is the
+Status: merged as #216, #217 and #218. The MQTT `cmd/ota` wiring is owned by
+plan 115. This is the
 transport-neutral contract that can land before the WiFi and MQTT transports.
 It is deliberately separate from #66 and #161 so their rebases do not make the
 OTA safety policy unreviewable.

@@ -1,5 +1,8 @@
 # PR21 - Position hold when the GPS fix is lost
 
+Implementation state (2026-11-13): merged in `e9009bc9`. The "known gap" for wire ids 43 and 46 below is closed:
+`tests/host/provision_apply_test.cpp` walks every nonzero setting and requires a schema row.
+
 ## Goal
 
 Keep supplying a position to the camera when the GPS fix goes away. Today furble

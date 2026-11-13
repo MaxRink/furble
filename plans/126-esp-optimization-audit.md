@@ -1,5 +1,8 @@
 # 126: ESP-IDF optimization and reproducibility audit
 
+Implementation state (2026-11-13): this audit is a historical snapshot. Master now pins espressif32 6.13.0 (ESP-IDF 5.5.3) and has
+six release envs. The P0-P2 findings are not re-audited here.
+
 Status: research complete. This document is a plan, not an authorization to
 change release defaults. It was prepared against fork/master at
 `06e9333fda349846d76d8d34d2f4014259fd4e11` on 2026-08-24. No production code,

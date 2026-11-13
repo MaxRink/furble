@@ -1,5 +1,9 @@
 # 309 - Input, API and memory fuzzing gate
 
+Implementation state (2026-11-13): merged as #401. Stack depth is now measured by `tools/stack_budget.py` (#414, #428), and
+#412 charges every device allocation to the modelled heap. #393 closed unmerged. Fuzz counts
+below are the `0883a31e` snapshot.
+
 Status: merged on master with #401, after the #397, #398 and #407 production
 branches. The full fuzz corpus passes: 10 targets, 136 seed runs, 89,146
 iterations and zero failures across all three panel binaries and both layouts.

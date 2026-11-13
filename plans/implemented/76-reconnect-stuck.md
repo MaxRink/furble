@@ -1,5 +1,7 @@
 # PR76: fast reconnect to a Fujifilm Secure camera stalls in "connecting"
 
+Implementation state (2026-11-13): the fix merged as #121, with the scan follow-up in `1443c910`. The X100VI retest stays a hardware gate.
+
 ## Status
 
 Fix implemented. The on-device serial capture that was pending has been taken

@@ -1,5 +1,9 @@
 # PR31: enable PSRAM on the M5StickS3
 
+Implementation state (2026-11-13): merged in `e85897c6` through `1a3a4a0b`. S3 release sdkconfigs later disabled
+`CONFIG_SPIRAM_MEMTEST` (#397); the debug envs merge it back. Core2 PSRAM followed in #431.
+Mentions of five boards below are historical. Boot heap and a 30 minute drain stay hardware gates.
+
 ## Goal
 
 Enable the 8 MB octal PSRAM on the M5StickS3 and let the standard allocator use

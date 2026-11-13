@@ -10,8 +10,8 @@ diagnostic commands, and downloads a single capture file for the bug report. The
 reporter clicks one button, reproduces the fault, clicks stop, and attaches the
 downloaded dump.
 
-This is PR-2 of a stacked pair and is design only in this document. It is not
-implemented here.
+This is PR-2 of a stacked pair. It was written as a design and is now
+implemented in `25c7d61f` (`web-installer/index.html`).
 
 ## Dependencies
 

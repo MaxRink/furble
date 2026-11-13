@@ -1,5 +1,7 @@
 # Plan 156: Restart and session-restore test seam
 
+Implementation state (2026-11-13): merged as #251.
+
 ## Status
 
 Implemented. Test and simulator infrastructure. The one production line it

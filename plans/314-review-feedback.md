@@ -1,5 +1,7 @@
 # 314 - Review feedback for memory resilience
 
+Implementation state (2026-11-13): plan 314 is fully merged (#411 to #439). Row 18 (cycle memoization) stays open.
+
 ## Scope
 
 This is the review-feedback record for plan 314. Each PR in the series adds a

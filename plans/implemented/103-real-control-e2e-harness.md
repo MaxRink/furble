@@ -1,5 +1,9 @@
 # PR103: Exercise the real Control connect/disconnect state machine end to end
 
+Implementation state (2026-11-13): merged as #131. Its real-UI follow-up was done by plan 161 (#261). The `sim/FurbleControlSim.cpp`
+fake named below was deleted in `9081fc94`, and `tests/host/nimble/MockNimBLE.cpp` moved to
+`lib/testing/nimble/` in `64c31305`.
+
 ## Goal
 
 Run the production `src/FurbleControl.cpp` connect/disconnect/reconnect state

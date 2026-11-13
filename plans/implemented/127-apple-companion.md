@@ -1,6 +1,6 @@
 # 127 - Apple companion foundation
 
-Status: implementation slice. Shared Swift protocol, auth gate, native iOS and
+Status: delivered (#354, #358, `54e3d1fa`, `2e814905`). Shared Swift protocol, auth gate, native iOS and
 macOS target definition, host tests, the capability-gated Cameras tab, and a
 headless macOS terminal CLI are present under `companion/apple`.
 The Xcode project is generated reproducibly from `project.yml` with the pinned
@@ -134,8 +134,9 @@ camera was attached, so trigger/camera success remains a hardware gate.
 - A physical Apple app connection requires firmware exposing the Auth
   characteristic with the challenge format from plan 116. Capability bit 1 is
   the cameras feature from plan 51, not an authentication flag.
-- Firmware must expose the cameras characteristic from plan 51 before camera
-  rows are shown. The current client capability-gates it and reports when the
+- Firmware exposes the cameras characteristic from plan 51
+  (`include/FurbleCompanion.h` `CAMERAS_UUID`) and the Auth characteristic
+  (`AUTH_UUID`). The current client capability-gates it and reports when the
   feature is unavailable.
 - The generated project has one unsigned iOS target, one unsigned macOS target,
   and matching unit-test targets around the shared Swift package. CI builds and

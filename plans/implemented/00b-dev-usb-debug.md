@@ -1,5 +1,9 @@
 # PR00: developer USB debug environments
 
+Implementation state (2026-11-13): merged in `2e38328c`. Master now has six release envs, a `-debug` profile per release env, the
+`m5stack-core-usb-debug` fallback and espressif32 6.13.0 with ESP-IDF 5.5.3. Mentions of five
+boards or IDF 5.4 below are historical. The S3 JTAG breakpoint walk stays a hardware gate.
+
 ## Goal
 
 Add optional PlatformIO environments that make on-device debugging easy: JTAG

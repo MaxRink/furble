@@ -1,5 +1,8 @@
 # 291 - upstream layout parity for About, GPS, and Connected
 
+Implementation state (2026-11-13): merged as #337 with the decision in `d164657a`: keep the rows and scroll. The
+`stick-notouch-80` failures quoted below were fixed by #420.
+
 Plan 291 is the next free number after 290. This is the plan for open issue
 [#281](https://github.com/MaxRink/furble/issues/281), the remaining page-parity
 work from the three-way UI audit.

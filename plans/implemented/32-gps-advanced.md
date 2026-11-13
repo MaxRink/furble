@@ -1,5 +1,9 @@
 # PR32 - Advanced GPS support for the GPS/BDS Unit v1.1
 
+Implementation state (2026-11-13): phases 1 and 2 merged as #64 and #139, and the MON-HW decode as #325 (`gps monhw`), so the
+"Deferred" MON-HW rows are historical. `GPS_ASSIST` holds wire id 41; free ids are now 48-50,
+63-64, 70-71 and 77 up. Autobaud, TTFF and live MON-HW values stay hardware gates.
+
 ## Goal
 
 Use the rest of what the AT6668 receiver offers, and stop making the user
@@ -18,7 +22,7 @@ and not yet merged.
 
 ## Implementation state
 
-Phase 1 is implemented on `feat/32-gps-advanced`.
+Phase 1 is merged as #64 (`5b343bfa`).
 
 - The GPS UART now demultiplexes NMEA and CASIC binary frames.
 - The corrected ID-first checksum is used for binary transmit and receive.
@@ -40,8 +44,7 @@ Phase 1 is implemented on `feat/32-gps-advanced`.
   ESP32 clock at the 1970 epoch, and asserting a valid time of unknown age would
   feed the receiver an over-confident wrong time and hurt time to first fix. The
   cached position still narrows the search safely.
-Phase 2 is implemented on `feat/32-gps-advanced-phase2`, branched from
-`fork/master`. The parseable logic moved into a host-tested module,
+Phase 2 is merged as #139 (`ae0aeafa`). The parseable logic moved into a host-tested module,
 `lib/furble/protocol/GpsCasic.{h,cpp}`, covered by the `gps-casic` host test.
 
 - PR32a autobaud and no-receiver state, DONE. `GPS_BAUD` gains the sentinel

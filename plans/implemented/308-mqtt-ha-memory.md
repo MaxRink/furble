@@ -1,5 +1,9 @@
 # 308 - MQTT and Home Assistant discovery memory
 
+Implementation state (2026-11-13): merged as #398. The queue fix it names is #407, not #311. `memory-mqtt-task-alloc-fail.txt` was
+deleted in #411 and became `sim/fixtures/hardware/panic-mqtt-task-alloc-fail.txt`. #393 closed
+unmerged.
+
 > Plan 311 supersedes the 8 KiB main-stack decision and adds the PSRAM event
 > queue plus the pre-task owner gate. Hardware with the 8 KiB stack measured
 > 30,007 free / 28,660 largest with MQTT off, then overflowed the main stack

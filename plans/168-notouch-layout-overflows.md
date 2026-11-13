@@ -1,5 +1,9 @@
 # 168 - fix the layout the physical-button boards actually ship
 
+Implementation state (2026-11-13): #273 merged, the no-touch fuzz leg runs in CI (`sim-e2e.yml`), and issue #282 is closed. Open:
+the 320x240 interval overflow on Core, the Display page `ui.label_overlaps 1` and the fuzz
+trace divergence.
+
 ## Current validation checkpoint
 
 The Android companion metadata test covers all three production LEGEND wire-65

@@ -1,5 +1,7 @@
 # 316: docs capture stops on a shadowed companion-reject action
 
+Implementation state (2026-11-13): merged as #419. The wiki copy still needs a manual push.
+
 ## Motivation
 
 `sim/scripts/docs-capture.sh` stopped on master. The companion pairing box

@@ -1,8 +1,7 @@
 # 50 - Companion App Design
 
-Status: design only. CI is prepared on `feat/ci-android`; Android source is
-expected under `companion/android/` and lands separately on
-`feat/50-companion-android`.
+Status: the Android app merged as #18 and Android CI as #34. The Android and
+Apple apps live in `companion/android/` and `companion/apple/`.
 
 Implementation state: Added Android debug build, protocol unit test, artifact,
 and opt-in emulator smoke-test coverage. The firmware workflow now skips its
@@ -14,7 +13,7 @@ repository. The current implementation reserves an Android project path in
 this repository, with source delivery still handled by a separate branch.
 
 This document specifies the furble side of a phone companion app. The phone app
-itself lives in a separate repository and is not part of furble. What furble
+was first planned as a separate repository; it now lives in `companion/`. What furble
 needs is a BLE GATT service, an opt-in setting, and a controlled advertising
 policy. That firmware work is a future PR and is out of scope for the 19 PRs in
 the roadmap index.
@@ -772,7 +771,7 @@ the integrated master:
 - The standalone protocol document under `docs/` from section 8 does not exist
   yet. This table and the structs in this plan remain the contract until it is
   written.
-- The settings parity v2 changes are implemented in `feat/51-settings-v2`.
+- The settings parity v2 changes merged as #55 (`8bfd911b`).
   The M5StickS3 firmware build now passes: `FURBLE_VERSION=dev FURBLE_TEST=0
   pio run -e m5stick-s3` links cleanly (Flash 65.9%, RAM 11.3%). End to end BLE
   testing against the Android app has not happened yet.

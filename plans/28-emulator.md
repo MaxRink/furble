@@ -1,5 +1,11 @@
 # PR28: host simulator for the furble UI
 
+Implementation state (2026-11-13): the simulator now compiles the production connection stack (`9081fc94`, plan 161). The
+`sim/FurbleControlSim.cpp`, `sim/CameraSim.cpp`, `sim/CameraListSim.cpp`, `sim/ScanSim.cpp` and
+`sim/shim/Camera.h` files named below were deleted. It builds three panels (StickS3, Core,
+StickC), and scripted failure, battery and reconnect states exist as scenarios. Phase E (the
+screenshot command and `tools/furble-screenshot.py`) remains open.
+
 ## Goal
 
 Run the furble user interface natively on macOS and Linux, in a window, driven

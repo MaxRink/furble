@@ -1,5 +1,7 @@
 # PR23 - Audible, visual and haptic feedback
 
+Implementation state (2026-11-13): merged as #30. The hardware pass is recorded below (2026-08-17).
+
 ## Goal
 
 Tell the user something happened without looking at the screen. Beep on shutter,
@@ -311,7 +313,7 @@ Battery impact, on board instrumentation only:
 
 ## Implementation status
 
-Implemented on `feat/23-feedback-outputs`.
+Implemented and merged as #30 (`f4d75dc8`).
 
 Rebase notes:
 

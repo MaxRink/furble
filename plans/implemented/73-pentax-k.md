@@ -1,5 +1,7 @@
 # 73: Pentax K through the Ricoh Imaging BLE family
 
+Implementation state (2026-11-13): merged as #78. The next free wire id is no longer 41; see `plans/README.md`.
+
 Status: implementation complete for code review. Hardware validation is
 UNTESTED and needs a PENTAX K-3 III owner. FauxNY and code review are the only
 validation available in this repository.
@@ -94,11 +96,12 @@ new type added speculatively here.
 
 ## Implementation state
 
-Implemented on `feat/73-pentax-k`:
+Implemented and merged as #78 (`d8990e40`):
 
 - Broadened the `Ricoh` class documentation to name the Ricoh Imaging family,
   including RICOH GR and PENTAX K bodies.
-- Documented the existing `PENTAX` name match in `Ricoh.cpp`.
+- Documented the existing `PENTAX` name match, then in `Ricoh.cpp` and now in
+  `lib/furble/protocol/AdvertisementProtocol.cpp`.
 - Updated the lib/furble guidance to record that PENTAX K uses the shared
   `Camera::Type::RICOH` path pending hardware evidence.
 - Added no settings and allocated no wire ID. The next free wire ID remains

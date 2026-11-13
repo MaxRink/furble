@@ -1,5 +1,8 @@
 # 307: sim-first hardware and memory release gate
 
+Implementation state (2026-11-13): merged as #399, #401, #404 and #406. The gate numbers below are the `0883a31e` snapshot;
+`plans/313-sim-only-status.md` carries the current result. #393 closed unmerged (superseded by #398).
+
 ## Acceptance order
 
 1. Work on the simulator.

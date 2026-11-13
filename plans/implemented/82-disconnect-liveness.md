@@ -251,5 +251,4 @@ is compiled only in `FURBLE_CONSOLE` (debug) builds and reuses the existing
 ## Deviations
 
 - The off-LVGL move of the disconnect wait (the near-zero-freeze fix for BUG B)
-  is not implemented here. It is described above as a follow-up so it does not
-  disturb the PR #62 teardown lifecycle in the same change.
+  was not implemented here. It landed later in #128.

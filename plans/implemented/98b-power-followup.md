@@ -1,5 +1,7 @@
 # 98b - power audit follow-up: GPS degraded lock recovery
 
+Implementation state (2026-11-13): merged in `78dddc69`. The StickS3 lock current stays a hardware gate.
+
 ## Goal
 
 Fix one concrete product bug the plan 98 power audit surfaced: the GPS burst

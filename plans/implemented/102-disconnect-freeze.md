@@ -1,5 +1,7 @@
 # 102 - Disconnect freeze off the UI task
 
+Implementation state (2026-11-13): merged as #128. The bench retest stays a hardware gate.
+
 ## Motivation
 
 Hardware testing on the M5StickS3 with an X100VI surfaced a UI freeze when the

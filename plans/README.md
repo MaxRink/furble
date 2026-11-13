@@ -9,10 +9,9 @@ Primary test hardware: M5StickS3 with GPS/BDS Unit v1.1 (AT6668). Only Fujifilm
 cameras are available for hardware tests. Other vendors are covered by code
 review and the FauxNY test camera, and are marked as untested in each PR.
 
-**Sim-only mode (2026-11-06).** Master at `0883a31e` (#407) is the baseline and
-no implementation pull request is open. All simulator-doable work is complete.
-Hardware validation is deferred, so no board measurement after #407 is
-claimed. The exact gate results, the hardware-deferred list and the resume
+**Sim-only mode (2026-11-13).** Master is at `e66e8807` (#439). Plan 314
+(memory resilience) merged as #411 to #439 after the #407 baseline. Hardware
+validation is deferred, so no board measurement after #407 is claimed. The exact gate results, the hardware-deferred list and the resume
 criteria are in [313-sim-only-status.md](313-sim-only-status.md).
 
 A plan is a historical record once its work lands. The "Implementation state"
@@ -49,9 +48,10 @@ the git history. They are no longer ownership rows.
 
 ## Hardware experiments
 
-- [00-hardware-experiments.md](00-hardware-experiments.md): two cheap tests that
-  decide defaults later. A: does the StickS3 have a 32.768 kHz crystal. B: does
-  the GPS unit v1.1 keep ephemeris without 5 V, and does it honor $PCAS12.
+- [00-hardware-experiments.md](00-hardware-experiments.md): two measured
+  answers that set later defaults. A: the StickS3 has no 32.768 kHz crystal. B:
+  the GPS unit v1.1 has no backup supply, so a rail cut costs a cold start, and
+  it honors `$PCAS12` timed standby.
 
 ## Phase 0: small improvements, all boards
 
@@ -130,7 +130,7 @@ the git history. They are no longer ownership rows.
 | [25-multiconnect-ui.md](25-multiconnect-ui.md) | Multi-connect selection, Cameras status page |
 | [26-pm1-watchdog.md](implemented/26-pm1-watchdog.md) | M5PM1 hardware watchdog, StickS3 lockup recovery |
 | [27-usb-console.md](implemented/27-usb-console.md) | USB serial command console for testing |
-| [76-reconnect-stuck.md](implemented/76-reconnect-stuck.md) | Fast reconnect to Fujifilm Secure stalls in connecting: diagnosis and fix plan |
+| [76-reconnect-stuck.md](implemented/76-reconnect-stuck.md) | Fast reconnect to Fujifilm Secure stalls in connecting: diagnosis and fix, merged as #121 |
 | [28-emulator.md](28-emulator.md) | Host SDL simulator for the furble UI |
 | [29-virtual-test-rig.md](29-virtual-test-rig.md) | Sim to Android app test rig over TCP, no radio |
 | [31-s3-psram.md](implemented/31-s3-psram.md) | Enable PSRAM on the M5StickS3 |
@@ -215,7 +215,7 @@ the git history. They are no longer ownership rows.
 | [152-menu-focus-outline-dedup.md](implemented/152-menu-focus-outline-dedup.md) | Drop the focus ring on menu rows that already carry the accent fill |
 | [153-level-main-menu.md](implemented/153-level-main-menu.md) | Spirit level entry on the main menu, usable without a camera connection |
 | [154-host-flappy-peer-realism.md](implemented/154-host-flappy-peer-realism.md) | Flappy standby peer realism and multi-target disconnect repros in the host harness |
-| [155-sim-ui-liveness.md](implemented/155-sim-ui-liveness.md) | Continuous sim liveness invariant and link_lies false-connected coverage |
+| [155-sim-ui-liveness.md](implemented/155-sim-ui-liveness.md) | Continuous sim liveness invariant and false-connected coverage (link_lies later replaced by link-death-liveness) |
 | [156-restart-restore-seam.md](implemented/156-restart-restore-seam.md) | Sim restart verb and host Control reset seam, the reboot-lockout reland gate |
 | [157-control-test-sync-points.md](implemented/157-control-test-sync-points.md) | Deterministic interleaving sync points for the control task and the wedge-guard proof test |
 | [158-sim-scheduler-parity.md](158-sim-scheduler-parity.md) | Deterministic unified simulator scheduler and orderly teardown, followed by production connection and calibrated hardware parity |
@@ -237,7 +237,7 @@ the git history. They are no longer ownership rows.
 | [176-sim-task-notifications.md](implemented/176-sim-task-notifications.md) | FreeRTOS task notification counters in the simulator wake blocked owners, preserve clear/decrement and virtual timeout semantics, and unwind on shutdown |
 | [285-power-accounting.md](implemented/285-power-accounting.md) | Issue #285: opt-in synthetic power accounting and frozen comparator identity |
 | [288-provisioning-schema.md](implemented/288-provisioning-schema.md) | Provisioning schema coverage for every keyed setting and current wire-ID reservation ledger |
-| [291-ui-upstream-layout-parity.md](implemented/291-ui-upstream-layout-parity.md) | About, GPS, and Connected content parity with upstream, one page PR at a time with per-board captures |
+| [291-ui-upstream-layout-parity.md](implemented/291-ui-upstream-layout-parity.md) | About, GPS, and Connected content parity with upstream; the rows were kept and made scrollable (`d164657a`) |
 | [297-gps-improvement-roadmap.md](297-gps-improvement-roadmap.md) | GPS power/accuracy findings, the implemented fixes, and the ranked remaining GPS work with bench gates |
 | [298-pre-review-gate.md](implemented/298-pre-review-gate.md) | Pre-review scanners for diff hygiene, settings contracts, C++ safety, and a sanitized host subset, wired into pull-request CI |
 | [178-sim-startup-settings-order.md](implemented/178-sim-startup-settings-order.md) | Apply simulator settings before platform construction while preserving panel, environment, watchdog, and profiler boundaries |
@@ -299,7 +299,7 @@ document is authoritative over any older summary.
 | [60-issue-257.md](implemented/60-issue-257.md) | Nikon Z50II smart device analysis, upstream issue 257 |
 | [61-camera-compatibility.md](61-camera-compatibility.md) | BLE protocol survey across camera vendors, ranked additions |
 | [62-issue-140.md](implemented/62-issue-140.md) | Configurable button behavior, upstream issue 140 |
-| [63-sim-power-analysis.md](63-sim-power-analysis.md) | Simulator based power analysis: profiler, sleep estimator, usage test suite, energy model, CI gate and PR reporting |
+| [63-sim-power-analysis.md](63-sim-power-analysis.md) | Simulator based power analysis: profiler, sleep estimator, usage test suite, energy model and CI gate; the sticky PR report is not built |
 | [65-bt-coexistence.md](65-bt-coexistence.md) | Classic BT feasibility, WiFi+BLE coexistence for hub mode |
 | [64-debug-tooling.md](64-debug-tooling.md) | Expanded debug tooling: power stats, performance monitoring, BT debug console |
 | [67-bulb-ux.md](implemented/67-bulb-ux.md) | Bulb completion state, restart action, and camera mode hint |
@@ -318,13 +318,14 @@ checks the ledger against the source and rejects duplicate owners;
 missing schema row. The executable reservation table lives in
 [include/CLAUDE.md](../include/CLAUDE.md).
 
-Current master (`0883a31e`, 2026-11-06) uses 1-22, 24-35, 37-44, 46-47,
-51-55, 62, 65-69, and 72-76. Conditional ids are 23 (`WATCHDOG` on
-`FURBLE_M5STICKS3`), 36 (`DISPLAY_MODE` without `FURBLE_NO_DISPLAY`), and 56-61
-(`FURBLE_MQTT`). Ids 48-50, 63-64, and 70-71 are free. Id 45 retains a
-historical claim and needs a compatibility audit before reuse. Id 42 is merged
-as `TIMEZONE`. Off-wire id 0 remains used by `BULB`, `TOUCH_CALIBRATION`,
-`MULTISELECT`, `GPX_PERIOD`, and `BATTERY_SAVER`.
+Current master (`e66e8807`, 2026-11-13) uses 1-22, 24-35, 37-44, 46-47,
+51-55, 65-69, and 72-76. Conditional ids are 23 (`WATCHDOG` on
+`FURBLE_M5STICKS3`), 36 (`DISPLAY_MODE` without `FURBLE_NO_DISPLAY`), 56-61
+(`FURBLE_MQTT`) and 62 (`WEB_UI` on `FURBLE_WEBUI`). Ids 48-50, 63-64, and
+70-71 are free. Id 45 retains a historical claim and needs a compatibility
+audit before reuse. Id 42 is merged as `TIMEZONE`. Off-wire id 0 remains used
+by `BULB`, `TOUCH_CALIBRATION`, `MULTISELECT`, `GPX_PERIOD`, and
+`BATTERY_SAVER`.
 
 No pull request claims a setting id. PRs #317, #318 and #319 merged on
 2026-11-02 without one. Recheck every open feature PR head

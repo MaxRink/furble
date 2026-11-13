@@ -1,5 +1,9 @@
 # PR18 - Motion adaptive GPS
 
+Implementation state (2026-11-13): the detector merged as #65. PR19 merged as #59 and PR17 as #45, so the notes below that
+call them unmerged are historical. Phase 2 receiver policy is still open: nothing consumes
+`isStationary()`.
+
 ## Current integration gate
 
 The implemented phase is advisory motion classification only. It changes no

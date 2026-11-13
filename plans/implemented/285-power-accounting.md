@@ -1,5 +1,7 @@
 # Issue #285 power accounting
 
+Implementation state (2026-11-13): merged in `31fffcc8` to `9e35d88d` and clarified by #312. CI runs the power gate. Calibration stays a hardware gate.
+
 ## State
 
 Reporting scenarios now opt into a frozen, synthetic virtual-work accounting

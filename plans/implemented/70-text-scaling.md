@@ -125,7 +125,7 @@ reports.
 
 ## Implementation state
 
-Implemented on `feat/ui-text-scaling`.
+Implemented and merged as #42 (`fc620ca9`), with the screenshot matrix in #141.
 
 - `TEXT_SIZE` has wire_id 40 (after `SD_GPX`, 39). `src/FurbleCompanion.cpp`
   covers it as SETTING_U8.

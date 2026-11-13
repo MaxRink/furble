@@ -1,5 +1,7 @@
 # 303 - upstream sync audit and full SHA dependency pins
 
+Implementation state (2026-11-13): the SHA pin merged as #385, and the Lumix documentation gap is closed.
+
 Status: merged on master with #385.
 
 ## Scope and method

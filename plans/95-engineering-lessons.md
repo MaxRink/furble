@@ -1,5 +1,8 @@
 # 95 engineering lessons
 
+Implementation state (2026-11-13): master has six release envs on ESP-IDF 5.5.3. `esp32-s3-headless` builds in the reproducible
+build workflow, not in the PR firmware matrix.
+
 Durable engineering and workflow notes for furble. The goal is that future
 work, human or agent, does not relearn these the hard way. The CLAUDE.md files
 carry one-line pointers. This document is the detailed home.

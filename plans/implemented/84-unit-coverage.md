@@ -1,5 +1,8 @@
 # 84 Broaden host unit test coverage
 
+Implementation state (2026-11-13): all suites in this plan landed. The items under "Remaining work" were marked out of scope and
+are mostly covered by later plans.
+
 ## Motivation
 
 The host test harness in `tests/host/` compiles real firmware sources and runs

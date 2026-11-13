@@ -1,5 +1,8 @@
 # 305 - General internal RAM pass
 
+Implementation state (2026-11-13): merged as #394. Core2 PSRAM is enabled since #431. #393 closed unmerged and was superseded by
+#398; lines below that treat it as merged are historical.
+
 > Plan 308 continued this work after the hardware measurement came in at
 > 27,351 free / 25,588 largest, not the 28,103 inferred here. It also reduced
 > the main stack to 8 KiB, which plan 311 reverted to 12 KiB after the MQTT

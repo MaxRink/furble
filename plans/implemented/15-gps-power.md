@@ -1,5 +1,8 @@
 # PR15 - GPS power duty cycling and light sleep compatible UART
 
+Implementation state (2026-11-13): merged as #27 (`f455b0b1`), not `363a198b`, which is not on master. The hardware pass is
+recorded below (2026-08-17). "M5StickC Plus S3" in older lines means the M5StickS3.
+
 ## Goal
 
 Stop GPS from blocking light sleep on the S3, and add optional receiver duty
@@ -128,7 +131,7 @@ when GPS is disabled, following the existing hide logic at
 
 ## Implementation status
 
-Implemented on `feat/15-gps-power`.
+Implemented and merged as #27 (`f455b0b1`).
 
 Rebase notes:
 

@@ -1,18 +1,23 @@
 # 177 - MQTT 4 MB size follow-up
 
+Implementation state (2026-11-13): the single-factory Core profile is in, and #435 brought Core debug to 1,719,453 bytes inside
+its OTA slot. MQTT stays off on 4 MB boards and OTA over MQTT is not wired, so the matching
+validation bullets are moot. USB migration and recovery stay hardware gates.
+
 ## Status
 
 The fallback profile is implemented, while the default board matrix, CI
 selection, release artifacts, and MQTT enablement remain unchanged.
 
-The current 4 MB Core debug gate is still over its two-OTA slot:
+At the time of this plan the 4 MB Core debug gate was over its two-OTA slot.
+#435 later slimmed it to 1,719,453 bytes, which fits:
 
 | Artifact | Image | Slot | Over |
 | --- | ---: | ---: | ---: |
 | c66 MQTT-off Core debug | 1,753,225 | 1,740,800 | 12,425 |
 
-The exact root-run map is
-/home/a92615428/wt/c66-8mb-validation/.pio/build/m5stack-core-debug/firmware.map.
+The map came from a local build directory outside the repository
+(`.pio/build/m5stack-core-debug/firmware.map`).
 RAM was 54,632 bytes. This is a size-gate measurement, not a release claim.
 
 Earlier experiments do not provide a solution. -Oz produced the same image as

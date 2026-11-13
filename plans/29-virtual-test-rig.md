@@ -1,6 +1,6 @@
 # 29 - virtual test rig: SDL simulator plus Android emulator
 
-Implementation state: Phase 1 is implemented on branch feat/29-golden-payloads.
+Implementation state: Phase 1 is merged as #71 (`809596ff`).
 tests/protocol/ now contains a clang host suite, a C++ generator compiled
 against include/FurbleCompanion.h, 159 checked-in binary fixtures, and JSON
 metadata. The suite checks the 42-byte location record, the 20-byte status
@@ -714,7 +714,7 @@ PR have both landed. Keep the whole rig on the fork until then.
 
 ## Implementation state
 
-Phase 2 and phase 3 are implemented on `feat/29-rig-transport`.
+Phase 2 and phase 3 are merged as #80 (`14e1e270`).
 
 - The transport-independent wire structs, `CompanionTransport`, and
   `CompanionService` are in `include/FurbleCompanionService.h` and

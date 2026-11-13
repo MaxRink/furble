@@ -1,5 +1,8 @@
 # PR100: Expand host fault injection and hunt new BLE connect failure modes
 
+Implementation state (2026-11-13): merged as #125 and #126. The "today it crashes / returns true" findings below were fixed by
+#126.
+
 ## Goal
 
 Grow the host camera harness (`tests/host`, the `host_camera` CI job) with fault

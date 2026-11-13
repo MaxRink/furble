@@ -7,8 +7,8 @@ top of `plans/33-wifi-hub.md` PR33c.
 
 **Split delivery.** The HTTPS adapter, precondition policy, and MQTT
 `cmd/ota` topic handler are Codex-implementable and host-testable with mock
-events, without a real download. Linking the transport into the firmware is
-blocked on WiFi (PR33b) and MQTT (PR33c, the #66 MQTT work). The real HTTPS
+events, without a real download. Linking the transport into the firmware was
+blocked on WiFi (PR33b, #53) and MQTT (PR33c, #66); both have merged. The real HTTPS
 download and the Home Assistant end to end flow are Claude / hardware work.
 
 ## Motivation

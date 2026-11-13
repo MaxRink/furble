@@ -104,8 +104,8 @@ is added here.
 
 ## Implementation state
 
-The C++ changes are implemented in this worktree. The Level quick wins remain
-deferred for the base-branch scope reason above.
+The C++ changes merged in `f8e6ced8`. The Level quick wins later landed
+through plans 16 and 153.
 
 ## Verification results
 

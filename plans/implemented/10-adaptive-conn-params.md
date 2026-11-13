@@ -1,5 +1,10 @@
 # PR10: adaptive connection parameters
 
+Implementation state (2026-11-13): merged as #24. The hardware pass is recorded below (2026-08-17); "pending" lines above it
+predate that pass. The `volatile` follow-up landed: `Control` uses `std::atomic` for
+`m_Stopped`, `m_ConnectAbort` and `m_ConnectInProgress` and guards `m_ConnectCamera` with a
+generation counter (`include/FurbleControl.h`).
+
 ## Goal
 
 Use a slow connection profile while idle and snap back to a fast profile before
@@ -224,7 +229,7 @@ Camera testing:
 
 ## Implementation status
 
-Implemented on `feat/10-adaptive-conn-params`:
+Implemented and merged as #24 (`5646eb34`):
 
 - Added the experimental `CONN_SAVER` setting with NVS key `conn_saver`, default
   `false`, under `Settings > Bluetooth > Connection power save`.

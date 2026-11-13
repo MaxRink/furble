@@ -1,5 +1,9 @@
 # 61: Camera compatibility survey
 
+Implementation state (2026-11-13): Lumix (#79), Pentax K (#78) and DJI Osmo (#81) have shipped, all untested on hardware.
+The "missing / partial" rows for them below are historical. The next free wire id is no
+longer 41; see `plans/README.md`.
+
 Status: research complete, Lumix implementation ported in plan 72 and
 UNTESTED. All cited links were fetched and content verified during this survey
 (August 2026).

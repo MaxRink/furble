@@ -1,5 +1,7 @@
 # 114 - One-shot provisioning parser and console apply
 
+Implementation state (2026-11-13): merged as #165 with follow-ups. The browser transport belongs to plan 114-flasher-provisioning.
+
 Status: the firmware-side one-shot parser and console apply are merged on
 master. Browser WebSerial and the staged browser transport remain the separate
 follow-up in [114-flasher-provisioning.md](../114-flasher-provisioning.md).

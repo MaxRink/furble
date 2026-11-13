@@ -1,5 +1,7 @@
 # 312 - Review feedback for the MQTT queue fix
 
+Implementation state (2026-11-13): all #407 findings are fixed. Core2 PSRAM is enabled since #431.
+
 ## Scope
 
 This is the review-feedback record for #407 (`fix/mqtt-queue-psram`). Every

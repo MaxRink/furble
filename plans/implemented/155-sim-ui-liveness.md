@@ -1,6 +1,10 @@
 # 155 - Sim UI liveness invariant and false-connected coverage
 
-Plan numbers 152 and 153 are claimed by open PRs #247 and #246, and 154 may be
+Implementation state (2026-11-13): merged as #249. The `link_lies` seed and the `link-lies-*` scenarios below were later removed;
+`sim/scenarios/e2e/link-death-liveness.txt` replaces them (`c3c881f4`). The sim shims named
+below were deleted when the production stack moved into the simulator (`9081fc94`, plan 161).
+
+Plan numbers 152 and 153 were claimed by PRs #247 and #246 (both merged since), and 154 may be
 claimed by a parallel flappy-peer PR in flight at the same time as this one.
 This plan takes 155 to stay clear of that race.
 

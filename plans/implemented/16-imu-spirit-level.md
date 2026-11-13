@@ -1,5 +1,8 @@
 # PR16 - Enable the IMU and add a spirit level
 
+Implementation state (2026-11-13): merged as #28. The hardware passes of 2026-08-17 and 2026-08-18 are recorded below; later
+"pending" lines belong to the UX reworks. The companion password is wire id 47, not 45.
+
 ## Goal
 
 Turn on the on-board IMU and use it. Add a spirit level page on the Connected

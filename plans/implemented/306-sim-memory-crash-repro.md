@@ -1,5 +1,10 @@
 # 306: simulator memory-pressure reproduction and crash logging
 
+Implementation state (2026-11-13): merged as #395, #396 and #400. `memory-webui-pre-gate-alloc.txt` and
+`memory-mqtt-task-alloc-fail.txt` were deleted in #411; the abort shapes now live in
+`sim/fixtures/hardware/panic-*.txt`. Plain MQTT runs a 3 KiB worker since #398, and #423 writes
+the failed-allocation fields into the crash record.
+
 ## Motivation
 
 Two StickS3 failures were found on hardware and fixed or mitigated in the

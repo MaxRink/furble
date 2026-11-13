@@ -1,5 +1,7 @@
 # 66: Camera pairing code on the furble display
 
+Implementation state (2026-11-13): merged as #63. SDL and firmware builds run in CI. The Ricoh exchange stays a hardware gate.
+
 ## Motivation
 
 During camera pairing, the camera can show a Bluetooth code that the furble user cannot see. The user therefore cannot compare the code or approve numeric comparison with confidence. Showing the requested code on furble fixes that visibility gap without adding a setting.
@@ -24,7 +26,7 @@ The camera modal shows the camera name and a large six-digit code. Numeric compa
 
 ## Implementation state
 
-Implemented on `feat/66-pairing-code`, rebased onto master at ab638874 (after
+Implemented and merged as #63 (`1aeb5e48`), rebased onto master at ab638874 (after
 #261 replaced the simulator connection fakes with the production Control,
 Camera, CameraList and Scan over MockNimBLE). The Ricoh override now uses the
 base callback chokepoint; the DJI Osmo override is preserved as an explicit,
