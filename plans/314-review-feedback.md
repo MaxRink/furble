@@ -224,6 +224,7 @@ branch `fix/stack-budget-review`.
 | # | Finding | Resolution | Evidence |
 | ---: | :--- | :--- | :--- |
 | 1 | #445 review: when SDL3 is not found, `build.sh` and `CMakeLists.txt` keep the SDL2-only link, which on sdl2-compat can bring back the blocking dialog. | Fixed. Without SDL3 the plain SDL2 link stays only for a real SDL2. If `libSDL2.dylib` resolves into sdl2-compat, `build.sh` exits 1 and the CMake configure fails, each naming `brew install sdl3`. Checked against fake sdl2-compat and real-SDL2 trees: compat fails in both paths, real SDL2 continues. | `sim/build.sh`, `sim/CMakeLists.txt` |
+| 2 | #445 review summary on `a9a0169c` (no open issues): the fix depends on macOS dyld ordering and Homebrew layouts, so launch and failure paths need validation on Apple Silicon and Intel. | Accepted, partly verified. On Apple Silicon `otool -L` lists SDL3, `DYLD_PRINT_LIBRARIES` shows it mapped once, all 210 e2e scenarios pass, and fake sdl2-compat and real-SDL2 trees prove the failure path. Intel Homebrew uses `/usr/local/lib`, which both build paths search with the same logic; no Intel Mac was available, so that path is untested. Recorded here because #445 merged before a follow-up commit. | `sim/build.sh`, `sim/CMakeLists.txt` |
 
 ## Follow-up (#440, `ci/core-debug-mandatory`)
 
