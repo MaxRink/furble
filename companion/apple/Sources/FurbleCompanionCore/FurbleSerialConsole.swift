@@ -6,6 +6,8 @@ public enum FurbleSerialError: Error, Equatable, CustomStringConvertible, Sendab
   case cannotConfigure(String)
   case writeFailed(String)
   case readFailed(String)
+  /// A DTR/RTS update failed with this errno.
+  case modemControl(Int32)
   case timeout
   case notFurble
   /// The chip printed an ESP32 ROM boot banner instead of a console prompt.
@@ -17,6 +19,7 @@ public enum FurbleSerialError: Error, Equatable, CustomStringConvertible, Sendab
     case .cannotConfigure(let detail): return "cannot configure serial port: \(detail)"
     case .writeFailed(let detail): return "serial write failed: \(detail)"
     case .readFailed(let detail): return "serial read failed: \(detail)"
+    case .modemControl(let code): return "modem control failed: \(String(cString: strerror(code)))"
     case .timeout: return "timed out waiting for the furble console prompt"
     case .notFurble: return "the serial port does not answer as a furble console"
     case .romBoot(let banner): return "the chip is in the ROM bootloader: \(banner.resetLine)"
@@ -37,22 +40,28 @@ public struct FurbleROMBanner: Equatable, Sendable {
   /// True when the ROM chose download boot and the app will not start alone.
   public let downloadMode: Bool
 
+  /// Parse the last banner in `text`. Only that banner's reset line and the
+  /// text after it decide the boot mode, so an older banner earlier in the
+  /// buffer never marks a later flash boot as download mode.
   public static func parse(_ text: String) -> FurbleROMBanner? {
-    let lines = text.split(whereSeparator: { $0.isNewline }).map(String.init)
-    guard let line = lines.last(where: { $0.contains("rst:0x") }) else {
+    guard let start = text.range(of: "rst:0x", options: .backwards) else {
       // A partial read can miss the reset line but still hold the download
       // prompt. The cause is then unknown, not absent.
       guard text.contains("waiting for download") else { return nil }
       return FurbleROMBanner(resetLine: "waiting for download", reason: nil, downloadMode: true)
     }
-    let resetLine = line.trimmingCharacters(in: .whitespaces)
+    let banner = text[start.lowerBound...]
+    let resetLine = String(banner.prefix(while: { !$0.isNewline }))
+      .trimmingCharacters(in: .whitespaces)
     var reason: String?
-    if let open = resetLine.range(of: "rst:0x"),
-      let paren = resetLine[open.upperBound...].firstIndex(of: "("),
+    if let paren = resetLine.firstIndex(of: "("),
       let close = resetLine[paren...].firstIndex(of: ")") {
       reason = String(resetLine[resetLine.index(after: paren)..<close])
     }
-    let downloadMode = resetLine.contains("DOWNLOAD(") || text.contains("waiting for download")
+    // S3 prints `boot:0x0 (DOWNLOAD(USB/UART0))`, the classic ESP32
+    // `boot:0x3 (DOWNLOAD_BOOT(UART0/UART1/SDIO_REI_REO_V2))`.
+    let boot = resetLine.range(of: "boot:").map { resetLine[$0.upperBound...] } ?? ""
+    let downloadMode = boot.contains("DOWNLOAD") || banner.contains("waiting for download")
     return FurbleROMBanner(resetLine: resetLine, reason: reason, downloadMode: downloadMode)
   }
 }
@@ -137,13 +146,6 @@ public final class FurblePOSIXSerialTransport: FurbleSerialTransport {
       throw FurbleSerialError.readFailed(String(cString: strerror(errno)))
     }
     if ready == 0 { return [] }
-    // A re-enumerated USB device leaves the old node hung up. Without this
-    // check every poll returns at once with no data until the command times
-    // out, which looks like a stall instead of a lost port.
-    if (poller.revents & Int16(POLLIN)) == 0
-      && (poller.revents & Int16(POLLHUP | POLLNVAL | POLLERR)) != 0 {
-      throw FurbleSerialError.readFailed("port hung up")
-    }
     var scratch = [UInt8](repeating: 0, count: readChunk)
     let count = scratch.withUnsafeMutableBytes { raw -> Int in
       guard let base = raw.baseAddress else { return -1 }
@@ -153,6 +155,13 @@ public final class FurblePOSIXSerialTransport: FurbleSerialTransport {
       if errno == EAGAIN || errno == EWOULDBLOCK { return [] }
       throw FurbleSerialError.readFailed(String(cString: strerror(errno)))
     }
+    // A re-enumerated USB device leaves the old node hung up. XNU reports a
+    // hung-up tty as POLLIN|POLLHUP and read() then returns 0, so a ready
+    // poll with no bytes is the hang-up. Without this every read returns at
+    // once until the command times out, which looks like a stall.
+    if count == 0 {
+      throw FurbleSerialError.readFailed("port hung up")
+    }
     return Array(scratch[0..<count])
   }
 
@@ -160,12 +169,12 @@ public final class FurblePOSIXSerialTransport: FurbleSerialTransport {
     #if os(macOS)
       var bits: Int32 = 0
       guard ioctl(descriptor, TIOCMGET, &bits) == 0 else {
-        throw FurbleSerialError.cannotConfigure(String(cString: strerror(errno)))
+        throw FurbleSerialError.modemControl(errno)
       }
       bits = dtr ? (bits | TIOCM_DTR) : (bits & ~TIOCM_DTR)
       bits = rts ? (bits | TIOCM_RTS) : (bits & ~TIOCM_RTS)
       guard ioctl(descriptor, TIOCMSET, &bits) == 0 else {
-        throw FurbleSerialError.cannotConfigure(String(cString: strerror(errno)))
+        throw FurbleSerialError.modemControl(errno)
       }
     #else
       // Only the macOS CLI drives a USB CDC port.
@@ -217,16 +226,32 @@ public final class FurbleSerialConsole {
     transport.close()
   }
 
-  /// Reset the chip into the flash app. This is esptool's documented
-  /// `--after hard_reset` sequence for the USB Serial/JTAG port: RTS with DTR
-  /// low resets the chip, and DTR low on release selects flash boot instead of
-  /// download mode. The 200 ms dwells are esptool's USB values.
-  public func hardReset(dwell: TimeInterval = 0.2) throws {
+  public enum HardResetResult: Equatable, Sendable {
+    case pulsed
+    /// The reset dropped the USB node before the release; the pulse happened.
+    case pulsedPortLost
+  }
+
+  /// Reset the chip into the flash app with esptool's `--after hard_reset`
+  /// pulse. For the S3 USB Serial/JTAG port esptool takes its non-OTG
+  /// HardReset branch: RTS high for 100 ms, then low. DTR stays low, which
+  /// selects flash boot instead of download mode. esptool also clears
+  /// RTC_CNTL_FORCE_DOWNLOAD_BOOT over SLIP first; a bare pulse cannot.
+  ///
+  /// USB_UART_CHIP_RESET can take the USB node away during the dwell, so the
+  /// release then fails with ENXIO, EIO or ENODEV. The reset has already
+  /// happened, so that counts as done.
+  @discardableResult
+  public func hardReset(dwell: TimeInterval = 0.1) throws -> HardResetResult {
     try open()
     try transport.setModemLines(dtr: false, rts: true)
     Thread.sleep(forTimeInterval: dwell)
-    try transport.setModemLines(dtr: false, rts: false)
-    Thread.sleep(forTimeInterval: dwell)
+    do {
+      try transport.setModemLines(dtr: false, rts: false)
+    } catch FurbleSerialError.modemControl(let code) where [ENXIO, EIO, ENODEV].contains(code) {
+      return .pulsedPortLost
+    }
+    return .pulsed
   }
 
   /// Send one console command and return the cleaned response before `furble>`.

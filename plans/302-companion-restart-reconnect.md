@@ -153,20 +153,31 @@ Changes:
 
 - `FurbleSerialConsole` reads through a `FurbleSerialTransport`. The POSIX
   transport is the old termios code. Tests replay a scripted port.
-- A poll that reports hang-up without data is a lost port. Before, a
-  re-enumerated node spun until the command timeout and looked like a stall.
+- A ready poll followed by a 0-byte read is a lost port. XNU builds `poll`
+  on kqueue and ORs `POLLIN` into a hung-up tty, so the hang-up arrives as
+  `POLLIN|POLLHUP` and `read()` returns 0. Before, a re-enumerated node spun
+  until the command timeout and looked like a stall.
 - A command that ends without a prompt checks the bytes it received for the
   ESP32 ROM reset line (`rst:0x15 (USB_UART_CHIP_RESET),boot:0x0
   (DOWNLOAD(USB/UART0))`) and reports `romBoot` with the cause and the boot
-  mode instead of a bare timeout.
+  mode instead of a bare timeout. Only the last banner in the buffer counts,
+  and only its own reset line and the text after it decide download mode.
+  The classic ESP32 `DOWNLOAD_BOOT(` boot field also counts.
 - `CLIUSBRecovery` decides the next step. A lost port reopens. A ROM banner in
   flash boot reopens. ROM download mode, or three stalls in a row, need a
   reset. The monitor sends one only with `--usb-hard-reset`; otherwise it
   writes one `hard-reset-needed` marker and keeps the existing backoff.
-- The hard reset is esptool's `--after hard_reset` sequence for the USB
-  Serial/JTAG port: RTS with DTR low for 200 ms, then both low, one
-  `TIOCMSET` per step so the lines move together. It never selects download
-  mode and never touches the PMIC watchdog.
+- The hard reset is esptool's `--after hard_reset` pulse. For the S3 USB
+  Serial/JTAG port esptool takes the non-OTG `HardReset` branch: RTS high for
+  100 ms, then low. DTR stays low, one `TIOCMSET` per step so the lines move
+  together. It never selects download mode and never touches the PMIC
+  watchdog. The pulse counts as done once the assert succeeds:
+  `USB_UART_CHIP_RESET` can take the USB node away during the dwell, so a
+  release that fails with `ENXIO`, `EIO` or `ENODEV` still emits `hard-reset`.
+- The per-sample step lives in `CLIUSBMonitorSession` (CLIKit), so the tests
+  drive the production marker order and port handling. The CLI keeps the
+  backoff, the output rows and Ctrl-C. A status reply without `uptime` never
+  produces a `device-reset` marker.
 - The first sample and every uptime regression print the console `reset`
   field and the previous run's `crash` summary. A regression also writes a
   `device-reset:<reason>` marker. ROM banners write `rom-reset:<reason>`.
@@ -179,12 +190,15 @@ right after `Settings::init()`, and `crash` re-prints it for a console that
 opened later. The monitor now reads both, so the next hardware run records why
 the app restarted even when the boot log scrolled past with the port closed.
 
-Evidence: `swift test` in `companion/apple` passes 44 Core and 49 CLIKit tests.
-`USBRecoveryTests` covers banner parsing, a silent port timing out as a stall,
-a ROM banner replacing the timeout, the RTS/DTR pulse order, the escalation
-policy with and without the flag, the uptime regression, the option
-validation, and a miniature monitor loop that recovers from download mode
-through one hard reset.
+Evidence: `swift test` in `companion/apple`. `USBRecoveryTests` covers banner
+parsing (CRLF, noise before `rst:`, a truncated reason, two banners in one
+buffer, the classic `DOWNLOAD_BOOT(` field), a silent port timing out as a
+stall, a ROM banner replacing the timeout, the RTS/DTR pulse order, a release
+that loses the port, the escalation policy with and without the flag, the
+uptime regression, the option validation, and the production
+`CLIUSBMonitorSession` recovering from download mode, advising a refused
+reset once per outage and ignoring a missing uptime. A pseudo-terminal whose
+master closed drives the real POSIX read path through the XNU hang-up.
 
 Deviations:
 
@@ -192,6 +206,16 @@ Deviations:
   The subprocess path enters download mode first and needs a located esptool.
   The pulse is the same `--after hard_reset` step without that detour. The
   advisory message still names the esptool command for a manual recovery.
+  esptool's S3 `hard_reset` also clears `RTC_CNTL_FORCE_DOWNLOAD_BOOT` over
+  SLIP before the pulse. A bare pulse cannot write that register, so a chip
+  whose firmware set the force-download bit stays in ROM. That is hardware
+  step 4 below.
+- Reopen interaction, not yet measured. Each S3 port open resets the chip
+  (see the hardware traps in `CLAUDE.md`), and the stall path reopens the
+  port before the next sample with a 1 s newline window. If that reset
+  leaves the console silent for longer than the window, the reopen can cause
+  the next stall, and three such self-inflicted stalls escalate to a reset
+  or a `hard-reset-needed` marker. Hardware step 6 checks it.
 - The port open and close line handling is unchanged. The issue saw ROM after
   "the port closed", so macOS dropping DTR and RTS on close (`HUPCL`) is a
   candidate trigger. Changing it without a board would be a guess; it is a
@@ -228,3 +252,9 @@ Still needs hardware (StickS3, debug image, companion off, `inactivity=0`,
 5. If step 2 shows the line-toggle signature, test clearing `HUPCL` in
    `FurblePOSIXSerialTransport.open()` so a close leaves DTR and RTS alone,
    then repeat step 2.
+6. Reopen stalls. Pull the USB cable for 5 s during a run without
+   `--usb-hard-reset`, then reattach. Pass: one `link-lost` and one
+   `reconnected`, with no `hard-reset-needed` between them. If a
+   `hard-reset-needed` follows reopens that each print the app boot banner,
+   the reopen reset is causing the stalls; raise the stall limit or wait for
+   the boot banner after a reopen.
