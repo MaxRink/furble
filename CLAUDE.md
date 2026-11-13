@@ -15,11 +15,10 @@ CLAUDE.md whose directory it touches.
 - The three 4 MB debug envs use size-optimized debug flags (`-Os -g2 -ggdb2`)
   to keep dual-OTA slots while retaining symbols, logs and assertions; stepping is less exact.
 - `m5stack-core-usb-debug` is a developer-only USB-UART fallback with one
-  factory app partition. Normal CI uses it as the mandatory Core debug profile.
-  It is not part of the six-board release or web installer matrices and has no
-  wireless update or rollback path. Normal CI also builds the dual-OTA
-  `m5stack-core-debug` profile as a mandatory, strict lane, so an image that
-  outgrows its OTA slot fails CI.
+  factory app partition. It is not part of the six-board release or web
+  installer matrices and has no wireless update or rollback path. Normal CI
+  builds two mandatory, strict Core debug profiles: this one and the dual-OTA
+  `m5stack-core-debug`, so an image that outgrows its OTA slot fails CI.
 - Unsupported Enterprise WiFi and SoftAP are compiled out on all boards.
   WPA2/WPA3 Personal station mode and application TLS remain enabled.
 - The HTTPS WebUI is compiled with MQTT only on the 8 MB and 16 MB profiles.

@@ -140,10 +140,10 @@ The 8 and 16 MB tables end with a 256 KiB `coredump` partition after `ota_1`,
 which their debug envs fill on a panic (`sdkconfig.coredump-flash`).
 
 The developer-only `m5stack-core-usb-debug` profile is USB-UART only and uses a
-single factory app partition. Normal CI builds it as the mandatory Core debug
-profile. Keep it out of release and web-installer matrices. Normal CI also
-builds the dual-OTA `m5stack-core-debug` profile as a mandatory lane; it fits
-its OTA slot again after the plan 314 flash slimming. Returning a device from
+single factory app partition. Keep it out of release and web-installer
+matrices. Normal CI builds two mandatory Core debug profiles: this one and the
+dual-OTA `m5stack-core-debug`, which fits its OTA slot again after the plan 314
+flash slimming. Returning a device from
 the USB profile to dual OTA requires a USB partition-table reflash.
 
 Single-board images set `M5GFX_BOARD` (`m5stick-c`, `m5stack-core`,

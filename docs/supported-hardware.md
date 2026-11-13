@@ -41,10 +41,10 @@ ESP32-S3-DevKitC-1 board and also includes MQTT. The 4 MB profiles omit the
 MQTT implementation, component dependencies, settings, and console capability.
 For an oversized Core debug image, `m5stack-core-usb-debug` is a separate
 USB-UART-only fallback with one factory app partition. It is not a supported
-release environment, is the mandatory Core debug profile in normal CI, does not
-provide wireless updates or rollback, and is not included in the web installer.
-The dual-OTA Core debug profile fits its OTA slot again after the plan 314
-flash slimming and is also a mandatory CI build.
+release environment, does not provide wireless updates or rollback, and is not
+included in the web installer. Normal CI builds two mandatory Core debug
+profiles: this one and the dual-OTA `m5stack-core-debug`, which fits its OTA
+slot again after the plan 314 flash slimming.
 
 Build a board with its environment name:
 
