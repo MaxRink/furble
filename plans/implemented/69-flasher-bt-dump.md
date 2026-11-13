@@ -68,7 +68,7 @@ Serial still flashes firmware normally.
   script.
 - `web-installer/CLAUDE.md`: document the capture panel and the `bt` command
   sequence it drives.
-- `plans/69-flasher-bt-dump.md`: mark implemented.
+- `plans/implemented/69-flasher-bt-dump.md`: mark implemented.
 
 ## Verification (for the implementing PR)
 

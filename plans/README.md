@@ -57,7 +57,7 @@ the git history. They are no longer ownership rows.
 
 | Doc | Content |
 |---|---|
-| [00b-dev-usb-debug.md](00b-dev-usb-debug.md) | USB debug tooling. JTAG on S3, serial elsewhere |
+| [00b-dev-usb-debug.md](implemented/00b-dev-usb-debug.md) | USB debug tooling. JTAG on S3, serial elsewhere |
 | [01-cpu-freq-setting.md](implemented/01-cpu-freq-setting.md) | CPU frequency setting, fix 80 vs 160 MHz mismatch |
 | [02-battery-display.md](implemented/02-battery-display.md) | Battery percent, voltage, current, runtime estimate |
 | [03-settings-while-connected.md](implemented/03-settings-while-connected.md) | Reach settings while connected |
@@ -72,8 +72,8 @@ the git history. They are no longer ownership rows.
 | [07-ble-sleep.md](implemented/07-ble-sleep.md) | BLE modem sleep and light sleep while connected |
 | [08-scan-tuning.md](implemented/08-scan-tuning.md) | Scan duty cycle presets and scan timeout |
 | [09-reconnect-backoff.md](implemented/09-reconnect-backoff.md) | Exponential backoff for reconnect |
-| [10-adaptive-conn-params.md](10-adaptive-conn-params.md) | Idle vs shooting connection parameters |
-| [11-adaptive-tx-power.md](11-adaptive-tx-power.md) | RSSI based TX power stepping |
+| [10-adaptive-conn-params.md](implemented/10-adaptive-conn-params.md) | Idle vs shooting connection parameters |
+| [11-adaptive-tx-power.md](implemented/11-adaptive-tx-power.md) | RSSI based TX power stepping |
 
 ## Phase 2: display and power UX
 
@@ -85,42 +85,42 @@ the git history. They are no longer ownership rows.
 | Doc | Content |
 |---|---|
 | [14-gps-pcas.md](implemented/14-gps-pcas.md) | $PCAS receiver config: rate, sentences, constellation |
-| [15-gps-power.md](15-gps-power.md) | GPS duty cycling, light sleep compatible UART |
+| [15-gps-power.md](implemented/15-gps-power.md) | GPS duty cycling, light sleep compatible UART |
 | [304-webui-stick-memory.md](304-webui-stick-memory.md) | WebUI internal-RAM budget and the StickS3 boot-loop investigation |
-| [305-general-internal-ram.md](305-general-internal-ram.md) | General internal-RAM map and safe reductions across tasks, LVGL, IR, console and mbedTLS |
-| [306-sim-memory-crash-repro.md](306-sim-memory-crash-repro.md) | Simulator heap-pressure reproduction, MQTT/WebUI admission scenarios and retained crash logging |
-| [307-sim-first-flash-gate.md](307-sim-first-flash-gate.md) | Sim-first crash, memory, fuzz and permutation release gate before any hardware flash |
-| [308-mqtt-ha-memory.md](308-mqtt-ha-memory.md) | MQTT and Home Assistant discovery memory budget, admission gates and cached HA setting |
-| [309-input-api-memory-fuzzing.md](309-input-api-memory-fuzzing.md) | Seeded input, API and memory fuzz gate with replay corpus and known-finding owners |
-| [310-review-feedback.md](310-review-feedback.md) | Review-thread audit, code fixes, regression evidence and the online merge gate |
-| [311-mqtt-queue-psram.md](311-mqtt-queue-psram.md) | MQTT event queue in PSRAM, pre-task owner gate and the 12 KiB main-stack revert |
-| [312-review-feedback.md](312-review-feedback.md) | Review-feedback record for the MQTT queue fix, including the internal fallback gate |
+| [305-general-internal-ram.md](implemented/305-general-internal-ram.md) | General internal-RAM map and safe reductions across tasks, LVGL, IR, console and mbedTLS |
+| [306-sim-memory-crash-repro.md](implemented/306-sim-memory-crash-repro.md) | Simulator heap-pressure reproduction, MQTT/WebUI admission scenarios and retained crash logging |
+| [307-sim-first-flash-gate.md](implemented/307-sim-first-flash-gate.md) | Sim-first crash, memory, fuzz and permutation release gate before any hardware flash |
+| [308-mqtt-ha-memory.md](implemented/308-mqtt-ha-memory.md) | MQTT and Home Assistant discovery memory budget, admission gates and cached HA setting |
+| [309-input-api-memory-fuzzing.md](implemented/309-input-api-memory-fuzzing.md) | Seeded input, API and memory fuzz gate with replay corpus and known-finding owners |
+| [310-review-feedback.md](implemented/310-review-feedback.md) | Review-thread audit, code fixes, regression evidence and the online merge gate |
+| [311-mqtt-queue-psram.md](implemented/311-mqtt-queue-psram.md) | MQTT event queue in PSRAM, pre-task owner gate and the 12 KiB main-stack revert |
+| [312-review-feedback.md](implemented/312-review-feedback.md) | Review-feedback record for the MQTT queue fix, including the internal fallback gate |
 | [313-sim-only-status.md](313-sim-only-status.md) | Sim-only closeout: exact gate results, hardware-deferred items and resume criteria |
 | [314-memory-resilience.md](314-memory-resilience.md) | Memory resilience: sim heap fidelity and abort parity, load shedding, static and dynamic memory gates |
 | [314-review-feedback.md](314-review-feedback.md) | Review-feedback record for the plan 314 memory resilience series |
-| [315-stickc-layout-regressions.md](315-stickc-layout-regressions.md) | M5StickC header battery anchor, Cameras page double reserve and Time page scroll fixes |
-| [316-docs-capture-companion-reject.md](316-docs-capture-companion-reject.md) | Docs capture: rename the hardware-model action that shadowed the companion pairing Reject |
+| [315-stickc-layout-regressions.md](implemented/315-stickc-layout-regressions.md) | M5StickC header battery anchor, Cameras page double reserve and Time page scroll fixes |
+| [316-docs-capture-companion-reject.md](implemented/316-docs-capture-companion-reject.md) | Docs capture: rename the hardware-model action that shadowed the companion pairing Reject |
 | [317-notouch-regressions.md](317-notouch-regressions.md) | Physical-button suite: control drain wake, stale legend pass, info page padding, memory profile constants |
 | [302-companion-restart-reconnect.md](302-companion-restart-reconnect.md) | Companion stop/start without a heap panic, and advertising restart after a rejected link |
-| [303-upstream-sync.md](303-upstream-sync.md) | Read-only upstream audit, open issue mapping, and full SHA PlatformIO pins for upstream issue 309 |
+| [303-upstream-sync.md](implemented/303-upstream-sync.md) | Read-only upstream audit, open issue mapping, and full SHA PlatformIO pins for upstream issue 309 |
 
 ## Phase 4: sensors
 
 | Doc | Content |
 |---|---|
-| [16-imu-spirit-level.md](16-imu-spirit-level.md) | Enable IMU, spirit level page |
+| [16-imu-spirit-level.md](implemented/16-imu-spirit-level.md) | Enable IMU, spirit level page |
 | [17-imu-gestures.md](17-imu-gestures.md) | Tap and shake wake, double tap shutter |
 | [18-gps-motion.md](18-gps-motion.md) | Motion adaptive GPS |
-| [19-interval-deep-sleep.md](19-interval-deep-sleep.md) | Deep sleep between intervalometer shots |
+| [19-interval-deep-sleep.md](implemented/19-interval-deep-sleep.md) | Deep sleep between intervalometer shots |
 
 ## Phase 5: extended features
 
 | Doc | Content |
 |---|---|
 | [20-imu-hw-motion.md](implemented/20-imu-hw-motion.md) | Hardware motion detection via IMU engines |
-| [21-imu-dead-reckoning.md](21-imu-dead-reckoning.md) | GPS position hold when fix is lost, bounded hold and extrapolation implemented |
+| [21-imu-dead-reckoning.md](implemented/21-imu-dead-reckoning.md) | GPS position hold when fix is lost, bounded hold and extrapolation implemented |
 | [22-ir-remote-trigger.md](implemented/22-ir-remote-trigger.md) | IR shutter trigger (Nikon, Sony, Canon protocols) |
-| [23-feedback-outputs.md](23-feedback-outputs.md) | Beep, LED, vibration feedback |
+| [23-feedback-outputs.md](implemented/23-feedback-outputs.md) | Beep, LED, vibration feedback |
 | [24-sd-gpx-logging.md](implemented/24-sd-gpx-logging.md) | SD card GPX logging and settings backup |
 
 ## Phase 6: usability and robustness
@@ -130,16 +130,16 @@ the git history. They are no longer ownership rows.
 | [25-multiconnect-ui.md](25-multiconnect-ui.md) | Multi-connect selection, Cameras status page |
 | [26-pm1-watchdog.md](implemented/26-pm1-watchdog.md) | M5PM1 hardware watchdog, StickS3 lockup recovery |
 | [27-usb-console.md](implemented/27-usb-console.md) | USB serial command console for testing |
-| [76-reconnect-stuck.md](76-reconnect-stuck.md) | Fast reconnect to Fujifilm Secure stalls in connecting: diagnosis and fix plan |
+| [76-reconnect-stuck.md](implemented/76-reconnect-stuck.md) | Fast reconnect to Fujifilm Secure stalls in connecting: diagnosis and fix plan |
 | [28-emulator.md](28-emulator.md) | Host SDL simulator for the furble UI |
 | [29-virtual-test-rig.md](29-virtual-test-rig.md) | Sim to Android app test rig over TCP, no radio |
-| [31-s3-psram.md](31-s3-psram.md) | Enable PSRAM on the M5StickS3 |
-| [32-gps-advanced.md](32-gps-advanced.md) | Advanced GPS support for the GPS/BDS Unit v1.1 |
+| [31-s3-psram.md](implemented/31-s3-psram.md) | Enable PSRAM on the M5StickS3 |
+| [32-gps-advanced.md](implemented/32-gps-advanced.md) | Advanced GPS support for the GPS/BDS Unit v1.1 |
 | [33-wifi-hub.md](33-wifi-hub.md) | WiFi hub: displayless build, provisioning, MQTT |
 | [34-ota-partitions.md](34-ota-partitions.md) | OTA updates and the partition scheme change |
 | [35-exposure-presets.md](implemented/35-exposure-presets.md) | Exposure time presets in 1/3 stops |
 | [36-camera-test-harness.md](implemented/36-camera-test-harness.md) | Camera protocol test harness: host tests, mock NimBLE, virtual peer |
-| [71-ui-bug-batch.md](71-ui-bug-batch.md) | UI focus recovery, left escape, connection progress, display-off LED policy |
+| [71-ui-bug-batch.md](implemented/71-ui-bug-batch.md) | UI focus recovery, left escape, connection progress, display-off LED policy |
 | [76-ui-polish.md](implemented/76-ui-polish.md) | Focus ring visible in every theme, simulator theme and board selection for the screenshot matrix |
 
 ## Framework work
@@ -166,7 +166,7 @@ the git history. They are no longer ownership rows.
 | [122-gps-sim-stability.md](implemented/122-gps-sim-stability.md) | Serialize TinyGPSPlus ownership across the GPS task, LVGL timers, and console snapshots; exercise concurrent GPS pages in the host simulator |
 | [123-host-task-lifecycle.md](implemented/123-host-task-lifecycle.md) | Join real-Control harness tasks before host static destruction |
 | [126-settings-handle-concurrency.md](implemented/126-settings-handle-concurrency.md) | Use operation-local Preferences handles so concurrent settings calls cannot replace or close each other's NVS handle |
-| [301-sim-ui-buttons.md](301-sim-ui-buttons.md) | Interactive on-screen A/B/C or A/B/PWR buttons in a top-view control window that drives the same emulated GPIOs as the keyboard, without covering the panel or its overlays |
+| [301-sim-ui-buttons.md](implemented/301-sim-ui-buttons.md) | Interactive on-screen A/B/C or A/B/PWR buttons in a top-view control window that drives the same emulated GPIOs as the keyboard, without covering the panel or its overlays |
 
 ## Tooling and web installer
 
@@ -174,16 +174,16 @@ the git history. They are no longer ownership rows.
 |---|---|
 | [68-flasher-debug-firmware.md](implemented/68-flasher-debug-firmware.md) | Web flasher debug firmware option: build *-debug envs, debug manifests, install checkbox |
 | [139-persistent-time.md](implemented/139-persistent-time.md) | RTC, NVS, GPS, NTP, and companion wall-clock retention policy |
-| [69-flasher-bt-dump.md](69-flasher-bt-dump.md) | Web Serial Capture BT debug dump panel, depends on 68 and PR #76 |
+| [69-flasher-bt-dump.md](implemented/69-flasher-bt-dump.md) | Web Serial Capture BT debug dump panel, depends on 68 and PR #76 |
 | [113-per-board-ota-slots.md](implemented/113-per-board-ota-slots.md) | Per-flash-size OTA slots, implemented by PR #167 |
-| [114-provision-parser.md](114-provision-parser.md) | One-shot provisioning parser and console apply; staged browser transport deferred |
+| [114-provision-parser.md](implemented/114-provision-parser.md) | One-shot provisioning parser and console apply; staged browser transport deferred |
 | [114-flasher-provisioning.md](114-flasher-provisioning.md) | Follow-up browser transport for the landed provisioning parser |
 | [115-ota-engine.md](implemented/115-ota-engine.md) | Transport-independent OTA lifecycle, implemented by PR #168 |
 | [115-ota-update-mqtt.md](115-ota-update-mqtt.md) | HTTPS delivery and OTA-over-MQTT follow-up |
-| [130-ota-mqtt-contract.md](130-ota-mqtt-contract.md) | Signed, replay-safe OTA-over-MQTT envelope and chunk policy |
+| [130-ota-mqtt-contract.md](implemented/130-ota-mqtt-contract.md) | Signed, replay-safe OTA-over-MQTT envelope and chunk policy |
 | [131-ota-replay-store.md](implemented/131-ota-replay-store.md) | Durable two-slot anti-rollback replay journal |
 | [132-ota-partition-sink.md](implemented/132-ota-partition-sink.md) | Ordered, digest-verified inactive-partition sink |
-| [177-mqtt-4mb-size-followup.md](177-mqtt-4mb-size-followup.md) | MQTT size follow-up and developer-only single-factory USB fallback |
+| [177-mqtt-4mb-size-followup.md](implemented/177-mqtt-4mb-size-followup.md) | MQTT size follow-up and developer-only single-factory USB fallback |
 | [124-sim-incremental-deps.md](implemented/124-sim-incremental-deps.md) | Compiler depfiles for reliable direct-simulator incremental builds |
 | [127-dev-version-identity.md](implemented/127-dev-version-identity.md) | Append an unambiguous short Git revision to development firmware versions while preserving release tags |
 | [142-bt-journal-memory.md](implemented/142-bt-journal-memory.md) | Compact, capability-aware Bluetooth journal storage and loss accounting |
@@ -215,8 +215,8 @@ the git history. They are no longer ownership rows.
 | [152-menu-focus-outline-dedup.md](implemented/152-menu-focus-outline-dedup.md) | Drop the focus ring on menu rows that already carry the accent fill |
 | [153-level-main-menu.md](implemented/153-level-main-menu.md) | Spirit level entry on the main menu, usable without a camera connection |
 | [154-host-flappy-peer-realism.md](implemented/154-host-flappy-peer-realism.md) | Flappy standby peer realism and multi-target disconnect repros in the host harness |
-| [155-sim-ui-liveness.md](155-sim-ui-liveness.md) | Continuous sim liveness invariant and link_lies false-connected coverage |
-| [156-restart-restore-seam.md](156-restart-restore-seam.md) | Sim restart verb and host Control reset seam, the reboot-lockout reland gate |
+| [155-sim-ui-liveness.md](implemented/155-sim-ui-liveness.md) | Continuous sim liveness invariant and link_lies false-connected coverage |
+| [156-restart-restore-seam.md](implemented/156-restart-restore-seam.md) | Sim restart verb and host Control reset seam, the reboot-lockout reland gate |
 | [157-control-test-sync-points.md](implemented/157-control-test-sync-points.md) | Deterministic interleaving sync points for the control task and the wedge-guard proof test |
 | [158-sim-scheduler-parity.md](158-sim-scheduler-parity.md) | Deterministic unified simulator scheduler and orderly teardown, followed by production connection and calibrated hardware parity |
 | [159-camera-peer-certification.md](159-camera-peer-certification.md) | Capture-backed, fail-closed virtual camera peers and exact feature-level compatibility certification |
@@ -235,9 +235,9 @@ the git history. They are no longer ownership rows.
 | [174-coverage-empty-profiles.md](implemented/174-coverage-empty-profiles.md) | Two host suites that measured nothing under coverage: the control shim adopts the stop-and-join task contract so both exit through main(), a coverage run fails naming a test whose raw profile is empty or missing, the console shim refuses a task created after shutdown, and the ctest summary header is anchored so a failing test cannot fabricate a crash report |
 | [175-coverage-crash-output.md](implemented/175-coverage-crash-output.md) | Failed simulator coverage scenarios retain a bounded output tail so signal diagnostics remain visible in CI |
 | [176-sim-task-notifications.md](implemented/176-sim-task-notifications.md) | FreeRTOS task notification counters in the simulator wake blocked owners, preserve clear/decrement and virtual timeout semantics, and unwind on shutdown |
-| [285-power-accounting.md](285-power-accounting.md) | Issue #285: opt-in synthetic power accounting and frozen comparator identity |
+| [285-power-accounting.md](implemented/285-power-accounting.md) | Issue #285: opt-in synthetic power accounting and frozen comparator identity |
 | [288-provisioning-schema.md](implemented/288-provisioning-schema.md) | Provisioning schema coverage for every keyed setting and current wire-ID reservation ledger |
-| [291-ui-upstream-layout-parity.md](291-ui-upstream-layout-parity.md) | About, GPS, and Connected content parity with upstream, one page PR at a time with per-board captures |
+| [291-ui-upstream-layout-parity.md](implemented/291-ui-upstream-layout-parity.md) | About, GPS, and Connected content parity with upstream, one page PR at a time with per-board captures |
 | [297-gps-improvement-roadmap.md](297-gps-improvement-roadmap.md) | GPS power/accuracy findings, the implemented fixes, and the ranked remaining GPS work with bench gates |
 | [298-pre-review-gate.md](implemented/298-pre-review-gate.md) | Pre-review scanners for diff hygiene, settings contracts, C++ safety, and a sanitized host subset, wired into pull-request CI |
 | [178-sim-startup-settings-order.md](implemented/178-sim-startup-settings-order.md) | Apply simulator settings before platform construction while preserving panel, environment, watchdog, and profiler boundaries |
@@ -252,12 +252,12 @@ document is authoritative over any older summary.
 | Doc | Content |
 | --- | --- |
 | [67-fujifilm-dial-detection.md](67-fujifilm-dial-detection.md) | Fujifilm drive dial detection |
-| [73-pentax-k.md](73-pentax-k.md) | Pentax K through the Ricoh Imaging BLE family |
+| [73-pentax-k.md](implemented/73-pentax-k.md) | Pentax K through the Ricoh Imaging BLE family |
 | [74-dji-osmo.md](74-dji-osmo.md) | DJI Osmo Action BLE remote support |
 | [77-battery-saver-profile.md](implemented/77-battery-saver-profile.md) | Battery Saver profile |
-| [82-disconnect-liveness.md](82-disconnect-liveness.md) | Disconnect liveness |
+| [82-disconnect-liveness.md](implemented/82-disconnect-liveness.md) | Disconnect liveness |
 | [83-lifecycle-tests.md](implemented/83-lifecycle-tests.md) | Host regression tests for the connect and disconnect lifecycle |
-| [84-unit-coverage.md](84-unit-coverage.md) | Broader host unit test coverage |
+| [84-unit-coverage.md](implemented/84-unit-coverage.md) | Broader host unit test coverage |
 | [85-sim-e2e.md](implemented/85-sim-e2e.md) | Simulator end-to-end scenarios |
 | [86-sim-bug-hunt.md](86-sim-bug-hunt.md) | SDL simulator bug hunt |
 | [87-sim-buttons.md](implemented/87-sim-buttons.md) | Per-model physical buttons in the SDL sim |
@@ -266,13 +266,13 @@ document is authoritative over any older summary.
 | [92-ui-icons.md](implemented/92-ui-icons.md) | Menu icon set |
 | [97-followups.md](97-followups.md) | Consolidated follow-up backlog |
 | [98-power-optimization-audit.md](98-power-optimization-audit.md) | Power optimization audit |
-| [98b-power-followup.md](98b-power-followup.md) | GPS degraded lock recovery follow-up |
-| [99-boot-time.md](99-boot-time.md) | Boot timeline instrumentation and measured boot-time reductions |
+| [98b-power-followup.md](implemented/98b-power-followup.md) | GPS degraded lock recovery follow-up |
+| [99-boot-time.md](implemented/99-boot-time.md) | Boot timeline instrumentation and measured boot-time reductions |
 | [99-nimble-client-leak.md](implemented/99-nimble-client-leak.md) | NimBLE client leak fix |
-| [100-sim-fault-injection-bughunt.md](100-sim-fault-injection-bughunt.md) | Host fault injection and BLE connect failure hunting |
-| [102-disconnect-freeze.md](102-disconnect-freeze.md) | Disconnect off the UI task |
-| [103-real-control-e2e-harness.md](103-real-control-e2e-harness.md) | Real Control connect/disconnect end-to-end harness |
-| [104-ble-fuzzing.md](104-ble-fuzzing.md) | Seeded BLE lifecycle fuzzing |
+| [100-sim-fault-injection-bughunt.md](implemented/100-sim-fault-injection-bughunt.md) | Host fault injection and BLE connect failure hunting |
+| [102-disconnect-freeze.md](implemented/102-disconnect-freeze.md) | Disconnect off the UI task |
+| [103-real-control-e2e-harness.md](implemented/103-real-control-e2e-harness.md) | Real Control connect/disconnect end-to-end harness |
+| [104-ble-fuzzing.md](implemented/104-ble-fuzzing.md) | Seeded BLE lifecycle fuzzing |
 | [104-focus-outline-dedup.md](implemented/104-focus-outline-dedup.md) | Single focus ring per selected item |
 | [105-ui-fuzzing.md](implemented/105-ui-fuzzing.md) | Seeded UI fuzzer |
 | [106-flash-size-optimization.md](106-flash-size-optimization.md) | Flash size optimization |
@@ -285,7 +285,7 @@ document is authoritative over any older summary.
 | [113-connection-state-sim-coverage.md](implemented/113-connection-state-sim-coverage.md) | Connection-state simulator coverage |
 | [118-sim-mqtt-transport.md](implemented/118-sim-mqtt-transport.md) | Optional simulator MQTT transport |
 | [126-esp-optimization-audit.md](126-esp-optimization-audit.md) | ESP-IDF optimization and reproducibility audit |
-| [127-apple-companion.md](127-apple-companion.md) | Apple companion foundation |
+| [127-apple-companion.md](implemented/127-apple-companion.md) | Apple companion foundation |
 | [129-m5-dependencies-idf55.md](implemented/129-m5-dependencies-idf55.md) | M5 dependency compatibility slice |
 | [130-espressif32-613-idf553.md](implemented/130-espressif32-613-idf553.md) | Espressif32 6.13.0 and ESP-IDF 5.5.3 |
 | [141-ci-manual-dispatch.md](implemented/141-ci-manual-dispatch.md) | Reliable manual firmware CI |
@@ -296,16 +296,16 @@ document is authoritative over any older summary.
 |---|---|
 | [50-companion-app-design.md](50-companion-app-design.md) | Smartphone companion app and GATT service |
 | [51-app-feature-parity.md](51-app-feature-parity.md) | Companion app parity: settings editors, camera management |
-| [60-issue-257.md](60-issue-257.md) | Nikon Z50II smart device analysis, upstream issue 257 |
+| [60-issue-257.md](implemented/60-issue-257.md) | Nikon Z50II smart device analysis, upstream issue 257 |
 | [61-camera-compatibility.md](61-camera-compatibility.md) | BLE protocol survey across camera vendors, ranked additions |
 | [62-issue-140.md](implemented/62-issue-140.md) | Configurable button behavior, upstream issue 140 |
 | [63-sim-power-analysis.md](63-sim-power-analysis.md) | Simulator based power analysis: profiler, sleep estimator, usage test suite, energy model, CI gate and PR reporting |
 | [65-bt-coexistence.md](65-bt-coexistence.md) | Classic BT feasibility, WiFi+BLE coexistence for hub mode |
 | [64-debug-tooling.md](64-debug-tooling.md) | Expanded debug tooling: power stats, performance monitoring, BT debug console |
 | [67-bulb-ux.md](implemented/67-bulb-ux.md) | Bulb completion state, restart action, and camera mode hint |
-| [66-pairing-code-display.md](66-pairing-code-display.md) | Camera pairing code on the furble display and console |
-| [70-text-scaling.md](70-text-scaling.md) | UI text size setting per board, layout audit walker |
-| [72-lumix.md](72-lumix.md) | Panasonic Lumix BLE support port, untested |
+| [66-pairing-code-display.md](implemented/66-pairing-code-display.md) | Camera pairing code on the furble display and console |
+| [70-text-scaling.md](implemented/70-text-scaling.md) | UI text size setting per board, layout audit walker |
+| [72-lumix.md](implemented/72-lumix.md) | Panasonic Lumix BLE support port, untested |
 | [90-scheduled-shooting.md](90-scheduled-shooting.md) | Deferred: scheduled shooting via RTC alarm |
 | [91-mic-trigger.md](91-mic-trigger.md) | Deferred: sound triggered shutter |
 

@@ -20,4 +20,4 @@ evidence.
 - The hardware coverage and flash-readiness gates pass on master at `0883a31e`
   with the generated memory dumps. That is simulator evidence only. #407 has
   not been flashed, so no post-fix hardware result is claimed. See
-  [313-sim-only-status.md](313-sim-only-status.md).
+  [313-sim-only-status.md](../313-sim-only-status.md).

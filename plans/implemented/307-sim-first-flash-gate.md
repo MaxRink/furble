@@ -117,4 +117,4 @@ The last hardware flash, of the candidate before #407, reproduced the MQTT main
 stack overflow. #407 is the fix and has not been flashed or retested. A green
 simulator report does not close that hardware gate. Sim-only mode and the
 resume criteria are recorded in
-[313-sim-only-status.md](313-sim-only-status.md).
+[313-sim-only-status.md](../313-sim-only-status.md).

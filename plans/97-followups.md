@@ -224,7 +224,7 @@ a defect. Severity is enhancement unless noted.
 - 51 remote-disconnect. App-initiated disconnect over the companion service.
   Source: plan 51. GATED-ON: companion service (feat/51 chain).
 - 71 level quick-wins. Remaining spirit-level UI quick-wins. Source: plan 71
-  (`plans/71-ui-bug-batch.md`). READY-NOW.
+  (`plans/implemented/71-ui-bug-batch.md`). READY-NOW.
 - 73 Ricoh geotag. Geotag push for Ricoh bodies. Source: plan 73. READY-NOW.
   Untested vendor, code review plus FauxNY.
 - 29 rig phases 4, 5, 6. Later multi-device rig phases. Source: plan 29.

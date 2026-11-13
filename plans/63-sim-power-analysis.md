@@ -585,16 +585,16 @@ time. Effort: one to two days.
   API that makes the sleep estimator attributable.
 - [08-scan-tuning.md](implemented/08-scan-tuning.md),
   [09-reconnect-backoff.md](implemented/09-reconnect-backoff.md),
-  [10-adaptive-conn-params.md](10-adaptive-conn-params.md) and
-  [11-adaptive-tx-power.md](11-adaptive-tx-power.md) define the policies
+  [10-adaptive-conn-params.md](implemented/10-adaptive-conn-params.md) and
+  [11-adaptive-tx-power.md](implemented/11-adaptive-tx-power.md) define the policies
   the BLE duty model integrates.
 - [12-display-off.md](implemented/12-display-off.md) and
   [13-auto-off-low-batt.md](implemented/13-auto-off-low-batt.md) define the dimmed and
   off scenarios.
-- [14-gps-pcas.md](implemented/14-gps-pcas.md), [15-gps-power.md](15-gps-power.md) and
+- [14-gps-pcas.md](implemented/14-gps-pcas.md), [15-gps-power.md](implemented/15-gps-power.md) and
   [18-gps-motion.md](18-gps-motion.md) define the GPS duty policies the
   receiver model scores.
-- [19-interval-deep-sleep.md](19-interval-deep-sleep.md) and
+- [19-interval-deep-sleep.md](implemented/19-interval-deep-sleep.md) and
   [26-pm1-watchdog.md](implemented/26-pm1-watchdog.md) interact through the PMIC; the
   behavioral stub makes that interaction CI-testable.
 - [00-hardware-experiments.md](00-hardware-experiments.md) supplies the

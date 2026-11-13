@@ -118,7 +118,7 @@ Hardware work resumes only when all of these hold:
 
 1. The candidate commit is clean and built from `origin/master`.
 2. `python3 sim/scripts/run-memory-profile.py` has generated 13 dumps and every
-   gate command in [307-sim-first-flash-gate.md](307-sim-first-flash-gate.md)
+   gate command in [307-sim-first-flash-gate.md](implemented/307-sim-first-flash-gate.md)
    passes, ending in `READY TO FLASH`.
 3. The firmware artifact, its SHA-256 and the exact commit are recorded in a
    flash-candidate report.

@@ -34,7 +34,7 @@ control           8,192 stack, 7,468 used
 
 | Change | Saving | Safety | Evidence |
 | :--- | ---: | :--- | :--- |
-| Main stack 12 KiB to 8 KiB (reverted by #311) | 0 current; 4,096 in the #398 experiment | The 8 KiB experiment overflowed in task main once MQTT was enabled. The StickS3 main stack is 12 KiB. The WebUI identity still runs on its own 12 KiB internal task. | `plans/311-mqtt-queue-psram.md`, `CONFIG_ESP_MAIN_TASK_STACK_SIZE`, `perf tasks` |
+| Main stack 12 KiB to 8 KiB (reverted by #311) | 0 current; 4,096 in the #398 experiment | The 8 KiB experiment overflowed in task main once MQTT was enabled. The StickS3 main stack is 12 KiB. The WebUI identity still runs on its own 12 KiB internal task. | `plans/implemented/311-mqtt-queue-psram.md`, `CONFIG_ESP_MAIN_TASK_STACK_SIZE`, `perf tasks` |
 | One LVGL draw buffer on narrow panels | 2,160 on StickS3, 800 on StickC | The single-buffer flush path already waits for the SPI DMA before `lv_disp_flush_ready()`. Render and transfer are serialised per band. | `UIMemory::singleDrawBuffer`, `displayFlush()` |
 | Companion task 4 KiB to 3 KiB | 1,024 | 1,884 measured. The task commits NVS, so the stack stays internal. | `src/FurbleCompanion.cpp` |
 | Plain MQTT worker 4 KiB to 3 KiB | 1,024 | 704 measured. TLS keeps the 6 KiB worker for the handshake. | `MQTTMemory::PLAIN_WORKER_STACK_BYTES`, `config.task.stack_size` |

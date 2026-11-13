@@ -114,7 +114,7 @@ Sim-only mode defers this list. The last hardware flash, of the candidate before
 #407, reproduced the MQTT main-stack overflow at 5,199 free / 4,596 largest.
 #407 is the fix and has not been flashed or retested. Every post-fix number
 above is inferred or modeled, not a board measurement. See
-[313-sim-only-status.md](313-sim-only-status.md).
+[313-sim-only-status.md](../313-sim-only-status.md).
 
 1. `perf heap` with `mqtt=true` on the StickS3. Confirm the free/largest pair
    after the owner gate, the queue move and the camera snapshot.

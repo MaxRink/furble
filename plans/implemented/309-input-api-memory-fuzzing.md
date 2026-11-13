@@ -161,4 +161,4 @@ sh tools/run_sanitized_host_tests.sh --clean
 with the generated memory dumps. The permutation artifact and the memory
 budget are complete evidence, not open fuzz findings. Hardware validation is
 deferred in sim-only mode; see
-[313-sim-only-status.md](313-sim-only-status.md).
+[313-sim-only-status.md](../313-sim-only-status.md).

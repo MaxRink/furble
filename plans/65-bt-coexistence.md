@@ -10,7 +10,7 @@ Three pressures converge on the same question: what can furble's radio
 actually do beyond a single-purpose NimBLE central?
 
 1. Nikon smart device support (upstream issue 257) is blocked on a
-   Bluetooth Classic bond. `plans/60-issue-257.md` established that the
+   Bluetooth Classic bond. `plans/implemented/60-issue-257.md` established that the
    first-time pairing swaps from BLE to a Classic secure simple pairing
    bond, that NimBLE is LE only, and that the hurui200320/nsg project
    proves the full flow works on a plain ESP32. Whether furble should
@@ -484,7 +484,7 @@ Ordered by value, on the StickS3 plus one plain ESP32 board:
 
 - Extends the coexistence section of `plans/33-wifi-hub.md`; its
   recommendations bind 33b and 33c.
-- Confirms and depends on the analysis in `plans/60-issue-257.md`.
-- Recommendation 2 interacts with `plans/10-adaptive-conn-params.md`.
+- Confirms and depends on the analysis in `plans/implemented/60-issue-257.md`.
+- Recommendation 2 interacts with `plans/implemented/10-adaptive-conn-params.md`.
 - The camera-count cap feeds `plans/25-multiconnect-ui.md` hub-mode
   documentation.

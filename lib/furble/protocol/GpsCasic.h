@@ -14,7 +14,7 @@
  * Everything here is free of ESP-IDF, NVS, the board support library and the
  * UI toolkit, so it links into the host test suite unchanged. The firmware GPS
  * driver calls into it. The data sources for every constant and layout below
- * are cited in plans/32-gps-advanced.md under PR32a, PR32b, PR32d and PR32e.
+ * are cited in plans/implemented/32-gps-advanced.md under PR32a, PR32b, PR32d and PR32e.
  */
 
 namespace Furble {
@@ -27,7 +27,7 @@ namespace Casic {
  * which is wrong. The Quectel L76K specification prints them id-first, and that
  * is the form every recorded frame balances under. Verified against the L76K
  * worked examples and 33 live frames from the Espruino CASIC mirror. See
- * plans/32-gps-advanced.md PR32b. The next reader of the CASIC PDF will try to
+ * plans/implemented/32-gps-advanced.md PR32b. The next reader of the CASIC PDF will try to
  * reintroduce the class-first bug, so do not "fix" this.
  */
 uint32_t checksum(uint8_t class_id, uint8_t message_id, uint16_t length, const uint8_t *payload);
@@ -45,7 +45,7 @@ std::vector<uint8_t> frame(uint8_t class_id,
  * These six are the entire ladder; there is no seventh rate to try. Detection
  * criterion is two NMEA sentences with a passing checksum in one step, which
  * guards against a garbled stream passing checksum by chance (1 in 256 per
- * sentence). See plans/32-gps-advanced.md PR32a.
+ * sentence). See plans/implemented/32-gps-advanced.md PR32a.
  */
 class Autobaud {
  public:
@@ -95,7 +95,7 @@ class Autobaud {
  * The pinned TinyGPS++ fork parses GGA and RMC only, so GSV and GSA are dropped
  * today. A direct 192 byte parser beats the 3.3 kB TinyGPSCustom approach and,
  * unlike TinyGPSCustom, can reassemble a multi-sentence GSV set. See
- * plans/32-gps-advanced.md PR32e.
+ * plans/implemented/32-gps-advanced.md PR32e.
  */
 struct Satellite {
   uint16_t prn;          /**< satellite id as reported in the sentence */
@@ -176,7 +176,7 @@ uint8_t constellationForTalker(char a, char b);
  * CFG-MSG poll at rate 0xFFFF asks for one copy. furble stores the frames
  * verbatim so replay is a straight byte write with no re-framing, then plays
  * them back on the next enable. GPS ephemeris is valid for roughly four hours.
- * See plans/32-gps-advanced.md PR32d.
+ * See plans/implemented/32-gps-advanced.md PR32d.
  */
 namespace Eph {
 constexpr uint8_t CLASS = 0x08;

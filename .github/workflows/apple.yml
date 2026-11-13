@@ -5,13 +5,13 @@ on:
   pull_request:
     paths:
       - "companion/apple/**"
-      - "plans/127-apple-companion.md"
+      - "plans/implemented/127-apple-companion.md"
       - ".github/workflows/apple.yml"
   push:
     branches: [master]
     paths:
       - "companion/apple/**"
-      - "plans/127-apple-companion.md"
+      - "plans/implemented/127-apple-companion.md"
       - ".github/workflows/apple.yml"
 
 permissions:

@@ -340,7 +340,7 @@ sends.
 Rebase notes:
 
 - `DISPLAY_MODE` is assigned wire_id 36, continuing after `FB_VOLUME` (35)
-- `DISPLAY_MODE` is assigned wire_id 36, continuing after the feedback reservations 33 to 35 recorded in plans/23-feedback-outputs.md
+- `DISPLAY_MODE` is assigned wire_id 36, continuing after the feedback reservations 33 to 35 recorded in plans/implemented/23-feedback-outputs.md
   from PR 30. The table row keeps the `FURBLE_NO_DISPLAY` guard. The
   `feat/21-dead-reckoning` branch provisionally used 36 for `GPS_EXTRAP`;
   this PR is ahead in the queue, so `DISPLAY_MODE` keeps 36 and
@@ -1403,7 +1403,7 @@ allocation and Bluetooth time slices are adjusted down.
    hard precondition, not advice.
 3. **Keep the existing connection parameters.** They are already coexistence
    friendly and nothing in this document should change them. If
-   `plans/10-adaptive-conn-params.md` lands and shortens the interval while
+   `plans/implemented/10-adaptive-conn-params.md` lands and shortens the interval while
    shooting, re-run the latency test with WiFi up before accepting it.
 4. **`esp_wifi_set_ps(WIFI_PS_MIN_MODEM)`.** Station sleeps between DTIM
    beacons, which is radio time returned to BLE.

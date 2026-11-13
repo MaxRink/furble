@@ -596,7 +596,7 @@ overrides unchanged.
 - plans/implemented/75-false-connected.md: the fix-design section no longer claims that
   01 00 on GEOTAG_UPDATE is never registration confirmation; it points at the
   implemented #239 deviation.
-- plans/76-reconnect-stuck.md: the diagnosis-era statement that the PR #93
+- plans/implemented/76-reconnect-stuck.md: the diagnosis-era statement that the PR #93
   gate "was not merged and must not be depended on" carries an update note:
   the gate merged as #232 and the geotag acceptance followed in #239.
 - plans/95-engineering-lessons.md: the golden capture bullet now records the

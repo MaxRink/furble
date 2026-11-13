@@ -947,7 +947,7 @@ indicators at the restored top and bottom scroll endpoints.
   value clamps at render time. `bughunt/stickc-connected-large-imu.txt` covers
   the IMU-gated Connected page at that clamped size. The issue can close.
 - **#281** is the remaining upstream content-parity work for About, GPS, and
-  Connected; it is tracked in [291](291-ui-upstream-layout-parity.md).
+  Connected; it is tracked in [291](implemented/291-ui-upstream-layout-parity.md).
 - **#283** is a crash tracker, not a layout item; plan 173 carries the
   diagnostic state.
 

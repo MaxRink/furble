@@ -401,7 +401,7 @@ Estimates are not measurements unless the label says `measured-local`.
   Compare the frame count and EXIF spacing, report the battery delta, then
   repeat with the camera powered off for one interval to test the reconnect
   policy.
-- Citation: `plans/19-interval-deep-sleep.md`; M5PM1 manual V1.9 `SYS_CMD`
+- Citation: `plans/implemented/19-interval-deep-sleep.md`; M5PM1 manual V1.9 `SYS_CMD`
   `0x0C` value `0xA1`; M5Stack StickS3 product page power table.
 
 #### PM-02 StickS3: characterize the PM1 L1 and L2 states
@@ -494,7 +494,7 @@ Estimates are not measurements unless the label says `measured-local`.
 - Required test: enter console display mode, confirm the LED is dark and the
   panel is asleep, exit, confirm the LED returns. Measure the LED branch
   current if the schematic is available.
-- Citation: M5PM1 manual V1.9 `PWR_CFG` `0x06` bit 4; `plans/71-ui-bug-batch.md`.
+- Citation: M5PM1 manual V1.9 `PWR_CFG` `0x06` bit 4; `plans/implemented/71-ui-bug-batch.md`.
 
 #### PM-06 Core: hold the IP5306 boost on for low-current states
 
@@ -612,7 +612,7 @@ Estimates are not measurements unless the label says `measured-local`.
 - Required test: 5 minutes deep sleep, timer wake, current, panel state, and
   reconnect; then a 1 hour interval run on StickC Plus and Core2.
 - Citation: ESP32 Series Datasheet (deep sleep 10 uA); AXP192 datasheet
-  electrical characteristics; `plans/19-interval-deep-sleep.md`.
+  electrical characteristics; `plans/implemented/19-interval-deep-sleep.md`.
 
 #### PM-11 Plus2: verify the off path before auto-off
 
@@ -664,7 +664,7 @@ Estimates are not measurements unless the label says `measured-local`.
 - Required test: 1 hour with a live fix, log fix age and NMEA gaps at 5, 10,
   15, and 60 s duty; compare battery drain; verify a geotag write on each
   vendor path that supports GPS.
-- Citation: `plans/00-hardware-experiments.md` Experiment B; `plans/15-gps-power.md`;
+- Citation: `plans/00-hardware-experiments.md` Experiment B; `plans/implemented/15-gps-power.md`;
   M5Stack Unit GPS v1.1 (31.64 mA at 5 V); AT6558 datasheet (23 mA tracking,
   below 10 uA standby); CASIC `$PCAS12` command.
 
@@ -1002,7 +1002,7 @@ Estimates are not measurements unless the label says `measured-local`.
 - Effort: small.
 - Required test: 30 minute connected idle at stock and at the idle parameters,
   same camera and screen state, analyzer plus `power log` on a bench build.
-- Citation: `plans/10-adaptive-conn-params.md`;
+- Citation: `plans/implemented/10-adaptive-conn-params.md`;
   `plans/98-power-optimization-audit.md`.
 
 #### PL-03 AXP192 boards: scope the display APB lock
@@ -1168,7 +1168,7 @@ Estimates are not measurements unless the label says `measured-local`.
 - Effort: small for TX power, medium for 2M PHY.
 - Required test: 1 hour connected idle and 100 shutter presses at P9, P6, and
   P3; range check at the intended distance; 2M PHY vendor matrix.
-- Citation: `plans/11-adaptive-tx-power.md`; ESP32-S3 datasheet radio current.
+- Citation: `plans/implemented/11-adaptive-tx-power.md`; ESP32-S3 datasheet radio current.
 
 #### PL-10 All boards: the charging `NO_LIGHT_SLEEP` lock
 
@@ -1632,14 +1632,14 @@ Open questions that block a default change:
   (crystal and GPS experiments). The 3.3 mA StickS3 floor is cited from this
   plan by other documents, but its drain row is not present here.
 - `plans/implemented/06-power-module.md`, `plans/implemented/07-ble-sleep.md`,
-  `plans/implemented/08-scan-tuning.md`, `plans/10-adaptive-conn-params.md`,
-  `plans/11-adaptive-tx-power.md`, `plans/implemented/12-display-off.md`,
-  `plans/implemented/13-auto-off-low-batt.md`, `plans/15-gps-power.md`,
-  `plans/19-interval-deep-sleep.md`, `plans/implemented/26-pm1-watchdog.md`,
+  `plans/implemented/08-scan-tuning.md`, `plans/implemented/10-adaptive-conn-params.md`,
+  `plans/implemented/11-adaptive-tx-power.md`, `plans/implemented/12-display-off.md`,
+  `plans/implemented/13-auto-off-low-batt.md`, `plans/implemented/15-gps-power.md`,
+  `plans/implemented/19-interval-deep-sleep.md`, `plans/implemented/26-pm1-watchdog.md`,
   `plans/implemented/42-waveshare-eth-node.md`, `plans/63-sim-power-analysis.md`,
   `plans/implemented/77-battery-saver-profile.md`,
   `plans/95-engineering-lessons.md`, `plans/98-power-optimization-audit.md`,
-  `plans/98b-power-followup.md`, `plans/111-power-recommendations.md`,
+  `plans/implemented/98b-power-followup.md`, `plans/111-power-recommendations.md`,
   `plans/implemented/143-pm1-watchdog-window.md`.
 - `tools/power-model/board-currents.yaml` and `tools/power-model/README.md`.
 - `src/FurblePower.cpp`, `src/FurblePlatform.cpp`, `src/FurbleGPS.cpp`,
