@@ -1130,3 +1130,12 @@ probe failure was a symptom, not a reason to build unsanitized.
 `coverage.yml` now installs `libclang-rt-18-dev` and checks that the profile
 runtime exists before building. The pinned clang major and the floor are
 unchanged. `docs/coverage.md` lists the package for local runs.
+
+With the runtimes back, the run reached the profile check and found 17 host
+tests that wrote no raw profile, all `boundary-*`. `tests/host/CMakeLists.txt`
+gives each test its own `LLVM_PROFILE_FILE` in a loop over the tests already
+registered, and the boundary tests were added below that loop. The job had
+not run on master since September, so nothing noticed. The loop now sits last
+in the file and appends to each test's environment, so
+`boundary-companion-gatt` keeps its `FURBLE_SIM_PREFS`. A test fails if any
+`add_test` follows the loop.

@@ -2495,22 +2495,6 @@ target_include_directories(peer_contract_test PRIVATE
 target_link_libraries(peer_contract_test PRIVATE Threads::Threads)
 add_test(NAME peer-contract COMMAND peer_contract_test)
 
-# One raw profile per test, named after the test. ctest gives every test the
-# same environment, so without this every profile is named after the process id
-# alone and a test that wrote nothing cannot be told from a test that never ran.
-# tools/coverage.py checks these files and fails the run naming the test whose
-# profile is missing or empty. The dot before the process id is the separator
-# that check matches on: test names carry hyphens and one name is a hyphenated
-# prefix of another, so a hyphen there would let a longer name's profile stand
-# in for a shorter name that wrote nothing.
-if(FURBLE_COVERAGE AND FURBLE_PROFILE_DIR)
-  get_property(furble_test_names DIRECTORY PROPERTY TESTS)
-  foreach(furble_test_name IN LISTS furble_test_names)
-    set_tests_properties(${furble_test_name} PROPERTIES ENVIRONMENT
-                         "LLVM_PROFILE_FILE=${FURBLE_PROFILE_DIR}/${furble_test_name}.%p.profraw")
-  endforeach()
-endif()
-
 # Sim-first boundary conformance. Each target compiles the production driver or
 # service path unchanged and replaces only the lowest hardware boundary. These
 # are the linked-code evidence the flash-readiness manifest names for the
@@ -2721,4 +2705,22 @@ if(BUILD_TESTING)
                        "FURBLE_SIM_PREFS=${CMAKE_CURRENT_BINARY_DIR}/boundary-companion-prefs.bin")
   add_test(NAME boundary-webui-tls COMMAND boundary_webui_tls_test)
   add_test(NAME boundary-headless-service COMMAND boundary_headless_service_test)
+endif()
+
+# One raw profile per test, named after the test. Keep this block last: it
+# only reaches tests registered above it. ctest gives every test the
+# same environment, so without this every profile is named after the process id
+# alone and a test that wrote nothing cannot be told from a test that never ran.
+# tools/coverage.py checks these files and fails the run naming the test whose
+# profile is missing or empty. The dot before the process id is the separator
+# that check matches on: test names carry hyphens and one name is a hyphenated
+# prefix of another, so a hyphen there would let a longer name's profile stand
+# in for a shorter name that wrote nothing.
+if(FURBLE_COVERAGE AND FURBLE_PROFILE_DIR)
+  get_property(furble_test_names DIRECTORY PROPERTY TESTS)
+  foreach(furble_test_name IN LISTS furble_test_names)
+    # Append, so a test's own environment (FURBLE_SIM_PREFS, say) survives.
+    set_property(TEST ${furble_test_name} APPEND PROPERTY ENVIRONMENT
+                 "LLVM_PROFILE_FILE=${FURBLE_PROFILE_DIR}/${furble_test_name}.%p.profraw")
+  endforeach()
 endif()
