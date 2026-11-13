@@ -7,15 +7,12 @@
 #include <memory>
 
 #if defined(FURBLE_NO_DISPLAY)
-#include <M5Unified.h>
 #include <esp_timer.h>
 #endif
 
 #include "Device.h"
 #include "Scan.h"
 
-#include "FurbleBatteryStatus.h"
-#include "FurbleBoardCaps.h"
 #include "FurbleBootScreen.h"
 #include "FurbleBootTimeline.h"
 #include "FurbleCompanion.h"
@@ -53,38 +50,8 @@ namespace Furble {
 
 imu_mutex_t g_IMUMutex;
 
-// Device status for the companion service. The display build serves these from
-// the UI task, the headless build has no UI so it reads M5.Power directly and
-// reports an idle intervalometer.
-int32_t UI::getBatteryLevel(void) {
-  const auto &caps = Platform::getInstance().getBatteryCaps();
-  return BatteryStatus::level(caps.level, M5.Power.getBatteryLevel());
-}
-
-int16_t UI::getBatteryVoltage(void) {
-  const auto &caps = Platform::getInstance().getBatteryCaps();
-  return BatteryStatus::voltage(caps.voltage, M5.Power.getBatteryVoltage());
-}
-
-int32_t UI::getBatteryCurrent(void) {
-  const auto &caps = Platform::getInstance().getBatteryCaps();
-  return BatteryStatus::current(caps.current, M5.Power.getBatteryCurrent());
-}
-
-int16_t UI::getBatteryVBUSVoltage(void) {
-#if FURBLE_HAS_VBUS_SENSE
-  return BatteryStatus::vbus(true, M5.Power.getVBUSVoltage());
-#else
-  // The board exposes no software-readable VBUS/PoE telemetry.
-  return BatteryStatus::vbus(false, 0);
-#endif
-}
-
-bool UI::isBatteryCharging(void) {
-  const auto &caps = Platform::getInstance().getBatteryCaps();
-  return BatteryStatus::charging(caps.charging, static_cast<int>(M5.Power.isCharging()) == 1);
-}
-
+// Companion status for the intervalometer. The headless build has none, so it
+// reports idle. Battery status comes from Platform::getBatteryStatus().
 uint8_t UI::getIntervalometerState(void) {
   return 0;
 }
@@ -365,7 +332,7 @@ void UI::serviceRequests(void) {
         break;
 
       case Request::GPS_POWER:
-        M5.Power.setExtOutput(item.arg != 0, m5::ext_PA);
+        GPS::setRailPower(item.arg != 0);
         break;
 
       case Request::IR_RELOAD:

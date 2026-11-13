@@ -30,15 +30,9 @@
 namespace Furble {
 class UI {
  public:
-  // Device status for the companion service. The display build serves these
-  // from the UI task, the headless build reads M5.Power directly and has no
-  // intervalometer. Kept out of the FURBLE_CONSOLE gate below because the
+  // Intervalometer status for the companion service. The headless build has
+  // no intervalometer. Kept out of the FURBLE_CONSOLE gate below because the
   // companion service needs them whether or not the console is built in.
-  static int32_t getBatteryLevel(void);
-  static int16_t getBatteryVoltage(void);
-  static int32_t getBatteryCurrent(void);
-  static int16_t getBatteryVBUSVoltage(void);
-  static bool isBatteryCharging(void);
   static uint8_t getIntervalometerState(void);
   static uint16_t getIntervalometerRemaining(void);
   // Settings writes may notify the UI from shared console code. Headless
@@ -294,13 +288,6 @@ class UI {
 
   /** Number of intervalometer shots remaining for the companion status record. */
   static uint16_t getIntervalometerRemaining(void);
-
-  /** Battery readings shared with the companion status record. */
-  static int32_t getBatteryLevel(void);
-  static int16_t getBatteryVoltage(void);
-  static int32_t getBatteryCurrent(void);
-  static int16_t getBatteryVBUSVoltage(void);
-  static bool isBatteryCharging(void);
 
  private:
   typedef struct {

@@ -110,19 +110,6 @@ constexpr uint32_t ABSENT_IDLE_WAIT_MS = 60 * 1000;
 // gives up again, a couple of 1 Hz frames plus slack
 constexpr uint32_t DEGRADED_PROBE_MS = 6000;
 
-/**
- * Switch the Port A 5 V rail through the PMIC.
- *
- * The M5PM1 sleeps after an I2C idle period and the first access after that
- * only wakes it, so read the rail state back and retry once on mismatch.
- */
-void setRailPower(bool enable) {
-  M5.Power.setExtOutput(enable, m5::ext_PA);
-  if (M5.Power.getExtOutput() != enable) {
-    M5.Power.setExtOutput(enable, m5::ext_PA);
-  }
-}
-
 bool tickReached(uint32_t now, uint32_t target) {
   return static_cast<int32_t>(now - target) >= 0;
 }
@@ -2106,6 +2093,13 @@ void GPS::disable(void) {
 }
 
 /** Refresh the setting from NVS. */
+void GPS::setRailPower(bool enable) {
+  M5.Power.setExtOutput(enable, m5::ext_PA);
+  if (M5.Power.getExtOutput() != enable) {
+    M5.Power.setExtOutput(enable, m5::ext_PA);
+  }
+}
+
 void GPS::reloadSetting(void) {
   m_AidMode.store(Settings::load<Settings::GPS_ASSIST>());
   reloadLogSettings();

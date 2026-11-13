@@ -151,6 +151,15 @@ class GPS {
 
   static void init(void);
 
+  /**
+   * Switch the Port A 5 V rail that powers the GPS unit.
+   *
+   * The only place firmware drives that rail. The M5PM1 sleeps after an I2C
+   * idle period and the first access after that only wakes it, so the rail
+   * state is read back and the write retried once on a mismatch.
+   */
+  static void setRailPower(bool enable);
+
   void setIcon(lv_obj_t *icon);
   bool isEnabled(void) const;
   /** True when the motion detector is running. */

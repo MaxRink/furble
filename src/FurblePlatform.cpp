@@ -9,6 +9,7 @@
 
 #include <M5PM1.h>
 
+#include "FurbleBatteryStatus.h"
 #include "FurbleBoardCaps.h"
 #include "FurbleBootTimeline.h"
 #include "FurbleControl.h"
@@ -979,6 +980,23 @@ Platform::battery_sample_t Platform::sampleBattery(void) {
 Platform::battery_sample_t Platform::getBatterySample(void) const {
   const std::lock_guard<std::mutex> guard(m_BatteryMutex);
   return m_BatterySample;
+}
+
+Platform::battery_status_t Platform::getBatteryStatus(void) {
+  const auto caps = getBatteryCaps();
+  const bool battery = caps.level || caps.voltage || caps.current || caps.charging;
+  battery_status_t status = {};
+  status.level = BatteryStatus::level(battery, M5.Power.getBatteryLevel());
+  status.voltage = BatteryStatus::voltage(battery, M5.Power.getBatteryVoltage());
+  status.current = BatteryStatus::current(battery, M5.Power.getBatteryCurrent());
+  status.charging = BatteryStatus::charging(battery, static_cast<int>(M5.Power.isCharging()) == 1);
+#if FURBLE_HAS_VBUS_SENSE
+  status.vbus = BatteryStatus::vbus(true, M5.Power.getVBUSVoltage());
+#else
+  // The board exposes no software-readable VBUS/PoE telemetry.
+  status.vbus = BatteryStatus::vbus(false, 0);
+#endif
+  return status;
 }
 
 void Platform::update(void) {

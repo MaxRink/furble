@@ -355,6 +355,13 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   `UI::doPowerOff`: watchdog off, intervalometer quiesced with a proper shutter
   release, disconnect, then `Platform::powerOff`, which reports failure so the
   UI can resume.
+- The companion status battery fields come only from
+  `Platform::getBatteryStatus()`, in display and headless builds alike. A
+  board without a battery backend reports every field as unknown; VBUS
+  follows `FURBLE_HAS_VBUS_SENSE`. Do not read `M5.Power` for status elsewhere.
+- `GPS::setRailPower()` is the only code that switches the GPS Port A rail.
+  The console `gps power` request goes through it too, so every switch gets
+  the M5PM1 readback and single retry.
 - Under `FURBLE_SIM`, battery policy is exercised through the deterministic
   `Furble::Sim::battery_reading_t` seam. Keep `Platform::readBattery()` as the
   production boundary; scenario seeds/actions may replace its sample and

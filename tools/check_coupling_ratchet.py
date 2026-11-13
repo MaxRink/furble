@@ -20,8 +20,10 @@ manifest is regenerated, so every reduction is locked in. Regenerate with
 
 `include/FurbleBoardCaps.h` is where board identity is turned into capability
 macros, so it is the one file allowed to name boards without a ratchet entry.
-Its macros are always 0 or 1, so a file that tests one with `#ifdef` or
-`defined()`, or uses one without including the header directly, fails.
+`src/FurblePlatform.cpp` is the M5Unified adapter, so its `M5.` calls and
+board switches are not counted. Capability macros are always 0 or 1, so a
+file that tests one with `#ifdef` or `defined()`, or uses one without
+including the header directly, fails.
 """
 
 from __future__ import annotations
@@ -40,6 +42,9 @@ HEADER_ROOTS = (Path("include"), Path("lib/furble"))
 SOURCE_SUFFIXES = {".c", ".cc", ".cpp", ".h", ".hh", ".hpp"}
 HEADER_SUFFIXES = {".h", ".hh", ".hpp"}
 BOARD_CAPS_HEADER = "include/FurbleBoardCaps.h"
+# The Platform adapter is where M5Unified calls belong, so moving a call into
+# it must never fail the ratchet.
+PLATFORM_ADAPTER = "src/FurblePlatform.cpp"
 
 BOARD_MACROS = (
     "FURBLE_M5STICKC",
@@ -99,8 +104,9 @@ def count(root: Path) -> dict[str, dict[str, int]]:
     text = strip_comments(path.read_text(encoding="utf-8", errors="replace"))
     if name != BOARD_CAPS_HEADER:
       record("board_guards", name, len(BOARD_GUARD.findall(text)))
-    record("m5_calls", name, len(M5_CALL.findall(text)))
-    record("m5_get_board", name, len(M5_GET_BOARD.findall(text)))
+    if name != PLATFORM_ADAPTER:
+      record("m5_calls", name, len(M5_CALL.findall(text)))
+      record("m5_get_board", name, len(M5_GET_BOARD.findall(text)))
 
   for path in files_under(root, HEADER_ROOTS, HEADER_SUFFIXES):
     name = path.relative_to(root).as_posix()

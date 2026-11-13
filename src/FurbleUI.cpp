@@ -7650,26 +7650,6 @@ uint16_t UI::getIntervalometerRemaining(void) {
   return m_IntervalometerRemaining.load();
 }
 
-int32_t UI::getBatteryLevel(void) {
-  return M5.Power.getBatteryLevel();
-}
-
-int16_t UI::getBatteryVoltage(void) {
-  return M5.Power.getBatteryVoltage();
-}
-
-int32_t UI::getBatteryCurrent(void) {
-  return M5.Power.getBatteryCurrent();
-}
-
-int16_t UI::getBatteryVBUSVoltage(void) {
-  return M5.Power.getVBUSVoltage();
-}
-
-bool UI::isBatteryCharging(void) {
-  return static_cast<int>(M5.Power.isCharging()) == 1;
-}
-
 void UI::intervalometer(lv_timer_t *timer) {
   FURBLE_SIM_TIMER_FIRE("intervalometer_timer");
   auto &control = Control::getInstance();
@@ -8416,7 +8396,7 @@ void UI::serviceRequests(void) {
         break;
 
       case Request::GPS_POWER:
-        M5.Power.setExtOutput(item.arg != 0, m5::ext_PA);
+        GPS::setRailPower(item.arg != 0);
         break;
 
       case Request::IR_RELOAD:

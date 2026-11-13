@@ -135,6 +135,12 @@ uint32_t Platform::tick(void) const {
 
 void Platform::watchdogFeed(void) {}
 
+Platform::battery_status_t Platform::getBatteryStatus(void) {
+  const std::lock_guard<std::mutex> lock(g_BatteryMutex);
+  return {g_Battery.level, g_Battery.voltage, g_Battery.current, g_Battery.vbus,
+          g_Battery.charging};
+}
+
 Power &Power::getInstance() {
   static Power instance;
   return instance;
@@ -182,31 +188,6 @@ std::vector<Host::UIRequest> Host::takeUIRequests(void) {
 void Host::setUIRequestsAccepted(bool accepted) {
   const std::lock_guard<std::mutex> lock(g_RequestMutex);
   g_RequestsAccepted = accepted;
-}
-
-int32_t UI::getBatteryLevel(void) {
-  const std::lock_guard<std::mutex> lock(g_BatteryMutex);
-  return g_Battery.level;
-}
-
-int16_t UI::getBatteryVoltage(void) {
-  const std::lock_guard<std::mutex> lock(g_BatteryMutex);
-  return g_Battery.voltage;
-}
-
-int32_t UI::getBatteryCurrent(void) {
-  const std::lock_guard<std::mutex> lock(g_BatteryMutex);
-  return g_Battery.current;
-}
-
-int16_t UI::getBatteryVBUSVoltage(void) {
-  const std::lock_guard<std::mutex> lock(g_BatteryMutex);
-  return g_Battery.vbus;
-}
-
-bool UI::isBatteryCharging(void) {
-  const std::lock_guard<std::mutex> lock(g_BatteryMutex);
-  return g_Battery.charging;
 }
 
 uint8_t UI::getIntervalometerState(void) {

@@ -276,3 +276,26 @@ board environment, SDK dependency, or hardware test is claimed.
   which already falls back to `CONFIG_IDF_TARGET_ESP32S3`.
 - `FURBLE_NO_DISPLAY` and `FURBLE_ETHERNET` were already capability flags and
   are unchanged. No `FURBLE_HAS_DISPLAY` alias was added.
+
+### Battery and GPS rail routing (port stack step 3)
+
+- `Platform::getBatteryStatus()` is the one source of the companion status
+  battery fields. It replaces `UI::getBattery*()`, which had a display
+  implementation in `FurbleUI.cpp` and a headless one in `main.cpp`.
+- Behavior is unchanged on every shipped image. Display boards always have a
+  battery backend, so they still report the raw M5Unified readings. The
+  headless images resolve to an unknown board, whose battery capabilities are
+  all false, so they still report every field as unknown. The rule is now
+  stated once: no battery backend means unknown. VBUS follows
+  `FURBLE_HAS_VBUS_SENSE`, which is 0 only on the Waveshare board, as before.
+- `GPS::setRailPower()` is the only code that switches the GPS rail. The UI
+  and headless `GPS_POWER` request handlers called `M5.Power.setExtOutput()`
+  directly. Deviation: that console path now also gets the readback and one
+  retry that every other rail switch already had, which is the documented
+  M5PM1 first-access trap.
+- The simulator `Platform::getBatteryStatus()` has the same body, gated by the
+  modelled gauge capabilities. The companion host doubles moved from
+  `UI::getBattery*()` to `Platform::getBatteryStatus()`.
+- The ratchet no longer counts `src/FurblePlatform.cpp`: it is the M5Unified
+  adapter, and moving a call into it must not fail the gate. Outside
+  Platform, `M5.` uses fell from 160 to 148 and `main.cpp` has none left.

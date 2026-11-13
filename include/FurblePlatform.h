@@ -47,6 +47,21 @@ class Platform {
     bool charging;
   } battery_t;
 
+  /**
+   * Battery status for the companion status record.
+   *
+   * Fields hold the FurbleBatteryStatus.h values: a measurement this board
+   * cannot read is -1 for level and voltage, 0 for current and VBUS, and
+   * false for charging.
+   */
+  typedef struct {
+    int32_t level;    // percent
+    int16_t voltage;  // millivolts
+    int32_t current;  // milliamps, positive when charging
+    int16_t vbus;     // millivolts, 0 when not readable
+    bool charging;
+  } battery_status_t;
+
   /** Battery sample with the shared UI and console EWMA values. */
   typedef struct {
     battery_t battery;
@@ -275,6 +290,16 @@ class Platform {
 
   /** Get the most recent battery sample without touching the hardware. */
   battery_sample_t getBatterySample(void) const;
+
+  /**
+   * Read the battery status reported to the companion app.
+   *
+   * A board with a battery backend reports the raw M5Unified readings. A
+   * board without one, the headless profiles, reports every field as
+   * unknown, so a fallback reading is never claimed as a battery. VBUS is
+   * reported where the board can sense it.
+   */
+  battery_status_t getBatteryStatus(void);
 
   /**
    * Get the battery capacity in mAh, zero if unknown.

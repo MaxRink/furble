@@ -53,18 +53,15 @@
     "src/FurbleIMUMotionBMI270.cpp": 5,
     "src/FurbleIMUMotionMPU6886.cpp": 5,
     "src/FurbleIR.cpp": 1,
-    "src/FurblePlatform.cpp": 44,
     "src/FurbleSD.cpp": 8,
     "src/FurbleTimeKeeper.cpp": 5,
-    "src/FurbleUI.cpp": 93,
-    "src/FurbleUIGesture.cpp": 4,
-    "src/main.cpp": 6
+    "src/FurbleUI.cpp": 87,
+    "src/FurbleUIGesture.cpp": 4
   },
   "m5_get_board": {
     "src/FurbleBootScreen.cpp": 1,
     "src/FurbleFeedback.cpp": 1,
     "src/FurbleIR.cpp": 1,
-    "src/FurblePlatform.cpp": 15,
     "src/FurbleSD.cpp": 1,
     "src/FurbleTimeKeeper.cpp": 1,
     "src/FurbleUI.cpp": 11

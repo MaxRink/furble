@@ -98,10 +98,6 @@ void Platform::restart() {}
 
 void Platform::wakeM5PM1() {}
 
-Platform::battery_caps_t Platform::getBatteryCaps() const {
-  return {};
-}
-
 void BootScreen::begin(uint8_t) {
   record("boot.begin");
 }
@@ -343,6 +339,8 @@ void GPS::update() {
 void GPS::reloadSetting() {
   HeadlessState::gpsReloads++;
 }
+
+void GPS::setRailPower(bool) {}
 
 void WiFi::init() {
   HeadlessState::wifiInit++;
