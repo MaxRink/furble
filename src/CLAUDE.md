@@ -48,6 +48,10 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   strict rolling-window maximum is eight per day. Only a known battery-backed
   RTC may suppress those checkpoints. Keep every restart and power-off path on the
   shared flush helper and never add per-tick NVS writes.
+  A copy of the same record in `RTC_NOINIT_ATTR` memory keeps the running
+  system clock across soft resets on boards without an RTC chip. Rewrite it on
+  every accepted sample, anchored where the system clock was set; never seed
+  the system clock from NVS after a reset that kept it (plan 139).
 - The StickS3 M5PM1 watchdog is armed for 45 seconds through the shared
   `Watchdog` constants. Keep `watchdogFeed()` at its one second cadence and
   preserve verified disarm and readback before flash or power-off paths.

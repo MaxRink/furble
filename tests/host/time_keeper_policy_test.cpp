@@ -82,5 +82,43 @@ int main() {
   TimeSample unknown = nvs;
   unknown.source = static_cast<TimeSource>(255);
   CHECK(!valid(unknown));
+
+  // A soft reset trusts the running system clock. Two hours at 100 ppm add
+  // 720 ms, plus the fixed one-second hand-off bound. The source is kept.
+  std::array<uint8_t, RECORD_BYTES> retained = {};
+  CHECK(encode(gps, retained.data(), retained.size()) == RECORD_BYTES);
+  constexpr uint64_t twoHoursUs = 2ULL * 60ULL * 60ULL * 1000000ULL;
+  TimeSample kept = {};
+  CHECK(restoreRetained(retained.data(), retained.size(), gps.epoch_us + twoHoursUs, kept));
+  CHECK(kept.epoch_us == gps.epoch_us + twoHoursUs);
+  CHECK(kept.uncertainty_ms == gps.uncertainty_ms + 720 + SOFT_RESET_UNCERTAINTY_MS);
+  CHECK(kept.source == TimeSource::GPS);
+  CHECK(kept.monotonic_ms == 0);
+  // No elapsed time still pays the hand-off bound.
+  CHECK(restoreRetained(retained.data(), retained.size(), gps.epoch_us, kept));
+  CHECK(kept.uncertainty_ms == gps.uncertainty_ms + SOFT_RESET_UNCERTAINTY_MS);
+
+  // Fail closed: a clock behind the record, a wrong length, a corrupted
+  // record and an elapsed time past the uncertainty ceiling.
+  const TimeSample untouched = kept;
+  CHECK(!restoreRetained(retained.data(), retained.size(), gps.epoch_us - 1, kept));
+  CHECK(!restoreRetained(retained.data(), retained.size(), 0, kept));
+  CHECK(!restoreRetained(retained.data(), retained.size() - 1, gps.epoch_us, kept));
+  CHECK(!restoreRetained(nullptr, retained.size(), gps.epoch_us, kept));
+  for (size_t byte = 0; byte < retained.size(); byte++) {
+    std::array<uint8_t, RECORD_BYTES> corrupted = retained;
+    corrupted[byte] ^= 0x10;
+    CHECK(!restoreRetained(corrupted.data(), corrupted.size(), gps.epoch_us, kept));
+  }
+  std::array<uint8_t, RECORD_BYTES> erased = {};
+  CHECK(!restoreRetained(erased.data(), erased.size(), gps.epoch_us, kept));
+  // 7 days at 100 ppm needs about 192 years of elapsed time. A clock that far
+  // ahead is past MAX_EPOCH_SECONDS, so the restored sample is invalid too.
+  CHECK(!restoreRetained(retained.data(), retained.size(), MAX_EPOCH_SECONDS * 1000000ULL, kept));
+  TimeSample loose = gps;
+  loose.uncertainty_ms = MAX_UNCERTAINTY_MS - 500;
+  CHECK(encode(loose, retained.data(), retained.size()) == RECORD_BYTES);
+  CHECK(!restoreRetained(retained.data(), retained.size(), gps.epoch_us, kept));
+  CHECK(kept.epoch_us == untouched.epoch_us && kept.uncertainty_ms == untouched.uncertainty_ms);
   return 0;
 }

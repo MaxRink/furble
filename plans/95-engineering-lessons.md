@@ -51,6 +51,14 @@ The root CLAUDE.md lists the short form of these. The detail lives here.
   invalidate and redraw. Icons are compressed and cost a 12.3 KB decompress per
   64x64 draw unless the image cache covers them. Diagnosis tools are
   `CONFIG_LV_USE_REFR_DEBUG` and the console-gated invalidation logger.
+- The ESP system clock survives soft resets. With `RTC_HRT` time keeping the
+  RTC timer keeps `gettimeofday()` running through `esp_restart()`, panics,
+  watchdog and USB resets; only power-on loses it. Never seed the system clock
+  from an older checkpoint after such a reset. TimeKeeper keeps its last
+  accepted sample in `RTC_NOINIT_ATTR` memory and trusts the running clock
+  when the reset reason and the record CRC allow it. M5Unified overwrites the
+  system clock from an RTC chip inside `M5.begin()`, so on those boards the
+  pre-reset clock is already gone by `TimeKeeper::init()` (plan 139).
 
 ## USB and flashing
 

@@ -1,16 +1,35 @@
 #include "FurbleTimeKeeper.h"
 
 #include <array>
+#include <cstring>
 #include <ctime>
 #include <mutex>
 
 #include <M5Unified.h>
 #include <esp_log.h>
+#include <esp_system.h>
 #include <esp_timer.h>
 #include <sys/time.h>
+#if !defined(FURBLE_SIM)
+#include <esp_attr.h>
+#endif
 
 #include "FurbleTypes.h"
 #include "Preferences.h"
+
+#if defined(FURBLE_SIM)
+// The simulator has no system wall clock. Host tests override these weak
+// hooks to model the RTC timer across a soft reset.
+extern "C" __attribute__((weak)) uint64_t furble_sim_system_time_us(void) {
+  return 0;
+}
+extern "C" __attribute__((weak)) void furble_sim_set_system_time_us(uint64_t epochUs) {
+  (void)epochUs;
+}
+#define FURBLE_TIME_RETAINED
+#else
+#define FURBLE_TIME_RETAINED RTC_NOINIT_ATTR
+#endif
 
 namespace Furble {
 namespace {
@@ -35,6 +54,9 @@ bool g_LastNvsWriteValid = false;
 uint64_t g_LastNvsWriteMonotonicMs = 0;
 bool g_LastRtcWriteValid = false;
 uint64_t g_LastRtcWriteMonotonicMs = 0;
+// The last accepted sample, kept in RTC memory so a soft reset can trust the
+// still-running system clock. It costs no NVS write.
+FURBLE_TIME_RETAINED uint8_t g_Retained[TimeKeeperPolicy::RECORD_BYTES];
 
 uint64_t monotonicMs(void) {
   return static_cast<uint64_t>(esp_timer_get_time()) / 1000ULL;
@@ -59,8 +81,51 @@ void setSystemTime(uint64_t epochUs) {
   };
   (void)settimeofday(&value, nullptr);
 #else
-  (void)epochUs;
+  furble_sim_set_system_time_us(epochUs);
 #endif
+}
+
+uint64_t systemTimeUs(void) {
+#if !defined(FURBLE_SIM)
+  timeval value = {};
+  if (gettimeofday(&value, nullptr) != 0 || value.tv_sec < 0) {
+    return 0;
+  }
+  return static_cast<uint64_t>(value.tv_sec) * 1000000ULL + static_cast<uint64_t>(value.tv_usec);
+#else
+  return furble_sim_system_time_us();
+#endif
+}
+
+// The RTC timer keeps counting through these resets, so the system clock is
+// still the one TimeKeeper set. Power-on, brownout, power glitch and unknown
+// resets fail closed to the RTC chip or NVS path.
+bool clockSurvivedReset(void) {
+  switch (esp_reset_reason()) {
+    case ESP_RST_SW:
+    case ESP_RST_PANIC:
+    case ESP_RST_INT_WDT:
+    case ESP_RST_TASK_WDT:
+    case ESP_RST_WDT:
+    case ESP_RST_DEEPSLEEP:
+    case ESP_RST_USB:
+    case ESP_RST_JTAG:
+    case ESP_RST_CPU_LOCKUP:
+      return true;
+    default:
+      return false;
+  }
+}
+
+// Anchor the record where the system clock was set to g_Current. Call it
+// with the same monotonic time that setSystemTime() used.
+void retainCurrent(uint64_t monotonic_ms) {
+  TimeSample anchored = g_Current;
+  anchored.epoch_us = TimeKeeperPolicy::predictedEpochUs(g_Current, monotonic_ms);
+  anchored.uncertainty_ms = TimeKeeperPolicy::predictedUncertaintyMs(g_Current, monotonic_ms);
+  if (!g_HasCurrent || TimeKeeperPolicy::encode(anchored, g_Retained, sizeof(g_Retained)) == 0) {
+    std::memset(g_Retained, 0, sizeof(g_Retained));
+  }
 }
 
 bool readRtc(TimeSample &sample) {
@@ -217,21 +282,34 @@ void TimeKeeper::init(void) {
 
   TimeSample rtc = {};
   const bool hasRtc = readRtc(rtc);
-  if (hasRtc) {
+  // M5.begin() has already loaded an RTC chip into the system clock, so only
+  // a board without one still holds the clock TimeKeeper set before reset.
+  TimeSample retained = {};
+  const uint64_t now = monotonicMs();
+  const bool kept = !g_RtcAvailable && clockSurvivedReset()
+                    && TimeKeeperPolicy::restoreRetained(g_Retained, sizeof(g_Retained),
+                                                         systemTimeUs(), retained);
+  if (kept) {
+    // The system clock already holds this value. Do not set it again.
+    retained.monotonic_ms = now;
+    g_Current = retained;
+    g_HasCurrent = true;
+  } else if (hasRtc) {
     g_Current = rtc;
     g_HasCurrent = true;
-    setSystemTime(TimeKeeperPolicy::predictedEpochUs(g_Current, monotonicMs()));
+    setSystemTime(TimeKeeperPolicy::predictedEpochUs(g_Current, now));
   } else if (g_HasPersisted) {
     g_Current = persisted;
     g_HasCurrent = true;
-    setSystemTime(TimeKeeperPolicy::predictedEpochUs(g_Current, monotonicMs()));
+    setSystemTime(TimeKeeperPolicy::predictedEpochUs(g_Current, now));
   }
+  retainCurrent(now);
 
   g_Initialized = true;
-  ESP_LOGI(LOG_TAG, "wall clock: valid=%s rtc=%s battery_backed=%s source=%u",
+  ESP_LOGI(LOG_TAG, "wall clock: valid=%s rtc=%s battery_backed=%s source=%u kept=%s",
            g_HasCurrent ? "true" : "false", g_RtcAvailable ? "true" : "false",
            g_RtcBatteryBacked ? "true" : "false",
-           g_HasCurrent ? static_cast<unsigned>(g_Current.source) : 0U);
+           g_HasCurrent ? static_cast<unsigned>(g_Current.source) : 0U, kept ? "true" : "false");
   (void)keeper;
 }
 
@@ -248,6 +326,7 @@ bool TimeKeeper::update(TimeSource source, uint64_t epochUs, uint32_t uncertaint
   g_Current = candidate;
   g_HasCurrent = true;
   setSystemTime(epochUs);
+  retainCurrent(candidate.monotonic_ms);
   writeRtc(epochUs, candidate.monotonic_ms, false);
   if (persist) {
     (void)savePersisted(candidate, false);
