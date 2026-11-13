@@ -310,3 +310,6 @@ same single timeout. `sim/scripts/run-boundary-conformance.sh`: 18 of 18.
 StickS3 simulator, 22 hardware-profile scenarios (battery policy, power
 button, motion wake, GPS rail standby and wake, intervalometer timed wake):
 22 pass. Coupling ratchet, portability contract and doc tokens: clean.
+`python3 tools/pre_review.py --base origin/master` on hal-2: 9 of 9 gates
+pass. The core2, headless and waveshare build pairs were paused again to
+reduce host load and remain open.
