@@ -22,6 +22,8 @@ endif()
 if(FURBLE_COVERAGE)
   add_compile_options(-fprofile-instr-generate -fcoverage-mapping)
   add_link_options(-fprofile-instr-generate)
+  # A test that leaves through std::_Exit flushes its profile under this.
+  add_compile_definitions(FURBLE_HOST_COVERAGE=1)
 endif()
 
 # Where each test writes its raw profile. tools/coverage.py passes the directory

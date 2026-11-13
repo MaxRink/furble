@@ -1139,3 +1139,10 @@ not run on master since September, so nothing noticed. The loop now sits last
 in the file and appends to each test's environment, so
 `boundary-companion-gatt` keeps its `FURBLE_SIM_PREFS`. A test fails if any
 `add_test` follows the loop.
+
+The next run left one test, `boundary-headless-service`, with an empty raw
+profile. It runs the production `app_main` and must leave from inside the
+never-returning service loop, so it calls `std::_Exit`, which skips the exit
+handler that writes the profile. Under coverage, CMake now defines
+`FURBLE_HOST_COVERAGE`, and the test calls `__llvm_profile_write_file()`
+before `std::_Exit`. A local coverage build writes a 41 KB profile for it.
