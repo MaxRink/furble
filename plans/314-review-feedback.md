@@ -224,3 +224,9 @@ branch `fix/stack-budget-review`.
 | # | Finding | Resolution | Evidence |
 | ---: | :--- | :--- | :--- |
 | 1 | #445 review: when SDL3 is not found, `build.sh` and `CMakeLists.txt` keep the SDL2-only link, which on sdl2-compat can bring back the blocking dialog. | Fixed. Without SDL3 the plain SDL2 link stays only for a real SDL2. If `libSDL2.dylib` resolves into sdl2-compat, `build.sh` exits 1 and the CMake configure fails, each naming `brew install sdl3`. Checked against fake sdl2-compat and real-SDL2 trees: compat fails in both paths, real SDL2 continues. | `sim/build.sh`, `sim/CMakeLists.txt` |
+
+## Follow-up (#440, `ci/core-debug-mandatory`)
+
+| # | Finding | Resolution | Evidence |
+| ---: | :--- | :--- | :--- |
+| 1 | #440 review: `CONTRIBUTING.md` and a `platformio.ini` comment still called `m5stack-core-debug` an opt-in profile after it became a mandatory CI lane. | Fixed. Both now name the OTA slot limit as the reason the profile omits the stack protector, without "opt-in". No other doc calls a Core debug profile opt-in. | `CONTRIBUTING.md`, `platformio.ini` |

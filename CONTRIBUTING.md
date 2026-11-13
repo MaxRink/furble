@@ -110,7 +110,7 @@ The S3 and Core2 release sdkconfigs disable the boot-time PSRAM memory test.
 Their debug environments merge `sdkconfig.spiram-memtest` back in, and the debug sdkconfig
 script accepts comma-separated fragments for any custom diagnostic profile.
 Every debug env merges `sdkconfig.debug` (end-of-stack watchpoint, heap
-tracing) and `sdkconfig.stack-protector`, except the opt-in
+tracing) and `sdkconfig.stack-protector`, except the
 `m5stack-core-debug` OTA profile, whose slot cannot hold the protector's
 24 KB. The 8 and 16 MB envs add
 `sdkconfig.coredump-flash`, which writes a core dump to the `coredump`
