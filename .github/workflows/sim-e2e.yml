@@ -176,6 +176,15 @@ jobs:
           SDL_AUDIODRIVER: dummy
         run: sh sim/scripts/check-preferences-lifecycle.sh
 
+      # Issue 283: an environment mutation that grows glibc's environ array
+      # while the SDL loop calls getenv is a use-after-free. The preload guard
+      # fails the run on any such setenv or unsetenv, from any caller.
+      - name: Check environment mutations stay outside SDL (M5StickS3)
+        timeout-minutes: 5
+        env:
+          FURBLE_SIM_BIN: ${{ github.workspace }}/sim/build/furble-sim
+        run: sh sim/scripts/run-env-order.sh
+
       # The manifest selects the certified scenarios per board, so a scenario
       # scoped to one board needs no step of its own. stick-notouch-layout-135,
       # stick-notouch-layout-80 and core-notouch-layout are each certified for

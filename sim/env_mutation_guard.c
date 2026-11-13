@@ -38,15 +38,30 @@ static void resolve_symbols(void) {
   }
 }
 
+// "growth" rejects any mutation that can reallocate glibc's environ array while
+// SDL is live: adding a variable, or removing one. Replacing an existing value
+// only swaps one pointer in place, so it stays allowed. The SDL main loop calls
+// getenv thousands of times a second without a lock, and a growing setenv
+// frees the array that walk is reading (issue 283).
+static int growth_mode(void) {
+  return guard_target != NULL && strcmp(guard_target, "growth") == 0;
+}
+
 static void reject_after_sdl(const char *operation, const char *name) {
-  if (guard_target == NULL || name == NULL || strcmp(name, guard_target) != 0) {
+  if (guard_target == NULL || name == NULL) {
+    return;
+  }
+  if (growth_mode()) {
+    if (strcmp(operation, "setenv") == 0 && getenv(name) != NULL) {
+      return;
+    }
+  } else if (strcmp(name, guard_target) != 0) {
     return;
   }
   if (SDL_WasInit(0) == 0) {
     return;
   }
-  fprintf(stderr, "sim env guard: %s(%s) after SDL initialization\n", operation,
-          name == NULL ? "<null>" : name);
+  fprintf(stderr, "sim env guard: %s(%s) after SDL initialization\n", operation, name);
   _exit(86);
 }
 
@@ -54,11 +69,12 @@ __attribute__((constructor)) static void initialize_guard(void) {
   guard_target = getenv("FURBLE_SIM_ENV_GUARD_TARGET");
   if (guard_target == NULL
       || (strcmp(guard_target, "FURBLE_SIM_PREFS") != 0
-          && strcmp(guard_target, "FURBLE_SIM_RESTART_STEP") != 0)) {
+          && strcmp(guard_target, "FURBLE_SIM_RESTART_STEP") != 0 && !growth_mode())) {
     fprintf(stderr, "sim env guard: invalid FURBLE_SIM_ENV_GUARD_TARGET\n");
     _exit(127);
   }
   resolve_symbols();
+  fprintf(stderr, "sim env guard: armed %s\n", guard_target);
 }
 
 int setenv(const char *name, const char *value, int overwrite) {
