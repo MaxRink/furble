@@ -1,0 +1,74 @@
+# Issue #390: the WebUI on a fresh StickS3 with WiFi, BLE and the companion.
+#
+# The boot loop happened on a device with WiFi connected, Bluetooth up and the
+# companion available. This leg keeps that whole configuration and adds a
+# device that has never generated its TLS identity. WebUI::initEarly() creates
+# the identity before WiFi, the companion and the display take their share,
+# so no runtime identity task runs and nothing is charged after the radios.
+# The seeded pair is the measured post-#394 StickS3 heap with WebUI off,
+# WiFi connected, companion enabled and the display active. It is not the
+# derived board_heap.json bound, which omits the WiFi and NimBLE driver state.
+seed hw_profile sticks3
+seed heap_internal_free 27351
+seed heap_internal_largest 25588
+seed web_ui true
+seed webui_password true
+seed webui_identity_absent true
+seed wifi_connected true
+seed companion_enabled true
+seed fauxny true
+seed saved_camera true
+wait 1500
+
+assert companion.enabled yes
+assert webui.identity stored
+assert webui.supervisor created
+assert webui.server running
+assert webui.gate none
+assert webui.fail_closed no
+assert heap.free 15575
+assert heap.largest 13812
+assert heap.pressure normal
+assert heap.alloc_failures 0
+
+# A minute with the server up: one start, no retries, no growth.
+wait 60000
+assert webui.server running
+assert_max webui.attempts 1
+assert heap.free 15575
+assert heap.alloc_failures 0
+assert platform.watchdog armed
+
+# A BLE camera connect is the core path and is never refused. Its 4,464-byte
+# target task and the connected-page icons take the heap below the AMBER
+# floor, so the governor pauses the server instead of letting a later
+# allocation abort.
+home
+wait 300
+action connect
+assert-eventually-virtual 60000 ui.connected yes
+assert-eventually-virtual 10000 heap.pressure amber
+assert webui.server pending
+assert heap.alloc_failures 0
+print heap.free
+print heap.largest
+
+# Disconnecting returns the target task, but the connected-page icons stay in
+# the LVGL image cache. The pool stays below the 20,480 AMBER exit floor, the
+# cost of re-admitting the 8 KiB server, so the governor keeps HTTPS paused
+# rather than restart it into AMBER again. Only freed memory or a reboot
+# brings it back. This is the prediction hardware step 4 in plan 304 checks.
+action disconnect
+assert-eventually-virtual 10000 control.state idle
+wait 30000
+print heap.free
+print heap.largest
+assert heap.pressure amber
+assert webui.server pending
+assert_max webui.attempts 1
+assert heap.alloc_failures 0
+assert companion.enabled yes
+assert ui.page main
+assert platform.watchdog armed
+
+exit
