@@ -18,8 +18,9 @@ tested by a Lumix owner without changing the existing camera API.
 - connects without SMP pairing and writes the 16-byte MEI0 session-init
   payload;
 - identifies furble through the session device-name characteristic;
-- writes one-byte focus and shutter commands to the remote-control
-  characteristic;
+- writes one-byte shutter commands to the remote-control characteristic. LUMIX
+  has no focus opcode, so focus presses are ignored and the class reports no
+  focus capability;
 - writes the 16-byte GPS payload and optional 10-byte clock payload when those
   services are available; and
 - serialises the camera name, address, and address type for saved connections.
@@ -84,12 +85,13 @@ Rebase and verification, 2026-08-19:
 
 The simulator build was not run because this change adds no simulator-facing
 firmware module and therefore requires no shim or source-list change. The SDL
-sim does not compile the real vendor registry, so Lumix cannot be added as a
-selectable fake alongside FauxNY without new shim wiring, which is out of scope
-here.
+sim did not compile the real vendor registry at the time, so Lumix could not be
+added as a selectable fake alongside FauxNY. The simulator now runs the
+production CameraList, and `sim/scenarios/e2e/peer-lumix-write.txt` and
+`lumix-capability-gating.txt` cover Lumix.
 
-DECLARED UNTESTED: no Panasonic Lumix hardware is available. Merge is held for a
-human nod per project policy for other-vendor additions.
+DECLARED UNTESTED: no Panasonic Lumix hardware is available. Merged as #79
+(`604993b5`).
 
 ## Verification
 

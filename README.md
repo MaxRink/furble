@@ -128,6 +128,10 @@ The following devices have been tested and confirmed to work:
 - Sony
    - Sony ZV-1F
 
+Panasonic LUMIX support is implemented from public protocol traces of the S5II
+and BGH1. It is host and simulator tested only. No LUMIX body has been tested
+on hardware.
+
 ## Table of Features
 
 | Camera             | Scanning | Pairing | Shutter Release | Focus   | GPS     |
@@ -139,6 +143,7 @@ The following devices have been tested and confirmed to work:
 | Nikon (Remote)     | ✔️        | ✔️       | ✔️[^3]           | :x:[^2] | :x:[^2] |
 | Nikon (Smart)      | ✔️        | :x:     | :x:             | :x:     | :x:     |
 | Sony ZV            | ✔️        | ✔️       | ✔️               | ✔️       | ✔️       |
+| Panasonic LUMIX[^6] | ✔️       | ✔️       | ✔️               | :x:[^2] | ✔️       |
 
 [^1]: see [#99](https://github.com/gkoh/furble/discussions/99)
 [^2]: Non-existent
@@ -148,6 +153,8 @@ The supported shutter command performs an immediate capture with autofocus.
 [^5]: AF-only control is implemented from Camera Connect evidence (separate
 `00 03` AF on and `00 04` AF off writes) and awaits hardware validation. It is
 not manual lens focus.
+[^6]: Untested on hardware. Pairing is the LUMIX session registration, not SMP
+bonding.
 
 For contributor research across all implemented camera families, see the
 [camera protocol research library](docs/camera-research/README.md). It records

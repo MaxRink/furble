@@ -40,7 +40,7 @@ The following is every open `gkoh/furble` issue on 2026-11-05.
 | 201 | Any chance of getting the M5Tough made compatible | needs hardware | The M5Tough shares the Core2 image and `Platform` branches for `board_M5Tough` (`src/FurblePlatform.cpp:120`). `README.md:164` and `docs/supported-hardware.md:20` declare it untested. No M5Tough is available. |
 | 221 | Frequent disconnects during shutter operation with GFX100 | needs hardware | The fork carries the reconnect, liveness, and FujifilmBasic work mapped in plans 65 and 108. The upstream fix branch is unmerged and unevidenced. No GFX100 is available to confirm the regression is gone. |
 | 244 | Future enhancement to Timer operation for ASTRO/BULB | fixed | Bulb timer in `include/FurbleSettings.h:55`, 1/3-stop exposure presets in `src/FurbleUI.cpp:2804`, plans 35 and 67, and the simulator scenarios `sim/scenarios/e2e/bulb-timer.txt` and `sim/scenarios/e2e/exposure-preset.txt`. |
-| 247 | Support Panasonic Lumix | fixed | `lib/furble/Lumix.cpp`, the vendor dispatch in `lib/furble/CameraList.cpp:493`, host peer coverage in `tests/host/peer_contract_test.cpp`, the simulator scenarios `sim/scenarios/e2e/peer-lumix-write.txt` and `sim/scenarios/e2e/lumix-capability-gating.txt`, and plan 72. The implementation is host-tested only. No Lumix hardware is available. The README and `docs/supported-hardware.md` vendor lists still omit Lumix, which is a documentation follow-up, not a code gap. |
+| 247 | Support Panasonic Lumix | fixed | `lib/furble/Lumix.cpp`, the vendor dispatch in `lib/furble/CameraList.cpp:493`, host peer coverage in `tests/host/peer_contract_test.cpp`, the simulator scenarios `sim/scenarios/e2e/peer-lumix-write.txt` and `sim/scenarios/e2e/lumix-capability-gating.txt`, and plan 72. The implementation is host-tested only. No Lumix hardware is available. The README and `docs/supported-hardware.md` now list Lumix as untested on hardware. |
 | 248 | WIFI feature | fixed | WiFi, NTP, MQTT, and the authenticated HTTPS WebUI are present in the 8 MB and 16 MB profiles (`platformio.ini:48`, `src/FurbleMQTT.cpp`, `src/FurbleWebUI.cpp`). See `docs/webui.md` and `docs/settings-and-controls.md:309`. |
 | 249 | Board-Only support | fixed | The developer-only `esp32-s3-headless` profile builds `FURBLE_NO_DISPLAY` with the USB console and MQTT/WebUI (`platformio.ini:58`). Host coverage is `tests/host/headless_loop_policy_test.cpp`, `tests/host/headless_ui_contract_test.cpp`, and `tests/test_headless_source_contract.py`. |
 | 257 | Support for Nikon Z50II | missing | The README feature table marks Nikon Smart pairing as unsupported (`README.md:138`). Plans 60 and 65 record the Blowfish handshake and the Bluetooth Classic bond that the LE-only stack cannot complete. No code path can pair a Z50II in smart mode. |
@@ -88,9 +88,9 @@ Evidence:
 
 ## Documentation gaps and decisions
 
-- Lumix is implemented and host-peer tested but absent from the README vendor
-  list and `docs/supported-hardware.md`. That gap predates this branch and is
-  left for a focused docs change with the same untested qualifier.
+- Lumix is implemented and host-peer tested. The README vendor list and
+  feature table, `docs/supported-hardware.md` and the wiki hardware page now
+  list it as untested on hardware (2026-11-13).
 - Ricoh GR IV Monochrome and Canon PowerShot G5 X Mark II have upstream user
   reports only. They stay out of the confirmed lists until the fork has
   hardware evidence.
