@@ -9,7 +9,7 @@
 # Test: boundary-companion-gatt
 #
 # Expected production tokens:
-# companion.enable services=2 characteristics=9 task=1 stack=3072
+# companion.enable services=2 characteristics=9 task=1 stack=3840
 # companion.disable enabled=0 task_retained=1 gatt_retained=1
 # companion.restart enabled=1 bond=loaded task=retained gatt=retained
 # companion.restart second=1 task=retained gatt=retained
