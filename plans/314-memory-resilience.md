@@ -1146,3 +1146,10 @@ never-returning service loop, so it calls `std::_Exit`, which skips the exit
 handler that writes the profile. Under coverage, CMake now defines
 `FURBLE_HOST_COVERAGE`, and the test calls `__llvm_profile_write_file()`
 before `std::_Exit`. A local coverage build writes a 41 KB profile for it.
+
+The run after that merged no profiles: `boundary-sd-full` wrote a truncated
+one. The test simulates a full card with `RLIMIT_FSIZE` and set both the soft
+and the hard limit. An unprivileged process cannot raise a hard limit again,
+so its `(void)` restore failed silently and the profile written at exit was
+cut off. The test now lowers only the soft limit, restores the original pair
+and checks that the restore succeeds.
