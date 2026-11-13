@@ -23,6 +23,12 @@
     "smoke_iterations": 100,
     "full_iterations": 1000
   },
+  "gps_ubx": {
+    "smoke": [1, 2],
+    "full": [1, 2, 3, 7, 42, 99, 1000],
+    "smoke_iterations": 500,
+    "full_iterations": 5000
+  },
   "memory": {
     "smoke": [1, 2],
     "full": [1, 2, 3, 4, 7, 42, 99, 1000]
