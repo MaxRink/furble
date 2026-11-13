@@ -229,6 +229,7 @@ set(TIME_KEEPER_TEST_STUB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/time_keeper_stubs)
 add_executable(time_keeper_persistence_test
                time_keeper_persistence_test.cpp
                settings_nvs_stub.cpp
+               ${FURBLE_ROOT}/src/FurbleBoard.cpp
                ${FURBLE_ROOT}/src/FurbleTimeKeeper.cpp
                ${FURBLE_ROOT}/src/FurbleTimeKeeperPolicy.cpp
                ${FURBLE_ROOT}/lib/preferences/Preferences.cpp)
@@ -937,6 +938,7 @@ add_executable(settings_nvs_roundtrip_test
                settings_nvs_roundtrip_test.cpp
                settings_nvs_stub.cpp
                settings_platform_stub.cpp
+               ${FURBLE_ROOT}/src/FurbleBoard.cpp
                ${FURBLE_ROOT}/src/FurbleSettings.cpp
                ${FURBLE_ROOT}/src/FurbleNetworkSettings.cpp
                ${FURBLE_ROOT}/src/FurbleTimezone.cpp
@@ -2548,7 +2550,8 @@ endif()
 # approximate sim boundaries.
 set(BOUNDARY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/boundaries)
 set(BOUNDARY_SHIM_DIR ${BOUNDARY_DIR}/shims)
-set(BOUNDARY_SUPPORT ${BOUNDARY_DIR}/boundary_support.cpp ${BOUNDARY_DIR}/m5_stub.cpp)
+set(BOUNDARY_SUPPORT ${BOUNDARY_DIR}/boundary_support.cpp ${BOUNDARY_DIR}/m5_stub.cpp
+    ${FURBLE_ROOT}/src/FurbleBoard.cpp)
 set(BOUNDARY_COMMON_INCLUDES
     ${BOUNDARY_DIR}
     ${BOUNDARY_SHIM_DIR}
@@ -2733,7 +2736,18 @@ target_compile_options(boundary_headless_service_test PRIVATE
                        -Wall -Wextra -Wno-unused-parameter -Wno-format)
 target_link_libraries(boundary_headless_service_test PRIVATE Threads::Threads)
 
+# Board::Profile rows against the values of the board switches they replaced,
+# compiled against the boundary M5Unified shim, which declares every board.
+add_executable(board_profile_test
+               board_profile_test.cpp
+               ${BOUNDARY_DIR}/m5_stub.cpp
+               ${FURBLE_ROOT}/src/FurbleBoard.cpp)
+target_include_directories(board_profile_test PRIVATE ${BOUNDARY_SHIM_DIR}
+                           ${FURBLE_ROOT}/include)
+target_compile_options(board_profile_test PRIVATE -Wall -Wextra -Werror)
+
 if(BUILD_TESTING)
+  add_test(NAME board-profile COMMAND board_profile_test)
   foreach(mode protocols psram-fallback queue-timeout unsupported)
     add_test(NAME boundary-ir-${mode} COMMAND boundary_ir_test ${mode})
   endforeach()

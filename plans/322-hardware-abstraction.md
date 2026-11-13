@@ -1,6 +1,6 @@
 # 322 - Hardware abstraction for the next boards
 
-Status: in progress. Branches `refactor/hal-1-drivers` (pure drivers) and
+Status: hal-1 and hal-2 implemented, not merged. Branches `refactor/hal-1-drivers` (pure drivers) and
 `refactor/hal-2-interfaces` (board profile and power backend, existing boards
 only). No new board env, no support claim and no hardware run in this work.
 
@@ -139,35 +139,142 @@ so no SDK token can enter it.
 
 ### Phase 2: interfaces (branch hal-2)
 
-Planned, see the implementation state below.
+`include/FurbleBoard.h` and `src/FurbleBoard.cpp`: one `Board::Profile` row
+per board model. The row is chosen from `M5.getBoard()` because one image
+serves several boards: the StickC Plus image also boots on a Plus2, the Core2
+image on a Tough and both Core2 PMIC variants. `profileFor()` is a switch that
+returns a reference to a constant row, so `profile()` costs what the old
+switches cost and needs no init order. Rows carry the short name, battery caps
+and capacity, RTC backing, IR pin, motion wake path and pin, timed-wake kind,
+power hold pin, PMIC click streak, SD slot, `canPowerOff`, `modemSleep`, the
+brightness floor and the feedback outputs. Compile-time facts stay in
+`FurbleBoardCaps.h` from port-2; UI geometry stays in the UI.
 
-- `Board::Profile`: one constant row per board, selected once at boot. It
-  carries the short name, battery caps and capacity, battery source, RTC
-  backing, IR pin, motion wake pin, timed-wake kind, PMIC button kind, SD bus
-  sharing, `canPowerOff`, `modemSleep` and the brightness floor. Non-UI modules
-  read the row instead of switching on `M5.getBoard()`.
-- Power backend: the battery read, charging, power off, timed wake, named
-  rails and PMIC button behind one class whose implementation is chosen at link
-  time, the way `sim/FurblePlatformSim.cpp` replaces `Platform` today. The M5
-  implementation keeps the current `M5.Power` and M5PM1 code.
-- Display backend description: a panel config per board plus the brightness
-  and sleep rules (APB lock while lit, 120 ms SLPIN/SLPOUT dwell).
-- Input class description: buttons, encoder, keyboard, touch.
+`include/FurblePowerBackend.h`: the contract a board's power hardware meets.
+It names battery caps and sample (moved here from `Platform`, which inherits
+the same `battery_caps_t` and `battery_t` names), `BatterySource` (gauge,
+voltage estimate, coarse steps, none), named rails (`GPS`, `DISPLAY`,
+`PERIPHERAL`), power-button clicks, power off and timed wake. `Platform` is
+`final` and implements it, in `src/FurblePlatform.cpp` for the M5 boards and in
+`sim/FurblePlatformSim.cpp` for the simulator, so the link still picks the one
+implementation and calls through `Platform` stay direct. The fuel gauge is not
+a separate interface: `readBattery()` plus `getBatterySource()` cover it, and
+time-to-empty waits for a consumer.
 
-### T-Beam Supreme profile row (not added)
+Display backend, as a description rather than code until a second panel class
+exists. Every board keeps the rules the UI enforces today: hold
+`ESP_PM_APB_FREQ_MAX` while the backlight is lit, release it while the panel
+sleeps and reacquire it before wake, and wait 120 ms between SLPIN and SLPOUT
+(ST7789, ILI934x). Per
+board the description is: panel class, bus, pins, size, rotation, brightness
+method (LEDC backlight, PMIC backlight rail, or panel contrast/brightness
+command), and the minimum brightness, which is already a profile field.
+
+| Board | Panel and bus | Brightness |
+| :--- | :--- | :--- |
+| T-Beam Supreme | `Panel_SH110x` 128x64, `Bus_I2C` port 0, SDA 17, SCL 18, address 0x3C | contrast command; no backlight, no APB lock needed for LEDC |
+| T-Watch Ultra | `Panel_CO5300`, `Bus_SPI` quad (`pin_io0`..`pin_io3`) | AMOLED brightness command |
+| T-LoRa Pager | ST7796U 480x222 (new `Panel_LCD` subclass), `Bus_SPI` | LEDC backlight, keep the APB lock rule |
+| Cardputer Adv | `Panel_ST7789` via M5GFX autodetect | as the M5 boards |
+
+Input classes, also a description: physical buttons (M5 `BtnA/B/C`, the PMIC
+key as `BtnPWR`), touch (`M5.Touch`), and two classes furble lacks: a rotary
+encoder (Pager, ESP-IDF PCNT, maps to LVGL `LV_INDEV_TYPE_ENCODER`) and a
+keyboard (TCA8418 on Cardputer Adv and Pager, maps to LVGL keypad). The
+T-Beam has one BOOT button plus the AXP2101 key, which is the one-button tier
+in the table below.
+
+### Phase 4: wire-in, existing boards only (branch hal-2)
+
+Every non-UI `M5.getBoard()` switch now reads the profile: Platform battery
+caps, click streak, Plus2 hold pin, motion wake, timed wake, TimeKeeper RTC
+backing, IR pin, SD slot, boot name, Feedback outputs, and the UI brightness
+floor, modem sleep switch and power-off policies. `M5.getBoard()` drops from
+31 calls to 7: the profile lookup and six UI geometry switches. The M5PM1
+specific paths still sit under `FURBLE_HAS_M5PM1`; the profile only says which
+path the board takes. The GPS rail goes through `Platform::setRail(GPS)` with
+the same set, read back and single retry. `tests/host/board_profile_test.cpp`
+pins every row to the values the removed switches returned, copied from the
+switches at c4367912, not from the table.
+
+### Adding the T-Beam Supreme
+
+The row it would get (columns as in `src/FurbleBoard.cpp`):
 
 ```
-{ name "T-Beam S", battery {level, voltage, charging; no current}, source
-  PMIC_GAUGE, capacity 0 (user 18650), rtcBatteryBacked true (PCF8563 on VBAT),
-  irPin none, motionWakePin none, timedWake NONE, pmicButton AXP2101_PEK,
-  sdSharesDisplayBus false, canPowerOff true, modemSleep true (32 kHz
-  crystal), minBrightness 32, rails {GPS ALDO4, LORA ALDO3, SENSOR ALDO1|ALDO2,
-  SD BLDO1|BLDO2}, protected {DCDC1} }
+constexpr Profile TBEAM_SUPREME = {"T-Beam S", {true,  true,  false, true},  0,   false, -1,
+    MotionWake::NONE,      -1, TimedWake::NONE,       -1, false, false, true,  true,  32,
+    false, false, false, -1};
 ```
+
+Battery level, voltage and charging come from the AXP2101 E-gauge and status
+registers; it has no current sense. Capacity is 0 because the 18650 is the
+user's. RTC backing stays false until the PCF8563 supply is traced on the
+schematic. No IR, no motion wake (QMI8658 on SPI is not supported), no timed
+wake (the AXP2101 has no wake timer; a PCF8563 alarm on GPIO14 could be added
+later). `modemSleep` is true because of the 32 kHz crystal, once the sdkconfig
+selects it. SD stays false: its slot is on its own SPI bus, not the display
+bus `FurbleSD` expects. Rails: GPS ALDO4, LoRa ALDO3, sensors ALDO1/ALDO2, SD
+BLDO1/BLDO2, M.2 DCDC3/4/5; protected DCDC1.
+
+Exact steps:
+
+1. `platformio.ini` env `lilygo-tbeam-supreme` (ESP32-S3, 8 MB flash, 8 MB
+   PSRAM, `partitions_two_ota_8m.csv`, board identity macro
+   `FURBLE_LILYGO_TBEAM_SUPREME`) and `sdkconfig.lilygo-tbeam-supreme` with
+   `CONFIG_RTC_CLK_SRC_EXT_CRYS`. Add it to every matrix the CLAUDE.md build
+   section lists.
+2. `FurbleBoardCaps.h`: `FURBLE_HAS_AXP2101_HAL 1`, `FURBLE_HAS_M5PM1 0`,
+   `FURBLE_HAS_SD 0`, a new `FURBLE_PANEL_128X64 1`.
+3. `src/FurbleBoard.cpp`: the row above, returned by `profile()` under
+   `FURBLE_HAS_AXP2101_HAL` because `M5.getBoard()` reports `board_unknown`.
+   Add GPS UART pins (RX 9, TX 8, 9600 baud) to the row; `FurbleGPS` reads
+   Port A pins from M5Unified, which has none for this board.
+4. A `RegisterBus` adapter over `m5::I2C_Class` (`In_I2C.begin(I2C_NUM_1, 42,
+   41)`) and an `SX1262::Port` adapter over `spi_master` and GPIO, with
+   `gpio_hold_en` on NSS so the radio stays asleep through MCU sleep.
+5. `Platform` under `FURBLE_HAS_AXP2101_HAL`: build `HAL::AXP2101` with
+   DCDC1 protected; at boot switch off ALDO1/2, BLDO1/2 and DCDC3/4/5, run
+   `SX1262::sleep()` and then switch off ALDO3; keep VBACKUP charge off (no
+   cell fitted; GNSS backup is VRTC). `readBattery()` from the driver,
+   `getBatterySource()` returns `GAUGE`, `setRail(GPS)` maps to ALDO4,
+   `powerOff()` to `AXP2101::powerOff()`, `getPWRClickCount()` from
+   `readPowerKey()` short presses with `enablePowerKeyIrq(true)` at boot.
+6. Display: an `lgfx::LGFX_Device` with `Panel_SH110x` and `Bus_I2C` (port 0,
+   SDA 17, SCL 18, 0x3C, 128x64) made the primary display, and a 1-bit 128x64
+   UI tier. That tier is the largest single item.
+7. Input: BOOT (GPIO0) fed into `M5.BtnA` from `Platform::update()` the way
+   the StickS3 feeds `BtnPWR`, the AXP2101 key as `BtnPWR`, and the one-button
+   navigation tier.
+8. Simulator: a 128x64 panel model and the board in the profile matrix.
+9. Docs and gates: a `board-profile` case, the README supported controllers,
+   `docs/supported-hardware.md`, `docs/wiki/Getting-Started.md`, the size and
+   stack budgets, and a bench measurement of BLE-connected light sleep.
 
 ## Implementation state
 
-- hal-1: `lib/hal/` drivers and `tests/host/hal_drivers_test.cpp` (CTest
-  `hal-drivers`). `lib/hal` added to the portable contract, the static analysis
-  scope and its workflow path filter. Nothing in firmware includes `lib/hal`
-  yet, so every firmware image is unchanged.
+- hal-1 (`refactor/hal-1-drivers`, from master): `lib/hal/` drivers and
+  `tests/host/hal_drivers_test.cpp` (CTest `hal-drivers`). `lib/hal` is a
+  portable contract root, part of the static analysis scope and its workflow
+  path filter. Nothing in firmware includes `lib/hal`, so every image is
+  unchanged.
+- hal-2 (`refactor/hal-2-interfaces`, on `refactor/port-3-routing` at
+  9dd2dd61 with the hal-1 commit cherry-picked): `FurbleBoard`,
+  `FurblePowerBackend`, the wire-in above, `tests/host/board_profile_test.cpp`
+  (CTest `board-profile`) and the regenerated coupling ratchet.
+
+Deviations from the brief, with reasons:
+
+- The AXP2101 got its own pure driver even though M5Unified has
+  `AXP2101_Class`: that class leaves VBACKUP charging empty, has no DCDC
+  switch, reports a percentage without checking battery presence, and cannot
+  run on the host. M5 boards with an AXP2101 keep M5Unified.
+- `Board::profile()` is not cached. It is a switch over a constant table, the
+  same cost as before, and a cache would add an init-order hazard and break
+  host tests that set the board per mode.
+- Display and input backends are descriptions, not classes: with one panel
+  family and one input family in the tree a class would be an interface with
+  one implementation. They become code with the first non-M5 board.
+- hal-2 is rebased on port-3 (`9dd2dd61`), which made `GPS::setRailPower()`
+  the only GPS rail switch and `Platform::getBatteryStatus()` the battery
+  status source. `GPS::setRailPower()` now calls `Platform::setRail(GPS)`.

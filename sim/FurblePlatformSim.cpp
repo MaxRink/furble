@@ -425,6 +425,22 @@ uint16_t Platform::getBatteryCapacity(void) {
   return 250;
 }
 
+PowerBackend::BatterySource Platform::getBatterySource(void) {
+  return Sim::hwGaugeLevel() ? BatterySource::ESTIMATE : BatterySource::NONE;
+}
+
+bool Platform::setRail(Rail rail, bool on) {
+  if (rail != Rail::GPS) {
+    return false;
+  }
+  // Same calls as firmware, so the hardware model sees the same rail traffic.
+  M5.Power.setExtOutput(on, m5::ext_PA);
+  if (M5.Power.getExtOutput() != on) {
+    M5.Power.setExtOutput(on, m5::ext_PA);
+  }
+  return true;
+}
+
 uint32_t Platform::getBatteryFailCount(void) {
   return 0;
 }

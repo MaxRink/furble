@@ -19,6 +19,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "FurbleBoard.h"
 #include "FurbleBoardCaps.h"
 #include "FurbleGPSHold.h"
 #include "FurblePlatform.h"
@@ -57,16 +58,6 @@ constexpr uint8_t MAX_FAILURES = 3;
 // The StickC profiles have no SD slot. Making that a compile-time fact lets the
 // linker drop FATFS, SDMMC and the SDSPI host from those images.
 constexpr bool SD_HARDWARE = FURBLE_HAS_SD;
-
-bool isCoreBoard(void) {
-  switch (M5.getBoard()) {
-    case m5::board_t::board_M5Stack:
-    case m5::board_t::board_M5StackCore2:
-      return true;
-    default:
-      return false;
-  }
-}
 
 bool isHex(char c) {
   return std::isxdigit(static_cast<unsigned char>(c)) != 0;
@@ -739,7 +730,7 @@ bool SD::isSupported(void) const {
 void SD::init(void) {
   auto &sd = getInstance();
   const int8_t cs = M5.getPin(m5::pin_name_t::sd_spi_cs);
-  sd.m_Supported = isCoreBoard() && (cs >= 0);
+  sd.m_Supported = Board::profile().sdSlot && (cs >= 0);
 
   if (!sd.m_Supported) {
     ESP_LOGI(LOG_TAG, "SD card storage is not supported on this board.");

@@ -233,3 +233,12 @@ settings-touching rebase.
   adaptive policy, but no public member maps it. The ESP to `TxPower` mapping
   is file-local in `FurbleControl.cpp`; boot code calls
   `Control::savedTxPower()` before `Device::init()`.
+- `FurbleBoard.h` holds one `Board::Profile` row per board model, chosen from
+  the detected board (an image serves several boards). Non-UI modules read
+  board facts from it instead of switching on `M5.getBoard()`; UI geometry
+  stays in the UI and compile-time facts stay in `FurbleBoardCaps.h`. A new
+  row needs a matching case in `tests/host/board_profile_test.cpp`.
+- `FurblePowerBackend.h` is the contract a board's power hardware meets.
+  `Platform` is its final implementation for the M5 boards and the simulator,
+  selected at link time; a new board family supplies its own implementation
+  file on the drivers in `lib/hal`. See plans/322-hardware-abstraction.md.
