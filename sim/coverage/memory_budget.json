@@ -8,7 +8,7 @@
       "max_fragmentation_permille": 500,
       "components": {
         "main_stack": 12288,
-        "companion_task": 3072,
+        "companion_task": 3840,
         "lvgl_draw": 2160,
         "mqtt_owner": 10240,
         "mqtt_worker": 3072,

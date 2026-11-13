@@ -16,7 +16,7 @@ namespace WebUIMemory {
  * neither task may live in PSRAM: the flash cache is disabled while NVS commits
  * and a PSRAM stack cannot be resumed from a flash operation.
  */
-inline constexpr size_t SUPERVISOR_STACK_BYTES = 3584;
+inline constexpr size_t SUPERVISOR_STACK_BYTES = 4096;
 inline constexpr size_t HTTPD_STACK_BYTES = 8192;
 
 /**
@@ -37,9 +37,9 @@ inline constexpr size_t HTTPD_STACK_BYTES = 8192;
 inline constexpr size_t SERVER_INTERNAL_FREE_FLOOR = 20480;
 inline constexpr size_t SERVER_INTERNAL_LARGEST_FLOOR = 12288;
 
-/** Enough contiguous internal RAM for the 3.5 KiB supervisor task plus TCB. */
-inline constexpr size_t SUPERVISOR_INTERNAL_FREE_FLOOR = 4608;
-inline constexpr size_t SUPERVISOR_INTERNAL_LARGEST_FLOOR = 4096;
+/** Enough contiguous internal RAM for the 4 KiB supervisor task plus TCB. */
+inline constexpr size_t SUPERVISOR_INTERNAL_FREE_FLOOR = 5120;
+inline constexpr size_t SUPERVISOR_INTERNAL_LARGEST_FLOOR = 4608;
 
 /**
  * The one-shot TLS identity task. It writes NVS, so its stack stays internal.

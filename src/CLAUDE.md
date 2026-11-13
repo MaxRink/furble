@@ -166,7 +166,7 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   knowledge; every method runs on the SD writer task.
 - `FurbleWiFi`: station lifecycle, remembered access point state and NTP.
   Never fall back to a WiFi scan while a camera is active. The event handler
-  runs on the default event loop task (2,304-byte stack): it must not open
+  runs on the default event loop task (3,072-byte stack): it must not open
   NVS, read a setting or start SNTP. It updates memory and queues the
   access point save or erase and the NTP start for the 4 KiB worker
   (`serviceEventStorage()`); a newer save or erase replaces the older one.
@@ -194,7 +194,7 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   internal sockets. The production value is two clients (five total).
   `reloadSetting()` must not create the TLS identity task while `web_ui` is off.
   `initEarly()` prepares the TLS identity before the radios and display; the
-  supervisor and HTTPS stacks stay in internal RAM at 3 KiB/8 KiB and must not
+  supervisor and HTTPS stacks stay in internal RAM at 4 KiB/8 KiB and must not
   move to PSRAM because the HTTPS task commits NVS. `reloadSetting()` caches
   the setting, password and credential state, so the supervisor loop never
   reads NVS. `startServer()` runs `WebUIMemory::serverGate()` before allocating

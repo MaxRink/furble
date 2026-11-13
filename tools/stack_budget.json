@@ -67,7 +67,7 @@
     {
       "name": "companion",
       "entry": "CompanionGatt::serviceTaskEntry\\(void\\*\\)$",
-      "stack_bytes": 3072,
+      "stack_bytes": 3840,
       "source": [
         "include/FurbleCompanionMemory.h",
         "TASK_STACK_BYTES = (\\d+);"
@@ -133,7 +133,7 @@
     {
       "name": "webui",
       "entry": "Furble::WebUI::taskEntry\\(void\\*\\)$",
-      "stack_bytes": 3584,
+      "stack_bytes": 4096,
       "source": [
         "include/FurbleWebUIMemory.h",
         "SUPERVISOR_STACK_BYTES = (\\d+);"
@@ -238,6 +238,39 @@
       "why": "esp_timer.c timer_process_alarm calls each ESP_TIMER_TASK callback. Furble creates six (src/FurbleCompanion.cpp delayedDisable, src/FurbleCompanionService.cpp timedShutter, src/FurbleMQTT.cpp holdTimerCallback and intervalTimerCallback, src/FurbleWebUI.cpp holdTimerCallback and releaseTimerCallback). The linked ESP-IDF callbacks are the NimBLE callout wrapper, the Ethernet link check, the PHY PLL tracker and the Bluetooth OSI alarm and controller sleep timers. wifi_prov_mgr and touch_element timers are linked but never started: furble calls neither wifi_prov_mgr_start_provisioning nor touch_element_install. The WiFi and coexistence blobs arm ets_timer callbacks whose names the image does not expose; see docs/stack-budget.md"
     }
   ],
+  "panic": {
+    "abort": "^panic_abort$",
+    "handler": "^xt_unhandled_exception$",
+    "why": "abort(), __assert_func and esp_system_abort end in esp_system/panic.c panic_abort, whose ill instruction raises an illegal instruction exception. xtensa/xtensa_vectors.S _xt_user_exc stays on the faulting task's stack (\"we'll stay on the user stack for exception handling\"), pushes the XT_STK_FRMSZ exception frame that the port overhead already reserves (interrupts stay masked below the debug level, so no interrupt frame stacks on top), and calls the _xt_exception_table entry, which xtensa_intr.c sets to xt_unhandled_exception for every exception without a registered handler. The handler therefore runs on the task stack. A nested panic is not followed: esp_panic_handler_increment_entry_count (esp_system/panic.c) restarts after PANIC_ENTRY_COUNT_MAX entries, and a handler that faults has already lost the first panic's output."
+  },
+  "infeasible_calls": [
+    {
+      "caller": "^esp_cache_get_alignment$",
+      "callee": "^esp_log$",
+      "why": "esp_mm/esp_cache_msync.c:281 logs only through ESP_RETURN_ON_FALSE(out_alignment, ...), a null output pointer. Every linked caller passes the address of a local or of a field: esp_mm/heap_align_hw.c:54, esp_hw_support/dma/esp_dma_utils.c:187 and 274, esp_driver_sdmmc/src/sdmmc_host.c:1304, mbedtls/port/aes/dma/esp_aes_dma_core.c:1046, usb/hcd_dwc.c:1642, usb/usb_private.c:34, esp_driver_cam/dvp/src/esp_cam_ctlr_dvp_cam.c:829, esp_driver_cam/dvp/src/esp_cam_ctlr_dvp_gdma.c:90, esp_driver_spi/src/gpspi/spi_common.c:859-860 and esp_driver_uart/src/uhci.c:534-535."
+    },
+    {
+      "caller": "^_ZNSs4_Rep9_S_createEjjRKSaIcE$",
+      "callee": "^_ZSt20__throw_length_errorPKc$",
+      "why": "The copy-on-write std::string (old ABI) builds only the libstdc++ exception messages; furble and its components use the C++11 ABI string. cow_string.h:3581 throws when the capacity exceeds _S_max_size, about 1 GiB on a 32-bit target (cow_string.h:3108). The capacity is the length of a message already in memory, and the ESP32 and ESP32-S3 address under 32 MiB of RAM."
+    },
+    {
+      "caller": "^_ZNSs12_S_constructIPKcEEPcT_S3_RKSaIcESt20forward_iterator_tag$",
+      "callee": "^_ZSt19__throw_logic_errorPKc$",
+      "why": "cow_string.h:3189-3190 throws only for a null message pointer. The copy-on-write string is built only from the messages the libstdc++ __throw_* functions receive, and every caller passes a string literal."
+    },
+    {
+      "caller": "^cache_hal_get_cache_line_size$",
+      "callee": "^abort$",
+      "why": "hal/cache_hal.c:318 HAL_ASSERT(cache_level <= CACHE_LL_LEVEL_NUMS), which aborts at CONFIG_HAL_DEFAULT_ASSERTION_LEVEL 1 (hal/platform_port/include/hal/assert.h:37). Every linked caller passes CACHE_LL_LEVEL_INT_MEM or CACHE_LL_LEVEL_EXT_MEM, or a level that cache_hal_vaddr_to_cache_level_id validated first (esp_mm/esp_cache_msync.c:113-119): esp_mm/esp_cache_msync.c:168-177 and 283-290, esp_lcd/i80/esp_lcd_panel_io_i80.c:166, 532, 537, esp_hw_support/deprecated/gdma_legacy.c:24, esp_driver_rmt/src/rmt_rx.c:216, 417, 815, esp_driver_rmt/src/rmt_tx.c:68, 274, esp_hw_support/dma/esp_dma_utils.c:38-39, esp_hw_support/dma/gdma_link.c:102-104, esp_hw_support/dma/async_memcpy_gdma.c:376-377, esp_hw_support/dma/dw_gdma.c:395 and esp_lcd/rgb/esp_lcd_panel_rgb.c:161-162."
+    },
+    {
+      "caller": "^rtc_clk_xtal_freq_get$",
+      "callee": "^esp_log$",
+      "why": "esp_hw_support/port/esp32s3/rtc_clk.c:440-441 logs only when the RTC store register holds no crystal frequency. The bootloader writes it before the app starts: bootloader_support/src/bootloader_clock_init.c:83 calls rtc_clk_init, which stores cfg.xtal_freq at esp_hw_support/port/esp32s3/rtc_clk_init.c:49. The ESP32 version (port/esp32/rtc_clk.c:614) does not log."
+    }
+  ],
+  "infeasible_calls_comment": "Calls whose guard in the source cannot pass in this image, each cited by file and line. The walk removes the edge from caller to callee. An edge without a citable guard stays.",
   "boot_only": [
     "^void m5::M5Unified::begin\\(config_t\\)$",
     "^esp_err_t nvs::Storage::init\\(uint32_t, uint32_t\\)$"

@@ -761,8 +761,9 @@ bool serviceConnectedWired(void) {
 /*
  * NVS work the event handler hands to the worker. The handler runs on the
  * default event loop task, whose stack is CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE
- * (2,304 bytes); an NVS open, write or the NTP setting read there reached
- * 2,864 bytes in tools/stack_budget.py. The worker has 4 KiB. A save and an
+ * (2,304 bytes then, 3,072 since plan 314 PR 4c); an NVS open, write or the
+ * NTP setting read there reached 2,864 bytes in tools/stack_budget.py, before
+ * panic paths counted. The worker has 4 KiB. A save and an
  * erase cancel each other, so only the newest outcome is persisted. Guarded by
  * g_StateMutex.
  */

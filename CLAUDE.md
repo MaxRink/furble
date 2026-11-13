@@ -195,6 +195,11 @@ CLAUDE.md whose directory it touches.
   `docs/stack-budget.md`. Update the manifest when a task or its stack changes.
   A recursion or an `alloca`/VLA frame on a task's path fails it until
   `recursion_bounds` or `dynamic_bounds` cites a bound from source.
+  The walk collapses strongly connected components and takes the longest
+  path over the DAG, exact outside known limits. Panic paths count: the
+  ESP-IDF panic handler runs on the faulting task's stack, so `panic_abort`
+  is charged the handler's depth. `infeasible_calls` drops an edge only with
+  a file:line citation of the guard that makes it unreachable.
   `platformio.ini` sets `CJSON_NESTING_LIMIT=8` for every component; the
   cJSON recursion bounds depend on it.
 - Hardware flashing is gated on the simulator. The gate manifests are under

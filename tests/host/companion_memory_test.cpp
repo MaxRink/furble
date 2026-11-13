@@ -20,8 +20,8 @@ void check(bool ok, const char *what) {
 }  // namespace
 
 int main() {
-  static_assert(START_INTERNAL_FREE_FLOOR == 7552, "companion free floor drifted");
-  static_assert(START_INTERNAL_LARGEST_FLOOR == 3456, "companion largest floor drifted");
+  static_assert(START_INTERNAL_FREE_FLOOR == 8320, "companion free floor drifted");
+  static_assert(START_INTERNAL_LARGEST_FLOOR == 4224, "companion largest floor drifted");
   static_assert(START_INTERNAL_LARGEST_FLOOR > TASK_STACK_BYTES,
                 "the largest block must hold the task stack and its overhead");
 

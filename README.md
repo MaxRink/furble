@@ -71,7 +71,7 @@ use an encrypted, bonded LE Just
 Works link and authenticate with the companion password; set a password before
 using the app in an untrusted area. An unknown inbound BLE link is retained
 because the server is shared with camera name discovery; it can delay reconnect
-advertising until it disconnects. The first enable needs 7,552 bytes of free
+advertising until it disconnects. The first enable needs 8,320 bytes of free
 internal RAM; below that the companion stays off with a log line instead of
 resetting the device. See [the companion reference](docs/companion.md)
 for the packet layout, USB limits, pairing behavior, and the battery observation
