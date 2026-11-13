@@ -29,12 +29,17 @@ action imu.accel 0 0 1
 wait 1000
 
 wait 900
+# The panel is off, so the UI loop sleeps until the next timer is due, up to
+# 20 ms (plan 111, P-070), and each scripted step costs one pass. A 1 ms wait
+# holds each tap across two passes, so the 20 ms gesture sampler sees it.
+# Back-to-back actions can fall between two samples, and a 20 ms wait holds
+# the spike for the three samples that the detector reads as a shake.
 action imu.accel 0 0 2.6
-wait 20
+wait 1
 action imu.accel 0 0 1
 wait 80
 action imu.accel 0 0 2.6
-wait 20
+wait 1
 action imu.accel 0 0 1
 wait 120
 assert ui.gesture_last double_tap

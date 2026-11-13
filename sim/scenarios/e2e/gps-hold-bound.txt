@@ -63,12 +63,14 @@ assert camera.geo_lat_e5 4811730
 assert_min camera.geo_utc_s 45345
 assert_max camera.geo_utc_s 45360
 
-# Run out the bound.
+# Run out the bound. The panel is off by now, so each scripted step costs one
+# UI pass of up to 20 ms (plan 111, P-070). Stop a second short of the 25 s
+# that remained above so step overhead cannot carry the run past the bound.
 wait 5000
 wait 5000
 wait 5000
 wait 5000
-wait 5000
+wait 4000
 assert ui.gps_fix_state held
 # The last moment inside the window. The bound is inclusive, so the fix is still
 # being sent here with at most a second left on it.

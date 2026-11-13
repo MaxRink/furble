@@ -9,10 +9,12 @@ namespace PlatformPolicy {
 /**
  * Minimum interval between M5PM1 button-state reads.
  *
- * The UI loop runs every 5 ms and used to read the PMIC button on every pass,
- * about 200 I2C transactions per second. Twenty milliseconds keeps a 50 Hz
- * sample while cutting the bus traffic tenfold. A human click is far longer
- * than 50 ms, so no edge is lost by the coarser cadence.
+ * The UI loop runs every 5 ms with the panel on and used to read the PMIC
+ * button on every pass, about 200 I2C transactions per second. Twenty
+ * milliseconds keeps a 50 Hz sample while cutting the bus traffic tenfold. A
+ * human click is far longer than 50 ms, so no edge is lost by the coarser
+ * cadence. With the panel off the loop pass is at most this long, so a wake
+ * press is still sampled once per pass.
  */
 constexpr uint32_t PM1_POLL_MS = 20;
 

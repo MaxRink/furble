@@ -13406,12 +13406,20 @@ void UI::task(void) {
     Sim::webuiMemoryTick();
     Sim::memoryProfileTick();
 #endif
+    uint32_t delayMs = LOOP_ACTIVE_MS;
     if (!m_DisplayConsole) {
       handleLockScreen();
 #if defined(FURBLE_SIM)
       Sim::profilerBeginUiCycle();
 #endif
-      lv_task_handler();
+      const uint32_t nextTimerMs = lv_task_handler();
+      // With the panel off only LVGL timers and the input poll need this
+      // loop. Sleep until the next timer is due, but never longer than one
+      // PMIC button poll. Each pass still runs Platform::update(), which feeds
+      // the 1 s M5PM1 watchdog, and the 1 s CrashLog and MemoryPressure ticks.
+      if (m_DisplayOff) {
+        delayMs = std::clamp(nextTimerMs, LOOP_ACTIVE_MS, LOOP_IDLE_MAX_MS);
+      }
 #if defined(FURBLE_SIM)
       Sim::profilerEndUiCycle();
       Sim::fuzzCycleComplete(this);
@@ -13424,7 +13432,7 @@ void UI::task(void) {
     serviceStorage();
     m_Mutex.unlock();
 
-    vTaskDelay(pdMS_TO_TICKS(5));
+    vTaskDelay(pdMS_TO_TICKS(delayMs));
   }
 }
 
