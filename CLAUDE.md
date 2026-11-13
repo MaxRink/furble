@@ -143,8 +143,9 @@ CLAUDE.md whose directory it touches.
 ## Testing
 
 - Run `python3 tools/pre_review.py --base origin/master` before pushing. It
-  runs the diff hygiene, settings contract, and C++ safety scanners, the CI
-  workflow and simulator manifest checks, and the scanner unit tests.
+  runs the diff hygiene, settings contract, and C++ safety scanners,
+  clang-format 21 on the changed C and C++ files, the CI workflow and
+  simulator manifest checks, and the scanner unit tests.
   `git config core.hooksPath .githooks` runs it from `.githooks/pre-push` on
   every push, against each pushed commit. The tracked `.claude/settings.json`
   sets that hook path for Claude Code sessions through `GIT_CONFIG_COUNT`, so

@@ -1099,3 +1099,20 @@ keeps the plain SDL2 link only for a real SDL2. When `libSDL2.dylib`
 resolves into sdl2-compat and no SDL3 is installed, `build.sh` exits and the
 CMake configure fails, each naming `brew install sdl3`, because that binary
 could only fail at launch through the dialog.
+
+## Fix: clang-format drift on master
+
+The PlatformIO CI clang-format job failed on master `e66e8807` with 44
+violations in 12 files: `sim/ui_buttons.cpp` and 11 host tests and shims.
+pre_review had no formatting gate, and the CI job is the only check, so
+merged PRs carried the drift. This fix reformats those files with clang-format
+21. Most hunks are line wrapping. Three boundary tests also get their includes
+sorted, so the linked-boundary suite and the affected host tests were rebuilt
+and run.
+
+`tools/check_format.py` now runs clang-format 21 on the C and C++ files a
+branch changes, under the same directories and suffixes as the CI step.
+`pre_review.py` runs it, so the pre-push hook and `pre-review.yml` catch a
+formatting failure before merge. A missing or non-21 clang-format fails the
+gate with the install command. A test pins its directory and suffix list to
+the CI step.

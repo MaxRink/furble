@@ -24,7 +24,8 @@ esp_err_t esp_vfs_fat_sdspi_mount(const char *base_path,
                                   const esp_vfs_fat_mount_config_t *mount_config,
                                   sdmmc_card_t **out_card);
 esp_err_t esp_vfs_fat_sdcard_unmount(const char *base_path, sdmmc_card_t *card);
-esp_err_t esp_vfs_fat_info(const char *base_path, uint64_t *out_total_bytes,
+esp_err_t esp_vfs_fat_info(const char *base_path,
+                           uint64_t *out_total_bytes,
                            uint64_t *out_free_bytes);
 
 #ifdef __cplusplus

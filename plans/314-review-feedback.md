@@ -235,3 +235,9 @@ branch `fix/stack-budget-review`.
 | 3 | #440 review on `631d908e`: the discover test did not check the release `m5stack-core` env or the expected total of 13 envs. | Fixed. The test now asserts the exact ordered matrix: the six release envs, then the seven debug envs with both Core profiles. A dropped, duplicated or extra env fails it. | `tests/test_check_ci_workflows.py` |
 | 4 | #440 review summary on `93a41463`: `CLAUDE.md`, `AGENTS.md` and `docs/supported-hardware.md` called `m5stack-core-usb-debug` "the mandatory Core debug profile" while also making the OTA profile mandatory. | Fixed. All three now say normal CI builds two mandatory Core debug profiles and name both. README, CONTRIBUTING and the wiki already did. | `CLAUDE.md`, `AGENTS.md`, `docs/supported-hardware.md` |
 | 5 | #440 review summary on `0bddd15e`: row 1 claimed no other doc called a Core debug profile opt-in, but plan 177 and an earlier plan 314 section still do. | Fixed. Row 1 now scopes the claim to the current reference docs and states that those plan sections are historical records superseded by the plan 314 follow-up section. Plans record the state when they were written and are not rewritten. | `plans/314-review-feedback.md`, `plans/177-mqtt-4mb-size-followup.md:137`, `plans/314-memory-resilience.md:916` |
+
+## Follow-up (#447, `fix/clang-format-master`)
+
+| # | Finding | Resolution | Evidence |
+| ---: | :--- | :--- | :--- |
+| 1 | #447 review: the sync test only checked that the checker's directories and suffixes appear in `main.yml`, so a CI list that grows would pass while the checker skips files. | Fixed. The test parses the `Check clang-format` step and asserts the directory tuple and the suffix set are equal in both directions. A mutant with an extra `*.ipp` suffix in the step is detected. | `tests/test_check_format.py` |

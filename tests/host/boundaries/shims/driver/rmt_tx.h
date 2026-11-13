@@ -46,14 +46,12 @@ struct rmt_transmit_config_t {
 extern "C" {
 #endif
 
-esp_err_t rmt_new_tx_channel(const rmt_tx_channel_config_t *config,
-                             rmt_channel_handle_t *channel);
+esp_err_t rmt_new_tx_channel(const rmt_tx_channel_config_t *config, rmt_channel_handle_t *channel);
 esp_err_t rmt_del_channel(rmt_channel_handle_t channel);
 esp_err_t rmt_new_copy_encoder(const rmt_copy_encoder_config_t *config,
                                rmt_encoder_handle_t *encoder);
 esp_err_t rmt_del_encoder(rmt_encoder_handle_t encoder);
-esp_err_t rmt_apply_carrier(rmt_channel_handle_t channel,
-                            const rmt_carrier_config_t *config);
+esp_err_t rmt_apply_carrier(rmt_channel_handle_t channel, const rmt_carrier_config_t *config);
 esp_err_t rmt_enable(rmt_channel_handle_t channel);
 esp_err_t rmt_disable(rmt_channel_handle_t channel);
 esp_err_t rmt_transmit(rmt_channel_handle_t channel,

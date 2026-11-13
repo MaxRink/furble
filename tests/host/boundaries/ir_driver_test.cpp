@@ -16,12 +16,12 @@
 #include <thread>
 #include <vector>
 
-#include "boundary_host.h"
-#include "M5Unified.h"
-#include "driver/rmt_tx.h"
-#include "driver/gpio.h"
 #include "FurbleIR.h"
 #include "FurbleSettings.h"
+#include "M5Unified.h"
+#include "boundary_host.h"
+#include "driver/gpio.h"
+#include "driver/rmt_tx.h"
 #include "freertos/FreeRTOS.h"
 #include "nvs.h"
 
@@ -71,8 +71,7 @@ struct rmt_encoder_t {
   int unused = 0;
 };
 
-esp_err_t rmt_new_tx_channel(const rmt_tx_channel_config_t *config,
-                             rmt_channel_handle_t *channel) {
+esp_err_t rmt_new_tx_channel(const rmt_tx_channel_config_t *config, rmt_channel_handle_t *channel) {
   check(config != nullptr && channel != nullptr, "RMT channel config is null");
   check(config->resolution_hz == 1000000, "RMT resolution is not 1 MHz");
   check(config->mem_block_symbols == SOC_RMT_MEM_WORDS_PER_CHANNEL,
@@ -88,8 +87,7 @@ esp_err_t rmt_del_channel(rmt_channel_handle_t channel) {
   return ESP_OK;
 }
 
-esp_err_t rmt_new_copy_encoder(const rmt_copy_encoder_config_t *,
-                               rmt_encoder_handle_t *encoder) {
+esp_err_t rmt_new_copy_encoder(const rmt_copy_encoder_config_t *, rmt_encoder_handle_t *encoder) {
   *encoder = new rmt_encoder_t;
   return ESP_OK;
 }
@@ -99,8 +97,7 @@ esp_err_t rmt_del_encoder(rmt_encoder_handle_t encoder) {
   return ESP_OK;
 }
 
-esp_err_t rmt_apply_carrier(rmt_channel_handle_t channel,
-                            const rmt_carrier_config_t *config) {
+esp_err_t rmt_apply_carrier(rmt_channel_handle_t channel, const rmt_carrier_config_t *config) {
   if (channel == nullptr || config == nullptr) {
     return ESP_ERR_INVALID_ARG;
   }
@@ -174,8 +171,7 @@ bool waitForCapture(size_t count) {
 }
 
 bool waitForLog(const char *needle, uint32_t timeout_ms = 5000) {
-  const auto deadline = std::chrono::steady_clock::now()
-                        + std::chrono::milliseconds(timeout_ms);
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
   while (std::chrono::steady_clock::now() < deadline) {
     if (BoundaryHost::logContains(needle)) {
       return true;
@@ -188,9 +184,8 @@ bool waitForLog(const char *needle, uint32_t timeout_ms = 5000) {
 bool waitForBlockedTransmit() {
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
   std::unique_lock<std::mutex> lock(g_Mutex);
-  return g_Condition.wait_until(lock, deadline, [] {
-    return g_TransmitEntered && g_BlockTransmit;
-  });
+  return g_Condition.wait_until(lock, deadline,
+                                [] { return g_TransmitEntered && g_BlockTransmit; });
 }
 
 const Capture &lastCapture(size_t index) {
@@ -222,8 +217,8 @@ void runProtocols(void) {
   } cases[] = {
       {"nikon",         static_cast<uint8_t>(IR::protocol_t::NIKON),         38000, 13},
       {"sony",          static_cast<uint8_t>(IR::protocol_t::SONY),          40000, 63},
-      {"canon",         static_cast<uint8_t>(IR::protocol_t::CANON),         32700,  2},
-      {"canon-delayed", static_cast<uint8_t>(IR::protocol_t::CANON_DELAYED), 32700,  2},
+      {"canon",         static_cast<uint8_t>(IR::protocol_t::CANON),         32700, 2 },
+      {"canon-delayed", static_cast<uint8_t>(IR::protocol_t::CANON_DELAYED), 32700, 2 },
       {"out-of-range",  9,                                                   38000, 13},
   };
 
@@ -267,8 +262,8 @@ void runProtocols(void) {
   check(g_LastChannel->disables == g_LastChannel->enables,
         "RMT channel was left enabled after a transmit");
   std::cout << "ir.channel enables=" << g_LastChannel->enables
-            << " disables=" << g_LastChannel->disables
-            << " transmits=" << g_LastChannel->transmits << '\n';
+            << " disables=" << g_LastChannel->disables << " transmits=" << g_LastChannel->transmits
+            << '\n';
 }
 
 void runPsramFallback(void) {
