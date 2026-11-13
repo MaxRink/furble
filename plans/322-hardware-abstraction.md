@@ -278,3 +278,35 @@ Deviations from the brief, with reasons:
 - hal-2 is rebased on port-3 (`9dd2dd61`), which made `GPS::setRailPower()`
   the only GPS rail switch and `Platform::getBatteryStatus()` the battery
   status source. `GPS::setRailPower()` now calls `Platform::setRail(GPS)`.
+
+### Verification evidence (hal-2 at 671680e5)
+
+Fixed-version builds (`FURBLE_VERSION=1.0.0-ci FURBLE_TEST=0`,
+`SOURCE_DATE_EPOCH=1794258087`) of the hal-2 base (port-3 plus hal-1,
+`3a89ebdc`) and of hal-2 in the same build directory:
+
+| Env | Base bin | hal-2 bin | Delta | DRAM base / hal-2 | Size and stack budget |
+| :--- | --: | --: | --: | :--- | :--- |
+| m5stick-s3 | 1,848,960 | 1,849,040 | +80 | 47,208 / 47,208 | pass / pass |
+| m5stick-c | 1,490,592 | 1,490,320 | -272 | 54,780 / 54,780 | pass / pass |
+| m5stick-c-plus | 1,540,160 | 1,540,256 | +96 | 54,756 / 54,756 | pass / pass |
+| m5stack-core | 1,614,304 | 1,614,000 | -304 | 54,884 / 54,884 | pass / pass |
+| m5stack-core2 | not built | not built | | | |
+| esp32-s3-headless | not built | not built | | | |
+| waveshare-s3-eth | not built | not built | | | |
+
+The images differ, as intended: eight `M5.getBoard()` switches became
+lookups in one constant table, `Platform` gained a vtable, and
+`getBatterySource()` and `setRail()` are new. Static RAM is byte identical in
+every built env. The last three envs were not built because host disk free
+fell below 10 GiB during the session; build them before merge.
+
+Host suite: 185 of 187 ctest pass. `golden-capture-replay` is Not Run when
+its capture is absent and passes when run alone. `control-tsan-wrapper-contract`
+times out at its 10 s ctest cap at host load average near 30, in the plain
+and the ASan/UBSan runs alike; the wrapper does not touch any file this plan
+changes. ASan/UBSan (`tools/run_sanitized_host_tests.sh --clean`): 184 of 185,
+same single timeout. `sim/scripts/run-boundary-conformance.sh`: 18 of 18.
+StickS3 simulator, 22 hardware-profile scenarios (battery policy, power
+button, motion wake, GPS rail standby and wake, intervalometer timed wake):
+22 pass. Coupling ratchet, portability contract and doc tokens: clean.
