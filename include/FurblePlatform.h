@@ -10,6 +10,7 @@
 #include <M5PM1.h>
 
 #include "FurbleBoardCaps.h"
+#include "FurblePowerBackend.h"
 
 namespace Furble {
 #if defined(FURBLE_SIM)
@@ -17,7 +18,8 @@ namespace Sim {
 const char *watchdogState(void);
 }
 #endif
-class Platform {
+/** Board power and platform services, and the PowerBackend of this image. */
+class Platform final: public PowerBackend {
  public:
   /** Selectable maximum CPU frequencies in MHz. */
   static constexpr std::array<uint8_t, 3> CPU_MAX_FREQ_MHZ = {80, 160, 240};
@@ -25,27 +27,7 @@ class Platform {
   /** Default maximum CPU frequency in MHz. */
   static constexpr uint8_t CPU_MAX_FREQ_DEFAULT_MHZ = 160;
 
-  /**
-   * Battery measurements available on this board.
-   */
-  typedef struct {
-    bool level;
-    bool voltage;
-    bool current;
-    bool charging;
-  } battery_caps_t;
-
-  /**
-   * Battery measurement sample.
-   *
-   * Only fields flagged in battery_caps_t are meaningful.
-   */
-  typedef struct {
-    uint8_t level;     // percent
-    uint16_t voltage;  // millivolts
-    int32_t current;   // milliamps, positive when charging
-    bool charging;
-  } battery_t;
+  // battery_caps_t and battery_t come from PowerBackend.
 
   /**
    * Battery status for the companion status record.
@@ -102,7 +84,7 @@ class Platform {
   /**
    * Get debounced power button click count.
    */
-  uint8_t getPWRClickCount(void);
+  uint8_t getPWRClickCount(void) override;
 
   /**
    * Update platform specific state.
@@ -143,7 +125,7 @@ class Platform {
    * On success this call never returns. Returns false if the PMIC refused the
    * shutdown, with the hardware watchdog re-armed if it was armed before.
    */
-  bool powerOff(void);
+  bool powerOff(void) override;
 
   /**
    * Arm the IMU interrupt as a light-sleep wake source.
@@ -227,7 +209,7 @@ class Platform {
   /**
    * Is a timed power-on supported by this board?
    */
-  bool canTimedWake(void);
+  bool canTimedWake(void) override;
 
   /**
    * Power off and arrange for a timed power-on.
@@ -235,12 +217,12 @@ class Platform {
    * @return true after the wake timer and power-off request were accepted;
    * false if setup failed and the device remains awake.
    */
-  bool powerOffUntil(uint32_t seconds);
+  bool powerOffUntil(uint32_t seconds) override;
 
   /**
    * Consume the wake marker left by a timed power-on.
    */
-  bool consumeTimedWake(void);
+  bool consumeTimedWake(void) override;
 
   /**
    * Set the maximum CPU frequency in MHz.
@@ -280,12 +262,12 @@ class Platform {
    * model on every call, so a reference to shared mutable storage would race
    * console and UI readers.
    */
-  battery_caps_t getBatteryCaps(void);
+  battery_caps_t getBatteryCaps(void) override;
 
   /**
    * Read the battery, unsupported measurements are returned as zero.
    */
-  battery_t readBattery(void);
+  battery_t readBattery(void) override;
 
   /** Read the battery and update the shared exponentially weighted averages. */
   battery_sample_t sampleBattery(void);
@@ -306,7 +288,16 @@ class Platform {
   /**
    * Get the battery capacity in mAh, zero if unknown.
    */
-  uint16_t getBatteryCapacity(void);
+  uint16_t getBatteryCapacity(void) override;
+
+  /** Gauge, voltage estimate or coarse steps, from the detected PMIC. */
+  BatterySource getBatterySource(void) override;
+
+  /**
+   * Switch a named rail. The M5 boards switch only the GPS rail, which is the
+   * Port A 5 V output.
+   */
+  bool setRail(Rail rail, bool on) override;
 
   /**
    * Get the count of PMIC accesses which failed after a retry.

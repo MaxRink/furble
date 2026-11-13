@@ -44,26 +44,22 @@
     "lib/furble/Sony.h": 13
   },
   "m5_calls": {
-    "src/FurbleBootScreen.cpp": 3,
+    "src/FurbleBoard.cpp": 1,
+    "src/FurbleBootScreen.cpp": 2,
     "src/FurbleCalibrate.cpp": 1,
     "src/FurbleConsole.cpp": 5,
-    "src/FurbleFeedback.cpp": 16,
-    "src/FurbleGPS.cpp": 5,
+    "src/FurbleFeedback.cpp": 15,
+    "src/FurbleGPS.cpp": 2,
     "src/FurbleIMU.cpp": 3,
     "src/FurbleIMUMotionBMI270.cpp": 5,
     "src/FurbleIMUMotionMPU6886.cpp": 5,
-    "src/FurbleIR.cpp": 1,
-    "src/FurbleSD.cpp": 8,
-    "src/FurbleTimeKeeper.cpp": 5,
-    "src/FurbleUI.cpp": 87,
+    "src/FurbleSD.cpp": 7,
+    "src/FurbleTimeKeeper.cpp": 4,
+    "src/FurbleUI.cpp": 82,
     "src/FurbleUIGesture.cpp": 4
   },
   "m5_get_board": {
-    "src/FurbleBootScreen.cpp": 1,
-    "src/FurbleFeedback.cpp": 1,
-    "src/FurbleIR.cpp": 1,
-    "src/FurbleSD.cpp": 1,
-    "src/FurbleTimeKeeper.cpp": 1,
-    "src/FurbleUI.cpp": 11
+    "src/FurbleBoard.cpp": 1,
+    "src/FurbleUI.cpp": 6
   }
 }

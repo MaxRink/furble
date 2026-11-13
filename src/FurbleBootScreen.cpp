@@ -7,6 +7,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
+#include "FurbleBoard.h"
 #include "FurbleBootScreen.h"
 #include "FurbleBootTimeline.h"
 #include "FurblePlatform.h"
@@ -40,28 +41,6 @@ namespace {
 constexpr uint8_t BG_R = 8, BG_G = 10, BG_B = 16;
 constexpr uint8_t BAR_R = 0, BAR_G = 168, BAR_B = 220;
 constexpr uint8_t FRAME_R = 60, FRAME_G = 64, FRAME_B = 76;
-
-/** Short board name for the boot info block. */
-const char *boardName(void) {
-  switch (M5.getBoard()) {
-    case m5::board_t::board_M5StickC:
-      return "StickC";
-    case m5::board_t::board_M5StickCPlus:
-      return "StickC+";
-    case m5::board_t::board_M5StickCPlus2:
-      return "StickC+2";
-    case m5::board_t::board_M5StickS3:
-      return "StickS3";
-    case m5::board_t::board_M5Stack:
-      return "Core";
-    case m5::board_t::board_M5StackCore2:
-      return "Core2";
-    case m5::board_t::board_M5Tough:
-      return "Tough";
-    default:
-      return "M5";
-  }
-}
 
 /** Human readable last reset reason. */
 const char *resetReason(void) {
@@ -141,7 +120,7 @@ void BootScreen::begin(uint8_t totalStages) {
   display.setTextSize(1);
   display.setTextColor(display.color565(150, 158, 172), bg);
   display.drawString(FURBLE_VERSION, s_Width / 2, infoY);
-  display.drawString(boardName(), s_Width / 2, infoY + lineH);
+  display.drawString(Board::profile().name, s_Width / 2, infoY + lineH);
   display.drawString(resetReason(), s_Width / 2, infoY + (2 * lineH));
 
   // Empty progress bar frame.

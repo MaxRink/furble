@@ -2093,10 +2093,7 @@ void GPS::disable(void) {
 }
 
 void GPS::setRailPower(bool enable) {
-  M5.Power.setExtOutput(enable, m5::ext_PA);
-  if (M5.Power.getExtOutput() != enable) {
-    M5.Power.setExtOutput(enable, m5::ext_PA);
-  }
+  (void)Platform::getInstance().setRail(PowerBackend::Rail::GPS, enable);
 }
 
 /** Refresh the setting from NVS. */

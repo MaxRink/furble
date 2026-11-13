@@ -10,6 +10,7 @@
 #include <M5PM1.h>
 
 #include "FurbleBatteryStatus.h"
+#include "FurbleBoard.h"
 #include "FurbleBoardCaps.h"
 #include "FurbleBootTimeline.h"
 #include "FurbleControl.h"
@@ -35,8 +36,6 @@ constexpr uint32_t TIMED_WAKE_MARKER = 0x49564c31;
 #endif
 
 namespace {
-constexpr gpio_num_t STICKC_PLUS2_HOLD_PIN = GPIO_NUM_4;
-
 // BM8563 registers used to prove the timer was actually armed. M5Unified's
 // setTimerIRQ() returns the duration its own arithmetic selected even when the
 // underlying register writes fail, so the value alone is not evidence.
@@ -96,11 +95,13 @@ Platform &Platform::getInstance(void) {
     cfg.disable_rtc_irq = false;
     M5.begin(cfg);
 
-    const auto board = M5.getBoard();
-    if (board == m5::board_t::board_M5StickCPlus2) {
-      (void)gpio_set_direction(STICKC_PLUS2_HOLD_PIN, GPIO_MODE_OUTPUT);
-      (void)gpio_set_level(STICKC_PLUS2_HOLD_PIN, 1);
-    } else {
+    const auto &board = Board::profile();
+    if (board.powerHoldPin >= 0) {
+      const auto hold = static_cast<gpio_num_t>(board.powerHoldPin);
+      (void)gpio_set_direction(hold, GPIO_MODE_OUTPUT);
+      (void)gpio_set_level(hold, 1);
+    }
+    if (board.timedWake != Board::TimedWake::RTC_ALARM) {
       M5.Rtc.disableIRQ();
     }
     BootTimeline::mark(BootTimeline::DISPLAY_READY);
@@ -118,15 +119,7 @@ Platform &Platform::getInstance(void) {
     // roll from atan2(ay, az) to drive screen X and pitch to drive screen Y.
     // That orientation is UNVERIFIED on all boards pending a hardware check.
 
-    switch (M5.getBoard()) {
-      case m5::board_t::board_M5StickC:
-      case m5::board_t::board_M5StickCPlus:
-      case m5::board_t::board_M5Tough:
-        instance.m_PMICHack = true;
-        break;
-      default:
-        instance.m_PMICHack = false;
-    }
+    instance.m_PMICHack = board.pmicClickStreak;
 
 #if FURBLE_HAS_M5PM1
     instance.m_M5PM1.begin(&M5.In_I2C);
@@ -483,18 +476,21 @@ namespace {
 // line until the status register is read.
 uint32_t g_MotionWakeEdges = 0;
 
-gpio_num_t motionWakeGpio(void) {
-  switch (M5.getBoard()) {
-    case m5::board_t::board_M5StickC:
-    case m5::board_t::board_M5StickCPlus:
-      return GPIO_NUM_35;
-#if FURBLE_HAS_M5PM1
-    case m5::board_t::board_M5StickS3:
-      return GPIO_NUM_13;
-#endif
-    default:
-      return GPIO_NUM_NC;
+/** The board's motion wake path, NONE when this image cannot drive it. */
+Board::MotionWake motionWakeKind(void) {
+  const auto kind = Board::profile().motionWake;
+  // The PMIC path needs the M5PM1 driver, which only its image carries.
+  if ((kind == Board::MotionWake::PMIC_GPIO) && !FURBLE_HAS_M5PM1) {
+    return Board::MotionWake::NONE;
   }
+  return kind;
+}
+
+gpio_num_t motionWakeGpio(void) {
+  if (motionWakeKind() == Board::MotionWake::NONE) {
+    return GPIO_NUM_NC;
+  }
+  return static_cast<gpio_num_t>(Board::profile().motionWakePin);
 }
 
 }  // namespace
@@ -505,14 +501,13 @@ bool Platform::armMotionWake(void) {
   }
 
   gpio_num_t gpio = GPIO_NUM_NC;
-  switch (M5.getBoard()) {
-    case m5::board_t::board_M5StickC:
-    case m5::board_t::board_M5StickCPlus:
-      gpio = GPIO_NUM_35;
+  switch (motionWakeKind()) {
+    case Board::MotionWake::DIRECT:
+      gpio = motionWakeGpio();
       break;
 
 #if FURBLE_HAS_M5PM1
-    case m5::board_t::board_M5StickS3:
+    case Board::MotionWake::PMIC_GPIO:
     {
       if (!m5pm1Access([this]() {
             return m_M5PM1.gpioSet(M5PM1_GPIO_NUM_4, M5PM1_GPIO_MODE_INPUT, 0, M5PM1_GPIO_PULL_UP,
@@ -530,7 +525,7 @@ bool Platform::armMotionWake(void) {
         return false;
       }
 
-      gpio = GPIO_NUM_13;
+      gpio = motionWakeGpio();
       break;
     }
 #endif
@@ -560,7 +555,7 @@ bool Platform::armMotionWake(void) {
     return true;
   }
 #if FURBLE_HAS_M5PM1
-  if (M5.getBoard() == m5::board_t::board_M5StickS3) {
+  if (motionWakeKind() == Board::MotionWake::PMIC_GPIO) {
     m5pm1Access([this]() { return m_M5PM1.gpioSetWakeEnable(M5PM1_GPIO_NUM_4, false); });
     m5pm1Access(
         [this]() { return m_M5PM1.irqSetGpioMask(M5PM1_IRQ_GPIO4, M5PM1_IRQ_MASK_ENABLE); });
@@ -575,14 +570,13 @@ void Platform::disarmMotionWake(void) {
   }
 
   gpio_num_t gpio = GPIO_NUM_NC;
-  switch (M5.getBoard()) {
-    case m5::board_t::board_M5StickC:
-    case m5::board_t::board_M5StickCPlus:
-      gpio = GPIO_NUM_35;
+  switch (motionWakeKind()) {
+    case Board::MotionWake::DIRECT:
+      gpio = motionWakeGpio();
       break;
 #if FURBLE_HAS_M5PM1
-    case m5::board_t::board_M5StickS3:
-      gpio = GPIO_NUM_13;
+    case Board::MotionWake::PMIC_GPIO:
+      gpio = motionWakeGpio();
       m5pm1Access([this]() { return m_M5PM1.gpioSetWakeEnable(M5PM1_GPIO_NUM_4, false); });
       m5pm1Access(
           [this]() { return m_M5PM1.irqSetGpioMask(M5PM1_IRQ_GPIO4, M5PM1_IRQ_MASK_ENABLE); });
@@ -606,7 +600,7 @@ bool Platform::motionWakeAsserted(void) const {
   }
 
 #if FURBLE_HAS_M5PM1
-  if (M5.getBoard() == m5::board_t::board_M5StickS3) {
+  if (motionWakeKind() == Board::MotionWake::PMIC_GPIO) {
     // The BMI270 interrupt never reaches the SoC. GPIO13 carries the PMIC's
     // aggregated IRQ, so reading it answers "did the PMIC raise something",
     // not "is the IMU asserting". The IMU line itself is M5PM1 GPIO4, so read
@@ -635,7 +629,7 @@ bool Platform::motionWakeSample(void) {
   }
 
 #if FURBLE_HAS_M5PM1
-  if (M5.getBoard() == m5::board_t::board_M5StickS3) {
+  if (motionWakeKind() == Board::MotionWake::PMIC_GPIO) {
     // The PMIC latches a GPIO4 edge in its IRQ status. Read and clear it: the
     // flag is what makes a fast INT1 train visible to a one-second poll, and
     // clearing it is also what stops a latched status from holding PYG1_IRQ
@@ -679,7 +673,7 @@ void Platform::clearMotionWake(void) {
     return;
   }
 #if FURBLE_HAS_M5PM1
-  if (M5.getBoard() == m5::board_t::board_M5StickS3) {
+  if (motionWakeKind() == Board::MotionWake::PMIC_GPIO) {
     // m5pm1Access retries once, which is the documented behaviour of the first
     // transaction after the PMIC's idle sleep, and a wake is exactly when that
     // first transaction happens.
@@ -689,12 +683,11 @@ void Platform::clearMotionWake(void) {
 }
 
 bool Platform::canTimedWake(void) {
-  switch (M5.getBoard()) {
-#if FURBLE_HAS_M5PM1
-    case m5::board_t::board_M5StickS3:
-      return true;
-#endif
-    case m5::board_t::board_M5StickCPlus2:
+  switch (Board::profile().timedWake) {
+    case Board::TimedWake::PMIC_TIMER:
+      // the timer is driven through the M5PM1 driver, only its image has it
+      return FURBLE_HAS_M5PM1 != 0;
+    case Board::TimedWake::RTC_ALARM:
       return M5.Rtc.isEnabled();
     default:
       return false;
@@ -712,7 +705,7 @@ bool Platform::powerOffUntil(uint32_t seconds) {
   TimeKeeper::getInstance().flush();
 
 #if FURBLE_HAS_M5PM1
-  if (M5.getBoard() == m5::board_t::board_M5StickS3) {
+  if (Board::profile().timedWake == Board::TimedWake::PMIC_TIMER) {
     const bool watchdogWasEnabled = m_WatchdogEnabled;
     const auto restoreWatchdog = [this, watchdogWasEnabled]() {
       if (watchdogWasEnabled && !watchdogEnable(true)) {
@@ -764,7 +757,7 @@ bool Platform::powerOffUntil(uint32_t seconds) {
   }
 #endif
 
-  if (M5.getBoard() == m5::board_t::board_M5StickCPlus2) {
+  if (Board::profile().timedWake == Board::TimedWake::RTC_ALARM) {
     if (!M5.Rtc.isEnabled()) {
       ESP_LOGW(LOG_TAG, "StickC Plus2 RTC is unavailable, staying awake");
       return false;
@@ -797,8 +790,9 @@ bool Platform::powerOffUntil(uint32_t seconds) {
     }
 
     M5.Display.sleep();
-    (void)gpio_set_direction(STICKC_PLUS2_HOLD_PIN, GPIO_MODE_OUTPUT);
-    (void)gpio_set_level(STICKC_PLUS2_HOLD_PIN, 0);
+    const auto hold = static_cast<gpio_num_t>(Board::profile().powerHoldPin);
+    (void)gpio_set_direction(hold, GPIO_MODE_OUTPUT);
+    (void)gpio_set_level(hold, 0);
     return true;
   }
 
@@ -808,7 +802,7 @@ bool Platform::powerOffUntil(uint32_t seconds) {
 
 bool Platform::consumeTimedWake(void) {
 #if FURBLE_HAS_M5PM1
-  if (M5.getBoard() == m5::board_t::board_M5StickS3) {
+  if (Board::profile().timedWake == Board::TimedWake::PMIC_TIMER) {
     uint8_t wakeSource = 0;
     if (!m5pm1Access([this, &wakeSource]() {
           return m_M5PM1.getWakeSource(&wakeSource, M5PM1_CLEAN_ONCE);
@@ -833,7 +827,7 @@ bool Platform::consumeTimedWake(void) {
   }
 #endif
 
-  if (M5.getBoard() == m5::board_t::board_M5StickCPlus2) {
+  if (Board::profile().timedWake == Board::TimedWake::RTC_ALARM) {
     const bool timedWake = M5.Rtc.isEnabled() && M5.Rtc.getIRQstatus();
     M5.Rtc.disableIRQ();
     return timedWake;
@@ -843,54 +837,10 @@ bool Platform::consumeTimedWake(void) {
 }
 
 void Platform::initBattery(void) {
-  // capabilities follow the PMIC, capacities are from the vendor product pages
-  switch (M5.getBoard()) {
-    case m5::board_t::board_M5StickC:
-      // AXP192
-      m_BatteryCaps = {true, true, true, true};
-      m_BatteryCapacity = 95;
-      break;
-
-    case m5::board_t::board_M5StickCPlus:
-      // AXP192
-      m_BatteryCaps = {true, true, true, true};
-      m_BatteryCapacity = 120;
-      break;
-
-    case m5::board_t::board_M5StackCore2:
-    case m5::board_t::board_M5Tough:
-      // AXP192
-      m_BatteryCaps = {true, true, true, true};
-      m_BatteryCapacity = 390;
-      break;
-
-    case m5::board_t::board_M5StickS3:
-      // M5PM1, which has no battery current backend in M5Unified and no
-      // documented battery current register
-      m_BatteryCaps = {true, true, false, true};
-      m_BatteryCapacity = 250;
-      break;
-
-    case m5::board_t::board_M5StickCPlus2:
-      // no PMIC, battery voltage is read from an ADC divider
-      m_BatteryCaps = {true, true, false, false};
-      m_BatteryCapacity = 200;
-      break;
-
-    case m5::board_t::board_M5Stack:
-      // IP5306, coarse level only
-      m_BatteryCaps = {true, false, false, false};
-      m_BatteryCapacity = 0;
-      break;
-
-    default:
-      // An unrecognized board has no trustworthy battery backend. In
-      // particular, the Waveshare ESP32-S3-ETH is a mains/PoE node with no
-      // battery or PMIC. Do not turn M5Unified's fallback values into a fake
-      // battery percentage.
-      m_BatteryCaps = {false, false, false, false};
-      m_BatteryCapacity = 0;
-  }
+  // Capabilities follow the PMIC; see the rows in src/FurbleBoard.cpp.
+  const auto &board = Board::profile();
+  m_BatteryCaps = board.battery;
+  m_BatteryCapacity = board.batteryCapacityMah;
 
   ESP_LOGI(LOG_TAG, "Battery: level=%u voltage=%u current=%u charging=%u capacity=%umAh",
            m_BatteryCaps.level, m_BatteryCaps.voltage, m_BatteryCaps.current,
@@ -903,6 +853,36 @@ Platform::battery_caps_t Platform::getBatteryCaps(void) {
 
 uint16_t Platform::getBatteryCapacity(void) {
   return m_BatteryCapacity;
+}
+
+PowerBackend::BatterySource Platform::getBatterySource(void) {
+  if (!m_BatteryCaps.level) {
+    return BatterySource::NONE;
+  }
+  // M5Unified returns the AXP2101 E-gauge register and the IP5306 four-step
+  // level directly; every other PMIC level is its voltage curve.
+  switch (M5.Power.getType()) {
+    case m5::Power_Class::pmic_axp2101:
+      return BatterySource::GAUGE;
+    case m5::Power_Class::pmic_ip5306:
+      return BatterySource::COARSE;
+    default:
+      return BatterySource::ESTIMATE;
+  }
+}
+
+bool Platform::setRail(Rail rail, bool on) {
+  if (rail != Rail::GPS) {
+    return false;
+  }
+  // The Port A 5 V output. The M5PM1 sleeps after an I2C idle period and the
+  // first access after that only wakes it, so read back and retry once. The
+  // retry is not read back: that is the GPS driver's original bus traffic.
+  M5.Power.setExtOutput(on, m5::ext_PA);
+  if (M5.Power.getExtOutput() != on) {
+    M5.Power.setExtOutput(on, m5::ext_PA);
+  }
+  return true;
 }
 
 uint32_t Platform::getBatteryFailCount(void) {
