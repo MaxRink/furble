@@ -1153,3 +1153,11 @@ and the hard limit. An unprivileged process cannot raise a hard limit again,
 so its `(void)` restore failed silently and the profile written at exit was
 cut off. The test now lowers only the soft limit, restores the original pair
 and checks that the restore succeeds.
+
+With every profile merging, the floor check ran for the first time since
+September and failed one file: `src/FurbleConsole.cpp` at 88.64% against its
+89.08% floor. `crash last` with a retained record had never been tested, so
+the lines that print it, including the failed-allocation fields from PR 5,
+were uncovered. The console stub now lets a test install a record, and the
+console test checks every printed field with and without a failed
+allocation. The console reaches 89.26% locally. The floor is not lowered.
