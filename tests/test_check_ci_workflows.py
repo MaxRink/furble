@@ -469,14 +469,26 @@ jobs:
     return json.loads(line.removeprefix("matrix="))["platform"]
 
   def test_discover_emits_both_mandatory_core_debug_profiles(self):
-    platforms = self._run_discover()
-    self.assertIn("m5stack-core-usb-debug", platforms)
-    self.assertIn("m5stack-core-debug", platforms)
-    for board in ("m5stick-c", "m5stick-c-plus", "m5stack-core2",
-                  "m5stick-s3", "waveshare-s3-eth"):
-      self.assertIn(board, platforms)
-      self.assertIn(f"{board}-debug", platforms)
-    self.assertEqual(len(platforms), len(set(platforms)))
+    # Six release envs, then one debug env per board with both Core debug
+    # profiles in place of m5stack-core-debug alone: 13 in all.
+    self.assertEqual(
+        self._run_discover(),
+        [
+            "m5stick-c",
+            "m5stick-c-plus",
+            "m5stack-core",
+            "m5stack-core2",
+            "m5stick-s3",
+            "waveshare-s3-eth",
+            "m5stick-c-debug",
+            "m5stick-c-plus-debug",
+            "m5stack-core-usb-debug",
+            "m5stack-core-debug",
+            "m5stack-core2-debug",
+            "m5stick-s3-debug",
+            "waveshare-s3-eth-debug",
+        ],
+    )
 
   def test_discover_test_catches_a_dropped_core_ota_profile(self):
     text = (ROOT / ".github" / "workflows" / "main.yml").read_text(encoding="utf-8")
