@@ -268,6 +268,11 @@ class StackBudgetTest(unittest.TestCase):
         r = self.run_tool(0, manifest_extra=task, env="x-debug")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("PASS t: 820 of 900", r.stdout)
+        # a second task walks with the same indirect rules
+        task["tasks"].append(dict(task["tasks"][0], name="u"))
+        r = self.run_tool(0, manifest_extra=task, env="x-debug")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("PASS u: 820 of 900", r.stdout)
 
     def test_debug_env_reads_sdkconfig_keys_through_the_debug_fragment(self):
         r = self.run_tool(400, debug_config="CONFIG_STACK=900\n")

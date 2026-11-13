@@ -467,6 +467,9 @@ def main():
     debug = "-debug" in args.env
     debug_sdkconfig = dict(sdkconfig)
     read_config(Path(args.debug_sdkconfig), debug_sdkconfig)
+
+    def stack_of(value, config):
+        return int(config[value]) if isinstance(value, str) else value
     target = sdkconfig["CONFIG_IDF_TARGET"]
     margin = manifest["overhead_bytes"][target]
     if not args.no_elf:
@@ -553,11 +556,8 @@ def main():
                        if not tasks or task["name"] in tasks]
         depth, path, notes = worst_case(graph, found[0], task_rules, pruned, task_bounds)
         need = depth + margin
-        def resolve(value, config):
-            return int(config[value]) if isinstance(value, str) else value
-
-        release_stack = resolve(task["stack_bytes"], sdkconfig)
-        debug_stack = resolve(task.get("debug_stack_bytes", task["stack_bytes"]), debug_sdkconfig)
+        release_stack = stack_of(task["stack_bytes"], sdkconfig)
+        debug_stack = stack_of(task.get("debug_stack_bytes", task["stack_bytes"]), debug_sdkconfig)
         if debug_stack < release_stack:
             print(f"FAIL {task['name']}: debug stack {debug_stack} is below the release stack"
                   f" {release_stack}")
