@@ -163,10 +163,7 @@ enum USBConsoleRunner {
     var last: Sample?
     var nextSample = start
     var lastStatusAt = start
-    var lost = false
     var retry = CLIMonitorBackoff()
-    var recovery = CLIUSBRecovery(allowHardReset: options.allowHardReset)
-    var resetAdvised = false
 
     if options.csv, options.includeHeader {
       print(CLIReport.monitorCSVHeader)
@@ -178,17 +175,6 @@ enum USBConsoleRunner {
     note("USB is supplying power; detach USB for a representative battery-drain run.")
 
     func elapsed() -> TimeInterval { Date().timeIntervalSince(start) }
-    // The reset reason and the previous run's crash record are the only
-    // evidence of why the app restarted; the USB endpoint drops the panic.
-    func reportReset(_ status: [String: String], marker: Bool) {
-      let reason = status["reset"] ?? "unknown"
-      if marker { emitMarker("device-reset:\(reason)") }
-      note("Device reset reason: \(reason), uptime \(status["uptime"] ?? "unknown") s.")
-      if let crash = try? parseKeyValues(console.command("crash", timeout: 5)),
-        let summary = crash["crash.summary"] {
-        note("Previous run crash record: \(summary)")
-      }
-    }
     func emitMarker(_ event: String) {
       let now = Date()
       if options.csv {
@@ -199,6 +185,9 @@ enum USBConsoleRunner {
           + "\(formatSeconds(now.timeIntervalSince(start)))s event=\(event)")
       }
     }
+    let session = CLIUSBMonitorSession(
+      console: console, allowHardReset: options.allowHardReset,
+      marker: emitMarker, note: note)
 
     monitorLoop: while true {
       if interrupt.isSet { break }
@@ -207,27 +196,11 @@ enum USBConsoleRunner {
       }
       let now = Date()
       if now >= nextSample {
-        do {
-          try console.open()
-          // The debug UI occasionally holds its lock across a display flush.
-          // A 2 s command timeout made the monitor close and reopen the CDC
-          // port during those windows, which could leave the endpoint wedged.
-          let status = try parseStatus(console.command("status", timeout: 5))
-          let gps = try parseGPS(console.command("gps", timeout: 5))
-          if lost {
-            emitMarker("reconnected")
-            lost = false
-            resetAdvised = false
-            retry.reset()
-            recovery.recovered()
-          }
-          let uptime = UInt32(status["uptime"] ?? "0") ?? 0
-          if first == nil {
-            reportReset(status, marker: false)
-          } else if CLIUSBRecovery.rebooted(previousUptime: last?.uptime, uptime: uptime) {
-            reportReset(status, marker: true)
-          }
+        switch session.step() {
+        case .sample(let status, let gps):
+          retry.reset()
           lastStatusAt = Date()
+          let uptime = UInt32(status["uptime"] ?? "0") ?? 0
           let sampleTime = Date()
           let sample = Sample(
             timestamp: sampleTime,
@@ -261,40 +234,9 @@ enum USBConsoleRunner {
           if CLIMonitorPolicy.reachedEmpty(
             batteryPercent: sample.status.batteryPercent, untilEmpty: options.untilEmpty) {
             emitMarker("battery-empty")
-            break
+            break monitorLoop
           }
-        } catch {
-          console.close()
-          if !lost {
-            emitMarker("link-lost")
-            lost = true
-          }
-          let failure = CLIUSBRecovery.classify(error)
-          if case .rom(let banner) = failure {
-            emitMarker("rom-reset:\(banner.reason ?? "unknown")")
-            note("ROM banner: \(banner.resetLine)")
-          }
-          switch recovery.next(after: failure) {
-          case .reopen:
-            break
-          case .hardReset:
-            do {
-              try console.hardReset()
-              emitMarker("hard-reset")
-            } catch {
-              note("USB hard reset failed: \(error)")
-            }
-            console.close()
-          case .needsHardReset:
-            if !resetAdvised {
-              emitMarker("hard-reset-needed")
-              resetAdvised = true
-            }
-            note(
-              "The chip is stuck in ROM or the console stays silent. Rerun with "
-                + "--usb-hard-reset, or run esptool.py --chip esp32s3 --port \(path) "
-                + "--after hard_reset chip_id.")
-          }
+        case .failed(let error):
           let delay = retry.nextDelay()
           let until = Date().addingTimeInterval(delay)
           note("USB reconnect in \(formatSeconds(delay)) s: \(error)")
@@ -308,7 +250,7 @@ enum USBConsoleRunner {
           if CLIMonitorPolicy.retryExhausted(
             lastActivity: lastStatusAt, now: Date(), retryWindow: options.retryWindow) {
             emitMarker("retry-exhausted")
-            break
+            break monitorLoop
           }
         }
       }
@@ -373,18 +315,7 @@ enum USBConsoleRunner {
   }
 
   private static func parseKeyValues(_ text: String) throws -> [String: String] {
-    var values: [String: String] = [:]
-    for line in text.split(whereSeparator: { $0.isNewline }) {
-      guard let separator = line.firstIndex(of: ":") else { continue }
-      let key = line[..<separator].trimmingCharacters(in: .whitespaces)
-      let value = line[line.index(after: separator)...].trimmingCharacters(in: .whitespaces)
-      if !key.isEmpty { values[key] = value }
-    }
-    guard !values.isEmpty else { throw FurbleSerialError.notFurble }
-    if ProcessInfo.processInfo.environment["FURBLE_COMPANION_DEBUG"] != nil {
-      FileHandle.standardError.write(Data("[usb] keys: \(values.keys.sorted())\n".utf8))
-    }
-    return values
+    try CLIUSBMonitorSession.parseKeyValues(text)
   }
 
   private static func gpsSourceCode(_ value: String?) -> UInt8 {

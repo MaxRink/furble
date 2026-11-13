@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import Testing
 @testable import FurbleCompanionCLIKit
@@ -19,6 +20,11 @@ private final class FakeSerialTransport: FurbleSerialTransport {
   }
 
   var mode: Mode
+  /// The console's status reply body.
+  var reply = "version: test\nreset: panic\nuptime: 40\n"
+  /// When set, the RTS release fails with this errno, like a USB node that
+  /// the reset already took away.
+  var failRelease: Int32?
   var isOpen = false
   var opens = 0
   var lines: [Lines] = []
@@ -44,7 +50,7 @@ private final class FakeSerialTransport: FurbleSerialTransport {
     case .console:
       let command = String(decoding: bytes, as: UTF8.self)
         .trimmingCharacters(in: .whitespacesAndNewlines)
-      let body = command.isEmpty ? "" : "\(command)\nversion: test\nreset: panic\n"
+      let body = command.isEmpty ? "" : "\(command)\n\(reply)"
       pending += Array((body + "furble> ").utf8)
     case .stalled:
       break
@@ -69,6 +75,12 @@ private final class FakeSerialTransport: FurbleSerialTransport {
 
   func setModemLines(dtr: Bool, rts: Bool) throws {
     let reset = lines.last.map { $0.rts && !$0.dtr } ?? false
+    if reset && !rts, let code = failRelease {
+      mode = .console
+      bannerSent = false
+      isOpen = false
+      throw FurbleSerialError.modemControl(code)
+    }
     lines.append(Lines(dtr: dtr, rts: rts))
     if reset && !rts && !dtr {
       mode = .console
@@ -110,6 +122,62 @@ struct ROMBannerTests {
   @Test func consoleTextIsNotABanner() {
     #expect(FurbleROMBanner.parse("version: dev\nreset: panic\n") == nil)
   }
+
+  @Test func crlfBannerParses() throws {
+    let banner = try #require(FurbleROMBanner.parse(
+      "ESP-ROM:esp32s3-20210327\r\nrst:0xc (RTC_SW_CPU_RST),boot:0x8 (SPI_FAST_FLASH_BOOT)\r\n"))
+    #expect(banner.reason == "RTC_SW_CPU_RST")
+    #expect(banner.resetLine == "rst:0xc (RTC_SW_CPU_RST),boot:0x8 (SPI_FAST_FLASH_BOOT)")
+    #expect(!banner.downloadMode)
+  }
+
+  @Test func noiseBeforeTheResetLineIsDropped() throws {
+    let banner = try #require(FurbleROMBanner.parse(
+      "\u{0}\u{FF}garbagerst:0x15 (USB_UART_CHIP_RESET),boot:0x0 (DOWNLOAD(USB/UART0))\n"))
+    #expect(banner.resetLine.hasPrefix("rst:0x15"))
+    #expect(banner.reason == "USB_UART_CHIP_RESET")
+    #expect(banner.downloadMode)
+  }
+
+  @Test func truncatedReasonIsUnknown() throws {
+    let banner = try #require(FurbleROMBanner.parse("rst:0x15 (USB_UART_CHI"))
+    #expect(banner.reason == nil)
+    #expect(!banner.downloadMode)
+  }
+
+  @Test func theLastOfTwoBannersWins() throws {
+    let banner = try #require(FurbleROMBanner.parse(
+      downloadBanner + "rst:0x15 (USB_UART_CHIP_RESET),boot:0x8 (SPI_FAST_FLASH_BOOT)\n"))
+    #expect(banner.resetLine.contains("SPI_FAST_FLASH_BOOT"))
+    #expect(!banner.downloadMode)
+  }
+
+  @Test func classicDownloadBootIsDownloadMode() throws {
+    let banner = try #require(FurbleROMBanner.parse(
+      "rst:0x1 (POWERON_RESET),boot:0x3 (DOWNLOAD_BOOT(UART0/UART1/SDIO_REI_REO_V2))\n"))
+    #expect(banner.reason == "POWERON_RESET")
+    #expect(banner.downloadMode)
+  }
+}
+
+/// The real POSIX read path on a pseudo-terminal whose master has closed.
+/// XNU reports it as POLLIN|POLLHUP and read() returns 0, the state a
+/// re-enumerated USB node leaves behind.
+struct POSIXHangUpTests {
+  @Test func hungUpTTYThrowsInsteadOfReadingNothing() throws {
+    var master: Int32 = -1
+    var slave: Int32 = -1
+    var name = [CChar](repeating: 0, count: 128)
+    try #require(openpty(&master, &slave, &name, nil, nil) == 0)
+    let transport = FurblePOSIXSerialTransport(path: String(cString: name))
+    try transport.open()
+    defer { transport.close() }
+    Darwin.close(slave)
+    Darwin.close(master)
+    #expect(throws: FurbleSerialError.readFailed("port hung up")) {
+      try transport.read(timeout: 0.5)
+    }
+  }
 }
 
 struct USBRecoveryTests {
@@ -150,8 +218,23 @@ struct USBRecoveryTests {
   @Test func hardResetIsEsptoolsRTSPulseWithDTRLow() throws {
     let transport = FakeSerialTransport(mode: .stalled)
     let console = FurbleSerialConsole(path: "/dev/fake", transport: transport)
-    try console.hardReset(dwell: 0)
+    #expect(try console.hardReset(dwell: 0) == .pulsed)
     #expect(transport.lines == [.init(dtr: false, rts: true), .init(dtr: false, rts: false)])
+  }
+
+  @Test func aPortLostOnReleaseStillCountsAsAReset() throws {
+    for code in [ENXIO, EIO, ENODEV] {
+      let transport = FakeSerialTransport(mode: .stalled)
+      transport.failRelease = code
+      let console = FurbleSerialConsole(path: "/dev/fake", transport: transport)
+      #expect(try console.hardReset(dwell: 0) == .pulsedPortLost)
+    }
+    let transport = FakeSerialTransport(mode: .stalled)
+    transport.failRelease = EPERM
+    let console = FurbleSerialConsole(path: "/dev/fake", transport: transport)
+    #expect(throws: FurbleSerialError.modemControl(EPERM)) {
+      try console.hardReset(dwell: 0)
+    }
   }
 
   @Test func hardResetIsAnExplicitUSBMonitorOption() throws {
@@ -211,42 +294,80 @@ struct USBRecoveryTests {
   @Test func uptimeRegressionIsAReboot() {
     #expect(!CLIUSBRecovery.rebooted(previousUptime: nil, uptime: 0))
     #expect(!CLIUSBRecovery.rebooted(previousUptime: 40, uptime: 45))
+    #expect(!CLIUSBRecovery.rebooted(previousUptime: 40, uptime: nil))
     #expect(CLIUSBRecovery.rebooted(previousUptime: 2_100, uptime: 3))
   }
 
-  /// The monitor loop in miniature: a chip that reset into ROM download mode
-  /// is reported, hard reset once, and answers the console again.
-  @Test func monitorRecoversFromROMDownloadMode() throws {
-    let transport = FakeSerialTransport(mode: .console)
+}
+
+/// The production monitor session, driven through the fake transport.
+struct USBMonitorSessionTests {
+  private func session(
+    _ transport: FakeSerialTransport, allowHardReset: Bool
+  ) -> (CLIUSBMonitorSession, () -> [String]) {
+    final class Log { var events: [String] = [] }
+    let log = Log()
     let console = FurbleSerialConsole(path: "/dev/fake", transport: transport)
-    var recovery = CLIUSBRecovery(allowHardReset: true)
-    var events: [String] = []
+    let session = CLIUSBMonitorSession(
+      console: console, allowHardReset: allowHardReset,
+      marker: { log.events.append($0) }, note: { _ in })
+    session.commandTimeout = 0.05
+    session.resetDwell = 0
+    return (session, { log.events })
+  }
 
-    func sample() {
-      do {
-        try console.open()
-        _ = try console.command("status", timeout: 0.2)
-        recovery.recovered()
-        events.append("sample")
-      } catch let error {
-        console.close()
-        let failure = CLIUSBRecovery.classify(error)
-        if case .rom(let banner) = failure {
-          events.append("rom-reset:\(banner.reason ?? "unknown")")
-        }
-        if recovery.next(after: failure) == .hardReset {
-          try? console.hardReset(dwell: 0)
-          console.close()
-          events.append("hard-reset")
-        }
-      }
-    }
+  private func sampled(_ outcome: CLIUSBMonitorSession.Outcome) -> Bool {
+    if case .sample = outcome { return true }
+    return false
+  }
 
-    sample()
+  @Test func romDownloadModeIsReportedResetAndRecovered() {
+    let transport = FakeSerialTransport(mode: .console)
+    let (session, events) = session(transport, allowHardReset: true)
+    #expect(sampled(session.step()))
     transport.mode = .rom(downloadBanner)
-    sample()
-    sample()
-    #expect(events == ["sample", "rom-reset:USB_UART_CHIP_RESET", "hard-reset", "sample"])
+    #expect(!sampled(session.step()))
+    // The port is closed after the pulse so the next sample reopens it.
+    #expect(!transport.isOpen)
+    #expect(sampled(session.step()))
+    #expect(events() == ["link-lost", "rom-reset:USB_UART_CHIP_RESET", "hard-reset", "reconnected"])
     #expect(transport.opens == 3)
+  }
+
+  @Test func aResetThatDropsThePortStillEmitsHardReset() {
+    let transport = FakeSerialTransport(mode: .rom(downloadBanner))
+    transport.failRelease = ENXIO
+    let (session, events) = session(transport, allowHardReset: true)
+    #expect(!sampled(session.step()))
+    #expect(!transport.isOpen)
+    #expect(sampled(session.step()))
+    #expect(events() == ["link-lost", "rom-reset:USB_UART_CHIP_RESET", "hard-reset", "reconnected"])
+  }
+
+  @Test func refusedResetIsAdvisedOncePerOutage() {
+    let transport = FakeSerialTransport(mode: .stalled)
+    let (session, events) = session(transport, allowHardReset: false)
+    for _ in 0..<5 { _ = session.step() }
+    #expect(transport.lines.isEmpty)
+    #expect(events() == ["link-lost", "hard-reset-needed"])
+    transport.mode = .console
+    #expect(sampled(session.step()))
+    transport.mode = .stalled
+    for _ in 0..<3 { _ = session.step() }
+    #expect(events() == [
+      "link-lost", "hard-reset-needed", "reconnected", "link-lost", "hard-reset-needed"
+    ])
+  }
+
+  @Test func uptimeRegressionMarksADeviceResetAndMissingUptimeDoesNot() {
+    let transport = FakeSerialTransport(mode: .console)
+    let (session, events) = session(transport, allowHardReset: false)
+    #expect(sampled(session.step()))
+    transport.reply = "version: test\nreset: panic\n"
+    #expect(sampled(session.step()))
+    #expect(events().isEmpty)
+    transport.reply = "version: test\nreset: panic\nuptime: 3\n"
+    #expect(sampled(session.step()))
+    #expect(events() == ["device-reset:panic"])
   }
 }

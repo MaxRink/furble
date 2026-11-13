@@ -183,7 +183,8 @@ for example `rom-reset:USB_UART_CHIP_RESET`. A chip parked in ROM download
 mode, or a console that stays silent across three reopens, needs a reset. The
 monitor sends one only with `--usb-hard-reset`: it pulses RTS with DTR low,
 which is esptool's `--after hard_reset` sequence, and adds a `hard-reset`
-marker. Without the flag it adds one `hard-reset-needed` marker and keeps
+marker. The reset can drop the USB port before RTS is released; the marker is
+still written and the next sample reopens the port. Without the flag it adds one `hard-reset-needed` marker and keeps
 retrying until `--retry-window` runs out. The first sample prints the console
 `reset` reason and the previous run's `crash` summary to stderr. A later sample
 with a lower `uptime` means the app restarted: the monitor adds a
