@@ -129,9 +129,12 @@ Run the fast scanner set before opening or updating a pull request:
 python3 tools/pre_review.py --base origin/master
 ```
 
-It runs the diff hygiene scanner, the settings contract scanner, the C++ safety
+It runs the diff hygiene scanner, the settings contract scanner, clang-format
+21 on the changed C and C++ files (`tools/check_format.py`), the C++ safety
 scanner, the CI workflow checker, the simulator manifest checker, and the
-scanner unit tests. It fails closed on review-blocking findings.
+scanner unit tests. It fails closed on review-blocking findings. A missing or
+non-21 clang-format fails the gate; install it with
+`python3 -m pip install -r .github/workflows/clang-format-requirements.txt`.
 
 To run it on every push, enable the tracked hook once per clone:
 
