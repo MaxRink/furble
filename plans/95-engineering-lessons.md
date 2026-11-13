@@ -110,11 +110,12 @@ The root CLAUDE.md lists the short form of these. The detail lives here.
 - Actions was disabled for three weeks; merges without CI accumulated these
   failures. GitHub Actions was off on the fork from 2026-10-21 to 2026-11-13,
   and PRs #411 to #439 merged with no check runs at all. Re-enabling it turned
-  master red in eight jobs with eight separate root causes, each fixed on
-  `ci/master-green`:
-  - clang-format (code): twelve sim and host test files were never formatted.
-    CI installs clang-format 21.1.8 from pip; the local 21.1.2 agrees with it
-    on every file, so this was not version drift.
+  master red in eight jobs with eight separate root causes. #447 and #448
+  fixed two on master; `ci/master-green` fixes the rest:
+  - clang-format (code, #447): twelve sim and host test files were never
+    formatted. CI installs clang-format 21.1.8 from pip; the local 21.1.2
+    agrees with it on every file, so this was not version drift. #447 also
+    added `tools/check_format.py` to `pre_review.py`.
   - build (m5stick-c) (workflow): the partition-table check reads the stock
     ESP-IDF CSV from the framework package but ran before the build installed
     it. It only passed on a warm PlatformIO cache, and every cache expired
@@ -124,10 +125,11 @@ The root CLAUDE.md lists the short form of these. The detail lives here.
     every path was truncated. The shallow plain build tree hid it; the deeper
     sanitized tree truncated into the directory itself. The sandbox is now
     relative and a static_assert bounds it.
-  - Coverage floor (runner drift): `ubuntu-latest` moved to ubuntu-26.04,
-    which does not preinstall clang-18 with compiler-rt. The workflow installs
-    clang-18 without recommends, so the sanitizer runtime was missing and the
-    fuzz targets failed configure. `libclang-rt-18-dev` is now named.
+  - Coverage floor (runner drift, #448): compiler-rt now lives in
+    `libclang-rt-18-dev`, which `clang-18` only recommends, and the workflow
+    installs without recommends. The sanitizer runtime was missing and the
+    fuzz targets failed configure. #448 names the package and then fixed the
+    three test and coverage faults behind it; see plan 314.
   - sim-e2e (simulator model): `memory-pressure-mqtt-shed` asserted a figure
     measured on macOS. The host MQTT transport allocated its own adapter
     object, strings and thread on the owner task, and the heap counter charged
@@ -157,9 +159,9 @@ The root CLAUDE.md lists the short form of these. The detail lives here.
   reads the head commit's check rollup. It fails when no check ran, when a
   check is still running, and when any check ended in anything but success,
   neutral or skipped. Run against #439 it reports that no CI ran on its head.
-- A green local gate set is not CI. `pre_review.py` does not run clang-format,
-  the sanitizers or the Linux simulator, so a branch can pass it and still
-  break all three. Never merge on local evidence alone; wait for the checks.
+- A green local gate set is not CI. `pre_review.py` does not run the
+  sanitizers or the Linux simulator, so a branch can pass it and still break
+  both. Never merge on local evidence alone; wait for the checks.
 
 ## Multi-agent and git workflow
 

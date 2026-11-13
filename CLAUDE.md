@@ -291,7 +291,9 @@ applies to a remediation PR that closes review findings. The online gate is
 `python3 tools/check_review_threads.py --repo owner/name --pr N`; it fails
 closed on API errors and is intentionally not part of the offline pre-review or
 fork CI jobs. It also fails when the PR head has no check runs, or any check
-is still running or did not pass, so merging without CI is never silent.
+is still running or did not pass, so merging without CI is never silent. Actions
+was off from 2026-10-21 to 2026-11-13 and PRs merged with no CI; see
+`plans/95-engineering-lessons.md`.
 Record the audit in `plans/NN-review-feedback.md`. Run the final
 gate set before pushing or merging: `python3 tools/pre_review.py --base
 origin/master`, `sh sim/scripts/check-doc-tokens.sh`, and the review-thread

@@ -16,7 +16,9 @@ acceptable. The online gate is
 closed on API errors and is intentionally not part of the offline pre-review or
 fork CI jobs. The remediation PR must pass it before merge.
 The same gate fails when the PR head has no check runs, or any check is
-still running or did not pass, so merging without CI is never silent.
+still running or did not pass, so merging without CI is never silent. Actions
+was off from 2026-10-21 to 2026-11-13 and PRs merged with no CI; see
+`plans/95-engineering-lessons.md`.
 
 ## Documentation mandate
 
