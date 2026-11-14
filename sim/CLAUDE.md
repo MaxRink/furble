@@ -289,6 +289,12 @@ are discovered by pkg-config or CMake. The default simulator does not enable
 the production MQTT transport. The adapter accepts plaintext `mqtt://`
 local-broker URIs
 only; `mqtts://` remains fail-closed until a trust-store-backed TLS shim exists.
+Under the heap model, libmosquitto and the adapter's own objects run in a
+`HostAllocScope` and are never charged. `esp_mqtt_client_init()` charges what
+the pinned esp-mqtt allocates on the device instead: the client and config
+storage (248 and 160 bytes, from the StickS3 firmware DWARF) and the configured
+in and out buffers. Destroy releases them and `start()` charges the client task
+stack. Keep these figures in step with the pinned IDF when it moves.
 A local broker is managed outside the simulator and its socket/PUBACK evidence
 is not hardware or TLS evidence. `sim/scripts/test-mqtt-broker.sh` uses an
 externally managed broker and reports active-camera resubscription after broker

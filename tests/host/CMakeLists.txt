@@ -1130,9 +1130,7 @@ target_compile_options(fujifilm_missing_shutter_char_test PRIVATE -Wall -Wextra 
 
 # The GPX writer suite compiles the production writer directly. It has no BLE or
 # NVS dependency, only C file I/O, so it redirects the mount point to a build
-# sandbox with FURBLE_GPX_DIRECTORY and needs the host esp_log shim. The sandbox
-# is relative to the test's working directory: the writer builds each file path
-# in a 64-byte buffer, and an absolute build path would not fit it.
+# sandbox with FURBLE_GPX_DIRECTORY and needs the host esp_log shim.
 add_executable(gpx_writer_test
                gpx_writer_test.cpp
                ${FURBLE_ROOT}/src/FurbleGPX.cpp)
@@ -1141,7 +1139,7 @@ target_include_directories(gpx_writer_test PRIVATE
                            ${FURBLE_ROOT}/lib/furble
                            ${HOST_NIMBLE_DIR})
 target_compile_definitions(gpx_writer_test PRIVATE
-                           FURBLE_GPX_DIRECTORY="gpx_sandbox")
+                           FURBLE_GPX_DIRECTORY="${CMAKE_CURRENT_BINARY_DIR}/gpx_sandbox")
 target_compile_options(gpx_writer_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                -Wno-unused-parameter)
 
@@ -2300,8 +2298,7 @@ if(BUILD_TESTING)
   add_test(NAME stale-connect COMMAND stale_connect_test)
   add_test(NAME client-leak COMMAND client_leak_test)
   add_test(NAME reconnect-stuck COMMAND reconnect_stuck_test)
-  add_test(NAME gpx-writer COMMAND gpx_writer_test
-           WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+  add_test(NAME gpx-writer COMMAND gpx_writer_test)
   add_test(NAME reconnect-backoff COMMAND reconnect_backoff_test)
   add_test(NAME battery-saver COMMAND battery_saver_test)
   add_test(NAME mqtt-owner COMMAND mqtt_owner_test)

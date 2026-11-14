@@ -123,8 +123,9 @@ The root CLAUDE.md lists the short form of these. The detail lives here.
   - ASan and UBSan host tests (test): the GPX writer builds its path in a
     64-byte buffer and the test sandbox was an absolute build-tree path, so
     every path was truncated. The shallow plain build tree hid it; the deeper
-    sanitized tree truncated into the directory itself. The sandbox is now
-    relative and a static_assert bounds it.
+    sanitized tree truncated into the directory itself. The writer now sizes
+    its buffer from the directory and fails on truncation, so the long
+    sandbox stays as the regression test.
   - Coverage floor (runner drift, #448): compiler-rt now lives in
     `libclang-rt-18-dev`, which `clang-18` only recommends, and the workflow
     installs without recommends. The sanitizer runtime was missing and the
@@ -135,8 +136,11 @@ The root CLAUDE.md lists the short form of these. The detail lives here.
     object, strings and thread on the owner task, and the heap counter charged
     them as device memory. Their sizes follow the host C++ library and pthread
     ABI, so the paused figure was 8,497 on macOS, 8,457 on arm64 Linux and
-    8,441 on x86_64 Linux. The transport now allocates inside a
-    `HostAllocScope`, like every other sim hook production code calls.
+    8,441 on x86_64 Linux. Every libmosquitto call and the adapter's own
+    objects now run inside a `HostAllocScope`, like every other sim hook
+    production code calls. In their place `esp_mqtt_client_init()` charges
+    what esp-mqtt allocates on the device (3,480 bytes for the StickS3 MQTT
+    config), and destroy releases it.
   - sim-sanitizers (third-party read of uninitialized memory, then a
     suppression-path bug): M5GFX's `Panel_sdl` divides by the renderer
     output size, which SDL never writes when the dummy video driver has no

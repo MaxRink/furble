@@ -32,11 +32,10 @@ The SD boundary compiles `src/FurbleSD.cpp` with `FURBLE_SD_MOUNT_POINT` set to
 default remains `/sd` and no device behavior changes. The same target sets
 `FURBLE_GPX_DIRECTORY` for `src/FurbleGPX.cpp`.
 
-The `gpx-writer` suite sets `FURBLE_GPX_DIRECTORY` to the relative
-`gpx_sandbox` and ctest runs it in the build tree. `GPX::open()` builds each
-path in a 64-byte buffer, and an absolute build-tree sandbox overflowed it in
-the deeper sanitized tree. A static_assert in the test keeps the directory
-short enough.
+The `gpx-writer` suite sets `FURBLE_GPX_DIRECTORY` to an absolute sandbox in
+the build tree, deliberately long. `GPX::open()` sizes its path buffer from
+the directory and fails on a truncated path, so any build tree works; a
+64-byte buffer once truncated it in the deeper sanitized tree.
 
 The boundary log shim stores production log lines under a mutex because worker
 tasks write them while the test thread polls. Keep `BoundaryHost::logContains()`

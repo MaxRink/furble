@@ -1173,18 +1173,28 @@ for the full incident.
   formats its path into 64 bytes, and the test sandbox was the absolute
   build-tree path. The plain tree truncated silently and the test truncated its
   expectation the same way; the sanitized tree is deeper, so the path was cut
-  inside the directory name. The sandbox is relative to the ctest working
-  directory now and a static_assert bounds it. The coverage workflow no longer
-  needs a short build directory.
+  inside the directory name. `GPX::open()` now sizes the buffer from
+  `FURBLE_GPX_DIRECTORY` plus the widest name the point fields can print, and
+  fails the open on a truncated path. On the device that is 37 bytes instead
+  of 64. The test keeps its long absolute sandbox as the regression check, and
+  the coverage workflow no longer needs a short build directory.
 - PR 6, `memory-pressure-mqtt-shed`: the paused figure of 8,497 was measured on
   macOS. Linux read 8,457 on arm64 and 8,441 on x86_64. The host MQTT
   transport allocated its adapter object, strings and reconnect thread on the
   owner task, and the counter charged them as device memory, so their host
-  sizes leaked into the model. `esp_mqtt_client_init()` and `start()` now
-  allocate inside a `HostAllocScope`. The paused client gives back exactly its
-  3,072-byte worker on every host. The scenario is reseeded 672 bytes higher so
-  the paused reading is still 8,497, between the RED floor and the RED exit,
-  which keeps the check that such a reading holds RED.
+  sizes leaked into the model. Every libmosquitto call and the adapter's own
+  objects now run inside a `HostAllocScope`. In their place
+  `esp_mqtt_client_init()` charges what the pinned esp-mqtt allocates
+  (`components/mqtt/esp-mqtt/mqtt_client.c`): the 248-byte client and 160-byte
+  config storage (sizes from the StickS3 firmware DWARF) and the in and out
+  buffers FurbleMQTT configures, 1,536 bytes each, so 3,480 bytes. Destroy
+  releases them. The sim had never charged them. The firmware stops and
+  destroys the client on a memory pause, so the paused reading rises from
+  8,497 to 11,977 (worker plus init allocations) and still sits between the
+  RED floor and the RED exit, which keeps the check that such a reading holds
+  RED. The scenario is reseeded 4,152 bytes higher so boot and the squeezed
+  level keep their old figures. Smaller esp-mqtt allocations (URI strings,
+  outbox, transport list) are not modelled.
 - PR 4b, sim-sanitizers: every scenario failed with a signed overflow in
   M5GFX `Panel_sdl::_update_scaling()`. Under the dummy video driver
   `SDL_CreateRenderer` returns NULL, `SDL_GetRendererOutputSize` never writes
