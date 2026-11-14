@@ -189,6 +189,115 @@ class PowerCompareTest(unittest.TestCase):
     self.assertEqual(result.returncode, 2)
     self.assertIn("no accounting metadata fields", result.stderr)
 
+  @staticmethod
+  def activity_report(icon=60, invalidated=10000, flushed=5000, scenario="idle"):
+    return {
+        "scenario": scenario,
+        "estimated_mA": 1.0,
+        "activity": {
+            "timer_fires": {"icon_timer": {"count": icon, "per_second": icon / 30.0}},
+            "invalidated_area_pixels": invalidated,
+            "flushed_pixels": flushed,
+        },
+    }
+
+  def run_activity(self, current, reference, opt_out=None, *arguments):
+    with tempfile.TemporaryDirectory() as directory:
+      path = Path(directory) / "optout.json"
+      if opt_out is not None:
+        path.write_text(json.dumps(opt_out), encoding="utf-8")
+      return self.run_compare(current, reference, "--activity-opt-out", str(path), *arguments)
+
+  def test_activity_inside_band_passes(self):
+    result = self.run_activity(
+        self.activity_report(icon=70, invalidated=12000), self.activity_report()
+    )
+    self.assertEqual(result.returncode, 0, result.stdout)
+    self.assertNotIn("activity", result.stdout)
+
+  def test_timer_fire_drift_fails_even_when_current_holds(self):
+    result = self.run_activity(self.activity_report(icon=120), self.activity_report())
+    self.assertEqual(result.returncode, 1)
+    self.assertIn("activity timer_fires.icon_timer: 120 vs 60 (+100.00%) FAIL", result.stdout)
+    self.assertIn("PASS", result.stdout.splitlines()[0])
+
+  def test_pixel_drift_fails_in_both_directions(self):
+    for invalidated, flushed in ((0, 5000), (10000, 20000)):
+      result = self.run_activity(
+          self.activity_report(invalidated=invalidated, flushed=flushed),
+          self.activity_report(),
+      )
+      self.assertEqual(result.returncode, 1, result.stdout)
+      self.assertIn("FAIL", result.stdout)
+
+  def test_absolute_slack_absorbs_small_counts(self):
+    result = self.run_activity(
+        self.activity_report(icon=3, invalidated=900, flushed=0),
+        self.activity_report(icon=1, invalidated=0, flushed=0),
+    )
+    self.assertEqual(result.returncode, 0, result.stdout)
+
+  def test_new_timer_beyond_slack_fails(self):
+    current = self.activity_report()
+    current["activity"]["timer_fires"]["new_timer"] = {"count": 30, "per_second": 1.0}
+    result = self.run_activity(current, self.activity_report())
+    self.assertEqual(result.returncode, 1)
+    self.assertIn("timer_fires.new_timer: 30 vs 0 (inf)", result.stdout)
+
+  def test_activity_threshold_is_configurable(self):
+    result = self.run_activity(
+        self.activity_report(icon=120), self.activity_report(), None,
+        "--activity-threshold", "1.0",
+    )
+    self.assertEqual(result.returncode, 0, result.stdout)
+
+  def test_opt_out_skips_named_metrics_only(self):
+    opt_out = {"scenarios": {"idle": {
+        "metrics": ["timer_fires.icon_timer"], "reason": "timer period under review"}}}
+    result = self.run_activity(self.activity_report(icon=120), self.activity_report(), opt_out)
+    self.assertEqual(result.returncode, 0, result.stdout)
+    result = self.run_activity(
+        self.activity_report(icon=120, invalidated=0), self.activity_report(), opt_out
+    )
+    self.assertEqual(result.returncode, 1)
+    self.assertIn("invalidated_area_pixels", result.stdout)
+
+  def test_opt_out_wildcard_skips_every_activity_metric(self):
+    opt_out = {"scenarios": {"idle": {"metrics": ["*"], "reason": "nondeterministic"}}}
+    result = self.run_activity(
+        self.activity_report(icon=0, invalidated=0, flushed=0), self.activity_report(), opt_out
+    )
+    self.assertEqual(result.returncode, 0, result.stdout)
+
+  def test_opt_out_needs_metrics_and_reason(self):
+    for entry in ({"metrics": ["*"]}, {"metrics": [], "reason": "x"},
+                  {"metrics": ["*"], "reason": " "}, ["*"]):
+      result = self.run_activity(
+          self.activity_report(), self.activity_report(), {"scenarios": {"idle": entry}}
+      )
+      self.assertEqual(result.returncode, 2, entry)
+      self.assertIn("compare:", result.stderr)
+
+  def test_activity_on_one_side_only_is_an_error(self):
+    result = self.run_activity(self.activity_report(), {"estimated_mA": 1.0})
+    self.assertEqual(result.returncode, 2)
+    self.assertIn("only one of report and baseline", result.stderr)
+
+  def test_malformed_activity_counts_are_errors(self):
+    for bad in (-1, 1.5, True, None):
+      report = self.activity_report()
+      report["activity"]["flushed_pixels"] = bad
+      result = self.run_activity(report, self.activity_report())
+      self.assertEqual(result.returncode, 2, bad)
+
+  def test_invalid_activity_threshold_is_rejected(self):
+    for value in ("-0.1", "nan", "inf"):
+      result = self.run_compare(
+          {"estimated_mA": 1.0}, {"estimated_mA": 1.0}, "--activity-threshold", value
+      )
+      self.assertEqual(result.returncode, 2)
+      self.assertIn("activity threshold must be finite", result.stderr)
+
   def test_invalid_threshold_is_rejected(self):
     for value in ("-0.1", "nan", "inf"):
       result = self.run_compare(

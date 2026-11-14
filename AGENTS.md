@@ -50,7 +50,10 @@ with the host, simulator and firmware compile databases
 `static-analysis.yml` runs it in CI. A source no database compiles fails.
 The simulator power gate uses the two-sided `tools/power-model/compare.py`
 threshold; its default 10% value is compatibility policy, not calibrated
-hardware noise. Focused coverage is `python3 -m unittest tests/test_power_compare.py`.
+hardware noise. It also fails timer-fire and invalidated or flushed pixel drift
+beyond `--activity-threshold` (default 25% plus an absolute slack); opt-outs
+with a reason live in `tools/power-model/activity-optout.json`. Focused coverage
+is `python3 -m unittest tests/test_power_compare.py`.
 The Apple workflow's macOS app artifact is unsigned and test-only; it is
 uploaded only after the macOS tests pass and includes checksum/provenance files.
 Release tags beginning with `companion-test-` skip firmware publication and
