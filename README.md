@@ -1,6 +1,6 @@
 # furble - ***F***lexible ***U***nified ***R***emote ***B***luetooth ***L***ow ***E***nergy
 
-![PlatformIO CI](https://github.com/gkoh/furble/workflows/PlatformIO%20CI/badge.svg)
+[![PlatformIO CI](https://github.com/MaxRink/furble/actions/workflows/main.yml/badge.svg?branch=master)](https://github.com/MaxRink/furble/actions/workflows/main.yml)
 
 ## About this fork
 
@@ -216,7 +216,7 @@ In most cases it should be:
 - OR plug in the M5Stack Core2
     - `platformio run -e m5stack-core2 -t upload`
 
-More details are on the wiki: [PlatformIO](https://github.com/gkoh/furble/wiki/Linux-Command-Line-(For-Developers))
+More details are in [Getting Started](docs/wiki/Getting-Started.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
 
 MQTT is compiled only for the documented 8 MB and 16 MB profiles: M5StickS3,
 M5Stack Core2, and Waveshare ESP32-S3-ETH (plus the 8 MB headless S3 profile).
@@ -301,9 +301,8 @@ The 4 MB M5Stack Core also has a developer-only `m5stack-core-usb-debug`
 environment. It uses one large factory app partition when the normal Core debug
 image no longer fits its dual-OTA slot. Flash it over the Core USB-UART bridge;
 it has no wireless update or rollback path and is not published by the release
-or web installer. Normal CI uses it for the Core debug lane. The legacy
-dual-OTA Core debug profile remains available only as an explicit
-workflow-dispatch opt-in. The partition keeps NVS at its existing address, so
+or web installer. Normal CI builds it and the dual-OTA Core debug profile as
+mandatory Core debug lanes. The partition keeps NVS at its existing address, so
 do not erase the chip when preserving settings and camera bonds matters.
 
 ### Serial console (developers)
@@ -504,7 +503,7 @@ When a dialog is open, it temporarily owns the physical navigation and shutter
 inputs; closing it returns control to the page underneath. Stacked dialogs keep
 input with the topmost dialog.
 
-More details are on the wiki: [Usage Guide](https://github.com/gkoh/furble/wiki/Usage-Guide)
+More details are in [Controls](docs/wiki/Controls.md) and [Settings and controls](docs/settings-and-controls.md).
 
 ### GPS Location Tagging
 

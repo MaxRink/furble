@@ -246,6 +246,20 @@ extern "C" void *furble_sim_fw_realloc(void *pointer, size_t size) {
   return moved;
 }
 
+// ThreadSanitizer's static Linux runtime defines every replaceable operator
+// new and delete itself, and it must own them to track races on heap memory,
+// so the TSan build links its operators instead of these. C++ allocations are
+// then not charged to the modelled heap; only the GPS concurrency scenarios
+// run on that build, and none of them asserts a heap figure.
+#if defined(__has_feature)
+#if __has_feature(thread_sanitizer)
+#define FURBLE_SIM_TSAN 1
+#endif
+#endif
+#if defined(__SANITIZE_THREAD__)
+#define FURBLE_SIM_TSAN 1
+#endif
+#if !defined(FURBLE_SIM_TSAN)
 void *operator new(size_t size) {
   return allocateOrThrow(size, alignof(std::max_align_t));
 }
@@ -306,3 +320,4 @@ void operator delete(void *pointer, std::align_val_t, const std::nothrow_t &) no
 void operator delete[](void *pointer, std::align_val_t, const std::nothrow_t &) noexcept {
   releaseAllocation(pointer);
 }
+#endif  // !FURBLE_SIM_TSAN

@@ -468,11 +468,39 @@ echo "[LD]  sim/build/furble-sim"
 LINK_FLAGS="-rdynamic -L/opt/homebrew/lib -L/usr/local/lib -lSDL2 -lpthread $MQTT_LINK_FLAGS"
 if [ "$(uname -s)" = "Darwin" ]; then
   LINK_FLAGS="$LINK_FLAGS -framework Cocoa"
-  # Homebrew SDL2 is sdl2-compat, which dlopens "libSDL3.dylib" and finds it
-  # through its own LC_RPATH. The ASan runtime intercepts dlopen, so the search
-  # uses the executable's rpaths instead, SDL3 is not found, and sdl2-compat
-  # raises a modal "Failed loading SDL3 library" dialog and aborts. Give a
-  # sanitized binary the SDL3 directory itself.
+  # Homebrew's sdl2 is sdl2-compat, which dlopens SDL3 from a library
+  # initializer and shows a blocking "Fatal error! Cannot continue!" dialog
+  # when that fails. Linking SDL3 directly makes dyld map it at launch, so the
+  # dlopen reuses the loaded image and a real load failure ends the launch
+  # with a dyld message on stderr instead of a dialog. Keep in step with
+  # sim/CMakeLists.txt.
+  # Linking SDL2 without SDL3 is allowed only for a real SDL2. sdl2-compat
+  # without SDL3 would fail at launch through that dialog, so stop here.
+  SDL3_LINKED=0
+  for sdl_dir in /opt/homebrew/lib /usr/local/lib; do
+    if [ -e "$sdl_dir/libSDL3.dylib" ]; then
+      LINK_FLAGS="$LINK_FLAGS -Wl,-needed_library,$sdl_dir/libSDL3.dylib"
+      SDL3_LINKED=1
+      break
+    fi
+  done
+  if [ "$SDL3_LINKED" = 0 ]; then
+    for sdl_dir in /opt/homebrew/lib /usr/local/lib; do
+      if [ -e "$sdl_dir/libSDL2.dylib" ]; then
+        case "$(cd "$(dirname "$sdl_dir/libSDL2.dylib")" && pwd -P)/$(readlink "$sdl_dir/libSDL2.dylib" || true)" in
+          *sdl2-compat*)
+            echo "sim/build.sh: $sdl_dir/libSDL2.dylib is sdl2-compat but no libSDL3.dylib was found. Install SDL3 (brew install sdl3)." >&2
+            exit 1
+            ;;
+        esac
+        break
+      fi
+    done
+  fi
+  # sdl2-compat also dlopens SDL3 by leaf name through its own LC_RPATH. The
+  # ASan runtime intercepts dlopen, so the search uses the executable's rpaths
+  # instead and may not match the image linked above. Give a sanitized binary
+  # the SDL3 directory as well.
   if [ -n "$SANITIZE" ]; then
     SDL3_LIBDIR=$(pkg-config --variable=libdir sdl3 2>/dev/null || true)
     if [ -z "$SDL3_LIBDIR" ] && command -v brew >/dev/null 2>&1; then

@@ -141,6 +141,11 @@ camera was attached, so trigger/camera success remains a hardware gate.
   and matching unit-test targets around the shared Swift package. CI builds and
   tests both platforms on a pinned macOS/Xcode image. Real iPhone/Mac
   Bluetooth tests still require hardware and a signed build.
+- The pinned image is macos-15 with Xcode 16.4. GitHub retired macos-14 on
+  2026-11-02 and cancels jobs on that label before any step runs. Xcode 16.2
+  is still on macos-15, but its SDK predates the image's iOS 18.5 simulators,
+  so the pin moved to the image default. The local `swift test` with the
+  Command Line Tools passes; the Xcode project jobs are verified only in CI.
 - The uploaded macOS app is an unsigned CI test artifact. Its source SHA and
   pinned Xcode version are recorded beside the archive; this does not claim
   signing, notarization, installation, or release support.

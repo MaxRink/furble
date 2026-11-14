@@ -45,6 +45,7 @@
 #include "webui_memory_model.h"
 
 extern "C" void furble_sim_check_step_detect_suppressed(void);
+extern "C" void furble_sim_prefer_software_renderer(void);
 
 namespace {
 
@@ -350,6 +351,7 @@ int main(int argc, char **argv) {
     return 1;
   }
   Furble::Sim::watchdogStart();
+  furble_sim_prefer_software_renderer();
   if (lgfx::Panel_sdl::setup() != 0) {
     return 1;
   }

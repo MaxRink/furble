@@ -267,8 +267,15 @@ their matching environment variables, even when a wrapper inherits both. The
 release fuzzer wrapper is `sim/scripts/run-fuzz.sh`; it uses
 `FURBLE_FUZZ_SEEDS`, `FURBLE_FUZZ_XFAIL_SEEDS`, `FURBLE_FUZZ_STEPS`,
 `FURBLE_FUZZ_SEED_TIMEOUT`, `FURBLE_FUZZ_REPEAT_SEED`, and `FURBLE_SIM_BIN`.
-`sim/scripts/run-fuzz-restart.sh` repeats the measured 135x240 seed 2 walk up
-to five times and requires one run to resume after a production UI restart.
+`sim/scripts/run-fuzz-restart.sh` runs the 135x240 seed 2 walk with
+`FURBLE_FUZZ_RESTART_STEP=200` and requires it to resume after a production UI
+restart. That knob replaces the walk's 200th first-boot event with a click on the
+Sensors page "Restart to apply" button: the fuzzer opens the page with
+`nav sensors`, finds the button by its label and sends the production
+`LV_EVENT_CLICKED`, which runs `Platform::restart()`. Unset, every walk is
+unchanged. The
+random walk alone reaches a Restart button on some hosts only, which is why
+the check no longer waits for it.
 
 A fuzzer event that activates a firmware restart follows the real simulator
 reboot path. The process first joins the simulator tasks, keeps the NVS file,

@@ -50,9 +50,9 @@ console. CI builds the six release environments and their mandatory debug
 profiles. Releases publish the six release images and five OTA-compatible debug
 images. The Core single-factory USB debug profile remains developer-only.
 
-Normal CI uses the USB-only Core debug profile. The legacy dual-OTA
-`m5stack-core-debug` profile is available only through **Run workflow** with
-the `core_ota_debug` boolean enabled. If selected, its failure is strict.
+Normal CI builds both Core debug profiles: the USB-only
+`m5stack-core-usb-debug` and the dual-OTA `m5stack-core-debug`. Both fail
+strictly, so a Core debug image that outgrows its OTA slot fails CI.
 
 Firmware prereleases use a `v*` tag followed by a published GitHub prerelease.
 The tag starts the Pages installer build; publishing the release starts the
@@ -110,7 +110,7 @@ The S3 and Core2 release sdkconfigs disable the boot-time PSRAM memory test.
 Their debug environments merge `sdkconfig.spiram-memtest` back in, and the debug sdkconfig
 script accepts comma-separated fragments for any custom diagnostic profile.
 Every debug env merges `sdkconfig.debug` (end-of-stack watchpoint, heap
-tracing) and `sdkconfig.stack-protector`, except the opt-in
+tracing) and `sdkconfig.stack-protector`, except the
 `m5stack-core-debug` OTA profile, whose slot cannot hold the protector's
 24 KB. The 8 and 16 MB envs add
 `sdkconfig.coredump-flash`, which writes a core dump to the `coredump`
@@ -129,9 +129,12 @@ Run the fast scanner set before opening or updating a pull request:
 python3 tools/pre_review.py --base origin/master
 ```
 
-It runs the diff hygiene scanner, the settings contract scanner, the C++ safety
+It runs the diff hygiene scanner, the settings contract scanner, clang-format
+21 on the changed C and C++ files (`tools/check_format.py`), the C++ safety
 scanner, the CI workflow checker, the simulator manifest checker, and the
-scanner unit tests. It fails closed on review-blocking findings.
+scanner unit tests. It fails closed on review-blocking findings. A missing or
+non-21 clang-format fails the gate; install it with
+`python3 -m pip install -r .github/workflows/clang-format-requirements.txt`.
 
 To run it on every push, enable the tracked hook once per clone:
 
@@ -171,6 +174,16 @@ python3 tools/check_review_threads.py --repo owner/name --pr <number>
 
 It queries the GitHub GraphQL API through `gh api graphql` and fails closed on
 API errors, so a missing token or network is never treated as a clean result.
+`--allow-no-checks` reads the workflow path filters with PyYAML, pinned in
+`.github/workflows/ci-checker-requirements.txt`
+(`python3 -m pip install -r .github/workflows/ci-checker-requirements.txt`);
+without it the override fails closed.
+It also fails when the pull request head has no check runs at all, or any
+check is still running or did not pass. Actions was once disabled on the
+fork for three weeks, and pull requests merged with no CI; a head without
+checks is now a hard failure. A pull request whose paths no workflow covers
+(web-installer only, say) passes that rule only with
+`--allow-no-checks "<reason>"`, and the gate prints the reason.
 Do not wire this into offline pre-review or fork CI jobs. The remediation pull
 request itself must pass the same check before it merges. Record the audit in
 its `plans/NN-review-feedback.md` table.
@@ -366,7 +379,9 @@ attempt to infer changed paths without a pull request or push comparison base.
   the cache stamp also identifies the absolute firmware, dependency, and LVGL
   roots so shared build directories cannot mix checkout objects. Verify the
   cache with `sh sim/scripts/test-build-deps.sh` after changing the build
-  script. It never changes firmware behavior.
+  script. It never changes firmware behavior. On macOS the build links SDL3
+  directly next to Homebrew's sdl2-compat, so a broken SDL3 install fails the
+  launch on stderr instead of opening a blocking dialog.
 - UI screenshot CI uses `FURBLE_SIM_NO_TOUCH=1` for the StickS3 and asserts
   each page before capture. Its setup routes are not physical-input validation.
 - UI fuzz CI runs all three panel binaries in touch and physical-button
@@ -384,7 +399,9 @@ attempt to infer changed paths without a pull request or push comparison base.
   `python3 tools/coverage.py`, and CI holds it to the per-stack, union and
   per-file minimums in `tests/coverage_floor.json`. A change that raises
   coverage should raise the floor in the same commit with
-  `python3 tools/coverage.py --ratchet`. See `docs/coverage.md`.
+  `python3 tools/coverage.py --ratchet`. See `docs/coverage.md`. On Ubuntu,
+  install `libclang-rt-18-dev` next to `clang-18`; it holds the profile
+  runtime and is only a recommended dependency.
 - The Apple workflow runs unsigned iOS simulator and macOS tests. After the
   macOS tests pass, it uploads `furble-companion-macos-debug-unsigned`, which
   contains the unsigned Debug app, a SHA-256 checksum, and source/Xcode
