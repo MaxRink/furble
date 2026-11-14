@@ -30,6 +30,8 @@ class ConvertTest(unittest.TestCase):
         self.assertEqual(args[:2], ["clang++", TOOL.TARGET])
         self.assertIn("-D__XTENSA__=1", args)
         self.assertIn("-nostdinc++", args)
+        # without it clang on Linux falls through to the host glibc headers
+        self.assertIn("-nostdlibinc", args)
         self.assertIn("/tc/include/c++/14.2.0", args)
         for dropped in ("-mlongcalls", "-Werror=all", "-fcallgraph-info=su",
                         "-fstrict-volatile-bitfields"):

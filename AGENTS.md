@@ -15,6 +15,11 @@ acceptable. The online gate is
 `python3 tools/check_review_threads.py --repo owner/name --pr N`; it fails
 closed on API errors and is intentionally not part of the offline pre-review or
 fork CI jobs. The remediation PR must pass it before merge.
+The same gate fails when the PR head has no check runs, or any check is
+still running or did not pass, so merging without CI is never silent. Actions
+was off from 2026-10-21 to 2026-11-13 and PRs merged with no CI; see
+`plans/95-engineering-lessons.md`. A PR whose paths no workflow covers (web-installer only, say) passes the
+no-checks rule only with `--allow-no-checks "<reason>"`, which is printed.
 
 ## Documentation mandate
 
@@ -48,6 +53,11 @@ Static analysis is `python3 tools/check_static_analysis.py --base origin/master`
 with the host, simulator and firmware compile databases
 (`tools/firmware_compile_db.py` for m5stick-s3 and m5stick-c);
 `static-analysis.yml` runs it in CI. A source no database compiles fails.
+The firmware databases add `-nostdlibinc` so clang never reaches the host's
+`/usr/include`, and the gate anchors clang-tidy's header filter to the
+checkout so vendored `.pio/libdeps` and `sim/.pio` headers stay out (#463).
+The console doc-coupling rule in `tools/check_pr_hygiene.py` only warns when
+each changed string line keeps its literals, in order, at its own position.
 The simulator power gate uses the two-sided `tools/power-model/compare.py`
 threshold; its default 10% value is compatibility policy, not calibrated
 hardware noise. Focused coverage is `python3 -m unittest tests/test_power_compare.py`.

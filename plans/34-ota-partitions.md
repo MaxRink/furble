@@ -1,5 +1,9 @@
 # 34 - OTA updates and the partition scheme change that enables them
 
+Implementation state (2026-11-13): 34a-1 merged as #32. The hardware pass is recorded below (2026-08-17). Six release envs
+exist now, and the 8 MB and 16 MB boards use larger slots than `1700K`. Open: 34a-2 HTTPS
+OTA with boot health and mark-valid, and 34b BLE OTA.
+
 Upstream issue: [#248 WIFI feature](https://github.com/gkoh/furble/issues/248),
 which lists OTA updates under optional quality of life features.
 
@@ -991,7 +995,7 @@ manifest, checksums, and provenance before flashing a prerelease.
 The Core single-factory USB debug profile is intentionally excluded from the
 release and Pages matrices because the shared manifest requires `otadata`.
 
-Stage 34a-1 is implemented on `feat/34-ota-partitions`.
+Stage 34a-1 is merged as #32 (`3bf6f2c7`).
 
 - All five release environments select the stock `partitions_two_ota_large.csv`
   layout. The resolved table is `nvs` at `0x9000` with size `24K`, `otadata`
@@ -1108,3 +1112,12 @@ unchanged at 0x9000, 6 entries). After boot every baseline setting read back
 identical, both camera bonds loaded and reconnected, and the new settings
 appeared with their defaults. Verdict: PASS. The bootloader log confirmed
 `Loaded app from partition at offset 0x20000`.
+
+## CI fix, 2026-11-13: check after the build
+
+`tools/check_partition_tables.py` reads the stock `partitions_two_ota_large.csv`
+from the framework-espidf package. The m5stick-c job ran it before the
+PlatformIO build, so it passed only on a warm package cache. GitHub Actions was
+disabled on the fork for three weeks, every cache expired, and the first cold
+run failed with "stock partition CSV not found". The step now runs after the
+build, which always installs the framework. The check itself is unchanged.

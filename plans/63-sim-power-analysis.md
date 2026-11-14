@@ -16,8 +16,8 @@ Line anchors below were read at `f455b0b` on fork `master` and at `7487f64` on
 
 Updated 2026-08-30 after the simulator fidelity review. The profiler and
 scenario plumbing below are present, but the plan is not complete and its
-current power figures are advisory only. The SDL build still substitutes the
-connection Control, Camera, CameraList, and Scan policy, uses a host scheduler
+current power figures are advisory only. The SDL build now runs the production
+connection Control, Camera, CameraList, and Scan (plan 161, #261), uses a host scheduler
 that is not yet equivalent to FreeRTOS, and has not been calibrated against
 per-board hardware traces. No absolute current or runtime claim is a release
 gate until plan 158 and the calibration phases land.
@@ -37,8 +37,8 @@ gate until plan 158 and the calibration phases land.
 - The S3 energy model is an uncalibrated advisory model from
   `tools/power-model/board-currents.yaml`. It combines the activity, lock,
   display, radio and GPS state intervals into estimated average mA.
-- Phase G usage coverage is present and the nine scripts run headless, but the
-  CI workflow and sticky PR reporting are intentionally deferred so they
+- Phase G usage coverage is present and the nine scripts run headless, and the
+  power gate runs in CI (`power-gate.yml`, #98). Sticky PR reporting is still deferred so they
   can be consolidated with the screenshot job later. This is not evidence of
   hardware parity.
 - The host power-profiler wrap regression uses an atomically-created unique
@@ -414,7 +414,7 @@ The comment contains, in order:
 - A link to the full JSON report artifact for the run.
 
 Consolidation. Three PR-facing sim reports exist or are planned: the
-screenshot comment (fork PR #44, branch `feat/ui-screenshot-ci`), the
+screenshot comment (merged as #67), the
 ui-audit overlap findings (fork PR #42), and this power table. They
 consolidate into one combined sim-report workflow with one sticky comment
 holding three sections, in order: power table, overlap findings, screenshot
@@ -585,16 +585,16 @@ time. Effort: one to two days.
   API that makes the sleep estimator attributable.
 - [08-scan-tuning.md](implemented/08-scan-tuning.md),
   [09-reconnect-backoff.md](implemented/09-reconnect-backoff.md),
-  [10-adaptive-conn-params.md](10-adaptive-conn-params.md) and
-  [11-adaptive-tx-power.md](11-adaptive-tx-power.md) define the policies
+  [10-adaptive-conn-params.md](implemented/10-adaptive-conn-params.md) and
+  [11-adaptive-tx-power.md](implemented/11-adaptive-tx-power.md) define the policies
   the BLE duty model integrates.
 - [12-display-off.md](implemented/12-display-off.md) and
   [13-auto-off-low-batt.md](implemented/13-auto-off-low-batt.md) define the dimmed and
   off scenarios.
-- [14-gps-pcas.md](implemented/14-gps-pcas.md), [15-gps-power.md](15-gps-power.md) and
+- [14-gps-pcas.md](implemented/14-gps-pcas.md), [15-gps-power.md](implemented/15-gps-power.md) and
   [18-gps-motion.md](18-gps-motion.md) define the GPS duty policies the
   receiver model scores.
-- [19-interval-deep-sleep.md](19-interval-deep-sleep.md) and
+- [19-interval-deep-sleep.md](implemented/19-interval-deep-sleep.md) and
   [26-pm1-watchdog.md](implemented/26-pm1-watchdog.md) interact through the PMIC; the
   behavioral stub makes that interaction CI-testable.
 - [00-hardware-experiments.md](00-hardware-experiments.md) supplies the

@@ -214,5 +214,5 @@ validate the model without a calibrated current measurement.
   risk, and the soak verification steps.
 - `plans/00-hardware-experiments.md` for the 3.3 mA measured connected-idle
   floor and the confirmed absence of a 32 kHz crystal.
-- `plans/15-gps-power.md` for the S3-only GPS burst power lock that keeps
+- `plans/implemented/15-gps-power.md` for the S3-only GPS burst power lock that keeps
   `SLEEP_CONN` off the other boards.

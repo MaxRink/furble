@@ -1,5 +1,8 @@
 # 317: physical-button layout suite regressions
 
+Implementation state (2026-11-13): merged as #420. Open: `bughunt/timer-overflow-no-timed-wake.txt` still fails in the
+touch-layout bug hunt on 80x160 and 320x240.
+
 ## Motivation
 
 `sh sim/scripts/run-notouch.sh` failed on master `8f0fd5be` and on the plan

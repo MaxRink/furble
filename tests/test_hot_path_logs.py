@@ -1,6 +1,7 @@
 """Tests for the hot-path log-level guard."""
 
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -23,6 +24,7 @@ class HotPathLogTest(unittest.TestCase):
 
     def make_tree(self, power_log: str, lumix_log: str = "ESP_LOGD") -> Path:
         root = Path(tempfile.mkdtemp(prefix="furble-log-"))
+        self.addCleanup(shutil.rmtree, root)
         (root / "src").mkdir()
         (root / "lib/furble").mkdir(parents=True)
         (root / "src/FurblePower.cpp").write_text(
