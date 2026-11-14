@@ -9,9 +9,10 @@ namespace Furble {
 namespace CompanionMemory {
 
 /**
- * The retained companion service task. A measured 1,884-byte high-water mark
- * on the StickS3 with the companion connected and a settings write. It commits
- * NVS, so it stays internal. tools/stack_budget.json reads this value.
+ * The retained companion service task. `perf tasks` left 1,884 bytes free on
+ * the old 4 KiB stack with the companion connected and a settings write, so it
+ * used about 2,212 bytes and 3 KiB leaves about 860. It commits NVS, so it
+ * stays internal. tools/stack_budget.json reads this value.
  */
 inline constexpr size_t TASK_STACK_BYTES = 3072;
 

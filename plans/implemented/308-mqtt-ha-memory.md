@@ -19,20 +19,27 @@ device while the Home Assistant discovery records were being built. The USB
 CDC endpoint wedged, so no crash record was retrievable.
 
 The MQTT owner needs 10 KiB. A 4 KiB and a 6 KiB owner stack both overflowed
-during start and the first connected event. The measured owner high-water on
-the working 10 KiB build was 3,084 bytes. The task is not reduced in this pass.
+during start and the first connected event. On the working 10 KiB build
+`perf tasks` left 3,084 bytes free, so the owner used about 7,156 bytes, more
+than 6 KiB. The task is not reduced in this pass.
 
-Measured MQTT task high-water marks from the StickS3 during the #398
-experiment. The main row is historical; the current StickS3 main stack is
-12 KiB.
+`perf tasks` stack readings from the StickS3 during the #398 experiment. Each
+is `uxTaskGetStackHighWaterMark`, the minimum free stack in bytes. This plan
+first read them as bytes used; the 2026-11-13 re-analysis in plan 314
+corrected them. The #398 pull request body records the main reading on the
+12 KiB stack, before the 8 KiB experiment; this table first listed it as 8 KiB.
 
 ```text
-mqtt owner       10,240 stack, 3,084 used
-mqtt_task         4,096 stack,   704 used
-main              8,192 stack, 3,020 used
-companion         4,096 stack, 1,884 used
-control           8,192 stack, 7,468 used
+mqtt owner       10,240 stack, 3,084 free, about 7,156 used
+mqtt_task         4,096 stack,   704 free, about 3,392 used
+main             12,288 stack, 3,020 free, about 9,268 used
+companion         4,096 stack, 1,884 free, about 2,212 used
+control           8,192 stack, 7,468 free, about   724 used
 ```
+
+The `mqtt_task` figure includes the 2,348-byte event copy that
+`MQTT::eventHandler` then held on the worker stack. Plan 314 moved that copy
+to `m_Incoming`.
 
 ## Changes
 
@@ -40,8 +47,8 @@ control           8,192 stack, 7,468 used
 | :--- | ---: | :--- | :--- |
 | Main stack 12 KiB to 8 KiB (reverted by #407) | 0 current; 4,096 in the #398 experiment | The 8 KiB experiment overflowed in task main once MQTT was enabled. The StickS3 main stack is 12 KiB. The WebUI identity still runs on its own 12 KiB internal task. | `plans/implemented/311-mqtt-queue-psram.md`, `CONFIG_ESP_MAIN_TASK_STACK_SIZE`, `perf tasks` |
 | One LVGL draw buffer on narrow panels | 2,160 on StickS3, 800 on StickC | The single-buffer flush path already waits for the SPI DMA before `lv_disp_flush_ready()`. Render and transfer are serialised per band. | `UIMemory::singleDrawBuffer`, `displayFlush()` |
-| Companion task 4 KiB to 3 KiB | 1,024 | 1,884 measured. The task commits NVS, so the stack stays internal. | `src/FurbleCompanion.cpp` |
-| Plain MQTT worker 4 KiB to 3 KiB | 1,024 | 704 measured. TLS keeps the 6 KiB worker for the handshake. | `MQTTMemory::PLAIN_WORKER_STACK_BYTES`, `config.task.stack_size` |
+| Companion task 4 KiB to 3 KiB | 1,024 | 1,884 bytes were free at 4 KiB, so about 2,212 used and about 860 left at 3 KiB. The task commits NVS, so the stack stays internal. | `src/FurbleCompanion.cpp` |
+| Plain MQTT worker 4 KiB to 3 KiB | 1,024 | 704 bytes were free at 4 KiB, so about 3,392 used, more than 3 KiB, because the handler held the 2,348-byte event copy on this stack. The plan 314 stack walk found that overflow and moved the copy to `m_Incoming`; the walk then resolves 1,936 of 3,072 on the StickS3. No hardware reading at 3 KiB. TLS keeps the 6 KiB worker for the handshake. | `MQTTMemory::PLAIN_WORKER_STACK_BYTES`, `config.task.stack_size` |
 | MQTT network and outbox buffers 2,048 to 1,536 | 1,024 | The 3,005-byte hub payload fragments through the buffer and the outbox. Incoming commands are far below 1,536 bytes. | `config.buffer.size`, `config.buffer.out_size`, host payload test |
 | Cache `MQTT_HA` in `reloadSetting()` | removes NVS reads and stack from the connected and HA status paths | The owner reads the cached atomic. A settings change takes effect on the next reload. | `m_HomeAssistantCached`, host load counter |
 | Build Home Assistant discovery without a JSON round trip | about 2,000 to 4,000 peak, inferred | The component tree is attached to the root directly instead of being serialised and parsed again. The wire JSON is unchanged and the host test parses it. | `publishDiscoveryDevice(cJSON *)` |
