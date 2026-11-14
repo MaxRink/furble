@@ -17,6 +17,14 @@ Source: Subagent review.
 | 3 | Wording. `ESP_RST_WDT` also covers RTC and super watchdog system resets that clear the RTC domain. The code already fails closed there but the comments overclaimed. `ESP_RST_JTAG` and `ESP_RST_CPU_LOCKUP` are never produced on these chips. | Fixed. The `clockSurvivedReset()` comment says these resets usually keep the RTC timer and that an RTC watchdog system reset reads behind the record and fails closed. `JTAG` and `CPU_LOCKUP` are removed from the switch and the test expectation; IDF `esp_system/port/soc/esp32s3/reset_reason.c` and `esp32/reset_reason.c` never return them. Plan 95 no longer says only power-on loses the clock: brownout, a clock glitch and RTC or super watchdog system resets also lose it. Plan 139 and both console docs say: "Most watchdog resets keep it; an RTC watchdog system reset clears the clock and falls back to NVS." | `src/FurbleTimeKeeper.cpp`, `tests/host/time_keeper_persistence_test.cpp`, `plans/95-engineering-lessons.md`, `docs/console-commands.md`, `docs/wiki/Console-Commands.md` |
 | 4 | The reviewer's `tools/pre_review.py --base origin/master` run timed out at 300 s with no failures before that. | Fixed. Re-run to completion on the follow-up commit with no time limit. | `PASS: 8 gates`: whitespace, diff hygiene, settings contracts, C++ safety (7 files, 0 errors), CI workflow contract, simulator scenario manifest, simulator hardware coverage and 109 scanner unit tests. |
 
+## PR #449 (6313f7cb)
+
+Source: Copilot review.
+
+| # | Finding | Resolution | Evidence |
+| ---: | :--- | :--- | :--- |
+| 1 | `docs/console-commands.md:311`. The soft-reset clock retention is user-visible, but `README.md` only lists `time status \| flush` and does not summarize the retention, the watchdog fallback or the intervalometer effect, as the CLAUDE.md doc rule requires. | Fixed. `README.md` gains a paragraph after the time zone text: which resets keep the clock, the `rtc` source with `rtc: no`, the 100 ppm plus one second estimate, replacement by GPS, NTP or companion time, and the RTC watchdog, power-on and brownout fallback to NVS. The README intervalometer section, `docs/settings-and-controls.md` and `docs/wiki/Settings-Reference.md` now say that a kept or NVS-restored clock is not trusted for the resumed wait, which then counts from boot. `docs/wiki/Console-Commands.md` already carried the console text. | `clockSurvivedReset()` in `src/FurbleTimeKeeper.cpp` lists the kept resets. `trustedWallClock()` and the `startResume()` fallback in `src/FurbleUIIntervalometer.cpp` take the boot-relative margin when the clock is not trusted. |
+
 Validation: `time_keeper_policy_test` and `time_keeper_persistence_test`
 pass under ASan and UBSan. The reviewer's `lockout.cpp` repro, built against
 each commit's policy source, prints `accepted=0` at 0, 24 and 720 h before the
