@@ -202,9 +202,10 @@ class GPS {
    * Has the duty cycle acted on every fix it already has?
    *
    * PCAS12 is sent only after the UI pushes a fix and the GPS task consumes
-   * the request that raised. This is true when the latest fix is pushed, the
-   * request is consumed and the GPS task is not inside the request handling,
-   * so any command for those fixes has been written. It does not depend on
+   * the request that raised. This is true when the fake UART holds no bytes,
+   * the GPS task holds none it has not parsed, the latest fix is pushed, the
+   * request is consumed and the task is not inside the request handling, so
+   * any command for those fixes has been written. It does not depend on
    * the cycle state: a wake that gets no burst goes degraded, and a request
    * can be consumed in the same pass that starts a burst, before the new
    * state is published. The profiler's `gps.state` label cannot answer this,
@@ -685,7 +686,10 @@ class GPS {
 #if defined(FURBLE_SIM)
   std::atomic<uint32_t> m_SimFreshFixesParsed = 0;
   std::atomic<uint32_t> m_SimDutyWakeFixesParsed = 0;
-  /** Set while serviceCycle() may act on a duty request. */
+  /**
+   * Set while serviceSerial() holds bytes it has not parsed and while
+   * serviceCycle() may act on a duty request.
+   */
   std::atomic<bool> m_SimDutyBusy = false;
 #endif
   std::atomic<bool> m_CycleRequest = false;

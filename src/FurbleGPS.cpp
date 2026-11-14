@@ -81,7 +81,8 @@ bool validCoordinate(double value, double min, double max) {
 #define FURBLE_SIM_TIMER_FIRE(name) Furble::Sim::profilerTimerFire(name)
 #define FURBLE_SIM_GPS_READER_HOLD() Furble::Sim::gpsReaderHold()
 namespace {
-// Marks the GPS task while it may act on a duty request, for gps.duty_settled.
+// Marks the GPS task while it holds bytes it has not parsed or may act on a
+// duty request, for gps.duty_settled.
 struct SimDutyScope {
   std::atomic<bool> &busy;
   explicit SimDutyScope(std::atomic<bool> &flag) : busy(flag) { busy.store(true); }
@@ -1307,9 +1308,15 @@ void GPS::publishCycleStatus(void) {
 
 #if defined(FURBLE_SIM)
 bool GPS::simDutySettled(void) const {
-  // Read in this order. update() raises the request before it publishes the
-  // pushed sequence, and the task marks itself busy before it consumes the
-  // request and stays busy until the command is written.
+  // Read in this order. The task marks itself busy before it takes bytes from
+  // the UART and stays busy until it has parsed them, so once the UART is
+  // empty and the flag is clear every fix those bytes held is in
+  // m_FixSequence. update() raises the request before it publishes the pushed
+  // sequence, and the task is busy again from before it consumes the request
+  // until the command is written.
+  if (furble_sim_uart_rx_pending() || m_SimDutyBusy.load()) {
+    return false;
+  }
   const uint32_t fix = m_FixSequence.load();
   const uint32_t pushed = m_PushedSequence.load();
   const bool request = m_CycleRequest.load();
@@ -2894,6 +2901,7 @@ void GPS::serviceSerial(void) {
     return;
   }
 
+  FURBLE_SIM_DUTY_SCOPE();
   int bytes = uart_read_bytes(m_UART, buffer.data(), buffer.size(), 1);
   if (bytes > 0) {
     // Mirror the exact UART chunk before demultiplexing, so raw hex mode sees
