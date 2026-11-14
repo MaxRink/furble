@@ -425,10 +425,6 @@ uint16_t Platform::getBatteryCapacity(void) {
   return 250;
 }
 
-PowerBackend::BatterySource Platform::getBatterySource(void) {
-  return Sim::hwGaugeLevel() ? BatterySource::ESTIMATE : BatterySource::NONE;
-}
-
 bool Platform::setRail(Rail rail, bool on) {
   if (rail != Rail::GPS) {
     return false;

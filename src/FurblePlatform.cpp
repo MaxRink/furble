@@ -855,22 +855,6 @@ uint16_t Platform::getBatteryCapacity(void) {
   return m_BatteryCapacity;
 }
 
-PowerBackend::BatterySource Platform::getBatterySource(void) {
-  if (!m_BatteryCaps.level) {
-    return BatterySource::NONE;
-  }
-  // M5Unified returns the AXP2101 E-gauge register and the IP5306 four-step
-  // level directly; every other PMIC level is its voltage curve.
-  switch (M5.Power.getType()) {
-    case m5::Power_Class::pmic_axp2101:
-      return BatterySource::GAUGE;
-    case m5::Power_Class::pmic_ip5306:
-      return BatterySource::COARSE;
-    default:
-      return BatterySource::ESTIMATE;
-  }
-}
-
 bool Platform::setRail(Rail rail, bool on) {
   if (rail != Rail::GPS) {
     return false;

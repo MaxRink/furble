@@ -27,6 +27,47 @@ using Furble::Board::TimedWake;
 
 namespace {
 
+// meetsPowerBackend() must accept the documented signatures and reject a
+// different signature or a virtual implementation.
+struct GoodBackend: Furble::PowerBackend {
+  battery_caps_t getBatteryCaps(void);
+  battery_t readBattery(void);
+  uint16_t getBatteryCapacity(void);
+  bool setRail(Rail rail, bool on);
+  uint8_t getPWRClickCount(void);
+  bool powerOff(void);
+  bool canTimedWake(void);
+  bool powerOffUntil(uint32_t seconds);
+  bool consumeTimedWake(void);
+};
+// Each negative case differs from GoodBackend in exactly one way.
+struct WrongSignature: Furble::PowerBackend {
+  battery_caps_t getBatteryCaps(void);
+  battery_t readBattery(void);
+  uint16_t getBatteryCapacity(void);
+  bool setRail(Rail rail, bool on);
+  uint8_t getPWRClickCount(void);
+  bool powerOff(void);
+  bool canTimedWake(void);
+  bool powerOffUntil(uint16_t seconds);
+  bool consumeTimedWake(void);
+};
+struct VirtualBackend: Furble::PowerBackend {
+  virtual ~VirtualBackend() = default;
+  battery_caps_t getBatteryCaps(void);
+  battery_t readBattery(void);
+  uint16_t getBatteryCapacity(void);
+  bool setRail(Rail rail, bool on);
+  uint8_t getPWRClickCount(void);
+  bool powerOff(void);
+  bool canTimedWake(void);
+  bool powerOffUntil(uint32_t seconds);
+  bool consumeTimedWake(void);
+};
+static_assert(Furble::meetsPowerBackend<GoodBackend>(), "documented signatures pass");
+static_assert(!Furble::meetsPowerBackend<WrongSignature>(), "a changed signature fails");
+static_assert(!Furble::meetsPowerBackend<VirtualBackend>(), "virtual dispatch fails");
+
 int g_Failures = 0;
 
 void check(bool condition, const std::string &message) {

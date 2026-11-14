@@ -290,9 +290,6 @@ class Platform: public PowerBackend {
    */
   uint16_t getBatteryCapacity(void);
 
-  /** Gauge, voltage estimate or coarse steps, from the detected PMIC. */
-  BatterySource getBatterySource(void);
-
   /**
    * Switch a named rail. The M5 boards switch only the GPS rail, which is the
    * Port A 5 V output.
@@ -396,6 +393,9 @@ class Platform: public PowerBackend {
   uint32_t m_WatchdogLastFeed = 0;
 #endif
 };
+
+static_assert(meetsPowerBackend<Platform>(),
+              "Platform must meet the PowerBackend contract without virtual dispatch");
 }  // namespace Furble
 
 #endif
