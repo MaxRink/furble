@@ -18,7 +18,8 @@ fork CI jobs. The remediation PR must pass it before merge.
 The same gate fails when the PR head has no check runs, or any check is
 still running or did not pass, so merging without CI is never silent. Actions
 was off from 2026-10-21 to 2026-11-13 and PRs merged with no CI; see
-`plans/95-engineering-lessons.md`.
+`plans/95-engineering-lessons.md`. A PR whose paths no workflow covers (web-installer only, say) passes the
+no-checks rule only with `--allow-no-checks "<reason>"`, which is printed.
 
 ## Documentation mandate
 

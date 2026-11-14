@@ -218,6 +218,9 @@ def main(argv: list[str] | None = None) -> int:
                         help="GitHub repository as owner/name")
     parser.add_argument("--pr", required=True, type=int,
                         help="pull request number")
+    parser.add_argument("--allow-no-checks", metavar="REASON", default="",
+                        help="accept a head with no check runs, for a PR whose "
+                             "paths no workflow covers; the reason is printed")
     args = parser.parse_args(argv)
 
     if "/" not in args.repo or args.repo.count("/") != 1:
@@ -243,8 +246,17 @@ def main(argv: list[str] | None = None) -> int:
         print(f"review threads: {len(threads)} total, all resolved on {args.repo}#{args.pr}")
 
     if not checks:
+        reason = args.allow_no_checks.strip()
+        if reason:
+            # A PR that only touches paths no pull-request workflow filters on
+            # (web-installer/**, say) legitimately has no checks. Accept it only
+            # with a stated reason, so the outage case still fails by default.
+            print(f"checks: none on head {head[:12]}, accepted: {reason}")
+            return status
         print(f"no CI check ran on head {head[:12]} of {args.repo}#{args.pr}. "
-              "Confirm GitHub Actions is enabled and rerun the workflows.", file=sys.stderr)
+              "Confirm GitHub Actions is enabled and rerun the workflows, or pass "
+              "--allow-no-checks REASON if no workflow covers the changed paths.",
+              file=sys.stderr)
         return 1
     problems = [problem for problem in map(check_problem, checks) if problem]
     if problems:

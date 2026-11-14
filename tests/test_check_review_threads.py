@@ -156,6 +156,29 @@ class ReviewThreadGateTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("no CI check ran on head 0123456789ab", stderr)
 
+    def test_head_without_checks_passes_only_with_a_reason(self):
+        # A web-installer-only PR matches no pull-request workflow.
+        threads = [completed(page([thread(True)]))]
+        checks = completed(checks_page([], rollup=False))
+        with mock.patch.object(REVIEW.subprocess, "run", side_effect=gh(threads, checks)):
+            code, stdout, _ = self.run_gate(
+                "--repo", "owner/name", "--pr", "391",
+                "--allow-no-checks", "web-installer only; no workflow covers it")
+        self.assertEqual(code, 0)
+        self.assertIn("accepted: web-installer only", stdout)
+        with mock.patch.object(REVIEW.subprocess, "run", side_effect=gh(threads, checks)):
+            code, _, _ = self.run_gate("--repo", "owner/name", "--pr", "391",
+                                       "--allow-no-checks", "  ")
+        self.assertEqual(code, 1)
+
+    def test_reason_does_not_hide_unresolved_threads(self):
+        threads = [completed(page([thread(False)]))]
+        checks = completed(checks_page([], rollup=False))
+        with mock.patch.object(REVIEW.subprocess, "run", side_effect=gh(threads, checks)):
+            code, _, _ = self.run_gate("--repo", "owner/name", "--pr", "391",
+                                       "--allow-no-checks", "docs only")
+        self.assertEqual(code, 1)
+
     def test_failed_and_cancelled_checks_fail(self):
         code, _, stderr = self.run_checks(completed(checks_page([
             check_run("clang-format", conclusion="FAILURE"),

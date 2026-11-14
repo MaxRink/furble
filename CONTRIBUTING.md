@@ -177,7 +177,9 @@ API errors, so a missing token or network is never treated as a clean result.
 It also fails when the pull request head has no check runs at all, or any
 check is still running or did not pass. Actions was once disabled on the
 fork for three weeks, and pull requests merged with no CI; a head without
-checks is now a hard failure.
+checks is now a hard failure. A pull request whose paths no workflow covers
+(web-installer only, say) passes that rule only with
+`--allow-no-checks "<reason>"`, and the gate prints the reason.
 Do not wire this into offline pre-review or fork CI jobs. The remediation pull
 request itself must pass the same check before it merges. Record the audit in
 its `plans/NN-review-feedback.md` table.

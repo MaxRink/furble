@@ -1,4 +1,12 @@
-# A late virtual wake must fire immediately rather than wait another interval.
+# A resume record whose wake time passed five seconds ago, read on a timed wake.
+#
+# The StickS3 has no RTC chip and an NVS-restored clock does not advance across
+# power-off, so trustedWallClock() is false at boot and the record's wake time
+# cannot be compared with now. The M5PM1 timer is then the authority: the
+# resume waits RESUME_WAKE_MARGIN_S (15 s) from boot, because the alarm fires
+# that long before the shot, and then takes the next shot. Telling an early,
+# late or stale record apart needs a battery-backed RTC at boot, which the
+# simulator does not model yet.
 seed fauxny true
 seed autoconnect true
 seed ivl_sleep true
@@ -8,12 +16,9 @@ seed interval_count 2
 seed interval_delay 1
 seed interval_shutter 30
 wait 5000
+assert platform.wake_marker no
+assert camera.shutter_presses 0
+assert ui.interval_state shutter
+assert-eventually-virtual 20000 ui.interval_state finished
 assert camera.shutter_presses 1
-# The remaining shot reaches the target during its release transition, so the
-# production state is terminal even while the release timer is still armed.
-assert ui.interval_state finished
-wait 2000
-# A completed resume must not schedule another shutter press.
-assert camera.shutter_presses 1
-assert ui.interval_state finished
 exit

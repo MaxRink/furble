@@ -1217,3 +1217,22 @@ for the full incident.
   LVGL into `sim/.pio/libdeps/sim/lvgl/src/...`, so they never matched there.
   A pattern matches anywhere in the path, so the entries now start at
   `lvgl/src/`, which covers both layouts. The suppressed sites are unchanged.
+
+## Fix: deep-sleep scenarios that assumed a trusted clock
+
+The intervalometer deep-sleep gate (`sim/scripts/run-deep-sleep.sh`) landed on
+2026-11-01, during the Actions outage, and never ran green in CI. Its `stale`,
+`late` and `stable-id` scenarios assumed a trusted wall clock at boot. The
+deep-sleep review fix the same evening made `trustedWallClock()` reject an
+NVS-restored clock, because that sample does not advance across power-off.
+The StickS3 has no RTC chip, so the M5PM1 timer is the authority: a timed-wake
+resume waits `RESUME_WAKE_MARGIN_S` (15 s) from boot and then shoots, whatever
+the record's wake time says. This is the documented firmware policy, and a
+probe showed the interval timer behaving exactly so; the scenarios were wrong.
+
+`stale` and `late` now assert that wait and the following shot, and
+`stable-id` keeps its camera-selection check with a finish bound that covers
+the margin. Rejecting a stale record, or firing a late one at once, needs a
+battery-backed RTC sample at boot, which the simulator does not model; that
+coverage gap is issue #455. The gate passes 3 of 3 runs in an
+Ubuntu 24.04 container.
