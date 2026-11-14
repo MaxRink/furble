@@ -736,6 +736,11 @@ uint32_t furble_sim_uart_monhw_polls(void) {
   return monHwPolls;
 }
 
+bool furble_sim_uart_rx_pending(void) {
+  std::lock_guard<std::mutex> lock(gpsMutex);
+  return !rxBytes.empty() || rxEventQueued || gpsEventQueued || (gpsOffset < gpsStream.size());
+}
+
 void furble_sim_uart_set_mode(const char *mode) {
   std::lock_guard<std::mutex> lock(gpsMutex);
   uartMode = mode == nullptr ? "ack" : mode;

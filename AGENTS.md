@@ -15,6 +15,11 @@ acceptable. The online gate is
 `python3 tools/check_review_threads.py --repo owner/name --pr N`; it fails
 closed on API errors and is intentionally not part of the offline pre-review or
 fork CI jobs. The remediation PR must pass it before merge.
+The same gate fails when the PR head has no check runs, or any check is
+still running or did not pass, so merging without CI is never silent. Actions
+was off from 2026-10-21 to 2026-11-13 and PRs merged with no CI; see
+`plans/95-engineering-lessons.md`. A PR whose paths no workflow covers (web-installer only, say) passes the
+no-checks rule only with `--allow-no-checks "<reason>"`, which is printed.
 
 ## Documentation mandate
 
@@ -31,11 +36,12 @@ CI trigger changes must keep validation workflows usable for stacked pull
 requests. Keep pull request jobs path-filtered and read-only for fork safety,
 and run `python3 tools/check_ci_workflows.py` after changing workflow triggers.
 The pre-review gate is `python3 tools/pre_review.py --base origin/master`; run
-it before pushing. It includes the coupling ratchet: a per-file board guard,
-`M5.` call, `M5.getBoard()` or public header ESP/NimBLE type count may not
-grow, and a reduction is locked in with
-`python3 tools/check_coupling_ratchet.py --update`. pre_review passes `--base`
-to it, so `--update` cannot absorb growth over the base manifest. `git config core.hooksPath .githooks` runs it from
+it before pushing. It includes clang-format 21 on the changed C and C++ files
+and the coupling ratchet: a per-file board guard, `M5.` call, `M5.getBoard()`
+or public header ESP/NimBLE type count may not grow, and a reduction is locked
+in with `python3 tools/check_coupling_ratchet.py --update`. pre_review passes
+`--base` to it, so `--update` cannot absorb growth over the base manifest.
+`git config core.hooksPath .githooks` runs it from
 `.githooks/pre-push` on every push; the tracked `.claude/settings.json` sets
 that hook path for Claude Code sessions through `GIT_CONFIG_*` env vars. `pre-review.yml` runs the same scanners in CI, and
 `host-sanitized.yml` runs every host test except the two ThreadSanitizer probes
@@ -52,6 +58,11 @@ Static analysis is `python3 tools/check_static_analysis.py --base origin/master`
 with the host, simulator and firmware compile databases
 (`tools/firmware_compile_db.py` for m5stick-s3 and m5stick-c);
 `static-analysis.yml` runs it in CI. A source no database compiles fails.
+The firmware databases add `-nostdlibinc` so clang never reaches the host's
+`/usr/include`, and the gate anchors clang-tidy's header filter to the
+checkout so vendored `.pio/libdeps` and `sim/.pio` headers stay out (#463).
+The console doc-coupling rule in `tools/check_pr_hygiene.py` only warns when
+each changed string line keeps its literals, in order, at its own position.
 The simulator power gate uses the two-sided `tools/power-model/compare.py`
 threshold; its default 10% value is compatibility policy, not calibrated
 hardware noise. Focused coverage is `python3 -m unittest tests/test_power_compare.py`.
@@ -119,7 +130,9 @@ Firmware line coverage is measured by `tools/coverage.py` and gated against
 `tests/coverage_floor.json`. Coverage instrumentation is opt-in in both build
 entry points (`-DFURBLE_COVERAGE=ON` for the host harness,
 `FURBLE_SIM_COVERAGE=1` for `sim/build.sh`); never make it a default. Lowering a
-floor needs a stated reason in the PR.
+floor needs a stated reason in the PR. The coverage job installs
+`libclang-rt-18-dev` by name; `clang-18` only recommends it, and without it
+neither the profile nor the sanitizer runtimes link.
 Manual PlatformIO dispatches must run the complete firmware matrix. Do not
 derive a comparison range from repository root commits.
 Gate board-specific ESP-IDF component dependencies with a CMake profile
@@ -137,18 +150,18 @@ prints the retained boot timeline. See `docs/boot-timing.md`.
 
 Debug images also carry the end-of-stack watchpoint, heap tracing (`heap trace` console command) and log-only task watchdog
 subscriptions for the MQTT, WebUI and companion loops (`FURBLE_TASK_WDT`).
-Every debug env except the opt-in `m5stack-core-debug` OTA profile also
+Every debug env except the `m5stack-core-debug` OTA profile also
 merges the stack protector (`sdkconfig.stack-protector`), whose 24 KB does not
 fit that slot.
 The 8 and 16 MB tables end with a 256 KiB `coredump` partition after `ota_1`,
 which their debug envs fill on a panic (`sdkconfig.coredump-flash`).
 
 The developer-only `m5stack-core-usb-debug` profile is USB-UART only and uses a
-single factory app partition. Normal CI builds it as the mandatory Core debug
-profile. Keep it out of release and web-installer matrices; the legacy
-`m5stack-core-debug` OTA profile is an explicit workflow-dispatch opt-in, and
-returning to dual OTA requires a USB partition-table reflash. After the plan 314
-flash slimming it fits its OTA slot again (1,719,453 bytes).
+single factory app partition. Keep it out of release and web-installer
+matrices. Normal CI builds two mandatory Core debug profiles: this one and the
+dual-OTA `m5stack-core-debug`, which fits its OTA slot again after the plan 314
+flash slimming. Returning a device from
+the USB profile to dual OTA requires a USB partition-table reflash.
 
 Single-board images set `M5GFX_BOARD` (`m5stick-c`, `m5stack-core`,
 `m5stick-s3`); `post:patches/m5gfx_board.py` pins it in `M5GFX::autodetect`.

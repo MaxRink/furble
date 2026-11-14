@@ -160,8 +160,7 @@ void runSeed(uint32_t seed) {
     if (setting.type == Settings::COMPANION_PASSWORD) {
       continue;
     }
-    if (!keyExists(setting.nvs_namespace, setting.key)
-        && namespaceCommits == 0) {
+    if (!keyExists(setting.nvs_namespace, setting.key) && namespaceCommits == 0) {
       namespaceCommits = 1;
       break;
     }
@@ -199,8 +198,7 @@ void runSeed(uint32_t seed) {
     }
   } else {
     // A failed batch must not publish a marker that claims the seed is whole.
-    check(markerValue() != Furble::SettingsBootstrap::DEFAULTS_VERSION
-              || currentMarker,
+    check(markerValue() != Furble::SettingsBootstrap::DEFAULTS_VERSION || currentMarker,
           "seed " + std::to_string(seed) + ": failed seed did not publish a current marker");
     // One clean boot repairs the store, whether the failure left a partial
     // namespace or only the marker missing.

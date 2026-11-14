@@ -15,10 +15,10 @@ CLAUDE.md whose directory it touches.
 - The three 4 MB debug envs use size-optimized debug flags (`-Os -g2 -ggdb2`)
   to keep dual-OTA slots while retaining symbols, logs and assertions; stepping is less exact.
 - `m5stack-core-usb-debug` is a developer-only USB-UART fallback with one
-  factory app partition. Normal CI uses it as the mandatory Core debug profile.
-  It is not part of the six-board release or web installer matrices and has no
-  wireless update or rollback path. The legacy `m5stack-core-debug` OTA profile
-  is an explicit workflow-dispatch opt-in.
+  factory app partition. It is not part of the six-board release or web
+  installer matrices and has no wireless update or rollback path. Normal CI
+  builds two mandatory, strict Core debug profiles: this one and the dual-OTA
+  `m5stack-core-debug`, so an image that outgrows its OTA slot fails CI.
 - Unsupported Enterprise WiFi and SoftAP are compiled out on all boards.
   WPA2/WPA3 Personal station mode and application TLS remain enabled.
 - The HTTPS WebUI is compiled with MQTT only on the 8 MB and 16 MB profiles.
@@ -30,8 +30,9 @@ CLAUDE.md whose directory it touches.
   over the slot; OTA and TLS remain enabled.
 - Auth integration with `-Os` reached 1,743,717 bytes, 2,917 over the slot.
   The `-Oz` experiment produced the identical size despite confirmed object-file
-  flags, so it was reverted. The combined image still does not fit; release
-  optimization, security features and the OTA layout are unchanged.
+  flags, so it was reverted. Release optimization, security features and the
+  OTA layout were unchanged. The flash slimming below (#435) brought the image
+  back under the slot.
 - Flash slimming (plan 314) keeps every feature and IPv6. All boards use ESP-IDF
   Log V2 with the DHCP server and non-AES GCM off. StickC images compile out
   the SD stack and the unused Montserrat 22. Images that map to one M5GFX board
@@ -39,7 +40,7 @@ CLAUDE.md whose directory it touches.
   `post:patches/m5gfx_board.py` pins it in `M5GFX::autodetect`, so the other
   boards' panel and touch drivers drop out. StickC Plus/Plus2 and Core2/Tough
   share an image and keep autodetect. Core debug is now 1,719,453 bytes and
-  fits its OTA slot again; it stays a workflow-dispatch opt-in. Log V2 writes
+  fits its OTA slot again and is a mandatory CI lane. Log V2 writes
   one record as three vprintf calls, so `FurbleCrashLog` joins fragments up to
   the newline.
 - Per-env `sdkconfig.<env>` files are committed at the repo root. Debug envs
@@ -53,7 +54,7 @@ CLAUDE.md whose directory it touches.
   end-of-stack watchpoint and standalone heap tracing (`heap trace` console
   command). Every debug env except `m5stack-core-debug` also merges
   `sdkconfig.stack-protector` (`COMPILER_STACK_CHECK_MODE_NORM`); its 24 KB
-  does not fit that opt-in OTA slot. Debug builds
+  does not fit that OTA slot. Debug builds
   define `FURBLE_TASK_WDT`, which subscribes the MQTT, WebUI and companion
   loops to the 5 s task watchdog through `FurbleTaskWatchdog.h`; a timeout
   logs a backtrace but `CONFIG_ESP_TASK_WDT_PANIC` stays off until a hardware
@@ -101,7 +102,8 @@ CLAUDE.md whose directory it touches.
   a dispatch has no meaningful comparison base.
   Android's optional `run_emulator` input keeps the default dispatch fast.
 - Before pushing config, enum, or settings changes, clean-build every
-  documented env, including the non-CI `esp32-s3-headless` env. A new settings
+  documented env, including `esp32-s3-headless`, which only the reproducible
+  build workflow compiles, not the PR firmware matrix. A new settings
   enum value must be added in five places or the headless build fails
   `-Werror=switch`. See `plans/95-engineering-lessons.md`.
 - The direct SDL simulator build writes compiler depfiles beside each object.
@@ -143,9 +145,10 @@ CLAUDE.md whose directory it touches.
 ## Testing
 
 - Run `python3 tools/pre_review.py --base origin/master` before pushing. It
-  runs the diff hygiene, settings contract, and C++ safety scanners, the CI
-  workflow and simulator manifest checks, the coupling ratchet, and the
-  scanner unit tests. The ratchet fails when a per-file count of board
+  runs the diff hygiene, settings contract, and C++ safety scanners,
+  clang-format 21 on the changed C and C++ files, the CI workflow and
+  simulator manifest checks, the coupling ratchet, and the scanner unit
+  tests. The ratchet fails when a per-file count of board
   guards, `M5.` calls, `M5.getBoard()` or ESP/NimBLE public header types
   grows; after a reduction run `python3 tools/check_coupling_ratchet.py
   --update` and commit `tools/coupling_ratchet.json`. pre_review passes its
@@ -251,7 +254,9 @@ CLAUDE.md whose directory it touches.
 - Only Fujifilm cameras are available. Other vendors get code review plus the
   FauxNY test camera and are declared untested in the PR.
 - `tools/coverage.py` measures host and simulator line coverage and enforces
-  `tests/coverage_floor.json` in CI. See `docs/coverage.md`.
+  `tests/coverage_floor.json` in CI. See `docs/coverage.md`. It needs the
+  compiler-rt profile runtime; on Ubuntu install `libclang-rt-18-dev`
+  explicitly, because `clang-18` only recommends it.
 - The built simulator preference ownership gate is
   `sim/scripts/check-doc-tokens.sh` after changing scenario seeds; the existing
 `sim-e2e` job runs it with `tools/check_sim_scenarios.py`. The
@@ -296,7 +301,12 @@ evidence. Resolving a thread without a fix is not acceptable. The same rule
 applies to a remediation PR that closes review findings. The online gate is
 `python3 tools/check_review_threads.py --repo owner/name --pr N`; it fails
 closed on API errors and is intentionally not part of the offline pre-review or
-fork CI jobs. Record the audit in `plans/NN-review-feedback.md`. Run the final
+fork CI jobs. It also fails when the PR head has no check runs, or any check
+is still running or did not pass, so merging without CI is never silent. Actions
+was off from 2026-10-21 to 2026-11-13 and PRs merged with no CI; see
+`plans/95-engineering-lessons.md`. A PR whose paths no workflow covers (web-installer only, say) passes the
+no-checks rule only with `--allow-no-checks "<reason>"`, which is printed.
+Record the audit in `plans/NN-review-feedback.md`. Run the final
 gate set before pushing or merging: `python3 tools/pre_review.py --base
 origin/master`, `sh sim/scripts/check-doc-tokens.sh`, and the review-thread
 check.
@@ -377,4 +387,4 @@ check.
 
 Dependabot checks GitHub Actions, Python tooling, Android Gradle dependencies, and the Apple Swift package weekly. Routine minor and patch changes are grouped for review. Firmware pins in PlatformIO and ESP-IDF component manifests remain manual; Dependabot does not support those formats. Updates are proposed through pull requests and do not deploy or flash hardware. Pin Git-sourced PlatformIO dependencies to the full 40-character commit SHA so the VSCode extension can fetch them (upstream issue 309).
 
-Static analysis: `python3 tools/check_static_analysis.py --base origin/master` with the host, simulator and firmware compile databases (`tools/firmware_compile_db.py --env m5stick-s3` and `m5stick-c` after `pio run -t compiledb`); see `CONTRIBUTING.md`. A source no database compiles fails the gate. Raw C++ `new` and `delete` fail `cppcoreguidelines-owning-memory`: use `std::unique_ptr`, and hand a queue its pointer with `release()` and `reset()` on a failed send.
+Static analysis: `python3 tools/check_static_analysis.py --base origin/master` with the host, simulator and firmware compile databases (`tools/firmware_compile_db.py --env m5stick-s3` and `m5stick-c` after `pio run -t compiledb`); see `CONTRIBUTING.md`. A source no database compiles fails the gate. The firmware databases add `-nostdlibinc` so clang never reaches the host's `/usr/include`, and the gate anchors clang-tidy's header filter to the checkout so vendored `.pio/libdeps` and `sim/.pio` headers stay out (#463). Raw C++ `new` and `delete` fail `cppcoreguidelines-owning-memory`: use `std::unique_ptr`, and hand a queue its pointer with `release()` and `reset()` on a failed send.

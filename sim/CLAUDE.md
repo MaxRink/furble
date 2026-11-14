@@ -159,8 +159,9 @@ and
 `FurbleControl.cpp` (link-drop declaration, the debug state snapshot the console
 also uses, and the camera-command counter), `lib/furble/Scan.h` and `Scan.cpp`
 (scan-start probe and scan-end callback counter), `FurbleGPS.cpp` (state/timer
-profiling), `FurblePlatform.h` (watchdog query friend), `FurblePower.cpp`
-(power-lock owner assertions), and `FurbleUI.cpp`/`FurbleUI.h` (profiling,
+profiling, the status reader hold seam and the serial read and duty request
+busy marker behind `gps.duty_settled`), `FurblePlatform.h` (watchdog query
+friend), `FurblePower.cpp` (power-lock owner assertions), and `FurbleUI.cpp`/`FurbleUI.h` (profiling,
 queries, deterministic input, simulator encoder long-press/repeat timing,
 scan-start probe,
 disconnect count, and scripted actions). `FurbleUIAudit` is enabled for the
@@ -277,6 +278,15 @@ including empty strings and failed-save rollback.
 - LVGL comes from `managed_components/lvgl__lvgl`, which tracks the version
   pinned by `src/idf_component.yml` (override with `FURBLE_LVGL_DIR`).
 - SDL2 comes from Homebrew or /usr/local.
+- On macOS, Homebrew's `sdl2` is sdl2-compat. Its library initializer
+  dlopens SDL3 and shows a blocking "Fatal error! Cannot continue! Failed
+  loading SDL3 library." dialog when that load fails. Both `build.sh` and
+  `CMakeLists.txt` link `libSDL3.dylib` directly with `-needed_library`, so
+  dyld maps it at launch and the sdl2-compat dlopen reuses it. A real load
+  failure now stops the launch with a dyld error on stderr, never a dialog.
+  `otool -L sim/build/furble-sim` lists both libraries. Without SDL3 the build
+  links SDL2 alone only for a real SDL2; sdl2-compat without SDL3 fails the
+  build with a `brew install sdl3` message.
 
 ### Optional native MQTT transport
 
@@ -288,6 +298,12 @@ are discovered by pkg-config or CMake. The default simulator does not enable
 the production MQTT transport. The adapter accepts plaintext `mqtt://`
 local-broker URIs
 only; `mqtts://` remains fail-closed until a trust-store-backed TLS shim exists.
+Under the heap model, libmosquitto and the adapter's own objects run in a
+`HostAllocScope` and are never charged. `esp_mqtt_client_init()` charges what
+the pinned esp-mqtt allocates on the device instead: the client and config
+storage (248 and 160 bytes, from the StickS3 firmware DWARF) and the configured
+in and out buffers. Destroy releases them and `start()` charges the client task
+stack. Keep these figures in step with the pinned IDF when it moves.
 A local broker is managed outside the simulator and its socket/PUBACK evidence
 is not hardware or TLS evidence. `sim/scripts/test-mqtt-broker.sh` uses an
 externally managed broker and reports active-camera resubscription after broker
@@ -360,7 +376,7 @@ shortens that host retry cadence for a bounded scenario.
   seed the setting it toggles. The production CameraList does persist across a
   restart through the preferences file, and a reapplied `saved_camera` seed is
   idempotent because `CameraList::add_index()` overwrites by name (see
-  plans/156-restart-restore-seam.md for the seam limits).
+  plans/implemented/156-restart-restore-seam.md for the seam limits).
   `FURBLE_SIM_THEME` and `FURBLE_SIM_TEXTSIZE` apply only on the fresh boot;
   a UI-triggered reboot retains the NVS value selected by the restart action.
   See `docs/sim.md` for every action value and query key.
@@ -370,7 +386,11 @@ shortens that host retry cadence for a bounded scenario.
   task, or application RAM. The driver owns PID-scoped file creation, ownership
   markers, bounded reads, atomic publication, consumption, and cleanup.
   Malformed or foreign files fail closed and remain caller-owned.
-  `sim/scripts/run-fuzz-restart.sh` is the focused seed-2 restart gate. Root
+  `sim/scripts/run-fuzz-restart.sh` is the focused seed-2 restart gate. It
+  sets `FURBLE_FUZZ_RESTART_STEP=200`, so the restart comes from the
+  fuzzer clicking the real Sensors "Restart to apply" button, found by label
+  instead of a host-dependent random visit; no Linux seed from 1 to 20 reached
+  one alone. Unset, the knob changes no walk. Root
   evidence records the c190 gate pass and all three 65e8 panel binaries passing
   the pinned eight-seed 600-event sweep plus the strict seed-2 restart check.
   The corrected f49 binary still needs its own retest before this behavior is
@@ -584,8 +604,11 @@ shortens that host retry cadence for a bounded scenario.
   Keep IMU actions and queries general enough for diagnostics, spirit-level
   orientation, and future gesture features; do not add widget-only shortcuts.
 - GPS query keys include `gps.source`, `gps.satellites`, `gps.state`,
-  `gps.fresh_fixes_parsed`, `gps.duty_wake_fixes_parsed`, and
-  `gps.config.<index>.state|attempts`.
+  `gps.fresh_fixes_parsed`, `gps.duty_wake_fixes_parsed`,
+  `gps.duty_settled`, and `gps.config.<index>.state|attempts`.
+  `gps.state` is a profiler label that a duty wake does not change, so it
+  reads `standby` through a wake burst; wait on `gps.duty_settled` before
+  clearing the UART journal in a standby scenario.
   `gps.fresh_fixes_parsed` is simulator-only observability of parser
   progression, so scenarios can distinguish a wake fix from a cached UART
   source. It is cumulative and includes the acquisition fix that armed a duty
@@ -607,6 +630,18 @@ shortens that host retry cadence for a bounded scenario.
 - `e2e/gps-motion-prearm.txt` deliberately loads GPS motion before the UI arms
   the shared source, then disarms and re-arms it through real MotionSource calls;
   it asserts the gate changes without a GPS reset or setting toggle.
+- `seed gps_reader_hold_ms N` holds each GPS cycle status reader for N ms of
+  host time through `Sim::gpsReaderHold()`, a timing seam in
+  `GPS::getCycleStatusSnapshot()` and `GPS::getReceiverStatus()`.
+  `e2e/gps-reader-hold.txt` seeds 30 and asserts the cycle never degrades. It
+  also opens the GPS Data page and asserts `gps.readers_lock_free`, which
+  holds `m_CycleMutex` and requires all three readers to return: the page
+  timer runs after the tick's UART event is handled, so timing alone cannot
+  catch a lock in the page's reader. Readers used to hold `m_CycleMutex` while
+  the GPS task skipped any pass it could not lock, so a reader overlapping a
+  UART event lost the burst. That was the rare `gps-motion-detector` failure
+  under parallel load (plans/18-gps-motion.md). Keep the seam where the
+  snapshot is read: a reader lock added later then encloses the hold.
 - The `scan_start_probe` boolean seed enables a concurrent callback-shaped
   probe during scan startup. `scan.start_probe_blocked` reports whether that
   callback waited for the UI mutex, guarding the watchdog-sensitive scan-start
@@ -702,6 +737,20 @@ shortens that host retry cadence for a bounded scenario.
   an interactive debugging session, where the stall watchdog reports the
   deadlock instead of spinning on it. Do not reintroduce a busy-wait in
   `sim/main.cpp`: spinning made the load that provokes the stall worse.
+- Under `SDL_VIDEODRIVER=dummy` or `offscreen`, `sim/main.cpp` sets
+  `SDL_HINT_RENDER_DRIVER=software` before `Panel_sdl::setup()`. Those drivers
+  have no accelerated renderer, and without one M5GFX's `_update_scaling()`
+  divides by an output size SDL never wrote, which UBSan reports as a
+  float-cast or signed overflow depending on the compiler. An explicit
+  `SDL_RENDER_DRIVER` still wins, and visible runs are unchanged.
+  `sim/shim/FurbleSDLWrap.h` also routes `SDL_CreateRenderer` and
+  `SDL_DestroyRenderer` through `sim/sdl_lifecycle.cpp`, because
+  `Panel_sdl::close()` never destroys its renderer; the shim destroys any
+  renderer still live before `SDL_Quit`.
+- The host MQTT transport (`sim/SimMQTTClient.cpp`) allocates inside a
+  `HostAllocScope`. Its adapter object, strings and reconnect thread have host
+  library sizes, so counting them made `heap.free` differ between macOS and
+  Linux. The device client is modelled by the task stack it charges.
 - `run-e2e.sh` and `run-watchdog.sh` bound every scenario with `timeout -k 10`
   (`FURBLE_SIM_SCENARIO_TIMEOUT`, default 300 s). `run-fuzz.sh` keeps its own
   larger per-seed bound (`FURBLE_FUZZ_SEED_TIMEOUT`, default 600 s), because a
@@ -802,6 +851,13 @@ shortens that host retry cadence for a bounded scenario.
   LVGL, M5GFX and sanitizer-runtime sites. Linux libstdc++, like the device's,
   allocates in a `std::deque` constructor where macOS libc++ does not, so a
   per-tick deque shows up as counted heap on Linux only.
+- `FURBLE_SIM_SANITIZE=thread` builds the TSan binary the `sim-e2e` job runs
+  the three GPS concurrency scenarios on, with `TSAN_OPTIONS` pointing at
+  `sim/tsan.supp`. TSan owns the global `operator new`/`delete` there, so
+  `sim/heap_count.cpp` leaves them out of that build and C++ allocations are
+  not charged; no TSan scenario asserts a heap figure. The suppressions match
+  function names, so a run without `llvm-symbolizer` reports the suppressed
+  M5GFX `Panel_sdl` race as unsymbolized frames.
 - The fuzz fit rule follows the layouts the scenarios certify. Remote shutter
   stays fit-required on physical-button builds and on the 320x240 Core touch
   model, and narrow Stick touch may scroll. Physical-button Home and Connected

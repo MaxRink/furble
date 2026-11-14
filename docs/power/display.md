@@ -13,10 +13,10 @@ measurements. Plan 158 still gates any absolute claim.
 
 Read for this lane:
 
-- `plans/98-power-optimization-audit.md`, `plans/98b-power-followup.md`
+- `plans/98-power-optimization-audit.md`, `plans/implemented/98b-power-followup.md`
 - `plans/implemented/12-display-off.md`, `plans/63-sim-power-analysis.md`,
   `plans/implemented/77-battery-saver-profile.md`, `plans/111-power-recommendations.md`,
-  `plans/285-power-accounting.md`
+  `plans/implemented/285-power-accounting.md`
 - `src/FurbleUI.cpp`, `src/FurblePower.cpp`, `src/FurblePlatform.cpp`,
   `src/FurbleSettings.cpp`, `src/main.cpp`
 - `include/FurbleUI.h`, `include/FurblePower.h`, `include/FurbleSettings.h`,
@@ -734,9 +734,9 @@ behavior change. The 500 ms connected liveness poll is already gentle.
 - `plans/63-sim-power-analysis.md`
 - `plans/implemented/77-battery-saver-profile.md`
 - `plans/98-power-optimization-audit.md`
-- `plans/98b-power-followup.md`
+- `plans/implemented/98b-power-followup.md`
 - `plans/111-power-recommendations.md`
-- `plans/285-power-accounting.md`
+- `plans/implemented/285-power-accounting.md`
 
 ### Datasheets
 
