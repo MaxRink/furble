@@ -13,6 +13,9 @@ PRs. The current sim-only closeout state is in
   plan.
 - Each PR must update its own plans/NN doc before merge: implementation state,
   and any deviation from the written plan with the reason.
+- A follow-up fix to a plan that already merged appends a `## Follow-up:`
+  section to that plan, with its state and evidence, rather than starting a
+  new plan, as plan 314 does.
 - Fork-only delivery changes record their implementation state in the related
   plan even when the upstream plan says the work has no PR.
 - Plan 121's implementation state covers the simulator runtime boundary as

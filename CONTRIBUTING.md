@@ -224,10 +224,15 @@ The firmware databases cover the ESP-IDF-only sources, such as the WiFi,
 Ethernet, IR and IMU drivers, that the host and simulator builds never
 compile. `tools/firmware_compile_db.py` rewrites the Xtensa GCC commands for
 clang: an i686 stand-in target, `__XTENSA__` defined, GCC-only flags dropped,
-the toolchain's libstdc++ and newlib as system headers, and `-w` because GCC
+the toolchain's libstdc++ and newlib as system headers, `-nostdlibinc` so
+clang never falls through to the host's `/usr/include`, and `-w` because GCC
 owns firmware compiler warnings. A changed source that no database compiles
 fails the gate; the only exemptions are listed in `NO_COMPILE_DB` with their
-reasons.
+reasons. The gate passes clang-tidy a header filter anchored to the checkout,
+because `.clang-tidy`'s `HeaderFilterRegex` also matched `src/` inside
+vendored paths such as `.pio/libdeps/<env>/M5GFX/src/` and
+`sim/.pio/libdeps/sim/`. The anchored filter still accepts the `..` steps
+CMake keeps in include paths, such as `tests/host/../../include/`.
 
 `cppcoreguidelines-owning-memory` flags C++ `new` and `delete` outside a
 `std::unique_ptr`. FILE handles and the C allocators are left to the

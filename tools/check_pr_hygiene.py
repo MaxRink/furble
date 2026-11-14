@@ -500,9 +500,10 @@ def _change_signal(change: ChangedFile) -> str:
   if not added and not removed:
     return "comments"
   if added and removed:
-    normalized_added = sorted(" ".join(line.text.split()) for line in added)
-    normalized_removed = sorted(" ".join(line.text.split()) for line in removed)
-    if normalized_added == normalized_removed:
+    # Each line must be replaced where it stood: the same lines reordered or
+    # moved elsewhere is a code change, not whitespace.
+    if _in_place(change, added, removed,
+                 lambda new, old: new.split() == old.split()):
       return "whitespace"
   return "code"
 
@@ -539,6 +540,25 @@ def _coupling_findings(change: ChangedFile, trigger_lines: list[DiffLine],
         severity, "doc-coupling", location,
         f"{rule_detail}; the same pull request must update {item}."))
   return findings
+
+
+def _in_place(changed, added, removed, same):
+  """Was each removed line replaced at its own position by a line that matches?
+
+  The new line m replaces old line n when
+  m == n + (lines added before m) - (lines removed before n), counted over the
+  whole file. Lines are paired in order, so a reorder or a move fails.
+  """
+  if not added or len(added) != len(removed):
+    return False
+  for new, old in zip(added, removed):
+    if not same(new.text, old.text):
+      return False
+    shift = (sum(1 for line in changed.added if line.line < new.line)
+             - sum(1 for line in changed.removed if line.line < old.line))
+    if new.line != old.line + shift:
+      return False
+  return True
 
 
 def check_doc_coupling(files: list[ChangedFile]) -> list[Finding]:
@@ -605,9 +625,17 @@ def check_doc_coupling(files: list[ChangedFile]) -> list[Finding]:
           and not line.text.lstrip().startswith("#include")
           and not _is_comment_or_blank(console.path or "", line.text)
       ]
+      # strcmp(x, "trace") becoming (strcmp(x, "trace") != 0) changes nothing
+      # a user sees. A string swapped between commands or moved elsewhere
+      # keeps the file's set of literals but is a real change, so each line
+      # must keep its literals, in order, at its own position.
+      same_strings = _in_place(
+          console, triggers_added, triggers_removed,
+          lambda new, old: STRING_LITERAL_RE.findall(new) == STRING_LITERAL_RE.findall(old))
       if triggers_added or triggers_removed:
         severity = (
             FAIL if triggers_added and _change_signal(console) != "whitespace"
+            and not same_strings
             else WARN)
         missing = _missing_requirements(
             files, CONSOLE_REQUIRED_DOCS, extra_required=False)
