@@ -23,7 +23,7 @@ service, and both stay for the rest of the session. That first enable needs
 companion stays off and the USB log says:
 
 ```text
-Companion not started: internal free N, largest N (need 7552/3456). It stays off; enable it again or reboot to retry.
+Companion not started: internal free N, largest N (need 8320/4224). It stays off; enable it again or reboot to retry.
 ```
 
 The saved setting does not change. Enabling it again once RAM is free, or a
