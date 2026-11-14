@@ -65,6 +65,15 @@ class FuzzTargetFlagsTest(unittest.TestCase):
     self.assertTrue(defined)
     self.assertEqual(defined, set(listed.group(1).split()))
 
+  def test_ci_builds_every_host_binary_the_gate_runs(self):
+    gate = (ROOT / "tools" / "check_fuzz.py").read_text(encoding="utf-8")
+    needed = set(re.findall(r'"(\w+_(?:fuzz|test))"', gate))
+    workflow = (ROOT / ".github" / "workflows" / "sim-e2e.yml").read_text(encoding="utf-8")
+    step = re.search(r"--target ((?:[\w ]|\\\n)+)", workflow)
+    self.assertIsNotNone(step)
+    self.assertTrue(needed)
+    self.assertEqual(needed - set(step.group(1).replace("\\", " ").split()), set())
+
 
 class MqttOwnerStackTest(unittest.TestCase):
   def test_numeric_stack_is_read(self):
