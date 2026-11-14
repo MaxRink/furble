@@ -475,7 +475,7 @@ bool SonyVirtualCamera::emitNotification(const NimBLEUUID &service,
                                          const NimBLEUUID &characteristic,
                                          const std::vector<uint8_t> &payload) {
   const auto found = m_Subscriptions.find(key(service, characteristic));
-  if ((found == m_Subscriptions.end()) || (found->second.callback == nullptr)) {
+  if (!found || (found->callback == nullptr)) {
     return false;
   }
 
@@ -486,9 +486,8 @@ bool SonyVirtualCamera::emitNotification(const NimBLEUUID &service,
   m_Notifications.push_back(notification);
 
   std::vector<uint8_t> mutable_payload = payload;
-  found->second.callback(found->second.remote,
-                         mutable_payload.empty() ? nullptr : mutable_payload.data(),
-                         mutable_payload.size(), found->second.notification);
+  found->callback(found->remote, mutable_payload.empty() ? nullptr : mutable_payload.data(),
+                  mutable_payload.size(), found->notification);
   return true;
 }
 
@@ -1188,7 +1187,7 @@ bool SonyVirtualCamera::subscribe(NimBLEClient &client,
   subscription.callback = callback;
   subscription.notification = notification;
   subscription.response = response;
-  m_Subscriptions[key(service, characteristic)] = subscription;
+  m_Subscriptions.set(key(service, characteristic), subscription);
 
   if (matches(service, LOCATION_SERVICE) && matches(characteristic, DD01_CHARACTERISTIC)
       && m_Config.emit_location_on_subscribe) {

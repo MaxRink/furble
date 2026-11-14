@@ -104,7 +104,7 @@ bool FujifilmVirtualCamera::emitNotification(const NimBLEUUID &service,
                                              const std::vector<uint8_t> &payload,
                                              bool indication) {
   const auto found = m_Subscriptions.find(key(service, characteristic));
-  if ((found == m_Subscriptions.end()) || (found->second.callback == nullptr)) {
+  if (!found || (found->callback == nullptr)) {
     return false;
   }
 
@@ -125,9 +125,8 @@ bool FujifilmVirtualCamera::emitNotification(const NimBLEUUID &service,
   }
 
   std::vector<uint8_t> mutable_payload = payload;
-  found->second.callback(found->second.remote,
-                         mutable_payload.empty() ? nullptr : mutable_payload.data(),
-                         mutable_payload.size(), !indication);
+  found->callback(found->remote, mutable_payload.empty() ? nullptr : mutable_payload.data(),
+                  mutable_payload.size(), !indication);
   return true;
 }
 
@@ -321,7 +320,7 @@ bool FujifilmVirtualCamera::subscriptionRequestedWithResponse(
     const NimBLEUUID &service,
     const NimBLEUUID &characteristic) const {
   const auto found = m_Subscriptions.find(key(service, characteristic));
-  return found != m_Subscriptions.end() && found->second.response;
+  return found && found->response;
 }
 
 void FujifilmVirtualCamera::setStaleSubscribeSession(bool stale) {
@@ -339,13 +338,12 @@ void FujifilmVirtualCamera::setRegistrationPayload(const std::vector<uint8_t> &p
 bool FujifilmVirtualCamera::emitStaleRegistration() {
   const auto current =
       m_Subscriptions.find(key(configurationServiceUUID(), configurationNotificationUUID()));
-  if (!m_HaveStaleRegistration || (current == m_Subscriptions.end())
-      || (m_StaleRegistration.callback == nullptr)) {
+  if (!m_HaveStaleRegistration || !current || (m_StaleRegistration.callback == nullptr)) {
     return false;
   }
 
   std::vector<uint8_t> payload = {0x01, 0x00};
-  m_StaleRegistration.callback(current->second.remote, payload.data(), payload.size(), true);
+  m_StaleRegistration.callback(current->remote, payload.data(), payload.size(), true);
   return true;
 }
 
@@ -620,13 +618,14 @@ void FujifilmVirtualCamera::disconnect(NimBLEClient &client, int reason) {
     requestFlappyCancel();
     m_Client = nullptr;
     m_Connected = false;
-    const auto registration =
-        m_Subscriptions.find(key(configurationServiceUUID(), configurationNotificationUUID()));
-    if (registration != m_Subscriptions.end()) {
-      m_StaleRegistration = registration->second;
+    // One step, so a notification racing this teardown on the connect task
+    // never reads a freed entry (issue 451).
+    const auto registration = m_Subscriptions.takeAndClear(
+        key(configurationServiceUUID(), configurationNotificationUUID()));
+    if (registration) {
+      m_StaleRegistration = *registration;
       m_HaveStaleRegistration = true;
     }
-    m_Subscriptions.clear();
   }
 }
 
@@ -1046,7 +1045,7 @@ bool FujifilmVirtualCamera::subscribe(NimBLEClient &client,
   subscription.callback = callback;
   subscription.notification = notification;
   subscription.response = response;
-  m_Subscriptions[key(service, characteristic)] = subscription;
+  m_Subscriptions.set(key(service, characteristic), subscription);
 
   if (matches(characteristic, configurationNotificationUUID()) && !m_WithholdRegistration) {
     // This is the X100VI capture: CHR_NOT1_UUID carries 01 00. The production
