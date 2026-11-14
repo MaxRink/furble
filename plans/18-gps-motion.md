@@ -652,27 +652,35 @@ moves the cycle from STANDBY to BURST without relabelling, so the label reads
 `GPS::update()` on the UI task pushes the new fix and the GPS task consumes the
 request. On a loaded runner that came after the clear.
 
-Fix, simulator only: `gps.duty_settled` is `yes` when no PCAS12 can still
-follow a fix the cycle already has. The latest fix sequence has been pushed,
-the duty request has been consumed, the published cycle word is not BURST
-(which covers the pass between consuming the request and publishing STANDBY)
-and the fake UART has no bytes or receive event pending. All four are atomics
-or the fake UART's own lock, so the query takes no GPS lock. The scenario
-waits on it instead of `gps.state`. Production behaviour is unchanged.
+Fix: `gps.duty_settled` is `yes` when no PCAS12 can still follow a fix the
+cycle already has. The latest fix sequence has been pushed, the duty request
+has been consumed, the GPS task is not inside the code that acts on it, and
+the fake UART has no bytes or receive event pending. A `FURBLE_SIM` scope in
+`serviceCycle()` marks the task busy from before it reads the request until
+the command is written. `GPS::update()` now raises the request before it
+stores the pushed sequence, so a reader that sees the fix pushed also sees
+its request; both stores run on the UI task and the GPS task reads only the
+request, so device behaviour is unchanged. The query reads the fix sequence,
+the pushed sequence, the request and the busy flag in that order and takes no
+GPS lock. The scenario waits on it instead of `gps.state`.
 
 The first version required STANDBY. The pre-push review found that a pause in
 the second before a wake still opens the wake window; no burst comes, the
 cycle goes degraded after `MIN_WAKE_WAIT_MS` and never returns to STANDBY, so
-that wait would hang for the whole bound. Not BURST is the condition that both
-excludes the pending command and terminates.
+that wait would hang for the whole bound. The second version replaced STANDBY
+with "published state is not BURST". Copilot found that a pass can parse a
+wake fix in `serviceSerial()` and consume its request in `serviceCycle()`
+before the end-of-pass publish, while the word still says STANDBY. The busy
+marker covers that pass and reads no state at all.
 
 Evidence, macOS StickS3 build, 16 parallel. A probe with the post-pause wait
-cut from 1000 ms to 1 ms and the old condition failed 3 of 64 with the CI
-signature, and the settle query read `no` in exactly those 3. The same
-probe on the final condition passed 128 of 128, and the real scenario passed
-64 of 64. A sweep that pauses at 20 offsets across one 5 s cycle, four runs
-each, passed 80 of 80; in 15 of them the paused wake went degraded before the
-wait finished, which is the case that hung the STANDBY version. Master and this branch both pass the unmodified scenario 64 of 64
+cut from 1000 ms to 1 ms and the old condition failed 21 of 128 with the CI
+signature, and `gps.duty_settled` read `no` in exactly those 21 and `yes` in
+the 107 that passed. The same probe on the final condition passed 128 of 128,
+and the real scenario passed 64 of 64. A sweep that pauses at 20 offsets
+across one 5 s cycle, four runs each, passed 80 of 80; in 13 of them the
+paused wake went degraded before the wait finished, which is the case that
+hung the STANDBY version. Review findings are in `plans/18-review-feedback.md`. Master and this branch both pass the unmodified scenario 64 of 64
 locally, so the window needs CI load or the narrowed probe to show.
 
 ## References

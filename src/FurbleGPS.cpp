@@ -80,10 +80,22 @@ bool validCoordinate(double value, double min, double max) {
 #define FURBLE_SIM_GPS_STATE(state) Furble::Sim::profilerSetGpsState(state)
 #define FURBLE_SIM_TIMER_FIRE(name) Furble::Sim::profilerTimerFire(name)
 #define FURBLE_SIM_GPS_READER_HOLD() Furble::Sim::gpsReaderHold()
+namespace {
+// Marks the GPS task while it may act on a duty request, for gps.duty_settled.
+struct SimDutyScope {
+  std::atomic<bool> &busy;
+  explicit SimDutyScope(std::atomic<bool> &flag) : busy(flag) { busy.store(true); }
+  ~SimDutyScope() { busy.store(false); }
+  SimDutyScope(const SimDutyScope &) = delete;
+  SimDutyScope &operator=(const SimDutyScope &) = delete;
+};
+}  // namespace
+#define FURBLE_SIM_DUTY_SCOPE() const SimDutyScope simDutyScope(m_SimDutyBusy)
 #else
 #define FURBLE_SIM_GPS_STATE(state) ((void)0)
 #define FURBLE_SIM_TIMER_FIRE(name) ((void)0)
 #define FURBLE_SIM_GPS_READER_HOLD() ((void)0)
+#define FURBLE_SIM_DUTY_SCOPE() ((void)0)
 #endif
 
 void gps_task(void *param) {
@@ -691,6 +703,7 @@ void GPS::serviceCycle(void) {
   }
 
   // The application update sets this only after it has accepted a valid fix.
+  FURBLE_SIM_DUTY_SCOPE();
   if (m_CycleRequest.exchange(false)) {
     // A valid fix received during a degraded retry is recovery, even when the
     // duty-cycle request immediately transitions into standby or rail-off.
@@ -1294,9 +1307,14 @@ void GPS::publishCycleStatus(void) {
 
 #if defined(FURBLE_SIM)
 bool GPS::simDutySettled(void) const {
-  const uint64_t word = m_CycleStatus.load(std::memory_order_acquire);
-  return (static_cast<cycle_state_t>(cycleByte(word, CYCLE_STATE_SHIFT)) != cycle_state_t::BURST)
-         && (m_FixSequence.load() == m_PushedSequence.load()) && !m_CycleRequest.load();
+  // Read in this order. update() raises the request before it publishes the
+  // pushed sequence, and the task marks itself busy before it consumes the
+  // request and stays busy until the command is written.
+  const uint32_t fix = m_FixSequence.load();
+  const uint32_t pushed = m_PushedSequence.load();
+  const bool request = m_CycleRequest.load();
+  const bool busy = m_SimDutyBusy.load();
+  return (fix == pushed) && !request && !busy;
 }
 #endif
 
@@ -2504,10 +2522,12 @@ void GPS::update(void) {
     if ((source == SOURCE_UART) && (fix == Fix::LIVE)) {
       const uint32_t fixSequence = status.fix_sequence;
       if ((fixSequence != 0) && (fixSequence != m_PushedSequence.load())) {
-        m_PushedSequence = fixSequence;
+        // raise the request before publishing the sequence, so a reader that
+        // sees the fix pushed also sees its request
         if (dutyCycleEnabled()) {
           m_CycleRequest = true;
         }
+        m_PushedSequence = fixSequence;
       }
     }
 

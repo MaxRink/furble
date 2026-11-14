@@ -1275,12 +1275,13 @@ by a duty-cycle wake burst after `STANDBY` or `RAIL_OFF`. The duty-wake counter
 lets `gps-standby-wake` assert the wake independently of the acquisition fix.
 `gps.duty_settled` is `yes` once the duty cycle can send no further command
 for a fix it already has: the UI has pushed the latest fix, the GPS task has
-consumed the duty request, the published cycle state is not `BURST` and the
-fake UART has no bytes or receive event pending. Use it, not `gps.state
+consumed the duty request and left the code that acts on it, and the fake
+UART has no bytes or receive event pending. Use it, not `gps.state
 standby`, before clearing the UART journal: a duty wake does not relabel
 `gps.state`, so it reads `standby` through the wake burst while that burst's
-`PCAS12` is still to come. It does not require `STANDBY`, because a wake that
-gets no burst goes degraded and never returns there.
+`PCAS12` is still to come. It reads no cycle state: a wake that gets no burst
+goes degraded and never returns to `STANDBY`, and a request can be consumed in
+the same pass that starts a burst, before that state is published.
 
 Phase 2 adds the receiver model and its queries. `gps.receiver` reports
 `unknown`, `detecting`, `present` or `absent`, `gps.baud` reports the rate the

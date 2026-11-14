@@ -151,7 +151,8 @@ and
 `FurbleControl.cpp` (link-drop declaration, the debug state snapshot the console
 also uses, and the camera-command counter), `lib/furble/Scan.h` and `Scan.cpp`
 (scan-start probe and scan-end callback counter), `FurbleGPS.cpp` (state/timer
-profiling and the status reader hold seam), `FurblePlatform.h` (watchdog query
+profiling, the status reader hold seam and the duty request busy marker
+behind `gps.duty_settled`), `FurblePlatform.h` (watchdog query
 friend), `FurblePower.cpp` (power-lock owner assertions), and `FurbleUI.cpp`/`FurbleUI.h` (profiling,
 queries, deterministic input, simulator encoder long-press/repeat timing,
 scan-start probe,

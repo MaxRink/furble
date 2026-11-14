@@ -43,9 +43,9 @@ assert_min uart.standby_5s_commands 1
 # whole burst, and the PCAS12 waits for the UI to push the burst's fix. Master
 # failed here in CI on 350b58e3 when the journal was cleared before that push.
 # `gps.duty_settled` waits until no PCAS12 can still follow: the fix is pushed,
-# the request consumed, the receive path empty and the cycle out of BURST. It
-# does not wait for STANDBY, because a pause just before a wake leaves that
-# wake without a burst and the cycle goes degraded instead.
+# the request consumed and acted on, and the receive path empty. It reads no
+# cycle state, because a pause just before a wake leaves that wake without a
+# burst and the cycle goes degraded instead of back to STANDBY.
 uart-mode pause
 wait 1000
 assert-eventually-virtual 15000 gps.duty_settled yes
