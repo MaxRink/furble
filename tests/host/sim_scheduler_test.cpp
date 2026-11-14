@@ -652,6 +652,47 @@ void mutexWaitTask(void *argument) {
   state.finished.store(true);
 }
 
+// Issue 289 shape: a higher-priority task waits on a condition that only a
+// lower-priority task can make true, as Scan::stop() waits for a callback on
+// the radio task.
+struct ConditionWaitState {
+  Furble::Sim::SchedulerConditionVariable condition;
+  std::mutex mutex;
+  bool ready = false;
+  std::mutex orderMutex;
+  std::vector<int> order;
+  std::atomic<bool> waiterDone {false};
+  std::atomic<bool> notifierDone {false};
+};
+
+void conditionWaiterTask(void *argument) {
+  auto &state = *static_cast<ConditionWaitState *>(argument);
+  {
+    std::unique_lock<std::mutex> lock(state.mutex);
+    state.condition.wait(lock, [&state]() { return state.ready; });
+  }
+  {
+    const std::lock_guard<std::mutex> orderLock(state.orderMutex);
+    state.order.push_back(2);
+  }
+  state.waiterDone.store(true);
+}
+
+void conditionNotifierTask(void *argument) {
+  auto &state = *static_cast<ConditionWaitState *>(argument);
+  {
+    const std::lock_guard<std::mutex> lock(state.mutex);
+    state.ready = true;
+    state.condition.notify_all();
+  }
+  // Still this task's turn: a notify does not preempt the notifier.
+  {
+    const std::lock_guard<std::mutex> orderLock(state.orderMutex);
+    state.order.push_back(1);
+  }
+  state.notifierDone.store(true);
+}
+
 }  // namespace
 
 int main() {
@@ -913,6 +954,42 @@ int main() {
     return fail(__LINE__);
   }
   if (mutexOrder != std::vector<int> {20, 10}) {
+    return fail(__LINE__);
+  }
+  furble_sim_stop_all_tasks();
+  furble_sim_reset_tasks();
+
+  // A condition wait is a scheduler block. The waiter stops being runnable,
+  // so the lower-priority notifier gets the turn at once. With a plain
+  // std::condition_variable the waiter kept the turn and never showed as
+  // blocked, and only the 2 s host stall breaker let the notifier run.
+  ConditionWaitState condition;
+  TaskHandle_t conditionWaiter = nullptr;
+  TaskHandle_t conditionNotifier = nullptr;
+  if (xTaskCreate(conditionWaiterTask, "cond-waiter", 0, &condition, kControlPriority,
+                  &conditionWaiter)
+          != pdPASS
+      || !waitForBlocked(conditionWaiter)) {
+    return fail(__LINE__);
+  }
+  std::string conditionDump;
+  const bool conditionReported = waitUntil("condition waiter report", [&conditionDump]() {
+    conditionDump.clear();
+    furble_sim_report_tasks(conditionDump);
+    return conditionDump.find("wait=condition") != std::string::npos;
+  });
+  if (!conditionReported) {
+    return fail(__LINE__);
+  }
+  const uint64_t conditionProgress = furble_sim_scheduler_progress();
+  if (xTaskCreate(conditionNotifierTask, "cond-notifier", 0, &condition, kGpsPriority,
+                  &conditionNotifier)
+          != pdPASS
+      || !waitFor(condition.notifierDone) || !waitFor(condition.waiterDone)) {
+    return fail(__LINE__);
+  }
+  if (condition.order != std::vector<int> {1, 2}
+      || furble_sim_scheduler_progress() == conditionProgress) {
     return fail(__LINE__);
   }
   furble_sim_stop_all_tasks();
