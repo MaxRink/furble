@@ -460,5 +460,26 @@ bool parseKeyList(const uint8_t *p, size_t length, uint8_t &layer, std::vector<u
   return true;
 }
 
+void Detect::begin(uint32_t now) {
+  m_Result = Result::WAITING;
+  m_Attempts = 1;
+  m_Deadline = now + ATTEMPT_MS;
+}
+
+Detect::Result Detect::service(uint32_t now, bool &poll) {
+  poll = false;
+  if ((m_Result != Result::WAITING) || (static_cast<int32_t>(now - m_Deadline) < 0)) {
+    return m_Result;
+  }
+  if (m_Attempts < ATTEMPTS) {
+    m_Attempts++;
+    m_Deadline = now + ATTEMPT_MS;
+    poll = true;
+    return m_Result;
+  }
+  m_Result = Result::OTHER;
+  return m_Result;
+}
+
 }  // namespace Ubx
 }  // namespace Furble

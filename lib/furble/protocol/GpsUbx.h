@@ -340,6 +340,45 @@ constexpr uint8_t RST_MODE_GNSS_STOP = 0x08; /**< controlled GNSS stop */
 constexpr uint8_t RST_MODE_GNSS_START = 0x09;
 std::vector<uint8_t> cfgRst(uint16_t nav_bbr_mask, uint8_t reset_mode);
 
+/**
+ * Receiver identification by MON-VER poll.
+ *
+ * A u-blox receiver answers MON-VER whatever its configuration. A receiver
+ * that is not u-blox ignores the frame, so after ATTEMPTS polls without an
+ * answer the receiver is something else and keeps the NMEA path. One attempt
+ * waits ATTEMPT_MS: the answer is about 190 bytes queued behind up to a second
+ * of NMEA at 9600 baud, and ACK-class answers come "within one second" (IFD
+ * 3.5.1).
+ */
+class Detect {
+ public:
+  static constexpr uint32_t ATTEMPT_MS = 1000;
+  static constexpr uint8_t ATTEMPTS = 2;
+
+  enum class Result : uint8_t {
+    IDLE,    /**< not started */
+    WAITING, /**< a poll is outstanding */
+    UBX,     /**< MON-VER answered */
+    OTHER,   /**< every poll went unanswered */
+  };
+
+  /** Start. The caller sends the first poll. */
+  void begin(uint32_t now);
+  /** A MON-VER answer arrived; valid in any state. */
+  void answered(void) { m_Result = Result::UBX; }
+  /** Advance the deadline. Sets poll when the caller must send another poll. */
+  Result service(uint32_t now, bool &poll);
+
+  Result result(void) const { return m_Result; }
+  uint32_t deadline(void) const { return m_Deadline; }
+  uint8_t attempts(void) const { return m_Attempts; }
+
+ private:
+  Result m_Result = Result::IDLE;
+  uint8_t m_Attempts = 0;
+  uint32_t m_Deadline = 0;
+};
+
 }  // namespace Ubx
 }  // namespace Furble
 

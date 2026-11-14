@@ -32,6 +32,7 @@ using lv_obj_t = _lv_obj_t;
 #include "FurblePower.h"
 #include "protocol/GpsCasic.h"
 #include "protocol/GpsNavx.h"
+#include "protocol/GpsUbx.h"
 
 namespace Furble {
 class GPS {
@@ -57,6 +58,43 @@ class GPS {
     DETECTING, /**< the autobaud ladder is probing */
     PRESENT,   /**< a receiver answered, or a fixed baud is configured */
     ABSENT,    /**< the ladder found nothing */
+  };
+
+  /**
+   * The configuration protocol the receiver was identified as.
+   *
+   * Detection polls UBX-MON-VER once the receiver talks. A u-blox receiver
+   * answers and gets the UBX backend. Anything else keeps the NMEA backend,
+   * which is the path furble always had: NMEA parsing plus the CASIC
+   * configuration with its $PCAS fallback for the AT6668 and L76K. Both are
+   * shaped so another vendor ($PAIR, $CFG) is one more value here and one more
+   * configure function, not a new abstraction.
+   */
+  enum class backend_t : uint8_t {
+    UNKNOWN,   /**< not identified this session */
+    DETECTING, /**< the MON-VER poll is outstanding */
+    NMEA,      /**< no UBX answer: NMEA with CASIC configuration */
+    UBX,       /**< a u-blox receiver answered MON-VER */
+  };
+
+  /** UBX receiver state for the console and the simulator. */
+  struct ubx_status_t {
+    bool have_version;
+    std::string software; /**< MON-VER swVersion */
+    std::string hardware; /**< MON-VER hwVersion */
+    std::string firmware; /**< FWVER= extension */
+    std::string protocol; /**< PROTVER= extension */
+    std::string module;   /**< MOD= extension */
+    bool have_pvt;
+    uint32_t pvt_age_ms;
+    Ubx::NavPvt pvt;
+    /** UPD-SOS restore result, Ubx::SOS_RESTORE_*, or 0xff before an answer. */
+    uint8_t sos_restore;
+    /** UPD-SOS backup: 0 never tried, 1 saved, 2 refused or unsupported. */
+    uint8_t sos_backup;
+    /** VALGET read back: 0 not yet, 1 matches what was set, 2 differs. */
+    uint8_t config_verified;
+    uint32_t naks;
   };
 
   /** Per satellite diagnostics parsed from GSV and GSA. */
@@ -139,6 +177,15 @@ class GPS {
     // Sequence of the latest valid TinyGPS location update, captured under
     // m_GPSMutex so the UI can pair it with the rest of this snapshot.
     uint32_t fix_sequence;
+    // UBX-NAV-PVT estimates. Only a u-blox receiver reports them, so
+    // accuracy_valid is false on the NMEA backend.
+    bool accuracy_valid;
+    float h_acc_m;
+    float v_acc_m;
+    uint32_t t_acc_ns;
+    // The position, date and time fields above came from a fresh NAV-PVT
+    // rather than from the NMEA parser.
+    bool from_pvt;
   } status_t;
 
   static GPS &getInstance();
@@ -345,6 +392,15 @@ class GPS {
   /** Current receiver detection state. */
   receiver_state_t getReceiverState(void) const;
 
+  /** Which configuration backend the receiver was identified as. */
+  backend_t getBackend(void) const;
+
+  /** Printable name of a backend. */
+  static const char *backendName(backend_t backend);
+
+  /** A coherent copy of the UBX receiver state. Empty fields off the UBX backend. */
+  ubx_status_t getUbxStatus(void) const;
+
 #if defined(FURBLE_SIM)
   /** Disabled-path loop iterations, used by the power scenarios. */
   uint32_t simIdleWakes(void) const { return m_SimIdleWakes.load(); }
@@ -398,6 +454,8 @@ class GPS {
   static constexpr uint8_t AID_INI_ID = 0x01;
   static constexpr uint16_t MAX_BINARY_PAYLOAD = 2048;
   static constexpr uint32_t BINARY_ACK_TIMEOUT_MS = 300;
+  // UBX: CFG input is acknowledged "at least within one second" (IFD 3.5.1).
+  static constexpr uint32_t UBX_ACK_TIMEOUT_MS = 1000;
   static constexpr uint8_t BINARY_ATTEMPTS = 3;
   static constexpr size_t MAX_CONFIG_COMMANDS = 16;
   static constexpr size_t NAVX_PAYLOAD_SIZE = 44;
@@ -477,6 +535,11 @@ class GPS {
     std::string fallback;
     bool navx_query;
     size_t status_index;
+    // UBX frame instead of CASIC, and the pause the receiver needs after its
+    // acknowledgement before the next command (a CFG-SIGNAL change restarts
+    // the GNSS subsystem, IFD 4.9.21).
+    bool ubx = false;
+    uint16_t settle_ms = 0;
   } binary_command_t;
 
   static_assert(sizeof(aid_cache_t) == 56, "AID cache layout changed");
@@ -557,12 +620,30 @@ class GPS {
   /** Send the $PCAS configuration commands for the current settings. */
   void configure(void);
 
+  /** Run the configuration of the identified backend. */
+  void applyConfiguration(void);
+
+  /* UBX backend, src/FurbleGPSUbx.cpp. */
+  void startDetect(uint32_t now);
+  /** Advance detection. True once the backend is decided. */
+  bool serviceDetect(uint32_t now);
+  void configureUbx(void);
+  bool sendUbx(const std::vector<uint8_t> &frame);
+  void serviceUbx(const uint8_t *frame, size_t length);
+  /** Overlay a fresh NAV-PVT on the parser snapshot. Holds m_GPSMutex. */
+  void applyPvt(status_t &status) const;
+  void resetUbx(void);
+  bool sendConfigFrame(const binary_command_t &command);
+  uint32_t configAckTimeout(void) const;
+
   void enqueueConfig(uint8_t class_id,
                      uint8_t message_id,
                      const std::vector<uint8_t> &payload,
                      const std::string &fallback,
                      bool navx_query = false,
-                     bool front = false);
+                     bool front = false,
+                     bool ubx = false,
+                     uint16_t settle_ms = 0);
   void startConfigCommand(void);
   void finishConfigCommand(config_state_t state);
   void handleNavxResponse(const uint8_t *payload, size_t length);
@@ -783,6 +864,28 @@ class GPS {
   uint8_t m_NavxConstelVal = 0;
   bool m_NavxDyModelSet = false;
   uint8_t m_NavxDyModelVal = 0;
+
+  // UBX backend. m_Backend is written only on the GPS task and by enable() or
+  // disable() with the task parked.
+  std::atomic<uint8_t> m_Backend {static_cast<uint8_t>(backend_t::UNKNOWN)};
+  Ubx::Detect m_Detect;
+  // the next configuration command waits for this tick
+  uint32_t m_ConfigNotBefore = 0;
+  // the values the closing VALGET must read back
+  std::vector<Ubx::KeyValue> m_UbxExpected;
+  // NAV-PVT, guarded by m_GPSMutex like the NMEA parser it overlays
+  Ubx::NavPvt m_UbxPvt = {};
+  uint32_t m_UbxPvtTick = 0;
+  bool m_UbxPvtValid = false;
+  std::atomic<uint32_t> m_UbxPvtCount {0};
+  // receiver identity and protocol results, guarded by m_UbxMutex
+  mutable std::mutex m_UbxMutex;
+  Ubx::MonVer m_UbxVersion;
+  bool m_UbxHaveVersion = false;
+  uint8_t m_UbxSosRestore = 0xff;
+  uint8_t m_UbxSosBackup = 0;
+  uint8_t m_UbxVerified = 0;
+  uint32_t m_UbxNaks = 0;
 
   // MON-HW interference snapshot, hardware-tuning-pending
   std::atomic<bool> m_MonHwPending = false;

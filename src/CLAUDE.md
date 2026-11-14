@@ -96,6 +96,17 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   no-receiver state, tier 2 ephemeris poll and replay, the GSV/GSA satellite
   page parser, the `GPS_PLATFORM` dyModel write and a MON-HW poll. The
   parseable logic lives in `lib/furble/protocol/GpsCasic`.
+- `FurbleGPS` identifies the receiver once per session before configuring it:
+  a UBX-MON-VER poll, two attempts a second apart (`Ubx::Detect`). A u-blox
+  receiver gets the UBX backend in `src/FurbleGPSUbx.cpp`; anything else keeps
+  the NMEA backend, which is the CASIC/$PCAS path unchanged. Vendor-specific
+  actions (configure, restart, standby, satellite capture, MON-HW, ephemeris)
+  switch on `GPS::backend_t`; add a vendor as one more value and one more
+  configure function. UBX configuration goes through the same one-in-flight
+  queue with a one second ACK timeout and writes RAM and BBR, because software
+  standby clears RAM. A fresh NAV-PVT overlays the parser snapshot under
+  `m_GPSMutex`; when it is stale the NMEA parser is the fallback. The
+  ephemeris cache and AID-INI are CASIC only and never reach a UBX receiver.
 - `CompanionService::m_Mutex` serializes the status and camera notification
   caches and all
   trigger rate and held-command state, including timer and disconnect release.

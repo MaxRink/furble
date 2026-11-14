@@ -441,6 +441,11 @@ picks the GSV/GSA fixture and `gps_fix_date` picks the fix burst; both are
 detailed under the receiver model below. `gps_uart_chunk` serves the burst that
 many bytes at a time, paced, so a sentence spans several reads as it does off a
 real UART.
+`gps_model` picks the receiver: `casic` (default), `m10`, `m10-mia` or `nmea`.
+The M10 options `gps_m10_backup` (V_BCKP keeps BBR over a rail cut),
+`gps_m10_flash` (UPD-SOS has a flash), `gps_m10_hot` (the first start is hot)
+and `gps_m10_unknown_key` (`20910007`, `10230001` or `20d00001`, a key the
+firmware refuses) are described under the virtual u-blox M10 below.
 All boolean seeds, including `gps_uart_noise`, reject malformed values during
 scenario loading.
 
@@ -1298,6 +1303,50 @@ MON-HW poll, optionally answered with a truncated payload) and
 `gps-eph-corrupt` (flip one byte of the last frame in the stored ephemeris
 cache, so the reload path has to refuse the whole blob rather than replay up to
 the damage).
+
+#### Virtual u-blox M10
+
+`seed gps_model` selects what is on the port: `casic` (the default, the AT6668
+model above, so every older scenario is unchanged), `m10` (a virtual MAX-M10S),
+`m10-mia` (a virtual MIA-M10Q) or `nmea` (a receiver that prints NMEA and
+answers no binary protocol at all). The M10 model is `sim/ubx_m10.{h,cpp}`, a
+UBX state machine with no clock or UART of its own; `tests/host` drives the
+same object in `gps-ubx-m10`. It answers MON-VER, keeps a RAM, BBR and default
+configuration layer, applies the CFG-VALSET validity rules of the M10
+documents (at least one major GNSS, BeiDou B1I excludes B1C and GLONASS, no
+power save with B1C, rate at least 25 ms, PSMOO period at least 5 s, PSMCT at
+1 Hz, 2 Hz or 2 to 10 s) and answers ACK-ACK or ACK-NAK, answers VALGET per
+layer, honours RXM-PMREQ software standby only with the force flag, treats
+CFG-RST as an unacknowledged restart or GNSS stop, and answers UPD-SOS. It
+ignores CASIC frames and `$PCAS` sentences. Its epochs carry the canned NMEA
+fix plus NAV-PVT and NAV-SAT when CFG-MSGOUT enables them, at CFG-RATE-MEAS, or
+at the PSMOO update period.
+
+The start type follows the data sheet: cold 27 s, hot 1 s, AssistNow
+Autonomous 4 s, and warm 25 s, which M10 does not publish and is an assumption.
+A rail cut keeps BBR and the RTC only with `seed gps_m10_backup true` (V_BCKP).
+`gps_m10_flash true` gives UPD-SOS a flash to save to; without it a backup is
+answered "not acknowledged". `gps_m10_hot true` makes the first power-up hot,
+which keeps scenarios short. `gps_m10_unknown_key` names a key the receiver firmware does not know
+(`20910007` NAV-PVT output, `10230001` AssistNow Autonomous, `20d00001` power
+save mode), so the VALSET and VALGET carrying it are
+refused. The firmware tells the fake when it switches the Port A rail, the one
+hardware boundary the host has no other way to see.
+
+Queries: `m10.model`, `m10.state` (`off`, `on`, `stopped`, `standby`),
+`m10.start` (`cold`, `warm`, `hot`, `assisted`), `m10.fixed`, `m10.period_ms`,
+`m10.avg_ua` (average supply current since boot from the data sheet figures),
+the counters `m10.valsets`, `m10.naks`, `m10.valgets`, `m10.pmreqs`,
+`m10.sos_creates`, `m10.sos_polls`, `m10.monver_polls`, `m10.resets`,
+`m10.cold_starts`, `m10.warm_starts`, `m10.hot_starts`, and the configuration
+database as `m10.ram.<hex key>` and `m10.bbr.<hex key>` (`unset` when BBR has
+no value). On the firmware side `gps.backend` reports `unknown`, `detecting`,
+`nmea` or `ubx`, `gps.from_pvt` whether the snapshot came from NAV-PVT,
+`gps.hacc_mm` the NAV-PVT horizontal accuracy or `none`, and `gps.ubx.firmware`
+(spaces as underscores), `gps.ubx.module`, `gps.ubx.verified`,
+`gps.ubx.sos_restore`, `gps.ubx.sos_backup`, `gps.ubx.naks` and
+`gps.ubx.fix_type` the UBX status. `uart.ubx_polls` counts MON-VER detection
+polls the driver wrote.
 
 ## Fault injection and fuzzing
 

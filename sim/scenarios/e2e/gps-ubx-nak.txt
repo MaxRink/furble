@@ -1,0 +1,20 @@
+# A receiver firmware that does not know CFG-MSGOUT-UBX_NAV_PVT_UART1 refuses
+# the VALSET with ACK-NAK (IFD 3.10.5). The driver records the NAK, does not
+# retry a refused command, and the NMEA parser keeps the fix: the UBX backend
+# degrades to NMEA output rather than losing the receiver.
+seed gps true
+seed gps_model m10
+seed gps_m10_hot true
+seed gps_m10_unknown_key 20910007
+wait 6000
+assert gps.backend ubx
+assert-eventually 3000 gps.config.0.state NACKED
+assert gps.config.0.attempts 1
+assert-eventually 3000 gps.config.1.state NACKED
+assert gps.ubx.verified 0
+assert gps.ubx.naks 2
+assert m10.naks 2
+assert gps.source uart
+assert gps.from_pvt 0
+assert gps.hacc_mm none
+exit

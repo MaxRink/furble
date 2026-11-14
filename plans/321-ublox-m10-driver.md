@@ -8,7 +8,7 @@ AT6668 and L76K receivers. The boards plan 318 recommends for a better remote
 receivers: MAX-M10S and MIA-M10Q. Generic M10 UART modules also fit the
 StickS3 Grove port. They all output NMEA by default, so furble already gets a
 fix from them, but it cannot configure them: the CASIC frames and `$PCAS`
-sentences mean nothing to a u-blox receiver. Plan 318 holds the board
+sentences mean nothing to a u-blox receiver. Plan 318 (PR #443) holds the board
 recommendation and the original design sketch for this driver.
 
 This plan adds the UBX protocol, a receiver backend seam, a virtual M10 in the
@@ -147,3 +147,53 @@ length field drops one byte and resynchronises.
   unchanged.
 - Deviation: the legacy 8-byte RXM-PMREQ form is not decoded. The IFD
   documents only the 16-byte form for M10.
+
+### PR 2 (`feat/ubx-2-backend-sim`)
+
+- Detection. Once the receiver talks (fixed baud: first characters; Auto:
+  after the ladder locks), the GPS task polls UBX-MON-VER through
+  `Ubx::Detect`: two polls, one second apart. An answer selects the UBX
+  backend. No answer keeps the NMEA backend, which is the existing CASIC and
+  `$PCAS` path. A late answer after detection gave up switches to UBX and
+  reconfigures. The decision holds for the session and is reset by
+  `enable()`, `disable()` and every autobaud lock.
+- Backend seam. `GPS::backend_t` is `UNKNOWN`, `DETECTING`, `NMEA` or `UBX`.
+  Configure, restart, satellite capture, MON-HW and the ephemeris cache switch
+  on it. The UBX code is `src/FurbleGPSUbx.cpp`. UBX commands share the
+  existing one-in-flight configuration queue with a 1 s ACK timeout (IFD
+  3.5.1), three attempts, and an optional settle time after the ACK.
+- NAV-PVT. The UBX configuration turns NAV-PVT on (RAM and BBR) and keeps
+  NMEA on as the fallback. A fresh NAV-PVT (younger than the 30 s freshness
+  window) overlays position, altitude, speed, course, satellites, date and
+  time, and adds hAcc, vAcc and tAcc to the status snapshot. The fix
+  freshness, hold and TimeKeeper paths read the snapshot, so they consume
+  NAV-PVT unchanged. The companion's current fix now carries hAcc as its
+  accuracy. A NAV-PVT also counts as burst activity, and a valid one marks the
+  burst's fix with the same one-fix-per-burst rule as NMEA.
+- Configuration read back. A closing CFG-VALGET of the RAM layer compares
+  every value that was set; `gps.ubx.verified` and the console report it.
+- UPD-SOS. The restore status is polled after configuration.
+- CFG-RST replaces `$PCAS10` for hot, warm and cold restarts on UBX.
+- Simulator: the virtual M10 in `sim/ubx_m10.{h,cpp}`, `seed gps_model`, the
+  M10 seeds and queries in `docs/sim.md`, and the Port A rail hook. Host
+  test `gps-ubx-m10` drives the same state machine and `Ubx::Detect`.
+- Scenarios: `gps-ubx-detect`, `gps-ubx-mia-autobaud`,
+  `gps-ubx-fallback-nmea`, `gps-ubx-nak`, `gps-ubx-cold-start`. Fuzz target
+  `fuzz.gps.ubx` runs the host fuzzer seeds and three of them.
+- Deviation: the CASIC path is byte-identical in what it configures, but the
+  receiver now also receives up to two 8-byte MON-VER polls at GPS start, and
+  its configuration starts up to two seconds later. The CASIC receivers ignore
+  a UBX frame (it has neither the CASIC sync nor a `$`). Three motion
+  scenarios that assert `uart.count 0` clear the journal after detection.
+- The duty cycle (standby or rail cycling) waits until the receiver is
+  identified, so a u-blox receiver is never sent `$PCAS12`. On a CASIC
+  receiver with a duty policy this delays the first standby by up to the two
+  second detection window. The power gate stays inside its threshold
+  (`gps-duty-standby-cycle` -1.61 %).
+- Verification: the five UBX scenarios and all 36 certified StickS3 GPS
+  scenarios pass on the plain simulator; the ten power-gate scenarios pass
+  `compare.py`. `gps-motion-detector` shortens its held-still wait by the
+  2.5 s identification baseline it now carries.
+- Deviation: the receiver is not positively identified as CASIC. CASIC has a
+  MON-VER of its own, but polling it would add CASIC traffic no setting asked
+  for, so an unidentified receiver keeps the NMEA path exactly as before.
