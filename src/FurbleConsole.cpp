@@ -2075,7 +2075,7 @@ int heapTraceStart(unsigned long records) {
 
 int cmdHeap(int argc, char **argv) {
   static constexpr char USAGE[] = "usage: heap trace start [records] | stop | dump";
-  if ((argc < 3) || strcmp(argv[1], "trace")) {
+  if ((argc < 3) || (strcmp(argv[1], "trace") != 0)) {
     return fail(USAGE);
   }
   if (!strcmp(argv[2], "start")) {
