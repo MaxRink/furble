@@ -2403,6 +2403,7 @@ if(BUILD_TESTING)
   # machine end to end against the mock peer and is registered individually so a
   # failure names the scenario.
   foreach(scenario
+          admit-hook-once-per-target
           empty-target-connect-stays-idle
           fresh-connect
           dead-camera-disconnect-no-freeze

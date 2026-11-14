@@ -102,8 +102,9 @@ inline constexpr level_t classify(size_t freeBytes, size_t largestBlock) {
 }
 
 /**
- * Internal RAM one camera connect takes at once: the `Control::Target` stack
- * that `Control::addActive()` creates, plus the TCB and block overhead.
+ * Internal RAM of the task one camera connect creates: the `Control::Target`
+ * stack plus the TCB and block overhead. `Control::addActive()` adds the
+ * Target object and its command queue block before it admits a target.
  */
 inline constexpr size_t CONNECT_TARGET_BYTES =
     TaskMemory::CAMERA_TARGET_STACK_BYTES + TaskMemory::TASK_OVERHEAD_BYTES;
@@ -191,21 +192,27 @@ void tick(void);
  * Enter a deeper level before a core-path allocation of bytes. When the
  * allocation would take the heap into AMBER or RED, that level is entered now
  * instead of three readings later, and the escalate hook wakes the services
- * that act on it. A connect calls this with CONNECT_TARGET_BYTES before each
- * `Control::addActive()`. The target task is created right after it returns,
- * so a woken WebUI server stops shortly after the target task exists. Nothing
- * orders that stop against the NimBLE client or the connected page's first
- * draw. Safe from any task.
+ * that act on it. Boot code registers this as the `Control` admit hook, so
+ * `Control::addActive()` calls it under the Control lock, after its duplicate
+ * check and before it allocates the target. Connects from different tasks
+ * are therefore admitted one at a time, each against a reading that already
+ * includes the targets before it. The target task is created right after
+ * this returns, so a woken WebUI server stops shortly after the target task
+ * exists. Nothing orders that stop against the NimBLE client or the
+ * connected page's first draw. Safe from any task.
  */
 void admit(size_t bytes);
 
 typedef void (*escalate_hook_t)(void);
 
 /**
- * Called by admit() after it raised the level, outside the governor lock.
- * The WebUI registers a wake for its supervisor, which otherwise sees the new
- * level only on its next 500 ms poll. MQTT reads the level on its own loop.
- * One hook; a later call replaces it.
+ * Called by admit() after it raised the level, outside the governor lock but
+ * possibly under the Control lock. The WebUI registers a wake for its
+ * supervisor in `WebUI::init()`, which otherwise sees the new level only on
+ * its next 500 ms poll; MQTT reads the level on its own loop. The hook must
+ * not block, must not call Control and may take only locks that are never
+ * held while calling Control. One hook, registered once at boot and never
+ * cleared on device; a later call replaces it.
  */
 void setEscalateHook(escalate_hook_t hook);
 

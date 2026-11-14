@@ -357,16 +357,19 @@ above are the pre-review state; these replace them.
   blocks, freed after the frame, while the governor only sees one reading a
   second and sheds three readings later. On hardware this is a real abort
   risk, because fragmentation is worse than the model.
-- Admission fix. Every caller of `Control::addActive()` now calls
-  `MemoryPressure::admit(CONNECT_TARGET_BYTES)` first. When the target task
-  would take the heap into AMBER or RED, the governor enters that level at
-  once and calls its escalate hook, which wakes the WebUI supervisor instead
-  of leaving it to its next 500 ms poll. `addActive()` creates the target
-  task right after admission, so the server stops shortly after the target
-  task exists. Nothing orders that stop against the NimBLE client or the
+- Admission fix. `Control::addActive()` calls `MemoryPressure::admit()`
+  through its admit hook, under the Control mutex and after its duplicate
+  check, with the `Target`, its queue and its task (Copilot review C1 to C3;
+  the first version admitted `CONNECT_TARGET_BYTES` from each caller). When
+  the new target would take the heap into AMBER or RED, the governor enters
+  that level at once and calls its escalate hook, which wakes the WebUI
+  supervisor instead of leaving it to its next 500 ms poll. `addActive()`
+  creates the target task right after admission, so the server stops shortly
+  after the target task exists. Nothing orders that stop against the NimBLE client or the
   connected page's first draw on hardware; in the model it lands before the
-  draw. The exit is unchanged. A board whose pool stays NORMAL after the target task, such as
-  the Core2 or a StickS3 with the WebUI off, sheds nothing. With admission the
+  draw. The exit is unchanged. A board whose pool stays NORMAL after the
+  target task, such as the Core2 or a StickS3 with the WebUI off, sheds
+  nothing. With admission the
   connect minimum is 7,475 free with a 5,712-byte largest block.
   `tests/host/memory_pressure_test.cpp` covers the policy.
 - HTTPS after disconnect. The 4,936-byte residual that kept HTTPS paused was

@@ -68,9 +68,7 @@ size_t Control::getTargetCount() const {
   return 0;
 }
 
-std::vector<std::shared_ptr<Camera>> Control::getTargetCameras() const {
-  return {};
-}
+void Control::setAdmitHook(admit_hook_t) {}
 
 Platform &Platform::getInstance() {
   static Platform instance;
@@ -150,8 +148,8 @@ void tick(void) {
   HeadlessState::pressureTicks++;
 }
 
-// The headless service loop has no heap to shed from; the connect admission
-// policy is covered by memory_pressure_test.
+// The headless service loop has no heap to shed from. The admission policy is
+// covered by memory_pressure_test, and its call site by control-e2e.
 void admit(size_t) {}
 
 level_t current(void) {

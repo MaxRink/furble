@@ -8600,15 +8600,11 @@ void UI::doConnect(lv_event_t *e) {
   m_ConnectContext.connectingName.clear();
   m_ConnectContext.connectProgress = -1;
 
-  // activate selected cameras. Each target task is admitted first: when it
-  // would take the heap into AMBER or RED, the governor enters that level now
-  // and wakes the WebUI, instead of three readings after the connect lands.
-  // Every caller of addActive() does this; the host Control harness does not
-  // link the governor.
+  // activate selected cameras. addActive() admits each new target to the
+  // memory governor before allocating it.
   for (size_t n = 0; n < CameraList::size(); n++) {
     auto camera = CameraList::get(n);
     if (camera->isActive()) {
-      MemoryPressure::admit(MemoryPressure::CONNECT_TARGET_BYTES);
       control.addActive(camera);
     }
   }

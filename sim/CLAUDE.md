@@ -441,7 +441,11 @@ shortens that host retry cadence for a bounded scenario.
   companion service, the display, Control and the UI are already resident, and
   only optional services admitted afterwards are charged. `web_ui`,
   `webui_password`, `webui_gate` and `wifi_connected` configure the WebUI
-  admission model. `task_create_fail <name|all>` fails a task's `xTaskCreate`
+  admission model. `sim/main.cpp` registers `MemoryPressure::admit()` as the
+  Control admit hook, as firmware `app_main()` does, so a scenario connect is
+  admitted inside `Control::addActive()`. The host build admits 4,912 bytes
+  per target against 4,896 on the S3, because `sizeof(Control::Target)` is
+  larger on a 64-bit host. `task_create_fail <name|all>` fails a task's `xTaskCreate`
   with the hardware-shaped `Mem alloc fail` line, which aborts the run with
   status 3 like the device. `heap.free`, `heap.largest`,
   `heap.minimum`, `heap.counting`, `heap.counted_internal`,

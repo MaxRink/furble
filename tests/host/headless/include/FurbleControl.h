@@ -3,7 +3,6 @@
 
 #include <cstddef>
 #include <memory>
-#include <vector>
 
 #include "Camera.h"
 
@@ -19,13 +18,15 @@ class Control {
     STATE_DISCONNECTING,
   };
 
+  typedef void (*admit_hook_t)(size_t bytes);
+
   static Control &getInstance(void);
+  static void setAdmitHook(admit_hook_t hook);
   void addActive(std::shared_ptr<Camera> camera);
   void connectAll(bool infiniteReconnect);
   void disconnect(void);
   state_t getState(void) const;
   size_t getTargetCount(void) const;
-  std::vector<std::shared_ptr<Camera>> getTargetCameras(void) const;
 };
 }  // namespace Furble
 

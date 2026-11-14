@@ -46,9 +46,10 @@ assert heap.free 14135
 assert heap.alloc_failures 0
 assert platform.watchdog armed
 
-# A BLE camera connect is the core path and is never refused. Its 4,480-byte
-# target task would take the pool below the AMBER floor, so the connect admits
-# it first: the governor enters AMBER at once. On hardware its hook wakes the
+# A BLE camera connect is the core path and is never refused. Its target, the
+# 4,480-byte task plus the Target record and command queue, would take the
+# pool below the AMBER floor, so Control::addActive() admits it first: the
+# governor enters AMBER at once. On hardware its hook wakes the
 # WebUI supervisor, which stops the 8 KiB server shortly after the target task
 # is created. The model stops it in the same UI cycle, after the target task
 # and before the connected page's first draw.
