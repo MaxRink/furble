@@ -34,4 +34,3 @@ per-input-bit rule. The plain StickS3 simulator passes all 211 e2e scenarios,
 of 3,145,728) and stack budgets pass. `python3 tools/pre_review.py --base
 origin/master` passes 8 gates and `sh sim/scripts/check-doc-tokens.sh`
 passes.
-
