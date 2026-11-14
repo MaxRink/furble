@@ -15,6 +15,7 @@
 
 #include "MockNimBLE.h"
 #include "PeerStall.h"
+#include "SubscriptionTable.h"
 
 namespace Furble {
 namespace Host {
@@ -508,7 +509,7 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   std::vector<Write> m_Writes;
   std::vector<Notification> m_Notifications;
   std::vector<uint8_t> m_LastGeotag;
-  std::map<std::string, Subscription> m_Subscriptions;
+  SubscriptionTable<Subscription> m_Subscriptions;
 
   // FlappyPeer state. The recursive mutex lets the drop timer re-enter
   // disconnect() through mockDropLink() on its own thread, and lets any other

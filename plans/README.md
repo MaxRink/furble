@@ -32,6 +32,7 @@ state and the remaining gate; the issue stays open until that gate lands.
 | #289 | [173](173-sim-scheduler-visibility.md) | Items 1, 2, 3 and 5 done. Item 4 open: 565 completed runs at loadavg about 80 kept both clock bounds, max 20960/31000 and 17850/20000, but a Linux container run failed the 6000 ms settle bound once with the target task stalled after its transmit-power log. The offending wait must be made scheduler-visible before the issue closes. |
 | #381 | [302](302-companion-restart-reconnect.md) | Open. Long USB console runs reset into the ROM USB-JTAG unit. The 5 s command timeout and monitor fixes are merged; a UART0 panic capture and a host-side recovery test remain. |
 | #390 | [304](304-webui-stick-memory.md) | Open. The WebUI now fails closed on the StickS3 instead of boot-looping. A support claim still needs the hardware memory gate, a TLS handshake, a settings write and a soak. |
+| #451 | [325](325-peer-subscription-race.md) | Fixed on `fix/451-fuji-double-subscriptions`: the virtual camera subscription tables are thread safe. Closes on merge. |
 
 Closed issues #280, #281, #282, #288 and #290 are retained in their plans and in
 the git history. They are no longer ownership rows.
@@ -102,6 +103,8 @@ the git history. They are no longer ownership rows.
 | [315-stickc-layout-regressions.md](implemented/315-stickc-layout-regressions.md) | M5StickC header battery anchor, Cameras page double reserve and Time page scroll fixes |
 | [316-docs-capture-companion-reject.md](implemented/316-docs-capture-companion-reject.md) | Docs capture: rename the hardware-model action that shadowed the companion pairing Reject |
 | [317-notouch-regressions.md](317-notouch-regressions.md) | Physical-button suite: control drain wake, stale legend pass, info page padding, memory profile constants |
+| [325-peer-subscription-race.md](325-peer-subscription-race.md) | Thread-safe subscription tables for the virtual camera test doubles (#451) |
+| [325-review-feedback.md](325-review-feedback.md) | Review-feedback record for the virtual camera subscription race |
 | [302-companion-restart-reconnect.md](302-companion-restart-reconnect.md) | Companion stop/start without a heap panic, and advertising restart after a rejected link |
 | [303-upstream-sync.md](implemented/303-upstream-sync.md) | Read-only upstream audit, open issue mapping, and full SHA PlatformIO pins for upstream issue 309 |
 
