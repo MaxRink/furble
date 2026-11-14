@@ -277,6 +277,37 @@ board environment, SDK dependency, or hardware test is claimed.
 - `FURBLE_NO_DISPLAY` and `FURBLE_ETHERNET` were already capability flags and
   are unchanged. No `FURBLE_HAS_DISPLAY` alias was added.
 
+Step 2 build evidence. Fixed-version builds (`FURBLE_VERSION=1.0.0-ci
+FURBLE_TEST=0`) of port stack step 1 (`1e21d421`) and step 2 (`c4367912`),
+one env at a time in the same worktree. Text, data and bin are bytes; the
+last column is the summed size of `Furble` function symbols.
+
+| Env | Step 1 bin | Step 2 bin | Bin | Text | Data | Furble functions |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| m5stick-c | 1,490,544 | 1,490,096 | -448 | -420 | -16 | -243 |
+| m5stick-c-plus | 1,540,000 | 1,540,096 | +96 | +100 | 0 | 0 |
+| m5stick-s3 | 1,848,896 | 1,847,632 | -1,264 | -1,260 | 0 | -108 |
+| m5stack-core | 1,613,744 | 1,613,712 | -32 | -32 | 0 | -4 |
+| m5stack-core2 | 1,898,592 | 1,898,576 | -16 | 0 | -16 | 0 |
+| waveshare-s3-eth | 1,696,448 | 1,696,384 | -64 | -64 | +8 | 0 |
+| esp32-s3-headless | 1,759,504 | 1,759,312 | -192 | -184 | -8 | +8 |
+| waveshare-s3-eth-debug | 2,041,312 | 2,041,312 | 0 | 0 | -8 | 0 |
+
+The images are not byte-identical, and the differences are link layout, not
+code. The Xtensa linker relaxes a `-mlongcalls` `l32r` plus `callx8` pair to
+a direct `call8` when the target lands in range, which saves 3 bytes of code
+and often a 4-byte literal. Any layout shift changes which calls relax, also
+in code step 2 never touched: on the StickS3, `ble_hs_util_ensure_rand_addr`
+in the IDF NimBLE host shrinks from 42 to 34 bytes because its three
+`l32r`/`callx8` calls became `call8`, and 37 other non-furble functions move
+by multiples of 3 or 4 bytes. The furble function deltas have the same shape;
+on the StickC they sit in `CompanionGatt`, which step 2 did not change, and
+the StickS3 text section loses more than the function sizes show because the
+removed literals are not attributed to any symbol. The data deltas of 8 to 16
+bytes are alignment. A rebuild of step 1 m5stick-c after step 2 reproduced
+the step 1 image byte for byte, so the builds are deterministic and the
+deltas are not noise.
+
 ### Battery and GPS rail routing (port stack step 3)
 
 - `Platform::getBatteryStatus()` is the one source of the companion status
