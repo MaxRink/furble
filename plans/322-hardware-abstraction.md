@@ -358,3 +358,24 @@ simulator was not rebuilt after the devirtualization, which removes virtual
 dispatch only. Coupling ratchet, portability contract and doc tokens: clean.
 `python3 tools/pre_review.py --base origin/master` on hal-2 after `fa44daff`:
 9 of 9 gates pass.
+
+### Rebase onto port-4 (`7f408c75`)
+
+hal-2 is rebased onto the final `refactor/port-4-camera-types`. The only
+conflict was `include/CLAUDE.md`; both bullet sets are kept. Port-4's ratchet
+now compares per file against `--base`, and the one `M5.getBoard()` call in
+`src/FurbleBoard.cpp`, the lookup that replaced the scattered switches, counted
+as growth in a new file. `tools/check_coupling_ratchet.py` now treats
+`src/FurbleBoard.cpp` like the Platform adapter, with a unit test.
+`check_coupling_ratchet.py --base 7f408c75` is clean and every per-file count
+only drops (`M5.getBoard()` 16 to 6 outside the adapters, `M5.` calls down in
+seven files).
+
+After the rebase: `hal-drivers`, `board-profile`, `boundary-headless-service`,
+`settings-nvs-roundtrip` and `time-keeper-persistence` pass. Fixed-version
+builds: m5stick-s3 1,848,992 bytes (DRAM 47,208, IRAM 132,864) and
+waveshare-s3-eth 1,696,432 bytes (DRAM 51,332, IRAM 132,352); size and stack
+budgets pass, and DRAM and IRAM equal the pre-rebase hal-2 builds. The few
+extra bytes come from port-4's own code. `pre_review --base origin/master`:
+9 of 9 gates. `check-doc-tokens`: tokens present.
+
