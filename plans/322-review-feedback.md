@@ -30,3 +30,21 @@ simulator rebuilt with the assertion and passes the 22 hardware-profile
 scenarios. `python3 tools/pre_review.py --base origin/master`: 9 of 9 gates.
 `sh sim/scripts/check-doc-tokens.sh`: tokens present. The rebase onto
 `refactor/port-4-camera-types` is pending that branch's final review fixes.
+
+## PR #462 (e9ee2747)
+
+Source: Copilot review.
+
+| # | Finding | Resolution | Evidence |
+| ---: | :--- | :--- | :--- |
+| 1 | `src/FurblePlatform.cpp:869`. `setRail()` is documented to return false when the board has no switch, but it returned true for every `Rail::GPS` request after the generic `M5.Power` calls, including on the `UNKNOWN` profile with no GPS rail backend. | Fixed. `Board::Profile` gains a `gpsRail` column, true for StickC, StickC Plus, StickS3, Core2 and Tough. `setRail()` returns false without touching `M5.Power` when the row has no rail. The column comes from M5Unified 0.2.20 `Power_Class::setExtOutput()`, whose switch handles exactly those boards on this target; the Plus2 and the Core reach its empty default, so skipping the call changes no bus traffic on any supported board. M5Unified does switch Port A on some boards furble maps to `UNKNOWN` (CoreS3, Paper, Station and others); those boards are unsupported and now skip the call. The simulator platform takes the same guard, so it keeps making the firmware calls. The success path still returns true after the set, read back and retry; the retry stays unchecked as before. | `include/FurbleBoard.h`, `src/FurbleBoard.cpp`, `src/FurblePlatform.cpp`, `sim/FurblePlatformSim.cpp`, `include/FurbleGPS.h`, `tests/host/board_profile_test.cpp` (new `gps rail` check on all nine rows), plan 322 |
+
+Validation for PR #462 row 1: `sh tools/run_sanitized_host_tests.sh --clean
+--jobs 4` passes 186 of 186, `board-profile` included. The plain Core
+simulator, the one panel binary whose row has no GPS rail, builds and passes
+all 69 of its e2e scenarios. `m5stick-s3` builds at 1,849,008 bytes, 80 more
+than the 1,848,928 recorded above, for the new column and the guard; the
+size and stack budgets pass. `python3 tools/pre_review.py --base
+origin/refactor/port-4-camera-types` passes 9 gates and
+`sh sim/scripts/check-doc-tokens.sh` passes.
+

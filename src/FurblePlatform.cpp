@@ -856,7 +856,7 @@ uint16_t Platform::getBatteryCapacity(void) {
 }
 
 bool Platform::setRail(Rail rail, bool on) {
-  if (rail != Rail::GPS) {
+  if ((rail != Rail::GPS) || !Board::profile().gpsRail) {
     return false;
   }
   // The Port A 5 V output. The M5PM1 sleeps after an I2C idle period and the

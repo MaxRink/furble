@@ -51,6 +51,7 @@ struct Profile {
   bool feedbackLight;
   bool feedbackVibration;
   int8_t ledPin;  // -1 when none
+  bool gpsRail;   // M5.Power switches the Port A 5 V output for the GPS unit
 };
 
 /** The row for a board model. Unknown boards get a no-hardware row. */

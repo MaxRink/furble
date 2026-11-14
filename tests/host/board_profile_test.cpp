@@ -14,6 +14,10 @@
 //   Feedback::initialize()         sound, light, vibration, LED pin
 //   UI::UI(), addPowerMenu(), processAutoOff(), processLowBattery()
 //                                  brightness floor, modem sleep, power off
+//
+// The GPS rail column is new. It is copied from the boards that M5Unified
+// 0.2.20 Power_Class::setExtOutput() switches; every other board furble
+// supports falls through to its empty default.
 
 #include <cstring>
 #include <iostream>
@@ -95,38 +99,39 @@ struct Expected {
   int minBrightness;
   bool sound, light, vibration;
   int ledPin;
+  bool gpsRail;
 };
 
 // clang-format off
 const Expected EXPECTED[] = {
   {m5::board_t::board_M5StickC,      "StickC",   true,  true,  true,  true,  95,  true,  9,
    MotionWake::DIRECT,    35, TimedWake::NONE,       -1, true,  false, true,  false, 48,
-   false, true,  false, 10},
+   false, true,  false, 10, true},
   {m5::board_t::board_M5StickCPlus,  "StickC+",  true,  true,  true,  true,  120, true,  9,
    MotionWake::DIRECT,    35, TimedWake::NONE,       -1, true,  false, true,  false, 48,
-   true,  true,  false, 10},
+   true,  true,  false, 10, true},
   {m5::board_t::board_M5StickCPlus2, "StickC+2", true,  true,  false, false, 200, false, 19,
    MotionWake::NONE,      -1, TimedWake::RTC_ALARM,  4,  false, false, true,  false, 32,
-   true,  true,  false, 19},
+   true,  true,  false, 19, false},
   {m5::board_t::board_M5StickS3,     "StickS3",  true,  true,  false, true,  250, false, 46,
    MotionWake::PMIC_GPIO, 13, TimedWake::PMIC_TIMER, -1, false, false, true,  true,  32,
-   true,  false, false, -1},
+   true,  false, false, -1, true},
   {m5::board_t::board_M5Stack,       "Core",     true,  false, false, false, 0,   false, -1,
    MotionWake::NONE,      -1, TimedWake::NONE,       -1, false, true,  false, false, 32,
-   true,  false, false, -1},
+   true,  false, false, -1, false},
   {m5::board_t::board_M5StackCore2,  "Core2",    true,  true,  true,  true,  390, true,  -1,
    MotionWake::NONE,      -1, TimedWake::NONE,       -1, false, true,  true,  false, 32,
-   true,  false, true,  -1},
+   true,  false, true,  -1, true},
   {m5::board_t::board_M5Tough,       "Tough",    true,  true,  true,  true,  390, false, -1,
    MotionWake::NONE,      -1, TimedWake::NONE,       -1, true,  false, true,  false, 32,
-   false, false, false, -1},
+   false, false, false, -1, true},
   // Every other board, the Waveshare ESP32-S3-ETH and the CoreS3 included.
   {m5::board_t::board_unknown,       "M5",       false, false, false, false, 0,   false, -1,
    MotionWake::NONE,      -1, TimedWake::NONE,       -1, false, false, true,  false, 32,
-   false, false, false, -1},
+   false, false, false, -1, false},
   {m5::board_t::board_M5StackCoreS3, "M5",       false, false, false, false, 0,   false, -1,
    MotionWake::NONE,      -1, TimedWake::NONE,       -1, false, false, true,  false, 32,
-   false, false, false, -1},
+   false, false, false, -1, false},
 };
 // clang-format on
 
@@ -155,6 +160,7 @@ int main() {
     check(p.feedbackSound == e.sound && p.feedbackLight == e.light
               && p.feedbackVibration == e.vibration && p.ledPin == e.ledPin,
           n + " feedback");
+    check(p.gpsRail == e.gpsRail, n + " gps rail");
   }
 
   // profile() is the row for the detected board.

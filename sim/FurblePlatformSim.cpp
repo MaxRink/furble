@@ -10,6 +10,7 @@
 #include <driver/uart.h>
 
 #include "FurbleBatteryStatus.h"
+#include "FurbleBoard.h"
 #include "FurbleBoardCaps.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
@@ -425,7 +426,7 @@ uint16_t Platform::getBatteryCapacity(void) {
 }
 
 bool Platform::setRail(Rail rail, bool on) {
-  if (rail != Rail::GPS) {
+  if ((rail != Rail::GPS) || !Board::profile().gpsRail) {
     return false;
   }
   // Same calls as firmware, so the hardware model sees the same rail traffic.

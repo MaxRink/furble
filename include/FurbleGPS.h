@@ -155,8 +155,9 @@ class GPS {
    * Switch the rail that powers the GPS unit.
    *
    * The only place firmware drives that rail. It goes through
-   * Platform::setRail(GPS), which on the M5 boards switches the Port A 5 V
-   * output, reads it back and retries once for the M5PM1 wake.
+   * Platform::setRail(GPS), which switches the Port A 5 V output on boards
+   * whose profile has a GPS rail, reads it back and retries once for the
+   * M5PM1 wake. Other boards have no switch and the call does nothing.
    */
   static void setRailPower(bool enable);
 

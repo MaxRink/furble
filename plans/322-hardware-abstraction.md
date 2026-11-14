@@ -199,9 +199,14 @@ floor, modem sleep switch and power-off policies. `M5.getBoard()` drops from
 31 calls to 7: the profile lookup and six UI geometry switches. The M5PM1
 specific paths still sit under `FURBLE_HAS_M5PM1`; the profile only says which
 path the board takes. The GPS rail goes through `Platform::setRail(GPS)` with
-the same set, read back and single retry. `tests/host/board_profile_test.cpp`
+the same set, read back and single retry. A `gpsRail` profile column names the
+boards where M5Unified 0.2.20 `setExtOutput()` switches Port A: StickC, StickC
+Plus, StickS3, Core2 and Tough. On every other row, the Plus2, the Core and
+the unknown row included, `setRail(GPS)` returns false without a bus access;
+M5Unified did nothing there before either. `tests/host/board_profile_test.cpp`
 pins every row to the values the removed switches returned, copied from the
-switches at c4367912, not from the table.
+switches at c4367912, not from the table. The GPS rail values are copied from
+M5Unified.
 
 ### Adding the T-Beam Supreme
 
