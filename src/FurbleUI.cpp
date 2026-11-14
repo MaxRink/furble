@@ -25,6 +25,7 @@
 #if defined(FURBLE_CONSOLE)
 #include <lvgl_private.h>
 #endif
+#include <src/draw/lv_draw_buf_private.h>
 #include <src/themes/lv_theme_private.h>
 
 #include <Device.h>
@@ -93,6 +94,36 @@ uint32_t g_simDisconnectCalls = 0;
 #endif
 #if defined(FURBLE_CONSOLE)
 #include "FurbleUIAudit.h"
+#endif
+
+// Decoded images live in the LVGL image cache until it evicts them. Below
+// CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL a plain malloc puts them in internal
+// RAM, so the connected-page icons kept about 3.4 KiB internal after a
+// camera disconnect and HTTPS could not return (plan 304). Only the image
+// handler's pixel buffers move; their cache metadata stays where lv_malloc()
+// puts it. Larger buffers already went to PSRAM through malloc. A board
+// without a persistent image cache (CONFIG_LV_CACHE_DEF_SIZE 0, the Core2)
+// frees each buffer after the draw, gains nothing and would pay PSRAM reads
+// on every icon, so it keeps the default handlers.
+#if defined(CONFIG_SPIRAM) && (LV_CACHE_DEF_SIZE > 0)
+#define FURBLE_IMAGE_BUFFERS_IN_PSRAM 1
+namespace {
+// Only the CPU renderer reads these buffers, so PSRAM is safe. The DMA
+// display buffers in UI::UI() use their own internal allocation.
+void *imageBufferMalloc(size_t bytes, lv_color_format_t colorFormat) {
+  (void)colorFormat;
+  // LVGL's default handler over-allocates the same way so the buffer can be
+  // aligned.
+  bytes += LV_DRAW_BUF_ALIGN - 1;
+  // heap_caps_malloc_prefer() tries PSRAM, then the default heap, and aborts
+  // only when both fail, so there is no check-then-allocate gap.
+  return heap_caps_malloc_prefer(bytes, 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT, MALLOC_CAP_DEFAULT);
+}
+
+void imageBufferFree(void *buffer) {
+  heap_caps_free(buffer);
+}
+}  // namespace
 #endif
 
 #if defined(FURBLE_M5STICKC) || defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
@@ -462,6 +493,11 @@ UI::UI(const interval_t &interval)
 
   lv_init();
   lv_tick_set_cb(tick);
+#if defined(FURBLE_IMAGE_BUFFERS_IN_PSRAM)
+  lv_draw_buf_handlers_t *imageHandlers = lv_draw_buf_get_image_handlers();
+  imageHandlers->buf_malloc_cb = imageBufferMalloc;
+  imageHandlers->buf_free_cb = imageBufferFree;
+#endif
 
   // set display resolution
   m_Width = M5.Display.width();
@@ -8564,10 +8600,15 @@ void UI::doConnect(lv_event_t *e) {
   m_ConnectContext.connectingName.clear();
   m_ConnectContext.connectProgress = -1;
 
-  // activate selected cameras
+  // activate selected cameras. Each target task is admitted first: when it
+  // would take the heap into AMBER or RED, the governor enters that level now
+  // and wakes the WebUI, instead of three readings after the connect lands.
+  // Every caller of addActive() does this; the host Control harness does not
+  // link the governor.
   for (size_t n = 0; n < CameraList::size(); n++) {
     auto camera = CameraList::get(n);
     if (camera->isActive()) {
+      MemoryPressure::admit(MemoryPressure::CONNECT_TARGET_BYTES);
       control.addActive(camera);
     }
   }

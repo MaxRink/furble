@@ -1,0 +1,98 @@
+# Issue #390: the WebUI on a fresh StickS3 with WiFi, BLE and the companion.
+#
+# The boot loop happened on a device with WiFi connected, Bluetooth up and the
+# companion available. This leg keeps that whole configuration and adds a
+# device that has never generated its TLS identity. WebUI::initEarly() creates
+# the identity before WiFi, the companion and the display take their share,
+# so no runtime identity task runs and nothing is charged after the radios.
+# The seed is the current inferred StickS3 pair with WebUI off, WiFi
+# connected, companion enabled and the display active: the 8 KiB main-stack
+# measurement minus the 4 KiB the 12 KiB main stack took back (plan 313). It
+# is lower than the measured post-#394 pair (27,351 / 25,588), so it is the
+# harder case. It is not the derived board_heap.json bound, which omits the
+# WiFi and NimBLE driver state.
+#
+# The model stores the identity and keeps the soak flat by construction:
+# webuiMemoryStart() marks a seeded identity stored, and nothing in the model
+# allocates per request. Those two assertions check the wiring, not mbedTLS.
+seed hw_profile sticks3
+seed heap_internal_free 25911
+seed heap_internal_largest 24148
+seed web_ui true
+seed webui_password true
+seed webui_identity_absent true
+seed wifi_connected true
+seed companion_enabled true
+seed fauxny true
+seed saved_camera true
+wait 1500
+
+assert companion.enabled yes
+assert webui.identity stored
+assert webui.supervisor created
+assert webui.server running
+assert webui.gate none
+assert webui.fail_closed no
+assert heap.free 14135
+assert heap.largest 12372
+assert heap.pressure normal
+assert heap.alloc_failures 0
+
+# A minute with the server up: one start, no retries, no growth.
+wait 60000
+assert webui.server running
+assert_max webui.attempts 1
+assert heap.free 14135
+assert heap.alloc_failures 0
+assert platform.watchdog armed
+
+# A BLE camera connect is the core path and is never refused. Its 4,480-byte
+# target task would take the pool below the AMBER floor, so the connect admits
+# it first: the governor enters AMBER at once. On hardware its hook wakes the
+# WebUI supervisor, which stops the 8 KiB server shortly after the target task
+# is created. The model stops it in the same UI cycle, after the target task
+# and before the connected page's first draw.
+# The deepest point is the connected page's first draw, whose LVGL layers and
+# style blocks are transient. Before admission that point was 5,599 free
+# with a 3,836-byte largest block on the post-#394 seed, too small for another
+# target task, and 1,440 bytes lower on this seed. With admission it is 7,475
+# free with a 5,712-byte largest block. The floors are the RED largest-block
+# threshold and one more target task.
+home
+wait 300
+action connect
+assert heap.pressure amber
+assert-eventually-virtual 60000 ui.connected yes
+assert webui.server pending
+assert heap.alloc_failures 0
+print heap.free
+print heap.largest
+print heap.minimum
+print mem.high_water_largest
+assert_min heap.minimum 6144
+assert_min mem.high_water_largest 4480
+
+# The connected-page icons are decoded into PSRAM, so the disconnect returns
+# the pool above the 20,480 AMBER exit with the server paused (20,887). After
+# five clear readings the governor returns to NORMAL and HTTPS starts again
+# through its own gate. The pool ends 1,440 bytes under the boot figure. That
+# is the image cache's per-entry metadata (draw buffer descriptors, cache
+# entries and their nodes), which lv_malloc() keeps internal and the model
+# charges at 64-bit host sizes: dropping the cache at disconnect returns 1,488
+# bytes. The margin over the exit is 407 bytes.
+action disconnect
+assert-eventually-virtual 10000 control.state idle
+wait 30000
+print heap.free
+print heap.largest
+assert heap.pressure normal
+assert webui.server running
+assert_max webui.attempts 2
+assert heap.alloc_failures 0
+assert heap.free 12695
+assert_min heap.minimum 6144
+assert companion.enabled yes
+assert ui.page main
+assert platform.watchdog armed
+
+exit

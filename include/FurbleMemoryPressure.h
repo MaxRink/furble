@@ -5,6 +5,7 @@
 #include <cstdint>
 
 #include "FurbleMQTTMemory.h"
+#include "FurbleTaskMemory.h"
 #include "FurbleWebUIMemory.h"
 
 namespace Furble {
@@ -101,6 +102,23 @@ inline constexpr level_t classify(size_t freeBytes, size_t largestBlock) {
 }
 
 /**
+ * Internal RAM one camera connect takes at once: the `Control::Target` stack
+ * that `Control::addActive()` creates, plus the TCB and block overhead.
+ */
+inline constexpr size_t CONNECT_TARGET_BYTES =
+    TaskMemory::CAMERA_TARGET_STACK_BYTES + TaskMemory::TASK_OVERHEAD_BYTES;
+
+/**
+ * The level a reading reaches after a core-path allocation of bytes. The
+ * largest block shrinks by the same amount, the worst case when the
+ * allocation lands in it.
+ */
+inline constexpr level_t classifyAfter(size_t freeBytes, size_t largestBlock, size_t bytes) {
+  return classify((freeBytes > bytes) ? (freeBytes - bytes) : 0,
+                  (largestBlock > bytes) ? (largestBlock - bytes) : 0);
+}
+
+/**
  * True when a reading leaves room to re-admit the service level paused.
  * mqttExtra is the internal storage the MQTT client's next start still has to
  * allocate; it only applies to RED.
@@ -145,6 +163,19 @@ class Governor {
     return m_Level;
   }
 
+  /**
+   * Enter level at once, without the debounce. Never lowers the level; the
+   * exit still needs EXIT_TICKS clear readings.
+   */
+  level_t escalate(level_t level) {
+    if (level > m_Level) {
+      m_Level = level;
+      m_Enter = 0;
+      m_Exit = 0;
+    }
+    return m_Level;
+  }
+
   level_t level(void) const { return m_Level; }
 
  private:
@@ -155,6 +186,28 @@ class Governor {
 
 /** Run one governor step from the UI loop; reads the heap at most once a second. */
 void tick(void);
+
+/**
+ * Enter a deeper level before a core-path allocation of bytes. When the
+ * allocation would take the heap into AMBER or RED, that level is entered now
+ * instead of three readings later, and the escalate hook wakes the services
+ * that act on it. A connect calls this with CONNECT_TARGET_BYTES before each
+ * `Control::addActive()`. The target task is created right after it returns,
+ * so a woken WebUI server stops shortly after the target task exists. Nothing
+ * orders that stop against the NimBLE client or the connected page's first
+ * draw. Safe from any task.
+ */
+void admit(size_t bytes);
+
+typedef void (*escalate_hook_t)(void);
+
+/**
+ * Called by admit() after it raised the level, outside the governor lock.
+ * The WebUI registers a wake for its supervisor, which otherwise sees the new
+ * level only on its next 500 ms poll. MQTT reads the level on its own loop.
+ * One hook; a later call replaces it.
+ */
+void setEscalateHook(escalate_hook_t hook);
 
 /**
  * Internal bytes beyond its start floor that the MQTT client's next start

@@ -933,6 +933,17 @@ extern "C" size_t furble_sim_heap_largest(uint32_t capabilities) {
   return Furble::Sim::heapLargest();
 }
 
+extern "C" bool furble_sim_heap_fits(size_t size, uint32_t capabilities) {
+  const model_lock_t lock;
+  const heap_state_t &heap = state();
+  const size_t bytes = blockBytes(size);
+  if ((capabilities & MALLOC_CAP_SPIRAM) != 0) {
+    return (heap.psramState == "ready") && (bytes <= heap.psramFree)
+           && (bytes <= heap.psramLargest);
+  }
+  return (bytes <= heap.freeBytes) && (bytes <= heap.largestBlock);
+}
+
 extern "C" size_t furble_sim_heap_minimum(uint32_t capabilities) {
   (void)capabilities;
   return Furble::Sim::heapMinimumFree();

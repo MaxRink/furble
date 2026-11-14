@@ -9,6 +9,7 @@
 #include <iostream>
 #include <string>
 
+#include "FurbleMemoryPressure.h"
 #include "FurbleWebUIMemory.h"
 #include "clock.h"
 #include "heap_model.h"
@@ -29,6 +30,7 @@ bool hwWifiConnected() {
 namespace {
 
 int g_Failures = 0;
+int g_EscalateHookCalls = 0;
 
 void check(bool condition, const char *message) {
   if (!condition) {
@@ -87,6 +89,29 @@ int main(void) {
   check(std::strcmp(webuiServerState(), "running") == 0,
         "the successful retry did not clear serverAllocFailed");
   check(!webuiFailClosed(), "the successful retry kept the stale fail-closed flag");
+
+  // Connect admission runs the production governor against the modelled
+  // heap. The escalate hook, which wakes the WebUI supervisor on hardware,
+  // fires only when admit() raises the level.
+  {
+    namespace Pressure = Furble::MemoryPressure;
+    Pressure::setEscalateHook([]() { g_EscalateHookCalls++; });
+    heapSet(60000, 30000);
+    Pressure::admit(Pressure::CONNECT_TARGET_BYTES);
+    check(g_EscalateHookCalls == 0, "admission with headroom fired the escalate hook");
+    check(Pressure::current() == Pressure::NORMAL, "admission with headroom changed the level");
+    heapSet(14135, 12372);
+    Pressure::admit(Pressure::CONNECT_TARGET_BYTES);
+    check(g_EscalateHookCalls == 1, "a StickS3 WebUI connect did not fire the escalate hook");
+    check(Pressure::current() == Pressure::AMBER, "a StickS3 WebUI connect did not enter AMBER");
+    Pressure::admit(Pressure::CONNECT_TARGET_BYTES);
+    check(g_EscalateHookCalls == 1, "a second admission at the same level fired the hook");
+    heapSet(10000, 9000);
+    Pressure::admit(Pressure::CONNECT_TARGET_BYTES);
+    check(g_EscalateHookCalls == 2, "a rise from AMBER to RED did not fire the hook");
+    check(Pressure::current() == Pressure::RED, "a connect that reaches RED did not enter RED");
+    Pressure::setEscalateHook(nullptr);
+  }
 
   if (g_Failures != 0) {
     std::cerr << "sim webui memory model: " << g_Failures << " FAILED\n";

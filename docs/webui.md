@@ -89,6 +89,23 @@ console prints `memory_pressure`, and the log reports each change:
 memory pressure normal -> amber: free=11991 largest=10228
 ```
 
+A camera connect does not wait for three readings. Before each camera's 4 KiB
+control task starts, the governor checks whether that task would take the heap
+into `amber` or `red`, and enters the level at once if so. It wakes the WebUI
+supervisor, so the server stops shortly after the control task is created,
+usually before the connected page and the Bluetooth link take their share.
+Nothing orders those tasks, so it is not guaranteed. The log line names the
+admitted bytes:
+
+```text
+memory pressure normal -> amber before a 4480-byte allocation: free=13895 largest=12132
+```
+
+The server returns through the normal exit after the camera disconnects. A
+board with headroom sheds nothing. On boards with PSRAM and an LVGL image cache
+(the S3 boards) the decoded icon pixels live in PSRAM. The cache keeps only its
+small per-icon bookkeeping internal after the disconnect.
+
 The thresholds are derived from the firmware's own sizes and are not yet
 checked against a hardware reading of a busy session.
 
