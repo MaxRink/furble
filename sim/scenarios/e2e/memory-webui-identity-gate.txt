@@ -3,8 +3,8 @@
 #
 # The device has never generated an identity and boots with the WebUI off, so
 # the boot path does not run. Two 4 KiB squeezes take the post-#394 StickS3
-# pair to 19,159 free. Turning the WebUI on creates the 3.5 KiB supervisor
-# (15,575 free) and then refuses the 12 KiB identity task instead of aborting:
+# pair to 19,159 free. Turning the WebUI on creates the 4 KiB supervisor
+# (15,063 free) and then refuses the 12 KiB identity task instead of aborting:
 # HTTPS stays closed and the log tells the user to reboot. After the squeeze
 # is released, the next reload passes the gate, the one-shot task runs and
 # frees its stack, and the server starts through its own gate.
@@ -30,7 +30,7 @@ assert webui.identity blocked
 assert webui.gate identity_memory
 assert webui.fail_closed yes
 print webui.gate_message
-assert heap.free 15575
+assert heap.free 15063
 assert heap.alloc_failures 0
 
 # No identity, no server and no retry until the next reload.
@@ -38,18 +38,18 @@ wait 5000
 assert webui.identity blocked
 assert webui.server pending
 assert webui.attempts 0
-assert heap.free 15575
+assert heap.free 15063
 
 action heap-release
-assert heap.free 23767
+assert heap.free 23255
 action webui-enable
 wait 2000
 # The one-shot task held its 12 KiB stack until it stored the identity.
-assert heap.minimum 11479
+assert heap.minimum 10967
 assert webui.identity stored
 assert webui.server running
 assert webui.fail_closed no
-assert heap.free 15575
+assert heap.free 15063
 assert heap.alloc_failures 0
 assert mem.leaks 0
 assert platform.watchdog armed

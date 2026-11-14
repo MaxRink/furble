@@ -361,6 +361,12 @@ class StackBudgetTest(unittest.TestCase):
         bounds["recursion_bounds"].append({"function": r"^void c\(int\)$", "depth": 2, "why": "t"})
         r = self.run_tool(640, indirect=False, cis=n_ci, manifest_extra=bounds)
         self.assertIn("PASS t: 640 of 640 bytes (352 frames + 288 port overhead)", r.stdout)
+        # two rules with the same depth and reason are still two rules:
+        # 1 + (2 - 1) + (2 - 1) = 3 passes of 80, 32 + 240 + 288
+        same = {"recursion_bounds": [{"function": r"^void a\(int\)$", "depth": 2, "why": "t"},
+                                     {"function": r"^void c\(int\)$", "depth": 2, "why": "t"}]}
+        r = self.run_tool(560, indirect=False, cis=n_ci, manifest_extra=same)
+        self.assertIn("PASS t: 560 of 560 bytes (272 frames + 288 port overhead)", r.stdout)
 
     def test_depth_behind_a_cut_cycle_is_found_on_another_path(self):
         # The memoized walk reached x first inside the open a-x cycle, cut
@@ -377,11 +383,23 @@ class StackBudgetTest(unittest.TestCase):
         # Uncut, entry -> z -> x -> a -> big is 1,044 bytes (see above).
         # Cutting z -> x leaves z alone: 32 + 400 + 288 = 720.
         cut = {"infeasible_calls": [{"caller": r"^void z\(\)$", "callee": r"^void x\(int\)$",
-                                     "why": "test"}],
+                                     "why": "x.cpp:1 guards the call"}],
                "recursion_bounds": [{"function": r"^void a\(int\)$", "depth": 1, "why": "test"}]}
         r = self.run_tool(720, indirect=False, cis=(("x.cpp.ci", X_CI),), manifest_extra=cut)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("PASS t: 720 of 720 bytes (432 frames + 288 port overhead)", r.stdout)
+
+    def test_infeasible_call_without_a_citation_is_refused(self):
+        for why in ("", "test"):
+            with self.subTest(why=why):
+                cut = {"infeasible_calls": [{"caller": r"^void z\(\)$",
+                                             "callee": r"^void x\(int\)$", "why": why}],
+                       "recursion_bounds": [{"function": r"^void a\(int\)$", "depth": 1,
+                                             "why": "test"}]}
+                r = self.run_tool(720, indirect=False, cis=(("x.cpp.ci", X_CI),),
+                                  manifest_extra=cut)
+                self.assertNotEqual(r.returncode, 0, r.stdout)
+                self.assertIn("needs a why that cites the guard", r.stdout + r.stderr)
 
     def test_infeasible_calls_cite_their_guard(self):
         manifest = json.loads((ROOT / "tools" / "stack_budget.json").read_text())

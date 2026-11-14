@@ -16,8 +16,8 @@ seed webui_password true
 wait 100
 
 assert heap.active yes
-assert heap.free 9959
-assert heap.largest 9204
+assert heap.free 9447
+assert heap.largest 8692
 assert webui.supervisor created
 assert webui.server blocked
 assert webui.gate server_memory
@@ -27,7 +27,7 @@ print webui.gate_message
 assert ui.page main
 assert platform.watchdog armed
 
-# 9,959 free is below the 12,288 AMBER floor, so after three readings the
+# 9,447 free is below the 12,288 AMBER floor, so after three readings the
 # memory pressure governor (plan 314 PR 6) pauses the server: the one attempt
 # at t=0 is the last, instead of a retry every 10 s. The bounded retry cadence
 # above AMBER is memory-webui-retry-bounded.txt.
@@ -35,8 +35,8 @@ wait 25000
 assert heap.pressure amber
 assert_min webui.attempts 1
 assert_max webui.attempts 1
-assert heap.free 9959
-assert heap.largest 9204
+assert heap.free 9447
+assert heap.largest 8692
 assert heap.alloc_failures 0
 assert ui.page main
 assert platform.watchdog armed

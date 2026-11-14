@@ -339,8 +339,10 @@ def worst_case(graph, entry, resolve, pruned=frozenset(), recursion=()):
             m = members[0]
             cost[m], route[m] = frame[m] + exit_[m][0], ([m], exit_[m][1])
             continue
-        rules = {(depth, why) for rx, depth, why in recursion
-                 if any(rx.search(graph.name[m]) or rx.search(m) for m in members)}
+        # A list, one entry per matched rule: two rules with the same depth and
+        # reason are still two recursions and each adds its passes.
+        rules = [(depth, why) for rx, depth, why in recursion
+                 if any(rx.search(graph.name[m]) or rx.search(m) for m in members)]
         why = min((w for _, w in rules), default=None)
         known = any(depth is None for depth, _ in rules)
         passes = 1 + sum(d - 1 for d, _ in rules) if rules and not known else 1
@@ -379,6 +381,8 @@ def worst_case(graph, entry, resolve, pruned=frozenset(), recursion=()):
 
 # Simple paths explored per recursive component before the walk falls back to
 # the component's frame sum. Every bounded component on the seven envs fits.
+# A source citation: a C, C++ or header file and a line number.
+CITATION = re.compile(r"\.(c|h|cpp):\d+")
 PATH_BUDGET = 200000
 
 
@@ -498,8 +502,13 @@ def main():
     recursion = [(re.compile(rule["function"]), rule.get("depth"), rule["why"],
                   frozenset(rule.get("tasks", ()))) for rule in manifest.get("recursion_bounds", [])]
 
-    # A call the source guards so it cannot run, cited in the manifest.
+    # A call the source guards so it cannot run, cited in the manifest. The
+    # cut hides depth, so an entry without a file:line citation is refused
+    # rather than followed.
     for rule in manifest.get("infeasible_calls", []):
+        if not CITATION.search(rule.get("why", "")):
+            raise SystemExit(f"stack_budget: infeasible call {rule['caller']} -> {rule['callee']}"
+                             " needs a why that cites the guard as file:line")
         callees = set(graph.find(rule["callee"]))
         for fn in graph.find(rule["caller"]):
             graph.calls[fn] = graph.calls.get(fn, set()) - callees
