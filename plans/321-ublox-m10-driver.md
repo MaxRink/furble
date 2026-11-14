@@ -148,6 +148,9 @@ length field drops one byte and resynchronises.
   unchanged.
 - Deviation: the legacy 8-byte RXM-PMREQ form is not decoded. The IFD
   documents only the 16-byte form for M10.
+- The `sim-e2e` fuzz gate builds `gps_ubx_fuzz` with the other host
+  targets. `test_ci_builds_every_host_binary_the_gate_runs` fails when a
+  binary the gate runs is missing from that build step.
 
 ### PR 2 (`feat/ubx-2-backend-sim`)
 

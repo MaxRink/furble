@@ -92,7 +92,8 @@ std::vector<uint8_t> validFrame(std::mt19937 &rng) {
     {
       std::vector<Ubx::KeyValue> items(1 + (rng() % 10));
       for (auto &item : items) {
-        item = {(static_cast<uint32_t>(1 + (rng() % 5)) << 28) | (rng() & 0x0fffffff),
+        item = {(static_cast<uint32_t>(1 + (rng() % 5)) << 28)
+                    | static_cast<uint32_t>(rng() & 0x0fffffff),
                 (static_cast<uint64_t>(rng()) << 32) | rng()};
       }
       return Ubx::valGetResponse(static_cast<uint8_t>(rng() % 8), items);

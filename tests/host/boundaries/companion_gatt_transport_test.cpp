@@ -80,9 +80,9 @@ void run(void) {
   check(server->characteristicCount() == 9, "the companion characteristic count changed");
   check(furbleHostTaskCreateCount() == tasksBefore + 1,
         "the companion did not create exactly one service task");
-  check(furbleHostLastTaskStackBytes() == 3072,
-        "the companion service task stack is not the production 3 KiB");
-  std::cout << "companion.enable services=2 characteristics=9 task=1 stack=3072\n";
+  check(furbleHostLastTaskStackBytes() == 3840,
+        "the companion service task stack is not the production 3,840 bytes");
+  std::cout << "companion.enable services=2 characteristics=9 task=1 stack=3840\n";
 
   companion.reloadSetting(true);
   check(companion.isPairingWindow(), "the companion did not open the pairing window");

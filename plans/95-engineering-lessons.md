@@ -54,6 +54,22 @@ The root CLAUDE.md lists the short form of these. The detail lives here.
   invalidate and redraw. Icons are compressed and cost a 12.3 KB decompress per
   64x64 draw unless the image cache covers them. Diagnosis tools are
   `CONFIG_LV_USE_REFR_DEBUG` and the console-gated invalidation logger.
+- The ESP system clock survives most soft resets. With `RTC_HRT` time keeping
+  the RTC timer keeps `gettimeofday()` running through `esp_restart()`,
+  panics, most watchdog resets and USB resets. Power-on, brownout, a clock
+  glitch and RTC or super watchdog system resets (also reported as
+  `ESP_RST_WDT`) lose it. Never seed the system clock from an older checkpoint
+  after a reset that kept it. TimeKeeper keeps its last accepted sample in
+  `RTC_NOINIT_ATTR` memory and trusts the running clock when the reset reason
+  and the record CRC allow it, failing closed when the clock reads behind the
+  record. M5Unified overwrites the system clock from an RTC chip inside
+  `M5.begin()`, so on those boards the pre-reset clock is already gone by
+  `TimeKeeper::init()` (plan 139).
+- A value that crossed a reboot loses its authority. The kept clock is carried
+  by the RC slow clock and SNTP can write it directly, so it restores as `RTC`,
+  never as GPS or NTP. Keeping GPS authority locked out every later GPS fix
+  once the kept clock was more than 5 s fast, because equal-priority backward
+  corrections are rejected regardless of uncertainty (plan 139 review).
 
 ## USB and flashing
 
@@ -100,6 +116,25 @@ The root CLAUDE.md lists the short form of these. The detail lives here.
 - The sim had a `Preferences::begin` data race: `handleFor` touched a static map
   before taking `values_mutex`, which caused intermittent SIGSEGV in the
   ui-screenshots capture. The fix widened the lock to cover the map access.
+- Never grow the process environment while another thread can call getenv.
+  glibc walks `environ` without a lock, and a setenv that adds a variable
+  reallocates the array and frees the old one under that walk. The sim's SDL
+  main loop calls getenv thousands of times a second, so a growing setenv on
+  the simulator thread is a use-after-free that shows up as a rare SIGSEGV
+  under load (issue #283). A replace is one pointer store and is safe. The
+  coverage runtime's own `__LLVM_PROFILE_RT_INIT_ONCE` setenv is enough to
+  make the next growth a freeing one. Check every caller, firmware included,
+  and check ordering rather than thread alone: production Timezone's boot
+  `setenv("TZ")` grows the environment after `SDL_Init`, but before
+  `panelReady` releases the loop, so it was ordered and not a live race. The
+  sim creates `TZ` first anyway, so the guard can forbid all growth after
+  `SDL_Init`.
+- On macOS, Homebrew SDL2 is sdl2-compat. It dlopens SDL3 through its own
+  rpath, and the ASan runtime's dlopen interceptor hides that rpath. A
+  sanitized sim then fails to find SDL3, raises a modal desktop dialog per
+  process and aborts. `sim/build.sh` links the SDL3 directory as an rpath into
+  sanitized Darwin builds. Check `otool -l` for it, and prove SDL loads with a
+  single process before any parallel sanitized run on a shared desktop.
 - GitHub Actions cache is branch-scoped. A `pull_request` run cannot restore a
   cache written by a master push, even through a `restore-keys` prefix. For a
   cross-branch baseline, download an artifact from the latest successful master

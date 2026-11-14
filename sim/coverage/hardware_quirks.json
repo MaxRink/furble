@@ -1584,7 +1584,7 @@
         "companion.disable"
       ],
       "status": "modeled",
-      "note": "Production CompanionGatt retains the configured service task (3072 bytes after #398) and GATT database across disable/enable over MockNimBLE; restart asserts no second xTaskCreate.",
+      "note": "Production CompanionGatt retains the configured service task (3072 bytes after #398, 3840 since plan 314 PR 4c) and GATT database across disable/enable over MockNimBLE; restart asserts no second xTaskCreate.",
       "runner": "sim/scripts/run-boundary-conformance.sh"
     },
     {
