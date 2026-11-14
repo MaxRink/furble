@@ -20,7 +20,7 @@ class Control {
   };
 
   static Control &getInstance(void);
-  static TxPower txPower(int power);
+  static TxPower savedTxPower(void);
   void addActive(std::shared_ptr<Camera> camera);
   void connectAll(bool infiniteReconnect);
   void disconnect(void);

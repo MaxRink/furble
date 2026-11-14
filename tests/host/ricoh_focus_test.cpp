@@ -1,5 +1,6 @@
 #include <iostream>
 #include <string>
+#include <vector>
 
 #include "Device.h"
 #include "NimBLEDevice.h"
@@ -29,6 +30,14 @@ int main() {
   }
   if (!check(peer.pairedDeviceName() == Furble::Device::getStringID(),
              "Ricoh writes the paired-device name on connect")) {
+    return 1;
+  }
+  // Camera.cpp maps SecurityMode to the NimBLE IO capability. Ricoh connects
+  // with keyboard-display and the default display-yes/no is restored after.
+  const std::vector<uint8_t> ioCaps = NimBLEDevice::mockSecurityIOCaps();
+  if (!check(ioCaps.size() == 2 && ioCaps[0] == BLE_HS_IO_KEYBOARD_DISPLAY
+                 && ioCaps[1] == BLE_HS_IO_DISPLAY_YESNO,
+             "Ricoh connects with BLE_HS_IO_KEYBOARD_DISPLAY, then restores the default")) {
     return 1;
   }
 

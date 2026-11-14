@@ -157,7 +157,7 @@ const std::string &Device::getStringID() {
   return id;
 }
 
-TxPower Control::txPower(int) {
+TxPower Control::savedTxPower(void) {
   return TxPower::P3;
 }
 

@@ -17,7 +17,7 @@
     "include/FurbleCompanion.h": 37,
     "include/FurbleCompanionDebug.h": 4,
     "include/FurbleCompanionService.h": 1,
-    "include/FurbleControl.h": 5,
+    "include/FurbleControl.h": 4,
     "include/FurbleGPS.h": 1,
     "include/FurbleIR.h": 4,
     "include/FurbleMQTT.h": 7,

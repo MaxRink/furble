@@ -1810,6 +1810,24 @@ target_compile_options(control_disconnect_test PRIVATE
                        -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter)
 target_link_libraries(control_disconnect_test PRIVATE furble_host_camera)
 
+# Pin the transmit power mapping between the ESP-IDF setting and the camera
+# library TxPower through the public Control API.
+add_executable(tx_power_mapping_test
+               tx_power_mapping_test.cpp
+               ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/src/FurbleTimezone.cpp
+               ${HOST_CONTROL_DIR}/control_shim.cpp)
+target_include_directories(tx_power_mapping_test BEFORE PRIVATE
+                           ${HOST_CONTROL_DIR}
+                           ${FURBLE_ROOT}/include
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR}
+                           ${FURBLE_ROOT}/lib/furble)
+target_compile_options(tx_power_mapping_test PRIVATE
+                       -include ${HOST_CONTROL_DIR}/freertos/FreeRTOS.h
+                       -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter)
+target_link_libraries(tx_power_mapping_test PRIVATE furble_host_camera)
+
 # AddressSanitizer regression for the gone-peer client-reclaim use-after-free.
 # It cannot link the shared furble_host_camera library: the late onDisconnect
 # reads the freed Camera's callbacks vptr to dispatch, and both the mock making
@@ -2341,6 +2359,7 @@ if(BUILD_TESTING)
   set_tests_properties(console-commands PROPERTIES TIMEOUT 120)
 
   add_test(NAME control-disconnect COMMAND control_disconnect_test)
+  add_test(NAME tx-power-mapping COMMAND tx_power_mapping_test)
 
   # Teardown wedge regression (plan 148). Bounded by a hard timeout so a
   # reintroduced uncancellable wait fails the suite instead of hanging it.

@@ -117,6 +117,7 @@ std::vector<NimBLEClient *> g_PendingReap;  // clients queued for async reap
 // globals so a reader on the console task never races Device::init().
 bool g_Initialised = false;
 int g_Power = 0;
+std::vector<uint8_t> g_SecurityIOCaps;
 bool g_ConnectShouldFail = false;
 size_t g_ConnectFailCount = 0;  // number of connect() calls still forced to fail
 size_t g_MaxClients = 0;        // 0 means unlimited
@@ -1147,7 +1148,13 @@ void NimBLEDevice::setSecurityAuth(bool bonding, bool mitm, bool secure_connecti
 }
 
 void NimBLEDevice::setSecurityIOCap(uint8_t capability) {
-  (void)capability;
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+  g_SecurityIOCaps.push_back(capability);
+}
+
+std::vector<uint8_t> NimBLEDevice::mockSecurityIOCaps() {
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+  return g_SecurityIOCaps;
 }
 
 void NimBLEDevice::setSecurityInitKey(uint8_t key_distribution) {
@@ -1582,6 +1589,7 @@ void NimBLEDevice::resetMock() {
   g_ClientUseAfterFree.store(false);
   g_Initialised = false;
   g_Power = 0;
+  g_SecurityIOCaps.clear();
 }
 
 void NimBLEDevice::setScanAbsentAddress(const NimBLEAddress &address, bool absent) {
