@@ -449,7 +449,7 @@ Today no production path calls the OTA partition sink. Outside
 `src/FurbleOTAPartitionSink*.cpp` and `include/FurbleOTAPartitionAdapters.h`,
 only `src/CMakeLists.txt`, `sim/CMakeLists.txt`, `sim/build.sh` and
 `tests/host/ota_partition_sink_test.cpp` reference it, to build and test it.
-`esp_ota_set_boot_partition()` appears only in the ESP and `esp_ota_set_boot_partition()` appears only in the ESP and
+`esp_ota_set_boot_partition()` appears only in the ESP and
 Arduino sinks. So the bug is latent. Any future OTA wiring must run this
 health evaluator and call the mark-valid API after a healthy boot, or every
 updated image reverts on its second reboot. Plan 115 and plan 319 depend on

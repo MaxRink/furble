@@ -53,9 +53,10 @@ inspected source.
 
 The README's tested list names Fujifilm bodies, Canon EOS M6/R6 Mark II/RP and
 PowerShot G9 X Mark II, Ricoh GR IV HDF, Nikon COOLPIX B600/Z6 III, and Sony
-ZV-1F. It does not name a tested Lumix or DJI model. `docs/supported-hardware.md`
-also omits Lumix and DJI even though `CameraList.cpp` includes their headers,
-deserialization cases, and scan matchers. This is a documentation gap, not
+ZV-1F. It does not name a tested Lumix, DJI or PENTAX model. README and
+`docs/supported-hardware.md` list Lumix, DJI Osmo Action 4/5 Pro and the
+PENTAX K-3 Mark III separately as implemented and untested on hardware, which
+is a support boundary, not model validation. This is a documentation gap, not
 evidence that the two modes are hardware-tested.
 
 ## Sony
@@ -311,9 +312,12 @@ Files: `lib/furble/DJIOsmo.cpp`, `DJIOsmo.h`,
 `protocol/AdvertisementProtocol.cpp`, and `CameraList.cpp`. The class comment
 names **Osmo Action 4 and Action 5 Pro**. It accepts only camera IDs
 `0x33ff0000` (Action 4) and `0x44ff0000` (Action 5 Pro) after the protocol
-handshake. It has no exact firmware capture and is not in the README or
-supported-hardware tested lists. The current source therefore exposes an
-experimental Action 4/5 Pro-oriented mode, not a certified model list.
+handshake. It has no exact firmware capture. README and
+`docs/supported-hardware.md` list Action 4 and Action 5 Pro as implemented and
+untested on hardware, the same status as Panasonic LUMIX. That listing is not
+a tested-model entry: the source exposes an experimental Action 4/5
+Pro-oriented mode, not a certified model list, and its still capture stays
+capture-gated until a body is captured.
 
 The matcher accepts manufacturer data of at least five bytes with bytes
 `[0]=aa`, `[1]=08`, `[4]=fa`. This is intentionally broad. The official DJI
