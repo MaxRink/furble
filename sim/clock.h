@@ -73,6 +73,43 @@ class SchedulerMutex {
   SchedulerMutexWaiter *m_Waiters = nullptr;
 };
 
+struct SchedulerConditionWaiter;
+
+/**
+ * A condition variable whose waits are visible to the simulator scheduler.
+ *
+ * A task waiting here stops being runnable, so the task that will notify it
+ * gets the turn. A plain std::condition_variable leaves the waiter runnable
+ * and holding the turn, and only the stall breaker could free it (issue 289).
+ * The wait releases the caller's lock only after it is registered, so a
+ * notify made under that lock cannot be lost. A notify releases waiters but
+ * does not preempt the notifier: it still holds the caller's lock, which a
+ * woken higher-priority waiter must take next, and the simulator has no
+ * priority inheritance. The waiter runs at the notifier's next scheduler
+ * boundary. Firmware uses std::condition_variable instead of this type.
+ */
+class SchedulerConditionVariable {
+ public:
+  SchedulerConditionVariable() = default;
+  SchedulerConditionVariable(const SchedulerConditionVariable &) = delete;
+  SchedulerConditionVariable &operator=(const SchedulerConditionVariable &) = delete;
+
+  template <typename Predicate>
+  void wait(std::unique_lock<std::mutex> &lock, Predicate ready) {
+    while (!ready()) {
+      wait(lock);
+    }
+  }
+  void wait(std::unique_lock<std::mutex> &lock);
+  void notify_one(void);
+  void notify_all(void);
+
+ private:
+  void notifyLocked(bool all);
+
+  SchedulerConditionWaiter *m_Waiters = nullptr;
+};
+
 /** Return true after simulator teardown has begun. */
 bool schedulerStopping(void);
 

@@ -57,6 +57,7 @@ enum class SimWaitKind : uint8_t {
   queue_receive,
   notification,
   mutex,
+  condition,
 };
 
 enum class SimWaitResult : uint8_t {
@@ -802,6 +803,111 @@ void SchedulerMutex::unlock(void) {
   preemptForHigherPriorityLocked(lock);
 }
 
+struct SchedulerConditionWaiter {
+  SimTask *task = nullptr;
+  uint64_t order = 0;
+  bool notified = false;
+  SchedulerConditionWaiter *next = nullptr;
+};
+
+void SchedulerConditionVariable::wait(std::unique_lock<std::mutex> &userLock) {
+  std::unique_lock<std::mutex> lock(Furble::Sim::schedulerMutex());
+  SchedulerConditionWaiter waiter;
+  waiter.task = currentTask;
+  waiter.next = m_Waiters;
+  // Stack owned, linked only until a notify takes it or the wait unlinks it
+  // below before returning.
+  // cppcheck-suppress danglingLifetime
+  m_Waiters = &waiter;
+  if (currentTask != nullptr) {
+    setTaskBlockedLocked(true);
+    setTaskWaitLocked(SimWaitKind::condition, nullptr, false, 0);
+    waiter.order = currentTask->wait_order;
+  } else {
+    waiter.order = nextReadyOrder++;
+    // A host thread holds no turn. Hand it on so the notifier can run.
+    dispatchNextLocked();
+    Furble::Sim::schedulerCondition().notify_all();
+  }
+  // Registered under the scheduler lock first, so a notify made under the
+  // caller's lock after this point cannot be lost.
+  userLock.unlock();
+
+  Furble::Sim::schedulerCondition().wait(lock, [&waiter]() {
+    return waiter.notified || Furble::Sim::schedulerStopping()
+           || (waiter.task != nullptr && waiter.task->stopping.load());
+  });
+
+  const bool stopping =
+      Furble::Sim::schedulerStopping() || (waiter.task != nullptr && waiter.task->stopping.load());
+  if (!waiter.notified) {
+    SchedulerConditionWaiter **link = &m_Waiters;
+    while (*link != nullptr) {
+      if (*link == &waiter) {
+        *link = waiter.next;
+        break;
+      }
+      link = &(*link)->next;
+    }
+  }
+  if (stopping) {
+    if (waiter.task != nullptr) {
+      throw SimTaskExit {};
+    }
+    throw SchedulerStopped {};
+  }
+  if (currentTask != nullptr) {
+    waitForTurnLocked(lock);
+    if (currentTask->stopping.load() || Furble::Sim::schedulerStopping()) {
+      throw SimTaskExit {};
+    }
+  }
+  lock.unlock();
+  userLock.lock();
+}
+
+void SchedulerConditionVariable::notify_one(void) {
+  const std::lock_guard<std::mutex> lock(Furble::Sim::schedulerMutex());
+  notifyLocked(false);
+}
+
+void SchedulerConditionVariable::notify_all(void) {
+  const std::lock_guard<std::mutex> lock(Furble::Sim::schedulerMutex());
+  notifyLocked(true);
+}
+
+void SchedulerConditionVariable::notifyLocked(bool all) {
+  while (m_Waiters != nullptr) {
+    SchedulerConditionWaiter *selected = nullptr;
+    SchedulerConditionWaiter **selectedLink = nullptr;
+    for (SchedulerConditionWaiter **link = &m_Waiters; *link != nullptr; link = &(*link)->next) {
+      SchedulerConditionWaiter *waiter = *link;
+      const UBaseType_t priority = waiter->task == nullptr ? 0 : waiter->task->priority;
+      const UBaseType_t selectedPriority =
+          selected == nullptr || selected->task == nullptr ? 0 : selected->task->priority;
+      if (selected == nullptr || priority > selectedPriority
+          || (priority == selectedPriority && waiter->order < selected->order)) {
+        selected = waiter;
+        selectedLink = link;
+      }
+    }
+    *selectedLink = selected->next;
+    selected->next = nullptr;
+    selected->notified = true;
+    if (selected->task != nullptr && selected->task->blocked) {
+      releaseTaskLocked(*selected->task, SimWaitResult::ready);
+    }
+    if (!all) {
+      break;
+    }
+  }
+  // No preemption here. The notifier still holds the caller's lock, which a
+  // woken waiter must take next, so the waiter runs at the notifier's next
+  // scheduler boundary.
+  dispatchNextLocked();
+  Furble::Sim::schedulerCondition().notify_all();
+}
+
 }  // namespace Furble::Sim
 
 BaseType_t xTaskCreate(TaskFunction_t task,
@@ -1208,6 +1314,8 @@ const char *waitKindName(SimWaitKind kind) {
       return "notification";
     case SimWaitKind::mutex:
       return "mutex";
+    case SimWaitKind::condition:
+      return "condition";
   }
   return "unknown";
 }

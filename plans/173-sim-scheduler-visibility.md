@@ -710,7 +710,7 @@ root cause is now identified as an environment use-after-free; see the
 | 1. Comment rot naming plan 158 Phase 3 | Done. `sim/freertos.cpp` and `sim/scripts/run-fuzz.sh` now describe the scheduler-visible mutex and the remaining plain host locks. |
 | 2. Per-PID preferences leak on abnormal exit | Done. Generated stores have an ownership marker, same-PID restart adoption, and orderly cleanup. `preparePreferences()` now sweeps `.pio` and removes a store only when its encoded pid is dead; a live, self, or foreign-owner store is kept. `preferences-sweep` covers the dead, live, self, and unrelated cases. |
 | 3. Crash handler hardening | Done for alt-stack, early installation, and normal-context unwinder warm-up. Stack-exhaustion coverage and formal async-signal safety remain open. |
-| 4. 50-run load proof on the restored bounds | Open. Measured 2026-11-13, see below. The clock bounds held on all 565 completed runs: 266 on macOS (43 to 45 per cell) and 299 in a Linux container (49 or 50 per cell). The container run also produced one 6000 ms settle failure (`control.zombies` 1) and a reconnect run at 17850 of 20000, so a wait the scheduler does not see correctly still lets load into virtual time. |
+| 4. 50-run load proof on the restored bounds | Done, 2026-11-14. The 2026-11-13 settle failure was a scheduler-invisible wait: `Scan::stop()` waited on a plain condition variable for a callback on the radio task. It is now `scan_condition_t`, scheduler visible under `FURBLE_SIM`. 6,000 container runs at 200 to 600 per cell on all three panels had zero failures, no breaker parks, and every clock value within 80 ms of the median. See the 2026-11-14 section. |
 | 5. Fairness and waiter-state dump | Done. A task blocked on a scheduler-visible mutex reports `wait=mutex` in the task dump, and `sim-scheduler` checks the dump plus a `try_lock()` during the reservation-before-wake gap; the fast path must fail rather than starve the granted waiter. |
 
 ## Issue #283 root cause and the #289 load proof, 2026-11-13
@@ -882,3 +882,146 @@ therefore stays open. The next step is to instrument the target task between
 `Camera.cpp`'s transmit-power log and `FujifilmSecure`'s `Securing` log under
 the same container load. Then make the offending wait scheduler-visible, as
 was done for `Camera::m_Mutex`.
+
+## Issue #289 root cause: the scan callback wait, 2026-11-14
+
+### The wait
+
+`FURBLE_SIM_SCHED_TRACE=1` (`sim/freertos.cpp`) prints the task table and a
+native backtrace whenever the scheduler stops waiting for a task. That happens
+when the 2 s stall breaker parks the turn holder, or when a UI handoff runs
+out its 250 ms host bound with a task still runnable. It changes no scheduling
+decision. On the first unloaded run of `cancel-sweep-fuji-secure-ui` on the
+80x160 build, every cancel produced both events, all for the control task in
+the same place:
+
+```
+SIM SCHED TRACE: stall breaker parked task=control clock_ms=700
+  task prio=3 ... running=no blocked=no runnable=yes ... name=ble-radio
+  task prio=4 ... running=yes blocked=no runnable=yes ... name=control
+-- thread control --
+pthread_cond_wait
+Furble::Scan::stop()
+Furble::FujifilmSecure::_connect()
+Furble::Camera::connect(esp_power_level_t, unsigned int)
+Furble::Control::connectAll()
+```
+
+The sequence is:
+
+1. The radio task delivers the reconnect advertisement through the custom
+   scan callback, `FujifilmSecure::onResult()`, which posts to the camera's
+   queue. `Scan::handleResult()` counts that callback in flight.
+2. The queue post wakes the control task. It has the higher priority, so it
+   takes the turn before the radio task has left the callback.
+3. The control task calls `scan.stop()`. `Scan::stop()` waits on the plain
+   `std::condition_variable m_CallbackIdle` until no callback is in flight.
+4. The control task is still runnable and still holds the turn, so the radio
+   task never runs to finish the callback. Only the stall breaker breaks it,
+   after 2 s of host time with no scheduler progress.
+5. A parked task runs outside the turn, and the UI handoff ignores it. The UI
+   therefore advances the virtual clock without waiting for the control task.
+   That task continues through `Connecting`, `Connected, transmit power ...`,
+   `Connected` and `Securing` before its next scheduler boundary.
+
+On a loaded host, step 5 is the race in the failed run. The cancel landed
+while the parked control task was between the transmit-power log and the
+handshake. The UI's interactive teardown polled in 20 ms slices that no longer
+waited for that task, so it ran out the 30000 ms cap in host milliseconds.
+The task had not reached a boundary yet. The reconnect leg goes through the
+same `Scan::stop()` on every cancel. The same trace there shows 14 of 14
+parks on that stack, and that explains the 17850 ms reconnect outlier too. The
+gap was never in `m_ConnParamsMutex` or the bond lookups. On firmware the
+condition variable is a FreeRTOS block, so the radio task runs at once and
+there is no defect.
+
+### The fix
+
+- `Sim::SchedulerConditionVariable` (`sim/clock.h`, `sim/freertos.cpp`): a
+  waiter registers under the scheduler lock before it drops the caller's
+  lock, blocks with `wait=condition`, and gets the turn back through the
+  normal priority gate. A notify releases waiters by priority, then wait
+  order. It does not preempt the notifier, because the notifier still holds
+  the lock the waiter must take next and priority inheritance is not modeled.
+  The waiter runs at the notifier's next scheduler boundary. Stop and task
+  cancellation unwind the way `SchedulerMutex` does.
+- `Furble::scan_condition_t` (`lib/furble/Scan.h`) is
+  `std::condition_variable` in firmware and the host tests, and the scheduler
+  type in a `FURBLE_SIM` build. This follows the `connect_mutex_t` pattern.
+  Production lock discipline is unchanged.
+- `sim-scheduler` adds the #289 shape: a priority 4 task waits on a
+  condition that only a priority 3 task can make true. The waiter must report
+  blocked with `wait=condition`. The notifier must run first and finish its
+  turn before the waiter resumes.
+- `tests/test_sim_wait_visibility.py` rejects any production
+  `std::condition_variable` in `src/`, `include/` or `lib/furble/` that is
+  neither sim-only nor aliased to the scheduler type. It flags `Scan.h:198`
+  on the pre-fix header. Plain `std::mutex` is not covered. A short critical
+  section that never crosses a scheduler boundary is harmless, and a mutex
+  held across a boundary cannot be recognised by declaration. The trace is
+  the tool for that class.
+
+The other plain locks on the Control, Camera and Scan connect paths were
+inventoried: `Control::m_Mutex`, `Control::m_StateMutex`,
+`Camera::m_PairingMutex`, `Camera::m_CancelMutex`, `Camera::m_ConnParamsMutex`,
+`CameraList::m_Mutex`, `CameraList::m_PersistenceMutex`,
+`Scan::m_StateMutex` and `Scan::m_DispatchMutex`. None was converted. With
+the fix, the trace recorded no breaker park in any of the 6,000 proof runs.
+The full certified suites are below. The only remaining trace events are
+described under "What is still not covered".
+
+### Proof
+
+ubuntu:24.04 container, glibc 2.39, clang 18, arm64, 12 vCPUs. Plain builds
+of this branch were built and run on the container's own filesystem with
+`FURBLE_SIM_SCHED_TRACE=1`. Each scenario ran as an unchanged copy with
+`print clock.ms` before its final `assert_max clock.ms`, three workers per
+cell, and all six cells at once.
+
+Pre-fix baseline, same container, pre-fix 80x160 binary, Secure leg: 50 runs
+had no failure, but there were 400 breaker parks, eight per run, one per
+cancel. That harness did not hold its worker cap, so those 50 ran at once. It
+is mechanism evidence, not load evidence.
+
+| Pass | Load (1-minute loadavg) | Runs per cell | Result |
+| --- | --- | --- | --- |
+| 1 | 24 spinners, still decaying from a harness spike | 200 | 1,200 of 1,200 passed, 0 trace events |
+| 2 | 36 spinners, median 49 over 30 samples | 200 | 1,200 of 1,200 passed, 0 trace events |
+| 3 | 60 spinners, median 81.5 (41.7 to 89.1) over 208 samples at 5 s | 600 | 3,600 of 3,600 passed, 0 parks |
+
+| Pass 3 cell | Bound | p50 | p95 | max | Handoff expiries |
+| --- | --- | --- | --- | --- | --- |
+| `cancel-sweep-fuji-secure-ui` 80x160 | 31000 | 18555 | 18560 | 18640 | 13 |
+| 135x240 | | 18555 | 18560 | 18640 | 13 |
+| 320x240 | | 18555 | 18560 | 18560 | 7 |
+| `cancel-sweep-reconnect-entry` 80x160 | 20000 | 7115 | 7120 | 7120 | 5 |
+| 135x240 | | 7115 | 7120 | 7125 | 3 |
+| 320x240 | | 7115 | 7120 | 7120 | 4 |
+
+That makes 6,000 runs and 1,000 per scenario and panel. None failed the 6000
+ms settle bound, none had `control.zombies` above 0, and no clock value was
+more than 80 ms above its median. Before the fix the same container produced
+20960 and 17850. A run now takes a median of 2 host seconds instead of about
+18, because no cancel waits 2 s for the breaker.
+
+The full certified suites ran in the same container afterwards, unloaded and
+one scenario at a time, with the trace on. End-to-end: 210 of 210 on 135x240,
+65 of 65 on 80x160 and 69 of 69 on 320x240. Bug-hunt: 57 of 57 on 135x240,
+54 of 55 on 80x160 and 50 of 51 on 320x240. The two failures are both
+`timer-overflow-no-timed-wake` (`ui.overflow yes`). It fails the same way on
+the pre-fix 80x160 binary, and plan 317 records it as a pre-existing failure
+on those two panels. Across the whole suite the trace logged no breaker park
+and one handoff expiry. That expiry was in `remote-reconnect-indicator`: the
+control task held the turn inside its own `vTaskDelay` wait in
+`FauxNY::_connect()`, which is host wake latency.
+
+### What is still not covered
+
+The 45 pass 3 handoff expiries are host wake latency at load 81, not hidden
+waits. In each backtrace, the task holding the turn is in the scheduler's own
+condition wait (`vTaskDelay`, `waitForTurnLocked`), or it is a newly created
+task thread that has not reached its entry point. The UI waits its 250 ms
+bound and then moves 20 ms of virtual time. That cost at most four slices,
+80 ms, in 3,600 runs. Closing it fully would mean the UI waits without a host
+bound for a task that holds the turn. That needs every remaining plain host
+lock to be scheduler visible first, and it is not attempted here.
