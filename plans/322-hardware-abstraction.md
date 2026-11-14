@@ -378,4 +378,3 @@ waveshare-s3-eth 1,696,432 bytes (DRAM 51,332, IRAM 132,352); size and stack
 budgets pass, and DRAM and IRAM equal the pre-rebase hal-2 builds. The few
 extra bytes come from port-4's own code. `pre_review --base origin/master`:
 9 of 9 gates. `check-doc-tokens`: tokens present.
-
