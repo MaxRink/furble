@@ -56,8 +56,8 @@ PowerShot G9 X Mark II, Ricoh GR IV HDF, Nikon COOLPIX B600/Z6 III, and Sony
 ZV-1F. It does not name a tested Lumix, DJI or PENTAX model. README and
 `docs/supported-hardware.md` list Lumix, DJI Osmo Action 4/5 Pro and the
 PENTAX K-3 Mark III separately as implemented and untested on hardware, which
-is a support boundary, not model validation. This is a documentation gap, not
-evidence that the two modes are hardware-tested.
+is a support boundary, not model validation. Those entries do not mean the
+Lumix, DJI or PENTAX paths are hardware-tested.
 
 ## Sony
 

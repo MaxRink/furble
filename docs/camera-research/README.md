@@ -9,7 +9,7 @@ BGH1 2.5, and G9II 2.7; and DJI Osmo Action 4 and Action 5 Pro.
 
 | Research notes | Scope | Important boundary |
 | --- | --- | --- |
-| [Ricoh GR](ricoh.md) | GR III/IIIx BLE, GR II Wi-Fi, GR IV/HDF, GPS and WLAN split | GR III and GR IV share UUIDs but differ in power, WLAN, and pairing; broad PENTAX matching is not validated support; the README lists only the K-3 Mark III, as untested on hardware |
+| [Ricoh GR](ricoh.md) | GR III/IIIx BLE, GR II Wi-Fi, GR IV/HDF, GPS and WLAN split | GR III and GR IV share UUIDs but differ in power, WLAN, and pairing; broad PENTAX matching is not validated support; the README lists only the K-3 Mark III family, as untested on hardware |
 | [Fujifilm, Canon, Nikon](fuji-canon-nikon.md) | Basic/Secure firmware profiles, Smart/Remote roles, Nikon Classic continuation | Keep model, firmware, and application/accessory roles separate |
 | [Fujifilm Secure GATT](fujifilm-secure-gatt.md) | X100VI 1.31 and X-S20 3.30 70-entry UUID table and 13-service layout, plus the X-E5 v4.1 delta | Handles and properties are a public template match, not a runtime capture |
 | [Sony, Panasonic LUMIX, DJI Osmo](sony-lumix-dji.md) | Remote/GPS protocols, generation-specific login, framing and status | Experimental source paths and official accessory support do not establish Furble compatibility; README lists LUMIX and Osmo Action 4/5 Pro as untested on hardware, not as tested models |
