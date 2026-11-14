@@ -25,5 +25,8 @@ asked to change.
 Validation after these changes: `hal-drivers` and `board-profile` pass, as do
 the host targets that include the real `FurblePlatform.h` (settings, boundary,
 headless service, companion GATT). The m5stick-s3 firmware builds with the
-assertion; size and stack budgets pass at 1,848,928 bytes. `pre_review` and
-`check-doc-tokens` results are in plan 322.
+assertion; size and stack budgets pass at 1,848,928 bytes. The StickS3
+simulator rebuilt with the assertion and passes the 22 hardware-profile
+scenarios. `python3 tools/pre_review.py --base origin/master`: 9 of 9 gates.
+`sh sim/scripts/check-doc-tokens.sh`: tokens present. The rebase onto
+`refactor/port-4-camera-types` is pending that branch's final review fixes.
