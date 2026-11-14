@@ -339,8 +339,8 @@ check.
   the saved camera list loads. `mqtt_ha` is cached on reload; never read it from
   the owner event path. The event handler runs on the 3 KiB esp-mqtt worker:
   never put a 2,348-byte `queued_event_t` on its stack. It fills the owner's
-  preallocated `m_Incoming` copy, which lives with the queue and is never freed.
-
+  preallocated `m_Incoming` copy, and the owner receives into `m_Received`;
+  both live with the queue and are never freed.
 - Main task stack: keep the StickS3 at 12 KiB. The 8 KiB experiment overflowed
   in task main after MQTT was enabled. With MQTT connected `perf tasks` left
   3,020 of 12,288 bytes free on main, so it used about 9,268 bytes.

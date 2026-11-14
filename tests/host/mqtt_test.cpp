@@ -189,10 +189,12 @@ int main(void) {
           "MQTT event queue budget changed without updating the gate");
   require(Furble::MQTTMemory::EVENT_STORAGE_BYTES
               == Furble::MQTTMemory::EVENT_QUEUE_BLOCK_BYTES
-                     + Furble::MQTTMemory::INCOMING_EVENT_BLOCK_BYTES,
-          "the internal event reserve must cover the queue and the incoming copy");
-  require(Furble::MQTTMemory::INCOMING_EVENT_BYTES * 4 == Furble::MQTTMemory::EVENT_QUEUE_BYTES,
-          "the incoming copy is one of the four queue items");
+                     + Furble::MQTTMemory::EVENT_COPIES_BLOCK_BYTES,
+          "the internal event reserve must cover the queue and both event copies");
+  require(Furble::MQTTMemory::EVENT_COPY_BYTES * 4 == Furble::MQTTMemory::EVENT_QUEUE_BYTES,
+          "an event copy is one of the four queue items");
+  require(Furble::MQTTMemory::EVENT_COPIES_BYTES == 2 * Furble::MQTTMemory::EVENT_COPY_BYTES,
+          "the owner preallocates the incoming and the received copy");
   require(Furble::MQTTMemory::BLOCK_OVERHEAD_BYTES >= 84 + 16,
           "the block overhead covers StaticQueue_t plus the TLSF header and poisoning");
   require(!Furble::MQTTMemory::startFits(65536, Furble::MQTTMemory::EVENT_QUEUE_BLOCK_BYTES - 1,
@@ -204,13 +206,13 @@ int main(void) {
           Furble::MQTTMemory::START_INTERNAL_FREE_FLOOR + Furble::MQTTMemory::EVENT_STORAGE_BYTES,
           Furble::MQTTMemory::EVENT_QUEUE_BLOCK_BYTES, false,
           Furble::MQTTMemory::EVENT_STORAGE_BYTES, Furble::MQTTMemory::EVENT_QUEUE_BLOCK_BYTES),
-      "the queue and the incoming copy are separate blocks, not one");
+      "the queue and the event copies are separate blocks, not one");
   require(!Furble::MQTTMemory::startFits(Furble::MQTTMemory::START_INTERNAL_FREE_FLOOR
                                              + Furble::MQTTMemory::EVENT_STORAGE_BYTES - 1,
                                          Furble::MQTTMemory::EVENT_QUEUE_BLOCK_BYTES, false,
                                          Furble::MQTTMemory::EVENT_STORAGE_BYTES,
                                          Furble::MQTTMemory::EVENT_QUEUE_BLOCK_BYTES),
-          "start gate ignored the incoming copy in the free floor");
+          "start gate ignored the event copies in the free floor");
   require(
       !Furble::MQTTMemory::startFits(
           Furble::MQTTMemory::START_INTERNAL_FREE_FLOOR + Furble::MQTTMemory::EVENT_QUEUE_BYTES - 1,
