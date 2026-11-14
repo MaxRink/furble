@@ -276,6 +276,7 @@ document is authoritative over any older summary.
 | [104-focus-outline-dedup.md](implemented/104-focus-outline-dedup.md) | Single focus ring per selected item |
 | [105-ui-fuzzing.md](implemented/105-ui-fuzzing.md) | Seeded UI fuzzer |
 | [106-flash-size-optimization.md](106-flash-size-optimization.md) | Flash size optimization |
+| [106-review-feedback.md](106-review-feedback.md) | Review-feedback record for the Waveshare autodetect pin and group A alignment |
 | [107-ui-layout-audit.md](implemented/107-ui-layout-audit.md) | Walkthrough screenshot layout audit |
 | [108-upstream-issue-mapping.md](108-upstream-issue-mapping.md) | Historical upstream issue mapping snapshot |
 | [109-sim-coverage-expand.md](implemented/109-sim-coverage-expand.md) | Simulator coverage expansion |

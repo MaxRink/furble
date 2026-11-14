@@ -316,9 +316,15 @@ the W5500 pins (SCLK 13, MOSI 11, MISO 12, CS 14, INT 10, RST 9):
 - StampPLC: SPI with MISO on GPIO 9, a TF card SPI-mode sequence that drives
   GPIO 10 as card select, and GPIO 12 as panel select. GPIO 10 is the W5500
   interrupt output, so this can drive against it.
-- AtomS3R: GPIO 14 as panel select.
+- PaperColor: an I2C detect on GPIO 2 and 3, and only after it succeeds a
+  pin set that includes GPIO 11 to 14.
 - Dial and DinMeter use GPIO 4 to 8 and drive the GPIO 9 backlight only on a
   match.
+
+The ESP32-S3R8 on this board is the QFN56 package, `get_pkg_ver()` case 0.
+The AtomS3R and StickS3 probes sit under case 1 (LGA56, ESP32-S3PICO) and
+never ran here; an earlier draft of this section and the 216db11f commit
+message listed the AtomS3R GPIO 14 probe by mistake.
 
 Each probe restores its pins, and `Ethernet::init()` resets the W5500 later,
 so the risk is transient contention plus five probe passes at boot.

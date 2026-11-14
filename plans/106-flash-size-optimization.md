@@ -453,9 +453,21 @@ Measured with `FURBLE_VERSION=1.0.0-ci FURBLE_TEST=0` on top of the M5GFX pin:
 | waveshare-s3-eth IRAM | 131,840 | 126,720 | -5,120 |
 
 `tools/size_budget.json` was rewritten with `--write`: the release budget drops
-to 48,128 DRAM and 128,000 IRAM bytes. With the fragment the debug image is
-1,969,488 bytes with 55,752 DRAM and 148,224 IRAM, the same RAM as before
-group A, so its budget stays at 56,320 and 149,504.
+to 48,128 DRAM and 128,000 IRAM bytes. With the fragment the debug image has
+55,752 DRAM and 148,224 IRAM, the same RAM as before group A, so its budget
+stays at 56,320 and 149,504.
+
+The fragment build first measured 1,152 bytes more flash than the pin-only
+debug build. That is a measurement artifact. The generated `sdkconfig.h` of
+the two commits is identical, and two clean builds of the same commit
+(`baf31f40`) produced 1,968,288 and 1,968,336 bytes, against 1,969,488 for a
+clean build of `216db11f`. The linker maps of the two same-commit builds load
+the ESP-IDF component archives in a different order (`libesp_eth.a`,
+`libesp_driver_cam.a`, `libesp_https_server.a` and others move against
+`libxtensa.a`), so `esp_eth.c.o` lands elsewhere. The shifted layout changes
+which Xtensa longcalls the linker relaxes, which moves NimBLE functions by 4
+to 8 bytes and the `.xt.lit` table by 80 bytes. The fragment itself adds no
+flash; debug-image comparisons need several builds or a symbol-level diff.
 
 `python3 tools/derive_sim_heap.py --env waveshare-s3-eth` regenerated the
 Waveshare row of `sim/coverage/board_heap.json` from the new ELF: static DRAM
