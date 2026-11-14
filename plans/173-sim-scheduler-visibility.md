@@ -699,10 +699,9 @@ residual items below; it is not an unmerged implementation plan.
 Fatal diagnostics are merged: argument and scenario parsing are covered, every
 registered simulator thread gets an alternate signal stack, handlers use
 `SA_ONSTACK`, and the handler prints the phase and scenario line before a
-best-effort unwinder. This is observability only. The restarted-re-exec SIGSEGV
-has not been reproduced on demand and its root cause is not established. The
-issue stays open as a sighting tracker; the next occurrence should now leave a
-dump. True stack-overflow coverage remains future work.
+best-effort unwinder. True stack-overflow coverage remains future work. The
+root cause is now identified as an environment use-after-free; see the
+2026-11-13 section below.
 
 ### Issue #289 follow-ups
 
@@ -711,5 +710,340 @@ dump. True stack-overflow coverage remains future work.
 | 1. Comment rot naming plan 158 Phase 3 | Done. `sim/freertos.cpp` and `sim/scripts/run-fuzz.sh` now describe the scheduler-visible mutex and the remaining plain host locks. |
 | 2. Per-PID preferences leak on abnormal exit | Done. Generated stores have an ownership marker, same-PID restart adoption, and orderly cleanup. `preparePreferences()` now sweeps `.pio` and removes a store only when its encoded pid is dead; a live, self, or foreign-owner store is kept. `preferences-sweep` covers the dead, live, self, and unrelated cases. |
 | 3. Crash handler hardening | Done for alt-stack, early installation, and normal-context unwinder warm-up. Stack-exhaustion coverage and formal async-signal safety remain open. |
-| 4. 50-run load proof on the restored bounds | Partial. The FauxNY 24000 ms leg has the 50-run proof. The Secure 31000 ms and reconnect 20000 ms legs still rest on single measurements; issue #289 records 1-in-24 and 4-in-5 failures under load. They need the same 50-run treatment or a wider measured margin before being called stable. |
+| 4. 50-run load proof on the restored bounds | Done, 2026-11-14. The 2026-11-13 settle failure was a scheduler-invisible wait: `Scan::stop()` waited on a plain condition variable for a callback on the radio task. It is now `scan_condition_t`, scheduler visible under `FURBLE_SIM`. 6,000 container runs at 200 to 600 per cell on all three panels had zero failures, no breaker parks, and every clock value within 85 ms of the median. See the 2026-11-14 section. |
 | 5. Fairness and waiter-state dump | Done. A task blocked on a scheduler-visible mutex reports `wait=mutex` in the task dump, and `sim-scheduler` checks the dump plus a `try_lock()` during the reservation-before-wake gap; the fast path must fail rather than starve the granted waiter. |
+
+## Issue #283 root cause and the #289 load proof, 2026-11-13
+
+### #283: a growing setenv frees `environ` under the SDL loop
+
+glibc's `getenv` walks `environ` without a lock. A `setenv` that adds a
+variable reallocates that array. The first growth in a process copies the
+initial stack array and frees nothing. Every later growth calls `realloc`, which
+frees the old array whenever it moves. The SDL main loop on the main thread
+calls `getenv` for SDL hints thousands of times a second. A growth on another
+thread can therefore free the array that walk is reading. The freed chunk's
+first words become tcache pointers, and dereferencing them is a SIGSEGV. The
+window is one short array walk per call, so it takes a preempted walk on a
+loaded host to hit it. That fits a single shot under parallel workers that
+goes green on rerun.
+
+Measured with an `LD_PRELOAD` probe that counts `getenv` calls after
+`SDL_Init` and reports every `setenv` with its thread. The runs were in an
+ubuntu:24.04 container (glibc 2.39, clang 18, arm64), against
+`bughunt/power-off-state-matrix.txt` on the 320x240 build:
+
+| Build | First boot, simulator thread, SDL live | Main thread getenv calls before the last growth |
+| --- | --- | --- |
+| pre-fix `8a94d2cb`, sim-e2e shape | `setenv(FURBLE_SIM_PREFS)` adds, then `setenv(FURBLE_SIM_RESTART_STEP)` adds | 35,971 |
+| pre-fix `8a94d2cb`, coverage build, caller `FURBLE_SIM_PREFS` | the coverage runtime's own `setenv(__LLVM_PROFILE_RT_INIT_ONCE)` adds on the main thread before SDL, then `setenv(FURBLE_SIM_RESTART_STEP)` adds | 23,584 |
+| master `e66e8807`, both shapes | `setenv(TZ)` adds, from production `Timezone`, after `SDL_Init` but before `panelReady` releases the loop | 24, all from `SDL_Init` itself; the loop has not started |
+
+Both CI shapes on the pre-fix tree therefore had exactly one freeing growth, at
+the first `restart` step, on the simulator thread, with SDL live. A second
+preload that logs whether `environ` moved recorded `moved` for that
+`FURBLE_SIM_RESTART_STEP` growth on 3 of 3 pre-fix runs. That is the step the
+first sighting named. `a57e77e7` (2026-09-08) moved the Furble `setenv`
+calls out of the SDL window. All three sightings were on 2026-09-06 heads that
+predate it (`188b603c`, `cf5ec483`, `3c87f819`), and there has been no
+sighting since. The coverage runtime explains the two coverage sightings: with
+a caller-owned `FURBLE_SIM_PREFS`, the Furble code alone grew the environment
+only once, which frees nothing.
+
+Master has one remaining growth after `SDL_Init`, and it is not a live race.
+Production `Timezone` (`f10b35ef`, 2026-11-04) calls `setenv("TZ")` in
+`runSimulator()` at boot. `TZ` is normally unset on CI runners, so that call
+adds a variable, and it can free the array. It runs before
+`panelReady.store(release)`, though, and until then the main thread only
+spins on `panelReady.load(acquire)`. No other thread walks `environ` at that
+point: the M5GFX `dbg` thread is suppressed, and the watchdog reads its one
+variable in `watchdogStart()`. The growth is therefore ordered before any loop
+`getenv`. The 24 main-thread calls the probe counted all came from `SDL_Init`
+itself. `main()` now creates `TZ` with `setenv("TZ", "UTC0", 0)` before SDL
+starts, so every `TZ` write is a pointer-sized in-place replace. That lets the
+guard enforce the stricter rule, no growth after `SDL_Init`, without an
+exception for a boot-ordered call. A caller's `TZ` is kept, and the firmware
+replaces it with the selected zone at boot either way.
+
+The regression is the existing preload guard, widened and wired into CI.
+`sim/env_mutation_guard.c` gains a `growth` target that rejects any variable
+added by `setenv` or `putenv`, any `unsetenv` or value-less `putenv`, and
+`clearenv`, from any caller, while SDL is initialized. It prints an armed line
+so a guard that never loaded cannot pass. `sim/scripts/run-env-order.sh` first
+compiles a small program that calls `SDL_Init` and then changes the
+environment one way per mode, and requires the guard to stop `setenv`,
+`putenv` with and without a value, `clearenv` and a new 300-byte name with
+status 86 and the exact message, and to let a replacement of an existing
+300-byte name through. `putenv` copies the whole name, so a long name follows
+the same replacement rule as `setenv`. It then
+runs smoke and `restart-persist.txt` under every target with `TZ` unset. The
+old-binary legs are now optional. The sim-e2e S3 job runs it.
+
+| Guard run, Linux container | Result |
+| --- | --- |
+| master `e66e8807` 320x240, `growth`, smoke | status 86, `sim env guard: setenv(TZ) after SDL initialization`. The stricter rule fires on the boot-ordered `TZ` growth; it was not a live race. |
+| this branch 135x240, all targets, smoke and `restart-persist.txt` | passed |
+| this branch with `FURBLE_SIM_ENV_GUARD_OLD_BIN` = `8a94d2cb` | passed, old binary rejected at both named targets |
+
+The crash itself was not reproduced on demand. What was run:
+
+| Runs | Build | Shape | Load | SIGSEGV |
+| --- | --- | --- | --- | --- |
+| 160 `power-off-state-matrix`, 8 workers | pre-fix `8a94d2cb` 320x240, Linux | sim-e2e | container loadavg 5 to 8 | 0 |
+| 1500 one-restart probe (`wait 300`, `restart`, `wait 10`), 16 workers, plus six concurrent builds | pre-fix `8a94d2cb` 320x240, Linux | sim-e2e | container loadavg 17 to 48 | 0 |
+| 3 one-restart runs with `getenv` stretched to 50 us per entry on the main thread | pre-fix `8a94d2cb` 320x240, Linux | sim-e2e | as above | 0 |
+
+The stretch preload walks `environ` itself. The freed chunk loses only its
+first two slots until another allocation reuses it, so a wider walk still
+rarely reads a clobbered slot. A first 1500-run attempt is discarded: it ran
+with its working directory on the host bind mount, and all 200 of its failures
+were stalls in `open()` of the preferences store for the full 120 s watchdog
+bound, none a crash. A macOS ASan batch of 120 runs is also discarded. All
+120 ended in SIGABRT from sdl2-compat, or were killed while its dialog was up,
+before reaching a scenario step. That is the sdl2-compat trap below. The runs
+were stopped because each failure raised a desktop dialog.
+
+So the mechanism is shown directly: the free happened on every probed pre-fix
+run, SDL calls `getenv` constantly, and glibc's `getenv` takes no lock. Its
+timing matches every sighting. `a57e77e7` removed the mid-loop growth, and the
+guard now keeps every growth out of the window after `SDL_Init`. The crash
+rate per run is too low to reproduce here. Reopen #283 if a
+`SIM CRASH` dump appears on a head that contains this change. Treat a dump
+whose faulting frame is in `getenv`, `secure_getenv` or SDL's hint lookup as
+this class, and look for a new environment mutation the guard does not
+exercise.
+
+### sdl2-compat and ASan on macOS
+
+Homebrew SDL2 is now sdl2-compat. It dlopens `libSDL3.dylib` and finds it
+through its own `LC_RPATH`. The ASan runtime intercepts `dlopen`, so the
+search runs with the executable's and the ASan runtime's rpaths instead.
+SDL3 is not found, and sdl2-compat shows a modal "Fatal error! Cannot
+continue! Failed loading SDL3 library" dialog and aborts. A five-line `dlopen`
+probe reproduces this without SDL: the leaf lookup fails under ASan and
+succeeds once linked with `-Wl,-rpath` to the SDL3 directory. `sim/build.sh`
+now adds that rpath to sanitized Darwin links, resolved from
+`pkg-config --variable=libdir sdl3` with `brew --prefix sdl3` as the
+fallback. It was verified with `otool -l` only; no simulator was launched on
+the host.
+
+### #289 item 4: Secure 31000 ms and reconnect 20000 ms under load
+
+Each scenario ran as an unchanged copy with `print clock.ms` added before its
+final `assert_max clock.ms`. Every cell had 50 runs and three workers, and all
+six cells ran at once. The two hosts are reported separately. They differ in
+OS, libc, scheduler and the source of load, and the macOS batch lost runs to
+boot stalls. Merged figures are given only as a cross-check.
+
+**macOS host.** Plain builds of `e66e8807`, 12 cores. 36 spin loops ran for
+the first part. Other agents' builds shared the host throughout. The sampled
+1-minute loadavg was 36 to 142, mean about 80. 34 runs exited 3 on the stall
+watchdog with `phase=settings` and virtual clock 0. They stopped in boot
+before any scenario step, blocked in a filesystem call on the shared host
+disk, and are not counted.
+
+**Linux container.** ubuntu:24.04, glibc 2.39, clang 18, arm64, 12 vCPUs.
+Plain builds of `e66e8807` were built and run on the container's own
+filesystem. 24 spin loops (2x the vCPUs) ran throughout. The VM's 1-minute
+loadavg was 63 to 99, median 76, over 88 samples. The VM also hosted other
+agents' containers.
+
+| Scenario, bound | Panel | macOS completed / failed | macOS p95 / max | container completed / failed | container p95 / max |
+| --- | --- | --- | --- | --- | --- |
+| `cancel-sweep-fuji-secure-ui`, 31000 | 135x240 | 43 / 0 | 18785 / 18875 | 50 / 0 | 18740 / 19665 |
+| | 80x160 | 45 / 0 | 18800 / 18835 | 49 / 1 | 18735 / 18840 |
+| | 320x240 | 45 / 0 | 18725 / 18815 | 50 / 0 | 18745 / 20960 |
+| `cancel-sweep-reconnect-entry`, 20000 | 135x240 | 44 / 0 | 7285 / 7485 | 50 / 0 | 7435 / 8020 |
+| | 80x160 | 45 / 0 | 7275 / 7480 | 50 / 0 | 7545 / 17850 |
+| | 320x240 | 44 / 0 | 7325 / 7655 | 50 / 0 | 7635 / 8630 |
+
+Medians are 18545 to 18610 on Secure and 7130 to 7190 on reconnect on both
+hosts. Merged, every cell has 93 to 95 completed runs.
+
+The clock bounds held on all 565 completed runs. They are not tight against
+load in the tail, though, and the container run produced one failure:
+
+- One Secure run on 80x160 failed the 6000 ms settle bound,
+  `control.zombies expected '0' got '1'`, on its second cancel (offset 900
+  ms). The log shows `Connected, transmit power requested ... set ok` from
+  `Camera::connect()`, then the cancel. The UI's teardown then reached its
+  30000 ms interactive cap with the target still running. Only after that did
+  the target log `Connected`, `Securing` and a failed connect. The whole run
+  took 18 s of host time. So the 30 virtual seconds were not spent waiting on
+  host time slice by slice. The target task sat in some wait the scheduler
+  counted as blocked while the UI advanced the clock. Between those two log
+  lines it takes the plain `m_ConnParamsMutex` and runs the Fujifilm
+  identity and bond lookups. Which wait it was is not established.
+- One reconnect run on 80x160 reported 17850 against a 7135 median, 89
+  percent of its bound. Single Secure runs at 19665 and 20960, and a
+  reconnect run at 8630, show the same tail more mildly.
+
+No bound was changed. Widening the clock bounds would hide the tail without
+explaining it. The settle failure is the same class of defect issue #279
+closed for `Camera::m_Mutex`: a wait the virtual scheduler does not see
+correctly lets the clock run ahead of a task that is not progressing. Item 4
+therefore stays open. The next step is to instrument the target task between
+`Camera.cpp`'s transmit-power log and `FujifilmSecure`'s `Securing` log under
+the same container load. Then make the offending wait scheduler-visible, as
+was done for `Camera::m_Mutex`.
+
+## Issue #289 root cause: the scan callback wait, 2026-11-14
+
+### The wait
+
+`FURBLE_SIM_SCHED_TRACE=1` (`sim/freertos.cpp`) prints the task table and a
+native backtrace whenever the scheduler stops waiting for a task. That happens
+when the 2 s stall breaker parks the turn holder, or when a UI handoff runs
+out its 250 ms host bound. It changes no scheduling decision, but it does cost
+host time while it prints. On the first unloaded run of `cancel-sweep-fuji-secure-ui` on the
+80x160 build, every cancel produced both events, all for the control task in
+the same place:
+
+```
+SIM SCHED TRACE: stall breaker parked task=control clock_ms=700
+  task prio=3 ... running=no blocked=no runnable=yes ... name=ble-radio
+  task prio=4 ... running=yes blocked=no runnable=yes ... name=control
+-- thread control --
+pthread_cond_wait
+Furble::Scan::stop()
+Furble::FujifilmSecure::_connect()
+Furble::Camera::connect(esp_power_level_t, unsigned int)
+Furble::Control::connectAll()
+```
+
+The sequence is:
+
+1. The radio task delivers the reconnect advertisement through the custom
+   scan callback, `FujifilmSecure::onResult()`, which posts to the camera's
+   queue. `Scan::handleResult()` counts that callback in flight.
+2. The queue post wakes the control task. It has the higher priority, so it
+   takes the turn before the radio task has left the callback.
+3. The control task calls `scan.stop()`. `Scan::stop()` waits on the plain
+   `std::condition_variable m_CallbackIdle` until no callback is in flight.
+4. The control task is still runnable and still holds the turn, so the radio
+   task never runs to finish the callback. Only the stall breaker breaks it,
+   after 2 s of host time with no scheduler progress.
+5. A parked task runs outside the turn, and the UI handoff ignores it. The UI
+   therefore advances the virtual clock without waiting for the control task.
+   That task continues through `Connecting`, `Connected, transmit power ...`,
+   `Connected` and `Securing` before its next scheduler boundary.
+
+On a loaded host, step 5 is the race in the failed run. The cancel landed
+while the parked control task was between the transmit-power log and the
+handshake. The UI's interactive teardown polled in 20 ms slices that no longer
+waited for that task, so it ran out the 30000 ms cap in host milliseconds.
+The task had not reached a boundary yet. The reconnect leg goes through the
+same `Scan::stop()` on every cancel. The same trace there shows 14 of 14
+parks on that stack, and that explains the 17850 ms reconnect outlier too. The
+gap was never in `m_ConnParamsMutex` or the bond lookups. On firmware the
+condition variable is a FreeRTOS block, so the radio task runs at once and
+there is no defect.
+
+### The fix
+
+- `Sim::SchedulerConditionVariable` (`sim/clock.h`, `sim/freertos.cpp`): a
+  waiter registers under the scheduler lock before it drops the caller's
+  lock, blocks with `wait=condition`, and gets the turn back through the
+  normal priority gate. A notify releases waiters by priority, then wait
+  order. It does not preempt the notifier, because the notifier still holds
+  the lock the waiter must take next and priority inheritance is not modeled.
+  The waiter runs at the notifier's next scheduler boundary. Stop and task
+  cancellation unwind the way `SchedulerMutex` does.
+- `Furble::scan_condition_t` (`lib/furble/Scan.h`) is
+  `std::condition_variable` in firmware and the host tests, and the scheduler
+  type in a `FURBLE_SIM` build. This follows the `connect_mutex_t` pattern.
+  Production lock discipline is unchanged.
+- `sim-scheduler` adds the #289 shape: a priority 4 task waits on a
+  condition that only a priority 3 task can make true. The waiter must report
+  blocked with `wait=condition`. The notifier must run first and finish its
+  turn before the waiter resumes.
+- `tests/test_sim_wait_visibility.py` rejects any production
+  `std::condition_variable` in `src/`, `include/` or `lib/furble/` that is
+  neither sim-only nor aliased to the scheduler type. It flags `Scan.h:198`
+  on the pre-fix header. Plain `std::mutex` is not covered. A short critical
+  section that never crosses a scheduler boundary is harmless, and a mutex
+  held across a boundary cannot be recognised by declaration. The trace is
+  the tool for that class.
+
+The other plain locks on the Control, Camera and Scan connect paths were
+inventoried: `Control::m_Mutex`, `Control::m_StateMutex`,
+`Camera::m_PairingMutex`, `Camera::m_CancelMutex`, `Camera::m_ConnParamsMutex`,
+`CameraList::m_Mutex`, `CameraList::m_PersistenceMutex`,
+`Scan::m_StateMutex` and `Scan::m_DispatchMutex`. None was converted. With
+the fix, the trace recorded no breaker park in any of the 6,000 proof runs.
+The full certified suites are below. The only remaining trace events are
+described under "What is still not covered".
+
+### Proof
+
+ubuntu:24.04 container, glibc 2.39, clang 18, arm64, 12 vCPUs. Plain builds
+of this branch were built and run on the container's own filesystem with
+`FURBLE_SIM_SCHED_TRACE=1`. Each scenario ran as an unchanged copy with
+`print clock.ms` before its final `assert_max clock.ms`, three workers per
+cell, and all six cells at once.
+
+Pre-fix baseline, same container, pre-fix 80x160 binary, Secure leg: 50 runs
+had no failure, but there were 400 breaker parks, eight per run, one per
+cancel. That harness did not hold its worker cap, so those 50 ran at once. It
+is mechanism evidence, not load evidence.
+
+| Pass | Load (1-minute loadavg) | Runs per cell | Result |
+| --- | --- | --- | --- |
+| 1 | 24 spinners, still decaying from a harness spike | 200 | 1,200 of 1,200 passed, 0 trace events |
+| 2 | 36 spinners, median 49 over 30 samples | 200 | 1,200 of 1,200 passed, 0 trace events |
+| 3 | 60 spinners, median 81.5 (41.7 to 89.1) over 208 samples at 5 s | 600 | 3,600 of 3,600 passed, 0 parks |
+
+| Pass 3 cell | Bound | p50 | p95 | max | Handoff expiries |
+| --- | --- | --- | --- | --- | --- |
+| `cancel-sweep-fuji-secure-ui` 80x160 | 31000 | 18555 | 18560 | 18640 | 13 |
+| 135x240 | | 18555 | 18560 | 18640 | 13 |
+| 320x240 | | 18555 | 18560 | 18560 | 7 |
+| `cancel-sweep-reconnect-entry` 80x160 | 20000 | 7115 | 7120 | 7120 | 5 |
+| 135x240 | | 7115 | 7120 | 7125 | 3 |
+| 320x240 | | 7115 | 7120 | 7120 | 4 |
+
+That makes 6,000 runs and 1,000 per scenario and panel. None failed the 6000
+ms settle bound, none had `control.zombies` above 0, and no clock value was
+more than 85 ms above its median. Before the fix the same container produced
+20960 and 17850. A run now takes a median of 2 host seconds instead of about
+18, because no cancel waits 2 s for the breaker.
+
+The full certified suites ran in the same container afterwards, unloaded and
+one scenario at a time, with the trace on. End-to-end: 210 of 210 on 135x240,
+65 of 65 on 80x160 and 69 of 69 on 320x240. Bug-hunt: 57 of 57 on 135x240,
+54 of 55 on 80x160 and 50 of 51 on 320x240. The two failures are both
+`timer-overflow-no-timed-wake` (`ui.overflow yes`). It fails the same way on
+the pre-fix 80x160 binary, and plan 317 records it as a pre-existing failure
+on those two panels. Across the whole suite the trace logged no breaker park
+and one handoff expiry. That expiry was in `remote-reconnect-indicator`: the
+control task held the turn inside its own `vTaskDelay` wait in
+`FauxNY::_connect()`, which is host wake latency.
+
+### What is still not covered
+
+The 45 pass 3 handoff expiries are host wake latency at load 81, not hidden
+waits. That build traced the best ready task, not necessarily the turn
+holder; the trace now names the turn holder (review finding, see
+`173-review-feedback.md`). In each backtrace the traced task was in the
+scheduler's own condition wait (`vTaskDelay`, `waitForTurnLocked`), or it was
+a newly created task thread that had not reached its entry point. None was in
+a host lock. The UI waits its 250 ms bound and then moves 20 ms of virtual
+time. That cost at most four slices over p95, 85 ms over the median, in 3,600
+runs. Closing it fully would mean the UI waits without a host
+bound for a task that holds the turn. That needs every remaining plain host
+lock to be scheduler visible first, and it is not attempted here.
+
+Two lock shapes are known and were not measured as defects:
+
+- `Scan::stop()` holds the plain recursive `Scan::m_DispatchMutex` across the
+  now-visible callback wait. A second task that calls `start()`, `stop()` or
+  `clear()` while the first is parked there blocks on a lock the scheduler
+  cannot see. No certified scenario or proof run reached that, and the trace
+  recorded no such park.
+- `Camera::m_PairingMutex` is a plain recursive mutex held across NimBLE
+  client operations while NimBLE callbacks re-enter it on the same thread.
+  The re-entry is safe by design. A callback on another task would wait on a
+  lock the scheduler cannot see. The trace recorded no park on it.
+
+Either one should become a scheduler-visible type if a trace ever shows a
+park on it.

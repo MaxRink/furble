@@ -30,6 +30,7 @@ NODE = re.compile(r'node: \{ title: "([^"]*)" label: "([^"]*)"')
 EDGE = re.compile(r'edge: \{ sourcename: "([^"]*)" targetname: "([^"]*)"(?: label: "([^"]*)")?')
 FRAME = re.compile(r"\\n(\d+) bytes \(([a-z,]+)\)")
 INDIRECT = "__indirect_call"
+PANIC = "<panic handler>"
 
 
 def _skip_name(s, i):
@@ -260,76 +261,174 @@ class Graph:
 def worst_case(graph, entry, resolve, pruned=frozenset(), recursion=()):
     """Deepest frame sum from entry; returns (bytes, path, notes).
 
-    A call back into a function already on the walk's stack closes a cycle.
-    The cycle is cut there, so the walk follows the deepest path that visits
-    each function once. recursion lists (regex, depth, why) bounds: a cycle
-    with a matching member adds depth - 1 more passes of its frames at every
-    member. A bound with no depth records a documented known limit and adds
-    nothing. Any other cycle is noted as unbounded."""
-    memo = {}
-    cycles = {}  # function -> {cycle: bytes of its extra passes}, cycles entered there
+    The walk collapses each strongly connected component of the reachable
+    call graph and takes the longest path over the resulting DAG, so a
+    function's depth no longer depends on the order the walk reached it.
+    Outside a cycle the result is exact. A recursive component is charged its
+    passes times the sum of its members' frames: one pass puts each member on
+    the stack at most once, so the sum bounds every path through it.
+    recursion lists (regex, depth, why) bounds. A component pays
+    1 + sum(depth - 1) passes over the distinct rules its members match. A
+    rule with no depth records a documented known limit and charges one pass,
+    but only for a component no finite rule matches: a finite bound always
+    counts, so a catch-all known limit cannot hide it. Any other recursive
+    component is noted as unbounded."""
     notes = {"recursion": {}, "dynamic": set(), "indirect": {}, "unknown": set()}
-    stack = []
+
+    def node(fn):
+        body = graph.defined(fn)
+        if body is None:
+            notes["unknown"].add(fn)
+        return body
 
     def targets(fn):
         out = set(graph.calls.get(fn, ()))
         if fn in graph.indirect:
-            hit = [(rx, dst) for rx, dst in resolve
-                   if dst and rx.search(graph.name.get(fn, fn))]
-            if hit:
-                for _, dst in hit:
-                    out.update(dst)
-            else:
+            hit = [dst for rx, dst in resolve if dst and rx.search(graph.name.get(fn, fn))]
+            for dst in hit:
+                out.update(dst)
+            if not hit:
                 notes["indirect"][fn] = graph.indirect[fn]
-        return out
+        return sorted({t for t in map(node, out - pruned) if t is not None})
 
-    def bound(cycle):
-        for rx, depth, why in recursion:
-            if any(rx.search(graph.name[c]) or rx.search(c) for c in cycle):
-                return depth, why
-        return None, None
+    start = node(entry)
+    if start is None:
+        notes["extra"] = {}
+        return 0, [], notes
+    # Iterative Tarjan. Components come out callees first, so every
+    # component's callees are costed before it.
+    index, low, on_stack, stack, succ = {}, {}, set(), [], {}
+    comp_of, comps = {}, []
+    work = [(start, 0)]
+    while work:
+        fn, i = work.pop()
+        if i == 0:
+            index[fn] = low[fn] = len(index)
+            stack.append(fn)
+            on_stack.add(fn)
+            succ[fn] = targets(fn)
+        if i < len(succ[fn]):
+            work.append((fn, i + 1))
+            dst = succ[fn][i]
+            if dst not in index:
+                work.append((dst, 0))
+            elif dst in on_stack:
+                low[fn] = min(low[fn], index[dst])
+            continue
+        if low[fn] == index[fn]:
+            members = []
+            while not members or members[-1] != fn:
+                members.append(stack.pop())
+                on_stack.discard(members[-1])
+                comp_of[members[-1]] = len(comps)
+            comps.append(sorted(members))
+        if work:
+            parent = work[-1][0]
+            low[parent] = min(low[parent], low[fn])
 
-    def walk(fn):
-        if fn in memo:
-            return memo[fn]
-        if fn in stack:
-            cycle = tuple(stack[stack.index(fn):])
-            depth, why = bound(cycle)
-            notes["recursion"][cycle] = (depth, why)
-            if depth:
-                # The walk entered the cycle at fn, so every path through the
-                # cycle runs through fn. Each extra pass costs the whole cycle;
-                # charge it once, at fn, so a path crossing several members
-                # pays depth passes, not one set per member.
-                # Two cycles through the same head can nest (A-B-A, then
-                # A-C-A from an inner A), so their passes add; summing them
-                # also bounds the sequential case.
-                cost = (depth - 1) * sum(graph.frame[c] for c in cycle)
-                cycles.setdefault(fn, {})[frozenset(cycle)] = cost
-            return 0, []
-        body = graph.defined(fn)
-        if body is None:
-            notes["unknown"].add(fn)
-            return 0, []
-        if body != fn:
-            return walk(body)
-        if graph.kind[fn] == "dynamic":
-            notes["dynamic"].add(fn)
-        stack.append(fn)
-        best, best_path = 0, []
-        for dst in sorted(targets(fn) - pruned):
-            depth, path = walk(dst)
-            if depth > best:
-                best, best_path = depth, path
-        stack.pop()
-        more = sum(cycles.get(fn, {}).values())
-        memo[fn] = (graph.frame[fn] + more + best, [fn] + best_path)
-        return memo[fn]
+    # cost[v] is the deepest frame sum from v. route[v] lists the nodes of
+    # that path inside v's component and the first node after it.
+    cost, route, extra = {}, {}, {}
+    for c, members in enumerate(comps):
+        frame = graph.frame
+        notes["dynamic"].update(m for m in members if graph.kind[m] == "dynamic")
+        exit_ = {}
+        for m in members:
+            outs = [d for d in succ[m] if comp_of[d] != c]
+            e = max(outs, key=lambda d: (cost[d], d), default=None)
+            exit_[m] = (cost[e] if e else 0, e)
+        if len(members) == 1 and members[0] not in succ[members[0]]:
+            m = members[0]
+            cost[m], route[m] = frame[m] + exit_[m][0], ([m], exit_[m][1])
+            continue
+        # A list, one entry per matched rule: two rules with the same depth and
+        # reason are still two recursions and each adds its passes.
+        rules = [(depth, why) for rx, depth, why in recursion
+                 if any(rx.search(graph.name[m]) or rx.search(m) for m in members)]
+        why = min((w for _, w in rules), default=None)
+        finite = [(d, w) for d, w in rules if d is not None]
+        known = not finite and any(depth is None for depth, _ in rules)
+        if finite:
+            why = min(w for _, w in finite)
+        passes = 1 + sum(d - 1 for d, _ in finite) if finite else 1
+        notes["recursion"][tuple(members)] = (None if known or not rules else passes, why)
+        frames = sum(frame[m] for m in members)
+        out_cost, out = max(exit_.values(), key=lambda x: (x[0], x[1] or ""))
+        if passes > 1:
+            # Each pass puts every member on the stack at most once.
+            extra[members[0]] = (passes - 1) * frames
+            for m in members:
+                cost[m], route[m] = passes * frames + out_cost, (members, out)
+            continue
+        # One pass is a simple path through the component. Enumerate them
+        # while that stays cheap; past the budget, the frame sum bounds them.
+        inside = {m: [d for d in succ[m] if comp_of[d] == c] for m in members}
+        budget = [PATH_BUDGET]
+        exact = {m: longest_simple_path(m, inside, frame, exit_, budget) for m in members}
+        if budget[0] >= 0:
+            for m, (total, path) in exact.items():
+                cost[m], route[m] = total, (path, exit_[path[-1]][1])
+        elif known:
+            # A known limit is documented as a lower bound; the greedy walk
+            # that visits each member once keeps it fast.
+            greedy(members, inside, frame, exit_, cost, route)
+        else:
+            for m in members:
+                cost[m], route[m] = frames + out_cost, (members, out)
 
-    sys.setrecursionlimit(20000)
-    depth, path = walk(entry)
-    notes["extra"] = {fn: sum(costs.values()) for fn, costs in cycles.items()}
-    return depth, path, notes
+    path, v = [], start
+    while v is not None:
+        nodes, v = route[v]
+        path.extend(nodes)
+    notes["extra"] = extra
+    return cost[start], path, notes
+
+
+# A source citation: a C, C++ or header file and a line number.
+CITATION = re.compile(r"\.(c|h|cpp):\d+")
+# Simple paths explored per recursive component before the walk falls back to
+# the component's frame sum. Every bounded component on the seven envs fits.
+PATH_BUDGET = 200000
+
+
+def longest_simple_path(start, inside, frame, exit_, budget):
+    """Deepest (bytes, path) from start that visits each member once and
+    leaves the component through the last member's deepest callee."""
+    best_total, best_path = -1, [start]
+    work: list[tuple[str, list[str], int]] = [(start, [start], frame[start])]
+    while work:
+        budget[0] -= 1
+        if budget[0] < 0:
+            break
+        u, path, total = work.pop()
+        if total + exit_[u][0] > best_total:
+            best_total, best_path = total + exit_[u][0], path
+        for d in inside[u]:
+            if d not in path:
+                work.append((d, path + [d], total + frame[d]))
+    return best_total, best_path
+
+
+def greedy(members, inside, frame, exit_, cost, route):
+    """The memoized depth-first walk: a member first reached inside an open
+    cycle keeps the value it had there. Only for known limits."""
+    on_stack = set()
+
+    def walk(u):
+        if u in cost:
+            return cost[u]
+        on_stack.add(u)
+        best, nodes, out = exit_[u][0], [u], exit_[u][1]
+        for d in inside[u]:
+            if d not in on_stack and walk(d) > best:
+                best, nodes, out = cost[d], [u] + route[d][0], route[d][1]
+        on_stack.discard(u)
+        cost[u], route[u] = frame[u] + best, (nodes, out)
+        return cost[u]
+
+    sys.setrecursionlimit(max(sys.getrecursionlimit(), 4 * len(members) + 1000))
+    for m in members:
+        walk(m)
 
 
 def main():
@@ -341,6 +440,8 @@ def main():
                     help="skip prebuilt code from firmware.elf (for synthetic graphs)")
     ap.add_argument("--objdump", help="default: the PlatformIO Xtensa toolchain for the target")
     ap.add_argument("--sdkconfig", help="default sdkconfig.<release env>")
+    ap.add_argument("--debug-sdkconfig", default=str(ROOT / "sdkconfig.debug"),
+                    help="fragment every -debug env merges over the release sdkconfig")
     ap.add_argument("--stack", action="append", default=[], metavar="TASK=BYTES",
                     help="override one task's stack, e.g. to replay a past size")
     ap.add_argument("--verbose", action="store_true", help="print paths and indirect sites")
@@ -362,10 +463,22 @@ def main():
     release_env = max((e for e in release_envs if args.env == e or args.env.startswith(e + "-")),
                       key=len, default=args.env)
     sdkconfig_path = Path(args.sdkconfig or ROOT / f"sdkconfig.{release_env}")
-    for line in sdkconfig_path.read_text().splitlines():
-        key, sep, value = line.partition("=")
-        if sep and not key.startswith("#"):
-            sdkconfig[key] = value.strip('"')
+
+    def read_config(path, into):
+        for line in path.read_text().splitlines():
+            key, sep, value = line.partition("=")
+            if sep and not key.startswith("#"):
+                into[key] = value.strip('"')
+
+    read_config(sdkconfig_path, sdkconfig)
+    # Every -debug env merges sdkconfig.debug (patches/debug_sdkconfig.py) and
+    # creates its furble tasks with their debug margins.
+    debug = "-debug" in args.env
+    debug_sdkconfig = dict(sdkconfig)
+    read_config(Path(args.debug_sdkconfig), debug_sdkconfig)
+
+    def stack_of(value, config):
+        return int(config[value]) if isinstance(value, str) else value
     target = sdkconfig["CONFIG_IDF_TARGET"]
     margin = manifest["overhead_bytes"][target]
     if not args.no_elf:
@@ -391,14 +504,60 @@ def main():
             if graph.kind[fn] == "dynamic":
                 graph.frame[fn] += rule["bytes"]
                 graph.kind[fn] = "dynamic,bounded"
+    for rule in manifest.get("recursion_bounds", []):
+        depth = rule.get("depth")
+        # A recursive component is on the stack at least once; a depth below
+        # 1 would charge fewer passes than that and undercount the task.
+        if depth is not None and (not isinstance(depth, int) or depth < 1):
+            raise SystemExit(f"stack_budget: recursion bound {rule['function']} has depth "
+                             f"{depth!r}; it must be a whole number of at least 1")
     recursion = [(re.compile(rule["function"]), rule.get("depth"), rule["why"],
                   frozenset(rule.get("tasks", ()))) for rule in manifest.get("recursion_bounds", [])]
+
+    # A call the source guards so it cannot run, cited in the manifest. The
+    # cut hides depth, so an entry without a file:line citation is refused
+    # rather than followed.
+    for rule in manifest.get("infeasible_calls", []):
+        if not CITATION.search(rule.get("why", "")):
+            raise SystemExit(f"stack_budget: infeasible call {rule['caller']} -> {rule['callee']}"
+                             " needs a why that cites the guard as file:line")
+        callees = set(graph.find(rule["callee"]))
+        for fn in graph.find(rule["caller"]):
+            graph.calls[fn] = graph.calls.get(fn, set()) - callees
 
     boot_only = set()
     for pattern in manifest.get("boot_only", []):
         boot_only.update(graph.find(pattern))
     overrides = {name: int(value) for name, _, value in (o.partition("=") for o in args.stack)}
     failed = 0
+
+    # panic_abort's illegal instruction enters the panic handler on the
+    # faulting task's stack, an edge the call graph cannot see. The handler
+    # is walked once with a nested panic not followed and becomes one node
+    # that panic_abort calls.
+    panic = manifest.get("panic")
+    if panic:
+        aborts, handlers = graph.find(panic["abort"]), graph.find(panic["handler"])
+        if len(aborts) != 1 or len(handlers) != 1:
+            print(f"FAIL panic: abort matched {len(aborts)}, handler matched {len(handlers)}")
+            failed += 1
+        else:
+            depth, path, notes = worst_case(
+                graph, handlers[0], [(rx, dst) for rx, dst, tasks in resolve if not tasks],
+                frozenset(boot_only | {aborts[0]}),
+                [(rx, depth, why) for rx, depth, why, tasks in recursion if not tasks])
+            unbounded = [c for c, (_, why) in notes["recursion"].items() if why is None]
+            ok = not unbounded and not notes["dynamic"]
+            failed += not ok
+            print(f"{'PASS' if ok else 'FAIL'} panic handler: {depth} bytes from {handlers[0]}"
+                  + (f"; {len(unbounded)} unbounded recursion" if unbounded else "")
+                  + (f"; {len(notes['dynamic'])} unbounded dynamic" if notes["dynamic"] else ""))
+            if args.verbose:
+                for fn in path:
+                    print(f"    {graph.frame[fn]:6d}  {graph.name[fn]}")
+            graph.frame[PANIC], graph.kind[PANIC] = depth, "static"
+            graph.name[PANIC] = f"panic handler ({handlers[0]} on this stack)"
+            graph.calls.setdefault(aborts[0], set()).add(PANIC)
     for task in manifest["tasks"]:
         if release_env not in task.get("envs", [release_env]):
             continue
@@ -418,9 +577,13 @@ def main():
                        if not tasks or task["name"] in tasks]
         depth, path, notes = worst_case(graph, found[0], task_rules, pruned, task_bounds)
         need = depth + margin
-        stack = overrides.get(task["name"], task["stack_bytes"])
-        if isinstance(stack, str):
-            stack = int(sdkconfig[stack])
+        release_stack = stack_of(task["stack_bytes"], sdkconfig)
+        debug_stack = stack_of(task.get("debug_stack_bytes", task["stack_bytes"]), debug_sdkconfig)
+        if debug_stack < release_stack:
+            print(f"FAIL {task['name']}: debug stack {debug_stack} is below the release stack"
+                  f" {release_stack}")
+            failed += 1
+        stack = overrides.get(task["name"], debug_stack if debug else release_stack)
         unbounded = [c for c, (_, why) in notes["recursion"].items() if why is None]
         known = [c for c, (depth, why) in notes["recursion"].items() if why and depth is None]
         ok = need <= stack and not unbounded and not notes["dynamic"]

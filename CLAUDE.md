@@ -198,6 +198,15 @@ CLAUDE.md whose directory it touches.
   `docs/stack-budget.md`. Update the manifest when a task or its stack changes.
   A recursion or an `alloca`/VLA frame on a task's path fails it until
   `recursion_bounds` or `dynamic_bounds` cites a bound from source.
+  The walk collapses strongly connected components and takes the longest
+  path over the DAG, exact outside known limits. Panic paths count: the
+  ESP-IDF panic handler runs on the faulting task's stack, so `panic_abort`
+  is charged the handler's depth. `infeasible_calls` drops an edge only with
+  a file:line citation of the guard that makes it unreachable. A `-debug` env
+  is checked against its own stacks: `sdkconfig.debug` sizes `sys_evt` and
+  `esp_timer`, and each furble task owner adds a named `..._DEBUG_EXTRA`
+  under `FURBLE_DEBUG_BUILD`, which only the `-debug` envs define. The
+  manifest's `debug_stack_bytes` records the result.
   `platformio.ini` sets `CJSON_NESTING_LIMIT=8` for every component; the
   cJSON recursion bounds depend on it.
 - Hardware flashing is gated on the simulator. The gate manifests are under
@@ -238,7 +247,11 @@ CLAUDE.md whose directory it touches.
   The `sim-sanitizers` job in `sim-e2e.yml` runs the certified e2e suite under
   ASan, UBSan and LeakSanitizer on Linux. Only the third-party sites in
   `sim/ubsan.supp` and `sim/lsan.supp` are suppressed, each with its reason;
-  never add a furble frame there.
+  never add a furble frame there. On macOS a sanitized sim needs the SDL3
+  rpath `sim/build.sh` adds; check `otool -l` before running one, because a
+  missing rpath raises a desktop dialog per process. The sim-e2e S3 job runs
+  `sim/scripts/run-env-order.sh`, which fails any setenv that adds a variable
+  while SDL is live (issue #283).
 - The USB console (debug builds, `FURBLE_CONSOLE`) is the automation surface:
   settings get/set, gps subcommands, shutter, status.
 - Hardware verification on the attached M5StickS3 happens before PRs.

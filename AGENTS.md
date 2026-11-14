@@ -43,6 +43,10 @@ that hook path for Claude Code sessions through `GIT_CONFIG_*` env vars. `pre-re
 under ASan/UBSan when C++ paths change; `main.yml` runs those probes.
 The `sim-sanitizers` job runs the e2e suite under ASan, UBSan and LeakSanitizer
 on Linux; `sim/ubsan.supp` and `sim/lsan.supp` hold only third-party sites.
+On macOS, check a sanitized sim for its SDL3 `LC_RPATH` with `otool -l` before
+running it; without it sdl2-compat shows a desktop dialog per process. The
+sim-e2e S3 job runs `sim/scripts/run-env-order.sh`, which fails any setenv that
+adds a variable while SDL is live (issue #283).
 The pre-hardware fuzz budget is `python3 tools/check_fuzz.py --full
 --host-build <dir> --mqtt-binary sim/build-mqtt/furble-sim`; the full corpus
 currently passes 10 targets, 135 seed runs and 89,145 iterations with zero
@@ -99,7 +103,11 @@ Each RAM budget keeps at least 512 bytes of headroom. Raise a budget with
 `tools/stack_budget.py` checks each firmware task's worst-case stack from the
 `-fcallgraph-info=su` call graph against `tools/stack_budget.json`; firmware CI
 runs it after every build. A recursion or an `alloca`/VLA frame on a task's
-path fails until the manifest cites a bound from source. `platformio.ini` sets
+path fails until the manifest cites a bound from source. The walk is exact
+outside cycles, and every path to `abort` also pays the panic handler, which
+runs on the task stack. An `infeasible_calls` edge cut needs a file:line
+citation of its guard. `-debug` envs are checked against their own stacks
+(`debug_stack_bytes`, `sdkconfig.debug`, `FURBLE_DEBUG_BUILD`). `platformio.ini` sets
 `CJSON_NESTING_LIMIT=8`, which the cJSON bounds depend on. See
 `docs/stack-budget.md`.
 Hardware flashing is gated on the simulator. `sim/coverage/` holds the hardware,

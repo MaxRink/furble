@@ -11,9 +11,18 @@ namespace CompanionMemory {
 /**
  * The retained companion service task. A measured 1,884-byte high-water mark
  * on the StickS3 with the companion connected and a settings write. It commits
- * NVS, so it stays internal. tools/stack_budget.json reads this value.
+ * NVS, so it stays internal. tools/stack_budget.json reads both values: the
+ * release stack, and the margin a debug build adds for its stack protector
+ * and -Os frames (4,192 bytes measured on the ESP32 debug builds, plan 314
+ * PR 4c).
  */
-inline constexpr size_t TASK_STACK_BYTES = 3072;
+inline constexpr size_t TASK_STACK_RELEASE_BYTES = 3840;
+#if defined(FURBLE_DEBUG_BUILD)
+inline constexpr size_t TASK_STACK_DEBUG_EXTRA = 512;
+#else
+inline constexpr size_t TASK_STACK_DEBUG_EXTRA = 0;
+#endif
+inline constexpr size_t TASK_STACK_BYTES = TASK_STACK_RELEASE_BYTES + TASK_STACK_DEBUG_EXTRA;
 
 /**
  * Derived: the GATT database the first enable builds and keeps, sized from the
@@ -39,8 +48,8 @@ inline constexpr size_t GATT_BYTES = 4096;
 
 /**
  * Free internal heap required before the first enable creates the task and
- * the GATT services (7,552 bytes). The largest block must hold the task stack
- * plus overhead (3,456 bytes). Later enables reuse both and are not gated.
+ * the GATT services (8,320 bytes). The largest block must hold the task stack
+ * plus overhead (4,224 bytes). Later enables reuse both and are not gated.
  */
 inline constexpr size_t START_INTERNAL_FREE_FLOOR =
     TASK_STACK_BYTES + TaskMemory::TASK_OVERHEAD_BYTES + GATT_BYTES;
