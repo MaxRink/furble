@@ -697,7 +697,7 @@ Furble source, for the interfaces this design attaches to:
 - `include/FurbleGPS.h:38` `MAX_AGE_MS`
 - `lib/furble/Device.cpp:45-48` RPA and key distribution
 - `include/FurbleSettings.h:16-29` and `src/FurbleSettings.cpp:11-24` settings table
-- upstream commit [5564b73 Remove BLE advertising. (#281)](https://github.com/gkoh/furble/commit/5564b7354bb06f32d8d60b614ad2ae41eb841d03)
+- upstream commit [5564b73 Remove BLE advertising. (#281)](https://github.com/MaxRink/furble/commit/5564b7354bb06f32d8d60b614ad2ae41eb841d03)
 
 Bluetooth and ESP-IDF:
 

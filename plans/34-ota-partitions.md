@@ -567,29 +567,43 @@ configure a network for is not useful.
 ### Where the firmware comes from
 
 Two candidate sources exist and only one of them is pleasant. Both were checked
-live.
+live against upstream releases on 2026-08-16. The fork has no firmware
+releases yet and dropped the upstream Cloudflare deploy (see
+`.github/workflows/release.yml`), so its installer and manifests are on GitHub
+Pages at https://maxrink.github.io/furble/.
 
-**GitHub releases.** `https://github.com/gkoh/furble/releases/download/<tag>/<asset>`
+**GitHub releases.** The measurements below are upstream's:
+`https://github.com/gkoh/furble/releases/download/<tag>/<asset>`
 returns a 302 to `release-assets.githubusercontent.com` with a signed URL
 carrying a JWT and roughly 800 characters of query string. The two hosts have
 different certificate chains: `github.com` is issued by Sectigo Public Server
 Authentication CA DV E36, `release-assets.githubusercontent.com` by Let's
 Encrypt. Asset names also contain a `+` from
-`FURBLE_VERSION=${{ github.ref_name }}+${{ github.run_attempt }}`
-(`.github/workflows/release.yml:7`), which appears percent-encoded as `%2B` in
-the API's `browser_download_url`.
+upstream's `FURBLE_VERSION=${{ github.ref_name }}+${{ github.run_attempt }}`,
+which appears percent-encoded as `%2B` in the API's `browser_download_url`. The
+fork's release workflow sets `FURBLE_VERSION` to the tag alone
+(`.github/workflows/release.yml:8`), so its asset names carry no `+`; its
+release URLs are `https://github.com/MaxRink/furble/releases/download/<tag>/<asset>`.
 
-**The project's own Cloudflare Pages deployment.** The release workflow already
-publishes every binary and a per platform JSON manifest to
-`furble-web-installer.pages.dev` (`.github/workflows/release.yml:101-139`).
+**Upstream's Cloudflare Pages deployment (historical).** Upstream's release
+workflow published every binary and a per platform JSON manifest to
+`furble-web-installer.pages.dev`, an upstream-owned host. On 2026-08-16
 `https://furble-web-installer.pages.dev/firmware/furble-m5stick-s3-v3.9.1+1.bin`
-returns 200 `application/octet-stream` directly, no redirect, single host,
-issued by Google Trust Services WE1. `https://furble-web-installer.pages.dev/manifest_m5stick-s3.json`
-returns 200 `application/json` and already contains a `version` field.
+returned 200 `application/octet-stream` directly, no redirect, single host,
+issued by Google Trust Services WE1, and
+`https://furble-web-installer.pages.dev/manifest_m5stick-s3.json` returned 200
+`application/json` with a `version` field. The fork does not publish there.
 
-Use the Pages deployment. One host, one certificate chain, no redirect, no
-signed URL, no expiry, and a version endpoint that already exists and is already
-kept current by the release workflow. It costs the project nothing new. Fetch
+**The fork's GitHub Pages deployment.** `.github/workflows/pages.yml` runs on
+every `v*` tag and publishes to `https://maxrink.github.io/furble/`: one
+`manifest_<platform>.json` per platform at the site root, carrying `version`
+(`web-installer/manifest.tmpl`), and the images under
+`firmware/<commit sha>/`, named `furble-<platform>-<version>.bin`. It has the
+properties that made upstream's Pages host attractive: one host, no redirect,
+no signed URL and no expiry, kept current by the release tag. Its certificate
+chain was not measured here; check it before pinning a root.
+
+Use the fork's Pages deployment. It costs the project nothing new. Fetch
 `manifest_<platform>.json`, compare its `version` to `FURBLE_VERSION`, and if it
 differs fetch the `path` from the matching `builds[].parts` entry whose offset is
 the app offset.
