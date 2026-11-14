@@ -367,6 +367,25 @@ class StackBudgetTest(unittest.TestCase):
                                      {"function": r"^void c\(int\)$", "depth": 2, "why": "t"}]}
         r = self.run_tool(560, indirect=False, cis=n_ci, manifest_extra=same)
         self.assertIn("PASS t: 560 of 560 bytes (272 frames + 288 port overhead)", r.stdout)
+        # a catch-all known limit on the task does not hide a finite bound:
+        # a's depth 3 still charges three passes
+        catch = {"recursion_bounds": [{"function": r"^void a\(int\)$", "depth": 3, "why": "test"},
+                                      {"function": ".", "tasks": ["t"], "why": "known"}]}
+        r = self.run_tool(560, indirect=False, cis=n_ci, manifest_extra=catch)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("PASS t: 560 of 560 bytes (272 frames + 288 port overhead)", r.stdout)
+        self.assertEqual(self.run_tool(559, indirect=False, cis=n_ci,
+                                       manifest_extra=catch).returncode, 1)
+
+    def test_recursion_depth_below_one_is_refused(self):
+        n_ci = (("n.cpp.ci", N_CI),)
+        for depth in (0, -1):
+            with self.subTest(depth=depth):
+                bad = {"recursion_bounds": [{"function": r"^void a\(int\)$", "depth": depth,
+                                             "why": "test"}]}
+                r = self.run_tool(560, indirect=False, cis=n_ci, manifest_extra=bad)
+                self.assertNotEqual(r.returncode, 0, r.stdout)
+                self.assertIn("must be a whole number of at least 1", r.stdout + r.stderr)
 
     def test_depth_behind_a_cut_cycle_is_found_on_another_path(self):
         # The memoized walk reached x first inside the open a-x cycle, cut

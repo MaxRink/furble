@@ -269,8 +269,10 @@ def worst_case(graph, entry, resolve, pruned=frozenset(), recursion=()):
     the stack at most once, so the sum bounds every path through it.
     recursion lists (regex, depth, why) bounds. A component pays
     1 + sum(depth - 1) passes over the distinct rules its members match. A
-    rule with no depth records a documented known limit and charges one pass.
-    Any other recursive component is noted as unbounded."""
+    rule with no depth records a documented known limit and charges one pass,
+    but only for a component no finite rule matches: a finite bound always
+    counts, so a catch-all known limit cannot hide it. Any other recursive
+    component is noted as unbounded."""
     notes = {"recursion": {}, "dynamic": set(), "indirect": {}, "unknown": set()}
 
     def node(fn):
@@ -344,8 +346,11 @@ def worst_case(graph, entry, resolve, pruned=frozenset(), recursion=()):
         rules = [(depth, why) for rx, depth, why in recursion
                  if any(rx.search(graph.name[m]) or rx.search(m) for m in members)]
         why = min((w for _, w in rules), default=None)
-        known = any(depth is None for depth, _ in rules)
-        passes = 1 + sum(d - 1 for d, _ in rules) if rules and not known else 1
+        finite = [(d, w) for d, w in rules if d is not None]
+        known = not finite and any(depth is None for depth, _ in rules)
+        if finite:
+            why = min(w for _, w in finite)
+        passes = 1 + sum(d - 1 for d, _ in finite) if finite else 1
         notes["recursion"][tuple(members)] = (None if known or not rules else passes, why)
         frames = sum(frame[m] for m in members)
         out_cost, out = max(exit_.values(), key=lambda x: (x[0], x[1] or ""))
@@ -499,6 +504,13 @@ def main():
             if graph.kind[fn] == "dynamic":
                 graph.frame[fn] += rule["bytes"]
                 graph.kind[fn] = "dynamic,bounded"
+    for rule in manifest.get("recursion_bounds", []):
+        depth = rule.get("depth")
+        # A recursive component is on the stack at least once; a depth below
+        # 1 would charge fewer passes than that and undercount the task.
+        if depth is not None and (not isinstance(depth, int) or depth < 1):
+            raise SystemExit(f"stack_budget: recursion bound {rule['function']} has depth "
+                             f"{depth!r}; it must be a whole number of at least 1")
     recursion = [(re.compile(rule["function"]), rule.get("depth"), rule["why"],
                   frozenset(rule.get("tasks", ()))) for rule in manifest.get("recursion_bounds", [])]
 

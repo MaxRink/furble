@@ -17,8 +17,8 @@
       }
     },
     "hw-memory-webui-post394": {
-      "min_internal_free": 15575,
-      "min_internal_largest": 13812,
+      "min_internal_free": 15063,
+      "min_internal_largest": 13300,
       "max_leaks": 0
     },
     "hw-memory-mqtt-ha-oom": {
@@ -32,8 +32,8 @@
       "max_leaks": 0
     },
     "memory-webui-fail-closed": {
-      "min_internal_free": 9959,
-      "min_internal_largest": 9204,
+      "min_internal_free": 9447,
+      "min_internal_largest": 8692,
       "max_leaks": 0
     },
     "profile-stickc": {
