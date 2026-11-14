@@ -572,15 +572,18 @@ releases yet and dropped the upstream Cloudflare deploy (see
 `.github/workflows/release.yml`), so its installer and manifests are on GitHub
 Pages at https://maxrink.github.io/furble/.
 
-**GitHub releases.** `https://github.com/MaxRink/furble/releases/download/<tag>/<asset>`
+**GitHub releases.** The measurements below are upstream's:
+`https://github.com/gkoh/furble/releases/download/<tag>/<asset>`
 returns a 302 to `release-assets.githubusercontent.com` with a signed URL
 carrying a JWT and roughly 800 characters of query string. The two hosts have
 different certificate chains: `github.com` is issued by Sectigo Public Server
 Authentication CA DV E36, `release-assets.githubusercontent.com` by Let's
 Encrypt. Asset names also contain a `+` from
-`FURBLE_VERSION=${{ github.ref_name }}+${{ github.run_attempt }}`
-(`.github/workflows/release.yml:7`), which appears percent-encoded as `%2B` in
-the API's `browser_download_url`.
+upstream's `FURBLE_VERSION=${{ github.ref_name }}+${{ github.run_attempt }}`,
+which appears percent-encoded as `%2B` in the API's `browser_download_url`. The
+fork's release workflow sets `FURBLE_VERSION` to the tag alone
+(`.github/workflows/release.yml:8`), so its asset names carry no `+`; its
+release URLs are `https://github.com/MaxRink/furble/releases/download/<tag>/<asset>`.
 
 **The project's own Cloudflare Pages deployment.** The release workflow already
 publishes every binary and a per platform JSON manifest to
