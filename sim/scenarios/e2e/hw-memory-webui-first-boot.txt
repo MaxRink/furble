@@ -48,8 +48,10 @@ assert platform.watchdog armed
 
 # A BLE camera connect is the core path and is never refused. Its 4,480-byte
 # target task would take the pool below the AMBER floor, so the connect admits
-# it first: the governor enters AMBER at once and the 8 KiB server is shed
-# before the target task, the NimBLE client and the connected page allocate.
+# it first: the governor enters AMBER at once. On hardware its hook wakes the
+# WebUI supervisor, which stops the 8 KiB server shortly after the target task
+# is created. The model stops it in the same UI cycle, after the target task
+# and before the connected page's first draw.
 # The deepest point is the connected page's first draw, whose LVGL layers and
 # style blocks are transient. Before admission that point was 5,599 free
 # with a 3,836-byte largest block on the post-#394 seed, too small for another
@@ -73,9 +75,11 @@ assert_min mem.high_water_largest 4480
 # The connected-page icons are decoded into PSRAM, so the disconnect returns
 # the pool above the 20,480 AMBER exit with the server paused (20,887). After
 # five clear readings the governor returns to NORMAL and HTTPS starts again
-# through its own gate. The pool ends 1,440 bytes under the boot figure. They
-# remain with every image buffer in PSRAM, so they are not the image cache.
-# The model does not attribute them. The margin over the exit is 407 bytes.
+# through its own gate. The pool ends 1,440 bytes under the boot figure. That
+# is the image cache's per-entry metadata (draw buffer descriptors, cache
+# entries and their nodes), which lv_malloc() keeps internal and the model
+# charges at 64-bit host sizes: dropping the cache at disconnect returns 1,488
+# bytes. The margin over the exit is 407 bytes.
 action disconnect
 assert-eventually-virtual 10000 control.state idle
 wait 30000

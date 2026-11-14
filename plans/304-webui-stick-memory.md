@@ -360,8 +360,12 @@ above are the pre-review state; these replace them.
 - Admission fix. Every caller of `Control::addActive()` now calls
   `MemoryPressure::admit(CONNECT_TARGET_BYTES)` first. When the target task
   would take the heap into AMBER or RED, the governor enters that level at
-  once, so the WebUI server is shed before the connect allocates. The exit is
-  unchanged. A board whose pool stays NORMAL after the target task, such as
+  once and calls its escalate hook, which wakes the WebUI supervisor instead
+  of leaving it to its next 500 ms poll. `addActive()` creates the target
+  task right after admission, so the server stops shortly after the target
+  task exists. Nothing orders that stop against the NimBLE client or the
+  connected page's first draw on hardware; in the model it lands before the
+  draw. The exit is unchanged. A board whose pool stays NORMAL after the target task, such as
   the Core2 or a StickS3 with the WebUI off, sheds nothing. With admission the
   connect minimum is 7,475 free with a 5,712-byte largest block.
   `tests/host/memory_pressure_test.cpp` covers the policy.
@@ -372,8 +376,25 @@ above are the pre-review state; these replace them.
   handler's malloc and free callbacks. The DMA display buffers are separate and
   stay internal. After a disconnect the pool returns to 20,887 with the server
   paused, clears the 20,480 exit and HTTPS starts again at 12,695 / 10,932.
-  1,440 bytes stay allocated after the disconnect with every image buffer in
-  PSRAM; the model does not attribute them.
+  1,440 bytes stay allocated after the disconnect. They are the image
+  cache's per-entry metadata (`lv_draw_buf_t`, the cache entry and its LRU
+  and red-black nodes, the decoder data), which `lv_malloc()` keeps internal
+  and the model charges at 64-bit host sizes. With the PSRAM handlers on,
+  `lv_image_cache_drop(NULL)` at disconnect returns 1,488 bytes (14,135 to
+  15,623 on the post-#394 seed). The device figure is smaller.
+- Scope and deviation. Only the image handler's pixel buffers move, and in
+  practice only those under the 4,096-byte `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL`
+  threshold: larger ones already went to PSRAM through `malloc()`. The
+  handlers are installed only with PSRAM and a persistent image cache
+  (`CONFIG_LV_CACHE_DEF_SIZE` above 0). The Core2 has no cache, frees each
+  buffer after the draw and would pay PSRAM reads on every icon for no
+  internal gain, so it keeps the default handlers. This is a narrow subset of
+  the PSRAM-preferring LVGL allocator that
+  [plan 314](314-memory-resilience.md) (PR 9) deferred until a hardware
+  timing pass; the simulator cannot show PSRAM latency either. Hardware step 7
+  below is that timing check for this subset. The allocation uses
+  `heap_caps_malloc_prefer()` with PSRAM first and the default heap second,
+  which aborts only when both fail.
 - By construction. In the model `webuiMemoryStart()` marks a seeded identity
   stored, and nothing allocates per request. The `webui.identity stored` and
   flat 60 s soak assertions therefore check the wiring, not mbedTLS or the
@@ -386,7 +407,11 @@ Evidence: the StickS3 simulator e2e suite passes 211 of 211, including the
 updated scenario. `memory_pressure_test` passes. `m5stick-s3` and
 `m5stack-core2` build, `tools/stack_budget.py --env m5stick-s3` passes every
 task and `tools/check_size_budget.py` passes both. The sanitized host suite,
-`tools/pre_review.py` and `check-doc-tokens.sh` pass. Nothing ran on a board.
+`tools/pre_review.py` and `check-doc-tokens.sh` pass. A second review round
+added the WebUI wake, `heap_caps_malloc_prefer()`, the Core2 exclusion and
+the residual attribution; after it the same gates, `run-memory.sh`, the panic
+fixtures and the memory profile pass (review record rows 9 to 16). The full
+permutation run is left to CI and the readiness gate. Nothing ran on a board.
 
 Hardware procedure (StickS3 debug image built from a `READY TO FLASH`
 candidate per plan 313, flashed with `tools/flash_prepare.py`, USB console
@@ -426,4 +451,12 @@ open):
 6. Record the pairs, headroom lines and pass or fail in this plan and in
    `docs/webui.md`. Only a full pass makes the StickS3 a supported WebUI
    target.
+7. Image buffer timing. The PSRAM image handlers (review follow-up) move
+   the cached icon pixels to PSRAM, and the simulator does not model PSRAM
+   latency. Build the StickS3 debug image with `CONFIG_LV_USE_REFR_DEBUG`
+   from this branch and from `a3ceef92`, the commit before the handlers. On
+   each, open the connected page, return to the main menu and open it again.
+   Record the refresh time LVGL reports for the first and the cached draw.
+   Pass: the cached draw is no more than 10% slower than on `a3ceef92`. A
+   failure reverts the image handlers; the admission fix stands alone.
 
