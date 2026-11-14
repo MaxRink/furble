@@ -1,6 +1,8 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <deque>
 #include <exception>
@@ -145,6 +147,37 @@ thread_local SimTask *currentTask = nullptr;
 thread_local const char *simTaskName = "ui";
 
 void releaseTaskLocked(SimTask &task, SimWaitResult result);
+void reportTasksLocked(std::string &out);
+
+// Scheduler trace, a diagnostic for issue 289. With FURBLE_SIM_SCHED_TRACE set
+// to anything but 0, the scheduler prints the task table and a native
+// backtrace of a task each time it stops waiting for that task: the stall
+// breaker parks it, or a UI handoff runs out its host bound while it is still
+// runnable. Either one lets the virtual clock move while the task makes no
+// progress, so the backtrace names the wait the scheduler cannot see. Off by
+// default and read once; it changes no scheduling decision.
+bool schedTraceEnabled(void) {
+  static const bool enabled = []() {
+    const char *value = std::getenv("FURBLE_SIM_SCHED_TRACE");
+    return value != nullptr && value[0] != '\0' && std::strcmp(value, "0") != 0;
+  }();
+  return enabled;
+}
+
+void traceTurnLossLocked(const char *event, SimTask &task) {
+  if (!schedTraceEnabled()) {
+    return;
+  }
+  std::string report;
+  reportTasksLocked(report);
+  std::fflush(stdout);
+  std::fprintf(stderr, "SIM SCHED TRACE: %s task=%s clock_ms=%u\n%s", event, task.name.c_str(),
+               Furble::Sim::clockMillis(), report.c_str());
+  if (task.worker.joinable()) {
+    Furble::Sim::watchdogDumpThread(task.worker.native_handle(), task.name.c_str());
+  }
+  std::fflush(stderr);
+}
 
 bool taskStopping(void) {
   return currentTask != nullptr && currentTask->stopping.load();
@@ -267,6 +300,7 @@ void waitForTurnLocked(std::unique_lock<std::mutex> &lock) {
     // scheduler cannot see and only another task can free it, so hand the turn
     // on rather than hanging the process.
     if (runningTask != nullptr && runningTask != currentTask) {
+      traceTurnLossLocked("stall breaker parked", *runningTask);
       runningTask->parked = true;
       runningTask = nullptr;
       schedulerProgress++;
@@ -925,9 +959,15 @@ void vTaskDelay(TickType_t ticks) {
     // finish. SchedulerMutex waits do not use this fallback.
     // See the comment on UI_HANDOFF_BOUND.
     std::unique_lock<std::mutex> lock(Furble::Sim::schedulerMutex());
-    Furble::Sim::schedulerCondition().wait_for(lock, UI_HANDOFF_BOUND, []() {
+    const bool settled = Furble::Sim::schedulerCondition().wait_for(lock, UI_HANDOFF_BOUND, []() {
       return Furble::Sim::schedulerStopping() || nextRunnableTaskLocked() == nullptr;
     });
+    if (!settled && schedTraceEnabled()) {
+      SimTask *pending = nextRunnableTaskLocked();
+      if (pending != nullptr) {
+        traceTurnLossLocked("ui handoff bound expired", *pending);
+      }
+    }
     return;
   }
 
@@ -1178,6 +1218,11 @@ void furble_sim_report_tasks(std::string &out) {
     out += "SIM WATCHDOG: scheduler lock is held, task table unavailable.\n";
     return;
   }
+  reportTasksLocked(out);
+}
+
+namespace {
+void reportTasksLocked(std::string &out) {
   out += "SIM WATCHDOG: tasks (" + std::to_string(tasks.size()) + ")\n";
   if (runningTask == nullptr) {
     out += "  turn holder: none\n";
@@ -1191,9 +1236,10 @@ void furble_sim_report_tasks(std::string &out) {
     if (task->wait_has_deadline) {
       out += " deadline_ms=" + std::to_string(static_cast<unsigned long>(task->wait_deadline));
     }
-    out += '\n';
+    out += " name=" + task->name + '\n';
   }
 }
+}  // namespace
 
 bool furble_sim_task_join_claimed(TaskHandle_t taskHandle) {
   const std::lock_guard<std::mutex> lock(Furble::Sim::schedulerMutex());
