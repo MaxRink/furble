@@ -174,11 +174,14 @@ second pass, charged once. `mqtt` grows by 48 to 64 bytes through the nine bound
 2,560; the #414 tool reports the same 2,352 on this build, so the change came
 from master between the two. The `esp_timer` row is new.
 
-Replaying the 6 KiB MQTT owner that overflowed on hardware fails without any
-scripted constant: `--stack mqtt=6144` on the StickS3 reports 7,840 of 6,144.
-Its deepest path runs through `MQTT::taskStep` and
-`MQTT::processLifecycleEvents`, 2,400 bytes each, because both hold a
-`queued_event_t` copy with the full topic and payload buffers.
+Replaying the 6 KiB MQTT owner that overflowed on hardware used to fail
+without any scripted constant: `--stack mqtt=6144` on the StickS3 reported
+7,840 of 6,144. Its deepest path ran through `MQTT::taskStep` and
+`MQTT::processLifecycleEvents`, 2,400 bytes each, because both held a
+`queued_event_t` copy with the full topic and payload buffers. Both copies
+are gone, and the same replay now reads 3,312 of 6,144. The 10 KiB owner
+stays until a hardware `perf tasks` reading confirms a smaller one; plan 314
+records that gate.
 
 The `sys_evt` row is the ESP-IDF default event loop task
 (`CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE`, 2,304 bytes), which runs the WiFi

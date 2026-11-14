@@ -780,18 +780,19 @@ void hwStart(void) {
           mqtt.queueRegion = "internal";
           mqtt.queueBytes = Furble::MQTTMemory::EVENT_QUEUE_BYTES;
         }
-        // The esp-mqtt client task fills this copy instead of building the
-        // event on its 3 KiB stack. Production allocates it with the queue,
+        // The esp-mqtt client task fills the first event copy instead of
+        // building the event on its 3 KiB stack, and the owner receives into
+        // the second. Production allocates both in one block with the queue,
         // in PSRAM when the block fits there.
-        const bool incomingPsram =
+        const bool copiesPsram =
             heapPsramPresent()
-            && heapPsramLargest() >= Furble::MQTTMemory::INCOMING_EVENT_BLOCK_BYTES;
-        if (heapAllocTagged(Furble::MQTTMemory::INCOMING_EVENT_BYTES, "mqtt_incoming",
-                            incomingPsram, true)
+            && heapPsramLargest() >= Furble::MQTTMemory::EVENT_COPIES_BLOCK_BYTES;
+        if (heapAllocTagged(Furble::MQTTMemory::EVENT_COPIES_BYTES, "mqtt_event_copies",
+                            copiesPsram, true)
             == 0) {
           mqtt.state = "alloc_failed";
           ESP_LOGE("heap", "Mem alloc fail. size 0x%04x caps 0x00000804",
-                   static_cast<unsigned>(Furble::MQTTMemory::INCOMING_EVENT_BYTES));
+                   static_cast<unsigned>(Furble::MQTTMemory::EVENT_COPIES_BYTES));
           mqtt.heapFreeAfter = heapFree();
           return;
         }
