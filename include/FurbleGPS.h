@@ -198,6 +198,32 @@ class GPS {
    * that follows STANDBY/RAIL_OFF.
    */
   uint32_t simDutyWakeFixesParsed(void) const { return m_SimDutyWakeFixesParsed.load(); }
+  /**
+   * Has the duty cycle acted on every fix it already has?
+   *
+   * PCAS12 is sent only after the UI pushes a fix and the GPS task consumes
+   * the request that raised. This is true when the fake UART holds no bytes,
+   * the GPS task holds none it has not parsed, the latest fix is pushed, the
+   * request is consumed and the task is not inside the request handling, so
+   * any command for those fixes has been written. It does not depend on
+   * the cycle state: a wake that gets no burst goes degraded, and a request
+   * can be consumed in the same pass that starts a burst, before the new
+   * state is published. The profiler's `gps.state` label cannot answer this,
+   * because a duty wake moves the cycle from STANDBY to BURST without
+   * relabelling it.
+   */
+  bool simDutySettled(void) const;
+  /**
+   * Do the cycle status readers return while m_CycleMutex is held?
+   *
+   * Holds the mutex on the calling thread and runs isDegraded(),
+   * getCycleStatusSnapshot() and getReceiverStatus() on a helper thread. A
+   * reader that took the lock again would let a pass block behind it, which
+   * the timing of the gps-reader-hold scenario cannot reach for the page
+   * readers. The helper is detached, so a blocked reader finishes once the
+   * lock is released instead of hanging the run.
+   */
+  bool simReadersLockFree(void) const;
 #endif
   /** Get the quality of the fix currently sent to the camera. */
   Fix getFix(void) const;
@@ -236,9 +262,9 @@ class GPS {
    * be told apart from one that has gone quiet.
    *
    * The degraded fields duplicate cycle_status_t on purpose. A caller that
-   * needs the cycle state and the retry count together must not take
-   * m_CycleMutex twice, or it can render a torn composite: a fresh state beside
-   * a stale retry count.
+   * needs the cycle state and the retry count together must not read the
+   * snapshot twice, or it can render a torn composite: a fresh state beside a
+   * stale retry count.
    */
   struct receiver_status_t {
     /** Power cycle state name, from cycleStateName(). Never null. */
@@ -263,10 +289,8 @@ class GPS {
     uint32_t retries;
   };
 
-  cycle_status_t getCycleStatusSnapshot(void) const {
-    const std::lock_guard<std::mutex> lock(m_CycleMutex);
-    return {m_CycleState == cycle_state_t::DEGRADED, m_Degraded.failures()};
-  }
+  /** Lock free: reads the status the GPS task published after its last pass. */
+  cycle_status_t getCycleStatusSnapshot(void) const;
 
   /**
    * Is the power cycle in the degraded retry state?
@@ -673,12 +697,30 @@ class GPS {
 #if defined(FURBLE_SIM)
   std::atomic<uint32_t> m_SimFreshFixesParsed = 0;
   std::atomic<uint32_t> m_SimDutyWakeFixesParsed = 0;
+  /**
+   * Set while serviceSerial() holds bytes it has not parsed and while
+   * serviceCycle() may act on a duty request.
+   */
+  std::atomic<bool> m_SimDutyBusy = false;
 #endif
   std::atomic<bool> m_CycleRequest = false;
 
   // serialises the cycle state between the GPS task and enable() or disable(),
-  // never held across PMIC, UART or other blocking hardware setup
+  // never held across PMIC, UART or other blocking hardware setup. Readers never
+  // take it, they read m_CycleStatus. The service passes take it blocking.
   mutable std::mutex m_CycleMutex;
+
+  // What the status readers see: the cycle state, retry count, power policy,
+  // duty and rate packed into one word, plus the last sentence tick. The GPS
+  // task publishes both at the end of each service pass, and enable() and
+  // disable() publish after a reset. The word is one coherent pass; the tick is
+  // a separate load and may be one pass newer. No reader takes a lock, so none
+  // can make the GPS task skip a pass. A reader that took m_CycleMutex once made
+  // serviceSerial() drop a consumed UART event.
+  std::atomic<uint64_t> m_CycleStatus {0};
+  std::atomic<uint32_t> m_PublishedLastSentence {0};
+
+  void publishCycleStatus(void);
 
 #if defined(FURBLE_M5STICKS3)
   // held only during a receive burst or the burst acquisition window

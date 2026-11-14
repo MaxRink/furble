@@ -1,0 +1,86 @@
+# A slow GPS status reader must never cost the receiver a burst
+# (plans/18-gps-motion.md, "Fix: gps-motion-detector flake").
+#
+# The status readers (isDegraded(), getCycleStatusSnapshot() and
+# getReceiverStatus()) used to take m_CycleMutex, and the GPS task's service
+# passes used try_lock and skipped the pass when it was held. GPS::update() on
+# the UI task reads isDegraded() once a second. When that read overlapped the
+# task's handling of a UART pattern event, the event was consumed with no read,
+# the burst was lost, BURST timed out after 5 s and the cycle went degraded for
+# at least the 10 s backoff. It surfaced as a rare gps-motion-detector failure
+# under parallel load.
+#
+# The seed holds every snapshot reader for 30 ms of host time, which widens that
+# overlap from a rare host race to several hits a run. Readers now load a
+# published snapshot without the lock, so the hold can no longer reach the GPS
+# task.
+#
+# Every degraded episode lasts at least the 10 s first backoff, so sampling
+# every 5 s sees any episode in the two minute window.
+seed gps true
+seed gps_power 0
+seed gps_duty 0
+seed gps_uart_mode ack
+seed gps_reader_hold_ms 30
+# The GPS Data page reads getReceiverStatus() once a second on the 135x240 and
+# 320x240 panels, so that reader is held too; GPS::update() covers
+# isDegraded() on every panel.
+action nav gps_data
+wait 400
+assert gps.state tracking
+assert gps.degraded 0
+# Timing cannot reach the page readers: the page timer runs after the GPS task
+# has handled the tick's UART event. This holds m_CycleMutex and requires all
+# three readers to return anyway.
+assert gps.readers_lock_free yes
+wait 5000
+assert gps.degraded 0
+wait 5000
+assert gps.degraded 0
+wait 5000
+assert gps.degraded 0
+wait 5000
+assert gps.degraded 0
+wait 5000
+assert gps.degraded 0
+wait 5000
+assert gps.degraded 0
+wait 5000
+assert gps.degraded 0
+wait 5000
+assert gps.degraded 0
+wait 5000
+assert gps.degraded 0
+wait 5000
+assert gps.degraded 0
+wait 5000
+assert gps.degraded 0
+wait 5000
+assert gps.degraded 0
+wait 5000
+assert gps.degraded 0
+wait 5000
+assert gps.degraded 0
+wait 5000
+assert gps.degraded 0
+wait 5000
+assert gps.degraded 0
+wait 5000
+assert gps.degraded 0
+wait 5000
+assert gps.degraded 0
+wait 5000
+assert gps.degraded 0
+wait 5000
+assert gps.degraded 0
+wait 5000
+assert gps.degraded 0
+wait 5000
+assert gps.degraded 0
+wait 5000
+assert gps.degraded 0
+wait 5000
+assert gps.degraded 0
+assert gps.state tracking
+assert gps.degraded_retries 0
+exit

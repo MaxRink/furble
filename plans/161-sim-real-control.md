@@ -1,9 +1,13 @@
 # Plan 161: production connection stack in the simulator
 
+Implementation state (2026-11-13): merged as #261. #259 merged, #270 removed the seed 3 XFAIL, and the manifest certifies all
+three boards. The fakes named in the older sections were deleted (`9081fc94`). Open: gap 7 (a
+mid-session restart scenario) and gap 1 (a `ble-kill` liveness probe).
+
 ## Numbering note
 
-161 is free on master and in `plans/README.md`. Two unmerged branches already
-claim numbers in this range: `fork/test/sim-ricoh-exact-peers` carries
+161 was free on master and in `plans/README.md`. Two branches then claimed
+numbers in this range (PR #259 and PRs #251 and #252 have since merged): `fork/test/sim-ricoh-exact-peers` carries
 the unmerged plan `161-ricoh-peer-safety.md` and PR #259 carries
 `plans/implemented/162-console-host-coverage.md`. Whichever of those lands second has to
 renumber. 156 and 157 remain reserved for PR #251 and PR #252.

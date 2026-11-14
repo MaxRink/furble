@@ -27,6 +27,15 @@ PRODUCTION_PREFIXES = ("src/", "lib/furble/", "include/", "sim/")
 # sim/.pio holds the CI clone of M5GFX, M5Unified, LVGL and TinyGPSPlus:
 # third-party code that only looks like furble's because it sits under sim/.
 EXCLUDED_PREFIXES = ("sim/build/", "sim/shim/", "sim/.pio/")
+# .clang-tidy's HeaderFilterRegex is unanchored, so a vendored header such as
+# .pio/libdeps/<env>/M5GFX/src/lgfx/... matched its "src/" and its checks ran
+# with WarningsAsErrors. Anchor it to this checkout, relative or absolute.
+# CMake keeps ".." in include paths (tests/host/../../include/X.h), so plain
+# segments followed by ".." steps may come first; a segment starting with a
+# dot may not, and sim/.pio (the simulator's dependencies) is refused.
+HEADER_FILTER = (f"--header-filter=^({re.escape(str(ROOT))}/)?(([^/.][^/]*/)+(\\.\\./)+)*"
+                 "(src/|lib/furble/|include/|sim/[^.])")
+DIAGNOSTIC_ERROR = re.compile(r"^\S.*:\d+:\d+: (fatal )?error: ")
 
 
 def is_production(path: str) -> bool:
@@ -335,6 +344,7 @@ def run_clang_tidy(
             "-p",
             str(build_dir),
             "--config-file=.clang-tidy",
+            HEADER_FILTER,
             "--quiet",
         ]
         # The simulator shims stand in for ESP-IDF headers; a firmware
@@ -352,8 +362,10 @@ def run_clang_tidy(
         # WarningsAsErrors turns a check in a vendored header into an error and
         # a non-zero exit. Only an error that is not a promoted check means
         # the translation unit did not compile.
+        # Only diagnostic lines count: a quoted source line can contain the
+        # word error, and one did, which made a clean run look broken.
         errors = [line for line in (output.stdout + output.stderr).splitlines()
-                  if " error: " in line]
+                  if DIAGNOSTIC_ERROR.match(line)]
         promoted = bool(errors) and all("-warnings-as-errors]" in line for line in errors)
         if output.returncode != 0 and not file_findings and not file_errors and not promoted:
             # Name the database and the first error that is not a promoted
@@ -361,7 +373,7 @@ def run_clang_tidy(
             lines = (output.stdout + output.stderr).splitlines()
             reason = next(
                 (line.strip() for line in lines
-                 if "error" in line.lower() and "-warnings-as-errors]" not in line),
+                 if DIAGNOSTIC_ERROR.match(line) and "-warnings-as-errors]" not in line),
                 "no error line",
             )
             compile_errors.append(

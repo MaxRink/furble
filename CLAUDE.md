@@ -30,8 +30,9 @@ CLAUDE.md whose directory it touches.
   over the slot; OTA and TLS remain enabled.
 - Auth integration with `-Os` reached 1,743,717 bytes, 2,917 over the slot.
   The `-Oz` experiment produced the identical size despite confirmed object-file
-  flags, so it was reverted. The combined image still does not fit; release
-  optimization, security features and the OTA layout are unchanged.
+  flags, so it was reverted. Release optimization, security features and the
+  OTA layout were unchanged. The flash slimming below (#435) brought the image
+  back under the slot.
 - Flash slimming (plan 314) keeps every feature and IPv6. All boards use ESP-IDF
   Log V2 with the DHCP server and non-AES GCM off. StickC images compile out
   the SD stack and the unused Montserrat 22. Images that map to one M5GFX board
@@ -101,7 +102,8 @@ CLAUDE.md whose directory it touches.
   a dispatch has no meaningful comparison base.
   Android's optional `run_emulator` input keeps the default dispatch fast.
 - Before pushing config, enum, or settings changes, clean-build every
-  documented env, including the non-CI `esp32-s3-headless` env. A new settings
+  documented env, including `esp32-s3-headless`, which only the reproducible
+  build workflow compiles, not the PR firmware matrix. A new settings
   enum value must be added in five places or the headless build fails
   `-Werror=switch`. See `plans/95-engineering-lessons.md`.
 - The direct SDL simulator build writes compiler depfiles beside each object.
@@ -380,4 +382,4 @@ check.
 
 Dependabot checks GitHub Actions, Python tooling, Android Gradle dependencies, and the Apple Swift package weekly. Routine minor and patch changes are grouped for review. Firmware pins in PlatformIO and ESP-IDF component manifests remain manual; Dependabot does not support those formats. Updates are proposed through pull requests and do not deploy or flash hardware. Pin Git-sourced PlatformIO dependencies to the full 40-character commit SHA so the VSCode extension can fetch them (upstream issue 309).
 
-Static analysis: `python3 tools/check_static_analysis.py --base origin/master` with the host, simulator and firmware compile databases (`tools/firmware_compile_db.py --env m5stick-s3` and `m5stick-c` after `pio run -t compiledb`); see `CONTRIBUTING.md`. A source no database compiles fails the gate. Raw C++ `new` and `delete` fail `cppcoreguidelines-owning-memory`: use `std::unique_ptr`, and hand a queue its pointer with `release()` and `reset()` on a failed send.
+Static analysis: `python3 tools/check_static_analysis.py --base origin/master` with the host, simulator and firmware compile databases (`tools/firmware_compile_db.py --env m5stick-s3` and `m5stick-c` after `pio run -t compiledb`); see `CONTRIBUTING.md`. A source no database compiles fails the gate. The firmware databases add `-nostdlibinc` so clang never reaches the host's `/usr/include`, and the gate anchors clang-tidy's header filter to the checkout so vendored `.pio/libdeps` and `sim/.pio` headers stay out (#463). Raw C++ `new` and `delete` fail `cppcoreguidelines-owning-memory`: use `std::unique_ptr`, and hand a queue its pointer with `release()` and `reset()` on a failed send.

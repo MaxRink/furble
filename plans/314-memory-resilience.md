@@ -1,8 +1,13 @@
 # 314 - Memory resilience
 
-Status: in progress. PR 1 of 14 (sim config parity and abort semantics) is
-implemented on `feat/314-sim-config-parity`. Sim-only: no hardware was flashed
-or measured. Every number comes from datasheets, the pinned ESP-IDF source,
+Status (2026-11-13): all 14 PRs are merged on master. PR 1 #411, PR 2 #412,
+PR 3 #413, PR 4a #414, PR 4b #425, PR 5 #423, PR 6 #429, PR 7 #430, PR 8 #431,
+PR 9 #432, PR 10 #433, PR 11 #436, PR 12 #437, PR 13 #438, PR 14 #439. Fixes
+found along the way merged as #415 to #424, #428 and #435. Two software items
+remain: PR 2c font and DPI parity, and the stack-budget cycle memoization
+limit recorded as row 18 of
+[314-review-feedback.md](314-review-feedback.md). Sim-only: no hardware was
+flashed or measured. Every number comes from datasheets, the pinned ESP-IDF source,
 the sdkconfig files and the firmware's own build output.
 
 ## Problem
@@ -97,7 +102,7 @@ Validation (local, macOS):
 
 ## PR 2: count every device allocation
 
-Implemented on `feat/314-sim-count-allocations`, stacked on PR 1:
+Implemented and merged as #412:
 
 - `sim/heap_count.cpp` replaces the global `operator new`/`delete` family and
   provides `furble_sim_fw_malloc`, `realloc` and `free`. LVGL's
@@ -177,13 +182,14 @@ Deviations:
   the Core's internal pool, while the Core's sdkconfig sets no cache. Each
   build now writes its own `lv_conf.h` with the board's `LV_CACHE_DEF_SIZE`;
   seed 3 then runs clean. Font and DPI parity is still open (PR 2c): StickC
-  and Core sims render with 130 DPI and the 16 px default font, while their
-  sdkconfigs set 64 DPI and 12 px. Changing that moves their layouts and needs
+  and Core sims render with 130 DPI and the 16 px default font, while the
+  StickC sdkconfig sets 64 DPI and 12 px and the Core sdkconfig sets 96 DPI and
+  22 px. Changing that moves their layouts and needs
   scenario re-certification.
 
 ## PR 3: per-board boot heap from datasheets and code
 
-Implemented on `feat/314-sim-board-baselines`, stacked on PR 2. No hardware.
+Implemented and merged as #413. No hardware.
 
 - `tools/derive_sim_heap.py` reads each release env's `firmware.elf` and
   `sdkconfig.<env>`. It takes the internal 8-bit regions the pinned ESP-IDF
@@ -1236,3 +1242,62 @@ the margin. Rejecting a stale record, or firing a late one at once, needs a
 battery-backed RTC sample at boot, which the simulator does not model; that
 coverage gap is issue #455. The gate passes 3 of 3 runs in an
 Ubuntu 24.04 container.
+
+## Follow-up: firmware clang-tidy reached host headers and vendored checks (#463)
+
+State: implemented.
+
+Any PR touching a header that `FurbleCompanion.cpp`, `FurbleCompanionService.cpp`,
+`FurbleGPS.cpp` or `FurbleUI.cpp` include failed `cppcheck and clang-tidy` with
+"could not compile" on both firmware databases. #465 hit it through
+`FurbleGPS.h`. There were two causes, and neither was the code.
+
+- m5stick-c: clang on Linux appends `/usr/local/include` and `/usr/include`
+  even for the bare `i686-unknown-none-elf` target. newlib's `limits.h` ends in
+  `include_next`, which went through clang's builtin `limits.h` into glibc's,
+  and glibc's needs `__GLIBC_USE`. `tools/firmware_compile_db.py` now adds
+  `-nostdlibinc`, which drops those two directories and keeps clang's builtin
+  headers. Measured in the Ubuntu 24.04 image with clang 18.1.3: the search
+  list loses exactly `/usr/local/include` and `/usr/include`, and
+  `#include <limits.h>` stops at the builtin header.
+- m5stick-s3: nothing failed to compile. `.clang-tidy`'s `HeaderFilterRegex`
+  `(src|lib/furble|include|sim)/` is unanchored, so it matched the `src/` in
+  `.pio/libdeps/m5stick-s3/M5GFX/src/lgfx/...`. M5GFX's checks ran under
+  `WarningsAsErrors` and clang-tidy exited 1. The gate's "did it compile" test
+  read every line containing ` error: `, and a quoted M5GFX source line,
+  `failure(E2&& error)`, counted as a real error. The gate now passes
+  `--header-filter` anchored to the checkout, relative or absolute, and reads
+  only diagnostic lines (`file:line:col: error:`). With Homebrew clang-tidy 23
+  on the StickS3 database, `FurbleGPS.cpp` went from exit 1 to exit 0 with no
+  findings, and a planted owning-memory violation in `include/FurbleGPS.h`
+  was still reported.
+
+Removing the M5GFX noise exposed one real finding in a file those runs
+analyse: `cmdHeap` used `strcmp` as a bool. It now compares with `!= 0`.
+`tests/test_check_static_analysis.py` covers the anchored filter, its use on
+the command line and a quoted source line; all three fail against the old
+tool. `tests/test_firmware_compile_db.py` asserts `-nostdlibinc`.
+
+The `strcmp` fix rewrote a line holding the console literal `"trace"`, and
+`tools/check_pr_hygiene.py` failed it for not updating the console docs. A
+change that adds and removes exactly the same string literals in
+`FurbleConsole.cpp` now warns instead of failing; any changed literal still
+fails. `tests/test_check_pr_hygiene.py` covers both.
+
+The pre-push review found two holes in the first anchored filter. CMake keeps
+`..` in include paths, so the host database reaches headers as
+`tests/host/../../include/X.h`, which no longer matched, and those headers
+would have gone unchecked without a word. The simulator database's
+dependencies live under `sim/.pio/libdeps/sim/`, which still matched through
+`sim/`. The filter now accepts plain segments followed by `..` steps before
+`src/`, `lib/furble/`, `include/` or `sim/`, and refuses `sim/` followed by a
+dot. Homebrew clang-tidy 23 on a small tree reported a planted finding in
+`tests/host/../../include/a.h` and suppressed the same finding in
+`sim/.pio/v/src/v.h`.
+
+Review of #466:
+
+| # | Finding | Outcome | Evidence |
+| --- | --- | --- | --- |
+| 1 | Copilot, `tools/check_pr_hygiene.py:614`: comparing the file's sorted literals lets a swap of two output strings, or a string moved to another command, through as a warning. | Fixed. Each string-bearing line must keep its literals, in order, at its own position, where new line m replaces old line n when m equals n plus the lines added before m minus those removed before n. The same check now also decides a whitespace-only change, which used sorted lines and had the same hole on master. | Tests for a swap and for a move to another hunk fail, and fail against master's checker too; the in-place `strcmp` rewrite still only warns. The rule treats one contiguous replaced block as one place, so a string moved between branches inside a single block still only warns, as it did on master. |
+| 2 | Copilot, `CONTRIBUTING.md:235`: the workflow change must also update `CLAUDE.md` and `AGENTS.md`, and the touched `src/` and `plans/` directories need their `CLAUDE.md` updated. | Fixed. `CLAUDE.md` and `AGENTS.md` describe `-nostdlibinc`, the anchored header filter and the console rule. `src/CLAUDE.md` asks for explicit `strcmp` comparisons, and `plans/CLAUDE.md` records the follow-up section convention. | `CLAUDE.md`, `AGENTS.md`, `src/CLAUDE.md`, `plans/CLAUDE.md` |
