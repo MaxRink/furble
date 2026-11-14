@@ -379,10 +379,10 @@ def worst_case(graph, entry, resolve, pruned=frozenset(), recursion=()):
     return cost[start], path, notes
 
 
-# Simple paths explored per recursive component before the walk falls back to
-# the component's frame sum. Every bounded component on the seven envs fits.
 # A source citation: a C, C++ or header file and a line number.
 CITATION = re.compile(r"\.(c|h|cpp):\d+")
+# Simple paths explored per recursive component before the walk falls back to
+# the component's frame sum. Every bounded component on the seven envs fits.
 PATH_BUDGET = 200000
 
 

@@ -2,7 +2,7 @@
 #
 # Hardware with WiFi, BLE, the companion service and the display active measured
 # 13,543 free / 12,788 largest internal bytes with the WebUI off before the
-# #394 RAM pass. The supervisor fits (4,608/4,096) but the HTTPS server does not
+# #394 RAM pass. The supervisor fits (5,120/4,608) but the HTTPS server does not
 # (20,480/12,288), so the firmware logs the measured pair and stays closed.
 # This scenario proves the same decision, the production log sentence, a bounded
 # 10 s retry and a fed watchdog instead of the pre-#392 8 KiB/12 KiB allocation
