@@ -10,6 +10,8 @@ lib/furble/protocol/FujifilmProtocol.h
 lib/furble/protocol/GpsCasic.cpp
 lib/furble/protocol/GpsCasic.h
 lib/furble/protocol/GpsNavx.h
+lib/furble/protocol/GpsUbx.cpp
+lib/furble/protocol/GpsUbx.h
 lib/furble/protocol/ProvisionTLV.cpp
 lib/furble/protocol/ProvisionTLV.h
 lib/furble/protocol/RicohTime.h

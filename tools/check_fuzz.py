@@ -172,6 +172,7 @@ class Gate:
             "webui": host_build / "webui_fuzz",
             "companion": host_build / "companion_fuzz",
             "mqtt": host_build / "mqtt_fuzz",
+            "gps_ubx": host_build / "gps_ubx_fuzz",
         }
         key = "smoke" if smoke else "full"
         for name, binary in binaries.items():
