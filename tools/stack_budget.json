@@ -243,6 +243,15 @@
     "^esp_err_t nvs::Storage::init\\(uint32_t, uint32_t\\)$"
   ],
   "boot_only_comment": "Functions that run once on main before any task exists, so other tasks never reach them. M5.begin() runs only in the Platform constructor, which Platform::init() runs at src/main.cpp before the first xTaskCreate; a later Platform::getInstance() returns the built object. nvs::Storage::init runs only for a partition that is not yet initialized; Settings::init() initializes NVS in app_main before any task starts, so a later Preferences::begin() returns from nvs_flash_init_partition early.",
+  "cuts": [
+    {
+      "under": "^__retarget_lock_(try_)?acquire(_recursive)?$",
+      "caller": "^lock_acquire_generic$",
+      "callee": "^lock_init_generic$",
+      "why": "newlib/src/locks.c: __retarget_lock_acquire* asserts its _LOCK_T argument is not NULL (check_lock_nonzero), and on the S3 MAYBE_OVERRIDE_LOCK swaps a ROM magic value for a static mutex. It then passes the address of that non-NULL copy to _lock_acquire*, so lock_acquire_generic never takes its lazy lock_init_generic branch below it. flockfile reaches the stdout lock this way from every esp_log call; the stream locks are created when the stream is opened (__retarget_lock_init_recursive), stdout's at boot."
+    }
+  ],
+  "cuts_comment": "While a function matching under is on the walked path, a call from caller to callee is not followed. Cite why the call cannot happen below under; a cut whose functions are not all linked is inert.",
   "recursion_bounds": [
     {
       "function": "^esp_cache_get_alignment$",

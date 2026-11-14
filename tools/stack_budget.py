@@ -257,8 +257,13 @@ class Graph:
         return [t for t in self.frame if rx.search(self.name[t]) or rx.search(t)]
 
 
-def worst_case(graph, entry, resolve, pruned=frozenset(), recursion=()):
+def worst_case(graph, entry, resolve, pruned=frozenset(), recursion=(), cuts=()):
     """Deepest frame sum from entry; returns (bytes, path, notes).
+
+    cuts lists (under, caller, callee) title sets: while a function in under is
+    on the walked path, a call from caller to callee is not followed. A
+    function is memoized once per set of active cuts, because the same code can
+    be reachable below an under function and elsewhere.
 
     A call back into a function already on the walk's stack closes a cycle.
     The cycle is cut there, so the walk follows the deepest path that visits
@@ -289,9 +294,9 @@ def worst_case(graph, entry, resolve, pruned=frozenset(), recursion=()):
                 return depth, why
         return None, None
 
-    def walk(fn):
-        if fn in memo:
-            return memo[fn]
+    def walk(fn, active=frozenset()):
+        if (fn, active) in memo:
+            return memo[(fn, active)]
         if fn in stack:
             cycle = tuple(stack[stack.index(fn):])
             depth, why = bound(cycle)
@@ -312,19 +317,25 @@ def worst_case(graph, entry, resolve, pruned=frozenset(), recursion=()):
             notes["unknown"].add(fn)
             return 0, []
         if body != fn:
-            return walk(body)
+            return walk(body, active)
         if graph.kind[fn] == "dynamic":
             notes["dynamic"].add(fn)
         stack.append(fn)
+        inner = active | {i for i, (under, _, _) in enumerate(cuts) if fn in under}
+        skip = set(pruned)
+        for i in inner:
+            _, caller, callee = cuts[i]
+            if fn in caller:
+                skip |= callee
         best, best_path = 0, []
-        for dst in sorted(targets(fn) - pruned):
-            depth, path = walk(dst)
+        for dst in sorted(targets(fn) - skip):
+            depth, path = walk(dst, frozenset(inner))
             if depth > best:
                 best, best_path = depth, path
         stack.pop()
         more = sum(cycles.get(fn, {}).values())
-        memo[fn] = (graph.frame[fn] + more + best, [fn] + best_path)
-        return memo[fn]
+        memo[(fn, active)] = (graph.frame[fn] + more + best, [fn] + best_path)
+        return memo[(fn, active)]
 
     sys.setrecursionlimit(20000)
     depth, path = walk(entry)
@@ -397,6 +408,12 @@ def main():
     boot_only = set()
     for pattern in manifest.get("boot_only", []):
         boot_only.update(graph.find(pattern))
+    # A cut whose functions are not all linked is inert, like an indirect rule.
+    cuts = []
+    for rule in manifest.get("cuts", []):
+        sets = tuple(set(graph.find(rule[key])) for key in ("under", "caller", "callee"))
+        if all(sets):
+            cuts.append(sets)
     overrides = {name: int(value) for name, _, value in (o.partition("=") for o in args.stack)}
     failed = 0
     for task in manifest["tasks"]:
@@ -416,7 +433,7 @@ def main():
                                if not tasks and rx.pattern not in scoped_callers]
         task_bounds = [(rx, depth, why) for rx, depth, why, tasks in recursion
                        if not tasks or task["name"] in tasks]
-        depth, path, notes = worst_case(graph, found[0], task_rules, pruned, task_bounds)
+        depth, path, notes = worst_case(graph, found[0], task_rules, pruned, task_bounds, cuts)
         need = depth + margin
         stack = overrides.get(task["name"], task["stack_bytes"])
         if isinstance(stack, str):
