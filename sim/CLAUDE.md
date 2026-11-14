@@ -624,8 +624,12 @@ shortens that host retry cadence for a bounded scenario.
   it asserts the gate changes without a GPS reset or setting toggle.
 - `seed gps_reader_hold_ms N` holds each GPS cycle status reader for N ms of
   host time through `Sim::gpsReaderHold()`, a timing seam in
-  `GPS::getCycleStatusSnapshot()`. `e2e/gps-reader-hold.txt` seeds 30 and
-  asserts the cycle never degrades. Readers used to hold `m_CycleMutex` while
+  `GPS::getCycleStatusSnapshot()` and `GPS::getReceiverStatus()`.
+  `e2e/gps-reader-hold.txt` seeds 30 and asserts the cycle never degrades. It
+  also opens the GPS Data page and asserts `gps.readers_lock_free`, which
+  holds `m_CycleMutex` and requires all three readers to return: the page
+  timer runs after the tick's UART event is handled, so timing alone cannot
+  catch a lock in the page's reader. Readers used to hold `m_CycleMutex` while
   the GPS task skipped any pass it could not lock, so a reader overlapping a
   UART event lost the burst. That was the rare `gps-motion-detector` failure
   under parallel load (plans/18-gps-motion.md). Keep the seam where the

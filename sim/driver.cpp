@@ -1613,6 +1613,9 @@ std::string queryValueUnscoped(const std::string &key) {
     if (sub == "duty_wake_fixes_parsed") {
       return std::to_string(gps.simDutyWakeFixesParsed());
     }
+    if (sub == "readers_lock_free") {
+      return gps.simReadersLockFree() ? "yes" : "no";
+    }
     if (sub == "duty_settled") {
       return gps.simDutySettled() ? "yes" : "no";
     }

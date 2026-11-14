@@ -10072,7 +10072,7 @@ void UI::addGPSDataMenu(const menu_t &parent) {
         // only available here.
         auto &gps = GPS::getInstance();
         // one snapshot, so the state and its retry count cannot be torn across
-        // two acquisitions of the cycle mutex
+        // two loads of the published cycle word
         const auto receiver = gps.getReceiverStatus();
 
         // Where the fix comes from, and how long ago the receiver last said

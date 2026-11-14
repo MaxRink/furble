@@ -75,7 +75,12 @@ bool validCoordinate(double value, double min, double max) {
 }  // namespace
 
 #if defined(FURBLE_SIM)
+#include <chrono>
+#include <memory>
+#include <thread>
+
 #include "driver.h"
+#include "heap_count.h"
 #include "power_profiler.h"
 #define FURBLE_SIM_GPS_STATE(state) Furble::Sim::profilerSetGpsState(state)
 #define FURBLE_SIM_TIMER_FIRE(name) Furble::Sim::profilerTimerFire(name)
@@ -1307,6 +1312,23 @@ void GPS::publishCycleStatus(void) {
 }
 
 #if defined(FURBLE_SIM)
+bool GPS::simReadersLockFree(void) const {
+  const Sim::HostAllocScope host;
+  auto done = std::make_shared<std::atomic<bool>>(false);
+  const std::lock_guard<std::mutex> held(m_CycleMutex);
+  std::thread([this, done] {
+    const Sim::HostAllocScope helperHost;
+    (void)isDegraded();
+    (void)getCycleStatusSnapshot();
+    (void)getReceiverStatus();
+    done->store(true);
+  }).detach();
+  for (int waited = 0; (waited < 2000) && !done->load(); waited += 5) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
+  return done->load();
+}
+
 bool GPS::simDutySettled(void) const {
   // Read in this order. The task marks itself busy before it takes bytes from
   // the UART and stays busy until it has parsed them, so once the UART is
@@ -1342,6 +1364,9 @@ GPS::cycle_status_t GPS::getCycleStatusSnapshot(void) const {
  * are read afterwards, under the AID mutex.
  */
 GPS::receiver_status_t GPS::getReceiverStatus(void) const {
+  // The same slow-reader seam as getCycleStatusSnapshot(): the GPS Data page
+  // calls this once a second, and a lock taken here would reach the GPS task.
+  FURBLE_SIM_GPS_READER_HOLD();
   receiver_status_t status = {};
 
   const uint64_t word = m_CycleStatus.load(std::memory_order_acquire);

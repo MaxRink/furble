@@ -637,6 +637,17 @@ schedules the next, so any future dropped event stalls it for good. A real
 receiver keeps its own 1 Hz clock. The regression scenario does not depend on
 that model.
 
+Review of #465 found the hold seam covered only `getCycleStatusSnapshot()`.
+`getReceiverStatus()` now has it too, and the scenario opens the GPS Data page.
+That alone proves nothing: with `getReceiverStatus()` taking `m_CycleMutex`
+again, and even with `serviceSerial()` back on try-lock-and-skip, the scenario
+passed 8 of 8. The page timer runs in the LVGL pass, after the GPS task has
+handled the tick's UART event, so the hold never overlaps it in the
+simulator. `gps.readers_lock_free` checks the property directly: it holds the
+mutex on the UI thread and requires all three readers to return on a helper
+thread. It reads `yes` on this branch and fails the scenario when either
+`getReceiverStatus()` or `getCycleStatusSnapshot()` takes the lock.
+
 ## Fix: gps-standby-wake settle race
 
 Master CI failed `gps-standby-wake` on `350b58e3` (run 43570517034):

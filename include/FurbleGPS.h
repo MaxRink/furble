@@ -213,6 +213,17 @@ class GPS {
    * relabelling it.
    */
   bool simDutySettled(void) const;
+  /**
+   * Do the cycle status readers return while m_CycleMutex is held?
+   *
+   * Holds the mutex on the calling thread and runs isDegraded(),
+   * getCycleStatusSnapshot() and getReceiverStatus() on a helper thread. A
+   * reader that took the lock again would let a pass block behind it, which
+   * the timing of the gps-reader-hold scenario cannot reach for the page
+   * readers. The helper is detached, so a blocked reader finishes once the
+   * lock is released instead of hanging the run.
+   */
+  bool simReadersLockFree(void) const;
 #endif
   /** Get the quality of the fix currently sent to the camera. */
   Fix getFix(void) const;

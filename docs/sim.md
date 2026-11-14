@@ -1273,6 +1273,12 @@ docs capture runs. `gps.fresh_fixes_parsed` counts parser-accepted fresh fixes
 for the session, while `gps.duty_wake_fixes_parsed` counts only fixes accepted
 by a duty-cycle wake burst after `STANDBY` or `RAIL_OFF`. The duty-wake counter
 lets `gps-standby-wake` assert the wake independently of the acquisition fix.
+`gps.readers_lock_free` holds the GPS cycle mutex on the UI thread and calls
+`isDegraded()`, `getCycleStatusSnapshot()` and `getReceiverStatus()` on a
+helper thread; it is `yes` when all three return. `gps-reader-hold` asserts
+it, because the scenario's timing reaches only the reader `GPS::update()`
+calls, not the GPS Data page's.
+
 `gps.duty_settled` is `yes` once the duty cycle can send no further command
 for a fix it already has: the fake UART has no bytes or receive event
 pending, the GPS task holds no bytes it has not parsed, the UI has pushed the
