@@ -427,7 +427,11 @@ again when its block is freed. `stop` ends the trace and `dump` prints what is
 left: each outstanding allocation with its size and caller addresses. Decode
 the addresses with `xtensa-esp32-elf-addr2line -e firmware.elf` (or the S3
 toolchain). A release image answers
-`error: heap tracing is not enabled in this build`.
+`error: heap tracing is not enabled in this build`. When ESP-IDF refuses to
+start the trace, the reply is `error: heap trace start failed: <name> (0x<code>)`.
+Console errors from a failed command use the same `<name> (0x<code>)` form,
+because release images ship without the esp_err name table and print
+`UNKNOWN ERROR` for the name.
 
 ```
 > heap trace start 200
