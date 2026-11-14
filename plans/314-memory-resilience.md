@@ -1271,3 +1271,9 @@ analyse: `cmdHeap` used `strcmp` as a bool. It now compares with `!= 0`.
 `tests/test_check_static_analysis.py` covers the anchored filter, its use on
 the command line and a quoted source line; all three fail against the old
 tool. `tests/test_firmware_compile_db.py` asserts `-nostdlibinc`.
+
+The `strcmp` fix rewrote a line holding the console literal `"trace"`, and
+`tools/check_pr_hygiene.py` failed it for not updating the console docs. A
+change that adds and removes exactly the same string literals in
+`FurbleConsole.cpp` now warns instead of failing; any changed literal still
+fails. `tests/test_check_pr_hygiene.py` covers both.

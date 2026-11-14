@@ -363,6 +363,21 @@ class ConsoleCouplingTest(unittest.TestCase):
     )
     self.assertEqual(findings_for(diff), [])
 
+  def test_code_around_an_unchanged_console_string_warns(self):
+    findings = findings_for(make_diff(
+        "src/FurbleConsole.cpp",
+        ['  if ((argc < 3) || (strcmp(argv[1], "trace") != 0)) {'],
+        removed=['  if ((argc < 3) || strcmp(argv[1], "trace")) {']))
+    self.assertEqual(rules(findings, CHECKER.FAIL), [])
+    self.assertEqual(rules(findings, CHECKER.WARN), ["doc-coupling"] * 2)
+
+  def test_changed_console_string_with_code_still_fails(self):
+    findings = findings_for(make_diff(
+        "src/FurbleConsole.cpp",
+        ['  if ((argc < 3) || (strcmp(argv[1], "traces") != 0)) {'],
+        removed=['  if ((argc < 3) || strcmp(argv[1], "trace")) {']))
+    self.assertEqual(rules(findings, CHECKER.FAIL), ["doc-coupling"] * 2)
+
   def test_removed_console_string_warns(self):
     findings = findings_for(
         make_diff("src/FurbleConsole.cpp", removed=[self.CONSOLE_LINE]))

@@ -605,9 +605,17 @@ def check_doc_coupling(files: list[ChangedFile]) -> list[Finding]:
           and not line.text.lstrip().startswith("#include")
           and not _is_comment_or_blank(console.path or "", line.text)
       ]
+      # The same literals added and removed is code rewritten around an
+      # unchanged string, e.g. strcmp(x, "trace") becoming an explicit
+      # comparison. Nothing a user sees changed, so it only warns.
+      def literals(lines):
+        return sorted(m for line in lines for m in STRING_LITERAL_RE.findall(line.text))
+
+      same_strings = literals(triggers_added) == literals(triggers_removed)
       if triggers_added or triggers_removed:
         severity = (
             FAIL if triggers_added and _change_signal(console) != "whitespace"
+            and not same_strings
             else WARN)
         missing = _missing_requirements(
             files, CONSOLE_REQUIRED_DOCS, extra_required=False)
