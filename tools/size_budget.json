@@ -34,8 +34,8 @@
     "waveshare-s3-eth": {
       "partitions": "partitions_waveshare_s3_eth.csv",
       "flash_slot": 6291456,
-      "dram_bytes": 52224,
-      "iram_bytes": 133120
+      "dram_bytes": 48128,
+      "iram_bytes": 128000
     },
     "esp32-s3-headless": {
       "partitions": "partitions_two_ota_8m.csv",

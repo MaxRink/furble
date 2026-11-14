@@ -249,7 +249,8 @@ bool IR::createChannel(void) {
 
   esp_err_t err = rmt_new_tx_channel(&tx, &m_Channel);
   if (err != ESP_OK) {
-    ESP_LOGE(LOG_TAG, "Failed to create IR RMT channel (%s).", esp_err_to_name(err));
+    ESP_LOGE(LOG_TAG, "Failed to create IR RMT channel (%s, 0x%x).", esp_err_to_name(err),
+             static_cast<unsigned>(err));
     m_Channel = nullptr;
     return false;
   }
@@ -257,7 +258,8 @@ bool IR::createChannel(void) {
   rmt_copy_encoder_config_t copy = {};
   err = rmt_new_copy_encoder(&copy, &m_Encoder);
   if (err != ESP_OK) {
-    ESP_LOGE(LOG_TAG, "Failed to create IR RMT encoder (%s).", esp_err_to_name(err));
+    ESP_LOGE(LOG_TAG, "Failed to create IR RMT encoder (%s, 0x%x).", esp_err_to_name(err),
+             static_cast<unsigned>(err));
     rmt_del_channel(m_Channel);
     m_Channel = nullptr;
     return false;
@@ -279,13 +281,15 @@ void IR::transmitSymbols(uint32_t carrier_hz,
 
   esp_err_t err = rmt_apply_carrier(m_Channel, &carrier);
   if (err != ESP_OK) {
-    ESP_LOGE(LOG_TAG, "Failed to apply IR carrier (%s).", esp_err_to_name(err));
+    ESP_LOGE(LOG_TAG, "Failed to apply IR carrier (%s, 0x%x).", esp_err_to_name(err),
+             static_cast<unsigned>(err));
     return;
   }
 
   err = rmt_enable(m_Channel);
   if (err != ESP_OK) {
-    ESP_LOGE(LOG_TAG, "Failed to enable IR RMT channel (%s).", esp_err_to_name(err));
+    ESP_LOGE(LOG_TAG, "Failed to enable IR RMT channel (%s, 0x%x).", esp_err_to_name(err),
+             static_cast<unsigned>(err));
     return;
   }
 
@@ -301,9 +305,11 @@ void IR::transmitSymbols(uint32_t carrier_hz,
 
   esp_err_t disable_err = rmt_disable(m_Channel);
   if (err != ESP_OK) {
-    ESP_LOGE(LOG_TAG, "Failed to transmit IR frame (%s).", esp_err_to_name(err));
+    ESP_LOGE(LOG_TAG, "Failed to transmit IR frame (%s, 0x%x).", esp_err_to_name(err),
+             static_cast<unsigned>(err));
   } else if (disable_err != ESP_OK) {
-    ESP_LOGE(LOG_TAG, "Failed to disable IR RMT channel (%s).", esp_err_to_name(disable_err));
+    ESP_LOGE(LOG_TAG, "Failed to disable IR RMT channel (%s, 0x%x).", esp_err_to_name(disable_err),
+             static_cast<unsigned>(disable_err));
   }
 }
 

@@ -12500,7 +12500,8 @@ void UI::addDeviceInfoMenu(const menu_t &parent) {
   uint32_t flash = 0;
   esp_err_t err = esp_flash_get_size(NULL, &flash);
   if (err != ESP_OK) {
-    ESP_LOGW("ui", "Unable to read flash size (%s).", esp_err_to_name(err));
+    ESP_LOGW("ui", "Unable to read flash size (%s, 0x%x).", esp_err_to_name(err),
+             static_cast<unsigned>(err));
     flash = 0;
   }
 

@@ -130,7 +130,9 @@ non-ignored untracked changes. Ignored-only changes stay clean. Explicit release
 versions remain unchanged. See `CLAUDE.md` for build details.
 
 S3 release images disable `CONFIG_SPIRAM_MEMTEST`; the S3 debug environments
-merge `sdkconfig.spiram-memtest` back in. The `boot timing` console command
+merge `sdkconfig.spiram-memtest` back in. `waveshare-s3-eth-debug` also merges
+`sdkconfig.full-diagnostics` to keep full assertions and logging over its plan
+106 group A release config. The `boot timing` console command
 prints the retained boot timeline. See `docs/boot-timing.md`.
 
 Debug images also carry the end-of-stack watchpoint, heap tracing (`heap trace` console command) and log-only task watchdog
@@ -151,6 +153,9 @@ the USB profile to dual OTA requires a USB partition-table reflash.
 Single-board images set `M5GFX_BOARD` (`m5stick-c`, `m5stack-core`,
 `m5stick-s3`); `post:patches/m5gfx_board.py` pins it in `M5GFX::autodetect`.
 Images shared by two boards (StickC Plus/Plus2, Core2/Tough) must not set it.
+`waveshare-s3-eth` pins `board_M5StampS3`, which has no M5GFX probe, so the
+unpinned probes never drive the W5500 pins GPIO 9 to 14. The headless S3
+profile stays unpinned because it may run on a StickS3.
 
 The StickS3 flash helper is fail-closed. Use `--preflight-only` to validate the
 PMIC handshake without uploading. After a successful prepare, it must issue

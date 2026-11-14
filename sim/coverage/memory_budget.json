@@ -91,8 +91,8 @@
       }
     },
     "profile-waveshare-s3-eth": {
-      "min_internal_free": 162288,
-      "min_internal_largest": 162288,
+      "min_internal_free": 173336,
+      "min_internal_largest": 173336,
       "max_leaks": 0,
       "components": {
         "main_stack": 16384,

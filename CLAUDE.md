@@ -38,7 +38,8 @@ CLAUDE.md whose directory it touches.
   (`m5stick-c`, `m5stack-core`, `m5stick-s3`) set `M5GFX_BOARD`, and
   `post:patches/m5gfx_board.py` pins it in `M5GFX::autodetect`, so the other
   boards' panel and touch drivers drop out. StickC Plus/Plus2 and Core2/Tough
-  share an image and keep autodetect. Core debug is now 1,719,453 bytes and
+  share an image and keep autodetect. Waveshare pins `board_M5StampS3`, which
+  has no M5GFX probe, so no probe runs on the W5500 pins. Core debug is now 1,719,453 bytes and
   fits its OTA slot again and is a mandatory CI lane. Log V2 writes
   one record as three vprintf calls, so `FurbleCrashLog` joins fragments up to
   the newline.
@@ -64,6 +65,9 @@ CLAUDE.md whose directory it touches.
   full boot-time PSRAM test. Their debug envs merge `sdkconfig.spiram-memtest` back
   in. `patches/debug_sdkconfig.py` accepts comma-separated fragments so a
   diagnostic env can layer one on `sdkconfig.debug`.
+  `waveshare-s3-eth-debug` also merges `sdkconfig.full-diagnostics`, which
+  restores full assertions, the VERBOSE log maximum and esp_err names over
+  the plan 106 group A release values.
 - `FURBLE_VERSION` and `FURBLE_TEST` env vars are required for every build:
   `FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3-debug`
 - The PlatformIO version adapter expands the exact `dev` value to

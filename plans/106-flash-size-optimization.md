@@ -181,8 +181,10 @@ headroom for the WiFi hub track.
    Own PR because of the formatting risk.
 
 4. Drop the esp_err name table. Set `CONFIG_ESP_ERR_TO_NAME_LOOKUP=n`.
-   `esp_err_to_name` then returns the hex code instead of a name. Saving: est 4
-   to 8 KB. Risk: low. Effort: trivial. Behavior: error logs show hex.
+   `esp_err_to_name` then returns the fixed string `UNKNOWN ERROR`, not a
+   name or a code (`esp_err_to_name.c`). Saving: est 4 to 8 KB. Risk: low.
+   Effort: trivial. Behavior: furble error logs print the numeric code next
+   to the name, see the review follow-up below.
 
 ### Group B, LVGL and icons
 
@@ -360,7 +362,10 @@ same 13 line changes are applied identically to all five board configs.
 
 4. Item 4, drop the esp_err name table. Set
    `# CONFIG_ESP_ERR_TO_NAME_LOOKUP is not set`. `esp_err_to_name` now returns
-   the hex code instead of a name string.
+   the fixed string `UNKNOWN ERROR`. This note first said it returned the hex
+   code; it never did, so the code was lost from every release log until
+   `fix(log): keep the esp_err code in error logs on release images` added
+   `(0x%x)` to all 33 furble call sites.
 
 5. Item 5, disable unused LVGL widgets and the second theme. Disabled
    `LV_USE_ARCLABEL`, `LV_USE_BUTTONMATRIX` and `LV_USE_THEME_SIMPLE`, all
@@ -408,3 +413,64 @@ disables contribute the remainder.
 - Group C feature gating (items 7 to 13), the `FURBLE_*` compile gates. These
   are structural source and CMake changes with behavior and UX implications and
   remain one PR per feature, unchanged from the plan.
+
+## Implementation state: Group A on the Waveshare release image (fix/waveshare-autodetect)
+
+Group A landed in #142 on the five sdkconfig files of the time. The headless
+profile (#148) was seeded three hours later from a StickS3 config that
+predated #142, so it never received group A, and `sdkconfig.waveshare-s3-eth`
+was later seeded from the headless file. The Waveshare release image therefore
+shipped full assertions with messages, the VERBOSE log maximum and the
+esp_err name table, unlike every other release board. No plan or commit
+recorded that as a choice.
+
+The owner chose to align the Waveshare release image with the other release
+boards. `sdkconfig.waveshare-s3-eth` now carries items 1, 2 and 4 exactly as
+the StickS3 does: silent assertions at level 1 (compiler, HAL and the legacy
+aliases), `CONFIG_LOG_MAXIMUM_EQUALS_DEFAULT=y` with a maximum of 3, and
+`CONFIG_ESP_ERR_TO_NAME_LOOKUP` off. The LVGL widget keys stay as they were;
+the Waveshare image compiles LVGL out. A regenerating build leaves the edited
+file unchanged.
+
+`sdkconfig.esp32-s3-headless` stays as it is. It is a developer console image,
+and plan 106 itself wanted full assertions and logging on such images.
+
+The owner's choice keeps full assertions and logging on the Waveshare debug
+image. Its env shares the release sdkconfig, so it merges one more fragment,
+`sdkconfig.full-diagnostics`, through `patches/debug_sdkconfig.py`. The
+fragment holds the twelve pre-change lines: assertion level 2 with messages
+(compiler, HAL and the legacy aliases), the VERBOSE log maximum and
+`CONFIG_ESP_ERR_TO_NAME_LOOKUP=y`. `sdkconfig.debug` covers none of these
+keys, and adding them there would change every board's debug image, so the
+fragment is separate.
+
+Measured with `FURBLE_VERSION=1.0.0-ci FURBLE_TEST=0` on top of the M5GFX pin:
+
+| Env | Before | After | Delta |
+| --- | ---: | ---: | ---: |
+| waveshare-s3-eth flash | 1,631,808 | 1,517,504 | -114,304 |
+| waveshare-s3-eth DRAM | 51,308 | 46,648 | -4,660 |
+| waveshare-s3-eth IRAM | 131,840 | 126,720 | -5,120 |
+
+`tools/size_budget.json` was rewritten with `--write`: the release budget drops
+to 48,128 DRAM and 128,000 IRAM bytes. With the fragment the debug image has
+55,752 DRAM and 148,224 IRAM, the same RAM as before group A, so its budget
+stays at 56,320 and 149,504.
+
+The fragment build first measured 1,152 bytes more flash than the pin-only
+debug build. That is a measurement artifact. The generated `sdkconfig.h` of
+the two commits is identical, and two clean builds of the same commit
+(`baf31f40`) produced 1,968,288 and 1,968,336 bytes, against 1,969,488 for a
+clean build of `216db11f`. The linker maps of the two same-commit builds load
+the ESP-IDF component archives in a different order (`libesp_eth.a`,
+`libesp_driver_cam.a`, `libesp_https_server.a` and others move against
+`libxtensa.a`), so `esp_eth.c.o` lands elsewhere. The shifted layout changes
+which Xtensa longcalls the linker relaxes, which moves NimBLE functions by 4
+to 8 bytes and the `.xt.lit` table by 80 bytes. The fragment itself adds no
+flash; debug-image comparisons need several builds or a symbol-level diff.
+
+`python3 tools/derive_sim_heap.py --env waveshare-s3-eth` regenerated the
+Waveshare row of `sim/coverage/board_heap.json` from the new ELF: static DRAM
+46,648 bytes, heap at app start 269,000, derived free 173,336. The
+`profile-waveshare-s3-eth` floors in `sim/coverage/memory_budget.json` follow
+it, and `sim/scripts/run-memory-profile.py` passes all 13 dumps.

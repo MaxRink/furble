@@ -365,8 +365,8 @@ void Platform::setCPUMaxFreq(uint8_t mhz) {
     // Every other error is a bad argument or a driver failure and stays fatal
     // after the documented fallback.
     const bool notSupported = (err == ESP_ERR_NOT_SUPPORTED);
-    ESP_LOGW(LOG_TAG, "CPU maximum frequency %dMHz rejected (%s), using %dMHz.", freq,
-             esp_err_to_name(err), CPU_MAX_FREQ_DEFAULT_MHZ);
+    ESP_LOGW(LOG_TAG, "CPU maximum frequency %dMHz rejected (%s, 0x%x), using %dMHz.", freq,
+             esp_err_to_name(err), static_cast<unsigned>(err), CPU_MAX_FREQ_DEFAULT_MHZ);
     freq = CPU_MAX_FREQ_DEFAULT_MHZ;
     err = power.configure(freq);
     if (err != ESP_OK) {
@@ -395,7 +395,8 @@ Platform::pm_config_t Platform::getPMConfig(void) {
   esp_err_t err = esp_pm_get_configuration(&pm_config);
   if (err != ESP_OK) {
     // fall back to the last configuration Power was asked for
-    ESP_LOGW(LOG_TAG, "Unable to read power management configuration (%s).", esp_err_to_name(err));
+    ESP_LOGW(LOG_TAG, "Unable to read power management configuration (%s, 0x%x).",
+             esp_err_to_name(err), static_cast<unsigned>(err));
     return {m_CPUMaxFreqMHz, Power::CPU_MIN_FREQ_MHZ, true};
   }
 
@@ -406,7 +407,8 @@ Platform::pm_config_t Platform::getPMConfig(void) {
 void Platform::dumpPMLocks(void) {
   esp_err_t err = esp_pm_dump_locks(stdout);
   if (err != ESP_OK) {
-    ESP_LOGW(LOG_TAG, "Unable to dump power management locks (%s).", esp_err_to_name(err));
+    ESP_LOGW(LOG_TAG, "Unable to dump power management locks (%s, 0x%x).", esp_err_to_name(err),
+             static_cast<unsigned>(err));
   }
 }
 
