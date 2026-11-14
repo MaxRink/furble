@@ -34,3 +34,16 @@ per-input-bit rule. The plain StickS3 simulator passes all 211 e2e scenarios,
 of 3,145,728) and stack budgets pass. `python3 tools/pre_review.py --base
 origin/master` passes 8 gates and `sh sim/scripts/check-doc-tokens.sh`
 passes.
+
+## CI on PR 454 (e2143739)
+
+The Host sanitizers job aborted `control-e2e-multi-connect-fujifilm`. That is
+the virtual Fujifilm subscription race #451, which #453 fixed on master; this
+branch had not merged it. After the master merge,
+`run_sanitized_host_tests.sh --clean --jobs 4` passes 185 of 185, and
+`control-e2e-multi-connect-fujifilm` and `control-disconnect` pass 20 repeats
+each under ASan. The README and `docs/companion.md` conflicts kept this
+branch's advertising text with master's 3.75 KiB companion task and 8,320-byte
+first-enable floor. `m5stick-s3` builds after the merge: flash 1,849,984 of
+3,145,728, and the master stack walk passes every task (companion 2,912 of
+3,840).
