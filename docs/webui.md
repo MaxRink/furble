@@ -107,7 +107,7 @@ memory pressure normal -> amber before a 4896-byte allocation: free=13895 larges
 
 The server returns through the normal exit after the camera disconnects. A
 board with headroom sheds nothing. On boards with PSRAM and an LVGL image cache
-(the S3 boards) the decoded icon pixels live in PSRAM, and the UI empties the
+(the StickS3) the decoded icon pixels live in PSRAM, and the UI empties the
 image cache when the camera session ends, which returns its per-icon
 bookkeeping from internal RAM too. The Main page decodes its own icons once
 again and keeps them cached.

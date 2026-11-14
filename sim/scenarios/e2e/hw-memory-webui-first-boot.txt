@@ -103,8 +103,8 @@ assert companion.enabled yes
 assert ui.page main
 assert platform.watchdog armed
 
-# The Main page after the drop is steady: its icons came back into the cache
-# on one decode, so the redraw probe stays near zero and the pool holds.
+# The Main page after the drop is steady: the redraw probe stays near zero
+# and the pool holds.
 action invalidate.reset
 wait 10000
 assert_max ui.invalidate_count 3

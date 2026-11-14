@@ -406,7 +406,7 @@ above are the pre-review state; these replace them.
   the server paused, under the 20,480 AMBER exit, and HTTPS never returned.
   `UI::doDisconnect()` and the connect timer's idle teardown now call
   `lv_image_cache_drop(NULL)` after the Main page is set, on boards with a
-  persistent image cache (`LV_CACHE_DEF_SIZE` above 0, the two S3 boards).
+  persistent image cache (`LV_CACHE_DEF_SIZE` above 0 in a display build: the StickS3).
   That returns the cache entries' internal metadata, 1,488 bytes in the
   model: the pool reaches 21,863 with the server paused, 1,383 over the exit,
   and HTTPS starts again at 13,671 / 11,908, 48 bytes above the boot figure.
