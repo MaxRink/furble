@@ -88,17 +88,54 @@ every `esp_event_handler_t`, which is how the esp-mqtt client task reaches
 lower bound for paths through them, and the gate catches growth in the
 resolved part only.
 
-A call back into a function already on the walked path closes a cycle. The
-walk cuts it there, so it follows the deepest path that visits each function
-once. A task whose path holds a cycle fails unless a member matches an entry
-in the manifest's `recursion_bounds`. An entry's `depth` is the number of
-passes the cycle can make, cited from source; the walk adds `depth - 1` more
-passes of the whole cycle's frames once, at the member where the walk entered
-the cycle, so every path through the cycle pays exactly `depth` passes.
-Cycles that share an entry member add their passes, because one can nest
-inside the other. An entry without `depth` records a documented known
-limit and adds nothing; `tasks` scopes an entry. `--verbose` lists every
-cycle and its bound.
+The walk collapses the task's reachable call graph into strongly connected
+components (Tarjan) and takes the longest path over the resulting DAG. A
+function's depth no longer depends on the order the walk reached it. Outside a
+cycle the result is exact.
+
+A component with a cycle is recursion. A task whose path holds one fails
+unless a member matches an entry in the manifest's `recursion_bounds`. An
+entry's `depth` is the number of passes the recursion can make, cited from
+source. A component matching several entries pays `1 + sum(depth - 1)` passes
+over the distinct entries, so nested cycles add their passes.
+
+- One pass (`depth` 1, or a single matching entry of depth 1) means the
+  cycle never closes, and the stack holds each member at most once. The walk
+  enumerates every simple path through the component and leaves it through
+  the last member's deepest callee. This is exact. Every bounded component on
+  the seven envs stays under the 200,000-path budget; past it, the walk
+  charges the sum of every member's frame, which bounds any simple path.
+- More passes charge `passes` times the sum of every member's frame, plus the
+  deepest callee that leaves the component. One pass puts each member on the
+  stack at most once, so the sum bounds every path through it.
+- An entry without `depth` records a documented known limit. It is enumerated
+  exactly when it fits the budget. `main`'s 410-member LVGL component does
+  not, so it keeps the greedy walk the tool used before: each member is
+  visited once and a member first reached inside an open cycle keeps the
+  value it had there. That is a lower bound, as `main` already is.
+
+`tasks` scopes an entry. `--verbose` lists every component and its bound.
+
+The memoized walk before plan 314 PR 4c reused a function's depth from the
+first time it was reached. A function first reached inside an open cycle had
+that cycle's back edge cut, and the depth behind the cut was lost on every
+other path. `tests/test_stack_budget.py` keeps that graph: the old walk
+reported 440 bytes of frames where the real path is 756.
+
+`infeasible_calls` removes one call edge whose guard cannot pass in this
+image, cited by file and line. An edge without a citable guard stays. The
+entries today:
+
+| Edge | Guard |
+| :--- | :--- |
+| `esp_cache_get_alignment` to `esp_log` | logs only for a null output pointer; every linked caller passes an address |
+| copy-on-write `std::string` `_S_create` to `__throw_length_error` | the limit is about 1 GiB; the chips address under 32 MiB |
+| copy-on-write `std::string` `_S_construct` to `__throw_logic_error` | only for a null message; libstdc++ passes literals |
+| `cache_hal_get_cache_line_size` to `abort` | `HAL_ASSERT` on the cache level; every caller passes a valid level |
+| `rtc_clk_xtal_freq_get` to `esp_log` | the bootloader stores the crystal frequency before the app runs |
+
+The first three replace depth 1 bounds the walk used to apply by cutting
+whichever back edge it met first.
 
 GCC marks a frame with an `alloca` or a VLA as `dynamic` and reports only its
 static part. A task that reaches one fails unless `dynamic_bounds` adds a
@@ -109,7 +146,7 @@ The bounds reached today:
 
 | Cycle or frame | Bound | Why |
 | :--- | ---: | :--- |
-| `esp_log` and `malloc` | 1 pass | malloc reaches `esp_log` only through a null check that its caller never fails |
+| `esp_log` and `malloc` | 1 pass | malloc reaches `esp_log` only through a null check that its caller never fails; the `infeasible_calls` edge removes the cycle where it is linked |
 | libstdc++ exception constructors, `__cxa_begin_catch` | 1 pass | exceptions are off; a literal message never throws again |
 | `std::map<std::string, uint8_t>::_M_erase` | 21 passes | the camera id map; a 24 KiB NVS index holds fewer than 1,171 entries |
 | GPS `std::sort` introsort | 1 pass | five samples, below the 16-element threshold |
@@ -136,61 +173,75 @@ keeps the library default.
 ## Current results
 
 Resolved worst case in bytes, port overhead included, on the 2026-11-14
-builds of `fix/memory-reanalysis`. Every task passes. The main row has two
-stacks: 12,288 on the StickS3, 16,384 elsewhere. `mqtt_client` is checked
-against the plain 3 KiB worker; TLS uses 6 KiB.
+builds of `fix/memory-reanalysis` after the merge of #446: the component walk
+with the panic handler, the `infeasible_calls` edges and the stdout lock cut.
+Every task passes on all seven envs. The main row has two stacks: 12,288 on the
+StickS3, 16,384 elsewhere. `mqtt_client` is checked against the plain 3 KiB
+worker; TLS uses 6 KiB.
 
 | Task | Stack | StickC | StickC Plus | Core | Core2 | StickS3 | Waveshare | Headless |
 | :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| main | 12,288/16,384 | 6,992 | 6,992 | 6,992 | 6,992 | 6,816 | 3,808 | 3,808 |
-| nimble_host | 16,384 | 1,328 | 1,328 | 1,328 | 1,328 | 1,552 | 1,744 | 1,744 |
-| sys_evt | 2,304 | 1,616 | 1,616 | 1,616 | 1,616 | 1,840 | 2,080 | 2,080 |
-| esp_timer | 3,584 | 1,696 | 1,696 | 1,696 | 1,696 | 1,920 | 2,128 | 2,128 |
-| control | 8,192 | 2,000 | 2,000 | 2,000 | 2,000 | 2,784 | 3,008 | 3,616 |
-| camera_target | 4,096 | 2,016 | 2,016 | 2,016 | 2,016 | 2,528 | 2,752 | 3,360 |
-| gps | 4,096 | 2,400 | 2,400 | 2,400 | 2,400 | 2,880 | 3,120 | 3,120 |
-| wifi | 4,096 | 2,256 | 2,256 | 2,256 | 2,256 | 2,480 | 3,008 | 3,008 |
-| companion | 3,072 | 2,208 | 2,208 | 2,208 | 2,208 | 2,448 | 2,848 | 2,848 |
-| ir | 4,096 | 2,000 | 2,000 | | | 2,240 | | |
-| sd | 6,144 | | | 3,520 | 3,520 | | | |
-| mqtt | 10,240 | | | | 3,088 | 3,312 | 3,536 | 3,536 |
-| mqtt_client | 3,072 | | | | 1,712 | 1,936 | 2,208 | 2,208 |
-| webui | 3,584 | | | | 2,656 | 2,880 | 3,104 | 3,104 |
-| webui_https | 8,192 | | | | 2,320 | 2,640 | 2,864 | 2,864 |
-| webui_tls | 12,288 | | | | 6,960 | 7,552 | 7,808 | 7,808 |
+| panic handler |  | 1,216 | 1,216 | 1,216 | 1,216 | 512 | 752 | 752 |
+| main | 12,288/16,384 | 7,888 | 7,888 | 7,888 | 7,888 | 7,408 | 4,528 | 4,528 |
+| nimble_host | 16,384 | 2,512 | 2,512 | 2,512 | 2,512 | 2,032 | 2,496 | 2,496 |
+| sys_evt | 3,072 (was 2,304) | 2,800 | 2,800 | 2,800 | 2,800 | 2,320 | 2,832 | 2,832 |
+| esp_timer | 3,584 | 3,072 | 3,072 | 3,072 | 3,072 | 2,592 | 3,392 | 3,392 |
+| control | 8,192 | 3,184 | 3,184 | 3,184 | 3,184 | 2,704 | 3,536 | 3,984 |
+| camera_target | 4,096 | 2,752 | 2,752 | 2,752 | 2,752 | 2,384 | 3,136 | 3,744 |
+| gps | 4,096 | 3,568 | 3,568 | 3,568 | 3,568 | 3,264 | 3,856 | 3,856 |
+| wifi | 4,096 | 3,440 | 3,440 | 3,440 | 3,440 | 2,960 | 3,760 | 3,760 |
+| companion | 3,840 (was 3,072) | 3,424 | 3,424 | 3,424 | 3,424 | 2,800 | 3,600 | 3,600 |
+| ir | 4,096 | 3,184 | 3,184 |  |  | 2,688 |  |  |
+| sd | 6,144 |  |  | 4,704 | 4,704 |  |  |  |
+| mqtt | 10,240 |  |  |  | 3,888 | 3,408 | 4,208 | 4,208 |
+| mqtt_client | 3,072 |  |  |  | 2,720 | 2,240 | 2,784 | 2,784 |
+| webui | 4,096 (was 3,584) |  |  |  | 3,520 | 3,040 | 3,840 | 3,840 |
+| webui_https | 8,192 |  |  |  | 3,216 | 2,736 | 3,200 | 3,200 |
+| webui_tls | 12,288 |  |  |  | 7,904 | 8,032 | 8,560 | 8,560 |
 
-Against the 2026-11-09 table, the stdout lock cut below lowers most rows by
-112 bytes and some by 32. `mqtt` drops by about 4,800 bytes on every board
-that has it: the owner now receives each queued event into the preallocated
-`m_Received` copy instead of a `queued_event_t` on its stack, and lifecycle
-events carry only the client and event id.
+Every path to `abort` or an assert pays the panic handler (512 bytes on the
+StickS3, 752 on Waveshare and headless, whose `__assert_func` keeps the file
+and line, 1,216 on the ESP32 boards). Before the stdout lock cut below, the
+common tail was the first log call creating its mutex, which allocates, and
+FreeRTOS's `configASSERT` in `vPortExitCritical` on the way out of the heap
+lock. The cut lowers most rows by 112 bytes. `control` and `camera_target`
+also lose the copy-on-write string's length throw, which `infeasible_calls`
+removes with its citation. `mqtt` is about 4,800 bytes lower than under #446
+on every board that has it: the owner now receives each queued event into the
+preallocated `m_Received` copy instead of a `queued_event_t` on its stack, and
+lifecycle events carry only the client and event id.
 
-ESP-IDF Log V2 (plan 314 flash slimming) raises most rows by 100 to 700
-bytes against the 2026-11-07 table. A V2 record formats the prefix,
-message and newline in three calls under the stdout lock, so a log call
-reaches `esp_log`, `esp_log_va`, `esp_log_format` and the recursive lock. That
-pushed `webui` to 3,136 bytes, so the supervisor grew from 3 KiB to 3.5 KiB.
-The tightest rows were then the headless `sys_evt` and `companion`, each with
-112 bytes left; the stdout lock cut gives them 224.
+Three stacks grew to their measured maximum across envs, rounded up to
+256 bytes: the default event loop task (`sys_evt`) from 2,304 to 3,072 in all
+seven release sdkconfigs, the companion task from 3,072 to 3,840, and the
+WebUI supervisor from 3,584 to 4,096. Each is one task per board, so the
+internal RAM cost is 768 bytes on every board for `sys_evt`, 768 more where
+the companion is enabled, and 512 more on the four MQTT and WebUI boards
+(Core2, StickS3, Waveshare, headless) while the WebUI runs.
 
-Against the #414 results, `webui_https` grows by 128 bytes on every board
-that has it: the `netconn_drain` and `netconn_free` cycle carries its bounded
-second pass, charged once. `mqtt` grows by 48 to 64 bytes through the nine bounded
-`parse_value` passes. The Core `gps` row reads 2,352 where #414 reported
-2,560; the #414 tool reports the same 2,352 on this build, so the change came
-from master between the two. The `esp_timer` row is new.
+Debug images have bigger frames: the stack protector adds a canary to most
+frames and `-Os` inlines less. A `-debug` env is therefore checked against
+its own stacks, which release images never pay for. `sdkconfig.debug` sets
+`sys_evt` to 3,328 and `esp_timer` to 3,840, and the gate reads sdkconfig keys
+through it for a `-debug` env. Each furble task's owner holds a named
+`..._DEBUG_EXTRA` margin under `FURBLE_DEBUG_BUILD`, which only the `-debug`
+envs define, and the manifest's `debug_stack_bytes` and `debug_source` record
+the result: `camera_target`, `gps`, `wifi`, `companion` and `webui` at 4,352,
+`mqtt_client` at 3,328. The gate fails a task whose debug stack is below its
+release stack. The gates that admit the companion, the WebUI supervisor and
+the MQTT client include the margin, so a debug build admits what it creates.
 
 Replaying the 6 KiB MQTT owner that overflowed on hardware used to fail
 without any scripted constant: `--stack mqtt=6144` on the StickS3 reported
 7,840 of 6,144. Its deepest path ran through `MQTT::taskStep` and
 `MQTT::processLifecycleEvents`, 2,400 bytes each, because both held a
 `queued_event_t` copy with the full topic and payload buffers. Both copies
-are gone, and the same replay now reads 3,312 of 6,144. The 10 KiB owner
+are gone, and the same replay now reads 3,408 of 6,144. The 10 KiB owner
 stays until a hardware `perf tasks` reading confirms a smaller one; plan 314
 records that gate.
 
 The `sys_evt` row is the ESP-IDF default event loop task
-(`CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE`, 2,304 bytes), which runs the WiFi
+(`CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE`, 3,072 bytes), which runs the WiFi
 event handler. Before #424 that handler saved the access point to NVS and
 started SNTP there, and the walk reached 2,864 of 2,304 bytes on Waveshare and
 headless. The handler now queues that work for the 4 KiB WiFi worker. A
@@ -203,32 +254,61 @@ without it the headless companion task reported 3,264 of 3,072 through a
 first-call `Platform::getInstance()` that cannot happen after boot.
 
 A `cuts` entry drops one call, from `caller` to `callee`, but only while a
-function matching `under` is on the walked path. A function below an `under`
-is memoized separately for each set of active cuts, so the same code reached
-another way still pays the call. The one cut today is the lazy lock creation
-in newlib's `lock_acquire_generic`. Every `esp_log` call takes the stdout lock
-through `flockfile` and `__retarget_lock_acquire_recursive`, and before the
-cut the deepest path of most tasks continued into `lock_init_generic`, the
-mutex allocation and an `abort` inside the allocator's cache alignment check.
+function matching `under` is on the walked path. The walk runs over function
+and active-cut states, so code below an `under` is costed without the call and
+the same code reached another way still pays it. The one cut today is the lazy
+lock creation in newlib's `lock_acquire_generic`. Every `esp_log` call takes
+the stdout lock through `flockfile` and `__retarget_lock_acquire_recursive`,
+and before the cut the deepest path of most tasks continued into
+`lock_init_generic`, the mutex allocation and the panic paths below it.
 `__retarget_lock_acquire*` asserts its lock is not NULL and passes the address
 of that copy on, so the lazy branch cannot run below it. A `_lock_acquire` on
 a zero-initialized static lock still pays it. The cut lowers most tasks by
-112 bytes. The headless `sys_evt` and `companion` now read 2,080 of 2,304 and
-2,848 of 3,072, 224 bytes left each instead of 112, and the StickS3 `sys_evt`
-reads 1,840 instead of 1,952, 464 bytes left instead of 352. The next deepest `sys_evt` path
-is again a panic path, libstdc++'s `std::mutex::lock` throw construction, which
-the panic-path follow-up in the known limits covers.
+112 bytes on every env.
+
+## Panic paths
+
+A panic path counts. `abort()`, `__assert_func` and `esp_system_abort()` end
+in `panic_abort` (`esp_system/panic.c`), which executes `ill`. The illegal
+instruction exception enters `_xt_user_exc` in `xtensa/xtensa_vectors.S`,
+which says "we'll stay on the user stack for exception handling". It pushes
+the `XT_STK_FRMSZ` exception frame on the faulting task's stack and calls the
+`_xt_exception_table` entry, which `xtensa/xtensa_intr.c` sets to
+`xt_unhandled_exception` for every exception without a registered handler.
+That calls `panic_handler` and `esp_panic_handler` on the same stack. The
+release builds print and reboot (`CONFIG_ESP_SYSTEM_PANIC_PRINT_REBOOT`) with
+no core dump. The Core2, StickS3 and Waveshare debug builds write a core
+dump to flash. Those boards allow task stacks in PSRAM
+(`CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM`), so
+`CONFIG_ESP_COREDUMP_USE_STACK_SIZE` gives the dump its own 1,792-byte stack
+(`espcoredump/Kconfig`), and only the handler before it runs on the task.
+
+An overflow during the panic corrupts whatever lies below the task stack and
+loses the panic output, so the handler's depth belongs in every task's
+budget. The manifest's `panic` entry names `panic_abort` and the handler. The
+walk measures the handler once, from `xt_unhandled_exception`, and adds it as
+one node that `panic_abort` calls. A nested panic inside the handler is not
+followed: `esp_panic_handler_increment_entry_count` restarts after
+`PANIC_ENTRY_COUNT_MAX` entries, and a handler that faults has already lost
+the first panic's output. The exception frame needs no extra charge: the
+port overhead already reserves `XT_STK_FRMSZ`, and the handler runs with
+interrupts masked below the debug level, so no interrupt frame stacks on
+top.
 
 ## Known limits
 
-- The walk memoizes each function once per set of active cuts. A function
-  first reached inside an open cycle has that cycle's back edge cut, and its
-  value is reused on other paths, so depth behind the cut can be missed. An exact re-walk is
-  exponential on `main`'s LVGL cycles; with `main` left on the fast walk it
-  runs in seconds but raises most tasks by roughly 100 to 1,000 bytes, and on
-  the StickS3 it puts `sys_evt` (2,432 of 2,304) and `webui` (3,296 of 3,072)
-  over budget through paths that end in `abort` and `__assert_func`. A
-  follow-up PR settles how panic paths count and replaces the walk.
+- `main`'s 410-member LVGL component is too large to enumerate, so it keeps
+  the greedy walk and its row is a lower bound. Every other task is exact
+  outside its recursion bounds.
+- The walk is path-insensitive. It follows every call in a function whether
+  or not one call's condition excludes another, so most rows now end in an
+  error tail (a lazy log mutex, an assert on the way out of a lock) that
+  needs two unlikely conditions at once. That over-approximates, which is the
+  safe direction; `infeasible_calls` removes only an edge whose guard is
+  cited.
+- Only a panic through `abort` is modelled. A fault in an ISR or a double
+  exception enters `panicHandler` from the vector code at an arbitrary depth;
+  the port overhead's interrupt frame is all the walk reserves for it.
 - `main` and the NimBLE host run most of their depth through unresolved
   indirect calls (LVGL widget code, M5GFX virtuals, NimBLE callbacks into
   vendor classes). Their numbers are not a proof of fit. The 8 KiB StickS3

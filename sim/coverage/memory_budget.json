@@ -8,7 +8,7 @@
       "max_fragmentation_permille": 500,
       "components": {
         "main_stack": 12288,
-        "companion_task": 3072,
+        "companion_task": 3840,
         "lvgl_draw": 2160,
         "mqtt_owner": 10240,
         "mqtt_worker": 3072,
@@ -17,8 +17,8 @@
       }
     },
     "hw-memory-webui-post394": {
-      "min_internal_free": 15575,
-      "min_internal_largest": 13812,
+      "min_internal_free": 15063,
+      "min_internal_largest": 13300,
       "max_leaks": 0
     },
     "hw-memory-mqtt-ha-oom": {
@@ -32,12 +32,12 @@
       "max_leaks": 0
     },
     "memory-webui-fail-closed": {
-      "min_internal_free": 9959,
-      "min_internal_largest": 9204,
+      "min_internal_free": 9447,
+      "min_internal_largest": 8692,
       "max_leaks": 0
     },
     "profile-stickc": {
-      "min_internal_free": 141352,
+      "min_internal_free": 139808,
       "min_internal_largest": 129984,
       "max_leaks": 0,
       "components": {
@@ -46,7 +46,7 @@
       }
     },
     "profile-stickc-plus": {
-      "min_internal_free": 140016,
+      "min_internal_free": 138472,
       "min_internal_largest": 129984,
       "max_leaks": 0,
       "components": {
@@ -64,8 +64,8 @@
       }
     },
     "profile-core": {
-      "min_internal_free": 119024,
-      "min_internal_largest": 119024,
+      "min_internal_free": 117480,
+      "min_internal_largest": 117480,
       "max_leaks": 0,
       "components": {
         "main_stack": 16384,
@@ -73,7 +73,7 @@
       }
     },
     "profile-core2": {
-      "min_internal_free": 136980,
+      "min_internal_free": 135452,
       "min_internal_largest": 129984,
       "max_leaks": 0,
       "components": {
@@ -82,8 +82,8 @@
       }
     },
     "profile-headless-s3": {
-      "min_internal_free": 179360,
-      "min_internal_largest": 179360,
+      "min_internal_free": 177816,
+      "min_internal_largest": 177816,
       "max_leaks": 0,
       "components": {
         "main_stack": 16384,
@@ -91,8 +91,8 @@
       }
     },
     "profile-waveshare-s3-eth": {
-      "min_internal_free": 187656,
-      "min_internal_largest": 187656,
+      "min_internal_free": 186112,
+      "min_internal_largest": 186112,
       "max_leaks": 0,
       "components": {
         "main_stack": 16384,
@@ -100,8 +100,8 @@
       }
     },
     "profile-sticks3": {
-      "min_internal_free": 193312,
-      "min_internal_largest": 193312,
+      "min_internal_free": 191768,
+      "min_internal_largest": 191768,
       "max_leaks": 0,
       "components": {
         "main_stack": 12288,

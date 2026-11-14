@@ -24,7 +24,19 @@ inline constexpr size_t OWNER_STACK_BYTES = 10240;
  * 1,936 bytes, so the plain worker uses 3 KiB. TLS keeps the 6 KiB default for
  * the handshake.
  */
-inline constexpr size_t PLAIN_WORKER_STACK_BYTES = 3072;
+inline constexpr size_t PLAIN_WORKER_STACK_RELEASE_BYTES = 3072;
+/**
+ * A debug build's stack protector and -Os frames need more on the plain
+ * worker: 3,216 bytes on the Waveshare debug build (plan 314 PR 4c).
+ * tools/stack_budget.json reads both values.
+ */
+#if defined(FURBLE_DEBUG_BUILD)
+inline constexpr size_t PLAIN_WORKER_STACK_DEBUG_EXTRA = 256;
+#else
+inline constexpr size_t PLAIN_WORKER_STACK_DEBUG_EXTRA = 0;
+#endif
+inline constexpr size_t PLAIN_WORKER_STACK_BYTES =
+    PLAIN_WORKER_STACK_RELEASE_BYTES + PLAIN_WORKER_STACK_DEBUG_EXTRA;
 inline constexpr size_t TLS_WORKER_STACK_BYTES = 6144;
 
 /**
@@ -94,7 +106,7 @@ inline constexpr size_t EVENT_STORAGE_BYTES = EVENT_QUEUE_BLOCK_BYTES + EVENT_CO
  * caller adds `EVENT_STORAGE_BYTES` as `extraInternalBytes` and the floor
  * covers both.
  */
-inline constexpr size_t START_INTERNAL_FREE_FLOOR = 8192;
+inline constexpr size_t START_INTERNAL_FREE_FLOOR = 8192 + PLAIN_WORKER_STACK_DEBUG_EXTRA;
 inline constexpr size_t START_INTERNAL_LARGEST_FLOOR = 4096;
 inline constexpr size_t START_TLS_INTERNAL_FREE_FLOOR = 11264;
 inline constexpr size_t START_TLS_INTERNAL_LARGEST_FLOOR = 7168;

@@ -323,6 +323,24 @@ with the real fatal status. Set `FURBLE_SIM_CRASH_STEP=<index>` to fault
 deliberately at a script step; that is the self test for the reporter and has
 no other use.
 
+`FURBLE_SIM_SCHED_TRACE=1` names a wait the scheduler cannot see. Whenever
+the scheduler stops waiting for a task, it prints `SIM SCHED TRACE:` with the
+event, the task, the virtual clock, the task table and that task's native
+backtrace. That happens when the 2 s stall breaker parks the turn holder, or
+when a UI-task handoff runs out its 250 ms host bound. The handoff event names
+the turn holder, or the next ready task when nothing holds the turn. Either
+event lets the virtual clock move while that task makes no progress, so the
+backtrace shows the host lock or condition it is blocked in. A breaker park
+always means a wait the scheduler cannot see. A handoff expiry under host
+load can instead be wake latency: the backtrace then shows the task inside
+the scheduler's own wait, or a new task thread that has not started. The
+trace is snapshotted under the scheduler lock and printed after it is
+released, and it changes no scheduling decision. It costs host time while it
+prints, so a traced run is not timing-identical to one with the trace off.
+This is how the issue #289 wait was found: every cancel in the Fujifilm Secure and
+reconnect sweeps parked the control task inside `Scan::stop()`, on a plain
+condition variable waiting for the radio task.
+
 `FURBLE_SIM_SDL_STEP_DETECT=1` restores the M5GFX debugger-detector thread,
 which is off by default. The detector infers that a debugger has stopped the
 process when a 1 ms `SDL_Delay` overshoots 64 ms, which a loaded host does
@@ -341,6 +359,11 @@ with that instruction if neither is present.
 For an instrumented UI-fuzzer build, set `FURBLE_SIM_SANITIZE` to a clang
 sanitizer list and use a separate `FURBLE_SIM_BUILD_DIR`, for example
 `FURBLE_SIM_SANITIZE=address,undefined`.
+On macOS a sanitized build links an rpath to the SDL3 library directory.
+Homebrew SDL2 is sdl2-compat, which dlopens SDL3 through its own rpath, and the
+ASan dlopen interceptor hides that rpath. Without the link rpath every
+sanitized process shows a modal "Failed loading SDL3 library" dialog and
+aborts.
 
 `FURBLE_SIM_COVERAGE=1` builds with clang source-based coverage instead. Only
 firmware translation units are instrumented, so LVGL and M5GFX stay at full
@@ -572,7 +595,7 @@ bytes it uses; the default is 12,288 / 9,268 (`perf tasks` left 3,020 of
 and 6 KiB regression scenarios. `companion_enabled` seeds the companion state
 as enabled at boot, with its task and GATT database already in the seeded
 heap. `action companion-enable` on a companion that was off at boot runs the
-production `CompanionMemory::startGate` and charges the retained 3 KiB task and
+production `CompanionMemory::startGate` and charges the retained 3,840-byte task and
 4 KiB GATT database once; `action companion-disable` keeps both.
 
 `ble_peers` selects the virtual BLE radio topology from a strict allowlist:
@@ -1402,9 +1425,17 @@ whatever the production stack does after a fault is what the scenario observes.
   keeps the `FURBLE_SIM_PREFS` store it inherited rather than wiping a fresh
   one, so the reboot reads the flash the previous boot wrote. It lives exactly
   one boot; a value outside the script's step range fails the run with status 2.
-  `sim/scripts/run-env-order.sh` can guard each mutation with a Linux
-  `LD_PRELOAD` interposer. That check establishes environment ordering only; it
-  does not establish that an environment race caused a SIGSEGV.
+  `sim/scripts/run-env-order.sh` guards these mutations with a Linux
+  `LD_PRELOAD` interposer, and its `growth` target rejects any variable added
+  by setenv or putenv, any unsetenv, and clearenv, from any caller while SDL
+  is live. The sim-e2e S3 job runs it. glibc's getenv walks `environ` without
+  a lock and the SDL main loop calls it thousands of times a second, so a
+  growing setenv on another thread frees the array under that walk (issue
+  #283). Production
+  Timezone's boot `setenv("TZ")` runs after `SDL_Init` but before `panelReady`
+  releases the main loop, so it is ordered before any loop getenv. `main()`
+  creates `TZ` first so every `TZ` write is a replace, and the guard can
+  enforce the stricter rule: no growth after `SDL_Init`.
 - `Platform::restart()` uses the same post-teardown re-exec seam. Interactive
   restarts have no script continuation; scripted UI restarts defer arming until
   the driver records the next step. Fuzz owners must call
