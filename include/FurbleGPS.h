@@ -95,6 +95,21 @@ class GPS {
     /** VALGET read back: 0 not yet, 1 matches what was set, 2 differs. */
     uint8_t config_verified;
     uint32_t naks;
+    /** What the last configuration sent, see Ubx::Plan. */
+    bool configured;
+    uint8_t gnss;
+    uint8_t psm;
+    uint16_t rate_ms;
+    bool ana;
+    bool gnss_refused;
+    bool psm_refused;
+    bool rate_clamped;
+    /** The board keeps the receiver's V_BCKP supplied, Platform::hasGpsBackupSupply(). */
+    bool backup_supply;
+    /** The last NAV-SAT, signals in view and used per gnssId 0 to 6. */
+    bool have_sat;
+    std::array<uint8_t, 7> sat_view;
+    std::array<uint8_t, 7> sat_used;
   };
 
   /** Per satellite diagnostics parsed from GSV and GSA. */
@@ -401,6 +416,9 @@ class GPS {
   /** A coherent copy of the UBX receiver state. Empty fields off the UBX backend. */
   ubx_status_t getUbxStatus(void) const;
 
+  /** Poll one NAV-SAT on a UBX receiver; the answer lands in getUbxStatus(). */
+  void pollUbxSatellites(void);
+
 #if defined(FURBLE_SIM)
   /** Disabled-path loop iterations, used by the power scenarios. */
   uint32_t simIdleWakes(void) const { return m_SimIdleWakes.load(); }
@@ -633,6 +651,14 @@ class GPS {
   /** Overlay a fresh NAV-PVT on the parser snapshot. Holds m_GPSMutex. */
   void applyPvt(status_t &status) const;
   void resetUbx(void);
+  /**
+   * Save the receiver's BBR through UPD-SOS before a planned power cut, when
+   * the board has no V_BCKP to keep it. Starts a non-blocking save on the GPS
+   * task and returns true while the rail cut must wait for the answer.
+   */
+  bool beginSaveOnShutdown(uint32_t now);
+  /** The blocking form for disable(), which runs with the GPS task parked. */
+  void saveOnShutdownBlocking(void);
   bool sendConfigFrame(const binary_command_t &command);
   uint32_t configAckTimeout(void) const;
 
@@ -886,6 +912,15 @@ class GPS {
   uint8_t m_UbxSosBackup = 0;
   uint8_t m_UbxVerified = 0;
   uint32_t m_UbxNaks = 0;
+  Ubx::Plan m_UbxPlan = {};
+  bool m_UbxConfigured = false;
+  bool m_UbxAna = false;
+  bool m_UbxHaveSat = false;
+  std::array<uint8_t, 7> m_UbxSatView = {};
+  std::array<uint8_t, 7> m_UbxSatUsed = {};
+  // a rail cut waiting for the UPD-SOS answer, GPS task only
+  bool m_RailOffPending = false;
+  uint32_t m_RailOffDeadline = 0;
 
   // MON-HW interference snapshot, hardware-tuning-pending
   std::atomic<bool> m_MonHwPending = false;

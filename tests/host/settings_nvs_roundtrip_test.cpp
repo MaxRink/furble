@@ -72,6 +72,7 @@ StorageKind storageKindFor(Settings::type_t type) {
     case Settings::GPS:
     case Settings::GPS_NMEA:
     case Settings::GPS_EXTRAP:
+    case Settings::GPS_ANA:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
     case Settings::RECON_BACKOFF:
@@ -111,6 +112,8 @@ StorageKind storageKindFor(Settings::type_t type) {
     case Settings::GPS_ASSIST:
     case Settings::GPS_HOLD:
     case Settings::GPS_PLATFORM:
+    case Settings::GPS_GNSS:
+    case Settings::GPS_PSM:
     case Settings::CPU_FREQ:
     case Settings::BATT_STYLE:
     case Settings::SCAN_MODE:
@@ -247,6 +250,9 @@ std::vector<SettingCase> settingCases() {
       {Settings::GPS_HOLD, "GPS_HOLD", uint8_t {0}, uint8_t {4}, StorageKind::U8},
       {Settings::GPS_EXTRAP, "GPS_EXTRAP", false, true, StorageKind::BOOL},
       {Settings::GPS_PLATFORM, "GPS_PLATFORM", uint8_t {0}, uint8_t {4}, StorageKind::U8},
+      {Settings::GPS_GNSS, "GPS_GNSS", uint8_t {0}, uint8_t {15}, StorageKind::U8},
+      {Settings::GPS_PSM, "GPS_PSM", uint8_t {0}, uint8_t {2}, StorageKind::U8},
+      {Settings::GPS_ANA, "GPS_ANA", true, false, StorageKind::BOOL},
       {Settings::GPS_MOTION, "GPS_MOTION", false, true, StorageKind::BOOL},
       {Settings::INTERVAL, "INTERVAL", defaultInterval(), representativeInterval(),
        StorageKind::BLOB},
@@ -333,6 +339,9 @@ ASSERT_STORAGE_TYPE(GPS_ASSIST, uint8_t);
 ASSERT_STORAGE_TYPE(GPS_HOLD, uint8_t);
 ASSERT_STORAGE_TYPE(GPS_EXTRAP, bool);
 ASSERT_STORAGE_TYPE(GPS_PLATFORM, uint8_t);
+ASSERT_STORAGE_TYPE(GPS_GNSS, uint8_t);
+ASSERT_STORAGE_TYPE(GPS_PSM, uint8_t);
+ASSERT_STORAGE_TYPE(GPS_ANA, bool);
 ASSERT_STORAGE_TYPE(INTERVAL, Furble::interval_t);
 ASSERT_STORAGE_TYPE(MULTICONNECT, bool);
 ASSERT_STORAGE_TYPE(MULTISELECT, Settings::multiselect_t);
@@ -402,6 +411,8 @@ SettingValue loadValue(Settings::type_t type) {
     case Settings::GPS_ASSIST:
     case Settings::GPS_HOLD:
     case Settings::GPS_PLATFORM:
+    case Settings::GPS_GNSS:
+    case Settings::GPS_PSM:
     case Settings::CPU_FREQ:
     case Settings::BATT_STYLE:
     case Settings::SCAN_MODE:
@@ -438,6 +449,7 @@ SettingValue loadValue(Settings::type_t type) {
     case Settings::GPS:
     case Settings::GPS_NMEA:
     case Settings::GPS_EXTRAP:
+    case Settings::GPS_ANA:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
     case Settings::RECON_BACKOFF:
@@ -627,7 +639,8 @@ void testNetworkIngressValidation() {
         "an embedded-NUL passphrase is rejected");
   check(Furble::importSetting(Settings::get(Settings::TIMEZONE), "39"),
         "SD import accepts the Auto time zone");
-  check(Settings::load<uint8_t>(Settings::TIMEZONE) == static_cast<uint8_t>(Furble::Timezone::Id::AUTO),
+  check(Settings::load<uint8_t>(Settings::TIMEZONE)
+            == static_cast<uint8_t>(Furble::Timezone::Id::AUTO),
         "Auto time zone round-trips through SD import");
   check(!Furble::importSetting(Settings::get(Settings::TIMEZONE), "40"),
         "SD import rejects a time zone above Auto");

@@ -410,6 +410,14 @@ void Platform::dumpPMLocks(void) {
   }
 }
 
+bool Platform::hasGpsBackupSupply(void) {
+#if defined(FURBLE_GPS_BACKUP_SUPPLY)
+  return true;
+#else
+  return false;
+#endif
+}
+
 bool Platform::hasTicklessIdle(void) {
 #if defined(CONFIG_FREERTOS_USE_TICKLESS_IDLE)
   return true;

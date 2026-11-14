@@ -1,0 +1,15 @@
+# QZSS without GPS is not a valid M10 configuration (data sheet 1.3). furble
+# refuses the mask itself rather than send a VALSET the receiver would NAK, and
+# leaves the constellations at the module preset.
+seed gps true
+seed gps_model m10
+seed gps_m10_hot true
+seed gps_gnss 16
+wait 8000
+assert-eventually 3000 gps.ubx.verified 1
+assert gps.ubx.gnss_refused 1
+assert m10.naks 0
+assert m10.ram.1031001f 1
+assert m10.ram.10310022 1
+assert m10.bbr.1031001f unset
+exit

@@ -347,7 +347,7 @@ void validateSeed(const std::string &name, const std::string &value) {
       "brightness",   "inactivity", "display_off", "display_mode", "gps_rate",  "gps_constel",
       "gps_power",    "gps_duty",   "cpu_freq",    "tx_power",     "scan_mode", "text_size",
       "auto_off",     "low_batt",   "fb_output",   "gps_hold",     "imu_wake",  "gps_assist",
-      "gps_platform", "hw_motion",  "legend",      "timezone",
+      "gps_platform", "hw_motion",  "legend",      "timezone",     "gps_gnss",  "gps_psm",
   };
   if (std::find(std::begin(byteSeeds), std::end(byteSeeds), name) != std::end(byteSeeds)) {
     if (parseUnsigned(value) > std::numeric_limits<uint8_t>::max()) {
@@ -381,6 +381,7 @@ void validateSeed(const std::string &name, const std::string &value) {
       "gps_extrap",
       "gps_stationary",
       "gps_uart_noise",
+      "gps_ana",
       "gps_m10_backup",
       "gps_m10_flash",
       "gps_m10_hot",
@@ -1667,6 +1668,22 @@ std::string queryValueUnscoped(const std::string &key) {
       if (field == "fix_type") {
         return ubx.have_pvt ? std::to_string(ubx.pvt.fixType) : "none";
       }
+      // What the last configuration sent, from Ubx::Plan.
+      const std::pair<const char *, uint32_t> plan[] = {
+          {"gnss",         ubx.gnss         },
+          {"psm",          ubx.psm          },
+          {"rate_ms",      ubx.rate_ms      },
+          {"ana",          ubx.ana          },
+          {"gnss_refused", ubx.gnss_refused },
+          {"psm_refused",  ubx.psm_refused  },
+          {"rate_clamped", ubx.rate_clamped },
+          {"backup",       ubx.backup_supply},
+      };
+      for (const auto &entry : plan) {
+        if (field == entry.first) {
+          return ubx.configured ? std::to_string(entry.second) : "none";
+        }
+      }
     }
 #if defined(FURBLE_SIM)
     if (sub == "fresh_fixes_parsed") {
@@ -2252,6 +2269,8 @@ void applyScenarioSettings(void) {
   saveByte("gps_hold", Settings::GPS_HOLD);
   saveByte("gps_assist", Settings::GPS_ASSIST);
   saveByte("gps_platform", Settings::GPS_PLATFORM);
+  saveByte("gps_gnss", Settings::GPS_GNSS);
+  saveByte("gps_psm", Settings::GPS_PSM);
   saveByte("cpu_freq", Settings::CPU_FREQ);
   saveByte("tx_power", Settings::TX_POWER);
   saveByte("scan_mode", Settings::SCAN_MODE);
@@ -2372,6 +2391,7 @@ void applyScenarioSettings(void) {
   saveBoolean("gps", Settings::GPS);
   saveBoolean("gps_nmea", Settings::GPS_NMEA);
   saveBoolean("gps_extrap", Settings::GPS_EXTRAP);
+  saveBoolean("gps_ana", Settings::GPS_ANA);
   saveBoolean("sd_gpx", Settings::SD_GPX);
   saveBoolean("fauxny", Settings::FAUXNY);
   saveBoolean("autoconnect", Settings::AUTOCONNECT);

@@ -370,6 +370,12 @@ Platform::pm_config_t Platform::getPMConfig(void) {
 
 void Platform::dumpPMLocks(void) {}
 
+bool Platform::hasGpsBackupSupply(void) {
+  // The modelled board carries a backup supply exactly when the virtual
+  // receiver has one, `seed gps_m10_backup`.
+  return furble_sim_uart_gps_backup();
+}
+
 bool Platform::hasTicklessIdle(void) {
   return false;
 }

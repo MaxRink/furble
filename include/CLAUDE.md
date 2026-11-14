@@ -111,10 +111,13 @@ rebase time.
 
 | Owner | Setting keys | Wire ids |
 | --- | --- | --- |
-| Master | shipped settings | 1-22, 24-35, 37-44, 46-47, 51-55, 62, 65-69, 72-76 |
+| Master | shipped settings | 1-22, 24-35, 37-44, 46-55, 62, 65-69, 72-76 |
 | Master (conditional) | display, MQTT, S3 watchdog | 23 (`WATCHDOG` on `FURBLE_M5STICKS3`), 36 (`DISPLAY_MODE` without `FURBLE_NO_DISPLAY`), 56-61 (`FURBLE_MQTT`) |
 | Historical claims | compatibility audit required | 45 |
-| Free | available after rechecking open heads | 48-50, 63-64, 70-71 |
+| Free | available after rechecking open heads | 63-64, 70-71 |
+
+Wire ids 48 (`GPS_GNSS`), 49 (`GPS_PSM`) and 50 (`GPS_ANA`) are claimed by the
+u-blox M10 driver, plan 321.
 
 Take the next free id only after checking every open PR head. Id 45 has a
 historical claim in older branches; keep it reserved and do not allocate or

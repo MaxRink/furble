@@ -223,6 +223,8 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
     case Settings::GPS_ASSIST:
     case Settings::GPS_HOLD:
     case Settings::GPS_PLATFORM:
+    case Settings::GPS_GNSS:
+    case Settings::GPS_PSM:
     case Settings::CPU_FREQ:
     case Settings::BATT_STYLE:
     case Settings::TEXT_SIZE:
@@ -276,6 +278,7 @@ bool serializeSetting(const Settings::setting_t &setting, std::string &value) {
     case Settings::IMU:
     case Settings::GPS_NMEA:
     case Settings::GPS_EXTRAP:
+    case Settings::GPS_ANA:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
     case Settings::RECON_BACKOFF:
@@ -427,6 +430,20 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
 
     case Settings::GPS_PLATFORM:
       if (!parseUnsigned(text, 4, value)) {
+        return false;
+      }
+      Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
+      return true;
+
+    case Settings::GPS_GNSS:
+      if (!parseUnsigned(text, Settings::GPS_GNSS_MAX, value)) {
+        return false;
+      }
+      Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
+      return true;
+
+    case Settings::GPS_PSM:
+      if (!parseUnsigned(text, Settings::GPS_PSM_MAX, value)) {
         return false;
       }
       Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
@@ -611,6 +628,7 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
     case Settings::IMU:
     case Settings::GPS_NMEA:
     case Settings::GPS_EXTRAP:
+    case Settings::GPS_ANA:
     case Settings::MULTICONNECT:
     case Settings::RECONNECT:
     case Settings::RECON_BACKOFF:

@@ -12,6 +12,7 @@
 
 #include "FurbleGPS.h"
 #include "FurblePlatform.h"
+#include "FurbleSettings.h"
 #include "FurbleTypes.h"
 
 namespace Furble {
@@ -61,6 +62,12 @@ void GPS::resetUbx(void) {
   m_UbxSosRestore = 0xff;
   m_UbxVerified = 0;
   m_UbxNaks = 0;
+  m_UbxConfigured = false;
+  m_UbxPlan = {};
+  m_UbxHaveSat = false;
+  m_UbxSatView.fill(0);
+  m_UbxSatUsed.fill(0);
+  m_RailOffPending = false;
 }
 
 bool GPS::sendUbx(const std::vector<uint8_t> &frame) {
@@ -114,11 +121,15 @@ bool GPS::serviceDetect(uint32_t now) {
 /**
  * Build the acknowledged UBX configuration queue.
  *
- * Every write goes to RAM and BBR. Software standby clears the RAM
- * configuration (MAX-M10S integration manual UBX-20053088 3.6.3.2), and BBR is
- * what the receiver reloads from when it wakes. A closing VALGET reads the RAM
- * values back, so a receiver that acknowledged and then did something else is
- * visible on the console and to the simulator.
+ * The settings become a Ubx::Plan: NAV-PVT output, rate, dynamic model and
+ * AssistNow Autonomous; then the constellations, which restart the GNSS and
+ * need 0.5 s before the next command (IFD 4.9.21); then power save with
+ * OPERATEMODE last (MAX-M10S integration manual UBX-20053088 3.6.2.6). Every
+ * write goes to RAM and BBR, because software standby clears the RAM
+ * configuration (3.6.3.2) and BBR is what the receiver reloads when it wakes.
+ * Keys furble manages but the settings leave alone are deleted from BBR, so a
+ * value an earlier session stored does not outlive its setting. A closing
+ * VALGET reads the RAM values back.
  */
 void GPS::configureUbx(void) {
   m_ConfigQueue.clear();
@@ -128,31 +139,143 @@ void GPS::configureUbx(void) {
     const std::lock_guard<std::mutex> lock(m_ConfigMutex);
     m_ConfigStatusCount = 0;
   }
+
+  Ubx::Request request = {};
+  const uint8_t rate = Settings::load<Settings::GPS_RATE>();
+  request.rate_ms = (rate < RATE_MS.size()) ? RATE_MS[rate] : 0;
+  request.dyn_model = Ubx::dynModelForPlatform(Settings::load<Settings::GPS_PLATFORM>());
+  const uint8_t gnss = Settings::load<Settings::GPS_GNSS>();
+  const uint8_t constellation = Settings::load<Settings::GPS_CONSTEL>();
+  if ((gnss != 0) && (gnss <= Ubx::GNSS_MASK_ALL)) {
+    request.gnss = gnss;
+    request.gnss_set = Ubx::GNSS_MASK_ALL;
+  } else if ((constellation > 0) && (constellation <= CONSTELLATION_MAX)) {
+    // CASIC has no Galileo bit, so Galileo keeps the receiver's own setting.
+    request.gnss = Ubx::gnssFromConstellation(constellation);
+    request.gnss_set = Ubx::GNSS_MASK_ALL & ~Ubx::GNSS_MASK_GAL;
+  }
+  request.psm = Settings::load<Settings::GPS_PSM>();
+  request.period_s = (m_DutySeconds > 0) ? m_DutySeconds : 10;
+  request.ana = Settings::load<Settings::GPS_ANA>();
+  const Ubx::Plan plan = Ubx::plan(request);
+  if (plan.gnss_refused) {
+    ESP_LOGW(LOG_TAG, "GPS constellation mask 0x%02x is not valid on M10, left alone", plan.gnss);
+  }
+  if (plan.psm_refused) {
+    ESP_LOGW(LOG_TAG, "GPS power save is refused with BeiDou B1C, left at full power");
+  }
+
+  constexpr uint8_t LAYERS = Ubx::LAYER_RAM | Ubx::LAYER_BBR;
+  constexpr uint16_t SIGNAL_SETTLE_MS = 500;
+  m_UbxExpected = plan.base;
+  enqueueConfig(Ubx::CLASS_CFG, Ubx::ID_CFG_VALSET, payloadOf(Ubx::valSet(LAYERS, plan.base)), "",
+                false, false, true);
+  if (!plan.signals.empty()) {
+    m_UbxExpected.insert(m_UbxExpected.end(), plan.signals.begin(), plan.signals.end());
+    enqueueConfig(Ubx::CLASS_CFG, Ubx::ID_CFG_VALSET, payloadOf(Ubx::valSet(LAYERS, plan.signals)),
+                  "", false, false, true, SIGNAL_SETTLE_MS);
+  }
+  m_UbxExpected.insert(m_UbxExpected.end(), plan.power.begin(), plan.power.end());
+  enqueueConfig(Ubx::CLASS_CFG, Ubx::ID_CFG_VALSET, payloadOf(Ubx::valSet(LAYERS, plan.power)), "",
+                false, false, true);
+  if (!plan.unset.empty()) {
+    enqueueConfig(Ubx::CLASS_CFG, Ubx::ID_CFG_VALDEL,
+                  payloadOf(Ubx::valDel(Ubx::LAYER_BBR, plan.unset)), "", false, false, true);
+  }
+  std::vector<uint32_t> keys;
+  for (const auto &item : m_UbxExpected) {
+    keys.push_back(item.key);
+  }
+  enqueueConfig(Ubx::CLASS_CFG, Ubx::ID_CFG_VALGET, payloadOf(Ubx::valGet(Ubx::GET_RAM, keys)), "",
+                false, false, true);
+
+  {
+    // The burst predictor has to expect what the receiver will now do: the
+    // clamped rate, or one epoch per on/off period.
+    const uint32_t interval = (plan.psm == Ubx::PSM_ON_OFF)
+                                  ? (std::max<uint32_t>(5, request.period_s) * 1000)
+                                  : plan.rate_ms;
+    const std::lock_guard<std::mutex> lock(m_CycleMutex);
+    m_RateMs = static_cast<uint16_t>(std::min<uint32_t>(interval, UINT16_MAX));
+    m_ExpectedInterval = m_RateMs;
+  }
   {
     const std::lock_guard<std::mutex> lock(m_UbxMutex);
     m_UbxVerified = 0;
+    m_UbxPlan = plan;
+    m_UbxAna = request.ana;
+    m_UbxConfigured = true;
   }
-
-  // NAV-PVT once per navigation epoch on UART1 (IFD 4.9.11). NMEA stays on,
-  // so the parser remains the fallback when a NAV-PVT is lost.
-  std::vector<Ubx::KeyValue> items = {
-      {Ubx::Key::MSGOUT_NAV_PVT_UART1, 1},
-  };
-
-  m_UbxExpected = items;
-  const auto set = Ubx::valSet(Ubx::LAYER_RAM | Ubx::LAYER_BBR, items);
-  enqueueConfig(Ubx::CLASS_CFG, Ubx::ID_CFG_VALSET, payloadOf(set), "", false, false, true);
-
-  std::vector<uint32_t> keys;
-  for (const auto &item : items) {
-    keys.push_back(item.key);
-  }
-  const auto get = Ubx::valGet(Ubx::GET_RAM, keys);
-  enqueueConfig(Ubx::CLASS_CFG, Ubx::ID_CFG_VALGET, payloadOf(get), "", false, false, true);
 
   // Ask whether the receiver restored a save-on-shutdown backup at start-up
   // (IFD 3.19.1). Not a CFG message, so it is not acknowledged.
   sendUbx(Ubx::sosPoll());
+}
+
+void GPS::pollUbxSatellites(void) {
+  if (!m_Enabled || (getBackend() != backend_t::UBX)) {
+    return;
+  }
+  {
+    const std::lock_guard<std::mutex> lock(m_UbxMutex);
+    m_UbxHaveSat = false;
+  }
+  // An empty NAV-SAT is a poll for one copy (IFD 3.5.2).
+  sendUbx(Ubx::frame(Ubx::CLASS_NAV, Ubx::ID_NAV_SAT, {}));
+}
+
+bool GPS::beginSaveOnShutdown(uint32_t now) {
+  // A rail that is already off has nothing left to save. A late duty request
+  // can arrive just after the cut, and must not mark the backup as refused.
+  if ((getBackend() != backend_t::UBX) || Platform::hasGpsBackupSupply()
+      || (m_CycleState == cycle_state_t::RAIL_OFF)) {
+    // With V_BCKP the receiver keeps BBR itself (MAX-M10S integration manual
+    // 3.6.3.1), so there is nothing to save.
+    return false;
+  }
+  {
+    const std::lock_guard<std::mutex> lock(m_UbxMutex);
+    if (m_UbxSosBackup == 2) {
+      // refused once this session: a module without flash, do not retry
+      return false;
+    }
+    m_UbxSosBackup = 0;
+  }
+  // A GNSS stop first keeps BBR consistent (IFD 3.19.1), then the backup.
+  sendUbx(Ubx::cfgRst(Ubx::RST_HOT, Ubx::RST_MODE_GNSS_STOP));
+  sendUbx(Ubx::sosCommand(Ubx::SOS_CREATE));
+  m_RailOffPending = true;
+  m_RailOffDeadline = now + UBX_ACK_TIMEOUT_MS;
+  return true;
+}
+
+void GPS::saveOnShutdownBlocking(void) {
+  const uint32_t start = Platform::getInstance().tick();
+  if (!beginSaveOnShutdown(start)) {
+    return;
+  }
+  m_RailOffPending = false;
+  // disable() parks the GPS task first, so this is the only UART reader.
+  Ubx::Stream stream;
+  std::array<uint8_t, 64> buffer;
+  while ((Platform::getInstance().tick() - start) < UBX_ACK_TIMEOUT_MS) {
+    const int read = uart_read_bytes(m_UART, buffer.data(), buffer.size(), pdMS_TO_TICKS(20));
+    for (int i = 0; i < read; i++) {
+      if (!stream.push(buffer[i])) {
+        continue;
+      }
+      serviceUbx(stream.frame().data(), stream.frame().size());
+      const std::lock_guard<std::mutex> lock(m_UbxMutex);
+      if (m_UbxSosBackup != 0) {
+        return;
+      }
+    }
+    if (read <= 0) {
+      vTaskDelay(pdMS_TO_TICKS(20));
+    }
+  }
+  const std::lock_guard<std::mutex> lock(m_UbxMutex);
+  m_UbxSosBackup = 2;
 }
 
 void GPS::serviceUbx(const uint8_t *frame, size_t length) {
@@ -184,6 +307,28 @@ void GPS::serviceUbx(const uint8_t *frame, size_t length) {
     return;
   }
 
+  if ((cls == Ubx::CLASS_NAV) && (id == Ubx::ID_NAV_SAT)) {
+    std::vector<Ubx::NavSatSv> svs;
+    if (!Ubx::parseNavSat(payload, n, svs)) {
+      return;
+    }
+    std::array<uint8_t, 7> view = {};
+    std::array<uint8_t, 7> used = {};
+    for (const auto &sv : svs) {
+      if (sv.gnssId < view.size()) {
+        view[sv.gnssId] = static_cast<uint8_t>(std::min(255, view[sv.gnssId] + 1));
+        if (sv.used()) {
+          used[sv.gnssId] = static_cast<uint8_t>(std::min(255, used[sv.gnssId] + 1));
+        }
+      }
+    }
+    const std::lock_guard<std::mutex> lock(m_UbxMutex);
+    m_UbxSatView = view;
+    m_UbxSatUsed = used;
+    m_UbxHaveSat = true;
+    return;
+  }
+
   if ((cls == Ubx::CLASS_ACK) && (n == 2)) {
     Ubx::Ack ack;
     if (!Ubx::parseAck(id, payload, n, ack)) {
@@ -192,6 +337,9 @@ void GPS::serviceUbx(const uint8_t *frame, size_t length) {
     if (!ack.ack) {
       const std::lock_guard<std::mutex> lock(m_UbxMutex);
       m_UbxNaks++;
+      if ((ack.cls == Ubx::CLASS_UPD) && (ack.id == Ubx::ID_UPD_SOS)) {
+        m_UbxSosBackup = 2;
+      }
     }
     if (!m_ConfigInFlight.has_value() || !m_ConfigInFlight->ubx
         || (ack.cls != m_ConfigInFlight->class_id) || (ack.id != m_ConfigInFlight->message_id)) {
@@ -347,7 +495,19 @@ GPS::ubx_status_t GPS::getUbxStatus(void) const {
     status.sos_backup = m_UbxSosBackup;
     status.config_verified = m_UbxVerified;
     status.naks = m_UbxNaks;
+    status.configured = m_UbxConfigured;
+    status.gnss = m_UbxPlan.gnss;
+    status.psm = m_UbxPlan.psm;
+    status.rate_ms = m_UbxPlan.rate_ms;
+    status.ana = m_UbxAna;
+    status.gnss_refused = m_UbxPlan.gnss_refused;
+    status.psm_refused = m_UbxPlan.psm_refused;
+    status.rate_clamped = m_UbxPlan.rate_clamped;
+    status.have_sat = m_UbxHaveSat;
+    status.sat_view = m_UbxSatView;
+    status.sat_used = m_UbxSatUsed;
   }
+  status.backup_supply = Platform::hasGpsBackupSupply();
   const std::lock_guard<std::mutex> lock(m_GPSMutex);
   status.have_pvt = m_UbxPvtValid;
   status.pvt = m_UbxPvt;

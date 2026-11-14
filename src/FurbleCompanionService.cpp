@@ -681,6 +681,7 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
     case Settings::WIFI:
     case Settings::NTP:
     case Settings::GPS_EXTRAP:
+    case Settings::GPS_ANA:
       return SETTING_BOOL;
 #if defined(FURBLE_MQTT) && FURBLE_MQTT
     case Settings::MQTT:
@@ -701,6 +702,8 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
     case Settings::GPS_DUTY:
     case Settings::GPS_ASSIST:
     case Settings::GPS_PLATFORM:
+    case Settings::GPS_GNSS:
+    case Settings::GPS_PSM:
     case Settings::IR_PROTO:
     case Settings::FB_OUTPUT:
     case Settings::FB_EVENTS:
@@ -777,6 +780,7 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
     case Settings::WATCHDOG:
 #endif
     case Settings::GPS_EXTRAP:
+    case Settings::GPS_ANA:
     case Settings::WIFI:
     case Settings::NTP:
     {
@@ -813,6 +817,8 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
     case Settings::GPS_DUTY:
     case Settings::GPS_ASSIST:
     case Settings::GPS_PLATFORM:
+    case Settings::GPS_GNSS:
+    case Settings::GPS_PSM:
     case Settings::IR_PROTO:
     case Settings::FB_OUTPUT:
     case Settings::FB_EVENTS:
@@ -908,6 +914,12 @@ bool CompanionService::saveSetting(Settings::type_t type, const uint8_t *value, 
         return false;
       }
       if ((type == Settings::GPS_PLATFORM) && (value[0] > 4)) {
+        return false;
+      }
+      if ((type == Settings::GPS_GNSS) && (value[0] > Settings::GPS_GNSS_MAX)) {
+        return false;
+      }
+      if ((type == Settings::GPS_PSM) && (value[0] > Settings::GPS_PSM_MAX)) {
         return false;
       }
       if ((type == Settings::LEGEND) && (value[0] > Settings::LEGEND_OFF)) {
@@ -1112,7 +1124,10 @@ void CompanionService::handleSettings(const uint8_t *data, size_t len) {
     case Settings::GPS_ASSIST:
     case Settings::GPS_HOLD:
     case Settings::GPS_EXTRAP:
+    case Settings::GPS_ANA:
     case Settings::GPS_PLATFORM:
+    case Settings::GPS_GNSS:
+    case Settings::GPS_PSM:
       GPS::getInstance().reloadSetting();
       break;
     case Settings::FB_EVENTS:

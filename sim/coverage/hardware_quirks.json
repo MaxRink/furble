@@ -2743,6 +2743,62 @@
         "uart.ubx_polls"
       ],
       "status": "modeled"
+    },
+    {
+      "id": "peripheral.gps-ubx-power-save",
+      "profile": "sticks3",
+      "category": "peripheral",
+      "feature": "u-blox M10 cyclic tracking power save, refused with BeiDou B1C",
+      "source": "src/FurbleGPSUbx.cpp",
+      "model": "sim/ubx_m10.cpp",
+      "scenario": "sim/scenarios/e2e/gps-ubx-power-save.txt",
+      "assertions": [
+        "m10.ram.20d00001",
+        "m10.avg_ua"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "peripheral.gps-ubx-standby",
+      "profile": "sticks3",
+      "category": "peripheral",
+      "feature": "u-blox M10 RXM-PMREQ software standby for the duty interval and a hot wake",
+      "source": "src/FurbleGPSUbx.cpp",
+      "model": "sim/ubx_m10.cpp",
+      "scenario": "sim/scenarios/e2e/gps-ubx-standby.txt",
+      "assertions": [
+        "m10.pmreqs",
+        "gps.duty_wake_fixes_parsed"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "peripheral.gps-ubx-warm-start",
+      "profile": "sticks3",
+      "category": "peripheral",
+      "feature": "u-blox M10 rail cut with and without V_BCKP and UPD-SOS save-on-shutdown",
+      "source": "src/FurbleGPSUbx.cpp",
+      "model": "sim/ubx_m10.cpp",
+      "scenario": "sim/scenarios/e2e/gps-ubx-warm-start-sos.txt",
+      "assertions": [
+        "m10.sos_creates",
+        "gps.ubx.sos_backup"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "peripheral.gps-ubx-constellation",
+      "profile": "sticks3",
+      "category": "peripheral",
+      "feature": "u-blox M10 constellation selection and rate limit",
+      "source": "src/FurbleGPSUbx.cpp",
+      "model": "sim/ubx_m10.cpp",
+      "scenario": "sim/scenarios/e2e/gps-ubx-constellation.txt",
+      "assertions": [
+        "m10.ram.1031000f",
+        "gps.ubx.rate_clamped"
+      ],
+      "status": "modeled"
     }
   ]
 }
