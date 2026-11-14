@@ -36,9 +36,13 @@ assert_min uart.standby_5s_commands 1
 
 # Stop the receiver and let any burst already in flight settle, then clear the
 # command journal. Nothing may manufacture another fix or duty command from the
-# cached UART source after quiescence.
+# cached UART source after quiescence. A burst in flight at the pause still
+# completes its duty cycle and sends PCAS12 on the way back to standby; a slow
+# sanitizer runner can take longer than a fixed second for that, so the journal
+# is cleared only once the receiver is back in standby.
 uart-mode pause
 wait 1000
+assert-eventually-virtual 15000 gps.state standby
 uart-dump
 wait 6000
 assert_min gps.duty_wake_fixes_parsed 1

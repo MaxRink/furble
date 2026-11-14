@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <deque>
 #include <iomanip>
 #include <iostream>
@@ -252,6 +253,56 @@ std::deque<std::string> recentEvents;
 uint64_t findingCount = 0;
 uint64_t previousLiveness = 0;
 uint32_t resumedBoots = 0;
+
+// FURBLE_FUZZ_RESTART_STEP=N replaces the walk's Nth event on the first boot
+// with a click on the production Sensors "Restart to apply" button.
+// Unset, the walk and every guarded seed stream are unchanged. The restart
+// check uses it so the resume path does not depend on host scheduling.
+// The Restart button has no handle outside FurbleUI.cpp, so find it by its
+// label in the current page's object tree.
+lv_obj_t *findButtonByLabel(lv_obj_t *obj, const char *text) {
+  if (obj == nullptr) {
+    return nullptr;
+  }
+  if (lv_obj_check_type(obj, &lv_label_class)) {
+    const char *label = lv_label_get_text(obj);
+    if (label != nullptr && std::strcmp(label, text) == 0) {
+      return lv_obj_get_parent(obj);
+    }
+  }
+  for (uint32_t i = 0; i < lv_obj_get_child_count(obj); i++) {
+    if (lv_obj_t *found = findButtonByLabel(lv_obj_get_child(obj, i), text); found != nullptr) {
+      return found;
+    }
+  }
+  return nullptr;
+}
+
+// Open the Sensors page and click its Restart button through the production
+// LV_EVENT_CLICKED handler, which calls Platform::restart().
+bool clickRestartApply(UI *ui) {
+  if (ui->simScenarioAction("nav sensors") != UI::sim_action_result_t::APPLIED) {
+    return false;
+  }
+  lv_obj_t *button = findButtonByLabel(lv_screen_active(), "Restart to apply");
+  if (button == nullptr) {
+    return false;
+  }
+  lv_obj_send_event(button, LV_EVENT_CLICKED, nullptr);
+  return true;
+}
+
+uint32_t forcedRestartStep(void) {
+  const char *value = std::getenv("FURBLE_FUZZ_RESTART_STEP");
+  if (value == nullptr || *value == '\0') {
+    return 0;
+  }
+  char *end = nullptr;
+  const unsigned long step = std::strtoul(value, &end, 10);
+  return (end != nullptr && *end == '\0' && step > 0 && step <= 100000)
+             ? static_cast<uint32_t>(step)
+             : 0;
+}
 constexpr const char *CHECKPOINT_FD_ENV = "FURBLE_SIM_FUZZ_CHECKPOINT_FD";
 constexpr size_t MAX_CHECKPOINT_BYTES = 16 * 1024 * 1024;
 std::map<std::string, uint32_t> classCounts;
@@ -829,6 +880,29 @@ void fuzzTick(UI *ui) {
   switch (machine->phase()) {
     case FuzzPhase::APPLY:
       if (!machine->beginApply()) {
+        return;
+      }
+      if (const uint32_t restartStep = forcedRestartStep();
+          restartStep != 0 && resumedBoots == 0 && machine->attempted() + 1 == restartStep) {
+        // Draw the event anyway so the RNG stream after the restart matches
+        // an unforced walk of the same seed.
+        (void)pickEvent();
+        pendingDescription = "restart-apply";
+        pendingWasStop = false;
+        stateBeforeApply = captureState(ui);
+        bool clicked = false;
+        {
+          const Furble::Sim::DeviceAllocScope deviceScope;
+          clicked = clickRestartApply(ui);
+        }
+        if (!clicked) {
+          std::cerr
+              << "fuzz: FURBLE_FUZZ_RESTART_STEP could not click the Sensors Restart button\n";
+          std::exit(1);
+        }
+        recordEvent(pendingDescription);
+        eventCounts[pendingDescription]++;
+        machine->eventApplied(2 + pick(5));
         return;
       }
       pendingEvent = pickEvent();

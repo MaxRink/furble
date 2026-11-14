@@ -11,11 +11,11 @@
 #include <string>
 #include <thread>
 
-#include "boundary_host.h"
-#include "driver/gpio.h"
 #include "FurbleFeedback.h"
 #include "FurbleSettings.h"
 #include "M5Unified.h"
+#include "boundary_host.h"
+#include "driver/gpio.h"
 #include "nvs.h"
 
 namespace {

@@ -24,7 +24,9 @@ appear as covered once the 80x160 and 320x240 binaries are in the union.
 ## Running it
 
 Needs `clang`, `cmake`, SDL2 and the matching `llvm-profdata` and `llvm-cov`.
-On Debian and Ubuntu that is `clang llvm libsdl2-dev`. The tool picks the LLVM
+On Debian and Ubuntu that is `clang llvm libclang-rt-dev libsdl2-dev`; the
+compiler-rt package carries the profile and sanitizer runtimes and is only a
+recommended dependency of `clang`. The tool picks the LLVM
 tools whose major version matches the clang in use, because the raw profile
 format is tied to it. Override with `LLVM_COV` and `LLVM_PROFDATA`.
 
@@ -44,9 +46,6 @@ python3 tools/coverage.py \
   --lvgl-dir "$PWD/sim/.pio/libdeps/sim/lvgl" \
   --json coverage.json --markdown coverage.md --html html
 ```
-
-Keep `--build-dir` short. The gpx-writer host test truncates paths into a 64
-byte buffer, so a deep scratch path makes it fail for unrelated reasons.
 
 Useful narrowing while iterating:
 
