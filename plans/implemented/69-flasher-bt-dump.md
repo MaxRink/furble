@@ -1,0 +1,113 @@
+# Web flasher Bluetooth debug dump capture
+
+## Motivation
+
+Once a user has flashed the debug firmware (plan 68), the diagnostic data still
+lives behind a USB serial console that most reporters cannot reach without a
+terminal and knowledge of the `bt` commands. This plan adds a browser Web Serial
+panel to the flasher that connects to the debug console, drives the Bluetooth
+diagnostic commands, and downloads a single capture file for the bug report. The
+reporter clicks one button, reproduces the fault, clicks stop, and attaches the
+downloaded dump.
+
+This is PR-2 of a stacked pair. It was written as a design and is now
+implemented in `25c7d61f` (`web-installer/index.html`).
+
+## Dependencies
+
+- Depends on PR-1 (plan 68), which publishes the debug firmware and manifests
+  the reporter must flash first.
+- Depends on fork PR #76 (`feat/64-bt-debug`), which adds the `bt` console
+  command family. That PR must merge before this one. The command surface below
+  is owned by #76; if #76 renames or reshapes a command, this panel follows.
+
+## Design
+
+### Console transport
+
+The debug console is a USB CDC serial port at 115200 baud, 8N1. The panel uses
+the Web Serial API (`navigator.serial.requestPort`, `port.open({ baudRate:
+115200 })`). Web Serial is Chromium only and requires a user gesture and a
+secure context, which the deployed HTTPS flasher satisfies. When Web Serial is
+absent the panel hides itself and shows a one line note to use Chrome or Edge.
+
+Console output is line based. Lines are colon delimited fields. The panel reads
+with a `TextDecoderStream`, splits on newlines, and appends every raw line to
+the capture buffer. It does not need to parse fields to capture them; parsing is
+only for the small live status readout.
+
+### Capture flow
+
+The panel exposes a "Capture BT debug dump" button. On click it:
+
+1. Opens the port and drains any banner.
+2. Sends `bt journal on` to start recording the BT event journal.
+3. Prompts the reporter to reproduce the problem, with a visible "Reproducing,
+   click Stop when done" state.
+4. On Stop, sends `bt journal dump` to emit the recorded journal, then
+   `bt scan` for a current advertising snapshot, then `bt explore` for the GATT
+   layout of the target. Each command's output is captured up to its prompt.
+5. Closes the port and offers the capture buffer as a download,
+   `furble-bt-dump-<timestamp>.txt`, via a Blob and an object URL.
+
+Command completion is detected by the console prompt string, with a per command
+timeout so a silent command cannot hang the capture. All sent commands and all
+received lines are written to the buffer verbatim, so the download is a faithful
+transcript.
+
+### UI placement and style
+
+The panel sits below the install button, collapsed by default, matching the
+minimal page style. Plain English labels, no em-dashes, no framework. It reuses
+the page's existing CSS. It never blocks the flasher: a browser without Web
+Serial still flashes firmware normally.
+
+## Files (for the implementing PR)
+
+- `web-installer/index.html`: the Web Serial panel markup and its capture
+  script.
+- `web-installer/CLAUDE.md`: document the capture panel and the `bt` command
+  sequence it drives.
+- `plans/implemented/69-flasher-bt-dump.md`: mark implemented.
+
+## Verification (for the implementing PR)
+
+- Confirm the panel hides cleanly on a browser without Web Serial.
+- With a debug build flashed on hardware, run a capture end to end and confirm
+  the downloaded file contains the `bt journal dump`, `bt scan`, and
+  `bt explore` output.
+- Confirm a silent or missing command hits the timeout instead of hanging.
+- Confirm the flasher still installs firmware with the panel present.
+
+## Implementation state
+
+Implemented. Both dependencies have merged: PR-1 (plan 68) ships the debug
+firmware and manifests, and PR #76 (`feat/64-bt-debug`) ships the `bt` command
+family.
+
+The panel lives in `web-installer/index.html` as a collapsed "Capture BT debug
+dump" section with its own `<script id="bt-dump-script">` block. It follows the
+design with these concrete choices:
+
+- Buttons: Connect / Disconnect, Start recording (`bt journal clear` then
+  `bt journal on`), Stop and dump journal (`bt journal dump` then
+  `bt journal off`), Run scan (`bt scan <seconds>`), Run explore
+  (`bt explore <addr>` then `bt explore stop`), plus Download dump, Copy and
+  Clear. Scan and explore are offered as separate optional controls rather than
+  chained onto Stop, so the reporter runs them only when the bug is about
+  finding or pairing a camera.
+- Completion detection: journal commands wait for the `furble> ` prompt. Scan
+  and explore return the prompt immediately then stream, so they wait for
+  `bt.scan: done` and `explore.read: end` (or the matching refused / failed
+  lines). Every command has a timeout that is logged and swallowed.
+- Debug build detection: on Connect the panel sends a bare carriage return and
+  waits up to 3 seconds for the prompt. No prompt means a release build, so it
+  shows "flash a debug build first" and disconnects.
+- Web Serial is feature detected. Unsupported browsers see a one line note
+  instead of the controls, and firmware flashing still works.
+
+Verification: the JS was syntax checked with `node --check` and the transport
+logic (line demux, prompt detection, per command end markers, echo suppression,
+the full journal + scan + explore capture flow, and the non-debug timeout path)
+was exercised with a mock Web Serial port under node. Hardware capture on an
+M5StickS3 with a debug build is the remaining manual check.

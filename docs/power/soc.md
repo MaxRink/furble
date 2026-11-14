@@ -465,7 +465,7 @@ This is a documentation and build consistency item, not a separate power lever.
 - **Effort:** Large.
 - **Required test:** 100 wake cycles, corrupt state, missed frame, USB recovery,
   PM1 watchdog armed and disarmed, and an analyzer run across a full timelapse.
-- **Citation:** `plans/19-interval-deep-sleep.md` (implemented;
+- **Citation:** `plans/implemented/19-interval-deep-sleep.md` (implemented;
   hardware wake-cycle gate remains), `plans/98:290-297`,
   `plans/26:284-291`.
 
@@ -1239,15 +1239,15 @@ result. A null result is a valid result.
 - `plans/implemented/07-ble-sleep.md`: modem sleep and per-board floors.
 - `plans/implemented/12-display-off.md`: display states, APB lock, PMIC backlight paths.
 - `plans/implemented/13-auto-off-low-batt.md`: charging lock and power-off policy.
-- `plans/15-gps-power.md`: GPS burst lock, duty limits, UART clock.
-- `plans/19-interval-deep-sleep.md`: deep sleep between interval frames.
+- `plans/implemented/15-gps-power.md`: GPS burst lock, duty limits, UART clock.
+- `plans/implemented/19-interval-deep-sleep.md`: deep sleep between interval frames.
 - `plans/implemented/26-pm1-watchdog.md`: PM1 watchdog, feed cadence, `SLP_TO`, deep sleep
   conflict.
 - `plans/implemented/27-usb-console.md`: console transport and USJ light sleep behavior.
 - `plans/implemented/77-battery-saver-profile.md`: the opt-in power bundle.
 - `plans/96-wifi-bt-ble-hardening.md`: WiFi, BLE, and coexistence audit.
 - `plans/98-power-optimization-audit.md`: the model table and ranked actions.
-- `plans/98b-power-followup.md`: bounded GPS degraded retry.
+- `plans/implemented/98b-power-followup.md`: bounded GPS degraded retry.
 - `plans/111-power-recommendations.md`: the external measurement protocol.
 - `plans/125-esp-optimization-program.md`,
   `plans/126-esp-optimization-audit.md`: the wider optimization program.

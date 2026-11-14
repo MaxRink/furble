@@ -6,10 +6,7 @@
 #include "esp_err.h"
 
 using esp_event_base_t = const char *;
-using esp_event_handler_t = void (*)(void *arg,
-                                     esp_event_base_t base,
-                                     int32_t id,
-                                     void *data);
+using esp_event_handler_t = void (*)(void *arg, esp_event_base_t base, int32_t id, void *data);
 struct esp_event_handler_instance;
 using esp_event_handler_instance_t = esp_event_handler_instance *;
 

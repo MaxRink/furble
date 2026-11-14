@@ -21,9 +21,9 @@ IDs are lane local (`BLE-nn`). The coordinator maps them to `P-nnn` rows in
 Read for this lane:
 
 - `plans/96-wifi-bt-ble-hardening.md`, `plans/98-power-optimization-audit.md`,
-  `plans/98b-power-followup.md`, `plans/158-sim-scheduler-parity.md`
+  `plans/implemented/98b-power-followup.md`, `plans/158-sim-scheduler-parity.md`
 - `plans/implemented/07-ble-sleep.md`, `plans/implemented/08-scan-tuning.md`, `plans/implemented/09-reconnect-backoff.md`,
-  `plans/10-adaptive-conn-params.md`, `plans/11-adaptive-tx-power.md`,
+  `plans/implemented/10-adaptive-conn-params.md`, `plans/implemented/11-adaptive-tx-power.md`,
   `plans/65-bt-coexistence.md`, `plans/implemented/77-battery-saver-profile.md`
 - `lib/furble/Scan.cpp`, `lib/furble/Scan.h`, `lib/furble/Camera.cpp`,
   `lib/furble/Camera.h`, `lib/furble/CameraList.cpp`, `lib/furble/Device.cpp`,
@@ -583,7 +583,7 @@ distribution after a 30 s idle gap. `debug camera <n>` to confirm the live
 interval, not just the requested one.
 
 **Citation.** `lib/furble/Camera.h:469-502`, `lib/furble/Camera.cpp:472-596`;
-`plans/10-adaptive-conn-params.md`; `plans/98-power-optimization-audit.md`;
+`plans/implemented/10-adaptive-conn-params.md`; `plans/98-power-optimization-audit.md`;
 `plans/00-hardware-experiments.md`.
 
 ### BLE-12 Raise the fast interval floor
@@ -620,7 +620,7 @@ case. `debug camera` interval readback. The shared P06 and K-family rows.
 
 **Citation.** `lib/furble/Camera.h:469-472`, `:504-510`;
 `components/bt/host/nimble/nimble/nimble/host/include/host/ble_gap.h:113-122`;
-`plans/10-adaptive-conn-params.md` hardware verification (the 24-40 unit log);
+`plans/implemented/10-adaptive-conn-params.md` hardware verification (the 24-40 unit log);
 `plans/65-bt-coexistence.md` recommendation 2.
 
 ### BLE-13 Idle interval above 300 ms
@@ -653,7 +653,7 @@ UI/console reporting and the idle timer.
 Geotag freshness against `MAX_AGE_MS`. 60 minute soak. The shared P07 to P09
 rows.
 
-**Citation.** `lib/furble/Camera.h:472-502`; `plans/10-adaptive-conn-params.md`
+**Citation.** `lib/furble/Camera.h:472-502`; `plans/implemented/10-adaptive-conn-params.md`
 idle-profile latency arithmetic; `plans/65-bt-coexistence.md` event-loss data.
 
 ### BLE-14 Fast profile latency 1 (no change for power)
@@ -679,7 +679,7 @@ camera, not a furble energy lever.
 conn-saver host tests and a shutter latency A/B cover it.
 
 **Citation.** `lib/furble/Camera.h:469-483`;
-`plans/10-adaptive-conn-params.md` "peripheral latency lets the peripheral
+`plans/implemented/10-adaptive-conn-params.md` "peripheral latency lets the peripheral
 skip".
 
 ### BLE-15 Supervision timeout (no change as a power lever)
@@ -708,7 +708,7 @@ fixed the false-connected bug family.
 cover the behavior.
 
 **Citation.** `lib/furble/Camera.h:484-502`; `lib/furble/Camera.cpp:889-911`;
-`plans/10-adaptive-conn-params.md` peer timeout cap section.
+`plans/implemented/10-adaptive-conn-params.md` peer timeout cap section.
 
 ### BLE-16 2M PHY
 
@@ -1047,7 +1047,7 @@ alone.
 
 **Citation.** `lib/furble/Device.cpp:9-20`, `src/FurbleSettings.cpp:424-432`;
 `tools/power-model/board-currents.yaml` `esp32s3_radio.ble_tx_*`;
-`plans/11-adaptive-tx-power.md`.
+`plans/implemented/11-adaptive-tx-power.md`.
 
 ## Connect and subscription cost
 
@@ -1644,11 +1644,11 @@ Plans:
 - `plans/00-hardware-experiments.md` (3.3 mA measured floor, 32 kHz crystal
   absent)
 - `plans/implemented/07-ble-sleep.md`, `plans/implemented/08-scan-tuning.md`,
-  `plans/implemented/09-reconnect-backoff.md`, `plans/10-adaptive-conn-params.md`,
-  `plans/11-adaptive-tx-power.md`, `plans/65-bt-coexistence.md`,
+  `plans/implemented/09-reconnect-backoff.md`, `plans/implemented/10-adaptive-conn-params.md`,
+  `plans/implemented/11-adaptive-tx-power.md`, `plans/65-bt-coexistence.md`,
   `plans/implemented/77-battery-saver-profile.md`,
   `plans/96-wifi-bt-ble-hardening.md`, `plans/98-power-optimization-audit.md`,
-  `plans/98b-power-followup.md`, `plans/158-sim-scheduler-parity.md`
+  `plans/implemented/98b-power-followup.md`, `plans/158-sim-scheduler-parity.md`
 
 Datasheets and published measurements, as recorded in
 `tools/power-model/README.md` and `board-currents.yaml`:

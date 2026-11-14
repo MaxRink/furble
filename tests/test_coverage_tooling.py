@@ -766,5 +766,19 @@ class ToolDiscoveryTest(unittest.TestCase):
         os.environ["LLVM_COV"] = original
 
 
+
+class HostProfileEnvironmentTest(unittest.TestCase):
+  def test_every_host_test_is_registered_before_the_profile_block(self):
+    """The per-test LLVM_PROFILE_FILE loop only reaches tests above it.
+
+    The boundary tests were once added below it, so coverage failed with 17
+    tests that "wrote no raw profile".
+    """
+
+    text = (ROOT / "tests" / "host" / "CMakeLists.txt").read_text(encoding="utf-8")
+    block = text.index("get_property(furble_test_names DIRECTORY PROPERTY TESTS)")
+    self.assertNotIn("add_test(", text[block:])
+    self.assertIn("APPEND PROPERTY ENVIRONMENT", text[block:])
+
 if __name__ == "__main__":
   unittest.main()
