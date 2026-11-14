@@ -355,3 +355,36 @@ bench, first measure:
 - Simulator: all 225 certified StickS3 e2e scenarios pass on the plain build,
   including the 15 `gps-ubx-*` scenarios. All 10 power-gate scenarios pass
   `compare.py`.
+
+## Verification after the review fixes
+
+Head is `feat/ubx-3-features`, after the review commits.
+
+| Env | Flash used / slot | DRAM / budget | gps task stack |
+| --- | --- | --- | --- |
+| m5stick-s3 | 1,862,016 / 3,145,728 | 47,480 / 48,128 | 3,264 / 4,096 |
+| esp32-s3-headless | 1,775,312 / 3,145,728 | 52,224 / 53,248 | 3,504 / 4,096 |
+| m5stick-c | 1,503,040 / 1,740,800 | 55,052 / 55,296 | 2,768 / 4,096 |
+| m5stick-c-plus | 1,553,072 / 1,740,800 | 55,028 / 55,296 | 3,120 / 4,096 |
+| m5stack-core | 1,626,448 / 1,740,800 | 55,156 / 56,320 | 2,768 / 4,096 |
+| m5stack-core2 | 1,910,560 / 6,291,456 | 56,752 / 57,344 | 2,768 / 4,096 |
+| waveshare-s3-eth | 1,709,600 / 6,291,456 | 51,604 / 52,224 | 3,504 / 4,096 |
+
+- Every env builds, and every size budget and stack budget passes.
+- The tightest gps task margin is 592 bytes, on the headless and Waveshare
+  images. It is above the 512-byte floor, so the 4,096-byte stack is
+  unchanged.
+- `stack_budget.py` reports unresolved indirect calls, so these are lower
+  bounds. One reviewer saw 3,648 bytes on headless; re-measure if the GPS task
+  grows.
+- Host and fuzz:
+  - all 188 CTest cases pass, and the sanitized run passes;
+  - `check_fuzz.py --smoke` host targets pass;
+  - the 7 `gps_ubx_fuzz` seeds at 5,000 iterations have 0 failures;
+  - `fuzz.gps.ubx` passes, with 11 of 11 targets in `fuzz_results.json`;
+  - the StickS3 UI fuzz smoke passes on touch and no-touch.
+- Simulator:
+  - all 229 certified StickS3 e2e scenarios pass on the plain build;
+  - all 10 power-gate scenarios pass, `gps-duty-standby-cycle` at -3.36 %;
+  - `gps-ubx-tick-wrap` fails against the old gate and passes against the
+    fixed one.
