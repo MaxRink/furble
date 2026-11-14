@@ -52,6 +52,12 @@ Done on `fix/451-fuji-double-subscriptions`.
   the append alone would not make a concurrent reader safe. No failure has been
   seen there. Treat any ASan report on them as the same class and give the
   journal the same treatment.
+- Other Fujifilm double state is also read and written across threads
+  without a lock: `m_StaleRegistration` with `m_HaveStaleRegistration`
+  (written in `disconnect()`, read in `emitStaleRegistration()`), and the
+  plain flags `m_Configured`, `m_GeotagRequested`, `m_Connected` and
+  `m_Client`. They predate this fix and no failure has been seen. Treat an
+  ASan or TSan report on them the same way.
 - The simulator compiles these doubles as well. The table is a plain
   `std::mutex` that is never held across a scheduler boundary, so it does not
   add a wait the simulator scheduler cannot see.
