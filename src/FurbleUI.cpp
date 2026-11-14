@@ -96,27 +96,28 @@ uint32_t g_simDisconnectCalls = 0;
 #include "FurbleUIAudit.h"
 #endif
 
-#if defined(CONFIG_SPIRAM)
-namespace {
 // Decoded images live in the LVGL image cache until it evicts them. Below
 // CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL a plain malloc puts them in internal
 // RAM, so the connected-page icons kept about 3.4 KiB internal after a
-// camera disconnect and HTTPS could not return (plan 304). Only the CPU
-// renderer reads these buffers, so PSRAM is safe. The DMA display buffers in
-// UI::UI() use their own internal allocation and are not affected.
-// LV_STDLIB_CLIB makes lv_malloc() a plain malloc(), so heap_caps_free()
-// releases either kind of block.
+// camera disconnect and HTTPS could not return (plan 304). Only the image
+// handler's pixel buffers move; their cache metadata stays where lv_malloc()
+// puts it. Larger buffers already went to PSRAM through malloc. A board
+// without a persistent image cache (CONFIG_LV_CACHE_DEF_SIZE 0, the Core2)
+// frees each buffer after the draw, gains nothing and would pay PSRAM reads
+// on every icon, so it keeps the default handlers.
+#if defined(CONFIG_SPIRAM) && (LV_CACHE_DEF_SIZE > 0)
+#define FURBLE_IMAGE_BUFFERS_IN_PSRAM 1
+namespace {
+// Only the CPU renderer reads these buffers, so PSRAM is safe. The DMA
+// display buffers in UI::UI() use their own internal allocation.
 void *imageBufferMalloc(size_t bytes, lv_color_format_t colorFormat) {
   (void)colorFormat;
   // LVGL's default handler over-allocates the same way so the buffer can be
   // aligned.
   bytes += LV_DRAW_BUF_ALIGN - 1;
-  // Every board aborts on a failed allocation, so read the PSRAM block first
-  // rather than fall back after a failed attempt.
-  if (heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) >= bytes) {
-    return heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-  }
-  return lv_malloc(bytes);
+  // heap_caps_malloc_prefer() tries PSRAM, then the default heap, and aborts
+  // only when both fail, so there is no check-then-allocate gap.
+  return heap_caps_malloc_prefer(bytes, 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT, MALLOC_CAP_DEFAULT);
 }
 
 void imageBufferFree(void *buffer) {
@@ -492,7 +493,7 @@ UI::UI(const interval_t &interval)
 
   lv_init();
   lv_tick_set_cb(tick);
-#if defined(CONFIG_SPIRAM)
+#if defined(FURBLE_IMAGE_BUFFERS_IN_PSRAM)
   lv_draw_buf_handlers_t *imageHandlers = lv_draw_buf_get_image_handlers();
   imageHandlers->buf_malloc_cb = imageBufferMalloc;
   imageHandlers->buf_free_cb = imageBufferFree;

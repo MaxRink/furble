@@ -2,10 +2,12 @@
 #define FURBLE_SIM_ESP_HEAP_CAPS_H
 
 #ifdef __cplusplus
+#include <cstdarg>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #else
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -21,6 +23,7 @@
 #define MALLOC_CAP_DMA 0x0008
 #define MALLOC_CAP_SPIRAM 0x0400
 #define MALLOC_CAP_INTERNAL 0x0800
+#define MALLOC_CAP_DEFAULT 0x1000
 
 #ifdef __cplusplus
 #include "esp_err.h"
@@ -37,6 +40,8 @@ extern "C" {
 size_t furble_sim_heap_free(uint32_t capabilities);
 size_t furble_sim_heap_largest(uint32_t capabilities);
 size_t furble_sim_heap_minimum(uint32_t capabilities);
+/* True when the modelled pool the caps name can hold size, with block overhead. */
+bool furble_sim_heap_fits(size_t size, uint32_t capabilities);
 bool furble_sim_heap_should_fail(size_t bytes, const char *owner);
 /* Records the failure, calls the registered hook and aborts like hardware. */
 void furble_sim_heap_alloc_failed(size_t bytes, uint32_t capabilities, const char *owner);
@@ -63,6 +68,32 @@ static inline void *heap_caps_aligned_alloc(size_t alignment, size_t size, uint3
 
 static inline void *heap_caps_malloc(size_t size, uint32_t capabilities) {
   return heap_caps_aligned_alloc(sizeof(void *), size, capabilities);
+}
+
+/*
+ * ESP-IDF tries each caps set in order through the non-aborting allocator and
+ * aborts only when every set fails. The model checks each pool before it
+ * charges, because a counted allocation that does not fit aborts at once.
+ * MALLOC_CAP_DEFAULT without MALLOC_CAP_SPIRAM charges the internal pool, the
+ * first heap ESP-IDF tries for it.
+ */
+static inline void *heap_caps_malloc_prefer(size_t size, size_t num, ...) {
+  va_list args;
+  va_start(args, num);
+  uint32_t caps = 0;
+  void *pointer = NULL;
+  while (num-- > 0) {
+    caps = va_arg(args, uint32_t);
+    if (furble_sim_heap_fits(size, caps)) {
+      pointer = heap_caps_malloc(size, caps);
+      break;
+    }
+  }
+  va_end(args);
+  if (pointer == NULL) {
+    furble_sim_heap_alloc_failed(size, caps, "heap_caps_malloc_prefer");
+  }
+  return pointer;
 }
 
 static inline void heap_caps_free(void *ptr) {
