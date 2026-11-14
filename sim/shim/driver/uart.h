@@ -99,6 +99,8 @@ uint32_t furble_sim_uart_fix_second(void);
 uint32_t furble_sim_uart_baud(void);
 uint32_t furble_sim_uart_eph_replay_frames(void);
 uint32_t furble_sim_uart_monhw_polls(void);
+/** Are receiver bytes or a receive event still waiting for the GPS task? */
+bool furble_sim_uart_rx_pending(void);
 #endif
 
 #endif

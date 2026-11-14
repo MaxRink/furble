@@ -480,7 +480,7 @@ void validateSeed(const std::string &name, const std::string &value) {
   } else if (name == "scan_timeout") {
     parseUnsigned(value);
     return;
-  } else if (name == "secure_stall_ms") {
+  } else if (name == "secure_stall_ms" || name == "gps_reader_hold_ms") {
     parseUnsigned(value);
     return;
   } else if (name == "ble_max_clients") {
@@ -1612,6 +1612,12 @@ std::string queryValueUnscoped(const std::string &key) {
     }
     if (sub == "duty_wake_fixes_parsed") {
       return std::to_string(gps.simDutyWakeFixesParsed());
+    }
+    if (sub == "readers_lock_free") {
+      return gps.simReadersLockFree() ? "yes" : "no";
+    }
+    if (sub == "duty_settled") {
+      return gps.simDutySettled() ? "yes" : "no";
     }
 #endif
     if (sub == "sats_in_view") {
@@ -3340,6 +3346,22 @@ void restartProcess(void) {
 
 bool connectShouldFail(void) {
   return scenarioSettingIsTrue("connect_fail");
+}
+
+namespace {
+std::atomic<uint32_t> gpsReaderHoldMs {0};
+}  // namespace
+
+void setGpsReaderHoldMs(uint32_t ms) {
+  gpsReaderHoldMs.store(ms);
+}
+
+void gpsReaderHold(void) {
+  // Host time on purpose: the race it models is between host threads.
+  const uint32_t ms = gpsReaderHoldMs.load();
+  if (ms != 0) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+  }
 }
 
 }  // namespace Furble::Sim

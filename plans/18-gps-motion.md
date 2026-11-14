@@ -350,6 +350,7 @@ Simulator, all certified on the 80x160 M5StickC, the 135x240 M5StickS3 and the
 | Scenario | What it pins |
 |---|---|
 | `e2e/gps-motion-detector.txt` | That the source armed at all, slow entry and immediate exit, and the phase 1 contract: `gps.state`, `gps.degraded`, `uart.count` and `power.no_light_sleep` all read the same on both sides of a transition. |
+| `e2e/gps-reader-hold.txt` | A 30 ms slow status reader never costs the receiver a burst: the cycle never degrades in two minutes. See "Fix: gps-motion-detector flake". |
 | `e2e/gps-motion-setting.txt` | Default off, the real Settings > GPS switch turning the detector on and off, and the receiver still tracking 50 ms after each flip. The 50 ms is the point: the old code re-acquired and was back at tracking within a second, so a settled assertion could not see it. |
 | `e2e/gps-motion-prearm.txt` | GPS loads persisted `GPS_MOTION` before `MotionSource::arm()`, then source disarm/re-arm updates the motion gate and stationary verdict without a setting toggle, receiver reset or UART write. |
 | `bughunt/gps-motion-row.txt` | The row at Normal text size: renders, both scroll extents reachable, no indicator overlap, and it follows the GPS visibility gate. |
@@ -582,6 +583,125 @@ would have caught this PR shipping wire id 66 without a schema row: it walks
 every setting and requires a `SETTING_SCHEMAS` row, with 43 and 46 pinned as
 `KNOWN_MISSING`. Wire id 66 has its row and the test passes with it. Wire id 46
 has since gained a row too, so the only gap left in that list is 43.
+
+## Fix: gps-motion-detector flake
+
+`e2e/gps-motion-detector.txt` failed rarely on the 320x240 Core in the
+physical-button layout under parallel load. The failing assert was
+`gps.degraded expected '0' got '1'` at about 63 s. The motion detector itself
+was never wrong: the MotionSource poll runs on the UI task in virtual time and
+measured the same 61,035 ms stationary entry in every probe run.
+
+Root cause, a firmware race. `GPS::serviceSerial()` and `GPS::serviceCycle()`
+took `m_CycleMutex` with `try_lock` and skipped the pass when it was held. The
+skip was meant for `enable()` and `disable()`, but both reset the cycle under
+`m_ServiceMutex`, which the GPS task holds for its whole pass, so they could
+never be the holder. The only real holders were the status readers:
+`GPS::update()` calls `isDegraded()` on the UI task once a second. When that
+read overlapped the task's handling of a UART pattern event, the event was
+consumed with no read. On hardware the burst is late and costs a resync. In the
+simulator the fake receiver waits for the burst to be read before sending the
+next one, so nothing more arrives, `BURST` times out after 5 s and the cycle
+goes degraded for the 10 s first backoff. A drop between about 48 s and 53 s
+was still degraded at the 63 s assert.
+
+Fix. The readers (`getCycleStatusSnapshot()`, `isDegraded()`,
+`degradedRetries()`, `getReceiverStatus()`) no longer take `m_CycleMutex`. They
+load one packed word, `m_CycleStatus` (state, retries, policy, duty and rate),
+plus the last sentence tick. The GPS task publishes both before it blocks and
+at the end of each pass, and `enable()` and `disable()` publish after a reset.
+The service passes take `m_CycleMutex` blocking. Nothing else holds it outside
+`m_ServiceMutex` now, so the wait never happens and a consumed UART event can
+never be skipped. The UI task holds no lock the GPS task waits on.
+
+Lock audit of `m_CycleMutex` after the fix. Holders: `serviceCycle()`,
+`serviceSerial()`, `onProbeLocked()` and `onProbeFailed()` on the GPS task
+inside its `m_ServiceMutex` pass, and `enable()` and `disable()` under
+`m_ServiceMutex`. Under it `serviceSerial()` takes `m_GPSMutex` through the
+parser and reads the UART with a one tick timeout, as before. No path takes
+`m_ServiceMutex` while holding it, so the order stays service, then cycle.
+
+Regression. `seed gps_reader_hold_ms N` holds each snapshot reader for N ms of
+host time through a `FURBLE_SIM` seam in `getCycleStatusSnapshot()`.
+`e2e/gps-reader-hold.txt` seeds 30 and samples `gps.degraded` every 5 s for
+two minutes. It is certified on all three boards.
+
+Evidence, all on the Core physical-button layout:
+
+| Run | Binary | Result |
+|---|---|---|
+| `gps-motion-detector`, 32 parallel | master `e66e8807` | 1 failure in 384 runs |
+| `gps-motion-detector`, sequential, 30 ms reader hold inside the lock | master plus a temporary probe | 3 failures in 5 runs, 13 degraded entries, every dropped read at a whole second |
+| `gps-reader-hold`, 16 parallel | master reader and `try_lock` passes with the seam | 32 failures in 32 runs |
+| `gps-reader-hold`, 16 parallel | this fix | 0 failures in 32 runs |
+| `gps-motion-detector`, 16 parallel | this fix | 0 failures in 512 runs |
+
+Not covered: the fake receiver still waits for each burst to be read before it
+schedules the next, so any future dropped event stalls it for good. A real
+receiver keeps its own 1 Hz clock. The regression scenario does not depend on
+that model.
+
+Review of #465 found the hold seam covered only `getCycleStatusSnapshot()`.
+`getReceiverStatus()` now has it too, and the scenario opens the GPS Data page.
+That alone proves nothing: with `getReceiverStatus()` taking `m_CycleMutex`
+again, and even with `serviceSerial()` back on try-lock-and-skip, the scenario
+passed 8 of 8. The page timer runs in the LVGL pass, after the GPS task has
+handled the tick's UART event, so the hold never overlaps it in the
+simulator. `gps.readers_lock_free` checks the property directly: it holds the
+mutex on the UI thread and requires all three readers to return on a helper
+thread. It reads `yes` on this branch and fails the scenario when either
+`getReceiverStatus()` or `getCycleStatusSnapshot()` takes the lock.
+
+## Fix: gps-standby-wake settle race
+
+Master CI failed `gps-standby-wake` on `350b58e3` (run 43570517034):
+`uart.standby_5s_commands expected '0' got '1'` after the receiver was paused.
+`gps.fresh_fixes_parsed` stayed at 4 across the final window, so the extra
+`$PCAS12,5` came from a fix already parsed before the journal was cleared,
+not from a new burst.
+
+Cause: the scenario cleared the journal once `gps.state` read `standby`. That
+label is the power profiler's, and only `enterStandby()` sets it. A duty wake
+moves the cycle from STANDBY to BURST without relabelling, so the label reads
+`standby` through the whole wake burst. The burst's `PCAS12` is sent only after
+`GPS::update()` on the UI task pushes the new fix and the GPS task consumes the
+request. On a loaded runner that came after the clear.
+
+Fix: `gps.duty_settled` is `yes` when no PCAS12 can still follow a fix the
+cycle already has. The fake UART has no bytes or receive event pending, the
+GPS task holds no bytes it has not parsed, the latest fix sequence has been
+pushed, the duty request has been consumed and the task is not inside the
+code that acts on it. One `FURBLE_SIM` flag, set by an RAII scope, marks the
+task busy in `serviceSerial()` from before `uart_read_bytes()` until the parse
+has stored the fix, and in `serviceCycle()` from before it reads the request
+until the command is written. `GPS::update()` now raises the request before it
+stores the pushed sequence, so a reader that sees the fix pushed also sees
+its request; both stores run on the UI task and the GPS task reads only the
+request, so device behaviour is unchanged. The query reads the UART, the busy
+flag, the fix sequence, the pushed sequence, the request and the busy flag
+again, in that order, and takes no GPS lock. The scenario waits on it instead of `gps.state`.
+
+The first version required STANDBY. The pre-push review found that a pause in
+the second before a wake still opens the wake window; no burst comes, the
+cycle goes degraded after `MIN_WAKE_WAIT_MS` and never returns to STANDBY, so
+that wait would hang for the whole bound. The second version replaced STANDBY
+with "published state is not BURST". Copilot found that a pass can parse a
+wake fix in `serviceSerial()` and consume its request in `serviceCycle()`
+before the end-of-pass publish, while the word still says STANDBY. The busy
+marker covers that pass and reads no state at all. The next pre-push review
+found that the task can take a burst's bytes from the UART and be preempted
+before it parses them, when every other check already reads idle, so the
+marker now covers the serial read as well.
+
+Evidence, macOS StickS3 build of the final version, 16 parallel. A probe with
+the post-pause wait cut from 1000 ms to 1 ms and the old condition failed 6 of
+128 with the CI signature, and `gps.duty_settled` read `no` in exactly those 6
+and `yes` in the 122 that passed. The same probe on the final condition passed
+128 of 128, and the real scenario passed 64 of 64. A sweep that pauses at 20
+offsets across one 5 s cycle, four runs each, passed 80 of 80; in 15 of them
+the paused wake went degraded before the wait finished, which is the case
+that hung the STANDBY version. Review findings are in `plans/18-review-feedback.md`. Master and this branch both pass the unmodified scenario 64 of 64
+locally, so the window needs CI load or the narrowed probe to show.
 
 ## References
 

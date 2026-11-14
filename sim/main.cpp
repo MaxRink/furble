@@ -234,6 +234,11 @@ int runSimulator() {
         static_cast<uint32_t>(std::stoul(Sim::scenarioSetting("secure_stall_ms", "0"))));
   }
 
+  // A GPS status reader that runs long, in host time, so a scenario can prove
+  // the GPS task never drops a UART event for a reader.
+  Sim::setGpsReaderHoldMs(
+      static_cast<uint32_t>(std::stoul(Sim::scenarioSetting("gps_reader_hold_ms", "0"))));
+
   BootScreen::step("Bluetooth");
   BootScreen::step("Companion");
 
