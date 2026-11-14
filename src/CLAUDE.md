@@ -48,6 +48,14 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   strict rolling-window maximum is eight per day. Only a known battery-backed
   RTC may suppress those checkpoints. Keep every restart and power-off path on the
   shared flush helper and never add per-tick NVS writes.
+  A copy of the same record in `RTC_NOINIT_ATTR` memory keeps the running
+  system clock across soft resets on boards without an RTC chip. Rewrite it on
+  every accepted sample, anchored where the system clock was set; never seed
+  the system clock from NVS after a reset that kept it. The kept sample is
+  demoted to `RTC` authority (NVS stays NVS) so the next GPS, NTP or companion
+  sample can correct it; never restore it as GPS or NTP. Its uncertainty is an
+  estimate of RC slow-clock drift, not a bound. The intervalometer does not
+  trust an `RTC` sample when no RTC chip is present (plan 139).
 - The StickS3 M5PM1 watchdog is armed for 45 seconds through the shared
   `Watchdog` constants. Keep `watchdogFeed()` at its one second cadence and
   preserve verified disarm and readback before flash or power-off paths.
@@ -175,7 +183,7 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   knowledge; every method runs on the SD writer task.
 - `FurbleWiFi`: station lifecycle, remembered access point state and NTP.
   Never fall back to a WiFi scan while a camera is active. The event handler
-  runs on the default event loop task (2,304-byte stack): it must not open
+  runs on the default event loop task (3,072-byte stack): it must not open
   NVS, read a setting or start SNTP. It updates memory and queues the
   access point save or erase and the NTP start for the 4 KiB worker
   (`serviceEventStorage()`); a newer save or erase replaces the older one.
@@ -203,7 +211,7 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   internal sockets. The production value is two clients (five total).
   `reloadSetting()` must not create the TLS identity task while `web_ui` is off.
   `initEarly()` prepares the TLS identity before the radios and display; the
-  supervisor and HTTPS stacks stay in internal RAM at 3 KiB/8 KiB and must not
+  supervisor and HTTPS stacks stay in internal RAM at 4 KiB/8 KiB and must not
   move to PSRAM because the HTTPS task commits NVS. `reloadSetting()` caches
   the setting, password and credential state, so the supervisor loop never
   reads NVS. `startServer()` runs `WebUIMemory::serverGate()` before allocating

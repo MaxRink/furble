@@ -28,10 +28,11 @@ state and the remaining gate; the issue stays open until that gate lands.
 
 | Issue | Plan | Current state |
 | --- | --- | --- |
-| #283 | [173](173-sim-scheduler-visibility.md) | Diagnostics merged; root cause of the restart SIGSEGV still unknown. Tracker stays open. |
-| #289 | [173](173-sim-scheduler-visibility.md) | 4 of 5 items done. The Secure/reconnect 50-run load proof remains. |
+| #283 | [173](173-sim-scheduler-visibility.md) | Root cause identified: a growing `setenv` freed `environ` under the SDL loop's `getenv`. `a57e77e7` removed the mid-loop growth. The boot `TZ` growth is ordered before the loop, and the sim now creates `TZ` first so a sim-e2e guard can forbid any growth after `SDL_Init`. Not reproduced on demand. Ready to close; reopen on a new `SIM CRASH` dump. |
+| #289 | [173](173-sim-scheduler-visibility.md) | All five items done. The item 4 settle failure was `Scan::stop()` waiting on a plain condition variable for a radio-task callback, invisible to the simulator scheduler. It is now `scan_condition_t`, a scheduler-visible type under `FURBLE_SIM`. 6,000 container runs passed with no breaker parks; the last 3,600 ran at a median loadavg of 81.5. |
 | #381 | [302](302-companion-restart-reconnect.md) | Open. Long USB console runs reset into the ROM USB-JTAG unit. The 5 s command timeout and monitor fixes are merged; a UART0 panic capture and a host-side recovery test remain. |
 | #390 | [304](304-webui-stick-memory.md) | Open. The WebUI now fails closed on the StickS3 instead of boot-looping. A support claim still needs the hardware memory gate, a TLS handshake, a settings write and a soak. |
+| #451 | [325](325-peer-subscription-race.md) | Fixed on `fix/451-fuji-double-subscriptions`: the virtual camera subscription tables are thread safe. Closes on merge. |
 
 Closed issues #280, #281, #282, #288 and #290 are retained in their plans and in
 the git history. They are no longer ownership rows.
@@ -102,6 +103,8 @@ the git history. They are no longer ownership rows.
 | [315-stickc-layout-regressions.md](implemented/315-stickc-layout-regressions.md) | M5StickC header battery anchor, Cameras page double reserve and Time page scroll fixes |
 | [316-docs-capture-companion-reject.md](implemented/316-docs-capture-companion-reject.md) | Docs capture: rename the hardware-model action that shadowed the companion pairing Reject |
 | [317-notouch-regressions.md](317-notouch-regressions.md) | Physical-button suite: control drain wake, stale legend pass, info page padding, memory profile constants |
+| [325-peer-subscription-race.md](325-peer-subscription-race.md) | Thread-safe subscription tables for the virtual camera test doubles (#451) |
+| [325-review-feedback.md](325-review-feedback.md) | Review-feedback record for the virtual camera subscription race |
 | [302-companion-restart-reconnect.md](302-companion-restart-reconnect.md) | Companion stop/start without a heap panic, and advertising restart after a rejected link |
 | [303-upstream-sync.md](implemented/303-upstream-sync.md) | Read-only upstream audit, open issue mapping, and full SHA PlatformIO pins for upstream issue 309 |
 
@@ -189,6 +192,7 @@ implemented.
 |---|---|
 | [68-flasher-debug-firmware.md](implemented/68-flasher-debug-firmware.md) | Web flasher debug firmware option: build *-debug envs, debug manifests, install checkbox |
 | [139-persistent-time.md](implemented/139-persistent-time.md) | RTC, NVS, GPS, NTP, and companion wall-clock retention policy |
+| [139-review-feedback.md](implemented/139-review-feedback.md) | Review-feedback record for the wall clock across soft resets |
 | [69-flasher-bt-dump.md](implemented/69-flasher-bt-dump.md) | Web Serial Capture BT debug dump panel, depends on 68 and PR #76 |
 | [113-per-board-ota-slots.md](implemented/113-per-board-ota-slots.md) | Per-flash-size OTA slots, implemented by PR #167 |
 | [114-provision-parser.md](implemented/114-provision-parser.md) | One-shot provisioning parser and console apply; staged browser transport deferred |
@@ -248,6 +252,7 @@ implemented.
 | [169-flaky-host-tests.md](implemented/169-flaky-host-tests.md) | Three flaky host tests made deterministic: real scheduler waits instead of spin budgets, a registration sync point instead of sleeps, the aborted-connect republish wedge, and a coverage run that fails on a scenario that never finished |
 | [171-console-coverage-crash.md](implemented/171-console-coverage-crash.md) | The console suite exits while the control task is still running: stop and join every shim task before static destruction, and a coverage run that names a host test it lost |
 | [173-sim-scheduler-visibility.md](173-sim-scheduler-visibility.md) | Scheduler-visible host mutex so virtual time stops tracking host load and the cancel bounds come back, one preferences store per simulated device, and a fatal-fault reporter that names the scenario line |
+| [173-review-feedback.md](173-review-feedback.md) | Review-feedback record for the #283 environment guard and #289 load proof branch |
 | [174-coverage-empty-profiles.md](implemented/174-coverage-empty-profiles.md) | Two host suites that measured nothing under coverage: the control shim adopts the stop-and-join task contract so both exit through main(), a coverage run fails naming a test whose raw profile is empty or missing, the console shim refuses a task created after shutdown, and the ctest summary header is anchored so a failing test cannot fabricate a crash report |
 | [175-coverage-crash-output.md](implemented/175-coverage-crash-output.md) | Failed simulator coverage scenarios retain a bounded output tail so signal diagnostics remain visible in CI |
 | [176-sim-task-notifications.md](implemented/176-sim-task-notifications.md) | FreeRTOS task notification counters in the simulator wake blocked owners, preserve clear/decrement and virtual timeout semantics, and unwind on shutdown |

@@ -85,6 +85,7 @@ and target boundary (a new seam needs a contract test and an entry here):
 | Power/display hardware | Production policy and lock ownership | M5PM1, ESP-IDF power, timer, random, NVS, sleep, flash and system calls are host implementations. Observable state is exposed through `platform_state` rather than replacing policy code. |
 | IMU motion engines | Production `IMU::MotionSource`, backend selection, the software fallback and every consumer | The BMI270 and MPU6886 engines are register programming against a bus the host does not have. `sim/FurbleIMUSim.cpp` supplies a virtual backend per chip that models fixed per-axis slope thresholds and event semantics only, driven by the same `Sim::imuGetAccel` surface the software backend reads. `seed imu_chip` decides which chip the modelled board carries. The register encoding is covered by `tests/host/imu_motion_encoding_test.cpp`, not here. This does not certify the physical MPU6886 interrupt path or its clear-on-read race. |
 | IMU bus visibility | Production lock discipline is unchanged: the engines, the spirit level, the IMU live page and the console probe all take the same lock at the same points | `Furble::imu_mutex_t` is `std::mutex` everywhere except a `FURBLE_SIM` build, where it is `Sim::SchedulerMutex`, the same reason and pattern as `connect_mutex_t`: a task waiting on the IMU bus stops being runnable instead of being timed out by the host-clock deadlock breaker (issue #279). |
+| Scan callback wait visibility | Production `Scan::stop()` still waits for an in-flight custom callback at the same point | `Furble::scan_condition_t` is `std::condition_variable` everywhere except a `FURBLE_SIM` build, where it is `Sim::SchedulerConditionVariable`. A waiter stops being runnable, so the radio task that must finish the callback gets the turn. As a plain condition variable it kept the control task runnable and holding the turn until the 2 s host stall breaker parked it, and a parked task runs outside the turn, so a loaded host let a cancel burn its 30 s cap (issue #289). A notify releases waiters but does not preempt the notifier, because the notifier still holds the lock the waiter must take and priority inheritance is not modeled. `tests/test_sim_wait_visibility.py` rejects a production condition variable that is neither sim-only nor aliased this way. `FURBLE_SIM_SCHED_TRACE=1` prints the task table and backtrace whenever the scheduler stops waiting for a task, which is how this wait was found. |
 | Optional hardware | Production capability checks and menu paths | IR, feedback and SD shims report an env-selected capability because no host GPIO/SD/audio device exists. They do not bypass UI or persistence handlers. The linked host-boundary suite compiles the production IR, SD and feedback drivers against peripheral doubles; see `sim/scripts/run-boundary-conformance.sh`. |
 | Build-time observations | Production behavior is unchanged | `FURBLE_SIM` adds profiler counters, query-only state, the UI-task switch registry, click-streak input injection, the scan-start probe, and the post-`lv_task_handler` `fuzzCycleComplete` seam. The dependency-free `fuzz_machine` owns fuzzer phase/cadence state and counters; these are observability/input seams, not alternate policy. Plan 158 now covers retained task lifecycle records and delete-other quiescence. The cooperative simulator unwind is safer than abrupt cleanup but is not FreeRTOS cleanup parity; production Companion remains blocked pending worker-owned shutdown. Scheduler priority, boundary preemption, same-tick dispatch, and queue ownership are modeled at simulator scheduler boundaries; instruction-level preemption, core affinity, and CPU-time accounting remain unsupported. |
 | Internal heap | Production gates (`WebUIMemory::supervisorGate`/`serverGate`), the board's heap abort policy and log formats | `sim/heap_model.cpp` carries a seeded internal free/largest pair when a scenario asks for one. After the seed, the WebUI supervisor, WebUI HTTPS task, MQTT owner and esp-mqtt client are charged explicitly. One UI timer period (1 s) after the production `UI_FIRST_FRAME` boot mark, once no LVGL animation runs, `sim/heap_count.cpp` also charges every device allocation. Allocations made from UI construction until then are baseline blocks: uncharged, but refunded if freed later. It charges the replaced global `operator new`/`delete`, LVGL's C library allocator (compiled against `furble_sim_fw_malloc`), every device task stack and every queue at its 84-byte control block plus storage, each with the TLSF header and poisoning overhead of the pinned ESP-IDF. Default `malloc` follows `heap_caps_malloc_default`: internal up to `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL`, PSRAM above it, then either pool. An allocation counts when it runs on a device task thread outside a `HostAllocScope`. Every sim function that production code calls, and every lock in the heap model and power profiler, enters a host scope; add one to any new `FURBLE_SIM` hook that allocates. Host sizes are 64-bit, so pointer-heavy objects are counted at up to twice their device size: the count is an upper bound. A modelled allocation failure aborts with status 3 and a panic crash record, as `CONFIG_HEAP_ABORT_WHEN_ALLOCATION_FAILS` does on every board, so firmware NULL fallbacks are never certified. `sim/webui_memory_model.cpp` runs the production WebUI gate but not the HTTPS server, identity generation or TLS. It logs the production fail-closed sentence. The model does not claim fragmentation parity. |
@@ -215,11 +216,24 @@ including empty strings and failed-save rollback.
   identity change also discards stale objects. It requires the same dependency
   overrides as `sim/build.sh`.
 - `sim/scripts/run-env-order.sh`: on Linux, compiles a small `LD_PRELOAD`
-  interposer that resolves libc functions before simulator threads start and
-  rejects a selected Furble `setenv` or `unsetenv` after SDL initialization,
-  then runs the fresh and restart scenarios against the current binary and
-  expects the pre-fix binary to trip each exact target. This checks ordering
-  only; it is not crash-causality evidence.
+  interposer and runs the fresh and restart scenarios against the current
+  binary. The named targets reject one Furble `setenv` or `unsetenv` after SDL
+  initialization; the `growth` target rejects any variable added by `setenv`
+  or `putenv`, any `unsetenv`, and `clearenv`, from any caller. A small SDL
+  self-test program must trip it first, once each for `setenv`, `putenv` with
+  and without a value, `clearenv` and a 300-byte new name, and must pass a
+  replacement of an existing 300-byte name. The sim-e2e S3 job runs it. With
+  `FURBLE_SIM_ENV_GUARD_OLD_BIN` it also expects the pre-fix binary to trip
+  each named target.
+- Never grow the process environment while SDL is live. glibc's getenv walks
+  `environ` without a lock, the SDL main loop calls it thousands of times a
+  second, and a setenv that adds a variable frees the array under that walk.
+  This is the issue #283 restart SIGSEGV class. Replacing an existing variable
+  is safe. Production Timezone's boot `setenv("TZ")` runs after `SDL_Init` but
+  before `panelReady` releases the main loop, so it is ordered before any loop
+  getenv and was not a live race. `main()` creates `TZ` first so every `TZ`
+  write is a replace, and the guard enforces the stricter rule: no growth after
+  `SDL_Init`.
 - `sim/CMakeLists.txt`: the CMake path for machines with CMake installed.
   Forced C++ platform shim includes apply only to C++ sources. Generated C
   icon sources must compile as C without the C++ FreeRTOS header.
@@ -332,7 +346,8 @@ shortens that host retry cadence for a bounded scenario.
   group per modal: PREV/NEXT cannot escape into background controls, and an
   underlying dialog may close without detaching input from the one above it.
   Keep new modal controls on that shared ownership path rather than adding them
-  directly to the page group. Other production mutexes are still invisible,
+  directly to the page group. `Scan::m_CallbackIdle` is scheduler visible
+  too. Other production mutexes are still invisible,
   so new cross-task contention needs the same measured review. Mutex priority
   inheritance is not modeled.
   `observed_delta` and `no_observed_delta` remain masked because asynchronous
@@ -858,6 +873,11 @@ shortens that host retry cadence for a bounded scenario.
   not charged; no TSan scenario asserts a heap figure. The suppressions match
   function names, so a run without `llvm-symbolizer` reports the suppressed
   M5GFX `Panel_sdl` race as unsymbolized frames.
+- On macOS, sdl2-compat also dlopens SDL3 by leaf name through its own rpath.
+  The ASan dlopen interceptor hides that rpath, so besides the direct SDL3 link
+  `sim/build.sh` adds the SDL3 directory as an rpath to sanitized Darwin
+  builds. Check `otool -l` for that `LC_RPATH` before running a
+  sanitized binary.
 - The fuzz fit rule follows the layouts the scenarios certify. Remote shutter
   stays fit-required on physical-button builds and on the 320x240 Core touch
   model, and narrow Stick touch may scroll. Physical-button Home and Connected

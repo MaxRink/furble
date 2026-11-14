@@ -1,6 +1,6 @@
-# Plan 314 PR 7: the first companion enable creates the retained 3 KiB task
-# and the GATT database, so it is admitted only above the
-# CompanionMemory::startGate floors (7,552 free, 3,456 largest).
+# Plan 314 PR 7: the first companion enable creates the retained 3,840-byte
+# task and the GATT database, so it is admitted only above the
+# CompanionMemory::startGate floors (8,320 free, 4,224 largest).
 #
 # The companion is off at boot. Five 4 KiB squeezes take the post-#394
 # StickS3 pair to 6,871 free. Turning the companion on is refused before any
@@ -34,14 +34,14 @@ action companion-enable
 assert companion.enabled yes
 assert companion.gate none
 assert companion.state advertising
-assert heap.free 20183
+assert heap.free 19415
 
 action companion-disable
 assert companion.enabled no
-assert heap.free 20183
+assert heap.free 19415
 action companion-enable
 assert companion.enabled yes
-assert heap.free 20183
+assert heap.free 19415
 assert heap.alloc_failures 0
 assert platform.watchdog armed
 
