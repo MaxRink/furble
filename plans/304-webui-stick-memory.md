@@ -398,6 +398,24 @@ above are the pre-review state; these replace them.
   below is that timing check for this subset. The allocation uses
   `heap_caps_malloc_prefer()` with PSRAM first and the default heap second,
   which aborts only when both fail.
+- Image cache drop at session end (after the master merge of #446). #446
+  raised the WebUI supervisor stack from 3,584 to 4,096 bytes, so every
+  scenario figure fell by 512. The server starts at 13,623 / 11,860 and the
+  connect minimum is 6,963 free with a 5,200-byte largest block, still above
+  both floors. After the disconnect, though, the pool stopped at 20,375 with
+  the server paused, under the 20,480 AMBER exit, and HTTPS never returned.
+  `UI::doDisconnect()` and the connect timer's idle teardown now call
+  `lv_image_cache_drop(NULL)` after the Main page is set, on boards with a
+  persistent image cache (`LV_CACHE_DEF_SIZE` above 0, the two S3 boards).
+  That returns the cache entries' internal metadata, 1,488 bytes in the
+  model: the pool reaches 21,863 with the server paused, 1,383 over the exit,
+  and HTTPS starts again at 13,671 / 11,908, 48 bytes above the boot figure.
+  Nothing else from the session stays allocated in the model. The drop is
+  safe without a reference check: LVGL runs with `LV_OS_NONE` and one draw
+  unit, so an entry is referenced only inside a refresh, and both call sites
+  run on the UI task outside one. The Main page decodes its own 24x24 icons
+  once more and caches them; the scenario resets the redraw probe after the
+  disconnect and bounds `ui.invalidate_count` at 3 over 10 s.
 - By construction. In the model `webuiMemoryStart()` marks a seeded identity
   stored, and nothing allocates per request. The `webui.identity stored` and
   flat 60 s soak assertions therefore check the wiring, not mbedTLS or the
@@ -422,8 +440,9 @@ open):
 
 1. Baseline, WebUI off. Connect WiFi, enable the companion, leave the display
    on. Run `status` and `perf heap`. Record `heap.internal.free` and
-   `heap.internal.largest`. Pass: a pair at or above 24,064 / 15,872, the
-   3,584-byte supervisor plus the 20,480 / 12,288 server floor.
+   `heap.internal.largest`. Pass: a pair at or above 24,832 / 16,640, the
+   4,352-byte debug supervisor (4,096 plus its 256-byte debug margin) plus
+   the 20,480 / 12,288 server floor.
 2. First-boot identity. Run `companion password set <password>`, then
    `settings set web_ui on`, then `reboot`. Pass: the boot log shows the
    `TLS certificate SHA-256` line and `Authenticated WebUI listening on HTTPS

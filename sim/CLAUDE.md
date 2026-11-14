@@ -476,7 +476,9 @@ shortens that host retry cadence for a bounded scenario.
   pressure governor runs in the simulator: `action heap-squeeze` and
   `heap-release` move the pool at runtime, `heap.pressure` reports the level,
   and `memory-pressure-webui-shed.txt` and `memory-pressure-mqtt-shed.txt` (the
-  latter in `run-memory.sh`) cover pause and return. Plan 314 PR 7 adds the
+  latter in `run-memory.sh`) cover pause and return.
+  `hw-memory-webui-first-boot.txt` covers the return after a camera session,
+  which needs the image cache drop at disconnect. Plan 314 PR 7 adds the
   runtime first-enable gates: `seed webui_identity_absent true` with
   `action webui-enable` runs the identity gate
   (`memory-webui-identity-gate.txt`), and `action companion-enable` runs the

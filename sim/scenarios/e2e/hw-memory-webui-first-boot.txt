@@ -10,7 +10,8 @@
 # measurement minus the 4 KiB the 12 KiB main stack took back (plan 313). It
 # is lower than the measured post-#394 pair (27,351 / 25,588), so it is the
 # harder case. It is not the derived board_heap.json bound, which omits the
-# WiFi and NimBLE driver state.
+# WiFi and NimBLE driver state. The boot figure is 512 bytes lower than it was
+# before #446 raised the WebUI supervisor stack from 3,584 to 4,096 bytes.
 #
 # The model stores the identity and keeps the soak flat by construction:
 # webuiMemoryStart() marks a seeded identity stored, and nothing in the model
@@ -33,8 +34,8 @@ assert webui.supervisor created
 assert webui.server running
 assert webui.gate none
 assert webui.fail_closed no
-assert heap.free 14135
-assert heap.largest 12372
+assert heap.free 13623
+assert heap.largest 11860
 assert heap.pressure normal
 assert heap.alloc_failures 0
 
@@ -42,7 +43,7 @@ assert heap.alloc_failures 0
 wait 60000
 assert webui.server running
 assert_max webui.attempts 1
-assert heap.free 14135
+assert heap.free 13623
 assert heap.alloc_failures 0
 assert platform.watchdog armed
 
@@ -56,9 +57,9 @@ assert platform.watchdog armed
 # The deepest point is the connected page's first draw, whose LVGL layers and
 # style blocks are transient. Before admission that point was 5,599 free
 # with a 3,836-byte largest block on the post-#394 seed, too small for another
-# target task, and 1,440 bytes lower on this seed. With admission it is 7,475
-# free with a 5,712-byte largest block. The floors are the RED largest-block
-# threshold and one more target task.
+# target task, and 1,440 bytes lower on this seed. With admission it is 6,963
+# free with a 5,200-byte largest block, 512 bytes lower since #446. The floors
+# are the RED largest-block threshold and one more target task.
 home
 wait 300
 action connect
@@ -73,16 +74,20 @@ print mem.high_water_largest
 assert_min heap.minimum 6144
 assert_min mem.high_water_largest 4480
 
-# The connected-page icons are decoded into PSRAM, so the disconnect returns
-# the pool above the 20,480 AMBER exit with the server paused (20,887). After
-# five clear readings the governor returns to NORMAL and HTTPS starts again
-# through its own gate. The pool ends 1,440 bytes under the boot figure. That
-# is the image cache's per-entry metadata (draw buffer descriptors, cache
-# entries and their nodes), which lv_malloc() keeps internal and the model
-# charges at 64-bit host sizes: dropping the cache at disconnect returns 1,488
-# bytes. The margin over the exit is 407 bytes.
+# The connected-page icons are decoded into PSRAM, but each image cache entry
+# keeps its cache node and draw buffer descriptor internal. Without a release
+# the pool stopped at 20,375 with the server paused, under the 20,480 AMBER
+# exit, and HTTPS never returned. The disconnect now drops the image cache,
+# which returns 1,488 bytes: the pool reaches 21,863 with the server paused,
+# 1,383 bytes over the exit. After five clear readings the
+# governor returns to NORMAL and HTTPS starts again through its own gate. The
+# Main page decodes its own icons once more and caches them.
 action disconnect
 assert-eventually-virtual 10000 control.state idle
+wait 1000
+assert heap.pressure amber
+assert webui.server pending
+assert heap.free 21863
 wait 30000
 print heap.free
 print heap.largest
@@ -90,10 +95,19 @@ assert heap.pressure normal
 assert webui.server running
 assert_max webui.attempts 2
 assert heap.alloc_failures 0
-assert heap.free 12695
+# The pool ends 48 bytes above the boot figure: the session leaves nothing
+# behind, and the drop also returns cache blocks allocated during boot.
+assert heap.free 13671
 assert_min heap.minimum 6144
 assert companion.enabled yes
 assert ui.page main
 assert platform.watchdog armed
+
+# The Main page after the drop is steady: its icons came back into the cache
+# on one decode, so the redraw probe stays near zero and the pool holds.
+action invalidate.reset
+wait 10000
+assert_max ui.invalidate_count 3
+assert heap.free 13671
 
 exit

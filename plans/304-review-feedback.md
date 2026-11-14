@@ -10,8 +10,9 @@ This is the review-feedback record for the branch that closes the simulator
 side of issue #381 (USB monitor recovery, plan 302) and issue #390 (WebUI
 first boot on the StickS3, plan 304). The findings came from a subagent review
 of commits `6d456d14` (#381) and `395bf7a1` (#390), rows 1 to 8, and an
-independent second review of the fixes, rows 9 to 16. Each is recorded as
-fixed, already fixed or a false positive, with evidence.
+independent second review of the fixes, rows 9 to 16. Row 17 is the
+regression the master merge of #446 exposed. Each is recorded as fixed,
+already fixed or a false positive, with evidence.
 
 ## Findings
 
@@ -33,6 +34,7 @@ fixed, already fixed or a false positive, with evidence.
 | 14 | Subagent review, round 2 | The headless console `connect` admitted a target task for a camera that was already a target, which `addActive()` then ignores. | Fixed. `connectCamera()` skips `admit()` when the camera's address is already among `Control::getTargetCameras()`. The headless doubles gained `getTargetCameras()` and `Camera::getAddress()`. | `src/main.cpp`; `tests/host/headless/`. |
 | 15 | Subagent review, round 2 | `CONNECT_TARGET_BYTES` repeated the 4,096 literal from the `xTaskCreate` in `FurbleControl.cpp`. | Fixed. `TaskMemory::CAMERA_TARGET_STACK_BYTES` is the one value: `addActive()` passes it to `xTaskCreate`, the governor derives `CONNECT_TARGET_BYTES` from it, and `tools/stack_budget.json` reads it from `include/FurbleTaskMemory.h`. | `include/FurbleTaskMemory.h`, `src/FurbleControl.cpp`, `tools/stack_budget.json`. |
 | 16 | Subagent review, round 2 | The changes move allocations on PSRAM boards, but the memory scenarios, panic fixtures and memory profile were not rerun. | Fixed. All three ran on plain builds; see Validation. The full permutation run is left to CI and the readiness gate. | Validation below. |
+| 17 | Master merge, #446 | #446 raised the WebUI supervisor stack from 3,584 to 4,096 bytes. `hw-memory-webui-first-boot` then stopped at 20,375 free with the server paused after the disconnect, under the 20,480 AMBER exit, so the governor stayed AMBER and HTTPS never returned after a camera session. | Fixed without touching the exit or the scenario's checks. The 1,440 to 1,488 bytes the session left behind were all image cache metadata (row 12): 11 entries at the disconnect, their pixels already in PSRAM. `UI::doDisconnect()` and the connect timer's idle teardown now end with `dropSessionImages()`, `lv_image_cache_drop(NULL)` on boards with a persistent cache. With it the pool reaches 21,863 with the server paused, 1,383 over the exit, and HTTPS starts again at 13,671 / 11,908, 48 above the boot figure, so the model keeps nothing from the session. `lv_cache_drop_all` frees even a referenced entry, so the drop relies on `LV_OS_NONE` with one draw unit: entries are referenced only inside a refresh, and both call sites run on the UI task outside one. The Main page decodes its icons once again; the scenario bounds `ui.invalidate_count` at 3 over 10 s after the disconnect. The boot and connect figures follow #446 by 512 bytes (13,623 / 11,860; minimum 6,963 with a 5,200-byte block). The scenario now also asserts AMBER, a paused server and 21,863 free 1 s after the disconnect, before it asserts NORMAL and a running server. | `src/FurbleUI.cpp` `dropSessionImages()`; `sim/scenarios/e2e/hw-memory-webui-first-boot.txt`; plan 304 review follow-up; `docs/webui.md`; `src/CLAUDE.md`. |
 
 ## Copilot review
 
@@ -91,4 +93,16 @@ On the new seed with both fixes the minimum is 7,475, 1,440 lower again.
   - `run_sanitized_host_tests.sh --clean` passes 183 of 183, including
     `sim-webui-memory-model` with the hook cases.
   - The full `run-permutations.py` run is left to CI and the readiness gate.
+- Row 17, after the master merge, on plain builds:
+  - `sh sim/scripts/run-e2e.sh` on the StickS3 binary passes 212 of 212.
+  - The ten power-gate scenarios stay within `compare.py`'s threshold. None
+    of them disconnects a camera, so none runs the drop.
+  - `sh sim/scripts/run-memory.sh` on the `FURBLE_SIM_MQTT=1` binary passes
+    4 of 4.
+  - `run_sanitized_host_tests.sh --clean` passes 184 of 184.
+  - `m5stick-s3` builds. `check_size_budget.py` passes (flash 1,850,288,
+    dram 47,232 of 48,128) and `stack_budget.py --env m5stick-s3` passes 16
+    of 16 tasks.
+  - `pre_review.py --base origin/master` passes 9 gates and
+    `check-doc-tokens.sh` passes.
 - No hardware run. The hardware steps in plans 302 and 304 stay open.

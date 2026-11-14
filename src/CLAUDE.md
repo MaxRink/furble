@@ -239,6 +239,13 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   `m_Enabled` false and logs the measured pair. Later enables reuse both and
   are not gated; never delete the task or the services on disable.
 - `FurbleUI*`: LVGL UI. Respect the changed-check rule for periodic setters.
+  Both session teardowns (`doDisconnect()` and the connect timer's idle path)
+  end with `dropSessionImages()`, which empties the LVGL image cache on boards
+  that have one so the connected-page entries return their internal metadata
+  and the WebUI can clear the AMBER exit (plan 304). It is safe only because
+  LVGL runs with `LV_OS_NONE` and is called on the UI task outside a refresh;
+  `lv_image_cache_drop(NULL)` frees an entry that is still referenced. Never
+  call it from a draw callback or another task.
   LVGL 9.4 retains an encoder input device's `last_pressed` object when that
   object is deleted. Only when switching a persistent physical-button device
   from `LV_INDEV_TYPE_BUTTON` to `LV_INDEV_TYPE_ENCODER`, reset it through the

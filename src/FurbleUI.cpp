@@ -26,6 +26,7 @@
 #include <lvgl_private.h>
 #endif
 #include <src/draw/lv_draw_buf_private.h>
+#include <src/misc/cache/lv_cache.h>
 #include <src/themes/lv_theme_private.h>
 
 #include <Device.h>
@@ -125,6 +126,22 @@ void imageBufferFree(void *buffer) {
 }
 }  // namespace
 #endif
+
+namespace {
+// A camera session decodes the connected-page icons into the image cache, and
+// each entry keeps its cache node and draw buffer descriptor in internal RAM
+// after the session ends. On the StickS3 that kept the pool under the AMBER
+// exit, so HTTPS never came back (plan 304). Dropping the whole cache when the
+// session ends returns them. The Main page shown next decodes its own icons
+// once and caches them again; nothing redraws every frame. It is safe here:
+// LVGL runs without an OS, so a cache entry is referenced only while the
+// renderer draws it, and this runs on the UI task outside any refresh.
+void dropSessionImages(void) {
+#if LV_CACHE_DEF_SIZE > 0
+  lv_image_cache_drop(nullptr);
+#endif
+}
+}  // namespace
 
 #if defined(FURBLE_M5STICKC) || defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
 // Use 24x24 icons for StickC screens
@@ -7627,6 +7644,7 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
         lv_menu_clear_history(m_MainMenu.main);
         lv_menu_set_page(m_MainMenu.main, m_MainMenu.page);
         lv_group_focus_obj(m_Menu.at(m_ConnectStr).button);
+        dropSessionImages();
         if ((m_CamerasTimer != nullptr)
             && (lv_menu_get_cur_main_page(m_MainMenu.main) == m_Menu.at(m_CamerasStr).page)) {
           rebuildCamerasPage(m_Menu.at(m_CamerasStr));
@@ -8668,6 +8686,7 @@ void UI::doDisconnect(void) {
   lv_menu_set_page(m_MainMenu.main, m_MainMenu.page);
   menu_t &connect = m_Menu.at(m_ConnectStr);
   lv_group_focus_obj(connect.button);
+  dropSessionImages();
 }
 
 void UI::updateCameraRow(lv_obj_t *label, Camera *camera, Control::state_t state) {
