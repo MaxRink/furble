@@ -351,6 +351,10 @@ void watchdogScenarioStep(const char *line) {
   crashStep.store(line, std::memory_order_release);
 }
 
+void watchdogDumpThread(pthread_t thread, const char *name) {
+  dumpThread({thread, name == nullptr ? "task" : name});
+}
+
 void watchdogStop(void) {
   {
     const std::lock_guard<std::mutex> lock(runMutex);

@@ -1,6 +1,8 @@
 #ifndef FURBLE_SIM_WATCHDOG_H
 #define FURBLE_SIM_WATCHDOG_H
 
+#include <pthread.h>
+
 namespace Furble::Sim {
 
 /**
@@ -49,6 +51,16 @@ void watchdogPhase(const char *phase);
  * passes the parsed step's own source string, which is stable for the run.
  */
 void watchdogScenarioStep(const char *line);
+
+/**
+ * Print a native backtrace of one registered thread to stderr.
+ *
+ * Diagnostic only. The scheduler trace (`FURBLE_SIM_SCHED_TRACE`) uses it to
+ * show where a task was when the scheduler gave its turn away. The target
+ * thread writes its own frames from the dump signal handler, so this works
+ * while that thread is blocked in a host lock.
+ */
+void watchdogDumpThread(pthread_t thread, const char *name);
 
 /** Stop and join the watchdog thread. */
 void watchdogStop(void);
