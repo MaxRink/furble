@@ -377,7 +377,11 @@ shortens that host retry cadence for a bounded scenario.
   task, or application RAM. The driver owns PID-scoped file creation, ownership
   markers, bounded reads, atomic publication, consumption, and cleanup.
   Malformed or foreign files fail closed and remain caller-owned.
-  `sim/scripts/run-fuzz-restart.sh` is the focused seed-2 restart gate. Root
+  `sim/scripts/run-fuzz-restart.sh` is the focused seed-2 restart gate. It
+  sets `FURBLE_FUZZ_RESTART_STEP=200`, so the restart comes from the
+  `restart-apply` action clicking the real Sensors "Restart to apply" button
+  instead of a host-dependent random visit; no Linux seed from 1 to 20 reached
+  one alone. Unset, the knob changes no walk. Root
   evidence records the c190 gate pass and all three 65e8 panel binaries passing
   the pinned eight-seed 600-event sweep plus the strict seed-2 restart check.
   The corrected f49 binary still needs its own retest before this behavior is

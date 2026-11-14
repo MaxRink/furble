@@ -1016,6 +1016,11 @@ class UI {
   lv_obj_t *m_OK = nullptr;
   lv_obj_t *m_Right = nullptr;
   lv_obj_t *m_ShutterLockIcon = nullptr;
+#if defined(FURBLE_SIM)
+  // The Sensors page "Restart to apply" button, kept for the restart-apply
+  // simulator action.
+  lv_obj_t *m_RestartApplyButton = nullptr;
+#endif
   lv_obj_t *m_ShutterLegendLine = nullptr;
   // Non-blocking reconnect banner overlaid on the Remote shutter page: a red
   // Bluetooth icon plus "Reconnecting" (or "Reconnecting (i/n)") text. The

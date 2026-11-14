@@ -339,7 +339,21 @@ def main(argv: list[str] | None = None) -> int:
             # not trusted: the override holds only if no workflow's filter
             # selects a changed file, so an Actions outage still fails.
             try:
-                covering = covering_workflows(run_changed_files(owner, name, args.pr))
+                changed = run_changed_files(owner, name, args.pr)
+            except ReviewQueryError as error:
+                print(f"review-thread check failed closed: {error}", file=sys.stderr)
+                return 2
+            # The filters are read from the local checkout, normally the PR's
+            # own tree. A PR that edits a workflow could rewrite the very
+            # filters that decide this, so it never qualifies.
+            edited = [path for path in changed if path.startswith(".github/workflows/")]
+            if edited:
+                print(f"--allow-no-checks refused: the PR changes {', '.join(edited)}, so its "
+                      "own workflow filters cannot decide whether a check should have run.",
+                      file=sys.stderr)
+                return 1
+            try:
+                covering = covering_workflows(changed)
             except ReviewQueryError as error:
                 print(f"review-thread check failed closed: {error}", file=sys.stderr)
                 return 2

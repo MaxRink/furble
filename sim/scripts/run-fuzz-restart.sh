@@ -1,9 +1,12 @@
 #!/bin/sh
 
-# Seed 2 reaches a production UI Restart button on the 135x240 simulator, but
-# the exact visit depends on the remaining host scheduling gaps. Repeat the
-# real randomized walk until one run proves the process resumed its private
-# checkpoint. Every attempt still passes through run-fuzz.sh's summary checks.
+# Prove the fuzz walk survives a production UI restart: the process must
+# resume its private checkpoint and finish the seed. Whether the random walk
+# reaches a Restart button by itself depends on host scheduling (seed 2 did on
+# macOS, no seed from 1 to 20 does on Linux), so step 200 of the first boot is
+# replaced with the restart-apply action, which clicks the Sensors page
+# "Restart to apply" button and runs Platform::restart(). The rest of the walk
+# stays random and passes through run-fuzz.sh's summary checks.
 
 set -eu
 
@@ -11,7 +14,7 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 attempt=1
 while [ "$attempt" -le 5 ]; do
   output=$(mktemp "${TMPDIR:-/tmp}/furble-fuzz-restart.XXXXXX")
-  if FURBLE_FUZZ_SEEDS=2 FURBLE_FUZZ_STEPS=600 FURBLE_FUZZ_REPEAT_SEED= \
+  if FURBLE_FUZZ_SEEDS=2 FURBLE_FUZZ_STEPS=600 FURBLE_FUZZ_REPEAT_SEED= FURBLE_FUZZ_RESTART_STEP=200 \
       sh "$ROOT/sim/scripts/run-fuzz.sh" >"$output" 2>&1; then
     cat "$output"
     if grep -q '^FUZZ RESUME seed=2 ' "$output"; then

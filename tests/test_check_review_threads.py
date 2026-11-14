@@ -179,6 +179,14 @@ class ReviewThreadGateTest(unittest.TestCase):
         self.assertIn("--allow-no-checks refused", stderr)
         self.assertIn("main.yml", stderr)
 
+    def test_no_checks_override_is_refused_when_the_pr_edits_a_workflow(self):
+        # The filters come from the PR's own tree, which it could have broadened.
+        code, _, stderr = self.run_override(
+            ["web-installer/index.html", ".github/workflows/sim-e2e.yml"],
+            "--allow-no-checks", "installer only")
+        self.assertEqual(code, 1)
+        self.assertIn(".github/workflows/sim-e2e.yml", stderr)
+
     def test_blank_override_reason_is_no_override(self):
         code, _, _ = self.run_override(["web-installer/index.html"], "--allow-no-checks", "  ")
         self.assertEqual(code, 1)
