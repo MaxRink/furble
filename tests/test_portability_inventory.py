@@ -1,6 +1,7 @@
 """Failure-mode tests for the Nordic portability boundary guard."""
 
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -22,6 +23,7 @@ class PortabilityInventoryTest(unittest.TestCase):
 
     def make_minimal_root(self) -> Path:
         temp = Path(tempfile.mkdtemp(prefix="furble-portability-"))
+        self.addCleanup(shutil.rmtree, temp)
         protocol = temp / "lib/furble/protocol"
         protocol.mkdir(parents=True)
         (protocol / "codec.cpp").write_text("int codec() { return 0; }\n", encoding="utf-8")

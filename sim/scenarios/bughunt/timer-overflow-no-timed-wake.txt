@@ -1,5 +1,9 @@
-# Boards without timed wake hide Deep Sleep and Sleep Threshold. Even at Large
-# text size the remaining four interval fields must fit the 80x160 StickC panel.
+# Boards without timed wake hide Deep Sleep and Sleep Threshold. The timer page
+# then shows 13 objects, against 16 on the timed-wake StickS3; the three missing
+# are the Deep Sleep row and the Sleep Threshold button. The page may still
+# scroll: the fit rule in sim/CLAUDE.md lets Timer scroll on every panel, and at
+# the largest offered text size the four interval fields overflow the 80x160
+# StickC by 17 px and the 320x240 Core by 3 px.
 assert ui.nav_layout touch
 seed text_size 2
 wait 300
@@ -12,7 +16,7 @@ print ui.text_size
 print ui.nav_layout
 print ui.scroll_top
 print ui.scroll_bottom
-assert ui.overflow no
+assert ui.visible_objects 13
 assert ui.focus ok
 assert ui.focus_on_page yes
 exit

@@ -19,14 +19,13 @@ alignment:std::max<long>
 alignment:utility/pgmspace.h
 # M5GFX calls a mixin method through a base pointer (LGFXBase.hpp).
 vptr:lgfx/v1/LGFXBase.hpp
-# The host SDL panel converts an infinite scale factor to int.
-float-cast-overflow:lgfx/v1/platforms/sdl/Panel_sdl.cpp
 # LVGL calls comparators and mask callbacks through void-pointer function
 # types, offsets a null style pointer by zero, and shifts a negative roller
-# offset.
-function:lvgl__lvgl/src/misc/lv_rb.c
-function:lvgl__lvgl/src/misc/cache/class/lv_cache_lru_rb.c
-function:lvgl__lvgl/src/draw/sw/lv_draw_sw_mask.c
-pointer-overflow:lvgl__lvgl/src/core/lv_obj_style.c
+# offset. A pattern matches anywhere in the path, so `lvgl/src/` covers both
+# the CI clone (sim/.pio/libdeps/sim/lvgl) and managed_components/lvgl__lvgl.
+function:lvgl/src/misc/lv_rb.c
+function:lvgl/src/misc/cache/class/lv_cache_lru_rb.c
+function:lvgl/src/draw/sw/lv_draw_sw_mask.c
+pointer-overflow:lvgl/src/core/lv_obj_style.c
 pointer-overflow:misc/lv_style.h
-shift-base:lvgl__lvgl/src/widgets/roller/lv_roller.c
+shift-base:lvgl/src/widgets/roller/lv_roller.c

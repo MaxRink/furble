@@ -2161,6 +2161,21 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/e2e/gps-reader-hold.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stick-c",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "gps"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/e2e/gps-motion-prearm.txt",
       "suite": "e2e",
       "owner": "sim-e2e",

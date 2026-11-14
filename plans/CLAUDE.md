@@ -13,6 +13,9 @@ PRs. The current sim-only closeout state is in
   plan.
 - Each PR must update its own plans/NN doc before merge: implementation state,
   and any deviation from the written plan with the reason.
+- A follow-up fix to a plan that already merged appends a `## Follow-up:`
+  section to that plan, with its state and evidence, rather than starting a
+  new plan, as plan 314 does.
 - Fork-only delivery changes record their implementation state in the related
   plan even when the upstream plan says the work has no PR.
 - Plan 121's implementation state covers the simulator runtime boundary as
@@ -52,8 +55,8 @@ PRs. The current sim-only closeout state is in
   backup rail, $PCAS support). Cite it instead of re-measuring.
 - Charging auto-off policy work updates `implemented/13-auto-off-low-batt.md`. Current
   master uses wire id 43 for the charging opt-in, 46 for IMU, and 47 for the
-  companion-password contract. Wire ids 42 and 45 have historical claims and
-  require a compatibility audit before any allocation or reuse.
+  companion-password contract. Wire id 42 is merged as `TIMEZONE`. Wire id 45
+  has a historical claim and requires a compatibility audit before reuse.
   Keep the default auto-off behavior unchanged on boards without
   charging telemetry, suppress auto-off while charging by default, and avoid
   NVS writes from policy ticks.

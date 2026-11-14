@@ -14,7 +14,7 @@ matching `-debug` variant that adds verbose logging and the USB serial console.
 | Build env | Chip | Flash | MQTT | Boards it runs on | Touch | Notes |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | `m5stick-c` | ESP32 | 4 MB | No | M5StickC | No | End of life. |
-| `m5stick-c-plus` | ESP32 | 4 MB | No | M5StickC Plus, M5StickC Plus2 | No | Plus and Plus2 share the image. |
+| `m5stick-c-plus` | ESP32 | 4 MB | No | M5StickC Plus, M5StickC Plus2 (EOL) | No | Plus and Plus2 share the image. The Plus2 is end of life. |
 | `m5stick-s3` | ESP32-S3 | 8 MB | Yes | M5StickS3 | No | Native USB Serial/JTAG. PSRAM enabled. Only board with Sleep while connected and Watchdog. |
 | `m5stack-core` | ESP32 | 4 MB | No | M5Stack Core (Basic/Gray) | No | No Auto off or Low battery. |
 | `m5stack-core2` | ESP32 | 16 MB | Yes | M5Stack Core2, M5Tough (untested) | Yes | PSRAM enabled. On-screen shutter buttons, touch calibration, power-button screen lock. The firmware detects the M5Tough and branches for it, but it has not been verified on hardware. |
@@ -41,10 +41,10 @@ ESP32-S3-DevKitC-1 board and also includes MQTT. The 4 MB profiles omit the
 MQTT implementation, component dependencies, settings, and console capability.
 For an oversized Core debug image, `m5stack-core-usb-debug` is a separate
 USB-UART-only fallback with one factory app partition. It is not a supported
-release environment, is the mandatory Core debug profile in normal CI, does not
-provide wireless updates or rollback, and is not included in the web installer.
-The legacy dual-OTA Core debug profile is an explicit workflow-dispatch opt-in.
-It fits its OTA slot again after the plan 314 flash slimming.
+release environment, does not provide wireless updates or rollback, and is not
+included in the web installer. Normal CI builds two mandatory Core debug
+profiles: this one and the dual-OTA `m5stack-core-debug`, which fits its OTA
+slot again after the plan 314 flash slimming.
 
 Build a board with its environment name:
 
@@ -68,6 +68,9 @@ and the feature matrix.
 | Nikon | `Nikon` | Remote controller mode works (ML-L7 style, shutter only). Smart mode appears but does not pair. |
 | Sony | `Sony` | Sony ZV and most modern Sony bodies. |
 | Ricoh | `Ricoh` | GR IV and GR IV HDF, firmware 1.20. Shutter capture with autofocus and GPS supported. Focus-only control is unsupported. GR III and GR IIIx expose the same BLE service UUIDs but remain uncertified because power and WLAN behaviour differ. GR II is Wi-Fi only. Numeric-comparison pairing displays the camera's six-digit code on the furble screen and is untested on hardware. |
+| Panasonic LUMIX | `Lumix` | Implemented from S5II and BGH1 protocol traces. Shutter and GPS with clock are supported. There is no focus opcode, so focus control is disabled. Untested on hardware. |
+| PENTAX K-3 Mark III | `Ricoh` | Untested on hardware. The K-3 Mark III and K-3 Mark III Monochrome are matched by the Ricoh service UUIDs or the PENTAX name and use the Ricoh Imaging protocol path unchanged. The K-1, K-1 Mark II, KP, KF and K-70 connect over Wi-Fi only and are not supported. Shutter capture with autofocus and GPS follow the Ricoh class. Focus-only control is unsupported. |
+| DJI Osmo Action | `DJIOsmo` | Untested on hardware. Action 4 and Action 5 Pro, from DJI's published R SDK protocol and ESP32 reference. The shutter toggles video recording. Focus control is disabled and GPS is not implemented. Pairing is DJI's own camera approval, not a Bluetooth passkey. |
 | FauxNY | `FauxNY` | Software test camera. Enabled by the FauxNY setting for development. |
 
 ## GPS units
