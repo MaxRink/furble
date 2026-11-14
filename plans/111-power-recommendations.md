@@ -283,7 +283,10 @@ are uncalibrated.
   `boundary-companion-gatt` checks that re-enable starts fast and that a press
   reopens the window after it closes. Every physical press edge boosts, with
   the panel on, off or in blind-remote mode; e2e `companion-boost-press`
-  proves it. A press inside the window only extends it, and advertising
+  proves it. A press counts only while no input is held, so a touch-board tap
+  that drives the touch and a synthesized button indev boosts once; the
+  `press-edge` host test covers that, because no simulator binary models a
+  Core2 touch indev. A press inside the window only extends it, and advertising
   restarts only when its interval changes. Untested on iOS and macOS; see the
   hardware-gated list. Review findings are in `111-review-feedback.md`.
 - N5, skipped. `CrashLog::update()` and `MemoryPressure::tick()` each sample

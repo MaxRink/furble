@@ -1333,6 +1333,11 @@ target_include_directories(gps_hold_test PRIVATE ${FURBLE_ROOT}/include)
 target_compile_options(gps_hold_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                              -Wno-unused-parameter)
 
+# The UI's companion boost press-edge rule. Header only.
+add_executable(press_edge_test press_edge_test.cpp)
+target_include_directories(press_edge_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(press_edge_test PRIVATE -Wall -Wextra -Werror)
+
 # The GPS Data page sentence age formatter. Pure, header only, and the only
 # unbounded field on a row with a hard character budget, so its clamp is a unit
 # test rather than a scenario assertion. The simulator cannot reach the ages
@@ -2334,6 +2339,7 @@ if(BUILD_TESTING)
   add_test(NAME ota-mqtt-admission COMMAND ota_mqtt_admission_test)
   add_test(NAME ota-replay-store COMMAND ota_replay_store_test)
   add_test(NAME ota-partition-sink COMMAND ota_partition_sink_test)
+  add_test(NAME press-edge COMMAND press_edge_test)
   add_test(NAME gps-format COMMAND gps_format_test)
   add_test(NAME gps-hold COMMAND gps_hold_test)
   add_test(NAME gps-power-cycle COMMAND gps_power_cycle_test)

@@ -115,6 +115,7 @@ class UI {
 #include "FurbleIMU.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
+#include "FurblePressEdge.h"
 #include "FurbleSettings.h"
 #include "FurbleUIGesture.h"
 #include "interval.h"
@@ -1132,8 +1133,8 @@ class UI {
   bool m_DisplayOff = false;
   bool m_SwallowInput = false;
   uint8_t m_SwallowPending = 0;
-  // inputBit() of each input that read pressed last time, for press edges.
-  uint8_t m_PressedInputs = 0;
+  // Held inputs by inputBit(), for the companion boost press edge.
+  PressEdge m_PressEdge;
   uint32_t m_SleepTick = 0;
   uint32_t m_WakeTick = 0;
   bool m_LeftPressed = false;
