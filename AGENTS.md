@@ -43,6 +43,10 @@ that hook path for Claude Code sessions through `GIT_CONFIG_*` env vars. `pre-re
 under ASan/UBSan when C++ paths change; `main.yml` runs those probes.
 The `sim-sanitizers` job runs the e2e suite under ASan, UBSan and LeakSanitizer
 on Linux; `sim/ubsan.supp` and `sim/lsan.supp` hold only third-party sites.
+On macOS, check a sanitized sim for its SDL3 `LC_RPATH` with `otool -l` before
+running it; without it sdl2-compat shows a desktop dialog per process. The
+sim-e2e S3 job runs `sim/scripts/run-env-order.sh`, which fails any setenv that
+adds a variable while SDL is live (issue #283).
 The pre-hardware fuzz budget is `python3 tools/check_fuzz.py --full
 --host-build <dir> --mqtt-binary sim/build-mqtt/furble-sim`; the full corpus
 currently passes 10 targets, 135 seed runs and 89,145 iterations with zero
