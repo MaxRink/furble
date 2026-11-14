@@ -129,7 +129,7 @@ plus the PSRAM memtest debug/release split. The #398 cover targets run the
 MQTT start and HA discovery gates at below/at/above values, 1,536-byte
 discovery fragmentation, single-buffer display behavior, and the companion
 budget, 3 KiB when #398 added it and 3,840 bytes since plan 314 PR 4c. The
-#311 cover targets run the 12 KiB main stack with a separate WebUI identity
+#407 cover targets run the 12 KiB main stack with a separate WebUI identity
 task, the 9,392-byte MQTT event queue in PSRAM, the 5,120-byte camera snapshot
 and the pre-task owner gate.
 

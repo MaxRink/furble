@@ -1,8 +1,13 @@
 # 314 - Memory resilience
 
-Status: in progress. PR 1 of 14 (sim config parity and abort semantics) is
-implemented on `feat/314-sim-config-parity`. Sim-only: no hardware was flashed
-or measured. Every number comes from datasheets, the pinned ESP-IDF source,
+Status (2026-11-13): all 14 PRs are merged on master. PR 1 #411, PR 2 #412,
+PR 3 #413, PR 4a #414, PR 4b #425, PR 5 #423, PR 6 #429, PR 7 #430, PR 8 #431,
+PR 9 #432, PR 10 #433, PR 11 #436, PR 12 #437, PR 13 #438, PR 14 #439. Fixes
+found along the way merged as #415 to #424, #428 and #435. Two software items
+remain: PR 2c font and DPI parity, and the stack-budget cycle memoization
+limit recorded as row 18 of
+[314-review-feedback.md](314-review-feedback.md). Sim-only: no hardware was
+flashed or measured. Every number comes from datasheets, the pinned ESP-IDF source,
 the sdkconfig files and the firmware's own build output.
 
 ## Problem
@@ -97,7 +102,7 @@ Validation (local, macOS):
 
 ## PR 2: count every device allocation
 
-Implemented on `feat/314-sim-count-allocations`, stacked on PR 1:
+Implemented and merged as #412:
 
 - `sim/heap_count.cpp` replaces the global `operator new`/`delete` family and
   provides `furble_sim_fw_malloc`, `realloc` and `free`. LVGL's
@@ -177,13 +182,14 @@ Deviations:
   the Core's internal pool, while the Core's sdkconfig sets no cache. Each
   build now writes its own `lv_conf.h` with the board's `LV_CACHE_DEF_SIZE`;
   seed 3 then runs clean. Font and DPI parity is still open (PR 2c): StickC
-  and Core sims render with 130 DPI and the 16 px default font, while their
-  sdkconfigs set 64 DPI and 12 px. Changing that moves their layouts and needs
+  and Core sims render with 130 DPI and the 16 px default font, while the
+  StickC sdkconfig sets 64 DPI and 12 px and the Core sdkconfig sets 96 DPI and
+  22 px. Changing that moves their layouts and needs
   scenario re-certification.
 
 ## PR 3: per-board boot heap from datasheets and code
 
-Implemented on `feat/314-sim-board-baselines`, stacked on PR 2. No hardware.
+Implemented and merged as #413. No hardware.
 
 - `tools/derive_sim_heap.py` reads each release env's `firmware.elf` and
   `sdkconfig.<env>`. It takes the internal 8-bit regions the pinned ESP-IDF

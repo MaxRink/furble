@@ -1,6 +1,6 @@
 # 101: Power-on boot splash
 
-Status: implemented on branch `feat/boot-splash`, off fork/master. Sim and
+Status: merged as #127 (`b71d8957`), from branch `feat/boot-splash`. Sim and
 firmware builds pass. On-device look is PENDING HARDWARE RETEST (see below).
 
 ## Motivation

@@ -26,8 +26,7 @@ It also feeds the release notes and future upstream contributions through the
 - Source: the plan, PR, file, or review thread the item came from.
 
 Plan 96 (`plans/96-wifi-bt-ble-hardening.md`) is the primary source for the
-BLE and WiFi items. It is analysis-complete but NOT yet merged to fork/master.
-It currently lives on branch `fork/docs/96-wifi-bt-ble-hardening`. Item IDs
+BLE and WiFi items. It is analysis-complete and merged on fork/master. Item IDs
 like A1, B2, C4 below refer to its issue inventory. Landing plan 96 as a docs
 PR is itself a prerequisite for the batches it sequences.
 
@@ -224,7 +223,7 @@ a defect. Severity is enhancement unless noted.
 - 51 remote-disconnect. App-initiated disconnect over the companion service.
   Source: plan 51. GATED-ON: companion service (feat/51 chain).
 - 71 level quick-wins. Remaining spirit-level UI quick-wins. Source: plan 71
-  (`plans/71-ui-bug-batch.md`). READY-NOW.
+  (`plans/implemented/71-ui-bug-batch.md`). READY-NOW.
 - 73 Ricoh geotag. Geotag push for Ricoh bodies. Source: plan 73. READY-NOW.
   Untested vendor, code review plus FauxNY.
 - 29 rig phases 4, 5, 6. Later multi-device rig phases. Source: plan 29.

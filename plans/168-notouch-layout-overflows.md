@@ -1,5 +1,9 @@
 # 168 - fix the layout the physical-button boards actually ship
 
+Implementation state (2026-11-13): #273 merged, the no-touch fuzz leg runs in CI (`sim-e2e.yml`), and issue #282 is closed. Open:
+the 320x240 interval overflow on Core, the Display page `ui.label_overlaps 1` and the fuzz
+trace divergence.
+
 ## Current validation checkpoint
 
 The Android companion metadata test covers all three production LEGEND wire-65
@@ -947,7 +951,7 @@ indicators at the restored top and bottom scroll endpoints.
   value clamps at render time. `bughunt/stickc-connected-large-imu.txt` covers
   the IMU-gated Connected page at that clamped size. The issue can close.
 - **#281** is the remaining upstream content-parity work for About, GPS, and
-  Connected; it is tracked in [291](291-ui-upstream-layout-parity.md).
+  Connected; it is tracked in [291](implemented/291-ui-upstream-layout-parity.md).
 - **#283** is a crash tracker, not a layout item; plan 173 carries the
   diagnostic state.
 

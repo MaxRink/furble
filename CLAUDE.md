@@ -30,8 +30,9 @@ CLAUDE.md whose directory it touches.
   over the slot; OTA and TLS remain enabled.
 - Auth integration with `-Os` reached 1,743,717 bytes, 2,917 over the slot.
   The `-Oz` experiment produced the identical size despite confirmed object-file
-  flags, so it was reverted. The combined image still does not fit; release
-  optimization, security features and the OTA layout are unchanged.
+  flags, so it was reverted. Release optimization, security features and the
+  OTA layout were unchanged. The flash slimming below (#435) brought the image
+  back under the slot.
 - Flash slimming (plan 314) keeps every feature and IPv6. All boards use ESP-IDF
   Log V2 with the DHCP server and non-AES GCM off. StickC images compile out
   the SD stack and the unused Montserrat 22. Images that map to one M5GFX board
@@ -101,7 +102,8 @@ CLAUDE.md whose directory it touches.
   a dispatch has no meaningful comparison base.
   Android's optional `run_emulator` input keeps the default dispatch fast.
 - Before pushing config, enum, or settings changes, clean-build every
-  documented env, including the non-CI `esp32-s3-headless` env. A new settings
+  documented env, including `esp32-s3-headless`, which only the reproducible
+  build workflow compiles, not the PR firmware matrix. A new settings
   enum value must be added in five places or the headless build fails
   `-Werror=switch`. See `plans/95-engineering-lessons.md`.
 - The direct SDL simulator build writes compiler depfiles beside each object.
