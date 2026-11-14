@@ -92,5 +92,5 @@ Rebase notes:
   narrow-panel fit that the `overflow-sweep` scenario asserts.
 - The three Montserrat font sizes (10, 14, 28) are enabled consistently in
   all five release sdkconfig files.
-- The numbered plans document for this branch is `plans/70-text-scaling.md`,
+- The numbered plans document for this branch is `plans/implemented/70-text-scaling.md`,
   which holds the implementation state record.

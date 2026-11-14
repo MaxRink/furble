@@ -58,6 +58,9 @@ Public headers for the app layer in src/, one header per module
   and never under `CompanionGatt::m_Mutex`.
 - `FurbleGPS` exposes the CASIC binary test path and AID-INI injection as
   documented public methods. Keep their wire format comments next to the API.
+  Its cycle status getters are lock free: they read `m_CycleStatus`, which the
+  GPS task publishes after each pass. Do not make a getter take `m_CycleMutex`
+  again; the task's passes block on it, and a reader holding it stalls them.
 - `FurbleSD.h` and `FurbleGPX.h`: all SD and GPX file I/O runs on the SD
   writer task. Other tasks use only the non-blocking `SD::request()` /
   `SD::logPoint()` API and the atomic state accessors, and never call GPX
@@ -108,8 +111,8 @@ rebase time.
 
 | Owner | Setting keys | Wire ids |
 | --- | --- | --- |
-| Master | shipped settings | 1-22, 24-35, 37-44, 46-47, 51-55, 62, 65-69, 72-76 |
-| Master (conditional) | display, MQTT, S3 watchdog | 23 (`WATCHDOG` on `FURBLE_M5STICKS3`), 36 (`DISPLAY_MODE` without `FURBLE_NO_DISPLAY`), 56-61 (`FURBLE_MQTT`) |
+| Master | shipped settings | 1-22, 24-35, 37-44, 46-47, 51-55, 65-69, 72-76 |
+| Master (conditional) | display, MQTT, WebUI, S3 watchdog | 23 (`WATCHDOG` on `FURBLE_M5STICKS3`), 36 (`DISPLAY_MODE` without `FURBLE_NO_DISPLAY`), 56-61 (`FURBLE_MQTT`), 62 (`WEB_UI` on `FURBLE_WEBUI`) |
 | Historical claims | compatibility audit required | 45 |
 | Free | available after rechecking open heads | 48-50, 63-64, 70-71 |
 

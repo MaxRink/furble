@@ -214,9 +214,12 @@ void runFull(void) {
   struct stat info = {};
   check(stat(path.c_str(), &info) == 0, "the full-case GPX file could not be measured");
   signal(SIGXFSZ, SIG_IGN);
-  struct rlimit limit = {};
+  // Lower only the soft limit. An unprivileged process cannot raise a hard
+  // limit again, and a coverage build writes its profile at exit.
+  struct rlimit original = {};
+  check(getrlimit(RLIMIT_FSIZE, &original) == 0, "the host file-size limit could not be read");
+  struct rlimit limit = original;
   limit.rlim_cur = static_cast<rlim_t>(info.st_size + 16);
-  limit.rlim_max = limit.rlim_cur;
   check(setrlimit(RLIMIT_FSIZE, &limit) == 0, "the host file-size limit could not be installed");
 
   const auto second = point(2, 52.53, 13.406);
@@ -225,9 +228,7 @@ void runFull(void) {
         "a full card did not reach the production GPX failure");
   std::cout << "sd.full write_failed=1 disabled=0\n";
 
-  limit.rlim_cur = RLIM_INFINITY;
-  limit.rlim_max = RLIM_INFINITY;
-  (void)setrlimit(RLIMIT_FSIZE, &limit);
+  check(setrlimit(RLIMIT_FSIZE, &original) == 0, "the host file-size limit could not be restored");
 }
 
 void runRemoved(void) {

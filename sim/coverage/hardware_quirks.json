@@ -1365,7 +1365,7 @@
       "profile": "sticks3",
       "category": "memory",
       "feature": "Post-#394 gate pass",
-      "source": "plans/305-general-internal-ram.md",
+      "source": "plans/implemented/305-general-internal-ram.md",
       "model": "sim/webui_memory_model.cpp",
       "scenario": "sim/scenarios/e2e/hw-memory-webui-post394.txt",
       "assertions": [
@@ -1379,7 +1379,7 @@
       "profile": "sticks3",
       "category": "memory",
       "feature": "esp-mqtt 0x1800 allocation panic",
-      "source": "plans/306-sim-memory-crash-repro.md",
+      "source": "plans/implemented/306-sim-memory-crash-repro.md",
       "model": "sim/SimMQTTClient.cpp",
       "scenario": "sim/scenarios/e2e/memory-mqtt-low-heap-retry-limit.txt",
       "assertions": [
@@ -1547,7 +1547,7 @@
       "profile": "core",
       "category": "memory",
       "feature": "12,291-byte icon OOM without PSRAM",
-      "source": "plans/31-s3-psram.md",
+      "source": "plans/implemented/31-s3-psram.md",
       "model": "sim/hardware_model.cpp",
       "scenario": "sim/fixtures/hardware/panic-icon-no-psram.txt",
       "assertions": [
@@ -1562,7 +1562,7 @@
       "profile": "sticks3",
       "category": "memory",
       "feature": "Icon decode succeeds with PSRAM",
-      "source": "plans/31-s3-psram.md",
+      "source": "plans/implemented/31-s3-psram.md",
       "model": "sim/hardware_model.cpp",
       "scenario": "sim/scenarios/e2e/hw-memory-psram-icon-octal.txt",
       "assertions": [
@@ -2267,7 +2267,7 @@
       "profile": "sticks3",
       "category": "memory",
       "feature": "Single LVGL buffer",
-      "source": "plans/305-general-internal-ram.md",
+      "source": "plans/implemented/305-general-internal-ram.md",
       "model": "sim/memory_profile.cpp",
       "scenario": "sim/scenarios/e2e/hw-memory-post394-budget.txt",
       "assertions": [
@@ -2454,7 +2454,7 @@
       "profile": "sticks3",
       "category": "boot",
       "feature": "Settings marker migration from a pre-marker store",
-      "source": "plans/99-boot-time.md",
+      "source": "plans/implemented/99-boot-time.md",
       "model": "sim/hardware_model.cpp",
       "scenario": "sim/scenarios/e2e/hw-boot-settings-migration.txt",
       "assertions": [
@@ -2468,7 +2468,7 @@
       "profile": "sticks3",
       "category": "boot",
       "feature": "Failed default seed retries on the next boot",
-      "source": "plans/99-boot-time.md",
+      "source": "plans/implemented/99-boot-time.md",
       "model": "sim/hardware_model.cpp",
       "scenario": "sim/scenarios/e2e/hw-boot-settings-migration.txt",
       "assertions": [
@@ -2482,7 +2482,7 @@
       "profile": "sticks3",
       "category": "radio",
       "feature": "Fast connect and moved-AP fallback scan",
-      "source": "plans/99-boot-time.md",
+      "source": "plans/implemented/99-boot-time.md",
       "model": "sim/hardware_model.cpp",
       "scenario": "sim/scenarios/e2e/hw-boot-wifi-fast-connect.txt",
       "assertions": [

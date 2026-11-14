@@ -267,8 +267,15 @@ their matching environment variables, even when a wrapper inherits both. The
 release fuzzer wrapper is `sim/scripts/run-fuzz.sh`; it uses
 `FURBLE_FUZZ_SEEDS`, `FURBLE_FUZZ_XFAIL_SEEDS`, `FURBLE_FUZZ_STEPS`,
 `FURBLE_FUZZ_SEED_TIMEOUT`, `FURBLE_FUZZ_REPEAT_SEED`, and `FURBLE_SIM_BIN`.
-`sim/scripts/run-fuzz-restart.sh` repeats the measured 135x240 seed 2 walk up
-to five times and requires one run to resume after a production UI restart.
+`sim/scripts/run-fuzz-restart.sh` runs the 135x240 seed 2 walk with
+`FURBLE_FUZZ_RESTART_STEP=200` and requires it to resume after a production UI
+restart. That knob replaces the walk's 200th first-boot event with a click on the
+Sensors page "Restart to apply" button: the fuzzer opens the page with
+`nav sensors`, finds the button by its label and sends the production
+`LV_EVENT_CLICKED`, which runs `Platform::restart()`. Unset, every walk is
+unchanged. The
+random walk alone reaches a Restart button on some hosts only, which is why
+the check no longer waits for it.
 
 A fuzzer event that activates a firmware restart follows the real simulator
 reboot path. The process first joins the simulator tasks, keeps the NVS file,
@@ -440,7 +447,12 @@ which leaves every scenario written before the receiver model unchanged),
 picks the GSV/GSA fixture and `gps_fix_date` picks the fix burst; both are
 detailed under the receiver model below. `gps_uart_chunk` serves the burst that
 many bytes at a time, paced, so a sentence spans several reads as it does off a
-real UART.
+real UART. `gps_reader_hold_ms` holds the GPS cycle snapshot reader
+(`GPS::getCycleStatusSnapshot()`, which `isDegraded()` and the UI's once a
+second `GPS::update()` use) for that many milliseconds of host time. It models a slow
+reader overlapping the GPS task. Readers once held `m_CycleMutex` there and the
+task dropped a consumed UART event while they did; `e2e/gps-reader-hold.txt`
+seeds 30 and asserts the cycle never degrades.
 All boolean seeds, including `gps_uart_noise`, reject malformed values during
 scenario loading.
 
@@ -1262,6 +1274,22 @@ docs capture runs. `gps.fresh_fixes_parsed` counts parser-accepted fresh fixes
 for the session, while `gps.duty_wake_fixes_parsed` counts only fixes accepted
 by a duty-cycle wake burst after `STANDBY` or `RAIL_OFF`. The duty-wake counter
 lets `gps-standby-wake` assert the wake independently of the acquisition fix.
+`gps.readers_lock_free` holds the GPS cycle mutex on the UI thread and calls
+`isDegraded()`, `getCycleStatusSnapshot()` and `getReceiverStatus()` on a
+helper thread; it is `yes` when all three return. `gps-reader-hold` asserts
+it, because the scenario's timing reaches only the reader `GPS::update()`
+calls, not the GPS Data page's.
+
+`gps.duty_settled` is `yes` once the duty cycle can send no further command
+for a fix it already has: the fake UART has no bytes or receive event
+pending, the GPS task holds no bytes it has not parsed, the UI has pushed the
+latest fix, and the GPS task has consumed the duty request and left the code
+that acts on it. Use it, not `gps.state
+standby`, before clearing the UART journal: a duty wake does not relabel
+`gps.state`, so it reads `standby` through the wake burst while that burst's
+`PCAS12` is still to come. It reads no cycle state: a wake that gets no burst
+goes degraded and never returns to `STANDBY`, and a request can be consumed in
+the same pass that starts a burst, before that state is published.
 
 Phase 2 adds the receiver model and its queries. `gps.receiver` reports
 `unknown`, `detecting`, `present` or `absent`, `gps.baud` reports the rate the

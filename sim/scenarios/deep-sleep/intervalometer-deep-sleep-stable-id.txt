@@ -1,4 +1,6 @@
 # The second saved camera is selected by stable id, not transient index zero.
+# Without a trusted clock the resume waits RESUME_WAKE_MARGIN_S (15 s) from
+# boot before its shot, so the finish bound covers that margin.
 seed ble_peers fuji-pair
 seed ble_saved true
 seed ivl_sleep true
@@ -8,6 +10,6 @@ seed interval_shutter 30
 seed resume_fixture second_camera
 assert-eventually-virtual 5000 control.state active
 assert control.target_camera FUJIFILM_X-S20
-assert-eventually-virtual 5000 ui.interval_state finished
+assert-eventually-virtual 20000 ui.interval_state finished
 assert camera.shutter_presses 1
 exit

@@ -97,11 +97,9 @@ constexpr SDL_Rect kBodyRect = {105, 44, 90, 72};
 constexpr SDL_Rect kScreenRect = {120, 58, 60, 40};
 constexpr const char *kWindowTitle = "furble buttons - Stick: B top, A front, PWR left";
 // Same top-edge contract as the StickS3 layout above.
-static_assert(kButtons[1].rect.x + kButtons[1].rect.w / 2
-                  == kBodyRect.x + kBodyRect.w / 2,
+static_assert(kButtons[1].rect.x + kButtons[1].rect.w / 2 == kBodyRect.x + kBodyRect.w / 2,
               "StickC B must stay centred on the body top edge");
-static_assert(kButtons[1].rect.y < kBodyRect.y,
-              "StickC B must straddle the body top edge");
+static_assert(kButtons[1].rect.y < kBodyRect.y, "StickC B must straddle the body top edge");
 #else
 // An unmodeled board gets no control surface rather than the wrong buttons.
 constexpr int kWindowHeight = 240;

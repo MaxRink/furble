@@ -1,6 +1,6 @@
 # furble - ***F***lexible ***U***nified ***R***emote ***B***luetooth ***L***ow ***E***nergy
 
-![PlatformIO CI](https://github.com/gkoh/furble/workflows/PlatformIO%20CI/badge.svg)
+[![PlatformIO CI](https://github.com/MaxRink/furble/actions/workflows/main.yml/badge.svg?branch=master)](https://github.com/MaxRink/furble/actions/workflows/main.yml)
 
 ## About this fork
 
@@ -130,6 +130,18 @@ The following devices have been tested and confirmed to work:
 - Sony
    - Sony ZV-1F
 
+Panasonic LUMIX support is implemented from public protocol traces of the S5II
+and BGH1. It is host and simulator tested only. No LUMIX body has been tested
+on hardware.
+
+The PENTAX K-3 Mark III and K-3 Mark III Monochrome are matched by the Ricoh
+service UUIDs or the PENTAX name and driven by the shared Ricoh Imaging class.
+The K-1, K-1 Mark II, KP, KF and K-70 connect over Wi-Fi only and are not
+supported. DJI Osmo Action 4 and Action 5 Pro support is implemented from
+DJI's published protocol and ESP32 reference. Both are covered by host tests,
+and the simulator covers DJI and the shared Ricoh path. No PENTAX or DJI body
+has been tested on hardware.
+
 ## Table of Features
 
 | Camera             | Scanning | Pairing | Shutter Release | Focus   | GPS     |
@@ -141,6 +153,9 @@ The following devices have been tested and confirmed to work:
 | Nikon (Remote)     | ✔️        | ✔️       | ✔️[^3]           | :x:[^2] | :x:[^2] |
 | Nikon (Smart)      | ✔️        | :x:     | :x:             | :x:     | :x:     |
 | Sony ZV            | ✔️        | ✔️       | ✔️               | ✔️       | ✔️       |
+| Panasonic LUMIX[^6] | ✔️       | ✔️       | ✔️               | :x:[^2] | ✔️       |
+| PENTAX K-3 III[^7] | ✔️        | ✔️       | ✔️[^3]           | :x:[^4]  | ✔️       |
+| DJI Osmo Action[^8] | ✔️       | ✔️       | ✔️[^9]           | :x:[^2] | :x:[^10] |
 
 [^1]: see [#99](https://github.com/gkoh/furble/discussions/99)
 [^2]: Non-existent
@@ -150,6 +165,16 @@ The supported shutter command performs an immediate capture with autofocus.
 [^5]: AF-only control is implemented from Camera Connect evidence (separate
 `00 03` AF on and `00 04` AF off writes) and awaits hardware validation. It is
 not manual lens focus.
+[^6]: Untested on hardware. Pairing is the LUMIX session registration, not SMP
+bonding. A fresh S5II may still need a Lumix Sync first-pair flow.
+[^7]: Untested on hardware. Uses the Ricoh Imaging protocol path unchanged;
+see [plan 73](plans/implemented/73-pentax-k.md).
+[^8]: Untested on hardware. Action 4 and Action 5 Pro. Pairing is DJI's own
+first-pair verification and camera approval, not a Bluetooth passkey.
+[^9]: Each press toggles video recording start and stop. furble sends no
+still capture command.
+[^10]: Not implemented. DJI's GPS direction is camera to remote, the opposite
+of furble's geotag push, so location updates are a no-op.
 
 For contributor research across all implemented camera families, see the
 [camera protocol research library](docs/camera-research/README.md). It records
@@ -161,7 +186,7 @@ supported-camera claims.
 Initially targeted at the M5StickC, the following controllers from [M5Stack](https://m5stack.com/) are supported:
 * M5StickC (EOL)
 * M5StickC Plus
-* M5StickC Plus2
+* M5StickC Plus2 (EOL)
 * M5StickS3
 * M5Core Basic
 * M5Core2 (8 MB PSRAM enabled)
@@ -218,7 +243,7 @@ In most cases it should be:
 - OR plug in the M5Stack Core2
     - `platformio run -e m5stack-core2 -t upload`
 
-More details are on the wiki: [PlatformIO](https://github.com/gkoh/furble/wiki/Linux-Command-Line-(For-Developers))
+More details are in [Getting Started](docs/wiki/Getting-Started.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
 
 MQTT is compiled only for the documented 8 MB and 16 MB profiles: M5StickS3,
 M5Stack Core2, and Waveshare ESP32-S3-ETH (plus the 8 MB headless S3 profile).
@@ -303,9 +328,8 @@ The 4 MB M5Stack Core also has a developer-only `m5stack-core-usb-debug`
 environment. It uses one large factory app partition when the normal Core debug
 image no longer fits its dual-OTA slot. Flash it over the Core USB-UART bridge;
 it has no wireless update or rollback path and is not published by the release
-or web installer. Normal CI uses it for the Core debug lane. The legacy
-dual-OTA Core debug profile remains available only as an explicit
-workflow-dispatch opt-in. The partition keeps NVS at its existing address, so
+or web installer. Normal CI builds it and the dual-OTA Core debug profile as
+mandatory Core debug lanes. The partition keeps NVS at its existing address, so
 do not erase the chip when preserving settings and camera bonds matters.
 
 ### Serial console (developers)
@@ -506,7 +530,7 @@ When a dialog is open, it temporarily owns the physical navigation and shutter
 inputs; closing it returns control to the page underneath. Stacked dialogs keep
 input with the topmost dialog.
 
-More details are on the wiki: [Usage Guide](https://github.com/gkoh/furble/wiki/Usage-Guide)
+More details are in [Controls](docs/wiki/Controls.md) and [Settings and controls](docs/settings-and-controls.md).
 
 ### GPS Location Tagging
 
@@ -811,12 +835,14 @@ I wanted a complete solution out of the box to have:
 
 My search concluded with the [M5StickC](https://m5stack.com/products/stick-c)
 from [M5Stack](https://m5stack.com).
-The M5StickC and M5StickC Plus have since been EOL and replaced with the [M5StickC Plus2](https://shop.m5stack.com/products/m5stickc-plus2-esp32-mini-iot-development-kit).
+The M5StickC was later replaced by the M5StickC Plus and then the M5StickC
+Plus2, and the M5StickC and Plus2 are now end of life. The M5StickS3 is the
+current Stick board furble supports; see Supported Controllers.
 
 The M5StickC is an ESP32 based mini-IoT development kit which covered all of the
 requirements (and more). At time of writing, M5Stack sell the M5StickC for
 US$9.95.
-The M5StickC Plus(2) sells for US$19.95.
+The M5StickC Plus and Plus2 later sold for US$19.95.
 
 #### Software
 

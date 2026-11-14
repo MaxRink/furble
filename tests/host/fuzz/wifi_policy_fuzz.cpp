@@ -44,18 +44,15 @@ int main() {
   // The auth mode is optional for the direct join but never usable when unset
   // or marked unknown. A stale auth value must not block the remembered BSSID.
   for (uint32_t auth = 0; auth <= 255; auth++) {
-    check(authUsable(false, static_cast<uint8_t>(auth)) == false,
-          "unset auth mode was usable");
-    check(authUsable(true, static_cast<uint8_t>(auth))
-              == (auth != AUTH_UNKNOWN),
+    check(authUsable(false, static_cast<uint8_t>(auth)) == false, "unset auth mode was usable");
+    check(authUsable(true, static_cast<uint8_t>(auth)) == (auth != AUTH_UNKNOWN),
           "authUsable disagrees at the unknown sentinel");
   }
   for (int bssid = 0; bssid <= 1; bssid++) {
     for (uint32_t channel = 0; channel <= 20; channel++) {
       const remembered_ap_t unknown {bssid != 0, static_cast<uint8_t>(channel), false,
                                      AUTH_UNKNOWN};
-      check(fastConnectUsable(unknown)
-                == ((bssid != 0) && (channel >= 1) && (channel <= 14)),
+      check(fastConnectUsable(unknown) == ((bssid != 0) && (channel >= 1) && (channel <= 14)),
             "an unknown auth mode changed the direct-join decision");
     }
   }
@@ -65,10 +62,8 @@ int main() {
   for (uint32_t failuresCount = 0; failuresCount <= 8; failuresCount++) {
     check(shouldScan(failuresCount, false, false) == (failuresCount >= 2),
           "generic failure threshold changed");
-    check(!shouldScan(failuresCount, true, false),
-          "a scan repeated in the same retry cycle");
-    check(shouldScan(failuresCount, false, true),
-          "a failed direct join did not force a scan");
+    check(!shouldScan(failuresCount, true, false), "a scan repeated in the same retry cycle");
+    check(shouldScan(failuresCount, false, true), "a failed direct join did not force a scan");
     check(!shouldScan(failuresCount, true, true),
           "a failed direct join repeated an attempted scan");
   }
@@ -94,8 +89,7 @@ int main() {
         directFailures++;
       } else if (action == 2) {
         // A scan found the SSID again.
-        ap = {true, static_cast<uint8_t>(1 + (rng() % 14)), true,
-              static_cast<uint8_t>(rng() % 5)};
+        ap = {true, static_cast<uint8_t>(1 + (rng() % 14)), true, static_cast<uint8_t>(rng() % 5)};
         scanAttempted = false;
         fastConnectFailed = false;
         directFailures = 0;
@@ -116,12 +110,10 @@ int main() {
                   static_cast<uint8_t>(rng() % 5)};
           }
         } else {
-          check(!(fastConnectFailed && !scanAttempted),
-                "seed skipped a required fallback scan");
+          check(!(fastConnectFailed && !scanAttempted), "seed skipped a required fallback scan");
         }
       }
-      check(!ap.bssid_set || validChannel(ap.channel),
-            "seed kept an invalid direct-join channel");
+      check(!ap.bssid_set || validChannel(ap.channel), "seed kept an invalid direct-join channel");
     }
   }
 

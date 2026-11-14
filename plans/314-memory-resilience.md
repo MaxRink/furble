@@ -1,8 +1,13 @@
 # 314 - Memory resilience
 
-Status: in progress. PR 1 of 14 (sim config parity and abort semantics) is
-implemented on `feat/314-sim-config-parity`. Sim-only: no hardware was flashed
-or measured. Every number comes from datasheets, the pinned ESP-IDF source,
+Status (2026-11-13): all 14 PRs are merged on master. PR 1 #411, PR 2 #412,
+PR 3 #413, PR 4a #414, PR 4b #425, PR 5 #423, PR 6 #429, PR 7 #430, PR 8 #431,
+PR 9 #432, PR 10 #433, PR 11 #436, PR 12 #437, PR 13 #438, PR 14 #439. Fixes
+found along the way merged as #415 to #424, #428 and #435. Two software items
+remain: PR 2c font and DPI parity, and the stack-budget cycle memoization
+limit recorded as row 18 of
+[314-review-feedback.md](314-review-feedback.md). Sim-only: no hardware was
+flashed or measured. Every number comes from datasheets, the pinned ESP-IDF source,
 the sdkconfig files and the firmware's own build output.
 
 ## Problem
@@ -97,7 +102,7 @@ Validation (local, macOS):
 
 ## PR 2: count every device allocation
 
-Implemented on `feat/314-sim-count-allocations`, stacked on PR 1:
+Implemented and merged as #412:
 
 - `sim/heap_count.cpp` replaces the global `operator new`/`delete` family and
   provides `furble_sim_fw_malloc`, `realloc` and `free`. LVGL's
@@ -177,13 +182,14 @@ Deviations:
   the Core's internal pool, while the Core's sdkconfig sets no cache. Each
   build now writes its own `lv_conf.h` with the board's `LV_CACHE_DEF_SIZE`;
   seed 3 then runs clean. Font and DPI parity is still open (PR 2c): StickC
-  and Core sims render with 130 DPI and the 16 px default font, while their
-  sdkconfigs set 64 DPI and 12 px. Changing that moves their layouts and needs
+  and Core sims render with 130 DPI and the 16 px default font, while the
+  StickC sdkconfig sets 64 DPI and 12 px and the Core sdkconfig sets 96 DPI and
+  22 px. Changing that moves their layouts and needs
   scenario re-certification.
 
 ## PR 3: per-board boot heap from datasheets and code
 
-Implemented on `feat/314-sim-board-baselines`, stacked on PR 2. No hardware.
+Implemented and merged as #413. No hardware.
 
 - `tools/derive_sim_heap.py` reads each release env's `firmware.elf` and
   `sdkconfig.<env>`. It takes the internal 8-bit regions the pinned ESP-IDF
@@ -635,6 +641,21 @@ preexisting issues, fixed here:
 and passes them to the gate, then runs the tool tests. Fork Actions are
 disabled, so this was validated locally only.
 
+## Follow-up: the Core OTA debug profile is a mandatory CI lane
+
+State: implemented.
+
+After the flash slimming `m5stack-core-debug` fits its 1,740,800-byte slot
+again: 1,723,200 bytes at #438, with the stack protector left out of that
+profile only. It was still a `workflow_dispatch` opt-in, so nothing stopped it
+from outgrowing the slot again unnoticed. `main.yml` now builds it on every
+firmware change next to `m5stack-core-usb-debug`, with the same strict stack
+and size budget steps, and the `core_ota_debug` input is gone.
+`tools/check_ci_workflows.py` requires both profiles in the discover env and
+rejects an opt-in input or an optional Core debug entry. Tests run the real discover
+step and assert its matrix holds both profiles. Release and web
+installer matrices are unchanged.
+
 ## PR 14: push hooks
 
 State: implemented.
@@ -683,7 +704,7 @@ The debug images gain four checks. None reaches a release image.
 - `sdkconfig.debug` adds the FreeRTOS end-of-stack watchpoint and standalone
   heap tracing.
 - `sdkconfig.stack-protector` adds `COMPILER_STACK_CHECK_MODE_NORM`. Every
-  debug env merges it except the opt-in `m5stack-core-debug` OTA profile. On
+  debug env merges it except the `m5stack-core-debug` OTA profile. On
   Core it costs 24,284 bytes; the image measured 1,746,997 bytes against the
   1,740,800-byte slot with it and 1,722,697 without. Heap tracing costs only
   2,376 bytes there and stays. `m5stack-core-usb-debug`, the mandatory Core
@@ -1063,3 +1084,220 @@ runs them at the top of its loop and before each retry. A newer save or erase
 cancels the older one, so only the latest outcome is persisted. A host test
 proves `GOT_IP` opens no NVS and starts no SNTP, and that the worker then does
 both exactly once.
+
+## Fix: no SDL3 dialog from the macOS simulator
+
+Six simulator runs on macOS stopped on a blocking "Fatal error! Cannot
+continue! Failed loading SDL3 library." dialog. Homebrew's `sdl2` 2.32 is
+sdl2-compat. Its library initializer dlopens SDL3 through its own rpath and
+shows that dialog, then aborts, when the load fails. No environment variable
+suppresses it, and a headless gate run then hangs on a GUI window until its
+timeout. The failing binaries were already deleted, so the load failure could
+not be reproduced; SDL3 resolves in every normal run.
+
+The fix does not depend on the cause. `sim/build.sh` and `sim/CMakeLists.txt`
+link `libSDL3.dylib` directly with `-needed_library` on macOS. dyld maps SDL3
+at launch, before the sdl2-compat initializer runs, and its dlopen returns the
+loaded image. `DYLD_PRINT_LIBRARIES` shows SDL3 mapped once. If SDL3 cannot be
+loaded, dyld stops the launch with an error on stderr, which the gates report.
+Linux and CI link real SDL2 and are unchanged. A macOS build without SDL3
+keeps the plain SDL2 link only for a real SDL2. When `libSDL2.dylib`
+resolves into sdl2-compat and no SDL3 is installed, `build.sh` exits and the
+CMake configure fails, each naming `brew install sdl3`, because that binary
+could only fail at launch through the dialog.
+
+## Fix: clang-format drift on master
+
+The PlatformIO CI clang-format job failed on master `e66e8807` with 44
+violations in 12 files: `sim/ui_buttons.cpp` and 11 host tests and shims.
+pre_review had no formatting gate, and the CI job is the only check, so
+merged PRs carried the drift. This fix reformats those files with clang-format
+21. Most hunks are line wrapping. Three boundary tests also get their includes
+sorted, so the linked-boundary suite and the affected host tests were rebuilt
+and run.
+
+`tools/check_format.py` now runs clang-format 21 on the C and C++ files a
+branch changes, under the same directories and suffixes as the CI step.
+`pre_review.py` runs it, so the pre-push hook and `pre-review.yml` catch a
+formatting failure before merge. A missing or non-21 clang-format fails the
+gate with the install command. A test pins its directory and suffix list to
+the CI step.
+
+## Fix: the coverage job lost its compiler-rt runtimes
+
+`Coverage floor` failed on every master run from `e8ce6184`. The host configure
+first stopped at the fuzz sanitizer probe from PR 12 (#437). With that probe
+bypassed, the link showed the real cause: `libclang_rt.profile` and the ASan
+runtimes are missing from `/usr/lib/llvm-18`. The workflow installs
+`clang-18` with `--no-install-recommends`, and current Ubuntu packaging moves
+compiler-rt into `libclang-rt-18-dev`, which `clang-18` only recommends. The
+probe failure was a symptom, not a reason to build unsanitized.
+
+`coverage.yml` now installs `libclang-rt-18-dev` and checks that the profile
+runtime exists before building. The pinned clang major and the floor are
+unchanged. `docs/coverage.md` lists the package for local runs.
+
+With the runtimes back, the run reached the profile check and found 17 host
+tests that wrote no raw profile, all `boundary-*`. `tests/host/CMakeLists.txt`
+gives each test its own `LLVM_PROFILE_FILE` in a loop over the tests already
+registered, and the boundary tests were added below that loop. The job had
+not run on master since September, so nothing noticed. The loop now sits last
+in the file and appends to each test's environment, so
+`boundary-companion-gatt` keeps its `FURBLE_SIM_PREFS`. A test fails if any
+`add_test` follows the loop.
+
+The next run left one test, `boundary-headless-service`, with an empty raw
+profile. It runs the production `app_main` and must leave from inside the
+never-returning service loop, so it calls `std::_Exit`, which skips the exit
+handler that writes the profile. Under coverage, CMake now defines
+`FURBLE_HOST_COVERAGE`, and the test calls `__llvm_profile_write_file()`
+before `std::_Exit`. A local coverage build writes a 41 KB profile for it.
+
+The run after that merged no profiles: `boundary-sd-full` wrote a truncated
+one. The test simulates a full card with `RLIMIT_FSIZE` and set both the soft
+and the hard limit. An unprivileged process cannot raise a hard limit again,
+so its `(void)` restore failed silently and the profile written at exit was
+cut off. The test now lowers only the soft limit, restores the original pair
+and checks that the restore succeeds.
+
+With every profile merging, the floor check ran for the first time since
+September and failed one file: `src/FurbleConsole.cpp` at 88.64% against its
+89.08% floor. `crash last` with a retained record had never been tested, so
+the lines that print it, including the failed-allocation fields from PR 5,
+were uncovered. The console stub now lets a test install a record, and the
+console test checks every printed field with and without a failed
+allocation. The console reaches 89.26% locally. The floor is not lowered.
+
+## Fix: CI re-enable, 2026-11-13
+
+State: implemented on `ci/master-green`. GitHub Actions was disabled on the
+fork from 2026-10-21, so the plan 314 PRs of that window merged with no CI.
+Three of their gates failed on the first run. See `plans/95-engineering-lessons.md`
+for the full incident.
+
+- PR 12, ASan and UBSan host tests: `gpx-writer` failed only there. GPX::open()
+  formats its path into 64 bytes, and the test sandbox was the absolute
+  build-tree path. The plain tree truncated silently and the test truncated its
+  expectation the same way; the sanitized tree is deeper, so the path was cut
+  inside the directory name. `GPX::open()` now sizes the buffer from
+  `FURBLE_GPX_DIRECTORY` plus the widest name the point fields can print, and
+  fails the open on a truncated path. On the device that is 37 bytes instead
+  of 64. The test keeps its long absolute sandbox as the regression check, and
+  the coverage workflow no longer needs a short build directory.
+- PR 6, `memory-pressure-mqtt-shed`: the paused figure of 8,497 was measured on
+  macOS. Linux read 8,457 on arm64 and 8,441 on x86_64. The host MQTT
+  transport allocated its adapter object, strings and reconnect thread on the
+  owner task, and the counter charged them as device memory, so their host
+  sizes leaked into the model. Every libmosquitto call and the adapter's own
+  objects now run inside a `HostAllocScope`. In their place
+  `esp_mqtt_client_init()` charges what the pinned esp-mqtt allocates
+  (`components/mqtt/esp-mqtt/mqtt_client.c`): the 248-byte client and 160-byte
+  config storage (sizes from the StickS3 firmware DWARF) and the in and out
+  buffers FurbleMQTT configures, 1,536 bytes each, so 3,480 bytes. Destroy
+  releases them. The sim had never charged them. The firmware stops and
+  destroys the client on a memory pause, so the paused reading rises from
+  8,497 to 11,977 (worker plus init allocations) and still sits between the
+  RED floor and the RED exit, which keeps the check that such a reading holds
+  RED. The scenario is reseeded 4,152 bytes higher so boot and the squeezed
+  level keep their old figures. Smaller esp-mqtt allocations (URI strings,
+  outbox, transport list) are not modelled.
+- PR 4b, sim-sanitizers: every scenario failed with a signed overflow in
+  M5GFX `Panel_sdl::_update_scaling()`. Under the dummy video driver
+  `SDL_CreateRenderer` returns NULL, `SDL_GetRendererOutputSize` never writes
+  its outputs, and M5GFX divides by uninitialized stack ints. clang 18 made
+  that an infinite float, which the old `float-cast-overflow` entry
+  suppressed; clang 21 on ubuntu-26.04 made it a signed overflow. The
+  simulator now sets `SDL_HINT_RENDER_DRIVER=software` before
+  `Panel_sdl::setup()` when the video driver is dummy or offscreen, so the
+  renderer exists and its size is real. The `float-cast-overflow` suppression
+  is removed. An explicit `SDL_RENDER_DRIVER` in the environment still wins.
+  A live renderer exposed one more M5GFX lifetime gap: `Panel_sdl::close()`
+  never destroys it, and LeakSanitizer reported its 768 bytes in every
+  scenario. The SDL lifecycle shim (`sim/shim/FurbleSDLWrap.h`) now routes
+  `SDL_CreateRenderer` and `SDL_DestroyRenderer` through
+  `sim/sdl_lifecycle.cpp`, which destroys any renderer still live before
+  `SDL_Quit`. No leak suppression was added.
+- PR 4b, the same job: with the M5GFX report gone, every scenario then stopped
+  on an LVGL `function` report that `sim/ubsan.supp` names. The LVGL entries
+  were written against `managed_components/lvgl__lvgl/src/...`, but CI clones
+  LVGL into `sim/.pio/libdeps/sim/lvgl/src/...`, so they never matched there.
+  A pattern matches anywhere in the path, so the entries now start at
+  `lvgl/src/`, which covers both layouts. The suppressed sites are unchanged.
+
+## Fix: deep-sleep scenarios that assumed a trusted clock
+
+The intervalometer deep-sleep gate (`sim/scripts/run-deep-sleep.sh`) landed on
+2026-11-01, during the Actions outage, and never ran green in CI. Its `stale`,
+`late` and `stable-id` scenarios assumed a trusted wall clock at boot. The
+deep-sleep review fix the same evening made `trustedWallClock()` reject an
+NVS-restored clock, because that sample does not advance across power-off.
+The StickS3 has no RTC chip, so the M5PM1 timer is the authority: a timed-wake
+resume waits `RESUME_WAKE_MARGIN_S` (15 s) from boot and then shoots, whatever
+the record's wake time says. This is the documented firmware policy, and a
+probe showed the interval timer behaving exactly so; the scenarios were wrong.
+
+`stale` and `late` now assert that wait and the following shot, and
+`stable-id` keeps its camera-selection check with a finish bound that covers
+the margin. Rejecting a stale record, or firing a late one at once, needs a
+battery-backed RTC sample at boot, which the simulator does not model; that
+coverage gap is issue #455. The gate passes 3 of 3 runs in an
+Ubuntu 24.04 container.
+
+## Follow-up: firmware clang-tidy reached host headers and vendored checks (#463)
+
+State: implemented.
+
+Any PR touching a header that `FurbleCompanion.cpp`, `FurbleCompanionService.cpp`,
+`FurbleGPS.cpp` or `FurbleUI.cpp` include failed `cppcheck and clang-tidy` with
+"could not compile" on both firmware databases. #465 hit it through
+`FurbleGPS.h`. There were two causes, and neither was the code.
+
+- m5stick-c: clang on Linux appends `/usr/local/include` and `/usr/include`
+  even for the bare `i686-unknown-none-elf` target. newlib's `limits.h` ends in
+  `include_next`, which went through clang's builtin `limits.h` into glibc's,
+  and glibc's needs `__GLIBC_USE`. `tools/firmware_compile_db.py` now adds
+  `-nostdlibinc`, which drops those two directories and keeps clang's builtin
+  headers. Measured in the Ubuntu 24.04 image with clang 18.1.3: the search
+  list loses exactly `/usr/local/include` and `/usr/include`, and
+  `#include <limits.h>` stops at the builtin header.
+- m5stick-s3: nothing failed to compile. `.clang-tidy`'s `HeaderFilterRegex`
+  `(src|lib/furble|include|sim)/` is unanchored, so it matched the `src/` in
+  `.pio/libdeps/m5stick-s3/M5GFX/src/lgfx/...`. M5GFX's checks ran under
+  `WarningsAsErrors` and clang-tidy exited 1. The gate's "did it compile" test
+  read every line containing ` error: `, and a quoted M5GFX source line,
+  `failure(E2&& error)`, counted as a real error. The gate now passes
+  `--header-filter` anchored to the checkout, relative or absolute, and reads
+  only diagnostic lines (`file:line:col: error:`). With Homebrew clang-tidy 23
+  on the StickS3 database, `FurbleGPS.cpp` went from exit 1 to exit 0 with no
+  findings, and a planted owning-memory violation in `include/FurbleGPS.h`
+  was still reported.
+
+Removing the M5GFX noise exposed one real finding in a file those runs
+analyse: `cmdHeap` used `strcmp` as a bool. It now compares with `!= 0`.
+`tests/test_check_static_analysis.py` covers the anchored filter, its use on
+the command line and a quoted source line; all three fail against the old
+tool. `tests/test_firmware_compile_db.py` asserts `-nostdlibinc`.
+
+The `strcmp` fix rewrote a line holding the console literal `"trace"`, and
+`tools/check_pr_hygiene.py` failed it for not updating the console docs. A
+change that adds and removes exactly the same string literals in
+`FurbleConsole.cpp` now warns instead of failing; any changed literal still
+fails. `tests/test_check_pr_hygiene.py` covers both.
+
+The pre-push review found two holes in the first anchored filter. CMake keeps
+`..` in include paths, so the host database reaches headers as
+`tests/host/../../include/X.h`, which no longer matched, and those headers
+would have gone unchecked without a word. The simulator database's
+dependencies live under `sim/.pio/libdeps/sim/`, which still matched through
+`sim/`. The filter now accepts plain segments followed by `..` steps before
+`src/`, `lib/furble/`, `include/` or `sim/`, and refuses `sim/` followed by a
+dot. Homebrew clang-tidy 23 on a small tree reported a planted finding in
+`tests/host/../../include/a.h` and suppressed the same finding in
+`sim/.pio/v/src/v.h`.
+
+Review of #466:
+
+| # | Finding | Outcome | Evidence |
+| --- | --- | --- | --- |
+| 1 | Copilot, `tools/check_pr_hygiene.py:614`: comparing the file's sorted literals lets a swap of two output strings, or a string moved to another command, through as a warning. | Fixed. Each string-bearing line must keep its literals, in order, at its own position, where new line m replaces old line n when m equals n plus the lines added before m minus those removed before n. The same check now also decides a whitespace-only change, which used sorted lines and had the same hole on master. | Tests for a swap and for a move to another hunk fail, and fail against master's checker too; the in-place `strcmp` rewrite still only warns. The rule treats one contiguous replaced block as one place, so a string moved between branches inside a single block still only warns, as it did on master. |
+| 2 | Copilot, `CONTRIBUTING.md:235`: the workflow change must also update `CLAUDE.md` and `AGENTS.md`, and the touched `src/` and `plans/` directories need their `CLAUDE.md` updated. | Fixed. `CLAUDE.md` and `AGENTS.md` describe `-nostdlibinc`, the anchored header filter and the console rule. `src/CLAUDE.md` asks for explicit `strcmp` comparisons, and `plans/CLAUDE.md` records the follow-up section convention. | `CLAUDE.md`, `AGENTS.md`, `src/CLAUDE.md`, `plans/CLAUDE.md` |
