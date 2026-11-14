@@ -297,4 +297,3 @@ under ASan and UBSan. The MQTT simulator build passes all 4 scenarios of
 1,846,928 of 3,145,728) and stack budget (mqtt 3,312 of 10,240) pass.
 `python3 tools/pre_review.py` passes against the PR base and `origin/master`,
 and `sh sim/scripts/check-doc-tokens.sh` passes.
-
