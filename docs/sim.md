@@ -566,7 +566,7 @@ set to `true` is the deliberate historical-overflow override used by the 4 KiB
 and 6 KiB regression scenarios. `companion_enabled` seeds the companion state
 as enabled at boot, with its task and GATT database already in the seeded
 heap. `action companion-enable` on a companion that was off at boot runs the
-production `CompanionMemory::startGate` and charges the retained 3 KiB task and
+production `CompanionMemory::startGate` and charges the retained 3,840-byte task and
 4 KiB GATT database once; `action companion-disable` keeps both.
 
 `ble_peers` selects the virtual BLE radio topology from a strict allowlist:

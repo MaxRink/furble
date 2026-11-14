@@ -196,6 +196,15 @@ CLAUDE.md whose directory it touches.
   `docs/stack-budget.md`. Update the manifest when a task or its stack changes.
   A recursion or an `alloca`/VLA frame on a task's path fails it until
   `recursion_bounds` or `dynamic_bounds` cites a bound from source.
+  The walk collapses strongly connected components and takes the longest
+  path over the DAG, exact outside known limits. Panic paths count: the
+  ESP-IDF panic handler runs on the faulting task's stack, so `panic_abort`
+  is charged the handler's depth. `infeasible_calls` drops an edge only with
+  a file:line citation of the guard that makes it unreachable. A `-debug` env
+  is checked against its own stacks: `sdkconfig.debug` sizes `sys_evt` and
+  `esp_timer`, and each furble task owner adds a named `..._DEBUG_EXTRA`
+  under `FURBLE_DEBUG_BUILD`, which only the `-debug` envs define. The
+  manifest's `debug_stack_bytes` records the result.
   `platformio.ini` sets `CJSON_NESTING_LIMIT=8` for every component; the
   cJSON recursion bounds depend on it.
 - Hardware flashing is gated on the simulator. The gate manifests are under

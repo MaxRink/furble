@@ -2,8 +2,8 @@
 #
 # Target: 12 KiB main, 10 KiB owner, 3 KiB plain worker, 1,536-byte buffers,
 # 9,392-byte event queue in PSRAM, 5,120-byte camera snapshot on connect,
-# 8 KiB HA discovery transient, 3 KiB companion, one LVGL draw buffer on the
-# narrow panel, and no main-stack overflow.
+# 8 KiB HA discovery transient, 3,840-byte companion, one LVGL draw buffer on
+# the narrow panel, and no main-stack overflow.
 seed hw_profile sticks3
 seed heap_internal_free 30007
 seed heap_internal_largest 28660
@@ -16,7 +16,7 @@ wait 100
 
 assert mem.internal_total 524288
 assert mem.component.main_stack 12288
-assert mem.component.companion_task 3072
+assert mem.component.companion_task 3840
 assert mem.component.lvgl_draw 2160
 assert mem.component.mqtt_owner 10240
 assert mem.component.mqtt_worker 3072

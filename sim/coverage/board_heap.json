@@ -50,7 +50,7 @@
         },
         {
           "term": "sys_evt",
-          "bytes": 2672,
+          "bytes": 3440,
           "source": "CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE"
         },
         {
@@ -123,7 +123,7 @@
         },
         {
           "term": "companion",
-          "bytes": 3440,
+          "bytes": 4208,
           "source": "include/FurbleCompanionMemory.h TASK_STACK_BYTES",
           "condition": "companion"
         },
@@ -160,12 +160,12 @@
           "source": "include/FurbleUIMemory.h drawBufferBytes, singleDrawBuffer"
         }
       ],
-      "attributable_bytes": 120388,
-      "derived_free_upper_bound": 134568,
+      "attributable_bytes": 121924,
+      "derived_free_upper_bound": 133032,
       "derived_free_without": {
-        "wifi": 157772,
-        "companion": 138104,
-        "wifi_and_companion": 161308
+        "wifi": 156236,
+        "companion": 137336,
+        "wifi_and_companion": 160540
       },
       "condition": "WiFi with an SSID and the companion enabled, as in the measured seeds",
       "derived_largest_upper_bound": 129984,
@@ -218,7 +218,7 @@
         },
         {
           "term": "sys_evt",
-          "bytes": 2672,
+          "bytes": 3440,
           "source": "CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE"
         },
         {
@@ -291,7 +291,7 @@
         },
         {
           "term": "companion",
-          "bytes": 3440,
+          "bytes": 4208,
           "source": "include/FurbleCompanionMemory.h TASK_STACK_BYTES",
           "condition": "companion"
         },
@@ -328,12 +328,12 @@
           "source": "include/FurbleUIMemory.h drawBufferBytes, singleDrawBuffer"
         }
       ],
-      "attributable_bytes": 121748,
-      "derived_free_upper_bound": 133232,
+      "attributable_bytes": 123284,
+      "derived_free_upper_bound": 131696,
       "derived_free_without": {
-        "wifi": 156436,
-        "companion": 136768,
-        "wifi_and_companion": 159972
+        "wifi": 154900,
+        "companion": 136000,
+        "wifi_and_companion": 159204
       },
       "condition": "WiFi with an SSID and the companion enabled, as in the measured seeds",
       "derived_largest_upper_bound": 129984,
@@ -345,11 +345,11 @@
       "chip": "esp32s3",
       "elf_symbols": {
         "_data_start": "0x3fca4700",
-        "_heap_start": "0x3fcb0210",
+        "_heap_start": "0x3fcaff68",
         "_iram_end": "0x40394700",
         "_iram_start": "0x40374000"
       },
-      "static_dram_bytes": 47888,
+      "static_dram_bytes": 47208,
       "dwarf_sizes": {
         "StaticTask_t": 336,
         "StaticQueue_t": 84,
@@ -361,8 +361,8 @@
         "esp_event_loop_instance_t": 24,
         "esp_event_post_instance_t": 16
       },
-      "heap_at_app_start": 261616,
-      "largest_span_at_app_start": 261616,
+      "heap_at_app_start": 262296,
+      "largest_span_at_app_start": 262296,
       "attributable_boot": [
         {
           "term": "idle0",
@@ -386,7 +386,7 @@
         },
         {
           "term": "sys_evt",
-          "bytes": 2672,
+          "bytes": 3440,
           "source": "CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE"
         },
         {
@@ -449,7 +449,7 @@
         },
         {
           "term": "companion",
-          "bytes": 3440,
+          "bytes": 4208,
           "source": "include/FurbleCompanionMemory.h TASK_STACK_BYTES",
           "condition": "companion"
         },
@@ -481,20 +481,20 @@
           "source": "include/FurbleUIMemory.h drawBufferBytes, singleDrawBuffer"
         }
       ],
-      "attributable_bytes": 87160,
-      "derived_free_upper_bound": 174456,
+      "attributable_bytes": 88696,
+      "derived_free_upper_bound": 173600,
       "derived_free_without": {
-        "wifi": 191196,
-        "companion": 177992,
-        "wifi_and_companion": 194732
+        "wifi": 190340,
+        "companion": 177904,
+        "wifi_and_companion": 194644
       },
       "condition": "WiFi with an SSID and the companion enabled, as in the measured seeds",
-      "derived_largest_upper_bound": 174456,
+      "derived_largest_upper_bound": 173600,
       "status": "derived",
       "internal_reserved_for_caps_only": 32768,
       "measured_free": 30007,
       "measured_source": "sim/scenarios/e2e/hw-memory-post394-budget.txt",
-      "unattributed_gap": 144449
+      "unattributed_gap": 143593
     },
     {
       "env": "m5stack-core",
@@ -543,7 +543,7 @@
         },
         {
           "term": "sys_evt",
-          "bytes": 2672,
+          "bytes": 3440,
           "source": "CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE"
         },
         {
@@ -616,7 +616,7 @@
         },
         {
           "term": "companion",
-          "bytes": 3440,
+          "bytes": 4208,
           "source": "include/FurbleCompanionMemory.h TASK_STACK_BYTES",
           "condition": "companion"
         },
@@ -658,15 +658,15 @@
           "source": "include/FurbleUIMemory.h drawBufferBytes, singleDrawBuffer"
         }
       ],
-      "attributable_bytes": 142612,
-      "derived_free_upper_bound": 112320,
+      "attributable_bytes": 144148,
+      "derived_free_upper_bound": 110784,
       "derived_free_without": {
-        "wifi": 135524,
-        "companion": 115856,
-        "wifi_and_companion": 139060
+        "wifi": 133988,
+        "companion": 115088,
+        "wifi_and_companion": 138292
       },
       "condition": "WiFi with an SSID and the companion enabled, as in the measured seeds",
-      "derived_largest_upper_bound": 112320,
+      "derived_largest_upper_bound": 110784,
       "status": "derived"
     },
     {
@@ -716,7 +716,7 @@
         },
         {
           "term": "sys_evt",
-          "bytes": 2672,
+          "bytes": 3440,
           "source": "CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE"
         },
         {
@@ -779,7 +779,7 @@
         },
         {
           "term": "companion",
-          "bytes": 3440,
+          "bytes": 4208,
           "source": "include/FurbleCompanionMemory.h TASK_STACK_BYTES",
           "condition": "companion"
         },
@@ -821,15 +821,15 @@
           "source": "include/FurbleUIMemory.h drawBufferBytes, singleDrawBuffer"
         }
       ],
-      "attributable_bytes": 123048,
-      "derived_free_upper_bound": 130292,
+      "attributable_bytes": 124584,
+      "derived_free_upper_bound": 128756,
       "derived_free_without": {
-        "wifi": 153496,
-        "companion": 133828,
-        "wifi_and_companion": 157032
+        "wifi": 151960,
+        "companion": 133060,
+        "wifi_and_companion": 156264
       },
       "condition": "WiFi with an SSID and the companion enabled, as in the measured seeds",
-      "derived_largest_upper_bound": 129984,
+      "derived_largest_upper_bound": 128756,
       "status": "derived",
       "internal_reserved_for_caps_only": 32768
     },
@@ -838,12 +838,12 @@
       "profile": "waveshare-s3-eth",
       "chip": "esp32s3",
       "elf_symbols": {
-        "_data_start": "0x3fca4400",
-        "_heap_start": "0x3fcb1060",
-        "_iram_end": "0x40394400",
+        "_data_start": "0x3fca4500",
+        "_heap_start": "0x3fcb0d88",
+        "_iram_end": "0x40394500",
         "_iram_start": "0x40374000"
       },
-      "static_dram_bytes": 52320,
+      "static_dram_bytes": 51336,
       "dwarf_sizes": {
         "StaticTask_t": 348,
         "StaticQueue_t": 92,
@@ -855,8 +855,8 @@
         "esp_event_loop_instance_t": 24,
         "esp_event_post_instance_t": 16
       },
-      "heap_at_app_start": 257952,
-      "largest_span_at_app_start": 257952,
+      "heap_at_app_start": 258680,
+      "largest_span_at_app_start": 258680,
       "attributable_boot": [
         {
           "term": "idle0",
@@ -880,7 +880,7 @@
         },
         {
           "term": "sys_evt",
-          "bytes": 2684,
+          "bytes": 3452,
           "source": "CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE"
         },
         {
@@ -943,7 +943,7 @@
         },
         {
           "term": "companion",
-          "bytes": 3452,
+          "bytes": 4220,
           "source": "include/FurbleCompanionMemory.h TASK_STACK_BYTES",
           "condition": "companion"
         },
@@ -965,15 +965,15 @@
           "source": "src/main.cpp HEADLESS_REQUEST_QUEUE_LENGTH x sizeof(headless_request_t *)"
         }
       ],
-      "attributable_bytes": 95664,
-      "derived_free_upper_bound": 162288,
+      "attributable_bytes": 97200,
+      "derived_free_upper_bound": 161480,
       "derived_free_without": {
-        "wifi": 185504,
-        "companion": 165836,
-        "wifi_and_companion": 189052
+        "wifi": 184696,
+        "companion": 165796,
+        "wifi_and_companion": 189012
       },
       "condition": "WiFi with an SSID and the companion enabled, as in the measured seeds",
-      "derived_largest_upper_bound": 162288,
+      "derived_largest_upper_bound": 161480,
       "status": "derived",
       "internal_reserved_for_caps_only": 32768
     }

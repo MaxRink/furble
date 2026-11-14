@@ -69,6 +69,34 @@ edge: { sourcename: "a" targetname: "c" label: "n.cpp:2:9" }
 edge: { sourcename: "c" targetname: "a" label: "n.cpp:4:5" }
 }
 '''
+# entry -> a -> {big, x}, x -> a, entry -> z -> x: x is first reached inside
+# the open a-x cycle and later again under z
+X_CI = r'''graph: { title: "x.cpp"
+node: { title: "entry" label: "void entry(void*)\nx.cpp:1:1\n32 bytes (static)" }
+node: { title: "a" label: "void a(int)\nx.cpp:2:1\n16 bytes (static)" }
+node: { title: "big" label: "void big()\nx.cpp:3:1\n300 bytes (static)" }
+node: { title: "x" label: "void x(int)\nx.cpp:4:1\n8 bytes (static)" }
+node: { title: "z" label: "void z()\nx.cpp:5:1\n400 bytes (static)" }
+edge: { sourcename: "entry" targetname: "a" label: "x.cpp:1:5" }
+edge: { sourcename: "entry" targetname: "z" label: "x.cpp:1:9" }
+edge: { sourcename: "a" targetname: "big" label: "x.cpp:2:5" }
+edge: { sourcename: "a" targetname: "x" label: "x.cpp:2:9" }
+edge: { sourcename: "x" targetname: "a" label: "x.cpp:4:5" }
+edge: { sourcename: "z" targetname: "x" label: "x.cpp:5:5" }
+}
+'''
+# entry -> abort -> panic_abort; the handler is reached by an exception and
+# can itself abort, a nested panic
+P_CI = r'''graph: { title: "p.c"
+node: { title: "entry" label: "void entry(void*)\np.c:1:1\n32 bytes (static)" }
+node: { title: "abort" label: "abort\np.c:2:1\n48 bytes (static)" }
+node: { title: "panic_abort" label: "panic_abort\np.c:3:1\n16 bytes (static)" }
+node: { title: "xt_unhandled_exception" label: "xt_unhandled_exception\np.c:4:1\n208 bytes (static)" }
+edge: { sourcename: "entry" targetname: "abort" label: "p.c:1:5" }
+edge: { sourcename: "abort" targetname: "panic_abort" label: "p.c:2:5" }
+edge: { sourcename: "xt_unhandled_exception" targetname: "abort" label: "p.c:4:5" }
+}
+'''
 # entry calls elf_mid, which only the ELF defines
 E_CI = r'''graph: { title: "e.cpp"
 node: { title: "entry" label: "void entry(void*)\ne.cpp:1:1\n32 bytes (static)" }
@@ -188,6 +216,7 @@ LISTING = """
 
 class StackBudgetTest(unittest.TestCase):
     def run_tool(self, stack, indirect=True, extra=(), rules=(), cis=None, manifest_extra=None,
+                 env="x", debug_config="",
                  listing=None, symbols=""):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
@@ -197,6 +226,7 @@ class StackBudgetTest(unittest.TestCase):
             for name, text in cis:
                 (build / name).write_text(text)
             (tmp / "sdkconfig").write_text('CONFIG_IDF_TARGET="esp32"\nCONFIG_STACK=%d\n' % stack)
+            (tmp / "sdkconfig.debug").write_text(debug_config)
             manifest = {
                 "overhead_bytes": {"esp32": 288},
                 "tasks": [{"name": "t", "entry": r"^void entry\(void\*\)$", "stack_bytes": "CONFIG_STACK"}],
@@ -217,8 +247,9 @@ class StackBudgetTest(unittest.TestCase):
                 objdump.chmod(0o755)
                 elf = ["--objdump", str(objdump)]
             return subprocess.run(
-                [sys.executable, str(TOOL), "--env", "x", "--build-dir", str(build), "--sdkconfig",
-                 str(tmp / "sdkconfig"), "--manifest", str(tmp / "manifest.json"), *elf, *extra],
+                [sys.executable, str(TOOL), "--env", env, "--build-dir", str(build), "--sdkconfig",
+                 str(tmp / "sdkconfig"), "--debug-sdkconfig", str(tmp / "sdkconfig.debug"),
+                 "--manifest", str(tmp / "manifest.json"), *elf, *extra],
                 capture_output=True, text=True)
 
     def test_resolved_depth_and_overhead(self):
@@ -227,6 +258,38 @@ class StackBudgetTest(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         # cb_deep is dynamic,bounded: GCC already reports its maximum, so it passes
         self.assertIn("PASS t: 820 of 820 bytes (532 frames + 288 port overhead)\n", r.stdout)
+
+    def test_debug_env_uses_its_debug_stack(self):
+        # The graph needs 820 bytes. Release checks 400, a -debug env 900.
+        task = {"tasks": [{"name": "t", "entry": r"^void entry\(void\*\)$", "stack_bytes": 400,
+                           "debug_stack_bytes": 900}]}
+        r = self.run_tool(0, manifest_extra=task)
+        self.assertIn("FAIL t: 820 of 400", r.stdout)
+        r = self.run_tool(0, manifest_extra=task, env="x-debug")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("PASS t: 820 of 900", r.stdout)
+        # a second task walks with the same indirect rules
+        task["tasks"].append(dict(task["tasks"][0], name="u"))
+        r = self.run_tool(0, manifest_extra=task, env="x-debug")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("PASS u: 820 of 900", r.stdout)
+
+    def test_debug_env_reads_sdkconfig_keys_through_the_debug_fragment(self):
+        r = self.run_tool(400, debug_config="CONFIG_STACK=900\n")
+        self.assertIn("FAIL t: 820 of 400", r.stdout)
+        r = self.run_tool(400, debug_config="CONFIG_STACK=900\n", env="x-debug")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("PASS t: 820 of 900", r.stdout)
+
+    def test_debug_stack_below_the_release_stack_fails(self):
+        task = {"tasks": [{"name": "t", "entry": r"^void entry\(void\*\)$", "stack_bytes": 900,
+                           "debug_stack_bytes": 850}]}
+        for env in ("x", "x-debug"):
+            r = self.run_tool(0, manifest_extra=task, env=env)
+            self.assertEqual(r.returncode, 1, r.stdout)
+            self.assertIn("FAIL t: debug stack 850 is below the release stack 900", r.stdout)
+        r = self.run_tool(900, debug_config="CONFIG_STACK=800\n")
+        self.assertIn("FAIL t: debug stack 800 is below the release stack 900", r.stdout)
 
     def test_fails_one_byte_short_and_prints_path(self):
         r = self.run_tool(819)
@@ -285,15 +348,104 @@ class StackBudgetTest(unittest.TestCase):
         self.assertEqual(self.run_tool(511, indirect=False, cis=m_ci,
                                        manifest_extra=bounds).returncode, 1)
 
-    def test_cycles_sharing_a_head_add_their_passes(self):
+    def test_cycles_in_one_component_charge_every_member_per_pass(self):
         bounds = {"recursion_bounds": [{"function": r"^void a\(int\)$", "depth": 3, "why": "test"}]}
         n_ci = (("n.cpp.ci", N_CI),)
-        # 32 + a 40 + b 24 + extra passes of both cycles, 2 x 64 + 2 x 56, + 288
-        r = self.run_tool(624, indirect=False, cis=n_ci, manifest_extra=bounds)
+        # a, b and c form one component: 32 + 3 passes of (40 + 24 + 16) + 288
+        r = self.run_tool(560, indirect=False, cis=n_ci, manifest_extra=bounds)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("PASS t: 624 of 624 bytes (336 frames + 288 port overhead)", r.stdout)
-        self.assertEqual(self.run_tool(623, indirect=False, cis=n_ci,
+        self.assertIn("PASS t: 560 of 560 bytes (272 frames + 288 port overhead)", r.stdout)
+        self.assertEqual(self.run_tool(559, indirect=False, cis=n_ci,
                                        manifest_extra=bounds).returncode, 1)
+        # two rules in one component add their extra passes: 1 + 2 + 1 = 4
+        bounds["recursion_bounds"].append({"function": r"^void c\(int\)$", "depth": 2, "why": "t"})
+        r = self.run_tool(640, indirect=False, cis=n_ci, manifest_extra=bounds)
+        self.assertIn("PASS t: 640 of 640 bytes (352 frames + 288 port overhead)", r.stdout)
+        # two rules with the same depth and reason are still two rules:
+        # 1 + (2 - 1) + (2 - 1) = 3 passes of 80, 32 + 240 + 288
+        same = {"recursion_bounds": [{"function": r"^void a\(int\)$", "depth": 2, "why": "t"},
+                                     {"function": r"^void c\(int\)$", "depth": 2, "why": "t"}]}
+        r = self.run_tool(560, indirect=False, cis=n_ci, manifest_extra=same)
+        self.assertIn("PASS t: 560 of 560 bytes (272 frames + 288 port overhead)", r.stdout)
+        # a catch-all known limit on the task does not hide a finite bound:
+        # a's depth 3 still charges three passes
+        catch = {"recursion_bounds": [{"function": r"^void a\(int\)$", "depth": 3, "why": "test"},
+                                      {"function": ".", "tasks": ["t"], "why": "known"}]}
+        r = self.run_tool(560, indirect=False, cis=n_ci, manifest_extra=catch)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("PASS t: 560 of 560 bytes (272 frames + 288 port overhead)", r.stdout)
+        self.assertEqual(self.run_tool(559, indirect=False, cis=n_ci,
+                                       manifest_extra=catch).returncode, 1)
+
+    def test_recursion_depth_below_one_is_refused(self):
+        n_ci = (("n.cpp.ci", N_CI),)
+        for depth in (0, -1):
+            with self.subTest(depth=depth):
+                bad = {"recursion_bounds": [{"function": r"^void a\(int\)$", "depth": depth,
+                                             "why": "test"}]}
+                r = self.run_tool(560, indirect=False, cis=n_ci, manifest_extra=bad)
+                self.assertNotEqual(r.returncode, 0, r.stdout)
+                self.assertIn("must be a whole number of at least 1", r.stdout + r.stderr)
+
+    def test_depth_behind_a_cut_cycle_is_found_on_another_path(self):
+        # The memoized walk reached x first inside the open a-x cycle, cut
+        # x -> a and reused x's 8 bytes under z. The real path is
+        # entry -> z -> x -> a -> big: 32 + 400 + 8 + 16 + 300 + 288.
+        bounds = {"recursion_bounds": [{"function": r"^void a\(int\)$", "depth": 1, "why": "test"}]}
+        r = self.run_tool(1044, indirect=False, cis=(("x.cpp.ci", X_CI),), manifest_extra=bounds)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("PASS t: 1044 of 1044 bytes (756 frames + 288 port overhead)", r.stdout)
+        r = self.run_tool(1043, indirect=False, cis=(("x.cpp.ci", X_CI),), manifest_extra=bounds)
+        self.assertEqual(r.returncode, 1, r.stdout)
+
+    def test_infeasible_call_is_not_followed(self):
+        # Uncut, entry -> z -> x -> a -> big is 1,044 bytes (see above).
+        # Cutting z -> x leaves z alone: 32 + 400 + 288 = 720.
+        cut = {"infeasible_calls": [{"caller": r"^void z\(\)$", "callee": r"^void x\(int\)$",
+                                     "why": "x.cpp:1 guards the call"}],
+               "recursion_bounds": [{"function": r"^void a\(int\)$", "depth": 1, "why": "test"}]}
+        r = self.run_tool(720, indirect=False, cis=(("x.cpp.ci", X_CI),), manifest_extra=cut)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("PASS t: 720 of 720 bytes (432 frames + 288 port overhead)", r.stdout)
+
+    def test_infeasible_call_without_a_citation_is_refused(self):
+        for why in ("", "test"):
+            with self.subTest(why=why):
+                cut = {"infeasible_calls": [{"caller": r"^void z\(\)$",
+                                             "callee": r"^void x\(int\)$", "why": why}],
+                       "recursion_bounds": [{"function": r"^void a\(int\)$", "depth": 1,
+                                             "why": "test"}]}
+                r = self.run_tool(720, indirect=False, cis=(("x.cpp.ci", X_CI),),
+                                  manifest_extra=cut)
+                self.assertNotEqual(r.returncode, 0, r.stdout)
+                self.assertIn("needs a why that cites the guard", r.stdout + r.stderr)
+
+    def test_infeasible_calls_cite_their_guard(self):
+        manifest = json.loads((ROOT / "tools" / "stack_budget.json").read_text())
+        for rule in manifest["infeasible_calls"]:
+            with self.subTest(caller=rule["caller"]):
+                self.assertRegex(rule["why"], r"\.(c|h|cpp):\d+")
+
+    def test_panic_handler_counts_on_the_faulting_stack(self):
+        # entry -> abort -> panic_abort, whose ill instruction enters the
+        # handler on the same stack. The handler's own abort is followed to
+        # abort (48) but not into a second panic: handler 208 + 48 = 256,
+        # task 32 + 48 + 16 + 256 + 288 overhead.
+        p_ci = (("p.cpp.ci", P_CI),)
+        panic = {"panic": {"abort": "^panic_abort$", "handler": "^xt_unhandled_exception$",
+                           "why": "test"}}
+        r = self.run_tool(640, indirect=False, cis=p_ci, manifest_extra=panic)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("PASS panic handler: 256 bytes from xt_unhandled_exception\n", r.stdout)
+        self.assertIn("PASS t: 640 of 640 bytes (352 frames + 288 port overhead)", r.stdout)
+        self.assertEqual(self.run_tool(639, indirect=False, cis=p_ci,
+                                       manifest_extra=panic).returncode, 1)
+        # without the rule the handler is invisible: 32 + 48 + 16 + 288
+        self.assertIn("PASS t: 384 of 384 bytes", self.run_tool(384, indirect=False, cis=p_ci).stdout)
+        # the real manifest enters the ESP-IDF handler from panic_abort
+        manifest = json.loads((ROOT / "tools" / "stack_budget.json").read_text())
+        self.assertEqual(manifest["panic"]["abort"], "^panic_abort$")
+        self.assertEqual(manifest["panic"]["handler"], "^xt_unhandled_exception$")
 
     def test_known_limit_passes_only_on_its_tasks(self):
         dyn = {"function": r"^void vla", "bytes": 0, "why": "test"}
@@ -379,6 +531,21 @@ class ManifestSourceTest(unittest.TestCase):
                 path, pattern = task["source"]
                 found = re.findall(pattern, (ROOT / path).read_text())
                 self.assertEqual(found, [str(task["stack_bytes"])], f"{path}: {pattern}")
+                if "debug_stack_bytes" in task:
+                    # the debug margin is the first branch of its #if
+                    path, pattern = task["debug_source"]
+                    found = re.findall(pattern, (ROOT / path).read_text())
+                    self.assertEqual(found, [str(task["debug_stack_bytes"] - task["stack_bytes"]), "0"],
+                                     f"{path}: {pattern}")
+
+    def test_debug_fragment_sizes_the_sdkconfig_tasks(self):
+        # The default event loop and esp_timer tasks grow only in debug images.
+        release = (ROOT / "sdkconfig.m5stick-c").read_text()
+        debug = (ROOT / "sdkconfig.debug").read_text()
+        for key in ("CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE", "CONFIG_ESP_TIMER_TASK_STACK_SIZE"):
+            with self.subTest(key=key):
+                value = int(re.search(rf"^{key}=(\d+)$", debug, re.M).group(1))
+                self.assertGreaterEqual(value, int(re.search(rf"^{key}=(\d+)$", release, re.M).group(1)))
 
     def test_memory_budget_components_match_the_task_stacks(self):
         stacks = {t["name"]: t["stack_bytes"]

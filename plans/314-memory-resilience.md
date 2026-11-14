@@ -635,6 +635,157 @@ preexisting issues, fixed here:
 and passes them to the gate, then runs the tool tests. Fork Actions are
 disabled, so this was validated locally only.
 
+## PR 4c: exact stack walk and panic paths
+
+State: implemented. StickS3 and Waveshare measured locally. The other five
+release envs and the debug envs are measured by the firmware CI dispatch on
+the PR. The PR does not merge until every env passes there.
+
+Motivation. The PR 4a walk memoized each function once. A function first
+reached inside an open cycle had that cycle's back edge cut, and the value was
+reused on every other path, so depth behind the cut was lost. A follow-up was
+owed to replace the walk and to decide how panic paths count.
+
+Algorithm. `tools/stack_budget.py` collapses the reachable call graph into
+strongly connected components (iterative Tarjan) and takes the longest path
+over the DAG. A one-pass component (no recursion bound above 1) is walked
+exactly: every simple path through it is enumerated, up to 200,000 paths per
+component, and the path leaves through its last member's deepest callee. Past
+the budget a bounded component is charged the sum of its frames, which bounds
+any simple path. A component with more passes pays `passes` times its frame
+sum. Only `main`'s 410-member LVGL component, a known limit, exceeds the
+budget; it keeps the greedy walk and stays a lower bound. The walk takes
+0.4 s of the run on the StickS3; loading the `.ci` files and the objdump pass
+dominate. On a synthetic graph the old walk reports 440 bytes of frames where
+the real path is 756, which `tests/test_stack_budget.py` keeps. A randomized
+check against brute force agreed on 3,000 graphs.
+
+Panic decision. Panic paths count, and the handler's own depth counts too.
+`abort()`, `__assert_func` and `esp_system_abort()` end in
+`esp_system/panic.c` `panic_abort`, which executes `ill`. The exception enters
+`xtensa/xtensa_vectors.S` `_xt_user_exc`, which stays on the faulting task's
+stack ("we'll stay on the user stack for exception handling"), pushes the
+`XT_STK_FRMSZ` frame and calls the `_xt_exception_table` entry that
+`xtensa/xtensa_intr.c` sets to `xt_unhandled_exception`. That runs
+`panic_handler` and `esp_panic_handler` on the same stack. Release builds
+print and reboot with no core dump. The PSRAM boards' debug core dump gets
+its own stack through `CONFIG_ESP_COREDUMP_USE_STACK_SIZE`. An overflow in the
+handler loses the panic output, so the manifest's `panic` entry makes
+`panic_abort` call one node carrying the handler's depth, walked once with a
+nested panic not followed (`PANIC_ENTRY_COUNT_MAX` restarts the chip). The
+exception frame is already in the port overhead.
+
+`infeasible_calls` removes a call edge only with a file:line citation of the
+guard that makes it unreachable. Five edges: `esp_cache_get_alignment` to
+`esp_log` (null output pointer; every caller passes an address), the
+copy-on-write string's `_S_create` length throw and `_S_construct` null throw
+(the two depth 1 claims the old walk honoured by accident of order),
+`cache_hal_get_cache_line_size` to `abort` (`HAL_ASSERT` on a level every
+caller passes valid) and `rtc_clk_xtal_freq_get` to `esp_log` (the bootloader
+stores the crystal frequency). Without them the handler alone measured 1,328
+bytes on the StickS3 and 1,552 on Waveshare, and about 10 KB of stacks would
+have grown for paths the source rules out.
+
+Before and after, bytes including port overhead:
+
+| Task | Stack | StickS3 before | StickS3 after | Waveshare before | Waveshare after |
+| :--- | ---: | ---: | ---: | ---: | ---: |
+| panic handler | | | 512 | | 752 |
+| main | 12,288/16,384 | 6,928 | 7,408 | 3,920 | 4,640 |
+| nimble_host | 16,384 | 1,664 | 2,144 | 1,856 | 2,608 |
+| sys_evt | 3,072 (was 2,304) | 1,952 | 2,432 | 2,192 | 2,944 |
+| esp_timer | 3,584 | 1,920 | 2,704 | 2,128 | 3,504 |
+| control | 8,192 | 2,896 | 2,816 | 3,120 | 3,648 |
+| camera_target | 4,096 | 2,560 | 2,384 | 2,784 | 3,248 |
+| gps | 4,096 | 2,992 | 3,392 | 3,232 | 3,984 |
+| wifi | 4,096 | 2,592 | 3,072 | 3,120 | 3,872 |
+| companion | 3,840 (was 3,072) | 2,560 | 2,912 | 2,960 | 3,712 |
+| ir | 4,096 | 2,352 | 2,800 | | |
+| mqtt | 10,240 | 8,080 | 8,256 | 8,304 | 9,056 |
+| mqtt_client | 3,072 | 1,936 | 2,352 | 2,208 | 2,896 |
+| webui | 4,096 (was 3,584) | 2,912 | 3,152 | 3,136 | 3,952 |
+| webui_https | 8,192 | 2,640 | 2,848 | 2,864 | 3,312 |
+| webui_tls | 12,288 | 7,664 | 8,144 | 7,920 | 8,672 |
+
+Release envs in the firmware CI dispatch (run 43476535693), need in bytes;
+every row passes, the ESP32 boards share one column because StickC, StickC
+Plus, Core and Core2 measured the same:
+
+| Task | Stack | ESP32 boards | StickS3 | Waveshare |
+| :--- | ---: | ---: | ---: | ---: |
+| panic handler | | 1,216 | 512 | 752 |
+| sys_evt | 3,072 | 2,912 | 2,432 | 2,944 |
+| esp_timer | 3,584 | 3,184 | 2,704 | 3,504 |
+| control | 8,192 | 3,296 | 2,816 | 3,648 |
+| camera_target | 4,096 | 2,864 | 2,384 | 3,248 |
+| gps | 4,096 | 3,696 | 3,392 | 3,984 |
+| wifi | 4,096 | 3,552 | 3,072 | 3,872 |
+| companion | 3,840 | 3,424 | 2,912 | 3,712 |
+| ir (StickC, Plus, S3) | 4,096 | 3,296 | 2,800 | |
+| sd (Core, Core2) | 6,144 | 4,816 | | |
+| mqtt (Core2) | 10,240 | 8,736 | 8,256 | 9,056 |
+| mqtt_client (Core2) | 3,072 | 2,832 | 2,352 | 2,896 |
+| webui (Core2) | 4,096 | 3,632 | 3,152 | 3,952 |
+| webui_https (Core2) | 8,192 | 3,328 | 2,848 | 3,312 |
+| webui_tls (Core2) | 12,288 | 7,904 | 8,144 | 8,672 |
+
+The ESP32 `main` row is 7,888 to 7,936 against 16,384. Every release size
+budget passes. The headless env is not in that matrix; the reproducible
+workflow (run 43476529248) runs its stack and size budgets on the kept build
+and both pass. Headless matches Waveshare except `control` 4,096 of 8,192
+and `camera_target` 3,856 of 4,096.
+
+Debug envs. The first dispatch failed five of six debug envs against the
+release stacks, because the stack protector and `-Os` make frames bigger:
+the ESP32 debug builds needed `sys_evt` 3,088, `esp_timer` 3,664, `gps`
+4,160, `wifi` 4,240 and `companion` 4,192 (Core2 debug also `webui` 4,128);
+Waveshare debug needed `sys_evt` 3,264, `camera_target` 4,144, `gps` 4,256,
+`companion` 3,968, `mqtt_client` 3,216 and `webui` 4,240. Raising the
+release stacks for debug-only frames would have cost every release image
+about 2 to 3 KB more, so debug images get their own sizes instead:
+`sdkconfig.debug` sets `sys_evt` 3,328 and `esp_timer` 3,840, and each task
+owner adds a named `..._DEBUG_EXTRA` under `FURBLE_DEBUG_BUILD`, defined only
+by the `-debug` envs: `camera_target`, `gps`, `wifi`, `webui` +256 to 4,352,
+`companion` +512 to 4,352 and `mqtt_client` +256 to 3,328. The manifest
+records each as `debug_stack_bytes` with its cited `debug_source`, the gate
+uses it for a `-debug` env and fails a debug stack below its release stack.
+The companion, WebUI supervisor and MQTT client admission gates include the
+margin. Host tests and the simulator build without the define and keep the
+release values.
+
+Stack changes, each raised to the measured maximum across envs rounded up to
+256 bytes:
+
+- `sys_evt`, `CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE`: 2,304 to 3,072 in all
+  seven release sdkconfigs (and the deprecated alias). Waveshare needs 2,944:
+  `stopNtp` unregisters an event handler, which logs, whose first call creates
+  the log mutex, whose allocation leaves the heap lock through
+  `vPortExitCritical`'s `configASSERT`, then the panic handler.
+- Companion task, `CompanionMemory::TASK_STACK_BYTES`: 3,072 to 3,840.
+  Waveshare needs 3,712: a camera snapshot loads the saved list through
+  `Preferences::begin` and the NVS namespace lookup into the same log tail.
+  The first-enable gate moves from 7,552/3,456 to 8,320/4,224.
+- WebUI supervisor, `WebUIMemory::SUPERVISOR_STACK_BYTES`: 3,584 to 4,096.
+  Waveshare needs 3,952. Its floors move from 4,608/4,096 to 5,120/4,608.
+
+Internal RAM cost: 768 bytes on every board for `sys_evt`, 768 more while the
+companion is enabled, and 512 more on Core2, StickS3, Waveshare and headless
+while the WebUI runs: up to 1,536 bytes on StickC, StickC Plus and Core and
+2,048 on the other four. `tools/derive_sim_heap.py`,
+`sim/memory_profile.cpp`, `sim/coverage/memory_budget.json` and the host
+gate tests carry the new values. `sim/coverage/board_heap.json` is
+re-derived: StickS3 and Waveshare from fresh images, whose static DRAM had
+already drifted from the recorded values, and the ESP32 boards from their
+recorded ELF symbols with the new stack terms. The profile floors in
+`memory_budget.json` follow it. The simulator memory profile run waits for
+the simulator to be available again.
+
+Deviations:
+
+- Local builds of the other envs stalled for over an hour in the ESP-IDF
+  component manager on a shared, heavily loaded machine, so their evidence is
+  the CI dispatch on the PR rather than a local run.
+
 ## Follow-up: the Core OTA debug profile is a mandatory CI lane
 
 State: implemented.

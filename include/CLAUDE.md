@@ -190,14 +190,15 @@ settings-touching rebase.
   `HTTPD_MAX_SOCKETS` counts client sockets; ESP-IDF reserves three additional
   internal sockets. The production value is two clients (five total).
   `initEarly()` must run before WiFi/display allocation. Both WebUI task stacks
-  stay in internal RAM; `FurbleWebUIMemory.h` holds the 3.5 KiB/8 KiB sizes and
+  stay in internal RAM; `FurbleWebUIMemory.h` holds the 4 KiB/8 KiB sizes and
   the 20,480/12,288 server gate. The gate log text lives in the
   `FURBLE_WEBUI_*_GATE_LOG` macros because `ESP_LOG_ATTR_STR()` needs a
   literal; the matching constants are for the simulator. It also holds the
   12 KiB identity stack and the 20,864/12,672 runtime identity gate; keep its
   derivation comment current when the identity code or mbedTLS pin changes.
-- `FurbleCompanionMemory.h` holds the 3 KiB companion task stack and the
-  7,552/3,456 first-enable gate. `tools/stack_budget.json` reads the stack
+- `FurbleCompanionMemory.h` holds the 3.75 KiB companion task stack (plus a
+  512-byte margin under `FURBLE_DEBUG_BUILD`) and the
+  8,320/4,224 first-enable gate. `tools/stack_budget.json` reads the stack
   value from it. The simulator logs through `FURBLE_COMPANION_START_GATE_LOG`.
 - `FurbleTaskMemory.h` holds the derived 384-byte TCB and allocator overhead
   of one task. Every task admission gate adds it; do not copy the value.

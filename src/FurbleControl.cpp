@@ -22,6 +22,16 @@ namespace Furble {
 
 namespace {
 
+constexpr uint32_t TARGET_TASK_STACK_RELEASE = 4096;
+// A debug build's stack protector and -Os frames reach 4,144 bytes on the
+// Waveshare debug build (plan 314 PR 4c). tools/stack_budget.json reads both.
+#if defined(FURBLE_DEBUG_BUILD)
+constexpr uint32_t TARGET_TASK_STACK_DEBUG_EXTRA = 256;
+#else
+constexpr uint32_t TARGET_TASK_STACK_DEBUG_EXTRA = 0;
+#endif
+constexpr uint32_t TARGET_TASK_STACK = TARGET_TASK_STACK_RELEASE + TARGET_TASK_STACK_DEBUG_EXTRA;
+
 constexpr uint32_t RSSI_SAMPLE_INTERVAL_MS = 5000;
 constexpr float RSSI_FILTER_ALPHA = 0.25f;
 constexpr int8_t RSSI_STEP_DOWN_DBM = -60;
@@ -1250,7 +1260,7 @@ void Control::addActive(std::shared_ptr<Camera> camera) {
         auto *target = static_cast<Furble::Control::Target *>(param);
         target->task();
       },
-      camera->getName().c_str(), 4096, target.get(), 3, NULL);
+      camera->getName().c_str(), TARGET_TASK_STACK, target.get(), 3, NULL);
   if (ret != pdPASS) {
     ESP_LOGE(LOG_TAG, "Failed to create task for '%s'.", camera->getName().c_str());
   } else {
