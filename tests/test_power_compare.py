@@ -190,7 +190,7 @@ class PowerCompareTest(unittest.TestCase):
     self.assertIn("no accounting metadata fields", result.stderr)
 
   @staticmethod
-  def activity_report(icon=60, invalidated=10000, flushed=5000, scenario="idle"):
+  def activity_report(icon=60, invalidated=10000, flushed=5000, scenario="screen-off-30s"):
     return {
         "scenario": scenario,
         "estimated_mA": 1.0,
@@ -252,7 +252,7 @@ class PowerCompareTest(unittest.TestCase):
     self.assertEqual(result.returncode, 0, result.stdout)
 
   def test_opt_out_skips_named_metrics_only(self):
-    opt_out = {"scenarios": {"idle": {
+    opt_out = {"scenarios": {"screen-off-30s": {
         "metrics": ["timer_fires.icon_timer"], "reason": "timer period under review"}}}
     result = self.run_activity(self.activity_report(icon=120), self.activity_report(), opt_out)
     self.assertEqual(result.returncode, 0, result.stdout)
@@ -263,7 +263,7 @@ class PowerCompareTest(unittest.TestCase):
     self.assertIn("invalidated_area_pixels", result.stdout)
 
   def test_opt_out_wildcard_skips_every_activity_metric(self):
-    opt_out = {"scenarios": {"idle": {"metrics": ["*"], "reason": "nondeterministic"}}}
+    opt_out = {"scenarios": {"screen-off-30s": {"metrics": ["*"], "reason": "nondeterministic"}}}
     result = self.run_activity(
         self.activity_report(icon=0, invalidated=0, flushed=0), self.activity_report(), opt_out
     )
@@ -273,10 +273,27 @@ class PowerCompareTest(unittest.TestCase):
     for entry in ({"metrics": ["*"]}, {"metrics": [], "reason": "x"},
                   {"metrics": ["*"], "reason": " "}, ["*"]):
       result = self.run_activity(
-          self.activity_report(), self.activity_report(), {"scenarios": {"idle": entry}}
+          self.activity_report(), self.activity_report(), {"scenarios": {"screen-off-30s": entry}}
       )
       self.assertEqual(result.returncode, 2, entry)
       self.assertIn("compare:", result.stderr)
+
+  def test_opt_out_validates_every_entry(self):
+    # A bad entry for another scenario still fails this comparison.
+    bad = {"scenarios": {"menu-idle-30s": {"metrics": ["*"]}}}
+    result = self.run_activity(self.activity_report(), self.activity_report(), bad)
+    self.assertEqual(result.returncode, 2)
+    self.assertIn("menu-idle-30s needs a reason", result.stderr)
+
+  def test_opt_out_rejects_unknown_scenarios(self):
+    unknown = {"scenarios": {"screen-off-30": {"metrics": ["*"], "reason": "typo"}}}
+    result = self.run_activity(self.activity_report(), self.activity_report(), unknown)
+    self.assertEqual(result.returncode, 2)
+    self.assertIn("unknown power-gate scenario screen-off-30", result.stderr)
+
+  def test_committed_opt_out_is_valid(self):
+    result = self.run_compare(self.activity_report(), self.activity_report())
+    self.assertEqual(result.returncode, 0, result.stderr)
 
   def test_activity_on_one_side_only_is_an_error(self):
     result = self.run_activity(self.activity_report(), {"estimated_mA": 1.0})

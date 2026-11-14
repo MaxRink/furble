@@ -273,7 +273,9 @@ A scenario may opt out of named metrics in
 ```
 
 `"*"` skips every activity metric of that scenario. Each entry needs a
-non-empty `metrics` list and a non-empty `reason`, or the comparator exits 2.
+non-empty `metrics` list and a non-empty `reason`, and must name a power-gate
+scenario from `sim/scenarios/manifest.json`. Every entry is checked on every
+comparison, so one bad entry makes the comparator exit 2 for all scenarios.
 An opt-out does not affect the mA comparison. `--activity-opt-out PATH`
 selects another file; a missing file opts nothing out.
 

@@ -97,6 +97,7 @@ DEFAULT_ACTIVITY_THRESHOLD = 0.25
 TIMER_FIRE_SLACK = 2
 PIXEL_SLACK = 1024
 DEFAULT_OPT_OUT = Path(__file__).resolve().parent / "activity-optout.json"
+SCENARIO_MANIFEST = Path(__file__).resolve().parents[2] / "sim/scenarios/manifest.json"
 
 
 def _count(value, what: str) -> int:
@@ -126,30 +127,51 @@ def activity_metrics(report: dict) -> dict[str, tuple[int, int]] | None:
     return metrics
 
 
+def power_gate_scenarios(manifest: Path = SCENARIO_MANIFEST) -> set[str]:
+    """Return the power-gate scenario names listed in the simulator manifest."""
+    data = json.loads(manifest.read_text())
+    entries = data.get("scenarios") if isinstance(data, dict) else None
+    if not isinstance(entries, list):
+        raise ValueError(f"{manifest} has no scenarios list")
+    return {
+        Path(entry["path"]).stem
+        for entry in entries
+        if isinstance(entry, dict)
+        and entry.get("suite") == "power-gate"
+        and isinstance(entry.get("path"), str)
+    }
+
+
 def load_opt_out(path: Path, scenario: str) -> set[str]:
-    """Return the metrics this scenario opts out of. A missing file is empty."""
+    """Return the metrics this scenario opts out of. A missing file is empty.
+
+    Every entry is validated, not only this scenario's, so a typo or a stale
+    entry fails the run that touches the file instead of hiding until its
+    scenario is compared. An entry must name a power-gate scenario.
+    """
     if not path.exists():
         return set()
     data = json.loads(path.read_text())
     scenarios = data.get("scenarios") if isinstance(data, dict) else None
     if not isinstance(scenarios, dict):
         raise ValueError("activity opt-out has no scenarios object")
-    entry = scenarios.get(scenario)
-    if entry is None:
-        return set()
-    if not isinstance(entry, dict):
-        raise ValueError(f"activity opt-out for {scenario} is not a JSON object")
-    metrics = entry.get("metrics")
-    reason = entry.get("reason")
-    if (
-        not isinstance(metrics, list)
-        or not metrics
-        or not all(isinstance(metric, str) and metric for metric in metrics)
-    ):
-        raise ValueError(f"activity opt-out for {scenario} needs a non-empty metrics list")
-    if not isinstance(reason, str) or not reason.strip():
-        raise ValueError(f"activity opt-out for {scenario} needs a reason")
-    return set(metrics)
+    known = power_gate_scenarios() if scenarios else set()
+    for name, entry in scenarios.items():
+        if name not in known:
+            raise ValueError(f"activity opt-out names unknown power-gate scenario {name}")
+        if not isinstance(entry, dict):
+            raise ValueError(f"activity opt-out for {name} is not a JSON object")
+        metrics = entry.get("metrics")
+        reason = entry.get("reason")
+        if (
+            not isinstance(metrics, list)
+            or not metrics
+            or not all(isinstance(metric, str) and metric for metric in metrics)
+        ):
+            raise ValueError(f"activity opt-out for {name} needs a non-empty metrics list")
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError(f"activity opt-out for {name} needs a reason")
+    return set(scenarios.get(scenario, {}).get("metrics", []))
 
 
 def activity_drift(
