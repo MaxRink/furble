@@ -86,8 +86,12 @@ request, so the simulator now models the sourced 3,020-byte reading.
   id to `handleLifecycleEvent` instead of building a `queued_event_t`, and
   `clearQueuedEvents` calls `xQueueReset`: the owner is the only receiver and
   every sender posts with a zero timeout, so a reset drops exactly what a
-  drain would. `EVENT_STORAGE_BYTES` now reserves the queue plus both copies
-  without PSRAM. The StickS3 owner walk drops from 8,080 to 3,344 bytes
+  drain would. Neither rejects a later send, so `stopClient()` now clears
+  after `esp_mqtt_client_destroy()` as defence in depth. A successful stop
+  already joined the client task. A stop that fails to build DISCONNECT
+  leaves the task running, and destroy's own stop most likely fails too, so
+  no clear order closes that upstream path. `EVENT_STORAGE_BYTES` now
+  reserves the queue plus both copies without PSRAM. The StickS3 owner walk drops from 8,080 to 3,344 bytes
   (3,312 with the cut below). The 10 KiB stack and every gate are unchanged.
 - Config with hardware precedent:
   - `CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM` 10 to 6 on the six envs that had

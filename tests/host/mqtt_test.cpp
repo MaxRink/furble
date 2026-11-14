@@ -627,6 +627,25 @@ int main(void) {
   require(publishedTopic(timeout_root_topic + "/status").payload == "online",
           "timeout replacement did not publish on its reloaded topic");
 
+  // The old client task can deliver one more callback while destroy joins it,
+  // and the replacement can reuse its address. The queue is cleared after
+  // destroy, so that command never runs on the replacement session. The
+  // reload keeps the same topics, so the stale command would match them.
+  host_mqtt::emitDataOnDestroy(timeout_root_topic + "/cmd/shutter", "press");
+  mqtt.reloadSetting();
+  ownerStep(mqtt);
+  host_mqtt::emitPublished(latestPublishedTopic(timeout_root_topic + "/status").message_id);
+  ownerStep(mqtt);
+  require(host_mqtt::startCount() == 5, "reload did not create the recycled-address client");
+  const size_t beforeRecycled = Control::commands().size();
+  ownerStep(mqtt);
+  require(mqtt.isConnected(), "the recycled-address client did not connect");
+  require(latestPublishedTopic(timeout_root_topic + "/status").payload == "online",
+          "the recycled-address client did not publish online");
+  require(std::none_of(Control::commands().begin() + beforeRecycled, Control::commands().end(),
+                       [](const auto command) { return command == Control::CMD_SHUTTER_PRESS; }),
+          "a command queued during destroy ran on the next client");
+
   const size_t beforeManualStop = Control::commands().size();
   host_mqtt::deliver(timeout_root_topic + "/cmd/shutter", "press");
   ownerStep(mqtt);

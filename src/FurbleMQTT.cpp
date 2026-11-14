@@ -598,7 +598,8 @@ void MQTT::processLifecycleEvents(void) {
 void MQTT::clearQueuedEvents(void) {
   // The owner is the only receiver and every sender posts without blocking, so
   // a reset drops the queued copies exactly like draining them, without a
-  // receive buffer.
+  // receive buffer. Like a drain, it cannot reject a later send, so the final
+  // clear in stopClient() runs after the client is destroyed.
   if (m_EventQueue != nullptr) {
     xQueueReset(m_EventQueue);
   }
@@ -920,8 +921,14 @@ void MQTT::stopClient(void) {
   m_Client = nullptr;
   m_Connected.store(false);
   esp_mqtt_client_stop(client);
-  clearQueuedEvents();
+  // Clear after destroy as defence in depth. The client task is the only
+  // caller of eventHandler(), and a successful stop has already joined it.
+  // A stop that fails to build DISCONNECT leaves the task running, and the
+  // stop inside destroy most likely fails the same way, so no clear order
+  // closes that path. Clearing last keeps any event queued before destroy
+  // from reaching the next client, which may reuse this handle's address.
   esp_mqtt_client_destroy(client);
+  clearQueuedEvents();
   m_OfflineStopPending = false;
   m_OfflineAcked = false;
   m_OfflineMessageId = -1;

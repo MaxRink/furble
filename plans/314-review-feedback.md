@@ -281,3 +281,20 @@ config changes correct.
 | ---: | :--- | :--- | :--- |
 | 1 | The main stack cut from 16 KiB to 12 KiB on StickC, StickC Plus, Core and Core2 had no hardware evidence. The main walk is not proof of fit (781 unresolved indirect calls on Core2, `docs/stack-budget.md` known limits), and the only reading, the StickS3 in #398, used about 9,268 bytes against a 6,816-byte walk. | Fixed by reverting the cut. All four sdkconfigs keep `CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384` and `CONFIG_MAIN_TASK_STACK_SIZE=16384`, and the sim profile rows and budget components return to 16,384. Plan 314 lists the cut as hardware-gated: it needs a `perf tasks` main reading on a 4 MB board and on a Core2 with MQTT connected. | `sdkconfig.m5stick-c`, `sdkconfig.m5stick-c-plus`, `sdkconfig.m5stack-core`, `sdkconfig.m5stack-core2`, `sim/memory_profile.cpp`, `sim/coverage/memory_budget.json` |
 | 2 | The cut broke CI: seven alternate-board scenarios assert `mem.component.main_stack 16384`, and the default e2e run does not execute them. | Fixed by the same revert. All seven still assert 16384 and the `stickc-plus2` row matches. The StickC and Core alternate-board suites ran on plain builds; plan 314 records both counts. | `sim/scenarios/e2e/hw-profile-stickc.txt`, `hw-profile-stickc-plus.txt`, `hw-profile-core-uart.txt`, `hw-pmic-ip5306-core.txt`, `hw-pmic-axp192-core2.txt`, `hw-profile-tough.txt`, `hw-pmic-plus2-no-pmic.txt` |
+
+## PR #457 (3fa57fd1)
+
+Source: Copilot review.
+
+| # | Finding | Resolution | Evidence |
+| ---: | :--- | :--- | :--- |
+| 1 | `src/FurbleMQTT.cpp:603`. `xQueueReset` is not a drain while the esp-mqtt task can still call `enqueueEvent()`. An event sent after the reset survives `stopClient()` into the next client and takes one of the four slots. | Fixed as defence in depth at the teardown order. A reset and a drain both leave a later send in the queue, so the order matters, not the reset. In the pinned esp-mqtt, `eventHandler()` runs only on the client task, through `esp_event_loop_run()` in `esp_mqtt_dispatch_event()`, and a successful `esp_mqtt_client_stop()` waits for that task's `STOPPED_BIT`, so the old order was already safe on that path. `send_disconnect_msg()` returns `ESP_FAIL` only when it cannot build the packet; then stop returns without joining, and the stop inside `esp_mqtt_client_destroy()` most likely fails the same way. That is an upstream lifetime gap no clear order closes. The replacement can also reuse the freed handle's address, which passes the identity check in `acceptsEvent()`. `stopClient()` now clears after destroy, so nothing queued before destroy reaches the next client. The pre-stop clear on reload stays: it drops commands queued by the old session, and the offline wait already filters everything but `MQTT_EVENT_PUBLISHED`. | `src/FurbleMQTT.cpp`; `mqtt_client.c` in the pinned framework (`esp_mqtt_client_stop`, `esp_mqtt_client_destroy`, `esp_mqtt_dispatch_event`); `tests/host/mqtt_test.cpp` and `tests/host/mqtt/mqtt_client_mock.cpp`: `emitDataOnDestroy()` delivers a shutter command during destroy and the next init reuses the address. The test fails with "a command queued during destroy ran on the next client" on the old order and passes with the fix. |
+
+Validation for PR #457 row 1: `mqtt-owner`, `mqtt-fuzz-seed-*`,
+`memory-pressure`, `provision-apply-mqtt` and the `ota-mqtt-*` host tests pass
+under ASan and UBSan. The MQTT simulator build passes all 4 scenarios of
+`sh sim/scripts/run-memory.sh`. `m5stick-s3` builds; its size budget (flash
+1,846,928 of 3,145,728) and stack budget (mqtt 3,312 of 10,240) pass.
+`python3 tools/pre_review.py` passes against the PR base and `origin/master`,
+and `sh sim/scripts/check-doc-tokens.sh` passes.
+
