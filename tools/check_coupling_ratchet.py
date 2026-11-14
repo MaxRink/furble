@@ -26,8 +26,9 @@ base through. A base without a manifest skips that comparison.
 
 `include/FurbleBoardCaps.h` is where board identity is turned into capability
 macros, so it is the one file allowed to name boards without a ratchet entry.
-`src/FurblePlatform.cpp` is the M5Unified adapter, so its `M5.` calls and
-board switches are not counted. Capability macros are always 0 or 1, so a
+`src/FurblePlatform.cpp` is the M5Unified adapter and `src/FurbleBoard.cpp`
+holds the one board lookup that replaced the scattered board switches, so
+their `M5.` calls and board switches are not counted. Capability macros are always 0 or 1, so a
 file that tests one with `#ifdef` or `defined()`, uses one without including
 the header directly, or names one the header does not #define, fails. The
 capability scan also covers the simulator and the host test doubles.
@@ -51,9 +52,10 @@ CAPS_SCAN_ROOTS = SCAN_ROOTS + (Path("sim"), Path("tests/host"))
 SOURCE_SUFFIXES = {".c", ".cc", ".cpp", ".h", ".hh", ".hpp"}
 HEADER_SUFFIXES = {".h", ".hh", ".hpp"}
 BOARD_CAPS_HEADER = "include/FurbleBoardCaps.h"
-# The Platform adapter is where M5Unified calls belong, so moving a call into
-# it must never fail the ratchet.
-PLATFORM_ADAPTER = "src/FurblePlatform.cpp"
+# The Platform adapter is where M5Unified calls belong, and the board profile
+# is where board identity becomes board facts, so moving a call or a board
+# switch into either must never fail the ratchet.
+ADAPTERS = ("src/FurblePlatform.cpp", "src/FurbleBoard.cpp")
 
 BOARD_MACROS = (
     "FURBLE_M5STICKC",
@@ -125,7 +127,7 @@ def count(root: Path) -> dict[str, dict[str, int]]:
     text = strip_comments(path.read_text(encoding="utf-8", errors="replace"))
     if name != BOARD_CAPS_HEADER:
       record("board_guards", name, board_guards(text))
-    if name != PLATFORM_ADAPTER:
+    if name not in ADAPTERS:
       record("m5_calls", name, len(M5_CALL.findall(text)))
       record("m5_get_board", name, len(M5_GET_BOARD.findall(text)))
 

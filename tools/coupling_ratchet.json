@@ -44,7 +44,6 @@
     "lib/furble/Sony.h": 13
   },
   "m5_calls": {
-    "src/FurbleBoard.cpp": 1,
     "src/FurbleBootScreen.cpp": 2,
     "src/FurbleCalibrate.cpp": 1,
     "src/FurbleConsole.cpp": 5,
@@ -59,7 +58,6 @@
     "src/FurbleUIGesture.cpp": 4
   },
   "m5_get_board": {
-    "src/FurbleBoard.cpp": 1,
     "src/FurbleUI.cpp": 6
   }
 }
