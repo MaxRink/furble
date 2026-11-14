@@ -154,10 +154,12 @@ brightness floor and the feedback outputs. Compile-time facts stay in
 It names battery caps and sample (moved here from `Platform`, which inherits
 the same `battery_caps_t` and `battery_t` names), `BatterySource` (gauge,
 voltage estimate, coarse steps, none), named rails (`GPS`, `DISPLAY`,
-`PERIPHERAL`), power-button clicks, power off and timed wake. `Platform` is
-`final` and implements it, in `src/FurblePlatform.cpp` for the M5 boards and in
-`sim/FurblePlatformSim.cpp` for the simulator, so the link still picks the one
-implementation and calls through `Platform` stay direct. The fuel gauge is not
+`PERIPHERAL`), and documents the member list every `Platform` defines:
+battery reads, rails, power-button clicks, power off and timed wake. It has no
+virtual functions. `Platform` derives from it for the types and defines the
+members in `src/FurblePlatform.cpp` for the M5 boards and in
+`sim/FurblePlatformSim.cpp` for the simulator, so the link picks the one
+implementation and unused power paths are still removed by `--gc-sections`. The fuel gauge is not
 a separate interface: `readBattery()` plus `getBatterySource()` cover it, and
 time-to-empty waits for a consumer.
 
@@ -279,37 +281,48 @@ Deviations from the brief, with reasons:
   the only GPS rail switch and `Platform::getBatteryStatus()` the battery
   status source. `GPS::setRailPower()` now calls `Platform::setRail(GPS)`.
 
-### Verification evidence (hal-2 at 671680e5)
+### Verification evidence (hal-2 at fa44daff)
 
 Fixed-version builds (`FURBLE_VERSION=1.0.0-ci FURBLE_TEST=0`,
 `SOURCE_DATE_EPOCH=1794258087`) of the hal-2 base (port-3 plus hal-1,
-`3a89ebdc`) and of hal-2 in the same build directory:
+`3a89ebdc`) and of hal-2 in the same build tree:
 
-| Env | Base bin | hal-2 bin | Delta | DRAM base / hal-2 | Size and stack budget |
-| :--- | --: | --: | --: | :--- | :--- |
-| m5stick-s3 | 1,848,960 | 1,849,040 | +80 | 47,208 / 47,208 | pass / pass |
-| m5stick-c | 1,490,592 | 1,490,320 | -272 | 54,780 / 54,780 | pass / pass |
-| m5stick-c-plus | 1,540,160 | 1,540,256 | +96 | 54,756 / 54,756 | pass / pass |
-| m5stack-core | 1,614,304 | 1,614,000 | -304 | 54,884 / 54,884 | pass / pass |
-| m5stack-core2 | not built | not built | | | |
-| esp32-s3-headless | not built | not built | | | |
-| waveshare-s3-eth | not built | not built | | | |
+| Env | Base bin | hal-2 bin | Delta | DRAM | IRAM (budget) | Size / stack budget |
+| :--- | --: | --: | --: | :--- | --: | :--- |
+| m5stick-s3 | 1,848,960 | 1,847,664 | -1,296 | 47,208, unchanged | 132,864 (134,144) | pass / pass |
+| m5stick-c | 1,490,592 | 1,490,608 | +16 | 54,780, unchanged | 114,024 (114,688) | pass / pass |
+| m5stick-c-plus | 1,540,160 | 1,540,112 | -48 | 54,756, unchanged | 114,024 (114,688) | pass / pass |
+| m5stack-core | 1,614,304 | 1,614,320 | +16 | 54,884, unchanged | 115,668 (116,736) | pass / pass |
+| m5stack-core2 | 1,898,608 | 1,898,640 | +32 | 56,480, unchanged | 121,036 (121,856) | pass / pass |
+| esp32-s3-headless | 1,759,392 | 1,759,328 | -64 | 51,952, unchanged | 140,032 (141,312) | pass / pass |
+| waveshare-s3-eth | 1,696,368 | 1,696,384 | +16 | 51,332, unchanged | 132,352 (133,120) | pass / pass |
 
 The images differ, as intended: eight `M5.getBoard()` switches became
-lookups in one constant table, `Platform` gained a vtable, and
-`getBatterySource()` and `setRail()` are new. Static RAM is byte identical in
-every built env. The last three envs were not built because host disk free
-fell below 10 GiB during the session; build them before merge.
+lookups in one constant table and `getBatterySource()` and `setRail()` are
+new. For the three envs with both ELFs kept, the only section changes are the
+table in `.flash.rodata` (+144 to +160 bytes) and less `.flash.text` (-112 to
+-224); IRAM, DRAM and RTC sections are byte identical. The base ELFs of the
+first four envs were not kept, so their section split is not recorded; their
+DRAM matches the base build log and their IRAM passes the budget.
+
+Deviation found by this comparison: the first hal-2 build made
+`PowerBackend` a virtual interface. The vtable kept every power method alive,
+so the headless Waveshare image linked `powerOff()`, `powerOffUntil()` and the
+ESP-IDF light and deep sleep code into IRAM: +6,304 bytes of `.iram0.text`,
+5,376 over its 133,120-byte budget, and +10,192 bytes of image. `fa44daff`
+made the contract non-virtual and the image returned to the base footprint.
 
 Host suite: 185 of 187 ctest pass. `golden-capture-replay` is Not Run when
 its capture is absent and passes when run alone. `control-tsan-wrapper-contract`
 times out at its 10 s ctest cap at host load average near 30, in the plain
 and the ASan/UBSan runs alike; the wrapper does not touch any file this plan
 changes. ASan/UBSan (`tools/run_sanitized_host_tests.sh --clean`): 184 of 185,
-same single timeout. `sim/scripts/run-boundary-conformance.sh`: 18 of 18.
-StickS3 simulator, 22 hardware-profile scenarios (battery policy, power
-button, motion wake, GPS rail standby and wake, intervalometer timed wake):
-22 pass. Coupling ratchet, portability contract and doc tokens: clean.
-`python3 tools/pre_review.py --base origin/master` on hal-2: 9 of 9 gates
-pass. The core2, headless and waveshare build pairs were paused again to
-reduce host load and remain open.
+same single timeout. After `fa44daff` the 29 host tests that link `Platform`,
+`FurbleBoard` or the drivers were rebuilt and pass.
+`sim/scripts/run-boundary-conformance.sh`: 18 of 18. StickS3 simulator, 22
+hardware-profile scenarios (battery policy, power button, motion wake, GPS
+rail standby and wake, intervalometer timed wake): 22 pass on `671680e5`; the
+simulator was not rebuilt after the devirtualization, which removes virtual
+dispatch only. Coupling ratchet, portability contract and doc tokens: clean.
+`python3 tools/pre_review.py --base origin/master` on hal-2 after `fa44daff`:
+9 of 9 gates pass.
