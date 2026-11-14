@@ -710,7 +710,7 @@ root cause is now identified as an environment use-after-free; see the
 | 1. Comment rot naming plan 158 Phase 3 | Done. `sim/freertos.cpp` and `sim/scripts/run-fuzz.sh` now describe the scheduler-visible mutex and the remaining plain host locks. |
 | 2. Per-PID preferences leak on abnormal exit | Done. Generated stores have an ownership marker, same-PID restart adoption, and orderly cleanup. `preparePreferences()` now sweeps `.pio` and removes a store only when its encoded pid is dead; a live, self, or foreign-owner store is kept. `preferences-sweep` covers the dead, live, self, and unrelated cases. |
 | 3. Crash handler hardening | Done for alt-stack, early installation, and normal-context unwinder warm-up. Stack-exhaustion coverage and formal async-signal safety remain open. |
-| 4. 50-run load proof on the restored bounds | Done, 2026-11-14. The 2026-11-13 settle failure was a scheduler-invisible wait: `Scan::stop()` waited on a plain condition variable for a callback on the radio task. It is now `scan_condition_t`, scheduler visible under `FURBLE_SIM`. 6,000 container runs at 200 to 600 per cell on all three panels had zero failures, no breaker parks, and every clock value within 80 ms of the median. See the 2026-11-14 section. |
+| 4. 50-run load proof on the restored bounds | Done, 2026-11-14. The 2026-11-13 settle failure was a scheduler-invisible wait: `Scan::stop()` waited on a plain condition variable for a callback on the radio task. It is now `scan_condition_t`, scheduler visible under `FURBLE_SIM`. 6,000 container runs at 200 to 600 per cell on all three panels had zero failures, no breaker parks, and every clock value within 85 ms of the median. See the 2026-11-14 section. |
 | 5. Fairness and waiter-state dump | Done. A task blocked on a scheduler-visible mutex reports `wait=mutex` in the task dump, and `sim-scheduler` checks the dump plus a `try_lock()` during the reservation-before-wake gap; the fast path must fail rather than starve the granted waiter. |
 
 ## Issue #283 root cause and the #289 load proof, 2026-11-13
@@ -890,8 +890,8 @@ was done for `Camera::m_Mutex`.
 `FURBLE_SIM_SCHED_TRACE=1` (`sim/freertos.cpp`) prints the task table and a
 native backtrace whenever the scheduler stops waiting for a task. That happens
 when the 2 s stall breaker parks the turn holder, or when a UI handoff runs
-out its 250 ms host bound with a task still runnable. It changes no scheduling
-decision. On the first unloaded run of `cancel-sweep-fuji-secure-ui` on the
+out its 250 ms host bound. It changes no scheduling decision, but it does cost
+host time while it prints. On the first unloaded run of `cancel-sweep-fuji-secure-ui` on the
 80x160 build, every cancel produced both events, all for the control task in
 the same place:
 
@@ -1000,7 +1000,7 @@ is mechanism evidence, not load evidence.
 
 That makes 6,000 runs and 1,000 per scenario and panel. None failed the 6000
 ms settle bound, none had `control.zombies` above 0, and no clock value was
-more than 80 ms above its median. Before the fix the same container produced
+more than 85 ms above its median. Before the fix the same container produced
 20960 and 17850. A run now takes a median of 2 host seconds instead of about
 18, because no cancel waits 2 s for the breaker.
 
@@ -1018,10 +1018,28 @@ control task held the turn inside its own `vTaskDelay` wait in
 ### What is still not covered
 
 The 45 pass 3 handoff expiries are host wake latency at load 81, not hidden
-waits. In each backtrace, the task holding the turn is in the scheduler's own
-condition wait (`vTaskDelay`, `waitForTurnLocked`), or it is a newly created
-task thread that has not reached its entry point. The UI waits its 250 ms
-bound and then moves 20 ms of virtual time. That cost at most four slices,
-80 ms, in 3,600 runs. Closing it fully would mean the UI waits without a host
+waits. That build traced the best ready task, not necessarily the turn
+holder; the trace now names the turn holder (review finding, see
+`173-review-feedback.md`). In each backtrace the traced task was in the
+scheduler's own condition wait (`vTaskDelay`, `waitForTurnLocked`), or it was
+a newly created task thread that had not reached its entry point. None was in
+a host lock. The UI waits its 250 ms bound and then moves 20 ms of virtual
+time. That cost at most four slices over p95, 85 ms over the median, in 3,600
+runs. Closing it fully would mean the UI waits without a host
 bound for a task that holds the turn. That needs every remaining plain host
 lock to be scheduler visible first, and it is not attempted here.
+
+Two lock shapes are known and were not measured as defects:
+
+- `Scan::stop()` holds the plain recursive `Scan::m_DispatchMutex` across the
+  now-visible callback wait. A second task that calls `start()`, `stop()` or
+  `clear()` while the first is parked there blocks on a lock the scheduler
+  cannot see. No certified scenario or proof run reached that, and the trace
+  recorded no such park.
+- `Camera::m_PairingMutex` is a plain recursive mutex held across NimBLE
+  client operations while NimBLE callbacks re-enter it on the same thread.
+  The re-entry is safe by design. A callback on another task would wait on a
+  lock the scheduler cannot see. The trace recorded no park on it.
+
+Either one should become a scheduler-visible type if a trace ever shows a
+park on it.

@@ -320,11 +320,17 @@ no other use.
 the scheduler stops waiting for a task, it prints `SIM SCHED TRACE:` with the
 event, the task, the virtual clock, the task table and that task's native
 backtrace. That happens when the 2 s stall breaker parks the turn holder, or
-when a UI-task handoff runs out its 250 ms host bound while a task is still
-runnable. Either one lets the virtual clock move while that task makes no
-progress, so the backtrace shows the host lock or condition it is blocked in.
-A healthy run prints nothing. The trace changes no scheduling decision. This
-is how the issue #289 wait was found: every cancel in the Fujifilm Secure and
+when a UI-task handoff runs out its 250 ms host bound. The handoff event names
+the turn holder, or the next ready task when nothing holds the turn. Either
+event lets the virtual clock move while that task makes no progress, so the
+backtrace shows the host lock or condition it is blocked in. A breaker park
+always means a wait the scheduler cannot see. A handoff expiry under host
+load can instead be wake latency: the backtrace then shows the task inside
+the scheduler's own wait, or a new task thread that has not started. The
+trace is snapshotted under the scheduler lock and printed after it is
+released, and it changes no scheduling decision. It costs host time while it
+prints, so a traced run is not timing-identical to one with the trace off.
+This is how the issue #289 wait was found: every cancel in the Fujifilm Secure and
 reconnect sweeps parked the control task inside `Scan::stop()`, on a plain
 condition variable waiting for the radio task.
 

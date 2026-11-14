@@ -186,6 +186,14 @@ void installHandler(void) {
   sigaction(DUMP_SIGNAL, &action, nullptr);
 }
 
+std::once_flag dumpHandlerOnce;
+
+// The dump signal's default action ends the process, so every path that can
+// send it installs the handler first, whether or not the stall bound runs.
+void installDumpHandlerOnce(void) {
+  std::call_once(dumpHandlerOnce, installHandler);
+}
+
 unsigned boundSeconds(void) {
   const char *override = std::getenv("FURBLE_SIM_WATCHDOG_SECONDS");
   if (override == nullptr || override[0] == '\0') {
@@ -325,11 +333,13 @@ void watchdogStart(void) {
   // Ahead of the bound check: a run with the stall watchdog switched off still
   // has to report a fatal fault.
   watchdogInstallCrashHandler();
+  // Also ahead of it: the scheduler trace dumps threads with the stall bound
+  // switched off.
+  installDumpHandlerOnce();
   const unsigned bound = boundSeconds();
   if (bound == 0) {
     return;
   }
-  installHandler();
   const std::lock_guard<std::mutex> lock(runMutex);
   if (running) {
     return;
@@ -352,6 +362,7 @@ void watchdogScenarioStep(const char *line) {
 }
 
 void watchdogDumpThread(pthread_t thread, const char *name) {
+  installDumpHandlerOnce();
   dumpThread({thread, name == nullptr ? "task" : name});
 }
 

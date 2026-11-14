@@ -14,6 +14,8 @@
 #include <thread>
 #include <vector>
 
+#include <pthread.h>
+
 #include <esp_heap_caps.h>
 #include <esp_timer.h>
 #include <freertos/FreeRTOS.h>
@@ -153,10 +155,13 @@ void reportTasksLocked(std::string &out);
 // Scheduler trace, a diagnostic for issue 289. With FURBLE_SIM_SCHED_TRACE set
 // to anything but 0, the scheduler prints the task table and a native
 // backtrace of a task each time it stops waiting for that task: the stall
-// breaker parks it, or a UI handoff runs out its host bound while it is still
-// runnable. Either one lets the virtual clock move while the task makes no
-// progress, so the backtrace names the wait the scheduler cannot see. Off by
-// default and read once; it changes no scheduling decision.
+// breaker parks the turn holder, or a UI handoff runs out its host bound while
+// a task still holds or wants the turn. Either one lets the virtual clock move
+// while the task makes no progress, so the backtrace names a wait the
+// scheduler cannot see, or shows that the host has not woken the task yet.
+// Off by default and read once. The snapshot is taken under the scheduler lock
+// and printed after it is released, so the dump never holds that lock; the
+// trace still costs host time while it prints, so it is not timing-neutral.
 bool schedTraceEnabled(void) {
   static const bool enabled = []() {
     const char *value = std::getenv("FURBLE_SIM_SCHED_TRACE");
@@ -165,17 +170,43 @@ bool schedTraceEnabled(void) {
   return enabled;
 }
 
-void traceTurnLossLocked(const char *event, SimTask &task) {
+struct TurnLossTrace {
+  bool active = false;
+  std::string text;
+  std::string name;
+  bool hasThread = false;
+  pthread_t thread {};
+};
+
+TurnLossTrace snapshotTurnLossLocked(const char *event, SimTask &task) {
+  TurnLossTrace trace;
   if (!schedTraceEnabled()) {
+    return trace;
+  }
+  // Diagnostic host memory, never part of the modelled device heap.
+  const Furble::Sim::HostAllocScope scope;
+  trace.active = true;
+  trace.name = task.name;
+  trace.text = "SIM SCHED TRACE: " + std::string(event) + " task=" + task.name
+               + " clock_ms=" + std::to_string(Furble::Sim::clockMillis()) + '\n';
+  reportTasksLocked(trace.text);
+  if (task.worker.joinable()) {
+    trace.hasThread = true;
+    trace.thread = task.worker.native_handle();
+  }
+  return trace;
+}
+
+// Call without the scheduler lock. The thread dump waits up to its ack bound.
+void emitTurnLoss(const TurnLossTrace &trace) {
+  if (!trace.active) {
     return;
   }
-  std::string report;
-  reportTasksLocked(report);
+  const Furble::Sim::HostAllocScope scope;
   std::fflush(stdout);
-  std::fprintf(stderr, "SIM SCHED TRACE: %s task=%s clock_ms=%u\n%s", event, task.name.c_str(),
-               Furble::Sim::clockMillis(), report.c_str());
-  if (task.worker.joinable()) {
-    Furble::Sim::watchdogDumpThread(task.worker.native_handle(), task.name.c_str());
+  std::fputs(trace.text.c_str(), stderr);
+  if (trace.hasThread) {
+    Furble::Sim::watchdogDumpThread(trace.thread, trace.name.c_str());
   }
   std::fflush(stderr);
 }
@@ -301,12 +332,17 @@ void waitForTurnLocked(std::unique_lock<std::mutex> &lock) {
     // scheduler cannot see and only another task can free it, so hand the turn
     // on rather than hanging the process.
     if (runningTask != nullptr && runningTask != currentTask) {
-      traceTurnLossLocked("stall breaker parked", *runningTask);
+      const TurnLossTrace trace = snapshotTurnLossLocked("stall breaker parked", *runningTask);
       runningTask->parked = true;
       runningTask = nullptr;
       schedulerProgress++;
       dispatchNextLocked();
       Furble::Sim::schedulerCondition().notify_all();
+      if (trace.active) {
+        lock.unlock();
+        emitTurnLoss(trace);
+        lock.lock();
+      }
     }
   }
 }
@@ -882,6 +918,11 @@ void SchedulerConditionVariable::notifyLocked(bool all) {
     SchedulerConditionWaiter **selectedLink = nullptr;
     for (SchedulerConditionWaiter **link = &m_Waiters; *link != nullptr; link = &(*link)->next) {
       SchedulerConditionWaiter *waiter = *link;
+      // A stopping waiter unwinds on its own and unlinks itself. Granting it
+      // would consume a notify_one meant for a waiter that can use it.
+      if (waiter->task != nullptr && waiter->task->stopping.load()) {
+        continue;
+      }
       const UBaseType_t priority = waiter->task == nullptr ? 0 : waiter->task->priority;
       const UBaseType_t selectedPriority =
           selected == nullptr || selected->task == nullptr ? 0 : selected->task->priority;
@@ -890,6 +931,9 @@ void SchedulerConditionVariable::notifyLocked(bool all) {
         selected = waiter;
         selectedLink = link;
       }
+    }
+    if (selected == nullptr) {
+      break;
     }
     *selectedLink = selected->next;
     selected->next = nullptr;
@@ -1069,9 +1113,13 @@ void vTaskDelay(TickType_t ticks) {
       return Furble::Sim::schedulerStopping() || nextRunnableTaskLocked() == nullptr;
     });
     if (!settled && schedTraceEnabled()) {
-      SimTask *pending = nextRunnableTaskLocked();
+      // The turn holder is the task the UI waited for; with no holder, the
+      // ready task that would be dispatched next.
+      SimTask *pending = runningTask != nullptr ? runningTask : nextRunnableTaskLocked();
       if (pending != nullptr) {
-        traceTurnLossLocked("ui handoff bound expired", *pending);
+        const TurnLossTrace trace = snapshotTurnLossLocked("ui handoff bound expired", *pending);
+        lock.unlock();
+        emitTurnLoss(trace);
       }
     }
     return;
