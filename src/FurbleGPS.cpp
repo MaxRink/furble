@@ -606,6 +606,10 @@ TickType_t GPS::cycleWait(uint32_t now) const {
     // a UBX signal change holds the next command for its settle time
     wait = std::min(wait, tickUntil(now, m_ConfigNotBefore));
   }
+  // a rail cut waits at most a second for the UPD-SOS answer
+  if (m_RailOffPending) {
+    wait = std::min(wait, tickUntil(now, m_RailOffDeadline));
+  }
   // the MON-VER detection poll is bounded, wake when an attempt runs out
   if (static_cast<backend_t>(m_Backend.load()) == backend_t::DETECTING) {
     wait = std::min(wait, tickUntil(now, m_Detect.deadline()));
@@ -693,6 +697,23 @@ void GPS::serviceCycle(void) {
 
   const uint32_t now = Platform::getInstance().tick();
 
+  if (m_RailOffPending) {
+    bool answered = false;
+    {
+      const std::lock_guard<std::mutex> ubx(m_UbxMutex);
+      answered = m_UbxSosBackup != 0;
+    }
+    if (answered || tickReached(now, m_RailOffDeadline)) {
+      if (!answered) {
+        const std::lock_guard<std::mutex> ubx(m_UbxMutex);
+        m_UbxSosBackup = 2;
+      }
+      m_RailOffPending = false;
+      enterRailOff(now);
+    }
+    return;
+  }
+
   // a burst can go idle in any state, the per state early returns in
   // finishBurst() decide what happens next
   if (m_BurstActive && tickReached(now, m_LastSentence + BURST_GAP_MS)) {
@@ -713,13 +734,26 @@ void GPS::serviceCycle(void) {
     acquirePowerLock();
 
     if ((m_PowerPolicy == POWER_STANDBY) && (m_DutySeconds > 0)) {
-      sendCommand("PCAS12," + std::to_string(m_DutySeconds));
+      if (getBackend() == backend_t::UBX) {
+        // RXM-PMREQ software standby for the duty interval (IFD 3.16.6). The
+        // force flag is required (MAX-M10S integration manual 3.6.3.2), and V_IO
+        // stays up, so BBR and the RTC survive and the wake is a hot start.
+        sendUbx(
+            Ubx::pmReq({static_cast<uint32_t>(m_DutySeconds) * 1000,
+                        Ubx::PMREQ_FLAG_BACKUP | Ubx::PMREQ_FLAG_FORCE, Ubx::PMREQ_WAKE_UARTRX}));
+      } else {
+        sendCommand("PCAS12," + std::to_string(m_DutySeconds));
+      }
       enterStandby(now);
       return;
     }
 
     if ((m_PowerPolicy == POWER_RAIL_CYCLE) && (m_DutySeconds > 0)) {
-      enterRailOff(now);
+      // A u-blox receiver without V_BCKP saves its BBR first; the rail goes
+      // off when it answers or after a second.
+      if (!beginSaveOnShutdown(now)) {
+        enterRailOff(now);
+      }
       return;
     }
   }
@@ -2120,6 +2154,9 @@ void GPS::disable(void) {
   m_Enabled = false;
   wakeGPSService(m_Queue);
   const std::lock_guard<std::mutex> serviceLock(m_ServiceMutex);
+  // A planned power cut: let a u-blox receiver without V_BCKP save its BBR
+  // while the rail is still up.
+  saveOnShutdownBlocking();
   FURBLE_SIM_GPS_STATE("off");
   m_ConfigPending = false;
   m_ConfigQueue.clear();

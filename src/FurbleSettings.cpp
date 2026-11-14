@@ -51,6 +51,9 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> Settings::m_Sett
     {GPS_HOLD,           {GPS_HOLD, 67, "Fix Hold", "gps_hold", FURBLE_STR}                   },
     {GPS_EXTRAP,         {GPS_EXTRAP, 68, "Extrapolate", "gps_extrap", FURBLE_STR}            },
     {GPS_PLATFORM,       {GPS_PLATFORM, 69, "GPS Platform", "gps_plat", FURBLE_STR}           },
+    {GPS_GNSS,           {GPS_GNSS, 48, "GPS Signals", "gps_gnss", FURBLE_STR}                },
+    {GPS_PSM,            {GPS_PSM, 49, "GPS Power Save", "gps_psm", FURBLE_STR}               },
+    {GPS_ANA,            {GPS_ANA, 50, "GPS AssistNow", "gps_ana", FURBLE_STR}                },
     {INTERVAL,           {INTERVAL, 7, "Interval", "interval", FURBLE_STR}                    },
     {MULTICONNECT,       {MULTICONNECT, 8, "Multi-Connect", "multiconnect", FURBLE_STR}       },
     {MULTISELECT,        {MULTISELECT, 0, "Multi-Select", "multiselect", FURBLE_STR}          },
@@ -160,7 +163,10 @@ bool Settings::appliesImmediately(type_t type) {
     case GPS_ASSIST:
     case GPS_HOLD:
     case GPS_EXTRAP:
+    case GPS_ANA:
     case GPS_PLATFORM:
+    case GPS_GNSS:
+    case GPS_PSM:
     case GPS_MOTION:
     case IR:
     case IR_PROTO:
@@ -265,7 +271,10 @@ bool Settings::isDangerous(type_t type) {
     case GPS_ASSIST:
     case GPS_HOLD:
     case GPS_EXTRAP:
+    case GPS_ANA:
     case GPS_PLATFORM:
+    case GPS_GNSS:
+    case GPS_PSM:
     case INTERVAL:
     case MULTICONNECT:
     case RECONNECT:
@@ -638,6 +647,9 @@ bool applyDefault(Preferences &prefs, Settings::type_t type) {
     case Settings::GPS_DUTY:
     case Settings::GPS_ASSIST:
     case Settings::GPS_PLATFORM:
+    // 0 follows GPS_CONSTEL, and power save is opt-in.
+    case Settings::GPS_GNSS:
+    case Settings::GPS_PSM:
     case Settings::IR_PROTO:
     case Settings::AUTO_OFF:
     case Settings::LOW_BATT:
@@ -646,6 +658,11 @@ bool applyDefault(Preferences &prefs, Settings::type_t type) {
       return putDefault<uint8_t>(prefs, setting.key, 0);
     case Settings::AUTO_OFF_CHARGING:
       return putDefault<bool>(prefs, setting.key, false);
+    // AssistNow Autonomous is off in the M10 ROM but on in furble: it costs
+    // nothing until the receiver has orbits to predict and turns a cold start
+    // with a few days' old data into a 3 to 4 s fix (plan 321).
+    case Settings::GPS_ANA:
+      return putDefault<bool>(prefs, setting.key, true);
     case Settings::BATT_STYLE:
       return putDefault<uint8_t>(prefs, setting.key, Settings::BATT_STYLE_ICON);
     case Settings::LEGEND:

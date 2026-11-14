@@ -10,7 +10,11 @@ wait 6000
 assert gps.backend ubx
 assert-eventually 3000 gps.config.0.state NACKED
 assert gps.config.0.attempts 1
-assert-eventually 3000 gps.config.1.state NACKED
+# The power save write and the BBR clean-up are separate commands and still
+# go through; the closing read back names the refused key and is refused too.
+assert-eventually 3000 gps.config.1.state ACKED
+assert-eventually 3000 gps.config.2.state ACKED
+assert-eventually 3000 gps.config.3.state NACKED
 assert gps.ubx.verified 0
 assert gps.ubx.naks 2
 assert m10.naks 2

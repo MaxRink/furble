@@ -108,6 +108,8 @@ void furble_sim_uart_set_model(const char *model,
                                bool flash,
                                bool hot,
                                uint32_t unknownKey);
+// The modelled board keeps the receiver's V_BCKP supplied.
+bool furble_sim_uart_gps_backup(void);
 // The GPS supply rail as the board switches it.
 void furble_sim_uart_set_rail(bool on);
 // Virtual M10 observability, see furble_sim_m10_query in sim/fake_uart.cpp.

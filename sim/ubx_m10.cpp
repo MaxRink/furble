@@ -276,8 +276,7 @@ void VirtualM10::setPower(bool on, uint32_t now) {
   bool keep = m_Options.vbckp;
   m_Restored = Ubx::SOS_RESTORE_NONE;
   if (!keep && m_HaveBackup) {
-    // UPD-SOS restore from flash on start-up (IFD 3.19.1). The backup holds
-    // BBR, so the start is as good as a backed one.
+    // UPD-SOS restore from flash on start-up (IFD 3.19.1).
     m_Bbr.clear();
     for (size_t i = 0; i + 12 <= m_Backup.size(); i += 12) {
       uint32_t key = 0;
@@ -289,6 +288,9 @@ void VirtualM10::setPower(bool on, uint32_t now) {
     m_HaveBackup = false;
     m_Restored = Ubx::SOS_RESTORE_OK;
     keep = true;
+    // Assumption: the restored BBR carries the orbits and last position but
+    // the RTC did not run while unpowered, so the start is warm, not hot.
+    m_RtcValid = true;
   }
   start(now, keep);
 }

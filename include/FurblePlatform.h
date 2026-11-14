@@ -255,6 +255,17 @@ class Platform {
   static bool hasTicklessIdle(void);
 
   /**
+   * Does the board keep the GPS receiver's V_BCKP supplied when its main rail
+   * is cut?
+   *
+   * A u-blox M10 keeps its battery-backed RAM and RTC on V_BCKP, so a backed
+   * rail cut is a hot or warm start rather than a cold one, and the
+   * save-on-shutdown backup is not needed (plan 321). No supported board wires
+   * one; a board profile that does defines FURBLE_GPS_BACKUP_SUPPLY.
+   */
+  static bool hasGpsBackupSupply(void);
+
+  /**
    * Get the battery measurements supported by this board.
    *
    * Returned by value: the simulator refreshes the flags from the hardware

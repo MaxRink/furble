@@ -43,6 +43,9 @@ class Settings {
     GPS_HOLD,
     GPS_EXTRAP,
     GPS_PLATFORM,
+    GPS_GNSS,
+    GPS_PSM,
+    GPS_ANA,
     GPS_MOTION,
     INTERVAL,
     MULTICONNECT,
@@ -102,6 +105,10 @@ class Settings {
   static constexpr size_t WIFI_SSID_MAX_LENGTH = 32;
   static constexpr size_t WIFI_PSK_MAX_LENGTH = 63;
   static constexpr size_t NTP_SERVER_MAX_LENGTH = 63;
+  /** Highest GPS_GNSS mask: GPS, BeiDou, GLONASS, Galileo, QZSS, SBAS (Ubx::GNSS_MASK_ALL). */
+  static constexpr uint8_t GPS_GNSS_MAX = 0x3f;
+  /** Highest GPS_PSM value: 0 off, 1 cyclic tracking, 2 on/off (Ubx::PSM_ON_OFF). */
+  static constexpr uint8_t GPS_PSM_MAX = 2;
   static bool validNetworkString(type_t type, const std::string &value);
   static constexpr uint32_t BAUD_AUTO = 0;
   static constexpr uint32_t BAUD_9600 = 9600;
@@ -206,6 +213,18 @@ struct Furble::Settings::storage_type<Furble::Settings::TX_ADAPTIVE> {
 template <>
 struct Furble::Settings::storage_type<Furble::Settings::GPS_PLATFORM> {
   using type = uint8_t;
+};
+template <>
+struct Furble::Settings::storage_type<Furble::Settings::GPS_GNSS> {
+  using type = uint8_t;
+};
+template <>
+struct Furble::Settings::storage_type<Furble::Settings::GPS_PSM> {
+  using type = uint8_t;
+};
+template <>
+struct Furble::Settings::storage_type<Furble::Settings::GPS_ANA> {
+  using type = bool;
 };
 
 template <>

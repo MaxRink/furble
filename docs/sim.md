@@ -446,6 +446,8 @@ The M10 options `gps_m10_backup` (V_BCKP keeps BBR over a rail cut),
 `gps_m10_flash` (UPD-SOS has a flash), `gps_m10_hot` (the first start is hot)
 and `gps_m10_unknown_key` (`20910007`, `10230001` or `20d00001`, a key the
 firmware refuses) are described under the virtual u-blox M10 below.
+`gps_gnss` and `gps_psm` are byte seeds and `gps_ana` a boolean seed for the
+u-blox constellation mask, power save and AssistNow Autonomous settings.
 All boolean seeds, including `gps_uart_noise`, reject malformed values during
 scenario loading.
 
@@ -1345,7 +1347,12 @@ no value). On the firmware side `gps.backend` reports `unknown`, `detecting`,
 `gps.hacc_mm` the NAV-PVT horizontal accuracy or `none`, and `gps.ubx.firmware`
 (spaces as underscores), `gps.ubx.module`, `gps.ubx.verified`,
 `gps.ubx.sos_restore`, `gps.ubx.sos_backup`, `gps.ubx.naks` and
-`gps.ubx.fix_type` the UBX status. `uart.ubx_polls` counts MON-VER detection
+`gps.ubx.fix_type` the UBX status. What the last configuration sent is
+`gps.ubx.gnss`, `gps.ubx.psm`, `gps.ubx.rate_ms`, `gps.ubx.ana`,
+`gps.ubx.gnss_refused`, `gps.ubx.psm_refused`, `gps.ubx.rate_clamped`, and
+`gps.ubx.backup` reports `Platform::hasGpsBackupSupply()`, all `none` before the
+first configuration. The modelled board keeps V_BCKP exactly when
+`gps_m10_backup` is set. `uart.ubx_polls` counts MON-VER detection
 polls the driver wrote.
 
 ## Fault injection and fuzzing

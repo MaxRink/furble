@@ -161,8 +161,9 @@ const std::vector<SubcommandContract> SUBCOMMANDS = {
     {"power",        "expected stats, log or off",                                               "",                     {"stats", "log", "off"}               },
     {"perf",         "expected tasks, heap or lvgl",                                             "",                     {"tasks", "heap", "lvgl"}             },
     {"gps",
-     "expected on, off, raw, send, binary, config, aid, sats, platform, monhw or power",         "",
-     {"on", "off", "raw", "send", "binary", "config", "aid", "sats", "platform", "monhw", "power"}                                                             },
+     "expected on, off, raw, send, binary, config, aid, sats, platform, monhw, ubx or power",    "",
+     {"on", "off", "raw", "send", "binary", "config", "aid", "sats", "platform", "monhw", "ubx",
+      "power"}                                                                                                                                                 },
     {"time",         "usage: time status | flush",                                               "",                     {"status", "flush"}                   },
     {"crash",        "usage: crash [last]",                                                      "",                     {"last"}                              },
     {"settings",     "expected list, get or set",                                                " theme",               {"list", "get", "set"}                },
@@ -1155,9 +1156,10 @@ void testGPS(void) {
 
   const Result bogus = runDirect("gps bogus");
   check(bogus.rc != 0, "an unknown gps subcommand fails");
-  checkContains(bogus.out,
-                "expected on, off, raw, send, binary, config, aid, sats, platform, monhw or power",
-                "an unknown gps subcommand lists the accepted ones");
+  checkContains(
+      bogus.out,
+      "expected on, off, raw, send, binary, config, aid, sats, platform, monhw, ubx or power",
+      "an unknown gps subcommand lists the accepted ones");
 }
 
 // Test 5b. Receiver detection, satellite detail, the platform model and the

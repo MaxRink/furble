@@ -157,6 +157,7 @@ std::string receiverModel = "casic";
 Furble::Sim::VirtualM10 m10;
 Furble::Sim::VirtualM10::Options m10Options;
 bool railOn = true;
+bool m10Silent = false;
 
 bool isM10Locked(void) {
   return receiverModel == "m10" || receiverModel == "m10-mia";
@@ -451,6 +452,17 @@ void queueGpsEvent(QueueHandle_t queue) {
       gpsOffset = gpsStream.size();
       gpsEventQueued = false;
       gpsNextEventMillis = Furble::Sim::clockMillis() + 100;
+      m10Silent = true;
+      return;
+    }
+    if (isM10Locked() && m10Silent) {
+      // A receiver that has just woken or powered up prints its first epoch
+      // one measurement period later, not the moment it starts.
+      m10Silent = false;
+      gpsQueue = queue;
+      gpsOffset = gpsStream.size();
+      gpsEventQueued = false;
+      gpsNextEventMillis = Furble::Sim::clockMillis() + m10.periodMs();
       return;
     }
     if (fixDateAdvances) {
@@ -788,6 +800,11 @@ void furble_sim_uart_set_model(const char *model,
     gpsStream = m10Burst();
     gpsOffset = gpsStream.size();
   }
+}
+
+bool furble_sim_uart_gps_backup(void) {
+  std::lock_guard<std::mutex> lock(gpsMutex);
+  return isM10Locked() && m10Options.vbckp;
 }
 
 void furble_sim_uart_set_rail(bool on) {

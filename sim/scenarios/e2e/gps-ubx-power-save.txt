@@ -1,0 +1,19 @@
+# Cyclic tracking (CFG-PM-OPERATEMODE 2) at 1 Hz. The data sheet puts a
+# MAX-M10S at 5 mA in cyclic tracking against 9.5 mA continuous; the virtual
+# receiver integrates those vendor figures, so the average over the run lands
+# near 5 mA once the configuration is in.
+seed gps true
+seed gps_model m10
+seed gps_m10_hot true
+seed gps_psm 1
+wait 60000
+assert-eventually 3000 gps.ubx.verified 1
+assert m10.naks 0
+assert gps.ubx.psm 1
+assert m10.ram.20d00001 2
+assert m10.bbr.20d00001 2
+assert m10.ram.30210001 1000
+assert gps.ubx.fix_type 3
+assert_max m10.avg_ua 5600
+assert_min m10.avg_ua 5000
+exit

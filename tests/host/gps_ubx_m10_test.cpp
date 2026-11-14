@@ -5,6 +5,7 @@
 // without a backup supply, UPD-SOS, CFG-RST, and the current model.
 
 #include <iostream>
+#include <string>
 #include <vector>
 
 #include "protocol/GpsUbx.h"
@@ -260,6 +261,7 @@ void testStartsAndPower() {
   check(reply.size() == 1 && Ubx::parseSos(reply[0].data() + 6, 8, sos)
             && sos.response == Ubx::SOS_RESTORE_OK && flash.value(Ubx::Key::NAVSPG_DYNMODEL) == 2,
         "SOS restores BBR on the next start");
+  check(std::string(flash.startName()) == "warm", "a restored backup starts warm");
 
   // CFG-RST is never acknowledged and sets the start type.
   check(frames(send(plain, Ubx::cfgRst(Ubx::RST_WARM, Ubx::RST_MODE_GNSS_ONLY), 100)).empty()

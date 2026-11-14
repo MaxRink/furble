@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <initializer_list>
 
 namespace Furble {
 namespace Ubx {
@@ -458,6 +459,162 @@ bool parseKeyList(const uint8_t *p, size_t length, uint8_t &layer, std::vector<u
     keys.push_back(readU4(p + offset));
   }
   return true;
+}
+
+uint8_t gnssFromConstellation(uint8_t constellation) {
+  uint8_t mask = constellation & (GNSS_MASK_GPS | GNSS_MASK_BDS | GNSS_MASK_GLO);
+  if ((mask & GNSS_MASK_GPS) != 0) {
+    mask |= GNSS_MASK_QZSS | GNSS_MASK_SBAS;
+  }
+  return mask;
+}
+
+bool gnssValid(uint8_t mask) {
+  constexpr uint8_t MAJOR = GNSS_MASK_GPS | GNSS_MASK_BDS | GNSS_MASK_GLO | GNSS_MASK_GAL;
+  if (((mask & MAJOR) == 0) || ((mask & ~GNSS_MASK_ALL) != 0)) {
+    return false;
+  }
+  // SBAS and QZSS work only with GPS (DS-MAX 1.3, IM-MAX 2.1.3).
+  if (((mask & (GNSS_MASK_QZSS | GNSS_MASK_SBAS)) != 0) && ((mask & GNSS_MASK_GPS) == 0)) {
+    return false;
+  }
+  return true;
+}
+
+uint8_t maxRateHz(uint8_t mask) {
+  const bool bds = (mask & GNSS_MASK_BDS) != 0;
+  const bool glo = (mask & GNSS_MASK_GLO) != 0;
+  const int majors = ((mask & GNSS_MASK_GPS) != 0) + ((mask & GNSS_MASK_GAL) != 0) + bds + glo;
+  // DS-MAX and DS-MIA Table 2 and 3: single GNSS 18 Hz, GPS+GAL 10 Hz,
+  // GPS+GAL+GLO 6 Hz, GPS+GAL+B1C 8 Hz, four GNSS 4 Hz, the B1I default set
+  // 3 Hz. Pairs other than GPS+GAL are not listed; they take the pair figure.
+  if (majors <= 1) {
+    return 18;
+  }
+  if (bds && !glo) {
+    return 3;  // B1I, the costly BeiDou signal
+  }
+  if (majors == 2) {
+    return 10;
+  }
+  if (majors == 3) {
+    return glo ? 6 : 8;
+  }
+  return 4;
+}
+
+uint8_t dynModelForPlatform(uint8_t platform) {
+  // IFD Table 23: 0 portable, 2 stationary, 3 pedestrian, 4 automotive.
+  static constexpr uint8_t MODELS[] = {0xff, 0, 2, 3, 4};
+  return (platform < sizeof(MODELS)) ? MODELS[platform] : 0xff;
+}
+
+Plan plan(const Request &request) {
+  Plan out = {};
+  // Bits the request leaves alone keep the module preset (DS 1.3).
+  const uint8_t gnss = static_cast<uint8_t>((request.gnss & request.gnss_set)
+                                            | (GNSS_MASK_MODULE_DEFAULT & ~request.gnss_set));
+  out.gnss = gnss;
+  out.gnss_refused = (request.gnss_set != 0) && !gnssValid(gnss);
+  const uint8_t effective = out.gnss_refused ? GNSS_MASK_MODULE_DEFAULT : gnss;
+  const bool bds = (effective & GNSS_MASK_BDS) != 0;
+  const bool glo = (effective & GNSS_MASK_GLO) != 0;
+  const bool b1c = bds && glo;
+
+  uint8_t psm = (request.psm <= PSM_ON_OFF) ? request.psm : PSM_OFF;
+  // Power save with BeiDou B1C is refused (RN 7.2, IM-MAX 3.6.2).
+  if ((psm != PSM_OFF) && b1c) {
+    out.psm_refused = true;
+    psm = PSM_OFF;
+  }
+  out.psm = psm;
+
+  uint16_t rate = request.rate_ms;
+  if (rate != 0) {
+    const uint16_t floor =
+        static_cast<uint16_t>((1000 + maxRateHz(effective) - 1) / maxRateHz(effective));
+    if (rate < floor) {
+      rate = floor;
+      out.rate_clamped = true;
+    }
+  }
+  if (psm == PSM_CYCLIC) {
+    // PSMCT runs at 1 Hz or 2 Hz (IM-MAX 3.6.2.3).
+    rate = ((rate != 0) && (rate <= 500)) ? 500 : 1000;
+  }
+  out.rate_ms = rate;
+
+  out.base.push_back({Key::MSGOUT_NAV_PVT_UART1, 1});
+  out.base.push_back({Key::ANA_USE_ANA, request.ana ? 1u : 0u});
+  if (rate != 0) {
+    out.base.push_back({Key::RATE_MEAS, rate});
+  } else {
+    out.unset.push_back(Key::RATE_MEAS);
+  }
+  if (request.dyn_model != 0xff) {
+    out.base.push_back({Key::NAVSPG_DYNMODEL, request.dyn_model});
+  } else {
+    out.unset.push_back(Key::NAVSPG_DYNMODEL);
+  }
+
+  if (!out.gnss_refused) {
+    const auto on = [gnss](uint8_t bit) { return (gnss & bit) ? 1u : 0u; };
+    // Only the constellations the request decides are written. The others are
+    // deleted from BBR, so they return to the receiver preset at its next
+    // start instead of keeping what an earlier setting stored.
+    const auto group = [&out, &request](uint8_t bits, std::initializer_list<KeyValue> items) {
+      if ((request.gnss_set & bits) != 0) {
+        out.signals.insert(out.signals.end(), items);
+      } else {
+        for (const auto &item : items) {
+          out.unset.push_back(item.key);
+        }
+      }
+    };
+    group(GNSS_MASK_GPS, {
+                             {Key::SIGNAL_GPS_ENA,  on(GNSS_MASK_GPS)},
+                             {Key::SIGNAL_GPS_L1CA, 1                }
+    });
+    group(GNSS_MASK_GAL, {
+                             {Key::SIGNAL_GAL_ENA, on(GNSS_MASK_GAL)},
+                             {Key::SIGNAL_GAL_E1,  1                }
+    });
+    // BeiDou B1I does not run beside GLONASS, B1C does (IM-MAX 2.1.3). B1I is
+    // the module preset and the signal AssistNow Autonomous covers, so it is
+    // used whenever GLONASS is off.
+    group(GNSS_MASK_BDS | GNSS_MASK_GLO, {
+                                             {Key::SIGNAL_BDS_ENA, bds ? 1u : 0u          },
+                                             {Key::SIGNAL_BDS_B1,  (bds && !glo) ? 1u : 0u},
+                                             {Key::SIGNAL_BDS_B1C, b1c ? 1u : 0u          }
+    });
+    group(GNSS_MASK_GLO, {
+                             {Key::SIGNAL_GLO_ENA, on(GNSS_MASK_GLO)},
+                             {Key::SIGNAL_GLO_L1,  1                }
+    });
+    group(GNSS_MASK_QZSS, {
+                              {Key::SIGNAL_QZSS_ENA,  on(GNSS_MASK_QZSS)},
+                              {Key::SIGNAL_QZSS_L1CA, 1                 },
+                              {Key::SIGNAL_QZSS_L1S,  on(GNSS_MASK_QZSS)}
+    });
+    group(GNSS_MASK_SBAS,
+          {
+              {Key::SIGNAL_SBAS_ENA,  on(GNSS_MASK_SBAS)},
+              {Key::SIGNAL_SBAS_L1CA, 1                 }
+    });
+  }
+
+  if (psm == PSM_ON_OFF) {
+    // PSMOO update period at least 5 s (IFD 4.9.15).
+    out.power.push_back({Key::PM_POSUPDATEPERIOD, std::max<uint32_t>(5, request.period_s)});
+  } else {
+    out.unset.push_back(Key::PM_POSUPDATEPERIOD);
+  }
+  // OPERATEMODE last; FULL is written explicitly so a power save mode a
+  // previous session stored in BBR cannot survive the setting being cleared.
+  out.power.push_back({Key::PM_OPERATEMODE, (psm == PSM_CYCLIC)   ? 2u
+                                            : (psm == PSM_ON_OFF) ? 1u
+                                                                  : 0u});
+  return out;
 }
 
 void Detect::begin(uint32_t now) {

@@ -1,0 +1,34 @@
+# The u-blox backend turns furble's GPS settings into M10 configuration keys
+# and reads them back. Pedestrian platform is CFG-NAVSPG-DYNMODEL 3, a 500 ms
+# rate is CFG-RATE-MEAS 500, and AssistNow Autonomous is on by default
+# (CFG-ANA-USE_ANA 1). Every key reaches RAM and BBR, so a software standby or
+# a backed rail cut keeps it (plan 321).
+seed gps true
+seed gps_model m10
+seed gps_m10_hot true
+seed gps_platform 3
+seed gps_rate 2
+wait 8000
+assert gps.backend ubx
+assert-eventually 3000 gps.ubx.verified 1
+assert m10.naks 0
+assert m10.ram.20110021 3
+assert m10.bbr.20110021 3
+assert m10.ram.30210001 500
+assert m10.bbr.30210001 500
+assert m10.period_ms 500
+assert m10.ram.10230001 1
+assert m10.bbr.10230001 1
+assert m10.ram.20d00001 0
+assert gps.ubx.ana 1
+assert gps.ubx.psm 0
+assert gps.ubx.rate_ms 500
+assert gps.ubx.rate_clamped 0
+# No constellation setting: the signal keys are left to the module preset and
+# nothing furble stored earlier survives in BBR.
+assert gps.ubx.gnss 59
+assert m10.bbr.10310022 unset
+assert m10.ram.1031000d 1
+assert gps.source uart
+assert gps.from_pvt 1
+exit

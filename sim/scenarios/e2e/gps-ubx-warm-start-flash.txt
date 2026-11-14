@@ -1,0 +1,16 @@
+# A receiver with a flash: the save-on-shutdown backup is acknowledged before
+# the cut and restored at the next start-up, which UPD-SOS then reports. The
+# backup brings BBR back but not the clock, so the start is warm.
+seed gps true
+seed gps_model m10
+seed gps_m10_flash true
+seed gps_power 2
+seed gps_duty 10
+seed gps_rate 1
+wait 40000
+assert m10.sos_creates 1
+assert gps.ubx.sos_backup 1
+wait 30000
+assert_min m10.warm_starts 1
+assert-eventually 3000 gps.ubx.sos_restore 2
+exit

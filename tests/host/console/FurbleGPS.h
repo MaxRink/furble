@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "protocol/GpsCasic.h"
+#include "protocol/GpsUbx.h"
 
 namespace Furble {
 
@@ -68,6 +69,43 @@ class GPS {
     LIVE,
   };
 
+  /** Receiver backend, mirroring the firmware enum. */
+  enum class backend_t : uint8_t {
+    UNKNOWN,
+    DETECTING,
+    NMEA,
+    UBX,
+  };
+
+  /** UBX receiver state, mirroring the firmware struct. */
+  struct ubx_status_t {
+    bool have_version;
+    std::string software;
+    std::string hardware;
+    std::string firmware;
+    std::string protocol;
+    std::string module;
+    bool have_pvt;
+    uint32_t pvt_age_ms;
+    Ubx::NavPvt pvt;
+    uint8_t sos_restore;
+    uint8_t sos_backup;
+    uint8_t config_verified;
+    uint32_t naks;
+    bool configured;
+    uint8_t gnss;
+    uint8_t psm;
+    uint16_t rate_ms;
+    bool ana;
+    bool gnss_refused;
+    bool psm_refused;
+    bool rate_clamped;
+    bool backup_supply;
+    bool have_sat;
+    std::array<uint8_t, 7> sat_view;
+    std::array<uint8_t, 7> sat_used;
+  };
+
   /** Receiver detection state, mirroring the firmware enum. */
   enum class receiver_state_t : uint8_t {
     UNKNOWN,
@@ -117,6 +155,11 @@ class GPS {
   static constexpr const uint8_t HOLD_MAX = 4;
 
   static GPS &getInstance(void);
+
+  backend_t getBackend(void) const;
+  static const char *backendName(backend_t backend);
+  ubx_status_t getUbxStatus(void) const;
+  void pollUbxSatellites(void);
 
   bool isEnabled(void) const;
   void reloadSetting(void);

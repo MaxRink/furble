@@ -350,6 +350,75 @@ std::vector<uint8_t> cfgRst(uint16_t nav_bbr_mask, uint8_t reset_mode);
  * of NMEA at 9600 baud, and ACK-class answers come "within one second" (IFD
  * 3.5.1).
  */
+/*
+ * Constellation mask, shared by the GPS_GNSS setting. The low three bits are
+ * the CASIC navSystem bits the GPS_CONSTEL setting already uses, so a CASIC
+ * selection maps across unchanged.
+ */
+constexpr uint8_t GNSS_MASK_GPS = 0x01;
+constexpr uint8_t GNSS_MASK_BDS = 0x02;
+constexpr uint8_t GNSS_MASK_GLO = 0x04;
+constexpr uint8_t GNSS_MASK_GAL = 0x08;
+constexpr uint8_t GNSS_MASK_QZSS = 0x10;
+constexpr uint8_t GNSS_MASK_SBAS = 0x20;
+constexpr uint8_t GNSS_MASK_ALL = 0x3f;
+/** The modules' production preset: GPS, Galileo, BeiDou B1I, QZSS, SBAS (DS 1.3). */
+constexpr uint8_t GNSS_MASK_MODULE_DEFAULT =
+    GNSS_MASK_GPS | GNSS_MASK_GAL | GNSS_MASK_BDS | GNSS_MASK_QZSS | GNSS_MASK_SBAS;
+
+/** Power save setting values, as stored in GPS_PSM. */
+constexpr uint8_t PSM_OFF = 0;
+constexpr uint8_t PSM_CYCLIC = 1;
+constexpr uint8_t PSM_ON_OFF = 2;
+
+/** What the user asked for, in furble's setting terms. */
+struct Request {
+  uint16_t rate_ms;  /**< 0 leaves the receiver rate alone */
+  uint8_t dyn_model; /**< CFG-NAVSPG-DYNMODEL value, 0xff leaves it alone */
+  uint8_t gnss;      /**< GNSS_MASK_* bits */
+  uint8_t gnss_set;  /**< which GNSS_MASK_* bits gnss decides; 0 leaves all alone */
+  uint8_t psm;       /**< PSM_* */
+  uint32_t period_s; /**< PSMOO update period */
+  bool ana;          /**< AssistNow Autonomous */
+};
+
+/**
+ * The configuration furble sends for a request, in send order.
+ *
+ * base goes first (NAV-PVT output, rate, dynamic model, AssistNow
+ * Autonomous), then signals (a GNSS restart, so the receiver needs 0.5 s
+ * before the next command, IFD 4.9.21), then power save with OPERATEMODE last
+ * (IM-MAX 3.6.2.6). unset lists keys furble manages but this request leaves
+ * alone; they are deleted from BBR so an earlier session's value does not
+ * outlive the setting that wrote it.
+ */
+struct Plan {
+  std::vector<KeyValue> base;
+  std::vector<KeyValue> signals;
+  std::vector<KeyValue> power;
+  std::vector<uint32_t> unset;
+  uint16_t rate_ms;  /**< the rate actually sent, 0 when left alone */
+  uint8_t gnss;      /**< effective constellation mask */
+  uint8_t psm;       /**< the power save mode actually sent */
+  bool gnss_refused; /**< the mask broke a rule, signals left alone */
+  bool psm_refused;  /**< power save with BeiDou B1C, left at full power */
+  bool rate_clamped; /**< the rate exceeded the constellation limit */
+};
+
+/** GPS_CONSTEL to a mask: GPS, BeiDou, GLONASS as asked, QZSS and SBAS follow GPS. */
+uint8_t gnssFromConstellation(uint8_t constellation);
+
+/** A mask the receiver accepts: one major GNSS, QZSS and SBAS only with GPS. */
+bool gnssValid(uint8_t mask);
+
+/** Highest navigation rate for a mask at the default CPU clock (DS Table 2/3). */
+uint8_t maxRateHz(uint8_t mask);
+
+/** GPS_PLATFORM 1..4 to DYNMODEL: portable 0, stationary 2, pedestrian 3, automotive 4. */
+uint8_t dynModelForPlatform(uint8_t platform);
+
+Plan plan(const Request &request);
+
 class Detect {
  public:
   static constexpr uint32_t ATTEMPT_MS = 1000;

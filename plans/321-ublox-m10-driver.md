@@ -197,3 +197,142 @@ length field drops one byte and resynchronises.
 - Deviation: the receiver is not positively identified as CASIC. CASIC has a
   MON-VER of its own, but polling it would add CASIC traffic no setting asked
   for, so an unidentified receiver keeps the NMEA path exactly as before.
+
+### PR 3 (`feat/ubx-3-features`)
+
+New settings, all console and companion only (no menu change, so no
+screenshots):
+
+| Setting | Wire id | NVS key | Type | Default | Values |
+| --- | --- | --- | --- | --- | --- |
+| `GPS_GNSS` | 48 | `gps_gnss` | U8 | 0 | 0 follows `GPS_CONSTEL`, else a mask: 1 GPS, 2 BeiDou, 4 GLONASS, 8 Galileo, 16 QZSS, 32 SBAS |
+| `GPS_PSM` | 49 | `gps_psm` | U8 | 0 | 0 off, 1 cyclic tracking, 2 on/off |
+| `GPS_ANA` | 50 | `gps_ana` | bool | true | AssistNow Autonomous |
+
+The CASIC path reads none of them, so it is unchanged.
+
+- `Ubx::plan()` turns the settings into three VALSETs, all written to RAM and
+  BBR, plus one VALDEL and a closing VALGET:
+  - base: NAV-PVT output, AssistNow Autonomous, rate and dynamic model;
+  - signals: then a 500 ms settle (IFD 4.9.21);
+  - power: OPERATEMODE last (IM-MAX 3.6.2.6).
+  - The VALDEL removes from BBR every key the settings leave alone, so a value
+    an earlier session stored does not outlive its setting. The VALGET reads
+    everything back.
+- Constellations (4):
+  - `GPS_GNSS` wins. Otherwise `GPS_CONSTEL` maps across (GPS, BeiDou,
+    GLONASS, plus QZSS and SBAS with GPS), and Galileo is left to the
+    receiver, because CASIC has no Galileo bit.
+  - BeiDou is B1I unless GLONASS is on, then B1C (IM-MAX 2.1.3).
+  - A mask with QZSS or SBAS but no GPS, or with no major system, is refused
+    before anything is sent, and the receiver keeps its preset.
+  - At most four majors exist, so the M10 limit is implicit in the mask.
+- Rate (5): `GPS_RATE` is CFG-RATE-MEAS. It is clamped to the highest rate the
+  constellation set supports at the default CPU clock (DS Table 2): 18 Hz
+  single, 10 Hz pairs, 8 Hz three with B1C, 6 Hz three with GLONASS, 4 Hz
+  four, and 3 Hz with B1I.
+- Dynamic model (5): `GPS_PLATFORM` 1 to 4 maps to DYNMODEL 0 portable,
+  2 stationary, 3 pedestrian, 4 automotive (IFD Table 23).
+- Power save (6):
+  - `GPS_PSM` 1 is PSMCT, and forces the rate to 1 Hz or 2 Hz (IM-MAX
+    3.6.2.3). `GPS_PSM` 2 is PSMOO, with POSUPDATEPERIOD set to the duty
+    interval, at least 5 s.
+  - Power save is refused with B1C (RN 7.2), so it stays off with four
+    constellations, and the console says so.
+  - The duty Standby policy on UBX sends RXM-PMREQ: duty interval, backup and
+    force flags, UART RX wake. It never sends `$PCAS12`.
+- AssistNow Autonomous (7): on by default.
+  - The data sheets support it on GPS, Galileo, GLONASS, QZSS and B1I.
+  - It is off in the SPG 5.10 ROM, but the cost is occasional background
+    computation (IM-MAX 3.12.5.3), and the gain is a 3 to 4 s fix instead of
+    27 s on data up to about three days old.
+  - It needs BBR, so it helps across standby and on backed boards.
+  - B1C is not covered (RN 3.1.4). With four constellations the key is still
+    sent, which the M10 model accepts; the effect on hardware is unknown.
+- Warm start (8):
+  - `Platform::hasGpsBackupSupply()` is false unless a board profile defines
+    `FURBLE_GPS_BACKUP_SUPPLY`.
+  - Without a backup supply, a planned rail cut first sends CFG-RST GNSS stop
+    and UPD-SOS create, then waits up to 1 s for the answer. `disable()` waits
+    the same way, inline.
+  - A refused or unanswered save is recorded and not retried this session.
+    That is expected on MAX-M10S and MIA-M10Q, which have no flash.
+  - The restore status is polled after every configuration.
+  - With a backup supply nothing is saved, and the receiver keeps BBR and the
+    RTC.
+- Console (9): `gps ubx` prints the following:
+  - module, firmware and protocol;
+  - the NAV-PVT fix and accuracy;
+  - read-back result and NAK count;
+  - constellation mask, rate (and clamp), power save (and refusal),
+    AssistNow Autonomous;
+  - backup supply, SOS restore and backup;
+  - per-constellation NAV-SAT counts.
+- Simulator:
+  - seeds `gps_gnss`, `gps_psm` and `gps_ana`, and the `gps.ubx.*` plan
+    queries;
+  - the modelled board's backup supply follows `gps_m10_backup`;
+  - a restored SOS backup starts warm (assumption);
+  - a waking or powering receiver prints its first epoch one measurement
+    period later.
+- Scenarios: `gps-ubx-config`, `gps-ubx-constellation`,
+  `gps-ubx-constellation-casic-map`, `gps-ubx-constellation-invalid`,
+  `gps-ubx-power-save`, `gps-ubx-power-save-b1c`, `gps-ubx-standby`,
+  `gps-ubx-warm-start-backup`, `gps-ubx-warm-start-sos`,
+  `gps-ubx-warm-start-flash`. `gps-ubx-nak` now expects the power VALSET and
+  the VALDEL to go through.
+- Not done:
+  - The power model has a single, fixed GPS receiver entry and no
+    per-receiver selection, so no M10 entry was added to `board-currents.yaml`.
+    The virtual M10 integrates its own vendor figures as `m10.avg_ua`.
+  - The Android settings metadata lists only a subset of settings and was not
+    extended.
+  - The in-repo wiki copies are updated; the GitHub wiki needs a push.
+- Found by the scenarios and fixed: a duty request that lands after the rail
+  is already cut must not try to save again. It used to mark the backup as
+  refused.
+
+## Hardware-only items
+
+Every M10 behaviour above is simulator-tested and hardware-untested. On a
+bench, first measure:
+
+- detection and baud on a MAX-M10S at 9600 and a MIA-M10Q at 38400;
+- the real ACK or NAK for every key furble writes, especially AssistNow
+  Autonomous with B1C;
+- the UPD-SOS answer on a flashless module;
+- the RXM-PMREQ UART wake behaviour;
+- PSMCT and PSMOO current;
+- warm and hot start times with and without V_BCKP.
+
+## Verification (PR 3 head)
+
+| Env | Flash used / slot | DRAM / budget | Result |
+| --- | --- | --- | --- |
+| m5stick-s3 | 1,861,488 / 3,145,728 | 47,464 / 48,128 | PASS |
+| esp32-s3-headless | 1,774,704 / 3,145,728 | 52,208 / 53,248 | PASS |
+| m5stick-c | 1,502,784 / 1,740,800 | 55,036 / 55,296 | PASS |
+| m5stick-c-plus | 1,552,304 / 1,740,800 | 55,012 / 55,296 | PASS |
+| m5stack-core | 1,626,352 / 1,740,800 | 55,140 / 56,320 | PASS |
+| m5stack-core2 | 1,911,184 / 6,291,456 | 56,736 / 57,344 | PASS |
+| waveshare-s3-eth | 1,708,976 / 6,291,456 | 51,588 / 52,224 | PASS |
+
+- The UBX code fits every release image, including the 4 MB slots, so it is
+  not gated behind a CMake profile.
+- On the StickS3 the UBX objects are 8.7 kB (`FurbleGPSUbx`) and 8.7 kB
+  (`GpsUbx`) of text. The image grew from 1,856,192 bytes (PR 2) to 1,861,488
+  bytes (PR 3).
+- `stack_budget.py --env m5stick-s3`: the gps task needs 3,424 of 4,096
+  bytes; PR 2 needed 3,408.
+- Host: all 188 CTest cases pass, and `run_sanitized_host_tests.sh --clean` passes all 186 sanitized cases. `gps-ubx` passes 245 checks and
+  `gps-ubx-m10` 61.
+- Fuzzing:
+  - `check_fuzz.py --smoke` host targets: 16 checks pass.
+  - The full `gps_ubx_fuzz` seed set: 7 seeds at 5,000 iterations, 0
+    failures.
+  - `fuzz.gps.ubx` passes and is merged into `fuzz_results.json`: 11 of 11
+    targets.
+  - The StickS3 UI fuzz smoke (seeds 1 and 2, touch and no-touch) passes.
+- Simulator: all 225 certified StickS3 e2e scenarios pass on the plain build,
+  including the 15 `gps-ubx-*` scenarios. All 10 power-gate scenarios pass
+  `compare.py`.

@@ -1,0 +1,19 @@
+# The CASIC constellation setting maps across: GPS only becomes GPS with QZSS
+# and SBAS, BeiDou and GLONASS off. CASIC has no Galileo bit, so Galileo keeps
+# the receiver's own value and furble does not store one.
+seed gps true
+seed gps_model m10
+seed gps_m10_hot true
+seed gps_constel 1
+wait 8000
+assert-eventually 3000 gps.ubx.verified 1
+assert m10.naks 0
+assert gps.ubx.gnss 57
+assert m10.ram.1031001f 1
+assert m10.ram.10310022 0
+assert m10.ram.10310025 0
+assert m10.ram.10310024 1
+assert m10.ram.10310020 1
+assert m10.ram.10310021 1
+assert m10.bbr.10310021 unset
+exit

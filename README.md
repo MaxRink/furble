@@ -339,6 +339,7 @@ gps raw on|off                      mirror decoded NMEA to the console
 gps raw hex on|off                  mirror every receiver UART chunk as hex
 gps raw send <hex bytes>            write exact bytes to the receiver UART
 gps binary <class> <id> <bytes>     send a CASIC frame; 256-byte line, 64 arguments
+gps ubx                             u-blox M10 receiver, fix accuracy and configuration
 imu status | scale [value]          IMU diagnostic, gesture calibration
 motion status | scale [value]       motion source and software calibration
 time status | flush                 UTC and local wall clock, or persist before shutdown
@@ -509,8 +510,9 @@ More details are on the wiki: [Usage Guide](https://github.com/gkoh/furble/wiki/
 ### GPS Location Tagging
 
 For Fujifilm, Sony, and Ricoh cameras, location tagging is supported with an M5Stack GPS
-unit on Grove Port A. Every unit furble targets is the AT6668/CASIC family, so
-one set of $PCAS and NMEA support covers them all.
+unit on Grove Port A. The M5Stack units are the AT6668/CASIC family, so one
+set of $PCAS and NMEA support covers them all. u-blox M10 receivers are
+detected by a MON-VER poll and configured over UBX.
 
 | Unit | Antenna | Status |
 | :--- | :--- | :--- |
@@ -518,6 +520,7 @@ one set of $PCAS and NMEA support covers them all.
 | Unit-GPS (SMA) | External SMA antenna | Supported. Recommended for weak or indoor reception. |
 | Module GPS v2.1 | SMA | Planned. Not yet in firmware, Core and Core2 only. |
 | [Mini GPS/BDS Unit](https://shop.m5stack.com/products/mini-gps-bds-unit) | Ceramic patch | End of life, 9600 baud. |
+| u-blox M10 (MAX-M10S, MIA-M10Q, M10 UART modules) | Module dependent | Simulator-tested, hardware-untested. Detected automatically; UBX configuration, NAV-PVT accuracy, power save, software standby and AssistNow Autonomous. |
 
 See [docs/supported-hardware.md](docs/supported-hardware.md) for the full unit
 matrix. GPS support can be enabled in `furble` in `Settings->GPS`, the camera
@@ -553,6 +556,12 @@ The GPS receiver itself can also be configured under `Settings->GPS`:
 - `Assisted start` (position/time, with optional cached ephemeris replay)
 - `Platform` (portable, stationary, pedestrian, or vehicle dynamic model)
 
+Three more settings apply only to a u-blox M10 receiver and are set from the
+serial console or the companion app, not the device menus: `gps_gnss` (the
+constellation mask, 0 follows Constellation), `gps_psm` (power save: off,
+cyclic tracking or on/off, default off) and `gps_ana` (AssistNow Autonomous,
+default on).
+
 `Settings->Time` selects the local time zone. The default UTC keeps the previous
 camera clock behaviour. The Time page also shows local time with its offset and
 plain UTC. Auto (GPS) uses the nearest curated zone from a fresh wired fix; the
@@ -581,7 +590,8 @@ the receiver's response and the effect of its dynamic model have not been
 verified on an AT6668 unit. `gps monhw` uses the CASIC 2.14.2 field offsets,
 including the 32-bit jamming word; the layout and a live decode are confirmed
 on the AT6668, while the meaning of the antenna and jam status bits still needs
-a qualified antenna comparison.
+a qualified antenna comparison. `gps ubx` reports a u-blox M10 receiver; see
+[docs/console-commands.md](docs/console-commands.md).
 
 ### Intervalometer/Timer
 
