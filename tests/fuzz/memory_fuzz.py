@@ -36,8 +36,10 @@ CRASH_PATTERNS = (
     "Aborted",
 )
 
-SUPERVISOR_FREE_FLOOR = 4608
-SUPERVISOR_LARGEST_FLOOR = 4096
+# include/FurbleWebUIMemory.h for a release build: the largest-block floor is
+# the 4,096-byte supervisor stack plus 512, and the free floor 512 more.
+SUPERVISOR_LARGEST_FLOOR = 4096 + 512
+SUPERVISOR_FREE_FLOOR = SUPERVISOR_LARGEST_FLOOR + 512
 
 
 def parse_state(output: str, name: str) -> str:
