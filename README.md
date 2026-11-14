@@ -833,12 +833,14 @@ I wanted a complete solution out of the box to have:
 
 My search concluded with the [M5StickC](https://m5stack.com/products/stick-c)
 from [M5Stack](https://m5stack.com).
-The M5StickC and M5StickC Plus have since been EOL and replaced with the [M5StickC Plus2](https://shop.m5stack.com/products/m5stickc-plus2-esp32-mini-iot-development-kit).
+The M5StickC was later replaced by the M5StickC Plus and then the M5StickC
+Plus2, and the M5StickC and Plus2 are now end of life. The M5StickS3 is the
+current Stick board furble supports; see Supported Controllers.
 
 The M5StickC is an ESP32 based mini-IoT development kit which covered all of the
 requirements (and more). At time of writing, M5Stack sell the M5StickC for
 US$9.95.
-The M5StickC Plus(2) sells for US$19.95.
+The M5StickC Plus and Plus2 later sold for US$19.95.
 
 #### Software
 
