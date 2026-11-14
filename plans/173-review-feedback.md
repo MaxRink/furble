@@ -46,4 +46,4 @@ once with an ASan heap-use-after-free inside the test double:
 does not touch `lib/testing` or `tests/host/control_e2e`, and the same test
 passed in the 183 of 183 run on `a9492f3d`. Rerun alone, it passed 20 of 20,
 and `sim-scheduler` passed 10 of 10. This is a race in the test double, not
-in this change. It needs its own fix and an issue.
+in this change. That race is #451, fixed by #453.
