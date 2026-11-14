@@ -14,9 +14,9 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 BOARDS = ("sticks3", "core2", "core", "stickc", "stickc-plus", "stickc-plus2",
           "headless-s3", "waveshare-s3-eth")
-# Profiles that have no release env to derive from. They boot on the
+# Profiles that have no firmware env to derive from. They boot on the
 # simulator default pool; any other profile without a derived pool fails.
-UNDERIVED_PROFILES = {"stickc-plus2", "headless-s3"}
+UNDERIVED_PROFILES = {"stickc-plus2"}
 BUDGET_SCENARIOS = (
     "hw-memory-post394-budget",
     "hw-memory-webui-post394",
@@ -30,8 +30,8 @@ def derived_pools() -> dict:
     """Board profile to the code-derived boot heap from tools/derive_sim_heap.py.
 
     The figures are upper bounds: they exclude boot allocations the source
-    does not size. Profiles with no firmware env (stickc-plus2, headless-s3)
-    keep the simulator default pool.
+    does not size. The profile with no firmware env (stickc-plus2) keeps the
+    simulator default pool.
     """
     document = json.loads((ROOT / "sim/coverage/board_heap.json").read_text(encoding="utf-8"))
     return {board["profile"]: (board["derived_free_upper_bound"], board["derived_largest_upper_bound"])

@@ -47,6 +47,8 @@ ENVS = {
     "m5stack-core": ("esp32", 320, 240, "core"),
     "m5stack-core2": ("esp32", 320, 240, "core2"),
     "waveshare-s3-eth": ("esp32s3", 0, 0, "waveshare-s3-eth"),
+    # Not a release env, but CI builds it and the simulator models it.
+    "esp32-s3-headless": ("esp32s3", 0, 0, "headless-s3"),
 }
 
 # Board-conditional boot tasks from app_main. IR::init() runs where
@@ -60,7 +62,7 @@ SD_WRITER = {"m5stack-core", "m5stack-core2"}
 # sizeof(Furble::SD::message_t) from the m5stack-core ELF's DWARF.
 SD_MESSAGE_BYTES = 48
 # Headless builds create the request queue in app_main (src/main.cpp).
-HEADLESS = {"waveshare-s3-eth"}
+HEADLESS = {"waveshare-s3-eth", "esp32-s3-headless"}
 HEADLESS_REQUEST_QUEUE_LENGTH = 8
 POINTER_BYTES = 4
 # GPS UART (src/FurbleGPS.cpp, include/FurbleGPS.h) and the UART hardware FIFO

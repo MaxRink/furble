@@ -99,7 +99,7 @@ std::vector<component_t> componentsFor(const profile_budget_t &budget) {
       {"crash_record",           sizeof(Furble::CrashRecord::record_t),                 "rtc",          "include/FurbleCrashRecord.h"                  },
       {"lvgl_draw",              (budget.singleDrawBuffer ? 1 : 2) * budget.drawBuffer, "internal_dma",
        "include/FurbleUIMemory.h"                                                                                                                      },
-      {"wifi_static_rx",         16000,                                                 "internal",     "CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM inferred"},
+      {"wifi_static_rx",         6 * 1600,                                              "internal",     "CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM inferred"},
       {"mbedtls_internal",       budget.mbedtls,                                        "internal",     "CONFIG_MBEDTLS_INTERNAL_MEM_ALLOC"            },
       {"psram_internal_reserve", budget.psramReserve,                                   "internal",
        "CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL"                                                                                                         },
