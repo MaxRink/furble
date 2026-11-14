@@ -19,6 +19,11 @@ namespace {
 #define FURBLE_GPX_DIRECTORY "/sd/furble"
 #endif
 constexpr const char *GPX_DIRECTORY = FURBLE_GPX_DIRECTORY;
+// "/YYYYMMDD-HHMMSS.gpx" at the widest the point fields can print: a 5-digit
+// uint16_t year and 3-digit uint8_t fields.
+constexpr size_t GPX_NAME_MAX_BYTES = sizeof("/65535255255-255255255.gpx");
+// Sized from the directory, so a long host sandbox cannot truncate the path.
+constexpr size_t GPX_PATH_BYTES = sizeof(FURBLE_GPX_DIRECTORY) + GPX_NAME_MAX_BYTES;
 constexpr const char *GPX_HEADER =
     "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
     "<gpx version=\"1.1\" creator=\"furble\"\n"
@@ -98,11 +103,16 @@ bool GPX::open(const point_t &point) {
     return false;
   }
 
-  char path[64];
-  snprintf(path, sizeof(path), "%s/%04u%02u%02u-%02u%02u%02u.gpx", GPX_DIRECTORY,
-           static_cast<unsigned>(point.year), static_cast<unsigned>(point.month),
-           static_cast<unsigned>(point.day), static_cast<unsigned>(point.hour),
-           static_cast<unsigned>(point.minute), static_cast<unsigned>(point.second));
+  char path[GPX_PATH_BYTES];
+  const int length =
+      snprintf(path, sizeof(path), "%s/%04u%02u%02u-%02u%02u%02u.gpx", GPX_DIRECTORY,
+               static_cast<unsigned>(point.year), static_cast<unsigned>(point.month),
+               static_cast<unsigned>(point.day), static_cast<unsigned>(point.hour),
+               static_cast<unsigned>(point.minute), static_cast<unsigned>(point.second));
+  if ((length < 0) || (static_cast<size_t>(length) >= sizeof(path))) {
+    fail("format path");
+    return false;
+  }
 
   auto *file = fopen(path, "w");
   if (file == nullptr) {

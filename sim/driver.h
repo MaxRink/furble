@@ -37,6 +37,16 @@ void driverTick(void);
 void fuzzCycleComplete(Furble::UI *ui);
 bool scenarioSettingIs(const char *name, const char *value);
 
+/**
+ * Hold a GPS status reader for the seeded `gps_reader_hold_ms` of host time.
+ *
+ * Production calls this where a reader takes the GPS cycle snapshot. It models
+ * a slow reader that overlaps the GPS task: readers once held the cycle mutex
+ * there, and the task dropped any UART event it met while one did.
+ */
+void setGpsReaderHoldMs(uint32_t ms);
+void gpsReaderHold(void);
+
 /** Request an orderly simulator shutdown with the supplied process result. */
 void requestExit(int result);
 

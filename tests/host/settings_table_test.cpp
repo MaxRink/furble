@@ -153,11 +153,8 @@ bool parseReservations(const std::string &source,
 bool validateReservations(const std::vector<Reservation> &reservations,
                           const std::set<int> &exposedIds,
                           std::string &error) {
-  static const std::set<std::string> expectedOwners = {
-      "Master",
-      "Master (conditional)",
-      "Historical claims",
-      "Free"};
+  static const std::set<std::string> expectedOwners = {"Master", "Master (conditional)",
+                                                       "Historical claims", "Free"};
   std::set<std::string> owners;
   std::set<std::string> ownerRows;
   std::map<int, std::string> reservationOwners;

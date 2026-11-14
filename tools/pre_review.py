@@ -63,6 +63,9 @@ def main(argv: list[str] | None = None) -> int:
       ("settings contracts",
        [PYTHON, "tools/check_settings_contracts.py", "--root", str(root),
         "--base", args.base, "--head", args.head]),
+      ("clang-format",
+       [PYTHON, "tools/check_format.py", "--root", str(root),
+        "--base", args.base, "--head", args.head]),
       ("C++ safety",
        [PYTHON, "tools/check_cpp_safety.py", "--root", str(root),
         "--base", args.base, "--head", args.head]),
@@ -76,6 +79,7 @@ def main(argv: list[str] | None = None) -> int:
                    "tests.test_check_pr_hygiene",
                    "tests.test_check_settings_contracts",
                    "tests.test_check_cpp_safety",
+                   "tests.test_check_format",
                    "tests.test_plot_companion_power"]))
   if args.sanitized:
     gates.append(("sanitized host subset",

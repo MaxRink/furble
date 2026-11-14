@@ -8,7 +8,7 @@ blind remote mode where the screen is off but the shutter still fires.
 
 ## Implementation status
 
-State: Implemented on `feat/12-display-off`.
+State: Merged as #26 (`22668dc4`) from `feat/12-display-off`.
 
 The inactivity roller now offers 2, 5 and 10 minutes. `DISPLAY_OFF` uses the
 standard Settings and NVS mechanics. The panel sleeps and wakes through M5GFX.
