@@ -1022,6 +1022,7 @@ answer reached the stack:
 | --- | --- |
 | `ble.pairing_answers` | Count of numeric-comparison answers injected into NimBLE. |
 | `ble.pairing_answer` | `accept`, `reject`, or `none` when nothing has been injected. |
+| `companion.boosts` | Count of companion fast-advertising boosts the UI requested, one per physical press edge. A press counts only while no other input is held, so a touch-board tap that also drives a synthesized button counts once. The simulator has no advertising cadence. |
 
 `ui.gps_source` and `gps.source` deliberately report different vocabularies.
 `gps.source` is `GPS::sourceName()`, the receiver's own state: `uart`,
@@ -1550,7 +1551,10 @@ boots. Build the host targets and run the pull-request budget:
 ```sh
 cmake -S tests/host -B /tmp/furble-fuzz-host
 cmake --build /tmp/furble-fuzz-host -j8 \
-  --target webui_fuzz companion_fuzz mqtt_fuzz ota_mqtt_protocol_test
+  --target webui_fuzz companion_fuzz mqtt_fuzz ota_mqtt_protocol_test \
+           settings_migration_fuzz wifi_policy_fuzz \
+           bt_debug_journal_s3_test bt_debug_journal_s3_fallback_test \
+           settings_nvs_roundtrip_test gps_ubx_fuzz
 python3 tools/check_fuzz.py --smoke \
   --host-build /tmp/furble-fuzz-host \
   --mqtt-binary sim/build-mqtt/furble-sim

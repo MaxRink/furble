@@ -161,3 +161,7 @@ protocol core.
   a furble feature rather than an ESP one, so a Nordic port carries it, and the
   file already satisfies the portable contract unchanged. It is used by
   `src/FurbleGPS`, by no camera, and is covered by the `gps-casic` host test.
+- The `GpsUbx` receiver encoders (`encodeNavPvt`, `encodeNavSat`,
+  `encodeMonVer`) refuse a payload above `MAX_PAYLOAD`, so every frame the
+  simulator receiver emits passes `scan()`. `frame()` keeps the 65,535-byte
+  transmit bound; `MAX_PAYLOAD` is a receive limit.

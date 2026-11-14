@@ -245,6 +245,44 @@ Reports must contain finite,
 non-negative numeric current values; booleans, negative values, and missing or
 non-finite values are schema errors.
 
+The total current hides activity changes. A timer that fires twice as often or
+a page that redraws while the panel is off can move the counters a lot and the
+modeled mA very little, because the legacy model charges no work per timer
+fire or pixel. `compare.py` therefore also guards the activity counters when
+both the report and the baseline carry an `activity` block:
+
+- every `activity.timer_fires.<name>.count`, a timer missing on one side
+  counting as zero;
+- `activity.invalidated_area_pixels`;
+- `activity.flushed_pixels`.
+
+A metric fails when it moves by more than `--activity-threshold` of its
+baseline value (default 0.25, both directions) and also by more than an
+absolute slack: 2 fires for a timer, 1,024 pixels for a pixel counter. The
+slack keeps a one-fire edge on a short scenario or a single small label redraw
+from failing a zero baseline. The 25 percent band is a policy choice for
+deterministic virtual-time runs, not a measured noise floor. An activity block
+on only one side, or a count that is not a non-negative integer, is a schema
+error.
+
+A scenario may opt out of named metrics in
+`tools/power-model/activity-optout.json`:
+
+```json
+{"scenarios": {"<scenario>": {"metrics": ["timer_fires.<name>"], "reason": "why"}}}
+```
+
+`"*"` skips every activity metric of that scenario. Each entry needs a
+non-empty `metrics` list and a non-empty `reason`, and must name a power-gate
+scenario from `sim/scenarios/manifest.json`. Every entry is checked on every
+comparison, so one bad entry makes the comparator exit 2 for all scenarios.
+An opt-out does not affect the mA comparison. `--activity-opt-out PATH`
+selects another file; a missing file opts nothing out.
+
+Re-baseline after a deliberate activity change by copying the new reports over
+`tools/power-model/baseline/`, and record the before and after counters in the
+plan that changed them.
+
 ### Remaining realism gates
 
 The changes above correct accounting and provenance only. They do not close

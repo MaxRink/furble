@@ -1645,6 +1645,13 @@ bool UI::handleDisplayInput(lv_indev_t *drv,
                             lv_indev_data_t *data,
                             bool pressed,
                             bool releaseExpected) {
+  // Any physical press may mean the user is reaching for the companion app,
+  // whatever the display state or control mode. Only a press edge across all
+  // inputs reopens the fast advertising window; see PressEdge.
+  if (m_PressEdge.sample(inputBit(drv), pressed)) {
+    Companion::getInstance().boostAdvertising();
+  }
+
   if (m_SwallowInput) {
     // Swallow every source until all of them report released. On touch
     // boards one tap drives the touch indev and a synthesized button indev,
@@ -1683,6 +1690,9 @@ bool UI::handleLeftLongPress(lv_indev_t *drv, bool pressed) {
 
   if (!pressed) {
     const bool handled = m_LeftLongPressHandled;
+    // A handled long press skips handleDisplayInput() on release, so clear
+    // the press-edge bit here or the next press would not count as an edge.
+    m_PressEdge.release(inputBit(drv));
     m_LeftPressed = false;
     m_LeftLongPressHandled = false;
     m_LeftPressTick = 0;
@@ -1807,6 +1817,10 @@ void UI::sleepDisplay(void) {
   Sim::profilerSetDisplayState("off");
 #endif
   lv_timer_pause(m_IconTimer);
+  // Nobody can see the panel. Stop recording invalidations so periodic setters
+  // cannot resume the refresh timer and render frames that are never flushed.
+  // LVGL keeps the refresh timer paused while nothing is invalid.
+  lv_display_enable_invalidation(m_Display, false);
 
   // The backlight PWM no longer needs a fixed APB clock while the panel sleeps.
   Power::getInstance().release(Power::LockType::APB_FREQ_MAX, "display");
@@ -1834,8 +1848,9 @@ void UI::wakeDisplay(void) {
   M5.Display.setBrightness(Settings::load<uint8_t>(Settings::BRIGHTNESS));
   m_WakeTick = tick();
   m_DisplayOff = false;
-  // Flushes were skipped while the panel slept, so LVGL believes the old
-  // frame is still on the glass. Redraw the active screen once.
+  // Invalidation was disabled while the panel slept, so LVGL believes the old
+  // frame is still on the glass. Re-enable it and redraw the active screen once.
+  lv_display_enable_invalidation(m_Display, true);
   lv_obj_invalidate(lv_screen_active());
   m_DisplayState = DisplayState::ACTIVE;
   // Console mode keeps the panel logically off even after a wake event from
@@ -1873,10 +1888,11 @@ void UI::displayFlush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map
   auto *ui = static_cast<UI *>(lv_display_get_user_data(disp));
 
   if ((ui != nullptr) && ui->m_DisplayOff) {
-    // The panel is in SLPIN. Swapping and pushing pixels nobody can see costs
-    // CPU, bus time, and a DMA completion for no output. Report the flush as
-    // done so LVGL can keep its bookkeeping moving; wakeDisplay() invalidates
-    // the screen so the next visible frame is complete.
+    // The panel is in SLPIN. sleepDisplay() disables invalidation, so only a
+    // frame already pending at sleep time can reach here. Swapping and pushing
+    // pixels nobody can see costs CPU, bus time, and a DMA completion for no
+    // output. Report the flush as done so LVGL can keep its bookkeeping moving;
+    // wakeDisplay() invalidates the screen so the next visible frame is complete.
 #if defined(FURBLE_SIM)
     ui->m_FlushedWhileOff++;
 #endif
@@ -7646,26 +7662,26 @@ void UI::intervalometer(lv_timer_t *timer) {
   m_IntervalometerState.store(static_cast<uint8_t>(interval->m_State));
 
   if (interval->m_Count.m_SpinValue.m_Unit == SpinValue::UNIT_INF) {
-    lv_label_set_text_fmt(interval->m_CountLabel, "%09lu",
-                          static_cast<unsigned long>(interval->m_CountShots));
+    setLabelTextFmtIfChanged(interval->m_CountLabel, "%09lu",
+                             static_cast<unsigned long>(interval->m_CountShots));
   } else {
-    lv_label_set_text_fmt(interval->m_CountLabel, "%03lu/%03u",
-                          static_cast<unsigned long>(interval->m_CountShots),
-                          interval->m_Count.m_SpinValue.m_Value);
+    setLabelTextFmtIfChanged(interval->m_CountLabel, "%03lu/%03u",
+                             static_cast<unsigned long>(interval->m_CountShots),
+                             interval->m_Count.m_SpinValue.m_Value);
   }
 
   switch (interval->m_State) {
     case Intervalometer::STATE_IDLE:
       interval->m_CountShots = 0;
       m_IntervalCountdownActive = false;
-      lv_label_set_text(interval->m_StateLabel, "IDLE");
+      setLabelTextIfChanged(interval->m_StateLabel, "IDLE");
       lv_timer_ready(timer);
       interval->m_State = Intervalometer::STATE_WAIT;
       m_IntervalometerState.store(static_cast<uint8_t>(interval->m_State));
       break;
 
     case Intervalometer::STATE_WAIT:
-      lv_label_set_text(interval->m_StateLabel, "WAIT");
+      setLabelTextIfChanged(interval->m_StateLabel, "WAIT");
       next = interval->m_ResumeWaitMs > 0 ? interval->m_ResumeWaitMs
                                           : interval->m_Wait.m_SpinValue.toMilliseconds();
       m_IntervalCountdownActive = next > 0;
@@ -7678,7 +7694,7 @@ void UI::intervalometer(lv_timer_t *timer) {
       m_IntervalCountdownActive = false;
       m_IntervalLastAnnouncedSecond = 0;
       interval->m_CountShots++;
-      lv_label_set_text(interval->m_StateLabel, "SHUTTER");
+      setLabelTextIfChanged(interval->m_StateLabel, "SHUTTER");
       control.sendCommand(Control::CMD_SHUTTER_PRESS);
       Feedback::getInstance().signal(Feedback::SHUTTER_FIRED);
       next = interval->m_Shutter.m_SpinValue.toMilliseconds();
@@ -7686,7 +7702,7 @@ void UI::intervalometer(lv_timer_t *timer) {
       break;
 
     case Intervalometer::STATE_DELAY:
-      lv_label_set_text(interval->m_StateLabel, "DELAY");
+      setLabelTextIfChanged(interval->m_StateLabel, "DELAY");
       control.sendCommand(Control::CMD_SHUTTER_RELEASE);
       next = interval->m_Delay.m_SpinValue.toMilliseconds();
       m_IntervalLastAnnouncedSecond = 0;
@@ -7740,7 +7756,7 @@ void UI::intervalometer(lv_timer_t *timer) {
 
     case Intervalometer::STATE_FINISHED:
       m_IntervalCountdownActive = false;
-      lv_label_set_text(interval->m_StateLabel, "FINISHED");
+      setLabelTextIfChanged(interval->m_StateLabel, "FINISHED");
       interval->clearResume();
       next = 0;
       lv_timer_pause(timer);
@@ -10811,9 +10827,9 @@ void UI::addIntervalometerMenu(const menu_t &parent) {
         uint32_t now = tick();
         uint32_t remaining = Time::deadlineReached(now, m_IntervalNext) ? 0 : m_IntervalNext - now;
         SpinValue::hms_t hms = SpinValue::toHMS(remaining);
-        lv_label_set_text_fmt(label, "%02lu:%02lu:%02lu", static_cast<unsigned long>(hms.hours),
-                              static_cast<unsigned long>(hms.minutes),
-                              static_cast<unsigned long>(hms.seconds));
+        setLabelTextFmtIfChanged(label, "%02lu:%02lu:%02lu", static_cast<unsigned long>(hms.hours),
+                                 static_cast<unsigned long>(hms.minutes),
+                                 static_cast<unsigned long>(hms.seconds));
 
         if (!m_IntervalCountdownActive || (remaining == 0)) {
           m_IntervalLastAnnouncedSecond = 0;
@@ -10839,7 +10855,7 @@ void UI::bulbRefresh(void) {
   uint32_t now = tick();
   uint32_t remaining = Time::deadlineReached(now, m_BulbEnd) ? 0 : m_BulbEnd - now;
   SpinValue::hms_t hms = SpinValue::toHMS(remaining);
-  lv_label_set_text_fmt(
+  setLabelTextFmtIfChanged(
       m_Bulb.m_RemainingLabel, "%02lu:%02lu:%02lu", static_cast<unsigned long>(hms.hours),
       static_cast<unsigned long>(hms.minutes), static_cast<unsigned long>(hms.seconds));
 }
@@ -13368,12 +13384,20 @@ void UI::task(void) {
     Sim::webuiMemoryTick();
     Sim::memoryProfileTick();
 #endif
+    uint32_t delayMs = LOOP_ACTIVE_MS;
     if (!m_DisplayConsole) {
       handleLockScreen();
 #if defined(FURBLE_SIM)
       Sim::profilerBeginUiCycle();
 #endif
-      lv_task_handler();
+      const uint32_t nextTimerMs = lv_task_handler();
+      // With the panel off only LVGL timers and the input poll need this
+      // loop. Sleep until the next timer is due, but never longer than one
+      // PMIC button poll. Each pass still runs Platform::update(), which feeds
+      // the 1 s M5PM1 watchdog, and the 1 s CrashLog and MemoryPressure ticks.
+      if (m_DisplayOff) {
+        delayMs = std::clamp(nextTimerMs, LOOP_ACTIVE_MS, LOOP_IDLE_MAX_MS);
+      }
 #if defined(FURBLE_SIM)
       Sim::profilerEndUiCycle();
       Sim::fuzzCycleComplete(this);
@@ -13386,7 +13410,7 @@ void UI::task(void) {
     serviceStorage();
     m_Mutex.unlock();
 
-    vTaskDelay(pdMS_TO_TICKS(5));
+    vTaskDelay(pdMS_TO_TICKS(delayMs));
   }
 }
 
