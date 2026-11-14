@@ -346,6 +346,8 @@ bool NikonSmartVirtualCamera::emitNotification(const NimBLEUUID &service,
                                                const NimBLEUUID &characteristic,
                                                const std::vector<uint8_t> &payload,
                                                bool indication) {
+  // Hold across the callback; see SubscriptionTable.
+  const auto delivery = m_Subscriptions.deliveryLock();
   const auto found = m_Subscriptions.find(key(service, characteristic));
   if (!found || (found->callback == nullptr)) {
     return false;

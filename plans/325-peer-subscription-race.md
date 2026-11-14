@@ -20,13 +20,26 @@ and 20 of 20 when rerun alone.
 ## Design
 
 - `lib/testing/peer/SubscriptionTable.h` holds a camera's subscriptions
-  behind its own leaf mutex. Every access takes the lock: `set`, `find`,
-  `clear`, and `takeAndClear`. `find` returns a copy, so a caller invokes the
-  subscriber's callback after the lock is released. No callback runs under the
-  lock and nothing else is taken under it, so a callback may re-enter the
-  camera.
+  behind its own recursive mutex. Every access takes the lock: `set`, `find`,
+  `clear`, and `takeAndClear`.
+- A notification holds the same lock across the lookup and the callback,
+  through `deliveryLock()`. The callback receives the subscriber's raw
+  `NimBLERemoteCharacteristic`. The mock client owns it and frees it when it
+  self-deletes, which happens only after the peer's `disconnect()` has cleared
+  the table. So the clear waits for an in-flight callback, and a later
+  notification finds nothing. The real NimBLE host gives the same order,
+  because it runs notifications and the disconnect event on one task. The
+  first version released the lock before the callback; a copy of the entry
+  kept the map node safe but not the characteristic (PR #453 review).
+- The lock is recursive, so a callback may re-enter the camera on its own
+  thread. A callback must not wait on another thread that may clear the
+  table. Production notification callbacks only record state and never write
+  GATT, so none does. Ricoh already ran its callback under `m_FlappyMutex`
+  the same way.
 - `takeAndClear` lets `FujifilmVirtualCamera::disconnect()` save the stale
-  registration entry and clear the table in one step.
+  registration entry and clear the table in one step. The disconnect holds
+  `deliveryLock()` across it and the stale copy, which
+  `emitStaleRegistration()` reads under the same lock.
 - The siblings were checked for the same shape. Fujifilm, Sony, Lumix, DJI,
   Canon Smart, Nikon Smart and Nikon Remote all used an unguarded
   `std::map<std::string, Subscription>` that a notification walked while
@@ -48,16 +61,23 @@ Done on `fix/451-fuji-double-subscriptions`.
 ## Deviations and open items
 
 - The `m_Notifications` journals these doubles append to while notifying
-  are still unguarded. Their accessors return a reference, so a lock around
+  are still unguarded for readers. Appends now happen under the table lock. Their accessors return a reference, so a lock around
   the append alone would not make a concurrent reader safe. No failure has been
   seen there. Treat any ASan report on them as the same class and give the
   journal the same treatment.
 - Other Fujifilm double state is also read and written across threads
-  without a lock: `m_StaleRegistration` with `m_HaveStaleRegistration`
-  (written in `disconnect()`, read in `emitStaleRegistration()`), and the
-  plain flags `m_Configured`, `m_GeotagRequested`, `m_Connected` and
+  without a lock: the plain flags `m_Configured`, `m_GeotagRequested`, `m_Connected` and
   `m_Client`. They predate this fix and no failure has been seen. Treat an
   ASan or TSan report on them the same way.
-- The simulator compiles these doubles as well. The table is a plain
-  `std::mutex` that is never held across a scheduler boundary, so it does not
-  add a wait the simulator scheduler cannot see.
+- The simulator compiles these doubles as well. The table lock is a plain
+  `std::recursive_mutex`. It is now held across a notification callback, and
+  a Nikon callback calls `xQueueSend(..., 0)`, which is a simulator scheduler
+  boundary. No simulator source calls an emitter directly; every
+  notification there is emitted inline by the peer on the task that wrote or
+  subscribed. A wait the scheduler cannot see therefore needs a teardown of
+  the same peer on another task while that callback is preempted. If a
+  simulator run shows that stall, make the table lock a scheduler-visible
+  mutex the way `connect_mutex_t` is.
+- `NimBLEClient::dropServiceCache()` frees the characteristics without
+  clearing a peer's table. Only `gatt_journal_uaf_test` calls it, as a fault
+  inside an operation, and no notification follows. It predates this fix.

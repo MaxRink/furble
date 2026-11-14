@@ -492,6 +492,8 @@ void LumixVirtualCamera::recordWrite(const NimBLEUUID &service,
 bool LumixVirtualCamera::emitNotification(const NimBLEUUID &service,
                                           const NimBLEUUID &characteristic,
                                           const std::vector<uint8_t> &payload) {
+  // Hold across the callback; see SubscriptionTable.
+  const auto delivery = m_Subscriptions.deliveryLock();
   const auto found = m_Subscriptions.find(key(service, characteristic));
   if (!found || (found->callback == nullptr)) {
     return false;

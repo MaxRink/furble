@@ -103,6 +103,8 @@ bool FujifilmVirtualCamera::emitNotification(const NimBLEUUID &service,
                                              const NimBLEUUID &characteristic,
                                              const std::vector<uint8_t> &payload,
                                              bool indication) {
+  // Hold across the callback; see SubscriptionTable.
+  const auto delivery = m_Subscriptions.deliveryLock();
   const auto found = m_Subscriptions.find(key(service, characteristic));
   if (!found || (found->callback == nullptr)) {
     return false;
@@ -336,6 +338,7 @@ void FujifilmVirtualCamera::setRegistrationPayload(const std::vector<uint8_t> &p
 }
 
 bool FujifilmVirtualCamera::emitStaleRegistration() {
+  const auto delivery = m_Subscriptions.deliveryLock();
   const auto current =
       m_Subscriptions.find(key(configurationServiceUUID(), configurationNotificationUUID()));
   if (!m_HaveStaleRegistration || !current || (m_StaleRegistration.callback == nullptr)) {
@@ -619,7 +622,9 @@ void FujifilmVirtualCamera::disconnect(NimBLEClient &client, int reason) {
     m_Client = nullptr;
     m_Connected = false;
     // One step, so a notification racing this teardown on the connect task
-    // never reads a freed entry (issue 451).
+    // never reads a freed entry (issue 451). The lock also covers the stale
+    // copy that emitStaleRegistration() reads under it.
+    const auto delivery = m_Subscriptions.deliveryLock();
     const auto registration = m_Subscriptions.takeAndClear(
         key(configurationServiceUUID(), configurationNotificationUUID()));
     if (registration) {

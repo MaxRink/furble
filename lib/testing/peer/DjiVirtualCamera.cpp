@@ -558,6 +558,8 @@ bool DjiVirtualCamera::emitNotification(const std::vector<uint8_t> &payload) {
 }
 
 bool DjiVirtualCamera::emitRawNotification(const std::vector<uint8_t> &payload) {
+  // Hold across the callback; see SubscriptionTable.
+  const auto delivery = m_Subscriptions.deliveryLock();
   const auto found = m_Subscriptions.find(key(TARGET_SERVICE, NOTIFY_CHARACTERISTIC));
   if (!found || (found->callback == nullptr)) {
     return false;
