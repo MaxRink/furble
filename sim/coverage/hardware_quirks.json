@@ -2700,6 +2700,49 @@
         "mqttmodel.state"
       ],
       "status": "modeled"
+    },
+    {
+      "id": "peripheral.gps-ubx-detect",
+      "profile": "sticks3",
+      "category": "peripheral",
+      "feature": "u-blox M10 detection by MON-VER, NAV-PVT fix and configuration read back",
+      "source": "src/FurbleGPSUbx.cpp",
+      "model": "sim/ubx_m10.cpp",
+      "scenario": "sim/scenarios/e2e/gps-ubx-detect.txt",
+      "assertions": [
+        "gps.backend",
+        "gps.ubx.verified",
+        "gps.from_pvt"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "peripheral.gps-ubx-cold-start",
+      "profile": "sticks3",
+      "category": "peripheral",
+      "feature": "u-blox M10 cold start without a backup supply, 27 s TTFF",
+      "source": "src/FurbleGPSUbx.cpp",
+      "model": "sim/ubx_m10.cpp",
+      "scenario": "sim/scenarios/e2e/gps-ubx-cold-start.txt",
+      "assertions": [
+        "m10.start",
+        "gps.source"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "peripheral.gps-ubx-fallback",
+      "profile": "sticks3",
+      "category": "peripheral",
+      "feature": "A receiver that answers no UBX keeps the NMEA backend",
+      "source": "src/FurbleGPSUbx.cpp",
+      "model": "sim/fake_uart.cpp",
+      "scenario": "sim/scenarios/e2e/gps-ubx-fallback-nmea.txt",
+      "assertions": [
+        "gps.backend",
+        "uart.ubx_polls"
+      ],
+      "status": "modeled"
     }
   ]
 }

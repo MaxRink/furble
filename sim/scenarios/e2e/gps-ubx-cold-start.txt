@@ -1,0 +1,17 @@
+# A MAX-M10S with no backup supply powers up cold: 27 s to first fix with the
+# module default constellations (MAX-M10S data sheet UBX-20035208 Table 2).
+# Until then the receiver talks, so the acquisition deadline is satisfied, but
+# neither NMEA nor NAV-PVT carries a solution and furble has no fix to send.
+seed gps true
+seed gps_model m10
+wait 10000
+assert m10.start cold
+assert gps.backend ubx
+assert gps.ubx.fix_type 0
+assert gps.source none
+wait 20000
+assert m10.fixed 1
+assert-eventually 3000 gps.source uart
+assert gps.ubx.fix_type 3
+assert gps.from_pvt 1
+exit

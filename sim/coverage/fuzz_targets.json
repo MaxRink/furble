@@ -142,6 +142,20 @@
       "cover_prs": [
         "#397"
       ]
+    },
+    {
+      "id": "fuzz.gps.ubx",
+      "owner": "fuzz-suite",
+      "command": "python3 sim/scripts/run-fuzz-target.py --target fuzz.gps.ubx",
+      "scenario": "sim/scenarios/e2e/gps-ubx-nak.txt",
+      "assertions": [
+        "gps.ubx.naks"
+      ],
+      "known_failing_seeds": [],
+      "status": "modeled",
+      "cover_prs": [
+        "plan-321"
+      ]
     }
   ]
 }
