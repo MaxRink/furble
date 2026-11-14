@@ -387,7 +387,17 @@ void WebUI::task(void) {
         }
       }
     }
-    ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(TASK_PERIOD_MS));
+    // Network, credential and memory readiness are polled. A disabled WebUI
+    // has nothing to poll: the server is stopped and its held commands are
+    // released. reloadSetting() and the hold and release timers notify this
+    // task, so block until one of them does.
+    if (m_Enabled.load()) {
+      ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(TASK_PERIOD_MS));
+    } else {
+      TaskWatchdog::unsubscribe();
+      ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+      TaskWatchdog::subscribe();
+    }
   }
 }
 

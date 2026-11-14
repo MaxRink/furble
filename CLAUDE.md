@@ -77,8 +77,11 @@ CLAUDE.md whose directory it touches.
   also expose `workflow_dispatch`; use the Actions tab to select a branch.
 - The simulator power gate compares each report against its baseline with the
   two-sided `tools/power-model/compare.py --threshold` policy. The default 10%
-  value is compatibility policy, not calibrated hardware noise. Focused
-  comparator coverage is `python3 -m unittest tests/test_power_compare.py`.
+  value is compatibility policy, not calibrated hardware noise. It also fails
+  timer-fire and invalidated or flushed pixel drift beyond
+  `--activity-threshold` (default 25% plus an absolute slack); per-scenario
+  opt-outs with a reason live in `tools/power-model/activity-optout.json`.
+  Focused comparator coverage is `python3 -m unittest tests/test_power_compare.py`.
   `tools/power-model/README.md` distinguishes the legacy-default report from
   the opt-in synthetic microsecond accounting mode; neither is a hardware
   current measurement.

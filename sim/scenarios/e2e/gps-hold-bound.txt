@@ -63,12 +63,18 @@ assert camera.geo_lat_e5 4811730
 assert_min camera.geo_utc_s 45345
 assert_max camera.geo_utc_s 45360
 
-# Run out the bound.
+# Run out the bound. About 25 s remained above, and the 1 s GPS service tick
+# ends the hold on a whole second, so 25 s of waits lands on the bound edge.
+# With 5 ms UI passes the waits overshot by a few milliseconds and stayed just
+# inside. The panel is off by now, so each pass can last up to 20 ms (plan 111,
+# P-070) and every wait overshoots by up to one pass. That is about 0.1 s over
+# five waits, enough to cross the edge. Stop a second short instead; the check
+# below still proves that at most 2 s are left.
 wait 5000
 wait 5000
 wait 5000
 wait 5000
-wait 5000
+wait 4000
 assert ui.gps_fix_state held
 # The last moment inside the window. The bound is inclusive, so the fix is still
 # being sent here with at most a second left on it.

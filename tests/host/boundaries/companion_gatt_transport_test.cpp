@@ -5,11 +5,13 @@
 // address rotation and retained 4 KiB service task run unchanged. Only the
 // NimBLE server/advertising API and the ESP timer are doubles.
 
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "CompanionHostSettings.h"
@@ -36,6 +38,24 @@ void check(bool condition, const char *message) {
     std::cerr << "COMPANION FAIL: " << message << '\n';
     g_Failures++;
   }
+}
+
+// The service task runs on wall time and makes one pass per second while
+// enabled, so allow a few passes before deciding.
+template <typename Predicate>
+bool waitFor(Predicate predicate) {
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+  while (std::chrono::steady_clock::now() < deadline) {
+    if (predicate()) {
+      return true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  return predicate();
+}
+
+bool waitForNotifyWaiters(size_t expected) {
+  return waitFor([expected]() { return furbleHostNotifyWaiters() == expected; });
 }
 
 NimBLEAddress address(uint64_t value) {
@@ -144,7 +164,9 @@ void run(void) {
         "disable freed and recreated the 4 KiB companion task");
   check(server->serviceCount() == 2 && server->characteristicCount() == 9,
         "disable dropped the retained GATT database");
-  std::cout << "companion.disable enabled=0 task_retained=1 gatt_retained=1\n";
+  // A disabled companion must block on its task notification, not poll.
+  check(waitForNotifyWaiters(1), "the disabled companion task did not block on its notification");
+  std::cout << "companion.disable enabled=0 task_retained=1 gatt_retained=1 task_blocked=1\n";
 
   // Re-enable must reuse the retained task and reload the persisted bond.
   Furble::Settings::setBool(Furble::Settings::COMPANION, true);
@@ -155,7 +177,32 @@ void run(void) {
         "re-enable recreated the 4 KiB companion task");
   check(server->serviceCount() == 2 && server->characteristicCount() == 9,
         "re-enable duplicated the retained GATT database");
-  std::cout << "companion.restart enabled=1 bond=loaded task=retained gatt=retained\n";
+  check(waitForNotifyWaiters(0), "re-enable did not wake the blocked companion task");
+  // An enable opens the fast reconnect window. The cadence policy itself is
+  // covered by companion-advertising.
+  check(waitFor([advertising]() {
+          return advertising->isAdvertising()
+                 && (advertising->interval() == Furble::CompanionAdvertising::FAST_INTERVAL);
+        }),
+        "re-enable did not start fast reconnect advertising");
+  std::cout << "companion.restart enabled=1 bond=loaded task=retained gatt=retained woken=1\n";
+
+  // The fast window closes after 60 s, and any later press reopens it. The UI
+  // boosts on every physical press edge, whatever the display state.
+  furble_host_advance_time(static_cast<int64_t>(Furble::CompanionAdvertising::FAST_WINDOW_MS + 1000)
+                           * 1000);
+  check(waitFor([advertising]() {
+          return advertising->isAdvertising()
+                 && (advertising->interval() == Furble::CompanionAdvertising::SLOW_INTERVAL);
+        }),
+        "the fast window did not fall back to slow reconnect advertising");
+  companion.boostAdvertising();
+  check(waitFor([advertising]() {
+          return advertising->isAdvertising()
+                 && (advertising->interval() == Furble::CompanionAdvertising::FAST_INTERVAL);
+        }),
+        "a press did not reopen fast reconnect advertising");
+  std::cout << "companion.cadence window_closed=slow press=fast\n";
 
   const std::string oldAddress = NimBLEDevice::getAddress().toString();
   check(companion.reidentify(), "reidentify failed while the companion was enabled");

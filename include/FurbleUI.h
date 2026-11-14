@@ -1132,6 +1132,8 @@ class UI {
   bool m_DisplayOff = false;
   bool m_SwallowInput = false;
   uint8_t m_SwallowPending = 0;
+  // inputBit() of each input that read pressed last time, for press edges.
+  uint8_t m_PressedInputs = 0;
   uint32_t m_SleepTick = 0;
   uint32_t m_WakeTick = 0;
   bool m_LeftPressed = false;
@@ -1142,6 +1144,13 @@ class UI {
 
   /** ST7789 and ILI934x need 120 ms between Sleep In and Sleep Out. */
   static constexpr uint32_t DISPLAY_SLEEP_DWELL_MS = 120;
+  /** UI loop pass with the panel on. */
+  static constexpr uint32_t LOOP_ACTIVE_MS = 5;
+  /**
+   * Longest UI loop pass with the panel off. It matches the 50 Hz PMIC button
+   * poll, so a wake press is still seen within one pass.
+   */
+  static constexpr uint32_t LOOP_IDLE_MAX_MS = 20;
   uint32_t m_MainCount = 0;
   bool m_DisplayConsole = false;
 

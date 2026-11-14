@@ -149,9 +149,17 @@ measurement is mandatory before claiming accuracy or flipping a default.
   preferably the complete device input with charging disabled. Record analyzer
   model, firmware, range, sample rate, supply voltage, cable, battery presence,
   and whether USB data is attached.
-- Flash `m5stick-s3-debug` for synchronized firmware state and event logs. The
-  console's `power stats` and `power log` values are supporting state evidence,
-  not current measurements on this board.
+- Measure current on the release image, `m5stick-s3`. The debug profile is a
+  debug build with verbose logging, the console, the debug task watchdog, PM
+  profiling, FreeRTOS run-time stats, heap tracing, the stack protector and
+  the LVGL performance monitor (`sdkconfig.debug`). The monitor alone keeps the
+  LVGL refresh timer running to count frames. Its draw is not the shipped
+  device's draw.
+- Use `m5stick-s3-debug` only for state correlation: a separate run with the
+  same setup gives synchronized firmware state and event logs. The console's
+  `power stats` and `power log` values are supporting state evidence, not
+  current measurements on this board. Never mix a debug-image current into a
+  release comparison.
 - Capture analyzer samples and the firmware log from one shared timestamp or a
   visible marker event. Retain raw samples, not only a displayed average.
 - Use the same supply, display brightness, radio peer, connection parameters,
@@ -204,6 +212,134 @@ validate the model without a calibrated current measurement.
 - State 3 minus state 4 is the measured value of `SLEEP_CONN` for this exact
   hardware, firmware, camera, and setup. Do not generalize it without another
   matching trace.
+
+## 4. Idle power fixes (2026-11-13)
+
+The 2026-11-13 power re-analysis re-ran every power-gate scenario and the
+synthetic accounting what-if models. It found idle work that needs no hardware
+evidence to remove. Branch `perf/power-idle-fixes` implements those findings.
+All numbers below are simulator evidence on the StickS3 build, not current
+measurements.
+
+### Implementation state
+
+"Before" is master at `e66e8807` and "after" is this branch, both built as the
+plain StickS3 simulator and run with the certified power-gate scenarios. The
+legacy model charges no work per timer fire, UI pass or pixel, so its mA
+column barely moves. The activity counters and the synthetic accounting
+what-if models carry the evidence. The what-if models charge 20, 75 or 300 us
+per UI pass (`ui_poll_active_us_per_cycle`) and 100 us per timer fire. They
+are uncalibrated.
+
+- N2, done. The intervalometer state, count and countdown labels and the bulb
+  countdown use the changed-check helpers. `intervalometer-5-frames`
+  invalidated 774,840 px before and 574,212 after, and flushed 268,106 px
+  before and 192,992 after.
+- N3, done. `sleepDisplay()` disables LVGL invalidation and `wakeDisplay()`
+  re-enables it before the full redraw. LVGL counts the enable calls; the
+  `m_DisplayOff` guards keep them balanced. `blind-remote-shutter` invalidated
+  534,151 px with the panel off before and 0 after. `screen-off-flush-gate`
+  asserts 0 invalidated px and 0 suppressed flushes with the panel off, and
+  `camera-pairing-notouch` asserts the wake press redraws.
+- P-070, done. With the panel off the UI loop sleeps for
+  `lv_timer_handler()`'s next-timer value, clamped to 5 to 20 ms; the panel-on
+  loop keeps 5 ms. LVGL reads input every 33 ms and the M5PM1 button poll is
+  50 Hz, so no edge is lost. The 1 s M5PM1 watchdog feed, the CrashLog and
+  MemoryPressure ticks and `serviceRequests()` still run every pass, at most
+  20 ms apart. Shutter, bulb, intervalometer, GPS service and gesture work are
+  LVGL timers and wake the loop when due. UI passes in 30 s:
+
+  | Scenario | Before | After |
+  |---|---|---|
+  | screen-off-30s | 6,002 | 1,844 |
+  | gesture-idle-30s | 6,002 | 2,356 |
+  | blind-remote-shutter | 6,022 | 1,896 |
+
+  Accounting what-if, modeled mA before and after:
+
+  | Scenario | 20 us | 75 us | 300 us |
+  |---|---|---|---|
+  | screen-off-30s | 0.480 to 0.369 | 0.919 to 0.504 | 2.717 to 1.056 |
+  | gesture-idle-30s | 0.679 to 0.576 | 1.119 to 0.749 | 2.917 to 1.454 |
+  | blind-remote-shutter | 4.021 to 3.909 | 4.461 to 4.046 | 6.259 to 4.606 |
+
+  The legacy model now charges only the historical 5 ms quantum after a timer
+  fire, so a 20 ms pass is not billed as awake. Its `screen-off-30s` figure
+  still rose from 0.511 to 0.550 mA: the run ends up to one 20 ms pass later and
+  the model charges that tail as awake. Two e2e scenarios were re-paced for
+  the longer pass. `imu-gesture-wake-off` holds each tap across a 1 ms wait,
+  which passes at five different phases. `gps-hold-bound` runs out its bound
+  a second earlier.
+- N4, done. The companion and WebUI tasks unsubscribe from the task watchdog
+  and block on their task notification while disabled, instead of waking 10
+  and 2 times per second. `enable()`, `reloadSetting()` and the WebUI hold and
+  release timers give the notification. `boundary-companion-gatt` asserts the
+  disabled task blocks and that re-enable wakes it. `stack_budget.py` passes:
+  companion 2,560 of 3,072 bytes, webui 2,928 of 3,584 on the StickS3.
+- R1, done. Reconnect advertising runs at 100 ms for 60 s after enable, boot,
+  any disconnect or any button press, then at 1022.5 ms. The bounded fast window
+  cuts the long-run advertising duty about tenfold (`docs/power/ble.md`). The
+  `companion-advertising` host test covers the cadence state machine.
+  `boundary-companion-gatt` checks that re-enable starts fast and that a press
+  reopens the window after it closes. Every physical press edge boosts, with
+  the panel on, off or in blind-remote mode; e2e `companion-boost-press`
+  proves it. A press inside the window only extends it, and advertising
+  restarts only when its interval changes. Untested on iOS and macOS; see the
+  hardware-gated list. Review findings are in `111-review-feedback.md`.
+- N5, skipped. `CrashLog::update()` and `MemoryPressure::tick()` each sample
+  the internal heap once a second on independent timers. Sharing one sample
+  would change both APIs, both UI loops and the crash-log tests to save one
+  heap walk per second, which the model cannot measure. That is not small and
+  clean.
+- Power gate, done. `compare.py` also fails timer-fire and invalidated or
+  flushed pixel drift beyond 25 percent plus an absolute slack, with
+  per-scenario opt-outs in `tools/power-model/activity-optout.json`. The
+  committed baselines were already stale against master (for example
+  `connect_timer` 240 against 60 fires), and the guard caught that. The
+  baselines are regenerated from this branch. Run against them, master's
+  `blind-remote-shutter` passes the mA check at -0.55 percent and fails the
+  activity check on its 534,151 invalidated px.
+
+### Hardware-gated (2026-11-13)
+
+These were deliberately not changed. Each needs a release-image current
+measurement (section 3) or a hardware soak first.
+
+- Setting defaults: `CONN_SAVER`, `AUTO_OFF`, `SCAN_MODE` and brightness keep
+  their current defaults. The model has no interval-scaled radio term and no
+  effective-brightness term (plan 98, model gaps 3 and 4), so it cannot rank a
+  default flip. Section 1 already keeps `SLEEP_CONN` behind Battery Saver. The
+  re-analysis showed connected-idle at 84.6 mA and menu-idle at 81.3 mA
+  modeled, both dominated by the display and the APB-pinned MCU, which a
+  default change to these settings does not move in the model.
+- Display APB lock, P-071 and P-072. The lock pins the MCU at full APB while
+  the panel is on or dimmed: screen-dimmed still models 50.6 mA against 0.51 mA
+  with the panel off. Releasing it needs the E14 and E15 experiments in
+  `docs/power/measurement-plan.md` (SPI clock, LEDC flicker, light-sleep
+  residency) on each board.
+- `cfg.pmic_button` (N1, `src/FurblePlatform.cpp`). `M5.update()` reads the
+  PMIC power-button state on every UI pass while it is set. P-070 cuts the
+  screen-off pass rate, which also cuts these reads, but turning the option off
+  or throttling it changes power-button handling and needs hardware.
+- GPS duty rework, P-086. The re-analysis kept `gps-duty-standby-cycle` at
+  86.1 mA modeled with the GPS term unmeasured. The `$PCAS12` standby current
+  and the rail-cycle cold start (about 108 s, `plans/00-hardware-experiments.md`)
+  must be measured first (section 3, state 5, and plan 98 action 7). The
+  matrix row asks for a 1 h live fix at 5, 10, 15 and 60 s duty.
+- RTC calibration, P-062. Every sdkconfig sets
+  `CONFIG_PM_LIGHTSLEEP_RTC_OSC_CAL_INTERVAL=1`, so the RTC clocks recalibrate
+  on every light sleep, about 194 us each (inferred from Kconfig and the IDF
+  source). The StickS3 has no 32 kHz crystal and runs
+  `CONFIG_RTC_CLK_SRC_INT_RC`, so the BLE sleep clock and wake accuracy depend
+  on that calibration. P-070 already cuts the screen-off sleep count, which
+  shrinks this cost. A larger interval needs the 1/8/16/32 sweep and the
+  wake-lateness and BLE soaks in the matrix row.
+- P-070 latency and watchdog margin. The simulator proves the loop shape, not
+  physical button latency or the M5PM1 feed margin; see the P-070 entry.
+- R1 on Apple hardware. The 1022.5 ms fallback is untested on iOS and macOS.
+  Commit `c0024761` moved to 100 ms because a 1 s interval was invisible to
+  some macOS scan windows. Bench check: bond a Mac, let the 60 s window
+  expire, then time the reconnect with and without a button press.
 
 ## References
 

@@ -138,6 +138,9 @@ struct ProfilerState {
   uint64_t ui_cycles = 0;
   bool cycle_timer_fired = false;
   bool cycle_task_woke = false;
+  // Virtual time the last UI cycle ended. The legacy model charges the first
+  // LEGACY_UI_QUANTUM_MS after a cycle in which a timer fired as awake.
+  uint32_t cycle_end_ms = 0;
   bool timer_queue_idle = true;
   bool task_idle = true;
   bool reporting_enabled = false;
@@ -328,6 +331,12 @@ void ensureLock(int lock_type, const char *lock_name) {
   }
 }
 
+// The legacy model's timer-fired UI quantum. It is the historical 5 ms UI loop
+// pass. Plan 111 lets the loop sleep up to 20 ms with the panel off; without
+// this cap the legacy model would charge the whole longer pass as awake and
+// report fewer wakes as more current. With a 5 ms loop the result is unchanged.
+constexpr uint32_t LEGACY_UI_QUANTUM_MS = 5;
+
 void integrateLocked(uint64_t now_us) {
   if (!state.started) {
     return;
@@ -423,6 +432,18 @@ void integrateLocked(uint64_t now_us) {
     if (state.light_sleep_enabled && state.task_idle
         && (state.model.accounting_enabled || state.timer_queue_idle)) {
       state.light_sleep_ms += elapsed;
+    } else if (state.light_sleep_enabled && state.task_idle) {
+      // Legacy model after a timer fired: only the quantum is awake. Virtual
+      // time can advance inside a UI cycle after the last integration, so the
+      // interval may start before the cycle ended. Count that as zero elapsed
+      // instead of letting the unsigned difference wrap to a full sleep.
+      const uint32_t since_end = clockDeadlineReached(state.last_time_ms, state.cycle_end_ms)
+                                     ? clockElapsed(state.last_time_ms, state.cycle_end_ms)
+                                     : 0;
+      const uint32_t awake = since_end >= LEGACY_UI_QUANTUM_MS
+                                 ? 0
+                                 : std::min<uint32_t>(elapsed, LEGACY_UI_QUANTUM_MS - since_end);
+      state.light_sleep_ms += elapsed - awake;
     }
   }
 
@@ -1717,6 +1738,7 @@ void profilerEndUiCycle(void) {
   }
   state.timer_queue_idle = !state.cycle_timer_fired;
   state.task_idle = !state.cycle_task_woke;
+  state.cycle_end_ms = static_cast<uint32_t>(clockMicros() / 1000);
 }
 
 void profilerQueueReceive(const char *queue_name, bool returned_data) {

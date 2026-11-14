@@ -117,6 +117,12 @@ void notePowerOff(void);
 // (task #32) can be reproduced headlessly. rigConfirmPairing clears it.
 void rigInjectPendingPairing(uint32_t pin);
 
+// The rig has no advertising cadence; the production one is host tested. The
+// shim counts each boost the UI requests so a scenario can prove which
+// presses reach it.
+void noteCompanionBoost(void);
+uint32_t companionBoostCount(void);
+
 // Injected IMU state for the host build. The firmware reads the sensor through
 // M5.Imu, which the simulator has no hardware for, so these mirror the same
 // read surface (enabled, update, getAccel, getGyro). A scenario drives the

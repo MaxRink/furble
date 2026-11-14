@@ -3,6 +3,8 @@
   "scenario": "intervalometer-5-frames",
   "estimate_kind": "relative simulator estimate, not a hardware measurement",
   "model_source": "tools/power-model/board-currents.yaml",
+  "model_digest": "sha256:8941a84bb8a7345df76150450e51035e81b26a0ad8a09cad55f985a72198aaa6",
+  "model_valid": true,
   "board": "m5stick-s3",
   "duration_ms": 15010,
   "activity": {
@@ -11,26 +13,31 @@
       "bulb_page_refresh": {"count": 0, "per_second": 0.000000},
       "bulb_timer": {"count": 0, "per_second": 0.000000},
       "companion_pairing_timer": {"count": 0, "per_second": 0.000000},
-      "connect_timer": {"count": 120, "per_second": 7.994670},
+      "connect_timer": {"count": 30, "per_second": 1.998668},
       "diagnostics_timer": {"count": 0, "per_second": 0.000000},
+      "gesture_timer": {"count": 0, "per_second": 0.000000},
       "gps_data_timer": {"count": 0, "per_second": 0.000000},
       "gps_service_timer": {"count": 15, "per_second": 0.999334},
-      "icon_timer": {"count": 60, "per_second": 3.997335},
+      "icon_timer": {"count": 30, "per_second": 1.998668},
       "inactivity_timer": {"count": 15, "per_second": 0.999334},
-      "interval_page_refresh": {"count": 0, "per_second": 0.000000},
-      "intervalometer_timer": {"count": 13, "per_second": 0.866089},
+      "interval_page_refresh": {"count": 44, "per_second": 2.931379},
+      "intervalometer_timer": {"count": 12, "per_second": 0.799467},
       "nmea_timer": {"count": 0, "per_second": 0.000000}
     },
-    "invalidated_area_pixels": 0,
-    "invalidated_area_pixels_per_second": 0.000000,
-    "flushed_pixels": 0,
-    "flushed_pixels_per_second": 0.000000,
+    "invalidated_area_pixels": 574212,
+    "invalidated_area_pixels_per_second": 38255.296469,
+    "flushed_pixels": 192992,
+    "flushed_pixels_per_second": 12857.561626,
     "scheduler": {
       "ui_cycles": 3002,
       "timer_queue_idle_ms": 14000,
       "task_idle_ms": 15000,
-      "queue_receives": {},
-      "queue_empty_receives": {},
+      "queue_receives": {
+        "queue": 10
+      },
+      "queue_empty_receives": {
+        "queue": 3117
+      },
       "task_delay_count": {
         "ui": 3002
       },
@@ -94,31 +101,20 @@
         "acquire_count": 0,
         "release_count": 0,
         "unbalanced_release_count": 0,
-        "current_count": 1,
-        "total_hold_ms": 15000,
-        "held_at_end": true,
+        "current_count": 0,
+        "total_hold_ms": 0,
+        "held_at_end": false,
         "hold_histogram_ms": {
         "0-1": 0,
         "1-5": 0,
         "10-50": 0,
         "100-500": 0,
-        "1000+": 1,
+        "1000+": 0,
         "5-10": 0,
         "50-100": 0,
         "500-1000": 0
       },
-        "owners": {
-          "control": {"acquire_count": 0, "release_count": 0, "total_hold_ms": 15000, "hold_histogram_ms": {
-        "0-1": 0,
-        "1-5": 0,
-        "10-50": 0,
-        "100-500": 0,
-        "1000+": 1,
-        "5-10": 0,
-        "50-100": 0,
-        "500-1000": 0
-      }}
-        }
+        "owners": {}
       }
     },
     "light_sleep": {
@@ -152,6 +148,7 @@
     "gps_ms": {
       "off": 15000,
       "acquiring": 0,
+      "degraded": 0,
       "tracking": 0,
       "standby": 0
     }
@@ -159,14 +156,51 @@
   "energy": {
     "board": "m5stick-s3",
     "components_mA": {
-      "mcu": 40.173218,
-      "radio": 3.532312,
-      "display": 40.972685,
+      "mcu": 40.200000,
+      "radio": 3.534510,
+      "display": 41.000000,
       "gps": 0.000000,
       "pmic": 0.052470,
       "peripherals": 0.003500
     },
-    "estimated_mA": 84.734185
+    "estimated_mA": 84.790480,
+    "accounting_inputs": {
+      "duration_ms": 15010,
+      "mcu_ms": {
+        "light_sleep_in_80": 0,
+        "frequency_80": 15010,
+        "frequency_160": 0,
+        "frequency_240": 0
+      },
+      "display_ms": {
+        "on": 15010,
+        "dim": 0,
+        "off": 0
+      },
+      "radio_connected_ms": 15010,
+      "radio_event_count": 10,
+      "gps_ms": {
+        "acquiring": 0,
+        "degraded": 0,
+        "tracking": 0,
+        "standby": 0
+      },
+      "accounting_mode": "legacy-unaccounted",
+      "accounting_version": 0,
+      "calibration_status": "",
+      "accounting_fingerprint": "",
+      "poll_work_us": 0,
+      "timer_work_us": 0,
+      "timer_work_by_name_us": {},
+      "work_80_us": 0,
+      "work_160_us": 0,
+      "work_240_us": 0,
+      "eligible_light_sleep_us": 0,
+      "light_sleep_work_us": 0,
+      "adjusted_light_sleep_us": 0,
+      "pending_work_us": 0,
+      "accounting_valid": true
+    }
   },
-  "estimated_mA": 84.734185
+  "estimated_mA": 84.790480
 }

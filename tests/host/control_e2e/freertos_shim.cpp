@@ -13,6 +13,7 @@
 #include <condition_variable>
 #include <cstring>
 #include <deque>
+#include <memory>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -41,6 +42,23 @@ std::mutex g_QueuesMutex;
 std::vector<FurbleHostQueue *> g_Queues;
 
 struct StopTask {};
+
+// One notification counter per task, the FreeRTOS direct-to-task contract.
+struct FurbleHostTaskState {
+  std::mutex mutex;
+  std::condition_variable condition;
+  uint32_t count = 0;
+};
+std::mutex g_TaskStatesMutex;
+std::vector<std::unique_ptr<FurbleHostTaskState>> g_TaskStates;
+std::atomic<size_t> g_NotifyWaiters {0};
+thread_local FurbleHostTaskState *t_CurrentTask = nullptr;
+
+FurbleHostTaskState *newTaskState(void) {
+  const std::lock_guard<std::mutex> lock(g_TaskStatesMutex);
+  g_TaskStates.push_back(std::make_unique<FurbleHostTaskState>());
+  return g_TaskStates.back().get();
+}
 }  // namespace
 
 BaseType_t xTaskCreate(TaskFunction_t task,
@@ -60,7 +78,9 @@ BaseType_t xTaskCreate(TaskFunction_t task,
   }
   g_TaskCreateCount.fetch_add(1);
   g_LastTaskStackBytes.store(stack_size);
-  g_Tasks.emplace_back([task, parameter]() {
+  FurbleHostTaskState *state = newTaskState();
+  g_Tasks.emplace_back([task, parameter, state]() {
+    t_CurrentTask = state;
     try {
       task(parameter);
     } catch (const StopTask &) {
@@ -68,9 +88,52 @@ BaseType_t xTaskCreate(TaskFunction_t task,
     }
   });
   if (task_handle != nullptr) {
-    *task_handle = reinterpret_cast<TaskHandle_t>(static_cast<uintptr_t>(1));
+    *task_handle = state;
   }
   return pdPASS;
+}
+
+uint32_t ulTaskNotifyTake(BaseType_t clear_on_exit, TickType_t ticks_to_wait) {
+  // A thread that is not a shim task has no handle, so nothing can notify it;
+  // a thread-local counter keeps its timed waits well defined.
+  thread_local FurbleHostTaskState untracked;
+  FurbleHostTaskState *state = (t_CurrentTask != nullptr) ? t_CurrentTask : &untracked;
+  std::unique_lock<std::mutex> lock(state->mutex);
+  if ((state->count == 0) && (ticks_to_wait != 0)) {
+    const auto ready = [state]() { return g_StopTasks.load() || (state->count != 0); };
+    if (ticks_to_wait == portMAX_DELAY) {
+      g_NotifyWaiters.fetch_add(1);
+      state->condition.wait(lock, ready);
+      g_NotifyWaiters.fetch_sub(1);
+    } else {
+      state->condition.wait_for(lock, std::chrono::milliseconds(ticks_to_wait), ready);
+    }
+  }
+  if (g_StopTasks.load()) {
+    throw StopTask {};
+  }
+  const uint32_t value = state->count;
+  if (value != 0) {
+    state->count = (clear_on_exit != pdFALSE) ? 0 : (value - 1);
+  }
+  return value;
+}
+
+BaseType_t xTaskNotifyGive(TaskHandle_t task_handle) {
+  auto *state = static_cast<FurbleHostTaskState *>(task_handle);
+  if (state == nullptr) {
+    return pdFAIL;
+  }
+  {
+    const std::lock_guard<std::mutex> lock(state->mutex);
+    state->count++;
+  }
+  state->condition.notify_all();
+  return pdPASS;
+}
+
+size_t furbleHostNotifyWaiters(void) {
+  return g_NotifyWaiters.load();
 }
 
 void vTaskDelete(TaskHandle_t) {}
@@ -191,6 +254,14 @@ void furbleHostStopTasks(void) {
     }
   }
 
+  {
+    const std::lock_guard<std::mutex> lock(g_TaskStatesMutex);
+    for (auto &state : g_TaskStates) {
+      const std::lock_guard<std::mutex> stateLock(state->mutex);
+      state->condition.notify_all();
+    }
+  }
+
   std::vector<std::thread> tasks;
   {
     const std::lock_guard<std::mutex> lock(g_TasksMutex);
@@ -201,6 +272,9 @@ void furbleHostStopTasks(void) {
       task.join();
     }
   }
+  // Every task thread is joined, so no waiter can still hold a state.
+  const std::lock_guard<std::mutex> lock(g_TaskStatesMutex);
+  g_TaskStates.clear();
 }
 
 BaseType_t xQueueReset(QueueHandle_t queue) {

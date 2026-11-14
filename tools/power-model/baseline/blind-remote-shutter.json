@@ -6,87 +6,43 @@
   "model_digest": "sha256:8941a84bb8a7345df76150450e51035e81b26a0ad8a09cad55f985a72198aaa6",
   "model_valid": true,
   "board": "m5stick-s3",
-  "duration_ms": 30110,
+  "duration_ms": 30421,
   "activity": {
     "timer_fires": {
-      "battery_timer": {
-        "count": 6,
-        "per_second": 0.199269
-      },
-      "bulb_page_refresh": {
-        "count": 0,
-        "per_second": 0.0
-      },
-      "bulb_timer": {
-        "count": 0,
-        "per_second": 0.0
-      },
-      "companion_pairing_timer": {
-        "count": 0,
-        "per_second": 0.0
-      },
-      "connect_timer": {
-        "count": 61,
-        "per_second": 2.025905
-      },
-      "diagnostics_timer": {
-        "count": 0,
-        "per_second": 0.0
-      },
-      "gesture_timer": {
-        "count": 0,
-        "per_second": 0.0
-      },
-      "gps_data_timer": {
-        "count": 0,
-        "per_second": 0.0
-      },
-      "gps_service_timer": {
-        "count": 30,
-        "per_second": 0.996347
-      },
-      "icon_timer": {
-        "count": 0,
-        "per_second": 0.0
-      },
-      "inactivity_timer": {
-        "count": 30,
-        "per_second": 0.996347
-      },
-      "interval_page_refresh": {
-        "count": 0,
-        "per_second": 0.0
-      },
-      "intervalometer_timer": {
-        "count": 0,
-        "per_second": 0.0
-      },
-      "nmea_timer": {
-        "count": 0,
-        "per_second": 0.0
-      }
+      "battery_timer": {"count": 6, "per_second": 0.197232},
+      "bulb_page_refresh": {"count": 0, "per_second": 0.000000},
+      "bulb_timer": {"count": 0, "per_second": 0.000000},
+      "companion_pairing_timer": {"count": 0, "per_second": 0.000000},
+      "connect_timer": {"count": 61, "per_second": 2.005194},
+      "diagnostics_timer": {"count": 0, "per_second": 0.000000},
+      "gesture_timer": {"count": 0, "per_second": 0.000000},
+      "gps_data_timer": {"count": 0, "per_second": 0.000000},
+      "gps_service_timer": {"count": 30, "per_second": 0.986161},
+      "icon_timer": {"count": 0, "per_second": 0.000000},
+      "inactivity_timer": {"count": 30, "per_second": 0.986161},
+      "interval_page_refresh": {"count": 0, "per_second": 0.000000},
+      "intervalometer_timer": {"count": 0, "per_second": 0.000000},
+      "nmea_timer": {"count": 0, "per_second": 0.000000}
     },
-    "invalidated_area_pixels": 536038,
-    "invalidated_area_pixels_per_second": 17802.656925,
-    "flushed_pixels": 31301,
-    "flushed_pixels_per_second": 1039.554965,
+    "invalidated_area_pixels": 0,
+    "invalidated_area_pixels_per_second": 0.000000,
+    "flushed_pixels": 0,
+    "flushed_pixels_per_second": 0.000000,
     "scheduler": {
-      "ui_cycles": 6022,
-      "timer_queue_idle_ms": 30000,
+      "ui_cycles": 1896,
+      "timer_queue_idle_ms": 29000,
       "task_idle_ms": 30000,
       "queue_receives": {
         "queue": 20
       },
       "queue_empty_receives": {
-        "queue": 7224
+        "queue": 2121
       },
       "task_delay_count": {
-        "furble": 301,
-        "ui": 6022
+        "ui": 1896
       },
       "task_delay_ms": {
-        "furble": 30100,
-        "ui": 30110
+        "ui": 30421
       }
     }
   },
@@ -100,15 +56,15 @@
         "total_hold_ms": 0,
         "held_at_end": false,
         "hold_histogram_ms": {
-          "0-1": 0,
-          "1-5": 0,
-          "10-50": 0,
-          "100-500": 0,
-          "1000+": 0,
-          "5-10": 0,
-          "50-100": 0,
-          "500-1000": 0
-        },
+        "0-1": 0,
+        "1-5": 0,
+        "10-50": 0,
+        "100-500": 0,
+        "1000+": 0,
+        "5-10": 0,
+        "50-100": 0,
+        "500-1000": 0
+      },
         "owners": {}
       },
       "apb_freq_max": {
@@ -119,31 +75,26 @@
         "total_hold_ms": 0,
         "held_at_end": false,
         "hold_histogram_ms": {
-          "0-1": 0,
-          "1-5": 0,
-          "10-50": 0,
-          "100-500": 0,
-          "1000+": 0,
-          "5-10": 0,
-          "50-100": 0,
-          "500-1000": 0
-        },
+        "0-1": 0,
+        "1-5": 0,
+        "10-50": 0,
+        "100-500": 0,
+        "1000+": 0,
+        "5-10": 0,
+        "50-100": 0,
+        "500-1000": 0
+      },
         "owners": {
-          "display": {
-            "acquire_count": 0,
-            "release_count": 0,
-            "total_hold_ms": 0,
-            "hold_histogram_ms": {
-              "0-1": 0,
-              "1-5": 0,
-              "10-50": 0,
-              "100-500": 0,
-              "1000+": 0,
-              "5-10": 0,
-              "50-100": 0,
-              "500-1000": 0
-            }
-          }
+          "display": {"acquire_count": 0, "release_count": 0, "total_hold_ms": 0, "hold_histogram_ms": {
+        "0-1": 0,
+        "1-5": 0,
+        "10-50": 0,
+        "100-500": 0,
+        "1000+": 0,
+        "5-10": 0,
+        "50-100": 0,
+        "500-1000": 0
+      }}
         }
       },
       "no_light_sleep": {
@@ -154,25 +105,25 @@
         "total_hold_ms": 0,
         "held_at_end": false,
         "hold_histogram_ms": {
-          "0-1": 0,
-          "1-5": 0,
-          "10-50": 0,
-          "100-500": 0,
-          "1000+": 0,
-          "5-10": 0,
-          "50-100": 0,
-          "500-1000": 0
-        },
+        "0-1": 0,
+        "1-5": 0,
+        "10-50": 0,
+        "100-500": 0,
+        "1000+": 0,
+        "5-10": 0,
+        "50-100": 0,
+        "500-1000": 0
+      },
         "owners": {}
       }
     },
     "light_sleep": {
       "zero_lock_ms": 30000,
-      "timer_queue_idle_ms": 30000,
+      "timer_queue_idle_ms": 29000,
       "task_idle_ms": 30000,
       "eligible_ms": 30000,
       "residency_ms": 30000,
-      "residency_percent": 99.634673
+      "residency_percent": 98.616088
     },
     "frequency_residency_ms": {
       "80": 30000,
@@ -205,28 +156,28 @@
   "energy": {
     "board": "m5stick-s3",
     "components_mA": {
-      "mcu": 0.843846,
-      "radio": 3.533809,
-      "display": 0.015,
-      "gps": 0.0,
-      "pmic": 0.05247,
-      "peripherals": 0.0035
+      "mcu": 0.863944,
+      "radio": 3.531419,
+      "display": 0.015000,
+      "gps": 0.000000,
+      "pmic": 0.052470,
+      "peripherals": 0.003500
     },
-    "estimated_mA": 4.448625,
+    "estimated_mA": 4.466333,
     "accounting_inputs": {
-      "duration_ms": 30110,
+      "duration_ms": 30421,
       "mcu_ms": {
-        "light_sleep_in_80": 29655,
-        "frequency_80": 30110,
+        "light_sleep_in_80": 29946,
+        "frequency_80": 30421,
         "frequency_160": 0,
         "frequency_240": 0
       },
       "display_ms": {
         "on": 0,
         "dim": 0,
-        "off": 30110
+        "off": 30421
       },
-      "radio_connected_ms": 30110,
+      "radio_connected_ms": 30421,
       "radio_event_count": 20,
       "gps_ms": {
         "acquiring": 0,
@@ -251,5 +202,5 @@
       "accounting_valid": true
     }
   },
-  "estimated_mA": 4.448625
+  "estimated_mA": 4.466333
 }
