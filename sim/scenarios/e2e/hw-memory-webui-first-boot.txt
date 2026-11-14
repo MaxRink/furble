@@ -5,12 +5,19 @@
 # device that has never generated its TLS identity. WebUI::initEarly() creates
 # the identity before WiFi, the companion and the display take their share,
 # so no runtime identity task runs and nothing is charged after the radios.
-# The seeded pair is the measured post-#394 StickS3 heap with WebUI off,
-# WiFi connected, companion enabled and the display active. It is not the
-# derived board_heap.json bound, which omits the WiFi and NimBLE driver state.
+# The seed is the current inferred StickS3 pair with WebUI off, WiFi
+# connected, companion enabled and the display active: the 8 KiB main-stack
+# measurement minus the 4 KiB the 12 KiB main stack took back (plan 313). It
+# is lower than the measured post-#394 pair (27,351 / 25,588), so it is the
+# harder case. It is not the derived board_heap.json bound, which omits the
+# WiFi and NimBLE driver state.
+#
+# The model stores the identity and keeps the soak flat by construction:
+# webuiMemoryStart() marks a seeded identity stored, and nothing in the model
+# allocates per request. Those two assertions check the wiring, not mbedTLS.
 seed hw_profile sticks3
-seed heap_internal_free 27351
-seed heap_internal_largest 25588
+seed heap_internal_free 25911
+seed heap_internal_largest 24148
 seed web_ui true
 seed webui_password true
 seed webui_identity_absent true
@@ -26,8 +33,8 @@ assert webui.supervisor created
 assert webui.server running
 assert webui.gate none
 assert webui.fail_closed no
-assert heap.free 15575
-assert heap.largest 13812
+assert heap.free 14135
+assert heap.largest 12372
 assert heap.pressure normal
 assert heap.alloc_failures 0
 
@@ -35,38 +42,51 @@ assert heap.alloc_failures 0
 wait 60000
 assert webui.server running
 assert_max webui.attempts 1
-assert heap.free 15575
+assert heap.free 14135
 assert heap.alloc_failures 0
 assert platform.watchdog armed
 
-# A BLE camera connect is the core path and is never refused. Its 4,464-byte
-# target task and the connected-page icons take the heap below the AMBER
-# floor, so the governor pauses the server instead of letting a later
-# allocation abort.
+# A BLE camera connect is the core path and is never refused. Its 4,480-byte
+# target task would take the pool below the AMBER floor, so the connect admits
+# it first: the governor enters AMBER at once and the 8 KiB server is shed
+# before the target task, the NimBLE client and the connected page allocate.
+# The deepest point is the connected page's first draw, whose LVGL layers and
+# style blocks are transient. Before admission that point was 5,599 free
+# with a 3,836-byte largest block on the post-#394 seed, too small for another
+# target task, and 1,440 bytes lower on this seed. With admission it is 7,475
+# free with a 5,712-byte largest block. The floors are the RED largest-block
+# threshold and one more target task.
 home
 wait 300
 action connect
+assert heap.pressure amber
 assert-eventually-virtual 60000 ui.connected yes
-assert-eventually-virtual 10000 heap.pressure amber
 assert webui.server pending
 assert heap.alloc_failures 0
 print heap.free
 print heap.largest
+print heap.minimum
+print mem.high_water_largest
+assert_min heap.minimum 6144
+assert_min mem.high_water_largest 4480
 
-# Disconnecting returns the target task, but the connected-page icons stay in
-# the LVGL image cache. The pool stays below the 20,480 AMBER exit floor, the
-# cost of re-admitting the 8 KiB server, so the governor keeps HTTPS paused
-# rather than restart it into AMBER again. Only freed memory or a reboot
-# brings it back. This is the prediction hardware step 4 in plan 304 checks.
+# The connected-page icons are decoded into PSRAM, so the disconnect returns
+# the pool above the 20,480 AMBER exit with the server paused (20,887). After
+# five clear readings the governor returns to NORMAL and HTTPS starts again
+# through its own gate. The pool ends 1,440 bytes under the boot figure. They
+# remain with every image buffer in PSRAM, so they are not the image cache.
+# The model does not attribute them. The margin over the exit is 407 bytes.
 action disconnect
 assert-eventually-virtual 10000 control.state idle
 wait 30000
 print heap.free
 print heap.largest
-assert heap.pressure amber
-assert webui.server pending
-assert_max webui.attempts 1
+assert heap.pressure normal
+assert webui.server running
+assert_max webui.attempts 2
 assert heap.alloc_failures 0
+assert heap.free 12695
+assert_min heap.minimum 6144
 assert companion.enabled yes
 assert ui.page main
 assert platform.watchdog armed
