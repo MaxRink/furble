@@ -42,8 +42,8 @@
       "entry": "^void Furble::Control::Target::task\\(\\)$",
       "stack_bytes": 4096,
       "source": [
-        "src/FurbleControl.cpp",
-        "camera->getName\\(\\)\\.c_str\\(\\), (\\d+), target\\.get\\(\\)"
+        "include/FurbleTaskMemory.h",
+        "CAMERA_TARGET_STACK_BYTES = (\\d+);"
       ]
     },
     {

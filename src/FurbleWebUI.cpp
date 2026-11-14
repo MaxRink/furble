@@ -221,7 +221,20 @@ void WebUI::initEarly(void) {
 }
 
 void WebUI::init(void) {
+  MemoryPressure::setEscalateHook(&WebUI::wakeForPressure);
   getInstance().reloadSetting();
+}
+
+void WebUI::wakeForPressure(void) {
+  WebUI &self = getInstance();
+  TaskHandle_t task = nullptr;
+  {
+    const std::lock_guard<std::mutex> lock(self.m_Mutex);
+    task = self.m_Task;
+  }
+  if (task != nullptr) {
+    xTaskNotifyGive(task);
+  }
 }
 
 void WebUI::reloadSetting(void) {

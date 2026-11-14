@@ -185,9 +185,13 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   two on that one helper. Every caller of `Control::addActive()` first calls
   `MemoryPressure::admit(CONNECT_TARGET_BYTES)`: when the target task would
   take the heap into AMBER or RED, that level is entered at once instead of
-  after the debounce, so the WebUI server is shed before the connect lands.
-  `tick()` and `admit()` share one mutex, never held across a delay or another
-  lock. Policy and thresholds live in the header and are
+  after the debounce. On a rise `admit()` calls the escalate hook outside the
+  governor mutex; `WebUI::init()` registers one that wakes the supervisor, so
+  the server stops shortly after the target task is created. Nothing orders
+  that stop against the NimBLE client or the connected page's first draw.
+  MQTT keeps reading the level
+  on its own loop. `tick()` and `admit()` share one mutex, never held across a
+  delay or another lock. Policy and thresholds live in the header and are
   host tested in `tests/host/memory_pressure_test.cpp`.
 - `FurbleWebUI`: HTTPS-only browser and REST surface. Keep it fail closed on
   password or TLS identity errors. Camera actions stay on `UI::sendRequest`,

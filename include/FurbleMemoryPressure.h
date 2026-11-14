@@ -102,11 +102,11 @@ inline constexpr level_t classify(size_t freeBytes, size_t largestBlock) {
 }
 
 /**
- * Internal RAM one camera connect takes at once: the 4,096-byte
- * `Control::Target` stack that `Control::addActive()` creates, plus the TCB
- * and block overhead.
+ * Internal RAM one camera connect takes at once: the `Control::Target` stack
+ * that `Control::addActive()` creates, plus the TCB and block overhead.
  */
-inline constexpr size_t CONNECT_TARGET_BYTES = 4096 + TaskMemory::TASK_OVERHEAD_BYTES;
+inline constexpr size_t CONNECT_TARGET_BYTES =
+    TaskMemory::CAMERA_TARGET_STACK_BYTES + TaskMemory::TASK_OVERHEAD_BYTES;
 
 /**
  * The level a reading reaches after a core-path allocation of bytes. The
@@ -188,13 +188,26 @@ class Governor {
 void tick(void);
 
 /**
- * Shed before a core-path allocation of bytes. When the allocation would take
- * the heap into a deeper level, that level is entered now, so the services it
- * pauses free their RAM before the allocation lands instead of three readings
- * after it. A connect calls this with CONNECT_TARGET_BYTES before each
- * `Control::addActive()`. Safe from any task.
+ * Enter a deeper level before a core-path allocation of bytes. When the
+ * allocation would take the heap into AMBER or RED, that level is entered now
+ * instead of three readings later, and the escalate hook wakes the services
+ * that act on it. A connect calls this with CONNECT_TARGET_BYTES before each
+ * `Control::addActive()`. The target task is created right after it returns,
+ * so a woken WebUI server stops shortly after the target task exists. Nothing
+ * orders that stop against the NimBLE client or the connected page's first
+ * draw. Safe from any task.
  */
 void admit(size_t bytes);
+
+typedef void (*escalate_hook_t)(void);
+
+/**
+ * Called by admit() after it raised the level, outside the governor lock.
+ * The WebUI registers a wake for its supervisor, which otherwise sees the new
+ * level only on its next 500 ms poll. MQTT reads the level on its own loop.
+ * One hook; a later call replaces it.
+ */
+void setEscalateHook(escalate_hook_t hook);
 
 /**
  * Internal bytes beyond its start floor that the MQTT client's next start

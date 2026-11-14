@@ -14,6 +14,7 @@
 #include "FurblePlatform.h"
 #include "FurblePower.h"
 #include "FurbleSettings.h"
+#include "FurbleTaskMemory.h"
 #include "FurbleTestSync.h"
 #include "FurbleTimezone.h"
 #include "protocol/UtcTime.h"
@@ -1250,7 +1251,7 @@ void Control::addActive(std::shared_ptr<Camera> camera) {
         auto *target = static_cast<Furble::Control::Target *>(param);
         target->task();
       },
-      camera->getName().c_str(), 4096, target.get(), 3, NULL);
+      camera->getName().c_str(), TaskMemory::CAMERA_TARGET_STACK_BYTES, target.get(), 3, NULL);
   if (ret != pdPASS) {
     ESP_LOGE(LOG_TAG, "Failed to create task for '%s'.", camera->getName().c_str());
   } else {
