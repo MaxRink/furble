@@ -146,6 +146,10 @@ void tick(void) {
   HeadlessState::pressureTicks++;
 }
 
+// The headless service loop has no heap to shed from; the connect admission
+// policy is covered by memory_pressure_test.
+void admit(size_t) {}
+
 level_t current(void) {
   return NORMAL;
 }

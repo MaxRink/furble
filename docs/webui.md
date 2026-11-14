@@ -89,6 +89,14 @@ console prints `memory_pressure`, and the log reports each change:
 memory pressure normal -> amber: free=11991 largest=10228
 ```
 
+A camera connect does not wait for three readings. Before each camera's 4 KiB
+control task starts, the governor checks whether that task would take the heap
+into `amber` or `red`, and enters the level at once if so. The WebUI server is
+then shed before the connect allocates, and returns through the normal exit
+after the camera disconnects. A board with headroom sheds nothing. On boards
+with PSRAM the decoded LVGL icons live in PSRAM, so the image cache no longer
+holds internal RAM after the disconnect.
+
 The thresholds are derived from the firmware's own sizes and are not yet
 checked against a hardware reading of a busy session.
 
