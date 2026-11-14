@@ -238,7 +238,10 @@ settings-touching rebase.
   board facts from it instead of switching on `M5.getBoard()`; UI geometry
   stays in the UI and compile-time facts stay in `FurbleBoardCaps.h`. A new
   row needs a matching case in `tests/host/board_profile_test.cpp`.
-- `FurblePowerBackend.h` is the contract a board's power hardware meets.
-  `Platform` is its final implementation for the M5 boards and the simulator,
-  selected at link time; a new board family supplies its own implementation
-  file on the drivers in `lib/hal`. See plans/322-hardware-abstraction.md.
+- `FurblePowerBackend.h` is the contract a board's power hardware meets: the
+  shared battery and rail types plus a documented member list. It is a
+  link-time contract with no virtual functions. `Platform` meets it for the M5
+  boards and the simulator; a new board family supplies its own `Platform`
+  file on the drivers in `lib/hal`. Never make it virtual: a vtable defeats
+  `--gc-sections` and pushed the headless Waveshare image over its IRAM budget.
+  See plans/322-hardware-abstraction.md.
