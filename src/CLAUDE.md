@@ -96,6 +96,34 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   no-receiver state, tier 2 ephemeris poll and replay, the GSV/GSA satellite
   page parser, the `GPS_PLATFORM` dyModel write and a MON-HW poll. The
   parseable logic lives in `lib/furble/protocol/GpsCasic`.
+- `FurbleGPS` identifies the receiver once per session before configuring it:
+  a UBX-MON-VER poll, two attempts a second apart (`Ubx::Detect`). A u-blox
+  receiver gets the UBX backend in `src/FurbleGPSUbx.cpp`; anything else keeps
+  the NMEA backend, which is the CASIC/$PCAS path unchanged. Vendor-specific
+  actions (configure, restart, standby, satellite capture, MON-HW, ephemeris)
+  switch on `GPS::backend_t`; add a vendor as one more value and one more
+  configure function. UBX configuration goes through the same one-in-flight
+  queue with a one second ACK timeout and writes RAM and BBR, because software
+  standby clears RAM. The settle wait after a signal change is a
+  `Ubx::Settle` gate, never a raw tick compared with 0: that form stalled every
+  command in the second half of the tick range. A fresh NAV-PVT overlays the
+  parser snapshot under `m_GPSMutex` unless the NMEA fix is more than two
+  seconds newer; when it is stale the NMEA parser is the fallback. A valid but
+  not fully resolved PVT time keeps the fix, and `status_t::time_resolved`
+  gates the TimeKeeper sync. The ephemeris cache and AID-INI are CASIC only and
+  never reach a UBX receiver. The stream split is the pure
+  `GpsDemux::split()`; keep demultiplexing there, not in the driver.
+- The duty cycle waits until the receiver is identified and the configuration
+  queue is idle. Standby sends `$PCAS12` only on the NMEA backend and
+  RXM-PMREQ (force flag) on UBX. Rail cycling on UBX without a backup supply
+  first sends CFG-RST GNSS stop and UPD-SOS create and holds the cut in
+  `m_RailOffPending` for up to one second; `disable()` does the same inline,
+  so it can block for up to one second with the GPS task parked. Neither runs
+  when `Platform::canCutGpsRail()` is false (Core, Waveshare, headless) or
+  `hasGpsBackupSupply()` is true. A refused or unanswered save sets a latch
+  (`m_UbxSosBackup` 2) that lasts until the next GPS enable. If the rail stays
+  on after a cut that followed a GNSS stop, `railOffOrRestart()` sends GNSS
+  start.
 - `CompanionService::m_Mutex` serializes the status and camera notification
   caches and all
   trigger rate and held-command state, including timer and disconnect release.

@@ -12,6 +12,7 @@
 
 #include "FurbleSettings.h"
 #include "clock.h"
+#include "ubx_m10.h"
 
 namespace {
 
@@ -148,6 +149,21 @@ uint32_t ephReplayFrames = 0;
 uint32_t monHwPolls = 0;
 bool monHwShort = false;
 
+// Which receiver is on the port. "casic" is the historic AT6668 model and the
+// default, so every scenario written before the M10 model is unchanged. "m10"
+// and "m10-mia" are the virtual u-blox M10 (MAX-M10S, MIA-M10Q), and "nmea" is
+// a receiver that outputs NMEA and answers nothing binary at all.
+std::string receiverModel = "casic";
+Furble::Sim::VirtualM10 m10;
+Furble::Sim::VirtualM10::Options m10Options;
+bool railOn = true;
+bool railFixed = false;
+bool m10Silent = false;
+
+bool isM10Locked(void) {
+  return receiverModel == "m10" || receiverModel == "m10-mia";
+}
+
 /** Rebuild the advancing fix burst at base 12:35:19 plus fixSecond. */
 std::string modernFixStream(void);
 
@@ -232,6 +248,9 @@ std::vector<uint8_t> satelliteBytes(void) {
 }
 
 uint32_t gpsRatePeriodMillis(void) {
+  if (isM10Locked()) {
+    return m10.periodMs();
+  }
   constexpr uint32_t periods[] = {1000, 1000, 500, 200, 100};
   const uint8_t rate = Furble::Settings::load<Furble::Settings::GPS_RATE>();
   return rate < (sizeof(periods) / sizeof(periods[0])) ? periods[rate] : periods[0];
@@ -341,6 +360,28 @@ std::string modernFixStream(void) {
 }
 
 /**
+ * One M10 epoch: the NMEA burst it prints, then its UBX output. Before the
+ * first fix the NMEA carries no solution, as a real receiver's does.
+ */
+std::string m10Burst(void) {
+  const uint32_t now = Furble::Sim::clockMillis();
+  const uint32_t secondOfDay = (12 * 3600) + (35 * 60) + 19 + fixSecond;
+  std::string text;
+  if (m10.fixed(now)) {
+    text = modernFixStream();
+  } else {
+    char stamp[16];
+    std::snprintf(stamp, sizeof(stamp), "%02u%02u%02u.00", (secondOfDay / 3600) % 24,
+                  (secondOfDay / 60) % 60, secondOfDay % 60);
+    text = nmea(std::string("GNRMC,") + stamp + ",V,,,,,,,,,,N")
+           + nmea(std::string("GNGGA,") + stamp + ",,,,,0,00,99.99,,,,,,");
+  }
+  const auto binary = m10.epoch(now, 2026, 9, 6, secondOfDay);
+  text.append(binary.begin(), binary.end());
+  return text;
+}
+
+/**
  * Answer a CFG-MSG poll at rate 0xFFFF with the message it asked for.
  *
  * The firmware polls MON-HW for the interference snapshot and MSG-GPSEPH,
@@ -405,6 +446,26 @@ void queueGpsEvent(QueueHandle_t queue) {
       gpsNextEventMillis = UINT32_MAX;
       return;
     }
+    if (isM10Locked() && !m10.outputting(Furble::Sim::clockMillis())) {
+      // Standby, a stopped GNSS or no supply: the receiver prints nothing.
+      // Look again shortly, the way a host sees the line come back.
+      gpsQueue = queue;
+      gpsOffset = gpsStream.size();
+      gpsEventQueued = false;
+      gpsNextEventMillis = Furble::Sim::clockMillis() + 100;
+      m10Silent = true;
+      return;
+    }
+    if (isM10Locked() && m10Silent) {
+      // A receiver that has just woken or powered up prints its first epoch
+      // one measurement period later, not the moment it starts.
+      m10Silent = false;
+      gpsQueue = queue;
+      gpsOffset = gpsStream.size();
+      gpsEventQueued = false;
+      gpsNextEventMillis = Furble::Sim::clockMillis() + m10.periodMs();
+      return;
+    }
     if (fixDateAdvances) {
       fixSecond++;
       if (fixColdBursts > 0) {
@@ -415,6 +476,9 @@ void queueGpsEvent(QueueHandle_t queue) {
         fixWalkMonth++;
       }
       gpsStream = modernFixStream();
+    }
+    if (isM10Locked()) {
+      gpsStream = m10Burst();
     }
     if (!receiverAnswersLocked()) {
       gpsQueue = queue;
@@ -561,6 +625,16 @@ int uart_write_bytes(uart_port_t, const void *data, size_t length) {
     // nothing on the port, or the driver is still probing another rate
     return static_cast<int>(length);
   }
+  if (isM10Locked()) {
+    // A u-blox receiver: UBX frames reach the virtual M10, and CASIC frames
+    // and $PCAS sentences mean nothing to it.
+    queueRxLocked(m10.receive(bytes, length, Furble::Sim::clockMillis()));
+    return static_cast<int>(length);
+  }
+  if (receiverModel == "nmea") {
+    // An NMEA-only receiver answers no binary protocol at all.
+    return static_cast<int>(length);
+  }
   if (command.find("PCAS03,1,0,1,1,1,0,0,0") != std::string::npos) {
     queueRxLocked(satelliteBytes());
   }
@@ -703,6 +777,117 @@ void furble_sim_uart_set_fix_date(const char *name) {
   gpsEventQueued = false;
   fixChunkNext = Furble::Sim::clockMillis();
   gpsNextEventMillis = Furble::Sim::clockMillis();
+}
+
+void furble_sim_uart_set_model(const char *model,
+                               bool vbckp,
+                               bool flash,
+                               bool hot,
+                               uint32_t unknownKey,
+                               bool unresolved) {
+  std::lock_guard<std::mutex> lock(gpsMutex);
+  receiverModel = (model == nullptr) ? "casic" : model;
+  if (isM10Locked()) {
+    m10Options.vbckp = vbckp;
+    m10Options.flash = flash;
+    m10Options.hot = hot;
+    m10Options.unknownKey = unknownKey;
+    m10Options.unresolved = unresolved;
+    m10Options.module = (receiverModel == "m10-mia") ? "MIA-M10Q" : "MAX-M10S";
+    m10.reset(m10Options, Furble::Sim::clockMillis());
+    if (!railOn) {
+      m10.setPower(false, Furble::Sim::clockMillis());
+    }
+    // The M10 clock ticks on its own, like the "modern" fixture.
+    fixDateAdvances = true;
+    gpsStream = m10Burst();
+    gpsOffset = gpsStream.size();
+  }
+}
+
+bool furble_sim_uart_gps_backup(void) {
+  std::lock_guard<std::mutex> lock(gpsMutex);
+  return isM10Locked() && m10Options.vbckp;
+}
+
+bool furble_sim_uart_rail_fixed(void) {
+  std::lock_guard<std::mutex> lock(gpsMutex);
+  return railFixed;
+}
+
+void furble_sim_uart_set_rail_fixed(bool fixed) {
+  std::lock_guard<std::mutex> lock(gpsMutex);
+  railFixed = fixed;
+}
+
+bool furble_sim_uart_rail_on(void) {
+  std::lock_guard<std::mutex> lock(gpsMutex);
+  return railOn;
+}
+
+void furble_sim_uart_set_rail(bool on) {
+  std::lock_guard<std::mutex> lock(gpsMutex);
+  // A rail the board cannot switch stays on whatever the PMIC was asked.
+  on = on || railFixed;
+  railOn = on;
+  if (isM10Locked()) {
+    m10.setPower(on, Furble::Sim::clockMillis());
+  }
+}
+
+std::string furble_sim_m10_query(const std::string &key) {
+  std::lock_guard<std::mutex> lock(gpsMutex);
+  const uint32_t now = Furble::Sim::clockMillis();
+  if (key == "model") {
+    return receiverModel;
+  }
+  if (!isM10Locked()) {
+    return "";
+  }
+  m10.tick(now);
+  if (key == "state") {
+    return Furble::Sim::VirtualM10::stateName(m10.state());
+  }
+  if (key == "start") {
+    return m10.startName();
+  }
+  if (key == "fixed") {
+    return m10.fixed(now) ? "1" : "0";
+  }
+  if (key == "avg_ua") {
+    return std::to_string(m10.averageMicroamps(now));
+  }
+  if (key == "period_ms") {
+    return std::to_string(m10.periodMs());
+  }
+  const std::pair<const char *, uint32_t> counters[] = {
+      {"valsets",      m10.valsets    },
+      {"naks",         m10.naks       },
+      {"valgets",      m10.valgets    },
+      {"pmreqs",       m10.pmreqs     },
+      {"sos_creates",  m10.sosCreates },
+      {"sos_polls",    m10.sosPolls   },
+      {"monver_polls", m10.monVerPolls},
+      {"resets",       m10.resets     },
+      {"cold_starts",  m10.coldStarts },
+      {"warm_starts",  m10.warmStarts },
+      {"hot_starts",   m10.hotStarts  },
+  };
+  for (const auto &counter : counters) {
+    if (key == counter.first) {
+      return std::to_string(counter.second);
+    }
+  }
+  // ram.<hex key> and bbr.<hex key> read the configuration database.
+  const bool ram = key.rfind("ram.", 0) == 0;
+  if (ram || (key.rfind("bbr.", 0) == 0)) {
+    const uint32_t id = static_cast<uint32_t>(std::strtoul(key.c_str() + 4, nullptr, 16));
+    if (!ram && !m10.hasBbr(id)) {
+      return "unset";
+    }
+    return std::to_string(m10.value(id));
+  }
+  return "";
 }
 
 void furble_sim_uart_set_receiver(uint32_t baud, bool present) {

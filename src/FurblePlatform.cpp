@@ -410,6 +410,23 @@ void Platform::dumpPMLocks(void) {
   }
 }
 
+bool Platform::canCutGpsRail(void) {
+#if defined(FURBLE_M5STICKC) || defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3) \
+    || (defined(FURBLE_M5COREX) && !defined(FURBLE_M5STACK_CORE))
+  return true;
+#else
+  return false;
+#endif
+}
+
+bool Platform::hasGpsBackupSupply(void) {
+#if defined(FURBLE_GPS_BACKUP_SUPPLY)
+  return true;
+#else
+  return false;
+#endif
+}
+
 bool Platform::hasTicklessIdle(void) {
 #if defined(CONFIG_FREERTOS_USE_TICKLESS_IDLE)
   return true;

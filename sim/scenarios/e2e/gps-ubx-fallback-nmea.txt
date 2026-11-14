@@ -1,0 +1,14 @@
+# A receiver that outputs NMEA and answers no binary protocol. Detection polls
+# MON-VER twice, one second apart, then keeps the NMEA backend: the path furble
+# always had. The fix comes from the NMEA parser and carries no accuracy.
+seed gps true
+seed gps_model nmea
+wait 5000
+assert gps.backend nmea
+assert uart.ubx_polls 2
+assert m10.model nmea
+assert gps.source uart
+assert gps.from_pvt 0
+assert gps.hacc_mm none
+assert gps.ubx.module none
+exit

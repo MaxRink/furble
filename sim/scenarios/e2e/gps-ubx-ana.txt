@@ -1,0 +1,13 @@
+# AssistNow Autonomous is opt-in. With the setting on, CFG-ANA-USE_ANA 1
+# reaches RAM and BBR and the receiver accepts it.
+seed gps true
+seed gps_model m10
+seed gps_m10_hot true
+seed gps_ana true
+wait 8000
+assert-eventually 3000 gps.ubx.verified 1
+assert gps.ubx.ana 1
+assert m10.ram.10230001 1
+assert m10.bbr.10230001 1
+assert m10.naks 0
+exit

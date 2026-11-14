@@ -64,6 +64,9 @@ struct GPSState {
   Furble::GPS::monhw_report_t monhw = {};
   size_t monHwPolls = 0;
   size_t monhwDelayPolls = 0;
+  Furble::GPS::backend_t backend = Furble::GPS::backend_t::UNKNOWN;
+  Furble::GPS::ubx_status_t ubx = {};
+  size_t ubxSatPolls = 0;
   std::vector<Furble::GPS::config_status_t> config;
   bool binaryResult = true;
   bool rawResult = true;

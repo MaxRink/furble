@@ -1,0 +1,37 @@
+# A virtual u-blox MAX-M10S on the port. The driver polls UBX-MON-VER, the
+# receiver answers, and the UBX backend takes over: one RAM+BBR VALSET turns
+# NAV-PVT on, the closing VALGET reads it back, and the UPD-SOS poll reports
+# no backup. The fix then comes from NAV-PVT with its own accuracy estimate,
+# while NMEA keeps flowing as the fallback. Plan 321.
+seed gps true
+seed gps_model m10
+seed gps_m10_hot true
+wait 6000
+assert gps.backend ubx
+assert gps.ubx.module MAX-M10S
+assert gps.ubx.firmware SPG_5.10
+assert m10.monver_polls 1
+assert uart.ubx_polls 1
+assert-eventually 3000 gps.config.0.state ACKED
+assert-eventually 3000 gps.config.1.state ACKED
+assert gps.ubx.verified 1
+assert m10.ram.20910007 1
+assert m10.bbr.20910007 1
+assert gps.ubx.sos_restore 3
+assert gps.ubx.naks 0
+assert-eventually 3000 gps.source uart
+assert gps.from_pvt 1
+assert gps.ubx.fix_type 3
+assert gps.hacc_mm 1500
+assert gps.satellites 12
+
+# Restarts go out as CFG-RST, which the receiver never acknowledges.
+gps-restart warm
+wait 200
+assert m10.resets 1
+assert m10.start warm
+gps-restart hot
+wait 200
+assert m10.resets 2
+assert m10.start hot
+exit

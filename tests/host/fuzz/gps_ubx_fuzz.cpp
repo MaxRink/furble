@@ -1,16 +1,19 @@
-// Seeded UBX parser fuzzer.
+// Seeded UBX parser and receiver-stream demultiplexer fuzzer.
 //
 // Each iteration builds a receiver byte stream from valid frames of every
-// message furble decodes, NMEA text, CASIC frames, random noise and mutations
+// message furble decodes, CASIC frames, NMEA text, random noise and mutations
 // of all of those (bit flips, truncation, length and checksum corruption,
-// spliced halves), then feeds it through Ubx::Stream byte by byte and hands
-// every frame to every decoder. ASan and UBSan catch an out-of-bounds read.
-// The invariants checked here catch the logic faults:
-//   1. every frame the stream yields passes scan() and its checksum,
-//   2. no yielded payload exceeds MAX_PAYLOAD,
-//   3. every unmutated frame placed in a stream with no stray sync bytes
-//      before it is yielded intact, in order,
-//   4. the encoders round trip through the decoders.
+// spliced halves). ASan and UBSan catch an out-of-bounds read. The invariants
+// checked here catch the logic faults:
+//   1. Ubx::Stream yields exactly what a reference splitter built on scan()
+//      yields over the whole buffer, so byte-at-a-time delivery is exact;
+//   2. every frame placed intact is yielded, unless a checksum-valid frame
+//      nobody placed was yielded first and may have swallowed it;
+//   3. every yielded frame passes scan() and decodes without fault, and the
+//      encoders round trip through the decoders;
+//   4. GpsDemux::split covers the stream contiguously, its UBX and CASIC
+//      pieces are valid frames, and any chunking of the stream gives the same
+//      frames and the same NMEA text as one-shot delivery.
 //
 // Usage: gps_ubx_fuzz --seed N --iterations N
 
@@ -23,6 +26,8 @@
 #include <string>
 #include <vector>
 
+#include "GpsCasic.h"
+#include "GpsDemux.h"
 #include "GpsUbx.h"
 
 using namespace Furble;
@@ -209,6 +214,77 @@ bool decodeAll(const Ubx::Stream &stream) {
   return true;
 }
 
+/** Reference splitter: scan() at every offset over the whole buffer. */
+std::vector<std::vector<uint8_t>> referenceSplit(const std::vector<uint8_t> &bytes) {
+  std::vector<std::vector<uint8_t>> out;
+  size_t at = 0;
+  while (at < bytes.size()) {
+    const Ubx::ScanResult result = Ubx::scan(bytes.data() + at, bytes.size() - at);
+    if (result.status == Ubx::Scan::FRAME) {
+      out.emplace_back(bytes.begin() + at, bytes.begin() + at + result.length);
+      at += result.length;
+    } else if (result.status == Ubx::Scan::NEED_MORE) {
+      break;
+    } else {
+      at++;
+    }
+  }
+  return out;
+}
+
+/** What a demux run produced: the frames in order and the NMEA text. */
+struct DemuxOut {
+  std::vector<std::pair<int, std::vector<uint8_t>>> frames;
+  std::vector<uint8_t> nmea;
+  size_t pending = 0;
+  bool ok = true;
+};
+
+/** Feed the stream in the given chunk sizes, as the firmware read loop does. */
+DemuxOut demux(const std::vector<uint8_t> &bytes, const std::vector<size_t> &chunks) {
+  DemuxOut out;
+  std::vector<uint8_t> buffer;
+  std::vector<GpsDemux::Piece> pieces;
+  size_t at = 0;
+  size_t chunk = 0;
+  while (at < bytes.size()) {
+    const size_t take = std::min(bytes.size() - at, chunks[chunk++ % chunks.size()]);
+    buffer.insert(buffer.end(), bytes.begin() + at, bytes.begin() + at + take);
+    at += take;
+    pieces.clear();
+    const size_t used = GpsDemux::split(buffer.data(), buffer.size(), pieces);
+    size_t next = 0;
+    for (const auto &piece : pieces) {
+      out.ok = out.ok && (piece.offset == next) && (piece.length > 0);
+      next = piece.offset + piece.length;
+      const uint8_t *p = buffer.data() + piece.offset;
+      if (piece.kind == GpsDemux::Kind::NMEA) {
+        out.nmea.insert(out.nmea.end(), p, p + piece.length);
+      } else if (piece.kind == GpsDemux::Kind::UBX) {
+        out.ok = out.ok && (Ubx::scan(p, piece.length).status == Ubx::Scan::FRAME)
+                 && (Ubx::scan(p, piece.length).length == piece.length);
+        out.frames.emplace_back(1, std::vector<uint8_t>(p, p + piece.length));
+      } else if (piece.kind == GpsDemux::Kind::CASIC) {
+        out.ok = out.ok && !Casic::splitFrames(p, piece.length).empty();
+        out.frames.emplace_back(2, std::vector<uint8_t>(p, p + piece.length));
+      } else {
+        out.ok = out.ok && (piece.length == 1);
+      }
+    }
+    out.ok = out.ok && (next == used) && (used <= buffer.size());
+    buffer.erase(buffer.begin(), buffer.begin() + used);
+    out.ok = out.ok && (buffer.size() <= GpsDemux::MAX_PENDING);
+  }
+  out.pending = buffer.size();
+  return out;
+}
+
+/** A valid CASIC frame, payload a multiple of four bytes. */
+std::vector<uint8_t> casicFrame(std::mt19937 &rng) {
+  return Casic::frame(static_cast<uint8_t>(rng()), static_cast<uint8_t>(rng()),
+                      randomBytes(rng, 4 * (rng() % 12)));
+}
+
 }  // namespace
 
 int main(int argc, char **argv) {
@@ -226,45 +302,79 @@ int main(int argc, char **argv) {
   uint64_t frames = 0;
   for (uint32_t iteration = 0; iteration < iterations; iteration++) {
     std::vector<uint8_t> bytes;
-    std::vector<std::vector<uint8_t>> expected;
-    // A stray sync byte earlier in the stream can legally start a frame that
-    // swallows a later good one, so exact delivery is only promised while no
-    // mutated or noisy part has been placed ahead of it.
-    bool clean = true;
+    std::vector<std::vector<uint8_t>> placed;
     const size_t parts = 1 + (rng() % 12);
     for (size_t part = 0; part < parts; part++) {
-      const uint32_t kind = rng() % 3;
+      const uint32_t kind = rng() % 4;
       if (kind == 0) {
         auto good = validFrame(rng);
-        if (clean) {
-          expected.push_back(good);
-        }
+        placed.push_back(good);
         bytes.insert(bytes.end(), good.begin(), good.end());
       } else if (kind == 1) {
         auto bad = validFrame(rng);
         mutate(rng, bad);
         bytes.insert(bytes.end(), bad.begin(), bad.end());
-        clean = false;
+      } else if (kind == 2) {
+        auto casic = casicFrame(rng);
+        if (rng() % 3 == 0) {
+          mutate(rng, casic);
+        }
+        bytes.insert(bytes.end(), casic.begin(), casic.end());
       } else {
         const auto extra = noise(rng);
         bytes.insert(bytes.end(), extra.begin(), extra.end());
-        clean = clean && (std::find(extra.begin(), extra.end(), Ubx::SYNC_1) == extra.end());
       }
     }
 
+    // A false sync near the end can leave a frame waiting for bytes that never
+    // come, holding back the good frames after it. A receiver keeps talking,
+    // so pad with quiet bytes longer than any frame to settle every decision.
+    bytes.insert(bytes.end(), Ubx::FRAME_OVERHEAD + Ubx::MAX_PAYLOAD, 0);
+
+    // 1 and 3: the stream against the reference splitter.
     Ubx::Stream stream;
-    size_t matched = 0;
+    std::vector<std::vector<uint8_t>> yielded;
     for (const uint8_t b : bytes) {
       if (!stream.push(b)) {
         continue;
       }
       frames++;
       check(decodeAll(stream), "decoder invariant", seed, iteration);
-      if ((matched < expected.size()) && (stream.frame() == expected[matched])) {
-        matched++;
+      yielded.push_back(stream.frame());
+    }
+    check(yielded == referenceSplit(bytes), "stream differs from the reference splitter", seed,
+          iteration);
+
+    // 2: a placed frame is lost only behind an unplaced checksum-valid frame.
+    size_t next = 0;
+    bool unexpected = false;
+    for (const auto &frame : yielded) {
+      if ((next < placed.size()) && (frame == placed[next])) {
+        next++;
+      } else if (std::find(placed.begin(), placed.end(), frame) == placed.end()) {
+        unexpected = true;
       }
     }
-    check(matched == expected.size(), "a clean frame was lost", seed, iteration);
+    check(unexpected || (next == placed.size()), "an intact frame was lost", seed, iteration);
+
+    // 4: the demultiplexer, one shot against random chunking.
+    const DemuxOut whole = demux(bytes, {bytes.size() + 1});
+    std::vector<size_t> chunks(1 + (rng() % 6));
+    for (auto &chunk : chunks) {
+      chunk = 1 + (rng() % 40);
+    }
+    const DemuxOut chunked = demux(bytes, chunks);
+    check(whole.ok && chunked.ok, "demux piece invariant", seed, iteration);
+    check(whole.frames == chunked.frames, "chunking changed the demuxed frames", seed, iteration);
+    check(whole.nmea == chunked.nmea, "chunking changed the NMEA text", seed, iteration);
+    check(whole.pending == chunked.pending, "chunking changed the pending tail", seed, iteration);
+    size_t ubx = 0;
+    for (const auto &frame : whole.frames) {
+      ubx += (frame.first == 1) ? 1 : 0;
+    }
+    // The demux sees CASIC too, so it can only yield UBX frames the stream
+    // also yields; a CASIC frame can hide a UBX sync from the demux.
+    check(ubx <= yielded.size(), "demux yielded more UBX frames than the stream", seed, iteration);
   }
 
   std::printf("gps_ubx_fuzz seed %u iterations %u frames %llu failures %d\n", seed, iterations,

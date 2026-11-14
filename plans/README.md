@@ -102,6 +102,7 @@ the git history. They are no longer ownership rows.
 | [316-docs-capture-companion-reject.md](316-docs-capture-companion-reject.md) | Docs capture: rename the hardware-model action that shadowed the companion pairing Reject |
 | [317-notouch-regressions.md](317-notouch-regressions.md) | Physical-button suite: control drain wake, stale legend pass, info page padding, memory profile constants |
 | [321-ublox-m10-driver.md](321-ublox-m10-driver.md) | u-blox M10 UBX driver: codec, receiver backend seam, virtual M10 in the simulator, constellations, rate, power save, AssistNow Autonomous and warm start |
+| [321-review-feedback.md](321-review-feedback.md) | Review-feedback record for the u-blox M10 stack: tick-wrap gate, non-switchable rails, time resolution, ANA default, demux fuzzing |
 | [302-companion-restart-reconnect.md](302-companion-restart-reconnect.md) | Companion stop/start without a heap panic, and advertising restart after a rejected link |
 | [303-upstream-sync.md](303-upstream-sync.md) | Read-only upstream audit, open issue mapping, and full SHA PlatformIO pins for upstream issue 309 |
 

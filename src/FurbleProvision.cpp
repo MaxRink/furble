@@ -56,6 +56,7 @@ ProvisionTLV::ValueType runtimeType(Settings::type_t type) {
     case Settings::IR:
     case Settings::GPS_NMEA:
     case Settings::GPS_EXTRAP:
+    case Settings::GPS_ANA:
     case Settings::PRESET_PICKER:
     case Settings::CONN_SAVER:
     case Settings::MULTICONNECT:
@@ -100,6 +101,8 @@ ProvisionTLV::ValueType runtimeType(Settings::type_t type) {
     case Settings::GPS_ASSIST:
     case Settings::GPS_HOLD:
     case Settings::GPS_PLATFORM:
+    case Settings::GPS_GNSS:
+    case Settings::GPS_PSM:
     case Settings::IR_PROTO:
     case Settings::FB_OUTPUT:
     case Settings::FB_EVENTS:
@@ -205,6 +208,18 @@ bool validateSetting(const ProvisionTLV::SettingValue &field,
         report.error = ApplyError::BAD_SETTING;
         report.failedSettingId = field.wireId;
         report.message = "GPS platform setting must be 0 through 4";
+        return false;
+      }
+      if ((setting.type == Settings::GPS_GNSS) && (field.value[0] > Settings::GPS_GNSS_MAX)) {
+        report.error = ApplyError::BAD_SETTING;
+        report.failedSettingId = field.wireId;
+        report.message = "GPS signals mask must be 0 through 63";
+        return false;
+      }
+      if ((setting.type == Settings::GPS_PSM) && (field.value[0] > Settings::GPS_PSM_MAX)) {
+        report.error = ApplyError::BAD_SETTING;
+        report.failedSettingId = field.wireId;
+        report.message = "GPS power save must be 0, 1 or 2";
         return false;
       }
       if ((setting.type == Settings::TEXT_SIZE) && (field.value[0] > Settings::TEXT_SIZE_LARGE)) {

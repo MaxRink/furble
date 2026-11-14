@@ -1665,7 +1665,10 @@ void WebUI::settingApplied(uint8_t wireId) {
     case Settings::GPS_ASSIST:
     case Settings::GPS_HOLD:
     case Settings::GPS_EXTRAP:
+    case Settings::GPS_ANA:
     case Settings::GPS_PLATFORM:
+    case Settings::GPS_GNSS:
+    case Settings::GPS_PSM:
       // The UI task owns the GPS page caches, including the Extrapolate
       // control, so the reload has to run there rather than on the HTTPS task.
       UI::sendRequest(UI::Request::GPS_RELOAD, 0);

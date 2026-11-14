@@ -1,0 +1,15 @@
+# Power save is refused with BeiDou B1C (release notes UBX-22001426 7.2), and
+# B1C is what four constellations use. furble keeps full power and says so,
+# rather than send a VALSET the receiver would NAK.
+seed gps true
+seed gps_model m10
+seed gps_m10_hot true
+seed gps_gnss 15
+seed gps_psm 1
+wait 8000
+assert-eventually 3000 gps.ubx.verified 1
+assert m10.naks 0
+assert gps.ubx.psm 0
+assert gps.ubx.psm_refused 1
+assert m10.ram.20d00001 0
+exit

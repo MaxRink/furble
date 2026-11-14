@@ -1,0 +1,22 @@
+# The Standby duty policy on a u-blox receiver is RXM-PMREQ software standby
+# for the duty interval with the force flag, never $PCAS12. V_IO stays up, so
+# BBR and the RTC survive and the wake is a hot start (MAX-M10S integration
+# manual UBX-20053088 3.6.3.2). The configuration is reloaded from BBR, so the
+# wake burst still carries NAV-PVT.
+seed gps true
+seed gps_model m10
+seed gps_m10_hot true
+seed gps_power 1
+seed gps_duty 5
+seed gps_rate 1
+wait 6000
+assert gps.backend ubx
+assert_min m10.pmreqs 1
+assert uart.standby_5s_commands 0
+wait 12000
+assert_min m10.pmreqs 2
+assert_min gps.duty_wake_fixes_parsed 1
+assert m10.start hot
+assert m10.ram.20910007 1
+assert uart.standby_5s_commands 0
+exit

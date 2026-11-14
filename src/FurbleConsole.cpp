@@ -262,6 +262,8 @@ const char *settingType(Settings::type_t type) {
     case Settings::GPS_ASSIST:
     case Settings::GPS_HOLD:
     case Settings::GPS_PLATFORM:
+    case Settings::GPS_GNSS:
+    case Settings::GPS_PSM:
     case Settings::IR_PROTO:
     case Settings::FB_OUTPUT:
     case Settings::FB_EVENTS:
@@ -311,6 +313,7 @@ const char *settingType(Settings::type_t type) {
     case Settings::SLEEP_CONN:
     case Settings::GPS_NMEA:
     case Settings::GPS_EXTRAP:
+    case Settings::GPS_ANA:
     case Settings::PRESET_PICKER:
     case Settings::SD_GPX:
     case Settings::GPS_MOTION:
@@ -368,7 +371,10 @@ const char *appliesWhen(Settings::type_t type) {
     case Settings::GPS_ASSIST:
     case Settings::GPS_HOLD:
     case Settings::GPS_EXTRAP:
+    case Settings::GPS_ANA:
     case Settings::GPS_PLATFORM:
+    case Settings::GPS_GNSS:
+    case Settings::GPS_PSM:
     case Settings::IR_PROTO:
     case Settings::SLEEP_CONN:
     case Settings::TX_ADAPTIVE:
@@ -429,6 +435,8 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::GPS_ASSIST:
     case Settings::GPS_HOLD:
     case Settings::GPS_PLATFORM:
+    case Settings::GPS_GNSS:
+    case Settings::GPS_PSM:
     case Settings::IR_PROTO:
     case Settings::FB_OUTPUT:
     case Settings::FB_EVENTS:
@@ -512,6 +520,7 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::GPS_NMEA:
     case Settings::TX_ADAPTIVE:
     case Settings::GPS_EXTRAP:
+    case Settings::GPS_ANA:
     case Settings::PRESET_PICKER:
     case Settings::SD_GPX:
     case Settings::GPS_MOTION:
@@ -569,6 +578,8 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::GPS_POWER:
     case Settings::GPS_ASSIST:
     case Settings::GPS_PLATFORM:
+    case Settings::GPS_GNSS:
+    case Settings::GPS_PSM:
     case Settings::IR_PROTO:
     case Settings::FB_EVENTS:
     case Settings::FB_VOLUME:
@@ -591,6 +602,14 @@ int setValue(const Settings::setting_t &setting, const char *text) {
       }
       if ((setting.type == Settings::GPS_PLATFORM) && (value > 4)) {
         return fail("expected 0 (off), 1 portable, 2 stationary, 3 pedestrian, 4 vehicle");
+      }
+      if ((setting.type == Settings::GPS_GNSS) && (value > Settings::GPS_GNSS_MAX)) {
+        return fail(
+            "expected 0 (follow constellation) or a mask: 1 GPS, 2 BeiDou, 4 GLONASS, "
+            "8 Galileo, 16 QZSS, 32 SBAS");
+      }
+      if ((setting.type == Settings::GPS_PSM) && (value > Settings::GPS_PSM_MAX)) {
+        return fail("expected 0 (off), 1 cyclic tracking or 2 on/off");
       }
       Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
     } break;
@@ -786,6 +805,7 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::GPS_NMEA:
     case Settings::TX_ADAPTIVE:
     case Settings::GPS_EXTRAP:
+    case Settings::GPS_ANA:
     case Settings::PRESET_PICKER:
     case Settings::SD_GPX:
     case Settings::GPS_MOTION:
@@ -871,7 +891,8 @@ int setValue(const Settings::setting_t &setting, const char *text) {
       || (setting.type == Settings::GPS_RATE) || (setting.type == Settings::GPS_NMEA)
       || (setting.type == Settings::GPS_CONSTEL) || (setting.type == Settings::GPS_ASSIST)
       || (setting.type == Settings::GPS_HOLD) || (setting.type == Settings::GPS_EXTRAP)
-      || (setting.type == Settings::GPS_PLATFORM)) {
+      || (setting.type == Settings::GPS_PLATFORM) || (setting.type == Settings::GPS_GNSS)
+      || (setting.type == Settings::GPS_PSM) || (setting.type == Settings::GPS_ANA)) {
     UI::sendRequest(UI::Request::GPS_RELOAD, 0);
   }
   if ((setting.type == Settings::SD_GPX) || (setting.type == Settings::GPX_PERIOD)) {
@@ -1101,7 +1122,10 @@ void reloadProvisionSetting(uint8_t wireId) {
     case Settings::GPS_ASSIST:
     case Settings::GPS_HOLD:
     case Settings::GPS_EXTRAP:
+    case Settings::GPS_ANA:
     case Settings::GPS_PLATFORM:
+    case Settings::GPS_GNSS:
+    case Settings::GPS_PSM:
       GPS::getInstance().reloadSetting();
       break;
     case Settings::FB_EVENTS:
@@ -1589,6 +1613,100 @@ int gpsMonHw(void) {
   return 0;
 }
 
+const char *gpsSosRestoreName(uint8_t value) {
+  switch (value) {
+    case Ubx::SOS_RESTORE_UNKNOWN:
+      return "unknown";
+    case Ubx::SOS_RESTORE_FAILED:
+      return "failed";
+    case Ubx::SOS_RESTORE_OK:
+      return "restored";
+    case Ubx::SOS_RESTORE_NONE:
+      return "none";
+    default:
+      return "not reported";
+  }
+}
+
+const char *gpsPsmName(uint8_t psm) {
+  switch (psm) {
+    case Ubx::PSM_CYCLIC:
+      return "cyclic";
+    case Ubx::PSM_ON_OFF:
+      return "on/off";
+    default:
+      return "off";
+  }
+}
+
+/**
+ * The u-blox receiver: identity from MON-VER, the NAV-PVT fix and accuracy,
+ * the configuration that was sent and read back, power save, the backup
+ * state and the constellations of one NAV-SAT poll.
+ */
+int gpsUbx(void) {
+  auto &gps = GPS::getInstance();
+  printf("backend: %s\n", GPS::backendName(gps.getBackend()));
+  if (gps.getBackend() != GPS::backend_t::UBX) {
+    printf("ubx: no u-blox receiver identified\n");
+    return 0;
+  }
+  gps.pollUbxSatellites();
+  // The GPS task parses the answer on its own pass, as for MON-HW.
+  auto ubx = gps.getUbxStatus();
+  for (int attempt = 0; (attempt < 150) && !ubx.have_sat; attempt++) {
+    vTaskDelay(pdMS_TO_TICKS(10));
+    ubx = gps.getUbxStatus();
+  }
+  printf("module: %s\n", ubx.module.empty() ? "unknown" : ubx.module.c_str());
+  printf("firmware: %s\n", ubx.firmware.empty() ? ubx.software.c_str() : ubx.firmware.c_str());
+  printf("protocol: %s\n", ubx.protocol.empty() ? "unknown" : ubx.protocol.c_str());
+  printf("hardware: %s\n", ubx.hardware.c_str());
+  if (ubx.have_pvt) {
+    printf("pvt_fix: %u\n", static_cast<unsigned>(ubx.pvt.fixType));
+    printf("pvt_sats: %u\n", static_cast<unsigned>(ubx.pvt.numSV));
+    printf("pvt_age: %lu\n", static_cast<unsigned long>(ubx.pvt_age_ms));
+    printf("hacc_m: %.2f\n", ubx.pvt.hAcc / 1000.0);
+    printf("vacc_m: %.2f\n", ubx.pvt.vAcc / 1000.0);
+    printf("tacc_ns: %lu\n", static_cast<unsigned long>(ubx.pvt.tAcc));
+    printf("psm_state: %u\n", static_cast<unsigned>(ubx.pvt.psmState()));
+  } else {
+    printf("pvt_fix: none\n");
+  }
+  printf("config_verified: %s\n", (ubx.config_verified == 1)   ? "yes"
+                                  : (ubx.config_verified == 2) ? "no"
+                                                               : "pending");
+  printf("naks: %lu\n", static_cast<unsigned long>(ubx.naks));
+  if (ubx.configured) {
+    printf("gnss: 0x%02x%s\n", ubx.gnss, ubx.gnss_refused ? " (refused, receiver default)" : "");
+    printf("rate_ms: %u%s\n", static_cast<unsigned>(ubx.rate_ms),
+           ubx.rate_clamped ? " (clamped to the constellation limit)" : "");
+    printf("power_save: %s%s\n", gpsPsmName(ubx.psm),
+           ubx.psm_refused ? " (refused with BeiDou B1C)" : "");
+    printf("assistnow_autonomous: %s\n", boolStr(ubx.ana));
+  }
+  printf("backup_supply: %s\n", boolStr(ubx.backup_supply));
+  printf("sos_restore: %s\n", gpsSosRestoreName(ubx.sos_restore));
+  printf("sos_backup: %s\n", (ubx.sos_backup == 1)   ? "saved"
+                             : (ubx.sos_backup == 2) ? "refused"
+                                                     : "not tried");
+  if (ubx.have_sat) {
+    // gnssId per the interface description: GPS, SBAS, Galileo, BeiDou, IMES,
+    // QZSS, GLONASS.
+    static constexpr const char *NAMES[] = {"gps",  "sbas", "galileo", "beidou",
+                                            "imes", "qzss", "glonass"};
+    for (size_t id = 0; id < ubx.sat_view.size(); id++) {
+      if (ubx.sat_view[id] != 0) {
+        printf("sats.%s: %u used of %u\n", NAMES[id], static_cast<unsigned>(ubx.sat_used[id]),
+               static_cast<unsigned>(ubx.sat_view[id]));
+      }
+    }
+  } else {
+    printf("sats: no NAV-SAT answer within 1.5 s\n");
+  }
+  return 0;
+}
+
 int cmdGPS(int argc, char **argv) {
   if (argc < 2) {
     return gpsStatus();
@@ -1678,6 +1796,10 @@ int cmdGPS(int argc, char **argv) {
     return gpsMonHw();
   }
 
+  if (!strcmp(argv[1], "ubx")) {
+    return gpsUbx();
+  }
+
   if (!strcmp(argv[1], "power")) {
     if ((argc < 3) || !parseBool(argv[2], value)) {
       return fail("usage: gps power on | off");
@@ -1685,7 +1807,8 @@ int cmdGPS(int argc, char **argv) {
     return sendRequest(UI::Request::GPS_POWER, value, value ? "gps power on" : "gps power off");
   }
 
-  return fail("expected on, off, raw, send, binary, config, aid, sats, platform, monhw or power");
+  return fail(
+      "expected on, off, raw, send, binary, config, aid, sats, platform, monhw, ubx or power");
 }
 
 void cmdPowerStats(void) {
@@ -3479,7 +3602,7 @@ const esp_console_cmd_t COMMANDS[] = {
     command("power", "power stats | log <seconds> | log off | off", cmdPower),
     command("perf", "perf tasks | heap | lvgl [overlay on | off]", cmdPerf),
     command("heap", "heap trace start [records] | stop | dump (debug images)", cmdHeap),
-    command("gps", "gps [on|off|raw|send|binary|config|aid|sats|platform|monhw|power]", cmdGPS),
+    command("gps", "gps [on|off|raw|send|binary|config|aid|sats|platform|monhw|ubx|power]", cmdGPS),
     command("time", "time status | flush", cmdTime),
     command("wifi",
             "wifi status | set | enable | disable | connect | disconnect | forget",

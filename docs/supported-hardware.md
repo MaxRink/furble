@@ -72,9 +72,11 @@ and the feature matrix.
 
 ## GPS units
 
-Location tagging uses an M5Stack GPS unit on Grove Port A. Every M5Stack GPS
-receiver furble targets is the AT6668/CASIC family, so the existing $PCAS and
-NMEA support covers them with no per-unit protocol code. The stored default
+Location tagging uses a GPS unit on Grove Port A. Every M5Stack GPS receiver
+furble targets is the AT6668/CASIC family, so the existing $PCAS and NMEA
+support covers them with no per-unit protocol code. A u-blox M10 receiver is
+detected at GPS start by a UBX-MON-VER poll and configured over UBX; any other
+receiver keeps the CASIC and NMEA path. The stored default
 baud is 9600; select `Auto` or a fixed 115200 under `Settings` > `GPS` >
 `GPS Baud` for the AT6668 units.
 
@@ -84,14 +86,25 @@ baud is 9600; select `Auto` or a fixed 115200 under `Settings` > `GPS` >
 | Unit-GPS (SMA) | AT6668 | External SMA active antenna | All five | Grove Port A | Supported, drop in, zero wiring change. Recommended fix for weak or indoor reception because of the external antenna. |
 | Module GPS v2.1 | AT6668 | SMA | Core, Core2 only | M5-Bus module | Planned, not yet in firmware. Needs a Core/Core2 gated port setting before it works. |
 | Atomic GPS Base v2.0 | AT6668 | SMA | None | Atom base | Out of scope. furble targets no Atom board. |
+| Generic M10 UART module | u-blox MAX-M10S or other M10 | Module dependent | All five | Grove Port A, 3.3 V logic | Simulator-tested, hardware-untested. MAX-M10S runs at 9600 baud and MIA-M10Q at 38400, so select `Auto`. |
+| LilyGO T-Beam Supreme M10S | u-blox MAX-M10S | SMA | Not a furble board yet | On board | Receiver supported, board not ported. See plan 318. |
+| LilyGO T-Watch Ultra, T-LoRa Pager | u-blox MIA-M10Q | Built in | Not furble boards yet | On board | Receiver supported, boards not ported. See plan 318. |
 
 The older Mini GPS/BDS Unit is end of life and runs at 9600 baud. `Auto` probes
 115200, 9600, 38400, 57600, 19200, and 4800, and requires two checksummed NMEA
 sentences before declaring the receiver present. If probing fails, furble marks
 the receiver absent, cuts the external rail, and retries once after 60 seconds.
 
+The u-blox M10 support covers detection, NAV-PVT fix and accuracy,
+constellation selection, update rate, dynamic model, cyclic tracking and on/off
+power save, RXM-PMREQ software standby, AssistNow Autonomous and UPD-SOS
+save-on-shutdown. It is verified against a virtual M10 in the simulator only;
+no M10 hardware has been tested. A board that keeps the receiver's V_BCKP
+supplied defines `FURBLE_GPS_BACKUP_SUPPLY`; no supported board does.
+
 Source: the M5Stack product pages for each unit (docs.m5stack.com), cross
-checked against the firmware GPS support in `src/FurbleGPS.cpp`.
+checked against the firmware GPS support in `src/FurbleGPS.cpp`. The u-blox
+documents are listed in `plans/321-ublox-m10-driver.md`.
 
 ## Related references
 

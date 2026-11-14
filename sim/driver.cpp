@@ -4,6 +4,7 @@
 #include <cctype>
 #include <cerrno>
 #include <chrono>
+#include <cmath>
 #include <csignal>
 #include <cstdint>
 #include <cstdlib>
@@ -43,6 +44,7 @@
 #include "FurblePlatform.h"
 #include "FurbleSD.h"
 #include "FurbleSettings.h"
+#include "FurbleTimeKeeper.h"
 
 #include "FurbleTypes.h"
 #include "FurbleUI.h"
@@ -346,7 +348,7 @@ void validateSeed(const std::string &name, const std::string &value) {
       "brightness",   "inactivity", "display_off", "display_mode", "gps_rate",  "gps_constel",
       "gps_power",    "gps_duty",   "cpu_freq",    "tx_power",     "scan_mode", "text_size",
       "auto_off",     "low_batt",   "fb_output",   "gps_hold",     "imu_wake",  "gps_assist",
-      "gps_platform", "hw_motion",  "legend",      "timezone",
+      "gps_platform", "hw_motion",  "legend",      "timezone",     "gps_gnss",  "gps_psm",
   };
   if (std::find(std::begin(byteSeeds), std::end(byteSeeds), name) != std::end(byteSeeds)) {
     if (parseUnsigned(value) > std::numeric_limits<uint8_t>::max()) {
@@ -380,6 +382,12 @@ void validateSeed(const std::string &name, const std::string &value) {
       "gps_extrap",
       "gps_stationary",
       "gps_uart_noise",
+      "gps_ana",
+      "gps_rail_fixed",
+      "gps_m10_unresolved",
+      "gps_m10_backup",
+      "gps_m10_flash",
+      "gps_m10_hot",
       "sd_gpx",
       "imu_trigger",
       "ivl_sleep",
@@ -517,6 +525,22 @@ void validateSeed(const std::string &name, const std::string &value) {
         && value != "coldstart" && value != "badrmc" && value != "emptyrmc"
         && value != "walkback") {
       std::cerr << "Invalid gps_fix_date: " << value << '\n';
+      std::exit(2);
+    }
+    return;
+  } else if (name == "gps_model") {
+    // The receiver on the port: the historic CASIC unit, a virtual u-blox
+    // MAX-M10S or MIA-M10Q, or a receiver that answers no binary protocol.
+    if (value != "casic" && value != "m10" && value != "m10-mia" && value != "nmea") {
+      std::cerr << "Invalid gps_model: " << value << '\n';
+      std::exit(2);
+    }
+    return;
+  } else if (name == "gps_m10_unknown_key") {
+    // a UBX key id in hex the virtual M10 firmware refuses: NAV-PVT output,
+    // AssistNow Autonomous or the power save mode
+    if (value != "20910007" && value != "10230001" && value != "20d00001") {
+      std::cerr << "Invalid gps_m10_unknown_key: " << value << '\n';
       std::exit(2);
     }
     return;
@@ -1606,6 +1630,67 @@ std::string queryValueUnscoped(const std::string &key) {
     if (sub == "satellites") {
       return std::to_string(gps.getSatellites());
     }
+    if (sub == "backend") {
+      return Furble::GPS::backendName(gps.getBackend());
+    }
+    if (sub == "from_pvt") {
+      return gps.getStatusSnapshot().from_pvt ? "1" : "0";
+    }
+    if (sub == "time_resolved") {
+      return gps.getStatusSnapshot().time_resolved ? "1" : "0";
+    }
+    if (sub == "hacc_mm") {
+      // NAV-PVT horizontal accuracy as the snapshot carries it, "none" when
+      // the fix did not come with one
+      const auto status = gps.getStatusSnapshot();
+      return status.accuracy_valid
+                 ? std::to_string(static_cast<long>(std::lround(status.h_acc_m * 1000.0F)))
+                 : "none";
+    }
+    if (sub.rfind("ubx.", 0) == 0) {
+      const auto ubx = gps.getUbxStatus();
+      const std::string field = sub.substr(4);
+      if (field == "firmware") {
+        // a scenario value is one token, so spaces read as underscores
+        std::string firmware = ubx.firmware.empty() ? "none" : ubx.firmware;
+        std::replace(firmware.begin(), firmware.end(), ' ', '_');
+        return firmware;
+      }
+      if (field == "module") {
+        return ubx.module.empty() ? "none" : ubx.module;
+      }
+      if (field == "verified") {
+        return std::to_string(ubx.config_verified);
+      }
+      if (field == "sos_restore") {
+        return std::to_string(ubx.sos_restore);
+      }
+      if (field == "sos_backup") {
+        return std::to_string(ubx.sos_backup);
+      }
+      if (field == "naks") {
+        return std::to_string(ubx.naks);
+      }
+      if (field == "fix_type") {
+        return ubx.have_pvt ? std::to_string(ubx.pvt.fixType) : "none";
+      }
+      // What the last configuration sent, from Ubx::Plan.
+      const std::pair<const char *, uint32_t> plan[] = {
+          {"gnss",         ubx.gnss         },
+          {"psm",          ubx.psm          },
+          {"rate_ms",      ubx.rate_ms      },
+          {"ana",          ubx.ana          },
+          {"gnss_refused", ubx.gnss_refused },
+          {"psm_refused",  ubx.psm_refused  },
+          {"rate_clamped", ubx.rate_clamped },
+          {"backup",       ubx.backup_supply},
+      };
+      for (const auto &entry : plan) {
+        if (field == entry.first) {
+          return ubx.configured ? std::to_string(entry.second) : "none";
+        }
+      }
+    }
 #if defined(FURBLE_SIM)
     if (sub == "fresh_fixes_parsed") {
       return std::to_string(gps.simFreshFixesParsed());
@@ -1723,6 +1808,15 @@ std::string queryValueUnscoped(const std::string &key) {
     return std::to_string(
         Power::getInstance().getStats(Power::LockType::NO_LIGHT_SLEEP).totalAcquires);
   }
+  if (key == "time.gps") {
+    // the wall clock was last set from GPS
+    return (TimeKeeper::getInstance().status().source == TimeSource::GPS) ? "1" : "0";
+  }
+  if (prefixed("m10.")) {
+    // The virtual M10's own view: state, start type, counters and its
+    // configuration database (m10.ram.<hex key>, m10.bbr.<hex key>).
+    return furble_sim_m10_query(key.substr(std::char_traits<char>::length("m10.")));
+  }
   if (prefixed("uart.")) {
     const std::string sub = key.substr(std::char_traits<char>::length("uart."));
     const auto writes = furble_sim_uart_writes_snapshot();
@@ -1752,6 +1846,11 @@ std::string queryValueUnscoped(const std::string &key) {
     // MON-HW polls, plus the rate the driver has the port set to.
     if (sub == "baud") {
       return std::to_string(furble_sim_uart_baud());
+    }
+    if (sub == "ubx_polls") {
+      // UBX-MON-VER detection polls the driver wrote, B5 62 0A 04 00 00 0E 34
+      const std::string poll("\xB5\x62\x0A\x04\x00\x00\x0E\x34", 8);
+      return std::to_string(std::count(writes.begin(), writes.end(), poll));
     }
     if (sub == "eph_replay") {
       return std::to_string(furble_sim_uart_eph_replay_frames());
@@ -2180,6 +2279,8 @@ void applyScenarioSettings(void) {
   saveByte("gps_hold", Settings::GPS_HOLD);
   saveByte("gps_assist", Settings::GPS_ASSIST);
   saveByte("gps_platform", Settings::GPS_PLATFORM);
+  saveByte("gps_gnss", Settings::GPS_GNSS);
+  saveByte("gps_psm", Settings::GPS_PSM);
   saveByte("cpu_freq", Settings::CPU_FREQ);
   saveByte("tx_power", Settings::TX_POWER);
   saveByte("scan_mode", Settings::SCAN_MODE);
@@ -2300,6 +2401,7 @@ void applyScenarioSettings(void) {
   saveBoolean("gps", Settings::GPS);
   saveBoolean("gps_nmea", Settings::GPS_NMEA);
   saveBoolean("gps_extrap", Settings::GPS_EXTRAP);
+  saveBoolean("gps_ana", Settings::GPS_ANA);
   saveBoolean("sd_gpx", Settings::SD_GPX);
   saveBoolean("fauxny", Settings::FAUXNY);
   saveBoolean("autoconnect", Settings::AUTOCONNECT);
@@ -2387,6 +2489,18 @@ void applyScenarioSettings(void) {
     furble_sim_uart_set_fix_chunk(parseUnsigned(fixChunk->second));
   }
   furble_sim_uart_set_noise(scenarioSettingIsTrue("gps_uart_noise"));
+  furble_sim_uart_set_rail_fixed(scenarioSettingIsTrue("gps_rail_fixed"));
+  const auto model = scenarioSettings.find("gps_model");
+  if (model != scenarioSettings.end()) {
+    const auto unknown = scenarioSettings.find("gps_m10_unknown_key");
+    furble_sim_uart_set_model(
+        model->second.c_str(), scenarioSettingIsTrue("gps_m10_backup"),
+        scenarioSettingIsTrue("gps_m10_flash"), scenarioSettingIsTrue("gps_m10_hot"),
+        (unknown == scenarioSettings.end())
+            ? 0
+            : static_cast<uint32_t>(std::strtoul(unknown->second.c_str(), nullptr, 16)),
+        scenarioSettingIsTrue("gps_m10_unresolved"));
+  }
   saveBoolean("gps_motion", Settings::GPS_MOTION);
   saveBoolean("imu", Settings::IMU);
   saveBoolean("imu_trigger", Settings::IMU_TRIG);

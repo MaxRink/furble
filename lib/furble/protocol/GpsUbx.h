@@ -215,7 +215,9 @@ struct NavPvt {
 
   /** A 2D, 3D or GNSS plus dead reckoning fix the receiver vouches for. */
   bool positionValid(void) const;
-  /** UTC date and time both valid and fully resolved, safe to set a clock from. */
+  /** validDate and validTime with in-range fields: the date and time are usable. */
+  bool dateTimeValid(void) const;
+  /** dateTimeValid and fullyResolved: safe to set a clock from (IFD 3.15.11). */
   bool timeValid(void) const;
 };
 bool parseNavPvt(const uint8_t *payload, size_t length, NavPvt &out);
@@ -339,6 +341,147 @@ constexpr uint8_t RST_MODE_GNSS_ONLY = 0x02; /**< controlled software reset, GNS
 constexpr uint8_t RST_MODE_GNSS_STOP = 0x08; /**< controlled GNSS stop */
 constexpr uint8_t RST_MODE_GNSS_START = 0x09;
 std::vector<uint8_t> cfgRst(uint16_t nav_bbr_mask, uint8_t reset_mode);
+
+/**
+ * A one-shot "not before" deadline that stays correct across the 32-bit tick
+ * wrap. An unarmed gate is open, so no sentinel tick value can close it: a
+ * plain `deadline = 0` compared with a signed difference reads as the future
+ * for every tick in [2^31, 2^32), which stalled every configuration command
+ * between 24.8 and 49.7 days of uptime.
+ */
+class Settle {
+ public:
+  void arm(uint32_t now, uint32_t ms) {
+    m_Until = now + ms;
+    m_Armed = true;
+  }
+  void clear(void) { m_Armed = false; }
+  bool armed(void) const { return m_Armed; }
+  /** Has the deadline passed? Disarms itself once it has. */
+  bool open(uint32_t now) {
+    if (m_Armed && (static_cast<int32_t>(now - m_Until) >= 0)) {
+      m_Armed = false;
+    }
+    return !m_Armed;
+  }
+  /** Milliseconds left, 0 when open. */
+  uint32_t remaining(uint32_t now) const {
+    const int32_t left = static_cast<int32_t>(m_Until - now);
+    return (m_Armed && (left > 0)) ? static_cast<uint32_t>(left) : 0;
+  }
+
+ private:
+  uint32_t m_Until = 0;
+  bool m_Armed = false;
+};
+
+/**
+ * Receiver identification by MON-VER poll.
+ *
+ * A u-blox receiver answers MON-VER whatever its configuration. A receiver
+ * that is not u-blox ignores the frame, so after ATTEMPTS polls without an
+ * answer the receiver is something else and keeps the NMEA path. One attempt
+ * waits ATTEMPT_MS: the answer is about 190 bytes queued behind up to a second
+ * of NMEA at 9600 baud, and acknowledgements come "at least within one
+ * second" (IFD 3.9.1, 3.9.2).
+ */
+/*
+ * Constellation mask, shared by the GPS_GNSS setting. The low three bits are
+ * the CASIC navSystem bits the GPS_CONSTEL setting already uses, so a CASIC
+ * selection maps across unchanged.
+ */
+constexpr uint8_t GNSS_MASK_GPS = 0x01;
+constexpr uint8_t GNSS_MASK_BDS = 0x02;
+constexpr uint8_t GNSS_MASK_GLO = 0x04;
+constexpr uint8_t GNSS_MASK_GAL = 0x08;
+constexpr uint8_t GNSS_MASK_QZSS = 0x10;
+constexpr uint8_t GNSS_MASK_SBAS = 0x20;
+constexpr uint8_t GNSS_MASK_ALL = 0x3f;
+/** The modules' production preset: GPS, Galileo, BeiDou B1I, QZSS, SBAS (DS 1.3). */
+constexpr uint8_t GNSS_MASK_MODULE_DEFAULT =
+    GNSS_MASK_GPS | GNSS_MASK_GAL | GNSS_MASK_BDS | GNSS_MASK_QZSS | GNSS_MASK_SBAS;
+
+/** Power save setting values, as stored in GPS_PSM. */
+constexpr uint8_t PSM_OFF = 0;
+constexpr uint8_t PSM_CYCLIC = 1;
+constexpr uint8_t PSM_ON_OFF = 2;
+
+/** What the user asked for, in furble's setting terms. */
+struct Request {
+  uint16_t rate_ms;  /**< 0 leaves the receiver rate alone */
+  uint8_t dyn_model; /**< CFG-NAVSPG-DYNMODEL value, 0xff leaves it alone */
+  uint8_t gnss;      /**< GNSS_MASK_* bits */
+  uint8_t gnss_set;  /**< which GNSS_MASK_* bits gnss decides; 0 leaves all alone */
+  uint8_t psm;       /**< PSM_* */
+  uint32_t period_s; /**< PSMOO update period */
+  bool ana;          /**< AssistNow Autonomous */
+};
+
+/**
+ * The configuration furble sends for a request, in send order.
+ *
+ * base goes first (NAV-PVT output, rate, dynamic model, AssistNow
+ * Autonomous), then signals (a GNSS restart, so the receiver needs 0.5 s
+ * before the next command, IFD 4.9.21), then power save with OPERATEMODE last
+ * (IM-MAX 3.6.2.6). unset lists keys furble manages but this request leaves
+ * alone; they are deleted from BBR so an earlier session's value does not
+ * outlive the setting that wrote it.
+ */
+struct Plan {
+  std::vector<KeyValue> base;
+  std::vector<KeyValue> signals;
+  std::vector<KeyValue> power;
+  std::vector<uint32_t> unset;
+  uint16_t rate_ms;  /**< the rate actually sent, 0 when left alone */
+  uint8_t gnss;      /**< effective constellation mask */
+  uint8_t psm;       /**< the power save mode actually sent */
+  bool gnss_refused; /**< the mask broke a rule, signals left alone */
+  bool psm_refused;  /**< power save with BeiDou B1C, left at full power */
+  bool rate_clamped; /**< the rate exceeded the constellation limit */
+};
+
+/** GPS_CONSTEL to a mask: GPS, BeiDou, GLONASS as asked, QZSS and SBAS follow GPS. */
+uint8_t gnssFromConstellation(uint8_t constellation);
+
+/** A mask the receiver accepts: one major GNSS, QZSS and SBAS only with GPS. */
+bool gnssValid(uint8_t mask);
+
+/** Highest navigation rate for a mask at the default CPU clock (DS Table 2/3). */
+uint8_t maxRateHz(uint8_t mask);
+
+/** GPS_PLATFORM 1..4 to DYNMODEL: portable 0, stationary 2, pedestrian 3, automotive 4. */
+uint8_t dynModelForPlatform(uint8_t platform);
+
+Plan plan(const Request &request);
+
+class Detect {
+ public:
+  static constexpr uint32_t ATTEMPT_MS = 1000;
+  static constexpr uint8_t ATTEMPTS = 2;
+
+  enum class Result : uint8_t {
+    IDLE,    /**< not started */
+    WAITING, /**< a poll is outstanding */
+    UBX,     /**< MON-VER answered */
+    OTHER,   /**< every poll went unanswered */
+  };
+
+  /** Start. The caller sends the first poll. */
+  void begin(uint32_t now);
+  /** A MON-VER answer arrived; valid in any state. */
+  void answered(void) { m_Result = Result::UBX; }
+  /** Advance the deadline. Sets poll when the caller must send another poll. */
+  Result service(uint32_t now, bool &poll);
+
+  Result result(void) const { return m_Result; }
+  uint32_t deadline(void) const { return m_Deadline; }
+  uint8_t attempts(void) const { return m_Attempts; }
+
+ private:
+  Result m_Result = Result::IDLE;
+  uint8_t m_Attempts = 0;
+  uint32_t m_Deadline = 0;
+};
 
 }  // namespace Ubx
 }  // namespace Furble

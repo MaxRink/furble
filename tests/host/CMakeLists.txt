@@ -1360,13 +1360,25 @@ target_compile_options(gps_casic_test PRIVATE -Wall -Wextra -Werror -Wno-format
 # Pure UBX codec from lib/furble/protocol/GpsUbx for the u-blox M10 receivers.
 add_executable(gps_ubx_test
                gps_ubx_test.cpp
+               ${FURBLE_PROTOCOL_DIR}/GpsCasic.cpp
+               ${FURBLE_PROTOCOL_DIR}/GpsDemux.cpp
                ${FURBLE_PROTOCOL_DIR}/GpsUbx.cpp)
 target_include_directories(gps_ubx_test PRIVATE ${FURBLE_ROOT}/lib/furble/protocol)
 target_compile_options(gps_ubx_test PRIVATE -Wall -Wextra -Werror)
+# Receiver detection and the simulator's virtual u-blox M10. The model has no
+# clock or UART of its own, so the scenarios' state machine runs here directly.
+add_executable(gps_ubx_m10_test
+               gps_ubx_m10_test.cpp
+               ${FURBLE_ROOT}/sim/ubx_m10.cpp
+               ${FURBLE_PROTOCOL_DIR}/GpsUbx.cpp)
+target_include_directories(gps_ubx_m10_test PRIVATE ${FURBLE_ROOT}/sim ${FURBLE_ROOT}/lib/furble)
+target_compile_options(gps_ubx_m10_test PRIVATE -Wall -Wextra -Werror)
 # Seeded UBX stream fuzzer over the same codec. tools/check_fuzz.py runs the
 # wider seed set from tests/fuzz/seeds.json.
 add_executable(gps_ubx_fuzz
                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/gps_ubx_fuzz.cpp
+               ${FURBLE_PROTOCOL_DIR}/GpsCasic.cpp
+               ${FURBLE_PROTOCOL_DIR}/GpsDemux.cpp
                ${FURBLE_PROTOCOL_DIR}/GpsUbx.cpp)
 target_include_directories(gps_ubx_fuzz PRIVATE ${FURBLE_ROOT}/lib/furble/protocol)
 target_compile_options(gps_ubx_fuzz PRIVATE -Wall -Wextra -Werror)
@@ -2346,6 +2358,7 @@ if(BUILD_TESTING)
   add_test(NAME gps-power-profiler COMMAND gps_power_profiler_test)
   add_test(NAME gps-casic COMMAND gps_casic_test)
   add_test(NAME gps-ubx COMMAND gps_ubx_test)
+  add_test(NAME gps-ubx-m10 COMMAND gps_ubx_m10_test)
   add_test(NAME gps-ubx-fuzz COMMAND gps_ubx_fuzz --seed 1 --iterations 300)
   add_test(NAME gps-fix-freshness COMMAND gps_fix_freshness_test)
   add_test(NAME fault-tooling COMMAND fault_tooling_test)

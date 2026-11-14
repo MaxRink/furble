@@ -39,6 +39,9 @@ class Settings {
     GPS_HOLD,
     GPS_EXTRAP,
     GPS_PLATFORM,
+    GPS_GNSS,
+    GPS_PSM,
+    GPS_ANA,
     GPS_MOTION,
     INTERVAL,
     MULTICONNECT,
@@ -214,6 +217,10 @@ class Settings {
   static constexpr uint32_t BAUD_9600 = 9600;
   static constexpr uint32_t BAUD_115200 = 115200;
   static constexpr uint32_t IVL_SLEEP_THR_DEFAULT = 60;
+  /** Highest GPS_GNSS mask: GPS, BeiDou, GLONASS, Galileo, QZSS, SBAS (Ubx::GNSS_MASK_ALL). */
+  static constexpr uint8_t GPS_GNSS_MAX = 0x3f;
+  /** Highest GPS_PSM value: 0 off, 1 cyclic tracking, 2 on/off (Ubx::PSM_ON_OFF). */
+  static constexpr uint8_t GPS_PSM_MAX = 2;
 
   /** Default maximum CPU frequency in MHz, matches Platform. */
   static constexpr uint8_t CPU_FREQ_DEFAULT = 160;
@@ -423,6 +430,24 @@ struct Settings::storage_type<Settings::GPS_EXTRAP> {
 template <>
 struct Settings::storage_type<Settings::GPS_PLATFORM> {
   using type = uint8_t;
+};
+
+/** u-blox constellation mask, Ubx::GNSS_MASK_* bits, 0 follows GPS_CONSTEL. */
+template <>
+struct Settings::storage_type<Settings::GPS_GNSS> {
+  using type = uint8_t;
+};
+
+/** u-blox power save: 0 off, 1 cyclic tracking, 2 on/off. */
+template <>
+struct Settings::storage_type<Settings::GPS_PSM> {
+  using type = uint8_t;
+};
+
+/** u-blox AssistNow Autonomous. */
+template <>
+struct Settings::storage_type<Settings::GPS_ANA> {
+  using type = bool;
 };
 template <>
 struct Settings::storage_type<Settings::GPS_MOTION> {

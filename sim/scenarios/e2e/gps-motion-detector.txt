@@ -31,6 +31,12 @@ wait 400
 assert ui.motion_backend software
 assert ui.motion_state moving
 
+# Receiver identification polls UBX-MON-VER twice, a second apart, before it
+# settles on the NMEA backend (plan 321). Let it finish and clear the journal,
+# so the count below measures only what this scenario does to the receiver.
+wait 2500
+uart-dump
+
 # All three gates are on, so the GPS detector is live and starts out moving:
 # the quiet window has not run yet.
 assert setting.gps_motion 1
@@ -40,9 +46,10 @@ assert uart.count 0
 
 # Hold the device flat and still. MotionSource is polled at 1 Hz from the UI
 # housekeeping timer and needs 60 s of continuous quiet, so entry lands just
-# past 61 s of held-still virtual time.
+# past 61 s of held-still virtual time. The modelled device has been still
+# since boot, so the 2.5 s identification wait above already counts.
 action imu.accel 0 0 1
-wait 59600
+wait 57100
 assert gps.motion_state moving
 wait 3400
 assert ui.motion_state stationary

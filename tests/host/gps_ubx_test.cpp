@@ -13,6 +13,8 @@
 #include <string>
 #include <vector>
 
+#include "GpsCasic.h"
+#include "GpsDemux.h"
 #include "GpsUbx.h"
 
 using namespace Furble;
@@ -330,7 +332,10 @@ void testNavPvt() {
   check(!flagged.positionValid(), "invalidLlh voids the position");
   flagged = pvt;
   flagged.valid = 0x03;
-  check(!flagged.timeValid(), "an unresolved time is not usable");
+  check(!flagged.timeValid(), "an unresolved time does not set a clock");
+  check(flagged.dateTimeValid(), "an unresolved time is still a valid date and time");
+  flagged.valid = 0x05;
+  check(!flagged.dateTimeValid(), "no validTime, no date and time");
   flagged = pvt;
   flagged.month = 13;
   check(!flagged.timeValid(), "an impossible month is not usable");
@@ -432,6 +437,191 @@ void testSosAndPmreq() {
   check(!Ubx::parsePmReq(legacy, 12, back), "ragged PMREQ refused");
 }
 
+uint64_t find(const std::vector<Ubx::KeyValue> &items, uint32_t key, uint64_t missing = 99) {
+  for (const auto &item : items) {
+    if (item.key == key) {
+      return item.value;
+    }
+  }
+  return missing;
+}
+
+bool listed(const std::vector<uint32_t> &keys, uint32_t key) {
+  for (const uint32_t k : keys) {
+    if (k == key) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void testPlan() {
+  // Masks and the constellation mapping.
+  check(Ubx::gnssFromConstellation(1)
+            == (Ubx::GNSS_MASK_GPS | Ubx::GNSS_MASK_QZSS | Ubx::GNSS_MASK_SBAS),
+        "GPS-only constellation brings QZSS and SBAS");
+  check(Ubx::gnssFromConstellation(2) == Ubx::GNSS_MASK_BDS, "BDS only stays BDS");
+  check(Ubx::gnssFromConstellation(7) == 0x37, "CASIC All maps without Galileo");
+  check(!Ubx::gnssValid(0) && !Ubx::gnssValid(Ubx::GNSS_MASK_QZSS)
+            && !Ubx::gnssValid(Ubx::GNSS_MASK_GAL | Ubx::GNSS_MASK_SBAS) && !Ubx::gnssValid(0x40),
+        "invalid masks");
+  check(Ubx::gnssValid(Ubx::GNSS_MASK_GAL) && Ubx::gnssValid(Ubx::GNSS_MASK_ALL), "valid masks");
+  check(Ubx::maxRateHz(Ubx::GNSS_MASK_GPS) == 18 && Ubx::maxRateHz(0x09) == 10
+            && Ubx::maxRateHz(0x0d) == 6 && Ubx::maxRateHz(0x0b) == 3 && Ubx::maxRateHz(0x0f) == 4
+            && Ubx::maxRateHz(Ubx::GNSS_MASK_MODULE_DEFAULT) == 3,
+        "rate limits follow data sheet Table 2");
+  check(Ubx::dynModelForPlatform(0) == 0xff && Ubx::dynModelForPlatform(1) == 0
+            && Ubx::dynModelForPlatform(2) == 2 && Ubx::dynModelForPlatform(3) == 3
+            && Ubx::dynModelForPlatform(4) == 4 && Ubx::dynModelForPlatform(5) == 0xff,
+        "platform to dynamic model");
+
+  // Nothing set: NAV-PVT, ANA and FULL power; everything else deleted from BBR.
+  Ubx::Request none = {0, 0xff, 0, 0, Ubx::PSM_OFF, 10, true};
+  Ubx::Plan plan = Ubx::plan(none);
+  check(find(plan.base, Ubx::Key::MSGOUT_NAV_PVT_UART1) == 1
+            && find(plan.base, Ubx::Key::ANA_USE_ANA) == 1 && plan.signals.empty()
+            && find(plan.power, Ubx::Key::PM_OPERATEMODE) == 0
+            && listed(plan.unset, Ubx::Key::RATE_MEAS)
+            && listed(plan.unset, Ubx::Key::NAVSPG_DYNMODEL)
+            && listed(plan.unset, Ubx::Key::SIGNAL_GLO_ENA)
+            && listed(plan.unset, Ubx::Key::PM_POSUPDATEPERIOD),
+        "an empty request leaves the receiver preset");
+  check(plan.power.back().key == Ubx::Key::PM_OPERATEMODE, "OPERATEMODE is last");
+
+  // Four GNSS: B1C, QZSS and SBAS off, rate clamped to 4 Hz.
+  Ubx::Request four = {200, 3, 0x0f, Ubx::GNSS_MASK_ALL, Ubx::PSM_OFF, 10, false};
+  plan = Ubx::plan(four);
+  check(find(plan.signals, Ubx::Key::SIGNAL_BDS_B1) == 0
+            && find(plan.signals, Ubx::Key::SIGNAL_BDS_B1C) == 1
+            && find(plan.signals, Ubx::Key::SIGNAL_GLO_ENA) == 1
+            && find(plan.signals, Ubx::Key::SIGNAL_QZSS_ENA) == 0
+            && find(plan.signals, Ubx::Key::SIGNAL_SBAS_ENA) == 0,
+        "four GNSS uses B1C");
+  check(plan.rate_clamped && plan.rate_ms == 250 && find(plan.base, Ubx::Key::RATE_MEAS) == 250,
+        "rate clamped to 250 ms");
+  check(find(plan.base, Ubx::Key::NAVSPG_DYNMODEL) == 3
+            && find(plan.base, Ubx::Key::ANA_USE_ANA) == 0,
+        "dynamic model and ANA off");
+
+  // Power save with B1C is refused; with B1I it is allowed and forces 1 Hz.
+  four.psm = Ubx::PSM_CYCLIC;
+  plan = Ubx::plan(four);
+  check(plan.psm_refused && plan.psm == Ubx::PSM_OFF
+            && find(plan.power, Ubx::Key::PM_OPERATEMODE) == 0,
+        "PSM refused with B1C");
+  Ubx::Request cyclic = {200, 0xff, 0, 0, Ubx::PSM_CYCLIC, 10, true};
+  plan = Ubx::plan(cyclic);
+  check(!plan.psm_refused && find(plan.power, Ubx::Key::PM_OPERATEMODE) == 2 && plan.rate_ms == 500,
+        "PSMCT at 2 Hz from a fast request");
+  cyclic.rate_ms = 0;
+  check(Ubx::plan(cyclic).rate_ms == 1000, "PSMCT defaults to 1 Hz");
+  Ubx::Request onoff = {0, 0xff, 0, 0, Ubx::PSM_ON_OFF, 3, true};
+  plan = Ubx::plan(onoff);
+  check(find(plan.power, Ubx::Key::PM_POSUPDATEPERIOD) == 5
+            && find(plan.power, Ubx::Key::PM_OPERATEMODE) == 1
+            && plan.power.back().key == Ubx::Key::PM_OPERATEMODE,
+        "PSMOO period at least 5 s, OPERATEMODE last");
+  onoff.psm = 7;
+  check(Ubx::plan(onoff).psm == Ubx::PSM_OFF, "unknown PSM value is off");
+
+  // An invalid mask changes no signal and keeps the preset.
+  Ubx::Request bad = {0, 0xff, Ubx::GNSS_MASK_QZSS, Ubx::GNSS_MASK_ALL, Ubx::PSM_OFF, 10, true};
+  plan = Ubx::plan(bad);
+  check(plan.gnss_refused && plan.signals.empty() && !listed(plan.unset, Ubx::Key::SIGNAL_GPS_ENA),
+        "invalid mask leaves the signals alone");
+
+  // A CASIC mapping decides everything but Galileo, which is deleted from BBR.
+  Ubx::Request casic = {0,
+                        0xff,
+                        Ubx::gnssFromConstellation(1),
+                        static_cast<uint8_t>(Ubx::GNSS_MASK_ALL & ~Ubx::GNSS_MASK_GAL),
+                        Ubx::PSM_OFF,
+                        10,
+                        true};
+  plan = Ubx::plan(casic);
+  check(find(plan.signals, Ubx::Key::SIGNAL_GAL_ENA) == 99
+            && listed(plan.unset, Ubx::Key::SIGNAL_GAL_ENA)
+            && find(plan.signals, Ubx::Key::SIGNAL_BDS_ENA) == 0
+            && find(plan.signals, Ubx::Key::SIGNAL_GPS_ENA) == 1,
+        "Galileo is left to the receiver");
+  // Every plan fits a VALSET.
+  check(!Ubx::valSet(Ubx::LAYER_RAM | Ubx::LAYER_BBR, plan.signals).empty()
+            && !Ubx::valDel(Ubx::LAYER_BBR, plan.unset).empty(),
+        "plans encode");
+}
+
+void testSettle() {
+  // An unarmed gate is open at every tick, the wrap half included. A plain
+  // "not before 0" compared with a signed difference reads as the future for
+  // every tick in [2^31, 2^32).
+  Ubx::Settle gate;
+  const uint32_t ticks[] = {0, 1, 0x7fffffffu, 0x80000000u, 0x80000001u, 0xc0000000u, 0xffffffffu};
+  for (const uint32_t tick : ticks) {
+    check(gate.open(tick) && (gate.remaining(tick) == 0), "an unarmed gate is open");
+  }
+  // Armed just below and across 2^31 and across 2^32.
+  const uint32_t starts[] = {0x7ffffe00u, 0x80000000u, 0xfffffe00u};
+  for (const uint32_t start : starts) {
+    Ubx::Settle armed;
+    armed.arm(start, 500);
+    check(!armed.open(start + 499) && (armed.remaining(start + 499) == 1), "armed gate waits");
+    check(armed.open(start + 500) && !armed.armed(), "armed gate opens and disarms");
+    check(armed.open(start + 0x90000000u), "a disarmed gate stays open");
+  }
+  Ubx::Settle cleared;
+  cleared.arm(0x80000000u, 1000);
+  cleared.clear();
+  check(cleared.open(0x80000001u), "clear opens the gate");
+}
+
+void testDemux() {
+  const std::string nmea = "$GPGGA,1*00\r\n";
+  const auto ubx = Ubx::frame(Ubx::CLASS_ACK, Ubx::ID_ACK_ACK, {0x06, 0x8A});
+  const auto casic = Casic::frame(0x05, 0x01, {0x06, 0x07, 0, 0});
+  std::vector<uint8_t> stream(nmea.begin(), nmea.end());
+  stream.insert(stream.end(), ubx.begin(), ubx.end());
+  stream.push_back(0xBA);  // a false CASIC sync followed by NMEA
+  stream.insert(stream.end(), nmea.begin(), nmea.end());
+  stream.insert(stream.end(), casic.begin(), casic.end());
+  stream.push_back(0xB5);  // a lone trailing sync byte waits for its partner
+  std::vector<GpsDemux::Piece> pieces;
+  const size_t used = GpsDemux::split(stream.data(), stream.size(), pieces);
+  check(used == stream.size() - 1, "the lone trailing sync byte is kept");
+  check(pieces.size() == 4 && pieces[0].kind == GpsDemux::Kind::NMEA
+            && pieces[1].kind == GpsDemux::Kind::UBX && pieces[1].length == ubx.size()
+            && pieces[2].kind == GpsDemux::Kind::NMEA && pieces[2].length == nmea.size() + 1
+            && pieces[3].kind == GpsDemux::Kind::CASIC && pieces[3].length == casic.size(),
+        "NMEA, UBX, NMEA with the false sync byte, CASIC");
+
+  // A frame not fully arrived stops the split at its sync pair.
+  pieces.clear();
+  const size_t partial = GpsDemux::split(ubx.data(), ubx.size() - 1, pieces);
+  check(partial == 0 && pieces.empty(), "a partial UBX frame waits");
+  pieces.clear();
+  check(GpsDemux::split(casic.data(), 4, pieces) == 0 && pieces.empty(),
+        "a partial CASIC header waits");
+
+  // A bad checksum drops only its first sync byte; a frame behind it is found.
+  std::vector<uint8_t> bad = ubx;
+  bad.back() ^= 1;
+  bad.insert(bad.end(), ubx.begin(), ubx.end());
+  pieces.clear();
+  check(GpsDemux::split(bad.data(), bad.size(), pieces) == bad.size() && !pieces.empty()
+            && pieces.front().kind == GpsDemux::Kind::DROP
+            && pieces.back().kind == GpsDemux::Kind::UBX,
+        "a bad frame drops one byte and the next frame is found");
+
+  // An oversize CASIC length and a ragged one are dropped at once.
+  const uint8_t oversize[] = {0xBA, 0xCE, 0x04, 0x10, 0x05, 0x01, 0, 0, 0, 0};
+  pieces.clear();
+  GpsDemux::split(oversize, sizeof(oversize), pieces);
+  check(!pieces.empty() && pieces.front().kind == GpsDemux::Kind::DROP, "oversize CASIC");
+  const uint8_t ragged[] = {0xBA, 0xCE, 0x03, 0x00, 0x05, 0x01, 0, 0, 0, 0, 0, 0, 0};
+  pieces.clear();
+  GpsDemux::split(ragged, sizeof(ragged), pieces);
+  check(!pieces.empty() && pieces.front().kind == GpsDemux::Kind::DROP, "ragged CASIC");
+}
+
 }  // namespace
 
 int main() {
@@ -444,6 +634,9 @@ int main() {
   testNavSat();
   testMonVer();
   testSosAndPmreq();
+  testPlan();
+  testSettle();
+  testDemux();
 
   if (g_Failures != 0) {
     std::cout << "gps ubx harness: FAIL (" << g_Failures << " of " << g_Checks << " checks)\n";

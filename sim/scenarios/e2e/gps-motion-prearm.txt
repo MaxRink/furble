@@ -7,6 +7,12 @@ seed gps_uart_mode ack
 seed imu true
 wait 400
 
+# Receiver identification polls UBX-MON-VER twice, a second apart, before it
+# settles on the NMEA backend (plan 321). Let it finish and clear the journal,
+# so the count below measures only what this scenario does to the receiver.
+wait 2500
+uart-dump
+
 # The pre-arm reload must retain the preference, and the receiver must remain
 # tracking while the UI arms the source afterwards.
 assert setting.gps_motion 1

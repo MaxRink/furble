@@ -99,6 +99,27 @@ uint32_t furble_sim_uart_fix_second(void);
 uint32_t furble_sim_uart_baud(void);
 uint32_t furble_sim_uart_eph_replay_frames(void);
 uint32_t furble_sim_uart_monhw_polls(void);
+
+// The receiver on the port: casic (default), m10, m10-mia or nmea. The M10
+// options select a backup supply, an external flash, a hot first start and a
+// configuration key the receiver firmware does not know.
+void furble_sim_uart_set_model(const char *model,
+                               bool vbckp,
+                               bool flash,
+                               bool hot,
+                               uint32_t unknownKey,
+                               bool unresolved);
+// The modelled board keeps the receiver's V_BCKP supplied.
+bool furble_sim_uart_gps_backup(void);
+// The modelled board's rail cannot be switched off.
+bool furble_sim_uart_rail_fixed(void);
+void furble_sim_uart_set_rail_fixed(bool fixed);
+// Whether the GPS supply rail is on, which is what getExtOutput() reads.
+bool furble_sim_uart_rail_on(void);
+// The GPS supply rail as the board switches it.
+void furble_sim_uart_set_rail(bool on);
+// Virtual M10 observability, see furble_sim_m10_query in sim/fake_uart.cpp.
+std::string furble_sim_m10_query(const std::string &key);
 #endif
 
 #endif
