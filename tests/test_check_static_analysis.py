@@ -2,6 +2,7 @@
 
 import importlib.util
 import json
+import re
 from pathlib import Path
 import sys
 import tempfile
@@ -165,6 +166,43 @@ class ClangTidyRunTest(unittest.TestCase):
             "print('/x/.pio/libdeps/M5GFX/a.hpp:1:1: error: deleting [cppcoreguidelines-owning-"
             "memory,-warnings-as-errors]'); sys.exit(1)")
         self.assertEqual((findings, errors), ([], []))
+
+    def test_quoted_source_line_with_error_is_not_a_compile_error(self):
+        # clang-tidy quotes the source under a diagnostic; M5GFX's result.hpp
+        # has "failure(E2&& error)", which read as a real error (issue #463)
+        findings, errors, _ = self.run_fake(
+            "print('/x/.pio/libdeps/M5GFX/r.hpp:1:1: error: x [bugprone-y,-warnings-as-errors]');"
+            "print(' 3576 | failure(E2&& error) error: here');"
+            "print('      |          ^'); sys.exit(1)")
+        self.assertEqual((findings, errors), ([], []))
+
+    def test_header_filter_is_anchored_to_the_checkout(self):
+        # an unanchored filter matched src/ inside .pio/libdeps/<env>/M5GFX
+        flag = CHECKER.HEADER_FILTER.split("=", 1)[1]
+        pattern = re.compile(flag)
+        root = str(CHECKER.ROOT)
+        for path in ("src/FurbleGPS.h", f"{root}/include/FurbleGPS.h", "lib/furble/Camera.h",
+                     "sim/driver.h"):
+            self.assertTrue(pattern.search(path), path)
+        for path in (".pio/libdeps/m5stick-s3/M5GFX/src/lgfx/v1/LGFXBase.hpp",
+                     f"{root}/.pio/libdeps/m5stick-s3/M5GFX/src/lgfx/v1/LGFXBase.hpp",
+                     f"{root}/managed_components/lvgl__lvgl/src/lvgl.h"):
+            self.assertIsNone(pattern.search(path), path)
+
+    def test_header_filter_reaches_clang_tidy(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            build = Path(tmp) / "host"
+            build.mkdir()
+            entry = {"directory": str(ROOT), "file": str(ROOT / "src" / "main.cpp"),
+                     "arguments": ["clang++", "-c", "src/main.cpp"]}
+            (build / "compile_commands.json").write_text(json.dumps([entry]))
+            log = Path(tmp) / "args"
+            tidy = Path(tmp) / "tidy"
+            tidy.write_text(f"#!{sys.executable}\nimport sys\n"
+                            f"open({str(log)!r}, 'w').write('\\n'.join(sys.argv[1:]))\n")
+            tidy.chmod(0o755)
+            CHECKER.run_clang_tidy(["src/main.cpp"], [build], str(tidy), 1)
+            self.assertIn(CHECKER.HEADER_FILTER, log.read_text().splitlines())
 
     def test_silent_failure_and_real_error_are_compile_errors(self):
         _, errors, _ = self.run_fake("sys.exit(1)")
