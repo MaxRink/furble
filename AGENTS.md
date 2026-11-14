@@ -2,8 +2,8 @@
 
 This file is for coding agents. The full guide is `CLAUDE.md`; read it first.
 Directory-specific rules live in the `CLAUDE.md` of each directory you touch
-(`src/`, `include/`, `lib/furble/`, `sim/`, `web-installer/`, `components/icons/`,
-`plans/`).
+(`src/`, `include/`, `lib/furble/`, `lib/hal/`, `sim/`, `web-installer/`,
+`components/icons/`, `plans/`).
 
 ## Review and merge gate
 

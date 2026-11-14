@@ -217,7 +217,7 @@ python3 tools/check_static_analysis.py --base origin/master   --build-dir .pio/s
 ```
 
 The gate runs cppcheck and clang-tidy on changed files under `src/`,
-`lib/furble/`, `include/`, and `sim/`. `.clang-tidy` records the check set;
+`lib/furble/`, `lib/hal/`, `include/`, and `sim/`. `.clang-tidy` records the check set;
 `tools/check_static_analysis.py` records the cppcheck suppressions and their
 reasons. `static-analysis.yml` runs the same command on pull requests that
 touch C/C++ paths.

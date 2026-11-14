@@ -9,6 +9,7 @@
 #include <esp_timer.h>
 #include <sys/time.h>
 
+#include "FurbleBoard.h"
 #include "FurbleTypes.h"
 #include "Preferences.h"
 
@@ -38,17 +39,6 @@ uint64_t g_LastRtcWriteMonotonicMs = 0;
 
 uint64_t monotonicMs(void) {
   return static_cast<uint64_t>(esp_timer_get_time()) / 1000ULL;
-}
-
-bool knownBatteryBackedRtc(m5::board_t board) {
-  switch (board) {
-    case m5::board_t::board_M5StickC:
-    case m5::board_t::board_M5StickCPlus:
-    case m5::board_t::board_M5StackCore2:
-      return true;
-    default:
-      return false;
-  }
 }
 
 void setSystemTime(uint64_t epochUs) {
@@ -202,7 +192,7 @@ void TimeKeeper::init(void) {
   }
 
   g_RtcAvailable = M5.Rtc.isEnabled();
-  g_RtcBatteryBacked = g_RtcAvailable && knownBatteryBackedRtc(M5.getBoard());
+  g_RtcBatteryBacked = g_RtcAvailable && Board::profile().rtcBatteryBacked;
 
   TimeSample persisted = {};
   g_HasPersisted = loadPersisted(persisted);

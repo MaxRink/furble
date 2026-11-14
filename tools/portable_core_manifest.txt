@@ -14,3 +14,12 @@ lib/furble/protocol/ProvisionTLV.cpp
 lib/furble/protocol/ProvisionTLV.h
 lib/furble/protocol/RicohTime.h
 lib/furble/protocol/UtcTime.h
+lib/hal/AXP2101.cpp
+lib/hal/AXP2101.h
+lib/hal/BQ27220.cpp
+lib/hal/BQ27220.h
+lib/hal/HalBus.h
+lib/hal/SX1262.cpp
+lib/hal/SX1262.h
+lib/hal/XL9555.cpp
+lib/hal/XL9555.h

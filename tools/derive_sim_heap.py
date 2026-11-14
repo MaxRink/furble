@@ -49,11 +49,11 @@ ENVS = {
     "waveshare-s3-eth": ("esp32s3", 0, 0, "waveshare-s3-eth"),
 }
 
-# Board-conditional boot tasks from app_main. IR::init() runs where
-# pinForBoard() names a pin (src/FurbleIR.cpp): StickC and StickC Plus use an
+# Board-conditional boot tasks from app_main. IR::init() runs where the board
+# profile names an IR pin (src/FurbleBoard.cpp): StickC and StickC Plus use an
 # internal stack, the StickS3 puts stack and TCB in PSRAM with
 # xTaskCreateWithCaps, so only its queue is internal. SD::init() runs on the
-# Core boards (isCoreBoard() in src/FurbleSD.cpp).
+# boards whose profile has an SD slot, the two Core boards.
 IR_INTERNAL_TASK = {"m5stick-c", "m5stick-c-plus"}
 IR_QUEUE = {"m5stick-c", "m5stick-c-plus", "m5stick-s3"}
 SD_WRITER = {"m5stack-core", "m5stack-core2"}

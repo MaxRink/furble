@@ -229,6 +229,7 @@ set(TIME_KEEPER_TEST_STUB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/time_keeper_stubs)
 add_executable(time_keeper_persistence_test
                time_keeper_persistence_test.cpp
                settings_nvs_stub.cpp
+               ${FURBLE_ROOT}/src/FurbleBoard.cpp
                ${FURBLE_ROOT}/src/FurbleTimeKeeper.cpp
                ${FURBLE_ROOT}/src/FurbleTimeKeeperPolicy.cpp
                ${FURBLE_ROOT}/lib/preferences/Preferences.cpp)
@@ -937,6 +938,7 @@ add_executable(settings_nvs_roundtrip_test
                settings_nvs_roundtrip_test.cpp
                settings_nvs_stub.cpp
                settings_platform_stub.cpp
+               ${FURBLE_ROOT}/src/FurbleBoard.cpp
                ${FURBLE_ROOT}/src/FurbleSettings.cpp
                ${FURBLE_ROOT}/src/FurbleNetworkSettings.cpp
                ${FURBLE_ROOT}/src/FurbleTimezone.cpp
@@ -1090,6 +1092,17 @@ target_include_directories(imu_motion_encoding_test PRIVATE
                            ${FURBLE_ROOT}/include)
 target_compile_options(imu_motion_encoding_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                         -Wno-unused-parameter)
+
+# Pure chip drivers in lib/hal against a recording register bus and a fake
+# radio port. Expected values come from the datasheets cited in the test.
+add_executable(hal_drivers_test
+               hal_drivers_test.cpp
+               ${FURBLE_ROOT}/lib/hal/AXP2101.cpp
+               ${FURBLE_ROOT}/lib/hal/BQ27220.cpp
+               ${FURBLE_ROOT}/lib/hal/SX1262.cpp
+               ${FURBLE_ROOT}/lib/hal/XL9555.cpp)
+target_include_directories(hal_drivers_test PRIVATE ${FURBLE_ROOT}/lib/hal)
+target_compile_options(hal_drivers_test PRIVATE -Wall -Wextra -Werror)
 
 add_executable(stale_connect_test stale_connect_test.cpp)
 target_link_libraries(stale_connect_test PRIVATE furble_host_camera)
@@ -2310,6 +2323,7 @@ if(BUILD_TESTING)
   add_test(NAME provision-apply-mqtt COMMAND provision_apply_mqtt_test)
   add_test(NAME text-size-policy COMMAND text_size_policy_test)
   add_test(NAME imu-motion-encoding COMMAND imu_motion_encoding_test)
+  add_test(NAME hal-drivers COMMAND hal_drivers_test)
   add_test(NAME text-size-policy-stickc COMMAND text_size_policy_stickc_test)
   add_test(NAME stale-connect COMMAND stale_connect_test)
   add_test(NAME client-leak COMMAND client_leak_test)
@@ -2536,7 +2550,8 @@ endif()
 # approximate sim boundaries.
 set(BOUNDARY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/boundaries)
 set(BOUNDARY_SHIM_DIR ${BOUNDARY_DIR}/shims)
-set(BOUNDARY_SUPPORT ${BOUNDARY_DIR}/boundary_support.cpp ${BOUNDARY_DIR}/m5_stub.cpp)
+set(BOUNDARY_SUPPORT ${BOUNDARY_DIR}/boundary_support.cpp ${BOUNDARY_DIR}/m5_stub.cpp
+    ${FURBLE_ROOT}/src/FurbleBoard.cpp)
 set(BOUNDARY_COMMON_INCLUDES
     ${BOUNDARY_DIR}
     ${BOUNDARY_SHIM_DIR}
@@ -2721,7 +2736,18 @@ target_compile_options(boundary_headless_service_test PRIVATE
                        -Wall -Wextra -Wno-unused-parameter -Wno-format)
 target_link_libraries(boundary_headless_service_test PRIVATE Threads::Threads)
 
+# Board::Profile rows against the values of the board switches they replaced,
+# compiled against the boundary M5Unified shim, which declares every board.
+add_executable(board_profile_test
+               board_profile_test.cpp
+               ${BOUNDARY_DIR}/m5_stub.cpp
+               ${FURBLE_ROOT}/src/FurbleBoard.cpp)
+target_include_directories(board_profile_test PRIVATE ${BOUNDARY_SHIM_DIR}
+                           ${FURBLE_ROOT}/include)
+target_compile_options(board_profile_test PRIVATE -Wall -Wextra -Werror)
+
 if(BUILD_TESTING)
+  add_test(NAME board-profile COMMAND board_profile_test)
   foreach(mode protocols psram-fallback queue-timeout unsupported)
     add_test(NAME boundary-ir-${mode} COMMAND boundary_ir_test ${mode})
   endforeach()

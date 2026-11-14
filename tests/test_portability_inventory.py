@@ -25,10 +25,13 @@ class PortabilityInventoryTest(unittest.TestCase):
         protocol = temp / "lib/furble/protocol"
         protocol.mkdir(parents=True)
         (protocol / "codec.cpp").write_text("int codec() { return 0; }\n", encoding="utf-8")
+        hal = temp / "lib/hal"
+        hal.mkdir(parents=True)
+        (hal / "chip.cpp").write_text("int chip() { return 0; }\n", encoding="utf-8")
         tools = temp / "tools"
         tools.mkdir()
         (tools / "portable_core_manifest.txt").write_text(
-            "lib/furble/protocol/codec.cpp\n", encoding="utf-8"
+            "lib/furble/protocol/codec.cpp\nlib/hal/chip.cpp\n", encoding="utf-8"
         )
         return temp
 

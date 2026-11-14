@@ -33,6 +33,7 @@
 #include "icons.h"
 
 #include "FurbleAutoOff.h"
+#include "FurbleBoard.h"
 #include "FurbleBoardCaps.h"
 #include "FurbleBootScreen.h"
 #include "FurbleBootTimeline.h"
@@ -488,21 +489,7 @@ UI::UI(const interval_t &interval)
   reloadPowerPolicies();
 
   // set minimum, ensure this is a multiple of m_BrightnessSteps so the slider steps work
-  switch (M5.getBoard()) {
-    case m5::board_t::board_M5Stack:
-    case m5::board_t::board_M5StackCore2:
-    case m5::board_t::board_M5StickCPlus2:
-    case m5::board_t::board_M5StickS3:
-    case m5::board_t::board_M5Tough:
-      m_MinimumBrightness = 32;
-      break;
-    case m5::board_t::board_M5StickCPlus:
-    case m5::board_t::board_M5StickC:
-      m_MinimumBrightness = 48;
-      break;
-    default:
-      m_MinimumBrightness = 32;
-  }
+  m_MinimumBrightness = Board::profile().minBrightness;
 
   // start the one-second housekeeping timer, the power policies run
   // independently of the inactivity decision
@@ -11629,13 +11616,13 @@ void UI::addPowerMenu(const menu_t &parent) {
 
   // Only the StickS3 has a Bluetooth controller configured for modem sleep, so
   // the switch does nothing on the other boards. Leave it out there.
-  bool sleepConn = (M5.getBoard() == m5::board_t::board_M5StickS3);
+  bool sleepConn = Board::profile().modemSleep;
   if (sleepConn) {
     addSettingItem(menu.page, NULL, Settings::SLEEP_CONN);
   }
 
   // IP5306 boards do not have a reliable software power-off path.
-  const bool policies = (M5.getBoard() != m5::board_t::board_M5Stack);
+  const bool policies = Board::profile().canPowerOff;
 
   lv_obj_t *cont = lv_menu_cont_create(menu.page);
   lv_obj_set_width(cont, LV_PCT(100));
@@ -13094,7 +13081,7 @@ void UI::updateChargingPowerPolicy(void) {
 
 void UI::processAutoOff(void) {
   updateChargingPowerPolicy();
-  if (m_PoweringOff || (M5.getBoard() == m5::board_t::board_M5Stack)) {
+  if (m_PoweringOff || !Board::profile().canPowerOff) {
     return;
   }
 
@@ -13166,7 +13153,7 @@ void UI::closeLowBatteryWarning(void) {
 }
 
 void UI::processLowBattery(void) {
-  if (m_PoweringOff || (M5.getBoard() == m5::board_t::board_M5Stack)) {
+  if (m_PoweringOff || !Board::profile().canPowerOff) {
     return;
   }
 

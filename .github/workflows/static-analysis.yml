@@ -5,6 +5,7 @@ on:
     paths:
       - 'src/**'
       - 'lib/furble/**'
+      - 'lib/hal/**'
       - 'include/**'
       - 'sim/**'
       - 'tools/check_static_analysis.py'

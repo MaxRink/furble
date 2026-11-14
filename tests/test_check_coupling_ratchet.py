@@ -178,6 +178,12 @@ class CouplingRatchetTest(unittest.TestCase):
                                                        encoding="utf-8")
     self.assertEqual(self.run_main(), 0)
 
+  def test_board_profile_may_switch_on_board(self):
+    self.run_main("--update")
+    (self.root / "src/FurbleBoard.cpp").write_text("void f() { M5.getBoard(); }\n",
+                                                   encoding="utf-8")
+    self.assertEqual(self.run_main(), 0)
+
   def test_current_tree_matches_manifest(self):
     with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
       self.assertEqual(ratchet.main(["--root", str(ROOT)]), 0)
