@@ -152,16 +152,20 @@ brightness floor and the feedback outputs. Compile-time facts stay in
 
 `include/FurblePowerBackend.h`: the contract a board's power hardware meets.
 It names battery caps and sample (moved here from `Platform`, which inherits
-the same `battery_caps_t` and `battery_t` names), `BatterySource` (gauge,
-voltage estimate, coarse steps, none), named rails (`GPS`, `DISPLAY`,
-`PERIPHERAL`), and documents the member list every `Platform` defines:
-battery reads, rails, power-button clicks, power off and timed wake. It has no
-virtual functions. `Platform` derives from it for the types and defines the
-members in `src/FurblePlatform.cpp` for the M5 boards and in
-`sim/FurblePlatformSim.cpp` for the simulator, so the link picks the one
-implementation and unused power paths are still removed by `--gc-sections`. The fuel gauge is not
-a separate interface: `readBattery()` plus `getBatterySource()` cover it, and
-time-to-empty waits for a consumer.
+the same `battery_caps_t` and `battery_t` names) and the named rail `GPS`,
+the only rail with a caller. `meetsPowerBackend<P>()` checks the nine members
+every `Platform` defines (battery caps, read and capacity, `setRail`,
+power-button clicks, power off and the three timed-wake calls) by comparing
+`decltype(&P::member)` with the documented signature and rejecting a
+polymorphic type. `FurblePlatform.h` asserts it after the class, so the
+firmware, the simulator and every host target that includes the real header
+check it. There are no virtual functions. `Platform` derives from the class
+for the types and defines the members in `src/FurblePlatform.cpp` for the M5
+boards and in `sim/FurblePlatformSim.cpp` for the simulator, so the link picks
+the one implementation and unused power paths are still removed by
+`--gc-sections`. The fuel gauge is not a separate interface: `readBattery()`
+covers it. A battery source (gauge versus voltage estimate) and more rails are
+added with their first caller.
 
 Display backend, as a description rather than code until a second panel class
 exists. Every board keeps the rules the UI enforces today: hold
@@ -239,7 +243,7 @@ Exact steps:
    DCDC1 protected; at boot switch off ALDO1/2, BLDO1/2 and DCDC3/4/5, run
    `SX1262::sleep()` and then switch off ALDO3; keep VBACKUP charge off (no
    cell fitted; GNSS backup is VRTC). `readBattery()` from the driver,
-   `getBatterySource()` returns `GAUGE`, `setRail(GPS)` maps to ALDO4,
+   `setRail(GPS)` maps to ALDO4,
    `powerOff()` to `AXP2101::powerOff()`, `getPWRClickCount()` from
    `readPowerKey()` short presses with `enablePowerKeyIrq(true)` at boot.
 6. Display: an `lgfx::LGFX_Device` with `Panel_SH110x` and `Bus_I2C` (port 0,
@@ -289,7 +293,7 @@ Fixed-version builds (`FURBLE_VERSION=1.0.0-ci FURBLE_TEST=0`,
 
 | Env | Base bin | hal-2 bin | Delta | DRAM | IRAM (budget) | Size / stack budget |
 | :--- | --: | --: | --: | :--- | --: | :--- |
-| m5stick-s3 | 1,848,960 | 1,847,664 | -1,296 | 47,208, unchanged | 132,864 (134,144) | pass / pass |
+| m5stick-s3 | 1,848,960 | 1,847,664 (1,848,928 after review) | -1,296 (-32) | 47,208, unchanged | 132,864 (134,144) | pass / pass |
 | m5stick-c | 1,490,592 | 1,490,608 | +16 | 54,780, unchanged | 114,024 (114,688) | pass / pass |
 | m5stick-c-plus | 1,540,160 | 1,540,112 | -48 | 54,756, unchanged | 114,024 (114,688) | pass / pass |
 | m5stack-core | 1,614,304 | 1,614,320 | +16 | 54,884, unchanged | 115,668 (116,736) | pass / pass |
@@ -298,12 +302,40 @@ Fixed-version builds (`FURBLE_VERSION=1.0.0-ci FURBLE_TEST=0`,
 | waveshare-s3-eth | 1,696,368 | 1,696,384 | +16 | 51,332, unchanged | 132,352 (133,120) | pass / pass |
 
 The images differ, as intended: eight `M5.getBoard()` switches became
-lookups in one constant table and `getBatterySource()` and `setRail()` are
-new. For the three envs with both ELFs kept, the only section changes are the
+lookups in one constant table and `setRail()` is new. For the three envs with both ELFs kept, the only section changes are the
 table in `.flash.rodata` (+144 to +160 bytes) and less `.flash.text` (-112 to
 -224); IRAM, DRAM and RTC sections are byte identical. The base ELFs of the
 first four envs were not kept, so their section split is not recorded; their
 DRAM matches the base build log and their IRAM passes the budget.
+
+StickS3 -1,296 bytes, explained after review. Fresh rebuilds of the base
+(`3a89ebdc`) and of hal-2 with the review changes give 1,848,960 and
+1,848,928 bytes (-32). `esptool.py --chip esp32s3 image_info --version 2`
+lists the same seven segments for all three images, with the IROM segment at
+file offset 0x60018 every time, so the DROM/IROM 64 KB alignment padding did
+not change. Segment by segment (bytes):
+
+| Segment | Base 3a89ebdc | hal-2 fa44daff | hal-2 review |
+| :--- | --: | --: | --: |
+| DROM 0x3c150020 | 373,556 | 373,700 | 373,700 |
+| DRAM 0x3fca4700 | 17,648 | 17,648 | 17,648 |
+| IRAM 0x40374000 | 1,988 | 1,844 | 1,844 |
+| IROM 0x42000020 | 1,324,752 | 1,323,312 | 1,324,564 |
+| IRAM (second) | 130,780 | 130,924 | 130,924 |
+| RTC data, RTC fast | 32, 88 | 32, 88 | 32, 88 |
+
+DROM grows by the 144-byte profile table. IRAM moves 144 bytes between its
+two segments and its total (132,768) is unchanged. The whole difference is
+the IROM segment, `.flash.text`: 1,440 bytes smaller at `fa44daff` and 188
+bytes smaller after review. Between the two hal-2 builds the only source
+change is removing the uncalled `getBatterySource()` and two enum values, yet
+`nm` shows 49 functions changing size, almost all outside furble (BT
+controller init and deinit, NimBLE `ble_sm_alg_*`, WPA `sae_*`) by 4 to 60
+bytes each. That pattern points to the Xtensa linker's layout-dependent call
+relaxation and alignment rather than code this plan added. This is inferred
+from the symbol sizes; it was not traced instruction by instruction. The StickS3 image size therefore moves by up
+to about 1.4 KB between unrelated layouts, and the meaningful numbers are the
+DROM table, the unchanged DRAM and IRAM totals, and the budgets.
 
 Deviation found by this comparison: the first hal-2 build made
 `PowerBackend` a virtual interface. The vtable kept every power method alive,
