@@ -637,6 +637,44 @@ schedules the next, so any future dropped event stalls it for good. A real
 receiver keeps its own 1 Hz clock. The regression scenario does not depend on
 that model.
 
+## Fix: gps-standby-wake settle race
+
+Master CI failed `gps-standby-wake` on `350b58e3` (run 43570517034):
+`uart.standby_5s_commands expected '0' got '1'` after the receiver was paused.
+`gps.fresh_fixes_parsed` stayed at 4 across the final window, so the extra
+`$PCAS12,5` came from a fix already parsed before the journal was cleared,
+not from a new burst.
+
+Cause: the scenario cleared the journal once `gps.state` read `standby`. That
+label is the power profiler's, and only `enterStandby()` sets it. A duty wake
+moves the cycle from STANDBY to BURST without relabelling, so the label reads
+`standby` through the whole wake burst. The burst's `PCAS12` is sent only after
+`GPS::update()` on the UI task pushes the new fix and the GPS task consumes the
+request. On a loaded runner that came after the clear.
+
+Fix, simulator only: `gps.duty_settled` is `yes` when no PCAS12 can still
+follow a fix the cycle already has. The latest fix sequence has been pushed,
+the duty request has been consumed, the published cycle word is not BURST
+(which covers the pass between consuming the request and publishing STANDBY)
+and the fake UART has no bytes or receive event pending. All four are atomics
+or the fake UART's own lock, so the query takes no GPS lock. The scenario
+waits on it instead of `gps.state`. Production behaviour is unchanged.
+
+The first version required STANDBY. The pre-push review found that a pause in
+the second before a wake still opens the wake window; no burst comes, the
+cycle goes degraded after `MIN_WAKE_WAIT_MS` and never returns to STANDBY, so
+that wait would hang for the whole bound. Not BURST is the condition that both
+excludes the pending command and terminates.
+
+Evidence, macOS StickS3 build, 16 parallel. A probe with the post-pause wait
+cut from 1000 ms to 1 ms and the old condition failed 3 of 64 with the CI
+signature, and the settle query read `no` in exactly those 3. The same
+probe on the final condition passed 128 of 128, and the real scenario passed
+64 of 64. A sweep that pauses at 20 offsets across one 5 s cycle, four runs
+each, passed 80 of 80; in 15 of them the paused wake went degraded before the
+wait finished, which is the case that hung the STANDBY version. Master and this branch both pass the unmodified scenario 64 of 64
+locally, so the window needs CI load or the narrowed probe to show.
+
 ## References
 
 All links checked.

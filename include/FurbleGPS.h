@@ -198,6 +198,18 @@ class GPS {
    * that follows STANDBY/RAIL_OFF.
    */
   uint32_t simDutyWakeFixesParsed(void) const { return m_SimDutyWakeFixesParsed.load(); }
+  /**
+   * Can the duty cycle still send a command for a fix it already has?
+   *
+   * PCAS12 is sent only after the UI pushes a fix and the GPS task consumes
+   * the request that raised. This is true when the latest fix is pushed, the
+   * request is consumed and the published cycle state is not BURST, which
+   * covers the pass between consuming the request and publishing STANDBY.
+   * It does not require STANDBY: a wake that gets no burst goes degraded.
+   * The profiler's `gps.state` label cannot answer this, because a duty wake
+   * moves the cycle from STANDBY to BURST without relabelling it.
+   */
+  bool simDutySettled(void) const;
 #endif
   /** Get the quality of the fix currently sent to the camera. */
   Fix getFix(void) const;

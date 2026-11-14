@@ -37,12 +37,18 @@ assert_min uart.standby_5s_commands 1
 # Stop the receiver and let any burst already in flight settle, then clear the
 # command journal. Nothing may manufacture another fix or duty command from the
 # cached UART source after quiescence. A burst in flight at the pause still
-# completes its duty cycle and sends PCAS12 on the way back to standby; a slow
-# sanitizer runner can take longer than a fixed second for that, so the journal
-# is cleared only once the receiver is back in standby.
+# completes its duty cycle and sends PCAS12 on the way back to standby, and a
+# slow runner can take longer than a fixed second for that. `gps.state` cannot
+# say when it is done: a duty wake leaves that label at standby through the
+# whole burst, and the PCAS12 waits for the UI to push the burst's fix. Master
+# failed here in CI on 350b58e3 when the journal was cleared before that push.
+# `gps.duty_settled` waits until no PCAS12 can still follow: the fix is pushed,
+# the request consumed, the receive path empty and the cycle out of BURST. It
+# does not wait for STANDBY, because a pause just before a wake leaves that
+# wake without a burst and the cycle goes degraded instead.
 uart-mode pause
 wait 1000
-assert-eventually-virtual 15000 gps.state standby
+assert-eventually-virtual 15000 gps.duty_settled yes
 uart-dump
 wait 6000
 assert_min gps.duty_wake_fixes_parsed 1

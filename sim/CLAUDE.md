@@ -595,8 +595,11 @@ shortens that host retry cadence for a bounded scenario.
   Keep IMU actions and queries general enough for diagnostics, spirit-level
   orientation, and future gesture features; do not add widget-only shortcuts.
 - GPS query keys include `gps.source`, `gps.satellites`, `gps.state`,
-  `gps.fresh_fixes_parsed`, `gps.duty_wake_fixes_parsed`, and
-  `gps.config.<index>.state|attempts`.
+  `gps.fresh_fixes_parsed`, `gps.duty_wake_fixes_parsed`,
+  `gps.duty_settled`, and `gps.config.<index>.state|attempts`.
+  `gps.state` is a profiler label that a duty wake does not change, so it
+  reads `standby` through a wake burst; wait on `gps.duty_settled` before
+  clearing the UART journal in a standby scenario.
   `gps.fresh_fixes_parsed` is simulator-only observability of parser
   progression, so scenarios can distinguish a wake fix from a cached UART
   source. It is cumulative and includes the acquisition fix that armed a duty

@@ -1292,6 +1292,14 @@ void GPS::publishCycleStatus(void) {
   m_CycleStatus.store(word, std::memory_order_release);
 }
 
+#if defined(FURBLE_SIM)
+bool GPS::simDutySettled(void) const {
+  const uint64_t word = m_CycleStatus.load(std::memory_order_acquire);
+  return (static_cast<cycle_state_t>(cycleByte(word, CYCLE_STATE_SHIFT)) != cycle_state_t::BURST)
+         && (m_FixSequence.load() == m_PushedSequence.load()) && !m_CycleRequest.load();
+}
+#endif
+
 GPS::cycle_status_t GPS::getCycleStatusSnapshot(void) const {
   // Models a slow reader. Readers used to hold m_CycleMutex here, and one that
   // overlapped a UART event made the GPS task drop it (plans/18-gps-motion.md).
