@@ -277,11 +277,15 @@ are uncalibrated.
   disabled task blocks and that re-enable wakes it. `stack_budget.py` passes:
   companion 2,560 of 3,072 bytes, webui 2,928 of 3,584 on the StickS3.
 - R1, done. Reconnect advertising runs at 100 ms for 60 s after enable, boot,
-  any disconnect or a button wake, then at 1022.5 ms. The bounded fast window
+  any disconnect or any button press, then at 1022.5 ms. The bounded fast window
   cuts the long-run advertising duty about tenfold (`docs/power/ble.md`). The
-  `companion-advertising` host test covers the cadence state machine, and
-  `boundary-companion-gatt` checks that re-enable starts fast. Untested on iOS
-  and macOS; see the hardware-gated list.
+  `companion-advertising` host test covers the cadence state machine.
+  `boundary-companion-gatt` checks that re-enable starts fast and that a press
+  reopens the window after it closes. Every physical press edge boosts, with
+  the panel on, off or in blind-remote mode; e2e `companion-boost-press`
+  proves it. A press inside the window only extends it, and advertising
+  restarts only when its interval changes. Untested on iOS and macOS; see the
+  hardware-gated list. Review findings are in `111-review-feedback.md`.
 - N5, skipped. `CrashLog::update()` and `MemoryPressure::tick()` each sample
   the internal heap once a second on independent timers. Sharing one sample
   would change both APIs, both UI loops and the crash-log tests to save one
@@ -335,7 +339,7 @@ measurement (section 3) or a hardware soak first.
 - R1 on Apple hardware. The 1022.5 ms fallback is untested on iOS and macOS.
   Commit `c0024761` moved to 100 ms because a 1 s interval was invisible to
   some macOS scan windows. Bench check: bond a Mac, let the 60 s window
-  expire, then time the reconnect with and without a button wake.
+  expire, then time the reconnect with and without a button press.
 
 ## References
 

@@ -281,6 +281,7 @@ document is authoritative over any older summary.
 | [109-sim-coverage-expand.md](implemented/109-sim-coverage-expand.md) | Simulator coverage expansion |
 | [110-startup-render-watchdog.md](implemented/110-startup-render-watchdog.md) | Startup render task-watchdog stall |
 | [111-power-recommendations.md](111-power-recommendations.md) | Power optimization recommendations |
+| [111-review-feedback.md](111-review-feedback.md) | Review-feedback record for the plan 111 idle power fixes |
 | [112-connect-crash-mid-drop.md](implemented/112-connect-crash-mid-drop.md) | Connect crash on a mid-connect peer drop |
 | [113-connection-state-sim-coverage.md](implemented/113-connection-state-sim-coverage.md) | Connection-state simulator coverage |
 | [118-sim-mqtt-transport.md](implemented/118-sim-mqtt-transport.md) | Optional simulator MQTT transport |
