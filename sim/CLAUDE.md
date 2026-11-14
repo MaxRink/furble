@@ -60,7 +60,7 @@ These are query-only observations of boot inputs. The SDL platform still forces
 certify physical M5 configuration.
 
 - `Platform::getBatteryStatus()` in `sim/FurblePlatformSim.cpp` has the
-  firmware body, gated by `Sim::hwGauge*()`. Those fold in the runtime
+  firmware body, gated per field by `Sim::hwGauge*()`. Those fold in the runtime
   `batteryPresent` state, unlike the board-static firmware capabilities, so a
   scenario that removes the battery reads every companion battery field as
   unknown. No scenario asserts those fields yet.

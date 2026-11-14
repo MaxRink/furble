@@ -1155,6 +1155,11 @@ target_include_directories(battery_saver_test PRIVATE ${FURBLE_ROOT}/include)
 target_compile_options(battery_saver_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                   -Wno-unused-parameter)
 
+# Per-field battery status gating from include/FurbleBatteryStatus.h.
+add_executable(battery_status_test battery_status_test.cpp)
+target_include_directories(battery_status_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(battery_status_test PRIVATE -Wall -Wextra -Werror)
+
 add_executable(sim_clock_test sim_clock_test.cpp ${FURBLE_ROOT}/sim/clock.cpp)
 target_include_directories(sim_clock_test PRIVATE ${FURBLE_ROOT}/include ${FURBLE_ROOT}/sim
                                                   ${FURBLE_ROOT}/sim/shim)
@@ -2317,6 +2322,7 @@ if(BUILD_TESTING)
   add_test(NAME gpx-writer COMMAND gpx_writer_test)
   add_test(NAME reconnect-backoff COMMAND reconnect_backoff_test)
   add_test(NAME battery-saver COMMAND battery_saver_test)
+  add_test(NAME battery-status COMMAND battery_status_test)
   add_test(NAME mqtt-owner COMMAND mqtt_owner_test)
   foreach(seed 1 2 3 7 42)
     add_test(NAME mqtt-fuzz-seed-${seed} COMMAND mqtt_fuzz --seed ${seed} --iterations 300)

@@ -21,8 +21,10 @@ A count above its manifest entry fails. A count below it also fails until the
 manifest is regenerated, so every reduction is locked in. Regenerate with
 `python3 tools/check_coupling_ratchet.py --update` and commit the result.
 `--update` would also absorb growth, so `--base REV` additionally fails when a
-per-file count exceeds the manifest committed at REV. pre_review passes its
-base through. A base without a manifest skips that comparison.
+per-file count exceeds the manifest committed at REV. With `--update` the base
+comparison runs first, and growth fails before the manifest is written.
+pre_review passes its base through. A base without a manifest skips that
+comparison.
 
 `include/FurbleBoardCaps.h` is where board identity is turned into capability
 macros, so it is the one file allowed to name boards without a ratchet entry.
@@ -88,8 +90,15 @@ CAPS_INCLUDE = re.compile(r'^\s*#\s*include\s+"FurbleBoardCaps\.h"', re.MULTILIN
 CAPS_DEFINE = re.compile(r"^\s*#\s*define\s+(FURBLE_(?:HAS|PANEL)_[A-Z0-9_]+)\b", re.MULTILINE)
 
 
-def strip_comments(text: str) -> str:
-  return STRIP.sub(lambda match: "\n" * match.group(0).count("\n"), text)
+def strip_comments(text: str, keep_strings: bool = False) -> str:
+  """Blank comments, and string literals unless *keep_strings* is set."""
+
+  def blank(match: re.Match[str]) -> str:
+    if keep_strings and match.group(0).startswith('"'):
+      return match.group(0)
+    return "\n" * match.group(0).count("\n")
+
+  return STRIP.sub(blank, text)
 
 
 def board_guards(text: str) -> int:
@@ -152,7 +161,8 @@ def caps_misuse(root: Path) -> list[str]:
     if CAPS_DEFINED.search(text):
       errors.append(f"{name}: test a capability macro with #if, not #ifdef or defined()")
     used = set(CAPS_MACRO.findall(text))
-    if used and not CAPS_INCLUDE.search(raw):
+    # The include names a string literal, so keep strings but drop comments.
+    if used and not CAPS_INCLUDE.search(strip_comments(raw, keep_strings=True)):
       errors.append(f"{name}: uses a capability macro without including FurbleBoardCaps.h")
     for macro in sorted(used - known):
       errors.append(f"{name}: {macro} is not defined in {BOARD_CAPS_HEADER}")
@@ -210,7 +220,26 @@ def main(argv: list[str] | None = None) -> int:
   manifest_path = root / MANIFEST
   current = count(root)
 
+  since_base: list[str] = []
+  if args.base:
+    try:
+      base = base_manifest(root, args.base)
+    except (ValueError, subprocess.CalledProcessError) as error:
+      print(f"FAIL: {error}", file=sys.stderr)
+      return 1
+    if base is None:
+      print(f"coupling: no manifest at {args.base}, base comparison skipped")
+    else:
+      base_grown, _ = compare(base, current)
+      since_base = [f"{line} since {args.base}" for line in base_grown]
+
   if args.update:
+    # Compare with the base first, so --update can never absorb its growth.
+    if since_base:
+      for line in since_base:
+        print(f"GREW  {line}", file=sys.stderr)
+      print(f"FAIL: coupling grew since {args.base}; {MANIFEST} not written", file=sys.stderr)
+      return 1
     manifest_path.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n",
                              encoding="utf-8")
     print(f"wrote {MANIFEST}: {totals(current)}")
@@ -226,17 +255,7 @@ def main(argv: list[str] | None = None) -> int:
     return 1
 
   grown, stale = compare(manifest, current)
-  if args.base:
-    try:
-      base = base_manifest(root, args.base)
-    except (ValueError, subprocess.CalledProcessError) as error:
-      print(f"FAIL: {error}", file=sys.stderr)
-      return 1
-    if base is None:
-      print(f"coupling: no manifest at {args.base}, base comparison skipped")
-    else:
-      base_grown, _ = compare(base, current)
-      grown.extend(f"{line} since {args.base}" for line in base_grown)
+  grown.extend(since_base)
   misuse = caps_misuse(root)
   print(f"coupling: {totals(current)}")
   for line in misuse:

@@ -313,19 +313,25 @@ deltas are not noise.
 - `Platform::getBatteryStatus()` is the one source of the companion status
   battery fields. It replaces `UI::getBattery*()`, which had a display
   implementation in `FurbleUI.cpp` and a headless one in `main.cpp`.
-- Behavior is unchanged on every shipped image. Display boards always have a
-  battery backend, so they still report the raw M5Unified readings. The
-  headless images resolve to an unknown board, whose battery capabilities are
-  all false, so they still report every field as unknown. The rule is now
-  stated once: no battery backend means unknown. VBUS follows
+- Each field is gated by its own capability flag through
+  `BatteryStatus::gate()`, as the headless implementation did. The headless
+  images resolve to an unknown board, whose battery capabilities are all
+  false, so they still report every field as unknown. Deviation: the display
+  implementation sent raw M5Unified readings in the companion status. Two
+  values change, both on the M5Stack Core. Voltage was 0 mV, because the
+  IP5306 driver has no voltage reading, and is now unknown. Charging was the
+  IP5306 charge bit and is now unknown, which matches the on-device UI: the
+  Core capability row is level only, and the UI never showed Core charging.
+  The other unsupported fields (StickS3 current, StickC Plus2 current and
+  charging, Core current) were already 0 or unknown in M5Unified. VBUS follows
   `FURBLE_HAS_VBUS_SENSE`, which is 0 only on the Waveshare board, as before.
 - `GPS::setRailPower()` is the only code that switches the GPS rail. The UI
   and headless `GPS_POWER` request handlers called `M5.Power.setExtOutput()`
   directly. Deviation: that console path now also gets the readback and one
   retry that every other rail switch already had, which is the documented
   M5PM1 first-access trap.
-- The simulator `Platform::getBatteryStatus()` has the same body, gated by the
-  modelled gauge capabilities. Unlike firmware, whose battery capabilities are
+- The simulator `Platform::getBatteryStatus()` has the same body, gated per
+  field by the modelled gauge capabilities. Unlike firmware, whose battery capabilities are
   board-static, the simulator capabilities are `Sim::hwGauge*()`, which also
   fold in the runtime `batteryPresent` state, so a scenario that removes the
   battery makes the companion battery fields read unknown. No scenario asserts

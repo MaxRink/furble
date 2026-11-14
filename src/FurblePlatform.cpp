@@ -983,13 +983,12 @@ Platform::battery_sample_t Platform::getBatterySample(void) const {
 }
 
 Platform::battery_status_t Platform::getBatteryStatus(void) {
-  const auto caps = getBatteryCaps();
-  const bool battery = caps.level || caps.voltage || caps.current || caps.charging;
-  battery_status_t status = {};
-  status.level = BatteryStatus::level(battery, M5.Power.getBatteryLevel());
-  status.voltage = BatteryStatus::voltage(battery, M5.Power.getBatteryVoltage());
-  status.current = BatteryStatus::current(battery, M5.Power.getBatteryCurrent());
-  status.charging = BatteryStatus::charging(battery, static_cast<int>(M5.Power.isCharging()) == 1);
+  battery_status_t raw = {};
+  raw.level = M5.Power.getBatteryLevel();
+  raw.voltage = M5.Power.getBatteryVoltage();
+  raw.current = M5.Power.getBatteryCurrent();
+  raw.charging = static_cast<int>(M5.Power.isCharging()) == 1;
+  battery_status_t status = BatteryStatus::gate(getBatteryCaps(), raw);
 #if FURBLE_HAS_VBUS_SENSE
   status.vbus = BatteryStatus::vbus(true, M5.Power.getVBUSVoltage());
 #else

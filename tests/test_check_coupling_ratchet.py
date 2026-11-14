@@ -127,6 +127,21 @@ class CouplingRatchetTest(unittest.TestCase):
     self.assertEqual(self.run_main(), 0)
     self.assertEqual(self.run_main("--base", "HEAD"), 1)
 
+  def test_update_with_base_refuses_growth(self):
+    self.run_main("--update")
+    git(self.root, "init", "-q")
+    git(self.root, "add", "-A")
+    git(self.root, "commit", "-q", "-m", "base")
+    manifest = (self.root / "tools/coupling_ratchet.json").read_text(encoding="utf-8")
+    (self.root / "src/b.cpp").write_text("#ifdef FURBLE_M5COREX\n#endif\n", encoding="utf-8")
+    self.assertEqual(self.run_main("--update", "--base", "HEAD"), 1)
+    self.assertEqual((self.root / "tools/coupling_ratchet.json").read_text(encoding="utf-8"),
+                     manifest)
+    (self.root / "src/b.cpp").unlink()
+    (self.root / "include/a.h").write_text("int unrelated;\n", encoding="utf-8")
+    self.assertEqual(self.run_main("--update", "--base", "HEAD"), 0)
+    self.assertEqual(self.run_main("--base", "HEAD"), 0)
+
   def test_base_without_manifest_is_skipped(self):
     git(self.root, "init", "-q")
     git(self.root, "add", "-A")
@@ -161,6 +176,13 @@ class CouplingRatchetTest(unittest.TestCase):
     (self.root / "src/b.cpp").write_text(
         '#include "FurbleBoardCaps.h"\n#if FURBLE_HAS_SD\n#endif\n', encoding="utf-8")
     self.assertEqual(self.run_main(), 0)
+
+  def test_commented_include_does_not_count(self):
+    self.run_main("--update")
+    for comment in ('/*\n#include "FurbleBoardCaps.h"\n*/\n', '// #include "FurbleBoardCaps.h"\n'):
+      (self.root / "src/b.cpp").write_text(comment + "#if FURBLE_HAS_SD\n#endif\n",
+                                           encoding="utf-8")
+      self.assertEqual(self.run_main(), 1, comment)
 
   def test_capability_macro_rejects_ifdef(self):
     self.run_main("--update")

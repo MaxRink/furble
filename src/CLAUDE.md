@@ -356,7 +356,8 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   release, disconnect, then `Platform::powerOff`, which reports failure so the
   UI can resume.
 - The companion status battery fields come only from
-  `Platform::getBatteryStatus()`, in display and headless builds alike. A
+  `Platform::getBatteryStatus()`, in display and headless builds alike. Each
+  field follows its own capability flag through `BatteryStatus::gate()`, so a
   board without a battery backend reports every field as unknown; VBUS
   follows `FURBLE_HAS_VBUS_SENSE`. Do not read `M5.Power` for status elsewhere.
 - `GPS::setRailPower()` is the only code that switches the GPS Port A rail.

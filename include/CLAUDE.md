@@ -228,7 +228,11 @@ settings-touching rebase.
   `defined()`, and include the header directly in every file that uses one;
   a missing include evaluates silently to 0. The coupling ratchet enforces
   both rules, scans `sim/` and `tests/host/` too, and rejects a name the
-  header does not define.
+  header does not define. An include inside a comment does not count.
+- `BatteryStatus::gate()` in `FurbleBatteryStatus.h` gates each battery status
+  field by its own `battery_caps_t` flag. Never gate on the union of the
+  flags: partial boards such as the StickS3 and M5Stack Core would then
+  report unsupported readings.
 - `FurbleControl.h` keeps `esp_power_level_t` for the setting and the
   adaptive policy, but no public member maps it. The ESP to `TxPower` mapping
   is file-local in `FurbleControl.cpp`; boot code calls
