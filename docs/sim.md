@@ -1551,7 +1551,10 @@ boots. Build the host targets and run the pull-request budget:
 ```sh
 cmake -S tests/host -B /tmp/furble-fuzz-host
 cmake --build /tmp/furble-fuzz-host -j8 \
-  --target webui_fuzz companion_fuzz mqtt_fuzz ota_mqtt_protocol_test
+  --target webui_fuzz companion_fuzz mqtt_fuzz ota_mqtt_protocol_test \
+           settings_migration_fuzz wifi_policy_fuzz \
+           bt_debug_journal_s3_test bt_debug_journal_s3_fallback_test \
+           settings_nvs_roundtrip_test gps_ubx_fuzz
 python3 tools/check_fuzz.py --smoke \
   --host-build /tmp/furble-fuzz-host \
   --mqtt-binary sim/build-mqtt/furble-sim
