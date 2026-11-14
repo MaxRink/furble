@@ -34,7 +34,8 @@ The pre-review gate is `python3 tools/pre_review.py --base origin/master`; run
 it before pushing. It includes the coupling ratchet: a per-file board guard,
 `M5.` call, `M5.getBoard()` or public header ESP/NimBLE type count may not
 grow, and a reduction is locked in with
-`python3 tools/check_coupling_ratchet.py --update`. `git config core.hooksPath .githooks` runs it from
+`python3 tools/check_coupling_ratchet.py --update`. pre_review passes `--base`
+to it, so `--update` cannot absorb growth over the base manifest. `git config core.hooksPath .githooks` runs it from
 `.githooks/pre-push` on every push; the tracked `.claude/settings.json` sets
 that hook path for Claude Code sessions through `GIT_CONFIG_*` env vars. `pre-review.yml` runs the same scanners in CI, and
 `host-sanitized.yml` runs every host test except the two ThreadSanitizer probes

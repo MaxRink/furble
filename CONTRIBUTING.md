@@ -141,6 +141,12 @@ grows fails. Use a capability macro from `include/FurbleBoardCaps.h` or a
 `Platform` function instead of a new board guard. A count that shrinks also
 fails until you lock it in with
 `python3 tools/check_coupling_ratchet.py --update` and commit the manifest.
+pre_review runs it with `--base`, which also fails on any per-file growth over
+the manifest committed at the base, so `--update` cannot hide growth. A board
+guard counts each board macro on a `#if`, `#ifdef`, `#ifndef` or `#elif` line,
+after joining backslash continuations, plus each `#define` that names one.
+Capability macros must be `#define`d in `include/FurbleBoardCaps.h`; the scan
+covers `sim/` and `tests/host/` as well.
 
 To run it on every push, enable the tracked hook once per clone:
 

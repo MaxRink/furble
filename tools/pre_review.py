@@ -70,7 +70,7 @@ def main(argv: list[str] | None = None) -> int:
       ("simulator scenario manifest", [PYTHON, "tools/check_sim_scenarios.py"]),
       ("simulator hardware coverage", [PYTHON, "tools/check_sim_coverage.py"]),
       ("coupling ratchet",
-       [PYTHON, "tools/check_coupling_ratchet.py", "--root", str(root)]),
+       [PYTHON, "tools/check_coupling_ratchet.py", "--root", str(root), "--base", args.base]),
   ]
   if not args.skip_unit:
     gates.append(("scanner unit tests",

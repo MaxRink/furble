@@ -7,7 +7,10 @@ undo, and compares the counts with the committed manifest
 `tools/coupling_ratchet.json`.
 
 Categories:
-  board_guards   preprocessor conditionals naming a board identity macro.
+  board_guards   board identity macro names on preprocessor conditional lines,
+                 plus #define lines that name a board macro, after joining
+                 backslash continuations. Widening `#if A` to `#if A || B`
+                 counts as growth, and so does a #define alias.
                  FURBLE_NO_DISPLAY and FURBLE_ETHERNET are profile capability
                  flags mirrored in CMake, so they are not counted.
   m5_calls       `M5.` uses outside comments
@@ -17,13 +20,17 @@ Categories:
 A count above its manifest entry fails. A count below it also fails until the
 manifest is regenerated, so every reduction is locked in. Regenerate with
 `python3 tools/check_coupling_ratchet.py --update` and commit the result.
+`--update` would also absorb growth, so `--base REV` additionally fails when a
+per-file count exceeds the manifest committed at REV. pre_review passes its
+base through. A base without a manifest skips that comparison.
 
 `include/FurbleBoardCaps.h` is where board identity is turned into capability
 macros, so it is the one file allowed to name boards without a ratchet entry.
 `src/FurblePlatform.cpp` is the M5Unified adapter, so its `M5.` calls and
 board switches are not counted. Capability macros are always 0 or 1, so a
-file that tests one with `#ifdef` or `defined()`, or uses one without
-including the header directly, fails.
+file that tests one with `#ifdef` or `defined()`, uses one without including
+the header directly, or names one the header does not #define, fails. The
+capability scan also covers the simulator and the host test doubles.
 """
 
 from __future__ import annotations
@@ -32,6 +39,7 @@ import argparse
 import json
 from pathlib import Path
 import re
+import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -39,6 +47,7 @@ MANIFEST = Path("tools/coupling_ratchet.json")
 SCAN_ROOTS = (Path("src"), Path("include"), Path("lib/furble"), Path("lib/blowfish"),
               Path("lib/preferences"))
 HEADER_ROOTS = (Path("include"), Path("lib/furble"))
+CAPS_SCAN_ROOTS = SCAN_ROOTS + (Path("sim"), Path("tests/host"))
 SOURCE_SUFFIXES = {".c", ".cc", ".cpp", ".h", ".hh", ".hpp"}
 HEADER_SUFFIXES = {".h", ".hh", ".hpp"}
 BOARD_CAPS_HEADER = "include/FurbleBoardCaps.h"
@@ -55,10 +64,10 @@ BOARD_MACROS = (
     "FURBLE_GROVE_CORE",
     "FURBLE_WAVESHARE_S3_ETH",
 )
-BOARD_GUARD = re.compile(
-    r"^\s*#\s*(?:if|ifdef|ifndef|elif)\b.*\b(?:" + "|".join(BOARD_MACROS) + r")\b",
-    re.MULTILINE,
-)
+BOARD_MACRO = re.compile(r"\b(?:" + "|".join(BOARD_MACROS) + r")\b")
+CONDITIONAL = re.compile(r"^\s*#\s*(?:if|ifdef|ifndef|elif)\b")
+DEFINE = re.compile(r"^\s*#\s*define\b")
+CONTINUATION = re.compile(r"\\\n")
 M5_CALL = re.compile(r"\bM5\.")
 M5_GET_BOARD = re.compile(r"\bM5\.getBoard\s*\(")
 HEADER_TYPE = re.compile(
@@ -76,10 +85,22 @@ CAPS_DEFINED = re.compile(
     r"^\s*#\s*(?:ifdef|ifndef)\s+FURBLE_(?:HAS|PANEL)_|\bdefined\s*\(?\s*FURBLE_(?:HAS|PANEL)_",
     re.MULTILINE)
 CAPS_INCLUDE = re.compile(r'^\s*#\s*include\s+"FurbleBoardCaps\.h"', re.MULTILINE)
+CAPS_DEFINE = re.compile(r"^\s*#\s*define\s+(FURBLE_(?:HAS|PANEL)_[A-Z0-9_]+)\b", re.MULTILINE)
 
 
 def strip_comments(text: str) -> str:
   return STRIP.sub(lambda match: "\n" * match.group(0).count("\n"), text)
+
+
+def board_guards(text: str) -> int:
+  """Board macro names on conditional lines plus #define lines naming one."""
+  total = 0
+  for line in CONTINUATION.sub(" ", text).splitlines():
+    if CONDITIONAL.match(line):
+      total += len(BOARD_MACRO.findall(line))
+    elif DEFINE.match(line) and BOARD_MACRO.search(line):
+      total += 1
+  return total
 
 
 def files_under(root: Path, relatives: tuple[Path, ...], suffixes: set[str]) -> list[Path]:
@@ -103,7 +124,7 @@ def count(root: Path) -> dict[str, dict[str, int]]:
     name = path.relative_to(root).as_posix()
     text = strip_comments(path.read_text(encoding="utf-8", errors="replace"))
     if name != BOARD_CAPS_HEADER:
-      record("board_guards", name, len(BOARD_GUARD.findall(text)))
+      record("board_guards", name, board_guards(text))
     if name != PLATFORM_ADAPTER:
       record("m5_calls", name, len(M5_CALL.findall(text)))
       record("m5_get_board", name, len(M5_GET_BOARD.findall(text)))
@@ -118,7 +139,11 @@ def count(root: Path) -> dict[str, dict[str, int]]:
 def caps_misuse(root: Path) -> list[str]:
   """Capability macros are 0 or 1, so a missing include or an #ifdef is silent."""
   errors: list[str] = []
-  for path in files_under(root, SCAN_ROOTS, SOURCE_SUFFIXES):
+  caps_path = root / BOARD_CAPS_HEADER
+  known: set[str] = set()
+  if caps_path.is_file():
+    known = set(CAPS_DEFINE.findall(strip_comments(caps_path.read_text(encoding="utf-8"))))
+  for path in files_under(root, CAPS_SCAN_ROOTS, SOURCE_SUFFIXES):
     name = path.relative_to(root).as_posix()
     if name == BOARD_CAPS_HEADER:
       continue
@@ -126,8 +151,11 @@ def caps_misuse(root: Path) -> list[str]:
     text = strip_comments(raw)
     if CAPS_DEFINED.search(text):
       errors.append(f"{name}: test a capability macro with #if, not #ifdef or defined()")
-    if CAPS_MACRO.search(text) and not CAPS_INCLUDE.search(raw):
+    used = set(CAPS_MACRO.findall(text))
+    if used and not CAPS_INCLUDE.search(raw):
       errors.append(f"{name}: uses a capability macro without including FurbleBoardCaps.h")
+    for macro in sorted(used - known):
+      errors.append(f"{name}: {macro} is not defined in {BOARD_CAPS_HEADER}")
   return errors
 
 
@@ -148,6 +176,21 @@ def compare(manifest: dict[str, dict[str, int]],
   return grown, stale
 
 
+def base_manifest(root: Path, revision: str) -> dict[str, dict[str, int]] | None:
+  """The manifest committed at *revision*, or None when it has none."""
+  verify = subprocess.run(["git", "-C", str(root), "rev-parse", "--verify", "--quiet",
+                           f"{revision}^{{commit}}"], capture_output=True, text=True)
+  if verify.returncode != 0:
+    raise ValueError(f"unknown base revision {revision}")
+  spec = f"{revision}:{MANIFEST.as_posix()}"
+  if subprocess.run(["git", "-C", str(root), "cat-file", "-e", spec],
+                    capture_output=True).returncode != 0:
+    return None
+  shown = subprocess.run(["git", "-C", str(root), "show", spec], capture_output=True,
+                         text=True, check=True)
+  return json.loads(shown.stdout)
+
+
 def totals(counts: dict[str, dict[str, int]]) -> str:
   return ", ".join(
       f"{category} {sum(counts[category].values())} in {len(counts[category])} files"
@@ -160,6 +203,8 @@ def main(argv: list[str] | None = None) -> int:
   parser.add_argument("--root", type=Path, default=ROOT, help="repository root")
   parser.add_argument("--update", action="store_true",
                       help="rewrite the manifest from the current tree")
+  parser.add_argument("--base", metavar="REV",
+                      help="also fail on any per-file growth over the manifest at REV")
   args = parser.parse_args(argv)
   root = args.root.resolve()
   manifest_path = root / MANIFEST
@@ -181,6 +226,17 @@ def main(argv: list[str] | None = None) -> int:
     return 1
 
   grown, stale = compare(manifest, current)
+  if args.base:
+    try:
+      base = base_manifest(root, args.base)
+    except (ValueError, subprocess.CalledProcessError) as error:
+      print(f"FAIL: {error}", file=sys.stderr)
+      return 1
+    if base is None:
+      print(f"coupling: no manifest at {args.base}, base comparison skipped")
+    else:
+      base_grown, _ = compare(base, current)
+      grown.extend(f"{line} since {args.base}" for line in base_grown)
   misuse = caps_misuse(root)
   print(f"coupling: {totals(current)}")
   for line in misuse:

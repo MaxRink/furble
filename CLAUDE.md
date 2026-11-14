@@ -148,7 +148,12 @@ CLAUDE.md whose directory it touches.
   scanner unit tests. The ratchet fails when a per-file count of board
   guards, `M5.` calls, `M5.getBoard()` or ESP/NimBLE public header types
   grows; after a reduction run `python3 tools/check_coupling_ratchet.py
-  --update` and commit `tools/coupling_ratchet.json`.
+  --update` and commit `tools/coupling_ratchet.json`. pre_review passes its
+  `--base` through, so growth over the base manifest fails even after
+  `--update`. Board guards count each board macro on a conditional line and
+  each `#define` naming one. The capability scan also covers `sim/` and
+  `tests/host/`, and rejects a `FURBLE_HAS_*` or `FURBLE_PANEL_*` name that
+  `include/FurbleBoardCaps.h` does not define.
   `git config core.hooksPath .githooks` runs it from `.githooks/pre-push` on
   every push, against each pushed commit. The tracked `.claude/settings.json`
   sets that hook path for Claude Code sessions through `GIT_CONFIG_COUNT`, so

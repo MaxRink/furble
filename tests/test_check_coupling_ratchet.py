@@ -3,6 +3,7 @@
 from pathlib import Path
 import contextlib
 import io
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -31,6 +32,17 @@ NimBLEClient *client;
 """
 
 
+CAPS = """\
+#define FURBLE_HAS_SD 1
+#define FURBLE_PANEL_80X160 0
+"""
+
+
+def git(root: Path, *args: str) -> None:
+  subprocess.run(["git", "-C", str(root), "-c", "user.name=t", "-c", "user.email=t@t",
+                  "-c", "commit.gpgsign=false", *args], check=True, capture_output=True)
+
+
 class CouplingRatchetTest(unittest.TestCase):
   def setUp(self):
     self.temp = tempfile.TemporaryDirectory(prefix="furble-ratchet-")
@@ -40,6 +52,7 @@ class CouplingRatchetTest(unittest.TestCase):
     (self.root / "tools").mkdir()
     (self.root / "src/a.cpp").write_text(SOURCE, encoding="utf-8")
     (self.root / "include/a.h").write_text(HEADER, encoding="utf-8")
+    (self.root / "include/FurbleBoardCaps.h").write_text(CAPS, encoding="utf-8")
 
   def tearDown(self):
     self.temp.cleanup()
@@ -77,8 +90,69 @@ class CouplingRatchetTest(unittest.TestCase):
   def test_board_caps_header_may_name_boards(self):
     self.run_main("--update")
     (self.root / "include/FurbleBoardCaps.h").write_text(
-        "#if defined(FURBLE_M5STICKS3)\n#define FURBLE_HAS_M5PM1 1\n#endif\n", encoding="utf-8")
+        CAPS + "#if defined(FURBLE_M5STICKS3)\n#define FURBLE_HAS_M5PM1 1\n#endif\n",
+        encoding="utf-8")
     self.assertEqual(self.run_main(), 0)
+
+  def test_widened_condition_counts_each_board_macro(self):
+    one = ratchet.board_guards("#if defined(FURBLE_M5STICKC)\n#endif\n")
+    two = ratchet.board_guards(
+        "#if defined(FURBLE_M5STICKC) || defined(FURBLE_M5STICKC_PLUS)\n#endif\n")
+    self.assertEqual((one, two), (1, 2))
+    self.run_main("--update")
+    (self.root / "src/a.cpp").write_text(
+        SOURCE.replace("defined(FURBLE_M5STICKS3)",
+                       "defined(FURBLE_M5STICKS3) || defined(FURBLE_M5COREX)"), encoding="utf-8")
+    self.assertEqual(self.run_main(), 1)
+
+  def test_continuation_is_joined_before_counting(self):
+    text = "#if defined(FURBLE_M5STICKC) || \\\n    defined(FURBLE_M5COREX)\n#endif\n"
+    self.assertEqual(ratchet.board_guards(text), 2)
+
+  def test_define_alias_counts(self):
+    self.assertEqual(ratchet.board_guards("#define IS_STICK FURBLE_M5STICKC\n"), 1)
+    self.assertEqual(ratchet.board_guards("#define UNRELATED 1\n"), 0)
+    self.run_main("--update")
+    (self.root / "src/b.cpp").write_text("#define IS_CORE defined(FURBLE_M5COREX)\n",
+                                         encoding="utf-8")
+    self.assertEqual(self.run_main(), 1)
+
+  def test_update_cannot_hide_growth_from_the_base(self):
+    self.run_main("--update")
+    git(self.root, "init", "-q")
+    git(self.root, "add", "-A")
+    git(self.root, "commit", "-q", "-m", "base")
+    (self.root / "src/b.cpp").write_text("#ifdef FURBLE_M5COREX\n#endif\n", encoding="utf-8")
+    self.run_main("--update")
+    self.assertEqual(self.run_main(), 0)
+    self.assertEqual(self.run_main("--base", "HEAD"), 1)
+
+  def test_base_without_manifest_is_skipped(self):
+    git(self.root, "init", "-q")
+    git(self.root, "add", "-A")
+    git(self.root, "commit", "-q", "-m", "base")
+    self.run_main("--update")
+    self.assertEqual(self.run_main("--base", "HEAD"), 0)
+
+  def test_unknown_base_fails(self):
+    self.run_main("--update")
+    git(self.root, "init", "-q")
+    self.assertEqual(self.run_main("--base", "no-such-revision"), 1)
+
+  def test_capability_macro_must_exist(self):
+    self.run_main("--update")
+    (self.root / "src/b.cpp").write_text(
+        '#include "FurbleBoardCaps.h"\n#if FURBLE_HAS_SDD\n#endif\n', encoding="utf-8")
+    self.assertEqual(self.run_main(), 1)
+
+  def test_capability_scan_covers_sim_and_host_doubles(self):
+    self.run_main("--update")
+    for name in ("sim/x.cpp", "tests/host/x.cpp"):
+      path = self.root / name
+      path.parent.mkdir(parents=True, exist_ok=True)
+      path.write_text("#ifdef FURBLE_HAS_SD\n#endif\n", encoding="utf-8")
+      self.assertEqual(self.run_main(), 1, name)
+      path.unlink()
 
   def test_capability_macro_needs_direct_include(self):
     self.run_main("--update")
