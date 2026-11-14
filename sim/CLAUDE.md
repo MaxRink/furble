@@ -823,6 +823,13 @@ shortens that host retry cadence for a bounded scenario.
   LVGL, M5GFX and sanitizer-runtime sites. Linux libstdc++, like the device's,
   allocates in a `std::deque` constructor where macOS libc++ does not, so a
   per-tick deque shows up as counted heap on Linux only.
+- `FURBLE_SIM_SANITIZE=thread` builds the TSan binary the `sim-e2e` job runs
+  the three GPS concurrency scenarios on, with `TSAN_OPTIONS` pointing at
+  `sim/tsan.supp`. TSan owns the global `operator new`/`delete` there, so
+  `sim/heap_count.cpp` leaves them out of that build and C++ allocations are
+  not charged; no TSan scenario asserts a heap figure. The suppressions match
+  function names, so a run without `llvm-symbolizer` reports the suppressed
+  M5GFX `Panel_sdl` race as unsymbolized frames.
 - The fuzz fit rule follows the layouts the scenarios certify. Remote shutter
   stays fit-required on physical-button builds and on the 320x240 Core touch
   model, and narrow Stick touch may scroll. Physical-button Home and Connected

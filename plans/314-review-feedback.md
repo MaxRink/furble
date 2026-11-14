@@ -247,3 +247,12 @@ branch `fix/stack-budget-review`.
 | # | Finding | Resolution | Evidence |
 | ---: | :--- | :--- | :--- |
 | 1 | #448 review on `87b14f46`: `CLAUDE.md` described the `FURBLE_FUZZ_ALLOW_UNSANITIZED` opt-out in `tools/coverage.py`, but `AGENTS.md` did not. | Superseded. The first CI run on that head showed `libclang_rt.profile` itself missing, so the opt-out was a symptom fix. The branch now installs `libclang-rt-18-dev` instead and drops the opt-out and its docs. The new prerequisite is documented in `CLAUDE.md`, `AGENTS.md`, `CONTRIBUTING.md` and `docs/coverage.md`. | `.github/workflows/coverage.yml`, run 43496814945 |
+
+## Follow-up (#450, `fix/restore-sim-ci`)
+
+| # | Finding | Resolution | Evidence |
+| ---: | :--- | :--- | :--- |
+| 1 | #450 review: `SDL_SetHint` at normal priority could override an explicit `SDL_RENDER_DRIVER` from the environment. | Fixed. `furble_sim_prefer_software_renderer()` returns early when `SDL_RENDER_DRIVER` is set, so it never depends on the SDL2 or SDL3 hint priority rules. | `sim/sdl_lifecycle.cpp` |
+| 2 | #450 review: the `function:` entries in `sim/ubsan.supp` were said to match symbol names, so source paths could never match. | False positive. In a UBSan suppression file the part before the colon is the check name: `function` is the `-fsanitize=function` check (calls through a mismatched function type). The part after it is a location pattern matched against the function name, source file or module. The sim-sanitizers job passed on this head with these entries. | `sim/ubsan.supp`, sim-sanitizers on `15f9ac9d`, clang UndefinedBehaviorSanitizer documentation "Runtime suppressions" |
+| 3 | #450 CI: cppcheck and clang-tidy reported 22 findings, all in M5GFX headers under `sim/.pio/libdeps/sim`, because the gate treated every `sim/` path as furble code. | Fixed. `sim/.pio/` is excluded from the static-analysis findings and source list, with a regression test. | `tools/check_static_analysis.py`, `tests/test_check_static_analysis.py` |
+| 4 | #450 CI: the TSan simulator build failed to link, because `sim/heap_count.cpp` replaces every global operator new and delete and clang 21's static TSan runtime defines them too. | Fixed. The TSan build links TSan's operators. Only the three GPS concurrency scenarios run on it, and none asserts a heap figure. | `sim/heap_count.cpp` |

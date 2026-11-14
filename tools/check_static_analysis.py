@@ -24,7 +24,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 PRODUCTION_PREFIXES = ("src/", "lib/furble/", "include/", "sim/")
-EXCLUDED_PREFIXES = ("sim/build/", "sim/shim/")
+# sim/.pio holds the CI clone of M5GFX, M5Unified, LVGL and TinyGPSPlus:
+# third-party code that only looks like furble's because it sits under sim/.
+EXCLUDED_PREFIXES = ("sim/build/", "sim/shim/", "sim/.pio/")
+
+
+def is_production(path: str) -> bool:
+    """Return whether a repo-relative path is furble's own analyzed code."""
+
+    return path.startswith(PRODUCTION_PREFIXES) and not path.startswith(EXCLUDED_PREFIXES)
 SOURCE_SUFFIXES = (".cpp", ".cc", ".cxx", ".c")
 # Production sources no compile database builds. clang-tidy cannot analyze
 # them, so they are named here instead of being skipped silently; cppcheck
@@ -90,9 +98,7 @@ def production_paths(paths: list[str]) -> tuple[list[str], list[str]]:
     headers: list[str] = []
     for raw in paths:
         path = raw.replace(os.sep, "/")
-        if not path.startswith(PRODUCTION_PREFIXES):
-            continue
-        if path.startswith(EXCLUDED_PREFIXES):
+        if not is_production(path):
             continue
         if not (ROOT / path).is_file():
             continue
@@ -162,7 +168,7 @@ def parse_cppcheck(text: str) -> list[dict[str, str]]:
             continue
         finding = match.groupdict()
         finding["file"] = normalize_path(finding["file"])
-        if not finding["file"].startswith(PRODUCTION_PREFIXES):
+        if not is_production(finding["file"]):
             continue
         findings.append(finding)
     return findings
@@ -176,14 +182,14 @@ def parse_clang_tidy(text: str) -> tuple[list[dict[str, str]], list[dict[str, st
         if match is not None:
             finding = match.groupdict()
             finding["file"] = normalize_path(finding["file"])
-            if finding["file"].startswith(PRODUCTION_PREFIXES):
+            if is_production(finding["file"]):
                 findings.append(finding)
             continue
         match = COMPILE_ERROR.match(line)
         if match is not None:
             finding = match.groupdict()
             finding["file"] = normalize_path(finding["file"])
-            if finding["file"].startswith(PRODUCTION_PREFIXES):
+            if is_production(finding["file"]):
                 compile_errors.append(finding)
     return findings, compile_errors
 

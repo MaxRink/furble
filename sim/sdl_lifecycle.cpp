@@ -112,9 +112,13 @@ extern "C" void furble_sim_SDL_Quit(void) {
 // the compiler: clang 18 made an infinite float of it, clang 21 a signed
 // overflow. Under a headless driver ask for the software renderer, which
 // exists there and reports a real output size. An explicit SDL_RENDER_DRIVER
-// in the environment still wins over this hint, and visible runs are
-// unchanged.
+// in the environment is left alone rather than relying on hint priority
+// rules, which differ between SDL2 and the SDL3 behind sdl2-compat. Visible
+// runs are unchanged.
 extern "C" void furble_sim_prefer_software_renderer(void) {
+  if (std::getenv("SDL_RENDER_DRIVER") != nullptr) {
+    return;
+  }
   const char *driver = std::getenv("SDL_VIDEODRIVER");
   if (driver != nullptr
       && (std::strcmp(driver, "dummy") == 0 || std::strcmp(driver, "offscreen") == 0)) {
