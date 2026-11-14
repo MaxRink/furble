@@ -40,7 +40,7 @@ No PDF and no long excerpt is committed.
 | Message | Class/ID | Length | IFD section | Use |
 | --- | --- | --- | --- | --- |
 | Frame and checksum | | | 3.2, 3.4 | Sync B5 62, 8-bit Fletcher over class, id, length, payload |
-| ACK-ACK / ACK-NAK | 05 01 / 05 00 | 2 | 3.9.1 / 3.9.2 | Configuration result, within one second (3.5.1) |
+| ACK-ACK / ACK-NAK | 05 01 / 05 00 | 2 | 3.9.1 / 3.9.2 | Configuration result (3.5.1), "at least within one second" (3.9.1, 3.9.2) |
 | CFG-RST | 06 04 | 4 | 3.10.2 | Hot, warm, cold restart; GNSS stop before a backup. Never acknowledged |
 | CFG-VALDEL | 06 8C | 4+4n | 3.10.3 | Codec only |
 | CFG-VALGET | 06 8B | 4+4n / 4+n | 3.10.4 | Read back the applied configuration (console) |
@@ -161,7 +161,7 @@ length field drops one byte and resynchronises.
   Configure, restart, satellite capture, MON-HW and the ephemeris cache switch
   on it. The UBX code is `src/FurbleGPSUbx.cpp`. UBX commands share the
   existing one-in-flight configuration queue with a 1 s ACK timeout (IFD
-  3.5.1), three attempts, and an optional settle time after the ACK.
+  3.9.1, 3.9.2), three attempts, and an optional settle time after the ACK.
 - NAV-PVT. The UBX configuration turns NAV-PVT on (RAM and BBR) and keeps
   NMEA on as the fallback. A fresh NAV-PVT (younger than the 30 s freshness
   window) overlays position, altitude, speed, course, satellites, date and
@@ -186,7 +186,8 @@ length field drops one byte and resynchronises.
   a UBX frame (it has neither the CASIC sync nor a `$`). Three motion
   scenarios that assert `uart.count 0` clear the journal after detection.
 - The duty cycle (standby or rail cycling) waits until the receiver is
-  identified, so a u-blox receiver is never sent `$PCAS12`. On a CASIC
+  identified and its configuration queue is idle. `$PCAS12` goes only to the
+  NMEA (CASIC) backend; from PR 3 a u-blox receiver gets RXM-PMREQ instead. On a CASIC
   receiver with a duty policy this delays the first standby by up to the two
   second detection window. The power gate stays inside its threshold
   (`gps-duty-standby-cycle` -1.61 %).
@@ -207,7 +208,7 @@ screenshots):
 | --- | --- | --- | --- | --- | --- |
 | `GPS_GNSS` | 48 | `gps_gnss` | U8 | 0 | 0 follows `GPS_CONSTEL`, else a mask: 1 GPS, 2 BeiDou, 4 GLONASS, 8 Galileo, 16 QZSS, 32 SBAS |
 | `GPS_PSM` | 49 | `gps_psm` | U8 | 0 | 0 off, 1 cyclic tracking, 2 on/off |
-| `GPS_ANA` | 50 | `gps_ana` | bool | true | AssistNow Autonomous |
+| `GPS_ANA` | 50 | `gps_ana` | bool | false | AssistNow Autonomous |
 
 The CASIC path reads none of them, so it is unchanged.
 
@@ -241,12 +242,14 @@ The CASIC path reads none of them, so it is unchanged.
     constellations, and the console says so.
   - The duty Standby policy on UBX sends RXM-PMREQ: duty interval, backup and
     force flags, UART RX wake. It never sends `$PCAS12`.
-- AssistNow Autonomous (7): on by default.
-  - The data sheets support it on GPS, Galileo, GLONASS, QZSS and B1I.
-  - It is off in the SPG 5.10 ROM, but the cost is occasional background
-    computation (IM-MAX 3.12.5.3), and the gain is a 3 to 4 s fix instead of
-    27 s on data up to about three days old.
-  - It needs BBR, so it helps across standby and on backed boards.
+- AssistNow Autonomous (7): off by default, an opt-in (revised after review).
+  - The data sheets support it on GPS, Galileo, GLONASS, QZSS and B1I, and the
+    gain is a 3 to 4 s fix instead of 27 s on data up to about three days old.
+  - It stays at the SPG 5.10 ROM default, off, like every other receiver
+    setting furble adds. Its background computation costs current and delays
+    power-off (IM-MAX 3.12.5.3).
+  - Its orbits live in BBR, which an unbacked rail cut erases, so on every
+    supported board it only helps across software standby.
   - B1C is not covered (RN 3.1.4). With four constellations the key is still
     sent, which the M10 model accepts; the effect on hardware is unknown.
 - Warm start (8):
@@ -291,6 +294,22 @@ The CASIC path reads none of them, so it is unchanged.
 - Found by the scenarios and fixed: a duty request that lands after the rail
   is already cut must not try to save again. It used to mark the backup as
   refused.
+
+### Review fixes (on `feat/ubx-3-features`)
+
+Recorded in [321-review-feedback.md](321-review-feedback.md):
+
+- the `Ubx::Settle` tick-wrap gate;
+- `Platform::canCutGpsRail()` and the GNSS restart when a cut fails;
+- `$PCAS12` only on the NMEA backend;
+- `status_t::time_resolved`;
+- `GPS_ANA` off by default;
+- the pure `GpsDemux` and the reworked fuzzer;
+- the duty gate on an idle configuration queue;
+- the PVT age rule;
+- the per-enable SOS latch;
+- four new scenarios: `gps-ubx-tick-wrap`, `gps-ubx-rail-fixed`,
+  `gps-ubx-time-unresolved` and `gps-ubx-ana`.
 
 ## Hardware-only items
 

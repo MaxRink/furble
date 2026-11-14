@@ -448,6 +448,9 @@ and `gps_m10_unknown_key` (`20910007`, `10230001` or `20d00001`, a key the
 firmware refuses) are described under the virtual u-blox M10 below.
 `gps_gnss` and `gps_psm` are byte seeds and `gps_ana` a boolean seed for the
 u-blox constellation mask, power save and AssistNow Autonomous settings.
+`gps_rail_fixed` models a board whose GPS rail cannot be cut (the Core IP5306 or
+a refused PMIC request) and `gps_m10_unresolved` makes the virtual M10 report a
+3D fix whose time is valid but not fully resolved.
 All boolean seeds, including `gps_uart_noise`, reject malformed values during
 scenario loading.
 
@@ -1352,7 +1355,10 @@ no value). On the firmware side `gps.backend` reports `unknown`, `detecting`,
 `gps.ubx.gnss_refused`, `gps.ubx.psm_refused`, `gps.ubx.rate_clamped`, and
 `gps.ubx.backup` reports `Platform::hasGpsBackupSupply()`, all `none` before the
 first configuration. The modelled board keeps V_BCKP exactly when
-`gps_m10_backup` is set. `uart.ubx_polls` counts MON-VER detection
+`gps_m10_backup` is set, and can cut its rail unless `gps_rail_fixed` is set or
+the build models the Core. `gps.time_resolved` reports whether the snapshot
+time may set the clock, and `time.gps` whether the wall clock was last set
+from GPS. `uart.ubx_polls` counts MON-VER detection
 polls the driver wrote.
 
 ## Fault injection and fuzzing
