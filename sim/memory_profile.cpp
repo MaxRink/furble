@@ -45,7 +45,7 @@ const profile_budget_t BUDGETS[] = {
      "esp32"                                                                                                                             },
     {"stickc-plus2",     532480,     0,               4096,  16384, 4096, 6144,  6144, 4096, 135 * 8 * 2,  true,  20480, 0,
      "esp32"                                                                                                                             },
-    {"sticks3",          512 * 1024, 8 * 1024 * 1024, 8192,  12288, 3072, 10240, 3072, 4096, 135 * 8 * 2,
+    {"sticks3",          512 * 1024, 8 * 1024 * 1024, 8192,  12288, 3840, 10240, 3072, 4096, 135 * 8 * 2,
      true,                                                                                                        0,     32768, "esp32s3"},
     {"core",             532480,     0,               4096,  16384, 4096, 6144,  6144, 4096, 320 * 16 * 2, false, 20480, 0,
      "esp32"                                                                                                                             },
@@ -53,9 +53,9 @@ const profile_budget_t BUDGETS[] = {
      0,                                                                                                                  32768, "esp32"  },
     {"tough",            532480,     8 * 1024 * 1024, 16384, 16384, 4096, 10240, 3072, 4096, 320 * 16 * 2, false,
      0,                                                                                                                  32768, "esp32"  },
-    {"headless-s3",      512 * 1024, 8 * 1024 * 1024, 8192,  16384, 3072, 10240, 4096, 4096, 0,            false, 0,
+    {"headless-s3",      512 * 1024, 8 * 1024 * 1024, 8192,  16384, 3840, 10240, 4096, 4096, 0,            false, 0,
      32768,                                                                                                                     "esp32s3"},
-    {"waveshare-s3-eth", 512 * 1024, 8 * 1024 * 1024, 16384, 16384, 3072, 10240, 4096, 4096, 0,
+    {"waveshare-s3-eth", 512 * 1024, 8 * 1024 * 1024, 16384, 16384, 3840, 10240, 4096, 4096, 0,
      false,                                                                                                       0,     32768, "esp32s3"},
 };
 
@@ -75,7 +75,7 @@ std::vector<component_t> componentsFor(const profile_budget_t &budget) {
   const char *nimble = budget.psramTotal > 0 ? "psram" : "internal";
   return {
       {"main_stack",             budget.mainStack,                                      "internal",     "CONFIG_ESP_MAIN_TASK_STACK_SIZE"              },
-      {"event_task",             2304,                                                  "internal",     "CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE"      },
+      {"event_task",             3072,                                                  "internal",     "CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE"      },
       {"timer_task",             3584,                                                  "internal",     "CONFIG_ESP_TIMER_TASK_STACK_SIZE"             },
       {"tcpip_task",             3072,                                                  "internal",     "CONFIG_LWIP_TCPIP_TASK_STACK_SIZE"            },
       {"nimble_host",            16384,                                                 "internal",     "CONFIG_BT_NIMBLE_HOST_TASK_STACK_SIZE"        },
@@ -85,7 +85,7 @@ std::vector<component_t> componentsFor(const profile_budget_t &budget) {
       {"gps_task",               4096,                                                  "internal",     "src/FurbleGPS.cpp xTaskCreate"                },
       {"ir_task",                budget.irStack,                                        "psram",        "src/FurbleIR.cpp after PR 394"                },
       {"companion_task",         budget.companionStack,                                 "internal",     "src/FurbleCompanion.cpp xTaskCreate"          },
-      {"webui_supervisor",       3584,                                                  "internal",     "FurbleWebUIMemory::SUPERVISOR_STACK_BYTES"    },
+      {"webui_supervisor",       4096,                                                  "internal",     "FurbleWebUIMemory::SUPERVISOR_STACK_BYTES"    },
       {"webui_tls",              12288,                                                 "internal",     "FurbleWebUI::IDENTITY_STACK_BYTES"            },
       {"webui_httpd",            8192,                                                  "internal",     "FurbleWebUIMemory::HTTPD_STACK_BYTES"         },
       {"mqtt_owner",             budget.mqttOwner,                                      "internal",     "release-gate MQTT owner stack"                },

@@ -73,7 +73,7 @@ using the app in an untrusted area. An unknown inbound BLE link is retained
 because the server is shared with camera name discovery; it can delay reconnect
 advertising until it disconnects. Reconnect advertising runs at 100 ms for 60 s
 after enable, boot, a disconnect or any button press, then at 1022.5 ms; press
-any button if the app cannot find the device. The first enable needs 7,552 bytes of free
+any button if the app cannot find the device. The first enable needs 8,320 bytes of free
 internal RAM; below that the companion stays off with a log line instead of
 resetting the device. See [the companion reference](docs/companion.md)
 for the packet layout, USB limits, pairing behavior, and the battery observation
@@ -590,6 +590,15 @@ protocols with a timezone field receive the standard offset and DST flag, and
 protocols without one receive the selected or derived local civil time. The GPS
 Data page continues to show the receiver's UTC timestamp.
 
+A board without a calendar RTC chip, such as the M5StickS3 or Core, keeps its
+running clock across a soft reset: `esp_restart()`, an OTA restart, a panic, a
+USB reset and most watchdog resets. `time status` then reports source `rtc`
+with `rtc: no`, and the uncertainty grows by an estimate of 100 ppm of the
+elapsed time plus one second. The next GPS, NTP or companion sample replaces it.
+An RTC watchdog system reset clears the clock and falls back to the saved NVS
+value, as a power-on or brownout does. See
+[docs/console-commands.md](docs/console-commands.md#time) for the full rules.
+
 Update rate, Sentences, and Constellation default to `Default`, which leaves
 those receiver settings alone. Power saving defaults to Always on, Assisted
 start is Off, and Platform defaults to Do not send. A change is sent to the
@@ -620,7 +629,9 @@ The intervalometer can be configured via three settings in `Settings->Timer`:
 Count can be configured up to 999 or infinite. Deep Sleep powers the remote off
 between frames when the next delay is at or above the threshold. The threshold
 defaults to 60 seconds and accepts 0 to 999 seconds. After a timed wake, furble
-reconnects once and continues the remaining frames.
+reconnects once and continues the remaining frames. A clock kept across a soft
+reset on a board without an RTC chip is not trusted for the resumed wait, so
+that wait counts from boot, as it does after an NVS restore.
 Delay and shutter time can be figured with custom or preset values from 0 to 999 in milliseconds, seconds or minutes.
 
 Some camera protocols such as Ricoh GR trigger capture with a single operation request and do not expose separate exposure start/stop control. For those cameras the intervalometer still controls the wait, count, and delay between captures, but the camera ignores the configured shutter-open duration.

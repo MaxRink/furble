@@ -17,9 +17,9 @@ does not find the device, press any button to reopen the fast window. A press
 inside the window only extends it; advertising restarts only when its interval
 changes. The slow interval is untested on iOS and macOS hardware.
 
-The first enable after boot creates the 3 KiB companion task and the GATT
+The first enable after boot creates the 3.75 KiB companion task and the GATT
 service, and both stay for the rest of the session. That first enable needs
-7,552 bytes of free internal RAM and a 3,456-byte block. Below that the
+8,320 bytes of free internal RAM and a 4,224-byte block. Below that the
 companion stays off and the USB log says:
 
 ```text
