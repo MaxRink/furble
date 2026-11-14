@@ -59,6 +59,14 @@ These are query-only observations of boot inputs. The SDL platform still forces
 `internal_imu` and `internal_spk` false in its M5 config, so the queries do not
 certify physical M5 configuration.
 
+- `Platform::getBatteryStatus()` in `sim/FurblePlatformSim.cpp` has the
+  firmware body, gated by `Sim::hwGauge*()`. Those fold in the runtime
+  `batteryPresent` state, unlike the board-static firmware capabilities, so a
+  scenario that removes the battery reads every companion battery field as
+  unknown. No scenario asserts those fields yet.
+- `sim/main.cpp` initializes BLE with `Device::init(Control::savedTxPower())`,
+  the same call as firmware `app_main()`.
+
 ## Parity inventory and seam rules
 
 The simulator shares substantial production UI, GPS, settings, and power

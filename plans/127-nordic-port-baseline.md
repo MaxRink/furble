@@ -294,7 +294,11 @@ board environment, SDK dependency, or hardware test is claimed.
   retry that every other rail switch already had, which is the documented
   M5PM1 first-access trap.
 - The simulator `Platform::getBatteryStatus()` has the same body, gated by the
-  modelled gauge capabilities. The companion host doubles moved from
+  modelled gauge capabilities. Unlike firmware, whose battery capabilities are
+  board-static, the simulator capabilities are `Sim::hwGauge*()`, which also
+  fold in the runtime `batteryPresent` state, so a scenario that removes the
+  battery makes the companion battery fields read unknown. No scenario asserts
+  those companion fields today. The companion host doubles moved from
   `UI::getBattery*()` to `Platform::getBatteryStatus()`.
 - The ratchet no longer counts `src/FurblePlatform.cpp`: it is the M5Unified
   adapter, and moving a call into it must not fail the gate. Outside
@@ -308,18 +312,26 @@ board environment, SDK dependency, or hardware test is claimed.
 - `Camera::SecurityMode` no longer takes its values from `BLE_HS_IO_*`.
   `Camera.cpp` maps each mode to the NimBLE IO capability in `ioCap()`.
 - The app layer still uses `esp_power_level_t` for the setting and the
-  adaptive power policy. `Control::txPower()` is the one mapping point, used
-  by the connect path, `Control::applyPower()`, `main.cpp` and the simulator.
-  Its declaration adds one ESP type name to `include/FurbleControl.h`; the
-  public header total still falls from 351 to 346 and the library headers
-  `Camera.h` and `Device.h` lose all four `esp_power_level_t` and `BLE_HS_IO_*`
-  uses.
+  adaptive power policy. A file-local `txPower()` in `FurbleControl.cpp` is the
+  one mapping point, used by the connect path and `Control::applyPower()`.
+  `main.cpp` and the simulator call `Control::savedTxPower()`, which loads the
+  saved setting and maps it. Step 4 first declared a public
+  `Control::txPower(esp_power_level_t)`, which grew `FurbleControl.h` by one
+  ESP type name; the review follow-up made it file-local. The public header
+  total falls from 351 to 345 and the library headers `Camera.h` and
+  `Device.h` lose all four `esp_power_level_t` and `BLE_HS_IO_*` uses.
 - Behavior is unchanged. The camera connect log still prints the ESP-IDF
   level value: `Camera.cpp` maps `TxPower` back to it for that one log line.
   Unknown ESP levels still map to +3 dBm, as `powerLevelToDbm()` did.
-- 43 host tests that passed `ESP_PWR_LVL_P3` to `Device::init()` or
-  `Camera::connect()` now pass `Furble::TxPower::P3`. The headless doubles
-  gained `TxPower` and `Control::txPower()`.
+- 45 host test sources that passed `ESP_PWR_LVL_P3` to `Device::init()` or
+  `Camera::connect()` now pass `Furble::TxPower::P3`: 44 test files plus
+  `tests/host/boundaries/companion_gatt_transport_test.cpp`. The headless
+  doubles gained `TxPower` and `Control::savedTxPower()`.
+- `tests/host/tx_power_mapping_test.cpp` pins P3, P6 and P9 to 3, 6 and 9 dBm
+  through `Control::setPower()` and an unsupported level to 3 dBm. The NimBLE
+  mock records each `setSecurityIOCap()` value, and `ricoh_focus_test` checks
+  that a Ricoh connect passes `BLE_HS_IO_KEYBOARD_DISPLAY` and then restores
+  `BLE_HS_IO_DISPLAY_YESNO`.
 
 Verification:
 
@@ -336,6 +348,7 @@ Verification:
 
 - The symbol diff on the StickS3 is confined to the mapping points:
   `Control::txPower()` (22 bytes), `Camera::onConnect()` (+12, the log
-  mapping), `Camera::connect()`, `Device::init()` and their callers.
-- `check_size_budget.py` and `stack_budget.py` pass for both envs, and the
-  coupling ratchet is clean at 346 header type names.
+  mapping), `Camera::connect()`, `Device::init()` and their callers. These
+  figures predate the file-local `txPower()` follow-up.
+- `check_size_budget.py` and `stack_budget.py` pass for both envs. The
+  coupling ratchet is clean at 345 header type names after the follow-up.

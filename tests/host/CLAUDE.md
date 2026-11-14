@@ -64,3 +64,9 @@ offline-ACK deadline becomes a timing flake. `console-commands` pins the
   restore and untouched camera bonds. The live LE address rotation is asserted
   by `sim/scenarios/e2e/hw-ble-auth-gatt-reidentify.txt`, not by the host
   double.
+- The port stack moved the host doubles with the production seams. The
+  companion doubles implement `Platform::getBatteryStatus()` instead of
+  `UI::getBattery*()`. The headless doubles gained `TxPower`,
+  `Control::savedTxPower()` and `GPS::setRailPower()`. The NimBLE mock records
+  each `setSecurityIOCap()` value in `mockSecurityIOCaps()`, cleared by
+  `resetMock()`. `tx-power-mapping` pins the power mapping through `Control`.

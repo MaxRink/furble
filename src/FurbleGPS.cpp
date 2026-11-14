@@ -2092,7 +2092,6 @@ void GPS::disable(void) {
   m_Satellites.store(0);
 }
 
-/** Refresh the setting from NVS. */
 void GPS::setRailPower(bool enable) {
   M5.Power.setExtOutput(enable, m5::ext_PA);
   if (M5.Power.getExtOutput() != enable) {
@@ -2100,6 +2099,7 @@ void GPS::setRailPower(bool enable) {
   }
 }
 
+/** Refresh the setting from NVS. */
 void GPS::reloadSetting(void) {
   m_AidMode.store(Settings::load<Settings::GPS_ASSIST>());
   reloadLogSettings();

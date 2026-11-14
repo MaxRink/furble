@@ -50,9 +50,11 @@ class Platform {
   /**
    * Battery status for the companion status record.
    *
-   * Fields hold the FurbleBatteryStatus.h values: a measurement this board
-   * cannot read is -1 for level and voltage, 0 for current and VBUS, and
-   * false for charging.
+   * Fields hold the FurbleBatteryStatus.h values. Level, voltage, current and
+   * charging are gated together: when battery_caps_t flags any battery
+   * measurement all four carry readings, and otherwise all four are unknown,
+   * -1 for level and voltage, 0 for current and false for charging. VBUS is
+   * read only where FURBLE_HAS_VBUS_SENSE is 1 and is 0 otherwise.
    */
   typedef struct {
     int32_t level;    // percent

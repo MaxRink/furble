@@ -274,6 +274,11 @@ The public headers also leak ESP types. `esp_power_level_t` appears in
 `Camera::SecurityMode`. Those are small, but they prove the boundary is not
 clean today.
 
+Implementation state: this leak is removed. Port stack step 4 replaced both
+with furble-owned `Furble::TxPower` and plain `SecurityMode` enumerators,
+mapped to ESP-IDF and NimBLE values only in `Device.cpp`, `Camera.cpp` and
+`FurbleControl.cpp`. See plans/127-nordic-port-baseline.md.
+
 ### 2.4 BLE feature contract
 
 A chip that says "BLE 5" is not automatically a furble target. The camera
@@ -912,7 +917,9 @@ GNSS:
 
 ## Implementation state
 
-Research plus a small companion app quick win. No firmware source changed.
+Research plus a small companion app quick win. No firmware source changed
+in this plan's own PR. Later work removed the section 2.3 public header type
+leak; see the port stack steps in plans/127-nordic-port-baseline.md.
 
 - Added `docs/hardware-catalog.md` with the buyable hardware, the receiver
   classes, and the first-order runtime estimates.

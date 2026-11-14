@@ -223,3 +223,13 @@ settings-touching rebase.
 - The simulator-only UI geometry surface keeps content overlap, label clipping,
   and focused-control expanded bounds as separate diagnostics. Focus clearance
   excludes the focused object's own descendants and ancestors.
+- `FurbleBoardCaps.h` turns the board identity macros into capability macros,
+  each defined to 0 or 1. Test one with `#if` only, never `#ifdef` or
+  `defined()`, and include the header directly in every file that uses one;
+  a missing include evaluates silently to 0. The coupling ratchet enforces
+  both rules, scans `sim/` and `tests/host/` too, and rejects a name the
+  header does not define.
+- `FurbleControl.h` keeps `esp_power_level_t` for the setting and the
+  adaptive policy, but no public member maps it. The ESP to `TxPower` mapping
+  is file-local in `FurbleControl.cpp`; boot code calls
+  `Control::savedTxPower()` before `Device::init()`.
