@@ -191,35 +191,35 @@ are named.
 | `plans/implemented/07-ble-sleep.md` | Modem sleep and per-board floors | BLE, SoC |
 | `plans/implemented/08-scan-tuning.md` | Scan presets and the 60 s targeted scan rationale | BLE, Board |
 | `plans/implemented/09-reconnect-backoff.md` | Backoff bounds | BLE |
-| `plans/10-adaptive-conn-params.md` | Idle profile and hardware verification | BLE, Board |
-| `plans/11-adaptive-tx-power.md` | TX power policy | BLE, Board |
+| `plans/implemented/10-adaptive-conn-params.md` | Idle profile and hardware verification | BLE, Board |
+| `plans/implemented/11-adaptive-tx-power.md` | TX power policy | BLE, Board |
 | `plans/implemented/12-display-off.md` | Display states, APB lock, PMIC backlight paths | Display, SoC, Board |
 | `plans/implemented/13-auto-off-low-batt.md` | Auto-off and low-battery policy | Board, SoC |
 | `plans/implemented/14-gps-pcas.md` | PCAS02/03/04/10 definitions, no PCAS00 | GPS/IMU |
-| `plans/15-gps-power.md` | Burst window, UART wake limitation, standby versus rail cycling, 15 s duty ceiling | GPS/IMU, SoC |
+| `plans/implemented/15-gps-power.md` | Burst window, UART wake limitation, standby versus rail cycling, 15 s duty ceiling | GPS/IMU, SoC |
 | `plans/17-imu-gestures.md` | Gesture thresholds, the 25 Hz tap tradeoff, and the hardware tuning gate | GPS/IMU |
 | `plans/18-gps-motion.md` | Motion detector phase 1, no consumer, 60 s hold, blind spots | GPS/IMU |
-| `plans/19-interval-deep-sleep.md` | Interval deep sleep design and exclusions | SoC, Board |
-| `plans/21-imu-dead-reckoning.md` | Position hold when the fix is lost; defines the 30 s `MAX_AGE_MS` freshness budget | GPS/IMU |
+| `plans/implemented/19-interval-deep-sleep.md` | Interval deep sleep design and exclusions | SoC, Board |
+| `plans/implemented/21-imu-dead-reckoning.md` | Position hold when the fix is lost; defines the 30 s `MAX_AGE_MS` freshness budget | GPS/IMU |
 | `plans/implemented/26-pm1-watchdog.md` | PM1 watchdog, feed cadence, `SLP_TO` readback, deep-sleep conflict | SoC, Board |
-| `plans/32-gps-advanced.md` | Autobaud, AID-INI, ephemeris replay, MON-HW, unverified receiver items | GPS/IMU |
+| `plans/implemented/32-gps-advanced.md` | Autobaud, AID-INI, ephemeris replay, MON-HW, unverified receiver items | GPS/IMU |
 | `plans/33-wifi-hub.md` | Wi-Fi hub design; station power figures; no OTA while connected | Wi-Fi |
 | `plans/implemented/42-waveshare-eth-node.md` | Waveshare node policy, including the fixed-frequency claim | Board |
 | `plans/63-sim-power-analysis.md` | Simulator energy model design | Display, Measurement |
 | `plans/65-bt-coexistence.md` | Coexistence recommendations and field data | BLE, Wi-Fi, Board |
-| `plans/71-ui-bug-batch.md` | StickS3 LED handling | Board |
+| `plans/implemented/71-ui-bug-batch.md` | StickS3 LED handling | Board |
 | `plans/implemented/77-battery-saver-profile.md` | Battery Saver bundle | BLE, SoC, Board |
 | `plans/95-engineering-lessons.md` | Engineering lessons cited by the Board lane | Board |
 | `plans/96-wifi-bt-ble-hardening.md` | BLE and Wi-Fi hardening inventory | BLE, Wi-Fi, Board |
 | `plans/98-power-optimization-audit.md` | Audit table and ranked actions | All |
-| `plans/98b-power-followup.md` | Degraded GPS retry and the +37 mA held-lock figure | GPS/IMU, BLE, Board |
+| `plans/implemented/98b-power-followup.md` | Degraded GPS retry and the +37 mA held-lock figure | GPS/IMU, BLE, Board |
 | `plans/111-power-recommendations.md` | External measurement protocol and state list | SoC, Display, GPS/IMU, Board |
 | `plans/125-esp-optimization-program.md`, `plans/126-esp-optimization-audit.md` | Wider optimization program | SoC |
 | `plans/implemented/143-pm1-watchdog-window.md` | M5PM1 45 s watchdog window and the 30 s OTA health deadline | Board, SoC |
 | `plans/158-sim-scheduler-parity.md` | Scheduler and hardware parity plan | All |
 | `plans/159-camera-peer-certification.md` | Fail-closed virtual-peer evidence model | BLE, Measurement |
 | `plans/161-sim-real-control.md` | Production Control, Camera, CameraList, and Scan in the simulator | BLE, Measurement |
-| `plans/285-power-accounting.md` | Opt-in synthetic accounting | Display, Measurement |
+| `plans/implemented/285-power-accounting.md` | Opt-in synthetic accounting | Display, Measurement |
 | `docs/supported-hardware.md` | Supported GPS units, patch antenna limits, baud defaults | GPS/IMU |
 | `docs/settings-and-controls.md` | User-facing settings, defaults, apply timing | GPS/IMU, Board |
 | `docs/console-commands.md` | Console surfaces | Measurement, SoC |

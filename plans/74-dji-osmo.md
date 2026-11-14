@@ -1,5 +1,8 @@
 # DJI Osmo Action BLE remote support
 
+Implementation state (2026-11-13): v1 merged as #81. GPS push and the remaining R SDK commands stay deferred (`updateGeoData`
+is a no-op). The next free wire id is no longer 41; see `plans/README.md`.
+
 ## Motivation
 
 The camera compatibility survey ranks DJI Osmo Action 4 and newer as a high-value
@@ -64,6 +67,11 @@ requested v1 shutter and recording scope are known.
 **UNTESTED:** No DJI Osmo Action 4 or Action 5 Pro hardware is available for
 validation. Firmware compilation and simulator checks are the available coverage.
 
+Documentation, 2026-11-13: the README vendor notes and feature table,
+`docs/supported-hardware.md` and the wiki hardware page now list DJI Osmo
+Action as untested on hardware. Shutter toggles recording, focus is disabled,
+and GPS is listed as unsupported because `updateGeoData` is a no-op.
+
 Rebase and verification, 2026-08-19:
 
 - Rebased onto fork master `734b759`. The only conflict was a doc merge in
@@ -89,9 +97,7 @@ Rebase and verification, 2026-08-19:
   passes. This vendor addition does not perturb the golden fixtures.
 - clang-format 21 clean on all changed files. No em-dashes.
 
-The SDL simulator does not compile the real vendor registry, so DJI Osmo cannot
-be added as a selectable fake alongside FauxNY without new shim wiring, which is
-out of scope here.
+The SDL simulator did not compile the real vendor registry at the time. It now
+runs the production CameraList.
 
-DECLARED UNTESTED: no DJI hardware is available. Merge is held for a human nod
-per project policy for other-vendor additions.
+DECLARED UNTESTED: no DJI hardware is available. Merged as #81 (`dab53fdc`).

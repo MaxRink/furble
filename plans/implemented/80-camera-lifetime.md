@@ -35,7 +35,7 @@ write then touch freed memory. This is a use after free with two symptom paths:
 ## Origin
 
 Introduced upstream by gkoh/furble commit
-[`f146821`](https://github.com/gkoh/furble/commit/f146821) "Implement
+[`f146821`](https://github.com/MaxRink/furble/commit/f146821) "Implement
 simultaneous camera connect (#127)". That change added the per-camera control
 task and the raw `Camera*` snapshot into `m_ConnectCamera`, wiring a
 cross-task consumer to the raw pointers that `CameraList` frees. The bug is

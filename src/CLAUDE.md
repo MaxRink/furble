@@ -67,6 +67,12 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   The service mutex covers each task pass and settings reset. Before waiting
   for it, settings transitions must set the enable gate false and send the
   private front-of-queue wake event so an idle UART receive releases the mutex.
+  Cycle status readers (`isDegraded()`, `getCycleStatusSnapshot()`,
+  `getReceiverStatus()`) load the word `publishCycleStatus()` stores at the end
+  of each task pass and after enable() or disable(); they never take
+  `m_CycleMutex`. The service passes lock it blocking and never skip: a pass
+  that skipped a consumed UART event lost the whole burst, and the cycle went
+  degraded for at least the 10 s backoff.
 - `FurbleIR`: RMT on `RMT_CLK_SRC_DEFAULT` (APB) is SAFE under DFS because the
   IDF rmt driver holds `ESP_PM_APB_FREQ_MAX` between `rmt_enable` and
   `rmt_disable`. Do NOT switch to `RMT_CLK_SRC_XTAL`, it does not exist on
@@ -150,6 +156,9 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   its update path while `CompanionGatt` holds `m_Mutex`, and keep it
   unencrypted so it still answers when companion auth or the host cache is
   broken. It is not part of the production companion contract.
+- Compare `strcmp` results explicitly (`== 0`, `!= 0`). clang-tidy's
+  `bugprone-suspicious-string-compare` runs on the firmware databases, and a
+  bare `strcmp` used as a bool in `FurbleConsole` failed it (#463).
 - Settings switch tables in `FurbleConsole`, `FurbleCompanionService` and
   `FurbleSD` must include every new `Settings::type_t` case. The `-debug` build
   enforces this with `-Werror=switch`, so build a debug env after adding a

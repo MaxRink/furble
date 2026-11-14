@@ -1,7 +1,6 @@
 # 64: expanded debug tooling
 
-Status: pillars 1 and 2 implemented on `feat/64-power-perf`; pillar 3 has
-already merged to fork master. Line anchors below were read at `f455b0b` on fork
+Status: pillars 1 and 2 merged as #83 (`c5993f38`); pillar 3 merged earlier. Line anchors below were read at `f455b0b` on fork
 master. The plan ships as a series of independently mergeable PRs, one per
 phase, each updating this document.
 

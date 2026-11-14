@@ -251,8 +251,8 @@ structural bar. The earlier claim here that it was structural was wrong. The
 seam already exists: `lib/testing/nimble/MockNimBLE.cpp` guards its
 `esp_timer_get_time()` use with `#if !defined(FURBLE_SIM)` and the simulator
 supplies its own in `sim/shim/esp_timer.h`, and wall-clock peers already run in
-the simulator today. Branch `feat/sim-cancel-sweep` carries
-`lib/testing/peer/PeerStall.h`, which is the shared stall this lane wants.
+the simulator today. `lib/testing/peer/PeerStall.h` (on master since
+`2dc652a7`, plan 172) is the shared stall this lane wants.
 Tracked as **plan 172**, the sim cancel-sweep lane, which owns driving this
 stall from a scenario; this PR's host regression drives the production Control
 end to end in the meantime.
@@ -596,7 +596,7 @@ overrides unchanged.
 - plans/implemented/75-false-connected.md: the fix-design section no longer claims that
   01 00 on GEOTAG_UPDATE is never registration confirmation; it points at the
   implemented #239 deviation.
-- plans/76-reconnect-stuck.md: the diagnosis-era statement that the PR #93
+- plans/implemented/76-reconnect-stuck.md: the diagnosis-era statement that the PR #93
   gate "was not merged and must not be depended on" carries an update note:
   the gate merged as #232 and the geotag acceptance followed in #239.
 - plans/95-engineering-lessons.md: the golden capture bullet now records the

@@ -1,5 +1,8 @@
 # PR25: multi-connect selection and a Cameras status page
 
+Implementation state (2026-11-13): merged as #38. `Control::getTargets()` now returns a snapshot vector (`include/FurbleControl.h`),
+so the raw-reference note below is historical. The Cameras rows still do not read cached RSSI.
+
 ## Goal
 
 Make Multi-Connect legible. Fix the camera selection flow so it takes fewer
@@ -445,7 +448,7 @@ and are untested. State this in the PR body.
 
 ## Implementation state
 
-Implemented on `feat/25-multiconnect-ui`.
+Implemented and merged as #38 (`1afc42e4`).
 
 Rebase notes:
 

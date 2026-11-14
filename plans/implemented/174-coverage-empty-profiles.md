@@ -145,5 +145,5 @@ both their own change.
 
 ## Implementation state
 
-Implemented on `fix/coverage-empty-profiles`. No firmware source changed and no
+Merged as #287 (`7e3e0d8d`) from `fix/coverage-empty-profiles`. No firmware source changed and no
 floor changed.
