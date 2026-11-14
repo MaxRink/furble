@@ -20,7 +20,7 @@ struct __attribute__((packed)) WireRecord {
   uint32_t crc;
 };
 
-static_assert(sizeof(WireRecord) == 28, "time record layout changed");
+static_assert(sizeof(WireRecord) == RECORD_BYTES, "time record layout changed");
 
 uint32_t crc32(const uint8_t *data, size_t length) {
   uint32_t crc = 0xffffffffU;
@@ -187,6 +187,38 @@ bool decode(const uint8_t *buffer, size_t length, TimeSample &sample) {
   }
   sample = {record.epoch_us, record.uncertainty_ms, source, 0};
   return valid(sample);
+}
+
+bool restoreRetained(const uint8_t *record,
+                     size_t length,
+                     uint64_t system_epoch_us,
+                     TimeSample &sample) {
+  TimeSample retained = {};
+  if (!decode(record, length, retained) || system_epoch_us < retained.epoch_us) {
+    return false;
+  }
+  // decode() anchors the record at monotonic zero, so the elapsed system time
+  // drives the same growth bound a running clock uses.
+  const uint32_t grown =
+      predictedUncertaintyMs(retained, (system_epoch_us - retained.epoch_us) / 1000ULL);
+  // The kept value is whatever the RC-carried system clock reads, and SNTP
+  // may have written that clock directly. Like an NVS restore, it loses its
+  // GPS, NTP or companion authority across the reboot. Otherwise an
+  // equal-priority fix more than BACKWARD_TOLERANCE_MS behind a fast kept
+  // clock would be rejected until the seven-day ceiling.
+  const TimeSource source = sourcePriority(retained.source) > sourcePriority(TimeSource::RTC)
+                                ? TimeSource::RTC
+                                : retained.source;
+  const TimeSample restored = {system_epoch_us,
+                               grown > MAX_UNCERTAINTY_MS - SOFT_RESET_UNCERTAINTY_MS
+                                   ? MAX_UNCERTAINTY_MS
+                                   : grown + SOFT_RESET_UNCERTAINTY_MS,
+                               source, 0};
+  if (!validAt(restored, 0)) {
+    return false;
+  }
+  sample = restored;
+  return true;
 }
 
 bool utcToEpochUs(uint16_t year,

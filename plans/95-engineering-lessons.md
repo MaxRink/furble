@@ -51,6 +51,22 @@ The root CLAUDE.md lists the short form of these. The detail lives here.
   invalidate and redraw. Icons are compressed and cost a 12.3 KB decompress per
   64x64 draw unless the image cache covers them. Diagnosis tools are
   `CONFIG_LV_USE_REFR_DEBUG` and the console-gated invalidation logger.
+- The ESP system clock survives most soft resets. With `RTC_HRT` time keeping
+  the RTC timer keeps `gettimeofday()` running through `esp_restart()`,
+  panics, most watchdog resets and USB resets. Power-on, brownout, a clock
+  glitch and RTC or super watchdog system resets (also reported as
+  `ESP_RST_WDT`) lose it. Never seed the system clock from an older checkpoint
+  after a reset that kept it. TimeKeeper keeps its last accepted sample in
+  `RTC_NOINIT_ATTR` memory and trusts the running clock when the reset reason
+  and the record CRC allow it, failing closed when the clock reads behind the
+  record. M5Unified overwrites the system clock from an RTC chip inside
+  `M5.begin()`, so on those boards the pre-reset clock is already gone by
+  `TimeKeeper::init()` (plan 139).
+- A value that crossed a reboot loses its authority. The kept clock is carried
+  by the RC slow clock and SNTP can write it directly, so it restores as `RTC`,
+  never as GPS or NTP. Keeping GPS authority locked out every later GPS fix
+  once the kept clock was more than 5 s fast, because equal-priority backward
+  corrections are rejected regardless of uncertainty (plan 139 review).
 
 ## USB and flashing
 

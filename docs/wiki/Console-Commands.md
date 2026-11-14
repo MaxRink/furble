@@ -338,6 +338,17 @@ StickC-Plus, and Core2 when its backup supply is healthy. StickS3 has no
 battery-backed calendar RTC, so it restores the last NVS value with an explicit
 uncertainty penalty until GPS, NTP, or a companion supplies a fresh sample.
 
+On a board where M5Unified finds no calendar RTC chip, such as StickS3 or Core,
+a soft reset keeps the running clock. After `esp_restart()`, an OTA restart, a
+panic or a USB reset, `time status` reports source `rtc` with `rtc: no`, and the
+uncertainty grows by an estimate: the elapsed time at 100 ppm plus one second.
+The real hand-off error depends on the internal RC slow clock and is not yet
+measured. The next GPS, NTP or companion sample replaces the kept value, in
+either direction. A clock seeded from NVS stays source `nvs`. Most watchdog
+resets keep it; an RTC watchdog system reset clears the clock and falls back to
+NVS. A power-on, brownout or unknown reset still restores the NVS value. Boards
+with a calendar RTC chip still seed from it on every boot.
+
 ## imu
 
 - `imu status` performs a read-only probe: it reports the persisted opt-in,

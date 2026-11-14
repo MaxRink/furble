@@ -39,6 +39,12 @@ as the reader; do not return the underlying vector without the lock. The
 flag, counters and advertising counters, so a test never inherits the previous
 case's GATT database.
 
+`time-keeper-persistence` models the ESP system clock through the weak
+`furble_sim_system_time_us()` hooks: a soft reset keeps it running while
+esp_timer restarts, a power-on loses it. Its `time_keeper_stubs/esp_system.h`
+sets the reset reason with `#include_next`, so keep the settings stub's
+`esp_restart()` reachable.
+
 `device-identity` covers the durable companion random-static identity,
 including reboot restore and untouched camera bonds. `webui-handler` covers the
 password half of the HTTP gate and the client socket count. `mqtt-owner` uses a
