@@ -49,7 +49,7 @@ bool testTransientConnectFailuresRecover() {
   std::cout << "test: transient connect failures reclaim clients and then recover\n";
   const int before = g_Failures;
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
 
   Furble::Host::FujifilmVirtualCamera peer;
   auto camera = makeCamera(peer);
@@ -57,13 +57,14 @@ bool testTransientConnectFailuresRecover() {
   // The next three NimBLEClient::connect() calls fail, then connects succeed.
   NimBLEDevice::setConnectFailCount(3);
   for (int attempt = 0; attempt < 3; attempt++) {
-    check(!camera->connect(ESP_PWR_LVL_P3, 1000), "a transient attempt returns false");
+    check(!camera->connect(Furble::TxPower::P3, 1000), "a transient attempt returns false");
     check(!camera->isConnected(), "a transient failure leaves the camera disconnected");
     check(NimBLEDevice::liveClientCount() == 0, "each transient failure reclaims its client");
   }
 
   peer.clearEvents();
-  check(camera->connect(ESP_PWR_LVL_P3, 1000), "the connect recovers once the link establishes");
+  check(camera->connect(Furble::TxPower::P3, 1000),
+        "the connect recovers once the link establishes");
   check(camera->isConnected(), "the recovered connect reports connected");
   check(peer.connected() && peer.tokenAccepted(), "the recovered connect runs the real handshake");
 
@@ -77,7 +78,7 @@ bool testWriteFailureAbortsConnectNoLeak() {
   std::cout << "test: a rejected handshake write aborts the connect and reclaims the client\n";
   const int before = g_Failures;
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
 
   Furble::Host::FujifilmVirtualCamera peer;
   // Reject the pairing token write, so the Basic handshake aborts at its first
@@ -86,7 +87,8 @@ bool testWriteFailureAbortsConnectNoLeak() {
                  Furble::Host::FujifilmVirtualCamera::pairCharacteristicUUID());
   auto camera = makeCamera(peer);
 
-  check(!camera->connect(ESP_PWR_LVL_P3, 1000), "a rejected handshake write fails the connect");
+  check(!camera->connect(Furble::TxPower::P3, 1000),
+        "a rejected handshake write fails the connect");
   check(!camera->isConnected(), "a failed handshake leaves the camera disconnected");
 
   // Note: this write failure comes after the link is up, so Camera::connect
@@ -99,7 +101,7 @@ bool testWriteFailureAbortsConnectNoLeak() {
   // Recovery: clearing the fault lets a fresh connect run the real handshake.
   Furble::Host::FujifilmVirtualCamera healthy;
   auto recovered = makeCamera(healthy);
-  check(recovered->connect(ESP_PWR_LVL_P3, 1000), "a later healthy connect still succeeds");
+  check(recovered->connect(Furble::TxPower::P3, 1000), "a later healthy connect still succeeds");
   check(healthy.connected() && healthy.tokenAccepted(), "the healthy connect runs the handshake");
 
   recovered->disconnect();
@@ -112,7 +114,7 @@ bool testSuppressUnrelatedServiceStillConnects() {
   std::cout << "test: suppressing the optional geotag service still lets the connect complete\n";
   const int before = g_Failures;
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
 
   Furble::Host::FujifilmVirtualCamera peer;
   // The geotag service is optional for the Basic handshake, so removing it must
@@ -120,7 +122,8 @@ bool testSuppressUnrelatedServiceStillConnects() {
   peer.suppressService(Furble::Host::FujifilmVirtualCamera::geotagServiceUUID());
   auto camera = makeCamera(peer);
 
-  check(camera->connect(ESP_PWR_LVL_P3, 1000), "the connect completes without the geotag service");
+  check(camera->connect(Furble::TxPower::P3, 1000),
+        "the connect completes without the geotag service");
   check(camera->isConnected(), "the camera reports connected");
 
   // The shutter still fires, so the required path is intact.

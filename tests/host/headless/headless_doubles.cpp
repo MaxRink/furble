@@ -157,7 +157,11 @@ const std::string &Device::getStringID() {
   return id;
 }
 
-void Device::init(esp_power_level_t) {
+TxPower Control::txPower(int) {
+  return TxPower::P3;
+}
+
+void Device::init(TxPower) {
   record("device.init");
 }
 

@@ -53,7 +53,7 @@ int main() {
   NimBLEDevice::resetMock();
   NimBLEDevice::setDeferredClientDelete(true);
   NimBLEDevice::setAsyncDisconnect(true);
-  Device::init(ESP_PWR_LVL_P3);
+  Device::init(Furble::TxPower::P3);
 
   Host::FujifilmVirtualCamera::Config config;
   config.secure = true;
@@ -64,7 +64,7 @@ int main() {
   const NimBLEAdvertisedDevice advertisement = peer.advertisement();
   FujifilmSecure camera(&advertisement);
 
-  check(!camera.connect(ESP_PWR_LVL_P3, 1000),
+  check(!camera.connect(Furble::TxPower::P3, 1000),
         "Secure registration fails at the missing shutter characteristic", failures);
   check(NimBLEDevice::liveClientCount() == 1,
         "failed registration retains the client until the queued GAP event", failures);

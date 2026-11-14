@@ -27,17 +27,16 @@ bool validRandomStatic(const uint8_t (&address)[IDENTITY_BYTES]) {
 
 }  // namespace
 
-int8_t Device::powerLevelToDbm(esp_power_level_t power) {
+int8_t Device::powerLevelToDbm(TxPower power) {
   switch (power) {
-    case ESP_PWR_LVL_P3:
+    case TxPower::P3:
       return 3;
-    case ESP_PWR_LVL_P6:
+    case TxPower::P6:
       return 6;
-    case ESP_PWR_LVL_P9:
+    case TxPower::P9:
       return 9;
-    default:
-      return 3;
   }
+  return 3;
 }
 
 Device::uuid128_t Device::m_Uuid;
@@ -61,7 +60,7 @@ uint64_t Device::getEfuseMac(void) {
   return _chipmacid;
 }
 
-void Device::init(esp_power_level_t power) {
+void Device::init(TxPower power) {
   uint32_t chip_id = (uint32_t)getEfuseMac();
   for (size_t i = 0; i < UUID128_AS_32_LEN; i++) {
     chip_id = xorshift(chip_id);

@@ -194,7 +194,7 @@ int runSimulator() {
     }
   }
 
-  Device::init(Settings::load<esp_power_level_t>(Settings::TX_POWER));
+  Device::init(Control::txPower(Settings::load<esp_power_level_t>(Settings::TX_POWER)));
 
   // Bring the virtual radio up right after the BLE stack, the same order the
   // firmware brings up NimBLE before any camera exists. The peers advertise to

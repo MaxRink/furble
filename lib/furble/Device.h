@@ -7,6 +7,18 @@
 
 namespace Furble {
 
+/**
+ * Bluetooth transmit power levels furble selects.
+ *
+ * Device.cpp maps each level to dBm for the controller, so this header does
+ * not depend on the ESP-IDF power level enum.
+ */
+enum class TxPower : uint8_t {
+  P3,  // +3 dBm
+  P6,  // +6 dBm
+  P9,  // +9 dBm
+};
+
 class Device {
  public:
   static constexpr size_t UUID128_LEN = 16;
@@ -24,12 +36,12 @@ class Device {
   /**
    * Initialise the device.
    */
-  static void init(esp_power_level_t power);
+  static void init(TxPower power);
 
   /**
-   * Map a supported transmit power level to dBm for the NimBLE API.
+   * Map a transmit power level to dBm for the NimBLE API.
    */
-  static int8_t powerLevelToDbm(esp_power_level_t power);
+  static int8_t powerLevelToDbm(TxPower power);
 
   /**
    * Apply a random-static LE identity to the controller.

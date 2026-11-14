@@ -99,7 +99,7 @@ int main() {
 
   JournalCamera failed;
   failed.attach(nullptr, peer.config().address);
-  check(!failed.connect(ESP_PWR_LVL_P0, 1000), "handshake failure is reported");
+  check(!failed.connect(Furble::TxPower::P3, 1000), "handshake failure is reported");
   events.clear();
   BtDebugJournal::instance().dump(0, collect, &events);
   bool sawFailedConnect = false;

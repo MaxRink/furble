@@ -78,7 +78,7 @@ int main() {
   // same code, and Confirm drives the real injectConfirmPasskey.
   {
     NimBLEDevice::resetMock();
-    Furble::Device::init(ESP_PWR_LVL_P3);
+    Furble::Device::init(Furble::TxPower::P3);
     resetRequest();
 
     Furble::Host::RicohVirtualCamera::Config config;
@@ -90,7 +90,7 @@ int main() {
 
     std::atomic<bool> connected {false};
     std::thread host(
-        [&camera, &connected]() { connected.store(camera.connect(ESP_PWR_LVL_P3, 5000)); });
+        [&camera, &connected]() { connected.store(camera.connect(Furble::TxPower::P3, 5000)); });
 
     if (!check(waitForRequest(), "the peer handshake publishes a pairing request")) {
       host.join();
@@ -123,7 +123,7 @@ int main() {
   // the camera disconnected instead of silently pairing.
   {
     NimBLEDevice::resetMock();
-    Furble::Device::init(ESP_PWR_LVL_P3);
+    Furble::Device::init(Furble::TxPower::P3);
     resetRequest();
 
     Furble::Host::RicohVirtualCamera::Config config;
@@ -135,7 +135,7 @@ int main() {
 
     std::atomic<bool> connected {true};
     std::thread host(
-        [&camera, &connected]() { connected.store(camera.connect(ESP_PWR_LVL_P3, 5000)); });
+        [&camera, &connected]() { connected.store(camera.connect(Furble::TxPower::P3, 5000)); });
 
     if (!check(waitForRequest(), "the rejected handshake publishes a request")) {
       host.join();
@@ -162,7 +162,7 @@ int main() {
   // it had already promised to refuse.
   {
     NimBLEDevice::resetMock();
-    Furble::Device::init(ESP_PWR_LVL_P3);
+    Furble::Device::init(Furble::TxPower::P3);
     resetRequest();
 
     Furble::Host::RicohVirtualCamera::Config config;
@@ -174,7 +174,7 @@ int main() {
 
     std::atomic<bool> connected {true};
     std::thread host(
-        [&camera, &connected]() { connected.store(camera.connect(ESP_PWR_LVL_P3, 5000)); });
+        [&camera, &connected]() { connected.store(camera.connect(Furble::TxPower::P3, 5000)); });
 
     if (!check(waitForRequest(), "the expiring handshake publishes a request")) {
       host.join();
@@ -208,7 +208,7 @@ int main() {
   // must be the code the callback returns and the stack injects.
   {
     NimBLEDevice::resetMock();
-    Furble::Device::init(ESP_PWR_LVL_P3);
+    Furble::Device::init(Furble::TxPower::P3);
     resetRequest();
     NimBLEDevice::setSecurityPasskey(123456);
 
@@ -220,7 +220,7 @@ int main() {
     const auto advertisement = peer.advertisement();
     Furble::Ricoh camera(&advertisement);
 
-    const bool connected = camera.connect(ESP_PWR_LVL_P3, 5000);
+    const bool connected = camera.connect(Furble::TxPower::P3, 5000);
     if (!check(connected, "a matching displayed passkey completes the connection")
         || !check(g_Count == 1, "the display prompt is published once")
         || !check(g_Type == Furble::Camera::PairingType::PASSKEY_DISPLAY,
@@ -243,7 +243,7 @@ int main() {
   // still completes with the configured code.
   {
     NimBLEDevice::resetMock();
-    Furble::Device::init(ESP_PWR_LVL_P3);
+    Furble::Device::init(Furble::TxPower::P3);
     resetRequest();
     NimBLEDevice::setSecurityPasskey(135790);
 
@@ -255,7 +255,7 @@ int main() {
     const auto advertisement = peer.advertisement();
     Furble::Ricoh camera(&advertisement);
 
-    const bool connected = camera.connect(ESP_PWR_LVL_P3, 5000);
+    const bool connected = camera.connect(Furble::TxPower::P3, 5000);
     if (!check(connected, "a configured passkey completes the connection")
         || !check(g_Count == 0, "a configured passkey publishes no prompt")
         || !check(peer.lastDisplayedPasskey() == 135790,
@@ -273,7 +273,7 @@ int main() {
   // the peer abandons its SMP procedure.
   {
     NimBLEDevice::resetMock();
-    Furble::Device::init(ESP_PWR_LVL_P3);
+    Furble::Device::init(Furble::TxPower::P3);
     resetRequest();
     Furble::Camera::setPairingRequestCallback(nullptr);
 
@@ -284,7 +284,7 @@ int main() {
     const auto advertisement = peer.advertisement();
     Furble::Ricoh camera(&advertisement);
 
-    const bool connected = camera.connect(ESP_PWR_LVL_P3, 5000);
+    const bool connected = camera.connect(Furble::TxPower::P3, 5000);
     Furble::Camera::setPairingRequestCallback(pairingCallback);
     if (!check(connected, "a headless build still completes numeric-comparison pairing")
         || !check(g_Count == 0, "no handler was called")
@@ -305,7 +305,7 @@ int main() {
   // human saw. It has to reject and fail the connect.
   {
     NimBLEDevice::resetMock();
-    Furble::Device::init(ESP_PWR_LVL_P3);
+    Furble::Device::init(Furble::TxPower::P3);
     resetRequest();
     g_Accept = false;
 
@@ -316,7 +316,7 @@ int main() {
     const auto advertisement = peer.advertisement();
     Furble::Ricoh camera(&advertisement);
 
-    const bool connected = camera.connect(ESP_PWR_LVL_P3, 5000);
+    const bool connected = camera.connect(Furble::TxPower::P3, 5000);
     g_Accept = true;
     if (!check(!connected, "a declined request fails the connect")
         || !check(g_Count == 1, "the handler was offered the request")
@@ -335,7 +335,7 @@ int main() {
   // drains looks like, may never drift into accepting.
   {
     NimBLEDevice::resetMock();
-    Furble::Device::init(ESP_PWR_LVL_P3);
+    Furble::Device::init(Furble::TxPower::P3);
     resetRequest();
     g_Accept = false;
 
@@ -346,9 +346,9 @@ int main() {
     const auto advertisement = peer.advertisement();
     Furble::Ricoh camera(&advertisement);
 
-    const bool first = camera.connect(ESP_PWR_LVL_P3, 5000);
+    const bool first = camera.connect(Furble::TxPower::P3, 5000);
     const bool firstAccept = NimBLEDevice::mockLastPasskeyAccept();
-    const bool second = camera.connect(ESP_PWR_LVL_P3, 5000);
+    const bool second = camera.connect(Furble::TxPower::P3, 5000);
     g_Accept = true;
     if (!check(!first && !second, "neither declined connect completes")
         || !check(g_Count == 2, "both requests were offered to the handler")
@@ -366,7 +366,7 @@ int main() {
   // not the client's, so Confirm has to drop the link instead of injecting.
   {
     NimBLEDevice::resetMock();
-    Furble::Device::init(ESP_PWR_LVL_P3);
+    Furble::Device::init(Furble::TxPower::P3);
     resetRequest();
 
     Furble::Host::FujifilmVirtualCamera peer;
@@ -374,7 +374,7 @@ int main() {
     const NimBLEAdvertisedDevice advertisement = peer.advertisement();
     Furble::FujifilmBasic camera(&advertisement);
 
-    if (!check(camera.connect(ESP_PWR_LVL_P3, 1000), "the stale-handle case connects")) {
+    if (!check(camera.connect(Furble::TxPower::P3, 1000), "the stale-handle case connects")) {
       return 1;
     }
     NimBLEClient *client = NimBLEDevice::lastClient();

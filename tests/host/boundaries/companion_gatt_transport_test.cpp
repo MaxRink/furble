@@ -66,7 +66,7 @@ void run(void) {
   std::cout << "companion.reset_mock services=0 started=0 advertising=0\n";
 
   NimBLEDevice::init("furble-host");
-  Furble::Device::init(ESP_PWR_LVL_P9);
+  Furble::Device::init(Furble::TxPower::P9);
   Furble::Settings::setBool(Furble::Settings::COMPANION, true);
 
   auto &companion = Furble::CompanionGatt::getInstance();

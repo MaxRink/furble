@@ -31,7 +31,7 @@ bool run(Furble::Host::SonyVirtualCamera &peer,
   NimBLEDevice::setMockPeer(&peer);
   const auto advertisement = peer.advertisement();
   Furble::Sony camera(&advertisement);
-  if (!check(camera.connect(ESP_PWR_LVL_P3, 1000), label)) {
+  if (!check(camera.connect(Furble::TxPower::P3, 1000), label)) {
     return false;
   }
   const Furble::Camera::gps_t gps = {52.5, 13.4, 34.0, 8};
@@ -55,7 +55,7 @@ bool run(Furble::Host::SonyVirtualCamera &peer,
 }  // namespace
 
 int main() {
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
 
   Furble::Host::SonyVirtualCamera::Config config95;
   config95.timezone_supported = true;

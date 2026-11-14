@@ -362,6 +362,9 @@ class Control {
   /** Set the maximum transmit power and reset the adaptive level. */
   void setPower(esp_power_level_t power);
 
+  /** Map an ESP-IDF transmit power level to the camera library level. */
+  static TxPower txPower(esp_power_level_t power);
+
   /** Enable or disable adaptive connection parameters on active cameras. */
   void setConnSaver(bool enabled);
 

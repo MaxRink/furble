@@ -57,14 +57,14 @@ bool hasCommand(const std::vector<Furble::Host::LumixVirtualCamera::Write> &writ
 
 int main() {
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
 
   Furble::Host::LumixVirtualCamera peer;
   NimBLEDevice::setMockPeer(&peer);
   const auto advertisement = peer.advertisement();
   Furble::Lumix camera(&advertisement);
 
-  bool passed = check(camera.connect(ESP_PWR_LVL_P3, 2000),
+  bool passed = check(camera.connect(Furble::TxPower::P3, 2000),
                       "LUMIX connect completes the Confirm and Start handshake");
   passed &= check(peer.confirmed(), "LUMIX Confirm 01 reaches the camera");
   passed &= check(peer.sessionStarted(), "LUMIX Start 02 starts the session");
@@ -130,7 +130,7 @@ int main() {
   NimBLEDevice::setMockPeer(&gatedPeer);
   const auto gatedAdvertisement = gatedPeer.advertisement();
   Furble::Lumix gatedCamera(&gatedAdvertisement);
-  passed &= check(gatedCamera.connect(ESP_PWR_LVL_P3, 2000),
+  passed &= check(gatedCamera.connect(Furble::TxPower::P3, 2000),
                   "LUMIX gated body connects with control readiness only");
   gatedPeer.clearEvents();
   gatedCamera.updateGeoData(gps, time);
@@ -189,7 +189,7 @@ int main() {
   NimBLEDevice::setMockPeer(&noReadinessPeer);
   const auto noReadinessAdvertisement = noReadinessPeer.advertisement();
   Furble::Lumix noReadinessCamera(&noReadinessAdvertisement);
-  passed &= check(!noReadinessCamera.connect(ESP_PWR_LVL_P3, 5000),
+  passed &= check(!noReadinessCamera.connect(Furble::TxPower::P3, 5000),
                   "LUMIX connect fails when control readiness never arrives");
   passed &= check(!noReadinessPeer.sessionStarted(),
                   "LUMIX never writes Start without control readiness");

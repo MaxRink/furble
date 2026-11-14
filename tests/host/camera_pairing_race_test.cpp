@@ -72,7 +72,7 @@ void waitFor(bool &value, const char *message) {
 
 int main() {
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
   Furble::Camera::setPairingRequestCallback(pairingCallback);
 
   Furble::Host::FujifilmVirtualCamera peer;
@@ -80,7 +80,7 @@ int main() {
   const NimBLEAdvertisedDevice advertisement = peer.advertisement();
   Furble::FujifilmBasic camera(&advertisement);
 
-  if (!camera.connect(ESP_PWR_LVL_P3, 1000)) {
+  if (!camera.connect(Furble::TxPower::P3, 1000)) {
     std::cerr << "FAIL: the camera connects\n";
     return 1;
   }
@@ -126,7 +126,7 @@ int main() {
   // enabled, Camera::answerPairing(false) invokes a synchronous disconnect
   // callback and NimBLE frees the client before the answer returns.
   NimBLEDevice::setDeferredClientDelete(true);
-  if (!camera.connect(ESP_PWR_LVL_P3, 1000)) {
+  if (!camera.connect(Furble::TxPower::P3, 1000)) {
     std::cerr << "FAIL: the camera reconnects for synchronous rejection\n";
     return 1;
   }

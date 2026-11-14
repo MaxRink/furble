@@ -32,7 +32,7 @@ void check(bool condition, const char *message) {
 void init() {
   NimBLEDevice::resetMock();
   Furble::TestSync::reset();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
 }
 
 // The registration gate is open exactly between the subscription going live
@@ -76,7 +76,7 @@ void testBasicConfirmationAndReset() {
   const auto advertisement = peer.advertisement();
   Furble::FujifilmBasic camera(&advertisement);
 
-  check(camera.connect(ESP_PWR_LVL_P3, 1000),
+  check(camera.connect(Furble::TxPower::P3, 1000),
         "Basic connect requires and receives registration confirmation");
   check(peer.configured(), "Basic peer records the 01 00 registration notification");
   camera.disconnect();
@@ -86,7 +86,7 @@ void testBasicConfirmationAndReset() {
   peer.setWithholdRegistration(true);
   bool connected = true;
   Furble::TestSync::armBarrier(kRegistrationPoint, kParkTimeoutMs);
-  std::thread reconnect([&]() { connected = camera.connect(ESP_PWR_LVL_P3, 1000); });
+  std::thread reconnect([&]() { connected = camera.connect(Furble::TxPower::P3, 1000); });
   if (awaitRegistrationWait()) {
     check(peer.emitStaleRegistration(), "virtual peer can replay a stale callback");
     Furble::TestSync::release(kRegistrationPoint);
@@ -107,7 +107,7 @@ void testBasicConfirmationAndReset() {
     peer.setWithholdRegistration(false);
     peer.setRegistrationPayload(payload);
     Furble::FujifilmBasic malformed(&advertisement);
-    check(!malformed.connect(ESP_PWR_LVL_P3, 1000),
+    check(!malformed.connect(Furble::TxPower::P3, 1000),
           "malformed or unrelated CHR_NOT1 payload cannot confirm registration");
   }
   peer.setRegistrationPayload({0x01, 0x00});
@@ -118,7 +118,7 @@ void testBasicConfirmationAndReset() {
   Furble::FujifilmBasic dropped(&advertisement);
   bool dropConnected = true;
   Furble::TestSync::armBarrier(kRegistrationPoint, kParkTimeoutMs);
-  std::thread dropAttempt([&]() { dropConnected = dropped.connect(ESP_PWR_LVL_P3, 1000); });
+  std::thread dropAttempt([&]() { dropConnected = dropped.connect(Furble::TxPower::P3, 1000); });
   if (awaitRegistrationWait()) {
     auto *client = NimBLEDevice::lastClient();
     check(client != nullptr, "link-drop test has a live mock client");
@@ -141,7 +141,7 @@ void testSecureConfirmationAndTimeout() {
   const auto advertisement = peer.advertisement();
   Furble::FujifilmSecure camera(&advertisement);
 
-  check(camera.connect(ESP_PWR_LVL_P3, 1000),
+  check(camera.connect(Furble::TxPower::P3, 1000),
         "Secure connect requires and receives X100VI registration confirmation");
   check(peer.configured(), "Secure peer records the captured 01 00 notification");
   camera.disconnect();
@@ -151,7 +151,7 @@ void testSecureConfirmationAndTimeout() {
   // reconnect intentionally scans first, which is a separate lifecycle path.
   Furble::FujifilmSecure withheld(&advertisement);
   const auto started = std::chrono::steady_clock::now();
-  check(!withheld.connect(ESP_PWR_LVL_P3, 1000),
+  check(!withheld.connect(Furble::TxPower::P3, 1000),
         "Secure link-only connect fails when registration is withheld");
   const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
       std::chrono::steady_clock::now() - started);
@@ -173,7 +173,7 @@ void testGeotagRequestConfirmsReconnect() {
   Furble::FujifilmBasic camera(&advertisement);
   bool connected = false;
   Furble::TestSync::armBarrier(kRegistrationPoint, kParkTimeoutMs);
-  std::thread attempt([&]() { connected = camera.connect(ESP_PWR_LVL_P3, 1000); });
+  std::thread attempt([&]() { connected = camera.connect(Furble::TxPower::P3, 1000); });
   if (awaitRegistrationWait()) {
     check(peer.requestGeotag(), "virtual peer can send a geotag request mid-wait");
     Furble::TestSync::release(kRegistrationPoint);
@@ -194,7 +194,7 @@ void testGeotagRequestConfirmsReconnect() {
   bool secureConnected = false;
   Furble::TestSync::armBarrier(kRegistrationPoint, kParkTimeoutMs);
   std::thread secureAttempt(
-      [&]() { secureConnected = secureCamera.connect(ESP_PWR_LVL_P3, 1000); });
+      [&]() { secureConnected = secureCamera.connect(Furble::TxPower::P3, 1000); });
   if (awaitRegistrationWait()) {
     check(securePeer.requestGeotag(), "secure virtual peer can send a geotag request mid-wait");
     Furble::TestSync::release(kRegistrationPoint);
@@ -249,7 +249,7 @@ void testLocationSyncDropOnWrite() {
   NimBLEDevice::setMockPeer(&peer);
   const auto advertisement = peer.advertisement();
   Furble::FujifilmSecure camera(&advertisement);
-  check(camera.connect(ESP_PWR_LVL_P3, 1000),
+  check(camera.connect(Furble::TxPower::P3, 1000),
         "the Secure peer connects for the location-sync drop test");
 
   check(peer.requestGeotag(), "the Secure peer requests a geotag before the drop");

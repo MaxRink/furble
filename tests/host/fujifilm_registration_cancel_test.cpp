@@ -35,7 +35,7 @@ void check(bool condition, const char *message) {
 
 void init() {
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
 }
 
 uint32_t nowMs() {
@@ -54,7 +54,7 @@ void runCancelScenario(Furble::Host::FujifilmVirtualCamera &peer, const char *va
 
   CameraType camera(&advertisement);
   bool connected = true;
-  std::thread attempt([&]() { connected = camera.connect(ESP_PWR_LVL_P3, 1000); });
+  std::thread attempt([&]() { connected = camera.connect(Furble::TxPower::P3, 1000); });
 
   // Wait for the link, then give the attempt time to park in the wait proper.
   const uint32_t linkStart = nowMs();

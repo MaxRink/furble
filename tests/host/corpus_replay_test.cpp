@@ -120,7 +120,7 @@ int main(int argc, char **argv) {
   config.advertised_services = advertised_services;
 
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
   Furble::Host::FujifilmVirtualCamera peer(config);
   NimBLEDevice::setMockPeer(&peer);
   const NimBLEAdvertisedDevice advertisement = peer.advertisement();
@@ -139,7 +139,7 @@ int main(int argc, char **argv) {
         case Furble::Host::GoldenEventType::SUBSCRIBE:
           break;
         case Furble::Host::GoldenEventType::CONNECT:
-          connected = client.connect(ESP_PWR_LVL_P3, 1000);
+          connected = client.connect(Furble::TxPower::P3, 1000);
           break;
         case Furble::Host::GoldenEventType::NOTIFY:
           if (!check(

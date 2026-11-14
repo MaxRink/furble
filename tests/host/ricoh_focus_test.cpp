@@ -18,12 +18,12 @@ bool check(bool condition, const char *message) {
 
 int main() {
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
   Furble::Host::RicohVirtualCamera peer;
   NimBLEDevice::setMockPeer(&peer);
   const auto advertisement = peer.advertisement();
   Furble::Ricoh camera(&advertisement);
-  if (!check(camera.connect(ESP_PWR_LVL_P3, 1000),
+  if (!check(camera.connect(Furble::TxPower::P3, 1000),
              "Ricoh focus regression reaches the connected production path")) {
     return 1;
   }

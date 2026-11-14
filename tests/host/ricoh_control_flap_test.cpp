@@ -110,7 +110,7 @@ bool runScenario() {
   auto &control = Control::getInstance();
 
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
   Furble::Settings::setBool(Furble::Settings::SLEEP_CONN, false);
   Furble::Settings::setBool(Furble::Settings::TX_ADAPTIVE, false);
   Furble::Settings::setBool(Furble::Settings::RECON_BACKOFF, false);
@@ -211,7 +211,7 @@ bool runSavedBondScenario() {
   auto &control = Control::getInstance();
 
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
   Furble::Settings::setBool(Furble::Settings::RECON_BACKOFF, false);
 
   RicohVirtualCamera::Config flapConfig;

@@ -63,7 +63,7 @@ bool testSecureTimeoutReclaimDoesNotCrash() {
                "unwinds the failed connect with no use-after-free\n";
   const int before = g_Failures;
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
   NimBLEDevice::setBonded(true);  // bonded(before)=yes, pairType=saved
 
   Furble::Host::RicohVirtualCamera::Config config;
@@ -80,7 +80,7 @@ bool testSecureTimeoutReclaimDoesNotCrash() {
   saved.type = 0;
   auto camera = std::make_shared<Furble::Ricoh>(&saved, sizeof(saved));
 
-  const bool connected = camera->connect(ESP_PWR_LVL_P3, 1000);
+  const bool connected = camera->connect(Furble::TxPower::P3, 1000);
 
   check(!connected, "the secure timeout makes connect() report failure");
   check(!camera->isConnected(), "the camera is left disconnected, not a zombie");

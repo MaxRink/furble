@@ -299,3 +299,43 @@ board environment, SDK dependency, or hardware test is claimed.
 - The ratchet no longer counts `src/FurblePlatform.cpp`: it is the M5Unified
   adapter, and moving a call into it must not fail the gate. Outside
   Platform, `M5.` uses fell from 160 to 148 and `main.cpp` has none left.
+
+### Camera library public types (port stack step 4)
+
+- `lib/furble/Device.h` defines `Furble::TxPower` (`P3`, `P6`, `P9`).
+  `Device::init()`, `Device::powerLevelToDbm()` and `Camera::connect()` take
+  it instead of `esp_power_level_t`, and `Device.cpp` maps it to dBm.
+- `Camera::SecurityMode` no longer takes its values from `BLE_HS_IO_*`.
+  `Camera.cpp` maps each mode to the NimBLE IO capability in `ioCap()`.
+- The app layer still uses `esp_power_level_t` for the setting and the
+  adaptive power policy. `Control::txPower()` is the one mapping point, used
+  by the connect path, `Control::applyPower()`, `main.cpp` and the simulator.
+  Its declaration adds one ESP type name to `include/FurbleControl.h`; the
+  public header total still falls from 351 to 346 and the library headers
+  `Camera.h` and `Device.h` lose all four `esp_power_level_t` and `BLE_HS_IO_*`
+  uses.
+- Behavior is unchanged. The camera connect log still prints the ESP-IDF
+  level value: `Camera.cpp` maps `TxPower` back to it for that one log line.
+  Unknown ESP levels still map to +3 dBm, as `powerLevelToDbm()` did.
+- 43 host tests that passed `ESP_PWR_LVL_P3` to `Device::init()` or
+  `Camera::connect()` now pass `Furble::TxPower::P3`. The headless doubles
+  gained `TxPower` and `Control::txPower()`.
+
+Verification:
+
+- Camera vector tests pass. `sh tools/run_sanitized_host_tests.sh --clean`
+  passes 183 of 183. The linked boundary suite passes 18 of 18.
+- Fixed-version builds (`FURBLE_VERSION=1.0.0-ci FURBLE_TEST=0`) against the
+  step 3 base `9dd2dd61`. Static RAM is unchanged; the mapping switches add a
+  few bytes of text.
+
+| Env | Base bin | Step 4 bin | Delta | DRAM |
+| --- | ---: | ---: | ---: | ---: |
+| m5stick-s3 | 1,848,960 | 1,849,024 | +64 | 47,208, unchanged |
+| m5stack-core | 1,614,304 | 1,614,368 | +64 | 54,884, unchanged |
+
+- The symbol diff on the StickS3 is confined to the mapping points:
+  `Control::txPower()` (22 bytes), `Camera::onConnect()` (+12, the log
+  mapping), `Camera::connect()`, `Device::init()` and their callers.
+- `check_size_budget.py` and `stack_budget.py` pass for both envs, and the
+  coupling ratchet is clean at 346 header type names.

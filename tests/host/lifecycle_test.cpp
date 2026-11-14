@@ -74,7 +74,7 @@ std::shared_ptr<Furble::FujifilmBasic> makeCamera(Furble::Host::FujifilmVirtualC
 bool testSharedOwnershipSurvivesListClear() {
   std::cout << "test: shared ownership survives a camera list clear (#106)\n";
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
 
   Furble::Host::FujifilmVirtualCamera peer;
 
@@ -84,7 +84,7 @@ bool testSharedOwnershipSurvivesListClear() {
 
   // Control takes its own strong reference, then starts the connection.
   std::shared_ptr<Furble::Camera> held = list.back();
-  if (!check(held->connect(ESP_PWR_LVL_P3, 1000), "the held camera connects")) {
+  if (!check(held->connect(Furble::TxPower::P3, 1000), "the held camera connects")) {
     return false;
   }
 
@@ -111,13 +111,14 @@ bool testFailedConnectDoesNotReportConnected() {
   std::cout << "test: a failed connect stays disconnected and retries for real\n";
   const int before = g_Failures;
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
 
   Furble::Host::FujifilmVirtualCamera peer;
   auto camera = makeCamera(peer);
 
   NimBLEDevice::setConnectShouldFail(true);
-  check(!camera->connect(ESP_PWR_LVL_P3, 1000), "a connect that never establishes returns false");
+  check(!camera->connect(Furble::TxPower::P3, 1000),
+        "a connect that never establishes returns false");
   check(!camera->isConnected(), "a failed connect leaves the camera disconnected");
   check(!peer.connected(), "the peer sees no session for a failed connect");
 
@@ -125,7 +126,7 @@ bool testFailedConnectDoesNotReportConnected() {
   // a stale flag.
   NimBLEDevice::setConnectShouldFail(false);
   peer.clearEvents();
-  check(camera->connect(ESP_PWR_LVL_P3, 1000), "a later connect establishes a real link");
+  check(camera->connect(Furble::TxPower::P3, 1000), "a later connect establishes a real link");
   check(camera->isConnected(), "the retry reports connected");
   check(peer.connected() && peer.tokenAccepted(), "the retry performs the real GATT handshake");
 
@@ -144,11 +145,11 @@ bool testDeliveredDisconnectNotReportedConnected() {
   std::cout << "test: a delivered disconnect is not reported as connected\n";
   const int before = g_Failures;
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
 
   Furble::Host::FujifilmVirtualCamera peer;
   auto camera = makeCamera(peer);
-  if (!check(camera->connect(ESP_PWR_LVL_P3, 1000), "the camera connects")) {
+  if (!check(camera->connect(Furble::TxPower::P3, 1000), "the camera connects")) {
     NimBLEDevice::resetMock();
     return false;
   }
@@ -179,11 +180,11 @@ bool testDisconnectAfterDropCompletesPromptly() {
   std::cout << "test: disconnect after a drop completes promptly (BUG B)\n";
   const int before = g_Failures;
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
 
   Furble::Host::FujifilmVirtualCamera peer;
   auto camera = makeCamera(peer);
-  if (!check(camera->connect(ESP_PWR_LVL_P3, 1000), "the camera connects")) {
+  if (!check(camera->connect(Furble::TxPower::P3, 1000), "the camera connects")) {
     NimBLEDevice::resetMock();
     return false;
   }
@@ -216,11 +217,11 @@ bool testOnDisconnectClearsState() {
   std::cout << "test: onDisconnect clears the connected state (BUG A)\n";
   const int before = g_Failures;
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
 
   Furble::Host::FujifilmVirtualCamera peer;
   auto camera = makeCamera(peer);
-  if (!check(camera->connect(ESP_PWR_LVL_P3, 1000), "the camera connects")) {
+  if (!check(camera->connect(Furble::TxPower::P3, 1000), "the camera connects")) {
     NimBLEDevice::resetMock();
     return false;
   }
@@ -231,7 +232,7 @@ bool testOnDisconnectClearsState() {
 
   // The connected state is fully cleared, so a reconnect runs real work.
   peer.clearEvents();
-  check(camera->connect(ESP_PWR_LVL_P3, 1000), "the camera reconnects after a drop");
+  check(camera->connect(Furble::TxPower::P3, 1000), "the camera reconnects after a drop");
   check(peer.connected() && peer.tokenAccepted(), "the reconnect runs the real handshake");
 
   camera->disconnect();
@@ -248,11 +249,11 @@ bool testSupervisionTimeoutClearsState() {
   std::cout << "test: a camera-off supervision timeout clears state\n";
   const int before = g_Failures;
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
 
   Furble::Host::FujifilmVirtualCamera peer;
   auto camera = makeCamera(peer);
-  if (!check(camera->connect(ESP_PWR_LVL_P3, 1000), "the camera connects")) {
+  if (!check(camera->connect(Furble::TxPower::P3, 1000), "the camera connects")) {
     NimBLEDevice::resetMock();
     return false;
   }
@@ -266,7 +267,7 @@ bool testSupervisionTimeoutClearsState() {
 
   // Recovery: a later connect still works after the peer comes back.
   peer.clearEvents();
-  check(camera->connect(ESP_PWR_LVL_P3, 1000), "the camera reconnects once the peer returns");
+  check(camera->connect(Furble::TxPower::P3, 1000), "the camera reconnects once the peer returns");
   check(peer.connected() && peer.tokenAccepted(), "the recovery runs the real handshake");
 
   camera->disconnect();

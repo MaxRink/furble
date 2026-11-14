@@ -43,7 +43,7 @@ void check(bool condition, const char *message) {
 
 void init() {
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
 }
 
 // Wait until the connect thread has the link up, which is the moment before it
@@ -82,18 +82,18 @@ void testTimeoutRunDeletesBondAndFlagsRepair() {
 
   Furble::FujifilmSecure camera(&advertisement);
 
-  check(!camera.connect(ESP_PWR_LVL_P3, 1000), "first attempt fails on the security timeout");
+  check(!camera.connect(Furble::TxPower::P3, 1000), "first attempt fails on the security timeout");
   check(NimBLEDevice::deleteBondCount() == 0, "one timeout is not evidence, the bond survives");
   check(!camera.needsRepair(), "one timeout does not ask the user to re-pair");
 
-  check(!camera.connect(ESP_PWR_LVL_P3, 1000), "second attempt fails on the security timeout");
+  check(!camera.connect(Furble::TxPower::P3, 1000), "second attempt fails on the security timeout");
   check(NimBLEDevice::deleteBondCount() == 1, "the second consecutive timeout deletes the bond");
   check(!NimBLEDevice::isBonded(camera.getAddress()), "the dead keys are gone");
   check(camera.needsRepair(), "the camera is flagged as needing a re-pair");
 
   // Further attempts start unbonded, so there is nothing left to delete and the
   // recovery must not fire again.
-  check(!camera.connect(ESP_PWR_LVL_P3, 1000), "a third attempt still fails");
+  check(!camera.connect(Furble::TxPower::P3, 1000), "a third attempt still fails");
   check(NimBLEDevice::deleteBondCount() == 1, "the recovery deletes the bond exactly once");
 }
 
@@ -111,11 +111,11 @@ void testEventPendingTimeoutRunReachesTheSameVerdict() {
 
   Furble::FujifilmSecure camera(&advertisement);
 
-  check(!camera.connect(ESP_PWR_LVL_P3, 1000), "first rc=520 attempt fails");
+  check(!camera.connect(Furble::TxPower::P3, 1000), "first rc=520 attempt fails");
   check(NimBLEDevice::deleteBondCount() == 0, "a single rc=520 keeps the bond");
   check(!camera.needsRepair(), "a single rc=520 does not ask the user to re-pair");
 
-  check(!camera.connect(ESP_PWR_LVL_P3, 1000), "second rc=520 attempt fails");
+  check(!camera.connect(Furble::TxPower::P3, 1000), "second rc=520 attempt fails");
   check(NimBLEDevice::deleteBondCount() == 1, "the second consecutive rc=520 deletes the bond");
   check(camera.needsRepair(), "the camera is flagged as needing a re-pair");
 }
@@ -133,10 +133,10 @@ void testSingleTimeoutThenSuccessKeepsBond() {
 
   Furble::FujifilmSecure camera(&advertisement);
 
-  check(!camera.connect(ESP_PWR_LVL_P3, 1000), "the transient timeout fails the attempt");
+  check(!camera.connect(Furble::TxPower::P3, 1000), "the transient timeout fails the attempt");
   check(NimBLEDevice::deleteBondCount() == 0, "a transient security timeout keeps the bond");
 
-  check(camera.connect(ESP_PWR_LVL_P3, 1000), "the next attempt connects normally");
+  check(camera.connect(Furble::TxPower::P3, 1000), "the next attempt connects normally");
   check(NimBLEDevice::deleteBondCount() == 0, "a recovered camera never loses its bond");
   check(NimBLEDevice::isBonded(camera.getAddress()), "the saved bond survives");
   check(!camera.needsRepair(), "no re-pair prompt for a camera that came back");
@@ -172,7 +172,7 @@ void testBondDeleteDropsTheLinkAndPrompts() {
 
   Furble::FujifilmSecure camera(&advertisement);
 
-  check(!camera.connect(ESP_PWR_LVL_P3, 1000), "the first refusal is not yet evidence");
+  check(!camera.connect(Furble::TxPower::P3, 1000), "the first refusal is not yet evidence");
   check(NimBLEDevice::deleteBondCount() == 0, "one refusal keeps the bond");
 
   // The bond delete takes the link with it, so the in-link fresh pair has
@@ -181,7 +181,7 @@ void testBondDeleteDropsTheLinkAndPrompts() {
   // every connection to the peer before dropping the keys. The mock modelled
   // only the key drop until this was fixed, which is why this scenario used to
   // assert a recovery the device cannot perform.
-  check(!camera.connect(ESP_PWR_LVL_P3, 1000),
+  check(!camera.connect(Furble::TxPower::P3, 1000),
         "the second refusal deletes the bond, and the unpair drops the link with it");
   check(NimBLEDevice::deleteBondCount() == 1, "the recovery deletes the bond exactly once");
   check(camera.needsRepair(), "so the user is asked to re-pair rather than silently recovering");
@@ -191,7 +191,7 @@ void testBondDeleteDropsTheLinkAndPrompts() {
   // still in its pairing screen, so the next attempt is a first pairing and it
   // completes.
   peer.setRefuseWhileBonded(false);
-  check(camera.connect(ESP_PWR_LVL_P3, 1000), "the next attempt pairs fresh and connects");
+  check(camera.connect(Furble::TxPower::P3, 1000), "the next attempt pairs fresh and connects");
   check(peer.configured(), "and completes registration");
   check(NimBLEDevice::deleteBondCount() == 1, "with no further bond deletes");
   camera.disconnect();
@@ -209,8 +209,9 @@ void testUnbondedRefusalDeletesNothing() {
   peer.setSecureConnectionResult(false);
 
   Furble::FujifilmSecure camera(&advertisement);
-  check(!camera.connect(ESP_PWR_LVL_P3, 1000), "connect fails when a first pairing is refused");
-  check(!camera.connect(ESP_PWR_LVL_P3, 1000), "a retried first pairing fails too");
+  check(!camera.connect(Furble::TxPower::P3, 1000),
+        "connect fails when a first pairing is refused");
+  check(!camera.connect(Furble::TxPower::P3, 1000), "a retried first pairing fails too");
   check(NimBLEDevice::deleteBondCount() == 0, "no bond delete without a prior bond");
   check(!camera.needsRepair(), "an unpaired camera is not a stale bond");
 }
@@ -236,7 +237,7 @@ void testCancelDuringSecurityUnblocksPromptly() {
 
   std::atomic<bool> finished {false};
   std::thread connector([&]() {
-    (void)camera.connect(ESP_PWR_LVL_P3, 1000);
+    (void)camera.connect(Furble::TxPower::P3, 1000);
     finished = true;
   });
 
@@ -283,14 +284,15 @@ void testSuccessBetweenFailuresIsNotARun() {
 
   Furble::FujifilmSecure camera(&advertisement);
 
-  check(!camera.connect(ESP_PWR_LVL_P3, 1000), "the first transient timeout fails its attempt");
-  check(camera.connect(ESP_PWR_LVL_P3, 1000), "the camera then connects normally");
+  check(!camera.connect(Furble::TxPower::P3, 1000),
+        "the first transient timeout fails its attempt");
+  check(camera.connect(Furble::TxPower::P3, 1000), "the camera then connects normally");
   camera.disconnect();
 
   // Much later, an unrelated transient. It is the first failure of a new run,
   // not the second of the old one.
   peer.setSecureTimeouts(1);
-  check(!camera.connect(ESP_PWR_LVL_P3, 1000), "a later transient timeout fails its attempt");
+  check(!camera.connect(Furble::TxPower::P3, 1000), "a later transient timeout fails its attempt");
   check(NimBLEDevice::deleteBondCount() == 0,
         "a success between two failures is not a run, so the bond survives");
   check(NimBLEDevice::isBonded(camera.getAddress()), "the healthy bond is still there");
@@ -320,7 +322,7 @@ void testCancelledSecurityWaitIsNotAFailure() {
 
   for (int attempt = 0; attempt < 2; attempt++) {
     camera.clearConnectCancel();
-    std::thread connector([&]() { (void)camera.connect(ESP_PWR_LVL_P3, 1000); });
+    std::thread connector([&]() { (void)camera.connect(Furble::TxPower::P3, 1000); });
     check(waitForLink(inner, 5000), "the attempt reaches the security wait");
     camera.cancelConnect();
     camera.abortBlockingConnect();
@@ -349,17 +351,17 @@ void testUnbondedAttemptClearsTheRun() {
 
   Furble::FujifilmSecure camera(&advertisement);
 
-  check(!camera.connect(ESP_PWR_LVL_P3, 1000), "the bonded attempt fails and opens a run");
+  check(!camera.connect(Furble::TxPower::P3, 1000), "the bonded attempt fails and opens a run");
   check(NimBLEDevice::deleteBondCount() == 0, "one failure keeps the bond");
 
   // The user forgot the camera and started over, so the next attempt has no
   // bond at all.
   NimBLEDevice::setBonded(false);
-  check(!camera.connect(ESP_PWR_LVL_P3, 1000), "the unbonded attempt fails too");
+  check(!camera.connect(Furble::TxPower::P3, 1000), "the unbonded attempt fails too");
 
   // The re-pair took, and the first failure against the new keys arrives.
   NimBLEDevice::setBonded(true);
-  check(!camera.connect(ESP_PWR_LVL_P3, 1000), "the first failure after the re-pair fails");
+  check(!camera.connect(Furble::TxPower::P3, 1000), "the first failure after the re-pair fails");
   check(NimBLEDevice::deleteBondCount() == 0,
         "the unbonded attempt cleared the run, so the fresh bond survives one failure");
   check(NimBLEDevice::isBonded(camera.getAddress()), "the fresh bond is still there");
@@ -386,14 +388,14 @@ void testResetConnectionStateClearsTheRun() {
 
   Furble::FujifilmSecure camera(&advertisement);
 
-  check(!camera.connect(ESP_PWR_LVL_P3, 1000), "the first attempt fails and opens a run");
+  check(!camera.connect(Furble::TxPower::P3, 1000), "the first attempt fails and opens a run");
   check(NimBLEDevice::deleteBondCount() == 0, "one failure keeps the bond");
 
   // The user gave up and came back later. This is what a fresh connect request
   // does to the camera before the attempt starts.
   camera.resetConnectionState();
 
-  check(!camera.connect(ESP_PWR_LVL_P3, 1000), "the first failure of the new cycle fails too");
+  check(!camera.connect(Furble::TxPower::P3, 1000), "the first failure of the new cycle fails too");
   check(NimBLEDevice::deleteBondCount() == 0,
         "the run does not span connect cycles, so the bond survives");
   check(NimBLEDevice::isBonded(camera.getAddress()), "the healthy bond is still there");
@@ -434,10 +436,10 @@ void testRotatingAddressFindsTheBondAndRecovers() {
 
   Furble::FujifilmSecure camera(&advertisement);
 
-  check(!camera.connect(ESP_PWR_LVL_P3, 1000), "the first failure is not yet evidence");
+  check(!camera.connect(Furble::TxPower::P3, 1000), "the first failure is not yet evidence");
   check(NimBLEDevice::deleteBondCount() == 0, "and leaves the bond alone");
 
-  check(!camera.connect(ESP_PWR_LVL_P3, 1000), "the second failure fails its attempt too");
+  check(!camera.connect(Furble::TxPower::P3, 1000), "the second failure fails its attempt too");
   check(NimBLEDevice::deleteBondCount() == 1, "but it deletes the stale bond, exactly once");
   check(!NimBLEDevice::isBonded(identity), "and it is the identity bond that went");
   // rc=13 and rc=520 both take the link with them, so there is no live link
@@ -449,7 +451,7 @@ void testRotatingAddressFindsTheBondAndRecovers() {
   // so this is a first pairing and it has to go all the way through
   // registration. On the bench this is the attempt that never came, because the
   // two before it were never counted.
-  check(camera.connect(ESP_PWR_LVL_P3, 1000), "the next attempt pairs fresh and connects");
+  check(camera.connect(Furble::TxPower::P3, 1000), "the next attempt pairs fresh and connects");
   check(peer.configured(), "and completes registration");
   check(NimBLEDevice::deleteBondCount() == 1, "with no further bond deletes");
   camera.disconnect();
@@ -470,7 +472,7 @@ void testSuccessfulConnectSecuresExactlyOnce() {
   const auto advertisement = peer.advertisement();
 
   Furble::FujifilmSecure camera(&advertisement);
-  check(camera.connect(ESP_PWR_LVL_P3, 1000), "the camera connects");
+  check(camera.connect(Furble::TxPower::P3, 1000), "the camera connects");
   check(peer.configured(), "and completes registration");
   check(peer.secureInitiateCount() == 1,
         "security is established exactly once, never again after Secured!");
@@ -504,7 +506,7 @@ void testLateRegistrationTimesOutThenRecovers() {
 
   // Slower to confirm than the registration timeout allows.
   peer.setWithholdRegistration(true);
-  check(!camera.connect(ESP_PWR_LVL_P3, 1000),
+  check(!camera.connect(Furble::TxPower::P3, 1000),
         "an attempt whose confirmation never lands fails on its own timeout");
   check(!peer.configured(), "and never reports itself registered");
   check(NimBLEDevice::deleteBondCount() == 0, "a slow confirmation is not a security failure");
@@ -512,7 +514,7 @@ void testLateRegistrationTimesOutThenRecovers() {
 
   // The confirmation arrives, which on the bench is the later retry completing.
   peer.setWithholdRegistration(false);
-  check(camera.connect(ESP_PWR_LVL_P3, 1000), "the retry once the camera confirms connects");
+  check(camera.connect(Furble::TxPower::P3, 1000), "the retry once the camera confirms connects");
   check(peer.configured(), "and completes registration");
   check(NimBLEDevice::deleteBondCount() == 0, "with the bond still untouched throughout");
   camera.disconnect();

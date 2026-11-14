@@ -48,14 +48,14 @@ bool testMissingShutterCharacteristicIsNotSilent() {
   std::cout << "test: a connected FujifilmBasic must be able to fire the shutter\n";
   const int before = g_Failures;
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
 
   Furble::Host::FujifilmVirtualCamera peer;
   peer.suppressCharacteristic(Furble::Host::FujifilmVirtualCamera::shutterServiceUUID(),
                               Furble::Host::FujifilmVirtualCamera::shutterCharacteristicUUID());
   auto camera = makeCamera(peer);
 
-  const bool connected = camera->connect(ESP_PWR_LVL_P3, 1000);
+  const bool connected = camera->connect(Furble::TxPower::P3, 1000);
 
   peer.clearEvents();
   if (connected) {

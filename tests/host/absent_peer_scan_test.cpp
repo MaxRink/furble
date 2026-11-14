@@ -84,7 +84,7 @@ bool runScenario() {
   auto &control = Control::getInstance();
 
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
   Furble::Settings::setBool(Furble::Settings::SLEEP_CONN, false);
   Furble::Settings::setBool(Furble::Settings::TX_ADAPTIVE, false);
   Furble::Settings::setBool(Furble::Settings::RECON_BACKOFF, false);
@@ -100,7 +100,7 @@ bool runScenario() {
   NimBLEDevice::setMockPeerForAddress(absentPeer.advertisement().getAddress(), &absentPeer);
   NimBLEAdvertisedDevice absentAdvertisement = absentPeer.advertisement();
   auto absentCamera = std::make_shared<Furble::FujifilmSecure>(&absentAdvertisement);
-  check(absentCamera->connect(ESP_PWR_LVL_P3, 1000), "initial pairing connect succeeds");
+  check(absentCamera->connect(Furble::TxPower::P3, 1000), "initial pairing connect succeeds");
   absentCamera->disconnect();
 
   // Now the camera is gone: registered, but its advertisement is never

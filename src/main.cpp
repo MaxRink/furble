@@ -474,7 +474,8 @@ void app_main() {
   Furble::BootTimeline::mark(Furble::BootTimeline::CPU_POLICY_DONE);
   Furble::BootScreen::step("Power");
 
-  Furble::Device::init(Furble::Settings::load<esp_power_level_t>(Furble::Settings::TX_POWER));
+  Furble::Device::init(Furble::Control::txPower(
+      Furble::Settings::load<esp_power_level_t>(Furble::Settings::TX_POWER)));
   Furble::BootTimeline::mark(Furble::BootTimeline::BLE_DONE);
   Furble::BootScreen::step("Bluetooth");
 #if defined(FURBLE_WEBUI) && FURBLE_WEBUI

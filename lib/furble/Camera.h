@@ -16,6 +16,7 @@
 #include <NimBLERemoteCharacteristic.h>
 #include <NimBLEUUID.h>
 
+#include "Device.h"
 #include "FurbleTypes.h"
 
 #if defined(FURBLE_SIM) && !defined(FURBLE_SIM_NO_SCHED_MUTEX)
@@ -109,9 +110,10 @@ class Camera: public NimBLEClientCallbacks {
   // can no longer authorize anything. Match the stack instead.
   static constexpr uint32_t PAIRING_WINDOW_MS = 30 * 1000;
 
+  /** Pairing IO capability. Camera.cpp maps it to the NimBLE value. */
   enum class SecurityMode : uint8_t {
-    SECURE_DISPLAY_YESNO = BLE_HS_IO_DISPLAY_YESNO,
-    SECURE_KEYBOARD_DISPLAY = BLE_HS_IO_KEYBOARD_DISPLAY,
+    SECURE_DISPLAY_YESNO,
+    SECURE_KEYBOARD_DISPLAY,
   };
 
   enum class ConnProfile : uint8_t {
@@ -168,12 +170,12 @@ class Camera: public NimBLEClientCallbacks {
   /**
    * Wrapper for protected pure virtual Camera::_connect().
    *
-   * @param[in] power ESP32 transmit power level.
+   * @param[in] power Transmit power level.
    * @param[in] timeout Connection timeout in milliseconds.
    *
    * @return true iff the connect succeeded.
    */
-  bool connect(esp_power_level_t power, uint32_t timeout);
+  bool connect(TxPower power, uint32_t timeout);
 
   /**
    * Wrapper for protected pure virtual Camera::_disconnect();
@@ -717,7 +719,7 @@ class Camera: public NimBLEClientCallbacks {
 
   static std::atomic<pairing_request_callback_t> m_PairingRequestCallback;
 
-  esp_power_level_t m_Power = ESP_PWR_LVL_P3;
+  TxPower m_Power = TxPower::P3;
   bool m_FromScan = false;
   // Read lock-free by isActive() and written by setActive()/disconnect() without
   // a shared lock discipline, so keep it atomic to remove the latent race.
