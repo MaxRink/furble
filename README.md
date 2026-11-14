@@ -560,7 +560,7 @@ Three more settings apply only to a u-blox M10 receiver and are set from the
 serial console or the companion app, not the device menus: `gps_gnss` (the
 constellation mask, 0 follows Constellation), `gps_psm` (power save: off,
 cyclic tracking or on/off, default off) and `gps_ana` (AssistNow Autonomous,
-default on).
+default off).
 
 `Settings->Time` selects the local time zone. The default UTC keeps the previous
 camera clock behaviour. The Time page also shows local time with its offset and
