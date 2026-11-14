@@ -15,6 +15,12 @@ namespace TaskMemory {
  */
 inline constexpr size_t TASK_OVERHEAD_BYTES = 384;
 
+/**
+ * The per-camera `Control::Target` task stack. `Control::addActive()` creates
+ * it and the memory governor admits it; tools/stack_budget.json reads it here.
+ */
+inline constexpr size_t CAMERA_TARGET_STACK_BYTES = 4096;
+
 }  // namespace TaskMemory
 }  // namespace Furble
 

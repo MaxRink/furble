@@ -22,6 +22,7 @@ std::mutex s_Mutex;
 Governor s_Governor;
 std::atomic<level_t> s_Level {NORMAL};
 std::atomic<size_t> s_MQTTStartExtra {0};
+std::atomic<escalate_hook_t> s_EscalateHook {nullptr};
 int64_t s_LastTickUs = 0;
 bool s_Ticked = false;
 
@@ -71,7 +72,21 @@ void admit(size_t bytes) {
     level = s_Governor.escalate(classifyAfter(freeBytes, largest, bytes));
     s_Level.store(level, std::memory_order_release);
   }
-  logChange(previous, level, freeBytes, largest);
+  if (level == previous) {
+    return;
+  }
+  ESP_LOGW(LOG_TAG, "memory pressure %s -> %s before a %u-byte allocation: free=%u largest=%u",
+           levelName(previous), levelName(level), static_cast<unsigned>(bytes),
+           static_cast<unsigned>(freeBytes), static_cast<unsigned>(largest));
+  // Outside s_Mutex: the hook takes the WebUI's own lock to find its task.
+  const escalate_hook_t hook = s_EscalateHook.load(std::memory_order_acquire);
+  if (hook != nullptr) {
+    hook();
+  }
+}
+
+void setEscalateHook(escalate_hook_t hook) {
+  s_EscalateHook.store(hook, std::memory_order_release);
 }
 
 void setMQTTStartExtra(size_t bytes) {

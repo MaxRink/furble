@@ -9,6 +9,7 @@ class Camera {
  public:
   std::string getName() const { return "mock"; }
   uint32_t getType() const { return 0; }
+  std::string getAddress() const { return "00:00:00:00:00:00"; }
   bool isActive() const { return m_Active; }
   void setActive(bool active) { m_Active = active; }
 

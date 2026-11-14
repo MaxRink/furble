@@ -68,6 +68,10 @@ size_t Control::getTargetCount() const {
   return 0;
 }
 
+std::vector<std::shared_ptr<Camera>> Control::getTargetCameras() const {
+  return {};
+}
+
 Platform &Platform::getInstance() {
   static Platform instance;
   return instance;

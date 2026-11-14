@@ -178,10 +178,18 @@ bool connectCamera(int32_t index) {
   }
 
   auto &control = Control::getInstance();
+  // addActive() ignores a camera that is already a target, so a repeated
+  // console connect admits no new target task and must not shed for one.
+  const auto targets = control.getTargetCameras();
   for (size_t n = 0; n < CameraList::size(); n++) {
     auto camera = CameraList::get(n);
     if (camera->isActive()) {
-      MemoryPressure::admit(MemoryPressure::CONNECT_TARGET_BYTES);
+      const bool duplicate = std::any_of(
+          targets.begin(), targets.end(),
+          [&camera](const auto &target) { return target->getAddress() == camera->getAddress(); });
+      if (!duplicate) {
+        MemoryPressure::admit(MemoryPressure::CONNECT_TARGET_BYTES);
+      }
       control.addActive(camera);
     }
   }
