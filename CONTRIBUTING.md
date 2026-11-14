@@ -230,7 +230,9 @@ owns firmware compiler warnings. A changed source that no database compiles
 fails the gate; the only exemptions are listed in `NO_COMPILE_DB` with their
 reasons. The gate passes clang-tidy a header filter anchored to the checkout,
 because `.clang-tidy`'s `HeaderFilterRegex` also matched `src/` inside
-vendored paths such as `.pio/libdeps/<env>/M5GFX/src/`.
+vendored paths such as `.pio/libdeps/<env>/M5GFX/src/` and
+`sim/.pio/libdeps/sim/`. The anchored filter still accepts the `..` steps
+CMake keeps in include paths, such as `tests/host/../../include/`.
 
 `cppcoreguidelines-owning-memory` flags C++ `new` and `delete` outside a
 `std::unique_ptr`. FILE handles and the C allocators are left to the

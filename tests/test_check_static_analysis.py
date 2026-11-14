@@ -182,11 +182,15 @@ class ClangTidyRunTest(unittest.TestCase):
         pattern = re.compile(flag)
         root = str(CHECKER.ROOT)
         for path in ("src/FurbleGPS.h", f"{root}/include/FurbleGPS.h", "lib/furble/Camera.h",
-                     "sim/driver.h"):
+                     "sim/driver.h", f"{root}/tests/host/../../include/FurbleGPS.h",
+                     f"{root}/tests/host/../../lib/furble/Camera.h",
+                     f"{root}/sim/../include/FurbleGPS.h"):
             self.assertTrue(pattern.search(path), path)
         for path in (".pio/libdeps/m5stick-s3/M5GFX/src/lgfx/v1/LGFXBase.hpp",
                      f"{root}/.pio/libdeps/m5stick-s3/M5GFX/src/lgfx/v1/LGFXBase.hpp",
-                     f"{root}/managed_components/lvgl__lvgl/src/lvgl.h"):
+                     f"{root}/managed_components/lvgl__lvgl/src/lvgl.h",
+                     f"{root}/sim/.pio/libdeps/sim/M5GFX/src/lgfx/v1/LGFXBase.hpp",
+                     f"{root}/sim/.pio/libdeps/sim/M5GFX/src/lgfx/v1/platforms/../misc/x.hpp"):
             self.assertIsNone(pattern.search(path), path)
 
     def test_header_filter_reaches_clang_tidy(self):

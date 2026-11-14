@@ -1277,3 +1277,14 @@ The `strcmp` fix rewrote a line holding the console literal `"trace"`, and
 change that adds and removes exactly the same string literals in
 `FurbleConsole.cpp` now warns instead of failing; any changed literal still
 fails. `tests/test_check_pr_hygiene.py` covers both.
+
+The pre-push review found two holes in the first anchored filter. CMake keeps
+`..` in include paths, so the host database reaches headers as
+`tests/host/../../include/X.h`, which no longer matched, and those headers
+would have gone unchecked without a word. The simulator database's
+dependencies live under `sim/.pio/libdeps/sim/`, which still matched through
+`sim/`. The filter now accepts plain segments followed by `..` steps before
+`src/`, `lib/furble/`, `include/` or `sim/`, and refuses `sim/` followed by a
+dot. Homebrew clang-tidy 23 on a small tree reported a planted finding in
+`tests/host/../../include/a.h` and suppressed the same finding in
+`sim/.pio/v/src/v.h`.

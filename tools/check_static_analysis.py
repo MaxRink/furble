@@ -30,7 +30,11 @@ EXCLUDED_PREFIXES = ("sim/build/", "sim/shim/", "sim/.pio/")
 # .clang-tidy's HeaderFilterRegex is unanchored, so a vendored header such as
 # .pio/libdeps/<env>/M5GFX/src/lgfx/... matched its "src/" and its checks ran
 # with WarningsAsErrors. Anchor it to this checkout, relative or absolute.
-HEADER_FILTER = f"--header-filter=^({re.escape(str(ROOT))}/)?(src|lib/furble|include|sim)/"
+# CMake keeps ".." in include paths (tests/host/../../include/X.h), so plain
+# segments followed by ".." steps may come first; a segment starting with a
+# dot may not, and sim/.pio (the simulator's dependencies) is refused.
+HEADER_FILTER = (f"--header-filter=^({re.escape(str(ROOT))}/)?(([^/.][^/]*/)+(\\.\\./)+)*"
+                 "(src/|lib/furble/|include/|sim/[^.])")
 DIAGNOSTIC_ERROR = re.compile(r"^\S.*:\d+:\d+: (fatal )?error: ")
 
 
