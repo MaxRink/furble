@@ -150,6 +150,9 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   its update path while `CompanionGatt` holds `m_Mutex`, and keep it
   unencrypted so it still answers when companion auth or the host cache is
   broken. It is not part of the production companion contract.
+- Compare `strcmp` results explicitly (`== 0`, `!= 0`). clang-tidy's
+  `bugprone-suspicious-string-compare` runs on the firmware databases, and a
+  bare `strcmp` used as a bool in `FurbleConsole` failed it (#463).
 - Settings switch tables in `FurbleConsole`, `FurbleCompanionService` and
   `FurbleSD` must include every new `Settings::type_t` case. The `-debug` build
   enforces this with `-Werror=switch`, so build a debug env after adding a
