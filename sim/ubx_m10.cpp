@@ -440,6 +440,7 @@ std::vector<uint8_t> VirtualM10::receive(const uint8_t *data, size_t length, uin
     if (m_State == State::STANDBY) {
       if (m_WakeOnUart) {
         // Assumption: the byte that wakes the receiver is not decoded.
+        uartWakes++;
         start(now, true);
       }
       ignoredBytes++;
@@ -593,12 +594,13 @@ std::vector<uint8_t> VirtualM10::handle(const Ubx::Stream &frame, uint32_t now) 
         // a flashless module gives; this models "not acknowledged".
         return Ubx::sosOutput(Ubx::SOS_ACK, 0);
       }
-      m_Backup.clear();
+      // One 12-byte record per BBR item: the 4-byte key, then the 8-byte value.
+      m_Backup.resize(m_Bbr.size() * 12);
+      size_t at = 0;
       for (const auto &entry : m_Bbr) {
-        uint8_t record[12];
-        std::memcpy(record, &entry.first, 4);
-        std::memcpy(record + 4, &entry.second, 8);
-        m_Backup.insert(m_Backup.end(), record, record + 12);
+        std::memcpy(m_Backup.data() + at, &entry.first, 4);
+        std::memcpy(m_Backup.data() + at + 4, &entry.second, 8);
+        at += 12;
       }
       m_HaveBackup = true;
       return Ubx::sosOutput(Ubx::SOS_ACK, 1);
