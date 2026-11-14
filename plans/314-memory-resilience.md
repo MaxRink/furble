@@ -10,6 +10,9 @@ limit recorded as row 18 of
 flashed or measured. Every number comes from datasheets, the pinned ESP-IDF source,
 the sdkconfig files and the firmware's own build output.
 
+The 2026-11-13 re-analysis below corrects the `perf tasks` stack readings
+and lists the stack and config cuts that stay hardware-gated.
+
 ## Problem
 
 The device crashed on hardware from memory exhaustion (MQTT owner stack, Home
@@ -43,6 +46,154 @@ Abort policy: keep the abort on. Turning it off gains nothing, because the
 `std::` paths abort under `-fno-exceptions` and 213 unchecked `lv_*_create`
 calls would become NULL dereferences with worse diagnostics. Survival has to
 come from never reaching exhaustion.
+
+## Re-analysis 2026-11-13
+
+State: implemented on `fix/memory-reanalysis`, stacked on #441. Sim-only: no
+hardware was flashed or measured. Every figure comes from the seven release
+builds of 2026-11-14, `tools/stack_budget.py`, `tools/check_size_budget.py`
+and `tools/derive_sim_heap.py`.
+
+### The `perf tasks` misreading
+
+`perf tasks` prints `stack_high_watermark` as `usStackHighWaterMark` times
+`sizeof(StackType_t)` (`src/FurbleConsole.cpp`). That is
+`uxTaskGetStackHighWaterMark`, the minimum free stack in bytes. Plans 305,
+308 and 311, CLAUDE.md and `include/FurbleMQTTMemory.h` read it as bytes
+used. Used is the configured stack minus the reading:
+
+| Task | Stack | Reading | Read as | Used |
+| :--- | ---: | ---: | :--- | ---: |
+| MQTT owner | 10,240 | 3,084 | used | about 7,156 |
+| esp-mqtt worker | 4,096 | 704 | used | about 3,392 |
+| NimBLE host | 16,384 | 14,200 | 87 percent used | about 2,184 |
+| control | 8,192 | 7,372 | used | about 820 |
+| main, MQTT connected | 12,288 | 3,020 | used, listed at 8 KiB | about 9,268 |
+| companion | 4,096 | 1,884 | used | about 2,212 |
+
+The main row explains the #398 overflow: main already used about 9 KiB at
+12 KiB, so the 8 KiB cut could not hold. The pull request #398 body records
+the reading at 12 KiB; plan 308 listed it at 8 KiB. The worker row held the
+2,348-byte event copy that the stack walk later moved to `m_Incoming`. The
+earlier 3,476-byte "MQTT-off" main figure has no source in any plan or pull
+request, so the simulator now models the sourced 3,020-byte reading.
+
+### Changes
+
+- MQTT owner: `MQTT::taskStep` receives each queued event into `m_Received`,
+  a second copy in the same never-freed block as `m_Incoming` (PSRAM when
+  the queue is there). `processLifecycleEvents` passes the client and event
+  id to `handleLifecycleEvent` instead of building a `queued_event_t`, and
+  `clearQueuedEvents` calls `xQueueReset`: the owner is the only receiver and
+  every sender posts with a zero timeout, so a reset drops exactly what a
+  drain would. `EVENT_STORAGE_BYTES` now reserves the queue plus both copies
+  without PSRAM. The StickS3 owner walk drops from 8,080 to 3,344 bytes
+  (3,312 with the cut below). The 10 KiB stack and every gate are unchanged.
+- Config with hardware precedent:
+  - `CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM` 10 to 6 on the six envs that had
+    10. The StickS3 runs 6 since #392. ESP-IDF recommends at least the AMPDU
+    RX BA window, and `CONFIG_ESP_WIFI_RX_BA_WIN` is 6 on every board.
+  - `CONFIG_ESP_WIFI_IRAM_OPT` and `CONFIG_ESP_WIFI_RX_IRAM_OPT` off on
+    StickS3, Waveshare and headless. The four ESP32 boards already ship
+    with both off. The WiFi hot paths run from flash; throughput is not
+    measured.
+- Stack walk: a scoped `cuts` rule drops `lock_acquire_generic` to
+  `lock_init_generic` below `__retarget_lock_acquire*`. That path is the lazy
+  first-use creation of a NULL lock. `__retarget_lock_acquire*` asserts its
+  lock is not NULL and passes a non-NULL copy, so it cannot run there. It is
+  not a `boot_only` entry, because `__retarget_lock_init` still reaches
+  `lock_init_generic` at runtime when a stream is opened. See
+  `docs/stack-budget.md`.
+
+### Refreshed per-board headroom
+
+Derived boot heap is the `tools/derive_sim_heap.py` upper bound with WiFi,
+companion and every boot task charged; the `profile-*` floors in
+`sim/coverage/memory_budget.json` follow it. IRAM is the measured static
+size. The tightest stack row is the smallest resolved headroom.
+
+| Env | Derived free, before to after | Largest | IRAM, before to after | Tightest stack rows |
+| --- | ---: | ---: | ---: | :--- |
+| m5stick-c | 134,568 to 141,352 | 129,984 | 114,024 | `sys_evt` 688, `companion` 864 |
+| m5stick-c-plus | 133,232 to 140,016 | 129,984 | 114,024 | `sys_evt` 688, `companion` 864 |
+| m5stack-core | 112,320 to 119,024 | 119,024 | 115,668 | `sys_evt` 688, `companion` 864 |
+| m5stack-core2 | 130,292 to 136,980 | 129,984 | 121,036 | `sys_evt` 688, `companion` 864 |
+| m5stick-s3 | 174,456 to 193,312 | 193,312 | 132,864 to 114,688 | `sys_evt` 464, `companion` 624 |
+| waveshare-s3-eth | 162,288 to 187,656 | 187,656 | 132,352 to 114,176 | `sys_evt` 224, `companion` 224 |
+| esp32-s3-headless | not derived to 179,360 | 179,360 | 140,032 to 121,856 | `sys_evt` 224, `companion` 224 |
+
+The ESP32 boards gain four 1,600-byte RX buffers. The S3 boards gain the 18,176 bytes of IRAM, which sit on shared
+DIRAM. Waveshare and headless also gain the four RX buffers. The headless env
+is now derived from its own ELF instead of the 200,000 / 160,000 default. The
+three S3 IRAM budgets in `tools/size_budget.json` drop to 115,712, 114,688
+and 122,880. The S3 debug budgets keep their slack until those envs are
+rebuilt. Static DRAM is unchanged, because stacks and RX buffers are heap.
+
+### Hardware-gated
+
+Each needs a `perf tasks` or `perf heap` reading on hardware first. None is
+changed here.
+
+- NimBLE host stack 16 KiB to 6 to 8 KiB. About 2,184 bytes used. The reading
+  did not cover Fujifilm Secure pairing, a bond write or several reconnects,
+  and the walk (1,552 on the StickS3) is a lower bound behind NimBLE
+  callbacks.
+- MQTT owner 10 KiB to 6 KiB. The 7,156 bytes used included both event
+  copies, about 4,800 bytes, so about 2,400 remain against a 3,312-byte walk.
+  The 4 KiB and 6 KiB overflows were with the copies on the stack. Read the
+  owner after start, a connected event and Home Assistant discovery.
+- control 8 KiB to 5 KiB (about 820 used, walk 2,000 to 3,616),
+  `esp_timer` 3.5 KiB to 2.5 KiB (3,068 free, about 516 used, walk 1,696 to
+  2,128), SD writer 6 KiB to 4.5 KiB (walk 3,520 on Core and Core2, no
+  reading).
+- Waveshare and headless main 16 KiB to 8 KiB. The walk reads 3,808, but the
+  StickS3 walk also read far below its real 9 KiB, so only a reading counts.
+- StickC, StickC Plus, Core and Core2 main 16 KiB to 12 KiB. The walk reads
+  6,992 on all four, but it is not proof of fit: `main` runs most of its
+  depth through unresolved indirect calls, and the only reading, the StickS3
+  in #398, used about 9,268 bytes against a 6,816-byte walk. The cut was made
+  on this branch and reverted after review. It needs a `perf tasks` main
+  reading on a 4 MB board and on a Core2 with MQTT connected.
+- S3 LVGL allocator in PSRAM. LVGL uses the C library allocator
+  (`CONFIG_LV_USE_CLIB_MALLOC`), and its objects are below
+  `SPIRAM_MALLOC_ALWAYSINTERNAL` (4,096), so the object tree stays internal.
+  A custom LVGL allocator could place it in PSRAM; it needs a frame-time and
+  cache measurement.
+- M5Unified board pin for the 4 MB boards. M5GFX is already pinned per board
+  (`patches/m5gfx_board.patch`). The matching M5Unified patch would drop the
+  other boards' power and pin setup. It changes power-up on the real board,
+  so it needs a boot on each 4 MB board.
+- S3 `CONFIG_BT_CTRL_BLE_MAX_ACT=6` against NimBLE
+  `CONFIG_BT_NIMBLE_MAX_CONNECTIONS=9`. Verified in all three S3 sdkconfigs.
+  The S3 controller counts every connection, scan and advertising instance
+  against `MAX_ACT` (828 bytes each), six in total, so it cannot hold the
+  nine connections NimBLE allows, and each scan or advertisement takes one
+  more slot. The ESP32 boards set
+  `BTDM_CTRL_BLE_MAX_CONN=9`. Raising `MAX_ACT` costs controller RAM;
+  lowering NimBLE caps Multi-Connect. Decide with a Multi-Connect test.
+- Waveshare and headless set `LOG_MAXIMUM_LEVEL` 5, assertion level 2 and
+  `ESP_ERR_TO_NAME_LOOKUP`, where the StickS3 sets 3, 1 and off. Not changed:
+  another branch is investigating those keys.
+
+Validation (local, macOS, sim-only, no hardware):
+
+- Firmware: all seven release envs build, and the four ESP32 envs were
+  rebuilt after the main stack revert; `tools/stack_budget.py` passes every
+  task on all seven, and `--stack mqtt=6144` on the StickS3 reads 3,312.
+  `tools/check_size_budget.py` passes all seven. The S3 debug envs were not
+  rebuilt.
+- Host suite: 185 of 185; `tools/run_sanitized_host_tests.sh --clean`: 183
+  of 183 under ASan and UBSan. `mqtt_fuzz`: seeds 1, 2, 3, 7, 42, 99 and 1000 at
+  1,000 iterations plus the discovery-OOM regression. The `fuzz.mqtt` target:
+  16 seeds, 7,009 iterations, 0 failures.
+- `sh sim/scripts/run-e2e.sh`: 210 of 210. Alternate boards on plain
+  builds: `FURBLE_SIM_BOARD_ID=m5stick-c` 65 of 65 and
+  `FURBLE_SIM_BOARD_ID=m5stack-core` 69 of 69, with every main stack assert at
+  16,384. `sh sim/scripts/run-memory.sh`
+  (plain MQTT build): 4 of 4. `python3 sim/scripts/run-memory-profile.py`:
+  13 of 13 dumps within budget.
+- `python3 tools/pre_review.py --base origin/master`: 8 gates pass.
+  `sh sim/scripts/check-doc-tokens.sh`: pass. clang-format 21: clean.
 
 ## PR 1: config parity and abort semantics
 
@@ -1044,6 +1195,7 @@ Findings for Phase 2:
 - `MQTT::taskStep` and `MQTT::processLifecycleEvents` each hold a stack copy
   of `queued_event_t` (2,400-byte frames). One owner-task buffer would remove
   about 4.6 KB of depth, enough to shrink the 10 KiB internal owner stack.
+  Done in the 2026-11-13 re-analysis; the stack cut stays hardware-gated.
 - The WebUI supervisor has 80 bytes of resolved headroom on the Waveshare and
   headless builds (2,992 of 3,072) and 320 on the StickS3.
 - The companion task has 288 bytes on the Waveshare and headless builds.
