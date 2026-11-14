@@ -1,6 +1,8 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <deque>
 #include <exception>
@@ -11,6 +13,8 @@
 #include <string>
 #include <thread>
 #include <vector>
+
+#include <pthread.h>
 
 #include <esp_heap_caps.h>
 #include <esp_timer.h>
@@ -55,6 +59,7 @@ enum class SimWaitKind : uint8_t {
   queue_receive,
   notification,
   mutex,
+  condition,
 };
 
 enum class SimWaitResult : uint8_t {
@@ -145,6 +150,66 @@ thread_local SimTask *currentTask = nullptr;
 thread_local const char *simTaskName = "ui";
 
 void releaseTaskLocked(SimTask &task, SimWaitResult result);
+void reportTasksLocked(std::string &out);
+
+// Scheduler trace, a diagnostic for issue 289. With FURBLE_SIM_SCHED_TRACE set
+// to anything but 0, the scheduler prints the task table and a native
+// backtrace of a task each time it stops waiting for that task: the stall
+// breaker parks the turn holder, or a UI handoff runs out its host bound while
+// a task still holds or wants the turn. Either one lets the virtual clock move
+// while the task makes no progress, so the backtrace names a wait the
+// scheduler cannot see, or shows that the host has not woken the task yet.
+// Off by default and read once. The snapshot is taken under the scheduler lock
+// and printed after it is released, so the dump never holds that lock; the
+// trace still costs host time while it prints, so it is not timing-neutral.
+bool schedTraceEnabled(void) {
+  static const bool enabled = []() {
+    const char *value = std::getenv("FURBLE_SIM_SCHED_TRACE");
+    return value != nullptr && value[0] != '\0' && std::strcmp(value, "0") != 0;
+  }();
+  return enabled;
+}
+
+struct TurnLossTrace {
+  bool active = false;
+  std::string text;
+  std::string name;
+  bool hasThread = false;
+  pthread_t thread {};
+};
+
+TurnLossTrace snapshotTurnLossLocked(const char *event, SimTask &task) {
+  TurnLossTrace trace;
+  if (!schedTraceEnabled()) {
+    return trace;
+  }
+  // Diagnostic host memory, never part of the modelled device heap.
+  const Furble::Sim::HostAllocScope scope;
+  trace.active = true;
+  trace.name = task.name;
+  trace.text = "SIM SCHED TRACE: " + std::string(event) + " task=" + task.name
+               + " clock_ms=" + std::to_string(Furble::Sim::clockMillis()) + '\n';
+  reportTasksLocked(trace.text);
+  if (task.worker.joinable()) {
+    trace.hasThread = true;
+    trace.thread = task.worker.native_handle();
+  }
+  return trace;
+}
+
+// Call without the scheduler lock. The thread dump waits up to its ack bound.
+void emitTurnLoss(const TurnLossTrace &trace) {
+  if (!trace.active) {
+    return;
+  }
+  const Furble::Sim::HostAllocScope scope;
+  std::fflush(stdout);
+  std::fputs(trace.text.c_str(), stderr);
+  if (trace.hasThread) {
+    Furble::Sim::watchdogDumpThread(trace.thread, trace.name.c_str());
+  }
+  std::fflush(stderr);
+}
 
 bool taskStopping(void) {
   return currentTask != nullptr && currentTask->stopping.load();
@@ -267,11 +332,17 @@ void waitForTurnLocked(std::unique_lock<std::mutex> &lock) {
     // scheduler cannot see and only another task can free it, so hand the turn
     // on rather than hanging the process.
     if (runningTask != nullptr && runningTask != currentTask) {
+      const TurnLossTrace trace = snapshotTurnLossLocked("stall breaker parked", *runningTask);
       runningTask->parked = true;
       runningTask = nullptr;
       schedulerProgress++;
       dispatchNextLocked();
       Furble::Sim::schedulerCondition().notify_all();
+      if (trace.active) {
+        lock.unlock();
+        emitTurnLoss(trace);
+        lock.lock();
+      }
     }
   }
 }
@@ -768,6 +839,119 @@ void SchedulerMutex::unlock(void) {
   preemptForHigherPriorityLocked(lock);
 }
 
+struct SchedulerConditionWaiter {
+  SimTask *task = nullptr;
+  uint64_t order = 0;
+  bool notified = false;
+  SchedulerConditionWaiter *next = nullptr;
+};
+
+void SchedulerConditionVariable::wait(std::unique_lock<std::mutex> &userLock) {
+  std::unique_lock<std::mutex> lock(Furble::Sim::schedulerMutex());
+  SchedulerConditionWaiter waiter;
+  waiter.task = currentTask;
+  waiter.next = m_Waiters;
+  // Stack owned, linked only until a notify takes it or the wait unlinks it
+  // below before returning.
+  // cppcheck-suppress danglingLifetime
+  m_Waiters = &waiter;
+  if (currentTask != nullptr) {
+    setTaskBlockedLocked(true);
+    setTaskWaitLocked(SimWaitKind::condition, nullptr, false, 0);
+    waiter.order = currentTask->wait_order;
+  } else {
+    waiter.order = nextReadyOrder++;
+    // A host thread holds no turn. Hand it on so the notifier can run.
+    dispatchNextLocked();
+    Furble::Sim::schedulerCondition().notify_all();
+  }
+  // Registered under the scheduler lock first, so a notify made under the
+  // caller's lock after this point cannot be lost.
+  userLock.unlock();
+
+  Furble::Sim::schedulerCondition().wait(lock, [&waiter]() {
+    return waiter.notified || Furble::Sim::schedulerStopping()
+           || (waiter.task != nullptr && waiter.task->stopping.load());
+  });
+
+  const bool stopping =
+      Furble::Sim::schedulerStopping() || (waiter.task != nullptr && waiter.task->stopping.load());
+  if (!waiter.notified) {
+    SchedulerConditionWaiter **link = &m_Waiters;
+    while (*link != nullptr) {
+      if (*link == &waiter) {
+        *link = waiter.next;
+        break;
+      }
+      link = &(*link)->next;
+    }
+  }
+  if (stopping) {
+    if (waiter.task != nullptr) {
+      throw SimTaskExit {};
+    }
+    throw SchedulerStopped {};
+  }
+  if (currentTask != nullptr) {
+    waitForTurnLocked(lock);
+    if (currentTask->stopping.load() || Furble::Sim::schedulerStopping()) {
+      throw SimTaskExit {};
+    }
+  }
+  lock.unlock();
+  userLock.lock();
+}
+
+void SchedulerConditionVariable::notify_one(void) {
+  const std::lock_guard<std::mutex> lock(Furble::Sim::schedulerMutex());
+  notifyLocked(false);
+}
+
+void SchedulerConditionVariable::notify_all(void) {
+  const std::lock_guard<std::mutex> lock(Furble::Sim::schedulerMutex());
+  notifyLocked(true);
+}
+
+void SchedulerConditionVariable::notifyLocked(bool all) {
+  while (m_Waiters != nullptr) {
+    SchedulerConditionWaiter *selected = nullptr;
+    SchedulerConditionWaiter **selectedLink = nullptr;
+    for (SchedulerConditionWaiter **link = &m_Waiters; *link != nullptr; link = &(*link)->next) {
+      SchedulerConditionWaiter *waiter = *link;
+      // A stopping waiter unwinds on its own and unlinks itself. Granting it
+      // would consume a notify_one meant for a waiter that can use it.
+      if (waiter->task != nullptr && waiter->task->stopping.load()) {
+        continue;
+      }
+      const UBaseType_t priority = waiter->task == nullptr ? 0 : waiter->task->priority;
+      const UBaseType_t selectedPriority =
+          selected == nullptr || selected->task == nullptr ? 0 : selected->task->priority;
+      if (selected == nullptr || priority > selectedPriority
+          || (priority == selectedPriority && waiter->order < selected->order)) {
+        selected = waiter;
+        selectedLink = link;
+      }
+    }
+    if (selected == nullptr) {
+      break;
+    }
+    *selectedLink = selected->next;
+    selected->next = nullptr;
+    selected->notified = true;
+    if (selected->task != nullptr && selected->task->blocked) {
+      releaseTaskLocked(*selected->task, SimWaitResult::ready);
+    }
+    if (!all) {
+      break;
+    }
+  }
+  // No preemption here. The notifier still holds the caller's lock, which a
+  // woken waiter must take next, so the waiter runs at the notifier's next
+  // scheduler boundary.
+  dispatchNextLocked();
+  Furble::Sim::schedulerCondition().notify_all();
+}
+
 }  // namespace Furble::Sim
 
 BaseType_t xTaskCreate(TaskFunction_t task,
@@ -925,9 +1109,19 @@ void vTaskDelay(TickType_t ticks) {
     // finish. SchedulerMutex waits do not use this fallback.
     // See the comment on UI_HANDOFF_BOUND.
     std::unique_lock<std::mutex> lock(Furble::Sim::schedulerMutex());
-    Furble::Sim::schedulerCondition().wait_for(lock, UI_HANDOFF_BOUND, []() {
+    const bool settled = Furble::Sim::schedulerCondition().wait_for(lock, UI_HANDOFF_BOUND, []() {
       return Furble::Sim::schedulerStopping() || nextRunnableTaskLocked() == nullptr;
     });
+    if (!settled && schedTraceEnabled()) {
+      // The turn holder is the task the UI waited for; with no holder, the
+      // ready task that would be dispatched next.
+      SimTask *pending = runningTask != nullptr ? runningTask : nextRunnableTaskLocked();
+      if (pending != nullptr) {
+        const TurnLossTrace trace = snapshotTurnLossLocked("ui handoff bound expired", *pending);
+        lock.unlock();
+        emitTurnLoss(trace);
+      }
+    }
     return;
   }
 
@@ -1168,6 +1362,8 @@ const char *waitKindName(SimWaitKind kind) {
       return "notification";
     case SimWaitKind::mutex:
       return "mutex";
+    case SimWaitKind::condition:
+      return "condition";
   }
   return "unknown";
 }
@@ -1178,6 +1374,11 @@ void furble_sim_report_tasks(std::string &out) {
     out += "SIM WATCHDOG: scheduler lock is held, task table unavailable.\n";
     return;
   }
+  reportTasksLocked(out);
+}
+
+namespace {
+void reportTasksLocked(std::string &out) {
   out += "SIM WATCHDOG: tasks (" + std::to_string(tasks.size()) + ")\n";
   if (runningTask == nullptr) {
     out += "  turn holder: none\n";
@@ -1191,9 +1392,10 @@ void furble_sim_report_tasks(std::string &out) {
     if (task->wait_has_deadline) {
       out += " deadline_ms=" + std::to_string(static_cast<unsigned long>(task->wait_deadline));
     }
-    out += '\n';
+    out += " name=" + task->name + '\n';
   }
 }
+}  // namespace
 
 bool furble_sim_task_join_claimed(TaskHandle_t taskHandle) {
   const std::lock_guard<std::mutex> lock(Furble::Sim::schedulerMutex());

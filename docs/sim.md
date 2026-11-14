@@ -316,6 +316,24 @@ with the real fatal status. Set `FURBLE_SIM_CRASH_STEP=<index>` to fault
 deliberately at a script step; that is the self test for the reporter and has
 no other use.
 
+`FURBLE_SIM_SCHED_TRACE=1` names a wait the scheduler cannot see. Whenever
+the scheduler stops waiting for a task, it prints `SIM SCHED TRACE:` with the
+event, the task, the virtual clock, the task table and that task's native
+backtrace. That happens when the 2 s stall breaker parks the turn holder, or
+when a UI-task handoff runs out its 250 ms host bound. The handoff event names
+the turn holder, or the next ready task when nothing holds the turn. Either
+event lets the virtual clock move while that task makes no progress, so the
+backtrace shows the host lock or condition it is blocked in. A breaker park
+always means a wait the scheduler cannot see. A handoff expiry under host
+load can instead be wake latency: the backtrace then shows the task inside
+the scheduler's own wait, or a new task thread that has not started. The
+trace is snapshotted under the scheduler lock and printed after it is
+released, and it changes no scheduling decision. It costs host time while it
+prints, so a traced run is not timing-identical to one with the trace off.
+This is how the issue #289 wait was found: every cancel in the Fujifilm Secure and
+reconnect sweeps parked the control task inside `Scan::stop()`, on a plain
+condition variable waiting for the radio task.
+
 `FURBLE_SIM_SDL_STEP_DETECT=1` restores the M5GFX debugger-detector thread,
 which is off by default. The detector infers that a debugger has stopped the
 process when a 1 ms `SDL_Delay` overshoots 64 ms, which a loaded host does

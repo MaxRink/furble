@@ -12,6 +12,15 @@
 #include <functional>
 #include <thread>
 #endif
+#if defined(FURBLE_SIM) && !defined(FURBLE_SIM_NO_SCHED_MUTEX)
+// FURBLE_SIM only, and a type alias only: the simulator substitutes a
+// condition variable that reports its wait to the scheduler. stop() waits on
+// it for a callback running on the radio task, and a host wait the scheduler
+// cannot see kept that task from ever getting the turn (issue 289). Firmware,
+// the host tests and FURBLE_SIM_NO_SCHED_MUTEX all compile
+// std::condition_variable, so the shipping path is unchanged.
+#include "clock.h"
+#endif
 
 #include <NimBLEAdvertisedDevice.h>
 #include <NimBLEScan.h>
@@ -24,6 +33,13 @@
 #endif
 
 namespace Furble {
+
+#if defined(FURBLE_SIM) && !defined(FURBLE_SIM_NO_SCHED_MUTEX)
+using scan_condition_t = Sim::SchedulerConditionVariable;
+#else
+using scan_condition_t = std::condition_variable;
+#endif
+
 /**
  * BLE advertisement scanning class.
  *
@@ -195,7 +211,9 @@ class Scan: public NimBLEScanCallbacks {
   // allowing a concurrent start/stop to invalidate that dispatch. A recursive
   // mutex permits a callback to request a restart or cancellation.
   std::recursive_mutex m_DispatchMutex;
-  std::condition_variable m_CallbackIdle;
+  // stop() waits here for a custom callback on the radio task to leave. See
+  // scan_condition_t for why the simulator needs a scheduler-visible type.
+  scan_condition_t m_CallbackIdle;
   CallbackMode m_CallbackMode = CallbackMode::IDLE;
   NimBLEScanCallbacks *m_CustomCallbacks = nullptr;
   size_t m_CallbacksInFlight = 0;
