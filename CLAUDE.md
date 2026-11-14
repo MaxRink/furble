@@ -340,9 +340,12 @@ check.
   the owner event path. The event handler runs on the 3 KiB esp-mqtt worker:
   never put a 2,348-byte `queued_event_t` on its stack. It fills the owner's
   preallocated `m_Incoming` copy, which lives with the queue and is never freed.
+
 - Main task stack: keep the StickS3 at 12 KiB. The 8 KiB experiment overflowed
-  in task main after MQTT was enabled, even though the MQTT-off high-water was
-  only 3,476 bytes.
+  in task main after MQTT was enabled. With MQTT connected `perf tasks` left
+  3,020 of 12,288 bytes free on main, so it used about 9,268 bytes.
+- `perf tasks` reports free bytes: `stack_high_watermark` is
+  `uxTaskGetStackHighWaterMark`, the minimum free stack, never bytes used.
 - ESP-IDF 5.5 per-task heap tracking can deadlock concurrent frees during WiFi
   association. Keep `CONFIG_HEAP_TASK_TRACKING` disabled on every board until
   the upstream fix is present in the pinned SDK. Capability heap diagnostics

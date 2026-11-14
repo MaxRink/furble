@@ -2289,7 +2289,7 @@ void applyScenarioSettings(void) {
     if (mainStack != scenarioSettings.end() || mainHighWater != scenarioSettings.end()) {
       hwSetMqttMainStack(
           mainStack != scenarioSettings.end() ? parseUnsigned(mainStack->second) : 12288,
-          mainHighWater != scenarioSettings.end() ? parseUnsigned(mainHighWater->second) : 8500);
+          mainHighWater != scenarioSettings.end() ? parseUnsigned(mainHighWater->second) : 9268);
     }
   }
   const auto scanTimeout = scenarioSettings.find("scan_timeout");

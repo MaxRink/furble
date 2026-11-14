@@ -11,16 +11,18 @@ namespace MQTTMemory {
  * Internal-RAM budget for the MQTT service.
  *
  * The owner task handles the connected event, Home Assistant discovery and the
- * status JSON. The StickS3 measured a 3,084-byte high-water mark, but 4 KiB and
- * 6 KiB both overflowed during start and the first connected event. Keep the
- * 10 KiB stack the hardware build uses.
+ * status JSON. `perf tasks` left 3,084 bytes free on the StickS3, so the owner
+ * used about 7,156 bytes, and 4 KiB and 6 KiB both overflowed during start and
+ * the first connected event. Keep the 10 KiB stack the hardware build uses.
  */
 inline constexpr size_t OWNER_STACK_BYTES = 10240;
 
 /**
- * esp-mqtt client task stacks. Plain MQTT measured a 704-byte high-water mark
- * on the StickS3, so the plain worker uses 3 KiB. TLS keeps the 6 KiB default
- * for the handshake.
+ * esp-mqtt client task stacks. `perf tasks` left 704 of 4,096 bytes free on
+ * the StickS3, about 3,392 used, while the event handler still held the event
+ * copy on this stack. With the copy in `m_Incoming` the stack walk resolves
+ * 1,936 bytes, so the plain worker uses 3 KiB. TLS keeps the 6 KiB default for
+ * the handshake.
  */
 inline constexpr size_t PLAIN_WORKER_STACK_BYTES = 3072;
 inline constexpr size_t TLS_WORKER_STACK_BYTES = 6144;
