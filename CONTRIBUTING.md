@@ -119,6 +119,9 @@ tracing) and `sdkconfig.stack-protector`, except the
 `sdkconfig.coredump-flash`, which writes a core dump to the `coredump`
 partition at the end of their tables. Read it back with
 `esp-coredump info_corefile` against the matching `firmware.elf`.
+`waveshare-s3-eth-debug` also merges `sdkconfig.full-diagnostics`. Its release
+config carries the plan 106 group A values, and the fragment restores full
+assertions, the VERBOSE log maximum and esp_err names for the debug image.
 
 Board-specific ESP-IDF component dependencies need both a compiler define and
 a CMake profile argument. CMake resolves components before conditional C++

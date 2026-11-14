@@ -355,7 +355,9 @@ same two. Hardware validation is deferred with gate 2 below.
 plan 106 group A, so the release image kept full assertions, the VERBOSE log
 maximum and the esp_err name table. It now matches the other release boards:
 silent assertions, the INFO log maximum and no name table. The headless file
-is unchanged. The reason, the measured sizes and the new RAM budgets are in
+is unchanged. The debug env merges `sdkconfig.full-diagnostics` to keep full
+assertions, the VERBOSE log maximum and esp_err names. The reason, the
+measured sizes and the new RAM budgets are in
 plans/106-flash-size-optimization.md. Error logs on this board now print hex
 codes instead of esp_err names, as on every other release board.
 

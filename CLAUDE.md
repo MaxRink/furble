@@ -65,6 +65,9 @@ CLAUDE.md whose directory it touches.
   full boot-time PSRAM test. Their debug envs merge `sdkconfig.spiram-memtest` back
   in. `patches/debug_sdkconfig.py` accepts comma-separated fragments so a
   diagnostic env can layer one on `sdkconfig.debug`.
+  `waveshare-s3-eth-debug` also merges `sdkconfig.full-diagnostics`, which
+  restores full assertions, the VERBOSE log maximum and esp_err names over
+  the plan 106 group A release values.
 - `FURBLE_VERSION` and `FURBLE_TEST` env vars are required for every build:
   `FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3-debug`
 - The PlatformIO version adapter expands the exact `dev` value to

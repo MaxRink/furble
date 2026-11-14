@@ -428,10 +428,16 @@ the Waveshare image compiles LVGL out. A regenerating build leaves the edited
 file unchanged.
 
 `sdkconfig.esp32-s3-headless` stays as it is. It is a developer console image,
-and plan 106 itself wanted full assertions and logging on such images. The
-Waveshare debug env is unchanged in `platformio.ini`; like every other debug
-env it shares its release sdkconfig, so it inherits the same group A values,
-and furble's own translation units keep `LOG_LOCAL_LEVEL=ESP_LOG_VERBOSE`.
+and plan 106 itself wanted full assertions and logging on such images.
+
+The owner's choice keeps full assertions and logging on the Waveshare debug
+image. Its env shares the release sdkconfig, so it merges one more fragment,
+`sdkconfig.full-diagnostics`, through `patches/debug_sdkconfig.py`. The
+fragment holds the twelve pre-change lines: assertion level 2 with messages
+(compiler, HAL and the legacy aliases), the VERBOSE log maximum and
+`CONFIG_ESP_ERR_TO_NAME_LOOKUP=y`. `sdkconfig.debug` covers none of these
+keys, and adding them there would change every board's debug image, so the
+fragment is separate.
 
 Measured with `FURBLE_VERSION=1.0.0-ci FURBLE_TEST=0` on top of the M5GFX pin:
 
@@ -440,13 +446,11 @@ Measured with `FURBLE_VERSION=1.0.0-ci FURBLE_TEST=0` on top of the M5GFX pin:
 | waveshare-s3-eth flash | 1,631,808 | 1,517,504 | -114,304 |
 | waveshare-s3-eth DRAM | 51,308 | 46,648 | -4,660 |
 | waveshare-s3-eth IRAM | 131,840 | 126,720 | -5,120 |
-| waveshare-s3-eth-debug flash | 1,968,336 | 1,881,840 | -86,496 |
-| waveshare-s3-eth-debug DRAM | 55,752 | 51,508 | -4,244 |
-| waveshare-s3-eth-debug IRAM | 148,224 | 144,640 | -3,584 |
 
-`tools/size_budget.json` was rewritten with `--write` for both envs: the
-release budget drops to 48,128 DRAM and 128,000 IRAM bytes, the debug budget
-to 52,224 and 145,408.
+`tools/size_budget.json` was rewritten with `--write`: the release budget drops
+to 48,128 DRAM and 128,000 IRAM bytes. With the fragment the debug image is
+1,969,488 bytes with 55,752 DRAM and 148,224 IRAM, the same RAM as before
+group A, so its budget stays at 56,320 and 149,504.
 
 `python3 tools/derive_sim_heap.py --env waveshare-s3-eth` regenerated the
 Waveshare row of `sim/coverage/board_heap.json` from the new ELF: static DRAM

@@ -88,8 +88,8 @@
     "waveshare-s3-eth-debug": {
       "partitions": "partitions_waveshare_s3_eth.csv",
       "flash_slot": 6291456,
-      "dram_bytes": 52224,
-      "iram_bytes": 145408
+      "dram_bytes": 56320,
+      "iram_bytes": 149504
     }
   }
 }
