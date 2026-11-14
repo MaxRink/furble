@@ -349,6 +349,16 @@ The master image holds 24 `[Autodetect]` strings, the pinned one only the two
 NVS load and save lines. The debug image keeps the patch too and holds the
 same two. Hardware validation is deferred with gate 2 below.
 
+### Release sdkconfig aligned with plan 106 group A
+
+`sdkconfig.waveshare-s3-eth` was seeded from the headless file, which predates
+plan 106 group A, so the release image kept full assertions, the VERBOSE log
+maximum and the esp_err name table. It now matches the other release boards:
+silent assertions, the INFO log maximum and no name table. The headless file
+is unchanged. The reason, the measured sizes and the new RAM budgets are in
+plans/106-flash-size-optimization.md. Error logs on this board now print hex
+codes instead of esp_err names, as on every other release board.
+
 ## Verification
 
 Hardware-gated. Needs a physical Waveshare ESP32-S3-ETH board.

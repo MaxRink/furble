@@ -408,3 +408,48 @@ disables contribute the remainder.
 - Group C feature gating (items 7 to 13), the `FURBLE_*` compile gates. These
   are structural source and CMake changes with behavior and UX implications and
   remain one PR per feature, unchanged from the plan.
+
+## Implementation state: Group A on the Waveshare release image (fix/waveshare-autodetect)
+
+Group A landed in #142 on the five sdkconfig files of the time. The headless
+profile (#148) was seeded three hours later from a StickS3 config that
+predated #142, so it never received group A, and `sdkconfig.waveshare-s3-eth`
+was later seeded from the headless file. The Waveshare release image therefore
+shipped full assertions with messages, the VERBOSE log maximum and the
+esp_err name table, unlike every other release board. No plan or commit
+recorded that as a choice.
+
+The owner chose to align the Waveshare release image with the other release
+boards. `sdkconfig.waveshare-s3-eth` now carries items 1, 2 and 4 exactly as
+the StickS3 does: silent assertions at level 1 (compiler, HAL and the legacy
+aliases), `CONFIG_LOG_MAXIMUM_EQUALS_DEFAULT=y` with a maximum of 3, and
+`CONFIG_ESP_ERR_TO_NAME_LOOKUP` off. The LVGL widget keys stay as they were;
+the Waveshare image compiles LVGL out. A regenerating build leaves the edited
+file unchanged.
+
+`sdkconfig.esp32-s3-headless` stays as it is. It is a developer console image,
+and plan 106 itself wanted full assertions and logging on such images. The
+Waveshare debug env is unchanged in `platformio.ini`; like every other debug
+env it shares its release sdkconfig, so it inherits the same group A values,
+and furble's own translation units keep `LOG_LOCAL_LEVEL=ESP_LOG_VERBOSE`.
+
+Measured with `FURBLE_VERSION=1.0.0-ci FURBLE_TEST=0` on top of the M5GFX pin:
+
+| Env | Before | After | Delta |
+| --- | ---: | ---: | ---: |
+| waveshare-s3-eth flash | 1,631,808 | 1,517,504 | -114,304 |
+| waveshare-s3-eth DRAM | 51,308 | 46,648 | -4,660 |
+| waveshare-s3-eth IRAM | 131,840 | 126,720 | -5,120 |
+| waveshare-s3-eth-debug flash | 1,968,336 | 1,881,840 | -86,496 |
+| waveshare-s3-eth-debug DRAM | 55,752 | 51,508 | -4,244 |
+| waveshare-s3-eth-debug IRAM | 148,224 | 144,640 | -3,584 |
+
+`tools/size_budget.json` was rewritten with `--write` for both envs: the
+release budget drops to 48,128 DRAM and 128,000 IRAM bytes, the debug budget
+to 52,224 and 145,408.
+
+`python3 tools/derive_sim_heap.py --env waveshare-s3-eth` regenerated the
+Waveshare row of `sim/coverage/board_heap.json` from the new ELF: static DRAM
+46,648 bytes, heap at app start 269,000, derived free 173,336. The
+`profile-waveshare-s3-eth` floors in `sim/coverage/memory_budget.json` follow
+it, and `sim/scripts/run-memory-profile.py` passes all 13 dumps.
