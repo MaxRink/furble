@@ -1080,7 +1080,9 @@ shortens that host retry cadence for a bounded scenario.
   an assumption, M10 publishes no warm start time. `gps_rail_fixed` keeps the
   rail on whatever the PMIC is asked, which is the Core and Waveshare
   behaviour and what `Platform::canCutGpsRail()` then reports; the Core build
-  reports false on its own. `gps_m10_unresolved` reports a 3D fix with a valid
+  reports false on its own. `gps_rail_refused` also keeps the rail on but
+  leaves `canCutGpsRail()` true, which models a PMIC that refuses the cut (a
+  Core2 on a low battery). `gps_m10_unresolved` reports a 3D fix with a valid
   but unresolved time. `gps_gnss`, `gps_psm` and `gps_ana` seed the u-blox
   settings. A waking receiver prints its first epoch one measurement period
   after it starts.

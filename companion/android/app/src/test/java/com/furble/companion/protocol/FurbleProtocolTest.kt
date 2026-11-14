@@ -235,8 +235,8 @@ class FurbleProtocolTest {
 
     @Test
     fun metadataCoversSupportedWireIdsAndUnknownRowsStayReadOnly() {
-        assertEquals(48, FurbleSettingMetadata.byWireId.size)
-        assertEquals((1..44).toSet() + setOf(46, 65, 72, 73), FurbleSettingMetadata.byWireId.keys)
+        assertEquals(51, FurbleSettingMetadata.byWireId.size)
+        assertEquals((1..44).toSet() + setOf(46, 48, 49, 50, 65, 72, 73), FurbleSettingMetadata.byWireId.keys)
         assertEquals("Brightness", FurbleSettingMetadata.byWireId[1]?.name)
         assertEquals(FurbleProtocol.SettingType.BLOB, FurbleSettingMetadata.byWireId[7]?.wireType)
         assertEquals(listOf("Dark", "Default", "Mono Furble"), FurbleSettingMetadata.byWireId[3]?.stringOptions)
@@ -270,6 +270,17 @@ class FurbleProtocolTest {
         assertTrue(FurbleProtocol.isSettingValueValid(65, FurbleProtocol.SettingType.UINT8, byteArrayOf(1)))
         assertTrue(FurbleProtocol.isSettingValueValid(65, FurbleProtocol.SettingType.UINT8, byteArrayOf(2)))
         assertFalse(FurbleProtocol.isSettingValueValid(65, FurbleProtocol.SettingType.UINT8, byteArrayOf(3)))
+        // u-blox M10 settings: GPS_GNSS mask up to Settings::GPS_GNSS_MAX,
+        // GPS_PSM up to Settings::GPS_PSM_MAX, and the GPS_ANA bool.
+        assertEquals("gps_gnss", FurbleSettingMetadata.byWireId[48]?.key)
+        assertTrue(FurbleProtocol.isSettingValueValid(48, FurbleProtocol.SettingType.UINT8, byteArrayOf(0)))
+        assertTrue(FurbleProtocol.isSettingValueValid(48, FurbleProtocol.SettingType.UINT8, byteArrayOf(0x3f)))
+        assertFalse(FurbleProtocol.isSettingValueValid(48, FurbleProtocol.SettingType.UINT8, byteArrayOf(0x40)))
+        assertEquals(listOf(0, 1, 2), FurbleSettingMetadata.byWireId[49]?.options?.map { it.value })
+        assertTrue(FurbleProtocol.isSettingValueValid(49, FurbleProtocol.SettingType.UINT8, byteArrayOf(2)))
+        assertFalse(FurbleProtocol.isSettingValueValid(49, FurbleProtocol.SettingType.UINT8, byteArrayOf(3)))
+        assertEquals(FurbleProtocol.SettingType.BOOL, FurbleSettingMetadata.byWireId[50]?.wireType)
+        assertTrue(FurbleProtocol.SettingRecord(50, FurbleProtocol.SettingType.BOOL, byteArrayOf(1)).editable)
         assertEquals(FurbleProtocol.SettingType.UINT8, FurbleSettingMetadata.byWireId[72]?.wireType)
         assertEquals(listOf(0, 1, 2, 3), FurbleSettingMetadata.byWireId[72]?.options?.map { it.value })
         assertTrue(FurbleProtocol.isSettingValueValid(72, FurbleProtocol.SettingType.UINT8, byteArrayOf(3)))

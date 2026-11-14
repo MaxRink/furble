@@ -123,7 +123,8 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   `hasGpsBackupSupply()` is true. A refused or unanswered save sets a latch
   (`m_UbxSosBackup` 2) that lasts until the next GPS enable. If the rail stays
   on after a cut that followed a GNSS stop, `railOffOrRestart()` sends GNSS
-  start.
+  start. `m_UbxStopped` records that stop; only `railOffOrRestart()` clears
+  it, because `disable()` runs `resetUbx()` between the stop and the cut.
 - `CompanionService::m_Mutex` serializes the status and camera notification
   caches and all
   trigger rate and held-command state, including timer and disconnect release.

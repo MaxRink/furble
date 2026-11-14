@@ -2592,6 +2592,19 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/e2e/gps-ubx-rail-refused.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "gps"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/e2e/gps-ubx-time-unresolved.txt",
       "suite": "e2e",
       "owner": "sim-e2e",

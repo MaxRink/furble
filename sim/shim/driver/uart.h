@@ -114,6 +114,9 @@ bool furble_sim_uart_gps_backup(void);
 // The modelled board's rail cannot be switched off.
 bool furble_sim_uart_rail_fixed(void);
 void furble_sim_uart_set_rail_fixed(bool fixed);
+// The rail can be switched, but the PMIC refuses to cut it (a Core2 on a low
+// battery). Platform::canCutGpsRail() still reports true.
+void furble_sim_uart_set_rail_refused(bool refused);
 // Whether the GPS supply rail is on, which is what getExtOutput() reads.
 bool furble_sim_uart_rail_on(void);
 // The GPS supply rail as the board switches it.

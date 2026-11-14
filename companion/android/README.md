@@ -66,6 +66,9 @@ is four packed little-endian `{uint16 value, uint8 unit}` parts.
 IDs 43 and 46 are current firmware metadata; ID 65 is the PR273 Legend setting
 and should be edited only when paired firmware advertises that row. ID 42 is the
 Time zone enum: 0 is UTC, 1 through 38 are curated zones, and 39 is Auto (GPS).
+IDs 48, 49 and 50 are the u-blox M10 settings: the GPS Signals mask (0 to 63,
+0 follows GPS Constellation), GPS Power Save (0 Off, 1 Cyclic tracking,
+2 On/off) and the GPS AssistNow switch.
 The app does not invent rows for settings absent from a device list.
 
 Settings list flag bit 0 is interpreted as restart required. Bit 1 marks the

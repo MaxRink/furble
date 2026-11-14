@@ -71,7 +71,9 @@ void GPS::resetUbx(void) {
   m_UbxSatView.fill(0);
   m_UbxSatUsed.fill(0);
   m_RailOffPending = false;
-  m_UbxStopped = false;
+  // m_UbxStopped is not reset here: disable() calls this between the GNSS
+  // stop and railOffOrRestart(), which must still see it if the cut fails.
+  // railOffOrRestart() clears it.
 }
 
 bool GPS::sendUbx(const std::vector<uint8_t> &frame) {

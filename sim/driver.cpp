@@ -384,6 +384,7 @@ void validateSeed(const std::string &name, const std::string &value) {
       "gps_uart_noise",
       "gps_ana",
       "gps_rail_fixed",
+      "gps_rail_refused",
       "gps_m10_unresolved",
       "gps_m10_backup",
       "gps_m10_flash",
@@ -2490,6 +2491,7 @@ void applyScenarioSettings(void) {
   }
   furble_sim_uart_set_noise(scenarioSettingIsTrue("gps_uart_noise"));
   furble_sim_uart_set_rail_fixed(scenarioSettingIsTrue("gps_rail_fixed"));
+  furble_sim_uart_set_rail_refused(scenarioSettingIsTrue("gps_rail_refused"));
   const auto model = scenarioSettings.find("gps_model");
   if (model != scenarioSettings.end()) {
     const auto unknown = scenarioSettings.find("gps_m10_unknown_key");
