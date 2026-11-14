@@ -78,9 +78,9 @@ def build_script(seed: int, mqtt: bool) -> tuple[str, dict[str, object]]:
             "assert platform.watchdog armed",
             # Keep the stack budgets under the memory fuzzer too: the 12 KiB
             # main task (the 8 KiB experiment overflowed after MQTT) and the
-            # 3 KiB internal companion task.
+            # 3,840-byte internal companion task (plan 314 PR 4c).
             "assert mem.component.main_stack 12288",
-            "assert mem.component.companion_task 3072",
+            "assert mem.component.companion_task 3840",
             "print webui.supervisor",
             "print webui.server",
             "print webui.fail_closed",
