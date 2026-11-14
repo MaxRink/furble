@@ -30,6 +30,12 @@ constexpr uint64_t MIN_EPOCH_SECONDS = 1577836800ULL;  // 2020-01-01
 constexpr uint64_t MAX_EPOCH_SECONDS = 4102444800ULL;  // 2100-01-01
 constexpr uint32_t MAX_UNCERTAINTY_MS = 7U * 24U * 60U * 60U * 1000U;
 constexpr uint32_t NVS_RESTORE_UNCERTAINTY_MS = 60U * 60U * 1000U;
+// A soft reset hands the running clock across the boot. The RTC timer carries
+// it on the RC slow clock, converted with the last calibration from boot or
+// light sleep entry. The error since that calibration is unmeasured, so this
+// one second and the 100 ppm growth below are an estimate, not a bound. A
+// separate growth constant waits for the StickS3 measurement in plan 139.
+constexpr uint32_t SOFT_RESET_UNCERTAINTY_MS = 1000;
 // Bound the free-running ESP timer with a conservative 100 ppm oscillator
 // error.  The elapsed monotonic interval is known; it is not a one-for-one
 // wall-clock uncertainty increase.
@@ -52,8 +58,24 @@ bool shouldAccept(const TimeSample *current, const TimeSample &candidate, uint64
 bool shouldPersist(const TimeSample *persisted, const TimeSample &candidate, uint64_t monotonic_ms);
 
 /** Encode/decode a versioned CRC-protected NVS record. */
+constexpr size_t RECORD_BYTES = 28;
 size_t encode(const TimeSample &sample, uint8_t *buffer, size_t capacity);
 bool decode(const uint8_t *buffer, size_t length, TimeSample &sample);
+
+/**
+ * Restore a record kept in RTC memory across a soft reset. The record holds
+ * the last accepted sample, anchored where the system clock was set to it.
+ * The running system clock is the new epoch. Its uncertainty grows by the
+ * elapsed system time at UNCERTAINTY_GROWTH_PPM plus SOFT_RESET_UNCERTAINTY_MS,
+ * an estimate rather than a bound. A clock that runs behind the record fails
+ * closed. The source is demoted to at most RTC, so GPS, NTP and companion time
+ * outrank the kept clock and correct it in either direction. Sets
+ * monotonic_ms to zero.
+ */
+bool restoreRetained(const uint8_t *record,
+                     size_t length,
+                     uint64_t system_epoch_us,
+                     TimeSample &sample);
 
 /** Convert a UTC calendar tuple to Unix microseconds. */
 bool utcToEpochUs(uint16_t year,
@@ -70,7 +92,8 @@ bool utcToEpochUs(uint16_t year,
 /**
  * Wall-clock service. The monotonic timer remains the source for durations.
  * Wall time is seeded from an external RTC or the NVS record and corrected by
- * GPS, NTP, or a companion time sample.
+ * GPS, NTP, or a companion time sample. On a board without an RTC chip, a soft
+ * reset keeps the running system clock through a record in RTC memory.
  */
 class TimeKeeper {
  public:

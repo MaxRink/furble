@@ -204,6 +204,9 @@ boards the controls are hidden and the intervalometer runs awake. After a timed
 wake, furble reconnects once with a 3 second settle gap and continues the
 remaining frames. A failed reconnect clears the saved run and shows
 `RESUME FAILED`.
+The resumed wait uses the wall clock only when it is trustworthy. A clock
+restored from NVS, or kept across a soft reset on a board without an RTC chip,
+is not, so the wait counts from boot instead.
 
 ### Theme
 
