@@ -7,6 +7,13 @@ target, or support claim. The buyable hardware data is in
 Checked against `origin/master` at `7383561a` on 2026-11-01. No hardware was
 purchased and no current measurement was taken for this document.
 
+Correction, 2026-11-13: the ThinkNode M5 has an L76K only in hardware v1.0.
+v2.0 and the ThinkNode M9 use the Airoha AG3352 with `$PAIR`. The Waveshare
+1.75-G LC76G is `$PAIR` over I2C, and its GPS traffic breaks touch. The
+sources are in [`docs/hardware-catalog.md`](../docs/hardware-catalog.md)
+(sources 45 to 47). The next-board decision is in
+[318-next-board-battery-gps.md](318-next-board-battery-gps.md).
+
 ## Why this exists
 
 Plans 40, 41, 88 and 127 answered separate questions. Plan 40 asked whether a
@@ -38,7 +45,7 @@ The short answer is uncomfortable for a porting project:
 | :--- | :--- |
 | Will a port fix the outdoor-only GPS? | No. A better antenna, an M10-class receiver with a backup rail, and phone or WiFi assistance do. The board matters only because it decides which of those are possible. |
 | Will a port fix battery life? | Only at the margin. The 250 mAh cell and the 41 mA display dominate. A 2000 mAh board is eight times the runtime before any firmware change. |
-| Cheapest way to improve both | Buy the T-Beam Supreme L76K trim, the ThinkNode M5, or the T-Deck Plus. Add an external active antenna. Keep GNSS in standby instead of cutting the rail. Enable the phone location path. |
+| Cheapest way to improve both | Buy the T-Beam Supreme L76K trim, the ThinkNode M5 v1.0 (v2.0 uses the AG3352, `$PAIR`), or the T-Deck Plus. Add an external active antenna. Keep GNSS in standby instead of cutting the rail. Enable the phone location path. |
 | Cheapest way to improve GPS only | M5 Unit-GPS with the SMA active antenna, which is already supported. Then enable assisted start and fix hold. |
 | Best full-feature port target | ESP32-S3 or ESP32-P4 plus C6. Same ESP-IDF, same NimBLE API, same `lib/furble`. |
 | Best non-ESP32 target | nRF54LM20A with Zephyr and a NimBLE-shaped facade. Headless, reduced feature set, 4 to 6 months of work. |
@@ -580,8 +587,8 @@ gap is hardware and antenna, not missing firmware.
 ### 6.3 What a port changes
 
 A port changes the receiver only if the new board has a different receiver and
-antenna. The ThinkNode M5 has an L76K, which is a sideways move from the
-AT6668. The T-Beam Supreme L76K trim is the same. The T-Deck Plus and T-Watch
+antenna. The ThinkNode M5 v1.0 has an L76K, which is a sideways move from the
+AT6668. v2.0 has an Airoha AG3352 with `$PAIR`, which needs a new driver. The T-Beam Supreme L76K trim is the same. The T-Deck Plus and T-Watch
 Ultra have an M10, which is a real upgrade. The Heltec Wireless Tracker V2 has
 a UC6580, which is dual band but a new driver.
 
@@ -624,7 +631,7 @@ The UI is not a thin layer. It is the largest single file in the project.
 | M5StickC, Plus, S3, Core2 | 320x240 or 240x135 | buttons, touch | U0 | None. Current UI. |
 | M5Stack CoreS3 | 320x240 | touch, buttons | U1 | M5Unified knows the panel, but furble has no CoreS3 input callbacks or battery backend. Add the board profile plus input and power integration. |
 | M5Stack Dial v1.1 | 240x240 round | touch, encoder | U2 | Round safe area, encoder mapping, new panel driver. |
-| Waveshare AMOLED 1.75-G | 466x466 round | touch, one button | U2 | Round safe area, QSPI panel, CST9217 touch. |
+| Waveshare AMOLED 1.75-G | 466x466 round | touch, one button | U2 | Round safe area, QSPI panel, CST9217 touch. The LC76G GPS is `$PAIR` on the touch I2C bus and breaks touch. |
 | LilyGO T-Watch Ultra | 410x502 | touch, one button | U2 | Small-screen layout, watch gestures, AMOLED driver. |
 | LilyGO T-Watch S3 Plus | 240x240 | touch, one button | U2 | Same as the Ultra, smaller panel. |
 | LilyGO T-Deck Plus | 320x240 | touch, keyboard, trackball | U3 | Keyboard indev, trackball to encoder, text entry. |
@@ -739,7 +746,7 @@ The full catalog is in `docs/hardware-catalog.md`. This is the short version.
 | Need | Pick | Why |
 | :--- | :--- | :--- |
 | Best GPS with an ESP32-S3 board profile | LilyGO T-Deck Plus or T-Watch Ultra | MIA-M10Q, -167 dBm tracking, 1 second hot start, 25 to 37 mW. Keeps the camera library, needs a UBX driver. |
-| Best GPS with `$PCAS` reuse | Elecrow ThinkNode M5 or T-Beam Supreme L76K | L76K plus standby and a rail switch. No new GNSS driver. |
+| Best GPS with `$PCAS` reuse | T-Beam Supreme L76K, or Elecrow ThinkNode M5 v1.0 only | L76K plus standby and a rail switch. No new GNSS driver. |
 | Best battery, `$PCAS` reuse | T-Beam Supreme L76K with a 3400 mAh 18650 | 13.6 times the current cell, 66 hours of continuous GNSS. |
 | Best battery, e-paper | Elecrow ThinkNode M5 | 23 hours of continuous GNSS, 75 hours at 25 percent duty. |
 | Best battery, all features | T-Deck Plus with a 2000 mAh cell | 39 h continuous at the common 40 mA load, about 109 h with the M10's 12 mA; 125 h at 25 percent duty at 40 mA. |
@@ -764,14 +771,14 @@ The full catalog is in `docs/hardware-catalog.md`. This is the short version.
    matter: screen on, screen off connected, GNSS on, and GNSS standby. The repo
    numbers are a model, not a bench measurement.
 5. If the answer is still "not enough", buy a board with a larger cell and a
-   display that can be off. The T-Beam Supreme L76K and the ThinkNode M5 are
+   display that can be off. The T-Beam Supreme L76K and the ThinkNode M5 v1.0 are
    the two best value picks.
 
 ### 9.2 If a port is still wanted
 
 Do it in this order:
 
-1. A headless ESP32-S3 board profile for the ThinkNode M5 or the T-Beam L76K.
+1. A headless ESP32-S3 board profile for the ThinkNode M5 v1.0 or the T-Beam L76K.
    This is 2 to 4 weeks including the GPS and power work, and it validates the
    board abstraction with the camera library untouched.
 2. A T-Deck Plus profile with the M10 driver and the U3 UI. This is 7 to 12
@@ -847,7 +854,9 @@ Before any port PR, measure on the target board:
   image updated in the field?
 - Is the ThinkNode M5 flash 4 MB or 8 MB? Vendor pages conflict.
 - Which GNSS chip is in the ThinkNode M9, and does it answer `$PCAS`?
+  Answered 2026-11-13: Airoha AG3352, `$PAIR`, not `$PCAS`.
 - Does the Waveshare LC76G answer any `$PCAS` command, or is it pure NMEA?
+  Answered 2026-11-13: it uses `$PAIR` and `$PQTM`, read over I2C.
 - Does the T-Beam Supreme L76K trim stay available in the EU?
 - How reliable is the companion location path in the field, and can Android
   deliver it in the background without a dedicated foreground location service?

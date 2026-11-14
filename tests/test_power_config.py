@@ -1,6 +1,7 @@
 """Tests for the power-management Kconfig checker."""
 
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -22,6 +23,7 @@ class PowerConfigTest(unittest.TestCase):
 
     def make_root(self, text: str) -> Path:
         temp = Path(tempfile.mkdtemp(prefix="furble-power-config-"))
+        self.addCleanup(shutil.rmtree, temp)
         (temp / "sdkconfig.test").write_text(text, encoding="utf-8")
         return temp
 
