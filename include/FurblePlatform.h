@@ -266,6 +266,18 @@ class Platform {
   static bool hasGpsBackupSupply(void);
 
   /**
+   * Can the board switch the GPS receiver's supply off?
+   *
+   * The StickC, StickC Plus, Core2 and StickS3 switch the Grove Port A 5 V
+   * rail through their PMIC. On the Core (IP5306) and the Waveshare board the
+   * rail is always on and `setExtOutput(ext_PA)` does nothing, and the
+   * headless profile has no rail control. A receiver on a rail that cannot be
+   * cut must never be stopped for a save-on-shutdown, because nothing would
+   * ever restart it.
+   */
+  static bool canCutGpsRail(void);
+
+  /**
    * Get the battery measurements supported by this board.
    *
    * Returned by value: the simulator refreshes the flags from the hardware

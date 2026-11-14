@@ -157,6 +157,7 @@ std::string receiverModel = "casic";
 Furble::Sim::VirtualM10 m10;
 Furble::Sim::VirtualM10::Options m10Options;
 bool railOn = true;
+bool railFixed = false;
 bool m10Silent = false;
 
 bool isM10Locked(void) {
@@ -782,7 +783,8 @@ void furble_sim_uart_set_model(const char *model,
                                bool vbckp,
                                bool flash,
                                bool hot,
-                               uint32_t unknownKey) {
+                               uint32_t unknownKey,
+                               bool unresolved) {
   std::lock_guard<std::mutex> lock(gpsMutex);
   receiverModel = (model == nullptr) ? "casic" : model;
   if (isM10Locked()) {
@@ -790,6 +792,7 @@ void furble_sim_uart_set_model(const char *model,
     m10Options.flash = flash;
     m10Options.hot = hot;
     m10Options.unknownKey = unknownKey;
+    m10Options.unresolved = unresolved;
     m10Options.module = (receiverModel == "m10-mia") ? "MIA-M10Q" : "MAX-M10S";
     m10.reset(m10Options, Furble::Sim::clockMillis());
     if (!railOn) {
@@ -807,8 +810,25 @@ bool furble_sim_uart_gps_backup(void) {
   return isM10Locked() && m10Options.vbckp;
 }
 
+bool furble_sim_uart_rail_fixed(void) {
+  std::lock_guard<std::mutex> lock(gpsMutex);
+  return railFixed;
+}
+
+void furble_sim_uart_set_rail_fixed(bool fixed) {
+  std::lock_guard<std::mutex> lock(gpsMutex);
+  railFixed = fixed;
+}
+
+bool furble_sim_uart_rail_on(void) {
+  std::lock_guard<std::mutex> lock(gpsMutex);
+  return railOn;
+}
+
 void furble_sim_uart_set_rail(bool on) {
   std::lock_guard<std::mutex> lock(gpsMutex);
+  // A rail the board cannot switch stays on whatever the PMIC was asked.
+  on = on || railFixed;
   railOn = on;
   if (isM10Locked()) {
     m10.setPower(on, Furble::Sim::clockMillis());

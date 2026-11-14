@@ -215,7 +215,9 @@ struct NavPvt {
 
   /** A 2D, 3D or GNSS plus dead reckoning fix the receiver vouches for. */
   bool positionValid(void) const;
-  /** UTC date and time both valid and fully resolved, safe to set a clock from. */
+  /** validDate and validTime with in-range fields: the date and time are usable. */
+  bool dateTimeValid(void) const;
+  /** dateTimeValid and fullyResolved: safe to set a clock from (IFD 3.15.11). */
   bool timeValid(void) const;
 };
 bool parseNavPvt(const uint8_t *payload, size_t length, NavPvt &out);
@@ -341,14 +343,47 @@ constexpr uint8_t RST_MODE_GNSS_START = 0x09;
 std::vector<uint8_t> cfgRst(uint16_t nav_bbr_mask, uint8_t reset_mode);
 
 /**
+ * A one-shot "not before" deadline that stays correct across the 32-bit tick
+ * wrap. An unarmed gate is open, so no sentinel tick value can close it: a
+ * plain `deadline = 0` compared with a signed difference reads as the future
+ * for every tick in [2^31, 2^32), which stalled every configuration command
+ * between 24.8 and 49.7 days of uptime.
+ */
+class Settle {
+ public:
+  void arm(uint32_t now, uint32_t ms) {
+    m_Until = now + ms;
+    m_Armed = true;
+  }
+  void clear(void) { m_Armed = false; }
+  bool armed(void) const { return m_Armed; }
+  /** Has the deadline passed? Disarms itself once it has. */
+  bool open(uint32_t now) {
+    if (m_Armed && (static_cast<int32_t>(now - m_Until) >= 0)) {
+      m_Armed = false;
+    }
+    return !m_Armed;
+  }
+  /** Milliseconds left, 0 when open. */
+  uint32_t remaining(uint32_t now) const {
+    const int32_t left = static_cast<int32_t>(m_Until - now);
+    return (m_Armed && (left > 0)) ? static_cast<uint32_t>(left) : 0;
+  }
+
+ private:
+  uint32_t m_Until = 0;
+  bool m_Armed = false;
+};
+
+/**
  * Receiver identification by MON-VER poll.
  *
  * A u-blox receiver answers MON-VER whatever its configuration. A receiver
  * that is not u-blox ignores the frame, so after ATTEMPTS polls without an
  * answer the receiver is something else and keeps the NMEA path. One attempt
  * waits ATTEMPT_MS: the answer is about 190 bytes queued behind up to a second
- * of NMEA at 9600 baud, and ACK-class answers come "within one second" (IFD
- * 3.5.1).
+ * of NMEA at 9600 baud, and acknowledgements come "at least within one
+ * second" (IFD 3.9.1, 3.9.2).
  */
 /*
  * Constellation mask, shared by the GPS_GNSS setting. The low three bits are

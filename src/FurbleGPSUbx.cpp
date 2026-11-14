@@ -50,7 +50,7 @@ const char *GPS::backendName(backend_t backend) {
 void GPS::resetUbx(void) {
   m_Backend.store(static_cast<uint8_t>(backend_t::UNKNOWN));
   m_Detect = {};
-  m_ConfigNotBefore = 0;
+  m_ConfigSettle.clear();
   m_UbxExpected.clear();
   {
     const std::lock_guard<std::mutex> lock(m_GPSMutex);
@@ -60,6 +60,9 @@ void GPS::resetUbx(void) {
   m_UbxHaveVersion = false;
   m_UbxVersion = {};
   m_UbxSosRestore = 0xff;
+  // The save-on-shutdown refusal latch lasts one GPS enable: a flashless
+  // receiver costs at most one refused save per session.
+  m_UbxSosBackup = 0;
   m_UbxVerified = 0;
   m_UbxNaks = 0;
   m_UbxConfigured = false;
@@ -68,6 +71,7 @@ void GPS::resetUbx(void) {
   m_UbxSatView.fill(0);
   m_UbxSatUsed.fill(0);
   m_RailOffPending = false;
+  m_UbxStopped = false;
 }
 
 bool GPS::sendUbx(const std::vector<uint8_t> &frame) {
@@ -134,7 +138,7 @@ bool GPS::serviceDetect(uint32_t now) {
 void GPS::configureUbx(void) {
   m_ConfigQueue.clear();
   m_ConfigInFlight.reset();
-  m_ConfigNotBefore = 0;
+  m_ConfigSettle.clear();
   {
     const std::lock_guard<std::mutex> lock(m_ConfigMutex);
     m_ConfigStatusCount = 0;
@@ -227,8 +231,10 @@ void GPS::pollUbxSatellites(void) {
 bool GPS::beginSaveOnShutdown(uint32_t now) {
   // A rail that is already off has nothing left to save. A late duty request
   // can arrive just after the cut, and must not mark the backup as refused.
+  // A rail the board cannot cut must not lose a running receiver to a GNSS
+  // stop that nothing would undo.
   if ((getBackend() != backend_t::UBX) || Platform::hasGpsBackupSupply()
-      || (m_CycleState == cycle_state_t::RAIL_OFF)) {
+      || !Platform::canCutGpsRail() || (m_CycleState == cycle_state_t::RAIL_OFF)) {
     // With V_BCKP the receiver keeps BBR itself (MAX-M10S integration manual
     // 3.6.3.1), so there is nothing to save.
     return false;
@@ -243,6 +249,7 @@ bool GPS::beginSaveOnShutdown(uint32_t now) {
   }
   // A GNSS stop first keeps BBR consistent (IFD 3.19.1), then the backup.
   sendUbx(Ubx::cfgRst(Ubx::RST_HOT, Ubx::RST_MODE_GNSS_STOP));
+  m_UbxStopped = true;
   sendUbx(Ubx::sosCommand(Ubx::SOS_CREATE));
   m_RailOffPending = true;
   m_RailOffDeadline = now + UBX_ACK_TIMEOUT_MS;
@@ -352,7 +359,7 @@ void GPS::serviceUbx(const uint8_t *frame, size_t length) {
     const uint16_t settle = m_ConfigInFlight->settle_ms;
     finishConfigCommand(ack.ack ? CONFIG_ACKED : CONFIG_NACKED);
     if (ack.ack && (settle != 0)) {
-      m_ConfigNotBefore = Platform::getInstance().tick() + settle;
+      m_ConfigSettle.arm(Platform::getInstance().tick(), settle);
     }
     return;
   }
@@ -408,7 +415,12 @@ void GPS::serviceUbx(const uint8_t *frame, size_t length) {
     // A late answer after detection gave up. The receiver is u-blox after
     // all, so configure it as one; the CASIC frames it got were ignored.
     m_Backend.store(static_cast<uint8_t>(backend_t::UBX));
-    m_ConfigChars = getStatusSnapshot().chars_processed;
+    {
+      // Only the character count: a whole status snapshot here would sit on
+      // the deepest GPS task path, under the read buffer in serviceSerial().
+      const std::lock_guard<std::mutex> lock(m_GPSMutex);
+      m_ConfigChars = m_GPS.charsProcessed();
+    }
     m_ConfigStart = Platform::getInstance().tick();
     m_ConfigPending = true;
     return;
@@ -439,6 +451,14 @@ void GPS::applyPvt(status_t &status) const {
     // Stale: the NMEA parser is the fallback.
     return;
   }
+  // The NMEA parser ran on the same stream. When it holds a fix markedly
+  // newer than this NAV-PVT (a lost or refused PVT output), the NMEA fix wins.
+  // ponytail: a fixed two-epoch window at 1 Hz; scale with the rate if PVT
+  // and NMEA ever run at different rates.
+  constexpr uint32_t PVT_NMEA_SLACK_MS = 2000;
+  if (status.fix && ((status.location_age + PVT_NMEA_SLACK_MS) < age)) {
+    return;
+  }
   const Ubx::NavPvt &pvt = m_UbxPvt;
   const bool position = pvt.positionValid();
   status.from_pvt = true;
@@ -461,7 +481,10 @@ void GPS::applyPvt(status_t &status) const {
   status.h_acc_m = pvt.hAcc / 1000.0F;
   status.v_acc_m = pvt.vAcc / 1000.0F;
   status.t_acc_ns = pvt.tAcc;
-  if (pvt.timeValid()) {
+  status.time_resolved = pvt.timeValid();
+  if (pvt.dateTimeValid()) {
+    // A valid but not yet fully resolved time keeps the fix: geotagging needs
+    // the date and time, only the clock sync waits for full resolution.
     status.date_valid = true;
     status.time_valid = true;
     status.date_age = age;

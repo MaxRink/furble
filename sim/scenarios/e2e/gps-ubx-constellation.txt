@@ -24,8 +24,7 @@ assert m10.ram.10310020 0
 assert gps.ubx.rate_clamped 1
 assert gps.ubx.rate_ms 250
 assert m10.ram.30210001 250
-# AssistNow Autonomous does not cover B1C; it is still asked for, and the
-# receiver accepted it.
-assert m10.ram.10230001 1
+# AssistNow Autonomous stays off by default.
+assert m10.ram.10230001 0
 assert-eventually 5000 gps.source uart
 exit

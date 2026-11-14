@@ -2799,6 +2799,34 @@
         "gps.ubx.rate_clamped"
       ],
       "status": "modeled"
+    },
+    {
+      "id": "peripheral.gps-ubx-rail-fixed",
+      "profile": "sticks3",
+      "category": "peripheral",
+      "feature": "u-blox M10 rail cycling on a board that cannot cut the rail: no GNSS stop, no save",
+      "source": "src/FurbleGPSUbx.cpp",
+      "model": "sim/ubx_m10.cpp",
+      "scenario": "sim/scenarios/e2e/gps-ubx-rail-fixed.txt",
+      "assertions": [
+        "m10.sos_creates",
+        "m10.resets"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "peripheral.gps-ubx-time-unresolved",
+      "profile": "sticks3",
+      "category": "peripheral",
+      "feature": "u-blox M10 fix with a valid but unresolved time keeps the fix and skips the clock sync",
+      "source": "src/FurbleGPSUbx.cpp",
+      "model": "sim/ubx_m10.cpp",
+      "scenario": "sim/scenarios/e2e/gps-ubx-time-unresolved.txt",
+      "assertions": [
+        "gps.time_resolved",
+        "time.gps"
+      ],
+      "status": "modeled"
     }
   ]
 }

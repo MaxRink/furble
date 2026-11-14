@@ -370,6 +370,17 @@ Platform::pm_config_t Platform::getPMConfig(void) {
 
 void Platform::dumpPMLocks(void) {}
 
+bool Platform::canCutGpsRail(void) {
+  // The 320x240 build models the Core Basic, whose IP5306 cannot switch the
+  // rail. The Sticks can, unless a scenario fixes the rail on
+  // (`seed gps_rail_fixed`) to model a Core or a refused cut.
+#if defined(FURBLE_M5COREX)
+  return false;
+#else
+  return !furble_sim_uart_rail_fixed();
+#endif
+}
+
 bool Platform::hasGpsBackupSupply(void) {
   // The modelled board carries a backup supply exactly when the virtual
   // receiver has one, `seed gps_m10_backup`.

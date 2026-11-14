@@ -196,10 +196,13 @@ bool NavPvt::positionValid(void) const {
   return gnssFixOk() && !invalidLlh() && (fixType >= 2) && (fixType <= 4);
 }
 
+bool NavPvt::dateTimeValid(void) const {
+  return validDate() && validTime() && (year >= 1980) && (month >= 1) && (month <= 12) && (day >= 1)
+         && (day <= 31) && (hour <= 23) && (min <= 59) && (sec <= 60);
+}
+
 bool NavPvt::timeValid(void) const {
-  return validDate() && validTime() && fullyResolved() && (year >= 1980) && (month >= 1)
-         && (month <= 12) && (day >= 1) && (day <= 31) && (hour <= 23) && (min <= 59)
-         && (sec <= 60);
+  return dateTimeValid() && fullyResolved();
 }
 
 bool parseNavPvt(const uint8_t *p, size_t length, NavPvt &out) {

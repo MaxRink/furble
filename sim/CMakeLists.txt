@@ -176,6 +176,7 @@ set(FURBLE_SOURCES
     "${FURBLE_ROOT}/lib/furble/protocol/CameraListProtocol.cpp"
     "${FURBLE_ROOT}/lib/furble/protocol/FujifilmProtocol.cpp"
     "${FURBLE_ROOT}/lib/furble/protocol/GpsCasic.cpp"
+    "${FURBLE_ROOT}/lib/furble/protocol/GpsDemux.cpp"
     "${FURBLE_ROOT}/lib/furble/protocol/GpsUbx.cpp"
     "${FURBLE_ROOT}/lib/furble/protocol/ProvisionTLV.cpp"
     "${FURBLE_ROOT}/lib/testing/nimble/MockNimBLE.cpp"

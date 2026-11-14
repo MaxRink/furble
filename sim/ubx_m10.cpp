@@ -374,7 +374,7 @@ std::vector<uint8_t> VirtualM10::epoch(uint32_t now,
     // psmState: 0 not active, 3 tracking (IFD 3.15.11).
     const uint8_t psm = (mode == 0) ? 0 : 3;
     if (fix) {
-      pvt.valid = 0x07;
+      pvt.valid = m_Options.unresolved ? 0x03 : 0x07;
       pvt.tAcc = 20;
       pvt.fixType = 3;
       pvt.flags = static_cast<uint8_t>(0x01 | (psm << 2));

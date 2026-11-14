@@ -1073,6 +1073,17 @@ shortens that host retry cadence for a bounded scenario.
   the byte that wakes a UART standby) is marked as an assumption in the source.
   Receiver detection writes up to two MON-VER polls at GPS start, so a scenario
   that asserts `uart.count 0` must clear the journal after detection settles.
+  `seed gps_m10_backup` gives the modelled board a V_BCKP supply, which
+  `Platform::hasGpsBackupSupply()` reports, so BBR and the RTC survive a rail
+  cut and the next start is hot. Without it a cut is cold, and a UPD-SOS
+  backup (`gps_m10_flash`) restores BBR but not the RTC, so the start is warm:
+  an assumption, M10 publishes no warm start time. `gps_rail_fixed` keeps the
+  rail on whatever the PMIC is asked, which is the Core and Waveshare
+  behaviour and what `Platform::canCutGpsRail()` then reports; the Core build
+  reports false on its own. `gps_m10_unresolved` reports a 3D fix with a valid
+  but unresolved time. `gps_gnss`, `gps_psm` and `gps_ana` seed the u-blox
+  settings. A waking receiver prints its first epoch one measurement period
+  after it starts.
 - The GSV/GSA fixtures are stored as sentence bodies and checksummed at
   runtime, so a fixture cannot carry a stale hand computed checksum. The
   `default` set is the one docs/img/gps-satellites.png is pinned to; changing
