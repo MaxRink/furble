@@ -1288,3 +1288,10 @@ dependencies live under `sim/.pio/libdeps/sim/`, which still matched through
 dot. Homebrew clang-tidy 23 on a small tree reported a planted finding in
 `tests/host/../../include/a.h` and suppressed the same finding in
 `sim/.pio/v/src/v.h`.
+
+Review of #466:
+
+| # | Finding | Outcome | Evidence |
+| --- | --- | --- | --- |
+| 1 | Copilot, `tools/check_pr_hygiene.py:614`: comparing the file's sorted literals lets a swap of two output strings, or a string moved to another command, through as a warning. | Fixed. Each string-bearing line must keep its literals, in order, at its own position, where new line m replaces old line n when m equals n plus the lines added before m minus those removed before n. The same check now also decides a whitespace-only change, which used sorted lines and had the same hole on master. | Tests for a swap and for a move to another hunk fail, and fail against master's checker too; the in-place `strcmp` rewrite still only warns. The rule treats one contiguous replaced block as one place, so a string moved between branches inside a single block still only warns, as it did on master. |
+| 2 | Copilot, `CONTRIBUTING.md:235`: the workflow change must also update `CLAUDE.md` and `AGENTS.md`, and the touched `src/` and `plans/` directories need their `CLAUDE.md` updated. | Fixed. `CLAUDE.md` and `AGENTS.md` describe `-nostdlibinc`, the anchored header filter and the console rule. `src/CLAUDE.md` asks for explicit `strcmp` comparisons, and `plans/CLAUDE.md` records the follow-up section convention. | `CLAUDE.md`, `AGENTS.md`, `src/CLAUDE.md`, `plans/CLAUDE.md` |

@@ -378,6 +378,24 @@ class ConsoleCouplingTest(unittest.TestCase):
         removed=['  if ((argc < 3) || strcmp(argv[1], "trace")) {']))
     self.assertEqual(rules(findings, CHECKER.FAIL), ["doc-coupling"] * 2)
 
+  def test_swapped_console_strings_still_fail(self):
+    # same literal set, but each command now prints the other's text
+    findings = findings_for(make_diff(
+        "src/FurbleConsole.cpp",
+        ['    puts("on");', '    puts("off");'],
+        removed=['    puts("off");', '    puts("on");']))
+    self.assertEqual(rules(findings, CHECKER.FAIL), ["doc-coupling"] * 2)
+
+  def test_console_string_moved_elsewhere_still_fails(self):
+    # the same line removed near the top and added further down
+    diff = "\n".join([
+        "diff --git a/src/FurbleConsole.cpp b/src/FurbleConsole.cpp",
+        "--- a/src/FurbleConsole.cpp", "+++ b/src/FurbleConsole.cpp",
+        "@@ -10,1 +10,0 @@", '-    puts("ok");',
+        "@@ -200,0 +199,1 @@", '+    puts("ok");']) + "\n"
+    findings = findings_for(diff)
+    self.assertEqual(rules(findings, CHECKER.FAIL), ["doc-coupling"] * 2)
+
   def test_removed_console_string_warns(self):
     findings = findings_for(
         make_diff("src/FurbleConsole.cpp", removed=[self.CONSOLE_LINE]))
