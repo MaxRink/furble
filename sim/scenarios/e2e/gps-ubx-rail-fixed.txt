@@ -1,0 +1,18 @@
+# Rail cycling on a board that cannot cut the GPS rail, the Core IP5306 or a
+# refused PMIC request. furble must not stop the GNSS for a save-on-shutdown
+# that nothing would undo: no CFG-RST and no UPD-SOS go out, and the receiver
+# keeps running and fixing through every "rail off".
+seed gps true
+seed gps_model m10
+seed gps_m10_hot true
+seed gps_rail_fixed true
+seed gps_power 2
+seed gps_duty 10
+seed gps_rate 1
+wait 40000
+assert m10.sos_creates 0
+assert m10.resets 0
+assert m10.state on
+assert gps.receiver present
+assert-eventually 3000 gps.source uart
+exit

@@ -410,6 +410,7 @@ for source in \
   "$ROOT/lib/furble/protocol/CameraListProtocol.cpp" \
   "$ROOT/lib/furble/protocol/FujifilmProtocol.cpp" \
   "$ROOT/lib/furble/protocol/GpsCasic.cpp" \
+  "$ROOT/lib/furble/protocol/GpsDemux.cpp" \
   "$ROOT/lib/furble/protocol/GpsUbx.cpp" \
   "$ROOT/lib/furble/protocol/ProvisionTLV.cpp" \
   "$ROOT/lib/testing/nimble/MockNimBLE.cpp" \

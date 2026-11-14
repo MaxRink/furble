@@ -658,11 +658,13 @@ bool applyDefault(Preferences &prefs, Settings::type_t type) {
       return putDefault<uint8_t>(prefs, setting.key, 0);
     case Settings::AUTO_OFF_CHARGING:
       return putDefault<bool>(prefs, setting.key, false);
-    // AssistNow Autonomous is off in the M10 ROM but on in furble: it costs
-    // nothing until the receiver has orbits to predict and turns a cold start
-    // with a few days' old data into a 3 to 4 s fix (plan 321).
+    // AssistNow Autonomous stays at the M10 ROM default, off, like every other
+    // receiver setting furble adds. Its background orbit computation costs
+    // current (MAX-M10S integration manual UBX-20053088 3.12.5.3), and on a
+    // board without V_BCKP its orbits are lost with BBR at every rail cut, so
+    // the benefit is opt-in (plan 321).
     case Settings::GPS_ANA:
-      return putDefault<bool>(prefs, setting.key, true);
+      return putDefault<bool>(prefs, setting.key, false);
     case Settings::BATT_STYLE:
       return putDefault<uint8_t>(prefs, setting.key, Settings::BATT_STYLE_ICON);
     case Settings::LEGEND:

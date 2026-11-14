@@ -46,11 +46,6 @@ uint16_t readU16(const uint8_t *data) {
   return static_cast<uint16_t>(data[0]) | (static_cast<uint16_t>(data[1]) << 8);
 }
 
-uint32_t readU32(const uint8_t *data) {
-  return static_cast<uint32_t>(data[0]) | (static_cast<uint32_t>(data[1]) << 8)
-         | (static_cast<uint32_t>(data[2]) << 16) | (static_cast<uint32_t>(data[3]) << 24);
-}
-
 void writeU16(uint8_t *data, uint16_t value) {
   data[0] = static_cast<uint8_t>(value & 0xff);
   data[1] = static_cast<uint8_t>((value >> 8) & 0xff);
@@ -82,10 +77,12 @@ bool validCoordinate(double value, double min, double max) {
 // The host has no Port A rail, so the fake receiver is told what the PMIC
 // was asked to do. Hardware boundary only: the firmware path is unchanged.
 #define FURBLE_SIM_GPS_RAIL(enable) furble_sim_uart_set_rail(enable)
+#define FURBLE_GPS_RAIL_ON() furble_sim_uart_rail_on()
 #else
 #define FURBLE_SIM_GPS_STATE(state) ((void)0)
 #define FURBLE_SIM_TIMER_FIRE(name) ((void)0)
 #define FURBLE_SIM_GPS_RAIL(enable) ((void)0)
+#define FURBLE_GPS_RAIL_ON() M5.Power.getExtOutput()
 #endif
 
 void gps_task(void *param) {
@@ -118,13 +115,15 @@ constexpr uint32_t DEGRADED_PROBE_MS = 6000;
  *
  * The M5PM1 sleeps after an I2C idle period and the first access after that
  * only wakes it, so read the rail state back and retry once on mismatch.
+ * Returns whether the rail reached the requested state.
  */
-void setRailPower(bool enable) {
+bool setRailPower(bool enable) {
   FURBLE_SIM_GPS_RAIL(enable);
   M5.Power.setExtOutput(enable, m5::ext_PA);
-  if (M5.Power.getExtOutput() != enable) {
+  if (FURBLE_GPS_RAIL_ON() != enable) {
     M5.Power.setExtOutput(enable, m5::ext_PA);
   }
+  return FURBLE_GPS_RAIL_ON() == enable;
 }
 
 bool tickReached(uint32_t now, uint32_t target) {
@@ -604,7 +603,9 @@ TickType_t GPS::cycleWait(uint32_t now) const {
     wait = std::min(wait, tickUntil(now, m_ConfigSent + configAckTimeout()));
   } else if (!m_ConfigQueue.empty()) {
     // a UBX signal change holds the next command for its settle time
-    wait = std::min(wait, tickUntil(now, m_ConfigNotBefore));
+    if (m_ConfigSettle.armed()) {
+      wait = std::min(wait, m_ConfigSettle.remaining(now));
+    }
   }
   // a rail cut waits at most a second for the UPD-SOS answer
   if (m_RailOffPending) {
@@ -721,12 +722,15 @@ void GPS::serviceCycle(void) {
   }
 
   // The application update sets this only after it has accepted a valid fix.
-  // A duty cycle waits for the receiver to be identified, so a u-blox
-  // receiver is never sent $PCAS12 and a CASIC one is never standing by while
-  // its MON-VER polls go unanswered.
+  // A duty cycle waits until the receiver is identified and its configuration
+  // has gone out, so standby never collides with a command in flight, and the
+  // standby command matches the backend: RXM-PMREQ for u-blox, $PCAS12 only for
+  // the NMEA (CASIC) backend.
   const backend_t backend = getBackend();
   const bool identified = (backend == backend_t::NMEA) || (backend == backend_t::UBX);
-  if (identified && m_CycleRequest.exchange(false)) {
+  const bool configIdle =
+      !m_ConfigPending && !m_ConfigInFlight.has_value() && m_ConfigQueue.empty();
+  if (identified && configIdle && m_CycleRequest.exchange(false)) {
     // A valid fix received during a degraded retry is recovery, even when the
     // duty-cycle request immediately transitions into standby or rail-off.
     // Do not carry the old backoff into the next failure episode.
@@ -734,14 +738,14 @@ void GPS::serviceCycle(void) {
     acquirePowerLock();
 
     if ((m_PowerPolicy == POWER_STANDBY) && (m_DutySeconds > 0)) {
-      if (getBackend() == backend_t::UBX) {
+      if (backend == backend_t::UBX) {
         // RXM-PMREQ software standby for the duty interval (IFD 3.16.6). The
         // force flag is required (MAX-M10S integration manual 3.6.3.2), and V_IO
         // stays up, so BBR and the RTC survive and the wake is a hot start.
         sendUbx(
             Ubx::pmReq({static_cast<uint32_t>(m_DutySeconds) * 1000,
                         Ubx::PMREQ_FLAG_BACKUP | Ubx::PMREQ_FLAG_FORCE, Ubx::PMREQ_WAKE_UARTRX}));
-      } else {
+      } else if (backend == backend_t::NMEA) {
         sendCommand("PCAS12," + std::to_string(m_DutySeconds));
       }
       enterStandby(now);
@@ -1017,8 +1021,19 @@ void GPS::enterRailOff(uint32_t now) {
   m_WakeDeadline = 0;
   m_CycleState = cycle_state_t::RAIL_OFF;
   FURBLE_SIM_GPS_STATE("off");
-  setRailPower(false);
+  railOffOrRestart();
   releasePowerLock();
+}
+
+void GPS::railOffOrRestart(void) {
+  const bool cut = setRailPower(false);
+  if (!cut && m_UbxStopped) {
+    // The board kept the rail on (a refused PMIC request), so the receiver is
+    // still powered with its GNSS stopped. Start it again (IFD 3.10.2).
+    ESP_LOGW(LOG_TAG, "GPS rail stayed on, restarting the stopped receiver");
+    sendUbx(Ubx::cfgRst(Ubx::RST_HOT, Ubx::RST_MODE_GNSS_START));
+  }
+  m_UbxStopped = false;
 }
 
 void GPS::beginResync(uint32_t now) {
@@ -1397,7 +1412,7 @@ void GPS::enqueueConfig(uint8_t class_id,
 
 void GPS::startConfigCommand(void) {
   if (m_ConfigInFlight.has_value() || m_ConfigQueue.empty()
-      || !tickReached(Platform::getInstance().tick(), m_ConfigNotBefore)) {
+      || !m_ConfigSettle.open(Platform::getInstance().tick())) {
     return;
   }
 
@@ -2190,7 +2205,7 @@ void GPS::disable(void) {
   }
 
   // power off, no mutex may be held across the PMIC access
-  setRailPower(false);
+  railOffOrRestart();
 
   releasePowerLock();
 
@@ -2422,12 +2437,16 @@ void GPS::update(void) {
         status.year,   status.month,  status.day,         status.hour,
         status.minute, status.second, status.centisecond,
     };
-    if (status.date_valid && status.time_valid) {
+    if (status.date_valid && status.time_valid && status.time_resolved) {
+      // A u-blox receiver states its own time accuracy; NMEA keeps 1 s.
+      const uint32_t uncertainty_ms =
+          status.from_pvt ? std::max<uint32_t>(1000, status.t_acc_ns / 1000000) : 1000;
       (void)TimeKeeper::getInstance().updateUtc(
           TimeSource::GPS, static_cast<uint16_t>(timesync.year),
           static_cast<uint8_t>(timesync.month), static_cast<uint8_t>(timesync.day),
           static_cast<uint8_t>(timesync.hour), static_cast<uint8_t>(timesync.minute),
-          static_cast<uint8_t>(timesync.second), static_cast<uint8_t>(timesync.centisecond), 1000);
+          static_cast<uint8_t>(timesync.second), static_cast<uint8_t>(timesync.centisecond),
+          uncertainty_ms);
     }
     // NTP supplies time when synced. GPS still supplies the position.
     (void)WiFi::getNtpTimesync(timesync);
@@ -2854,78 +2873,30 @@ void GPS::noteEphemerisDate(const uint8_t *data, size_t length, bool dateUpdated
 void GPS::processSerial(const uint8_t *data, size_t length) {
   m_RxBuffer.insert(m_RxBuffer.end(), data, data + length);
 
-  while (!m_RxBuffer.empty()) {
-    // NMEA is 7-bit text, so neither sync pair can appear inside a sentence.
-    size_t header = m_RxBuffer.size();
-    for (size_t i = 0; i + 1 < m_RxBuffer.size(); i++) {
-      if (((m_RxBuffer[i] == BINARY_SYNC_0) && (m_RxBuffer[i + 1] == BINARY_SYNC_1))
-          || ((m_RxBuffer[i] == Ubx::SYNC_1) && (m_RxBuffer[i + 1] == Ubx::SYNC_2))) {
-        header = i;
+  // The split is pure (lib/furble/protocol/GpsDemux) so the host fuzzer runs
+  // the same demultiplexer. The piece list is a member so a read pass does
+  // not allocate once it has grown.
+  m_DemuxPieces.clear();
+  const size_t used = GpsDemux::split(m_RxBuffer.data(), m_RxBuffer.size(), m_DemuxPieces);
+  for (const auto &piece : m_DemuxPieces) {
+    uint8_t *bytes = m_RxBuffer.data() + piece.offset;
+    switch (piece.kind) {
+      case GpsDemux::Kind::NMEA:
+        processNmea(bytes, piece.length);
         break;
-      }
-    }
-
-    if (header == m_RxBuffer.size()) {
-      const size_t keep =
-          ((m_RxBuffer.back() == BINARY_SYNC_0) || (m_RxBuffer.back() == Ubx::SYNC_1)) ? 1 : 0;
-      const size_t nmea = m_RxBuffer.size() - keep;
-      if (nmea > 0) {
-        processNmea(m_RxBuffer.data(), nmea);
-        m_RxBuffer.erase(m_RxBuffer.begin(), m_RxBuffer.begin() + nmea);
-      }
-      break;
-    }
-
-    if (header > 0) {
-      processNmea(m_RxBuffer.data(), header);
-      m_RxBuffer.erase(m_RxBuffer.begin(), m_RxBuffer.begin() + header);
-      continue;
-    }
-
-    if (m_RxBuffer[0] == Ubx::SYNC_1) {
-      const Ubx::ScanResult result = Ubx::scan(m_RxBuffer.data(), m_RxBuffer.size());
-      if (result.status == Ubx::Scan::NEED_MORE) {
+      case GpsDemux::Kind::CASIC:
+        Console::gpsBinary(bytes, piece.length);
+        serviceBinary(bytes, piece.length);
         break;
-      }
-      if (result.status == Ubx::Scan::BAD) {
-        m_RxBuffer.erase(m_RxBuffer.begin());
-        continue;
-      }
-      Console::gpsBinary(m_RxBuffer.data(), result.length);
-      serviceUbx(m_RxBuffer.data(), result.length);
-      m_RxBuffer.erase(m_RxBuffer.begin(), m_RxBuffer.begin() + result.length);
-      continue;
+      case GpsDemux::Kind::UBX:
+        Console::gpsBinary(bytes, piece.length);
+        serviceUbx(bytes, piece.length);
+        break;
+      case GpsDemux::Kind::DROP:
+        break;
     }
-
-    if (m_RxBuffer.size() < BINARY_HEADER_SIZE) {
-      break;
-    }
-
-    const uint16_t payloadLength = readU16(m_RxBuffer.data() + 2);
-    if ((payloadLength > MAX_BINARY_PAYLOAD) || ((payloadLength % 4) != 0)) {
-      m_RxBuffer.erase(m_RxBuffer.begin());
-      continue;
-    }
-
-    const size_t frameLength = BINARY_FRAME_OVERHEAD + payloadLength;
-    if (m_RxBuffer.size() < frameLength) {
-      break;
-    }
-
-    const uint8_t class_id = m_RxBuffer[4];
-    const uint8_t message_id = m_RxBuffer[5];
-    const uint32_t expected =
-        casicChecksum(class_id, message_id, payloadLength, m_RxBuffer.data() + BINARY_HEADER_SIZE);
-    const uint32_t received = readU32(m_RxBuffer.data() + BINARY_HEADER_SIZE + payloadLength);
-    if (expected != received) {
-      m_RxBuffer.erase(m_RxBuffer.begin());
-      continue;
-    }
-
-    Console::gpsBinary(m_RxBuffer.data(), frameLength);
-    serviceBinary(m_RxBuffer.data(), frameLength);
-    m_RxBuffer.erase(m_RxBuffer.begin(), m_RxBuffer.begin() + frameLength);
   }
+  m_RxBuffer.erase(m_RxBuffer.begin(), m_RxBuffer.begin() + used);
 }
 
 /** Read and decode the GPS data from serial port. */
@@ -3040,13 +3011,13 @@ GPS::satellite_report_t GPS::getSatelliteReport(void) {
 }
 
 void GPS::pollMonHw(void) {
-  if (getBackend() == backend_t::UBX) {
-    // CASIC MON-HW is not a UBX message
-    return;
-  }
   {
     std::lock_guard<std::mutex> lock(m_MonHwMutex);
     m_MonHwHave = false;
+  }
+  if (getBackend() == backend_t::UBX) {
+    // CASIC MON-HW is not a UBX message
+    return;
   }
   m_MonHwPending.store(true);
 
@@ -3170,6 +3141,7 @@ GPS::status_t GPS::getStatusSnapshot(void) const {
   status.sentences_passed = gps.passedChecksum();
   status.sentences_failed = gps.failedChecksum();
   status.fix_sequence = m_FixSequence.load();
+  status.time_resolved = true;
   applyPvt(status);
   return status;
 }

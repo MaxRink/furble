@@ -35,6 +35,8 @@ class VirtualM10 {
     bool hot = false; /**< power up hot instead of cold */
     /** A key this firmware does not know, so VALSET and VALGET NAK it. 0 for none. */
     uint32_t unknownKey = 0;
+    /** Report a 3D fix with validDate and validTime but not fullyResolved. */
+    bool unresolved = false;
   };
 
   enum class State : uint8_t {

@@ -252,7 +252,7 @@ std::vector<SettingCase> settingCases() {
       {Settings::GPS_PLATFORM, "GPS_PLATFORM", uint8_t {0}, uint8_t {4}, StorageKind::U8},
       {Settings::GPS_GNSS, "GPS_GNSS", uint8_t {0}, uint8_t {15}, StorageKind::U8},
       {Settings::GPS_PSM, "GPS_PSM", uint8_t {0}, uint8_t {2}, StorageKind::U8},
-      {Settings::GPS_ANA, "GPS_ANA", true, false, StorageKind::BOOL},
+      {Settings::GPS_ANA, "GPS_ANA", false, true, StorageKind::BOOL},
       {Settings::GPS_MOTION, "GPS_MOTION", false, true, StorageKind::BOOL},
       {Settings::INTERVAL, "INTERVAL", defaultInterval(), representativeInterval(),
        StorageKind::BLOB},

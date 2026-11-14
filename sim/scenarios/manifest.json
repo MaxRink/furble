@@ -2514,6 +2514,19 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/e2e/gps-ubx-tick-wrap.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "gps"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/e2e/gps-ubx-warm-start-backup.txt",
       "suite": "e2e",
       "owner": "sim-e2e",
@@ -2541,6 +2554,45 @@
     },
     {
       "path": "sim/scenarios/e2e/gps-ubx-warm-start-sos.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "gps"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/gps-ubx-ana.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "gps"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/gps-ubx-rail-fixed.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "gps"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/gps-ubx-time-unresolved.txt",
       "suite": "e2e",
       "owner": "sim-e2e",
       "boards": [

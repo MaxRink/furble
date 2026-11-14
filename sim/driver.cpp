@@ -44,6 +44,7 @@
 #include "FurblePlatform.h"
 #include "FurbleSD.h"
 #include "FurbleSettings.h"
+#include "FurbleTimeKeeper.h"
 
 #include "FurbleTypes.h"
 #include "FurbleUI.h"
@@ -382,6 +383,8 @@ void validateSeed(const std::string &name, const std::string &value) {
       "gps_stationary",
       "gps_uart_noise",
       "gps_ana",
+      "gps_rail_fixed",
+      "gps_m10_unresolved",
       "gps_m10_backup",
       "gps_m10_flash",
       "gps_m10_hot",
@@ -1633,6 +1636,9 @@ std::string queryValueUnscoped(const std::string &key) {
     if (sub == "from_pvt") {
       return gps.getStatusSnapshot().from_pvt ? "1" : "0";
     }
+    if (sub == "time_resolved") {
+      return gps.getStatusSnapshot().time_resolved ? "1" : "0";
+    }
     if (sub == "hacc_mm") {
       // NAV-PVT horizontal accuracy as the snapshot carries it, "none" when
       // the fix did not come with one
@@ -1801,6 +1807,10 @@ std::string queryValueUnscoped(const std::string &key) {
   if (key == "power.no_light_sleep_acquires") {
     return std::to_string(
         Power::getInstance().getStats(Power::LockType::NO_LIGHT_SLEEP).totalAcquires);
+  }
+  if (key == "time.gps") {
+    // the wall clock was last set from GPS
+    return (TimeKeeper::getInstance().status().source == TimeSource::GPS) ? "1" : "0";
   }
   if (prefixed("m10.")) {
     // The virtual M10's own view: state, start type, counters and its
@@ -2479,6 +2489,7 @@ void applyScenarioSettings(void) {
     furble_sim_uart_set_fix_chunk(parseUnsigned(fixChunk->second));
   }
   furble_sim_uart_set_noise(scenarioSettingIsTrue("gps_uart_noise"));
+  furble_sim_uart_set_rail_fixed(scenarioSettingIsTrue("gps_rail_fixed"));
   const auto model = scenarioSettings.find("gps_model");
   if (model != scenarioSettings.end()) {
     const auto unknown = scenarioSettings.find("gps_m10_unknown_key");
@@ -2487,7 +2498,8 @@ void applyScenarioSettings(void) {
         scenarioSettingIsTrue("gps_m10_flash"), scenarioSettingIsTrue("gps_m10_hot"),
         (unknown == scenarioSettings.end())
             ? 0
-            : static_cast<uint32_t>(std::strtoul(unknown->second.c_str(), nullptr, 16)));
+            : static_cast<uint32_t>(std::strtoul(unknown->second.c_str(), nullptr, 16)),
+        scenarioSettingIsTrue("gps_m10_unresolved"));
   }
   saveBoolean("gps_motion", Settings::GPS_MOTION);
   saveBoolean("imu", Settings::IMU);

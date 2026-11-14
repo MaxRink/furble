@@ -9,6 +9,8 @@ lib/furble/protocol/FujifilmProtocol.cpp
 lib/furble/protocol/FujifilmProtocol.h
 lib/furble/protocol/GpsCasic.cpp
 lib/furble/protocol/GpsCasic.h
+lib/furble/protocol/GpsDemux.cpp
+lib/furble/protocol/GpsDemux.h
 lib/furble/protocol/GpsNavx.h
 lib/furble/protocol/GpsUbx.cpp
 lib/furble/protocol/GpsUbx.h

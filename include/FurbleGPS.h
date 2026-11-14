@@ -31,6 +31,7 @@ using lv_obj_t = _lv_obj_t;
 #include "FurbleIMU.h"
 #include "FurblePower.h"
 #include "protocol/GpsCasic.h"
+#include "protocol/GpsDemux.h"
 #include "protocol/GpsNavx.h"
 #include "protocol/GpsUbx.h"
 
@@ -201,6 +202,9 @@ class GPS {
     // The position, date and time fields above came from a fresh NAV-PVT
     // rather than from the NMEA parser.
     bool from_pvt;
+    // The UTC time is fully resolved, so it may set the clock. NMEA carries
+    // no resolution flag and is always true; a NAV-PVT reports fullyResolved.
+    bool time_resolved;
   } status_t;
 
   static GPS &getInstance();
@@ -472,7 +476,7 @@ class GPS {
   static constexpr uint8_t AID_INI_ID = 0x01;
   static constexpr uint16_t MAX_BINARY_PAYLOAD = 2048;
   static constexpr uint32_t BINARY_ACK_TIMEOUT_MS = 300;
-  // UBX: CFG input is acknowledged "at least within one second" (IFD 3.5.1).
+  // UBX: CFG input is acknowledged "at least within one second" (IFD 3.9.1, 3.9.2).
   static constexpr uint32_t UBX_ACK_TIMEOUT_MS = 1000;
   static constexpr uint8_t BINARY_ATTEMPTS = 3;
   static constexpr size_t MAX_CONFIG_COMMANDS = 16;
@@ -659,6 +663,11 @@ class GPS {
   bool beginSaveOnShutdown(uint32_t now);
   /** The blocking form for disable(), which runs with the GPS task parked. */
   void saveOnShutdownBlocking(void);
+  /**
+   * Cut the rail. When the board refused and a save-on-shutdown stopped the
+   * GNSS, start it again: a stopped receiver on a live rail never resumes.
+   */
+  void railOffOrRestart(void);
   bool sendConfigFrame(const binary_command_t &command);
   uint32_t configAckTimeout(void) const;
 
@@ -812,6 +821,7 @@ class GPS {
   std::mutex m_UartMutex;
 
   std::vector<uint8_t> m_RxBuffer;
+  std::vector<GpsDemux::Piece> m_DemuxPieces;
 
   std::atomic<uint8_t> m_AidMode = 0;
   aid_cache_t m_AidCache = {};
@@ -896,7 +906,7 @@ class GPS {
   std::atomic<uint8_t> m_Backend {static_cast<uint8_t>(backend_t::UNKNOWN)};
   Ubx::Detect m_Detect;
   // the next configuration command waits for this tick
-  uint32_t m_ConfigNotBefore = 0;
+  Ubx::Settle m_ConfigSettle;
   // the values the closing VALGET must read back
   std::vector<Ubx::KeyValue> m_UbxExpected;
   // NAV-PVT, guarded by m_GPSMutex like the NMEA parser it overlays
@@ -920,6 +930,8 @@ class GPS {
   std::array<uint8_t, 7> m_UbxSatUsed = {};
   // a rail cut waiting for the UPD-SOS answer, GPS task only
   bool m_RailOffPending = false;
+  // CFG-RST GNSS stop sent for a save-on-shutdown, not yet followed by a cut
+  bool m_UbxStopped = false;
   uint32_t m_RailOffDeadline = 0;
 
   // MON-HW interference snapshot, hardware-tuning-pending

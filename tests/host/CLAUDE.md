@@ -46,6 +46,17 @@ virtual timer: never reintroduce wall-clock reads into the host double, or an
 offline-ACK deadline becomes a timing flake. `console-commands` pins the
 `companion reidentify` command and `crash` argument validation.
 
+## GPS receiver protocols
+
+`gps-ubx` covers the UBX codec, the settings planner, the `Settle` gate
+(including ticks around 2^31) and the `GpsDemux` split. `gps-ubx-m10` drives
+the simulator's virtual M10 (`sim/ubx_m10.cpp`) directly, with no clock or
+UART, so its validity rules and start types are tested where the scenarios
+rely on them. `gps_ubx_fuzz` checks `Ubx::Stream` against a reference
+splitter built on `scan()`, intact-frame delivery, and that chunked demux
+input yields the same frames and NMEA text as one-shot input. It runs under
+ASan and UBSan like every fuzz target.
+
 ## WebUI and companion contracts
 
 - `webui-security` and `webui-handler` run the production WebUI gate and

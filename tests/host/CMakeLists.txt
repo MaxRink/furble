@@ -1360,6 +1360,8 @@ target_compile_options(gps_casic_test PRIVATE -Wall -Wextra -Werror -Wno-format
 # Pure UBX codec from lib/furble/protocol/GpsUbx for the u-blox M10 receivers.
 add_executable(gps_ubx_test
                gps_ubx_test.cpp
+               ${FURBLE_PROTOCOL_DIR}/GpsCasic.cpp
+               ${FURBLE_PROTOCOL_DIR}/GpsDemux.cpp
                ${FURBLE_PROTOCOL_DIR}/GpsUbx.cpp)
 target_include_directories(gps_ubx_test PRIVATE ${FURBLE_ROOT}/lib/furble/protocol)
 target_compile_options(gps_ubx_test PRIVATE -Wall -Wextra -Werror)
@@ -1375,6 +1377,8 @@ target_compile_options(gps_ubx_m10_test PRIVATE -Wall -Wextra -Werror)
 # wider seed set from tests/fuzz/seeds.json.
 add_executable(gps_ubx_fuzz
                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/gps_ubx_fuzz.cpp
+               ${FURBLE_PROTOCOL_DIR}/GpsCasic.cpp
+               ${FURBLE_PROTOCOL_DIR}/GpsDemux.cpp
                ${FURBLE_PROTOCOL_DIR}/GpsUbx.cpp)
 target_include_directories(gps_ubx_fuzz PRIVATE ${FURBLE_ROOT}/lib/furble/protocol)
 target_compile_options(gps_ubx_fuzz PRIVATE -Wall -Wextra -Werror)
