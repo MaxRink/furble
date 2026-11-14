@@ -558,8 +558,10 @@ bool DjiVirtualCamera::emitNotification(const std::vector<uint8_t> &payload) {
 }
 
 bool DjiVirtualCamera::emitRawNotification(const std::vector<uint8_t> &payload) {
+  // Hold across the callback; see SubscriptionTable.
+  const auto delivery = m_Subscriptions.deliveryLock();
   const auto found = m_Subscriptions.find(key(TARGET_SERVICE, NOTIFY_CHARACTERISTIC));
-  if ((found == m_Subscriptions.end()) || (found->second.callback == nullptr)) {
+  if (!found || (found->callback == nullptr)) {
     return false;
   }
 
@@ -569,9 +571,8 @@ bool DjiVirtualCamera::emitRawNotification(const std::vector<uint8_t> &payload) 
   m_Notifications.push_back(notification);
 
   std::vector<uint8_t> mutable_payload = payload;
-  found->second.callback(found->second.remote,
-                         mutable_payload.empty() ? nullptr : mutable_payload.data(),
-                         mutable_payload.size(), found->second.notification);
+  found->callback(found->remote, mutable_payload.empty() ? nullptr : mutable_payload.data(),
+                  mutable_payload.size(), found->notification);
   return true;
 }
 
@@ -1116,7 +1117,7 @@ bool DjiVirtualCamera::subscribe(NimBLEClient &client,
   subscription.callback = callback;
   subscription.notification = notification;
   subscription.response = response;
-  m_Subscriptions[key(service, characteristic)] = subscription;
+  m_Subscriptions.set(key(service, characteristic), subscription);
   return true;
 }
 

@@ -652,6 +652,49 @@ void mutexWaitTask(void *argument) {
   state.finished.store(true);
 }
 
+// Issue 289 shape: a higher-priority task waits on a condition that only a
+// lower-priority task can make true, as Scan::stop() waits for a callback on
+// the radio task.
+struct ConditionWaitState {
+  Furble::Sim::SchedulerConditionVariable condition;
+  std::mutex mutex;
+  bool ready = false;
+  std::mutex orderMutex;
+  std::vector<int> order;
+  std::atomic<bool> waiterDone {false};
+  std::atomic<bool> notifierDone {false};
+  std::atomic<int> woken {0};
+};
+
+void conditionWaiterTask(void *argument) {
+  auto &state = *static_cast<ConditionWaitState *>(argument);
+  {
+    std::unique_lock<std::mutex> lock(state.mutex);
+    state.condition.wait(lock, [&state]() { return state.ready; });
+  }
+  {
+    const std::lock_guard<std::mutex> orderLock(state.orderMutex);
+    state.order.push_back(2);
+  }
+  state.woken.fetch_add(1);
+  state.waiterDone.store(true);
+}
+
+void conditionNotifierTask(void *argument) {
+  auto &state = *static_cast<ConditionWaitState *>(argument);
+  {
+    const std::lock_guard<std::mutex> lock(state.mutex);
+    state.ready = true;
+    state.condition.notify_all();
+  }
+  // Still this task's turn: a notify does not preempt the notifier.
+  {
+    const std::lock_guard<std::mutex> orderLock(state.orderMutex);
+    state.order.push_back(1);
+  }
+  state.notifierDone.store(true);
+}
+
 }  // namespace
 
 int main() {
@@ -917,6 +960,152 @@ int main() {
   }
   furble_sim_stop_all_tasks();
   furble_sim_reset_tasks();
+
+  // A condition wait is a scheduler block. The waiter stops being runnable,
+  // so the lower-priority notifier gets the turn at once. With a plain
+  // std::condition_variable the waiter kept the turn and never showed as
+  // blocked, and only the 2 s host stall breaker let the notifier run.
+  ConditionWaitState condition;
+  TaskHandle_t conditionWaiter = nullptr;
+  TaskHandle_t conditionNotifier = nullptr;
+  if (xTaskCreate(conditionWaiterTask, "cond-waiter", 0, &condition, kControlPriority,
+                  &conditionWaiter)
+          != pdPASS
+      || !waitForBlocked(conditionWaiter)) {
+    return fail(__LINE__);
+  }
+  std::string conditionDump;
+  const bool conditionReported = waitUntil("condition waiter report", [&conditionDump]() {
+    conditionDump.clear();
+    furble_sim_report_tasks(conditionDump);
+    return conditionDump.find("wait=condition") != std::string::npos;
+  });
+  if (!conditionReported) {
+    return fail(__LINE__);
+  }
+  const uint64_t conditionProgress = furble_sim_scheduler_progress();
+  const auto conditionStart = std::chrono::steady_clock::now();
+  if (xTaskCreate(conditionNotifierTask, "cond-notifier", 0, &condition, kGpsPriority,
+                  &conditionNotifier)
+          != pdPASS
+      || !waitFor(condition.notifierDone) || !waitFor(condition.waiterDone)) {
+    return fail(__LINE__);
+  }
+  // The handoff is a scheduler event, so it must finish far inside the 2 s
+  // stall breaker bound that a plain condition variable needed.
+  if (std::chrono::steady_clock::now() - conditionStart >= std::chrono::milliseconds(1000)) {
+    return fail(__LINE__);
+  }
+  if (condition.order != std::vector<int> {1, 2}
+      || furble_sim_scheduler_progress() == conditionProgress) {
+    return fail(__LINE__);
+  }
+  furble_sim_stop_all_tasks();
+  furble_sim_reset_tasks();
+
+  // A notify made before the wait is not lost: the predicate is already true,
+  // so the waiter returns without blocking. A notify with no waiter is a no-op.
+  {
+    ConditionWaitState early;
+    {
+      const std::lock_guard<std::mutex> lock(early.mutex);
+      early.ready = true;
+      early.condition.notify_all();
+    }
+    early.condition.notify_one();
+    TaskHandle_t earlyWaiter = nullptr;
+    if (xTaskCreate(conditionWaiterTask, "cond-early", 0, &early, kControlPriority, &earlyWaiter)
+            != pdPASS
+        || !waitFor(early.waiterDone) || early.woken.load() != 1) {
+      return fail(__LINE__);
+    }
+  }
+  furble_sim_stop_all_tasks();
+  furble_sim_reset_tasks();
+
+  // Cancelling a waiter unwinds it and unlinks its record. A later notify_one
+  // reaches the surviving waiter instead of the cancelled one.
+  {
+    ConditionWaitState cancel;
+    TaskHandle_t cancelled = nullptr;
+    TaskHandle_t survivor = nullptr;
+    if (xTaskCreate(conditionWaiterTask, "cond-cancel", 0, &cancel, kControlPriority, &cancelled)
+            != pdPASS
+        || !waitForBlocked(cancelled)
+        || xTaskCreate(conditionWaiterTask, "cond-survivor", 0, &cancel, kCompanionPriority,
+                       &survivor)
+               != pdPASS
+        || !waitForBlocked(survivor)) {
+      return fail(__LINE__);
+    }
+    vTaskDelete(cancelled);
+    if (furble_sim_task_lifecycle(cancelled) != FURBLE_SIM_TASK_JOINED
+        || cancel.woken.load() != 0) {
+      return fail(__LINE__);
+    }
+    {
+      const std::lock_guard<std::mutex> lock(cancel.mutex);
+      cancel.ready = true;
+      cancel.condition.notify_one();
+    }
+    if (!waitFor(cancel.waiterDone) || cancel.woken.load() != 1) {
+      return fail(__LINE__);
+    }
+  }
+  furble_sim_stop_all_tasks();
+  furble_sim_reset_tasks();
+
+  // A host thread that is not a scheduler task can wait too: a task's notify
+  // releases it. A global stop cancels it by exception instead of returning
+  // with the predicate false.
+  {
+    ConditionWaitState host;
+    std::atomic<bool> hostReady {false};
+    std::atomic<bool> hostStarted {false};
+    std::thread hostThread([&]() {
+      std::unique_lock<std::mutex> lock(host.mutex);
+      hostStarted.store(true);
+      host.condition.wait(lock, [&host]() { return host.ready; });
+      hostReady.store(true);
+    });
+    TaskHandle_t hostNotifier = nullptr;
+    if (!waitFor(hostStarted)
+        || xTaskCreate(conditionNotifierTask, "cond-host-notifier", 0, &host, kGpsPriority,
+                       &hostNotifier)
+               != pdPASS
+        || !waitFor(hostReady)) {
+      hostThread.join();
+      return fail(__LINE__);
+    }
+    hostThread.join();
+  }
+  furble_sim_stop_all_tasks();
+  furble_sim_reset_tasks();
+  {
+    ConditionWaitState stopped;
+    std::atomic<bool> stopStarted {false};
+    std::atomic<bool> stopCancelled {false};
+    std::thread stopThread([&]() {
+      try {
+        std::unique_lock<std::mutex> lock(stopped.mutex);
+        stopStarted.store(true);
+        stopped.condition.wait(lock, [&stopped]() { return stopped.ready; });
+      } catch (const SchedulerStopped &) {
+        stopCancelled.store(true);
+      }
+    });
+    if (!waitFor(stopStarted)) {
+      stopThread.join();
+      return fail(__LINE__);
+    }
+    schedulerStop();
+    const bool cancelledByStop = waitFor(stopCancelled);
+    stopThread.join();
+    schedulerReset();
+    if (!cancelledByStop) {
+      return fail(__LINE__);
+    }
+  }
 
   // Cancelling a registered waiter removes its stack record before the task
   // exits; the remaining waiter receives the next ownership reservation.

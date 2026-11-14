@@ -346,8 +346,10 @@ bool NikonSmartVirtualCamera::emitNotification(const NimBLEUUID &service,
                                                const NimBLEUUID &characteristic,
                                                const std::vector<uint8_t> &payload,
                                                bool indication) {
+  // Hold across the callback; see SubscriptionTable.
+  const auto delivery = m_Subscriptions.deliveryLock();
   const auto found = m_Subscriptions.find(key(service, characteristic));
-  if ((found == m_Subscriptions.end()) || (found->second.callback == nullptr)) {
+  if (!found || (found->callback == nullptr)) {
     return false;
   }
 
@@ -359,9 +361,8 @@ bool NikonSmartVirtualCamera::emitNotification(const NimBLEUUID &service,
   m_Notifications.push_back(notification);
 
   std::vector<uint8_t> mutable_payload = payload;
-  found->second.callback(found->second.remote,
-                         mutable_payload.empty() ? nullptr : mutable_payload.data(),
-                         mutable_payload.size(), !indication);
+  found->callback(found->remote, mutable_payload.empty() ? nullptr : mutable_payload.data(),
+                  mutable_payload.size(), !indication);
   return true;
 }
 
@@ -900,7 +901,7 @@ bool NikonSmartVirtualCamera::subscribe(NimBLEClient &client,
   subscription.remote = remote;
   subscription.callback = callback;
   subscription.notification = notification;
-  m_Subscriptions[key(service, characteristic)] = subscription;
+  m_Subscriptions.set(key(service, characteristic), subscription);
   return true;
 }
 

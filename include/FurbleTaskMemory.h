@@ -17,9 +17,19 @@ inline constexpr size_t TASK_OVERHEAD_BYTES = 384;
 
 /**
  * The per-camera `Control::Target` task stack. `Control::addActive()` creates
- * it and the memory governor admits it; tools/stack_budget.json reads it here.
+ * it and the memory governor admits it; tools/stack_budget.json reads the
+ * release stack and the debug margin here. A debug build's stack protector
+ * and -Os frames reach 4,144 bytes on the Waveshare debug build (plan 314
+ * PR 4c).
  */
-inline constexpr size_t CAMERA_TARGET_STACK_BYTES = 4096;
+inline constexpr size_t CAMERA_TARGET_STACK_RELEASE_BYTES = 4096;
+#if defined(FURBLE_DEBUG_BUILD)
+inline constexpr size_t CAMERA_TARGET_STACK_DEBUG_EXTRA = 256;
+#else
+inline constexpr size_t CAMERA_TARGET_STACK_DEBUG_EXTRA = 0;
+#endif
+inline constexpr size_t CAMERA_TARGET_STACK_BYTES =
+    CAMERA_TARGET_STACK_RELEASE_BYTES + CAMERA_TARGET_STACK_DEBUG_EXTRA;
 
 }  // namespace TaskMemory
 }  // namespace Furble
