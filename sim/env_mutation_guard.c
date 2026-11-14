@@ -103,16 +103,16 @@ int unsetenv(const char *name) {
 // without '=' as an unset of that name.
 int putenv(char *string) {
   resolve_symbols();
-  char name[256];
   const char *equals = strchr(string, '=');
   const size_t length = equals == NULL ? strlen(string) : (size_t)(equals - string);
-  if (length < sizeof(name)) {
-    memcpy(name, string, length);
-    name[length] = '\0';
-    reject_after_sdl(equals == NULL ? "unsetenv" : "setenv", name);
-  } else {
-    reject_after_sdl("unsetenv", string);
+  // The whole name, however long, so a replacement is judged like setenv's.
+  char *name = strndup(string, length);
+  if (name == NULL) {
+    fprintf(stderr, "sim env guard: out of memory checking putenv\n");
+    _exit(127);
   }
+  reject_after_sdl(equals == NULL ? "unsetenv" : "setenv", name);
+  free(name);
   return real_putenv(string);
 }
 

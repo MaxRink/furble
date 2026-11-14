@@ -72,37 +72,74 @@ expect_current_pass() {
   fi
 }
 
-# Negative self-test: a program that initializes SDL and then adds a variable
-# must trip the growth guard with its exact message, so a passing simulator leg
-# cannot mean the growth branch never fires.
+# Self-tests: a program that initializes SDL and then changes the environment
+# one way per mode. Every structural change must trip the growth guard with its
+# exact message, so a passing simulator leg cannot mean a wrapper never fires.
+# The simulator itself calls neither putenv nor clearenv. A replacement of an
+# existing variable, even with a name longer than any fixed buffer, must pass.
 cat > "$guard_dir/selftest.c" <<'EOF'
 #include <SDL2/SDL.h>
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
-int main(void) {
+static char long_name[301];
+static char long_set[310];
+
+int main(int argc, char **argv) {
+  const char *mode = argc > 1 ? argv[1] : "";
+  memset(long_name, 'L', sizeof(long_name) - 1);
+  snprintf(long_set, sizeof(long_set), "%s=2", long_name);
+  if (strcmp(mode, "putenv-long-replace") == 0) {
+    setenv(long_name, "1", 1);
+  }
   if (SDL_Init(SDL_INIT_EVENTS) != 0) {
     return 2;
   }
-  setenv("FURBLE_GUARD_SELFTEST", "1", 1);
+  if (strcmp(mode, "setenv") == 0) {
+    setenv("FURBLE_GUARD_SELFTEST", "1", 1);
+  } else if (strcmp(mode, "putenv-add") == 0) {
+    putenv("FURBLE_GUARD_SELFTEST=1");
+  } else if (strcmp(mode, "putenv-unset") == 0) {
+    putenv("PATH");
+  } else if (strcmp(mode, "clearenv") == 0) {
+    clearenv();
+  } else if (strcmp(mode, "putenv-long-add") == 0
+             || strcmp(mode, "putenv-long-replace") == 0) {
+    putenv(long_set);
+  } else {
+    return 3;
+  }
   return 0;
 }
 EOF
 # shellcheck disable=SC2046
 "$CC" -O0 $(pkg-config --cflags sdl2) -o "$guard_dir/selftest" "$guard_dir/selftest.c" \
   $(pkg-config --libs sdl2)
-selftest_log="$guard_dir/selftest.log"
-if run_guarded growth "$guard_dir/selftest" >"$selftest_log" 2>&1; then
-  status=0
-else
-  status=$?
-fi
-if [ "$status" -ne 86 ] || ! grep -F -x \
-  "sim env guard: setenv(FURBLE_GUARD_SELFTEST) after SDL initialization" \
-  "$selftest_log" >/dev/null 2>&1; then
-  echo "growth guard self-test did not reject an added variable (status $status)" >&2
-  cat "$selftest_log" >&2
-  exit 1
-fi
+long_name=$(printf '%300s' '' | tr ' ' L)
+selftest() {
+  mode=$1
+  want_status=$2
+  want_line=$3
+  selftest_log="$guard_dir/selftest-$mode.log"
+  if run_guarded growth "$guard_dir/selftest" "$mode" >"$selftest_log" 2>&1; then
+    status=0
+  else
+    status=$?
+  fi
+  if [ "$status" -ne "$want_status" ] || { [ -n "$want_line" ] \
+    && ! grep -F -x "$want_line" "$selftest_log" >/dev/null 2>&1; }; then
+    echo "growth guard self-test $mode: status $status, want $want_status" >&2
+    cat "$selftest_log" >&2
+    exit 1
+  fi
+}
+selftest setenv 86 "sim env guard: setenv(FURBLE_GUARD_SELFTEST) after SDL initialization"
+selftest putenv-add 86 "sim env guard: setenv(FURBLE_GUARD_SELFTEST) after SDL initialization"
+selftest putenv-unset 86 "sim env guard: unsetenv(PATH) after SDL initialization"
+selftest clearenv 86 "sim env guard: clearenv() after SDL initialization"
+selftest putenv-long-add 86 "sim env guard: setenv($long_name) after SDL initialization"
+selftest putenv-long-replace 0 ""
 
 for target in FURBLE_SIM_PREFS FURBLE_SIM_RESTART_STEP growth; do
   expect_current_pass "$target" "$ROOT/sim/scripts/smoke.txt"

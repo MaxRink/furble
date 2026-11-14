@@ -770,8 +770,12 @@ The regression is the existing preload guard, widened and wired into CI.
 added by `setenv` or `putenv`, any `unsetenv` or value-less `putenv`, and
 `clearenv`, from any caller, while SDL is initialized. It prints an armed line
 so a guard that never loaded cannot pass. `sim/scripts/run-env-order.sh` first
-compiles a small program that calls `SDL_Init` and then adds a variable, and
-requires the guard to stop it with status 86 and the exact message. It then
+compiles a small program that calls `SDL_Init` and then changes the
+environment one way per mode, and requires the guard to stop `setenv`,
+`putenv` with and without a value, `clearenv` and a new 300-byte name with
+status 86 and the exact message, and to let a replacement of an existing
+300-byte name through. `putenv` copies the whole name, so a long name follows
+the same replacement rule as `setenv`. It then
 runs smoke and `restart-persist.txt` under every target with `TZ` unset. The
 old-binary legs are now optional. The sim-e2e S3 job runs it.
 

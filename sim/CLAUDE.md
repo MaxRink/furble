@@ -211,7 +211,9 @@ including empty strings and failed-save rollback.
   binary. The named targets reject one Furble `setenv` or `unsetenv` after SDL
   initialization; the `growth` target rejects any variable added by `setenv`
   or `putenv`, any `unsetenv`, and `clearenv`, from any caller. A small SDL
-  self-test program must trip it first. The sim-e2e S3 job runs it. With
+  self-test program must trip it first, once each for `setenv`, `putenv` with
+  and without a value, `clearenv` and a 300-byte new name, and must pass a
+  replacement of an existing 300-byte name. The sim-e2e S3 job runs it. With
   `FURBLE_SIM_ENV_GUARD_OLD_BIN` it also expects the pre-fix binary to trip
   each named target.
 - Never grow the process environment while SDL is live. glibc's getenv walks
