@@ -47,3 +47,11 @@ than the 1,848,928 recorded above, for the new column and the guard; the
 size and stack budgets pass. `python3 tools/pre_review.py --base
 origin/refactor/port-4-camera-types` passes 9 gates and
 `sh sim/scripts/check-doc-tokens.sh` passes.
+
+## PR #462 CI (b54eb9bb)
+
+Source: the `cppcheck and clang-tidy` job.
+
+| # | Finding | Resolution | Evidence |
+| ---: | :--- | :--- | :--- |
+| 1 | `src/FurbleIR.cpp:153:44`: `'signed char' to 'gpio_num_t' (aka 'int') conversion` (`bugprone-signed-char-misuse`, `cert-str34-c`). `Board::Profile::irPin` is `int8_t`, which is `signed char`, and the check flags assigning it to an integer. | Fixed without a suppression. The -1 sentinel is now explicit: a negative pin maps to `GPIO_NUM_NC`, any other pin is cast. Casting to `unsigned char` first, as the check suggests, would turn -1 into 255. | A clang-tidy 21 probe with the same check flags the old assignment and passes the new form. |

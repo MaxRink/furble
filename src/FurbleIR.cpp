@@ -148,9 +148,11 @@ void IR::init(void) {
   }
 
   instance.m_Initialized = true;
-  // Only the S3 image runs on a StickS3, and the S3 has GPIO 46.
+  // The profile stores -1 for a board without an emitter. Only the S3 image
+  // runs on a StickS3, and the S3 has GPIO 46.
+  const int8_t pin = Board::profile().irPin;
   // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
-  instance.m_Pin = static_cast<gpio_num_t>(Board::profile().irPin);
+  instance.m_Pin = (pin < 0) ? GPIO_NUM_NC : static_cast<gpio_num_t>(pin);
   if (!instance.isSupported()) {
     ESP_LOGI(LOG_TAG, "IR trigger is not supported on this board.");
     return;
