@@ -219,7 +219,11 @@ struct NavPvt {
   bool timeValid(void) const;
 };
 bool parseNavPvt(const uint8_t *payload, size_t length, NavPvt &out);
-/** Encode, for the simulator receiver and the round-trip tests. */
+/**
+ * Encode, for the simulator receiver and the round-trip tests. The receiver
+ * encoders return an empty frame for a payload above MAX_PAYLOAD, so every
+ * frame they produce passes scan(). NAV-SAT holds at most 84 satellites.
+ */
 std::vector<uint8_t> encodeNavPvt(const NavPvt &pvt);
 
 /* NAV-SAT, IFD 3.15.13: 8 byte header, 12 bytes per signal. gnssId per IFD 1.5. */

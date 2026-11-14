@@ -359,6 +359,12 @@ void testNavSat() {
   const auto none = Ubx::encodeNavSat(0, {});
   check(Ubx::parseNavSat(none.data() + 6, 8, back) && back.empty(), "zero satellites");
   check(Ubx::encodeNavSat(0, std::vector<Ubx::NavSatSv>(256)).empty(), "256 satellites refused");
+  // 84 satellites is 1016 bytes, the largest NAV-SAT under MAX_PAYLOAD.
+  const auto most = Ubx::encodeNavSat(0, std::vector<Ubx::NavSatSv>(84));
+  check(Ubx::scan(most.data(), most.size()).status == Ubx::Scan::FRAME,
+        "84 satellites encode to a frame scan() accepts");
+  check(Ubx::encodeNavSat(0, std::vector<Ubx::NavSatSv>(85)).empty(),
+        "85 satellites exceed MAX_PAYLOAD and are refused");
 }
 
 void testMonVer() {
@@ -375,6 +381,9 @@ void testMonVer() {
   check(back.field("FWVER") == "SPG 5.10" && back.field("MOD") == "MAX-M10S"
             && back.field("PROTVER") == "34.10" && back.field("NONE").empty(),
         "MON-VER extension lookup");
+  Ubx::MonVer longVer = ver;
+  longVer.extensions.resize(33);  // 40 + 33 * 30 = 1030 bytes
+  check(Ubx::encodeMonVer(longVer).empty(), "MON-VER above MAX_PAYLOAD refused");
   check(!Ubx::parseMonVer(bytes.data() + 6, 39, back), "short MON-VER refused");
   check(!Ubx::parseMonVer(bytes.data() + 6, 41, back), "ragged MON-VER refused");
 

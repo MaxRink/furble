@@ -132,6 +132,17 @@ std::vector<uint8_t> frame(uint8_t cls, uint8_t id, const std::vector<uint8_t> &
   return out;
 }
 
+// Receiver output stays within the bound scan() accepts, so the simulator
+// receiver never emits a frame the codec's own stream drops.
+static std::vector<uint8_t> frameReceived(uint8_t cls,
+                                          uint8_t id,
+                                          const std::vector<uint8_t> &payload) {
+  if (payload.size() > MAX_PAYLOAD) {
+    return {};
+  }
+  return frame(cls, id, payload);
+}
+
 ScanResult scan(const uint8_t *data, size_t length) {
   if ((length >= 1) && (data[0] != SYNC_1)) {
     return {Scan::BAD, 1};
@@ -260,7 +271,7 @@ std::vector<uint8_t> encodeNavPvt(const NavPvt &pvt) {
   setU(p, 68, pvt.sAcc, 4);
   setU(p, 76, pvt.pDOP, 2);
   setU(p, 78, pvt.flags3, 2);
-  return frame(CLASS_NAV, ID_NAV_PVT, p);
+  return frameReceived(CLASS_NAV, ID_NAV_PVT, p);
 }
 
 bool parseNavSat(const uint8_t *p, size_t length, std::vector<NavSatSv> &out) {
@@ -299,7 +310,7 @@ std::vector<uint8_t> encodeNavSat(uint32_t iTOW, const std::vector<NavSatSv> &sv
     putU(p, 0, 2);  // prRes
     putU(p, sv.flags, 4);
   }
-  return frame(CLASS_NAV, ID_NAV_SAT, p);
+  return frameReceived(CLASS_NAV, ID_NAV_SAT, p);
 }
 
 std::string MonVer::field(const char *key) const {
@@ -332,7 +343,7 @@ std::vector<uint8_t> encodeMonVer(const MonVer &ver) {
   for (const auto &extension : ver.extensions) {
     putFixedString(p, extension, 30);
   }
-  return frame(CLASS_MON, ID_MON_VER, p);
+  return frameReceived(CLASS_MON, ID_MON_VER, p);
 }
 
 bool parseSos(const uint8_t *p, size_t length, Sos &out) {

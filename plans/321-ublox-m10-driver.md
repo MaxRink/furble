@@ -21,19 +21,20 @@ declared simulator-tested and hardware-untested.
 All official u-blox documents, accessed 2026-11-13. "IFD" below and in code
 comments is the first one.
 
-| Short name | Document | Number and revision |
-| --- | --- | --- |
-| IFD | u-blox M10 SPG 5.10 Interface description, protocol 34.10 | UBX-21035062 R03 |
-| IFD 5.20 | u-blox M10 SPG 5.20 Interface description (external image only, not the module ROM) | UBXDOC-304424225-20128 R01 |
-| DS-MAX | MAX-M10S Data sheet, ROM SPG 5.10 | UBX-20035208 R08 |
-| IM-MAX | MAX-M10S Integration manual | UBX-20053088 R05 |
-| DS-MIA | MIA-M10Q Data sheet | UBX-22015849 R08 |
-| IM-MIA | MIA-M10Q Integration manual | UBX-21028173 R05 |
-| RN | u-blox M10 ROM 5.10 Release notes | UBX-22001426 R02 |
+| Short name | Document | Number and revision | URL |
+| --- | --- | --- | --- |
+| IFD | u-blox M10 SPG 5.10 Interface description, protocol 34.10 | UBX-21035062 R03 | <https://content.u-blox.com/sites/default/files/u-blox-M10-SPG-5.10_InterfaceDescription_UBX-21035062.pdf> |
+| IFD 5.20 | u-blox M10 SPG 5.20 Interface description (external image only, not the module ROM) | UBXDOC-304424225-20128 R01 | <https://content.u-blox.com/sites/default/files/documents/u-blox-M10-SPG-5.20_InterfaceDescription_UBXDOC-304424225-20128.pdf> |
+| DS-MAX | MAX-M10S Data sheet, ROM SPG 5.10 | UBX-20035208 R08 | <https://content.u-blox.com/sites/default/files/MAX-M10S_DataSheet_UBX-20035208.pdf> |
+| IM-MAX | MAX-M10S Integration manual | UBX-20053088 R05 | <https://content.u-blox.com/sites/default/files/MAX-M10S_IntegrationManual_UBX-20053088.pdf> |
+| DS-MIA | MIA-M10Q Data sheet | UBX-22015849 R08 | <https://content.u-blox.com/sites/default/files/documents/MIA-M10Q_DataSheet_UBX-22015849.pdf> |
+| IM-MIA | MIA-M10Q Integration manual | UBX-21028173 R05 | <https://content.u-blox.com/sites/default/files/documents/MIA-M10Q_IntegrationManual_UBX-21028173.pdf> |
+| RN | u-blox M10 ROM 5.10 Release notes | UBX-22001426 R02 | <https://content.u-blox.com/sites/default/files/u-blox-M10-ROM-5.10_ReleaseNotes_UBX-22001426.pdf> |
 
 Both modules run ROM SPG 5.10, so the IFD is the protocol reference. IFD 5.20
 describes a separately loaded image with different defaults and is not used.
-No PDF and no long excerpt is committed.
+No PDF and no long excerpt is committed. Every URL was checked on 2026-11-14:
+each returns the PDF, byte-identical to the copy the offsets were read from.
 
 ### Messages
 
