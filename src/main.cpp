@@ -181,6 +181,7 @@ bool connectCamera(int32_t index) {
   for (size_t n = 0; n < CameraList::size(); n++) {
     auto camera = CameraList::get(n);
     if (camera->isActive()) {
+      MemoryPressure::admit(MemoryPressure::CONNECT_TARGET_BYTES);
       control.addActive(camera);
     }
   }
@@ -218,6 +219,7 @@ bool connectSavedCamera(uint8_t cameraId) {
   for (size_t n = 0; n < CameraList::size(); n++) {
     auto camera = CameraList::get(n);
     if (camera->isActive()) {
+      MemoryPressure::admit(MemoryPressure::CONNECT_TARGET_BYTES);
       control.addActive(camera);
     }
   }

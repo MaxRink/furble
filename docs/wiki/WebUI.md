@@ -45,6 +45,8 @@ encryption where physical flash extraction is in the threat model.
 
 When internal RAM runs low, furble pauses the WebUI server first and then the
 MQTT client, so a camera connect still fits, and brings them back once there is
-room again. The saved settings do not change. `status` on the USB console
+room again. A camera connect that would run short pauses the WebUI before it
+starts, and the WebUI returns after the camera disconnects. The saved settings
+do not change. `status` on the USB console
 reports `memory_pressure`; the thresholds are in the repository's
 `docs/webui.md`.
