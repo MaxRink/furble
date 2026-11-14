@@ -1,6 +1,9 @@
 # 72: Panasonic Lumix BLE support
 
-Implementation state (2026-11-13): merged as #79 (`604993b5`). The next free wire id is no longer 41; see `plans/README.md`.
+Implementation state (2026-11-13): merged as #79 (`604993b5`). The plan below is
+the record as written. Its two statements that the next free settings wire ID
+is 41 were true at the merge and are historical; it is no longer 41, see
+`plans/README.md`.
 
 ## Motivation
 
