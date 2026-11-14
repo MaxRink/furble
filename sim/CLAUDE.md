@@ -206,11 +206,22 @@ including empty strings and failed-save rollback.
   identity change also discards stale objects. It requires the same dependency
   overrides as `sim/build.sh`.
 - `sim/scripts/run-env-order.sh`: on Linux, compiles a small `LD_PRELOAD`
-  interposer that resolves libc functions before simulator threads start and
-  rejects a selected Furble `setenv` or `unsetenv` after SDL initialization,
-  then runs the fresh and restart scenarios against the current binary and
-  expects the pre-fix binary to trip each exact target. This checks ordering
-  only; it is not crash-causality evidence.
+  interposer and runs the fresh and restart scenarios against the current
+  binary. The named targets reject one Furble `setenv` or `unsetenv` after SDL
+  initialization; the `growth` target rejects any variable added by `setenv`
+  or `putenv`, any `unsetenv`, and `clearenv`, from any caller. A small SDL
+  self-test program must trip it first. The sim-e2e S3 job runs it. With
+  `FURBLE_SIM_ENV_GUARD_OLD_BIN` it also expects the pre-fix binary to trip
+  each named target.
+- Never grow the process environment while SDL is live. glibc's getenv walks
+  `environ` without a lock, the SDL main loop calls it thousands of times a
+  second, and a setenv that adds a variable frees the array under that walk.
+  This is the issue #283 restart SIGSEGV class. Replacing an existing variable
+  is safe. Production Timezone's boot `setenv("TZ")` runs after `SDL_Init` but
+  before `panelReady` releases the main loop, so it is ordered before any loop
+  getenv and was not a live race. `main()` creates `TZ` first so every `TZ`
+  write is a replace, and the guard enforces the stricter rule: no growth after
+  `SDL_Init`.
 - `sim/CMakeLists.txt`: the CMake path for machines with CMake installed.
   Forced C++ platform shim includes apply only to C++ sources. Generated C
   icon sources must compile as C without the C++ FreeRTOS header.
@@ -834,6 +845,11 @@ shortens that host retry cadence for a bounded scenario.
   not charged; no TSan scenario asserts a heap figure. The suppressions match
   function names, so a run without `llvm-symbolizer` reports the suppressed
   M5GFX `Panel_sdl` race as unsymbolized frames.
+- On macOS, sdl2-compat also dlopens SDL3 by leaf name through its own rpath.
+  The ASan dlopen interceptor hides that rpath, so besides the direct SDL3 link
+  `sim/build.sh` adds the SDL3 directory as an rpath to sanitized Darwin
+  builds. Check `otool -l` for that `LC_RPATH` before running a
+  sanitized binary.
 - The fuzz fit rule follows the layouts the scenarios certify. Remote shutter
   stays fit-required on physical-button builds and on the 320x240 Core touch
   model, and narrow Stick touch may scroll. Physical-button Home and Connected

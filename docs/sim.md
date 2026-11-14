@@ -341,6 +341,11 @@ with that instruction if neither is present.
 For an instrumented UI-fuzzer build, set `FURBLE_SIM_SANITIZE` to a clang
 sanitizer list and use a separate `FURBLE_SIM_BUILD_DIR`, for example
 `FURBLE_SIM_SANITIZE=address,undefined`.
+On macOS a sanitized build links an rpath to the SDL3 library directory.
+Homebrew SDL2 is sdl2-compat, which dlopens SDL3 through its own rpath, and the
+ASan dlopen interceptor hides that rpath. Without the link rpath every
+sanitized process shows a modal "Failed loading SDL3 library" dialog and
+aborts.
 
 `FURBLE_SIM_COVERAGE=1` builds with clang source-based coverage instead. Only
 firmware translation units are instrumented, so LVGL and M5GFX stay at full
@@ -1380,9 +1385,17 @@ whatever the production stack does after a fault is what the scenario observes.
   keeps the `FURBLE_SIM_PREFS` store it inherited rather than wiping a fresh
   one, so the reboot reads the flash the previous boot wrote. It lives exactly
   one boot; a value outside the script's step range fails the run with status 2.
-  `sim/scripts/run-env-order.sh` can guard each mutation with a Linux
-  `LD_PRELOAD` interposer. That check establishes environment ordering only; it
-  does not establish that an environment race caused a SIGSEGV.
+  `sim/scripts/run-env-order.sh` guards these mutations with a Linux
+  `LD_PRELOAD` interposer, and its `growth` target rejects any variable added
+  by setenv or putenv, any unsetenv, and clearenv, from any caller while SDL
+  is live. The sim-e2e S3 job runs it. glibc's getenv walks `environ` without
+  a lock and the SDL main loop calls it thousands of times a second, so a
+  growing setenv on another thread frees the array under that walk (issue
+  #283). Production
+  Timezone's boot `setenv("TZ")` runs after `SDL_Init` but before `panelReady`
+  releases the main loop, so it is ordered before any loop getenv. `main()`
+  creates `TZ` first so every `TZ` write is a replace, and the guard can
+  enforce the stricter rule: no growth after `SDL_Init`.
 - `Platform::restart()` uses the same post-teardown re-exec seam. Interactive
   restarts have no script continuation; scripted UI restarts defer arming until
   the driver records the next step. Fuzz owners must call

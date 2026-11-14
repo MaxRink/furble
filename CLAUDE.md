@@ -236,7 +236,11 @@ CLAUDE.md whose directory it touches.
   The `sim-sanitizers` job in `sim-e2e.yml` runs the certified e2e suite under
   ASan, UBSan and LeakSanitizer on Linux. Only the third-party sites in
   `sim/ubsan.supp` and `sim/lsan.supp` are suppressed, each with its reason;
-  never add a furble frame there.
+  never add a furble frame there. On macOS a sanitized sim needs the SDL3
+  rpath `sim/build.sh` adds; check `otool -l` before running one, because a
+  missing rpath raises a desktop dialog per process. The sim-e2e S3 job runs
+  `sim/scripts/run-env-order.sh`, which fails any setenv that adds a variable
+  while SDL is live (issue #283).
 - The USB console (debug builds, `FURBLE_CONSOLE`) is the automation surface:
   settings get/set, gps subcommands, shutter, status.
 - Hardware verification on the attached M5StickS3 happens before PRs.
