@@ -15,7 +15,8 @@
  *
  * VRTC (RTCLDO1) has no enable bit anywhere in the section 6.13 register map.
  * It stays on while either VBAT or the VBACKUP cell supplies the chip, and it
- * survives soft power off (section 6.5.4.5). A GNSS backup pin fed from VRTC
+ * survives soft power off (section 6.5.4: in the off state every output except
+ * RTCLDO is turned off). A GNSS backup pin fed from VRTC
  * therefore keeps its almanac when the GNSS main rail is switched off, and
  * powerOff() does not cut it. Rail deliberately has no VRTC member.
  */
@@ -68,9 +69,10 @@ class AXP2101 {
 
   /**
    * @param protectedRails railBit() mask of outputs that setRail() must never
-   * switch off, for example the rail feeding the SoC.
+   * switch off, for example the rail feeding the SoC. There is no default:
+   * every board states its mask, even when it is 0.
    */
-  explicit AXP2101(RegisterBus &bus, uint16_t protectedRails = 0)
+  explicit AXP2101(RegisterBus &bus, uint16_t protectedRails)
       : m_Bus(bus), m_ProtectedRails(protectedRails) {}
 
   /**
