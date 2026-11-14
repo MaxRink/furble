@@ -99,8 +99,14 @@ void CompanionGatt::boostAdvertising(void) {
     if (!m_Enabled) {
       return;
     }
-    m_ReconnectCadence.boost(nowMs());
-    task = m_Task;
+    const uint64_t now = nowMs();
+    m_ReconnectCadence.boost(now);
+    // Every press boosts, so most calls only extend a window that is already
+    // open. Wake the task only when running reconnect advertising must move
+    // to the fast interval; otherwise its next pass handles any change.
+    if ((m_ReconnectInterval != 0) && m_ReconnectCadence.needsRestart(m_ReconnectInterval, now)) {
+      task = m_Task;
+    }
   }
   if (task != nullptr) {
     xTaskNotifyGive(task);
@@ -572,7 +578,7 @@ void CompanionGatt::startReconnectAdvertising(void) {
   m_Advertising->setConnectableMode(BLE_GAP_CONN_MODE_UND);
   m_Advertising->setDiscoverableMode(BLE_GAP_DISC_MODE_GEN);
   // Advertise at the pairing window's 100 ms cadence for a fast window after
-  // enable, boot, disconnect or a button wake, then fall back to 1022.5 ms.
+  // enable, boot, disconnect or any button press, then fall back to 1022.5 ms.
   // The old fixed 1 s interval was invisible to some macOS scan windows, so a
   // host that is actively reconnecting gets the fast cadence; the service task
   // restarts advertising when the window opens or closes.

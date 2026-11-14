@@ -187,6 +187,23 @@ void run(void) {
         "re-enable did not start fast reconnect advertising");
   std::cout << "companion.restart enabled=1 bond=loaded task=retained gatt=retained woken=1\n";
 
+  // The fast window closes after 60 s, and any later press reopens it. The UI
+  // boosts on every physical press edge, whatever the display state.
+  furble_host_advance_time(static_cast<int64_t>(Furble::CompanionAdvertising::FAST_WINDOW_MS + 1000)
+                           * 1000);
+  check(waitFor([advertising]() {
+          return advertising->isAdvertising()
+                 && (advertising->interval() == Furble::CompanionAdvertising::SLOW_INTERVAL);
+        }),
+        "the fast window did not fall back to slow reconnect advertising");
+  companion.boostAdvertising();
+  check(waitFor([advertising]() {
+          return advertising->isAdvertising()
+                 && (advertising->interval() == Furble::CompanionAdvertising::FAST_INTERVAL);
+        }),
+        "a press did not reopen fast reconnect advertising");
+  std::cout << "companion.cadence window_closed=slow press=fast\n";
+
   const std::string oldAddress = NimBLEDevice::getAddress().toString();
   check(companion.reidentify(), "reidentify failed while the companion was enabled");
   check(!companion.hasBond(), "reidentify kept the old companion bond");

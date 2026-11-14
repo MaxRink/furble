@@ -1,0 +1,47 @@
+# Every physical press reopens the companion's 60 s fast advertising window,
+# whatever the display state or control mode (plan 111, R1). Before this the
+# boost ran only on a press that woke a sleeping panel, so a press with the
+# panel on or in blind-remote mode never reopened the window. The production
+# cadence and the no-restart rule are host tested; the simulator counts the
+# boosts the UI requests.
+seed fauxny true
+seed autoconnect true
+seed no_touch true
+seed display_off 2
+seed inactivity 1
+wait 300
+assert-eventually-virtual 8000 control.state active
+action blind
+wait 300
+assert ui.page shutter
+assert ui.display on
+assert companion.boosts 0
+
+# The panel is on: a tap is one boost.
+btn a
+wait 200
+assert ui.display on
+assert companion.boosts 1
+
+# A held button reads pressed on every sample. Only the press edge counts.
+btn-hold b 500
+wait 200
+assert companion.boosts 2
+
+# Blind-remote input on a dark panel is not swallowed and goes to the
+# shutter. It boosts too.
+advance 61000
+assert ui.display off
+assert ui.blind_remote yes
+btn a
+wait 400
+assert ui.display off
+assert companion.boosts 3
+
+# The power button wakes the dark panel. The waking press is swallowed but
+# still boosts.
+btn pwr
+wait 400
+assert ui.display on
+assert companion.boosts 4
+exit

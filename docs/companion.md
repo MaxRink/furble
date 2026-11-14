@@ -10,11 +10,12 @@ macOS rotates its LE address; the connect handler still accepts only the stored
 identity outside the pairing window.
 
 Reconnect advertising runs at 100 ms for 60 seconds after the companion is
-enabled, after boot, after any disconnect, and after a button press wakes the
-display. It then falls back to 1022.5 ms, Apple's recommended step, until the
-host reconnects. If the app does not find the device, press a button to wake
-the display and reopen the fast window. The slow interval is untested on iOS
-and macOS hardware.
+enabled, after boot, after any disconnect, and after any button press, whether
+the display is on, dimmed or off and in every control mode. It then falls back
+to 1022.5 ms, Apple's recommended step, until the host reconnects. If the app
+does not find the device, press any button to reopen the fast window. A press
+inside the window only extends it; advertising restarts only when its interval
+changes. The slow interval is untested on iOS and macOS hardware.
 
 The first enable after boot creates the 3 KiB companion task and the GATT
 service, and both stay for the rest of the session. That first enable needs

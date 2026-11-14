@@ -1657,6 +1657,16 @@ bool UI::handleDisplayInput(lv_indev_t *drv,
                             lv_indev_data_t *data,
                             bool pressed,
                             bool releaseExpected) {
+  // Any physical press may mean the user is reaching for the companion app,
+  // whatever the display state or control mode. A held input reports pressed
+  // on every read, so only the press edge reopens the fast advertising window.
+  const uint8_t bit = inputBit(drv);
+  const bool pressEdge = pressed && ((m_PressedInputs & bit) == 0);
+  m_PressedInputs = pressed ? (m_PressedInputs | bit) : (m_PressedInputs & ~bit);
+  if (pressEdge) {
+    Companion::getInstance().boostAdvertising();
+  }
+
   if (m_SwallowInput) {
     // Swallow every source until all of them report released. On touch
     // boards one tap drives the touch indev and a synthesized button indev,
@@ -1680,8 +1690,6 @@ bool UI::handleDisplayInput(lv_indev_t *drv,
   wakeDisplay();
   // the swallowed press never reaches LVGL, so record the activity here
   lv_display_trigger_activity(m_Display);
-  // A user who wakes the panel may be reaching for the companion app.
-  Companion::getInstance().boostAdvertising();
   data->state = LV_INDEV_STATE_RELEASED;
   if (releaseExpected) {
     m_SwallowInput = true;
@@ -1697,6 +1705,9 @@ bool UI::handleLeftLongPress(lv_indev_t *drv, bool pressed) {
 
   if (!pressed) {
     const bool handled = m_LeftLongPressHandled;
+    // A handled long press skips handleDisplayInput() on release, so clear
+    // the press-edge bit here or the next press would not count as an edge.
+    m_PressedInputs &= static_cast<uint8_t>(~inputBit(drv));
     m_LeftPressed = false;
     m_LeftLongPressHandled = false;
     m_LeftPressTick = 0;

@@ -26,7 +26,7 @@ int main() {
   Cadence cadence;
   check(cadence.interval(0) == SLOW_INTERVAL, "an unboosted cadence advertises slowly");
 
-  // Enable, boot, disconnect and button wake all open the window.
+  // Enable, boot, disconnect and any button press all open the window.
   cadence.boost(1000);
   check(cadence.interval(1000) == FAST_INTERVAL, "a boost advertises fast at once");
   check(cadence.interval(60999) == FAST_INTERVAL, "the window holds just before 60 s");

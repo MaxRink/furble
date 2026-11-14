@@ -71,9 +71,9 @@ not quantified.
    the model cannot attribute it.
 4. Companion advertising is small at any instant and unbounded in time. The
    pairing window advertises at 100 ms for 2 minutes. The reconnect
-   advertisement runs at 100 ms for 60 s after enable, boot, a disconnect or a
-   button wake, then at 1022.5 ms while the companion is enabled, bonded, and
-   not connected.
+   advertisement runs at 100 ms for 60 s after enable, boot, a disconnect or
+   any button press, then at 1022.5 ms while the companion is enabled, bonded,
+   and not connected.
 5. The power model cannot see any of this today. The only function that charged
    a connected BLE floor, `profilerSetRadioConnected`, has had no caller since
    the production connection stack replaced the simulator camera
@@ -133,7 +133,7 @@ interval.
 | Targeted reconnect | Full forced | 100 percent | Up to 60 s per attempt |
 | Connection initiation | 10 / 10 ms | 100 percent | Up to the connect timeout, 30 s default or 5 s with infinite reconnect |
 | Companion pairing | 100 ms advertising interval, 3 channels | about 1 to 1.5 percent | Up to 120 s |
-| Companion reconnect | 100 ms for 60 s after enable, boot, disconnect or button wake, then 1022.5 ms, 3 channels | about 1 to 1.5 percent fast, then about 0.1 to 0.15 percent | Until connected, disabled, or a camera scan starts |
+| Companion reconnect | 100 ms for 60 s after enable, boot, disconnect or any button press, then 1022.5 ms, 3 channels | about 1 to 1.5 percent fast, then about 0.1 to 0.15 percent | Until connected, disabled, or a camera scan starts |
 | Connected fast | 30 to 50 ms interval | event rate 20 to 33 per second | Whole session unless the saver runs |
 | Connected idle | 250 to 300 ms interval | event rate 3.3 to 4 per second | After 10 s quiet with `CONN_SAVER` on |
 
@@ -903,8 +903,8 @@ Re-arm on a user action or a companion app attempt.
 **Current behavior.** `startReconnectAdvertising` advertises unfiltered and
 calls `m_Advertising->start(0)`, which is no timeout. Commit `c0024761` made it
 100 ms for macOS visibility. Plan 111 (2026-11-13) bounds that cost: the
-interval is 100 ms for 60 s after enable, boot, any disconnect or a button wake,
-then 1022.5 ms (`include/FurbleCompanionAdvertising.h`). It runs while the
+interval is 100 ms for 60 s after enable, boot, any disconnect or any button
+press, then 1022.5 ms (`include/FurbleCompanionAdvertising.h`). It runs while the
 companion is enabled, bonded, not connected, and the pairing window is closed,
 and is stopped only when a companion connects, the companion is disabled, or a
 camera scan starts. The slow step is untested on iOS and macOS hardware.

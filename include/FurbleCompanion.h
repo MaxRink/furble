@@ -76,8 +76,9 @@ class CompanionGatt: public NimBLEServerCallbacks,
   bool isPairingWindow(void) const;
   bool isAdvertising(void) const;
   /**
-   * Open the fast reconnect advertising window. The UI calls this on a
-   * button wake, when the user is likely to reach for the host app.
+   * Open or extend the fast reconnect advertising window. The UI calls this on
+   * every physical press, when the user may be reaching for the host app.
+   * Advertising restarts only when its interval changes.
    */
   void boostAdvertising(void);
 

@@ -25,8 +25,9 @@ class CompanionGatt {
   uint32_t getPendingPairingPin(void) const { return Sim::rigPendingPairingPin(); }
   void confirmPairing(bool accept) { Sim::rigConfirmPairing(accept); }
   void reloadSetting(bool pairingWindow) { Sim::rigReloadSetting(pairingWindow); }
-  // The rig has no advertising cadence. Host tests cover the production one.
-  void boostAdvertising(void) {}
+  // The rig has no advertising cadence. Host tests cover the production one;
+  // the simulator counts boosts for the companion.boosts query.
+  void boostAdvertising(void) { Sim::noteCompanionBoost(); }
 
  private:
   CompanionGatt() {}

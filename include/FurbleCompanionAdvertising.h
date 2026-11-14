@@ -14,7 +14,7 @@ namespace CompanionAdvertising {
 constexpr uint16_t FAST_INTERVAL = 160;
 /** Slow reconnect interval, 1022.5 ms, Apple's recommended fallback step. */
 constexpr uint16_t SLOW_INTERVAL = 1636;
-/** How long the fast cadence lasts after enable, boot, disconnect or wake. */
+/** How long the fast cadence lasts after enable, boot, disconnect or a press. */
 constexpr uint64_t FAST_WINDOW_MS = 60000;
 
 /**
