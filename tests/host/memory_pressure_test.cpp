@@ -54,7 +54,7 @@ int main() {
   check(feed(governor, EXIT_TICKS * 2, redExit - 1, 30000) == RED,
         "red holds until MQTT fits again");
   check(feed(governor, EXIT_TICKS, redExit, 30000) == AMBER, "red steps up to amber");
-  // A client whose queue and incoming copy are still missing and will be
+  // A client whose queue and event copies are still missing and will be
   // internal (no PSRAM, or PSRAM too fragmented) reports that storage. RED
   // then holds at the plain exit and clears only where that first mqtts://
   // start passes its own gate, so a refused start cannot spend the retries.

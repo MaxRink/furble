@@ -67,15 +67,15 @@ each term cited in the JSON. It is an upper bound: the closed WiFi driver,
 NimBLE host state, lwIP and the LVGL object tree are not attributable from
 code, and on the StickS3 they account for about 141 KiB against the measured
 console figure. Those `profile-*` budget floors equal the derived pair.
-`stickc-plus2` and `headless-s3` have no release env to derive from; they are
-listed in `UNDERIVED_PROFILES` in `sim/scripts/run-memory-profile.py` and keep
-the simulator default pool. Any other profile without a derived pool fails the
-run.
+`headless-s3` derives from the `esp32-s3-headless` env. `stickc-plus2` has no
+firmware env to derive from; it is listed in `UNDERIVED_PROFILES` in
+`sim/scripts/run-memory-profile.py` and keeps the simulator default pool. Any
+other profile without a derived pool fails the run.
 
 Regenerate after a change that moves static RAM or a boot allocation:
 
 ```sh
-for env in m5stick-c m5stick-c-plus m5stick-s3 m5stack-core m5stack-core2 waveshare-s3-eth; do
+for env in m5stick-c m5stick-c-plus m5stick-s3 m5stack-core m5stack-core2 waveshare-s3-eth esp32-s3-headless; do
   FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e "$env"
 done
 python3 tools/derive_sim_heap.py

@@ -423,19 +423,18 @@ TickType_t MQTT::taskWaitTicks(void) const {
 MQTT::start_extra_t MQTT::startExtra(void) const {
   const size_t psramLargest = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
   const bool queueInPsram = psramLargest >= MQTTMemory::EVENT_QUEUE_BLOCK_BYTES;
-  // The queue and the incoming copy survive stopClient(), so reserve only the
+  // The queue and the event copies survive stopClient(), so reserve only the
   // blocks still missing; a restart must not count them twice. Without PSRAM
   // they are internal allocations and the largest block must hold the bigger
   // of the two, not their sum. Otherwise the gate admits a client that cannot
   // allocate them and burns the retry budget.
   const size_t queueMissing = (m_EventQueue == nullptr) ? MQTTMemory::EVENT_QUEUE_BLOCK_BYTES : 0;
-  const size_t incomingMissing =
-      (m_Incoming == nullptr) ? MQTTMemory::INCOMING_EVENT_BLOCK_BYTES : 0;
+  const size_t copiesMissing = (m_Incoming == nullptr) ? MQTTMemory::EVENT_COPIES_BLOCK_BYTES : 0;
   if (queueInPsram) {
     return {0, SIZE_MAX};
   }
-  return {queueMissing + incomingMissing,
-          queueMissing > incomingMissing ? queueMissing : incomingMissing};
+  return {queueMissing + copiesMissing,
+          queueMissing > copiesMissing ? queueMissing : copiesMissing};
 }
 
 void MQTT::taskStep(void) {
@@ -466,14 +465,15 @@ void MQTT::taskStep(void) {
   if (!m_Connected.load() && !m_OfflineStopPending) {
     releaseOwnedActuators();
   }
-  if (m_EventQueue != nullptr) {
-    queued_event_t event;
+  // Receive into the preallocated copy: a queued_event_t local would put a
+  // 2,400-byte frame on the owner stack. Only this loop writes m_Received.
+  if ((m_EventQueue != nullptr) && (m_Received != nullptr)) {
     for (size_t processed = 0; processed < EVENT_QUEUE_LENGTH; processed++) {
       processDueTimers();
-      if (xQueueReceive(m_EventQueue, &event, 0) != pdTRUE) {
+      if (xQueueReceive(m_EventQueue, m_Received, 0) != pdTRUE) {
         break;
       }
-      processEvent(event);
+      processEvent(*m_Received);
     }
   }
   processDueTimers();
@@ -592,15 +592,15 @@ void MQTT::processLifecycleEvents(void) {
   if ((client == nullptr) || (event_id == 0)) {
     return;
   }
-  queued_event_t event;
-  event.client = client;
-  event.event_id = event_id;
-  handleEvent(event);
+  handleLifecycleEvent(client, event_id);
 }
 
 void MQTT::clearQueuedEvents(void) {
-  queued_event_t event;
-  while ((m_EventQueue != nullptr) && (xQueueReceive(m_EventQueue, &event, 0) == pdTRUE)) {
+  // The owner is the only receiver and every sender posts without blocking, so
+  // a reset drops the queued copies exactly like draining them, without a
+  // receive buffer.
+  if (m_EventQueue != nullptr) {
+    xQueueReset(m_EventQueue);
   }
   const std::lock_guard<std::mutex> lock(m_LifecycleMutex);
   m_LifecyclePending = false;
@@ -714,8 +714,7 @@ bool MQTT::startClient(void) {
   const bool secure = (m_URI.rfind("mqtts://", 0) == 0);
   const size_t freeBytes = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
   const size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-  const size_t incomingMissing =
-      (m_Incoming == nullptr) ? MQTTMemory::INCOMING_EVENT_BLOCK_BYTES : 0;
+  const size_t copiesMissing = (m_Incoming == nullptr) ? MQTTMemory::EVENT_COPIES_BLOCK_BYTES : 0;
   const start_extra_t extra = startExtra();
   const auto gate =
       MQTTMemory::startGate(freeBytes, largest, secure, extra.bytes, extra.largestBlock);
@@ -769,8 +768,8 @@ bool MQTT::startClient(void) {
     }
 #endif
     if (m_EventQueue == nullptr) {
-      // Reserve the incoming copy too when it is still missing.
-      if (!internalAdmits(MQTTMemory::EVENT_QUEUE_BLOCK_BYTES + incomingMissing,
+      // Reserve the event copies too when they are still missing.
+      if (!internalAdmits(MQTTMemory::EVENT_QUEUE_BLOCK_BYTES + copiesMissing,
                           MQTTMemory::EVENT_QUEUE_BLOCK_BYTES)) {
         return false;
       }
@@ -782,24 +781,27 @@ bool MQTT::startClient(void) {
     }
   }
 
-  // The gate reserves INCOMING_EVENT_BYTES for this copy on the 32-bit target.
-  static_assert(
-      (sizeof(void *) != 4) || (sizeof(queued_event_t) == MQTTMemory::INCOMING_EVENT_BYTES),
-      "INCOMING_EVENT_BYTES must match queued_event_t on the target");
+  // The gate reserves EVENT_COPY_BYTES per copy on the 32-bit target.
+  static_assert((sizeof(void *) != 4) || (sizeof(queued_event_t) == MQTTMemory::EVENT_COPY_BYTES),
+                "EVENT_COPY_BYTES must match queued_event_t on the target");
   if (m_Incoming == nullptr) {
-    void *incoming = nullptr;
-    if (inPsram(MQTTMemory::INCOMING_EVENT_BLOCK_BYTES)) {
-      incoming = heap_caps_malloc(sizeof(queued_event_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    } else if (internalAdmits(MQTTMemory::INCOMING_EVENT_BLOCK_BYTES,
-                              MQTTMemory::INCOMING_EVENT_BLOCK_BYTES)) {
-      incoming = heap_caps_malloc(sizeof(queued_event_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    constexpr size_t copiesBytes = MQTTMemory::EVENT_COPIES * sizeof(queued_event_t);
+    void *copies = nullptr;
+    if (inPsram(MQTTMemory::EVENT_COPIES_BLOCK_BYTES)) {
+      copies = heap_caps_malloc(copiesBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    } else if (internalAdmits(MQTTMemory::EVENT_COPIES_BLOCK_BYTES,
+                              MQTTMemory::EVENT_COPIES_BLOCK_BYTES)) {
+      copies = heap_caps_malloc(copiesBytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     }
-    if (incoming == nullptr) {
+    if (copies == nullptr) {
       return false;
     }
     // Placement new into the heap_caps block above, which is never freed.
+    auto *events = static_cast<queued_event_t *>(copies);
     // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
-    m_Incoming = new (incoming) queued_event_t();
+    m_Received = new (events + 1) queued_event_t();
+    // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
+    m_Incoming = new (events) queued_event_t();
   }
 
   esp_mqtt_client_config_t config = {};
@@ -996,17 +998,21 @@ void MQTT::eventHandler(void *handler_arg,
   mqtt->enqueueEvent(event);
 }
 
-void MQTT::handleEvent(const queued_event_t &event) {
+bool MQTT::acceptsEvent(esp_mqtt_client_handle_t client, int32_t event_id) const {
   // Compare the copied identity before using any event-owned client pointer.
   // A stopped client may still deliver a callback after stop/destroy returns.
-  if ((event.client == nullptr) || (event.client != m_Client)) {
-    return;
+  if ((client == nullptr) || (client != m_Client)) {
+    return false;
   }
-  if (m_OfflineStopPending && (event.event_id != MQTT_EVENT_PUBLISHED)) {
+  return !m_OfflineStopPending || (event_id == MQTT_EVENT_PUBLISHED);
+}
+
+void MQTT::handleLifecycleEvent(esp_mqtt_client_handle_t client, int32_t event_id) {
+  if (!acceptsEvent(client, event_id)) {
     return;
   }
 
-  switch (event.event_id) {
+  switch (event_id) {
     case MQTT_EVENT_CONNECTED:
       m_Connected.store(true);
       m_ConnectFailures = 0;
@@ -1017,9 +1023,9 @@ void MQTT::handleEvent(const queued_event_t &event) {
       if (m_HomeAssistantCached.load()) {
         publishDiscovery();
       }
-      esp_mqtt_client_subscribe(event.client, (m_RootTopic + "/cmd/#").c_str(), 1);
+      esp_mqtt_client_subscribe(client, (m_RootTopic + "/cmd/#").c_str(), 1);
       if (m_HomeAssistantCached.load()) {
-        esp_mqtt_client_subscribe(event.client, HOME_ASSISTANT_STATUS, 0);
+        esp_mqtt_client_subscribe(client, HOME_ASSISTANT_STATUS, 0);
       }
       break;
 
@@ -1047,6 +1053,19 @@ void MQTT::handleEvent(const queued_event_t &event) {
       break;
     }
 
+    default:
+      break;
+  }
+}
+
+void MQTT::handleEvent(const queued_event_t &event) {
+  if (!acceptsEvent(event.client, event.event_id)) {
+    return;
+  }
+
+  // Connected and disconnected never reach the queue: eventHandler() routes
+  // them through the lifecycle slot to handleLifecycleEvent().
+  switch (event.event_id) {
     case MQTT_EVENT_DATA:
       handleData(event);
       break;

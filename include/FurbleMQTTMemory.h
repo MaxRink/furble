@@ -11,16 +11,18 @@ namespace MQTTMemory {
  * Internal-RAM budget for the MQTT service.
  *
  * The owner task handles the connected event, Home Assistant discovery and the
- * status JSON. The StickS3 measured a 3,084-byte high-water mark, but 4 KiB and
- * 6 KiB both overflowed during start and the first connected event. Keep the
- * 10 KiB stack the hardware build uses.
+ * status JSON. `perf tasks` left 3,084 bytes free on the StickS3, so the owner
+ * used about 7,156 bytes, and 4 KiB and 6 KiB both overflowed during start and
+ * the first connected event. Keep the 10 KiB stack the hardware build uses.
  */
 inline constexpr size_t OWNER_STACK_BYTES = 10240;
 
 /**
- * esp-mqtt client task stacks. Plain MQTT measured a 704-byte high-water mark
- * on the StickS3, so the plain worker uses 3 KiB. TLS keeps the 6 KiB default
- * for the handshake.
+ * esp-mqtt client task stacks. `perf tasks` left 704 of 4,096 bytes free on
+ * the StickS3, about 3,392 used, while the event handler still held the event
+ * copy on this stack. With the copy in `m_Incoming` the stack walk resolves
+ * 1,936 bytes, so the plain worker uses 3 KiB. TLS keeps the 6 KiB default for
+ * the handshake.
  */
 inline constexpr size_t PLAIN_WORKER_STACK_BYTES = 3072;
 inline constexpr size_t TLS_WORKER_STACK_BYTES = 6144;
@@ -48,13 +50,18 @@ inline constexpr size_t BUFFER_SIZE = 1536;
 inline constexpr size_t EVENT_QUEUE_BYTES = 9392;
 
 /**
- * The event the esp-mqtt client task builds before queueing it.
+ * One event copy: a 2,348-byte command copy on the 32-bit target.
  *
- * One 2,348-byte command copy. The event handler runs on the client task,
- * whose plain stack is 3 KiB, so the copy must not live on that stack. It is
- * allocated with the queue, in the same memory, and never freed.
+ * The owner preallocates two copies in one block, next to the queue and in the
+ * same memory, and never frees them. The esp-mqtt client task builds each event
+ * in the first (`m_Incoming`) because its plain stack is 3 KiB. The owner
+ * receives each queued event into the second (`m_Received`). A copy on the
+ * owner stack put 2,384 to 2,400-byte frames on `MQTT::taskStep` and
+ * `MQTT::processLifecycleEvents`, and the two nested on the connected path.
  */
-inline constexpr size_t INCOMING_EVENT_BYTES = 2348;
+inline constexpr size_t EVENT_COPY_BYTES = 2348;
+inline constexpr size_t EVENT_COPIES = 2;
+inline constexpr size_t EVENT_COPIES_BYTES = EVENT_COPIES * EVENT_COPY_BYTES;
 
 /**
  * What one heap block costs beyond its payload. A queue also carries its
@@ -66,10 +73,10 @@ inline constexpr size_t INCOMING_EVENT_BYTES = 2348;
  */
 inline constexpr size_t BLOCK_OVERHEAD_BYTES = 128;
 inline constexpr size_t EVENT_QUEUE_BLOCK_BYTES = EVENT_QUEUE_BYTES + BLOCK_OVERHEAD_BYTES;
-inline constexpr size_t INCOMING_EVENT_BLOCK_BYTES = INCOMING_EVENT_BYTES + BLOCK_OVERHEAD_BYTES;
+inline constexpr size_t EVENT_COPIES_BLOCK_BYTES = EVENT_COPIES_BYTES + BLOCK_OVERHEAD_BYTES;
 
-/** Everything the owner allocates for events: the queue and the incoming copy. */
-inline constexpr size_t EVENT_STORAGE_BYTES = EVENT_QUEUE_BLOCK_BYTES + INCOMING_EVENT_BLOCK_BYTES;
+/** Everything the owner allocates for events: the queue and the two copies. */
+inline constexpr size_t EVENT_STORAGE_BYTES = EVENT_QUEUE_BLOCK_BYTES + EVENT_COPIES_BLOCK_BYTES;
 
 /**
  * Free internal heap required before the esp-mqtt client is created.
@@ -83,7 +90,7 @@ inline constexpr size_t EVENT_STORAGE_BYTES = EVENT_QUEUE_BLOCK_BYTES + INCOMING
  * floors. Reusing the plain floor would admit a start that cannot hold the TLS
  * worker plus the same buffers and overhead. The TLS floors are the plain
  * floors plus the 3 KiB worker difference. When PSRAM is unavailable the
- * event queue and the incoming event copy are allocated internally, so the
+ * event queue and the two event copies are allocated internally, so the
  * caller adds `EVENT_STORAGE_BYTES` as `extraInternalBytes` and the floor
  * covers both.
  */

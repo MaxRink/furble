@@ -69,6 +69,23 @@ edge: { sourcename: "a" targetname: "c" label: "n.cpp:2:9" }
 edge: { sourcename: "c" targetname: "a" label: "n.cpp:4:5" }
 }
 '''
+# entry reaches generic, whose lazy-init branch init is deep, through two
+# callers. Under a_retarget the handle is never null, so the cut drops init
+# there; z_plain still pays it. a_retarget is walked first, so a memo that
+# ignored the active cut would reuse the cut depth on the z_plain path.
+X_CI = r'''graph: { title: "x.cpp"
+node: { title: "entry" label: "void entry(void*)\nx.cpp:1:1\n32 bytes (static)" }
+node: { title: "a_retarget" label: "a_retarget\nx.cpp:2:1\n16 bytes (static)" }
+node: { title: "z_plain" label: "z_plain\nx.cpp:3:1\n24 bytes (static)" }
+node: { title: "generic" label: "generic\nx.cpp:4:1\n48 bytes (static)" }
+node: { title: "init" label: "init\nx.cpp:5:1\n400 bytes (static)" }
+edge: { sourcename: "entry" targetname: "a_retarget" label: "x.cpp:1:5" }
+edge: { sourcename: "entry" targetname: "z_plain" label: "x.cpp:1:9" }
+edge: { sourcename: "a_retarget" targetname: "generic" label: "x.cpp:2:5" }
+edge: { sourcename: "z_plain" targetname: "generic" label: "x.cpp:3:5" }
+edge: { sourcename: "generic" targetname: "init" label: "x.cpp:4:5" }
+}
+'''
 # entry calls elf_mid, which only the ELF defines
 E_CI = r'''graph: { title: "e.cpp"
 node: { title: "entry" label: "void entry(void*)\ne.cpp:1:1\n32 bytes (static)" }
@@ -307,6 +324,24 @@ class StackBudgetTest(unittest.TestCase):
                  "dynamic_bounds": [dyn]}
         r = self.run_tool(65536, indirect=False, cis=r_ci, manifest_extra=other)
         self.assertEqual(r.returncode, 1, r.stdout)
+
+    def test_cut_drops_a_call_only_below_its_under_function(self):
+        cut = {"cuts": [{"under": "^a_retarget$", "caller": "^generic$", "callee": "^init$",
+                         "why": "test"}]}
+        x_ci = (("x.cpp.ci", X_CI),)
+        # z_plain keeps init: 32 + 24 + 48 + 400 + 288 overhead
+        r = self.run_tool(792, indirect=False, cis=x_ci, manifest_extra=cut)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("PASS t: 792 of 792 bytes (504 frames + 288 port overhead)", r.stdout)
+        # Below a_retarget alone the cut applies: 32 + 16 + 48 + 288 overhead
+        only = X_CI.replace('edge: { sourcename: "entry" targetname: "z_plain" label: "x.cpp:1:9" }\n',
+                            "")
+        r = self.run_tool(384, indirect=False, cis=(("x.cpp.ci", only),), manifest_extra=cut)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("PASS t: 384 of 384 bytes (96 frames + 288 port overhead)", r.stdout)
+        # Without the cut init is paid below a_retarget too
+        r = self.run_tool(784, indirect=False, cis=(("x.cpp.ci", only),))
+        self.assertIn("PASS t: 784 of 784 bytes (496 frames + 288 port overhead)", r.stdout)
 
     def test_elf_listing_counts_call8_and_longcall_frames(self):
         # 32 + elf_mid 64 + max(elf_leaf 48, elf_far 400 + its unnamed

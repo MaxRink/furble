@@ -304,7 +304,8 @@ struct mqtt_model_state_t {
   std::string queueRegion = "none";
   size_t cameraBytes = 0;
   size_t mainStackBytes = 12288;
-  size_t mainHighWater = 3476;
+  // Bytes used: perf tasks left 3,020 of 12,288 bytes free, MQTT connected.
+  size_t mainHighWater = 9268;
   std::string state = "off";
   bool overflow = false;
   size_t heapFreeAfter = 0;
@@ -711,9 +712,9 @@ void hwStart(void) {
         return;
       }
     }
-    // The main task high-water was 3,476 bytes before the MQTT path. The
-    // hardware 8 KiB stack overflowed after MQTT was enabled, so model 8,500
-    // bytes for the combined path and require the 12 KiB stack.
+    // perf tasks left 3,020 of 12,288 bytes free on main with MQTT
+    // connected, so main used about 9,268 bytes. The hardware 8 KiB stack
+    // overflowed after MQTT was enabled; require the 12 KiB stack.
     if (mqtt.mainStackBytes < mqtt.mainHighWater) {
       mqtt.state = "main_overflow";
       mqtt.overflow = true;
@@ -779,18 +780,19 @@ void hwStart(void) {
           mqtt.queueRegion = "internal";
           mqtt.queueBytes = Furble::MQTTMemory::EVENT_QUEUE_BYTES;
         }
-        // The esp-mqtt client task fills this copy instead of building the
-        // event on its 3 KiB stack. Production allocates it with the queue,
+        // The esp-mqtt client task fills the first event copy instead of
+        // building the event on its 3 KiB stack, and the owner receives into
+        // the second. Production allocates both in one block with the queue,
         // in PSRAM when the block fits there.
-        const bool incomingPsram =
+        const bool copiesPsram =
             heapPsramPresent()
-            && heapPsramLargest() >= Furble::MQTTMemory::INCOMING_EVENT_BLOCK_BYTES;
-        if (heapAllocTagged(Furble::MQTTMemory::INCOMING_EVENT_BYTES, "mqtt_incoming",
-                            incomingPsram, true)
+            && heapPsramLargest() >= Furble::MQTTMemory::EVENT_COPIES_BLOCK_BYTES;
+        if (heapAllocTagged(Furble::MQTTMemory::EVENT_COPIES_BYTES, "mqtt_event_copies",
+                            copiesPsram, true)
             == 0) {
           mqtt.state = "alloc_failed";
           ESP_LOGE("heap", "Mem alloc fail. size 0x%04x caps 0x00000804",
-                   static_cast<unsigned>(Furble::MQTTMemory::INCOMING_EVENT_BYTES));
+                   static_cast<unsigned>(Furble::MQTTMemory::EVENT_COPIES_BYTES));
           mqtt.heapFreeAfter = heapFree();
           return;
         }

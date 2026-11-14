@@ -553,9 +553,10 @@ The MQTT stack model is opt-in with `mqtt_owner_stack` and `mqtt_worker_stack`
 byte counts, plus `mqtt_tls`, `mqtt_ha` and `mqtt_buffer`. The model fails
 closed when the owner stack is below 10,240 bytes or a buffer is above 2,048
 bytes. `main_stack` and `main_high_water` set the modeled main stack and the
-combined MQTT-path high-water; the default is 12,288 / 3,476, and the pre-fix
-regression seeds 8,192 / 8,500 to report `main_overflow`. `mqtt_expect_overflow`
-set to `true` is the deliberate historical-overflow override used by the 4 KiB
+bytes it uses; the default is 12,288 / 9,268 (`perf tasks` left 3,020 of
+12,288 bytes free with MQTT connected), and the pre-fix regression seeds
+8,192 / 9,268 to report `main_overflow`. `mqtt_expect_overflow` set to
+`true` is the deliberate historical-overflow override used by the 4 KiB
 and 6 KiB regression scenarios. `companion_enabled` seeds the companion state
 as enabled at boot, with its task and GATT database already in the seeded
 heap. `action companion-enable` on a companion that was off at boot runs the

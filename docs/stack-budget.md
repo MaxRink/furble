@@ -135,37 +135,43 @@ keeps the library default.
 
 ## Current results
 
-Resolved worst case in bytes, port overhead included, on the 2026-11-09
-builds of `fix/stickc-slim`. Every task passes. The main row has two
+Resolved worst case in bytes, port overhead included, on the 2026-11-14
+builds of `fix/memory-reanalysis`. Every task passes. The main row has two
 stacks: 12,288 on the StickS3, 16,384 elsewhere. `mqtt_client` is checked
 against the plain 3 KiB worker; TLS uses 6 KiB.
 
 | Task | Stack | StickC | StickC Plus | Core | Core2 | StickS3 | Waveshare | Headless |
 | :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| main | 12,288/16,384 | 6,992 | 6,992 | 6,992 | 6,992 | 6,928 | 3,920 | 3,920 |
-| nimble_host | 16,384 | 1,440 | 1,440 | 1,440 | 1,440 | 1,664 | 1,856 | 1,856 |
-| sys_evt | 2,304 | 1,728 | 1,728 | 1,728 | 1,728 | 1,952 | 2,192 | 2,192 |
+| main | 12,288/16,384 | 6,992 | 6,992 | 6,992 | 6,992 | 6,816 | 3,808 | 3,808 |
+| nimble_host | 16,384 | 1,328 | 1,328 | 1,328 | 1,328 | 1,552 | 1,744 | 1,744 |
+| sys_evt | 2,304 | 1,616 | 1,616 | 1,616 | 1,616 | 1,840 | 2,080 | 2,080 |
 | esp_timer | 3,584 | 1,696 | 1,696 | 1,696 | 1,696 | 1,920 | 2,128 | 2,128 |
-| control | 8,192 | 2,112 | 2,112 | 2,112 | 2,112 | 2,896 | 3,120 | 3,728 |
-| camera_target | 4,096 | 2,048 | 2,048 | 2,048 | 2,048 | 2,560 | 2,784 | 3,392 |
-| gps | 4,096 | 2,512 | 2,512 | 2,512 | 2,512 | 2,992 | 3,232 | 3,232 |
-| wifi | 4,096 | 2,368 | 2,368 | 2,368 | 2,368 | 2,592 | 3,120 | 3,120 |
-| companion | 3,072 | 2,208 | 2,208 | 2,208 | 2,208 | 2,560 | 2,960 | 2,960 |
-| ir | 4,096 | 2,112 | 2,112 | | | 2,352 | | |
-| sd | 6,144 | | | 3,632 | 3,632 | | | |
-| mqtt | 10,240 | | | | 7,856 | 8,080 | 8,304 | 8,304 |
+| control | 8,192 | 2,000 | 2,000 | 2,000 | 2,000 | 2,784 | 3,008 | 3,616 |
+| camera_target | 4,096 | 2,016 | 2,016 | 2,016 | 2,016 | 2,528 | 2,752 | 3,360 |
+| gps | 4,096 | 2,400 | 2,400 | 2,400 | 2,400 | 2,880 | 3,120 | 3,120 |
+| wifi | 4,096 | 2,256 | 2,256 | 2,256 | 2,256 | 2,480 | 3,008 | 3,008 |
+| companion | 3,072 | 2,208 | 2,208 | 2,208 | 2,208 | 2,448 | 2,848 | 2,848 |
+| ir | 4,096 | 2,000 | 2,000 | | | 2,240 | | |
+| sd | 6,144 | | | 3,520 | 3,520 | | | |
+| mqtt | 10,240 | | | | 3,088 | 3,312 | 3,536 | 3,536 |
 | mqtt_client | 3,072 | | | | 1,712 | 1,936 | 2,208 | 2,208 |
-| webui | 3,584 | | | | 2,688 | 2,912 | 3,136 | 3,136 |
-| webui_https | 8,192 | | | | 2,352 | 2,640 | 2,864 | 2,864 |
-| webui_tls | 12,288 | | | | 6,960 | 7,664 | 7,920 | 7,920 |
+| webui | 3,584 | | | | 2,656 | 2,880 | 3,104 | 3,104 |
+| webui_https | 8,192 | | | | 2,320 | 2,640 | 2,864 | 2,864 |
+| webui_tls | 12,288 | | | | 6,960 | 7,552 | 7,808 | 7,808 |
+
+Against the 2026-11-09 table, the stdout lock cut below lowers most rows by
+112 bytes and some by 32. `mqtt` drops by about 4,800 bytes on every board
+that has it: the owner now receives each queued event into the preallocated
+`m_Received` copy instead of a `queued_event_t` on its stack, and lifecycle
+events carry only the client and event id.
 
 ESP-IDF Log V2 (plan 314 flash slimming) raises most rows by 100 to 700
 bytes against the 2026-11-07 table. A V2 record formats the prefix,
 message and newline in three calls under the stdout lock, so a log call
 reaches `esp_log`, `esp_log_va`, `esp_log_format` and the recursive lock. That
 pushed `webui` to 3,136 bytes, so the supervisor grew from 3 KiB to 3.5 KiB.
-The tightest rows are now the headless `sys_evt` and `companion`, each with
-112 bytes left.
+The tightest rows were then the headless `sys_evt` and `companion`, each with
+112 bytes left; the stdout lock cut gives them 224.
 
 Against the #414 results, `webui_https` grows by 128 bytes on every board
 that has it: the `netconn_drain` and `netconn_free` cycle carries its bounded
@@ -174,11 +180,14 @@ second pass, charged once. `mqtt` grows by 48 to 64 bytes through the nine bound
 2,560; the #414 tool reports the same 2,352 on this build, so the change came
 from master between the two. The `esp_timer` row is new.
 
-Replaying the 6 KiB MQTT owner that overflowed on hardware fails without any
-scripted constant: `--stack mqtt=6144` on the StickS3 reports 7,840 of 6,144.
-Its deepest path runs through `MQTT::taskStep` and
-`MQTT::processLifecycleEvents`, 2,400 bytes each, because both hold a
-`queued_event_t` copy with the full topic and payload buffers.
+Replaying the 6 KiB MQTT owner that overflowed on hardware used to fail
+without any scripted constant: `--stack mqtt=6144` on the StickS3 reported
+7,840 of 6,144. Its deepest path ran through `MQTT::taskStep` and
+`MQTT::processLifecycleEvents`, 2,400 bytes each, because both held a
+`queued_event_t` copy with the full topic and payload buffers. Both copies
+are gone, and the same replay now reads 3,312 of 6,144. The 10 KiB owner
+stays until a hardware `perf tasks` reading confirms a smaller one; plan 314
+records that gate.
 
 The `sys_evt` row is the ESP-IDF default event loop task
 (`CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE`, 2,304 bytes), which runs the WiFi
@@ -193,11 +202,28 @@ exists out of every other task's walk. `M5Unified::begin` is the one entry:
 without it the headless companion task reported 3,264 of 3,072 through a
 first-call `Platform::getInstance()` that cannot happen after boot.
 
+A `cuts` entry drops one call, from `caller` to `callee`, but only while a
+function matching `under` is on the walked path. A function below an `under`
+is memoized separately for each set of active cuts, so the same code reached
+another way still pays the call. The one cut today is the lazy lock creation
+in newlib's `lock_acquire_generic`. Every `esp_log` call takes the stdout lock
+through `flockfile` and `__retarget_lock_acquire_recursive`, and before the
+cut the deepest path of most tasks continued into `lock_init_generic`, the
+mutex allocation and an `abort` inside the allocator's cache alignment check.
+`__retarget_lock_acquire*` asserts its lock is not NULL and passes the address
+of that copy on, so the lazy branch cannot run below it. A `_lock_acquire` on
+a zero-initialized static lock still pays it. The cut lowers most tasks by
+112 bytes. The headless `sys_evt` and `companion` now read 2,080 of 2,304 and
+2,848 of 3,072, 224 bytes left each instead of 112, and the StickS3 `sys_evt`
+reads 1,840 instead of 1,952, 464 bytes left instead of 352. The next deepest `sys_evt` path
+is again a panic path, libstdc++'s `std::mutex::lock` throw construction, which
+the panic-path follow-up in the known limits covers.
+
 ## Known limits
 
-- The walk memoizes each function once. A function first reached inside an
-  open cycle has that cycle's back edge cut, and its value is reused on other
-  paths, so depth behind the cut can be missed. An exact re-walk is
+- The walk memoizes each function once per set of active cuts. A function
+  first reached inside an open cycle has that cycle's back edge cut, and its
+  value is reused on other paths, so depth behind the cut can be missed. An exact re-walk is
   exponential on `main`'s LVGL cycles; with `main` left on the fast walk it
   runs in seconds but raises most tasks by roughly 100 to 1,000 bytes, and on
   the StickS3 it puts `sys_evt` (2,432 of 2,304) and `webui` (3,296 of 3,072)
