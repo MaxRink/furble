@@ -9,7 +9,7 @@
  * for CONFIG_ESP_TASK_WDT_TIMEOUT_S makes ESP-IDF log the watchdog report with
  * a backtrace of every CPU. CONFIG_ESP_TASK_WDT_PANIC stays off until a
  * hardware soak shows no false trigger, so a report never reboots the device.
- * Release, simulator and host builds compile both calls to nothing.
+ * Release, simulator and host builds compile every call to nothing.
  */
 #if defined(FURBLE_TASK_WDT) && FURBLE_TASK_WDT
 #include "esp_err.h"
@@ -20,7 +20,10 @@
 namespace Furble {
 namespace TaskWatchdog {
 
-/** Subscribe the calling task. Call once, before its loop. */
+/**
+ * Subscribe the calling task. Call it before the loop, and again after each
+ * unsubscribe() wait returns. The task must not be subscribed already.
+ */
 inline void subscribe(void) {
 #if defined(FURBLE_TASK_WDT) && FURBLE_TASK_WDT
   const esp_err_t err = esp_task_wdt_add(nullptr);
