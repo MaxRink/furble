@@ -1,0 +1,4 @@
+{
+  "comment": "Per-scenario opt-outs from the compare.py activity guard. Each entry names the metrics to skip (timer_fires.<name>, invalidated_area_pixels, flushed_pixels, or * for all) and why. See tools/power-model/README.md.",
+  "scenarios": {}
+}

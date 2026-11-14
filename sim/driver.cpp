@@ -1924,6 +1924,9 @@ std::string queryValueUnscoped(const std::string &key) {
   if (key == "ble.live_clients") {
     return std::to_string(bleLiveClientCount());
   }
+  if (key == "companion.boosts") {
+    return std::to_string(companionBoostCount());
+  }
   if (key == "ble.pairing_answers") {
     return std::to_string(blePairingAnswerCount());
   }
@@ -2130,6 +2133,18 @@ std::string queryValueUnscoped(const std::string &key) {
 }
 
 }  // namespace
+
+namespace {
+std::atomic<uint32_t> companionBoosts {0};
+}  // namespace
+
+void noteCompanionBoost(void) {
+  companionBoosts.fetch_add(1, std::memory_order_relaxed);
+}
+
+uint32_t companionBoostCount(void) {
+  return companionBoosts.load(std::memory_order_relaxed);
+}
 
 uint32_t livenessViolationCount(void) {
   return livenessViolations;

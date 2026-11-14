@@ -271,6 +271,46 @@ int main() {
         || !contains(short_json, "\"model_digest\": \"sha256:")) {
       return failure(__LINE__);
     }
+
+    // The legacy timer-fired UI quantum is 5 ms. A 5 ms pass after a timer is
+    // all awake, as it always was; a 20 ms screen-off pass sleeps the rest.
+    profilerResetWindow();
+    profilerBeginUiCycle();
+    profilerTimerFire("battery_timer");
+    profilerEndUiCycle();
+    advanceClock(5);
+    profilerBeginUiCycle();
+    profilerTimerFire("battery_timer");
+    profilerEndUiCycle();
+    advanceClock(20);
+    profilerBeginUiCycle();
+    profilerEndUiCycle();
+    const auto quantum_report = reportDirectory.path() / "legacy-quantum.json";
+    profilerWriteReport(quantum_report.c_str(), "legacy-quantum");
+    const std::string quantum_json = readFile(quantum_report);
+    if (requestedExit.load() != -1 || !contains(quantum_json, "\"duration_ms\": 25")
+        || !contains(quantum_json, "\"light_sleep_in_80\": 15")) {
+      return failure(__LINE__);
+    }
+
+    // Virtual time can advance inside a UI cycle after the last integration.
+    // The next interval then starts before the cycle ended; it must still
+    // charge the quantum as awake instead of wrapping to a full sleep.
+    profilerResetWindow();
+    profilerBeginUiCycle();
+    profilerTimerFire("battery_timer");
+    advanceClock(3);
+    profilerEndUiCycle();
+    advanceClock(20);
+    profilerBeginUiCycle();
+    profilerEndUiCycle();
+    const auto inside_report = reportDirectory.path() / "legacy-quantum-inside.json";
+    profilerWriteReport(inside_report.c_str(), "legacy-quantum-inside");
+    const std::string inside_json = readFile(inside_report);
+    if (requestedExit.load() != -1 || !contains(inside_json, "\"duration_ms\": 23")
+        || !contains(inside_json, "\"light_sleep_in_80\": 18")) {
+      return failure(__LINE__);
+    }
   }
 
   // A normal model coefficient change is also an explicit reload boundary.
