@@ -101,8 +101,6 @@ struct SimDutyScope {
 #define FURBLE_SIM_TIMER_FIRE(name) ((void)0)
 #define FURBLE_SIM_GPS_RAIL(enable) ((void)0)
 #define FURBLE_GPS_RAIL_ON() M5.Power.getExtOutput()
-#define FURBLE_SIM_GPS_STATE(state) ((void)0)
-#define FURBLE_SIM_TIMER_FIRE(name) ((void)0)
 #define FURBLE_SIM_GPS_READER_HOLD() ((void)0)
 #define FURBLE_SIM_DUTY_SCOPE() ((void)0)
 #endif
