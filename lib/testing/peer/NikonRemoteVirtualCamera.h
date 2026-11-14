@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "MockNimBLE.h"
+#include "SubscriptionTable.h"
 
 namespace Furble {
 namespace Host {
@@ -300,7 +301,7 @@ class NikonRemoteVirtualCamera final: public NimBLEMockPeer {
 
   std::vector<Write> m_Writes;
   std::vector<Notification> m_Notifications;
-  std::map<std::string, Subscription> m_Subscriptions;
+  SubscriptionTable<Subscription> m_Subscriptions;
 };
 
 }  // namespace Host
