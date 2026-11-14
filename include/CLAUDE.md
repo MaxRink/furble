@@ -106,8 +106,8 @@ rebase time.
 
 | Owner | Setting keys | Wire ids |
 | --- | --- | --- |
-| Master | shipped settings | 1-22, 24-35, 37-44, 46-47, 51-55, 62, 65-69, 72-76 |
-| Master (conditional) | display, MQTT, S3 watchdog | 23 (`WATCHDOG` on `FURBLE_M5STICKS3`), 36 (`DISPLAY_MODE` without `FURBLE_NO_DISPLAY`), 56-61 (`FURBLE_MQTT`) |
+| Master | shipped settings | 1-22, 24-35, 37-44, 46-47, 51-55, 65-69, 72-76 |
+| Master (conditional) | display, MQTT, WebUI, S3 watchdog | 23 (`WATCHDOG` on `FURBLE_M5STICKS3`), 36 (`DISPLAY_MODE` without `FURBLE_NO_DISPLAY`), 56-61 (`FURBLE_MQTT`), 62 (`WEB_UI` on `FURBLE_WEBUI`) |
 | Historical claims | compatibility audit required | 45 |
 | Free | available after rechecking open heads | 48-50, 63-64, 70-71 |
 

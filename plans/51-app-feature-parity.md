@@ -1,8 +1,9 @@
 # 51 - Companion app feature parity
 
 Status: firmware settings parity v2, Android settings editors, and firmware
-camera management are implemented. The Apple Cameras tab is implemented;
-Android camera integration and the rig scenarios of phase 5 remain outstanding.
+camera management are implemented. The Apple Cameras tab is implemented and
+Android camera integration merged as #295. The rig scenarios of phase 5
+remain outstanding.
 
 Host validation note: companion_gatt_test compiles the Nikon Remote protocol
 source with warnings treated as errors. Its subscription callback does not use
@@ -109,8 +110,8 @@ The Android settings portion is implemented. The app now:
 This Android change consumes the firmware capability and settings parity
 contract described in sections 1 and 4, which the stacked settings parity v2
 firmware change below implements. The Apple client now consumes the camera
-capability and camera record contract. Android camera integration and the rig
-scenarios in section 5 are still pending.
+capability and camera record contract. Android camera integration merged as
+#295; the rig scenarios in section 5 are still pending.
 
 The companion app from [50-companion-app-design.md](50-companion-app-design.md)
 shipped with status, trigger, location push and a first settings editor. The

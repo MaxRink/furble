@@ -37,6 +37,7 @@ by code review and the FauxNY test camera.
 | Nikon | Remote controller mode works (shutter only). Smart mode appears but does not pair. |
 | Sony | Sony ZV and most modern Sony bodies. |
 | Ricoh | GR IV and GR IV HDF, firmware 1.20. Shutter capture with autofocus and GPS supported. Focus-only control is unsupported. GR III and GR IIIx expose the same BLE service UUIDs but remain uncertified because power and WLAN behaviour differ. GR II is Wi-Fi only. Numeric-comparison pairing displays the camera's six-digit code on the furble screen and is untested on hardware. |
+| Panasonic LUMIX | Implemented from S5II and BGH1 protocol traces. Shutter and GPS with clock are supported. There is no focus opcode, so focus control is disabled. Untested on hardware. |
 | FauxNY | Software test camera for development. |
 
 ## GPS units

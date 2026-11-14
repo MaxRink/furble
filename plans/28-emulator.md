@@ -1,5 +1,11 @@
 # PR28: host simulator for the furble UI
 
+Implementation state (2026-11-13): the simulator now compiles the production connection stack (`9081fc94`, plan 161). The
+`sim/FurbleControlSim.cpp`, `sim/CameraSim.cpp`, `sim/CameraListSim.cpp`, `sim/ScanSim.cpp` and
+`sim/shim/Camera.h` files named below were deleted. It builds three panels (StickS3, Core,
+StickC), and scripted failure, battery and reconnect states exist as scenarios. Phase E (the
+screenshot command and `tools/furble-screenshot.py`) remains open.
+
 ## Goal
 
 Run the furble user interface natively on macOS and Linux, in a window, driven
@@ -660,7 +666,7 @@ The host implementation is under `sim/`.
 
 ## Screenshot CI
 
-Screenshot CI is implemented on `feat/ui-screenshot-ci`, rebased onto the
+Screenshot CI merged as #67 (`f43910ac`), rebased onto the
 merged simulator on master. The deterministic script captures the modeled
 M5StickS3 135 by 240 UI pages, and `.github/workflows/ui-screenshots.yml`
 builds the simulator, runs the capture under Xvfb, uploads `ui-screenshots`,

@@ -1,10 +1,15 @@
 # 33 - WiFi hub: displayless build, provisioning, MQTT
 
+Implementation state (2026-11-13): 33a #148, 33b #53, 33c #66 and 33d #90 have merged. Camera catalog sync, the per-camera
+device layer (`via_device`) and the `cmd/location` topic shipped in `src/FurbleMQTT.cpp`.
+The Core debug size deficit below was resolved by #435; the 8 MB and 16 MB boards use larger
+slots. Open: the headless LVGL exclusion and moving the intervalometer off the UI task.
+
 Upstream issues: [#248 WIFI feature](https://github.com/gkoh/furble/issues/248)
 and [#249 Board-Only support](https://github.com/gkoh/furble/issues/249).
 
-Four separately mergeable PRs. 33a, 33b and 33c are proposed work. 33d is
-explicitly deferred and documents why.
+Four separately mergeable PRs. All four have merged: 33a as #148, 33b as #53,
+33c as #66 and 33d (authenticated WebUI) as #90.
 
 All line anchors below were read at commit `2b79ce8` on `master`.
 
@@ -340,7 +345,7 @@ sends.
 Rebase notes:
 
 - `DISPLAY_MODE` is assigned wire_id 36, continuing after `FB_VOLUME` (35)
-- `DISPLAY_MODE` is assigned wire_id 36, continuing after the feedback reservations 33 to 35 recorded in plans/23-feedback-outputs.md
+- `DISPLAY_MODE` is assigned wire_id 36, continuing after the feedback reservations 33 to 35 recorded in plans/implemented/23-feedback-outputs.md
   from PR 30. The table row keeps the `FURBLE_NO_DISPLAY` guard. The
   `feat/21-dead-reckoning` branch provisionally used 36 for `GPS_EXTRAP`;
   this PR is ahead in the queue, so `DISPLAY_MODE` keeps 36 and
@@ -358,7 +363,7 @@ Rebase notes:
   while calling the non-static `setDisplayMode()`, which fails to compile in
   console (debug) builds. Its only caller is `UI::task()`.
 
-Implemented in `feat/33-wifi-hub`:
+Implemented and merged as #148 (`a6c8e2ad`):
 
 - Added the GUI-only `DISPLAY_MODE` console setting, defaulting to `GUI`.
   `CONSOLE` sleeps the panel and skips LVGL handling, while `GUI` wakes it
@@ -488,7 +493,7 @@ What remains for PR-B, PR-C, PR-D to rebase onto this base:
 
 ### PR33b, stage 33b
 
-Implemented in `feat/33b-provisioning`:
+Implemented and merged as #53 (`790500d8`):
 
 - Added `WIFI`, `WIFI_SSID`, `WIFI_PSK`, `NTP` and `NTP_SERVER` settings.
   WiFi and NTP default to off. Credentials default to empty. The NTP server
@@ -1403,7 +1408,7 @@ allocation and Bluetooth time slices are adjusted down.
    hard precondition, not advice.
 3. **Keep the existing connection parameters.** They are already coexistence
    friendly and nothing in this document should change them. If
-   `plans/10-adaptive-conn-params.md` lands and shortens the interval while
+   `plans/implemented/10-adaptive-conn-params.md` lands and shortens the interval while
    shooting, re-run the latency test with WiFi up before accepting it.
 4. **`esp_wifi_set_ps(WIFI_PS_MIN_MODEM)`.** Station sleeps between DTIM
    beacons, which is radio time returned to BLE.

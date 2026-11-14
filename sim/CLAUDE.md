@@ -367,7 +367,7 @@ shortens that host retry cadence for a bounded scenario.
   seed the setting it toggles. The production CameraList does persist across a
   restart through the preferences file, and a reapplied `saved_camera` seed is
   idempotent because `CameraList::add_index()` overwrites by name (see
-  plans/156-restart-restore-seam.md for the seam limits).
+  plans/implemented/156-restart-restore-seam.md for the seam limits).
   `FURBLE_SIM_THEME` and `FURBLE_SIM_TEXTSIZE` apply only on the fresh boot;
   a UI-triggered reboot retains the NVS value selected by the restart action.
   See `docs/sim.md` for every action value and query key.

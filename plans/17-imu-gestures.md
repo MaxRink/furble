@@ -215,7 +215,7 @@ Battery impact, on-board instrumentation only:
 
 ## Implementation state
 
-Implemented and rebased onto `fork/master` 6245a301.
+Implemented and merged as #45 (`107a6b96`).
 
 - `IMU_WAKE` (`imu_wake`, wire id 72, `uint8_t`, default 0) and `IMU_TRIG`
   (`imu_trigger`, wire id 73, `bool`, default false). Both defaults reproduce

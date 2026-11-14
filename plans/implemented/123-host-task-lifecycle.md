@@ -34,6 +34,6 @@ No production source or firmware behavior changes.
 
 ## Implementation state
 
-Implemented on `fix/host-control-task-lifecycle`. The shim owns and joins its
+Merged as #180 (`da7cc90d`) from `fix/host-control-task-lifecycle`. The shim owns and joins its
 task threads before host static destruction; all firmware and simulator code is
 unchanged.

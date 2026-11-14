@@ -1,5 +1,8 @@
 # 106 - flash size optimization
 
+Implementation state (2026-11-13): master has six release envs on ESP-IDF 5.5.3. #435 slimmed every image so all debug profiles
+fit their OTA slot, and #436 gates flash and static RAM. Items 3, 7-13 and 14 remain open.
+
 ## Goal
 
 Find and rank every firmware flash and RAM reduction opportunity, so the

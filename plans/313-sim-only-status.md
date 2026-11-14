@@ -1,8 +1,8 @@
 # 313 - Sim-only closeout status
 
-Status: current on master, 2026-11-06, baseline `2d2be868` (#409). No
-implementation pull request is open. No hardware was flashed or measured for
-this record.
+Status: master is at `e66e8807` (#439) on 2026-11-13. The gate results below
+were measured at `2d2be868` (#409) on 2026-11-06 and have not been re-run since
+plan 314 merged. No hardware was flashed or measured for this record.
 
 ## Mode
 
@@ -38,6 +38,18 @@ upstream issue, comment, pull request or push was made for this closeout.
   worker, 1,536-byte network and outbox buffers, a 9,392-byte queue, a
   8,192 / 4,096 plain start gate, an 11,264 / 7,168 TLS start gate and a
   10,240 / 4,096 discovery gate.
+- Plan 314 (memory resilience) merged after the #409 baseline. #411 to #413
+  modelled the abort policy, counted every device allocation and seeded each
+  board with its code-derived boot heap. #414 and #428 added the call-graph
+  stack budget. #423 records the failed allocation in the crash record. #425
+  runs the e2e suite under ASan, UBSan and LeakSanitizer. #429 sheds the WebUI
+  and MQTT under memory pressure, #430 gates the identity task and the
+  companion first enable, #431 enables Core2 PSRAM and tunes per-board memory,
+  and #432 audits the GPS buffers. #433 runs clang-tidy on the firmware, #435
+  slims every image back into its OTA slot, #436 adds the size budget, #437
+  runs every host test under ASan and UBSan, #438 adds debug hardening and
+  #439 runs the pre-review gate on push. #415 to #422 and #424 fixed
+  layout, docs capture, scan, WiFi event and MQTT worker stack findings.
 - The HTTPD budget is two client sockets plus three ESP-IDF-reserved sockets,
   five total. The constant counts clients only.
 - The companion identity is persisted under the 15-character `companion_bleid`
@@ -118,7 +130,7 @@ Hardware work resumes only when all of these hold:
 
 1. The candidate commit is clean and built from `origin/master`.
 2. `python3 sim/scripts/run-memory-profile.py` has generated 13 dumps and every
-   gate command in [307-sim-first-flash-gate.md](307-sim-first-flash-gate.md)
+   gate command in [307-sim-first-flash-gate.md](implemented/307-sim-first-flash-gate.md)
    passes, ending in `READY TO FLASH`.
 3. The firmware artifact, its SHA-256 and the exact commit are recorded in a
    flash-candidate report.

@@ -1,5 +1,8 @@
 # ESP-IDF optimization program
 
+Implementation state (2026-11-13): master has six release envs on espressif32 6.13.0 with ESP-IDF 5.5.3; the IDF 5.4 baseline
+below is historical. `evaluateBootHealth` still has no caller and no `esp_ota_mark_app_*` call.
+
 ## Motivation
 
 furble has six release targets and five debug variants on its pinned ESP-IDF

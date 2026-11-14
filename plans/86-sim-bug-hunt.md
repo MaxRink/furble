@@ -1,5 +1,9 @@
 # 86 - SDL simulator bug hunt
 
+Implementation state (2026-11-13): F1 and F5 were fixed by #115, and F3 by `c82cfd30`. F2's static root cause did not hold; #116 adds the
+encoder group registration defensively. The reported #32 symptom stays open as a
+hardware investigation.
+
 Status: findings report. This PR is docs plus reusable sim tooling. It fixes no
 product bugs. Each product fix is a separate follow up PR.
 

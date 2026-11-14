@@ -294,7 +294,7 @@ Reconnect UI polish additions:
 
 ## Implementation state
 
-Implemented on fix/connui. Non-blocking top-status indicator, `sessionEstablished`
+Merged as #114 (`b90d5666`) from `fix/connui`. Non-blocking top-status indicator, `sessionEstablished`
 gating, `showStatusIcon` changed-check guard, multi-connect one-link drop, and
 the F4 single-Cancel fix are all in place. clang-format clean. Sim e2e scenarios
 pass. Firmware builds for m5stick-s3.

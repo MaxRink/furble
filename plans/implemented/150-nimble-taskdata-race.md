@@ -175,4 +175,4 @@ components/esp-nimble-cpp and the override_path line and bump the pin.
 
 ## State
 
-Implemented on fix/nimble-taskrelease-race. Hardware soak pending.
+Merged as #244 (`75e251bf`) from `fix/nimble-taskrelease-race`. Hardware soak pending.

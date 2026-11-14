@@ -257,26 +257,26 @@ bucket. Note them, do not plan around them.
 
 ### Plans that apply unchanged on any ESP32-S3 candidate
 
-- `07-ble-sleep.md`. Modem sleep and light sleep while connected are `esp_pm`
+- `implemented/07-ble-sleep.md`. Modem sleep and light sleep while connected are `esp_pm`
   and NimBLE behaviour. Nothing in it is M5 specific. On a board without a
   32.768 kHz crystal the same caveat from `00-hardware-experiments.md`
   experiment A applies, so that experiment must be repeated per board.
-- `27-usb-console.md`. The console is the only sane way to work a headless
+- `implemented/27-usb-console.md`. The console is the only sane way to work a headless
   device. It becomes more important, not less. On the ThinkNode M5 the USB
   path is the same web-flasher serial path Meshtastic uses.
 - `50-companion-app-design.md`. On a headless or e-paper device this stops
   being a nice extra and becomes the setup and pairing UI.
-- `06-power-module.md`, `08` to `11`, `13`. All portable, all ESP-IDF and
+- `implemented/06-power-module.md`, `08` to `11`, `13`. All portable, all ESP-IDF and
   NimBLE level.
 
 ### Plans that apply only if the GNSS is a `$PCAS` receiver
 
-- `14-gps-pcas.md` and `32-gps-advanced.md`. Both are `$PCAS` command work
+- `implemented/14-gps-pcas.md` and `implemented/32-gps-advanced.md`. Both are `$PCAS` command work
   against the AT6558 family. The L76K answers the same commands, including the
   `$PCAS06` probe that plan 32a uses for auto detection. So the ThinkNode M5,
   the T-Beam Supreme L76K trim and the XIAO plus L76K inherit both plans with
   at most a device string added to the detection table.
-- `15-gps-power.md`. This gets easier, not harder, on the ThinkNode M5. The
+- `implemented/15-gps-power.md`. This gets easier, not harder, on the ThinkNode M5. The
   M5Stack unit has no backup supply and no standby pin, which is why plan 32
   worries about 23 second cold starts. The M5's L76K has a dedicated standby
   line at GPIO 11 and a rail switch at GPIO 10, both published in the variant
@@ -375,7 +375,7 @@ Suggested order of work. First, buy the M5 and confirm the two facts that are
 not verifiable from a desk: that the GNSS really is an L76K answering `$PCAS06`
 on GPIO 19 and 20, and what the module and the flash actually are, since
 Meshtastic's `ESP32-S3-WROOM-1-N4` and Elecrow's 8 MB PSRAM claim cannot both
-be right. Second, land the headless board profile with `27-usb-console.md` as
+be right. Second, land the headless board profile with `implemented/27-usb-console.md` as
 the only interface. Third, measure. Then decide whether the 1200 mAh cell is
 enough, or whether the same profile should be pointed at a T-Beam Supreme with
 an 18650 in it.

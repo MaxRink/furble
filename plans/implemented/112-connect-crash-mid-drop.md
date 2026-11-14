@@ -62,7 +62,7 @@ All 35 host ctests pass. clang-format clean.
 
 ## Implementation state
 
-Implemented on `fix/connect-crash-mid-drop` off fork/master. Product change is
+Merged as #155 (`9693e3d7`) from `fix/connect-crash-mid-drop`. Product change is
 `lib/furble/Camera.cpp` only. Host-only additions: the mock hook, the peer
 fault, the new test, its CMake target.
 
