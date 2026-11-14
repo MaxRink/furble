@@ -1374,7 +1374,7 @@ int gpsStatus(void) {
   auto &gps = GPS::getInstance();
   const auto status = gps.getStatusSnapshot();
   // one snapshot carries the cycle state and its retry count together, so the
-  // two can never be reported torn across separate mutex acquisitions
+  // two can never be reported torn across separate snapshot loads
   const auto receiver = gps.getReceiverStatus();
 
   printf("enabled: %s\n", boolStr(gps.isEnabled()));

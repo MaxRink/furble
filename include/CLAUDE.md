@@ -56,6 +56,9 @@ Public headers for the app layer in src/, one header per module
   and never under `CompanionGatt::m_Mutex`.
 - `FurbleGPS` exposes the CASIC binary test path and AID-INI injection as
   documented public methods. Keep their wire format comments next to the API.
+  Its cycle status getters are lock free: they read `m_CycleStatus`, which the
+  GPS task publishes after each pass. Do not make a getter take `m_CycleMutex`
+  again; the task's passes block on it, and a reader holding it stalls them.
 - `FurbleSD.h` and `FurbleGPX.h`: all SD and GPX file I/O runs on the SD
   writer task. Other tasks use only the non-blocking `SD::request()` /
   `SD::logPoint()` API and the atomic state accessors, and never call GPX

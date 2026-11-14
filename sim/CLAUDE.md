@@ -151,8 +151,9 @@ and
 `FurbleControl.cpp` (link-drop declaration, the debug state snapshot the console
 also uses, and the camera-command counter), `lib/furble/Scan.h` and `Scan.cpp`
 (scan-start probe and scan-end callback counter), `FurbleGPS.cpp` (state/timer
-profiling), `FurblePlatform.h` (watchdog query friend), `FurblePower.cpp`
-(power-lock owner assertions), and `FurbleUI.cpp`/`FurbleUI.h` (profiling,
+profiling, the status reader hold seam and the serial read and duty request
+busy marker behind `gps.duty_settled`), `FurblePlatform.h` (watchdog query
+friend), `FurblePower.cpp` (power-lock owner assertions), and `FurbleUI.cpp`/`FurbleUI.h` (profiling,
 queries, deterministic input, simulator encoder long-press/repeat timing,
 scan-start probe,
 disconnect count, and scripted actions). `FurbleUIAudit` is enabled for the
@@ -595,8 +596,11 @@ shortens that host retry cadence for a bounded scenario.
   Keep IMU actions and queries general enough for diagnostics, spirit-level
   orientation, and future gesture features; do not add widget-only shortcuts.
 - GPS query keys include `gps.source`, `gps.satellites`, `gps.state`,
-  `gps.fresh_fixes_parsed`, `gps.duty_wake_fixes_parsed`, and
-  `gps.config.<index>.state|attempts`.
+  `gps.fresh_fixes_parsed`, `gps.duty_wake_fixes_parsed`,
+  `gps.duty_settled`, and `gps.config.<index>.state|attempts`.
+  `gps.state` is a profiler label that a duty wake does not change, so it
+  reads `standby` through a wake burst; wait on `gps.duty_settled` before
+  clearing the UART journal in a standby scenario.
   `gps.fresh_fixes_parsed` is simulator-only observability of parser
   progression, so scenarios can distinguish a wake fix from a cached UART
   source. It is cumulative and includes the acquisition fix that armed a duty
@@ -618,6 +622,18 @@ shortens that host retry cadence for a bounded scenario.
 - `e2e/gps-motion-prearm.txt` deliberately loads GPS motion before the UI arms
   the shared source, then disarms and re-arms it through real MotionSource calls;
   it asserts the gate changes without a GPS reset or setting toggle.
+- `seed gps_reader_hold_ms N` holds each GPS cycle status reader for N ms of
+  host time through `Sim::gpsReaderHold()`, a timing seam in
+  `GPS::getCycleStatusSnapshot()` and `GPS::getReceiverStatus()`.
+  `e2e/gps-reader-hold.txt` seeds 30 and asserts the cycle never degrades. It
+  also opens the GPS Data page and asserts `gps.readers_lock_free`, which
+  holds `m_CycleMutex` and requires all three readers to return: the page
+  timer runs after the tick's UART event is handled, so timing alone cannot
+  catch a lock in the page's reader. Readers used to hold `m_CycleMutex` while
+  the GPS task skipped any pass it could not lock, so a reader overlapping a
+  UART event lost the burst. That was the rare `gps-motion-detector` failure
+  under parallel load (plans/18-gps-motion.md). Keep the seam where the
+  snapshot is read: a reader lock added later then encloses the hold.
 - The `scan_start_probe` boolean seed enables a concurrent callback-shaped
   probe during scan startup. `scan.start_probe_blocked` reports whether that
   callback waited for the UI mutex, guarding the watchdog-sensitive scan-start
