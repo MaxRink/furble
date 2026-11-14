@@ -292,6 +292,25 @@ int main() {
         || !contains(quantum_json, "\"light_sleep_in_80\": 15")) {
       return failure(__LINE__);
     }
+
+    // Virtual time can advance inside a UI cycle after the last integration.
+    // The next interval then starts before the cycle ended; it must still
+    // charge the quantum as awake instead of wrapping to a full sleep.
+    profilerResetWindow();
+    profilerBeginUiCycle();
+    profilerTimerFire("battery_timer");
+    advanceClock(3);
+    profilerEndUiCycle();
+    advanceClock(20);
+    profilerBeginUiCycle();
+    profilerEndUiCycle();
+    const auto inside_report = reportDirectory.path() / "legacy-quantum-inside.json";
+    profilerWriteReport(inside_report.c_str(), "legacy-quantum-inside");
+    const std::string inside_json = readFile(inside_report);
+    if (requestedExit.load() != -1 || !contains(inside_json, "\"duration_ms\": 23")
+        || !contains(inside_json, "\"light_sleep_in_80\": 18")) {
+      return failure(__LINE__);
+    }
   }
 
   // A normal model coefficient change is also an explicit reload boundary.

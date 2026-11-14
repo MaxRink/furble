@@ -433,8 +433,13 @@ void integrateLocked(uint64_t now_us) {
         && (state.model.accounting_enabled || state.timer_queue_idle)) {
       state.light_sleep_ms += elapsed;
     } else if (state.light_sleep_enabled && state.task_idle) {
-      // Legacy model after a timer fired: only the quantum is awake.
-      const uint32_t since_end = clockElapsed(state.last_time_ms, state.cycle_end_ms);
+      // Legacy model after a timer fired: only the quantum is awake. Virtual
+      // time can advance inside a UI cycle after the last integration, so the
+      // interval may start before the cycle ended. Count that as zero elapsed
+      // instead of letting the unsigned difference wrap to a full sleep.
+      const uint32_t since_end = clockDeadlineReached(state.last_time_ms, state.cycle_end_ms)
+                                     ? clockElapsed(state.last_time_ms, state.cycle_end_ms)
+                                     : 0;
       const uint32_t awake = since_end >= LEGACY_UI_QUANTUM_MS
                                  ? 0
                                  : std::min<uint32_t>(elapsed, LEGACY_UI_QUANTUM_MS - since_end);
