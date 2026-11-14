@@ -25,8 +25,8 @@ inline void subscribe(void) {
 #if defined(FURBLE_TASK_WDT) && FURBLE_TASK_WDT
   const esp_err_t err = esp_task_wdt_add(nullptr);
   if (err != ESP_OK) {
-    ESP_LOGW("task_wdt", "Could not subscribe %s: %s", pcTaskGetName(nullptr),
-             esp_err_to_name(err));
+    ESP_LOGW("task_wdt", "Could not subscribe %s: %s (0x%x)", pcTaskGetName(nullptr),
+             esp_err_to_name(err), static_cast<unsigned>(err));
   }
 #endif
 }

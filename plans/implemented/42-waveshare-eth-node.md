@@ -358,8 +358,9 @@ silent assertions, the INFO log maximum and no name table. The headless file
 is unchanged. The debug env merges `sdkconfig.full-diagnostics` to keep full
 assertions, the VERBOSE log maximum and esp_err names. The reason, the
 measured sizes and the new RAM budgets are in
-plans/106-flash-size-optimization.md. Error logs on this board now print hex
-codes instead of esp_err names, as on every other release board.
+plans/106-flash-size-optimization.md. Without the name table
+`esp_err_to_name()` returns `UNKNOWN ERROR`, as on every other release board,
+so the furble error logs print the numeric code next to it.
 
 ## Verification
 

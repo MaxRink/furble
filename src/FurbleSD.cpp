@@ -973,7 +973,8 @@ bool SD::mount(void) {
   const esp_err_t err =
       esp_vfs_fat_sdspi_mount(SD_MOUNT_POINT, &host, &slot_config, &mount_config, &card);
   if (err != ESP_OK) {
-    ESP_LOGW(LOG_TAG, "SD card mount failed: %s.", esp_err_to_name(err));
+    ESP_LOGW(LOG_TAG, "SD card mount failed: %s (0x%x).", esp_err_to_name(err),
+             static_cast<unsigned>(err));
     return false;
   }
 
@@ -991,7 +992,8 @@ void SD::unmount(void) {
 
   const esp_err_t err = esp_vfs_fat_sdcard_unmount(SD_MOUNT_POINT, m_Card);
   if (err != ESP_OK) {
-    ESP_LOGW(LOG_TAG, "SD card unmount failed: %s.", esp_err_to_name(err));
+    ESP_LOGW(LOG_TAG, "SD card unmount failed: %s (0x%x).", esp_err_to_name(err),
+             static_cast<unsigned>(err));
   }
   m_Card = nullptr;
   m_Mounted = false;

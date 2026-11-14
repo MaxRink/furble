@@ -843,7 +843,8 @@ bool MQTT::startClient(void) {
       // timer, and the owner loop wakes on its own deadlines.
       const esp_err_t timerErr = esp_timer_create(&args, &m_HoldTimer);
       if (timerErr != ESP_OK) {
-        ESP_LOGW(MQTT_LOG_TAG, "MQTT hold timer unavailable: %s", esp_err_to_name(timerErr));
+        ESP_LOGW(MQTT_LOG_TAG, "MQTT hold timer unavailable: %s (0x%x)", esp_err_to_name(timerErr),
+                 static_cast<unsigned>(timerErr));
       }
     }
     if (m_IntervalTimer == nullptr) {
@@ -858,7 +859,8 @@ bool MQTT::startClient(void) {
       // timer, and the owner loop wakes on its own deadlines.
       const esp_err_t timerErr = esp_timer_create(&args, &m_IntervalTimer);
       if (timerErr != ESP_OK) {
-        ESP_LOGW(MQTT_LOG_TAG, "MQTT interval timer unavailable: %s", esp_err_to_name(timerErr));
+        ESP_LOGW(MQTT_LOG_TAG, "MQTT interval timer unavailable: %s (0x%x)",
+                 esp_err_to_name(timerErr), static_cast<unsigned>(timerErr));
       }
     }
     err = esp_mqtt_client_start(client);
@@ -866,7 +868,8 @@ bool MQTT::startClient(void) {
   if (err != ESP_OK) {
     m_Client = nullptr;
     esp_mqtt_client_destroy(client);
-    ESP_LOGW(MQTT_LOG_TAG, "MQTT start failed: %s", esp_err_to_name(err));
+    ESP_LOGW(MQTT_LOG_TAG, "MQTT start failed: %s (0x%x)", esp_err_to_name(err),
+             static_cast<unsigned>(err));
     return false;
   }
   return true;

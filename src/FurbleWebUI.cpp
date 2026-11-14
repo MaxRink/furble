@@ -743,7 +743,8 @@ bool WebUI::startServer(void) {
   }
   if (result != ESP_OK) {
     m_Server = nullptr;
-    ESP_LOGW(LOG_TAG, "HTTPS server start failed: %s", esp_err_to_name(result));
+    ESP_LOGW(LOG_TAG, "HTTPS server start failed: %s (0x%x)", esp_err_to_name(result),
+             static_cast<unsigned>(result));
     const bool memoryFailure = (result == ESP_ERR_NO_MEM) || (result == ESP_ERR_HTTPD_ALLOC_MEM)
                                || (result == ESP_ERR_HTTPD_TASK);
     if (!memoryFailure && !m_IdentityStartFailed) {

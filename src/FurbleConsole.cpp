@@ -2063,7 +2063,8 @@ int heapTraceStart(unsigned long records) {
   if (err != ESP_OK) {
     heap_caps_free(g_HeapTraceRecords);
     g_HeapTraceRecords = nullptr;
-    printf("error: heap trace start failed: %s\n", esp_err_to_name(err));
+    printf("error: heap trace start failed: %s (0x%x)\n", esp_err_to_name(err),
+           static_cast<unsigned>(err));
     g_CommandReported = true;
     return 1;
   }
@@ -3590,7 +3591,7 @@ void run(const std::string &line) {
   if (err == ESP_ERR_NOT_FOUND) {
     printf("error: unknown command, try 'help'\n");
   } else if ((err != ESP_OK) && (err != ESP_ERR_INVALID_ARG)) {
-    printf("error: %s\n", esp_err_to_name(err));
+    printf("error: %s (0x%x)\n", esp_err_to_name(err), static_cast<unsigned>(err));
   } else if ((ret != 0) && !g_CommandReported) {
     // The handler printed no specific outcome. Keep the non-zero return
     // visible rather than discarding the only script-visible result. Do not

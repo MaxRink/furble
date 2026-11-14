@@ -364,14 +364,16 @@ bool startNtp(void) {
 
   esp_err_t err = esp_netif_sntp_init(&config);
   if (err != ESP_OK) {
-    ESP_LOGE(LOG_TAG, "NTP init failed: %s", esp_err_to_name(err));
+    ESP_LOGE(LOG_TAG, "NTP init failed: %s (0x%x)", esp_err_to_name(err),
+             static_cast<unsigned>(err));
     return false;
   }
   g_NtpInitialized = true;
 
   err = esp_netif_sntp_start();
   if (err != ESP_OK) {
-    ESP_LOGE(LOG_TAG, "NTP start failed: %s", esp_err_to_name(err));
+    ESP_LOGE(LOG_TAG, "NTP start failed: %s (0x%x)", esp_err_to_name(err),
+             static_cast<unsigned>(err));
     esp_netif_sntp_deinit();
     g_NtpInitialized = false;
     g_NtpServer.clear();
@@ -423,7 +425,8 @@ bool configureStation(void) {
 
   const esp_err_t err = esp_wifi_set_config(WIFI_IF_STA, &config);
   if (err != ESP_OK) {
-    ESP_LOGE(LOG_TAG, "WiFi config failed: %s", esp_err_to_name(err));
+    ESP_LOGE(LOG_TAG, "WiFi config failed: %s (0x%x)", esp_err_to_name(err),
+             static_cast<unsigned>(err));
     return false;
   }
   return true;
@@ -441,7 +444,8 @@ bool startDriver(void) {
   wifi_init_config_t config = WIFI_INIT_CONFIG_DEFAULT();
   esp_err_t err = esp_wifi_init(&config);
   if (err != ESP_OK) {
-    ESP_LOGE(LOG_TAG, "WiFi init failed: %s", esp_err_to_name(err));
+    ESP_LOGE(LOG_TAG, "WiFi init failed: %s (0x%x)", esp_err_to_name(err),
+             static_cast<unsigned>(err));
     return false;
   }
 
@@ -456,7 +460,8 @@ bool startDriver(void) {
     err = esp_wifi_start();
   }
   if (err != ESP_OK) {
-    ESP_LOGE(LOG_TAG, "WiFi start failed: %s", esp_err_to_name(err));
+    ESP_LOGE(LOG_TAG, "WiFi start failed: %s (0x%x)", esp_err_to_name(err),
+             static_cast<unsigned>(err));
     esp_wifi_deinit();
     return false;
   }
@@ -610,7 +615,8 @@ bool scanForNetwork(void) {
   config.show_hidden = false;
   esp_err_t err = esp_wifi_scan_start(&config, true);
   if (err != ESP_OK) {
-    ESP_LOGW(LOG_TAG, "WiFi scan failed: %s", esp_err_to_name(err));
+    ESP_LOGW(LOG_TAG, "WiFi scan failed: %s (0x%x)", esp_err_to_name(err),
+             static_cast<unsigned>(err));
     return false;
   }
 
@@ -624,7 +630,8 @@ bool scanForNetwork(void) {
   std::vector<wifi_ap_record_t> records(count);
   err = esp_wifi_scan_get_ap_records(&count, records.data());
   if (err != ESP_OK) {
-    ESP_LOGW(LOG_TAG, "WiFi scan results failed: %s", esp_err_to_name(err));
+    ESP_LOGW(LOG_TAG, "WiFi scan results failed: %s (0x%x)", esp_err_to_name(err),
+             static_cast<unsigned>(err));
     return false;
   }
 
@@ -660,7 +667,8 @@ bool connectAttempt(void) {
 
   const esp_err_t err = esp_wifi_connect();
   if (err != ESP_OK) {
-    ESP_LOGW(LOG_TAG, "WiFi connect request failed: %s", esp_err_to_name(err));
+    ESP_LOGW(LOG_TAG, "WiFi connect request failed: %s (0x%x)", esp_err_to_name(err),
+             static_cast<unsigned>(err));
     return false;
   }
 

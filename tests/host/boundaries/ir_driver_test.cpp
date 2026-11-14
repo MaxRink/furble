@@ -315,7 +315,7 @@ void runQueueTimeout(void) {
   }
   g_Condition.notify_all();
   check(waitForCapture(2), "the blocked IR frames did not complete");
-  check(waitForLog("Failed to transmit IR frame (ESP_ERR_TIMEOUT)"),
+  check(waitForLog("Failed to transmit IR frame (ESP_ERR_TIMEOUT, 0x107)"),
         "the RMT timeout did not use the production failure log");
   std::cout << "ir.timeout wait_ms=1000 logged=1\n";
 

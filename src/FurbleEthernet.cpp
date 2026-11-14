@@ -335,7 +335,8 @@ class EspEthTransport final: public Ethernet::Transport {
 
  private:
   static void logError(const char *operation, esp_err_t err) {
-    ESP_LOGE(LOG_TAG, "%s failed: %s", operation, esp_err_to_name(err));
+    ESP_LOGE(LOG_TAG, "%s failed: %s (0x%x)", operation, esp_err_to_name(err),
+             static_cast<unsigned>(err));
   }
 
   static void eventHandler(void *arg,
@@ -406,15 +407,15 @@ bool Ethernet::init(void) {
 #if defined(ESP_PLATFORM) && defined(FURBLE_ETHERNET)
   const esp_err_t netifError = esp_netif_init();
   if (netifError != ESP_OK && netifError != ESP_ERR_INVALID_STATE) {
-    ESP_LOGE("ethernet", "Network interface initialization failed: %s",
-             esp_err_to_name(netifError));
+    ESP_LOGE("ethernet", "Network interface initialization failed: %s (0x%x)",
+             esp_err_to_name(netifError), static_cast<unsigned>(netifError));
     return false;
   }
 
   const esp_err_t eventError = esp_event_loop_create_default();
   if (eventError != ESP_OK && eventError != ESP_ERR_INVALID_STATE) {
-    ESP_LOGE("ethernet", "Default event loop initialization failed: %s",
-             esp_err_to_name(eventError));
+    ESP_LOGE("ethernet", "Default event loop initialization failed: %s (0x%x)",
+             esp_err_to_name(eventError), static_cast<unsigned>(eventError));
     return false;
   }
 

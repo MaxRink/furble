@@ -181,8 +181,10 @@ headroom for the WiFi hub track.
    Own PR because of the formatting risk.
 
 4. Drop the esp_err name table. Set `CONFIG_ESP_ERR_TO_NAME_LOOKUP=n`.
-   `esp_err_to_name` then returns the hex code instead of a name. Saving: est 4
-   to 8 KB. Risk: low. Effort: trivial. Behavior: error logs show hex.
+   `esp_err_to_name` then returns the fixed string `UNKNOWN ERROR`, not a
+   name or a code (`esp_err_to_name.c`). Saving: est 4 to 8 KB. Risk: low.
+   Effort: trivial. Behavior: furble error logs print the numeric code next
+   to the name, see the review follow-up below.
 
 ### Group B, LVGL and icons
 
@@ -360,7 +362,10 @@ same 13 line changes are applied identically to all five board configs.
 
 4. Item 4, drop the esp_err name table. Set
    `# CONFIG_ESP_ERR_TO_NAME_LOOKUP is not set`. `esp_err_to_name` now returns
-   the hex code instead of a name string.
+   the fixed string `UNKNOWN ERROR`. This note first said it returned the hex
+   code; it never did, so the code was lost from every release log until
+   `fix(log): keep the esp_err code in error logs on release images` added
+   `(0x%x)` to all 33 furble call sites.
 
 5. Item 5, disable unused LVGL widgets and the second theme. Disabled
    `LV_USE_ARCLABEL`, `LV_USE_BUTTONMATRIX` and `LV_USE_THEME_SIMPLE`, all
