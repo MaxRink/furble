@@ -340,6 +340,54 @@ What the simulator cannot show: the HTTPS server, mbedTLS, a handshake, the
 real fragmentation and the closed WiFi and NimBLE allocations. The camera-leg
 result is a prediction for hardware step 4 below, not a measurement.
 
+### Review follow-up (2026-11-14)
+
+A subagent review of the closeout found four gaps. The record is
+[304-review-feedback.md](304-review-feedback.md). The numbers in the list
+above are the pre-review state; these replace them.
+
+- Seed. The scenario now seeds the current inferred pair, 25,911 / 24,148:
+  the 8 KiB main-stack measurement minus the 4 KiB the 12 KiB main stack took
+  back (plan 313). It is 1,440 bytes under the post-#394 measurement, so it is
+  the harder case. The server starts at 14,135 / 12,372.
+- Connect minimum. The old scenario never read `heap.minimum`. Its transient
+  connect minimum was 5,599 free with a 3,836-byte largest block, below RED
+  and too small for a second 4,480-byte target task. The deepest point is the
+  connected page's first draw: LVGL layer buffers (3,260 bytes) and style
+  blocks, freed after the frame, while the governor only sees one reading a
+  second and sheds three readings later. On hardware this is a real abort
+  risk, because fragmentation is worse than the model.
+- Admission fix. Every caller of `Control::addActive()` now calls
+  `MemoryPressure::admit(CONNECT_TARGET_BYTES)` first. When the target task
+  would take the heap into AMBER or RED, the governor enters that level at
+  once, so the WebUI server is shed before the connect allocates. The exit is
+  unchanged. A board whose pool stays NORMAL after the target task, such as
+  the Core2 or a StickS3 with the WebUI off, sheds nothing. With admission the
+  connect minimum is 7,475 free with a 5,712-byte largest block.
+  `tests/host/memory_pressure_test.cpp` covers the policy.
+- HTTPS after disconnect. The 4,936-byte residual that kept HTTPS paused was
+  mostly the LVGL image cache: `lv_image_cache_drop(NULL)` at disconnect let
+  HTTPS resume in the simulator. On PSRAM boards the UI now routes LVGL's image
+  draw buffers (decoded and decompressed icons) to PSRAM through the image
+  handler's malloc and free callbacks. The DMA display buffers are separate and
+  stay internal. After a disconnect the pool returns to 20,887 with the server
+  paused, clears the 20,480 exit and HTTPS starts again at 12,695 / 10,932.
+  1,440 bytes stay allocated after the disconnect with every image buffer in
+  PSRAM; the model does not attribute them.
+- By construction. In the model `webuiMemoryStart()` marks a seeded identity
+  stored, and nothing allocates per request. The `webui.identity stored` and
+  flat 60 s soak assertions therefore check the wiring, not mbedTLS or the
+  HTTPS task. Hardware steps 2 and 5 are the real checks.
+
+The finding above is superseded: on the inferred heap the WebUI pauses for
+the length of a camera session and returns after it, with no reboot.
+
+Evidence: the StickS3 simulator e2e suite passes 211 of 211, including the
+updated scenario. `memory_pressure_test` passes. `m5stick-s3` and
+`m5stack-core2` build, `tools/stack_budget.py --env m5stick-s3` passes every
+task and `tools/check_size_budget.py` passes both. The sanitized host suite,
+`tools/pre_review.py` and `check-doc-tokens.sh` pass. Nothing ran on a board.
+
 Hardware procedure (StickS3 debug image built from a `READY TO FLASH`
 candidate per plan 313, flashed with `tools/flash_prepare.py`, USB console
 open):
@@ -365,9 +413,11 @@ open):
    Pass: all three requests succeed and the HTTPS headroom is at least 1 KiB.
 4. Camera connect. Connect the Fujifilm camera while the WebUI is up. Run
    `status` and `perf heap`. Pass: the camera reaches active and the device
-   does not reset. The simulator predicts `memory_pressure: amber` with HTTPS
-   paused while connected and still paused after a disconnect. Record whether
-   that holds, the pair while connected and the pair after the disconnect.
+   does not reset. The simulator predicts `memory pressure normal -> amber`
+   in the log at the connect, before the target task starts, HTTPS paused
+   while connected, and HTTPS back within about 10 s of the disconnect. Record
+   whether that holds, the pair while connected and the pair after the
+   disconnect.
 5. Soak. Leave WiFi, the companion and the WebUI up for one hour, polling
    `/api/status` every 10 s from the host and running the USB monitor
    (`furble-companion-cli monitor --transport usb`) in parallel. Pass: no

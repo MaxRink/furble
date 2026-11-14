@@ -31,7 +31,7 @@ state and the remaining gate; the issue stays open until that gate lands.
 | #283 | [173](173-sim-scheduler-visibility.md) | Diagnostics merged; root cause of the restart SIGSEGV still unknown. Tracker stays open. |
 | #289 | [173](173-sim-scheduler-visibility.md) | 4 of 5 items done. The Secure/reconnect 50-run load proof remains. |
 | #381 | [302](302-companion-restart-reconnect.md) | Open. Long USB console runs reset into the ROM USB-JTAG unit. The 5 s command timeout and monitor fixes are merged. Host-side recovery is implemented: the USB monitor reopens a lost port, reports ROM reset lines and app restarts, and hard resets only with `--usb-hard-reset`, with a fake-transport test. A UART0 panic capture and the hardware retest of the recovery remain. |
-| #390 | [304](304-webui-stick-memory.md) | Open. The WebUI now fails closed on the StickS3 instead of boot-looping, and the TLS identity is generated before WiFi and the companion. Simulator work is complete: `hw-memory-webui-first-boot` covers a first boot with WiFi, BLE, the companion and a camera connect, and predicts that a connected camera pauses HTTPS until reboot on the post-#394 heap. A support claim still needs the hardware memory gate, a TLS handshake, a settings write and a soak; plan 304 holds the exact procedure. |
+| #390 | [304](304-webui-stick-memory.md) | Open. The WebUI now fails closed on the StickS3 instead of boot-looping, and the TLS identity is generated before WiFi and the companion. Simulator work is complete: `hw-memory-webui-first-boot` covers a first boot with WiFi, BLE, the companion and a camera connect, on the inferred 25,911 / 24,148 heap. A connect now sheds the WebUI before its target task starts, and the icon cache lives in PSRAM, so HTTPS pauses for the camera session and returns after it. Review record: [304-review-feedback.md](304-review-feedback.md). A support claim still needs the hardware memory gate, a TLS handshake, a settings write and a soak; plan 304 holds the exact procedure. |
 
 Closed issues #280, #281, #282, #288 and #290 are retained in their plans and in
 the git history. They are no longer ownership rows.
@@ -87,6 +87,7 @@ the git history. They are no longer ownership rows.
 | [14-gps-pcas.md](implemented/14-gps-pcas.md) | $PCAS receiver config: rate, sentences, constellation |
 | [15-gps-power.md](implemented/15-gps-power.md) | GPS duty cycling, light sleep compatible UART |
 | [304-webui-stick-memory.md](304-webui-stick-memory.md) | WebUI internal-RAM budget and the StickS3 boot-loop investigation |
+| [304-review-feedback.md](304-review-feedback.md) | Review-feedback record for the #381 USB recovery and the #390 first-boot closeout |
 | [305-general-internal-ram.md](implemented/305-general-internal-ram.md) | General internal-RAM map and safe reductions across tasks, LVGL, IR, console and mbedTLS |
 | [306-sim-memory-crash-repro.md](implemented/306-sim-memory-crash-repro.md) | Simulator heap-pressure reproduction, MQTT/WebUI admission scenarios and retained crash logging |
 | [307-sim-first-flash-gate.md](implemented/307-sim-first-flash-gate.md) | Sim-first crash, memory, fuzz and permutation release gate before any hardware flash |
