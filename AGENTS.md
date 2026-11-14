@@ -151,6 +151,9 @@ the USB profile to dual OTA requires a USB partition-table reflash.
 Single-board images set `M5GFX_BOARD` (`m5stick-c`, `m5stack-core`,
 `m5stick-s3`); `post:patches/m5gfx_board.py` pins it in `M5GFX::autodetect`.
 Images shared by two boards (StickC Plus/Plus2, Core2/Tough) must not set it.
+`waveshare-s3-eth` pins `board_M5StampS3`, which has no M5GFX probe, so the
+unpinned probes never drive the W5500 pins GPIO 9 to 14. The headless S3
+profile stays unpinned because it may run on a StickS3.
 
 The StickS3 flash helper is fail-closed. Use `--preflight-only` to validate the
 PMIC handshake without uploading. After a successful prepare, it must issue

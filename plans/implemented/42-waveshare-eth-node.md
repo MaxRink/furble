@@ -304,6 +304,51 @@ Reuse the plan 50 status and trigger characteristics unchanged.
 - PlatformIO CI and release/page matrices build the board and use its 6 MiB
   slot when reporting firmware size.
 
+### M5GFX autodetect pin (fix/waveshare-autodetect)
+
+Traced in the pinned M5GFX 0.2.27 and M5Unified 0.2.20. Without a pin,
+`M5GFX::init_impl()` calls `autodetect()` up to five times while no board
+matches, and the last two passes reset the LCD pins. Each retry passes
+`board_unknown`, so every QFN56 ESP32-S3 probe runs again. Probes that touch
+the W5500 pins (SCLK 13, MOSI 11, MISO 12, CS 14, INT 10, RST 9):
+
+- CoreS3: I2C on GPIO 12 and 11 for the AXP2101 and AW9523.
+- StampPLC: SPI with MISO on GPIO 9, a TF card SPI-mode sequence that drives
+  GPIO 10 as card select, and GPIO 12 as panel select. GPIO 10 is the W5500
+  interrupt output, so this can drive against it.
+- AtomS3R: GPIO 14 as panel select.
+- Dial and DinMeter use GPIO 4 to 8 and drive the GPIO 9 backlight only on a
+  match.
+
+Each probe restores its pins, and `Ethernet::init()` resets the W5500 later,
+so the risk is transient contention plus five probe passes at boot.
+
+The fix pins `M5GFX_BOARD=board_t::board_M5StampS3`. StampS3 is an S3 board
+with no M5GFX probe, so `patches/m5gfx_board.patch` folds every probe away
+and `autodetect()` returns `board_unknown` at once on each retry. The debug env
+now runs `post:patches/m5gfx_board.py` as well; without it the retries would
+probe again. On the first boot M5GFX stores `AUTODETECT=0` in its own NVS
+namespace once, because the pinned seed differs from the result. Later boots
+write the same value, which NVS skips.
+
+Not covered by the pin: M5Unified drives GPIO 46 high on every S3, and with no
+detected board its own check pulls GPIO 4, 8, 10, 12 and 38, probes I2C on
+GPIO 45 and 48, and drives GPIO 13 and 15 only on a Capsule match. These are
+weak pulls and restored. Skipping `M5.begin()` remains the fallback above.
+`esp32-s3-headless` stays unpinned because it may run on a StickS3, where
+autodetect must find the PMIC.
+
+Fixed-version builds (`FURBLE_VERSION=1.0.0-ci FURBLE_TEST=0`) against master
+`0cead282`:
+
+| Env | Master bin | Pinned bin | Delta | DRAM | IRAM |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| waveshare-s3-eth | 1,696,384 | 1,631,808 | -64,576 | 51,332 to 51,308 | 132,352 to 131,840 |
+
+The master image holds 24 `[Autodetect]` strings, the pinned one only the two
+NVS load and save lines. The debug image keeps the patch too and holds the
+same two. Hardware validation is deferred with gate 2 below.
+
 ## Verification
 
 Hardware-gated. Needs a physical Waveshare ESP32-S3-ETH board.

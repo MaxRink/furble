@@ -70,7 +70,10 @@ FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e waveshare-s3-eth
 
 The plan 314 flash slimming brought `m5stack-core-debug` back inside its
 dual-OTA slot. Set `M5GFX_BOARD` only on an env that runs on exactly one M5
-board; `post:patches/m5gfx_board.py` applies it to the pinned M5GFX.
+board; `post:patches/m5gfx_board.py` applies it to the pinned M5GFX. The
+Waveshare env pins `board_M5StampS3` instead, a board with no M5GFX probe, so
+no probe touches its W5500 pins. Every env that sets `M5GFX_BOARD` needs the
+post script, debug variants included.
 
 If the 4 MB Core debug image exceeds its dual-OTA slot, the developer-only
 `m5stack-core-usb-debug` environment provides one large factory app partition:
