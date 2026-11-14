@@ -47,4 +47,3 @@ than the 1,848,928 recorded above, for the new column and the guard; the
 size and stack budgets pass. `python3 tools/pre_review.py --base
 origin/refactor/port-4-camera-types` passes 9 gates and
 `sh sim/scripts/check-doc-tokens.sh` passes.
-
