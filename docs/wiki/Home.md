@@ -33,7 +33,9 @@ This wiki is a friendly fork of the upstream furble project.
   bonded LE Just Works and authenticate with the companion password; set one
   before using the app in an untrusted area. An unknown inbound BLE link is
   retained because the server is shared with camera name discovery and can
-  delay reconnect advertising until it disconnects.
+  delay reconnect advertising until it disconnects. Reconnect advertising runs
+  at 100 ms for 60 s after enable, boot, a disconnect or any button press,
+  then at 1022.5 ms; press any button if the app cannot find the device.
 - **[WebUI](WebUI)**: authenticated HTTPS browser control and REST routes.
 
 ## At a glance
