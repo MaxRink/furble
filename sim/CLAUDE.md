@@ -379,7 +379,7 @@ shortens that host retry cadence for a bounded scenario.
   Malformed or foreign files fail closed and remain caller-owned.
   `sim/scripts/run-fuzz-restart.sh` is the focused seed-2 restart gate. It
   sets `FURBLE_FUZZ_RESTART_STEP=200`, so the restart comes from the
-  `restart-apply` action clicking the real Sensors "Restart to apply" button
+  fuzzer clicking the real Sensors "Restart to apply" button, found by label
   instead of a host-dependent random visit; no Linux seed from 1 to 20 reached
   one alone. Unset, the knob changes no walk. Root
   evidence records the c190 gate pass and all three 65e8 panel binaries passing

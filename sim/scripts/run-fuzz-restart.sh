@@ -4,7 +4,7 @@
 # resume its private checkpoint and finish the seed. Whether the random walk
 # reaches a Restart button by itself depends on host scheduling (seed 2 did on
 # macOS, no seed from 1 to 20 does on Linux), so step 200 of the first boot is
-# replaced with the restart-apply action, which clicks the Sensors page
+# replaced with a click on the Sensors page
 # "Restart to apply" button and runs Platform::restart(). The rest of the walk
 # stays random and passes through run-fuzz.sh's summary checks.
 

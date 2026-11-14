@@ -269,9 +269,11 @@ release fuzzer wrapper is `sim/scripts/run-fuzz.sh`; it uses
 `FURBLE_FUZZ_SEED_TIMEOUT`, `FURBLE_FUZZ_REPEAT_SEED`, and `FURBLE_SIM_BIN`.
 `sim/scripts/run-fuzz-restart.sh` runs the 135x240 seed 2 walk with
 `FURBLE_FUZZ_RESTART_STEP=200` and requires it to resume after a production UI
-restart. That knob replaces the walk's 200th first-boot event with the
-`restart-apply` action, which clicks the Sensors page "Restart to apply"
-button and runs `Platform::restart()`; unset, every walk is unchanged. The
+restart. That knob replaces the walk's 200th first-boot event with a click on the
+Sensors page "Restart to apply" button: the fuzzer opens the page with
+`nav sensors`, finds the button by its label and sends the production
+`LV_EVENT_CLICKED`, which runs `Platform::restart()`. Unset, every walk is
+unchanged. The
 random walk alone reaches a Restart button on some hosts only, which is why
 the check no longer waits for it.
 
@@ -671,7 +673,6 @@ action blind
 action blind-shutter
 action indicator-click-focus
 action focus-lock
-action restart-apply
 action capability-refresh
 action connect
 action connect-two

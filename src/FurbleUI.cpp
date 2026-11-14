@@ -3880,21 +3880,6 @@ void UI::simScenarioActionOnUi(const Sim::scenario_action_t &action) {
     return;
   }
 
-  // Open the Sensors page and click its "Restart to apply" button, so a run
-  // reaches the production Platform::restart() path deterministically. The
-  // UI fuzz restart check uses it; the random walk alone reaches the button
-  // only on some hosts.
-  if (simpleAction && command == "restart-apply") {
-    if (m_RestartApplyButton == nullptr) {
-      m_SimActionResult = sim_action_result_t::UNAVAILABLE;
-      return;
-    }
-    lv_menu_set_page(m_MainMenu.main, m_Menu.at(m_SensorsStr).page);
-    lv_obj_send_event(m_RestartApplyButton, LV_EVENT_CLICKED, nullptr);
-    m_SimActionResult = sim_action_result_t::APPLIED;
-    return;
-  }
-
   // Focus the Remote page shutter lock so a scenario can confirm its focus
   // outline. The sim always renders the touch remote layout, where key
   // navigation does not land on this floating button, so focus it directly.
@@ -9858,9 +9843,6 @@ void UI::addSensorsMenu(const menu_t &parent) {
   // it, and the row this buys keeps the page's content readable now that the
   // Motion Engine entry has joined it; the 80x160 physical layout may scroll.
   lv_obj_t *restart = lv_button_create(menu.page);
-#if defined(FURBLE_SIM)
-  m_RestartApplyButton = restart;
-#endif
   // Give the parent a real width before the percentage-sized label is laid out.
   // Without this, the button and label shrink-wrap each other to zero width.
   lv_obj_set_width(restart, LV_PCT(100));
