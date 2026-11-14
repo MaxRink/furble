@@ -356,12 +356,21 @@ def run_clang_tidy(
                   if " error: " in line]
         promoted = bool(errors) and all("-warnings-as-errors]" in line for line in errors)
         if output.returncode != 0 and not file_findings and not file_errors and not promoted:
+            # Name the database and the first error that is not a promoted
+            # check, so a CI log shows why the translation unit failed.
+            lines = (output.stdout + output.stderr).splitlines()
+            reason = next(
+                (line.strip() for line in lines
+                 if "error" in line.lower() and "-warnings-as-errors]" not in line),
+                "no error line",
+            )
             compile_errors.append(
                 {
                     "file": path,
                     "line": "0",
                     "column": "0",
-                    "message": f"clang-tidy exited {output.returncode}",
+                    "message": (f"clang-tidy exited {output.returncode} with {build_dir.name}: "
+                                f"{reason[:300]}"),
                 }
             )
     return findings, compile_errors, skipped
