@@ -10,12 +10,12 @@
 #include <string>
 #include <vector>
 
+#include "FurbleEthernet.h"
 #include "esp_eth.h"
 #include "esp_eth_mac_spi.h"
 #include "esp_event.h"
 #include "esp_mac.h"
 #include "esp_netif.h"
-#include "FurbleEthernet.h"
 
 namespace {
 
@@ -86,8 +86,7 @@ void emitGotIP(const char *text) {
   unsigned c = 0;
   unsigned d = 0;
   std::sscanf(text, "%u.%u.%u.%u", &a, &b, &c, &d);
-  event.ip_info.ip.addr = (a & 0xff) | ((b & 0xff) << 8) | ((c & 0xff) << 16)
-                          | ((d & 0xff) << 24);
+  event.ip_info.ip.addr = (a & 0xff) | ((b & 0xff) << 8) | ((c & 0xff) << 16) | ((d & 0xff) << 24);
   g_State = "got-ip";
   emit(IP_EVENT, IP_EVENT_ETH_GOT_IP, &event);
 }
@@ -159,9 +158,7 @@ esp_err_t spi_bus_free(spi_host_device_t host) {
   return ESP_OK;
 }
 
-
-esp_eth_mac_t *esp_eth_mac_new_w5500(const eth_w5500_config_t *config,
-                                     const eth_mac_config_t *) {
+esp_eth_mac_t *esp_eth_mac_new_w5500(const eth_w5500_config_t *config, const eth_mac_config_t *) {
   g_MacNew++;
   check(config != nullptr && config->spi_devcfg != nullptr,
         "the W5500 SPI device config is missing");

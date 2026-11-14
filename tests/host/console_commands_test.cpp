@@ -43,6 +43,7 @@
 #include "Device.h"
 #include "FujifilmBasic.h"
 #include "FujifilmVirtualCamera.h"
+#include "FurbleCrashRecord.h"
 #include "FurbleTimezone.h"
 #include "NimBLEDevice.h"
 
@@ -60,6 +61,9 @@
 #include "Scan.h"
 #include "console_doubles.h"
 #include "esp_console.h"
+
+// Installed by tests/host/console/crash_log_stub.cpp.
+void consoleTestSetCrashRecord(const Furble::CrashRecord::record_t *record);
 
 // The console and NVS shims define separate ESP error enums.
 extern "C" void nvs_test_fail_set_on(size_t nth_future_call);
@@ -371,6 +375,44 @@ void testStatusAndVersion(void) {
   const Result crashExtra = runDirect("crash last extra");
   check(crashExtra.rc != 0, "crash with an extra argument is rejected");
   checkContains(crashExtra.out, "usage: crash [last]", "crash names its accepted forms");
+
+  // A retained panic record with a failed allocation prints every field the
+  // allocation-failure callback stores (plan 314 PR 5).
+  Furble::CrashRecord::record_t record = {};
+  record.reset_reason = 4;
+  record.uptime_s = 321;
+  record.heap_free = 4096;
+  record.heap_largest = 2048;
+  std::snprintf(record.task, sizeof(record.task), "%s", "mqtt");
+  std::snprintf(record.log[0], sizeof(record.log[0]), "%s", "E mqtt: owner start failed");
+  Furble::CrashRecord::noteAllocFailure(record, 10240, 0x00000804U, "xTaskCreate", "mqtt");
+  Furble::CrashRecord::finalize(record);
+  consoleTestSetCrashRecord(&record);
+  const Result retained = runDirect("crash last");
+  consoleTestSetCrashRecord(nullptr);
+  check(retained.rc == 0, "crash with a retained record returns success");
+  checkContains(retained.out, "crash.reset: panic", "crash names the reset reason");
+  checkContains(retained.out, "crash.task: mqtt", "crash names the crashing task");
+  checkContains(retained.out, "crash.uptime: 321", "crash reports the uptime");
+  checkContains(retained.out, "crash.heap_free: 4096", "crash reports free heap");
+  checkContains(retained.out, "crash.heap_largest: 2048", "crash reports the largest block");
+  checkContains(retained.out, "crash.alloc_size: 10240", "crash reports the failed size");
+  checkContains(retained.out, "crash.alloc_caps: 0x00000804", "crash reports the failed caps");
+  checkContains(retained.out, "crash.alloc_task: mqtt", "crash reports the allocating task");
+  checkContains(retained.out, "crash.alloc_function: xTaskCreate",
+                "crash reports the allocating function");
+  check(retained.out.find("crash.none") == std::string::npos,
+        "crash with a record does not claim none");
+
+  // A record without a failed allocation omits the allocation fields.
+  Furble::CrashRecord::record_t plain = record;
+  plain.alloc_size = 0;
+  Furble::CrashRecord::finalize(plain);
+  consoleTestSetCrashRecord(&plain);
+  const Result plainOut = runDirect("crash");
+  consoleTestSetCrashRecord(nullptr);
+  check(plainOut.out.find("crash.alloc_size") == std::string::npos,
+        "crash omits allocation fields when none failed");
 }
 
 // Test 4. The settings commands roundtrip a real value through the production

@@ -65,6 +65,25 @@ class HeaderIncluderTest(unittest.TestCase):
 
 
 class ClangTidyParseTest(unittest.TestCase):
+    def test_third_party_headers_under_sim_are_not_findings(self):
+        # CI clones the simulator's dependencies into sim/.pio/libdeps/sim, so
+        # an M5GFX header there must not count as furble code.
+        root = str(CHECKER.ROOT)
+        findings, errors = CHECKER.parse_clang_tidy(
+            f"{root}/sim/.pio/libdeps/sim/M5GFX/src/lgfx/v1/LGFXBase.hpp:965:5: "
+            "error: deleting a pointer [cppcoreguidelines-owning-memory]\n"
+            f"{root}/sim/.pio/libdeps/sim/M5GFX/src/lgfx/v1/Panel.hpp:98:48: "
+            "error: unknown type name 'x' [clang-diagnostic-error]\n"
+        )
+        self.assertEqual(findings, [])
+        self.assertEqual(errors, [])
+        cpp = CHECKER.parse_cppcheck(
+            "sim/.pio/libdeps/sim/lvgl/src/core/lv_obj.c:10:1: warning: x [y]\n"
+        )
+        self.assertEqual(cpp, [])
+        self.assertTrue(CHECKER.is_production("sim/sdl_lifecycle.cpp"))
+        self.assertFalse(CHECKER.is_production("sim/.pio/libdeps/sim/M5GFX/a.hpp"))
+
     def test_warning_is_parsed_with_check(self):
         findings, errors = CHECKER.parse_clang_tidy(
             "src/FurbleUI.cpp:12:3: warning: use of a signed integer operand "

@@ -18,6 +18,12 @@
 #include "freertos/FreeRTOS.h"
 #include "headless_state.h"
 
+#if defined(FURBLE_HOST_COVERAGE)
+// The clang profile runtime writes the raw profile from an exit handler, and
+// std::_Exit skips exit handlers. Flush it explicitly before leaving.
+extern "C" int __llvm_profile_write_file(void);
+#endif
+
 extern "C" void app_main(void);
 
 namespace {
@@ -42,6 +48,15 @@ std::vector<std::string> bootWithoutTask() {
     }
   }
   return filtered;
+}
+
+// The service loop never returns, so the test exits from inside it.
+[[noreturn]] void exitNow(int code) {
+  std::cout.flush();
+#if defined(FURBLE_HOST_COVERAGE)
+  __llvm_profile_write_file();
+#endif
+  std::_Exit(code);
 }
 
 void finish(void) {
@@ -102,12 +117,10 @@ void finish(void) {
   std::cout << "headless.no_panel touched=" << (M5.Display.panelUsed() ? 1 : 0) << '\n';
 
   if (g_Failures != 0) {
-    std::cout.flush();
-    std::_Exit(1);
+    exitNow(1);
   }
   std::cout << "headless_service_test: PASS\n";
-  std::cout.flush();
-  std::_Exit(0);
+  exitNow(0);
 }
 
 void delayHook(void) {

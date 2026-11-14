@@ -19,6 +19,7 @@ fixed or a false positive, with evidence.
 | 8 | Subagent review | The LUMIX footnote left out the S5II first-pair risk. | Fixed. The footnote says a fresh S5II may still need a Lumix Sync first-pair flow. | `lib/furble/Lumix.cpp`, `plans/implemented/72-lumix.md` |
 | 9 | Subagent review | Plan 86 said F2 was still unfixed, while #116 showed its stated root cause did not hold. | Fixed. The header says the static cause did not hold and the #32 symptom stays open as a hardware investigation. | PR #116 body |
 | 10 | Subagent review | Older archived plans (12, 13, 68, 89, 100, 101, 112, 122, 123, 150, 174, 300) and plan 29 still said "implemented on" a feature branch. | Fixed on owner request. Each line names its merged PR and commit. Plan 170's reproduction branch still exists on origin and stays. | `gh pr list --state merged --head <branch>` |
+| 11 | Merge of master `350b58e3` | #450 added a plan 314 review row citing `plans/177-mqtt-4mb-size-followup.md:137`, which this PR moves to `plans/implemented/`. | Fixed. The row cites `plans/implemented/177-mqtt-4mb-size-followup.md:142`, the same sentence after the moved plan's new status header. A scan of every tracked reference to a `plans/` file finds no other missing path. | `plans/314-review-feedback.md` |
 
 DJI Osmo and Pentax K are missing from `docs/supported-hardware.md`; a
 follow-up branch adds them.
