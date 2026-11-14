@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
+import re
 import subprocess
 import sys
 
@@ -139,6 +141,90 @@ def run_graphql(owner: str, name: str, number: int) -> list[dict]:
     return threads
 
 
+WORKFLOW_DIR = Path(__file__).resolve().parents[1] / ".github" / "workflows"
+
+
+def run_changed_files(owner: str, name: str, number: int) -> list[str]:
+    """Return every path the pull request changes."""
+    command = ["gh", "api", "--paginate", f"repos/{owner}/{name}/pulls/{number}/files",
+               "--jq", ".[].filename"]
+    try:
+        result = subprocess.run(command, capture_output=True, text=True)
+    except OSError as error:
+        raise ReviewQueryError(f"could not run gh api: {error}") from error
+    if result.returncode != 0:
+        raise ReviewQueryError(
+            f"gh api pulls/{number}/files failed with exit {result.returncode}: "
+            f"{result.stderr.strip() or result.stdout.strip()}")
+    return [line for line in result.stdout.splitlines() if line]
+
+
+def filter_regex(pattern: str) -> re.Pattern[str]:
+    """Translate a GitHub Actions path filter glob into a regex."""
+    out = []
+    index = 0
+    while index < len(pattern):
+        if pattern.startswith("**/", index):
+            out.append("(?:.*/)?")
+            index += 3
+        elif pattern.startswith("**", index):
+            out.append(".*")
+            index += 2
+        elif pattern[index] == "*":
+            out.append("[^/]*")
+            index += 1
+        elif pattern[index] == "?":
+            out.append("[^/]")
+            index += 1
+        else:
+            out.append(re.escape(pattern[index]))
+            index += 1
+    return re.compile("".join(out) + r"\Z")
+
+
+def filter_matches(patterns: list[str], path: str) -> bool:
+    """Apply GitHub's ordered include and !exclude filter patterns to one path."""
+    matched = False
+    for pattern in patterns:
+        if pattern.startswith("!"):
+            if filter_regex(pattern[1:]).match(path):
+                matched = False
+        elif filter_regex(pattern).match(path):
+            matched = True
+    return matched
+
+
+def covering_workflows(files: list[str], workflow_dir: Path = WORKFLOW_DIR) -> list[str]:
+    """Return the pull-request workflows whose path filters select any file."""
+    try:
+        import yaml
+    except ImportError as error:
+        raise ReviewQueryError(f"PyYAML is required to read workflow filters: {error}") from error
+    covering = []
+    for path in sorted([*workflow_dir.glob("*.yml"), *workflow_dir.glob("*.yaml")]):
+        try:
+            document = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        except (OSError, yaml.YAMLError) as error:
+            raise ReviewQueryError(f"could not read {path.name}: {error}") from error
+        trigger = document.get("on", document.get(True))
+        if isinstance(trigger, str):
+            trigger = {trigger: None}
+        elif isinstance(trigger, list):
+            trigger = {name: None for name in trigger}
+        if not isinstance(trigger, dict) or "pull_request" not in trigger:
+            continue
+        config = trigger["pull_request"] or {}
+        if "paths" in config:
+            runs = any(filter_matches(list(config["paths"]), file) for file in files)
+        elif "paths-ignore" in config:
+            runs = any(not filter_matches(list(config["paths-ignore"]), file) for file in files)
+        else:
+            runs = bool(files)
+        if runs:
+            covering.append(path.name)
+    return covering
+
+
 def run_checks(owner: str, name: str, number: int) -> tuple[str, list[dict]]:
     """Return the PR head SHA and every check run and status on it."""
     contexts: list[dict] = []
@@ -249,9 +335,21 @@ def main(argv: list[str] | None = None) -> int:
         reason = args.allow_no_checks.strip()
         if reason:
             # A PR that only touches paths no pull-request workflow filters on
-            # (web-installer/**, say) legitimately has no checks. Accept it only
-            # with a stated reason, so the outage case still fails by default.
-            print(f"checks: none on head {head[:12]}, accepted: {reason}")
+            # (web-installer/**, say) legitimately has no checks. The reason is
+            # not trusted: the override holds only if no workflow's filter
+            # selects a changed file, so an Actions outage still fails.
+            try:
+                covering = covering_workflows(run_changed_files(owner, name, args.pr))
+            except ReviewQueryError as error:
+                print(f"review-thread check failed closed: {error}", file=sys.stderr)
+                return 2
+            if covering:
+                print(f"--allow-no-checks refused: {', '.join(covering)} should have run "
+                      f"on head {head[:12]}, so a missing check is an Actions failure.",
+                      file=sys.stderr)
+                return 1
+            print(f"checks: none on head {head[:12]}, and no workflow covers the "
+                  f"changed paths; accepted: {reason}")
             return status
         print(f"no CI check ran on head {head[:12]} of {args.repo}#{args.pr}. "
               "Confirm GitHub Actions is enabled and rerun the workflows, or pass "

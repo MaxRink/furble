@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from unittest import mock
@@ -156,28 +157,62 @@ class ReviewThreadGateTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("no CI check ran on head 0123456789ab", stderr)
 
-    def test_head_without_checks_passes_only_with_a_reason(self):
-        # A web-installer-only PR matches no pull-request workflow.
+    def run_override(self, changed, *extra):
         threads = [completed(page([thread(True)]))]
         checks = completed(checks_page([], rollup=False))
-        with mock.patch.object(REVIEW.subprocess, "run", side_effect=gh(threads, checks)):
-            code, stdout, _ = self.run_gate(
-                "--repo", "owner/name", "--pr", "391",
-                "--allow-no-checks", "web-installer only; no workflow covers it")
+        with mock.patch.object(REVIEW.subprocess, "run", side_effect=gh(threads, checks)), \
+                mock.patch.object(REVIEW, "run_changed_files", return_value=changed):
+            return self.run_gate("--repo", "owner/name", "--pr", "391", *extra)
+
+    def test_no_checks_override_holds_when_no_workflow_covers_the_paths(self):
+        # A web-installer-only PR matches no pull-request workflow.
+        code, stdout, _ = self.run_override(
+            ["web-installer/index.html"], "--allow-no-checks", "web-installer only")
         self.assertEqual(code, 0)
         self.assertIn("accepted: web-installer only", stdout)
-        with mock.patch.object(REVIEW.subprocess, "run", side_effect=gh(threads, checks)):
-            code, _, _ = self.run_gate("--repo", "owner/name", "--pr", "391",
-                                       "--allow-no-checks", "  ")
+
+    def test_no_checks_override_is_refused_when_a_workflow_should_have_run(self):
+        # An Actions outage on a source change must still fail, whatever the reason says.
+        code, _, stderr = self.run_override(
+            ["src/FurbleUI.cpp"], "--allow-no-checks", "outage")
+        self.assertEqual(code, 1)
+        self.assertIn("--allow-no-checks refused", stderr)
+        self.assertIn("main.yml", stderr)
+
+    def test_blank_override_reason_is_no_override(self):
+        code, _, _ = self.run_override(["web-installer/index.html"], "--allow-no-checks", "  ")
         self.assertEqual(code, 1)
 
     def test_reason_does_not_hide_unresolved_threads(self):
         threads = [completed(page([thread(False)]))]
         checks = completed(checks_page([], rollup=False))
-        with mock.patch.object(REVIEW.subprocess, "run", side_effect=gh(threads, checks)):
+        with mock.patch.object(REVIEW.subprocess, "run", side_effect=gh(threads, checks)), \
+                mock.patch.object(REVIEW, "run_changed_files",
+                                  return_value=["web-installer/index.html"]):
             code, _, _ = self.run_gate("--repo", "owner/name", "--pr", "391",
                                        "--allow-no-checks", "docs only")
         self.assertEqual(code, 1)
+
+    def test_filter_globs_follow_github_semantics(self):
+        self.assertTrue(REVIEW.filter_matches(["src/**"], "src/a/b.cpp"))
+        self.assertFalse(REVIEW.filter_matches(["src/*"], "src/a/b.cpp"))
+        self.assertTrue(REVIEW.filter_matches(["**/*.md"], "README.md"))
+        self.assertTrue(REVIEW.filter_matches(["**/*.md"], "docs/x/y.md"))
+        self.assertFalse(REVIEW.filter_matches(["src/**", "!src/gen/**"], "src/gen/a.c"))
+        self.assertTrue(REVIEW.filter_matches(["sdkconfig*"], "sdkconfig.m5stick-s3"))
+
+    def test_paths_ignore_runs_unless_every_file_is_ignored(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            workflows = Path(scratch)
+            (workflows / "ci.yml").write_text(
+                "on:\n  pull_request:\n    paths-ignore:\n      - 'web-installer/**'\n",
+                encoding="utf-8")
+            (workflows / "push.yml").write_text("on: push\n", encoding="utf-8")
+            self.assertEqual(
+                REVIEW.covering_workflows(["web-installer/a.js"], workflows), [])
+            self.assertEqual(
+                REVIEW.covering_workflows(["web-installer/a.js", "src/a.cpp"], workflows),
+                ["ci.yml"])
 
     def test_failed_and_cancelled_checks_fail(self):
         code, _, stderr = self.run_checks(completed(checks_page([
