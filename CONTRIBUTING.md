@@ -174,6 +174,16 @@ python3 tools/check_review_threads.py --repo owner/name --pr <number>
 
 It queries the GitHub GraphQL API through `gh api graphql` and fails closed on
 API errors, so a missing token or network is never treated as a clean result.
+`--allow-no-checks` reads the workflow path filters with PyYAML, pinned in
+`.github/workflows/ci-checker-requirements.txt`
+(`python3 -m pip install -r .github/workflows/ci-checker-requirements.txt`);
+without it the override fails closed.
+It also fails when the pull request head has no check runs at all, or any
+check is still running or did not pass. Actions was once disabled on the
+fork for three weeks, and pull requests merged with no CI; a head without
+checks is now a hard failure. A pull request whose paths no workflow covers
+(web-installer only, say) passes that rule only with
+`--allow-no-checks "<reason>"`, and the gate prints the reason.
 Do not wire this into offline pre-review or fork CI jobs. The remediation pull
 request itself must pass the same check before it merges. Record the audit in
 its `plans/NN-review-feedback.md` table.

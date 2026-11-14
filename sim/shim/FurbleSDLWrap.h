@@ -7,6 +7,8 @@ extern "C" {
 
 SDL_Thread *furble_sim_SDL_CreateThread(SDL_ThreadFunction function, const char *name, void *data);
 void furble_sim_SDL_Quit(void);
+SDL_Renderer *furble_sim_SDL_CreateRenderer(SDL_Window *window, int index, Uint32 flags);
+void furble_sim_SDL_DestroyRenderer(SDL_Renderer *renderer);
 
 #ifdef __cplusplus
 }
@@ -18,5 +20,10 @@ void furble_sim_SDL_Quit(void);
 // lifecycle calls through a shim that joins the worker before SDL teardown.
 #define SDL_CreateThread furble_sim_SDL_CreateThread
 #define SDL_Quit furble_sim_SDL_Quit
+// M5GFX destroys its renderer only when a window is closed, never on
+// Panel_sdl::close(), and SDL_Quit does not free a live renderer. The shim
+// tracks renderers so SDL_Quit can destroy any that are still live.
+#define SDL_CreateRenderer furble_sim_SDL_CreateRenderer
+#define SDL_DestroyRenderer furble_sim_SDL_DestroyRenderer
 
 #endif

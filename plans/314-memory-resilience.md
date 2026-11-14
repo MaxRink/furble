@@ -1161,3 +1161,78 @@ the lines that print it, including the failed-allocation fields from PR 5,
 were uncovered. The console stub now lets a test install a record, and the
 console test checks every printed field with and without a failed
 allocation. The console reaches 89.26% locally. The floor is not lowered.
+
+## Fix: CI re-enable, 2026-11-13
+
+State: implemented on `ci/master-green`. GitHub Actions was disabled on the
+fork from 2026-10-21, so the plan 314 PRs of that window merged with no CI.
+Three of their gates failed on the first run. See `plans/95-engineering-lessons.md`
+for the full incident.
+
+- PR 12, ASan and UBSan host tests: `gpx-writer` failed only there. GPX::open()
+  formats its path into 64 bytes, and the test sandbox was the absolute
+  build-tree path. The plain tree truncated silently and the test truncated its
+  expectation the same way; the sanitized tree is deeper, so the path was cut
+  inside the directory name. `GPX::open()` now sizes the buffer from
+  `FURBLE_GPX_DIRECTORY` plus the widest name the point fields can print, and
+  fails the open on a truncated path. On the device that is 37 bytes instead
+  of 64. The test keeps its long absolute sandbox as the regression check, and
+  the coverage workflow no longer needs a short build directory.
+- PR 6, `memory-pressure-mqtt-shed`: the paused figure of 8,497 was measured on
+  macOS. Linux read 8,457 on arm64 and 8,441 on x86_64. The host MQTT
+  transport allocated its adapter object, strings and reconnect thread on the
+  owner task, and the counter charged them as device memory, so their host
+  sizes leaked into the model. Every libmosquitto call and the adapter's own
+  objects now run inside a `HostAllocScope`. In their place
+  `esp_mqtt_client_init()` charges what the pinned esp-mqtt allocates
+  (`components/mqtt/esp-mqtt/mqtt_client.c`): the 248-byte client and 160-byte
+  config storage (sizes from the StickS3 firmware DWARF) and the in and out
+  buffers FurbleMQTT configures, 1,536 bytes each, so 3,480 bytes. Destroy
+  releases them. The sim had never charged them. The firmware stops and
+  destroys the client on a memory pause, so the paused reading rises from
+  8,497 to 11,977 (worker plus init allocations) and still sits between the
+  RED floor and the RED exit, which keeps the check that such a reading holds
+  RED. The scenario is reseeded 4,152 bytes higher so boot and the squeezed
+  level keep their old figures. Smaller esp-mqtt allocations (URI strings,
+  outbox, transport list) are not modelled.
+- PR 4b, sim-sanitizers: every scenario failed with a signed overflow in
+  M5GFX `Panel_sdl::_update_scaling()`. Under the dummy video driver
+  `SDL_CreateRenderer` returns NULL, `SDL_GetRendererOutputSize` never writes
+  its outputs, and M5GFX divides by uninitialized stack ints. clang 18 made
+  that an infinite float, which the old `float-cast-overflow` entry
+  suppressed; clang 21 on ubuntu-26.04 made it a signed overflow. The
+  simulator now sets `SDL_HINT_RENDER_DRIVER=software` before
+  `Panel_sdl::setup()` when the video driver is dummy or offscreen, so the
+  renderer exists and its size is real. The `float-cast-overflow` suppression
+  is removed. An explicit `SDL_RENDER_DRIVER` in the environment still wins.
+  A live renderer exposed one more M5GFX lifetime gap: `Panel_sdl::close()`
+  never destroys it, and LeakSanitizer reported its 768 bytes in every
+  scenario. The SDL lifecycle shim (`sim/shim/FurbleSDLWrap.h`) now routes
+  `SDL_CreateRenderer` and `SDL_DestroyRenderer` through
+  `sim/sdl_lifecycle.cpp`, which destroys any renderer still live before
+  `SDL_Quit`. No leak suppression was added.
+- PR 4b, the same job: with the M5GFX report gone, every scenario then stopped
+  on an LVGL `function` report that `sim/ubsan.supp` names. The LVGL entries
+  were written against `managed_components/lvgl__lvgl/src/...`, but CI clones
+  LVGL into `sim/.pio/libdeps/sim/lvgl/src/...`, so they never matched there.
+  A pattern matches anywhere in the path, so the entries now start at
+  `lvgl/src/`, which covers both layouts. The suppressed sites are unchanged.
+
+## Fix: deep-sleep scenarios that assumed a trusted clock
+
+The intervalometer deep-sleep gate (`sim/scripts/run-deep-sleep.sh`) landed on
+2026-11-01, during the Actions outage, and never ran green in CI. Its `stale`,
+`late` and `stable-id` scenarios assumed a trusted wall clock at boot. The
+deep-sleep review fix the same evening made `trustedWallClock()` reject an
+NVS-restored clock, because that sample does not advance across power-off.
+The StickS3 has no RTC chip, so the M5PM1 timer is the authority: a timed-wake
+resume waits `RESUME_WAKE_MARGIN_S` (15 s) from boot and then shoots, whatever
+the record's wake time says. This is the documented firmware policy, and a
+probe showed the interval timer behaving exactly so; the scenarios were wrong.
+
+`stale` and `late` now assert that wait and the following shot, and
+`stable-id` keeps its camera-selection check with a finish bound that covers
+the margin. Rejecting a stale record, or firing a late one at once, needs a
+battery-backed RTC sample at boot, which the simulator does not model; that
+coverage gap is issue #455. The gate passes 3 of 3 runs in an
+Ubuntu 24.04 container.

@@ -83,7 +83,8 @@ Furble::GPX::point_t makePoint(uint16_t year,
 }
 
 std::string pathFor(const Furble::GPX::point_t &point) {
-  char name[64];
+  // As long as the sandbox needs: a CI build directory exceeds 64 bytes.
+  char name[sizeof(FURBLE_GPX_DIRECTORY) + 32];
   snprintf(name, sizeof(name), "%s/%04u%02u%02u-%02u%02u%02u.gpx", FURBLE_GPX_DIRECTORY,
            static_cast<unsigned>(point.year), static_cast<unsigned>(point.month),
            static_cast<unsigned>(point.day), static_cast<unsigned>(point.hour),
