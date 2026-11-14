@@ -18,8 +18,8 @@ namespace Sim {
 const char *watchdogState(void);
 }
 #endif
-/** Board power and platform services, and the PowerBackend of this image. */
-class Platform final: public PowerBackend {
+/** Board power and platform services; meets the PowerBackend contract. */
+class Platform: public PowerBackend {
  public:
   /** Selectable maximum CPU frequencies in MHz. */
   static constexpr std::array<uint8_t, 3> CPU_MAX_FREQ_MHZ = {80, 160, 240};
@@ -84,7 +84,7 @@ class Platform final: public PowerBackend {
   /**
    * Get debounced power button click count.
    */
-  uint8_t getPWRClickCount(void) override;
+  uint8_t getPWRClickCount(void);
 
   /**
    * Update platform specific state.
@@ -125,7 +125,7 @@ class Platform final: public PowerBackend {
    * On success this call never returns. Returns false if the PMIC refused the
    * shutdown, with the hardware watchdog re-armed if it was armed before.
    */
-  bool powerOff(void) override;
+  bool powerOff(void);
 
   /**
    * Arm the IMU interrupt as a light-sleep wake source.
@@ -209,7 +209,7 @@ class Platform final: public PowerBackend {
   /**
    * Is a timed power-on supported by this board?
    */
-  bool canTimedWake(void) override;
+  bool canTimedWake(void);
 
   /**
    * Power off and arrange for a timed power-on.
@@ -217,12 +217,12 @@ class Platform final: public PowerBackend {
    * @return true after the wake timer and power-off request were accepted;
    * false if setup failed and the device remains awake.
    */
-  bool powerOffUntil(uint32_t seconds) override;
+  bool powerOffUntil(uint32_t seconds);
 
   /**
    * Consume the wake marker left by a timed power-on.
    */
-  bool consumeTimedWake(void) override;
+  bool consumeTimedWake(void);
 
   /**
    * Set the maximum CPU frequency in MHz.
@@ -262,12 +262,12 @@ class Platform final: public PowerBackend {
    * model on every call, so a reference to shared mutable storage would race
    * console and UI readers.
    */
-  battery_caps_t getBatteryCaps(void) override;
+  battery_caps_t getBatteryCaps(void);
 
   /**
    * Read the battery, unsupported measurements are returned as zero.
    */
-  battery_t readBattery(void) override;
+  battery_t readBattery(void);
 
   /** Read the battery and update the shared exponentially weighted averages. */
   battery_sample_t sampleBattery(void);
@@ -288,16 +288,16 @@ class Platform final: public PowerBackend {
   /**
    * Get the battery capacity in mAh, zero if unknown.
    */
-  uint16_t getBatteryCapacity(void) override;
+  uint16_t getBatteryCapacity(void);
 
   /** Gauge, voltage estimate or coarse steps, from the detected PMIC. */
-  BatterySource getBatterySource(void) override;
+  BatterySource getBatterySource(void);
 
   /**
    * Switch a named rail. The M5 boards switch only the GPS rail, which is the
    * Port A 5 V output.
    */
-  bool setRail(Rail rail, bool on) override;
+  bool setRail(Rail rail, bool on);
 
   /**
    * Get the count of PMIC accesses which failed after a retry.

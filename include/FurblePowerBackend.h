@@ -8,13 +8,28 @@ namespace Furble {
 /**
  * What a board's power hardware must provide.
  *
- * Exactly one implementation is linked into each image: `Platform` in
- * src/FurblePlatform.cpp for the M5 boards (M5PM1, AXP192, AXP2101 through
- * M5Unified, IP5306, ADC), and `Platform` in sim/FurblePlatformSim.cpp for the
- * simulator. `Platform` is final, so calls through it compile to direct calls.
- * A board family the M5 code does not cover supplies its own implementation
- * file, selected by its CMake profile, built on the drivers in lib/hal. See
- * plans/322-hardware-abstraction.md.
+ * This is a link-time contract, not a virtual interface. Exactly one
+ * `Platform` is linked into each image: src/FurblePlatform.cpp for the M5
+ * boards (M5PM1, AXP192, AXP2101 through M5Unified, IP5306, ADC) and
+ * sim/FurblePlatformSim.cpp for the simulator. `Platform` derives from this
+ * class for the shared types and defines every member listed below. There is
+ * no vtable on purpose: a vtable keeps every power path alive, and on the
+ * headless Waveshare image that pulled the ESP-IDF sleep code into IRAM past
+ * its budget (plan 322). A board family the M5 code does not cover supplies
+ * its own `Platform` implementation file, selected by its CMake profile, built
+ * on the drivers in lib/hal.
+ *
+ * Required members of `Platform`:
+ *  - battery_caps_t getBatteryCaps(void)
+ *  - battery_t readBattery(void): unsupported measurements read as zero
+ *  - BatterySource getBatterySource(void)
+ *  - uint16_t getBatteryCapacity(void): mAh, zero if unknown
+ *  - bool setRail(Rail rail, bool on): false when the board has no switch
+ *  - uint8_t getPWRClickCount(void): PMIC key clicks since the last call
+ *  - bool powerOff(void): never returns on success
+ *  - bool canTimedWake(void)
+ *  - bool powerOffUntil(uint32_t seconds)
+ *  - bool consumeTimedWake(void)
  */
 class PowerBackend {
  public:
@@ -52,39 +67,6 @@ class PowerBackend {
     DISPLAY,
     PERIPHERAL,
   };
-
-  virtual ~PowerBackend() = default;
-
-  virtual battery_caps_t getBatteryCaps(void) = 0;
-
-  /** Read the battery, unsupported measurements are returned as zero. */
-  virtual battery_t readBattery(void) = 0;
-
-  virtual BatterySource getBatterySource(void) = 0;
-
-  /** Battery capacity in mAh, zero if unknown. */
-  virtual uint16_t getBatteryCapacity(void) = 0;
-
-  /**
-   * Switch a named rail.
-   *
-   * @return false when the board has no switch for that rail.
-   */
-  virtual bool setRail(Rail rail, bool on) = 0;
-
-  /** Power-button clicks from the PMIC since the last call. */
-  virtual uint8_t getPWRClickCount(void) = 0;
-
-  /** Power off. Never returns on success. */
-  virtual bool powerOff(void) = 0;
-
-  virtual bool canTimedWake(void) = 0;
-
-  /** Power off and arrange a timed power-on. */
-  virtual bool powerOffUntil(uint32_t seconds) = 0;
-
-  /** Consume the marker left by a timed power-on. */
-  virtual bool consumeTimedWake(void) = 0;
 };
 
 }  // namespace Furble
