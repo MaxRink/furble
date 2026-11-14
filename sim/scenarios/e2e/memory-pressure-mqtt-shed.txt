@@ -2,38 +2,43 @@
 # lets it return once the restored client fits above RED again.
 #
 # Run with FURBLE_SIM_MQTT=1 against a closed port (sim/scripts/run-memory.sh).
-# After boot the owner and the plain client leave 17,041 bytes free. Three 4 KiB
-# squeezes take it to 4,753, below the 8,192 RED floor. After three readings the
-# governor pauses the client; its 3 KiB worker and buffers come back (8,497
-# free, still under the RED exit) and stay back for the whole pause, because
-# a memory pause is not a connect failure and does not retry. Releasing the squeeze clears the 19,456
-# RED exit, so after five clear readings the governor steps up to AMBER, which
-# does not pause MQTT, and the client starts again through its own gate.
+# After boot the owner and the plain client leave 17,713 bytes free. Three 4 KiB
+# squeezes take it to 5,425, below the 8,192 RED floor. After three readings the
+# governor pauses the client. The firmware stops and destroys it, so its 3 KiB
+# worker and the 3,480 bytes esp_mqtt_client_init allocated (client, config
+# storage and the two 1,536-byte buffers) come back: 11,977 free, between the
+# RED floor and the RED exit, so the level holds RED. They stay back for the
+# whole pause, because a memory pause is not a connect failure and does not
+# retry. The host transport's own objects are not device memory and are not
+# counted, so these figures are the same on macOS and Linux. Releasing the
+# squeeze clears the 19,456 RED exit, so after five clear readings the governor
+# steps up to AMBER, which does not pause MQTT, and the client starts again
+# through its own gate.
 seed hw_profile sticks3
-seed heap_internal_free 30721
-seed heap_internal_largest 30721
+seed heap_internal_free 34873
+seed heap_internal_largest 34873
 seed wifi_connected true
 wait 3000
 
 assert mqtt.task created
-assert heap.free 17041
+assert heap.free 17713
 assert heap.pressure normal
 
 action heap-squeeze
 action heap-squeeze
 action heap-squeeze
-assert heap.free 4753
+assert heap.free 5425
 wait 5000
 assert heap.pressure red
-assert heap.free 8497
+assert heap.free 11977
 wait 5000
-assert heap.free 8497
+assert heap.free 11977
 assert mqtt.blocked no
 
 action heap-release
 wait 8000
 assert heap.pressure amber
-assert heap.free 17041
+assert heap.free 17713
 assert heap.alloc_failures 0
 assert ui.page main
 assert platform.watchdog armed

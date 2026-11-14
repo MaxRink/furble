@@ -16,6 +16,7 @@
 
 #include <mosquitto.h>
 
+#include "heap_count.h"
 #include "heap_model.h"
 
 namespace {
@@ -111,6 +112,8 @@ struct esp_mqtt_client {
   // Zero means the ESP-IDF default, which is 6144 bytes on this target.
   size_t task_stack_bytes = 6144;
   size_t heap_reserved = 0;
+  // Modelled esp-mqtt init allocations, released by destroy.
+  size_t init_reserved = 0;
   // ESP-IDF's esp-mqtt task retries a failed connection on its own cadence.
   // libmosquitto's loop_start does not, so the adapter models that retry with a
   // small wall-clock worker. It only runs while the transport is started.
@@ -228,6 +231,26 @@ void onPublish(mosquitto *, void *userdata, int message_id) {
   client->dispatch(event);
 }
 
+// esp_mqtt_client_init allocates these on the device (pinned IDF
+// components/mqtt/esp-mqtt/mqtt_client.c): the client struct and its config
+// storage (sizes from the StickS3 firmware DWARF), then the outbound and the
+// inbound message buffers (mqtt_client.c:420 and :425). The adapter's own
+// libmosquitto client, std::string fields and threads are host machinery and
+// are never charged, so the figure does not depend on the host libraries.
+// Smaller esp-mqtt allocations (URI strings, outbox, transport list) are not
+// modelled.
+constexpr size_t ESP_MQTT_CLIENT_BYTES = 248;
+constexpr size_t ESP_MQTT_CONFIG_STORAGE_BYTES = 160;
+// MQTT_BUFFER_SIZE_BYTE, CONFIG_MQTT_BUFFER_SIZE in the firmware sdkconfigs.
+constexpr int ESP_MQTT_DEFAULT_BUFFER_BYTES = 1024;
+
+size_t modelledInitBytes(const esp_mqtt_client_config_t *config) {
+  const int in = config->buffer.size > 0 ? config->buffer.size : ESP_MQTT_DEFAULT_BUFFER_BYTES;
+  const int out = config->buffer.out_size > 0 ? config->buffer.out_size : in;
+  return ESP_MQTT_CLIENT_BYTES + ESP_MQTT_CONFIG_STORAGE_BYTES + static_cast<size_t>(in)
+         + static_cast<size_t>(out);
+}
+
 void initialiseMosquitto(void) {
   mosquitto_lib_init();
 }
@@ -271,11 +294,9 @@ void stopReconnectWorker(esp_mqtt_client *client) {
 
 }  // namespace
 
-extern "C" esp_mqtt_client_handle_t esp_mqtt_client_init(const esp_mqtt_client_config_t *config) {
-  if (config == nullptr || config->broker.address.uri == nullptr) {
-    return nullptr;
-  }
+namespace {
 
+esp_mqtt_client_handle_t createHostClient(const esp_mqtt_client_config_t *config) {
   static std::once_flag library_once;
   std::call_once(library_once, initialiseMosquitto);
 
@@ -350,6 +371,32 @@ extern "C" esp_mqtt_client_handle_t esp_mqtt_client_init(const esp_mqtt_client_c
   return client;
 }
 
+}  // namespace
+
+extern "C" esp_mqtt_client_handle_t esp_mqtt_client_init(const esp_mqtt_client_config_t *config) {
+  if (config == nullptr || config->broker.address.uri == nullptr) {
+    return nullptr;
+  }
+  const size_t modelled = modelledInitBytes(config);
+  if (Furble::Sim::heapActive() && !Furble::Sim::heapReserve(modelled)) {
+    Furble::Sim::heapNoteAllocationFailure(modelled, "esp_mqtt_client_init");
+    return nullptr;
+  }
+  esp_mqtt_client_handle_t client = nullptr;
+  {
+    const Furble::Sim::HostAllocScope hostScope;
+    client = createHostClient(config);
+  }
+  if (client == nullptr) {
+    if (Furble::Sim::heapActive()) {
+      Furble::Sim::heapRelease(modelled);
+    }
+    return nullptr;
+  }
+  client->init_reserved = Furble::Sim::heapActive() ? modelled : 0;
+  return client;
+}
+
 extern "C" esp_err_t esp_mqtt_client_register_event(esp_mqtt_client_handle_t client,
                                                     mqtt_event_id_t event,
                                                     esp_event_handler_t handler,
@@ -368,6 +415,8 @@ extern "C" esp_err_t esp_mqtt_client_start(esp_mqtt_client_handle_t client) {
   if (client == nullptr) {
     return ESP_FAIL;
   }
+  // libmosquitto, the adapter threads and its strings are host machinery.
+  const Furble::Sim::HostAllocScope hostScope;
   BrokerAddress address;
   if (!parsePlainUri(client->uri.c_str(), address)) {
     return ESP_FAIL;
@@ -431,6 +480,8 @@ extern "C" esp_err_t esp_mqtt_client_stop(esp_mqtt_client_handle_t client) {
   if (client == nullptr) {
     return ESP_FAIL;
   }
+  // libmosquitto, the adapter threads and its strings are host machinery.
+  const Furble::Sim::HostAllocScope hostScope;
   {
     std::unique_lock<std::mutex> lock(client->mutex);
     if (!client->started) {
@@ -464,8 +515,15 @@ extern "C" esp_err_t esp_mqtt_client_destroy(esp_mqtt_client_handle_t client) {
   if (stop_result != ESP_OK) {
     return stop_result;
   }
-  mosquitto_destroy(client->mosq);
-  delete client;
+  const size_t modelled = client->init_reserved;
+  {
+    const Furble::Sim::HostAllocScope hostScope;
+    mosquitto_destroy(client->mosq);
+    delete client;
+  }
+  if (modelled != 0) {
+    Furble::Sim::heapRelease(modelled);
+  }
   return ESP_OK;
 }
 
@@ -480,7 +538,11 @@ extern "C" int esp_mqtt_client_subscribe(esp_mqtt_client_handle_t client,
     return -1;
   }
   int message_id = -1;
-  const int result = mosquitto_subscribe(transport, &message_id, topic, qos);
+  int result = MOSQ_ERR_UNKNOWN;
+  {
+    const Furble::Sim::HostAllocScope hostScope;
+    result = mosquitto_subscribe(transport, &message_id, topic, qos);
+  }
   client->endOperation();
   return result == MOSQ_ERR_SUCCESS ? message_id : -1;
 }
@@ -501,7 +563,11 @@ extern "C" int esp_mqtt_client_enqueue(esp_mqtt_client_handle_t client,
     return -1;
   }
   int message_id = -1;
-  const int result = mosquitto_publish(transport, &message_id, topic, len, data, qos, retain);
+  int result = MOSQ_ERR_UNKNOWN;
+  {
+    const Furble::Sim::HostAllocScope hostScope;
+    result = mosquitto_publish(transport, &message_id, topic, len, data, qos, retain);
+  }
   client->endOperation();
   return result == MOSQ_ERR_SUCCESS ? message_id : -1;
 }

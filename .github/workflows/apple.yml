@@ -18,13 +18,15 @@ permissions:
   contents: read
 
 env:
-  # macos-14 plus an explicit Xcode path prevents a runner image update from
-  # silently changing the Apple SDK used by this workflow.
-  XCODE_VERSION: "16.2"
+  # macos-15 plus an explicit Xcode path prevents a runner image update from
+  # silently changing the Apple SDK used by this workflow. GitHub retired the
+  # macos-14 images on 2026-11-02. Xcode 16.4 is the macos-15 default and the
+  # oldest Xcode there whose SDK matches the installed iOS 18.5 simulators.
+  XCODE_VERSION: "16.4"
 
 jobs:
   apple-project:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Select pinned Xcode
@@ -96,7 +98,7 @@ jobs:
           retention-days: 30
 
   swift-package:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Select pinned Xcode
