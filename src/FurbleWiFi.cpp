@@ -61,7 +61,15 @@ constexpr uint32_t WIRED_RECHECK_MS = 5000;
 // While a camera session blocks the join scan, retry soon after it ends
 // instead of waiting out the full reconnect backoff.
 constexpr uint32_t COEX_RETRY_MS = 10 * 1000;
-constexpr size_t TASK_STACK = 4096;
+constexpr size_t TASK_STACK_RELEASE = 4096;
+// A debug build's stack protector and -Os frames reach 4,240 bytes on the
+// ESP32 debug builds (plan 314 PR 4c). tools/stack_budget.json reads both.
+#if defined(FURBLE_DEBUG_BUILD)
+constexpr size_t TASK_STACK_DEBUG_EXTRA = 256;
+#else
+constexpr size_t TASK_STACK_DEBUG_EXTRA = 0;
+#endif
+constexpr size_t TASK_STACK = TASK_STACK_RELEASE + TASK_STACK_DEBUG_EXTRA;
 
 esp_netif_t *g_StaNetif = nullptr;
 TaskHandle_t g_Task = nullptr;
@@ -761,8 +769,9 @@ bool serviceConnectedWired(void) {
 /*
  * NVS work the event handler hands to the worker. The handler runs on the
  * default event loop task, whose stack is CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE
- * (2,304 bytes); an NVS open, write or the NTP setting read there reached
- * 2,864 bytes in tools/stack_budget.py. The worker has 4 KiB. A save and an
+ * (2,304 bytes then, 3,072 since plan 314 PR 4c); an NVS open, write or the
+ * NTP setting read there reached 2,864 bytes in tools/stack_budget.py, before
+ * panic paths counted. The worker has 4 KiB. A save and an
  * erase cancel each other, so only the newest outcome is persisted. Guarded by
  * g_StateMutex.
  */

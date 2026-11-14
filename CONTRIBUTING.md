@@ -268,8 +268,14 @@ each task's worst-case stack from the `-fcallgraph-info=su` call graph against
 `tools/stack_budget.json`. Firmware CI runs it after every build. Add a task
 there when you create one. A recursion or an `alloca`/VLA frame on a task's
 path fails the check until `recursion_bounds` or `dynamic_bounds` in the
-manifest cites a bound from source. See `docs/stack-budget.md` for the
-indirect call rules, the bounds and the limits.
+manifest cites a bound from source. A path that ends in `abort` or an assert
+also pays the ESP-IDF panic handler, which runs on the same stack. Cut a call
+edge with `infeasible_calls` only when you can cite the guard that makes it
+unreachable by file and line. A `-debug` env is checked against the task's
+`debug_stack_bytes` and `sdkconfig.debug`; a task that needs more in debug
+images gets a named `..._DEBUG_EXTRA` under `FURBLE_DEBUG_BUILD` in the file
+that owns its stack. See `docs/stack-budget.md` for the indirect
+call rules, the bounds, the panic rule and the limits.
 
 `python3 tools/check_size_budget.py --env <env>` then checks that
 `firmware.bin` fits its app partition and that static DRAM
