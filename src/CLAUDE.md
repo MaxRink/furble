@@ -129,7 +129,9 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   `GpsDemux::split()`; keep demultiplexing there, not in the driver.
 - The duty cycle waits until the receiver is identified and the configuration
   queue is idle. Standby sends `$PCAS12` only on the NMEA backend and
-  RXM-PMREQ (force flag) on UBX. Rail cycling on UBX without a backup supply
+  RXM-PMREQ (force flag) on UBX. A duty request seen in STANDBY or RAIL_OFF
+  is stale (the UI pushed a fix the cycle already parked for) and is dropped;
+  a resent PMREQ would wake a UART-wake receiver at once. Rail cycling on UBX without a backup supply
   first sends CFG-RST GNSS stop and UPD-SOS create and holds the cut in
   `m_RailOffPending` for up to one second; `disable()` does the same inline,
   so it can block for up to one second with the GPS task parked. Neither runs

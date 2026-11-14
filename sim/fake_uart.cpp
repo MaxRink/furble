@@ -879,6 +879,7 @@ std::string furble_sim_m10_query(const std::string &key) {
       {"cold_starts",  m10.coldStarts },
       {"warm_starts",  m10.warmStarts },
       {"hot_starts",   m10.hotStarts  },
+      {"uart_wakes",   m10.uartWakes  },
   };
   for (const auto &counter : counters) {
     if (key == counter.first) {

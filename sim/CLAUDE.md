@@ -1147,6 +1147,8 @@ shortens that host retry cadence for a bounded scenario.
   epochs, so the host suite drives the same object. Every rule and figure cites
   plan 321; undocumented behaviour (warm start time, the flashless SOS answer,
   the byte that wakes a UART standby) is marked as an assumption in the source.
+  `m10.uart_wakes` counts standby wakes caused by a received byte;
+  `gps-ubx-standby` asserts it stays 0.
   Receiver detection writes up to two MON-VER polls at GPS start, so a scenario
   that asserts `uart.count 0` must clear the journal after detection settles.
   `seed gps_m10_backup` gives the modelled board a V_BCKP supply, which

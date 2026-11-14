@@ -95,6 +95,7 @@ class VirtualM10 {
   uint32_t coldStarts = 0;
   uint32_t warmStarts = 0;
   uint32_t hotStarts = 0;
+  uint32_t uartWakes = 0;
   uint32_t ignoredBytes = 0;
 
  private:

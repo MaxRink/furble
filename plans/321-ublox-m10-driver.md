@@ -392,3 +392,20 @@ Head is `feat/ubx-3-features`, after the review commits.
   - all 10 power-gate scenarios pass, `gps-duty-standby-cycle` at -3.36 %;
   - `gps-ubx-tick-wrap` fails against the old gate and passes against the
     fixed one.
+
+## CI fixes on PR 459
+
+- A duty request seen in STANDBY or RAIL_OFF is dropped. The UI pushes a fix
+  up to a second after its burst, so it could raise a request after the cycle
+  had already parked the receiver for that fix. The GPS task then resent
+  RXM-PMREQ into standby, and its first byte woke the receiver through UART RX
+  wake. Every standby after the first ended within about a second, and under
+  the sanitizers the first wake was lost too, which failed
+  `gps-ubx-standby`. On rail cycling the same stale request re-entered
+  RAIL_OFF and pushed the next wake out.
+- The virtual M10 counts those wakes as `m10.uart_wakes`; `gps-ubx-standby`
+  asserts 0. It reads 3 against the old cycle on the plain simulator.
+- `sim/ubx_m10.cpp` writes the SOS backup records straight into
+  `m_Backup` instead of through a local array. cppcheck took the old
+  `insert()` from a local buffer for a stored pointer (`danglingLifetime`).
+  It was a false positive: `insert()` copies the bytes.

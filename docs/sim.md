@@ -1397,7 +1397,8 @@ Queries: `m10.model`, `m10.state` (`off`, `on`, `stopped`, `standby`),
 `m10.avg_ua` (average supply current since boot from the data sheet figures),
 the counters `m10.valsets`, `m10.naks`, `m10.valgets`, `m10.pmreqs`,
 `m10.sos_creates`, `m10.sos_polls`, `m10.monver_polls`, `m10.resets`,
-`m10.cold_starts`, `m10.warm_starts`, `m10.hot_starts`, and the configuration
+`m10.cold_starts`, `m10.warm_starts`, `m10.hot_starts`, `m10.uart_wakes` (standby
+wakes caused by a received byte), and the configuration
 database as `m10.ram.<hex key>` and `m10.bbr.<hex key>` (`unset` when BBR has
 no value). On the firmware side `gps.backend` reports `unknown`, `detecting`,
 `nmea` or `ubx`, `gps.from_pvt` whether the snapshot came from NAV-PVT,

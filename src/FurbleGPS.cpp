@@ -764,7 +764,13 @@ void GPS::serviceCycle(void) {
   const bool identified = (backend == backend_t::NMEA) || (backend == backend_t::UBX);
   const bool configIdle =
       !m_ConfigPending && !m_ConfigInFlight.has_value() && m_ConfigQueue.empty();
-  if (identified && configIdle && m_CycleRequest.exchange(false)) {
+  // The UI can push a fix after the cycle has already parked the receiver for
+  // it, so a request seen in STANDBY or RAIL_OFF is stale. Drop it. Acting on
+  // it would resend RXM-PMREQ, whose first byte wakes a u-blox receiver with
+  // UART RX wake (IFD 3.16.6), or would push the rail-off wake out a cycle.
+  const bool parked =
+      (m_CycleState == cycle_state_t::STANDBY) || (m_CycleState == cycle_state_t::RAIL_OFF);
+  if (identified && configIdle && m_CycleRequest.exchange(false) && !parked) {
     // A valid fix received during a degraded retry is recovery, even when the
     // duty-cycle request immediately transitions into standby or rail-off.
     // Do not carry the old backoff into the next failure episode.
