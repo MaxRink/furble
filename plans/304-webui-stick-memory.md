@@ -416,7 +416,7 @@ above are the pre-review state; these replace them.
   run on the UI task outside one. The Main page decodes its own 24x24 icons
   once more and caches them; the scenario resets the redraw probe after the
   disconnect and bounds `ui.invalidate_count` at 3 over 10 s.
-- Master merges of #454, #457 and #460. The 60 s soak sleeps the panel at
+- Master merges of #454, #458, #457 and #460. The 60 s soak sleeps the panel at
   the default Screen off, and #454 stops invalidation while the panel sleeps,
   so the session drew nothing and the pool read 1,240 bytes higher after the
   disconnect. The scenario now wakes the panel with a button press before the
