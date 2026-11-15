@@ -74,6 +74,11 @@ Public headers for the app layer in src/, one header per module
   and never under `CompanionGatt::m_Mutex`.
 - `FurbleGPS` exposes the CASIC binary test path and AID-INI injection as
   documented public methods. Keep their wire format comments next to the API.
+  `GPS::getBackend()` and `getUbxStatus()` are the UBX receiver surface.
+  `m_Backend` is written only by the GPS task and by `enable()`/`disable()`
+  with the task parked; the UBX identity, SOS and verify results sit under
+  `m_UbxMutex`, and the NAV-PVT under `m_GPSMutex` with the parser it
+  overlays. Never nest `m_UbxMutex` inside `m_GPSMutex`.
   Its cycle status getters are lock free: they read `m_CycleStatus`, which the
   GPS task publishes after each pass. Do not make a getter take `m_CycleMutex`
   again; the task's passes block on it, and a reader holding it stalls them.
@@ -127,10 +132,13 @@ rebase time.
 
 | Owner | Setting keys | Wire ids |
 | --- | --- | --- |
-| Master | shipped settings | 1-22, 24-35, 37-44, 46-47, 51-55, 65-69, 72-76 |
+| Master | shipped settings | 1-22, 24-35, 37-44, 46-55, 65-69, 72-76 |
 | Master (conditional) | display, MQTT, WebUI, S3 watchdog | 23 (`WATCHDOG` on `FURBLE_M5STICKS3`), 36 (`DISPLAY_MODE` without `FURBLE_NO_DISPLAY`), 56-61 (`FURBLE_MQTT`), 62 (`WEB_UI` on `FURBLE_WEBUI`) |
 | Historical claims | compatibility audit required | 45 |
-| Free | available after rechecking open heads | 48-50, 63-64, 70-71 |
+| Free | available after rechecking open heads | 63-64, 70-71 |
+
+Wire ids 48 (`GPS_GNSS`), 49 (`GPS_PSM`) and 50 (`GPS_ANA`) are claimed by the
+u-blox M10 driver, plan 321.
 
 Take the next free id only after checking every open PR head. Id 45 has a
 historical claim in older branches; keep it reserved and do not allocate or

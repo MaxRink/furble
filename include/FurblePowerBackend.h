@@ -54,7 +54,8 @@ class PowerBackend {
  *  - battery_caps_t getBatteryCaps(void)
  *  - battery_t readBattery(void): unsupported measurements read as zero
  *  - uint16_t getBatteryCapacity(void): mAh, zero if unknown
- *  - bool setRail(Rail rail, bool on): false when the board has no switch
+ *  - bool setRail(Rail rail, bool on): false when the board has no switch or
+ *    the rail does not read back in the requested state
  *  - uint8_t getPWRClickCount(void): PMIC key clicks since the last call
  *  - bool powerOff(void): never returns on success
  *  - bool canTimedWake(void)

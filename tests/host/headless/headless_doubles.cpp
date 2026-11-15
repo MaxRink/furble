@@ -350,7 +350,9 @@ void GPS::reloadSetting() {
   HeadlessState::gpsReloads++;
 }
 
-void GPS::setRailPower(bool) {}
+bool GPS::setRailPower(bool) {
+  return false;
+}
 
 void WiFi::init() {
   HeadlessState::wifiInit++;

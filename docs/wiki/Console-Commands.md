@@ -322,6 +322,16 @@ station. `wifi connect` and `wifi disconnect` act immediately, and
   reply, then prints the decoded and raw response. The offsets follow CASIC
   2.14.2; the decode is hardware-confirmed on the AT6668, while the meaning of
   individual status bits still needs a qualified antenna test.
+- `gps ubx` reports a u-blox M10 receiver: module, firmware and protocol from
+  MON-VER, the NAV-PVT fix type, satellites, age and hAcc/vAcc/tAcc, whether
+  the configuration read back matches, NAK count, the constellation mask, rate,
+  power save and AssistNow sent, whether the board keeps the receiver's backup
+  supply, the UPD-SOS restore and backup results, and the per-constellation
+  used and in-view counts from one NAV-SAT poll (waits up to 1.5 s). The poll
+  is UART traffic, so it wakes a receiver that is in software standby. On any
+  other receiver it prints its backend (`unknown`, `detecting` or `nmea`) and
+  `ubx: no u-blox receiver identified`, then stops. The M10 path is
+  simulator-tested and hardware-untested.
 - `gps power on | off` drives the external 5V rail, for rail-cut experiments.
 
 ## time

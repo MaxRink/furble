@@ -39,8 +39,9 @@ CLAUDE.md whose directory it touches.
   (`m5stick-c`, `m5stack-core`, `m5stick-s3`) set `M5GFX_BOARD`, and
   `post:patches/m5gfx_board.py` pins it in `M5GFX::autodetect`, so the other
   boards' panel and touch drivers drop out. StickC Plus/Plus2 and Core2/Tough
-  share an image and keep autodetect. Core debug is now 1,719,453 bytes and
-  fits its OTA slot again and is a mandatory CI lane. Log V2 writes
+  share an image and keep autodetect. Core debug fits its OTA slot again and
+  is a mandatory CI lane; with the u-blox driver it is 1,739,728 bytes, 1,072
+  under the slot (plan 321). Log V2 writes
   one record as three vprintf calls, so `FurbleCrashLog` joins fragments up to
   the newline.
 - Per-env `sdkconfig.<env>` files are committed at the repo root. Debug envs

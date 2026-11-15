@@ -977,6 +977,32 @@ GPS::satellite_report_t GPS::getSatelliteReport(void) {
   return ConsoleHost::gps().satellites;
 }
 
+GPS::backend_t GPS::getBackend(void) const {
+  return ConsoleHost::gps().backend;
+}
+
+const char *GPS::backendName(backend_t backend) {
+  switch (backend) {
+    case backend_t::UNKNOWN:
+      return "unknown";
+    case backend_t::DETECTING:
+      return "detecting";
+    case backend_t::NMEA:
+      return "nmea";
+    case backend_t::UBX:
+      return "ubx";
+  }
+  return "unknown";
+}
+
+GPS::ubx_status_t GPS::getUbxStatus(void) const {
+  return ConsoleHost::gps().ubx;
+}
+
+void GPS::pollUbxSatellites(void) {
+  ConsoleHost::gps().ubxSatPolls++;
+}
+
 void GPS::pollMonHw(void) {
   ConsoleHost::gps().monHwPolls++;
 }

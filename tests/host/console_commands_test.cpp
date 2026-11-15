@@ -165,8 +165,9 @@ const std::vector<SubcommandContract> SUBCOMMANDS = {
     {"power",        "expected stats, log or off",                                               "",                     {"stats", "log", "off"}               },
     {"perf",         "expected tasks, heap or lvgl",                                             "",                     {"tasks", "heap", "lvgl"}             },
     {"gps",
-     "expected on, off, raw, send, binary, config, aid, sats, platform, monhw or power",         "",
-     {"on", "off", "raw", "send", "binary", "config", "aid", "sats", "platform", "monhw", "power"}                                                             },
+     "expected on, off, raw, send, binary, config, aid, sats, platform, monhw, ubx or power",    "",
+     {"on", "off", "raw", "send", "binary", "config", "aid", "sats", "platform", "monhw", "ubx",
+      "power"}                                                                                                                                                 },
     {"time",         "usage: time status | flush",                                               "",                     {"status", "flush"}                   },
     {"crash",        "usage: crash [last]",                                                      "",                     {"last"}                              },
     {"settings",     "expected list, get or set",                                                " theme",               {"list", "get", "set"}                },
@@ -755,6 +756,45 @@ void testSettings(void) {
   checkContains(runDirect("settings get gps_extrap").out, "value: true",
                 "the saved extrapolate setting reads back");
 
+  // The u-blox settings. Both enums keep their own range, and all three reach
+  // the GPS reload.
+  checkContains(runDirect("settings get gps_gnss").out, "type: uint8",
+                "the u-blox signal set is a uint8");
+  checkContains(runDirect("settings get gps_gnss").out, "applies: immediately",
+                "the u-blox signal set applies at once");
+  checkContains(runDirect("settings set gps_gnss 63").out, "saved: gps_gnss",
+                "the full u-blox signal mask saves");
+  const Result badGnss = runDirect("settings set gps_gnss 64");
+  check(badGnss.rc != 0, "a u-blox signal mask past the last bit fails");
+  checkContains(badGnss.out, "expected 0 (follow constellation) or a mask",
+                "the signal mask error names the mask");
+  check(Furble::Settings::load<uint8_t>(Furble::Settings::GPS_GNSS) == 63,
+        "a rejected signal mask does not overwrite the saved one");
+  checkContains(runDirect("settings get gps_psm").out, "type: uint8",
+                "the u-blox power save is a uint8");
+  checkContains(runDirect("settings set gps_psm 2").out, "saved: gps_psm",
+                "the on/off power save saves");
+  const Result badPsm = runDirect("settings set gps_psm 3");
+  check(badPsm.rc != 0, "a power save value past on/off fails");
+  checkContains(badPsm.out, "expected 0 (off), 1 cyclic tracking or 2 on/off",
+                "the power save error names the modes");
+  check(Furble::Settings::load<uint8_t>(Furble::Settings::GPS_PSM) == 2,
+        "a rejected power save does not overwrite the saved one");
+  checkContains(runDirect("settings get gps_ana").out, "type: bool",
+                "AssistNow Autonomous is a bool");
+  checkContains(runDirect("settings get gps_ana").out, "applies: immediately",
+                "AssistNow Autonomous applies at once");
+  checkContains(runDirect("settings set gps_ana on").out, "saved: gps_ana",
+                "AssistNow Autonomous saves");
+  checkContains(runDirect("settings get gps_ana").out, "value: true",
+                "the saved AssistNow Autonomous setting reads back");
+  const size_t beforeUbxReload = ConsoleHost::ui().requests.size();
+  runDirect("settings set gps_gnss 0");
+  runDirect("settings set gps_psm 0");
+  runDirect("settings set gps_ana off");
+  check(ConsoleHost::ui().requests.size() >= beforeUbxReload + 3,
+        "every u-blox setting queues a GPS reload");
+
   const size_t beforeHoldReload = ConsoleHost::ui().requests.size();
   runDirect("settings set gps_hold 1");
   runDirect("settings set gps_extrap off");
@@ -1197,9 +1237,10 @@ void testGPS(void) {
 
   const Result bogus = runDirect("gps bogus");
   check(bogus.rc != 0, "an unknown gps subcommand fails");
-  checkContains(bogus.out,
-                "expected on, off, raw, send, binary, config, aid, sats, platform, monhw or power",
-                "an unknown gps subcommand lists the accepted ones");
+  checkContains(
+      bogus.out,
+      "expected on, off, raw, send, binary, config, aid, sats, platform, monhw, ubx or power",
+      "an unknown gps subcommand lists the accepted ones");
 }
 
 // Test 5b. Receiver detection, satellite detail, the platform model and the
@@ -1344,6 +1385,119 @@ void testGPSDiagnostics(void) {
   checkContains(shortMonhw.out, "monhw raw: BA CE 0A",
                 "a short MON-HW response still prints its raw bytes");
   check(gps.monHwPolls == 4, "a short response still queues the next poll");
+
+  // gps ubx. Without a u-blox receiver it names the backend and stops before
+  // polling NAV-SAT.
+  gps.backend = Furble::GPS::backend_t::NMEA;
+  const Result noUbx = runDirect("gps ubx");
+  check(noUbx.rc == 0, "gps ubx returns success on an NMEA receiver");
+  checkContains(noUbx.out, "backend: nmea", "gps ubx names the backend");
+  checkContains(noUbx.out, "ubx: no u-blox receiver identified",
+                "gps ubx says when no u-blox receiver was identified");
+  check(gps.ubxSatPolls == 0, "gps ubx does not poll NAV-SAT without a u-blox receiver");
+
+  // A u-blox receiver that has not answered yet: no fix, nothing configured,
+  // and the NAV-SAT wait gives up after its 1.5 s budget.
+  gps.backend = Furble::GPS::backend_t::UBX;
+  gps.ubx = {};
+  gps.ubx.software = "ROM SPG 5.10 (7b202e)";
+  gps.ubx.hardware = "000A0000";
+  const Result bare = runDirect("gps ubx");
+  check(bare.rc == 0, "gps ubx returns success before any answer");
+  check(gps.ubxSatPolls == 1, "gps ubx polls NAV-SAT once");
+  checkContains(bare.out, "module: unknown", "an unreported module prints unknown");
+  checkContains(bare.out, "firmware: ROM SPG 5.10 (7b202e)",
+                "without FWVER the software version stands in for the firmware");
+  checkContains(bare.out, "protocol: unknown", "an unreported protocol prints unknown");
+  checkContains(bare.out, "pvt_fix: none", "no NAV-PVT prints no fix");
+  checkContains(bare.out, "config_verified: pending", "an unread configuration is pending");
+  check(!contains(bare.out, "rate_ms:"), "an unconfigured receiver prints no plan");
+  checkContains(bare.out, "sos_restore: unknown", "the restore state starts unknown");
+  checkContains(bare.out, "sos_backup: not tried", "no backup was tried");
+  checkContains(bare.out, "sats: no NAV-SAT answer within 1.5 s",
+                "an unanswered NAV-SAT poll says so");
+
+  // A configured receiver with a fix, a refused plan and a NAV-SAT answer.
+  gps.ubx.module = "MAX-M10S";
+  gps.ubx.firmware = "SPG 5.10";
+  gps.ubx.protocol = "34.10";
+  gps.ubx.have_pvt = true;
+  gps.ubx.pvt_age_ms = 250;
+  gps.ubx.pvt.fixType = 3;
+  gps.ubx.pvt.numSV = 14;
+  gps.ubx.pvt.hAcc = 1500;
+  gps.ubx.pvt.vAcc = 2250;
+  gps.ubx.pvt.tAcc = 30;
+  gps.ubx.pvt.flags = 0x01 | (2 << 2);
+  gps.ubx.config_verified = 2;
+  gps.ubx.naks = 3;
+  gps.ubx.configured = true;
+  gps.ubx.gnss = 0x0b;
+  gps.ubx.gnss_refused = true;
+  gps.ubx.rate_ms = 1000;
+  gps.ubx.rate_clamped = true;
+  gps.ubx.psm = Furble::Ubx::PSM_CYCLIC;
+  gps.ubx.psm_refused = true;
+  gps.ubx.ana = true;
+  gps.ubx.backup_supply = true;
+  gps.ubx.sos_restore = Furble::Ubx::SOS_RESTORE_OK;
+  gps.ubx.sos_backup = 1;
+  gps.ubx.have_sat = true;
+  gps.ubx.sat_view = {6, 0, 4, 0, 0, 0, 0};
+  gps.ubx.sat_used = {5, 0, 3, 0, 0, 0, 0};
+  const Result full = runDirect("gps ubx");
+  check(full.rc == 0, "gps ubx returns success with a full answer");
+  checkContains(full.out, "backend: ubx", "a u-blox receiver reports its backend");
+  checkContains(full.out, "module: MAX-M10S", "the module prints");
+  checkContains(full.out, "firmware: SPG 5.10", "FWVER prints as the firmware");
+  checkContains(full.out, "protocol: 34.10", "the protocol version prints");
+  checkContains(full.out, "hardware: 000A0000", "the hardware version prints");
+  checkContains(full.out, "pvt_fix: 3", "the NAV-PVT fix type prints");
+  checkContains(full.out, "pvt_sats: 14", "the NAV-PVT satellite count prints");
+  checkContains(full.out, "pvt_age: 250", "the NAV-PVT age prints");
+  checkContains(full.out, "hacc_m: 1.50", "the horizontal accuracy prints in metres");
+  checkContains(full.out, "vacc_m: 2.25", "the vertical accuracy prints in metres");
+  checkContains(full.out, "tacc_ns: 30", "the time accuracy prints");
+  checkContains(full.out, "psm_state: 2", "the power save state prints");
+  checkContains(full.out, "config_verified: no", "a mismatched read back prints no");
+  checkContains(full.out, "naks: 3", "the NAK count prints");
+  checkContains(full.out, "gnss: 0x0b (refused, receiver default)",
+                "a refused constellation set says so");
+  checkContains(full.out, "rate_ms: 1000 (clamped to the constellation limit)",
+                "a clamped rate says so");
+  checkContains(full.out, "power_save: cyclic (refused with BeiDou B1C)",
+                "a refused power save says so");
+  checkContains(full.out, "assistnow_autonomous: true", "AssistNow Autonomous prints");
+  checkContains(full.out, "backup_supply: true", "the backup supply prints");
+  checkContains(full.out, "sos_restore: restored", "a restored backup prints");
+  checkContains(full.out, "sos_backup: saved", "a saved backup prints");
+  checkContains(full.out, "sats.gps: 5 used of 6", "the GPS constellation line prints");
+  checkContains(full.out, "sats.galileo: 3 used of 4", "the Galileo constellation line prints");
+  check(!contains(full.out, "sats.sbas"), "a constellation with nothing in view is skipped");
+
+  // The remaining enum names.
+  gps.ubx.config_verified = 1;
+  gps.ubx.gnss_refused = false;
+  gps.ubx.rate_clamped = false;
+  gps.ubx.psm = Furble::Ubx::PSM_ON_OFF;
+  gps.ubx.psm_refused = false;
+  gps.ubx.sos_restore = Furble::Ubx::SOS_RESTORE_FAILED;
+  gps.ubx.sos_backup = 2;
+  const Result names = runDirect("gps ubx");
+  checkContains(names.out, "config_verified: yes", "a matching read back prints yes");
+  checkContains(names.out, "gnss: 0x0b\n", "an accepted constellation set has no note");
+  checkContains(names.out, "power_save: on/off\n", "on/off power save prints");
+  checkContains(names.out, "sos_restore: failed", "a failed restore prints");
+  checkContains(names.out, "sos_backup: refused", "a refused backup prints");
+  gps.ubx.psm = 0;
+  gps.ubx.sos_restore = Furble::Ubx::SOS_RESTORE_NONE;
+  checkContains(runDirect("gps ubx").out, "power_save: off", "no power save prints off");
+  checkContains(runDirect("gps ubx").out, "sos_restore: none", "no saved backup prints none");
+  gps.ubx.sos_restore = 9;
+  checkContains(runDirect("gps ubx").out, "sos_restore: not reported",
+                "an unknown restore code prints not reported");
+  gps.backend = Furble::GPS::backend_t::UNKNOWN;
+  gps.ubx = {};
 }
 
 // Test 6. Time, power and performance reporting.

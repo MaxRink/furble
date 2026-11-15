@@ -1,0 +1,17 @@
+# The configuration queue keeps moving in the second half of the 32-bit tick
+# range. An unarmed settle gate used to read as "not before tick 0", which a
+# signed tick difference puts in the future for every tick in [2^31, 2^32),
+# so no command went out between 24.8 and 49.7 days of uptime. Start the
+# virtual clock just past 2^31 and configure a constellation change, which
+# also arms the real 500 ms settle wait.
+seed clock_ms 2147490000
+seed gps true
+seed gps_model m10
+seed gps_m10_hot true
+seed gps_gnss 15
+wait 10000
+assert gps.backend ubx
+assert-eventually 3000 gps.ubx.verified 1
+assert m10.ram.10310025 1
+assert gps.config.4.state ACKED
+exit

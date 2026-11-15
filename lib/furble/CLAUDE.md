@@ -161,6 +161,16 @@ protocol core.
   a furble feature rather than an ESP one, so a Nordic port carries it, and the
   file already satisfies the portable contract unchanged. It is used by
   `src/FurbleGPS`, by no camera, and is covered by the `gps-casic` host test.
+- `GpsUbx` (`Furble::Ubx`) is the u-blox M10 codec: framing, Fletcher
+  checksum, `scan()`, the resynchronising `Stream`, every message furble uses,
+  `Detect`, the tick-wrap-safe `Settle` gate and `plan()`, which turns the GPS
+  settings into configuration keys under the M10 rules. Every message and key
+  cites the SPG 5.10 interface description section; keep that when adding
+  one. `GpsDemux` splits the shared UART stream into NMEA, CASIC and UBX
+  pieces and is the only demultiplexer; the driver dispatches its pieces.
+  Both are covered by `gps-ubx` and fuzzed by `gps_ubx_fuzz`. `plan()` builds
+  the signal keys from one table, and the driver keeps only its
+  `PlanSummary`; the 4 MB Core debug image has little flash to spare.
 - The `GpsUbx` receiver encoders (`encodeNavPvt`, `encodeNavSat`,
   `encodeMonVer`) refuse a payload above `MAX_PAYLOAD`, so every frame the
   simulator receiver emits passes `scan()`. `frame()` keeps the 65,535-byte

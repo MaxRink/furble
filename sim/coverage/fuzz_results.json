@@ -191,6 +191,27 @@
       ],
       "known_failing_seeds": [],
       "output": []
+    },
+    {
+      "id": "fuzz.gps.ubx",
+      "status": "pass",
+      "seeds": 10,
+      "iterations": 35003,
+      "failures": 0,
+      "commands": [
+        "host-build/gps_ubx_fuzz --seed 1 --iterations 5000",
+        "host-build/gps_ubx_fuzz --seed 2 --iterations 5000",
+        "host-build/gps_ubx_fuzz --seed 3 --iterations 5000",
+        "host-build/gps_ubx_fuzz --seed 7 --iterations 5000",
+        "host-build/gps_ubx_fuzz --seed 42 --iterations 5000",
+        "host-build/gps_ubx_fuzz --seed 99 --iterations 5000",
+        "host-build/gps_ubx_fuzz --seed 1000 --iterations 5000",
+        "sim/build/furble-sim --script sim/scenarios/e2e/gps-ubx-detect.txt",
+        "sim/build/furble-sim --script sim/scenarios/e2e/gps-ubx-nak.txt",
+        "sim/build/furble-sim --script sim/scenarios/e2e/gps-ubx-fallback-nmea.txt"
+      ],
+      "known_failing_seeds": [],
+      "output": []
     }
   ],
   "fixed_regressions": [
@@ -217,11 +238,11 @@
     }
   ],
   "summary": {
-    "targets": 10,
-    "passed": 10,
+    "targets": 11,
+    "passed": 11,
     "failed": 0,
-    "seed_runs": 135,
-    "iterations": 89145,
+    "seed_runs": 145,
+    "iterations": 124148,
     "failures": 0
   }
 }
