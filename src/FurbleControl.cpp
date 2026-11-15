@@ -54,6 +54,18 @@ int powerIndex(esp_power_level_t power) {
   return -1;
 }
 
+/** Map an ESP-IDF transmit power level to the camera library level. */
+TxPower txPower(esp_power_level_t power) {
+  switch (power) {
+    case ESP_PWR_LVL_P6:
+      return TxPower::P6;
+    case ESP_PWR_LVL_P9:
+      return TxPower::P9;
+    default:
+      return TxPower::P3;
+  }
+}
+
 const char *stateName(Control::state_t state) {
   switch (state) {
     case Control::STATE_IDLE:
@@ -334,7 +346,7 @@ Control::state_t Control::connectAll(void) {
     }
 
     setConnectCamera(camera);
-    const bool connected = camera->connect(m_Power, timeout);
+    const bool connected = camera->connect(txPower(m_Power), timeout);
     // Clear on both outcomes. The failure branch used to leave the field set,
     // so it no longer named an attempt in flight, and disconnect() and
     // getConnectingCamera() were handed a stale pointer.
@@ -1594,11 +1606,15 @@ void Control::resetAdaptiveState(void) {
   }
 }
 
+TxPower Control::savedTxPower(void) {
+  return txPower(Settings::load<esp_power_level_t>(Settings::TX_POWER));
+}
+
 void Control::applyPower(esp_power_level_t power) {
   // NimBLETxPowerType::Connection maps to the shared default connection power,
   // so one call covers every link. The controller offers no clean
   // per-connection readback, log the request only.
-  const int8_t dbm = Device::powerLevelToDbm(power);
+  const int8_t dbm = Device::powerLevelToDbm(txPower(power));
   const bool set = NimBLEDevice::setPower(dbm, NimBLETxPowerType::Connection);
   ESP_LOGI(LOG_TAG, "Transmit power requested %d dBm (level %d), set %s", dbm,
            static_cast<int>(power), set ? "ok" : "failed");

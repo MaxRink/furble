@@ -222,14 +222,18 @@ settings-touching rebase.
   `mqtts://` URI must pass the 6 KiB TLS-worker floor, not the plain 3 KiB
   worker floor. `wss://` is not part of the contract because no firmware build
   enables the WebSocket transport.
-- `FurbleMQTT.h` `m_Incoming` is the one event copy the esp-mqtt client task
+- `FurbleMQTT.h` `m_Incoming` is the event copy the esp-mqtt client task
   fills in `eventHandler`; that task's plain stack is 3 KiB, so a
-  `queued_event_t` must never live on it. The owner allocates the copy with the
-  event queue (PSRAM when the queue is there) and never frees it, because a
-  stopped client may still deliver a late callback. `m_IncomingMutex` guards it
-  for overlapping clients; hold it only across filling and queueing the copy.
-  Without PSRAM the start gate reserves `EVENT_STORAGE_BYTES`. A failed
-  allocation aborts on every board, so the queue and the copy pick PSRAM from a
+  `queued_event_t` must never live on it. `m_Received` is the copy the owner
+  receives each queued event into, so the owner stack never holds one either.
+  Both live in one block that the owner allocates with the event queue (PSRAM
+  when the queue is there) and never frees, because a stopped client may still
+  deliver a late callback. `m_IncomingMutex` guards `m_Incoming` for
+  overlapping clients; hold it only across filling and queueing the copy.
+  `m_Received` belongs to the owner task alone. Lifecycle events carry only the
+  client and event id. Without PSRAM the start gate reserves
+  `EVENT_STORAGE_BYTES`, the queue plus both copies. A failed
+  allocation aborts on every board, so the queue and the copies pick PSRAM from a
   fresh largest-block reading before allocating, never by trying and falling
   back, and an internal choice re-runs the start gate first.
 - `FurbleUIMemory.h` owns the panel-sized LVGL draw-buffer contract. Narrow
@@ -240,3 +244,17 @@ settings-touching rebase.
 - The simulator-only UI geometry surface keeps content overlap, label clipping,
   and focused-control expanded bounds as separate diagnostics. Focus clearance
   excludes the focused object's own descendants and ancestors.
+- `FurbleBoardCaps.h` turns the board identity macros into capability macros,
+  each defined to 0 or 1. Test one with `#if` only, never `#ifdef` or
+  `defined()`, and include the header directly in every file that uses one;
+  a missing include evaluates silently to 0. The coupling ratchet enforces
+  both rules, scans `sim/` and `tests/host/` too, and rejects a name the
+  header does not define. An include inside a comment does not count.
+- `BatteryStatus::gate()` in `FurbleBatteryStatus.h` gates each battery status
+  field by its own `battery_caps_t` flag. Never gate on the union of the
+  flags: partial boards such as the StickS3 and M5Stack Core would then
+  report unsupported readings.
+- `FurbleControl.h` keeps `esp_power_level_t` for the setting and the
+  adaptive policy, but no public member maps it. The ESP to `TxPower` mapping
+  is file-local in `FurbleControl.cpp`; boot code calls
+  `Control::savedTxPower()` before `Device::init()`.

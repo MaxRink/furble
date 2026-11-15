@@ -17,6 +17,7 @@
 #if defined(FURBLE_MQTT) && FURBLE_MQTT
 #include "FurbleMQTT.h"
 #endif
+#include "FurblePlatform.h"
 #include "FurbleSettings.h"
 #include "FurbleTimezone.h"
 #include "FurbleTypes.h"
@@ -215,20 +216,18 @@ CompanionService::companion_status_t CompanionService::getStatus(void) const {
   companion_status_t status = {};
   status.version = PACKET_VERSION;
 
-  const int32_t batteryLevel = UI::getBatteryLevel();
+  const auto battery = Platform::getInstance().getBatteryStatus();
   status.battery_percent =
-      (batteryLevel >= 0 && batteryLevel <= 100) ? static_cast<uint8_t>(batteryLevel) : 255;
+      (battery.level >= 0 && battery.level <= 100) ? static_cast<uint8_t>(battery.level) : 255;
 
-  const int32_t batteryVoltage = UI::getBatteryVoltage();
-  status.battery_mv = (batteryVoltage >= 0) ? static_cast<uint16_t>(batteryVoltage) : 0xffff;
+  status.battery_mv = (battery.voltage >= 0) ? static_cast<uint16_t>(battery.voltage) : 0xffff;
 
-  const int32_t batteryCurrent = UI::getBatteryCurrent();
   status.battery_ma = static_cast<int16_t>(std::clamp<int32_t>(
-      batteryCurrent, static_cast<int32_t>(-32768), static_cast<int32_t>(32767)));
-  if (UI::isBatteryCharging()) {
+      battery.current, static_cast<int32_t>(-32768), static_cast<int32_t>(32767)));
+  if (battery.charging) {
     status.power_flags |= 1 << 0;
   }
-  if (UI::getBatteryVBUSVoltage() > 0) {
+  if (battery.vbus > 0) {
     status.power_flags |= 1 << 1;
   }
 

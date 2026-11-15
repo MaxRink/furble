@@ -17,6 +17,7 @@
 #include "icons.h"
 #endif
 
+#include "FurbleBoardCaps.h"
 #include "FurbleConsole.h"
 #include "FurbleControl.h"
 #include "FurbleGPS.h"
@@ -138,22 +139,6 @@ constexpr uint32_t ABSENT_IDLE_WAIT_MS = 60 * 1000;
 // how long a degraded retry keeps the lock and looks for a burst before it
 // gives up again, a couple of 1 Hz frames plus slack
 constexpr uint32_t DEGRADED_PROBE_MS = 6000;
-
-/**
- * Switch the Port A 5 V rail through the PMIC.
- *
- * The M5PM1 sleeps after an I2C idle period and the first access after that
- * only wakes it, so read the rail state back and retry once on mismatch.
- * Returns whether the rail reached the requested state.
- */
-bool setRailPower(bool enable) {
-  FURBLE_SIM_GPS_RAIL(enable);
-  M5.Power.setExtOutput(enable, m5::ext_PA);
-  if (FURBLE_GPS_RAIL_ON() != enable) {
-    M5.Power.setExtOutput(enable, m5::ext_PA);
-  }
-  return FURBLE_GPS_RAIL_ON() == enable;
-}
 
 bool tickReached(uint32_t now, uint32_t target) {
   return static_cast<int32_t>(now - target) >= 0;
@@ -559,7 +544,7 @@ void GPS::onProbeFailed(uint32_t now) {
 }
 
 void GPS::acquirePowerLock(void) {
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_GPS_BURST_LOCK
   if (!gpsPowerLockRequired(m_Enabled.load(), m_CycleState == cycle_state_t::DEGRADED)) {
     return;
   }
@@ -572,7 +557,7 @@ void GPS::acquirePowerLock(void) {
 }
 
 void GPS::releasePowerLock(void) {
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_GPS_BURST_LOCK
   std::lock_guard<std::mutex> guard(m_PowerLockMutex);
   m_PowerLock.reset();
 #endif
@@ -2336,6 +2321,15 @@ void GPS::disable(void) {
   m_Fix.store(static_cast<uint8_t>(Fix::NONE));
   m_Source.store(SOURCE_NONE);
   m_Satellites.store(0);
+}
+
+bool GPS::setRailPower(bool enable) {
+  FURBLE_SIM_GPS_RAIL(enable);
+  M5.Power.setExtOutput(enable, m5::ext_PA);
+  if (FURBLE_GPS_RAIL_ON() != enable) {
+    M5.Power.setExtOutput(enable, m5::ext_PA);
+  }
+  return FURBLE_GPS_RAIL_ON() == enable;
 }
 
 /** Refresh the setting from NVS. */

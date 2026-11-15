@@ -46,6 +46,13 @@ The root CLAUDE.md lists the short form of these. The detail lives here.
 - StickS3 has no 32.768 kHz crystal. BLE falls back to the main crystal for its
   low-power clock. The connected-idle current floor is about 3.3 mA and that is
   final: no firmware change moves it, because the hardware lacks the slow clock.
+- `perf tasks` reports free bytes. Its `stack_high_watermark` is
+  `uxTaskGetStackHighWaterMark`, which ESP-IDF returns as the minimum free
+  stack in bytes, not bytes used. Plans 305, 308 and 311 read it as bytes used.
+  That sized the 8 KiB main stack that overflowed (3,020 free at 12 KiB with
+  MQTT connected meant about 9,268 used) and hid a 3,392-byte plain MQTT
+  worker behind a 3 KiB cut.
+  Used is the configured stack minus the reading.
 - PSRAM on the S3. `SPIRAM_MALLOC_ALWAYSINTERNAL=4096` routes large allocations
   to PSRAM. DMA display buffers must stay `MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL`
   or the display corrupts.

@@ -93,7 +93,7 @@ Furble::Host::FujifilmVirtualCamera::Config secureConfig() {
 
 void testAdvertisedCameraName() {
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
   Furble::Host::FujifilmVirtualCamera peer(secureConfig());
   const auto advertisement = peer.advertisement();
 
@@ -106,7 +106,7 @@ void testAdvertisedCameraName() {
 
 void testSavedCameraName() {
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
   Furble::Host::FujifilmVirtualCamera peer(secureConfig());
   const auto advertisement = peer.advertisement();
   Furble::FujifilmSecure scanned(&advertisement);
@@ -133,7 +133,7 @@ void testSavedCameraName() {
 
 void testBasicNameUnchanged() {
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
   Furble::Host::FujifilmVirtualCamera::Config config;
   config.name = "X-T4";
   Furble::Host::FujifilmVirtualCamera peer(config);

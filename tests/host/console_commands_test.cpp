@@ -2235,7 +2235,7 @@ void testDebugWithLiveCamera(void) {
   ConsoleHost::resetDoubles();
 
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
   static bool controlStarted = false;
   if (!controlStarted) {
     controlStarted = true;

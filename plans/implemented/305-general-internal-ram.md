@@ -38,7 +38,8 @@ RAM: 14.8% (used 48600 bytes from 327680 bytes)
 
 At the start of this pass, `CONFIG_ESP_MAIN_TASK_STACK_SIZE` was 16,384 on
 every board in this tree; this pass reduced only the StickS3 to 12,288. The
-StickS3 main task measured a 7,020-byte high-water mark with `web_ui=false`.
+StickS3 main task had 7,020 bytes free at its high-water mark with
+`web_ui=false`, so it used about 9,364 of 16,384 bytes.
 The stack was sized for the TLS identity generation that runs from `initEarly()`
 when the WebUI is enabled, not for the UI loop.
 
@@ -56,18 +57,23 @@ All task stacks are allocated from internal RAM by FreeRTOS
 task, which this pass moves to PSRAM. Sizes below are the configured stack
 bytes, excluding the task control block.
 
-| Task | Configured stack | High-water | Evidence |
+`perf tasks` prints `uxTaskGetStackHighWaterMark`, which ESP-IDF reports as
+the minimum free stack in bytes. The column holds that free reading, with the
+bytes used in brackets. This plan first read it as bytes used; the
+2026-11-13 re-analysis in plan 314 corrected every row.
+
+| Task | Configured stack | Free at high-water (used) | Evidence |
 | :--- | ---: | ---: | :--- |
-| `main` | 16,384, now 12,288 | 7,020 | `CONFIG_ESP_MAIN_TASK_STACK_SIZE`; `perf tasks` |
-| `control` | 8,192 | 7,372 | `src/main.cpp:505`; `perf tasks` |
-| `nimble_host` | 16,384 | 14,200 | `CONFIG_BT_NIMBLE_HOST_TASK_STACK_SIZE`; `perf tasks` |
-| `wifi` | 4,096 | 3,516 | `src/FurbleWiFi.cpp:61`; `perf tasks` |
-| `esp_timer` | 3,584 | 3,068 | `CONFIG_ESP_TIMER_TASK_STACK_SIZE`; `perf tasks` |
-| `ir` | 4,096 | 3,420 | `src/FurbleIR.cpp`; `perf tasks` |
-| `companion` | 4,096 | 2,012 | `src/FurbleCompanion.cpp:207`; `perf tasks` |
-| `console` | 8,192, now 6,144 | 5,504 | `src/FurbleConsole.cpp`; `perf tasks` |
+| `main` | 16,384, now 12,288 | 7,020 (9,364) | `CONFIG_ESP_MAIN_TASK_STACK_SIZE`; `perf tasks` |
+| `control` | 8,192 | 7,372 (820) | `src/main.cpp:505`; `perf tasks` |
+| `nimble_host` | 16,384 | 14,200 (2,184) | `CONFIG_BT_NIMBLE_HOST_TASK_STACK_SIZE`; `perf tasks` |
+| `wifi` | 4,096 | 3,516 (580) | `src/FurbleWiFi.cpp:61`; `perf tasks` |
+| `esp_timer` | 3,584 | 3,068 (516) | `CONFIG_ESP_TIMER_TASK_STACK_SIZE`; `perf tasks` |
+| `ir` | 4,096 | 3,420 (676) | `src/FurbleIR.cpp`; `perf tasks` |
+| `companion` | 4,096 | 2,012 (2,084) | `src/FurbleCompanion.cpp:207`; `perf tasks` |
+| `console` | 8,192, now 6,144 | 5,504 (2,688) | `src/FurbleConsole.cpp`; `perf tasks` |
 | `btController` | about 2,048 | 2,028 | controller library, inferred |
-| `IDLE` (two cores) | 1,536 each | 788 | `CONFIG_FREERTOS_IDLE_TASK_STACKSIZE`; `perf tasks` |
+| `IDLE` (two cores) | 1,536 each | 788 (748) | `CONFIG_FREERTOS_IDLE_TASK_STACKSIZE`; `perf tasks` |
 | `tcpip` | 3,072 | not measured | `CONFIG_LWIP_TCPIP_TASK_STACK_SIZE` |
 | `sys_evt` | 2,304 | not measured | `CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE` |
 | per-camera target | 4,096 each | not measured | `src/FurbleControl.cpp:1240` |
@@ -127,8 +133,10 @@ the `BT_NIMBLE` values are authoritative.
 | Controller | static internal, not exposed | controller library |
 | Max connections / bonds | 9 / 15 | `CONFIG_BT_NIMBLE_MAX_CONNECTIONS`, `_MAX_BONDS` |
 
-The host stack is 87 percent used at 14,200 bytes. It cannot shrink. The host
-heap is already external, so the remaining internal NimBLE cost is the host
+The host stack had 14,200 bytes free at its high-water mark, so it used about
+2,184 bytes, 13 percent. A smaller stack needs a hardware reading after the
+deepest NimBLE paths; plan 314 records that gate. The host heap is already
+external, so the remaining internal NimBLE cost is the host
 stack, the controller, and the driver structures.
 
 ### LVGL
@@ -192,10 +200,10 @@ The log path has no large ring buffer in the release image.
 
 | Change | Before | After | Saving | Safety | Evidence | Implemented |
 | :--- | ---: | ---: | ---: | :--- | :--- | :--- |
-| StickS3 main stack | 16,384 | 12,288 | 4,096 | Identity generation moves to the existing 12 KiB internal task. NVS still runs on an internal stack. | 7,020 measured high-water; 12 KiB identity task | Yes |
+| StickS3 main stack | 16,384 | 12,288 | 4,096 | Identity generation moves to the existing 12 KiB internal task. NVS still runs on an internal stack. | 7,020 bytes free at 16 KiB, so about 9,364 used; 12 KiB identity task | Yes |
 | LVGL narrow-panel rows | 4,320 per buffer | 2,160 per buffer | 4,320 total on StickS3 | Two buffers stay, both internal DMA. Only the band height changes. | `UIMemory::drawBufferBytes`, measured panel size | Yes |
 | IR task stack | 4,096 internal | 4,096 PSRAM | 4,096 internal | IR only drives RMT and logs. It never writes NVS or disables the flash cache. Falls back to internal RAM. | `src/FurbleIR.cpp`, `CONFIG_SPIRAM`, `CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM` | Yes |
-| Console stack | 8,192 | 6,144 | 2,048 debug only | The `perf tasks` snapshots move to PSRAM with an internal fallback. The command is diagnostic. | 5,504 measured high-water included about 1.9 KiB of snapshots | Yes |
+| Console stack | 8,192 | 6,144 | 2,048 debug only | The `perf tasks` snapshots move to PSRAM with an internal fallback. The command is diagnostic. | 5,504 bytes free at 8 KiB, so about 2,688 used including about 1.9 KiB of snapshots | Yes |
 | mbedTLS on headless and Waveshare | internal | PSRAM | about 20,000 internal, inferred | Same S3 PSRAM path the StickS3 already uses. No DMA. | `CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC` | Yes |
 | Single-buffer flush fallback | immediate `flush_ready` | waits for SPI DMA | 0 | Prevents LVGL from overwriting a buffer that is still on the wire if the second allocation ever fails. | `src/FurbleUI.cpp` | Yes |
 
@@ -208,14 +216,14 @@ console saving.
 | Candidate | Current | Possible saving | Why not |
 | :--- | ---: | ---: | :--- |
 | Single LVGL draw buffer | 2 x 2,160 | 2,160 on StickS3 | `displayFlush()` calls `lv_disp_flush_ready()` as soon as M5GFX queues the SPI DMA. With one buffer LVGL can render the next band over pixels still being shifted out. The two-buffer ping-pong is what makes the early ready safe. |
-| Console stack below 6 KiB | 6,144 | 1,024 | The 5,504-byte high-water included the snapshots. The remaining margin is about 2.5 KiB and `esp_console_run` depth is input dependent. |
-| Companion stack 4,096 to 3,072 | 4,096 | 1,024 | 2,012 bytes measured, but the worker performs NVS writes and the remaining margin is only 1 KiB. Needs a hardware high-water with a companion write first. |
+| Console stack below 6 KiB | 6,144 | 1,024 | The 5,504 bytes were free stack, so the command used about 2,688 bytes with the snapshots and about 800 without. `esp_console_run` depth is input dependent, so a cut still needs a hardware reading. |
+| Companion stack 4,096 to 3,072 | 4,096 | 1,024 | 2,012 bytes were free, so the worker used about 2,084 and 3 KiB would leave about 990. It performs NVS writes. Needs a hardware high-water with a companion write first. Plan 308 later made the cut. |
 | Camera target task in PSRAM | 4,096 per camera | 4,096 per active camera | The task never writes NVS, so it is safe in principle, but there is no high-water mark and shutter latency has not been measured. Deferred. |
 | MQTT owner task in PSRAM | 10,240 | 10,240 | The task does not write NVS, but there is no hardware high-water on the PSRAM stack path and it handles settings and discovery. Deferred. #407 keeps it internal. |
 | WiFi static RX below 6 | 6 x 1.6 KiB | 1.6 KiB per buffer | IDF recommends at least the AMPDU RX BA window of 6. Below that, throughput and compatibility regress. |
 | WiFi dynamic RX/TX below 32 | caps | 0 steady | They are caps, not preallocations. |
 | Smaller TCP windows | 5,760 | up to 2,880 per socket | Direct MQTT/OTA throughput regression. |
-| Smaller NimBLE host stack | 16,384 | 2,184 | 14,200 measured, 87 percent used. No safe reduction. |
+| Smaller NimBLE host stack | 16,384 | up to about 8,192 | 14,200 bytes were free, so about 2,184 used, 13 percent. The reading did not cover Fujifilm Secure pairing, a bond write or multi-reconnect, so the cut is hardware-gated in plan 314. |
 | Lower `SPIRAM_MALLOC_RESERVE_INTERNAL` | 32,768 | 0 net | The reported internal free already includes the reserve. Moving bytes between the general heap and the reserve does not create RAM. |
 | Lower `SPIRAM_MALLOC_ALWAYSINTERNAL` | 4,096 | unquantified | Driver and LVGL small allocations would start landing in PSRAM. Needs a soak and a latency measurement. |
 | `SPIRAM_TRY_ALLOCATE_WIFI_LWIP` | off | about 12 KiB | It forces static WiFi TX buffers and can reduce throughput. Not a safe default without a radio soak. |

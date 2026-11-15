@@ -682,6 +682,9 @@ class NimBLEDevice {
   static void setSecurityPasskey(uint32_t passkey);
   static uint32_t getSecurityPasskey();
   static void setSecurityIOCap(uint8_t capability);
+  // Every IO capability passed to setSecurityIOCap() since resetMock(), oldest
+  // first, so a test can pin the value a camera mode maps to.
+  static std::vector<uint8_t> mockSecurityIOCaps();
   static void setSecurityInitKey(uint8_t key_distribution);
   static void setSecurityRespKey(uint8_t key_distribution);
   static bool setOwnAddrType(uint8_t address_type);

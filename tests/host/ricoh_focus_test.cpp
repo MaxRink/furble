@@ -1,5 +1,6 @@
 #include <iostream>
 #include <string>
+#include <vector>
 
 #include "Device.h"
 #include "NimBLEDevice.h"
@@ -18,17 +19,25 @@ bool check(bool condition, const char *message) {
 
 int main() {
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
   Furble::Host::RicohVirtualCamera peer;
   NimBLEDevice::setMockPeer(&peer);
   const auto advertisement = peer.advertisement();
   Furble::Ricoh camera(&advertisement);
-  if (!check(camera.connect(ESP_PWR_LVL_P3, 1000),
+  if (!check(camera.connect(Furble::TxPower::P3, 1000),
              "Ricoh focus regression reaches the connected production path")) {
     return 1;
   }
   if (!check(peer.pairedDeviceName() == Furble::Device::getStringID(),
              "Ricoh writes the paired-device name on connect")) {
+    return 1;
+  }
+  // Camera.cpp maps SecurityMode to the NimBLE IO capability. Ricoh connects
+  // with keyboard-display and the default display-yes/no is restored after.
+  const std::vector<uint8_t> ioCaps = NimBLEDevice::mockSecurityIOCaps();
+  if (!check(ioCaps.size() == 2 && ioCaps[0] == BLE_HS_IO_KEYBOARD_DISPLAY
+                 && ioCaps[1] == BLE_HS_IO_DISPLAY_YESNO,
+             "Ricoh connects with BLE_HS_IO_KEYBOARD_DISPLAY, then restores the default")) {
     return 1;
   }
 

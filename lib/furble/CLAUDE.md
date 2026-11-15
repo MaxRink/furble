@@ -6,6 +6,10 @@ protocol core.
 - Must stay free of app-layer includes: no FurbleSettings.h, FurbleUI.h, or
   anything else from include/ or src/. Allowed deps: NimBLE, ESP-IDF,
   lib/blowfish, lib/preferences.
+- Public API types are furble-owned. `TxPower` (Device.h) and
+  `Camera::SecurityMode` are mapped to ESP-IDF and NimBLE values only in
+  Device.cpp and Camera.cpp. Do not add an `esp_*_t` or `BLE_HS_*` value to a
+  public signature or enum here; the coupling ratchet counts them.
 - `Camera` is the abstract base (also NimBLEClientCallbacks). Each vendor mode
   is one subclass pair (.h/.cpp): Fujifilm Basic/Secure, CanonEOS
   Smart/Remote, Nikon Smart/Remote, Sony, the Ricoh Imaging family (RICOH and

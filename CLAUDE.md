@@ -150,7 +150,16 @@ CLAUDE.md whose directory it touches.
 - Run `python3 tools/pre_review.py --base origin/master` before pushing. It
   runs the diff hygiene, settings contract, and C++ safety scanners,
   clang-format 21 on the changed C and C++ files, the CI workflow and
-  simulator manifest checks, and the scanner unit tests.
+  simulator manifest checks, the coupling ratchet, and the scanner unit
+  tests. The ratchet fails when a per-file count of board
+  guards, `M5.` calls, `M5.getBoard()` or ESP/NimBLE public header types
+  grows; after a reduction run `python3 tools/check_coupling_ratchet.py
+  --update` and commit `tools/coupling_ratchet.json`. pre_review passes its
+  `--base` through, so growth over the base manifest fails even after
+  `--update`. Board guards count each board macro on a conditional line and
+  each `#define` naming one. The capability scan also covers `sim/` and
+  `tests/host/`, and rejects a `FURBLE_HAS_*` or `FURBLE_PANEL_*` name that
+  `include/FurbleBoardCaps.h` does not define.
   `git config core.hooksPath .githooks` runs it from `.githooks/pre-push` on
   every push, against each pushed commit. The tracked `.claude/settings.json`
   sets that hook path for Claude Code sessions through `GIT_CONFIG_COUNT`, so
@@ -363,10 +372,13 @@ check.
   the saved camera list loads. `mqtt_ha` is cached on reload; never read it from
   the owner event path. The event handler runs on the 3 KiB esp-mqtt worker:
   never put a 2,348-byte `queued_event_t` on its stack. It fills the owner's
-  preallocated `m_Incoming` copy, which lives with the queue and is never freed.
+  preallocated `m_Incoming` copy, and the owner receives into `m_Received`;
+  both live with the queue and are never freed.
 - Main task stack: keep the StickS3 at 12 KiB. The 8 KiB experiment overflowed
-  in task main after MQTT was enabled, even though the MQTT-off high-water was
-  only 3,476 bytes.
+  in task main after MQTT was enabled. With MQTT connected `perf tasks` left
+  3,020 of 12,288 bytes free on main, so it used about 9,268 bytes.
+- `perf tasks` reports free bytes: `stack_high_watermark` is
+  `uxTaskGetStackHighWaterMark`, the minimum free stack, never bytes used.
 - ESP-IDF 5.5 per-task heap tracking can deadlock concurrent frees during WiFi
   association. Keep `CONFIG_HEAP_TASK_TRACKING` disabled on every board until
   the upstream fix is present in the pinned SDK. Capability heap diagnostics

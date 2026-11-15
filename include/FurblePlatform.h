@@ -9,6 +9,8 @@
 
 #include <M5PM1.h>
 
+#include "FurbleBoardCaps.h"
+
 namespace Furble {
 #if defined(FURBLE_SIM)
 namespace Sim {
@@ -44,6 +46,23 @@ class Platform {
     int32_t current;   // milliamps, positive when charging
     bool charging;
   } battery_t;
+
+  /**
+   * Battery status for the companion status record.
+   *
+   * Fields hold the FurbleBatteryStatus.h values. Level, voltage, current and
+   * charging are each gated by their own battery_caps_t flag. An unsupported
+   * field is unknown: -1 for level and voltage, 0 for current and false for
+   * charging. VBUS is read only where FURBLE_HAS_VBUS_SENSE is 1 and is 0
+   * otherwise.
+   */
+  typedef struct {
+    int32_t level;    // percent
+    int16_t voltage;  // millivolts
+    int32_t current;  // milliamps, positive when charging
+    int16_t vbus;     // millivolts, 0 when not readable
+    bool charging;
+  } battery_status_t;
 
   /** Battery sample with the shared UI and console EWMA values. */
   typedef struct {
@@ -298,6 +317,16 @@ class Platform {
   battery_sample_t getBatterySample(void) const;
 
   /**
+   * Read the battery status reported to the companion app.
+   *
+   * A board with a battery backend reports the raw M5Unified readings. A
+   * board without one, the headless profiles, reports every field as
+   * unknown, so a fallback reading is never claimed as a battery. VBUS is
+   * reported where the board can sense it.
+   */
+  battery_status_t getBatteryStatus(void);
+
+  /**
    * Get the battery capacity in mAh, zero if unknown.
    */
   uint16_t getBatteryCapacity(void);
@@ -307,7 +336,7 @@ class Platform {
    */
   uint32_t getBatteryFailCount(void);
 
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_M5PM1
   /**
    * Prepare the StickS3 for an intentional serial flash.
    *
@@ -370,7 +399,7 @@ class Platform {
    */
   void initBattery(void);
 
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_M5PM1
   /** Ensure the PMIC long-press download recovery path is not locked. */
   bool unlockDownloadRecovery(void);
 #endif
@@ -392,7 +421,7 @@ class Platform {
   battery_sample_t m_BatterySample = {};
   bool m_BatterySampleInitialized = false;
   bool m_MotionWakeArmed = false;
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_M5PM1
   bool m_StatusLedLevel = false;
   bool m_StatusLedLevelValid = false;
   bool m_WatchdogEnabled = false;

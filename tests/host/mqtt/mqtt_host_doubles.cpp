@@ -58,7 +58,7 @@ extern "C" size_t heap_caps_get_largest_free_block(uint32_t caps) {
 }
 
 // Fails like a pool whose largest block is too small; never frees, like the
-// owner's incoming event copy.
+// owner's event copies.
 extern "C" void *heap_caps_malloc(size_t size, uint32_t caps) {
   return size <= heap_caps_get_largest_free_block(caps) ? std::malloc(size) : nullptr;
 }
@@ -323,5 +323,13 @@ extern "C" BaseType_t xQueueReceive(QueueHandle_t queue, void *item, TickType_t)
   const auto &copy = hostQueue->items.front();
   std::memcpy(item, copy.data(), hostQueue->itemSize);
   hostQueue->items.pop_front();
+  return pdTRUE;
+}
+
+extern "C" BaseType_t xQueueReset(QueueHandle_t queue) {
+  auto *hostQueue = static_cast<HostQueue *>(queue);
+  if (hostQueue != nullptr) {
+    hostQueue->items.clear();
+  }
   return pdTRUE;
 }

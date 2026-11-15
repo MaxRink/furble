@@ -210,8 +210,8 @@ high-water mark after the first response.
 - Pre-review: `python3 tools/pre_review.py --base origin/master`.
 - StickS3 hardware, WebUI off: 13,543 free / 12,788 largest internal bytes with
   WiFi connected, companion enabled, display active.
-- StickS3 hardware, WebUI on: the supervisor starts (high-water 512 bytes of
-  its 3 KiB stack), the server gate logs
+- StickS3 hardware, WebUI on: the supervisor starts (its stack headroom log
+  left 512 of 3 KiB free), the server gate logs
   `HTTPS stays closed: internal free 10591, largest 9716 (need 20480/12288)`,
   and the device stays up with no watchdog reset. This is the measured
   fail-closed result.

@@ -51,7 +51,7 @@ int main(void) {
   const NimBLEAddress cameraBond(0x112233445566ULL, 0);
   NimBLEDevice::setBondedAddress(cameraBond);
 
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
   check(NimBLEDevice::mockOwnAddressType() == BLE_OWN_ADDR_RPA_PUBLIC_DEFAULT,
         "a wiped device keeps the default address policy");
   check(!Furble::CompanionIdentity::applyPersisted(),
@@ -115,7 +115,7 @@ int main(void) {
   // A boot re-runs Device::init() and then CompanionGatt::init() applies the
   // stored identity before advertising. It must not fall back to the default
   // and strand the bond the host made after the rotation.
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
   check(NimBLEDevice::mockOwnAddressType() == BLE_OWN_ADDR_RPA_PUBLIC_DEFAULT,
         "Device::init starts from the default policy");
   check(Furble::CompanionIdentity::applyPersisted(), "the persisted identity applies");
@@ -126,7 +126,7 @@ int main(void) {
   check(Furble::CompanionIdentity::rotate(), "a second rotation succeeds");
   const auto second = NimBLEDevice::mockOwnAddress();
   check(second != first, "the second rotation changes the address");
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
   check(Furble::CompanionIdentity::applyPersisted(), "the second identity applies");
   check(NimBLEDevice::mockOwnAddress() == second,
         "the second address replaces the first across a reboot");
@@ -141,7 +141,7 @@ int main(void) {
   // address from RAM.
   Furble::CompanionIdentity::clearPersisted();
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
   check(!Furble::CompanionIdentity::applyPersisted(),
         "a wiped store has no companion identity to apply");
   check(NimBLEDevice::mockOwnAddressType() == BLE_OWN_ADDR_RPA_PUBLIC_DEFAULT,

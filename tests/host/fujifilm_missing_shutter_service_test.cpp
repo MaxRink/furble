@@ -35,7 +35,7 @@ namespace {
 // by signal instead of returning here.
 int connectWithSuppressedShutterService() {
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
 
   Furble::Host::FujifilmVirtualCamera peer;
   peer.suppressService(Furble::Host::FujifilmVirtualCamera::shutterServiceUUID());
@@ -44,7 +44,7 @@ int connectWithSuppressedShutterService() {
   const NimBLEAdvertisedDevice advertisement = peer.advertisement();
   auto camera = std::make_shared<Furble::FujifilmBasic>(&advertisement);
 
-  const bool connected = camera->connect(ESP_PWR_LVL_P3, 1000);
+  const bool connected = camera->connect(Furble::TxPower::P3, 1000);
   return connected ? 2 : 0;
 }
 

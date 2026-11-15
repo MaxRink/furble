@@ -98,10 +98,6 @@ void Platform::restart() {}
 
 void Platform::wakeM5PM1() {}
 
-Platform::battery_caps_t Platform::getBatteryCaps() const {
-  return {};
-}
-
 void BootScreen::begin(uint8_t) {
   record("boot.begin");
 }
@@ -161,7 +157,11 @@ const std::string &Device::getStringID() {
   return id;
 }
 
-void Device::init(esp_power_level_t) {
+TxPower Control::savedTxPower(void) {
+  return TxPower::P3;
+}
+
+void Device::init(TxPower) {
   record("device.init");
 }
 
@@ -343,6 +343,8 @@ void GPS::update() {
 void GPS::reloadSetting() {
   HeadlessState::gpsReloads++;
 }
+
+void GPS::setRailPower(bool) {}
 
 void WiFi::init() {
   HeadlessState::wifiInit++;

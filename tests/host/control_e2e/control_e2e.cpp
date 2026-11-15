@@ -163,7 +163,7 @@ void startControlTask() {
 
 void freshEnvironment() {
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
   // Default settings for the connection: keep the device awake while active so
   // the sleep-lock balance can be asserted, no adaptive power, no backoff, no
   // connection saver.
