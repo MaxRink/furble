@@ -7,14 +7,12 @@
 #include <memory>
 
 #if defined(FURBLE_NO_DISPLAY)
-#include <M5Unified.h>
 #include <esp_timer.h>
 #endif
 
 #include "Device.h"
 #include "Scan.h"
 
-#include "FurbleBatteryStatus.h"
 #include "FurbleBootScreen.h"
 #include "FurbleBootTimeline.h"
 #include "FurbleCompanion.h"
@@ -52,38 +50,8 @@ namespace Furble {
 
 imu_mutex_t g_IMUMutex;
 
-// Device status for the companion service. The display build serves these from
-// the UI task, the headless build has no UI so it reads M5.Power directly and
-// reports an idle intervalometer.
-int32_t UI::getBatteryLevel(void) {
-  const auto &caps = Platform::getInstance().getBatteryCaps();
-  return BatteryStatus::level(caps.level, M5.Power.getBatteryLevel());
-}
-
-int16_t UI::getBatteryVoltage(void) {
-  const auto &caps = Platform::getInstance().getBatteryCaps();
-  return BatteryStatus::voltage(caps.voltage, M5.Power.getBatteryVoltage());
-}
-
-int32_t UI::getBatteryCurrent(void) {
-  const auto &caps = Platform::getInstance().getBatteryCaps();
-  return BatteryStatus::current(caps.current, M5.Power.getBatteryCurrent());
-}
-
-int16_t UI::getBatteryVBUSVoltage(void) {
-#if defined(FURBLE_WAVESHARE_S3_ETH)
-  // The board exposes no software-readable VBUS/PoE telemetry.
-  return BatteryStatus::vbus(false, 0);
-#else
-  return BatteryStatus::vbus(true, M5.Power.getVBUSVoltage());
-#endif
-}
-
-bool UI::isBatteryCharging(void) {
-  const auto &caps = Platform::getInstance().getBatteryCaps();
-  return BatteryStatus::charging(caps.charging, static_cast<int>(M5.Power.isCharging()) == 1);
-}
-
+// Companion status for the intervalometer. The headless build has none, so it
+// reports idle. Battery status comes from Platform::getBatteryStatus().
 uint8_t UI::getIntervalometerState(void) {
   return 0;
 }
@@ -364,7 +332,7 @@ void UI::serviceRequests(void) {
         break;
 
       case Request::GPS_POWER:
-        M5.Power.setExtOutput(item.arg != 0, m5::ext_PA);
+        GPS::setRailPower(item.arg != 0);
         break;
 
       case Request::IR_RELOAD:
@@ -506,7 +474,7 @@ void app_main() {
   Furble::BootTimeline::mark(Furble::BootTimeline::CPU_POLICY_DONE);
   Furble::BootScreen::step("Power");
 
-  Furble::Device::init(Furble::Settings::load<esp_power_level_t>(Furble::Settings::TX_POWER));
+  Furble::Device::init(Furble::Control::savedTxPower());
   Furble::BootTimeline::mark(Furble::BootTimeline::BLE_DONE);
   Furble::BootScreen::step("Bluetooth");
 #if defined(FURBLE_WEBUI) && FURBLE_WEBUI
@@ -543,6 +511,9 @@ void app_main() {
 #endif
 
   auto &control = Furble::Control::getInstance();
+  // Every new camera target is admitted to the memory governor before it
+  // allocates, so a connect sheds the WebUI first when the heap is tight.
+  Furble::Control::setAdmitHook(&Furble::MemoryPressure::admit);
   xRet = xTaskCreate(control_task, "control", 8192, &control, 4, &xControlHandle);
   if (xRet != pdPASS) {
     ESP_LOGE(LOG_TAG, "Failed to create control task.");

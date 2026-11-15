@@ -124,6 +124,7 @@ file(GLOB ICON_SOURCES CONFIGURE_DEPENDS "${FURBLE_ROOT}/components/icons/*.c")
 # an empty translation unit unless FURBLE_MQTT is enabled.
 set(FURBLE_SOURCES
     ${SIM_SOURCES}
+    "${FURBLE_ROOT}/src/FurbleBoard.cpp"
     "${FURBLE_ROOT}/src/FurbleBootScreen.cpp"
     "${FURBLE_ROOT}/src/FurbleBootTimeline.cpp"
     "${FURBLE_ROOT}/src/FurbleCalibrate.cpp"
@@ -132,6 +133,7 @@ set(FURBLE_SOURCES
     "${FURBLE_ROOT}/src/FurbleCompanionService.cpp"
     "${FURBLE_ROOT}/src/FurbleControl.cpp"
     "${FURBLE_ROOT}/src/FurbleGPS.cpp"
+    "${FURBLE_ROOT}/src/FurbleGPSUbx.cpp"
     "${FURBLE_ROOT}/src/FurbleMemoryPressure.cpp"
     "${FURBLE_ROOT}/src/FurbleOTAMQTT.cpp"
     "${FURBLE_ROOT}/src/FurbleOTAPartitionSink.cpp"
@@ -175,6 +177,8 @@ set(FURBLE_SOURCES
     "${FURBLE_ROOT}/lib/furble/protocol/CameraListProtocol.cpp"
     "${FURBLE_ROOT}/lib/furble/protocol/FujifilmProtocol.cpp"
     "${FURBLE_ROOT}/lib/furble/protocol/GpsCasic.cpp"
+    "${FURBLE_ROOT}/lib/furble/protocol/GpsDemux.cpp"
+    "${FURBLE_ROOT}/lib/furble/protocol/GpsUbx.cpp"
     "${FURBLE_ROOT}/lib/furble/protocol/ProvisionTLV.cpp"
     "${FURBLE_ROOT}/lib/testing/nimble/MockNimBLE.cpp"
     "${FURBLE_ROOT}/lib/testing/peer/FujifilmVirtualCamera.cpp"

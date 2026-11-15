@@ -220,6 +220,17 @@ object FurbleSettingMetadata {
         ),
         SettingMetadata(42, "timezone", "Time zone", "GPS", FurbleProtocol.SettingType.UINT8,
             SettingEditorKind.ENUM, options = timezoneOptions),
+        // u-blox M10 only. A Ubx::GNSS_MASK_* bit mask: 1 GPS, 2 BeiDou,
+        // 4 GLONASS, 8 Galileo, 16 QZSS, 32 SBAS. 0 follows GPS Constellation.
+        SettingMetadata(48, "gps_gnss", "GPS Signals", "GPS", FurbleProtocol.SettingType.UINT8,
+            SettingEditorKind.RANGE, range = SettingRange(0, 63, 1, "mask")),
+        SettingMetadata(
+            49, "gps_psm", "GPS Power Save", "GPS", FurbleProtocol.SettingType.UINT8,
+            SettingEditorKind.ENUM,
+            options = listOf(option(0, "Off"), option(1, "Cyclic tracking"), option(2, "On/off")),
+        ),
+        SettingMetadata(50, "gps_ana", "GPS AssistNow", "GPS", FurbleProtocol.SettingType.BOOL,
+            SettingEditorKind.SWITCH),
         SettingMetadata(7, "interval", "Interval", "Intervalometer", FurbleProtocol.SettingType.BLOB,
             SettingEditorKind.INTERVAL),
         SettingMetadata(8, "multiconnect", "Multi-Connect", "Connections", FurbleProtocol.SettingType.BOOL,

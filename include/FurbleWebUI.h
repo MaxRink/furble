@@ -81,6 +81,11 @@ class WebUI {
 
   static void taskEntry(void *param);
   static void identityTaskEntry(void *param);
+  /**
+   * The memory governor's escalate hook. Wakes the supervisor so a pause
+   * stops the server now instead of on the next 500 ms poll.
+   */
+  static void wakeForPressure(void);
   void task(void);
   void identityTask(void);
   /**

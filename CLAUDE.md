@@ -30,8 +30,9 @@ CLAUDE.md whose directory it touches.
   over the slot; OTA and TLS remain enabled.
 - Auth integration with `-Os` reached 1,743,717 bytes, 2,917 over the slot.
   The `-Oz` experiment produced the identical size despite confirmed object-file
-  flags, so it was reverted. The combined image still does not fit; release
-  optimization, security features and the OTA layout are unchanged.
+  flags, so it was reverted. Release optimization, security features and the
+  OTA layout were unchanged. The flash slimming below (#435) brought the image
+  back under the slot.
 - Flash slimming (plan 314) keeps every feature and IPv6. All boards use ESP-IDF
   Log V2 with the DHCP server and non-AES GCM off. StickC images compile out
   the SD stack and the unused Montserrat 22. Images that map to one M5GFX board
@@ -39,8 +40,9 @@ CLAUDE.md whose directory it touches.
   `post:patches/m5gfx_board.py` pins it in `M5GFX::autodetect`, so the other
   boards' panel and touch drivers drop out. StickC Plus/Plus2 and Core2/Tough
   share an image and keep autodetect. Waveshare pins `board_M5StampS3`, which
-  has no M5GFX probe, so no probe runs on the W5500 pins. Core debug is now 1,719,453 bytes and
-  fits its OTA slot again and is a mandatory CI lane. Log V2 writes
+  has no M5GFX probe, so no probe runs on the W5500 pins. Core debug fits its
+  OTA slot again and is a mandatory CI lane; with the u-blox driver it is
+  1,739,728 bytes, 1,072 under the slot (plan 321). Log V2 writes
   one record as three vprintf calls, so `FurbleCrashLog` joins fragments up to
   the newline.
 - Per-env `sdkconfig.<env>` files are committed at the repo root. Debug envs
@@ -81,8 +83,11 @@ CLAUDE.md whose directory it touches.
   also expose `workflow_dispatch`; use the Actions tab to select a branch.
 - The simulator power gate compares each report against its baseline with the
   two-sided `tools/power-model/compare.py --threshold` policy. The default 10%
-  value is compatibility policy, not calibrated hardware noise. Focused
-  comparator coverage is `python3 -m unittest tests/test_power_compare.py`.
+  value is compatibility policy, not calibrated hardware noise. It also fails
+  timer-fire and invalidated or flushed pixel drift beyond
+  `--activity-threshold` (default 25% plus an absolute slack); per-scenario
+  opt-outs with a reason live in `tools/power-model/activity-optout.json`.
+  Focused comparator coverage is `python3 -m unittest tests/test_power_compare.py`.
   `tools/power-model/README.md` distinguishes the legacy-default report from
   the opt-in synthetic microsecond accounting mode; neither is a hardware
   current measurement.
@@ -105,7 +110,8 @@ CLAUDE.md whose directory it touches.
   a dispatch has no meaningful comparison base.
   Android's optional `run_emulator` input keeps the default dispatch fast.
 - Before pushing config, enum, or settings changes, clean-build every
-  documented env, including the non-CI `esp32-s3-headless` env. A new settings
+  documented env, including `esp32-s3-headless`, which only the reproducible
+  build workflow compiles, not the PR firmware matrix. A new settings
   enum value must be added in five places or the headless build fails
   `-Werror=switch`. See `plans/95-engineering-lessons.md`.
 - The direct SDL simulator build writes compiler depfiles beside each object.
@@ -149,7 +155,16 @@ CLAUDE.md whose directory it touches.
 - Run `python3 tools/pre_review.py --base origin/master` before pushing. It
   runs the diff hygiene, settings contract, and C++ safety scanners,
   clang-format 21 on the changed C and C++ files, the CI workflow and
-  simulator manifest checks, and the scanner unit tests.
+  simulator manifest checks, the coupling ratchet, and the scanner unit
+  tests. The ratchet fails when a per-file count of board
+  guards, `M5.` calls, `M5.getBoard()` or ESP/NimBLE public header types
+  grows; after a reduction run `python3 tools/check_coupling_ratchet.py
+  --update` and commit `tools/coupling_ratchet.json`. pre_review passes its
+  `--base` through, so growth over the base manifest fails even after
+  `--update`. Board guards count each board macro on a conditional line and
+  each `#define` naming one. The capability scan also covers `sim/` and
+  `tests/host/`, and rejects a `FURBLE_HAS_*` or `FURBLE_PANEL_*` name that
+  `include/FurbleBoardCaps.h` does not define.
   `git config core.hooksPath .githooks` runs it from `.githooks/pre-push` on
   every push, against each pushed commit. The tracked `.claude/settings.json`
   sets that hook path for Claude Code sessions through `GIT_CONFIG_COUNT`, so
@@ -200,6 +215,15 @@ CLAUDE.md whose directory it touches.
   `docs/stack-budget.md`. Update the manifest when a task or its stack changes.
   A recursion or an `alloca`/VLA frame on a task's path fails it until
   `recursion_bounds` or `dynamic_bounds` cites a bound from source.
+  The walk collapses strongly connected components and takes the longest
+  path over the DAG, exact outside known limits. Panic paths count: the
+  ESP-IDF panic handler runs on the faulting task's stack, so `panic_abort`
+  is charged the handler's depth. `infeasible_calls` drops an edge only with
+  a file:line citation of the guard that makes it unreachable. A `-debug` env
+  is checked against its own stacks: `sdkconfig.debug` sizes `sys_evt` and
+  `esp_timer`, and each furble task owner adds a named `..._DEBUG_EXTRA`
+  under `FURBLE_DEBUG_BUILD`, which only the `-debug` envs define. The
+  manifest's `debug_stack_bytes` records the result.
   `platformio.ini` sets `CJSON_NESTING_LIMIT=8` for every component; the
   cJSON recursion bounds depend on it.
 - Hardware flashing is gated on the simulator. The gate manifests are under
@@ -240,7 +264,11 @@ CLAUDE.md whose directory it touches.
   The `sim-sanitizers` job in `sim-e2e.yml` runs the certified e2e suite under
   ASan, UBSan and LeakSanitizer on Linux. Only the third-party sites in
   `sim/ubsan.supp` and `sim/lsan.supp` are suppressed, each with its reason;
-  never add a furble frame there.
+  never add a furble frame there. On macOS a sanitized sim needs the SDL3
+  rpath `sim/build.sh` adds; check `otool -l` before running one, because a
+  missing rpath raises a desktop dialog per process. The sim-e2e S3 job runs
+  `sim/scripts/run-env-order.sh`, which fails any setenv that adds a variable
+  while SDL is live (issue #283).
 - The USB console (debug builds, `FURBLE_CONSOLE`) is the automation surface:
   settings get/set, gps subcommands, shutter, status.
 - Hardware verification on the attached M5StickS3 happens before PRs.
@@ -294,7 +322,12 @@ evidence. Resolving a thread without a fix is not acceptable. The same rule
 applies to a remediation PR that closes review findings. The online gate is
 `python3 tools/check_review_threads.py --repo owner/name --pr N`; it fails
 closed on API errors and is intentionally not part of the offline pre-review or
-fork CI jobs. Record the audit in `plans/NN-review-feedback.md`. Run the final
+fork CI jobs. It also fails when the PR head has no check runs, or any check
+is still running or did not pass, so merging without CI is never silent. Actions
+was off from 2026-10-21 to 2026-11-13 and PRs merged with no CI; see
+`plans/95-engineering-lessons.md`. A PR whose paths no workflow covers (web-installer only, say) passes the
+no-checks rule only with `--allow-no-checks "<reason>"`, which is printed.
+Record the audit in `plans/NN-review-feedback.md`. Run the final
 gate set before pushing or merging: `python3 tools/pre_review.py --base
 origin/master`, `sh sim/scripts/check-doc-tokens.sh`, and the review-thread
 check.
@@ -344,10 +377,13 @@ check.
   the saved camera list loads. `mqtt_ha` is cached on reload; never read it from
   the owner event path. The event handler runs on the 3 KiB esp-mqtt worker:
   never put a 2,348-byte `queued_event_t` on its stack. It fills the owner's
-  preallocated `m_Incoming` copy, which lives with the queue and is never freed.
+  preallocated `m_Incoming` copy, and the owner receives into `m_Received`;
+  both live with the queue and are never freed.
 - Main task stack: keep the StickS3 at 12 KiB. The 8 KiB experiment overflowed
-  in task main after MQTT was enabled, even though the MQTT-off high-water was
-  only 3,476 bytes.
+  in task main after MQTT was enabled. With MQTT connected `perf tasks` left
+  3,020 of 12,288 bytes free on main, so it used about 9,268 bytes.
+- `perf tasks` reports free bytes: `stack_high_watermark` is
+  `uxTaskGetStackHighWaterMark`, the minimum free stack, never bytes used.
 - ESP-IDF 5.5 per-task heap tracking can deadlock concurrent frees during WiFi
   association. Keep `CONFIG_HEAP_TASK_TRACKING` disabled on every board until
   the upstream fix is present in the pinned SDK. Capability heap diagnostics
@@ -363,6 +399,8 @@ check.
 - `src/` + `include/`: app layer (tasks, UI, settings, GPS, platform).
 - `lib/furble/`: BLE camera protocol library, one class per vendor mode.
 - `lib/blowfish/`, `lib/preferences/`: support libs used by lib/furble.
+- `lib/hal/`: pure, host-tested chip drivers (AXP2101, BQ27220, XL9555,
+  SX1262 sleep) behind a register-bus seam. See plans/322.
 - `components/icons/`: generated LVGL image arrays.
 - `sim/`: host SDL simulator for the UI (shims, fakes, script driver). It
   never modifies firmware sources.
@@ -375,4 +413,4 @@ check.
 
 Dependabot checks GitHub Actions, Python tooling, Android Gradle dependencies, and the Apple Swift package weekly. Routine minor and patch changes are grouped for review. Firmware pins in PlatformIO and ESP-IDF component manifests remain manual; Dependabot does not support those formats. Updates are proposed through pull requests and do not deploy or flash hardware. Pin Git-sourced PlatformIO dependencies to the full 40-character commit SHA so the VSCode extension can fetch them (upstream issue 309).
 
-Static analysis: `python3 tools/check_static_analysis.py --base origin/master` with the host, simulator and firmware compile databases (`tools/firmware_compile_db.py --env m5stick-s3` and `m5stick-c` after `pio run -t compiledb`); see `CONTRIBUTING.md`. A source no database compiles fails the gate. Raw C++ `new` and `delete` fail `cppcoreguidelines-owning-memory`: use `std::unique_ptr`, and hand a queue its pointer with `release()` and `reset()` on a failed send.
+Static analysis: `python3 tools/check_static_analysis.py --base origin/master` with the host, simulator and firmware compile databases (`tools/firmware_compile_db.py --env m5stick-s3` and `m5stick-c` after `pio run -t compiledb`); see `CONTRIBUTING.md`. A source no database compiles fails the gate. The firmware databases add `-nostdlibinc` so clang never reaches the host's `/usr/include`, and the gate anchors clang-tidy's header filter to the checkout so vendored `.pio/libdeps` and `sim/.pio` headers stay out (#463). Raw C++ `new` and `delete` fail `cppcoreguidelines-owning-memory`: use `std::unique_ptr`, and hand a queue its pointer with `release()` and `reset()` on a failed send.

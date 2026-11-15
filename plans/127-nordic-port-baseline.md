@@ -227,3 +227,165 @@ same `furble-core` files.
 
 This baseline is documentation and an inventory guard only. No Nordic binary,
 board environment, SDK dependency, or hardware test is claimed.
+
+### Coupling ratchet (port stack step 1)
+
+- `tools/check_coupling_ratchet.py` counts, per file, four kinds of coupling:
+  preprocessor conditionals naming a board identity macro, `M5.` uses,
+  `M5.getBoard()` runtime switches, and ESP-IDF or NimBLE type names in the
+  public headers under `include/` and `lib/furble/`. Comments and string
+  literals are ignored.
+- The committed manifest is `tools/coupling_ratchet.json`. A count above its
+  entry fails. A count below it also fails until the manifest is regenerated
+  with `--update`, so each reduction is locked in.
+- `tools/pre_review.py` runs it, and `tests/test_check_coupling_ratchet.py`
+  is in the scanner unit test set of the gate and of `pre-review.yml`.
+- Board identity macros are `FURBLE_M5STICKC`, `FURBLE_M5STICKC_PLUS`,
+  `FURBLE_M5STICKS3`, `FURBLE_M5COREX`, `FURBLE_M5STACK_CORE`,
+  `FURBLE_GROVE_CORE` and `FURBLE_WAVESHARE_S3_ETH`. `FURBLE_NO_DISPLAY` and
+  `FURBLE_ETHERNET` are not counted: they are already profile capability
+  flags, set as both a compiler define and a CMake argument, and a ratchet on
+  them would have no replacement to point to.
+- Baseline on master `e66e8807`: 96 board identity guards in 16 files, 204
+  `M5.` uses in 15 files, 31 `M5.getBoard()` switches in 7 files, and 351
+  ESP/NimBLE header type names in 28 headers. Including the two profile flags
+  there are 165 guard lines in 19 files; the review estimate of 174 also
+  counted a header include guard and commented-out lines.
+
+### Capability macros (port stack step 2)
+
+- `include/FurbleBoardCaps.h` derives 0/1 capability macros from the board
+  identity macros: `FURBLE_HAS_M5PM1`, `FURBLE_HAS_GPS_BURST_LOCK`,
+  `FURBLE_HAS_USB_SERIAL_JTAG_CONSOLE`, `FURBLE_HAS_SD`,
+  `FURBLE_HAS_VBUS_SENSE`, and the panel classes `FURBLE_PANEL_80X160`,
+  `FURBLE_PANEL_135X240`, `FURBLE_PANEL_320X240` and `FURBLE_PANEL_NARROW`.
+- 70 board guards became capability guards. The ratchet went from 96 board
+  identity guards in 16 files to 26 in 12 files.
+- The ratchet also fails a file that tests a capability macro with `#ifdef`
+  or `defined()`, or uses one without including the header directly. Both
+  mistakes would silently read the macro as 0.
+- Deliberately unchanged: the `WATCHDOG` setting enum entry, its default and
+  every switch case that names it stay on `FURBLE_M5STICKS3`, because the
+  settings contract scanner checks each board-conditional setting against the
+  host test target that defines that board macro. Code that reads the
+  setting stays with it. `FurbleTextSize.h` and `FurbleSettingsDefaults.h` are
+  settings contract files and keep their board macros for the same reason.
+- Deliberately unchanged identity checks: the hand-placed legend arrows for
+  the StickC and the Core Basic buttons, the StickS3 side button offset, the
+  Core Basic timer wake clear before power off, and the GPS UART clock guard,
+  which already falls back to `CONFIG_IDF_TARGET_ESP32S3`.
+- `FURBLE_NO_DISPLAY` and `FURBLE_ETHERNET` were already capability flags and
+  are unchanged. No `FURBLE_HAS_DISPLAY` alias was added.
+
+Step 2 build evidence. Fixed-version builds (`FURBLE_VERSION=1.0.0-ci
+FURBLE_TEST=0`) of port stack step 1 (`1e21d421`) and step 2 (`c4367912`),
+one env at a time in the same worktree. Text, data and bin are bytes; the
+last column is the summed size of `Furble` function symbols.
+
+| Env | Step 1 bin | Step 2 bin | Bin | Text | Data | Furble functions |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| m5stick-c | 1,490,544 | 1,490,096 | -448 | -420 | -16 | -243 |
+| m5stick-c-plus | 1,540,000 | 1,540,096 | +96 | +100 | 0 | 0 |
+| m5stick-s3 | 1,848,896 | 1,847,632 | -1,264 | -1,260 | 0 | -108 |
+| m5stack-core | 1,613,744 | 1,613,712 | -32 | -32 | 0 | -4 |
+| m5stack-core2 | 1,898,592 | 1,898,576 | -16 | 0 | -16 | 0 |
+| waveshare-s3-eth | 1,696,448 | 1,696,384 | -64 | -64 | +8 | 0 |
+| esp32-s3-headless | 1,759,504 | 1,759,312 | -192 | -184 | -8 | +8 |
+| waveshare-s3-eth-debug | 2,041,312 | 2,041,312 | 0 | 0 | -8 | 0 |
+
+The images are not byte-identical, and the differences are link layout, not
+code. The Xtensa linker relaxes a `-mlongcalls` `l32r` plus `callx8` pair to
+a direct `call8` when the target lands in range, which saves 3 bytes of code
+and often a 4-byte literal. Any layout shift changes which calls relax, also
+in code step 2 never touched: on the StickS3, `ble_hs_util_ensure_rand_addr`
+in the IDF NimBLE host shrinks from 42 to 34 bytes because its three
+`l32r`/`callx8` calls became `call8`, and 37 other non-furble functions move
+by multiples of 3 or 4 bytes. The furble function deltas have the same shape;
+on the StickC they sit in `CompanionGatt`, which step 2 did not change, and
+the StickS3 text section loses more than the function sizes show because the
+removed literals are not attributed to any symbol. The data deltas of 8 to 16
+bytes are alignment. A rebuild of step 1 m5stick-c after step 2 reproduced
+the step 1 image byte for byte, so the builds are deterministic and the
+deltas are not noise.
+
+### Battery and GPS rail routing (port stack step 3)
+
+- `Platform::getBatteryStatus()` is the one source of the companion status
+  battery fields. It replaces `UI::getBattery*()`, which had a display
+  implementation in `FurbleUI.cpp` and a headless one in `main.cpp`.
+- Each field is gated by its own capability flag through
+  `BatteryStatus::gate()`, as the headless implementation did. The headless
+  images resolve to an unknown board, whose battery capabilities are all
+  false, so they still report every field as unknown. Deviation: the display
+  implementation sent raw M5Unified readings in the companion status. Two
+  values change, both on the M5Stack Core. Voltage was 0 mV, because the
+  IP5306 driver has no voltage reading, and is now unknown. Charging was the
+  IP5306 charge bit and is now unknown, which matches the on-device UI: the
+  Core capability row is level only, and the UI never showed Core charging.
+  The other unsupported fields (StickS3 current, StickC Plus2 current and
+  charging, Core current) were already 0 or unknown in M5Unified. VBUS follows
+  `FURBLE_HAS_VBUS_SENSE`, which is 0 only on the Waveshare board, as before.
+- `GPS::setRailPower()` is the only code that switches the GPS rail. The UI
+  and headless `GPS_POWER` request handlers called `M5.Power.setExtOutput()`
+  directly. Deviation: that console path now also gets the readback and one
+  retry that every other rail switch already had, which is the documented
+  M5PM1 first-access trap.
+- The simulator `Platform::getBatteryStatus()` has the same body, gated per
+  field by the modelled gauge capabilities. Unlike firmware, whose battery capabilities are
+  board-static, the simulator capabilities are `Sim::hwGauge*()`, which also
+  fold in the runtime `batteryPresent` state, so a scenario that removes the
+  battery makes the companion battery fields read unknown. No scenario asserts
+  those companion fields today. The companion host doubles moved from
+  `UI::getBattery*()` to `Platform::getBatteryStatus()`.
+- The ratchet no longer counts `src/FurblePlatform.cpp`: it is the M5Unified
+  adapter, and moving a call into it must not fail the gate. Outside
+  Platform, `M5.` uses fell from 160 to 148 and `main.cpp` has none left.
+
+### Camera library public types (port stack step 4)
+
+- `lib/furble/Device.h` defines `Furble::TxPower` (`P3`, `P6`, `P9`).
+  `Device::init()`, `Device::powerLevelToDbm()` and `Camera::connect()` take
+  it instead of `esp_power_level_t`, and `Device.cpp` maps it to dBm.
+- `Camera::SecurityMode` no longer takes its values from `BLE_HS_IO_*`.
+  `Camera.cpp` maps each mode to the NimBLE IO capability in `ioCap()`.
+- The app layer still uses `esp_power_level_t` for the setting and the
+  adaptive power policy. A file-local `txPower()` in `FurbleControl.cpp` is the
+  one mapping point, used by the connect path and `Control::applyPower()`.
+  `main.cpp` and the simulator call `Control::savedTxPower()`, which loads the
+  saved setting and maps it. Step 4 first declared a public
+  `Control::txPower(esp_power_level_t)`, which grew `FurbleControl.h` by one
+  ESP type name; the review follow-up made it file-local. The public header
+  total falls from 351 to 345 and the library headers `Camera.h` and
+  `Device.h` lose all four `esp_power_level_t` and `BLE_HS_IO_*` uses.
+- Behavior is unchanged. The camera connect log still prints the ESP-IDF
+  level value: `Camera.cpp` maps `TxPower` back to it for that one log line.
+  Unknown ESP levels still map to +3 dBm, as `powerLevelToDbm()` did.
+- 45 host test sources that passed `ESP_PWR_LVL_P3` to `Device::init()` or
+  `Camera::connect()` now pass `Furble::TxPower::P3`: 44 test files plus
+  `tests/host/boundaries/companion_gatt_transport_test.cpp`. The headless
+  doubles gained `TxPower` and `Control::savedTxPower()`.
+- `tests/host/tx_power_mapping_test.cpp` pins P3, P6 and P9 to 3, 6 and 9 dBm
+  through `Control::setPower()` and an unsupported level to 3 dBm. The NimBLE
+  mock records each `setSecurityIOCap()` value, and `ricoh_focus_test` checks
+  that a Ricoh connect passes `BLE_HS_IO_KEYBOARD_DISPLAY` and then restores
+  `BLE_HS_IO_DISPLAY_YESNO`.
+
+Verification:
+
+- Camera vector tests pass. `sh tools/run_sanitized_host_tests.sh --clean`
+  passes 183 of 183. The linked boundary suite passes 18 of 18.
+- Fixed-version builds (`FURBLE_VERSION=1.0.0-ci FURBLE_TEST=0`) against the
+  step 3 base `9dd2dd61`. Static RAM is unchanged; the mapping switches add a
+  few bytes of text.
+
+| Env | Base bin | Step 4 bin | Delta | DRAM |
+| --- | ---: | ---: | ---: | ---: |
+| m5stick-s3 | 1,848,960 | 1,849,024 | +64 | 47,208, unchanged |
+| m5stack-core | 1,614,304 | 1,614,368 | +64 | 54,884, unchanged |
+
+- The symbol diff on the StickS3 is confined to the mapping points:
+  `Control::txPower()` (22 bytes), `Camera::onConnect()` (+12, the log
+  mapping), `Camera::connect()`, `Device::init()` and their callers. These
+  figures predate the file-local `txPower()` follow-up.
+- `check_size_budget.py` and `stack_budget.py` pass for both envs. The
+  coupling ratchet is clean at 345 header type names after the follow-up.

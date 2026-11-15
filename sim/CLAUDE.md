@@ -59,6 +59,14 @@ These are query-only observations of boot inputs. The SDL platform still forces
 `internal_imu` and `internal_spk` false in its M5 config, so the queries do not
 certify physical M5 configuration.
 
+- `Platform::getBatteryStatus()` in `sim/FurblePlatformSim.cpp` has the
+  firmware body, gated per field by `Sim::hwGauge*()`. Those fold in the runtime
+  `batteryPresent` state, unlike the board-static firmware capabilities, so a
+  scenario that removes the battery reads every companion battery field as
+  unknown. No scenario asserts those fields yet.
+- `sim/main.cpp` initializes BLE with `Device::init(Control::savedTxPower())`,
+  the same call as firmware `app_main()`.
+
 ## Parity inventory and seam rules
 
 The simulator shares substantial production UI, GPS, settings, and power
@@ -73,13 +81,14 @@ and target boundary (a new seam needs a contract test and an entry here):
 | Input/navigation | LVGL event callbacks and menu handlers | `simulatorHome`, `simulatorBack`, and `simScenarioAction` are script entry points. `driverTick` runs in the UI task's locked phase, so actions and physical-input shims share LVGL ownership; direct page/focus selection is limited to deterministic setup or input timing SDL cannot reproduce. |
 | Host mutex visibility | Production lock discipline is unchanged: `Camera::m_Mutex` is acquired and released at exactly the same points | `Furble::connect_mutex_t` is `std::mutex` everywhere except a `FURBLE_SIM` build, where `Sim::SchedulerMutex` reserves ownership for one waiter and publishes that waiter before wake. Selection follows task priority then wait order, so host wake timing cannot create an extra virtual disconnect slice (issue #279). This models wake order, not FreeRTOS mutex priority inheritance, which remains unsupported. |
 | Camera links | Production `Control`, `Camera`, `CameraList` and every vendor class, over MockNimBLE | `sim/BleSim.cpp` registers the virtual peers a scenario seeds and injects faults at the transport only (`mockDropLink`, `setConnectShouldFail`, peer standby drop, withheld registration). `Control::simDropActiveLink()` is defined there and severs the real link; it no longer overrides any control state. A FauxNY camera has no radio, so `Camera::resetConnectionState()` stands in for its link loss. Pairing scenarios substitute only the controller prompt through `Camera::hostSetPairingRequest()` and read injected answers from MockNimBLE. `ble.peer.<n>.writes` and `ble.peer.<n>.last_write` read the peer's own `writes()` journal, one template reader over the vendor payload fields, so a scenario asserts the far end of a shutter, focus or handshake path without the driver knowing vendor layouts. |
-| GPS/UART | Production parser, configuration, retry and power-lock logic | Fake UART/receiver is the lowest host-device boundary; replies and faults are injected as bytes/events on a worker thread. |
+| GPS/UART | Production parser, configuration, retry and power-lock logic, including UBX detection and the UBX backend | Fake UART/receiver is the lowest host-device boundary; replies and faults are injected as bytes/events on a worker thread. `seed gps_model` picks the CASIC model, the virtual u-blox M10 (`sim/ubx_m10.{h,cpp}`, host-tested in `gps-ubx-m10`) or an NMEA-only receiver. The simulator's `Platform::setRail(GPS)` reports the Port A rail to the fake and returns the fake's rail as the read-back, because the host has no PMIC rail to observe; `GPS::setRailPower()` is the firmware path unchanged. |
 | Power/display hardware | Production policy and lock ownership | M5PM1, ESP-IDF power, timer, random, NVS, sleep, flash and system calls are host implementations. Observable state is exposed through `platform_state` rather than replacing policy code. |
 | IMU motion engines | Production `IMU::MotionSource`, backend selection, the software fallback and every consumer | The BMI270 and MPU6886 engines are register programming against a bus the host does not have. `sim/FurbleIMUSim.cpp` supplies a virtual backend per chip that models fixed per-axis slope thresholds and event semantics only, driven by the same `Sim::imuGetAccel` surface the software backend reads. `seed imu_chip` decides which chip the modelled board carries. The register encoding is covered by `tests/host/imu_motion_encoding_test.cpp`, not here. This does not certify the physical MPU6886 interrupt path or its clear-on-read race. |
 | IMU bus visibility | Production lock discipline is unchanged: the engines, the spirit level, the IMU live page and the console probe all take the same lock at the same points | `Furble::imu_mutex_t` is `std::mutex` everywhere except a `FURBLE_SIM` build, where it is `Sim::SchedulerMutex`, the same reason and pattern as `connect_mutex_t`: a task waiting on the IMU bus stops being runnable instead of being timed out by the host-clock deadlock breaker (issue #279). |
+| Scan callback wait visibility | Production `Scan::stop()` still waits for an in-flight custom callback at the same point | `Furble::scan_condition_t` is `std::condition_variable` everywhere except a `FURBLE_SIM` build, where it is `Sim::SchedulerConditionVariable`. A waiter stops being runnable, so the radio task that must finish the callback gets the turn. As a plain condition variable it kept the control task runnable and holding the turn until the 2 s host stall breaker parked it, and a parked task runs outside the turn, so a loaded host let a cancel burn its 30 s cap (issue #289). A notify releases waiters but does not preempt the notifier, because the notifier still holds the lock the waiter must take and priority inheritance is not modeled. `tests/test_sim_wait_visibility.py` rejects a production condition variable that is neither sim-only nor aliased this way. `FURBLE_SIM_SCHED_TRACE=1` prints the task table and backtrace whenever the scheduler stops waiting for a task, which is how this wait was found. |
 | Optional hardware | Production capability checks and menu paths | IR, feedback and SD shims report an env-selected capability because no host GPIO/SD/audio device exists. They do not bypass UI or persistence handlers. The linked host-boundary suite compiles the production IR, SD and feedback drivers against peripheral doubles; see `sim/scripts/run-boundary-conformance.sh`. |
 | Build-time observations | Production behavior is unchanged | `FURBLE_SIM` adds profiler counters, query-only state, the UI-task switch registry, click-streak input injection, the scan-start probe, and the post-`lv_task_handler` `fuzzCycleComplete` seam. The dependency-free `fuzz_machine` owns fuzzer phase/cadence state and counters; these are observability/input seams, not alternate policy. Plan 158 now covers retained task lifecycle records and delete-other quiescence. The cooperative simulator unwind is safer than abrupt cleanup but is not FreeRTOS cleanup parity; production Companion remains blocked pending worker-owned shutdown. Scheduler priority, boundary preemption, same-tick dispatch, and queue ownership are modeled at simulator scheduler boundaries; instruction-level preemption, core affinity, and CPU-time accounting remain unsupported. |
-| Internal heap | Production gates (`WebUIMemory::supervisorGate`/`serverGate`), the board's heap abort policy and log formats | `sim/heap_model.cpp` carries a seeded internal free/largest pair when a scenario asks for one. After the seed, the WebUI supervisor, WebUI HTTPS task, MQTT owner and esp-mqtt client are charged explicitly. One UI timer period (1 s) after the production `UI_FIRST_FRAME` boot mark, once no LVGL animation runs, `sim/heap_count.cpp` also charges every device allocation. Allocations made from UI construction until then are baseline blocks: uncharged, but refunded if freed later. It charges the replaced global `operator new`/`delete`, LVGL's C library allocator (compiled against `furble_sim_fw_malloc`), every device task stack and every queue at its 84-byte control block plus storage, each with the TLSF header and poisoning overhead of the pinned ESP-IDF. Default `malloc` follows `heap_caps_malloc_default`: internal up to `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL`, PSRAM above it, then either pool. An allocation counts when it runs on a device task thread outside a `HostAllocScope`. Every sim function that production code calls, and every lock in the heap model and power profiler, enters a host scope; add one to any new `FURBLE_SIM` hook that allocates. Host sizes are 64-bit, so pointer-heavy objects are counted at up to twice their device size: the count is an upper bound. A modelled allocation failure aborts with status 3 and a panic crash record, as `CONFIG_HEAP_ABORT_WHEN_ALLOCATION_FAILS` does on every board, so firmware NULL fallbacks are never certified. `sim/webui_memory_model.cpp` runs the production WebUI gate but not the HTTPS server, identity generation or TLS. It logs the production fail-closed sentence. The model does not claim fragmentation parity. |
+| Internal heap | Production gates (`WebUIMemory::supervisorGate`/`serverGate`), the board's heap abort policy and log formats | `sim/heap_model.cpp` carries a seeded internal free/largest pair when a scenario asks for one. After the seed, the WebUI supervisor, WebUI HTTPS task, MQTT owner and esp-mqtt client are charged explicitly. One UI timer period (1 s) after the production `UI_FIRST_FRAME` boot mark, once no LVGL animation runs, `sim/heap_count.cpp` also charges every device allocation. Allocations made from UI construction until then are baseline blocks: uncharged, but refunded if freed later. It charges the replaced global `operator new`/`delete`, LVGL's C library allocator (compiled against `furble_sim_fw_malloc`), every device task stack and every queue at its 84-byte control block plus storage, each with the TLSF header and poisoning overhead of the pinned ESP-IDF. Default `malloc` follows `heap_caps_malloc_default`: internal up to `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL`, PSRAM above it, then either pool. `heap_caps_malloc_prefer` checks each caps set's pool before charging it and aborts only when none fits, as ESP-IDF does; `MALLOC_CAP_DEFAULT` without the PSRAM bit charges the internal pool. An allocation counts when it runs on a device task thread outside a `HostAllocScope`. Every sim function that production code calls, and every lock in the heap model and power profiler, enters a host scope; add one to any new `FURBLE_SIM` hook that allocates. Host sizes are 64-bit, so pointer-heavy objects are counted at up to twice their device size: the count is an upper bound. Object sizes also differ between macOS libc++ and Linux libstdc++: the NimBLE mock client a camera connect keeps is 24 bytes larger on Linux, so `hw-memory-webui-first-boot.txt` accepts both figures after its connect. That scenario pins the shipped physical-button layout with `seed no_touch true`: the layout's Main page navigation indicators are cached at boot and not redrawn after the session's image cache drop, so its post-disconnect figures are 480 bytes above the touch layout's. Test-double bookkeeping, such as the NimBLE mock's IO capability record, runs in a host scope and is not charged. A modelled allocation failure aborts with status 3 and a panic crash record, as `CONFIG_HEAP_ABORT_WHEN_ALLOCATION_FAILS` does on every board, so firmware NULL fallbacks are never certified. `sim/webui_memory_model.cpp` runs the production WebUI gate but not the HTTPS server, identity generation or TLS. It logs the production fail-closed sentence. The model does not claim fragmentation parity. |
 | Board configuration | Production `#if defined(CONFIG_*)` memory branches | `tools/gen_sim_sdkconfig.py` writes the memory-relevant sdkconfig subset of the modelled board into `sdkconfig_sim.h`, which the build force-includes into firmware and simulator sources only. Target identity (`CONFIG_IDF_TARGET_*`) stays out because M5GFX and M5Unified key on it. |
 | Crash record | `include/FurbleCrashRecord.h`, `include/FurbleCrashLog.h`, the panic-safe RTC writer and the console `crash` command | `sim/CrashLogSim.cpp` stores the same record in a sidecar next to `FURBLE_SIM_PREFS` so the real `restart` path can prove one-shot reporting. It is host persistence, not an RTC claim; production writes only RTC memory. |
 
@@ -151,8 +160,9 @@ and
 `FurbleControl.cpp` (link-drop declaration, the debug state snapshot the console
 also uses, and the camera-command counter), `lib/furble/Scan.h` and `Scan.cpp`
 (scan-start probe and scan-end callback counter), `FurbleGPS.cpp` (state/timer
-profiling), `FurblePlatform.h` (watchdog query friend), `FurblePower.cpp`
-(power-lock owner assertions), and `FurbleUI.cpp`/`FurbleUI.h` (profiling,
+profiling, the status reader hold seam and the serial read and duty request
+busy marker behind `gps.duty_settled`), `FurblePlatform.h` (watchdog query
+friend), `FurblePower.cpp` (power-lock owner assertions), and `FurbleUI.cpp`/`FurbleUI.h` (profiling,
 queries, deterministic input, simulator encoder long-press/repeat timing,
 scan-start probe,
 disconnect count, and scripted actions). `FurbleUIAudit` is enabled for the
@@ -206,11 +216,24 @@ including empty strings and failed-save rollback.
   identity change also discards stale objects. It requires the same dependency
   overrides as `sim/build.sh`.
 - `sim/scripts/run-env-order.sh`: on Linux, compiles a small `LD_PRELOAD`
-  interposer that resolves libc functions before simulator threads start and
-  rejects a selected Furble `setenv` or `unsetenv` after SDL initialization,
-  then runs the fresh and restart scenarios against the current binary and
-  expects the pre-fix binary to trip each exact target. This checks ordering
-  only; it is not crash-causality evidence.
+  interposer and runs the fresh and restart scenarios against the current
+  binary. The named targets reject one Furble `setenv` or `unsetenv` after SDL
+  initialization; the `growth` target rejects any variable added by `setenv`
+  or `putenv`, any `unsetenv`, and `clearenv`, from any caller. A small SDL
+  self-test program must trip it first, once each for `setenv`, `putenv` with
+  and without a value, `clearenv` and a 300-byte new name, and must pass a
+  replacement of an existing 300-byte name. The sim-e2e S3 job runs it. With
+  `FURBLE_SIM_ENV_GUARD_OLD_BIN` it also expects the pre-fix binary to trip
+  each named target.
+- Never grow the process environment while SDL is live. glibc's getenv walks
+  `environ` without a lock, the SDL main loop calls it thousands of times a
+  second, and a setenv that adds a variable frees the array under that walk.
+  This is the issue #283 restart SIGSEGV class. Replacing an existing variable
+  is safe. Production Timezone's boot `setenv("TZ")` runs after `SDL_Init` but
+  before `panelReady` releases the main loop, so it is ordered before any loop
+  getenv and was not a live race. `main()` creates `TZ` first so every `TZ`
+  write is a replace, and the guard enforces the stricter rule: no growth after
+  `SDL_Init`.
 - `sim/CMakeLists.txt`: the CMake path for machines with CMake installed.
   Forced C++ platform shim includes apply only to C++ sources. Generated C
   icon sources must compile as C without the C++ FreeRTOS header.
@@ -289,6 +312,12 @@ are discovered by pkg-config or CMake. The default simulator does not enable
 the production MQTT transport. The adapter accepts plaintext `mqtt://`
 local-broker URIs
 only; `mqtts://` remains fail-closed until a trust-store-backed TLS shim exists.
+Under the heap model, libmosquitto and the adapter's own objects run in a
+`HostAllocScope` and are never charged. `esp_mqtt_client_init()` charges what
+the pinned esp-mqtt allocates on the device instead: the client and config
+storage (248 and 160 bytes, from the StickS3 firmware DWARF) and the configured
+in and out buffers. Destroy releases them and `start()` charges the client task
+stack. Keep these figures in step with the pinned IDF when it moves.
 A local broker is managed outside the simulator and its socket/PUBACK evidence
 is not hardware or TLS evidence. `sim/scripts/test-mqtt-broker.sh` uses an
 externally managed broker and reports active-camera resubscription after broker
@@ -317,7 +346,8 @@ shortens that host retry cadence for a bounded scenario.
   group per modal: PREV/NEXT cannot escape into background controls, and an
   underlying dialog may close without detaching input from the one above it.
   Keep new modal controls on that shared ownership path rather than adding them
-  directly to the page group. Other production mutexes are still invisible,
+  directly to the page group. `Scan::m_CallbackIdle` is scheduler visible
+  too. Other production mutexes are still invisible,
   so new cross-task contention needs the same measured review. Mutex priority
   inheritance is not modeled.
   `observed_delta` and `no_observed_delta` remain masked because asynchronous
@@ -361,7 +391,7 @@ shortens that host retry cadence for a bounded scenario.
   seed the setting it toggles. The production CameraList does persist across a
   restart through the preferences file, and a reapplied `saved_camera` seed is
   idempotent because `CameraList::add_index()` overwrites by name (see
-  plans/156-restart-restore-seam.md for the seam limits).
+  plans/implemented/156-restart-restore-seam.md for the seam limits).
   `FURBLE_SIM_THEME` and `FURBLE_SIM_TEXTSIZE` apply only on the fresh boot;
   a UI-triggered reboot retains the NVS value selected by the restart action.
   See `docs/sim.md` for every action value and query key.
@@ -371,7 +401,11 @@ shortens that host retry cadence for a bounded scenario.
   task, or application RAM. The driver owns PID-scoped file creation, ownership
   markers, bounded reads, atomic publication, consumption, and cleanup.
   Malformed or foreign files fail closed and remain caller-owned.
-  `sim/scripts/run-fuzz-restart.sh` is the focused seed-2 restart gate. Root
+  `sim/scripts/run-fuzz-restart.sh` is the focused seed-2 restart gate. It
+  sets `FURBLE_FUZZ_RESTART_STEP=200`, so the restart comes from the
+  fuzzer clicking the real Sensors "Restart to apply" button, found by label
+  instead of a host-dependent random visit; no Linux seed from 1 to 20 reached
+  one alone. Unset, the knob changes no walk. Root
   evidence records the c190 gate pass and all three 65e8 panel binaries passing
   the pinned eight-seed 600-event sweep plus the strict seed-2 restart check.
   The corrected f49 binary still needs its own retest before this behavior is
@@ -430,7 +464,11 @@ shortens that host retry cadence for a bounded scenario.
   companion service, the display, Control and the UI are already resident, and
   only optional services admitted afterwards are charged. `web_ui`,
   `webui_password`, `webui_gate` and `wifi_connected` configure the WebUI
-  admission model. `task_create_fail <name|all>` fails a task's `xTaskCreate`
+  admission model. `sim/main.cpp` registers `MemoryPressure::admit()` as the
+  Control admit hook, as firmware `app_main()` does, so a scenario connect is
+  admitted inside `Control::addActive()`. The host build admits 4,912 bytes
+  per target against 4,896 on the S3, because `sizeof(Control::Target)` is
+  larger on a 64-bit host. `task_create_fail <name|all>` fails a task's `xTaskCreate`
   with the hardware-shaped `Mem alloc fail` line, which aborts the run with
   status 3 like the device. `heap.free`, `heap.largest`,
   `heap.minimum`, `heap.counting`, `heap.counted_internal`,
@@ -446,7 +484,10 @@ shortens that host retry cadence for a bounded scenario.
   pressure governor runs in the simulator: `action heap-squeeze` and
   `heap-release` move the pool at runtime, `heap.pressure` reports the level,
   and `memory-pressure-webui-shed.txt` and `memory-pressure-mqtt-shed.txt` (the
-  latter in `run-memory.sh`) cover pause and return. Plan 314 PR 7 adds the
+  latter in `run-memory.sh`) cover pause and return.
+  `hw-memory-webui-first-boot.txt` covers the return after a camera session,
+  which needs the image cache drop at disconnect; it runs in the physical-button
+  layout in both runners. Plan 314 PR 7 adds the
   runtime first-enable gates: `seed webui_identity_absent true` with
   `action webui-enable` runs the identity gate
   (`memory-webui-identity-gate.txt`), and `action companion-enable` runs the
@@ -585,8 +626,11 @@ shortens that host retry cadence for a bounded scenario.
   Keep IMU actions and queries general enough for diagnostics, spirit-level
   orientation, and future gesture features; do not add widget-only shortcuts.
 - GPS query keys include `gps.source`, `gps.satellites`, `gps.state`,
-  `gps.fresh_fixes_parsed`, `gps.duty_wake_fixes_parsed`, and
-  `gps.config.<index>.state|attempts`.
+  `gps.fresh_fixes_parsed`, `gps.duty_wake_fixes_parsed`,
+  `gps.duty_settled`, and `gps.config.<index>.state|attempts`.
+  `gps.state` is a profiler label that a duty wake does not change, so it
+  reads `standby` through a wake burst; wait on `gps.duty_settled` before
+  clearing the UART journal in a standby scenario.
   `gps.fresh_fixes_parsed` is simulator-only observability of parser
   progression, so scenarios can distinguish a wake fix from a cached UART
   source. It is cumulative and includes the acquisition fix that armed a duty
@@ -608,6 +652,18 @@ shortens that host retry cadence for a bounded scenario.
 - `e2e/gps-motion-prearm.txt` deliberately loads GPS motion before the UI arms
   the shared source, then disarms and re-arms it through real MotionSource calls;
   it asserts the gate changes without a GPS reset or setting toggle.
+- `seed gps_reader_hold_ms N` holds each GPS cycle status reader for N ms of
+  host time through `Sim::gpsReaderHold()`, a timing seam in
+  `GPS::getCycleStatusSnapshot()` and `GPS::getReceiverStatus()`.
+  `e2e/gps-reader-hold.txt` seeds 30 and asserts the cycle never degrades. It
+  also opens the GPS Data page and asserts `gps.readers_lock_free`, which
+  holds `m_CycleMutex` and requires all three readers to return: the page
+  timer runs after the tick's UART event is handled, so timing alone cannot
+  catch a lock in the page's reader. Readers used to hold `m_CycleMutex` while
+  the GPS task skipped any pass it could not lock, so a reader overlapping a
+  UART event lost the burst. That was the rare `gps-motion-detector` failure
+  under parallel load (plans/18-gps-motion.md). Keep the seam where the
+  snapshot is read: a reader lock added later then encloses the hold.
 - The `scan_start_probe` boolean seed enables a concurrent callback-shaped
   probe during scan startup. `scan.start_probe_blocked` reports whether that
   callback waited for the UI mutex, guarding the watchdog-sensitive scan-start
@@ -703,6 +759,20 @@ shortens that host retry cadence for a bounded scenario.
   an interactive debugging session, where the stall watchdog reports the
   deadlock instead of spinning on it. Do not reintroduce a busy-wait in
   `sim/main.cpp`: spinning made the load that provokes the stall worse.
+- Under `SDL_VIDEODRIVER=dummy` or `offscreen`, `sim/main.cpp` sets
+  `SDL_HINT_RENDER_DRIVER=software` before `Panel_sdl::setup()`. Those drivers
+  have no accelerated renderer, and without one M5GFX's `_update_scaling()`
+  divides by an output size SDL never wrote, which UBSan reports as a
+  float-cast or signed overflow depending on the compiler. An explicit
+  `SDL_RENDER_DRIVER` still wins, and visible runs are unchanged.
+  `sim/shim/FurbleSDLWrap.h` also routes `SDL_CreateRenderer` and
+  `SDL_DestroyRenderer` through `sim/sdl_lifecycle.cpp`, because
+  `Panel_sdl::close()` never destroys its renderer; the shim destroys any
+  renderer still live before `SDL_Quit`.
+- The host MQTT transport (`sim/SimMQTTClient.cpp`) allocates inside a
+  `HostAllocScope`. Its adapter object, strings and reconnect thread have host
+  library sizes, so counting them made `heap.free` differ between macOS and
+  Linux. The device client is modelled by the task stack it charges.
 - `run-e2e.sh` and `run-watchdog.sh` bound every scenario with `timeout -k 10`
   (`FURBLE_SIM_SCENARIO_TIMEOUT`, default 300 s). `run-fuzz.sh` keeps its own
   larger per-seed bound (`FURBLE_FUZZ_SEED_TIMEOUT`, default 600 s), because a
@@ -803,6 +873,18 @@ shortens that host retry cadence for a bounded scenario.
   LVGL, M5GFX and sanitizer-runtime sites. Linux libstdc++, like the device's,
   allocates in a `std::deque` constructor where macOS libc++ does not, so a
   per-tick deque shows up as counted heap on Linux only.
+- `FURBLE_SIM_SANITIZE=thread` builds the TSan binary the `sim-e2e` job runs
+  the three GPS concurrency scenarios on, with `TSAN_OPTIONS` pointing at
+  `sim/tsan.supp`. TSan owns the global `operator new`/`delete` there, so
+  `sim/heap_count.cpp` leaves them out of that build and C++ allocations are
+  not charged; no TSan scenario asserts a heap figure. The suppressions match
+  function names, so a run without `llvm-symbolizer` reports the suppressed
+  M5GFX `Panel_sdl` race as unsymbolized frames.
+- On macOS, sdl2-compat also dlopens SDL3 by leaf name through its own rpath.
+  The ASan dlopen interceptor hides that rpath, so besides the direct SDL3 link
+  `sim/build.sh` adds the SDL3 directory as an rpath to sanitized Darwin
+  builds. Check `otool -l` for that `LC_RPATH` before running a
+  sanitized binary.
 - The fuzz fit rule follows the layouts the scenarios certify. Remote shutter
   stays fit-required on physical-button builds and on the 320x240 Core touch
   model, and narrow Stick touch may scroll. Physical-button Home and Connected
@@ -1073,6 +1155,30 @@ shortens that host retry cadence for a bounded scenario.
   observed at the wire rather than inferred from a log line. See
   `gps_receiver`, `gps_sats`, `gps_fix_date`, `gps-receiver`, `gps-sats`,
   `gps-monhw` and `gps-eph-corrupt` in docs/sim.md.
+- The virtual u-blox M10 (`seed gps_model m10|m10-mia`) is a UBX state
+  machine with RAM, BBR and default layers, the M10 VALSET validity rules,
+  MON-VER, RXM-PMREQ standby, CFG-RST, UPD-SOS, and data sheet start times and
+  currents. It owns no clock or UART: the fake feeds it bytes and asks it for
+  epochs, so the host suite drives the same object. Every rule and figure cites
+  plan 321; undocumented behaviour (warm start time, the flashless SOS answer,
+  the byte that wakes a UART standby) is marked as an assumption in the source.
+  `m10.uart_wakes` counts standby wakes caused by a received byte;
+  `gps-ubx-standby` asserts it stays 0.
+  Receiver detection writes up to two MON-VER polls at GPS start, so a scenario
+  that asserts `uart.count 0` must clear the journal after detection settles.
+  `seed gps_m10_backup` gives the modelled board a V_BCKP supply, which
+  `Platform::hasGpsBackupSupply()` reports, so BBR and the RTC survive a rail
+  cut and the next start is hot. Without it a cut is cold, and a UPD-SOS
+  backup (`gps_m10_flash`) restores BBR but not the RTC, so the start is warm:
+  an assumption, M10 publishes no warm start time. `gps_rail_fixed` keeps the
+  rail on whatever the PMIC is asked, which is the Core and Waveshare
+  behaviour and what `Platform::canCutGpsRail()` then reports; the Core build
+  reports false on its own. `gps_rail_refused` also keeps the rail on but
+  leaves `canCutGpsRail()` true, which models a PMIC that refuses the cut (a
+  Core2 on a low battery). `gps_m10_unresolved` reports a 3D fix with a valid
+  but unresolved time. `gps_gnss`, `gps_psm` and `gps_ana` seed the u-blox
+  settings. A waking receiver prints its first epoch one measurement period
+  after it starts.
 - The GSV/GSA fixtures are stored as sentence bodies and checksummed at
   runtime, so a fixture cannot carry a stale hand computed checksum. The
   `default` set is the one docs/img/gps-satellites.png is pinned to; changing

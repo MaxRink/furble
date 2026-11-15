@@ -9,7 +9,7 @@ number is not a local measurement.
 
 This is the measurement lane named in `docs/power/README.md`. It turns the
 opportunities in `plans/98-power-optimization-audit.md`, the follow-up in
-`plans/98b-power-followup.md`, and the model limits in
+`plans/implemented/98b-power-followup.md`, and the model limits in
 `tools/power-model/README.md` into bench states, instruments, thresholds, and
 records. It does not change firmware, defaults, the model, or any baseline.
 
@@ -1463,16 +1463,16 @@ it inherits the measurement IDs and closure criterion from this table.
 Repository documents:
 
 - `plans/98-power-optimization-audit.md`
-- `plans/98b-power-followup.md`
+- `plans/implemented/98b-power-followup.md`
 - `plans/158-sim-scheduler-parity.md`
 - `plans/00-hardware-experiments.md`
 - `plans/63-sim-power-analysis.md`
 - `plans/implemented/12-display-off.md`
 - `plans/implemented/13-auto-off-low-batt.md`
-- `plans/15-gps-power.md`
-- `plans/19-interval-deep-sleep.md`
+- `plans/implemented/15-gps-power.md`
+- `plans/implemented/19-interval-deep-sleep.md`
 - `plans/implemented/26-pm1-watchdog.md`
-- `plans/32-gps-advanced.md`
+- `plans/implemented/32-gps-advanced.md`
 - `plans/implemented/77-battery-saver-profile.md`
 - `tools/power-model/README.md`
 - `tools/power-model/board-currents.yaml`

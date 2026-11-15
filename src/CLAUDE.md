@@ -48,6 +48,14 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   strict rolling-window maximum is eight per day. Only a known battery-backed
   RTC may suppress those checkpoints. Keep every restart and power-off path on the
   shared flush helper and never add per-tick NVS writes.
+  A copy of the same record in `RTC_NOINIT_ATTR` memory keeps the running
+  system clock across soft resets on boards without an RTC chip. Rewrite it on
+  every accepted sample, anchored where the system clock was set; never seed
+  the system clock from NVS after a reset that kept it. The kept sample is
+  demoted to `RTC` authority (NVS stays NVS) so the next GPS, NTP or companion
+  sample can correct it; never restore it as GPS or NTP. Its uncertainty is an
+  estimate of RC slow-clock drift, not a bound. The intervalometer does not
+  trust an `RTC` sample when no RTC chip is present (plan 139).
 - The StickS3 M5PM1 watchdog is armed for 45 seconds through the shared
   `Watchdog` constants. Keep `watchdogFeed()` at its one second cadence and
   preserve verified disarm and readback before flash or power-off paths.
@@ -67,6 +75,12 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   The service mutex covers each task pass and settings reset. Before waiting
   for it, settings transitions must set the enable gate false and send the
   private front-of-queue wake event so an idle UART receive releases the mutex.
+  Cycle status readers (`isDegraded()`, `getCycleStatusSnapshot()`,
+  `getReceiverStatus()`) load the word `publishCycleStatus()` stores at the end
+  of each task pass and after enable() or disable(); they never take
+  `m_CycleMutex`. The service passes lock it blocking and never skip: a pass
+  that skipped a consumed UART event lost the whole burst, and the cycle went
+  degraded for at least the 10 s backoff.
 - `FurbleIR`: RMT on `RMT_CLK_SRC_DEFAULT` (APB) is SAFE under DFS because the
   IDF rmt driver holds `ESP_PM_APB_FREQ_MAX` between `rmt_enable` and
   `rmt_disable`. Do NOT switch to `RMT_CLK_SRC_XTAL`, it does not exist on
@@ -96,6 +110,39 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   no-receiver state, tier 2 ephemeris poll and replay, the GSV/GSA satellite
   page parser, the `GPS_PLATFORM` dyModel write and a MON-HW poll. The
   parseable logic lives in `lib/furble/protocol/GpsCasic`.
+- `FurbleGPS` identifies the receiver once per session before configuring it:
+  a UBX-MON-VER poll, two attempts a second apart (`Ubx::Detect`). A u-blox
+  receiver gets the UBX backend in `src/FurbleGPSUbx.cpp`; anything else keeps
+  the NMEA backend, which is the CASIC/$PCAS path unchanged. Vendor-specific
+  actions (configure, restart, standby, satellite capture, MON-HW, ephemeris)
+  switch on `GPS::backend_t`; add a vendor as one more value and one more
+  configure function. UBX configuration goes through the same one-in-flight
+  queue, via `enqueueUbxConfig()` with a codec-built frame, with a one second
+  ACK timeout and writes RAM and BBR, because software
+  standby clears RAM. The settle wait after a signal change is a
+  `Ubx::Settle` gate, never a raw tick compared with 0: that form stalled every
+  command in the second half of the tick range. A fresh NAV-PVT overlays the
+  parser snapshot under `m_GPSMutex` unless the NMEA fix is more than two
+  seconds newer; when it is stale the NMEA parser is the fallback. A valid but
+  not fully resolved PVT time keeps the fix, and `status_t::time_resolved`
+  gates the TimeKeeper sync. The ephemeris cache and AID-INI are CASIC only and
+  never reach a UBX receiver. The stream split is the pure
+  `GpsDemux::split()`; keep demultiplexing there, not in the driver.
+- The duty cycle waits until the receiver is identified and the configuration
+  queue is idle. Standby sends `$PCAS12` only on the NMEA backend and
+  RXM-PMREQ (force flag) on UBX. A duty request seen in STANDBY or RAIL_OFF
+  is stale (the UI pushed a fix the cycle already parked for) and is dropped;
+  a resent PMREQ would wake a UART-wake receiver at once. Rail cycling on UBX without a backup supply
+  first sends CFG-RST GNSS stop and UPD-SOS create and holds the cut in
+  `m_RailOffPending` for up to one second; `disable()` does the same inline,
+  so it can block for up to one second with the GPS task parked. Neither runs
+  when `Platform::canCutGpsRail()` is false (the board profile's `gpsRail`
+  column: Core, StickC Plus2, Waveshare, headless) or
+  `hasGpsBackupSupply()` is true. A refused or unanswered save sets a latch
+  (`m_UbxSosBackup` 2) that lasts until the next GPS enable. If the rail stays
+  on after a cut that followed a GNSS stop, `railOffOrRestart()` sends GNSS
+  start. `m_UbxStopped` records that stop; only `railOffOrRestart()` clears
+  it, because `disable()` runs `resetUbx()` between the stop and the cut.
 - `CompanionService::m_Mutex` serializes the status and camera notification
   caches and all
   trigger rate and held-command state, including timer and disconnect release.
@@ -150,6 +197,9 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   its update path while `CompanionGatt` holds `m_Mutex`, and keep it
   unencrypted so it still answers when companion auth or the host cache is
   broken. It is not part of the production companion contract.
+- Compare `strcmp` results explicitly (`== 0`, `!= 0`). clang-tidy's
+  `bugprone-suspicious-string-compare` runs on the firmware databases, and a
+  bare `strcmp` used as a bool in `FurbleConsole` failed it (#463).
 - Settings switch tables in `FurbleConsole`, `FurbleCompanionService` and
   `FurbleSD` must include every new `Settings::type_t` case. The `-debug` build
   enforces this with `-Werror=switch`, so build a debug env after adding a
@@ -166,7 +216,7 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   knowledge; every method runs on the SD writer task.
 - `FurbleWiFi`: station lifecycle, remembered access point state and NTP.
   Never fall back to a WiFi scan while a camera is active. The event handler
-  runs on the default event loop task (2,304-byte stack): it must not open
+  runs on the default event loop task (3,072-byte stack): it must not open
   NVS, read a setting or start SNTP. It updates memory and queues the
   access point save or erase and the NTP start for the 4 KiB worker
   (`serviceEventStorage()`); a newer save or erase replaces the older one.
@@ -182,7 +232,19 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   or the companion. The MQTT owner reports the internal queue storage its
   next start still needs through `setMQTTStartExtra()`, from the same
   `MQTT::startExtra()` its start gate uses; RED adds it to its exit. Keep the
-  two on that one helper. Policy and thresholds live in the header and are
+  two on that one helper. `app_main()` registers `MemoryPressure::admit()` as
+  the Control admit hook, and `Control::addActive()` calls it under its own
+  mutex after the duplicate check, with the Target, its queue block and the
+  task: when the new target would take the heap into AMBER or RED, that level
+  is entered at once instead of after the debounce. A repeated connect admits
+  nothing, and connects from two tasks are admitted one after the other.
+  Callers of `addActive()` never admit themselves. On a rise `admit()` calls
+  the escalate hook outside the governor mutex; `WebUI::init()` registers one
+  that wakes the supervisor, so the server stops shortly after the target
+  task is created. Nothing orders that stop against the NimBLE client or the
+  connected page's first draw. MQTT keeps reading the level on its own loop.
+  `tick()` and `admit()` share one mutex, never held across a delay or another
+  lock; include/CLAUDE.md records the hook lock order. Policy and thresholds live in the header and are
   host tested in `tests/host/memory_pressure_test.cpp`.
 - `FurbleWebUI`: HTTPS-only browser and REST surface. Keep it fail closed on
   password or TLS identity errors. Camera actions stay on `UI::sendRequest`,
@@ -194,7 +256,7 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   internal sockets. The production value is two clients (five total).
   `reloadSetting()` must not create the TLS identity task while `web_ui` is off.
   `initEarly()` prepares the TLS identity before the radios and display; the
-  supervisor and HTTPS stacks stay in internal RAM at 3 KiB/8 KiB and must not
+  supervisor and HTTPS stacks stay in internal RAM at 4 KiB/8 KiB and must not
   move to PSRAM because the HTTPS task commits NVS. `reloadSetting()` caches
   the setting, password and credential state, so the supervisor loop never
   reads NVS. `startServer()` runs `WebUIMemory::serverGate()` before allocating
@@ -210,6 +272,13 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   `m_Enabled` false and logs the measured pair. Later enables reuse both and
   are not gated; never delete the task or the services on disable.
 - `FurbleUI*`: LVGL UI. Respect the changed-check rule for periodic setters.
+  Both session teardowns (`doDisconnect()` and the connect timer's idle path)
+  end with `dropSessionImages()`, which empties the LVGL image cache on boards
+  that have one so the connected-page entries return their internal metadata
+  and the WebUI can clear the AMBER exit (plan 304). It is safe only because
+  LVGL runs with `LV_OS_NONE` and is called on the UI task outside a refresh;
+  `lv_image_cache_drop(NULL)` frees an entry that is still referenced. Never
+  call it from a draw callback or another task.
   LVGL 9.4 retains an encoder input device's `last_pressed` object when that
   object is deleted. Only when switching a persistent physical-button device
   from `LV_INDEV_TYPE_BUTTON` to `LV_INDEV_TYPE_ENCODER`, reset it through the
@@ -355,6 +424,16 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   `UI::doPowerOff`: watchdog off, intervalometer quiesced with a proper shutter
   release, disconnect, then `Platform::powerOff`, which reports failure so the
   UI can resume.
+- The companion status battery fields come only from
+  `Platform::getBatteryStatus()`, in display and headless builds alike. Each
+  field follows its own capability flag through `BatteryStatus::gate()`, so a
+  board without a battery backend reports every field as unknown; VBUS
+  follows `FURBLE_HAS_VBUS_SENSE`. Do not read `M5.Power` for status elsewhere.
+- `GPS::setRailPower()` is the only code that switches the GPS Port A rail.
+  The console `gps power` request goes through it too, so every switch gets
+  the M5PM1 readback and single retry. It returns `Platform::setRail()`'s
+  final read-back, which `railOffOrRestart()` uses to restart a receiver
+  whose cut did not take.
 - Under `FURBLE_SIM`, battery policy is exercised through the deterministic
   `Furble::Sim::battery_reading_t` seam. Keep `Platform::readBattery()` as the
   production boundary; scenario seeds/actions may replace its sample and

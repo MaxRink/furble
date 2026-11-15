@@ -1,0 +1,142 @@
+# Issue #390: the WebUI on a fresh StickS3 with WiFi, BLE and the companion.
+#
+# The boot loop happened on a device with WiFi connected, Bluetooth up and the
+# companion available. This leg keeps that whole configuration and adds a
+# device that has never generated its TLS identity. WebUI::initEarly() creates
+# the identity before WiFi, the companion and the display take their share,
+# so no runtime identity task runs and nothing is charged after the radios.
+# The seed is the current inferred StickS3 pair with WebUI off, WiFi
+# connected, companion enabled and the display active: the 8 KiB main-stack
+# measurement minus the 4 KiB the 12 KiB main stack took back (plan 313). It
+# is lower than the measured post-#394 pair (27,351 / 25,588), so it is the
+# harder case. It is not the derived board_heap.json bound, which omits the
+# WiFi and NimBLE driver state. The boot figure is 512 bytes lower than it was
+# before #446 raised the WebUI supervisor stack from 3,584 to 4,096 bytes.
+#
+# The model stores the identity and keeps the soak flat by construction:
+# webuiMemoryStart() marks a seeded identity stored, and nothing in the model
+# allocates per request. Those two assertions check the wiring, not mbedTLS.
+#
+# The StickS3 ships the physical-button layout, so the scenario pins it with
+# `no_touch`: the plain and the no-touch runners then measure the same page.
+# That layout draws three navigation indicators on the Main page. The boot
+# figures are the same in both layouts; the figures after the disconnect are
+# 480 bytes higher than the touch layout's (below).
+seed hw_profile sticks3
+seed no_touch true
+seed heap_internal_free 25911
+seed heap_internal_largest 24148
+seed web_ui true
+seed webui_password true
+seed webui_identity_absent true
+seed wifi_connected true
+seed companion_enabled true
+seed fauxny true
+seed saved_camera true
+wait 1500
+
+assert companion.enabled yes
+assert webui.identity stored
+assert webui.supervisor created
+assert webui.server running
+assert webui.gate none
+assert webui.fail_closed no
+assert heap.free 13623
+assert heap.largest 11860
+assert heap.pressure normal
+assert heap.alloc_failures 0
+
+# A minute with the server up: one start, no retries, no growth.
+wait 60000
+assert webui.server running
+assert_max webui.attempts 1
+assert heap.free 13623
+assert heap.alloc_failures 0
+assert platform.watchdog armed
+
+# A BLE camera connect is the core path and is never refused. Its target, the
+# 4,480-byte task plus the Target record and command queue, would take the
+# pool below the AMBER floor, so Control::addActive() admits it first: the
+# governor enters AMBER at once. On hardware its hook wakes the
+# WebUI supervisor, which stops the 8 KiB server shortly after the target task
+# is created. The model stops it in the same UI cycle, after the target task
+# and before the connected page's first draw.
+# The deepest point is the connected page's first draw, whose LVGL layers and
+# style blocks are transient. Before admission that point was 5,599 free
+# with a 3,836-byte largest block on the post-#394 seed, too small for another
+# target task, and 1,440 bytes lower on this seed. With admission it is 6,963
+# free with a 5,200-byte largest block, 512 bytes lower since #446. The floors
+# are the RED largest-block threshold and one more target task.
+#
+# The soak sleeps the panel at the default one-minute Screen off. A user who
+# connects a camera presses a button first, and that press wakes the panel.
+# Since #454 a sleeping panel records no invalidation, so without the wake
+# nothing below would draw: no connected page, no Main page redraw after the
+# drop, and every later figure would leave out the cache the redraw refills.
+btn a
+wait 400
+assert ui.display on
+home
+wait 300
+action connect
+assert heap.pressure amber
+assert-eventually-virtual 60000 ui.connected yes
+assert webui.server pending
+assert heap.alloc_failures 0
+print heap.free
+print heap.largest
+print heap.minimum
+print mem.high_water_largest
+assert_min heap.minimum 6144
+assert_min mem.high_water_largest 4480
+
+# The connected-page icons are decoded into PSRAM, but each image cache entry
+# keeps its cache node and draw buffer descriptor internal. Without a release
+# the pool stops at 20,359 with the server paused, under the 20,480 AMBER
+# exit, and HTTPS never returns. The disconnect now drops the image cache,
+# which returns 1,984 bytes: the pool reaches 22,343 with the server paused,
+# 1,863 bytes over the exit. After five clear readings the
+# governor returns to NORMAL and HTTPS starts again through its own gate. The
+# Main page redraws its menu body and caches those icons again. The drop also
+# frees the boot-time entries of the navigation indicators, which do not
+# redraw; that is the 480 bytes over the touch layout (21,863 there).
+#
+# The figures from the connect on are charged at host sizes. The NimBLE mock
+# client the connect keeps in its pool costs 216 bytes with macOS libc++ and
+# 240 with Linux libstdc++, so each figure from here on is 24 bytes lower on
+# Linux, and the checks accept the range between the two figures. The
+# connect minimum is 6,971 with a 5,208-byte block there; both platforms
+# clear the floors.
+action disconnect
+assert-eventually-virtual 10000 control.state idle
+wait 1000
+assert heap.pressure amber
+assert webui.server pending
+assert_min heap.free 22319
+assert_max heap.free 22343
+wait 30000
+print heap.free
+print heap.largest
+assert heap.pressure normal
+assert webui.server running
+assert_max webui.attempts 2
+assert heap.alloc_failures 0
+# The pool ends 528 bytes above the boot figure on macOS and 504 on Linux: the
+# session leaves nothing behind, and the drop also returns cache blocks
+# allocated during boot that the Main page does not redraw.
+assert_min heap.free 14127
+assert_max heap.free 14151
+assert_min heap.minimum 6144
+assert companion.enabled yes
+assert ui.page main
+assert platform.watchdog armed
+
+# The Main page after the drop is steady: the redraw probe stays near zero
+# and the pool holds.
+action invalidate.reset
+wait 10000
+assert_max ui.invalidate_count 3
+assert_min heap.free 14127
+assert_max heap.free 14151
+
+exit

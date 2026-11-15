@@ -80,7 +80,7 @@ bool waitForState(Control::state_t want, uint32_t timeout_ms) {
 
 void freshEnvironment() {
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
   Furble::Settings::setBool(Furble::Settings::SLEEP_CONN, false);
   Furble::Settings::setBool(Furble::Settings::TX_ADAPTIVE, false);
   Furble::Settings::setBool(Furble::Settings::RECON_BACKOFF, false);

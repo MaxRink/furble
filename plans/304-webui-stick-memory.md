@@ -210,8 +210,8 @@ high-water mark after the first response.
 - Pre-review: `python3 tools/pre_review.py --base origin/master`.
 - StickS3 hardware, WebUI off: 13,543 free / 12,788 largest internal bytes with
   WiFi connected, companion enabled, display active.
-- StickS3 hardware, WebUI on: the supervisor starts (high-water 512 bytes of
-  its 3 KiB stack), the server gate logs
+- StickS3 hardware, WebUI on: the supervisor starts (its stack headroom log
+  left 512 of 3 KiB free), the server gate logs
   `HTTPS stays closed: internal free 10591, largest 9716 (need 20480/12288)`,
   and the device stays up with no watchdog reset. This is the measured
   fail-closed result.
@@ -270,7 +270,7 @@ supported there.
 
 ## Follow-up: plan 305
 
-[305-general-internal-ram.md](305-general-internal-ram.md) is the general pass
+[305-general-internal-ram.md](implemented/305-general-internal-ram.md) is the general pass
 that follows this document. It keeps the fail-closed gate and changes the
 StickS3 baseline:
 
@@ -288,4 +288,215 @@ The StickS3 idle internal saving is about 12.5 KiB in a release image and about
 floor with about 25 KiB free while the supervisor runs. The numbers in this
 document remain the measured pre-305 baseline. The StickS3 is not a supported
 WebUI target until plan 305's hardware gate passes.
+
+## Issue #390 sim closeout (2026-11-13)
+
+State: every simulator-verifiable item is done. The issue stays open for
+hardware. The project is in sim-only mode; nothing below ran on a board.
+
+The issue asked for one of two outcomes: generate the identity before WiFi and
+BLE, or keep the WebUI disabled on the StickS3. Both hold today.
+`WebUI::initEarly()` runs in `app_main` right after `Device::init()`, before
+`WiFi::init()`, `Companion::init()` and the display. It needs `Device::init()`
+for the certificate CN, so the BLE host is up but the WiFi station, the
+companion and LVGL are not. Every later path is gated and fails closed.
+
+Simulator check added: `sim/scenarios/e2e/hw-memory-webui-first-boot.txt`
+boots the full #390 configuration (StickS3 profile, WiFi connected, companion
+enabled, WebUI on with a password, FauxNY camera saved) on a device that never
+generated its TLS identity, at the measured post-#394 pair (27,351 / 25,588).
+It asserts:
+
+- the boot path stores the identity and no runtime identity task runs;
+- the supervisor and server start once, at 15,575 free / 13,812 largest;
+- a 60 s soak keeps one start attempt, a flat heap and no allocation failure;
+- a FauxNY connect, which charges the 4,464-byte target task and the
+  connected-page icons, drops the pool to 10,291 / 8,528, below the AMBER
+  floor; the governor pauses the server (14,059 / 12,296 while connected)
+  and nothing aborts;
+- after disconnect the pool is 18,831 / 17,068. The icons stay in the LVGL
+  image cache, so it stays under the 20,480 AMBER exit floor and HTTPS stays
+  paused with one start attempt. Restarting the 8 KiB server there would land
+  it back in AMBER, so this is the governor refusing to thrash, not a fault.
+
+Finding: on the measured post-#394 StickS3 heap the WebUI and a connected
+camera do not coexist. The first camera connect pauses HTTPS until a reboot
+or until something else frees about 1.7 KiB of internal RAM. This is a
+simulator prediction from the seeded pair and the counted allocations, not a
+board result.
+
+The seed is the measured pair, not `sim/coverage/board_heap.json`. That file's
+StickS3 figure (174,456) is an upper bound without the WiFi and NimBLE driver
+state, which `docs/sim-memory-profiler.md` puts at about 141 KiB. It cannot
+answer whether the server fits.
+
+Evidence: `sh sim/scripts/run-e2e.sh` on the StickS3 binary passes 211 of
+211, including the new scenario. `python3 tools/pre_review.py --base
+origin/master` passes 8 gates and `sh sim/scripts/check-doc-tokens.sh`
+passes. No firmware source changed, so no firmware build or stack budget
+rerun was needed.
+
+What the simulator cannot show: the HTTPS server, mbedTLS, a handshake, the
+real fragmentation and the closed WiFi and NimBLE allocations. The camera-leg
+result is a prediction for hardware step 4 below, not a measurement.
+
+### Review follow-up (2026-11-14)
+
+A subagent review of the closeout found four gaps. The record is
+[304-review-feedback.md](304-review-feedback.md). The numbers in the list
+above are the pre-review state; these replace them.
+
+- Seed. The scenario now seeds the current inferred pair, 25,911 / 24,148:
+  the 8 KiB main-stack measurement minus the 4 KiB the 12 KiB main stack took
+  back (plan 313). It is 1,440 bytes under the post-#394 measurement, so it is
+  the harder case. The server starts at 14,135 / 12,372.
+- Connect minimum. The old scenario never read `heap.minimum`. Its transient
+  connect minimum was 5,599 free with a 3,836-byte largest block, below RED
+  and too small for a second 4,480-byte target task. The deepest point is the
+  connected page's first draw: LVGL layer buffers (3,260 bytes) and style
+  blocks, freed after the frame, while the governor only sees one reading a
+  second and sheds three readings later. On hardware this is a real abort
+  risk, because fragmentation is worse than the model.
+- Admission fix. `Control::addActive()` calls `MemoryPressure::admit()`
+  through its admit hook, under the Control mutex and after its duplicate
+  check, with the `Target`, its queue and its task (Copilot review C1 to C3;
+  the first version admitted `CONNECT_TARGET_BYTES` from each caller). When
+  the new target would take the heap into AMBER or RED, the governor enters
+  that level at once and calls its escalate hook, which wakes the WebUI
+  supervisor instead of leaving it to its next 500 ms poll. `addActive()`
+  creates the target task right after admission, so the server stops shortly
+  after the target task exists. Nothing orders that stop against the NimBLE client or the
+  connected page's first draw on hardware; in the model it lands before the
+  draw. The exit is unchanged. A board whose pool stays NORMAL after the
+  target task, such as the Core2 or a StickS3 with the WebUI off, sheds
+  nothing. With admission the
+  connect minimum is 7,475 free with a 5,712-byte largest block.
+  `tests/host/memory_pressure_test.cpp` covers the policy.
+- HTTPS after disconnect. The 4,936-byte residual that kept HTTPS paused was
+  mostly the LVGL image cache: `lv_image_cache_drop(NULL)` at disconnect let
+  HTTPS resume in the simulator. On PSRAM boards the UI now routes LVGL's image
+  draw buffers (decoded and decompressed icons) to PSRAM through the image
+  handler's malloc and free callbacks. The DMA display buffers are separate and
+  stay internal. After a disconnect the pool returns to 20,887 with the server
+  paused, clears the 20,480 exit and HTTPS starts again at 12,695 / 10,932.
+  1,440 bytes stay allocated after the disconnect. They are the image
+  cache's per-entry metadata (`lv_draw_buf_t`, the cache entry and its LRU
+  and red-black nodes, the decoder data), which `lv_malloc()` keeps internal
+  and the model charges at 64-bit host sizes. With the PSRAM handlers on,
+  `lv_image_cache_drop(NULL)` at disconnect returns 1,488 bytes (14,135 to
+  15,623 on the post-#394 seed). The device figure is smaller.
+- Scope and deviation. Only the image handler's pixel buffers move, and in
+  practice only those under the 4,096-byte `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL`
+  threshold: larger ones already went to PSRAM through `malloc()`. The
+  handlers are installed only with PSRAM and a persistent image cache
+  (`CONFIG_LV_CACHE_DEF_SIZE` above 0). The Core2 has no cache, frees each
+  buffer after the draw and would pay PSRAM reads on every icon for no
+  internal gain, so it keeps the default handlers. This is a narrow subset of
+  the PSRAM-preferring LVGL allocator that
+  [plan 314](314-memory-resilience.md) (PR 9) deferred until a hardware
+  timing pass; the simulator cannot show PSRAM latency either. Hardware step 7
+  below is that timing check for this subset. The allocation uses
+  `heap_caps_malloc_prefer()` with PSRAM first and the default heap second,
+  which aborts only when both fail.
+- Image cache drop at session end (after the master merge of #446). #446
+  raised the WebUI supervisor stack from 3,584 to 4,096 bytes, so every
+  scenario figure fell by 512. The server starts at 13,623 / 11,860 and the
+  connect minimum is 6,963 free with a 5,200-byte largest block, still above
+  both floors. After the disconnect, though, the pool stopped at 20,375 with
+  the server paused, under the 20,480 AMBER exit, and HTTPS never returned.
+  `UI::doDisconnect()` and the connect timer's idle teardown now call
+  `lv_image_cache_drop(NULL)` after the Main page is set, on boards with a
+  persistent image cache (`LV_CACHE_DEF_SIZE` above 0 in a display build: the StickS3).
+  That returns the cache entries' internal metadata, 1,488 bytes in the
+  model: the pool reaches 21,863 with the server paused, 1,383 over the exit,
+  and HTTPS starts again at 13,671 / 11,908, 48 bytes above the boot figure.
+  Nothing else from the session stays allocated in the model. The drop is
+  safe without a reference check: LVGL runs with `LV_OS_NONE` and one draw
+  unit, so an entry is referenced only inside a refresh, and both call sites
+  run on the UI task outside one. The Main page decodes its own 24x24 icons
+  once more and caches them; the scenario resets the redraw probe after the
+  disconnect and bounds `ui.invalidate_count` at 3 over 10 s.
+- Master merges of #454, #458, #457 and #460. The 60 s soak sleeps the panel at
+  the default Screen off, and #454 stops invalidation while the panel sleeps,
+  so the session drew nothing and the pool read 1,240 bytes higher after the
+  disconnect. The scenario now wakes the panel with a button press before the
+  connect, as a user does, and every figure above returns unchanged. #460
+  made the NimBLE mock record each `setSecurityIOCap()` call, which charged
+  20 bytes per session to the device heap; that record now runs in a host
+  scope. The figures above are macOS libc++ values. On Linux libstdc++ the
+  mock client the connect keeps is 24 bytes larger, so the disconnect and
+  final figures read 21,839 and 13,647, and the scenario accepts both.
+- Physical-button layout. Those figures are the touch layout's. The StickS3
+  ships the physical-button layout, whose Main page draws three navigation
+  indicators. The session-end drop frees their cache entries too, and they
+  do not redraw, so the pool is 480 bytes higher: 22,343 with the server
+  paused after the disconnect and 14,151 at the end on macOS, 22,319 and
+  14,127 on Linux. Without the drop it stops at 20,359, still under the
+  exit. The scenario pins that layout with `seed no_touch true`, so the
+  plain and the no-touch runners measure the same page.
+- By construction. In the model `webuiMemoryStart()` marks a seeded identity
+  stored, and nothing allocates per request. The `webui.identity stored` and
+  flat 60 s soak assertions therefore check the wiring, not mbedTLS or the
+  HTTPS task. Hardware steps 2 and 5 are the real checks.
+
+The finding above is superseded: on the inferred heap the WebUI pauses for
+the length of a camera session and returns after it, with no reboot.
+
+Evidence: the StickS3 simulator e2e suite passes 211 of 211, including the
+updated scenario. `memory_pressure_test` passes. `m5stick-s3` and
+`m5stack-core2` build, `tools/stack_budget.py --env m5stick-s3` passes every
+task and `tools/check_size_budget.py` passes both. The sanitized host suite,
+`tools/pre_review.py` and `check-doc-tokens.sh` pass. A second review round
+added the WebUI wake, `heap_caps_malloc_prefer()`, the Core2 exclusion and
+the residual attribution; after it the same gates, `run-memory.sh`, the panic
+fixtures and the memory profile pass (review record rows 9 to 16). The full
+permutation run is left to CI and the readiness gate. Nothing ran on a board.
+
+Hardware procedure (StickS3 debug image built from a `READY TO FLASH`
+candidate per plan 313, flashed with `tools/flash_prepare.py`, USB console
+open):
+
+1. Baseline, WebUI off. Connect WiFi, enable the companion, leave the display
+   on. Run `status` and `perf heap`. Record `heap.internal.free` and
+   `heap.internal.largest`. Pass: a pair at or above 24,832 / 16,640, the
+   4,352-byte debug supervisor (4,096 plus its 256-byte debug margin) plus
+   the 20,480 / 12,288 server floor.
+2. First-boot identity. Run `companion password set <password>`, then
+   `settings set web_ui on`, then `reboot`. Pass: the boot log shows the
+   `TLS certificate SHA-256` line and `Authenticated WebUI listening on HTTPS
+   port 443 (internal free N, largest N)`, `status` shows `reset: software`
+   and `memory_pressure: normal`, and `crash` prints `crash.none: true`.
+   A fail-closed `HTTPS stays closed: internal free N, largest N` line with
+   no reset passes for stability but not for support. Record N either way.
+3. TLS handshake and settings write. From a host on the same network, send
+   `GET /api/status` and `GET /api/settings` with HTTP basic auth `furble` and
+   the companion password (`curl -k -u furble:<password> https://<ip>/...`),
+   then `POST /api/settings` with `{"id":<wire id>,"value":<v>}` and read the
+   value back with `settings get`. Compare the certificate fingerprint from
+   `openssl s_client -connect <ip>:443` with the boot log. Record the
+   `HTTPS task stack headroom` and `WebUI supervisor stack headroom` lines.
+   Pass: all three requests succeed and the HTTPS headroom is at least 1 KiB.
+4. Camera connect. Connect the Fujifilm camera while the WebUI is up. Run
+   `status` and `perf heap`. Pass: the camera reaches active and the device
+   does not reset. The simulator predicts `memory pressure normal -> amber`
+   in the log at the connect, before the target task starts, HTTPS paused
+   while connected, and HTTPS back within about 10 s of the disconnect. Record
+   whether that holds, the pair while connected and the pair after the
+   disconnect.
+5. Soak. Leave WiFi, the companion and the WebUI up for one hour, polling
+   `/api/status` every 10 s from the host and running the USB monitor
+   (`furble-companion-cli monitor --transport usb`) in parallel. Pass: no
+   `link-lost`, `rom-reset` or `device-reset` marker, the uptime keeps rising,
+   and `perf heap` at the end is within 1 KiB of step 2.
+6. Record the pairs, headroom lines and pass or fail in this plan and in
+   `docs/webui.md`. Only a full pass makes the StickS3 a supported WebUI
+   target.
+7. Image buffer timing. The PSRAM image handlers (review follow-up) move
+   the cached icon pixels to PSRAM, and the simulator does not model PSRAM
+   latency. Build the StickS3 debug image with `CONFIG_LV_USE_REFR_DEBUG`
+   from this branch and from `a3ceef92`, the commit before the handlers. On
+   each, open the connected page, return to the main menu and open it again.
+   Record the refresh time LVGL reports for the first and the cached draw.
+   Pass: the cached draw is no more than 10% slower than on `a3ceef92`. A
+   failure reverts the image handlers; the admission fix stands alone.
 

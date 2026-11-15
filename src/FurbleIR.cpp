@@ -10,6 +10,7 @@
 #include <freertos/idf_additions.h>
 #endif
 
+#include "FurbleBoard.h"
 #include "FurbleIR.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
@@ -22,7 +23,7 @@ constexpr uint32_t RMT_RESOLUTION_HZ = 1000000;
 /** Give up on a stalled transmission instead of holding the APB lock forever. */
 constexpr int RMT_TX_TIMEOUT_MS = 1000;
 
-/** Measured 3,420-byte high-water mark on the StickS3, with headroom. */
+/** `perf tasks` left 3,420 bytes free on the StickS3, about 676 used. */
 constexpr uint32_t IR_TASK_STACK_BYTES = 4096;
 
 // Nikon ML-L3 timing source: SB-Projects and Gough Lui, both listed in
@@ -126,25 +127,6 @@ std::array<rmt_symbol_word_t, 2> encodeCanon(bool delayed) {
   };
 }
 
-gpio_num_t pinForBoard(m5::board_t board) {
-  switch (board) {
-    case m5::board_t::board_M5StickC:
-    case m5::board_t::board_M5StickCPlus:
-      // G9 is only free because these boards run the flash in DIO mode.
-      // QIO would claim GPIO 9/10 as SD2/SD3.
-      return static_cast<gpio_num_t>(9);
-    case m5::board_t::board_M5StickCPlus2:
-      return static_cast<gpio_num_t>(19);
-    case m5::board_t::board_M5StickS3:
-      // Only the S3 image runs on a StickS3, and the S3 has GPIO 46.
-      return static_cast<gpio_num_t>(46);  // NOLINT(clang-analyzer-optin.core.EnumCastOutOfRange)
-    case m5::board_t::board_M5Stack:
-    case m5::board_t::board_M5StackCore2:
-    default:
-      return GPIO_NUM_NC;
-  }
-}
-
 }  // namespace
 
 IR &IR::getInstance(void) {
@@ -166,7 +148,11 @@ void IR::init(void) {
   }
 
   instance.m_Initialized = true;
-  instance.m_Pin = pinForBoard(M5.getBoard());
+  // The profile stores -1 for a board without an emitter. Only the S3 image
+  // runs on a StickS3, and the S3 has GPIO 46.
+  const int8_t pin = Board::profile().irPin;
+  // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
+  instance.m_Pin = (pin < 0) ? GPIO_NUM_NC : static_cast<gpio_num_t>(pin);
   if (!instance.isSupported()) {
     ESP_LOGI(LOG_TAG, "IR trigger is not supported on this board.");
     return;

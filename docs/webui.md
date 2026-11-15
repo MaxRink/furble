@@ -89,6 +89,29 @@ console prints `memory_pressure`, and the log reports each change:
 memory pressure normal -> amber: free=11991 largest=10228
 ```
 
+A camera connect does not wait for three readings. Before a new camera's
+control task, command queue and record are allocated (4,896 bytes on the S3
+boards, most of it the 4 KiB task stack), the governor checks whether they
+would take the heap into `amber` or `red`, and enters the level at once if so.
+It then wakes the WebUI supervisor, so the server stops shortly after the
+control task is created, usually before the connected page and the Bluetooth
+link take their share.
+Nothing orders those tasks, so it is not guaranteed. A connect to a camera
+that is already a target admits nothing, and connects from the screen, the
+console and the companion are admitted one at a time. The log line names the
+admitted bytes:
+
+```text
+memory pressure normal -> amber before a 4896-byte allocation: free=13895 largest=12132
+```
+
+The server returns through the normal exit after the camera disconnects. A
+board with headroom sheds nothing. On boards with PSRAM and an LVGL image cache
+(the StickS3) the decoded icon pixels live in PSRAM, and the UI empties the
+image cache when the camera session ends, which returns its per-icon
+bookkeeping from internal RAM too. The Main page decodes its own icons once
+again and keeps them cached.
+
 The thresholds are derived from the firmware's own sizes and are not yet
 checked against a hardware reading of a busy session.
 
@@ -141,8 +164,10 @@ The StickS3 has two real measurements. Before plan 305 it had 13.5 KiB free /
 so the listener stayed closed. That is the important negative result and the
 reason the fail-closed gate exists. Plan 314 later raised the supervisor to
 3.5 KiB, with floors of 4,608 / 4,096 bytes, because ESP-IDF Log V2 adds 144
-bytes to its deepest logging path. After plan 305 the measured pair with
-WebUI off is 27.4 KiB free / 25.6 KiB largest.
+bytes to its deepest logging path. Plan 314 PR 4c raised it again to 4 KiB,
+with floors of 5,120 / 4,608 bytes, once the stack walk counted the panic
+handler, which an assert on the supervisor runs on the same stack. After
+plan 305 the measured pair with WebUI off is 27.4 KiB free / 25.6 KiB largest.
 
 Plan 305 removed about 14.6 KiB of steady internal allocations from the debug
 image (12.5 KiB in a release image). Plan 311 reverts the 4 KiB main-stack cut

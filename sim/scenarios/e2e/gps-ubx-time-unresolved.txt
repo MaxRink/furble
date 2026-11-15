@@ -1,0 +1,15 @@
+# A NAV-PVT with a 3D fix whose date and time are valid but not fully resolved
+# (valid = 0x03, IFD 3.15.11). The fix and its timestamp still reach the
+# camera, but the wall clock waits for a fully resolved time.
+seed gps true
+seed gps_model m10
+seed gps_m10_hot true
+seed gps_m10_unresolved true
+wait 8000
+assert gps.backend ubx
+assert-eventually 3000 gps.from_pvt 1
+assert gps.ubx.fix_type 3
+assert gps.source uart
+assert gps.time_resolved 0
+assert time.gps 0
+exit

@@ -25,6 +25,8 @@
 #if defined(FURBLE_CONSOLE)
 #include <lvgl_private.h>
 #endif
+#include <src/draw/lv_draw_buf_private.h>
+#include <src/misc/cache/lv_cache.h>
 #include <src/themes/lv_theme_private.h>
 
 #include <Device.h>
@@ -33,6 +35,8 @@
 #include "icons.h"
 
 #include "FurbleAutoOff.h"
+#include "FurbleBoard.h"
+#include "FurbleBoardCaps.h"
 #include "FurbleBootScreen.h"
 #include "FurbleBootTimeline.h"
 #include "FurbleCalibrate.h"
@@ -95,7 +99,53 @@ uint32_t g_simDisconnectCalls = 0;
 #include "FurbleUIAudit.h"
 #endif
 
-#if defined(FURBLE_M5STICKC) || defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
+// Decoded images live in the LVGL image cache until it evicts them. Below
+// CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL a plain malloc puts them in internal
+// RAM, so the connected-page icons kept about 3.4 KiB internal after a
+// camera disconnect and HTTPS could not return (plan 304). Only the image
+// handler's pixel buffers move; their cache metadata stays where lv_malloc()
+// puts it. Larger buffers already went to PSRAM through malloc. A board
+// without a persistent image cache (CONFIG_LV_CACHE_DEF_SIZE 0, the Core2)
+// frees each buffer after the draw, gains nothing and would pay PSRAM reads
+// on every icon, so it keeps the default handlers.
+#if defined(CONFIG_SPIRAM) && (LV_CACHE_DEF_SIZE > 0)
+#define FURBLE_IMAGE_BUFFERS_IN_PSRAM 1
+namespace {
+// Only the CPU renderer reads these buffers, so PSRAM is safe. The DMA
+// display buffers in UI::UI() use their own internal allocation.
+void *imageBufferMalloc(size_t bytes, lv_color_format_t colorFormat) {
+  (void)colorFormat;
+  // LVGL's default handler over-allocates the same way so the buffer can be
+  // aligned.
+  bytes += LV_DRAW_BUF_ALIGN - 1;
+  // heap_caps_malloc_prefer() tries PSRAM, then the default heap, and aborts
+  // only when both fail, so there is no check-then-allocate gap.
+  return heap_caps_malloc_prefer(bytes, 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT, MALLOC_CAP_DEFAULT);
+}
+
+void imageBufferFree(void *buffer) {
+  heap_caps_free(buffer);
+}
+}  // namespace
+#endif
+
+namespace {
+// A camera session decodes the connected-page icons into the image cache, and
+// each entry keeps its cache node and draw buffer descriptor in internal RAM
+// after the session ends. On the StickS3 that kept the pool under the AMBER
+// exit, so HTTPS never came back (plan 304). Dropping the whole cache when the
+// session ends returns them. The Main page shown next decodes its own icons
+// once and caches them again; nothing redraws every frame. It is safe here:
+// LVGL runs without an OS, so a cache entry is referenced only while the
+// renderer draws it, and this runs on the UI task outside any refresh.
+void dropSessionImages(void) {
+#if LV_CACHE_DEF_SIZE > 0
+  lv_image_cache_drop(nullptr);
+#endif
+}
+}  // namespace
+
+#if FURBLE_PANEL_NARROW
 // Use 24x24 icons for StickC screens
 #define icon_add_a_photo icon_add_a_photo_24
 #define icon_adjust icon_adjust_24
@@ -161,7 +211,7 @@ const char *timezoneSourceName(Timezone::Source source) {
   }
 }
 
-#if !defined(FURBLE_M5STICKC)
+#if !FURBLE_PANEL_80X160
 /**
  * Create one receiver detail row on the GPS Data page.
  *
@@ -244,18 +294,18 @@ const lv_font_t *fontForTextSize(uint8_t textSize) {
   textSize = TextSizePolicy::clamp(textSize);
   switch (textSize) {
     case Settings::TEXT_SIZE_SMALL:
-#if defined(FURBLE_M5STICKC)
+#if FURBLE_PANEL_80X160
       return &lv_font_montserrat_10;
-#elif defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
+#elif FURBLE_PANEL_135X240
       return &lv_font_montserrat_12;
 #else
       return &lv_font_montserrat_16;
 #endif
 
     case Settings::TEXT_SIZE_LARGE:
-#if defined(FURBLE_M5STICKC)
+#if FURBLE_PANEL_80X160
       return &lv_font_montserrat_14;
-#elif defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
+#elif FURBLE_PANEL_135X240
       return &lv_font_montserrat_22;
 #else
       return &lv_font_montserrat_28;
@@ -462,6 +512,11 @@ UI::UI(const interval_t &interval)
 
   lv_init();
   lv_tick_set_cb(tick);
+#if defined(FURBLE_IMAGE_BUFFERS_IN_PSRAM)
+  lv_draw_buf_handlers_t *imageHandlers = lv_draw_buf_get_image_handlers();
+  imageHandlers->buf_malloc_cb = imageBufferMalloc;
+  imageHandlers->buf_free_cb = imageBufferFree;
+#endif
 
   // set display resolution
   m_Width = M5.Display.width();
@@ -487,21 +542,7 @@ UI::UI(const interval_t &interval)
   reloadPowerPolicies();
 
   // set minimum, ensure this is a multiple of m_BrightnessSteps so the slider steps work
-  switch (M5.getBoard()) {
-    case m5::board_t::board_M5Stack:
-    case m5::board_t::board_M5StackCore2:
-    case m5::board_t::board_M5StickCPlus2:
-    case m5::board_t::board_M5StickS3:
-    case m5::board_t::board_M5Tough:
-      m_MinimumBrightness = 32;
-      break;
-    case m5::board_t::board_M5StickCPlus:
-    case m5::board_t::board_M5StickC:
-      m_MinimumBrightness = 48;
-      break;
-    default:
-      m_MinimumBrightness = 32;
-  }
+  m_MinimumBrightness = Board::profile().minBrightness;
 
   // start the one-second housekeeping timer, the power policies run
   // independently of the inactivity decision
@@ -1101,7 +1142,7 @@ void UI::showCameraPairing(Camera *camera) {
 
   lv_obj_t *code = lv_label_create(content);
   lv_label_set_text_fmt(code, "%06lu", static_cast<unsigned long>(owner->getPairingCode()));
-#if defined(FURBLE_M5STICKC)
+#if FURBLE_PANEL_80X160
   // The 80 px StickC panel always takes the narrow branch; naming only that
   // font keeps the unused 25 KB Montserrat 22 out of the image.
   lv_obj_set_style_text_font(code, &lv_font_montserrat_16, 0);
@@ -1657,6 +1698,13 @@ bool UI::handleDisplayInput(lv_indev_t *drv,
                             lv_indev_data_t *data,
                             bool pressed,
                             bool releaseExpected) {
+  // Any physical press may mean the user is reaching for the companion app,
+  // whatever the display state or control mode. Only a press edge across all
+  // inputs reopens the fast advertising window; see PressEdge.
+  if (m_PressEdge.sample(inputBit(drv), pressed)) {
+    Companion::getInstance().boostAdvertising();
+  }
+
   if (m_SwallowInput) {
     // Swallow every source until all of them report released. On touch
     // boards one tap drives the touch indev and a synthesized button indev,
@@ -1695,6 +1743,9 @@ bool UI::handleLeftLongPress(lv_indev_t *drv, bool pressed) {
 
   if (!pressed) {
     const bool handled = m_LeftLongPressHandled;
+    // A handled long press skips handleDisplayInput() on release, so clear
+    // the press-edge bit here or the next press would not count as an edge.
+    m_PressEdge.release(inputBit(drv));
     m_LeftPressed = false;
     m_LeftLongPressHandled = false;
     m_LeftPressTick = 0;
@@ -1819,6 +1870,10 @@ void UI::sleepDisplay(void) {
   Sim::profilerSetDisplayState("off");
 #endif
   lv_timer_pause(m_IconTimer);
+  // Nobody can see the panel. Stop recording invalidations so periodic setters
+  // cannot resume the refresh timer and render frames that are never flushed.
+  // LVGL keeps the refresh timer paused while nothing is invalid.
+  lv_display_enable_invalidation(m_Display, false);
 
   // The backlight PWM no longer needs a fixed APB clock while the panel sleeps.
   Power::getInstance().release(Power::LockType::APB_FREQ_MAX, "display");
@@ -1846,8 +1901,9 @@ void UI::wakeDisplay(void) {
   M5.Display.setBrightness(Settings::load<uint8_t>(Settings::BRIGHTNESS));
   m_WakeTick = tick();
   m_DisplayOff = false;
-  // Flushes were skipped while the panel slept, so LVGL believes the old
-  // frame is still on the glass. Redraw the active screen once.
+  // Invalidation was disabled while the panel slept, so LVGL believes the old
+  // frame is still on the glass. Re-enable it and redraw the active screen once.
+  lv_display_enable_invalidation(m_Display, true);
   lv_obj_invalidate(lv_screen_active());
   m_DisplayState = DisplayState::ACTIVE;
   // Console mode keeps the panel logically off even after a wake event from
@@ -1885,10 +1941,11 @@ void UI::displayFlush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map
   auto *ui = static_cast<UI *>(lv_display_get_user_data(disp));
 
   if ((ui != nullptr) && ui->m_DisplayOff) {
-    // The panel is in SLPIN. Swapping and pushing pixels nobody can see costs
-    // CPU, bus time, and a DMA completion for no output. Report the flush as
-    // done so LVGL can keep its bookkeeping moving; wakeDisplay() invalidates
-    // the screen so the next visible frame is complete.
+    // The panel is in SLPIN. sleepDisplay() disables invalidation, so only a
+    // frame already pending at sleep time can reach here. Swapping and pushing
+    // pixels nobody can see costs CPU, bus time, and a DMA completion for no
+    // output. Report the flush as done so LVGL can keep its bookkeeping moving;
+    // wakeDisplay() invalidates the screen so the next visible frame is complete.
 #if defined(FURBLE_SIM)
     ui->m_FlushedWhileOff++;
 #endif
@@ -2692,7 +2749,7 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
   // hides its back button, so it is the session root and none of its entries
   // can be dropped. Two of the fixes below are scoped to it.
   [[maybe_unused]] const bool connectedPage = menu.page == m_Menu.at(m_ConnectedStr).page;
-#if defined(FURBLE_M5COREX)
+#if FURBLE_PANEL_320X240
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
   // Home rows follow their wrapped icon labels at every text size. Other Core
   // grids use content rows only at Large. A content-sized row is as tall as the
@@ -2706,14 +2763,14 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
   }
 #else
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_ROW);
-#if defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
+#if FURBLE_PANEL_135X240
   // The device walk kept the home row spacing and accepted vertical scrolling
   // instead of shrinking the chosen font or removing its icons.
   const bool mainPage = menu.page == m_MainMenu.page;
   const int32_t pad = connectedPage ? 0 : (mainPage ? 3 : 6);
   lv_obj_set_style_pad_top(cont, pad, LV_STATE_DEFAULT);
   lv_obj_set_style_pad_bottom(cont, pad, LV_STATE_DEFAULT);
-#elif defined(FURBLE_M5STICKC)
+#elif FURBLE_PANEL_80X160
   // 80x160 is the shortest panel. Trim the per-row padding so the home menu
   // (Connect, Scan, Delete, IR, Settings, Level, Power off) fits without
   // scrolling. It has no icons, so a row is one text line plus the padding
@@ -2733,7 +2790,7 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
 #endif
   lv_obj_clear_flag(cont, LV_OBJ_FLAG_SCROLLABLE);
 
-#if defined(FURBLE_M5STICKC)
+#if FURBLE_PANEL_80X160
   // screen is too small for icons
 #else
   if (icon) {
@@ -2763,7 +2820,7 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
     lv_obj_t *label = lv_label_create(cont);
     lv_label_set_text(label, text);
     if (icon) {
-#if defined(FURBLE_M5COREX)
+#if FURBLE_PANEL_320X240
       lv_obj_set_style_text_font(label, fontForIconMenu(Settings::load<Settings::TEXT_SIZE>()), 0);
       // Wrap inside the cell rather than scroll across it. The rows size to
       // their content now, so the name is visible instead of clipped away, and
@@ -2843,7 +2900,7 @@ lv_obj_t *UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_
   lv_obj_set_width(label, LV_PCT(100));
 
   lv_obj_t *sw = lv_switch_create(obj);
-#if defined(FURBLE_M5STICKC)
+#if FURBLE_PANEL_80X160
   // Sized to the row's text rather than to the theme's 50x25 default, which ate
   // most of an 80 px row. A track twice as wide as it is tall still reads as a
   // switch and still shows its state at a glance.
@@ -3306,11 +3363,11 @@ void UI::addMainMenu(void) {
       }
     }
   }
-#if defined(FURBLE_M5COREX) || defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
+#if FURBLE_PANEL_320X240 || FURBLE_PANEL_135X240
   // StickC display too narrow for icons
   lv_obj_t *back_img = lv_obj_get_child(back, 0);
   lv_image_set_src(back_img, &icon_undo);
-#if defined(FURBLE_M5COREX)
+#if FURBLE_PANEL_320X240
   lv_obj_set_width(back_img, 48);
 #else
   lv_obj_set_width(back_img, 24);
@@ -3323,7 +3380,7 @@ void UI::addMainMenu(void) {
   m_MainMenu.page = lv_menu_page_create(m_MainMenu.main, NULL);
   m_MainMenu.group = m_Group;
 
-#if defined(FURBLE_M5COREX)
+#if FURBLE_PANEL_320X240
   lv_obj_set_grid_dsc_array(m_MainMenu.page, m_GridLayoutColDsc.data(), m_GridLayoutRowDsc.data());
   lv_obj_set_layout(m_MainMenu.page, LV_LAYOUT_GRID);
 #else
@@ -7591,6 +7648,7 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
         lv_menu_clear_history(m_MainMenu.main);
         lv_menu_set_page(m_MainMenu.main, m_MainMenu.page);
         lv_group_focus_obj(m_Menu.at(m_ConnectStr).button);
+        dropSessionImages();
         if ((m_CamerasTimer != nullptr)
             && (lv_menu_get_cur_main_page(m_MainMenu.main) == m_Menu.at(m_CamerasStr).page)) {
           rebuildCamerasPage(m_Menu.at(m_CamerasStr));
@@ -7649,26 +7707,6 @@ uint16_t UI::getIntervalometerRemaining(void) {
   return m_IntervalometerRemaining.load();
 }
 
-int32_t UI::getBatteryLevel(void) {
-  return M5.Power.getBatteryLevel();
-}
-
-int16_t UI::getBatteryVoltage(void) {
-  return M5.Power.getBatteryVoltage();
-}
-
-int32_t UI::getBatteryCurrent(void) {
-  return M5.Power.getBatteryCurrent();
-}
-
-int16_t UI::getBatteryVBUSVoltage(void) {
-  return M5.Power.getVBUSVoltage();
-}
-
-bool UI::isBatteryCharging(void) {
-  return static_cast<int>(M5.Power.isCharging()) == 1;
-}
-
 void UI::intervalometer(lv_timer_t *timer) {
   FURBLE_SIM_TIMER_FIRE("intervalometer_timer");
   auto &control = Control::getInstance();
@@ -7678,26 +7716,26 @@ void UI::intervalometer(lv_timer_t *timer) {
   m_IntervalometerState.store(static_cast<uint8_t>(interval->m_State));
 
   if (interval->m_Count.m_SpinValue.m_Unit == SpinValue::UNIT_INF) {
-    lv_label_set_text_fmt(interval->m_CountLabel, "%09lu",
-                          static_cast<unsigned long>(interval->m_CountShots));
+    setLabelTextFmtIfChanged(interval->m_CountLabel, "%09lu",
+                             static_cast<unsigned long>(interval->m_CountShots));
   } else {
-    lv_label_set_text_fmt(interval->m_CountLabel, "%03lu/%03u",
-                          static_cast<unsigned long>(interval->m_CountShots),
-                          interval->m_Count.m_SpinValue.m_Value);
+    setLabelTextFmtIfChanged(interval->m_CountLabel, "%03lu/%03u",
+                             static_cast<unsigned long>(interval->m_CountShots),
+                             interval->m_Count.m_SpinValue.m_Value);
   }
 
   switch (interval->m_State) {
     case Intervalometer::STATE_IDLE:
       interval->m_CountShots = 0;
       m_IntervalCountdownActive = false;
-      lv_label_set_text(interval->m_StateLabel, "IDLE");
+      setLabelTextIfChanged(interval->m_StateLabel, "IDLE");
       lv_timer_ready(timer);
       interval->m_State = Intervalometer::STATE_WAIT;
       m_IntervalometerState.store(static_cast<uint8_t>(interval->m_State));
       break;
 
     case Intervalometer::STATE_WAIT:
-      lv_label_set_text(interval->m_StateLabel, "WAIT");
+      setLabelTextIfChanged(interval->m_StateLabel, "WAIT");
       next = interval->m_ResumeWaitMs > 0 ? interval->m_ResumeWaitMs
                                           : interval->m_Wait.m_SpinValue.toMilliseconds();
       m_IntervalCountdownActive = next > 0;
@@ -7710,7 +7748,7 @@ void UI::intervalometer(lv_timer_t *timer) {
       m_IntervalCountdownActive = false;
       m_IntervalLastAnnouncedSecond = 0;
       interval->m_CountShots++;
-      lv_label_set_text(interval->m_StateLabel, "SHUTTER");
+      setLabelTextIfChanged(interval->m_StateLabel, "SHUTTER");
       control.sendCommand(Control::CMD_SHUTTER_PRESS);
       Feedback::getInstance().signal(Feedback::SHUTTER_FIRED);
       next = interval->m_Shutter.m_SpinValue.toMilliseconds();
@@ -7718,7 +7756,7 @@ void UI::intervalometer(lv_timer_t *timer) {
       break;
 
     case Intervalometer::STATE_DELAY:
-      lv_label_set_text(interval->m_StateLabel, "DELAY");
+      setLabelTextIfChanged(interval->m_StateLabel, "DELAY");
       control.sendCommand(Control::CMD_SHUTTER_RELEASE);
       next = interval->m_Delay.m_SpinValue.toMilliseconds();
       m_IntervalLastAnnouncedSecond = 0;
@@ -7772,7 +7810,7 @@ void UI::intervalometer(lv_timer_t *timer) {
 
     case Intervalometer::STATE_FINISHED:
       m_IntervalCountdownActive = false;
-      lv_label_set_text(interval->m_StateLabel, "FINISHED");
+      setLabelTextIfChanged(interval->m_StateLabel, "FINISHED");
       interval->clearResume();
       next = 0;
       lv_timer_pause(timer);
@@ -8415,7 +8453,7 @@ void UI::serviceRequests(void) {
         break;
 
       case Request::GPS_POWER:
-        M5.Power.setExtOutput(item.arg != 0, m5::ext_PA);
+        GPS::setRailPower(item.arg != 0);
         break;
 
       case Request::IR_RELOAD:
@@ -8564,7 +8602,8 @@ void UI::doConnect(lv_event_t *e) {
   m_ConnectContext.connectingName.clear();
   m_ConnectContext.connectProgress = -1;
 
-  // activate selected cameras
+  // activate selected cameras. addActive() admits each new target to the
+  // memory governor before allocating it.
   for (size_t n = 0; n < CameraList::size(); n++) {
     auto camera = CameraList::get(n);
     if (camera->isActive()) {
@@ -8631,6 +8670,7 @@ void UI::doDisconnect(void) {
   lv_menu_set_page(m_MainMenu.main, m_MainMenu.page);
   menu_t &connect = m_Menu.at(m_ConnectStr);
   lv_group_focus_obj(connect.button);
+  dropSessionImages();
 }
 
 void UI::updateCameraRow(lv_obj_t *label, Camera *camera, Control::state_t state) {
@@ -9144,7 +9184,7 @@ void UI::applyLevelSample(level_t *level, const float accel[3]) {
 UI::menu_t &UI::addConnectedMenu(void) {
   menu_t &menuConnected = addMenu(m_ConnectedStr, NULL, false);
 
-#if defined(FURBLE_M5COREX)
+#if FURBLE_PANEL_320X240
   // three by two suits the landscape screens, Cameras fills the last open cell
   static int32_t column_dsc[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1),
                                  LV_GRID_TEMPLATE_LAST};
@@ -9210,7 +9250,7 @@ UI::menu_t &UI::addConnectedMenu(void) {
       auto &buttonCont = std::get<0>(i);
 
       buttonCont = lv_obj_create(cont);
-#if defined(FURBLE_M5COREX)
+#if FURBLE_PANEL_320X240
       // The plain wrapper inherits the card's horizontal PAD_DEF on the
       // 320x240 theme. That padding is not part of the touch control, and at
       // Large it makes the content-sized wrappers wrap before all three 64 px
@@ -9790,7 +9830,7 @@ void UI::addGPSPowerMenu(const menu_t &parent) {
     setStaticLabelMode(label);
 
     lv_obj_t *roller = lv_roller_create(row);
-#if !defined(FURBLE_M5COREX)
+#if !FURBLE_PANEL_320X240
     lv_obj_set_width(roller, LV_PCT(90));
 #endif
     lv_obj_add_flag(roller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
@@ -9956,7 +9996,7 @@ UI::menu_t &UI::addOptionMenu(const menu_t &parent,
   lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
   lv_obj_t *roller = lv_roller_create(cont);
-#if !defined(FURBLE_M5COREX)
+#if !FURBLE_PANEL_320X240
   lv_obj_set_width(roller, LV_PCT(90));
 #endif
   lv_obj_add_flag(roller, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
@@ -10032,11 +10072,11 @@ void UI::addGPSDataMenu(const menu_t &parent) {
         static lv_obj_t *alt = lv_label_create(gpsData->page);
         setLabelTextFmtIfChanged(alt, "%.2f m", status.altitude);
 
-#if !defined(FURBLE_M5STICKC)
+#if !FURBLE_PANEL_80X160
         static lv_obj_t *datetime = nullptr;
         if (datetime == nullptr) {
           datetime = lv_label_create(gpsData->page);
-#if !defined(FURBLE_M5COREX)
+#if !FURBLE_PANEL_320X240
           // 135x240 fits the combined stamp only in the small font, and merging
           // the two rows is what buys the receiver detail rows below their space
           lv_obj_set_style_text_font(datetime, &lv_font_montserrat_12, 0);
@@ -10052,7 +10092,7 @@ void UI::addGPSDataMenu(const menu_t &parent) {
         setLabelTextFmtIfChanged(time, "%02u:%02u:%02u", status.hour, status.minute, status.second);
 #endif
 
-#if defined(FURBLE_M5STICKC)
+#if FURBLE_PANEL_80X160
     // The 80x160 panel has no vertical headroom left on this page, and the
     // page carries no focusable control, so LVGL group navigation cannot
     // scroll it. Detail rows would render below the fold with no way to
@@ -10072,7 +10112,7 @@ void UI::addGPSDataMenu(const menu_t &parent) {
         // only available here.
         auto &gps = GPS::getInstance();
         // one snapshot, so the state and its retry count cannot be torn across
-        // two acquisitions of the cycle mutex
+        // two loads of the published cycle word
         const auto receiver = gps.getReceiverStatus();
 
         // Where the fix comes from, and how long ago the receiver last said
@@ -10423,7 +10463,7 @@ lv_obj_t *UI::addSpinItem(lv_obj_t *page, const char *item, Intervalometer::Spin
   // name and the page scrolls vertically rather than clipping either string.
   lv_obj_set_flex_flow(spinner.m_Button, LV_FLEX_FLOW_ROW_WRAP);
   lv_obj_add_flag(spinner.m_Button, LV_OBJ_FLAG_SCROLL_ON_FOCUS);
-#if defined(FURBLE_M5STICKC)
+#if FURBLE_PANEL_80X160
   // The Bulb page has one narrow Duration row; its default flex gap adds 8 px
   // without improving the two-line name/value layout.
   lv_obj_set_style_pad_row(spinner.m_Button, 0, LV_STATE_DEFAULT);
@@ -10435,7 +10475,7 @@ lv_obj_t *UI::addSpinItem(lv_obj_t *page, const char *item, Intervalometer::Spin
   // Delay, Shutter and Wait rows keep their complete values in the narrow width.
   lv_obj_set_style_pad_top(spinner.m_Button, 0, LV_STATE_DEFAULT);
   lv_obj_set_style_pad_bottom(spinner.m_Button, 0, LV_STATE_DEFAULT);
-#elif defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
+#elif FURBLE_PANEL_135X240
   // Keep the vertical breathing room, but not horizontal padding: at the Large
   // font "999 mins" is 103 px, exactly the narrowed row's outer width.
   // Spending four of those pixels on padding wraps the value to a second line
@@ -10843,9 +10883,9 @@ void UI::addIntervalometerMenu(const menu_t &parent) {
         uint32_t now = tick();
         uint32_t remaining = Time::deadlineReached(now, m_IntervalNext) ? 0 : m_IntervalNext - now;
         SpinValue::hms_t hms = SpinValue::toHMS(remaining);
-        lv_label_set_text_fmt(label, "%02lu:%02lu:%02lu", static_cast<unsigned long>(hms.hours),
-                              static_cast<unsigned long>(hms.minutes),
-                              static_cast<unsigned long>(hms.seconds));
+        setLabelTextFmtIfChanged(label, "%02lu:%02lu:%02lu", static_cast<unsigned long>(hms.hours),
+                                 static_cast<unsigned long>(hms.minutes),
+                                 static_cast<unsigned long>(hms.seconds));
 
         if (!m_IntervalCountdownActive || (remaining == 0)) {
           m_IntervalLastAnnouncedSecond = 0;
@@ -10871,7 +10911,7 @@ void UI::bulbRefresh(void) {
   uint32_t now = tick();
   uint32_t remaining = Time::deadlineReached(now, m_BulbEnd) ? 0 : m_BulbEnd - now;
   SpinValue::hms_t hms = SpinValue::toHMS(remaining);
-  lv_label_set_text_fmt(
+  setLabelTextFmtIfChanged(
       m_Bulb.m_RemainingLabel, "%02lu:%02lu:%02lu", static_cast<unsigned long>(hms.hours),
       static_cast<unsigned long>(hms.minutes), static_cast<unsigned long>(hms.seconds));
 }
@@ -10978,7 +11018,7 @@ void UI::addBulbMenu(const menu_t &parent) {
   lv_label_set_text(startLabel, "Start");
   lv_obj_set_width(startLabel, LV_PCT(100));
   lv_obj_set_style_text_align(startLabel, LV_TEXT_ALIGN_CENTER, 0);
-#if defined(FURBLE_M5STICKC)
+#if FURBLE_PANEL_80X160
   // The floating legend narrows this button to 48 px. Remove the theme's
   // horizontal padding so the 24 px Start label remains complete, and trim
   // one more pixel from each vertical edge to keep the compact page fitted.
@@ -11376,7 +11416,7 @@ void UI::addLegendMenu(const menu_t &parent) {
                         LV_FLEX_ALIGN_CENTER);
 
   lv_obj_t *roller = lv_roller_create(cont);
-#if !defined(FURBLE_M5COREX)
+#if !FURBLE_PANEL_320X240
   lv_obj_set_width(roller, LV_PCT(90));
 #endif
   lv_roller_set_options(roller, "Buttons\nBottom\nOff", LV_ROLLER_MODE_INFINITE);
@@ -11393,7 +11433,7 @@ void UI::addLegendMenu(const menu_t &parent) {
       [](lv_event_t *e) {
         auto *roller = static_cast<lv_obj_t *>(lv_event_get_user_data(e));
         Settings::save<Settings::LEGEND>(lv_roller_get_selected(roller));
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_M5PM1
         Platform::getInstance().watchdogEnable(false);
 #endif
         Platform::getInstance().restart();
@@ -11406,7 +11446,7 @@ void UI::addLegendMenu(const menu_t &parent) {
 void UI::addTextSizeMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_TextSizeStr, &icon_clear_all_24, true, parent);
   lv_obj_t *cont = lv_menu_cont_create(menu.page);
-#if defined(FURBLE_M5STICKC)
+#if FURBLE_PANEL_80X160
   // The floating legend leaves the explanatory note only 27 px wide. It wraps
   // below the roller, so a fixed-height SPACE_EVENLY container overlaps them.
   // Let the complete controls establish the height and let the page scroll.
@@ -11420,7 +11460,7 @@ void UI::addTextSizeMenu(const menu_t &parent) {
                         LV_FLEX_ALIGN_CENTER);
 
   lv_obj_t *roller = lv_roller_create(cont);
-#if !defined(FURBLE_M5COREX)
+#if !FURBLE_PANEL_320X240
   lv_obj_set_width(roller, LV_PCT(90));
 #endif
   // The 80x160 M5StickC cannot fit the Large font, so it drops Large and offers
@@ -11452,7 +11492,7 @@ void UI::addTextSizeMenu(const menu_t &parent) {
       [](lv_event_t *e) {
         auto *roller = static_cast<lv_obj_t *>(lv_event_get_user_data(e));
         Settings::save<Settings::TEXT_SIZE>(lv_roller_get_selected(roller));
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_M5PM1
         Platform::getInstance().watchdogEnable(false);
 #endif
         Platform::getInstance().restart();
@@ -11648,13 +11688,13 @@ void UI::addPowerMenu(const menu_t &parent) {
 
   // Only the StickS3 has a Bluetooth controller configured for modem sleep, so
   // the switch does nothing on the other boards. Leave it out there.
-  bool sleepConn = (M5.getBoard() == m5::board_t::board_M5StickS3);
+  bool sleepConn = Board::profile().modemSleep;
   if (sleepConn) {
     addSettingItem(menu.page, NULL, Settings::SLEEP_CONN);
   }
 
   // IP5306 boards do not have a reliable software power-off path.
-  const bool policies = (M5.getBoard() != m5::board_t::board_M5Stack);
+  const bool policies = Board::profile().canPowerOff;
 
   lv_obj_t *cont = lv_menu_cont_create(menu.page);
   lv_obj_set_width(cont, LV_PCT(100));
@@ -11889,7 +11929,7 @@ void UI::addFeedbackMenu(const menu_t &parent) {
   lv_obj_add_event_cb(
       restart,
       [](lv_event_t *) {
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_M5PM1
         Platform::getInstance().watchdogEnable(false);
 #endif
         Platform::getInstance().restart();
@@ -11996,7 +12036,7 @@ void UI::addThemeMenu(const menu_t &parent) {
   lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
                         LV_FLEX_ALIGN_CENTER);
   lv_obj_t *roller = lv_roller_create(cont);
-#if !defined(FURBLE_M5COREX)
+#if !FURBLE_PANEL_320X240
   lv_obj_set_width(roller, LV_PCT(90));
 #endif
 
@@ -12798,7 +12838,7 @@ void UI::confirmStorageAction(void) {
 void UI::addSettingsMenu(void) {
   menu_t &menu = addMenu(m_SettingsStr, &icon_settings);
 
-#if defined(FURBLE_M5COREX)
+#if FURBLE_PANEL_320X240
   // Same rule as the Connected grid: equal rows while the entries fit, content
   // rows at Large so a name is never clipped away below its icon.
   lv_obj_set_grid_dsc_array(
@@ -13114,7 +13154,7 @@ void UI::updateChargingPowerPolicy(void) {
 
 void UI::processAutoOff(void) {
   updateChargingPowerPolicy();
-  if (m_PoweringOff || (M5.getBoard() == m5::board_t::board_M5Stack)) {
+  if (m_PoweringOff || !Board::profile().canPowerOff) {
     return;
   }
 
@@ -13186,7 +13226,7 @@ void UI::closeLowBatteryWarning(void) {
 }
 
 void UI::processLowBattery(void) {
-  if (m_PoweringOff || (M5.getBoard() == m5::board_t::board_M5Stack)) {
+  if (m_PoweringOff || !Board::profile().canPowerOff) {
     return;
   }
 
@@ -13302,7 +13342,7 @@ void UI::doPowerOff(void) {
 
   // TODO(plans/implemented/68-reconnect-after-restart.md): prepareRestart on feat/68 needs this
   // same quiesce ordering, a future shared helper should absorb both paths.
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_M5PM1
   // Stop the watchdog first, the BLE teardown below can outlast a feed period.
   Platform::getInstance().watchdogEnable(false);
 #endif
@@ -13401,12 +13441,20 @@ void UI::task(void) {
     Sim::webuiMemoryTick();
     Sim::memoryProfileTick();
 #endif
+    uint32_t delayMs = LOOP_ACTIVE_MS;
     if (!m_DisplayConsole) {
       handleLockScreen();
 #if defined(FURBLE_SIM)
       Sim::profilerBeginUiCycle();
 #endif
-      lv_task_handler();
+      const uint32_t nextTimerMs = lv_task_handler();
+      // With the panel off only LVGL timers and the input poll need this
+      // loop. Sleep until the next timer is due, but never longer than one
+      // PMIC button poll. Each pass still runs Platform::update(), which feeds
+      // the 1 s M5PM1 watchdog, and the 1 s CrashLog and MemoryPressure ticks.
+      if (m_DisplayOff) {
+        delayMs = std::clamp(nextTimerMs, LOOP_ACTIVE_MS, LOOP_IDLE_MAX_MS);
+      }
 #if defined(FURBLE_SIM)
       Sim::profilerEndUiCycle();
       Sim::fuzzCycleComplete(this);
@@ -13419,7 +13467,7 @@ void UI::task(void) {
     serviceStorage();
     m_Mutex.unlock();
 
-    vTaskDelay(pdMS_TO_TICKS(5));
+    vTaskDelay(pdMS_TO_TICKS(delayMs));
   }
 }
 

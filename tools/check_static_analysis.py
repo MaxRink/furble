@@ -6,7 +6,7 @@ the two analyzers that find the classes of defects the compiler cannot: cppcheck
 for uninitialized/out-of-bounds/format issues and clang-tidy for bugprone,
 analyzer, cert, performance, and portability checks.
 
-Only files under src/, lib/furble/, include/, and sim/ are production code for
+Only files under src/, lib/furble/, lib/hal/, include/, and sim/ are production code for
 this gate. Generated trees, vendored components, and test doubles are excluded.
 """
 
@@ -23,8 +23,25 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-PRODUCTION_PREFIXES = ("src/", "lib/furble/", "include/", "sim/")
-EXCLUDED_PREFIXES = ("sim/build/", "sim/shim/")
+PRODUCTION_PREFIXES = ("src/", "lib/furble/", "lib/hal/", "include/", "sim/")
+# sim/.pio holds the CI clone of M5GFX, M5Unified, LVGL and TinyGPSPlus:
+# third-party code that only looks like furble's because it sits under sim/.
+EXCLUDED_PREFIXES = ("sim/build/", "sim/shim/", "sim/.pio/")
+# .clang-tidy's HeaderFilterRegex is unanchored, so a vendored header such as
+# .pio/libdeps/<env>/M5GFX/src/lgfx/... matched its "src/" and its checks ran
+# with WarningsAsErrors. Anchor it to this checkout, relative or absolute.
+# CMake keeps ".." in include paths (tests/host/../../include/X.h), so plain
+# segments followed by ".." steps may come first; a segment starting with a
+# dot may not, and sim/.pio (the simulator's dependencies) is refused.
+HEADER_FILTER = (f"--header-filter=^({re.escape(str(ROOT))}/)?(([^/.][^/]*/)+(\\.\\./)+)*"
+                 "(src/|lib/furble/|lib/hal/|include/|sim/[^.])")
+DIAGNOSTIC_ERROR = re.compile(r"^\S.*:\d+:\d+: (fatal )?error: ")
+
+
+def is_production(path: str) -> bool:
+    """Return whether a repo-relative path is furble's own analyzed code."""
+
+    return path.startswith(PRODUCTION_PREFIXES) and not path.startswith(EXCLUDED_PREFIXES)
 SOURCE_SUFFIXES = (".cpp", ".cc", ".cxx", ".c")
 # Production sources no compile database builds. clang-tidy cannot analyze
 # them, so they are named here instead of being skipped silently; cppcheck
@@ -90,9 +107,7 @@ def production_paths(paths: list[str]) -> tuple[list[str], list[str]]:
     headers: list[str] = []
     for raw in paths:
         path = raw.replace(os.sep, "/")
-        if not path.startswith(PRODUCTION_PREFIXES):
-            continue
-        if path.startswith(EXCLUDED_PREFIXES):
+        if not is_production(path):
             continue
         if not (ROOT / path).is_file():
             continue
@@ -162,7 +177,7 @@ def parse_cppcheck(text: str) -> list[dict[str, str]]:
             continue
         finding = match.groupdict()
         finding["file"] = normalize_path(finding["file"])
-        if not finding["file"].startswith(PRODUCTION_PREFIXES):
+        if not is_production(finding["file"]):
             continue
         findings.append(finding)
     return findings
@@ -176,14 +191,14 @@ def parse_clang_tidy(text: str) -> tuple[list[dict[str, str]], list[dict[str, st
         if match is not None:
             finding = match.groupdict()
             finding["file"] = normalize_path(finding["file"])
-            if finding["file"].startswith(PRODUCTION_PREFIXES):
+            if is_production(finding["file"]):
                 findings.append(finding)
             continue
         match = COMPILE_ERROR.match(line)
         if match is not None:
             finding = match.groupdict()
             finding["file"] = normalize_path(finding["file"])
-            if finding["file"].startswith(PRODUCTION_PREFIXES):
+            if is_production(finding["file"]):
                 compile_errors.append(finding)
     return findings, compile_errors
 
@@ -213,6 +228,8 @@ def run_cppcheck(files: list[str], jobs: int) -> list[dict[str, str]]:
             "include",
             "-I",
             "lib/furble",
+            "-I",
+            "lib/hal",
             "-I",
             "sim/shim",
         ]
@@ -264,7 +281,7 @@ def header_includers(headers: list[str], sources: list[str]) -> dict[str, list[s
     cap keeps a widely included header from turning one change into a
     full-tree clang-tidy run.
     """
-    roots = ("lib/furble/", "include/", "sim/", "src/")
+    roots = ("lib/furble/", "lib/hal/", "include/", "sim/", "src/")
     candidates: list[str] = []
     for header in headers:
         names = {Path(header).name, header}
@@ -329,6 +346,7 @@ def run_clang_tidy(
             "-p",
             str(build_dir),
             "--config-file=.clang-tidy",
+            HEADER_FILTER,
             "--quiet",
         ]
         # The simulator shims stand in for ESP-IDF headers; a firmware
@@ -346,16 +364,27 @@ def run_clang_tidy(
         # WarningsAsErrors turns a check in a vendored header into an error and
         # a non-zero exit. Only an error that is not a promoted check means
         # the translation unit did not compile.
+        # Only diagnostic lines count: a quoted source line can contain the
+        # word error, and one did, which made a clean run look broken.
         errors = [line for line in (output.stdout + output.stderr).splitlines()
-                  if " error: " in line]
+                  if DIAGNOSTIC_ERROR.match(line)]
         promoted = bool(errors) and all("-warnings-as-errors]" in line for line in errors)
         if output.returncode != 0 and not file_findings and not file_errors and not promoted:
+            # Name the database and the first error that is not a promoted
+            # check, so a CI log shows why the translation unit failed.
+            lines = (output.stdout + output.stderr).splitlines()
+            reason = next(
+                (line.strip() for line in lines
+                 if DIAGNOSTIC_ERROR.match(line) and "-warnings-as-errors]" not in line),
+                "no error line",
+            )
             compile_errors.append(
                 {
                     "file": path,
                     "line": "0",
                     "column": "0",
-                    "message": f"clang-tidy exited {output.returncode}",
+                    "message": (f"clang-tidy exited {output.returncode} with {build_dir.name}: "
+                                f"{reason[:300]}"),
                 }
             )
     return findings, compile_errors, skipped

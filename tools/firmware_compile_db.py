@@ -12,7 +12,11 @@ rewritten for clang:
 - `__XTENSA__` and `__xtensa__` are defined, because GCC predefines them and
   the ESP-IDF headers select the Xtensa port on them;
 - GCC-only flags are dropped, and the toolchain's libstdc++ and newlib
-  directories become -isystem paths, read from the compiler's own search list.
+  directories become -isystem paths, read from the compiler's own search list;
+- -nostdlibinc drops the host's /usr/local/include and /usr/include, which
+  clang appends even for a bare-metal target on Linux. newlib's limits.h ends
+  in include_next and otherwise reached glibc's limits.h (issue #463). Clang's
+  own builtin headers stay.
 
 Only furble sources (src/ and lib/furble/) are kept. The output goes to
 .pio/static-build/firmware-<env>/compile_commands.json, a --build-dir for
@@ -87,8 +91,8 @@ def convert(entries: list[dict], includes: dict[str, list[str]]) -> list[dict]:
         args = entry.get("arguments") or shlex.split(entry["command"])
         compiler = args[0]
         cxx = compiler.endswith("++")
-        command = ["clang++" if cxx else "clang", TARGET, "-D__XTENSA__=1", "-D__xtensa__=1",
-                   "-Wno-unknown-warning-option"]
+        command = ["clang++" if cxx else "clang", TARGET, "-nostdlibinc", "-D__XTENSA__=1",
+                   "-D__xtensa__=1", "-Wno-unknown-warning-option"]
         if cxx:
             command.append("-nostdinc++")
         if compiler not in includes:

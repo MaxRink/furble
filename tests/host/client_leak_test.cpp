@@ -65,7 +65,7 @@ bool testFailedConnectsDoNotLeakClients() {
   std::cout << "test: repeated failed connects do not leak NimBLE clients\n";
   const int before = g_Failures;
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
 
   // Cap the pool exactly as the controller does, so a leak surfaces as
   // exhaustion after the ninth failed attempt.
@@ -78,7 +78,7 @@ bool testFailedConnectsDoNotLeakClients() {
   NimBLEDevice::setConnectShouldFail(true);
   bool bounded = true;
   for (int attempt = 0; attempt < FAILED_ATTEMPTS; attempt++) {
-    check(!camera->connect(ESP_PWR_LVL_P3, 1000), "a failed connect returns false");
+    check(!camera->connect(Furble::TxPower::P3, 1000), "a failed connect returns false");
     // Each failed attempt must reclaim its client. Without the fix the count
     // climbs every attempt until it sticks at the pool cap.
     if (NimBLEDevice::liveClientCount() > 1) {
@@ -93,7 +93,7 @@ bool testFailedConnectsDoNotLeakClients() {
   // connect fails.
   NimBLEDevice::setConnectShouldFail(false);
   peer.clearEvents();
-  check(camera->connect(ESP_PWR_LVL_P3, 1000),
+  check(camera->connect(Furble::TxPower::P3, 1000),
         "a real connect still succeeds after many failed attempts");
   check(camera->isConnected(), "the recovered connect reports connected");
   check(peer.connected() && peer.tokenAccepted(), "the recovered connect runs the real handshake");

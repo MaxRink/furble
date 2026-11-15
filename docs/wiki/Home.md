@@ -29,11 +29,15 @@ This wiki is a friendly fork of the upstream furble project.
   shutter/focus testing and battery CSV monitoring. The CLI also has a USB CDC
   transport (`--transport usb`) for scan, status, cameras, monitor and password
   status; location and trigger remain BLE-only, and monitor commands use a 5 s
-  timeout. Companion links are encrypted
+  timeout. The USB monitor reopens a lost port, records ROM reset lines and
+  app restarts as markers, and resets a chip stuck in ROM download mode only
+  with `--usb-hard-reset`. Companion links are encrypted
   bonded LE Just Works and authenticate with the companion password; set one
   before using the app in an untrusted area. An unknown inbound BLE link is
   retained because the server is shared with camera name discovery and can
-  delay reconnect advertising until it disconnects.
+  delay reconnect advertising until it disconnects. Reconnect advertising runs
+  at 100 ms for 60 s after enable, boot, a disconnect or any button press,
+  then at 1022.5 ms; press any button if the app cannot find the device.
 - **[WebUI](WebUI)**: authenticated HTTPS browser control and REST routes.
 
 ## At a glance

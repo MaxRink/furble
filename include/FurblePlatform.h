@@ -9,13 +9,17 @@
 
 #include <M5PM1.h>
 
+#include "FurbleBoardCaps.h"
+#include "FurblePowerBackend.h"
+
 namespace Furble {
 #if defined(FURBLE_SIM)
 namespace Sim {
 const char *watchdogState(void);
 }
 #endif
-class Platform {
+/** Board power and platform services; meets the PowerBackend contract. */
+class Platform: public PowerBackend {
  public:
   /** Selectable maximum CPU frequencies in MHz. */
   static constexpr std::array<uint8_t, 3> CPU_MAX_FREQ_MHZ = {80, 160, 240};
@@ -23,27 +27,24 @@ class Platform {
   /** Default maximum CPU frequency in MHz. */
   static constexpr uint8_t CPU_MAX_FREQ_DEFAULT_MHZ = 160;
 
-  /**
-   * Battery measurements available on this board.
-   */
-  typedef struct {
-    bool level;
-    bool voltage;
-    bool current;
-    bool charging;
-  } battery_caps_t;
+  // battery_caps_t and battery_t come from PowerBackend.
 
   /**
-   * Battery measurement sample.
+   * Battery status for the companion status record.
    *
-   * Only fields flagged in battery_caps_t are meaningful.
+   * Fields hold the FurbleBatteryStatus.h values. Level, voltage, current and
+   * charging are each gated by their own battery_caps_t flag. An unsupported
+   * field is unknown: -1 for level and voltage, 0 for current and false for
+   * charging. VBUS is read only where FURBLE_HAS_VBUS_SENSE is 1 and is 0
+   * otherwise.
    */
   typedef struct {
-    uint8_t level;     // percent
-    uint16_t voltage;  // millivolts
-    int32_t current;   // milliamps, positive when charging
+    int32_t level;    // percent
+    int16_t voltage;  // millivolts
+    int32_t current;  // milliamps, positive when charging
+    int16_t vbus;     // millivolts, 0 when not readable
     bool charging;
-  } battery_t;
+  } battery_status_t;
 
   /** Battery sample with the shared UI and console EWMA values. */
   typedef struct {
@@ -255,6 +256,29 @@ class Platform {
   static bool hasTicklessIdle(void);
 
   /**
+   * Does the board keep the GPS receiver's V_BCKP supplied when its main rail
+   * is cut?
+   *
+   * A u-blox M10 keeps its battery-backed RAM and RTC on V_BCKP, so a backed
+   * rail cut is a hot or warm start rather than a cold one, and the
+   * save-on-shutdown backup is not needed (plan 321). No supported board wires
+   * one; a board profile that does defines FURBLE_GPS_BACKUP_SUPPLY.
+   */
+  static bool hasGpsBackupSupply(void);
+
+  /**
+   * Can the board switch the GPS receiver's supply off?
+   *
+   * The board profile's `gpsRail` column: the StickC, StickC Plus, StickS3,
+   * Core2 and Tough switch the Grove Port A 5 V rail through their PMIC. On
+   * the Core (IP5306), the StickC Plus2 and the Waveshare board the rail is
+   * always on, and the headless profile has no rail control. A receiver on a
+   * rail that cannot be cut must never be stopped for a save-on-shutdown,
+   * because nothing would ever restart it. Valid after Platform::init().
+   */
+  static bool canCutGpsRail(void);
+
+  /**
    * Get the battery measurements supported by this board.
    *
    * Returned by value: the simulator refreshes the flags from the hardware
@@ -275,16 +299,35 @@ class Platform {
   battery_sample_t getBatterySample(void) const;
 
   /**
+   * Read the battery status reported to the companion app.
+   *
+   * A board with a battery backend reports the raw M5Unified readings. A
+   * board without one, the headless profiles, reports every field as
+   * unknown, so a fallback reading is never claimed as a battery. VBUS is
+   * reported where the board can sense it.
+   */
+  battery_status_t getBatteryStatus(void);
+
+  /**
    * Get the battery capacity in mAh, zero if unknown.
    */
   uint16_t getBatteryCapacity(void);
+
+  /**
+   * Switch a named rail. The M5 boards switch only the GPS rail, which is the
+   * Port A 5 V output.
+   *
+   * @return true when the rail reads back in the requested state; false when
+   *         the board has no switch or the PMIC did not take the write.
+   */
+  bool setRail(Rail rail, bool on);
 
   /**
    * Get the count of PMIC accesses which failed after a retry.
    */
   uint32_t getBatteryFailCount(void);
 
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_M5PM1
   /**
    * Prepare the StickS3 for an intentional serial flash.
    *
@@ -347,7 +390,7 @@ class Platform {
    */
   void initBattery(void);
 
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_M5PM1
   /** Ensure the PMIC long-press download recovery path is not locked. */
   bool unlockDownloadRecovery(void);
 #endif
@@ -369,13 +412,16 @@ class Platform {
   battery_sample_t m_BatterySample = {};
   bool m_BatterySampleInitialized = false;
   bool m_MotionWakeArmed = false;
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_M5PM1
   bool m_StatusLedLevel = false;
   bool m_StatusLedLevelValid = false;
   bool m_WatchdogEnabled = false;
   uint32_t m_WatchdogLastFeed = 0;
 #endif
 };
+
+static_assert(meetsPowerBackend<Platform>(),
+              "Platform must meet the PowerBackend contract without virtual dispatch");
 }  // namespace Furble
 
 #endif

@@ -1,0 +1,18 @@
+# Rail cycling with a board that keeps V_BCKP supplied. BBR and the RTC survive
+# the cut, so the receiver comes back hot (1 s) instead of cold (27 s), and
+# furble does not ask for a save-on-shutdown backup it does not need.
+seed gps true
+seed gps_model m10
+seed gps_m10_backup true
+seed gps_power 2
+seed gps_duty 10
+seed gps_rate 1
+wait 40000
+assert m10.cold_starts 1
+assert gps.ubx.backup 1
+wait 30000
+assert_min m10.hot_starts 1
+assert m10.cold_starts 1
+assert m10.sos_creates 0
+assert-eventually 3000 gps.source uart
+exit

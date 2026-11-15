@@ -68,6 +68,8 @@ size_t Control::getTargetCount() const {
   return 0;
 }
 
+void Control::setAdmitHook(admit_hook_t) {}
+
 Platform &Platform::getInstance() {
   static Platform instance;
   return instance;
@@ -97,10 +99,6 @@ bool Platform::watchdogEnable(bool) {
 void Platform::restart() {}
 
 void Platform::wakeM5PM1() {}
-
-Platform::battery_caps_t Platform::getBatteryCaps() const {
-  return {};
-}
 
 void BootScreen::begin(uint8_t) {
   record("boot.begin");
@@ -146,6 +144,10 @@ void tick(void) {
   HeadlessState::pressureTicks++;
 }
 
+// The headless service loop has no heap to shed from. The admission policy is
+// covered by memory_pressure_test, and its call site by control-e2e.
+void admit(size_t) {}
+
 level_t current(void) {
   return NORMAL;
 }
@@ -161,7 +163,11 @@ const std::string &Device::getStringID() {
   return id;
 }
 
-void Device::init(esp_power_level_t) {
+TxPower Control::savedTxPower(void) {
+  return TxPower::P3;
+}
+
+void Device::init(TxPower) {
   record("device.init");
 }
 
@@ -342,6 +348,10 @@ void GPS::update() {
 
 void GPS::reloadSetting() {
   HeadlessState::gpsReloads++;
+}
+
+bool GPS::setRailPower(bool) {
+  return false;
 }
 
 void WiFi::init() {

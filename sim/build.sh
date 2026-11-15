@@ -358,6 +358,7 @@ for source in "$ROOT"/sim/*.cpp; do
 done
 
 for source in \
+  "$ROOT/src/FurbleBoard.cpp" \
   "$ROOT/src/FurbleBootScreen.cpp" \
   "$ROOT/src/FurbleBootTimeline.cpp" \
   "$ROOT/src/FurbleCalibrate.cpp" \
@@ -366,6 +367,7 @@ for source in \
   "$ROOT/src/FurbleCompanionService.cpp" \
   "$ROOT/src/FurbleControl.cpp" \
   "$ROOT/src/FurbleGPS.cpp" \
+  "$ROOT/src/FurbleGPSUbx.cpp" \
   "$ROOT/src/FurbleMemoryPressure.cpp" \
   "$ROOT/src/FurbleOTAMQTT.cpp" \
   "$ROOT/src/FurbleOTAPartitionSink.cpp" \
@@ -409,6 +411,8 @@ for source in \
   "$ROOT/lib/furble/protocol/CameraListProtocol.cpp" \
   "$ROOT/lib/furble/protocol/FujifilmProtocol.cpp" \
   "$ROOT/lib/furble/protocol/GpsCasic.cpp" \
+  "$ROOT/lib/furble/protocol/GpsDemux.cpp" \
+  "$ROOT/lib/furble/protocol/GpsUbx.cpp" \
   "$ROOT/lib/furble/protocol/ProvisionTLV.cpp" \
   "$ROOT/lib/testing/nimble/MockNimBLE.cpp" \
   "$ROOT/lib/testing/peer/FujifilmVirtualCamera.cpp" \
@@ -496,6 +500,21 @@ if [ "$(uname -s)" = "Darwin" ]; then
         break
       fi
     done
+  fi
+  # sdl2-compat also dlopens SDL3 by leaf name through its own LC_RPATH. The
+  # ASan runtime intercepts dlopen, so the search uses the executable's rpaths
+  # instead and may not match the image linked above. Give a sanitized binary
+  # the SDL3 directory as well.
+  if [ -n "$SANITIZE" ]; then
+    SDL3_LIBDIR=$(pkg-config --variable=libdir sdl3 2>/dev/null || true)
+    if [ -z "$SDL3_LIBDIR" ] && command -v brew >/dev/null 2>&1; then
+      SDL3_LIBDIR="$(brew --prefix sdl3 2>/dev/null || true)/lib"
+    fi
+    if [ -f "$SDL3_LIBDIR/libSDL3.dylib" ]; then
+      LINK_FLAGS="$LINK_FLAGS -Wl,-rpath,$SDL3_LIBDIR"
+    else
+      echo "warning: SDL3 not found; a sanitized sdl2-compat binary cannot start" >&2
+    fi
   fi
 fi
 

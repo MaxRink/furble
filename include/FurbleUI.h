@@ -3,6 +3,8 @@
 
 #include <mutex>
 
+#include "FurbleBoardCaps.h"
+
 #if defined(FURBLE_CONSOLE)
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
@@ -28,15 +30,9 @@
 namespace Furble {
 class UI {
  public:
-  // Device status for the companion service. The display build serves these
-  // from the UI task, the headless build reads M5.Power directly and has no
-  // intervalometer. Kept out of the FURBLE_CONSOLE gate below because the
+  // Intervalometer status for the companion service. The headless build has
+  // no intervalometer. Kept out of the FURBLE_CONSOLE gate below because the
   // companion service needs them whether or not the console is built in.
-  static int32_t getBatteryLevel(void);
-  static int16_t getBatteryVoltage(void);
-  static int32_t getBatteryCurrent(void);
-  static int16_t getBatteryVBUSVoltage(void);
-  static bool isBatteryCharging(void);
   static uint8_t getIntervalometerState(void);
   static uint16_t getIntervalometerRemaining(void);
   // Settings writes may notify the UI from shared console code. Headless
@@ -115,6 +111,7 @@ class UI {
 #include "FurbleIMU.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
+#include "FurblePressEdge.h"
 #include "FurbleSettings.h"
 #include "FurbleUIGesture.h"
 #include "interval.h"
@@ -292,13 +289,6 @@ class UI {
 
   /** Number of intervalometer shots remaining for the companion status record. */
   static uint16_t getIntervalometerRemaining(void);
-
-  /** Battery readings shared with the companion status record. */
-  static int32_t getBatteryLevel(void);
-  static int16_t getBatteryVoltage(void);
-  static int32_t getBatteryCurrent(void);
-  static int16_t getBatteryVBUSVoltage(void);
-  static bool isBatteryCharging(void);
 
  private:
   typedef struct {
@@ -491,7 +481,7 @@ class UI {
       // three digit rollers, where four columns of four characters do not fit
       // a 135 px or 80 px panel at any text size and the unit is unambiguous
       // from one or three.
-#if defined(FURBLE_M5STICKC) || defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3)
+#if FURBLE_PANEL_NARROW
       static constexpr const char *m_SpinUnitsRoller = "ms\ns\nmin";
 #else
       static constexpr const char *m_SpinUnitsRoller = "msec\nsecs\nmins";
@@ -875,7 +865,7 @@ class UI {
 
   static constexpr uint8_t BYTES_PER_PIXEL = (LV_COLOR_FORMAT_GET_SIZE(LV_COLOR_FORMAT_RGB565));
 
-#if defined(FURBLE_M5COREX)
+#if FURBLE_PANEL_320X240
   static constexpr int32_t ICON_MENU_SIZE = 48;
 #else
   static constexpr int32_t ICON_MENU_SIZE = 24;
@@ -1132,6 +1122,8 @@ class UI {
   bool m_DisplayOff = false;
   bool m_SwallowInput = false;
   uint8_t m_SwallowPending = 0;
+  // Held inputs by inputBit(), for the companion boost press edge.
+  PressEdge m_PressEdge;
   uint32_t m_SleepTick = 0;
   uint32_t m_WakeTick = 0;
   bool m_LeftPressed = false;
@@ -1142,6 +1134,13 @@ class UI {
 
   /** ST7789 and ILI934x need 120 ms between Sleep In and Sleep Out. */
   static constexpr uint32_t DISPLAY_SLEEP_DWELL_MS = 120;
+  /** UI loop pass with the panel on. */
+  static constexpr uint32_t LOOP_ACTIVE_MS = 5;
+  /**
+   * Longest UI loop pass with the panel off. It matches the 50 Hz PMIC button
+   * poll, so a wake press is still seen within one pass.
+   */
+  static constexpr uint32_t LOOP_IDLE_MAX_MS = 20;
   uint32_t m_MainCount = 0;
   bool m_DisplayConsole = false;
 

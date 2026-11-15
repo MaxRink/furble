@@ -32,6 +32,11 @@ The SD boundary compiles `src/FurbleSD.cpp` with `FURBLE_SD_MOUNT_POINT` set to
 default remains `/sd` and no device behavior changes. The same target sets
 `FURBLE_GPX_DIRECTORY` for `src/FurbleGPX.cpp`.
 
+The `gpx-writer` suite sets `FURBLE_GPX_DIRECTORY` to an absolute sandbox in
+the build tree, deliberately long. `GPX::open()` sizes its path buffer from
+the directory and fails on a truncated path, so any build tree works; a
+64-byte buffer once truncated it in the deeper sanitized tree.
+
 The boundary log shim stores production log lines under a mutex because worker
 tasks write them while the test thread polls. Keep `BoundaryHost::logContains()`
 as the reader; do not return the underlying vector without the lock. The
@@ -39,12 +44,29 @@ as the reader; do not return the underlying vector without the lock. The
 flag, counters and advertising counters, so a test never inherits the previous
 case's GATT database.
 
+`time-keeper-persistence` models the ESP system clock through the weak
+`furble_sim_system_time_us()` hooks: a soft reset keeps it running while
+esp_timer restarts, a power-on loses it. Its `time_keeper_stubs/esp_system.h`
+sets the reset reason with `#include_next`, so keep the settings stub's
+`esp_restart()` reachable.
+
 `device-identity` covers the durable companion random-static identity,
 including reboot restore and untouched camera bonds. `webui-handler` covers the
 password half of the HTTP gate and the client socket count. `mqtt-owner` uses a
 virtual timer: never reintroduce wall-clock reads into the host double, or an
 offline-ACK deadline becomes a timing flake. `console-commands` pins the
 `companion reidentify` command and `crash` argument validation.
+
+## GPS receiver protocols
+
+`gps-ubx` covers the UBX codec, the settings planner, the `Settle` gate
+(including ticks around 2^31) and the `GpsDemux` split. `gps-ubx-m10` drives
+the simulator's virtual M10 (`sim/ubx_m10.cpp`) directly, with no clock or
+UART, so its validity rules and start types are tested where the scenarios
+rely on them. `gps_ubx_fuzz` checks `Ubx::Stream` against a reference
+splitter built on `scan()`, intact-frame delivery, and that chunked demux
+input yields the same frames and NMEA text as one-shot input. It runs under
+ASan and UBSan like every fuzz target.
 
 ## WebUI and companion contracts
 
@@ -54,7 +76,11 @@ offline-ACK deadline becomes a timing flake. `console-commands` pins the
   their refuse-then-retry path, the cached setting/password state, the
   streamed settings JSON and the identity persistence contract covered there.
   A new route or a new credential path needs a matching case.
-- `companion-memory` pins the 7,552/3,456 companion first-enable floors.
+- `companion-memory` pins the 8,320/4,224 companion first-enable floors.
+- `control-e2e-admit-hook-once-per-target` owns where connect admission
+  runs: inside `Control::addActive()`, once per new target, never for a
+  duplicate. The other Control harnesses register no admit hook and do not
+  link the governor.
 - `ui-memory` pins `FurbleUIMemory::drawBufferBytes()` and the narrow-panel
   single-buffer rule. Update its expected sizes with any panel or row change.
 - `companion-gatt` and `companion-auth` own the transport-side auth and bond
@@ -64,3 +90,9 @@ offline-ACK deadline becomes a timing flake. `console-commands` pins the
   restore and untouched camera bonds. The live LE address rotation is asserted
   by `sim/scenarios/e2e/hw-ble-auth-gatt-reidentify.txt`, not by the host
   double.
+- The port stack moved the host doubles with the production seams. The
+  companion doubles implement `Platform::getBatteryStatus()` instead of
+  `UI::getBattery*()`. The headless doubles gained `TxPower`,
+  `Control::savedTxPower()` and `GPS::setRailPower()`. The NimBLE mock records
+  each `setSecurityIOCap()` value in `mockSecurityIOCaps()`, cleared by
+  `resetMock()`. `tx-power-mapping` pins the power mapping through `Control`.

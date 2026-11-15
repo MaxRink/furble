@@ -42,7 +42,7 @@ bool checkCaptureWrites(const std::vector<Furble::Host::RicohVirtualCamera::Writ
 
 int main() {
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
 
   // The GR IV in BLE standby keeps the link up and still reports CameraPower
   // ON while OperationMode reads BLE_STARTUP. A capture write in that state
@@ -58,7 +58,7 @@ int main() {
   NimBLEDevice::setMockPeer(&peer);
   const auto advertisement = peer.advertisement();
   Furble::Ricoh camera(&advertisement);
-  if (!check(camera.connect(ESP_PWR_LVL_P3, 1000),
+  if (!check(camera.connect(Furble::TxPower::P3, 1000),
              "Ricoh sleep gate test reaches the connected production path")) {
     return 1;
   }

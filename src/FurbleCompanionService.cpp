@@ -17,6 +17,7 @@
 #if defined(FURBLE_MQTT) && FURBLE_MQTT
 #include "FurbleMQTT.h"
 #endif
+#include "FurblePlatform.h"
 #include "FurbleSettings.h"
 #include "FurbleTimezone.h"
 #include "FurbleTypes.h"
@@ -215,20 +216,18 @@ CompanionService::companion_status_t CompanionService::getStatus(void) const {
   companion_status_t status = {};
   status.version = PACKET_VERSION;
 
-  const int32_t batteryLevel = UI::getBatteryLevel();
+  const auto battery = Platform::getInstance().getBatteryStatus();
   status.battery_percent =
-      (batteryLevel >= 0 && batteryLevel <= 100) ? static_cast<uint8_t>(batteryLevel) : 255;
+      (battery.level >= 0 && battery.level <= 100) ? static_cast<uint8_t>(battery.level) : 255;
 
-  const int32_t batteryVoltage = UI::getBatteryVoltage();
-  status.battery_mv = (batteryVoltage >= 0) ? static_cast<uint16_t>(batteryVoltage) : 0xffff;
+  status.battery_mv = (battery.voltage >= 0) ? static_cast<uint16_t>(battery.voltage) : 0xffff;
 
-  const int32_t batteryCurrent = UI::getBatteryCurrent();
   status.battery_ma = static_cast<int16_t>(std::clamp<int32_t>(
-      batteryCurrent, static_cast<int32_t>(-32768), static_cast<int32_t>(32767)));
-  if (UI::isBatteryCharging()) {
+      battery.current, static_cast<int32_t>(-32768), static_cast<int32_t>(32767)));
+  if (battery.charging) {
     status.power_flags |= 1 << 0;
   }
-  if (UI::getBatteryVBUSVoltage() > 0) {
+  if (battery.vbus > 0) {
     status.power_flags |= 1 << 1;
   }
 
@@ -681,6 +680,7 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
     case Settings::WIFI:
     case Settings::NTP:
     case Settings::GPS_EXTRAP:
+    case Settings::GPS_ANA:
       return SETTING_BOOL;
 #if defined(FURBLE_MQTT) && FURBLE_MQTT
     case Settings::MQTT:
@@ -701,6 +701,8 @@ CompanionService::setting_type_t CompanionService::settingType(Settings::type_t 
     case Settings::GPS_DUTY:
     case Settings::GPS_ASSIST:
     case Settings::GPS_PLATFORM:
+    case Settings::GPS_GNSS:
+    case Settings::GPS_PSM:
     case Settings::IR_PROTO:
     case Settings::FB_OUTPUT:
     case Settings::FB_EVENTS:
@@ -777,6 +779,7 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
     case Settings::WATCHDOG:
 #endif
     case Settings::GPS_EXTRAP:
+    case Settings::GPS_ANA:
     case Settings::WIFI:
     case Settings::NTP:
     {
@@ -813,6 +816,8 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
     case Settings::GPS_DUTY:
     case Settings::GPS_ASSIST:
     case Settings::GPS_PLATFORM:
+    case Settings::GPS_GNSS:
+    case Settings::GPS_PSM:
     case Settings::IR_PROTO:
     case Settings::FB_OUTPUT:
     case Settings::FB_EVENTS:
@@ -908,6 +913,12 @@ bool CompanionService::saveSetting(Settings::type_t type, const uint8_t *value, 
         return false;
       }
       if ((type == Settings::GPS_PLATFORM) && (value[0] > 4)) {
+        return false;
+      }
+      if ((type == Settings::GPS_GNSS) && (value[0] > Settings::GPS_GNSS_MAX)) {
+        return false;
+      }
+      if ((type == Settings::GPS_PSM) && (value[0] > Settings::GPS_PSM_MAX)) {
         return false;
       }
       if ((type == Settings::LEGEND) && (value[0] > Settings::LEGEND_OFF)) {
@@ -1112,7 +1123,10 @@ void CompanionService::handleSettings(const uint8_t *data, size_t len) {
     case Settings::GPS_ASSIST:
     case Settings::GPS_HOLD:
     case Settings::GPS_EXTRAP:
+    case Settings::GPS_ANA:
     case Settings::GPS_PLATFORM:
+    case Settings::GPS_GNSS:
+    case Settings::GPS_PSM:
       GPS::getInstance().reloadSetting();
       break;
     case Settings::FB_EVENTS:

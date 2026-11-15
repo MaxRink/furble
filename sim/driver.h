@@ -37,6 +37,16 @@ void driverTick(void);
 void fuzzCycleComplete(Furble::UI *ui);
 bool scenarioSettingIs(const char *name, const char *value);
 
+/**
+ * Hold a GPS status reader for the seeded `gps_reader_hold_ms` of host time.
+ *
+ * Production calls this where a reader takes the GPS cycle snapshot. It models
+ * a slow reader that overlaps the GPS task: readers once held the cycle mutex
+ * there, and the task dropped any UART event it met while one did.
+ */
+void setGpsReaderHoldMs(uint32_t ms);
+void gpsReaderHold(void);
+
 /** Request an orderly simulator shutdown with the supplied process result. */
 void requestExit(int result);
 
@@ -116,6 +126,12 @@ void notePowerOff(void);
 // timer then raises the real modal, so the input-after-approve regression
 // (task #32) can be reproduced headlessly. rigConfirmPairing clears it.
 void rigInjectPendingPairing(uint32_t pin);
+
+// The rig has no advertising cadence; the production one is host tested. The
+// shim counts each boost the UI requests so a scenario can prove which
+// presses reach it.
+void noteCompanionBoost(void);
+uint32_t companionBoostCount(void);
 
 // Injected IMU state for the host build. The firmware reads the sensor through
 // M5.Imu, which the simulator has no hardware for, so these mirror the same

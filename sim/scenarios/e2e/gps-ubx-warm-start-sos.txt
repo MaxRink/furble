@@ -1,0 +1,17 @@
+# Rail cycling with no backup supply. Before each planned cut furble stops the
+# GNSS and asks UPD-SOS to save BBR. A MAX-M10S has no flash, so the save is
+# refused, furble records that and does not ask again, and the next power-up
+# is cold. With a flash the backup is restored at start-up.
+seed gps true
+seed gps_model m10
+seed gps_power 2
+seed gps_duty 10
+seed gps_rate 1
+wait 40000
+assert gps.ubx.backup 0
+assert m10.sos_creates 1
+assert gps.ubx.sos_backup 2
+wait 30000
+assert m10.sos_creates 1
+assert_min m10.cold_starts 2
+exit

@@ -1,9 +1,17 @@
 # 314 - Memory resilience
 
-Status: in progress. PR 1 of 14 (sim config parity and abort semantics) is
-implemented on `feat/314-sim-config-parity`. Sim-only: no hardware was flashed
-or measured. Every number comes from datasheets, the pinned ESP-IDF source,
+Status (2026-11-13): all 14 PRs are merged on master. PR 1 #411, PR 2 #412,
+PR 3 #413, PR 4a #414, PR 4b #425, PR 5 #423, PR 6 #429, PR 7 #430, PR 8 #431,
+PR 9 #432, PR 10 #433, PR 11 #436, PR 12 #437, PR 13 #438, PR 14 #439. Fixes
+found along the way merged as #415 to #424, #428 and #435. Two software items
+remain: PR 2c font and DPI parity, and the stack-budget cycle memoization
+limit recorded as row 18 of
+[314-review-feedback.md](314-review-feedback.md). Sim-only: no hardware was
+flashed or measured. Every number comes from datasheets, the pinned ESP-IDF source,
 the sdkconfig files and the firmware's own build output.
+
+The 2026-11-13 re-analysis below corrects the `perf tasks` stack readings
+and lists the stack and config cuts that stay hardware-gated.
 
 ## Problem
 
@@ -38,6 +46,182 @@ Abort policy: keep the abort on. Turning it off gains nothing, because the
 `std::` paths abort under `-fno-exceptions` and 213 unchecked `lv_*_create`
 calls would become NULL dereferences with worse diagnostics. Survival has to
 come from never reaching exhaustion.
+
+## Re-analysis 2026-11-13
+
+State: implemented on `fix/memory-reanalysis`, stacked on #441. Sim-only: no
+hardware was flashed or measured. Every figure comes from the seven release
+builds of 2026-11-14, `tools/stack_budget.py`, `tools/check_size_budget.py`
+and `tools/derive_sim_heap.py`.
+
+### The `perf tasks` misreading
+
+`perf tasks` prints `stack_high_watermark` as `usStackHighWaterMark` times
+`sizeof(StackType_t)` (`src/FurbleConsole.cpp`). That is
+`uxTaskGetStackHighWaterMark`, the minimum free stack in bytes. Plans 305,
+308 and 311, CLAUDE.md and `include/FurbleMQTTMemory.h` read it as bytes
+used. Used is the configured stack minus the reading:
+
+| Task | Stack | Reading | Read as | Used |
+| :--- | ---: | ---: | :--- | ---: |
+| MQTT owner | 10,240 | 3,084 | used | about 7,156 |
+| esp-mqtt worker | 4,096 | 704 | used | about 3,392 |
+| NimBLE host | 16,384 | 14,200 | 87 percent used | about 2,184 |
+| control | 8,192 | 7,372 | used | about 820 |
+| main, MQTT connected | 12,288 | 3,020 | used, listed at 8 KiB | about 9,268 |
+| companion | 4,096 | 1,884 | used | about 2,212 |
+
+The main row explains the #398 overflow: main already used about 9 KiB at
+12 KiB, so the 8 KiB cut could not hold. The pull request #398 body records
+the reading at 12 KiB; plan 308 listed it at 8 KiB. The worker row held the
+2,348-byte event copy that the stack walk later moved to `m_Incoming`. The
+earlier 3,476-byte "MQTT-off" main figure has no source in any plan or pull
+request, so the simulator now models the sourced 3,020-byte reading.
+
+### Changes
+
+- MQTT owner: `MQTT::taskStep` receives each queued event into `m_Received`,
+  a second copy in the same never-freed block as `m_Incoming` (PSRAM when
+  the queue is there). `processLifecycleEvents` checks the copied client and
+  passes the event id to `handleLifecycleEvent` instead of building a
+  `queued_event_t`, and
+  `clearQueuedEvents` calls `xQueueReset`: the owner is the only receiver and
+  every sender posts with a zero timeout, so a reset drops exactly what a
+  drain would. Neither rejects a later send, so `stopClient()` now clears
+  after `esp_mqtt_client_destroy()` as defence in depth. A successful stop
+  already joined the client task. A stop that fails to build DISCONNECT
+  leaves the task running, and destroy's own stop most likely fails too, so
+  no clear order closes that upstream path. `EVENT_STORAGE_BYTES` now
+  reserves the queue plus both copies without PSRAM. The StickS3 owner walk drops from 8,080 to 3,344 bytes
+  (3,312 with the cut below). The 10 KiB stack and every gate are unchanged.
+- Config with hardware precedent:
+  - `CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM` 10 to 6 on the six envs that had
+    10. The StickS3 runs 6 since #392. ESP-IDF recommends at least the AMPDU
+    RX BA window, and `CONFIG_ESP_WIFI_RX_BA_WIN` is 6 on every board.
+  - `CONFIG_ESP_WIFI_IRAM_OPT` and `CONFIG_ESP_WIFI_RX_IRAM_OPT` off on
+    StickS3, Waveshare and headless. The four ESP32 boards already ship
+    with both off. The WiFi hot paths run from flash; throughput is not
+    measured.
+- Stack walk: a scoped `cuts` rule drops `lock_acquire_generic` to
+  `lock_init_generic` below `__retarget_lock_acquire*`. That path is the lazy
+  first-use creation of a NULL lock. `__retarget_lock_acquire*` asserts its
+  lock is not NULL and passes a non-NULL copy, so it cannot run there. It is
+  not a `boot_only` entry, because `__retarget_lock_init` still reaches
+  `lock_init_generic` at runtime when a stream is opened. See
+  `docs/stack-budget.md`.
+
+### Refreshed per-board headroom
+
+Derived boot heap is the `tools/derive_sim_heap.py` upper bound with WiFi,
+companion and every boot task charged; the `profile-*` floors in
+`sim/coverage/memory_budget.json` follow it. IRAM is the measured static
+size. The tightest stack row is the smallest resolved headroom.
+
+| Env | Derived free, before to after | Largest | IRAM, before to after | Tightest stack rows |
+| --- | ---: | ---: | ---: | :--- |
+| m5stick-c | 134,568 to 141,352 | 129,984 | 114,024 | `sys_evt` 688, `companion` 864 |
+| m5stick-c-plus | 133,232 to 140,016 | 129,984 | 114,024 | `sys_evt` 688, `companion` 864 |
+| m5stack-core | 112,320 to 119,024 | 119,024 | 115,668 | `sys_evt` 688, `companion` 864 |
+| m5stack-core2 | 130,292 to 136,980 | 129,984 | 121,036 | `sys_evt` 688, `companion` 864 |
+| m5stick-s3 | 174,456 to 193,312 | 193,312 | 132,864 to 114,688 | `sys_evt` 464, `companion` 624 |
+| waveshare-s3-eth | 162,288 to 187,656 | 187,656 | 132,352 to 114,176 | `sys_evt` 224, `companion` 224 |
+| esp32-s3-headless | not derived to 179,360 | 179,360 | 140,032 to 121,856 | `sys_evt` 224, `companion` 224 |
+
+The ESP32 boards gain four 1,600-byte RX buffers. The S3 boards gain the 18,176 bytes of IRAM, which sit on shared
+DIRAM. Waveshare and headless also gain the four RX buffers. The headless env
+is now derived from its own ELF instead of the 200,000 / 160,000 default. The
+three S3 IRAM budgets in `tools/size_budget.json` drop to 115,712, 114,688
+and 122,880. The S3 debug budgets keep their slack until those envs are
+rebuilt. Static DRAM is unchanged, because stacks and RX buffers are heap.
+
+### After the merge of #446
+
+#446 replaced the memoized walk with the component walk, made panic paths
+count and raised `sys_evt` to 3,072, the companion to 3,840 and the WebUI
+supervisor to 4,096. The merge keeps those stacks: the companion goes back to
+3,840, not the 3,072 this section derived from the old walk, because the new
+walk needs up to 3,600 bytes on Waveshare and headless. The stdout lock cut
+was ported to the component walk as function and active-cut states and still
+lowers most tasks by 112 bytes. The StickS3 MQTT owner reads 3,408 bytes,
+against 8,256 under #446 alone. All seven release envs were rebuilt; every
+size and stack budget passes. `tools/derive_sim_heap.py` regenerated
+`sim/coverage/board_heap.json`, and the `profile-*` floors follow it.
+
+| Env | Derived free | Largest | Tightest stack rows |
+| --- | ---: | ---: | :--- |
+| m5stick-c | 139,808 | 129,984 | `sys_evt` 272, `companion` 416 |
+| m5stick-c-plus | 138,472 | 129,984 | `sys_evt` 272, `companion` 416 |
+| m5stack-core | 117,480 | 117,480 | `sys_evt` 272, `companion` 416 |
+| m5stack-core2 | 135,452 | 129,984 | `sys_evt` 272, `mqtt_client` 352 |
+| m5stick-s3 | 191,768 | 191,768 | `sys_evt` 752, `gps` 832 |
+| waveshare-s3-eth | 186,112 | 186,112 | `esp_timer` 192, `companion` 240 |
+| esp32-s3-headless | 177,816 | 177,816 | `esp_timer` 192, `companion` 240 |
+
+### Hardware-gated
+
+Each needs a `perf tasks` or `perf heap` reading on hardware first. None is
+changed here.
+
+- NimBLE host stack 16 KiB to 6 to 8 KiB. About 2,184 bytes used. The reading
+  did not cover Fujifilm Secure pairing, a bond write or several reconnects,
+  and the walk (1,552 on the StickS3) is a lower bound behind NimBLE
+  callbacks.
+- MQTT owner 10 KiB to 6 KiB. The 7,156 bytes used included both event
+  copies, about 4,800 bytes, so about 2,400 remain against a 3,312-byte walk.
+  The 4 KiB and 6 KiB overflows were with the copies on the stack. Read the
+  owner after start, a connected event and Home Assistant discovery.
+- control 8 KiB to 5 KiB (about 820 used, walk 2,000 to 3,616),
+  `esp_timer` 3.5 KiB to 2.5 KiB (3,068 free, about 516 used, walk 1,696 to
+  2,128), SD writer 6 KiB to 4.5 KiB (walk 3,520 on Core and Core2, no
+  reading).
+- Waveshare and headless main 16 KiB to 8 KiB. The walk reads 3,808, but the
+  StickS3 walk also read far below its real 9 KiB, so only a reading counts.
+- StickC, StickC Plus, Core and Core2 main 16 KiB to 12 KiB. The walk reads
+  6,992 on all four, but it is not proof of fit: `main` runs most of its
+  depth through unresolved indirect calls, and the only reading, the StickS3
+  in #398, used about 9,268 bytes against a 6,816-byte walk. The cut was made
+  on this branch and reverted after review. It needs a `perf tasks` main
+  reading on a 4 MB board and on a Core2 with MQTT connected.
+- S3 LVGL allocator in PSRAM. LVGL uses the C library allocator
+  (`CONFIG_LV_USE_CLIB_MALLOC`), and its objects are below
+  `SPIRAM_MALLOC_ALWAYSINTERNAL` (4,096), so the object tree stays internal.
+  A custom LVGL allocator could place it in PSRAM; it needs a frame-time and
+  cache measurement.
+- M5Unified board pin for the 4 MB boards. M5GFX is already pinned per board
+  (`patches/m5gfx_board.patch`). The matching M5Unified patch would drop the
+  other boards' power and pin setup. It changes power-up on the real board,
+  so it needs a boot on each 4 MB board.
+- S3 `CONFIG_BT_CTRL_BLE_MAX_ACT=6` against NimBLE
+  `CONFIG_BT_NIMBLE_MAX_CONNECTIONS=9`. Verified in all three S3 sdkconfigs.
+  The S3 controller counts every connection, scan and advertising instance
+  against `MAX_ACT` (828 bytes each), six in total, so it cannot hold the
+  nine connections NimBLE allows, and each scan or advertisement takes one
+  more slot. The ESP32 boards set
+  `BTDM_CTRL_BLE_MAX_CONN=9`. Raising `MAX_ACT` costs controller RAM;
+  lowering NimBLE caps Multi-Connect. Decide with a Multi-Connect test.
+- Waveshare and headless set `LOG_MAXIMUM_LEVEL` 5, assertion level 2 and
+  `ESP_ERR_TO_NAME_LOOKUP`, where the StickS3 sets 3, 1 and off. Not changed:
+  another branch is investigating those keys.
+
+Validation (local, macOS, sim-only, no hardware):
+
+- Firmware: all seven release envs build, and the four ESP32 envs were
+  rebuilt after the main stack revert; `tools/stack_budget.py` passes every
+  task on all seven, and `--stack mqtt=6144` on the StickS3 reads 3,312.
+  `tools/check_size_budget.py` passes all seven. The S3 debug envs were not
+  rebuilt.
+- Host suite: 185 of 185; `tools/run_sanitized_host_tests.sh --clean`: 183
+  of 183 under ASan and UBSan. `mqtt_fuzz`: seeds 1, 2, 3, 7, 42, 99 and 1000 at
+  1,000 iterations plus the discovery-OOM regression. The `fuzz.mqtt` target:
+  16 seeds, 7,009 iterations, 0 failures.
+- `sh sim/scripts/run-e2e.sh`: 210 of 210. Alternate boards on plain
+  builds: `FURBLE_SIM_BOARD_ID=m5stick-c` 65 of 65 and
+  `FURBLE_SIM_BOARD_ID=m5stack-core` 69 of 69, with every main stack assert at
+  16,384. `sh sim/scripts/run-memory.sh`
+  (plain MQTT build): 4 of 4. `python3 sim/scripts/run-memory-profile.py`:
+  13 of 13 dumps within budget.
+- `python3 tools/pre_review.py --base origin/master`: 8 gates pass.
+  `sh sim/scripts/check-doc-tokens.sh`: pass. clang-format 21: clean.
 
 ## PR 1: config parity and abort semantics
 
@@ -97,7 +281,7 @@ Validation (local, macOS):
 
 ## PR 2: count every device allocation
 
-Implemented on `feat/314-sim-count-allocations`, stacked on PR 1:
+Implemented and merged as #412:
 
 - `sim/heap_count.cpp` replaces the global `operator new`/`delete` family and
   provides `furble_sim_fw_malloc`, `realloc` and `free`. LVGL's
@@ -177,13 +361,14 @@ Deviations:
   the Core's internal pool, while the Core's sdkconfig sets no cache. Each
   build now writes its own `lv_conf.h` with the board's `LV_CACHE_DEF_SIZE`;
   seed 3 then runs clean. Font and DPI parity is still open (PR 2c): StickC
-  and Core sims render with 130 DPI and the 16 px default font, while their
-  sdkconfigs set 64 DPI and 12 px. Changing that moves their layouts and needs
+  and Core sims render with 130 DPI and the 16 px default font, while the
+  StickC sdkconfig sets 64 DPI and 12 px and the Core sdkconfig sets 96 DPI and
+  22 px. Changing that moves their layouts and needs
   scenario re-certification.
 
 ## PR 3: per-board boot heap from datasheets and code
 
-Implemented on `feat/314-sim-board-baselines`, stacked on PR 2. No hardware.
+Implemented and merged as #413. No hardware.
 
 - `tools/derive_sim_heap.py` reads each release env's `firmware.elf` and
   `sdkconfig.<env>`. It takes the internal 8-bit regions the pinned ESP-IDF
@@ -635,6 +820,157 @@ preexisting issues, fixed here:
 and passes them to the gate, then runs the tool tests. Fork Actions are
 disabled, so this was validated locally only.
 
+## PR 4c: exact stack walk and panic paths
+
+State: implemented. StickS3 and Waveshare measured locally. The other five
+release envs and the debug envs are measured by the firmware CI dispatch on
+the PR. The PR does not merge until every env passes there.
+
+Motivation. The PR 4a walk memoized each function once. A function first
+reached inside an open cycle had that cycle's back edge cut, and the value was
+reused on every other path, so depth behind the cut was lost. A follow-up was
+owed to replace the walk and to decide how panic paths count.
+
+Algorithm. `tools/stack_budget.py` collapses the reachable call graph into
+strongly connected components (iterative Tarjan) and takes the longest path
+over the DAG. A one-pass component (no recursion bound above 1) is walked
+exactly: every simple path through it is enumerated, up to 200,000 paths per
+component, and the path leaves through its last member's deepest callee. Past
+the budget a bounded component is charged the sum of its frames, which bounds
+any simple path. A component with more passes pays `passes` times its frame
+sum. Only `main`'s 410-member LVGL component, a known limit, exceeds the
+budget; it keeps the greedy walk and stays a lower bound. The walk takes
+0.4 s of the run on the StickS3; loading the `.ci` files and the objdump pass
+dominate. On a synthetic graph the old walk reports 440 bytes of frames where
+the real path is 756, which `tests/test_stack_budget.py` keeps. A randomized
+check against brute force agreed on 3,000 graphs.
+
+Panic decision. Panic paths count, and the handler's own depth counts too.
+`abort()`, `__assert_func` and `esp_system_abort()` end in
+`esp_system/panic.c` `panic_abort`, which executes `ill`. The exception enters
+`xtensa/xtensa_vectors.S` `_xt_user_exc`, which stays on the faulting task's
+stack ("we'll stay on the user stack for exception handling"), pushes the
+`XT_STK_FRMSZ` frame and calls the `_xt_exception_table` entry that
+`xtensa/xtensa_intr.c` sets to `xt_unhandled_exception`. That runs
+`panic_handler` and `esp_panic_handler` on the same stack. Release builds
+print and reboot with no core dump. The PSRAM boards' debug core dump gets
+its own stack through `CONFIG_ESP_COREDUMP_USE_STACK_SIZE`. An overflow in the
+handler loses the panic output, so the manifest's `panic` entry makes
+`panic_abort` call one node carrying the handler's depth, walked once with a
+nested panic not followed (`PANIC_ENTRY_COUNT_MAX` restarts the chip). The
+exception frame is already in the port overhead.
+
+`infeasible_calls` removes a call edge only with a file:line citation of the
+guard that makes it unreachable. Five edges: `esp_cache_get_alignment` to
+`esp_log` (null output pointer; every caller passes an address), the
+copy-on-write string's `_S_create` length throw and `_S_construct` null throw
+(the two depth 1 claims the old walk honoured by accident of order),
+`cache_hal_get_cache_line_size` to `abort` (`HAL_ASSERT` on a level every
+caller passes valid) and `rtc_clk_xtal_freq_get` to `esp_log` (the bootloader
+stores the crystal frequency). Without them the handler alone measured 1,328
+bytes on the StickS3 and 1,552 on Waveshare, and about 10 KB of stacks would
+have grown for paths the source rules out.
+
+Before and after, bytes including port overhead:
+
+| Task | Stack | StickS3 before | StickS3 after | Waveshare before | Waveshare after |
+| :--- | ---: | ---: | ---: | ---: | ---: |
+| panic handler | | | 512 | | 752 |
+| main | 12,288/16,384 | 6,928 | 7,408 | 3,920 | 4,640 |
+| nimble_host | 16,384 | 1,664 | 2,144 | 1,856 | 2,608 |
+| sys_evt | 3,072 (was 2,304) | 1,952 | 2,432 | 2,192 | 2,944 |
+| esp_timer | 3,584 | 1,920 | 2,704 | 2,128 | 3,504 |
+| control | 8,192 | 2,896 | 2,816 | 3,120 | 3,648 |
+| camera_target | 4,096 | 2,560 | 2,384 | 2,784 | 3,248 |
+| gps | 4,096 | 2,992 | 3,392 | 3,232 | 3,984 |
+| wifi | 4,096 | 2,592 | 3,072 | 3,120 | 3,872 |
+| companion | 3,840 (was 3,072) | 2,560 | 2,912 | 2,960 | 3,712 |
+| ir | 4,096 | 2,352 | 2,800 | | |
+| mqtt | 10,240 | 8,080 | 8,256 | 8,304 | 9,056 |
+| mqtt_client | 3,072 | 1,936 | 2,352 | 2,208 | 2,896 |
+| webui | 4,096 (was 3,584) | 2,912 | 3,152 | 3,136 | 3,952 |
+| webui_https | 8,192 | 2,640 | 2,848 | 2,864 | 3,312 |
+| webui_tls | 12,288 | 7,664 | 8,144 | 7,920 | 8,672 |
+
+Release envs in the firmware CI dispatch (run 43476535693), need in bytes;
+every row passes, the ESP32 boards share one column because StickC, StickC
+Plus, Core and Core2 measured the same:
+
+| Task | Stack | ESP32 boards | StickS3 | Waveshare |
+| :--- | ---: | ---: | ---: | ---: |
+| panic handler | | 1,216 | 512 | 752 |
+| sys_evt | 3,072 | 2,912 | 2,432 | 2,944 |
+| esp_timer | 3,584 | 3,184 | 2,704 | 3,504 |
+| control | 8,192 | 3,296 | 2,816 | 3,648 |
+| camera_target | 4,096 | 2,864 | 2,384 | 3,248 |
+| gps | 4,096 | 3,696 | 3,392 | 3,984 |
+| wifi | 4,096 | 3,552 | 3,072 | 3,872 |
+| companion | 3,840 | 3,424 | 2,912 | 3,712 |
+| ir (StickC, Plus, S3) | 4,096 | 3,296 | 2,800 | |
+| sd (Core, Core2) | 6,144 | 4,816 | | |
+| mqtt (Core2) | 10,240 | 8,736 | 8,256 | 9,056 |
+| mqtt_client (Core2) | 3,072 | 2,832 | 2,352 | 2,896 |
+| webui (Core2) | 4,096 | 3,632 | 3,152 | 3,952 |
+| webui_https (Core2) | 8,192 | 3,328 | 2,848 | 3,312 |
+| webui_tls (Core2) | 12,288 | 7,904 | 8,144 | 8,672 |
+
+The ESP32 `main` row is 7,888 to 7,936 against 16,384. Every release size
+budget passes. The headless env is not in that matrix; the reproducible
+workflow (run 43476529248) runs its stack and size budgets on the kept build
+and both pass. Headless matches Waveshare except `control` 4,096 of 8,192
+and `camera_target` 3,856 of 4,096.
+
+Debug envs. The first dispatch failed five of six debug envs against the
+release stacks, because the stack protector and `-Os` make frames bigger:
+the ESP32 debug builds needed `sys_evt` 3,088, `esp_timer` 3,664, `gps`
+4,160, `wifi` 4,240 and `companion` 4,192 (Core2 debug also `webui` 4,128);
+Waveshare debug needed `sys_evt` 3,264, `camera_target` 4,144, `gps` 4,256,
+`companion` 3,968, `mqtt_client` 3,216 and `webui` 4,240. Raising the
+release stacks for debug-only frames would have cost every release image
+about 2 to 3 KB more, so debug images get their own sizes instead:
+`sdkconfig.debug` sets `sys_evt` 3,328 and `esp_timer` 3,840, and each task
+owner adds a named `..._DEBUG_EXTRA` under `FURBLE_DEBUG_BUILD`, defined only
+by the `-debug` envs: `camera_target`, `gps`, `wifi`, `webui` +256 to 4,352,
+`companion` +512 to 4,352 and `mqtt_client` +256 to 3,328. The manifest
+records each as `debug_stack_bytes` with its cited `debug_source`, the gate
+uses it for a `-debug` env and fails a debug stack below its release stack.
+The companion, WebUI supervisor and MQTT client admission gates include the
+margin. Host tests and the simulator build without the define and keep the
+release values.
+
+Stack changes, each raised to the measured maximum across envs rounded up to
+256 bytes:
+
+- `sys_evt`, `CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE`: 2,304 to 3,072 in all
+  seven release sdkconfigs (and the deprecated alias). Waveshare needs 2,944:
+  `stopNtp` unregisters an event handler, which logs, whose first call creates
+  the log mutex, whose allocation leaves the heap lock through
+  `vPortExitCritical`'s `configASSERT`, then the panic handler.
+- Companion task, `CompanionMemory::TASK_STACK_BYTES`: 3,072 to 3,840.
+  Waveshare needs 3,712: a camera snapshot loads the saved list through
+  `Preferences::begin` and the NVS namespace lookup into the same log tail.
+  The first-enable gate moves from 7,552/3,456 to 8,320/4,224.
+- WebUI supervisor, `WebUIMemory::SUPERVISOR_STACK_BYTES`: 3,584 to 4,096.
+  Waveshare needs 3,952. Its floors move from 4,608/4,096 to 5,120/4,608.
+
+Internal RAM cost: 768 bytes on every board for `sys_evt`, 768 more while the
+companion is enabled, and 512 more on Core2, StickS3, Waveshare and headless
+while the WebUI runs: up to 1,536 bytes on StickC, StickC Plus and Core and
+2,048 on the other four. `tools/derive_sim_heap.py`,
+`sim/memory_profile.cpp`, `sim/coverage/memory_budget.json` and the host
+gate tests carry the new values. `sim/coverage/board_heap.json` is
+re-derived: StickS3 and Waveshare from fresh images, whose static DRAM had
+already drifted from the recorded values, and the ESP32 boards from their
+recorded ELF symbols with the new stack terms. The profile floors in
+`memory_budget.json` follow it. The simulator memory profile run waits for
+the simulator to be available again.
+
+Deviations:
+
+- Local builds of the other envs stalled for over an hour in the ESP-IDF
+  component manager on a shared, heavily loaded machine, so their evidence is
+  the CI dispatch on the PR rather than a local run.
+
 ## Follow-up: the Core OTA debug profile is a mandatory CI lane
 
 State: implemented.
@@ -1053,6 +1389,7 @@ Findings for Phase 2:
 - `MQTT::taskStep` and `MQTT::processLifecycleEvents` each hold a stack copy
   of `queued_event_t` (2,400-byte frames). One owner-task buffer would remove
   about 4.6 KB of depth, enough to shrink the 10 KiB internal owner stack.
+  Done in the 2026-11-13 re-analysis; the stack cut stays hardware-gated.
 - The WebUI supervisor has 80 bytes of resolved headroom on the Waveshare and
   headless builds (2,992 of 3,072) and 320 on the StickS3.
 - The companion task has 288 bytes on the Waveshare and headless builds.
@@ -1161,3 +1498,137 @@ the lines that print it, including the failed-allocation fields from PR 5,
 were uncovered. The console stub now lets a test install a record, and the
 console test checks every printed field with and without a failed
 allocation. The console reaches 89.26% locally. The floor is not lowered.
+
+## Fix: CI re-enable, 2026-11-13
+
+State: implemented on `ci/master-green`. GitHub Actions was disabled on the
+fork from 2026-10-21, so the plan 314 PRs of that window merged with no CI.
+Three of their gates failed on the first run. See `plans/95-engineering-lessons.md`
+for the full incident.
+
+- PR 12, ASan and UBSan host tests: `gpx-writer` failed only there. GPX::open()
+  formats its path into 64 bytes, and the test sandbox was the absolute
+  build-tree path. The plain tree truncated silently and the test truncated its
+  expectation the same way; the sanitized tree is deeper, so the path was cut
+  inside the directory name. `GPX::open()` now sizes the buffer from
+  `FURBLE_GPX_DIRECTORY` plus the widest name the point fields can print, and
+  fails the open on a truncated path. On the device that is 37 bytes instead
+  of 64. The test keeps its long absolute sandbox as the regression check, and
+  the coverage workflow no longer needs a short build directory.
+- PR 6, `memory-pressure-mqtt-shed`: the paused figure of 8,497 was measured on
+  macOS. Linux read 8,457 on arm64 and 8,441 on x86_64. The host MQTT
+  transport allocated its adapter object, strings and reconnect thread on the
+  owner task, and the counter charged them as device memory, so their host
+  sizes leaked into the model. Every libmosquitto call and the adapter's own
+  objects now run inside a `HostAllocScope`. In their place
+  `esp_mqtt_client_init()` charges what the pinned esp-mqtt allocates
+  (`components/mqtt/esp-mqtt/mqtt_client.c`): the 248-byte client and 160-byte
+  config storage (sizes from the StickS3 firmware DWARF) and the in and out
+  buffers FurbleMQTT configures, 1,536 bytes each, so 3,480 bytes. Destroy
+  releases them. The sim had never charged them. The firmware stops and
+  destroys the client on a memory pause, so the paused reading rises from
+  8,497 to 11,977 (worker plus init allocations) and still sits between the
+  RED floor and the RED exit, which keeps the check that such a reading holds
+  RED. The scenario is reseeded 4,152 bytes higher so boot and the squeezed
+  level keep their old figures. Smaller esp-mqtt allocations (URI strings,
+  outbox, transport list) are not modelled.
+- PR 4b, sim-sanitizers: every scenario failed with a signed overflow in
+  M5GFX `Panel_sdl::_update_scaling()`. Under the dummy video driver
+  `SDL_CreateRenderer` returns NULL, `SDL_GetRendererOutputSize` never writes
+  its outputs, and M5GFX divides by uninitialized stack ints. clang 18 made
+  that an infinite float, which the old `float-cast-overflow` entry
+  suppressed; clang 21 on ubuntu-26.04 made it a signed overflow. The
+  simulator now sets `SDL_HINT_RENDER_DRIVER=software` before
+  `Panel_sdl::setup()` when the video driver is dummy or offscreen, so the
+  renderer exists and its size is real. The `float-cast-overflow` suppression
+  is removed. An explicit `SDL_RENDER_DRIVER` in the environment still wins.
+  A live renderer exposed one more M5GFX lifetime gap: `Panel_sdl::close()`
+  never destroys it, and LeakSanitizer reported its 768 bytes in every
+  scenario. The SDL lifecycle shim (`sim/shim/FurbleSDLWrap.h`) now routes
+  `SDL_CreateRenderer` and `SDL_DestroyRenderer` through
+  `sim/sdl_lifecycle.cpp`, which destroys any renderer still live before
+  `SDL_Quit`. No leak suppression was added.
+- PR 4b, the same job: with the M5GFX report gone, every scenario then stopped
+  on an LVGL `function` report that `sim/ubsan.supp` names. The LVGL entries
+  were written against `managed_components/lvgl__lvgl/src/...`, but CI clones
+  LVGL into `sim/.pio/libdeps/sim/lvgl/src/...`, so they never matched there.
+  A pattern matches anywhere in the path, so the entries now start at
+  `lvgl/src/`, which covers both layouts. The suppressed sites are unchanged.
+
+## Fix: deep-sleep scenarios that assumed a trusted clock
+
+The intervalometer deep-sleep gate (`sim/scripts/run-deep-sleep.sh`) landed on
+2026-11-01, during the Actions outage, and never ran green in CI. Its `stale`,
+`late` and `stable-id` scenarios assumed a trusted wall clock at boot. The
+deep-sleep review fix the same evening made `trustedWallClock()` reject an
+NVS-restored clock, because that sample does not advance across power-off.
+The StickS3 has no RTC chip, so the M5PM1 timer is the authority: a timed-wake
+resume waits `RESUME_WAKE_MARGIN_S` (15 s) from boot and then shoots, whatever
+the record's wake time says. This is the documented firmware policy, and a
+probe showed the interval timer behaving exactly so; the scenarios were wrong.
+
+`stale` and `late` now assert that wait and the following shot, and
+`stable-id` keeps its camera-selection check with a finish bound that covers
+the margin. Rejecting a stale record, or firing a late one at once, needs a
+battery-backed RTC sample at boot, which the simulator does not model; that
+coverage gap is issue #455. The gate passes 3 of 3 runs in an
+Ubuntu 24.04 container.
+
+## Follow-up: firmware clang-tidy reached host headers and vendored checks (#463)
+
+State: implemented.
+
+Any PR touching a header that `FurbleCompanion.cpp`, `FurbleCompanionService.cpp`,
+`FurbleGPS.cpp` or `FurbleUI.cpp` include failed `cppcheck and clang-tidy` with
+"could not compile" on both firmware databases. #465 hit it through
+`FurbleGPS.h`. There were two causes, and neither was the code.
+
+- m5stick-c: clang on Linux appends `/usr/local/include` and `/usr/include`
+  even for the bare `i686-unknown-none-elf` target. newlib's `limits.h` ends in
+  `include_next`, which went through clang's builtin `limits.h` into glibc's,
+  and glibc's needs `__GLIBC_USE`. `tools/firmware_compile_db.py` now adds
+  `-nostdlibinc`, which drops those two directories and keeps clang's builtin
+  headers. Measured in the Ubuntu 24.04 image with clang 18.1.3: the search
+  list loses exactly `/usr/local/include` and `/usr/include`, and
+  `#include <limits.h>` stops at the builtin header.
+- m5stick-s3: nothing failed to compile. `.clang-tidy`'s `HeaderFilterRegex`
+  `(src|lib/furble|include|sim)/` is unanchored, so it matched the `src/` in
+  `.pio/libdeps/m5stick-s3/M5GFX/src/lgfx/...`. M5GFX's checks ran under
+  `WarningsAsErrors` and clang-tidy exited 1. The gate's "did it compile" test
+  read every line containing ` error: `, and a quoted M5GFX source line,
+  `failure(E2&& error)`, counted as a real error. The gate now passes
+  `--header-filter` anchored to the checkout, relative or absolute, and reads
+  only diagnostic lines (`file:line:col: error:`). With Homebrew clang-tidy 23
+  on the StickS3 database, `FurbleGPS.cpp` went from exit 1 to exit 0 with no
+  findings, and a planted owning-memory violation in `include/FurbleGPS.h`
+  was still reported.
+
+Removing the M5GFX noise exposed one real finding in a file those runs
+analyse: `cmdHeap` used `strcmp` as a bool. It now compares with `!= 0`.
+`tests/test_check_static_analysis.py` covers the anchored filter, its use on
+the command line and a quoted source line; all three fail against the old
+tool. `tests/test_firmware_compile_db.py` asserts `-nostdlibinc`.
+
+The `strcmp` fix rewrote a line holding the console literal `"trace"`, and
+`tools/check_pr_hygiene.py` failed it for not updating the console docs. A
+change that adds and removes exactly the same string literals in
+`FurbleConsole.cpp` now warns instead of failing; any changed literal still
+fails. `tests/test_check_pr_hygiene.py` covers both.
+
+The pre-push review found two holes in the first anchored filter. CMake keeps
+`..` in include paths, so the host database reaches headers as
+`tests/host/../../include/X.h`, which no longer matched, and those headers
+would have gone unchecked without a word. The simulator database's
+dependencies live under `sim/.pio/libdeps/sim/`, which still matched through
+`sim/`. The filter now accepts plain segments followed by `..` steps before
+`src/`, `lib/furble/`, `include/` or `sim/`, and refuses `sim/` followed by a
+dot. Homebrew clang-tidy 23 on a small tree reported a planted finding in
+`tests/host/../../include/a.h` and suppressed the same finding in
+`sim/.pio/v/src/v.h`.
+
+Review of #466:
+
+| # | Finding | Outcome | Evidence |
+| --- | --- | --- | --- |
+| 1 | Copilot, `tools/check_pr_hygiene.py:614`: comparing the file's sorted literals lets a swap of two output strings, or a string moved to another command, through as a warning. | Fixed. Each string-bearing line must keep its literals, in order, at its own position, where new line m replaces old line n when m equals n plus the lines added before m minus those removed before n. The same check now also decides a whitespace-only change, which used sorted lines and had the same hole on master. | Tests for a swap and for a move to another hunk fail, and fail against master's checker too; the in-place `strcmp` rewrite still only warns. The rule treats one contiguous replaced block as one place, so a string moved between branches inside a single block still only warns, as it did on master. |
+| 2 | Copilot, `CONTRIBUTING.md:235`: the workflow change must also update `CLAUDE.md` and `AGENTS.md`, and the touched `src/` and `plans/` directories need their `CLAUDE.md` updated. | Fixed. `CLAUDE.md` and `AGENTS.md` describe `-nostdlibinc`, the anchored header filter and the console rule. `src/CLAUDE.md` asks for explicit `strcmp` comparisons, and `plans/CLAUDE.md` records the follow-up section convention. | `CLAUDE.md`, `AGENTS.md`, `src/CLAUDE.md`, `plans/CLAUDE.md` |

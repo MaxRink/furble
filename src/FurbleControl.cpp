@@ -11,9 +11,11 @@
 #include "ble_sim.h"
 #include "power_profiler.h"
 #endif
+#include "FurbleMemoryPressure.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
 #include "FurbleSettings.h"
+#include "FurbleTaskMemory.h"
 #include "FurbleTestSync.h"
 #include "FurbleTimezone.h"
 #include "protocol/UtcTime.h"
@@ -44,6 +46,18 @@ int powerIndex(esp_power_level_t power) {
   return -1;
 }
 
+/** Map an ESP-IDF transmit power level to the camera library level. */
+TxPower txPower(esp_power_level_t power) {
+  switch (power) {
+    case ESP_PWR_LVL_P6:
+      return TxPower::P6;
+    case ESP_PWR_LVL_P9:
+      return TxPower::P9;
+    default:
+      return TxPower::P3;
+  }
+}
+
 const char *stateName(Control::state_t state) {
   switch (state) {
     case Control::STATE_IDLE:
@@ -61,6 +75,8 @@ const char *stateName(Control::state_t state) {
   }
   return "unknown";
 }
+
+std::atomic<Control::admit_hook_t> s_AdmitHook {nullptr};
 
 }  // namespace
 
@@ -324,7 +340,7 @@ Control::state_t Control::connectAll(void) {
     }
 
     setConnectCamera(camera);
-    const bool connected = camera->connect(m_Power, timeout);
+    const bool connected = camera->connect(txPower(m_Power), timeout);
     // Clear on both outcomes. The failure branch used to leave the field set,
     // so it no longer named an attempt in flight, and disconnect() and
     // getConnectingCamera() were handed a stale pointer.
@@ -1201,6 +1217,10 @@ void Control::reapZombieTargets(void) {
   }
 }
 
+void Control::setAdmitHook(admit_hook_t hook) {
+  s_AdmitHook.store(hook, std::memory_order_release);
+}
+
 void Control::addActive(std::shared_ptr<Camera> camera) {
   const std::lock_guard<std::mutex> lock(m_Mutex);
 
@@ -1242,6 +1262,20 @@ void Control::addActive(std::shared_ptr<Camera> camera) {
   camera->clearPairingCancelled();
   camera->resetConnectionState();
 
+  // Admit the whole target before allocating any of it: the Target object and
+  // its command queue, one heap block each, plus the task stack and TCB. Each
+  // block is charged MQTTMemory::BLOCK_OVERHEAD_BYTES, which also covers the
+  // queue's 84-byte control block. This runs under m_Mutex after the
+  // duplicate check, so a duplicate admits nothing and two connecting tasks
+  // never admit against the same heap reading.
+  constexpr size_t TARGET_BYTES = sizeof(Control::Target) + (Target::m_QueueLength * sizeof(cmd_t))
+                                  + (2 * MQTTMemory::BLOCK_OVERHEAD_BYTES)
+                                  + MemoryPressure::CONNECT_TARGET_BYTES;
+  const admit_hook_t admit = s_AdmitHook.load(std::memory_order_acquire);
+  if (admit != nullptr) {
+    admit(TARGET_BYTES);
+  }
+
   auto target = std::make_unique<Control::Target>(camera);
 
   // Create per-target task that will self-delete on disconnect
@@ -1250,7 +1284,7 @@ void Control::addActive(std::shared_ptr<Camera> camera) {
         auto *target = static_cast<Furble::Control::Target *>(param);
         target->task();
       },
-      camera->getName().c_str(), 4096, target.get(), 3, NULL);
+      camera->getName().c_str(), TaskMemory::CAMERA_TARGET_STACK_BYTES, target.get(), 3, NULL);
   if (ret != pdPASS) {
     ESP_LOGE(LOG_TAG, "Failed to create task for '%s'.", camera->getName().c_str());
   } else {
@@ -1584,11 +1618,15 @@ void Control::resetAdaptiveState(void) {
   }
 }
 
+TxPower Control::savedTxPower(void) {
+  return txPower(Settings::load<esp_power_level_t>(Settings::TX_POWER));
+}
+
 void Control::applyPower(esp_power_level_t power) {
   // NimBLETxPowerType::Connection maps to the shared default connection power,
   // so one call covers every link. The controller offers no clean
   // per-connection readback, log the request only.
-  const int8_t dbm = Device::powerLevelToDbm(power);
+  const int8_t dbm = Device::powerLevelToDbm(txPower(power));
   const bool set = NimBLEDevice::setPower(dbm, NimBLETxPowerType::Connection);
   ESP_LOGI(LOG_TAG, "Transmit power requested %d dBm (level %d), set %s", dbm,
            static_cast<int>(power), set ? "ok" : "failed");

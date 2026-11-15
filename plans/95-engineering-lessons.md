@@ -1,5 +1,8 @@
 # 95 engineering lessons
 
+Implementation state (2026-11-13): master has six release envs on ESP-IDF 5.5.3. `esp32-s3-headless` builds in the reproducible
+build workflow, not in the PR firmware matrix.
+
 Durable engineering and workflow notes for furble. The goal is that future
 work, human or agent, does not relearn these the hard way. The CLAUDE.md files
 carry one-line pointers. This document is the detailed home.
@@ -43,6 +46,13 @@ The root CLAUDE.md lists the short form of these. The detail lives here.
 - StickS3 has no 32.768 kHz crystal. BLE falls back to the main crystal for its
   low-power clock. The connected-idle current floor is about 3.3 mA and that is
   final: no firmware change moves it, because the hardware lacks the slow clock.
+- `perf tasks` reports free bytes. Its `stack_high_watermark` is
+  `uxTaskGetStackHighWaterMark`, which ESP-IDF returns as the minimum free
+  stack in bytes, not bytes used. Plans 305, 308 and 311 read it as bytes used.
+  That sized the 8 KiB main stack that overflowed (3,020 free at 12 KiB with
+  MQTT connected meant about 9,268 used) and hid a 3,392-byte plain MQTT
+  worker behind a 3 KiB cut.
+  Used is the configured stack minus the reading.
 - PSRAM on the S3. `SPIRAM_MALLOC_ALWAYSINTERNAL=4096` routes large allocations
   to PSRAM. DMA display buffers must stay `MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL`
   or the display corrupts.
@@ -51,6 +61,22 @@ The root CLAUDE.md lists the short form of these. The detail lives here.
   invalidate and redraw. Icons are compressed and cost a 12.3 KB decompress per
   64x64 draw unless the image cache covers them. Diagnosis tools are
   `CONFIG_LV_USE_REFR_DEBUG` and the console-gated invalidation logger.
+- The ESP system clock survives most soft resets. With `RTC_HRT` time keeping
+  the RTC timer keeps `gettimeofday()` running through `esp_restart()`,
+  panics, most watchdog resets and USB resets. Power-on, brownout, a clock
+  glitch and RTC or super watchdog system resets (also reported as
+  `ESP_RST_WDT`) lose it. Never seed the system clock from an older checkpoint
+  after a reset that kept it. TimeKeeper keeps its last accepted sample in
+  `RTC_NOINIT_ATTR` memory and trusts the running clock when the reset reason
+  and the record CRC allow it, failing closed when the clock reads behind the
+  record. M5Unified overwrites the system clock from an RTC chip inside
+  `M5.begin()`, so on those boards the pre-reset clock is already gone by
+  `TimeKeeper::init()` (plan 139).
+- A value that crossed a reboot loses its authority. The kept clock is carried
+  by the RC slow clock and SNTP can write it directly, so it restores as `RTC`,
+  never as GPS or NTP. Keeping GPS authority locked out every later GPS fix
+  once the kept clock was more than 5 s fast, because equal-priority backward
+  corrections are rejected regardless of uncertainty (plan 139 review).
 
 ## USB and flashing
 
@@ -97,6 +123,25 @@ The root CLAUDE.md lists the short form of these. The detail lives here.
 - The sim had a `Preferences::begin` data race: `handleFor` touched a static map
   before taking `values_mutex`, which caused intermittent SIGSEGV in the
   ui-screenshots capture. The fix widened the lock to cover the map access.
+- Never grow the process environment while another thread can call getenv.
+  glibc walks `environ` without a lock, and a setenv that adds a variable
+  reallocates the array and frees the old one under that walk. The sim's SDL
+  main loop calls getenv thousands of times a second, so a growing setenv on
+  the simulator thread is a use-after-free that shows up as a rare SIGSEGV
+  under load (issue #283). A replace is one pointer store and is safe. The
+  coverage runtime's own `__LLVM_PROFILE_RT_INIT_ONCE` setenv is enough to
+  make the next growth a freeing one. Check every caller, firmware included,
+  and check ordering rather than thread alone: production Timezone's boot
+  `setenv("TZ")` grows the environment after `SDL_Init`, but before
+  `panelReady` releases the loop, so it was ordered and not a live race. The
+  sim creates `TZ` first anyway, so the guard can forbid all growth after
+  `SDL_Init`.
+- On macOS, Homebrew SDL2 is sdl2-compat. It dlopens SDL3 through its own
+  rpath, and the ASan runtime's dlopen interceptor hides that rpath. A
+  sanitized sim then fails to find SDL3, raises a modal desktop dialog per
+  process and aborts. `sim/build.sh` links the SDL3 directory as an rpath into
+  sanitized Darwin builds. Check `otool -l` for it, and prove SDL loads with a
+  single process before any parallel sanitized run on a shared desktop.
 - GitHub Actions cache is branch-scoped. A `pull_request` run cannot restore a
   cache written by a master push, even through a `restore-keys` prefix. For a
   cross-branch baseline, download an artifact from the latest successful master
@@ -107,6 +152,65 @@ The root CLAUDE.md lists the short form of these. The detail lives here.
   not a compile error. A job that builds and links clean can still fail at a
   later runtime or capture step. Broad `error:` greps also match benign M5GFX
   constexpr notes and hide the real failing step.
+- Actions was disabled for three weeks; merges without CI accumulated these
+  failures. GitHub Actions was off on the fork from 2026-10-21 to 2026-11-13,
+  and PRs #411 to #439 merged with no check runs at all. Re-enabling it turned
+  master red in eight jobs with eight separate root causes. #447 and #448
+  fixed two on master; `ci/master-green` fixes the rest:
+  - clang-format (code, #447): twelve sim and host test files were never
+    formatted. CI installs clang-format 21.1.8 from pip; the local 21.1.2
+    agrees with it on every file, so this was not version drift. #447 also
+    added `tools/check_format.py` to `pre_review.py`.
+  - build (m5stick-c) (workflow): the partition-table check reads the stock
+    ESP-IDF CSV from the framework package but ran before the build installed
+    it. It only passed on a warm PlatformIO cache, and every cache expired
+    while Actions was off. The check now runs after the build.
+  - ASan and UBSan host tests (test): the GPX writer builds its path in a
+    64-byte buffer and the test sandbox was an absolute build-tree path, so
+    every path was truncated. The shallow plain build tree hid it; the deeper
+    sanitized tree truncated into the directory itself. The writer now sizes
+    its buffer from the directory and fails on truncation, so the long
+    sandbox stays as the regression test.
+  - Coverage floor (runner drift, #448): compiler-rt now lives in
+    `libclang-rt-18-dev`, which `clang-18` only recommends, and the workflow
+    installs without recommends. The sanitizer runtime was missing and the
+    fuzz targets failed configure. #448 names the package and then fixed the
+    three test and coverage faults behind it; see plan 314.
+  - sim-e2e (simulator model): `memory-pressure-mqtt-shed` asserted a figure
+    measured on macOS. The host MQTT transport allocated its own adapter
+    object, strings and thread on the owner task, and the heap counter charged
+    them as device memory. Their sizes follow the host C++ library and pthread
+    ABI, so the paused figure was 8,497 on macOS, 8,457 on arm64 Linux and
+    8,441 on x86_64 Linux. Every libmosquitto call and the adapter's own
+    objects now run inside a `HostAllocScope`, like every other sim hook
+    production code calls. In their place `esp_mqtt_client_init()` charges
+    what esp-mqtt allocates on the device (3,480 bytes for the StickS3 MQTT
+    config), and destroy releases it.
+  - sim-sanitizers (third-party read of uninitialized memory, then a
+    suppression-path bug): M5GFX's `Panel_sdl` divides by the renderer
+    output size, which SDL never writes when the dummy video driver has no
+    accelerated renderer. The result is
+    stack garbage. clang 18 on ubuntu-24.04 made it an infinite float, which
+    `sim/ubsan.supp` already suppressed; clang 21 on ubuntu-26.04 made it a
+    signed overflow in every scenario. The simulator now asks SDL for its
+    software renderer under a headless driver, so the size is real and both
+    reports are gone. The live renderer then leaked at exit, because M5GFX
+    never destroys it on close, so the SDL shim now destroys live renderers
+    before `SDL_Quit`. Behind it, the LVGL entries in `sim/ubsan.supp` named
+    `lvgl__lvgl/src/...`, the managed_components path, while CI clones LVGL
+    to `sim/.pio/libdeps/sim/lvgl`. They now start at `lvgl/src/`, which
+    matches both. A suppression list must be proven on the CI layout.
+  - Apple (runner retirement): GitHub retired the macos-14 images on
+    2026-11-02 and cancels jobs on that label within a second. The workflow
+    moved to macos-15 with Xcode 16.4.
+- A merged PR whose head has no check runs is now a hard failure.
+  `tools/check_review_threads.py`, the last gate before every merge, also
+  reads the head commit's check rollup. It fails when no check ran, when a
+  check is still running, and when any check ended in anything but success,
+  neutral or skipped. Run against #439 it reports that no CI ran on its head.
+- A green local gate set is not CI. `pre_review.py` does not run the
+  sanitizers or the Linux simulator, so a branch can pass it and still break
+  both. Never merge on local evidence alone; wait for the checks.
 
 ## Multi-agent and git workflow
 

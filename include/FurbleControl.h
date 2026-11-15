@@ -261,8 +261,23 @@ class Control {
 
   /**
    * Add specified camera to active target list.
+   *
+   * A camera whose address is already a target is ignored. Otherwise the
+   * admit hook runs first, under the Control lock, with every internal byte
+   * the new target allocates, and only then is the target built.
    */
   void addActive(std::shared_ptr<Camera> camera);
+
+  /** Called by addActive() before it allocates a target. */
+  typedef void (*admit_hook_t)(size_t bytes);
+
+  /**
+   * Register the admission hook. Boot code registers MemoryPressure::admit();
+   * the host Control harnesses register none. It runs under the Control
+   * lock, so it must not call Control or block. One hook; a later call
+   * replaces it.
+   */
+  static void setAdmitHook(admit_hook_t hook);
 
   /**
    * Get current camera connection attempt.
@@ -361,6 +376,9 @@ class Control {
 
   /** Set the maximum transmit power and reset the adaptive level. */
   void setPower(esp_power_level_t power);
+
+  /** The saved transmit power setting as a camera library level. */
+  static TxPower savedTxPower(void);
 
   /** Enable or disable adaptive connection parameters on active cameras. */
   void setConnSaver(bool enabled);

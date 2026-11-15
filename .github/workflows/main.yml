@@ -326,10 +326,6 @@ jobs:
       - name: Install Dependencies
         run: python -m pip install -r requirements.txt
 
-      - name: Check OTA partition-table invariants
-        if: ${{ matrix.platform == 'm5stick-c' }}
-        run: python3 tools/check_partition_tables.py
-
       - name: Set build environment
         shell: bash
         run: |
@@ -351,6 +347,13 @@ jobs:
             fi
             echo "PlatformIO build failed on attempt $attempt. Retrying once."
           done
+
+      # The m5stick-c table is the stock ESP-IDF partitions_two_ota_large.csv.
+      # The check reads it from the framework package, which only the build
+      # step installs on a cold PlatformIO cache, so it must run afterwards.
+      - name: Check OTA partition-table invariants
+        if: ${{ matrix.platform == 'm5stick-c' }}
+        run: python3 tools/check_partition_tables.py
 
       # Every object is compiled with -fcallgraph-info=su; the walk fails a
       # task whose resolved worst-case stack exceeds its configured size.

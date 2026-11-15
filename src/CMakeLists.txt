@@ -1,4 +1,5 @@
 set(furble_sources
+    FurbleBoard.cpp
     FurbleBootScreen.cpp
     FurbleBootTimeline.cpp
     FurbleBtDebug.cpp
@@ -14,6 +15,7 @@ set(furble_sources
     FurbleEthernet.cpp
     FurbleFeedback.cpp
     FurbleGPS.cpp
+    FurbleGPSUbx.cpp
     FurbleGPX.cpp
     FurbleIMU.cpp
     FurbleIMUMotionBMI270.cpp

@@ -137,10 +137,24 @@ python3 tools/pre_review.py --base origin/master
 
 It runs the diff hygiene scanner, the settings contract scanner, clang-format
 21 on the changed C and C++ files (`tools/check_format.py`), the C++ safety
-scanner, the CI workflow checker, the simulator manifest checker, and the
-scanner unit tests. It fails closed on review-blocking findings. A missing or
-non-21 clang-format fails the gate; install it with
+scanner, the CI workflow checker, the simulator manifest checker, the coupling
+ratchet, and the scanner unit tests. It fails closed on review-blocking
+findings. A missing or non-21 clang-format fails the gate; install it with
 `python3 -m pip install -r .github/workflows/clang-format-requirements.txt`.
+
+The coupling ratchet, `tools/check_coupling_ratchet.py`, counts board identity
+guards, `M5.` calls, `M5.getBoard()` switches and ESP-IDF or NimBLE types in
+public headers, per file, against `tools/coupling_ratchet.json`. A count that
+grows fails. Use a capability macro from `include/FurbleBoardCaps.h` or a
+`Platform` function instead of a new board guard. A count that shrinks also
+fails until you lock it in with
+`python3 tools/check_coupling_ratchet.py --update` and commit the manifest.
+pre_review runs it with `--base`, which also fails on any per-file growth over
+the manifest committed at the base, so `--update` cannot hide growth. A board
+guard counts each board macro on a `#if`, `#ifdef`, `#ifndef` or `#elif` line,
+after joining backslash continuations, plus each `#define` that names one.
+Capability macros must be `#define`d in `include/FurbleBoardCaps.h`; the scan
+covers `sim/` and `tests/host/` as well.
 
 To run it on every push, enable the tracked hook once per clone:
 
@@ -180,6 +194,16 @@ python3 tools/check_review_threads.py --repo owner/name --pr <number>
 
 It queries the GitHub GraphQL API through `gh api graphql` and fails closed on
 API errors, so a missing token or network is never treated as a clean result.
+`--allow-no-checks` reads the workflow path filters with PyYAML, pinned in
+`.github/workflows/ci-checker-requirements.txt`
+(`python3 -m pip install -r .github/workflows/ci-checker-requirements.txt`);
+without it the override fails closed.
+It also fails when the pull request head has no check runs at all, or any
+check is still running or did not pass. Actions was once disabled on the
+fork for three weeks, and pull requests merged with no CI; a head without
+checks is now a hard failure. A pull request whose paths no workflow covers
+(web-installer only, say) passes that rule only with
+`--allow-no-checks "<reason>"`, and the gate prints the reason.
 Do not wire this into offline pre-review or fork CI jobs. The remediation pull
 request itself must pass the same check before it merges. Record the audit in
 its `plans/NN-review-feedback.md` table.
@@ -192,7 +216,11 @@ and `tools/check_fuzz.py` rejects a host build configured that way. The `sim-san
 on Linux. LeakSanitizer does not run on macOS, so reproduce a leak report in a
 Linux container with `FURBLE_SIM_SANITIZE=address,undefined`, the job's
 `ASAN_OPTIONS`, and `sim/lsan.supp` and `sim/ubsan.supp`. Those files list only
-third-party sites, each with its reason. The scanners cover absolute
+third-party sites, each with its reason. A sanitized macOS build links an
+rpath to SDL3, because Homebrew's sdl2-compat cannot find SDL3 under the ASan
+dlopen interceptor and shows a dialog instead; confirm it with `otool -l`
+first. The sim-e2e S3 job also runs `sim/scripts/run-env-order.sh`, which
+fails any environment growth while SDL is live. The scanners cover absolute
 workstation paths, whitespace and generated artifacts, debug leftovers,
 behavior/doc/test coupling, settings defaults and board branches, wire-ID
 ledger drift, container bounds, unsafe filesystem removal, low-byte sentinel
@@ -211,7 +239,7 @@ python3 tools/check_static_analysis.py --base origin/master   --build-dir .pio/s
 ```
 
 The gate runs cppcheck and clang-tidy on changed files under `src/`,
-`lib/furble/`, `include/`, and `sim/`. `.clang-tidy` records the check set;
+`lib/furble/`, `lib/hal/`, `include/`, and `sim/`. `.clang-tidy` records the check set;
 `tools/check_static_analysis.py` records the cppcheck suppressions and their
 reasons. `static-analysis.yml` runs the same command on pull requests that
 touch C/C++ paths.
@@ -220,10 +248,15 @@ The firmware databases cover the ESP-IDF-only sources, such as the WiFi,
 Ethernet, IR and IMU drivers, that the host and simulator builds never
 compile. `tools/firmware_compile_db.py` rewrites the Xtensa GCC commands for
 clang: an i686 stand-in target, `__XTENSA__` defined, GCC-only flags dropped,
-the toolchain's libstdc++ and newlib as system headers, and `-w` because GCC
+the toolchain's libstdc++ and newlib as system headers, `-nostdlibinc` so
+clang never falls through to the host's `/usr/include`, and `-w` because GCC
 owns firmware compiler warnings. A changed source that no database compiles
 fails the gate; the only exemptions are listed in `NO_COMPILE_DB` with their
-reasons.
+reasons. The gate passes clang-tidy a header filter anchored to the checkout,
+because `.clang-tidy`'s `HeaderFilterRegex` also matched `src/` inside
+vendored paths such as `.pio/libdeps/<env>/M5GFX/src/` and
+`sim/.pio/libdeps/sim/`. The anchored filter still accepts the `..` steps
+CMake keeps in include paths, such as `tests/host/../../include/`.
 
 `cppcoreguidelines-owning-memory` flags C++ `new` and `delete` outside a
 `std::unique_ptr`. FILE handles and the C allocators are left to the
@@ -259,8 +292,14 @@ each task's worst-case stack from the `-fcallgraph-info=su` call graph against
 `tools/stack_budget.json`. Firmware CI runs it after every build. Add a task
 there when you create one. A recursion or an `alloca`/VLA frame on a task's
 path fails the check until `recursion_bounds` or `dynamic_bounds` in the
-manifest cites a bound from source. See `docs/stack-budget.md` for the
-indirect call rules, the bounds and the limits.
+manifest cites a bound from source. A path that ends in `abort` or an assert
+also pays the ESP-IDF panic handler, which runs on the same stack. Cut a call
+edge with `infeasible_calls` only when you can cite the guard that makes it
+unreachable by file and line. A `-debug` env is checked against the task's
+`debug_stack_bytes` and `sdkconfig.debug`; a task that needs more in debug
+images gets a named `..._DEBUG_EXTRA` under `FURBLE_DEBUG_BUILD` in the file
+that owns its stack. See `docs/stack-budget.md` for the indirect
+call rules, the bounds, the panic rule and the limits.
 
 `python3 tools/check_size_budget.py --env <env>` then checks that
 `firmware.bin` fits its app partition and that static DRAM
@@ -302,8 +341,12 @@ CI obtains each suite's certified paths from that manifest; do not introduce a
 directory glob or hand-maintained suite list as an alternate source of truth.
 The power-gate comparator applies its `--threshold` on both increases and
 decreases. The default 10% value is compatibility policy, not calibrated
-hardware noise. Run `python3 -m unittest tests/test_power_compare.py` for its
-focused regression coverage.
+hardware noise. It also guards activity: timer fires and invalidated or flushed
+pixels fail beyond `--activity-threshold` (default 25%, plus 2 fires or 1,024
+pixels of absolute slack). A scenario may opt out of named metrics, with a
+reason, in `tools/power-model/activity-optout.json`. Run
+`python3 -m unittest tests/test_power_compare.py` for its focused regression
+coverage.
 Manual PlatformIO dispatches run the complete firmware matrix. They do not
 attempt to infer changed paths without a pull request or push comparison base.
 

@@ -6,6 +6,7 @@ class GPS {
  public:
   static GPS &getInstance(void);
   static void init(void);
+  static bool setRailPower(bool enable);
   void update(void);
   void reloadSetting(void);
 };

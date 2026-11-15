@@ -221,7 +221,20 @@ void WebUI::initEarly(void) {
 }
 
 void WebUI::init(void) {
+  MemoryPressure::setEscalateHook(&WebUI::wakeForPressure);
   getInstance().reloadSetting();
+}
+
+void WebUI::wakeForPressure(void) {
+  WebUI &self = getInstance();
+  TaskHandle_t task = nullptr;
+  {
+    const std::lock_guard<std::mutex> lock(self.m_Mutex);
+    task = self.m_Task;
+  }
+  if (task != nullptr) {
+    xTaskNotifyGive(task);
+  }
 }
 
 void WebUI::reloadSetting(void) {
@@ -387,7 +400,17 @@ void WebUI::task(void) {
         }
       }
     }
-    ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(TASK_PERIOD_MS));
+    // Network, credential and memory readiness are polled. A disabled WebUI
+    // has nothing to poll: the server is stopped and its held commands are
+    // released. reloadSetting() and the hold and release timers notify this
+    // task, so block until one of them does.
+    if (m_Enabled.load()) {
+      ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(TASK_PERIOD_MS));
+    } else {
+      TaskWatchdog::unsubscribe();
+      ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+      TaskWatchdog::subscribe();
+    }
   }
 }
 
@@ -1666,7 +1689,10 @@ void WebUI::settingApplied(uint8_t wireId) {
     case Settings::GPS_ASSIST:
     case Settings::GPS_HOLD:
     case Settings::GPS_EXTRAP:
+    case Settings::GPS_ANA:
     case Settings::GPS_PLATFORM:
+    case Settings::GPS_GNSS:
+    case Settings::GPS_PSM:
       // The UI task owns the GPS page caches, including the Extrapolate
       // control, so the reload has to run there rather than on the HTTPS task.
       UI::sendRequest(UI::Request::GPS_RELOAD, 0);

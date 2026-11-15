@@ -21,9 +21,9 @@ IDs are lane local (`BLE-nn`). The coordinator maps them to `P-nnn` rows in
 Read for this lane:
 
 - `plans/96-wifi-bt-ble-hardening.md`, `plans/98-power-optimization-audit.md`,
-  `plans/98b-power-followup.md`, `plans/158-sim-scheduler-parity.md`
+  `plans/implemented/98b-power-followup.md`, `plans/158-sim-scheduler-parity.md`
 - `plans/implemented/07-ble-sleep.md`, `plans/implemented/08-scan-tuning.md`, `plans/implemented/09-reconnect-backoff.md`,
-  `plans/10-adaptive-conn-params.md`, `plans/11-adaptive-tx-power.md`,
+  `plans/implemented/10-adaptive-conn-params.md`, `plans/implemented/11-adaptive-tx-power.md`,
   `plans/65-bt-coexistence.md`, `plans/implemented/77-battery-saver-profile.md`
 - `lib/furble/Scan.cpp`, `lib/furble/Scan.h`, `lib/furble/Camera.cpp`,
   `lib/furble/Camera.h`, `lib/furble/CameraList.cpp`, `lib/furble/Device.cpp`,
@@ -70,9 +70,10 @@ not quantified.
    3.6 per second. How much of the 3.3 mA floor that removes is unmeasured, and
    the model cannot attribute it.
 4. Companion advertising is small at any instant and unbounded in time. The
-   pairing window advertises at 100 ms for 2 minutes, and the reconnect
-   advertisement runs at 1 s forever while the companion is enabled, bonded, and
-   not connected.
+   pairing window advertises at 100 ms for 2 minutes. The reconnect
+   advertisement runs at 100 ms for 60 s after enable, boot, a disconnect or
+   any button press, then at 1022.5 ms while the companion is enabled, bonded,
+   and not connected.
 5. The power model cannot see any of this today. The only function that charged
    a connected BLE floor, `profilerSetRadioConnected`, has had no caller since
    the production connection stack replaced the simulator camera
@@ -132,7 +133,7 @@ interval.
 | Targeted reconnect | Full forced | 100 percent | Up to 60 s per attempt |
 | Connection initiation | 10 / 10 ms | 100 percent | Up to the connect timeout, 30 s default or 5 s with infinite reconnect |
 | Companion pairing | 100 ms advertising interval, 3 channels | about 1 to 1.5 percent | Up to 120 s |
-| Companion reconnect | 1000 ms advertising interval, 3 channels | about 0.1 to 0.15 percent | Until connected, disabled, or a camera scan starts |
+| Companion reconnect | 100 ms for 60 s after enable, boot, disconnect or any button press, then 1022.5 ms, 3 channels | about 1 to 1.5 percent fast, then about 0.1 to 0.15 percent | Until connected, disabled, or a camera scan starts |
 | Connected fast | 30 to 50 ms interval | event rate 20 to 33 per second | Whole session unless the saver runs |
 | Connected idle | 250 to 300 ms interval | event rate 3.3 to 4 per second | After 10 s quiet with `CONN_SAVER` on |
 
@@ -583,7 +584,7 @@ distribution after a 30 s idle gap. `debug camera <n>` to confirm the live
 interval, not just the requested one.
 
 **Citation.** `lib/furble/Camera.h:469-502`, `lib/furble/Camera.cpp:472-596`;
-`plans/10-adaptive-conn-params.md`; `plans/98-power-optimization-audit.md`;
+`plans/implemented/10-adaptive-conn-params.md`; `plans/98-power-optimization-audit.md`;
 `plans/00-hardware-experiments.md`.
 
 ### BLE-12 Raise the fast interval floor
@@ -620,7 +621,7 @@ case. `debug camera` interval readback. The shared P06 and K-family rows.
 
 **Citation.** `lib/furble/Camera.h:469-472`, `:504-510`;
 `components/bt/host/nimble/nimble/nimble/host/include/host/ble_gap.h:113-122`;
-`plans/10-adaptive-conn-params.md` hardware verification (the 24-40 unit log);
+`plans/implemented/10-adaptive-conn-params.md` hardware verification (the 24-40 unit log);
 `plans/65-bt-coexistence.md` recommendation 2.
 
 ### BLE-13 Idle interval above 300 ms
@@ -653,7 +654,7 @@ UI/console reporting and the idle timer.
 Geotag freshness against `MAX_AGE_MS`. 60 minute soak. The shared P07 to P09
 rows.
 
-**Citation.** `lib/furble/Camera.h:472-502`; `plans/10-adaptive-conn-params.md`
+**Citation.** `lib/furble/Camera.h:472-502`; `plans/implemented/10-adaptive-conn-params.md`
 idle-profile latency arithmetic; `plans/65-bt-coexistence.md` event-loss data.
 
 ### BLE-14 Fast profile latency 1 (no change for power)
@@ -679,7 +680,7 @@ camera, not a furble energy lever.
 conn-saver host tests and a shutter latency A/B cover it.
 
 **Citation.** `lib/furble/Camera.h:469-483`;
-`plans/10-adaptive-conn-params.md` "peripheral latency lets the peripheral
+`plans/implemented/10-adaptive-conn-params.md` "peripheral latency lets the peripheral
 skip".
 
 ### BLE-15 Supervision timeout (no change as a power lever)
@@ -708,7 +709,7 @@ fixed the false-connected bug family.
 cover the behavior.
 
 **Citation.** `lib/furble/Camera.h:484-502`; `lib/furble/Camera.cpp:889-911`;
-`plans/10-adaptive-conn-params.md` peer timeout cap section.
+`plans/implemented/10-adaptive-conn-params.md` peer timeout cap section.
 
 ### BLE-16 2M PHY
 
@@ -899,12 +900,14 @@ late attempt rejected.
 minutes after enable or disconnect), or raise the interval from 1 s to 2 to 5 s.
 Re-arm on a user action or a companion app attempt.
 
-**Current behavior.** `startReconnectAdvertising` advertises at
-`setAdvertisingInterval(1600)`, 1000 ms, with a connect whitelist, and calls
-`m_Advertising->start(0)`, which is no timeout
-(`src/FurbleCompanion.cpp:347-369`). It runs while the companion is enabled,
-bonded, not connected, and the pairing window is closed, and is stopped only
-when a companion connects, the companion is disabled, or a camera scan starts.
+**Current behavior.** `startReconnectAdvertising` advertises unfiltered and
+calls `m_Advertising->start(0)`, which is no timeout. Commit `c0024761` made it
+100 ms for macOS visibility. Plan 111 (2026-11-13) bounds that cost: the
+interval is 100 ms for 60 s after enable, boot, any disconnect or any button
+press, then 1022.5 ms (`include/FurbleCompanionAdvertising.h`). It runs while the
+companion is enabled, bonded, not connected, and the pairing window is closed,
+and is stopped only when a companion connects, the companion is disabled, or a
+camera scan starts. The slow step is untested on iOS and macOS hardware.
 
 **Evidence.** Inferred, code reading plus arithmetic.
 
@@ -1047,7 +1050,7 @@ alone.
 
 **Citation.** `lib/furble/Device.cpp:9-20`, `src/FurbleSettings.cpp:424-432`;
 `tools/power-model/board-currents.yaml` `esp32s3_radio.ble_tx_*`;
-`plans/11-adaptive-tx-power.md`.
+`plans/implemented/11-adaptive-tx-power.md`.
 
 ## Connect and subscription cost
 
@@ -1644,11 +1647,11 @@ Plans:
 - `plans/00-hardware-experiments.md` (3.3 mA measured floor, 32 kHz crystal
   absent)
 - `plans/implemented/07-ble-sleep.md`, `plans/implemented/08-scan-tuning.md`,
-  `plans/implemented/09-reconnect-backoff.md`, `plans/10-adaptive-conn-params.md`,
-  `plans/11-adaptive-tx-power.md`, `plans/65-bt-coexistence.md`,
+  `plans/implemented/09-reconnect-backoff.md`, `plans/implemented/10-adaptive-conn-params.md`,
+  `plans/implemented/11-adaptive-tx-power.md`, `plans/65-bt-coexistence.md`,
   `plans/implemented/77-battery-saver-profile.md`,
   `plans/96-wifi-bt-ble-hardening.md`, `plans/98-power-optimization-audit.md`,
-  `plans/98b-power-followup.md`, `plans/158-sim-scheduler-parity.md`
+  `plans/implemented/98b-power-followup.md`, `plans/158-sim-scheduler-parity.md`
 
 Datasheets and published measurements, as recorded in
 `tools/power-model/README.md` and `board-currents.yaml`:

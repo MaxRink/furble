@@ -55,11 +55,11 @@ bool testResetClearsStaleConnectedFlag() {
   std::cout << "test: resetConnectionState clears a stale connected flag (BUG C)\n";
   const int before = g_Failures;
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
 
   Furble::Host::FujifilmVirtualCamera peer;
   auto camera = makeCamera(peer);
-  if (!check(camera->connect(ESP_PWR_LVL_P3, 1000), "the camera connects")) {
+  if (!check(camera->connect(Furble::TxPower::P3, 1000), "the camera connects")) {
     NimBLEDevice::resetMock();
     return false;
   }
@@ -87,7 +87,7 @@ bool testResetClearsStaleConnectedFlag() {
   // With the flag cleared, a fresh connect runs the real GATT handshake instead
   // of short-circuiting to connected.
   peer.clearEvents();
-  check(camera->connect(ESP_PWR_LVL_P3, 1000), "the fresh connect establishes a real link");
+  check(camera->connect(Furble::TxPower::P3, 1000), "the fresh connect establishes a real link");
   check(camera->isConnected(), "the fresh connect reports connected");
   check(peer.connected() && peer.tokenAccepted(), "the fresh connect performs the real handshake");
 

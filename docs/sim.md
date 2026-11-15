@@ -267,8 +267,15 @@ their matching environment variables, even when a wrapper inherits both. The
 release fuzzer wrapper is `sim/scripts/run-fuzz.sh`; it uses
 `FURBLE_FUZZ_SEEDS`, `FURBLE_FUZZ_XFAIL_SEEDS`, `FURBLE_FUZZ_STEPS`,
 `FURBLE_FUZZ_SEED_TIMEOUT`, `FURBLE_FUZZ_REPEAT_SEED`, and `FURBLE_SIM_BIN`.
-`sim/scripts/run-fuzz-restart.sh` repeats the measured 135x240 seed 2 walk up
-to five times and requires one run to resume after a production UI restart.
+`sim/scripts/run-fuzz-restart.sh` runs the 135x240 seed 2 walk with
+`FURBLE_FUZZ_RESTART_STEP=200` and requires it to resume after a production UI
+restart. That knob replaces the walk's 200th first-boot event with a click on the
+Sensors page "Restart to apply" button: the fuzzer opens the page with
+`nav sensors`, finds the button by its label and sends the production
+`LV_EVENT_CLICKED`, which runs `Platform::restart()`. Unset, every walk is
+unchanged. The
+random walk alone reaches a Restart button on some hosts only, which is why
+the check no longer waits for it.
 
 A fuzzer event that activates a firmware restart follows the real simulator
 reboot path. The process first joins the simulator tasks, keeps the NVS file,
@@ -316,6 +323,24 @@ with the real fatal status. Set `FURBLE_SIM_CRASH_STEP=<index>` to fault
 deliberately at a script step; that is the self test for the reporter and has
 no other use.
 
+`FURBLE_SIM_SCHED_TRACE=1` names a wait the scheduler cannot see. Whenever
+the scheduler stops waiting for a task, it prints `SIM SCHED TRACE:` with the
+event, the task, the virtual clock, the task table and that task's native
+backtrace. That happens when the 2 s stall breaker parks the turn holder, or
+when a UI-task handoff runs out its 250 ms host bound. The handoff event names
+the turn holder, or the next ready task when nothing holds the turn. Either
+event lets the virtual clock move while that task makes no progress, so the
+backtrace shows the host lock or condition it is blocked in. A breaker park
+always means a wait the scheduler cannot see. A handoff expiry under host
+load can instead be wake latency: the backtrace then shows the task inside
+the scheduler's own wait, or a new task thread that has not started. The
+trace is snapshotted under the scheduler lock and printed after it is
+released, and it changes no scheduling decision. It costs host time while it
+prints, so a traced run is not timing-identical to one with the trace off.
+This is how the issue #289 wait was found: every cancel in the Fujifilm Secure and
+reconnect sweeps parked the control task inside `Scan::stop()`, on a plain
+condition variable waiting for the radio task.
+
 `FURBLE_SIM_SDL_STEP_DETECT=1` restores the M5GFX debugger-detector thread,
 which is off by default. The detector infers that a debugger has stopped the
 process when a 1 ms `SDL_Delay` overshoots 64 ms, which a loaded host does
@@ -334,6 +359,11 @@ with that instruction if neither is present.
 For an instrumented UI-fuzzer build, set `FURBLE_SIM_SANITIZE` to a clang
 sanitizer list and use a separate `FURBLE_SIM_BUILD_DIR`, for example
 `FURBLE_SIM_SANITIZE=address,undefined`.
+On macOS a sanitized build links an rpath to the SDL3 library directory.
+Homebrew SDL2 is sdl2-compat, which dlopens SDL3 through its own rpath, and the
+ASan dlopen interceptor hides that rpath. Without the link rpath every
+sanitized process shows a modal "Failed loading SDL3 library" dialog and
+aborts.
 
 `FURBLE_SIM_COVERAGE=1` builds with clang source-based coverage instead. Only
 firmware translation units are instrumented, so LVGL and M5GFX stay at full
@@ -440,7 +470,25 @@ which leaves every scenario written before the receiver model unchanged),
 picks the GSV/GSA fixture and `gps_fix_date` picks the fix burst; both are
 detailed under the receiver model below. `gps_uart_chunk` serves the burst that
 many bytes at a time, paced, so a sentence spans several reads as it does off a
-real UART.
+real UART. `gps_reader_hold_ms` holds the GPS cycle snapshot reader
+(`GPS::getCycleStatusSnapshot()`, which `isDegraded()` and the UI's once a
+second `GPS::update()` use) for that many milliseconds of host time. It models a slow
+reader overlapping the GPS task. Readers once held `m_CycleMutex` there and the
+task dropped a consumed UART event while they did; `e2e/gps-reader-hold.txt`
+seeds 30 and asserts the cycle never degrades.
+`gps_model` picks the receiver: `casic` (default), `m10`, `m10-mia` or `nmea`.
+The M10 options `gps_m10_backup` (V_BCKP keeps BBR over a rail cut),
+`gps_m10_flash` (UPD-SOS has a flash), `gps_m10_hot` (the first start is hot)
+and `gps_m10_unknown_key` (`20910007`, `10230001` or `20d00001`, a key the
+firmware refuses) are described under the virtual u-blox M10 below.
+`gps_gnss` and `gps_psm` are byte seeds and `gps_ana` a boolean seed for the
+u-blox constellation mask, power save and AssistNow Autonomous settings.
+`gps_rail_fixed` models a board whose GPS rail cannot be cut (the Core IP5306 or
+a refused PMIC request), so `Platform::canCutGpsRail()` reports false.
+`gps_rail_refused` also keeps the rail on but leaves `canCutGpsRail()` true: the
+board can cut the rail, and the PMIC refuses one request (a Core2 on a low
+battery). `gps_m10_unresolved` makes the virtual M10 report a
+3D fix whose time is valid but not fully resolved.
 All boolean seeds, including `gps_uart_noise`, reject malformed values during
 scenario loading.
 
@@ -553,13 +601,14 @@ The MQTT stack model is opt-in with `mqtt_owner_stack` and `mqtt_worker_stack`
 byte counts, plus `mqtt_tls`, `mqtt_ha` and `mqtt_buffer`. The model fails
 closed when the owner stack is below 10,240 bytes or a buffer is above 2,048
 bytes. `main_stack` and `main_high_water` set the modeled main stack and the
-combined MQTT-path high-water; the default is 12,288 / 3,476, and the pre-fix
-regression seeds 8,192 / 8,500 to report `main_overflow`. `mqtt_expect_overflow`
-set to `true` is the deliberate historical-overflow override used by the 4 KiB
+bytes it uses; the default is 12,288 / 9,268 (`perf tasks` left 3,020 of
+12,288 bytes free with MQTT connected), and the pre-fix regression seeds
+8,192 / 9,268 to report `main_overflow`. `mqtt_expect_overflow` set to
+`true` is the deliberate historical-overflow override used by the 4 KiB
 and 6 KiB regression scenarios. `companion_enabled` seeds the companion state
 as enabled at boot, with its task and GATT database already in the seeded
 heap. `action companion-enable` on a companion that was off at boot runs the
-production `CompanionMemory::startGate` and charges the retained 3 KiB task and
+production `CompanionMemory::startGate` and charges the retained 3,840-byte task and
 4 KiB GATT database once; `action companion-disable` keeps both.
 
 `ble_peers` selects the virtual BLE radio topology from a strict allowlist:
@@ -987,6 +1036,7 @@ answer reached the stack:
 | --- | --- |
 | `ble.pairing_answers` | Count of numeric-comparison answers injected into NimBLE. |
 | `ble.pairing_answer` | `accept`, `reject`, or `none` when nothing has been injected. |
+| `companion.boosts` | Count of companion fast-advertising boosts the UI requested, one per physical press edge. A press counts only while no other input is held, so a touch-board tap that also drives a synthesized button counts once. The simulator has no advertising cadence. |
 
 `ui.gps_source` and `gps.source` deliberately report different vocabularies.
 `gps.source` is `GPS::sourceName()`, the receiver's own state: `uart`,
@@ -1261,6 +1311,22 @@ docs capture runs. `gps.fresh_fixes_parsed` counts parser-accepted fresh fixes
 for the session, while `gps.duty_wake_fixes_parsed` counts only fixes accepted
 by a duty-cycle wake burst after `STANDBY` or `RAIL_OFF`. The duty-wake counter
 lets `gps-standby-wake` assert the wake independently of the acquisition fix.
+`gps.readers_lock_free` holds the GPS cycle mutex on the UI thread and calls
+`isDegraded()`, `getCycleStatusSnapshot()` and `getReceiverStatus()` on a
+helper thread; it is `yes` when all three return. `gps-reader-hold` asserts
+it, because the scenario's timing reaches only the reader `GPS::update()`
+calls, not the GPS Data page's.
+
+`gps.duty_settled` is `yes` once the duty cycle can send no further command
+for a fix it already has: the fake UART has no bytes or receive event
+pending, the GPS task holds no bytes it has not parsed, the UI has pushed the
+latest fix, and the GPS task has consumed the duty request and left the code
+that acts on it. Use it, not `gps.state
+standby`, before clearing the UART journal: a duty wake does not relabel
+`gps.state`, so it reads `standby` through the wake burst while that burst's
+`PCAS12` is still to come. It reads no cycle state: a wake that gets no burst
+goes degraded and never returns to `STANDBY`, and a request can be consumed in
+the same pass that starts a burst, before that state is published.
 
 Phase 2 adds the receiver model and its queries. `gps.receiver` reports
 `unknown`, `detecting`, `present` or `absent`, `gps.baud` reports the rate the
@@ -1298,6 +1364,60 @@ MON-HW poll, optionally answered with a truncated payload) and
 `gps-eph-corrupt` (flip one byte of the last frame in the stored ephemeris
 cache, so the reload path has to refuse the whole blob rather than replay up to
 the damage).
+
+#### Virtual u-blox M10
+
+`seed gps_model` selects what is on the port: `casic` (the default, the AT6668
+model above, so every older scenario is unchanged), `m10` (a virtual MAX-M10S),
+`m10-mia` (a virtual MIA-M10Q) or `nmea` (a receiver that prints NMEA and
+answers no binary protocol at all). The M10 model is `sim/ubx_m10.{h,cpp}`, a
+UBX state machine with no clock or UART of its own; `tests/host` drives the
+same object in `gps-ubx-m10`. It answers MON-VER, keeps a RAM, BBR and default
+configuration layer, applies the CFG-VALSET validity rules of the M10
+documents (at least one major GNSS, BeiDou B1I excludes B1C and GLONASS, no
+power save with B1C, rate at least 25 ms, PSMOO period at least 5 s, PSMCT at
+1 Hz, 2 Hz or 2 to 10 s) and answers ACK-ACK or ACK-NAK, answers VALGET per
+layer, honours RXM-PMREQ software standby only with the force flag, treats
+CFG-RST as an unacknowledged restart or GNSS stop, and answers UPD-SOS. It
+ignores CASIC frames and `$PCAS` sentences. Its epochs carry the canned NMEA
+fix plus NAV-PVT and NAV-SAT when CFG-MSGOUT enables them, at CFG-RATE-MEAS, or
+at the PSMOO update period.
+
+The start type follows the data sheet: cold 27 s, hot 1 s, AssistNow
+Autonomous 4 s, and warm 25 s, which M10 does not publish and is an assumption.
+A rail cut keeps BBR and the RTC only with `seed gps_m10_backup true` (V_BCKP).
+`gps_m10_flash true` gives UPD-SOS a flash to save to; without it a backup is
+answered "not acknowledged". `gps_m10_hot true` makes the first power-up hot,
+which keeps scenarios short. `gps_m10_unknown_key` names a key the receiver firmware does not know
+(`20910007` NAV-PVT output, `10230001` AssistNow Autonomous, `20d00001` power
+save mode), so the VALSET and VALGET carrying it are
+refused. The firmware tells the fake when it switches the Port A rail, the one
+hardware boundary the host has no other way to see.
+
+Queries: `m10.model`, `m10.state` (`off`, `on`, `stopped`, `standby`),
+`m10.start` (`cold`, `warm`, `hot`, `assisted`), `m10.fixed`, `m10.period_ms`,
+`m10.avg_ua` (average supply current since boot from the data sheet figures),
+the counters `m10.valsets`, `m10.naks`, `m10.valgets`, `m10.pmreqs`,
+`m10.sos_creates`, `m10.sos_polls`, `m10.monver_polls`, `m10.resets`,
+`m10.cold_starts`, `m10.warm_starts`, `m10.hot_starts`, `m10.uart_wakes` (standby
+wakes caused by a received byte), and the configuration
+database as `m10.ram.<hex key>` and `m10.bbr.<hex key>` (`unset` when BBR has
+no value). On the firmware side `gps.backend` reports `unknown`, `detecting`,
+`nmea` or `ubx`, `gps.from_pvt` whether the snapshot came from NAV-PVT,
+`gps.hacc_mm` the NAV-PVT horizontal accuracy or `none`, and `gps.ubx.firmware`
+(spaces as underscores), `gps.ubx.module`, `gps.ubx.verified`,
+`gps.ubx.sos_restore`, `gps.ubx.sos_backup`, `gps.ubx.naks` and
+`gps.ubx.fix_type` the UBX status. What the last configuration sent is
+`gps.ubx.gnss`, `gps.ubx.psm`, `gps.ubx.rate_ms`, `gps.ubx.ana`,
+`gps.ubx.gnss_refused`, `gps.ubx.psm_refused`, `gps.ubx.rate_clamped`, and
+`gps.ubx.backup` reports `Platform::hasGpsBackupSupply()`, all `none` before the
+first configuration. The modelled board keeps V_BCKP exactly when
+`gps_m10_backup` is set, and can cut its rail unless `gps_rail_fixed` is set or
+the build models the Core. With `gps_rail_refused` it reports that it can, and
+the cut still leaves the rail on. `gps.time_resolved` reports whether the snapshot
+time may set the clock, and `time.gps` whether the wall clock was last set
+from GPS. `uart.ubx_polls` counts MON-VER detection
+polls the driver wrote.
 
 ## Fault injection and fuzzing
 
@@ -1373,9 +1493,17 @@ whatever the production stack does after a fault is what the scenario observes.
   keeps the `FURBLE_SIM_PREFS` store it inherited rather than wiping a fresh
   one, so the reboot reads the flash the previous boot wrote. It lives exactly
   one boot; a value outside the script's step range fails the run with status 2.
-  `sim/scripts/run-env-order.sh` can guard each mutation with a Linux
-  `LD_PRELOAD` interposer. That check establishes environment ordering only; it
-  does not establish that an environment race caused a SIGSEGV.
+  `sim/scripts/run-env-order.sh` guards these mutations with a Linux
+  `LD_PRELOAD` interposer, and its `growth` target rejects any variable added
+  by setenv or putenv, any unsetenv, and clearenv, from any caller while SDL
+  is live. The sim-e2e S3 job runs it. glibc's getenv walks `environ` without
+  a lock and the SDL main loop calls it thousands of times a second, so a
+  growing setenv on another thread frees the array under that walk (issue
+  #283). Production
+  Timezone's boot `setenv("TZ")` runs after `SDL_Init` but before `panelReady`
+  releases the main loop, so it is ordered before any loop getenv. `main()`
+  creates `TZ` first so every `TZ` write is a replace, and the guard can
+  enforce the stricter rule: no growth after `SDL_Init`.
 - `Platform::restart()` uses the same post-teardown re-exec seam. Interactive
   restarts have no script continuation; scripted UI restarts defer arming until
   the driver records the next step. Fuzz owners must call
@@ -1491,7 +1619,10 @@ boots. Build the host targets and run the pull-request budget:
 ```sh
 cmake -S tests/host -B /tmp/furble-fuzz-host
 cmake --build /tmp/furble-fuzz-host -j8 \
-  --target webui_fuzz companion_fuzz mqtt_fuzz ota_mqtt_protocol_test
+  --target webui_fuzz companion_fuzz mqtt_fuzz ota_mqtt_protocol_test \
+           settings_migration_fuzz wifi_policy_fuzz \
+           bt_debug_journal_s3_test bt_debug_journal_s3_fallback_test \
+           settings_nvs_roundtrip_test gps_ubx_fuzz
 python3 tools/check_fuzz.py --smoke \
   --host-build /tmp/furble-fuzz-host \
   --mqtt-binary sim/build-mqtt/furble-sim

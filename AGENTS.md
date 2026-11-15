@@ -2,8 +2,8 @@
 
 This file is for coding agents. The full guide is `CLAUDE.md`; read it first.
 Directory-specific rules live in the `CLAUDE.md` of each directory you touch
-(`src/`, `include/`, `lib/furble/`, `sim/`, `web-installer/`, `components/icons/`,
-`plans/`).
+(`src/`, `include/`, `lib/furble/`, `lib/hal/`, `sim/`, `web-installer/`,
+`components/icons/`, `plans/`).
 
 ## Review and merge gate
 
@@ -15,6 +15,11 @@ acceptable. The online gate is
 `python3 tools/check_review_threads.py --repo owner/name --pr N`; it fails
 closed on API errors and is intentionally not part of the offline pre-review or
 fork CI jobs. The remediation PR must pass it before merge.
+The same gate fails when the PR head has no check runs, or any check is
+still running or did not pass, so merging without CI is never silent. Actions
+was off from 2026-10-21 to 2026-11-13 and PRs merged with no CI; see
+`plans/95-engineering-lessons.md`. A PR whose paths no workflow covers (web-installer only, say) passes the
+no-checks rule only with `--allow-no-checks "<reason>"`, which is printed.
 
 ## Documentation mandate
 
@@ -31,13 +36,22 @@ CI trigger changes must keep validation workflows usable for stacked pull
 requests. Keep pull request jobs path-filtered and read-only for fork safety,
 and run `python3 tools/check_ci_workflows.py` after changing workflow triggers.
 The pre-review gate is `python3 tools/pre_review.py --base origin/master`; run
-it before pushing. It includes clang-format 21 on the changed C and C++ files. `git config core.hooksPath .githooks` runs it from
+it before pushing. It includes clang-format 21 on the changed C and C++ files
+and the coupling ratchet: a per-file board guard, `M5.` call, `M5.getBoard()`
+or public header ESP/NimBLE type count may not grow, and a reduction is locked
+in with `python3 tools/check_coupling_ratchet.py --update`. pre_review passes
+`--base` to it, so `--update` cannot absorb growth over the base manifest.
+`git config core.hooksPath .githooks` runs it from
 `.githooks/pre-push` on every push; the tracked `.claude/settings.json` sets
 that hook path for Claude Code sessions through `GIT_CONFIG_*` env vars. `pre-review.yml` runs the same scanners in CI, and
 `host-sanitized.yml` runs every host test except the two ThreadSanitizer probes
 under ASan/UBSan when C++ paths change; `main.yml` runs those probes.
 The `sim-sanitizers` job runs the e2e suite under ASan, UBSan and LeakSanitizer
 on Linux; `sim/ubsan.supp` and `sim/lsan.supp` hold only third-party sites.
+On macOS, check a sanitized sim for its SDL3 `LC_RPATH` with `otool -l` before
+running it; without it sdl2-compat shows a desktop dialog per process. The
+sim-e2e S3 job runs `sim/scripts/run-env-order.sh`, which fails any setenv that
+adds a variable while SDL is live (issue #283).
 The pre-hardware fuzz budget is `python3 tools/check_fuzz.py --full
 --host-build <dir> --mqtt-binary sim/build-mqtt/furble-sim`; the full corpus
 currently passes 10 targets, 135 seed runs and 89,145 iterations with zero
@@ -48,9 +62,17 @@ Static analysis is `python3 tools/check_static_analysis.py --base origin/master`
 with the host, simulator and firmware compile databases
 (`tools/firmware_compile_db.py` for m5stick-s3 and m5stick-c);
 `static-analysis.yml` runs it in CI. A source no database compiles fails.
+The firmware databases add `-nostdlibinc` so clang never reaches the host's
+`/usr/include`, and the gate anchors clang-tidy's header filter to the
+checkout so vendored `.pio/libdeps` and `sim/.pio` headers stay out (#463).
+The console doc-coupling rule in `tools/check_pr_hygiene.py` only warns when
+each changed string line keeps its literals, in order, at its own position.
 The simulator power gate uses the two-sided `tools/power-model/compare.py`
 threshold; its default 10% value is compatibility policy, not calibrated
-hardware noise. Focused coverage is `python3 -m unittest tests/test_power_compare.py`.
+hardware noise. It also fails timer-fire and invalidated or flushed pixel drift
+beyond `--activity-threshold` (default 25% plus an absolute slack); opt-outs
+with a reason live in `tools/power-model/activity-optout.json`. Focused coverage
+is `python3 -m unittest tests/test_power_compare.py`.
 The Apple workflow's macOS app artifact is unsigned and test-only; it is
 uploaded only after the macOS tests pass and includes checksum/provenance files.
 Release tags beginning with `companion-test-` skip firmware publication and
@@ -89,7 +111,11 @@ Each RAM budget keeps at least 512 bytes of headroom. Raise a budget with
 `tools/stack_budget.py` checks each firmware task's worst-case stack from the
 `-fcallgraph-info=su` call graph against `tools/stack_budget.json`; firmware CI
 runs it after every build. A recursion or an `alloca`/VLA frame on a task's
-path fails until the manifest cites a bound from source. `platformio.ini` sets
+path fails until the manifest cites a bound from source. The walk is exact
+outside cycles, and every path to `abort` also pays the panic handler, which
+runs on the task stack. An `infeasible_calls` edge cut needs a file:line
+citation of its guard. `-debug` envs are checked against their own stacks
+(`debug_stack_bytes`, `sdkconfig.debug`, `FURBLE_DEBUG_BUILD`). `platformio.ini` sets
 `CJSON_NESTING_LIMIT=8`, which the cJSON bounds depend on. See
 `docs/stack-budget.md`.
 Hardware flashing is gated on the simulator. `sim/coverage/` holds the hardware,

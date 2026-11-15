@@ -132,12 +132,13 @@ class MQTT {
   void taskStep(void);
   TickType_t taskWaitTicks(void) const;
   bool enqueueEvent(const queued_event_t &event);
-  void queueLifecycleEvent(esp_mqtt_client_handle_t client, int32_t event_id);
   void processLifecycleEvents(void);
   void clearQueuedEvents(void);
   void processEvent(const queued_event_t &event);
   void processDueTimers(void);
   void servicePendingReleases(void);
+  /** Handle a connected or disconnected event already matched to m_Client. */
+  void handleLifecycleEvent(int32_t event_id);
   void handleEvent(const queued_event_t &event);
   void handleData(const queued_event_t &event);
   void handleCommand(const std::string &topic, const std::string &payload);
@@ -204,6 +205,9 @@ class MQTT {
   // may still deliver a late callback; the mutex covers overlapping clients.
   std::mutex m_IncomingMutex;
   queued_event_t *m_Incoming = nullptr;
+  // The owner receives each queued event here, not into a stack local. Owned
+  // by the owner task alone; allocated in the same block as m_Incoming.
+  queued_event_t *m_Received = nullptr;
   esp_mqtt_client_handle_t m_Client = nullptr;
   esp_timer_handle_t m_HoldTimer = nullptr;
   esp_timer_handle_t m_IntervalTimer = nullptr;

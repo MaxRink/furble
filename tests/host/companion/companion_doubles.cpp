@@ -48,6 +48,9 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> SETTINGS = {
     {Settings::COMPANION_PASSWORD,
      {Settings::COMPANION_PASSWORD, 47, "Companion password", "companion_pw", "furble"}                   },
     {Settings::GPS_PLATFORM,       {Settings::GPS_PLATFORM, 69, "GPS Platform", "gps_plat", "furble"}     },
+    {Settings::GPS_GNSS,           {Settings::GPS_GNSS, 48, "GPS Signals", "gps_gnss", "furble"}          },
+    {Settings::GPS_PSM,            {Settings::GPS_PSM, 49, "GPS Power Save", "gps_psm", "furble"}         },
+    {Settings::GPS_ANA,            {Settings::GPS_ANA, 50, "GPS AssistNow", "gps_ana", "furble"}          },
     {Settings::CONN_SAVER,
      {Settings::CONN_SAVER, 29, "Connection power save", "conn_saver", "furble"}                          },
     {Settings::WIFI,               {Settings::WIFI, 51, "WiFi", "wifi", "furble"}                         },
@@ -135,6 +138,12 @@ uint32_t Platform::tick(void) const {
 
 void Platform::watchdogFeed(void) {}
 
+Platform::battery_status_t Platform::getBatteryStatus(void) {
+  const std::lock_guard<std::mutex> lock(g_BatteryMutex);
+  return {g_Battery.level, g_Battery.voltage, g_Battery.current, g_Battery.vbus,
+          g_Battery.charging};
+}
+
 Power &Power::getInstance() {
   static Power instance;
   return instance;
@@ -182,31 +191,6 @@ std::vector<Host::UIRequest> Host::takeUIRequests(void) {
 void Host::setUIRequestsAccepted(bool accepted) {
   const std::lock_guard<std::mutex> lock(g_RequestMutex);
   g_RequestsAccepted = accepted;
-}
-
-int32_t UI::getBatteryLevel(void) {
-  const std::lock_guard<std::mutex> lock(g_BatteryMutex);
-  return g_Battery.level;
-}
-
-int16_t UI::getBatteryVoltage(void) {
-  const std::lock_guard<std::mutex> lock(g_BatteryMutex);
-  return g_Battery.voltage;
-}
-
-int32_t UI::getBatteryCurrent(void) {
-  const std::lock_guard<std::mutex> lock(g_BatteryMutex);
-  return g_Battery.current;
-}
-
-int16_t UI::getBatteryVBUSVoltage(void) {
-  const std::lock_guard<std::mutex> lock(g_BatteryMutex);
-  return g_Battery.vbus;
-}
-
-bool UI::isBatteryCharging(void) {
-  const std::lock_guard<std::mutex> lock(g_BatteryMutex);
-  return g_Battery.charging;
 }
 
 uint8_t UI::getIntervalometerState(void) {

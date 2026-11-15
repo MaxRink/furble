@@ -37,9 +37,12 @@ replay and focused scheduler ownership tests are the regression gates.
 This is not complete FreeRTOS mutex parity. The simulator models waiter wake
 order but not priority inheritance, instruction-level preemption, SMP/core
 affinity, or CPU-time accounting. Plain production mutexes other than the
-explicit camera and IMU aliases remain invisible to the scheduler. The
-deadlock breaker remains a backstop for those boundaries and must not be used
-as evidence of deterministic scheduling.
+explicit camera and IMU aliases remain invisible to the scheduler. The one
+production condition variable, `Scan::m_CallbackIdle`, is scheduler visible
+through `scan_condition_t` (issue #289, plan 173). The deadlock breaker
+remains a backstop for those boundaries and must not be used as evidence of
+deterministic scheduling. `FURBLE_SIM_SCHED_TRACE=1` reports every time it
+fires.
 
 The first PR under this plan implements the first scheduler foundation: a shared 64-bit
 virtual clock, virtual FreeRTOS and esp_timer deadlines, queue-front sends,

@@ -6,9 +6,11 @@
 #include <esp_bt.h>
 
 namespace Furble {
+enum class TxPower : uint8_t { P3, P6, P9 };
+
 class Device {
  public:
-  static void init(esp_power_level_t power);
+  static void init(TxPower power);
   static const std::string &getStringID(void);
 };
 }  // namespace Furble

@@ -1,4 +1,5 @@
 #include "FurbleConsole.h"
+#include "FurbleBoardCaps.h"
 
 #if defined(FURBLE_CONSOLE)
 
@@ -27,7 +28,7 @@
 #include <freertos/task.h>
 
 #include <driver/uart.h>
-#if defined(FURBLE_M5STICKS3) || defined(FURBLE_USB_CONSOLE)
+#if FURBLE_HAS_USB_SERIAL_JTAG_CONSOLE
 #include <driver/usb_serial_jtag.h>
 #include <driver/usb_serial_jtag_vfs.h>
 #endif
@@ -78,8 +79,8 @@ constexpr const char *PROMPT = "furble> ";
 constexpr size_t MAX_LINE = 256;
 // The deepest console command is `perf tasks`, which used to hold two
 // 24-entry TaskStatus_t snapshots (about 2 KiB) on this stack. The snapshots
-// now come from the heap, so 6 KiB leaves roughly 2.5 KiB above the measured
-// 5,504-byte high-water mark from the pre-change image.
+// now come from the heap. The pre-change image left 5,504 of 8,192 bytes free,
+// about 2,688 used with the snapshots, so 6 KiB has room to spare.
 constexpr uint32_t TASK_STACK = 6144;
 
 // Below the control task (4) and the per camera target tasks (3).
@@ -262,6 +263,8 @@ const char *settingType(Settings::type_t type) {
     case Settings::GPS_ASSIST:
     case Settings::GPS_HOLD:
     case Settings::GPS_PLATFORM:
+    case Settings::GPS_GNSS:
+    case Settings::GPS_PSM:
     case Settings::IR_PROTO:
     case Settings::FB_OUTPUT:
     case Settings::FB_EVENTS:
@@ -311,6 +314,7 @@ const char *settingType(Settings::type_t type) {
     case Settings::SLEEP_CONN:
     case Settings::GPS_NMEA:
     case Settings::GPS_EXTRAP:
+    case Settings::GPS_ANA:
     case Settings::PRESET_PICKER:
     case Settings::SD_GPX:
     case Settings::GPS_MOTION:
@@ -368,7 +372,10 @@ const char *appliesWhen(Settings::type_t type) {
     case Settings::GPS_ASSIST:
     case Settings::GPS_HOLD:
     case Settings::GPS_EXTRAP:
+    case Settings::GPS_ANA:
     case Settings::GPS_PLATFORM:
+    case Settings::GPS_GNSS:
+    case Settings::GPS_PSM:
     case Settings::IR_PROTO:
     case Settings::SLEEP_CONN:
     case Settings::TX_ADAPTIVE:
@@ -429,6 +436,8 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::GPS_ASSIST:
     case Settings::GPS_HOLD:
     case Settings::GPS_PLATFORM:
+    case Settings::GPS_GNSS:
+    case Settings::GPS_PSM:
     case Settings::IR_PROTO:
     case Settings::FB_OUTPUT:
     case Settings::FB_EVENTS:
@@ -512,6 +521,7 @@ void printValue(const char *prefix, Settings::type_t type) {
     case Settings::GPS_NMEA:
     case Settings::TX_ADAPTIVE:
     case Settings::GPS_EXTRAP:
+    case Settings::GPS_ANA:
     case Settings::PRESET_PICKER:
     case Settings::SD_GPX:
     case Settings::GPS_MOTION:
@@ -569,6 +579,8 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::GPS_POWER:
     case Settings::GPS_ASSIST:
     case Settings::GPS_PLATFORM:
+    case Settings::GPS_GNSS:
+    case Settings::GPS_PSM:
     case Settings::IR_PROTO:
     case Settings::FB_EVENTS:
     case Settings::FB_VOLUME:
@@ -591,6 +603,14 @@ int setValue(const Settings::setting_t &setting, const char *text) {
       }
       if ((setting.type == Settings::GPS_PLATFORM) && (value > 4)) {
         return fail("expected 0 (off), 1 portable, 2 stationary, 3 pedestrian, 4 vehicle");
+      }
+      if ((setting.type == Settings::GPS_GNSS) && (value > Settings::GPS_GNSS_MAX)) {
+        return fail(
+            "expected 0 (follow constellation) or a mask: 1 GPS, 2 BeiDou, 4 GLONASS, "
+            "8 Galileo, 16 QZSS, 32 SBAS");
+      }
+      if ((setting.type == Settings::GPS_PSM) && (value > Settings::GPS_PSM_MAX)) {
+        return fail("expected 0 (off), 1 cyclic tracking or 2 on/off");
       }
       Settings::save<uint8_t>(setting.type, static_cast<uint8_t>(value));
     } break;
@@ -786,6 +806,7 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     case Settings::GPS_NMEA:
     case Settings::TX_ADAPTIVE:
     case Settings::GPS_EXTRAP:
+    case Settings::GPS_ANA:
     case Settings::PRESET_PICKER:
     case Settings::SD_GPX:
     case Settings::GPS_MOTION:
@@ -871,7 +892,8 @@ int setValue(const Settings::setting_t &setting, const char *text) {
       || (setting.type == Settings::GPS_RATE) || (setting.type == Settings::GPS_NMEA)
       || (setting.type == Settings::GPS_CONSTEL) || (setting.type == Settings::GPS_ASSIST)
       || (setting.type == Settings::GPS_HOLD) || (setting.type == Settings::GPS_EXTRAP)
-      || (setting.type == Settings::GPS_PLATFORM)) {
+      || (setting.type == Settings::GPS_PLATFORM) || (setting.type == Settings::GPS_GNSS)
+      || (setting.type == Settings::GPS_PSM) || (setting.type == Settings::GPS_ANA)) {
     UI::sendRequest(UI::Request::GPS_RELOAD, 0);
   }
   if ((setting.type == Settings::SD_GPX) || (setting.type == Settings::GPX_PERIOD)) {
@@ -1101,7 +1123,10 @@ void reloadProvisionSetting(uint8_t wireId) {
     case Settings::GPS_ASSIST:
     case Settings::GPS_HOLD:
     case Settings::GPS_EXTRAP:
+    case Settings::GPS_ANA:
     case Settings::GPS_PLATFORM:
+    case Settings::GPS_GNSS:
+    case Settings::GPS_PSM:
       GPS::getInstance().reloadSetting();
       break;
     case Settings::FB_EVENTS:
@@ -1374,7 +1399,7 @@ int gpsStatus(void) {
   auto &gps = GPS::getInstance();
   const auto status = gps.getStatusSnapshot();
   // one snapshot carries the cycle state and its retry count together, so the
-  // two can never be reported torn across separate mutex acquisitions
+  // two can never be reported torn across separate snapshot loads
   const auto receiver = gps.getReceiverStatus();
 
   printf("enabled: %s\n", boolStr(gps.isEnabled()));
@@ -1589,6 +1614,100 @@ int gpsMonHw(void) {
   return 0;
 }
 
+const char *gpsSosRestoreName(uint8_t value) {
+  switch (value) {
+    case Ubx::SOS_RESTORE_UNKNOWN:
+      return "unknown";
+    case Ubx::SOS_RESTORE_FAILED:
+      return "failed";
+    case Ubx::SOS_RESTORE_OK:
+      return "restored";
+    case Ubx::SOS_RESTORE_NONE:
+      return "none";
+    default:
+      return "not reported";
+  }
+}
+
+const char *gpsPsmName(uint8_t psm) {
+  switch (psm) {
+    case Ubx::PSM_CYCLIC:
+      return "cyclic";
+    case Ubx::PSM_ON_OFF:
+      return "on/off";
+    default:
+      return "off";
+  }
+}
+
+/**
+ * The u-blox receiver: identity from MON-VER, the NAV-PVT fix and accuracy,
+ * the configuration that was sent and read back, power save, the backup
+ * state and the constellations of one NAV-SAT poll.
+ */
+int gpsUbx(void) {
+  auto &gps = GPS::getInstance();
+  printf("backend: %s\n", GPS::backendName(gps.getBackend()));
+  if (gps.getBackend() != GPS::backend_t::UBX) {
+    printf("ubx: no u-blox receiver identified\n");
+    return 0;
+  }
+  gps.pollUbxSatellites();
+  // The GPS task parses the answer on its own pass, as for MON-HW.
+  auto ubx = gps.getUbxStatus();
+  for (int attempt = 0; (attempt < 150) && !ubx.have_sat; attempt++) {
+    vTaskDelay(pdMS_TO_TICKS(10));
+    ubx = gps.getUbxStatus();
+  }
+  printf("module: %s\n", ubx.module.empty() ? "unknown" : ubx.module.c_str());
+  printf("firmware: %s\n", ubx.firmware.empty() ? ubx.software.c_str() : ubx.firmware.c_str());
+  printf("protocol: %s\n", ubx.protocol.empty() ? "unknown" : ubx.protocol.c_str());
+  printf("hardware: %s\n", ubx.hardware.c_str());
+  if (ubx.have_pvt) {
+    printf("pvt_fix: %u\n", static_cast<unsigned>(ubx.pvt.fixType));
+    printf("pvt_sats: %u\n", static_cast<unsigned>(ubx.pvt.numSV));
+    printf("pvt_age: %lu\n", static_cast<unsigned long>(ubx.pvt_age_ms));
+    printf("hacc_m: %.2f\n", ubx.pvt.hAcc / 1000.0);
+    printf("vacc_m: %.2f\n", ubx.pvt.vAcc / 1000.0);
+    printf("tacc_ns: %lu\n", static_cast<unsigned long>(ubx.pvt.tAcc));
+    printf("psm_state: %u\n", static_cast<unsigned>(ubx.pvt.psmState()));
+  } else {
+    printf("pvt_fix: none\n");
+  }
+  printf("config_verified: %s\n", (ubx.config_verified == 1)   ? "yes"
+                                  : (ubx.config_verified == 2) ? "no"
+                                                               : "pending");
+  printf("naks: %lu\n", static_cast<unsigned long>(ubx.naks));
+  if (ubx.configured) {
+    printf("gnss: 0x%02x%s\n", ubx.gnss, ubx.gnss_refused ? " (refused, receiver default)" : "");
+    printf("rate_ms: %u%s\n", static_cast<unsigned>(ubx.rate_ms),
+           ubx.rate_clamped ? " (clamped to the constellation limit)" : "");
+    printf("power_save: %s%s\n", gpsPsmName(ubx.psm),
+           ubx.psm_refused ? " (refused with BeiDou B1C)" : "");
+    printf("assistnow_autonomous: %s\n", boolStr(ubx.ana));
+  }
+  printf("backup_supply: %s\n", boolStr(ubx.backup_supply));
+  printf("sos_restore: %s\n", gpsSosRestoreName(ubx.sos_restore));
+  printf("sos_backup: %s\n", (ubx.sos_backup == 1)   ? "saved"
+                             : (ubx.sos_backup == 2) ? "refused"
+                                                     : "not tried");
+  if (ubx.have_sat) {
+    // gnssId per the interface description: GPS, SBAS, Galileo, BeiDou, IMES,
+    // QZSS, GLONASS.
+    static constexpr const char *NAMES[] = {"gps",  "sbas", "galileo", "beidou",
+                                            "imes", "qzss", "glonass"};
+    for (size_t id = 0; id < ubx.sat_view.size(); id++) {
+      if (ubx.sat_view[id] != 0) {
+        printf("sats.%s: %u used of %u\n", NAMES[id], static_cast<unsigned>(ubx.sat_used[id]),
+               static_cast<unsigned>(ubx.sat_view[id]));
+      }
+    }
+  } else {
+    printf("sats: no NAV-SAT answer within 1.5 s\n");
+  }
+  return 0;
+}
+
 int cmdGPS(int argc, char **argv) {
   if (argc < 2) {
     return gpsStatus();
@@ -1678,6 +1797,10 @@ int cmdGPS(int argc, char **argv) {
     return gpsMonHw();
   }
 
+  if (!strcmp(argv[1], "ubx")) {
+    return gpsUbx();
+  }
+
   if (!strcmp(argv[1], "power")) {
     if ((argc < 3) || !parseBool(argv[2], value)) {
       return fail("usage: gps power on | off");
@@ -1685,7 +1808,8 @@ int cmdGPS(int argc, char **argv) {
     return sendRequest(UI::Request::GPS_POWER, value, value ? "gps power on" : "gps power off");
   }
 
-  return fail("expected on, off, raw, send, binary, config, aid, sats, platform, monhw or power");
+  return fail(
+      "expected on, off, raw, send, binary, config, aid, sats, platform, monhw, ubx or power");
 }
 
 void cmdPowerStats(void) {
@@ -2076,7 +2200,7 @@ int heapTraceStart(unsigned long records) {
 
 int cmdHeap(int argc, char **argv) {
   static constexpr char USAGE[] = "usage: heap trace start [records] | stop | dump";
-  if ((argc < 3) || strcmp(argv[1], "trace")) {
+  if ((argc < 3) || (strcmp(argv[1], "trace") != 0)) {
     return fail(USAGE);
   }
   if (!strcmp(argv[2], "start")) {
@@ -3423,7 +3547,7 @@ int cmdReboot(int argc, char **argv) {
  * when the application cannot answer.
  */
 int cmdFlash(int argc, char **argv) {
-#if !defined(FURBLE_M5STICKS3)
+#if !FURBLE_HAS_M5PM1
   (void)argc;
   (void)argv;
   return fail("flash preparation is only supported on the StickS3");
@@ -3480,7 +3604,7 @@ const esp_console_cmd_t COMMANDS[] = {
     command("power", "power stats | log <seconds> | log off | off", cmdPower),
     command("perf", "perf tasks | heap | lvgl [overlay on | off]", cmdPerf),
     command("heap", "heap trace start [records] | stop | dump (debug images)", cmdHeap),
-    command("gps", "gps [on|off|raw|send|binary|config|aid|sats|platform|monhw|power]", cmdGPS),
+    command("gps", "gps [on|off|raw|send|binary|config|aid|sats|platform|monhw|ubx|power]", cmdGPS),
     command("time", "time status | flush", cmdTime),
     command("wifi",
             "wifi status | set | enable | disable | connect | disconnect | forget",
@@ -3550,7 +3674,7 @@ const esp_console_cmd_t COMMANDS[] = {
  */
 
 void startTransport(void) {
-#if defined(FURBLE_M5STICKS3) || defined(FURBLE_USB_CONSOLE)
+#if FURBLE_HAS_USB_SERIAL_JTAG_CONSOLE
   usb_serial_jtag_driver_config_t config = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
   ESP_ERROR_CHECK(usb_serial_jtag_driver_install(&config));
   // Move the secondary console output onto the driver we just installed.
@@ -3576,7 +3700,7 @@ void startTransport(void) {
 }
 
 int readByte(uint8_t *byte) {
-#if defined(FURBLE_M5STICKS3) || defined(FURBLE_USB_CONSOLE)
+#if FURBLE_HAS_USB_SERIAL_JTAG_CONSOLE
   return usb_serial_jtag_read_bytes(byte, 1, pdMS_TO_TICKS(Console::READ_TIMEOUT_MS));
 #else
   return uart_read_bytes(LOG_UART, byte, 1, pdMS_TO_TICKS(Console::READ_TIMEOUT_MS));

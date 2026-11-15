@@ -25,6 +25,7 @@
 #if defined(FURBLE_SIM_MQTT) && FURBLE_SIM_MQTT
 #include "FurbleMQTT.h"
 #endif
+#include "FurbleMemoryPressure.h"
 #include "FurblePlatform.h"
 #include "FurbleSettings.h"
 #include "FurbleTimezone.h"
@@ -45,6 +46,7 @@
 #include "webui_memory_model.h"
 
 extern "C" void furble_sim_check_step_detect_suppressed(void);
+extern "C" void furble_sim_prefer_software_renderer(void);
 
 namespace {
 
@@ -194,7 +196,7 @@ int runSimulator() {
     }
   }
 
-  Device::init(Settings::load<esp_power_level_t>(Settings::TX_POWER));
+  Device::init(Control::savedTxPower());
 
   // Bring the virtual radio up right after the BLE stack, the same order the
   // firmware brings up NimBLE before any camera exists. The peers advertise to
@@ -233,6 +235,11 @@ int runSimulator() {
         static_cast<uint32_t>(std::stoul(Sim::scenarioSetting("secure_stall_ms", "0"))));
   }
 
+  // A GPS status reader that runs long, in host time, so a scenario can prove
+  // the GPS task never drops a UART event for a reader.
+  Sim::setGpsReaderHoldMs(
+      static_cast<uint32_t>(std::stoul(Sim::scenarioSetting("gps_reader_hold_ms", "0"))));
+
   BootScreen::step("Bluetooth");
   BootScreen::step("Companion");
 
@@ -255,6 +262,8 @@ int runSimulator() {
 
   Sim::watchdogPhase("control task");
   auto &control = Control::getInstance();
+  // As firmware app_main(): admit every new target to the governor.
+  Control::setAdmitHook(&MemoryPressure::admit);
   xTaskCreate(control_task, "control", 8192, &control, 4, nullptr);
 
   Sim::startRig();
@@ -338,7 +347,19 @@ int main(int argc, char **argv) {
   // thread start. SDL and the watchdog read process environment state while
   // they initialize and run, so this write must happen before either starts.
   Furble::Sim::preparePreferences();
+  // Adding a variable makes glibc reallocate environ and free the array an
+  // unlocked getenv walk may be reading, and the SDL loop on this thread calls
+  // getenv thousands of times a second (issue 283). Production Timezone's boot
+  // setenv("TZ") runs after SDL_Init but before panelReady releases that loop,
+  // so it is ordered today. Creating TZ here makes every TZ write a replace, so
+  // the env guard can enforce the stricter rule: no growth after SDL_Init. A
+  // caller's TZ is kept; the firmware replaces it with the selected zone.
+  if (setenv("TZ", "UTC0", 0) != 0) {
+    std::perror("simulator failed to reserve TZ");
+    return 1;
+  }
   Furble::Sim::watchdogStart();
+  furble_sim_prefer_software_renderer();
   if (lgfx::Panel_sdl::setup() != 0) {
     return 1;
   }

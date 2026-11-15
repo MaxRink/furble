@@ -47,20 +47,22 @@ ENVS = {
     "m5stack-core": ("esp32", 320, 240, "core"),
     "m5stack-core2": ("esp32", 320, 240, "core2"),
     "waveshare-s3-eth": ("esp32s3", 0, 0, "waveshare-s3-eth"),
+    # Not a release env, but CI builds it and the simulator models it.
+    "esp32-s3-headless": ("esp32s3", 0, 0, "headless-s3"),
 }
 
-# Board-conditional boot tasks from app_main. IR::init() runs where
-# pinForBoard() names a pin (src/FurbleIR.cpp): StickC and StickC Plus use an
+# Board-conditional boot tasks from app_main. IR::init() runs where the board
+# profile names an IR pin (src/FurbleBoard.cpp): StickC and StickC Plus use an
 # internal stack, the StickS3 puts stack and TCB in PSRAM with
 # xTaskCreateWithCaps, so only its queue is internal. SD::init() runs on the
-# Core boards (isCoreBoard() in src/FurbleSD.cpp).
+# boards whose profile has an SD slot, the two Core boards.
 IR_INTERNAL_TASK = {"m5stick-c", "m5stick-c-plus"}
 IR_QUEUE = {"m5stick-c", "m5stick-c-plus", "m5stick-s3"}
 SD_WRITER = {"m5stack-core", "m5stack-core2"}
 # sizeof(Furble::SD::message_t) from the m5stack-core ELF's DWARF.
 SD_MESSAGE_BYTES = 48
 # Headless builds create the request queue in app_main (src/main.cpp).
-HEADLESS = {"waveshare-s3-eth"}
+HEADLESS = {"waveshare-s3-eth", "esp32-s3-headless"}
 HEADLESS_REQUEST_QUEUE_LENGTH = 8
 POINTER_BYTES = 4
 # GPS UART (src/FurbleGPS.cpp, include/FurbleGPS.h) and the UART hardware FIFO
@@ -322,7 +324,7 @@ def attributable(env: str, width: int, height: int, cfg: dict, size: dict) -> li
     terms.extend(gps_uart(size))
     # The companion task and its timers exist only with the COMPANION setting
     # on (CompanionGatt::enable in src/FurbleCompanion.cpp).
-    terms.append({**task("companion", 3072, tcb, "include/FurbleCompanionMemory.h TASK_STACK_BYTES"),
+    terms.append({**task("companion", 3840, tcb, "include/FurbleCompanionMemory.h TASK_STACK_BYTES"),
                   "condition": "companion"})
     for name in ("companion disable", "companion shutter"):
         terms.append({"term": f"esp_timer {name}", "bytes": block(size["struct esp_timer"]),

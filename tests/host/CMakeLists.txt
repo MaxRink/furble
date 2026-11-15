@@ -231,6 +231,7 @@ set(TIME_KEEPER_TEST_STUB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/time_keeper_stubs)
 add_executable(time_keeper_persistence_test
                time_keeper_persistence_test.cpp
                settings_nvs_stub.cpp
+               ${FURBLE_ROOT}/src/FurbleBoard.cpp
                ${FURBLE_ROOT}/src/FurbleTimeKeeper.cpp
                ${FURBLE_ROOT}/src/FurbleTimeKeeperPolicy.cpp
                ${FURBLE_ROOT}/lib/preferences/Preferences.cpp)
@@ -278,6 +279,13 @@ add_executable(pm1_poll_policy_test pm1_poll_policy_test.cpp)
 target_include_directories(pm1_poll_policy_test PRIVATE ${FURBLE_ROOT}/include)
 target_compile_options(pm1_poll_policy_test PRIVATE -Wall -Wextra -Werror)
 add_test(NAME pm1-poll-policy COMMAND pm1_poll_policy_test)
+
+# Companion reconnect advertising runs fast for a window after enable, boot,
+# disconnect or a button wake, then falls back to the slow interval.
+add_executable(companion_advertising_test companion_advertising_test.cpp)
+target_include_directories(companion_advertising_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(companion_advertising_test PRIVATE -Wall -Wextra -Werror)
+add_test(NAME companion-advertising COMMAND companion_advertising_test)
 
 # The staged display mode dims at the inactivity timeout and sleeps after a
 # fixed dwell. This policy test pins the dwell and its wrap arithmetic.
@@ -939,6 +947,7 @@ add_executable(settings_nvs_roundtrip_test
                settings_nvs_roundtrip_test.cpp
                settings_nvs_stub.cpp
                settings_platform_stub.cpp
+               ${FURBLE_ROOT}/src/FurbleBoard.cpp
                ${FURBLE_ROOT}/src/FurbleSettings.cpp
                ${FURBLE_ROOT}/src/FurbleNetworkSettings.cpp
                ${FURBLE_ROOT}/src/FurbleTimezone.cpp
@@ -1093,6 +1102,17 @@ target_include_directories(imu_motion_encoding_test PRIVATE
 target_compile_options(imu_motion_encoding_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                         -Wno-unused-parameter)
 
+# Pure chip drivers in lib/hal against a recording register bus and a fake
+# radio port. Expected values come from the datasheets cited in the test.
+add_executable(hal_drivers_test
+               hal_drivers_test.cpp
+               ${FURBLE_ROOT}/lib/hal/AXP2101.cpp
+               ${FURBLE_ROOT}/lib/hal/BQ27220.cpp
+               ${FURBLE_ROOT}/lib/hal/SX1262.cpp
+               ${FURBLE_ROOT}/lib/hal/XL9555.cpp)
+target_include_directories(hal_drivers_test PRIVATE ${FURBLE_ROOT}/lib/hal)
+target_compile_options(hal_drivers_test PRIVATE -Wall -Wextra -Werror)
+
 add_executable(stale_connect_test stale_connect_test.cpp)
 target_link_libraries(stale_connect_test PRIVATE furble_host_camera)
 target_compile_options(stale_connect_test PRIVATE -Wall -Wextra -Werror -Wno-format
@@ -1156,6 +1176,11 @@ add_executable(battery_saver_test battery_saver_test.cpp)
 target_include_directories(battery_saver_test PRIVATE ${FURBLE_ROOT}/include)
 target_compile_options(battery_saver_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                   -Wno-unused-parameter)
+
+# Per-field battery status gating from include/FurbleBatteryStatus.h.
+add_executable(battery_status_test battery_status_test.cpp)
+target_include_directories(battery_status_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(battery_status_test PRIVATE -Wall -Wextra -Werror)
 
 add_executable(sim_clock_test sim_clock_test.cpp ${FURBLE_ROOT}/sim/clock.cpp)
 target_include_directories(sim_clock_test PRIVATE ${FURBLE_ROOT}/include ${FURBLE_ROOT}/sim
@@ -1328,6 +1353,11 @@ target_include_directories(gps_hold_test PRIVATE ${FURBLE_ROOT}/include)
 target_compile_options(gps_hold_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                              -Wno-unused-parameter)
 
+# The UI's companion boost press-edge rule. Header only.
+add_executable(press_edge_test press_edge_test.cpp)
+target_include_directories(press_edge_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(press_edge_test PRIVATE -Wall -Wextra -Werror)
+
 # The GPS Data page sentence age formatter. Pure, header only, and the only
 # unbounded field on a row with a hard character budget, so its clamp is a unit
 # test rather than a scenario assertion. The simulator cannot reach the ages
@@ -1359,6 +1389,31 @@ add_executable(gps_casic_test
 target_include_directories(gps_casic_test PRIVATE ${FURBLE_ROOT}/lib/furble/protocol)
 target_compile_options(gps_casic_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                               -Wno-unused-parameter)
+# Pure UBX codec from lib/furble/protocol/GpsUbx for the u-blox M10 receivers.
+add_executable(gps_ubx_test
+               gps_ubx_test.cpp
+               ${FURBLE_PROTOCOL_DIR}/GpsCasic.cpp
+               ${FURBLE_PROTOCOL_DIR}/GpsDemux.cpp
+               ${FURBLE_PROTOCOL_DIR}/GpsUbx.cpp)
+target_include_directories(gps_ubx_test PRIVATE ${FURBLE_ROOT}/lib/furble/protocol)
+target_compile_options(gps_ubx_test PRIVATE -Wall -Wextra -Werror)
+# Receiver detection and the simulator's virtual u-blox M10. The model has no
+# clock or UART of its own, so the scenarios' state machine runs here directly.
+add_executable(gps_ubx_m10_test
+               gps_ubx_m10_test.cpp
+               ${FURBLE_ROOT}/sim/ubx_m10.cpp
+               ${FURBLE_PROTOCOL_DIR}/GpsUbx.cpp)
+target_include_directories(gps_ubx_m10_test PRIVATE ${FURBLE_ROOT}/sim ${FURBLE_ROOT}/lib/furble)
+target_compile_options(gps_ubx_m10_test PRIVATE -Wall -Wextra -Werror)
+# Seeded UBX stream fuzzer over the same codec. tools/check_fuzz.py runs the
+# wider seed set from tests/fuzz/seeds.json.
+add_executable(gps_ubx_fuzz
+               ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/gps_ubx_fuzz.cpp
+               ${FURBLE_PROTOCOL_DIR}/GpsCasic.cpp
+               ${FURBLE_PROTOCOL_DIR}/GpsDemux.cpp
+               ${FURBLE_PROTOCOL_DIR}/GpsUbx.cpp)
+target_include_directories(gps_ubx_fuzz PRIVATE ${FURBLE_ROOT}/lib/furble/protocol)
+target_compile_options(gps_ubx_fuzz PRIVATE -Wall -Wextra -Werror)
 # The status freshness predicate is pure logic. Keeping it in a header target
 # proves the fix/age boundary without pulling TinyGPSPlus and the UART in.
 add_executable(gps_fix_freshness_test gps_fix_freshness_test.cpp)
@@ -1812,6 +1867,24 @@ target_compile_options(control_disconnect_test PRIVATE
                        -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter)
 target_link_libraries(control_disconnect_test PRIVATE furble_host_camera)
 
+# Pin the transmit power mapping between the ESP-IDF setting and the camera
+# library TxPower through the public Control API.
+add_executable(tx_power_mapping_test
+               tx_power_mapping_test.cpp
+               ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/src/FurbleTimezone.cpp
+               ${HOST_CONTROL_DIR}/control_shim.cpp)
+target_include_directories(tx_power_mapping_test BEFORE PRIVATE
+                           ${HOST_CONTROL_DIR}
+                           ${FURBLE_ROOT}/include
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR}
+                           ${FURBLE_ROOT}/lib/furble)
+target_compile_options(tx_power_mapping_test PRIVATE
+                       -include ${HOST_CONTROL_DIR}/freertos/FreeRTOS.h
+                       -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter)
+target_link_libraries(tx_power_mapping_test PRIVATE furble_host_camera)
+
 # AddressSanitizer regression for the gone-peer client-reclaim use-after-free.
 # It cannot link the shared furble_host_camera library: the late onDisconnect
 # reads the freed Camera's callbacks vptr to dispatch, and both the mock making
@@ -2131,7 +2204,7 @@ target_compile_options(companion_fuzz PRIVATE -Wall -Wextra -Wno-format
 target_link_libraries(companion_fuzz PRIVATE Threads::Threads)
 
 set(FUZZ_TARGETS mqtt_fuzz webui_fuzz settings_migration_fuzz wifi_policy_fuzz control_fuzz
-                 companion_fuzz)
+                 companion_fuzz gps_ubx_fuzz)
 foreach(target ${FUZZ_TARGETS})
   target_compile_options(${target} PRIVATE ${FUZZ_SANITIZER_FLAGS})
   target_link_options(${target} PRIVATE ${FUZZ_SANITIZER_FLAGS})
@@ -2294,6 +2367,7 @@ if(BUILD_TESTING)
   add_test(NAME provision-apply-mqtt COMMAND provision_apply_mqtt_test)
   add_test(NAME text-size-policy COMMAND text_size_policy_test)
   add_test(NAME imu-motion-encoding COMMAND imu_motion_encoding_test)
+  add_test(NAME hal-drivers COMMAND hal_drivers_test)
   add_test(NAME text-size-policy-stickc COMMAND text_size_policy_stickc_test)
   add_test(NAME stale-connect COMMAND stale_connect_test)
   add_test(NAME client-leak COMMAND client_leak_test)
@@ -2301,6 +2375,7 @@ if(BUILD_TESTING)
   add_test(NAME gpx-writer COMMAND gpx_writer_test)
   add_test(NAME reconnect-backoff COMMAND reconnect_backoff_test)
   add_test(NAME battery-saver COMMAND battery_saver_test)
+  add_test(NAME battery-status COMMAND battery_status_test)
   add_test(NAME mqtt-owner COMMAND mqtt_owner_test)
   foreach(seed 1 2 3 7 42)
     add_test(NAME mqtt-fuzz-seed-${seed} COMMAND mqtt_fuzz --seed ${seed} --iterations 300)
@@ -2329,11 +2404,15 @@ if(BUILD_TESTING)
   add_test(NAME ota-mqtt-admission COMMAND ota_mqtt_admission_test)
   add_test(NAME ota-replay-store COMMAND ota_replay_store_test)
   add_test(NAME ota-partition-sink COMMAND ota_partition_sink_test)
+  add_test(NAME press-edge COMMAND press_edge_test)
   add_test(NAME gps-format COMMAND gps_format_test)
   add_test(NAME gps-hold COMMAND gps_hold_test)
   add_test(NAME gps-power-cycle COMMAND gps_power_cycle_test)
   add_test(NAME gps-power-profiler COMMAND gps_power_profiler_test)
   add_test(NAME gps-casic COMMAND gps_casic_test)
+  add_test(NAME gps-ubx COMMAND gps_ubx_test)
+  add_test(NAME gps-ubx-m10 COMMAND gps_ubx_m10_test)
+  add_test(NAME gps-ubx-fuzz COMMAND gps_ubx_fuzz --seed 1 --iterations 300)
   add_test(NAME gps-fix-freshness COMMAND gps_fix_freshness_test)
   add_test(NAME fault-tooling COMMAND fault_tooling_test)
   # The console suite drives the real console task through its transport, and
@@ -2343,6 +2422,7 @@ if(BUILD_TESTING)
   set_tests_properties(console-commands PROPERTIES TIMEOUT 120)
 
   add_test(NAME control-disconnect COMMAND control_disconnect_test)
+  add_test(NAME tx-power-mapping COMMAND tx_power_mapping_test)
 
   # Teardown wedge regression (plan 148). Bounded by a hard timeout so a
   # reintroduced uncancellable wait fails the suite instead of hanging it.
@@ -2403,6 +2483,7 @@ if(BUILD_TESTING)
   # machine end to end against the mock peer and is registered individually so a
   # failure names the scenario.
   foreach(scenario
+          admit-hook-once-per-target
           empty-target-connect-stays-idle
           fresh-connect
           dead-camera-disconnect-no-freeze
@@ -2503,7 +2584,8 @@ add_test(NAME peer-contract COMMAND peer_contract_test)
 # approximate sim boundaries.
 set(BOUNDARY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/boundaries)
 set(BOUNDARY_SHIM_DIR ${BOUNDARY_DIR}/shims)
-set(BOUNDARY_SUPPORT ${BOUNDARY_DIR}/boundary_support.cpp ${BOUNDARY_DIR}/m5_stub.cpp)
+set(BOUNDARY_SUPPORT ${BOUNDARY_DIR}/boundary_support.cpp ${BOUNDARY_DIR}/m5_stub.cpp
+    ${FURBLE_ROOT}/src/FurbleBoard.cpp)
 set(BOUNDARY_COMMON_INCLUDES
     ${BOUNDARY_DIR}
     ${BOUNDARY_SHIM_DIR}
@@ -2688,7 +2770,18 @@ target_compile_options(boundary_headless_service_test PRIVATE
                        -Wall -Wextra -Wno-unused-parameter -Wno-format)
 target_link_libraries(boundary_headless_service_test PRIVATE Threads::Threads)
 
+# Board::Profile rows against the values of the board switches they replaced,
+# compiled against the boundary M5Unified shim, which declares every board.
+add_executable(board_profile_test
+               board_profile_test.cpp
+               ${BOUNDARY_DIR}/m5_stub.cpp
+               ${FURBLE_ROOT}/src/FurbleBoard.cpp)
+target_include_directories(board_profile_test PRIVATE ${BOUNDARY_SHIM_DIR}
+                           ${FURBLE_ROOT}/include)
+target_compile_options(board_profile_test PRIVATE -Wall -Wextra -Werror)
+
 if(BUILD_TESTING)
+  add_test(NAME board-profile COMMAND board_profile_test)
   foreach(mode protocols psram-fallback queue-timeout unsupported)
     add_test(NAME boundary-ir-${mode} COMMAND boundary_ir_test ${mode})
   endforeach()

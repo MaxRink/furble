@@ -66,12 +66,17 @@ uses the same protocol, auth and BLE core for scan/status, phone-GPS fallback,
 shutter/focus testing and long-running read-only battery CSV monitoring. It
 also accepts `--transport usb` for the StickS3 CDC console: `scan`, `status`,
 `cameras`, `monitor` and `password status` work over USB, and the monitor writes
-the same CSV columns as BLE with a 5 s console command timeout. Companion links
+the same CSV columns as BLE with a 5 s console command timeout. The USB monitor
+reopens a lost port, records ROM reset lines and app restarts as CSV markers,
+and resets a chip stuck in ROM download mode only with `--usb-hard-reset`.
+Companion links
 use an encrypted, bonded LE Just
 Works link and authenticate with the companion password; set a password before
 using the app in an untrusted area. An unknown inbound BLE link is retained
 because the server is shared with camera name discovery; it can delay reconnect
-advertising until it disconnects. The first enable needs 7,552 bytes of free
+advertising until it disconnects. Reconnect advertising runs at 100 ms for 60 s
+after enable, boot, a disconnect or any button press, then at 1022.5 ms; press
+any button if the app cannot find the device. The first enable needs 8,320 bytes of free
 internal RAM; below that the companion stays off with a log line instead of
 resetting the device. See [the companion reference](docs/companion.md)
 for the packet layout, USB limits, pairing behavior, and the battery observation
@@ -128,6 +133,18 @@ The following devices have been tested and confirmed to work:
 - Sony
    - Sony ZV-1F
 
+Panasonic LUMIX support is implemented from public protocol traces of the S5II
+and BGH1. It is host and simulator tested only. No LUMIX body has been tested
+on hardware.
+
+The PENTAX K-3 Mark III and K-3 Mark III Monochrome are matched by the Ricoh
+service UUIDs or the PENTAX name and driven by the shared Ricoh Imaging class.
+The K-1, K-1 Mark II, KP, KF and K-70 connect over Wi-Fi only and are not
+supported. DJI Osmo Action 4 and Action 5 Pro support is implemented from
+DJI's published protocol and ESP32 reference. Both are covered by host tests,
+and the simulator covers DJI and the shared Ricoh path. No PENTAX or DJI body
+has been tested on hardware.
+
 ## Table of Features
 
 | Camera             | Scanning | Pairing | Shutter Release | Focus   | GPS     |
@@ -139,6 +156,9 @@ The following devices have been tested and confirmed to work:
 | Nikon (Remote)     | ✔️        | ✔️       | ✔️[^3]           | :x:[^2] | :x:[^2] |
 | Nikon (Smart)      | ✔️        | :x:     | :x:             | :x:     | :x:     |
 | Sony ZV            | ✔️        | ✔️       | ✔️               | ✔️       | ✔️       |
+| Panasonic LUMIX[^6] | ✔️       | ✔️       | ✔️               | :x:[^2] | ✔️       |
+| PENTAX K-3 III[^7] | ✔️        | ✔️       | ✔️[^3]           | :x:[^4]  | ✔️       |
+| DJI Osmo Action[^8] | ✔️       | ✔️       | ✔️[^9]           | :x:[^2] | :x:[^10] |
 
 [^1]: see [#99](https://github.com/gkoh/furble/discussions/99)
 [^2]: Non-existent
@@ -148,6 +168,16 @@ The supported shutter command performs an immediate capture with autofocus.
 [^5]: AF-only control is implemented from Camera Connect evidence (separate
 `00 03` AF on and `00 04` AF off writes) and awaits hardware validation. It is
 not manual lens focus.
+[^6]: Untested on hardware. Pairing is the LUMIX session registration, not SMP
+bonding. A fresh S5II may still need a Lumix Sync first-pair flow.
+[^7]: Untested on hardware. Uses the Ricoh Imaging protocol path unchanged;
+see [plan 73](plans/implemented/73-pentax-k.md).
+[^8]: Untested on hardware. Action 4 and Action 5 Pro. Pairing is DJI's own
+first-pair verification and camera approval, not a Bluetooth passkey.
+[^9]: Each press toggles video recording start and stop. furble sends no
+still capture command.
+[^10]: Not implemented. DJI's GPS direction is camera to remote, the opposite
+of furble's geotag push, so location updates are a no-op.
 
 For contributor research across all implemented camera families, see the
 [camera protocol research library](docs/camera-research/README.md). It records
@@ -159,7 +189,7 @@ supported-camera claims.
 Initially targeted at the M5StickC, the following controllers from [M5Stack](https://m5stack.com/) are supported:
 * M5StickC (EOL)
 * M5StickC Plus
-* M5StickC Plus2
+* M5StickC Plus2 (EOL)
 * M5StickS3
 * M5Core Basic
 * M5Core2 (8 MB PSRAM enabled)
@@ -338,6 +368,7 @@ gps raw on|off                      mirror decoded NMEA to the console
 gps raw hex on|off                  mirror every receiver UART chunk as hex
 gps raw send <hex bytes>            write exact bytes to the receiver UART
 gps binary <class> <id> <bytes>     send a CASIC frame; 256-byte line, 64 arguments
+gps ubx                             u-blox M10 receiver, fix accuracy and configuration
 imu status | scale [value]          IMU diagnostic, gesture calibration
 motion status | scale [value]       motion source and software calibration
 time status | flush                 UTC and local wall clock, or persist before shutdown
@@ -508,8 +539,9 @@ More details are in [Controls](docs/wiki/Controls.md) and [Settings and controls
 ### GPS Location Tagging
 
 For Fujifilm, Sony, and Ricoh cameras, location tagging is supported with an M5Stack GPS
-unit on Grove Port A. Every unit furble targets is the AT6668/CASIC family, so
-one set of $PCAS and NMEA support covers them all.
+unit on Grove Port A. The M5Stack units are the AT6668/CASIC family, so one
+set of $PCAS and NMEA support covers them all. u-blox M10 receivers are
+detected by a MON-VER poll and configured over UBX.
 
 | Unit | Antenna | Status |
 | :--- | :--- | :--- |
@@ -517,6 +549,7 @@ one set of $PCAS and NMEA support covers them all.
 | Unit-GPS (SMA) | External SMA antenna | Supported. Recommended for weak or indoor reception. |
 | Module GPS v2.1 | SMA | Planned. Not yet in firmware, Core and Core2 only. |
 | [Mini GPS/BDS Unit](https://shop.m5stack.com/products/mini-gps-bds-unit) | Ceramic patch | End of life, 9600 baud. |
+| u-blox M10 (MAX-M10S, MIA-M10Q, M10 UART modules) | Module dependent | Simulator-tested, hardware-untested. Detected automatically; UBX configuration, NAV-PVT accuracy, power save, software standby and AssistNow Autonomous. |
 
 See [docs/supported-hardware.md](docs/supported-hardware.md) for the full unit
 matrix. GPS support can be enabled in `furble` in `Settings->GPS`, the camera
@@ -552,6 +585,12 @@ The GPS receiver itself can also be configured under `Settings->GPS`:
 - `Assisted start` (position/time, with optional cached ephemeris replay)
 - `Platform` (portable, stationary, pedestrian, or vehicle dynamic model)
 
+Three more settings apply only to a u-blox M10 receiver and are set from the
+serial console or the companion app, not the device menus: `gps_gnss` (the
+constellation mask, 0 follows Constellation), `gps_psm` (power save: off,
+cyclic tracking or on/off, default off) and `gps_ana` (AssistNow Autonomous,
+default off).
+
 `Settings->Time` selects the local time zone. The default UTC keeps the previous
 camera clock behaviour. The Time page also shows local time with its offset and
 plain UTC. Auto (GPS) uses the nearest curated zone from a fresh wired fix; the
@@ -562,6 +601,15 @@ churn the camera clock. Camera clock writes keep UTC as the source of truth;
 protocols with a timezone field receive the standard offset and DST flag, and
 protocols without one receive the selected or derived local civil time. The GPS
 Data page continues to show the receiver's UTC timestamp.
+
+A board without a calendar RTC chip, such as the M5StickS3 or Core, keeps its
+running clock across a soft reset: `esp_restart()`, an OTA restart, a panic, a
+USB reset and most watchdog resets. `time status` then reports source `rtc`
+with `rtc: no`, and the uncertainty grows by an estimate of 100 ppm of the
+elapsed time plus one second. The next GPS, NTP or companion sample replaces it.
+An RTC watchdog system reset clears the clock and falls back to the saved NVS
+value, as a power-on or brownout does. See
+[docs/console-commands.md](docs/console-commands.md#time) for the full rules.
 
 Update rate, Sentences, and Constellation default to `Default`, which leaves
 those receiver settings alone. Power saving defaults to Always on, Assisted
@@ -580,7 +628,8 @@ the receiver's response and the effect of its dynamic model have not been
 verified on an AT6668 unit. `gps monhw` uses the CASIC 2.14.2 field offsets,
 including the 32-bit jamming word; the layout and a live decode are confirmed
 on the AT6668, while the meaning of the antenna and jam status bits still needs
-a qualified antenna comparison.
+a qualified antenna comparison. `gps ubx` reports a u-blox M10 receiver; see
+[docs/console-commands.md](docs/console-commands.md).
 
 ### Intervalometer/Timer
 
@@ -593,7 +642,9 @@ The intervalometer can be configured via three settings in `Settings->Timer`:
 Count can be configured up to 999 or infinite. Deep Sleep powers the remote off
 between frames when the next delay is at or above the threshold. The threshold
 defaults to 60 seconds and accepts 0 to 999 seconds. After a timed wake, furble
-reconnects once and continues the remaining frames.
+reconnects once and continues the remaining frames. A clock kept across a soft
+reset on a board without an RTC chip is not trusted for the resumed wait, so
+that wait counts from boot, as it does after an NVS restore.
 Delay and shutter time can be figured with custom or preset values from 0 to 999 in milliseconds, seconds or minutes.
 
 Some camera protocols such as Ricoh GR trigger capture with a single operation request and do not expose separate exposure start/stop control. For those cameras the intervalometer still controls the wait, count, and delay between captures, but the camera ignores the configured shutter-open duration.
@@ -808,12 +859,14 @@ I wanted a complete solution out of the box to have:
 
 My search concluded with the [M5StickC](https://m5stack.com/products/stick-c)
 from [M5Stack](https://m5stack.com).
-The M5StickC and M5StickC Plus have since been EOL and replaced with the [M5StickC Plus2](https://shop.m5stack.com/products/m5stickc-plus2-esp32-mini-iot-development-kit).
+The M5StickC was later replaced by the M5StickC Plus and then the M5StickC
+Plus2, and the M5StickC and Plus2 are now end of life. The M5StickS3 is the
+current Stick board furble supports; see Supported Controllers.
 
 The M5StickC is an ESP32 based mini-IoT development kit which covered all of the
 requirements (and more). At time of writing, M5Stack sell the M5StickC for
 US$9.95.
-The M5StickC Plus(2) sells for US$19.95.
+The M5StickC Plus and Plus2 later sold for US$19.95.
 
 #### Software
 

@@ -9,6 +9,9 @@
 
 #include <driver/uart.h>
 
+#include "FurbleBatteryStatus.h"
+#include "FurbleBoard.h"
+#include "FurbleBoardCaps.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
 #include "FurbleSettings.h"
@@ -370,6 +373,19 @@ Platform::pm_config_t Platform::getPMConfig(void) {
 
 void Platform::dumpPMLocks(void) {}
 
+bool Platform::canCutGpsRail(void) {
+  // Firmware reads the board profile. The 320x240 build models the Core
+  // Basic, whose profile has no GPS rail. A scenario can also fix the rail on
+  // (`seed gps_rail_fixed`) to model a Core or Waveshare board on a Stick.
+  return Board::profile().gpsRail && !furble_sim_uart_rail_fixed();
+}
+
+bool Platform::hasGpsBackupSupply(void) {
+  // The modelled board carries a backup supply exactly when the virtual
+  // receiver has one, `seed gps_m10_backup`.
+  return furble_sim_uart_gps_backup();
+}
+
 bool Platform::hasTicklessIdle(void) {
   return false;
 }
@@ -401,8 +417,41 @@ Platform::battery_sample_t Platform::sampleBattery(void) {
   return m_BatterySample;
 }
 
+Platform::battery_status_t Platform::getBatteryStatus(void) {
+  // Same body as firmware: the M5Unified readings behind the board's
+  // battery capabilities, which the hardware model supplies here.
+  battery_status_t raw = {};
+  raw.level = M5.Power.getBatteryLevel();
+  raw.voltage = M5.Power.getBatteryVoltage();
+  raw.current = M5.Power.getBatteryCurrent();
+  raw.charging = static_cast<int>(M5.Power.isCharging()) == 1;
+  battery_status_t status = BatteryStatus::gate(getBatteryCaps(), raw);
+#if FURBLE_HAS_VBUS_SENSE
+  status.vbus = BatteryStatus::vbus(true, M5.Power.getVBUSVoltage());
+#else
+  status.vbus = BatteryStatus::vbus(false, 0);
+#endif
+  return status;
+}
+
 uint16_t Platform::getBatteryCapacity(void) {
   return 250;
+}
+
+bool Platform::setRail(Rail rail, bool on) {
+  if ((rail != Rail::GPS) || !Board::profile().gpsRail) {
+    return false;
+  }
+  // Same calls as firmware, so the hardware model sees the same rail traffic.
+  // The host has no Port A rail, so the fake receiver is told what the PMIC
+  // was asked and its rail is the read-back: `gps_rail_fixed` and
+  // `gps_rail_refused` keep it on.
+  furble_sim_uart_set_rail(on);
+  M5.Power.setExtOutput(on, m5::ext_PA);
+  if (M5.Power.getExtOutput() != on) {
+    M5.Power.setExtOutput(on, m5::ext_PA);
+  }
+  return furble_sim_uart_rail_on() == on;
 }
 
 uint32_t Platform::getBatteryFailCount(void) {

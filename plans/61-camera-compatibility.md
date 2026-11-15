@@ -1,5 +1,16 @@
 # 61: Camera compatibility survey
 
+Implementation state (2026-11-13): Lumix (#79), Pentax K (#78) and DJI Osmo (#81)
+have shipped, all untested on hardware. Everything below is the survey as
+written and is not rewritten. These parts of it are historical: the "missing /
+partial" rows for these vendors, the "next free settings wire ID remains 41"
+note, the "highest persisted value in use is RICOH = 9" note (master now has
+PANASONIC_LUMIX = 10 and DJI_OSMO = 11 in `lib/furble/Camera.h`), and every
+plan to track, rebase or port upstream PR 282 (the ranked work, the Panasonic
+catalog entry and backlog item 9), because the fork shipped Lumix itself in
+#79. Upstream PR 282 is still open. The next free wire id is no longer 41; see
+`plans/README.md`.
+
 Status: research complete, Lumix implementation ported in plan 72 and
 UNTESTED. All cited links were fetched and content verified during this survey
 (August 2026).

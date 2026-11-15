@@ -22,11 +22,29 @@ Public headers for the app layer in src/, one header per module
 - `FurbleControl::sendCameraCommand()` returns the complete target-set session
   generation captured with delivery. Expected-session releases must fail when
   the whole session has been replaced.
+- `Control::setAdmitHook()` is registered once at boot, before the control
+  task starts, with `MemoryPressure::admit()`; host Control harnesses
+  register none. `addActive()` calls it under `Control::m_Mutex`, after the
+  duplicate check and before the Target, its queue and its task are
+  allocated, with all of their internal bytes. That is what makes admission
+  atomic with target creation across the UI, console and companion connect
+  paths; never admit a connect from a caller of `addActive()`.
+- `MemoryPressure::setEscalateHook()` is registered once by `WebUI::init()`
+  and never cleared on device; the hook pointer is an acquire/release atomic.
+  `admit()` calls the hook after releasing the governor mutex but possibly
+  under `Control::m_Mutex`, so the lock order is `Control::m_Mutex`, then the
+  governor mutex (released), then the hook's own locks. A hook must not block
+  or call Control, and may only take a lock that is never held while calling
+  Control; `WebUI::m_Mutex` qualifies because WebUI calls Control only outside
+  it. `tick()` and `admit()` share the governor mutex, never held across a
+  delay or another lock.
 - `FurbleCompanion.h` bond state (`m_BondValid`, `m_BondAddress`,
   `m_BondAddressType`) is owned by `m_BondMutex`; read a snapshot through
   `hasBond()` or a scoped `m_BondMutex` lock. Pairing-window state
-  (`m_PairingWindow`, `m_PairingDeadlineMs`) and connection state are owned by
-  `m_Mutex`; use the public getters outside a lock. The lock order is `m_Mutex`
+  (`m_PairingWindow`, `m_PairingDeadlineMs`), reconnect cadence state
+  (`m_ReconnectCadence`, `m_ReconnectInterval`) and connection state are owned
+  by `m_Mutex`; use the public getters outside a lock. A new advertising caller
+  that reads or moves the cadence takes `m_Mutex` for it. The lock order is `m_Mutex`
   then `m_BondMutex`.
 - `FurbleCompanionIdentity.h` owns the durable random-static LE address used
   by `companion reidentify`. Apply it before companion advertising; the
@@ -56,6 +74,14 @@ Public headers for the app layer in src/, one header per module
   and never under `CompanionGatt::m_Mutex`.
 - `FurbleGPS` exposes the CASIC binary test path and AID-INI injection as
   documented public methods. Keep their wire format comments next to the API.
+  `GPS::getBackend()` and `getUbxStatus()` are the UBX receiver surface.
+  `m_Backend` is written only by the GPS task and by `enable()`/`disable()`
+  with the task parked; the UBX identity, SOS and verify results sit under
+  `m_UbxMutex`, and the NAV-PVT under `m_GPSMutex` with the parser it
+  overlays. Never nest `m_UbxMutex` inside `m_GPSMutex`.
+  Its cycle status getters are lock free: they read `m_CycleStatus`, which the
+  GPS task publishes after each pass. Do not make a getter take `m_CycleMutex`
+  again; the task's passes block on it, and a reader holding it stalls them.
 - `FurbleSD.h` and `FurbleGPX.h`: all SD and GPX file I/O runs on the SD
   writer task. Other tasks use only the non-blocking `SD::request()` /
   `SD::logPoint()` API and the atomic state accessors, and never call GPX
@@ -106,10 +132,13 @@ rebase time.
 
 | Owner | Setting keys | Wire ids |
 | --- | --- | --- |
-| Master | shipped settings | 1-22, 24-35, 37-44, 46-47, 51-55, 62, 65-69, 72-76 |
-| Master (conditional) | display, MQTT, S3 watchdog | 23 (`WATCHDOG` on `FURBLE_M5STICKS3`), 36 (`DISPLAY_MODE` without `FURBLE_NO_DISPLAY`), 56-61 (`FURBLE_MQTT`) |
+| Master | shipped settings | 1-22, 24-35, 37-44, 46-55, 65-69, 72-76 |
+| Master (conditional) | display, MQTT, WebUI, S3 watchdog | 23 (`WATCHDOG` on `FURBLE_M5STICKS3`), 36 (`DISPLAY_MODE` without `FURBLE_NO_DISPLAY`), 56-61 (`FURBLE_MQTT`), 62 (`WEB_UI` on `FURBLE_WEBUI`) |
 | Historical claims | compatibility audit required | 45 |
-| Free | available after rechecking open heads | 48-50, 63-64, 70-71 |
+| Free | available after rechecking open heads | 63-64, 70-71 |
+
+Wire ids 48 (`GPS_GNSS`), 49 (`GPS_PSM`) and 50 (`GPS_ANA`) are claimed by the
+u-blox M10 driver, plan 321.
 
 Take the next free id only after checking every open PR head. Id 45 has a
 historical claim in older branches; keep it reserved and do not allocate or
@@ -157,6 +186,9 @@ settings-touching rebase.
 - `FurbleUI.h` exposes IMU diagnostics and spirit-level state only when the
   persisted IMU capability is enabled; simulator seams must model the same
   `M5.Imu` read boundary rather than adding widget-only state.
+- `FurblePressEdge.h` is the UI's companion boost press edge. A press counts
+  only while no input is held, so one touch-board tap that drives the touch
+  indev and a synthesized button indev boosts once. `press-edge` covers it.
 - `FurbleUIGesture.h` is the accelerometer gesture state machine. `sample()` is
   the deterministic seam host tests and the simulator drive; `poll()` is the
   only method that touches hardware. Amplitude thresholds are scaled by a
@@ -190,14 +222,15 @@ settings-touching rebase.
   `HTTPD_MAX_SOCKETS` counts client sockets; ESP-IDF reserves three additional
   internal sockets. The production value is two clients (five total).
   `initEarly()` must run before WiFi/display allocation. Both WebUI task stacks
-  stay in internal RAM; `FurbleWebUIMemory.h` holds the 3.5 KiB/8 KiB sizes and
+  stay in internal RAM; `FurbleWebUIMemory.h` holds the 4 KiB/8 KiB sizes and
   the 20,480/12,288 server gate. The gate log text lives in the
   `FURBLE_WEBUI_*_GATE_LOG` macros because `ESP_LOG_ATTR_STR()` needs a
   literal; the matching constants are for the simulator. It also holds the
   12 KiB identity stack and the 20,864/12,672 runtime identity gate; keep its
   derivation comment current when the identity code or mbedTLS pin changes.
-- `FurbleCompanionMemory.h` holds the 3 KiB companion task stack and the
-  7,552/3,456 first-enable gate. `tools/stack_budget.json` reads the stack
+- `FurbleCompanionMemory.h` holds the 3.75 KiB companion task stack (plus a
+  512-byte margin under `FURBLE_DEBUG_BUILD`) and the
+  8,320/4,224 first-enable gate. `tools/stack_budget.json` reads the stack
   value from it. The simulator logs through `FURBLE_COMPANION_START_GATE_LOG`.
 - `FurbleTaskMemory.h` holds the derived 384-byte TCB and allocator overhead
   of one task. Every task admission gate adds it; do not copy the value.
@@ -205,14 +238,18 @@ settings-touching rebase.
   `mqtts://` URI must pass the 6 KiB TLS-worker floor, not the plain 3 KiB
   worker floor. `wss://` is not part of the contract because no firmware build
   enables the WebSocket transport.
-- `FurbleMQTT.h` `m_Incoming` is the one event copy the esp-mqtt client task
+- `FurbleMQTT.h` `m_Incoming` is the event copy the esp-mqtt client task
   fills in `eventHandler`; that task's plain stack is 3 KiB, so a
-  `queued_event_t` must never live on it. The owner allocates the copy with the
-  event queue (PSRAM when the queue is there) and never frees it, because a
-  stopped client may still deliver a late callback. `m_IncomingMutex` guards it
-  for overlapping clients; hold it only across filling and queueing the copy.
-  Without PSRAM the start gate reserves `EVENT_STORAGE_BYTES`. A failed
-  allocation aborts on every board, so the queue and the copy pick PSRAM from a
+  `queued_event_t` must never live on it. `m_Received` is the copy the owner
+  receives each queued event into, so the owner stack never holds one either.
+  Both live in one block that the owner allocates with the event queue (PSRAM
+  when the queue is there) and never frees, because a stopped client may still
+  deliver a late callback. `m_IncomingMutex` guards `m_Incoming` for
+  overlapping clients; hold it only across filling and queueing the copy.
+  `m_Received` belongs to the owner task alone. Lifecycle events carry only the
+  client and event id. Without PSRAM the start gate reserves
+  `EVENT_STORAGE_BYTES`, the queue plus both copies. A failed
+  allocation aborts on every board, so the queue and the copies pick PSRAM from a
   fresh largest-block reading before allocating, never by trying and falling
   back, and an internal choice re-runs the start gate first.
 - `FurbleUIMemory.h` owns the panel-sized LVGL draw-buffer contract. Narrow
@@ -223,3 +260,30 @@ settings-touching rebase.
 - The simulator-only UI geometry surface keeps content overlap, label clipping,
   and focused-control expanded bounds as separate diagnostics. Focus clearance
   excludes the focused object's own descendants and ancestors.
+- `FurbleBoardCaps.h` turns the board identity macros into capability macros,
+  each defined to 0 or 1. Test one with `#if` only, never `#ifdef` or
+  `defined()`, and include the header directly in every file that uses one;
+  a missing include evaluates silently to 0. The coupling ratchet enforces
+  both rules, scans `sim/` and `tests/host/` too, and rejects a name the
+  header does not define. An include inside a comment does not count.
+- `BatteryStatus::gate()` in `FurbleBatteryStatus.h` gates each battery status
+  field by its own `battery_caps_t` flag. Never gate on the union of the
+  flags: partial boards such as the StickS3 and M5Stack Core would then
+  report unsupported readings.
+- `FurbleControl.h` keeps `esp_power_level_t` for the setting and the
+  adaptive policy, but no public member maps it. The ESP to `TxPower` mapping
+  is file-local in `FurbleControl.cpp`; boot code calls
+  `Control::savedTxPower()` before `Device::init()`.
+- `FurbleBoard.h` holds one `Board::Profile` row per board model, chosen from
+  the detected board (an image serves several boards). Non-UI modules read
+  board facts from it instead of switching on `M5.getBoard()`; UI geometry
+  stays in the UI and compile-time facts stay in `FurbleBoardCaps.h`. A new
+  row needs a matching case in `tests/host/board_profile_test.cpp`.
+- `FurblePowerBackend.h` is the contract a board's power hardware meets: the
+  shared battery and rail types plus the member list `meetsPowerBackend()`
+  checks, asserted after `Platform` in `FurblePlatform.h`. It is a
+  link-time contract with no virtual functions. `Platform` meets it for the M5
+  boards and the simulator; a new board family supplies its own `Platform`
+  file on the drivers in `lib/hal`. Never make it virtual: a vtable defeats
+  `--gc-sections` and pushed the headless Waveshare image over its IRAM budget.
+  See plans/322-hardware-abstraction.md.

@@ -30,6 +30,7 @@
 #include "NimBLEDevice.h"
 
 #include "FurbleControl.h"
+#include "FurbleMemoryPressure.h"
 #include "FurblePower.h"
 #include "FurbleSettings.h"
 #include "TestSyncController.h"
@@ -163,7 +164,7 @@ void startControlTask() {
 
 void freshEnvironment() {
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
   // Default settings for the connection: keep the device awake while active so
   // the sleep-lock balance can be asserted, no adaptive power, no backoff, no
   // connection saver.
@@ -1193,8 +1194,56 @@ bool scenarioRestartStalledPeerReclaim() {
   return g_Failures == 0;
 }
 
+std::atomic<int> g_AdmitCalls {0};
+std::atomic<size_t> g_AdmitBytes {0};
+
+// Connect admission (#456 review). addActive() calls the admit hook under its
+// mutex, after the duplicate check, with every byte the target allocates. Two
+// tasks adding the same camera admit it once, a repeated connect admits
+// nothing, and a second camera admits again.
+bool scenarioAdmitHookOncePerTarget() {
+  freshEnvironment();
+  auto &control = Control::getInstance();
+  g_AdmitCalls = 0;
+  g_AdmitBytes = 0;
+  Control::setAdmitHook([](size_t bytes) {
+    g_AdmitCalls++;
+    g_AdmitBytes = bytes;
+  });
+
+  FujifilmVirtualCamera::Config secondConfig;
+  secondConfig.name = "FUJIFILM X100VI B";
+  secondConfig.address = NimBLEAddress(0x112233445502ULL, 0);
+  FujifilmVirtualCamera first;
+  FujifilmVirtualCamera second(secondConfig);
+  // Two Camera objects for one peer, as a CameraList reload produces.
+  auto firstA = makeCamera(first);
+  auto firstB = makeCamera(first);
+  auto other = makeCamera(second);
+  std::thread ui([&control, firstA]() { control.addActive(firstA); });
+  std::thread console([&control, firstB]() { control.addActive(firstB); });
+  ui.join();
+  console.join();
+  check(control.getTargetCount() == 1, "two tasks adding one camera make one target");
+  check(g_AdmitCalls == 1, "two tasks adding one camera admit it once");
+  check(g_AdmitBytes >= Furble::MemoryPressure::CONNECT_TARGET_BYTES + sizeof(Control::Target),
+        "admission covers the Target object as well as its task");
+
+  control.addActive(firstA);
+  check(g_AdmitCalls == 1, "a repeated connect admits nothing");
+  control.addActive(other);
+  check(control.getTargetCount() == 2, "a second camera is a second target");
+  check(g_AdmitCalls == 2, "a second camera is admitted");
+
+  Control::setAdmitHook(nullptr);
+  control.disconnect();
+  check(waitForState(Control::STATE_IDLE, 3000), "the harness returns to idle");
+  return g_Failures == 0;
+}
+
 const std::map<std::string, std::function<bool()>> &scenarios() {
   static const std::map<std::string, std::function<bool()>> table = {
+      {"admit-hook-once-per-target",       scenarioAdmitHookOncePerTarget      },
       {"empty-target-connect-stays-idle",  scenarioEmptyTargetConnectStaysIdle },
       {"fresh-connect",                    scenarioFreshConnect                },
       {"dead-camera-disconnect-no-freeze", scenarioDeadCameraDisconnectNoFreeze},

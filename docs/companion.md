@@ -9,13 +9,21 @@ and current advertising state. Reconnect advertising is unfiltered because
 macOS rotates its LE address; the connect handler still accepts only the stored
 identity outside the pairing window.
 
-The first enable after boot creates the 3 KiB companion task and the GATT
+Reconnect advertising runs at 100 ms for 60 seconds after the companion is
+enabled, after boot, after any disconnect, and after any button press, whether
+the display is on, dimmed or off and in every control mode. It then falls back
+to 1022.5 ms, Apple's recommended step, until the host reconnects. If the app
+does not find the device, press any button to reopen the fast window. A press
+inside the window only extends it; advertising restarts only when its interval
+changes. The slow interval is untested on iOS and macOS hardware.
+
+The first enable after boot creates the 3.75 KiB companion task and the GATT
 service, and both stay for the rest of the session. That first enable needs
-7,552 bytes of free internal RAM and a 3,456-byte block. Below that the
+8,320 bytes of free internal RAM and a 4,224-byte block. Below that the
 companion stays off and the USB log says:
 
 ```text
-Companion not started: internal free N, largest N (need 7552/3456). It stays off; enable it again or reboot to retry.
+Companion not started: internal free N, largest N (need 8320/4224). It stays off; enable it again or reboot to retry.
 ```
 
 The saved setting does not change. Enabling it again once RAM is free, or a
@@ -173,6 +181,27 @@ command a 5 s timeout so a debug display flush does not look like a dead link.
 command. The USB monitor reads `status` and `gps` from the console and writes
 the same CSV columns as the BLE monitor, so the plotter is shared. USB charging
 invalidates battery-drain comparisons.
+
+The USB monitor recovers from a lost or silent console (issue #381). A port
+that disappears or hangs up after a USB re-enumeration is reopened with the
+same backoff as BLE. A console that answers no prompt is a stall. When the chip
+resets while the port is open, the ESP32 ROM prints its reset line on the same
+port; the monitor writes it to stderr and adds a `rom-reset:<reason>` marker,
+for example `rom-reset:USB_UART_CHIP_RESET`. A chip parked in ROM download
+mode, or a console that stays silent across three reopens, needs a reset. The
+monitor sends one only with `--usb-hard-reset`: it pulses RTS with DTR low,
+which is esptool's `--after hard_reset` sequence, and adds a `hard-reset`
+marker. The reset can drop the USB port before RTS is released; the marker is
+still written and the next sample reopens the port. Without the flag it adds one `hard-reset-needed` marker and keeps
+retrying until `--retry-window` runs out. The first sample prints the console
+`reset` reason and the previous run's `crash` summary to stderr. A later sample
+with a lower `uptime` means the app restarted: the monitor adds a
+`device-reset:<reason>` marker and prints the same two lines.
+
+```sh
+.build/release/furble-companion-cli monitor --transport usb --port /dev/cu.usbmodem1101 \
+  --interval 5 --duration 3600 --csv --usb-hard-reset > usb-power.csv
+```
 
 It can send a phone-GPS fallback fix, press/release shutter or focus, and poll
 status notifications. The companion password comes from an argument,

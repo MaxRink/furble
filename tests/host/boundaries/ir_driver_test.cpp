@@ -5,6 +5,7 @@
 // symbol trains the production encoder hands to RMT, so protocol timing is
 // asserted from the driver output, not from a copy of the encoder.
 
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
@@ -43,11 +44,12 @@ struct Capture {
 };
 
 struct RmtChannel {
-  bool enabled = false;
+  // The IR task updates these while the test thread reads them.
+  std::atomic<bool> enabled {false};
   uint32_t carrier = 0;
-  int enables = 0;
-  int disables = 0;
-  int transmits = 0;
+  std::atomic<int> enables {0};
+  std::atomic<int> disables {0};
+  std::atomic<int> transmits {0};
 };
 
 std::mutex g_Mutex;
@@ -170,6 +172,19 @@ bool waitForCapture(size_t count) {
   return g_Condition.wait_until(lock, deadline, [count] { return g_Captures.size() >= count; });
 }
 
+// The IR task disables the channel after it logs or captures a frame, so the
+// test waits, bounded, for every enable to be matched instead of sampling once.
+bool waitForChannelDisabled(const RmtChannel *channel) {
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+  while (std::chrono::steady_clock::now() < deadline) {
+    if (channel->disables.load() == channel->enables.load()) {
+      return true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
+  return false;
+}
+
 bool waitForLog(const char *needle, uint32_t timeout_ms = 5000) {
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
   while (std::chrono::steady_clock::now() < deadline) {
@@ -259,8 +274,7 @@ void runProtocols(void) {
   }
 
   check(g_LastChannel != nullptr, "RMT channel was never created");
-  check(g_LastChannel->disables == g_LastChannel->enables,
-        "RMT channel was left enabled after a transmit");
+  check(waitForChannelDisabled(g_LastChannel), "RMT channel was left enabled after a transmit");
   std::cout << "ir.channel enables=" << g_LastChannel->enables
             << " disables=" << g_LastChannel->disables << " transmits=" << g_LastChannel->transmits
             << '\n';
@@ -320,8 +334,7 @@ void runQueueTimeout(void) {
   std::cout << "ir.timeout wait_ms=1000 logged=1\n";
 
   check(g_LastChannel != nullptr, "RMT channel missing after timeout");
-  check(g_LastChannel->disables == g_LastChannel->enables,
-        "the RMT channel was left enabled after a timeout");
+  check(waitForChannelDisabled(g_LastChannel), "the RMT channel was left enabled after a timeout");
   check(g_Captures.size() == 2, "queue accounting transmitted an unexpected frame count");
 }
 

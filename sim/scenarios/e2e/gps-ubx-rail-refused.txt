@@ -1,0 +1,21 @@
+# Turning GPS off on a board that can cut the rail, when the PMIC refuses the
+# cut (a Core2 on a low battery). disable() stops the GNSS and asks UPD-SOS to
+# save BBR, then the rail stays on. furble must start the GNSS again instead
+# of leaving a powered receiver stopped: two CFG-RST, stop then start.
+seed gps true
+seed gps_model m10
+seed gps_m10_hot true
+seed gps_rail_refused true
+seed gps_rate 1
+wait 10000
+assert gps.receiver present
+assert m10.state on
+assert m10.fixed 1
+assert m10.resets 0
+action toggle gps
+wait 2000
+assert setting.gps 0
+assert m10.sos_creates 1
+assert m10.resets 2
+assert m10.state on
+exit

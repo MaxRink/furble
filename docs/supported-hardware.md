@@ -14,7 +14,7 @@ matching `-debug` variant that adds verbose logging and the USB serial console.
 | Build env | Chip | Flash | MQTT | Boards it runs on | Touch | Notes |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | `m5stick-c` | ESP32 | 4 MB | No | M5StickC | No | End of life. |
-| `m5stick-c-plus` | ESP32 | 4 MB | No | M5StickC Plus, M5StickC Plus2 | No | Plus and Plus2 share the image. |
+| `m5stick-c-plus` | ESP32 | 4 MB | No | M5StickC Plus, M5StickC Plus2 (EOL) | No | Plus and Plus2 share the image. The Plus2 is end of life. |
 | `m5stick-s3` | ESP32-S3 | 8 MB | Yes | M5StickS3 | No | Native USB Serial/JTAG. PSRAM enabled. Only board with Sleep while connected and Watchdog. |
 | `m5stack-core` | ESP32 | 4 MB | No | M5Stack Core (Basic/Gray) | No | No Auto off or Low battery. |
 | `m5stack-core2` | ESP32 | 16 MB | Yes | M5Stack Core2, M5Tough (untested) | Yes | PSRAM enabled. On-screen shutter buttons, touch calibration, power-button screen lock. The firmware detects the M5Tough and branches for it, but it has not been verified on hardware. |
@@ -68,13 +68,18 @@ and the feature matrix.
 | Nikon | `Nikon` | Remote controller mode works (ML-L7 style, shutter only). Smart mode appears but does not pair. |
 | Sony | `Sony` | Sony ZV and most modern Sony bodies. |
 | Ricoh | `Ricoh` | GR IV and GR IV HDF, firmware 1.20. Shutter capture with autofocus and GPS supported. Focus-only control is unsupported. GR III and GR IIIx expose the same BLE service UUIDs but remain uncertified because power and WLAN behaviour differ. GR II is Wi-Fi only. Numeric-comparison pairing displays the camera's six-digit code on the furble screen and is untested on hardware. |
+| Panasonic LUMIX | `Lumix` | Implemented from S5II and BGH1 protocol traces. Shutter and GPS with clock are supported. There is no focus opcode, so focus control is disabled. Untested on hardware. |
+| PENTAX K-3 Mark III | `Ricoh` | Untested on hardware. The K-3 Mark III and K-3 Mark III Monochrome are matched by the Ricoh service UUIDs or the PENTAX name and use the Ricoh Imaging protocol path unchanged. The K-1, K-1 Mark II, KP, KF and K-70 connect over Wi-Fi only and are not supported. Shutter capture with autofocus and GPS follow the Ricoh class. Focus-only control is unsupported. |
+| DJI Osmo Action | `DJIOsmo` | Untested on hardware. Action 4 and Action 5 Pro, from DJI's published R SDK protocol and ESP32 reference. The shutter toggles video recording. Focus control is disabled and GPS is not implemented. Pairing is DJI's own camera approval, not a Bluetooth passkey. |
 | FauxNY | `FauxNY` | Software test camera. Enabled by the FauxNY setting for development. |
 
 ## GPS units
 
-Location tagging uses an M5Stack GPS unit on Grove Port A. Every M5Stack GPS
-receiver furble targets is the AT6668/CASIC family, so the existing $PCAS and
-NMEA support covers them with no per-unit protocol code. The stored default
+Location tagging uses a GPS unit on Grove Port A. Every M5Stack GPS receiver
+furble targets is the AT6668/CASIC family, so the existing $PCAS and NMEA
+support covers them with no per-unit protocol code. A u-blox M10 receiver is
+detected at GPS start by a UBX-MON-VER poll and configured over UBX; any other
+receiver keeps the CASIC and NMEA path. The stored default
 baud is 9600; select `Auto` or a fixed 115200 under `Settings` > `GPS` >
 `GPS Baud` for the AT6668 units.
 
@@ -84,14 +89,25 @@ baud is 9600; select `Auto` or a fixed 115200 under `Settings` > `GPS` >
 | Unit-GPS (SMA) | AT6668 | External SMA active antenna | All five | Grove Port A | Supported, drop in, zero wiring change. Recommended fix for weak or indoor reception because of the external antenna. |
 | Module GPS v2.1 | AT6668 | SMA | Core, Core2 only | M5-Bus module | Planned, not yet in firmware. Needs a Core/Core2 gated port setting before it works. |
 | Atomic GPS Base v2.0 | AT6668 | SMA | None | Atom base | Out of scope. furble targets no Atom board. |
+| Generic M10 UART module | u-blox MAX-M10S or other M10 | Module dependent | All five | Grove Port A, 3.3 V logic | Simulator-tested, hardware-untested. MAX-M10S runs at 9600 baud and MIA-M10Q at 38400, so select `Auto`. |
+| LilyGO T-Beam Supreme M10S | u-blox MAX-M10S | SMA | Not a furble board yet | On board | Receiver supported, board not ported. See plan 318. |
+| LilyGO T-Watch Ultra, T-LoRa Pager | u-blox MIA-M10Q | Built in | Not furble boards yet | On board | Receiver supported, boards not ported. See plan 318. |
 
 The older Mini GPS/BDS Unit is end of life and runs at 9600 baud. `Auto` probes
 115200, 9600, 38400, 57600, 19200, and 4800, and requires two checksummed NMEA
 sentences before declaring the receiver present. If probing fails, furble marks
 the receiver absent, cuts the external rail, and retries once after 60 seconds.
 
+The u-blox M10 support covers detection, NAV-PVT fix and accuracy,
+constellation selection, update rate, dynamic model, cyclic tracking and on/off
+power save, RXM-PMREQ software standby, AssistNow Autonomous and UPD-SOS
+save-on-shutdown. It is verified against a virtual M10 in the simulator only;
+no M10 hardware has been tested. A board that keeps the receiver's V_BCKP
+supplied defines `FURBLE_GPS_BACKUP_SUPPLY`; no supported board does.
+
 Source: the M5Stack product pages for each unit (docs.m5stack.com), cross
-checked against the firmware GPS support in `src/FurbleGPS.cpp`.
+checked against the firmware GPS support in `src/FurbleGPS.cpp`. The u-blox
+documents are listed in `plans/321-ublox-m10-driver.md`.
 
 ## Related references
 

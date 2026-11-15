@@ -2,6 +2,8 @@
 #include <driver/gpio.h>
 #include <esp_log.h>
 
+#include "FurbleBoard.h"
+#include "FurbleBoardCaps.h"
 #include "FurbleFeedback.h"
 #include "FurbleTime.h"
 
@@ -114,42 +116,12 @@ void Feedback::initialize(void) {
   // applies on restart only. The menu offers a restart button for it.
   m_Output = static_cast<output_t>(Settings::load<uint8_t>(Settings::FB_OUTPUT));
 
-  switch (M5.getBoard()) {
-    case m5::board_t::board_M5StickC:
-      m_Capabilities = {false, true, false, GPIO_NUM_10, true};
-      break;
-
-    case m5::board_t::board_M5StickCPlus:
-      m_Capabilities = {true, true, false, GPIO_NUM_10, true};
-      break;
-
-    case m5::board_t::board_M5StickCPlus2:
-      // G19 is also the IR pin on Plus2. There is no IR receiver backend in
-      // this branch, so a future IR receive path must guard this blink.
-      m_Capabilities = {true, true, false, GPIO_NUM_19, true};
-      break;
-
-    case m5::board_t::board_M5StickS3:
-      m_Capabilities = {true, false, false, -1, true};
-      break;
-
-    case m5::board_t::board_M5Stack:
-      m_Capabilities = {true, false, false, -1, true};
-      break;
-
-    case m5::board_t::board_M5StackCore2:
-      m_Capabilities = {true, false, true, -1, true};
-      break;
-
-    case m5::board_t::board_M5Tough:
-      // No speaker, LED or vibration motor.
-      m_Capabilities = {false, false, false, -1, true};
-      break;
-
-    default:
-      m_Capabilities = {false, false, false, -1, true};
-      break;
-  }
+  // G19 is also the IR pin on the Plus2. There is no IR receiver backend in
+  // this branch, so a future IR receive path must guard this blink. The Tough
+  // has no speaker, LED or vibration motor.
+  const auto &board = Board::profile();
+  m_Capabilities = {board.feedbackSound, board.feedbackLight, board.feedbackVibration, board.ledPin,
+                    true};
 
   // Leave the LED pin untouched unless the boot output actually blinks it.
   // On the Plus2 G19 doubles as the IR emitter and the polarity is not
@@ -331,7 +303,7 @@ void Feedback::signal(event_t event, bool force) {
 }
 
 bool Feedback::beginSpeaker(void) {
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_M5PM1
   // The M5PM1 powers the amplifier and the first I2C transaction after its
   // idle sleep only wakes it and fails (root CLAUDE.md trap). The speaker is
   // closed between patterns, so the enable path can hit exactly that first
