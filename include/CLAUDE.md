@@ -41,8 +41,10 @@ Public headers for the app layer in src/, one header per module
 - `FurbleCompanion.h` bond state (`m_BondValid`, `m_BondAddress`,
   `m_BondAddressType`) is owned by `m_BondMutex`; read a snapshot through
   `hasBond()` or a scoped `m_BondMutex` lock. Pairing-window state
-  (`m_PairingWindow`, `m_PairingDeadlineMs`) and connection state are owned by
-  `m_Mutex`; use the public getters outside a lock. The lock order is `m_Mutex`
+  (`m_PairingWindow`, `m_PairingDeadlineMs`), reconnect cadence state
+  (`m_ReconnectCadence`, `m_ReconnectInterval`) and connection state are owned
+  by `m_Mutex`; use the public getters outside a lock. A new advertising caller
+  that reads or moves the cadence takes `m_Mutex` for it. The lock order is `m_Mutex`
   then `m_BondMutex`.
 - `FurbleCompanionIdentity.h` owns the durable random-static LE address used
   by `companion reidentify`. Apply it before companion advertising; the
@@ -176,6 +178,9 @@ settings-touching rebase.
 - `FurbleUI.h` exposes IMU diagnostics and spirit-level state only when the
   persisted IMU capability is enabled; simulator seams must model the same
   `M5.Imu` read boundary rather than adding widget-only state.
+- `FurblePressEdge.h` is the UI's companion boost press edge. A press counts
+  only while no input is held, so one touch-board tap that drives the touch
+  indev and a synthesized button indev boosts once. `press-edge` covers it.
 - `FurbleUIGesture.h` is the accelerometer gesture state machine. `sample()` is
   the deterministic seam host tests and the simulator drive; `poll()` is the
   only method that touches hardware. Amplitude thresholds are scaled by a

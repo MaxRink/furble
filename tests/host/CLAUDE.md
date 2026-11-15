@@ -65,7 +65,7 @@ offline-ACK deadline becomes a timing flake. `console-commands` pins the
   their refuse-then-retry path, the cached setting/password state, the
   streamed settings JSON and the identity persistence contract covered there.
   A new route or a new credential path needs a matching case.
-- `companion-memory` pins the 7,552/3,456 companion first-enable floors.
+- `companion-memory` pins the 8,320/4,224 companion first-enable floors.
 - `control-e2e-admit-hook-once-per-target` owns where connect admission
   runs: inside `Control::addActive()`, once per new target, never for a
   duplicate. The other Control harnesses register no admit hook and do not

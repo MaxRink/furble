@@ -983,9 +983,10 @@ Platform::battery_sample_t Platform::getBatterySample(void) const {
 void Platform::update(void) {
   M5.update();
 #if defined(FURBLE_M5STICKS3)
-  // The UI calls update() every 5 ms. Reading the PMIC button on every pass is
-  // about 200 I2C transactions per second for a human-speed input; 50 Hz is
-  // plenty and cuts the bus traffic tenfold.
+  // The UI calls update() every 5 ms, or up to every 20 ms with the panel
+  // off. Reading the PMIC button on every 5 ms pass is about 200 I2C
+  // transactions per second for a human-speed input; 50 Hz is plenty and cuts
+  // the bus traffic tenfold.
   const uint32_t now = tick();
   if (PlatformPolicy::pm1PollDue(now, m_LastPm1PollMs)) {
     m_LastPm1PollMs = now;

@@ -279,6 +279,13 @@ target_include_directories(pm1_poll_policy_test PRIVATE ${FURBLE_ROOT}/include)
 target_compile_options(pm1_poll_policy_test PRIVATE -Wall -Wextra -Werror)
 add_test(NAME pm1-poll-policy COMMAND pm1_poll_policy_test)
 
+# Companion reconnect advertising runs fast for a window after enable, boot,
+# disconnect or a button wake, then falls back to the slow interval.
+add_executable(companion_advertising_test companion_advertising_test.cpp)
+target_include_directories(companion_advertising_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(companion_advertising_test PRIVATE -Wall -Wextra -Werror)
+add_test(NAME companion-advertising COMMAND companion_advertising_test)
+
 # The staged display mode dims at the inactivity timeout and sleeps after a
 # fixed dwell. This policy test pins the dwell and its wrap arithmetic.
 add_executable(display_policy_test display_policy_test.cpp)
@@ -1328,6 +1335,11 @@ target_include_directories(gps_hold_test PRIVATE ${FURBLE_ROOT}/include)
 target_compile_options(gps_hold_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                              -Wno-unused-parameter)
 
+# The UI's companion boost press-edge rule. Header only.
+add_executable(press_edge_test press_edge_test.cpp)
+target_include_directories(press_edge_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(press_edge_test PRIVATE -Wall -Wextra -Werror)
+
 # The GPS Data page sentence age formatter. Pure, header only, and the only
 # unbounded field on a row with a hard character budget, so its clamp is a unit
 # test rather than a scenario assertion. The simulator cannot reach the ages
@@ -1359,6 +1371,19 @@ add_executable(gps_casic_test
 target_include_directories(gps_casic_test PRIVATE ${FURBLE_ROOT}/lib/furble/protocol)
 target_compile_options(gps_casic_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                               -Wno-unused-parameter)
+# Pure UBX codec from lib/furble/protocol/GpsUbx for the u-blox M10 receivers.
+add_executable(gps_ubx_test
+               gps_ubx_test.cpp
+               ${FURBLE_PROTOCOL_DIR}/GpsUbx.cpp)
+target_include_directories(gps_ubx_test PRIVATE ${FURBLE_ROOT}/lib/furble/protocol)
+target_compile_options(gps_ubx_test PRIVATE -Wall -Wextra -Werror)
+# Seeded UBX stream fuzzer over the same codec. tools/check_fuzz.py runs the
+# wider seed set from tests/fuzz/seeds.json.
+add_executable(gps_ubx_fuzz
+               ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/gps_ubx_fuzz.cpp
+               ${FURBLE_PROTOCOL_DIR}/GpsUbx.cpp)
+target_include_directories(gps_ubx_fuzz PRIVATE ${FURBLE_ROOT}/lib/furble/protocol)
+target_compile_options(gps_ubx_fuzz PRIVATE -Wall -Wextra -Werror)
 # The status freshness predicate is pure logic. Keeping it in a header target
 # proves the fix/age boundary without pulling TinyGPSPlus and the UART in.
 add_executable(gps_fix_freshness_test gps_fix_freshness_test.cpp)
@@ -2131,7 +2156,7 @@ target_compile_options(companion_fuzz PRIVATE -Wall -Wextra -Wno-format
 target_link_libraries(companion_fuzz PRIVATE Threads::Threads)
 
 set(FUZZ_TARGETS mqtt_fuzz webui_fuzz settings_migration_fuzz wifi_policy_fuzz control_fuzz
-                 companion_fuzz)
+                 companion_fuzz gps_ubx_fuzz)
 foreach(target ${FUZZ_TARGETS})
   target_compile_options(${target} PRIVATE ${FUZZ_SANITIZER_FLAGS})
   target_link_options(${target} PRIVATE ${FUZZ_SANITIZER_FLAGS})
@@ -2329,11 +2354,14 @@ if(BUILD_TESTING)
   add_test(NAME ota-mqtt-admission COMMAND ota_mqtt_admission_test)
   add_test(NAME ota-replay-store COMMAND ota_replay_store_test)
   add_test(NAME ota-partition-sink COMMAND ota_partition_sink_test)
+  add_test(NAME press-edge COMMAND press_edge_test)
   add_test(NAME gps-format COMMAND gps_format_test)
   add_test(NAME gps-hold COMMAND gps_hold_test)
   add_test(NAME gps-power-cycle COMMAND gps_power_cycle_test)
   add_test(NAME gps-power-profiler COMMAND gps_power_profiler_test)
   add_test(NAME gps-casic COMMAND gps_casic_test)
+  add_test(NAME gps-ubx COMMAND gps_ubx_test)
+  add_test(NAME gps-ubx-fuzz COMMAND gps_ubx_fuzz --seed 1 --iterations 300)
   add_test(NAME gps-fix-freshness COMMAND gps_fix_freshness_test)
   add_test(NAME fault-tooling COMMAND fault_tooling_test)
   # The console suite drives the real console task through its transport, and

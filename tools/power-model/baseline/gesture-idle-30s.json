@@ -3,21 +3,23 @@
   "scenario": "gesture-idle-30s",
   "estimate_kind": "relative simulator estimate, not a hardware measurement",
   "model_source": "tools/power-model/board-currents.yaml",
+  "model_digest": "sha256:8941a84bb8a7345df76150450e51035e81b26a0ad8a09cad55f985a72198aaa6",
+  "model_valid": true,
   "board": "m5stick-s3",
-  "duration_ms": 30010,
+  "duration_ms": 30027,
   "activity": {
     "timer_fires": {
-      "battery_timer": {"count": 6, "per_second": 0.199933},
+      "battery_timer": {"count": 6, "per_second": 0.199820},
       "bulb_page_refresh": {"count": 0, "per_second": 0.000000},
       "bulb_timer": {"count": 0, "per_second": 0.000000},
       "companion_pairing_timer": {"count": 0, "per_second": 0.000000},
       "connect_timer": {"count": 0, "per_second": 0.000000},
       "diagnostics_timer": {"count": 0, "per_second": 0.000000},
-      "gesture_timer": {"count": 1500, "per_second": 49.983339},
+      "gesture_timer": {"count": 1457, "per_second": 48.522996},
       "gps_data_timer": {"count": 0, "per_second": 0.000000},
-      "gps_service_timer": {"count": 30, "per_second": 0.999667},
+      "gps_service_timer": {"count": 30, "per_second": 0.999101},
       "icon_timer": {"count": 0, "per_second": 0.000000},
-      "inactivity_timer": {"count": 30, "per_second": 0.999667},
+      "inactivity_timer": {"count": 30, "per_second": 0.999101},
       "interval_page_refresh": {"count": 0, "per_second": 0.000000},
       "intervalometer_timer": {"count": 0, "per_second": 0.000000},
       "nmea_timer": {"count": 0, "per_second": 0.000000}
@@ -27,20 +29,18 @@
     "flushed_pixels": 0,
     "flushed_pixels_per_second": 0.000000,
     "scheduler": {
-      "ui_cycles": 6002,
-      "timer_queue_idle_ms": 23000,
+      "ui_cycles": 2356,
+      "timer_queue_idle_ms": 9000,
       "task_idle_ms": 30000,
       "queue_receives": {},
       "queue_empty_receives": {
-        "queue": 600
+        "queue": 2472
       },
       "task_delay_count": {
-        "furble": 300,
-        "ui": 6002
+        "ui": 2356
       },
       "task_delay_ms": {
-        "furble": 30000,
-        "ui": 30010
+        "ui": 30027
       }
     }
   },
@@ -117,11 +117,11 @@
     },
     "light_sleep": {
       "zero_lock_ms": 30000,
-      "timer_queue_idle_ms": 23000,
+      "timer_queue_idle_ms": 9000,
       "task_idle_ms": 30000,
       "eligible_ms": 23000,
       "residency_ms": 23000,
-      "residency_percent": 76.641120
+      "residency_percent": 76.597729
     },
     "frequency_residency_ms": {
       "80": 30000,
@@ -151,14 +151,51 @@
   "energy": {
     "board": "m5stick-s3",
     "components_mA": {
-      "mcu": 9.560813,
+      "mcu": 10.134515,
       "radio": 0.000000,
-      "display": 0.014995,
+      "display": 0.015000,
       "gps": 0.000000,
       "pmic": 0.052470,
       "peripherals": 0.003500
     },
-    "estimated_mA": 9.631778
+    "estimated_mA": 10.205485,
+    "accounting_inputs": {
+      "duration_ms": 30027,
+      "mcu_ms": {
+        "light_sleep_in_80": 22592,
+        "frequency_80": 30027,
+        "frequency_160": 0,
+        "frequency_240": 0
+      },
+      "display_ms": {
+        "on": 0,
+        "dim": 0,
+        "off": 30027
+      },
+      "radio_connected_ms": 0,
+      "radio_event_count": 0,
+      "gps_ms": {
+        "acquiring": 0,
+        "degraded": 0,
+        "tracking": 0,
+        "standby": 0
+      },
+      "accounting_mode": "legacy-unaccounted",
+      "accounting_version": 0,
+      "calibration_status": "",
+      "accounting_fingerprint": "",
+      "poll_work_us": 0,
+      "timer_work_us": 0,
+      "timer_work_by_name_us": {},
+      "work_80_us": 0,
+      "work_160_us": 0,
+      "work_240_us": 0,
+      "eligible_light_sleep_us": 0,
+      "light_sleep_work_us": 0,
+      "adjusted_light_sleep_us": 0,
+      "pending_work_us": 0,
+      "accounting_valid": true
+    }
   },
-  "estimated_mA": 9.631778
+  "estimated_mA": 10.205485
 }
