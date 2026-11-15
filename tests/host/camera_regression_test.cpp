@@ -29,7 +29,7 @@ bool check(bool condition, const char *message) {
 
 bool testRegistrationTimeoutException() {
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
   Furble::Host::FujifilmVirtualCamera::Config config;
   config.secure = true;
   Furble::Host::FujifilmVirtualCamera peer(config);
@@ -38,7 +38,7 @@ bool testRegistrationTimeoutException() {
   const auto advertisement = peer.advertisement();
   Furble::FujifilmSecure camera(&advertisement);
   camera.setConnSaverEnabled(true);
-  if (!check(camera.connect(ESP_PWR_LVL_P3, 1000), "Fujifilm registration completes"))
+  if (!check(camera.connect(Furble::TxPower::P3, 1000), "Fujifilm registration completes"))
     return false;
   if (!check(peer.registrationConnParamsAccepted(),
              "over-cap peer request is accepted during registration"))
@@ -91,14 +91,14 @@ bool testRegistrationTimeoutException() {
 // setter in production Camera.h.
 bool testConnSaverIdleTransition() {
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
   Furble::Host::FujifilmVirtualCamera::Config config;
   config.secure = true;
   Furble::Host::FujifilmVirtualCamera peer(config);
   NimBLEDevice::setMockPeer(&peer);
   const auto advertisement = peer.advertisement();
   Furble::FujifilmSecure camera(&advertisement);
-  if (!check(camera.connect(ESP_PWR_LVL_P3, 1000), "the Secure camera connects"))
+  if (!check(camera.connect(Furble::TxPower::P3, 1000), "the Secure camera connects"))
     return false;
 
   NimBLEClient *client = NimBLEDevice::lastClient();
@@ -167,7 +167,7 @@ bool testConnSaverIdleTransition() {
 
 bool testRegistrationFastProfileTimeout() {
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
   Furble::Host::FujifilmVirtualCamera::Config config;
   config.secure = true;
   Furble::Host::FujifilmVirtualCamera peer(config);
@@ -176,13 +176,13 @@ bool testRegistrationFastProfileTimeout() {
   NimBLEDevice::setConnParamApplyDelayReads(1000);
   const auto advertisement = peer.advertisement();
   Furble::FujifilmSecure camera(&advertisement);
-  return check(!camera.connect(ESP_PWR_LVL_P3, 1000),
+  return check(!camera.connect(Furble::TxPower::P3, 1000),
                "Secure registration is bounded when FAST never applies");
 }
 
 bool testSecureRequiredSubscriptionsUseResponses() {
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
 
   Furble::Host::FujifilmVirtualCamera::Config config;
   config.secure = true;
@@ -191,7 +191,7 @@ bool testSecureRequiredSubscriptionsUseResponses() {
   const auto advertisement = peer.advertisement();
   Furble::FujifilmSecure camera(&advertisement);
 
-  if (!check(camera.connect(ESP_PWR_LVL_P3, 1000),
+  if (!check(camera.connect(Furble::TxPower::P3, 1000),
              "Secure camera accepts its normal subscription sequence")) {
     return false;
   }
@@ -216,7 +216,7 @@ bool testSecureRequiredSubscriptionsUseResponses() {
 
 bool testDelayedRegistrationParameterRequest() {
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
   Furble::Host::FujifilmVirtualCamera::Config config;
   config.secure = true;
   Furble::Host::FujifilmVirtualCamera peer(config);
@@ -225,13 +225,13 @@ bool testDelayedRegistrationParameterRequest() {
   NimBLEDevice::setMockPeer(&peer);
   const auto advertisement = peer.advertisement();
   Furble::FujifilmSecure camera(&advertisement);
-  return check(camera.connect(ESP_PWR_LVL_P3, 1000) && peer.registrationConnParamsAccepted(),
+  return check(camera.connect(Furble::TxPower::P3, 1000) && peer.registrationConnParamsAccepted(),
                "delayed Secure registration parameters remain inside the narrow gate");
 }
 
 bool testRegistrationParameterRequestDuringSubscription() {
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
   Furble::Host::FujifilmVirtualCamera::Config config;
   config.secure = true;
   Furble::Host::FujifilmVirtualCamera peer(config);
@@ -246,13 +246,13 @@ bool testRegistrationParameterRequestDuringSubscription() {
   NimBLEDevice::setMockPeer(&peer);
   const auto advertisement = peer.advertisement();
   Furble::FujifilmSecure camera(&advertisement);
-  return check(camera.connect(ESP_PWR_LVL_P3, 1000),
+  return check(camera.connect(Furble::TxPower::P3, 1000),
                "Secure registration accepts a deferred parameter request during subscription");
 }
 
 bool testSecureFastProfileWaitsForShutterDiscovery() {
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
   Furble::Host::FujifilmVirtualCamera::Config config;
   config.secure = true;
   Furble::Host::FujifilmVirtualCamera peer(config);
@@ -260,13 +260,13 @@ bool testSecureFastProfileWaitsForShutterDiscovery() {
   NimBLEDevice::setMockPeer(&peer);
   const auto advertisement = peer.advertisement();
   Furble::FujifilmSecure camera(&advertisement);
-  return check(camera.connect(ESP_PWR_LVL_P3, 1000),
+  return check(camera.connect(Furble::TxPower::P3, 1000),
                "Secure fast profile is requested after shutter discovery");
 }
 
 bool testNullAndMissingIdentifierBoundaries() {
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
   Furble::Host::FujifilmVirtualCamera::Config secureConfig;
   secureConfig.secure = true;
   Furble::Host::FujifilmVirtualCamera securePeer(secureConfig);
@@ -282,7 +282,7 @@ bool testNullAndMissingIdentifierBoundaries() {
   NimBLEDevice::setMockPeer(&basicPeer);
   const auto basicAdvertisement = basicPeer.advertisement();
   Furble::FujifilmBasic basic(&basicAdvertisement);
-  return check(!basic.connect(ESP_PWR_LVL_P3, 1000),
+  return check(!basic.connect(Furble::TxPower::P3, 1000),
                "Fujifilm Basic rejects a missing identifier characteristic");
 }
 
@@ -293,7 +293,7 @@ bool testNullAndMissingIdentifierBoundaries() {
 // advertised, including nothing.
 bool testUnnamedCameraDisplayName() {
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
 
   Furble::Host::FujifilmVirtualCamera::Config named;
   named.name = "FUJIFILM X100VI";
@@ -317,7 +317,7 @@ bool testUnnamedCameraDisplayName() {
 
 bool testNullNikonCallbacks() {
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
   Furble::Host::FujifilmVirtualCamera peer;
   const auto advertisement = peer.advertisement();
   if (!check(!Furble::Nikon::matches(nullptr), "Nikon matcher rejects null"))
@@ -330,7 +330,7 @@ bool testNullNikonCallbacks() {
 
 bool testSecureRegistrationDropStopsGATT() {
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
   Furble::Host::FujifilmVirtualCamera::Config config;
   config.secure = true;
   Furble::Host::FujifilmVirtualCamera peer(config);
@@ -339,7 +339,7 @@ bool testSecureRegistrationDropStopsGATT() {
   NimBLEDevice::setMockPeer(&peer);
   const auto advertisement = peer.advertisement();
   Furble::FujifilmSecure camera(&advertisement);
-  if (!check(!camera.connect(ESP_PWR_LVL_P3, 1000),
+  if (!check(!camera.connect(Furble::TxPower::P3, 1000),
              "Secure registration aborts when the peer drops during subscription"))
     return false;
   if (!check(!camera.isConnected() && !peer.connected(),
@@ -358,13 +358,13 @@ bool testSecureRegistrationDropStopsGATT() {
 
 bool testRicohBondPolicy() {
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
   Furble::Host::RicohVirtualCamera peer;
   NimBLEDevice::setMockPeer(&peer);
   const auto advertisement = peer.advertisement();
   NimBLEDevice::setBonded(true);
   auto first = std::make_unique<Furble::Ricoh>(&advertisement);
-  if (!check(!first->connect(ESP_PWR_LVL_P3, 1000),
+  if (!check(!first->connect(Furble::TxPower::P3, 1000),
              "stale local Ricoh bond fails fresh pairing once"))
     return false;
   if (!check(peer.cameraBonded() == false && NimBLEDevice::deleteBondCount() == 1u,
@@ -372,7 +372,7 @@ bool testRicohBondPolicy() {
     return false;
 
   auto retry = std::make_unique<Furble::Ricoh>(&advertisement);
-  if (!check(retry->connect(ESP_PWR_LVL_P3, 1000),
+  if (!check(retry->connect(Furble::TxPower::P3, 1000),
              "Ricoh retry performs numeric-comparison pairing"))
     return false;
   retry->shutterPress();
@@ -391,7 +391,7 @@ bool testRicohBondPolicy() {
 
   auto runSavedFailure = [&]() {
     NimBLEDevice::resetMock();
-    Furble::Device::init(ESP_PWR_LVL_P3);
+    Furble::Device::init(Furble::TxPower::P3);
     Furble::Host::RicohVirtualCamera::Config config;
     config.camera_bonded = true;
     config.accept_numeric_comparison = false;
@@ -402,7 +402,7 @@ bool testRicohBondPolicy() {
     Furble::Ricoh markedSaved(&advertisement);
     markedSaved.markSaved();
     if (markedSaved.getPairType() != Furble::Camera::PairType::SAVED
-        || markedSaved.connect(ESP_PWR_LVL_P3, 1000) || NimBLEDevice::deleteBondCount() != 0u
+        || markedSaved.connect(Furble::TxPower::P3, 1000) || NimBLEDevice::deleteBondCount() != 0u
         || !NimBLEDevice::isBonded(advertisement.getAddress())) {
       return false;
     }
@@ -411,7 +411,7 @@ bool testRicohBondPolicy() {
     if (!fresh.serialise(data.data(), data.size()))
       return false;
     Furble::Ricoh saved(data.data(), data.size());
-    if (saved.connect(ESP_PWR_LVL_P3, 1000))
+    if (saved.connect(Furble::TxPower::P3, 1000))
       return false;
     return NimBLEDevice::deleteBondCount() == 0u
            && NimBLEDevice::isBonded(advertisement.getAddress());
@@ -434,12 +434,12 @@ bool testPeerOverrideOnlyForFasterRequests() {
 
   const auto run = [&](uint16_t interval, bool idleExpected, const char *message) {
     NimBLEDevice::resetMock();
-    Furble::Device::init(ESP_PWR_LVL_P3);
+    Furble::Device::init(Furble::TxPower::P3);
     Furble::Host::FujifilmVirtualCamera peer;
     NimBLEDevice::setMockPeer(&peer);
     const auto advertisement = peer.advertisement();
     Furble::FujifilmBasic camera(&advertisement);
-    if (!check(camera.connect(ESP_PWR_LVL_P3, 1000), "the camera connects"))
+    if (!check(camera.connect(Furble::TxPower::P3, 1000), "the camera connects"))
       return false;
     NimBLEClient *client = NimBLEDevice::lastClient();
     if (!check(client != nullptr, "the connect leaves a client"))

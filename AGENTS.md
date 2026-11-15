@@ -36,7 +36,12 @@ CI trigger changes must keep validation workflows usable for stacked pull
 requests. Keep pull request jobs path-filtered and read-only for fork safety,
 and run `python3 tools/check_ci_workflows.py` after changing workflow triggers.
 The pre-review gate is `python3 tools/pre_review.py --base origin/master`; run
-it before pushing. It includes clang-format 21 on the changed C and C++ files. `git config core.hooksPath .githooks` runs it from
+it before pushing. It includes clang-format 21 on the changed C and C++ files
+and the coupling ratchet: a per-file board guard, `M5.` call, `M5.getBoard()`
+or public header ESP/NimBLE type count may not grow, and a reduction is locked
+in with `python3 tools/check_coupling_ratchet.py --update`. pre_review passes
+`--base` to it, so `--update` cannot absorb growth over the base manifest.
+`git config core.hooksPath .githooks` runs it from
 `.githooks/pre-push` on every push; the tracked `.claude/settings.json` sets
 that hook path for Claude Code sessions through `GIT_CONFIG_*` env vars. `pre-review.yml` runs the same scanners in CI, and
 `host-sanitized.yml` runs every host test except the two ThreadSanitizer probes

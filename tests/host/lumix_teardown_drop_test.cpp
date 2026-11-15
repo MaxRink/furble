@@ -17,7 +17,7 @@ const char *LOG_TAG = "lumix-teardown-drop";
 
 int main() {
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
 
   Furble::Host::LumixVirtualCamera::Config config;
   config.drop_on_gps_stop = true;
@@ -26,7 +26,7 @@ int main() {
   const auto advertisement = peer.advertisement();
   Furble::Lumix camera(&advertisement);
 
-  if (!camera.connect(ESP_PWR_LVL_P3, 2000)) {
+  if (!camera.connect(Furble::TxPower::P3, 2000)) {
     std::cerr << "FAIL: LUMIX connect\n";
     return 1;
   }

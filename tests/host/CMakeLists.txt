@@ -1164,6 +1164,11 @@ target_include_directories(battery_saver_test PRIVATE ${FURBLE_ROOT}/include)
 target_compile_options(battery_saver_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                   -Wno-unused-parameter)
 
+# Per-field battery status gating from include/FurbleBatteryStatus.h.
+add_executable(battery_status_test battery_status_test.cpp)
+target_include_directories(battery_status_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(battery_status_test PRIVATE -Wall -Wextra -Werror)
+
 add_executable(sim_clock_test sim_clock_test.cpp ${FURBLE_ROOT}/sim/clock.cpp)
 target_include_directories(sim_clock_test PRIVATE ${FURBLE_ROOT}/include ${FURBLE_ROOT}/sim
                                                   ${FURBLE_ROOT}/sim/shim)
@@ -1837,6 +1842,24 @@ target_compile_options(control_disconnect_test PRIVATE
                        -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter)
 target_link_libraries(control_disconnect_test PRIVATE furble_host_camera)
 
+# Pin the transmit power mapping between the ESP-IDF setting and the camera
+# library TxPower through the public Control API.
+add_executable(tx_power_mapping_test
+               tx_power_mapping_test.cpp
+               ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/src/FurbleTimezone.cpp
+               ${HOST_CONTROL_DIR}/control_shim.cpp)
+target_include_directories(tx_power_mapping_test BEFORE PRIVATE
+                           ${HOST_CONTROL_DIR}
+                           ${FURBLE_ROOT}/include
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR}
+                           ${FURBLE_ROOT}/lib/furble)
+target_compile_options(tx_power_mapping_test PRIVATE
+                       -include ${HOST_CONTROL_DIR}/freertos/FreeRTOS.h
+                       -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter)
+target_link_libraries(tx_power_mapping_test PRIVATE furble_host_camera)
+
 # AddressSanitizer regression for the gone-peer client-reclaim use-after-free.
 # It cannot link the shared furble_host_camera library: the late onDisconnect
 # reads the freed Camera's callbacks vptr to dispatch, and both the mock making
@@ -2326,6 +2349,7 @@ if(BUILD_TESTING)
   add_test(NAME gpx-writer COMMAND gpx_writer_test)
   add_test(NAME reconnect-backoff COMMAND reconnect_backoff_test)
   add_test(NAME battery-saver COMMAND battery_saver_test)
+  add_test(NAME battery-status COMMAND battery_status_test)
   add_test(NAME mqtt-owner COMMAND mqtt_owner_test)
   foreach(seed 1 2 3 7 42)
     add_test(NAME mqtt-fuzz-seed-${seed} COMMAND mqtt_fuzz --seed ${seed} --iterations 300)
@@ -2371,6 +2395,7 @@ if(BUILD_TESTING)
   set_tests_properties(console-commands PROPERTIES TIMEOUT 120)
 
   add_test(NAME control-disconnect COMMAND control_disconnect_test)
+  add_test(NAME tx-power-mapping COMMAND tx_power_mapping_test)
 
   # Teardown wedge regression (plan 148). Bounded by a hard timeout so a
   # reintroduced uncancellable wait fails the suite instead of hanging it.

@@ -48,7 +48,7 @@ bool runScenario(const char *label, const std::vector<NimBLEUUID> &services, uin
   FujifilmSecure camera(&advertisement);
 
   // First connect: pairing path, no scan. Marks the camera paired.
-  if (!camera.connect(ESP_PWR_LVL_P3, 1000)) {
+  if (!camera.connect(Furble::TxPower::P3, 1000)) {
     std::cerr << "FAIL(" << label << "): initial pairing connect failed\n";
     return false;
   }
@@ -59,7 +59,7 @@ bool runScenario(const char *label, const std::vector<NimBLEUUID> &services, uin
   // Second connect: paired, so the SAVED scan-first path runs.
   bool reconnected = false;
   const auto start = host_clock::now();
-  std::thread connector([&] { reconnected = camera.connect(ESP_PWR_LVL_P3, 5000); });
+  std::thread connector([&] { reconnected = camera.connect(Furble::TxPower::P3, 5000); });
 
   // The advertisement arrives about one second after "Scanning".
   std::this_thread::sleep_for(std::chrono::milliseconds(1000));
@@ -93,7 +93,7 @@ int main() {
   }).detach();
 
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
 
   // Pairing service, as advertised right after a pairing session.
   const NimBLEUUID pairService {0x123d8f06, 0x62a1, 0x4935, 0x9322833c531ee225};

@@ -124,7 +124,7 @@ int main(void) {
 
   NimBLEDevice::resetMock();
   Furble::TestSync::reset();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
   Furble::Settings::setBool(Furble::Settings::SLEEP_CONN, false);
   Furble::Settings::setBool(Furble::Settings::TX_ADAPTIVE, false);
   // Backoff on, so the second retry wait is 10 s rather than 5 s. Only the

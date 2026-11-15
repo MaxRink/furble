@@ -121,6 +121,31 @@ void journalRecord(const char *operation,
 }
 
 #endif
+
+/** Map a camera pairing IO capability to the NimBLE host value. */
+uint8_t ioCap(Camera::SecurityMode mode) {
+  switch (mode) {
+    case Camera::SecurityMode::SECURE_KEYBOARD_DISPLAY:
+      return BLE_HS_IO_KEYBOARD_DISPLAY;
+    case Camera::SecurityMode::SECURE_DISPLAY_YESNO:
+      break;
+  }
+  return BLE_HS_IO_DISPLAY_YESNO;
+}
+
+/** The ESP-IDF power level value the connect log has always printed. */
+int espPowerLevel(TxPower power) {
+  switch (power) {
+    case TxPower::P6:
+      return ESP_PWR_LVL_P6;
+    case TxPower::P9:
+      return ESP_PWR_LVL_P9;
+    case TxPower::P3:
+      break;
+  }
+  return ESP_PWR_LVL_P3;
+}
+
 }  // namespace
 
 Camera::Camera(Type type, PairType pairType) : m_PairType(pairType), m_Type(type) {}
@@ -163,7 +188,7 @@ void Camera::onConnect(NimBLEClient *pClient) {
   // offers no clean per-connection readback, log the request only.
   const bool set = NimBLEDevice::setPower(requestedDbm);
   ESP_LOGI(LOG_TAG, "Connected, transmit power requested %d dBm (level %d), set %s", requestedDbm,
-           static_cast<int>(m_Power), set ? "ok" : "failed");
+           espPowerLevel(m_Power), set ? "ok" : "failed");
   m_Connected = true;
 
   const std::lock_guard<std::mutex> lock(m_ConnParamsMutex);
@@ -503,7 +528,7 @@ void Camera::onAuthenticationComplete(NimBLEConnInfo &connInfo) {
            connInfo.getSecKeySize());
 }
 
-bool Camera::connect(esp_power_level_t power, uint32_t timeout) {
+bool Camera::connect(TxPower power, uint32_t timeout) {
   const std::lock_guard<connect_mutex_t> lock(m_Mutex);
 
 #if defined(FURBLE_CONSOLE)
@@ -580,7 +605,7 @@ bool Camera::connect(esp_power_level_t power, uint32_t timeout) {
 
   // set per-camera BLE security before connecting
   NimBLEDevice::setSecurityAuth(true, true, true);
-  NimBLEDevice::setSecurityIOCap(static_cast<uint8_t>(securityMode()));
+  NimBLEDevice::setSecurityIOCap(ioCap(securityMode()));
 
   bool connected = this->_connect();
 
@@ -653,7 +678,7 @@ bool Camera::connect(esp_power_level_t power, uint32_t timeout) {
     ESP_LOGD(LOG_TAG, "deleteClient(%s) after failed connect, pool now %u", m_Name.c_str(),
              static_cast<unsigned>(NimBLEDevice::getCreatedClientCount()));
   }
-  NimBLEDevice::setSecurityIOCap(static_cast<uint8_t>(m_SecurityModeDefault));
+  NimBLEDevice::setSecurityIOCap(ioCap(m_SecurityModeDefault));
 
   if (!m_Connected) {
     ESP_LOGW(LOG_TAG, "Camera connect failed for %s", m_Address.toString().c_str());
