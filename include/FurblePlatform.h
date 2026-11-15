@@ -256,6 +256,29 @@ class Platform: public PowerBackend {
   static bool hasTicklessIdle(void);
 
   /**
+   * Does the board keep the GPS receiver's V_BCKP supplied when its main rail
+   * is cut?
+   *
+   * A u-blox M10 keeps its battery-backed RAM and RTC on V_BCKP, so a backed
+   * rail cut is a hot or warm start rather than a cold one, and the
+   * save-on-shutdown backup is not needed (plan 321). No supported board wires
+   * one; a board profile that does defines FURBLE_GPS_BACKUP_SUPPLY.
+   */
+  static bool hasGpsBackupSupply(void);
+
+  /**
+   * Can the board switch the GPS receiver's supply off?
+   *
+   * The board profile's `gpsRail` column: the StickC, StickC Plus, StickS3,
+   * Core2 and Tough switch the Grove Port A 5 V rail through their PMIC. On
+   * the Core (IP5306), the StickC Plus2 and the Waveshare board the rail is
+   * always on, and the headless profile has no rail control. A receiver on a
+   * rail that cannot be cut must never be stopped for a save-on-shutdown,
+   * because nothing would ever restart it. Valid after Platform::init().
+   */
+  static bool canCutGpsRail(void);
+
+  /**
    * Get the battery measurements supported by this board.
    *
    * Returned by value: the simulator refreshes the flags from the hardware
@@ -293,6 +316,9 @@ class Platform: public PowerBackend {
   /**
    * Switch a named rail. The M5 boards switch only the GPS rail, which is the
    * Port A 5 V output.
+   *
+   * @return true when the rail reads back in the requested state; false when
+   *         the board has no switch or the PMIC did not take the write.
    */
   bool setRail(Rail rail, bool on);
 

@@ -405,6 +405,18 @@ void Platform::dumpPMLocks(void) {
   }
 }
 
+bool Platform::canCutGpsRail(void) {
+  return Board::profile().gpsRail;
+}
+
+bool Platform::hasGpsBackupSupply(void) {
+#if defined(FURBLE_GPS_BACKUP_SUPPLY)
+  return true;
+#else
+  return false;
+#endif
+}
+
 bool Platform::hasTicklessIdle(void) {
 #if defined(CONFIG_FREERTOS_USE_TICKLESS_IDLE)
   return true;
@@ -861,12 +873,13 @@ bool Platform::setRail(Rail rail, bool on) {
   }
   // The Port A 5 V output. The M5PM1 sleeps after an I2C idle period and the
   // first access after that only wakes it, so read back and retry once. The
-  // retry is not read back: that is the GPS driver's original bus traffic.
+  // final read tells the GPS driver whether a cut took: a receiver stopped
+  // for the cut is restarted when the rail stays on.
   M5.Power.setExtOutput(on, m5::ext_PA);
   if (M5.Power.getExtOutput() != on) {
     M5.Power.setExtOutput(on, m5::ext_PA);
   }
-  return true;
+  return M5.Power.getExtOutput() == on;
 }
 
 uint32_t Platform::getBatteryFailCount(void) {

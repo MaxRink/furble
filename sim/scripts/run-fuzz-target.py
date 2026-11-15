@@ -205,6 +205,14 @@ def run_target(target_id: str) -> Result:
             "sim/scenarios/e2e/hw-mqtt-discovery-gate-above.txt",
             "sim/scenarios/e2e/hw-mqtt-ha-cache-toggle.txt",
         ])
+    elif target_id == "fuzz.gps.ubx":
+        run_host_seeds(result, "gps_ubx_fuzz", SEEDS["gps_ubx"]["full"],
+                       SEEDS["gps_ubx"]["full_iterations"])
+        run_scenarios(result, [
+            "sim/scenarios/e2e/gps-ubx-detect.txt",
+            "sim/scenarios/e2e/gps-ubx-nak.txt",
+            "sim/scenarios/e2e/gps-ubx-fallback-nmea.txt",
+        ])
     elif target_id == "fuzz.ota":
         binary = host_binary("ota_mqtt_protocol_test")
         if binary.is_file():

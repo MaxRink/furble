@@ -1,0 +1,17 @@
+# A MIA-M10Q runs its UART at 38400 (MIA-M10Q data sheet UBX-22015849 Table
+# 21). The Auto ladder finds the rate from its NMEA, and only then does the
+# MON-VER poll go out, so the receiver is identified at the locked rate.
+seed gps true
+seed gps_baud auto
+seed gps_receiver 38400
+seed gps_model m10-mia
+seed gps_m10_hot true
+wait 12000
+assert gps.receiver present
+assert gps.baud 38400
+assert gps.backend ubx
+assert gps.ubx.module MIA-M10Q
+assert-eventually 3000 gps.config.1.state ACKED
+assert gps.ubx.verified 1
+assert-eventually 3000 gps.from_pvt 1
+exit

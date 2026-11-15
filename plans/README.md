@@ -104,7 +104,7 @@ the git history. They are no longer ownership rows.
 | [316-docs-capture-companion-reject.md](implemented/316-docs-capture-companion-reject.md) | Docs capture: rename the hardware-model action that shadowed the companion pairing Reject |
 | [317-notouch-regressions.md](317-notouch-regressions.md) | Physical-button suite: control drain wake, stale legend pass, info page padding, memory profile constants |
 | [321-ublox-m10-driver.md](321-ublox-m10-driver.md) | u-blox M10 UBX driver: codec, receiver backend seam, virtual M10 in the simulator, constellations, rate, power save, AssistNow Autonomous and warm start |
-| [321-review-feedback.md](321-review-feedback.md) | Review-feedback record for the u-blox M10 stack: receiver encoder payload bound, source URLs |
+| [321-review-feedback.md](321-review-feedback.md) | Review-feedback record for the u-blox M10 stack: tick-wrap gate, non-switchable rails, time resolution, ANA default, demux fuzzing, receiver encoder payload bound, source URLs |
 | [325-peer-subscription-race.md](325-peer-subscription-race.md) | Thread-safe subscription tables for the virtual camera test doubles (#451) |
 | [325-review-feedback.md](325-review-feedback.md) | Review-feedback record for the virtual camera subscription race |
 | [302-companion-restart-reconnect.md](302-companion-restart-reconnect.md) | Companion stop/start without a heap panic, and advertising restart after a rejected link |
