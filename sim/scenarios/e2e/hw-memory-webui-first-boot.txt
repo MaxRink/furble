@@ -95,8 +95,9 @@ assert_min mem.high_water_largest 4480
 # The figures from the connect on are charged at host sizes. The NimBLE mock
 # client the connect keeps in its pool costs 216 bytes with macOS libc++ and
 # 240 with Linux libstdc++, so each figure from here on is 24 bytes lower on
-# Linux, and the checks accept the range between the two figures. The connect minimum is 6,971
-# with a 5,208-byte block there; both platforms clear the floors.
+# Linux, and the checks accept the range between the two figures. The
+# connect minimum is 6,971 with a 5,208-byte block there; both platforms
+# clear the floors.
 action disconnect
 assert-eventually-virtual 10000 control.state idle
 wait 1000
