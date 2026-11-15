@@ -42,3 +42,9 @@ The review found no firmware behavior change.
 | # | Source | Finding | Resolution | Evidence |
 | ---: | :--- | :--- | :--- | :--- |
 | 16 | Host sanitizers | `control-disconnect` aborted with an ASan heap-use-after-free: the control task's `FujifilmVirtualCamera::subscribe()` read a map key that `disconnect()` on the test thread had just freed. | Already fixed on master. It is the test-double race #451, which #453 fixed with the thread-safe `SubscriptionTable`; this branch had not merged it. The merge brings it in; no branch code was involved. | `run_sanitized_host_tests.sh --clean --jobs 4` passes 185 of 185. `control-disconnect` and `control-e2e-multi-connect-fujifilm` pass 20 repeats each under ASan. |
+
+## Master breakage after PR 460 (f4cf0d32)
+
+| # | Source | Finding | Resolution | Evidence |
+| ---: | :--- | :--- | :--- | :--- |
+| 17 | Coupling ratchet on master | `check_coupling_ratchet.py` failed on master with `include/FurbleMQTT.h grew from 7 to 9`, so `pre_review.py --base` failed every PR and `test_current_tree_matches_manifest` failed. #457 added `acceptsEvent()` and `handleLifecycleEvent()` taking `esp_mqtt_client_handle_t`, and #460 merged its manifest right after without that change. | Fixed without raising the manifest or renaming a type. The identity check is a file-local `acceptsEvent()` in `src/FurbleMQTT.cpp` that takes the current client and the offline-stop flag. `processLifecycleEvents()` runs it on the copied client and passes only the event id to `handleLifecycleEvent()`, which subscribes through `m_Client`; the check proved they are equal, and only the owner task's `startClient()` and `stopClient()` change it. `eventHandler()` fills the lifecycle slot itself, replacing its only caller `queueLifecycleEvent()`. The header count drops to 6 and the manifest is locked there. | `include/FurbleMQTT.h`, `src/FurbleMQTT.cpp`, `tools/coupling_ratchet.json` |
