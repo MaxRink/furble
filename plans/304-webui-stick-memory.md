@@ -426,6 +426,14 @@ above are the pre-review state; these replace them.
   scope. The figures above are macOS libc++ values. On Linux libstdc++ the
   mock client the connect keeps is 24 bytes larger, so the disconnect and
   final figures read 21,839 and 13,647, and the scenario accepts both.
+- Physical-button layout. Those figures are the touch layout's. The StickS3
+  ships the physical-button layout, whose Main page draws three navigation
+  indicators. The session-end drop frees their cache entries too, and they
+  do not redraw, so the pool is 480 bytes higher: 22,343 with the server
+  paused after the disconnect and 14,151 at the end on macOS, 22,319 and
+  14,127 on Linux. Without the drop it stops at 20,359, still under the
+  exit. The scenario pins that layout with `seed no_touch true`, so the
+  plain and the no-touch runners measure the same page.
 - By construction. In the model `webuiMemoryStart()` marks a seeded identity
   stored, and nothing allocates per request. The `webui.identity stored` and
   flat 60 s soak assertions therefore check the wiring, not mbedTLS or the
