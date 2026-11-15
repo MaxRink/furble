@@ -313,3 +313,17 @@ under ASan and UBSan. The MQTT simulator build passes all 4 scenarios of
 1,846,928 of 3,145,728) and stack budget (mqtt 3,312 of 10,240) pass.
 `python3 tools/pre_review.py` passes against the PR base and `origin/master`,
 and `sh sim/scripts/check-doc-tokens.sh` passes.
+
+CI on PR #457 (e8e313da): the static-analysis job failed with one cppcheck
+2.13 finding, `src/FurbleMQTT.cpp:771` `identicalInnerCondition`. Without
+PSRAM the queue block reduced to `if (m_EventQueue == nullptr)` directly
+inside the same check. It was not a defect, but the structure was redundant
+on every non-PSRAM image. The PSRAM attempt now runs first under its own
+guard, and one internal-RAM fallback follows; the admission and the order are
+unchanged. cppcheck 2.13 in an Ubuntu 24.04 container reports the finding on
+the old file and nothing on the new one, and
+`tools/check_static_analysis.py --base origin/master` passes with the host,
+simulator and both firmware databases. The host suite passes 185 of 185,
+`sh sim/scripts/run-memory.sh` passes 4 of 4 on the MQTT build, the 15
+certified MQTT e2e scenarios pass, and `m5stick-s3` passes its stack budget
+(mqtt 3,408 of 10,240) and size budget (flash 1,847,472 of 3,145,728).

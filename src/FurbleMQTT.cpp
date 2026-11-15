@@ -757,25 +757,23 @@ bool MQTT::startClient(void) {
     return fallback.open;
   };
 
-  if (m_EventQueue == nullptr) {
-    // The queue holds copied topic and payload bytes, not flash or NVS
-    // pointers. On boards with PSRAM it belongs there: the owner only touches
-    // it with the cache enabled, and no code writes NVS from the MQTT path.
+  // The queue holds copied topic and payload bytes, not flash or NVS
+  // pointers. On boards with PSRAM it belongs there: the owner only touches
+  // it with the cache enabled, and no code writes NVS from the MQTT path.
 #if defined(CONFIG_SPIRAM) && defined(CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM) \
     && CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM
-    if (inPsram(MQTTMemory::EVENT_QUEUE_BLOCK_BYTES)) {
-      m_EventQueue = xQueueCreateWithCaps(EVENT_QUEUE_LENGTH, sizeof(queued_event_t),
-                                          MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    }
+  if ((m_EventQueue == nullptr) && inPsram(MQTTMemory::EVENT_QUEUE_BLOCK_BYTES)) {
+    m_EventQueue = xQueueCreateWithCaps(EVENT_QUEUE_LENGTH, sizeof(queued_event_t),
+                                        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  }
 #endif
-    if (m_EventQueue == nullptr) {
-      // Reserve the event copies too when they are still missing.
-      if (!internalAdmits(MQTTMemory::EVENT_QUEUE_BLOCK_BYTES + copiesMissing,
-                          MQTTMemory::EVENT_QUEUE_BLOCK_BYTES)) {
-        return false;
-      }
-      m_EventQueue = xQueueCreate(EVENT_QUEUE_LENGTH, sizeof(queued_event_t));
+  if (m_EventQueue == nullptr) {
+    // Reserve the event copies too when they are still missing.
+    if (!internalAdmits(MQTTMemory::EVENT_QUEUE_BLOCK_BYTES + copiesMissing,
+                        MQTTMemory::EVENT_QUEUE_BLOCK_BYTES)) {
+      return false;
     }
+    m_EventQueue = xQueueCreate(EVENT_QUEUE_LENGTH, sizeof(queued_event_t));
     if (m_EventQueue == nullptr) {
       ESP_LOGE(MQTT_LOG_TAG, "Failed to create MQTT event queue.");
       return false;
