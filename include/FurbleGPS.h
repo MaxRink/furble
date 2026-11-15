@@ -669,6 +669,18 @@ class GPS {
   /** Run the configuration of the identified backend. */
   void applyConfiguration(void);
 
+  struct counters_t {
+    uint32_t chars;
+    uint32_t passed;
+    uint32_t failed;
+  };
+  /**
+   * The parser counters alone. The GPS task polls them on every read pass, and
+   * a full status_t snapshot there costs its frame and the NAV-PVT overlay on
+   * the task's deepest path.
+   */
+  counters_t getCounters(void) const;
+
   /* UBX backend, src/FurbleGPSUbx.cpp. */
   void startDetect(uint32_t now);
   /** Advance detection. True once the backend is decided. */

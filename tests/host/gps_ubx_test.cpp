@@ -341,6 +341,12 @@ void testNavPvt() {
   check(!flagged.timeValid(), "an impossible month is not usable");
   check(!Ubx::parseNavPvt(bytes.data() + 6, 91, back), "short NAV-PVT refused");
   check(!Ubx::parseNavPvt(bytes.data() + 6, 93, back), "long NAV-PVT refused");
+  // GPS::serviceUbx() decodes into the live fix, so a refusal must not write.
+  Ubx::NavPvt kept = pvt;
+  check(!Ubx::parseNavPvt(bytes.data() + 6, 91, kept), "short NAV-PVT refused into the live fix");
+  check(kept.lat == pvt.lat && kept.lon == pvt.lon && kept.iTOW == pvt.iTOW
+            && kept.flags3 == pvt.flags3,
+        "a refused NAV-PVT leaves the output unchanged");
 }
 
 void testNavSat() {

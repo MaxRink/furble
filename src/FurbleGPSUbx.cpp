@@ -294,17 +294,18 @@ void GPS::serviceUbx(const uint8_t *frame, size_t length) {
   const size_t n = length - Ubx::FRAME_OVERHEAD;
 
   if ((cls == Ubx::CLASS_NAV) && (id == Ubx::ID_NAV_PVT)) {
-    Ubx::NavPvt pvt;
-    if (!Ubx::parseNavPvt(payload, n, pvt)) {
+    // Decode straight into the shared fix: a local NavPvt copy sits on the GPS
+    // task's deepest stack path. parseNavPvt() writes nothing when it refuses
+    // a frame, so a malformed one leaves the last fix intact.
+    const std::lock_guard<std::mutex> lock(m_GPSMutex);
+    if (!Ubx::parseNavPvt(payload, n, m_UbxPvt)) {
       return;
     }
-    const std::lock_guard<std::mutex> lock(m_GPSMutex);
-    m_UbxPvt = pvt;
     m_UbxPvtTick = Platform::getInstance().tick();
     m_UbxPvtValid = true;
     m_UbxPvtCount++;
     // the same one-fix-per-burst rule the NMEA path applies in processNmea()
-    if (pvt.positionValid() && (m_FixSequence.load() != m_BurstSequence.load())) {
+    if (m_UbxPvt.positionValid() && (m_FixSequence.load() != m_BurstSequence.load())) {
       m_FixSequence = m_BurstSequence.load();
 #if defined(FURBLE_SIM)
       m_SimFreshFixesParsed.fetch_add(1);

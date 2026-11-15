@@ -425,7 +425,7 @@ void GPS::enable(void) {
     const uint32_t now = Platform::getInstance().tick();
     resetAcquisition(now);
     m_AcquireDeadline = now + ACQUIRE_TIMEOUT_MS;
-    m_AcquireSentences = getStatusSnapshot().sentences_passed;
+    m_AcquireSentences = getCounters().passed;
 
     m_NoReceiverRetried = false;
     m_NoReceiverRetryAt = 0;
@@ -444,7 +444,7 @@ void GPS::enable(void) {
 
       // the receiver is not ready for commands yet, ask the GPS task to
       // configure it once sentences arrive
-      m_ConfigChars = getStatusSnapshot().chars_processed;
+      m_ConfigChars = getCounters().chars;
       m_ConfigStart = Platform::getInstance().tick();
       m_ConfigPending = true;
 
@@ -473,8 +473,7 @@ void GPS::serviceProbe(void) {
   const uint32_t now = Platform::getInstance().tick();
 
   if (m_ProbePending.exchange(false)) {
-    const Casic::Autobaud::Action action =
-        m_Autobaud.begin(now, getStatusSnapshot().sentences_passed);
+    const Casic::Autobaud::Action action = m_Autobaud.begin(now, getCounters().passed);
     if (action.change) {
       uart_set_baudrate(m_UART, action.baud);
       reset();
@@ -484,8 +483,7 @@ void GPS::serviceProbe(void) {
   }
 
   if (static_cast<receiver_state_t>(m_ReceiverState.load()) == receiver_state_t::DETECTING) {
-    const Casic::Autobaud::Action action =
-        m_Autobaud.service(now, getStatusSnapshot().sentences_passed);
+    const Casic::Autobaud::Action action = m_Autobaud.service(now, getCounters().passed);
     if (action.change) {
       uart_set_baudrate(m_UART, action.baud);
       reset();
@@ -512,8 +510,7 @@ void GPS::serviceProbe(void) {
     // to wake the task for.
     m_NoReceiverRetried = true;
     setRailPower(true);
-    const Casic::Autobaud::Action action =
-        m_Autobaud.begin(now, getStatusSnapshot().sentences_passed);
+    const Casic::Autobaud::Action action = m_Autobaud.begin(now, getCounters().passed);
     uart_set_baudrate(m_UART, action.baud);
     reset();
     m_ReceiverState.store(static_cast<uint8_t>(receiver_state_t::DETECTING));
@@ -531,8 +528,8 @@ void GPS::onProbeLocked(uint32_t now) {
     std::lock_guard<std::mutex> guard(m_CycleMutex);
     resetAcquisition(now);
     m_AcquireDeadline = now + ACQUIRE_TIMEOUT_MS;
-    m_AcquireSentences = getStatusSnapshot().sentences_passed;
-    m_ConfigChars = getStatusSnapshot().chars_processed;
+    m_AcquireSentences = getCounters().passed;
+    m_ConfigChars = getCounters().chars;
     m_ConfigStart = now;
     m_ConfigPending = true;
   }
@@ -826,7 +823,7 @@ void GPS::serviceCycle(void) {
       // by the deadline, drop the rail and enter the normal absent state with
       // its one retry.
       if (!m_BurstActive && (m_AcquireDeadline != 0) && tickReached(now, m_AcquireDeadline)) {
-        if (getStatusSnapshot().sentences_passed == m_AcquireSentences) {
+        if (getCounters().passed == m_AcquireSentences) {
           lock.unlock();
           onProbeFailed(now);
           return;
@@ -870,7 +867,7 @@ void GPS::serviceCycle(void) {
       // enterDegraded() with a longer backoff, so the lock is never pinned.
       if (m_Degraded.retryDue(now)) {
         reset();
-        m_ConfigChars = getStatusSnapshot().chars_processed;
+        m_ConfigChars = getCounters().chars;
         m_ConfigStart = now;
         m_ConfigPending = true;
         m_BurstActive = false;
@@ -923,7 +920,7 @@ void GPS::beginBurst(uint32_t now) {
   FURBLE_SIM_GPS_STATE("tracking");
   m_BurstStart = now;
   m_LastSentence = now;
-  m_BurstFailed = getStatusSnapshot().sentences_failed;
+  m_BurstFailed = getCounters().failed;
   m_BurstSequence++;
 
   if (m_LastBurstStart != 0) {
@@ -956,7 +953,7 @@ void GPS::finishBurst(uint32_t now) {
 
   m_BurstActive = false;
 
-  const uint32_t failed = getStatusSnapshot().sentences_failed - m_BurstFailed;
+  const uint32_t failed = getCounters().failed - m_BurstFailed;
   if (failed > 0) {
     m_Window += WINDOW_WIDEN_MS;
     const uint32_t interval = (m_ExpectedInterval > 0) ? m_ExpectedInterval : 1000;
@@ -1028,7 +1025,7 @@ void GPS::beginWindow(uint32_t now) {
   if (previous == cycle_state_t::RAIL_OFF) {
     setRailPower(true);
     reset();
-    m_ConfigChars = getStatusSnapshot().chars_processed;
+    m_ConfigChars = getCounters().chars;
     m_ConfigStart = now;
     m_ConfigPending = true;
   }
@@ -1675,7 +1672,7 @@ void GPS::serviceConfig(void) {
   }
 
   if (m_ConfigPending) {
-    const bool awake = getStatusSnapshot().chars_processed > m_ConfigChars;
+    const bool awake = getCounters().chars > m_ConfigChars;
     const bool expired = (Platform::getInstance().tick() - m_ConfigStart) > SETTLE_MS;
     if (!awake && !expired) {
       return;
@@ -3041,7 +3038,7 @@ void GPS::serviceSerial(void) {
     // Mirror the exact UART chunk before demultiplexing, so raw hex mode sees
     // binary CASIC frames as well as NMEA text.
     Console::gpsHex(buffer.data(), bytes);
-    const uint32_t passedBefore = getStatusSnapshot().sentences_passed;
+    const uint32_t passedBefore = getCounters().passed;
     const uint32_t pvtBefore = m_UbxPvtCount.load();
 
     // processSerial demultiplexes NMEA and CASIC frames. NMEA bytes route
@@ -3056,8 +3053,7 @@ void GPS::serviceSerial(void) {
     // gap. beginBurst() owns the last-sentence timestamp.
     // A NAV-PVT is navigation output too, so a u-blox receiver keeps its
     // bursts even with NMEA disabled.
-    if ((getStatusSnapshot().sentences_passed != passedBefore)
-        || (m_UbxPvtCount.load() != pvtBefore)) {
+    if ((getCounters().passed != passedBefore) || (m_UbxPvtCount.load() != pvtBefore)) {
       beginBurst(Platform::getInstance().tick());
     }
   }
@@ -3216,6 +3212,11 @@ std::vector<std::string> GPS::getSentences(void) {
   }
 
   return sentences;
+}
+
+GPS::counters_t GPS::getCounters(void) const {
+  const std::lock_guard<std::mutex> lock(m_GPSMutex);
+  return {m_GPS.charsProcessed(), m_GPS.passedChecksum(), m_GPS.failedChecksum()};
 }
 
 GPS::status_t GPS::getStatusSnapshot(void) const {
