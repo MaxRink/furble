@@ -421,6 +421,16 @@ struct Request {
   bool ana;          /**< AssistNow Autonomous */
 };
 
+/** What a plan decided; a driver keeps only this part. */
+struct PlanSummary {
+  uint16_t rate_ms;  /**< the rate actually sent, 0 when left alone */
+  uint8_t gnss;      /**< effective constellation mask */
+  uint8_t psm;       /**< the power save mode actually sent */
+  bool gnss_refused; /**< the mask broke a rule, signals left alone */
+  bool psm_refused;  /**< power save with BeiDou B1C, left at full power */
+  bool rate_clamped; /**< the rate exceeded the constellation limit */
+};
+
 /**
  * The configuration furble sends for a request, in send order.
  *
@@ -431,16 +441,6 @@ struct Request {
  * alone; they are deleted from BBR so an earlier session's value does not
  * outlive the setting that wrote it.
  */
-struct PlanSummary {
-  uint16_t rate_ms;  /**< the rate actually sent, 0 when left alone */
-  uint8_t gnss;      /**< effective constellation mask */
-  uint8_t psm;       /**< the power save mode actually sent */
-  bool gnss_refused; /**< the mask broke a rule, signals left alone */
-  bool psm_refused;  /**< power save with BeiDou B1C, left at full power */
-  bool rate_clamped; /**< the rate exceeded the constellation limit */
-};
-
-/** The summary plus the keys; a driver keeps only the summary. */
 struct Plan: PlanSummary {
   std::vector<KeyValue> base;
   std::vector<KeyValue> signals;
