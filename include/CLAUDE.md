@@ -250,6 +250,8 @@ settings-touching rebase.
   a missing include evaluates silently to 0. The coupling ratchet enforces
   both rules, scans `sim/` and `tests/host/` too, and rejects a name the
   header does not define. An include inside a comment does not count.
+  `FURBLE_HAS_GPS_RAIL_SWITCH` is 1 where the PMIC can cut the Port A GPS
+  rail; `Platform::canCutGpsRail()` reads it.
 - `BatteryStatus::gate()` in `FurbleBatteryStatus.h` gates each battery status
   field by its own `battery_caps_t` flag. Never gate on the union of the
   flags: partial boards such as the StickS3 and M5Stack Core would then

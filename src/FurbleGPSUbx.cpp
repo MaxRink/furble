@@ -17,18 +17,6 @@
 
 namespace Furble {
 
-namespace {
-
-/** The payload of a frame built by the codec, for the configuration queue. */
-std::vector<uint8_t> payloadOf(const std::vector<uint8_t> &frame) {
-  if (frame.size() < Ubx::FRAME_OVERHEAD) {
-    return {};
-  }
-  return std::vector<uint8_t>(frame.begin() + Ubx::HEADER_SIZE, frame.end() - Ubx::CHECKSUM_SIZE);
-}
-
-}  // namespace
-
 GPS::backend_t GPS::getBackend(void) const {
   return static_cast<backend_t>(m_Backend.load());
 }
@@ -173,27 +161,27 @@ void GPS::configureUbx(void) {
 
   constexpr uint8_t LAYERS = Ubx::LAYER_RAM | Ubx::LAYER_BBR;
   constexpr uint16_t SIGNAL_SETTLE_MS = 500;
-  m_UbxExpected = plan.base;
-  enqueueConfig(Ubx::CLASS_CFG, Ubx::ID_CFG_VALSET, payloadOf(Ubx::valSet(LAYERS, plan.base)), "",
-                false, false, true);
-  if (!plan.signals.empty()) {
-    m_UbxExpected.insert(m_UbxExpected.end(), plan.signals.begin(), plan.signals.end());
-    enqueueConfig(Ubx::CLASS_CFG, Ubx::ID_CFG_VALSET, payloadOf(Ubx::valSet(LAYERS, plan.signals)),
-                  "", false, false, true, SIGNAL_SETTLE_MS);
+  // Every value written, in order, for the closing read-back. A plain loop
+  // instead of a range insert keeps one vector growth path in the image.
+  m_UbxExpected.clear();
+  for (const auto *items : {&plan.base, &plan.signals, &plan.power}) {
+    for (const auto &item : *items) {
+      m_UbxExpected.push_back(Ubx::KeyValue(item));
+    }
   }
-  m_UbxExpected.insert(m_UbxExpected.end(), plan.power.begin(), plan.power.end());
-  enqueueConfig(Ubx::CLASS_CFG, Ubx::ID_CFG_VALSET, payloadOf(Ubx::valSet(LAYERS, plan.power)), "",
-                false, false, true);
+  enqueueUbxConfig(Ubx::ID_CFG_VALSET, Ubx::valSet(LAYERS, plan.base));
+  if (!plan.signals.empty()) {
+    enqueueUbxConfig(Ubx::ID_CFG_VALSET, Ubx::valSet(LAYERS, plan.signals), SIGNAL_SETTLE_MS);
+  }
+  enqueueUbxConfig(Ubx::ID_CFG_VALSET, Ubx::valSet(LAYERS, plan.power));
   if (!plan.unset.empty()) {
-    enqueueConfig(Ubx::CLASS_CFG, Ubx::ID_CFG_VALDEL,
-                  payloadOf(Ubx::valDel(Ubx::LAYER_BBR, plan.unset)), "", false, false, true);
+    enqueueUbxConfig(Ubx::ID_CFG_VALDEL, Ubx::valDel(Ubx::LAYER_BBR, plan.unset));
   }
   std::vector<uint32_t> keys;
   for (const auto &item : m_UbxExpected) {
     keys.push_back(item.key);
   }
-  enqueueConfig(Ubx::CLASS_CFG, Ubx::ID_CFG_VALGET, payloadOf(Ubx::valGet(Ubx::GET_RAM, keys)), "",
-                false, false, true);
+  enqueueUbxConfig(Ubx::ID_CFG_VALGET, Ubx::valGet(Ubx::GET_RAM, keys));
 
   {
     // The burst predictor has to expect what the receiver will now do: the
@@ -208,7 +196,7 @@ void GPS::configureUbx(void) {
   {
     const std::lock_guard<std::mutex> lock(m_UbxMutex);
     m_UbxVerified = 0;
-    m_UbxPlan = plan;
+    m_UbxPlan = static_cast<const Ubx::PlanSummary &>(plan);
     m_UbxAna = request.ana;
     m_UbxConfigured = true;
   }
@@ -216,6 +204,18 @@ void GPS::configureUbx(void) {
   // Ask whether the receiver restored a save-on-shutdown backup at start-up
   // (IFD 3.19.1). Not a CFG message, so it is not acknowledged.
   sendUbx(Ubx::sosPoll());
+}
+
+void GPS::enqueueUbxConfig(uint8_t message_id,
+                           const std::vector<uint8_t> &frame,
+                           uint16_t settle_ms) {
+  // The queue holds payloads; an empty frame (an encoder refusal) queues an
+  // empty one.
+  std::vector<uint8_t> payload;
+  if (frame.size() >= Ubx::FRAME_OVERHEAD) {
+    payload.assign(frame.begin() + Ubx::HEADER_SIZE, frame.end() - Ubx::CHECKSUM_SIZE);
+  }
+  enqueueConfig(Ubx::CLASS_CFG, message_id, payload, "", false, false, true, settle_ms);
 }
 
 void GPS::pollUbxSatellites(void) {
@@ -395,13 +395,12 @@ void GPS::serviceUbx(const uint8_t *frame, size_t length) {
   }
 
   if ((cls == Ubx::CLASS_MON) && (id == Ubx::ID_MON_VER)) {
-    Ubx::MonVer version;
-    if (!Ubx::parseMonVer(payload, n, version)) {
-      return;
-    }
     {
+      // parseMonVer() writes nothing when it refuses a frame.
       const std::lock_guard<std::mutex> lock(m_UbxMutex);
-      m_UbxVersion = version;
+      if (!Ubx::parseMonVer(payload, n, m_UbxVersion)) {
+        return;
+      }
       m_UbxHaveVersion = true;
     }
     const backend_t backend = getBackend();
@@ -409,7 +408,10 @@ void GPS::serviceUbx(const uint8_t *frame, size_t length) {
       // already identified, or detection has not started and will poll
       return;
     }
-    ESP_LOGI(LOG_TAG, "GPS u-blox receiver: %s", version.sw.c_str());
+    {
+      const std::lock_guard<std::mutex> lock(m_UbxMutex);
+      ESP_LOGI(LOG_TAG, "GPS u-blox receiver: %s", m_UbxVersion.sw.c_str());
+    }
     if (backend == backend_t::DETECTING) {
       // serviceDetect() picks the answer up and configures the receiver
       m_Detect.answered();

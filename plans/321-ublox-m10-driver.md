@@ -450,3 +450,45 @@ ESP32 debug envs. The stacks are unchanged; two frames came off the path.
   no test. `console-commands` now covers the NMEA refusal, an unanswered
   receiver, a full answer and every enum name, and both range errors. Host
   coverage of the file is 89.78%.
+
+## CI fixes after the merge of #457, #460 and #470
+
+`m5stack-core-debug` is a mandatory CI lane now. Its image was 1,740,845
+bytes against the 1,740,800-byte OTA slot, 45 over. After the master merge it
+was 1,740,704, 96 bytes under: #457 freed some flash. The u-blox code on that
+env is about 15 KB of the image (master builds 1,725,600). Four changes keep
+every feature, IPv6 and the console output, and change no behaviour:
+
+- `GPS::enqueueUbxConfig()` strips the frame and queues the payload for the
+  five CFG commands. Each call site used to inline a payload copy and an empty
+  fallback string.
+- `Ubx::plan()` builds the signal keys from one 14-row table instead of a
+  lambda over initializer lists. The output order and values are unchanged;
+  `gps-ubx` pins them.
+- `configureUbx()` fills the read-back list with a plain loop, so the image
+  no longer carries a 311-byte `std::vector<KeyValue>` range insert.
+- The driver keeps a `Ubx::PlanSummary` instead of the whole `Plan`, and
+  MON-VER is decoded straight into `m_UbxVersion` under `m_UbxMutex`.
+  `parseMonVer()` writes nothing when it refuses a frame. This drops the vector
+  copies, a `MonVer` local on the GPS task and 32 bytes of DRAM.
+
+| Step | m5stack-core-debug image |
+| --- | ---: |
+| PR head before the merge (CI) | 1,740,845 |
+| after the master merge | 1,740,704 |
+| `enqueueUbxConfig()`, `plan()` table, MON-VER in place | 1,740,352 |
+| read-back loop | 1,739,984 |
+| `PlanSummary` | 1,739,232 |
+
+The slot now has 1,568 bytes of headroom. DRAM is 56,204 of 57,344 bytes.
+
+| Env | Flash used / slot | DRAM / budget | gps task stack |
+| --- | ---: | ---: | ---: |
+| m5stack-core-debug | 1,739,232 / 1,740,800 | 56,204 / 57,344 | 3,984 / 4,352 |
+| m5stack-core | 1,626,560 / 1,740,800 | 55,124 / 56,320 | 3,664 / 4,096 |
+| m5stick-s3 | 1,859,888 / 3,145,728 | 47,448 / 48,128 | 3,376 / 4,096 |
+
+The merge also moved this branch's rail switch onto master's public
+`GPS::setRailPower()`, which keeps the simulator rail hook and returns whether
+the rail reached its state. `Platform::canCutGpsRail()` tests the new
+`FURBLE_HAS_GPS_RAIL_SWITCH` capability, so the coupling ratchet stays clean.

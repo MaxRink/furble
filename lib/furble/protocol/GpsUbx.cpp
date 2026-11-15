@@ -572,49 +572,45 @@ Plan plan(const Request &request) {
   }
 
   if (!out.gnss_refused) {
-    const auto on = [gnss](uint8_t bit) { return (gnss & bit) ? 1u : 0u; };
-    // Only the constellations the request decides are written. The others are
-    // deleted from BBR, so they return to the receiver preset at its next
-    // start instead of keeping what an earlier setting stored.
-    const auto group = [&out, &request](uint8_t bits, std::initializer_list<KeyValue> items) {
-      if ((request.gnss_set & bits) != 0) {
-        out.signals.insert(out.signals.end(), items);
-      } else {
-        for (const auto &item : items) {
-          out.unset.push_back(item.key);
-        }
-      }
+    // One row per signal key: the request bits that decide its group, and
+    // the mask bits the value needs set (none means 1) or clear. Only the
+    // groups the request decides are written. The others are deleted from
+    // BBR, so they return to the receiver preset at its next start instead of
+    // keeping what an earlier setting stored. BeiDou B1I does not run beside
+    // GLONASS, B1C does (IM-MAX 2.1.3). B1I is the module preset and the
+    // signal AssistNow Autonomous covers, so it is used whenever GLONASS is
+    // off.
+    struct Signal {
+      uint32_t key;
+      uint8_t group;
+      uint8_t need;
+      uint8_t clear;
     };
-    group(GNSS_MASK_GPS, {
-                             {Key::SIGNAL_GPS_ENA,  on(GNSS_MASK_GPS)},
-                             {Key::SIGNAL_GPS_L1CA, 1                }
-    });
-    group(GNSS_MASK_GAL, {
-                             {Key::SIGNAL_GAL_ENA, on(GNSS_MASK_GAL)},
-                             {Key::SIGNAL_GAL_E1,  1                }
-    });
-    // BeiDou B1I does not run beside GLONASS, B1C does (IM-MAX 2.1.3). B1I is
-    // the module preset and the signal AssistNow Autonomous covers, so it is
-    // used whenever GLONASS is off.
-    group(GNSS_MASK_BDS | GNSS_MASK_GLO, {
-                                             {Key::SIGNAL_BDS_ENA, bds ? 1u : 0u          },
-                                             {Key::SIGNAL_BDS_B1,  (bds && !glo) ? 1u : 0u},
-                                             {Key::SIGNAL_BDS_B1C, b1c ? 1u : 0u          }
-    });
-    group(GNSS_MASK_GLO, {
-                             {Key::SIGNAL_GLO_ENA, on(GNSS_MASK_GLO)},
-                             {Key::SIGNAL_GLO_L1,  1                }
-    });
-    group(GNSS_MASK_QZSS, {
-                              {Key::SIGNAL_QZSS_ENA,  on(GNSS_MASK_QZSS)},
-                              {Key::SIGNAL_QZSS_L1CA, 1                 },
-                              {Key::SIGNAL_QZSS_L1S,  on(GNSS_MASK_QZSS)}
-    });
-    group(GNSS_MASK_SBAS,
-          {
-              {Key::SIGNAL_SBAS_ENA,  on(GNSS_MASK_SBAS)},
-              {Key::SIGNAL_SBAS_L1CA, 1                 }
-    });
+    constexpr uint8_t BDS_GLO = GNSS_MASK_BDS | GNSS_MASK_GLO;
+    static constexpr Signal SIGNALS[] = {
+        {Key::SIGNAL_GPS_ENA,   GNSS_MASK_GPS,  GNSS_MASK_GPS,  0            },
+        {Key::SIGNAL_GPS_L1CA,  GNSS_MASK_GPS,  0,              0            },
+        {Key::SIGNAL_GAL_ENA,   GNSS_MASK_GAL,  GNSS_MASK_GAL,  0            },
+        {Key::SIGNAL_GAL_E1,    GNSS_MASK_GAL,  0,              0            },
+        {Key::SIGNAL_BDS_ENA,   BDS_GLO,        GNSS_MASK_BDS,  0            },
+        {Key::SIGNAL_BDS_B1,    BDS_GLO,        GNSS_MASK_BDS,  GNSS_MASK_GLO},
+        {Key::SIGNAL_BDS_B1C,   BDS_GLO,        BDS_GLO,        0            },
+        {Key::SIGNAL_GLO_ENA,   GNSS_MASK_GLO,  GNSS_MASK_GLO,  0            },
+        {Key::SIGNAL_GLO_L1,    GNSS_MASK_GLO,  0,              0            },
+        {Key::SIGNAL_QZSS_ENA,  GNSS_MASK_QZSS, GNSS_MASK_QZSS, 0            },
+        {Key::SIGNAL_QZSS_L1CA, GNSS_MASK_QZSS, 0,              0            },
+        {Key::SIGNAL_QZSS_L1S,  GNSS_MASK_QZSS, GNSS_MASK_QZSS, 0            },
+        {Key::SIGNAL_SBAS_ENA,  GNSS_MASK_SBAS, GNSS_MASK_SBAS, 0            },
+        {Key::SIGNAL_SBAS_L1CA, GNSS_MASK_SBAS, 0,              0            },
+    };
+    for (const Signal &signal : SIGNALS) {
+      if ((request.gnss_set & signal.group) == 0) {
+        out.unset.push_back(signal.key);
+        continue;
+      }
+      const bool value = ((gnss & signal.need) == signal.need) && ((gnss & signal.clear) == 0);
+      out.signals.push_back({signal.key, value ? 1u : 0u});
+    }
   }
 
   if (psm == PSM_ON_OFF) {

@@ -697,6 +697,10 @@ class GPS {
   /** Advance detection. True once the backend is decided. */
   bool serviceDetect(uint32_t now);
   void configureUbx(void);
+  /** Queue the payload of a codec-built CFG frame as an acknowledged command. */
+  void enqueueUbxConfig(uint8_t message_id,
+                        const std::vector<uint8_t> &frame,
+                        uint16_t settle_ms = 0);
   bool sendUbx(const std::vector<uint8_t> &frame);
   void serviceUbx(const uint8_t *frame, size_t length);
   /** Overlay a fresh NAV-PVT on the parser snapshot. Holds m_GPSMutex. */
@@ -987,7 +991,7 @@ class GPS {
   uint8_t m_UbxSosBackup = 0;
   uint8_t m_UbxVerified = 0;
   uint32_t m_UbxNaks = 0;
-  Ubx::Plan m_UbxPlan = {};
+  Ubx::PlanSummary m_UbxPlan = {};
   bool m_UbxConfigured = false;
   bool m_UbxAna = false;
   bool m_UbxHaveSat = false;

@@ -168,7 +168,9 @@ protocol core.
   cites the SPG 5.10 interface description section; keep that when adding
   one. `GpsDemux` splits the shared UART stream into NMEA, CASIC and UBX
   pieces and is the only demultiplexer; the driver dispatches its pieces.
-  Both are covered by `gps-ubx` and fuzzed by `gps_ubx_fuzz`.
+  Both are covered by `gps-ubx` and fuzzed by `gps_ubx_fuzz`. `plan()` builds
+  the signal keys from one table, and the driver keeps only its
+  `PlanSummary`; the 4 MB Core debug image has little flash to spare.
 - The `GpsUbx` receiver encoders (`encodeNavPvt`, `encodeNavSat`,
   `encodeMonVer`) refuse a payload above `MAX_PAYLOAD`, so every frame the
   simulator receiver emits passes `scan()`. `frame()` keeps the 65,535-byte

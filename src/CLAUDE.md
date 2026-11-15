@@ -117,7 +117,8 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   actions (configure, restart, standby, satellite capture, MON-HW, ephemeris)
   switch on `GPS::backend_t`; add a vendor as one more value and one more
   configure function. UBX configuration goes through the same one-in-flight
-  queue with a one second ACK timeout and writes RAM and BBR, because software
+  queue, via `enqueueUbxConfig()` with a codec-built frame, with a one second
+  ACK timeout and writes RAM and BBR, because software
   standby clears RAM. The settle wait after a signal change is a
   `Ubx::Settle` gate, never a raw tick compared with 0: that form stalled every
   command in the second half of the tick range. A fresh NAV-PVT overlays the
