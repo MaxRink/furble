@@ -80,10 +80,6 @@ bool validCoordinate(double value, double min, double max) {
 #include "power_profiler.h"
 #define FURBLE_SIM_GPS_STATE(state) Furble::Sim::profilerSetGpsState(state)
 #define FURBLE_SIM_TIMER_FIRE(name) Furble::Sim::profilerTimerFire(name)
-// The host has no Port A rail, so the fake receiver is told what the PMIC
-// was asked to do. Hardware boundary only: the firmware path is unchanged.
-#define FURBLE_SIM_GPS_RAIL(enable) furble_sim_uart_set_rail(enable)
-#define FURBLE_GPS_RAIL_ON() furble_sim_uart_rail_on()
 #define FURBLE_SIM_GPS_READER_HOLD() Furble::Sim::gpsReaderHold()
 namespace {
 // Marks the GPS task while it holds bytes it has not parsed or may act on a
@@ -100,8 +96,6 @@ struct SimDutyScope {
 #else
 #define FURBLE_SIM_GPS_STATE(state) ((void)0)
 #define FURBLE_SIM_TIMER_FIRE(name) ((void)0)
-#define FURBLE_SIM_GPS_RAIL(enable) ((void)0)
-#define FURBLE_GPS_RAIL_ON() M5.Power.getExtOutput()
 #define FURBLE_SIM_GPS_READER_HOLD() ((void)0)
 #define FURBLE_SIM_DUTY_SCOPE() ((void)0)
 #endif
@@ -2324,12 +2318,7 @@ void GPS::disable(void) {
 }
 
 bool GPS::setRailPower(bool enable) {
-  FURBLE_SIM_GPS_RAIL(enable);
-  M5.Power.setExtOutput(enable, m5::ext_PA);
-  if (FURBLE_GPS_RAIL_ON() != enable) {
-    M5.Power.setExtOutput(enable, m5::ext_PA);
-  }
-  return FURBLE_GPS_RAIL_ON() == enable;
+  return Platform::getInstance().setRail(PowerBackend::Rail::GPS, enable);
 }
 
 /** Refresh the setting from NVS. */

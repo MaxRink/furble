@@ -489,6 +489,35 @@ The slot now has 1,568 bytes of headroom. DRAM is 56,204 of 57,344 bytes.
 | m5stick-s3 | 1,859,888 / 3,145,728 | 47,448 / 48,128 | 3,376 / 4,096 |
 
 The merge also moved this branch's rail switch onto master's public
-`GPS::setRailPower()`, which keeps the simulator rail hook and returns whether
-the rail reached its state. `Platform::canCutGpsRail()` tests the new
-`FURBLE_HAS_GPS_RAIL_SWITCH` capability, so the coupling ratchet stays clean.
+`GPS::setRailPower()`, which returns whether the rail reached its state.
+
+## Master merge of #462 (hardware layer)
+
+#462 added the board profile's `gpsRail` column and `Platform::setRail(GPS)`.
+That column is now the one answer to "can this board cut the GPS rail":
+
+- `Platform::canCutGpsRail()` returns `Board::profile().gpsRail`. The
+  `FURBLE_HAS_GPS_RAIL_SWITCH` capability the earlier merge added is gone.
+  The profile is detected at run time, so the StickC Plus2, which shares the
+  StickC Plus image but has no rail switch, now reports false; the build
+  macro reported true. The Core (IP5306), Waveshare and headless profiles
+  report false as before.
+- `GPS::setRailPower()` returns `Platform::setRail()`. `setRail()` now ends
+  with a read-back and returns whether the rail is in the requested state;
+  it still returns false where the board has no switch. `railOffOrRestart()`
+  uses that to restart a receiver stopped for a cut that did not take.
+- The simulator rail hook moved from `FurbleGPS.cpp` into the simulator's
+  `Platform::setRail()`, which tells the fake receiver and returns its rail.
+  `canCutGpsRail()` there is the profile column unless `gps_rail_fixed`
+  holds the rail on, so `gps_rail_fixed` and `gps_rail_refused` keep their
+  meaning. On the Core build, which has no rail, the fake receiver is no
+  longer told about rail requests the board cannot carry out.
+
+After this merge `m5stack-core-debug` is 1,739,728 bytes, 1,072 under the
+slot; the merge added 496 bytes.
+
+| Env | Flash used / slot | DRAM / budget | gps task stack |
+| --- | ---: | ---: | ---: |
+| m5stack-core-debug | 1,739,728 / 1,740,800 | 56,204 / 57,344 | 3,984 / 4,352 |
+| m5stack-core | 1,626,592 / 1,740,800 | 55,124 / 56,320 | 3,664 / 4,096 |
+| m5stick-s3 | 1,859,424 / 3,145,728 | 47,448 / 48,128 | 3,376 / 4,096 |

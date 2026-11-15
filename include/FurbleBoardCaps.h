@@ -35,16 +35,6 @@
 #define FURBLE_HAS_GPS_BURST_LOCK 0
 #endif
 
-// The PMIC can switch off the Grove Port A 5 V rail that powers the GPS unit.
-// On the Core (IP5306) and the Waveshare board the rail is always on, and the
-// headless profiles have no rail control.
-#if defined(FURBLE_M5STICKC) || defined(FURBLE_M5STICKC_PLUS) || defined(FURBLE_M5STICKS3) \
-    || (defined(FURBLE_M5COREX) && !defined(FURBLE_M5STACK_CORE))
-#define FURBLE_HAS_GPS_RAIL_SWITCH 1
-#else
-#define FURBLE_HAS_GPS_RAIL_SWITCH 0
-#endif
-
 // The console runs on the ESP32-S3 USB Serial/JTAG port, not on UART0.
 #if defined(FURBLE_M5STICKS3) || defined(FURBLE_USB_CONSOLE)
 #define FURBLE_HAS_USB_SERIAL_JTAG_CONSOLE 1

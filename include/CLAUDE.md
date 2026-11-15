@@ -250,8 +250,6 @@ settings-touching rebase.
   a missing include evaluates silently to 0. The coupling ratchet enforces
   both rules, scans `sim/` and `tests/host/` too, and rejects a name the
   header does not define. An include inside a comment does not count.
-  `FURBLE_HAS_GPS_RAIL_SWITCH` is 1 where the PMIC can cut the Port A GPS
-  rail; `Platform::canCutGpsRail()` reads it.
 - `BatteryStatus::gate()` in `FurbleBatteryStatus.h` gates each battery status
   field by its own `battery_caps_t` flag. Never gate on the union of the
   flags: partial boards such as the StickS3 and M5Stack Core would then
@@ -260,3 +258,16 @@ settings-touching rebase.
   adaptive policy, but no public member maps it. The ESP to `TxPower` mapping
   is file-local in `FurbleControl.cpp`; boot code calls
   `Control::savedTxPower()` before `Device::init()`.
+- `FurbleBoard.h` holds one `Board::Profile` row per board model, chosen from
+  the detected board (an image serves several boards). Non-UI modules read
+  board facts from it instead of switching on `M5.getBoard()`; UI geometry
+  stays in the UI and compile-time facts stay in `FurbleBoardCaps.h`. A new
+  row needs a matching case in `tests/host/board_profile_test.cpp`.
+- `FurblePowerBackend.h` is the contract a board's power hardware meets: the
+  shared battery and rail types plus the member list `meetsPowerBackend()`
+  checks, asserted after `Platform` in `FurblePlatform.h`. It is a
+  link-time contract with no virtual functions. `Platform` meets it for the M5
+  boards and the simulator; a new board family supplies its own `Platform`
+  file on the drivers in `lib/hal`. Never make it virtual: a vtable defeats
+  `--gc-sections` and pushed the headless Waveshare image over its IRAM budget.
+  See plans/322-hardware-abstraction.md.

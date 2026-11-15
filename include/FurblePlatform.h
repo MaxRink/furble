@@ -10,6 +10,7 @@
 #include <M5PM1.h>
 
 #include "FurbleBoardCaps.h"
+#include "FurblePowerBackend.h"
 
 namespace Furble {
 #if defined(FURBLE_SIM)
@@ -17,7 +18,8 @@ namespace Sim {
 const char *watchdogState(void);
 }
 #endif
-class Platform {
+/** Board power and platform services; meets the PowerBackend contract. */
+class Platform: public PowerBackend {
  public:
   /** Selectable maximum CPU frequencies in MHz. */
   static constexpr std::array<uint8_t, 3> CPU_MAX_FREQ_MHZ = {80, 160, 240};
@@ -25,27 +27,7 @@ class Platform {
   /** Default maximum CPU frequency in MHz. */
   static constexpr uint8_t CPU_MAX_FREQ_DEFAULT_MHZ = 160;
 
-  /**
-   * Battery measurements available on this board.
-   */
-  typedef struct {
-    bool level;
-    bool voltage;
-    bool current;
-    bool charging;
-  } battery_caps_t;
-
-  /**
-   * Battery measurement sample.
-   *
-   * Only fields flagged in battery_caps_t are meaningful.
-   */
-  typedef struct {
-    uint8_t level;     // percent
-    uint16_t voltage;  // millivolts
-    int32_t current;   // milliamps, positive when charging
-    bool charging;
-  } battery_t;
+  // battery_caps_t and battery_t come from PowerBackend.
 
   /**
    * Battery status for the companion status record.
@@ -287,12 +269,12 @@ class Platform {
   /**
    * Can the board switch the GPS receiver's supply off?
    *
-   * The StickC, StickC Plus, Core2 and StickS3 switch the Grove Port A 5 V
-   * rail through their PMIC. On the Core (IP5306) and the Waveshare board the
-   * rail is always on and `setExtOutput(ext_PA)` does nothing, and the
-   * headless profile has no rail control. A receiver on a rail that cannot be
-   * cut must never be stopped for a save-on-shutdown, because nothing would
-   * ever restart it.
+   * The board profile's `gpsRail` column: the StickC, StickC Plus, StickS3,
+   * Core2 and Tough switch the Grove Port A 5 V rail through their PMIC. On
+   * the Core (IP5306), the StickC Plus2 and the Waveshare board the rail is
+   * always on, and the headless profile has no rail control. A receiver on a
+   * rail that cannot be cut must never be stopped for a save-on-shutdown,
+   * because nothing would ever restart it. Valid after Platform::init().
    */
   static bool canCutGpsRail(void);
 
@@ -330,6 +312,15 @@ class Platform {
    * Get the battery capacity in mAh, zero if unknown.
    */
   uint16_t getBatteryCapacity(void);
+
+  /**
+   * Switch a named rail. The M5 boards switch only the GPS rail, which is the
+   * Port A 5 V output.
+   *
+   * @return true when the rail reads back in the requested state; false when
+   *         the board has no switch or the PMIC did not take the write.
+   */
+  bool setRail(Rail rail, bool on);
 
   /**
    * Get the count of PMIC accesses which failed after a retry.
@@ -428,6 +419,9 @@ class Platform {
   uint32_t m_WatchdogLastFeed = 0;
 #endif
 };
+
+static_assert(meetsPowerBackend<Platform>(),
+              "Platform must meet the PowerBackend contract without virtual dispatch");
 }  // namespace Furble
 
 #endif

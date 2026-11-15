@@ -136,7 +136,8 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   first sends CFG-RST GNSS stop and UPD-SOS create and holds the cut in
   `m_RailOffPending` for up to one second; `disable()` does the same inline,
   so it can block for up to one second with the GPS task parked. Neither runs
-  when `Platform::canCutGpsRail()` is false (Core, Waveshare, headless) or
+  when `Platform::canCutGpsRail()` is false (the board profile's `gpsRail`
+  column: Core, StickC Plus2, Waveshare, headless) or
   `hasGpsBackupSupply()` is true. A refused or unanswered save sets a latch
   (`m_UbxSosBackup` 2) that lasts until the next GPS enable. If the rail stays
   on after a cut that followed a GNSS stop, `railOffOrRestart()` sends GNSS
@@ -411,7 +412,9 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   follows `FURBLE_HAS_VBUS_SENSE`. Do not read `M5.Power` for status elsewhere.
 - `GPS::setRailPower()` is the only code that switches the GPS Port A rail.
   The console `gps power` request goes through it too, so every switch gets
-  the M5PM1 readback and single retry.
+  the M5PM1 readback and single retry. It returns `Platform::setRail()`'s
+  final read-back, which `railOffOrRestart()` uses to restart a receiver
+  whose cut did not take.
 - Under `FURBLE_SIM`, battery policy is exercised through the deterministic
   `Furble::Sim::battery_reading_t` seam. Keep `Platform::readBattery()` as the
   production boundary; scenario seeds/actions may replace its sample and

@@ -218,12 +218,14 @@ class GPS {
   static void init(void);
 
   /**
-   * Switch the Port A 5 V rail that powers the GPS unit.
+   * Switch the rail that powers the GPS unit.
    *
-   * The only place firmware drives that rail. The M5PM1 sleeps after an I2C
-   * idle period and the first access after that only wakes it, so the rail
-   * state is read back and the write retried once on a mismatch. Returns
-   * whether the rail reached the requested state.
+   * The only place firmware drives that rail. It goes through
+   * Platform::setRail(GPS), which switches the Port A 5 V output on boards
+   * whose profile has a GPS rail, reads it back and retries once for the
+   * M5PM1 wake. Other boards have no switch and the call does nothing.
+   * Returns whether the rail reached the requested state, so false where the
+   * board has no switch.
    */
   static bool setRailPower(bool enable);
 

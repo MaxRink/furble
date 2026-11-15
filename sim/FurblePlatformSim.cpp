@@ -10,6 +10,7 @@
 #include <driver/uart.h>
 
 #include "FurbleBatteryStatus.h"
+#include "FurbleBoard.h"
 #include "FurbleBoardCaps.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
@@ -373,14 +374,10 @@ Platform::pm_config_t Platform::getPMConfig(void) {
 void Platform::dumpPMLocks(void) {}
 
 bool Platform::canCutGpsRail(void) {
-  // The 320x240 build models the Core Basic, whose IP5306 cannot switch the
-  // rail. The Sticks can, unless a scenario fixes the rail on
-  // (`seed gps_rail_fixed`) to model a Core or a refused cut.
-#if defined(FURBLE_M5COREX)
-  return false;
-#else
-  return !furble_sim_uart_rail_fixed();
-#endif
+  // Firmware reads the board profile. The 320x240 build models the Core
+  // Basic, whose profile has no GPS rail. A scenario can also fix the rail on
+  // (`seed gps_rail_fixed`) to model a Core or Waveshare board on a Stick.
+  return Board::profile().gpsRail && !furble_sim_uart_rail_fixed();
 }
 
 bool Platform::hasGpsBackupSupply(void) {
@@ -439,6 +436,22 @@ Platform::battery_status_t Platform::getBatteryStatus(void) {
 
 uint16_t Platform::getBatteryCapacity(void) {
   return 250;
+}
+
+bool Platform::setRail(Rail rail, bool on) {
+  if ((rail != Rail::GPS) || !Board::profile().gpsRail) {
+    return false;
+  }
+  // Same calls as firmware, so the hardware model sees the same rail traffic.
+  // The host has no Port A rail, so the fake receiver is told what the PMIC
+  // was asked and its rail is the read-back: `gps_rail_fixed` and
+  // `gps_rail_refused` keep it on.
+  furble_sim_uart_set_rail(on);
+  M5.Power.setExtOutput(on, m5::ext_PA);
+  if (M5.Power.getExtOutput() != on) {
+    M5.Power.setExtOutput(on, m5::ext_PA);
+  }
+  return furble_sim_uart_rail_on() == on;
 }
 
 uint32_t Platform::getBatteryFailCount(void) {

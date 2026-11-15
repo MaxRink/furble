@@ -124,6 +124,7 @@ file(GLOB ICON_SOURCES CONFIGURE_DEPENDS "${FURBLE_ROOT}/components/icons/*.c")
 # an empty translation unit unless FURBLE_MQTT is enabled.
 set(FURBLE_SOURCES
     ${SIM_SOURCES}
+    "${FURBLE_ROOT}/src/FurbleBoard.cpp"
     "${FURBLE_ROOT}/src/FurbleBootScreen.cpp"
     "${FURBLE_ROOT}/src/FurbleBootTimeline.cpp"
     "${FURBLE_ROOT}/src/FurbleCalibrate.cpp"
