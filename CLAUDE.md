@@ -41,8 +41,9 @@ CLAUDE.md whose directory it touches.
   boards' panel and touch drivers drop out. StickC Plus/Plus2 and Core2/Tough
   share an image and keep autodetect. Waveshare pins `board_M5StampS3`, which
   has no M5GFX probe, so no probe runs on the W5500 pins. Core debug fits its
-  OTA slot again and is a mandatory CI lane; with the u-blox driver it is
-  1,739,728 bytes, 1,072 under the slot (plan 321). Log V2 writes
+  OTA slot again and is a mandatory CI lane; with the u-blox driver (plan 321)
+  and the esp_err codes in error logs (plan 106) it is 1,740,400 bytes, 400
+  under the slot. Log V2 writes
   one record as three vprintf calls, so `FurbleCrashLog` joins fragments up to
   the newline.
 - Per-env `sdkconfig.<env>` files are committed at the repo root. Debug envs

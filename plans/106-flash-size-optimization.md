@@ -477,3 +477,50 @@ Waveshare row of `sim/coverage/board_heap.json` from the new ELF: static DRAM
 46,648 bytes, heap at app start 269,000, derived free 173,336. The
 `profile-waveshare-s3-eth` floors in `sim/coverage/memory_budget.json` follow
 it, and `sim/scripts/run-memory-profile.py` passes all 13 dumps.
+
+### Merge with master after #457
+
+Master later regenerated the three generated files in #457 and moved more S3
+code out of IRAM. The merge took master's `sim/coverage/board_heap.json`,
+`sim/coverage/memory_budget.json` and `tools/size_budget.json` and
+regenerated them from clean builds of the merged tree, with
+`FURBLE_VERSION=1.0.0-ci FURBLE_TEST=0`. Numbers were not hand-merged.
+
+| Env | Master | Merged | Delta |
+| --- | ---: | ---: | ---: |
+| waveshare-s3-eth static DRAM | 51,344 | 46,904 | -4,440 |
+| waveshare-s3-eth heap at app start | 276,848 | 286,920 | +10,072 |
+| waveshare-s3-eth derived free | 186,112 | 196,184 | +10,072 |
+| waveshare-s3-eth DRAM budget | 52,224 | 48,128 | -4,096 |
+| waveshare-s3-eth IRAM budget | 114,688 | 109,568 | -5,120 |
+
+The master column is master's committed figures. The merged release image
+is 1,529,424 bytes of flash, 46,904 DRAM and 108,544 IRAM.
+`python3 tools/derive_sim_heap.py --env waveshare-s3-eth` rewrote the
+Waveshare row, and the `profile-waveshare-s3-eth` floors in
+`sim/coverage/memory_budget.json` follow its derived free and largest
+figures, as `tests/test_sim_profile_sdkconfig.py` requires. Group A takes
+4,440 DRAM and 5,120 IRAM bytes off master's budget base, so the release RAM
+budgets no longer matched the measured size plus 512 bytes rounded up to a
+KiB. `tools/check_size_budget.py --env waveshare-s3-eth --write` lowered them.
+
+`waveshare-s3-eth-debug` is 1,986,480 bytes of flash, 56,008 DRAM and
+130,048 IRAM against its unchanged 56,320 and 149,504 budgets. Its generated
+`sdkconfig.h` keeps master's assertion level 2, log maximum 5 and esp_err
+names, because `sdkconfig.full-diagnostics` restores the group A keys. Both Waveshare images grew 256 DRAM bytes between the first
+measurement on the old base (46,648 and 55,752) and this one, so the debug
+growth came with master, not with this branch, and no budget was crossed.
+The debug budget is left as master set it.
+
+The esp_err codes compile into every board. `m5stack-core-debug` has the
+tightest slot: master's 1,739,728 bytes became 1,740,400, 400 under the
+1,740,800-byte slot. With CI's `FURBLE_VERSION=dev` and a dirty tree it is
+1,740,416. It still fits, but the next change on that image has almost no
+room. `sdkconfig.esp32-s3-headless` is a separate file, so the headless
+image changes only by the code bytes. The headless and the other board
+images were not rebuilt here. The format strings and the extra argument
+live in flash, not in DRAM or IRAM, so their RAM figures do not move;
+firmware CI's size budget step checks their flash.
+
+`tools/stack_budget.py` passes every task on `waveshare-s3-eth`,
+`waveshare-s3-eth-debug` and `m5stack-core-debug`.
