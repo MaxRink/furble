@@ -258,7 +258,7 @@ class Graph:
         return [t for t in self.frame if rx.search(self.name[t]) or rx.search(t)]
 
 
-def worst_case(graph, entry, resolve, pruned=frozenset(), recursion=()):
+def worst_case(graph, entry, resolve, pruned=frozenset(), recursion=(), cuts=()):
     """Deepest frame sum from entry; returns (bytes, path, notes).
 
     The walk collapses each strongly connected component of the reachable
@@ -272,8 +272,24 @@ def worst_case(graph, entry, resolve, pruned=frozenset(), recursion=()):
     rule with no depth records a documented known limit and charges one pass,
     but only for a component no finite rule matches: a finite bound always
     counts, so a catch-all known limit cannot hide it. Any other recursive
-    component is noted as unbounded."""
+    component is noted as unbounded.
+
+    cuts lists (under, caller, callee) title sets: while a function in under is
+    on the walked path, a call from caller to callee is not followed. The walk
+    runs over (function, active cuts) states, so the same function reached
+    below an under function and elsewhere is costed once for each. Without
+    an active cut a state is the function's title."""
     notes = {"recursion": {}, "dynamic": set(), "indirect": {}, "unknown": set()}
+
+    def fn_of(state):
+        return state.split(CUT_SEP, 1)[0]
+
+    def active_of(state):
+        _, _, tail = state.partition(CUT_SEP)
+        return frozenset(int(i) for i in tail.split(",")) if tail else frozenset()
+
+    def state_of(fn, active):
+        return fn + CUT_SEP + ",".join(map(str, sorted(active))) if active else fn
 
     def node(fn):
         body = graph.defined(fn)
@@ -281,7 +297,8 @@ def worst_case(graph, entry, resolve, pruned=frozenset(), recursion=()):
             notes["unknown"].add(fn)
         return body
 
-    def targets(fn):
+    def targets(state):
+        fn = fn_of(state)
         out = set(graph.calls.get(fn, ()))
         if fn in graph.indirect:
             hit = [dst for rx, dst in resolve if dst and rx.search(graph.name.get(fn, fn))]
@@ -289,7 +306,13 @@ def worst_case(graph, entry, resolve, pruned=frozenset(), recursion=()):
                 out.update(dst)
             if not hit:
                 notes["indirect"][fn] = graph.indirect[fn]
-        return sorted({t for t in map(node, out - pruned) if t is not None})
+        inner = active_of(state) | {i for i, (under, _, _) in enumerate(cuts) if fn in under}
+        skip = set(pruned)
+        for i in inner:
+            _, caller, callee = cuts[i]
+            if fn in caller:
+                skip |= callee
+        return sorted({state_of(t, inner) for t in map(node, out - skip) if t is not None})
 
     start = node(entry)
     if start is None:
@@ -329,9 +352,9 @@ def worst_case(graph, entry, resolve, pruned=frozenset(), recursion=()):
     # cost[v] is the deepest frame sum from v. route[v] lists the nodes of
     # that path inside v's component and the first node after it.
     cost, route, extra = {}, {}, {}
+    frame = {v: graph.frame[fn_of(v)] for v in index}
     for c, members in enumerate(comps):
-        frame = graph.frame
-        notes["dynamic"].update(m for m in members if graph.kind[m] == "dynamic")
+        notes["dynamic"].update(fn_of(m) for m in members if graph.kind[fn_of(m)] == "dynamic")
         exit_ = {}
         for m in members:
             outs = [d for d in succ[m] if comp_of[d] != c]
@@ -344,19 +367,20 @@ def worst_case(graph, entry, resolve, pruned=frozenset(), recursion=()):
         # A list, one entry per matched rule: two rules with the same depth and
         # reason are still two recursions and each adds its passes.
         rules = [(depth, why) for rx, depth, why in recursion
-                 if any(rx.search(graph.name[m]) or rx.search(m) for m in members)]
+                 if any(rx.search(graph.name[fn_of(m)]) or rx.search(fn_of(m)) for m in members)]
         why = min((w for _, w in rules), default=None)
         finite = [(d, w) for d, w in rules if d is not None]
         known = not finite and any(depth is None for depth, _ in rules)
         if finite:
             why = min(w for _, w in finite)
         passes = 1 + sum(d - 1 for d, _ in finite) if finite else 1
-        notes["recursion"][tuple(members)] = (None if known or not rules else passes, why)
+        comp = tuple(dict.fromkeys(fn_of(m) for m in members))
+        notes["recursion"][comp] = (None if known or not rules else passes, why)
         frames = sum(frame[m] for m in members)
         out_cost, out = max(exit_.values(), key=lambda x: (x[0], x[1] or ""))
         if passes > 1:
             # Each pass puts every member on the stack at most once.
-            extra[members[0]] = (passes - 1) * frames
+            extra[fn_of(members[0])] = (passes - 1) * frames
             for m in members:
                 cost[m], route[m] = passes * frames + out_cost, (members, out)
             continue
@@ -379,11 +403,14 @@ def worst_case(graph, entry, resolve, pruned=frozenset(), recursion=()):
     path, v = [], start
     while v is not None:
         nodes, v = route[v]
-        path.extend(nodes)
+        path.extend(fn_of(n) for n in nodes)
     notes["extra"] = extra
     return cost[start], path, notes
 
 
+# Joins a function title and its active cut indices into a walk state. A
+# title never contains it.
+CUT_SEP = "\x1f"
 # A source citation: a C, C++ or header file and a line number.
 CITATION = re.compile(r"\.(c|h|cpp):\d+")
 # Simple paths explored per recursive component before the walk falls back to
@@ -528,6 +555,12 @@ def main():
     boot_only = set()
     for pattern in manifest.get("boot_only", []):
         boot_only.update(graph.find(pattern))
+    # A cut whose functions are not all linked is inert, like an indirect rule.
+    cuts = []
+    for rule in manifest.get("cuts", []):
+        sets = tuple(set(graph.find(rule[key])) for key in ("under", "caller", "callee"))
+        if all(sets):
+            cuts.append(sets)
     overrides = {name: int(value) for name, _, value in (o.partition("=") for o in args.stack)}
     failed = 0
 
@@ -575,7 +608,7 @@ def main():
                                if not tasks and rx.pattern not in scoped_callers]
         task_bounds = [(rx, depth, why) for rx, depth, why, tasks in recursion
                        if not tasks or task["name"] in tasks]
-        depth, path, notes = worst_case(graph, found[0], task_rules, pruned, task_bounds)
+        depth, path, notes = worst_case(graph, found[0], task_rules, pruned, task_bounds, cuts)
         need = depth + margin
         release_stack = stack_of(task["stack_bytes"], sdkconfig)
         debug_stack = stack_of(task.get("debug_stack_bytes", task["stack_bytes"]), debug_sdkconfig)

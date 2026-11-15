@@ -17,6 +17,11 @@ std::vector<host_mqtt::PublishedMessage> g_Published;
 std::vector<host_mqtt::Subscription> g_Subscriptions;
 std::vector<host_mqtt::PublishedMessage> g_Retained;
 esp_mqtt_client_handle_t g_Client = nullptr;
+// Set by emitDataOnDestroy(): the next destroy delivers this command on the
+// dying client, then keeps the allocation for the next init.
+std::string g_DestroyTopic;
+std::string g_DestroyPayload;
+esp_mqtt_client_handle_t g_Recycled = nullptr;
 int g_StartCount = 0;
 int g_NextMessageID = 1;
 int g_LastTaskStackSize = 0;
@@ -153,6 +158,10 @@ namespace host_mqtt {
 void reset(void) {
   delete g_Client;
   g_Client = nullptr;
+  delete g_Recycled;
+  g_Recycled = nullptr;
+  g_DestroyTopic.clear();
+  g_DestroyPayload.clear();
   g_Published.clear();
   g_Subscriptions.clear();
   g_Retained.clear();
@@ -270,6 +279,11 @@ void emitStaleData(const std::string &topic, const std::string &payload) {
        payload_copy.data(), static_cast<int>(payload_copy.size()));
 }
 
+void emitDataOnDestroy(const std::string &topic, const std::string &payload) {
+  g_DestroyTopic = topic;
+  g_DestroyPayload = payload;
+}
+
 int lastTaskStackSize(void) {
   return g_LastTaskStackSize;
 }
@@ -293,7 +307,11 @@ extern "C" esp_mqtt_client_handle_t esp_mqtt_client_init(const esp_mqtt_client_c
   if ((config == nullptr) || (g_Client != nullptr)) {
     return nullptr;
   }
-  auto *client = new esp_mqtt_client;
+  esp_mqtt_client_handle_t client = g_Recycled;
+  g_Recycled = nullptr;
+  if (client == nullptr) {
+    client = new esp_mqtt_client;
+  }
   client->config = *config;
   g_LastTaskStackSize = config->task.stack_size;
   g_LastBufferSize = config->buffer.size;
@@ -341,6 +359,20 @@ extern "C" esp_err_t esp_mqtt_client_destroy(esp_mqtt_client_handle_t client) {
   if (g_Client == client) {
     g_Client = nullptr;
     g_Subscriptions.clear();
+  }
+  if (!g_DestroyTopic.empty()) {
+    // The client task's last callback, delivered while destroy waits for the
+    // task to exit. The allocator then hands the same address to the next
+    // client, so the identity check alone cannot reject the event.
+    std::string topic = std::move(g_DestroyTopic);
+    std::string payload = std::move(g_DestroyPayload);
+    g_DestroyTopic.clear();
+    g_DestroyPayload.clear();
+    emit(client, MQTT_EVENT_DATA, topic.data(), static_cast<int>(topic.size()), payload.data(),
+         static_cast<int>(payload.size()));
+    *client = esp_mqtt_client {};
+    g_Recycled = client;
+    return ESP_OK;
   }
   delete client;
   return ESP_OK;

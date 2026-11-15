@@ -26,8 +26,10 @@ was already done before the gate:
 - `MQTT::init()` called `CameraList::savedSnapshot()` early, loading and
   caching the saved camera list (about 5 KiB) even when MQTT could not start.
 - `MQTT::reloadSetting()` created the 10 KiB owner task before the start gate.
-- #398 reduced the main stack to 8 KiB. The earlier 3,476-byte high-water did
-  not include the later MQTT/UI path, which overflowed the 8 KiB stack.
+- #398 reduced the main stack to 8 KiB after reading the 3,020-byte
+  `perf tasks` value as bytes used. It was free stack at 12 KiB with MQTT
+  connected, so main used about 9,268 bytes, more than 8 KiB (corrected
+  2026-11-13, plan 314).
 
 ## Changes
 

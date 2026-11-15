@@ -189,10 +189,12 @@ int main(void) {
           "MQTT event queue budget changed without updating the gate");
   require(Furble::MQTTMemory::EVENT_STORAGE_BYTES
               == Furble::MQTTMemory::EVENT_QUEUE_BLOCK_BYTES
-                     + Furble::MQTTMemory::INCOMING_EVENT_BLOCK_BYTES,
-          "the internal event reserve must cover the queue and the incoming copy");
-  require(Furble::MQTTMemory::INCOMING_EVENT_BYTES * 4 == Furble::MQTTMemory::EVENT_QUEUE_BYTES,
-          "the incoming copy is one of the four queue items");
+                     + Furble::MQTTMemory::EVENT_COPIES_BLOCK_BYTES,
+          "the internal event reserve must cover the queue and both event copies");
+  require(Furble::MQTTMemory::EVENT_COPY_BYTES * 4 == Furble::MQTTMemory::EVENT_QUEUE_BYTES,
+          "an event copy is one of the four queue items");
+  require(Furble::MQTTMemory::EVENT_COPIES_BYTES == 2 * Furble::MQTTMemory::EVENT_COPY_BYTES,
+          "the owner preallocates the incoming and the received copy");
   require(Furble::MQTTMemory::BLOCK_OVERHEAD_BYTES >= 84 + 16,
           "the block overhead covers StaticQueue_t plus the TLSF header and poisoning");
   require(!Furble::MQTTMemory::startFits(65536, Furble::MQTTMemory::EVENT_QUEUE_BLOCK_BYTES - 1,
@@ -204,13 +206,13 @@ int main(void) {
           Furble::MQTTMemory::START_INTERNAL_FREE_FLOOR + Furble::MQTTMemory::EVENT_STORAGE_BYTES,
           Furble::MQTTMemory::EVENT_QUEUE_BLOCK_BYTES, false,
           Furble::MQTTMemory::EVENT_STORAGE_BYTES, Furble::MQTTMemory::EVENT_QUEUE_BLOCK_BYTES),
-      "the queue and the incoming copy are separate blocks, not one");
+      "the queue and the event copies are separate blocks, not one");
   require(!Furble::MQTTMemory::startFits(Furble::MQTTMemory::START_INTERNAL_FREE_FLOOR
                                              + Furble::MQTTMemory::EVENT_STORAGE_BYTES - 1,
                                          Furble::MQTTMemory::EVENT_QUEUE_BLOCK_BYTES, false,
                                          Furble::MQTTMemory::EVENT_STORAGE_BYTES,
                                          Furble::MQTTMemory::EVENT_QUEUE_BLOCK_BYTES),
-          "start gate ignored the incoming copy in the free floor");
+          "start gate ignored the event copies in the free floor");
   require(
       !Furble::MQTTMemory::startFits(
           Furble::MQTTMemory::START_INTERNAL_FREE_FLOOR + Furble::MQTTMemory::EVENT_QUEUE_BYTES - 1,
@@ -624,6 +626,25 @@ int main(void) {
   ownerStep(mqtt);
   require(publishedTopic(timeout_root_topic + "/status").payload == "online",
           "timeout replacement did not publish on its reloaded topic");
+
+  // The old client task can deliver one more callback while destroy joins it,
+  // and the replacement can reuse its address. The queue is cleared after
+  // destroy, so that command never runs on the replacement session. The
+  // reload keeps the same topics, so the stale command would match them.
+  host_mqtt::emitDataOnDestroy(timeout_root_topic + "/cmd/shutter", "press");
+  mqtt.reloadSetting();
+  ownerStep(mqtt);
+  host_mqtt::emitPublished(latestPublishedTopic(timeout_root_topic + "/status").message_id);
+  ownerStep(mqtt);
+  require(host_mqtt::startCount() == 5, "reload did not create the recycled-address client");
+  const size_t beforeRecycled = Control::commands().size();
+  ownerStep(mqtt);
+  require(mqtt.isConnected(), "the recycled-address client did not connect");
+  require(latestPublishedTopic(timeout_root_topic + "/status").payload == "online",
+          "the recycled-address client did not publish online");
+  require(std::none_of(Control::commands().begin() + beforeRecycled, Control::commands().end(),
+                       [](const auto command) { return command == Control::CMD_SHUTTER_PRESS; }),
+          "a command queued during destroy ran on the next client");
 
   const size_t beforeManualStop = Control::commands().size();
   host_mqtt::deliver(timeout_root_topic + "/cmd/shutter", "press");

@@ -172,41 +172,44 @@ keeps the library default.
 
 ## Current results
 
-Resolved worst case in bytes, port overhead included, on the 2026-11-13
-StickS3 and Waveshare builds of this branch, before and after plan 314 PR 4c.
-"Before" is the memoized walk without the panic handler; "after" is the
-component walk with the panic handler and the `infeasible_calls` edges. The
-StickC, StickC Plus, Core, Core2 and headless rows come from the firmware CI
-run on the PR, which runs the gate after every build; see plan 314 PR 4c.
+Resolved worst case in bytes, port overhead included, on the 2026-11-14
+builds of `fix/memory-reanalysis` after the merge of #446: the component walk
+with the panic handler, the `infeasible_calls` edges and the stdout lock cut.
+Every task passes on all seven envs. The main row has two stacks: 12,288 on the
+StickS3, 16,384 elsewhere. `mqtt_client` is checked against the plain 3 KiB
+worker; TLS uses 6 KiB.
 
-| Task | Stack | StickS3 before | StickS3 after | Waveshare before | Waveshare after |
-| :--- | ---: | ---: | ---: | ---: | ---: |
-| panic handler | | | 512 | | 752 |
-| main | 12,288/16,384 | 6,928 | 7,408 | 3,920 | 4,640 |
-| nimble_host | 16,384 | 1,664 | 2,144 | 1,856 | 2,608 |
-| sys_evt | 3,072 (was 2,304) | 1,952 | 2,432 | 2,192 | 2,944 |
-| esp_timer | 3,584 | 1,920 | 2,704 | 2,128 | 3,504 |
-| control | 8,192 | 2,896 | 2,816 | 3,120 | 3,648 |
-| camera_target | 4,096 | 2,560 | 2,384 | 2,784 | 3,248 |
-| gps | 4,096 | 2,992 | 3,392 | 3,232 | 3,984 |
-| wifi | 4,096 | 2,592 | 3,072 | 3,120 | 3,872 |
-| companion | 3,840 (was 3,072) | 2,560 | 2,912 | 2,960 | 3,712 |
-| ir | 4,096 | 2,352 | 2,800 | | |
-| mqtt | 10,240 | 8,080 | 8,256 | 8,304 | 9,056 |
-| mqtt_client | 3,072 | 1,936 | 2,352 | 2,208 | 2,896 |
-| webui | 4,096 (was 3,584) | 2,912 | 3,152 | 3,136 | 3,952 |
-| webui_https | 8,192 | 2,640 | 2,848 | 2,864 | 3,312 |
-| webui_tls | 12,288 | 7,664 | 8,144 | 7,920 | 8,672 |
+| Task | Stack | StickC | StickC Plus | Core | Core2 | StickS3 | Waveshare | Headless |
+| :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| panic handler |  | 1,216 | 1,216 | 1,216 | 1,216 | 512 | 752 | 752 |
+| main | 12,288/16,384 | 7,888 | 7,888 | 7,888 | 7,888 | 7,408 | 4,528 | 4,528 |
+| nimble_host | 16,384 | 2,512 | 2,512 | 2,512 | 2,512 | 2,032 | 2,496 | 2,496 |
+| sys_evt | 3,072 (was 2,304) | 2,800 | 2,800 | 2,800 | 2,800 | 2,320 | 2,832 | 2,832 |
+| esp_timer | 3,584 | 3,072 | 3,072 | 3,072 | 3,072 | 2,592 | 3,392 | 3,392 |
+| control | 8,192 | 3,184 | 3,184 | 3,184 | 3,184 | 2,704 | 3,536 | 3,984 |
+| camera_target | 4,096 | 2,752 | 2,752 | 2,752 | 2,752 | 2,384 | 3,136 | 3,744 |
+| gps | 4,096 | 3,568 | 3,568 | 3,568 | 3,568 | 3,264 | 3,856 | 3,856 |
+| wifi | 4,096 | 3,440 | 3,440 | 3,440 | 3,440 | 2,960 | 3,760 | 3,760 |
+| companion | 3,840 (was 3,072) | 3,424 | 3,424 | 3,424 | 3,424 | 2,800 | 3,600 | 3,600 |
+| ir | 4,096 | 3,184 | 3,184 |  |  | 2,688 |  |  |
+| sd | 6,144 |  |  | 4,704 | 4,704 |  |  |  |
+| mqtt | 10,240 |  |  |  | 3,888 | 3,408 | 4,208 | 4,208 |
+| mqtt_client | 3,072 |  |  |  | 2,720 | 2,240 | 2,784 | 2,784 |
+| webui | 4,096 (was 3,584) |  |  |  | 3,520 | 3,040 | 3,840 | 3,840 |
+| webui_https | 8,192 |  |  |  | 3,216 | 2,736 | 3,200 | 3,200 |
+| webui_tls | 12,288 |  |  |  | 7,904 | 8,032 | 8,560 | 8,560 |
 
-The main row has two stacks: 12,288 on the StickS3, 16,384 elsewhere.
-`mqtt_client` is checked against the plain 3 KiB worker; TLS uses 6 KiB.
-Most rows grow because every path to `abort` or an assert now pays the panic
-handler (512 bytes on the StickS3, 752 on Waveshare, whose `__assert_func`
-keeps the file and line). The common tail is the first log call creating its
-mutex, which allocates, and FreeRTOS's `configASSERT` in `vPortExitCritical`
-on the way out of the heap lock. `control` and `camera_target` shrink on the
-StickS3: the old walk followed the copy-on-write string's length throw, which
-`infeasible_calls` now removes with its citation.
+Every path to `abort` or an assert pays the panic handler (512 bytes on the
+StickS3, 752 on Waveshare and headless, whose `__assert_func` keeps the file
+and line, 1,216 on the ESP32 boards). Before the stdout lock cut below, the
+common tail was the first log call creating its mutex, which allocates, and
+FreeRTOS's `configASSERT` in `vPortExitCritical` on the way out of the heap
+lock. The cut lowers most rows by 112 bytes. `control` and `camera_target`
+also lose the copy-on-write string's length throw, which `infeasible_calls`
+removes with its citation. `mqtt` is about 4,800 bytes lower than under #446
+on every board that has it: the owner now receives each queued event into the
+preallocated `m_Received` copy instead of a `queued_event_t` on its stack, and
+lifecycle events carry only the client and event id.
 
 Three stacks grew to their measured maximum across envs, rounded up to
 256 bytes: the default event loop task (`sys_evt`) from 2,304 to 3,072 in all
@@ -228,11 +231,14 @@ the result: `camera_target`, `gps`, `wifi`, `companion` and `webui` at 4,352,
 release stack. The gates that admit the companion, the WebUI supervisor and
 the MQTT client include the margin, so a debug build admits what it creates.
 
-Replaying the 6 KiB MQTT owner that overflowed on hardware fails without any
-scripted constant: `--stack mqtt=6144` on the StickS3 reports 7,840 of 6,144.
-Its deepest path runs through `MQTT::taskStep` and
-`MQTT::processLifecycleEvents`, 2,400 bytes each, because both hold a
-`queued_event_t` copy with the full topic and payload buffers.
+Replaying the 6 KiB MQTT owner that overflowed on hardware used to fail
+without any scripted constant: `--stack mqtt=6144` on the StickS3 reported
+7,840 of 6,144. Its deepest path ran through `MQTT::taskStep` and
+`MQTT::processLifecycleEvents`, 2,400 bytes each, because both held a
+`queued_event_t` copy with the full topic and payload buffers. Both copies
+are gone, and the same replay now reads 3,408 of 6,144. The 10 KiB owner
+stays until a hardware `perf tasks` reading confirms a smaller one; plan 314
+records that gate.
 
 The `sys_evt` row is the ESP-IDF default event loop task
 (`CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE`, 3,072 bytes), which runs the WiFi
@@ -246,6 +252,19 @@ The `boot_only` list keeps functions that run once on main before any task
 exists out of every other task's walk. `M5Unified::begin` is the one entry:
 without it the headless companion task reported 3,264 of 3,072 through a
 first-call `Platform::getInstance()` that cannot happen after boot.
+
+A `cuts` entry drops one call, from `caller` to `callee`, but only while a
+function matching `under` is on the walked path. The walk runs over function
+and active-cut states, so code below an `under` is costed without the call and
+the same code reached another way still pays it. The one cut today is the lazy
+lock creation in newlib's `lock_acquire_generic`. Every `esp_log` call takes
+the stdout lock through `flockfile` and `__retarget_lock_acquire_recursive`,
+and before the cut the deepest path of most tasks continued into
+`lock_init_generic`, the mutex allocation and the panic paths below it.
+`__retarget_lock_acquire*` asserts its lock is not NULL and passes the address
+of that copy on, so the lazy branch cannot run below it. A `_lock_acquire` on
+a zero-initialized static lock still pays it. The cut lowers most tasks by
+112 bytes on every env.
 
 ## Panic paths
 
