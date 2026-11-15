@@ -25,6 +25,7 @@
 #if defined(FURBLE_SIM_MQTT) && FURBLE_SIM_MQTT
 #include "FurbleMQTT.h"
 #endif
+#include "FurbleMemoryPressure.h"
 #include "FurblePlatform.h"
 #include "FurbleSettings.h"
 #include "FurbleTimezone.h"
@@ -261,6 +262,8 @@ int runSimulator() {
 
   Sim::watchdogPhase("control task");
   auto &control = Control::getInstance();
+  // As firmware app_main(): admit every new target to the governor.
+  Control::setAdmitHook(&MemoryPressure::admit);
   xTaskCreate(control_task, "control", 8192, &control, 4, nullptr);
 
   Sim::startRig();

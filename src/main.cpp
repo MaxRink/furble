@@ -511,6 +511,9 @@ void app_main() {
 #endif
 
   auto &control = Furble::Control::getInstance();
+  // Every new camera target is admitted to the memory governor before it
+  // allocates, so a connect sheds the WebUI first when the heap is tight.
+  Furble::Control::setAdmitHook(&Furble::MemoryPressure::admit);
   xRet = xTaskCreate(control_task, "control", 8192, &control, 4, &xControlHandle);
   if (xRet != pdPASS) {
     ESP_LOGE(LOG_TAG, "Failed to create control task.");

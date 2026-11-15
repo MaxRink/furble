@@ -77,6 +77,10 @@ ASan and UBSan like every fuzz target.
   streamed settings JSON and the identity persistence contract covered there.
   A new route or a new credential path needs a matching case.
 - `companion-memory` pins the 8,320/4,224 companion first-enable floors.
+- `control-e2e-admit-hook-once-per-target` owns where connect admission
+  runs: inside `Control::addActive()`, once per new target, never for a
+  duplicate. The other Control harnesses register no admit hook and do not
+  link the governor.
 - `ui-memory` pins `FurbleUIMemory::drawBufferBytes()` and the narrow-panel
   single-buffer rule. Update its expected sizes with any panel or row change.
 - `companion-gatt` and `companion-auth` own the transport-side auth and bond

@@ -22,6 +22,22 @@ Public headers for the app layer in src/, one header per module
 - `FurbleControl::sendCameraCommand()` returns the complete target-set session
   generation captured with delivery. Expected-session releases must fail when
   the whole session has been replaced.
+- `Control::setAdmitHook()` is registered once at boot, before the control
+  task starts, with `MemoryPressure::admit()`; host Control harnesses
+  register none. `addActive()` calls it under `Control::m_Mutex`, after the
+  duplicate check and before the Target, its queue and its task are
+  allocated, with all of their internal bytes. That is what makes admission
+  atomic with target creation across the UI, console and companion connect
+  paths; never admit a connect from a caller of `addActive()`.
+- `MemoryPressure::setEscalateHook()` is registered once by `WebUI::init()`
+  and never cleared on device; the hook pointer is an acquire/release atomic.
+  `admit()` calls the hook after releasing the governor mutex but possibly
+  under `Control::m_Mutex`, so the lock order is `Control::m_Mutex`, then the
+  governor mutex (released), then the hook's own locks. A hook must not block
+  or call Control, and may only take a lock that is never held while calling
+  Control; `WebUI::m_Mutex` qualifies because WebUI calls Control only outside
+  it. `tick()` and `admit()` share the governor mutex, never held across a
+  delay or another lock.
 - `FurbleCompanion.h` bond state (`m_BondValid`, `m_BondAddress`,
   `m_BondAddressType`) is owned by `m_BondMutex`; read a snapshot through
   `hasBond()` or a scoped `m_BondMutex` lock. Pairing-window state

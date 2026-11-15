@@ -19,7 +19,10 @@ class Control {
     STATE_DISCONNECTING,
   };
 
+  typedef void (*admit_hook_t)(size_t bytes);
+
   static Control &getInstance(void);
+  static void setAdmitHook(admit_hook_t hook);
   static TxPower savedTxPower(void);
   void addActive(std::shared_ptr<Camera> camera);
   void connectAll(bool infiniteReconnect);

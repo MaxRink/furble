@@ -42,13 +42,13 @@
       "entry": "^void Furble::Control::Target::task\\(\\)$",
       "stack_bytes": 4096,
       "source": [
-        "src/FurbleControl.cpp",
-        "TARGET_TASK_STACK_RELEASE = (\\d+);"
+        "include/FurbleTaskMemory.h",
+        "CAMERA_TARGET_STACK_RELEASE_BYTES = (\\d+);"
       ],
       "debug_stack_bytes": 4352,
       "debug_source": [
-        "src/FurbleControl.cpp",
-        "TARGET_TASK_STACK_DEBUG_EXTRA = (\\d+);"
+        "include/FurbleTaskMemory.h",
+        "CAMERA_TARGET_STACK_DEBUG_EXTRA = (\\d+);"
       ]
     },
     {

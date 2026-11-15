@@ -81,6 +81,38 @@ int main() {
   // Paused with the supervisor still running: 16,087 + the 8,192-byte server.
   check(amberExit <= 16087 + 8192, "the WebUI returns once a camera disconnects");
 
+  // Connect admission (#390 review). The StickS3 with the WebUI running sits
+  // at 14,135 / 12,372 on the inferred 25,911 / 24,148 seed (15,575 / 13,812 on
+  // the measured post-#394 pair). A target task takes either into AMBER, so the
+  // server is shed at once, before the connect allocates.
+  check(CONNECT_TARGET_BYTES == 4480, "a connect costs the 4 KiB target stack plus overhead");
+  check(classifyAfter(14135, 12372, CONNECT_TARGET_BYTES) == AMBER,
+        "a StickS3 WebUI session cannot absorb a connect");
+  check(classifyAfter(15575, 13812, CONNECT_TARGET_BYTES) == AMBER,
+        "the measured post-#394 pair cannot absorb a connect either");
+  check(classifyAfter(12000, 11000, CONNECT_TARGET_BYTES) == RED,
+        "a connect that would reach RED pauses MQTT too");
+  check(classifyAfter(100, 100, CONNECT_TARGET_BYTES) == RED, "the subtraction saturates");
+  // A board with headroom is unchanged: the Core2 WebUI budget and the
+  // StickS3 with the WebUI off keep NORMAL across a connect.
+  check(classifyAfter(60000, 40000, CONNECT_TARGET_BYTES) == NORMAL,
+        "a board with headroom keeps NORMAL");
+  check(classifyAfter(25911, 24148, CONNECT_TARGET_BYTES) == NORMAL,
+        "the StickS3 without the WebUI keeps NORMAL");
+  {
+    Governor admitted;
+    check(admitted.escalate(classifyAfter(60000, 40000, CONNECT_TARGET_BYTES)) == NORMAL,
+          "admission on a board with headroom sheds nothing");
+    check(admitted.escalate(AMBER) == AMBER, "admission enters AMBER without the debounce");
+    check(admitted.escalate(NORMAL) == AMBER, "admission never lowers the level");
+    // While connected the pool stays under the AMBER exit, so the server
+    // stays paused; the exit after the disconnect is the ordinary one.
+    check(feed(admitted, EXIT_TICKS * 2, amberExit - 1, 30000) == AMBER,
+          "an admitted AMBER holds until the server fits again");
+    check(feed(admitted, EXIT_TICKS, amberExit, 30000) == NORMAL,
+          "an admitted AMBER exits like a debounced one");
+  }
+
   // A largest-block collapse alone is pressure too.
   Governor fragmented;
   check(feed(fragmented, ENTER_TICKS, 60000, 5000) == RED, "fragmentation alone enters red");

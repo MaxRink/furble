@@ -11,9 +11,11 @@
 #include "ble_sim.h"
 #include "power_profiler.h"
 #endif
+#include "FurbleMemoryPressure.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
 #include "FurbleSettings.h"
+#include "FurbleTaskMemory.h"
 #include "FurbleTestSync.h"
 #include "FurbleTimezone.h"
 #include "protocol/UtcTime.h"
@@ -21,16 +23,6 @@
 namespace Furble {
 
 namespace {
-
-constexpr uint32_t TARGET_TASK_STACK_RELEASE = 4096;
-// A debug build's stack protector and -Os frames reach 4,144 bytes on the
-// Waveshare debug build (plan 314 PR 4c). tools/stack_budget.json reads both.
-#if defined(FURBLE_DEBUG_BUILD)
-constexpr uint32_t TARGET_TASK_STACK_DEBUG_EXTRA = 256;
-#else
-constexpr uint32_t TARGET_TASK_STACK_DEBUG_EXTRA = 0;
-#endif
-constexpr uint32_t TARGET_TASK_STACK = TARGET_TASK_STACK_RELEASE + TARGET_TASK_STACK_DEBUG_EXTRA;
 
 constexpr uint32_t RSSI_SAMPLE_INTERVAL_MS = 5000;
 constexpr float RSSI_FILTER_ALPHA = 0.25f;
@@ -83,6 +75,8 @@ const char *stateName(Control::state_t state) {
   }
   return "unknown";
 }
+
+std::atomic<Control::admit_hook_t> s_AdmitHook {nullptr};
 
 }  // namespace
 
@@ -1223,6 +1217,10 @@ void Control::reapZombieTargets(void) {
   }
 }
 
+void Control::setAdmitHook(admit_hook_t hook) {
+  s_AdmitHook.store(hook, std::memory_order_release);
+}
+
 void Control::addActive(std::shared_ptr<Camera> camera) {
   const std::lock_guard<std::mutex> lock(m_Mutex);
 
@@ -1264,6 +1262,20 @@ void Control::addActive(std::shared_ptr<Camera> camera) {
   camera->clearPairingCancelled();
   camera->resetConnectionState();
 
+  // Admit the whole target before allocating any of it: the Target object and
+  // its command queue, one heap block each, plus the task stack and TCB. Each
+  // block is charged MQTTMemory::BLOCK_OVERHEAD_BYTES, which also covers the
+  // queue's 84-byte control block. This runs under m_Mutex after the
+  // duplicate check, so a duplicate admits nothing and two connecting tasks
+  // never admit against the same heap reading.
+  constexpr size_t TARGET_BYTES = sizeof(Control::Target) + (Target::m_QueueLength * sizeof(cmd_t))
+                                  + (2 * MQTTMemory::BLOCK_OVERHEAD_BYTES)
+                                  + MemoryPressure::CONNECT_TARGET_BYTES;
+  const admit_hook_t admit = s_AdmitHook.load(std::memory_order_acquire);
+  if (admit != nullptr) {
+    admit(TARGET_BYTES);
+  }
+
   auto target = std::make_unique<Control::Target>(camera);
 
   // Create per-target task that will self-delete on disconnect
@@ -1272,7 +1284,7 @@ void Control::addActive(std::shared_ptr<Camera> camera) {
         auto *target = static_cast<Furble::Control::Target *>(param);
         target->task();
       },
-      camera->getName().c_str(), TARGET_TASK_STACK, target.get(), 3, NULL);
+      camera->getName().c_str(), TaskMemory::CAMERA_TARGET_STACK_BYTES, target.get(), 3, NULL);
   if (ret != pdPASS) {
     ESP_LOGE(LOG_TAG, "Failed to create task for '%s'.", camera->getName().c_str());
   } else {
