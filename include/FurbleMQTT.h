@@ -132,14 +132,13 @@ class MQTT {
   void taskStep(void);
   TickType_t taskWaitTicks(void) const;
   bool enqueueEvent(const queued_event_t &event);
-  void queueLifecycleEvent(esp_mqtt_client_handle_t client, int32_t event_id);
   void processLifecycleEvents(void);
   void clearQueuedEvents(void);
   void processEvent(const queued_event_t &event);
   void processDueTimers(void);
   void servicePendingReleases(void);
-  bool acceptsEvent(esp_mqtt_client_handle_t client, int32_t event_id) const;
-  void handleLifecycleEvent(esp_mqtt_client_handle_t client, int32_t event_id);
+  /** Handle a connected or disconnected event already matched to m_Client. */
+  void handleLifecycleEvent(int32_t event_id);
   void handleEvent(const queued_event_t &event);
   void handleData(const queued_event_t &event);
   void handleCommand(const std::string &topic, const std::string &payload);

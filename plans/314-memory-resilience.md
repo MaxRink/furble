@@ -82,8 +82,9 @@ request, so the simulator now models the sourced 3,020-byte reading.
 
 - MQTT owner: `MQTT::taskStep` receives each queued event into `m_Received`,
   a second copy in the same never-freed block as `m_Incoming` (PSRAM when
-  the queue is there). `processLifecycleEvents` passes the client and event
-  id to `handleLifecycleEvent` instead of building a `queued_event_t`, and
+  the queue is there). `processLifecycleEvents` checks the copied client and
+  passes the event id to `handleLifecycleEvent` instead of building a
+  `queued_event_t`, and
   `clearQueuedEvents` calls `xQueueReset`: the owner is the only receiver and
   every sender posts with a zero timeout, so a reset drops exactly what a
   drain would. Neither rejects a later send, so `stopClient()` now clears

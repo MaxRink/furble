@@ -223,6 +223,18 @@ int16_t rssiBucket(int rssi) {
   return static_cast<int16_t>(std::clamp(bucket, -125, -5));
 }
 
+// Compare the copied identity before using any event-owned client pointer.
+// A stopped client may still deliver a callback after stop/destroy returns.
+bool acceptsEvent(esp_mqtt_client_handle_t client,
+                  esp_mqtt_client_handle_t current,
+                  bool offline_stop_pending,
+                  int32_t event_id) {
+  if ((client == nullptr) || (client != current)) {
+    return false;
+  }
+  return !offline_stop_pending || (event_id == MQTT_EVENT_PUBLISHED);
+}
+
 }  // namespace
 
 MQTT &MQTT::getInstance(void) {
@@ -566,16 +578,6 @@ bool MQTT::enqueueEvent(const queued_event_t &event) {
   return true;
 }
 
-void MQTT::queueLifecycleEvent(esp_mqtt_client_handle_t client, int32_t event_id) {
-  {
-    const std::lock_guard<std::mutex> lock(m_LifecycleMutex);
-    m_LifecycleClient = client;
-    m_LifecycleEvent = event_id;
-    m_LifecyclePending = true;
-  }
-  xTaskNotifyGive(m_Task);
-}
-
 void MQTT::processLifecycleEvents(void) {
   esp_mqtt_client_handle_t client = nullptr;
   int32_t event_id = 0;
@@ -589,10 +591,10 @@ void MQTT::processLifecycleEvents(void) {
     m_LifecyclePending = false;
   }
 
-  if ((client == nullptr) || (event_id == 0)) {
+  if ((event_id == 0) || !acceptsEvent(client, m_Client, m_OfflineStopPending, event_id)) {
     return;
   }
-  handleLifecycleEvent(client, event_id);
+  handleLifecycleEvent(event_id);
 }
 
 void MQTT::clearQueuedEvents(void) {
@@ -953,7 +955,13 @@ void MQTT::eventHandler(void *handler_arg,
   }
 
   if ((source->event_id == MQTT_EVENT_CONNECTED) || (source->event_id == MQTT_EVENT_DISCONNECTED)) {
-    mqtt->queueLifecycleEvent(source->client, source->event_id);
+    {
+      const std::lock_guard<std::mutex> lock(mqtt->m_LifecycleMutex);
+      mqtt->m_LifecycleClient = source->client;
+      mqtt->m_LifecycleEvent = source->event_id;
+      mqtt->m_LifecyclePending = true;
+    }
+    xTaskNotifyGive(mqtt->m_Task);
     return;
   }
 
@@ -1003,20 +1011,10 @@ void MQTT::eventHandler(void *handler_arg,
   mqtt->enqueueEvent(event);
 }
 
-bool MQTT::acceptsEvent(esp_mqtt_client_handle_t client, int32_t event_id) const {
-  // Compare the copied identity before using any event-owned client pointer.
-  // A stopped client may still deliver a callback after stop/destroy returns.
-  if ((client == nullptr) || (client != m_Client)) {
-    return false;
-  }
-  return !m_OfflineStopPending || (event_id == MQTT_EVENT_PUBLISHED);
-}
-
-void MQTT::handleLifecycleEvent(esp_mqtt_client_handle_t client, int32_t event_id) {
-  if (!acceptsEvent(client, event_id)) {
-    return;
-  }
-
+void MQTT::handleLifecycleEvent(int32_t event_id) {
+  // processLifecycleEvents() matched the event to m_Client, which only the
+  // owner task's startClient() and stopClient() change.
+  const esp_mqtt_client_handle_t client = m_Client;
   switch (event_id) {
     case MQTT_EVENT_CONNECTED:
       m_Connected.store(true);
@@ -1064,7 +1062,7 @@ void MQTT::handleLifecycleEvent(esp_mqtt_client_handle_t client, int32_t event_i
 }
 
 void MQTT::handleEvent(const queued_event_t &event) {
-  if (!acceptsEvent(event.client, event.event_id)) {
+  if (!acceptsEvent(event.client, m_Client, m_OfflineStopPending, event.event_id)) {
     return;
   }
 
