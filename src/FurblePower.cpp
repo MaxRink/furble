@@ -19,8 +19,8 @@ Power &Power::getInstance(void) {
       esp_err_t err = esp_pm_lock_create(lock.type, 0, lock.name, &lock.handle);
       if (err != ESP_OK) {
         // no locks means no power saving control, log and carry on
-        ESP_LOGE(LOG_TAG, "Failed to create '%s' power lock (%s).", lock.name,
-                 esp_err_to_name(err));
+        ESP_LOGE(LOG_TAG, "Failed to create '%s' power lock (%s, 0x%x).", lock.name,
+                 esp_err_to_name(err), static_cast<unsigned>(err));
         lock.handle = nullptr;
       }
     }
@@ -68,8 +68,8 @@ Power::lock_t &Power::getLock(LockType type) {
 // error, and keeps the per-transition functions free of any level above DEBUG.
 namespace {
 void logAcquireFailure(const char *owner, const char *name, esp_err_t err) {
-  ESP_LOGE(LOG_TAG, "'%s' failed to acquire '%s' power lock (%s).", owner, name,
-           esp_err_to_name(err));
+  ESP_LOGE(LOG_TAG, "'%s' failed to acquire '%s' power lock (%s, 0x%x).", owner, name,
+           esp_err_to_name(err), static_cast<unsigned>(err));
 }
 
 void logReleaseUnheld(const char *owner, const char *name) {
@@ -77,8 +77,8 @@ void logReleaseUnheld(const char *owner, const char *name) {
 }
 
 void logReleaseFailure(const char *owner, const char *name, esp_err_t err) {
-  ESP_LOGE(LOG_TAG, "'%s' failed to release '%s' power lock (%s).", owner, name,
-           esp_err_to_name(err));
+  ESP_LOGE(LOG_TAG, "'%s' failed to release '%s' power lock (%s, 0x%x).", owner, name,
+           esp_err_to_name(err), static_cast<unsigned>(err));
 }
 }  // namespace
 

@@ -70,7 +70,10 @@ FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e waveshare-s3-eth
 
 The plan 314 flash slimming brought `m5stack-core-debug` back inside its
 dual-OTA slot. Set `M5GFX_BOARD` only on an env that runs on exactly one M5
-board; `post:patches/m5gfx_board.py` applies it to the pinned M5GFX.
+board; `post:patches/m5gfx_board.py` applies it to the pinned M5GFX. The
+Waveshare env pins `board_M5StampS3` instead, a board with no M5GFX probe, so
+no probe touches its W5500 pins. Every env that sets `M5GFX_BOARD` needs the
+post script, debug variants included.
 
 If the 4 MB Core debug image exceeds its dual-OTA slot, the developer-only
 `m5stack-core-usb-debug` environment provides one large factory app partition:
@@ -116,6 +119,9 @@ tracing) and `sdkconfig.stack-protector`, except the
 `sdkconfig.coredump-flash`, which writes a core dump to the `coredump`
 partition at the end of their tables. Read it back with
 `esp-coredump info_corefile` against the matching `firmware.elf`.
+`waveshare-s3-eth-debug` also merges `sdkconfig.full-diagnostics`. Its release
+config carries the plan 106 group A values, and the fragment restores full
+assertions, the VERBOSE log maximum and esp_err names for the debug image.
 
 Board-specific ESP-IDF component dependencies need both a compiler define and
 a CMake profile argument. CMake resolves components before conditional C++
