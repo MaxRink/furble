@@ -409,3 +409,44 @@ Head is `feat/ubx-3-features`, after the review commits.
   `m_Backup` instead of through a local array. cppcheck took the old
   `insert()` from a local buffer for a stored pointer (`danglingLifetime`).
   It was a false positive: `insert()` copies the bytes.
+
+## CI fixes after the merge of #446 and #458
+
+Master's exact stack walk (#446) charges every path to an assert with the
+panic handler and the lazy `Platform::getInstance()` tail. With that walk
+the gps task failed on seven envs: 4,256 of 4,096 bytes on Waveshare and
+headless, 4,560 of 4,352 on Waveshare debug, and 4,432 of 4,352 on the four
+ESP32 debug envs. The stacks are unchanged; two frames came off the path.
+
+- `serviceSerial()` and `beginBurst()` built a whole `status_t` snapshot to
+  read one parser counter. With the UBX backend the snapshot also overlays
+  NAV-PVT through `applyPvt()`, which reads the platform tick. The GPS task
+  now reads `chars`, `passed` and `failed` through `getCounters()`, which
+  takes `m_GPSMutex` and builds nothing else. All 15 counter-only reads use
+  it; full snapshots stay where a fix is needed.
+- `serviceUbx()` decodes NAV-PVT straight into `m_UbxPvt` under
+  `m_GPSMutex` instead of through a local copy. `parseNavPvt()` refuses a
+  wrong length before it writes, and `gps-ubx` now asserts that a refused
+  frame leaves the output unchanged.
+
+| Env | gps task before | gps task after |
+| --- | ---: | ---: |
+| waveshare-s3-eth | 4,256 / 4,096 | 4,080 / 4,096 |
+| esp32-s3-headless | 4,256 / 4,096 | 4,080 / 4,096 |
+| waveshare-s3-eth-debug | 4,560 / 4,352 | 4,352 / 4,352 |
+| m5stick-c-debug | 4,432 / 4,352 | 4,240 / 4,352 |
+| m5stick-c-plus-debug | 4,432 / 4,352 | 4,240 / 4,352 |
+| m5stack-core2-debug | 4,432 / 4,352 | 4,240 / 4,352 |
+| m5stack-core-usb-debug | 4,432 / 4,352 | 4,240 / 4,352 |
+
+- The deepest remaining path on Waveshare debug is `servicePoll()` through
+  `storeEphemeris()` and a full snapshot, which needs the date and time. It
+  sits at the stack like the other stacks #446 sized to their measured
+  maximum. Re-measure before the GPS task grows.
+- Every task passes `stack_budget.py` and `check_size_budget.py` on the seven
+  envs above.
+- The coverage floor failed on `src/FurbleConsole.cpp`, 86.75% against
+  89.08%: `gps ubx` and the `gps_gnss`, `gps_psm` and `gps_ana` settings had
+  no test. `console-commands` now covers the NMEA refusal, an unanswered
+  receiver, a full answer and every enum name, and both range errors. Host
+  coverage of the file is 89.78%.
