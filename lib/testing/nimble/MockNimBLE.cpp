@@ -1149,6 +1149,9 @@ void NimBLEDevice::setSecurityAuth(bool bonding, bool mitm, bool secure_connecti
 
 void NimBLEDevice::setSecurityIOCap(uint8_t capability) {
   const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+  // The record is test bookkeeping, not device memory. A connect makes two
+  // calls, so charging it would grow the simulator heap with every session.
+  const PeerAllocScope hostScope;
   g_SecurityIOCaps.push_back(capability);
 }
 
