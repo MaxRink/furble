@@ -371,7 +371,7 @@ void testCompanionGattFlow(void) {
   Furble::Settings::save<std::string>(Furble::Settings::COMPANION_PASSWORD, "test companion");
   Furble::GPS::getInstance().clearExternalFix();
   Furble::Host::setBatteryStatus(83, 4095, -123, 5000, true);
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
   startControlTask();
 
   FujifilmVirtualCamera::Config firstConfig;
@@ -778,7 +778,7 @@ void testCompanionCameras(void) {
   drainRequests();
   Furble::Settings::setBool(Furble::Settings::MULTICONNECT, true);
   Furble::Settings::setBool(Furble::Settings::TX_ADAPTIVE, false);
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
 
   FujifilmVirtualCamera::Config firstConfig;
   firstConfig.name = "FUJIFILM X-T5";

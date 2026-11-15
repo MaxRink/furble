@@ -36,7 +36,7 @@ void appendInt32(std::vector<uint8_t> &value, int32_t number) {
 
 int main() {
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
 
   Furble::Host::FujifilmVirtualCamera peer;
   NimBLEDevice::setMockPeer(&peer);
@@ -53,7 +53,7 @@ int main() {
 
   {
     Furble::FujifilmBasic client(&advertisement);
-    if (!check(client.connect(ESP_PWR_LVL_P3, 1000), "the Fujifilm client connects")) {
+    if (!check(client.connect(Furble::TxPower::P3, 1000), "the Fujifilm client connects")) {
       return 1;
     }
     if (!check(client.isConnected() && peer.connected(), "both sides report a connection")) {

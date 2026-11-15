@@ -64,7 +64,7 @@ bool testMidConnectDropDoesNotCrash() {
   std::cout << "test: a peer reset mid-connect unwinds cleanly with no use-after-free\n";
   const int before = g_Failures;
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
 
   Furble::Host::FujifilmVirtualCamera peer;
   // Sever the link during the identify write, part way through the handshake and
@@ -75,7 +75,7 @@ bool testMidConnectDropDoesNotCrash() {
                              Furble::Host::FujifilmVirtualCamera::identifierCharacteristicUUID());
   auto camera = makeCamera(peer);
 
-  const bool connected = camera->connect(ESP_PWR_LVL_P3, 1000);
+  const bool connected = camera->connect(Furble::TxPower::P3, 1000);
 
   check(!connected, "the mid-connect drop makes connect() report failure");
   check(!camera->isConnected(), "the camera is left disconnected, not a zombie");
@@ -87,7 +87,7 @@ bool testMidConnectDropDoesNotCrash() {
   // connecting worked normally afterwards.
   peer.clearFaults();
   peer.clearEvents();
-  const bool reconnected = camera->connect(ESP_PWR_LVL_P3, 1000);
+  const bool reconnected = camera->connect(Furble::TxPower::P3, 1000);
   check(reconnected, "a fresh connect after the mid-connect drop succeeds");
   check(camera->isConnected(), "the recovered connect reports connected");
   check(peer.connected() && peer.tokenAccepted(),

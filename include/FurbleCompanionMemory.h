@@ -9,12 +9,13 @@ namespace Furble {
 namespace CompanionMemory {
 
 /**
- * The retained companion service task. A measured 1,884-byte high-water mark
- * on the StickS3 with the companion connected and a settings write. It commits
- * NVS, so it stays internal. tools/stack_budget.json reads both values: the
- * release stack, and the margin a debug build adds for its stack protector
- * and -Os frames (4,192 bytes measured on the ESP32 debug builds, plan 314
- * PR 4c).
+ * The retained companion service task. `perf tasks` left 1,884 bytes free on
+ * the old 4 KiB stack with the companion connected and a settings write, so it
+ * used about 2,212 bytes; the static walk, which also pays every path to the
+ * panic handler, needs more. It commits NVS, so it stays internal.
+ * tools/stack_budget.json reads both values: the release stack, and the
+ * margin a debug build adds for its stack protector and -Os frames (4,192
+ * bytes measured on the ESP32 debug builds, plan 314 PR 4c).
  */
 inline constexpr size_t TASK_STACK_RELEASE_BYTES = 3840;
 #if defined(FURBLE_DEBUG_BUILD)

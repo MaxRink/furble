@@ -72,6 +72,8 @@ def main(argv: list[str] | None = None) -> int:
       ("CI workflow contract", [PYTHON, "tools/check_ci_workflows.py"]),
       ("simulator scenario manifest", [PYTHON, "tools/check_sim_scenarios.py"]),
       ("simulator hardware coverage", [PYTHON, "tools/check_sim_coverage.py"]),
+      ("coupling ratchet",
+       [PYTHON, "tools/check_coupling_ratchet.py", "--root", str(root), "--base", args.base]),
   ]
   if not args.skip_unit:
     gates.append(("scanner unit tests",
@@ -79,6 +81,7 @@ def main(argv: list[str] | None = None) -> int:
                    "tests.test_check_pr_hygiene",
                    "tests.test_check_settings_contracts",
                    "tests.test_check_cpp_safety",
+                   "tests.test_check_coupling_ratchet",
                    "tests.test_check_format",
                    "tests.test_plot_companion_power"]))
   if args.sanitized:

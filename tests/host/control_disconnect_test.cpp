@@ -96,7 +96,7 @@ bool testDeadCameraDisconnectReturnsPromptly() {
   std::cout << "test: dead-camera interactive disconnect returns promptly (BUG B)\n";
   const int before = g_Failures;
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
   ensureControlTask();
 
   Furble::Host::FujifilmVirtualCamera peer;
@@ -111,7 +111,7 @@ bool testDeadCameraDisconnectReturnsPromptly() {
   }
 
   // Bring the link up through the real Camera connect path.
-  if (!check(camera->connect(ESP_PWR_LVL_P3, 1000), "the camera connects")) {
+  if (!check(camera->connect(Furble::TxPower::P3, 1000), "the camera connects")) {
     NimBLEDevice::resetMock();
     return false;
   }
@@ -160,7 +160,7 @@ bool testCleanDisconnectLeavesIdle() {
   std::cout << "test: clean interactive disconnect leaves idle with no targets\n";
   const int before = g_Failures;
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
   ensureControlTask();
 
   Furble::Host::FujifilmVirtualCamera peer;
@@ -172,7 +172,7 @@ bool testCleanDisconnectLeavesIdle() {
     NimBLEDevice::resetMock();
     return false;
   }
-  if (!check(camera->connect(ESP_PWR_LVL_P3, 1000), "the camera connects")) {
+  if (!check(camera->connect(Furble::TxPower::P3, 1000), "the camera connects")) {
     NimBLEDevice::resetMock();
     return false;
   }
@@ -207,7 +207,7 @@ bool testReconnectAfterDeadDisconnectIsPrompt() {
   std::cout << "test: reconnect after a dead-camera disconnect is not gated ~30 s\n";
   const int before = g_Failures;
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
   ensureControlTask();
 
   Furble::Host::FujifilmVirtualCamera peer;
@@ -219,7 +219,7 @@ bool testReconnectAfterDeadDisconnectIsPrompt() {
     NimBLEDevice::resetMock();
     return false;
   }
-  if (!check(camera->connect(ESP_PWR_LVL_P3, 1000), "the camera connects")) {
+  if (!check(camera->connect(Furble::TxPower::P3, 1000), "the camera connects")) {
     NimBLEDevice::resetMock();
     return false;
   }
@@ -271,7 +271,7 @@ bool testPeerSupervisionTimeoutIsCapped() {
   std::cout << "test: an over-long peer supervision timeout is rejected (false-connected)\n";
   const int before = g_Failures;
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
   ensureControlTask();
 
   Furble::Host::FujifilmVirtualCamera peer;
@@ -283,7 +283,7 @@ bool testPeerSupervisionTimeoutIsCapped() {
     NimBLEDevice::resetMock();
     return false;
   }
-  if (!check(camera->connect(ESP_PWR_LVL_P3, 1000), "the camera connects")) {
+  if (!check(camera->connect(Furble::TxPower::P3, 1000), "the camera connects")) {
     NimBLEDevice::resetMock();
     return false;
   }

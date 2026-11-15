@@ -122,6 +122,9 @@ void emitDataBurst(const std::string &topic, const std::string &payload, size_t 
 void emitRawDataBurst(const std::string &topic, const std::string &payload, size_t count);
 void emitStaleData(const std::string &topic, const std::string &payload);
 void emitStaleDisconnect(void);
+// The next destroy delivers a command on the dying client and the next init
+// reuses its address.
+void emitDataOnDestroy(const std::string &topic, const std::string &payload);
 int lastTaskStackSize(void);
 int lastBufferSize(void);
 

@@ -56,13 +56,13 @@ bool testReconnectStaleSessionCompletes() {
   std::cout << "test: stale-session reconnect completes and fires the shutter (plan 76)\n";
   const int before = g_Failures;
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
 
   Furble::Host::FujifilmVirtualCamera peer;
   auto camera = makeCamera(peer);
 
   // First connect is a fresh session: the camera holds no prior subscriptions.
-  if (!check(camera->connect(ESP_PWR_LVL_P3, 1000), "the first connect succeeds")) {
+  if (!check(camera->connect(Furble::TxPower::P3, 1000), "the first connect succeeds")) {
     NimBLEDevice::resetMock();
     return false;
   }
@@ -75,7 +75,7 @@ bool testReconnectStaleSessionCompletes() {
   peer.clearEvents();
 
   const auto start = std::chrono::steady_clock::now();
-  const bool reconnected = camera->connect(ESP_PWR_LVL_P3, 1000);
+  const bool reconnected = camera->connect(Furble::TxPower::P3, 1000);
   const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
                            std::chrono::steady_clock::now() - start)
                            .count();
@@ -110,12 +110,12 @@ bool testFreshConnectStillWorks() {
   std::cout << "test: fresh first connect still reaches connected\n";
   const int before = g_Failures;
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
 
   Furble::Host::FujifilmVirtualCamera peer;
   auto camera = makeCamera(peer);
 
-  check(camera->connect(ESP_PWR_LVL_P3, 1000), "the fresh connect succeeds");
+  check(camera->connect(Furble::TxPower::P3, 1000), "the fresh connect succeeds");
   check(camera->isConnected(), "the fresh connect reports connected");
   check(peer.connected() && peer.tokenAccepted(), "the fresh connect runs the real handshake");
 

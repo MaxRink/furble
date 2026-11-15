@@ -5,6 +5,7 @@
 #include <memory>
 
 #include "Camera.h"
+#include "Device.h"
 
 namespace Furble {
 class Control {
@@ -22,6 +23,7 @@ class Control {
 
   static Control &getInstance(void);
   static void setAdmitHook(admit_hook_t hook);
+  static TxPower savedTxPower(void);
   void addActive(std::shared_ptr<Camera> camera);
   void connectAll(bool infiniteReconnect);
   void disconnect(void);

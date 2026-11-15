@@ -22,7 +22,7 @@ constexpr uint32_t RMT_RESOLUTION_HZ = 1000000;
 /** Give up on a stalled transmission instead of holding the APB lock forever. */
 constexpr int RMT_TX_TIMEOUT_MS = 1000;
 
-/** Measured 3,420-byte high-water mark on the StickS3, with headroom. */
+/** `perf tasks` left 3,420 bytes free on the StickS3, about 676 used. */
 constexpr uint32_t IR_TASK_STACK_BYTES = 4096;
 
 // Nikon ML-L3 timing source: SB-Projects and Gough Lui, both listed in

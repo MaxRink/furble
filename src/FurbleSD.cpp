@@ -19,6 +19,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "FurbleBoardCaps.h"
 #include "FurbleGPSHold.h"
 #include "FurblePlatform.h"
 #include "FurbleSD.h"
@@ -55,11 +56,7 @@ constexpr uint8_t MAX_FAILURES = 3;
 
 // The StickC profiles have no SD slot. Making that a compile-time fact lets the
 // linker drop FATFS, SDMMC and the SDSPI host from those images.
-#if defined(FURBLE_M5STICKC) || defined(FURBLE_M5STICKC_PLUS)
-constexpr bool SD_HARDWARE = false;
-#else
-constexpr bool SD_HARDWARE = true;
-#endif
+constexpr bool SD_HARDWARE = FURBLE_HAS_SD;
 
 bool isCoreBoard(void) {
   switch (M5.getBoard()) {

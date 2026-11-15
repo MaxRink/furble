@@ -26,6 +26,7 @@ using lv_obj_t = _lv_obj_t;
 #include <cstdint>
 #include <mutex>
 
+#include "FurbleBoardCaps.h"
 #include "FurbleGPSHold.h"
 #include "FurbleGPSPowerCycle.h"
 #include "FurbleIMU.h"
@@ -149,6 +150,15 @@ class GPS {
   GPS &operator=(GPS &&) = delete;
 
   static void init(void);
+
+  /**
+   * Switch the Port A 5 V rail that powers the GPS unit.
+   *
+   * The only place firmware drives that rail. The M5PM1 sleeps after an I2C
+   * idle period and the first access after that only wakes it, so the rail
+   * state is read back and the write retried once on a mismatch.
+   */
+  static void setRailPower(bool enable);
 
   void setIcon(lv_obj_t *icon);
   bool isEnabled(void) const;
@@ -722,7 +732,7 @@ class GPS {
 
   void publishCycleStatus(void);
 
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_GPS_BURST_LOCK
   // held only during a receive burst or the burst acquisition window
   std::mutex m_PowerLockMutex;
   std::optional<Power::Lock> m_PowerLock;

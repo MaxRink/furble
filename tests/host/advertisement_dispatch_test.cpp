@@ -220,7 +220,7 @@ bool testDispatchAndDeduplication() {
 
   DJIProtocolPeer peer(djiAdvertisement.getAddress());
   NimBLEDevice::setMockPeer(&peer);
-  CHECK(dji->connect(ESP_PWR_LVL_P3, 1000));
+  CHECK(dji->connect(Furble::TxPower::P3, 1000));
   CHECK(peer.firstRequest().size() == 51);
   CHECK(peer.firstRequest()[40] == 0x01);
   dji->disconnect();
@@ -228,7 +228,7 @@ bool testDispatchAndDeduplication() {
   Furble::CameraList::save(dji);
   CHECK(dji->getPairType() == Camera::PairType::SAVED);
   peer.clearFirstRequest();
-  CHECK(dji->connect(ESP_PWR_LVL_P3, 1000));
+  CHECK(dji->connect(Furble::TxPower::P3, 1000));
   CHECK(peer.firstRequest().size() == 51);
   CHECK(peer.firstRequest()[40] == 0x00);
   dji->disconnect();
@@ -241,7 +241,7 @@ bool testDispatchAndDeduplication() {
     DJIProtocolPeer idPeer(djiAdvertisement.getAddress(), id);
     NimBLEDevice::setMockPeer(&idPeer);
     auto idCamera = std::make_shared<Furble::DJIOsmo>(&djiAdvertisement);
-    CHECK(idCamera->connect(ESP_PWR_LVL_P3, 1000));
+    CHECK(idCamera->connect(Furble::TxPower::P3, 1000));
     CHECK(idPeer.firstRequest().size() == 51);
     idCamera->disconnect();
   }
@@ -249,7 +249,7 @@ bool testDispatchAndDeduplication() {
   DJIProtocolPeer unknownPeer(djiAdvertisement.getAddress(), 0x12345678U);
   NimBLEDevice::setMockPeer(&unknownPeer);
   auto unknownCamera = std::make_shared<Furble::DJIOsmo>(&djiAdvertisement);
-  CHECK(!unknownCamera->connect(ESP_PWR_LVL_P3, 1000));
+  CHECK(!unknownCamera->connect(Furble::TxPower::P3, 1000));
 
   // A failed index write for a genuinely new camera must not publish it or
   // transition its pairing lifecycle.
@@ -281,7 +281,7 @@ bool testDispatchAndDeduplication() {
 
 int main() {
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
   if (!testDispatchAndDeduplication())
     return 1;
   std::cout << "PASS advertisement dispatch and deduplication\n";

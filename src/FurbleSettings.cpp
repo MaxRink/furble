@@ -7,6 +7,7 @@
 #include <cstring>
 
 #include "FurbleBatterySaver.h"
+#include "FurbleBoardCaps.h"
 #include "FurbleSettings.h"
 #include "FurbleSettingsBootstrap.h"
 #include "FurbleSettingsDefaults.h"
@@ -1015,7 +1016,7 @@ Settings::multiselect_t Settings::multiselectFromLegacy(const multiselect_legacy
 
 bool Settings::sleepConnEffective(void) {
   const bool stored = load<SLEEP_CONN>();
-#if defined(FURBLE_M5STICKS3)
+#if FURBLE_HAS_GPS_BURST_LOCK
   // Only the StickS3 has the modem-sleep controller and the GPS burst lock, so
   // it is the only board where forcing sleep-while-connected is both effective
   // and safe. See plans/98 and the FurbleBatterySaver header note.

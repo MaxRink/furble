@@ -1,4 +1,5 @@
 #include "FurbleConsole.h"
+#include "FurbleBoardCaps.h"
 
 #if defined(FURBLE_CONSOLE)
 
@@ -27,7 +28,7 @@
 #include <freertos/task.h>
 
 #include <driver/uart.h>
-#if defined(FURBLE_M5STICKS3) || defined(FURBLE_USB_CONSOLE)
+#if FURBLE_HAS_USB_SERIAL_JTAG_CONSOLE
 #include <driver/usb_serial_jtag.h>
 #include <driver/usb_serial_jtag_vfs.h>
 #endif
@@ -78,8 +79,8 @@ constexpr const char *PROMPT = "furble> ";
 constexpr size_t MAX_LINE = 256;
 // The deepest console command is `perf tasks`, which used to hold two
 // 24-entry TaskStatus_t snapshots (about 2 KiB) on this stack. The snapshots
-// now come from the heap, so 6 KiB leaves roughly 2.5 KiB above the measured
-// 5,504-byte high-water mark from the pre-change image.
+// now come from the heap. The pre-change image left 5,504 of 8,192 bytes free,
+// about 2,688 used with the snapshots, so 6 KiB has room to spare.
 constexpr uint32_t TASK_STACK = 6144;
 
 // Below the control task (4) and the per camera target tasks (3).
@@ -3422,7 +3423,7 @@ int cmdReboot(int argc, char **argv) {
  * when the application cannot answer.
  */
 int cmdFlash(int argc, char **argv) {
-#if !defined(FURBLE_M5STICKS3)
+#if !FURBLE_HAS_M5PM1
   (void)argc;
   (void)argv;
   return fail("flash preparation is only supported on the StickS3");
@@ -3549,7 +3550,7 @@ const esp_console_cmd_t COMMANDS[] = {
  */
 
 void startTransport(void) {
-#if defined(FURBLE_M5STICKS3) || defined(FURBLE_USB_CONSOLE)
+#if FURBLE_HAS_USB_SERIAL_JTAG_CONSOLE
   usb_serial_jtag_driver_config_t config = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
   ESP_ERROR_CHECK(usb_serial_jtag_driver_install(&config));
   // Move the secondary console output onto the driver we just installed.
@@ -3575,7 +3576,7 @@ void startTransport(void) {
 }
 
 int readByte(uint8_t *byte) {
-#if defined(FURBLE_M5STICKS3) || defined(FURBLE_USB_CONSOLE)
+#if FURBLE_HAS_USB_SERIAL_JTAG_CONSOLE
   return usb_serial_jtag_read_bytes(byte, 1, pdMS_TO_TICKS(Console::READ_TIMEOUT_MS));
 #else
   return uart_read_bytes(LOG_UART, byte, 1, pdMS_TO_TICKS(Console::READ_TIMEOUT_MS));

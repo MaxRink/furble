@@ -94,7 +94,7 @@ bool testReclaimDetachesClientBeforeDeferredDelete() {
   std::cout << "test: gone-peer reclaim detaches the client so a late onDisconnect is safe\n";
   const int before = g_Failures;
   NimBLEDevice::resetMock();
-  Furble::Device::init(ESP_PWR_LVL_P3);
+  Furble::Device::init(Furble::TxPower::P3);
   ensureControlTask();
 
   Furble::Host::FujifilmVirtualCamera peer;
@@ -106,7 +106,7 @@ bool testReclaimDetachesClientBeforeDeferredDelete() {
     NimBLEDevice::resetMock();
     return false;
   }
-  if (!check(camera->connect(ESP_PWR_LVL_P3, 1000), "the camera connects")) {
+  if (!check(camera->connect(Furble::TxPower::P3, 1000), "the camera connects")) {
     NimBLEDevice::resetMock();
     return false;
   }
