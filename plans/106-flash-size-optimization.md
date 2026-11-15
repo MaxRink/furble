@@ -500,14 +500,15 @@ is 1,529,424 bytes of flash, 46,904 DRAM and 108,544 IRAM.
 Waveshare row, and the `profile-waveshare-s3-eth` floors in
 `sim/coverage/memory_budget.json` follow its derived free and largest
 figures, as `tests/test_sim_profile_sdkconfig.py` requires. Group A takes
-4,440 DRAM and 5,120 IRAM bytes off master's budget base, so the release RAM
+4,440 DRAM and about 5,600 IRAM bytes off the measured image, so the release RAM
 budgets no longer matched the measured size plus 512 bytes rounded up to a
 KiB. `tools/check_size_budget.py --env waveshare-s3-eth --write` lowered them.
 
 `waveshare-s3-eth-debug` is 1,986,480 bytes of flash, 56,008 DRAM and
 130,048 IRAM against its unchanged 56,320 and 149,504 budgets. Its generated
 `sdkconfig.h` keeps master's assertion level 2, log maximum 5 and esp_err
-names, because `sdkconfig.full-diagnostics` restores the group A keys. Both Waveshare images grew 256 DRAM bytes between the first
+names, because `sdkconfig.full-diagnostics` restores the group A keys.
+Both Waveshare images grew 256 DRAM bytes between the first
 measurement on the old base (46,648 and 55,752) and this one, so the debug
 growth came with master, not with this branch, and no budget was crossed.
 The debug budget is left as master set it.

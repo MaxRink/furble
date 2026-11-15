@@ -340,7 +340,12 @@ write the same value, which NVS skips.
 Not covered by the pin: M5Unified drives GPIO 46 high on every S3, and with no
 detected board its own check pulls GPIO 4, 8, 10, 12 and 38, probes I2C on
 GPIO 45 and 48, and drives GPIO 13 and 15 only on a Capsule match. These are
-weak pulls and restored. Skipping `M5.begin()` remains the fallback above.
+weak pulls and restored. M5Unified 0.2.20 can also classify an unknown QFN56
+S3 as a StampS3 (`M5Unified.cpp` near line 1630); `_setup_pinmap` then maps
+Ex_I2C to GPIO 15/13 and the LED to GPIO 21, and GPIO 13 is the W5500 SCLK.
+The M5GFX pin does not change this, because M5Unified receives
+`board_unknown` either way. Hardware gate 2 must confirm which board
+M5Unified settles on. Skipping `M5.begin()` remains the fallback above.
 `esp32-s3-headless` stays unpinned because it may run on a StickS3, where
 autodetect must find the PMIC.
 
