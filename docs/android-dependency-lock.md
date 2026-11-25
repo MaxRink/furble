@@ -11,6 +11,17 @@ AGP 9 provides built-in Kotlin support, so the deprecated
 remains applied. CI installs the API 37 platform and build tools explicitly
 before running tests and the debug APK build.
 
+The JVM UI snapshot test adds Robolectric 4.18.1 and the Compose UI test
+artifacts. `androidx.compose.ui:ui-test-junit4` and
+`androidx.compose.ui:ui-test-manifest` take their version from Compose BOM
+2026.08.00, which resolves both to 1.12.0. They are test-only: Robolectric and
+`ui-test-junit4` are `testImplementation`, and `ui-test-manifest` is
+`debugImplementation`. Its exported, filterless `ComponentActivity` merges into
+the debug manifest, so the smoke APK gains one exported filterless activity. The
+release manifest and the launcher entry are unchanged, so the emulator smoke job
+still launches `MainActivity`. Robolectric resolves the Android 15 platform jar
+at test runtime instead of build time, so no product artifact changes.
+
 These are Android-only changes. Firmware, simulator, and ESP-IDF dependency
 locks are intentionally excluded and belong to separate compatibility work.
 

@@ -11,6 +11,11 @@
   "activity": "1.13.0",
   "core_ktx": "1.19.0",
   "lifecycle": "2.11.0",
+  "test": {
+    "robolectric": "4.18.1",
+    "compose_ui_test_junit4": "1.12.0",
+    "compose_ui_test_manifest": "1.12.0"
+  },
   "source": {
     "agp": "https://developer.android.com/build/releases/agp-9-2-0-release-notes",
     "kotlin": "https://kotlinlang.org/docs/releases.html",

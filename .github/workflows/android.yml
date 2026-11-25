@@ -52,7 +52,7 @@ jobs:
       - name: Install Android API 37
         run: sdkmanager "platforms;android-37.0" "build-tools;37.0.0"
 
-      - name: Run protocol unit tests
+      - name: Run unit tests and the UI snapshot test
         run: ./gradlew test
 
       - name: Assemble debug APK
