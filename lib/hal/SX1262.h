@@ -21,7 +21,18 @@
  *  3. SetSleep: opcode 0x84, sleepConfig 0x00 (Table 13-1, Table 13-2): cold
  *     start, RTC wake off. All blocks off, 160 nA (Table 3-5).
  *  4. Wait 500 us, the window in which the chip must not see SPI (13.1.1).
- *  5. Confirm BUSY is high. BUSY is held high for the whole sleep (9.3).
+ *  5. Confirm BUSY is high, polling up to SLEEP_CONFIRM_BUDGET_US. BUSY is
+ *     held high for the whole sleep (9.3), but Table 8-2 tabulates no
+ *     standby-to-sleep time, so the driver waits for the level instead of
+ *     sampling once: a part that asserts BUSY late is healthy, not broken.
+ *
+ * The whole sequence is bounded: 200 us of reset, 10,000 us waiting for the
+ * post-reset calibration to finish, 500 us of no-SPI settle and 5,000 us
+ * confirming sleep, so 15,700 us at worst. sleep() never spins without a
+ * budget. The host test sums these four constants against this total, so a
+ * changed step that leaves this paragraph behind fails there. A stuck BUSY
+ * spends only the reset pulse and the ready budget, 10,200 us, and returns
+ * before SetSleep.
  *
  * Any falling edge on NSS wakes the chip (9.3). The board adapter must keep
  * NSS high through MCU light and deep sleep.
@@ -51,12 +62,17 @@ class SX1262 {
   static constexpr uint32_t READY_BUDGET_US = 10000;
   static constexpr uint32_t POLL_US = 100;
   static constexpr uint32_t SLEEP_SETTLE_US = 500;
+  /** No tabulated value exists, so bound the wait for BUSY high (step 5). */
+  static constexpr uint32_t SLEEP_CONFIRM_BUDGET_US = 5000;
 
   /**
    * Run the sequence above.
    *
-   * @return false if BUSY never dropped (no SetSleep was sent), the SPI write
-   * failed, or BUSY was not high afterwards.
+   * @return false if BUSY never dropped within READY_BUDGET_US (no SetSleep
+   * was sent), the SPI write failed, or BUSY did not go high within
+   * SLEEP_CONFIRM_BUDGET_US. Worst case the call spends RESET_PULSE_US +
+   * READY_BUDGET_US + SLEEP_SETTLE_US + SLEEP_CONFIRM_BUDGET_US = 15,700 us
+   * in delays.
    */
   static bool sleep(Port &port);
 };

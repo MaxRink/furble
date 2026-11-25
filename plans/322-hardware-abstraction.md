@@ -122,7 +122,10 @@ geometry, brightness as a panel command.
 T-LoRa Pager: ST7796U 480x222 (missing panel class), BQ27220 (`lib/hal`),
 BQ25896 (not needed yet), XL9555 with GPS_EN (`lib/hal`), TCA8418 keyboard
 (missing), rotary encoder (PCNT), MIA-M10Q (UBX, #459), SX1262 sleep. Gaps:
-ST7796 panel, keyboard and encoder input classes, wide UI layout.
+ST7796 panel, keyboard and encoder input classes, wide UI layout. It is the
+first board with the BQ27220, so its `RegisterBus` adapter must override
+`delayUs()` with a real 66 us bus-free wait (SLUUBD4A section 5.3): the seam
+defaults to a no-op and the gauge then answers with stale or corrupt data.
 
 Cardputer Adv: M5Unified knows the board, display (ST7789V2) and ADC battery.
 Gaps: TCA8418 keyboard input class, a profile row, and the Cap LoRa-1262 radio
@@ -378,6 +381,13 @@ Exact steps:
   9dd2dd61 with the hal-1 commit cherry-picked): `FurbleBoard`,
   `FurblePowerBackend`, the wire-in above, `tests/host/board_profile_test.cpp`
   (CTest `board-profile`) and the regenerated coupling ratchet.
+- hal-3 (`fix/hal-verification`, from master): the four defects an independent
+  second verification pass found in the hal-1 drivers and their test. The
+  AXP2101 power-key edges are reachable, BQ27220 paces the bus through the new
+  `RegisterBus::delayUs()` seam, `SX1262::sleep()` waits for BUSY inside a
+  stated bound, and the test states datasheet values with a fake bus that
+  honours each chip's addressing rule. Record:
+  [353-hal-verification.md](353-hal-verification.md).
 
 Deviations from the brief, with reasons:
 
@@ -394,6 +404,15 @@ Deviations from the brief, with reasons:
 - hal-2 is rebased on port-3 (`9dd2dd61`), which made `GPS::setRailPower()`
   the only GPS rail switch and `Platform::getBatteryStatus()` the battery
   status source. `GPS::setRailPower()` now calls `Platform::setRail(GPS)`.
+- hal-3 keeps the AXP2101 edge events instead of removing them: they are the
+  only way to see the key go down before a short press completes, and enabling
+  all four key bits costs two interrupt sources that hold the IRQ line asserted
+  until REG 49 is drained, documented on `enablePowerKeyIrq()`. `powerOff()`
+  does not drain REG 49, so a board that powers off from the key clears it or
+  ignores its first read after boot. BQ27220 pacing is a driver duty through a
+  seam whose default is a no-op, so the first board with the gauge (the T-LoRa
+  Pager) must override `RegisterBus::delayUs()`: the Pager paragraph above
+  records that, and the AXP2101-only T-Beam is unaffected.
 
 ### Verification evidence (hal-2 at fa44daff)
 
@@ -488,6 +507,27 @@ waveshare-s3-eth 1,696,432 bytes (DRAM 51,332, IRAM 132,352); size and stack
 budgets pass, and DRAM and IRAM equal the pre-rebase hal-2 builds. The few
 extra bytes come from port-4's own code. `pre_review --base origin/master`:
 9 of 9 gates. `check-doc-tokens`: tokens present.
+
+### Verification pass 2 (hal-3)
+
+An independent pass re-read the four drivers against the datasheets and the
+test against both. Four defects, all confirmed and fixed on
+`fix/hal-verification`; the table with sources and test evidence is in
+[353-hal-verification.md](353-hal-verification.md).
+
+| Defect | Source | Fix |
+| :--- | :--- | :--- |
+| AXP2101 edge events could never latch: `enablePowerKeyIrq()` wrote REG 41 bits 3:2 only, while `PowerKey::falling` and `PowerKey::rising` decode REG 49 bits 1:0, whose enables default to 0. | Section 6.12.1 page 28, section 6.13.2.41 page 42 | One `IRQ1_KEY_MASK` enables and decodes REG 41/49 bits 3:0; the interrupt cost is documented on the call, where REG 49 latches hold the IRQ line asserted until drained and `powerOff()` does not drain them. |
+| BQ27220 issued five standard commands back to back with no bus-free time and no stated poll limit. | SLUUBD4A section 5.3 page 63 | `RegisterBus::delayUs()` seam, 66 us asked for between packets in the driver, 2 Hz cap documented and stated as `MIN_POLL_INTERVAL_MS`. |
+| `SX1262::sleep()` sampled BUSY once at 500 us, so a late-asserting healthy part looked broken. | Table 8-2 has no standby-to-sleep row | Bounded poll for BUSY high; the 15,700 us total bound is stated in the header. |
+| The test compared the driver with itself: `NO_ESTIMATE`, `railBit()`, the SX1262 bound from two driver constants, a reset minimum of `100 + 500`, and a fake bus that walked up addresses across command pairs. | SLUUBD4A Tables 2-1 and 2-6, section 2.11; XL9555 section 9.2.1 | Datasheet values in the test; the fake bus models linear, 16-bit command-word and 16-bit port-pair addressing, logs a misuse and keeps one interleaved event log. |
+
+Gate results on the fix: `hal-drivers` passes, `python3
+tools/check_portability_inventory.py` is clean, `python3
+tools/pre_review.py --base origin/master` passes all ten gates, and the three
+driver mutations (bits 3:2 only, no pacing, single BUSY sample) each fail the
+new assertions. No firmware file changed and no image is affected, because
+nothing in firmware includes `lib/hal` yet.
 
 ## Verification pass (2026-11-25)
 
