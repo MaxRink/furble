@@ -46,7 +46,7 @@ About page and exposed through companion BLE Device Information.
 | `status` | State, targets, uptime, heap, memory pressure, battery, reset reason. `memory_pressure` is `normal`, `amber` (WebUI server paused) or `red` (WebUI and MQTT client paused). |
 | `crash` | `crash [last]` prints the retained previous-boot crash record. After a failed-allocation abort it adds the `crash.alloc_*` lines. See [crash diagnostics](../crash-diagnostics.md). |
 | `imu` | `imu status` for the sensor probe, or `imu scale [value]` for gesture calibration. See below. |
-| `power` | `stats`, `log <seconds>` / `log off` for a CSV power log, or `off` to power the device off. `off` reports `not supported in this build` on a display-less image, because the power-off path runs on the UI task. |
+| `power` | `stats`, `log <seconds>` / `log off` for a CSV power log, or `off` to power the device off. `off` reports `not supported in this build` on a display-less image, because the power-off path runs on the UI task, and `power off is not supported on this board` on the IP5306 Core, whose PMIC has no shutdown command. |
 | `perf` | `tasks`, `heap`, or `lvgl [overlay on\|off]`. |
 | `heap` | `heap trace start [records]`, `stop`, or `dump`: ESP-IDF standalone heap tracing in leak mode, debug images only. `start` takes 1 to 1000 records (default 100) from internal RAM and refuses when the largest block cannot hold twice that. |
 | `gps` | GPS status and control, see below. |

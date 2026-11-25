@@ -4,7 +4,12 @@ namespace Furble {
 namespace Board {
 
 namespace {
-// Battery capacities are from the vendor product pages. Battery caps follow
+// Battery capacities are the vendor nominal figures, not a gauge result:
+// StickC 95, Plus 120, Plus2 200, StickS3 250, Core 110 (M5Stack Basic page,
+// "Battery 110 mAh @ 3.7 V", changed from 150 mAh in 2020.3), Core2 500
+// (M5Stack Core2 page, changed from 390 mAh in 2023.10) and Tough 390
+// (M5Tough README). The Core's IP5306 gives a coarse four-level percentage
+// only; that limits the level, not the capacity. Battery caps still follow
 // the PMIC: AXP192 boards report all four, the M5PM1 has no battery current
 // register, the Plus2 reads an ADC divider and the Core's IP5306 gives a
 // coarse level only.
@@ -20,11 +25,11 @@ namespace {
 // event", and Platform treats it as either (plan 350). The StickS3 BMI270 INT1
 // goes to M5PM1 GPIO4, and the PMIC drives PYG1_IRQ into GPIO13.
 //
-// GPS rail: M5Unified 0.2.20 Power_Class::setExtOutput() switches Port A 5 V
-// through AXP192 EXTEN on the StickC and StickC Plus, the M5PM1 on the
-// StickS3, and AXP192 GPIO0 or AXP2101 BLDO2 on the Core2 and Tough. It does
-// nothing on the Plus2, the Core or any other board furble supports. On the
-// StickC and Plus the rail is already on before the GPS driver runs, by two
+// GPS rail: M5Unified 0.2.20 Power_Class::setExtOutput() switches the external
+// 5 V output: AXP192 EXTEN on the StickC and StickC Plus, the M5PM1 on the
+// StickS3, and AXP192 GPIO0 enabling the SY7088 boost on the Core2 and Tough.
+// It does nothing on the Plus2, the Core or any other board furble supports. On
+// the StickC and Plus the rail is already on before the GPS driver runs, by two
 // writes during M5.begin(): M5Unified calls Power.setExtOutput(cfg.output_power)
 // with the default output_power = true (M5Unified.cpp), which reaches
 // Axp192.setEXTEN(true) for that board pair, and M5GFX 0.2.27
@@ -33,16 +38,37 @@ namespace {
 // itself is UNVERIFIED: the schematics were not available in this pass
 // (plan 350).
 //
+// On the Core2 and Tough that boost is one BUS_5V net: the Tough schematic ties
+// the SY7088 U8 output to Grove Port A pin 2 (J4) and to the M-Bus 5 V pin
+// (J7), so Rail::GPS is the whole external 5 V net, not a private GPS rail, and
+// a GPS power cycle also cuts anything else on Port A or the M-Bus. The request
+// is advisory: M5Unified refuses an enable when there is no ACIN, VBUS current
+// is present and the battery is at or below 8 percent, and setRail() returns
+// the final readback so the GPS driver can restart a receiver it stopped.
+//
 // Timed wake: the Plus2 keeps its BM8563 alive across a HOLD power-off so the
 // timer can wake the device (plan 320), and on the StickC Plus the same BM8563
 // INT reaches the AXP192 power key through R401 and C401, so an AXP192 shutdown
 // is its sleep and the alarm is its wake. Both rows use TimedWake::RTC_ALARM and
-// keep the early-wake rejection, which reads the countdown registers back.
+// keep the early-wake rejection, which reads the countdown registers back. The
+// Tough joins them: the Tough schematic fits BT1 BATTERY_RTC on the RTC supply
+// and the Tough pinmap wires BM8563 INT to the AXP192 PWR net, so the alarm can
+// pull the power key and restart the board after a full PMIC cut. The Core2
+// schematic has the same INT net but the 2023.2 revision removed the RTC button
+// cell and the firmware cannot detect the revision, so that row stays NONE.
 //
-// RTC backing: the Plus2 row is battery backed for the same reason: its
-// calendar survives the HOLD power-off that the timed wake uses. A real outage
+// RTC backing: a row is backed when its calendar survives a power-off. The
+// Plus2 and the Tough do, by the backup cell the timed wake needs. The Core2 row
+// keeps the flag for the pre-2023.2 units that still have a cell; a real outage
 // is caught by the BM8563 voltage-low flag, which TimeKeeper reads on a backed
 // RTC only (plan 350).
+//
+// Power off: the IP5306 has no shutdown command, so the Core's manual Off is a
+// deferred cut rather than an immediate one. M5Unified's _powerOff(false)
+// clears SYS_CTL0 bit 1 and enters deep sleep, and the charger then removes the
+// boost once the sleeping load has stayed below 45 mA for the SYS_CTL2 window.
+// That is why the keep-on bit is held for the running session and released only
+// by that sleep.
 //
 // LED and IR polarity: the StickC and StickC Plus put the IR emitter anode on
 // 3.3 V with the cathode on GPIO9, so light is emitted on a low pin and the RMT
@@ -75,14 +101,14 @@ constexpr Profile STICKC_PLUS2  = {"StickC+2", {true,  true,  false, false}, 200
 constexpr Profile STICKS3       = {"StickS3", {true,  true,  false, true}, 250, false, 46,
     MotionWake::PMIC_GPIO, 13, TimedWake::PMIC_TIMER, -1, false, false, true, true, true,
     32, true, false, false, -1, true, true, false};
-constexpr Profile CORE          = {"Core", {true,  false, false, false}, 0, false, -1,
+constexpr Profile CORE          = {"Core", {true,  false, false, false}, 110, false, -1,
     MotionWake::NONE, -1, TimedWake::NONE, -1, false, true, false, true, false, 32, true,
     false, false, -1, false, true, false};
-constexpr Profile CORE2         = {"Core2", {true,  true,  true,  true}, 390, true, -1,
+constexpr Profile CORE2         = {"Core2", {true,  true,  true,  true}, 500, true, -1,
     MotionWake::NONE, -1, TimedWake::NONE, -1, false, true, true, true, false, 32, true,
     false, true, -1, true, true, false};
-constexpr Profile TOUGH         = {"Tough", {true,  true,  true,  true}, 390, false, -1,
-    MotionWake::NONE, -1, TimedWake::NONE, -1, true, false, true, true, false, 32, false,
+constexpr Profile TOUGH         = {"Tough", {true,  true,  true,  true}, 390, true, -1,
+    MotionWake::NONE, -1, TimedWake::RTC_ALARM, -1, true, true, true, true, false, 32, true,
     false, false, -1, true, true, false};
 // The Waveshare ESP32-S3-ETH is a mains or PoE node. It has no PMIC, no
 // battery and no switchable rail, so there is nothing for a software power off

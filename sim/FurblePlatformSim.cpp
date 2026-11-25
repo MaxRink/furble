@@ -409,6 +409,20 @@ bool Platform::canCutGpsRail(void) {
   return Board::profile().gpsRail && !Sim::hwRailFixed();
 }
 
+bool Platform::canTurnDisplayOff(void) {
+  // The simulator has no IP5306 register model; its Platform double cannot
+  // fail a keep-on write, so display-off stays available.
+  return true;
+}
+
+bool Platform::canPowerOff(void) {
+  // The simulator records a power-off request instead of cutting a rail, so
+  // its double always has a working path even when the compiled profile row is
+  // the IP5306 Core (whose real board cannot cut power). The refusal path is
+  // covered by board-profile, platform-policy and console host tests.
+  return true;
+}
+
 bool Platform::hasGpsBackupSupply(void) {
   // The modelled board carries a backup supply exactly when the virtual
   // receiver has one, `seed gps_m10_backup`.

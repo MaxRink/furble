@@ -1917,6 +1917,12 @@ int cmdPower(int argc, char **argv) {
     // the link down before the PMIC call, and all of that lives on the UI task.
     return fail("not supported in this build");
 #else
+    // The IP5306 Core has no PMIC shutdown command. The UI task refuses the
+    // same request, but refusing here avoids a "queued" acknowledgement that
+    // cannot be honoured.
+    if (!Platform::canPowerOff()) {
+      return fail("power off is not supported on this board");
+    }
     // The rail goes with the request, so flush the acknowledgement immediately
     // after queueing it. Printing first would claim success even when the
     // queue refused.

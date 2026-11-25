@@ -15,6 +15,7 @@
 #include "FurbleBootTimeline.h"
 #include "FurbleControl.h"
 #include "FurbleFeedback.h"
+#include "FurbleIP5306.h"
 #include "FurblePlatform.h"
 #include "FurblePlatformPolicy.h"
 #include "FurblePower.h"
@@ -26,6 +27,8 @@
 #include "FurbleWatchdog.h"
 
 namespace Furble {
+
+bool Platform::m_Ip5306BoostHeld = true;
 
 #if FURBLE_HAS_M5PM1
 namespace {
@@ -45,13 +48,13 @@ constexpr uint8_t PCF8563_TIMER_CONTROL = 0x0E;
 constexpr uint8_t PCF8563_TIMER_COUNT = 0x0F;
 constexpr uint32_t PCF8563_I2C_FREQ = 400000;
 
-void clearPlus2Timer(void) {
+void clearBm8563Timer(void) {
   // Timer control 0x03 disables the countdown. Clearing it prevents a failed
   // setup from waking the device after a later manual power off.
   (void)M5.In_I2C.writeRegister8(PCF8563_ADDRESS, PCF8563_TIMER_CONTROL, 0x03, PCF8563_I2C_FREQ);
 }
 
-bool verifyPlus2Timer(int requested_seconds, int programmed_seconds) {
+bool verifyBm8563Timer(int requested_seconds, int programmed_seconds) {
   // Mirror setTimerIRQ()'s selection: second resolution below 270 s, minute
   // resolution above it, both clamped to the 8-bit countdown register.
   const bool minute_mode = requested_seconds >= 270;
@@ -90,8 +93,8 @@ Platform &Platform::getInstance(void) {
         static_cast<Feedback::output_t>(Settings::load<uint8_t>(Settings::FB_OUTPUT)));
     cfg.internal_mic = false;
     cfg.pmic_button = true;
-    // Preserve the StickC Plus and Plus2 RTC alarm flag until consumeTimedWake()
-    // runs. Other boards disable the RTC IRQ again below.
+    // Preserve the BM8563 timer flag until consumeTimedWake() runs on the
+    // boards with a timed wake. Other boards disable the RTC IRQ again below.
     cfg.disable_rtc_irq = false;
 #if !FURBLE_HAS_INTERNAL_I2C
     // No internal I2C bus, so M5Unified must not be given one. Its per-board
@@ -106,6 +109,11 @@ Platform &Platform::getInstance(void) {
     cfg.internal_imu = false;
 #endif
     M5.begin(cfg);
+
+    // A panel-off IP5306 board draws less than 45 mA, which the boost's
+    // light-load cut treats as a request to remove power. Hold it on before
+    // anything can dim the panel.
+    instance.keepIp5306BoostOn();
 
     const auto &board = Board::profile();
     if (board.powerHoldPin >= 0) {
@@ -423,6 +431,48 @@ bool Platform::canCutGpsRail(void) {
   return Board::profile().gpsRail;
 }
 
+bool Platform::canPowerOff(void) {
+  return Board::profile().canPowerOff;
+}
+
+bool Platform::canTurnDisplayOff(void) {
+#if defined(CONFIG_IDF_TARGET_ESP32)
+  if (M5.Power.getType() == m5::Power_Class::pmic_ip5306) {
+    return m_Ip5306BoostHeld;
+  }
+#endif
+  return true;
+}
+
+void Platform::keepIp5306BoostOn(void) {
+#if defined(CONFIG_IDF_TARGET_ESP32)
+  // Only the classic ESP32 M5Unified build carries the IP5306 member. The
+  // Core is the only supported board whose PMIC type is pmic_ip5306.
+  if (M5.Power.getType() != m5::Power_Class::pmic_ip5306) {
+    return;
+  }
+
+  // M5Unified 0.2.20 writes SYS_CTL0 = 0b00110001 at M5.begin(), which clears
+  // bit 1, the "BOOST output normally open" bit, and writes SYS_CTL2 =
+  // 0b01101100, the 64 s light-load window. Without bit 1 the boost is cut
+  // after that window whenever the load stays below 45 mA, and a panel-off
+  // Core is below it. The IP5306 has no shutdown command, so there is no later
+  // power-off path that should clear the bit: hold the boost on for the whole
+  // session. Register meanings are from the Injoinic IP5306 register document
+  // V1.21 (revision V1.4), SYS_CTL0 bit 1 and SYS_CTL2 bits 3:2.
+  if (!IP5306::holdBoostOn(M5.Power.Ip5306)) {
+    m_Ip5306BoostHeld = false;
+    ESP_LOGE(LOG_TAG, "IP5306 boost keep-on did not read back, display-off is gated to Dim");
+    return;
+  }
+  const uint8_t sysCtl0 = M5.Power.Ip5306.readRegister8(IP5306::REG_SYS_CTL0);
+  const uint8_t sysCtl2 = M5.Power.Ip5306.readRegister8(IP5306::REG_SYS_CTL2);
+  ESP_LOGI(LOG_TAG, "IP5306 boost keep-on set (SYS_CTL0=0x%02x, light-load=%us)",
+           static_cast<unsigned>(sysCtl0),
+           static_cast<unsigned>(IP5306::lightLoadSeconds(sysCtl2)));
+#endif
+}
+
 bool Platform::hasGpsBackupSupply(void) {
 #if defined(FURBLE_GPS_BACKUP_SUPPLY)
   return true;
@@ -475,6 +525,15 @@ bool Platform::powerOff(void) {
   }
   return false;
 #else
+#if defined(CONFIG_IDF_TARGET_ESP32)
+  // Defense in depth for a wrong profile row: an IP5306 board cannot cut its
+  // own power, and calling M5.Power.powerOff() would clear the boost keep-on
+  // bit first and then deep sleep without a wake source.
+  if (M5.Power.getType() == m5::Power_Class::pmic_ip5306) {
+    ESP_LOGW(LOG_TAG, "IP5306 has no shutdown command, staying alive");
+    return false;
+  }
+#endif
   M5.Power.powerOff();
   return true;
 #endif
@@ -797,6 +856,10 @@ bool Platform::powerOffUntil(uint32_t seconds) {
       return false;
     }
 
+    // The SD writer may still hold an open track. Unmount before the PMIC
+    // removes the rail, as the manual power-off path does.
+    SD::getInstance().powerOff();
+
     if (!m5pm1Access([this]() { return m_M5PM1.shutdown(); })) {
       ESP_LOGE(LOG_TAG, "Failed to shut down M5PM1 for timed wake");
       (void)m5pm1Access([this]() { return m_M5PM1.timerClear(); });
@@ -813,7 +876,7 @@ bool Platform::powerOffUntil(uint32_t seconds) {
 
   if (Board::profile().timedWake == Board::TimedWake::RTC_ALARM) {
     if (!M5.Rtc.isEnabled()) {
-      ESP_LOGW(LOG_TAG, "StickC family RTC is unavailable, staying awake");
+      ESP_LOGW(LOG_TAG, "%s RTC is unavailable, staying awake", Board::profile().name);
       return false;
     }
 
@@ -829,37 +892,70 @@ bool Platform::powerOffUntil(uint32_t seconds) {
     const int early_seconds = requested_seconds - programmed_seconds;
     if ((programmed_seconds <= 0) || (early_seconds < 0)
         || (early_seconds > static_cast<int>(TIMED_WAKE_MAX_EARLY_S))
-        || !verifyPlus2Timer(requested_seconds, programmed_seconds)) {
-      ESP_LOGW(LOG_TAG,
-               "StickC family RTC could not program %d seconds within the resume window (got %d)",
-               requested_seconds, programmed_seconds);
-      clearPlus2Timer();
+        || !verifyBm8563Timer(requested_seconds, programmed_seconds)) {
+      ESP_LOGW(LOG_TAG, "%s RTC could not program %d seconds within the resume window (got %d)",
+               Board::profile().name, requested_seconds, programmed_seconds);
+      clearBm8563Timer();
       M5.Rtc.disableIRQ();
       return false;
     }
 
     if (programmed_seconds != requested_seconds) {
-      ESP_LOGI(LOG_TAG, "StickC family RTC will wake %d seconds early",
+      ESP_LOGI(LOG_TAG, "%s RTC will wake %d seconds early", Board::profile().name,
                requested_seconds - programmed_seconds);
+    }
+
+    if (Board::profile().powerHoldPin < 0) {
+      // AXP192 boards cannot cut their own rail while VBUS is present.
+      // M5Unified would fall back to a deep sleep with no wake source, and the
+      // BM8563 INT only reaches the PMIC power key, not an ESP32 wake pin.
+      // Stay awake instead of stranding the unit on USB power.
+      if (M5.Power.getVBUSVoltage() > 0) {
+        ESP_LOGW(LOG_TAG, "%s is on VBUS, keeping the RTC alarm from cutting power",
+                 Board::profile().name);
+        clearBm8563Timer();
+        M5.Rtc.disableIRQ();
+        return false;
+      }
     }
 
     M5.Display.sleep();
 
     const auto &board = Board::profile();
-    if (board.powerHoldPin < 0) {
-      // No hold pin: the StickC Plus reaches sleep by a full AXP192 shutdown,
-      // and its wake is the BM8563 INT coupled into the AXP192 power key through
-      // R401 and C401, so the countdown alarm is the wake source. The vendor
-      // documents sleep and wake from v1.1; the coupling itself is UNVERIFIED in
-      // this pass because the schematic was not available (plan 350).
-      return powerOff();
+
+    // The SD writer may still hold an open track. The manual power-off path
+    // unmounts before cutting power; a timed shutdown must do the same so a
+    // board with a card in the slot does not lose its filesystem on the way
+    // down. It is done after every refusal above, so a refused timed cut leaves
+    // the card mounted and the device usable.
+    SD::getInstance().powerOff();
+
+    if (board.powerHoldPin >= 0) {
+      // The Plus2 releases the pin that keeps its regulator enabled.
+      const auto hold = static_cast<gpio_num_t>(board.powerHoldPin);
+      (void)gpio_set_direction(hold, GPIO_MODE_OUTPUT);
+      (void)gpio_set_level(hold, 0);
+      return true;
     }
 
-    // The Plus2 releases the pin that keeps its regulator enabled.
-    const auto hold = static_cast<gpio_num_t>(board.powerHoldPin);
-    (void)gpio_set_direction(hold, GPIO_MODE_OUTPUT);
-    (void)gpio_set_level(hold, 0);
-    return true;
+    // No hold pin: the StickC Plus reaches sleep by a full AXP192 shutdown, and
+    // its wake is the BM8563 INT coupled into the AXP192 power key through R401
+    // and C401 (UNVERIFIED; the schematic was not available, plan 350). The
+    // Tough reaches it the same way, with BM8563 INT on the AXP192 PWR pin in
+    // the vendor pinmap and BT1 keeping the RTC counting while the PMIC is off.
+    // M5Unified's AXP192 path cuts the rail and then deep sleeps, so this only
+    // returns when the PMIC refused.
+    ESP_LOGI(LOG_TAG, "%s RTC armed, cutting PMIC power", board.name);
+    M5.Power.powerOff();
+
+    // M5Unified returned, so no cut happened and the device is still awake with
+    // the alarm armed. Disarm it: the BM8563 INT is coupled to the power key on
+    // these boards, so a stale alarm would press that key long after the user
+    // asked for nothing.
+    ESP_LOGE(LOG_TAG, "%s PMIC off returned, RTC disarmed", board.name);
+    clearBm8563Timer();
+    M5.Rtc.disableIRQ();
+    return false;
   }
 
   ESP_LOGW(LOG_TAG, "Timed wake is unsupported on this board");
@@ -925,10 +1021,14 @@ bool Platform::setRail(Rail rail, bool on) {
   if ((rail != Rail::GPS) || !Board::profile().gpsRail) {
     return false;
   }
-  // The Port A 5 V output. The M5PM1 sleeps after an I2C idle period and the
-  // first access after that only wakes it, so read back and retry once. The
-  // final read tells the GPS driver whether a cut took: a receiver stopped
-  // for the cut is restarted when the rail stays on.
+  // The external 5 V output. On the Core2 and Tough this is one BUS_5V net
+  // shared by Grove Port A and the M-Bus, so a GPS rail cut also drops every
+  // other 5 V consumer on those connectors. The request is advisory: M5Unified
+  // refuses an enable with no ACIN, VBUS current present and a battery at or
+  // below 8 percent. The M5PM1 sleeps after an I2C idle period and the first
+  // access after that only wakes it, so read back and retry once. The final
+  // read tells the GPS driver whether a cut took: a receiver stopped for the
+  // cut is restarted when the rail stays on.
   M5.Power.setExtOutput(on, m5::ext_PA);
   if (M5.Power.getExtOutput() != on) {
     M5.Power.setExtOutput(on, m5::ext_PA);

@@ -1,7 +1,7 @@
 {
   "board_guards": {
     "include/FurbleSettings.h": 2,
-    "include/FurbleSettingsDefaults.h": 2,
+    "include/FurbleSettingsDefaults.h": 1,
     "include/FurbleTextSize.h": 1,
     "include/FurbleUI.h": 1,
     "src/FurbleCompanionService.cpp": 2,

@@ -71,6 +71,14 @@ class Platform {
   pm_config_t getPMConfig(void) const { return m_PM; }
   uint16_t getBatteryCapacity(void) const { return m_Capacity; }
 
+  /**
+   * The console refuses 'power off' when this is false, matching a board
+   * profile without a software power-off path. Defaults true because the
+   * suite's board model is a StickS3.
+   */
+  static bool canPowerOff(void);
+  static void setCanPowerOff(bool can);
+
   /** Disarm the PMIC watchdog so a serial upload cannot be interrupted. */
   bool prepareFlash(void);
 

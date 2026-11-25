@@ -520,21 +520,35 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   teardown and logs the profile name: the deep sleep start it would otherwise
   reach arms no wake source, so the node would sit asleep until a power cycle
   while the call reported success (plan 349).
+- `Platform::keepIp5306BoostOn()` runs at boot on `pmic_ip5306`, before anything
+  can dim the panel. M5Unified clears SYS_CTL0 bit 1 at `M5.begin()`, and a
+  panel-off Core is below the IP5306 45 mA light-load threshold. The helper in
+  `FurbleIP5306.h` sets the bit through M5Unified and reads it back. On a
+  readback failure `Platform::canTurnDisplayOff()` goes false and
+  `processInactivity()` forces Dim, because a panel-off load would drop under
+  the 45 mA cutoff. The one path that releases the bit is the manual Off:
+  M5Unified sleeps the panel, clears it through `setPowerBoostKeepOn(false)` and
+  deep sleeps, and the light-load cut then removes the boost, so the Core's Off
+  is deferred by the `SYS_CTL2` window rather than immediate. See plans/354.
 - The companion status battery fields come only from
   `Platform::getBatteryStatus()`, in display and headless builds alike. Each
   field follows its own capability flag through `BatteryStatus::gate()`, so a
   board without a battery backend reports every field as unknown; VBUS
   follows `FURBLE_HAS_VBUS_SENSE`. Do not read `M5.Power` for status elsewhere.
-- `GPS::setRailPower()` is the only code that switches the GPS Port A rail.
+- `GPS::setRailPower()` is the only code that switches the external 5 V rail.
   The console `gps power` request goes through it too, so every switch gets
-  the M5PM1 readback and single retry. It returns `Platform::setRail()`'s
-  final read-back, which `railOffOrRestart()` uses to restart a receiver
-  whose cut did not take. On the StickC and Plus the rail is already on before
-  this runs: `M5.begin()` calls `Power.setExtOutput(cfg.output_power)` with the
-  default `output_power = true`, which reaches AXP192 EXTEN, and M5GFX also
-  writes `0x12 = 0x4D` (bit 6 is EXTEN) in the same boot. `enable()` may not
-  assume a power-on edge. Only the `RAIL_OFF` cycle state is a real off-to-on
-  transition. The EXTEN-to-Grove-5V routing is UNVERIFIED; see plans/350.
+  the M5PM1 readback and single retry. On the Core2 and Tough that rail is one
+  BUS_5V net shared by Grove Port A and the M-Bus, so `Rail::GPS` is not a
+  private GPS supply. The request is advisory: M5Unified can refuse an enable
+  on a low battery with VBUS current and no ACIN. It returns
+  `Platform::setRail()`'s final read-back, which `railOffOrRestart()` uses to
+  restart a receiver whose cut did not take. On the StickC and Plus the rail is
+  already on before this runs: `M5.begin()` calls
+  `Power.setExtOutput(cfg.output_power)` with the default `output_power = true`,
+  which reaches AXP192 EXTEN, and M5GFX also writes `0x12 = 0x4D` (bit 6 is
+  EXTEN) in the same boot. `enable()` may not assume a power-on edge. Only the
+  `RAIL_OFF` cycle state is a real off-to-on transition. The EXTEN-to-Grove-5V
+  routing is UNVERIFIED; see plans/350.
 - Under `FURBLE_SIM`, battery policy is exercised through the deterministic
   `Furble::Sim::battery_reading_t` seam. Keep `Platform::readBattery()` as the
   production boundary; scenario seeds/actions may replace its sample and

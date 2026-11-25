@@ -119,7 +119,8 @@ void Feedback::initialize(void) {
 
   // G19 is also the IR pin on the Plus2, so every LED write goes through the
   // PinShare arbitration: IR takes the pin for a frame and restores this level
-  // afterwards. The Tough has no speaker, LED or vibration motor.
+  // afterwards. The Tough has the Core2 NS4168 1 W amplifier (AXP192 GPIO2 is
+  // SPK_EN on the Tough pinmap) but no LED or vibration motor.
   // The LED stage decides the polarity: the StickC and Plus drive the cathode of
   // an LED whose anode is on 3.3 V, while the Plus2 drives an NPN base from
   // G19, so a high pin lights it. Getting this backwards would drive the Plus2

@@ -3412,11 +3412,21 @@ void UI::addMainMenu(void) {
   }
 
   menu_t &off = addMenu(m_PowerOffStr, &icon_power_settings_new);
+  // The IP5306 Core has no PMIC shutdown command, so a power-off request can
+  // only enter a wake-less deep sleep with the 5 V boost still up. Hide the
+  // entry, as the Power page hides its auto-off and low-battery rollers on the
+  // same boards, and guard the callback for a stale menu.
+  if (!Platform::canPowerOff()) {
+    lv_obj_add_flag(off.button, LV_OBJ_FLAG_HIDDEN);
+  }
 
   lv_obj_add_event_cb(
       off.button,
       [](lv_event_t *e) {
         auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
+        if (!Platform::canPowerOff()) {
+          return;
+        }
         ui->doPowerOff();
       },
       LV_EVENT_CLICKED, this);
@@ -8435,6 +8445,14 @@ void UI::serviceRequests(void) {
       } break;
 
       case Request::POWER_OFF:
+        // Same gate as the menu and the console command. Without it an IP5306
+        // board would clear the boost keep-on bit, deep sleep with no wake
+        // source and leave the 5 V boost up.
+        if (!Platform::canPowerOff()) {
+          m_ConsoleResult = "unsupported";
+          consolePrint("error: power off is not supported on this board\n");
+          break;
+        }
         m_ConsoleResult = "ok";
         doPowerOff();
         break;
@@ -13092,6 +13110,14 @@ void UI::processInactivity(void) {
     return;
   }
 
+  // If the IP5306 keep-on write did not read back, a panel-off load falls
+  // under the PMIC's 45 mA cutoff. Force the dim-only mode for this boot
+  // rather than powering the unit off. Working units keep their setting.
+  if (!Platform::canTurnDisplayOff() && (m_DisplayOffMode != 0)) {
+    ESP_LOGW(LOG_TAG, "IP5306 keep-on is not set, using Dim instead of display-off");
+    m_DisplayOffMode = 0;
+  }
+
   switch (m_DisplayOffMode) {
     case 0:
     case 3:
@@ -13161,7 +13187,7 @@ void UI::updateChargingPowerPolicy(void) {
 
 void UI::processAutoOff(void) {
   updateChargingPowerPolicy();
-  if (m_PoweringOff || !Board::profile().canPowerOff) {
+  if (m_PoweringOff || !Platform::canPowerOff()) {
     return;
   }
 
@@ -13239,7 +13265,7 @@ void UI::closeLowBatteryWarning(void) {
 }
 
 void UI::processLowBattery(void) {
-  if (m_PoweringOff || !Board::profile().canPowerOff) {
+  if (m_PoweringOff || !Platform::canPowerOff()) {
     return;
   }
 
@@ -13350,6 +13376,15 @@ void UI::processLowBattery(void) {
 
 void UI::doPowerOff(void) {
   if (m_PoweringOff) {
+    return;
+  }
+
+  // Every caller (menu, console request, auto-off, low battery) reaches here,
+  // so this is the last gate before the PMIC call. The IP5306 Core cannot cut
+  // its own power; entering deep sleep would leave the boost up and need a
+  // reset. Log it rather than silently doing nothing.
+  if (!Platform::canPowerOff()) {
+    ESP_LOGW(LOG_TAG, "Power off is not available on %s", Board::profile().name);
     return;
   }
 

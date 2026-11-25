@@ -14,7 +14,7 @@ namespace Board {
 enum class TimedWake : uint8_t {
   NONE,
   PMIC_TIMER,  // M5PM1 timer plus RTC RAM marker
-  RTC_ALARM,   // BM8563 alarm, then the hold pin is released
+  RTC_ALARM,   // BM8563 timer; the hold pin is released or the PMIC is cut
 };
 
 /** How the IMU interrupt reaches the SoC. */
@@ -46,7 +46,7 @@ enum class MotionWake : uint8_t {
 struct Profile {
   const char *name;  // boot info block
   PowerBackend::battery_caps_t battery;
-  uint16_t batteryCapacityMah;  // 0 when unknown
+  uint16_t batteryCapacityMah;  // vendor nominal, 0 when unknown
   // True when the board is expected to keep its calendar across a power-off, so
   // the RTC is the retention mechanism: a cell, or a rail the board keeps
   // alive. The chip's voltage-low flag stays the guard for a calendar that did
@@ -67,7 +67,10 @@ struct Profile {
   bool feedbackLight;
   bool feedbackVibration;
   int8_t ledPin;  // -1 when none
-  bool gpsRail;   // M5.Power switches the Port A 5 V output for the GPS unit
+  // M5.Power switches the external 5 V output. On the Core2 and Tough that is
+  // one BUS_5V net shared by Grove Port A and the M-Bus, so Rail::GPS is the
+  // whole external 5 V net. The request is advisory: the PMIC can refuse it.
+  bool gpsRail;
   // The two columns below describe driven stages: board facts, not UI
   // geometry. They are the wiring of the LED and emitter, which is why they
   // cannot be derived from the pin number.
