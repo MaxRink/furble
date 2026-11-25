@@ -1,8 +1,9 @@
 # 322 - Hardware abstraction for the next boards
 
-Status: hal-1 and hal-2 implemented, not merged. Branches `refactor/hal-1-drivers` (pure drivers) and
-`refactor/hal-2-interfaces` (board profile and power backend, existing boards
-only). No new board env, no support claim and no hardware run in this work.
+Status: hal-1 and hal-2 merged in #462 (`fd51e96c`), on the capability macros and
+coupling ratchet from #460 (`f4cf0d32`). No new board env, no support claim and
+no hardware run in this work. Firmware includes none of the drivers yet: the
+first non-M5 board is what wires them in, as the sequence below records.
 
 Related: [287](287-mcu-portability-and-bundle-hardware.md) (board survey),
 [127](127-nordic-port-baseline.md) (port contract and the coupling ratchet
@@ -53,6 +54,12 @@ are. Write a register driver only where the table shows a gap, and put it in
 `src/FurbleUI.cpp` 11, and one each in `FurbleBootScreen.cpp`,
 `FurbleFeedback.cpp`, `FurbleIR.cpp`, `FurbleSD.cpp` and `FurbleTimeKeeper.cpp`.
 
+Current count after hal-2 (#462): eight call sites. Six are switches in
+`src/FurbleUI.cpp`, four of them geometry at `:843`, `:10560`, `:10668` and
+`:11348`, and two are input wiring at `:2000` and `:13536`. The seventh is the
+profile lookup at `src/FurbleBoard.cpp:83`, the eighth a simulator board check
+at `sim/FurblePlatformSim.cpp:289`. The audit below is the state at `e66e8807`.
+
 | Path | Where | Board knowledge today |
 | :--- | :--- | :--- |
 | Battery caps and capacity | `Platform::initBattery()` | Per-board table: AXP192 boards full caps, StickS3 no current, Plus2 ADC, Core IP5306 level only, everything else none. |
@@ -98,13 +105,13 @@ LilyGo-LoRa-Series:
 | IMU | QMI8658 on SPI (CS 34, INT 33) | none | Motion backend or software only |
 
 T-Watch Ultra: AXP2101 (as above), CO5300 over QSPI (M5GFX), CST9217 touch
-(missing driver), MIA-M10Q GNSS (UBX, owned by the `feat/ubx-*` stack), V_BCKP
+(missing driver), MIA-M10Q GNSS (UBX, merged in #459), V_BCKP
 from VRTC, SX1262 sleep, crystal. Gaps: CST9217 `ITouch`, round AMOLED UI
 geometry, brightness as a panel command.
 
 T-LoRa Pager: ST7796U 480x222 (missing panel class), BQ27220 (`lib/hal`),
 BQ25896 (not needed yet), XL9555 with GPS_EN (`lib/hal`), TCA8418 keyboard
-(missing), rotary encoder (PCNT), MIA-M10Q (UBX stack), SX1262 sleep. Gaps:
+(missing), rotary encoder (PCNT), MIA-M10Q (UBX, #459), SX1262 sleep. Gaps:
 ST7796 panel, keyboard and encoder input classes, wide UI layout.
 
 Cardputer Adv: M5Unified knows the board, display (ST7789V2) and ADC battery.
@@ -196,7 +203,11 @@ Every non-UI `M5.getBoard()` switch now reads the profile: Platform battery
 caps, click streak, Plus2 hold pin, motion wake, timed wake, TimeKeeper RTC
 backing, IR pin, SD slot, boot name, Feedback outputs, and the UI brightness
 floor, modem sleep switch and power-off policies. `M5.getBoard()` drops from
-31 calls to 7: the profile lookup and six UI geometry switches. The M5PM1
+31 calls to 7 in the firmware: the profile lookup and six UI switches, four
+geometry at `:843`, `:10560`, `:10668` and `:11348`, and two input wiring at
+`:2000` and `:13536`. The simulator adds one more check at
+`sim/FurblePlatformSim.cpp:289`, which is why the census above counts eight. The
+M5PM1
 specific paths still sit under `FURBLE_HAS_M5PM1`; the profile only says which
 path the board takes. The GPS rail goes through `Platform::setRail(GPS)` with
 the same set, read back and single retry. A `gpsRail` profile column names the
@@ -215,8 +226,11 @@ The row it would get (columns as in `src/FurbleBoard.cpp`):
 ```
 constexpr Profile TBEAM_SUPREME = {"T-Beam S", {true,  true,  false, true},  0,   false, -1,
     MotionWake::NONE,      -1, TimedWake::NONE,       -1, false, false, true,  true,  32,
-    false, false, false, -1};
+    false, false, false, -1, false};
 ```
+
+The row has all 19 columns of `include/FurbleBoard.h:36-54`. The trailing
+`false` is `gpsRail`: the AXP2101 switches the GPS rail, not `M5.Power`.
 
 Battery level, voltage and charging come from the AXP2101 E-gauge and status
 registers; it has no current sense. Capacity is 0 because the 18650 is the
@@ -235,8 +249,9 @@ Exact steps:
    `FURBLE_LILYGO_TBEAM_SUPREME`) and `sdkconfig.lilygo-tbeam-supreme` with
    `CONFIG_RTC_CLK_SRC_EXT_CRYS`. Add it to every matrix the CLAUDE.md build
    section lists.
-2. `FurbleBoardCaps.h`: `FURBLE_HAS_AXP2101_HAL 1`, `FURBLE_HAS_M5PM1 0`,
-   `FURBLE_HAS_SD 0`, a new `FURBLE_PANEL_128X64 1`.
+2. `FurbleBoardCaps.h`: two new macros, `FURBLE_HAS_AXP2101_HAL` and
+   `FURBLE_PANEL_128X64`, each 1 for this board, plus `FURBLE_HAS_M5PM1 0` and
+   `FURBLE_HAS_SD 0`. Neither new macro exists yet.
 3. `src/FurbleBoard.cpp`: the row above, returned by `profile()` under
    `FURBLE_HAS_AXP2101_HAL` because `M5.getBoard()` reports `board_unknown`.
    Add GPS UART pins (RX 9, TX 8, 9600 baud) to the row; `FurbleGPS` reads

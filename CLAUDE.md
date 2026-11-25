@@ -175,8 +175,9 @@ CLAUDE.md whose directory it touches.
   sim/build-mqtt/furble-sim`. `--smoke` is the pull-request budget. It runs
   seeded UI input on all three panels in both layouts, the WebUI, companion,
   MQTT and OTA fuzzers, the fixed memory-pressure scenarios, and randomized
-  heap-pressure boots. The full corpus currently passes 10 targets, 135 seed
-  runs and 89,145 iterations with zero failures. The earlier MQTT owner stack
+  heap-pressure boots. The committed artifact in
+  `sim/coverage/fuzz_results.json` passes 11 targets, 145 seed runs and 124,148
+  iterations with zero failures. The earlier MQTT owner stack
   overflow and Home Assistant discovery OOM are fixed and carry regressions.
   Do not mark a known failure expected-pass; fix it and keep the regression.
 - Run the MQTT memory-pressure scenarios with
@@ -235,9 +236,10 @@ CLAUDE.md whose directory it touches.
   misses, missing memory profile dumps or a dirty tree. Run
   `sim/scripts/check-hardware-quirks.sh`, `sim/scripts/run-memory-profile.py`
   and the full `sim/scripts/run-permutations.py --compact` before asking for
-  hardware. On master at `2d2be868` the gate passes: 188 of 188 hardware
-  entries, 20 of 20 crash entries, 10 of 10 fuzz targets, 6,912 of 6,912
-  permutations, 13 of 13 memory dumps and 18 of 18 linked boundaries. The
+  hardware. The committed manifests hold 198 modeled hardware entries, 20 crash
+  entries, 11 fuzz targets, 6,912 permutations and 13 memory profile scenarios.
+  `sh sim/scripts/run-boundary-conformance.sh` runs the 18 linked boundary ctest
+  cases registered in `tests/host/CMakeLists.txt`. The
   memory dumps are ignored generated evidence, so run
   `python3 sim/scripts/run-memory-profile.py` before the final check. Hardware
   validation is deferred in sim-only mode and #407 has not been

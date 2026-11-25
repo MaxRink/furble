@@ -1630,13 +1630,16 @@ python3 tools/check_fuzz.py --smoke \
 
 `--full` is the pre-hardware budget. The fixed seeds live in
 `tests/fuzz/seeds.json`; every finding prints the seed and exact replay
-command. The full corpus currently passes: 10 targets, 135 seed runs, 89,145
-iterations and zero failures across all three panel binaries and both layouts.
+command. The committed artifact in `sim/coverage/fuzz_results.json` passes: 11
+targets, 145 seed runs and 124,148 iterations with zero failures across all
+three panel binaries and both layouts.
 The earlier MQTT owner stack overflow at 4 KiB/6 KiB and the Home Assistant
 discovery OOM are fixed by #398/#393 and recorded in `fixed_regressions` in
-`sim/coverage/fuzz_results.json`. On master at `2d2be868` the flash-readiness
-gate passes: 6,912 of 6,912 permutations, 13 of 13 memory dumps and 18 of 18
-linked boundaries. The memory dumps are ignored generated evidence, so run
+`sim/coverage/fuzz_results.json`. The committed manifests list 6,912
+permutations and 13 memory profile scenarios, and
+`sh sim/scripts/run-boundary-conformance.sh` runs the 18 linked boundary ctest
+cases. The memory dumps
+are ignored generated evidence, so run
 `python3 sim/scripts/run-memory-profile.py` before the final check. No fuzz
 seed is open. Hardware validation is deferred; #407 has not been
 hardware-retested.

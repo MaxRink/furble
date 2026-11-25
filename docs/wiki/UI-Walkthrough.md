@@ -50,9 +50,10 @@ On power up furble draws a boot splash with a progress bar while it brings up
 each subsystem (Infrared, Feedback, Storage, Power, Bluetooth, Companion). The
 splash is the shipped default and can be turned off under
 `Settings` > `Features` > `Boot screen`. The splash is drawn directly to the
-display before the LVGL interface takes over, so the simulator renders it during
-boot but it is replaced by the main menu before a script can capture it. It has
-no separate screenshot here.
+display before the LVGL interface takes over. `sim/scripts/docs-capture.sh`
+captures it through the `FURBLE_SIM_CAPTURE_SPLASH` hook.
+
+![Boot splash](img/boot-splash.png)
 
 ## Main menu
 
@@ -255,9 +256,11 @@ fully visible.
 
 The Infrared submenu holds the Infrared on/off switch and the IR Protocol roller
 (Nikon, Sony, Canon, Canon 2s). The whole submenu is hidden unless the board has
-an IR LED. The simulator models a board without an active IR LED, so this page
-has no captured screenshot; see the
+an IR LED. The simulator reports an IR LED present behind the `FURBLE_SIM_IR`
+capture flag, so the submenu renders; see the
 [settings reference](Settings-Reference#infrared) for the values.
+
+![Infrared settings](img/settings-infrared.png)
 
 ### GPS
 
@@ -378,9 +381,11 @@ Diagnostics groups read-only status pages.
 
 The Storage submenu holds GPX Logging on/off, a GPX Interval roller, Export and
 Import Settings actions, and a Card Info page. It appears only on boards with a
-supported SD card slot. The simulator models a board without one, so this page
-has no captured screenshot; see the
+supported SD card slot. The simulator reports a mounted SD card behind the
+`FURBLE_SIM_SD` capture flag, so the submenu renders; see the
 [settings reference](Settings-Reference#storage).
+
+![Storage settings](img/settings-storage.png)
 
 ## Dark theme
 

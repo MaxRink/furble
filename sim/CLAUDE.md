@@ -513,9 +513,10 @@ shortens that host retry cadence for a bounded scenario.
   `tools/check_flash_readiness.py --ready` is the only authority for a flash
   candidate. It refuses approximate hardware entries, pending fuzz results,
   unfixed failing seeds, incomplete permutations, missing memory profile dumps
-  and a dirty worktree. On master at `2d2be868` the gate passes with 188 of 188
-  hardware entries, 20 of 20 crash entries, 10 of 10 fuzz targets, 6,912 of
-  6,912 permutations, 13 of 13 memory dumps and 18 of 18 linked boundaries.
+  and a dirty worktree. The committed manifests hold 198 modeled hardware
+  entries, 20 crash entries, 11 fuzz targets, 6,912 permutations and 13 memory
+  profile scenarios. `sh sim/scripts/run-boundary-conformance.sh` runs the 18
+  linked boundary ctest cases.
   The dumps are ignored generated evidence, so run
   `python3 sim/scripts/run-memory-profile.py` before the final check. Hardware
   validation is deferred; #407 has not been hardware-retested.
