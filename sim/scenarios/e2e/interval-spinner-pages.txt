@@ -1,0 +1,69 @@
+# The four intervalometer spinner pages the certified suite never asserted:
+# Count, Delay, Shutter and Wait. addIntervalometerMenu builds all four with
+# addSpinnerPage (src/FurbleUI.cpp:10786-10789), and each is a spinner page
+# rather than a roller, so their failure mode is a value or a name that gets cut
+# off in a narrow row, not a wrong selection. Only page-matrix visited them.
+#
+# These are the pages the spin-row measurement exists for: ui.clipped_values
+# counts values drawn outside the row that holds them and ui.cut_names counts
+# names that lost characters, and both must read zero. The seeds pin the three
+# numeric values the intervalometer starts from, so the page renders a known
+# width instead of whatever the default count is.
+#
+# The four routes are real menu clicks from the timer page, which is itself a
+# settings sub-page, so the walk is settings, timer, then the spinner.
+seed interval_count 2
+seed interval_delay 0
+seed interval_shutter 100
+seed interval_wait 0
+wait 400
+
+home
+wait 200
+assert ui.page main
+
+action nav settings
+wait 200
+assert ui.page settings
+action nav timer
+wait 200
+assert ui.page timer
+
+# --- Count -----------------------------------------------------------------
+action nav interval_count
+wait 200
+assert ui.page interval_count
+assert ui.back visible
+assert ui.focus_on_page yes
+assert ui.clipped_values 0
+assert ui.cut_names 0
+print ui.overflow
+
+# --- Delay -----------------------------------------------------------------
+action nav interval_delay
+wait 200
+assert ui.page interval_delay
+assert ui.back visible
+assert ui.focus_on_page yes
+assert ui.clipped_values 0
+assert ui.cut_names 0
+
+# --- Shutter ---------------------------------------------------------------
+action nav interval_shutter
+wait 200
+assert ui.page interval_shutter
+assert ui.back visible
+assert ui.focus_on_page yes
+assert ui.clipped_values 0
+assert ui.cut_names 0
+
+# --- Wait ------------------------------------------------------------------
+action nav interval_wait
+wait 200
+assert ui.page interval_wait
+assert ui.back visible
+assert ui.focus_on_page yes
+assert ui.clipped_values 0
+assert ui.cut_names 0
+
+exit

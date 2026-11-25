@@ -1,0 +1,53 @@
+# The two radio pages the certified suite never asserted: Bluetooth and its
+# Transmit Power child. addBluetoothMenu builds Bluetooth and calls
+# addTransmitPowerMenu with it as parent (src/FurbleUI.cpp:12465-12505), so
+# transmit power is not a settings-root page and only a two-step route reaches
+# it. page-matrix is the only file that visits either.
+#
+# Bluetooth carries the connection saver switch, the scan mode roller and the
+# scan timeout roller alongside the Transmit Power entry, so it is a page that
+# overflows the short panels and scrolls. Transmit Power carries the adaptive
+# toggle and a 0 to 2 slider (src/FurbleUI.cpp:12074-12121). Both are asserted
+# for identity, focus ownership and both scroll ends.
+#
+# The TX power level itself is seeded so the slider starts from a known step.
+# Its stored value is not read back here: the slider only persists on
+# LV_EVENT_RELEASED, which this scenario does not drive, and inventing a
+# round-trip through a key press would assert a path the device does not take.
+seed tx_power 2
+wait 400
+
+home
+wait 200
+assert ui.page main
+
+# --- Bluetooth -------------------------------------------------------------
+action nav settings
+wait 200
+assert ui.page settings
+action nav bluetooth
+wait 250
+assert ui.page bluetooth
+assert ui.back visible
+assert ui.focus_on_page yes
+print ui.overflow
+action scroll bottom
+wait 100
+assert ui.scroll_bottom 0
+action scroll top
+wait 100
+assert ui.scroll_top 0
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+
+# --- Transmit Power (child of Bluetooth) -----------------------------------
+action nav tx_power
+wait 250
+assert ui.page tx_power
+assert ui.back visible
+assert ui.focus_on_page yes
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+print ui.overflow
+
+exit
