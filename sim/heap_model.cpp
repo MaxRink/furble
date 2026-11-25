@@ -63,6 +63,54 @@ constexpr size_t MALLOC_ALWAYSINTERNAL = 0;
 #endif
 constexpr uint32_t CAPS_DEFAULT = 0x1000;
 
+/*
+ * Which modelled pool a capability set may draw from.
+ *
+ * Read from the pinned ESP-IDF 5.5.3 capability table of the modelled ESP32-S3.
+ * components/heap/port/esp32s3/memory_layout.c lines 62 to 66 put
+ * MALLOC_CAP_DEFAULT on internal DIRAM at priority 0 and on SPIRAM only at
+ * priority 2, so a default request is served from internal RAM first and PSRAM
+ * second. components/esp_psram/system_layer/esp_psram.c line 470 registers the
+ * heap esp_psram actually adds as
+ * {MALLOC_CAP_SPIRAM | MALLOC_CAP_DEFAULT, 0, MALLOC_CAP_8BIT |
+ * MALLOC_CAP_32BIT | MALLOC_CAP_SIMD}, the same union. MALLOC_CAP_SPIRAM
+ * therefore names PSRAM alone, and MALLOC_CAP_INTERNAL or an internal-only bit
+ * names internal RAM alone. A set naming both pools keeps the PSRAM reading,
+ * the precedence heapCountedAllocCaps already used.
+ *
+ * The model has one internal pool and no separate IRAM or RTC pool, so
+ * MALLOC_CAP_EXEC, MALLOC_CAP_IRAM_8BIT and MALLOC_CAP_RETENTION are answered
+ * from internal RAM. The S3 boards enable CONFIG_ESP_SYSTEM_MEMPROT_FEATURE,
+ * which drops EXEC from DIRAM (memory_layout.c lines 44 to 50), and
+ * sim/shim/... has no IRAM heap either way.
+ *
+ * This over-reports in two ways. MALLOC_CAP_RETENTION is a DIRAM capability
+ * (memory_layout.c line 45), so the device answers with the DIRAM free size and
+ * this answers with the whole merged internal pool. And a set no heap carries,
+ * such as MALLOC_CAP_SPIRAM together with MALLOC_CAP_INTERNAL, resolves to one
+ * pool here where heap_caps_get_* return zero. No caller uses any of them.
+ */
+constexpr uint32_t CAPS_INTERNAL_ONLY = MALLOC_CAP_EXEC | MALLOC_CAP_DMA | MALLOC_CAP_RETENTION
+                                        | MALLOC_CAP_IRAM_8BIT | MALLOC_CAP_RTCRAM | MALLOC_CAP_TCM;
+
+struct caps_pools_t {
+  bool internal = true;
+  bool external = false;
+};
+
+constexpr caps_pools_t capsPools(uint32_t caps) {
+  if ((caps & MALLOC_CAP_SPIRAM) != 0) {
+    return {false, true};
+  }
+  if ((caps & (MALLOC_CAP_INTERNAL | CAPS_INTERNAL_ONLY)) != 0) {
+    return {true, false};
+  }
+  // Only bits both pools carry (MALLOC_CAP_DEFAULT, 32BIT, 8BIT, SIMD) remain,
+  // or an empty set, which heap_caps_match() treats as every heap
+  // (components/heap/heap_caps.c line 73).
+  return {true, true};
+}
+
 // Tasks that exist only on the host. Their stacks and allocations are not
 // device memory.
 bool hostOnlyTask(const char *name) {
@@ -195,6 +243,7 @@ struct heap_state_t {
   std::string psramState = "absent";
   size_t psramFree = 0;
   size_t psramLargest = 0;
+  size_t psramMinimumFree = 0;
   bool psramInitFailed = false;
   std::string taskStackRegion = "internal";
   uint32_t externalTasks = 0;
@@ -244,6 +293,26 @@ bool reserveLocked(size_t bytes) {
   heap.minimumFree = std::min(heap.minimumFree, heap.freeBytes);
   heap.minimumLargest = std::min(heap.minimumLargest, heap.largestBlock);
   heap.allocationCount++;
+  return true;
+}
+
+/*
+ * The PSRAM equivalent of reserveLocked, including the pool watermark that
+ * furble_sim_heap_minimum() reports for MALLOC_CAP_SPIRAM.
+ *
+ * It deliberately leaves heap.minimumLargest alone. That figure already mixes
+ * the internal and PSRAM largest blocks, and which call sites feed it decides
+ * the mem.high_water_largest numbers the memory scenarios pinned, so each
+ * caller keeps its own line exactly where it was.
+ */
+bool takeExternalLocked(size_t bytes) {
+  heap_state_t &heap = state();
+  if ((heap.psramState != "ready") || (bytes > heap.psramFree) || (bytes > heap.psramLargest)) {
+    return false;
+  }
+  heap.psramFree -= bytes;
+  heap.psramLargest = std::min(heap.psramLargest - bytes, heap.psramFree);
+  heap.psramMinimumFree = std::min(heap.psramMinimumFree, heap.psramFree);
   return true;
 }
 
@@ -345,41 +414,42 @@ bool heapCountedAllocCaps(size_t requested,
   const size_t bytes = blockBytes(requested);
   *charged = 0;
   *external = false;
-  const bool psramReady = heap.psramState == "ready";
   if (caps != 0) {
-    // An explicit capability request draws only from the pool it names.
-    const bool wantExternal = (caps & MALLOC_CAP_SPIRAM) != 0;
+    /*
+     * An explicit capability request draws only from the pools the set names,
+     * in the priority order of the pinned ESP32-S3 capability table: internal
+     * DIRAM at priority 0, PSRAM at priority 2. A bare MALLOC_CAP_DEFAULT is
+     * therefore internal first and PSRAM second, which is heap_caps_malloc()
+     * and not heap_caps_malloc_default(): the latter is the caps == 0 path
+     * below and follows malloc_alwaysinternal_limit instead.
+     */
+    const caps_pools_t pools = capsPools(caps);
     bool ok = false;
-    if (wantExternal) {
-      ok = psramReady && bytes <= heap.psramFree && bytes <= heap.psramLargest;
-      if (ok) {
-        heap.psramFree -= bytes;
-        heap.psramLargest = std::min(heap.psramLargest - bytes, heap.psramFree);
-      }
-    } else {
+    bool fromExternal = false;
+    if (pools.internal) {
       ok = reserveLocked(bytes);
+    }
+    if (!ok && pools.external) {
+      ok = takeExternalLocked(bytes);
+      fromExternal = ok;
     }
     if (!ok) {
       noteFailureLocked(requested, owner, caps);
       return false;
     }
-    *external = wantExternal;
+    *external = fromExternal;
     *charged = bytes;
-    (wantExternal ? heap.countedExternal : heap.countedInternal) += bytes;
+    (fromExternal ? heap.countedExternal : heap.countedInternal) += bytes;
     sampleTimelineLocked(false);
     return true;
   }
-  const bool psram = MALLOC_MAY_USE_PSRAM && psramReady;
+  // The board sdkconfig decides whether malloc may reach PSRAM at all, and the
+  // pool state decides whether it is ready. Reading the state here rather than
+  // into a local keeps the only use of it where the constant can be true.
+  const bool psram = MALLOC_MAY_USE_PSRAM && (heap.psramState == "ready");
   // Never called on a board built without PSRAM, where psram is constant false.
   // NOLINTNEXTLINE(clang-analyzer-deadcode.DeadStores)
-  auto takeExternal = [&heap, bytes]() {
-    if (bytes > heap.psramFree || bytes > heap.psramLargest) {
-      return false;
-    }
-    heap.psramFree -= bytes;
-    heap.psramLargest = std::min(heap.psramLargest - bytes, heap.psramFree);
-    return true;
-  };
+  auto takeExternal = [bytes]() { return takeExternalLocked(bytes); };
   bool ok = false;
   if (psram && requested > MALLOC_ALWAYSINTERNAL) {
     ok = takeExternal();
@@ -415,6 +485,9 @@ void heapBaselineBlock(size_t requested, uint32_t caps, size_t *bytes, bool *ext
   heap_state_t &heap = state();
   *bytes = blockBytes(requested);
   if (caps != 0) {
+    // Baseline blocks are uncharged, so this reports the pool a later refund
+    // lands in and not the pool a live charge would pick. It knows only the
+    // PSRAM bit; see capsPools() before giving it a second pool.
     *external = (caps & MALLOC_CAP_SPIRAM) != 0;
   } else {
     *external =
@@ -468,6 +541,9 @@ void heapSetPsram(const std::string &mode, size_t freeBytes, size_t largestBlock
     heap.psramFree = 0;
     heap.psramLargest = 0;
   }
+  // A pool that has just been seeded or removed has no deeper watermark yet,
+  // the same reset heapSet() does for the internal pool.
+  heap.psramMinimumFree = heap.psramFree;
 }
 
 bool heapPsramPresent(void) {
@@ -493,6 +569,11 @@ size_t heapPsramFree(void) {
 size_t heapPsramLargest(void) {
   const model_lock_t lock;
   return state().psramLargest;
+}
+
+size_t heapPsramMinimumFree(void) {
+  const model_lock_t lock;
+  return state().psramMinimumFree;
 }
 
 bool heapPsramInitFailed(void) {
@@ -663,11 +744,10 @@ bool heapTaskCreate(const char *name,
       heap.psramInitFailed = true;
       return false;
     }
-    if ((bytes > heap.psramFree) || (bytes > heap.psramLargest)) {
+    if (!takeExternalLocked(bytes)) {
       noteFailureLocked(stackBytes, name, CAPS_EXTERNAL);
       return false;
     }
-    heap.psramFree -= bytes;
     if (deviceTask) {
       heap.countedExternal += bytes;
       heap.countedTasks += bytes;
@@ -675,7 +755,6 @@ bool heapTaskCreate(const char *name,
         *counted = true;
       }
     }
-    heap.psramLargest = std::min(heap.psramLargest - bytes, heap.psramFree);
     heap.externalTasks++;
     heap.minimumLargest = std::min(heap.minimumLargest, heap.psramLargest);
     if (chargedBytes != nullptr) {
@@ -743,11 +822,9 @@ uint64_t heapAllocTagged(size_t bytes,
   }
   bool charged = false;
   if (external) {
-    if (heap.psramState == "ready" && bytes <= heap.psramFree && bytes <= heap.psramLargest) {
-      heap.psramFree -= bytes;
-      heap.psramLargest = std::min(heap.psramLargest - bytes, heap.psramFree);
+    charged = takeExternalLocked(bytes);
+    if (charged) {
       heap.minimumLargest = std::min(heap.minimumLargest, heap.psramLargest);
-      charged = true;
     }
   } else if (reserveLocked(bytes)) {
     charged = true;
@@ -920,31 +997,59 @@ extern "C" esp_err_t heap_caps_register_failed_alloc_callback(esp_alloc_failed_h
 }
 
 extern "C" size_t furble_sim_heap_free(uint32_t capabilities) {
-  if ((capabilities & MALLOC_CAP_SPIRAM) != 0) {
-    return Furble::Sim::heapPsramFree();
+  // heap_caps_get_free_size() sums every heap whose capabilities contain the
+  // whole set (components/heap/heap_caps.c lines 277 to 287), so a default
+  // query is internal plus PSRAM on a board where PSRAM is ready.
+  const caps_pools_t pools = capsPools(capabilities);
+  size_t bytes = 0;
+  if (pools.internal) {
+    bytes += Furble::Sim::heapFree();
   }
-  return Furble::Sim::heapFree();
+  if (pools.external) {
+    bytes += Furble::Sim::heapPsramFree();
+  }
+  return bytes;
 }
 
 extern "C" size_t furble_sim_heap_largest(uint32_t capabilities) {
-  if ((capabilities & MALLOC_CAP_SPIRAM) != 0) {
-    return Furble::Sim::heapPsramLargest();
+  // heap_caps_get_largest_free_block() takes the maximum over the matching
+  // heaps rather than summing them: heap_caps_get_largest_free_block() at
+  // line 301 calls heap_caps_get_info() at line 367, which takes the MAX at
+  // lines 380 and 381.
+  const caps_pools_t pools = capsPools(capabilities);
+  size_t bytes = 0;
+  if (pools.internal) {
+    bytes = Furble::Sim::heapLargest();
   }
-  return Furble::Sim::heapLargest();
+  if (pools.external) {
+    bytes = std::max(bytes, Furble::Sim::heapPsramLargest());
+  }
+  return bytes;
 }
 
 extern "C" bool furble_sim_heap_fits(size_t size, uint32_t capabilities) {
   const model_lock_t lock;
   const heap_state_t &heap = state();
   const size_t bytes = blockBytes(size);
-  if ((capabilities & MALLOC_CAP_SPIRAM) != 0) {
-    return (heap.psramState == "ready") && (bytes <= heap.psramFree)
-           && (bytes <= heap.psramLargest);
+  const caps_pools_t pools = capsPools(capabilities);
+  if (pools.internal && (bytes <= heap.freeBytes) && (bytes <= heap.largestBlock)) {
+    return true;
   }
-  return (bytes <= heap.freeBytes) && (bytes <= heap.largestBlock);
+  return pools.external && (heap.psramState == "ready") && (bytes <= heap.psramFree)
+         && (bytes <= heap.psramLargest);
 }
 
 extern "C" size_t furble_sim_heap_minimum(uint32_t capabilities) {
-  (void)capabilities;
-  return Furble::Sim::heapMinimumFree();
+  // heap_caps_get_minimum_free_size() sums the per-region watermarks
+  // (components/heap/heap_caps.c lines 289 to 299). MALLOC_CAP_SPIRAM reports
+  // the PSRAM watermark, which it did not before.
+  const caps_pools_t pools = capsPools(capabilities);
+  size_t bytes = 0;
+  if (pools.internal) {
+    bytes += Furble::Sim::heapMinimumFree();
+  }
+  if (pools.external) {
+    bytes += Furble::Sim::heapPsramMinimumFree();
+  }
+  return bytes;
 }

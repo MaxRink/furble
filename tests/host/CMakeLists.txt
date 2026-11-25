@@ -363,6 +363,27 @@ target_compile_options(sim_webui_memory_model_test PRIVATE -Wall -Wextra -Werror
                                                             -Wno-unused-parameter)
 add_test(NAME sim-webui-memory-model COMMAND sim_webui_memory_model_test)
 
+# The capability half of the heap model: the MALLOC_CAP_* table in
+# sim/shim/esp_heap_caps.h and the pool each capability set draws from. The
+# values are pinned against components/heap/include/esp_heap_caps.h of the
+# pinned ESP-IDF 5.5.3, and the pool selection against the ESP32-S3 priority
+# table in components/heap/port/esp32s3/memory_layout.c plus the PSRAM heap
+# registration in components/esp_psram/system_layer/esp_psram.c. No LVGL, SDL
+# or device is involved, so this target runs in the plain host job.
+add_executable(sim_heap_caps_test
+               sim_heap_caps_test.cpp
+               ${FURBLE_ROOT}/sim/clock.cpp
+               ${FURBLE_ROOT}/sim/heap_model.cpp)
+target_include_directories(sim_heap_caps_test BEFORE PRIVATE
+                           ${FURBLE_ROOT}/include
+                           ${FURBLE_ROOT}/lib/furble
+                           ${FURBLE_ROOT}/sim
+                           ${FURBLE_ROOT}/sim/shim)
+target_compile_definitions(sim_heap_caps_test PRIVATE FURBLE_SIM)
+target_compile_options(sim_heap_caps_test PRIVATE -Wall -Wextra -Werror
+                                                   -Wno-unused-parameter)
+add_test(NAME sim-heap-caps COMMAND sim_heap_caps_test)
+
 add_executable(device_identity_test
                device_identity_test.cpp
                advertisement_preferences_stub.cpp
