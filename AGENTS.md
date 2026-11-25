@@ -81,6 +81,10 @@ with a reason live in `tools/power-model/activity-optout.json`. Focused coverage
 is `python3 -m unittest tests/test_power_compare.py`.
 The Apple workflow's macOS app artifact is unsigned and test-only; it is
 uploaded only after the macOS tests pass and includes checksum/provenance files.
+The Apple package keeps one committed UI snapshot of the shipped Status section
+body, compared in the existing `swift test` target on macOS only. Regenerate it
+with `FURBLE_APPLE_SNAPSHOT_UPDATE=1` and review the PNG; the flag refuses to
+run on CI.
 Release tags beginning with `companion-test-` skip firmware publication and
 are reserved for companion testing; other release tags retain normal behavior.
 All simulator scenarios are owned in `sim/scenarios/manifest.json`; run

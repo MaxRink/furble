@@ -1,3 +1,5 @@
 .build/
 FurbleCompanion.xcodeproj/
 .swiftpm/
+# Written next to the committed baseline when a snapshot run differs.
+Tests/Snapshots/*.actual.png

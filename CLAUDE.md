@@ -95,6 +95,14 @@ CLAUDE.md whose directory it touches.
 - The Apple workflow packages the unsigned macOS Debug app only after its tests
   pass. The uploaded artifact includes a checksum and source/Xcode provenance;
   it is for companion testing, not signing or release distribution.
+- `companion/apple` keeps one UI snapshot in the existing `swift test` target:
+  the shipped Status section body (`CompanionStatusView`) rendered through
+  `ImageRenderer` and compared to
+  `companion/apple/Tests/Snapshots/CompanionStatusView.1x.png`. It is macOS
+  only, because the iOS bundle compiles it out. Regenerate after an intended
+  visual change with `FURBLE_APPLE_SNAPSHOT_UPDATE=1 swift test --filter
+  CompanionStatusViewSnapshotTests`, review the PNG, and commit it. The flag
+  refuses to run when `CI` is set. See `plans/343-apple-ui-snapshot.md`.
 - Release tags beginning with `companion-test-` are reserved for companion
   testing and skip the firmware release workflow; other release tags are
   unchanged. Release and Pages matrices omit the Core single-factory debug
