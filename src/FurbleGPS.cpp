@@ -1633,7 +1633,10 @@ void GPS::configure(void) {
       fallback = "PCAS04," + std::to_string(m_NavxConstelVal);
     }
     if (m_NavxDyModelSet) {
-      // $PCAS11 platform numbering is third-party attested only, provisional
+      // $PCAS11 dy: 0 portable (default), 1 static, 2 walking, 3 vehicle,
+      // 4 marine, 5 and 6 flight below 1g, 7 flight below 4g (CASIC R6
+      // section 2.7.10 page 43). No PCAS11 appears in V4.2.0.3, and what a
+      // receiver does with the 4 to 7 values is untested here.
       if (!fallback.empty()) {
         fallback += '\n';
       }

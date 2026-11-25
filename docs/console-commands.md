@@ -301,11 +301,16 @@ station. `wifi connect` and `wifi disconnect` act immediately, and
   in-view/used counts, DOP, and each decoded satellite.
 - `gps platform 0..4` saves the dynamic model (`0` do not send, `1` portable,
   `2` stationary, `3` pedestrian, `4` vehicle) and reloads the receiver. The
-  dyModel/PCAS11 effect is hardware-tuning-pending.
+  `dy` numbering behind PCAS11 is documented in CASIC R6 section 2.7.10 page 43
+  and absent from V4.2.0.3; whether it changes the fix on this unit is
+  hardware-tuning-pending.
 - `gps monhw` polls the CASIC MON-HW snapshot and waits up to 1.5 s for the
   reply, then prints the decoded and raw response. The offsets follow CASIC
-  2.14.2; the decode is hardware-confirmed on the AT6668, while the meaning of
-  individual status bits still needs a qualified antenna test.
+  MON-HW, section 2.13.2 page 81 of V4.2.0.3 or section 3.15.9 page 139 of R6.
+  The decode is hardware-confirmed on the AT6668, but the two revisions encode
+  `antStatus` differently, 0 is "initialising" in one and "open" in the other,
+  so the meaning of individual status bits still needs a qualified antenna
+  test.
 - `gps ubx` reports a u-blox M10 receiver: module, firmware and protocol from
   MON-VER, the NAV-PVT fix type, satellites, age and hAcc/vAcc/tAcc, whether
   the configuration read back matches, NAK count, the constellation mask, rate,

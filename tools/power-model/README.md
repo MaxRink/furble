@@ -127,18 +127,25 @@ Backlights:
   manual:
   https://github.com/Albresky/GPS-ATGM336H-Library/blob/master/manual/C90770_ATGM336H-5N31_2016-12-26.pdf
   There is no acquisition versus tracking split in the manual.
-- Chip: no AT6668 datasheet is findable. The sibling AT6558 datasheet
-  (https://dratek.cz/docs/produkty/1/1045/at6558.pdf) gives 23 mA typ
-  BD+GPS tracking, standby below 10 uA, VBAT 10 uA typ / 40 uA max, active
-  antenna feed 2.4/3.0/3.6 mA. Chip level numbers used as proxy are tagged
-  `estimated`.
+- Chip: the AT6668 datasheet exists and gives 37 mA typ with BDS, GPS and
+  GLONASS at 3.3 V, 8 uA battery backup, 30 uA sleep and a 2.5 mA antenna
+  detect feed (DS-AT6668 V1.4 section 4.3 page 9, recorded with its section on
+  `docs/components/at6668.md`). `board-currents.yaml` still carries the older
+  23 mA sibling AT6558 figure
+  (https://dratek.cz/docs/produkty/1/1045/at6558.pdf) tagged `estimated`: the
+  replacement moves the GPS term in every board row, so it belongs to a
+  baseline refresh under `plans/98-power-optimization-audit.md` rather than to
+  a citation change (`plans/354-gnss-datasheet-verification.md`).
 - $PCAS12 standby in circuit: `estimated` at 0.5 mA (10 uA to 2 mA). The
   chip drops below 10 uA but the module keeps its TCXO, flash, and the
   unit's regulator powered. Locally proven to work ($PCAS12,10 stops NMEA
   for 10 s), current not yet measured. A local measurement should replace
   this entry.
-- Local ground truth: no backup supply on the unit, a 5 V rail cut costs a
-  full cold start, measured 107.7 s re-fix (`plans/00-hardware-experiments.md`).
+- Local ground truth: no backup supply on the unit, so a 5 V rail cut has to
+  acquire from scratch: 107.7 s to a fix after a 60 s cut
+  (`plans/00-hardware-experiments.md` line 188). That is a re-fix in this
+  unit's own sky, not the vendor's 23 s cold start TTFF, and no code timeout
+  derives from it.
 
 ### PMICs
 

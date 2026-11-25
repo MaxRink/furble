@@ -262,16 +262,22 @@ std::vector<std::pair<size_t, size_t>> splitFrames(const uint8_t *data, size_t l
 /*
  * MON-HW interference snapshot.
  *
- * MON-HW is class 0x0A id 0x09, 56 bytes, documented in CASIC section 2.14.2:
- * noisePerMs0 at 0, agcData0 at 12, antStatus at 20, and the jamming word
- * array at 24. The offsets are spec-derived; the values still need a live-unit
- * check, so the console prints the raw bytes alongside the decoded fields.
+ * MON-HW is class 0x0A id 0x09, 56 bytes, section 2.13.2 page 81 of CASIC
+ * V4.2.0.3 and section 3.15.9 page 139 of CASIC R6: noisePerMs0 at 0,
+ * agcData0 at 12, antStatus at 20, and eight 32-bit words at 24, with the same
+ * offsets in both revisions. The values still need a live-unit check, so the
+ * console prints the raw bytes alongside the decoded fields.
  */
 struct MonHw {
-  uint32_t noise;         /**< noisePerMs0 at offset 0, receiver units */
-  uint16_t agc;           /**< agcData0 at offset 12, AGC count */
-  uint8_t antenna_status; /**< antStatus at offset 20: 0 init, 1 unknown, 2 ok, 3 short, 4 open */
-  uint32_t jam_indicator; /**< jamming[0] at offset 24, first interference word */
+  uint32_t noise; /**< noisePerMs0 at offset 0, receiver units */
+  uint16_t agc;   /**< agcData0 at offset 12, AGC count */
+  /**
+   * antStatus at offset 20. CASIC R6 3.15.9: 0 open, 1 unknown, 2 normal,
+   * 3 short. CASIC V4.2.0.3 2.13.2 calls 0 "initialising" and adds 4 open, so
+   * the same value reads differently depending on the revision the ROM follows.
+   */
+  uint8_t antenna_status;
+  uint32_t jam_indicator; /**< word 0 at offset 24: jamming (V4.2.0.3), cwiFreq (R6) */
   bool valid;
 };
 

@@ -172,6 +172,7 @@ the git history. They are no longer ownership rows.
 | [322-hardware-abstraction.md](322-hardware-abstraction.md) | Hardware abstraction for the next boards: dependency audit, pure chip drivers, board profile and power backend |
 | [322-review-feedback.md](322-review-feedback.md) | Review-feedback record for the plan 322 hardware abstraction branches |
 | [333-datasheet-corpus.md](333-datasheet-corpus.md) | Datasheet citation corpus: one page per part, document revision and section per register fact, the citation gate, and the zero-PDF licence decision |
+| [354-gnss-datasheet-verification.md](354-gnss-datasheet-verification.md) | GNSS datasheet verification: the AT6668 datasheet and both CASIC protocol revisions read against the pages, the M10 module documents opened, and the facts that stay open |
 | [473-review-feedback.md](473-review-feedback.md) | Review-feedback record for the #473 hardware-trap corrections and the per-panel display dwell rule |
 
 ## Next hardware

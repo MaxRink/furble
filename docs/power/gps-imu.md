@@ -61,7 +61,7 @@ furble's boards unless the label says so.
 | --- | --- | --- | --- |
 | GPS unit, whole, 5 V input | 31.64 mA | `datasheet` | M5Stack Unit GPS v1.1 product page; `tools/power-model/board-currents.yaml` `unit_active_5v` |
 | GPS module, 3.3 V, GPS+BDS | below 25 mA typical, 100 mA peak | `datasheet` | ATGM336H manual, `C90770_ATGM336H-5N31` |
-| GPS chip, tracking proxy | 23 mA typical BD+GPS | `datasheet` | AT6558 datasheet, used as an AT6668 proxy |
+| GPS chip, tracking | 37 mA typical with BDS, GPS and GLONASS enabled at 3.3 V | `datasheet` | AT6668 datasheet DS-AT6668 V1.4 section 4.3 page 9 |
 | GPS standby, in circuit | 0.5 mA, range 0.01 to 2 mA | `modeled`, `unknown` | `board-currents.yaml` `standby_pcas12_module`; chip standby is below 10 uA, module rails stay up |
 | GPS cold re-fix after a 60 s rail cut | 107.7 s | `measured` | `plans/00-hardware-experiments.md`, Experiment B part 1 |
 | S3 light sleep | 0.240 mA | `datasheet` | ESP32-S3 datasheet, `board-currents.yaml` |
@@ -124,23 +124,34 @@ The transmit path has two families:
 
 | Family | Framing | Used for |
 | --- | --- | --- |
-| NMEA 0183 | `$` payload `*` two hex digits CRLF | `$PCAS02` rate, `$PCAS03` sentence rates, `$PCAS04` constellation, `$PCAS10` restart, `$PCAS11` platform fallback, `$PCAS12` standby |
+| NMEA 0183 | `$` payload `*` two hex digits CRLF | `$PCAS02` rate, `$PCAS03` sentence rates, `$PCAS04` constellation (decimal modes 1 to 7 on V4.2.0.3, a hex band bitmask on V6.3.2, and the two agree only for 1 to 7), `$PCAS10` restart, `$PCAS11` platform fallback, `$PCAS12` standby |
 | CASIC binary | `BA CE`, length, class, id, payload, 4-byte checksum | `CFG-MSG` 0x06 0x01, `CFG-RATE` 0x06 0x04, `CFG-NAVX` 0x06 0x07, `AID-INI` 0x0B 0x01, `MON-HW` 0x0A 0x09, ephemeris polls |
 
-There is no UBX path. UBX is the u-blox binary protocol with `B5 62` framing. The
-AT6668 is a CASIC part. The firmware's binary parser looks for `BA CE` and would
-treat UBX frames as noise. This is correct for the supported hardware, and it is
-listed as a rejected opportunity rather than a gap.
+There are two protocol backends, chosen once per session by a UBX-MON-VER poll
+(`Ubx::Detect`, two attempts a second apart). A u-blox M10 receiver gets the UBX
+backend in `src/FurbleGPSUbx.cpp`, with `B5 62` framing and `CFG-VALSET` keys;
+anything else keeps the NMEA and CASIC path above, which is what the AT6668
+answers. `GpsDemux::split()` separates the shared UART stream into NMEA, CASIC
+and UBX pieces, so a CASIC receiver never sees a UBX frame and the `$PCAS`
+commands never reach a u-blox one. The AT6668 is a CASIC part with `BA CE`
+framing, so UBX on this unit is a rejected opportunity rather than a gap.
 
 `configure()` builds the queue in this order:
 
 1. If `GPS_NMEA` is true, eight `CFG-MSG` messages prune the output to RMC and
-   GGA at one per fix, with `$PCAS03,1,0,0,0,1,0,0,0` as the NMEA fallback.
+   GGA at one per fix, with `$PCAS03,1,0,0,0,1,0,0,0,0,0,,,0,0` as the NMEA
+   fallback. The body must carry all fourteen rate fields: an empty field keeps
+   the receiver's rate, so the eight-field form this tree still sends cannot
+   turn DHV, LPS, UTC or GST off (R6 section 2.7.4 page 36, V4.2.0.3 section
+   1.6.4 page 27; see `docs/components/at6668.md` row 7).
 2. If `GPS_RATE` is nonzero, one `CFG-RATE` message sets the interval in
    milliseconds, with `$PCAS02,<ms>` as the fallback.
 3. If constellation or platform is set, one `CFG-NAVX` query-modify-write edits
    the 44-byte struct under mask bit B8 (`navSystem`) and bit B0 (`dyModel`),
-   with `$PCAS04` and `$PCAS11` as the fallback.
+   with `$PCAS04` and `$PCAS11` as the fallback. `$PCAS04` sends the decimal
+   mode the V4.2.0.3 revision defines; the V6.3.2 revision reads the same value
+   as a hex band bitmask, and the two coincide only because the UI is capped at
+   7 and bits 0 to 2 are GPS, BDS and GLONASS in both.
 
 One command is outstanding at a time. Each has a 300 ms acknowledgement timeout
 and three attempts, then one NMEA fallback per configuration pass. A receiver
@@ -585,8 +596,10 @@ range with its basis, not a claim.
 - **Current behavior.** Default sends nothing, so the receiver's own
   constellation set applies. The UI can select GPS, BDS, GLONASS or a
   combination through `$PCAS04` or `CFG-NAVX`.
-- **Evidence.** `unknown`. The only nearby datasheet figure is 23 mA typical for
-  BD+GPS tracking on the sibling AT6558. There is no GPS-only figure.
+- **Evidence.** `unknown` for the GPS-only case. The AT6668 datasheet gives
+  37 mA typical with BDS, GPS and GLONASS all enabled (DS-AT6668 V1.4 section
+  4.3 page 9) and no GPS-only figure, so the per-constellation split still has
+  to be measured.
 - **Estimated saving.** `unknown`. A few mA is plausible but not evidenced. Do
   not quote a number until the receiver is measured.
 - **Risk.** Fewer satellites, worse indoor fix, longer TTFF. A constellation that
@@ -595,7 +608,7 @@ range with its basis, not a claim.
 - **Required test.** Same sky, same antenna, same position: GPS-only versus
   GPS+BDS+GLONASS, measure current, TTFF, satellites used and C/N0.
 - **Citation.** `src/FurbleGPS.cpp:1332-1359`; `include/FurbleGPS.h:273-274`;
-  plan 14 lines 95-96; AT6558 datasheet.
+  plan 14 lines 95-96; AT6668 datasheet V1.4 section 4.3 page 9.
 
 ### G-10 Measure slower fix intervals before adding them
 
@@ -802,12 +815,17 @@ range with its basis, not a claim.
 - **Change.** Verify the MON-HW layout on hardware and surface antenna status
   and jam indicator on the diagnostics page. Use a confirmed antenna fault to
   trigger G-04, not to change receiver settings directly.
-- **Current behavior.** `gps monhw` polls and decodes the CASIC 2.14.2 layout:
-  `agcData0` at 12, `antStatus` at 20, and the jamming word at 24. A live
+- **Current behavior.** `gps monhw` polls and decodes the CASIC MON-HW layout,
+  section 2.13.2 page 81 of V4.2.0.3 and section 3.15.9 page 139 of R6:
+  `agcData0` at 12, `antStatus` at 20, and the interference word at 24. A live
   AT6668 returned a valid 56-byte payload with `noise=0 agc=18 antenna=0 jam=0`
-  on 2026-11-04, so the offsets are live-confirmed. The meaning of the antenna
-  and jam status bits still needs a qualified antenna comparison. `$GPTXT
-  ANTENNA OPEN` was observed continuously on the v1.1 unit.
+  on 2026-11-04, so the offsets are live-confirmed. The antenna status encoding
+  is not the same in the two revisions: 0 is "initialising" in V4.2.0.3 and
+  "open" in R6, and 4 is "open" only in V4.2.0.3. The observed `antenna=0`
+  therefore reads as a fault under one revision and as an unfinished start
+  under the other, which is why the status bits still need a qualified antenna
+  comparison. `$GPTXT ANTENNA OPEN` was observed continuously on the v1.1
+  unit.
 - **Evidence.** `measured` for the GPTXT line and the live MON-HW decode;
   `spec` plus code for the layout; `unknown` for the status-bit mapping.
 - **Estimated saving.** No direct saving. It lets G-04 distinguish "no sky" from
@@ -1258,7 +1276,7 @@ current saving.
 
 | Document | What it supports |
 | --- | --- |
-| `plans/00-hardware-experiments.md` | Experiment A (no 32 kHz crystal, 3.3 mA floor); Experiment B (PCAS12, pruning 710 to 91, 107.7 s cold start, no backup supply, ANTENNA OPEN) |
+| `plans/00-hardware-experiments.md` | Experiment A (no 32 kHz crystal, 3.3 mA floor); Experiment B (PCAS12, pruning 710 to 91, the 107.7 s re-fix after a 60 s rail cut, no backup supply, ANTENNA OPEN) |
 | `plans/implemented/14-gps-pcas.md` | PCAS02/03/04/10 definitions and defaults; no PCAS00; rate and pruning ordering |
 | `plans/implemented/15-gps-power.md` | Burst window design, UART wake limitation, standby vs rail cycling, 15 s duty ceiling |
 | `plans/18-gps-motion.md` | Motion detector phase 1, no consumer, 60 s hold, immediate exit, blind spots, hardware gate |
@@ -1277,7 +1295,7 @@ current saving.
 | --- | --- | --- |
 | M5Stack Unit GPS v1.1 | Product page, 5 V 31.64 mA, ATGM336H with AT6668, no backup supply listed | https://docs.m5stack.com/en/unit/Unit-GPS%20v1.1 |
 | ATGM336H module | Manual C90770_ATGM336H-5N31, 2016-12-26: GPS+BDS below 25 mA typical, 100 mA peak, VBAT 10 uA | https://github.com/Albresky/GPS-ATGM336H-Library/blob/master/manual/C90770_ATGM336H-5N31_2016-12-26.pdf |
-| AT6558 chip (AT6668 proxy) | Datasheet: 23 mA typical BD+GPS tracking, standby below 10 uA, active antenna feed 2.4 to 3.6 mA | https://dratek.cz/docs/produkty/1/1045/at6558.pdf |
+| AT6668 chip | Datasheet DS-AT6668 V1.4 section 4.3 page 9: 37 mA typical BDS+GPS+GLONASS at 3.3 V, 8 uA battery backup, 30 uA sleep, 2.5 mA antenna detect, 45 to 65 mA antenna short-circuit limit | https://cdn.icstop.com/upload/pdfs/ca/27/ca27336d2c2d0967e811278e3e53824a.pdf |
 | CASIC protocol | Multimode navigation receiver protocol: `$PCAS` family, `BA CE` framing, AID-INI, CFG-NAVX, MON-HW. The printed checksum formula is wrong; the L76K id-first form is the one the code uses | http://www.espruino.com/files/CASIC_en.pdf |
 | Quectel L76K | GNSS protocol specification v1.1: PCAS02, PCAS03, PCAS04, PCAS10, GSV and GSA fields, id-first checksum | https://www.waveshare.net/w/upload/d/dd/Quectel_L76K_GNSS_Protocol_Specification_V1.1.pdf |
 | Espruino Bangle.js 2 | Worked PCAS00, PCAS02, PCAS03 and PCAS04 examples on an AT6558; note that rates below 500 ms need pruning | https://www.espruino.com/Bangle.js2+Technical |
