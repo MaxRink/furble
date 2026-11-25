@@ -330,6 +330,14 @@ is still running or did not pass, so merging without CI is never silent. Actions
 was off from 2026-10-21 to 2026-11-13 and PRs merged with no CI; see
 `plans/95-engineering-lessons.md`. A PR whose paths no workflow covers (web-installer only, say) passes the
 no-checks rule only with `--allow-no-checks "<reason>"`, which is printed.
+That rule decides from the workflow files at the pull request's base commit,
+read at `baseRefOid` through `gh api repos/{owner}/{name}/contents/.github/workflows?ref=<oid>`,
+and never from the checkout. A clone can be stale against the base, and a PR
+edits only its own copy of a workflow, so a local tree cannot show what CI
+should have run. The gate fails closed, with exit 2, when the base oid is
+missing, when the API errors, and when a base workflow cannot be fetched or
+parsed. The checkout-reading local mode is a test-only fallback: `--pr` is
+mandatory, so the gate never reaches it. See `plans/331-merge-gate-base.md`.
 Record the audit in `plans/NN-review-feedback.md`. Run the final
 gate set before pushing or merging: `python3 tools/pre_review.py --base
 origin/master`, `sh sim/scripts/check-doc-tokens.sh`, and the review-thread
