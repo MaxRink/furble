@@ -337,6 +337,10 @@ probe again. On the first boot M5GFX stores `AUTODETECT=0` in its own NVS
 namespace once, because the pinned seed differs from the result. Later boots
 write the same value, which NVS skips.
 
+Superseded: the retry returns `board_unknown`, not a known board, so the
+probes this section places under M5Unified did run. See the follow-up at the
+end of this document and `plans/352-m5gfx-board-pin.md`.
+
 Not covered by the pin: M5Unified drives GPIO 46 high on every S3, and with no
 detected board its own check pulls GPIO 4, 8, 10, 12 and 38, probes I2C on
 GPIO 45 and 48, and drives GPIO 13 and 15 only on a Capsule match. These are
@@ -477,3 +481,29 @@ value is a minimum, so a 100 us pulse may still reset the part. Until a bench
 run records the reset margin, treat this as a specification mismatch rather
 than a reported failure. Bench: scope RESETn on the Waveshare board and count
 power cycles to link up. That bench run belongs with verification step 1.
+
+## Follow-up: the M5GFX pin did not suppress the probes
+
+`plans/352-m5gfx-board-pin.md` corrects this document. The pin
+`M5GFX_BOARD=board_t::board_M5StampS3` is real and it does fold M5GFX's own
+probe code away, because `board` becomes a constant that no arm of
+`M5GFX::autodetect` matches. What it did not do is leave a known board:
+`board_M5StampS3` has no arm in M5GFX 0.2.27, so every guard was false, the
+function reached `board = board_t::board_unknown;`, and the retry loop in
+`M5GFX::init_impl` called it five times. `Display.getBoard()` was therefore
+`board_unknown`, and M5Unified did exactly what the section above describes for
+an unpinned image: its ESP32-S3 identification probe pulled GPIO 4, 8, 10, 12
+and 38, the unknown-board pin row opened `In_I2C` on GPIO 39 and 38, and the
+board settled on the AtomS3Lite fallback.
+
+`patches/m5gfx_board_noprobe.patch` now returns the display-less StampS3 family
+from the ESP32-S3 section before the first probe, so `autodetect()` returns
+`board_M5StampS3` and M5Unified skips both the probe and the internal bus.
+`Platform::init` also turns the RTC and IMU drivers off for this board through
+`FURBLE_HAS_INTERNAL_I2C 0`. The two claims above that "`patches/m5gfx_board.patch`
+folds every probe away and `autodetect()` returns `board_unknown` at once on
+each retry" and that "the M5GFX pin does not change this, because M5Unified
+receives `board_unknown` either way" are superseded.
+
+Hardware gate 2 above is still outstanding, and it is still the gate that would
+observe the pins on a real board.

@@ -93,6 +93,18 @@ Platform &Platform::getInstance(void) {
     // Preserve the Plus2 RTC alarm flag until consumeTimedWake() runs. Other
     // boards disable the RTC IRQ again below.
     cfg.disable_rtc_irq = false;
+#if !FURBLE_HAS_INTERNAL_I2C
+    // No internal I2C bus, so M5Unified must not be given one. Its per-board
+    // pin table decides that, and it reads the row from the board M5GFX
+    // reports: with the M5GFX pin that row is `board_M5StampS3`, whose internal
+    // I2C pins are both 255, so In_I2C gets the closed sentinel port and M5GFX
+    // rejects every transaction on it. Its RTC and IMU drivers still call
+    // begin() on that port, so turn them off here rather than let them ask for
+    // a bus that does not exist. The unknown-board row would have put that bus
+    // on GPIO 38/39, which are not an I2C bus on this board.
+    cfg.internal_rtc = false;
+    cfg.internal_imu = false;
+#endif
     M5.begin(cfg);
 
     const auto &board = Board::profile();

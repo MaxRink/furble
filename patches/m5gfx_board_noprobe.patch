@@ -1,0 +1,21 @@
+--- a/src/M5GFX.cpp
++++ b/src/M5GFX.cpp
+@@ -1684,4 +1684,18 @@
+     std::uint32_t pkg_ver = m5gfx::get_pkg_ver();
++#if defined ( M5GFX_BOARD )
++    // furble: a pinned board that has no arm in this switch is returned here,
++    // before the first probe. The StampS3 family has no panel, touch or PMIC
++    // for M5GFX to identify, so any probe could only drive the pins of a
++    // different board.
++    switch (board)
++    {
++    case board_t::board_M5StampS3:
++    case board_t::board_M5StampS3Bat:
++    case board_t::board_M5StampS3Mini:
++      goto init_clear;
++    default: break;
++    }
++#endif
+ // ESP_LOGD(LIBRARY_NAME, "pkg_ver : %02x  /  board:%d", (int)pkg_ver, (int)board);
+     switch (pkg_ver) {
+     case 0: // EFUSE_PKG_VERSION_ESP32S3:     // QFN56

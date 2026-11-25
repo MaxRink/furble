@@ -8,8 +8,10 @@ it matches the shipped behaviour. For a friendly overview see the top level
 ## Controllers and build environments
 
 furble builds six release firmware images. M5Unified detects the exact board at
-runtime, so one image covers a board family. Every environment also has a
-matching `-debug` variant that adds verbose logging and the USB serial console.
+runtime, so one image covers a board family. An image that runs on exactly one
+board pins it at build time instead, which skips detection and drops the other
+boards' probes and display drivers. Every environment also has a matching
+`-debug` variant that adds verbose logging and the USB serial console.
 
 | Build env | Chip | Flash | MQTT | Boards it runs on | Touch | Notes |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -18,7 +20,7 @@ matching `-debug` variant that adds verbose logging and the USB serial console.
 | `m5stick-s3` | ESP32-S3 | 8 MB | Yes | M5StickS3 | No | Native USB Serial/JTAG. PSRAM enabled. Only board with Sleep while connected and Watchdog. |
 | `m5stack-core` | ESP32 | 4 MB | No | M5Stack Core (Basic/Gray) | No | No Auto off or Low battery. |
 | `m5stack-core2` | ESP32 | 16 MB | Yes | M5Stack Core2, M5Tough (untested) | Yes | PSRAM enabled. On-screen shutter buttons, touch calibration, power-button screen lock. The firmware detects the M5Tough and branches for it, but it has not been verified on hardware. |
-| `waveshare-s3-eth` | ESP32-S3 | 16 MB | Yes | Waveshare ESP32-S3-ETH | No | Display-less wired-Ethernet profile; hardware verification remains outstanding. |
+| `waveshare-s3-eth` | ESP32-S3 | 16 MB | Yes | Waveshare ESP32-S3-ETH | No | Display-less wired-Ethernet profile pinned to the display-less StampS3, so no M5 probe touches the W5500 pins; hardware verification remains outstanding. |
 
 The opt-in HTTPS WebUI is compiled for the four 8 MB/16 MB profiles. The
 M5StickS3 is **not yet a supported WebUI target**. With WiFi connected, the

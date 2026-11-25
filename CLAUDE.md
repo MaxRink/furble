@@ -40,10 +40,13 @@ CLAUDE.md whose directory it touches.
   `post:patches/m5gfx_board.py` pins it in `M5GFX::autodetect`, so the other
   boards' panel and touch drivers drop out. StickC Plus/Plus2 and Core2/Tough
   share an image and keep autodetect. Waveshare pins `board_M5StampS3`, which
-  has no M5GFX probe, so no probe runs on the W5500 pins. Core debug fits its
-  OTA slot again and is a mandatory CI lane; with the u-blox driver (plan 321)
-  and the esp_err codes in error logs (plan 106) it is 1,740,400 bytes, 400
-  under the slot. Log V2 writes
+  has no M5GFX arm, so the patch returns it from the ESP32-S3 section before
+  the first probe and nothing drives the W5500 pins; the assignment alone was
+  not enough, see plans/352-m5gfx-board-pin.md. `tools/check_m5gfx_pinning.py`
+  fails a branch where a pin stops taking effect. Core debug fits its OTA slot
+  again and is a mandatory CI lane; with the u-blox driver (plan 321) and the
+  esp_err codes in error logs (plan 106) it is 1,740,400 bytes, 400 under the
+  slot. Log V2 writes
   one record as three vprintf calls, so `FurbleCrashLog` joins fragments up to
   the newline.
 - Per-env `sdkconfig.<env>` files are committed at the repo root. Debug envs

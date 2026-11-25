@@ -414,6 +414,31 @@ Deviations from the brief, with reasons:
   Pager) must override `RegisterBus::delayUs()`: the Pager paragraph above
   records that, and the AXP2101-only T-Beam is unaffected.
 
+### Board pinning and the probes it removes
+
+`platformio.ini` pins `M5GFX_BOARD` on the images that run on exactly one M5
+board, and `post:patches/m5gfx_board.py` applies
+`patches/m5gfx_board.patch` before M5GFX is compiled. Two things follow, and
+both matter to a port:
+
+- M5GFX drops a probe only while the pinned board matches an arm of its
+  `autodetect` switch. A pinned board that M5GFX cannot configure, such as
+  the display-less `board_M5StampS3` on the Waveshare ESP32-S3-ETH, used to
+  fall through to `board_unknown`, and the retry loop in `M5GFX::init_impl`
+  ran every ESP32-S3 probe five times. The patch now returns that family
+  before the first probe. Plan [352](352-m5gfx-board-pin.md) holds the defect,
+  the mechanism and the artifact evidence.
+- M5Unified keys its own identification probe and its In_I2C master off
+  `Display.getBoard()`. A known board skips the probe, and a pin table row
+  without internal I2C pins leaves `In_I2C` closed. On the Waveshare that is
+  the `board_M5StampS3` row, 255 on both pins. `FURBLE_HAS_INTERNAL_I2C` in
+  `include/FurbleBoardCaps.h` states the same thing to `Platform::init`.
+
+A new board inherits the rule: pin it only when M5GFX names it in an
+`autodetect` arm, or add it to the patch's no-probe case list with its own
+evidence. `tools/check_m5gfx_pinning.py` fails a branch where either half
+regresses.
+
 ### Verification evidence (hal-2 at fa44daff)
 
 Fixed-version builds (`FURBLE_VERSION=1.0.0-ci FURBLE_TEST=0`,
