@@ -76,6 +76,15 @@ class WiFi {
   /** Return a snapshot for the console status commands. */
   static status_t getStatus(void);
 
+  /**
+   * True while the station netif is up with an assigned IPv4 address.
+   *
+   * This asks esp-netif instead of reading the cached address, so a lost DHCP
+   * lease is visible before any event reaches the app layer. The WebUI
+   * readiness gate uses it; MQTT asks the same question of every netif.
+   */
+  static bool hasAssignedAddress(void);
+
   /** Return the current NTP time when a sync has completed. */
   static bool getNtpTimesync(Camera::timesync_t &timesync);
 

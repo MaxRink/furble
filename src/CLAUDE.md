@@ -231,6 +231,13 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   Every NVS write of the access point runs under `g_ApStorageMutex`. A clear
   bumps `g_ApGeneration` and cancels the queued work; a save captured under an
   older generation is dropped, so a clear is never undone.
+  `IP_EVENT_STA_LOST_IP` clears `g_GotIp` and the cached address on the same
+  task and notifies the worker, without stopping the station, the NTP client or
+  the driver: esp-netif resets the address to 0 before it posts the event, and
+  the DHCP client recovers on its own. A queued NTP start declines because
+  `startNtp()` re-reads `g_GotIp`. `hasAssignedAddress()` answers readiness
+  from that live station netif instead of the cache; the WebUI gate and its
+  status page call it, and MQTT asks the same question of every netif.
 - `FurbleMemoryPressure`: the runtime load-shedding governor. `tick()` runs
   right after `CrashLog::update()` in both UI loops and reads the internal heap
   once a second. AMBER pauses the WebUI server, RED also pauses the MQTT
@@ -255,11 +262,15 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   lock; include/CLAUDE.md records the hook lock order. Policy and thresholds live in the header and are
   host tested in `tests/host/memory_pressure_test.cpp`.
 - `FurbleWebUI`: HTTPS-only browser and REST surface. Keep it fail closed on
-  password or TLS identity errors. Camera actions stay on `UI::sendRequest`,
-  settings stay on `Provision::apply`, and held releases remain owned until the
-  Control queue accepts them or the camera session ends. Complete Control
-  session replacement expires held ownership by generation, including when
-  disconnect and reconnect both occur between WebUI supervisor polls.
+  password or TLS identity errors. `networkReady()` is
+  `WiFi::hasAssignedAddress()`, and `/api/status` reports the same answer, so a
+  lost DHCP lease closes the listener instead of serving on a dead address; the
+  cached `WiFi::status_t` keeps the last address until the next event. Camera
+  actions stay on `UI::sendRequest`, settings stay on `Provision::apply`, and
+  held releases remain owned until the Control queue accepts them or the camera
+  session ends. Complete Control session replacement expires held ownership by
+  generation, including when disconnect and reconnect both occur between WebUI
+  supervisor polls.
   `HTTPD_MAX_SOCKETS` counts client sockets; ESP-IDF reserves three additional
   internal sockets. The production value is two clients (five total).
   `reloadSetting()` must not create the TLS identity task while `web_ui` is off.

@@ -184,7 +184,16 @@ each board. The 4 MB profiles do not compile the WebUI.
 
 The server stays closed when the WebUI setting is off, WiFi has no address, the
 companion password is unset or unreadable, the TLS identity cannot be loaded,
-or the internal-heap floor is not met. An out-of-memory start keeps the stored
+or the internal-heap floor is not met.
+
+"WiFi has no address" is answered from the live interface, not from the last
+address the station reported. `WiFi::hasAssignedAddress()` asks esp-netif for an
+interface that is up with a non-zero IPv4 address, and `/api/status` reports the
+same answer. A lost DHCP lease therefore closes the listener on the next
+supervisor poll and shows `connected:false` with an empty `ip` until a new lease
+arrives. Before plan 342 the cached address kept both claims alive: the page and
+the listener said connected on an address that no longer carried traffic, while
+MQTT, which already queried the live interfaces, had recovered on its own. An out-of-memory start keeps the stored
 identity; only a rejected certificate/key pair is replaced. Changing the
 companion password remains a USB console or provisioning action; clearing it
 closes the listener on the next WebUI reload.
