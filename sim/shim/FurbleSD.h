@@ -57,7 +57,10 @@ class SD {
   }
 
   uint32_t loggedPoints() const { return m_Points; }
-  void powerOff() {}
+
+  // The simulator has no writer task, so the handshake always settles and the
+  // simulated power-off path keeps cutting the rail.
+  bool powerOff() { return true; }
 
   card_state_t cardState() const {
     return isSupported() ? card_state_t::MOUNTED : card_state_t::UNMOUNTED;

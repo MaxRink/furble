@@ -35,7 +35,7 @@ sh sim/scripts/run-boundary-conformance.sh
 | Headless UI | `src/main.cpp` with `FURBLE_NO_DISPLAY` | module doubles, no SDL/M5GFX |
 | W5500 Ethernet | `src/FurbleEthernet.cpp` | SPI, GPIO, W5500 MAC/PHY, netif, event loop |
 | IR RMT | `src/FurbleIR.cpp` | RMT TX channel, encoder and task API |
-| SD writer | `src/FurbleSD.cpp`, `src/FurbleGPX.cpp` | SD/SPI/VFS mount over host POSIX I/O |
+| SD writer | `src/FurbleSD.cpp`, `src/FurbleGPX.cpp` | SD/SPI/VFS mount over host POSIX I/O, plus a held unmount for a writer that misses the power-off handshake |
 | Feedback | `src/FurbleFeedback.cpp` | M5 speaker/LED/vibration and LVGL timer |
 | CompanionGatt | `src/FurbleCompanion.cpp` | MockNimBLE server/advertising and file-backed Preferences |
 | TLS/socket | `src/FurbleWebUI.cpp` | precise allocator-instrumented TLS/socket layer |

@@ -4,16 +4,21 @@
 // The production writer task, mount decision, settings export/import surface
 // and GPX encoder run unchanged. The SD/SPI host layer is a double that maps
 // the firmware mount point to a build-directory folder, so real POSIX file I/O
-// and the GPIO configuration are exercised.
+// and the GPIO configuration are exercised. The double can also hold the
+// unmount, which is how a hung writer that never answers the power-off
+// handshake is represented.
 
+#include <atomic>
 #include <cerrno>
 #include <chrono>
+#include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <mutex>
 #include <string>
 #include <thread>
 
@@ -48,6 +53,14 @@ uint32_t g_MountCalls = 0;
 uint32_t g_UnmountCalls = 0;
 sdmmc_card_t g_Card;
 
+// A hung writer: the unmount double blocks until the test releases it, the way
+// a slow mount or FAT flush outlasts the production power-off handshake.
+std::mutex g_UnmountMutex;
+std::condition_variable g_UnmountCondition;
+bool g_UnmountHang = false;
+bool g_UnmountReleased = false;
+std::atomic<uint32_t> g_UnmountEntered {0};
+
 void check(bool condition, const char *message) {
   if (!condition) {
     std::cerr << "SD FAIL: " << message << '\n';
@@ -57,6 +70,25 @@ void check(bool condition, const char *message) {
 
 void sleepMs(uint32_t ms) {
   std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+}
+
+void holdUnmount(void) {
+  if (!g_UnmountHang) {
+    return;
+  }
+  g_UnmountEntered.fetch_add(1);
+  std::unique_lock<std::mutex> lock(g_UnmountMutex);
+  check(
+      g_UnmountCondition.wait_for(lock, std::chrono::seconds(60), [] { return g_UnmountReleased; }),
+      "the test never released the hung unmount");
+}
+
+void releaseUnmount(void) {
+  {
+    const std::lock_guard<std::mutex> lock(g_UnmountMutex);
+    g_UnmountReleased = true;
+  }
+  g_UnmountCondition.notify_all();
 }
 
 bool waitFor(Furble::SD::card_state_t state, uint32_t timeout_ms = 5000) {
@@ -261,6 +293,51 @@ void runRemoved(void) {
   std::cout << "sd.removed mount_failures=3 gpx_disabled=1\n";
 }
 
+// A writer that never answers the shutdown handshake must not look like a
+// settled card. The production code waits, extends once, names the writer and
+// refuses, so the platform keeps the rails up instead of losing the track tail.
+void runShutdownRefused(void) {
+  clearMount();
+  initializeSettings(true);
+  setupBoard();
+
+  Furble::SD::init();
+  check(waitFor(Furble::SD::card_state_t::MOUNTED), "SD card did not mount for the refusal case");
+  check(Furble::SD::getInstance().logPoint(point(5, 52.52, 13.405)),
+        "the refusal-case point was not queued");
+  const std::string path = gpxPath(5);
+  check(waitForFile(path), "the refusal-case GPX file was not created");
+
+  // The writer reaches the unmount double and stays there, which is the shape of
+  // a slow mount or FAT flush at the moment the user asks for power off.
+  g_UnmountHang = true;
+  const auto start = std::chrono::steady_clock::now();
+  const bool acknowledged = Furble::SD::getInstance().powerOff();
+  const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - start);
+
+  check(!acknowledged, "a hung writer still reported an acknowledged power off");
+  check(elapsed.count() >= 8000,
+        "the refusal came before the 3000 ms wait and its 5000 ms extension elapsed");
+  check(g_UnmountEntered.load() > 0, "the writer never reached the unmount double");
+  check(BoundaryHost::logContains("did not acknowledge power off in 3000 ms"),
+        "the extended-wait log is missing");
+  check(BoundaryHost::logContains("refusing to power off"), "the refusal log is missing");
+  check(Furble::SD::getInstance().cardState() == Furble::SD::card_state_t::MOUNTED,
+        "the refusal did not leave the card mounted");
+  std::cout << "sd.shutdown_refused acknowledged=" << (acknowledged ? 1 : 0)
+            << " wait_ms=" << elapsed.count() << " unmount_entered=" << g_UnmountEntered.load()
+            << '\n';
+
+  // Release the stuck write. The writer then completes the close, so the track
+  // the refusal protected is the same one a later power off would leave.
+  releaseUnmount();
+  check(waitFor(Furble::SD::card_state_t::UNMOUNTED),
+        "the released writer did not finish the unmount");
+  check(fileIsComplete(path), "the protected GPX track lost its tail");
+  std::cout << "sd.shutdown_refused.released unmounted=1 track_complete=1\n";
+}
+
 }  // namespace
 
 extern "C" {
@@ -297,6 +374,7 @@ esp_err_t esp_vfs_fat_sdcard_unmount(const char *base_path, sdmmc_card_t *card) 
   check(base_path != nullptr && std::strcmp(base_path, MOUNT) == 0,
         "the production unmount point did not match the host mount");
   check(card == &g_Card, "the production unmount did not pass the mounted card");
+  holdUnmount();
   g_Mounted = false;
   return ESP_OK;
 }
@@ -325,6 +403,8 @@ int main(int argc, char **argv) {
     runFull();
   } else if (mode == "removed") {
     runRemoved();
+  } else if (mode == "shutdown-refused") {
+    runShutdownRefused();
   } else {
     std::cerr << "unknown SD boundary mode: " << mode << '\n';
     return 2;

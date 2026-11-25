@@ -80,7 +80,11 @@ pure state machine.
 The SD boundary compiles `src/FurbleSD.cpp` with `FURBLE_SD_MOUNT_POINT` set to
 `/tmp/furble-boundary-sd`. That define is a host-only override; the firmware
 default remains `/sd` and no device behavior changes. The same target sets
-`FURBLE_GPX_DIRECTORY` for `src/FurbleGPX.cpp`.
+`FURBLE_GPX_DIRECTORY` for `src/FurbleGPX.cpp`. Its unmount double can hold the
+writer, so `boundary-sd-shutdown-refused` runs the production power-off
+handshake against a writer that never answers: the test asserts the 3 s wait,
+its 5 s extension, the refusal return value and both log lines, then releases
+the write and checks the protected track still has its tail.
 
 The `gpx-writer` suite sets `FURBLE_GPX_DIRECTORY` to an absolute sandbox in
 the build tree, deliberately long. `GPX::open()` sizes its path buffer from

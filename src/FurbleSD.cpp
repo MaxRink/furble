@@ -46,6 +46,8 @@ constexpr const char *SETTINGS_FILE = FURBLE_SD_MOUNT_POINT "/furble/settings.tx
 constexpr uint32_t SD_SPI_FREQUENCY_KHZ = 10000;
 constexpr UBaseType_t WRITER_QUEUE_LENGTH = 8;
 constexpr uint32_t WRITER_STACK_BYTES = 6144;
+// the refusal log names the task the scheduler actually runs
+constexpr const char *WRITER_TASK_NAME = "sd";
 // same priority as the UI main task, SD calls block anyway, so a long mount
 // competes with the UI for CPU instead of preempting it
 constexpr UBaseType_t WRITER_PRIORITY = 1;
@@ -53,6 +55,9 @@ constexpr UBaseType_t WRITER_PRIORITY = 1;
 // rides out a transient point backlog instead of dropping the request
 constexpr uint32_t REQUEST_SEND_TIMEOUT_MS = 100;
 constexpr uint32_t POWER_OFF_WAIT_MS = 3000;
+// a slow mount or FAT flush can outlast the first wait, so one extension covers
+// it before the shutdown is refused
+constexpr uint32_t POWER_OFF_EXTENDED_WAIT_MS = 5000;
 constexpr uint8_t MAX_FAILURES = 3;
 
 // The StickC profiles have no SD slot. Making that a compile-time fact lets the
@@ -760,7 +765,7 @@ void SD::init(void) {
   sd.m_Queue = xQueueCreate(WRITER_QUEUE_LENGTH, sizeof(message_t));
   sd.m_PowerOffDone = xSemaphoreCreateBinary();
   if ((sd.m_Queue == nullptr) || (sd.m_PowerOffDone == nullptr)
-      || (xTaskCreate([](void *param) { static_cast<SD *>(param)->taskLoop(); }, "sd",
+      || (xTaskCreate([](void *param) { static_cast<SD *>(param)->taskLoop(); }, WRITER_TASK_NAME,
                       WRITER_STACK_BYTES, &sd, WRITER_PRIORITY, nullptr)
           != pdTRUE)) {
     ESP_LOGE(LOG_TAG, "Failed to create the SD writer task.");
@@ -789,11 +794,33 @@ bool SD::logPoint(const GPX::point_t &point) {
   return xQueueSend(m_Queue, &message, 0) == pdTRUE;
 }
 
-void SD::powerOff(void) {
+bool SD::powerOff(void) {
   if (!request(request_t::POWER_OFF)) {
-    return;
+    // no card slot, no writer task, or a queue that never took the request:
+    // there is no acknowledgement to wait for, so the caller keeps its own off
+    // path
+    return true;
   }
-  xSemaphoreTake(m_PowerOffDone, pdMS_TO_TICKS(POWER_OFF_WAIT_MS));
+
+  if (xSemaphoreTake(m_PowerOffDone, pdMS_TO_TICKS(POWER_OFF_WAIT_MS)) == pdTRUE) {
+    return true;
+  }
+
+  // A slow mount or FAT flush can outlast the first wait. Give the writer one
+  // more chance before concluding it is wedged.
+  ESP_LOGW(LOG_TAG,
+           "SD writer task '%s' did not acknowledge power off in %u ms, extending the wait.",
+           WRITER_TASK_NAME, static_cast<unsigned>(POWER_OFF_WAIT_MS));
+  if (xSemaphoreTake(m_PowerOffDone, pdMS_TO_TICKS(POWER_OFF_EXTENDED_WAIT_MS)) == pdTRUE) {
+    return true;
+  }
+
+  // Cutting the rail here would truncate the track tail and leave the
+  // filesystem dirty, so the caller must keep the device alive instead.
+  ESP_LOGE(LOG_TAG,
+           "SD writer task '%s' did not acknowledge power off after %u ms, refusing to power off.",
+           WRITER_TASK_NAME, static_cast<unsigned>(POWER_OFF_WAIT_MS + POWER_OFF_EXTENDED_WAIT_MS));
+  return false;
 }
 
 SD::card_state_t SD::cardState(void) const {

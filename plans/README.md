@@ -122,6 +122,7 @@ the git history. They are no longer ownership rows.
 | [332-imu-motion-scale-review-feedback.md](332-imu-motion-scale-review-feedback.md) | Review-feedback record for PR 504: the bytes decode to 83.0 and 70.3 mg, both durations obey the 50 Hz sample rule, the MPU-6886 count size is an assumption everywhere and no register value changed, plus the two component pages the change left contradicting the code |
 | [332-sim-rtc.md](332-sim-rtc.md) | Battery-backed RTC in the simulator: seeded calendar chip, `FURBLE_SIM` TimeKeeper seam, and the stale, valid, late and lost deep-sleep scenarios (#455) |
 | [332-review-feedback.md](332-review-feedback.md) | Review-feedback record for the simulator RTC model: the unasserted production epoch, the leaked `.rtc` sidecar, the completed scenario table, and the board-row duplication |
+| [341-sd-shutdown-ack.md](341-sd-shutdown-ack.md) | SD power-off handshake: check the acknowledgement, extend the wait once, and refuse the shutdown instead of cutting the rail on an open track |
 | [342-wifi-lost-ip.md](342-wifi-lost-ip.md) | Lost DHCP lease: `IP_EVENT_STA_LOST_IP` clears the WiFi cache, and the WebUI gate and status page read the live station address |
 | [342-review-feedback.md](342-review-feedback.md) | Review-feedback record for the lost-lease fix: doc paragraph, deliberate-stop gate test, and five recorded follow-ups |
 | [339-mqtt-retry-backoff.md](339-mqtt-retry-backoff.md) | Capped exponential MQTT retry backoff and a WiFi-style failure classifier, so an outage never blocks the hub |

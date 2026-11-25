@@ -106,7 +106,10 @@ Public headers for the app layer in src/, one header per module
 - `FurbleSD.h` and `FurbleGPX.h`: all SD and GPX file I/O runs on the SD
   writer task. Other tasks use only the non-blocking `SD::request()` /
   `SD::logPoint()` API and the atomic state accessors, and never call GPX
-  methods directly.
+  methods directly. `SD::powerOff()` is the one blocking call: it returns
+  `false` when the writer did not acknowledge inside its timeout plus one
+  extension, and every caller must treat that as "the card may still be
+  writing" and keep the rails up.
 - `FurbleAutoOff.h` contains the pure disconnected-idle policy predicate.
   Charging blocks auto-off unless the explicit `AUTO_OFF_CHARGING` opt-in is
   enabled; callers must sample charging telemetry and keep policy ticks free of

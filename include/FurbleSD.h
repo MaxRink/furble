@@ -60,8 +60,15 @@ class SD {
   /** Queue a GPX track point for the writer task, never blocks. */
   bool logPoint(const GPX::point_t &point);
 
-  /** Close the track and unmount from the writer task, waits for completion. */
-  void powerOff(void);
+  /**
+   * Close the track and unmount from the writer task, waits for completion.
+   *
+   * Returns true when there is no writer to wait for or it acknowledged, so
+   * tracking and the filesystem are settled. Returns false when the writer did
+   * not acknowledge inside the timeout plus its one extension, which means the
+   * card may still be writing; the caller must then keep the rails up.
+   */
+  bool powerOff(void);
 
   /** Return the card state as last published by the writer task. */
   card_state_t cardState(void) const;

@@ -414,6 +414,40 @@ row. The figure is repeated by plans 98 and 111 and by the model README, yet
 the original trace is not in the tree. Treat it as a reported observation, not
 a reproducible measurement, until the run is re-recorded.
 
+### 3.6 The orderly power-off sequence
+
+`Platform::powerOff()` is the single exit point for the Off menu, the low
+battery shutdown, the auto-off policy and the console `power off` command, so
+the order of the three steps below is fixed:
+
+1. `TimeKeeper` flushes the wall-clock checkpoint.
+2. `SD::powerOff()` posts `POWER_OFF` to the SD writer task. The writer closes
+   the GPX track and unmounts the card, then gives the completion semaphore.
+   The caller waits 3 s, extends the wait once by 5 s, and refuses if the
+   writer still has not answered.
+3. Only then does the rail drop, through the M5PM1 `shutdown()` on the StickS3
+   or `M5.Power.powerOff()` on the AXP192 and IP5306 boards.
+
+A refused shutdown returns `false` and leaves the rail up. `Platform::powerOff()`
+returns before it disables the watchdog, and `UI::doPowerOff()`, which had
+already disabled it for the teardown, re-arms it from the saved `WATCHDOG`
+setting and clears its power-off latch after logging `Power off failed,
+resuming.`. The user sees the device stay on with the camera already
+disconnected, the panel still lit, and GPX logging still running, because the
+track the writer is stuck on is the data the refusal protects. On a critically
+low battery the warning box returns and the countdown restarts on the next
+one-second pass. Cutting the rail instead, which is what happened before plan
+341, truncates the GPX tail and leaves FAT dirty.
+
+A board with no SD slot, and a writer queue that never took the request, have
+nothing to acknowledge, so those cases keep the plain off path and the rail
+drops as before.
+
+Evidence: `code`. The two bounds are `POWER_OFF_WAIT_MS` and
+`POWER_OFF_EXTENDED_WAIT_MS` in `src/FurbleSD.cpp`, and the refusal is asserted
+by the `boundary-sd-shutdown-refused` host test. The 8 s total bound is well
+inside the 45 s M5PM1 watchdog the UI disables before it calls in.
+
 ## 4. Opportunity catalog
 
 Each entry gives the change, the current behavior, the evidence label, the

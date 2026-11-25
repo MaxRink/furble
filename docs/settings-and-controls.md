@@ -344,6 +344,14 @@ supported SD card slot.
 | Import Settings | n/a | action | n/a | Read settings from the SD card. |
 | Card Info | n/a | page | n/a | Mount state, capacity, free space. |
 
+A dedicated SD writer task owns the card and the open track file; the UI, GPS
+and companion tasks only queue requests and snapshots. Power off is a
+handshake with that task: it queues the close, waits 3 s for the writer to
+close the track and unmount, extends the wait by 5 s once for a slow mount or
+FAT flush, and refuses the shutdown if the writer still has not answered, so
+the device stays on instead of dropping the rail on an open track. Track points
+queued while the writer is stuck are dropped, never blocking the caller.
+
 ### MQTT (8 MB+ debug/console builds)
 
 MQTT is available only in the documented 8 MB and 16 MB board profiles and is
