@@ -5568,6 +5568,19 @@
       "capabilities": [],
       "expected_exit": 0,
       "certified": true
+    },
+    {
+      "path": "sim/scenarios/waveshare-no-gps-uart.txt",
+      "suite": "power-gate",
+      "owner": "sim-power",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "gps"
+      ],
+      "expected_exit": 0,
+      "certified": true
     }
   ]
 }

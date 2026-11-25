@@ -75,6 +75,12 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   parser is owned by GPS and guarded by its mutex; UI and console consumers use
   `getStatusSnapshot()` and must not retain parser references. GPX logging only
   builds a point and queues it via `SD::logPoint()`, never does file I/O.
+  The UART pins come from `Board::gpsPins()`, never from a local `M5.getPin()`
+  call. A row with `GpsPinSource::NONE` has no GPS UART: `getInstance()`
+  installs no driver, logs once and stores `ABSENT`, and `enable()`/`disable()`
+  return early while the task is missing, so a stored GPS setting cannot create
+  a receiver or wind down a driver that was never installed. Never add a pin
+  fallback for that case.
   Burst power cycling uses a bounded degraded retry state. It releases
   `NO_LIGHT_SLEEP` during backoff, ignores late UART lock reacquisition, and
   reacquires only after moving to the time-bounded acquisition probe. Keep the

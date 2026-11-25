@@ -426,6 +426,14 @@ The `clock.ms` query reports the current virtual millisecond clock.
 
 ### Effective `seed` names
 
+The `board` seed selects the profile row the run exercises. `detected` (the
+default) keeps the board M5Unified reports, `stamps3` selects the row the
+Waveshare ESP32-S3-ETH image reports (`board_M5StampS3`) and `core` the M5Stack
+Core's. It reaches `Board::profile()` through the simulator's strong
+`furble_sim_board_profile` hook, so a scenario can assert a row the simulated
+build does not detect. The two seeded rows are the ones that name no GPS UART.
+See plans/336-gps-pin-seam.md.
+
 All listed seeds are applied before simulated `Platform::init()` and before the
 UI is constructed. These byte settings are:
 `brightness`, `inactivity`, `display_off`, `display_mode` (0 GUI, 1 console),

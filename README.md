@@ -575,6 +575,12 @@ See [docs/supported-hardware.md](docs/supported-hardware.md) for the full unit
 matrix. GPS support can be enabled in `furble` in `Settings->GPS`, the camera
 must also be configured to request location data.
 
+The M5Stack Core and the Waveshare ESP32-S3-ETH have no GPS UART. Grove
+Port A on the Core is the internal I2C bus that carries the IP5306 and the
+MPU6886, so it cannot host a UART, and GPIO13 on the Waveshare is the W5500
+SPI clock. Both report the receiver absent, and the GPS setting does not
+create one.
+
 Phone GPS fallback. When the wired receiver has no fresh fix and the companion
 app is connected with phone GPS enabled, furble uses the phone fix. On iOS,
 fixes continue while the app is in the background. On Android, continuous

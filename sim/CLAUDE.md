@@ -53,6 +53,13 @@ include initial platform power configuration. Companion rig selection and
 persisted Companion state are separate concerns and must not be combined with
 this startup ordering contract.
 
+`Sim::setBoardProfile()` selects the `Board::profile()` row a scenario exercises
+and is applied with the scenario settings, before platform construction,
+because the platform and the GPS task read the row. `sim/FurblePlatformSim.cpp`
+defines the strong form of the weak `furble_sim_board_profile` hook that
+`src/FurbleBoard.cpp` declares under `FURBLE_SIM`, and firmware links the weak
+default, so a run without the `board` seed keeps the detected board.
+
 `sim/FurblePlatformSim.cpp` records the `IMU` and `FB_OUTPUT` values loaded at
 the platform boundary as `boot_settings_imu` and `boot_settings_fb_output`.
 These are query-only observations of boot inputs. The SDL platform still forces

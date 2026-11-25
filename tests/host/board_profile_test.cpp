@@ -38,6 +38,14 @@
 // AXP192 power key through R401 and C401. The LED and IR polarity columns are
 // new: the StickC and Plus emitter cathodes are on the pin while the Plus2
 // drives an NPN base, so both rows differ between those families.
+//
+// The GPS pin columns are new too. A board whose Port A carries the GPS UART
+// asks M5Unified, which is what FurbleGPS did directly before the seam, so the
+// row pins stay -1 and the resolved values come from M5Unified's table for the
+// detected board. Two boards name no GPS UART at all, because their Port A
+// belongs to another peripheral: the Core, where it is the internal I2C bus
+// with the IP5306 and MPU6886 on it, and the Waveshare ESP32-S3-ETH, where
+// GPIO13 is the W5500 SPI clock. See plans/336-gps-pin-seam.md.
 
 #include <cstring>
 #include <iostream>
@@ -46,6 +54,7 @@
 #include "FurbleBoard.h"
 #include "FurblePinShare.h"
 
+using Furble::Board::GpsPinSource;
 using Furble::Board::MotionWake;
 using Furble::Board::Profile;
 using Furble::Board::TimedWake;
@@ -124,17 +133,27 @@ struct Expected {
   bool gpsRail;
   bool ledActiveLow;
   bool irMarkLow;
+  GpsPinSource gps;
+  int gpsRx;
+  int gpsTx;
 };
 
 // clang-format off
 const Expected EXPECTED[] = {
-    {m5::board_t::board_M5StickC, "StickC", true, true, true, true, 95, true, 9, MotionWake::DIRECT, 35, TimedWake::NONE, -1, true, false, true, true, false, 48, false, true, false, 10, true, true, true},
-    {m5::board_t::board_M5StickCPlus, "StickC+", true, true, true, true, 120, true, 9, MotionWake::DIRECT, 35, TimedWake::RTC_ALARM, -1, true, false, true, true, false, 48, true, true, false, 10, true, true, true},
-    {m5::board_t::board_M5StickCPlus2, "StickC+2", true, true, false, false, 200, true, 19, MotionWake::NONE, -1, TimedWake::RTC_ALARM, 4, false, false, true, true, false, 32, true, true, false, 19, false, false, false},
-    {m5::board_t::board_M5StickS3, "StickS3", true, true, false, true, 250, false, 46, MotionWake::PMIC_GPIO, 13, TimedWake::PMIC_TIMER, -1, false, false, true, true, true, 32, true, false, false, -1, true, true, false},
-    {m5::board_t::board_M5Stack, "Core", true, false, false, false, 110, false, -1, MotionWake::NONE, -1, TimedWake::NONE, -1, false, true, false, true, false, 32, true, false, false, -1, false, true, false},
-    {m5::board_t::board_M5StackCore2, "Core2", true, true, true, true, 500, true, -1, MotionWake::NONE, -1, TimedWake::NONE, -1, false, true, true, true, false, 32, true, false, true, -1, true, true, false},
-    {m5::board_t::board_M5Tough, "Tough", true, true, true, true, 390, true, -1, MotionWake::NONE, -1, TimedWake::RTC_ALARM, -1, true, true, true, true, false, 32, true, false, false, -1, true, true, false},
+    {m5::board_t::board_M5StickC, "StickC", true, true, true, true, 95, true, 9, MotionWake::DIRECT, 35, TimedWake::NONE, -1, true, false, true, true, false, 48, false, true, false, 10, true, true, true,
+   GpsPinSource::BOARD_SUPPORT, -1, -1},
+    {m5::board_t::board_M5StickCPlus, "StickC+", true, true, true, true, 120, true, 9, MotionWake::DIRECT, 35, TimedWake::RTC_ALARM, -1, true, false, true, true, false, 48, true, true, false, 10, true, true, true,
+   GpsPinSource::BOARD_SUPPORT, -1, -1},
+    {m5::board_t::board_M5StickCPlus2, "StickC+2", true, true, false, false, 200, true, 19, MotionWake::NONE, -1, TimedWake::RTC_ALARM, 4, false, false, true, true, false, 32, true, true, false, 19, false, false, false,
+   GpsPinSource::BOARD_SUPPORT, -1, -1},
+    {m5::board_t::board_M5StickS3, "StickS3", true, true, false, true, 250, false, 46, MotionWake::PMIC_GPIO, 13, TimedWake::PMIC_TIMER, -1, false, false, true, true, true, 32, true, false, false, -1, true, true, false,
+   GpsPinSource::BOARD_SUPPORT, -1, -1},
+    {m5::board_t::board_M5Stack, "Core", true, false, false, false, 110, false, -1, MotionWake::NONE, -1, TimedWake::NONE, -1, false, true, false, true, false, 32, true, false, false, -1, false, true, false,
+   GpsPinSource::NONE, -1, -1},
+    {m5::board_t::board_M5StackCore2, "Core2", true, true, true, true, 500, true, -1, MotionWake::NONE, -1, TimedWake::NONE, -1, false, true, true, true, false, 32, true, false, true, -1, true, true, false,
+   GpsPinSource::BOARD_SUPPORT, -1, -1},
+    {m5::board_t::board_M5Tough, "Tough", true, true, true, true, 390, true, -1, MotionWake::NONE, -1, TimedWake::RTC_ALARM, -1, true, true, true, true, false, 32, true, false, false, -1, true, true, false,
+   GpsPinSource::BOARD_SUPPORT, -1, -1},
   // The Waveshare ESP32-S3-ETH row has no removed switch to copy from. It pins
   // the board facts recorded in plans/349-waveshare-board-row.md: no PMIC, no
   // battery, no RTC part, no IR emitter, no IMU, no speaker, no vibration motor,
@@ -143,10 +162,13 @@ const Expected EXPECTED[] = {
   // FURBLE_HAS_SD stays 1 for that image.
   {m5::board_t::board_M5StampS3, "Waveshare", false, false, false, false, 0, false, -1,
    MotionWake::NONE, -1, TimedWake::NONE, -1, false, false, false, false, false, 32,
-   false, false, false, -1, false, false, false},
+   false, false, false, -1, false, false, false,
+   GpsPinSource::NONE, -1, -1},
   // Every other board the CoreS3 included.
-    {m5::board_t::board_unknown, "M5", false, false, false, false, 0, false, -1, MotionWake::NONE, -1, TimedWake::NONE, -1, false, false, true, true, false, 32, false, false, false, -1, false, true, false},
-    {m5::board_t::board_M5StackCoreS3, "M5", false, false, false, false, 0, false, -1, MotionWake::NONE, -1, TimedWake::NONE, -1, false, false, true, true, false, 32, false, false, false, -1, false, true, false},
+    {m5::board_t::board_unknown, "M5", false, false, false, false, 0, false, -1, MotionWake::NONE, -1, TimedWake::NONE, -1, false, false, true, true, false, 32, false, false, false, -1, false, true, false,
+   GpsPinSource::BOARD_SUPPORT, -1, -1},
+    {m5::board_t::board_M5StackCoreS3, "M5", false, false, false, false, 0, false, -1, MotionWake::NONE, -1, TimedWake::NONE, -1, false, false, true, true, false, 32, false, false, false, -1, false, true, false,
+   GpsPinSource::BOARD_SUPPORT, -1, -1},
 };
 // clang-format on
 
@@ -179,6 +201,8 @@ int main() {
     check(p.gpsRail == e.gpsRail, n + " gps rail");
     check(p.ledActiveLow == e.ledActiveLow, n + " led polarity");
     check(p.irMarkLow == e.irMarkLow, n + " ir mark polarity");
+    check(p.gpsPinSource == e.gps && p.gpsRxPin == e.gpsRx && p.gpsTxPin == e.gpsTx,
+          n + " gps pins");
   }
 
   // Only the Plus2 puts the LED and the IR emitter on one pin, which is what
@@ -214,6 +238,60 @@ int main() {
   M5.board = m5::board_t::board_M5StickCPlus2;
   check(&Furble::Board::profile() == &Furble::Board::profileFor(m5::board_t::board_M5StickCPlus2),
         "profile follows the detected board");
+
+  // gpsPins() resolves the source its row names. A row that asks M5Unified
+  // returns whatever the shim reports for Port A unchanged, so the resolved
+  // pins follow the detected board, and a board M5Unified cannot name keeps -1.
+  // A row that names no source resolves nothing and claims no pin, which is what
+  // keeps the Core's internal I2C bus and the Waveshare W5500 clock out of the
+  // UART.
+  const struct {
+    int32_t pin1;
+    int32_t pin2;
+  } SHIM_PORT_A[] = {
+      {10, 9 },
+      {-1, -1},
+      {22, 21}
+  };
+  for (const auto &e : EXPECTED) {
+    M5.board = e.board;
+    const std::string n = e.name;
+    for (const auto &portA : SHIM_PORT_A) {
+      M5.portAPin1 = portA.pin1;
+      M5.portAPin2 = portA.pin2;
+      int8_t rx = -2;
+      int8_t tx = -2;
+      const bool resolved = Furble::Board::gpsPins(rx, tx);
+      if (e.gps == GpsPinSource::NONE) {
+        check(!resolved, n + " names no gps uart");
+        check(rx == -1 && tx == -1, n + " claims no gps pin");
+        continue;
+      }
+      check(resolved, n + " gps pins resolve");
+      check(rx == portA.pin1 && tx == portA.pin2, n + " gps pins come from M5Unified");
+    }
+  }
+
+  // A board M5Unified cannot describe carries its own pins, as the T-Beam
+  // Supreme row in plans/322 plans to (RX 9, TX 8). PROFILE and NONE have no
+  // shipped row yet, so this copies a real row and overrides only the three
+  // GPS pin columns.
+  Profile custom = Furble::Board::profileFor(m5::board_t::board_unknown);
+  custom.gpsPinSource = GpsPinSource::PROFILE;
+  custom.gpsRxPin = 9;
+  custom.gpsTxPin = 8;
+  M5.portAPin1 = 15;
+  M5.portAPin2 = 13;
+  int8_t rx = -2;
+  int8_t tx = -2;
+  check(Furble::Board::gpsPins(custom, rx, tx), "PROFILE gps pins resolve");
+  check(rx == 9 && tx == 8, "PROFILE gps pins come from the row, not M5Unified");
+
+  custom.gpsPinSource = GpsPinSource::NONE;
+  rx = -2;
+  tx = -2;
+  check(!Furble::Board::gpsPins(custom, rx, tx), "NONE gps pins do not resolve");
+  check(rx == -1 && tx == -1, "NONE leaves both gps pins at -1");
 
   if (g_Failures == 0) {
     std::cout << "board-profile: PASS\n";

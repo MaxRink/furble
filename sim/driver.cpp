@@ -505,6 +505,15 @@ void validateSeed(const std::string &name, const std::string &value) {
   } else if (name == "ble_max_clients") {
     parseUnsigned(value);
     return;
+  } else if (name == "board") {
+    // Which board profile row the run exercises. "detected" keeps the board
+    // M5Unified reports; "stamps3" is the Waveshare ESP32-S3-ETH image's row and
+    // "core" the M5Stack Core's, the two whose Port A carries no GPS UART.
+    if (value != "detected" && value != "stamps3" && value != "core") {
+      std::cerr << "Invalid board: " << value << '\n';
+      std::exit(2);
+    }
+    return;
   } else if (name == "gps_baud") {
     if (value != "auto" && value != "0" && value != "9600" && value != "115200") {
       std::cerr << "Invalid gps_baud: " << value << '\n';
@@ -2407,6 +2416,19 @@ void removePreferences(void) {
 }
 
 void applyScenarioSettings(void) {
+  // The profile row is picked before boot, because Platform::init() and the GPS
+  // task read it. A run without the seed keeps the detected board.
+  const auto board = scenarioSettings.find("board");
+  if (board != scenarioSettings.end()) {
+    if (board->second == "stamps3") {
+      Sim::setBoardProfile(m5::board_t::board_M5StampS3);
+    } else if (board->second == "core") {
+      Sim::setBoardProfile(m5::board_t::board_M5Stack);
+    } else {
+      Sim::setBoardProfile(m5::board_t::board_unknown);
+    }
+  }
+
   saveByte("brightness", Settings::BRIGHTNESS);
   saveByte("inactivity", Settings::INACTIVITY);
   saveByte("display_off", Settings::DISPLAY_OFF);

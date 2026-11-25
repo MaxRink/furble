@@ -110,6 +110,12 @@ baud is 9600; select `Auto` or a fixed 115200 under `Settings` > `GPS` >
 | LilyGO T-Beam Supreme M10S | u-blox MAX-M10S | SMA | Not a furble board yet | On board | Receiver supported, board not ported. See plan 318. |
 | LilyGO T-Watch Ultra, T-LoRa Pager | u-blox MIA-M10Q | Built in | Not furble boards yet | On board | Receiver supported, boards not ported. See plan 318. |
 
+The M5Stack Core and the Waveshare ESP32-S3-ETH have no GPS UART. Grove
+Port A on the Core is the internal I2C bus that carries the IP5306 and the
+MPU6886, so it cannot host a UART, and GPIO13 on the Waveshare is the W5500
+SPI clock. Both report the receiver absent, and the GPS setting does not
+create one.
+
 The older Mini GPS/BDS Unit is end of life and runs at 9600 baud. `Auto` probes
 115200, 9600, 38400, 57600, 19200, and 4800, and requires two checksummed NMEA
 sentences before declaring the receiver present. If probing fails, furble marks

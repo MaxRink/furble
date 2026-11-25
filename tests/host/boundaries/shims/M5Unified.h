@@ -69,6 +69,11 @@ enum pin_name_t {
   sd_spi_mosi,
   sd_spi_miso,
   sd_spi_sclk,
+  // Port A, the external connector the GPS unit uses. A test sets the members
+  // below to the value the real M5Unified pin table returns for its board;
+  // they default to -1, which is the missing-pin value of that table.
+  port_a_pin1,
+  port_a_pin2,
 };
 
 class Speaker_Class {
@@ -163,12 +168,20 @@ class M5Unified {
     if (name == sd_spi_cs) {
       return sdCsPin;
     }
+    if (name == port_a_pin1) {
+      return portAPin1;
+    }
+    if (name == port_a_pin2) {
+      return portAPin2;
+    }
     return -1;
   }
   void update() {}
 
   board_t board = board_M5StickS3;
   int32_t sdCsPin = 4;
+  int32_t portAPin1 = -1;
+  int32_t portAPin2 = -1;
   Display_Class Display;
   Speaker_Class Speaker;
   Power_Class Power;

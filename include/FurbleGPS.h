@@ -921,6 +921,8 @@ class GPS {
 
   // receiver detection and autobaud, touched only on the GPS task
   std::atomic<uint8_t> m_ReceiverState {static_cast<uint8_t>(receiver_state_t::UNKNOWN)};
+  /** The one-shot "no GPS UART on this board" log guard. */
+  bool m_NoUartLogged = false;
   std::atomic<uint32_t> m_DetectedBaud {0};
   Casic::Autobaud m_Autobaud;
   std::atomic<bool> m_ProbePending = false;

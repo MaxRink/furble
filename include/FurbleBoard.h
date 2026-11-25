@@ -24,6 +24,13 @@ enum class MotionWake : uint8_t {
   PMIC_GPIO,  // IMU INT on M5PM1 GPIO4, PMIC IRQ on a SoC GPIO
 };
 
+/** Where the GPS UART pins come from. */
+enum class GpsPinSource : uint8_t {
+  BOARD_SUPPORT,  // M5Unified's pin table, M5.getPin(port_a_pin1/2)
+  PROFILE,        // the row carries the pins
+  NONE,           // the board has no GPS UART
+};
+
 /**
  * Runtime facts about one board model.
  *
@@ -77,6 +84,11 @@ struct Profile {
   bool ledActiveLow;  // the LED lights on a low pin
   bool irMarkLow;     // the emitter lights on a low pin, so the RMT output is
                       // inverted to keep the optical frame the right way up
+  // Where the GPS UART pins come from. BOARD_SUPPORT asks M5Unified's Port A
+  // table, PROFILE reads the two columns below, NONE claims no pin at all.
+  GpsPinSource gpsPinSource;
+  int8_t gpsRxPin;  // PROFILE source, -1 when none
+  int8_t gpsTxPin;  // PROFILE source, -1 when none
 };
 
 /** The row for a board model. Unknown boards get a no-hardware row. */
@@ -84,6 +96,21 @@ const Profile &profileFor(m5::board_t board);
 
 /** The row for the running board. Valid after Platform::init(). */
 const Profile &profile(void);
+
+/**
+ * Resolve the GPS UART pins of one row.
+ *
+ * BOARD_SUPPORT asks M5Unified's pin table, which maps Port A per SoC target
+ * and reports -1 for a board it does not know; PROFILE reads gpsRxPin and
+ * gpsTxPin from the row. Returns false for GpsPinSource::NONE, and then both
+ * outputs are -1 as they are for a missing pin. A shipped M5 row keeps
+ * BOARD_SUPPORT because M5Unified describes its Port A; a new board, which
+ * M5Unified cannot describe, sets PROFILE and carries the pins in its row.
+ */
+bool gpsPins(const Profile &row, int8_t &rx, int8_t &tx);
+
+/** Resolve the GPS UART pins of the running board. See gpsPins(row, ...). */
+bool gpsPins(int8_t &rx, int8_t &tx);
 
 }  // namespace Board
 }  // namespace Furble

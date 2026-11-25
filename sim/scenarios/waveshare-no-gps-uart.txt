@@ -1,0 +1,11 @@
+# The Waveshare ESP32-S3-ETH row names no GPS UART. M5Unified's board_M5StampS3
+# row claims Port A 15/13 and GPIO13 is the W5500 SPI clock (FurbleEthernet
+# ETH_SPI_SCLK_GPIO), so GPS installs no UART, claims no pin and reports the
+# receiver absent even with the GPS setting on. See plans/336-gps-pin-seam.md.
+seed board stamps3
+seed gps true
+wait 5000
+assert gps.enabled 0
+assert gps.receiver absent
+report waveshare-no-gps-uart.json
+exit

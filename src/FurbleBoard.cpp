@@ -86,30 +86,45 @@ namespace {
 // RTC backed, IR pin, motion wake, motion pin, timed wake, hold pin, PMIC
 // click streak, SD slot, power policies, power-off path, modem sleep,
 // brightness floor, feedback sound, light, vibration, LED pin, GPS rail, LED
-// active low, IR mark low.
+// active low, IR mark low, GPS pin source, GPS RX pin, GPS TX pin.
+//
+// A row with a GPS UART leaves the pins to M5Unified: its pin table describes
+// Port A per SoC target and reports -1 for a board it does not know. A board
+// M5Unified cannot describe sets GpsPinSource::PROFILE and carries its own pins
+// here. A board whose Port A belongs to another peripheral sets
+// GpsPinSource::NONE and claims no pin at all: the Core, where Port A is the
+// internal I2C bus, and the Waveshare ESP32-S3-ETH, where it is the W5500 SPI
+// clock. See plans/336-gps-pin-seam.md.
 //
 // clang-format off
 constexpr Profile STICKC        = {"StickC", {true,  true,  true,  true}, 95, true, 9,
     MotionWake::DIRECT, 35, TimedWake::NONE, -1, true, false, true, true, false, 48, false,
-    true, false, 10, true, true, true};
+    true, false, 10, true, true, true,
+    GpsPinSource::BOARD_SUPPORT, -1, -1};
 constexpr Profile STICKC_PLUS   = {"StickC+", {true,  true,  true,  true}, 120, true, 9,
     MotionWake::DIRECT, 35, TimedWake::RTC_ALARM, -1, true, false, true, true, false, 48,
-    true, true, false, 10, true, true, true};
+    true, true, false, 10, true, true, true,
+    GpsPinSource::BOARD_SUPPORT, -1, -1};
 constexpr Profile STICKC_PLUS2  = {"StickC+2", {true,  true,  false, false}, 200, true, 19,
     MotionWake::NONE, -1, TimedWake::RTC_ALARM, 4, false, false, true, true, false, 32,
-    true, true, false, 19, false, false, false};
+    true, true, false, 19, false, false, false,
+    GpsPinSource::BOARD_SUPPORT, -1, -1};
 constexpr Profile STICKS3       = {"StickS3", {true,  true,  false, true}, 250, false, 46,
     MotionWake::PMIC_GPIO, 13, TimedWake::PMIC_TIMER, -1, false, false, true, true, true,
-    32, true, false, false, -1, true, true, false};
+    32, true, false, false, -1, true, true, false,
+    GpsPinSource::BOARD_SUPPORT, -1, -1};
 constexpr Profile CORE          = {"Core", {true,  false, false, false}, 110, false, -1,
     MotionWake::NONE, -1, TimedWake::NONE, -1, false, true, false, true, false, 32, true,
-    false, false, -1, false, true, false};
+    false, false, -1, false, true, false,
+    GpsPinSource::NONE, -1, -1};
 constexpr Profile CORE2         = {"Core2", {true,  true,  true,  true}, 500, true, -1,
     MotionWake::NONE, -1, TimedWake::NONE, -1, false, true, true, true, false, 32, true,
-    false, true, -1, true, true, false};
+    false, true, -1, true, true, false,
+    GpsPinSource::BOARD_SUPPORT, -1, -1};
 constexpr Profile TOUGH         = {"Tough", {true,  true,  true,  true}, 390, true, -1,
     MotionWake::NONE, -1, TimedWake::RTC_ALARM, -1, true, true, true, true, false, 32, true,
-    false, false, -1, true, true, false};
+    false, false, -1, true, true, false,
+    GpsPinSource::BOARD_SUPPORT, -1, -1};
 // The Waveshare ESP32-S3-ETH is a mains or PoE node. It has no PMIC, no
 // battery and no switchable rail, so there is nothing for a software power off
 // to switch: with no PMIC, M5Unified's Power_Class::powerOff() arms no wake
@@ -122,13 +137,15 @@ constexpr Profile TOUGH         = {"Tough", {true,  true,  true,  true}, 390, tr
 // plans/349-waveshare-board-row.md.
 constexpr Profile WAVESHARE    = {"Waveshare", {false, false, false, false}, 0, false, -1,
     MotionWake::NONE, -1, TimedWake::NONE, -1, false, false, false, false, false, 32,
-    false, false, false, -1, false, false, false};
+    false, false, false, -1, false, false, false,
+    GpsPinSource::NONE, -1, -1};
 // An unrecognized board has no trustworthy battery backend. The Waveshare
 // ESP32-S3-ETH in particular is a mains/PoE node with no battery or PMIC, so
 // M5Unified's fallback values must not become a fake battery percentage.
 constexpr Profile UNKNOWN       = {"M5", {false, false, false, false}, 0, false, -1,
     MotionWake::NONE, -1, TimedWake::NONE, -1, false, false, true, true, false, 32, false,
-    false, false, -1, false, true, false};
+    false, false, -1, false, true, false,
+    GpsPinSource::BOARD_SUPPORT, -1, -1};
 // clang-format on
 }  // namespace
 
@@ -155,8 +172,51 @@ const Profile &profileFor(m5::board_t board) {
   }
 }
 
+#if defined(FURBLE_SIM)
+// The simulator has no M5 hardware to detect, so a scenario picks the row it
+// exercises through this hook. Firmware links the weak default; host tests keep
+// it too, and sim/FurblePlatformSim.cpp supplies the strong definition.
+extern "C" __attribute__((weak)) bool furble_sim_board_profile(m5::board_t *board) {
+  (void)board;
+  return false;
+}
+#endif
+
 const Profile &profile(void) {
+#if defined(FURBLE_SIM)
+  m5::board_t board = M5.getBoard();
+  if (furble_sim_board_profile(&board)) {
+    return profileFor(board);
+  }
+#endif
   return profileFor(M5.getBoard());
+}
+
+bool gpsPins(const Profile &row, int8_t &rx, int8_t &tx) {
+  rx = -1;
+  tx = -1;
+  switch (row.gpsPinSource) {
+    case GpsPinSource::BOARD_SUPPORT:
+      // The one M5Unified pin lookup on the GPS path. Port A is pin_name_t
+      // port_a_pin1/port_a_pin2, which alias ex_i2c_scl/ex_i2c_sda, and its
+      // per-target table fills them from the row for the detected board or
+      // from the board_unknown row. A missing pin is 255 in that uint8_t table
+      // and lands in the int8_t copy as -1.
+      rx = static_cast<int8_t>(M5.getPin(m5::port_a_pin1));
+      tx = static_cast<int8_t>(M5.getPin(m5::port_a_pin2));
+      return true;
+    case GpsPinSource::PROFILE:
+      rx = row.gpsRxPin;
+      tx = row.gpsTxPin;
+      return true;
+    case GpsPinSource::NONE:
+      break;
+  }
+  return false;
+}
+
+bool gpsPins(int8_t &rx, int8_t &tx) {
+  return gpsPins(profile(), rx, tx);
 }
 
 }  // namespace Board
