@@ -358,7 +358,9 @@ disproves it. The trap text above is corrected in place, following the
 Package versions behind the citations: ESP-IDF 5.5.3 (`framework-espidf`),
 esptool 4.11.0 (`tool-esptoolpy`), M5GFX 0.2.27. Paths without a `docs/`,
 `plans/`, `src/`, `include/` or `tests/` prefix are inside the ESP-IDF or
-esptool package.
+esptool package. The M5GFX paths keep the library's own `src/lgfx/` prefix and
+live in the pinned `libdeps` copy, not in this tree. Review record:
+[473-review-feedback.md](473-review-feedback.md).
 
 1. RMT "holds its own APB power lock" was wrong.
    `components/esp_driver_rmt/src/rmt_common.c:230` selects

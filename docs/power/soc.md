@@ -90,7 +90,7 @@ table (IDF `esp_pm/Kconfig:72-79`).
 | `NO_LIGHT_SLEEP` | `control` | Entire connection when `SLEEP_CONN` is off | `src/FurbleControl.cpp:1118-1134` |
 | `NO_LIGHT_SLEEP` | `gps` | Predicted NMEA burst windows, acquisition, resync, probe | `src/FurbleGPS.cpp:485-501` |
 | `NO_LIGHT_SLEEP` | `charging` | While the battery reports charging | `src/FurbleUI.cpp:9906-9914` |
-| `APB_FREQ_MAX` | `display` | Panel on or dimmed, released only when the panel sleeps | `src/FurbleUI.cpp:371-374`, `1316-1318`, `1333-1335` |
+| `APB_FREQ_MAX` | `display` | Panel on or dimmed, released only when the panel sleeps | `src/FurbleUI.cpp:511`, `:1879`, `:1900` |
 | `CPU_FREQ_MAX` | none | Never acquired by application code | `include/FurblePower.h:22`, `src/FurblePower.cpp:16-31` |
 
 A held `ESP_PM_APB_FREQ_MAX` lock maps to `PM_MODE_APB_MAX`, and
@@ -771,9 +771,9 @@ This is a documentation and build consistency item, not a separate power lever.
   LEDC timer to the RC_FAST clock so the PWM can keep running through light
   sleep and the lock can be dropped there too.
 - **Current behavior:** `UI::UI()` acquires the lock unconditionally, before
-  LVGL starts (`src/FurbleUI.cpp:371-374`). It is released only in
+  LVGL starts (`src/FurbleUI.cpp:511`). It is released only in
   `sleepDisplay()` and reacquired in `wakeDisplay()`
-  (`src/FurbleUI.cpp:1316-1318`, `1333-1335`). Dimming keeps the lock, which is
+  (`src/FurbleUI.cpp:1879`, `:1900`). Dimming keeps the lock, which is
   why the audit's dimmed case is 50.6 mA with only 10.4 mA of display
   (`plans/98:240-258`).
 - **Evidence:** inferred (code-read), modeled (plan 98). Plan 12 records that M5GFX
@@ -802,7 +802,7 @@ This is a documentation and build consistency item, not a separate power lever.
   Confirm the APB lock count returns to zero when the panel sleeps. Run the
   analyzer on menu idle and dim. On the StickS3, run the LEDC clock change with
   a 30 minute display soak and a camera shutter run.
-- **Citation:** `src/FurbleUI.cpp:371-374`, `1316-1318`, `1333-1335`,
+- **Citation:** `src/FurbleUI.cpp:511`, `:1879`, `:1900`,
   `plans/implemented/12-display-off.md:116-124`, `plans/98:240-258`, IDF `pm_impl.c:228-241`, `555-568`,
   IDF `esp_driver_spi/src/gpspi/spi_master.c:1281-1290`, IDF
   `components/hal/esp32s3/include/hal/ledc_ll.h:30-40`,
@@ -996,7 +996,7 @@ These were examined and do not justify a power change on the current evidence.
 | RMT IR clock | `RMT_CLK_SRC_DEFAULT` is safe, but not because the driver locks APB. It holds `ESP_PM_CPU_FREQ_MAX` without DMA and `ESP_PM_NO_LIGHT_SLEEP` with DMA (`components/esp_driver_rmt/src/rmt_common.c:230`), and the IR channel never sets `with_dma`. furble sets the CPU maximum to 160 MHz at runtime (`src/FurblePlatform.cpp:84`), where APB is 80 MHz, and the channel divisor is fixed at creation (`components/esp_driver_rmt/src/rmt_tx.c:324`) before the lock is taken (`:774`). The code always disables. | `src/FurbleIR.cpp:230-238`, `src/CLAUDE.md:84-95` |
 | I2S speaker clock | The IDF I2S driver holds the APB lock while the channel is enabled, and `M5.Speaker.end()` closes the amplifier between patterns. | `src/FurbleFeedback.cpp:14-20`, `166-170`, `330-352` |
 | Speaker, vibration, LED | All three are bracketed on demand and shut down between events. No idle cost found. | `src/FurbleFeedback.cpp:150-170`, `320-360` |
-| IR and SD tasks | Both block on a queue with `portMAX_DELAY`; no periodic polling. | `src/FurbleIR.cpp:219`, `src/FurbleSD.cpp:744-751` |
+| IR and SD tasks | Both block on a queue with `portMAX_DELAY`; no periodic polling. | `src/FurbleIR.cpp:219`, `src/FurbleSD.cpp:818` |
 | MQTT task | Waits on a task notification with a computed next-deadline timeout, not a fixed poll. | `src/FurbleMQTT.cpp:306-333` |
 | Disconnect waits | The waits use 20 ms `vTaskDelay` slices and feed the watchdog; no busy spin. | `src/FurbleControl.cpp:771-778`, `844-852`, `src/FurbleControl.h:98` |
 | Manual light sleep | No `esp_light_sleep_start()` call exists. Only `esp_pm` automatic sleep is used. | `plans/06:70-80` |
