@@ -2008,6 +2008,9 @@ std::string queryValueUnscoped(const std::string &key) {
     if (sub == "connect_failures") {
       return std::to_string(mqtt.simConnectFailures());
     }
+    if (sub == "retry_delay") {
+      return std::to_string(mqtt.simRetryDelayMs());
+    }
     if (sub == "blocked") {
       return mqtt.simBlocked() ? "yes" : "no";
     }

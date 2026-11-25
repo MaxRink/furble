@@ -330,9 +330,13 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
 The host transport charges its modelled 6 KiB esp-mqtt client task to the heap
 model and returns `ESP_ERR_NO_MEM` when it cannot. A refused connection emits
 both the error and the disconnect event, and a small wall-clock worker retries
-the socket at the component's one-second cadence, so the production
-`MAX_CONNECT_FAILURES` accounting runs. `FURBLE_SIM_MQTT_FAST_RECONNECT` only
-shortens that host retry cadence for a bounded scenario.
+the socket at the component's one-second cadence, so the production retry
+accounting runs. The production owner retires that transport on the first
+retryable failure and rebuilds it on the backoff deadline, so the worker's
+cadence only decides how fast the first failure arrives.
+`FURBLE_SIM_MQTT_FAST_RECONNECT` only shortens that cadence. The backoff gaps
+themselves run on the virtual clock, so a scenario crosses them with `wait` and
+reads `mqtt.retry_delay`.
 
 ## Determinism caveats
 

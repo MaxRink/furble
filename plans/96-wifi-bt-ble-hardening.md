@@ -306,7 +306,9 @@ medium, low.
 - C5. MQTT gives up permanently after 10 failures. MEDIUM, CONFIRMED (33c).
   MAX_CONNECT_FAILURES=10 with flat 10 s retries means a ~100 s broker or
   router outage silences the hub until manual intervention
-  (src/FurbleMQTT.cpp:490-501). Fix: capped exponential backoff retrying
+  (src/FurbleMQTT.cpp:490-501). Resolved by
+  [339-mqtt-retry-backoff.md](339-mqtt-retry-backoff.md). Fix: capped
+  exponential backoff retrying
   forever; keep the hard block only for identified auth failures.
 - C6. Secrets readable over the BLE companion service. MEDIUM, CONFIRMED
   (33b, 90). settingValue returns raw WIFI_PSK and MQTT_PASS

@@ -1,19 +1,27 @@
-# Plan 314 PR 6: the memory pressure governor pauses the MQTT client at RED and
-# lets it return once the restored client fits above RED again.
+# Plan 314 PR 6 with the plan 339 retry policy: the memory pressure governor
+# pauses the MQTT client at RED and lets it return once the pool clears RED.
 #
 # Run with FURBLE_SIM_MQTT=1 against a closed port (sim/scripts/run-memory.sh).
-# After boot the owner and the plain client leave 17,713 bytes free. Three 4 KiB
-# squeezes take it to 5,425, below the 8,192 RED floor. After three readings the
-# governor pauses the client. The firmware stops and destroys it, so its 3 KiB
-# worker and the 3,480 bytes esp_mqtt_client_init allocated (client, config
-# storage and the two 1,536-byte buffers) come back: 11,977 free, between the
-# RED floor and the RED exit, so the level holds RED. They stay back for the
-# whole pause, because a memory pause is not a connect failure and does not
-# retry. The host transport's own objects are not device memory and are not
-# counted, so these figures are the same on macOS and Linux. Releasing the
-# squeeze clears the 19,456 RED exit, so after five clear readings the governor
-# steps up to AMBER, which does not pause MQTT, and the client starts again
-# through its own gate.
+# The retry policy retires the client between attempts, so after boot the owner
+# alone leaves 24,265 bytes free instead of 17,713: no esp-mqtt client and no
+# 3 KiB worker are resident while the broker is unreachable. Four 4 KiB squeezes
+# take free to 7,881, below the 8,192 RED floor. After three readings the
+# governor pauses MQTT; the retry policy had already retired the client, so the
+# pause releases nothing and the pool holds at 7,881 with the owner and the UI
+# intact. A memory pause is not a connect failure and does not consume a retry
+# step. Releasing the squeeze clears the RED exit, so the governor steps up and
+# the client is admitted again through its own gate: the next attempt fails,
+# leaves 24,265 free and counts the second failure, which proves the retry ran
+# after the pause.
+#
+# The settled level is NORMAL, not AMBER. Under the old policy the resident
+# client held 17,713 free, which is below the 20,480 AMBER exit (12,288 plus the
+# 8 KiB WebUI restore), so AMBER was stable by construction. The retry policy
+# retires the client, so free returns to 24,265, above the AMBER exit, and the
+# ladder necessarily leaves AMBER after EXIT_TICKS readings. The governor takes
+# one reading per second, so the level a fixed wait happens to observe depends on
+# how many readings host scheduling produced, and the settle below is asserted on
+# the virtual clock instead.
 seed hw_profile sticks3
 seed heap_internal_free 34873
 seed heap_internal_largest 34873
@@ -21,25 +29,40 @@ seed wifi_connected true
 wait 3000
 
 assert mqtt.task created
-assert heap.free 17713
+assert heap.free 24265
 assert heap.pressure normal
 
 action heap-squeeze
 action heap-squeeze
 action heap-squeeze
-assert heap.free 5425
+action heap-squeeze
+assert heap.free 7881
 wait 5000
 assert heap.pressure red
-assert heap.free 11977
-wait 5000
-assert heap.free 11977
+assert heap.free 7881
 assert mqtt.blocked no
+assert heap.alloc_failures 0
 
 action heap-release
-wait 8000
-assert heap.pressure amber
-assert heap.free 17713
+# Cross the second attempt's 20 s retry deadline on the virtual clock, then take
+# two one-second steps so the owner task runs and the refused attempt reaches
+# the host transport, which is wall-clock.
+wait 20000
+wait 1000
+wait 1000
+# The attempt is counted on a wall-clock observation, like the boot phase.
+assert-eventually 30000 mqtt.connect_failures 2
+# The count above means the retry ran after the pause and that the client is
+# retired again, so the pool is back at 24,265 with the next deadline 40 s out.
+# Settle the governor on the virtual clock: NORMAL is its attractor here, since
+# 24,265 clears both exits and even a resident client at about 17,700 stays
+# above the 12,288 AMBER floor. Asserting a fixed number of waits instead would
+# sample whatever level host scheduling had reached.
+assert-eventually-virtual 30000 heap.pressure normal
+assert heap.free 24265
+assert mqtt.blocked no
 assert heap.alloc_failures 0
+assert heap.last_failed_task none
 assert ui.page main
 assert platform.watchdog armed
 

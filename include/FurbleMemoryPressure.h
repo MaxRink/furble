@@ -73,7 +73,8 @@ inline constexpr threshold_t ENTER[] = {
  *   start needs those bytes too. MQTT reports them through
  *   `setMQTTStartExtra()` from the same calculation its start gate uses, and
  *   RED adds them. Otherwise RED could clear inside the start gate's floor and
- *   each refused start would spend the retry budget until MQTT blocks.
+ *   each refused start would spend a retry backoff step on an attempt that
+ *   cannot fit.
  * Each service still passes its own start gate when it returns.
  */
 inline constexpr size_t RESTORE_BYTES[] = {

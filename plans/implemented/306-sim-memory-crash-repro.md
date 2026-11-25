@@ -60,11 +60,12 @@ claim TLS parity. Those boundaries are recorded in `sim/CLAUDE.md`.
 
 The optional native MQTT build now models the esp-mqtt client task's 6 KiB
 allocation at the transport boundary. When it cannot fit, `startClient()`
-returns an error and the production `MAX_CONNECT_FAILURES` path runs. A refused
-socket now emits both the error and the disconnect event, and a wall-clock
-worker retries at the component's one-second cadence, so ten attempts finish in
-a bounded scenario. `FURBLE_SIM_MQTT_FAST_RECONNECT` only shortens that host
-cadence.
+returns an error and the production failure accounting runs; at the time that
+was the `MAX_CONNECT_FAILURES` limit, and the follow-up section below records
+what replaced it. A refused socket now emits both the error and the disconnect
+event, and a wall-clock worker retries at the component's one-second cadence,
+so the first failures of an outage arrive inside a bounded scenario.
+`FURBLE_SIM_MQTT_FAST_RECONNECT` only shortens that host cadence.
 
 ### Crash record
 
@@ -91,9 +92,9 @@ task. That limit is documented instead of overstated.
 | `e2e/memory-webui-fail-closed.txt` | 13,543/12,788, WebUI on: supervisor created, server blocked, production gate log, 10 s retry, fed watchdog. |
 | `e2e/memory-webui-pre-gate-alloc.txt` | Gate disabled, 6,800/2,048: 8 KiB supervisor allocation fails with the 0x2000 line, UI continues. |
 | `e2e/memory-mqtt-task-alloc-fail.txt` | `task_create_fail mqtt`: owner task creation fails, firmware logs and continues. |
-| `e2e/memory-mqtt-unreachable.txt` | Unreachable broker, no pressure: production retry accounting stops at 10. |
-| `e2e/memory-mqtt-low-heap-retry-limit.txt` | 13,543/12,788: esp-mqtt client task fails at 0x1800 on each bounded attempt. |
-| `e2e/memory-boot-combination.txt` | WebUI + MQTT + companion baseline: fail-closed WebUI, MQTT retry limit, no panic. |
+| `e2e/memory-mqtt-unreachable.txt` | Unreachable broker, no pressure: the retry backoff runs 10, 20, 40 and 60 s and never blocks (plan 339). |
+| `e2e/memory-mqtt-low-heap-retry-limit.txt` | 13,543/12,788: the pre-task owner gate refuses, so no client is created and no attempt is counted (#407). |
+| `e2e/memory-boot-combination.txt` | WebUI + MQTT + companion baseline: fail-closed WebUI, refused MQTT owner gate, no panic. |
 | `e2e/crash-record-survives-restart.txt` | Injected panic survives `restart`, prints once, and a clean reboot does not print it. |
 
 The MQTT scenarios require `FURBLE_SIM_MQTT=1` and an unreachable
@@ -159,3 +160,36 @@ device measurements.
   or a core dump.
 - The simulator persists the record in a file because the host has no RTC
   memory. Production never writes flash from the record path.
+
+## Follow-up: the retry limit became a capped backoff
+
+State: implemented on `fix/mqtt-retry-backoff`, plan 339.
+
+This plan described the `MAX_CONNECT_FAILURES` path as the production behavior:
+ten refused attempts, then a permanent block until a reboot or a console
+`mqtt connect`. Plan 339 removed the limit, so the sentences that read as
+present-tense claims about the firmware are historical. The behavior now is:
+
+- A retryable failure (any transport or TLS error, `SERVER_UNAVAILABLE`, or no
+  reported cause) retires the esp-mqtt client, keeps the owner task, the event
+  queue and the two event copies, and schedules the next attempt on a gap that
+  doubles from `RETRY_INITIAL_MS` (10 s) to `RETRY_MAX_MS` (60 s) and stays
+  there. It never stops.
+- Only a refused CONNACK for credentials (`BAD_USERNAME`, `NOT_AUTHORIZED`) or
+  for a firmware constant (`PROTOCOL`, `ID_REJECTED`) sets the block flag, and
+  `mqtt connect` clears it.
+- The host transport in `sim/SimMQTTClient.cpp` keeps its shape: it refuses the
+  socket, emits the error and the disconnect event, and its wall-clock worker
+  still decides how fast the first failure arrives. The owner's backoff now owns
+  the cadence, so a scenario crosses each gap with `wait` and reads
+  `mqtt.retry_delay`.
+
+Test evidence: `memory-mqtt-unreachable.txt` asserts the 10, 20, 40, 60 and
+60 s progression with `mqtt.blocked no` and `heap.alloc_failures 0`, and the
+`mqtt-owner` host test pins the same curve. `memory-pressure-mqtt-shed.txt` was
+re-measured because the retired client is no longer resident through an outage:
+the owner alone leaves 24,265 free instead of 17,713, and the squeeze needs four
+4 KiB steps to cross the 8,192 RED floor. The scenario-table rows above are
+corrected to what those files assert; the low-heap and boot-combination rows
+also predated #407, which moved the refusal from the client task to the owner
+gate, so they name that gate now.

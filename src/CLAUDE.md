@@ -255,7 +255,8 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   client; each service reads `MemoryPressure::current()` in its own run
   decision and returns through its own start gate. A pause never writes NVS,
   is not a connect failure and never touches BLE, Control, the UI, GPS, WiFi
-  or the companion. The MQTT owner reports the internal queue storage its
+  or the companion, so it never consumes an MQTT retry backoff step either.
+  The MQTT owner reports the internal queue storage its
   next start still needs through `setMQTTStartExtra()`, from the same
   `MQTT::startExtra()` its start gate uses; RED adds it to its exit. Keep the
   two on that one helper. `app_main()` registers `MemoryPressure::admit()` as

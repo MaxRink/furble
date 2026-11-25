@@ -580,8 +580,9 @@ full PSRAM test on or off.
 size in bytes.
 
 `FURBLE_SIM_MQTT_FAST_RECONNECT` only shortens the host transport's one-second
-reconnect cadence so ten refused connections finish inside a bounded scenario.
-It does not change the firmware retry limit.
+reconnect cadence so the first refused connection reaches the production owner
+inside a bounded scenario. It does not change the firmware retry backoff, whose
+gaps advance on the virtual clock.
 
 #### Board, PMIC, USB and memory-profile model
 
@@ -1106,10 +1107,14 @@ The other namespaces are:
   `webui.attempts` counts server admission attempts, `webui.fail_closed` is
   `yes` after a refusal and `webui.gate_message` is the exact production log
   sentence for `print`.
-- `mqtt.connected`, `mqtt.task` (`created` or `failed`), `mqtt.connect_failures`
-  and `mqtt.blocked` are available only in a `FURBLE_SIM_MQTT=1` build. They read
-  the production owner state. The bounded retry limit is
-  `MAX_CONNECT_FAILURES`, ten.
+- `mqtt.connected`, `mqtt.task` (`created` or `failed`), `mqtt.connect_failures`,
+  `mqtt.retry_delay` and `mqtt.blocked` are available only in a
+  `FURBLE_SIM_MQTT=1` build. They read the production owner state.
+  `mqtt.retry_delay` is the current backoff step in milliseconds, zero when no
+  retry is pending. An outage retries forever with a gap that doubles from
+  `RETRY_INITIAL_MS` to the `RETRY_MAX_MS` cap, 10 s to 60 s, and
+  `mqtt.blocked` is `yes` only after the failure classifier stops the client on
+  a refused credentials, protocol or client-id rejection.
 - `crash.recovered` is `yes` when this boot found and printed an unclean
   previous-boot record. `crash.pending` is `yes` between a
   `crash-inject-*` action and the reboot that consumes it. `crash.reset`,
