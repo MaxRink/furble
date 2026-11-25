@@ -103,14 +103,23 @@ quoting 81.2 mA as the default case.
 - Panel sleep is real SLPIN, not just backlight zero:
   M5GFX `sleep()` is `setBrightness(0)` then `setSleep(true)`; `wakeup()` is
   `setSleep(false)` then restore brightness. `Panel_LCD::setSleep()` writes
-  SLPIN/SLPOUT. Code: `src/FurbleUI.cpp:1305`, `src/FurbleUI.cpp:1335`.
-- The 120 ms SLPIN to SLPOUT dwell is enforced in both directions:
-  `DISPLAY_SLEEP_DWELL_MS`, `include/FurbleUI.h:897-898`,
-  `src/FurbleUI.cpp:1299-1303`, `src/FurbleUI.cpp:1325-1331`.
+  SLPIN/SLPOUT. Code: `src/FurbleUI.cpp:1836`, `src/FurbleUI.cpp:1882`.
+- The panel dwell rule is per panel, and both 120 ms waits are enforced:
+  `DISPLAY_SLEEP_DWELL_MS`, `include/FurbleUI.h:1135-1136`. ILI9342C needs
+  120 ms in both directions (V101 sections 8.2.11 and 8.2.12), so
+  `UI::wakeDisplay()` waits the interval out before SLPOUT
+  (`src/FurbleUI.cpp:1894-1897`). ST7789V sections 9.1.11 and 9.1.12 and
+  ST7796S V1.0 sections 9.2.12 and 9.2.13 need 120 ms from SLPOUT to the next
+  SLPIN only, which `UI::sleepDisplay()` gates (`src/FurbleUI.cpp:1843-1845`).
+  Both families also want 5 ms after SLPIN and after SLPOUT before any other
+  command. The SLPIN side is covered, because the next command is the SLPOUT
+  the wake gate holds back 120 ms. On the SLPOUT side the wake path writes only
+  the backlight (`src/FurbleUI.cpp:1901`, `:1905`), which is the LEDC channel
+  or the AXP192, not a panel command.
 - The APB lock is released when the panel sleeps and reacquired before wake:
-  `src/FurbleUI.cpp:1316-1317`, `src/FurbleUI.cpp:1333-1334`.
+  `src/FurbleUI.cpp:1879`, `src/FurbleUI.cpp:1900`.
 - The icon timer is paused while the panel is off:
-  `src/FurbleUI.cpp:1314`, `src/FurbleUI.cpp:1344`.
+  `src/FurbleUI.cpp:1872`, `src/FurbleUI.cpp:1920`.
 - StickS3 status LED is cut on display off and restored on wake:
   `src/FurblePlatform.cpp:221-254`.
 - LVGL uses partial rendering, two DMA buffers, and `pushImageDMA`:

@@ -28,7 +28,8 @@ Deviations:
   nearest ladder entry, so an off-ladder `inactivity` value set from the
   console takes effect as the closest roller value.
 - Owed hardware test: blank the screen, press a button within 100 ms, confirm
-  the display wakes (exercises the 120 ms SLPIN to SLPOUT dwell).
+  the display wakes. That press runs through the 120 ms SLPIN to SLPOUT wait,
+  which the ILI9342C boards require and the ST7789 and ST7796 boards do not.
 
 Rebase notes:
 

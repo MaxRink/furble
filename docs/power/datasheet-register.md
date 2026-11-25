@@ -33,8 +33,9 @@ Rules:
 | --- | --- | --- | --- | --- | --- |
 | Sitronix ST7735S | ST7735S datasheet, Table 3 page 30, https://cdn.sparkfun.com/assets/9/0/2/5/8/ST7735S_v1.1.pdf | v1.1 | Normal mode 0.9 mA typ, 2.0 mA max; sleep-in 15 uA typ, 30 uA max | Quoted through the model and Display lane | Display, BLE, Board |
 | Sitronix ST7789V | ST7789V datasheet, Table 3 page 40, https://newhavendisplay.com/content/datasheets/ST7789V.pdf | v1.3 | Normal mode black image at 60 Hz 6.0 mA typ, 7.5 mA max; sleep-in 15 uA typ, 30 uA max; `FRCTRL2` (C6h) frame-rate control; partial plus idle mode 5.0 mA | Opened by Display lane for Table 3 and FRCTRL2 | Display, BLE, Board, SoC |
-| ILITEK ILI9342C | ILI9342C datasheet, https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/docs/datasheet/core/ILI9342C-ILITEK.pdf | No revision string in the cited copy | No supply current table; only voltages and leakage. The model uses an ST7789V analogy tagged estimated: 6 to 8 mA operating, 15 to 100 uA sleep-in | Quoted by Display and model; no operating current available | Display, Board |
-| ILITEK ILI9341 | ILI9341 datasheet page 236, https://cdn-shop.adafruit.com/datasheets/ILI9341.pdf | Not stated | Standby ceiling 100 uA max, used as the ILI9342C sleep-in high bound | Quoted through the model; not reopened | Display, Board |
+| Sitronix ST7796S | ST7796S datasheet version 1.0, sections 9.2.12 and 9.2.13, cited without a copy or URL in the tree | V1.0 | Sleep Out to the next Sleep In needs 120 ms, and SLPIN and SLPOUT each need 5 ms before any other command. There is no 120 ms limit in the reverse direction | Quoted by the correction lane; no local copy | Display, SoC |
+| ILITEK ILI9342C | ILI9342C datasheet, https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/docs/datasheet/core/ILI9342C-ILITEK.pdf | V101 | Sleep Out to the next Sleep In and Sleep In to the next Sleep Out each need 120 ms (sections 8.2.11 and 8.2.12, pages 100 and 101). No supply current table; only voltages and leakage. The model uses an ST7789V analogy tagged estimated: 6 to 8 mA operating, 15 to 100 uA sleep-in | Dwell pair quoted by the correction lane; operating current still unavailable | Display, Board |
+| ILITEK ILI9341 | ILI9341 datasheet page 236, https://cdn-shop.adafruit.com/datasheets/ILI9341.pdf | Not stated | The same 120 ms pair in both directions as the ILI9342C. Standby ceiling 100 uA max, used as the ILI9342C sleep-in high bound | Dwell pair quoted by the correction lane; current figures quoted through the model, not reopened | Display, Board |
 
 ## 3. Power management ICs
 
@@ -58,7 +59,7 @@ Rules:
 | CASIC protocol | Multimode navigation receiver protocol, http://www.espruino.com/files/CASIC_en.pdf | Not stated | `$PCAS` family, `BA CE` framing, `AID-INI`, `CFG-NAVX`, `MON-HW`; the printed checksum formula is wrong and the L76K id-first form is the one the code uses | Quoted by GPS/IMU lane | GPS/IMU |
 | Quectel L76K | GNSS protocol specification v1.1, https://www.waveshare.net/w/upload/d/dd/Quectel_L76K_GNSS_Protocol_Specification_V1.1.pdf | v1.1 | PCAS02, PCAS03, PCAS04, PCAS10; GSV and GSA fields; id-first checksum | Quoted by GPS/IMU lane | GPS/IMU |
 | NS4168 | NS4168 datasheet, https://www.chipsourcetek.com/Uploads/file/NS4168.pdf | Not stated | 13 mA quiescent at 5 V; 1 uA shutdown leakage | Quoted through the model | Board, Display |
-| WIZnet W5500 | W5500 datasheet v1.0.6, https://www.wiznet.io/wp-content/uploads/wiznethome/Chip/W5500/Document/W5500_ds_v1.0.6.pdf | v1.0.6 | PHY power-down mode exists; link-dependent current; the exact figure is not quoted because the copy was not opened | Not reopened by the Board lane | Board, Wi-Fi |
+| WIZnet W5500 | W5500 datasheet, https://www.wiznet.io/wp-content/uploads/wiznethome/Chip/W5500/Document/W5500_ds_v1.0.6.pdf | v1.1.0 quoted for the reset pulse; the linked copy is v1.0.6 | RESETn must stay low for at least 500 us (version 1.1.0, section 5.5.1 figure 22 and table 2; RESETn is pin 37 in the pin description table on page 9). The pinned PHY hard-codes 100 us (`components/esp_eth/src/spi/w5500/esp_eth_phy_w5500.c:160`), a known defect recorded in `plans/implemented/42-waveshare-eth-node.md`. PHY power-down mode exists; link-dependent current; the exact figure is not quoted because the copy was not opened | Reset minimum quoted by the correction lane; PHY current still not reopened by the Board lane | Board, Wi-Fi |
 | Vybronics VC1030B028F | Coin vibration motor datasheet, https://www.vybronics.com/coin-vibration-motors/with-brushes/v-c1030b028f | Not stated | 64 mA typical operating, 85 mA rated maximum, more at start and stall. Representative part because M5Stack names no motor | Quoted through the model | Board |
 | BM8563 RTC | BM8563 documentation, cited for the Plus2 alarm wake | Not stated | RTC alarm is the Plus2 timed-wake source | Cited, not opened | Board, SoC |
 | FT6336U touch controller | Core2 touch documentation and FT6336U datasheet | Not stated | Monitor and hibernate modes exist; current not in the tree; the datasheet was not opened by the Board lane | Not opened | Board, Display |
@@ -234,7 +235,7 @@ not verified for this register.
 | Part or area | Gap | Consequence |
 | --- | --- | --- |
 | AXP192 | No revision string in the fetched copy; cover says 2010 | A register claim must name the copy used, not a revision number |
-| W5500 | Datasheet not opened; exact PHY current not quoted | NB-02 and the Waveshare rows cannot quote a current |
+| W5500 | Datasheet not opened for PHY current; the reset minimum is quoted from version 1.1.0 section 5.5.1 while the linked copy is v1.0.6 | NB-02 and the Waveshare rows cannot quote a current |
 | FT6336U | Datasheet not opened; current not in the tree | P-069 uses a placeholder 0.5 to 2 mA range |
 | ES8311 and AW8737 | No documents opened; quiescent currents not in the tree | RL-09 assumes a closed speaker is idle, but does not measure it |
 | BM8563 | Documentation cited, not opened | The Plus2 alarm wake path is unverified |
@@ -257,7 +258,8 @@ not verified for this register.
 3. **Revision conflicts.** The AXP192 copy has no revision string. The ESP32-S3
    copy is v2.2. The IP5306 copy is V1.01. The M5PM1 copy is V1.9. The ESP32
    copy is v5.3. The ST7789V copy is v1.3. The ST7735S copy is v1.1. The
-   MPU-6886 copy is v1.1. The W5500 copy is v1.0.6. Do not copy a number from a
+   MPU-6886 copy is v1.1. The W5500 reset minimum is quoted from version
+   1.1.0 while the linked copy is v1.0.6. Do not copy a number from a
    secondary document into a primary claim without opening the primary.
 4. **Board files are split.** The repository has one board file
    (`boards/waveshare-esp32-s3-eth.json`). Panel pins, backlight drive, and
@@ -298,11 +300,11 @@ was opened. Every `unknown` names the artifact that closes it.
 | `m5stick-c` | ESP32 v5.3 | AXP192, no revision string | ST7735S v1.1 | MPU6886 v1.1 | IR LED | 95 mAh, vendor page | unknown | documented, battery and FCC gaps |
 | `m5stick-c-plus` | ESP32 v5.3 | Plus: AXP192. Plus2: no PMIC, external charger | ST7789V v1.3 | MPU6886 v1.1 | BM8563 RTC cited, not opened (Plus2) | Plus 120 mAh, Plus2 200 mAh, vendor page | unknown | documented, RTC, battery, FCC gaps |
 | `m5stick-s3` | ESP32-S3 v2.2 | M5PM1 V1.9 | ST7789P3, panel document unknown | BMI270 suffix 08 | ES8311 and AW8737, vendor page only | 250 mAh, vendor page | unknown | documented, panel, audio, battery, FCC gaps |
-| `m5stack-core` | ESP32 v5.3 | IP5306 V1.01 | ILI9342C, no revision string | Gray variant part not recorded | SD, speaker | Core reports 0, capacity unknown | unknown | documented, IMU, SD, battery, FCC gaps |
-| `m5stack-core2` | ESP32 v5.3 | AXP192, no revision string. Core2 v1.1 fits an AXP2101 under the same board ID, and the boot code gates the AXP192 ADC trim on the detected PMIC; no AXP2101 document is in the tree | ILI9342C plus FT6336U, not opened | MPU6886 v1.1 | NS4168, BM8563, SD | 390 mAh, vendor page | unknown | documented for AXP192; AXP2101 datasheet is an open gap |
-| `waveshare-s3-eth` | ESP32-S3 v2.2, W5500 v1.0.6 not opened | none | none | none | microSD, WS2812 | none | unknown | documented, W5500, FCC gaps |
+| `m5stack-core` | ESP32 v5.3 | IP5306 V1.01 | ILI9342C V101 | Gray variant part not recorded | SD, speaker | Core reports 0, capacity unknown | unknown | documented, IMU, SD, battery, FCC gaps |
+| `m5stack-core2` | ESP32 v5.3 | AXP192, no revision string. Core2 v1.1 fits an AXP2101 under the same board ID, and the boot code gates the AXP192 ADC trim on the detected PMIC; no AXP2101 document is in the tree | ILI9342C V101 plus FT6336U, not opened | MPU6886 v1.1 | NS4168, BM8563, SD | 390 mAh, vendor page | unknown | documented for AXP192; AXP2101 datasheet is an open gap |
+| `waveshare-s3-eth` | ESP32-S3 v2.2, W5500 reset minimum quoted from v1.1.0, linked copy v1.0.6 not opened | none | none | none | microSD, WS2812 | none | unknown | documented, W5500, FCC gaps |
 | `esp32-s3-headless` | ESP32-S3 v2.2 | board-specific, no PMIC document | none | none | none | board-specific | unknown | documented for the SoC, board document missing |
-| `m5stack-core-usb-debug` | ESP32 v5.3 | IP5306 V1.01 | ILI9342C | as Core | as Core | as Core | unknown | same gaps as Core |
+| `m5stack-core-usb-debug` | ESP32 v5.3 | IP5306 V1.01 | ILI9342C V101 | as Core | as Core | as Core | unknown | same gaps as Core |
 
 ### 13.2 Batteries
 

@@ -16,16 +16,67 @@ The root CLAUDE.md lists the short form of these. The detail lives here.
 
 - DFS clock family. Enabling BT modem sleep is what makes esp_pm DFS actually
   engage. Once DFS engages, any peripheral clocked from APB breaks subtly when
-  the CPU drops frequency. Known cases: the GPS UART must select the crystal
-  clock (`UART_SCLK_XTAL`, guarded by `#if SOC_UART_SUPPORT_XTAL_CLK`), and the
-  LEDC backlight PWM flickers unless the display holds `ESP_PM_APB_FREQ_MAX`
-  while the backlight is on. RMT is safe: it holds its own APB power lock, so
-  the IR path does not need extra handling. When you touch power management,
-  audit every peripheral clock source, not just the one that broke.
+  the CPU drops frequency. Known cases are the GPS UART and the LEDC backlight.
+  The GPS UART takes its clock per target, guarded on the S3 target macro
+  (`src/FurbleGPS.cpp:179`). The S3 has no REF_TICK source, so it selects
+  `UART_SCLK_XTAL`; the classic ESP32 has REF_TICK at a fixed 1 MHz and no XTAL
+  UART source, so it selects `UART_SCLK_REF_TICK`. The `SOC_UART_CLKS`
+  initialiser macros sit at
+  `components/soc/esp32s3/include/soc/clk_tree_defs.h:256` and
+  `components/soc/esp32/include/soc/clk_tree_defs.h:224`; the enum members the
+  code names are `UART_SCLK_XTAL` at
+  `components/soc/esp32s3/include/soc/clk_tree_defs.h:264` and
+  `UART_SCLK_REF_TICK` at
+  `components/soc/esp32/include/soc/clk_tree_defs.h:231`. REF_TICK is
+  documented as a fixed 1 MHz even while APB changes
+  (`components/soc/esp32/include/soc/clk_tree_defs.h:132`). The display holds
+  `ESP_PM_APB_FREQ_MAX` while the backlight is on. The LEDC divisor is computed
+  once from the source clock at channel configuration (ESP-IDF
+  `components/esp_driver_ledc/src/ledc.c:460-485`), so a later APB change
+  rescales the PWM period. Whether that is visible as flicker is unmeasured;
+  see the bench-status section below.
+- RMT and the IR path, a separate mechanism. The RMT driver takes
+  `ESP_PM_CPU_FREQ_MAX` for a channel without DMA and `ESP_PM_NO_LIGHT_SLEEP`
+  for a channel with DMA, and never `ESP_PM_APB_FREQ_MAX` (ESP-IDF 5.5.3
+  `components/esp_driver_rmt/src/rmt_common.c:230`). The IR path is safe because
+  of two properties of this build, not because of the driver:
+  `IR::createChannel()` never sets `with_dma`, so the zero-initialised struct
+  keeps it false (`src/FurbleIR.cpp:230-238`), and furble raises the PM CPU
+  maximum itself, 160 MHz by default (`include/FurblePlatform.h:25-28`,
+  `src/FurblePlatform.cpp:84`). The sdkconfig boot default of 80 MHz is not what
+  pins APB. `ESP_PM_CPU_FREQ_MAX` maps to `PM_MODE_CPU_MAX` (ESP-IDF
+  `components/esp_pm/pm_impl.c:230-234`), which holds the CPU at its 160 MHz
+  maximum, where APB runs at 80 MHz. That matters because the channel divisor is
+  fixed at creation, not at enable: on the S3 the prescale comes from the cached
+  APB frequency (`components/esp_driver_rmt/src/rmt_common.c:152-169`, called at
+  `:253`), the clock is selected at
+  `components/esp_driver_rmt/src/rmt_tx.c:324`, and the lock is only taken
+  later in `rmt_tx_enable()` (`:774`). The argument therefore holds only when
+  APB was already 80 MHz at channel creation. Enabling `with_dma` on the S3
+  would swap `ESP_PM_CPU_FREQ_MAX` for `ESP_PM_NO_LIGHT_SLEEP`, which maps to
+  `PM_MODE_APB_MIN` (`components/esp_pm/pm_impl.c:237-238`), and the 38 kHz
+  carrier would drift away from the fixed divisor.
 - Display sleep. The display releases `ESP_PM_APB_FREQ_MAX` while the panel
-  sleeps and must reacquire it before `M5.Display.wakeup()`. ST7789 and ILI934x
-  need a 120 ms dwell between SLPIN and SLPOUT. M5GFX does not enforce that
-  dwell, so furble must.
+  sleeps and must reacquire it before `M5.Display.wakeup()`
+  (`src/FurbleUI.cpp:1879`, `:1900`). The panel dwell rule is per panel: both
+  ways on the ILI934x, one way on the ST7789 and the ST7796. ILI9342C needs
+  120 ms in both directions, SLPOUT to the next SLPIN (V101 section 8.2.11,
+  page 100) and SLPIN to the next SLPOUT (section 8.2.12, page 101), and the
+  ILI9341 copy carries the same pair. ST7796S V1.0 sections 9.2.12 and 9.2.13,
+  and ST7789V sections 9.1.11 and 9.1.12, need 120 ms from SLPOUT to the next
+  SLPIN only, plus 5 ms after SLPIN and after SLPOUT before any other command.
+  ILI9342C is the panel on `m5stack-core`, `m5stack-core2` and the core usb
+  debug profile, three of the six display boards. M5GFX 0.2.27 sends the bare
+  SLPIN or SLPOUT and no delay (`src/lgfx/v1/panel/Panel_LCD.cpp:101-107`), and
+  `LGFX_Device::sleep()` and `wakeup()` only add a brightness write
+  (`src/lgfx/v1/LGFXBase.hpp:1436-1437`), so both 120 ms waits are furble's.
+  `UI::sleepDisplay()` refuses to sleep within 120 ms of the last wake
+  (`src/FurbleUI.cpp:1843-1845`) and `UI::wakeDisplay()` waits the same interval
+  before SLPOUT (`:1894-1897`). Together they satisfy all four panels. The
+  5 ms needs no separate delay: after SLPIN the next panel command is the
+  SLPOUT that the wake gate holds back 120 ms, and after SLPOUT the wake path
+  writes only the brightness, which is the backlight and not a panel command
+  (`:1901`, `:1905`).
 - Never hold the Control mutex across a delay or a blocking BLE call. The
   reconnect cancel deadlock bricked the device: buttons and USB went dead
   because furble disables all M5PM1 power button gestures at boot, so there was
@@ -83,9 +134,35 @@ The root CLAUDE.md lists the short form of these. The detail lives here.
 - S3 native USB Serial/JTAG resets the chip on host port open. Every time the
   host opens the serial port, the chip resets to a clean idle state. Use that
   port-open as the safe state transition. Do not script a disconnect followed by
-  a reconnect to force a known state: the open alone already gave you one.
-- esptool prints a post-write reset that reads `FAILED` on the S3. It is benign.
-  The write already succeeded. Do not treat that line as a flash failure.
+  a reconnect to force a known state: the open alone already gave you one. This
+  is a bench observation with no source file behind it, so it is a rule to
+  design around rather than a proven property (see the bench-status section
+  below).
+- The `FAILED` string is never about a reset. In esptool 4.11.0 the only
+  `FAILED` strings after a write are the flash verify outcomes
+  (`esptool/cmds.py:1382` for a digest mismatch and `esptool/cmds.py:1389` for
+  byte differences). A `FAILED` line means the image did not verify, so neither
+  dismiss it nor read it as a reset problem.
+- The reset phase prints `Hard resetting via RTS pin...`
+  (`esptool/loader.py:1711`) and then toggles RTS. On the S3 native USB
+  Serial/JTAG part the port is already gone when the toggle runs, so it raises a
+  port error. A macOS bench run saw errno 6, ENXIO; the number is a bench
+  observation, because other hosts raise their own code, and `reset.py:51`
+  ignores only ENOTTY and EINVAL, so this one is retried and then re-raised
+  (`esptool/reset.py:43-62`). The traceback is benign: `write_flash` has
+  returned and the hash has verified, so the image is good and only the reset
+  could not be signalled. The command still exits non-zero.
+- `board_upload.after_reset = watchdog_reset` on `m5stick-s3`
+  (`platformio.ini:64`) reaches `ESP32S3ROM.watchdog_reset()`, which arms the
+  RTC watchdog and prints `Hard resetting with a watchdog...`
+  (`esptool/targets/esp32s3.py:355-356`). It does not touch RTS, so it avoids
+  the failing toggle path. It is not a fallback to a classic hard reset: the
+  generic warning and fallback are in `ESPLoader.watchdog_reset`
+  (`esptool/loader.py:1741`), which only chips without an override reach.
+  `ESP32S3ROM.hard_reset()` does the reverse, preferring the watchdog when
+  `uses_usb_otg()` is true, and that is false on the USB Serial/JTAG part, which
+  reports `UARTDEV_BUF_NO_USB_JTAG_SERIAL` instead
+  (`esptool/targets/esp32s3.py:84`, `:321`).
 - Do not run `pio run` inside a `/tmp` or `/private/tmp` worktree. PlatformIO's
   package installer copies the `.git` directory with `shutil.copy2`, which
   fails on fsmonitor sockets under macOS temp paths and aborts the build with no
@@ -270,3 +347,116 @@ The root CLAUDE.md lists the short form of these. The detail lives here.
     accepted (PR #239, hardware trace 2026-08-28).
   - The shutter characteristic is `7fcf49c6`. The press-and-release sequence is
     `0100`, `0200`, `0100`, `0000`.
+
+## Follow-up: hardware-trap corrections (2026-11-25)
+
+An independent source check found claims in this document that the pinned
+sources do not support. Each item below names what was wrong and the source that
+disproves it. The trap text above is corrected in place, following the
+`## Follow-up:` convention in `plans/CLAUDE.md` rather than starting a new plan.
+
+Package versions behind the citations: ESP-IDF 5.5.3 (`framework-espidf`),
+esptool 4.11.0 (`tool-esptoolpy`), M5GFX 0.2.27. Paths without a `docs/`,
+`plans/`, `src/`, `include/` or `tests/` prefix are inside the ESP-IDF or
+esptool package.
+
+1. RMT "holds its own APB power lock" was wrong.
+   `components/esp_driver_rmt/src/rmt_common.c:230` selects
+   `ESP_PM_CPU_FREQ_MAX` for a channel without DMA and `ESP_PM_NO_LIGHT_SLEEP`
+   for a channel with DMA. `ESP_PM_APB_FREQ_MAX` appears nowhere in
+   `esp_driver_rmt`. The operational conclusion survives on furble facts, not on
+   the driver: `src/FurbleIR.cpp:230-238` leaves `with_dma` false, and furble
+   raises the PM CPU maximum to 160 MHz at boot
+   (`include/FurblePlatform.h:25-28`, `src/FurblePlatform.cpp:84`), where APB
+   runs at 80 MHz. The 80 MHz sdkconfig boot default is not the reason the APB
+   clock holds. The divisor is fixed at channel creation
+   (`components/esp_driver_rmt/src/rmt_tx.c:324`), before the driver takes the
+   lock in `rmt_tx_enable()` (`:774`), so the argument holds only when APB was
+   already 80 at creation. Enabling `with_dma` on the S3 would swap the lock for
+   `ESP_PM_NO_LIGHT_SLEEP`, which maps to `PM_MODE_APB_MIN`
+   (`components/esp_pm/pm_impl.c:237-238`), and the 38 kHz carrier would drift
+   away from the fixed divisor.
+2. The GPS UART guard was misquoted. `src/FurbleGPS.cpp:179` guards on
+   `defined(FURBLE_M5STICKS3) || defined(CONFIG_IDF_TARGET_ESP32S3)`, not on
+   `SOC_UART_SUPPORT_XTAL_CLK`. For the record, that macro does exist for the S3
+   (`components/soc/esp32s3/include/soc/soc_caps.h:432`), so the original text
+   described a guard the code does not use, not a macro that is absent. The
+   per-chip clock reasons now carry citations in the trap text.
+3. The esptool reset claim was wrong. esptool 4.11.0 has exactly two `FAILED`
+   strings, both in the flash verify path (`esptool/cmds.py:1382` and `:1389`),
+   and the reset prints `Hard resetting via RTS pin...`
+   (`esptool/loader.py:1711`). There is no post-write reset line that reads
+   `FAILED`, so a `FAILED` line must never be dismissed. What stays benign is a
+   port error from the RTS toggle on a port the USB Serial/JTAG part already
+   removed. The error number itself is a bench observation, not a contract: a
+   macOS run saw errno 6, ENXIO, and other hosts report their own code.
+   `esptool/reset.py:51` ignores only ENOTTY and EINVAL, so this error is
+   retried and then re-raised (`:43-62`). The image has verified by then.
+   `board_upload.after_reset = watchdog_reset` on `m5stick-s3` arms the RTC
+   watchdog (`esptool/targets/esp32s3.py:355-356`) instead of toggling RTS.
+4. The panel dwell rule was stated backwards, first as a two-way dwell and
+   then as a one-way rule for every panel. Neither is right. The rule is per
+   panel. ILI9342C needs 120 ms in both directions, SLPOUT to the next SLPIN
+   (V101 section 8.2.11, page 100) and SLPIN to the next SLPOUT (section
+   8.2.12, page 101), and the ILI9341 copy carries the same pair. ST7796S V1.0
+   sections 9.2.12 and 9.2.13 need 120 ms from SLPOUT to the next SLPIN only,
+   and ST7789V sections 9.1.11 and 9.1.12 carry that same one-way limit. Both
+   families also want 5 ms after SLPIN and after SLPOUT before any other
+   command. ILI9342C is the panel on `m5stack-core`, `m5stack-core2` and the
+   core usb debug profile, three of the six display boards, so the wake wait is
+   required and it stays. `src/FurbleUI.cpp:1843-1845` enforces the 120 ms from
+   SLPOUT to the next SLPIN and `src/FurbleUI.cpp:1894-1897` enforces the same
+   interval from SLPIN to the next SLPOUT. M5GFX 0.2.27 writes the bare command
+   (`src/lgfx/v1/panel/Panel_LCD.cpp:101-107`), so both waits are furble's, and
+   together they satisfy all four panels. The earlier deferral that proposed
+   dropping the wake wait is withdrawn. The reversal appeared in
+   `include/FurbleUI.h:1135`, `plans/322-hardware-abstraction.md`, the display
+   trap above, `docs/power/display.md`,
+   `plans/287-mcu-portability-and-bundle-hardware.md`,
+   `plans/implemented/12-display-off.md`, `docs/power/board-power.md` and
+   `docs/power/soc.md`; all of them now state the per-panel rule.
+5. The W5500 hardware reset pulse is a known defect. WIZnet W5500 datasheet
+   version 1.1.0, section 5.5.1 figure 22 and table 2, require RESETn low for at
+   least 500 us, and RESETn is pin 37 in the pin description table on page 9.
+   The pinned PHY hard-codes 100 us
+   (`components/esp_eth/src/spi/w5500/esp_eth_phy_w5500.c:160`). The record, the
+   fix direction and the host-test gap are in
+   `plans/implemented/42-waveshare-eth-node.md` under its follow-up section.
+6. The PSRAM DMA caps claim was over-stated. Display draw buffers must stay
+   `MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL` (`src/FurbleUI.cpp:581-583`), and that
+   requirement stands. The corruption a wrong caps set would cause is
+   unmeasured, and on the S3 PSRAM is not categorically unusable for DMA:
+   `SOC_PSRAM_DMA_CAPABLE=1`
+   (`components/soc/esp32s3/include/soc/soc_caps.h:57`) and
+   `esp_ptr_dma_ext_capable()` returns true for PSRAM pointers when
+   `CONFIG_SPIRAM` is set (`components/esp_hw_support/esp_memory_utils.c:20-30`).
+   The trap text above carries the same caveat; the bench entry below is the
+   only place a corruption symptom may be quoted.
+
+### Bench status of the symptoms
+
+Source proves the mechanism, not the symptom. No run in
+`plans/00-hardware-experiments.md` measures any of these three, so each symptom
+below is a hypothesis to test on hardware, not a documented fact.
+
+- LEDC backlight flicker. Source: the LEDC divisor is computed once from the
+  source clock when the channel is configured
+  (`components/esp_driver_ledc/src/ledc.c:460-485`), and `UI::UI()` holds
+  `ESP_PM_APB_FREQ_MAX` while the panel is on (`src/FurbleUI.cpp:511`).
+  Unproven: that releasing the lock produces visible flicker at any brightness.
+  Bench: brightness sweep with the lock released plus a camera flicker check, as
+  `docs/power/board-power.md:1059` already requires.
+- Chip reset on a USB Serial/JTAG host port open. Source: none in furble. The
+  behaviour belongs to the USB Serial/JTAG peripheral and the host driver, and
+  no source file asserts it: this document's USB section and the root
+  `CLAUDE.md` repeat it as a bench observation. Unproven: that every open resets
+  the chip on every host. Bench: count boot banners per port open on macOS,
+  Linux and Windows hosts.
+- Display corruption from a wrong DMA caps set. Source: the draw buffers are
+  allocated with `MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL`
+  (`src/FurbleUI.cpp:581-583`). The S3 sets `SOC_PSRAM_DMA_CAPABLE=1`
+  (`components/soc/esp32s3/include/soc/soc_caps.h:57`) and
+  `esp_ptr_dma_ext_capable()` returns true for PSRAM pointers there
+  (`components/esp_hw_support/esp_memory_utils.c:20-30`), so "a PSRAM buffer
+  always corrupts" is not a safe claim on the S3. Unproven: the corruption
+  itself. Bench: force a PSRAM draw buffer and compare the panel output.

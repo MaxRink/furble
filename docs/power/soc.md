@@ -109,7 +109,7 @@ prevents DFS below the APB maximum.
 | GPS UART | `UART_SCLK_XTAL` on S3, `UART_SCLK_REF_TICK` on ESP32 | No APB dependency | Correct. Do not change. |
 | Console UART | APB, 115200 | Always on in release | Logs only. Cost is output and CPU, not a clock gate. |
 | USB Serial/JTAG | USJ clock, enabled by the secondary console | `USJ_NO_AUTO_LS_ON_CONNECTION` while a host is attached | Blocks light sleep when USB is connected. CON-01. |
-| RMT IR | APB, held by the IDF RMT driver | `rmt_enable` to `rmt_disable` bracket | Correct. No idle hold. |
+| RMT IR | APB source. The driver locks `CPU_FREQ_MAX`, not APB, and the divisor is fixed at channel creation | `rmt_enable` to `rmt_disable` bracket | Correct. No idle hold. |
 | I2S speaker | APB, held by the IDF I2S driver | Channel enabled only while a tone plays | Correct. The amplifier is also closed between patterns. |
 | I2C PMIC, touch, IMU | APB-derived divider, recomputed per transaction | Transactions as needed | The PM1 button read is about 200 transactions per second. OS-07. |
 | SPI display | APB, held by the IDF SPI master during a transaction | Per flush transaction | Correct for the IDF driver. M5GFX's exact path is not verified here. |
@@ -133,7 +133,7 @@ Approximate periodic wake sources per second, read from the code:
 | Companion service | 1000 ms | companion task, priority 2 | 1 when enabled | `src/FurbleCompanion.cpp:424-456` |
 | Inactivity policy | 1000 ms | LVGL timer | 1 | `src/FurbleUI.cpp:413-427` |
 | Battery sample | 5000 ms | LVGL timer | 0.2 | `src/FurbleUI.cpp:575` |
-| Icon refresh | 250 ms | LVGL timer | 4 while the panel is on, 0 while off | `src/FurbleUI.cpp:582-585`, `1314` |
+| Icon refresh | 250 ms | LVGL timer | 4 while the panel is on, 0 while off | `src/FurbleUI.cpp:751`, `:1872`, `:1920` |
 | Connect liveness | 500 ms | LVGL timer | 2 while active, paused when idle | `src/FurbleUI.cpp:5216-5217`, `748-749` |
 | Console read | 100 ms | console task, priority 2 | 10, console builds only | `src/FurbleConsole.cpp:68-71`, `2848-2853` |
 | M5PM1 watchdog feed | 1000 ms | main task | 1 | `src/FurblePlatform.cpp:198-212` |
@@ -500,7 +500,7 @@ This is a documentation and build consistency item, not a separate power lever.
 - **Current behavior:** `UI::task()` calls `vTaskDelay(5 ms)` unconditionally
   (`src/FurbleUI.cpp:10217`). The headless loop does the same
   (`src/main.cpp:286-297`). Only the icon timer is paused when the panel sleeps
-  (`src/FurbleUI.cpp:1314`); the inactivity, battery, GPS, control, target, and
+  (`src/FurbleUI.cpp:1872`); the inactivity, battery, GPS, control, target, and
   PMIC reads keep their cadence.
 - **Evidence:** inferred (code-read, arithmetic). The 5 ms loop is the binding light
   sleep deadline in the screen-off state. The wake cost constants are cited in
@@ -797,10 +797,11 @@ This is a documentation and build consistency item, not a separate power lever.
 - **Effort:** Small board-conditional change for the AXP192 boards. Medium to
   large for the StickS3 LEDC clock change.
 - **Required test:** Per board, panel on, dim, off, and wake. Check flicker,
-  tearing, brightness steps, and the 120 ms SLPIN to SLPOUT dwell. Confirm the
-  APB lock count returns to zero when the panel sleeps. Run the analyzer on menu
-  idle and dim. On the StickS3, run the LEDC clock change with a 30 minute
-  display soak and a camera shutter run.
+  tearing, brightness steps, and the panel dwell: 120 ms in both directions on
+  the ILI9342C boards, 120 ms from SLPOUT to the next SLPIN on all of them.
+  Confirm the APB lock count returns to zero when the panel sleeps. Run the
+  analyzer on menu idle and dim. On the StickS3, run the LEDC clock change with
+  a 30 minute display soak and a camera shutter run.
 - **Citation:** `src/FurbleUI.cpp:371-374`, `1316-1318`, `1333-1335`,
   `plans/implemented/12-display-off.md:116-124`, `plans/98:240-258`, IDF `pm_impl.c:228-241`, `555-568`,
   IDF `esp_driver_spi/src/gpspi/spi_master.c:1281-1290`, IDF
@@ -992,10 +993,10 @@ These were examined and do not justify a power change on the current evidence.
 | Main XTAL powered during light sleep | With the main XTAL as the BLE low power clock, the XTAL must stay powered. Disabling it would break the connected sleep clock. The plan 07 text that calls it meaningful only for the external 32 kHz path does not match the committed S3 config, but the committed config is the functional one. | `sdkconfig.m5stick-s3:1454-1456`, `plans/07:96-114` |
 | External 32.768 kHz crystal | Not fitted on the StickS3. The 230 uA BLE light sleep mode is impossible. This was established by the boot log in plan 00. | `plans/00:186`, `tools/power-model/README.md:62-70` |
 | GPS UART clock | S3 uses `UART_SCLK_XTAL`; ESP32 uses `UART_SCLK_REF_TICK`. This is the documented DFS-safe configuration. | `src/FurbleGPS.cpp:167-174` |
-| RMT IR clock | `RMT_CLK_SRC_DEFAULT` is safe because the IDF RMT driver holds `ESP_PM_APB_FREQ_MAX` between `rmt_enable` and `rmt_disable`, and the code always disables. | `src/FurbleIR.cpp:215-278`, `src/CLAUDE.md:58-64` |
+| RMT IR clock | `RMT_CLK_SRC_DEFAULT` is safe, but not because the driver locks APB. It holds `ESP_PM_CPU_FREQ_MAX` without DMA and `ESP_PM_NO_LIGHT_SLEEP` with DMA (`components/esp_driver_rmt/src/rmt_common.c:230`), and the IR channel never sets `with_dma`. furble sets the CPU maximum to 160 MHz at runtime (`src/FurblePlatform.cpp:84`), where APB is 80 MHz, and the channel divisor is fixed at creation (`components/esp_driver_rmt/src/rmt_tx.c:324`) before the lock is taken (`:774`). The code always disables. | `src/FurbleIR.cpp:230-238`, `src/CLAUDE.md:84-95` |
 | I2S speaker clock | The IDF I2S driver holds the APB lock while the channel is enabled, and `M5.Speaker.end()` closes the amplifier between patterns. | `src/FurbleFeedback.cpp:14-20`, `166-170`, `330-352` |
 | Speaker, vibration, LED | All three are bracketed on demand and shut down between events. No idle cost found. | `src/FurbleFeedback.cpp:150-170`, `320-360` |
-| IR and SD tasks | Both block on a queue with `portMAX_DELAY`; no periodic polling. | `src/FurbleIR.cpp:201-208`, `src/FurbleSD.cpp:744-751` |
+| IR and SD tasks | Both block on a queue with `portMAX_DELAY`; no periodic polling. | `src/FurbleIR.cpp:219`, `src/FurbleSD.cpp:744-751` |
 | MQTT task | Waits on a task notification with a computed next-deadline timeout, not a fixed poll. | `src/FurbleMQTT.cpp:306-333` |
 | Disconnect waits | The waits use 20 ms `vTaskDelay` slices and feed the watchdog; no busy spin. | `src/FurbleControl.cpp:771-778`, `844-852`, `src/FurbleControl.h:98` |
 | Manual light sleep | No `esp_light_sleep_start()` call exists. Only `esp_pm` automatic sleep is used. | `plans/06:70-80` |
