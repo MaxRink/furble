@@ -69,10 +69,19 @@ offline-ACK deadline becomes a timing flake. `console-commands` pins the
 ## GPS receiver protocols
 
 `gps-ubx` covers the UBX codec, the settings planner, the `Settle` gate
-(including ticks around 2^31) and the `GpsDemux` split. `gps-ubx-m10` drives
-the simulator's virtual M10 (`sim/ubx_m10.cpp`) directly, with no clock or
-UART, so its validity rules and start types are tested where the scenarios
-rely on them. `gps_ubx_fuzz` checks `Ubx::Stream` against a reference
+(including ticks around 2^31) and the `GpsDemux` split. Its
+`testB1cRejections()` case pins what the receiver refuses: BeiDou B1C is
+selected by BeiDou plus GLONASS, B1C refuses AssistNow Autonomous, and the
+`OPERATEMODE=FULL` write is ordered before the signal batch. `gps-ubx-m10`
+drives the simulator's virtual M10 (`sim/ubx_m10.cpp`) directly, with no clock
+or UART, so its validity rules and start types are tested where the scenarios
+rely on them; `testB1cConfigOrder()` replays the signal and power writes in
+both orders and proves the receiver NAKs the wrong one. `gps-casic` covers
+`Casic::sentenceCommand()`, so a `$PCAS03` body that stops before its fourteen
+rate fields fails here. `tests/test_gnss_command_contract.py` is the source
+half of the same rule: `$PCAS10` only inside `GPS::restart()`, no hand-written
+`$PCAS03` in the driver, and `$PCAS04` bounded at the seven values both CASIC
+revisions agree on. `gps_ubx_fuzz` checks `Ubx::Stream` against a reference
 splitter built on `scan()`, intact-frame delivery, and that chunked demux
 input yields the same frames and NMEA text as one-shot input. It runs under
 ASan and UBSan like every fuzz target.

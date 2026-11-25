@@ -639,6 +639,57 @@ void testDemux() {
 
 }  // namespace
 
+void testB1cRejections() {
+  // BeiDou B1C is the costly case: the ROM release notes refuse AssistNow and
+  // power save with it (RN 5.1.5 page 8, RN 7.2 page 15), and the M10Q data
+  // sheet lists B1I, not B1C, for AssistNow Autonomous (DS-MIA table 5 page 6).
+  // The codec decides B1C when BeiDou and GLONASS are both asked for, because
+  // B1I cannot run beside GLONASS L1OF (DS-MIA table 4 note 13, RN 4.3.6).
+  Ubx::Request four = {200, 3, 0x0f, Ubx::GNSS_MASK_ALL, Ubx::PSM_OFF, 10, true};
+  Ubx::Plan plan = Ubx::plan(four);
+  check(find(plan.signals, Ubx::Key::SIGNAL_BDS_B1C) == 1
+            && find(plan.signals, Ubx::Key::SIGNAL_GLO_ENA) == 1,
+        "BeiDou with GLONASS selects B1C");
+  check(find(plan.base, Ubx::Key::ANA_USE_ANA) == 0,
+        "AssistNow Autonomous is not written on with B1C");
+
+  // Leaving a power save mode is a separate, earlier write. RN 7.2 rejects a
+  // GNSS configuration that includes B1C while PSM is in use, and the config
+  // interface applies each request as it arrives (IFD 4.6 page 127), so the
+  // OPERATEMODE=FULL write has to precede the signal write.
+  check(plan.power_before_signals && find(plan.power, Ubx::Key::PM_OPERATEMODE) == 0,
+        "the B1C plan clears power save before it changes the signals");
+
+  // B1I keeps AssistNow Autonomous and the documented power-save-last order
+  // (MAX-M10S integration manual 3.6.2.6).
+  Ubx::Request b1i = {
+      0,  0xff, Ubx::GNSS_MASK_GPS | Ubx::GNSS_MASK_BDS, Ubx::GNSS_MASK_ALL, Ubx::PSM_CYCLIC,
+      10, true};
+  plan = Ubx::plan(b1i);
+  check(find(plan.signals, Ubx::Key::SIGNAL_BDS_B1) == 1
+            && find(plan.signals, Ubx::Key::SIGNAL_GLO_ENA) == 0,
+        "B1I stays the BeiDou signal while GLONASS is off");
+  check(find(plan.base, Ubx::Key::ANA_USE_ANA) == 1 && !plan.power_before_signals
+            && plan.power.back().key == Ubx::Key::PM_OPERATEMODE,
+        "B1I keeps ANA and enters power save last");
+
+  // The signal batch itself must never pass through B1I with B1C or GLONASS on,
+  // even between items: a transactionless VALSET applies as it arrives.
+  const auto index = [](const std::vector<Ubx::KeyValue> &items, uint32_t key) {
+    for (size_t i = 0; i < items.size(); i++) {
+      if (items[i].key == key) {
+        return i;
+      }
+    }
+    return items.size();
+  };
+  plan = Ubx::plan(four);
+  check(index(plan.signals, Ubx::Key::SIGNAL_BDS_B1) < index(plan.signals, Ubx::Key::SIGNAL_BDS_B1C)
+            && index(plan.signals, Ubx::Key::SIGNAL_BDS_B1C)
+                   < index(plan.signals, Ubx::Key::SIGNAL_GLO_ENA),
+        "B1I is switched off before B1C and GLONASS are switched on");
+}
+
 int main() {
   testChecksumAndFrame();
   testScanAndStream();
@@ -650,6 +701,7 @@ int main() {
   testMonVer();
   testSosAndPmreq();
   testPlan();
+  testB1cRejections();
   testSettle();
   testDemux();
 

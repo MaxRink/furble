@@ -10,6 +10,35 @@ namespace Casic {
 
 namespace {
 
+/*
+ * $PCAS03 rate fields in specification order: GGA, GLL, GSA, GSV, RMC, VTG,
+ * ZDA, ANT, DHV, LPS, reserved, reserved, UTC, GST. KEEP writes an empty field,
+ * which the specification defines as "keep the receiver's setting".
+ */
+constexpr int8_t KEEP = -1;
+using SentenceRates = std::array<int8_t, 14>;
+
+const SentenceRates &sentenceRates(SentenceSet set) {
+  // RMC and GGA only. Every other field is written 0 rather than left empty:
+  // an empty field keeps the receiver's rate, which is the opposite of pruning.
+  static constexpr SentenceRates PRUNE = {1, 0, 0, 0, 1, 0, 0, 0, 0, 0, KEEP, KEEP, 0, 0};
+  // The prune plus GSA and GSV for the satellite page.
+  static constexpr SentenceRates SATELLITE = {1, 0, 1, 1, 1, 0, 0, 0, 0, 0, KEEP, KEEP, 0, 0};
+  // The eight sentences a CASIC receiver ships with. The extras stay empty so
+  // "default" means the receiver's own set, not a set furble invented.
+  static constexpr SentenceRates STANDARD = {1, 1,    1,    1,    1,    1,    1,
+                                             1, KEEP, KEEP, KEEP, KEEP, KEEP, KEEP};
+  switch (set) {
+    case SentenceSet::SATELLITE:
+      return SATELLITE;
+    case SentenceSet::STANDARD:
+      return STANDARD;
+    case SentenceSet::PRUNE:
+      break;
+  }
+  return PRUNE;
+}
+
 constexpr uint8_t SYNC_0 = 0xBA;
 constexpr uint8_t SYNC_1 = 0xCE;
 constexpr size_t HEADER_SIZE = 6;
@@ -126,6 +155,17 @@ bool validNmeaChecksum(const std::string &sentence, size_t dollar) {
 }
 
 }  // namespace
+
+std::string sentenceCommand(SentenceSet set) {
+  std::string body = "PCAS03";
+  for (const int8_t rate : sentenceRates(set)) {
+    body += ',';
+    if (rate != KEEP) {
+      body += static_cast<char>('0' + rate);
+    }
+  }
+  return body;
+}
 
 uint32_t checksum(uint8_t class_id, uint8_t message_id, uint16_t length, const uint8_t *payload) {
   uint32_t sum =

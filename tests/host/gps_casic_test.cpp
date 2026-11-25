@@ -1344,6 +1344,36 @@ bool testNavxApply() {
   return g_Failures == before;
 }
 
+bool testSentenceCommand() {
+  std::cout << "test: $PCAS03 writes every documented rate field\n";
+  const int before = g_Failures;
+
+  // Fourteen rate arguments in specification order, then the two reserved
+  // fields left empty. V6.3.2 2.7.4 page 42 and V4.2.0.3 1.6.4 page 27 agree on
+  // the positions of the first fourteen.
+  const std::string prune = Casic::sentenceCommand(Casic::SentenceSet::PRUNE);
+  check(prune == "PCAS03,1,0,0,0,1,0,0,0,0,0,,,0,0",
+        "the prune turns DHV, LPS, UTC and GST off instead of leaving their rates");
+  check(Casic::sentenceCommand(Casic::SentenceSet::SATELLITE) == "PCAS03,1,0,1,1,1,0,0,0,0,0,,,0,0",
+        "the satellite set adds GSA and GSV to the prune");
+  check(Casic::sentenceCommand(Casic::SentenceSet::STANDARD) == "PCAS03,1,1,1,1,1,1,1,1,,,,,,",
+        "the standard set enables the receiver's own eight and keeps the rest");
+
+  for (const auto set :
+       {Casic::SentenceSet::PRUNE, Casic::SentenceSet::SATELLITE, Casic::SentenceSet::STANDARD}) {
+    const std::string body = Casic::sentenceCommand(set);
+    size_t fields = 1;
+    for (const char c : body) {
+      fields += (c == ',') ? 1 : 0;
+    }
+    check(fields == 15, "$PCAS03 carries the message id and fourteen rate fields");
+    check(body.rfind('*', 0) != 0 && body.find('*') == std::string::npos,
+          "the body has no checksum; sendCommand() adds it");
+  }
+
+  return g_Failures == before;
+}
+
 int main() {
   testChecksumAndFrame();
   testAutobaudLadderDown();
@@ -1375,6 +1405,7 @@ int main() {
   testMonHwEdges();
   testConstellationForTalker();
   testNavxApply();
+  testSentenceCommand();
   testFuzz();
 
   if (g_Failures != 0) {

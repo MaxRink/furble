@@ -429,6 +429,25 @@ struct PlanSummary {
   bool gnss_refused; /**< the mask broke a rule, signals left alone */
   bool psm_refused;  /**< power save with BeiDou B1C, left at full power */
   bool rate_clamped; /**< the rate exceeded the constellation limit */
+  /**
+   * AssistNow Autonomous actually written.
+   *
+   * Cleared when the plan selects BeiDou B1C: the ROM release notes state that
+   * AssistNow, like power save, is not supported with B1C (RN 5.1.5 page 8),
+   * and the M10Q data sheet lists B1I rather than B1C for the service (DS-MIA
+   * table 5 page 6).
+   */
+  bool ana;
+  /**
+   * Send the power-save write before the signal write.
+   *
+   * Set when the plan enables BeiDou B1C with power save off. A power save mode
+   * that an earlier session stored is still in RAM, and the receiver rejects a
+   * GNSS configuration that includes B1C while a power save mode is in use
+   * (RN 7.2 page 15). Requests apply as they arrive (IFD 4.6 page 127), so
+   * OPERATEMODE=FULL has to go first, before the signals batch.
+   */
+  bool power_before_signals;
 };
 
 /**

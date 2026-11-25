@@ -110,6 +110,7 @@ the git history. They are no longer ownership rows.
 | [325-peer-subscription-race.md](325-peer-subscription-race.md) | Thread-safe subscription tables for the virtual camera test doubles (#451) |
 | [325-review-feedback.md](325-review-feedback.md) | Review-feedback record for the virtual camera subscription race |
 | [326-docs-accuracy.md](326-docs-accuracy.md) | Documentation accuracy refresh: stale plan status, wiki screenshot claims and gate numbers |
+| [332-gnss-vendor-audit.md](332-gnss-vendor-audit.md) | GNSS configuration audit against the CASIC V6.3.2 and V4.2.0.3, AT6668 and u-blox M10 documents: `$PCAS03` field count, `$PCAS04` encoding, B1C rejections and write order |
 | [326-review-feedback.md](326-review-feedback.md) | Review-feedback record for the documentation accuracy refresh |
 | [327-control-gps-race.md](327-control-gps-race.md) | Locked `Control::m_Targets` walk for the GPS fan-out and the control task's `STATE_ACTIVE` liveness check |
 | [328-reference-docs-audit.md](328-reference-docs-audit.md) | Reference documentation audit: settings and console claims re-verified against the code, with the fixes and the claims that did not hold |
