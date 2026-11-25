@@ -22,6 +22,33 @@ namespace {
 
 constexpr const char *LOG_TAG = "hardware";
 
+// Whether the board carries a calendar RTC chip at all. This is a separate
+// question from Board::rtcBatteryBacked, which is whether that chip keeps time
+// with the main cell removed.
+//
+// StickC, StickC Plus and StickC Plus2 carry a BM8563 on the SYS_INT net. The
+// Core2 and Tough carry the BM8563 the Core2 row of docs/power/board-power.md
+// lists. The StickS3 and the Core have none: docs/console-commands.md records
+// that M5Unified finds no calendar RTC chip on either. The headless S3 has no
+// display, PMIC or RTC, and the Waveshare StampS3 adds none.
+struct rtc_fact_t {
+  const char *profile;
+  bool rtc;
+  const char *source;
+};
+
+constexpr rtc_fact_t RTC_FACTS[] = {
+    {"stickc",           true,  "BM8563, docs/power/board-power.md"     },
+    {"stickc-plus",      true,  "BM8563, docs/power/board-power.md"     },
+    {"stickc-plus2",     true,  "BM8563 alarm wake, src/FurbleBoard.cpp"},
+    {"sticks3",          false, "no RTC chip, docs/console-commands.md" },
+    {"core",             false, "no RTC chip, docs/console-commands.md" },
+    {"core2",            true,  "BM8563, docs/power/board-power.md"     },
+    {"tough",            true,  "BM8563, docs/power/board-power.md"     },
+    {"headless-s3",      false, "no RTC, docs/power/board-power.md"     },
+    {"waveshare-s3-eth", false, "no RTC on the StampS3"                 },
+};
+
 struct board_caps_t {
   const char *mcu;
   uint32_t flashKb;
@@ -114,7 +141,9 @@ const board_caps_t STICKS3 = {.mcu = "esp32s3",
                               .ir = true,
                               .sd = false,
                               .audio = true,
-                              .rtc = true};
+                              // The board has no RTC chip. Keep this in step with
+                              // RTC_FACTS; hwRtcCapability() asserts the pair.
+                              .rtc = false};
 const board_caps_t CORE = {.mcu = "esp32",
                            .flashKb = 4096,
                            .pmic = "ip5306",
@@ -132,7 +161,7 @@ const board_caps_t CORE = {.mcu = "esp32",
                            .ir = true,
                            .sd = true,
                            .audio = true,
-                           .rtc = true};
+                           .rtc = false};
 const board_caps_t CORE2 = {.mcu = "esp32",
                             .flashKb = 16384,
                             .pmic = "axp192",
@@ -186,7 +215,7 @@ const board_caps_t HEADLESS = {.mcu = "esp32s3",
                                .ir = false,
                                .sd = false,
                                .audio = false,
-                               .rtc = true};
+                               .rtc = false};
 const board_caps_t WAVESHARE = {.mcu = "esp32s3",
                                 .flashKb = 16384,
                                 .pmic = "none",
@@ -204,7 +233,7 @@ const board_caps_t WAVESHARE = {.mcu = "esp32s3",
                                 .ir = false,
                                 .sd = true,
                                 .audio = false,
-                                .rtc = true};
+                                .rtc = false};
 
 struct pmic_state_t {
   std::string variant;
@@ -220,6 +249,38 @@ struct pmic_state_t {
   bool downloadLocked = true;
   bool powerLatch = true;
   uint32_t brownouts = 0;
+  // M5PM1 v1.0.6 register 0x06. One byte, so every field in it shares a
+  // read-modify-write hazard with the others.
+  uint8_t pwrCfg = 0x1F;
+  uint32_t pwrCfgLostUpdates = 0;
+  bool pwrCfgStale = false;
+  // The boot-time copy a stale write carries. Only the seed that asks for a
+  // stale write and the boot path fill it, so a later rail change cannot make
+  // the write fresh by accident.
+  uint8_t pwrCfgSnapshot = 0x1F;
+  bool displayOff = false;
+  bool statusLedSaved = false;
+  bool statusLedLevel = false;
+  uint32_t watchdogCycles = 0;
+};
+
+// The switched EXT 5 V output on the board. The M5PM1 owns the switch on the
+// StickS3; the AXP and IP5306 boards model the same shared output.
+struct rail_state_t {
+  bool on = true;
+  // The board cannot switch the rail, or the PMIC refuses a cut. Both keep the
+  // rail on whatever a holder asks, which is what `seed gps_rail_fixed` and
+  // `seed gps_rail_refused` model.
+  bool fixed = false;
+  bool refused = false;
+  bool gpsWants = true;
+  bool irWants = false;
+  bool irInFlight = false;
+  uint32_t refusals = 0;
+  uint32_t irTransmits = 0;
+  uint32_t irFailures = 0;
+  // Recomputed on every change so a query can return a stable string.
+  std::string holders = "gps";
 };
 
 enum class power_state_t { ON, OFF, DOWNLOAD };
@@ -322,6 +383,7 @@ struct hardware_state_t {
   net_state_t net;
   ble_state_t ble;
   peripheral_state_t peripheral;
+  rail_state_t rail;
   mqtt_model_state_t mqtt;
   uint64_t leakProbe = 0;
   // Blocks held by heap-squeeze, freed by heap-release.
@@ -407,6 +469,192 @@ std::string defaultProfile(void) {
 #else
   return "sticks3";
 #endif
+}
+
+const rtc_fact_t *rtcFactFor(const std::string &profile) {
+  for (const rtc_fact_t &fact : RTC_FACTS) {
+    if (profile == fact.profile) {
+      return &fact;
+    }
+  }
+  return nullptr;
+}
+
+// M5PM1 v1.0.6 M5PM1.h register 0x06: [0] CHG_EN, [1] DCDC_EN, [2] LDO_EN,
+// [3] BOOST_EN, [4] LED_CTRL. On this board BOOST_EN is the EXT 5 V output the
+// Port A rail and the IR parts sit behind, and LED_CTRL is the status LED level
+// the panel-off path saves and clears.
+constexpr uint8_t PWR_CFG_CHG_EN = 1U << 0;
+constexpr uint8_t PWR_CFG_DCDC_EN = 1U << 1;
+constexpr uint8_t PWR_CFG_LDO_EN = 1U << 2;
+constexpr uint8_t PWR_CFG_BOOST_EN = 1U << 3;
+constexpr uint8_t PWR_CFG_LED_CTRL = 1U << 4;
+// Charge, both regulated rails, the switched 5 V output and the status LED lit.
+constexpr uint8_t PWR_CFG_BOOT =
+    PWR_CFG_CHG_EN | PWR_CFG_DCDC_EN | PWR_CFG_LDO_EN | PWR_CFG_BOOST_EN | PWR_CFG_LED_CTRL;
+
+/** The rail follows the one output bit, so a lost update moves it. */
+void applyRailFromPwrCfgLocked(hardware_state_t &hw) {
+  hw.rail.on = (hw.pmic.pwrCfg & PWR_CFG_BOOST_EN) != 0;
+}
+
+/**
+ * Apply one masked write to PWR_CFG and return the new byte.
+ *
+ * `stale` models a read taken before another holder changed the register: the
+ * write carries the old value of every bit outside its own mask, so a field the
+ * caller never asked about changes anyway. That is the lost update the byte
+ * layout makes possible, and the model counts it rather than hiding it.
+ */
+uint8_t pwrCfgWriteMaskedLocked(hardware_state_t &hw, uint8_t mask, uint8_t value, bool stale) {
+  const uint8_t current = hw.pmic.pwrCfg;
+  const uint8_t base = stale ? hw.pmic.pwrCfgSnapshot : current;
+  const uint8_t next = static_cast<uint8_t>((base & static_cast<uint8_t>(~mask)) | (value & mask));
+  if (next != static_cast<uint8_t>((current & static_cast<uint8_t>(~mask)) | (value & mask))) {
+    hw.pmic.pwrCfgLostUpdates++;
+    ESP_LOGW(LOG_TAG, "PWR_CFG lost update: 0x%02x -> 0x%02x for mask 0x%02x",
+             static_cast<unsigned>(current), static_cast<unsigned>(next),
+             static_cast<unsigned>(mask));
+  }
+  hw.pmic.pwrCfg = next;
+  applyRailFromPwrCfgLocked(hw);
+  return next;
+}
+
+/** True when the model's PMIC is the one that owns PWR_CFG on this board. */
+bool pwrCfgModelled(const hardware_state_t &hw) {
+  return hw.pmic.variant == "m5pm1";
+}
+
+/**
+ * Compare the selected profile's RTC capability with its verified row.
+ *
+ * Every profile used to say yes and nothing checked it, so a wrong answer cost
+ * nothing until a scenario depended on it. A mismatch is a model defect: record
+ * it, keep the app running so the scenario can assert the pair, and say which
+ * row disagrees.
+ */
+bool rtcCapabilityMatchesLocked(hardware_state_t &hw) {
+  const rtc_fact_t *fact = rtcFactFor(hw.profile);
+  if (fact == nullptr) {
+    return false;
+  }
+  if (hw.caps.rtc == fact->rtc) {
+    return true;
+  }
+  hw.failClosed = true;
+  ESP_LOGE(LOG_TAG, "SIM FAIL: profile %s RTC capability %s, board has %s (%s)", hw.profile.c_str(),
+           hw.caps.rtc ? "yes" : "no", fact->rtc ? "one" : "none", fact->source);
+  return false;
+}
+
+void refreshRailHoldersLocked(hardware_state_t &hw) {
+  std::string holders;
+  const auto add = [&holders](const char *name) {
+    if (!holders.empty()) {
+      holders += '+';
+    }
+    holders += name;
+  };
+  if (hw.rail.gpsWants) {
+    add("gps");
+  }
+  if (hw.rail.irWants || hw.rail.irInFlight) {
+    add("ir");
+  }
+  hw.rail.holders = holders.empty() ? std::string("none") : holders;
+}
+
+/**
+ * One rail request on behalf of one holder. Caller holds the model lock.
+ *
+ * The board has one switched output behind more than one holder, so the rail is
+ * on while any holder wants it. A holder that asks for a state it cannot have
+ * gets a refusal in the read-back, which is what Platform::setRail returns to
+ * the GPS driver. A stale PWR_CFG write can move the output bit afterwards, so
+ * the read-back is always the byte and not the request.
+ */
+bool setRailLocked(hardware_state_t &hw, Furble::Sim::rail_holder_t holder, bool wanted) {
+  if (holder == Furble::Sim::rail_holder_t::GPS) {
+    hw.rail.gpsWants = wanted;
+  } else {
+    hw.rail.irWants = wanted;
+  }
+  refreshRailHoldersLocked(hw);
+
+  const bool needed = hw.rail.gpsWants || hw.rail.irWants || hw.rail.irInFlight;
+  const bool blocked = !needed && (hw.rail.fixed || hw.rail.refused);
+  if (blocked) {
+    hw.rail.refusals++;
+    return hw.rail.on;
+  }
+
+  pwrCfgWriteMaskedLocked(hw, PWR_CFG_BOOST_EN, needed ? PWR_CFG_BOOST_EN : 0, false);
+  // A request the board cannot honour is a refusal, whichever direction it
+  // asked for, and the caller sees it in the read-back.
+  if (hw.rail.on != wanted) {
+    hw.rail.refusals++;
+  }
+  return hw.rail.on;
+}
+
+}  // namespace
+
+namespace Furble::Sim {
+
+bool hwSetRail(rail_holder_t holder, bool wanted) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  return setRailLocked(state(), holder, wanted);
+}
+
+}  // namespace Furble::Sim
+
+namespace {
+
+/**
+ * IR depends on the board's switched output where the two share one switch.
+ *
+ * On the M5PM1 boards EXT_5V feeds the Port A rail and the IR parts, so the rail
+ * answers before the IR state. On the AXP and IP5306 boards the modelled rail is
+ * the Port A supply and the IR emitter is its own GPIO, so it is independent.
+ */
+const char *irStateLocked(const hardware_state_t &hw) {
+  if (!hw.caps.ir) {
+    return "absent";
+  }
+  if (hw.rail.irInFlight) {
+    return "transmitting";
+  }
+  if (hw.peripheral.ir == "timeout") {
+    return "timeout";
+  }
+  if (pwrCfgModelled(hw) && !hw.rail.on) {
+    return "unpowered";
+  }
+  return hw.peripheral.ir.c_str();
+}
+
+/** Begin one IR transfer window. Both ends sit behind the switched 5 V output. */
+bool irStartLocked(hardware_state_t &hw) {
+  const bool unpowered = pwrCfgModelled(hw) && !hw.rail.on;
+  if (!hw.caps.ir || unpowered) {
+    hw.rail.irFailures++;
+    ESP_LOGW(LOG_TAG, "IR transfer refused: %s", !hw.caps.ir ? "no IR on this board" : "rail off");
+    return false;
+  }
+  hw.rail.irInFlight = true;
+  (void)setRailLocked(hw, Furble::Sim::rail_holder_t::IR, true);
+  hw.rail.irTransmits++;
+  return true;
+}
+
+bool irEndLocked(hardware_state_t &hw) {
+  if (!hw.rail.irInFlight) {
+    return false;
+  }
+  hw.rail.irInFlight = false;
+  (void)setRailLocked(hw, Furble::Sim::rail_holder_t::IR, false);
+  return true;
 }
 
 uint32_t reasonForName(const std::string &name) {
@@ -503,6 +751,7 @@ void hwSetProfile(const std::string &profile) {
   const std::lock_guard<std::mutex> lock(state().mutex);
   state().profile = profile;
   state().caps = capsFor(profile);
+  (void)rtcCapabilityMatchesLocked(state());
 }
 
 const char *hwProfile(void) {
@@ -660,6 +909,24 @@ void hwSetMqttDiscoveryPayload(size_t bytes) {
   state().mqttDiscoveryPayload = bytes;
 }
 
+void hwSetRailFixed(bool fixed) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  state().rail.fixed = fixed;
+}
+
+void hwSetRailRefused(bool refused) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  state().rail.refused = refused;
+}
+
+void hwSetPwrCfgStale(bool stale) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  state().pmic.pwrCfgStale = stale;
+  // The snapshot is taken now, before the boot path and the scenario steps can
+  // move the rail. The next LED read-modify-write carries it.
+  state().pmic.pwrCfgSnapshot = state().pmic.pwrCfg;
+}
+
 void hwStart(void) {
   const std::lock_guard<std::mutex> lock(state().mutex);
   hardware_state_t &hw = state();
@@ -681,6 +948,17 @@ void hwStart(void) {
   hw.pmic.powerLatch = hw.caps.pmic[0] != 'n';
   hw.power.state = power_state_t::ON;
   hw.usb.mode = usb_mode_t::APP;
+
+  // The one PWR_CFG byte starts with every modelled output on, and the stale
+  // snapshot a scenario asked for is taken here, before any boot step can move
+  // the rail.
+  hw.pmic.pwrCfg = PWR_CFG_BOOT;
+  applyRailFromPwrCfgLocked(hw);
+  hw.pmic.pwrCfgSnapshot = hw.pmic.pwrCfg;
+
+  // The RTC capability is a board-level fact, so check the pair at boot as well
+  // as when a profile is selected.
+  (void)rtcCapabilityMatchesLocked(hw);
 
   if (!hw.psramExplicit) {
     const std::string mode = hw.caps.psram;
@@ -1088,6 +1366,26 @@ bool hwAction(const std::string &name) {
     ESP_LOGW(LOG_TAG, "IR RMT transmit timeout");
     return true;
   }
+  // One IR transfer window. Both ends sit behind EXT_5V_EN, so the transfer
+  // needs the rail on, holds it while it runs and fails when a cut took.
+  if (name == "ir-transmit") {
+    if (!irStartLocked(hw)) {
+      return true;
+    }
+    ESP_LOGI(LOG_TAG, "IR transfer started; EXT_5V held by %s", hw.rail.holders.c_str());
+    return true;
+  }
+  if (name == "ir-transmit-end") {
+    (void)irEndLocked(hw);
+    return true;
+  }
+  // Flip the modelled RTC capability so a scenario can prove the board check
+  // detects a wrong answer instead of trusting it.
+  if (name == "hw-rtc-mismatch") {
+    hw.caps.rtc = !hw.caps.rtc;
+    (void)rtcCapabilityMatchesLocked(hw);
+    return true;
+  }
   if (name == "sd-present") {
     hw.peripheral.sd = "mounted";
     return true;
@@ -1327,6 +1625,13 @@ std::string hwQuery(const std::string &key) {
     if (sub == "rtc") {
       return hw.caps.rtc ? "yes" : "no";
     }
+    if (sub == "rtc_capability") {
+      const rtc_fact_t *fact = rtcFactFor(hw.profile);
+      return (fact != nullptr && hw.caps.rtc == fact->rtc) ? "match" : "mismatch";
+    }
+    if (sub == "fail_closed") {
+      return hw.failClosed ? "yes" : "no";
+    }
   }
   if (prefixed("pmic.")) {
     const std::string sub = key.substr(5);
@@ -1371,6 +1676,27 @@ std::string hwQuery(const std::string &key) {
     }
     if (sub == "battery_percent") {
       return std::to_string(hw.pmic.batteryPercent);
+    }
+    if (sub == "pwr_cfg") {
+      return std::to_string(hw.pmic.pwrCfg);
+    }
+    if (sub == "pwr_cfg_lost") {
+      return std::to_string(hw.pmic.pwrCfgLostUpdates);
+    }
+    if (sub == "watchdog_cycles") {
+      return std::to_string(hw.pmic.watchdogCycles);
+    }
+  }
+  if (prefixed("rail.")) {
+    const std::string sub = key.substr(5);
+    if (sub == "state") {
+      return hw.rail.on ? "on" : "off";
+    }
+    if (sub == "holders") {
+      return hw.rail.holders;
+    }
+    if (sub == "refusals") {
+      return std::to_string(hw.rail.refusals);
     }
   }
   if (prefixed("power.")) {
@@ -1521,10 +1847,16 @@ std::string hwQuery(const std::string &key) {
   if (prefixed("ir.")) {
     const std::string sub = key.substr(3);
     if (sub == "state") {
-      return hw.peripheral.ir;
+      return irStateLocked(hw);
     }
     if (sub == "timeouts") {
       return std::to_string(hw.peripheral.irTimeouts);
+    }
+    if (sub == "transmits") {
+      return std::to_string(hw.rail.irTransmits);
+    }
+    if (sub == "failures") {
+      return std::to_string(hw.rail.irFailures);
     }
   }
   if (prefixed("sd.")) {
@@ -1659,6 +1991,139 @@ std::string hwQuery(const std::string &key) {
 bool hwFailClosed(void) {
   const std::lock_guard<std::mutex> lock(state().mutex);
   return state().failClosed;
+}
+
+const char *hwRtcCapability(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  const rtc_fact_t *fact = rtcFactFor(state().profile);
+  if (fact == nullptr) {
+    return "unknown";
+  }
+  return state().caps.rtc == fact->rtc ? "match" : "mismatch";
+}
+
+bool hwRailFixed(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  return state().rail.fixed;
+}
+
+bool hwRailOn(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  return state().rail.on;
+}
+
+const char *hwRailState(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  return state().rail.on ? "on" : "off";
+}
+
+const char *hwRailHolders(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  return state().rail.holders.c_str();
+}
+
+uint32_t hwRailRefusals(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  return state().rail.refusals;
+}
+
+bool hwIrStartTransfer(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  return irStartLocked(state());
+}
+
+bool hwIrEndTransfer(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  return irEndLocked(state());
+}
+
+const char *hwIrState(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  return irStateLocked(state());
+}
+
+uint32_t hwIrTransmits(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  return state().rail.irTransmits;
+}
+
+uint32_t hwIrFailures(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  return state().rail.irFailures;
+}
+
+uint8_t hwPwrCfg(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  return state().pmic.pwrCfg;
+}
+
+uint32_t hwPwrCfgLostUpdates(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  return state().pmic.pwrCfgLostUpdates;
+}
+
+void hwSetDisplayOff(bool off) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  hardware_state_t &hw = state();
+  hw.pmic.displayOff = off;
+  if (!pwrCfgModelled(hw)) {
+    return;
+  }
+  if (off) {
+    if (hw.pmic.statusLedSaved) {
+      return;
+    }
+    // Read the byte, remember the LED level, clear it. The EXT 5 V bit sits in
+    // the same byte, so a read another holder has since invalidated puts that
+    // holder's change back.
+    hw.pmic.statusLedLevel = (hw.pmic.pwrCfg & PWR_CFG_LED_CTRL) != 0;
+    const bool stale = hw.pmic.pwrCfgStale;
+    hw.pmic.pwrCfgStale = false;
+    (void)pwrCfgWriteMaskedLocked(hw, PWR_CFG_LED_CTRL, 0, stale);
+    hw.pmic.statusLedSaved = true;
+    return;
+  }
+  if (!hw.pmic.statusLedSaved) {
+    return;
+  }
+  const uint8_t level = hw.pmic.statusLedLevel ? PWR_CFG_LED_CTRL : 0;
+  (void)pwrCfgWriteMaskedLocked(hw, PWR_CFG_LED_CTRL, level, false);
+  hw.pmic.statusLedSaved = false;
+}
+
+const char *hwDisplayOffState(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  const hardware_state_t &hw = state();
+  if (pwrCfgModelled(hw)) {
+    // The panel-off path is the status LED level bit, so a lost update that
+    // clears another bit still reads back through this one.
+    return hw.pmic.statusLedSaved ? "yes" : (hw.pmic.displayOff ? "yes" : "no");
+  }
+  return hw.pmic.displayOff ? "yes" : "no";
+}
+
+void hwNoteWatchdogCycle(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  hardware_state_t &hw = state();
+  hw.pmic.watchdogCycles++;
+  // A PMIC watchdog expiry power-cycles the system: the outputs drop and come
+  // back, and the SoC restarts under the PMIC's reset. The host has no reset
+  // line, so the cycle is recorded here instead of ending the process.
+  hw.power.offs++;
+  hw.power.state = power_state_t::OFF;
+  hw.power.state = power_state_t::ON;
+  hw.resetReason = ESP_RST_POWERON;
+  hw.resetReasonName = "pmic_watchdog";
+  hw.pmic.pwrCfg = PWR_CFG_BOOT;
+  applyRailFromPwrCfgLocked(hw);
+  hw.pmic.pwrCfgSnapshot = hw.pmic.pwrCfg;
+  ESP_LOGW(LOG_TAG, "PMIC watchdog expired; system power cycle %u",
+           static_cast<unsigned>(hw.pmic.watchdogCycles));
+}
+
+uint32_t hwWatchdogCycles(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  return state().pmic.watchdogCycles;
 }
 
 bool hwBatteryPresent(void) {

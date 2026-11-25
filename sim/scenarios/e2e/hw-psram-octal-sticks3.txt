@@ -33,7 +33,10 @@ assert hw.touch no
 assert hw.ir yes
 assert hw.sd no
 assert hw.audio yes
-assert hw.rtc yes
+# The board has no RTC chip (docs/console-commands.md), and the model now checks
+# its capability against one verified row per profile.
+assert hw.rtc no
+assert hw.rtc_capability match
 assert hw.pmic m5pm1
 assert pmic.watchdog armed
 exit

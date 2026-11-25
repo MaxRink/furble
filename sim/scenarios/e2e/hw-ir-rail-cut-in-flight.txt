@@ -1,0 +1,49 @@
+# EXT_5V is one switched output and the Port A rail and the IR LED and receiver
+# share it. An IR transfer therefore holds the output, and a GPS cut request
+# while it is in flight must come back refused instead of dropping the rail
+# under a running frame.
+#
+# Teeth: let the model cut the rail for the GPS holder without checking the IR
+# holder. rail.state reads off during the transfer and the first assert after
+# the toggle fails. Treating IR as always available fails the last block: the
+# transfer starts with the rail cut and ir.failures stays 0.
+seed gps true
+seed gps_model m10
+seed gps_m10_hot true
+wait 500
+assert rail.state on
+assert rail.holders gps
+assert ir.state idle
+assert ir.transmits 0
+assert ir.failures 0
+assert-eventually-virtual 15000 gps.receiver present
+
+# Both ends of the link sit behind the output, so a transfer holds it.
+action ir-transmit
+assert ir.state transmitting
+assert ir.transmits 1
+assert rail.holders gps+ir
+assert rail.state on
+
+# The GPS disable path asks the PMIC to cut Port A. The transfer still needs the
+# same output, so the read-back stays on and the driver sees a refused cut.
+action toggle gps
+wait 2000
+assert setting.gps 0
+assert rail.state on
+assert_min rail.refusals 1
+assert ir.failures 0
+
+# The transfer ends and no holder wants the output, so the refused cut takes.
+action ir-transmit-end
+wait 1000
+assert rail.state off
+assert rail.holders none
+assert ir.state unpowered
+
+# With the output cut, an IR transfer cannot start at all.
+action ir-transmit
+assert ir.state unpowered
+assert ir.transmits 1
+assert ir.failures 1
+exit
