@@ -2468,6 +2468,20 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/e2e/gps-uart-install-failure.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3",
+        "m5stack-core"
+      ],
+      "capabilities": [
+        "gps"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/e2e/gps-uart-malformed.txt",
       "suite": "e2e",
       "owner": "sim-e2e",

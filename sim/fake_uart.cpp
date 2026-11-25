@@ -25,6 +25,9 @@ bool rxEventQueued = false;
 uint32_t gpsNextEventMillis = 0;
 std::mutex gpsMutex;
 std::string uartMode = "ack";
+// Forces uart_driver_install() to fail, so a scenario can prove the firmware
+// boots without a receive queue instead of creating a task that blocks on one.
+bool uartInstallFails = false;
 
 // gpsEventQueued/gpsNextEventMillis belong only to the canned NMEA burst;
 // rxBytes/rxEventQueued carry independent CASIC replies and must survive a
@@ -508,6 +511,11 @@ void queueGpsEvent(QueueHandle_t queue) {
 }  // namespace
 
 esp_err_t uart_driver_install(uart_port_t, int, int, int, QueueHandle_t *uart_queue, int) {
+  if (uartInstallFails) {
+    // A failed install allocates no queue and writes no handle, exactly as
+    // ESP-IDF leaves a caller that asked for a port the driver cannot take.
+    return ESP_ERR_INVALID_STATE;
+  }
   gpsQueue = xQueueCreate(32, sizeof(uart_event_t));
   if (uart_queue != nullptr) {
     *uart_queue = gpsQueue;
@@ -916,6 +924,11 @@ uint32_t furble_sim_uart_monhw_polls(void) {
 bool furble_sim_uart_rx_pending(void) {
   std::lock_guard<std::mutex> lock(gpsMutex);
   return !rxBytes.empty() || rxEventQueued || gpsEventQueued || (gpsOffset < gpsStream.size());
+}
+
+void furble_sim_uart_set_install_failure(bool fail) {
+  std::lock_guard<std::mutex> lock(gpsMutex);
+  uartInstallFails = fail;
 }
 
 void furble_sim_uart_set_mode(const char *mode) {

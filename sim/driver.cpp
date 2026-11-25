@@ -562,6 +562,14 @@ void validateSeed(const std::string &name, const std::string &value) {
       std::exit(2);
     }
     return;
+  } else if (name == "gps_uart_install") {
+    // "fail" makes the fake driver refuse the install, which leaves the
+    // firmware with no queue and no GPS task.
+    if (value != "ok" && value != "fail") {
+      std::cerr << "Invalid gps_uart_install: " << value << '\n';
+      std::exit(2);
+    }
+    return;
   } else if (name == "imu_chip") {
     if (value != "bmi270" && value != "mpu6886" && value != "none") {
       std::cerr << "Invalid imu_chip: " << value << '\n';
@@ -2596,6 +2604,9 @@ void applyScenarioSettings(void) {
   if (uartMode != scenarioSettings.end()) {
     furble_sim_uart_set_mode(uartMode->second.c_str());
   }
+  const auto uartInstall = scenarioSettings.find("gps_uart_install");
+  furble_sim_uart_set_install_failure(uartInstall != scenarioSettings.end()
+                                      && uartInstall->second == "fail");
   const auto threshold = scenarioSettings.find("ivl_sleep_thr");
   if (threshold != scenarioSettings.end()) {
     Settings::save<uint32_t>(Settings::IVL_SLEEP_THR, parseUnsigned(threshold->second));

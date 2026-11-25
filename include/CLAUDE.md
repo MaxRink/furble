@@ -103,6 +103,9 @@ Public headers for the app layer in src/, one header per module
   Its cycle status getters are lock free: they read `m_CycleStatus`, which the
   GPS task publishes after each pass. Do not make a getter take `m_CycleMutex`
   again; the task's passes block on it, and a reader holding it stalls them.
+  `m_UartInstallFailed` is set once by `getInstance()` before any task exists and
+  makes `getReceiverState()` report `absent` for the session, so a failed UART
+  install cannot be hidden by a later `enable()` or `disable()` write.
 - `FurbleSD.h` and `FurbleGPX.h`: all SD and GPX file I/O runs on the SD
   writer task. Other tasks use only the non-blocking `SD::request()` /
   `SD::logPoint()` API and the atomic state accessors, and never call GPX

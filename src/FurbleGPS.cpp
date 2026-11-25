@@ -163,7 +163,7 @@ void wakeGPSService(QueueHandle_t queue) {
 GPS &GPS::getInstance() {
   static GPS instance;
 
-  if (instance.m_Task == NULL) {
+  if ((instance.m_Task == NULL) && !instance.m_UartInstallFailed.load()) {
     //  RX=33, TX=32 for Module GPS v2.1, currently unsupported
     const int8_t tx = M5.getPin(m5::port_a_pin2);
     const int8_t rx = M5.getPin(m5::port_a_pin1);
@@ -186,8 +186,25 @@ GPS &GPS::getInstance() {
 #endif
         .flags = {},
     };
-    uart_driver_install(instance.m_UART, BUFFER_SIZE, 0, QUEUE_SIZE, &instance.m_Queue,
-                        ESP_INTR_FLAG_IRAM);
+    const esp_err_t uartErr = uart_driver_install(instance.m_UART, BUFFER_SIZE, 0, QUEUE_SIZE,
+                                                  &instance.m_Queue, ESP_INTR_FLAG_IRAM);
+    if (uartErr != ESP_OK) {
+      // Nothing below this line can run without the driver: no receive queue,
+      // no port to configure, no task. Report the receiver absent through the
+      // state the diagnostics page and the console read, so a boot with a
+      // failed install reads the same everywhere instead of a task blocking on
+      // a null queue. The flag stops the next getInstance() from retrying, and
+      // nothing was allocated, so there is nothing to undo.
+      // Name and code, because release boards build without the esp_err name
+      // table and esp_err_to_name() then returns "UNKNOWN ERROR" (plan 106).
+      ESP_LOGE(LOG_TAG, "Failed to install gps uart: %s (0x%x)", esp_err_to_name(uartErr),
+               static_cast<unsigned>(uartErr));
+      instance.m_UartInstallFailed.store(true);
+      instance.m_Queue = NULL;
+      instance.m_ReceiverState.store(static_cast<uint8_t>(receiver_state_t::ABSENT));
+      return instance;
+    }
+
     uart_param_config(instance.m_UART, &uart_config);
     uart_set_pin(instance.m_UART, tx, rx, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
     uart_enable_pattern_det_baud_intr(instance.m_UART, '\n', 1, 9, 0, 0);
@@ -217,6 +234,12 @@ void GPS::setIcon(lv_obj_t *icon) {
 }
 
 void GPS::reset(void) {
+  // A failed uart_driver_install() leaves no queue to reset, and xQueueReset()
+  // on a null handle is an assert on hardware.
+  if (m_Queue == NULL) {
+    return;
+  }
+
   uart_flush(m_UART);
   xQueueReset(m_Queue);
   m_RxBuffer.clear();
@@ -352,6 +375,15 @@ void GPS::resetAcquisition(uint32_t now) {
 }
 
 void GPS::enable(void) {
+  // uart_driver_install() failed, so there is no queue and no task to service
+  // a cycle. Report the state the autobaud no-receiver path leaves behind and
+  // arm nothing: no cycle, no configuration, no power lock, no allocation. The
+  // setting still decides m_Enabled, which reloadSetting() has already applied.
+  if (m_UartInstallFailed.load()) {
+    m_ReceiverState.store(static_cast<uint8_t>(receiver_state_t::ABSENT));
+    return;
+  }
+
   const uint32_t baud = Settings::load<Settings::GPS_BAUD>();
   const uint8_t policy = powerPolicy();
   const uint8_t duty = dutySeconds();
@@ -3160,6 +3192,12 @@ GPS::monhw_report_t GPS::getMonHw(void) {
 }
 
 GPS::receiver_state_t GPS::getReceiverState(void) const {
+  // No installed driver means no receiver can answer this session, whatever
+  // enable() and disable() last stored. Deriving it here keeps the console,
+  // the diagnostics page and the simulator query on one answer.
+  if (m_UartInstallFailed.load()) {
+    return receiver_state_t::ABSENT;
+  }
   return static_cast<receiver_state_t>(m_ReceiverState.load());
 }
 

@@ -497,6 +497,14 @@ for the next panel-off read-modify-write, so a rail change that landed in
 between is lost and `pmic.pwr_cfg_lost` records it.
 `gps_m10_unresolved` makes the virtual M10 report a
 3D fix whose time is valid but not fully resolved.
+`gps_uart_install` takes `ok` (the default) or `fail`. `fail` makes the fake
+`uart_driver_install()` return `ESP_ERR_INVALID_STATE` and hand back no queue
+before the first GPS task exists, which is the boot a failed install leaves
+behind: no receive queue, no task, and the receiver reported absent by the
+same status word the console and the GPS Data page read. The port is not
+retried, so every later GPS query reports the same absent receiver.
+`e2e/gps-uart-install-failure.txt` seeds it and asserts the absent receiver,
+the main menu, no sleep lock, and no crash record.
 All boolean seeds, including `gps_uart_noise`, reject malformed values during
 scenario loading.
 

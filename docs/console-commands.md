@@ -285,6 +285,11 @@ station. `wifi connect` and `wifi disconnect` act immediately, and
   0 when fix hold is off) and `hold_remaining` (ms left on a held fix). The GPS
   Data page shows a two row summary of the same state; this is where all of it
   is readable.
+  A boot whose `uart_driver_install()` failed has no receive queue and no GPS
+  task, so `receiver` reads `absent` and `baud` reads 0 for the whole session.
+  Nothing retries the install, and the GPS Data page reports the same absent
+  receiver instead of a detection state nothing can change. The failed install
+  is logged once as `Failed to install gps uart: <esp_err name> (0x<code>)`.
 - `gps on | off` drives the GPS setting and reloads the receiver.
 - `gps raw on | off` mirrors incoming NMEA to the console.
 - `gps raw hex on | off` mirrors every received UART chunk as hex, including
