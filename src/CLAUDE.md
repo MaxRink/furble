@@ -497,7 +497,10 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   off without entering CPU/light sleep. All power off paths go through
   `UI::doPowerOff`: watchdog off, intervalometer quiesced with a proper shutter
   release, disconnect, then `Platform::powerOff`, which reports failure so the
-  UI can resume.
+  UI can resume. A profile row with no `powerOffPath` refuses before any
+  teardown and logs the profile name: the deep sleep start it would otherwise
+  reach arms no wake source, so the node would sit asleep until a power cycle
+  while the call reported success (plan 349).
 - The companion status battery fields come only from
   `Platform::getBatteryStatus()`, in display and headless builds alike. Each
   field follows its own capability flag through `BatteryStatus::gate()`, so a
@@ -517,7 +520,9 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   `Furble::Sim::battery_reading_t` seam. Keep `Platform::readBattery()` as the
   production boundary; scenario seeds/actions may replace its sample and
   `Platform::powerOff()` records the request so policy ordering can be asserted
-  without terminating the host process.
+  without terminating the host process, and refuses it on the same profile rows
+  the firmware refuses, so `platform.power_off` cannot read a success the
+  hardware would not produce.
 - New source files must be added to `src/CMakeLists.txt` (alphabetical, before
   main.cpp). Component deps go in `idf_component_register` there.
 

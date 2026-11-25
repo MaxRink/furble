@@ -17,7 +17,16 @@ matching `-debug` variant that adds verbose logging and the USB serial console.
 | `m5stick-s3` | ESP32-S3 | 8 MB | Yes | M5StickS3 | No | Native USB Serial/JTAG. PSRAM enabled. Only board with Sleep while connected and Watchdog. |
 | `m5stack-core` | ESP32 | 4 MB | No | M5Stack Core (Basic/Gray) | No | No Auto off or Low battery. |
 | `m5stack-core2` | ESP32 | 16 MB | Yes | M5Stack Core2, M5Tough (untested) | Yes | PSRAM enabled. On-screen shutter buttons, touch calibration, power-button screen lock. The firmware detects the M5Tough and branches for it, but it has not been verified on hardware. |
-| `waveshare-s3-eth` | ESP32-S3 | 16 MB | Yes | Waveshare ESP32-S3-ETH | No | Display-less wired-Ethernet profile; hardware verification remains outstanding. |
+| `waveshare-s3-eth` | ESP32-S3 | 16 MB | Yes | Waveshare ESP32-S3-ETH | No | Display-less wired-Ethernet node. Wi-Fi and BLE 5 on the SoC, W5500 for wired Ethernet. No PMIC, battery, RTC part, IMU or IR, and no software power-off path. Hardware verification remains outstanding. |
+
+The Waveshare ESP32-S3-ETH is a mains or PoE node. Its board row reports no
+battery, no PMIC, no RTC part, no IR emitter, no IMU and no software power-off
+path: there is no PMIC, no battery and no switchable rail to cut, so a
+power-off request is refused rather than leaving the node in a deep sleep with
+no wake source. A microSD slot is wired to GPIO 4 to 7, but no card-select pin
+is mapped, so the profile reports no SD slot. Wi-Fi and BLE 5 work alongside
+the wired link, and the optional PoE module feeds the same net as USB VBUS, so
+firmware cannot tell which supply is present.
 
 The developer-only `esp32-s3-headless` profile uses the documented 8 MB
 ESP32-S3-DevKitC-1 board and also includes MQTT. The 4 MB profiles omit the

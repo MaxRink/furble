@@ -31,6 +31,17 @@ enum class MotionWake : uint8_t {
  * Plus2, the Core2 image on a Tough), so the row is chosen from the detected
  * board, not from a build macro. Compile-time capabilities live in
  * FurbleBoardCaps.h. UI geometry stays in the UI.
+ *
+ * `canPowerOff` and `powerOffPath` answer different questions and are not the
+ * same column. `canPowerOff` is the UI policy gate: it hides the Auto off and
+ * Low battery rollers and stops their timers, and it is false on the Core where
+ * the profile reports a coarse level and no charging state for those policies
+ * to act on. The Core kept that false out of doubt about its IP5306 power-off
+ * path; that question moved to `powerOffPath`, which the Core keeps true
+ * because M5Unified clears the IP5306 boost keep-on and the power-off scenarios
+ * exercise it. The Waveshare ESP32-S3-ETH is the only row without a path: no
+ * PMIC, no cell and no rail, so the call would deep sleep the chip with no wake
+ * source armed rather than remove power.
  */
 struct Profile {
   const char *name;  // boot info block
@@ -48,7 +59,8 @@ struct Profile {
   int8_t powerHoldPin;    // driven high to stay on, -1 when none
   bool pmicClickStreak;   // emulate a click streak from the PMIC key
   bool sdSlot;            // an SD slot on the display SPI bus
-  bool canPowerOff;       // a software power-off path exists
+  bool canPowerOff;       // the UI offers the Auto off and Low battery policies
+  bool powerOffPath;      // the platform can cut power; see Platform::powerOff()
   bool modemSleep;        // the controller is configured for modem sleep
   uint8_t minBrightness;  // panel floor, a multiple of the slider step
   bool feedbackSound;

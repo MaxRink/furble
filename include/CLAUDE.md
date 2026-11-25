@@ -330,6 +330,11 @@ settings-touching rebase.
   row needs a matching case in `tests/host/board_profile_test.cpp`. The row
   also carries the driven-stage polarity (`ledActiveLow`, `irMarkLow`) and the
   timed-wake kind, because both follow the wiring and not the pin number.
+  `canPowerOff` and `powerOffPath` are separate columns on purpose.
+  `canPowerOff` is the UI policy gate for the Auto off and Low battery rollers
+  and is already false on the Core, which keeps its IP5306 path. `powerOffPath`
+  says whether `Platform::powerOff()` can remove power at all, and only the
+  Waveshare row is false. See plans/349-waveshare-board-row.md.
 - `FurblePinShare.h` is the ownership contract for one pin shared by the
   feedback LED and the IR emitter (Plus2 G19). Feedback calls
   `PinShare::requestLed()`; IR brackets a frame with `beginIr()` and

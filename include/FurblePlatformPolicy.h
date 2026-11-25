@@ -57,6 +57,32 @@ constexpr bool axp192AdcMaskKeepsRequired(uint8_t mask) {
          == (BATTERY_VOLTAGE | BATTERY_CURRENT | VBUS_VOLTAGE | VBUS_CURRENT);
 }
 
+/** What `Platform::powerOff()` does with a request. */
+enum class PowerOffAction : uint8_t {
+  CUT,     // the profile has a power-off path, attempt it
+  REFUSE,  // no path: log and report failure so the caller keeps running
+};
+
+/**
+ * Decide a power-off request from the board profile alone.
+ *
+ * A board with no PMIC, no battery and no switchable rail has nothing for a
+ * software power off to switch. M5Unified's `Power_Class::powerOff()` arms no
+ * wake source on such a board and ends at `esp_deep_sleep_start()`, so the node
+ * stays asleep until a power cycle while the call reports success. Claiming
+ * success there is worse than refusing: the caller stops tearing down and stays
+ * alive, and the log names the refused profile.
+ *
+ * Only the row's `powerOffPath` column is an input, and the Waveshare
+ * ESP32-S3-ETH row is the only one that reports false. The `canPowerOff` column
+ * is the UI policy gate for the automatic policies and is false on the Core,
+ * which keeps its IP5306 path. The generic unknown-board row keeps attempting,
+ * as it did before.
+ */
+constexpr PowerOffAction powerOffAction(bool hasPath) {
+  return hasPath ? PowerOffAction::CUT : PowerOffAction::REFUSE;
+}
+
 }  // namespace PlatformPolicy
 }  // namespace Furble
 

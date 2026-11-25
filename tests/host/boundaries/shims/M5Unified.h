@@ -57,6 +57,7 @@ enum board_t {
   board_M5StackCore2,
   board_M5Tough,
   board_M5StackCoreS3,
+  board_M5StampS3,
 };
 
 enum ext_output_t {

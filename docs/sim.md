@@ -1132,7 +1132,14 @@ The other namespaces are:
   `hw.flash_kb`, `hw.psram`, `hw.pmic`, `hw.gauge`, `hw.usb`, `hw.display`,
   `hw.touch`, `hw.wifi`, `hw.ethernet`, `hw.ble`, `hw.ir`, `hw.sd`, `hw.audio`,
   `hw.rtc`, `hw.rtc_model`, `hw.rtc_battery`, `hw.rtc_clock`, `hw.rtc_volt_low`,
-  `hw.rtc_epoch`, `hw.timed_wake`, `hw.battery`). `hw.rtc_capability` is `match`
+  `hw.rtc_epoch`, `hw.timed_wake`, `hw.vbus`, `hw.poe`, `hw.battery`). `hw.vbus`
+  and `hw.poe` report a software-readable supply sense line, so `no` means
+  firmware cannot observe that source and must report it as unknown rather than
+  infer it. `hw.vbus` follows `FURBLE_HAS_VBUS_SENSE`; `hw.poe` is `no` on every
+  board today because no image has a PoE sense line. The Waveshare ESP32-S3-ETH
+  reports `no` for both because its optional PoE module feeds POE_5V, the same
+  net as VBUS. `hw.rtc` reports a separate RTC part with a backup cell, not the
+  SoC RTC domain. `hw.rtc_capability` is `match`
   when the profile's RTC capability agrees with its verified row and `mismatch`
   when it does not, and `hw.fail_closed` reports whether the model recorded a
   defect. `pmic.*` reports variant, gauge, battery, charging, charger, charge

@@ -440,6 +440,16 @@ bool Platform::hasTicklessIdle(void) {
 }
 
 bool Platform::powerOff(void) {
+  // Refuse before any teardown. TimeKeeper::flush() is harmless, but the SD
+  // unmount is one way: a caller that must stay alive would be left without its
+  // card. See plans/349-waveshare-board-row.md.
+  if (PlatformPolicy::powerOffAction(Board::profile().powerOffPath)
+      == PlatformPolicy::PowerOffAction::REFUSE) {
+    ESP_LOGW(LOG_TAG, "Power off refused, the %s profile has no power-off path",
+             Board::profile().name);
+    return false;
+  }
+
   TimeKeeper::getInstance().flush();
   // the SD writer task closes the track and unmounts, wait for it to finish
   if (!SD::getInstance().powerOff()) {
