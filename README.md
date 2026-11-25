@@ -339,9 +339,12 @@ do not erase the chip when preserving settings and camera bonds matters.
 
 The debug environments also set `-DFURBLE_CONSOLE=1`, which builds a text
 console onto the same USB port that carries the log. It exists so a developer or
-a host script can drive furble without walking the menu tree by hand. No release
-environment contains it, so there is nothing to enable and nothing to switch
-off.
+a host script can drive furble without walking the menu tree by hand. None of
+the six release board images contains it, so a shipped board has nothing to
+enable and nothing to switch off. The release artifacts also carry the matching
+`-debug` image for every board except `m5stack-core`, and those do contain it.
+The `esp32-s3-headless` developer hub environment enables it too, and the
+reproducible workflow builds that one.
 
 Open it with `platformio device monitor -e m5stick-s3-debug` and type `help`.
 Log output shares the port, so `log * warn` is usually the first thing worth
@@ -360,7 +363,7 @@ boot timing                         last boot timeline and mark deltas
 status                              state, targets, uptime, heap, memory pressure, battery, reset reason
 crash [last]                        previous-boot crash record, see docs/crash-diagnostics.md
                                     adds crash.alloc_* lines after a failed allocation
-power                               power stats, or a CSV power log
+power                               power stats, CSV log, off; a display-less build refuses off
 perf                                task, heap, and LVGL performance
 heap trace start [n] | stop | dump  heap allocation trace (debug images)
 gps                                 GPS status and control, eg. gps send PCAS12,10
@@ -380,6 +383,7 @@ ntp status                          NTP state, server, sync time and offset
 ntp set server <host>               save the NTP server
 ntp enable|disable|sync             control or request an NTP synchronization
 settings list | get | set           read and write non-secret settings
+provision <hex|base64 TLV blob>     apply a provisioning bundle
 companion start|stop|status        pairing window, stop, or persisted/live/bond state
 companion reidentify               rotate the LE address and drop only the companion bond
 companion password set | clear | status manage the companion password without revealing it
@@ -505,11 +509,13 @@ and the page scrolls as needed. This retains the selected font and complete
 wording instead of squeezing names into clipped columns.
 Display controls also leave space for their focus outlines between rows.
 
-The top level menu has the following entries:
+The top level menu has the following entries, in navigation order:
 - `Connect`
 - `Scan`
 - `Delete`
+- `IR`, when the board has an IR LED and Infrared is enabled
 - `Settings`
+- `Level`, when the IMU is enabled and its sensor is present
 - `Off`
 
 On first use, put the target camera into pairing mode, then hit `Scan`. If the
@@ -538,10 +544,15 @@ More details are in [Controls](docs/wiki/Controls.md) and [Settings and controls
 
 ### GPS Location Tagging
 
-For Fujifilm, Sony, and Ricoh cameras, location tagging is supported with an M5Stack GPS
-unit on Grove Port A. The M5Stack units are the AT6668/CASIC family, so one
-set of $PCAS and NMEA support covers them all. u-blox M10 receivers are
-detected by a MON-VER poll and configured over UBX.
+Location tagging is supported on the cameras the feature table marks in its GPS
+column: Fujifilm, Canon EOS (Smart), Ricoh, PENTAX, Sony ZV and Panasonic
+LUMIX. The table is the support statement. Nikon (Smart) implements the same
+location write in `lib/furble/NikonSmart.cpp`, and its row has Scanning ticked,
+but Pairing, Shutter Release, Focus and GPS are crossed, so it is not a
+supported model. Location tagging needs an M5Stack GPS unit on Grove Port A.
+The M5Stack units are the AT6668/CASIC family, so one set of $PCAS and NMEA
+support covers them all. u-blox M10 receivers are detected by a MON-VER poll
+and configured over UBX.
 
 | Unit | Antenna | Status |
 | :--- | :--- | :--- |

@@ -67,6 +67,8 @@ The main menu is the home screen. Its entries in order are:
 - **IR**: fire the camera over infrared. This entry appears only when the board
   has an IR LED and Infrared is enabled.
 - **Settings**: the settings tree, described below.
+- **Level**: the spirit level, shown when the IMU is enabled and its sensor is
+  present.
 - **Off**: power the device off.
 
 The header shows the connection state and the battery indicator.
@@ -135,9 +137,10 @@ are:
 - **GPS Data**: the live GPS page.
 - **Disconnect**: drop the camera and return to the main menu.
 
-When enabled under Settings > Sensors, Connected includes the Level spirit-level
-page and Diagnostics includes the live IMU readout. The simulator injects
-deterministic samples through the same production sensor seam.
+When enabled under Settings > Sensors, the home menu and Connected include the
+Level spirit-level page and Diagnostics includes the live IMU readout. The
+simulator injects deterministic samples through the same production sensor
+seam.
 
 ### Remote
 
@@ -175,7 +178,7 @@ The GPS Data page shows the live fix: age, satellite count, speed, latitude and
 longitude, altitude, and UTC date and time. It is reachable both here and under
 `Settings` > `GPS` > `GPS Data`.
 
-### GPS Satellites
+### Satellites
 
 ![GPS satellite detail page](img/gps-satellites.png)
 
