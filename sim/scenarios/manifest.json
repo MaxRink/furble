@@ -4483,8 +4483,8 @@
       ],
       "capabilities": [],
       "expected_exit": 0,
-      "certified": false,
-      "reason": "Requires the optional FURBLE_SIM_MQTT=1 build and an unreachable broker URI; run by sim/scripts/run-memory.sh."
+      "certified": true,
+      "transport": "mqtt"
     },
     {
       "path": "sim/scenarios/e2e/memory-mqtt-low-heap-retry-limit.txt",
@@ -4495,8 +4495,8 @@
       ],
       "capabilities": [],
       "expected_exit": 0,
-      "certified": false,
-      "reason": "Requires the optional FURBLE_SIM_MQTT=1 build and an unreachable broker URI; run by sim/scripts/run-memory.sh."
+      "certified": true,
+      "transport": "mqtt"
     },
     {
       "path": "sim/scenarios/e2e/memory-mqtt-unreachable.txt",
@@ -4507,8 +4507,8 @@
       ],
       "capabilities": [],
       "expected_exit": 0,
-      "certified": false,
-      "reason": "Requires the optional FURBLE_SIM_MQTT=1 build and an unreachable broker URI; run by sim/scripts/run-memory.sh."
+      "certified": true,
+      "transport": "mqtt"
     },
     {
       "path": "sim/scenarios/e2e/memory-pressure-mqtt-shed.txt",
@@ -4519,8 +4519,8 @@
       ],
       "capabilities": [],
       "expected_exit": 0,
-      "certified": false,
-      "reason": "Requires the optional FURBLE_SIM_MQTT=1 build and an unreachable broker URI; run by sim/scripts/run-memory.sh."
+      "certified": true,
+      "transport": "mqtt"
     },
     {
       "path": "sim/scenarios/e2e/memory-counted-camera-connect.txt",

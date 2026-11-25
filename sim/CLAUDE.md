@@ -1085,10 +1085,15 @@ shortens that host retry cadence for a bounded scenario.
   `page-matrix.txt` rather than duplicating them elsewhere.
 - All simulator scenarios are catalogued in `sim/scenarios/manifest.json`.
   Every entry declares its suite owner, board matrix, capabilities, and
-  expected exit status. Obsolete scenarios must be non-certified with a reason.
+  expected exit status. An entry whose assertions need the optional native
+  MQTT transport declares `"transport": "mqtt"`; the default is `default`, the
+  ordinary build, and `--list-certified` selects one transport at a time so
+  neither binary runs the other's scenarios. Obsolete scenarios must be
+  non-certified with a reason.
   CI suite sweeps use the checker's `--list-certified` output rather than file
   globs, so nested and newly added certified scenarios run on every declared
-  board. Keep suite runners manifest-driven.
+  board. Keep suite runners manifest-driven: `sim/scripts/run-memory.sh` reads
+  its list from the MQTT-transport selection instead of naming files.
 - `seed fb_output 0..4` models the persisted feedback output selection. Page
   and overflow matrices seed `fb_output 1` so the sound volume route is truly
   reachable when feedback capability is enabled. `feedback-hidden-route.txt`

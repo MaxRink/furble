@@ -103,7 +103,8 @@ CLAUDE.md whose directory it touches.
   keep that permission on the publishing job, not on firmware build jobs.
   All simulator scenarios are listed in
   `sim/scenarios/manifest.json`, including their owner, board matrix,
-  capabilities, and expected exit status.
+  capabilities, expected exit status and, when the assertions need the optional
+  native MQTT transport, the transport they run on.
   The Android companion metadata table mirrors shipped firmware settings by
   wire ID. LEGEND wire 65 has values 0 (Buttons), 1 (Bottom), and 2 (Off);
   keep its protocol test aligned when that production enum changes.
