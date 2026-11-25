@@ -36,7 +36,8 @@ struct Profile {
   const char *name;  // boot info block
   PowerBackend::battery_caps_t battery;
   uint16_t batteryCapacityMah;  // 0 when unknown
-  bool rtcBatteryBacked;        // the RTC keeps time with the main cell out
+  bool rtcBatteryBacked;        // the RTC calendar survives a power-off, by a
+                                // cell or by a rail the board keeps alive
   int8_t irPin;                 // -1 when the board has no IR emitter
   MotionWake motionWake;
   int8_t motionWakePin;  // SoC pin for motionWake, -1 for NONE
@@ -52,6 +53,12 @@ struct Profile {
   bool feedbackVibration;
   int8_t ledPin;  // -1 when none
   bool gpsRail;   // M5.Power switches the Port A 5 V output for the GPS unit
+  // The two columns below describe driven stages: board facts, not UI
+  // geometry. They are the wiring of the LED and emitter, which is why they
+  // cannot be derived from the pin number.
+  bool ledActiveLow;  // the LED lights on a low pin
+  bool irMarkLow;     // the emitter lights on a low pin, so the RMT output is
+                      // inverted to keep the optical frame the right way up
 };
 
 /** The row for a board model. Unknown boards get a no-hardware row. */

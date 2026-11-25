@@ -322,7 +322,16 @@ settings-touching rebase.
   the detected board (an image serves several boards). Non-UI modules read
   board facts from it instead of switching on `M5.getBoard()`; UI geometry
   stays in the UI and compile-time facts stay in `FurbleBoardCaps.h`. A new
-  row needs a matching case in `tests/host/board_profile_test.cpp`.
+  row needs a matching case in `tests/host/board_profile_test.cpp`. The row
+  also carries the driven-stage polarity (`ledActiveLow`, `irMarkLow`) and the
+  timed-wake kind, because both follow the wiring and not the pin number.
+- `FurblePinShare.h` is the ownership contract for one pin shared by the
+  feedback LED and the IR emitter (Plus2 G19). Feedback calls
+  `PinShare::requestLed()`; IR brackets a frame with `beginIr()` and
+  `endIr()`. The glue takes one short mutex per call and never holds it across
+  an RMT transfer, so no caller may add work inside those two calls. Only
+  `ledSharesIr()` selects the path; a board with separate pins keeps driving its
+  LED directly.
 - `FurblePowerBackend.h` is the contract a board's power hardware meets: the
   shared battery and rail types plus the member list `meetsPowerBackend()`
   checks, asserted after `Platform` in `FurblePlatform.h`. It is a

@@ -5,6 +5,7 @@
 #include "FurbleBoard.h"
 #include "FurbleBoardCaps.h"
 #include "FurbleFeedback.h"
+#include "FurblePinShare.h"
 #include "FurbleTime.h"
 
 #include "FurblePlatform.h"
@@ -116,16 +117,23 @@ void Feedback::initialize(void) {
   // applies on restart only. The menu offers a restart button for it.
   m_Output = static_cast<output_t>(Settings::load<uint8_t>(Settings::FB_OUTPUT));
 
-  // G19 is also the IR pin on the Plus2. There is no IR receiver backend in
-  // this branch, so a future IR receive path must guard this blink. The Tough
-  // has no speaker, LED or vibration motor.
+  // G19 is also the IR pin on the Plus2, so every LED write goes through the
+  // PinShare arbitration: IR takes the pin for a frame and restores this level
+  // afterwards. The Tough has no speaker, LED or vibration motor.
+  // The LED stage decides the polarity: the StickC and Plus drive the cathode of
+  // an LED whose anode is on 3.3 V, while the Plus2 drives an NPN base from
+  // G19, so a high pin lights it. Getting this backwards would drive the Plus2
+  // pin high at boot, which keys that board's IR emitter through the same
+  // transistor (plan 350).
   const auto &board = Board::profile();
   m_Capabilities = {board.feedbackSound, board.feedbackLight, board.feedbackVibration, board.ledPin,
-                    true};
+                    board.ledActiveLow};
 
-  // Leave the LED pin untouched unless the boot output actually blinks it.
-  // On the Plus2 G19 doubles as the IR emitter and the polarity is not
-  // verified, so driving it with the feature off could key the IR diode.
+  // Leave the LED pin untouched unless the boot output actually blinks it. On
+  // the Plus2 G19 also drives the IR emitter through the same transistor, so
+  // with the feature off the pad stays an input and neither device is keyed.
+  // The arbitration still hands the pin back after an IR frame; with no
+  // recorded level it releases the pad as an input instead of choosing one.
   if (m_Capabilities.light && outputIncludesLight(m_Output)) {
     (void)gpio_set_direction(static_cast<gpio_num_t>(m_Capabilities.led_pin), GPIO_MODE_OUTPUT);
     m_LightReady = true;
@@ -360,8 +368,9 @@ void Feedback::setLight(bool on) {
     return;
   }
 
-  const int level = on == m_Capabilities.led_active_low ? 0 : 1;
-  (void)gpio_set_level(static_cast<gpio_num_t>(m_Capabilities.led_pin), level);
+  // The request is recorded even while an IR frame owns the pin, so the frame
+  // hand-over restores the blink state instead of the RMT idle level.
+  (void)PinShare::requestLed(PinShare::ledLevel(on, m_Capabilities.led_active_low));
 }
 
 void Feedback::startLight(uint16_t on, uint16_t off, uint8_t count) {

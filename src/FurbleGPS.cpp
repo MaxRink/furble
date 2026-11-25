@@ -390,7 +390,12 @@ void GPS::enable(void) {
   uart_set_baudrate(m_UART, initialBaud);
   reset();
 
-  // power on, no mutex may be held across the PMIC access
+  // Ensure the rail is on; no mutex may be held across the PMIC access. On the
+  // StickC and StickC Plus it already is: M5GFX enables AXP192 EXTEN (register
+  // 0x12 = 0x4D, bit 6) during M5.begin(), so the receiver has been powered
+  // since boot and this call normally changes nothing. It is not a power-on
+  // edge, so nothing below may depend on the receiver having restarted; the
+  // acquisition deadline is anchored to this call instead (plan 350).
   setRailPower(true);
 
   {
@@ -1002,6 +1007,8 @@ void GPS::beginWindow(uint32_t now) {
   acquirePowerLock();
 
   if (previous == cycle_state_t::RAIL_OFF) {
+    // A real off-to-on edge: this driver cut the rail itself, so the receiver
+    // does restart and its UART output restarts with it.
     setRailPower(true);
     reset();
     m_ConfigChars = getCounters().chars;

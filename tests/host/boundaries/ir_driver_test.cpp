@@ -47,6 +47,8 @@ struct RmtChannel {
   // The IR task updates these while the test thread reads them.
   std::atomic<bool> enabled {false};
   uint32_t carrier = 0;
+  uint32_t duty_cycle_permille = 0;
+  uint32_t invert_out = 0;
   std::atomic<int> enables {0};
   std::atomic<int> disables {0};
   std::atomic<int> transmits {0};
@@ -79,8 +81,20 @@ esp_err_t rmt_new_tx_channel(const rmt_tx_channel_config_t *config, rmt_channel_
   check(config->mem_block_symbols == SOC_RMT_MEM_WORDS_PER_CHANNEL,
         "RMT memory block is not the SoC default");
   auto *handle = new rmt_channel_t;
+  handle->state.invert_out = config->flags.invert_out;
   g_LastChannel = &handle->state;
   *channel = handle;
+  return ESP_OK;
+}
+
+esp_err_t rmt_tx_switch_gpio(rmt_channel_handle_t channel, gpio_num_t gpio_num, bool invert_out) {
+  if (channel == nullptr || invert_out) {
+    // Every case here transmits on a dedicated IR pin, so the hand-over must
+    // never run and an inverted reattach would mean the wrong board row.
+    check(false, "rmt_tx_switch_gpio ran on a board with a dedicated IR pin");
+    return ESP_ERR_INVALID_STATE;
+  }
+  (void)gpio_num;
   return ESP_OK;
 }
 
@@ -104,6 +118,7 @@ esp_err_t rmt_apply_carrier(rmt_channel_handle_t channel, const rmt_carrier_conf
     return ESP_ERR_INVALID_ARG;
   }
   channel->state.carrier = config->frequency_hz;
+  channel->state.duty_cycle_permille = static_cast<uint32_t>((config->duty_cycle * 1000.0F) + 0.5F);
   return ESP_OK;
 }
 
@@ -338,6 +353,58 @@ void runQueueTimeout(void) {
   check(g_Captures.size() == 2, "queue accounting transmitted an unexpected frame count");
 }
 
+// Plan 350: the StickC and StickC Plus drive the emitter cathode from the pin,
+// so the RMT output is inverted there and the optical frame matches the Plus2,
+// whose NPN stage inverts an upright electrical image. This asserts the level
+// that reaches the emitter for each family, derived from the channel inversion
+// and the encoded mark level, so an inverted output on the wrong board fails.
+void runPolarity(const std::string &family) {
+  using Furble::IR;
+  using Furble::Settings;
+
+  initializeSettings();
+  bool mark_low = false;
+  uint32_t expected_duty = 333;
+  if (family == "stickc") {
+    M5.board = m5::board_t::board_M5StickC;
+    mark_low = true;
+    expected_duty = 667;
+  } else if (family == "stickc-plus") {
+    M5.board = m5::board_t::board_M5StickCPlus;
+    mark_low = true;
+    expected_duty = 667;
+  } else if (family == "stickc-plus2") {
+    M5.board = m5::board_t::board_M5StickCPlus2;
+    mark_low = false;
+    expected_duty = 333;
+  } else {
+    check(false, "unknown polarity family");
+    return;
+  }
+
+  IR::init();
+  Settings::save<uint8_t>(Settings::IR_PROTO, static_cast<uint8_t>(IR::protocol_t::NIKON));
+  IR::getInstance().fire();
+  check(waitForCapture(1), "the polarity frame did not reach the RMT double");
+  check(g_LastChannel != nullptr, "the RMT channel was never created");
+
+  const uint32_t invert = g_LastChannel->invert_out;
+  check(invert == (mark_low ? 1U : 0U), "the RMT output inversion does not match the board");
+  check(g_LastChannel->duty_cycle_permille == expected_duty,
+        "the carrier duty does not keep the optical duty at a third");
+
+  // The encoded header mark is level 1 and the encoder is board independent, so
+  // the level a light-emitting-diode-anode-on-3.3V stage sees is mark XOR
+  // invert. A 2 ms burst must stay a 2 ms burst instead of turning into the
+  // 27.8 ms header space.
+  const Capture &capture = lastCapture(0);
+  const uint32_t emitter_mark = static_cast<uint32_t>(capture.symbols[0].level0) ^ invert;
+  check(emitter_mark == (mark_low ? 0U : 1U), "the emitter mark level is wrong for this board");
+  std::cout << "ir.polarity family=" << family << " invert_out=" << invert
+            << " mark_level=" << capture.symbols[0].level0 << " emitter_mark=" << emitter_mark
+            << " duty_permille=" << g_LastChannel->duty_cycle_permille << '\n';
+}
+
 void runUnsupported(void) {
   using Furble::IR;
 
@@ -362,6 +429,8 @@ int main(int argc, char **argv) {
     runPsramFallback();
   } else if (mode == "queue-timeout") {
     runQueueTimeout();
+  } else if (mode == "polarity") {
+    runPolarity(argc > 2 ? argv[2] : "stickc");
   } else if (mode == "unsupported") {
     runUnsupported();
   } else {

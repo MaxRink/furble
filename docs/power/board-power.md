@@ -226,7 +226,10 @@ monitor on, charge 4.2 V at 100 mA, RTC LDO backup, IRQ masks, ADC all on
 (`0x82 = 0xFF`), temperature ADC on (`0x83 = 0x80`), ADC rate 25 Hz
 (`0x84 = 0x32`). The board switch then sets StickC and Plus to DCDC3 off and
 LDO3 3.0 V for the LCD, Core2 to LDO2 3.3 V, LDO3 0 V, speaker off, and 390 mA
-charge current, and Tough to LDO2 3.3 V, speaker off, DCDC3 off. The AXP192
+charge current, and Tough to LDO2 3.3 V, speaker off, DCDC3 off. The register-level detail in this section is what M5Unified and M5GFX write, read
+back from the pinned library sources; the AXP192 datasheet copy was not re-opened
+in the plan 350 pass, and the StickC and Plus schematics were not available, so
+the bit assignment beyond those writes is `unverified`. The AXP192
 datasheet gives off mode 27 uA, suspend 86 uA, DCDC1 26 uA no load, DCDC2 and
 DCDC3 20 uA each, LDO2 and LDO3 100 uA each, and LDOIO0 90 uA. There is no
 whole-chip operating figure. The "about 2 mA AXP192 floor" in plan 98 is a
@@ -301,7 +304,7 @@ unknown. Do not invent one in a power document.
 | StickC, Plus | DCDC1 3.35 V | ESP32 | No, always on while running |
 | StickC, Plus | LDO2 1.8 to 3.3 V | LCD backlight | Yes, M5GFX writes the LDO2 voltage; 0 disables the rail |
 | StickC, Plus | LDO3 3.0 V | LCD logic | No, stays on while the panel is powered |
-| StickC, Plus | EXTEN | Grove 5 V | Yes, `M5.Power.setExtOutput` |
+| StickC, Plus | EXTEN | Grove 5 V (UNVERIFIED) | Yes, `M5.Power.setExtOutput`; already on after `M5.begin()`, see below |
 | Core | 3.3 V boost output | ESP32, LCD, SD, speaker | No, the IP5306 boost is the whole rail |
 | Core2 | DCDC3 | LCD backlight | Yes, M5GFX voltage dimming |
 | Core2 | LDO2 3.3 V | LCD and SD | No, stays on |
@@ -312,6 +315,16 @@ unknown. Do not invent one in a power document.
 | StickS3 | L3B | Hat rail, PM1 GPIO2 | Not touched by furble |
 | All Core boards | SD slot | microSD | No load switch; the card stays powered when inserted |
 | Waveshare | microSD, WS2812, W5500 | Unused slot, status LED, Ethernet | SD slot unused; WS2812 off; W5500 started at boot |
+
+**EXTEN is already on at boot on the StickC and Plus.** M5GFX 0.2.27
+`Light_M5StickC::init()` writes AXP192 `0x12 = 0x4D` during `M5.begin()`, and bit
+6 of that register is EXTEN per M5Unified 0.2.20 `AXP192_Class::setEXTEN()`. So
+the Grove 5 V rail is live before the GPS driver runs, `setExtOutput(true)` is
+normally a no-op there, and a GPS unit on Port A is powered from boot even when
+GPS is disabled in settings. The EXTEN-to-Grove-5V routing itself stays
+`unverified`: the StickC and Plus schematics were not available in this pass, and
+neither were the AXP192 register details beyond the values M5Unified writes
+(plan 350).
 
 Two consequences follow. First, the only true peripheral power controls in
 furble are the Grove 5 V rail and the panel backlight. Everything else is
@@ -330,7 +343,7 @@ The relevant pull-ups are:
 
 | Board | Pin | Pull | Why it matters |
 | :--- | :--- | :--- | :--- |
-| StickC, Plus | GPIO35 | External only, input-only pin | Shared SYS_INT net with the MPU6886 and BM8563. Active low. Current depends on the external resistor, which is not in the tree. |
+| StickC, Plus | GPIO35 | External only, input-only pin | Shared net with the MPU6886 INT, the BM8563 INT and the AXP192 IRQ output. Active low. Current depends on the external resistor, which is not in the tree. |
 | StickC, Plus, Plus2, Core, Core2, S3 | I2C SDA and SCL | Board pull-ups | Zero steady current when idle. Only the transaction current matters. |
 | StickS3 | GPIO13 | Internal pull-up, 45 kOhm typical | PM1 aggregated IRQ, active low. About 73 uA while the line is held low. |
 | StickS3 | GPIO46 | IR TX, driven only when the feature is used | Floating when IR is off. No measured leakage. |
@@ -488,15 +501,23 @@ Estimates are not measurements unless the label says `measured-local`.
 
 #### PM-04 AXP192 boards: trim the ADC channel mask
 
-- Change: after `M5.begin()`, write `0x82` to enable only the battery voltage
-  and battery current channels, and `0x83` to disable the internal temperature
-  channel. Keep `0x84` at 25 Hz.
+- Change: after `M5.begin()`, write `0x82 = 0xCC` to keep battery voltage,
+  battery current, VBUS voltage and VBUS current, and `0x83 = 0x00` to disable
+  the internal temperature channel. Keep `0x84` at 25 Hz. This is what
+  `include/FurblePlatformPolicy.h` does today.
 - Current behavior: M5Unified writes `0x82 = 0xFF` (every channel),
   `0x83 = 0x80` (temperature on), and `0x84 = 0x32` (25 Hz) on every AXP192
-  board. Furble only uses battery level, voltage, and current. ACIN, VBUS, APS,
-  TS, and temperature are unused.
-- Evidence: `code` (M5Unified 0.2.20 `Power_Class.cpp` register block),
-  `datasheet`.
+  board. Furble reads battery level, voltage, and current, and VBUS voltage.
+  ACIN voltage and current, APS, TS and temperature are unused.
+- VBUS current is not unused: M5Unified's legacy AXP192 `setExtOutput()` path
+  reads it on the Core2 and Tough to refuse external power when the battery is
+  low and no ACIN supply is present, so bit 2 stays set. The StickC and Plus
+  path only calls `Axp192.setEXTEN()`, so the channel is dead weight there; one
+  mask is written on every AXP192 board, and trimming it only on the StickC
+  family is the plan 350 follow-up, deferred because the AXP192 register details
+  could not be verified in that pass.
+- Evidence: `code` (M5Unified 0.2.20 `Power_Class.cpp` register block and
+  `setExtOutput()`), `datasheet`.
 - Estimated saving: under 100 uA, possibly under 10 uA (`inferred`). The AXP192
   datasheet does not give a separate ADC block current, so this must be
   measured before it is claimed. It is a trim, not a headline.
@@ -939,14 +960,17 @@ Estimates are not measurements unless the label says `measured-local`.
 
 #### LK-02 StickC and Plus: GPIO35 external pull-up on the shared SYS_INT net
 
-- Change: none. The net is shared between the MPU6886 interrupt and the BM8563
-  RTC alarm, and the MPU6886 is configured open-drain active low. Making the
-  IMU push-pull would fight the RTC. The external pull-up is required.
+- Change: none. The net carries three open-drain sources: the MPU6886
+  interrupt, the BM8563 RTC interrupt, and the AXP192 IRQ output. Making the IMU
+  push-pull would fight the other two. The external pull-up is required.
 - Current behavior: GPIO35 is input-only on the ESP32 and has no internal pull.
-  The board resistor holds the net high. The line sinks current while either
-  source asserts it.
-- Evidence: `code` (`src/FurblePlatform.cpp:372-385`), `unverified` resistor
-  value.
+  The board resistor holds the net high. The line sinks current while any source
+  asserts it. M5Unified enables the AXP192 power-key IRQ (IRQ enable 3,
+  `0x42 = 0x03`), so a power-button press also pulls the net low; masking that
+  source would also remove the `0x46` status that `M5.BtnPWR` reads, so the
+  firmware instead treats any low level as "wake and count activity".
+- Evidence: `code` (`src/FurblePlatform.cpp`), `unverified` resistor value and
+  schematic routing.
 - Estimated saving: 0 without a board change. The average depends on the
   resistor and the assertion duty, which are not in the tree.
 - Risk: high if changed. A push-pull IMU on a shared open-drain net can short
@@ -955,13 +979,14 @@ Estimates are not measurements unless the label says `measured-local`.
 - Required test: none. If the net is ever changed, measure the resistor and the
   assertion duty first.
 - Citation: `src/FurblePlatform.cpp`; MPU6886 datasheet interrupt pin
-  configuration (not opened here); BM8563 documentation.
+  configuration (not opened here); BM8563 documentation; M5Unified 0.2.20
+  `Power_Class.cpp` AXP192 IRQ enable block and `AXP192_Class::getPekPress()`.
 
 #### LK-03 All boards: IR LED pin when the feature is off
 
-- Change: drive the IR pin to its off level at boot when IR is disabled, except
-  on the Plus2 where GPIO19 doubles as the status LED and the polarity is not
-  verified.
+- Change: drive the IR pin to its off level at boot when IR is disabled. On the
+  Plus2 GPIO19 drives an NPN stage for both the red LED and the emitter, so it is
+  active high and "off" is a low level (plan 350).
 - Current behavior: `IR::createChannel()` configures the pin only when a frame
   is transmitted. Otherwise the pin is left at its reset state. On the StickC
   family that is GPIO9, shared with the flash in DIO mode. On the StickS3 it is
@@ -970,8 +995,11 @@ Estimates are not measurements unless the label says `measured-local`.
   leakage.
 - Estimated saving: unknown, likely below 10 uA (`inferred`). An IR LED with a
   floating gate or base can leak, but there is no measurement.
-- Risk: medium on the Plus2. Driving GPIO19 can key the IR diode or the LED.
-  Leave that board alone until the polarity is verified.
+- Risk: medium on the Plus2. Driving GPIO19 high keys the emitter through the
+  same transistor, so the off level is 0 there. The current firmware leaves the
+  pin an input until the LED feature is enabled and hands the pad back to the
+  GPIO path after every IR frame, where an unrecorded level is released as an
+  input rather than driven.
 - Effort: small on StickC, Plus, and S3.
 - Required test: measure the IR pin current with the feature off and the pin
   floating versus driven low. Verify no IR emission with a phone camera.

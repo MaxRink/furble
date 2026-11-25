@@ -90,8 +90,8 @@ Platform &Platform::getInstance(void) {
         static_cast<Feedback::output_t>(Settings::load<uint8_t>(Settings::FB_OUTPUT)));
     cfg.internal_mic = false;
     cfg.pmic_button = true;
-    // Preserve the Plus2 RTC alarm flag until consumeTimedWake() runs. Other
-    // boards disable the RTC IRQ again below.
+    // Preserve the StickC Plus and Plus2 RTC alarm flag until consumeTimedWake()
+    // runs. Other boards disable the RTC IRQ again below.
     cfg.disable_rtc_irq = false;
 #if !FURBLE_HAS_INTERNAL_I2C
     // No internal I2C bus, so M5Unified must not be given one. Its per-board
@@ -476,12 +476,22 @@ namespace {
 /**
  * The ESP32 pin the IMU interrupt reaches on this board, or GPIO_NUM_NC.
  *
- * M5StickC and M5StickC Plus: the MPU6886 INT is on GPIO35, shared with the
- * BM8563 RTC on the SYS_INT net. M5Unified configures that pin open-drain
- * active low, so the net needs a pull-up. GPIO35 is input only on the ESP32 and
- * has no internal pull of any kind, so it relies entirely on the board's
- * external pull-up, and an RTC alarm on the same net looks like motion. Both
- * facts are why the hardware gate reads the line rather than trusting it.
+ * M5StickC and M5StickC Plus: GPIO35 carries one open-drain active-low net with
+ * three sources: the MPU6886 INT, the BM8563 INT (the RTC alarm and countdown),
+ * and the AXP192 IRQ output. M5Unified's AXP192 init leaves the power-key IRQ
+ * enabled (IRQ enable 3, reg 0x42 = 0x03), so a power-key press also pulls the
+ * net low until its status is read. GPIO35 is input only on the ESP32 and has
+ * no internal pull of any kind, so it relies entirely on the board's external
+ * pull-up.
+ *
+ * A low level therefore cannot be attributed to one source. Masking the AXP192
+ * source is not an option: the same enable bit produces the power-key status in
+ * reg 0x46 that M5Unified reads for M5.BtnPWR, and `Platform::update()` builds
+ * the PMIC click streak from that button, so the power key would go dead while
+ * motion wake is armed. Every low level is treated as "the device should be
+ * awake": correct for motion, and the intended response to a button press as
+ * well. That is also why the hardware gate reads the line instead of trusting
+ * it as an IMU-only signal.
  *
  * M5StickS3: the BMI270 INT1 does not reach the SoC. It goes to M5PM1 GPIO4,
  * and the PMIC drives PYG1_IRQ into GPIO13. That pin is a normal GPIO and does
@@ -567,10 +577,11 @@ bool Platform::armMotionWake(void) {
   gpio_config_t config = {};
   config.pin_bit_mask = 1ULL << static_cast<uint32_t>(gpio);
   config.mode = GPIO_MODE_INPUT;
-  // Both interrupt sources are open-drain active low, so the line needs a
+  // Every source on this net is open-drain active low, so the line needs a
   // pull-up to return to idle. GPIO35 on the StickC family is input only with
-  // no internal pull and depends on the board's external pull-up on the SYS_INT
-  // net; every other pin here takes the internal one.
+  // no internal pull and depends on the board's external pull-up on the shared
+  // net that carries the IMU INT, the BM8563 INT and the AXP192 IRQ; every
+  // other pin here takes the internal one.
   config.pull_up_en = (gpio == GPIO_NUM_35) ? GPIO_PULLUP_DISABLE : GPIO_PULLUP_ENABLE;
   config.pull_down_en = GPIO_PULLDOWN_DISABLE;
   config.intr_type = GPIO_INTR_DISABLE;
@@ -678,7 +689,9 @@ bool Platform::motionWakeSample(void) {
     return false;
   }
   // The MPU6886 interrupt is latched in the sensor, so the line holds until the
-  // status register is read and a poll-rate sample is meaningful. Active low.
+  // status register is read and a poll-rate sample is meaningful. Active low,
+  // and shared with the BM8563 and the AXP192 IRQ, so this counts a button press
+  // as activity too. See the wake pin comment above for why that is intended.
   if (gpio_get_level(gpio) != 0) {
     return false;
   }
@@ -785,7 +798,7 @@ bool Platform::powerOffUntil(uint32_t seconds) {
 
   if (Board::profile().timedWake == Board::TimedWake::RTC_ALARM) {
     if (!M5.Rtc.isEnabled()) {
-      ESP_LOGW(LOG_TAG, "StickC Plus2 RTC is unavailable, staying awake");
+      ESP_LOGW(LOG_TAG, "StickC family RTC is unavailable, staying awake");
       return false;
     }
 
@@ -803,7 +816,7 @@ bool Platform::powerOffUntil(uint32_t seconds) {
         || (early_seconds > static_cast<int>(TIMED_WAKE_MAX_EARLY_S))
         || !verifyPlus2Timer(requested_seconds, programmed_seconds)) {
       ESP_LOGW(LOG_TAG,
-               "StickC Plus2 RTC could not program %d seconds within the resume window (got %d)",
+               "StickC family RTC could not program %d seconds within the resume window (got %d)",
                requested_seconds, programmed_seconds);
       clearPlus2Timer();
       M5.Rtc.disableIRQ();
@@ -811,12 +824,24 @@ bool Platform::powerOffUntil(uint32_t seconds) {
     }
 
     if (programmed_seconds != requested_seconds) {
-      ESP_LOGI(LOG_TAG, "StickC Plus2 RTC will wake %d seconds early",
+      ESP_LOGI(LOG_TAG, "StickC family RTC will wake %d seconds early",
                requested_seconds - programmed_seconds);
     }
 
     M5.Display.sleep();
-    const auto hold = static_cast<gpio_num_t>(Board::profile().powerHoldPin);
+
+    const auto &board = Board::profile();
+    if (board.powerHoldPin < 0) {
+      // No hold pin: the StickC Plus reaches sleep by a full AXP192 shutdown,
+      // and its wake is the BM8563 INT coupled into the AXP192 power key through
+      // R401 and C401, so the countdown alarm is the wake source. The vendor
+      // documents sleep and wake from v1.1; the coupling itself is UNVERIFIED in
+      // this pass because the schematic was not available (plan 350).
+      return powerOff();
+    }
+
+    // The Plus2 releases the pin that keeps its regulator enabled.
+    const auto hold = static_cast<gpio_num_t>(board.powerHoldPin);
     (void)gpio_set_direction(hold, GPIO_MODE_OUTPUT);
     (void)gpio_set_level(hold, 0);
     return true;

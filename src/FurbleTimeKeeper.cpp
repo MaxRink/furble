@@ -172,10 +172,14 @@ bool readRtc(TimeSample &sample) {
   if (!M5.Rtc.getDateTime(&datetime)) {
     return false;
   }
-  // PCF8563 exposes a voltage-low flag when its backup supply has fallen
-  // below the retention threshold. Do not seed the wall clock from a value
-  // that may have stopped during that outage.
-  if (g_RtcBatteryBacked && M5.Rtc.getVoltLow()) {
+  // The PCF8563 and the Plus2's BM8563 expose a voltage-low flag in register
+  // 0x02 bit 7 when their backup supply has fallen below the retention
+  // threshold (M5Unified 0.2.20 PCF8563_Class::getVoltLow() reads that bit).
+  // Do not seed the wall clock from a value that may have stopped during that
+  // outage. The flag is only decisive on a backed RTC, so the read is skipped
+  // where it cannot matter.
+  const bool voltageLow = g_RtcBatteryBacked && M5.Rtc.getVoltLow();
+  if (!TimeKeeperPolicy::rtcValueTrusted(g_RtcBatteryBacked, voltageLow)) {
     return false;
   }
 
@@ -187,7 +191,7 @@ bool readRtc(TimeSample &sample) {
           0, epochUs)) {
     return false;
   }
-  sample = {epochUs, g_RtcBatteryBacked ? 2000U : 10U * 60U * 1000U, TimeSource::RTC,
+  sample = {epochUs, TimeKeeperPolicy::rtcUncertaintyMs(g_RtcBatteryBacked), TimeSource::RTC,
             monotonicMs()};
   return TimeKeeperPolicy::validAt(sample, sample.monotonic_ms);
 }

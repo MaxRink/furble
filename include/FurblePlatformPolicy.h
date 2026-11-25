@@ -26,10 +26,20 @@ constexpr bool pm1PollDue(uint32_t now, uint32_t last) {
 /**
  * AXP192 ADC channel masks after M5Unified's all-on default.
  *
- * Furble reads battery voltage/current and VBUS voltage. M5Unified's
- * setExtOutput() also reads VBUS current on AXP192 boards to refuse external
- * power when the battery is low and no ACIN supply is present, so that channel
- * must stay enabled even though Furble itself never reads it.
+ * Furble reads battery voltage and current, and VBUS voltage. The VBUS current
+ * channel (0x82 bit 2) is read by M5Unified's legacy AXP192 setExtOutput() path
+ * on the Core2 and Tough only, where it refuses external power when the battery
+ * is low and no ACIN supply is present (pinned 0.2.20 Power_Class.cpp:951-981,
+ * the `board_M5StackCore2`/`board_M5Tough` case). The StickC and StickC Plus
+ * case only calls Axp192.setEXTEN() and the Plus2 falls through to the empty
+ * default, so neither reads VBUS current and furble never does.
+ *
+ * One mask is written on every AXP192 board, so bit2 stays set to keep the
+ * Core2/Tough path unchanged. Trimming it only on the StickC and Plus would
+ * change that board family's ADC enable map, which plan 350 records as a
+ * follow-up: the AXP192 register details could not be verified in that pass, so
+ * everything beyond the `REG 82H` and `REG 83H` rows in
+ * docs/power/datasheet-register.md is UNVERIFIED here.
  *   0x82: bit7 battery voltage, bit6 battery current, bit3 VBUS voltage,
  *         bit2 VBUS current.
  *   0x83: every bit off (temperature and GPIO channels).
@@ -37,7 +47,7 @@ constexpr bool pm1PollDue(uint32_t now, uint32_t last) {
 constexpr uint8_t AXP192_ADC_ENABLE_1 = 0xCC;
 constexpr uint8_t AXP192_ADC_ENABLE_2 = 0x00;
 
-/** True when a 0x82 mask keeps the channels Furble actually reads. */
+/** True when a 0x82 mask keeps every channel this build depends on. */
 constexpr bool axp192AdcMaskKeepsRequired(uint8_t mask) {
   constexpr uint8_t BATTERY_VOLTAGE = 0x80;
   constexpr uint8_t BATTERY_CURRENT = 0x40;

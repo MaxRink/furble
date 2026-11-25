@@ -55,7 +55,10 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   synchronization writes are limited to four per day and shutdown checkpoints
   without a backed RTC use a separate three-and-a-half-hour age budget. The
   strict rolling-window maximum is eight per day. Only a known battery-backed
-  RTC may suppress those checkpoints. Keep every restart and power-off path on the
+  RTC may suppress those checkpoints, and the Plus2 counts as one because the
+  board keeps its BM8563 alive across the HOLD power-off; its protection against
+  a real outage is the BM8563 voltage-low flag (`0x02` bit 7), which is read on a
+  backed RTC only. Keep every restart and power-off path on the
   shared flush helper and never add per-tick NVS writes.
   A copy of the same record in `RTC_NOINIT_ATTR` memory keeps the running
   system clock across soft resets on boards without an RTC chip. Rewrite it on
@@ -102,7 +105,18 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   APB is already 80. Setting `with_dma` on the S3 would swap the lock for
   `ESP_PM_NO_LIGHT_SLEEP` and let the carrier drift. Do NOT switch to
   `RMT_CLK_SRC_XTAL`, it does not exist on plain ESP32. Transmission runs on the
-  dedicated ir task, never under the Control mutex.
+  dedicated ir task, never under the Control mutex. The emitter polarity is a
+  profile fact (`irMarkLow`): the StickC and Plus drive the cathode from the
+  pin, so their channel sets `invert_out` and the encoder stays mark-high. The
+  carrier duty is flipped on those rows so the optical duty stays a third.
+- `FurblePinShare`: the Plus2 drives the red LED and the IR emitter from G19, so
+  `PinShare` owns that pin. Feedback records its level through
+  `PinShare::requestLed()`; IR calls `beginIr()` before a frame and `endIr()`
+  after `rmt_disable()`, and the hand-over restores the last recorded level and
+  returns the pad to the GPIO path (`rmt_disable` leaves it muxed to the RMT
+  signal). The mutex there is taken per call and never held across a transfer or
+  an RMT wait. Boards whose LED and emitter pins differ never enter the path,
+  and an unrecorded level is released as an input instead of being invented.
 - `FurbleFeedback`: optional sound, LED and vibration event outputs. DFS-safe
   by construction: all sound paths go through I2S and the IDF i2s driver holds
   `ESP_PM_APB_FREQ_MAX` while the channel is enabled, so no extra pm lock is
@@ -483,7 +497,11 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   The console `gps power` request goes through it too, so every switch gets
   the M5PM1 readback and single retry. It returns `Platform::setRail()`'s
   final read-back, which `railOffOrRestart()` uses to restart a receiver
-  whose cut did not take.
+  whose cut did not take. On the StickC and Plus the rail is already on before
+  this runs: M5GFX writes AXP192 `0x12 = 0x4D` during `M5.begin()` and bit 6 is
+  EXTEN, so `enable()` may not assume a power-on edge. Only the `RAIL_OFF` cycle
+  state is a real off-to-on transition. The EXTEN-to-Grove-5V routing is
+  UNVERIFIED; see plans/350.
 - Under `FURBLE_SIM`, battery policy is exercised through the deterministic
   `Furble::Sim::battery_reading_t` seam. Keep `Platform::readBattery()` as the
   production boundary; scenario seeds/actions may replace its sample and

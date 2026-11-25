@@ -202,7 +202,8 @@ class Platform: public PowerBackend {
   void clearMotionWake(void);
 
   /**
-   * Largest early wake the Plus2 RTC can produce for a valid request.
+   * Largest early wake the StickC Plus and Plus2 RTC can produce for a valid
+   * request.
    *
    * The BM8563 has one-second resolution up to 255 seconds and minute
    * resolution above that, so a correct timer can fire up to 60 seconds before

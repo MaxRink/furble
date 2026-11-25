@@ -63,6 +63,17 @@ requires the init to add its own low and high edges, so a pulse moved after the
 driver install cannot pass on an earlier init's edges. Keep any new ordering
 check on the same baseline rather than on the whole edge list.
 
+`boundary-shared-pin-shared` and `boundary-shared-pin-separate` compile the
+production `src/FurblePinShare.cpp` with `src/FurbleFeedback.cpp` and
+`src/FurbleIR.cpp`. The `shared` case blocks a frame inside `rmt_transmit`, then
+asserts that a blink cannot write the pin, that the pad comes back from the RMT
+signal afterwards, and that the level requested mid-frame is the one restored.
+The GPIO double deliberately lets a plain write reach the pad while a peripheral
+owns it, so an arbitration regression fails instead of hiding behind the matrix.
+`boundary-ir-polarity-*` runs one process per family and asserts the channel
+inversion plus the level that reaches the emitter, and `pin-share-policy` pins the
+pure state machine.
+
 The SD boundary compiles `src/FurbleSD.cpp` with `FURBLE_SD_MOUNT_POINT` set to
 `/tmp/furble-boundary-sd`. That define is a host-only override; the firmware
 default remains `/sd` and no device behavior changes. The same target sets

@@ -233,8 +233,10 @@ runs. Cameras that trigger with a single operation (for example Ricoh GR) ignore
 the Shutter duration but still honour Count, Delay, and Wait.
 
 Deep Sleep and Sleep Threshold appear only on boards with a timed wake source:
-the M5StickS3 (M5PM1 timer) and the M5StickC Plus2 (BM8563 alarm). On other
-boards the controls are hidden and the intervalometer runs awake. After a timed
+the M5StickS3 (M5PM1 timer) and the M5StickC Plus and Plus2 (BM8563 alarm). On
+other boards the controls are hidden and the intervalometer runs awake. On the
+StickC Plus the alarm reaches the AXP192 power key through R401 and C401, so the
+shutdown is a full AXP192 power-off. After a timed
 wake, furble reconnects once with a 3 second settle gap and continues the
 remaining frames. A failed reconnect clears the saved run and shows
 `RESUME FAILED`.

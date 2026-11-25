@@ -24,6 +24,10 @@ struct GpioState {
   int direction = -1;
   int level = -1;
   std::vector<BoundaryHost::GpioEdge> edges;
+  // The host double does not model the output matrix, so a plain GPIO write
+  // always reaches the pad here. That keeps an arbitration regression visible:
+  // a write during an IR frame changes the level in this double too.
+  int pad = BoundaryHost::GPIO_PAD_GPIO;
 };
 
 std::vector<GpioState> g_Gpios;
@@ -79,6 +83,9 @@ int gpio_config(const gpio_config_t *config) {
 
 int gpio_set_direction(gpio_num_t pin, gpio_mode_t mode) {
   gpioState(pin).direction = static_cast<int>(mode);
+  if ((mode & GPIO_MODE_OUTPUT) != 0) {
+    gpioState(pin).pad = BoundaryHost::GPIO_PAD_GPIO;
+  }
   return 0;
 }
 
@@ -158,6 +165,14 @@ int gpioLevel(int pin) {
 
 std::vector<BoundaryHost::GpioEdge> gpioEdges(int pin) {
   return gpioState(pin).edges;
+}
+
+int gpioPad(int pin) {
+  return gpioState(pin).pad;
+}
+
+void setGpioPadPeripheral(int pin) {
+  gpioState(pin).pad = GPIO_PAD_PERIPHERAL;
 }
 
 bool logContains(const char *needle) {
