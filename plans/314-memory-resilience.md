@@ -1632,3 +1632,201 @@ Review of #466:
 | --- | --- | --- | --- |
 | 1 | Copilot, `tools/check_pr_hygiene.py:614`: comparing the file's sorted literals lets a swap of two output strings, or a string moved to another command, through as a warning. | Fixed. Each string-bearing line must keep its literals, in order, at its own position, where new line m replaces old line n when m equals n plus the lines added before m minus those removed before n. The same check now also decides a whitespace-only change, which used sorted lines and had the same hole on master. | Tests for a swap and for a move to another hunk fail, and fail against master's checker too; the in-place `strcmp` rewrite still only warns. The rule treats one contiguous replaced block as one place, so a string moved between branches inside a single block still only warns, as it did on master. |
 | 2 | Copilot, `CONTRIBUTING.md:235`: the workflow change must also update `CLAUDE.md` and `AGENTS.md`, and the touched `src/` and `plans/` directories need their `CLAUDE.md` updated. | Fixed. `CLAUDE.md` and `AGENTS.md` describe `-nostdlibinc`, the anchored header filter and the console rule. `src/CLAUDE.md` asks for explicit `strcmp` comparisons, and `plans/CLAUDE.md` records the follow-up section convention. | `CLAUDE.md`, `AGENTS.md`, `src/CLAUDE.md`, `plans/CLAUDE.md` |
+
+## Follow-up: the heap model ignored the capability set
+
+State: implemented on `sim/heap-caps`. Simulator only, no hardware was flashed
+or measured. Every value below comes from the pinned ESP-IDF 5.5.3 source
+(`framework-espidf` 3.50503.0, pinned at `platformio.ini:13`).
+
+### Reason
+
+PR 2 of this plan taught `sim/heap_model.cpp` to distinguish a PSRAM pool from
+the internal pool, but only the charging path learned it. Three defects
+remained in the capability handling.
+
+- `sim/shim/esp_heap_caps.h` defined five `MALLOC_CAP_*` bits. The pinned
+  `components/heap/include/esp_heap_caps.h` lines 29 to 51 defines
+  twenty-two. A firmware or host test that names `MALLOC_CAP_EXEC`,
+  `MALLOC_CAP_IRAM_8BIT` or `MALLOC_CAP_RETENTION` did not compile in the
+  simulator at all.
+- `furble_sim_heap_minimum()` discarded its argument and returned the internal
+  watermark. `heap_caps_get_minimum_free_size(MALLOC_CAP_SPIRAM)` therefore
+  reported internal RAM, and no caller could get the PSRAM watermark. Free and
+  largest only special cased the PSRAM bit, so a `MALLOC_CAP_DEFAULT` query
+  reported internal RAM alone.
+- `heap_caps_malloc(size, MALLOC_CAP_DEFAULT)` charged the internal pool only.
+  On the board it can also come from PSRAM.
+
+### The rule, from the pinned source
+
+Priority order of the modelled ESP32-S3, quoted from
+`components/heap/port/esp32s3/memory_layout.c:62-66`: DIRAM carries
+`MALLOC_CAP_DEFAULT` at priority 0, DRAM at priority 1, and SPIRAM carries
+`MALLOC_CAP_DEFAULT` only at priority 2.
+`components/esp_psram/system_layer/esp_psram.c:470` registers the heap that
+`esp_psram` actually adds as
+`{MALLOC_CAP_SPIRAM | MALLOC_CAP_DEFAULT, 0, MALLOC_CAP_8BIT | MALLOC_CAP_32BIT | MALLOC_CAP_SIMD}`,
+the same union. So:
+
+- A set naming `MALLOC_CAP_SPIRAM` is served by PSRAM alone.
+- A set naming `MALLOC_CAP_INTERNAL` is served by internal RAM alone.
+- A set naming only `MALLOC_CAP_DEFAULT` is served by internal RAM first and
+  PSRAM second.
+- The query functions aggregate over the matching regions.
+  `heap_caps_get_free_size()` and `heap_caps_get_minimum_free_size()` sum them
+  (`components/heap/heap_caps.c:277-287` and `:289-299`), and
+  `heap_caps_get_largest_free_block()` takes the maximum
+  (`components/heap/heap_caps.c:380-381`, the maximum inside
+  `heap_caps_get_info()` which starts at line 367 and is reached from
+  `heap_caps_get_largest_free_block()` at line 301).
+
+`malloc()` is a different entry point with a different rule, and the model
+already matched it. `heap_caps_malloc_default()` reads
+`malloc_alwaysinternal_limit` (`components/heap/heap_caps.c:97`, read at
+line 109), which
+`esp_psram.c:135` sets to `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL` once PSRAM is
+up. All four PSRAM sdkconfigs pin 4096 (`sdkconfig.m5stick-s3:1600`,
+`sdkconfig.esp32-s3-headless:1600`, `sdkconfig.m5stack-core2:1392`,
+`sdkconfig.waveshare-s3-eth:1594`). A request of 4096 bytes or less tries
+internal first, a larger one tries PSRAM first, and either falls back to the
+looser `MALLOC_CAP_DEFAULT` retry at `components/heap/heap_caps.c:124`. That is
+exactly what the `caps == 0` branch of `heapCountedAllocCaps()` already does, so
+it was not changed. Only the explicit `MALLOC_CAP_DEFAULT` path was wrong.
+
+### Files
+
+| File | Change |
+| --- | --- |
+| `sim/shim/esp_heap_caps.h` | All twenty-two `MALLOC_CAP_*` bits, with the source header and line range cited in the comment. |
+| `sim/heap_model.cpp` | `capsPools()` names the pools a set may draw from. `furble_sim_heap_free()`, `furble_sim_heap_largest()`, `furble_sim_heap_minimum()` and `furble_sim_heap_fits()` all use it. `heapCountedAllocCaps()` serves an explicit `MALLOC_CAP_DEFAULT` from internal RAM first and PSRAM second. `takeExternalLocked()` centralises the PSRAM draw and keeps its watermark. |
+| `sim/heap_model.h` | Declares `heapPsramMinimumFree()`. |
+| `tests/host/sim_heap_caps_test.cpp` | New host target `sim_heap_caps_test`, wired into `tests/host/CMakeLists.txt`. `static_assert`s pin all twenty-two bit values, and the run pins the caps filtering, the default routing, an explicit `MALLOC_CAP_DEFAULT` baseline block, the empty caps set and one over-reported set. |
+| `sim/CLAUDE.md` | Corrects the sentence that said `MALLOC_CAP_DEFAULT` without the PSRAM bit charges the internal pool. |
+
+Two figures were left alone on purpose, so the memory scenarios keep their
+numbers. `heap.minimumLargest`, which `mem.high_water_largest` reports, already
+mixes the internal and PSRAM largest blocks and is fed at different call sites.
+`takeExternalLocked()` therefore never touches it, and each caller keeps its own
+line. `heapBaselineBlock()` still reports a baseline `MALLOC_CAP_DEFAULT` block
+as internal, because a baseline block is uncharged and the flag only decides
+where a later refund lands.
+
+### Determinism
+
+The argument is structural, not a list of call sites. Master's three query
+functions, its `fits()` test and its explicit-caps allocation branch each asked
+one question, `(caps & MALLOC_CAP_SPIRAM) != 0`, and used the PSRAM pool when
+it was set and internal RAM when it was not. The first two branches of `capsPools()`
+ask exactly that bit first and then `MALLOC_CAP_INTERNAL | CAPS_INTERNAL_ONLY`,
+so a set that names `MALLOC_CAP_SPIRAM`, or that names `MALLOC_CAP_INTERNAL` or
+an internal-only bit, returns the pool master returned. Only a set built
+entirely from bits both pools carry, `MALLOC_CAP_DEFAULT`, `MALLOC_CAP_32BIT`,
+`MALLOC_CAP_8BIT` and `MALLOC_CAP_SIMD`, or the empty set, reaches the third
+branch, and for those master returned internal RAM alone. The firmware's
+`MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT`, `MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT`,
+`MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL` and `MALLOC_CAP_DMA` sets all name a
+first-or-second-branch bit, so they cannot move whatever else they carry.
+
+`sim/shim/esp_system.h:50-58` still asks for
+`MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT`, so `esp_get_free_heap_size()` and
+`esp_get_minimum_free_heap_size()` keep their old answer too; the follow-up
+below records why that one was deferred rather than fixed here.
+
+One movable set exists in the firmware. It is the second set of
+`src/FurbleUI.cpp:123`,
+`heap_caps_malloc_prefer(bytes, 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT, MALLOC_CAP_DEFAULT)`.
+Set one names `MALLOC_CAP_SPIRAM` and cannot move. Set two is reachable only
+after set one's `furble_sim_heap_fits()` test has failed, and the new PSRAM
+fallback in `heapCountedAllocCaps()` repeats that identical predicate against
+the same pool state, so it cannot succeed where set one just failed. Internal
+RAM is still charged first, which is what master charged. The outcome is
+unchanged.
+
+### Verification
+
+- `cmake -S tests/host -B /tmp/furble-build -DCMAKE_BUILD_TYPE=Debug`, then
+  `cmake --build . --target sim_heap_caps_test sim_webui_memory_model_test sim_scheduler_test`.
+- `./sim_heap_caps_test` prints `sim heap caps: PASS`, exit 0.
+- `./sim_webui_memory_model_test` prints `sim webui memory model: PASS`,
+  exit 0. That is the pre-existing target that links `sim/heap_model.cpp`.
+- `./sim_scheduler_test` exits 0. It also links `sim/heap_model.cpp`.
+- `python3 tools/pre_review.py --base origin/master` passes all ten gates.
+- The simulator scenario suite was not run. It needs LVGL 9.4.0
+  (`sim/platformio.ini:12`) and LVGL is not installed here: the only `libdeps`
+  directory on this machine holds M5GFX, M5PM1, M5Unified and TinyGPSPlus.
+
+### What the model over-reports
+
+Two different errors. No caller hits either today.
+
+`MALLOC_CAP_RETENTION` is over-reported, not zero on the device. It is a DIRAM
+capability (`components/heap/port/esp32s3/memory_layout.c:45`), and each heap
+takes its type's whole caps array (`components/heap/heap_caps_init.c:139` and
+`:228`), so the device answers with the DIRAM free size. The model answers with
+its one merged internal pool, which is DIRAM plus the DRAM and RTC share.
+
+A capability set that no heap carries returns zero on the device and resolves
+to a pool here: `MALLOC_CAP_SPIRAM` together with `MALLOC_CAP_INTERNAL`,
+`MALLOC_CAP_TCM`, `MALLOC_CAP_IRAM_8BIT`, `MALLOC_CAP_CACHE_ALIGNED`,
+`MALLOC_CAP_DMA_DESC_AHB`, `MALLOC_CAP_DMA_DESC_AXI`, `MALLOC_CAP_INVALID`,
+`MALLOC_CAP_PID2` to `MALLOC_CAP_PID7`, and `MALLOC_CAP_EXEC`.
+`MALLOC_CAP_EXEC` belongs in this group rather than the one above because its
+only carrier is the IRAM type row (`memory_layout.c:64`) and the single IRAM
+region is compiled out under `CONFIG_ESP_SYSTEM_MEMPROT_FEATURE`
+(`memory_layout.c:85`), which every S3 sdkconfig sets. None of the other bits
+appears in that layout at all.
+
+`tests/host/sim_heap_caps_test.cpp` pins the `MALLOC_CAP_SPIRAM` plus
+`MALLOC_CAP_INTERNAL` case so this section and the code cannot drift apart.
+
+### Remaining risk
+
+The caps model still has two pools, not the five memory types the SoC
+registers. `MALLOC_CAP_EXEC`, `MALLOC_CAP_IRAM_8BIT` and `MALLOC_CAP_RETENTION`
+are answered from the internal pool because there is no IRAM or RTC heap to
+answer from, and the S3 boards enable `CONFIG_ESP_SYSTEM_MEMPROT_FEATURE`
+(`sdkconfig.m5stick-s3:1685`), which drops `MALLOC_CAP_EXEC` from DIRAM
+(`memory_layout.c:44-50`). The above determinism argument is a call-site audit,
+not a scenario run, because LVGL is absent.
+
+### Follow-up: two smaller gaps in this change
+
+- The three query functions take two separately locked reads, one per pool
+  (`furble_sim_heap_free()` calls `heapFree()` and then `heapPsramFree()`, and
+  `furble_sim_heap_minimum()` the two watermarks). A two-pool `free` or
+  `minimum` sum can therefore mix two instants if another device task charges
+  the heap between them. Master had the same shape and no caller passes a
+  set that reaches the third branch today, so nothing observes it. Taking one
+  lock across both pools is the fix if a caller ever needs a coherent sum.
+- `CAPS_INTERNAL_ONLY` and the `heap_caps_malloc_prefer()` inline in
+  `sim/shim/esp_heap_caps.h` are unexercised. The host test calls
+  `furble_sim_heap_fits()` directly and never passes a `MALLOC_CAP_DMA`,
+  `MALLOC_CAP_EXEC` or `MALLOC_CAP_RETENTION` set, so the second branch's
+  internal-only list has no direct coverage. The variadic prefer path has no
+  host coverage either, because the weak `furble_sim_caps_alloc()` fallback in
+  `sim/heap_model.cpp` allocates without charging the model, so a host test
+  cannot see which pool it picked.
+
+### Follow-up: `esp_get_free_heap_size()` still reports internal RAM only
+
+State: not implemented, recorded instead. `sim/shim/esp_system.h:50-58`
+answers `esp_get_free_heap_size()` and `esp_get_minimum_free_heap_size()` from
+`MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT`. The IDF answers both from
+`MALLOC_CAP_DEFAULT` (`components/esp_system/port/esp_system_chip.c:65-78`),
+which this follow-up now makes mean internal plus PSRAM. Pointing the shim at
+`MALLOC_CAP_DEFAULT` was reviewed and deferred, because a scenario plausibly
+moves and the simulator suite cannot be run in this environment. The two
+consumers are `src/FurbleUI.cpp:12180-12181`, which renders
+`"Heap:\n%lu B, min %lu B"` into the About and Device info rows
+(`src/FurbleUI.cpp:12185`, `:12188`), and `src/FurbleConsole.cpp:2518-2519`,
+the `heap` and `heap_min` console lines. The StickS3 profile seeds 8 MiB of
+PSRAM (`sim/hardware_model.cpp:541-545`, `:687-692`), so the rendered number
+would grow from five digits to seven on the `about` page, and
+`sim/scenarios/bughunt/page-matrix.txt:275`, `:280` and `:284` assert
+`ui.cut_labels 0` there, which is "no label lost any of its own text". That
+scenario runs on the 80x160 M5StickC panel, the tight one. No scenario asserts
+the numeric value, and `ui.diag.about.heap yes` is a row-presence check, so a
+move would come only from the layout. The work is to point the shim at
+`MALLOC_CAP_DEFAULT` and re-run `page-matrix.txt` on all three panels before
+choosing any expectation to update.

@@ -105,6 +105,12 @@ const char *heapPsramMode(void);
 const char *heapPsramState(void);
 size_t heapPsramFree(void);
 size_t heapPsramLargest(void);
+/**
+ * Deepest free PSRAM level reached since the pool was seeded, the PSRAM
+ * counterpart of heapMinimumFree(). heap_caps_get_minimum_free_size() sums the
+ * per-region watermarks, so a MALLOC_CAP_DEFAULT query adds the two.
+ */
+size_t heapPsramMinimumFree(void);
 bool heapPsramInitFailed(void);
 
 /**
