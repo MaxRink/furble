@@ -13,8 +13,9 @@ Rules:
 - The lane status column says what the lane did: opened the document, quoted it
   through the repository model, or cited it by URL only. "Not reopened" means
   the lane did not check the revision itself.
-- No errata document is cited by any lane. That is recorded as a gap, not
-  filled with an invented document.
+- No errata document is published for the cited parts, so none is cited. That is
+  recorded as a gap with its substitute, not filled with an invented document;
+  section 15 of the SX1261/2 datasheet is the substitute for that part.
 - A datasheet number is not a local measurement. See `measurement-plan.md` for
   the boundary and promotion rules.
 
@@ -26,6 +27,11 @@ Rules:
 | Espressif ESP32-S3 | ESP32-S3 Series Datasheet, Tables 5-8 to 5-10, https://documentation.espressif.com/esp32-s3_datasheet_en.pdf | v2.2 | Active 40.2 mA at 80 MHz, 56.9 mA at 160 MHz, 73.8 mA at 240 MHz; WAITI 29.1 mA at 80 MHz; light sleep 240 uA; deep sleep 7 uA RTC memory only, 8 uA with RTC peripherals; add 140 uA for 8 MB 8-line PSRAM in light sleep; internal weak pull-up 45 kOhm typical; BLE TX 176 mA at 0 dBm and 193 mA at 9 dBm at 100 percent duty; BLE RX 93 mA | Opened by Board lane; other lanes quote the same tables | BLE, SoC, Display, GPS/IMU, Board |
 | Espressif ESP32-S3-WROOM-1 and WROOM-1U | ESP32-S3-WROOM-1 and WROOM-1U Datasheet, Table 9, excerpted from the SoC power-consumption section | v1.0 | Wi-Fi TX 802.11b 1 Mbps at 20.5 dBm 355 mA; 802.11g 54 Mbps at 18 dBm 297 mA; HT20 MCS7 at 17.5 dBm 286 mA; RX HT20 95 mA, HT40 97 mA. Peak current at 3.3 V, 25 C, 100 percent TX duty | Quoted by Wi-Fi lane; not reproduced | Wi-Fi |
 | Espressif ESP32-S3 | USB Serial/JTAG and internal pull-up limits, same SoC datasheet | v2.2 | USB Serial/JTAG module cannot work under light sleep; 45 kOhm internal pull-up gives about 73 uA per asserted active-low line at 3.3 V | Quoted by SoC and Board lanes | SoC, Board |
+| Espressif ESP32 | ESP32 Technical Reference Manual, https://documentation.espressif.com/esp32_technical_reference_manual_en.pdf, SHA-256 `1007b90e6fafc16541d693d7444b63e1c5b01e46e60cce9b6810e02340a64b82` | v5.9 | UART clock is 80 MHz APB_CLK or REF_TICK only, selected by `UART_TICK_REF_ALWAYS_ON` (19.3.2 p. 312), and REF_TICK is derived from APB_CLK with a per-source divider (7.2.4.2 and Table 7.2-5 p. 169). RMT: eight channels, each TX or RX but not both, sharing one 512 x 32-bit RAM in eight 64-word blocks (30.2.1 and 30.2.2 p. 728) | Opened for the vendor document pass | SoC, Board |
+| Espressif ESP32-S3 | ESP32-S3 Technical Reference Manual, https://documentation.espressif.com/esp32-s3_technical_reference_manual_en.pdf, SHA-256 `4484bf8a69035ec42a731c58c64ada6fbd1f1618c5559409f134d9ea083f444f` | v1.8 | UART Core has three sources, APB_CLK, RC_FAST_CLK and XTAL_CLK, by `UART_SCLK_SEL` with a fractional divider of 1 to 256 (26.3 and 26.4.1 p. 926, field values 1/2/3 p. 961). RMT: four TX plus four RX channels sharing one 384 x 32-bit RAM in eight 48-word blocks (37.2 p. 1415, 37.3.2.2 p. 1417). USB Serial/JTAG: RTS 1 with DTR 0 resets the SoC (Table 33.3-2 p. 1248), SRST resets the digital system but not the controller (33.3.5 p. 1249), and the module needs the PLL and APB_CLK at 40 MHz or more, is gated in light sleep and powered down in deep sleep (33.4.2 p. 1253, sequences in Tables 33.4-3 and 33.4-4 p. 1254) | Opened for the vendor document pass | SoC, Board, GPS/IMU |
+| Espressif ESP32-S3-PICO-1 | ESP32-S3-PICO-1 Series Datasheet, https://documentation.espressif.com/esp32-s3-pico-1_datasheet_en.pdf, SHA-256 `44daca9121111a9c7df437e18c3c153258a20e68fe57fcd3bd9be593ad162979` | v1.2 | N8R2 is 8 MB quad flash plus 2 MB quad PSRAM, N8R8 is 8 MB quad flash plus 8 MB octal PSRAM (Table 1-1 p. 9). On N8R8, SPICS1 and GPIO33 to GPIO37 belong to the octal PSRAM and are unavailable for other uses (pin table note 4 p. 13) | Opened for the vendor document pass | Board |
+| Espressif ESP32-S3 module pin rules | ESP32-S3 Series Datasheet v2.2 | v2.2 | GPIO33 to GPIO37 carry DQ4 to DQ7 plus DQS/DM only in octal mode (Table 2-14 p. 31, section 2.3.5 p. 26), and the notice forbids using in-package flash or PSRAM pins for anything else | Opened for the vendor document pass | Board |
+| Semtech SX1261/2 | SX1261/2 datasheet, DS.SX1261-2.W.APP, ECO 067443, https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1198/DS_SX1261_2_V2-2.pdf and https://wiki.lilygo.cc/datasheet/DS_SX1261_SX1262.pdf (byte-identical, SHA-256 `6d783125dbef567954ce53095ad068d0950b2a8de52f95bb2cfde4146c4306c2`). The Semtech product page link is form and login gated | Rev 2.2, December 2024 | NRESET held low typically 100 us (8.1 p. 53). NSS rising to BUSY rising 600 ns maximum, BUSY held high through 20 kOhm in sleep (8.3.1 p. 55). Switching: SLEEP to STBY_RC 3500 us cold and 340 us warm, STBY_RC to STBY_XOSC 31 us, to FS 50, to RX 83, to TX 126, STBY_XOSC to FS 40, to TX 105, to RX 62, FS to RX 41, to TX 76, RX to FS 15, to TX 92 (Table 8-2 p. 56). NSS falling to SCK 100 us minimum when leaving sleep (Table 8-1 t10 and 8.2.2 p. 54). Section 15 p. 109 to 111 lists four known limitations | Opened for the vendor document pass. Not fitted on any supported board | Board |
 
 ## 2. Display and panel datasheets
 
@@ -42,7 +48,7 @@ Rules:
 | --- | --- | --- | --- | --- | --- |
 | X-Powers AXP192 | AXP192 enhanced single-cell Li-battery PMIC datasheet, http://images.shoutwiki.com/mindworks/8/8b/2020_infrasonic_wildfire_detector_APX192_Enhanced_Single_Cell_datasheet_en.pdf | No revision string; cover says X-Powers 2010 | Off mode 27 uA at BAT 3.8 V; suspend 86 uA; DCDC1 26 uA no load; DCDC2 and DCDC3 20 uA each; LDO2 and LDO3 100 uA each; LDOIO0 90 uA; `REG 82H` ADC enable 1; `REG 83H` ADC enable 2; `REG 84H` ADC sample rate, 25 Hz default; `REG 12H` rail enables; `REG 28H` LDO2/LDO3 voltage; `REG 27H` DCDC3; `REG 33H` charge enable, 4.2 V, current | Opened by Board lane; no revision string in the fetched copy | Board, Display, SoC |
 | Injoinic IP5306 | IP5306 datasheet, https://www.laskakit.cz/user/related_files/ip5306.pdf | V1.01 | Standby 50 uA; input quiescent 100 uA; boost shuts off after 32 s of continuous load below 45 mA; the public datasheet does not tabulate the register map | Opened by Board lane | Board, Display, SoC |
-| M5Stack M5PM1 | M5Stack M5PM1 Chip User Manual, https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/M5PM1_Datasheet_EN.pdf | V1.9 | `PWR_CFG` 0x06 default 0x17 (LED enable, 5 V boost off, 3.3 V LDO on, 3.3 V DCDC on, charge on); `I2C_CFG` 0x09 `SLP_TO` bits 3:0, 0 disables idle sleep, first transaction after a wake fails; `WDT_CNT` 0x0A seconds, 0 disables; `WDT_KEY` 0x0B feed 0xA5; `SYS_CMD` 0x0C 0xA1 power off; `HOLD_CFG` 0x07 retains 5 V, LDO, and GPIO state | Opened by Board lane | Board, SoC |
+| M5Stack M5PM1 | M5Stack M5PM1 Chip User Manual, https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/M5PM1_Datasheet_EN.pdf, SHA-256 `c6daffd0ab89d8de50c0a19f35f94321bc6c9511ad017dd242a3e765d88a96b6`. A second byte-different V1.9 build is https://raw.githubusercontent.com/m5stack/M5PM1/main/docs/M5PM1_Datasheet_EN.pdf, SHA-256 `f008794c8a6b672b61452c77a9359b6332d82194dce92f9a21494e283783b656`; every page quoted here agrees between the two | V1.9 | `PWR_CFG` 0x06 default 0x17 (LED enable, 5 V boost off, 3.3 V LDO on, 3.3 V DCDC on, charge on, p. 13); `I2C_CFG` 0x09 `SLP_TO` bits 3:0, called `SLEEP[3:0]` in section 6, sets the idle sleep time, 0 disables it, and after an idle sleep wake the first transaction only wakes the part and fails (section 6 p. 27, note 2 p. 15); idle sleep is invalid while PWM is enabled and while entering Download mode (p. 28); `WDT_CNT` 0x0A seconds, 0 disables; `WDT_KEY` 0x0B feed 0xA5; `SYS_CMD` 0x0C is `KEY` 0xA plus `CMD` 01 power off, 10 restart, 11 Download (p. 15); `HOLD_CFG` 0x07 retains 5 V, LDO, and GPIO state (p. 13); IRQ Status 1/2/3 at 0x40/0x41/0x42 with masks at 0x43/0x44/0x45, and the IRQ line is released only when all three status registers are cleared (p. 28). The 0x2F note couples WAKE_SRC to IRQ Status 3 bit 1, but the manual also gives WAKE_SRC as 0x05 (p. 5, p. 13) and 0x04 (p. 29); the address is inconsistent inside V1.9 | Opened by Board lane, re-read page by page for the vendor document pass | Board, SoC |
 
 ## 4. Sensors, GNSS, audio, storage, and actuators
 
@@ -58,7 +64,7 @@ Rules:
 | CASIC protocol | Multimode navigation receiver protocol, http://www.espruino.com/files/CASIC_en.pdf | Not stated | `$PCAS` family, `BA CE` framing, `AID-INI`, `CFG-NAVX`, `MON-HW`; the printed checksum formula is wrong and the L76K id-first form is the one the code uses | Quoted by GPS/IMU lane | GPS/IMU |
 | Quectel L76K | GNSS protocol specification v1.1, https://www.waveshare.net/w/upload/d/dd/Quectel_L76K_GNSS_Protocol_Specification_V1.1.pdf | v1.1 | PCAS02, PCAS03, PCAS04, PCAS10; GSV and GSA fields; id-first checksum | Quoted by GPS/IMU lane | GPS/IMU |
 | NS4168 | NS4168 datasheet, https://www.chipsourcetek.com/Uploads/file/NS4168.pdf | Not stated | 13 mA quiescent at 5 V; 1 uA shutdown leakage | Quoted through the model | Board, Display |
-| WIZnet W5500 | W5500 datasheet v1.0.6, https://www.wiznet.io/wp-content/uploads/wiznethome/Chip/W5500/Document/W5500_ds_v1.0.6.pdf | v1.0.6 | PHY power-down mode exists; link-dependent current; the exact figure is not quoted because the copy was not opened | Not reopened by the Board lane | Board, Wi-Fi |
+| WIZnet W5500 | W5500 datasheet, https://docs.wiznet.io/img/products/w5500/W5500_ds_v110e.pdf, SHA-256 `7b826b808084ccd986bcc22904c00a07a508ef42fb93d079fe7150a4c4f1a63d`. The corpus v1.0.6 link is a 404, checked 2026-11-25 | Ver 1.1.0, 17DEC2022 | Hold RSTn low at least 500 us (1.1 pin 37 p. 10). TRC minimum 500 us and TPL RSTn to internal PLOCK maximum 1 ms (5.5.1 and Figure 22 p. 60), regulator wake 10 us (5.5.2 p. 60). Common register block (3.1 p. 29), common registers (4.1 p. 32), SHAR `0x0009` to `0x000E` (p. 33). IDD1 132 mA, IDD2 13 mA in PHY power down (5.3 p. 59); link currents 128, 75 and 65 mA (5.4 p. 60). Revision history p. 66 to 67: v1.1.0 changed only the RPU minimum and the package text | Opened for the vendor document pass, 2026-11-25 | Board, Wi-Fi, SoC |
 | Vybronics VC1030B028F | Coin vibration motor datasheet, https://www.vybronics.com/coin-vibration-motors/with-brushes/v-c1030b028f | Not stated | 64 mA typical operating, 85 mA rated maximum, more at start and stall. Representative part because M5Stack names no motor | Quoted through the model | Board |
 | BM8563 RTC | BM8563 documentation, cited for the Plus2 alarm wake | Not stated | RTC alarm is the Plus2 timed-wake source | Cited, not opened | Board, SoC |
 | FT6336U touch controller | Core2 touch documentation and FT6336U datasheet | Not stated | Monitor and hibernate modes exist; current not in the tree; the datasheet was not opened by the Board lane | Not opened | Board, Display |
@@ -69,7 +75,8 @@ Rules:
 | Board or part | Document | Revision | Relevant detail | Lane status | Cited by |
 | --- | --- | --- | --- | --- | --- |
 | M5Stack StickS3 | Product page, https://docs.m5stack.com/en/core/StickS3 | Web page, no revision | Power off 14.02 uA; L1 52.47 uA; L2 102.40 uA; L3A 36.69 mA; full load 519.02 mA at 4.2 V; L state semantics not defined; BMI270; 250 mAh; EXT_5V feeds Grove, Hat EXT_5V, and IR TX/RX; ES8311 and AW8737 | Quoted by Board and GPS lanes | Board, GPS/IMU, BLE |
-| M5Stack StickS3 low power | M5PM1 low-power page, https://docs.m5stack.com/en/arduino/m5sticks3/m5pm1 | Web page, no revision | PM1 timer wake; I2C idle sleep; BMI270 INT1 to M5PM1 GPIO4; PYG1_IRQ to ESP32-S3 GPIO13 | Quoted by GPS/IMU and SoC lanes | GPS/IMU, SoC |
+| M5Stack StickS3 low power | M5PM1 low-power page, https://docs.m5stack.com/en/arduino/m5sticks3/m5pm1, SHA-256 `f0a92685260dfc3af9dcdcb3ea334eaecf56d05a2623842d8a0315a7aec59524` | Web page, no revision | PM1 timer wake; I2C idle sleep; after an idle-sleep wake the first ESP32-S3 to M5PM1 communication only wakes the PMIC and fails, and the next transaction is the first valid one; BMI270 INT1 to M5PM1 GPIO4; PYG1_IRQ to ESP32-S3 GPIO13 | Opened for the vendor document pass, 2026-11-25 | GPS/IMU, SoC |
+| M5Stack M5PaperMono power levels | M5PM1 and M5IOE1 page, https://docs.m5stack.com/en/arduino/papermono/m5pm1_m5ioe1, SHA-256 `2bd391ac1a4b48444ae1f2945406ab36c354f1c056646c59c76993769ad40e4c` | Web page, no revision | L1 to L3B all source from L0 (SYS_VBUS) rather than from the preceding level, so the levels are independent, not a series; after M5PM1 power on, L1, L2 and L3A are enabled automatically and M5Unified enables L3B through the M5IOE1 | Opened for the vendor document pass, 2026-11-25. Not a StickS3 statement | Board |
 | M5Stack M5PM1 library | Function reference README, https://github.com/m5stack/M5PM1/blob/main/README_FUNCTION_EN.md | Library 1.0.6 | `gpioSetWakeEnable`, `gpioSetWakeEdge`, `irqSetGpioMask`, `irqGetGpioStatus`, `irqClearGpioAll` | Vendor code read | GPS/IMU, Board |
 | M5Stack StickC | Schematic rebuild pinmap, 20191118__StickC_A04_3110_Schematic_Rebuild_PinMap.pdf, https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/docs/schematic/Core/M5StickC/20191118__StickC_A04_3110_Schematic_Rebuild_PinMap.pdf | 2019-11-18 | IR_LED on GPIO9; contains no resistor values | URL only; Board lane notes no schematic PDF or netlist is in the tree | Board, BLE |
 | M5Stack StickC Plus2 | Plus2 documentation | Web page, no revision | HOLD on GPIO4; backlight PWM on GPIO27; battery divider on GPIO38 with 2.0 ratio; LED and IR share GPIO19; no PMIC and no charging telemetry | Quoted by Board lane | Board |
@@ -234,7 +241,6 @@ not verified for this register.
 | Part or area | Gap | Consequence |
 | --- | --- | --- |
 | AXP192 | No revision string in the fetched copy; cover says 2010 | A register claim must name the copy used, not a revision number |
-| W5500 | Datasheet not opened; exact PHY current not quoted | NB-02 and the Waveshare rows cannot quote a current |
 | FT6336U | Datasheet not opened; current not in the tree | P-069 uses a placeholder 0.5 to 2 mA range |
 | ES8311 and AW8737 | No documents opened; quiescent currents not in the tree | RL-09 assumes a closed speaker is idle, but does not measure it |
 | BM8563 | Documentation cited, not opened | The Plus2 alarm wake path is unverified |
@@ -246,18 +252,35 @@ not verified for this register.
 | Camera advertising intervals | No vendor document states them | Every scan-duty row is conditional on a capture |
 | Camera GATT databases | Not documented per vendor | P-055 is gated on a handshake capture |
 
+The W5500 row this table used to carry is closed. Section 4 now cites W5500
+Ver 1.1.0 with the reset timing, the register block and the IDD figures, so
+NB-02 and the Waveshare rows may quote a current. What is still unverified is
+whether the chip figures apply to the assembled board: no Waveshare current
+measurement exists, and the flash gate is deferred (see `plans/313`).
+
 ## 12. Gaps and register notes
 
-1. **No errata document is cited by any lane.** This register therefore has no
-   errata section. If a future lane needs an errata claim, it must add the
-   document, revision, and affected limit here first.
+1. **No errata document is published for the cited parts, and none is cited.**
+   The Semtech product pages for the SX1261 and the SX1262 contain zero
+   occurrences of the word errata and serve no direct datasheet PDF link, which
+   is why the byte-identical mirrors in section 1 are cited. The functional
+   substitute is the datasheet's own section 15, "Known Limitations", Rev 2.2
+   pages 109 to 111: 500 kHz LoRa bandwidth modulation quality (bit 2 of
+   `0x0889`), PA clamping under antenna mismatch (`TxClampConfig` bits 4:1 to
+   `1111` on the SX1262 after power on or cold start), implicit header mode
+   timeout (`0x0902` and `0x0944`), and inverted IQ (bit 2 of `0x0736`). A part
+   with a real errata sheet must add the document, revision, and affected limit
+   here before any lane cites it.
 2. **No application note is cited by any lane.** The ESP-IDF API guides and
    Kconfig help are the closest material, and they are listed in section 7 as
    vendor documentation, not as application notes.
 3. **Revision conflicts.** The AXP192 copy has no revision string. The ESP32-S3
-   copy is v2.2. The IP5306 copy is V1.01. The M5PM1 copy is V1.9. The ESP32
-   copy is v5.3. The ST7789V copy is v1.3. The ST7735S copy is v1.1. The
-   MPU-6886 copy is v1.1. The W5500 copy is v1.0.6. Do not copy a number from a
+   copy is v2.2. The IP5306 copy is V1.01. The M5PM1 copy is V1.9, and two
+   byte-different V1.9 builds exist, so a register claim names the build hash.
+   The ESP32 copy is v5.3. The ESP32 TRM is v5.9 and the ESP32-S3 TRM v1.8. The
+   ST7789V copy is v1.3. The ST7735S copy is v1.1. The MPU-6886 copy is v1.1.
+   The W5500 copy is v1.1.0, which changed only the pull-up minimum and the
+   package text from the dead v1.0.6 link. Do not copy a number from a
    secondary document into a primary claim without opening the primary.
 4. **Board files are split.** The repository has one board file
    (`boards/waveshare-esp32-s3-eth.json`). Panel pins, backlight drive, and
@@ -295,14 +318,14 @@ was opened. Every `unknown` names the artifact that closes it.
 
 | Board | MCU and radio | PMIC, charger, gauge | Display and touch | IMU | Audio or other | Battery | FCC | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `m5stick-c` | ESP32 v5.3 | AXP192, no revision string | ST7735S v1.1 | MPU6886 v1.1 | IR LED | 95 mAh, vendor page | unknown | documented, battery and FCC gaps |
-| `m5stick-c-plus` | ESP32 v5.3 | Plus: AXP192. Plus2: no PMIC, external charger | ST7789V v1.3 | MPU6886 v1.1 | BM8563 RTC cited, not opened (Plus2) | Plus 120 mAh, Plus2 200 mAh, vendor page | unknown | documented, RTC, battery, FCC gaps |
-| `m5stick-s3` | ESP32-S3 v2.2 | M5PM1 V1.9 | ST7789P3, panel document unknown | BMI270 suffix 08 | ES8311 and AW8737, vendor page only | 250 mAh, vendor page | unknown | documented, panel, audio, battery, FCC gaps |
-| `m5stack-core` | ESP32 v5.3 | IP5306 V1.01 | ILI9342C, no revision string | Gray variant part not recorded | SD, speaker | Core reports 0, capacity unknown | unknown | documented, IMU, SD, battery, FCC gaps |
-| `m5stack-core2` | ESP32 v5.3 | AXP192, no revision string. Core2 v1.1 fits an AXP2101 under the same board ID, and the boot code gates the AXP192 ADC trim on the detected PMIC; no AXP2101 document is in the tree | ILI9342C plus FT6336U, not opened | MPU6886 v1.1 | NS4168, BM8563, SD | 390 mAh, vendor page | unknown | documented for AXP192; AXP2101 datasheet is an open gap |
-| `waveshare-s3-eth` | ESP32-S3 v2.2, W5500 v1.0.6 not opened | none | none | none | microSD, WS2812 | none | unknown | documented, W5500, FCC gaps |
-| `esp32-s3-headless` | ESP32-S3 v2.2 | board-specific, no PMIC document | none | none | none | board-specific | unknown | documented for the SoC, board document missing |
-| `m5stack-core-usb-debug` | ESP32 v5.3 | IP5306 V1.01 | ILI9342C | as Core | as Core | as Core | unknown | same gaps as Core |
+| `m5stick-c` | ESP32 v5.3 | AXP192, no revision string | ST7735S v1.1 | MPU6886 v1.1 | IR LED | 95 mAh, vendor page | no board-level filing found; module grant only | documented, battery gap and no board FCC ID |
+| `m5stick-c-plus` | ESP32 v5.3 | Plus: AXP192. Plus2: no PMIC, external charger | ST7789V v1.3 | MPU6886 v1.1 | BM8563 RTC cited, not opened (Plus2) | Plus 120 mAh, Plus2 200 mAh, vendor page | no board-level filing found; module grant only | documented, RTC and battery gaps, no board FCC ID |
+| `m5stick-s3` | ESP32-S3 v2.2, PICO-1 N8R8 v1.2 | M5PM1 V1.9 | ST7789P3, panel document unknown | BMI270 suffix 08 | ES8311 and AW8737, vendor page only | 250 mAh, vendor page | 2AN3WM5STICKS3, K150 grant 12/16/2025, read from a page render (OCR-derived) | documented, panel, audio and battery gaps; FCC closed |
+| `m5stack-core` | ESP32 v5.3 | IP5306 V1.01 | ILI9342C, no revision string | Gray variant part not recorded | SD, speaker | Core reports 0, capacity unknown | no board-level filing found; module grant only | documented, IMU, SD and battery gaps, no board FCC ID |
+| `m5stack-core2` | ESP32 v5.3 | AXP192, no revision string. Core2 v1.1 fits an AXP2101 under the same board ID, and the boot code gates the AXP192 ADC trim on the detected PMIC; no AXP2101 document is in the tree | ILI9342C plus FT6336U, not opened | MPU6886 v1.1 | NS4168, BM8563, SD | 390 mAh, vendor page | Core2 2AN3WM5STACK-CORE2, K010 grant 08/20/2020; Tough 2AN3W-M5STACK-TOUGH, K034 grant 04/19/2021 | documented for AXP192; AXP2101 datasheet is an open gap; FCC closed |
+| `waveshare-s3-eth` | ESP32-S3 v2.2, W5500 Ver 1.1.0 | none | none | none | microSD, WS2812 | none | no board-level filing; the product page contains no occurrence of FCC, so it relies on the module grant 2AC7Z-ESPS3WROOM1 | documented; W5500 and module FCC closed, no board FCC ID |
+| `esp32-s3-headless` | ESP32-S3 v2.2 | board-specific, no PMIC document | none | none | none | board-specific | module grant 2AC7Z-ESPS3WROOM1 applies to the WROOM-1 module, not to a devkit assembly | documented for the SoC, board document missing |
+| `m5stack-core-usb-debug` | ESP32 v5.3 | IP5306 V1.01 | ILI9342C | as Core | as Core | as Core | as Core, no board-level filing | same gaps as Core |
 
 ### 13.2 Batteries
 
@@ -323,22 +346,28 @@ arithmetic estimate on a nominal capacity, not a measured runtime.
 
 | Item | Status | Evidence or closing artifact |
 | --- | --- | --- |
-| FCC IDs for the ESP32 and ESP32-S3 modules | unknown | No FCC ID is recorded in the tree. Close from the module label or the FCC equipment database. No power row depends on an FCC number |
-| FCC IDs for the assembled M5Stack and Waveshare boards | unknown | Same. A board photo or the vendor page footer would close it |
+| FCC ID for the ESP32-S3-WROOM-1 module | 2AC7Z-ESPS3WROOM1, grant 01/21/2022, Nemko North America, single modular | Espressif certification PDF, https://documentation.espressif.com/ESP32-S3-WROOM-1%20FCC%20Certification.pdf, SHA-256 `edb08720467ab0b1bff5269dec375847836179f60c038a7f977e1127aeeb7908`, text layer, read 2026-11-25 |
+| FCC IDs for the assembled M5Stack boards | StickS3 2AN3WM5STICKS3 (K150, grant 12/16/2025); Core2 2AN3WM5STACK-CORE2 (K010, grant 08/20/2020); Tough 2AN3W-M5STACK-TOUGH (K034, grant 04/19/2021) | Vendor-hosted grants under https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/certification/, read 2026-11-25. The StickS3 grant has no text layer, so its ID was read from a 300 dpi page render and is OCR-derived; the other two were read from their text layers. No board-level filing was found for the StickC, StickC Plus, Plus2 or Core Basic |
+| FCC ID for the assembled Waveshare board | none; certified through the module grant | The ESP32-S3-ETH product page, https://docs.waveshare.com/ESP32-S3-ETH, SHA-256 `00fd70c1b2406485a4636b8f046084311544a166fffa1769783c8fafa034cf0d`, contains zero occurrences of FCC, so no board-level filing is claimed |
+| FCC exhibit databases | inaccessible | fccid.io and fcc.report returned HTTP 403 to the research agent, so no claim is made about schematics or internal photos in any of these filings |
+| FCC ID for the ESP32-WROOM-32 module | unknown | No Espressif or M5Stack grant for a WROOM-32 module on a supported board was located. Close from the module label or a vendor-hosted grant |
 | Vendor board manuals | vendor page | Product pages and wikis in sections 5 and 7. No PDF manual for the M5Stack boards is in the tree |
 | Vendor camera manuals | out of this register | They live in the private corpus `docs/research/model-manuals-*.md` |
 | Bluetooth Core Specification, ESP32 | cited, not opened | ESP32 v5.3 datasheet states Bluetooth 4.2. Cite Core v4.2 for any LE limit. No lane quotes a numeric limit from the Core spec |
 | Bluetooth Core Specification, ESP32-S3 | cited, not opened | ESP32-S3 v2.2 datasheet states Bluetooth LE 5.0. Cite Core v5.0, Vol 6 for the LE Controller. The power rows use only 1M PHY and the default initiator scan, so no Core-only number is needed |
-| Errata | none cited | No lane opened an errata document. If one is needed, add it here with part, revision, and affected limit before using it |
-| Application notes | none cited | ESP-IDF API guides and Kconfig help are listed in section 7 as vendor documentation, not application notes |
+| Errata | none published for the cited parts | The Semtech product pages for the SX1261 and SX1262 contain zero occurrences of the word errata, and the datasheet carries no errata reference. Section 15 "Known Limitations" of DS.SX1261-2.W.APP Rev 2.2, pages 109 to 111, is the functional substitute; see section 12 item 1 |
+| Application notes | two vendor pages cited as application notes | The M5StickS3 low-power page and the M5PaperMono M5PM1 and M5IOE1 page are listed in section 5 and state the idle-sleep wake rule and the multi-level rail structure. ESP-IDF API guides and Kconfig help remain vendor documentation in section 7 |
 
 ### 13.4 Coverage verdict
 
 - Every board has a documented SoC, PMIC where fitted, display where fitted,
   and IMU where the part is recorded.
 - The open document gaps are the Core Basic IMU part, the StickS3 panel, the
-  touch controller current, the RTC, the audio parts, the SD slot, the FCC IDs,
-  and the cell datasheets. Each is listed with its closing artifact.
+  touch controller current, the RTC, the audio parts, the SD slot, the
+  ESP32-WROOM-32 module FCC ID, and the cell datasheets. Each is listed with its
+  closing artifact. The assembled-board FCC gaps for the StickS3, Core2 and
+  Tough are closed, and the Waveshare board is recorded as having no board-level
+  filing.
 - No gap blocks a safe-now change. Every gap blocks only a number that the
   bench plan already marks as measurement-gated.
 - No errata or application note is invented to fill a row.
