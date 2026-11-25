@@ -3,9 +3,10 @@
 set -eu
 
 script=${2##*/}
-if [ "$script" != "intervalometer-deep-sleep-start.txt" ]; then
-  exit 0
-fi
+case "$script" in
+  intervalometer-deep-sleep-start.txt|intervalometer-deep-sleep-rtc-start.txt) ;;
+  *) exit 0 ;;
+esac
 
 case "${FURBLE_SIM_DEEP_SLEEP_FAKE_MODE:-normal}" in
   normal)

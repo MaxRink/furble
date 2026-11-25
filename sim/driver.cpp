@@ -320,6 +320,15 @@ uint64_t parseUnsigned64(const std::string &value, const char *name) {
   }
 }
 
+// An RTC calendar seed has to land inside the window every production clock
+// check uses: 2020-01-01 to 2100-01-01, the same bounds TimeKeeperPolicy
+// enforces. Parsed strictly so a trailing character is a load error, not a
+// silently narrowed value.
+bool epochSeedIsValid(const std::string &value) {
+  const uint64_t seconds = parseUnsigned64(value, "rtc_epoch");
+  return (seconds >= 1577836800ULL) && (seconds <= 4102444800ULL);
+}
+
 bool booleanSeedValue(const std::string &value) {
   return value == "0" || value == "1" || value == "true" || value == "false" || value == "yes"
          || value == "no" || value == "on" || value == "off";
@@ -463,8 +472,8 @@ void validateSeed(const std::string &name, const std::string &value) {
     return;
   } else if (name == "resume_fixture") {
     if (value != "invalid" && value != "stale" && value != "completed" && value != "outofrange"
-        && value != "mismatched" && value != "early" && value != "late" && value != "wrong_camera"
-        && value != "second_camera") {
+        && value != "mismatched" && value != "early" && value != "future" && value != "late"
+        && value != "wrong_camera" && value != "second_camera") {
       std::cerr << "Invalid resume_fixture: " << value << '\n';
       std::exit(2);
     }
@@ -608,7 +617,8 @@ void validateSeed(const std::string &name, const std::string &value) {
   } else if (name == "reset_reason") {
     if (value != "poweron" && value != "software" && value != "panic" && value != "int_wdt"
         && value != "task_wdt" && value != "tg1wdt" && value != "other_wdt" && value != "brownout"
-        && value != "usb_uart_chip_reset" && value != "jtag" && value != "power_glitch") {
+        && value != "usb_uart_chip_reset" && value != "jtag" && value != "power_glitch"
+        && value != "deepsleep") {
       std::cerr << "Invalid reset_reason: " << value << '\n';
       std::exit(2);
     }
@@ -640,6 +650,24 @@ void validateSeed(const std::string &name, const std::string &value) {
   } else if (name == "wifi_auth") {
     if (value != "known" && value != "unknown") {
       std::cerr << "Invalid wifi_auth: " << value << '\n';
+      std::exit(2);
+    }
+    return;
+  } else if (name == "rtc_model") {
+    if (value != "off" && value != "unbacked" && value != "backed") {
+      std::cerr << "Invalid rtc_model: " << value << '\n';
+      std::exit(2);
+    }
+    return;
+  } else if (name == "rtc_epoch") {
+    if (!epochSeedIsValid(value)) {
+      std::cerr << "Invalid rtc_epoch: " << value << " (expected 1577836800-4102444800)\n";
+      std::exit(2);
+    }
+    return;
+  } else if (name == "rtc_clock_lost") {
+    if (!booleanSeedValue(value)) {
+      std::cerr << "Invalid rtc_clock_lost: " << value << '\n';
       std::exit(2);
     }
     return;
@@ -1834,6 +1862,38 @@ std::string queryValueUnscoped(const std::string &key) {
     // the wall clock was last set from GPS
     return (TimeKeeper::getInstance().status().source == TimeSource::GPS) ? "1" : "0";
   }
+  if (key == "time.valid" || key == "time.source" || key == "time.rtc_available"
+      || key == "time.rtc_battery" || key == "time.epoch_s") {
+    // The production clock's own answers, so a scenario asserts the seam the
+    // firmware reads instead of a simulator copy of the rule.
+    const auto status = TimeKeeper::getInstance().status();
+    if (key == "time.valid") {
+      return status.valid ? "yes" : "no";
+    }
+    if (key == "time.rtc_available") {
+      return status.rtc_available ? "yes" : "no";
+    }
+    if (key == "time.rtc_battery") {
+      return status.rtc_battery_backed ? "yes" : "no";
+    }
+    if (key == "time.epoch_s") {
+      return std::to_string(status.epoch_us / 1000000ULL);
+    }
+    switch (status.source) {
+      case TimeSource::NVS:
+        return "nvs";
+      case TimeSource::RTC:
+        return "rtc";
+      case TimeSource::COMPANION:
+        return "companion";
+      case TimeSource::GPS:
+        return "gps";
+      case TimeSource::NTP:
+        return "ntp";
+      default:
+        return "none";
+    }
+  }
   if (prefixed("m10.")) {
     // The virtual M10's own view: state, start type, counters and its
     // configuration database (m10.ram.<hex key>, m10.bbr.<hex key>).
@@ -2423,6 +2483,18 @@ void applyScenarioSettings(void) {
   if (bootProfile != scenarioSettings.end()) {
     hwSetBootProfile(bootProfile->second);
   }
+  // The modelled calendar chip. It is configured here, before Platform::init()
+  // reads the clock, so TimeKeeper sees the same boot-time sample a board
+  // reads from M5.Rtc. A scenario that seeds no model keeps the host clock.
+  const auto rtcModel = scenarioSettings.find("rtc_model");
+  hwSetRtcModel(rtcModel == scenarioSettings.end() ? "off" : rtcModel->second);
+  const auto rtcEpoch = scenarioSettings.find("rtc_epoch");
+  if (rtcEpoch != scenarioSettings.end()) {
+    hwSetRtcEpoch(parseUnsigned64(rtcEpoch->second, "rtc_epoch"));
+  }
+  if (scenarioSettingIsTrue("rtc_clock_lost")) {
+    hwSetRtcClockLost(true);
+  }
   if (scenarioSettings.find("psram_memtest") != scenarioSettings.end()) {
     hwSetPsramMemtest(scenarioSettingIsTrue("psram_memtest"));
   }
@@ -2646,6 +2718,11 @@ void applyScenarioSettings(void) {
       // resume timer itself runs on virtual time, so a short wall deadline
       // would make this regression depend on host scheduling latency.
       state.wake_time += 30;
+    } else if (fixture->second == "future") {
+      // A minute ahead: beyond RESUME_WAKE_MARGIN_S, inside the acceptance
+      // window, and far enough that a trusted resume is still waiting after
+      // the connection gate has consumed its virtual time.
+      state.wake_time += 60;
     } else if (fixture->second == "late") {
       state.wake_time -= 5;
     } else if (fixture->second == "wrong_camera") {
@@ -3507,6 +3584,10 @@ void restartProcess(void) {
     arguments.push_back(argument.data());
   }
   arguments.push_back(nullptr);
+  // A real soft reset keeps the RTC chip running. Persist the modelled
+  // calendar so the resumed process boots from the same register reading,
+  // like the flash-backed NVS store beside it.
+  hwRtcPersist();
   const char *program = savedArguments.front().c_str();
   // Carry the fixture clock across the re-exec. A receiver's clock does not
   // rewind because the ESP32 rebooted, and letting it reset made the positive

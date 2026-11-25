@@ -1,0 +1,32 @@
+# The second half of the battery-backed RTC power cycle.
+#
+# A fresh process reads the chip that kept counting through the simulated
+# sleep, so the wall clock is trusted at boot and the saved record's deadline is
+# compared against it rather than against the boot-relative margin. The run
+# finishes its remaining shot and stops.
+seed hw_profile stickc-plus2
+seed reset_reason deepsleep
+seed rtc_model backed
+# An install value. The persisted chip reading outranks it, which is what makes
+# this leg a persistence check and not a fresh clock.
+seed rtc_epoch 1767225600
+seed fauxny true
+seed autoconnect true
+seed ivl_sleep true
+seed ivl_sleep_thr 10
+seed interval_count 2
+seed interval_delay 16
+seed interval_shutter 30
+seed interval_wait 0
+assert hw.rtc_model backed
+assert hw.rtc_clock valid
+assert time.rtc_available yes
+assert time.valid yes
+assert time.source rtc
+assert-eventually-virtual 5000 control.state active
+assert platform.timed_wake yes
+assert platform.wake_marker no
+assert camera.shutter_presses 0
+assert-eventually-virtual 30000 ui.interval_state finished
+assert camera.shutter_presses 1
+exit

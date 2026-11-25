@@ -1,0 +1,2 @@
+seed rtc_model battery
+exit

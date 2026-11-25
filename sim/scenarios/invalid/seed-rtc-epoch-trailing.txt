@@ -1,0 +1,2 @@
+seed rtc_epoch 1767225600x
+exit

@@ -165,6 +165,10 @@ def validate_seed_predicates(seed_text):
             "!booleanSeedValue(value)",
             "!bleTopologyIsValid(value)",
             "!intervalSeedIsValid(value)",
+            # The RTC calendar seed is bounded to the epoch window the
+            # production clock checks use, so a typo cannot install a clock
+            # no consumer can read.
+            "!epochSeedIsValid(value)",
         }:
             continue
         if re.fullmatch(

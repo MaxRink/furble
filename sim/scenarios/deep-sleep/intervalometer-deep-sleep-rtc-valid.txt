@@ -1,0 +1,32 @@
+# A valid resume record is accepted on a battery-backed RTC and waits for its
+# own deadline.
+#
+# The record's wake time is a minute ahead, so loadResume() accepts it and
+# startResume() computes the remaining time from the wall clock instead of the
+# boot-relative RESUME_WAKE_MARGIN_S. The run is therefore still waiting at 20
+# seconds, after the 15 second margin would have fired, and finishes once its
+# own deadline arrives.
+seed hw_profile stickc-plus2
+seed rtc_model backed
+seed rtc_epoch 1767225600
+seed fauxny true
+seed autoconnect true
+seed ivl_sleep true
+seed timed_wake true
+seed resume_fixture future
+seed interval_count 2
+seed interval_delay 1
+seed interval_shutter 30
+assert time.rtc_available yes
+assert time.source rtc
+assert-eventually-virtual 5000 control.state active
+# The run is inside its WAIT countdown, which the state token reports as the
+# shutter step it is about to take. No shot may have happened yet: the
+# boot-relative margin would have fired the shot within the first seconds.
+wait 20000
+assert platform.wake_marker no
+assert ui.interval_state shutter
+assert camera.shutter_presses 0
+assert-eventually-virtual 60000 ui.interval_state finished
+assert camera.shutter_presses 1
+exit

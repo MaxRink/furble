@@ -27,6 +27,26 @@ extern "C" __attribute__((weak)) uint64_t furble_sim_system_time_us(void) {
 extern "C" __attribute__((weak)) void furble_sim_set_system_time_us(uint64_t epochUs) {
   (void)epochUs;
 }
+// The SDL build has no I2C bus, so M5GFX's host bus stub always fails and
+// M5.Rtc can never come up. The simulator supplies the modelled chip here
+// instead: presence, the backup cell, one calendar read and one write. The
+// firmware path below is untouched and still reads M5.Rtc. The default
+// reports no chip, so a host test or a scenario without a modelled RTC keeps
+// the NVS and retained-clock behaviour.
+extern "C" __attribute__((weak)) bool furble_sim_rtc_present(void) {
+  return false;
+}
+extern "C" __attribute__((weak)) bool furble_sim_rtc_battery_backed(void) {
+  return false;
+}
+extern "C" __attribute__((weak)) bool furble_sim_rtc_read(uint64_t *epoch_us, bool *volt_low) {
+  (void)epoch_us;
+  (void)volt_low;
+  return false;
+}
+extern "C" __attribute__((weak)) void furble_sim_rtc_write(uint64_t epoch_us) {
+  (void)epoch_us;
+}
 #define FURBLE_TIME_RETAINED
 #else
 #define FURBLE_TIME_RETAINED RTC_NOINIT_ATTR
@@ -58,6 +78,11 @@ uint64_t g_LastRtcWriteMonotonicMs = 0;
 // The last accepted sample, kept in RTC memory so a soft reset can trust the
 // still-running system clock. It costs no NVS write.
 FURBLE_TIME_RETAINED uint8_t g_Retained[TimeKeeperPolicy::RECORD_BYTES];
+#if defined(FURBLE_SIM)
+// True when the modelled chip stands in for M5.Rtc, which cannot come up on
+// the host because M5GFX's I2C bus is a stub. Set once in init().
+bool g_SimRtc = false;
+#endif
 
 uint64_t monotonicMs(void) {
   return static_cast<uint64_t>(esp_timer_get_time()) / 1000ULL;
@@ -124,6 +149,25 @@ bool readRtc(TimeSample &sample) {
     return false;
   }
 
+#if defined(FURBLE_SIM)
+  if (g_SimRtc) {
+    // The modelled chip stores whole seconds, so there are no calendar
+    // registers to convert. The battery-backed refusal is the same one the
+    // hardware path applies below.
+    uint64_t simEpochUs = 0;
+    bool simVoltLow = false;
+    if (!furble_sim_rtc_read(&simEpochUs, &simVoltLow)) {
+      return false;
+    }
+    if (g_RtcBatteryBacked && simVoltLow) {
+      return false;
+    }
+    sample = {simEpochUs, g_RtcBatteryBacked ? 2000U : 10U * 60U * 1000U, TimeSource::RTC,
+              monotonicMs()};
+    return TimeKeeperPolicy::validAt(sample, sample.monotonic_ms);
+  }
+#endif
+
   m5::rtc_datetime_t datetime;
   if (!M5.Rtc.getDateTime(&datetime)) {
     return false;
@@ -157,6 +201,16 @@ void writeRtc(uint64_t epochUs, uint64_t monotonic_ms, bool force) {
     return;
   }
 
+#if defined(FURBLE_SIM)
+  if (g_SimRtc) {
+    // The modelled chip stores the value directly, with no register
+    // conversion to fail.
+    furble_sim_rtc_write(epochUs);
+    g_LastRtcWriteMonotonicMs = monotonic_ms;
+    g_LastRtcWriteValid = true;
+    return;
+  }
+#endif
   const time_t seconds = static_cast<time_t>(epochUs / 1000000ULL);
   tm utc = {};
   if (gmtime_r(&seconds, &utc) == nullptr) {
@@ -259,6 +313,15 @@ void TimeKeeper::init(void) {
 
   g_RtcAvailable = M5.Rtc.isEnabled();
   g_RtcBatteryBacked = g_RtcAvailable && Board::profile().rtcBatteryBacked;
+#if defined(FURBLE_SIM)
+  // M5.Rtc cannot come up on the host, whose I2C bus is a stub. A modelled
+  // chip stands in for it; a host that wires a real one keeps priority.
+  if (!g_RtcAvailable && furble_sim_rtc_present()) {
+    g_RtcAvailable = true;
+    g_SimRtc = true;
+    g_RtcBatteryBacked = furble_sim_rtc_battery_backed();
+  }
+#endif
 
   TimeSample persisted = {};
   g_HasPersisted = loadPersisted(persisted);

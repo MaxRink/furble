@@ -1286,6 +1286,114 @@
       "reason": "Executed by the dedicated deep-sleep runner, which supplies persisted power-cycle state."
     },
     {
+      "path": "sim/scenarios/deep-sleep/intervalometer-deep-sleep-rtc-cold-boot.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Executed by the dedicated deep-sleep runner, which supplies persisted power-cycle state."
+    },
+    {
+      "path": "sim/scenarios/deep-sleep/intervalometer-deep-sleep-rtc-late.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Executed by the dedicated deep-sleep runner, which supplies persisted power-cycle state."
+    },
+    {
+      "path": "sim/scenarios/deep-sleep/intervalometer-deep-sleep-rtc-lost.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Executed by the dedicated deep-sleep runner, which supplies persisted power-cycle state."
+    },
+    {
+      "path": "sim/scenarios/deep-sleep/intervalometer-deep-sleep-rtc-persist.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Executed by the dedicated deep-sleep runner, which supplies persisted power-cycle state."
+    },
+    {
+      "path": "sim/scenarios/deep-sleep/intervalometer-deep-sleep-rtc-resume.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Executed by the dedicated deep-sleep runner, which supplies persisted power-cycle state."
+    },
+    {
+      "path": "sim/scenarios/deep-sleep/intervalometer-deep-sleep-rtc-stale.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Executed by the dedicated deep-sleep runner, which supplies persisted power-cycle state."
+    },
+    {
+      "path": "sim/scenarios/deep-sleep/intervalometer-deep-sleep-rtc-start.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Executed by the dedicated deep-sleep runner, which supplies persisted power-cycle state."
+    },
+    {
+      "path": "sim/scenarios/deep-sleep/intervalometer-deep-sleep-rtc-valid.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Executed by the dedicated deep-sleep runner, which supplies persisted power-cycle state."
+    },
+    {
       "path": "sim/scenarios/deep-sleep/intervalometer-deep-sleep-stable-id.txt",
       "suite": "e2e",
       "owner": "sim-e2e",
@@ -4355,6 +4463,39 @@
     },
     {
       "path": "sim/scenarios/invalid/seed-duplicate.txt",
+      "suite": "invalid",
+      "owner": "sim-parser",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 2,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/invalid/seed-rtc-epoch-out-of-range.txt",
+      "suite": "invalid",
+      "owner": "sim-parser",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 2,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/invalid/seed-rtc-epoch-trailing.txt",
+      "suite": "invalid",
+      "owner": "sim-parser",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 2,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/invalid/seed-rtc-model-invalid.txt",
       "suite": "invalid",
       "owner": "sim-parser",
       "boards": [

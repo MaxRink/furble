@@ -1,0 +1,26 @@
+# A late resume record fires at once on a battery-backed RTC.
+#
+# The record's wake time passed five seconds ago. trustedWallClock() is true,
+# the record is inside the acceptance window, and startResume() computes a
+# non-positive remaining time, so the shot starts immediately instead of
+# waiting RESUME_WAKE_MARGIN_S from boot.
+seed hw_profile stickc-plus2
+seed rtc_model backed
+seed rtc_epoch 1767225600
+seed fauxny true
+seed autoconnect true
+seed ivl_sleep true
+seed timed_wake true
+seed resume_fixture late
+seed interval_count 2
+seed interval_delay 1
+seed interval_shutter 30
+assert time.rtc_available yes
+assert time.source rtc
+# The resume starts as soon as the camera link is up, with no boot-relative
+# wait: the shot is already behind its deadline.
+assert-eventually-virtual 5000 control.state active
+assert-eventually-virtual 2000 ui.interval_state finished
+assert platform.wake_marker no
+assert camera.shutter_presses 1
+exit
