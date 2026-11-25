@@ -3,7 +3,7 @@
 ## Implementation state
 
 2026-11-13: implemented on `docs/settings-console-accuracy` and amended after
-review rounds 1 and 2 returned changes required. Twenty claims were reported against
+review rounds 1 to 3 returned changes required. Twenty claims were reported against
 `docs/settings-and-controls.md`, its `docs/wiki/` mirror,
 `docs/console-commands.md`, its `docs/wiki/Console-Commands.md` mirror, and
 `README.md`. Each one was re-checked against the code before editing, and all
@@ -27,6 +27,11 @@ edits, and overstated closure claims. Rows 1, 8, 15, 22, 24 and 25, the
 Deviations section and the Not changed section carry the corrections, and the
 Review rounds section records all seven findings. No firmware, test, screenshot,
 or simulator scenario changed.
+
+Review round 3 found two non-blocking items, both in this plan: the wiki heading
+line in table row 25 and the settings diff path count in the Gates section. Both
+were corrected against a `grep -n` of the branch tree and a settings gate run. No
+firmware, test, screenshot, or simulator scenario changed.
 
 ## Motivation
 
@@ -71,7 +76,7 @@ edited upstream, so row 25 counts its lines on this branch.
 | 22 | `docs/ui-walkthrough.md` and `docs/wiki/UI-Walkthrough.md` listed a six-entry home menu, and `README.md` a five-entry one. | The menu has seven entries: IR after Delete and Level after Settings. Both walkthroughs already carried `IR` and were missing only `Level`; the README was missing both. | `src/FurbleUI.cpp:3391-3408`, `:9675-9691` | All three lists carry seven entries in navigation order, and both walkthroughs say the Level entry is also on the home menu. Found in review round 1 (N6 to N8). |
 | 23 | The README console block's `power` line omitted `off`, and no page said `off` is refused on a display-less build. | `cmdPower` handles `off` and returns `not supported in this build` under `FURBLE_NO_DISPLAY`. | `src/FurbleConsole.cpp:1911-1930` | The README line and both console docs `power` rows carry `off` and the refusal. Found in review round 1 (N10, N11). |
 | 24 | The README GPS support list read exhaustive and omitted Nikon (Smart). | The feature table crosses that row's GPS cell, and `NikonSmart::updateGeoData()` exists, so the table and the code disagree about a model whose Scanning cell is ticked while Pairing, Shutter Release, Focus and GPS are crossed. | `README.md:150-161`, `lib/furble/NikonSmart.cpp:183` | The README says the table is the support statement, names the ticked cell and the four crossed ones, and records the mismatch. Found in review round 1 (N12); the crossed cells were corrected in review round 2 from "that whole row is crossed". |
-| 25 | `docs/ui-walkthrough.md:211` and `docs/wiki/UI-Walkthrough.md:179` (branch lines) headed a section `GPS Satellites`. | The menu label is `Satellites`: `m_GPSSatStr` is `Satellites` and `addGPSSatMenu()` is its only registration. Both walkthroughs are edited on this branch for the Level entry, so the heading sat in the touched files while the page it describes had already been corrected. | `include/FurbleUI.h:843`, `src/FurbleUI.cpp:9813`, `:10300-10374` | Both headings are renamed `Satellites`. The section prose, the screenshot path and the image alt text are unchanged. Found in review round 2. |
+| 25 | `docs/ui-walkthrough.md:211` and `docs/wiki/UI-Walkthrough.md:181` (branch lines) headed a section `GPS Satellites`. | The menu label is `Satellites`: `m_GPSSatStr` is `Satellites` and `addGPSSatMenu()` is its only registration. Both walkthroughs are edited on this branch for the Level entry, so the heading sat in the touched files while the page it describes had already been corrected. | `include/FurbleUI.h:843`, `src/FurbleUI.cpp:9813`, `:10300-10374` | Both headings are renamed `Satellites`. The section prose, the screenshot path and the image alt text are unchanged. Found in review round 2. |
 
 ## Review rounds
 
@@ -111,6 +116,21 @@ diff before editing. Items are numbered as the review listed them.
 | R5 | The "Not changed" bullet said `docs/ui-walkthrough.md` and `docs/img/` were untouched, but the branch edits both walkthrough files. | Fixed. The bullet now lists the two walkthrough edits and claims only `docs/img/` as unchanged. | `git diff origin/master...HEAD -- docs/ui-walkthrough.md docs/wiki/UI-Walkthrough.md docs/img` |
 | R6 | The plan said the walkthroughs listed a five-entry menu. They listed six, with Level missing; only the README listed five. | Fixed. Table row 22, the round 1 N6/N7 cell and the R4 note above state which entries each file was missing. | `git show origin/master:docs/ui-walkthrough.md`, `git show origin/master:docs/wiki/UI-Walkthrough.md`, `git show origin/master:README.md` |
 | R7 | Remaining closure claims in the review-round table did not match the diff. | Fixed. The round 1 cells for B1, N2/N3/N5, N9 and N12 now match the text: the README claim no longer says it carries the image list, the rewritten rows are dated to this round, and N9 and N12 point at the corrections above. | this document |
+
+### Review round 3
+
+The third push was reviewed and returned two non-blocking findings, both in this
+plan. Both were re-checked against the branch tree and a gate run before editing.
+
+| Item | Finding | Resolution | Evidence |
+| :--- | :--- | :--- | :--- |
+| S1 | Table row 25 labelled the wiki walkthrough heading `docs/wiki/UI-Walkthrough.md:179`, which is not the `### Satellites` line on this branch; that heading is line 181. | Fixed. The row now says `:181`. Its other half, `docs/ui-walkthrough.md:211`, was already correct and is unchanged. | `grep -n '^### Satellites' docs/ui-walkthrough.md docs/wiki/UI-Walkthrough.md` prints `211` and `181` |
+| S2 | The Gates caveat still explained a diff path count the branch no longer has. It described the un-rebased tree, where `origin/master` moves 30 paths past `4af87727` and 3 of those are also on the branch, giving 36. | Fixed. The caveat now gives the count, 9, and says it equals this branch's own changed files because the branch sits on `origin/master`, and it keeps the warning that the gate compares against the base rather than the merge commit. | `python3 tools/check_settings_contracts.py --base origin/master --head HEAD` prints `diff paths: 9, default changes: 0`; `git merge-base HEAD origin/master` is `b57f0118`, which is `origin/master` |
+
+The S1 report put the heading at 176 on `4af87727` and credited two lines to
+master. On the tree it is 177 there and 178 at `b57f0118`: PR 471 adds one net
+line above it and this branch's Level edits add three, which is the 181 the row
+now carries.
 
 ## Re-verification commands
 
@@ -206,10 +226,9 @@ three new rows and loses two duplicates.
   parser limits (four aggregate defaults in `src/FurbleSettings.cpp` and two
   dynamic CMake test definitions), with 76 settings table rows, 140 documented
   rows parsed, 16 documented defaults compared and no default change. Its diff
-  path count is not quoted here: the gate diffs the two trees rather than their
-  merge base, so the count is this branch's 9 files plus every file merged to
-  `origin/master` since `4af87727`, the files in both counted once, and it moves
-  with every merge.
+  path count is 9, this branch's own changed files, because the branch sits on
+  `origin/master`: the gate diffs the two trees rather than their merge base, so
+  an older base would add every file merged since it.
 - `sh sim/scripts/check-doc-tokens.sh`: PASS. It scans `docs/sim.md`, which this
   branch does not touch.
 - No host or simulator test is needed: no code, string, or scenario changed.
