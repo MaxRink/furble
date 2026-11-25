@@ -1553,7 +1553,7 @@ when this lane is consolidated.
 | --- | --- | --- | --- |
 | M5StickS3 | ESP32-S3, 2M PHY capable, BLE 5 | 3.3 mA measured, light sleep from the main crystal | Best BLE power target. No 32 kHz crystal, so the 0.23 mA mode is impossible. Controller based privacy. 6 controller activities, 9 host connections. |
 | M5StickC, StickC Plus | ESP32, BLE 4.2, no 2M | 14.1 mA published modem sleep, no light sleep without a 32 kHz crystal | AXP192 floor about 2 mA. BLE-11/12/13 still reduce event count, but the floor is high. The 93 mA receive figure does not apply; the ESP32 receive figure is 95 to 100 mA. |
-| M5Stack Core | ESP32, BLE 4.2 | Same as the Sticks | IP5306 hard powers off after 32 s below 45 mA. Any BLE low-power posture is not survivable as shipped; do not plan a BLE sleep state for this board. |
+| M5Stack Core | ESP32, BLE 4.2 | Same as the Sticks | IP5306 hard powers off after 64 s below 45 mA (M5Unified sets the 64 s light-load field). Any BLE low-power posture is not survivable as shipped; do not plan a BLE sleep state for this board. |
 | M5Stack Core2 | ESP32, BLE 4.2 | Same as the Sticks | AXP192 floor and touch controller left running. BLE changes apply but the board floor dominates. |
 | ESP32-S3 headless, Waveshare S3 ETH | ESP32-S3 | Mains | Not a battery target. Use as a control only, and mark it a developer result. |
 

@@ -13,6 +13,7 @@
 #include <esp_log.h>
 #include <esp_mac.h>
 #include <esp_netif.h>
+#include <esp_rom_sys.h>
 #endif
 
 namespace Furble {
@@ -135,6 +136,12 @@ constexpr int ETH_SPI_CS_GPIO = 14;
 constexpr int ETH_SPI_INT_GPIO = 10;
 constexpr int ETH_SPI_RST_GPIO = 9;
 constexpr int ETH_SPI_CLOCK_HZ = 20 * 1000 * 1000;
+// WIZnet W5500 datasheet v1.1.0 section 5.5.1, figure 22 and table 2: RESETn
+// must stay low for at least 500 us. The pinned ESP-IDF W5500 PHY hardcodes
+// 100 us in w5500_reset_hw() (components/esp_eth/src/spi/w5500/
+// esp_eth_phy_w5500.c), and its only knob is reset_gpio_num, so the transport
+// drives the pulse itself and passes -1 to keep the PHY off the pin.
+constexpr uint32_t W5500_RESET_LOW_US = 500;
 
 class EspEthTransport final: public Ethernet::Transport {
  public:
@@ -146,6 +153,11 @@ class EspEthTransport final: public Ethernet::Transport {
       std::lock_guard<std::mutex> lock(m_CallbackMutex);
       m_Callback = std::move(callback);
     }
+
+    // Reset the W5500 before anything speaks SPI to it. esp_eth_driver_install()
+    // runs the PHY hardware reset and then initialises the MAC over SPI, so the
+    // pulse has to precede the install, which in turn precedes esp_eth_start().
+    resetW5500();
 
     spi_bus_config_t busConfig = {};
     busConfig.mosi_io_num = ETH_SPI_MOSI_GPIO;
@@ -189,7 +201,10 @@ class EspEthTransport final: public Ethernet::Transport {
     }
 
     eth_phy_config_t phyConfig = ETH_PHY_DEFAULT_CONFIG();
-    phyConfig.reset_gpio_num = ETH_SPI_RST_GPIO;
+    // -1: the hardware reset is the 500 us pulse in resetW5500(). Handing the
+    // pin to the PHY would add a second, 100 us assertion after it, which is
+    // below the datasheet minimum and would leave the last reset under-spec.
+    phyConfig.reset_gpio_num = -1;
     m_Phy = esp_eth_phy_new_w5500(&phyConfig);
     if (m_Phy == nullptr) {
       ESP_LOGE(LOG_TAG, "W5500 PHY creation failed");
@@ -334,6 +349,27 @@ class EspEthTransport final: public Ethernet::Transport {
   }
 
  private:
+  /**
+   * Pulse RESETn low for the datasheet minimum and release it.
+   *
+   * The line is left driven high: the W5500 reset is active low and the PHY no
+   * longer owns the pin. Every init() pulses again, so a restart after stop()
+   * resets the chip as well.
+   */
+  static void resetW5500(void) {
+    gpio_config_t config = {};
+    config.pin_bit_mask = 1ULL << ETH_SPI_RST_GPIO;
+    config.mode = GPIO_MODE_OUTPUT;
+    config.pull_up_en = GPIO_PULLUP_DISABLE;
+    config.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    config.intr_type = GPIO_INTR_DISABLE;
+    gpio_config(&config);
+    const auto resetPin = static_cast<gpio_num_t>(ETH_SPI_RST_GPIO);
+    gpio_set_level(resetPin, 0);
+    esp_rom_delay_us(W5500_RESET_LOW_US);
+    gpio_set_level(resetPin, 1);
+  }
+
   static void logError(const char *operation, esp_err_t err) {
     ESP_LOGE(LOG_TAG, "%s failed: %s (0x%x)", operation, esp_err_to_name(err),
              static_cast<unsigned>(err));

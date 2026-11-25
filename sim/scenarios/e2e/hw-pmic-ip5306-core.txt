@@ -1,7 +1,11 @@
 # M5Stack Core IP5306 profile.
 #
-# The IP5306 has a four-level gauge, no current ADC, a 32 s low-load boost
-# cutoff and no PM1 watchdog. The board has no PSRAM.
+# The IP5306 has a four-level gauge, no current ADC, a 64 s low-load boost
+# cutoff and no PM1 watchdog. The board has no PSRAM. The cutoff timer itself is
+# not modelled: the simulator has no continuous-load accounting and no PMIC
+# power-cut event, so only the profile fields below are asserted. M5Unified
+# writes SYS_CTL2 bits 3:2 = 11, which is 64 s, not the 32 s power-on default.
+# See plans/334-sim-hardware-alignment.md.
 seed hw_profile core
 wait 100
 

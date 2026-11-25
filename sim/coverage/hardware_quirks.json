@@ -2355,12 +2355,13 @@
       "model": "src/FurbleEthernet.cpp",
       "scenario": "sim/scenarios/e2e/hw-boundary-waveshare-eth.txt",
       "assertions": [
+        "eth.reset",
         "eth.dhcp",
         "eth.reconnect",
         "wifi.fallback"
       ],
       "status": "modeled",
-      "note": "EspEthTransport compiled with host SPI/GPIO/W5500/netif/event doubles; production WiFi deferral checked by real-wifi-lifecycle.",
+      "note": "EspEthTransport compiled with host SPI/GPIO/W5500/netif/event doubles; the RESETn pulse is timed on a virtual microsecond clock against the W5500 datasheet 500 us minimum; production WiFi deferral checked by real-wifi-lifecycle.",
       "runner": "sim/scripts/run-boundary-conformance.sh"
     },
     {

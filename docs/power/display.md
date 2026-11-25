@@ -67,7 +67,7 @@ Key code:
 | M5StickC | ST7735S, 80x160 | AXP192 LDO2, voltage dimmed | `Light_M5StickC`, brightness mapped to AXP192 register 5..15 | 0.9 mA panel typ, 15 uA sleep-in. No LEDC. |
 | M5StickC Plus | ST7789, 135x240 | AXP192 LDO2, voltage dimmed | same `Light_M5StickC` mapping | 6.0 mA panel typ, 15 uA sleep-in. No LEDC. |
 | M5StickS3 | ST7789, 135x240 | LEDC PWM, GPIO38, channel 7, 256 Hz, 9-bit | `Light_PWM`, roughly linear duty | 6.0 mA panel typ, 15 uA sleep-in. APB lock has a real reason here. |
-| M5Stack Core | ILI9342, 320x240 | LEDC PWM, GPIO32, 44.1 kHz | `Light_PWM` | 6 to 8 mA panel estimate, ILI9342C has no current table. IP5306 cuts power below 45 mA after 32 s. |
+| M5Stack Core | ILI9342, 320x240 | LEDC PWM, GPIO32, 44.1 kHz | `Light_PWM` | 6 to 8 mA panel estimate, ILI9342C has no current table. IP5306 cuts power below 45 mA after 64 s. |
 | M5Stack Core2 | ILI9342, 320x240 | AXP192 DCDC3, voltage dimmed | `Light_M5StackCore2`, 2.4 to 3.3 V | 6 to 8 mA panel estimate. No LEDC. |
 
 Sources: `src/M5GFX.cpp` in M5GFX 0.2.27 for the StickS3 PWM setup
@@ -387,7 +387,7 @@ absolute model.
   brightness, after the timeout. This is the largest user-visible saving in the
   lane, but it is a product decision and it is not measured.
 - Risk: medium to high. Users may think the device died. On M5Stack Core the
-  IP5306 hard-powers-off after 32 s below 45 mA, so a disconnected screen-off
+  IP5306 hard-powers-off after 64 s below 45 mA, so a disconnected screen-off
   state there is effectively device off. Accessibility and outdoor use also
   matter.
 - Effort: small code change, large verification and documentation effort.
@@ -765,7 +765,8 @@ behavior change. The 500 ms connected liveness poll is already gentle.
   quiescent figures.
   `http://images.shoutwiki.com/mindworks/8/8b/2020_infrasonic_wildfire_detector_APX192_Enhanced_Single_Cell_datasheet_en.pdf`
 - Injoinic IP5306 datasheet v1.01: standby 50 uA, boost cutoff below 45 mA for
-  32 s.
+  32 s at the power-on default. M5Unified 0.2.20 `Power_Class.cpp` writes
+  `SYS_CTL2 0x02 = 0x6C`, bits 3:2 = `11`, which selects 64 s.
   `https://www.laskakit.cz/user/related_files/ip5306.pdf`
 
 ### Library and platform documentation

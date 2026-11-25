@@ -51,3 +51,15 @@ The power numbers are modelled or inferred, not bench-measured. A per-board
 30-minute soak, first-shutter latency after idle, and wake behaviour remain
 the release gate. `SLEEP_CONN` is still read at connect time, so a device that
 is already connected keeps the setting it started with.
+
+## Follow-up: the shipped IP5306 light-load cutoff is 64 s
+
+This plan and its audit record say 32 s for the Core's IP5306 boost cutoff. That
+is the datasheet value for the power-on default of `SYS_CTL2` bits 3:2 = `01`,
+not what the firmware runs. M5Unified 0.2.20 `Power_Class.cpp` writes
+`0x02 = 0x6C` at `M5.begin()`, and its bitfield comment decodes bits 3:2 = `11`
+as 64 s. No furble code rewrites `0x02`, and the manual off path only clears the
+`REG_SYS_CTL0` keep-on bit, so a shipping Core cuts the boost after 64 s below
+45 mA. The text above is left as written because the plan is an archived record;
+the corrected numbers and the code and doc changes are in
+[334-sim-hardware-alignment.md](../334-sim-hardware-alignment.md).

@@ -414,7 +414,7 @@ plausible.
 | S22 | GPS fix hold, 10 min | `gps_hold 3` (index 3 is ten minutes), fix acquired, then lose the receiver | 600 s |
 | S23 | Disconnected light sleep | S05, no camera, no GPS, 300 s settle | 1800 s |
 | S24 | Power off | Power menu off or the documented long press | 600 s |
-| S25 | Core IP5306 cutoff | Core, any state below 45 mA, 32 s | 120 s |
+| S25 | Core IP5306 cutoff | Core, any state below 45 mA, 64 s | 120 s |
 | S26 | Deep sleep | Not implemented; no `esp_deep_sleep` call | Not measurable |
 | S27 | Wi-Fi disabled | `wifi off`, no driver | 300 s |
 | S28 | Wi-Fi connected idle | SSID and PSK set, IP present, NTP off | 600 s |

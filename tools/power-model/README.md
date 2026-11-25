@@ -151,9 +151,12 @@ Backlights:
 - IP5306 (Core): Injoinic datasheet v1.01
   (https://www.laskakit.cz/user/related_files/ip5306.pdf). Standby 50 uA,
   input quiescent 100 uA. The important behavior: the boost converter shuts
-  off after 32 s of continuous load below 45 mA. Any sub-45 mA sleep state
-  on the Core gets hard powered off by the PMIC, so low power states must
-  either keep the load above the threshold or accept power off.
+  off after continuous load below 45 mA. The hold time is the `SYS_CTL2` bits
+  3:2 field: 32 s at the power-on default, and 64 s in the shipped Core because
+  M5Unified 0.2.20 `Power_Class.cpp` writes `0x02 = 0x6C`, bits 3:2 = `11`. Any
+  sub-45 mA sleep state on the Core gets hard powered off by the PMIC, so low
+  power states must either keep the load above the threshold or accept power
+  off.
 - M5PM1 (StickS3): M5Stack publishes device level figures at 4.2 V
   (https://docs.m5stack.com/en/core/StickS3): power off 14.02 uA (matches
   the locally measured 14 uA timed-off), L1 52.47 uA, L2 102.40 uA, L3A
